@@ -4,6 +4,7 @@
 #include "support/text_file.h"
 
 #include <assert.h>
+#include <ctype.h>
 #include <math.h>
 #include <stddef.h>
 #include <stdio.h>
@@ -266,6 +267,19 @@ void studio_history(studio *s, bool redo)
     document_history(s, redo);
 }
 
+bool studio_session(const studio *s)
+{
+    return runtime_session(s->scene) || s->guest != NULL;
+}
+
+/* The Studio project's game is Studio: Play there runs a guest Studio in
+   the Scene area, and Play again or Stop ends it, as Unity's Play toggles. */
+static bool runs_guest(const studio *s, app_runtime_state state)
+{
+    return s->own_project && state.target == APP_RUNTIME_SCENE &&
+           !state.playing && !runtime_session(s->scene);
+}
+
 void studio_runtime(studio *s, app_runtime_command command)
 {
     /* Play resumes a run paused at a breakpoint (Unreal). */
@@ -274,6 +288,14 @@ void studio_runtime(studio *s, app_runtime_command command)
     }
     finish_transform_edit(s->scene, false);
     app_runtime_state state = app_scene_authoring_runtime_state(s->scene);
+    if (s->guest && command != APP_RUNTIME_STEP) {
+        studio_guest_stop(s);
+        return;
+    }
+    if (command == APP_RUNTIME_PLAY && runs_guest(s, state)) {
+        studio_guest_start(s);
+        return;
+    }
     if (command == APP_RUNTIME_PLAY && state.playing) {
         command = APP_RUNTIME_PAUSE;
     }
@@ -460,12 +482,15 @@ static void zoom_items(studio *s)
     studio_command_item(s, STUDIO_COMMAND_ZOOM_RESET);
 }
 
-#ifdef __EMSCRIPTEN__
-/* Export archives saved files and import reloads the page, so both need saved work. */
-static void project_menu_items(studio *s)
+/* Export archives saved files and import reloads the page, so both need
+   saved work; only the browser without a local server offers them. */
+static void web_project_items(studio *s)
 {
+#ifdef __EMSCRIPTEN__
     kit *k = s->kit;
-    kit_menu_separator(k, "s2");
+    if (!web_projects_available()) {
+        return;
+    }
     bool importing = item(k, "import", "Import Project", 0, NULL, false);
     bool exporting = item(k, "export", "Export Project", 0, NULL, false);
     if ((importing || exporting) && studio_unsaved(s)) {
@@ -478,69 +503,110 @@ static void project_menu_items(studio *s)
     if (exporting) {
         web_export_project();
     }
-}
+#else
+    (void)s;
 #endif
+}
 
-/* The menubar, native in the top bar's #menubar slot. */
-static void menus(studio *s)
+/* ---------- Menubar ---------- */
+
+/* An entry the menu names but Studio lacks, shown so its author sees it. */
+static void unknown_entry(kit *k, const char *key, const char *what, const char *name)
+{
+    char label[160];
+    snprintf(label, sizeof label, "No %s \"%s\"", what, name);
+    item(k, key, label, KIT_ICON_WARNING, NULL, true);
+}
+
+static void add_submenu(studio *s)
+{
+    if (kit_submenu_begin(s->kit, "add", "Add", KIT_ICON_ADD)) {
+        add_menu_items(s);
+        kit_submenu_end(s->kit);
+    }
+}
+
+/* The lists Studio fills where a menu names them with <li list="...">. */
+static void menu_list(studio *s, const char *key, const char *name)
 {
     kit *k = s->kit;
-    if (kit_menubar_trigger(k, "file", "File")) {
-        studio_command_item(s, STUDIO_COMMAND_SEARCH);
+    if (!strcmp(name, "projects")) {
         studio_projects_menu(s);
-        kit_menu_separator(k, "s1");
-        studio_command_item(s, STUDIO_COMMAND_SAVE);
-        studio_command_item(s, STUDIO_COMMAND_RELOAD);
-#ifdef __EMSCRIPTEN__
-        if (web_projects_available()) {
-            project_menu_items(s);
-        }
-#endif
-        kit_menu_separator(k, "s2");
-        studio_command_item(s, STUDIO_COMMAND_SETTINGS);
-        kit_popup_end(k);
-    }
-    if (kit_menubar_trigger(k, "edit", "Edit")) {
-        studio_command_item(s, STUDIO_COMMAND_UNDO);
-        studio_command_item(s, STUDIO_COMMAND_REDO);
-        kit_menu_separator(k, "s1");
-        studio_command_item(s, STUDIO_COMMAND_DUPLICATE);
-        studio_command_item(s, STUDIO_COMMAND_DELETE);
-        kit_popup_end(k);
-    }
-    if (kit_menubar_trigger(k, "view", "View")) {
-        studio_command_item(s, STUDIO_COMMAND_FRAME);
-        studio_command_item(s, STUDIO_COMMAND_RESET_CAMERA);
-        kit_menu_separator(k, "s1");
-        kit_menu_group(k, "drawers", "Drawers");
-        studio_command_item(s, STUDIO_COMMAND_TOGGLE_ASSETS);
-        studio_command_item(s, STUDIO_COMMAND_TOGGLE_OUTPUT);
-        studio_command_item(s, STUDIO_COMMAND_TOGGLE_PERFORMANCE);
-        kit_menu_separator(k, "s2");
-        studio_command_item(s, STUDIO_COMMAND_MAXIMIZE);
-        studio_command_item(s, STUDIO_COMMAND_RESET_LAYOUT);
-        kit_menu_separator(k, "s3");
+    } else if (!strcmp(name, "webProjects")) {
+        web_project_items(s);
+    } else if (!strcmp(name, "add")) {
+        add_submenu(s);
+    } else if (!strcmp(name, "uiScale")) {
         zoom_items(s);
-        kit_popup_end(k);
-    }
-    if (kit_menubar_trigger(k, "object", "Object")) {
-        if (kit_submenu_begin(k, "add", "Add", KIT_ICON_ADD)) {
-            add_menu_items(s);
-            kit_submenu_end(k);
-        }
-        studio_command_item(s, STUDIO_COMMAND_DUPLICATE);
-        studio_command_item(s, STUDIO_COMMAND_DELETE);
-        kit_menu_separator(k, "s1");
-        studio_command_item(s, STUDIO_COMMAND_OPEN_PROTOTYPE);
-        kit_popup_end(k);
-    }
-    if (kit_menubar_trigger(k, "play", "Play")) {
-        studio_command_item(s, STUDIO_COMMAND_PLAY);
-        studio_command_item(s, STUDIO_COMMAND_STOP);
-        studio_command_item(s, STUDIO_COMMAND_STEP);
-        kit_menu_separator(k, "s1");
+    } else if (!strcmp(name, "debugger")) {
         studio_debug_menu(s);
-        kit_popup_end(k);
+    } else {
+        unknown_entry(k, key, "list", name);
+    }
+}
+
+static bool entry_attribute(rml_element *entry, const char *name, char *value, size_t size)
+{
+    return rml_element_attribute(entry, name, value, size) > 0;
+}
+
+/* A menu's entries in order: <li command="id"> runs a command by its id,
+   <li list="name"> is a list Studio fills, <li label="..."> heads a group,
+   <hr/> separates and a <menu label> inside opens a submenu. */
+static void menu_entries(studio *s, rml_element *menu)
+{
+    kit *k = s->kit;
+    for (int i = 0; i < rml_element_child_count(menu); i++) {
+        rml_element *entry = rml_element_child(menu, i);
+        const char *tag = rml_element_tag_name(entry);
+        char key[16], value[128];
+        snprintf(key, sizeof key, "e%d", i);
+        if (!strcmp(tag, "hr")) {
+            kit_menu_separator(k, key);
+        } else if (!strcmp(tag, "menu") && entry_attribute(entry, "label", value, sizeof value)) {
+            if (kit_submenu_begin(k, key, value, 0)) {
+                menu_entries(s, entry);
+                kit_submenu_end(k);
+            }
+        } else if (entry_attribute(entry, "command", value, sizeof value)) {
+            int command = studio_command_named(value);
+            if (command < 0) {
+                unknown_entry(k, key, "command", value);
+            } else {
+                studio_command_item(s, (studio_command)command);
+            }
+        } else if (entry_attribute(entry, "list", value, sizeof value)) {
+            menu_list(s, key, value);
+        } else if (entry_attribute(entry, "label", value, sizeof value)) {
+            kit_menu_group(k, key, value);
+        }
+    }
+}
+
+/* The menubar is authored: the top bar's #menus holds a <menu label> per
+   menu, whose entries name commands by id, as VS Code's menus contribute
+   them; the menus themselves are native, in the #menubar slot. */
+static void menus(studio *s, rml_element *host)
+{
+    rml_element *bar = rml_element_query_selector(host, "#menus");
+    for (int i = 0; bar && i < rml_element_child_count(bar); i++) {
+        rml_element *menu = rml_element_child(bar, i);
+        char key[64], label[64];
+        if (strcmp(rml_element_tag_name(menu), "menu") ||
+            !entry_attribute(menu, "label", label, sizeof label)) {
+            continue;
+        }
+        /* Keyed by label, "file" for File, so paths name the menu. */
+        for (size_t c = 0; c < sizeof key; c++) {
+            key[c] = (char)tolower((unsigned char)label[c]);
+            if (!label[c]) {
+                break;
+            }
+        }
+        if (kit_menubar_trigger(s->kit, key, label)) {
+            menu_entries(s, menu);
+            kit_popup_end(s->kit);
+        }
     }
 }
 
@@ -559,10 +625,12 @@ static uint32_t tab_icon(const scene_document_tab *tab)
     return KIT_ICON_FILE;
 }
 
+/* Every document but a scene closes from its tab, as in VS Code; a scene is
+   the root the other documents open over. */
 bool studio_tab_closes(const studio *s, int tab)
 {
     return tab >= 0 && tab < acount(s->scene->tabs) &&
-           s->scene->tabs[tab].kind == APP_EDITOR_DOCUMENT_UI;
+           s->scene->tabs[tab].kind != APP_EDITOR_DOCUMENT_SCENE;
 }
 
 /* The top bar's TopBar lists these from `editor.tabs`; a tab runs
@@ -596,7 +664,7 @@ static void runtime_target(studio *s)
     kit *k = s->kit;
     app_scene_authoring *scene = s->scene;
     app_runtime_state runtime = app_scene_authoring_runtime_state(scene);
-    bool session = runtime_session(scene);
+    bool session = studio_session(s);
     scene_prototype_asset *previewed = prototype_at(scene, scene->runtime_preview_prototype);
     /* The open prototype document, else the selected object's prototype. */
     scene_actor *actor = selected_actor(scene);
@@ -673,7 +741,7 @@ static void topbar(studio *s)
     }
     kit_release_focus(k, host);
     if (kit_slot_begin(k, "menus", host, "#menubar")) {
-        menus(s);
+        menus(s, host);
         kit_slot_end(k);
     }
     if (kit_slot_begin(k, "target", host, "#play-target")) {
@@ -987,7 +1055,8 @@ static void statusbar(studio *s)
 static void palette(studio *s)
 {
     if (studio_graph_palette(s) || studio_member_palette(s) ||
-        studio_pick_palette(s) || !kit_command_is_open(s->kit)) {
+        studio_pick_palette(s) || studio_component_palette(s) ||
+        !kit_command_is_open(s->kit)) {
         return;
     }
     app_scene_authoring *scene = s->scene;
@@ -1132,9 +1201,11 @@ void studio_emit(studio *s)
     studio_designer_frame(s);
     statusbar(s);
     palette(s);
+    studio_new_asset_frame(s);
     undo_toast(s);
     studio_projects_frame(s);
     studio_rewire_toast(s);
     studio_members_toast(s);
     studio_refactor_frame(s);
+    studio_component_toast(s);
 }

@@ -146,6 +146,41 @@ int game_scene_document_entity_index(const game_scene_document *document, const 
     return -1;
 }
 
+int game_scene_entity_validate_name(const char *name, bool name_used, char *error, size_t error_size)
+{
+    if (!name || !name[0]) {
+        set_error(error, error_size, "An object needs a name.");
+        return -1;
+    }
+    if (name_used) {
+        set_error(error, error_size, "Another object is named %s.", name);
+        return -1;
+    }
+    return 0;
+}
+
+int game_scene_document_rename_entity(
+    game_scene_document *document,
+    int index,
+    const char *name,
+    char *error,
+    size_t error_size
+)
+{
+    assert(index >= 0 && index < acount(document->entities));
+    int existing = game_scene_document_entity_index(document, name);
+    if (game_scene_entity_validate_name(name, existing >= 0 && existing != index, error, error_size)) {
+        return -1;
+    }
+    if (existing == index) {
+        return 0;
+    }
+    char *copy = xstrdup(name);
+    free(document->entities[index].name);
+    document->entities[index].name = copy;
+    return 0;
+}
+
 int game_scene_document_add_entity(
     game_scene_document *document,
     const char *name,

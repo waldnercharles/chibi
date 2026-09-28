@@ -834,6 +834,20 @@ static bool can_close_tab(const app_scene_authoring *scene, int index)
     return false;
 }
 
+/* A graph whose tab closes leaves the Behavior area, which shows no graph
+   until another opens. */
+static void forget_graph(app_scene_authoring *scene, const scene_document_tab *tab)
+{
+    char *key = scene->graph_document_id
+                  ? tab_key(scene->graph_document_kind, scene->graph_document_id, NULL)
+                  : NULL;
+    if (key && !strcmp(key, tab->key)) {
+        free(scene->graph_document_id);
+        scene->graph_document_id = NULL;
+    }
+    free(key);
+}
+
 static int remove_tab(app_scene_authoring *scene, int index)
 {
     if (!can_close_tab(scene, index)) {
@@ -855,6 +869,7 @@ static int remove_tab(app_scene_authoring *scene, int index)
             return -1;
         }
     }
+    forget_graph(scene, &scene->tabs[index]);
     free_tab(&scene->tabs[index]);
     int count = acount(scene->tabs);
     memmove(

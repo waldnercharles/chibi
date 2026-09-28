@@ -718,7 +718,7 @@ static void load_page(render_ui *ui)
     ui->restyle = true;
 }
 
-render_ui *render_ui_new(const char *content_root)
+render_ui *render_ui_new(const char *content_root, yyjson_mut_doc *data)
 {
     static int hosts;
     render_ui *ui = xcalloc(1, sizeof *ui);
@@ -727,7 +727,7 @@ render_ui *render_ui_new(const char *content_root)
     ui->backend = rml_backend_create(1, 1, 1);
     ui->listener = rml_listener_create(on_event, ui);
     ui->scale = 1;
-    ui_data_init(&ui->data, rml_backend_context(ui->backend), NULL, on_emit, ui);
+    ui_data_init(&ui->data, rml_backend_context(ui->backend), data, on_emit, ui);
     load_page(ui);
     return ui;
 }
@@ -749,6 +749,11 @@ void render_ui_free(render_ui *ui)
     ui_style_set(ui->sheet, NULL, NULL);
     free(ui->content_root);
     free(ui);
+}
+
+ui_data *render_ui_data(render_ui *ui)
+{
+    return &ui->data;
 }
 
 const char *render_ui_error(const render_ui *ui)

@@ -152,6 +152,10 @@ void engine_viewport_set_runtime(engine_viewport *viewport, const engine *runtim
 /* Shows `world`'s GameUi documents from content_root/ui over the scene
  * (render/ui.h). */
 void engine_viewport_set_ui(engine_viewport *viewport, const ui_world *world, const char *content_root);
+/* Presents `ui`, which the viewport takes, as the documents
+ * engine_viewport_set_ui creates: for a host that gives them its own data
+ * (render_ui_new). Call before the viewport has documents. */
+void engine_viewport_adopt_ui(engine_viewport *viewport, render_ui *ui);
 /* The documents engine_viewport_set_ui created, for a host's overlay. */
 render_ui *engine_viewport_ui(const engine_viewport *viewport);
 /* Whether the documents took the pointer in the last draw. */

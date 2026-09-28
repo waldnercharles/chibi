@@ -568,18 +568,25 @@ void studio_output_body(studio *s, int area)
 }
 
 /* A maximized area gives way so the editor shows. */
+bool studio_editor_shown(const studio *s, studio_editor editor)
+{
+    for (int area = 0; area < STUDIO_AREA_COUNT; area++) {
+        bool shown = area != STUDIO_AREA_DRAWER || s->prefs.drawer_open;
+        if (shown && s->prefs.editors[area] == editor) {
+            return true;
+        }
+    }
+    return false;
+}
+
 void studio_show_editor(studio *s, studio_editor editor)
 {
     if (s->maximized >= 0 && s->prefs.editors[s->maximized] != editor) {
         s->maximized = -1;
     }
-    for (int area = 0; area < STUDIO_AREA_COUNT; area++) {
-        bool shown = area != STUDIO_AREA_DRAWER || s->prefs.drawer_open;
-        if (shown && s->prefs.editors[area] == editor) {
-            return;
-        }
+    if (!studio_editor_shown(s, editor)) {
+        studio_toggle_drawer(s, editor);
     }
-    studio_toggle_drawer(s, editor);
 }
 
 void studio_output_find(studio *s)

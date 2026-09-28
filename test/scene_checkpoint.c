@@ -360,6 +360,8 @@ static void scene_tabs_discard_reverts_shared_assets()
     assert(scene_tabs_discard(f.scene, behavior_tab) == 0);
     assert(!f.scene->definition->dirty && !f.scene->definition->unsaved);
     assert(acount(f.scene->definition->working->graph->nodes) == behavior_nodes);
+    /* The closed behavior leaves the Behavior area. */
+    assert(!f.scene->graph_document_id);
     fixture_free(&f);
 }
 

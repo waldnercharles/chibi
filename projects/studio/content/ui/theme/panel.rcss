@@ -20,6 +20,11 @@
 .panel-head .title { font-weight: 600; }
 .panel-head .grip { color: var(--disabled-foreground); opacity: 0; font-size: 12dp; }
 .panel-head:hover .grip { opacity: 1; }
+/* The panel's menu (kit_panel_menu), in the grip's place while the header is hovered. */
+.panel[data-menu] .panel-head .grip { display: none; }
+.panel-head .menu { width: 18dp; line-height: 18dp; border-radius: var(--r); opacity: 0; cursor: pointer; }
+.panel-head:hover .menu { opacity: 1; }
+.panel-head .menu:hover { background-color: var(--press); color: var(--foreground); }
 .panel-body { display: block; padding: 4dp 8dp 8dp 6dp; }
 
 /* Badge and kbd. */

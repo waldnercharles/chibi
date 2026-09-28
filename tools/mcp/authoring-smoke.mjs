@@ -327,7 +327,7 @@ try {
   assert(editPrototypeTool?.inputSchema?.properties?.kind?.enum?.length === 1 && editPrototypeTool.inputSchema.properties.kind.enum[0] === "prototype", "prototype selector is missing");
   const sceneOperationProperties = editSceneTool?.inputSchema?.properties?.operations?.items?.properties || {};
   assert(editSceneTool?.inputSchema?.properties?.kind?.enum?.[0] === "scene" && editSceneTool?.annotations?.destructiveHint === true, "scene authoring tool is missing");
-  assert(sceneOperationProperties.op?.enum?.includes("add_entity") && sceneOperationProperties.components && sceneOperationProperties.behaviors && !sceneOperationProperties.x && !sceneOperationProperties.y, "scene authoring operations are missing semantic fields or expose placement controls");
+  assert(sceneOperationProperties.op?.enum?.includes("add_entity") && sceneOperationProperties.op.enum.includes("rename_entity") && sceneOperationProperties.components && sceneOperationProperties.behaviors && !sceneOperationProperties.x && !sceneOperationProperties.y, "scene authoring operations are missing semantic fields or expose placement controls");
   assert(optimizeTool?.inputSchema?.properties?.fanout_threshold?.maximum === 64 && optimizeTool?.annotations?.readOnlyHint === false, "graph optimizer schema or mutation annotations are missing");
   assert(profileTool?.inputSchema?.properties?.warmup_frames && executionTool?.inputSchema?.properties?.kind?.enum?.includes("system"), "profiling or execution status tools are missing");
   assert(editPrototypeTool?.annotations?.readOnlyHint === false && editPrototypeTool?.annotations?.destructiveHint === true, "buildPrototype mutation annotations are missing");
@@ -366,6 +366,113 @@ try {
   assert(profile.ok === true && profile.result?.timing?.sampled_frames === 2 && profile.result?.warmup_frames === 1 && profile.result?.allocations?.scope === "xalloc wrappers", `scenario profiling failed: ${JSON.stringify(profile)}`);
   assert(sceneRun.ok === true && sceneRun.result?.authored_entities === 1, `scene scenario failed: ${JSON.stringify(sceneRun)}`);
   assert(sceneSnapshot.ok === true && sceneSnapshot.result?.entity_count === 1 && sceneSnapshot.result?.entities?.length === 1, `scene runtime snapshot failed: ${JSON.stringify(sceneSnapshot)}`);
+  const sceneRenameRun = runMcp(projectRoot, [
+    initialize(),
+    request(2, "buildScene", {
+      kind: "scene",
+      name: sceneName,
+      expected_hash: sceneCreate.result.after_hash,
+      dry_run: true,
+      operations: [
+        { op: "rename_entity", entity: "Warden", name: "Sentinel" },
+        { op: "set_entity_components", entity: "Sentinel", components: { "GAME.GameTransform": { x: 31, y: -18 } } },
+      ],
+    }),
+    request(3, "readAsset", { kind: "scene", name: sceneName }),
+    request(4, "buildScene", {
+      kind: "scene",
+      name: sceneName,
+      expected_hash: sceneCreate.result.after_hash,
+      operations: [
+        { op: "rename_entity", entity: "Warden", name: "Sentinel" },
+        { op: "set_entity_components", entity: "Sentinel", components: { "GAME.GameTransform": { x: 31, y: -18 } } },
+      ],
+    }),
+    request(5, "readAsset", { kind: "scene", name: sceneName }),
+  ]);
+  const sceneRenameDryRun = structured(sceneRenameRun.get(2));
+  const sceneBeforeRename = structured(sceneRenameRun.get(3));
+  const sceneRename = structured(sceneRenameRun.get(4));
+  const sceneAfterRename = structured(sceneRenameRun.get(5));
+  assert(sceneRenameDryRun.ok === true && sceneRenameDryRun.result?.dry_run === true && sceneRenameDryRun.result?.published === false && sceneRenameDryRun.result?.after_hash !== sceneCreate.result.after_hash, `scene rename dry run failed: ${JSON.stringify(sceneRenameDryRun)}`);
+  assert(sceneBeforeRename.ok === true && sceneBeforeRename.result?.hash === sceneCreate.result.after_hash && sceneBeforeRename.result.document.entities?.[0]?.name === "Warden", "scene rename dry run published a change");
+  assert(sceneRename.ok === true && sceneRename.result?.published === true && sceneRename.result?.after_hash === sceneRenameDryRun.result.after_hash, `scene rename publish failed or dry-run hash was unstable: ${JSON.stringify(sceneRename)}`);
+  assert(!Array.isArray(sceneRename.result?.warnings), "ordinary scene object rename returned Studio-only warnings");
+  assert(sceneAfterRename.ok === true && sceneAfterRename.result.document.entities?.[0]?.name === "Sentinel" && sceneAfterRename.result.document.entities[0].components?.["GAME.GameTransform"]?.x === 31, "later scene operations did not address the renamed entity");
+
+  const sceneInvalidRenameRun = runMcp(projectRoot, [
+    initialize(),
+    request(2, "buildScene", {
+      kind: "scene",
+      name: sceneName,
+      expected_hash: sceneRename.result.after_hash,
+      dry_run: false,
+      operations: [{ op: "rename_entity", entity: "Sentinel", name: "" }],
+    }),
+    request(3, "buildScene", {
+      kind: "scene",
+      name: sceneName,
+      expected_hash: sceneRename.result.after_hash,
+      dry_run: false,
+      operations: [
+        { op: "add_entity", name: "Replacement", prototype: prototypeName },
+        { op: "rename_entity", entity: "Sentinel", name: "Replacement" },
+      ],
+    }),
+    request(4, "buildScene", {
+      kind: "scene",
+      name: sceneName,
+      expected_hash: sceneRename.result.after_hash,
+      dry_run: true,
+      operations: [{ op: "rename_entity", entity: "Sentinel", name: "Sentinel" }],
+    }),
+  ]);
+  const emptySceneRename = structured(sceneInvalidRenameRun.get(2));
+  const duplicateSceneRename = structured(sceneInvalidRenameRun.get(3));
+  const sameSceneRename = structured(sceneInvalidRenameRun.get(4));
+  assert(emptySceneRename.ok === false && emptySceneRename.error?.code === "validation_failed", `scene rename accepted an empty name: ${JSON.stringify(emptySceneRename)}`);
+  assert(duplicateSceneRename.ok === false && duplicateSceneRename.error?.code === "validation_failed", `scene rename accepted a duplicate name: ${JSON.stringify(duplicateSceneRename)}`);
+  assert(sameSceneRename.ok === true && sameSceneRename.result?.dry_run === true && sameSceneRename.result?.changed === false, `same-name scene rename failed: ${JSON.stringify(sameSceneRename)}`);
+  const sceneAfterFailedRenames = structured(runMcp(projectRoot, [
+    initialize(),
+    request(2, "readAsset", { kind: "scene", name: sceneName }),
+  ]).get(2));
+  assert(sceneAfterFailedRenames.ok === true && sceneAfterFailedRenames.result?.hash === sceneRename.result.after_hash && sceneAfterFailedRenames.result.document.entities?.length === 1, "invalid scene rename batches changed the published scene");
+
+  writeFileSync(join(projectRoot, "project.yaml"), "version: 2\nname: Studio\ncontent: content\nstart_scene: scenes/Studio.yaml\n");
+  const studioSceneCreateRun = runMcp(projectRoot, [
+    initialize(),
+    request(2, "buildScene", {
+      kind: "scene",
+      name: "Studio",
+      create: true,
+      operations: [{ op: "add_entity", name: "TopBar", prototype: prototypeName }],
+    }),
+  ]);
+  const studioSceneCreate = structured(studioSceneCreateRun.get(2));
+  assert(studioSceneCreate.ok === true, `Studio scene fixture failed to create: ${JSON.stringify(studioSceneCreate)}`);
+  const studioRenameRun = runMcp(projectRoot, [
+    initialize(),
+    request(2, "buildScene", {
+      kind: "scene",
+      name: "Studio",
+      expected_hash: studioSceneCreate.result.after_hash,
+      dry_run: true,
+      operations: [{ op: "rename_entity", entity: "TopBar", name: "RenamedTopBar" }],
+    }),
+    request(3, "buildScene", {
+      kind: "scene",
+      name: "Studio",
+      expected_hash: studioSceneCreate.result.after_hash,
+      operations: [{ op: "rename_entity", entity: "TopBar", name: "RenamedTopBar" }],
+    }),
+  ]);
+  const studioRenameDryRun = structured(studioRenameRun.get(2));
+  const studioRename = structured(studioRenameRun.get(3));
+  assert(studioRenameDryRun.ok === true && Array.isArray(studioRenameDryRun.result?.warnings) && studioRenameDryRun.result.warnings.length > 0, `Studio scene rename dry run omitted its warning: ${JSON.stringify(studioRenameDryRun)}`);
+  assert(studioRename.ok === true && Array.isArray(studioRename.result?.warnings) && studioRename.result.warnings.length > 0, `Studio scene rename omitted its warning: ${JSON.stringify(studioRename)}`);
+  rmSync(join(projectRoot, "project.yaml"), { force: true });
+
   const missingBehaviorRun = runMcp(projectRoot, [
     initialize(),
     request(2, "buildPrototype", {

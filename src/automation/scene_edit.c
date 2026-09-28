@@ -317,6 +317,22 @@ static int apply_operation(edit_context *context, yyjson_val *operation)
     if (!strcmp(op, "add_entity")) {
         return add_entity(context, operation);
     }
+    if (!strcmp(op, "rename_entity")) {
+        int index = entity_index(context, operation);
+        if (index < 0) {
+            return CHIBI_AUTOMATION_VALIDATION_ERROR;
+        }
+        yyjson_val *name = yyjson_obj_get(operation, "name");
+        if (!yyjson_is_str(name) || yyjson_get_len(name) > 512 ||
+            strlen(yyjson_get_str(name)) != yyjson_get_len(name)) {
+            return fail(context, CHIBI_AUTOMATION_INVALID_REQUEST, "name must be a bounded string without NUL characters");
+        }
+        char error[256] = { 0 };
+        if (game_scene_document_rename_entity(context->scene, index, yyjson_get_str(name), error, sizeof error)) {
+            return fail(context, CHIBI_AUTOMATION_VALIDATION_ERROR, "%s", error);
+        }
+        return CHIBI_AUTOMATION_OK;
+    }
     if (!strcmp(op, "remove_entity")) {
         int index = entity_index(context, operation);
         return index < 0 ? CHIBI_AUTOMATION_VALIDATION_ERROR

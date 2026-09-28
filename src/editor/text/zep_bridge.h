@@ -203,6 +203,8 @@ extern "C"
     /* Selects from anchor to cursor in the mode's visual selection; an
      * empty range ends the selection and places the cursor. */
     void zep_select(zep_editor *z, long anchor, long cursor);
+    /* The visual selection's bytes, [start, end); false without one. */
+    bool zep_selection(const zep_editor *z, long *start, long *end);
     /* Keys go through Vim's mappings when true, the standard ones when false. */
     void zep_set_vim(zep_editor *z, bool vim);
     zep_mode zep_current_mode(const zep_editor *z);

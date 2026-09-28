@@ -90,6 +90,24 @@ void studio_scene_view(studio *s, engine_viewport_host_input *input)
     input->resolution = fminf(zoom, VIEW_SHARP_MAX);
 }
 
+/* The View Zoom choices, in a menu the caller has open. */
+static void view_zoom_items(studio *s)
+{
+    kit *k = s->kit;
+    kit_menu_group(k, "zoom-group", "View Zoom");
+    for (size_t i = 0; i < sizeof VIEW_ZOOMS / sizeof *VIEW_ZOOMS; i++) {
+        char item_key[8], item_label[8];
+        snprintf(item_key, sizeof item_key, "z%zu", i);
+        snprintf(item_label, sizeof item_label, "%d%%", (int)(VIEW_ZOOMS[i] * 100));
+        kit_menu_item_desc item = { .label = item_label,
+                                    .checked = fabsf(s->view.zoom - VIEW_ZOOMS[i]) <
+                                               0.005f };
+        if (kit_menu_item(k, item_key, &item)) {
+            zoom_view(s, VIEW_ZOOMS[i], 0.5f, 0.5f);
+        }
+    }
+}
+
 static void view_zoom_menu(studio *s, int area)
 {
     kit *k = s->kit;
@@ -103,22 +121,10 @@ static void view_zoom_menu(studio *s, int area)
     if (kit_button(k, "zoom", &zoom)) {
         kit_popup_open(k, key);
     }
-    if (!kit_popup_begin(k, key, "menu")) {
-        return;
+    if (kit_popup_begin(k, key, "menu")) {
+        view_zoom_items(s);
+        kit_popup_end(k);
     }
-    kit_menu_group(k, "group", "View Zoom");
-    for (size_t i = 0; i < sizeof VIEW_ZOOMS / sizeof *VIEW_ZOOMS; i++) {
-        char item_key[8], item_label[8];
-        snprintf(item_key, sizeof item_key, "z%zu", i);
-        snprintf(item_label, sizeof item_label, "%d%%", (int)(VIEW_ZOOMS[i] * 100));
-        kit_menu_item_desc item = { .label = item_label,
-                                    .checked = fabsf(s->view.zoom - VIEW_ZOOMS[i]) <
-                                               0.005f };
-        if (kit_menu_item(k, item_key, &item)) {
-            zoom_view(s, VIEW_ZOOMS[i], 0.5f, 0.5f);
-        }
-    }
-    kit_popup_end(k);
 }
 
 /* ---------- Scene viewport ---------- */
@@ -128,10 +134,15 @@ static bool canvas_body(studio *s);
 
 void studio_scene_header(studio *s, int area)
 {
+    kit *k = s->kit;
+    if (s->guest) {
+        kit_label(k, "guest", NULL, "Studio");
+        kit_label(k, "working", "dim", "Running this project's working copy");
+        return;
+    }
     if (canvas_header(s, area)) {
         return;
     }
-    kit *k = s->kit;
     char key[24];
     snprintf(key, sizeof key, "view:%d", area);
     kit_button_desc view = { .label = "View", .cls = "menu-btn" };
@@ -151,10 +162,17 @@ void studio_scene_header(studio *s, int area)
         if (kit_menu_item(k, "reset", &reset)) {
             engine_viewport_reset_camera(s->viewport);
         }
+        kit_menu_separator(k, "s1");
+        view_zoom_items(s);
         kit_popup_end(k);
     }
     kit_leaf(k, "spacer", NULL, "spacer");
-    view_zoom_menu(s, area);
+    /* View Zoom magnifies the frame, the game's UI too, apart from the
+       camera the readout shows; it shows here only while it magnifies, as a
+       browser shows its zoom, so one zoom reads at a time. */
+    if (fabsf(s->view.zoom - 1) > 0.005f) {
+        view_zoom_menu(s, area);
+    }
     kit_button_desc frame = { .icon = KIT_ICON_FRAME,
                               .label = "Frame",
                               .tip = "Frame selected",
@@ -194,7 +212,6 @@ static void view_overlay(studio *s)
     kit_pop(k);
     kit_push(k, "label", NULL, "view-label");
     kit_presence(k);
-    kit_label(k, "mode", NULL, "Top orthographic");
     char title[128], context[256];
     scene_actor *actor = selected_actor(s->scene);
     snprintf(
@@ -211,10 +228,18 @@ static void view_overlay(studio *s)
 void studio_scene_body(studio *s, int area)
 {
     (void)area;
+    kit *k = s->kit;
+    /* A guest Studio fills the area as the Studio project's game, whatever
+       document is active. */
+    if (s->guest) {
+        kit_push(k, "viewport", NULL, "viewport");
+        kit_surface(k, "guest", "surface", "guest", &s->surface);
+        kit_pop(k);
+        return;
+    }
     if (canvas_body(s)) {
         return;
     }
-    kit *k = s->kit;
     app_scene_authoring *scene = s->scene;
     kit_push(k, "viewport", NULL, "viewport");
     kit_surface(k, "surface", "surface", "viewport", &s->surface);
@@ -293,6 +318,103 @@ void studio_outliner_header(studio *s, int area)
     }
 }
 
+/* ---------- Rename ---------- */
+
+static scene_actor *actor_of(studio *s, uint64_t entity)
+{
+    for (int i = 0; i < acount(s->scene->actors); i++) {
+        if (ecs_entity_to_u64(s->scene->actors[i].entity) == entity) {
+            return &s->scene->actors[i];
+        }
+    }
+    return NULL;
+}
+
+static bool editor_shown(const studio *s, studio_editor editor)
+{
+    for (int area = 0; area < STUDIO_AREA_COUNT; area++) {
+        bool shown = (s->maximized < 0 || s->maximized == area) &&
+                     (area != STUDIO_AREA_DRAWER || s->prefs.drawer_open);
+        if (shown && s->prefs.editors[area] == editor) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void studio_rename_object(studio *s)
+{
+    scene_actor *actor = selected_actor(s->scene);
+    bool outliner = editor_shown(s, STUDIO_EDITOR_OUTLINER);
+    s->rename.entity = ecs_entity_to_u64(actor->entity);
+    s->rename.outliner = outliner;
+    s->rename.focus = true;
+    snprintf(s->rename.name, sizeof s->rename.name, "%s", actor->name);
+    if (!outliner) {
+        s->tab = STUDIO_TAB_OBJECT;
+        studio_show_editor(s, STUDIO_EDITOR_PROPERTIES);
+        return;
+    }
+    /* Its row shows, scrolled into view. */
+    s->outliner_collapsed = false;
+    s->outliner_reveal = true;
+    if (!studio_matches(s->outliner_filter, actor->name) &&
+        !studio_matches(s->outliner_filter, actor->prototype_name)) {
+        s->outliner_filter[0] = '\0';
+    }
+}
+
+void studio_rename_commit(studio *s, uint64_t entity, const char *name)
+{
+    scene_actor *actor = actor_of(s, entity);
+    if (!actor || !studio_editable(s) || !strcmp(actor->name, name)) {
+        return;
+    }
+    char report[544];
+    snprintf(report, sizeof report, "Renamed %s to %s", actor->name, name);
+    finish_transform_edit(s->scene, false);
+    if (app_scene_authoring_rename_instance(s->scene, actor->entity, name) != 0) {
+        kit_toast(
+            s->kit,
+            0,
+            &(kit_toast_desc){ .type = KIT_TOAST_WARNING,
+                               .title = "Can't rename",
+                               .description = s->scene->message }
+        );
+        return;
+    }
+    studio_report(s, report);
+}
+
+/* The name as a field in the row's place (Blender's F2): Enter or leaving
+   the field renames, Escape keeps the name. */
+static void rename_row(studio *s, const scene_actor *actor)
+{
+    kit *k = s->kit;
+    char key[32];
+    snprintf(key, sizeof key, "rename%llu", (unsigned long long)s->rename.entity);
+    kit_push(k, key, NULL, "tree-row object-rename");
+    /* Where a row at depth 1 shows its icon, past the twisty's room. */
+    kit_style(k, "padding-left", "38dp");
+    kit_icon(k, "icon", NULL, studio_prototype_icon(s, actor->prototype_name));
+    bool committed = kit_text_field(k, "name", s->rename.name, sizeof s->rename.name, NULL, 0);
+    bool focus = s->rename.focus;
+    if (focus) {
+        kit_focus(k);
+        s->rename.focus = false;
+    }
+    bool left = !focus && !kit_item_active(k);
+    kit_pop(k);
+    if (!committed && !left) {
+        return;
+    }
+    uint64_t entity = s->rename.entity;
+    s->rename.entity = 0;
+    if (committed) {
+        studio_rename_commit(s, entity, s->rename.name);
+    }
+}
+
 /* Actors shown by the Outliner filter, in scene order. The caller frees the array. */
 int *studio_outliner_rows(studio *s)
 {
@@ -361,6 +483,10 @@ void studio_outliner_body(studio *s, int area)
             "e%llu",
             (unsigned long long)ecs_entity_to_u64(actor->entity)
         );
+        if (s->rename.outliner && s->rename.entity == ecs_entity_to_u64(actor->entity)) {
+            rename_row(s, actor);
+            continue;
+        }
         char **names = instance_behavior_names(scene, actor->entity);
         if (acount(names)) {
             snprintf(behaviors, sizeof behaviors, "%d", acount(names));
@@ -403,7 +529,7 @@ void studio_outliner_body(studio *s, int area)
             select_instance(scene, i);
         }
         if (events & KIT_ROW_DOUBLE_CLICK) {
-            studio_frame_selection(s);
+            studio_command_run(s, STUDIO_COMMAND_RENAME);
         }
         if (events & KIT_ROW_CONTEXT) {
             kit_popup_open_at(k, menu_key, s->in.mouse_x, s->in.mouse_y);
@@ -427,12 +553,13 @@ void studio_outliner_body(studio *s, int area)
         }
         kit_menu_item_desc duplicate = { .label = "Duplicate",
                                          .icon = KIT_ICON_COPY,
-                                         .shortcut = "Shift+D",
+                                         .shortcut = studio_chord(s, "Shift+D"),
                                          .checked = -1,
                                          .disabled = !studio_editable(s) };
         if (kit_menu_item(k, "duplicate", &duplicate)) {
             studio_duplicate(s);
         }
+        studio_command_item(s, STUDIO_COMMAND_RENAME);
         kit_menu_item_desc prototype = { .label = "Open Prototype",
                                          .icon = KIT_ICON_PROTOTYPE,
                                          .checked = -1,

@@ -40,8 +40,9 @@ typedef struct
     double time;
 } studio_fixture;
 
-/* Studio over the fixture project's scene `scene` with `behavior` open. */
-static studio_fixture fixture_open(const char *scene, const char *behavior)
+/* Studio over scene `scene` of the project at `project` with `behavior`
+   open. */
+static studio_fixture fixture_open(const char *project, const char *scene, const char *behavior)
 {
     studio_fixture f = { .world = ecs_world_new() };
     for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
@@ -63,7 +64,9 @@ static studio_fixture fixture_open(const char *scene, const char *behavior)
         NULL,
         f.runtime
     );
-    assert(app_scene_authoring_set_content_root(f.scene, PROJECT "/content") == 0);
+    char content[PATH_MAX];
+    snprintf(content, sizeof content, "%s/content", project);
+    assert(app_scene_authoring_set_content_root(f.scene, content) == 0);
     assert(app_scene_authoring_load_content(f.scene) == 0);
     assert(app_scene_authoring_load(f.scene, scene) == 0);
     assert(app_scene_authoring_open_behavior(f.scene, behavior) == 0);
@@ -72,7 +75,7 @@ static studio_fixture fixture_open(const char *scene, const char *behavior)
 
 static studio_fixture fixture_new()
 {
-    studio_fixture f = fixture_open(PROJECT "/content/scenes/Main.yaml", "Weapons");
+    studio_fixture f = fixture_open(PROJECT, PROJECT "/content/scenes/Main.yaml", "Weapons");
     assert(editor_open_graph(f.graph, FUNCTION_GRAPH) == 0);
     f.studio = studio_new(f.scene, f.viewport, PROJECT);
     studio_maximize_graph(f.studio);
@@ -125,6 +128,8 @@ static void reload_keeps_viewed_graph_saved()
 
 /* UI documents as tabs and in the Text Editor (test/editor/ui_documents.c). */
 void test_ui_document_tabs();
+/* Assets ▸ New and Settings ▸ Project (test/editor/studio_new_assets.c). */
+void test_studio_new_assets();
 /* Workstream I: the Text Editor's code intelligence
    (test/editor/code_intelligence_studio.c). */
 void test_code_intelligence_studio();
@@ -135,17 +140,25 @@ void test_code_intelligence_studio();
 #define BANK PROJECT "/content/ui/Bank.rml"
 #define BANK_STYLES PROJECT "/content/ui/Bank.rcss"
 
-/* Studio over the Vault scene, whose Vault shows the Bank document and
-   attaches Teller, with the Scene filling the workspace. Preferences stay as
-   saved. */
-static studio_fixture vault_open()
+/* Studio over `project`'s scene `scene` with `behavior` open and the Scene
+   filling the workspace. Preferences stay as saved, but for UI Scale 1, so
+   the layout the checks click is the same whatever the user's scale. */
+static studio_fixture scene_open(const char *project, const char *scene, const char *behavior)
 {
-    studio_fixture f = fixture_open(VAULT, "Teller");
-    f.studio = studio_new(f.scene, f.viewport, PROJECT);
+    studio_fixture f = fixture_open(project, scene, behavior);
+    f.studio = studio_new(f.scene, f.viewport, project);
+    f.studio->prefs.ui_scale = f.studio->applied.ui_scale = 1;
     f.studio->prefs.editors[STUDIO_AREA_TOP] = STUDIO_EDITOR_SCENE;
     f.studio->applied.editors[STUDIO_AREA_TOP] = STUDIO_EDITOR_SCENE;
     f.studio->maximized = STUDIO_AREA_TOP;
     return f;
+}
+
+/* Studio over the Vault scene, whose Vault shows the Bank document and
+   attaches Teller. */
+static studio_fixture vault_open()
+{
+    return scene_open(PROJECT, VAULT, "Teller");
 }
 
 static void frames(studio_fixture *f, int count)
@@ -298,12 +311,93 @@ static void preview_follows_document()
     fixture_free(&f);
 }
 
+static bool logged_last(const studio *s, const char *event)
+{
+    const studio_canvas *c = s->canvas;
+    return acount(c->actions) &&
+           !strcmp(c->actions[acount(c->actions) - 1].event, event);
+}
+
+/* The elements of the Canvas's asset that `selector` matches, up to 8. */
+static int canvas_elements(studio *s, const char *selector, rml_element **found)
+{
+    char query[192];
+    snprintf(query, sizeof query, "[data-ui=%s] %s", s->canvas->asset, selector);
+    rml_context *context = render_ui_context(engine_viewport_ui(s->canvas->viewport));
+    return rml_element_query_selector_all(rml_context_document(context, 0), query, found, 8);
+}
+
+/* The variables the Canvas's documents bind. */
+static yyjson_mut_val *canvas_variables(studio *s)
+{
+    render_ui *ui = engine_viewport_ui(s->canvas->viewport);
+    return yyjson_mut_doc_get_root(render_ui_data(ui)->doc);
+}
+
+/* Studio over the Studio project's scene, whose root document is its
+   manifest's, as the application opens it. */
+static studio_fixture studio_project_open()
+{
+    static char root[PATH_MAX];
+    char scene[PATH_MAX + 32];
+    assert(realpath("projects/studio", root));
+    snprintf(scene, sizeof scene, "%s/content/scenes/Studio.yaml", root);
+    studio_fixture f = scene_open(root, scene, "Dismiss");
+    app_scene_authoring_set_default_ui(f.scene, "StudioShell");
+    return f;
+}
+
+/* With the Studio project open, its ui assets are Studio's chrome, so the
+   Canvas previews them over Studio's own data: TopBar lists the document
+   tabs and labels its commands, whose studio.* events only reach the
+   Actions log. A game's preview binds only save and system. */
+static void preview_binds_studio_data()
+{
+    studio_fixture f = studio_project_open();
+    studio *s = f.studio;
+    frames(&f, 3);
+    studio_preview_ui(s, "TopBar");
+    frames(&f, 8);
+    rml_element *found[8];
+    /* Besides data-for's template. */
+    int tabs = canvas_elements(s, ".doc-tab", found) - 1;
+    bool listed = s->own_project && tabs > 0 && tabs == acount(f.scene->tabs);
+    char label[64] = "";
+    if (canvas_elements(s, ".search-trigger .label", found) == 1) {
+        rml_element_inner_rml(found[0], label, sizeof label);
+    }
+    bool labeled = !strcmp(
+        label,
+        studio_command_describe(s, STUDIO_COMMAND_SEARCH).label
+    );
+    canvas_elements(s, ".search-trigger", found);
+    rml_element_click(found[0]);
+    frames(&f, 2);
+    bool logged = logged_last(s, "studio.search") && !kit_command_is_open(s->kit);
+    fixture_free(&f);
+
+    f = vault_open();
+    frames(&f, 3);
+    studio_preview_ui(f.studio, "Bank");
+    frames(&f, 3);
+    yyjson_mut_val *variables = canvas_variables(f.studio);
+    bool game = yyjson_mut_obj_size(variables) == 2 &&
+                yyjson_mut_obj_get(variables, "save") &&
+                yyjson_mut_obj_get(variables, "system");
+    if (!(listed && labeled && logged && game)) {
+        printf("  %d %d %d %d: %d tabs, '%s'\n", listed, labeled, logged, game, tabs, label);
+    }
+    test_check(listed && labeled && logged && game, "a Studio-project Canvas preview binds Studio's data and only logs its commands; a game's binds save and system");
+    fixture_free(&f);
+}
+
 static void ui_wiring_checks()
 {
     ui_errors_recorded();
     ui_events_offered();
     preview_logs_actions();
     preview_follows_document();
+    preview_binds_studio_data();
 }
 
 /* ---------- Authored status bar (workstream J) ---------- */
@@ -400,13 +494,6 @@ static void key_event_mod(SDL_Scancode key, bool down, SDL_Keymod mod, bool repe
 static void key_event(SDL_Scancode key, bool down)
 {
     key_event_mod(key, down, SDL_KMOD_NONE, false);
-}
-
-static bool logged_last(const studio *s, const char *event)
-{
-    const studio_canvas *c = s->canvas;
-    return acount(c->actions) &&
-           !strcmp(c->actions[acount(c->actions) - 1].event, event);
 }
 
 /* The Canvas preview takes the keys typed while its area has the keyboard,
@@ -623,12 +710,15 @@ static int panel_elements(studio *s, const char *panel, const char *selector, rm
     return rml_element_query_selector_all(doc, query, found, 8);
 }
 
-/* A press and release on `el`, which focuses it as a click does. */
+/* A press and release on `el`, which focuses it as a click does. Input is
+   in dp, and the element's box in pixels. */
 static void press(studio *s, rml_element *el)
 {
     rml_vec2 at = rml_element_absolute_offset(el, RML_BOX_BORDER);
     rml_vec2 size = rml_element_box_size(el, RML_BOX_BORDER);
-    rml_input input = { .x = at.x + size.x * 0.5f, .y = at.y + size.y * 0.5f };
+    float ratio = studio_pixel_ratio(s);
+    rml_input input = { .x = (at.x + size.x * 0.5f) / ratio,
+                        .y = (at.y + size.y * 0.5f) / ratio };
     rml_input_type types[] = { RML_INPUT_POINTER_MOVE,
                                RML_INPUT_POINTER_DOWN,
                                RML_INPUT_POINTER_UP };
@@ -778,6 +868,216 @@ static void scene_text_field()
     fixture_free(&f);
 }
 
+/* ---------- Rename objects and prototype components ---------- */
+
+static void tap(SDL_Scancode key)
+{
+    key_event(key, true);
+    key_event(key, false);
+}
+
+/* The pointer to (x, y) in dp, as SDL reports it in window points. */
+static void mouse_move(const studio *s, float x, float y)
+{
+    SDL_Event move = { .type = SDL_EVENT_MOUSE_MOTION };
+    move.motion.windowID = SDL_GetWindowID(cf_app_get_window());
+    move.motion.x = x * s->prefs.ui_scale;
+    move.motion.y = y * s->prefs.ui_scale;
+    assert(SDL_PushEvent(&move));
+}
+
+static void mouse_click(studio_fixture *f, float x, float y, Uint8 button)
+{
+    const studio *s = f->studio;
+    mouse_move(s, x, y);
+    for (int down = 1; down >= 0; down--) {
+        SDL_Event press = { .type = down ? SDL_EVENT_MOUSE_BUTTON_DOWN
+                                         : SDL_EVENT_MOUSE_BUTTON_UP };
+        press.button.windowID = SDL_GetWindowID(cf_app_get_window());
+        press.button.button = button;
+        press.button.down = down;
+        press.button.clicks = 1;
+        press.button.x = x * s->prefs.ui_scale;
+        press.button.y = y * s->prefs.ui_scale;
+        assert(SDL_PushEvent(&press));
+    }
+    frames(f, 2);
+}
+
+static bool click_path(studio_fixture *f, const char *path, Uint8 button)
+{
+    kit_rect r;
+    if (!kit_find(f->studio->kit, path, &r)) {
+        return false;
+    }
+    mouse_click(f, r.x + r.w * 0.5f, r.y + r.h * 0.5f, button);
+    return true;
+}
+
+static void mouse_over(studio_fixture *f, studio_area_slot area)
+{
+    kit_rect r = f->studio->areas[area].rect;
+    mouse_move(f->studio, r.x + r.w * 0.5f, r.y + r.h * 0.5f);
+    frames(f, 1);
+}
+
+static bool named(const app_scene_authoring *scene, const char *name)
+{
+    for (int i = 0; i < acount(scene->actors); i++) {
+        if (!strcmp(scene->actors[i].name, name)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* Studio over the Vault scene with the Outliner and Properties beside the
+   Scene, whatever layout was saved. */
+static studio_fixture side_open()
+{
+    studio_fixture f = vault_open();
+    studio *s = f.studio;
+    s->maximized = -1;
+    s->prefs.editors[STUDIO_AREA_OUTLINER] = STUDIO_EDITOR_OUTLINER;
+    s->prefs.editors[STUDIO_AREA_PROPERTIES] = STUDIO_EDITOR_PROPERTIES;
+    memcpy(s->applied.editors, s->prefs.editors, sizeof s->prefs.editors);
+    s->focus_area = STUDIO_AREA_OUTLINER;
+    frames(&f, 3);
+    return f;
+}
+
+/* Renames one object at a time: F2 over the Outliner edits its row, Enter
+   renames as one Undo step, Escape keeps the name and a name in use is
+   refused; without the Outliner, F2 edits Properties' name field. */
+static void rename_objects()
+{
+    studio_fixture f = side_open();
+    studio *s = f.studio;
+    app_scene_authoring *scene = f.scene;
+    studio_add_object(s, "Vault");
+    select_instance(scene, 0);
+    frames(&f, 2);
+    mouse_over(&f, STUDIO_AREA_OUTLINER);
+    tap(SDL_SCANCODE_F2);
+    frames(&f, 3);
+    bool field = s->rename.entity && s->rename.outliner && kit_wants_keyboard(s->kit);
+    text_event("Strongroom");
+    tap(SDL_SCANCODE_RETURN);
+    frames(&f, 2);
+    bool renamed = named(scene, "Strongroom") && !named(scene, "Vault") &&
+                   !s->rename.entity;
+    studio_history(s, false);
+    bool undone = named(scene, "Vault") && !named(scene, "Strongroom");
+    studio_history(s, true);
+    bool redone = named(scene, "Strongroom");
+    frames(&f, 1);
+    tap(SDL_SCANCODE_F2);
+    frames(&f, 3);
+    text_event("Nope");
+    tap(SDL_SCANCODE_ESCAPE);
+    frames(&f, 2);
+    bool kept = named(scene, "Strongroom") && !named(scene, "Nope") &&
+                !s->rename.entity;
+    select_instance(scene, 1);
+    frames(&f, 1);
+    tap(SDL_SCANCODE_F2);
+    frames(&f, 3);
+    text_event("Strongroom");
+    tap(SDL_SCANCODE_RETURN);
+    frames(&f, 2);
+    bool refused = named(scene, "Vault_1") && strstr(scene->message, "Strongroom");
+    s->prefs.editors[STUDIO_AREA_OUTLINER] = STUDIO_EDITOR_ASSETS;
+    s->applied.editors[STUDIO_AREA_OUTLINER] = STUDIO_EDITOR_ASSETS;
+    frames(&f, 2);
+    mouse_over(&f, STUDIO_AREA_TOP);
+    tap(SDL_SCANCODE_F2);
+    frames(&f, 3);
+    bool properties = s->tab == STUDIO_TAB_OBJECT && kit_wants_keyboard(s->kit);
+    text_event("Annex");
+    tap(SDL_SCANCODE_RETURN);
+    frames(&f, 2);
+    bool inspector = named(scene, "Annex") && !named(scene, "Vault_1");
+    if (!(field && renamed && undone && redone && kept && refused &&
+          properties && inspector)) {
+        printf("  %d %d %d %d %d %d %d %d\n", field, renamed, undone, redone, kept, refused, properties, inspector);
+    }
+    test_check(field && renamed && undone && redone && kept, "F2 over the Outliner renames its row in place as one Undo step, and Escape keeps the name");
+    test_check(refused && properties && inspector, "a name in use is refused, and F2 edits Properties' name field while no area shows the Outliner");
+    fixture_free(&f);
+}
+
+static bool prototype_has(app_scene_authoring *scene, const char *component)
+{
+    const game_prototype *prototype = find_prototype(scene, "Vault")->prototype;
+    for (int i = 0; i < acount(prototype->components); i++) {
+        if (!strcmp(prototype->components[i].desc->name, component)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* Add Component searches the components the prototype lacks and adds the
+   chosen one; its panel's menu removes it, and the toast's Undo returns it. */
+static void prototype_components()
+{
+    studio_fixture f = side_open();
+    studio *s = f.studio;
+    /* Properties fills the workspace, so its last panels are in view. */
+    s->maximized = s->focus_area = STUDIO_AREA_PROPERTIES;
+    assert(app_scene_authoring_open_prototype(f.scene, "Vault") == 0);
+    frames(&f, 3);
+    const char *scroll = "app/workspace/main/properties/body/properties/scroll";
+    char path[256];
+    snprintf(path, sizeof path, "%s/add/component", scroll);
+    bool button = click_path(&f, path, SDL_BUTTON_LEFT);
+    bool palette = kit_command_is_open(s->kit) && s->components.open;
+    text_event("Health");
+    frames(&f, 2);
+    tap(SDL_SCANCODE_RETURN);
+    frames(&f, 3);
+    char added[128];
+    snprintf(added, sizeof added, "%s", s->components.added);
+    bool gained = added[0] && prototype_has(f.scene, added) && !s->components.open;
+    snprintf(path, sizeof path, "%s/%s", scroll, added);
+    kit_rect panel = { 0 };
+    bool shown = kit_find(s->kit, path, &panel);
+    mouse_click(&f, panel.x + 40, panel.y + 10, SDL_BUTTON_RIGHT);
+    frames(&f, 8);
+    bool menu = kit_popup_is_open(s->kit, "component-menu");
+    click_path(&f, "layer/@component-menu/remove", SDL_BUTTON_LEFT);
+    bool removed = !prototype_has(f.scene, added);
+    rml_element *undo = studio_element(s, ".toast-action");
+    if (undo) {
+        rml_element_click(undo);
+    }
+    frames(&f, 2);
+    bool restored = prototype_has(f.scene, added);
+    studio_history(s, false);
+    bool undone = !prototype_has(f.scene, added);
+    studio_history(s, true);
+    bool redone = prototype_has(f.scene, added);
+    if (!(button && palette && gained && shown && menu && removed && undo &&
+          restored && undone && redone)) {
+        printf(
+            "  %d %d %d %d %d %d %d %d %d %d\n",
+            button,
+            palette,
+            gained,
+            shown,
+            menu,
+            removed,
+            undo != NULL,
+            restored,
+            undone,
+            redone
+        );
+    }
+    test_check(button && palette && gained, "Add Component searches the components a prototype lacks and adds the one chosen");
+    test_check(shown && menu && removed && undo && restored && undone && redone, "a component panel's menu removes it with Undo in a toast, and Undo and Redo step both");
+    fixture_free(&f);
+}
+
 int studio_documents_run(const char *program)
 {
     CF_Result result = cf_make_app(
@@ -798,6 +1098,7 @@ int studio_documents_run(const char *program)
     app_input_initialize();
     reload_keeps_viewed_graph_saved();
     test_ui_document_tabs();
+    test_studio_new_assets();
     /* UI wiring (workstream K) */
     ui_wiring_checks();
     /* Authored status bar (workstream J) */
@@ -813,6 +1114,9 @@ int studio_documents_run(const char *program)
     chrome_follows_studio();
     /* arena2d end to end (wave 3, workstream X) */
     scene_text_field();
+    /* Rename objects and prototype components */
+    rename_objects();
+    prototype_components();
     app_input_shutdown();
     cf_destroy_app();
     return 0;

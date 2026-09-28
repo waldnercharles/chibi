@@ -7,7 +7,8 @@
  * each command's state (the last sections). A panel's
  * edits apply back: a saved key to the save, a theme value to its file,
  * which restyles everything the page styles, and a setting to the
- * preferences. */
+ * preferences. A preview of Studio's own ui assets shows the same data and
+ * applies nothing. */
 #include "assets/project.h"
 #include "editor/studio/studio_internal.h"
 #include "runtime/behaviors/live.h"
@@ -25,13 +26,16 @@
 #include <string.h>
 
 static void add_inspector(yyjson_mut_doc *doc, yyjson_mut_val *root);
-static void sync_inspector(studio *s, ui_data *data);
+static void sync_inspector(studio *s, studio_sources *src, ui_data *data);
+static void show_inspector_model(studio_sources *src, ui_data *data, const studio_inspect_model *m);
 static void sync_editor(studio *s, ui_data *data);
 static void sync_commands(studio *s, ui_data *data);
 
-void studio_sources_add(yyjson_mut_doc *doc)
+yyjson_mut_doc *studio_sources_new()
 {
-    yyjson_mut_val *root = yyjson_mut_doc_get_root(doc);
+    yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
+    yyjson_mut_val *root = yyjson_mut_obj(doc);
+    yyjson_mut_doc_set_root(doc, root);
     yyjson_mut_val *world = yyjson_mut_obj_add_obj(doc, root, "world");
     yyjson_mut_obj_add_str(doc, world, "title", "");
     yyjson_mut_obj_add_arr(doc, world, "saved");
@@ -40,6 +44,7 @@ void studio_sources_add(yyjson_mut_doc *doc)
     studio_settings_add(doc);
     studio_status_add(doc);
     studio_commands_add(doc);
+    return doc;
 }
 
 static yyjson_mut_val *variable(ui_data *data, const char *name)
@@ -326,16 +331,25 @@ static void sync_theme(studio *s, studio_sources *src, ui_data *data, bool wrote
  * one row per preference, command and project setting. Rows are built once
  * and shown or hidden, so the page never rebuilds as the query changes. A
  * row's value is text, and its control is chosen by which of its `bool`,
- * `choice` and `range` lists holds an item, as data-if leaves hidden
+ * `choice`, `range` and `text` lists holds an item, as data-if leaves hidden
  * controls bound. A slider moves `position`, from 0 to 1 in steps of
  * `tick`: a range input clamps its value when its bounds arrive, so its
  * bounds stay fixed. */
 
-#define SETTINGS_ROOT_KEY "project.ui"
-#define SETTINGS_ROOT_LABEL "Root Document"
-#define SETTINGS_ROOT_DESCRIPTION                                              \
-    "The ui document every scene's UI shows on unless the scene names its "    \
-    "own. Its stylesheets style the whole page."
+/* The Project tab's rows, after the preferences and commands. A field the
+   manifest may leave out (`optional`) offers None and Reset; the others must
+   name something, so an empty value is dropped. */
+static const struct
+{
+    const char *key;   /* the row's */
+    const char *field; /* in project.yaml */
+    const char *label, *description;
+    bool optional;
+} PROJECT_ROWS[STUDIO_PROJECT_FIELD_COUNT] = {
+    [STUDIO_PROJECT_NAME] = { "project.name", "name", "Name", "The project's name, as Open Project and the command palette list it." },
+    [STUDIO_PROJECT_START_SCENE] = { "project.startScene", "start_scene", "Start Scene", "The scene the project opens with, in Studio and when the game runs." },
+    [STUDIO_PROJECT_UI] = { "project.ui", "ui", "Root Document", "The ui document every scene's UI shows on unless the scene names its own. Its stylesheets style the whole page.", true },
+};
 enum
 {
     SETTINGS_KEYS_MAX = 8, /* keys in one shortcut */
@@ -455,7 +469,8 @@ static yyjson_mut_val *add_row(
                                          "context", "conflict", "bound" };
     static const char *const FLAGS[] = { "shown",  "head",      "modified",
                                          "record", "recording", "indexed" };
-    static const char *const LISTS[] = { "choices", "bool", "choice", "range", "keys" };
+    static const char *const LISTS[] = { "choices", "bool", "choice",
+                                         "range",   "keys", "text" };
     static const char *const NUMBERS[] = { "min", "max", "step", "tick" };
     yyjson_mut_val *row = yyjson_mut_arr_add_obj(doc, rows);
     yyjson_mut_obj_add_str(
@@ -561,21 +576,43 @@ static void build_rows(const studio_settings_view *view, yyjson_mut_doc *doc, yy
         }
         put_bool(row, "indexed", view->commands[c].indexed);
     }
-    yyjson_mut_val *root = add_row(doc, rows, STUDIO_SETTINGS_PROJECT, "asset");
-    yyjson_mut_set_str(yyjson_mut_obj_get(root, "key"), SETTINGS_ROOT_KEY);
-    yyjson_mut_set_str(yyjson_mut_obj_get(root, "label"), SETTINGS_ROOT_LABEL);
-    yyjson_mut_set_str(yyjson_mut_obj_get(root, "description"), SETTINGS_ROOT_DESCRIPTION);
-    gate(doc, root, "choice");
+    for (int f = 0; f < STUDIO_PROJECT_FIELD_COUNT; f++) {
+        bool text = f == STUDIO_PROJECT_NAME;
+        yyjson_mut_val *row = add_row(doc, rows, STUDIO_SETTINGS_PROJECT, text ? "text" : "asset");
+        yyjson_mut_set_str(yyjson_mut_obj_get(row, "key"), PROJECT_ROWS[f].key);
+        yyjson_mut_set_str(yyjson_mut_obj_get(row, "label"), PROJECT_ROWS[f].label);
+        yyjson_mut_set_str(
+            yyjson_mut_obj_get(row, "description"),
+            PROJECT_ROWS[f].description
+        );
+        gate(doc, row, text ? "text" : "choice");
+    }
 }
 
-static bool is_document(const studio_settings_view *view, const char *name)
+static yyjson_mut_val *project_row(const studio_settings_view *view, yyjson_mut_val *rows, int field)
 {
-    for (int i = 0; i < acount(view->documents); i++) {
-        if (!strcmp(view->documents[i], name)) {
+    return yyjson_mut_arr_get(rows, (size_t)(studio_setting_count + view->command_count + field));
+}
+
+static bool is_choice(const studio_setting_choice *choices, const char *value)
+{
+    for (int i = 0; i < acount(choices); i++) {
+        if (!strcmp(choices[i].value, value)) {
             return true;
         }
     }
     return false;
+}
+
+/* Whether a project field may take `value`: any name, one of the assets the
+   field chooses from, or none where the field may be left out. */
+static bool project_value(const studio_settings_view *view, int field, const char *value)
+{
+    if (!value[0]) {
+        return PROJECT_ROWS[field].optional;
+    }
+    return strlen(value) < sizeof view->fields[field] &&
+           (field == STUDIO_PROJECT_NAME || is_choice(view->choices[field], value));
 }
 
 /* A slider's position as the value it stands for, on a step. */
@@ -631,10 +668,12 @@ static void apply_rows(studio_settings_view *view, yyjson_mut_val *rows)
             snprintf(view->prefs->shortcuts[command], STUDIO_CHORD_SIZE, "%s", value);
         }
     }
-    char buffer[32];
-    const char *root = bound_text(yyjson_mut_arr_get_last(rows), "value", buffer, sizeof buffer);
-    if ((!root[0] || is_document(view, root)) && strlen(root) < sizeof view->root) {
-        snprintf(view->root, sizeof view->root, "%s", root);
+    for (int f = 0; f < STUDIO_PROJECT_FIELD_COUNT; f++) {
+        yyjson_mut_val *row = project_row(view, rows, f);
+        const char *value = text_of(row, "value");
+        if (strcmp(value, view->fields[f]) != 0 && project_value(view, f, value)) {
+            snprintf(view->fields[f], sizeof view->fields[f], "%s", value);
+        }
     }
 }
 
@@ -670,32 +709,42 @@ static bool show_keys(yyjson_mut_doc *doc, yyjson_mut_val *keys, const char *sho
     return true;
 }
 
-/* The root document's choices: None, the project's ui documents, and the
- * current one if the index has not listed it, since a select shows its
- * first option for a value it lacks. */
-static bool show_root_choices(const studio_settings_view *view, yyjson_mut_doc *doc, yyjson_mut_val *choices)
+/* An asset field's choices: None where the field may be left out, the
+ * project's assets of its kind, and the current one if the index has not
+ * listed it, since a select shows its first option for a value it lacks. */
+static bool show_project_choices(
+    const studio_settings_view *view,
+    int field,
+    yyjson_mut_doc *doc,
+    yyjson_mut_val *choices
+)
 {
-    const char **names = NULL;
-    apush(names, "");
-    for (int i = 0; i < acount(view->documents); i++) {
-        apush(names, view->documents[i]);
+    const char *value = view->fields[field];
+    studio_setting_choice *shown = NULL;
+    if (PROJECT_ROWS[field].optional) {
+        apush(shown, ((studio_setting_choice){ "", "None" }));
     }
-    if (view->root[0] && !is_document(view, view->root)) {
-        apush(names, view->root);
+    for (int i = 0; i < acount(view->choices[field]); i++) {
+        apush(shown, view->choices[field][i]);
     }
-    bool same = (int)yyjson_mut_arr_size(choices) == acount(names);
-    for (int i = 0; same && i < acount(names); i++) {
-        same = !strcmp(text_of(yyjson_mut_arr_get(choices, (size_t)i), "value"), names[i]);
+    if (value[0] && !is_choice(view->choices[field], value)) {
+        apush(shown, ((studio_setting_choice){ value, value }));
+    }
+    bool same = (int)yyjson_mut_arr_size(choices) == acount(shown);
+    for (int i = 0; same && i < acount(shown); i++) {
+        yyjson_mut_val *choice = yyjson_mut_arr_get(choices, (size_t)i);
+        same = !strcmp(text_of(choice, "value"), shown[i].value) &&
+               !strcmp(text_of(choice, "label"), shown[i].label);
     }
     if (!same) {
         yyjson_mut_arr_clear(choices);
-        for (int i = 0; i < acount(names); i++) {
+        for (int i = 0; i < acount(shown); i++) {
             yyjson_mut_val *choice = yyjson_mut_arr_add_obj(doc, choices);
-            yyjson_mut_obj_add_strcpy(doc, choice, "value", names[i]);
-            yyjson_mut_obj_add_strcpy(doc, choice, "label", names[i][0] ? names[i] : "None");
+            yyjson_mut_obj_add_strcpy(doc, choice, "value", shown[i].value);
+            yyjson_mut_obj_add_strcpy(doc, choice, "label", shown[i].label);
         }
     }
-    afree(names);
+    afree(shown);
     return !same;
 }
 
@@ -746,10 +795,14 @@ static bool show_values(const studio_settings_view *view, yyjson_mut_doc *doc, y
         }
         changed |= put_text(doc, row, "conflict", message);
     }
-    yyjson_mut_val *root = yyjson_mut_arr_get_last(rows);
-    changed |= show_root_choices(view, doc, yyjson_mut_obj_get(root, "choices"));
-    changed |= put_text(doc, root, "value", view->root);
-    changed |= put_bool(root, "modified", view->root[0] != '\0');
+    for (int f = 0; f < STUDIO_PROJECT_FIELD_COUNT; f++) {
+        yyjson_mut_val *row = project_row(view, rows, f);
+        if (f != STUDIO_PROJECT_NAME) {
+            changed |= show_project_choices(view, f, doc, yyjson_mut_obj_get(row, "choices"));
+        }
+        changed |= put_text(doc, row, "value", view->fields[f]);
+        changed |= put_bool(row, "modified", PROJECT_ROWS[f].optional && view->fields[f][0]);
+    }
     return changed;
 }
 
@@ -781,7 +834,15 @@ static bool row_matches(const studio_settings_view *view, int index, const char 
             c->id
         );
     } else {
-        snprintf(text, sizeof text, "%s %s General project ui", SETTINGS_ROOT_LABEL, SETTINGS_ROOT_DESCRIPTION);
+        int f = command - view->command_count;
+        snprintf(
+            text,
+            sizeof text,
+            "%s %s %s General project",
+            PROJECT_ROWS[f].label,
+            PROJECT_ROWS[f].description,
+            PROJECT_ROWS[f].field
+        );
     }
     return studio_settings_match(query, text);
 }
@@ -869,7 +930,7 @@ bool studio_settings_sync(studio_settings_view *view, yyjson_mut_doc *doc, bool 
     yyjson_mut_val *page = settings_page(doc);
     yyjson_mut_val *rows = yyjson_mut_obj_get(page, "rows");
     bool built = (int)yyjson_mut_arr_size(rows) !=
-                 studio_setting_count + view->command_count + 1;
+                 studio_setting_count + view->command_count + STUDIO_PROJECT_FIELD_COUNT;
     if (built) {
         build_rows(view, doc, rows);
     } else if (wrote) {
@@ -893,35 +954,46 @@ bool studio_settings_sync(studio_settings_view *view, yyjson_mut_doc *doc, bool 
     return changed || built;
 }
 
-/* The open project's ui documents, sorted by name. */
-static int by_name(const void *a, const void *b)
+static int by_label(const void *a, const void *b)
 {
-    return strcmp(*(const char *const *)a, *(const char *const *)b);
+    return strcmp(
+        ((const studio_setting_choice *)a)->label,
+        ((const studio_setting_choice *)b)->label
+    );
 }
 
-static const char **ui_documents(const studio *s)
+/* The open project's assets of `kind` by name, sorted: ui assets by their
+   name, scenes by their path under content, as project.yaml names them. */
+static studio_setting_choice *asset_choices(const studio *s, reference_asset_kind kind)
 {
     const reference_index *index = app_scene_authoring_asset_index(s->scene);
-    const char **names = NULL;
+    size_t root = strlen(s->scene->content_root);
+    studio_setting_choice *choices = NULL;
     for (int i = 0; index && i < reference_index_asset_count(index); i++) {
         const reference_asset *asset = reference_index_asset_at(index, i);
-        if (asset->kind == REFERENCE_ASSET_UI && !asset->unresolved && asset->name) {
-            apush(names, asset->name);
+        if (asset->kind != kind || asset->unresolved || !asset->name) {
+            continue;
+        }
+        if (kind == REFERENCE_ASSET_UI) {
+            apush(choices, ((studio_setting_choice){ asset->name, asset->name }));
+        } else if (asset->path && !strncmp(asset->path, s->scene->content_root, root) && asset->path[root] == '/') {
+            apush(
+                choices,
+                ((studio_setting_choice){ asset->path + root + 1, asset->name })
+            );
         }
     }
-    if (acount(names)) {
-        qsort(names, (size_t)acount(names), sizeof *names, by_name);
+    if (acount(choices)) {
+        qsort(choices, (size_t)acount(choices), sizeof *choices, by_label);
     }
-    return names;
+    return choices;
 }
 
-/* The open project's name, from its manifest when the workspace lists it. */
+/* The open project's name, from its manifest, else its folder's. */
 static const char *project_name(const studio *s)
 {
-    for (int i = 0; i < acount(s->projects); i++) {
-        if (studio_project_current(s, i)) {
-            return s->projects[i].name;
-        }
+    if (s->project.name) {
+        return s->project.name;
     }
     const char *slash = strrchr(s->project_root, '/');
     return slash ? slash + 1 : s->project_root;
@@ -933,9 +1005,39 @@ static void settings_error(studio *s, const char *message)
     studio_record(s, KIT_TOAST_ERROR, message);
 }
 
-/* Writes the project's root document to its project.yaml, and gives it to
- * the open scenes. */
-static void set_project_root(studio *s, const char *root)
+static void set_string(char **field, const char *value)
+{
+    free(*field);
+    *field = value[0] ? xstrdup(value) : NULL;
+}
+
+/* What reads a field takes its new value: the Open Project menu the name, a
+   relaunch the start scene, and the open scenes the root document. */
+static void apply_project_field(studio *s, studio_project_field field, const char *value)
+{
+    switch (field) {
+        case STUDIO_PROJECT_NAME:
+            set_string(&s->project.name, value);
+            for (int i = 0; i < acount(s->projects); i++) {
+                if (studio_project_current(s, i)) {
+                    set_string(&s->projects[i].name, value);
+                }
+            }
+            return;
+        case STUDIO_PROJECT_START_SCENE:
+            set_string(&s->project.start_scene, value);
+            return;
+        case STUDIO_PROJECT_UI:
+            app_scene_authoring_set_default_ui(s->scene, value);
+            return;
+        case STUDIO_PROJECT_FIELD_COUNT: break;
+    }
+    assert(!"a project field");
+}
+
+/* Writes a field of the project's project.yaml in its place, adding it last
+ * or, when empty, leaving it out, then applies it. */
+static void set_project_field(studio *s, studio_project_field field, const char *value)
 {
     char path[1024], error[256] = "cannot be read";
     snprintf(path, sizeof path, "%s/" CHIBI_PROJECT_MANIFEST, s->project_root);
@@ -952,9 +1054,12 @@ static void set_project_root(studio *s, const char *root)
         yyjson_mut_doc_free(doc);
         return;
     }
-    yyjson_mut_obj_remove_key(object, "ui");
-    if (root[0]) {
-        yyjson_mut_obj_add_strcpy(doc, object, "ui", root);
+    const char *key = PROJECT_ROWS[field].field;
+    yyjson_mut_val *written = yyjson_mut_strcpy(doc, value);
+    if (!value[0]) {
+        yyjson_mut_obj_remove_key(object, key);
+    } else if (!yyjson_mut_obj_replace(object, yyjson_mut_str(doc, key), written)) {
+        yyjson_mut_obj_add(object, yyjson_mut_str(doc, key), written);
     }
     char *json = yyjson_mut_write(doc, 0, NULL);
     yyjson_mut_doc_free(doc);
@@ -966,7 +1071,7 @@ static void set_project_root(studio *s, const char *root)
         settings_error(s, message);
     }
     free(yaml);
-    app_scene_authoring_set_default_ui(s->scene, root);
+    apply_project_field(s, field, value);
 }
 
 static void sync_settings(studio *s, ui_data *data, bool wrote)
@@ -975,23 +1080,50 @@ static void sync_settings(studio *s, ui_data *data, bool wrote)
     for (int c = 0; c < STUDIO_COMMAND_COUNT; c++) {
         commands[c] = studio_command_describe(s, (studio_command)c);
     }
-    const char *root = s->scene->default_ui ? s->scene->default_ui : "";
     studio_settings_view view = { .prefs = &s->prefs,
                                   .commands = commands,
                                   .command_count = STUDIO_COMMAND_COUNT,
                                   .recording = s->shortcut_recording,
                                   .mac = s->mac,
-                                  .project = project_name(s),
-                                  .documents = ui_documents(s) };
-    snprintf(view.root, sizeof view.root, "%s", root);
+                                  .project = project_name(s) };
+    snprintf(view.fields[STUDIO_PROJECT_NAME], sizeof view.fields[0], "%s", project_name(s));
+    snprintf(
+        view.fields[STUDIO_PROJECT_START_SCENE],
+        sizeof view.fields[0],
+        "%s",
+        s->project.start_scene ? s->project.start_scene : ""
+    );
+    snprintf(
+        view.fields[STUDIO_PROJECT_UI],
+        sizeof view.fields[0],
+        "%s",
+        s->scene->default_ui ? s->scene->default_ui : ""
+    );
+    view.choices[STUDIO_PROJECT_START_SCENE] = asset_choices(s, REFERENCE_ASSET_SCENE);
+    view.choices[STUDIO_PROJECT_UI] = asset_choices(s, REFERENCE_ASSET_UI);
+    char before[STUDIO_PROJECT_FIELD_COUNT][256];
+    memcpy(before, view.fields, sizeof before);
     if (studio_settings_sync(&view, data->doc, wrote)) {
         rml_data_model_dirty(data->model, "settings");
     }
     s->shortcut_recording = view.recording;
-    if (strcmp(view.root, root) != 0) {
-        set_project_root(s, view.root);
+    for (int f = 0; f < STUDIO_PROJECT_FIELD_COUNT; f++) {
+        if (strcmp(view.fields[f], before[f]) != 0) {
+            set_project_field(s, (studio_project_field)f, view.fields[f]);
+        }
+        afree(view.choices[f]);
     }
-    afree(view.documents);
+}
+
+/* Shows the current values, applying first what bindings wrote when
+   `wrote`. */
+static void sync_values(studio *s, studio_sources *src, ui_data *data, bool wrote)
+{
+    sync_world(s, src, data, wrote);
+    sync_theme(s, src, data, wrote);
+    sync_settings(s, data, wrote);
+    sync_editor(s, data);
+    sync_commands(s, data);
 }
 
 void studio_sources_sync(studio *s, studio_sources *src, ui_data *data)
@@ -999,12 +1131,14 @@ void studio_sources_sync(studio *s, studio_sources *src, ui_data *data)
     uint64_t writes = rml_data_model_writes(data->model);
     bool wrote = writes != src->writes_seen;
     src->writes_seen = writes;
-    sync_world(s, src, data, wrote);
-    sync_theme(s, src, data, wrote);
-    sync_inspector(s, data);
-    sync_settings(s, data, wrote);
-    sync_editor(s, data);
-    sync_commands(s, data);
+    sync_inspector(s, src, data);
+    sync_values(s, src, data, wrote);
+}
+
+void studio_sources_show(studio *s, studio_sources *src, ui_data *data)
+{
+    show_inspector_model(src, data, studio_inspect_shown(s));
+    sync_values(s, src, data, false);
 }
 
 void studio_sources_free(studio_sources *src)
@@ -1284,15 +1418,22 @@ static void show_inspector(yyjson_mut_doc *doc, yyjson_mut_val *in, const studio
     show_pairs(doc, in, "attributes", m->attributes);
 }
 
-static void sync_inspector(studio *s, ui_data *data)
+/* Shows `m` when its revision is not the one shown, as its strings may
+   have moved since. */
+static void show_inspector_model(studio_sources *src, ui_data *data, const studio_inspect_model *m)
 {
-    yyjson_mut_val *in = variable(data, "inspector");
-    studio_inspect_input input = inspector_input(in);
-    const studio_inspect_model *m = studio_inspect_sync(s, &input);
-    if (m && m->changed) {
-        show_inspector(data->doc, in, m);
-        rml_data_model_dirty(data->model, "inspector");
+    if (!m || m->revision == src->inspected) {
+        return;
     }
+    src->inspected = m->revision;
+    show_inspector(data->doc, variable(data, "inspector"), m);
+    rml_data_model_dirty(data->model, "inspector");
+}
+
+static void sync_inspector(studio *s, studio_sources *src, ui_data *data)
+{
+    studio_inspect_input input = inspector_input(variable(data, "inspector"));
+    show_inspector_model(src, data, studio_inspect_sync(s, &input));
 }
 
 /* ---------- Editor (workstreams J and T) ---------- */
@@ -1433,7 +1574,8 @@ static hint_list editor_hints(studio *s)
     static const studio_hint OUTLINER[] = {
         { KIT_ICON_MOUSE, NULL, "Select" },
         { 0, NULL, "Frame", STUDIO_COMMAND_FRAME + 1 },
-        { 0, NULL, "Delete", STUDIO_COMMAND_DELETE + 1 }
+        { 0, NULL, "Delete", STUDIO_COMMAND_DELETE + 1 },
+        { 0, NULL, "Rename", STUDIO_COMMAND_RENAME + 1 }
     };
     /* Visual designer (workstream H): the Outliner as a UI document's Hierarchy. */
     static const studio_hint HIERARCHY[] = { { KIT_ICON_MOUSE, NULL, "Select" },
@@ -1477,7 +1619,7 @@ static void sync_editor(studio *s, ui_data *data)
         .scene = studio_scene_title(s->scene, title, sizeof title),
         .selection = actor ? actor->name : "",
         .objects = acount(s->scene->actors),
-        .playing = app_scene_authoring_runtime_state(s->scene).playing,
+        .playing = app_scene_authoring_runtime_state(s->scene).playing || s->guest != NULL,
         .paused = s->pause.active,
         .tabs = tabs,
         .tab_count = acount(tabs),

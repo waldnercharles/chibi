@@ -176,7 +176,7 @@ static hud_view hud_open()
     assert(GAME_GameUi_add(v.world, v.hud, 0) == ECS_OK);
     assert(ecs_world_apply_commands(v.world) == ECS_OK);
     *GAME_GameUi_get(v.world, v.hud) = (GameUi){ .document = "HUD" };
-    v.ui = render_ui_new(ROOT "/content");
+    v.ui = render_ui_new(ROOT "/content", NULL);
     v.w = (ui_world){ .ecs = v.world,
                       .model = game_behavior_ui(v.live->behaviors),
                       .entities = v.live->entities };

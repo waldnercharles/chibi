@@ -2,7 +2,7 @@
 <head>
     <title>Chibi Studio</title>
 </head>
-<body>
+<body class="studio">
     <div id="app"></div>
     <div id="layer"></div>
 </body>

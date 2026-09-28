@@ -219,6 +219,11 @@ extern "C"
     /* Containers. */
     bool kit_panel_begin(kit *k, const char *key, const char *title, const char *badge, bool default_open);
     void kit_panel_end(kit *k);
+    /* After kit_panel_end: the panel's header shows a menu button while it is
+     * hovered, as Unity's component header and Blender's modifier panels offer
+     * their operations. True on the frame the button is pressed or the header
+     * right-pressed; open the panel's menu at the pointer. */
+    bool kit_panel_menu(kit *k);
     void kit_prop_begin(kit *k, const char *key, const char *label);
     void kit_prop_end(kit *k);
 
@@ -568,6 +573,8 @@ extern "C"
     void kit_code_redo(kit_code_editor *e);
     int kit_code_cursor(const kit_code_editor *e);
     void kit_code_set_cursor(kit_code_editor *e, int byte);
+    /* Selects [start, end), the cursor at its end, as Find shows a match. */
+    void kit_code_select(kit_code_editor *e, int start, int end);
     /* The byte whose glyph the pointer has rested on, or -1: what the next
      * frame's desc.hover describes. */
     int kit_code_hover(const kit_code_editor *e);

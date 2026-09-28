@@ -1,7 +1,8 @@
-/* Studio workspace, ported from docs/prototypes/studio/studio.css. Areas are
-   Blender-style splits, each with a header and an editor type. */
+/* Studio workspace (the kit's studio.rml), ported from
+   docs/prototypes/studio/studio.css. Areas are Blender-style splits, each with
+   a header and an editor type. */
 
-body { width: 100%; height: 100%; margin: 0dp; padding: 0dp; background-color: var(--app); overflow: hidden; }
+body.studio { width: 100%; height: 100%; margin: 0dp; padding: 0dp; background-color: var(--app); overflow: hidden; }
 
 #app { position: absolute; left: 0dp; top: 0dp; right: 0dp; bottom: 0dp; display: flex; flex-direction: column; }
 
@@ -31,7 +32,7 @@ body { width: 100%; height: 100%; margin: 0dp; padding: 0dp; background-color: v
 .split-v:hover, .split-v[data-dragging], .split-h:hover, .split-h[data-dragging] { background-color: var(--primary-wash); }
 
 /* Drawer: the collapsible bottom area of the main column. */
-.area.drawer { flex: 0 0 auto; }
+.area.drawer:not(.fill) { flex: 0 0 auto; }
 
 /* Scene viewport. */
 .viewport { position: absolute; left: 0dp; top: 0dp; right: 0dp; bottom: 0dp; background-color: var(--viewport); }
@@ -46,7 +47,7 @@ body:not(.dark) .viewport {
 .viewport .toolshelf .btn .icon { font-size: 15dp; width: 18dp; }
 .viewport .toolshelf .btn[data-state=on] { background-color: var(--primary); }
 .viewport .toolshelf .btn[data-state=on] .icon { color: var(--primary-foreground); }
-.viewport .view-label { position: absolute; left: 50dp; top: 10dp; color: var(--foreground); font-size: 11dp; pointer-events: none; }
+.viewport .view-label { position: absolute; left: 50dp; bottom: 10dp; color: var(--foreground); font-size: 11dp; pointer-events: none; }
 .viewport .view-label .dim { display: block; }
 /* They leave the game's view to its HUD while a session runs. */
 .viewport .toolshelf, .viewport .view-label { opacity: 1; transition: opacity 0.14s cubic-out; }
@@ -74,6 +75,13 @@ body:not(.dark) .viewport {
 .identity .glyph .icon { font-size: 16dp; color: var(--foreground); }
 .identity .who { flex: 1 1 0dp; display: flex; flex-direction: column; gap: 3dp; }
 .identity .who .title { font-size: 13dp; font-weight: 600; }
+/* The name, a field that reads as the title until hovered or edited (Unity's Inspector). */
+.identity .name-field { display: flex; margin-left: -8dp; }
+.identity .name-field .field.text { height: 20dp; background-color: transparent; }
+.identity .name-field .field.text:hover { background-color: var(--input-hover); }
+.identity .name-field .field.text[data-editing] { background-color: var(--field-edit); border-color: var(--ring); }
+.identity .name-field .field[data-readonly] { border-color: transparent; }
+.identity .name-field input.value { font-size: 13dp; font-weight: 600; }
 .identity .lineage { display: flex; align-items: center; gap: 4dp; color: var(--faint-foreground); font-size: 11dp; white-space: nowrap; }
 .identity .lineage .btn { height: 16dp; padding: 0dp 3dp; font-size: 11dp; color: var(--muted-foreground); gap: 3dp; }
 .identity .lineage .btn .icon { font-size: 10dp; width: 11dp; }
@@ -108,6 +116,8 @@ body:not(.dark) .viewport {
 .prop .chip { display: block; height: 18dp; padding: 0dp 6dp; border-radius: 3dp; background-color: var(--field-edit); color: #c6b8ea; font-size: 11dp; line-height: 18dp; white-space: nowrap; overflow: hidden; }
 
 /* Editors without content yet. */
+/* An empty graph's hint, over the canvas's middle; the canvas keeps the pointer. */
+.graph-empty { position: absolute; left: 0dp; right: 0dp; top: 50%; text-align: center; color: var(--faint-foreground); pointer-events: none; }
 .pending-editor { position: absolute; left: 0dp; top: 0dp; right: 0dp; bottom: 0dp; display: flex; align-items: center; justify-content: center; color: var(--faint-foreground); background-color: var(--canvas); }
 
 /* Output. */
@@ -141,14 +151,17 @@ body.comfortable .output-list .vlist-content > .output-line, body.comfortable .o
 .find-count { display: block; line-height: 16dp; color: var(--faint-foreground); font-family: InterNumeric; }
 .output-list.find-list { top: 24dp; padding: 2dp 4dp 6dp; }
 
-/* Find in graph (studio_graph_find.c): floats over the canvas's top right. */
-.graph-find {
+/* Find in the graph (studio_graph_find.c) and in the Text Editor
+   (studio_code.c): floats over the canvas's or the text's top right, as VS
+   Code's find widget does. */
+.find-widget {
     position: absolute; top: 8dp; right: 8dp; width: 340dp; display: flex; flex-direction: column; gap: 4dp;
     padding: 4dp; background-color: var(--popover); border: 1dp var(--popover-edge); border-radius: var(--r-lg);
+    z-index: 5;
 }
-.graph-find-bar { display: flex; align-items: center; gap: 2dp; }
-.graph-find-bar .search { flex: 1 1 0dp; min-width: 0dp; }
-.graph-find-count { display: block; flex: 0 0 auto; padding: 0dp 4dp; line-height: 16dp; color: var(--faint-foreground); font-size: 11dp; font-family: InterNumeric; white-space: nowrap; }
+.find-widget-bar { display: flex; align-items: center; gap: 2dp; }
+.find-widget-bar .search { flex: 1 1 0dp; min-width: 0dp; }
+.find-widget-count { display: block; flex: 0 0 auto; padding: 0dp 4dp; line-height: 16dp; color: var(--faint-foreground); font-size: 11dp; font-family: InterNumeric; white-space: nowrap; }
 .graph-find-list { position: relative; }
 .graph-find-list .tree-row .meta { display: block; flex: 0 1 auto; max-width: 60%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 
@@ -182,7 +195,7 @@ body.comfortable .output-list .vlist-content > .output-line, body.comfortable .o
 /* A member's use count, which lists its uses in Find. */
 .tree-row .member-uses { height: 18dp; min-width: 20dp; padding: 0dp 4dp; justify-content: center; color: var(--faint-foreground); font-family: InterNumeric; }
 .tree-row .member-uses[data-unused] { color: var(--disabled-foreground); }
-.member-rename .field { height: 20dp; margin-right: 4dp; }
+.member-rename .field, .object-rename .field { height: 20dp; margin-right: 4dp; }
 /* Rename and safe delete: the new name, then the assets it rewrites or the
    uses a delete leaves, as rows shaped like the menu's items. */
 .popup.refactor { width: 300dp; }
@@ -220,10 +233,10 @@ body.comfortable .output-list .vlist-content > .output-line, body.comfortable .o
 .code-status { display: flex; align-items: center; gap: 6dp; height: 22dp; flex: 0 0 auto; padding: 0dp 8dp; border-top: 1dp var(--edge); background-color: var(--muted); color: var(--destructive); white-space: nowrap; overflow: hidden; }
 .code-status .message { overflow: hidden; text-overflow: ellipsis; }
 /* Assets ▸ New: the name of the new asset. */
-.popup.new-ui { width: 260dp; }
-.new-ui-field { display: block; padding: 2dp 4dp 4dp; }
-.new-ui-field .field { height: 24dp; }
-.new-ui-error { display: flex; align-items: center; gap: 8dp; min-height: var(--h); padding: 0dp 8dp 0dp 6dp; color: var(--destructive); }
+.popup.new-asset { width: 260dp; }
+.new-asset-field { display: block; padding: 2dp 4dp 4dp; }
+.new-asset-field .field { height: 24dp; }
+.new-asset-error { display: flex; align-items: center; gap: 8dp; min-height: var(--h); padding: 0dp 8dp 0dp 6dp; color: var(--destructive); }
 
 /* UI wiring (workstream K): the Canvas preview of one ui asset in the Scene area. */
 .canvas-sizes { display: flex; flex: 0 0 auto; margin-left: 6dp; }

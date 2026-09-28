@@ -19,6 +19,7 @@ typedef struct
     scene_behavior_edit *behaviors;
     bool physics;
     game_physics_settings physics_before, physics_after;
+    char *name_before, *name_after; /* a rename, when name_after is set */
 } scene_edit;
 
 struct scene_history
@@ -70,6 +71,8 @@ static void clear_edits(scene_edit **edits)
             free_names(behaviors->after, behaviors->after_count);
             free(behaviors);
         }
+        free((*edits)[i].name_before);
+        free((*edits)[i].name_after);
     }
     aclear(*edits);
 }
@@ -410,6 +413,45 @@ void scene_history_complete_behaviors(scene_history *history, bool redo)
     apush(*destination, edit);
 }
 
+bool scene_history_push_rename(scene_history *history, ecs_entity entity, const char *before, const char *after)
+{
+    assert(history && entity.slot && before && before[0] && after && after[0]);
+    if (!strcmp(before, after)) {
+        return false;
+    }
+    apush(
+        history->undo,
+        ((scene_edit){ .entity = entity,
+                       .group = history->group,
+                       .name_before = xstrdup(before),
+                       .name_after = xstrdup(after) })
+    );
+    clear_edits(&history->redo);
+    return true;
+}
+
+const char *scene_history_peek_rename(const scene_history *history, bool redo, ecs_entity *entity)
+{
+    assert(history);
+    const scene_edit *source = redo ? history->redo : history->undo;
+    if (!acount(source) || !alast(source).name_after) {
+        return NULL;
+    }
+    *entity = alast(source).entity;
+    return redo ? alast(source).name_after : alast(source).name_before;
+}
+
+void scene_history_complete_rename(scene_history *history, bool redo)
+{
+    assert(history);
+    scene_edit **source = redo ? &history->redo : &history->undo;
+    scene_edit **destination = redo ? &history->undo : &history->redo;
+    assert(acount(*source) && alast(*source).name_after);
+    scene_edit edit = alast(*source);
+    asetlen(*source, acount(*source) - 1);
+    apush(*destination, edit);
+}
+
 bool scene_history_can_undo(const scene_history *history)
 {
     assert(history);
@@ -467,7 +509,7 @@ static int apply_edit(scene_history *history, ecs_world *world, ecs_entity *out_
         return 0;
     }
     scene_edit edit = alast(*source);
-    if (edit.actor || edit.behaviors || edit.physics ||
+    if (edit.actor || edit.behaviors || edit.physics || edit.name_after ||
         !ecs_entity_is_alive(world, edit.entity)) {
         return -1;
     }
@@ -744,6 +786,11 @@ static yyjson_mut_val *history_edits(yyjson_mut_doc *doc, const scene_edit *edit
                 yyjson_mut_arr_add_strcpy(doc, after, edit->behaviors->after[j]);
             }
         }
+        if (edit->name_after) {
+            yyjson_mut_val *item = yyjson_mut_obj_add_obj(doc, object, "rename");
+            checkpoint_text(doc, item, "before", edit->name_before);
+            checkpoint_text(doc, item, "after", edit->name_after);
+        }
     }
     return array;
 }
@@ -874,6 +921,14 @@ static bool history_read_edits(yyjson_val *array, scene_edit **edits, uint64_t *
             checkpoint_free_strings(previous);
             checkpoint_free_strings(next);
             if (!valid) {
+                return false;
+            }
+        }
+        item = yyjson_obj_get(object, "rename");
+        if (item) {
+            out->name_before = checkpoint_copy_text(item, "before");
+            out->name_after = checkpoint_copy_text(item, "after");
+            if (!out->name_before || !out->name_after) {
                 return false;
             }
         }

@@ -131,7 +131,16 @@ int app_scene_authoring_set_prototype_field(
     const char *field_name,
     pin_value value
 );
+/* Adds a component with its defaults, or removes one, as one step of the
+ * prototype's Undo. Instances follow, keeping the values they override of a
+ * removed component for its return. -1 when the prototype already has it,
+ * or lacks it. */
 int app_scene_authoring_add_prototype_component(
+    app_scene_authoring *scene,
+    const char *prototype_name,
+    const char *component_name
+);
+int app_scene_authoring_remove_prototype_component(
     app_scene_authoring *scene,
     const char *prototype_name,
     const char *component_name
@@ -208,6 +217,10 @@ int app_scene_authoring_input(app_scene_authoring *scene, const char *action, do
 int app_scene_authoring_add_instance(app_scene_authoring *scene, const char *prototype_name);
 int app_scene_authoring_duplicate_instance(app_scene_authoring *scene);
 int app_scene_authoring_delete_instance(app_scene_authoring *scene);
+/* Names the object `entity` authors; the name must be unused and not empty.
+ * Nothing references objects by name, so nothing else changes. -1 with the
+ * message set when the name is refused. */
+int app_scene_authoring_rename_instance(app_scene_authoring *scene, ecs_entity entity, const char *name);
 int app_scene_authoring_set_instance_behavior(
     app_scene_authoring *scene,
     const char *asset_name,

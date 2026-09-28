@@ -49,8 +49,8 @@ copying a new generation. Source roots are the project directories and any local
 `FETCHCONTENT_SOURCE_DIR_*` checkouts; pinned FetchContent downloads change only
 through their pins and patches. A build directory configured for reload is not
 reconfigured by each build; its generated build reruns CMake when CMake inputs
-change. Studio stylesheets (`src/editor/rmlui/resources/*.rcss`) need no build:
-each open document re-reads them within a second of a change.
+change. Studio's stylesheets (the Studio project's `ui/StudioShell.rcss` and its
+`ui/theme/` imports) need no build: Studio restyles within a second of a change.
 
 Source fingerprints before and after each build reject results made stale by
 newer edits. Ninja retries incrementally, preserving unchanged resident binaries.

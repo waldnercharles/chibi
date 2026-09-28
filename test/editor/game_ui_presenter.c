@@ -45,7 +45,7 @@ static bool shipped_documents_load(
         chibi_project_free(&project);
         return true;
     }
-    render_ui *ui = render_ui_new(project.content);
+    render_ui *ui = render_ui_new(project.content, NULL);
     ui_world w = { .ecs = world };
     bool ok = true;
     for (struct dirent *e; ok && (e = readdir(dir));) {
@@ -131,7 +131,7 @@ static void overlay_on_page(const char *root)
     test_write_ui(folder, "Shell", "<body><slot/></body>", NULL);
     test_write_ui(folder, "Bound", "<div data-class-live=\"save.live\">{{ save.label }}</div>", NULL);
     ecs_world *world = ecs_world_new();
-    render_ui *ui = render_ui_new(root);
+    render_ui *ui = render_ui_new(root, NULL);
     ui_world w = { .ecs = world, .page = "Shell" };
     rml_backend_keep_warnings();
     for (int i = 0; i < 3; i++) {
@@ -186,7 +186,7 @@ void test_game_ui_presenter()
                    .model = model,
                    .entities = live->entities,
                    .save = game_behavior_save(live->behaviors) };
-    render_ui *ui = render_ui_new(root);
+    render_ui *ui = render_ui_new(root, NULL);
     render_ui_update(ui, &w, 1280, 720, 1.0 / 60);
     test_check(!render_ui_error(ui)[0], "a GameUi document loads from content/ui");
 

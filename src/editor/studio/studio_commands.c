@@ -35,6 +35,19 @@ enum
     SHORTCUT_EDITOR,
 };
 
+/* A New command for each authored asset kind. */
+#define NEW_ASSET(name, kind, words, glyph)                                    \
+    { .id = "new" name,                                                        \
+      .label = "New " kind "\xe2\x80\xa6",                                     \
+      .menu = kind,                                                            \
+      .keywords = "create add asset " words,                                   \
+      .icon = glyph,                                                           \
+      .phase = SHORTCUT_EDITOR }
+_Static_assert(
+    STUDIO_COMMAND_NEW_STYLESHEET - STUDIO_COMMAND_NEW_SCENE + 1 == STUDIO_NEW_KIND_COUNT,
+    "a New command per kind"
+);
+
 static const command_entry COMMANDS[STUDIO_COMMAND_COUNT] = {
     [STUDIO_COMMAND_SEARCH] = { .id = "search",
                                 .label = "Search",
@@ -233,6 +246,36 @@ static const command_entry COMMANDS[STUDIO_COMMAND_COUNT] = {
                                                 "document screen size",
                                     .icon = KIT_ICON_LAYOUT,
                                     .phase = SHORTCUT_EDITOR },
+    /* Assets ▸ New lists each kind, and the palette exposes each command. */
+    [STUDIO_COMMAND_NEW_SCENE] = NEW_ASSET("Scene", "Scene", "level world", KIT_ICON_SCENE),
+    [STUDIO_COMMAND_NEW_PROTOTYPE] = NEW_ASSET("Prototype", "Prototype", "prefab template entity", KIT_ICON_PROTOTYPE),
+    [STUDIO_COMMAND_NEW_BEHAVIOR] = NEW_ASSET("Behavior", "Behavior", "graph script blueprint", KIT_ICON_GRAPH),
+    [STUDIO_COMMAND_NEW_EVENT] = NEW_ASSET("Event", "Event", "signal message definition", KIT_ICON_EVENT),
+    [STUDIO_COMMAND_NEW_SYSTEM] = NEW_ASSET("System", "System", "ecs query graph", KIT_ICON_SYSTEM),
+    [STUDIO_COMMAND_NEW_LIBRARY] = NEW_ASSET("Library", "Library", "functions macros graph", KIT_ICON_LIBRARY),
+    [STUDIO_COMMAND_NEW_MATERIAL] = NEW_ASSET("Material", "Material", "shader surface", KIT_ICON_MATERIAL),
+    [STUDIO_COMMAND_NEW_SHAPE] = NEW_ASSET("Shape", "Shape", "shader sdf distance", KIT_ICON_HEXAGON),
+    [STUDIO_COMMAND_NEW_FIELD] = NEW_ASSET("Field", "Field", "procedural terrain noise", KIT_ICON_GRID),
+    [STUDIO_COMMAND_NEW_SHADER_LIBRARY] = NEW_ASSET("ShaderLibrary", "Shader Library", "shader functions", KIT_ICON_LIBRARY),
+    [STUDIO_COMMAND_NEW_UI_WIDGET] = NEW_ASSET("UiWidget", "UI Widget", "component rml", KIT_ICON_LAYOUT),
+    [STUDIO_COMMAND_NEW_UI_DOCUMENT] = NEW_ASSET("UiDocument", "UI Document", "panel screen rml", KIT_ICON_LAYOUT),
+    [STUDIO_COMMAND_NEW_STYLESHEET] = NEW_ASSET("Stylesheet", "Stylesheet", "ui styles rcss css", KIT_ICON_FILE),
+    [STUDIO_COMMAND_RENAME] = { .id = "rename",
+                                .label = "Rename",
+                                .chord = "F2",
+                                .context = "Scene, Outliner",
+                                .contexts = EDITOR_BIT(STUDIO_EDITOR_SCENE) |
+                                            EDITOR_BIT(STUDIO_EDITOR_OUTLINER),
+                                .keywords = "name object",
+                                .icon = KIT_ICON_EDIT,
+                                .phase = SHORTCUT_EDITOR },
+    [STUDIO_COMMAND_ADD_COMPONENT] = { .id = "addComponent",
+                                       .label = "Add Component\xe2\x80\xa6",
+                                       .context = "Properties",
+                                       .contexts = EDITOR_BIT(STUDIO_EDITOR_PROPERTIES),
+                                       .keywords = "prototype attach",
+                                       .icon = KIT_ICON_ADD,
+                                       .phase = SHORTCUT_EDITOR },
     /* Authored top bar and area headers (workstream T): the document tabs'
        commands take the tab's index, emit('studio.selectTab', i). */
     [STUDIO_COMMAND_SELECT_TAB] = { .id = "selectTab",
@@ -480,6 +523,8 @@ studio_command_info studio_command_describe(studio *s, studio_command command)
             if (s->pause.active) {
                 info.label = info.menu = "Resume";
                 info.icon = KIT_ICON_CONTINUE;
+            } else if (s->guest) {
+                info.label = info.menu = "Stop Studio";
             } else if (app_scene_authoring_runtime_state(s->scene).playing) {
                 info.label = info.menu = "Pause";
                 info.icon = KIT_ICON_PAUSE;
@@ -572,8 +617,16 @@ static bool enabled_with(studio *s, studio_command command, int argument)
         case STUDIO_COMMAND_ZOOM_OUT:
             return s->prefs.ui_scale > STUDIO_UI_SCALE_MIN;
         case STUDIO_COMMAND_ZOOM_RESET: return s->prefs.ui_scale != 1;
-        case STUDIO_COMMAND_STOP: return runtime_session(s->scene);
-        case STUDIO_COMMAND_STEP: return !s->pause.active;
+        case STUDIO_COMMAND_PLAY: return !s->hosted;
+        case STUDIO_COMMAND_STOP: return !s->hosted && studio_session(s);
+        case STUDIO_COMMAND_STEP:
+            return !s->hosted && !s->guest && !s->pause.active;
+        case STUDIO_COMMAND_RENAME:
+            return editable && selection && !studio_designer_active(s);
+        case STUDIO_COMMAND_ADD_COMPONENT:
+            return editable &&
+                   s->scene->document.kind == APP_EDITOR_DOCUMENT_PROTOTYPE &&
+                   selected_prototype(s->scene);
         case STUDIO_COMMAND_RESUME:
         case STUDIO_COMMAND_STEP_OVER:
         case STUDIO_COMMAND_STEP_INTO:
@@ -661,14 +714,32 @@ void studio_command_run_with(studio *s, studio_command command, int argument)
                 &(studio_pick_desc){ .kind = REFERENCE_ASSET_UI }
             );
             break;
+        case STUDIO_COMMAND_NEW_SCENE:
+        case STUDIO_COMMAND_NEW_PROTOTYPE:
+        case STUDIO_COMMAND_NEW_BEHAVIOR:
+        case STUDIO_COMMAND_NEW_EVENT:
+        case STUDIO_COMMAND_NEW_SYSTEM:
+        case STUDIO_COMMAND_NEW_LIBRARY:
+        case STUDIO_COMMAND_NEW_MATERIAL:
+        case STUDIO_COMMAND_NEW_SHAPE:
+        case STUDIO_COMMAND_NEW_FIELD:
+        case STUDIO_COMMAND_NEW_SHADER_LIBRARY:
+        case STUDIO_COMMAND_NEW_UI_WIDGET:
+        case STUDIO_COMMAND_NEW_UI_DOCUMENT:
+        case STUDIO_COMMAND_NEW_STYLESHEET:
+            studio_new_asset_start(s, command - STUDIO_COMMAND_NEW_SCENE);
+            break;
         case STUDIO_COMMAND_SELECT_TAB:
             finish_transform_edit(s->scene, false);
             scene_tabs_activate(s->scene, argument);
             break;
         case STUDIO_COMMAND_CLOSE_TAB:
-            studio_code_close(s, tab_at(s, argument));
+            studio_close_tab(s, tab_at(s, argument));
             break;
         case STUDIO_COMMAND_CLOSE_DRAWER: s->prefs.drawer_open = false; break;
+        /* Rename objects and prototype components */
+        case STUDIO_COMMAND_RENAME: studio_rename_object(s); break;
+        case STUDIO_COMMAND_ADD_COMPONENT: studio_add_component_open(s); break;
         case STUDIO_COMMAND_COUNT: break;
     }
 }

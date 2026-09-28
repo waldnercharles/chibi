@@ -643,7 +643,7 @@ static void ask(tree_request *request, tree_action action, int element)
 static void element_menu(studio *s, const studio_designer *d, int e, tree_request *request)
 {
     kit *k = s->kit;
-    if (menu_item(k, "duplicate", "Duplicate", KIT_ICON_COPY, "Shift+D")) {
+    if (menu_item(k, "duplicate", "Duplicate", KIT_ICON_COPY, studio_chord(s, "Shift+D"))) {
         ask(request, DO_DUPLICATE, e);
     }
     if (menu_item(k, "wrap", "Wrap in Div", KIT_ICON_WRAP, NULL)) {

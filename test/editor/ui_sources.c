@@ -206,9 +206,9 @@ static void kit_sources(const char *root)
     rml_element *doc = rml_element_owner_document(host);
     test_check(
         styled_from(doc, "font-size", "/theme/base.rcss", 4) &&
-            styled_from(rml_element_by_id(doc, "app"), "position", "/studio.rcss", 6) &&
+            styled_from(rml_element_by_id(doc, "app"), "position", "/theme/workspace.rcss", 7) &&
             styled_from(rml_element_query_selector(host, "#panel"), "width", "/ui/Menu.rcss", 3),
-        "a kit's theme, resources and panel sheets trace to their files"
+        "a kit's theme and panel sheets trace to their files"
     );
     kit_destroy(k);
     rml_backend_destroy(backend);
@@ -236,7 +236,7 @@ void test_ui_sources()
     assert(ecs_world_apply_commands(world) == ECS_OK);
     *GAME_GameUi_get(world, entity) = (GameUi){ .document = "Menu" };
     ui_world w = { .ecs = world, .page = "Page" };
-    render_ui *ui = render_ui_new(root);
+    render_ui *ui = render_ui_new(root, NULL);
     game_ui_sources(ui, &w);
     overlay_remount(ui, &w, root);
     render_ui_free(ui);

@@ -1,6 +1,8 @@
 #ifndef CHIBI_EDITOR_STUDIO_INTERNAL_H
 #define CHIBI_EDITOR_STUDIO_INTERNAL_H
 
+#include "assets/new_asset.h"
+#include "assets/project.h"
 #include "assets/ui_source.h"
 #include "editor/documents/component_presentation.h"
 #include "editor/documents/ui_code.h"
@@ -108,6 +110,22 @@ typedef enum
     STUDIO_COMMAND_STEP_OUT,
     STUDIO_COMMAND_SELECT_PREVIOUS,
     STUDIO_COMMAND_SELECT_NEXT,
+    /* Added after the persisted command ids above to keep shortcut prefs stable. */
+    STUDIO_COMMAND_NEW_SCENE,
+    STUDIO_COMMAND_NEW_PROTOTYPE,
+    STUDIO_COMMAND_NEW_BEHAVIOR,
+    STUDIO_COMMAND_NEW_EVENT,
+    STUDIO_COMMAND_NEW_SYSTEM,
+    STUDIO_COMMAND_NEW_LIBRARY,
+    STUDIO_COMMAND_NEW_MATERIAL,
+    STUDIO_COMMAND_NEW_SHAPE,
+    STUDIO_COMMAND_NEW_FIELD,
+    STUDIO_COMMAND_NEW_SHADER_LIBRARY,
+    STUDIO_COMMAND_NEW_UI_WIDGET,
+    STUDIO_COMMAND_NEW_UI_DOCUMENT,
+    STUDIO_COMMAND_NEW_STYLESHEET,
+    STUDIO_COMMAND_RENAME,
+    STUDIO_COMMAND_ADD_COMPONENT,
     STUDIO_COMMAND_COUNT,
 } studio_command;
 
@@ -537,7 +555,7 @@ typedef struct
     int overwrite_toast;  /* offers to save over a file changed on disk */
     char overwrite[1024]; /* that file */
     int close_toast;      /* confirms closing a document with unsaved edits */
-    char close[1024];     /* that document */
+    char close[1024];     /* that document's tab key */
     /* Workstream I: a code editor (kit_code) per open document part, and
        the one shown with the document and part it holds (the designer
        follows its cursor). */
@@ -573,7 +591,17 @@ typedef struct
     char *hover;
     int hover_at;
     const ui_source *hover_source;
-    bool replayed; /* Undo or Redo from the editor changed the text */
+    bool replayed;      /* Undo or Redo from the editor changed the text */
+    bool following;     /* a UI document was active last frame */
+    bool opened_drawer; /* following it opened the drawer */
+    /* Find (Mod+F): the query, where its shown match starts and how many
+       the part holds. */
+    struct
+    {
+        bool open, focus, typing, refocus;
+        char query[128], seen[128];
+        int at, count, index;
+    } find;
     /* Workstream Q: the shown document's problems for Output
        (studio_code_problems), and the revisions of the text and the check
        they describe. */
@@ -585,21 +613,27 @@ typedef struct
     } problems;
 } studio_code;
 
-/* Assets ▸ New: the name of a new UI asset (studio_assets.c). */
+/* Assets ▸ New (studio_assets.c): the kinds of asset Studio makes, each
+   new_asset_kind and then each ui_new_kind, and the name of the new one. */
+#define STUDIO_NEW_KIND_COUNT (NEW_ASSET_KIND_COUNT + UI_NEW_KIND_COUNT)
 typedef struct
 {
-    int kind;     /* ui_new_kind */
-    bool opening; /* open the popover this frame */
+    int kind;     /* below STUDIO_NEW_KIND_COUNT */
+    bool opening; /* open the name popover this frame */
     bool focus;   /* focus the name field on its first frame */
+    bool shown;   /* the popover showed last frame, so an Enter is for it */
     char name[64];
     char error[160];
-} studio_new_ui;
+} studio_new_asset;
 
 struct studio
 {
     app_scene_authoring *scene;
     engine_viewport *viewport;
     const char *project_root; /* the open project, owned by the application */
+    /* Its manifest as opened, with the name and start scene it defaults to;
+       Settings ▸ Project shows and rewrites it. Empty when it would not open. */
+    chibi_project project;
     bool own_project; /* the open project is the Studio project, whose settings are these preferences */
     uint64_t scene_prefs_seen, preview_prefs_seen;
     studio_project *projects;
@@ -713,7 +747,7 @@ struct studio
     double active_until; /* frames run at full rate until then, after input */
     /* UI documents (workstream D). */
     studio_code code;
-    studio_new_ui new_ui;
+    studio_new_asset new_asset;
     struct studio_inspect *inspect; /* the UI Inspector, NULL until used */
     /* UI wiring (workstream K): the asset picker, the shown game UI's error
        and the Canvas preview. */
@@ -743,6 +777,31 @@ struct studio
     struct studio_ui_problem *ui_project_problems; /* array */
     /* ---------- arena2d end to end (wave 3, workstream X) ---------- */
     rml_input *game_input; /* keys pressed and text typed this frame, for the Scene's game UI */
+    /* ---------- Studio in Studio (studio_host.c) ---------- */
+    struct studio *guest; /* the Studio Play runs in the Scene area, or NULL */
+    int guest_request; /* 1 starts the guest, -1 stops it, at the next frame */
+    bool hosted;      /* a guest: its host feeds it input and shows its frame */
+    bool guest_hover; /* the pointer is over the guest */
+    bool guest_keys;  /* a press in the guest gave it the keyboard */
+    bool guest_capture; /* a button pressed in the guest is held */
+    bool typing;        /* a field or the graph had the keyboard last frame */
+    /* ---------- Rename objects and prototype components ---------- */
+    struct
+    {
+        uint64_t entity; /* the object renamed in place, or 0 */
+        bool outliner; /* in its Outliner row, else in Properties' name field */
+        bool focus;    /* focus the field on its next frame */
+        char name[256];
+    } rename;
+    struct
+    {
+        bool open; /* the command surface adds a component to `prototype` */
+        char prototype[128];
+        char added[128];  /* the component added last, whose panel opens */
+        char menu[128];   /* the component whose panel menu is open */
+        int toast;        /* offers Undo after Remove Component */
+        const char *step; /* the removal's undo snapshot; never dereferenced */
+    } components;
 };
 
 /* Whether frames run at full rate for input or a playing scene, rather than
@@ -786,12 +845,16 @@ typedef struct studio_sources
     ui_page page;            /* the open scene's root document */
     studio_token *tokens;    /* in the order `theme` lists its rows */
     uint64_t writes_seen;
+    int inspected; /* the Inspector model's revision `inspector` shows */
 } studio_sources;
 
-/* Adds the variables authored panels bind to a data model's JSON. */
-void studio_sources_add(yyjson_mut_doc *doc);
+/* A data model's JSON with the variables authored panels bind. */
+yyjson_mut_doc *studio_sources_new();
 /* Applies what bindings changed, then shows the current values. */
 void studio_sources_sync(studio *s, studio_sources *sources, ui_data *data);
+/* Shows the current values in a preview's model, applying nothing its
+ * bindings write (studio_canvas.c). */
+void studio_sources_show(studio *s, studio_sources *sources, ui_data *data);
 void studio_sources_free(studio_sources *sources);
 
 /* Authored UI. Loads the Studio project's scene; NULL with an error when it
@@ -930,6 +993,8 @@ void studio_output_find(studio *s);
 void studio_output_calls(studio *s);
 /* Shows an editor: in an area already showing it, else in the drawer. */
 void studio_show_editor(studio *s, studio_editor editor);
+/* Whether an area or the open drawer shows the editor. */
+bool studio_editor_shown(const studio *s, studio_editor editor);
 
 /* Find References (studio_find.c): lists what references an asset, or a
    function, variable, event or prototype, in Output's Find view; rows open
@@ -1092,6 +1157,13 @@ bool studio_shortcut_record(studio_prefs *prefs, int *recording, studio_key key,
 void studio_save(studio *s);
 void studio_history(studio *s, bool redo);
 void studio_runtime(studio *s, app_runtime_command command);
+/* A scene run, a preview or a guest Studio is running. */
+bool studio_session(const studio *s);
+/* Play in the Studio project runs Studio itself, as the project's game: a
+ * guest Studio in the Scene area, built from the project's working copy and
+ * editing the same scene authoring. Both take effect at the next frame. */
+void studio_guest_start(studio *s);
+void studio_guest_stop(studio *s);
 bool studio_can_replay(studio *s, bool redo);
 /* The active document has unsaved edits. */
 bool studio_active_dirty(studio *s);
@@ -1126,15 +1198,22 @@ ui_buffer *studio_ui_buffer(studio *s);
 /* Saves the active UI document, offering to save over a file that changed
  * on disk. */
 void studio_code_save(studio *s);
-/* Closes a UI document's tab, asking first when it has unsaved edits. */
-void studio_code_close(studio *s, int tab);
+/* Closes a document's tab, asking first when it has unsaved edits, which
+ * closing discards. */
+void studio_close_tab(studio *s, int tab);
 /* Workstream C: frees the Text Editor's code editor. */
 void studio_code_free(studio *s);
 /* Workstream I: opens a place in a UI document's part, as Go to Definition
  * and Find References rows do; false when it cannot be opened. */
 bool studio_code_open_place(studio *s, const ui_code_place *place);
-/* Assets ▸ New (studio_assets.c): a menu of UI asset kinds, then the name. */
-void studio_new_ui_button(studio *s);
+/* Assets ▸ New (studio_assets.c): the header's button opens a menu of every
+   kind, grouped, with the Assets filter's kind first. A kind, from the menu
+   or its New … command, asks for a name, then writes the asset and opens it
+   as Assets opens it. The frame draws the menu and the name popover wherever
+   they opened. */
+void studio_new_asset_button(studio *s);
+void studio_new_asset_start(studio *s, int kind);
+void studio_new_asset_frame(studio *s);
 
 /* ---------- UI Inspector (studio_inspect.c) ---------- */
 
@@ -1202,7 +1281,7 @@ typedef struct studio_inspect_model
     bool picking;
     bool wide;         /* its area is wider than tall: panes side by side */
     char shortcut[32]; /* Inspect Element's, in the platform's notation */
-    bool changed;      /* since the last read */
+    int revision;      /* counts the syncs that changed it */
     studio_inspect_row *rows;
     bool more; /* rows stopped at their limit */
     bool selection;
@@ -1248,6 +1327,9 @@ bool studio_inspect_key(studio *s, const SDL_KeyboardEvent *key);
 /* Applies what the panel asked and reads what it shows; NULL while neither
  * an area shows the panel nor a pick is on. */
 const studio_inspect_model *studio_inspect_sync(studio *s, const studio_inspect_input *input);
+/* The model the last sync read, whose strings last until its revision
+ * changes; NULL before the Inspector opens. */
+const studio_inspect_model *studio_inspect_shown(const studio *s);
 /* After studio_emit: the pick overlay and the highlight. */
 void studio_inspect_emit(studio *s);
 /* ---------- UI wiring (workstream K) ---------- */
@@ -1342,6 +1424,7 @@ typedef struct studio_canvas
     engine_viewport *viewport; /* its frame and documents */
     ecs_world *world;          /* empty: only the preview shows */
     game_save *save;           /* what its bindings set */
+    studio_sources sources; /* Studio's data, which it shows with the Studio project open */
     studio_canvas_action *actions;
 } studio_canvas;
 
@@ -1435,6 +1518,16 @@ studio_prefs studio_prefs_read(const char *json);
 /* Owned JSON text of the preferences file. */
 char *studio_prefs_write(const studio_prefs *prefs);
 
+/* The Project tab's rows: fields of the open project's project.yaml, in the
+ * page's order. */
+typedef enum
+{
+    STUDIO_PROJECT_NAME,        /* text */
+    STUDIO_PROJECT_START_SCENE, /* a scene, by its path under content */
+    STUDIO_PROJECT_UI,          /* the root document: a ui asset, or none */
+    STUDIO_PROJECT_FIELD_COUNT,
+} studio_project_field;
+
 /* The Settings page's variable, `settings` (studio_sources.c): the Editor or
  * Project tab, the category, the search query, the categories and the rows
  * they show. Rows edit through the table; Keyboard rows list the commands. */
@@ -1446,8 +1539,12 @@ typedef struct studio_settings_view
     int recording; /* command + 1, zero when idle */
     bool mac;
     const char *project; /* the open project's name */
-    char root[128]; /* the project's root document, "" for none; the page may set it */
-    const char **documents; /* the project's ui assets (support/array.h) */
+    /* Each project.yaml field as the project reads it, "" for none; the
+       page may set them. */
+    char fields[STUDIO_PROJECT_FIELD_COUNT][256];
+    /* The assets a field chooses from (support/array.h): Start Scene's
+       scenes and Root Document's ui assets; none for Name. */
+    studio_setting_choice *choices[STUDIO_PROJECT_FIELD_COUNT];
 } studio_settings_view;
 
 /* Adds the `settings` variable to a data model's JSON. */
@@ -1599,5 +1696,22 @@ studio_tab_view *studio_document_tabs(studio *s);
  * (data-alias-area), as a prop. Returns the host, or NULL when the panel
  * has no document. */
 rml_element *studio_ui_area_header(studio *s, int area, const char *name);
+
+/* ---------- Rename objects and prototype components ---------- */
+
+/* Renames the selected object in place, as Blender's F2 and Unity's
+ * Inspector name do: in its Outliner row while an area shows the Outliner,
+ * else in Properties' name field. */
+void studio_rename_object(studio *s);
+/* Names the object `entity` authors, as one Undo step; a refused name
+ * toasts why. */
+void studio_rename_commit(studio *s, uint64_t entity, const char *name);
+/* Add Component (Unity's Inspector): the command surface lists the
+ * components the open prototype lacks, by the Properties tab each shows in. */
+void studio_add_component_open(studio *s);
+/* Its items while it is open. */
+bool studio_component_palette(studio *s);
+/* Runs the Undo a Remove Component toast offers; call every frame. */
+void studio_component_toast(studio *s);
 
 #endif

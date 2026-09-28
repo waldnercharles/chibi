@@ -1141,6 +1141,14 @@ void studio_sources_show(studio *s, studio_sources *src, ui_data *data)
     sync_values(s, src, data, false);
 }
 
+void studio_sources_search_settings(ui_data *data, const char *query)
+{
+    yyjson_mut_val *page = settings_page(data->doc);
+    put_text(data->doc, page, "scope", "editor");
+    put_text(data->doc, page, "query", query);
+    rml_data_model_dirty(data->model, "settings");
+}
+
 void studio_sources_free(studio_sources *src)
 {
     free_tokens(src);

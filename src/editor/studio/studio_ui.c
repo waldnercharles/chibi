@@ -468,3 +468,12 @@ void studio_ui_show(studio *s, const char *name)
         GAME_GameUi_get(game_prototype_preview_world(s->ui->world), entity)->hidden = false;
     }
 }
+
+void studio_ui_show_settings(studio *s, const char *query)
+{
+    if (!s->ui) {
+        return;
+    }
+    studio_sources_search_settings(&s->ui->data, query);
+    studio_ui_show(s, "Settings");
+}

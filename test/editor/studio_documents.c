@@ -560,6 +560,7 @@ static rml_element *studio_element(studio *s, const char *selector)
 }
 
 static void text_event(const char *text);
+static void tap(SDL_Scancode key);
 
 /* Recording consumes key and text events before the normal shortcut and
    game-input paths. A repeat must leave the recorder active for the next
@@ -623,6 +624,41 @@ static void settings_records_shortcut()
         "Settings text focus blocks Play; focus loss cancels recording, which "
         "ignores repeats and captures a chord through the host input queue"
     );
+    fixture_free(&f);
+}
+
+/* The palette finds settings: a switch flips where it is found, and any
+   other setting opens Settings searching for it. */
+static void palette_finds_settings()
+{
+    studio_fixture f = fixture_new();
+    studio *s = f.studio;
+    frames(&f, 2);
+    bool vim = s->prefs.code_vim;
+    studio_command_run(s, STUDIO_COMMAND_SEARCH);
+    frames(&f, 2);
+    text_event("vim");
+    frames(&f, 2);
+    tap(SDL_SCANCODE_RETURN);
+    frames(&f, 2);
+    bool flipped = s->prefs.code_vim == !vim && !kit_command_is_open(s->kit) &&
+                   studio_element(s, ".toast");
+    studio_command_run(s, STUDIO_COMMAND_SEARCH);
+    frames(&f, 2);
+    text_event("wire style");
+    frames(&f, 2);
+    tap(SDL_SCANCODE_RETURN);
+    frames(&f, 4);
+    rml_element *search = studio_element(s, ".search-input");
+    char query[64] = "";
+    if (search) {
+        rml_element_value(search, query, sizeof query);
+    }
+    bool searched = !strcmp(query, "Wire Style");
+    if (!(flipped && searched)) {
+        printf("  %d %d '%s'\n", flipped, searched, query);
+    }
+    test_check(flipped && searched, "the palette flips a switch setting where it finds it and opens Settings at any other");
     fixture_free(&f);
 }
 
@@ -1108,6 +1144,7 @@ int studio_documents_run(const char *program)
     /* Wave 2 follow-ups (workstream P) */
     preview_hears_keys();
     settings_records_shortcut();
+    palette_finds_settings();
     shortcut_repeat_policy();
     readout_follows_camera();
     /* Authored top bar and area headers (workstream T) */

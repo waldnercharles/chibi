@@ -262,7 +262,27 @@ static void write_setting(
     }
 }
 
-char *studio_prefs_write(const studio_prefs *p)
+/* Adds the members of `saved` this build does not know, in objects both
+   hold too, as VS Code's settings.json keeps settings it does not know. In
+   `shortcuts`, a command this build knows without an override has its
+   default chord, so its old override goes. */
+static void keep_unknown(yyjson_mut_doc *doc, yyjson_mut_val *into, yyjson_val *saved, bool shortcuts)
+{
+    size_t i, max;
+    yyjson_val *key, *value;
+    yyjson_obj_foreach(saved, i, max, key, value)
+    {
+        const char *name = yyjson_get_str(key);
+        yyjson_mut_val *known = yyjson_mut_obj_get(into, name);
+        if (!known && !(shortcuts && studio_command_named(name) >= 0)) {
+            yyjson_mut_obj_add(into, yyjson_val_mut_copy(doc, key), yyjson_val_mut_copy(doc, value));
+        } else if (yyjson_mut_is_obj(known) && yyjson_is_obj(value)) {
+            keep_unknown(doc, known, value, !strcmp(name, "shortcuts"));
+        }
+    }
+}
+
+char *studio_prefs_write(const studio_prefs *p, const char *saved)
 {
     yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
     yyjson_mut_val *root = yyjson_mut_obj(doc);
@@ -292,7 +312,12 @@ char *studio_prefs_write(const studio_prefs *p)
         }
         yyjson_mut_arr_add_str(doc, areas, EDITORS[p->editors[i]]);
     }
+    yyjson_doc *previous = saved ? yyjson_read(saved, strlen(saved), 0) : NULL;
+    if (yyjson_is_obj(yyjson_doc_get_root(previous))) {
+        keep_unknown(doc, root, yyjson_doc_get_root(previous), false);
+    }
     char *json = yyjson_mut_write(doc, YYJSON_WRITE_PRETTY, NULL);
+    yyjson_doc_free(previous);
     yyjson_mut_doc_free(doc);
     assert(json);
     return json;
@@ -300,7 +325,9 @@ char *studio_prefs_write(const studio_prefs *p)
 
 bool studio_prefs_save(const studio_prefs *p)
 {
-    char *json = studio_prefs_write(p);
+    char *saved = read_json();
+    char *json = studio_prefs_write(p, saved);
+    free(saved);
 #ifdef __EMSCRIPTEN__
     bool ok = prefs_write_browser(json);
 #else

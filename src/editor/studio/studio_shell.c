@@ -1052,6 +1052,59 @@ static void statusbar(studio *s)
 
 /* ---------- Command palette (cmdk) ---------- */
 
+/* What the palette shows of a setting: its value beside its name, and the
+   words that find it. */
+typedef struct
+{
+    char value[32];
+    char keywords[256];
+} setting_text;
+
+static void setting_value(const studio *s, const studio_setting *setting, char *out, size_t size)
+{
+    float value = studio_setting_get(&s->prefs, setting);
+    if (setting->type == STUDIO_SETTING_BOOL) {
+        snprintf(out, size, "%s", value ? "On" : "Off");
+        return;
+    }
+    for (int i = 0; i < setting->choice_count; i++) {
+        bool shown = setting->type == STUDIO_SETTING_CHOICE
+                       ? i == (int)value
+                       : strtof(setting->choices[i].value, NULL) == value;
+        if (shown) {
+            snprintf(out, size, "%s", setting->choices[i].label);
+            return;
+        }
+    }
+    snprintf(out, size, "%g", value);
+}
+
+/* A setting a command of the same name already runs, as Reduce Motion. */
+static bool commanded(const kit_command_item *commands, int count, const char *label)
+{
+    for (int i = 0; i < count; i++) {
+        if (!strcmp(commands[i].label, label)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* A switch flips from the palette, as in JetBrains' Find Action; any other
+   setting opens Settings searching for it. */
+static void run_setting(studio *s, const studio_setting *setting)
+{
+    if (setting->type != STUDIO_SETTING_BOOL) {
+        studio_ui_show_settings(s, setting->label);
+        return;
+    }
+    bool on = !studio_setting_get(&s->prefs, setting);
+    studio_setting_set(&s->prefs, setting, on);
+    char title[96];
+    snprintf(title, sizeof title, "%s turned %s", setting->label, on ? "on" : "off");
+    kit_toast(s->kit, 0, &(kit_toast_desc){ .title = title });
+}
+
 static void palette(studio *s)
 {
     if (studio_graph_palette(s) || studio_member_palette(s) ||
@@ -1117,6 +1170,37 @@ static void palette(studio *s)
             );
         }
     }
+    int settings = acount(items);
+    const studio_setting **listed = NULL;
+    setting_text *texts = NULL;
+    asetlen(texts, studio_setting_count);
+    for (int i = 0; i < studio_setting_count; i++) {
+        const studio_setting *setting = &studio_settings[i];
+        if (commanded(items, objects, setting->label)) {
+            continue;
+        }
+        setting_text *text = &texts[acount(listed)];
+        const studio_settings_category_info
+            *category = &studio_settings_categories[setting->category];
+        setting_value(s, setting, text->value, sizeof text->value);
+        snprintf(
+            text->keywords,
+            sizeof text->keywords,
+            "%s %s setting preference",
+            setting->keywords ? setting->keywords : "",
+            category->label
+        );
+        apush(listed, setting);
+        apush(
+            items,
+            ((kit_command_item){ .label = setting->label,
+                                 .group = "Settings",
+                                 .meta = text->value,
+                                 .keywords = text->keywords,
+                                 .icon = category->icon,
+                                 .description = setting->description })
+        );
+    }
     int chosen = kit_command(s->kit, items, acount(items));
     if (chosen >= 0 && chosen < objects) {
         studio_command_run(s, commands[chosen]);
@@ -1124,6 +1208,8 @@ static void palette(studio *s)
         finish_transform_edit(scene, false);
         select_instance(scene, chosen - objects);
         studio_frame_selection(s);
+    } else if (chosen >= settings) {
+        run_setting(s, listed[chosen - settings]);
     } else if (chosen >= projects) {
         int position = projects;
         for (int i = 0; i < acount(s->projects); i++) {
@@ -1145,6 +1231,8 @@ static void palette(studio *s)
     }
     afree(items);
     afree(commands);
+    afree(listed);
+    afree(texts);
 }
 
 /* ---------- Frame ---------- */

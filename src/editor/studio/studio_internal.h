@@ -855,6 +855,8 @@ void studio_sources_sync(studio *s, studio_sources *sources, ui_data *data);
 /* Shows the current values in a preview's model, applying nothing its
  * bindings write (studio_canvas.c). */
 void studio_sources_show(studio *s, studio_sources *sources, ui_data *data);
+/* Sets the Settings page to search the Editor tab for `query`. */
+void studio_sources_search_settings(ui_data *data, const char *query);
 void studio_sources_free(studio_sources *sources);
 
 /* Authored UI. Loads the Studio project's scene; NULL with an error when it
@@ -880,6 +882,8 @@ void studio_ui_area(studio *s, int area, const char *name);
 void studio_ui_modal(studio *s, const char *name);
 /* Clears its GameUi.hidden. */
 void studio_ui_show(studio *s, const char *name);
+/* Shows Settings searching for `query`. */
+void studio_ui_show_settings(studio *s, const char *query);
 
 /* Content changed on disk (studio_disk.c): reloads it and raises failures and
    unsaved conflicts as toasts. */
@@ -1515,8 +1519,10 @@ bool studio_settings_match(const char *query, const char *text);
 /* The preferences in a preferences file's JSON, NULL for none: defaults
  * where a value is missing or invalid (studio_prefs.c). */
 studio_prefs studio_prefs_read(const char *json);
-/* Owned JSON text of the preferences file. */
-char *studio_prefs_write(const studio_prefs *prefs);
+/* Owned JSON text of the preferences file. Members of `saved`, the file's
+ * text or NULL, that this build does not write stay, so builds of different
+ * ages share the file without dropping each other's settings. */
+char *studio_prefs_write(const studio_prefs *prefs, const char *saved);
 
 /* The Project tab's rows: fields of the open project's project.yaml, in the
  * page's order. */

@@ -46,7 +46,7 @@ static void prefs_round_trip()
                   p.side_width == 400 && p.drawer_open &&
                   p.editors[STUDIO_AREA_DRAWER] == STUDIO_EDITOR_PANEL &&
                   !strcmp(p.panels[STUDIO_AREA_DRAWER], "Data");
-    char *json = studio_prefs_write(&p);
+    char *json = studio_prefs_write(&p, NULL);
     studio_prefs back = studio_prefs_read(json);
     yyjson_doc *doc = yyjson_read(json, strlen(json), 0);
     yyjson_val *root = yyjson_doc_get_root(doc);
@@ -63,6 +63,22 @@ static void prefs_round_trip()
         "preferences load a previous build's file, include shortcut overrides "
         "in change detection, and round-trip through the settings table"
     );
+    yyjson_doc_free(doc);
+    free(json);
+
+    /* A newer build's settings stay; a reset shortcut does not come back. */
+    const char
+        *newer = "{\"code\":{\"vim\":true,\"minimap\":true},\"future\":1,"
+                 "\"shortcuts\":{\"save\":\"Ctrl+Shift+S\",\"later\":\"F9\"}}";
+    json = studio_prefs_write(&defaults, newer);
+    doc = yyjson_read(json, strlen(json), 0);
+    root = yyjson_doc_get_root(doc);
+    bool kept = yyjson_is_true(yyjson_ptr_get(root, "/code/minimap")) &&
+                yyjson_is_false(yyjson_ptr_get(root, "/code/vim")) &&
+                yyjson_get_int(yyjson_ptr_get(root, "/future")) == 1 &&
+                !strcmp(text_at(root, "/shortcuts/later"), "F9") &&
+                !yyjson_ptr_get(root, "/shortcuts/save");
+    test_check(kept, "saving keeps the settings a newer build wrote and drops a reset shortcut");
     yyjson_doc_free(doc);
     free(json);
 }

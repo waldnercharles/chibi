@@ -3,6 +3,7 @@
 #include "graph/runtime/instance.h"
 #include "graph/runtime/value_array.h"
 #include "runtime/ui.h"
+#include "support/array.h"
 #include "test/suite_internal.h"
 
 #include <assert.h>
@@ -50,10 +51,10 @@ static void element_state()
 
 static void nodes()
 {
-    static const char *const names[] = { "Set UI Text",    "Set UI Class",
-                                         "Set UI Visible", "Set UI Value",
-                                         "Set UI Data",    "Focus UI Element",
-                                         "Get UI Value" };
+    static const char *const names[] = { "Set UI Text",      "Set UI Class",
+                                         "Set UI Visible",   "Set UI Value",
+                                         "Set UI Data",      "Set UI Style",
+                                         "Focus UI Element", "Get UI Value" };
     bool found = true;
     for (size_t i = 0; i < sizeof names / sizeof *names; i++) {
         const node_desc *desc = NULL;
@@ -115,6 +116,13 @@ static void data_values()
                 !strcmp(game_ui_data_at(ui, 0)->json, "[1,2]");
     game_ui_forget(ui, 7);
     kept &= game_ui_data_count(ui) == 0;
+    bool styled = game_ui_set_style(ui, 7, ".bar", "width", "40%") &&
+                  game_ui_set_style(ui, 7, ".bar", "width", "") &&
+                  !game_ui_set_style(ui, 7, ".bar", "Width", "1dp") &&
+                  !game_ui_set_style(ui, 7, ".bar", "width", NULL) &&
+                  acount(game_ui_element_at(ui, 0)->styles) == 1 &&
+                  !game_ui_element_at(ui, 0)->styles[0].value;
+    test_check(styled, "Set UI Style keeps each property's last value, an empty one returning it to the stylesheets");
     game_ui_free(ui);
     test_check(written && kept, "Set UI Data turns any value into JSON for self.<name>, and keeps a word's last valid value per entity");
 }

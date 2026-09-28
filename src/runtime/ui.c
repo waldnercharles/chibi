@@ -34,6 +34,11 @@ static void element_free(game_ui_element *e)
         free(e->classes[i].name);
     }
     afree(e->classes);
+    for (int i = 0; i < acount(e->styles); i++) {
+        free(e->styles[i].property);
+        free(e->styles[i].value);
+    }
+    afree(e->styles);
 }
 
 static void datum_free(game_ui_datum *d)
@@ -118,6 +123,41 @@ bool game_ui_set_class(game_ui *ui, uint64_t entity, const char *element, const 
         }
     }
     apush(e->classes, ((game_ui_class){ xstrdup(name), on }));
+    return true;
+}
+
+/* An RCSS property name: lowercase words joined by '-'. */
+static bool property_name(const char *name)
+{
+    if (!name || !islower((unsigned char)name[0])) {
+        return false;
+    }
+    for (const char *c = name; *c; c++) {
+        if (!islower((unsigned char)*c) && *c != '-') {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool game_ui_set_style(game_ui *ui, uint64_t entity, const char *element, const char *property, const char *value)
+{
+    game_ui_element *e = property_name(property) && value
+                           ? change(ui, entity, element)
+                           : NULL;
+    if (!e) {
+        return false;
+    }
+    game_ui_style *style = NULL;
+    for (int i = 0; !style && i < acount(e->styles); i++) {
+        style = !strcmp(e->styles[i].property, property) ? &e->styles[i] : NULL;
+    }
+    if (!style) {
+        apush(e->styles, ((game_ui_style){ .property = xstrdup(property) }));
+        style = &alast(e->styles);
+    }
+    free(style->value);
+    style->value = value[0] ? xstrdup(value) : NULL;
     return true;
 }
 
@@ -307,6 +347,13 @@ static const char *class_call(void *ui, const pin_value *a, pin_value *)
     return game_ui_set_class(ui, a[0].u64, a[1].str, a[2].str, a[3].b) ? NULL : INVALID_UI;
 }
 
+static const char *style_call(void *ui, const pin_value *a, pin_value *)
+{
+    return game_ui_set_style(ui, a[0].u64, a[1].str, a[2].str, a[3].str ? a[3].str : "")
+             ? NULL
+             : INVALID_UI;
+}
+
 static const char *visible_call(void *ui, const pin_value *a, pin_value *)
 {
     return game_ui_set_visible(ui, a[0].u64, a[1].str, a[2].b) ? NULL : INVALID_UI;
@@ -392,6 +439,13 @@ static pin_spec CLASS_IN[] = { EXEC_IN,
                                  .type = PIN_BOOL,
                                  .type_name = "bool",
                                  .default_value = { .type = PIN_BOOL, .b = true } } };
+static pin_spec STYLE_IN[] = {
+    EXEC_IN,
+    ENTITY_IN,
+    ELEMENT_IN,
+    { .name = "Property", .type = PIN_NAME, .type_name = "name" },
+    { .name = "Value", .type = PIN_STR, .type_name = "const char *" }
+};
 static pin_spec VISIBLE_IN[] = { EXEC_IN,
                                  ENTITY_IN,
                                  ELEMENT_IN,
@@ -456,6 +510,17 @@ EFFECT_NODE(
     "Element selector.",
     CLASS_IN,
     class_call
+);
+EFFECT_NODE(
+    SET_STYLE,
+    "Set UI Style",
+    "css rcss property width height color transform position size inline "
+    "style widget element selector",
+    "Sets an RCSS property, such as width to 40%, on the entity's UI elements "
+    "that match the Element selector; an empty Value returns it to the "
+    "stylesheets.",
+    STYLE_IN,
+    style_call
 );
 EFFECT_NODE(
     SET_VISIBLE,
@@ -572,9 +637,10 @@ static node_desc GET_VALUE = {
     .access = &READ
 };
 
-static node_desc *const NODES[] = { &SET_TEXT,  &SET_CLASS,  &SET_VISIBLE,
-                                    &SET_VALUE, &SET_DATA,   &FOCUS,
-                                    &CLICK,     &MOVE_FOCUS, &GET_VALUE };
+static node_desc *const NODES[] = { &SET_TEXT,    &SET_CLASS, &SET_STYLE,
+                                    &SET_VISIBLE, &SET_VALUE, &SET_DATA,
+                                    &FOCUS,       &CLICK,     &MOVE_FOCUS,
+                                    &GET_VALUE };
 const registry_pack GAME_UI_PACK = { .name = "game.ui",
                                      .nodes = NODES,
                                      .node_count = sizeof NODES / sizeof *NODES };

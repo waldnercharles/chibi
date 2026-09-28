@@ -347,6 +347,14 @@ static void apply_to(rml_element *element, const game_ui_element *e)
     for (int i = 0; i < acount(e->classes); i++) {
         rml_element_set_class(element, e->classes[i].name, e->classes[i].on);
     }
+    for (int i = 0; i < acount(e->styles); i++) {
+        const game_ui_style *style = &e->styles[i];
+        if (style->value) {
+            rml_element_set_property(element, style->property, style->value);
+        } else {
+            rml_element_remove_property(element, style->property);
+        }
+    }
     if (e->visible == 0) {
         rml_element_set_property(element, "display", "none");
     } else if (e->visible == 1) {

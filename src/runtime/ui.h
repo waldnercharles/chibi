@@ -18,12 +18,20 @@ typedef struct game_ui_class
     bool on;
 } game_ui_class;
 
+/* An RCSS property set inline; a NULL value leaves it to the stylesheets. */
+typedef struct game_ui_style
+{
+    char *property;
+    char *value;
+} game_ui_style;
+
 typedef struct game_ui_element
 {
     uint64_t entity;
     char *selector;
     char *text;             /* NULL until set */
     game_ui_class *classes; /* the last setting of each class */
+    game_ui_style *styles;  /* the last setting of each property */
     int visible;            /* -1 until set, else 0 or 1 */
     bool has_value;
     float value;
@@ -52,6 +60,15 @@ void game_ui_reset(game_ui *ui);
 bool game_ui_set_text(game_ui *ui, uint64_t entity, const char *element, const char *text);
 bool game_ui_set_class(game_ui *ui, uint64_t entity, const char *element, const char *name, bool on);
 bool game_ui_set_visible(game_ui *ui, uint64_t entity, const char *element, bool visible);
+/* Sets an RCSS property, such as "width" to "40%", on the matches; an empty
+ * value returns it to the stylesheets. */
+bool game_ui_set_style(
+    game_ui *ui,
+    uint64_t entity,
+    const char *element,
+    const char *property,
+    const char *value
+);
 bool game_ui_set_value(game_ui *ui, uint64_t entity, const char *element, float value);
 bool game_ui_focus(game_ui *ui, uint64_t entity, const char *element);
 /* Clicks the first element the selector matches, as the player would. */

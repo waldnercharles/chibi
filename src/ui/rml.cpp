@@ -1013,6 +1013,11 @@ float rml_element_client_height(rml_element *e)
     return element(e)->GetClientHeight();
 }
 
+float rml_element_scroll_height(rml_element *e)
+{
+    return element(e)->GetScrollHeight();
+}
+
 rml_vec2 rml_element_absolute_offset(rml_element *e, rml_box_area area)
 {
     return vec2(element(e)->GetAbsoluteOffset((Rml::BoxArea)area));

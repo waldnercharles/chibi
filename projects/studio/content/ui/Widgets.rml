@@ -48,6 +48,12 @@
     </use>
     <morph-text>{{ save.galleryWord == '' ? 'Play' : save.galleryWord }}</morph-text>
   </div>
+  <div class="menu-group">VirtualList</div>
+  <div class="sample list-sample">
+    <use ui="VirtualList" id="list">
+      <div class="list-row" data-for="row, i : self.rows">Row {{ self.first + i + 1 }} of {{ self.total }}</div>
+    </use>
+  </div>
   <div class="menu-group">Presence</div>
   <div class="sample"><use ui="Switch" data-checked="save.galleryShown"/><span class="shown" data-if="save.galleryShown" presence>Shown</span></div>
 </div>

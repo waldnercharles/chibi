@@ -422,6 +422,28 @@ void ui_mount_apply(ui_mount *m, game_ui *model, uint64_t entity)
     m->applied = game_ui_revision(model);
 }
 
+void ui_mount_measure(ui_mount *m, game_ui *model, uint64_t entity)
+{
+    if (!m->installed) {
+        return;
+    }
+    rml_element *found[16];
+    int count = rml_element_query_selector_all(m->root, "[id][data-event-scroll]", found, 16);
+    float dp = rml_context_dp_ratio(rml_element_context(m->root));
+    for (int i = 0; i < count && i < 16; i++) {
+        char selector[160];
+        snprintf(selector, sizeof selector, "#%s", rml_element_id(found[i]));
+        game_ui_measure(
+            model,
+            entity,
+            selector,
+            rml_element_scroll_top(found[i]) / dp,
+            rml_element_client_height(found[i]) / dp,
+            rml_element_scroll_height(found[i]) / dp
+        );
+    }
+}
+
 /* ---------- Data ---------- */
 
 void ui_data_init(ui_data *d, rml_context *context, yyjson_mut_doc *doc, rml_emit_fn emit, void *user)
@@ -1068,6 +1090,9 @@ static void send_activations(render_ui *ui, const ui_world *world)
     for (int i = 0; i < acount(ui->views); i++) {
         ui_view *view = &ui->views[i];
         ui_activation a;
+        if (view->mount && model) {
+            ui_mount_measure(view->mount, model, view->entity);
+        }
         while (view->mount && ui_mount_take(view->mount, &a)) {
             if (model && a.has_value && a.id[0]) {
                 char selector[160];

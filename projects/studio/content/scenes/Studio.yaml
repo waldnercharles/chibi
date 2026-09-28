@@ -13,3 +13,6 @@ entities:
 - {name: StatusBar, prototype: StatusBar}
 - {name: TopBar, prototype: TopBar}
 - {name: AreaHeader, prototype: AreaHeader}
+- name: Widgets
+  prototype: Widgets
+  behaviors: [VirtualList, WidgetGallery]

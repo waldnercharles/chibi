@@ -35,9 +35,12 @@ typedef struct game_ui_element
     int visible;            /* -1 until set, else 0 or 1 */
     bool has_value;
     float value;
-    bool focus;        /* requested and not yet applied */
-    bool click;        /* requested and not yet applied */
-    int move_focus;    /* a requested step through the matches; 0 for none */
+    bool focus;     /* requested and not yet applied */
+    bool click;     /* requested and not yet applied */
+    int move_focus; /* a requested step through the matches; 0 for none */
+    /* Where a presenter last measured the element scrolled, in dp. */
+    bool measured;
+    float scroll_top, view_height, content_height;
     uint64_t revision; /* the ui revision of its last change */
 } game_ui_element;
 
@@ -76,6 +79,17 @@ bool game_ui_click(game_ui *ui, uint64_t entity, const char *element);
 /* Moves focus `step` places through the elements the selector matches, from
  * the one that holds focus, wrapping at the ends. */
 bool game_ui_move_focus(game_ui *ui, uint64_t entity, const char *element, int step);
+/* Records where a presenter measured the element scrolled, in dp: how far
+ * down, and the heights of its view and its content. A measurement is not a
+ * setting, so presenters do not apply it back. */
+void game_ui_measure(
+    game_ui *ui,
+    uint64_t entity,
+    const char *element,
+    float scroll_top,
+    float view_height,
+    float content_height
+);
 /* The value last set under this selector, or false when none was. */
 bool game_ui_value(const game_ui *ui, uint64_t entity, const char *element, float *value);
 /* Sets self.<name> for the entity's documents to `json`; false, changing

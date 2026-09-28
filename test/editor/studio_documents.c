@@ -778,6 +778,56 @@ static void palette_recent_and_prefixes()
     fixture_free(&f);
 }
 
+/* The rows data-for made in the element at `selector`, leaving out its
+   template, and the first one's text. */
+static int list_rows(studio *s, const char *selector, char *first, size_t size)
+{
+    first[0] = '\0';
+    rml_element *window = studio_element(s, selector);
+    int rows = 0;
+    for (int i = 0; window && i < rml_element_child_count(window); i++) {
+        rml_element *row = rml_element_child(window, i);
+        if (rml_element_has_attribute(row, "data-for") ||
+            !rml_element_is_visible(row, false)) {
+            continue;
+        }
+        if (!rows++) {
+            rml_element_inner_rml(row, first, size);
+        }
+    }
+    return rows;
+}
+
+/* The widget gallery's VirtualList, driven by the VirtualList and
+   WidgetGallery behaviors, makes only the rows in view of ten thousand, and
+   scrolling shows the rows there. */
+static void virtual_list_rows()
+{
+    studio_fixture f = studio_project_open();
+    studio *s = f.studio;
+    s->maximized = -1;
+    studio_layout *layout = studio_active_layout(s);
+    layout->editors[STUDIO_AREA_TOP] = STUDIO_EDITOR_PANEL;
+    snprintf(layout->panels[STUDIO_AREA_TOP], sizeof layout->panels[0], "Widgets");
+    frames(&f, 12);
+    char first[96];
+    int rows = list_rows(s, ".vlist-window", first, sizeof first);
+    bool windowed = rows > 10 && rows < 60 && !strcmp(first, "Row 1 of 10000");
+    rml_element *view = studio_element(s, ".vlist");
+    if (view) {
+        rml_element_set_scroll_top(view, 24 * 500 * studio_pixel_ratio(s));
+    }
+    frames(&f, 6);
+    int scrolled_rows = list_rows(s, ".vlist-window", first, sizeof first);
+    bool scrolled = scrolled_rows > 10 && scrolled_rows < 60 &&
+                    !strcmp(first, "Row 495 of 10000");
+    if (!(windowed && scrolled)) {
+        printf("  %d %d rows %d then %d, first '%s'\n", windowed, scrolled, rows, scrolled_rows, first);
+    }
+    test_check(windowed && scrolled, "a VirtualList of ten thousand rows makes only those in view, and scrolling shows the rows there");
+    fixture_free(&f);
+}
+
 /* Repeats remain limited to commands that are useful while held. */
 static void shortcut_repeat_policy()
 {
@@ -1397,6 +1447,7 @@ int studio_documents_run(const char *program)
     settings_records_shortcut();
     palette_finds_settings();
     palette_recent_and_prefixes();
+    virtual_list_rows();
     shortcut_repeat_policy();
     readout_follows_camera();
     /* Authored top bar and area headers (workstream T) */

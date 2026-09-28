@@ -383,7 +383,9 @@ static void show_panel(studio *s, panel *p, ui_mount **mount, rml_element *host,
     if (ui_mount_sync(*mount, host, ui->listener, s->time)) {
         kit_style_sheet(s->kit, document, ui_mount_style(*mount));
     }
-    ui_mount_apply(*mount, engine_ui(game_prototype_preview_runtime(ui->world)), ecs_entity_to_u64(entity));
+    game_ui *model = engine_ui(game_prototype_preview_runtime(ui->world));
+    ui_mount_measure(*mount, model, ecs_entity_to_u64(entity));
+    ui_mount_apply(*mount, model, ecs_entity_to_u64(entity));
     send_activations(s, *mount, entity);
     report(s, p, *mount);
 }

@@ -125,6 +125,9 @@ void ui_mount_emit(ui_mount *mount, rml_element *element, const char *event, con
 bool ui_mount_take(ui_mount *mount, ui_activation *out);
 /* Applies what behaviors set for `entity` in `model` since the last call. */
 void ui_mount_apply(ui_mount *mount, game_ui *model, uint64_t entity);
+/* Records under #id, in dp, where each element with an id and a
+ * data-event-scroll binding is scrolled, for Get UI Scroll. */
+void ui_mount_measure(ui_mount *mount, game_ui *model, uint64_t entity);
 
 /* ---------- Pages ---------- */
 

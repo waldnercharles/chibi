@@ -47,6 +47,13 @@ Unity's UI Toolkit is the closest analog: UXML/USS map to RML/RCSS.
     (`ui_document_bindings`): the Add menu offers "Set items (Hud)" for the
     documents on what attaches the behavior, Name offers their names, and the
     MCP's searchNodes returns the same presets with the rows' fields.
+- **VirtualList is an authored widget.** `<use ui="VirtualList" id="list">`
+  wraps a row template (`data-for="row, i : self.rows"`, rows of one fixed
+  height). The VirtualList behavior reads where the list is scrolled (Get UI
+  Scroll), sets `self.first` and `self.row`, and sends ShowRows(First, Count)
+  when the rows in view change; the entity's own behavior answers with
+  `self.rows` (Array's Slice of its data) and `self.total`. The widget gallery
+  (the Widgets panel, WidgetGallery) shows ten thousand rows this way.
 - **Live apply is an overlay.** `src/support/text_overlay.h` holds unsaved text:
   - `text_file_read` returns it in place of the file;
   - `file_watch_changed` sees each change at once.

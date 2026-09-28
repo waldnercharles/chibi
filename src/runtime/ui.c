@@ -275,6 +275,30 @@ const game_ui_datum *game_ui_data_at(const game_ui *ui, int index)
     return &ui->data[index];
 }
 
+void game_ui_measure(
+    game_ui *ui,
+    uint64_t entity,
+    const char *element,
+    float scroll_top,
+    float view_height,
+    float content_height
+)
+{
+    assert(element && element[0]);
+    game_ui_element *e = find(ui, entity, element);
+    if (!e) {
+        apush(
+            ui->elements,
+            ((game_ui_element){ .entity = entity, .selector = xstrdup(element), .visible = -1 })
+        );
+        e = &alast(ui->elements);
+    }
+    e->measured = true;
+    e->scroll_top = scroll_top;
+    e->view_height = view_height;
+    e->content_height = content_height;
+}
+
 bool game_ui_value(const game_ui *ui, uint64_t entity, const char *element, float *value)
 {
     const game_ui_element *e = element ? find(ui, entity, element) : NULL;
@@ -377,6 +401,17 @@ static const char *click_call(void *ui, const pin_value *a, pin_value *)
 static const char *move_focus_call(void *ui, const pin_value *a, pin_value *)
 {
     return game_ui_move_focus(ui, a[0].u64, a[1].str, a[2].i) ? NULL : INVALID_UI;
+}
+
+static const char *scroll_call(void *ui, const pin_value *a, pin_value *results)
+{
+    const game_ui_element *e = a[1].str ? find(ui, a[0].u64, a[1].str) : NULL;
+    bool known = e && e->measured;
+    results[0].f = known ? e->scroll_top : 0;
+    results[1].f = known ? e->view_height : 0;
+    results[2].f = known ? e->content_height : 0;
+    results[3].b = known;
+    return NULL;
 }
 
 static const char *get_call(void *ui, const pin_value *a, pin_value *results)
@@ -614,6 +649,50 @@ static node_desc SET_DATA = {
     .access = &WRITE
 };
 
+static const char *get_scroll(const eval_context *ctx, const pin_value *inputs, arena *, pin_value *out)
+{
+    void *ui = eval_context_service(ctx, "game.ui");
+    if (!ui) {
+        return "Get UI Scroll requires a game world";
+    }
+    for (int i = 0; i < 3; i++) {
+        out[i] = (pin_value){ .type = PIN_F32, .type_name = "float" };
+    }
+    out[3] = (pin_value){ .type = PIN_BOOL, .type_name = "bool" };
+    return scroll_call(ui, inputs, out);
+}
+
+static pin_spec SCROLL_OUT[] = {
+    { .name = "Scroll Top", .type = PIN_F32, .type_name = "float" },
+    { .name = "View Height", .type = PIN_F32, .type_name = "float" },
+    { .name = "Content Height", .type = PIN_F32, .type_name = "float" },
+    { .name = "Known", .type = PIN_BOOL, .type_name = "bool" },
+};
+static const node_host_call SCROLL_CALL = {
+    .service = "game.ui",
+    .invoke = scroll_call,
+    .missing_service = "Get UI Scroll requires a game world",
+    .reusable = true
+};
+static node_desc GET_SCROLL = {
+    .name = "Get UI Scroll",
+    .category = "UI",
+    .keywords = "scroll position offset list virtual window height view "
+                "content measure element selector",
+    .description = "Reads, in dp, how far the element under #id is scrolled "
+                   "and the heights of its view and its content, as the "
+                   "presenter last measured an element with data-event-scroll; "
+                   "Known is false until it has.",
+    .input_count = 2,
+    .inputs = GET_IN,
+    .output_count = 4,
+    .outputs = SCROLL_OUT,
+    .pure_kind = NODE_PURE_READ,
+    .read_inputs = get_scroll,
+    .host_call = &SCROLL_CALL,
+    .access = &READ
+};
+
 static const node_host_call GET_CALL = {
     .service = "game.ui",
     .invoke = get_call,
@@ -640,7 +719,7 @@ static node_desc GET_VALUE = {
 static node_desc *const NODES[] = { &SET_TEXT,    &SET_CLASS, &SET_STYLE,
                                     &SET_VISIBLE, &SET_VALUE, &SET_DATA,
                                     &FOCUS,       &CLICK,     &MOVE_FOCUS,
-                                    &GET_VALUE };
+                                    &GET_VALUE,   &GET_SCROLL };
 const registry_pack GAME_UI_PACK = { .name = "game.ui",
                                      .nodes = NODES,
                                      .node_count = sizeof NODES / sizeof *NODES };

@@ -378,10 +378,21 @@ static void ui_events()
         "<input type=\"range\" id=\"volume\" "
         "data-event-change=\"emit('Volume')\"/>"
         "<div class=\"menu wide\" data-keys=\"Enter:Choose Space:Choose\"/>"
-        "<div data-event-click=\"emit('Tick')\"/>\n"
+        "<div data-event-click=\"emit('Tick')\"/>"
+        "<div data-for=\"row : self.items\">{{ row.name }} {{ row.count "
+        "}}</div>\n"
     );
     write_text(pause, "<div data-event-click=\"emit('Resume')\">Resume</div>\n");
     size_t bytes;
+    char *items = search_in(root, "\"query\":\"set ui data items\",\"limit\":1", &bytes);
+    bool bound = items && strstr(items, "\"type\":\"Set UI Data\"") &&
+                 strstr(items, "\"inputs\":{\"Name\":\"items\"}") &&
+                 strstr(items, "Gives Hud self.items, a list data-for repeats whose rows bind name, count; Name items.0.name sets one row's name.");
+    if (!bound) {
+        printf("  %s\n", items ? items : "(none)");
+    }
+    test_check(bound, "searchNodes offers Set UI Data for each value a ui document binds, with its list's row fields");
+    free(items);
     char *outline = search_in(root, "\"domain\":\"behavior\"", &bytes);
     char *go = search_in(root, "\"query\":\"go\",\"limit\":1", &bytes);
     char *volume = search_in(root, "\"query\":\"volume\",\"limit\":1", &bytes);

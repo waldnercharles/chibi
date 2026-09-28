@@ -110,6 +110,19 @@ typedef struct ui_document_event
 void ui_document_events(const char *rml, ui_document_event **events);
 void ui_document_events_free(ui_document_event *events);
 
+/* A value markup binds under self, which behaviors give its entity with Set
+ * UI Data: its name, whether data-for repeats it, and for a list the fields
+ * its rows bind, as "name, count". */
+typedef struct ui_document_binding
+{
+    char name[64];
+    bool list;
+    char fields[192];
+} ui_document_binding;
+
+/* Appends each value the markup binds under self, once, in document order. */
+void ui_document_bindings(const char *rml, ui_document_binding **bindings);
+
 /* Owned markup with each name in it equal to `from` renamed `to`: widget
  * names (<use ui>), or with `event`, the events emit('Name') and data-keys
  * send. Sets *count to the names renamed. */

@@ -36,6 +36,17 @@ Unity's UI Toolkit is the closest analog: UXML/USS map to RML/RCSS.
   Workspace or the top bar's tabs switch by hand until the tab changes, and
   Settings ▸ Workspace Follows Tab turns following off. Switching changes only
   the areas: documents, selection, history and playback stay.
+- **Behaviors feed documents data as `self`.** Set UI Data (Entity, Name,
+  Value) gives an entity's documents a value to bind as `self.<Name>`, the way
+  a component's props reach it. Value takes any type and arrives as JSON:
+  `{{ self.score }}` shows a number; an array of structs repeats with
+  `data-for="row : self.items"` and `{{ row.name }}`; Name `items.2.name` sets
+  one row's field. Values change in place, so bound views stay bound. Studio's
+  own panels bind `self` to their Studio-scene entity the same way.
+  - Studio reflects each document's `self` bindings
+    (`ui_document_bindings`): the Add menu offers "Set items (Hud)" for the
+    documents on what attaches the behavior, Name offers their names, and the
+    MCP's searchNodes returns the same presets with the rows' fields.
 - **Live apply is an overlay.** `src/support/text_overlay.h` holds unsaved text:
   - `text_file_read` returns it in place of the file;
   - `file_watch_changed` sees each change at once.

@@ -801,6 +801,13 @@ struct studio
         bool read; /* events holds them while the Add menu is open */
         struct ui_event *events; /* studio_behavior_ui_events */
     } add_menu;
+    /* What the ui documents showing the open behavior's entities bind under
+       self, for Set UI Data (studio_graph_ui_data). */
+    struct
+    {
+        int behavior; /* the asset index entry they are for; -2 before any */
+        struct ui_data_binding *bindings;
+    } bound;
     /* Visual designer (workstream H): NULL until a UI document is active. */
     struct studio_designer *designer;
     /* Workstream Q: Problems ▸ Project's ui problems as of its last check
@@ -1386,6 +1393,7 @@ void studio_inspect_emit(studio *s);
 /* ---------- UI wiring (workstream K) ---------- */
 
 struct ui_event;
+struct ui_data_binding;
 /* The events the GameUi documents shown on whatever attaches the open
  * behavior send it (studio_graph_edit.c), which the Add menu offers as Event
  * nodes. Free them with ui_events_free. */
@@ -1393,6 +1401,9 @@ struct ui_event *studio_behavior_ui_events(studio *s);
 /* Drops the events the open Add menu read once; it reads them again when it
  * next opens. */
 void studio_add_menu_close(studio *s);
+/* Reads what the open behavior's documents bind under self when the behavior
+ * changes, or when `again`, and offers them to its graph editor. */
+void studio_graph_ui_data(studio *s, bool again);
 
 /* Asset pickers (studio_pick.c): a field naming an asset chooses one of its
  * kind on the command surface, as Unity's object field and Unreal's asset

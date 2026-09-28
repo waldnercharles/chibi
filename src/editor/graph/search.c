@@ -418,6 +418,32 @@ static void ed_search_ui_events(const editor *e, ed_search_match **matches, cons
     }
 }
 
+/* The values GameUi documents bind under self, as Set UI Data nodes that set
+   them: "Set items" in UI Data, found by the document and its rows' fields. */
+static void ed_search_ui_data(const editor *e, ed_search_match **matches, const char *filter)
+{
+    const node_desc *set = registry_node_by_name("Set UI Data");
+    for (int i = 0; set && i < e->ui_data_catalog_count; i++) {
+        const ui_data_binding *b = &e->ui_data_catalog[i];
+        char keywords[512];
+        snprintf(
+            keywords,
+            sizeof keywords,
+            "%s self %s %s %s",
+            set->keywords,
+            b->document,
+            b->binding.list ? "list rows data-for" : "value",
+            b->binding.fields
+        );
+        node_desc signature = *set;
+        signature.keywords = keywords;
+        signature.category = "UI Data";
+        ed_search_match match = { .desc = set, .ui_data = b, .category = "UI Data" };
+        snprintf(match.name, sizeof match.name, "Set %s (%s)", b->binding.name, b->document);
+        ed_add_search_match(e, matches, match, &signature, filter);
+    }
+}
+
 static void ed_search_events(const editor *e, ed_search_match **matches, const char *filter)
 {
     const node_desc *descs[] = { &NODE_Event,
@@ -594,6 +620,7 @@ ed_search_match *ed_search_matches(const editor *e, const char *filter)
     if (!shader && e->asset->domain == BEHAVIOR_DOMAIN_EVENT) {
         ed_search_host_events(e, &matches, filter);
         ed_search_ui_events(e, &matches, filter);
+        ed_search_ui_data(e, &matches, filter);
         ed_search_events(e, &matches, filter);
         for (int i = 0; i < acount(e->asset->variables); i++) {
             const behavior_variable *v = &e->asset->variables[i];
@@ -710,6 +737,12 @@ static node *spawn_match(editor *e, const ed_search_match *match)
     if (match->prototype) {
         pin_value value = { .type = PIN_NAME, .str = match->prototype };
         graph_set_pin_default(g, n, 0, 1, &value);
+    }
+    if (match->ui_data) {
+        pin_value value = { .type = PIN_NAME,
+                            .type_name = "name",
+                            .str = match->ui_data->binding.name };
+        graph_set_pin_default(g, n, 0, 2, &value);
     }
     if (match->setting && component_node_configure(g, n, match->setting, match->field)) {
         graph_remove_node(g, n);

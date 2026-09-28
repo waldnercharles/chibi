@@ -7857,11 +7857,13 @@ static bool behavior_vocabulary(const char *domain)
 }
 
 /* The events a project names: its event definitions, and those its ui
- * documents send behaviors (assets/ui_events.h). */
+ * documents send behaviors (assets/ui_events.h); and the values those
+ * documents bind under self. */
 typedef struct
 {
     behavior_asset **definitions;
     ui_event *ui;
+    ui_data_binding *bindings;
 } project_events;
 
 static bool defined_event(const project_events *events, const char *name)
@@ -7950,9 +7952,17 @@ static int load_ui_events(
         snprintf(path, sizeof path, "%s/%s", root, entries[i].relative);
         char *text = read_file(path, NULL, NULL, error, error_size);
         ui_document_event *found = NULL;
+        ui_document_binding *bound = NULL;
         if (text) {
             ui_document_events(text, &found);
+            ui_document_bindings(text, &bound);
         }
+        for (int b = 0; b < acount(bound); b++) {
+            ui_data_binding added = { .binding = bound[b] };
+            snprintf(added.document, sizeof added.document, "%s", document);
+            apush(events->bindings, added);
+        }
+        afree(bound);
         /* Host events and definitions already offer their own names. */
         for (int e = 0; e < acount(found); e++) {
             if (!defined_event(events, found[e].name)) {
@@ -7973,6 +7983,7 @@ static void free_project_events(project_events *events)
 {
     free_behavior_assets(events->definitions);
     ui_events_free(events->ui);
+    afree(events->bindings);
 }
 
 static int load_project_events(
@@ -8047,6 +8058,7 @@ typedef struct
     const graph_host_event_desc *host;
     const behavior_asset *definition;
     const ui_event *ui;
+    const ui_data_binding *binding; /* a Set UI Data that sets it */
     int score;
     int order;
     /* With a wire to fit: how well (wire_fit) and through which pins. */
@@ -8071,13 +8083,21 @@ static const char *match_event(const node_match *match)
 }
 
 /* The node add_node creates for a match, in a scratch graph. */
+/* Set UI Data's Name, the pin a binding's result sets. */
+#define SET_UI_DATA_NAME 2
+
 static node *match_node(graph *g, const node_match *match)
 {
     node *n = graph_add_node(g, match->desc);
     assert(n);
     const char *event = match_event(match);
     int result = 0;
-    if (match->preset) {
+    if (match->binding) {
+        pin_value name = { .type = PIN_NAME,
+                           .type_name = "name",
+                           .str = match->binding->binding.name };
+        result = graph_set_pin_default(g, n, 0, SET_UI_DATA_NAME, &name);
+    } else if (match->preset) {
         result = component_node_configure(
             g,
             n,
@@ -8195,9 +8215,29 @@ static int node_score(const node_desc *node, const char *query)
     return text_search_word_score(query, node->name, secondary);
 }
 
+/* A binding reads as "Set UI Data items", and also as its document and its
+   rows' fields. */
+static int binding_score(const node_match *match, const char *query)
+{
+    const ui_data_binding *b = match->binding;
+    char name[128], secondary[512];
+    snprintf(name, sizeof name, "%s %s", match->desc->name, b->binding.name);
+    snprintf(
+        secondary,
+        sizeof secondary,
+        "%s self %s %s %s",
+        match->desc->keywords,
+        b->document,
+        b->binding.list ? "list rows data-for" : "value",
+        b->binding.fields
+    );
+    return text_search_word_score(query, name, secondary);
+}
+
 static int match_score(const node_match *match, const char *query)
 {
-    return match->preset      ? preset_score(match->preset, query)
+    return match->binding     ? binding_score(match, query)
+         : match->preset      ? preset_score(match->preset, query)
          : match_event(match) ? event_score(match, query)
                               : node_score(match->desc, query);
 }
@@ -8307,6 +8347,36 @@ static bool match_description(const node_match *match, char *text, size_t size)
         snprintf(text, size, "%s.", match->ui->description);
         return true;
     }
+    const ui_data_binding *b = match->binding;
+    if (b && b->binding.list && b->binding.fields[0]) {
+        int first = (int)strcspn(b->binding.fields, ",");
+        snprintf(
+            text,
+            size,
+            "Gives %s self.%s, a list data-for repeats whose rows bind %s; "
+            "Name %s.0.%.*s sets one row's %.*s.",
+            b->document,
+            b->binding.name,
+            b->binding.fields,
+            b->binding.name,
+            first,
+            b->binding.fields,
+            first,
+            b->binding.fields
+        );
+        return true;
+    }
+    if (b) {
+        snprintf(
+            text,
+            size,
+            "Gives %s self.%s, %s.",
+            b->document,
+            b->binding.name,
+            b->binding.list ? "a list data-for repeats" : "the value it binds"
+        );
+        return true;
+    }
     return node_subject_describe(&subject, text, size);
 }
 
@@ -8330,6 +8400,10 @@ static void add_node_match(
         yyjson_mut_obj_add_strcpy(doc, item, key, event);
     } else if (desc->category && desc->category[0]) {
         yyjson_mut_obj_add_str(doc, item, "category", desc->category);
+    }
+    if (match->binding) {
+        yyjson_mut_val *inputs = yyjson_mut_obj_add_obj(doc, item, "inputs");
+        yyjson_mut_obj_add_strcpy(doc, inputs, "Name", match->binding->binding.name);
     }
     if (match->preset) {
         const ecs_component_desc *component = component_by_key(match->preset->setting);
@@ -8472,6 +8546,10 @@ static node_match *node_candidates(
     }
     for (int i = 0; i < acount(project->ui); i++) {
         apush(matches, ((node_match){ .desc = &NODE_Event, .ui = &project->ui[i] }));
+    }
+    const node_desc *set_data = registry_node_by_name("Set UI Data");
+    for (int i = 0; i < acount(project->bindings); i++) {
+        apush(matches, ((node_match){ .desc = set_data, .binding = &project->bindings[i] }));
     }
     return matches;
 }
@@ -8637,7 +8715,7 @@ static int handle_search_nodes(const char *root, yyjson_val *request, response *
     node_match *matches = NULL;
     for (int i = 0; i < acount(candidates); i++) {
         node_match match = candidates[i];
-        bool offered = listed || !match_event(&match);
+        bool offered = listed || (!match_event(&match) && !match.binding);
         match.order = i;
         match.score = offered ? match_score(&match, query) : -1;
         match.wire_input = match.wire_output = -1;
@@ -8645,7 +8723,7 @@ static int handle_search_nodes(const char *root, yyjson_val *request, response *
             continue;
         }
         if (pin_filtered || wired) {
-            bool configured = match.preset || match_event(&match);
+            bool configured = match.preset || match_event(&match) || match.binding;
             node *n = configured ? match_node(scratch->graph, &match) : NULL;
             pin_sides sides = n ? (pin_sides){ n->input_pins,
                                                n->output_pins,

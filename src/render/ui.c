@@ -11,6 +11,7 @@
 
 #include <SDL3/SDL_video.h>
 #include <assert.h>
+#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -426,6 +427,7 @@ void ui_data_init(ui_data *d, rml_context *context, yyjson_mut_doc *doc, rml_emi
     }
     yyjson_mut_obj_add_val(d->doc, root, "save", yyjson_mut_obj(d->doc));
     yyjson_mut_obj_add_bool(d->doc, yyjson_mut_obj_add_obj(d->doc, root, "system"), "dark", false);
+    yyjson_mut_obj_add_obj(d->doc, root, "entities");
     d->model = rml_data_model_create(context, UI_DATA_MODEL, d->doc, emit, user);
 }
 
@@ -531,6 +533,175 @@ void ui_data_sync(ui_data *d, game_save *save)
     d->save_seen = revision;
     show_save(d->doc, shown, save);
     rml_data_model_dirty(d->model, "save");
+}
+
+/* The object holding `entity`'s data under `entities`, made as needed. */
+static yyjson_mut_val *entity_data(ui_data *d, uint64_t entity)
+{
+    yyjson_mut_val *entities = yyjson_mut_obj_get(yyjson_mut_doc_get_root(d->doc), "entities");
+    char key[32];
+    snprintf(key, sizeof key, "e%llu", (unsigned long long)entity);
+    yyjson_mut_val *data = yyjson_mut_obj_get(entities, key);
+    if (!data) {
+        data = yyjson_mut_obj(d->doc);
+        yyjson_mut_obj_add(entities, yyjson_mut_strcpy(d->doc, key), data);
+    }
+    return data;
+}
+
+void ui_data_bind_self(ui_data *d, rml_element *root, uint64_t entity)
+{
+    char alias[48], bound[48] = "";
+    snprintf(alias, sizeof alias, "entities.e%llu", (unsigned long long)entity);
+    rml_element_attribute(root, "data-alias-self", bound, sizeof bound);
+    if (strcmp(bound, alias)) {
+        entity_data(d, entity);
+        rml_element_set_attribute(root, "data-alias-self", alias);
+    }
+}
+
+/* Makes `shown` hold `value`, reusing what it holds: members and items keep
+   their places, so bound views stay bound, and only text that changed or
+   items a list gained take new memory. A member `value` lacks reads as
+   null. */
+static void assign(yyjson_mut_doc *doc, yyjson_mut_val *shown, yyjson_val *value)
+{
+    switch (yyjson_get_type(value)) {
+        case YYJSON_TYPE_BOOL:
+            yyjson_mut_set_bool(shown, yyjson_get_bool(value));
+            return;
+        case YYJSON_TYPE_NUM:
+            yyjson_mut_set_real(shown, yyjson_get_num(value));
+            return;
+        case YYJSON_TYPE_STR:
+            ui_data_set_text(doc, shown, yyjson_get_str(value));
+            return;
+        case YYJSON_TYPE_OBJ: {
+            if (!yyjson_mut_is_obj(shown)) {
+                yyjson_mut_set_obj(shown);
+            }
+            yyjson_mut_val *key;
+            yyjson_mut_obj_iter kept = yyjson_mut_obj_iter_with(shown);
+            while ((key = yyjson_mut_obj_iter_next(&kept))) {
+                if (!yyjson_obj_get(value, yyjson_mut_get_str(key))) {
+                    yyjson_mut_set_null(yyjson_mut_obj_iter_get_val(key));
+                }
+            }
+            size_t i, max;
+            yyjson_val *name, *member;
+            yyjson_obj_foreach(value, i, max, name, member)
+            {
+                yyjson_mut_val *target = yyjson_mut_obj_get(shown, yyjson_get_str(name));
+                if (!target) {
+                    target = yyjson_mut_null(doc);
+                    yyjson_mut_obj_add(shown, yyjson_mut_strcpy(doc, yyjson_get_str(name)), target);
+                }
+                assign(doc, target, member);
+            }
+            return;
+        }
+        case YYJSON_TYPE_ARR: {
+            if (!yyjson_mut_is_arr(shown)) {
+                yyjson_mut_set_arr(shown);
+            }
+            size_t count = yyjson_arr_size(value), held = yyjson_mut_arr_size(shown);
+            if (held > count) {
+                yyjson_mut_arr_remove_range(shown, count, held - count);
+            }
+            yyjson_mut_arr_iter items = yyjson_mut_arr_iter_with(shown);
+            yyjson_arr_iter values = yyjson_arr_iter_with(value);
+            yyjson_val *item;
+            while ((item = yyjson_arr_iter_next(&values))) {
+                yyjson_mut_val *target = yyjson_mut_arr_iter_next(&items);
+                if (!target) {
+                    target = yyjson_mut_null(doc);
+                    yyjson_mut_arr_append(shown, target);
+                }
+                assign(doc, target, item);
+            }
+            return;
+        }
+        default: yyjson_mut_set_null(shown); return;
+    }
+}
+
+/* The value at `path` ("items.2.name") under `data`, made as needed: a word
+   names an object's member, digits a list's item, and lists grow with
+   nulls. */
+static yyjson_mut_val *data_at(yyjson_mut_doc *doc, yyjson_mut_val *data, const char *path)
+{
+    yyjson_mut_val *at = data;
+    for (const char *segment = path; segment;) {
+        size_t length = strcspn(segment, ".");
+        char name[128];
+        snprintf(name, sizeof name, "%.*s", (int)length, segment);
+        segment = segment[length] ? segment + length + 1 : NULL;
+        if (isdigit((unsigned char)name[0])) {
+            size_t index = strtoul(name, NULL, 10);
+            if (!yyjson_mut_is_arr(at)) {
+                yyjson_mut_set_arr(at);
+            }
+            while (yyjson_mut_arr_size(at) <= index) {
+                yyjson_mut_arr_append(at, yyjson_mut_null(doc));
+            }
+            at = yyjson_mut_arr_get(at, index);
+            continue;
+        }
+        if (!yyjson_mut_is_obj(at)) {
+            yyjson_mut_set_obj(at);
+        }
+        yyjson_mut_val *member = yyjson_mut_obj_get(at, name);
+        if (!member) {
+            member = yyjson_mut_null(doc);
+            yyjson_mut_obj_add(at, yyjson_mut_strcpy(doc, name), member);
+        }
+        at = member;
+    }
+    return at;
+}
+
+static int by_revision(const void *a, const void *b)
+{
+    uint64_t x = (*(const game_ui_datum *const *)a)->revision;
+    uint64_t y = (*(const game_ui_datum *const *)b)->revision;
+    return x < y ? -1 : x > y;
+}
+
+void ui_data_show_entities(ui_data *d, const game_ui *model)
+{
+    /* In the order behaviors set them, so a list set after one of its rows
+       replaces it, and a row set after its list changes it. */
+    const game_ui_datum **changed = NULL;
+    for (int i = 0; model && i < game_ui_data_count(model); i++) {
+        const game_ui_datum *datum = game_ui_data_at(model, i);
+        if (datum->revision > d->data_seen) {
+            apush(changed, datum);
+        }
+    }
+    if (!acount(changed)) {
+        return;
+    }
+    qsort(changed, (size_t)acount(changed), sizeof *changed, by_revision);
+    for (int i = 0; i < acount(changed); i++) {
+        const game_ui_datum *datum = changed[i];
+        yyjson_mut_val
+            *shown = data_at(d->doc, entity_data(d, datum->entity), datum->name);
+        yyjson_doc *value = yyjson_read(datum->json, strlen(datum->json), 0);
+        assert(value);
+        assign(d->doc, shown, yyjson_doc_get_root(value));
+        yyjson_doc_free(value);
+        d->data_seen = datum->revision;
+    }
+    afree(changed);
+    rml_data_model_dirty(d->model, "entities");
+}
+
+void ui_data_forget_entity(ui_data *d, uint64_t entity)
+{
+    yyjson_mut_val *entities = yyjson_mut_obj_get(yyjson_mut_doc_get_root(d->doc), "entities");
+    char key[32];
+    snprintf(key, sizeof key, "e%llu", (unsigned long long)entity);
+    yyjson_mut_obj_remove_key(entities, key);
 }
 
 void ui_data_free(ui_data *d)
@@ -775,6 +946,7 @@ static void open_view(render_ui *ui, ui_view *view, const char *name, const char
     };
     view->mount = ui_mount_new(ui->content_root, name);
     view->root = rml_element_create_child(ui->slot, "div", NULL);
+    ui_data_bind_self(&ui->data, view->root, view->entity);
     for (size_t i = 0; i < sizeof LAYOUT / sizeof *LAYOUT; i++) {
         rml_element_set_property(view->root, LAYOUT[i][0], LAYOUT[i][1]);
     }
@@ -954,6 +1126,7 @@ static void close_unseen(render_ui *ui, game_ui *model)
         if (model) {
             game_ui_forget(model, ui->views[i].entity);
         }
+        ui_data_forget_entity(&ui->data, ui->views[i].entity);
         close_view(ui, &ui->views[i]);
     }
     asetlen(ui->views, kept);
@@ -1043,6 +1216,7 @@ void render_ui_update(render_ui *ui, const ui_world *w, int width, int height, d
     }
     close_unseen(ui, w->model);
     ui_data_sync(&ui->data, w->save);
+    ui_data_show_entities(&ui->data, w->model);
     if (ui->restyle) {
         install_styles(ui);
         ui->restyle = false;

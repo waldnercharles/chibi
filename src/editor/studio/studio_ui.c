@@ -285,6 +285,10 @@ void studio_ui_frame(studio *s)
     follow_disk(s);
     game_prototype_preview_tick(s->ui->world, s->time);
     ui_data_sync(&s->ui->data, settings(s->ui));
+    ui_data_show_entities(
+        &s->ui->data,
+        engine_ui(game_prototype_preview_runtime(s->ui->world))
+    );
     studio_sources_sync(s, &s->ui->sources, &s->ui->data);
     studio_prefs_share(&s->prefs, settings(s->ui), &s->ui->prefs_seen);
 }
@@ -375,6 +379,7 @@ static void show_panel(studio *s, panel *p, ui_mount **mount, rml_element *host,
     if (!*mount) {
         *mount = ui_mount_new(ui->content_root, document);
     }
+    ui_data_bind_self(&ui->data, host, ecs_entity_to_u64(entity));
     if (ui_mount_sync(*mount, host, ui->listener, s->time)) {
         kit_style_sheet(s->kit, document, ui_mount_style(*mount));
     }

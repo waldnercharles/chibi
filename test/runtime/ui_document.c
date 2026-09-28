@@ -495,8 +495,35 @@ static void named_events()
     ui_document_events_free(events);
 }
 
+/* A document's self bindings: lists data-for repeats with the fields their
+   rows use, then values, each once; save keys and longer paths are not
+   self's. */
+static void bound_values()
+{
+    ui_document_binding *found = NULL;
+    ui_document_bindings(
+        "<div>{{ self.score }} {{ save.best }} {{ myself.x }}</div>"
+        "<div data-for=\"row, i : self.items\">{{ row.name }} {{ row.count }} "
+        "{{ row.name }}</div>"
+        "<span data-class-hot=\"self.hot\">{{ self.score }}</span>",
+        &found
+    );
+    bool listed = acount(found) == 3 && !strcmp(found[0].name, "items") &&
+                  found[0].list && !strcmp(found[0].fields, "name, count") &&
+                  !strcmp(found[1].name, "score") && !found[1].list &&
+                  !strcmp(found[2].name, "hot");
+    if (!listed) {
+        for (int i = 0; i < acount(found); i++) {
+            printf("  %s %d '%s'\n", found[i].name, found[i].list, found[i].fields);
+        }
+    }
+    test_check(listed, "a document's self bindings list data-for's lists with their rows' fields, then its values, once each");
+    afree(found);
+}
+
 void test_ui_document()
 {
+    bound_values();
     composed_document();
     rejected_documents();
     last_valid_document();

@@ -684,6 +684,7 @@ static studio *create(
     s->cursor_shown = -1;
     s->hover_area = s->focus_area = s->maximized = -1;
     s->followed_tab = s->followed_kind = -1;
+    s->bound.behavior = -2;
     s->view.zoom = 1;
     s->view.x = s->view.y = 0.5f;
     s->graph.area = -1;
@@ -762,6 +763,7 @@ void studio_free(studio *s)
         release_window(s);
     }
     afree(s->events);
+    afree(s->bound.bindings);
     afree(s->records);
     afree(s->runtime_errors);
     afree(s->project_problems);

@@ -1,12 +1,15 @@
 #include "runtime/ui.h"
 
+#include "graph/document/serialize.h"
 #include "graph/runtime/eval.h"
 #include "graph/runtime/flow.h"
 #include "support/arena.h"
 #include "support/array.h"
 #include "support/xalloc.h"
+#include "third_party/yyjson/yyjson.h"
 
 #include <assert.h>
+#include <ctype.h>
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
@@ -14,6 +17,7 @@
 struct game_ui
 {
     game_ui_element *elements;
+    game_ui_datum *data;
     uint64_t revision;
 };
 
@@ -32,12 +36,22 @@ static void element_free(game_ui_element *e)
     afree(e->classes);
 }
 
+static void datum_free(game_ui_datum *d)
+{
+    free(d->name);
+    free(d->json);
+}
+
 void game_ui_reset(game_ui *ui)
 {
     for (int i = 0; i < acount(ui->elements); i++) {
         element_free(&ui->elements[i]);
     }
     afree(ui->elements);
+    for (int i = 0; i < acount(ui->data); i++) {
+        datum_free(&ui->data[i]);
+    }
+    afree(ui->data);
     ui->revision++;
 }
 
@@ -158,6 +172,69 @@ bool game_ui_move_focus(game_ui *ui, uint64_t entity, const char *element, int s
     return true;
 }
 
+/* A path bindings can reach under self: a word, then words or list indices,
+   each after a '.': "score", "items.2.name". */
+static bool data_path(const char *path)
+{
+    if (!path || !(isalpha((unsigned char)path[0]) || path[0] == '_')) {
+        return false;
+    }
+    for (const char *segment = path; segment;) {
+        size_t length = strcspn(segment, ".");
+        bool index = length && isdigit((unsigned char)segment[0]);
+        for (size_t i = 0; i < length; i++) {
+            char c = segment[i];
+            if (index ? !isdigit((unsigned char)c)
+                      : !isalnum((unsigned char)c) && c != '_') {
+                return false;
+            }
+        }
+        if (!length) {
+            return false;
+        }
+        segment = segment[length] ? segment + length + 1 : NULL;
+    }
+    return true;
+}
+
+bool game_ui_set_data(game_ui *ui, uint64_t entity, const char *name, const char *json)
+{
+    yyjson_doc *doc = data_path(name) && json ? yyjson_read(json, strlen(json), 0)
+                                              : NULL;
+    if (!doc) {
+        return false;
+    }
+    yyjson_doc_free(doc);
+    game_ui_datum *d = NULL;
+    for (int i = 0; !d && i < acount(ui->data); i++) {
+        d = ui->data[i].entity == entity && !strcmp(ui->data[i].name, name)
+              ? &ui->data[i]
+              : NULL;
+    }
+    if (d && !strcmp(d->json, json)) {
+        return true;
+    }
+    if (!d) {
+        apush(ui->data, ((game_ui_datum){ .entity = entity, .name = xstrdup(name) }));
+        d = &alast(ui->data);
+    }
+    free(d->json);
+    d->json = xstrdup(json);
+    d->revision = ++ui->revision;
+    return true;
+}
+
+int game_ui_data_count(const game_ui *ui)
+{
+    return acount(ui->data);
+}
+
+const game_ui_datum *game_ui_data_at(const game_ui *ui, int index)
+{
+    assert(index >= 0 && index < acount(ui->data));
+    return &ui->data[index];
+}
+
 bool game_ui_value(const game_ui *ui, uint64_t entity, const char *element, float *value)
 {
     const game_ui_element *e = element ? find(ui, entity, element) : NULL;
@@ -170,7 +247,7 @@ bool game_ui_value(const game_ui *ui, uint64_t entity, const char *element, floa
 
 void game_ui_forget(game_ui *ui, uint64_t entity)
 {
-    int kept = 0;
+    int kept = 0, before = acount(ui->elements) + acount(ui->data);
     for (int i = 0; i < acount(ui->elements); i++) {
         if (ui->elements[i].entity == entity) {
             element_free(&ui->elements[i]);
@@ -178,8 +255,17 @@ void game_ui_forget(game_ui *ui, uint64_t entity)
         }
         ui->elements[kept++] = ui->elements[i];
     }
-    if (kept != acount(ui->elements)) {
-        asetlen(ui->elements, kept);
+    asetlen(ui->elements, kept);
+    kept = 0;
+    for (int i = 0; i < acount(ui->data); i++) {
+        if (ui->data[i].entity == entity) {
+            datum_free(&ui->data[i]);
+            continue;
+        }
+        ui->data[kept++] = ui->data[i];
+    }
+    asetlen(ui->data, kept);
+    if (acount(ui->elements) + acount(ui->data) != before) {
         ui->revision++;
     }
 }
@@ -416,6 +502,53 @@ EFFECT_NODE(
     move_focus_call
 );
 
+/* Any value converts to JSON, so the node takes a wildcard; an array does
+   not fit a host call's signature, so it runs as its own flow. */
+static int set_data_flow(node *, flow_context *ctx)
+{
+    game_ui *ui = flow_context_service(ctx, "game.ui");
+    if (!ui) {
+        return flow_context_fail(ctx, FLOW_ERR_NODE, MISSING_UI);
+    }
+    pin_value values[3];
+    for (int i = 0; i < 3; i++) {
+        int result = flow_context_eval_data(ctx, i + 1, &values[i]);
+        if (result < 0) {
+            return result;
+        }
+    }
+    char *json = serialize_value_json(&values[2]);
+    bool set = game_ui_set_data(ui, values[0].u64, values[1].str, json);
+    free(json);
+    return set ? flow_context_continue(ctx, 0)
+               : flow_context_fail(ctx, FLOW_ERR_ARGUMENT, "Name must be a word, or a path such as items.2.name");
+}
+
+static pin_spec DATA_IN[] = {
+    EXEC_IN,
+    ENTITY_IN,
+    { .name = "Name", .type = PIN_NAME, .type_name = "name" },
+    { .name = "Value", .type = PIN_FLOW, .kind = PIN_DATA, .flags = PIN_FLAG_WILDCARD },
+};
+static node_desc SET_DATA = {
+    .name = "Set UI Data",
+    .category = "UI",
+    .keywords = "bind binding self list rows table inventory leaderboard "
+                "data-for record json hud widget",
+    .description = "Gives the entity's UI documents Value to bind as "
+                   "self.<Name>: text, a number, a struct's fields, or a list "
+                   "data-for repeats; a path such as items.2.name sets one "
+                   "row's field.",
+    .input_count = sizeof DATA_IN / sizeof *DATA_IN,
+    .inputs = DATA_IN,
+    .output_count = 1,
+    .outputs = THEN_OUT,
+    .flow_kind = NODE_FLOW_CUSTOM,
+    .flow = set_data_flow,
+    .display_class = NODE_DISPLAY_FLOW,
+    .access = &WRITE
+};
+
 static const node_host_call GET_CALL = {
     .service = "game.ui",
     .invoke = get_call,
@@ -439,9 +572,9 @@ static node_desc GET_VALUE = {
     .access = &READ
 };
 
-static node_desc *const NODES[] = { &SET_TEXT,   &SET_CLASS, &SET_VISIBLE,
-                                    &SET_VALUE,  &FOCUS,     &CLICK,
-                                    &MOVE_FOCUS, &GET_VALUE };
+static node_desc *const NODES[] = { &SET_TEXT,  &SET_CLASS,  &SET_VISIBLE,
+                                    &SET_VALUE, &SET_DATA,   &FOCUS,
+                                    &CLICK,     &MOVE_FOCUS, &GET_VALUE };
 const registry_pack GAME_UI_PACK = { .name = "game.ui",
                                      .nodes = NODES,
                                      .node_count = sizeof NODES / sizeof *NODES };

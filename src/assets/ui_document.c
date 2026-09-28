@@ -976,6 +976,111 @@ void ui_document_events_free(ui_document_event *events)
     afree(events);
 }
 
+/* ---------- Bindings ---------- */
+
+static bool identifier_char(char c)
+{
+    return isalnum((unsigned char)c) || c == '_';
+}
+
+/* The binding named `name`, added in order as needed. */
+static ui_document_binding *binding(ui_document_binding **bindings, const char *name, size_t length)
+{
+    for (int i = 0; i < acount(*bindings); i++) {
+        if (strlen((*bindings)[i].name) == length &&
+            !strncmp((*bindings)[i].name, name, length)) {
+            return &(*bindings)[i];
+        }
+    }
+    ui_document_binding added = { 0 };
+    snprintf(added.name, sizeof added.name, "%.*s", (int)length, name);
+    apush(*bindings, added);
+    return &alast(*bindings);
+}
+
+/* Each <prefix>.<word> from `text` on, as `name` of `length`; NULL at the
+   end. A prefix inside a longer word or path does not count. */
+static const char *next_member(const char *text, const char *at, const char *prefix, size_t *length)
+{
+    size_t size = strlen(prefix);
+    for (const char *p = at; (p = strstr(p, prefix)); p += size) {
+        bool whole = (p == text || (!identifier_char(p[-1]) && p[-1] != '.')) &&
+                     p[size] == '.';
+        size_t n = 0;
+        while (whole && identifier_char(p[size + 1 + n])) {
+            n++;
+        }
+        if (n) {
+            *length = n;
+            return p + size + 1;
+        }
+    }
+    return NULL;
+}
+
+/* A data-for="item : self.items" at the tag opening at `p` makes items a
+   list whose rows bind the item.<field>s after it. */
+static void list_binding(ui_document_binding **bindings, const char *rml, const char *p, const char *end)
+{
+    char value[128];
+    if (!tag_attribute(p, end, "data-for", value, sizeof value)) {
+        return;
+    }
+    char *colon = strchr(value, ':');
+    size_t iterator = strspn(value, " ");
+    size_t iterator_length = strcspn(value + iterator, " ,:");
+    const char *expression = colon ? colon + 1 + strspn(colon + 1, " ") : "";
+    if (strncmp(expression, "self.", 5) || !iterator_length) {
+        return;
+    }
+    size_t length = 0;
+    while (identifier_char(expression[5 + length])) {
+        length++;
+    }
+    if (!length) {
+        return;
+    }
+    ui_document_binding *list = binding(bindings, expression + 5, length);
+    list->list = true;
+    char name[64];
+    snprintf(name, sizeof name, "%.*s", (int)iterator_length, value + iterator);
+    size_t field;
+    for (const char *f = next_member(rml, end, name, &field); f;
+         f = next_member(rml, f, name, &field)) {
+        char word[64];
+        snprintf(word, sizeof word, "%.*s", (int)field, f);
+        bool known = false;
+        for (const char *w = list->fields; *w && !known;
+             w += strcspn(w, ",") + (w[strcspn(w, ",")] ? 2 : 0)) {
+            known = strcspn(w, ",") == field && !strncmp(w, word, field);
+        }
+        size_t used = strlen(list->fields);
+        if (!known && used + field + 2 < sizeof list->fields) {
+            snprintf(list->fields + used, sizeof list->fields - used, "%s%s", used ? ", " : "", word);
+        }
+    }
+}
+
+void ui_document_bindings(const char *rml, ui_document_binding **bindings)
+{
+    for (const char *p = strchr(rml, '<'); p; p = strchr(p, '<')) {
+        const char *end = strncmp(p, "<!--", 4) ? tag_end(p) : strstr(p, "-->");
+        if (!end) {
+            break;
+        }
+        if (isalpha((unsigned char)p[1])) {
+            list_binding(bindings, rml, p, end);
+        }
+        p = end;
+    }
+    /* Lists come first, then the values in the order they first appear. */
+    size_t length;
+    for (const char *at = next_member(rml, rml, "self", &length); at;
+         at = next_member(rml, at, "self", &length)) {
+        binding(bindings, at, length);
+    }
+}
+
 /* ---------- Renames ---------- */
 
 /* Where markup names a widget or an event. */

@@ -387,13 +387,14 @@ static void preview_binds_studio_data()
     studio_preview_ui(f.studio, "Bank");
     frames(&f, 3);
     yyjson_mut_val *variables = canvas_variables(f.studio);
-    bool game = yyjson_mut_obj_size(variables) == 2 &&
+    bool game = yyjson_mut_obj_size(variables) == 3 &&
                 yyjson_mut_obj_get(variables, "save") &&
-                yyjson_mut_obj_get(variables, "system");
+                yyjson_mut_obj_get(variables, "system") &&
+                yyjson_mut_obj_get(variables, "entities");
     if (!(listed && labeled && logged && game)) {
         printf("  %d %d %d %d: %d tabs, '%s'\n", listed, labeled, logged, game, tabs, label);
     }
-    test_check(listed && labeled && logged && game, "a Studio-project Canvas preview binds Studio's data and only logs its commands; a game's binds save and system");
+    test_check(listed && labeled && logged && game, "a Studio-project Canvas preview binds Studio's data and only logs its commands; a game's binds save, system and entities' self data");
     fixture_free(&f);
 }
 

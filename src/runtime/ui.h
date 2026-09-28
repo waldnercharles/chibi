@@ -33,6 +33,16 @@ typedef struct game_ui_element
     uint64_t revision; /* the ui revision of its last change */
 } game_ui_element;
 
+/* A value behaviors gave an entity's documents, which bind it as
+ * self.<name>: a number, text, flag, list or record, as JSON text. */
+typedef struct game_ui_datum
+{
+    uint64_t entity;
+    char *name;
+    char *json;
+    uint64_t revision; /* the ui revision of its last change */
+} game_ui_datum;
+
 game_ui *game_ui_new();
 void game_ui_free(game_ui *ui);
 void game_ui_reset(game_ui *ui);
@@ -51,13 +61,19 @@ bool game_ui_click(game_ui *ui, uint64_t entity, const char *element);
 bool game_ui_move_focus(game_ui *ui, uint64_t entity, const char *element, int step);
 /* The value last set under this selector, or false when none was. */
 bool game_ui_value(const game_ui *ui, uint64_t entity, const char *element, float *value);
-/* Drops an entity's elements, as when its GameUi goes away. */
+/* Sets self.<name> for the entity's documents to `json`; false, changing
+ * nothing, for text that is not JSON or a name that is not a path: a word,
+ * then words or list indices after dots ("items.2.name"). */
+bool game_ui_set_data(game_ui *ui, uint64_t entity, const char *name, const char *json);
+/* Drops an entity's elements and data, as when its GameUi goes away. */
 void game_ui_forget(game_ui *ui, uint64_t entity);
 
 /* For presenters: bumped by every change. */
 uint64_t game_ui_revision(const game_ui *ui);
 int game_ui_element_count(const game_ui *ui);
 game_ui_element *game_ui_element_at(game_ui *ui, int index);
+int game_ui_data_count(const game_ui *ui);
+const game_ui_datum *game_ui_data_at(const game_ui *ui, int index);
 
 extern const registry_pack GAME_UI_PACK;
 

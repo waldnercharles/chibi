@@ -110,6 +110,11 @@ const editor_choices *ed_pin_choices(editor *e, node *n, int output, int index)
         spec->container != PIN_CONTAINER_SINGLE) {
         return NULL;
     }
+    /* Set UI Data's Name offers what its documents bind under self. */
+    if (e->ui_data_choices.count && index == 2 &&
+        n->desc == registry_node_by_name("Set UI Data")) {
+        return &e->ui_data_choices;
+    }
     const editor_choices *choices = e->choices_resolver
                                       ? e->choices_resolver(n, output, index, e->choices_user)
                                       : NULL;

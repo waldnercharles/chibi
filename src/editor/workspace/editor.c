@@ -1,3 +1,4 @@
+#include "assets/ui_events.h"
 #include "editor/graph/eval_view.h"
 #include "editor/workspace/editor_internal.h"
 #include "graph/document/serialize.h"
@@ -116,6 +117,15 @@ const graph *editor_active_graph(const editor *e)
     return e ? e->active_graph : NULL;
 }
 
+static void free_ui_data_choices(editor *e)
+{
+    for (int i = 0; i < e->ui_data_choices.count; i++) {
+        free((void *)e->ui_data_choices.items[i].label);
+    }
+    free((void *)e->ui_data_choices.items);
+    e->ui_data_choices = (editor_choices){ 0 };
+}
+
 void editor_free(editor *e)
 {
     if (!e) {
@@ -123,6 +133,7 @@ void editor_free(editor *e)
     }
     afree(e->asset_catalog);
     afree(e->prototype_catalog);
+    free_ui_data_choices(e);
     ed_free_string_stack(&e->undo);
     ed_free_string_stack(&e->redo);
     free(e->document_key);
@@ -188,6 +199,44 @@ void editor_set_ui_event_catalog(editor *e, const struct ui_event *events, int c
 {
     e->ui_event_catalog = count > 0 ? events : NULL;
     e->ui_event_catalog_count = count > 0 ? count : 0;
+}
+
+/* Each name once, labeled with its documents: "items (Hud, Shop)". */
+void editor_set_ui_data_catalog(editor *e, const ui_data_binding *bindings, int count)
+{
+    e->ui_data_catalog = count > 0 ? bindings : NULL;
+    e->ui_data_catalog_count = count > 0 ? count : 0;
+    free_ui_data_choices(e);
+    editor_choice *choices = count > 0 ? xmalloc((size_t)count * sizeof *choices)
+                                       : NULL;
+    int made = 0;
+    for (int i = 0; i < count; i++) {
+        const char *name = bindings[i].binding.name;
+        bool seen = false;
+        for (int j = 0; j < i && !seen; j++) {
+            seen = !strcmp(bindings[j].binding.name, name);
+        }
+        if (seen) {
+            continue;
+        }
+        char label[256];
+        int used = snprintf(label, sizeof label, "%s (%s", name, bindings[i].document);
+        for (int j = i + 1; j < count && used < (int)sizeof label; j++) {
+            if (!strcmp(bindings[j].binding.name, name)) {
+                used += snprintf(
+                    label + used,
+                    sizeof label - (size_t)used,
+                    ", %s",
+                    bindings[j].document
+                );
+            }
+        }
+        if (used < (int)sizeof label) {
+            snprintf(label + used, sizeof label - (size_t)used, ")");
+        }
+        choices[made++] = (editor_choice){ .label = xstrdup(label), .name = name };
+    }
+    e->ui_data_choices = (editor_choices){ choices, made };
 }
 
 void editor_set_asset_opener(editor *e, int (*open)(void *, const char *, uint64_t), void *user)

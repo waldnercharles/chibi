@@ -159,6 +159,92 @@ static void overlay_on_page(const char *root)
     test_remove_ui(folder, "Bound");
 }
 
+/* The text of the elements `selector` matches in the host's documents,
+   joined by '|', leaving out data-for's templates. */
+static void texts(render_ui *ui, const char *selector, char *out, size_t size)
+{
+    out[0] = '\0';
+    rml_context *context = render_ui_context(ui);
+    for (int d = 0; d < rml_context_document_count(context); d++) {
+        rml_element *found[8];
+        int count = rml_element_query_selector_all(rml_context_document(context, d), selector, found, 8);
+        for (int i = 0; i < count; i++) {
+            if (rml_element_has_attribute(found[i], "data-for")) {
+                continue;
+            }
+            char text[64];
+            rml_element_inner_rml(found[i], text, sizeof text);
+            size_t used = strlen(out);
+            snprintf(out + used, size - used, "%s%s", used ? "|" : "", text);
+        }
+    }
+}
+
+/* Set UI Data's values reach the entity's document as self: a number, and
+   a list of records data-for repeats, both changed in place; another
+   entity's document keeps its own; and a closed document drops its data. */
+static void self_data(const char *root)
+{
+    char folder[96];
+    snprintf(folder, sizeof folder, "%s/ui", root);
+    test_write_ui(
+        folder,
+        "Board",
+        "<div class=\"score\">{{ self.score }}</div>"
+        "<div class=\"item\" data-for=\"item : self.items\">{{ item.name }} {{ "
+        "item.count }}</div>",
+        NULL
+    );
+    ecs_world *world = ecs_world_new();
+    for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
+        assert(ecs_world_register_component(world, GAME_REGISTRY_COMPONENTS[i], NULL) == ECS_OK);
+    }
+    ecs_entity boards[2];
+    for (int i = 0; i < 2; i++) {
+        boards[i] = ecs_world_create_entity(world);
+        assert(GAME_GameUi_add(world, boards[i], 0) == ECS_OK);
+    }
+    assert(ecs_world_apply_commands(world) == ECS_OK);
+    for (int i = 0; i < 2; i++) {
+        *GAME_GameUi_get(world, boards[i]) = (GameUi){ .document = "Board" };
+    }
+    game_ui *model = game_ui_new();
+    ui_world w = { .ecs = world, .model = model };
+    render_ui *ui = render_ui_new(root, NULL);
+    render_ui_update(ui, &w, 1280, 720, 1.0 / 60);
+    uint64_t first = ecs_entity_to_u64(boards[0]),
+             second = ecs_entity_to_u64(boards[1]);
+    bool set = game_ui_set_data(model, first, "score", "42") &&
+               game_ui_set_data(model, first, "items", "[{\"name\":\"Gem\",\"count\":3},{\"name\":\"Key\",\"count\":1}]") &&
+               game_ui_set_data(model, second, "score", "\"none\"") &&
+               !game_ui_set_data(model, first, "bad name", "1") &&
+               !game_ui_set_data(model, first, "score", "{");
+    render_ui_update(ui, &w, 1280, 720, 1.0 / 60);
+    render_ui_update(ui, &w, 1280, 720, 1.0 / 60);
+    char scores[64], items[128];
+    texts(ui, ".score", scores, sizeof scores);
+    texts(ui, ".item", items, sizeof items);
+    bool shown = !strcmp(scores, "42|none") && !strcmp(items, "Gem 3|Key 1");
+    game_ui_set_data(model, first, "items", "[{\"name\":\"Gem\",\"count\":3}]");
+    game_ui_set_data(model, first, "items.0.count", "4");
+    render_ui_update(ui, &w, 1280, 720, 1.0 / 60);
+    render_ui_update(ui, &w, 1280, 720, 1.0 / 60);
+    texts(ui, ".item", items, sizeof items);
+    bool changed = !strcmp(items, "Gem 4");
+    ecs_world_destroy_entity(world, boards[0]);
+    assert(ecs_world_apply_commands(world) == ECS_OK);
+    render_ui_update(ui, &w, 1280, 720, 1.0 / 60);
+    bool forgotten = game_ui_data_count(model) == 1;
+    if (!(set && shown && changed && forgotten)) {
+        printf("  %d %d %d %d '%s' '%s'\n", set, shown, changed, forgotten, scores, items);
+    }
+    test_check(set && shown && changed && forgotten, "Set UI Data's values reach their entity's document as self, lists repeat and change in place, a path sets one row's field, and a closed document forgets them");
+    render_ui_free(ui);
+    game_ui_free(model);
+    ecs_world_free(world);
+    test_remove_ui(folder, "Board");
+}
+
 void test_game_ui_presenter()
 {
     shipped_documents();
@@ -416,6 +502,7 @@ void test_game_ui_presenter()
     w.revealed = 0;
     test_remove_ui(folder, "Panel");
     overlay_on_page(root);
+    self_data(root);
 
     render_ui_free(ui);
     game_live_world_free(live);

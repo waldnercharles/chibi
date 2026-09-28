@@ -47,6 +47,7 @@ typedef struct ui_data
     rml_data_model *model;
     game_save *save; /* the one `save` shows */
     uint64_t save_seen;
+    uint64_t data_seen; /* the game_ui revision `entities` shows */
 } ui_data;
 
 /* Creates the model in `context` over `doc`, which it takes, adding `save`
@@ -60,6 +61,16 @@ void ui_data_sync(ui_data *data, game_save *save);
 /* Sets `value` to a copy of `text` unless it holds it already; the JSON keeps
  * what it copies until it is freed, so views update values in place. */
 void ui_data_set_text(yyjson_mut_doc *doc, yyjson_mut_val *value, const char *text);
+/* Binds `self` in the document mounted at `root` to `entity`'s data, which
+ * behaviors set with Set UI Data and the model holds under `entities`; call
+ * before the mount installs its markup. Binding the same entity again
+ * changes nothing. */
+void ui_data_bind_self(ui_data *data, rml_element *root, uint64_t entity);
+/* Shows what behaviors set with Set UI Data since the last call, changing
+ * values in place so views keep their bindings. */
+void ui_data_show_entities(ui_data *data, const game_ui *model);
+/* Drops an entity's data, as when its document closes. */
+void ui_data_forget_entity(ui_data *data, uint64_t entity);
 void ui_data_free(ui_data *data);
 
 /* ---------- Mounts ---------- */

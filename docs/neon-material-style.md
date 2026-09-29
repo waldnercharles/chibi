@@ -209,15 +209,18 @@ not saved state.
 
 `GameHeatHaze{radius, strength}` shimmers the frame within radius world
 units of an entity, strongest at its center. Up to sixteen sources in view
-contribute. Burning and emissive fluid writes a heat weight into the material
-cover texture's blue channel, which `GamePost2D.heat_haze` scales.
+contribute. While `GamePost2D.heat_haze` is set, burning and emissive fluid
+writes a heat weight into the material cover texture's alpha channel, which
+that field scales; the fluid raster compiles this, and caustics, as shader
+variants, so neither costs anything while off.
 
 Shockwaves, heat haze and solid refraction share one distortion pass that
 resamples the linear frame before bloom, so bent highlights still bloom. It
-runs only while one of them is on screen: 0.09 ms at 1080p. Grading, vignette,
-grain, flash and chromatic aberration are part of the tone-map pass; the
-pass went from 0.29 to 0.35 ms with aberration active. The distortion is
-screen space: it does not reveal what is offscreen, and edges clamp.
+runs only while one of them is on screen: 0.08 ms at 1080p. Grading, vignette,
+grain, flash and chromatic aberration are part of the tone-map pass, which
+skips grading while it is neutral: 0.26 ms before, 0.27 ms neutral and
+0.31 ms with RenderLab's look. The distortion is screen space: it does not
+reveal what is offscreen, and edges clamp.
 
 ### Hit flash
 
@@ -228,8 +231,9 @@ by decay per second on the fixed clock. **Flash Entity**(Entity, Color,
 Amount) sets the color and raises the amount; Entity defaults to Self and must
 carry a `GameFlash`, which sets its decay. The flash applies after a graph
 material's Surface Output, so plain `GameMaterial`, graph materials and
-material-mask pieces all flash, borders included. Material entities grew by
-one vec4 (352 GPU bytes); the raster cost is within measurement noise.
+material-mask pieces all flash, borders included. Plain materials take the
+flash into their coefficients on the CPU; graph materials carry it after
+their parameters, and the raster reads it only where they cover a pixel.
 
 ### Backdrops
 
@@ -347,3 +351,19 @@ brazier carries one. The disc is a material-raster circle marked as a light:
 its emission joins the transport's source density but not the emission the
 composite displays. Fog still shows the glow in open air around it. A light
 costs as much as any small emissive circle.
+
+### Cost summary
+
+Sandbox at 1920x1080, Release, HRC resolution fixed at 1 and simulation
+frozen, medians of five 240-frame runs on an Apple M4 Pro:
+
+| Build | Scene GPU | Notes |
+| --- | --- | --- |
+| Before these capabilities | 13.92 ms | |
+| With them, none used | 14.07 ms | material raster +0.13 (refraction and light bookkeeping per covered pixel), fluid raster and tone map +0.01 each |
+| Every capability on | 15.20 ms | adds two backdrops (0.44 ms), caustics, heat haze, reflections, distortion, a glass slab, a pool and a brazier |
+
+The all-on scene also contains more matter (a pool, a fire that spreads into
+the Sandbox's fuel), so its difference overstates the effects' own cost; the
+per-pass figures in each section above isolate them. 200 trails add 0.19 ms
+of raster on top.

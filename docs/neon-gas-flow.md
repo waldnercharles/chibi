@@ -31,6 +31,24 @@ but keep their authored ballistic velocity, drag and visual lifetime curves.
 Gas render kernels have at most a 2.25:1 aspect ratio instead of the earlier 9:1
 limit, so shape change comes more from motion of the cloud than stretched splats.
 
+## Contact particles
+
+`MaterialFluidWorld` also controls transient contact particles. Each fluid kind
+has a minimum normal closing speed, response strength, maximum particle count
+per contact patch, and lifetime. Sandbox uses:
+
+| Response | Speed | Strength | Count | Lifetime |
+| --- | --- | --- | --- | --- |
+| `gas_wake_*` | 12 | 0.7 | 3 | 0.28 s |
+| `liquid_splash_*` | 45 | 1 | 5 | 0.45 s |
+
+Zero count disables a response. Contacts aggregate by body, body-local patch and
+fluid kind, with at most 128 events and 256 secondary particles per tick.
+Relative surface speed and impulse determine response strength; participating
+fluid supplies color and emission. Fast translating colliders use swept contact
+checks. These short-lived render particles do not increase the simulated fluid
+population. They supplement the existing gas field and liquid solver.
+
 ## Deliberate approximations
 
 - The field covers active gas neighborhoods, with open outer boundaries. It does
@@ -40,8 +58,8 @@ limit, so shape change comes more from motion of the cloud than stretched splats
   guaranteeing an incompressible solution or exact conservation. Momentum blending,
   interpolation and damping are game tuning choices.
 - Collider masks expand by half a cell to cover thin geometry. Actual particle
-  collisions still use the original geometry. The grid uses body translation;
-  angular surface velocity is not included.
+  collisions still use the original geometry. Collider surface velocity includes
+  translation and angular motion.
 - Grid pressure does not apply an integrated force back to Box2D. Existing
   particle collision impulses provide the current return force. This is not a
   fully coupled pressure/body solve.

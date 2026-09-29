@@ -89,7 +89,7 @@ if(NOT cute_framework_POPULATED)
 endif()
 include(cmake/apply_patch.cmake)
 set(CUTE_PATCHES "")
-foreach(name cute-installed-sdl cute-interior-border cute-custom-coverage cute-custom-shape-cache cute-imgui-render-target cute-draw-samplers cute-gles-ring-reuse cute-gles-buffer-streaming cute-zero-size-window cute-png-zlib-window cute-gles-scissor-cache)
+foreach(name cute-installed-sdl cute-interior-border cute-custom-coverage cute-custom-shape-cache cute-imgui-render-target cute-draw-samplers cute-gles-ring-reuse cute-gles-buffer-streaming cute-zero-size-window cute-png-zlib-window cute-gles-scissor-cache cute-gpu-submit cute-eight-targets cute-gles-float-readback)
     list(APPEND CUTE_PATCHES "${CMAKE_CURRENT_SOURCE_DIR}/cmake/patches/${name}.patch")
 endforeach()
 chibi_apply_patches("${cute_framework_SOURCE_DIR}" ${CUTE_PATCHES})
@@ -452,6 +452,13 @@ add_library(chibi_render STATIC src/render/fog.c src/render/material_raster.c sr
     src/render/ui.c)
 target_include_directories(chibi_render PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(chibi_render PUBLIC runtime_support core cute chibi_ui)
+if(APPLE)
+    enable_language(OBJC)
+    target_sources(chibi_render PRIVATE src/render/gpu_clock.m)
+    target_link_libraries(chibi_render PUBLIC "-framework Metal" "-framework Foundation")
+else()
+    target_sources(chibi_render PRIVATE src/render/gpu_clock.c)
+endif()
 target_compile_options(chibi_render PRIVATE -Wno-macro-redefined)
 chibi_enable_tracy(chibi_render)
 set_source_files_properties(src/render/scene_renderer.c PROPERTIES COMPILE_OPTIONS -Wno-macro-redefined)
@@ -655,6 +662,7 @@ chibi_registry("${TEST_REGISTRY}" WHOLE_ALIAS_PACK WHOLE_VALUE_PACK WHOLE_MANAGE
 file(GLOB_RECURSE TEST_CONCEPT_SOURCES CONFIGURE_DEPENDS
     test/graph/*.c test/ecs/*.c test/runtime/*.c test/editor/*.c test/support/*.c)
 add_executable(test_suite
+    test/automation_preview.c
     ${TEST_CONCEPT_SOURCES}
     test/automation_asset_write.c test/automation_refactor.c test/automation_graph_edit.c test/automation_search.c test/automation_navigation.c test/automation_graph_optimize.c test/automation_prototype_edit.c test/automation_scene_edit.c test/test_suite.c test/host_wait.c test/entities.c test/projectile.c test/system_host_wait.c test/combat.c test/targeting.c test/pursuit.c test/vector.c test/arena.c test/number_serialization.c test/auto_weapon.c test/graph_navigation.c test/extract.c test/component_conversion.c test/field_outputs.c test/function_wait.c test/function_fields.c test/enemy_attack.c test/particles.c test/labels.c test/appearance.c
     test/arena3d.c
@@ -724,6 +732,8 @@ add_executable(test_suite
     test/material.c
     test/wave.c
     test/radiance.c
+    test/material_sampling.c
+    test/radiance_history.c
     test/radiance_intervals.c
     test/interior_border.c
     test/png_encoding.c
@@ -876,7 +886,7 @@ endif()
 
 # The same material/field/schedule contracts run natively and in Web bytecode.
 add_executable(material_engine_smoke test/material_engine_smoke.c
-    test/runtime/materials.c test/runtime/reference_cave.c test/runtime/fields.c
+    test/runtime/materials.c test/runtime/material_reactions.c test/runtime/reference_cave.c test/runtime/fields.c
     test/runtime/system_schedule.c ${APP_REGISTRY})
 target_include_directories(material_engine_smoke PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(material_engine_smoke PRIVATE engine runtime_support)

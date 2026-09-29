@@ -68,11 +68,6 @@ static const editor_choice FLUID_KINDS[] = {
     { FLUID_LIQUID, "Liquid" },
 };
 static const editor_choices MATERIAL_FLUID_KINDS = { FLUID_KINDS, 2 };
-static const editor_choice HRC_LUMINANCE_MODES[] = {
-    { 0, "Independent" },
-    { 1, "Reuse transport" },
-};
-static const editor_choices HRC_LUMINANCE_MODE_CHOICES = { HRC_LUMINANCE_MODES, 2 };
 static const editor_choice HRC_UPSCALE_MODES[] = {
     { 0, "Plain bilinear" },
     { 1, "Edge aware" },
@@ -81,10 +76,17 @@ static const editor_choice HRC_UPSCALE_MODES[] = {
 };
 static const editor_choices HRC_UPSCALE_MODE_CHOICES = { HRC_UPSCALE_MODES, 4 };
 static const editor_choice HRC_DEBUG_VIEWS[] = {
-    { 0, "Normal" }, { 1, "Scene" },   { 2, "Emission" }, { 3, "Absorption" },
-    { 4, "Albedo" }, { 5, "Fluence" }, { 6, "Normals" },
+    { 0, "Normal" },          { 1, "Scene" },         { 2, "Emission" },
+    { 3, "Absorption" },      { 4, "Albedo" },        { 5, "Fluence" },
+    { 6, "Normals" },         { 7, "Surface light" }, { 8, "Light direction" },
+    { 9, "Shading normals" },
 };
-static const editor_choices HRC_DEBUG_VIEW_CHOICES = { HRC_DEBUG_VIEWS, 7 };
+static const editor_choices HRC_DEBUG_VIEW_CHOICES = { HRC_DEBUG_VIEWS, 10 };
+static const editor_choice HRC_TONE_MAPPINGS[] = {
+    { 0, "Clamp" },
+    { 1, "AgX" },
+};
+static const editor_choices HRC_TONE_MAPPING_CHOICES = { HRC_TONE_MAPPINGS, 2 };
 
 bool appearance_color_field(const type_desc *type, const type_field *field)
 {
@@ -161,14 +163,14 @@ const editor_choices *property_choices(const type_desc *type, const type_field *
         return &ENCOUNTER_MEMBERS;
     }
     if (type == GAME_COMPONENT_GameHRC2D.type) {
-        if (field->offset == offsetof(GameHRC2D, luminance_mode)) {
-            return &HRC_LUMINANCE_MODE_CHOICES;
-        }
         if (field->offset == offsetof(GameHRC2D, upscale_mode)) {
             return &HRC_UPSCALE_MODE_CHOICES;
         }
         if (field->offset == offsetof(GameHRC2D, debug_view)) {
             return &HRC_DEBUG_VIEW_CHOICES;
+        }
+        if (field->offset == offsetof(GameHRC2D, tone_mapping)) {
+            return &HRC_TONE_MAPPING_CHOICES;
         }
     }
     return field->type == PIN_ENUM ? editor_choices_for_enum(field->type_name) : NULL;

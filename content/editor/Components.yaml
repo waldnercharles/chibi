@@ -17,7 +17,12 @@ components:
         range: [0, 1]
       friction:
         range: [0, 1]
-  GAME.GameCombustion: {tab: Gameplay}
+  GAME.GameCombustion:
+    tab: Gameplay
+    fields:
+      blast_radius:
+        range: [0, 1024]
+        unit: u
   GAME.GameDash:
     fields:
       speed: {unit: u/s}
@@ -35,7 +40,26 @@ components:
         range: [0, 1]
   GAME.GameFragmentGlow: {tab: Material}
   GAME.GameFuel: {tab: Gameplay}
-  GAME.GameHRC2D: {tab: Material, icon: light}
+  GAME.GameHRC2D:
+    tab: Material
+    icon: light
+    fields:
+      resolution:
+        range: [0.1, 1]
+      target_fps: {unit: fps}
+      min_resolution:
+        range: [0.1, 1]
+      lighting_margin: {unit: u}
+      bounce_hysteresis:
+        range: [0, 1]
+      radiance_hysteresis:
+        range: [0, 1]
+      trace_levels:
+        range: [1, 5]
+      surface_radius: {unit: u}
+      exposure: {unit: EV}
+      bloom:
+        range: [0, 1]
   GAME.GameHealth: {tab: Gameplay, icon: health}
   GAME.GameInput: {tab: Gameplay, icon: gamepad}
   GAME.GameMaterial:

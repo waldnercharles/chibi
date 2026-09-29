@@ -6,6 +6,7 @@
 #include "support/text_file.h"
 float *reference_cave_generate(unsigned, int, int, float, float, float);
 #include "runtime/material_debris.h"
+#include "runtime/material_destruction.h"
 #include "runtime/material_fluid.h"
 #include "runtime/material_mask.h"
 #include "runtime/task_pool.h"
@@ -1120,6 +1121,166 @@ static void resistance_and_chips()
     ecs_world_free(world);
 }
 
+enum
+{
+    CAPACITY_TEST_SOURCE = 901
+};
+
+typedef struct
+{
+    material_mask mask;
+    int created, created_cells, destroyed, damage_dust, damage_removed;
+    bool retain_chips, available;
+} material_capacity_probe;
+
+static bool capacity_read_source(void *user, uint64_t target, material_source *source)
+{
+    material_capacity_probe *probe = user;
+    if (target != CAPACITY_TEST_SOURCE || !probe->available) {
+        return false;
+    }
+    *source = (material_source){ .mask = &probe->mask,
+                                 .hardness = 1,
+                                 .minimum = 1,
+                                 .initial_cells = probe->mask.count,
+                                 .retain_chips = probe->retain_chips };
+    return true;
+}
+
+static void capacity_create_fragment(void *user, uint64_t source, material_fragment fragment)
+{
+    material_capacity_probe *probe = user;
+    assert(source == CAPACITY_TEST_SOURCE);
+    probe->created++;
+    probe->created_cells += fragment.mask.count;
+    material_mask_free(&fragment.mask);
+}
+
+static void capacity_destroy_source(void *user, uint64_t target)
+{
+    material_capacity_probe *probe = user;
+    assert(target == CAPACITY_TEST_SOURCE);
+    probe->destroyed++;
+}
+
+static void capacity_invalidate(void *user, uint64_t target)
+{
+    (void)user;
+    assert(target == CAPACITY_TEST_SOURCE);
+}
+
+static void capacity_result(void *user, const material_event *event)
+{
+    material_capacity_probe *probe = user;
+    if (event->kind != MATERIAL_EVENT_DAMAGE) {
+        return;
+    }
+    probe->damage_removed = event->removed;
+    probe->damage_dust = event->dust;
+}
+
+static material_mask capacity_split_shape(void)
+{
+    unsigned char cells[25] = { 0 };
+    for (int y = 0; y < 5; y++) {
+        cells[y * 5] = cells[y * 5 + 1] = 1;
+        cells[y * 5 + 3] = cells[y * 5 + 4] = 1;
+    }
+    cells[2 * 5 + 2] = 1;
+    return material_mask_from_cells(5, 5, 1, cells);
+}
+
+static material_host capacity_host(material_capacity_probe *probe)
+{
+    return (material_host){ .user = probe,
+                            .read_source = capacity_read_source,
+                            .create_fragment = capacity_create_fragment,
+                            .destroy_source = capacity_destroy_source,
+                            .invalidate_geometry = capacity_invalidate,
+                            .result = capacity_result };
+}
+
+static void material_capacity_fallback()
+{
+    material_destruction *destruction = material_destruction_new();
+    material_capacity_probe probe = { .mask = capacity_split_shape(), .available = true };
+    material_host host = capacity_host(&probe);
+    material_destruction_queue_damage(
+        destruction,
+        (material_damage){ .target = CAPACITY_TEST_SOURCE,
+                           .point = { 0, 0 },
+                           .radius = .1f,
+                           .energy = 1 }
+    );
+    material_destruction_step(destruction, &host, 0);
+    assert(probe.mask.count == 20 && probe.created == 0);
+    assert(probe.damage_removed == 1 && probe.damage_dust == 1);
+    material_destruction_step(destruction, &host, 0);
+    assert(probe.mask.count == 20 && probe.created == 0);
+    material_destruction_step(destruction, &host, 1);
+    assert(probe.mask.count == 10 && probe.created == 1 && probe.created_cells == 10);
+    assert(probe.mask.count + probe.created_cells == 20);
+    material_mask_free(&probe.mask);
+    material_destruction_free(destruction);
+
+    destruction = material_destruction_new();
+    probe = (material_capacity_probe){ .mask = capacity_split_shape(),
+                                       .available = true };
+    host = capacity_host(&probe);
+    material_destruction_queue_damage(
+        destruction,
+        (material_damage){ .target = CAPACITY_TEST_SOURCE,
+                           .point = { 0, 0 },
+                           .radius = .1f,
+                           .energy = 1 }
+    );
+    material_destruction_step(destruction, &host, 0);
+    probe.available = false;
+    material_destruction_step(destruction, &host, 0);
+    probe.available = true;
+    material_destruction_step(destruction, &host, 1);
+    assert(probe.mask.count == 20 && probe.created == 0);
+    material_mask_free(&probe.mask);
+    material_destruction_free(destruction);
+
+    destruction = material_destruction_new();
+    probe = (material_capacity_probe){ .mask = capacity_split_shape(),
+                                       .retain_chips = true,
+                                       .available = true };
+    host = capacity_host(&probe);
+    material_destruction_queue_damage(
+        destruction,
+        (material_damage){ .target = CAPACITY_TEST_SOURCE,
+                           .point = { 0, 0 },
+                           .radius = .1f,
+                           .energy = 1 }
+    );
+    material_destruction_step(destruction, &host, 1);
+    assert(probe.created == 1 && probe.created_cells == 10);
+    assert(probe.mask.count == 10 && !material_mask_contains(&probe.mask, 0, 0));
+    assert(probe.damage_dust == 1);
+    assert(probe.mask.count + probe.created_cells + probe.damage_dust == 21);
+    material_destruction_step(destruction, &host, 1);
+    assert(probe.mask.count == 10 && probe.created == 1);
+    material_mask_free(&probe.mask);
+    material_destruction_free(destruction);
+
+    destruction = material_destruction_new();
+    probe = (material_capacity_probe){ .mask = material_mask_new(5, 5, 1, false),
+                                       .available = true };
+    host = capacity_host(&probe);
+    material_destruction_queue_release(destruction, CAPACITY_TEST_SOURCE);
+    material_destruction_step(destruction, &host, 0);
+    assert(!probe.destroyed && !probe.created && probe.mask.count == 25);
+    material_destruction_step(destruction, &host, 1);
+    assert(probe.destroyed == 1 && probe.created == 1 && probe.created_cells == 25);
+    assert(!probe.mask.count);
+    material_destruction_step(destruction, &host, 1);
+    assert(probe.destroyed == 1 && probe.created == 1);
+    material_mask_free(&probe.mask);
+    material_destruction_free(destruction);
+}
+
 static void small_hull_release()
 {
     ecs_world *world = ecs_world_new();
@@ -1629,6 +1790,7 @@ void test_materials()
     swept_ignition();
     reactions();
     resistance_and_chips();
+    material_capacity_fallback();
     small_hull_release();
     destruction();
     contours();

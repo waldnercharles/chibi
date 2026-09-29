@@ -847,7 +847,7 @@ and coral diamond have now been replaced with these source geometries and
 8-bit color equivalents. Border coverage and lighting still need the source
 shader treatment.
 
-The actual raster SDF is in `shaders/hrc/entity_raster.shd`, with shared functions
+The actual raster SDF is in `shaders/hrc/entity_raster.frag`, with shared functions
 in `shaders/sdf.shd`; `shaders/entity.shd` defines the GPU layout. Match interior
 border coverage, then radial wobble and traveling pluck deformation, hit and
 beat envelopes, and emission. Cute custom shapes can supply a bounded SDF, but

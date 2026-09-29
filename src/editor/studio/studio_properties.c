@@ -417,6 +417,14 @@ static bool field_label(
     return studio_matches(s->property_search, label);
 }
 
+/* Hovering a property row shows its field's source comment. */
+static void field_tip(kit *k, const type_field *field, const char *label)
+{
+    if (field->description) {
+        kit_tip(k, label, NULL, field->description);
+    }
+}
+
 static void field_row(
     studio *s,
     scene_actor *actor,
@@ -457,6 +465,7 @@ static void field_row(
                      : value_control(s, desc, field, &value, flags, &active, text, sizeof text);
     context_target(s, actor, desc->id, index);
     kit_prop_end(k);
+    field_tip(k, field, label);
     if (!locked) {
         write_field(s, actor, desc->id, index, before, value, changed, active);
     }
@@ -847,6 +856,7 @@ static void prototype_row(
                      ? asset_control(s, pick, named, &value, flags)
                      : value_control(s, component->desc, field, &value, flags, &active, text, sizeof text);
     kit_prop_end(k);
+    field_tip(k, field, label);
     if (locked) {
         return;
     }

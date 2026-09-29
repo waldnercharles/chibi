@@ -181,7 +181,7 @@ body.comfortable .output-list .vlist-content > .output-line, body.comfortable .o
 /* Performance. */
 .perf-title { display: block; line-height: 16dp; color: var(--foreground); font-weight: 500; margin-left: 2dp; }
 .perf-readout { display: block; line-height: 16dp; color: var(--muted-foreground); font-family: InterNumeric; margin-right: 6dp; }
-.perf { position: absolute; left: 0dp; top: 0dp; right: 0dp; bottom: 0dp; display: flex; flex-direction: column; padding: 6dp 10dp 8dp; gap: 4dp; }
+.perf { position: absolute; left: 0dp; top: 0dp; right: 0dp; bottom: 0dp; display: flex; flex-direction: column; padding: 6dp 10dp 8dp; gap: 4dp; overflow-y: auto; }
 .perf-heading { display: block; line-height: 16dp; color: var(--faint-foreground); font-size: 11dp; }
 .perf-chart { flex: 1 1 0dp; min-height: 60dp; }
 .perf-legend { display: flex; gap: 14dp; flex: 0 0 auto; height: 18dp; align-items: center; }
@@ -189,6 +189,7 @@ body.comfortable .output-list .vlist-content > .output-line, body.comfortable .o
 .perf-key span { display: block; line-height: 16dp; color: var(--muted-foreground); font-size: 11dp; }
 .perf-dot { width: 8dp; height: 8dp; border-radius: 4dp; }
 .perf-idle { flex: 1 1 0dp; display: block; line-height: 40dp; text-align: center; color: var(--faint-foreground); }
+.perf-status { flex: 0 0 auto; display: block; line-height: 16dp; color: var(--muted-foreground); font-size: 11dp; }
 
 /* Members (Unreal's My Blueprint). */
 .members-filter { flex: 1 1 0dp; display: flex; max-width: 240dp; }

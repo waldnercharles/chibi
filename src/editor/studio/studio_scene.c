@@ -273,8 +273,12 @@ void studio_scene_body(studio *s, int area)
     /* The renderer's error first, then the game UI's (render_ui_error). */
     const char *error = app_scene_renderer_error(scene->renderer);
     error = error && error[0] ? error : s->ui_error;
+    const char *warning = app_scene_renderer_warning(scene->renderer);
     if (error[0]) {
         kit_label(k, "error", "notice", error);
+    } else if (warning && warning[0]) {
+        kit_label(k, "warning", "notice", "Lighting adjusted");
+        kit_tip(k, "Lighting adjusted", NULL, warning);
     }
     kit_pop(k);
 }

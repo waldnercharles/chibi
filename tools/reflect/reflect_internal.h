@@ -10,12 +10,13 @@
 
 typedef struct
 {
-    char *name;       /* field name */
-    char *spelling;   /* C type spelling, e.g. "float", "Vec3" */
-    char *handle;     /* Nominal handle type when explicitly annotated. */
-    const char *pin;  /* pin_type enum name, e.g. "PIN_F32" */
-    long long offset; /* bytes */
-    long long size;   /* bytes */
+    char *name;        /* field name */
+    char *spelling;    /* C type spelling, e.g. "float", "Vec3" */
+    char *handle;      /* Nominal handle type when explicitly annotated. */
+    char *description; /* First paragraph of the field's comment, or NULL. */
+    const char *pin;   /* pin_type enum name, e.g. "PIN_F32" */
+    long long offset;  /* bytes */
+    long long size;    /* bytes */
 } field_info;
 
 static inline const char *field_type_name(const field_info *field)

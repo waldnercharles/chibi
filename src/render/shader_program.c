@@ -14,7 +14,6 @@ typedef struct
 {
     render_shader_set set;
     CF_Shader draw;
-    CF_ComputeShader compute;
     float (*ramp_data)[4];
     int ramp_vec4_count;
     unsigned ramp_revision;
@@ -56,7 +55,8 @@ render_programs *render_programs_new(render_program_kind kind)
     } else if (kind == RENDER_PROGRAM_FRAGMENT) {
         programs->body = render_shader_fragment_source();
     } else {
-        programs->body = render_shader_source("hrc/entity_raster.shd");
+        programs->vertex = render_shader_source("hrc/pass.vert");
+        programs->body = render_shader_source("hrc/entity_raster.frag");
     }
     return programs;
 }
@@ -64,7 +64,11 @@ render_programs *render_programs_new(render_program_kind kind)
 static bool compile(render_programs *programs, program *entry)
 {
     shader_compile_count++;
-    bool compute = programs->kind == RENDER_PROGRAM_COMPUTE;
+    bool raster = programs->kind == RENDER_PROGRAM_RASTER ||
+                  programs->kind == RENDER_PROGRAM_RASTER_ACCUMULATE;
+    /* The raster's samplers are the images, then the previous batch's five
+     * targets; its storage buffers follow them in the same set. */
+    int previous = programs->kind == RENDER_PROGRAM_RASTER_ACCUMULATE ? 5 : 0;
     int ramp_vec4_count = render_shader_ramp_vec4_count(&entry->set);
     float (*ramp_data)[4] = ramp_vec4_count
                               ? xcalloc(RENDER_SHADER_RAMP_VEC4_MAX, sizeof *ramp_data)
@@ -72,53 +76,58 @@ static bool compile(render_programs *programs, program *entry)
     if (ramp_data) {
         render_shader_ramp_payload(&entry->set, ramp_data);
     }
-    char *graphs = render_shader_glsl(&entry->set, compute ? 0 : 2, compute ? 0 : 1);
+    char *graphs = render_shader_glsl(&entry->set, 2, raster ? 0 : 1);
     const char *scene = programs->scene ? programs->scene : "";
-    const char *uniforms = programs->kind == RENDER_PROGRAM_FRAGMENT
-                             ? "layout(set=3,binding=1) uniform shd_uniforms { "
-                               "vec2 sg_lighting; vec4 sg_entity[85]; vec4 "
-                               "sg_ramp_data[SG_RAMP_COUNT]; };\n"
-                         : compute
-                             ? "layout(set=2,binding=0) uniform Params { "
-                               "int u_entity_count; float u_world_min_x; "
-                               "float u_world_max_y; vec2 u_unit_per_px; "
-                               "int u_tiles_x; int u_tiles_y; int u_canvas_w; "
-                               "int u_canvas_h; int u_max_per_tile; "
-                               "int u_first_entity; int u_last_entity; "
-                               "int u_metaball_group; int u_accumulate; "
-                               "vec4 sg_ramp_data[SG_RAMP_COUNT]; };\n"
-                             : "";
+    const char
+        *uniforms = programs->kind == RENDER_PROGRAM_FRAGMENT
+                      ? "layout(set=3,binding=1) uniform shd_uniforms { "
+                        "vec2 sg_lighting; vec4 sg_entity[85]; vec4 "
+                        "sg_ramp_data[SG_RAMP_COUNT]; };\n"
+                  : raster ? "layout(set=3,binding=0) uniform uniform_block { "
+                             "float u_world_min_x; "
+                             "float u_world_max_y; vec2 u_unit_per_px; "
+                             "int u_tiles_x; "
+                             "int u_first_entity; int u_last_entity; "
+                             "int u_metaball_group; "
+                             "vec4 sg_ramp_data[SG_RAMP_COUNT]; };\n"
+                           : "";
+    /* Room for the defines ahead of the sources. */
     size_t bytes = strlen(graphs) + strlen(programs->body) + strlen(scene) +
-                   strlen(uniforms) + 256;
+                   strlen(uniforms) + 1024;
     char *source = xmalloc(bytes);
     snprintf(
         source,
         bytes,
-        "#define SG_GRAPHS 1\n#define SG_RAMP_COUNT %d\n"
+        "#define SG_GRAPHS 1\n#define SG_RAMP_COUNT %d\n%s"
+        "#define SG_PREVIOUS_SCENE_BINDING %d\n#define "
+        "SG_PREVIOUS_SOURCE_BINDING %d\n"
+        "#define SG_PREVIOUS_ALBEDO_BINDING %d\n#define "
+        "SG_PREVIOUS_NORMAL_BINDING %d\n"
+        "#define SG_PREVIOUS_COVER_BINDING %d\n"
         "#define SG_ENTITY_BINDING %d\n"
         "#define SG_COUNTS_BINDING %d\n#define SG_INDICES_BINDING %d\n"
         "#define SG_PARAMETERS_BINDING %d\n%s%s%s\n%s",
         RENDER_SHADER_RAMP_VEC4_MAX,
+        previous ? "#define SG_ACCUMULATE 1\n" : "",
         entry->set.count,
         entry->set.count + 1,
         entry->set.count + 2,
         entry->set.count + 3,
+        entry->set.count + 4,
+        entry->set.count + previous,
+        entry->set.count + previous + 1,
+        entry->set.count + previous + 2,
+        entry->set.count + previous + 3,
         scene,
         uniforms,
         graphs,
         programs->body
     );
-    CF_Shader draw = { 0 };
-    CF_ComputeShader cs = { 0 };
-    if (compute) {
-        cs = cf_make_compute_shader_from_source(source);
-    } else if (programs->kind == RENDER_PROGRAM_FRAGMENT) {
-        draw = cf_make_draw_shader_from_source(source);
-    } else {
-        draw = cf_make_shader_from_source(programs->vertex, source);
-    }
+    CF_Shader draw = programs->kind == RENDER_PROGRAM_FRAGMENT
+                       ? cf_make_draw_shader_from_source(source)
+                       : cf_make_shader_from_source(programs->vertex, source);
     const char *dump = getenv("CHIBI_SHADER_DUMP");
-    if (!draw.id && !cs.id && dump && *dump) {
+    if (!draw.id && dump && *dump) {
         FILE *file = fopen(dump, "wb");
         if (file) {
             fwrite(source, 1, strlen(source), file);
@@ -127,7 +136,7 @@ static bool compile(render_programs *programs, program *entry)
     }
     free(graphs);
     free(source);
-    if (!draw.id && !cs.id) {
+    if (!draw.id) {
         free(ramp_data);
         snprintf(entry->error, sizeof entry->error, "%s", cf_shader_compile_error());
         return false;
@@ -135,11 +144,7 @@ static bool compile(render_programs *programs, program *entry)
     if (entry->draw.id) {
         cf_destroy_shader(entry->draw);
     }
-    if (entry->compute.id) {
-        cf_destroy_compute_shader(entry->compute);
-    }
     entry->draw = draw;
-    entry->compute = cs;
     free(entry->ramp_data);
     entry->ramp_data = ramp_data;
     entry->ramp_vec4_count = ramp_vec4_count;
@@ -157,8 +162,9 @@ int render_programs_prepare(render_programs *programs, const render_shader_set *
 {
     render_images_collect();
     programs->error[0] = 0;
-    if (!programs->body || (programs->kind == RENDER_PROGRAM_ARENA &&
-                            (!programs->vertex || !programs->scene))) {
+    if (!programs->body ||
+        (programs->kind != RENDER_PROGRAM_FRAGMENT && !programs->vertex) ||
+        (programs->kind == RENDER_PROGRAM_ARENA && !programs->scene)) {
         snprintf(programs->error, sizeof programs->error, "Cannot read material shader sources.");
         return 0;
     }
@@ -201,7 +207,7 @@ int render_programs_prepare(render_programs *programs, const render_shader_set *
             entry->checked_ramp_count,
             RENDER_SHADER_RAMP_VEC4_MAX
         );
-        return entry->draw.id || entry->compute.id ? index + 1 : 0;
+        return entry->draw.id ? index + 1 : 0;
     }
     if (entry->revision != current_revision &&
         entry->attempted_revision != current_revision) {
@@ -212,7 +218,7 @@ int render_programs_prepare(render_programs *programs, const render_shader_set *
     }
     if (entry->error[0]) {
         snprintf(programs->error, sizeof programs->error, "%s", entry->error);
-        if (!entry->draw.id && !entry->compute.id) {
+        if (!entry->draw.id) {
             return 0;
         }
     }
@@ -285,23 +291,23 @@ void render_programs_unbind2d(render_programs *programs, int index)
     cf_draw_pop_shader();
 }
 
-CF_ComputeShader render_programs_bind_compute(render_programs *programs, int index, CF_Material material)
+CF_Shader render_programs_bind_raster(render_programs *programs, int index, CF_Material material)
 {
     program *entry = &programs->entries[index - 1];
     update_ramp_data(entry);
     for (int i = 0; i < entry->set.count; i++) {
         char name[32];
         snprintf(name, sizeof name, "sg_image_%d", i);
-        cf_material_set_texture_cs(
+        cf_material_set_texture_fs(
             material,
             name,
             render_image_texture(entry->set.images[i], NULL)
         );
     }
     if (entry->ramp_vec4_count) {
-        cf_material_set_uniform_cs(material, "sg_ramp_data", entry->ramp_data, CF_UNIFORM_TYPE_FLOAT4, RENDER_SHADER_RAMP_VEC4_MAX);
+        cf_material_set_uniform_fs(material, "sg_ramp_data", entry->ramp_data, CF_UNIFORM_TYPE_FLOAT4, RENDER_SHADER_RAMP_VEC4_MAX);
     }
-    return entry->compute;
+    return entry->draw;
 }
 
 void render_programs_free(render_programs *programs)
@@ -312,9 +318,6 @@ void render_programs_free(render_programs *programs)
     for (int i = 0; i < acount(programs->entries); i++) {
         if (programs->entries[i].draw.id) {
             cf_destroy_shader(programs->entries[i].draw);
-        }
-        if (programs->entries[i].compute.id) {
-            cf_destroy_compute_shader(programs->entries[i].compute);
         }
         free(programs->entries[i].ramp_data);
     }

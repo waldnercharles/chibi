@@ -272,6 +272,53 @@ static void collect_enum_alias(collect_ctx *ctx, CXCursor c, const char *name)
     apush(ctx->enums, enumeration);
 }
 
+/* The first paragraph of a field's comment, with comment markers removed and
+ * lines joined by spaces. */
+static char *field_description(CXCursor c)
+{
+    char *raw = cxstr(clang_Cursor_getRawCommentText(c));
+    char *text = xmalloc(strlen(raw) + 1);
+    size_t n = 0;
+    for (char *line = raw, *next; line; line = next) {
+        next = strchr(line, '\n');
+        if (next) {
+            *next++ = '\0';
+        }
+        line += strspn(line, " \t");
+        line += strspn(line, "/*!<");
+        line += strspn(line, " \t");
+        if (!n && *line == '@') { /* Doxygen command, e.g. Cute's @member */
+            line += strcspn(line, " \t");
+            line += strspn(line, " \t");
+        }
+        size_t len = strlen(line);
+        if (len >= 2 && !strcmp(line + len - 2, "*/")) {
+            len -= 2;
+        }
+        while (len && (line[len - 1] == ' ' || line[len - 1] == '\t')) {
+            len--;
+        }
+        if (!len) {
+            if (n) {
+                break;
+            }
+            continue;
+        }
+        if (n) {
+            text[n++] = ' ';
+        }
+        memcpy(text + n, line, len);
+        n += len;
+    }
+    text[n] = '\0';
+    free(raw);
+    if (n) {
+        return text;
+    }
+    free(text);
+    return NULL;
+}
+
 static enum CXChildVisitResult field_visitor(CXCursor c, CXCursor, CXClientData data)
 {
     if (clang_getCursorKind(c) != CXCursor_FieldDecl) {
@@ -324,6 +371,7 @@ static enum CXChildVisitResult field_visitor(CXCursor c, CXCursor, CXClientData 
         free(f.handle);
         return CXChildVisit_Continue;
     }
+    f.description = field_description(c);
     apush(*l, f);
     return CXChildVisit_Continue;
 }
@@ -554,6 +602,7 @@ static void dispose_fields(field_info *fields)
         free(fields[i].name);
         free(fields[i].spelling);
         free(fields[i].handle);
+        free(fields[i].description);
     }
     afree(fields);
 }

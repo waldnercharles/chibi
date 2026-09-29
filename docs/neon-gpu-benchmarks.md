@@ -20,8 +20,9 @@ python3 tools/benchmark_neon_materials.py --scenario all --mode live --scale .5 
 The first command measures all five scenarios in live and frozen modes at HRC
 scales 0.5 and 1.0. Use a fresh output directory for each experiment. Runs are
 sequential; do not run another benchmark, build, or game alongside them.
-`--repeat 3` records independent repetitions. `--trace-levels 3` compares the
-older tracing configuration. The default is one directly traced level.
+`--repeat 3` records independent repetitions. The default directly traces the
+first three cascades, matching Sandbox. Use `--trace-levels 1` to compare the
+one-level tracing configuration.
 
 | Scenario | Workload |
 | --- | --- |
@@ -72,6 +73,14 @@ The output includes:
 
 The snapshot is reconstructed by deterministic replay. It is not a serialized
 solver checkpoint that can be transferred across arbitrary engine revisions.
+
+## Time individual passes
+
+Add `"pass_timing": true` to a `preview_scene` request (`chibi_ctl --render-request`)
+for average GPU milliseconds per marked pass; `"pass_timing_detail": true` also
+splits every HRC cascade level. On Metal the times come from command-buffer
+timestamps without stalling the frame; elsewhere each mark waits for the GPU.
+See [the timestamp method](neon-hrc-optimization.md#per-pass-gpu-time).
 
 ## Record a Metal frame
 
@@ -137,9 +146,10 @@ rendering of that endpoint must retain the complete state. Invalid capture paths
 orphan capture-frame settings and future inputs in frozen previews are rejected.
 The full NeonSwarm suite additionally checks actual gas, burning and debris loads.
 
-GPU counter inspection remains the next step before selecting a larger HRC
-storage or scheduling optimization. The trace files establish reproducible input
-for that analysis; their existence is not evidence of a particular GPU bottleneck.
+Per-pass command-buffer timestamps now attribute GPU time without Xcode; GPU
+counters would still be needed to separate bandwidth, arithmetic and occupancy.
+The trace files establish reproducible input for that analysis; their existence
+is not evidence of a particular GPU bottleneck.
 
 ## Local baseline: September 19, 2026
 

@@ -1,3 +1,0 @@
-#define HRC_LUMINANCE 1
-#define HRC_LUMINANCE_FROM_RGB 1
-#include "hrc/blur.shd"

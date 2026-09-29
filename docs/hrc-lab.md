@@ -7,12 +7,37 @@ calibration is deliberately restrained:
 
 - emitter `emission_intensity = 0.03`, `emission_multiplier = 1`
 - HRC `intensity = 7.5`, `ambient = 0`, `shadow_floor = 0`, `fog = 0.2`
-- `trace_levels = 3`, adaptive scale disabled, reconstruction mode 1
+- `trace_levels = 3`, adaptive resolution disabled, reconstruction mode 1
 
 `emission_multiplier` remains an explicit material control. It is already one,
 so removing it would not change these images or save meaningful work. Lowering
 the authored emission intensity is the source-only exposure control. HRC
 intensity is a later composite gain and affects received light as well.
+
+## Tuning safely
+
+The renderer fits `GameHRC2D` into what HRC supports instead of rejecting it.
+Each change it makes appears as `field from -> to`: Studio shows a "Lighting
+adjusted" notice in the Scene toolbar, whose tooltip lists the changes, and a
+running game prints them once. The Inspector draws sliders over useful ranges,
+offers dropdowns for enumerated settings, and shows each field's comment from
+`src/runtime/components.h` on hover. Every combination of the resolution
+settings is valid; only out-of-range values are adjusted.
+
+Studio's Performance pane charts the scene's GPU time against a frame at
+`target_fps`, and lists the resolution, color and gather detail in use,
+including the step adaptive chose. GPU time needs Metal's command-buffer
+timestamps.
+
+With `adaptive` on, `resolution` is a ceiling. Turn it off while comparing
+values, so the resolution you set is the one you see.
+
+| Goal | `resolution` | `color_resolution` |
+| --- | ---: | --- |
+| Reference | 1 | Full |
+| Close to reference, cheaper | 1 | Half |
+| Sharp brightness, cheaper color | 1 | Quarter |
+| Arena default | 0.5 | Full |
 
 ## Reconstruction modes
 
@@ -28,62 +53,94 @@ reconstructed at canvas resolution:
 
 Mode 1 is the current default. Mode 3 is the five-tap experiment; it preserves
 small emissive probes well, but its quality change depends on the fixture. In
-the basalt Sandbox at 1080p it matched mode 1 at scales 0.5 and 0.35 while
+the basalt Sandbox at 1080p it matched mode 1 at resolutions 0.5 and 0.35 while
 costing about 0.6 ms more.
 
-## Split transport
+## Resolution settings
 
-`split_frames` solves the four light directions over 1, 2 or 4 frames. Each
-frame solves its share of the frusta; gather reads the others from earlier
-frames, moved with the view to the nearest work pixel. At 1080p in the basalt
-Sandbox, splitting over two frames halves the cascade cost (4.3 to 2.2 ms at
-scale 0.5; a 31 to 21 ms frame at scale 1.0), and moving captures stay within
-the temporal filter's noise. New or fast lights take one to three extra frames
-to reach every direction.
+| Setting | What it controls |
+| --- | --- |
+| `resolution` | The finest light grid, as a fraction of the padded canvas. Brightness keeps this detail; most lighting cost scales with its area. |
+| `color_resolution` | Color's grid relative to `resolution`: Full, Half, Quarter or Eighth. Below Full, a brightness-only transport runs at `resolution` and the RGB transport on the coarser grid. |
+| `gather_resolution` | The received-light image: gather, temporal filtering and bounce, which turn cascade 0 into light per pixel, at the full canvas or half of it. Auto lets adaptive choose. Material raster and composite stay full resolution. |
 
-## Scale meaning
+The padded canvas is a whole multiple of 8 pixels, so resolutions of 1, 1/2,
+1/4 and 1/8 have cells of whole pixels at every output size, and so does color
+below them. Other resolutions have fractional cells; thin lit walls then
+straddle cells and reflect less bounce light.
 
-`GameHRC2D.scale` is one shared HRC work-grid scale. A `.5` run is half-HRC:
-the filtered emission RGB, scalar absorption, bounce input, and RGB radiance
-probes all use the half-resolution work grid before full-resolution gather and
-composite. A `.25` run is the same arrangement at quarter scale.
+Merging treats even and odd probes differently, which leaves a checkerboard
+two probes wide. It is invisible at resolution 1 and plain at 0.125, where a
+probe spans 8 pixels. Resolve filters each quadrant's cascade-0 fluence with a
+1-2-1 tent, which removes exactly that frequency. At 1080p it costs 0.2 to
+0.3 ms, changes resolution 1 by a mean of 0.006/255, and lowers the share of
+pixels more than 3 off the resolution-1 image from 11.4% to 8.7% at 0.125.
 
-`GameHRC2D.luminance_scale` enables an experimental split path. The RGB HRC
-uses `scale`; a second monochrome HRC uses `luminance_scale`. At composite time,
-the monochrome result supplies brightness while the RGB result supplies local
-color ratios:
+## Adaptive resolution
+
+With `adaptive` on, the renderer measures the scene's GPU time every frame:
+material raster, lighting, tone mapping and reflections, but not editor UI. A
+frame at `target_fps` allows 1000 / `target_fps` milliseconds. Adaptive steps
+between rungs that keep whole-pixel cells:
+
+1. The authored lighting.
+2. With `gather_resolution: Auto`, gather at half resolution.
+3. Color one step coarser at a time, down to Quarter, at the authored
+   `resolution`.
+4. `resolution` halved, then halved again, down to `min_resolution`, with
+   the authored `color_resolution`.
+
+It averages 30 frames per decision. It steps down after two averages in a row
+exceed the frame's time, and ignores the next 30 frames while history refills.
+It steps back up after four windows in a row in which the current cost, times
+the cost ratio it measured when it stepped down, fits in 80% of the frame's
+time. At 1080p with `target_fps: 60`, Sandbox settles at resolution 0.5.
+
+At resolution 1, Half and Quarter color cost less than Full and change the
+image far less than halving the resolution; see [Color detail](#color-detail).
+Below resolution 1 they save little, so halved rungs return to the authored
+color. When the authored `resolution` is already low, the color steps still
+run first and save little.
+
+Steps are rare, because each one reallocates the grids and resets temporal
+history. Adaptive needs GPU timestamps; without them it keeps the authored
+lighting. It measures GPU time rather than the wall-clock frame, so frames
+limited by the CPU or vsync keep their lighting.
+
+## Color detail
+
+Color below Full adds a monochrome transport beside the RGB one, following
+[jason.today/hrc](https://jason.today/hrc). Its levels hold half-float
+luminance and optical depth: half the RGB transport's bytes per interval and a
+quarter per fluence direction. Like the demo, it solves each direction together
+with its opposite: one texel holds both directions' values, so every fetch and
+every fragment serves two directions.
+
+Color takes the luminance transport's prefiltered inputs, box-averaged. One
+gather, filter and bounce serve both: per quadrant, gather rescales the RGB
+fluence to the luminance, then reconstructs on the luminance grid:
 
 ```glsl
-float Y = texture(luminance_tex, uv).r;
-float coarseY = dot(fluence, vec3(0.2126, 0.7152, 0.0722));
-vec3 reconstructed = coarseY > 1e-8
-    ? fluence * (Y / coarseY)
-    : vec3(Y);
+vec3 with_luminance(vec3 color, float Y)
+{
+    float coarse = dot(color, LUMA);
+    return coarse > 1e-8 ? color * (Y / coarse) : vec3(Y);
+}
 ```
 
-Set `luminance_scale` to zero to retain the single RGB HRC. A useful first
-experiment is `--scale .25 --luminance-scale .5`. In the scalar-luminance
-variant, the filtered emission and bounce, canvas bounce, gathered radiance,
-and radiance history textures use `R16F`; the hierarchy interval and frustum
-buffers still use the shared packed RGB layouts. Gather, filter, and bounce
-still run at canvas resolution for each transport pass, so the split path has
-two transport pipelines and its value depends on the RGB work scale. The
-benchmark matrix measures that tradeoff directly.
+At 1080p, resolution 1.0, the whole scene's GPU time and
+the RMS difference from Full color, in 8-bit levels:
 
-`luminance_mode` selects how the scalar half of a split run is produced:
-It is independent of `upscale_mode`, which controls RGB reconstruction.
+| Color | Sandbox | Swarmers in view |
+| --- | --- | --- |
+| Full | 13.8 ms | 14.5 ms |
+| Half | 12.7 ms, 0.11 | 12.8 ms, 0.16 |
+| Quarter | 10.9 ms, 0.16 | 11.2 ms, 0.25 |
 
-| Mode | Behavior |
-| ---: | --- |
-| 0 | Independent monochrome HRC transport. The child builds its own hierarchy, traces, gathers, bounces, and filters at `luminance_scale`. |
-| 1 | Transport reuse experiment. The RGB HRC runs once; the child derives scalar luminance from the parent's final full-resolution gathered radiance and runs only the scalar temporal/edge filter. The child hierarchy and transport dispatches are skipped. |
-
-Mode 1 is the performance experiment requested here. It removes the duplicated
-prefilter, trace, extend, merge, gather, and bounce work, but its luminance comes
-from the same low-resolution RGB transport. In the matched opaque-interior run,
-that made its image error track the color-only result. `luminance_scale` remains
-in the configuration for comparison and future derived-filter sizing, but mode
-1 does not create an independent higher-resolution luminance hierarchy.
+Full color at resolution 0.5 costs about 6.3 ms and differs by 0.30 and 0.36.
+At resolution 0.5 the transport is a small part of the frame, and coarser
+color saves at most 0.5 ms. See
+[the measurements](neon-hrc-optimization.md#pairing-opposite-directions-in-luminance).
 
 ## Clean fixtures
 
@@ -123,8 +180,7 @@ make build-release
 python3 tools/benchmark_hrc_lab.py \
   --project projects/hrc_lab \
   --hrc-prototype HRCLabHRC \
-  --scale 1 .5 \
-  --luminance-mode 0 \
+  --resolution 1 .5 \
   --trace-levels 3 \
   --upscale-mode 1 \
   --width 960 --height 540 \
@@ -132,28 +188,28 @@ python3 tools/benchmark_hrc_lab.py \
   --output /private/tmp/hrc-clean-lab
 ```
 
-Use `--scale 1 .75 .5 .25` to capture the supported full, three-quarter,
-half, and quarter HRC work grids. Add `--luminance-scale .5` to run the split
-experiment with a half-resolution monochrome transport pass. Use
-`--luminance-mode 1` to skip the independent monochrome transport and derive the
-scalar signal from the RGB pass. Use `--upscale-mode 0`, `1`, `2`, or `3` to
-compare the reconstruction modes. Every generated summary row links to its PNG
-and reports its mean RGB error against that run's full-scale reference.
+Use `--resolution 1 .75 .5 .25` to capture full, three-quarter, half and
+quarter light grids. `--color-resolution Half` solves color at half of each
+resolution, and `--gather-resolution Half` halves the received-light image. Use `--upscale-mode 0`, `1`, `2`, or `3` to
+compare the reconstruction modes. Every generated summary row links to its PNG,
+reports lighting's GPU time from per-pass timestamps, and reports its mean RGB
+error against that run's resolution 1 reference.
 
 Each run also writes `gallery.md`, which embeds every captured PNG using an
 absolute local path so the Markdown can be opened directly in the desktop app.
 It also writes `compare.html`, a local before-and-after slider that compares
-the full-scale row with each lower-scale row. Markdown can embed the PNGs, but
+the resolution 1 row with each lower-resolution row. Markdown can embed the PNGs, but
 the draggable comparison requires the HTML page.
 The current opaque-interior comparison is also available as the self-contained
 [`hrc-lab-compare.html`](hrc-lab-compare.html) snapshot in this directory.
 
-The runner copies the project into each case directory, disables adaptive scale,
+The runner copies the project into each case directory, disables adaptive resolution,
 validates the edited prototype and scene, warms the renderer for 240 frames,
 discards the first 16 measured frames, and writes a PNG plus JSON report. The
-reported time includes GPU completion and is not a per-dispatch GPU timestamp.
-Each row in the generated `summary.md` links directly to its captured
-`frame.png`, alongside the mean RGB error when a scale is compared with 1.0.
+reported frame time includes GPU completion; lighting GPU time sums the HRC,
+surface light and composite passes. Each row in the generated `summary.md`
+links directly to its captured `frame.png`, alongside the mean RGB error when
+a resolution is compared with 1.0.
 
 The original `projects/arena2d` fixtures remain the default when `--project`
 is omitted. The same runner can therefore compare the clean lab with the
@@ -180,65 +236,6 @@ Mode 3 is useful for difficult shadow edges, but it is not uniformly closer to
 the full-resolution reference and can cost extra work in volume scenes. Keep
 mode 1 as the default until a larger matched workload shows a consistent win.
 
-## Split-scale result
-
-The split matrix at 960×540 used `luminance_scale = .5`, color scales `1`, `.5`
-and `.25`, trace level 3, and mode 1. The quality comparison here uses the
-existing unified full-resolution captures as the reference; it is separate from
-the within-split reference numbers in the generated summary.
-
-| Color scale | Mean frame median | Mean RGB error vs unified full | Interpretation |
-| ---: | ---: | ---: | --- |
-| 1.0 | 7.83 ms | 0.25 | Split luminance adds cost even when color remains full resolution. |
-| 0.5 | 5.99 ms | 0.26 | Preserves most scene structure while reducing RGB transport work. |
-| 0.25 | 5.46 ms | 0.32 | Lowest tested split cost; color-boundary and opaque-interior scenes show the largest error. |
-
-For comparison, repeating the lower-color-scale runs with full-resolution
-luminance produced 8.00 ms / 0.15 error at color `.5`, and 7.88 ms / 0.24
-error at color `.25`. Full luminance recovers some brightness edge accuracy, but
-the extra full-resolution gather and filter pass removes most of the performance
-benefit.
-
-### Post-fix colored-bounce validation
-
-The matrix above predates the colored-bounce correction. Its bounce-active
-opaque-interior error values are historical. The monochrome bounce path now
-computes `dot(albedo * rgb_bounce, LUMA)` and uses the parent RGB raw bounce
-field, preserving the channel interaction before luminance reduction.
-
-On the same 960×540 opaque-interior fixture after that correction, full RGB and
-full luminance matched the unified reference to a maximum of 1 sRGB byte, with
-zero pixels above a 3-byte difference. The corrected color `.25` / luminance
-`.5` run measured 4.68 ms versus 6.78 ms for unified full resolution, with mean
-RGB error 0.61, maximum error 21, and 3.23% of pixels above 3. The old near-black
-slab came from the invalid luminance approximation; the remaining low-resolution
-error is the expected color-scale tradeoff.
-
-### 1080p split transport follow-up
-
-The matched `HRCLabOpaqueInterior` run used 1920×1080, trace level 3, mode 1,
-180 measured frames, and the same Metal backend for every row. Error is mean
-absolute RGB difference in 8-bit space against the unified full-resolution
-image.
-
-| Configuration | Median | p95 | p99 | Mean RGB error | Maximum error | Pixels above 3 |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| Unified color 1.0 / mode 0 | 24.74 ms | 25.40 ms | 26.37 ms | — | — | — |
-| Color 0.25 / no split | 6.16 ms | 8.84 ms | 9.81 ms | 0.921 | 29 | 6.65% |
-| Independent split color 0.25 / luminance 0.5 / mode 0 | 10.89 ms | 11.31 ms | 11.49 ms | 0.706 | 28 | 5.07% |
-| Reuse mode 1, color 0.25 / luminance setting 0.5 | 7.11 ms | 11.02 ms | 12.58 ms | 0.920 | 29 | 6.69% |
-
-The reuse mode is about 71% faster than unified HRC at the median and 35%
-faster than the independent split. It does not retain the quality advantage of
-the independent `.5` luminance transport in this fixture: deriving luminance
-from the quarter-resolution RGB gather makes its error essentially the same as
-color-only. The independent `.25/.5` split is the better quality/performance
-point here when the extra 3.78 ms median is acceptable.
-
-The captures are in the matched benchmark directories under
-`/private/tmp/hrc-*-1080-20260920-rerun2/`. The self-contained slider with the
-same images and measurements is [`hrc-lab-compare-1080.html`](hrc-lab-compare-1080.html).
-
 ## GPU phase attribution
 
 The renderer already synchronizes before presenting benchmark frames. GPU labels
@@ -253,7 +250,7 @@ Capture one warmed Metal frame with:
 python3 tools/benchmark_hrc_lab.py \
   --project projects/hrc_lab \
   --hrc-prototype HRCLabHRC \
-  --scene HRCLabShadow --scale .5 \
+  --scene HRCLabShadow --resolution .5 \
   --trace-levels 3 --upscale-mode 1 \
   --metal-capture --render-frames 180 \
   --output /private/tmp/hrc-shadow-metal

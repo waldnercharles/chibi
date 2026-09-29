@@ -611,6 +611,42 @@ static void ramp_glsl(char **text, const shader_node *n, const char *prefix, int
         append(text, "return sg_ramp_data[%d]; }\n", offset + 2 * (acount(n->ramp) - 1) + 1);
     }
 }
+/* Whether nodes a and b compute the same value, given each earlier node's
+ * first equal node in canon. Color ramps own their stops and stay distinct. */
+static bool same_node(const shader_graph *g, const int *canon, int a, int b)
+{
+    const shader_node *x = &g->nodes[a], *y = &g->nodes[b];
+    if (x->op != y->op || x->width != y->width || x->parameter != y->parameter ||
+        x->image != y->image || memcmp(x->value, y->value, sizeof x->value) ||
+        x->op == SHADER_COLOR_RAMP || x->op == SHADER_COLOR_RAMP_ALPHA) {
+        return false;
+    }
+    for (int j = 0; j < shader_op_inputs(x->op); j++) {
+        if (canon[x->input[j]] != canon[y->input[j]]) {
+            return false;
+        }
+    }
+    return true;
+}
+
+/* Each node's first equal node. Calls inline a copy of their function per
+ * call, so graphs repeat work that GPU compilers do not always merge. */
+static int *canonical_nodes(const shader_graph *g)
+{
+    int count = acount(g->nodes);
+    int *canon = xmalloc(sizeof *canon * (size_t)(count ? count : 1));
+    for (int i = 0; i < count; i++) {
+        canon[i] = i;
+        for (int j = 0; j < i; j++) {
+            if (canon[j] == j && same_node(g, canon, i, j)) {
+                canon[i] = j;
+                break;
+            }
+        }
+    }
+    return canon;
+}
+
 char *shader_graph_glsl_named_ramps(const shader_graph *g, const char *prefix, int ramp_base, shader_error *error)
 {
     if (!shader_graph_validate(g, error)) {
@@ -644,8 +680,13 @@ char *shader_graph_glsl_named_ramps(const shader_graph *g, const char *prefix, i
     append(&s, "#ifndef SG_INFLUENCE_DEFINED\n#define SG_INFLUENCE_DEFINED\n#ifndef SG_SCENE_INFLUENCE\nvec3 sg_scene_influence(vec3 position) { return vec3(0); }\nfloat sg_scene_beat_phase() { return 0.0; }\nfloat sg_scene_beat_pulse() { return 0.0; }\n#endif\n#endif\n");
     append(&s, "#ifndef SG_SAMPLE_DEFINED\n#define SG_SAMPLE_DEFINED\nstruct SGSample { vec2 position; vec2 uv; vec3 object_position; vec3 world_position; vec3 normal; vec3 view_direction; float time; };\n#endif\n");
     append(&s, "void %s(SGSample sg_sample, vec4 sg_params[32], out vec4 sg_out[8]) {\n", prefix);
+    int *canon = canonical_nodes(g);
     for (int i = 0; i < acount(g->nodes); i++) {
         const shader_node *n = &g->nodes[i];
+        if (canon[i] != i) {
+            append(&s, "vec4 v%d = v%d;\n", i, canon[i]);
+            continue;
+        }
         char a[32] = "", b[32] = "", c[32] = "", d[32] = "";
         char *args[] = { a, b, c, d };
         for (int j = 0; j < 4 && j < shader_op_inputs(n->op); j++) {
@@ -929,6 +970,7 @@ char *shader_graph_glsl_named_ramps(const shader_graph *g, const char *prefix, i
             append(&s, "sg_out[%d]=vec4(0.0);\n", i);
         }
     }
+    free(canon);
     append(&s, "}\n");
     char *result = xmalloc((size_t)acount(s) + 1);
     memcpy(result, s, (size_t)acount(s) + 1);

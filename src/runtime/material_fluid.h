@@ -20,6 +20,11 @@ enum
     FLUID_LIQUID
 };
 
+enum
+{
+    MATERIAL_FLUID_CONTACT_LIMIT = 128
+};
+
 /* Optional emitter presentation. A zero duration uses the volume's steady look. */
 typedef struct
 {
@@ -48,12 +53,28 @@ typedef struct
 typedef struct
 {
     fluid_vec position, velocity;
-    float angle, inverse_mass;
+    fluid_vec previous_position;
+    float angle, previous_angle, angular_velocity, inverse_mass;
     float heat;
     uint64_t owner; /* Optional caller identity, never interpreted by the solver. */
+    bool swept;     /* Previous pose is valid for this simulation tick. */
     /* Output: accumulated translation impulse on this body during the tick. */
     fluid_vec impulse;
 } fluid_body;
+
+typedef struct
+{
+    uint64_t body;
+    fluid_vec point, normal;
+    float closing_speed, impulse, mass, emission;
+    unsigned color;
+    int kind, contacts;
+} fluid_contact;
+
+typedef struct
+{
+    float gas_speed, liquid_speed;
+} fluid_contact_settings;
 
 typedef struct
 {
@@ -88,6 +109,9 @@ material_fluid *material_fluid_new(float kernel, int capacity);
 void material_fluid_free(material_fluid *fluid);
 void material_fluid_clear(material_fluid *fluid);
 void material_fluid_set_flow(material_fluid *fluid, fluid_flow_settings settings);
+void material_fluid_set_contact_settings(material_fluid *fluid, fluid_contact_settings settings);
+/* Borrowed until the next tick; contacts aggregate by body, kind and surface patch. */
+const fluid_contact *material_fluid_contacts(const material_fluid *fluid, int *count);
 uint64_t material_fluid_flow_hash(const material_fluid *fluid);
 void material_fluid_set_reaction(material_fluid *fluid, fluid_reaction reaction);
 const fluid_blast *material_fluid_blasts(const material_fluid *fluid, int *count);

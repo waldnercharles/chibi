@@ -3,12 +3,14 @@
 #include "graph/runtime/instance.h"
 #include "platform/cute.h"
 #include "render/fluid_raster.h"
+#include "render/gpu_timing.h"
 #include "render/material_raster.h"
 #include "render/reflections.h"
 #include "render/scene_renderer.h"
 #include "render/shader_catalog.h"
 #include "render/shader_fragment.h"
 #include "runtime/generated.h"
+#include "support/xalloc.h"
 
 #include <math.h>
 #include <stdint.h>
@@ -37,79 +39,6 @@ static bool read_pixels(CF_Canvas canvas, CF_Pixel *pixels, int count)
     return ok;
 }
 
-static bool packed_fluence()
-{
-    /* RGB9_E5 reference words cover zero, HDR saturation, exponent carry,
-     * subnormal light and unequal channels. Test the production GLSL codec. */
-    float colors[8][4] = { { 0, 0, 0, 0 },        { 1, 1, 1, 0 },
-                           { 1, .5f, .25f, 0 },   { 65408, 65408, 65408, 0 },
-                           { 0x1p-24f, 0, 0, 0 }, { 1.999f, .5f, .25f, 0 },
-                           { -1, 0, 70000, 0 },   { .001f, .0005f, .00025f, 0 } };
-    const uint32_t expected[] = { 0, 0x84020100, 0x81010100, 0xffffffff,
-                                  1, 0x88808100, 0xfffc0000, 0x31090706 };
-    const char *
-        source = "#include \"hrc_common.shd\"\n"
-                 "layout(local_size_x=8,local_size_y=1,local_size_z=1) in;\n"
-                 "layout(set=1,binding=0,rgba32f) uniform writeonly image2D "
-                 "result_image;\n"
-                 "layout(set=2,binding=0) uniform Inputs { vec4 colors[8]; };\n"
-                 "void main(){int x=int(gl_GlobalInvocationID.x);"
-                 "uint encoded=fluence_store(colors[x].rgb);"
-                 "imageStore(result_image,ivec2(x,0),"
-                 "vec4(float(encoded & 65535u),float(encoded >> 16),0,0));"
-                 "imageStore(result_image,ivec2(x,1),vec4(fluence_load(encoded)"
-                 ",1));}\n";
-    CF_ComputeShader shader = cf_make_compute_shader_from_source(source);
-    CF_Material material = cf_make_material();
-    CF_CanvasParams params = cf_canvas_defaults(8, 2);
-    params.target.pixel_format = CF_PIXEL_FORMAT_R32G32B32A32_FLOAT;
-    params.target.usage |= CF_TEXTURE_USAGE_COMPUTE_STORAGE_WRITE_BIT;
-    CF_Canvas canvas = cf_make_canvas(params);
-    bool ok = shader.id && material.id && canvas.id;
-    if (ok) {
-        cf_app_update(NULL);
-        cf_material_set_uniform_cs(material, "colors", colors, CF_UNIFORM_TYPE_FLOAT4, 8);
-        CF_Texture target = cf_canvas_get_target(canvas);
-        CF_ComputeDispatch dispatch = cf_compute_dispatch_defaults(1, 1, 1);
-        dispatch.rw_textures = &target;
-        dispatch.rw_texture_count = 1;
-        cf_dispatch_compute(shader, material, dispatch);
-        cf_app_draw_onto_screen(false);
-        CF_Readback readback = cf_canvas_readback(canvas);
-        ok = readback.id != 0;
-        if (readback.id) {
-            while (!cf_readback_ready(readback)) {
-            }
-            float values[2][8][4];
-            ok = cf_readback_data(readback, values, sizeof values) == sizeof values;
-            cf_destroy_readback(readback);
-            for (int i = 0; ok && i < 8; i++) {
-                uint32_t encoded = (uint32_t)values[0][i][0] |
-                                   ((uint32_t)values[0][i][1] << 16);
-                ok = encoded == expected[i];
-                for (int channel = 0; channel < 3; channel++) {
-                    float want = ldexpf(
-                        (float)((expected[i] >> (channel * 9)) & 511),
-                        (int)(expected[i] >> 27) - 24
-                    );
-                    ok &= values[1][i][channel] == want;
-                }
-            }
-        }
-    }
-    if (canvas.id) {
-        cf_destroy_canvas(canvas);
-    }
-    if (material.id) {
-        cf_destroy_material(material);
-    }
-    if (shader.id) {
-        cf_destroy_compute_shader(shader);
-    }
-    printf("radiance packing %s: HDR, dark colors, shared exponent carry and saturation\n", ok ? "PASS" : "FAIL");
-    return ok;
-}
-
 static float half_value(uint16_t value)
 {
     int exponent = (value >> 10) & 31;
@@ -121,7 +50,7 @@ static float half_value(uint16_t value)
 
 static bool material_pixels(render_material_textures textures)
 {
-    CF_Texture inputs[] = { textures.emission, textures.absorption, textures.normal };
+    CF_Texture inputs[] = { textures.source, textures.source, textures.normal };
     uint16_t pixels[PIXELS * 4];
     for (int i = 0; i < 3; i++) {
         CF_CanvasParams params = cf_canvas_defaults(0, 0);
@@ -154,10 +83,9 @@ static bool material_pixels(render_material_textures textures)
                 return false;
             }
         } else if (i == 1) {
-            for (int channel = 0; channel < 4; channel++) {
-                if (fabsf(half_value(pixels[sample + channel]) - 1) > 0.002f) {
-                    return false;
-                }
+            /* Optical depth is the mean absorption. */
+            if (fabsf(half_value(pixels[sample + 3]) - 1) > 0.002f) {
+                return false;
             }
         } else {
             /* A plain solid carries no bump tilt, edge light or gloss. */
@@ -251,11 +179,7 @@ static bool solve_scaled(
             return false;
         }
         render_material_textures textures = render_material_raster_textures(raster);
-        render_radiance_inputs inputs = { textures.scene,
-                                          textures.emission,
-                                          textures.absorption,
-                                          textures.albedo,
-                                          textures.normal };
+        render_radiance_inputs inputs = { .material = textures };
         cf_draw_push();
         cf_draw_projection(cf_ortho_2d(0, 0, size, size));
         bool ok = render_radiance_draw(
@@ -307,58 +231,106 @@ static double receiver_light(const CF_Pixel *pixels)
     return sum / (24 * 16);
 }
 
-static bool split_luminance_bounce(render_material_raster *raster)
+/* Coarse diffuse reconstruction must retain a subpixel emitter, respect a
+ * thin opaque boundary, and resize with and without split luminance. */
+static bool reconstruction_sampling(render_material_raster *raster)
 {
-    render_radiance *full = render_radiance_new();
-    render_radiance *split = render_radiance_new();
+    render_material_entity spark = emitter();
+    spark.radius = .8f;
+    spark.extent[0] = spark.extent[1] = 2;
+    spark.border_thickness = .5f;
+    spark.emission[1] = .4f;
+    spark.border_emission[0] = .5f;
+    render_material_entity thin_wall = wall_with(1, .8f);
+    thin_wall.points[0] = .8f;
+    thin_wall.extent[0] = 1.8f;
+    render_material_entity receiver = wall_with(0, .8f);
+    receiver.pos[0] = 28;
+    receiver.points[0] = 8;
+    receiver.extent[0] = 9;
+
+    render_radiance *radiance = render_radiance_new();
     CF_Canvas full_canvas = cf_make_canvas(cf_canvas_defaults(SIDE, SIDE));
-    CF_Canvas split_canvas = cf_make_canvas(cf_canvas_defaults(SIDE, SIDE));
-    CF_Pixel full_pixels[PIXELS], split_pixels[PIXELS];
-    render_material_entity entities[] = { emitter(), wall_with(.2f, .8f) };
-    GameHRC2D lighting = game_hrc2d_defaults();
-    lighting.adaptive = false;
-    lighting.fog = 0;
-    lighting.scale = 1;
-    lighting.trace_levels = 1;
-    bool ok = full && split && full_canvas.id && split_canvas.id;
-    if (ok) {
-        ok = render_radiance_set_lighting(full, lighting) &&
-             render_radiance_resize(full, SIDE, SIDE);
-    }
-    if (ok) {
-        lighting.luminance_scale = 1;
-        ok = render_radiance_set_lighting(split, lighting) &&
-             render_radiance_resize(split, SIDE, SIDE);
-    }
-    if (ok) {
-        ok = solve(raster, full, full_canvas, entities, 2, SIDE, 8, full_pixels) &&
-             solve(raster, split, split_canvas, entities, 2, SIDE, 8, split_pixels);
-    }
-    int maximum = 0;
-    for (int i = 0; i < PIXELS && ok; i++) {
-        int error = abs(
-            (int)full_pixels[i].colors.r - (int)split_pixels[i].colors.r
-        );
-        int channel = abs(
-            (int)full_pixels[i].colors.g - (int)split_pixels[i].colors.g
-        );
-        error = error > channel ? error : channel;
-        channel = abs((int)full_pixels[i].colors.b - (int)split_pixels[i].colors.b);
-        error = error > channel ? error : channel;
-        maximum = maximum > error ? maximum : error;
-        if (maximum > 2) {
-            ok = false;
+    CF_Canvas small_canvas = cf_make_canvas(cf_canvas_defaults(64, 64));
+    bool ok = radiance && full_canvas.id && small_canvas.id &&
+              render_material_raster_resize(raster, SIDE, SIDE);
+    float reference_open = 0;
+    for (int split = 0; split <= 1 && ok; split++) {
+        for (int reconstruction = 0; reconstruction <= 1 && ok; reconstruction++) {
+            GameHRC2D lighting = game_hrc2d_defaults();
+            lighting.adaptive = false;
+            lighting.feedback = false;
+            lighting.fog = 0;
+            /* Color at 0.5 either way; split solves brightness at 1. */
+            lighting.resolution = split ? 1 : .5f;
+            lighting.color_resolution = split ? GAME_HRC_COLOR_HALF : GAME_HRC_COLOR_FULL;
+            lighting.gather_resolution = reconstruction ? GAME_HRC_GATHER_HALF
+                                                        : GAME_HRC_GATHER_FULL;
+            ok = render_radiance_set_lighting(radiance, lighting) &&
+                 render_radiance_resize(radiance, SIDE, SIDE);
+            CF_Pixel open[PIXELS], blocked[PIXELS];
+            if (ok) {
+                render_material_entity entities[] = { spark, receiver };
+                ok = solve(raster, radiance, full_canvas, entities, 2, SIDE, 4, open);
+            }
+            if (ok) {
+                render_material_entity entities[] = { spark, thin_wall, receiver };
+                ok = solve(raster, radiance, full_canvas, entities, 3, SIDE, 4, blocked);
+            }
+            if (!ok) {
+                break;
+            }
+
+            double open_light = receiver_light(open);
+            double blocked_light = receiver_light(blocked);
+            if (!split && !reconstruction) {
+                reference_open = (float)open_light;
+            }
+            printf(
+                "radiance reconstruction split=%d gather half=%d: open %.3f "
+                "blocked "
+                "%.3f\n",
+                split,
+                reconstruction,
+                open_light,
+                blocked_light
+            );
+            ok = open_light > 0.01 && blocked_light < open_light * .98;
+            if (reconstruction) {
+                ok &= open_light > reference_open * .2 &&
+                      open_light < reference_open * 4;
+            }
         }
     }
-    printf("radiance split luminance bounce: maximum RGB error %d\n", maximum);
-    if (split_canvas.id) {
-        cf_destroy_canvas(split_canvas);
+    if (ok) {
+        GameHRC2D lighting = game_hrc2d_defaults();
+        lighting.adaptive = false;
+        lighting.feedback = false;
+        lighting.fog = 0;
+        lighting.resolution = 1;
+        lighting.color_resolution = GAME_HRC_COLOR_HALF;
+        lighting.gather_resolution = GAME_HRC_GATHER_HALF;
+        CF_Pixel small_pixels[64 * 64];
+        render_material_entity small_entities[] = { spark, receiver };
+        ok = render_radiance_set_lighting(radiance, lighting) &&
+             render_material_raster_resize(raster, 64, 64) &&
+             render_radiance_resize(radiance, 64, 64) &&
+             solve(raster, radiance, small_canvas, small_entities, 2, 64, 2, small_pixels) &&
+             small_pixels[32 * 64 + 60].colors.g > 0.01f;
+    }
+    if (small_canvas.id) {
+        cf_destroy_canvas(small_canvas);
     }
     if (full_canvas.id) {
         cf_destroy_canvas(full_canvas);
     }
-    render_radiance_free(split);
-    render_radiance_free(full);
+    if (radiance) {
+        render_radiance_free(radiance);
+    }
+    render_material_raster_resize(raster, SIDE, SIDE);
+    if (!ok) {
+        fprintf(stderr, "HRC reduced reconstruction lost source light or crossed an occluder\n");
+    }
     return ok;
 }
 
@@ -684,9 +656,9 @@ static bool fluid_alignment(render_material_raster *raster)
                                       .crop_max_v = 1 };
         ok = render_material_raster_draw(raster, NULL, 0, view);
         render_material_textures textures = render_material_raster_textures(raster);
-        ok &= render_fluid_raster_draw(draw, fluid, textures, view, SIDE, SIDE);
+        ok &= render_fluid_raster_draw(draw, fluid, render_material_raster_canvas(raster), view, SIDE, SIDE);
         cf_app_draw_onto_screen(false);
-        ok &= read_hdr_texture(textures.emission, pixels, PIXELS);
+        ok &= read_hdr_texture(render_material_raster_textures(raster).source, pixels, PIXELS);
         float actual = half_value(pixels[4 * ((87 - offset) * SIDE + 81)]);
         float mirrored = half_value(pixels[4 * ((41 - offset) * SIDE + 81)]);
         printf("fluid Y alignment camera=%d: expected %.3f mirrored %.3f\n", offset, actual, mirrored);
@@ -760,12 +732,12 @@ static bool fluid_surfaces(render_material_raster *raster)
         cf_app_update(NULL);
         ok &= render_material_raster_draw(raster, NULL, 0, view);
         render_material_textures textures = render_material_raster_textures(raster);
-        ok &= render_fluid_raster_draw(draw, fluid, textures, view, SIDE, SIDE);
+        ok &= render_fluid_raster_draw(draw, fluid, render_material_raster_canvas(raster), view, SIDE, SIDE);
         cf_app_draw_onto_screen(false);
+        render_material_textures with_fluid = render_material_raster_textures(raster);
         ok &= read_hdr_texture(
-            stage >= 7                 ? textures.absorption
-            : stage == 2 || stage >= 5 ? textures.scene
-                                       : textures.emission,
+            stage == 2 || stage == 5 || stage == 6 ? with_fluid.scene
+                                                   : with_fluid.source,
             pixels,
             PIXELS
         );
@@ -780,15 +752,15 @@ static bool fluid_surfaces(render_material_raster *raster)
             ok &= center < .01f; /* Authored shrinking removes that bridge. */
         } else if (stage == 2) {
             ok &= inside > .9f && outside < .01f; /* Crisp non-emissive liquid edge. */
-            ok &= read_hdr_texture(textures.emission, pixels, PIXELS);
+            ok &= read_hdr_texture(with_fluid.source, pixels, PIXELS);
             ok &= half_value(pixels[4 * (64 * SIDE + 64)]) == 0;
-            ok &= read_hdr_texture(render_fluid_raster_visibility(draw), pixels, PIXELS);
+            ok &= read_hdr_texture(render_material_raster_textures(raster).visibility, pixels, PIXELS);
             ok &= half_value(pixels[4 * (64 * SIDE + 64)]) > .01f;
         } else if (stage == 3) {
             /* Fuel burns as small separate cores; the exhaust bridge is unchanged. */
             ok &= center < .01f && half_value(pixels[4 * (64 * SIDE + 70)]) > .9f;
         } else if (stage == 4) {
-            ok &= read_hdr_texture(render_fluid_raster_visibility(draw), pixels, PIXELS);
+            ok &= read_hdr_texture(render_material_raster_textures(raster).visibility, pixels, PIXELS);
             ok &= half_value(pixels[4 * (64 * SIDE + 64)]) == 0;
         } else if (stage == 5) {
             // A joined plume has no particle-sized holes or isolated bright dots.
@@ -805,9 +777,10 @@ static bool fluid_surfaces(render_material_raster *raster)
             // A solitary cold parcel fades instead of surviving as a bright bead.
             ok &= center < .04f;
         } else {
-            // Wisp support crosses tile boundaries and rotates with game velocity.
-            float horizontal = half_value(pixels[4 * (64 * SIDE + 81)]);
-            float vertical = half_value(pixels[4 * (81 * SIDE + 64)]);
+            // Wisp support crosses tile boundaries and rotates with game
+            // velocity; optical depth is source's alpha.
+            float horizontal = half_value(pixels[4 * (64 * SIDE + 81) + 3]);
+            float vertical = half_value(pixels[4 * (81 * SIDE + 64) + 3]);
             ok &= stage == 7 ? horizontal > .02f && vertical == 0
                              : vertical > .02f && horizontal == 0;
         }
@@ -850,7 +823,7 @@ static bool silhouette_lighting(
     int dark = pixels[64 * SIDE + 41].colors.g;
     ok &= dark < 2;
     uint16_t emission[PIXELS * 4];
-    ok &= read_hdr_texture(render_material_raster_textures(raster).emission, emission, PIXELS);
+    ok &= read_hdr_texture(render_material_raster_textures(raster).source, emission, PIXELS);
     for (int i = 0; i < PIXELS; i++) {
         ok &= emission[4 * i] == 0 && emission[4 * i + 1] == 0 &&
               emission[4 * i + 2] == 0;
@@ -1055,14 +1028,16 @@ static bool fluid_lighting(
                 cf_app_update(NULL);
                 ok &= render_material_raster_draw(raster, solids, stage == 3 ? 2 : 1, view);
                 render_material_textures textures = render_material_raster_textures(raster);
-                ok &= render_fluid_raster_draw(draw, fluid, textures, view, SIDE, SIDE);
+                ok &= render_fluid_raster_draw(
+                    draw,
+                    fluid,
+                    render_material_raster_canvas(raster),
+                    view,
+                    SIDE,
+                    SIDE
+                );
                 render_radiance_inputs inputs = {
-                    .scene = textures.scene,
-                    .emission = textures.emission,
-                    .absorption = textures.absorption,
-                    .albedo = textures.albedo,
-                    .normal = textures.normal,
-                    .visibility = render_fluid_raster_visibility(draw)
+                    .material = render_material_raster_textures(raster),
                 };
                 cf_draw_push();
                 cf_draw_projection(cf_ortho_2d(0, 0, SIDE, SIDE));
@@ -1097,7 +1072,7 @@ static bool fluid_lighting(
         ok &= color[1][1] > color[1][2] + 3 && color[2][2] > color[2][1] + 3;
         ok &= color[3][1] < color[0][1] + (color[1][1] - color[0][1]) * .35f;
         uint16_t emission[PIXELS * 4];
-        ok &= read_hdr_texture(render_material_raster_textures(raster).emission, emission, PIXELS);
+        ok &= read_hdr_texture(render_material_raster_textures(raster).source, emission, PIXELS);
         int p = 4 * (64 * SIDE + 84);
         ok &= emission[p] == 0 && emission[p + 1] == 0 && emission[p + 2] == 0;
     }
@@ -1143,13 +1118,8 @@ static bool liquid_refraction(render_material_raster *raster, render_radiance *r
         cf_app_update(NULL);
         ok &= render_material_raster_draw(raster, NULL, 0, view);
         render_material_textures textures = render_material_raster_textures(raster);
-        ok &= render_fluid_raster_draw(draw, fluid, textures, view, SIDE, SIDE);
-        render_radiance_inputs inputs = { .scene = textures.scene,
-                                          .emission = textures.emission,
-                                          .absorption = textures.absorption,
-                                          .albedo = textures.albedo,
-                                          .normal = textures.normal,
-                                          .visibility = render_fluid_raster_visibility(draw),
+        ok &= render_fluid_raster_draw(draw, fluid, render_material_raster_canvas(raster), view, SIDE, SIDE);
+        render_radiance_inputs inputs = { .material = render_material_raster_textures(raster),
                                           .background = background };
         cf_draw_push();
         cf_draw_projection(cf_ortho_2d(0, 0, SIDE, SIDE));
@@ -1228,49 +1198,6 @@ static bool reflection_pixels()
 }
 
 /* The host initializes Cute and mounts/configures render/shaders before this call. */
-/* Renders frames with the view moving step world units right each frame. */
-static bool solve_moving(
-    render_material_raster *raster,
-    render_radiance *radiance,
-    CF_Canvas canvas,
-    const render_material_entity *entities,
-    int count,
-    int frames,
-    float step,
-    CF_Pixel *pixels
-)
-{
-    render_radiance_reset(radiance);
-    for (int frame = 0; frame < frames; frame++) {
-        render_view_2d view = { .min_x = -SIDE * .5f + step * frame,
-                                .max_y = SIDE * .5f,
-                                .width = SIDE,
-                                .height = SIDE,
-                                .crop_max_u = 1,
-                                .crop_max_v = 1 };
-        cf_app_update(NULL);
-        if (!render_material_raster_draw(raster, entities, count, view)) {
-            cf_app_draw_onto_screen(false);
-            return false;
-        }
-        render_material_textures textures = render_material_raster_textures(raster);
-        render_radiance_inputs inputs = { textures.scene,
-                                          textures.emission,
-                                          textures.absorption,
-                                          textures.albedo,
-                                          textures.normal };
-        cf_draw_push();
-        cf_draw_projection(cf_ortho_2d(0, 0, SIDE, SIDE));
-        bool ok = render_radiance_draw(radiance, inputs, view, canvas);
-        cf_draw_pop();
-        cf_app_draw_onto_screen(false);
-        if (!ok) {
-            return false;
-        }
-    }
-    return read_pixels(canvas, pixels, PIXELS);
-}
-
 static double mean_difference(const CF_Pixel *a, const CF_Pixel *b)
 {
     double sum = 0;
@@ -1282,34 +1209,571 @@ static double mean_difference(const CF_Pixel *a, const CF_Pixel *b)
     return sum / (3.0 * PIXELS);
 }
 
-/* Solving the light directions over two or four frames reuses earlier frusta,
- * moved with the view; it matches solving every direction every frame. */
-static bool split_transport(render_material_raster *raster, CF_Canvas canvas)
+/* Timestamp pass timing charges each pass the GPU time after all earlier
+ * work, whatever order command buffers report in: overlap is not counted
+ * twice, idle gaps are not counted, and buffers no mark covers accumulate as
+ * Unmarked. */
+static bool gpu_timestamp_passes()
 {
-    render_material_entity entities[] = { emitter(), wall_with(.2f, .8f) };
-    static CF_Pixel full[PIXELS], split[PIXELS];
-    bool ok = true;
-    const float steps[] = { 0, 2 };
-    for (int s = 0; s < 2 && ok; s++) {
-        for (int frames = 2; frames <= 4 && ok; frames *= 2) {
-            render_radiance *radiance = render_radiance_new();
-            GameHRC2D lighting = game_hrc2d_defaults();
-            lighting.adaptive = false;
-            lighting.fog = 0;
-            lighting.scale = 1;
-            ok = radiance && render_radiance_set_lighting(radiance, lighting) &&
-                 render_radiance_resize(radiance, SIDE, SIDE) &&
-                 solve_moving(raster, radiance, canvas, entities, 2, 12, steps[s], full);
-            lighting.split_frames = frames;
-            ok = ok && render_radiance_set_lighting(radiance, lighting) &&
-                 solve_moving(raster, radiance, canvas, entities, 2, 12, steps[s], split);
-            double difference = ok ? mean_difference(full, split) : 0;
-            ok = ok && difference < .1;
-            render_radiance_free(radiance);
+    render_gpu_timing_enable(RENDER_GPU_TIMING_TIMESTAMPS, false);
+    render_gpu_timing_start();
+    unsigned a = render_gpu_timing_committed();
+    render_gpu_timing_mark("A");
+    unsigned b = render_gpu_timing_committed();
+    unsigned c = render_gpu_timing_committed();
+    render_gpu_timing_mark("B");
+    unsigned unmarked = render_gpu_timing_committed();
+    render_gpu_timing_start();
+    unsigned d = render_gpu_timing_committed();
+    render_gpu_timing_mark("A");
+    render_gpu_timing_completed(c, 12, 15);
+    render_gpu_timing_completed(a, 0, 10);
+    render_gpu_timing_completed(unmarked, 20, 21);
+    render_gpu_timing_completed(b, 8, 13);
+    render_gpu_timing_completed(d, 21, 25);
+    int count;
+    const render_gpu_pass *passes = render_gpu_timing_passes(&count);
+    bool ok = count == 3 && !strcmp(passes[0].name, "A") &&
+              passes[0].total_ms == 14 && passes[0].count == 2 &&
+              !strcmp(passes[1].name, "B") && passes[1].total_ms == 5 &&
+              !strcmp(passes[2].name, "Unmarked") && passes[2].total_ms == 1;
+    render_gpu_timing_enable(RENDER_GPU_TIMING_OFF, false);
+    if (!ok) {
+        fprintf(stderr, "GPU timestamp passes must charge only work after earlier passes\n");
+    }
+    return ok;
+}
+
+/* Color two and four times coarser than brightness keeps light, shadow and
+ * bounce close to full color at the same resolution. */
+static bool split_luminance_transport(render_material_raster *raster, CF_Canvas canvas)
+{
+    render_material_entity receiver = wall_with(.2f, .8f);
+    receiver.pos[0] = 28;
+    receiver.points[0] = 8;
+    receiver.extent[0] = 9;
+    render_material_entity open_scene[] = { emitter(), receiver };
+    render_material_entity blocked_scene[] = { emitter(), wall(), receiver };
+    static CF_Pixel full[PIXELS], split[PIXELS], blocked[PIXELS];
+    render_radiance *radiance = render_radiance_new();
+    GameHRC2D lighting = game_hrc2d_defaults();
+    lighting.adaptive = false;
+    lighting.fog = 0;
+    bool ok = radiance && render_radiance_set_lighting(radiance, lighting) &&
+              render_radiance_resize(radiance, SIDE, SIDE) &&
+              solve(raster, radiance, canvas, open_scene, 2, SIDE, 8, full);
+    for (int shift = 1; shift <= 2 && ok; shift++) {
+        lighting.color_resolution = (GameHRCColor)shift;
+        ok = render_radiance_set_lighting(radiance, lighting) &&
+             render_radiance_get_settings(radiance).scale ==
+                 1.0f / (float)(1 << shift) &&
+             solve(raster, radiance, canvas, open_scene, 2, SIDE, 8, split) &&
+             solve(raster, radiance, canvas, blocked_scene, 3, SIDE, 8, blocked);
+        if (!ok) {
+            break;
         }
+        double full_light = receiver_light(full), split_light = receiver_light(split);
+        double shadow = receiver_light(blocked),
+               difference = mean_difference(full, split);
+        printf(
+            "radiance split luminance color=1/%d: receiver %.3f of %.3f, "
+            "shadow %.3f, "
+            "mean difference %.3f\n",
+            1 << shift,
+            split_light,
+            full_light,
+            shadow,
+            difference
+        );
+        ok = split_light > full_light * .9 && split_light < full_light * 1.1 &&
+             shadow < split_light * .05 && difference < .25;
+    }
+    if (radiance) {
+        render_radiance_free(radiance);
     }
     if (!ok) {
-        fprintf(stderr, "HRC split transport must match a full solve\n");
+        fprintf(stderr, "HRC split luminance must stay close to RGB at its scale\n");
+    }
+    return ok;
+}
+
+/* Work cells that are not a whole number of canvas pixels still average each
+ * pixel's optical depth once: light through a thin semi-transparent wall
+ * matches a grid whose cells are exactly two pixels. */
+static bool fractional_cells(render_material_raster *raster, CF_Canvas canvas)
+{
+    render_material_entity receiver = wall_with(0, .8f);
+    receiver.pos[0] = 28;
+    receiver.points[0] = 8;
+    receiver.extent[0] = 9;
+    render_material_entity haze = wall_with(.4f, 0);
+    haze.points[0] = 1;
+    haze.extent[0] = 2;
+    render_material_entity scene[] = { emitter(), haze, receiver };
+    static CF_Pixel whole[PIXELS], fractional[PIXELS];
+    render_radiance *radiance = render_radiance_new();
+    GameHRC2D lighting = game_hrc2d_defaults();
+    lighting.adaptive = false;
+    lighting.feedback = false;
+    lighting.fog = 0;
+    lighting.resolution = .5f;
+    bool ok = radiance && render_radiance_set_lighting(radiance, lighting) &&
+              render_radiance_resize(radiance, SIDE, SIDE) &&
+              solve(raster, radiance, canvas, scene, 3, SIDE, 2, whole);
+    lighting.resolution = .52f;
+    ok = ok && render_radiance_set_lighting(radiance, lighting) &&
+         solve(raster, radiance, canvas, scene, 3, SIDE, 2, fractional);
+    if (ok) {
+        double whole_light = receiver_light(whole),
+               fractional_light = receiver_light(fractional);
+        printf("radiance fractional cells: receiver %.3f of %.3f\n", fractional_light, whole_light);
+        ok = fabs(fractional_light - whole_light) < whole_light * .03;
+    }
+    if (radiance) {
+        render_radiance_free(radiance);
+    }
+    if (!ok) {
+        fprintf(stderr, "HRC cells of fractional pixels must not thicken absorbers\n");
+    }
+    return ok;
+}
+
+static bool view_crop_matches(
+    const render_view_2d_frame *frame,
+    float center_x,
+    float center_y,
+    float width,
+    float height
+)
+{
+    const render_view_2d *view = &frame->view;
+    return fabsf(view->min_x + view->width * view->crop_min_u - (center_x - width * .5f)) <
+               1e-4f &&
+           fabsf(view->min_x + view->width * view->crop_max_u - (center_x + width * .5f)) <
+               1e-4f &&
+           fabsf(view->max_y - view->height * view->crop_min_v - (center_y + height * .5f)) <
+               1e-4f &&
+           fabsf(view->max_y - view->height * view->crop_max_v - (center_y - height * .5f)) <
+               1e-4f;
+}
+
+typedef struct
+{
+    float center_x, center_y, width, height, margin, scale, min_scale;
+    int output_width, output_height, max_raster_size;
+} view_grid_case;
+
+static bool view_grid_make(view_grid_case input, render_view_2d_frame *frame)
+{
+    render_view_2d_camera camera = {
+        .min_x = input.center_x - input.width * .5f,
+        .max_y = input.center_y + input.height * .5f,
+        .width = input.width,
+        .height = input.height,
+        .output_width = input.output_width,
+        .output_height = input.output_height,
+    };
+    render_view_2d_settings settings = {
+        .margin = input.margin,
+        .work_scale = input.scale,
+        .min_work_scale = input.min_scale,
+        .max_raster_size = input.max_raster_size,
+    };
+    return render_view_2d_world_margin(camera, settings, frame);
+}
+
+static bool view_grid()
+{
+    render_view_2d_frame a = { 0 }, wide = { 0 }, capped = { 0 }, edge = { 0 },
+                         adaptive = { 0 }, distant = { 0 }, zero_margin = { 0 },
+                         odd = { 0 };
+    bool ok = view_grid_make(
+                  (view_grid_case){
+                      .center_x = .25f,
+                      .center_y = .35f,
+                      .width = 960,
+                      .height = 540,
+                      .output_width = 960,
+                      .output_height = 540,
+                      .margin = 64,
+                      .scale = .5f,
+                      .min_scale = .1f,
+                      .max_raster_size = 4096,
+                  },
+                  &a
+              ) &&
+              view_grid_make(
+                  (view_grid_case){
+                      .center_x = -12,
+                      .center_y = 20,
+                      .width = 1024,
+                      .height = 4000,
+                      .output_width = 1280,
+                      .output_height = 4000,
+                      .margin = 30,
+                      .scale = .5f,
+                      .min_scale = .1f,
+                      .max_raster_size = 4096,
+                  },
+                  &wide
+              ) &&
+              view_grid_make(
+                  (view_grid_case){
+                      .width = 960,
+                      .height = 540,
+                      .output_width = 3840,
+                      .output_height = 2160,
+                      .margin = 64,
+                      .scale = .5f,
+                      .min_scale = .1f,
+                      .max_raster_size = 4096,
+                  },
+                  &capped
+              ) &&
+              view_grid_make(
+                  (view_grid_case){
+                      .width = 960,
+                      .height = 540,
+                      .output_width = 4096,
+                      .output_height = 1080,
+                      .margin = 64,
+                      .scale = .5f,
+                      .min_scale = .1f,
+                      .max_raster_size = 4096,
+                  },
+                  &edge
+              ) &&
+              view_grid_make(
+                  (view_grid_case){
+                      .center_x = .25f,
+                      .center_y = .35f,
+                      .width = 960,
+                      .height = 540,
+                      .output_width = 960,
+                      .output_height = 540,
+                      .margin = 64,
+                      .scale = .9f,
+                      .min_scale = .1f,
+                      .max_raster_size = 4096,
+                  },
+                  &adaptive
+              ) &&
+              view_grid_make(
+                  (view_grid_case){
+                      .center_x = 1000000.25f,
+                      .center_y = -1000000.5f,
+                      .width = 960,
+                      .height = 540,
+                      .output_width = 960,
+                      .output_height = 540,
+                      .margin = 64,
+                      .scale = .5f,
+                      .min_scale = .1f,
+                      .max_raster_size = 4096,
+                  },
+                  &distant
+              ) &&
+              view_grid_make(
+                  (view_grid_case){
+                      .width = 960,
+                      .height = 540,
+                      .output_width = 960,
+                      .output_height = 540,
+                      .scale = 1,
+                      .min_scale = 1,
+                      .max_raster_size = 4096,
+                  },
+                  &zero_margin
+              ) &&
+              view_grid_make(
+                  (view_grid_case){
+                      .width = 1001,
+                      .height = 563,
+                      .output_width = 1001,
+                      .output_height = 563,
+                      .margin = 64,
+                      .scale = .25f,
+                      .min_scale = .1f,
+                      .max_raster_size = 4096,
+                  },
+                  &odd
+              );
+    ok &= adaptive.raster_width == a.raster_width &&
+          adaptive.raster_height == a.raster_height;
+    for (int i = 0; i < 128 && ok; i++) {
+        float center_x = -5 + i * .13f;
+        float center_y = 4 - i * .09f;
+        render_view_2d_frame moving;
+        ok = view_grid_make(
+                 (view_grid_case){
+                     .center_x = center_x,
+                     .center_y = center_y,
+                     .width = 960,
+                     .height = 540,
+                     .output_width = 960,
+                     .output_height = 540,
+                     .margin = 64,
+                     .scale = .5f,
+                     .min_scale = .1f,
+                     .max_raster_size = 4096,
+                 },
+                 &moving
+             ) &&
+             moving.raster_width == a.raster_width &&
+             moving.raster_height == a.raster_height;
+        if (!ok) {
+            break;
+        }
+        const render_view_2d *view = &moving.view;
+        float left = view->min_x + view->width * view->crop_min_u;
+        float right = view->min_x + view->width * view->crop_max_u;
+        float top = view->max_y - view->height * view->crop_min_v;
+        float bottom = view->max_y - view->height * view->crop_max_v;
+        float cell_x = view->width / ceilf(moving.raster_width * .5f);
+        float cell_y = view->height / ceilf(moving.raster_height * .5f);
+        ok &= fabsf(left - (center_x - 480)) < 1e-4f &&
+              fabsf(right - (center_x + 480)) < 1e-4f &&
+              fabsf(top - (center_y + 270)) < 1e-4f &&
+              fabsf(bottom - (center_y - 270)) < 1e-4f &&
+              fabsf(view->min_x / cell_x - roundf(view->min_x / cell_x)) < 1e-4f &&
+              fabsf(view->max_y / cell_y - roundf(view->max_y / cell_y)) < 1e-4f;
+    }
+    ok &= wide.raster_width <= 4096 && wide.raster_height <= 4096 &&
+          capped.raster_width <= 4096 && capped.raster_height <= 4096 &&
+          capped.margin_x < 64 && capped.margin_y == 64 &&
+          edge.raster_width == 4096 && edge.margin_x == 0 &&
+          !edge.grid_aligned && view_crop_matches(&wide, -12, 20, 1024, 4000) &&
+          view_crop_matches(&capped, 0, 0, 960, 540) &&
+          view_crop_matches(&edge, 0, 0, 960, 540) &&
+          view_crop_matches(&distant, 1000000.25f, -1000000.5f, 960, 540) &&
+          zero_margin.margin_x == 0 && zero_margin.margin_y == 0 &&
+          zero_margin.grid_aligned && odd.grid_aligned;
+    /* Scales of 1/2^n keep cells of whole pixels at any output size. */
+    const render_view_2d_frame *gridded[] = { &a,        &wide,    &capped,
+                                              &adaptive, &distant, &odd };
+    for (int i = 0; i < (int)(sizeof gridded / sizeof *gridded); i++) {
+        ok &= gridded[i]->raster_width % RENDER_VIEW_2D_RASTER_STEP == 0 &&
+              gridded[i]->raster_height % RENDER_VIEW_2D_RASTER_STEP == 0;
+    }
+    render_view_2d_frame too_wide;
+    ok &= !view_grid_make(
+        (view_grid_case){
+            .width = 1,
+            .height = 300,
+            .output_width = 4097,
+            .output_height = 300,
+            .scale = .5f,
+            .min_scale = .1f,
+            .max_raster_size = 4096,
+        },
+        &too_wide
+    );
+    /* Snapping by whole work cells keeps the grid world-aligned without
+     * resizing textures as the camera moves. */
+    int snapped_pixels = 0;
+    for (int i = 0; i < 16; i++) {
+        render_view_2d_axis_frame axis;
+        ok &= render_view_2d_axis(
+            (render_view_2d_axis_input){ .center = i * .37f,
+                                         .span = 960,
+                                         .margin = 64,
+                                         .scale = .5f,
+                                         .min_scale = .1f,
+                                         .output_pixels = 1920,
+                                         .max_pixels = 4096 },
+            &axis
+        );
+        double cell = axis.raster_pixels / 2.0 / ceil(axis.raster_pixels * .5);
+        double steps = axis.origin / cell;
+        ok &= axis.grid_aligned && fabs(steps - round(steps)) < 1e-3 &&
+              (!i || axis.raster_pixels == snapped_pixels);
+        snapped_pixels = axis.raster_pixels;
+    }
+    if (!ok) {
+        fprintf(stderr, "HRC world margin must preserve its grid, crop, aspect and 4K bound\n");
+    }
+    return ok;
+}
+
+/* Lighting outside what HRC supports is fitted, not rejected, and each change
+ * is noted; the fitted lighting is always accepted. */
+static bool normalized_lighting(render_radiance *radiance)
+{
+    char notes[256];
+    GameHRC2D defaults = game_hrc2d_defaults();
+    GameHRC2D fitted = render_radiance_normalize(defaults, notes, sizeof notes);
+    bool ok = !notes[0] && fitted.resolution == defaults.resolution;
+
+    GameHRC2D wild = defaults;
+    wild.resolution = 2;
+    wild.min_resolution = 0;
+    wild.color_resolution = (GameHRCColor)7;
+    wild.gather_resolution = (GameHRCGather)-1;
+    wild.trace_levels = 9;
+    wild.bloom = 2;
+    wild.exposure = NAN;
+    fitted = render_radiance_normalize(wild, notes, sizeof notes);
+    ok &= fitted.resolution == 1 && fitted.min_resolution == .1f &&
+          fitted.color_resolution == GAME_HRC_COLOR_EIGHTH &&
+          fitted.gather_resolution == GAME_HRC_GATHER_FULL &&
+          fitted.trace_levels == 5 && fitted.bloom == 1 &&
+          fitted.exposure == 0 && strstr(notes, "resolution 2 -> 1") &&
+          strstr(notes, "trace_levels 9 -> 5") &&
+          render_radiance_set_lighting(radiance, fitted);
+
+    /* The coarsest color at the lowest resolution still has a grid. */
+    GameHRC2D coarse = defaults;
+    coarse.adaptive = false;
+    coarse.resolution = .1f;
+    coarse.color_resolution = GAME_HRC_COLOR_EIGHTH;
+    ok &= render_radiance_set_lighting(radiance, coarse) &&
+          render_radiance_resize(radiance, SIDE, SIDE) &&
+          render_radiance_set_lighting(radiance, defaults);
+    if (!ok) {
+        fprintf(stderr, "HRC lighting normalization: %s\n", notes);
+    }
+    return ok;
+}
+
+/* Lays out a 1280x720 view for the renderer's grids, as the scene renderer
+ * does, reserving room for adaptive's lowest step. */
+static bool lighting_view_fits(const render_radiance *radiance)
+{
+    render_radiance_settings settings = render_radiance_get_settings(radiance);
+    render_view_2d_frame frame;
+    return render_view_2d_world_margin(
+        (render_view_2d_camera){ .min_x = -640,
+                                 .max_y = 360,
+                                 .width = 1280,
+                                 .height = 720,
+                                 .output_width = 1280,
+                                 .output_height = 720 },
+        (render_view_2d_settings){ .margin = 64,
+                                   .work_scale = settings.scale,
+                                   .min_work_scale = settings.min_scale,
+                                   .max_raster_size = 4096 },
+        &frame
+    );
+}
+
+/* Every resolution, color and gather combination, with and without adaptive,
+ * applies to a live renderer in any order and lays out a view, at canvas
+ * sizes with and without whole-pixel cells. */
+static bool lighting_transitions()
+{
+    const int sizes[][2] = { { 1288, 728 }, { 200, 136 } };
+    const float resolutions[] = { 1, .9f, .75f, .6f, .5f, .37f, .25f, .1f };
+    render_radiance *radiance = render_radiance_new();
+    bool ok = radiance != NULL;
+    for (int size = 0; size < 2 && ok; size++) {
+        ok = render_radiance_resize(radiance, sizes[size][0], sizes[size][1]);
+        for (int i = 0; i < 8 * 4 * 2 * 2 && ok; i++) {
+            int r = i / 16, color = i / 4 % 4, half = i / 2 % 2, adaptive = i % 2;
+            GameHRC2D lighting = game_hrc2d_defaults();
+            lighting.adaptive = adaptive;
+            lighting.resolution = resolutions[r];
+            lighting.color_resolution = (GameHRCColor)color;
+            lighting.gather_resolution = half ? GAME_HRC_GATHER_HALF
+                                              : GAME_HRC_GATHER_FULL;
+            ok = render_radiance_set_lighting(radiance, lighting) &&
+                 lighting_view_fits(radiance);
+            if (!ok) {
+                fprintf(
+                    stderr,
+                    "HRC lighting transition failed: %dx%d resolution %g color "
+                    "%d gather half %d adaptive %d\n",
+                    sizes[size][0],
+                    sizes[size][1],
+                    resolutions[r],
+                    color,
+                    half,
+                    adaptive
+                );
+            }
+        }
+    }
+    render_radiance_free(radiance);
+    return ok;
+}
+
+static void feed_lighting_time(render_radiance *radiance, double ms, int frames)
+{
+    for (int i = 0; i < frames; i++) {
+        render_radiance_frame_time(radiance, ms);
+    }
+}
+
+static bool rung_is(render_radiance *radiance, int rung, float resolution, GameHRCColor color, bool gather_half)
+{
+    render_radiance_status status = render_radiance_get_status(radiance);
+    return status.rung == rung && status.resolution == resolution &&
+           status.color == color && status.gather_half == gather_half;
+}
+
+/* Over budget, adaptive halves gather first when it is Auto, then coarsens
+ * color up to Quarter at the authored resolution, then halves resolution down
+ * to min_resolution with the authored color. It steps back up once the
+ * measured cost of the step above fits, and restarts when the ladder changes. */
+static bool adaptive_ladder(render_radiance *radiance)
+{
+    const GameHRCColor half = GAME_HRC_COLOR_HALF, quarter = GAME_HRC_COLOR_QUARTER;
+    GameHRC2D lighting = game_hrc2d_defaults();
+    lighting.resolution = 1;
+    lighting.color_resolution = half;
+    lighting.gather_resolution = GAME_HRC_GATHER_AUTO;
+    lighting.min_resolution = .25f;
+    lighting.target_fps = 125; /* 8 ms */
+    bool ok = render_radiance_set_lighting(radiance, lighting) &&
+              render_radiance_get_status(radiance).rungs == 5 &&
+              rung_is(radiance, 0, 1, half, false) &&
+              render_radiance_get_settings(radiance).min_scale == .125f;
+    feed_lighting_time(radiance, 20, 60);
+    ok &= rung_is(radiance, 1, 1, half, true);
+    /* A step's first frames refill history and are not judged, and one
+     * window over budget is not sustained load. */
+    feed_lighting_time(radiance, 20, 89);
+    ok &= rung_is(radiance, 1, 1, half, true);
+    feed_lighting_time(radiance, 12, 1);
+    ok &= rung_is(radiance, 2, 1, quarter, true) &&
+          render_radiance_get_settings(radiance).scale == .25f;
+    feed_lighting_time(radiance, 12, 90);
+    ok &= rung_is(radiance, 3, .5f, half, true) &&
+          render_radiance_get_settings(radiance).scale == .25f;
+    feed_lighting_time(radiance, 12, 90);
+    ok &= rung_is(radiance, 4, .25f, half, true);
+    /* The lowest step holds while still over budget. */
+    feed_lighting_time(radiance, 9, 90);
+    ok &= rung_is(radiance, 4, .25f, half, true);
+    /* 12 ms above against 9 here: 2 ms predicts 2.7 above, within budget. */
+    feed_lighting_time(radiance, 2, 90);
+    ok &= rung_is(radiance, 4, .25f, half, true);
+    feed_lighting_time(radiance, 2, 30);
+    ok &= rung_is(radiance, 3, .5f, half, true);
+    /* Authoring that keeps the ladder keeps the step; a new ladder restarts. */
+    lighting.target_fps = 250;
+    ok &= render_radiance_set_lighting(radiance, lighting) &&
+          rung_is(radiance, 3, .5f, half, true);
+    lighting.resolution = .5f;
+    ok &= render_radiance_set_lighting(radiance, lighting) &&
+          rung_is(radiance, 0, .5f, half, false);
+    lighting.adaptive = false;
+    ok &= render_radiance_set_lighting(radiance, lighting) &&
+          render_radiance_get_status(radiance).rungs == 1 &&
+          render_radiance_get_settings(radiance).scale == .25f;
+    feed_lighting_time(radiance, 50, 120);
+    ok &= rung_is(radiance, 0, .5f, half, false);
+    if (!ok) {
+        render_radiance_status status = render_radiance_get_status(radiance);
+        fprintf(
+            stderr,
+            "HRC adaptive ladder: rung %d of %d, resolution %.3f, color %d, "
+            "gather half %d\n",
+            status.rung,
+            status.rungs,
+            status.resolution,
+            (int)status.color,
+            status.gather_half
+        );
     }
     return ok;
 }
@@ -1317,10 +1781,14 @@ static bool split_transport(render_material_raster *raster, CF_Canvas canvas)
 int test_radiance()
 {
     extern bool test_radiance_intervals();
+    extern bool test_radiance_history();
+    extern bool test_material_sampling();
     render_material_raster *raster = render_material_raster_new();
     render_radiance *radiance = render_radiance_new();
     CF_Canvas canvas = cf_make_canvas(cf_canvas_defaults(SIDE, SIDE));
-    bool ok = raster && radiance && canvas.id && packed_fluence();
+    bool ok = raster && radiance && canvas.id && view_grid() &&
+              normalized_lighting(radiance) && lighting_transitions() &&
+              gpu_timestamp_passes();
     if (!ok) {
         fprintf(
             stderr,
@@ -1395,9 +1863,6 @@ int test_radiance()
         double settled = receiver_light(bounce_settled);
         printf("radiance bounce: first %.3f, settled %.3f\n", first, settled);
         ok = settled > first + 0.1;
-    }
-    if (ok) {
-        ok = split_luminance_bounce(raster);
     }
     if (ok) {
         /* Transparent reflective edges must not turn reflected light into an
@@ -1491,21 +1956,7 @@ int test_radiance()
     if (ok) {
         ok = graph_material_pixels(raster) && material_frame_pixels(raster);
     }
-    if (ok) {
-        GameHRC2D lighting = game_hrc2d_defaults();
-        lighting.scale = .5f;
-        ok = render_radiance_set_lighting(radiance, lighting);
-        for (int i = 0; i < 30; i++) {
-            render_radiance_frame_time(radiance, .05);
-        }
-        float reduced = render_radiance_get_settings(radiance).scale;
-        ok &= reduced < .5f && reduced >= lighting.min_scale;
-        ok &= render_radiance_set_lighting(radiance, lighting) &&
-              render_radiance_get_settings(radiance).scale == reduced;
-        lighting.adaptive = false;
-        ok &= render_radiance_set_lighting(radiance, lighting) &&
-              render_radiance_get_settings(radiance).scale == .5f;
-    }
+    ok &= adaptive_ladder(radiance);
     ok &= fluid_alignment(raster);
     ok &= fluid_surfaces(raster);
     cf_destroy_canvas(canvas);
@@ -1516,10 +1967,14 @@ int test_radiance()
         ok &= fluid_lighting(raster, radiance, canvas, levels);
     }
     ok &= surface_lighting(raster, radiance, canvas);
-    ok &= split_transport(raster, canvas);
+    ok &= split_luminance_transport(raster, canvas);
+    ok &= fractional_cells(raster, canvas);
     ok &= liquid_refraction(raster, radiance, canvas);
     ok &= reflection_pixels();
+    ok &= reconstruction_sampling(raster);
     ok &= test_radiance_intervals();
+    ok &= test_radiance_history();
+    ok &= test_material_sampling();
     if (canvas.id) {
         cf_destroy_canvas(canvas);
     }
@@ -1533,7 +1988,7 @@ int test_radiance()
     return !ok;
 }
 
-int radiance_run(const char *program)
+int radiance_run(const char *program, bool gles)
 {
     CF_Result result = cf_make_app(
         "Material alignment regression",
@@ -1542,9 +1997,16 @@ int radiance_run(const char *program)
         0,
         SIDE,
         SIDE,
-        CF_APP_OPTIONS_NO_AUDIO_BIT | CF_APP_OPTIONS_HIDDEN_BIT,
+        CF_APP_OPTIONS_NO_AUDIO_BIT | CF_APP_OPTIONS_HIDDEN_BIT |
+            (gles ? CF_APP_OPTIONS_GFX_OPENGL_BIT : 0),
         program
     );
+    if (cf_is_error(result) && gles) {
+        /* Desktop GLES needs a driver such as Mesa's. On macOS, put ANGLE's
+           libEGL.dylib and libGLESv2.dylib on DYLD_FALLBACK_LIBRARY_PATH. */
+        printf("radiance SKIP: no GLES window: %s\n", result.details);
+        return 0;
+    }
     if (cf_is_error(result)) {
         fprintf(stderr, "%s\n", result.details);
         return 1;

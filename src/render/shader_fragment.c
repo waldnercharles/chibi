@@ -9,7 +9,7 @@
 
 char *render_shader_fragment_source()
 {
-    char *raster = render_shader_source("hrc/entity_raster.shd");
+    char *raster = render_shader_source("hrc/entity_raster.frag");
     if (!raster) {
         return NULL;
     }

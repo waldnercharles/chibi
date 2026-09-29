@@ -4,7 +4,8 @@ NeonSwarm gas now follows a persistent sparse 2D velocity grid. A moving body
 can redirect nearby gas before contact, and its wake keeps moving afterward.
 Pressure projection limits compression; vorticity confinement helps preserve
 rolling motion lost through interpolation. This is a CPU grid-and-tracer solver,
-not MPM. Liquids retain the existing particle density-relaxation solver.
+not MPM. Liquid, powder and elastic matter use MLS-MPM; see
+[the material engine](material-engine.md).
 
 ## Runtime and authored settings
 

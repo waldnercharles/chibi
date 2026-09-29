@@ -134,12 +134,13 @@ always attenuates reflected feedback by interaction opacity; the nearly-empty
 cell emission fallback applies only to authored emission. It must not turn
 transparent reflective edges into multiplying light sources.
 
-The fluid solver uses a spatial hash, two relaxation substeps and shared workers.
+Gas uses a spatial hash, two relaxation substeps and shared workers; the
+floating water is MLS-MPM matter (see [the material engine](material-engine.md)).
 Heat occlusion rejects distant pieces before exact geometry tests. Compound
 contact queries test the polygon selected by Box2D rather than every polygon in
 its chunk. These optimizations preserve simulation state and particle counts.
-Gas is a weakly compressible tracer model, liquid uses approximate cohesion,
-and solid fragments use Box2D. Crater rock chunks use a separate lightweight
+Gas is a weakly compressible tracer model, water is weakly compressible MPM
+matter, and solid fragments use Box2D. Crater rock chunks use a separate lightweight
 solver: circles that bounce off the terrain's signed distance, are shoved by
 moving bodies and blasts without pushing back, split on hard knocks and shrink
 away within about two seconds. Tile generation runs in

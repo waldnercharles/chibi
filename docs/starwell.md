@@ -225,6 +225,15 @@ What has landed, and its contract. Every node is in searchNodes and Studio.
 - **Broadcast.** `Send Event To All(Component, payload…)` queues a typed event
   for every entity with the component (key or name), mirroring Send Event's
   payload pins; entities being destroyed are skipped.
+- **Scatter placement.** `GameScatter{prototype, terrain (GameGlobalBinding
+  name of the MaterialTerrain entity), min, max, cell, chance, placement
+  Air|Floor|Ceiling|Wall|Embedded, clearance, salt, radius}` runs after
+  physics, so terrain near cameras is resident. Each cell in view (+ radius)
+  tries one candidate once per run from hash(run seed, salt, cell); Floor
+  searches +y (down), Ceiling −y, Wall ±x (nearest), each within clearance,
+  then snaps to the crossing and faces the terrain gradient. Spawns are owned
+  like Spawn Prototype's (a restart removes them) and get Transform and
+  Orientation before Begin. Bounded to 256 new cells per step.
 
 ## Status
 

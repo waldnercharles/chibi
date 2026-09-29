@@ -11,6 +11,7 @@
 #include "runtime/follow.h"
 #include "runtime/generated.h"
 #include "runtime/particle_emitters.h"
+#include "runtime/scatter.h"
 #include "runtime/scenes/physics.h"
 #include "runtime/visual_motion.h"
 #include "support/array.h"
@@ -44,6 +45,7 @@ struct engine
     ecs_world *world;
     game_live_world *live;
     game_particle_emitters *emitters;
+    game_scatter *scatter;
     system_schedule *systems;
     authored_system *authored;
     engine_render_fn render;
@@ -163,6 +165,7 @@ engine *engine_new(ecs_world *world, game_live_world *live)
     if (live) {
         result->emitters = game_particle_emitters_new(live->particles);
         game_particle_emitters_bind_materials(result->emitters, live->materials);
+        result->scatter = game_scatter_new();
     }
     result->playing = true;
     result->input = engine_input_new(world, live ? live->behaviors : NULL);
@@ -182,6 +185,9 @@ void engine_free(engine *engine)
     }
     if (engine->emitters) {
         game_particle_emitters_free(engine->emitters);
+    }
+    if (engine->scatter) {
+        game_scatter_free(engine->scatter);
     }
     system_schedule_free(engine->systems);
     for (int i = 0; i < acount(engine->authored); i++) {
@@ -394,6 +400,7 @@ void engine_reset(engine *engine)
         game_visibility_reset(engine->live->visibility);
         game_audio_reset(engine_audio(engine));
         game_ui_reset(game_behavior_ui(engine->live->behaviors));
+        game_scatter_reset(engine->scatter);
         begin_run(engine, seed);
     }
 }
@@ -596,8 +603,18 @@ static int finish_systems(engine *engine)
                 engine->live->physics,
                 (float)engine->step_seconds
             );
-            if (follow_error) {
-                snprintf(engine->error, sizeof engine->error, "%s", follow_error);
+            /* Scatter after physics: its terrain is generated and resident. */
+            const char *placement_error = follow_error
+                                            ? follow_error
+                                            : game_scatter_update(
+                                                  engine->scatter,
+                                                  engine->world,
+                                                  engine->live->entities,
+                                                  engine->live->materials,
+                                                  engine_run_seed(engine)
+                                              );
+            if (placement_error) {
+                snprintf(engine->error, sizeof engine->error, "%s", placement_error);
                 return FLOW_ERR_ARGUMENT;
             }
             result = run_system_phase(engine, SYSTEM_POST_PHYSICS);

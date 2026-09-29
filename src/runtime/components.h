@@ -83,6 +83,38 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameFollow)
 }
 GameFollow;
 
+typedef enum
+{
+    GAME_SCATTER_AIR,
+    GAME_SCATTER_FLOOR,
+    GAME_SCATTER_CEILING,
+    GAME_SCATTER_WALL,
+    GAME_SCATTER_EMBEDDED
+} GameScatterPlacement;
+
+/* Places prototype on a grid of cell-sized squares over [min, max] as cameras
+ * come within radius of it. Each cell tries one jittered point once per run,
+ * chosen by the run seed, salt and the cell, and spawns there with probability
+ * chance when the point fits terrain, the MaterialTerrain entity whose
+ * GameGlobalBinding name this is. Air needs clearance of open space; Floor,
+ * Ceiling and Wall need rock within clearance below (+y), above or beside, and
+ * snap onto it with Orientation facing out of the rock; Embedded needs rock
+ * clearance deep. Spawns are never despawned or replaced. */
+typedef NODE_COMPONENT_TYPE_DENSE(GameScatter)
+{
+    const char *prototype;
+    const char *terrain;
+    CF_V2 min;
+    CF_V2 max;
+    float cell;
+    float chance;
+    GameScatterPlacement placement;
+    float clearance;
+    int salt;
+    float radius;
+}
+GameScatter;
+
 /* Target velocity with finite acceleration; physics owns actual velocity. */
 typedef NODE_COMPONENT_TYPE_DENSE(GameDrive)
 {

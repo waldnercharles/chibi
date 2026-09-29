@@ -888,6 +888,188 @@ static void broadcast()
     fixture_free(&f);
 }
 
+/* Begin copies the placed Transform into Velocity. */
+static behavior_asset *placed_behavior()
+{
+    behavior_asset *asset = behavior("Placed");
+    graph *g = asset->graph;
+    node *set = add(g, "Set_GameVelocity");
+    flow(g, event(g, "Begin"), set);
+    wire(g, add(g, "Get_GameTransform"), 0, set, 1);
+    return asset;
+}
+
+static void register_prototype(run_fixture *f, const char *json)
+{
+    game_prototype_registry registry = { GAME_REGISTRY_COMPONENTS,
+                                         GAME_REGISTRY_COMPONENT_COUNT };
+    char error[256];
+    game_prototype *prototype = game_prototype_load(json, &registry, error, sizeof error);
+    assert(prototype && game_entities_register(f->live->entities, prototype) == 0);
+    game_prototype_free(prototype);
+}
+
+typedef struct
+{
+    run_fixture f;
+    ecs_entity cave, scatter;
+} scatter_fixture;
+
+static scatter_fixture scatter_new(int seed, GameScatter rule, float view)
+{
+    scatter_fixture s = { .f = fixture_new() };
+    engine_pin_run_seed(s.f.runtime, seed);
+    fixture_behavior(&s.f, placed_behavior());
+    register_prototype(&s.f, "{\"name\":\"Crystal\",\"behaviors\":[\"Placed\"],\"components\":{\"GameTransform\":{},\"GameVelocity\":{}}}");
+    s.cave = cave_terrain(&s.f, (MaterialTerrain){ .width = 512, .height = 512 });
+    GameGlobalBinding binding = { "Cave" };
+    assert(
+        ecs_world_record_add(s.f.world, s.cave, GAME_COMPONENT_GameGlobalBinding.id, &binding, 0) == ECS_OK
+    );
+    ecs_entity camera = ecs_world_create_entity(s.f.world);
+    GameCamera lens = { .width = view, .height = view };
+    assert(
+        ecs_world_record_add(s.f.world, camera, GAME_COMPONENT_GameCamera.id, &lens, 0) == ECS_OK
+    );
+    assert(GAME_GameTransform_add(s.f.world, camera, 0) == ECS_OK);
+    s.scatter = ecs_world_create_entity(s.f.world);
+    rule.prototype = "Crystal";
+    rule.min = (CF_V2){ -250, -250 };
+    rule.max = (CF_V2){ 250, 250 };
+    rule.cell = 20;
+    assert(
+        ecs_world_record_add(s.f.world, s.scatter, GAME_COMPONENT_GameScatter.id, &rule, 0) == ECS_OK
+    );
+    assert(ecs_world_apply_commands(s.f.world) == ECS_OK);
+    return s;
+}
+
+/* The scattered entities: those spawned with a Velocity. */
+static ecs_entity *scattered(run_fixture *f)
+{
+    ecs_entity *out = NULL, entity;
+    ecs_component_id id = GAME_COMPONENT_GameVelocity.id;
+    ecs_query query;
+    assert(ecs_query_begin(f->world, &query, &id, 1) == ECS_OK);
+    while (ecs_query_next(&query, &entity)) {
+        apush(out, entity);
+    }
+    ecs_query_end(&query);
+    return out;
+}
+
+static uint64_t placement_hash(run_fixture *f)
+{
+    ecs_entity *spawned = scattered(f);
+    uint64_t hash = UINT64_C(14695981039346656037);
+    for (int i = 0; i < acount(spawned); i++) {
+        CF_V2 at = *GAME_GameTransform_get_const(f->world, spawned[i]);
+        const unsigned char *bytes = (const unsigned char *)&at;
+        for (size_t b = 0; b < sizeof at; b++) {
+            hash = (hash ^ bytes[b]) * UINT64_C(1099511628211);
+        }
+    }
+    afree(spawned);
+    return hash;
+}
+
+static void scatter_floor()
+{
+    GameScatter floor = { .terrain = "Cave",
+                          .chance = 1,
+                          .placement = GAME_SCATTER_FLOOR,
+                          .clearance = 30,
+                          .salt = 3 };
+    scatter_fixture s = scatter_new(11, floor, 200);
+    fixture_steps(&s.f, 1);
+    ecs_entity *spawned = scattered(&s.f);
+    int count = acount(spawned);
+    assert(count > 3);
+    for (int i = 0; i < count; i++) {
+        CF_V2 at = *GAME_GameTransform_get_const(s.f.world, spawned[i]);
+        /* Begin ran after placement. */
+        assert(cf_distance(*GAME_GameVelocity_get_const(s.f.world, spawned[i]), at) == 0);
+        /* On the rock's upper surface, facing up out of it (+y is down). */
+        assert(terrain_at(&s.f, s.cave, at.x, at.y).solid);
+        assert(!terrain_at(&s.f, s.cave, at.x, at.y - .5f).solid);
+        assert(sinf(GAME_GameOrientation_get_const(s.f.world, spawned[i])->radians) < 0);
+    }
+    uint64_t first = placement_hash(&s.f);
+    /* Each cell tries once per run; destroyed spawns do not return. */
+    assert(ecs_world_destroy_entity(s.f.world, spawned[0]) == ECS_OK);
+    assert(ecs_world_apply_commands(s.f.world) == ECS_OK);
+    afree(spawned);
+    fixture_steps(&s.f, 3);
+    spawned = scattered(&s.f);
+    assert(acount(spawned) == count - 1);
+    afree(spawned);
+    /* A new run, restarted as hosts do, tries every cell again. */
+    engine_reset(s.f.runtime);
+    game_entities_reset(s.f.live->entities);
+    s.f.time = 0;
+    fixture_steps(&s.f, 1);
+    assert(placement_hash(&s.f) == first);
+    fixture_free(&s.f);
+    /* The same seed places the same; another seed places elsewhere. */
+    s = scatter_new(11, floor, 200);
+    fixture_steps(&s.f, 1);
+    assert(placement_hash(&s.f) == first);
+    fixture_free(&s.f);
+    s = scatter_new(12, floor, 200);
+    fixture_steps(&s.f, 1);
+    assert(placement_hash(&s.f) != first);
+    fixture_free(&s.f);
+}
+
+static void scatter_placements()
+{
+    GameScatter air = { .terrain = "Cave",
+                        .chance = 1,
+                        .placement = GAME_SCATTER_AIR,
+                        .clearance = 10 };
+    GameScatter embedded = air;
+    embedded.placement = GAME_SCATTER_EMBEDDED;
+    embedded.clearance = 4;
+    GameScatter wall = air;
+    wall.placement = GAME_SCATTER_WALL;
+    wall.clearance = 25;
+    GameScatter rules[] = { air, embedded, wall };
+    for (int r = 0; r < 3; r++) {
+        scatter_fixture s = scatter_new(5, rules[r], 300);
+        fixture_steps(&s.f, 1);
+        ecs_entity *spawned = scattered(&s.f);
+        assert(acount(spawned) > 2);
+        for (int i = 0; i < acount(spawned); i++) {
+            CF_V2 at = *GAME_GameTransform_get_const(s.f.world, spawned[i]);
+            game_terrain_sample here = terrain_at(&s.f, s.cave, at.x, at.y);
+            const GameOrientation *heading = GAME_GameOrientation_get_const(s.f.world, spawned[i]);
+            if (rules[r].placement == GAME_SCATTER_AIR) {
+                assert(here.distance >= 10 && !heading);
+            }
+            if (rules[r].placement == GAME_SCATTER_EMBEDDED) {
+                assert(here.distance <= -4 && !heading);
+            }
+            if (rules[r].placement == GAME_SCATTER_WALL) {
+                assert(here.solid && fabsf(cosf(heading->radians)) > .3f);
+            }
+        }
+        afree(spawned);
+        fixture_free(&s.f);
+    }
+    /* A camera over many cells spreads their tries across steps. */
+    GameScatter open = { .chance = 1, .placement = GAME_SCATTER_AIR };
+    scatter_fixture s = scatter_new(5, open, 2000);
+    int counts[3];
+    for (int i = 0; i < 3; i++) {
+        fixture_steps(&s.f, 1);
+        ecs_entity *spawned = scattered(&s.f);
+        counts[i] = acount(spawned);
+        afree(spawned);
+    }
+    assert(counts[0] == 256 && counts[1] == 512 && counts[2] == 625);
+    fixture_free(&s.f);
+}
+
 void test_run_capabilities()
 {
     seeded_randomness();
@@ -898,5 +1080,7 @@ void test_run_capabilities()
     components_on_any_entity();
     follow_rules();
     broadcast();
-    puts("Run capabilities PASS: seeded per-world randomness, run seeds, seed_from_run terrain, restart requests, Sample Field, Terrain Distance, time scale, hit-stop, camera trauma, components on any entity, follow rules and broadcast events");
+    scatter_floor();
+    scatter_placements();
+    puts("Run capabilities PASS: seeded per-world randomness, run seeds, seed_from_run terrain, restart requests, Sample Field, Terrain Distance, time scale, hit-stop, camera trauma, components on any entity, follow rules, broadcast events and scatter placement");
 }

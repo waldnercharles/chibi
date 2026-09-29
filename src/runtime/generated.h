@@ -23,6 +23,8 @@ extern const GameMaterialCavity *GAME_GameMaterialCavity_get_const(const ecs_wor
 extern const ecs_component_desc GAME_COMPONENT_GameReflection;
 extern const GameReflection *GAME_GameReflection_get_const(const ecs_world *, ecs_entity);
 
+extern const ecs_component_desc GAME_COMPONENT_GameScatter;
+extern const GameScatter *GAME_GameScatter_get_const(const ecs_world *, ecs_entity);
 extern const ecs_component_desc GAME_COMPONENT_GameFollow;
 extern GameFollow *GAME_GameFollow_get(ecs_world *, ecs_entity);
 extern const ecs_component_desc GAME_COMPONENT_GameDrive;

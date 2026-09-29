@@ -570,16 +570,20 @@ int game_entities_register(game_entities *entities, const game_prototype *protot
     return 0;
 }
 
-static game_prototype *prepare_spawn(game_entities *entities, const char *identity, const char **message)
+static const game_prototype *find_prototype(const game_entities *entities, const char *identity)
 {
-    const game_prototype *prototype = NULL;
     for (int i = 0; identity && i < acount(entities->prototypes); i++) {
         if (strcmp(entities->prototypes[i].prototype->identity, identity) == 0 ||
             strcmp(entities->prototypes[i].prototype->name, identity) == 0) {
-            prototype = entities->prototypes[i].prototype;
-            break;
+            return entities->prototypes[i].prototype;
         }
     }
+    return NULL;
+}
+
+static game_prototype *prepare_spawn(game_entities *entities, const char *identity, const char **message)
+{
+    const game_prototype *prototype = find_prototype(entities, identity);
     if (!prototype) {
         *message = "Spawn Prototype: unknown prototype";
         return NULL;
@@ -607,6 +611,63 @@ static int game_entities_request_spawn(game_entities *entities, flow_context *ct
     }
     apush(entities->spawns, ((spawn_request){ .prototype = copy, .wait = wait }));
     return FLOW_OK;
+}
+
+/* Sets a spawned entity's pose, adding the components it lacks. */
+static int place(ecs_world *world, ecs_entity entity, GameTransform position, const float *heading)
+{
+    if ((!GAME_GameTransform_get(world, entity) &&
+         GAME_GameTransform_add(world, entity, 0) != ECS_OK) ||
+        (heading && !GAME_GameOrientation_get(world, entity) &&
+         GAME_GameOrientation_add(world, entity, 0) != ECS_OK) ||
+        ecs_world_apply_commands(world) != ECS_OK) {
+        return ECS_ERR_COMPONENT;
+    }
+    *GAME_GameTransform_get(world, entity) = position;
+    if (heading) {
+        GAME_GameOrientation_get(world, entity)->radians = *heading;
+    }
+    return ECS_OK;
+}
+
+int game_entities_spawn_at(
+    game_entities *entities,
+    const char *identity,
+    GameTransform position,
+    const float *heading,
+    ecs_entity *out,
+    char *error,
+    size_t size
+)
+{
+    const game_prototype *prototype = find_prototype(entities, identity);
+    if (!prototype) {
+        snprintf(error, size, "Unknown prototype: %s", identity ? identity : "");
+        return ECS_ERR_ARGUMENT;
+    }
+    int result = game_prototype_spawn_components(prototype, entities->world, out, error, size);
+    if (result != ECS_OK) {
+        return result;
+    }
+    apush(entities->owned, *out);
+    if (place(entities->world, *out, position, heading) != ECS_OK ||
+        game_entities_rebuild_global_bindings(entities) != 0) {
+        snprintf(error, size, "Could not place %s", prototype->name);
+        return ECS_ERR_COMPONENT;
+    }
+    for (int i = 0; i < acount(prototype->graphs); i++) {
+        if (game_behavior_attach(entities->behaviors, *out, prototype->graphs[i]) != 0) {
+            snprintf(
+                error,
+                size,
+                "%s behavior %s could not attach",
+                prototype->name,
+                prototype->graphs[i]
+            );
+            return ECS_ERR_COMMAND;
+        }
+    }
+    return ECS_OK;
 }
 
 void game_entities_request_destroy(game_entities *entities, ecs_entity entity)

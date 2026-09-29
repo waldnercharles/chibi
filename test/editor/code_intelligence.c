@@ -1,3 +1,4 @@
+#define _GNU_SOURCE /* nftw on glibc */
 /* Code intelligence in the Text Editor without Studio (workstream I): a
  * part's problems as markers, completion accepted into the buffer, Go to
  * Definition's targets, hover descriptions, and one undo history over a code

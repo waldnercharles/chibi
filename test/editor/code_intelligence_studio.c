@@ -1,3 +1,4 @@
+#define _GNU_SOURCE /* nftw on glibc */
 /* The Text Editor's code intelligence in Studio (workstream I, hidden
  * window): problems appear and go as the part is typed and once RmlUi checks
  * it, a completion typed and accepted steps back with the typing through one

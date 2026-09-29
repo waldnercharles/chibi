@@ -1,3 +1,4 @@
+#define _GNU_SOURCE /* nftw on glibc */
 /* UI documents: a ui asset's or stylesheet's text open for editing, its undo
  * history, live apply through overlays, saves and disk conflicts; then as
  * Studio document tabs and in the Text Editor. */

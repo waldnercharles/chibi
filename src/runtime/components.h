@@ -775,6 +775,43 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameStarfield2D)
 }
 GameStarfield2D;
 
+/* Optional grading and lens effects for tone-mapped 2D scenes
+ * (GameHRC2D.tone_mapping). Zero leaves every field neutral. */
+typedef NODE_COMPONENT_TYPE_DENSE(GamePost2D)
+{
+    /* Darkening toward the corners, 0 to 1. */
+    float vignette;
+    /* Red and blue split at the screen corners, in output pixels. */
+    float chromatic_aberration;
+    /* Film grain amplitude in display units; 0.04 is subtle. */
+    float grain;
+    /* Added to one: 0.2 raises contrast by a fifth, -1 flattens it. */
+    float contrast;
+    /* Added to one: -1 is grayscale. */
+    float saturation;
+    /* White balance from cool (-1) to warm (1). */
+    float temperature;
+    /* White balance from green (-1) to magenta (1). */
+    float tint;
+    /* Display color added to the shadows. */
+    CF_V3 lift;
+    /* Added to one as a per-channel display multiplier. */
+    CF_V3 gain;
+    /* Output pixels of shimmer over burning fluid. */
+    float heat_haze;
+}
+GamePost2D;
+
+/* Shimmers the frame behind an entity, as heat does above fire. */
+typedef NODE_COMPONENT_TYPE_DENSE(GameHeatHaze)
+{
+    /* World units from the entity's center. */
+    float radius;
+    /* Output pixels of displacement at the center. */
+    float strength;
+}
+GameHeatHaze;
+
 /* Color detail of HRC lighting relative to its resolution. */
 typedef enum
 {

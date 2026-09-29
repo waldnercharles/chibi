@@ -168,3 +168,53 @@ The complete world and material hashes at frame 420 match before and after both
 optimizations. Particle count, material rules and solver substeps are unchanged.
 Regression fixtures cover rotated offset occluders, carved gaps, and compound
 contact deduplication in addition to the gameplay checks above.
+
+## Starwell rendering capabilities
+
+These optional capabilities serve [Starwell](starwell.md)'s visual direction.
+A scene pays for each only while it uses it. Timings are Metal GPU pass
+timestamps from the Release build at 1920x1080 on an Apple M4 Pro; the
+fixture is `scenes/RenderLab.yaml`, a noncombat scene that shows every effect.
+
+### Screen effects
+
+Screen effects need tone mapping (`GameHRC2D.tone_mapping`): they act on the
+linear frame and its presentation.
+
+`GamePost2D` grades and lenses the presented frame. Zero is neutral for every
+field, so an absent component and an all-zero one look the same:
+
+| Field | Effect |
+| --- | --- |
+| `vignette` | Darkening toward the corners, 0 to 1. |
+| `chromatic_aberration` | Red and blue split at the corners, in output pixels. |
+| `grain` | Film grain amplitude in display units, strongest in midtones. |
+| `contrast`, `saturation` | Added to one; -1 saturation is grayscale. |
+| `temperature`, `tint` | Linear white balance: cool to warm, green to magenta. |
+| `lift`, `gain` | Display color added to shadows; per-channel multiplier added to one. |
+| `heat_haze` | Output pixels of shimmer over burning or emissive fluid. |
+
+Behaviors add transient juice with nodes in *Visual/Effects*:
+
+- **Flash Screen**(Color, Amount, Duration) washes the display toward Color.
+- **Pulse Chromatic Aberration**(Amount, Duration) adds to the authored split.
+- **Add Shockwave**(Position, Radius, Thickness, Strength, Duration) expands a
+  ring that bends the frame by up to Strength output pixels. Sixteen rings can
+  run at once; a seventeenth replaces the oldest.
+
+Pulses fall off quadratically. A new flash or aberration pulse replaces the
+current one when it is at least as strong now. The engine ages them on the
+fixed clock (`src/runtime/visual_effects.c`); they are transient presentation,
+not saved state.
+
+`GameHeatHaze{radius, strength}` shimmers the frame within radius world
+units of an entity, strongest at its center. Up to sixteen sources in view
+contribute. Burning and emissive fluid writes a heat weight into the material
+cover texture's blue channel, which `GamePost2D.heat_haze` scales.
+
+Shockwaves, heat haze and solid refraction share one distortion pass that
+resamples the linear frame before bloom, so bent highlights still bloom. It
+runs only while one of them is on screen: 0.09 ms at 1080p. Grading, vignette,
+grain, flash and chromatic aberration are part of the tone-map pass; the
+pass went from 0.29 to 0.35 ms with aberration active. The distortion is
+screen space: it does not reveal what is offscreen, and edges clamp.

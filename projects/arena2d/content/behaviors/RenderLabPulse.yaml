@@ -1,0 +1,30 @@
+version: 3
+name: RenderLabPulse
+id_counter: 28
+description: 'Every second and a half: a shockwave, a flash and a chromatic pulse at Self.'
+owner_type: ecs.entity
+graphs:
+- kind: event
+  name: ""
+  nodes:
+  - {id: 1, type: Event, reference_name: Begin}
+  - {id: 3, type: Get_GameTransform}
+  - id: 5
+    type: Add Shockwave
+    inputs: {Radius: 220.0, Thickness: 30.0, Strength: 14.0, Duration: 0.9}
+  - id: 13
+    type: Flash Screen
+    inputs: {Amount: 0.25, Duration: 0.15}
+  - id: 19
+    type: Pulse Chromatic Aberration
+    inputs: {Amount: 8.0, Duration: 0.4}
+  - id: 24
+    type: Delay
+    inputs: {Duration: 1.5}
+  edges:
+  - {from: 1.Then, to: 5.Exec}
+  - {from: 3.Value, to: 5.Position, conversion: game_transform_to_cf}
+  - {from: 5.Then, to: 13.Exec}
+  - {from: 13.Then, to: 19.Exec}
+  - {from: 19.Then, to: 24.Exec}
+  - {from: 24.Completed, to: 5.Exec}

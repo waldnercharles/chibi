@@ -72,6 +72,7 @@ const char *engine_error(const engine *engine);
 const game_visibility *engine_visibility(const engine *engine);
 game_audio *engine_audio(const engine *engine);
 game_ui *engine_ui(const engine *engine);
+const game_visual_effects *engine_visual_effects(const engine *engine);
 const game_materials *engine_materials(const engine *engine);
 bool engine_entity_visible(const engine *engine, ecs_world *world, ecs_entity entity);
 const engine_frame_timing *engine_last_timing(const engine *engine);

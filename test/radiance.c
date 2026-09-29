@@ -1783,6 +1783,7 @@ int test_radiance()
     extern bool test_radiance_intervals();
     extern bool test_radiance_history();
     extern bool test_material_sampling();
+    extern bool test_post_2d();
     render_material_raster *raster = render_material_raster_new();
     render_radiance *radiance = render_radiance_new();
     CF_Canvas canvas = cf_make_canvas(cf_canvas_defaults(SIDE, SIDE));
@@ -1975,6 +1976,7 @@ int test_radiance()
     ok &= test_radiance_intervals();
     ok &= test_radiance_history();
     ok &= test_material_sampling();
+    ok &= test_post_2d();
     if (canvas.id) {
         cf_destroy_canvas(canvas);
     }

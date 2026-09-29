@@ -396,8 +396,7 @@ CF_Canvas render_material_canvas(int width, int height)
     CF_CanvasParams params = cf_canvas_defaults(width, height);
     params.target_count = 6;
     for (int i = 0; i < 6; i++) {
-        params.targets[i].pixel_format = i < 5 ? CF_PIXEL_FORMAT_R16G16B16A16_FLOAT
-                                               : CF_PIXEL_FORMAT_R16_FLOAT;
+        params.targets[i].pixel_format = CF_PIXEL_FORMAT_R16G16B16A16_FLOAT;
         params.targets[i].filter = CF_FILTER_LINEAR;
         params.targets[i].wrap_u = params.targets[i].wrap_v = CF_WRAP_MODE_CLAMP_TO_EDGE;
     }

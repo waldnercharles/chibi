@@ -1,0 +1,9 @@
+name: Lamp
+components:
+  GAME.GameAppearance: {color: 4294105599, height: 14.0, shape: Circle, width: 14.0}
+  GAME.GameMaterial:
+    emission_color: 4292915455
+    emission_intensity: 0.6
+    emission_multiplier: 1.0
+    scene: 4294105599
+  GAME.GameTransform: {}

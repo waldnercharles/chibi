@@ -18,5 +18,7 @@ bool render_fluid_raster_draw(
     int width,
     int height
 );
+/* Whether the last draw saw burning or emissive fluid, which shimmers. */
+bool render_fluid_raster_hot(const render_fluid_raster *raster);
 
 #endif

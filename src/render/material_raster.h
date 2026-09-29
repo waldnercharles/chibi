@@ -79,7 +79,9 @@ typedef struct
     CF_Texture visibility;
     /* R: display's scale from source's emission density to emission
      * premultiplied by coverage. Absorbers emit their radiance times their
-     * optical depth (hrc/source_average.shd); clear emitters' scale is one. */
+     * optical depth (hrc/source_average.shd); clear emitters' scale is one.
+     * G: output pixels solids refract along their tilt. B: heat haze weight
+     * of burning and emissive fluid, at most one. A: zero. */
     CF_Texture cover;
 } render_material_textures;
 

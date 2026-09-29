@@ -32,6 +32,8 @@ struct render_fluid_raster
     /* The material targets of fluid's tiles before fluid. */
     CF_Canvas before;
     int width, height;
+    /* Whether a burning or emissive parcel lay in the last view. */
+    bool hot;
     int particle_capacity, offset_capacity, index_capacity;
     raster_particle *data;
     tile_rect *rects;
@@ -185,6 +187,7 @@ static void collect(
 {
     aclear(r->data);
     aclear(r->rects);
+    r->hot = false;
     int count;
     const fluid_particle *particles = material_fluid_particles(fluid, &count);
     float px = width / view.width, py = height / view.height;
@@ -271,6 +274,7 @@ static void collect(
             data.optical[1] *= fminf(1, p.lifetime * 2);
             data.optical[0] *= fminf(1, p.lifetime * 2);
         }
+        r->hot |= data.optical[1] > 0 || data.optical[3] > 0;
         apush(r->data, data);
         apush(r->rects, rect);
     }
@@ -308,6 +312,11 @@ static bool bin(render_fluid_raster *r, int tx, int ty)
         }
     }
     return true;
+}
+
+bool render_fluid_raster_hot(const render_fluid_raster *r)
+{
+    return r->hot;
 }
 
 bool render_fluid_raster_draw(

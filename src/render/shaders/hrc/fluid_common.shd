@@ -29,6 +29,8 @@ struct FluidSample
     vec4 gas_color, liquid_color, flame_color;
     vec3 emission, gas_visibility, liquid_visibility;
     float liquid_refraction;
+    // Kernel-weighted heat of burning and emissive parcels, for shimmer.
+    float heat;
     vec2 gradient;
     float aa;
 };
@@ -42,6 +44,7 @@ bool fluid_sample(ivec2 pixel, out FluidSample f)
     f.gas_color = vec4(0); f.liquid_color = vec4(0); f.flame_color = vec4(0);
     f.emission = vec3(0); f.gas_visibility = vec3(0); f.liquid_visibility = vec3(0);
     f.liquid_refraction = 0;
+    f.heat = 0;
     f.gradient = vec2(0);
     int first = tile_start(tile), last = tile_start(tile + 1);
     if (first == last) return false;
@@ -54,6 +57,8 @@ bool fluid_sample(ivec2 pixel, out FluidSample f)
     for (int i = first; i < last; i++) {
         Particle p = particle_at(i);
         vec2 local = (world - p.position.xy) / p.position.z;
+        float reach = max(0.0, 1.0 - dot(local, local));
+        f.heat += reach * reach * (p.optical.w + p.optical.y);
         if (p.optical.z > 0.0) {
             float d = length(world - p.position.xy) - p.position.z;
             float k = p.optical.z;
@@ -101,7 +106,7 @@ bool fluid_sample(ivec2 pixel, out FluidSample f)
         }
     }
     f.flame_alpha = (1.0 - smoothstep(-f.aa, f.aa, flame_distance)) * f.flame_color.a;
-    if (f.gas + f.liquid + f.flame_alpha <= .00001) return false;
+    if (f.gas + f.liquid + f.flame_alpha + f.heat <= .00001) return false;
     f.gas_color /= max(f.gas, .00001);
     f.liquid_color /= max(f.liquid, .00001);
     // A single dispersed parcel is nearly invisible; overlapping parcels stay

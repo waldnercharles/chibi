@@ -12,6 +12,7 @@
 #include "render/material.h"
 #include "render/material_raster.h"
 #include "render/post_2d.h"
+#include "render/post_2d_scene.h"
 #include "render/radiance.h"
 #include "render/reflections.h"
 #include "render/sdf_motion.h"
@@ -1130,6 +1131,37 @@ static CF_Texture scene_background(
     return cf_canvas_get_target(renderer->background);
 }
 
+/* Distorts, grades and tone maps the linear frame into the output. */
+static bool present_hdr(
+    app_scene_renderer *renderer,
+    ecs_world *world,
+    const engine *runtime,
+    render_view_2d screen,
+    render_material_textures textures
+)
+{
+    render_post_2d_settings settings = { .exposure = renderer->lighting.exposure,
+                                         .bloom = renderer->lighting.bloom,
+                                         .dither_phase = fmodf(renderer->time * 60, 64) };
+    render_post_2d_distortion distortion = { .normal = textures.normal,
+                                             .cover = textures.cover,
+                                             .time = renderer->time };
+    render_post_2d_collect(world, runtime, screen, &settings, &distortion);
+    if (!renderer->fluid || !render_fluid_raster_hot(renderer->fluid)) {
+        distortion.fluid_haze = 0;
+    }
+    if (render_post_2d_distorts(&distortion)) {
+        if (!render_post_2d_distort(renderer->hdr, &distortion)) {
+            snprintf(renderer->error, sizeof renderer->error, "Screen distortion could not allocate its RGBA16F canvas");
+            return false;
+        }
+        render_gpu_timing_mark("Distortion");
+    }
+    render_post_2d_present(renderer->hdr, renderer->output, &settings);
+    render_gpu_timing_mark("Tone map and bloom");
+    return true;
+}
+
 bool app_scene_renderer_draw(
     app_scene_renderer *renderer,
     ecs_world *world,
@@ -1310,25 +1342,22 @@ bool app_scene_renderer_draw(
     if (!render_radiance_draw(renderer->radiance, inputs, view, composite)) {
         return false;
     }
-    if (hdr) {
-        render_post_2d_present(
-            renderer->hdr,
-            renderer->output,
-            renderer->lighting.exposure,
-            renderer->lighting.bloom,
-            fmodf(renderer->time * 60, 64)
-        );
-        render_gpu_timing_mark("Tone map and bloom");
+    render_view_2d screen = { .min_x = camera.center_x - camera.span_width * .5f,
+                              .max_y = camera.center_y + camera.span_height * .5f,
+                              .width = camera.span_width,
+                              .height = camera.span_height,
+                              .crop_min_u = view.crop_min_u,
+                              .crop_min_v = view.crop_min_v,
+                              .crop_max_u = view.crop_max_u,
+                              .crop_max_v = view.crop_max_v };
+    if (hdr && !present_hdr(renderer, world, runtime, screen, textures)) {
+        return false;
     }
     CF_Canvas output = renderer->output;
     if (acount(renderer->reflectors)) {
         if (!renderer->reflections) {
             renderer->reflections = render_reflections_new();
         }
-        render_view_2d screen = { .min_x = camera.center_x - camera.span_width * .5f,
-                                  .max_y = camera.center_y + camera.span_height * .5f,
-                                  .width = camera.span_width,
-                                  .height = camera.span_height };
         output = render_reflections_draw(
             renderer->reflections,
             output,

@@ -6,6 +6,7 @@
 
 #include <assert.h>
 #include <math.h>
+#include <time.h>
 
 /* A headless world running authored behaviors through the normal engine. */
 typedef struct
@@ -69,6 +70,14 @@ static ecs_entity fixture_spawn(run_fixture *f, const char *json)
 
 static void fixture_behavior(run_fixture *f, behavior_asset *asset)
 {
+    compile_report report;
+    compile_report_init(&report);
+    int compiled = behavior_asset_compile(asset, &report);
+    for (int i = 0; i < acount(report.items); i++) {
+        fprintf(stderr, "%s: %s\n", asset->name, report.items[i].message);
+    }
+    assert(compiled == 0 && !report.error_count);
+    compile_report_free(&report);
     assert(game_live_add_definition(f->live, game_live_definition_new(asset->name, asset)) == 0);
 }
 
@@ -119,7 +128,17 @@ static void flow(graph *g, node *from, node *to)
 static void wire(graph *g, node *from, int output, node *to, int input)
 {
     const node_desc *conversion = conversion_for_pins(&from->output_pins[output], &to->input_pins[input]);
-    assert(graph_connect_data_conversion(g, from, output, to, input, conversion) == 0);
+    if (graph_connect_data_conversion(g, from, output, to, input, conversion) != 0) {
+        fprintf(
+            stderr,
+            "cannot wire %s.%d to %s.%d\n",
+            from->desc->name,
+            output,
+            to->desc->name,
+            input
+        );
+        assert(false);
+    }
 }
 
 static void set_input(graph *g, node *n, int input, pin_value value)
@@ -228,6 +247,37 @@ static int restart(const char *request, int pin)
     return after == before;
 }
 
+static const char CAVE_PARAMETERS[] = "{\"Radius\":72,\"Roughness\":30}";
+
+/* A CaveField terrain at the origin with the given bounds, streaming and
+ * seed settings. */
+static ecs_entity cave_terrain(run_fixture *f, MaterialTerrain terrain)
+{
+    char *json = text_file_read("projects/arena2d/content/fields/CaveField.yaml");
+    behavior_asset *field = behavior_asset_load_json(json);
+    free(json);
+    char error[256];
+    assert(
+        field &&
+        material_field_compile(game_materials_fields(f->live->materials), field, error, sizeof error)
+    );
+    behavior_asset_free(field);
+    ecs_entity source = ecs_world_create_entity(f->world);
+    assert(GAME_GameTransform_add(f->world, source, 0) == ECS_OK);
+    terrain.seed = 1729;
+    terrain.cell_size = 4;
+    terrain.field = "CaveField";
+    terrain.parameters = CAVE_PARAMETERS;
+    terrain.category = 8;
+    terrain.mask = 1;
+    terrain.min_fragment_cells = 4;
+    assert(
+        ecs_world_record_add(f->world, source, GAME_COMPONENT_MaterialTerrain.id, &terrain, 0) == ECS_OK
+    );
+    assert(ecs_world_apply_commands(f->world) == ECS_OK);
+    return source;
+}
+
 /* Hashes every generated terrain tile's cells. */
 static uint64_t terrain_hash(run_fixture *f)
 {
@@ -263,33 +313,10 @@ static void run_seed()
     assert(engine_run_seed(f.runtime) != first && engine_run_seed(f.runtime) >= 0);
 
     /* seed_from_run terrain regenerates per run seed and repeats for a pin. */
-    char *json = text_file_read("projects/arena2d/content/fields/CaveField.yaml");
-    behavior_asset *field = behavior_asset_load_json(json);
-    free(json);
-    char error[256];
-    assert(
-        field &&
-        material_field_compile(game_materials_fields(f.live->materials), field, error, sizeof error)
+    ecs_entity source = cave_terrain(
+        &f,
+        (MaterialTerrain){ .width = 256, .height = 256, .seed_from_run = true }
     );
-    behavior_asset_free(field);
-    ecs_entity source = ecs_world_create_entity(f.world);
-    assert(GAME_GameTransform_add(f.world, source, 0) == ECS_OK);
-    MaterialTerrain terrain = {
-        .seed = 1729,
-        .width = 256,
-        .height = 256,
-        .cell_size = 4,
-        .field = "CaveField",
-        .parameters = "{\"Radius\":72,\"Roughness\":30}",
-        .category = 8,
-        .mask = 1,
-        .min_fragment_cells = 4,
-        .seed_from_run = true,
-    };
-    assert(
-        ecs_world_record_add(f.world, source, GAME_COMPONENT_MaterialTerrain.id, &terrain, 0) == ECS_OK
-    );
-    assert(ecs_world_apply_commands(f.world) == ECS_OK);
     engine_pin_run_seed(f.runtime, 1);
     uint64_t one = terrain_hash(&f);
     engine_pin_run_seed(f.runtime, 2);
@@ -335,9 +362,151 @@ static void run_seed()
     ));
 }
 
+static game_terrain_sample terrain_at(run_fixture *f, ecs_entity terrain, float x, float y)
+{
+    game_terrain_sample sample;
+    const char *error = game_materials_terrain_at(
+        f->live->materials,
+        terrain,
+        (fluid_vec){ x, y },
+        &sample
+    );
+    if (error) {
+        fprintf(stderr, "%s\n", error);
+    }
+    assert(!error);
+    return sample;
+}
+
+static float field_at(run_fixture *f, float x, float y)
+{
+    float value;
+    char error[256];
+    assert(material_field_sample(
+        game_materials_fields(f->live->materials),
+        "CaveField",
+        CAVE_PARAMETERS,
+        1729,
+        x,
+        y,
+        &value,
+        error,
+        sizeof error
+    ));
+    return value;
+}
+
+/* Tick writes (Sample Field, Terrain Distance) at (30, -50) to Velocity. */
+static behavior_asset *probe_behavior()
+{
+    behavior_asset *asset = behavior("Probe");
+    graph *g = asset->graph;
+    node *set = add(g, "Set_GameVelocity");
+    node *make = add(g, "Make_CF_V2");
+    node *sample = add(g, "Sample Field");
+    node *distance = add(g, "Terrain Distance");
+    node *point = add(g, "Make_CF_V2");
+    set_input(g, sample, 0, (pin_value){ .type = PIN_NAME, .type_name = "name", .str = "CaveField" });
+    set_input(g, sample, 1, (pin_value){ .type = PIN_STR, .type_name = "const char *", .str = CAVE_PARAMETERS });
+    set_input(g, sample, 2, (pin_value){ .type = PIN_F32, .type_name = "float", .f = 30 });
+    set_input(g, sample, 3, (pin_value){ .type = PIN_F32, .type_name = "float", .f = -50 });
+    set_input(g, sample, 4, (pin_value){ .type = PIN_I32, .type_name = "int", .i = 1729 });
+    set_input(g, point, 0, (pin_value){ .type = PIN_F32, .type_name = "float", .f = 30 });
+    set_input(g, point, 1, (pin_value){ .type = PIN_F32, .type_name = "float", .f = -50 });
+    flow(g, event(g, "Tick"), set);
+    wire(g, behavior_asset_add_self_node(asset), 0, distance, 0);
+    wire(g, point, 0, distance, 1);
+    wire(g, sample, 0, make, 0);
+    wire(g, distance, 0, make, 1);
+    wire(g, make, 0, set, 1);
+    return asset;
+}
+
+static void terrain_queries()
+{
+    run_fixture f = fixture_new();
+    ecs_entity cave = cave_terrain(&f, (MaterialTerrain){ .width = 256, .height = 256 });
+    /* Before generation the field answers. */
+    game_terrain_sample early = terrain_at(&f, cave, 10, 20);
+    assert(early.distance == field_at(&f, 10, 20) && early.solid == (early.distance <= 0));
+    assert(!game_materials_prepare(f.live->materials));
+    /* Resident cells answer: occupancy decides, distance follows the field. */
+    int solid = 0, air = 0;
+    for (int i = 0; i < 64; i++) {
+        float x = -110 + i * 3.4f, y = 70 - i * 2.2f;
+        game_terrain_sample sample = terrain_at(&f, cave, x, y);
+        float field = field_at(&f, x, y);
+        solid += sample.solid;
+        air += !sample.solid;
+        assert(sample.solid == (sample.distance <= 0));
+        if (fabsf(field) > 8) {
+            assert(sample.solid == (field < 0) && fabsf(sample.distance - field) < 8);
+        }
+    }
+    assert(solid && air);
+    /* Outside the bounds is air, measured to the bounds. */
+    game_terrain_sample outside = terrain_at(&f, cave, 128 + 30, 0);
+    assert(!outside.solid && fabsf(outside.distance - 30) < 1e-3f);
+    /* Damage opens rock at once. */
+    float rock_x = 0, rock_y = 0;
+    for (int i = 0; i < 4096 && !terrain_at(&f, cave, rock_x, rock_y).solid; i++) {
+        rock_x = (float)(i % 64) * 4 - 126;
+        rock_y = (float)(i / 64) * 4 - 126;
+    }
+    assert(terrain_at(&f, cave, rock_x, rock_y).solid);
+    ecs_component_id id = GAME_COMPONENT_GameDestructible.id;
+    ecs_query query;
+    assert(ecs_query_begin(f.world, &query, &id, 1) == ECS_OK);
+    ecs_entity tile;
+    while (ecs_query_next(&query, &tile)) {
+        game_materials_damage(
+            f.live->materials,
+            tile,
+            (fluid_vec){ rock_x, rock_y },
+            10,
+            100,
+            0,
+            (material_impact){ 0 }
+        );
+    }
+    ecs_query_end(&query);
+    assert(!game_materials_prepare(f.live->materials));
+    assert(!terrain_at(&f, cave, rock_x, rock_y).solid);
+    /* Hundreds of probes per frame stay cheap. */
+    struct timespec start, end;
+    clock_gettime(CLOCK_MONOTONIC, &start);
+    float total = 0;
+    for (int i = 0; i < 1000; i++) {
+        total += terrain_at(&f, cave, (float)(i % 50) * 5 - 120, (float)(i / 50) * 10 - 100)
+                     .distance;
+    }
+    clock_gettime(CLOCK_MONOTONIC, &end);
+    double ms = (end.tv_sec - start.tv_sec) * 1e3 + (end.tv_nsec - start.tv_nsec) / 1e6;
+    printf("Terrain Distance: 1000 resident probes in %.3f ms (checksum %g)\n", ms, total);
+
+    /* The nodes, in a behavior on the terrain itself. */
+    fixture_behavior(&f, probe_behavior());
+    assert(GAME_GameVelocity_add(f.world, cave, 0) == ECS_OK);
+    assert(ecs_world_apply_commands(f.world) == ECS_OK);
+    assert(game_behavior_attach(f.live->behaviors, cave, "Probe") == 0);
+    fixture_steps(&f, 1);
+    CF_V2 probed = *GAME_GameVelocity_get_const(f.world, cave);
+    assert(probed.x == field_at(&f, 30, -50));
+    assert(probed.y == terrain_at(&f, cave, 30, -50).distance);
+    fixture_free(&f);
+
+    /* Streamed terrain answers from its field until a tile is resident. */
+    f = fixture_new();
+    ecs_entity streamed = cave_terrain(&f, (MaterialTerrain){ .stream_radius = 64, .stream_budget = 4 });
+    game_terrain_sample far = terrain_at(&f, streamed, 5000, -3000);
+    assert(far.distance == field_at(&f, 5000, -3000) && far.solid == (far.distance <= 0));
+    fixture_free(&f);
+}
+
 void test_run_capabilities()
 {
     seeded_randomness();
     run_seed();
-    puts("Run capabilities PASS: seeded per-world randomness, run seeds, seed_from_run terrain and restart requests");
+    terrain_queries();
+    puts("Run capabilities PASS: seeded per-world randomness, run seeds, seed_from_run terrain, restart requests, Sample Field and Terrain Distance");
 }

@@ -180,7 +180,7 @@ static void wire_fits()
     char *destroy = search("\"query\":\"destroy\",\"wire_from\":\"ecs.entity\",\"include_pins\":false", &bytes);
     char *health = search("\"wire_to\":\"GameHealth\",\"domain\":\"behavior\",\"limit\":1,\"include_pins\":false", &bytes);
     char *after = search("\"query\":\"delay\",\"wire_from\":\"exec\",\"limit\":1,\"include_pins\":false", &bytes);
-    char *real = search("\"wire_from\":\"int\",\"wire_to\":\"float\",\"limit\":1,\"include_pins\":false", &bytes);
+    char *real = search("\"query\":\"real\",\"wire_from\":\"int\",\"wire_to\":\"float\",\"limit\":1,\"include_pins\":false", &bytes);
     char *unknown = search("\"wire_from\":\"GameNothing\"", &bytes);
     test_check(
         destroy && strstr(destroy, "\"type\":\"Destroy Entity\"") &&

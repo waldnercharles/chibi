@@ -18,3 +18,16 @@ bool material_field_bake(
     char *error,
     size_t size
 );
+/* One value of the field at (x, y), as a bake's cell centered there. Parsed
+ * parameter objects are cached per field. */
+bool material_field_sample(
+    material_fields *fields,
+    const char *name,
+    const char *parameters,
+    unsigned seed,
+    float x,
+    float y,
+    float *out,
+    char *error,
+    size_t size
+);

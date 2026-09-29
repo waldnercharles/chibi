@@ -193,6 +193,13 @@ What has landed, and its contract. Every node is in searchNodes and Studio.
   `Restart Scene` (same seed) set a request (`engine_restart_requested`) that
   Studio Play and the standalone player service with their own Restart after
   the step.
+- **Terrain queries.** `Sample Field(Field, Parameters, X, Y, Seed) -> Value`
+  evaluates a compiled field; parsed parameter objects are cached per field.
+  `Terrain Distance(Terrain, Point) -> Distance, Solid` reads a MaterialTerrain
+  entity: resident tiles give their current (damaged) cell distances, other
+  points the field at the terrain's effective seed, and points outside a bounded
+  terrain the distance to its bounds. About 0.6 µs per probe in a sanitized
+  build.
 
 ## Status
 

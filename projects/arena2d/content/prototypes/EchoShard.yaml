@@ -1,0 +1,21 @@
+name: EchoShard
+components:
+  GAME.GameBody: {type: Dynamic}
+  GAME.GameCollider: {category: 2, mask: 5, radius: 11.0}
+  GAME.GameDrive: {}
+  GAME.GameExperience: {current: 2}
+  GAME.GameFlash: {color: 4294967295, decay: 12.0}
+  GAME.GameFollow: {inherit_heading: true}
+  GAME.GameGeometry3D: {depth: 36.0, height: 4.0, width: 36.0}
+  GAME.GameHealth: {current: 90, maximum: 90}
+  GAME.GameMovement: {}
+  GAME.GameOrientation: {}
+  GAME.GameShader:
+    material: EchoShardSkin
+    parameters: '{"Glow":[0.847,0.784,1.0],"Body":[0.063,0.039,0.102],"Accent":[1.0,1.0,1.0]}'
+    shape: EchoShardShape
+  GAME.GameSpawnRequest: {prototype: EchoShatter}
+  GAME.GameTransform: {}
+  GAME.GameVelocity: {}
+  GAME.GameWeapon: {damage: 10}
+behaviors: [Creature, EchoShard]

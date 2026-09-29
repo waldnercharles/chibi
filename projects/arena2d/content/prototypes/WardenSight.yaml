@@ -1,0 +1,16 @@
+name: WardenSight
+components:
+  GAME.GameAppearance: {antialias: 1.0, color: 3097559039, height: 1.5, shape: Capsule, width: 16.0}
+  GAME.GameBody: {continuous: true, type: Kinematic}
+  GAME.GameCollider: {radius: 0.9, sensor: true}
+  GAME.GameMaterial:
+    absorption: 0.02
+    emission_color: 3097559039
+    emission_intensity: 0.35
+    emission_multiplier: 1.0
+    scene: 3097559039
+  GAME.GameOrientation: {}
+  GAME.GameProjectile: {lifetime: 0.62, payload: -1, speed: 1100.0}
+  GAME.GameTransform: {}
+  GAME.GameVelocity: {}
+behaviors: [Shot]

@@ -1,0 +1,10 @@
+name: WardenPop
+components:
+  GAME.GameAppearance: {antialias: 2.0, color: 4008247040, height: 46.0, shape: Circle, width: 46.0}
+  GAME.GameMaterial:
+    emission_color: 4008247295
+    emission_intensity: 3.2
+    emission_multiplier: 1.0
+    scene: 4008247040
+  GAME.GameTransform: {}
+behaviors: [Glow]

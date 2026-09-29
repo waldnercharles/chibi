@@ -1,0 +1,21 @@
+name: Driftjelly
+components:
+  GAME.GameBody: {type: Dynamic}
+  GAME.GameCollider: {category: 2, mask: 15, radius: 9.0, restitution: 0.3}
+  GAME.GameDrive: {acceleration: 380.0}
+  GAME.GameExperience: {current: 7}
+  GAME.GameFlash: {color: 4294967295, decay: 12.0}
+  GAME.GameFluidVolume: {height: 58.0, owned: true, substance: Jelly, width: 58.0}
+  GAME.GameGeometry3D: {depth: 32.0, height: 4.0, width: 32.0}
+  GAME.GameHealth: {current: 60, maximum: 60}
+  GAME.GameMovement: {speed: 80.0}
+  GAME.GameOrientation: {}
+  GAME.GameShader:
+    material: NucleusSkin
+    parameters: '{"Glow":[1.0,0.373,0.816],"Body":[0.165,0.039,0.141]}'
+    shape: NucleusShape
+  GAME.GameSpawnRequest: {prototype: DriftjellyDeath}
+  GAME.GameTransform: {}
+  GAME.GameVelocity: {}
+  GAME.GameWeapon: {damage: 9}
+behaviors: [Chaser, Creature, JellyBody]

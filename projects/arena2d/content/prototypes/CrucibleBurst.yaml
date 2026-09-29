@@ -1,0 +1,11 @@
+name: CrucibleBurst
+components:
+  GAME.GameAppearance: {antialias: 2.0, color: 4287248896, height: 50.0, shape: Circle, width: 50.0}
+  GAME.GameMaterial:
+    emission_color: 4287249151
+    emission_intensity: 2.0
+    emission_multiplier: 1.0
+    scene: 4287248896
+  GAME.GameProjectile: {blast: 40.0, damage: 6, payload: -1}
+  GAME.GameTransform: {}
+behaviors: [Explosion, Glow]

@@ -90,7 +90,7 @@ entities:
   prototype: Scatter
   components:
     GameScatter:
-      prototype: Jelly
+      prototype: Driftjelly
       terrain: Heart
       min: {x: -1600.0, "y": 24700.0}
       max: {x: 1600.0, "y": 25700.0}
@@ -142,3 +142,8 @@ entities:
       clearance: 30.0
       salt: 86
       radius: 700.0
+- name: Heart of the Well
+  prototype: Heart
+  components:
+    GameTransform: {x: 0.0, "y": 26285.0}
+  behaviors: [Heart]

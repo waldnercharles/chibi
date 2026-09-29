@@ -1,10 +1,10 @@
 version: 3
 name: Pickup
-id_counter: 667
+id_counter: 679
 description: 'Scrap, resonance and repair motes: drift and slow, spin, fly to the player within reach, and credit them on arrival.'
 owner_type: ecs.entity
 variables:
-- id: 437
+- id: 449
   name: pool
   type: int
   container: 1
@@ -33,40 +33,49 @@ variables:
   - 40
   - 41
   - 42
-- {id: 438, name: pick, type: int}
+- {id: 450, name: pick, type: int}
 graphs:
 - kind: event
   name: ""
   nodes:
   - id: 1
+    type: Get Global Variable
+    inputs: {Name: Player}
+    outputs:
+      Value: {type: handle, type_name: ecs.entity}
+  - id: 4
+    type: Has Component
+    inputs: {Component: GAME.GameTransform}
+  - id: 8
     type: Event
     reference_name: Tick
     outputs:
       DeltaSeconds: {type: float, kind: data}
-  - id: 16
+  - {id: 11, type: Branch}
+  - id: 28
     type: Behavior Expression
-    reference_id: 4
+    reference_id: 16
     reference_name: age += dt
     inputs:
-      Exec: {id: 20, kind: exec}
+      Exec: {id: 32, kind: exec}
       age:
-        id: 17
+        id: 29
         type: float
         binding: {kind: component_field, component: GAME.GamePickup, field: age}
       dt:
         type: double
         binding: {kind: delta_time}
     outputs:
-      Then: {id: 21, kind: exec}
-      Result: {id: 19, type: float}
-  - id: 84
+      Then: {id: 33, kind: exec}
+      Result: {id: 31, type: float}
+  - id: 96
     type: Behavior Expression
-    reference_id: 59
+    reference_id: 71
     reference_name: velocity *= exp(-dt * 2.2)
     inputs:
-      Exec: {id: 88, kind: exec}
+      Exec: {id: 100, kind: exec}
       velocity:
-        id: 85
+        id: 97
         type: struct
         type_name: GameVelocity
         binding: {kind: component, component: GAME.GameVelocity}
@@ -74,38 +83,38 @@ graphs:
         type: double
         binding: {kind: delta_time}
     outputs:
-      Then: {id: 89, kind: exec}
-      Result: {id: 87, type: struct, type_name: GameVelocity}
-  - id: 139
+      Then: {id: 101, kind: exec}
+      Result: {id: 99, type: struct, type_name: GameVelocity}
+  - id: 151
     type: Behavior Expression
-    reference_id: 120
+    reference_id: 132
     reference_name: heading += dt * 5
     inputs:
-      Exec: {id: 143, kind: exec}
+      Exec: {id: 155, kind: exec}
       heading:
-        id: 140
+        id: 152
         type: float
         binding: {kind: component_field, component: GAME.GameOrientation, field: radians}
       dt:
         type: double
         binding: {kind: delta_time}
     outputs:
-      Then: {id: 144, kind: exec}
-      Result: {id: 142, type: float}
-  - id: 177
+      Then: {id: 156, kind: exec}
+      Result: {id: 154, type: float}
+  - id: 189
     type: Get Global Variable
     inputs: {Name: Player}
     outputs:
       Value: {type: handle, type_name: ecs.entity}
-  - {id: 180, type: GetEntity_GameTransform}
-  - id: 183
+  - {id: 192, type: GetEntity_GameTransform}
+  - id: 195
     type: Get Global Variable
     inputs: {Name: Magnet}
     outputs:
       Value: {type: double}
-  - id: 203
+  - id: 215
     type: Behavior Expression
-    reference_id: 186
+    reference_id: 198
     reference_name: distance(pos, p) < reach
     inputs:
       pos:
@@ -116,15 +125,15 @@ graphs:
       reach: {type: double, flags: 0}
     outputs:
       Result: {type: bool}
-  - {id: 211, type: Branch}
-  - id: 275
+  - {id: 223, type: Branch}
+  - id: 287
     type: Behavior Expression
-    reference_id: 216
+    reference_id: 228
     reference_name: velocity += normalize(p - pos) * dt * (900 + 2600 * (1 - distance(pos, p) / reach))
     inputs:
-      Exec: {id: 282, kind: exec}
+      Exec: {id: 294, kind: exec}
       velocity:
-        id: 276
+        id: 288
         type: struct
         type_name: GameVelocity
         binding: {kind: component, component: GAME.GameVelocity}
@@ -138,11 +147,11 @@ graphs:
         binding: {kind: delta_time}
       reach: {type: double}
     outputs:
-      Then: {id: 283, kind: exec}
-      Result: {id: 281, type: struct, type_name: GameVelocity}
-  - id: 367
+      Then: {id: 295, kind: exec}
+      Result: {id: 293, type: struct, type_name: GameVelocity}
+  - id: 379
     type: Behavior Expression
-    reference_id: 348
+    reference_id: 360
     reference_name: distance(pos, p) < 14
     inputs:
       pos:
@@ -152,26 +161,26 @@ graphs:
       p: {type: struct, type_name: GameTransform}
     outputs:
       Result: {type: bool}
-  - {id: 374, type: Branch}
-  - id: 379
+  - {id: 386, type: Branch}
+  - id: 391
     type: Switch on Int
     inputs:
       Selection:
         binding: {kind: component_field, component: GAME.GamePickup, field: state}
     outputs:
-    - 382
-    - 383
-    - {id: 385, name: Case2}
-    - {id: 386, name: Case3}
-    - 384
-  - id: 387
+    - 394
+    - 395
+    - {id: 397, name: Case2}
+    - {id: 398, name: Case3}
+    - 396
+  - id: 399
     type: Get Global Variable
     inputs: {Name: Scrap}
     outputs:
       Value: {type: int}
-  - id: 402
+  - id: 414
     type: Behavior Expression
-    reference_id: 390
+    reference_id: 402
     reference_name: c + v
     inputs:
       c: {type: int}
@@ -180,21 +189,21 @@ graphs:
         binding: {kind: component_field, component: GAME.GamePickup, field: value}
     outputs:
       Result: {type: double}
-  - id: 406
+  - id: 418
     type: Set Global Variable
     inputs:
       Name: Scrap
       Value: {type: double}
     outputs:
       Value: {type: double}
-  - id: 412
+  - id: 424
     type: Get Global Variable
     inputs: {Name: Resonance}
     outputs:
       Value: {type: int}
-  - id: 427
+  - id: 439
     type: Behavior Expression
-    reference_id: 415
+    reference_id: 427
     reference_name: c + v
     inputs:
       c: {type: int}
@@ -203,127 +212,127 @@ graphs:
         binding: {kind: component_field, component: GAME.GamePickup, field: value}
     outputs:
       Result: {type: double}
-  - id: 431
+  - id: 443
     type: Set Global Variable
     inputs:
       Name: Resonance
       Value: {type: double}
     outputs:
       Value: {type: double}
-  - id: 439
+  - id: 451
     type: Get Variable
-    reference_id: 437
+    reference_id: 449
     reference_name: pool
     outputs:
       Value: {container: 1}
-  - id: 441
+  - id: 453
     type: Length
     inputs:
       Array: {type: int}
-  - id: 467
+  - id: 479
     type: Behavior Expression
-    reference_id: 444
+    reference_id: 456
     reference_name: floor(rand() * n * 0.9999)
     inputs:
       "n": {type: int}
     outputs:
       Result: {type: double}
-  - id: 470
+  - id: 482
     type: Get Variable
-    reference_id: 437
+    reference_id: 449
     reference_name: pool
     outputs:
       Value: {container: 1}
-  - id: 472
+  - id: 484
     type: Get
     inputs:
       Array: {type: int}
     outputs:
       Item: {type: int}
-  - {id: 476, type: Set Variable, reference_id: 438, reference_name: pick}
-  - id: 481
+  - {id: 488, type: Set Variable, reference_id: 450, reference_name: pick}
+  - id: 493
     type: Get Global Variable
     inputs: {Name: Stash}
     outputs:
       Value: {type: int, container: 1}
-  - {id: 484, type: Get Variable, reference_id: 438, reference_name: pick}
-  - id: 486
+  - {id: 496, type: Get Variable, reference_id: 450, reference_name: pick}
+  - id: 498
     type: Array Add
     inputs:
       Array: {type: int}
       Item: {type: int}
     outputs:
       Array: {type: int}
-  - id: 490
+  - id: 502
     type: Set Global Variable
     inputs:
       Name: Stash
       Value: {type: int, container: 1}
     outputs:
       Value: {type: int}
-  - id: 496
+  - id: 508
     type: Get Global Variable
     inputs: {Name: ModuleNames}
     outputs:
       Value: {type: name, container: 1}
-  - {id: 499, type: Get Variable, reference_id: 438, reference_name: pick}
-  - id: 501
+  - {id: 511, type: Get Variable, reference_id: 450, reference_name: pick}
+  - id: 513
     type: Get
     inputs:
       Array: {type: name}
     outputs:
       Item: {type: name}
-  - id: 505
+  - id: 517
     type: Format Text
     inputs:
       Format: Module found · {}
       Arg0: {type: name}
-  - {id: 509, type: To Name}
-  - id: 512
+  - {id: 521, type: To Name}
+  - id: 524
     type: Set Global Variable
     inputs:
       Name: Toast
       Value: {type: name}
     outputs:
       Value: {type: name}
-  - id: 518
+  - id: 530
     type: Get Global Variable
     inputs: {Name: ToastSerial}
     outputs:
       Value: {type: int}
-  - id: 535
+  - id: 547
     type: Behavior Expression
-    reference_id: 521
+    reference_id: 533
     reference_name: s + 1
     inputs:
       s: {type: int}
     outputs:
       Result: {type: double}
-  - id: 538
+  - id: 550
     type: Set Global Variable
     inputs:
       Name: ToastSerial
       Value: {type: double}
     outputs:
       Value: {type: double}
-  - id: 544
+  - id: 556
     type: Play Sound
     inputs: {Frequency: 660.0, End Frequency: 1760.0, Duration: 0.6, Volume: 0.3}
-  - id: 553
+  - id: 565
     type: Get Global Variable
     inputs: {Name: Player}
     outputs:
       Value: {type: handle, type_name: ecs.entity}
-  - id: 556
+  - id: 568
     type: Self
     outputs:
       Self: {type_name: ecs.entity}
-  - id: 558
+  - id: 570
     type: Send Event
     reference_name: Hit
     inputs:
       Amount:
-        id: 562
+        id: 574
         declaration_id: 1
         type: int
         binding: {kind: component_field, component: GAME.GamePickup, field: value}
@@ -337,10 +346,10 @@ graphs:
       Element: {declaration_id: 5, type: int, default: 7}
       Knockback: {declaration_id: 6, type: float}
     outputs:
-      Then: {id: 561}
-  - id: 602
+      Then: {id: 573}
+  - id: 614
     type: Behavior Expression
-    reference_id: 568
+    reference_id: 580
     reference_name: 1200 + state * 500 + rand() * 120
     inputs:
       state:
@@ -348,25 +357,25 @@ graphs:
         binding: {kind: component_field, component: GAME.GamePickup, field: state}
     outputs:
       Result: {type: double}
-  - id: 619
+  - id: 631
     type: Behavior Expression
-    reference_id: 605
+    reference_id: 617
     reference_name: f * 1.5
     inputs:
       f: {type: double}
     outputs:
       Result: {type: double}
-  - id: 622
+  - id: 634
     type: Play Sound
     inputs: {Duration: 0.06, Volume: 0.1, Pan: 0.0}
-  - id: 631
+  - id: 643
     type: Self
     outputs:
       Self: {type_name: ecs.entity}
-  - {id: 633, type: Destroy Entity}
-  - id: 649
+  - {id: 645, type: Destroy Entity}
+  - id: 661
     type: Behavior Expression
-    reference_id: 637
+    reference_id: 649
     reference_name: age > lifetime
     inputs:
       age:
@@ -379,98 +388,101 @@ graphs:
         binding: {kind: component_field, component: GAME.GamePickup, field: lifetime}
     outputs:
       Result: {type: bool}
-  - {id: 656, type: Branch}
-  - id: 661
+  - {id: 668, type: Branch}
+  - id: 673
     type: Self
     outputs:
       Self: {type_name: ecs.entity}
-  - {id: 663, type: Destroy Entity}
+  - {id: 675, type: Destroy Entity}
   edges:
-  - {from: 1.Then, to: 16.Exec}
-  - {from: 16.Then, to: 84.Exec}
-  - {from: 84.Then, to: 139.Exec}
-  - {from: 139.Then, to: 211.Exec}
-  - {from: 177.Value, to: 180.Entity}
-  - {from: 180.Value, to: 203.p}
-  - {from: 180.Value, to: 275.p}
-  - {from: 180.Value, to: 367.p}
-  - {from: 180.Value, to: 558.Point, conversion: game_transform_to_cf}
-  - {from: 183.Value, to: 203.reach}
-  - {from: 183.Value, to: 275.reach}
-  - {from: 203.Result, to: 211.Condition}
-  - {from: 211.True, to: 275.Exec}
-  - {from: 211.False, to: 656.Exec}
-  - {from: 275.Then, to: 374.Exec}
-  - {from: 367.Result, to: 374.Condition}
-  - {from: 374.True, to: 379.Exec}
-  - {from: 374.False, to: 656.Exec}
-  - {from: 379.Case0, to: 406.Exec}
-  - {from: 379.Case1, to: 431.Exec}
-  - {from: 379.Default, to: 622.Exec}
-  - {from: 379.Case2, to: 558.Exec}
-  - {from: 379.Case3, to: 476.Exec}
-  - {from: 387.Value, to: 402.c}
-  - {from: 402.Result, to: 406.Value}
-  - {from: 406.Then, to: 622.Exec}
-  - {from: 412.Value, to: 427.c}
-  - {from: 427.Result, to: 431.Value}
-  - {from: 431.Then, to: 622.Exec}
-  - {from: 439.Value, to: 441.Array}
-  - {from: 441.Return Value, to: 467.n}
-  - {from: 467.Result, to: 472.Index, conversion: To Integer}
-  - {from: 470.Value, to: 472.Array}
-  - {from: 472.Item, to: 476.Value}
-  - {from: 476.Then, to: 490.Exec}
-  - {from: 481.Value, to: 486.Array}
-  - {from: 484.Value, to: 486.Item}
-  - {from: 486.Array, to: 490.Value}
-  - {from: 490.Then, to: 512.Exec}
-  - {from: 496.Value, to: 501.Array}
-  - {from: 499.Value, to: 501.Index}
-  - {from: 501.Item, to: 505.Arg0}
-  - {from: 505.Result, to: 509.Value}
-  - {from: 509.Name, to: 512.Value}
-  - {from: 512.Then, to: 538.Exec}
-  - {from: 518.Value, to: 535.s}
-  - {from: 535.Result, to: 538.Value}
-  - {from: 538.Then, to: 544.Exec}
-  - {from: 544.Then, to: 622.Exec}
-  - {from: 553.Value, to: 558.Entity}
-  - {from: 556.Self, to: 558.Source}
-  - {from: 558.Then, to: 622.Exec}
-  - {from: 602.Result, to: 619.f}
-  - {from: 602.Result, to: 622.Frequency}
-  - {from: 619.Result, to: 622.End Frequency}
-  - {from: 622.Then, to: 633.Exec}
-  - {from: 631.Self, to: 633.Entity}
-  - {from: 649.Result, to: 656.Condition}
-  - {from: 656.True, to: 663.Exec}
-  - {from: 661.Self, to: 663.Entity}
-- {id: 4, kind: function, math_expression: age += dt, entry_id: 23}
-- id: 59
+  - {from: 1.Value, to: 4.Entity}
+  - {from: 4.Value, to: 11.Condition}
+  - {from: 8.Then, to: 11.Exec}
+  - {from: 11.True, to: 28.Exec}
+  - {from: 28.Then, to: 96.Exec}
+  - {from: 96.Then, to: 151.Exec}
+  - {from: 151.Then, to: 223.Exec}
+  - {from: 189.Value, to: 192.Entity}
+  - {from: 192.Value, to: 215.p}
+  - {from: 192.Value, to: 287.p}
+  - {from: 192.Value, to: 379.p}
+  - {from: 192.Value, to: 570.Point, conversion: game_transform_to_cf}
+  - {from: 195.Value, to: 215.reach}
+  - {from: 195.Value, to: 287.reach}
+  - {from: 215.Result, to: 223.Condition}
+  - {from: 223.True, to: 287.Exec}
+  - {from: 223.False, to: 668.Exec}
+  - {from: 287.Then, to: 386.Exec}
+  - {from: 379.Result, to: 386.Condition}
+  - {from: 386.True, to: 391.Exec}
+  - {from: 386.False, to: 668.Exec}
+  - {from: 391.Case0, to: 418.Exec}
+  - {from: 391.Case1, to: 443.Exec}
+  - {from: 391.Default, to: 634.Exec}
+  - {from: 391.Case2, to: 570.Exec}
+  - {from: 391.Case3, to: 488.Exec}
+  - {from: 399.Value, to: 414.c}
+  - {from: 414.Result, to: 418.Value}
+  - {from: 418.Then, to: 634.Exec}
+  - {from: 424.Value, to: 439.c}
+  - {from: 439.Result, to: 443.Value}
+  - {from: 443.Then, to: 634.Exec}
+  - {from: 451.Value, to: 453.Array}
+  - {from: 453.Return Value, to: 479.n}
+  - {from: 479.Result, to: 484.Index, conversion: To Integer}
+  - {from: 482.Value, to: 484.Array}
+  - {from: 484.Item, to: 488.Value}
+  - {from: 488.Then, to: 502.Exec}
+  - {from: 493.Value, to: 498.Array}
+  - {from: 496.Value, to: 498.Item}
+  - {from: 498.Array, to: 502.Value}
+  - {from: 502.Then, to: 524.Exec}
+  - {from: 508.Value, to: 513.Array}
+  - {from: 511.Value, to: 513.Index}
+  - {from: 513.Item, to: 517.Arg0}
+  - {from: 517.Result, to: 521.Value}
+  - {from: 521.Name, to: 524.Value}
+  - {from: 524.Then, to: 550.Exec}
+  - {from: 530.Value, to: 547.s}
+  - {from: 547.Result, to: 550.Value}
+  - {from: 550.Then, to: 556.Exec}
+  - {from: 556.Then, to: 634.Exec}
+  - {from: 565.Value, to: 570.Entity}
+  - {from: 568.Self, to: 570.Source}
+  - {from: 570.Then, to: 634.Exec}
+  - {from: 614.Result, to: 631.f}
+  - {from: 614.Result, to: 634.Frequency}
+  - {from: 631.Result, to: 634.End Frequency}
+  - {from: 634.Then, to: 645.Exec}
+  - {from: 643.Self, to: 645.Entity}
+  - {from: 661.Result, to: 668.Condition}
+  - {from: 668.True, to: 675.Exec}
+  - {from: 673.Self, to: 675.Entity}
+- {id: 16, kind: function, math_expression: age += dt, entry_id: 35}
+- id: 71
   kind: function
   math_expression: velocity *= exp(-dt * 2.2)
-  entry_id: 91
-- {id: 120, kind: function, math_expression: heading += dt * 5, entry_id: 146}
-- id: 186
+  entry_id: 103
+- {id: 132, kind: function, math_expression: heading += dt * 5, entry_id: 158}
+- id: 198
   kind: function
   math_expression: distance(pos, p) < reach
-  entry_id: 187
-- id: 216
+  entry_id: 199
+- id: 228
   kind: function
   math_expression: velocity += normalize(p - pos) * dt * (900 + 2600 * (1 - distance(pos, p) / reach))
-  entry_id: 285
-- {id: 348, kind: function, math_expression: 'distance(pos, p) < 14', entry_id: 349}
-- {id: 390, kind: function, math_expression: c + v, entry_id: 391}
-- {id: 415, kind: function, math_expression: c + v, entry_id: 416}
-- id: 444
+  entry_id: 297
+- {id: 360, kind: function, math_expression: 'distance(pos, p) < 14', entry_id: 361}
+- {id: 402, kind: function, math_expression: c + v, entry_id: 403}
+- {id: 427, kind: function, math_expression: c + v, entry_id: 428}
+- id: 456
   kind: function
   math_expression: floor(rand() * n * 0.9999)
-  entry_id: 445
-- {id: 521, kind: function, math_expression: s + 1, entry_id: 522}
-- id: 568
+  entry_id: 457
+- {id: 533, kind: function, math_expression: s + 1, entry_id: 534}
+- id: 580
   kind: function
   math_expression: 1200 + state * 500 + rand() * 120
-  entry_id: 569
-- {id: 605, kind: function, math_expression: f * 1.5, entry_id: 606}
-- {id: 637, kind: function, math_expression: age > lifetime, entry_id: 638}
+  entry_id: 581
+- {id: 617, kind: function, math_expression: f * 1.5, entry_id: 618}
+- {id: 649, kind: function, math_expression: age > lifetime, entry_id: 650}

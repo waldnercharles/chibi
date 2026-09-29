@@ -1,0 +1,35 @@
+name: EchoShatter
+components:
+  GAME.GameAppearance: {antialias: 2.0, color: 3637051136, height: 30.0, shape: Circle, width: 30.0}
+  GAME.GameMaterial:
+    emission_color: 3637051391
+    emission_intensity: 2.2
+    emission_multiplier: 1.0
+    scene: 3637051136
+  GAME.GameOrientation: {}
+  GAME.GameParticleEmitter:
+    absorption: 0.001
+    active: true
+    burst_count: 36
+    color: 4109172735
+    direction: {x: 1.0}
+    drag:
+      end: {x: 1.0, "y": 2.5}
+      exponent: 1.0
+      start: {x: 1.0, "y": 2.5}
+    emission:
+      exponent: 1.0
+      start: {x: 0.8, "y": 1.5}
+    end_color: 2051866368
+    lifetime: {x: 0.35, "y": 1.0}
+    planar: true
+    shape: Streak
+    size:
+      exponent: 1.0
+      start: {x: 0.7, "y": 2.0}
+    speed: {x: 80.0, "y": 340.0}
+    spread: 6.2831855
+    stretch: {x: 0.02, "y": 0.05}
+    velocity_align: true
+  GAME.GameTransform: {}
+behaviors: [Glow]

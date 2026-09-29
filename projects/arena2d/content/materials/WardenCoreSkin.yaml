@@ -108,7 +108,7 @@ graphs:
   - id: 386
     type: Behavior Expression
     reference_id: 306
-    reference_name: lum + glow * charge * (0.8 + 0.6 * sin(t * 26)) * (0.4 + rim) + vec3(1, 1, 1) * flash * 0.9
+    reference_name: lum + glow * charge * (0.5 + 0.4 * sin(t * 26)) * (0.3 + rim) + vec3(1, 1, 1) * flash * 0.6
     inputs:
       lum: {type: struct, type_name: ShaderVec3}
       glow: {type: struct, type_name: ShaderVec3}
@@ -160,5 +160,5 @@ graphs:
   entry_id: 233
 - id: 306
   kind: function
-  math_expression: lum + glow * charge * (0.8 + 0.6 * sin(t * 26)) * (0.4 + rim) + vec3(1, 1, 1) * flash * 0.9
+  math_expression: lum + glow * charge * (0.5 + 0.4 * sin(t * 26)) * (0.3 + rim) + vec3(1, 1, 1) * flash * 0.6
   entry_id: 307

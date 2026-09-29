@@ -1,0 +1,21 @@
+name: Heart
+components:
+  GAME.GameBody: {type: Dynamic}
+  GAME.GameCollider: {category: 2, mask: 13, radius: 44.0}
+  GAME.GameDrive: {acceleration: 520.0}
+  GAME.GameFlash: {color: 4294967295, decay: 10.0}
+  GAME.GameGeometry3D: {depth: 116.0, height: 4.0, width: 116.0}
+  GAME.GameGlobalBinding: {name: WellHeart}
+  GAME.GameHealth: {current: 5200, maximum: 5200}
+  GAME.GameLight2D: {color: 3366518783, intensity: 0.9, radius: 22.0}
+  GAME.GameMovement: {speed: 120.0}
+  GAME.GameOrientation: {}
+  GAME.GameShader:
+    material: HeartCoreSkin
+    parameters: '{"Glow":[0.957,0.925,1.0],"Body":[0.047,0.031,0.078],"Accent":[0.706,0.549,1.0]}'
+    shape: HeartCoreShape
+  GAME.GameSpawnRequest: {prototype: HeartDeath}
+  GAME.GameTransform: {}
+  GAME.GameVelocity: {}
+  GAME.GameWeapon: {damage: 20}
+behaviors: [Heart]

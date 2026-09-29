@@ -76,7 +76,7 @@ graphs:
   - id: 118
     type: Behavior Expression
     reference_id: 69
-    reference_name: smoothstep(0.84, 0.97, 1 - abs(noise(p * 0.12, 5) - 0.5) * 2)
+    reference_name: smoothstep(0.84, 0.97, 1 - abs(noise(p * 0.05, 1) - 0.5) * 2)
     inputs:
       p: {type: struct, type_name: ShaderVec2}
     outputs:
@@ -94,7 +94,7 @@ graphs:
   - id: 277
     type: Behavior Expression
     reference_id: 176
-    reference_name: glow * (pattern * (0.45 + 0.3 * sin(t * 3 + p.x * 0.05) + pulse * 1.2) + rim * 0.25 + core * pulse * 0.8) + accent * core * 0.3
+    reference_name: glow * (pattern * (0.3 + 0.2 * sin(t * 3 + p.x * 0.05) + pulse * 0.6) + rim * 0.15 + core * pulse * 0.2) + accent * core * 0.06
     inputs:
       glow: {type: struct, type_name: ShaderVec3}
       pattern: {type: float}
@@ -109,7 +109,7 @@ graphs:
   - id: 471
     type: Behavior Expression
     reference_id: 391
-    reference_name: lum + glow * charge * (0.8 + 0.6 * sin(t * 26)) * (0.4 + rim) + vec3(1, 1, 1) * flash * 0.9
+    reference_name: lum + glow * charge * (0.5 + 0.4 * sin(t * 26)) * (0.3 + rim) + vec3(1, 1, 1) * flash * 0.6
     inputs:
       lum: {type: struct, type_name: ShaderVec3}
       glow: {type: struct, type_name: ShaderVec3}
@@ -150,7 +150,7 @@ graphs:
 - {id: 50, kind: function, math_expression: 'smoothstep(-6, -22, d)', entry_id: 51}
 - id: 69
   kind: function
-  math_expression: smoothstep(0.84, 0.97, 1 - abs(noise(p * 0.12, 5) - 0.5) * 2)
+  math_expression: smoothstep(0.84, 0.97, 1 - abs(noise(p * 0.05, 1) - 0.5) * 2)
   entry_id: 70
 - id: 121
   kind: function
@@ -158,9 +158,9 @@ graphs:
   entry_id: 122
 - id: 176
   kind: function
-  math_expression: glow * (pattern * (0.45 + 0.3 * sin(t * 3 + p.x * 0.05) + pulse * 1.2) + rim * 0.25 + core * pulse * 0.8) + accent * core * 0.3
+  math_expression: glow * (pattern * (0.3 + 0.2 * sin(t * 3 + p.x * 0.05) + pulse * 0.6) + rim * 0.15 + core * pulse * 0.2) + accent * core * 0.06
   entry_id: 288
 - id: 391
   kind: function
-  math_expression: lum + glow * charge * (0.8 + 0.6 * sin(t * 26)) * (0.4 + rim) + vec3(1, 1, 1) * flash * 0.9
+  math_expression: lum + glow * charge * (0.5 + 0.4 * sin(t * 26)) * (0.3 + rim) + vec3(1, 1, 1) * flash * 0.6
   entry_id: 392

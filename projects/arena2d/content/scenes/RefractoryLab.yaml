@@ -189,3 +189,13 @@ entities:
       clearance: 30.0
       salt: 59
       radius: 700.0
+- name: Prism Warden
+  prototype: Warden
+  components:
+    GameTransform: {x: 0.0, "y": 17285.0}
+  behaviors: [Warden]
+- name: Prism Warden seal
+  prototype: Seal
+  components:
+    GameTransform: {x: 0.0, "y": 17905.0}
+    GameGlobalBinding: {name: SealRefractory}

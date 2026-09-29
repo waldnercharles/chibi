@@ -1,6 +1,6 @@
 version: 3
 name: CameraFollow
-id_counter: 233
+id_counter: 242
 description: Follow the Player binding with exponential smoothing.
 owner_type: ecs.entity
 graphs:
@@ -35,10 +35,17 @@ graphs:
     outputs:
       Then: {id: 56, kind: exec}
       Result: {id: 54, type: struct, type_name: GameTransform}
+  - id: 233
+    type: Has Component
+    inputs: {Component: GAME.GameTransform}
+  - {id: 237, type: Branch}
   edges:
-  - {from: 1.Then, to: 49.Exec}
+  - {from: 1.Then, to: 237.Exec}
   - {from: 4.Value, to: 7.Entity}
+  - {from: 4.Value, to: 233.Entity}
   - {from: 7.Value, to: 49.target}
+  - {from: 233.Value, to: 237.Condition}
+  - {from: 237.True, to: 49.Exec}
 - id: 10
   kind: function
   math_expression: position += (target - position) * (1 - exp(-rate * dt))

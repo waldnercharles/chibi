@@ -1,0 +1,35 @@
+name: WardenShatter
+components:
+  GAME.GameAppearance: {antialias: 2.0, color: 3773890304, height: 34.0, shape: Circle, width: 34.0}
+  GAME.GameMaterial:
+    emission_color: 3773890559
+    emission_intensity: 2.4
+    emission_multiplier: 1.0
+    scene: 3773890304
+  GAME.GameOrientation: {}
+  GAME.GameParticleEmitter:
+    absorption: 0.001
+    active: true
+    burst_count: 46
+    color: 4042588159
+    direction: {x: 1.0}
+    drag:
+      end: {x: 1.0, "y": 2.5}
+      exponent: 1.0
+      start: {x: 1.0, "y": 2.5}
+    emission:
+      exponent: 1.0
+      start: {x: 0.9, "y": 1.6}
+    end_color: 2591817472
+    lifetime: {x: 0.4, "y": 1.1}
+    planar: true
+    shape: Streak
+    size:
+      exponent: 1.0
+      start: {x: 0.8, "y": 2.2}
+    speed: {x: 90.0, "y": 380.0}
+    spread: 6.2831855
+    stretch: {x: 0.02, "y": 0.05}
+    velocity_align: true
+  GAME.GameTransform: {}
+behaviors: [Glow]

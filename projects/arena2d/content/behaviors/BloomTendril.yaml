@@ -1,0 +1,402 @@
+version: 3
+name: BloomTendril
+id_counter: 847
+description: 'One glowing segment of a Mother Bloom tendril, attached to the heart: it curls and sways at its place along the tendril, reaches as far as the global BloomReach, lashes the ship on contact, soaks shots, and bursts when the heart dies.'
+owner_type: ecs.entity
+variables:
+- {id: 1, name: init, type: float}
+- {id: 2, name: a0, type: float}
+- {id: 3, name: r0, type: float}
+- {id: 4, name: age, type: float}
+- {id: 5, name: flash, type: float}
+- {id: 536, name: doom, type: float}
+graphs:
+- kind: event
+  name: ""
+  nodes:
+  - id: 6
+    type: Event
+    reference_name: Tick
+    outputs:
+      DeltaSeconds: {type: float, kind: data}
+  - id: 21
+    type: Behavior Expression
+    reference_id: 9
+    reference_name: age += dt
+    inputs:
+      Exec: {id: 25, kind: exec}
+      age:
+        id: 22
+        type: float
+        binding: {kind: variable, variable_id: 4, source_asset: BloomTendril}
+      dt:
+        type: double
+        binding: {kind: delta_time}
+    outputs:
+      Then: {id: 26, kind: exec}
+      Result: {id: 24, type: float}
+  - id: 58
+    type: Behavior Expression
+    reference_id: 44
+    reference_name: init < 1
+    inputs:
+      init:
+        type: double
+        flags: 0
+        binding: {kind: variable, variable_id: 1, source_asset: BloomTendril}
+    outputs:
+      Result: {type: bool}
+  - {id: 64, type: Branch}
+  - id: 81
+    type: Behavior Expression
+    reference_id: 69
+    reference_name: a0 = atan2(offset.y, offset.x)
+    inputs:
+      Exec: {id: 85, kind: exec}
+      a0:
+        id: 82
+        type: float
+        binding: {kind: variable, variable_id: 2, source_asset: BloomTendril}
+      offset:
+        type: struct
+        type_name: CF_V2
+        binding: {kind: component_field, component: GAME.GameFollow, field: offset}
+    outputs:
+      Then: {id: 86, kind: exec}
+      Result: {id: 84, type: float}
+  - id: 117
+    type: Behavior Expression
+    reference_id: 106
+    reference_name: r0 = length(offset)
+    inputs:
+      Exec: {id: 121, kind: exec}
+      r0:
+        id: 118
+        type: float
+        binding: {kind: variable, variable_id: 3, source_asset: BloomTendril}
+      offset:
+        type: struct
+        type_name: CF_V2
+        binding: {kind: component_field, component: GAME.GameFollow, field: offset}
+    outputs:
+      Then: {id: 122, kind: exec}
+      Result: {id: 120, type: float}
+  - id: 149
+    type: Behavior Expression
+    reference_id: 139
+    reference_name: init = 1
+    inputs:
+      Exec: {id: 152, kind: exec}
+      init:
+        id: 150
+        type: float
+        binding: {kind: variable, variable_id: 1, source_asset: BloomTendril}
+    outputs:
+      Then: {id: 153, kind: exec}
+      Result: {id: 151, type: float}
+  - id: 169
+    type: Get Global Variable
+    inputs: {Name: BloomReach}
+    outputs:
+      Value: {type: float}
+  - id: 280
+    type: Behavior Expression
+    reference_id: 172
+    reference_name: offset = direction(a0 + (0.3 + 0.5 * (1 - reach)) * sin(age * 1.7 + r0 * 0.035 + a0 * 3) * r0 / 180) * (18 + (r0 - 18) * reach)
+    inputs:
+      Exec: {id: 287, kind: exec}
+      offset:
+        id: 281
+        type: struct
+        type_name: CF_V2
+        binding: {kind: component_field, component: GAME.GameFollow, field: offset}
+      a0:
+        type: double
+        binding: {kind: variable, variable_id: 2, source_asset: BloomTendril}
+      reach: {type: float}
+      age:
+        type: double
+        binding: {kind: variable, variable_id: 4, source_asset: BloomTendril}
+      r0:
+        type: double
+        binding: {kind: variable, variable_id: 3, source_asset: BloomTendril}
+    outputs:
+      Then: {id: 288, kind: exec}
+      Result: {id: 286, type: struct, type_name: CF_V2}
+  - id: 446
+    type: Behavior Expression
+    reference_id: 420
+    reference_name: flash = max(0, flash - dt * 6)
+    inputs:
+      Exec: {id: 450, kind: exec}
+      flash:
+        id: 447
+        type: float
+        binding: {kind: variable, variable_id: 5, source_asset: BloomTendril}
+      dt:
+        type: double
+        binding: {kind: delta_time}
+    outputs:
+      Then: {id: 451, kind: exec}
+      Result: {id: 449, type: float}
+  - id: 483
+    type: Self
+    outputs:
+      Self: {type_name: ecs.entity}
+  - id: 485
+    type: Get Variable
+    reference_id: 5
+    reference_name: flash
+    outputs:
+      Value: {type: float}
+  - id: 487
+    type: Set Material Parameter
+    inputs:
+      Name: Flash
+      Value: {type_name: float}
+  - id: 493
+    type: Self
+    outputs:
+      Self: {type_name: ecs.entity}
+  - id: 527
+    type: Behavior Expression
+    reference_id: 495
+    reference_name: clamp((r - 0.5) * 2, 0, 1)
+    inputs:
+      r: {type: float}
+    outputs:
+      Result: {type: float}
+  - id: 530
+    type: Set Material Parameter
+    inputs:
+      Name: Pulse
+      Value: {type_name: float}
+  - id: 537
+    type: Self
+    outputs:
+      Self: {type_name: ecs.entity}
+  - id: 539
+    type: GetEntity_GameFollow
+    outputs:
+      Value.target: {}
+      Value.mode: {}
+      Value.offset: {}
+      Value.distance: {}
+      Value.stiffness: {}
+      Value.inherit_heading: {}
+  - id: 548
+    type: Has Component
+    inputs: {Component: GAME.GameTransform}
+  - {id: 552, type: Branch}
+  - id: 569
+    type: Behavior Expression
+    reference_id: 557
+    reference_name: doom += dt
+    inputs:
+      Exec: {id: 573, kind: exec}
+      doom:
+        id: 570
+        type: float
+        binding: {kind: variable, variable_id: 536, source_asset: BloomTendril}
+      dt:
+        type: double
+        binding: {kind: delta_time}
+    outputs:
+      Then: {id: 574, kind: exec}
+      Result: {id: 572, type: float}
+  - id: 642
+    type: Behavior Expression
+    reference_id: 592
+    reference_name: doom > 0.12 + fract(abs(pos.x * 0.0131 + pos.y * 0.0071)) * 1.3
+    inputs:
+      doom:
+        type: double
+        flags: 0
+        binding: {kind: variable, variable_id: 536, source_asset: BloomTendril}
+      pos:
+        type: struct
+        type_name: GameTransform
+        binding: {kind: component, component: GAME.GameTransform}
+    outputs:
+      Result: {type: bool}
+  - {id: 701, type: Branch}
+  - id: 706
+    type: Spawn Prototype
+    inputs: {Prototype: BloomPop}
+  - id: 711
+    type: SetEntity_GameTransform
+    inputs:
+      Value:
+        binding: {kind: component, component: GAME.GameTransform}
+  - id: 717
+    type: Self
+    outputs:
+      Self: {type_name: ecs.entity}
+  - {id: 719, type: Destroy Entity}
+  - id: 723
+    type: Event
+    reference_name: Hit
+    outputs:
+      Amount: {declaration_id: 1, type: int, kind: data}
+      Source: {declaration_id: 2, type: handle, type_name: ecs.entity, kind: data}
+      Point: {declaration_id: 3, type: struct, type_name: CF_V2, kind: data}
+      Direction: {declaration_id: 4, type: struct, type_name: CF_V2, kind: data}
+      Element: {declaration_id: 5, type: int, kind: data}
+      Knockback: {declaration_id: 6, type: float, kind: data}
+  - id: 741
+    type: Behavior Expression
+    reference_id: 731
+    reference_name: flash = 1
+    inputs:
+      Exec: {id: 744, kind: exec}
+      flash:
+        id: 742
+        type: float
+        binding: {kind: variable, variable_id: 5, source_asset: BloomTendril}
+    outputs:
+      Then: {id: 745, kind: exec}
+      Result: {id: 743, type: float}
+  - id: 778
+    type: Behavior Expression
+    reference_id: 761
+    reference_name: dir * -1
+    inputs:
+      dir: {type: struct, type_name: CF_V2}
+    outputs:
+      Result: {type: struct, type_name: CF_V2}
+  - id: 781
+    type: Emit Directed Particles
+    inputs:
+      Count: 5
+      Color: 1879042303
+      End Color: 0
+      Min Speed: 60.0
+      Max Speed: 200.0
+      Min Lifetime: 0.1
+      Max Lifetime: 0.3
+      Min Size: 0.5
+      Max Size: 1.1
+      Spread: 1.2
+      Min Drag: 1.5
+      Max Drag: 4.0
+      Min Emission: 0.6
+      Max Emission: 1.1
+      Size Exponent: 1.0
+      Shape: 4
+  - id: 803
+    type: Event
+    reference_name: Contact Begin
+    outputs:
+      Other: {type: handle, type_name: ecs.entity, kind: data}
+      Point: {type: struct, type_name: CF_V2, kind: data}
+  - id: 807
+    type: Has Component
+    inputs: {Component: GAME.GameInput}
+  - {id: 811, type: Branch}
+  - id: 831
+    type: Behavior Expression
+    reference_id: 816
+    reference_name: normalize(target - pos)
+    inputs:
+      target: {type: struct, type_name: CF_V2}
+      pos:
+        type: struct
+        type_name: GameTransform
+        binding: {kind: component, component: GAME.GameTransform}
+    outputs:
+      Result: {type: struct, type_name: CF_V2}
+  - id: 835
+    type: Self
+    outputs:
+      Self: {type_name: ecs.entity}
+  - id: 837
+    type: Send Event
+    reference_name: Hit
+    inputs:
+      Amount:
+        id: 841
+        declaration_id: 1
+        type: int
+        binding: {kind: component_field, component: GAME.GameWeapon, field: damage}
+      Source: {declaration_id: 2}
+      Point: {declaration_id: 3, type: struct, type_name: CF_V2}
+      Direction: {declaration_id: 4, type: struct, type_name: CF_V2}
+      Element: {declaration_id: 5, type: int}
+      Knockback: {declaration_id: 6, type: float, default: 320.0}
+    outputs:
+      Then: {id: 840}
+  edges:
+  - {from: 6.Then, to: 21.Exec}
+  - {from: 21.Then, to: 64.Exec}
+  - {from: 58.Result, to: 64.Condition}
+  - {from: 64.True, to: 81.Exec}
+  - {from: 64.False, to: 280.Exec}
+  - {from: 81.Then, to: 117.Exec}
+  - {from: 117.Then, to: 149.Exec}
+  - {from: 149.Then, to: 280.Exec}
+  - {from: 169.Value, to: 280.reach}
+  - {from: 169.Value, to: 527.r}
+  - {from: 280.Then, to: 446.Exec}
+  - {from: 446.Then, to: 487.Exec}
+  - {from: 483.Self, to: 487.Entity}
+  - {from: 485.Value, to: 487.Value}
+  - {from: 487.Then, to: 530.Exec}
+  - {from: 493.Self, to: 530.Entity}
+  - {from: 527.Result, to: 530.Value}
+  - {from: 530.Then, to: 552.Exec}
+  - {from: 537.Self, to: 539.Entity}
+  - {from: 539.Value.target, to: 548.Entity}
+  - {from: 548.Value, to: 552.Condition}
+  - {from: 552.False, to: 569.Exec}
+  - {from: 569.Then, to: 701.Exec}
+  - {from: 642.Result, to: 701.Condition}
+  - {from: 701.True, to: 706.Exec}
+  - {from: 706.Then, to: 711.Exec}
+  - {from: 706.Entity, to: 711.Entity}
+  - {from: 711.Then, to: 719.Exec}
+  - {from: 717.Self, to: 719.Entity}
+  - {from: 723.Then, to: 741.Exec}
+  - {from: 723.Point, to: 781.Position, conversion: game_transform_to_cf}
+  - {from: 723.Direction, to: 778.dir}
+  - {from: 741.Then, to: 781.Exec}
+  - {from: 778.Result, to: 781.Direction}
+  - {from: 803.Then, to: 811.Exec}
+  - {from: 803.Other, to: 807.Entity}
+  - {from: 803.Other, to: 837.Entity}
+  - {from: 803.Point, to: 831.target}
+  - {from: 803.Point, to: 837.Point, conversion: game_transform_to_cf}
+  - {from: 807.Value, to: 811.Condition}
+  - {from: 811.True, to: 837.Exec}
+  - {from: 831.Result, to: 837.Direction}
+  - {from: 835.Self, to: 837.Source}
+- {id: 9, kind: function, math_expression: age += dt, entry_id: 28}
+- {id: 44, kind: function, math_expression: init < 1, entry_id: 45}
+- id: 69
+  kind: function
+  math_expression: a0 = atan2(offset.y, offset.x)
+  entry_id: 88
+- {id: 106, kind: function, math_expression: r0 = length(offset), entry_id: 124}
+- {id: 139, kind: function, math_expression: init = 1, entry_id: 155}
+- id: 172
+  kind: function
+  math_expression: offset = direction(a0 + (0.3 + 0.5 * (1 - reach)) * sin(age * 1.7 + r0 * 0.035 + a0 * 3) * r0 / 180) * (18 + (r0 - 18) * reach)
+  entry_id: 290
+- id: 420
+  kind: function
+  math_expression: flash = max(0, flash - dt * 6)
+  entry_id: 453
+- id: 495
+  kind: function
+  math_expression: clamp((r - 0.5) * 2, 0, 1)
+  entry_id: 496
+- {id: 557, kind: function, math_expression: doom += dt, entry_id: 576}
+- id: 592
+  kind: function
+  math_expression: doom > 0.12 + fract(abs(pos.x * 0.0131 + pos.y * 0.0071)) * 1.3
+  entry_id: 650
+- {id: 731, kind: function, math_expression: flash = 1, entry_id: 747}
+- {id: 761, kind: function, math_expression: dir * -1, entry_id: 762}
+- id: 816
+  kind: function
+  math_expression: normalize(target - pos)
+  entry_id: 817

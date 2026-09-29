@@ -1,0 +1,554 @@
+version: 3
+name: HeartDeath
+id_counter: 957
+description: 'Where the Heart of the Well dies: a long slow-motion collapse of white and violet bursts across the heart, a last blinding beat, a hoard of scrap and resonance, and then the Run entity reports the well cleared.'
+owner_type: ecs.entity
+variables:
+- {id: 1, name: t, type: float}
+- {id: 2, name: pop, type: float}
+- {id: 3, name: done, type: float}
+- {id: 4, name: ang, type: float}
+- {id: 5, name: rr, type: float}
+graphs:
+- kind: event
+  name: ""
+  nodes:
+  - {id: 6, type: Event, reference_name: Begin}
+  - id: 8
+    type: Hit Stop
+    inputs: {Duration: 0.45, Scale: 0.06}
+  - id: 13
+    type: Add Camera Trauma
+    inputs: {Amount: 0.8}
+  - id: 17
+    type: Flash Screen
+    inputs: {Color: 4109172735, Amount: 0.3, Duration: 0.5}
+  - id: 23
+    type: Pulse Chromatic Aberration
+    inputs: {Amount: 1.0, Duration: 0.8}
+  - id: 28
+    type: Play Sound
+    inputs: {Frequency: 70.0, End Frequency: 35.0, Duration: 1.2, Volume: 0.8, Noise: 0.8}
+  - id: 37
+    type: Set Global Variable
+    inputs:
+      Name: BossActive
+      Value: {type: int}
+    outputs:
+      Value: {type: int}
+  - id: 43
+    type: Set Time Scale
+    inputs: {Scale: 0.3}
+  - id: 47
+    type: Event
+    reference_name: Tick
+    outputs:
+      DeltaSeconds: {type: float, kind: data}
+  - id: 62
+    type: Behavior Expression
+    reference_id: 50
+    reference_name: t += dt
+    inputs:
+      Exec: {id: 66, kind: exec}
+      t:
+        id: 63
+        type: float
+        binding: {kind: variable, variable_id: 1, source_asset: HeartDeath}
+      dt:
+        type: double
+        binding: {kind: delta_time}
+    outputs:
+      Then: {id: 67, kind: exec}
+      Result: {id: 65, type: float}
+  - id: 97
+    type: Behavior Expression
+    reference_id: 85
+    reference_name: pop -= dt
+    inputs:
+      Exec: {id: 101, kind: exec}
+      pop:
+        id: 98
+        type: float
+        binding: {kind: variable, variable_id: 2, source_asset: HeartDeath}
+      dt:
+        type: double
+        binding: {kind: delta_time}
+    outputs:
+      Then: {id: 102, kind: exec}
+      Result: {id: 100, type: float}
+  - id: 146
+    type: Behavior Expression
+    reference_id: 120
+    reference_name: pop <= 0 && t < 1.8
+    inputs:
+      pop:
+        type: double
+        flags: 0
+        binding: {kind: variable, variable_id: 2, source_asset: HeartDeath}
+      t:
+        type: double
+        flags: 0
+        binding: {kind: variable, variable_id: 1, source_asset: HeartDeath}
+    outputs:
+      Result: {type: bool}
+  - {id: 153, type: Branch}
+  - id: 181
+    type: Behavior Expression
+    reference_id: 158
+    reference_name: pop = 0.06 + rand() * 0.1
+    inputs:
+      Exec: {id: 184, kind: exec}
+      pop:
+        id: 182
+        type: float
+        binding: {kind: variable, variable_id: 2, source_asset: HeartDeath}
+    outputs:
+      Then: {id: 185, kind: exec}
+      Result: {id: 183, type: float}
+  - id: 230
+    type: Behavior Expression
+    reference_id: 214
+    reference_name: ang = rand() * 6.283
+    inputs:
+      Exec: {id: 233, kind: exec}
+      ang:
+        id: 231
+        type: float
+        binding: {kind: variable, variable_id: 4, source_asset: HeartDeath}
+    outputs:
+      Then: {id: 234, kind: exec}
+      Result: {id: 232, type: float}
+  - id: 305
+    type: Behavior Expression
+    reference_id: 256
+    reference_name: rr = (150) * (0.25 + 0.75 * rand()) * (0.5 + t / 3.6)
+    inputs:
+      Exec: {id: 309, kind: exec}
+      rr:
+        id: 306
+        type: float
+        binding: {kind: variable, variable_id: 5, source_asset: HeartDeath}
+      t:
+        type: double
+        binding: {kind: variable, variable_id: 1, source_asset: HeartDeath}
+    outputs:
+      Then: {id: 310, kind: exec}
+      Result: {id: 308, type: float}
+  - id: 385
+    type: Behavior Expression
+    reference_id: 365
+    reference_name: pos + direction(ang) * rr
+    inputs:
+      pos:
+        type: struct
+        type_name: GameTransform
+        binding: {kind: component, component: GAME.GameTransform}
+      ang:
+        type: double
+        binding: {kind: variable, variable_id: 4, source_asset: HeartDeath}
+      rr:
+        type: double
+        binding: {kind: variable, variable_id: 5, source_asset: HeartDeath}
+    outputs:
+      Result: {type: struct, type_name: GameTransform}
+  - id: 390
+    type: Spawn Prototype
+    inputs: {Prototype: HeartPop}
+  - {id: 395, type: SetEntity_GameTransform}
+  - id: 401
+    type: Emit Directed Particles
+    inputs:
+      Direction:
+        default: {x: 1.0, "y": 0.0}
+      Count: 18
+      Color: 4109172735
+      End Color: 0
+      Min Speed: 80.0
+      Max Speed: 360.0
+      Max Lifetime: 0.7
+      Min Size: 0.6
+      Max Size: 2.0
+      Spread: 3.14159
+      Min Drag: 1.5
+      Max Drag: 4.0
+      Min Emission: 0.8
+      Max Emission: 1.4
+      Size Exponent: 1.0
+      Shape: 4
+  - id: 423
+    type: Add Shockwave
+    inputs: {Radius: 90.0, Thickness: 10.0, Strength: 0.6, Duration: 0.35}
+  - id: 431
+    type: Add Camera Trauma
+    inputs: {Amount: 0.22}
+  - id: 457
+    type: Behavior Expression
+    reference_id: 435
+    reference_name: 87.5 + rand() * 70.0
+    outputs:
+      Result: {type: double}
+  - id: 459
+    type: Play Sound
+    inputs: {End Frequency: 21.0, Duration: 0.4, Noise: 0.85}
+  - id: 494
+    type: Behavior Expression
+    reference_id: 468
+    reference_name: t >= 1.8 && done < 1
+    inputs:
+      t:
+        type: double
+        flags: 0
+        binding: {kind: variable, variable_id: 1, source_asset: HeartDeath}
+      done:
+        type: double
+        flags: 0
+        binding: {kind: variable, variable_id: 3, source_asset: HeartDeath}
+    outputs:
+      Result: {type: bool}
+  - {id: 501, type: Branch}
+  - id: 516
+    type: Behavior Expression
+    reference_id: 506
+    reference_name: done = 1
+    inputs:
+      Exec: {id: 519, kind: exec}
+      done:
+        id: 517
+        type: float
+        binding: {kind: variable, variable_id: 3, source_asset: HeartDeath}
+    outputs:
+      Then: {id: 520, kind: exec}
+      Result: {id: 518, type: float}
+  - id: 536
+    type: Hit Stop
+    inputs: {Duration: 0.5, Scale: 0.05}
+  - id: 541
+    type: Add Camera Trauma
+    inputs: {Amount: 1.0}
+  - id: 545
+    type: Add Shockwave
+    inputs:
+      Position:
+        type_name: GameTransform
+        binding: {kind: component, component: GAME.GameTransform}
+        default: null
+      Radius: 520.0
+      Thickness: 30.0
+      Strength: 1.6
+      Duration: 1.3
+  - id: 553
+    type: Flash Screen
+    inputs: {Color: 4109172735, Amount: 0.55, Duration: 0.9}
+  - id: 559
+    type: Play Sound
+    inputs: {Frequency: 35.0, End Frequency: 20.0, Duration: 2.6, Volume: 0.95, Noise: 0.9}
+  - id: 568
+    type: Emit Directed Particles
+    inputs:
+      Position:
+        type_name: GameTransform
+        binding: {kind: component, component: GAME.GameTransform}
+        default: null
+      Direction:
+        default: {x: 1.0, "y": 0.0}
+      Count: 90
+      Color: 4109172735
+      End Color: 0
+      Min Speed: 120.0
+      Max Speed: 620.0
+      Min Lifetime: 0.4
+      Max Lifetime: 1.4
+      Min Size: 0.8
+      Max Size: 2.6
+      Spread: 3.14159
+      Min Drag: 1.5
+      Max Drag: 4.0
+      Min Emission: 1.0
+      Max Emission: 1.8
+      Size Exponent: 1.0
+      Shape: 4
+  - id: 590
+    type: ForLoop
+    inputs: {LastIndex: 23}
+  - id: 611
+    type: Behavior Expression
+    reference_id: 597
+    reference_name: index % 3
+    inputs:
+      index: {type: int}
+    outputs:
+      Result: {type: double}
+  - id: 614
+    type: Switch on Int
+    outputs:
+    - 617
+    - 618
+    - {id: 620, name: Case2}
+    - 619
+  - id: 621
+    type: Spawn Prototype
+    inputs: {Prototype: Scrap}
+  - id: 626
+    type: SetEntity_GameTransform
+    inputs:
+      Value:
+        binding: {kind: component, component: GAME.GameTransform}
+  - id: 670
+    type: Behavior Expression
+    reference_id: 632
+    reference_name: direction(rand() * 6.283) * (120 + rand() * 280)
+    outputs:
+      Result: {type: struct, type_name: CF_V2}
+  - {id: 672, type: SetEntity_GameVelocity}
+  - id: 678
+    type: Spawn Prototype
+    inputs: {Prototype: Scrap}
+  - id: 683
+    type: SetEntity_GameTransform
+    inputs:
+      Value:
+        binding: {kind: component, component: GAME.GameTransform}
+  - id: 727
+    type: Behavior Expression
+    reference_id: 689
+    reference_name: direction(rand() * 6.283) * (120 + rand() * 280)
+    outputs:
+      Result: {type: struct, type_name: CF_V2}
+  - {id: 729, type: SetEntity_GameVelocity}
+  - id: 735
+    type: Spawn Prototype
+    inputs: {Prototype: Resonance}
+  - id: 740
+    type: SetEntity_GameTransform
+    inputs:
+      Value:
+        binding: {kind: component, component: GAME.GameTransform}
+  - id: 784
+    type: Behavior Expression
+    reference_id: 746
+    reference_name: direction(rand() * 6.283) * (120 + rand() * 280)
+    outputs:
+      Result: {type: struct, type_name: CF_V2}
+  - {id: 786, type: SetEntity_GameVelocity}
+  - id: 816
+    type: Behavior Expression
+    reference_id: 792
+    reference_name: pos + vec2(-24, 0)
+    inputs:
+      pos:
+        type: struct
+        type_name: GameTransform
+        binding: {kind: component, component: GAME.GameTransform}
+    outputs:
+      Result: {type: struct, type_name: GameTransform}
+  - id: 819
+    type: Spawn Prototype
+    inputs: {Prototype: ModuleCache}
+  - {id: 824, type: SetEntity_GameTransform}
+  - id: 830
+    type: SetEntity_GameVelocity
+    inputs:
+      Value:
+        default: {x: -90.0, "y": -140.0}
+  - id: 857
+    type: Behavior Expression
+    reference_id: 836
+    reference_name: pos + vec2(24, 0)
+    inputs:
+      pos:
+        type: struct
+        type_name: GameTransform
+        binding: {kind: component, component: GAME.GameTransform}
+    outputs:
+      Result: {type: struct, type_name: GameTransform}
+  - id: 860
+    type: Spawn Prototype
+    inputs: {Prototype: ModuleCache}
+  - {id: 865, type: SetEntity_GameTransform}
+  - id: 871
+    type: SetEntity_GameVelocity
+    inputs:
+      Value:
+        default: {x: 90.0, "y": -140.0}
+  - id: 877
+    type: Set Global Variable
+    inputs:
+      Name: Toast
+      Value: {type: name, default: The Well is quiet}
+    outputs:
+      Value: {type: name}
+  - id: 883
+    type: Get Global Variable
+    inputs: {Name: ToastSerial}
+    outputs:
+      Value: {type: int}
+  - id: 900
+    type: Behavior Expression
+    reference_id: 886
+    reference_name: s + 1
+    inputs:
+      s: {type: int}
+    outputs:
+      Result: {type: double}
+  - id: 903
+    type: Set Global Variable
+    inputs:
+      Name: ToastSerial
+      Value: {type: double}
+    outputs:
+      Value: {type: double}
+  - {id: 909, type: Set Time Scale}
+  - id: 913
+    type: Get Variable
+    reference_id: 1
+    reference_name: t
+    outputs:
+      Value: {type: float}
+  - id: 915
+    type: Get Variable
+    reference_id: 3
+    reference_name: done
+    outputs:
+      Value: {type: float}
+  - id: 931
+    type: Behavior Expression
+    reference_id: 917
+    reference_name: t >= 3.3
+    inputs:
+      t:
+        type: double
+        flags: 0
+        binding: {kind: variable, variable_id: 1, source_asset: HeartDeath}
+    outputs:
+      Result: {type: bool}
+  - {id: 937, type: Branch}
+  - id: 942
+    type: Get Global Variable
+    inputs: {Name: RunEntity}
+    outputs:
+      Value: {type: handle, type_name: ecs.entity}
+  - id: 945
+    type: Set_GameEncounter_status
+    inputs: {Value: 1}
+  - id: 951
+    type: Self
+    outputs:
+      Self: {type_name: ecs.entity}
+  - {id: 953, type: Destroy Entity}
+  edges:
+  - {from: 6.Then, to: 8.Exec}
+  - {from: 8.Then, to: 13.Exec}
+  - {from: 13.Then, to: 17.Exec}
+  - {from: 17.Then, to: 23.Exec}
+  - {from: 23.Then, to: 28.Exec}
+  - {from: 28.Then, to: 37.Exec}
+  - {from: 37.Then, to: 43.Exec}
+  - {from: 47.Then, to: 62.Exec}
+  - {from: 62.Then, to: 97.Exec}
+  - {from: 97.Then, to: 153.Exec}
+  - {from: 146.Result, to: 153.Condition}
+  - {from: 153.True, to: 181.Exec}
+  - {from: 153.False, to: 501.Exec}
+  - {from: 181.Then, to: 230.Exec}
+  - {from: 230.Then, to: 305.Exec}
+  - {from: 305.Then, to: 390.Exec}
+  - {from: 385.Result, to: 395.Value}
+  - {from: 385.Result, to: 401.Position}
+  - {from: 385.Result, to: 423.Position}
+  - {from: 390.Then, to: 395.Exec}
+  - {from: 390.Entity, to: 395.Entity}
+  - {from: 395.Then, to: 401.Exec}
+  - {from: 401.Then, to: 423.Exec}
+  - {from: 423.Then, to: 431.Exec}
+  - {from: 431.Then, to: 459.Exec}
+  - {from: 457.Result, to: 459.Frequency}
+  - {from: 459.Then, to: 501.Exec}
+  - {from: 494.Result, to: 501.Condition}
+  - {from: 501.True, to: 516.Exec}
+  - {from: 501.False, to: 937.Exec}
+  - {from: 516.Then, to: 536.Exec}
+  - {from: 536.Then, to: 541.Exec}
+  - {from: 541.Then, to: 545.Exec}
+  - {from: 545.Then, to: 553.Exec}
+  - {from: 553.Then, to: 559.Exec}
+  - {from: 559.Then, to: 568.Exec}
+  - {from: 568.Then, to: 590.Exec}
+  - {from: 590.Body, to: 614.Exec}
+  - {from: 590.Index, to: 611.index}
+  - {from: 590.Completed, to: 819.Exec}
+  - {from: 611.Result, to: 614.Selection, conversion: To Integer}
+  - {from: 614.Case0, to: 621.Exec}
+  - {from: 614.Case1, to: 678.Exec}
+  - {from: 614.Case2, to: 735.Exec}
+  - {from: 621.Then, to: 626.Exec}
+  - {from: 621.Entity, to: 626.Entity}
+  - {from: 621.Entity, to: 672.Entity}
+  - {from: 626.Then, to: 672.Exec}
+  - {from: 670.Result, to: 672.Value}
+  - {from: 678.Then, to: 683.Exec}
+  - {from: 678.Entity, to: 683.Entity}
+  - {from: 678.Entity, to: 729.Entity}
+  - {from: 683.Then, to: 729.Exec}
+  - {from: 727.Result, to: 729.Value}
+  - {from: 735.Then, to: 740.Exec}
+  - {from: 735.Entity, to: 740.Entity}
+  - {from: 735.Entity, to: 786.Entity}
+  - {from: 740.Then, to: 786.Exec}
+  - {from: 784.Result, to: 786.Value}
+  - {from: 816.Result, to: 824.Value}
+  - {from: 819.Then, to: 824.Exec}
+  - {from: 819.Entity, to: 824.Entity}
+  - {from: 819.Entity, to: 830.Entity}
+  - {from: 824.Then, to: 830.Exec}
+  - {from: 830.Then, to: 860.Exec}
+  - {from: 857.Result, to: 865.Value}
+  - {from: 860.Then, to: 865.Exec}
+  - {from: 860.Entity, to: 865.Entity}
+  - {from: 860.Entity, to: 871.Entity}
+  - {from: 865.Then, to: 871.Exec}
+  - {from: 871.Then, to: 877.Exec}
+  - {from: 877.Then, to: 903.Exec}
+  - {from: 883.Value, to: 900.s}
+  - {from: 900.Result, to: 903.Value}
+  - {from: 903.Then, to: 909.Exec}
+  - {from: 931.Result, to: 937.Condition}
+  - {from: 937.True, to: 945.Exec}
+  - {from: 942.Value, to: 945.Target}
+  - {from: 945.Then, to: 953.Exec}
+  - {from: 951.Self, to: 953.Entity}
+- {id: 50, kind: function, math_expression: t += dt, entry_id: 69}
+- {id: 85, kind: function, math_expression: pop -= dt, entry_id: 104}
+- {id: 120, kind: function, math_expression: pop <= 0 && t < 1.8, entry_id: 121}
+- id: 158
+  kind: function
+  math_expression: pop = 0.06 + rand() * 0.1
+  entry_id: 187
+- {id: 214, kind: function, math_expression: ang = rand() * 6.283, entry_id: 236}
+- id: 256
+  kind: function
+  math_expression: rr = (150) * (0.25 + 0.75 * rand()) * (0.5 + t / 3.6)
+  entry_id: 312
+- id: 365
+  kind: function
+  math_expression: pos + direction(ang) * rr
+  entry_id: 366
+- {id: 435, kind: function, math_expression: 87.5 + rand() * 70.0, entry_id: 436}
+- {id: 468, kind: function, math_expression: t >= 1.8 && done < 1, entry_id: 469}
+- {id: 506, kind: function, math_expression: done = 1, entry_id: 522}
+- {id: 597, kind: function, math_expression: index % 3, entry_id: 598}
+- id: 632
+  kind: function
+  math_expression: direction(rand() * 6.283) * (120 + rand() * 280)
+  entry_id: 633
+- id: 689
+  kind: function
+  math_expression: direction(rand() * 6.283) * (120 + rand() * 280)
+  entry_id: 690
+- id: 746
+  kind: function
+  math_expression: direction(rand() * 6.283) * (120 + rand() * 280)
+  entry_id: 747
+- {id: 792, kind: function, math_expression: 'pos + vec2(-24, 0)', entry_id: 793}
+- {id: 836, kind: function, math_expression: 'pos + vec2(24, 0)', entry_id: 837}
+- {id: 886, kind: function, math_expression: s + 1, entry_id: 887}
+- {id: 917, kind: function, math_expression: t >= 3.3, entry_id: 918}

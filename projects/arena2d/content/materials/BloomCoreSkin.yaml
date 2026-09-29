@@ -1,7 +1,7 @@
 version: 3
 name: BloomCoreSkin
 domain: material
-id_counter: 529
+id_counter: 541
 description: 'The BloomCore''s skin. Bioluminescent flesh: a dark translucent body whose veins glow Glow and Accent in waves; Pulse swells the light with the heartbeat, Charge brightens it before an attack and Flash whitens it on a hit.'
 graphs:
 - kind: event
@@ -76,7 +76,7 @@ graphs:
   - id: 135
     type: Behavior Expression
     reference_id: 69
-    reference_name: smoothstep(0.7, 0.95, 1 - abs(noise(p * 0.18 + vec2(0, t * 0.4), 3) - 0.5) * 2)
+    reference_name: smoothstep(0.7, 0.95, 1 - abs(noise(p * 0.07 + vec2(0, t * 0.3), 1) - 0.5) * 2)
     inputs:
       p: {type: struct, type_name: ShaderVec2}
       t: {type: float}
@@ -92,10 +92,10 @@ graphs:
       flash: {type: float}
     outputs:
       Result: {type: struct, type_name: ShaderVec3}
-  - id: 311
+  - id: 317
     type: Behavior Expression
     reference_id: 194
-    reference_name: glow * (rim * 0.9 + pattern * (0.5 + 0.9 * pulse) + core * (0.5 + pulse)) + accent * (pattern * 0.35 + rim * 0.25) * (0.6 + 0.4 * sin(t * 2 + p.x * 0.1))
+    reference_name: glow * (rim * 0.35 + pattern * (0.12 + 0.3 * pulse) + core * (0.12 + 0.3 * pulse)) + accent * (pattern * 0.12 + rim * 0.1) * (0.6 + 0.4 * sin(t * 2 + p.x * 0.1))
     inputs:
       glow: {type: struct, type_name: ShaderVec3}
       rim: {type: float}
@@ -107,10 +107,10 @@ graphs:
       p: {type: struct, type_name: ShaderVec2}
     outputs:
       Result: {type: struct, type_name: ShaderVec3}
-  - id: 521
+  - id: 533
     type: Behavior Expression
-    reference_id: 441
-    reference_name: lum + glow * charge * (0.8 + 0.6 * sin(t * 26)) * (0.4 + rim) + vec3(1, 1, 1) * flash * 0.9
+    reference_id: 453
+    reference_name: lum + glow * charge * (0.5 + 0.4 * sin(t * 26)) * (0.3 + rim) + vec3(1, 1, 1) * flash * 0.6
     inputs:
       lum: {type: struct, type_name: ShaderVec3}
       glow: {type: struct, type_name: ShaderVec3}
@@ -122,29 +122,29 @@ graphs:
       Result: {type: struct, type_name: ShaderVec3}
   edges:
   - {from: 12.Value, to: 189.body}
-  - {from: 14.Value, to: 311.glow}
-  - {from: 14.Value, to: 521.glow}
+  - {from: 14.Value, to: 317.glow}
+  - {from: 14.Value, to: 533.glow}
   - {from: 16.Value, to: 189.flash}
-  - {from: 16.Value, to: 521.flash}
-  - {from: 18.Value, to: 521.charge}
-  - {from: 20.Value, to: 311.accent}
-  - {from: 22.Value, to: 311.pulse}
+  - {from: 16.Value, to: 533.flash}
+  - {from: 18.Value, to: 533.charge}
+  - {from: 20.Value, to: 317.accent}
+  - {from: 22.Value, to: 317.pulse}
   - {from: 24.Position, to: 28.Position}
   - {from: 24.Position, to: 135.p}
-  - {from: 24.Position, to: 311.p}
+  - {from: 24.Position, to: 317.p}
   - {from: 26.Value, to: 135.t}
-  - {from: 26.Value, to: 311.t}
-  - {from: 26.Value, to: 521.t}
+  - {from: 26.Value, to: 317.t}
+  - {from: 26.Value, to: 533.t}
   - {from: 28.Distance, to: 47.d}
   - {from: 28.Distance, to: 66.d}
   - {from: 28.Distance, to: 189.d}
-  - {from: 47.Result, to: 311.rim}
-  - {from: 47.Result, to: 521.rim}
-  - {from: 66.Result, to: 311.core}
-  - {from: 135.Result, to: 311.pattern}
+  - {from: 47.Result, to: 317.rim}
+  - {from: 47.Result, to: 533.rim}
+  - {from: 66.Result, to: 317.core}
+  - {from: 135.Result, to: 317.pattern}
   - {from: 189.Result, to: 1.Base Color}
-  - {from: 311.Result, to: 521.lum}
-  - {from: 521.Result, to: 1.Emission}
+  - {from: 317.Result, to: 533.lum}
+  - {from: 533.Result, to: 1.Emission}
 - id: 31
   kind: function
   math_expression: smoothstep(-2.4, -0.2, d)
@@ -152,7 +152,7 @@ graphs:
 - {id: 50, kind: function, math_expression: 'smoothstep(-6, -22, d)', entry_id: 51}
 - id: 69
   kind: function
-  math_expression: smoothstep(0.7, 0.95, 1 - abs(noise(p * 0.18 + vec2(0, t * 0.4), 3) - 0.5) * 2)
+  math_expression: smoothstep(0.7, 0.95, 1 - abs(noise(p * 0.07 + vec2(0, t * 0.3), 1) - 0.5) * 2)
   entry_id: 70
 - id: 139
   kind: function
@@ -160,9 +160,9 @@ graphs:
   entry_id: 140
 - id: 194
   kind: function
-  math_expression: glow * (rim * 0.9 + pattern * (0.5 + 0.9 * pulse) + core * (0.5 + pulse)) + accent * (pattern * 0.35 + rim * 0.25) * (0.6 + 0.4 * sin(t * 2 + p.x * 0.1))
-  entry_id: 322
-- id: 441
+  math_expression: glow * (rim * 0.35 + pattern * (0.12 + 0.3 * pulse) + core * (0.12 + 0.3 * pulse)) + accent * (pattern * 0.12 + rim * 0.1) * (0.6 + 0.4 * sin(t * 2 + p.x * 0.1))
+  entry_id: 328
+- id: 453
   kind: function
-  math_expression: lum + glow * charge * (0.8 + 0.6 * sin(t * 26)) * (0.4 + rim) + vec3(1, 1, 1) * flash * 0.9
-  entry_id: 442
+  math_expression: lum + glow * charge * (0.5 + 0.4 * sin(t * 26)) * (0.3 + rim) + vec3(1, 1, 1) * flash * 0.6
+  entry_id: 454

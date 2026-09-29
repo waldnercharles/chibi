@@ -1,0 +1,16 @@
+name: ColossusArm
+components:
+  GAME.GameBody: {type: Dynamic}
+  GAME.GameCollider: {category: 2, mask: 5, radius: 17.0}
+  GAME.GameFlash: {color: 4294967295, decay: 12.0}
+  GAME.GameFollow: {}
+  GAME.GameGeometry3D: {depth: 76.0, height: 4.0, width: 76.0}
+  GAME.GameOrientation: {}
+  GAME.GameShader:
+    material: ColossusArmSkin
+    parameters: '{"Glow":[1.0,0.541,0.227],"Body":[0.086,0.071,0.071],"Accent":[1.0,0.816,0.541]}'
+    shape: ColossusArmShape
+  GAME.GameTransform: {}
+  GAME.GameVelocity: {}
+  GAME.GameWeapon: {damage: 12}
+behaviors: [ColossusArm]

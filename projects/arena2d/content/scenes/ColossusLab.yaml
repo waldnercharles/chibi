@@ -1,0 +1,218 @@
+version: 1
+name: ColossusLab
+physics:
+  gravity: {x: 0.0, "y": 240.0}
+seed: 13
+entities:
+- name: Player
+  prototype: Wren
+  components:
+    GameTransform: {x: 0.0, "y": 22835.0}
+  behaviors: [Hardpoints, PlayerEffects, ShipFlight, ShipHull]
+- name: Camera
+  prototype: WellCamera
+  components:
+    GameTransform: {x: 0.0, "y": 22835.0}
+  behaviors: [CameraFollow]
+- name: Lighting
+  prototype: WellLighting
+  behaviors: [Ambience, Atmosphere]
+- {name: FireMouse, prototype: FireMouse}
+- {name: FireStick, prototype: FireStick}
+- {name: SecondaryMouse, prototype: SecondaryMouse}
+- name: Run
+  prototype: RunState
+  behaviors: [Run]
+- name: HUD
+  prototype: WellHud
+  behaviors: [WellHudDisplay]
+- {name: Basalt deposits, prototype: BasaltDeposits}
+- {name: Ice deposits, prototype: IceDeposits}
+- {name: Slag deposits, prototype: SlagDeposits}
+- name: Foundry deep
+  prototype: BackdropDeep
+  components:
+    GameBackdrop2D: {material: FoundryDeep, parallax: 0.12, layer: 0, intensity: 1.0}
+- name: Foundry far
+  prototype: BackdropFar
+  components:
+    GameBackdrop2D: {material: FoundryGirders, parallax: 0.45, layer: 1, intensity: 1.0, lit: true}
+- {name: Foundry rock, prototype: StratumFoundry}
+- name: Foundry sanctum
+  prototype: Sanctum
+  components:
+    GameTransform: {x: 0.0, "y": 18330.0}
+  behaviors: [Sanctum]
+- name: Foundry shop
+  prototype: ShopTerminal
+  components:
+    GameTransform: {x: -250.0, "y": 18454.0}
+  behaviors: [ShopScreen]
+- name: Foundry refit
+  prototype: RefitBench
+  components:
+    GameTransform: {x: -120.0, "y": 18462.0}
+  behaviors: [RefitScreen]
+- name: Foundry shrine
+  prototype: ResonanceShrine
+  components:
+    GameTransform: {x: 200.0, "y": 18434.0}
+  behaviors: [SkillScreen]
+- name: Foundry forgelights
+  prototype: Scatter
+  components:
+    GameScatter:
+      prototype: Forgelight
+      terrain: Foundry
+      min: {x: -1600.0, "y": 18000.0}
+      max: {x: 1600.0, "y": 24000.0}
+      cell: 140.0
+      chance: 0.5
+      placement: Wall
+      clearance: 140.0
+      salt: 61
+      radius: 500.0
+- name: Foundry cinders
+  prototype: Scatter
+  components:
+    GameScatter:
+      prototype: CinderNest
+      terrain: Foundry
+      min: {x: -1600.0, "y": 18900.0}
+      max: {x: 1600.0, "y": 22700.0}
+      cell: 520.0
+      chance: 0.36
+      placement: Air
+      clearance: 50.0
+      salt: 62
+      radius: 700.0
+- name: Foundry welders
+  prototype: Scatter
+  components:
+    GameScatter:
+      prototype: Welder
+      terrain: Foundry
+      min: {x: -1600.0, "y": 19000.0}
+      max: {x: 1600.0, "y": 22700.0}
+      cell: 520.0
+      chance: 0.32
+      placement: Air
+      clearance: 70.0
+      salt: 63
+      radius: 700.0
+- name: Foundry furnaces
+  prototype: Scatter
+  components:
+    GameScatter:
+      prototype: Furnace
+      terrain: Foundry
+      min: {x: -1600.0, "y": 18900.0}
+      max: {x: 1600.0, "y": 22700.0}
+      cell: 380.0
+      chance: 0.3
+      placement: Wall
+      clearance: 200.0
+      salt: 64
+      radius: 700.0
+- name: Foundry ceiling furnaces
+  prototype: Scatter
+  components:
+    GameScatter:
+      prototype: Furnace
+      terrain: Foundry
+      min: {x: -1600.0, "y": 18900.0}
+      max: {x: 1600.0, "y": 22700.0}
+      cell: 460.0
+      chance: 0.25
+      placement: Ceiling
+      clearance: 220.0
+      salt: 65
+      radius: 700.0
+- name: Foundry scorchlancers
+  prototype: Scatter
+  components:
+    GameScatter:
+      prototype: Scorchlancer
+      terrain: Foundry
+      min: {x: -1600.0, "y": 19600.0}
+      max: {x: 1600.0, "y": 22700.0}
+      cell: 640.0
+      chance: 0.3
+      placement: Air
+      clearance: 70.0
+      salt: 66
+      radius: 700.0
+- name: Foundry lava pools
+  prototype: Scatter
+  components:
+    GameScatter:
+      prototype: LavaPool
+      terrain: Foundry
+      min: {x: -1600.0, "y": 18700.0}
+      max: {x: 1600.0, "y": 22700.0}
+      cell: 460.0
+      chance: 0.42
+      placement: Floor
+      clearance: 220.0
+      salt: 67
+      radius: 700.0
+- name: Foundry steam vents
+  prototype: Scatter
+  components:
+    GameScatter:
+      prototype: SteamVent
+      terrain: Foundry
+      min: {x: -1600.0, "y": 18700.0}
+      max: {x: 1600.0, "y": 22700.0}
+      cell: 320.0
+      chance: 0.3
+      placement: Floor
+      clearance: 200.0
+      salt: 68
+      radius: 700.0
+- name: Foundry water tanks
+  prototype: Scatter
+  components:
+    GameScatter:
+      prototype: WaterPool
+      terrain: Foundry
+      min: {x: -1600.0, "y": 18700.0}
+      max: {x: 1600.0, "y": 22700.0}
+      cell: 700.0
+      chance: 0.2
+      placement: Floor
+      clearance: 220.0
+      salt: 69
+      radius: 700.0
+- name: Foundry repairs
+  prototype: Scatter
+  components:
+    GameScatter:
+      prototype: Repair
+      terrain: Foundry
+      min: {x: -1600.0, "y": 19200.0}
+      max: {x: 1600.0, "y": 22700.0}
+      cell: 900.0
+      chance: 0.24
+      placement: Air
+      clearance: 30.0
+      salt: 70
+      radius: 700.0
+- name: Crucible Colossus
+  prototype: Colossus
+  components:
+    GameTransform: {x: 0.0, "y": 23285.0}
+  behaviors: [Colossus]
+- name: Foundry seal
+  prototype: Seal
+  components:
+    GameTransform: {x: 0.0, "y": 23905.0}
+    GameGlobalBinding: {name: SealFoundry}
+- name: Quench tank west
+  prototype: WaterPool
+  components:
+    GameTransform: {x: -330.0, "y": 23545.0}
+- name: Quench tank east
+  prototype: WaterPool
+  components:
+    GameTransform: {x: 330.0, "y": 23545.0}

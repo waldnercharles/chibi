@@ -1,11 +1,11 @@
 version: 3
 name: Chaser
-id_counter: 439
+id_counter: 451
 description: Swarm toward the player along a weaving path when near; drift aimlessly otherwise.
 owner_type: ecs.entity
 variables:
-- {id: 1, name: seed, type: float}
-- {id: 2, name: age, type: float}
+- {id: 1, name: age, type: float}
+- {id: 2, name: seed, type: float}
 graphs:
 - kind: event
   name: ""
@@ -20,40 +20,49 @@ graphs:
       seed:
         id: 22
         type: float
-        binding: {kind: variable, variable_id: 1, source_asset: Chaser}
+        binding: {kind: variable, variable_id: 2, source_asset: Chaser}
     outputs:
       Then: {id: 25, kind: exec}
       Result: {id: 23, type: float}
   - id: 47
-    type: Event
-    reference_name: Tick
-    outputs:
-      DeltaSeconds: {type: float, kind: data}
-  - id: 62
-    type: Behavior Expression
-    reference_id: 50
-    reference_name: age += dt
-    inputs:
-      Exec: {id: 66, kind: exec}
-      age:
-        id: 63
-        type: float
-        binding: {kind: variable, variable_id: 2, source_asset: Chaser}
-      dt:
-        type: double
-        binding: {kind: delta_time}
-    outputs:
-      Then: {id: 67, kind: exec}
-      Result: {id: 65, type: float}
-  - id: 85
     type: Get Global Variable
     inputs: {Name: Player}
     outputs:
       Value: {type: handle, type_name: ecs.entity}
-  - {id: 88, type: GetEntity_GameTransform}
-  - id: 110
+  - id: 50
+    type: Has Component
+    inputs: {Component: GAME.GameTransform}
+  - id: 54
+    type: Event
+    reference_name: Tick
+    outputs:
+      DeltaSeconds: {type: float, kind: data}
+  - {id: 57, type: Branch}
+  - id: 74
     type: Behavior Expression
-    reference_id: 91
+    reference_id: 62
+    reference_name: age += dt
+    inputs:
+      Exec: {id: 78, kind: exec}
+      age:
+        id: 75
+        type: float
+        binding: {kind: variable, variable_id: 1, source_asset: Chaser}
+      dt:
+        type: double
+        binding: {kind: delta_time}
+    outputs:
+      Then: {id: 79, kind: exec}
+      Result: {id: 77, type: float}
+  - id: 97
+    type: Get Global Variable
+    inputs: {Name: Player}
+    outputs:
+      Value: {type: handle, type_name: ecs.entity}
+  - {id: 100, type: GetEntity_GameTransform}
+  - id: 122
+    type: Behavior Expression
+    reference_id: 103
     reference_name: distance(pos, p) < 650
     inputs:
       pos:
@@ -63,15 +72,15 @@ graphs:
       p: {type: struct, type_name: GameTransform}
     outputs:
       Result: {type: bool}
-  - {id: 117, type: Branch}
-  - id: 197
+  - {id: 129, type: Branch}
+  - id: 209
     type: Behavior Expression
-    reference_id: 122
+    reference_id: 134
     reference_name: target = normalize(p - pos + normalize(vec2(pos.y - p.y, p.x - pos.x)) * sin(age * 5 + seed) * distance(pos, p) * 0.4) * speed
     inputs:
-      Exec: {id: 205, kind: exec}
+      Exec: {id: 217, kind: exec}
       target:
-        id: 198
+        id: 210
         type: struct
         type_name: CF_V2
         binding: {kind: component_field, component: GAME.GameDrive, field: target}
@@ -82,47 +91,47 @@ graphs:
         binding: {kind: component, component: GAME.GameTransform}
       age:
         type: double
-        binding: {kind: variable, variable_id: 2, source_asset: Chaser}
+        binding: {kind: variable, variable_id: 1, source_asset: Chaser}
       seed:
         type: double
-        binding: {kind: variable, variable_id: 1, source_asset: Chaser}
+        binding: {kind: variable, variable_id: 2, source_asset: Chaser}
       speed:
         type: double
         binding: {kind: component_field, component: GAME.GameMovement, field: speed}
     outputs:
-      Then: {id: 206, kind: exec}
-      Result: {id: 204, type: struct, type_name: CF_V2}
-  - id: 336
+      Then: {id: 218, kind: exec}
+      Result: {id: 216, type: struct, type_name: CF_V2}
+  - id: 348
     type: Behavior Expression
-    reference_id: 301
+    reference_id: 313
     reference_name: target = direction(seed + age * 0.4) * speed * 0.25
     inputs:
-      Exec: {id: 342, kind: exec}
+      Exec: {id: 354, kind: exec}
       target:
-        id: 337
+        id: 349
         type: struct
         type_name: CF_V2
         binding: {kind: component_field, component: GAME.GameDrive, field: target}
       seed:
         type: double
-        binding: {kind: variable, variable_id: 1, source_asset: Chaser}
+        binding: {kind: variable, variable_id: 2, source_asset: Chaser}
       age:
         type: double
-        binding: {kind: variable, variable_id: 2, source_asset: Chaser}
+        binding: {kind: variable, variable_id: 1, source_asset: Chaser}
       speed:
         type: double
         binding: {kind: component_field, component: GAME.GameMovement, field: speed}
     outputs:
-      Then: {id: 343, kind: exec}
-      Result: {id: 341, type: struct, type_name: CF_V2}
-  - id: 406
+      Then: {id: 355, kind: exec}
+      Result: {id: 353, type: struct, type_name: CF_V2}
+  - id: 418
     type: Behavior Expression
-    reference_id: 394
+    reference_id: 406
     reference_name: heading = atan2(velocity.y, velocity.x)
     inputs:
-      Exec: {id: 410, kind: exec}
+      Exec: {id: 422, kind: exec}
       heading:
-        id: 407
+        id: 419
         type: float
         binding: {kind: component_field, component: GAME.GameOrientation, field: radians}
       velocity:
@@ -130,32 +139,38 @@ graphs:
         type_name: GameVelocity
         binding: {kind: component, component: GAME.GameVelocity}
     outputs:
-      Then: {id: 411, kind: exec}
-      Result: {id: 409, type: double}
+      Then: {id: 423, kind: exec}
+      Result: {id: 421, type: double}
   edges:
   - {from: 3.Then, to: 21.Exec}
-  - {from: 47.Then, to: 62.Exec}
-  - {from: 62.Then, to: 117.Exec}
-  - {from: 85.Value, to: 88.Entity}
-  - {from: 88.Value, to: 110.p}
-  - {from: 88.Value, to: 197.p}
-  - {from: 110.Result, to: 117.Condition}
-  - {from: 117.True, to: 197.Exec}
-  - {from: 117.False, to: 336.Exec}
-  - {from: 197.Then, to: 406.Exec}
-  - {from: 336.Then, to: 406.Exec}
+  - {from: 47.Value, to: 50.Entity}
+  - {from: 50.Value, to: 57.Condition}
+  - {from: 54.Then, to: 57.Exec}
+  - {from: 57.True, to: 74.Exec}
+  - {from: 74.Then, to: 129.Exec}
+  - {from: 97.Value, to: 100.Entity}
+  - {from: 100.Value, to: 122.p}
+  - {from: 100.Value, to: 209.p}
+  - {from: 122.Result, to: 129.Condition}
+  - {from: 129.True, to: 209.Exec}
+  - {from: 129.False, to: 348.Exec}
+  - {from: 209.Then, to: 418.Exec}
+  - {from: 348.Then, to: 418.Exec}
 - {id: 5, kind: function, math_expression: seed = rand() * 100, entry_id: 27}
-- {id: 50, kind: function, math_expression: age += dt, entry_id: 69}
-- {id: 91, kind: function, math_expression: 'distance(pos, p) < 650', entry_id: 92}
-- id: 122
+- {id: 62, kind: function, math_expression: age += dt, entry_id: 81}
+- id: 103
+  kind: function
+  math_expression: distance(pos, p) < 650
+  entry_id: 104
+- id: 134
   kind: function
   math_expression: target = normalize(p - pos + normalize(vec2(pos.y - p.y, p.x - pos.x)) * sin(age * 5 + seed) * distance(pos, p) * 0.4) * speed
-  entry_id: 208
-- id: 301
+  entry_id: 220
+- id: 313
   kind: function
   math_expression: target = direction(seed + age * 0.4) * speed * 0.25
-  entry_id: 345
-- id: 394
+  entry_id: 357
+- id: 406
   kind: function
   math_expression: heading = atan2(velocity.y, velocity.x)
-  entry_id: 413
+  entry_id: 425

@@ -1,0 +1,10 @@
+name: CruciblePop
+components:
+  GAME.GameAppearance: {antialias: 2.0, color: 4288696320, height: 52.0, shape: Circle, width: 52.0}
+  GAME.GameMaterial:
+    emission_color: 4288696575
+    emission_intensity: 3.2
+    emission_multiplier: 1.0
+    scene: 4288696320
+  GAME.GameTransform: {}
+behaviors: [Glow]

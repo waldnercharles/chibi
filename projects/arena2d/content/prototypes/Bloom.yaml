@@ -1,0 +1,22 @@
+name: Bloom
+components:
+  GAME.GameBody: {type: Dynamic}
+  GAME.GameCollider: {category: 2, mask: 5, radius: 28.0}
+  GAME.GameDrive: {acceleration: 260.0}
+  GAME.GameFlash: {color: 4294967295, decay: 10.0}
+  GAME.GameFluidVolume: {height: 180.0, owned: true, substance: BloomJelly, width: 180.0}
+  GAME.GameGeometry3D: {depth: 80.0, height: 4.0, width: 80.0}
+  GAME.GameGlobalBinding: {name: Bloom}
+  GAME.GameHealth: {current: 2600, maximum: 2600}
+  GAME.GameLight2D: {color: 4283422975, intensity: 1.0, radius: 16.0}
+  GAME.GameMovement: {speed: 60.0}
+  GAME.GameOrientation: {}
+  GAME.GameShader:
+    material: BloomCoreSkin
+    parameters: '{"Glow":[1.0,0.31,0.847],"Body":[0.165,0.031,0.141],"Accent":[0.247,1.0,0.878]}'
+    shape: BloomCoreShape
+  GAME.GameSpawnRequest: {prototype: BloomDeath}
+  GAME.GameTransform: {}
+  GAME.GameVelocity: {}
+  GAME.GameWeapon: {damage: 14}
+behaviors: [Bloom]

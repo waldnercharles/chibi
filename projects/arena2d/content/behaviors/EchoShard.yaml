@@ -1,0 +1,337 @@
+version: 3
+name: EchoShard
+id_counter: 709
+description: 'An Echo shard orbiting the Heart of the Well: it fires needlets at the ship at the rate the global HeartFire sets (none, steady or frantic), glowing before each shot, and it breaks apart when the heart dies.'
+owner_type: ecs.entity
+variables:
+- {id: 1, name: shot, type: float}
+- {id: 2, name: cool, type: float}
+- {id: 3, name: glow, type: float}
+- {id: 522, name: doom, type: float}
+graphs:
+- kind: event
+  name: ""
+  nodes:
+  - id: 4
+    type: Event
+    reference_name: Tick
+    outputs:
+      DeltaSeconds: {type: float, kind: data}
+  - id: 7
+    type: Get Global Variable
+    inputs: {Name: HeartFire}
+    outputs:
+      Value: {type: float}
+  - id: 10
+    type: Get Global Variable
+    inputs: {Name: Player}
+    outputs:
+      Value: {type: handle, type_name: ecs.entity}
+  - id: 13
+    type: Has Component
+    inputs: {Component: GAME.GameTransform}
+  - {id: 17, type: Branch}
+  - id: 36
+    type: Behavior Expression
+    reference_id: 22
+    reference_name: cool <= 0
+    inputs:
+      cool:
+        type: double
+        flags: 0
+        binding: {kind: variable, variable_id: 2, source_asset: EchoShard}
+    outputs:
+      Result: {type: bool}
+  - {id: 42, type: Branch}
+  - id: 70
+    type: Behavior Expression
+    reference_id: 47
+    reference_name: cool = 1.2 + rand() * 1.6
+    inputs:
+      Exec: {id: 73, kind: exec}
+      cool:
+        id: 71
+        type: float
+        binding: {kind: variable, variable_id: 2, source_asset: EchoShard}
+    outputs:
+      Then: {id: 74, kind: exec}
+      Result: {id: 72, type: float}
+  - id: 131
+    type: Behavior Expression
+    reference_id: 103
+    reference_name: shot = (shot + dt * f) * step(0.05, f)
+    inputs:
+      Exec: {id: 136, kind: exec}
+      shot:
+        id: 132
+        type: float
+        binding: {kind: variable, variable_id: 1, source_asset: EchoShard}
+      dt:
+        type: double
+        binding: {kind: delta_time}
+      f: {type: float}
+    outputs:
+      Then: {id: 137, kind: exec}
+      Result: {id: 135, type: float}
+  - id: 209
+    type: Behavior Expression
+    reference_id: 171
+    reference_name: glow = clamp((shot - cool + 0.5) / 0.5, 0, 1)
+    inputs:
+      Exec: {id: 214, kind: exec}
+      glow:
+        id: 210
+        type: float
+        binding: {kind: variable, variable_id: 3, source_asset: EchoShard}
+      shot:
+        type: double
+        binding: {kind: variable, variable_id: 1, source_asset: EchoShard}
+      cool:
+        type: double
+        binding: {kind: variable, variable_id: 2, source_asset: EchoShard}
+    outputs:
+      Then: {id: 215, kind: exec}
+      Result: {id: 213, type: float}
+  - id: 259
+    type: Self
+    outputs:
+      Self: {type_name: ecs.entity}
+  - id: 261
+    type: Get Variable
+    reference_id: 3
+    reference_name: glow
+    outputs:
+      Value: {type: float}
+  - id: 263
+    type: Set Material Parameter
+    inputs:
+      Name: Charge
+      Value: {type_name: float}
+  - id: 281
+    type: Behavior Expression
+    reference_id: 269
+    reference_name: shot >= cool
+    inputs:
+      shot:
+        type: double
+        flags: 0
+        binding: {kind: variable, variable_id: 1, source_asset: EchoShard}
+      cool:
+        type: double
+        flags: 0
+        binding: {kind: variable, variable_id: 2, source_asset: EchoShard}
+    outputs:
+      Result: {type: bool}
+  - {id: 288, type: Branch}
+  - id: 303
+    type: Behavior Expression
+    reference_id: 293
+    reference_name: shot = 0
+    inputs:
+      Exec: {id: 306, kind: exec}
+      shot:
+        id: 304
+        type: float
+        binding: {kind: variable, variable_id: 1, source_asset: EchoShard}
+    outputs:
+      Then: {id: 307, kind: exec}
+      Result: {id: 305, type: float}
+  - id: 346
+    type: Behavior Expression
+    reference_id: 323
+    reference_name: cool = 1.2 + rand() * 1.6
+    inputs:
+      Exec: {id: 349, kind: exec}
+      cool:
+        id: 347
+        type: float
+        binding: {kind: variable, variable_id: 2, source_asset: EchoShard}
+    outputs:
+      Then: {id: 350, kind: exec}
+      Result: {id: 348, type: float}
+  - id: 379
+    type: Get Global Variable
+    inputs: {Name: Player}
+    outputs:
+      Value: {type: handle, type_name: ecs.entity}
+  - {id: 382, type: GetEntity_GameTransform}
+  - id: 428
+    type: Behavior Expression
+    reference_id: 385
+    reference_name: direction(atan2(p.y - pos.y, p.x - pos.x) + (rand() - 0.5) * 0.1)
+    inputs:
+      p: {type: struct, type_name: GameTransform}
+      pos:
+        type: struct
+        type_name: GameTransform
+        binding: {kind: component, component: GAME.GameTransform}
+    outputs:
+      Result: {type: struct, type_name: CF_V2}
+  - id: 498
+    type: Behavior Expression
+    reference_id: 479
+    reference_name: pos + d * 14
+    inputs:
+      pos:
+        type: struct
+        type_name: GameTransform
+        binding: {kind: component, component: GAME.GameTransform}
+      d: {type: struct, type_name: CF_V2}
+    outputs:
+      Result: {type: struct, type_name: GameTransform}
+  - id: 502
+    type: Self
+    outputs:
+      Self: {type_name: ecs.entity}
+  - id: 504
+    type: Call Function
+    reference_id: 1
+    reference_name: Launch Shot
+    reference_asset: ShotActions
+    inputs:
+      Prototype: {id: 507, declaration_id: 6, type: name, kind: data, default: Needlet}
+      Origin: {declaration_id: 7, type: struct, type_name: CF_V2, kind: data}
+      Direction: {declaration_id: 8, type: struct, type_name: CF_V2, kind: data}
+      Source: {declaration_id: 9, type: handle, type_name: ecs.entity, kind: data}
+      Hardpoint: {declaration_id: 10, type: int, kind: data}
+    outputs:
+      Then: {id: 506}
+      Entity: {id: 512, declaration_id: 11, type: handle, type_name: ecs.entity, kind: data}
+  - id: 513
+    type: Play Sound
+    inputs:
+      Frequency: 1500.0
+      End Frequency: 600.0
+      Duration: 0.07
+      Volume: 0.12
+      Noise: 0.2
+  - id: 523
+    type: Self
+    outputs:
+      Self: {type_name: ecs.entity}
+  - id: 525
+    type: GetEntity_GameFollow
+    outputs:
+      Value.target: {}
+      Value.mode: {}
+      Value.offset: {}
+      Value.distance: {}
+      Value.stiffness: {}
+      Value.inherit_heading: {}
+  - id: 534
+    type: Has Component
+    inputs: {Component: GAME.GameTransform}
+  - {id: 538, type: Branch}
+  - id: 555
+    type: Behavior Expression
+    reference_id: 543
+    reference_name: doom += dt
+    inputs:
+      Exec: {id: 559, kind: exec}
+      doom:
+        id: 556
+        type: float
+        binding: {kind: variable, variable_id: 522, source_asset: EchoShard}
+      dt:
+        type: double
+        binding: {kind: delta_time}
+    outputs:
+      Then: {id: 560, kind: exec}
+      Result: {id: 558, type: float}
+  - id: 628
+    type: Behavior Expression
+    reference_id: 578
+    reference_name: doom > 0.12 + fract(abs(pos.x * 0.0131 + pos.y * 0.0071)) * 1.3
+    inputs:
+      doom:
+        type: double
+        flags: 0
+        binding: {kind: variable, variable_id: 522, source_asset: EchoShard}
+      pos:
+        type: struct
+        type_name: GameTransform
+        binding: {kind: component, component: GAME.GameTransform}
+    outputs:
+      Result: {type: bool}
+  - {id: 687, type: Branch}
+  - id: 692
+    type: Spawn Prototype
+    inputs: {Prototype: EchoShatter}
+  - id: 697
+    type: SetEntity_GameTransform
+    inputs:
+      Value:
+        binding: {kind: component, component: GAME.GameTransform}
+  - id: 703
+    type: Self
+    outputs:
+      Self: {type_name: ecs.entity}
+  - {id: 705, type: Destroy Entity}
+  edges:
+  - {from: 4.Then, to: 17.Exec}
+  - {from: 7.Value, to: 131.f}
+  - {from: 10.Value, to: 13.Entity}
+  - {from: 13.Value, to: 17.Condition}
+  - {from: 17.True, to: 42.Exec}
+  - {from: 36.Result, to: 42.Condition}
+  - {from: 42.True, to: 70.Exec}
+  - {from: 42.False, to: 131.Exec}
+  - {from: 70.Then, to: 131.Exec}
+  - {from: 131.Then, to: 209.Exec}
+  - {from: 209.Then, to: 263.Exec}
+  - {from: 259.Self, to: 263.Entity}
+  - {from: 261.Value, to: 263.Value}
+  - {from: 263.Then, to: 288.Exec}
+  - {from: 281.Result, to: 288.Condition}
+  - {from: 288.True, to: 303.Exec}
+  - {from: 288.False, to: 538.Exec}
+  - {from: 303.Then, to: 346.Exec}
+  - {from: 346.Then, to: 504.Exec}
+  - {from: 379.Value, to: 382.Entity}
+  - {from: 382.Value, to: 428.p}
+  - {from: 428.Result, to: 498.d}
+  - {from: 428.Result, to: 504.Direction}
+  - {from: 498.Result, to: 504.Origin}
+  - {from: 502.Self, to: 504.Source}
+  - {from: 504.Then, to: 513.Exec}
+  - {from: 513.Then, to: 538.Exec}
+  - {from: 523.Self, to: 525.Entity}
+  - {from: 525.Value.target, to: 534.Entity}
+  - {from: 534.Value, to: 538.Condition}
+  - {from: 538.False, to: 555.Exec}
+  - {from: 555.Then, to: 687.Exec}
+  - {from: 628.Result, to: 687.Condition}
+  - {from: 687.True, to: 692.Exec}
+  - {from: 692.Then, to: 697.Exec}
+  - {from: 692.Entity, to: 697.Entity}
+  - {from: 697.Then, to: 705.Exec}
+  - {from: 703.Self, to: 705.Entity}
+- {id: 22, kind: function, math_expression: cool <= 0, entry_id: 23}
+- id: 47
+  kind: function
+  math_expression: cool = 1.2 + rand() * 1.6
+  entry_id: 76
+- id: 103
+  kind: function
+  math_expression: shot = (shot + dt * f) * step(0.05, f)
+  entry_id: 139
+- id: 171
+  kind: function
+  math_expression: glow = clamp((shot - cool + 0.5) / 0.5, 0, 1)
+  entry_id: 217
+- {id: 269, kind: function, math_expression: shot >= cool, entry_id: 270}
+- {id: 293, kind: function, math_expression: shot = 0, entry_id: 309}
+- id: 323
+  kind: function
+  math_expression: cool = 1.2 + rand() * 1.6
+  entry_id: 352
+- id: 385
+  kind: function
+  math_expression: direction(atan2(p.y - pos.y, p.x - pos.x) + (rand() - 0.5) * 0.1)
+  entry_id: 433
+- {id: 479, kind: function, math_expression: pos + d * 14, entry_id: 480}
+- {id: 543, kind: function, math_expression: doom += dt, entry_id: 562}
+- id: 578
+  kind: function
+  math_expression: doom > 0.12 + fract(abs(pos.x * 0.0131 + pos.y * 0.0071)) * 1.3
+  entry_id: 636

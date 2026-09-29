@@ -1,0 +1,4 @@
+name: CrucibleHaze
+components:
+  GAME.GameHeatHaze: {radius: 560.0, strength: 2.4}
+  GAME.GameTransform: {}

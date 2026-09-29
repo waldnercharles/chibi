@@ -1,0 +1,567 @@
+version: 3
+name: WardenDeath
+id_counter: 970
+description: 'Where the Prism Warden dies: the lattice cracks apart in a cascade of white and violet flashes, then the crystal core detonates, scattering scrap, resonance and two module caches, and the Refractory seal breaks open.'
+owner_type: ecs.entity
+variables:
+- {id: 1, name: t, type: float}
+- {id: 2, name: pop, type: float}
+- {id: 3, name: done, type: float}
+- {id: 4, name: ang, type: float}
+- {id: 5, name: rr, type: float}
+graphs:
+- kind: event
+  name: ""
+  nodes:
+  - {id: 6, type: Event, reference_name: Begin}
+  - id: 8
+    type: Hit Stop
+    inputs: {Duration: 0.45, Scale: 0.06}
+  - id: 13
+    type: Add Camera Trauma
+    inputs: {Amount: 0.8}
+  - id: 17
+    type: Flash Screen
+    inputs: {Color: 3906797567, Amount: 0.3, Duration: 0.5}
+  - id: 23
+    type: Pulse Chromatic Aberration
+    inputs: {Amount: 1.0, Duration: 0.8}
+  - id: 28
+    type: Play Sound
+    inputs: {Frequency: 220.0, End Frequency: 110.0, Duration: 1.2, Volume: 0.8, Noise: 0.8}
+  - id: 37
+    type: Set Global Variable
+    inputs:
+      Name: BossActive
+      Value: {type: int}
+    outputs:
+      Value: {type: int}
+  - id: 43
+    type: Event
+    reference_name: Tick
+    outputs:
+      DeltaSeconds: {type: float, kind: data}
+  - id: 58
+    type: Behavior Expression
+    reference_id: 46
+    reference_name: t += dt
+    inputs:
+      Exec: {id: 62, kind: exec}
+      t:
+        id: 59
+        type: float
+        binding: {kind: variable, variable_id: 1, source_asset: WardenDeath}
+      dt:
+        type: double
+        binding: {kind: delta_time}
+    outputs:
+      Then: {id: 63, kind: exec}
+      Result: {id: 61, type: float}
+  - id: 93
+    type: Behavior Expression
+    reference_id: 81
+    reference_name: pop -= dt
+    inputs:
+      Exec: {id: 97, kind: exec}
+      pop:
+        id: 94
+        type: float
+        binding: {kind: variable, variable_id: 2, source_asset: WardenDeath}
+      dt:
+        type: double
+        binding: {kind: delta_time}
+    outputs:
+      Then: {id: 98, kind: exec}
+      Result: {id: 96, type: float}
+  - id: 142
+    type: Behavior Expression
+    reference_id: 116
+    reference_name: pop <= 0 && t < 2.4
+    inputs:
+      pop:
+        type: double
+        flags: 0
+        binding: {kind: variable, variable_id: 2, source_asset: WardenDeath}
+      t:
+        type: double
+        flags: 0
+        binding: {kind: variable, variable_id: 1, source_asset: WardenDeath}
+    outputs:
+      Result: {type: bool}
+  - {id: 149, type: Branch}
+  - id: 177
+    type: Behavior Expression
+    reference_id: 154
+    reference_name: pop = 0.06 + rand() * 0.1
+    inputs:
+      Exec: {id: 180, kind: exec}
+      pop:
+        id: 178
+        type: float
+        binding: {kind: variable, variable_id: 2, source_asset: WardenDeath}
+    outputs:
+      Then: {id: 181, kind: exec}
+      Result: {id: 179, type: float}
+  - id: 226
+    type: Behavior Expression
+    reference_id: 210
+    reference_name: ang = rand() * 6.283
+    inputs:
+      Exec: {id: 229, kind: exec}
+      ang:
+        id: 227
+        type: float
+        binding: {kind: variable, variable_id: 4, source_asset: WardenDeath}
+    outputs:
+      Then: {id: 230, kind: exec}
+      Result: {id: 228, type: float}
+  - id: 301
+    type: Behavior Expression
+    reference_id: 252
+    reference_name: rr = (90) * (0.25 + 0.75 * rand()) * (0.5 + t / 4.8)
+    inputs:
+      Exec: {id: 305, kind: exec}
+      rr:
+        id: 302
+        type: float
+        binding: {kind: variable, variable_id: 5, source_asset: WardenDeath}
+      t:
+        type: double
+        binding: {kind: variable, variable_id: 1, source_asset: WardenDeath}
+    outputs:
+      Then: {id: 306, kind: exec}
+      Result: {id: 304, type: float}
+  - id: 381
+    type: Behavior Expression
+    reference_id: 361
+    reference_name: pos + direction(ang) * rr
+    inputs:
+      pos:
+        type: struct
+        type_name: GameTransform
+        binding: {kind: component, component: GAME.GameTransform}
+      ang:
+        type: double
+        binding: {kind: variable, variable_id: 4, source_asset: WardenDeath}
+      rr:
+        type: double
+        binding: {kind: variable, variable_id: 5, source_asset: WardenDeath}
+    outputs:
+      Result: {type: struct, type_name: GameTransform}
+  - id: 386
+    type: Spawn Prototype
+    inputs: {Prototype: WardenPop}
+  - {id: 391, type: SetEntity_GameTransform}
+  - id: 397
+    type: Emit Directed Particles
+    inputs:
+      Direction:
+        default: {x: 1.0, "y": 0.0}
+      Count: 18
+      Color: 3906797567
+      End Color: 0
+      Min Speed: 80.0
+      Max Speed: 360.0
+      Max Lifetime: 0.7
+      Min Size: 0.6
+      Max Size: 2.0
+      Spread: 3.14159
+      Min Drag: 1.5
+      Max Drag: 4.0
+      Min Emission: 0.8
+      Max Emission: 1.4
+      Size Exponent: 1.0
+      Shape: 4
+  - id: 419
+    type: Add Shockwave
+    inputs: {Radius: 90.0, Thickness: 10.0, Strength: 0.6, Duration: 0.35}
+  - id: 427
+    type: Add Camera Trauma
+    inputs: {Amount: 0.22}
+  - id: 453
+    type: Behavior Expression
+    reference_id: 431
+    reference_name: 275.0 + rand() * 220.0
+    outputs:
+      Result: {type: double}
+  - id: 455
+    type: Play Sound
+    inputs: {End Frequency: 66.0, Duration: 0.4, Noise: 0.85}
+  - id: 490
+    type: Behavior Expression
+    reference_id: 464
+    reference_name: t >= 2.4 && done < 1
+    inputs:
+      t:
+        type: double
+        flags: 0
+        binding: {kind: variable, variable_id: 1, source_asset: WardenDeath}
+      done:
+        type: double
+        flags: 0
+        binding: {kind: variable, variable_id: 3, source_asset: WardenDeath}
+    outputs:
+      Result: {type: bool}
+  - {id: 497, type: Branch}
+  - id: 512
+    type: Behavior Expression
+    reference_id: 502
+    reference_name: done = 1
+    inputs:
+      Exec: {id: 515, kind: exec}
+      done:
+        id: 513
+        type: float
+        binding: {kind: variable, variable_id: 3, source_asset: WardenDeath}
+    outputs:
+      Then: {id: 516, kind: exec}
+      Result: {id: 514, type: float}
+  - id: 532
+    type: Hit Stop
+    inputs: {Duration: 0.5, Scale: 0.05}
+  - id: 537
+    type: Add Camera Trauma
+    inputs: {Amount: 1.0}
+  - id: 541
+    type: Add Shockwave
+    inputs:
+      Position:
+        type_name: GameTransform
+        binding: {kind: component, component: GAME.GameTransform}
+        default: null
+      Radius: 520.0
+      Thickness: 30.0
+      Strength: 1.6
+      Duration: 1.3
+  - id: 549
+    type: Flash Screen
+    inputs: {Color: 3906797567, Amount: 0.55, Duration: 0.9}
+  - id: 555
+    type: Play Sound
+    inputs: {Frequency: 110.0, End Frequency: 44.0, Duration: 2.6, Volume: 0.95, Noise: 0.9}
+  - id: 564
+    type: Emit Directed Particles
+    inputs:
+      Position:
+        type_name: GameTransform
+        binding: {kind: component, component: GAME.GameTransform}
+        default: null
+      Direction:
+        default: {x: 1.0, "y": 0.0}
+      Count: 90
+      Color: 3906797567
+      End Color: 0
+      Min Speed: 120.0
+      Max Speed: 620.0
+      Min Lifetime: 0.4
+      Max Lifetime: 1.4
+      Min Size: 0.8
+      Max Size: 2.6
+      Spread: 3.14159
+      Min Drag: 1.5
+      Max Drag: 4.0
+      Min Emission: 1.0
+      Max Emission: 1.8
+      Size Exponent: 1.0
+      Shape: 4
+  - id: 586
+    type: Get Global Variable
+    inputs: {Name: SealRefractory}
+    outputs:
+      Value: {type: handle, type_name: ecs.entity}
+  - {id: 589, type: GetEntity_GameTransform}
+  - id: 592
+    type: Has Component
+    inputs: {Component: GAME.GameTransform}
+  - {id: 596, type: Branch}
+  - id: 601
+    type: Spawn Prototype
+    inputs: {Prototype: SealBreak}
+  - {id: 606, type: SetEntity_GameTransform}
+  - {id: 612, type: Destroy Entity}
+  - id: 616
+    type: ForLoop
+    inputs: {LastIndex: 23}
+  - id: 637
+    type: Behavior Expression
+    reference_id: 623
+    reference_name: index % 3
+    inputs:
+      index: {type: int}
+    outputs:
+      Result: {type: double}
+  - id: 640
+    type: Switch on Int
+    outputs:
+    - 643
+    - 644
+    - {id: 646, name: Case2}
+    - 645
+  - id: 647
+    type: Spawn Prototype
+    inputs: {Prototype: Scrap}
+  - id: 652
+    type: SetEntity_GameTransform
+    inputs:
+      Value:
+        binding: {kind: component, component: GAME.GameTransform}
+  - id: 696
+    type: Behavior Expression
+    reference_id: 658
+    reference_name: direction(rand() * 6.283) * (120 + rand() * 280)
+    outputs:
+      Result: {type: struct, type_name: CF_V2}
+  - {id: 698, type: SetEntity_GameVelocity}
+  - id: 704
+    type: Spawn Prototype
+    inputs: {Prototype: Scrap}
+  - id: 709
+    type: SetEntity_GameTransform
+    inputs:
+      Value:
+        binding: {kind: component, component: GAME.GameTransform}
+  - id: 753
+    type: Behavior Expression
+    reference_id: 715
+    reference_name: direction(rand() * 6.283) * (120 + rand() * 280)
+    outputs:
+      Result: {type: struct, type_name: CF_V2}
+  - {id: 755, type: SetEntity_GameVelocity}
+  - id: 761
+    type: Spawn Prototype
+    inputs: {Prototype: Resonance}
+  - id: 766
+    type: SetEntity_GameTransform
+    inputs:
+      Value:
+        binding: {kind: component, component: GAME.GameTransform}
+  - id: 810
+    type: Behavior Expression
+    reference_id: 772
+    reference_name: direction(rand() * 6.283) * (120 + rand() * 280)
+    outputs:
+      Result: {type: struct, type_name: CF_V2}
+  - {id: 812, type: SetEntity_GameVelocity}
+  - id: 842
+    type: Behavior Expression
+    reference_id: 818
+    reference_name: pos + vec2(-24, 0)
+    inputs:
+      pos:
+        type: struct
+        type_name: GameTransform
+        binding: {kind: component, component: GAME.GameTransform}
+    outputs:
+      Result: {type: struct, type_name: GameTransform}
+  - id: 845
+    type: Spawn Prototype
+    inputs: {Prototype: ModuleCache}
+  - {id: 850, type: SetEntity_GameTransform}
+  - id: 856
+    type: SetEntity_GameVelocity
+    inputs:
+      Value:
+        default: {x: -90.0, "y": -140.0}
+  - id: 883
+    type: Behavior Expression
+    reference_id: 862
+    reference_name: pos + vec2(24, 0)
+    inputs:
+      pos:
+        type: struct
+        type_name: GameTransform
+        binding: {kind: component, component: GAME.GameTransform}
+    outputs:
+      Result: {type: struct, type_name: GameTransform}
+  - id: 886
+    type: Spawn Prototype
+    inputs: {Prototype: ModuleCache}
+  - {id: 891, type: SetEntity_GameTransform}
+  - id: 897
+    type: SetEntity_GameVelocity
+    inputs:
+      Value:
+        default: {x: 90.0, "y": -140.0}
+  - id: 903
+    type: Set Global Variable
+    inputs:
+      Name: Toast
+      Value: {type: name, default: The Prism Warden shatters. The Refractory seal breaks.}
+    outputs:
+      Value: {type: name}
+  - id: 909
+    type: Get Global Variable
+    inputs: {Name: ToastSerial}
+    outputs:
+      Value: {type: int}
+  - id: 926
+    type: Behavior Expression
+    reference_id: 912
+    reference_name: s + 1
+    inputs:
+      s: {type: int}
+    outputs:
+      Result: {type: double}
+  - id: 929
+    type: Set Global Variable
+    inputs:
+      Name: ToastSerial
+      Value: {type: double}
+    outputs:
+      Value: {type: double}
+  - id: 935
+    type: Get Variable
+    reference_id: 1
+    reference_name: t
+    outputs:
+      Value: {type: float}
+  - id: 937
+    type: Get Variable
+    reference_id: 3
+    reference_name: done
+    outputs:
+      Value: {type: float}
+  - id: 953
+    type: Behavior Expression
+    reference_id: 939
+    reference_name: t >= 3.9
+    inputs:
+      t:
+        type: double
+        flags: 0
+        binding: {kind: variable, variable_id: 1, source_asset: WardenDeath}
+    outputs:
+      Result: {type: bool}
+  - {id: 959, type: Branch}
+  - id: 964
+    type: Self
+    outputs:
+      Self: {type_name: ecs.entity}
+  - {id: 966, type: Destroy Entity}
+  edges:
+  - {from: 6.Then, to: 8.Exec}
+  - {from: 8.Then, to: 13.Exec}
+  - {from: 13.Then, to: 17.Exec}
+  - {from: 17.Then, to: 23.Exec}
+  - {from: 23.Then, to: 28.Exec}
+  - {from: 28.Then, to: 37.Exec}
+  - {from: 43.Then, to: 58.Exec}
+  - {from: 58.Then, to: 93.Exec}
+  - {from: 93.Then, to: 149.Exec}
+  - {from: 142.Result, to: 149.Condition}
+  - {from: 149.True, to: 177.Exec}
+  - {from: 149.False, to: 497.Exec}
+  - {from: 177.Then, to: 226.Exec}
+  - {from: 226.Then, to: 301.Exec}
+  - {from: 301.Then, to: 386.Exec}
+  - {from: 381.Result, to: 391.Value}
+  - {from: 381.Result, to: 397.Position}
+  - {from: 381.Result, to: 419.Position}
+  - {from: 386.Then, to: 391.Exec}
+  - {from: 386.Entity, to: 391.Entity}
+  - {from: 391.Then, to: 397.Exec}
+  - {from: 397.Then, to: 419.Exec}
+  - {from: 419.Then, to: 427.Exec}
+  - {from: 427.Then, to: 455.Exec}
+  - {from: 453.Result, to: 455.Frequency}
+  - {from: 455.Then, to: 497.Exec}
+  - {from: 490.Result, to: 497.Condition}
+  - {from: 497.True, to: 512.Exec}
+  - {from: 497.False, to: 959.Exec}
+  - {from: 512.Then, to: 532.Exec}
+  - {from: 532.Then, to: 537.Exec}
+  - {from: 537.Then, to: 541.Exec}
+  - {from: 541.Then, to: 549.Exec}
+  - {from: 549.Then, to: 555.Exec}
+  - {from: 555.Then, to: 564.Exec}
+  - {from: 564.Then, to: 596.Exec}
+  - {from: 586.Value, to: 589.Entity}
+  - {from: 586.Value, to: 592.Entity}
+  - {from: 586.Value, to: 612.Entity}
+  - {from: 589.Value, to: 606.Value, conversion: game_transform_to_cf}
+  - {from: 592.Value, to: 596.Condition}
+  - {from: 596.True, to: 601.Exec}
+  - {from: 596.False, to: 616.Exec}
+  - {from: 601.Then, to: 606.Exec}
+  - {from: 601.Entity, to: 606.Entity}
+  - {from: 606.Then, to: 612.Exec}
+  - {from: 612.Then, to: 616.Exec}
+  - {from: 616.Body, to: 640.Exec}
+  - {from: 616.Index, to: 637.index}
+  - {from: 616.Completed, to: 845.Exec}
+  - {from: 637.Result, to: 640.Selection, conversion: To Integer}
+  - {from: 640.Case0, to: 647.Exec}
+  - {from: 640.Case1, to: 704.Exec}
+  - {from: 640.Case2, to: 761.Exec}
+  - {from: 647.Then, to: 652.Exec}
+  - {from: 647.Entity, to: 652.Entity}
+  - {from: 647.Entity, to: 698.Entity}
+  - {from: 652.Then, to: 698.Exec}
+  - {from: 696.Result, to: 698.Value}
+  - {from: 704.Then, to: 709.Exec}
+  - {from: 704.Entity, to: 709.Entity}
+  - {from: 704.Entity, to: 755.Entity}
+  - {from: 709.Then, to: 755.Exec}
+  - {from: 753.Result, to: 755.Value}
+  - {from: 761.Then, to: 766.Exec}
+  - {from: 761.Entity, to: 766.Entity}
+  - {from: 761.Entity, to: 812.Entity}
+  - {from: 766.Then, to: 812.Exec}
+  - {from: 810.Result, to: 812.Value}
+  - {from: 842.Result, to: 850.Value}
+  - {from: 845.Then, to: 850.Exec}
+  - {from: 845.Entity, to: 850.Entity}
+  - {from: 845.Entity, to: 856.Entity}
+  - {from: 850.Then, to: 856.Exec}
+  - {from: 856.Then, to: 886.Exec}
+  - {from: 883.Result, to: 891.Value}
+  - {from: 886.Then, to: 891.Exec}
+  - {from: 886.Entity, to: 891.Entity}
+  - {from: 886.Entity, to: 897.Entity}
+  - {from: 891.Then, to: 897.Exec}
+  - {from: 897.Then, to: 903.Exec}
+  - {from: 903.Then, to: 929.Exec}
+  - {from: 909.Value, to: 926.s}
+  - {from: 926.Result, to: 929.Value}
+  - {from: 953.Result, to: 959.Condition}
+  - {from: 959.True, to: 966.Exec}
+  - {from: 964.Self, to: 966.Entity}
+- {id: 46, kind: function, math_expression: t += dt, entry_id: 65}
+- {id: 81, kind: function, math_expression: pop -= dt, entry_id: 100}
+- {id: 116, kind: function, math_expression: pop <= 0 && t < 2.4, entry_id: 117}
+- id: 154
+  kind: function
+  math_expression: pop = 0.06 + rand() * 0.1
+  entry_id: 183
+- {id: 210, kind: function, math_expression: ang = rand() * 6.283, entry_id: 232}
+- id: 252
+  kind: function
+  math_expression: rr = (90) * (0.25 + 0.75 * rand()) * (0.5 + t / 4.8)
+  entry_id: 308
+- id: 361
+  kind: function
+  math_expression: pos + direction(ang) * rr
+  entry_id: 362
+- id: 431
+  kind: function
+  math_expression: 275.0 + rand() * 220.0
+  entry_id: 432
+- {id: 464, kind: function, math_expression: t >= 2.4 && done < 1, entry_id: 465}
+- {id: 502, kind: function, math_expression: done = 1, entry_id: 518}
+- {id: 623, kind: function, math_expression: index % 3, entry_id: 624}
+- id: 658
+  kind: function
+  math_expression: direction(rand() * 6.283) * (120 + rand() * 280)
+  entry_id: 659
+- id: 715
+  kind: function
+  math_expression: direction(rand() * 6.283) * (120 + rand() * 280)
+  entry_id: 716
+- id: 772
+  kind: function
+  math_expression: direction(rand() * 6.283) * (120 + rand() * 280)
+  entry_id: 773
+- {id: 818, kind: function, math_expression: 'pos + vec2(-24, 0)', entry_id: 819}
+- {id: 862, kind: function, math_expression: 'pos + vec2(24, 0)', entry_id: 863}
+- {id: 912, kind: function, math_expression: s + 1, entry_id: 913}
+- {id: 939, kind: function, math_expression: t >= 3.9, entry_id: 940}

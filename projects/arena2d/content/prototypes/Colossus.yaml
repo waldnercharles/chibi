@@ -1,0 +1,23 @@
+name: Colossus
+components:
+  GAME.GameBody: {type: Dynamic}
+  GAME.GameCollider: {category: 2, mask: 5, radius: 62.0}
+  GAME.GameDrive: {acceleration: 240.0}
+  GAME.GameFlash: {color: 4294967295, decay: 10.0}
+  GAME.GameGeometry3D: {depth: 184.0, height: 4.0, width: 184.0}
+  GAME.GameGlobalBinding: {name: Colossus}
+  GAME.GameHealth: {current: 3000, maximum: 3000}
+  GAME.GameHeatHaze: {radius: 120.0, strength: 2.0}
+  GAME.GameIgniter: {heat: 3.0}
+  GAME.GameLight2D: {color: 4287249151, intensity: 0.5, radius: 14.0}
+  GAME.GameMovement: {speed: 70.0}
+  GAME.GameOrientation: {}
+  GAME.GameShader:
+    material: ColossusBodySkin
+    parameters: '{"Glow":[1.0,0.478,0.165],"Body":[0.078,0.063,0.063],"Accent":[1.0,0.816,0.541]}'
+    shape: ColossusBodyShape
+  GAME.GameSpawnRequest: {prototype: ColossusDeath}
+  GAME.GameTransform: {}
+  GAME.GameVelocity: {}
+  GAME.GameWeapon: {damage: 18}
+behaviors: [Colossus]

@@ -269,9 +269,10 @@ section below and updated as work lands.
 - [x] Content: ship, weapons and modules
 - [x] Content: strata terrain, materials and backdrops; every seed connects
       each Sanctum to its arena (checked over 40 seeds per stratum)
-- [ ] Content: enemies and bosses
+- [x] Content: enemies and bosses (Grinder, Mother Bloom, Prism Warden,
+      Crucible Colossus, Heart of the Well)
 - [x] Content: Sanctums, shop, refit, skill tree
-- [ ] Content: title, HUD, death and victory screens
+- [x] Content: title, HUD, death and victory screens
 - [ ] Tuning pass and full-run playtest
 
 ## Run state contract

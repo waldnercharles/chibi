@@ -1,0 +1,16 @@
+name: BloomTendril
+components:
+  GAME.GameBody: {type: Dynamic}
+  GAME.GameCollider: {category: 2, mask: 5, radius: 8.0}
+  GAME.GameFlash: {color: 4294967295, decay: 12.0}
+  GAME.GameFollow: {}
+  GAME.GameGeometry3D: {depth: 26.0, height: 4.0, width: 26.0}
+  GAME.GameOrientation: {}
+  GAME.GameShader:
+    material: BloomTendrilSkin
+    parameters: '{"Glow":[0.247,1.0,0.878],"Body":[0.063,0.125,0.165],"Accent":[1.0,0.31,0.847]}'
+    shape: BloomTendrilShape
+  GAME.GameTransform: {}
+  GAME.GameVelocity: {}
+  GAME.GameWeapon: {damage: 10}
+behaviors: [BloomTendril]

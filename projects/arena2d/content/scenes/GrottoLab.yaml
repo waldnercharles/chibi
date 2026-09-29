@@ -146,7 +146,7 @@ entities:
   prototype: Scatter
   components:
     GameScatter:
-      prototype: Jelly
+      prototype: Driftjelly
       terrain: Grotto
       min: {x: -1600.0, "y": 7200.0}
       max: {x: 1600.0, "y": 10700.0}
@@ -212,4 +212,14 @@ entities:
       clearance: 30.0
       salt: 48
       radius: 700.0
+- name: Mother Bloom
+  prototype: Bloom
+  components:
+    GameTransform: {x: 0.0, "y": 11285.0}
+  behaviors: [Bloom]
+- name: Mother Bloom seal
+  prototype: Seal
+  components:
+    GameTransform: {x: 0.0, "y": 11905.0}
+    GameGlobalBinding: {name: SealGrotto}
 - {name: Throat rock, prototype: StratumThroat}

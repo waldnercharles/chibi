@@ -1,12 +1,13 @@
 <div id="panel">
   <div class="kicker" id="kick-paused">Starwell</div>
-  <div class="kicker" id="kick-cleared">Encounter</div>
+  <div class="kicker" id="kick-cleared">Run complete</div>
   <div class="kicker" id="kick-defeated">Run over</div>
   <div class="title" id="paused">Paused</div>
-  <div class="title" id="cleared">Encounter cleared</div>
+  <div class="title" id="cleared">The Well is quiet</div>
   <div class="title" id="defeated">The Well claims you</div>
   <div id="recap" data-if="save.starwell_depth != ''">
-    <div class="where">Lost in the {{ save.starwell_stratum }}</div>
+    <div class="where lost">Lost in the {{ save.starwell_stratum }}</div>
+    <div class="where won">You reached the Heart</div>
     <div class="stats">
       <div class="stat"><div class="v">{{ save.starwell_depth }}<span class="u">m</span></div><div class="k">Depth</div></div>
       <div class="stat"><div class="v">{{ save.starwell_time }}</div><div class="k">Time</div></div>

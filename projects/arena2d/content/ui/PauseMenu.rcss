@@ -24,10 +24,14 @@ body.paused #paused, body.cleared #cleared, body.defeated #defeated { display: b
 #cleared { color: #7cf5a4; }
 
 #recap { display: none; }
-body.defeated #recap { display: block; }
+body.defeated #recap, body.cleared #recap { display: block; }
+body.defeated .where.won, body.cleared .where.lost { display: none; }
 body.defeated #panel { width: 520dp; border-color: #ff7a6a40; animation: 0.9s cubic-out 1 menu-fall; }
 body.defeated #defeated { font-size: 26dp; color: #ffd9d2; }
 body.defeated .kicker { color: #ff7a6a; }
+body.cleared #panel { width: 520dp; border-color: #7cf5a440; animation: 0.9s cubic-out 1 menu-fall; }
+body.cleared #cleared { font-size: 26dp; }
+body.cleared .kicker { color: #7cf5a4; }
 @keyframes menu-fall {
   from { opacity: 0; transform: translateY(-18dp); }
   to { opacity: 1; transform: translateY(0dp); }
@@ -63,8 +67,8 @@ body.defeated .kicker { color: #ff7a6a; }
   font-size: 8dp; letter-spacing: 1dp; color: #0a1a20; background-color: #8aa3b3; border-radius: 3dp;
 }
 .again { display: none; }
-body.defeated .again { display: inline; }
-body.defeated .plain { display: none; }
+body.defeated .again, body.cleared .again { display: inline; }
+body.defeated .plain, body.cleared .plain { display: none; }
 body.defeated #restart .menu-button { color: #0a1a20; background-color: #6ff6ff; border-color: #6ff6ff; }
 body.defeated #restart .menu-button:hover { background-color: #a6fbff; }
 body.defeated #restart .key { background-color: #0a1a20; color: #6ff6ff; }

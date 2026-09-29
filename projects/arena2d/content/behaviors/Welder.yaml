@@ -1,11 +1,11 @@
 version: 3
 name: Welder
-id_counter: 827
+id_counter: 839
 description: Circle at a distance and spit molten slag that pools and burns.
 owner_type: ecs.entity
 variables:
-- {id: 1, name: seed, type: float}
-- {id: 2, name: age, type: float}
+- {id: 1, name: age, type: float}
+- {id: 2, name: seed, type: float}
 - {id: 3, name: shot, type: float}
 graphs:
 - kind: event
@@ -21,40 +21,49 @@ graphs:
       seed:
         id: 23
         type: float
-        binding: {kind: variable, variable_id: 1, source_asset: Welder}
+        binding: {kind: variable, variable_id: 2, source_asset: Welder}
     outputs:
       Then: {id: 26, kind: exec}
       Result: {id: 24, type: float}
   - id: 48
-    type: Event
-    reference_name: Tick
-    outputs:
-      DeltaSeconds: {type: float, kind: data}
-  - id: 63
-    type: Behavior Expression
-    reference_id: 51
-    reference_name: age += dt
-    inputs:
-      Exec: {id: 67, kind: exec}
-      age:
-        id: 64
-        type: float
-        binding: {kind: variable, variable_id: 2, source_asset: Welder}
-      dt:
-        type: double
-        binding: {kind: delta_time}
-    outputs:
-      Then: {id: 68, kind: exec}
-      Result: {id: 66, type: float}
-  - id: 86
     type: Get Global Variable
     inputs: {Name: Player}
     outputs:
       Value: {type: handle, type_name: ecs.entity}
-  - {id: 89, type: GetEntity_GameTransform}
-  - id: 111
+  - id: 51
+    type: Has Component
+    inputs: {Component: GAME.GameTransform}
+  - id: 55
+    type: Event
+    reference_name: Tick
+    outputs:
+      DeltaSeconds: {type: float, kind: data}
+  - {id: 58, type: Branch}
+  - id: 75
     type: Behavior Expression
-    reference_id: 92
+    reference_id: 63
+    reference_name: age += dt
+    inputs:
+      Exec: {id: 79, kind: exec}
+      age:
+        id: 76
+        type: float
+        binding: {kind: variable, variable_id: 1, source_asset: Welder}
+      dt:
+        type: double
+        binding: {kind: delta_time}
+    outputs:
+      Then: {id: 80, kind: exec}
+      Result: {id: 78, type: float}
+  - id: 98
+    type: Get Global Variable
+    inputs: {Name: Player}
+    outputs:
+      Value: {type: handle, type_name: ecs.entity}
+  - {id: 101, type: GetEntity_GameTransform}
+  - id: 123
+    type: Behavior Expression
+    reference_id: 104
     reference_name: distance(pos, p) < 700
     inputs:
       pos:
@@ -64,15 +73,15 @@ graphs:
       p: {type: struct, type_name: GameTransform}
     outputs:
       Result: {type: bool}
-  - {id: 118, type: Branch}
-  - id: 230
+  - {id: 130, type: Branch}
+  - id: 242
     type: Behavior Expression
-    reference_id: 123
+    reference_id: 135
     reference_name: target = (normalize(p - pos) * clamp((distance(pos, p) - 260) / 90, -1, 1) + normalize(vec2(pos.y - p.y, p.x - pos.x)) * 0.5 * sin(age * 0.8 + seed)) * speed
     inputs:
-      Exec: {id: 238, kind: exec}
+      Exec: {id: 250, kind: exec}
       target:
-        id: 231
+        id: 243
         type: struct
         type_name: CF_V2
         binding: {kind: component_field, component: GAME.GameDrive, field: target}
@@ -83,24 +92,24 @@ graphs:
         binding: {kind: component, component: GAME.GameTransform}
       age:
         type: double
-        binding: {kind: variable, variable_id: 2, source_asset: Welder}
+        binding: {kind: variable, variable_id: 1, source_asset: Welder}
       seed:
         type: double
-        binding: {kind: variable, variable_id: 1, source_asset: Welder}
+        binding: {kind: variable, variable_id: 2, source_asset: Welder}
       speed:
         type: double
         binding: {kind: component_field, component: GAME.GameMovement, field: speed}
     outputs:
-      Then: {id: 239, kind: exec}
-      Result: {id: 237, type: struct, type_name: CF_V2}
-  - id: 383
+      Then: {id: 251, kind: exec}
+      Result: {id: 249, type: struct, type_name: CF_V2}
+  - id: 395
     type: Behavior Expression
-    reference_id: 362
+    reference_id: 374
     reference_name: heading = atan2(t.y - pos.y, t.x - pos.x)
     inputs:
-      Exec: {id: 388, kind: exec}
+      Exec: {id: 400, kind: exec}
       heading:
-        id: 384
+        id: 396
         type: float
         binding: {kind: component_field, component: GAME.GameOrientation, field: radians}
       t: {type: struct, type_name: GameTransform}
@@ -109,16 +118,16 @@ graphs:
         type_name: GameTransform
         binding: {kind: component, component: GAME.GameTransform}
     outputs:
-      Then: {id: 389, kind: exec}
-      Result: {id: 387, type: double}
-  - id: 457
+      Then: {id: 401, kind: exec}
+      Result: {id: 399, type: double}
+  - id: 469
     type: Behavior Expression
-    reference_id: 428
+    reference_id: 440
     reference_name: shot += dt * step(distance(pos, p), 520)
     inputs:
-      Exec: {id: 463, kind: exec}
+      Exec: {id: 475, kind: exec}
       shot:
-        id: 458
+        id: 470
         type: float
         binding: {kind: variable, variable_id: 3, source_asset: Welder}
       dt:
@@ -130,11 +139,11 @@ graphs:
         binding: {kind: component, component: GAME.GameTransform}
       p: {type: struct, type_name: GameTransform}
     outputs:
-      Then: {id: 464, kind: exec}
-      Result: {id: 462, type: float}
-  - id: 531
+      Then: {id: 476, kind: exec}
+      Result: {id: 474, type: float}
+  - id: 543
     type: Behavior Expression
-    reference_id: 499
+    reference_id: 511
     reference_name: clamp((shot - 1.5999999999999999) / 0.8, 0, 1)
     inputs:
       shot:
@@ -142,18 +151,18 @@ graphs:
         binding: {kind: variable, variable_id: 3, source_asset: Welder}
     outputs:
       Result: {type: double}
-  - id: 534
+  - id: 546
     type: Self
     outputs:
       Self: {type_name: ecs.entity}
-  - id: 536
+  - id: 548
     type: Set Material Parameter
     inputs:
       Name: Charge
       Value: {type: double}
-  - id: 556
+  - id: 568
     type: Behavior Expression
-    reference_id: 542
+    reference_id: 554
     reference_name: shot >= 2.4
     inputs:
       shot:
@@ -162,23 +171,23 @@ graphs:
         binding: {kind: variable, variable_id: 3, source_asset: Welder}
     outputs:
       Result: {type: bool}
-  - {id: 562, type: Branch}
-  - id: 577
+  - {id: 574, type: Branch}
+  - id: 589
     type: Behavior Expression
-    reference_id: 567
+    reference_id: 579
     reference_name: shot = 0
     inputs:
-      Exec: {id: 580, kind: exec}
+      Exec: {id: 592, kind: exec}
       shot:
-        id: 578
+        id: 590
         type: float
         binding: {kind: variable, variable_id: 3, source_asset: Welder}
     outputs:
-      Then: {id: 581, kind: exec}
-      Result: {id: 579, type: float}
-  - id: 640
+      Then: {id: 593, kind: exec}
+      Result: {id: 591, type: float}
+  - id: 652
     type: Behavior Expression
-    reference_id: 597
+    reference_id: 609
     reference_name: direction(atan2(t.y - pos.y, t.x - pos.x) + (rand() - 0.5) * 0.15)
     inputs:
       t: {type: struct, type_name: GameTransform}
@@ -188,9 +197,9 @@ graphs:
         binding: {kind: component, component: GAME.GameTransform}
     outputs:
       Result: {type: struct, type_name: CF_V2}
-  - id: 710
+  - id: 722
     type: Behavior Expression
-    reference_id: 691
+    reference_id: 703
     reference_name: pos + d * 12.0
     inputs:
       pos:
@@ -200,25 +209,25 @@ graphs:
       d: {type: struct, type_name: CF_V2}
     outputs:
       Result: {type: struct, type_name: GameTransform}
-  - id: 714
+  - id: 726
     type: Self
     outputs:
       Self: {type_name: ecs.entity}
-  - id: 716
+  - id: 728
     type: Call Function
     reference_id: 1
     reference_name: Launch Shot
     reference_asset: ShotActions
     inputs:
-      Prototype: {id: 719, declaration_id: 6, type: name, kind: data, default: SlagGlob}
+      Prototype: {id: 731, declaration_id: 6, type: name, kind: data, default: SlagGlob}
       Origin: {declaration_id: 7, type: struct, type_name: CF_V2, kind: data}
       Direction: {declaration_id: 8, type: struct, type_name: CF_V2, kind: data}
       Source: {declaration_id: 9, type: handle, type_name: ecs.entity, kind: data}
       Hardpoint: {declaration_id: 10, type: int, kind: data}
     outputs:
-      Then: {id: 718}
-      Entity: {id: 724, declaration_id: 11, type: handle, type_name: ecs.entity, kind: data}
-  - id: 725
+      Then: {id: 730}
+      Entity: {id: 736, declaration_id: 11, type: handle, type_name: ecs.entity, kind: data}
+  - id: 737
     type: Play Sound
     inputs:
       Frequency: 200.0
@@ -227,83 +236,89 @@ graphs:
       Volume: 0.22
       Pan: 0.0
       Noise: 0.4
-  - id: 769
+  - id: 781
     type: Behavior Expression
-    reference_id: 734
+    reference_id: 746
     reference_name: target = direction(seed + age * 0.3) * speed * 0.2
     inputs:
-      Exec: {id: 775, kind: exec}
+      Exec: {id: 787, kind: exec}
       target:
-        id: 770
+        id: 782
         type: struct
         type_name: CF_V2
         binding: {kind: component_field, component: GAME.GameDrive, field: target}
       seed:
         type: double
-        binding: {kind: variable, variable_id: 1, source_asset: Welder}
+        binding: {kind: variable, variable_id: 2, source_asset: Welder}
       age:
         type: double
-        binding: {kind: variable, variable_id: 2, source_asset: Welder}
+        binding: {kind: variable, variable_id: 1, source_asset: Welder}
       speed:
         type: double
         binding: {kind: component_field, component: GAME.GameMovement, field: speed}
     outputs:
-      Then: {id: 776, kind: exec}
-      Result: {id: 774, type: struct, type_name: CF_V2}
+      Then: {id: 788, kind: exec}
+      Result: {id: 786, type: struct, type_name: CF_V2}
   edges:
   - {from: 4.Then, to: 22.Exec}
-  - {from: 48.Then, to: 63.Exec}
-  - {from: 63.Then, to: 118.Exec}
-  - {from: 86.Value, to: 89.Entity}
-  - {from: 89.Value, to: 111.p}
-  - {from: 89.Value, to: 230.p}
-  - {from: 89.Value, to: 383.t}
-  - {from: 89.Value, to: 457.p}
-  - {from: 89.Value, to: 640.t}
-  - {from: 111.Result, to: 118.Condition}
-  - {from: 118.True, to: 230.Exec}
-  - {from: 118.False, to: 769.Exec}
-  - {from: 230.Then, to: 383.Exec}
-  - {from: 383.Then, to: 457.Exec}
-  - {from: 457.Then, to: 536.Exec}
-  - {from: 531.Result, to: 536.Value}
-  - {from: 534.Self, to: 536.Entity}
-  - {from: 536.Then, to: 562.Exec}
-  - {from: 556.Result, to: 562.Condition}
-  - {from: 562.True, to: 577.Exec}
-  - {from: 577.Then, to: 716.Exec}
-  - {from: 640.Result, to: 710.d}
-  - {from: 640.Result, to: 716.Direction}
-  - {from: 710.Result, to: 716.Origin}
-  - {from: 714.Self, to: 716.Source}
-  - {from: 716.Then, to: 725.Exec}
+  - {from: 48.Value, to: 51.Entity}
+  - {from: 51.Value, to: 58.Condition}
+  - {from: 55.Then, to: 58.Exec}
+  - {from: 58.True, to: 75.Exec}
+  - {from: 75.Then, to: 130.Exec}
+  - {from: 98.Value, to: 101.Entity}
+  - {from: 101.Value, to: 123.p}
+  - {from: 101.Value, to: 242.p}
+  - {from: 101.Value, to: 395.t}
+  - {from: 101.Value, to: 469.p}
+  - {from: 101.Value, to: 652.t}
+  - {from: 123.Result, to: 130.Condition}
+  - {from: 130.True, to: 242.Exec}
+  - {from: 130.False, to: 781.Exec}
+  - {from: 242.Then, to: 395.Exec}
+  - {from: 395.Then, to: 469.Exec}
+  - {from: 469.Then, to: 548.Exec}
+  - {from: 543.Result, to: 548.Value}
+  - {from: 546.Self, to: 548.Entity}
+  - {from: 548.Then, to: 574.Exec}
+  - {from: 568.Result, to: 574.Condition}
+  - {from: 574.True, to: 589.Exec}
+  - {from: 589.Then, to: 728.Exec}
+  - {from: 652.Result, to: 722.d}
+  - {from: 652.Result, to: 728.Direction}
+  - {from: 722.Result, to: 728.Origin}
+  - {from: 726.Self, to: 728.Source}
+  - {from: 728.Then, to: 737.Exec}
 - {id: 6, kind: function, math_expression: seed = rand() * 100, entry_id: 28}
-- {id: 51, kind: function, math_expression: age += dt, entry_id: 70}
-- {id: 92, kind: function, math_expression: 'distance(pos, p) < 700', entry_id: 93}
-- id: 123
+- {id: 63, kind: function, math_expression: age += dt, entry_id: 82}
+- id: 104
+  kind: function
+  math_expression: distance(pos, p) < 700
+  entry_id: 105
+- id: 135
   kind: function
   math_expression: target = (normalize(p - pos) * clamp((distance(pos, p) - 260) / 90, -1, 1) + normalize(vec2(pos.y - p.y, p.x - pos.x)) * 0.5 * sin(age * 0.8 + seed)) * speed
-  entry_id: 241
-- id: 362
+  entry_id: 253
+- id: 374
   kind: function
   math_expression: heading = atan2(t.y - pos.y, t.x - pos.x)
-  entry_id: 391
-- id: 428
+  entry_id: 403
+- id: 440
   kind: function
   math_expression: shot += dt * step(distance(pos, p), 520)
-  entry_id: 466
-- id: 499
+  entry_id: 478
+- id: 511
   kind: function
   math_expression: clamp((shot - 1.5999999999999999) / 0.8, 0, 1)
-  entry_id: 500
-- {id: 542, kind: function, math_expression: shot >= 2.4, entry_id: 543}
-- {id: 567, kind: function, math_expression: shot = 0, entry_id: 583}
-- id: 597
+  entry_id: 512
+- {id: 554, kind: function, math_expression: shot >= 2.4, entry_id: 555}
+- {id: 579, kind: function, math_expression: shot = 0, entry_id: 595}
+- id: 609
   kind: function
   math_expression: direction(atan2(t.y - pos.y, t.x - pos.x) + (rand() - 0.5) * 0.15)
-  entry_id: 645
-- {id: 691, kind: function, math_expression: pos + d * 12.0, entry_id: 692}
-- id: 734
+  entry_id: 657
+- {id: 703, kind: function, math_expression: pos + d * 12.0, entry_id: 704}
+- id: 746
   kind: function
   math_expression: target = direction(seed + age * 0.3) * speed * 0.2
-  entry_id: 778
+  entry_id: 790

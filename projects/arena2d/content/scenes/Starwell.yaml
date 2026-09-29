@@ -316,7 +316,7 @@ entities:
   prototype: Scatter
   components:
     GameScatter:
-      prototype: Jelly
+      prototype: Driftjelly
       terrain: Grotto
       min: {x: -1600.0, "y": 7200.0}
       max: {x: 1600.0, "y": 10700.0}
@@ -382,6 +382,16 @@ entities:
       clearance: 30.0
       salt: 48
       radius: 700.0
+- name: Mother Bloom
+  prototype: Bloom
+  components:
+    GameTransform: {x: 0.0, "y": 11285.0}
+  behaviors: [Bloom]
+- name: Mother Bloom seal
+  prototype: Seal
+  components:
+    GameTransform: {x: 0.0, "y": 11905.0}
+    GameGlobalBinding: {name: SealGrotto}
 - {name: Refractory rock, prototype: StratumRefractory}
 - name: Refractory sanctum
   prototype: Sanctum
@@ -529,6 +539,16 @@ entities:
       clearance: 30.0
       salt: 59
       radius: 700.0
+- name: Prism Warden
+  prototype: Warden
+  components:
+    GameTransform: {x: 0.0, "y": 17285.0}
+  behaviors: [Warden]
+- name: Prism Warden seal
+  prototype: Seal
+  components:
+    GameTransform: {x: 0.0, "y": 17905.0}
+    GameGlobalBinding: {name: SealRefractory}
 - {name: Foundry rock, prototype: StratumFoundry}
 - name: Foundry sanctum
   prototype: Sanctum
@@ -690,6 +710,24 @@ entities:
       clearance: 30.0
       salt: 70
       radius: 700.0
+- name: Crucible Colossus
+  prototype: Colossus
+  components:
+    GameTransform: {x: 0.0, "y": 23285.0}
+  behaviors: [Colossus]
+- name: Crucible Colossus seal
+  prototype: Seal
+  components:
+    GameTransform: {x: 0.0, "y": 23905.0}
+    GameGlobalBinding: {name: SealFoundry}
+- name: Quench tank west
+  prototype: WaterPool
+  components:
+    GameTransform: {x: -330.0, "y": 23545.0}
+- name: Quench tank east
+  prototype: WaterPool
+  components:
+    GameTransform: {x: 330.0, "y": 23545.0}
 - {name: Heart rock, prototype: StratumHeart}
 - name: Heart sanctum
   prototype: Sanctum
@@ -743,7 +781,7 @@ entities:
   prototype: Scatter
   components:
     GameScatter:
-      prototype: Jelly
+      prototype: Driftjelly
       terrain: Heart
       min: {x: -1600.0, "y": 24700.0}
       max: {x: 1600.0, "y": 25700.0}
@@ -795,6 +833,11 @@ entities:
       clearance: 30.0
       salt: 86
       radius: 700.0
+- name: Heart of the Well
+  prototype: Heart
+  components:
+    GameTransform: {x: 0.0, "y": 26285.0}
+  behaviors: [Heart]
 - name: Title
   prototype: TitleScreen
   behaviors: [RecapLedger, TitleScreen]

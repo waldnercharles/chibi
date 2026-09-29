@@ -1,0 +1,2958 @@
+version: 3
+name: Bloom
+id_counter: 6176
+description: 'Mother Bloom: a heart that holds its own elastic jelly shell around it with a visible heartbeat. The shell soaks damage until hits, blasts and acid carve it away; burning spores near it scorch the heart. Lobs spore mortars, lashes glowing tendrils, and beats a shockwave that throws the ship back; at half health it beats faster and births Glowmite nests.'
+owner_type: ecs.entity
+variables:
+- {id: 1, name: state, type: float}
+- {id: 2, name: t, type: float}
+- {id: 3, name: phase, type: float}
+- {id: 4, name: cx, type: float}
+- {id: 5, name: cy, type: float}
+- {id: 6, name: dead, type: float}
+- {id: 7, name: flash, type: float}
+- {id: 8, name: pend, type: float}
+- {id: 9, name: armor, type: float}
+- {id: 10, name: charge, type: float}
+- {id: 11, name: pulse, type: float}
+- {id: 12, name: atk, type: float}
+- {id: 13, name: fired, type: float}
+- {id: 14, name: beat, type: float}
+- {id: 15, name: shell, type: float}
+- {id: 16, name: shell0, type: float}
+- {id: 17, name: reach, type: float}
+- {id: 18, name: spin, type: float}
+- {id: 19, name: heat, type: float}
+- {id: 20, name: nests, type: float}
+- {id: 21, name: look, type: float}
+- {id: 22, name: lastf, type: float}
+- {id: 23, name: hits, type: float}
+- {id: 24, name: tear, type: float}
+- {id: 25, name: prev, type: float}
+graphs:
+- kind: event
+  name: ""
+  nodes:
+  - {id: 1252, type: Event, reference_name: Begin}
+  - id: 1262
+    type: Behavior Expression
+    reference_id: 1254
+    reference_name: cx = pos.x
+    inputs:
+      Exec: {id: 1266, kind: exec}
+      cx:
+        id: 1263
+        type: float
+        binding: {kind: variable, variable_id: 4, source_asset: Bloom}
+      pos:
+        type: struct
+        type_name: GameTransform
+        binding: {kind: component, component: GAME.GameTransform}
+    outputs:
+      Then: {id: 1267, kind: exec}
+      Result: {id: 1265, type: float}
+  - id: 1291
+    type: Behavior Expression
+    reference_id: 1283
+    reference_name: cy = pos.y
+    inputs:
+      Exec: {id: 1295, kind: exec}
+      cy:
+        id: 1292
+        type: float
+        binding: {kind: variable, variable_id: 5, source_asset: Bloom}
+      pos:
+        type: struct
+        type_name: GameTransform
+        binding: {kind: component, component: GAME.GameTransform}
+    outputs:
+      Then: {id: 1296, kind: exec}
+      Result: {id: 1294, type: float}
+  - id: 1322
+    type: Behavior Expression
+    reference_id: 1312
+    reference_name: armor = 1
+    inputs:
+      Exec: {id: 1325, kind: exec}
+      armor:
+        id: 1323
+        type: float
+        binding: {kind: variable, variable_id: 9, source_asset: Bloom}
+    outputs:
+      Then: {id: 1326, kind: exec}
+      Result: {id: 1324, type: float}
+  - id: 1352
+    type: Behavior Expression
+    reference_id: 1342
+    reference_name: reach = 0.4
+    inputs:
+      Exec: {id: 1355, kind: exec}
+      reach:
+        id: 1353
+        type: float
+        binding: {kind: variable, variable_id: 17, source_asset: Bloom}
+    outputs:
+      Then: {id: 1356, kind: exec}
+      Result: {id: 1354, type: float}
+  - id: 1372
+    type: Get Variable
+    reference_id: 17
+    reference_name: reach
+    outputs:
+      Value: {type: float}
+  - id: 1374
+    type: Set Global Variable
+    inputs:
+      Name: BloomReach
+      Value: {type: float}
+    outputs:
+      Value: {type: float}
+  - id: 1380
+    type: ForLoop
+    inputs: {LastIndex: 49}
+  - id: 1446
+    type: Behavior Expression
+    reference_id: 1387
+    reference_name: direction(floor(i / 10) * 1.2566 + 0.3) * (36 + (i % 10) * 19)
+    inputs:
+      i: {type: int}
+    outputs:
+      Result: {type: struct, type_name: CF_V2}
+  - id: 1461
+    type: Behavior Expression
+    reference_id: 1449
+    reference_name: pos + o
+    inputs:
+      pos:
+        type: struct
+        type_name: GameTransform
+        binding: {kind: component, component: GAME.GameTransform}
+      o: {type: struct, type_name: CF_V2}
+    outputs:
+      Result: {type: struct, type_name: GameTransform}
+  - id: 1465
+    type: Spawn Prototype
+    inputs: {Prototype: BloomTendril}
+  - {id: 1470, type: SetEntity_GameTransform}
+  - id: 1476
+    type: Self
+    outputs:
+      Self: {type_name: ecs.entity}
+  - {id: 1478, type: Set_GameFollow_target}
+  - {id: 1484, type: Set_GameFollow_offset}
+  - id: 1490
+    type: Event
+    reference_name: Tick
+    outputs:
+      DeltaSeconds: {type: float, kind: data}
+  - id: 1493
+    type: Get Global Variable
+    inputs: {Name: Player}
+    outputs:
+      Value: {type: handle, type_name: ecs.entity}
+  - id: 1496
+    type: Has Component
+    inputs: {Component: GAME.GameTransform}
+  - {id: 1500, type: Branch}
+  - id: 1517
+    type: Behavior Expression
+    reference_id: 1505
+    reference_name: t += dt
+    inputs:
+      Exec: {id: 1521, kind: exec}
+      t:
+        id: 1518
+        type: float
+        binding: {kind: variable, variable_id: 2, source_asset: Bloom}
+      dt:
+        type: double
+        binding: {kind: delta_time}
+    outputs:
+      Then: {id: 1522, kind: exec}
+      Result: {id: 1520, type: float}
+  - id: 1619
+    type: Behavior Expression
+    reference_id: 1540
+    reference_name: beat += dt * (0.8 + 0.2 * step(0.5, state) + 0.5 * phase + 1.2 * step(3.5, state) * step(state, 4.5))
+    inputs:
+      Exec: {id: 1625, kind: exec}
+      beat:
+        id: 1620
+        type: float
+        binding: {kind: variable, variable_id: 14, source_asset: Bloom}
+      dt:
+        type: double
+        binding: {kind: delta_time}
+      state:
+        type: double
+        binding: {kind: variable, variable_id: 1, source_asset: Bloom}
+      phase:
+        type: double
+        binding: {kind: variable, variable_id: 3, source_asset: Bloom}
+    outputs:
+      Then: {id: 1626, kind: exec}
+      Result: {id: 1624, type: float}
+  - id: 1772
+    type: Behavior Expression
+    reference_id: 1711
+    reference_name: pulse = exp(-fract(beat) * 9) + 0.6 * exp(-abs(fract(beat) - 0.24) * 16)
+    inputs:
+      Exec: {id: 1776, kind: exec}
+      pulse:
+        id: 1773
+        type: float
+        binding: {kind: variable, variable_id: 11, source_asset: Bloom}
+      beat:
+        type: double
+        binding: {kind: variable, variable_id: 14, source_asset: Bloom}
+    outputs:
+      Then: {id: 1777, kind: exec}
+      Result: {id: 1775, type: float}
+  - id: 1844
+    type: Get Global Variable
+    inputs: {Name: Player}
+    outputs:
+      Value: {type: handle, type_name: ecs.entity}
+  - {id: 1847, type: GetEntity_GameTransform}
+  - id: 1857
+    type: Behavior Expression
+    reference_id: 1850
+    reference_name: state
+    inputs:
+      state:
+        type: double
+        binding: {kind: variable, variable_id: 1, source_asset: Bloom}
+    outputs:
+      Result: {type: double}
+  - id: 1860
+    type: Switch on Int
+    outputs:
+    - 1863
+    - 1864
+    - {id: 1866, name: Case2}
+    - {id: 1867, name: Case3}
+    - {id: 1868, name: Case4}
+    - 1865
+  - id: 1869
+    type: Get Global Variable
+    inputs: {Name: Player}
+    outputs:
+      Value: {type: handle, type_name: ecs.entity}
+  - {id: 1872, type: GetEntity_GameTransform}
+  - id: 1899
+    type: Behavior Expression
+    reference_id: 1875
+    reference_name: distance(p, vec2(cx, cy)) < 600.0
+    inputs:
+      p: {type: struct, type_name: GameTransform}
+      cx:
+        type: float
+        binding: {kind: variable, variable_id: 4, source_asset: Bloom}
+      cy:
+        type: float
+        binding: {kind: variable, variable_id: 5, source_asset: Bloom}
+    outputs:
+      Result: {type: bool}
+  - {id: 1907, type: Branch}
+  - id: 1922
+    type: Behavior Expression
+    reference_id: 1912
+    reference_name: state = 1
+    inputs:
+      Exec: {id: 1925, kind: exec}
+      state:
+        id: 1923
+        type: float
+        binding: {kind: variable, variable_id: 1, source_asset: Bloom}
+    outputs:
+      Then: {id: 1926, kind: exec}
+      Result: {id: 1924, type: float}
+  - id: 1952
+    type: Behavior Expression
+    reference_id: 1942
+    reference_name: t = 0
+    inputs:
+      Exec: {id: 1955, kind: exec}
+      t:
+        id: 1953
+        type: float
+        binding: {kind: variable, variable_id: 2, source_asset: Bloom}
+    outputs:
+      Then: {id: 1956, kind: exec}
+      Result: {id: 1954, type: float}
+  - id: 1982
+    type: Behavior Expression
+    reference_id: 1972
+    reference_name: fired = 0
+    inputs:
+      Exec: {id: 1985, kind: exec}
+      fired:
+        id: 1983
+        type: float
+        binding: {kind: variable, variable_id: 13, source_asset: Bloom}
+    outputs:
+      Then: {id: 1986, kind: exec}
+      Result: {id: 1984, type: float}
+  - id: 2002
+    type: Set Global Variable
+    inputs:
+      Name: BossActive
+      Value: {type: int, default: 1}
+    outputs:
+      Value: {type: int}
+  - id: 2008
+    type: Set Global Variable
+    inputs:
+      Name: BossName
+      Value: {type: name, default: Mother Bloom}
+    outputs:
+      Value: {type: name}
+  - id: 2014
+    type: Add Camera Trauma
+    inputs: {Amount: 0.7}
+  - id: 2018
+    type: Add Shockwave
+    inputs:
+      Position:
+        type_name: GameTransform
+        binding: {kind: component, component: GAME.GameTransform}
+        default: null
+      Radius: 360.0
+      Thickness: 20.0
+      Strength: 1.0
+      Duration: 0.9
+  - id: 2026
+    type: Flash Screen
+    inputs: {Color: 4283422975, Amount: 0.12, Duration: 0.5}
+  - id: 2032
+    type: Play Sound
+    inputs: {Frequency: 60.0, End Frequency: 30.0, Duration: 1.6, Volume: 0.7, Noise: 0.8}
+  - id: 2114
+    type: Behavior Expression
+    reference_id: 2041
+    reference_name: target = (vec2(cx + sin(t * 0.6 + atk) * 60, cy + cos(t * 0.45) * 30) - pos) * 1.4
+    inputs:
+      Exec: {id: 2122, kind: exec}
+      target:
+        id: 2115
+        type: struct
+        type_name: CF_V2
+        binding: {kind: component_field, component: GAME.GameDrive, field: target}
+      cx:
+        type: double
+        binding: {kind: variable, variable_id: 4, source_asset: Bloom}
+      t:
+        type: double
+        binding: {kind: variable, variable_id: 2, source_asset: Bloom}
+      atk:
+        type: double
+        binding: {kind: variable, variable_id: 12, source_asset: Bloom}
+      cy:
+        type: double
+        binding: {kind: variable, variable_id: 5, source_asset: Bloom}
+      pos:
+        type: struct
+        type_name: GameTransform
+        binding: {kind: component, component: GAME.GameTransform}
+    outputs:
+      Then: {id: 2123, kind: exec}
+      Result: {id: 2121, type: struct, type_name: CF_V2}
+  - id: 2249
+    type: Behavior Expression
+    reference_id: 2212
+    reference_name: reach += (0.42 - reach) * min(1, dt * 3)
+    inputs:
+      Exec: {id: 2253, kind: exec}
+      reach:
+        id: 2250
+        type: float
+        binding: {kind: variable, variable_id: 17, source_asset: Bloom}
+      dt:
+        type: double
+        binding: {kind: delta_time}
+    outputs:
+      Then: {id: 2254, kind: exec}
+      Result: {id: 2252, type: float}
+  - id: 2316
+    type: Behavior Expression
+    reference_id: 2297
+    reference_name: spin += dt * 0.25
+    inputs:
+      Exec: {id: 2320, kind: exec}
+      spin:
+        id: 2317
+        type: float
+        binding: {kind: variable, variable_id: 18, source_asset: Bloom}
+      dt:
+        type: double
+        binding: {kind: delta_time}
+    outputs:
+      Then: {id: 2321, kind: exec}
+      Result: {id: 2319, type: float}
+  - id: 2372
+    type: Behavior Expression
+    reference_id: 2346
+    reference_name: charge = max(0, charge - dt * 3)
+    inputs:
+      Exec: {id: 2376, kind: exec}
+      charge:
+        id: 2373
+        type: float
+        binding: {kind: variable, variable_id: 10, source_asset: Bloom}
+      dt:
+        type: double
+        binding: {kind: delta_time}
+    outputs:
+      Then: {id: 2377, kind: exec}
+      Result: {id: 2375, type: float}
+  - id: 2435
+    type: Behavior Expression
+    reference_id: 2409
+    reference_name: t > 2.2 - phase * 0.8
+    inputs:
+      t:
+        type: double
+        flags: 0
+        binding: {kind: variable, variable_id: 2, source_asset: Bloom}
+      phase:
+        type: double
+        binding: {kind: variable, variable_id: 3, source_asset: Bloom}
+    outputs:
+      Result: {type: bool}
+  - {id: 2442, type: Branch}
+  - id: 2461
+    type: Behavior Expression
+    reference_id: 2447
+    reference_name: atk += 1
+    inputs:
+      Exec: {id: 2464, kind: exec}
+      atk:
+        id: 2462
+        type: float
+        binding: {kind: variable, variable_id: 12, source_asset: Bloom}
+    outputs:
+      Then: {id: 2465, kind: exec}
+      Result: {id: 2463, type: float}
+  - id: 2507
+    type: Behavior Expression
+    reference_id: 2485
+    reference_name: state = 2 + atk % 3
+    inputs:
+      Exec: {id: 2511, kind: exec}
+      state:
+        id: 2508
+        type: float
+        binding: {kind: variable, variable_id: 1, source_asset: Bloom}
+      atk:
+        type: double
+        binding: {kind: variable, variable_id: 12, source_asset: Bloom}
+    outputs:
+      Then: {id: 2512, kind: exec}
+      Result: {id: 2510, type: float}
+  - id: 2550
+    type: Behavior Expression
+    reference_id: 2540
+    reference_name: t = 0
+    inputs:
+      Exec: {id: 2553, kind: exec}
+      t:
+        id: 2551
+        type: float
+        binding: {kind: variable, variable_id: 2, source_asset: Bloom}
+    outputs:
+      Then: {id: 2554, kind: exec}
+      Result: {id: 2552, type: float}
+  - id: 2580
+    type: Behavior Expression
+    reference_id: 2570
+    reference_name: fired = 0
+    inputs:
+      Exec: {id: 2583, kind: exec}
+      fired:
+        id: 2581
+        type: float
+        binding: {kind: variable, variable_id: 13, source_asset: Bloom}
+    outputs:
+      Then: {id: 2584, kind: exec}
+      Result: {id: 2582, type: float}
+  - id: 2625
+    type: Behavior Expression
+    reference_id: 2600
+    reference_name: target = (vec2(cx, cy) - pos) * 1.5
+    inputs:
+      Exec: {id: 2631, kind: exec}
+      target:
+        id: 2626
+        type: struct
+        type_name: CF_V2
+        binding: {kind: component_field, component: GAME.GameDrive, field: target}
+      cx:
+        type: float
+        binding: {kind: variable, variable_id: 4, source_asset: Bloom}
+      cy:
+        type: float
+        binding: {kind: variable, variable_id: 5, source_asset: Bloom}
+      pos:
+        type: struct
+        type_name: GameTransform
+        binding: {kind: component, component: GAME.GameTransform}
+    outputs:
+      Then: {id: 2632, kind: exec}
+      Result: {id: 2630, type: struct, type_name: CF_V2}
+  - id: 2699
+    type: Behavior Expression
+    reference_id: 2673
+    reference_name: charge = clamp(t / 0.7, 0, 1)
+    inputs:
+      Exec: {id: 2703, kind: exec}
+      charge:
+        id: 2700
+        type: float
+        binding: {kind: variable, variable_id: 10, source_asset: Bloom}
+      t:
+        type: double
+        binding: {kind: variable, variable_id: 2, source_asset: Bloom}
+    outputs:
+      Then: {id: 2704, kind: exec}
+      Result: {id: 2702, type: float}
+  - id: 2750
+    type: Behavior Expression
+    reference_id: 2736
+    reference_name: t < 0.05
+    inputs:
+      t:
+        type: double
+        flags: 0
+        binding: {kind: variable, variable_id: 2, source_asset: Bloom}
+    outputs:
+      Result: {type: bool}
+  - {id: 2756, type: Branch}
+  - id: 2761
+    type: Play Sound
+    inputs:
+      Frequency: 120.0
+      End Frequency: 260.0
+      Duration: 0.7
+      Volume: 0.35
+      Noise: 0.4
+  - id: 2807
+    type: Behavior Expression
+    reference_id: 2770
+    reference_name: t > 0.7 + fired * 0.4 && fired < 3
+    inputs:
+      t:
+        type: double
+        flags: 0
+        binding: {kind: variable, variable_id: 2, source_asset: Bloom}
+      fired:
+        type: double
+        flags: 0
+        binding: {kind: variable, variable_id: 13, source_asset: Bloom}
+    outputs:
+      Result: {type: bool}
+  - {id: 2814, type: Branch}
+  - {id: 2819, type: Call Function, reference_id: 110, reference_name: Mortar}
+  - id: 2836
+    type: Behavior Expression
+    reference_id: 2822
+    reference_name: fired += 1
+    inputs:
+      Exec: {id: 2839, kind: exec}
+      fired:
+        id: 2837
+        type: float
+        binding: {kind: variable, variable_id: 13, source_asset: Bloom}
+    outputs:
+      Then: {id: 2840, kind: exec}
+      Result: {id: 2838, type: float}
+  - id: 2874
+    type: Behavior Expression
+    reference_id: 2860
+    reference_name: t > 2.1
+    inputs:
+      t:
+        type: double
+        flags: 0
+        binding: {kind: variable, variable_id: 2, source_asset: Bloom}
+    outputs:
+      Result: {type: bool}
+  - {id: 2880, type: Branch}
+  - id: 2895
+    type: Behavior Expression
+    reference_id: 2885
+    reference_name: state = 1
+    inputs:
+      Exec: {id: 2898, kind: exec}
+      state:
+        id: 2896
+        type: float
+        binding: {kind: variable, variable_id: 1, source_asset: Bloom}
+    outputs:
+      Then: {id: 2899, kind: exec}
+      Result: {id: 2897, type: float}
+  - id: 2925
+    type: Behavior Expression
+    reference_id: 2915
+    reference_name: t = 0
+    inputs:
+      Exec: {id: 2928, kind: exec}
+      t:
+        id: 2926
+        type: float
+        binding: {kind: variable, variable_id: 2, source_asset: Bloom}
+    outputs:
+      Then: {id: 2929, kind: exec}
+      Result: {id: 2927, type: float}
+  - id: 2955
+    type: Behavior Expression
+    reference_id: 2945
+    reference_name: fired = 0
+    inputs:
+      Exec: {id: 2958, kind: exec}
+      fired:
+        id: 2956
+        type: float
+        binding: {kind: variable, variable_id: 13, source_asset: Bloom}
+    outputs:
+      Then: {id: 2959, kind: exec}
+      Result: {id: 2957, type: float}
+  - id: 3000
+    type: Behavior Expression
+    reference_id: 2975
+    reference_name: target = (vec2(cx, cy) - pos) * 1.5
+    inputs:
+      Exec: {id: 3006, kind: exec}
+      target:
+        id: 3001
+        type: struct
+        type_name: CF_V2
+        binding: {kind: component_field, component: GAME.GameDrive, field: target}
+      cx:
+        type: float
+        binding: {kind: variable, variable_id: 4, source_asset: Bloom}
+      cy:
+        type: float
+        binding: {kind: variable, variable_id: 5, source_asset: Bloom}
+      pos:
+        type: struct
+        type_name: GameTransform
+        binding: {kind: component, component: GAME.GameTransform}
+    outputs:
+      Then: {id: 3007, kind: exec}
+      Result: {id: 3005, type: struct, type_name: CF_V2}
+  - id: 3097
+    type: Behavior Expression
+    reference_id: 3048
+    reference_name: reach += ((0.75 + 0.15 * phase) - reach) * min(1, dt * 5)
+    inputs:
+      Exec: {id: 3102, kind: exec}
+      reach:
+        id: 3098
+        type: float
+        binding: {kind: variable, variable_id: 17, source_asset: Bloom}
+      phase:
+        type: double
+        binding: {kind: variable, variable_id: 3, source_asset: Bloom}
+      dt:
+        type: double
+        binding: {kind: delta_time}
+    outputs:
+      Then: {id: 3103, kind: exec}
+      Result: {id: 3101, type: float}
+  - id: 3195
+    type: Behavior Expression
+    reference_id: 3158
+    reference_name: charge = clamp(t / 0.8, 0, 1) * step(t, 0.8)
+    inputs:
+      Exec: {id: 3199, kind: exec}
+      charge:
+        id: 3196
+        type: float
+        binding: {kind: variable, variable_id: 10, source_asset: Bloom}
+      t:
+        type: double
+        binding: {kind: variable, variable_id: 2, source_asset: Bloom}
+    outputs:
+      Then: {id: 3200, kind: exec}
+      Result: {id: 3198, type: float}
+  - id: 3257
+    type: Behavior Expression
+    reference_id: 3243
+    reference_name: t < 0.05
+    inputs:
+      t:
+        type: double
+        flags: 0
+        binding: {kind: variable, variable_id: 2, source_asset: Bloom}
+    outputs:
+      Result: {type: bool}
+  - {id: 3263, type: Branch}
+  - id: 3268
+    type: Play Sound
+    inputs: {Frequency: 300.0, End Frequency: 700.0, Duration: 0.8, Volume: 0.3, Noise: 0.3}
+  - id: 3291
+    type: Behavior Expression
+    reference_id: 3277
+    reference_name: t > 0.8
+    inputs:
+      t:
+        type: double
+        flags: 0
+        binding: {kind: variable, variable_id: 2, source_asset: Bloom}
+    outputs:
+      Result: {type: bool}
+  - {id: 3297, type: Branch}
+  - id: 3351
+    type: Behavior Expression
+    reference_id: 3302
+    reference_name: reach += ((1.05 + 0.3 * phase) - reach) * min(1, dt * 6)
+    inputs:
+      Exec: {id: 3356, kind: exec}
+      reach:
+        id: 3352
+        type: float
+        binding: {kind: variable, variable_id: 17, source_asset: Bloom}
+      phase:
+        type: double
+        binding: {kind: variable, variable_id: 3, source_asset: Bloom}
+      dt:
+        type: double
+        binding: {kind: delta_time}
+    outputs:
+      Then: {id: 3357, kind: exec}
+      Result: {id: 3355, type: float}
+  - id: 3495
+    type: Behavior Expression
+    reference_id: 3412
+    reference_name: spin += dt * (1.5 + 0.7 * phase) * (1 - 2 * (atk % 2)) * min(1, (t - 0.8) * 2)
+    inputs:
+      Exec: {id: 3502, kind: exec}
+      spin:
+        id: 3496
+        type: float
+        binding: {kind: variable, variable_id: 18, source_asset: Bloom}
+      dt:
+        type: double
+        binding: {kind: delta_time}
+      phase:
+        type: double
+        binding: {kind: variable, variable_id: 3, source_asset: Bloom}
+      atk:
+        type: double
+        binding: {kind: variable, variable_id: 12, source_asset: Bloom}
+      t:
+        type: double
+        binding: {kind: variable, variable_id: 2, source_asset: Bloom}
+    outputs:
+      Then: {id: 3503, kind: exec}
+      Result: {id: 3501, type: float}
+  - id: 3618
+    type: Behavior Expression
+    reference_id: 3592
+    reference_name: t > 0.8 + fired * 0.6
+    inputs:
+      t:
+        type: double
+        flags: 0
+        binding: {kind: variable, variable_id: 2, source_asset: Bloom}
+      fired:
+        type: double
+        binding: {kind: variable, variable_id: 13, source_asset: Bloom}
+    outputs:
+      Result: {type: bool}
+  - {id: 3625, type: Branch}
+  - id: 3630
+    type: Play Sound
+    inputs:
+      Frequency: 500.0
+      End Frequency: 160.0
+      Duration: 0.3
+      Volume: 0.22
+      Noise: 0.9
+  - id: 3653
+    type: Behavior Expression
+    reference_id: 3639
+    reference_name: fired += 1
+    inputs:
+      Exec: {id: 3656, kind: exec}
+      fired:
+        id: 3654
+        type: float
+        binding: {kind: variable, variable_id: 13, source_asset: Bloom}
+    outputs:
+      Then: {id: 3657, kind: exec}
+      Result: {id: 3655, type: float}
+  - id: 3703
+    type: Behavior Expression
+    reference_id: 3677
+    reference_name: t > 3.2 + phase * 0.8
+    inputs:
+      t:
+        type: double
+        flags: 0
+        binding: {kind: variable, variable_id: 2, source_asset: Bloom}
+      phase:
+        type: double
+        binding: {kind: variable, variable_id: 3, source_asset: Bloom}
+    outputs:
+      Result: {type: bool}
+  - {id: 3710, type: Branch}
+  - id: 3725
+    type: Behavior Expression
+    reference_id: 3715
+    reference_name: state = 1
+    inputs:
+      Exec: {id: 3728, kind: exec}
+      state:
+        id: 3726
+        type: float
+        binding: {kind: variable, variable_id: 1, source_asset: Bloom}
+    outputs:
+      Then: {id: 3729, kind: exec}
+      Result: {id: 3727, type: float}
+  - id: 3755
+    type: Behavior Expression
+    reference_id: 3745
+    reference_name: t = 0
+    inputs:
+      Exec: {id: 3758, kind: exec}
+      t:
+        id: 3756
+        type: float
+        binding: {kind: variable, variable_id: 2, source_asset: Bloom}
+    outputs:
+      Then: {id: 3759, kind: exec}
+      Result: {id: 3757, type: float}
+  - id: 3785
+    type: Behavior Expression
+    reference_id: 3775
+    reference_name: fired = 0
+    inputs:
+      Exec: {id: 3788, kind: exec}
+      fired:
+        id: 3786
+        type: float
+        binding: {kind: variable, variable_id: 13, source_asset: Bloom}
+    outputs:
+      Then: {id: 3789, kind: exec}
+      Result: {id: 3787, type: float}
+  - id: 3830
+    type: Behavior Expression
+    reference_id: 3805
+    reference_name: target = (vec2(cx, cy) - pos) * 1.5
+    inputs:
+      Exec: {id: 3836, kind: exec}
+      target:
+        id: 3831
+        type: struct
+        type_name: CF_V2
+        binding: {kind: component_field, component: GAME.GameDrive, field: target}
+      cx:
+        type: float
+        binding: {kind: variable, variable_id: 4, source_asset: Bloom}
+      cy:
+        type: float
+        binding: {kind: variable, variable_id: 5, source_asset: Bloom}
+      pos:
+        type: struct
+        type_name: GameTransform
+        binding: {kind: component, component: GAME.GameTransform}
+    outputs:
+      Then: {id: 3837, kind: exec}
+      Result: {id: 3835, type: struct, type_name: CF_V2}
+  - id: 3904
+    type: Behavior Expression
+    reference_id: 3878
+    reference_name: charge = clamp(t / 1.1, 0, 1)
+    inputs:
+      Exec: {id: 3908, kind: exec}
+      charge:
+        id: 3905
+        type: float
+        binding: {kind: variable, variable_id: 10, source_asset: Bloom}
+      t:
+        type: double
+        binding: {kind: variable, variable_id: 2, source_asset: Bloom}
+    outputs:
+      Then: {id: 3909, kind: exec}
+      Result: {id: 3907, type: float}
+  - id: 3978
+    type: Behavior Expression
+    reference_id: 3941
+    reference_name: reach += (0.25 - reach) * min(1, dt * 4)
+    inputs:
+      Exec: {id: 3982, kind: exec}
+      reach:
+        id: 3979
+        type: float
+        binding: {kind: variable, variable_id: 17, source_asset: Bloom}
+      dt:
+        type: double
+        binding: {kind: delta_time}
+    outputs:
+      Then: {id: 3983, kind: exec}
+      Result: {id: 3981, type: float}
+  - id: 4040
+    type: Behavior Expression
+    reference_id: 4026
+    reference_name: t < 0.05
+    inputs:
+      t:
+        type: double
+        flags: 0
+        binding: {kind: variable, variable_id: 2, source_asset: Bloom}
+    outputs:
+      Result: {type: bool}
+  - {id: 4046, type: Branch}
+  - id: 4051
+    type: Play Sound
+    inputs: {Frequency: 50.0, End Frequency: 110.0, Duration: 1.1, Noise: 0.6}
+  - id: 4086
+    type: Behavior Expression
+    reference_id: 4060
+    reference_name: t > 1.1 && fired < 1
+    inputs:
+      t:
+        type: double
+        flags: 0
+        binding: {kind: variable, variable_id: 2, source_asset: Bloom}
+      fired:
+        type: double
+        flags: 0
+        binding: {kind: variable, variable_id: 13, source_asset: Bloom}
+    outputs:
+      Result: {type: bool}
+  - {id: 4093, type: Branch}
+  - {id: 4098, type: Call Function, reference_id: 411, reference_name: Beat}
+  - id: 4111
+    type: Behavior Expression
+    reference_id: 4101
+    reference_name: fired = 1
+    inputs:
+      Exec: {id: 4114, kind: exec}
+      fired:
+        id: 4112
+        type: float
+        binding: {kind: variable, variable_id: 13, source_asset: Bloom}
+    outputs:
+      Then: {id: 4115, kind: exec}
+      Result: {id: 4113, type: float}
+  - id: 4141
+    type: Behavior Expression
+    reference_id: 4131
+    reference_name: charge = 0
+    inputs:
+      Exec: {id: 4144, kind: exec}
+      charge:
+        id: 4142
+        type: float
+        binding: {kind: variable, variable_id: 10, source_asset: Bloom}
+    outputs:
+      Then: {id: 4145, kind: exec}
+      Result: {id: 4143, type: float}
+  - id: 4175
+    type: Behavior Expression
+    reference_id: 4161
+    reference_name: t > 1.8
+    inputs:
+      t:
+        type: double
+        flags: 0
+        binding: {kind: variable, variable_id: 2, source_asset: Bloom}
+    outputs:
+      Result: {type: bool}
+  - {id: 4181, type: Branch}
+  - id: 4196
+    type: Behavior Expression
+    reference_id: 4186
+    reference_name: state = 1
+    inputs:
+      Exec: {id: 4199, kind: exec}
+      state:
+        id: 4197
+        type: float
+        binding: {kind: variable, variable_id: 1, source_asset: Bloom}
+    outputs:
+      Then: {id: 4200, kind: exec}
+      Result: {id: 4198, type: float}
+  - id: 4226
+    type: Behavior Expression
+    reference_id: 4216
+    reference_name: t = 0
+    inputs:
+      Exec: {id: 4229, kind: exec}
+      t:
+        id: 4227
+        type: float
+        binding: {kind: variable, variable_id: 2, source_asset: Bloom}
+    outputs:
+      Then: {id: 4230, kind: exec}
+      Result: {id: 4228, type: float}
+  - id: 4256
+    type: Behavior Expression
+    reference_id: 4246
+    reference_name: fired = 0
+    inputs:
+      Exec: {id: 4259, kind: exec}
+      fired:
+        id: 4257
+        type: float
+        binding: {kind: variable, variable_id: 13, source_asset: Bloom}
+    outputs:
+      Then: {id: 4260, kind: exec}
+      Result: {id: 4258, type: float}
+  - id: 4276
+    type: Self
+    outputs:
+      Self: {type_name: ecs.entity}
+  - {id: 4278, type: Matter Centroid}
+  - {id: 4282, type: To Real}
+  - id: 4299
+    type: Behavior Expression
+    reference_id: 4285
+    reference_name: n > 0
+    inputs:
+      "n": {type: double, flags: 0}
+    outputs:
+      Result: {type: bool}
+  - {id: 4305, type: Branch}
+  - id: 4310
+    type: Self
+    outputs:
+      Self: {type_name: ecs.entity}
+  - id: 4363
+    type: Behavior Expression
+    reference_id: 4312
+    reference_name: (pos - c) * 1400 + velocity * 60 + (pos - c) * 400 * pulse
+    inputs:
+      pos:
+        type: struct
+        type_name: GameTransform
+        binding: {kind: component, component: GAME.GameTransform}
+      c: {type: struct, type_name: CF_V2}
+      velocity:
+        type: struct
+        type_name: GameVelocity
+        binding: {kind: component, component: GAME.GameVelocity}
+      pulse:
+        type: double
+        binding: {kind: variable, variable_id: 11, source_asset: Bloom}
+    outputs:
+      Result: {type: struct, type_name: GameTransform}
+  - {id: 4369, type: Push Matter}
+  - id: 4382
+    type: Behavior Expression
+    reference_id: 4374
+    reference_name: shell = n
+    inputs:
+      Exec: {id: 4386, kind: exec}
+      shell:
+        id: 4383
+        type: float
+        binding: {kind: variable, variable_id: 15, source_asset: Bloom}
+      "n": {type: double}
+    outputs:
+      Then: {id: 4387, kind: exec}
+      Result: {id: 4385, type: float}
+  - id: 4413
+    type: Behavior Expression
+    reference_id: 4401
+    reference_name: shell0 = max(shell0, shell)
+    inputs:
+      Exec: {id: 4417, kind: exec}
+      shell0:
+        id: 4414
+        type: float
+        binding: {kind: variable, variable_id: 16, source_asset: Bloom}
+      shell:
+        type: double
+        binding: {kind: variable, variable_id: 15, source_asset: Bloom}
+    outputs:
+      Then: {id: 4418, kind: exec}
+      Result: {id: 4416, type: float}
+  - id: 4488
+    type: Behavior Expression
+    reference_id: 4436
+    reference_name: armor = clamp(0.2 + 1.6 * (1 - shell / max(shell0, 1)), 0.2, 1)
+    inputs:
+      Exec: {id: 4493, kind: exec}
+      armor:
+        id: 4489
+        type: float
+        binding: {kind: variable, variable_id: 9, source_asset: Bloom}
+      shell:
+        type: double
+        binding: {kind: variable, variable_id: 15, source_asset: Bloom}
+      shell0:
+        type: double
+        binding: {kind: variable, variable_id: 16, source_asset: Bloom}
+    outputs:
+      Then: {id: 4494, kind: exec}
+      Result: {id: 4492, type: float}
+  - id: 4564
+    type: Behavior Expression
+    reference_id: 4552
+    reference_name: tear -= dt
+    inputs:
+      Exec: {id: 4568, kind: exec}
+      tear:
+        id: 4565
+        type: float
+        binding: {kind: variable, variable_id: 24, source_asset: Bloom}
+      dt:
+        type: double
+        binding: {kind: delta_time}
+    outputs:
+      Then: {id: 4569, kind: exec}
+      Result: {id: 4567, type: float}
+  - id: 4618
+    type: Behavior Expression
+    reference_id: 4587
+    reference_name: shell < prev - 0.5 && tear <= 0
+    inputs:
+      shell:
+        type: double
+        flags: 0
+        binding: {kind: variable, variable_id: 15, source_asset: Bloom}
+      prev:
+        type: double
+        binding: {kind: variable, variable_id: 25, source_asset: Bloom}
+      tear:
+        type: double
+        flags: 0
+        binding: {kind: variable, variable_id: 24, source_asset: Bloom}
+    outputs:
+      Result: {type: bool}
+  - {id: 4626, type: Branch}
+  - id: 4641
+    type: Behavior Expression
+    reference_id: 4631
+    reference_name: tear = 0.06
+    inputs:
+      Exec: {id: 4644, kind: exec}
+      tear:
+        id: 4642
+        type: float
+        binding: {kind: variable, variable_id: 24, source_asset: Bloom}
+    outputs:
+      Then: {id: 4645, kind: exec}
+      Result: {id: 4643, type: float}
+  - id: 4661
+    type: Get Global Variable
+    inputs: {Name: Player}
+    outputs:
+      Value: {type: handle, type_name: ecs.entity}
+  - {id: 4664, type: GetEntity_GameTransform}
+  - id: 4667
+    type: Raycast
+    inputs:
+      End:
+        type_name: GameTransform
+        binding: {kind: component, component: GAME.GameTransform}
+        default: null
+      Categories: 8
+  - id: 4678
+    type: Self
+    outputs:
+      Self: {type_name: ecs.entity}
+  - id: 4695
+    type: Behavior Expression
+    reference_id: 4680
+    reference_name: normalize(pos - p)
+    inputs:
+      pos:
+        type: struct
+        type_name: GameTransform
+        binding: {kind: component, component: GAME.GameTransform}
+      p: {type: struct, type_name: CF_V2}
+    outputs:
+      Result: {type: struct, type_name: CF_V2}
+  - id: 4718
+    type: Behavior Expression
+    reference_id: 4699
+    reference_name: p + d * 5
+    inputs:
+      p: {type: struct, type_name: CF_V2}
+      d: {type: struct, type_name: CF_V2}
+    outputs:
+      Result: {type: struct, type_name: CF_V2}
+  - id: 4722
+    type: Self
+    outputs:
+      Self: {type_name: ecs.entity}
+  - id: 4724
+    type: Damage Material
+    inputs: {Radius: 9.0, Energy: 3.0}
+  - id: 4741
+    type: Behavior Expression
+    reference_id: 4733
+    reference_name: prev = shell
+    inputs:
+      Exec: {id: 4745, kind: exec}
+      prev:
+        id: 4742
+        type: float
+        binding: {kind: variable, variable_id: 25, source_asset: Bloom}
+      shell:
+        type: double
+        binding: {kind: variable, variable_id: 15, source_asset: Bloom}
+    outputs:
+      Then: {id: 4746, kind: exec}
+      Result: {id: 4744, type: float}
+  - id: 4768
+    type: Behavior Expression
+    reference_id: 4760
+    reference_name: heading = spin
+    inputs:
+      Exec: {id: 4772, kind: exec}
+      heading:
+        id: 4769
+        type: float
+        binding: {kind: component_field, component: GAME.GameOrientation, field: radians}
+      spin:
+        type: double
+        binding: {kind: variable, variable_id: 18, source_asset: Bloom}
+    outputs:
+      Then: {id: 4773, kind: exec}
+      Result: {id: 4771, type: float}
+  - id: 4821
+    type: Behavior Expression
+    reference_id: 4795
+    reference_name: state > 0 && dead < 1
+    inputs:
+      state:
+        type: double
+        flags: 0
+        binding: {kind: variable, variable_id: 1, source_asset: Bloom}
+      dead:
+        type: double
+        flags: 0
+        binding: {kind: variable, variable_id: 6, source_asset: Bloom}
+    outputs:
+      Result: {type: bool}
+  - {id: 4828, type: Branch}
+  - id: 4845
+    type: Behavior Expression
+    reference_id: 4833
+    reference_name: look -= dt
+    inputs:
+      Exec: {id: 4849, kind: exec}
+      look:
+        id: 4846
+        type: float
+        binding: {kind: variable, variable_id: 21, source_asset: Bloom}
+      dt:
+        type: double
+        binding: {kind: delta_time}
+    outputs:
+      Then: {id: 4850, kind: exec}
+      Result: {id: 4848, type: float}
+  - id: 4882
+    type: Behavior Expression
+    reference_id: 4868
+    reference_name: look <= 0
+    inputs:
+      look:
+        type: double
+        flags: 0
+        binding: {kind: variable, variable_id: 21, source_asset: Bloom}
+    outputs:
+      Result: {type: bool}
+  - {id: 4888, type: Branch}
+  - id: 4903
+    type: Behavior Expression
+    reference_id: 4893
+    reference_name: look = 0.2
+    inputs:
+      Exec: {id: 4906, kind: exec}
+      look:
+        id: 4904
+        type: float
+        binding: {kind: variable, variable_id: 21, source_asset: Bloom}
+    outputs:
+      Then: {id: 4907, kind: exec}
+      Result: {id: 4905, type: float}
+  - {id: 4923, type: Call Function, reference_id: 715, reference_name: Scorch}
+  - id: 4941
+    type: Behavior Expression
+    reference_id: 4926
+    reference_name: fract(beat) < lastf
+    inputs:
+      beat:
+        type: double
+        binding: {kind: variable, variable_id: 14, source_asset: Bloom}
+      lastf:
+        type: double
+        flags: 0
+        binding: {kind: variable, variable_id: 22, source_asset: Bloom}
+    outputs:
+      Result: {type: bool}
+  - {id: 4948, type: Branch}
+  - id: 4953
+    type: Add Shockwave
+    inputs:
+      Position:
+        type_name: GameTransform
+        binding: {kind: component, component: GAME.GameTransform}
+        default: null
+      Radius: 150.0
+      Thickness: 12.0
+      Strength: 0.25
+      Duration: 0.4
+  - id: 4961
+    type: Play Sound
+    inputs: {Frequency: 48.0, End Frequency: 36.0, Duration: 0.18, Volume: 0.25, Noise: 0.3}
+  - id: 4981
+    type: Behavior Expression
+    reference_id: 4970
+    reference_name: lastf = fract(beat)
+    inputs:
+      Exec: {id: 4985, kind: exec}
+      lastf:
+        id: 4982
+        type: float
+        binding: {kind: variable, variable_id: 22, source_asset: Bloom}
+      beat:
+        type: double
+        binding: {kind: variable, variable_id: 14, source_asset: Bloom}
+    outputs:
+      Then: {id: 4986, kind: exec}
+      Result: {id: 4984, type: float}
+  - id: 5034
+    type: Behavior Expression
+    reference_id: 5003
+    reference_name: phase < 1 && health < maximum * 0.5
+    inputs:
+      phase:
+        type: double
+        flags: 0
+        binding: {kind: variable, variable_id: 3, source_asset: Bloom}
+      health:
+        type: double
+        flags: 0
+        binding: {kind: component_field, component: GAME.GameHealth, field: current}
+      maximum:
+        type: double
+        binding: {kind: component_field, component: GAME.GameHealth, field: maximum}
+    outputs:
+      Result: {type: bool}
+  - {id: 5042, type: Branch}
+  - id: 5057
+    type: Behavior Expression
+    reference_id: 5047
+    reference_name: phase = 1
+    inputs:
+      Exec: {id: 5060, kind: exec}
+      phase:
+        id: 5058
+        type: float
+        binding: {kind: variable, variable_id: 3, source_asset: Bloom}
+    outputs:
+      Then: {id: 5061, kind: exec}
+      Result: {id: 5059, type: float}
+  - id: 5101
+    type: Behavior Expression
+    reference_id: 5077
+    reference_name: pos + vec2(0, -200)
+    inputs:
+      pos:
+        type: struct
+        type_name: GameTransform
+        binding: {kind: component, component: GAME.GameTransform}
+    outputs:
+      Result: {type: struct, type_name: GameTransform}
+  - id: 5104
+    type: Spawn Prototype
+    inputs: {Prototype: GlowmiteNest}
+  - {id: 5109, type: SetEntity_GameTransform}
+  - id: 5115
+    type: Play Sound
+    inputs: {Frequency: 70.0, Duration: 1.2, Volume: 0.8, Noise: 0.8}
+  - id: 5124
+    type: Add Camera Trauma
+    inputs: {Amount: 0.8}
+  - id: 5128
+    type: Flash Screen
+    inputs: {Color: 4283422975, Amount: 0.2, Duration: 0.5}
+  - id: 5134
+    type: Add Shockwave
+    inputs:
+      Position:
+        type_name: GameTransform
+        binding: {kind: component, component: GAME.GameTransform}
+        default: null
+      Radius: 500.0
+      Thickness: 30.0
+      Strength: 1.4
+      Duration: 1.0
+  - id: 5154
+    type: Behavior Expression
+    reference_id: 5142
+    reference_name: health / maximum
+    inputs:
+      health:
+        type: double
+        binding: {kind: component_field, component: GAME.GameHealth, field: current}
+      maximum:
+        type: double
+        binding: {kind: component_field, component: GAME.GameHealth, field: maximum}
+    outputs:
+      Result: {type: double}
+  - id: 5158
+    type: Set Global Variable
+    inputs:
+      Name: BossHealth
+      Value: {type: double}
+    outputs:
+      Value: {type: double}
+  - id: 5164
+    type: Get Variable
+    reference_id: 17
+    reference_name: reach
+    outputs:
+      Value: {type: float}
+  - id: 5166
+    type: Set Global Variable
+    inputs:
+      Name: BloomReach
+      Value: {type: float}
+    outputs:
+      Value: {type: float}
+  - id: 5206
+    type: Behavior Expression
+    reference_id: 5172
+    reference_name: light = 0.8 + pulse * 1.2 + charge * 1.5
+    inputs:
+      Exec: {id: 5211, kind: exec}
+      light:
+        id: 5207
+        type: float
+        binding: {kind: component_field, component: GAME.GameLight2D, field: intensity}
+      pulse:
+        type: double
+        binding: {kind: variable, variable_id: 11, source_asset: Bloom}
+      charge:
+        type: double
+        binding: {kind: variable, variable_id: 10, source_asset: Bloom}
+    outputs:
+      Then: {id: 5212, kind: exec}
+      Result: {id: 5210, type: float}
+  - id: 5290
+    type: Behavior Expression
+    reference_id: 5264
+    reference_name: flash = max(0, flash - dt * 12)
+    inputs:
+      Exec: {id: 5294, kind: exec}
+      flash:
+        id: 5291
+        type: float
+        binding: {kind: variable, variable_id: 7, source_asset: Bloom}
+      dt:
+        type: double
+        binding: {kind: delta_time}
+    outputs:
+      Then: {id: 5295, kind: exec}
+      Result: {id: 5293, type: float}
+  - id: 5327
+    type: Self
+    outputs:
+      Self: {type_name: ecs.entity}
+  - id: 5329
+    type: Get Variable
+    reference_id: 7
+    reference_name: flash
+    outputs:
+      Value: {type: float}
+  - id: 5331
+    type: Set Material Parameter
+    inputs:
+      Name: Flash
+      Value: {type_name: float}
+  - id: 5337
+    type: Self
+    outputs:
+      Self: {type_name: ecs.entity}
+  - id: 5339
+    type: Get Variable
+    reference_id: 10
+    reference_name: charge
+    outputs:
+      Value: {type: float}
+  - id: 5341
+    type: Set Material Parameter
+    inputs:
+      Name: Charge
+      Value: {type_name: float}
+  - id: 5347
+    type: Self
+    outputs:
+      Self: {type_name: ecs.entity}
+  - id: 5349
+    type: Get Variable
+    reference_id: 11
+    reference_name: pulse
+    outputs:
+      Value: {type: float}
+  - id: 5351
+    type: Set Material Parameter
+    inputs:
+      Name: Pulse
+      Value: {type_name: float}
+  - id: 5364
+    type: Behavior Expression
+    reference_id: 5357
+    reference_name: h
+    inputs:
+      h:
+        type: double
+        binding: {kind: component_field, component: GAME.GameHealth, field: current}
+    outputs:
+      Result: {type: double}
+  - id: 5367
+    type: Get Variable
+    reference_id: 15
+    reference_name: shell
+    outputs:
+      Value: {type: float}
+  - id: 5369
+    type: Get Variable
+    reference_id: 16
+    reference_name: shell0
+    outputs:
+      Value: {type: float}
+  - id: 5371
+    type: Get Variable
+    reference_id: 9
+    reference_name: armor
+    outputs:
+      Value: {type: float}
+  - id: 5373
+    type: Get Variable
+    reference_id: 1
+    reference_name: state
+    outputs:
+      Value: {type: float}
+  - id: 5375
+    type: Get Variable
+    reference_id: 19
+    reference_name: heat
+    outputs:
+      Value: {type: float}
+  - id: 5377
+    type: Get Variable
+    reference_id: 23
+    reference_name: hits
+    outputs:
+      Value: {type: float}
+  - id: 5405
+    type: Behavior Expression
+    reference_id: 5379
+    reference_name: flash = max(0, flash - dt * 12)
+    inputs:
+      Exec: {id: 5409, kind: exec}
+      flash:
+        id: 5406
+        type: float
+        binding: {kind: variable, variable_id: 7, source_asset: Bloom}
+      dt:
+        type: double
+        binding: {kind: delta_time}
+    outputs:
+      Then: {id: 5410, kind: exec}
+      Result: {id: 5408, type: float}
+  - id: 5442
+    type: Self
+    outputs:
+      Self: {type_name: ecs.entity}
+  - id: 5444
+    type: Get Variable
+    reference_id: 11
+    reference_name: pulse
+    outputs:
+      Value: {type: float}
+  - id: 5446
+    type: Set Material Parameter
+    inputs:
+      Name: Pulse
+      Value: {type_name: float}
+  - id: 5452
+    type: Event
+    reference_name: Hit
+    outputs:
+      Amount: {declaration_id: 1, type: int, kind: data}
+      Source: {declaration_id: 2, type: handle, type_name: ecs.entity, kind: data}
+      Point: {declaration_id: 3, type: struct, type_name: CF_V2, kind: data}
+      Direction: {declaration_id: 4, type: struct, type_name: CF_V2, kind: data}
+      Element: {declaration_id: 5, type: int, kind: data}
+      Knockback: {declaration_id: 6, type: float, kind: data}
+  - {id: 5460, type: To Real}
+  - {id: 5463, type: To Real}
+  - id: 5520
+    type: Behavior Expression
+    reference_id: 5466
+    reference_name: pend += amount * armor * (1 + 0.6 * step(4.5, element) * step(element, 5.5))
+    inputs:
+      Exec: {id: 5526, kind: exec}
+      pend:
+        id: 5521
+        type: float
+        binding: {kind: variable, variable_id: 8, source_asset: Bloom}
+      amount: {type: double}
+      armor:
+        type: double
+        binding: {kind: variable, variable_id: 9, source_asset: Bloom}
+      element: {type: double}
+    outputs:
+      Then: {id: 5527, kind: exec}
+      Result: {id: 5525, type: float}
+  - id: 5609
+    type: Behavior Expression
+    reference_id: 5587
+    reference_name: health = max(health - floor(pend), 0)
+    inputs:
+      Exec: {id: 5613, kind: exec}
+      health:
+        id: 5610
+        type: int
+        binding: {kind: component_field, component: GAME.GameHealth, field: current}
+      pend:
+        type: double
+        binding: {kind: variable, variable_id: 8, source_asset: Bloom}
+    outputs:
+      Then: {id: 5614, kind: exec}
+      Result: {id: 5612, type: int}
+  - id: 5666
+    type: Behavior Expression
+    reference_id: 5652
+    reference_name: pend -= floor(pend)
+    inputs:
+      Exec: {id: 5669, kind: exec}
+      pend:
+        id: 5667
+        type: float
+        binding: {kind: variable, variable_id: 8, source_asset: Bloom}
+    outputs:
+      Then: {id: 5670, kind: exec}
+      Result: {id: 5668, type: float}
+  - id: 5690
+    type: Self
+    outputs:
+      Self: {type_name: ecs.entity}
+  - id: 5692
+    type: Flash Entity
+    inputs: {Amount: 0.25}
+  - id: 5724
+    type: Behavior Expression
+    reference_id: 5698
+    reference_name: flash = max(flash, 0.1 + 0.15 * armor)
+    inputs:
+      Exec: {id: 5728, kind: exec}
+      flash:
+        id: 5725
+        type: float
+        binding: {kind: variable, variable_id: 7, source_asset: Bloom}
+      armor:
+        type: double
+        binding: {kind: variable, variable_id: 9, source_asset: Bloom}
+    outputs:
+      Then: {id: 5729, kind: exec}
+      Result: {id: 5727, type: float}
+  - id: 5778
+    type: Behavior Expression
+    reference_id: 5761
+    reference_name: dir * -1
+    inputs:
+      dir: {type: struct, type_name: CF_V2}
+    outputs:
+      Result: {type: struct, type_name: CF_V2}
+  - id: 5781
+    type: Emit Directed Particles
+    inputs:
+      Count: 6
+      Color: 4287293695
+      End Color: 0
+      Min Speed: 80.0
+      Max Speed: 260.0
+      Min Lifetime: 0.1
+      Max Lifetime: 0.35
+      Min Size: 0.5
+      Max Size: 1.2
+      Spread: 1.1
+      Min Drag: 1.5
+      Max Drag: 4.0
+      Min Emission: 0.6
+      Max Emission: 1.1
+      Size Exponent: 1.0
+      Shape: 4
+  - id: 5837
+    type: Behavior Expression
+    reference_id: 5803
+    reference_name: 260 + armor * 600 + rand() * 120
+    inputs:
+      armor:
+        type: double
+        binding: {kind: variable, variable_id: 9, source_asset: Bloom}
+    outputs:
+      Result: {type: double}
+  - id: 5840
+    type: Play Sound
+    inputs: {End Frequency: 160.0, Duration: 0.05, Volume: 0.14, Noise: 0.5}
+  - id: 5954
+    type: Behavior Expression
+    reference_id: 5849
+    reference_name: 10 + 16 * step(4.5, element) * step(element, 5.5) + 8 * step(2.5, element) * step(element, 3.5) + 4 * step(0.5, element) * step(element, 1.5) + sqrt(amount)
+    inputs:
+      element: {type: double}
+      amount: {type: double}
+    outputs:
+      Result: {type: double}
+  - id: 5972
+    type: Behavior Expression
+    reference_id: 5958
+    reference_name: hits += 1
+    inputs:
+      Exec: {id: 5975, kind: exec}
+      hits:
+        id: 5973
+        type: float
+        binding: {kind: variable, variable_id: 23, source_asset: Bloom}
+    outputs:
+      Then: {id: 5976, kind: exec}
+      Result: {id: 5974, type: float}
+  - id: 6015
+    type: Behavior Expression
+    reference_id: 5996
+    reference_name: point - dir * 18
+    inputs:
+      point: {type: struct, type_name: CF_V2}
+      dir: {type: struct, type_name: CF_V2}
+    outputs:
+      Result: {type: struct, type_name: CF_V2}
+  - id: 6019
+    type: Self
+    outputs:
+      Self: {type_name: ecs.entity}
+  - id: 6021
+    type: Self
+    outputs:
+      Self: {type_name: ecs.entity}
+  - id: 6023
+    type: Damage Material
+    inputs: {Energy: 4.0}
+  - id: 6051
+    type: Behavior Expression
+    reference_id: 6032
+    reference_name: point - dir * 48
+    inputs:
+      point: {type: struct, type_name: CF_V2}
+      dir: {type: struct, type_name: CF_V2}
+    outputs:
+      Result: {type: struct, type_name: CF_V2}
+  - id: 6055
+    type: Self
+    outputs:
+      Self: {type_name: ecs.entity}
+  - id: 6057
+    type: Self
+    outputs:
+      Self: {type_name: ecs.entity}
+  - id: 6059
+    type: Damage Material
+    inputs: {Energy: 4.0}
+  - id: 6087
+    type: Behavior Expression
+    reference_id: 6068
+    reference_name: point - dir * 80
+    inputs:
+      point: {type: struct, type_name: CF_V2}
+      dir: {type: struct, type_name: CF_V2}
+    outputs:
+      Result: {type: struct, type_name: CF_V2}
+  - id: 6091
+    type: Self
+    outputs:
+      Self: {type_name: ecs.entity}
+  - id: 6093
+    type: Self
+    outputs:
+      Self: {type_name: ecs.entity}
+  - id: 6095
+    type: Damage Material
+    inputs: {Energy: 4.0}
+  - id: 6118
+    type: Behavior Expression
+    reference_id: 6104
+    reference_name: health <= 0
+    inputs:
+      health:
+        type: double
+        flags: 0
+        binding: {kind: component_field, component: GAME.GameHealth, field: current}
+    outputs:
+      Result: {type: bool}
+  - {id: 6124, type: Branch}
+  - {id: 6129, type: Call Function, reference_id: 26, reference_name: Die}
+  - id: 6132
+    type: Event
+    reference_name: Contact Begin
+    outputs:
+      Other: {type: handle, type_name: ecs.entity, kind: data}
+      Point: {type: struct, type_name: CF_V2, kind: data}
+  - id: 6136
+    type: Has Component
+    inputs: {Component: GAME.GameInput}
+  - {id: 6140, type: Branch}
+  - id: 6160
+    type: Behavior Expression
+    reference_id: 6145
+    reference_name: normalize(target - pos)
+    inputs:
+      target: {type: struct, type_name: CF_V2}
+      pos:
+        type: struct
+        type_name: GameTransform
+        binding: {kind: component, component: GAME.GameTransform}
+    outputs:
+      Result: {type: struct, type_name: CF_V2}
+  - id: 6164
+    type: Self
+    outputs:
+      Self: {type_name: ecs.entity}
+  - id: 6166
+    type: Send Event
+    reference_name: Hit
+    inputs:
+      Amount:
+        id: 6170
+        declaration_id: 1
+        type: int
+        binding: {kind: component_field, component: GAME.GameWeapon, field: damage}
+      Source: {declaration_id: 2}
+      Point: {declaration_id: 3, type: struct, type_name: CF_V2}
+      Direction: {declaration_id: 4, type: struct, type_name: CF_V2}
+      Element: {declaration_id: 5, type: int}
+      Knockback: {declaration_id: 6, type: float, default: 220.0}
+    outputs:
+      Then: {id: 6169}
+  edges:
+  - {from: 1252.Then, to: 1262.Exec}
+  - {from: 1262.Then, to: 1291.Exec}
+  - {from: 1291.Then, to: 1322.Exec}
+  - {from: 1322.Then, to: 1352.Exec}
+  - {from: 1352.Then, to: 1374.Exec}
+  - {from: 1372.Value, to: 1374.Value}
+  - {from: 1374.Then, to: 1380.Exec}
+  - {from: 1380.Body, to: 1465.Exec}
+  - {from: 1380.Index, to: 1446.i}
+  - {from: 1446.Result, to: 1461.o}
+  - {from: 1446.Result, to: 1484.Value}
+  - {from: 1461.Result, to: 1470.Value}
+  - {from: 1465.Then, to: 1470.Exec}
+  - {from: 1465.Entity, to: 1470.Entity}
+  - {from: 1465.Entity, to: 1478.Target}
+  - {from: 1465.Entity, to: 1484.Target}
+  - {from: 1470.Then, to: 1478.Exec}
+  - {from: 1476.Self, to: 1478.Value}
+  - {from: 1478.Then, to: 1484.Exec}
+  - {from: 1490.Then, to: 1500.Exec}
+  - {from: 1493.Value, to: 1496.Entity}
+  - {from: 1496.Value, to: 1500.Condition}
+  - {from: 1500.True, to: 1517.Exec}
+  - {from: 1517.Then, to: 1619.Exec}
+  - {from: 1619.Then, to: 1772.Exec}
+  - {from: 1772.Then, to: 1860.Exec}
+  - {from: 1844.Value, to: 1847.Entity}
+  - {from: 1857.Result, to: 1860.Selection, conversion: To Integer}
+  - {from: 1860.Case0, to: 1907.Exec}
+  - {from: 1860.Case1, to: 2114.Exec}
+  - {from: 1860.Default, to: 4305.Exec}
+  - {from: 1860.Case2, to: 2625.Exec}
+  - {from: 1860.Case3, to: 3000.Exec}
+  - {from: 1860.Case4, to: 3830.Exec}
+  - {from: 1869.Value, to: 1872.Entity}
+  - {from: 1872.Value, to: 1899.p}
+  - {from: 1899.Result, to: 1907.Condition}
+  - {from: 1907.True, to: 1922.Exec}
+  - {from: 1907.False, to: 4305.Exec}
+  - {from: 1922.Then, to: 1952.Exec}
+  - {from: 1952.Then, to: 1982.Exec}
+  - {from: 1982.Then, to: 2002.Exec}
+  - {from: 2002.Then, to: 2008.Exec}
+  - {from: 2008.Then, to: 2014.Exec}
+  - {from: 2014.Then, to: 2018.Exec}
+  - {from: 2018.Then, to: 2026.Exec}
+  - {from: 2026.Then, to: 2032.Exec}
+  - {from: 2032.Then, to: 4305.Exec}
+  - {from: 2114.Then, to: 2249.Exec}
+  - {from: 2249.Then, to: 2316.Exec}
+  - {from: 2316.Then, to: 2372.Exec}
+  - {from: 2372.Then, to: 2442.Exec}
+  - {from: 2435.Result, to: 2442.Condition}
+  - {from: 2442.True, to: 2461.Exec}
+  - {from: 2442.False, to: 4305.Exec}
+  - {from: 2461.Then, to: 2507.Exec}
+  - {from: 2507.Then, to: 2550.Exec}
+  - {from: 2550.Then, to: 2580.Exec}
+  - {from: 2580.Then, to: 4305.Exec}
+  - {from: 2625.Then, to: 2699.Exec}
+  - {from: 2699.Then, to: 2756.Exec}
+  - {from: 2750.Result, to: 2756.Condition}
+  - {from: 2756.True, to: 2761.Exec}
+  - {from: 2756.False, to: 2814.Exec}
+  - {from: 2761.Then, to: 2814.Exec}
+  - {from: 2807.Result, to: 2814.Condition}
+  - {from: 2814.True, to: 2819.Exec}
+  - {from: 2814.False, to: 2880.Exec}
+  - {from: 2819.Then, to: 2836.Exec}
+  - {from: 2836.Then, to: 2880.Exec}
+  - {from: 2874.Result, to: 2880.Condition}
+  - {from: 2880.True, to: 2895.Exec}
+  - {from: 2880.False, to: 4305.Exec}
+  - {from: 2895.Then, to: 2925.Exec}
+  - {from: 2925.Then, to: 2955.Exec}
+  - {from: 2955.Then, to: 4305.Exec}
+  - {from: 3000.Then, to: 3097.Exec}
+  - {from: 3097.Then, to: 3195.Exec}
+  - {from: 3195.Then, to: 3263.Exec}
+  - {from: 3257.Result, to: 3263.Condition}
+  - {from: 3263.True, to: 3268.Exec}
+  - {from: 3263.False, to: 3297.Exec}
+  - {from: 3268.Then, to: 3297.Exec}
+  - {from: 3291.Result, to: 3297.Condition}
+  - {from: 3297.True, to: 3351.Exec}
+  - {from: 3297.False, to: 3710.Exec}
+  - {from: 3351.Then, to: 3495.Exec}
+  - {from: 3495.Then, to: 3625.Exec}
+  - {from: 3618.Result, to: 3625.Condition}
+  - {from: 3625.True, to: 3630.Exec}
+  - {from: 3625.False, to: 3710.Exec}
+  - {from: 3630.Then, to: 3653.Exec}
+  - {from: 3653.Then, to: 3710.Exec}
+  - {from: 3703.Result, to: 3710.Condition}
+  - {from: 3710.True, to: 3725.Exec}
+  - {from: 3710.False, to: 4305.Exec}
+  - {from: 3725.Then, to: 3755.Exec}
+  - {from: 3755.Then, to: 3785.Exec}
+  - {from: 3785.Then, to: 4305.Exec}
+  - {from: 3830.Then, to: 3904.Exec}
+  - {from: 3904.Then, to: 3978.Exec}
+  - {from: 3978.Then, to: 4046.Exec}
+  - {from: 4040.Result, to: 4046.Condition}
+  - {from: 4046.True, to: 4051.Exec}
+  - {from: 4046.False, to: 4093.Exec}
+  - {from: 4051.Then, to: 4093.Exec}
+  - {from: 4086.Result, to: 4093.Condition}
+  - {from: 4093.True, to: 4098.Exec}
+  - {from: 4093.False, to: 4181.Exec}
+  - {from: 4098.Then, to: 4111.Exec}
+  - {from: 4111.Then, to: 4141.Exec}
+  - {from: 4141.Then, to: 4181.Exec}
+  - {from: 4175.Result, to: 4181.Condition}
+  - {from: 4181.True, to: 4196.Exec}
+  - {from: 4181.False, to: 4305.Exec}
+  - {from: 4196.Then, to: 4226.Exec}
+  - {from: 4226.Then, to: 4256.Exec}
+  - {from: 4256.Then, to: 4305.Exec}
+  - {from: 4276.Self, to: 4278.Owner}
+  - {from: 4278.Position, to: 4363.c}
+  - {from: 4278.Count, to: 4282.Value}
+  - {from: 4282.Real, to: 4299.n}
+  - {from: 4282.Real, to: 4382.n}
+  - {from: 4299.Result, to: 4305.Condition}
+  - {from: 4305.True, to: 4369.In}
+  - {from: 4305.False, to: 4382.Exec}
+  - {from: 4310.Self, to: 4369.Owner}
+  - {from: 4363.Result, to: 4369.Force}
+  - {from: 4369.Out, to: 4382.Exec}
+  - {from: 4382.Then, to: 4413.Exec}
+  - {from: 4413.Then, to: 4488.Exec}
+  - {from: 4488.Then, to: 4564.Exec}
+  - {from: 4564.Then, to: 4626.Exec}
+  - {from: 4618.Result, to: 4626.Condition}
+  - {from: 4626.True, to: 4641.Exec}
+  - {from: 4626.False, to: 4741.Exec}
+  - {from: 4641.Then, to: 4724.In}
+  - {from: 4661.Value, to: 4664.Entity}
+  - {from: 4664.Value, to: 4667.Start, conversion: game_transform_to_cf}
+  - {from: 4667.Point, to: 4695.p}
+  - {from: 4667.Point, to: 4718.p}
+  - {from: 4678.Self, to: 4724.Entity}
+  - {from: 4695.Result, to: 4718.d}
+  - {from: 4718.Result, to: 4724.Point}
+  - {from: 4722.Self, to: 4724.Source}
+  - {from: 4724.Out, to: 4741.Exec}
+  - {from: 4741.Then, to: 4768.Exec}
+  - {from: 4768.Then, to: 4828.Exec}
+  - {from: 4821.Result, to: 4828.Condition}
+  - {from: 4828.True, to: 4845.Exec}
+  - {from: 4828.False, to: 5405.Exec}
+  - {from: 4845.Then, to: 4888.Exec}
+  - {from: 4882.Result, to: 4888.Condition}
+  - {from: 4888.True, to: 4903.Exec}
+  - {from: 4888.False, to: 4948.Exec}
+  - {from: 4903.Then, to: 4923.Exec}
+  - {from: 4923.Then, to: 4948.Exec}
+  - {from: 4941.Result, to: 4948.Condition}
+  - {from: 4948.True, to: 4953.Exec}
+  - {from: 4948.False, to: 4981.Exec}
+  - {from: 4953.Then, to: 4961.Exec}
+  - {from: 4961.Then, to: 4981.Exec}
+  - {from: 4981.Then, to: 5042.Exec}
+  - {from: 5034.Result, to: 5042.Condition}
+  - {from: 5042.True, to: 5057.Exec}
+  - {from: 5042.False, to: 5158.Exec}
+  - {from: 5057.Then, to: 5104.Exec}
+  - {from: 5101.Result, to: 5109.Value}
+  - {from: 5104.Then, to: 5109.Exec}
+  - {from: 5104.Entity, to: 5109.Entity}
+  - {from: 5109.Then, to: 5115.Exec}
+  - {from: 5115.Then, to: 5124.Exec}
+  - {from: 5124.Then, to: 5128.Exec}
+  - {from: 5128.Then, to: 5134.Exec}
+  - {from: 5134.Then, to: 5158.Exec}
+  - {from: 5154.Result, to: 5158.Value}
+  - {from: 5158.Then, to: 5166.Exec}
+  - {from: 5164.Value, to: 5166.Value}
+  - {from: 5166.Then, to: 5206.Exec}
+  - {from: 5206.Then, to: 5290.Exec}
+  - {from: 5290.Then, to: 5331.Exec}
+  - {from: 5327.Self, to: 5331.Entity}
+  - {from: 5329.Value, to: 5331.Value}
+  - {from: 5331.Then, to: 5341.Exec}
+  - {from: 5337.Self, to: 5341.Entity}
+  - {from: 5339.Value, to: 5341.Value}
+  - {from: 5341.Then, to: 5351.Exec}
+  - {from: 5347.Self, to: 5351.Entity}
+  - {from: 5349.Value, to: 5351.Value}
+  - {from: 5405.Then, to: 5446.Exec}
+  - {from: 5442.Self, to: 5446.Entity}
+  - {from: 5444.Value, to: 5446.Value}
+  - {from: 5452.Then, to: 5520.Exec}
+  - {from: 5452.Amount, to: 5460.Value}
+  - {from: 5452.Point, to: 5781.Position, conversion: game_transform_to_cf}
+  - {from: 5452.Point, to: 6015.point}
+  - {from: 5452.Point, to: 6051.point}
+  - {from: 5452.Point, to: 6087.point}
+  - {from: 5452.Direction, to: 5778.dir}
+  - {from: 5452.Direction, to: 6015.dir}
+  - {from: 5452.Direction, to: 6051.dir}
+  - {from: 5452.Direction, to: 6087.dir}
+  - {from: 5452.Element, to: 5463.Value}
+  - {from: 5460.Real, to: 5520.amount}
+  - {from: 5460.Real, to: 5954.amount}
+  - {from: 5463.Real, to: 5520.element}
+  - {from: 5463.Real, to: 5954.element}
+  - {from: 5520.Then, to: 5609.Exec}
+  - {from: 5609.Then, to: 5666.Exec}
+  - {from: 5666.Then, to: 5692.Exec}
+  - {from: 5690.Self, to: 5692.Entity}
+  - {from: 5692.Then, to: 5724.Exec}
+  - {from: 5724.Then, to: 5781.Exec}
+  - {from: 5778.Result, to: 5781.Direction}
+  - {from: 5781.Then, to: 5840.Exec}
+  - {from: 5837.Result, to: 5840.Frequency}
+  - {from: 5840.Then, to: 5972.Exec}
+  - {from: 5954.Result, to: 6023.Radius}
+  - {from: 5954.Result, to: 6059.Radius}
+  - {from: 5954.Result, to: 6095.Radius}
+  - {from: 5972.Then, to: 6023.In}
+  - {from: 6015.Result, to: 6023.Point}
+  - {from: 6019.Self, to: 6023.Entity}
+  - {from: 6021.Self, to: 6023.Source}
+  - {from: 6023.Out, to: 6059.In}
+  - {from: 6051.Result, to: 6059.Point}
+  - {from: 6055.Self, to: 6059.Entity}
+  - {from: 6057.Self, to: 6059.Source}
+  - {from: 6059.Out, to: 6095.In}
+  - {from: 6087.Result, to: 6095.Point}
+  - {from: 6091.Self, to: 6095.Entity}
+  - {from: 6093.Self, to: 6095.Source}
+  - {from: 6095.Out, to: 6124.Exec}
+  - {from: 6118.Result, to: 6124.Condition}
+  - {from: 6124.True, to: 6129.Exec}
+  - {from: 6132.Then, to: 6140.Exec}
+  - {from: 6132.Other, to: 6136.Entity}
+  - {from: 6132.Other, to: 6166.Entity}
+  - {from: 6132.Point, to: 6160.target}
+  - {from: 6132.Point, to: 6166.Point, conversion: game_transform_to_cf}
+  - {from: 6136.Value, to: 6140.Condition}
+  - {from: 6140.True, to: 6166.Exec}
+  - {from: 6160.Result, to: 6166.Direction}
+  - {from: 6164.Self, to: 6166.Source}
+- id: 26
+  kind: function
+  name: Die
+  entry_id: 27
+  return_id: 29
+  call_depth_limit: 64
+  nodes:
+  - {id: 27, type: Function Entry}
+  - {id: 29, type: Return}
+  - id: 45
+    type: Behavior Expression
+    reference_id: 31
+    reference_name: dead > 0
+    inputs:
+      dead:
+        type: double
+        flags: 0
+        binding: {kind: variable, variable_id: 6, source_asset: Bloom}
+    outputs:
+      Result: {type: bool}
+  - {id: 51, type: Branch}
+  - id: 66
+    type: Behavior Expression
+    reference_id: 56
+    reference_name: dead = 1
+    inputs:
+      Exec: {id: 69, kind: exec}
+      dead:
+        id: 67
+        type: float
+        binding: {kind: variable, variable_id: 6, source_asset: Bloom}
+    outputs:
+      Then: {id: 70, kind: exec}
+      Result: {id: 68, type: float}
+  - id: 86
+    type: Self
+    outputs:
+      Self: {type_name: ecs.entity}
+  - id: 88
+    type: GetEntity_GameSpawnRequest
+    outputs:
+      Value.prototype: {}
+      Value.delay: {}
+  - {id: 93, type: Spawn Prototype}
+  - id: 98
+    type: SetEntity_GameTransform
+    inputs:
+      Value:
+        binding: {kind: component, component: GAME.GameTransform}
+  - id: 104
+    type: Self
+    outputs:
+      Self: {type_name: ecs.entity}
+  - {id: 106, type: Destroy Entity}
+  edges:
+  - {from: 27.Exec, to: 51.Exec}
+  - {from: 45.Result, to: 51.Condition}
+  - {from: 51.True, to: 29.Exec}
+  - {from: 51.False, to: 66.Exec}
+  - {from: 66.Then, to: 93.Exec}
+  - {from: 86.Self, to: 88.Entity}
+  - {from: 88.Value.prototype, to: 93.Prototype, conversion: To Name}
+  - {from: 93.Then, to: 98.Exec}
+  - {from: 93.Entity, to: 98.Entity}
+  - {from: 98.Then, to: 106.Exec}
+  - {from: 104.Self, to: 106.Entity}
+  - {from: 106.Then, to: 29.Exec}
+- {id: 31, kind: function, math_expression: dead > 0, entry_id: 32}
+- {id: 56, kind: function, math_expression: dead = 1, entry_id: 72}
+- id: 110
+  kind: function
+  name: Mortar
+  entry_id: 111
+  return_id: 113
+  call_depth_limit: 64
+  nodes:
+  - {id: 111, type: Function Entry}
+  - {id: 113, type: Return}
+  - id: 115
+    type: Get Global Variable
+    inputs: {Name: Player}
+    outputs:
+      Value: {type: handle, type_name: ecs.entity}
+  - {id: 118, type: GetEntity_GameTransform}
+  - id: 142
+    type: Behavior Expression
+    reference_id: 121
+    reference_name: 2 + 2 * phase
+    inputs:
+      phase:
+        type: double
+        binding: {kind: variable, variable_id: 3, source_asset: Bloom}
+    outputs:
+      Result: {type: double}
+  - {id: 145, type: ForLoop}
+  - id: 244
+    type: Behavior Expression
+    reference_id: 152
+    reference_name: direction(atan2(p.y - pos.y - 160 - abs(p.x - pos.x) * 0.25, p.x - pos.x) + (k - 1 - phase) * 0.22 + (rand() - 0.5) * 0.1)
+    inputs:
+      p: {type: struct, type_name: GameTransform}
+      pos:
+        type: struct
+        type_name: GameTransform
+        binding: {kind: component, component: GAME.GameTransform}
+      k: {type: int}
+      phase:
+        type: double
+        binding: {kind: variable, variable_id: 3, source_asset: Bloom}
+    outputs:
+      Result: {type: struct, type_name: CF_V2}
+  - id: 365
+    type: Behavior Expression
+    reference_id: 346
+    reference_name: pos + d * 46
+    inputs:
+      pos:
+        type: struct
+        type_name: GameTransform
+        binding: {kind: component, component: GAME.GameTransform}
+      d: {type: struct, type_name: CF_V2}
+    outputs:
+      Result: {type: struct, type_name: GameTransform}
+  - id: 369
+    type: Self
+    outputs:
+      Self: {type_name: ecs.entity}
+  - id: 371
+    type: Call Function
+    reference_id: 1
+    reference_name: Launch Shot
+    reference_asset: ShotActions
+    inputs:
+      Prototype: {id: 374, declaration_id: 6, type: name, kind: data, default: BloomSpore}
+      Origin: {declaration_id: 7, type: struct, type_name: CF_V2, kind: data}
+      Direction: {declaration_id: 8, type: struct, type_name: CF_V2, kind: data}
+      Source: {declaration_id: 9, type: handle, type_name: ecs.entity, kind: data}
+      Hardpoint: {declaration_id: 10, type: int, kind: data}
+    outputs:
+      Then: {id: 373}
+      Entity: {id: 379, declaration_id: 11, type: handle, type_name: ecs.entity, kind: data}
+  - id: 380
+    type: Play Sound
+    inputs: {Frequency: 180.0, End Frequency: 90.0, Duration: 0.35, Volume: 0.4, Noise: 0.6}
+  - id: 389
+    type: Emit Directed Particles
+    inputs:
+      Position:
+        type_name: GameTransform
+        binding: {kind: component, component: GAME.GameTransform}
+        default: null
+      Direction:
+        default: {x: 0.0, "y": -1.0}
+      Count: 14
+      Color: 3649896447
+      End Color: 0
+      Min Speed: 60.0
+      Max Speed: 220.0
+      Min Lifetime: 0.3
+      Max Lifetime: 0.8
+      Min Size: 1.0
+      Max Size: 2.4
+      Spread: 1.2
+      Min Drag: 1.5
+      Max Drag: 4.0
+      Min Emission: 0.6
+      Max Emission: 1.1
+      Size Exponent: 1.0
+      Shape: 4
+  edges:
+  - {from: 111.Exec, to: 145.Exec}
+  - {from: 115.Value, to: 118.Entity}
+  - {from: 118.Value, to: 244.p}
+  - {from: 142.Result, to: 145.LastIndex, conversion: To Integer}
+  - {from: 145.Body, to: 371.Exec}
+  - {from: 145.Index, to: 244.k}
+  - {from: 145.Completed, to: 380.Exec}
+  - {from: 244.Result, to: 365.d}
+  - {from: 244.Result, to: 371.Direction}
+  - {from: 365.Result, to: 371.Origin}
+  - {from: 369.Self, to: 371.Source}
+  - {from: 380.Then, to: 389.Exec}
+  - {from: 389.Then, to: 113.Exec}
+- {id: 121, kind: function, math_expression: 2 + 2 * phase, entry_id: 122}
+- id: 152
+  kind: function
+  math_expression: direction(atan2(p.y - pos.y - 160 - abs(p.x - pos.x) * 0.25, p.x - pos.x) + (k - 1 - phase) * 0.22 + (rand() - 0.5) * 0.1)
+  entry_id: 251
+- {id: 346, kind: function, math_expression: pos + d * 46, entry_id: 347}
+- id: 411
+  kind: function
+  name: Beat
+  entry_id: 412
+  return_id: 414
+  call_depth_limit: 64
+  nodes:
+  - {id: 412, type: Function Entry}
+  - {id: 414, type: Return}
+  - id: 416
+    type: Get Global Variable
+    inputs: {Name: Player}
+    outputs:
+      Value: {type: handle, type_name: ecs.entity}
+  - {id: 419, type: GetEntity_GameTransform}
+  - id: 422
+    type: Add Shockwave
+    inputs:
+      Position:
+        type_name: GameTransform
+        binding: {kind: component, component: GAME.GameTransform}
+        default: null
+      Radius: 440.0
+      Thickness: 26.0
+      Strength: 1.3
+      Duration: 0.8
+  - id: 430
+    type: Add Camera Trauma
+    inputs: {Amount: 0.45}
+  - id: 434
+    type: Flash Screen
+    inputs: {Color: 4283422975, Amount: 0.1, Duration: 0.35}
+  - id: 440
+    type: Play Sound
+    inputs: {Frequency: 64.0, End Frequency: 30.0, Duration: 0.7, Volume: 0.8, Noise: 0.5}
+  - id: 449
+    type: Emit Directed Particles
+    inputs:
+      Position:
+        type_name: GameTransform
+        binding: {kind: component, component: GAME.GameTransform}
+        default: null
+      Direction:
+        default: {x: 1.0, "y": 0.0}
+      Count: 60
+      Color: 1073733887
+      End Color: 0
+      Min Speed: 380.0
+      Max Speed: 520.0
+      Min Lifetime: 0.4
+      Max Lifetime: 0.8
+      Min Size: 0.8
+      Max Size: 1.8
+      Spread: 3.14159
+      Min Drag: 1.5
+      Max Drag: 4.0
+      Min Emission: 1.0
+      Max Emission: 1.6
+      Size Exponent: 1.0
+      Shape: 4
+  - id: 490
+    type: Behavior Expression
+    reference_id: 471
+    reference_name: distance(p, pos) < 420
+    inputs:
+      p: {type: struct, type_name: GameTransform}
+      pos:
+        type: struct
+        type_name: GameTransform
+        binding: {kind: component, component: GAME.GameTransform}
+    outputs:
+      Result: {type: bool}
+  - {id: 497, type: Branch}
+  - id: 502
+    type: Get Global Variable
+    inputs: {Name: Player}
+    outputs:
+      Value: {type: handle, type_name: ecs.entity}
+  - id: 534
+    type: Behavior Expression
+    reference_id: 505
+    reference_name: normalize(p - pos + vec2(0.01, 0))
+    inputs:
+      p: {type: struct, type_name: GameTransform}
+      pos:
+        type: struct
+        type_name: GameTransform
+        binding: {kind: component, component: GAME.GameTransform}
+    outputs:
+      Result: {type: struct, type_name: CF_V2}
+  - id: 538
+    type: Self
+    outputs:
+      Self: {type_name: ecs.entity}
+  - id: 540
+    type: Send Event
+    reference_name: Hit
+    inputs:
+      Amount: {id: 544, declaration_id: 1, type: int, default: 9}
+      Source: {declaration_id: 2}
+      Point: {declaration_id: 3, type: struct, type_name: CF_V2}
+      Direction: {declaration_id: 4, type: struct, type_name: CF_V2}
+      Element: {declaration_id: 5, type: int}
+      Knockback: {declaration_id: 6, type: float, default: 560.0}
+    outputs:
+      Then: {id: 543}
+  - id: 583
+    type: Behavior Expression
+    reference_id: 550
+    reference_name: phase > 0 && nests % 2 < 1
+    inputs:
+      phase:
+        type: double
+        flags: 0
+        binding: {kind: variable, variable_id: 3, source_asset: Bloom}
+      nests:
+        type: double
+        binding: {kind: variable, variable_id: 20, source_asset: Bloom}
+    outputs:
+      Result: {type: bool}
+  - {id: 590, type: Branch}
+  - id: 625
+    type: Behavior Expression
+    reference_id: 595
+    reference_name: pos + direction(rand() * 6.283) * 170
+    inputs:
+      pos:
+        type: struct
+        type_name: GameTransform
+        binding: {kind: component, component: GAME.GameTransform}
+    outputs:
+      Result: {type: struct, type_name: GameTransform}
+  - id: 628
+    type: Spawn Prototype
+    inputs: {Prototype: GlowmiteNest}
+  - {id: 633, type: SetEntity_GameTransform}
+  - id: 653
+    type: Behavior Expression
+    reference_id: 639
+    reference_name: nests += 1
+    inputs:
+      Exec: {id: 656, kind: exec}
+      nests:
+        id: 654
+        type: float
+        binding: {kind: variable, variable_id: 20, source_asset: Bloom}
+    outputs:
+      Then: {id: 657, kind: exec}
+      Result: {id: 655, type: float}
+  - id: 691
+    type: Behavior Expression
+    reference_id: 677
+    reference_name: nests += 1
+    inputs:
+      Exec: {id: 694, kind: exec}
+      nests:
+        id: 692
+        type: float
+        binding: {kind: variable, variable_id: 20, source_asset: Bloom}
+    outputs:
+      Then: {id: 695, kind: exec}
+      Result: {id: 693, type: float}
+  edges:
+  - {from: 412.Exec, to: 422.Exec}
+  - {from: 416.Value, to: 419.Entity}
+  - {from: 419.Value, to: 490.p}
+  - {from: 419.Value, to: 534.p}
+  - {from: 419.Value, to: 540.Point, conversion: game_transform_to_cf}
+  - {from: 422.Then, to: 430.Exec}
+  - {from: 430.Then, to: 434.Exec}
+  - {from: 434.Then, to: 440.Exec}
+  - {from: 440.Then, to: 449.Exec}
+  - {from: 449.Then, to: 497.Exec}
+  - {from: 490.Result, to: 497.Condition}
+  - {from: 497.True, to: 540.Exec}
+  - {from: 497.False, to: 590.Exec}
+  - {from: 502.Value, to: 540.Entity}
+  - {from: 534.Result, to: 540.Direction}
+  - {from: 538.Self, to: 540.Source}
+  - {from: 540.Then, to: 590.Exec}
+  - {from: 583.Result, to: 590.Condition}
+  - {from: 590.True, to: 628.Exec}
+  - {from: 590.False, to: 691.Exec}
+  - {from: 625.Result, to: 633.Value}
+  - {from: 628.Then, to: 633.Exec}
+  - {from: 628.Entity, to: 633.Entity}
+  - {from: 633.Then, to: 653.Exec}
+  - {from: 653.Then, to: 414.Exec}
+  - {from: 691.Then, to: 414.Exec}
+- id: 471
+  kind: function
+  math_expression: distance(p, pos) < 420
+  entry_id: 472
+- id: 505
+  kind: function
+  math_expression: normalize(p - pos + vec2(0.01, 0))
+  entry_id: 506
+- id: 550
+  kind: function
+  math_expression: phase > 0 && nests % 2 < 1
+  entry_id: 551
+- id: 595
+  kind: function
+  math_expression: pos + direction(rand() * 6.283) * 170
+  entry_id: 596
+- {id: 639, kind: function, math_expression: nests += 1, entry_id: 659}
+- {id: 677, kind: function, math_expression: nests += 1, entry_id: 697}
+- id: 715
+  kind: function
+  name: Scorch
+  entry_id: 716
+  return_id: 718
+  call_depth_limit: 64
+  nodes:
+  - {id: 716, type: Function Entry}
+  - {id: 718, type: Return}
+  - id: 749
+    type: Behavior Expression
+    reference_id: 720
+    reference_name: pos + direction(0.0 + spin) * 132
+    inputs:
+      pos:
+        type: struct
+        type_name: GameTransform
+        binding: {kind: component, component: GAME.GameTransform}
+      spin:
+        type: double
+        binding: {kind: variable, variable_id: 18, source_asset: Bloom}
+    outputs:
+      Result: {type: struct, type_name: GameTransform}
+  - id: 753
+    type: Fluid At
+    inputs: {Radius: 34.0}
+  - id: 789
+    type: Behavior Expression
+    reference_id: 760
+    reference_name: pos + direction(1.5708 + spin) * 132
+    inputs:
+      pos:
+        type: struct
+        type_name: GameTransform
+        binding: {kind: component, component: GAME.GameTransform}
+      spin:
+        type: double
+        binding: {kind: variable, variable_id: 18, source_asset: Bloom}
+    outputs:
+      Result: {type: struct, type_name: GameTransform}
+  - id: 793
+    type: Fluid At
+    inputs: {Radius: 34.0}
+  - id: 829
+    type: Behavior Expression
+    reference_id: 800
+    reference_name: pos + direction(3.1416 + spin) * 132
+    inputs:
+      pos:
+        type: struct
+        type_name: GameTransform
+        binding: {kind: component, component: GAME.GameTransform}
+      spin:
+        type: double
+        binding: {kind: variable, variable_id: 18, source_asset: Bloom}
+    outputs:
+      Result: {type: struct, type_name: GameTransform}
+  - id: 833
+    type: Fluid At
+    inputs: {Radius: 34.0}
+  - id: 869
+    type: Behavior Expression
+    reference_id: 840
+    reference_name: pos + direction(4.7124 + spin) * 132
+    inputs:
+      pos:
+        type: struct
+        type_name: GameTransform
+        binding: {kind: component, component: GAME.GameTransform}
+      spin:
+        type: double
+        binding: {kind: variable, variable_id: 18, source_asset: Bloom}
+    outputs:
+      Result: {type: struct, type_name: GameTransform}
+  - id: 873
+    type: Fluid At
+    inputs: {Radius: 34.0}
+  - id: 903
+    type: Behavior Expression
+    reference_id: 880
+    reference_name: heat = max(max(a, b), max(c, d))
+    inputs:
+      Exec: {id: 910, kind: exec}
+      heat:
+        id: 904
+        type: float
+        binding: {kind: variable, variable_id: 19, source_asset: Bloom}
+      a: {type: float}
+      b: {type: float}
+      c: {type: float}
+      d: {type: float}
+    outputs:
+      Then: {id: 911, kind: exec}
+      Result: {id: 909, type: float}
+  - id: 954
+    type: Behavior Expression
+    reference_id: 940
+    reference_name: heat > 0.8
+    inputs:
+      heat:
+        type: double
+        flags: 0
+        binding: {kind: variable, variable_id: 19, source_asset: Bloom}
+    outputs:
+      Result: {type: bool}
+  - {id: 960, type: Branch}
+  - id: 991
+    type: Behavior Expression
+    reference_id: 965
+    reference_name: pend += 10 + heat * 6
+    inputs:
+      Exec: {id: 995, kind: exec}
+      pend:
+        id: 992
+        type: float
+        binding: {kind: variable, variable_id: 8, source_asset: Bloom}
+      heat:
+        type: double
+        binding: {kind: variable, variable_id: 19, source_asset: Bloom}
+    outputs:
+      Then: {id: 996, kind: exec}
+      Result: {id: 994, type: float}
+  - id: 1050
+    type: Behavior Expression
+    reference_id: 1028
+    reference_name: health = max(health - floor(pend), 0)
+    inputs:
+      Exec: {id: 1054, kind: exec}
+      health:
+        id: 1051
+        type: int
+        binding: {kind: component_field, component: GAME.GameHealth, field: current}
+      pend:
+        type: double
+        binding: {kind: variable, variable_id: 8, source_asset: Bloom}
+    outputs:
+      Then: {id: 1055, kind: exec}
+      Result: {id: 1053, type: int}
+  - id: 1107
+    type: Behavior Expression
+    reference_id: 1093
+    reference_name: pend -= floor(pend)
+    inputs:
+      Exec: {id: 1110, kind: exec}
+      pend:
+        id: 1108
+        type: float
+        binding: {kind: variable, variable_id: 8, source_asset: Bloom}
+    outputs:
+      Then: {id: 1111, kind: exec}
+      Result: {id: 1109, type: float}
+  - id: 1131
+    type: Self
+    outputs:
+      Self: {type_name: ecs.entity}
+  - id: 1163
+    type: Behavior Expression
+    reference_id: 1133
+    reference_name: pos + direction(rand() * 6.283) * 70
+    inputs:
+      pos:
+        type: struct
+        type_name: GameTransform
+        binding: {kind: component, component: GAME.GameTransform}
+    outputs:
+      Result: {type: struct, type_name: GameTransform}
+  - id: 1166
+    type: Self
+    outputs:
+      Self: {type_name: ecs.entity}
+  - id: 1168
+    type: Damage Material
+    inputs: {Radius: 24.0, Energy: 5.0, Cause: 1}
+  - id: 1177
+    type: Self
+    outputs:
+      Self: {type_name: ecs.entity}
+  - id: 1179
+    type: Flash Entity
+    inputs: {Color: 4289749247, Amount: 0.8}
+  - id: 1195
+    type: Behavior Expression
+    reference_id: 1185
+    reference_name: flash = 1
+    inputs:
+      Exec: {id: 1198, kind: exec}
+      flash:
+        id: 1196
+        type: float
+        binding: {kind: variable, variable_id: 7, source_asset: Bloom}
+    outputs:
+      Then: {id: 1199, kind: exec}
+      Result: {id: 1197, type: float}
+  - id: 1215
+    type: Play Sound
+    inputs:
+      Frequency: 900.0
+      End Frequency: 300.0
+      Duration: 0.25
+      Volume: 0.3
+      Noise: 0.9
+  - id: 1238
+    type: Behavior Expression
+    reference_id: 1224
+    reference_name: health <= 0
+    inputs:
+      health:
+        type: double
+        flags: 0
+        binding: {kind: component_field, component: GAME.GameHealth, field: current}
+    outputs:
+      Result: {type: bool}
+  - {id: 1244, type: Branch}
+  - {id: 1249, type: Call Function, reference_id: 26, reference_name: Die}
+  edges:
+  - {from: 716.Exec, to: 903.Exec}
+  - {from: 749.Result, to: 753.Point}
+  - {from: 753.Temperature, to: 903.a}
+  - {from: 789.Result, to: 793.Point}
+  - {from: 793.Temperature, to: 903.b}
+  - {from: 829.Result, to: 833.Point}
+  - {from: 833.Temperature, to: 903.c}
+  - {from: 869.Result, to: 873.Point}
+  - {from: 873.Temperature, to: 903.d}
+  - {from: 903.Then, to: 960.Exec}
+  - {from: 954.Result, to: 960.Condition}
+  - {from: 960.True, to: 991.Exec}
+  - {from: 960.False, to: 718.Exec}
+  - {from: 991.Then, to: 1050.Exec}
+  - {from: 1050.Then, to: 1107.Exec}
+  - {from: 1107.Then, to: 1168.In}
+  - {from: 1131.Self, to: 1168.Entity}
+  - {from: 1163.Result, to: 1168.Point}
+  - {from: 1166.Self, to: 1168.Source}
+  - {from: 1168.Out, to: 1179.Exec}
+  - {from: 1177.Self, to: 1179.Entity}
+  - {from: 1179.Then, to: 1195.Exec}
+  - {from: 1195.Then, to: 1215.Exec}
+  - {from: 1215.Then, to: 1244.Exec}
+  - {from: 1238.Result, to: 1244.Condition}
+  - {from: 1244.True, to: 1249.Exec}
+  - {from: 1244.False, to: 718.Exec}
+- id: 720
+  kind: function
+  math_expression: pos + direction(0.0 + spin) * 132
+  entry_id: 721
+- id: 760
+  kind: function
+  math_expression: pos + direction(1.5708 + spin) * 132
+  entry_id: 761
+- id: 800
+  kind: function
+  math_expression: pos + direction(3.1416 + spin) * 132
+  entry_id: 801
+- id: 840
+  kind: function
+  math_expression: pos + direction(4.7124 + spin) * 132
+  entry_id: 841
+- id: 880
+  kind: function
+  math_expression: heat = max(max(a, b), max(c, d))
+  entry_id: 913
+- {id: 940, kind: function, math_expression: heat > 0.8, entry_id: 941}
+- {id: 965, kind: function, math_expression: pend += 10 + heat * 6, entry_id: 998}
+- id: 1028
+  kind: function
+  math_expression: health = max(health - floor(pend), 0)
+  entry_id: 1057
+- {id: 1093, kind: function, math_expression: pend -= floor(pend), entry_id: 1113}
+- id: 1133
+  kind: function
+  math_expression: pos + direction(rand() * 6.283) * 70
+  entry_id: 1134
+- {id: 1185, kind: function, math_expression: flash = 1, entry_id: 1201}
+- {id: 1224, kind: function, math_expression: health <= 0, entry_id: 1225}
+- {id: 1254, kind: function, math_expression: cx = pos.x, entry_id: 1269}
+- {id: 1283, kind: function, math_expression: cy = pos.y, entry_id: 1298}
+- {id: 1312, kind: function, math_expression: armor = 1, entry_id: 1328}
+- {id: 1342, kind: function, math_expression: reach = 0.4, entry_id: 1358}
+- id: 1387
+  kind: function
+  math_expression: direction(floor(i / 10) * 1.2566 + 0.3) * (36 + (i % 10) * 19)
+  entry_id: 1388
+- {id: 1449, kind: function, math_expression: pos + o, entry_id: 1450}
+- {id: 1505, kind: function, math_expression: t += dt, entry_id: 1524}
+- id: 1540
+  kind: function
+  math_expression: beat += dt * (0.8 + 0.2 * step(0.5, state) + 0.5 * phase + 1.2 * step(3.5, state) * step(state, 4.5))
+  entry_id: 1628
+- id: 1711
+  kind: function
+  math_expression: pulse = exp(-fract(beat) * 9) + 0.6 * exp(-abs(fract(beat) - 0.24) * 16)
+  entry_id: 1779
+- {id: 1850, kind: function, math_expression: state, entry_id: 1851}
+- id: 1875
+  kind: function
+  math_expression: distance(p, vec2(cx, cy)) < 600.0
+  entry_id: 1876
+- {id: 1912, kind: function, math_expression: state = 1, entry_id: 1928}
+- {id: 1942, kind: function, math_expression: t = 0, entry_id: 1958}
+- {id: 1972, kind: function, math_expression: fired = 0, entry_id: 1988}
+- id: 2041
+  kind: function
+  math_expression: target = (vec2(cx + sin(t * 0.6 + atk) * 60, cy + cos(t * 0.45) * 30) - pos) * 1.4
+  entry_id: 2125
+- id: 2212
+  kind: function
+  math_expression: reach += (0.42 - reach) * min(1, dt * 3)
+  entry_id: 2256
+- {id: 2297, kind: function, math_expression: spin += dt * 0.25, entry_id: 2323}
+- id: 2346
+  kind: function
+  math_expression: charge = max(0, charge - dt * 3)
+  entry_id: 2379
+- id: 2409
+  kind: function
+  math_expression: t > 2.2 - phase * 0.8
+  entry_id: 2410
+- {id: 2447, kind: function, math_expression: atk += 1, entry_id: 2467}
+- {id: 2485, kind: function, math_expression: state = 2 + atk % 3, entry_id: 2514}
+- {id: 2540, kind: function, math_expression: t = 0, entry_id: 2556}
+- {id: 2570, kind: function, math_expression: fired = 0, entry_id: 2586}
+- id: 2600
+  kind: function
+  math_expression: target = (vec2(cx, cy) - pos) * 1.5
+  entry_id: 2634
+- id: 2673
+  kind: function
+  math_expression: charge = clamp(t / 0.7, 0, 1)
+  entry_id: 2706
+- {id: 2736, kind: function, math_expression: t < 0.05, entry_id: 2737}
+- id: 2770
+  kind: function
+  math_expression: t > 0.7 + fired * 0.4 && fired < 3
+  entry_id: 2771
+- {id: 2822, kind: function, math_expression: fired += 1, entry_id: 2842}
+- {id: 2860, kind: function, math_expression: t > 2.1, entry_id: 2861}
+- {id: 2885, kind: function, math_expression: state = 1, entry_id: 2901}
+- {id: 2915, kind: function, math_expression: t = 0, entry_id: 2931}
+- {id: 2945, kind: function, math_expression: fired = 0, entry_id: 2961}
+- id: 2975
+  kind: function
+  math_expression: target = (vec2(cx, cy) - pos) * 1.5
+  entry_id: 3009
+- id: 3048
+  kind: function
+  math_expression: reach += ((0.75 + 0.15 * phase) - reach) * min(1, dt * 5)
+  entry_id: 3105
+- id: 3158
+  kind: function
+  math_expression: charge = clamp(t / 0.8, 0, 1) * step(t, 0.8)
+  entry_id: 3202
+- {id: 3243, kind: function, math_expression: t < 0.05, entry_id: 3244}
+- {id: 3277, kind: function, math_expression: t > 0.8, entry_id: 3278}
+- id: 3302
+  kind: function
+  math_expression: reach += ((1.05 + 0.3 * phase) - reach) * min(1, dt * 6)
+  entry_id: 3359
+- id: 3412
+  kind: function
+  math_expression: spin += dt * (1.5 + 0.7 * phase) * (1 - 2 * (atk % 2)) * min(1, (t - 0.8) * 2)
+  entry_id: 3505
+- id: 3592
+  kind: function
+  math_expression: t > 0.8 + fired * 0.6
+  entry_id: 3593
+- {id: 3639, kind: function, math_expression: fired += 1, entry_id: 3659}
+- id: 3677
+  kind: function
+  math_expression: t > 3.2 + phase * 0.8
+  entry_id: 3678
+- {id: 3715, kind: function, math_expression: state = 1, entry_id: 3731}
+- {id: 3745, kind: function, math_expression: t = 0, entry_id: 3761}
+- {id: 3775, kind: function, math_expression: fired = 0, entry_id: 3791}
+- id: 3805
+  kind: function
+  math_expression: target = (vec2(cx, cy) - pos) * 1.5
+  entry_id: 3839
+- id: 3878
+  kind: function
+  math_expression: charge = clamp(t / 1.1, 0, 1)
+  entry_id: 3911
+- id: 3941
+  kind: function
+  math_expression: reach += (0.25 - reach) * min(1, dt * 4)
+  entry_id: 3985
+- {id: 4026, kind: function, math_expression: t < 0.05, entry_id: 4027}
+- id: 4060
+  kind: function
+  math_expression: t > 1.1 && fired < 1
+  entry_id: 4061
+- {id: 4101, kind: function, math_expression: fired = 1, entry_id: 4117}
+- {id: 4131, kind: function, math_expression: charge = 0, entry_id: 4147}
+- {id: 4161, kind: function, math_expression: t > 1.8, entry_id: 4162}
+- {id: 4186, kind: function, math_expression: state = 1, entry_id: 4202}
+- {id: 4216, kind: function, math_expression: t = 0, entry_id: 4232}
+- {id: 4246, kind: function, math_expression: fired = 0, entry_id: 4262}
+- {id: 4285, kind: function, math_expression: n > 0, entry_id: 4286}
+- id: 4312
+  kind: function
+  math_expression: (pos - c) * 1400 + velocity * 60 + (pos - c) * 400 * pulse
+  entry_id: 4313
+- {id: 4374, kind: function, math_expression: shell = n, entry_id: 4389}
+- id: 4401
+  kind: function
+  math_expression: shell0 = max(shell0, shell)
+  entry_id: 4420
+- id: 4436
+  kind: function
+  math_expression: armor = clamp(0.2 + 1.6 * (1 - shell / max(shell0, 1)), 0.2, 1)
+  entry_id: 4496
+- {id: 4552, kind: function, math_expression: tear -= dt, entry_id: 4571}
+- id: 4587
+  kind: function
+  math_expression: shell < prev - 0.5 && tear <= 0
+  entry_id: 4588
+- {id: 4631, kind: function, math_expression: tear = 0.06, entry_id: 4647}
+- {id: 4680, kind: function, math_expression: normalize(pos - p), entry_id: 4681}
+- {id: 4699, kind: function, math_expression: p + d * 5, entry_id: 4700}
+- {id: 4733, kind: function, math_expression: prev = shell, entry_id: 4748}
+- {id: 4760, kind: function, math_expression: heading = spin, entry_id: 4775}
+- id: 4795
+  kind: function
+  math_expression: state > 0 && dead < 1
+  entry_id: 4796
+- {id: 4833, kind: function, math_expression: look -= dt, entry_id: 4852}
+- {id: 4868, kind: function, math_expression: look <= 0, entry_id: 4869}
+- {id: 4893, kind: function, math_expression: look = 0.2, entry_id: 4909}
+- {id: 4926, kind: function, math_expression: fract(beat) < lastf, entry_id: 4927}
+- {id: 4970, kind: function, math_expression: lastf = fract(beat), entry_id: 4988}
+- id: 5003
+  kind: function
+  math_expression: phase < 1 && health < maximum * 0.5
+  entry_id: 5004
+- {id: 5047, kind: function, math_expression: phase = 1, entry_id: 5063}
+- {id: 5077, kind: function, math_expression: 'pos + vec2(0, -200)', entry_id: 5078}
+- {id: 5142, kind: function, math_expression: health / maximum, entry_id: 5143}
+- id: 5172
+  kind: function
+  math_expression: light = 0.8 + pulse * 1.2 + charge * 1.5
+  entry_id: 5214
+- id: 5264
+  kind: function
+  math_expression: flash = max(0, flash - dt * 12)
+  entry_id: 5297
+- {id: 5357, kind: function, math_expression: h, entry_id: 5358}
+- id: 5379
+  kind: function
+  math_expression: flash = max(0, flash - dt * 12)
+  entry_id: 5412
+- id: 5466
+  kind: function
+  math_expression: pend += amount * armor * (1 + 0.6 * step(4.5, element) * step(element, 5.5))
+  entry_id: 5529
+- id: 5587
+  kind: function
+  math_expression: health = max(health - floor(pend), 0)
+  entry_id: 5616
+- {id: 5652, kind: function, math_expression: pend -= floor(pend), entry_id: 5672}
+- id: 5698
+  kind: function
+  math_expression: flash = max(flash, 0.1 + 0.15 * armor)
+  entry_id: 5731
+- {id: 5761, kind: function, math_expression: dir * -1, entry_id: 5762}
+- id: 5803
+  kind: function
+  math_expression: 260 + armor * 600 + rand() * 120
+  entry_id: 5804
+- id: 5849
+  kind: function
+  math_expression: 10 + 16 * step(4.5, element) * step(element, 5.5) + 8 * step(2.5, element) * step(element, 3.5) + 4 * step(0.5, element) * step(element, 1.5) + sqrt(amount)
+  entry_id: 5850
+- {id: 5958, kind: function, math_expression: hits += 1, entry_id: 5978}
+- {id: 5996, kind: function, math_expression: point - dir * 18, entry_id: 5997}
+- {id: 6032, kind: function, math_expression: point - dir * 48, entry_id: 6033}
+- {id: 6068, kind: function, math_expression: point - dir * 80, entry_id: 6069}
+- {id: 6104, kind: function, math_expression: health <= 0, entry_id: 6105}
+- id: 6145
+  kind: function
+  math_expression: normalize(target - pos)
+  entry_id: 6146

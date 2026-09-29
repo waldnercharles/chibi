@@ -1,0 +1,11 @@
+name: WardenDeath
+components:
+  GAME.GameAppearance: {antialias: 2.0, color: 3906797312, height: 60.0, shape: Circle, width: 60.0}
+  GAME.GameLight2D: {color: 3906797567, intensity: 3.0, radius: 30.0}
+  GAME.GameMaterial:
+    emission_color: 3906797567
+    emission_intensity: 2.0
+    emission_multiplier: 1.0
+    scene: 3906797312
+  GAME.GameTransform: {}
+behaviors: [WardenDeath]

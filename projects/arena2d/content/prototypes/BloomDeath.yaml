@@ -1,0 +1,11 @@
+name: BloomDeath
+components:
+  GAME.GameAppearance: {antialias: 2.0, color: 4285194240, height: 60.0, shape: Circle, width: 60.0}
+  GAME.GameLight2D: {color: 4285194495, intensity: 3.0, radius: 30.0}
+  GAME.GameMaterial:
+    emission_color: 4285194495
+    emission_intensity: 2.0
+    emission_multiplier: 1.0
+    scene: 4285194240
+  GAME.GameTransform: {}
+behaviors: [BloomDeath]

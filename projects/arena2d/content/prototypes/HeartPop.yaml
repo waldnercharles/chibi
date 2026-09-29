@@ -1,0 +1,10 @@
+name: HeartPop
+components:
+  GAME.GameAppearance: {antialias: 2.0, color: 4109172480, height: 56.0, shape: Circle, width: 56.0}
+  GAME.GameMaterial:
+    emission_color: 4109172735
+    emission_intensity: 3.4
+    emission_multiplier: 1.0
+    scene: 4109172480
+  GAME.GameTransform: {}
+behaviors: [Glow]

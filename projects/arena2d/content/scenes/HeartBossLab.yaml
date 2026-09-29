@@ -1,0 +1,135 @@
+version: 1
+name: HeartBossLab
+physics:
+  gravity: {x: 0.0, "y": 240.0}
+seed: 13
+entities:
+- name: Player
+  prototype: Wren
+  components:
+    GameTransform: {x: 0.0, "y": 25835.0}
+  behaviors: [Hardpoints, PlayerEffects, ShipFlight, ShipHull]
+- name: Camera
+  prototype: WellCamera
+  components:
+    GameTransform: {x: 0.0, "y": 25835.0}
+  behaviors: [CameraFollow]
+- name: Lighting
+  prototype: WellLighting
+  behaviors: [Ambience, Atmosphere]
+- {name: FireMouse, prototype: FireMouse}
+- {name: FireStick, prototype: FireStick}
+- {name: SecondaryMouse, prototype: SecondaryMouse}
+- name: Run
+  prototype: RunState
+  behaviors: [Run]
+- name: HUD
+  prototype: WellHud
+  behaviors: [WellHudDisplay]
+- {name: Basalt deposits, prototype: BasaltDeposits}
+- {name: Ice deposits, prototype: IceDeposits}
+- {name: Slag deposits, prototype: SlagDeposits}
+- name: Heart deep
+  prototype: BackdropDeep
+  components:
+    GameBackdrop2D: {material: HeartDeep, parallax: 0.12, layer: 0, intensity: 1.0}
+- name: Heart far
+  prototype: BackdropFar
+  components:
+    GameBackdrop2D: {material: HeartRings, parallax: 0.45, layer: 1, intensity: 1.0, lit: true}
+- {name: Heart rock, prototype: StratumHeart}
+- name: Heart sanctum
+  prototype: Sanctum
+  components:
+    GameTransform: {x: 0.0, "y": 24330.0}
+  behaviors: [Sanctum]
+- name: Heart shop
+  prototype: ShopTerminal
+  components:
+    GameTransform: {x: -250.0, "y": 24454.0}
+  behaviors: [ShopScreen]
+- name: Heart refit
+  prototype: RefitBench
+  components:
+    GameTransform: {x: -120.0, "y": 24462.0}
+  behaviors: [RefitScreen]
+- name: Heart shrine
+  prototype: ResonanceShrine
+  components:
+    GameTransform: {x: 200.0, "y": 24434.0}
+  behaviors: [SkillScreen]
+- name: Heart light shards
+  prototype: Scatter
+  components:
+    GameScatter:
+      prototype: Lightshard
+      terrain: Heart
+      min: {x: -1600.0, "y": 24000.0}
+      max: {x: 1600.0, "y": 27000.0}
+      cell: 140.0
+      chance: 0.4
+      placement: Wall
+      clearance: 130.0
+      salt: 81
+      radius: 500.0
+- name: Heart mites
+  prototype: Scatter
+  components:
+    GameScatter:
+      prototype: MiteNest
+      terrain: Heart
+      min: {x: -1600.0, "y": 24700.0}
+      max: {x: 1600.0, "y": 25700.0}
+      cell: 520.0
+      chance: 0.3
+      placement: Air
+      clearance: 50.0
+      salt: 82
+      radius: 700.0
+- name: Heart prisms
+  prototype: Scatter
+  components:
+    GameScatter:
+      prototype: Prism
+      terrain: Heart
+      min: {x: -1600.0, "y": 24700.0}
+      max: {x: 1600.0, "y": 25700.0}
+      cell: 420.0
+      chance: 0.3
+      placement: Wall
+      clearance: 200.0
+      salt: 84
+      radius: 700.0
+- name: Heart welders
+  prototype: Scatter
+  components:
+    GameScatter:
+      prototype: Welder
+      terrain: Heart
+      min: {x: -1600.0, "y": 24700.0}
+      max: {x: 1600.0, "y": 25700.0}
+      cell: 560.0
+      chance: 0.3
+      placement: Air
+      clearance: 70.0
+      salt: 85
+      radius: 700.0
+- name: Heart repairs
+  prototype: Scatter
+  components:
+    GameScatter:
+      prototype: Repair
+      terrain: Heart
+      min: {x: -1600.0, "y": 24600.0}
+      max: {x: 1600.0, "y": 25800.0}
+      cell: 700.0
+      chance: 0.4
+      placement: Air
+      clearance: 30.0
+      salt: 86
+      radius: 700.0
+- name: Heart of the Well
+  prototype: Heart
+  components:
+    GameTransform: {x: 0.0, "y": 26285.0}
+  behaviors: [Heart]

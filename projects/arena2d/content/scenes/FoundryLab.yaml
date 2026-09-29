@@ -198,3 +198,21 @@ entities:
       clearance: 30.0
       salt: 70
       radius: 700.0
+- name: Crucible Colossus
+  prototype: Colossus
+  components:
+    GameTransform: {x: 0.0, "y": 23285.0}
+  behaviors: [Colossus]
+- name: Crucible Colossus seal
+  prototype: Seal
+  components:
+    GameTransform: {x: 0.0, "y": 23905.0}
+    GameGlobalBinding: {name: SealFoundry}
+- name: Quench tank west
+  prototype: WaterPool
+  components:
+    GameTransform: {x: -330.0, "y": 23545.0}
+- name: Quench tank east
+  prototype: WaterPool
+  components:
+    GameTransform: {x: 330.0, "y": 23545.0}

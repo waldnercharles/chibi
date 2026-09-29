@@ -1,4 +1,4 @@
-name: JellyDeath
+name: DriftjellyDeath
 components:
   GAME.GameAppearance: {antialias: 2.0, color: 4284469248, height: 26.0, shape: Circle, width: 26.0}
   GAME.GameMaterial:

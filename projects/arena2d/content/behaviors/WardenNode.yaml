@@ -1,0 +1,344 @@
+version: 3
+name: WardenNode
+id_counter: 715
+description: 'One crystal node of the Prism Warden''s lattice, attached to the spinning core: while WardenFire is on it charges and fires ricocheting prism bolts at the ship on its own staggered rhythm, glows with WardenCharge, and shatters when the core dies.'
+owner_type: ecs.entity
+variables:
+- {id: 1, name: shot, type: float}
+- {id: 2, name: cool, type: float}
+- {id: 3, name: glow, type: float}
+- {id: 528, name: doom, type: float}
+graphs:
+- kind: event
+  name: ""
+  nodes:
+  - id: 4
+    type: Event
+    reference_name: Tick
+    outputs:
+      DeltaSeconds: {type: float, kind: data}
+  - id: 7
+    type: Get Global Variable
+    inputs: {Name: WardenFire}
+    outputs:
+      Value: {type: float}
+  - id: 10
+    type: Get Global Variable
+    inputs: {Name: WardenCharge}
+    outputs:
+      Value: {type: float}
+  - id: 13
+    type: Get Global Variable
+    inputs: {Name: Player}
+    outputs:
+      Value: {type: handle, type_name: ecs.entity}
+  - id: 16
+    type: Has Component
+    inputs: {Component: GAME.GameTransform}
+  - {id: 20, type: Branch}
+  - id: 39
+    type: Behavior Expression
+    reference_id: 25
+    reference_name: cool <= 0
+    inputs:
+      cool:
+        type: double
+        flags: 0
+        binding: {kind: variable, variable_id: 2, source_asset: WardenNode}
+    outputs:
+      Result: {type: bool}
+  - {id: 45, type: Branch}
+  - id: 73
+    type: Behavior Expression
+    reference_id: 50
+    reference_name: cool = 0.8 + rand() * 1.0
+    inputs:
+      Exec: {id: 76, kind: exec}
+      cool:
+        id: 74
+        type: float
+        binding: {kind: variable, variable_id: 2, source_asset: WardenNode}
+    outputs:
+      Then: {id: 77, kind: exec}
+      Result: {id: 75, type: float}
+  - id: 130
+    type: Behavior Expression
+    reference_id: 106
+    reference_name: shot = (shot + dt) * step(0.5, f)
+    inputs:
+      Exec: {id: 135, kind: exec}
+      shot:
+        id: 131
+        type: float
+        binding: {kind: variable, variable_id: 1, source_asset: WardenNode}
+      dt:
+        type: double
+        binding: {kind: delta_time}
+      f: {type: float}
+    outputs:
+      Then: {id: 136, kind: exec}
+      Result: {id: 134, type: float}
+  - id: 209
+    type: Behavior Expression
+    reference_id: 166
+    reference_name: glow = max(clamp((shot - cool + 0.55) / 0.55, 0, 1), w)
+    inputs:
+      Exec: {id: 215, kind: exec}
+      glow:
+        id: 210
+        type: float
+        binding: {kind: variable, variable_id: 3, source_asset: WardenNode}
+      shot:
+        type: double
+        binding: {kind: variable, variable_id: 1, source_asset: WardenNode}
+      cool:
+        type: double
+        binding: {kind: variable, variable_id: 2, source_asset: WardenNode}
+      w: {type: float}
+    outputs:
+      Then: {id: 216, kind: exec}
+      Result: {id: 214, type: float}
+  - id: 265
+    type: Self
+    outputs:
+      Self: {type_name: ecs.entity}
+  - id: 267
+    type: Get Variable
+    reference_id: 3
+    reference_name: glow
+    outputs:
+      Value: {type: float}
+  - id: 269
+    type: Set Material Parameter
+    inputs:
+      Name: Charge
+      Value: {type_name: float}
+  - id: 287
+    type: Behavior Expression
+    reference_id: 275
+    reference_name: shot >= cool
+    inputs:
+      shot:
+        type: double
+        flags: 0
+        binding: {kind: variable, variable_id: 1, source_asset: WardenNode}
+      cool:
+        type: double
+        flags: 0
+        binding: {kind: variable, variable_id: 2, source_asset: WardenNode}
+    outputs:
+      Result: {type: bool}
+  - {id: 294, type: Branch}
+  - id: 309
+    type: Behavior Expression
+    reference_id: 299
+    reference_name: shot = 0
+    inputs:
+      Exec: {id: 312, kind: exec}
+      shot:
+        id: 310
+        type: float
+        binding: {kind: variable, variable_id: 1, source_asset: WardenNode}
+    outputs:
+      Then: {id: 313, kind: exec}
+      Result: {id: 311, type: float}
+  - id: 352
+    type: Behavior Expression
+    reference_id: 329
+    reference_name: cool = 0.9 + rand() * 0.9
+    inputs:
+      Exec: {id: 355, kind: exec}
+      cool:
+        id: 353
+        type: float
+        binding: {kind: variable, variable_id: 2, source_asset: WardenNode}
+    outputs:
+      Then: {id: 356, kind: exec}
+      Result: {id: 354, type: float}
+  - id: 385
+    type: Get Global Variable
+    inputs: {Name: Player}
+    outputs:
+      Value: {type: handle, type_name: ecs.entity}
+  - {id: 388, type: GetEntity_GameTransform}
+  - id: 434
+    type: Behavior Expression
+    reference_id: 391
+    reference_name: direction(atan2(p.y - pos.y, p.x - pos.x) + (rand() - 0.5) * 0.12)
+    inputs:
+      p: {type: struct, type_name: GameTransform}
+      pos:
+        type: struct
+        type_name: GameTransform
+        binding: {kind: component, component: GAME.GameTransform}
+    outputs:
+      Result: {type: struct, type_name: CF_V2}
+  - id: 504
+    type: Behavior Expression
+    reference_id: 485
+    reference_name: pos + d * 16
+    inputs:
+      pos:
+        type: struct
+        type_name: GameTransform
+        binding: {kind: component, component: GAME.GameTransform}
+      d: {type: struct, type_name: CF_V2}
+    outputs:
+      Result: {type: struct, type_name: GameTransform}
+  - id: 508
+    type: Self
+    outputs:
+      Self: {type_name: ecs.entity}
+  - id: 510
+    type: Call Function
+    reference_id: 1
+    reference_name: Launch Shot
+    reference_asset: ShotActions
+    inputs:
+      Prototype: {id: 513, declaration_id: 6, type: name, kind: data, default: PrismBolt}
+      Origin: {declaration_id: 7, type: struct, type_name: CF_V2, kind: data}
+      Direction: {declaration_id: 8, type: struct, type_name: CF_V2, kind: data}
+      Source: {declaration_id: 9, type: handle, type_name: ecs.entity, kind: data}
+      Hardpoint: {declaration_id: 10, type: int, kind: data}
+    outputs:
+      Then: {id: 512}
+      Entity: {id: 518, declaration_id: 11, type: handle, type_name: ecs.entity, kind: data}
+  - id: 519
+    type: Play Sound
+    inputs:
+      Frequency: 2200.0
+      End Frequency: 1300.0
+      Duration: 0.08
+      Volume: 0.14
+      Noise: 0.05
+  - id: 529
+    type: Self
+    outputs:
+      Self: {type_name: ecs.entity}
+  - id: 531
+    type: GetEntity_GameFollow
+    outputs:
+      Value.target: {}
+      Value.mode: {}
+      Value.offset: {}
+      Value.distance: {}
+      Value.stiffness: {}
+      Value.inherit_heading: {}
+  - id: 540
+    type: Has Component
+    inputs: {Component: GAME.GameTransform}
+  - {id: 544, type: Branch}
+  - id: 561
+    type: Behavior Expression
+    reference_id: 549
+    reference_name: doom += dt
+    inputs:
+      Exec: {id: 565, kind: exec}
+      doom:
+        id: 562
+        type: float
+        binding: {kind: variable, variable_id: 528, source_asset: WardenNode}
+      dt:
+        type: double
+        binding: {kind: delta_time}
+    outputs:
+      Then: {id: 566, kind: exec}
+      Result: {id: 564, type: float}
+  - id: 634
+    type: Behavior Expression
+    reference_id: 584
+    reference_name: doom > 0.12 + fract(abs(pos.x * 0.0131 + pos.y * 0.0071)) * 1.3
+    inputs:
+      doom:
+        type: double
+        flags: 0
+        binding: {kind: variable, variable_id: 528, source_asset: WardenNode}
+      pos:
+        type: struct
+        type_name: GameTransform
+        binding: {kind: component, component: GAME.GameTransform}
+    outputs:
+      Result: {type: bool}
+  - {id: 693, type: Branch}
+  - id: 698
+    type: Spawn Prototype
+    inputs: {Prototype: WardenShatter}
+  - id: 703
+    type: SetEntity_GameTransform
+    inputs:
+      Value:
+        binding: {kind: component, component: GAME.GameTransform}
+  - id: 709
+    type: Self
+    outputs:
+      Self: {type_name: ecs.entity}
+  - {id: 711, type: Destroy Entity}
+  edges:
+  - {from: 4.Then, to: 20.Exec}
+  - {from: 7.Value, to: 130.f}
+  - {from: 10.Value, to: 209.w}
+  - {from: 13.Value, to: 16.Entity}
+  - {from: 16.Value, to: 20.Condition}
+  - {from: 20.True, to: 45.Exec}
+  - {from: 39.Result, to: 45.Condition}
+  - {from: 45.True, to: 73.Exec}
+  - {from: 45.False, to: 130.Exec}
+  - {from: 73.Then, to: 130.Exec}
+  - {from: 130.Then, to: 209.Exec}
+  - {from: 209.Then, to: 269.Exec}
+  - {from: 265.Self, to: 269.Entity}
+  - {from: 267.Value, to: 269.Value}
+  - {from: 269.Then, to: 294.Exec}
+  - {from: 287.Result, to: 294.Condition}
+  - {from: 294.True, to: 309.Exec}
+  - {from: 294.False, to: 544.Exec}
+  - {from: 309.Then, to: 352.Exec}
+  - {from: 352.Then, to: 510.Exec}
+  - {from: 385.Value, to: 388.Entity}
+  - {from: 388.Value, to: 434.p}
+  - {from: 434.Result, to: 504.d}
+  - {from: 434.Result, to: 510.Direction}
+  - {from: 504.Result, to: 510.Origin}
+  - {from: 508.Self, to: 510.Source}
+  - {from: 510.Then, to: 519.Exec}
+  - {from: 519.Then, to: 544.Exec}
+  - {from: 529.Self, to: 531.Entity}
+  - {from: 531.Value.target, to: 540.Entity}
+  - {from: 540.Value, to: 544.Condition}
+  - {from: 544.False, to: 561.Exec}
+  - {from: 561.Then, to: 693.Exec}
+  - {from: 634.Result, to: 693.Condition}
+  - {from: 693.True, to: 698.Exec}
+  - {from: 698.Then, to: 703.Exec}
+  - {from: 698.Entity, to: 703.Entity}
+  - {from: 703.Then, to: 711.Exec}
+  - {from: 709.Self, to: 711.Entity}
+- {id: 25, kind: function, math_expression: cool <= 0, entry_id: 26}
+- id: 50
+  kind: function
+  math_expression: cool = 0.8 + rand() * 1.0
+  entry_id: 79
+- id: 106
+  kind: function
+  math_expression: shot = (shot + dt) * step(0.5, f)
+  entry_id: 138
+- id: 166
+  kind: function
+  math_expression: glow = max(clamp((shot - cool + 0.55) / 0.55, 0, 1), w)
+  entry_id: 218
+- {id: 275, kind: function, math_expression: shot >= cool, entry_id: 276}
+- {id: 299, kind: function, math_expression: shot = 0, entry_id: 315}
+- id: 329
+  kind: function
+  math_expression: cool = 0.9 + rand() * 0.9
+  entry_id: 358
+- id: 391
+  kind: function
+  math_expression: direction(atan2(p.y - pos.y, p.x - pos.x) + (rand() - 0.5) * 0.12)
+  entry_id: 439
+- {id: 485, kind: function, math_expression: pos + d * 16, entry_id: 486}
+- {id: 549, kind: function, math_expression: doom += dt, entry_id: 568}
+- id: 584
+  kind: function
+  math_expression: doom > 0.12 + fract(abs(pos.x * 0.0131 + pos.y * 0.0071)) * 1.3
+  entry_id: 642

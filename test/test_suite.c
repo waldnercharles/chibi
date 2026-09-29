@@ -1,3 +1,4 @@
+#include "render/scene_renderer.h"
 #include "test/instance_bank_fixture.h"
 #include "test/pending_fixture.h"
 #include "test/whole_array_op_fixture.h"
@@ -41,6 +42,11 @@ void run_entity_presence_checks();
 void test_surface_cpu();
 void test_shader_effects_cpu();
 void test_shader_image_cpu();
+int test_shader_graph_gpu();
+int test_shader_effects_gpu();
+int test_shader_image_gpu();
+int test_shader_program_gpu();
+int test_surface_gpu();
 void test_png_encoding();
 void test_physics();
 void test_materials();
@@ -118,6 +124,32 @@ void test_check(int ok, const char *msg)
 }
 
 static char *program_name;
+
+/* CPU/GPU parity for shader graphs needs a live GPU device. */
+static int shader_gpu_run()
+{
+    CF_Result result = cf_make_app(
+        "Shader GPU parity",
+        0,
+        0,
+        0,
+        256,
+        256,
+        CF_APP_OPTIONS_NO_AUDIO_BIT | CF_APP_OPTIONS_HIDDEN_BIT,
+        program_name
+    );
+    if (cf_is_error(result)) {
+        fprintf(stderr, "shader GPU app: %s\n", result.details);
+        return 1;
+    }
+    registry_validate();
+    app_scene_renderer_initialize();
+    int failed = test_shader_graph_gpu() | test_shader_effects_gpu() |
+                 test_shader_image_gpu() | test_shader_program_gpu() |
+                 test_surface_gpu();
+    cf_destroy_app();
+    return failed;
+}
 
 TEST_CASE(all_checks)
 {
@@ -290,6 +322,9 @@ int main(int argc, char **argv)
         (!strcmp(argv[1], "--radiance") || !strcmp(argv[1], "--radiance-gles"))) {
         extern int radiance_run(const char *program, bool gles);
         return radiance_run(program_name, !strcmp(argv[1], "--radiance-gles"));
+    }
+    if (argc == 2 && !strcmp(argv[1], "--shader-gpu")) {
+        return shader_gpu_run();
     }
     if (argc == 2 && !strcmp(argv[1], "--math-expression")) {
         registry_validate();

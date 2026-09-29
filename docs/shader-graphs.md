@@ -231,7 +231,9 @@ coordinate components, including ordinary 2D Position. It is not a claim of
 Blender Noise Texture compatibility. Normalize returns zero for zero input;
 Clamp sorts its two bounds; Smoothstep supports ascending or descending bounds
 and uses a step when both bounds coincide. These operations have CPU/GPU parity
-checks, including negative coordinates and extreme finite inputs.
+checks, including negative coordinates and extreme finite inputs. The parity
+checks need a GPU device: `build/test_suite --shader-gpu` runs them, and `make
+test-render` includes it.
 
 Relevant implementation: `src/graph/shader/` owns validation, CPU evaluation and
 GLSL generation; `src/render/shader_catalog.c` owns compiled graph assets and

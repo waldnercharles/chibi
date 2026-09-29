@@ -21,7 +21,12 @@ bool render_fluid_raster_draw(
 /* Caustics for the next draws: simulation time animates their ripples and a
  * zero strength disables them. */
 void render_fluid_raster_set_caustics(render_fluid_raster *raster, float time, float strength);
-/* Whether the last draw saw burning or emissive fluid, which shimmers. */
-bool render_fluid_raster_hot(const render_fluid_raster *raster);
+/* What the last draw saw: burning or emissive fluid, which shimmers, and
+ * liquid, which reflects. */
+typedef struct
+{
+    bool hot, liquid;
+} render_fluid_seen;
+render_fluid_seen render_fluid_raster_seen(const render_fluid_raster *raster);
 
 #endif

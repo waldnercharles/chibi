@@ -3,6 +3,7 @@
 #include "render/backdrop_2d.h"
 #include "render/fluid_raster.h"
 #include "render/material_raster.h"
+#include "render/reflections.h"
 #include "render/shader_catalog.h"
 #include "runtime/generated.h"
 
@@ -312,6 +313,94 @@ static bool caustics(render_material_raster *r)
     return ok;
 }
 
+static bool read_frame(CF_Canvas canvas, CF_Pixel *pixels)
+{
+    CF_Readback readback = cf_canvas_readback(canvas);
+    bool ok = readback.id != 0;
+    if (ok) {
+        while (!cf_readback_ready(readback)) {
+        }
+        int bytes = PIXELS * (int)sizeof *pixels;
+        ok = cf_readback_size(readback) == bytes &&
+             cf_readback_data(readback, pixels, bytes) == bytes;
+        cf_destroy_readback(readback);
+    }
+    return ok;
+}
+
+/* Brightest red in rows [from, to) of a frame. */
+static int brightest(const CF_Pixel *pixels, int from, int to)
+{
+    int best = 0;
+    for (int i = from * SIDE; i < to * SIDE; i++) {
+        best = pixels[i].colors.r > best ? pixels[i].colors.r : best;
+    }
+    return best;
+}
+
+/* A liquid surface mirrors the bright bar just above it below the surface;
+ * without liquid reflection the frame passes through unchanged. */
+static bool liquid_reflection(render_material_raster *r)
+{
+    material_fluid *fluid = material_fluid_new(10, 256);
+    render_fluid_raster *draw = render_fluid_raster_new();
+    for (int y = 12; y <= 30; y += 3) {
+        for (int x = -30; x <= 30; x += 3) {
+            material_fluid_add(
+                fluid,
+                (fluid_particle){ .position = { (float)x, (float)y },
+                                  .mass = 1,
+                                  .radius = 6,
+                                  .kind = FLUID_LIQUID,
+                                  .color = 0x2080a0ffu }
+            );
+        }
+    }
+    render_material_view view = { .min_x = -32,
+                                  .max_y = 32,
+                                  .width = SIDE,
+                                  .height = SIDE,
+                                  .crop_max_u = 1,
+                                  .crop_max_v = 1 };
+    CF_Canvas source = cf_make_canvas(cf_canvas_defaults(SIDE, SIDE));
+    render_reflections *reflections = render_reflections_new();
+    CF_Pixel plain[PIXELS], mirrored[PIXELS];
+    bool ok = draw != NULL;
+    for (int pass = 0; ok && pass < 2; pass++) {
+        cf_app_update(NULL);
+        ok = render_material_raster_draw(r, NULL, 0, view) &&
+             render_fluid_raster_draw(draw, fluid, render_material_raster_canvas(r), view, SIDE, SIDE);
+        cf_draw_push();
+        cf_draw_projection(cf_ortho_2d(0, 0, SIDE, SIDE));
+        cf_draw_push_color(cf_make_color_rgba_f(1, .2f, .2f, 1));
+        cf_draw_box_fill((CF_Aabb){ { -20, 2 }, { 20, 5 } }, 0);
+        cf_draw_pop_color();
+        cf_canvas_set_clear_color(source, cf_make_color_rgba_f(0, 0, 0, 1));
+        cf_render_to(source, true);
+        render_reflection_frame frame = {
+            .source = source,
+            .destination = render_reflections_canvas(reflections, SIDE, SIDE),
+            .view = view,
+            .normal = render_material_raster_textures(r).normal,
+            .liquid = pass ? 1 : 0
+        };
+        ok = ok && render_reflections_draw(reflections, &frame);
+        cf_draw_pop();
+        cf_app_draw_onto_screen(false);
+        ok = ok && read_frame(frame.destination, pass ? mirrored : plain);
+    }
+    /* Rows 32 and below are under the surface, which lies near world y -6. */
+    int under = brightest(plain, 40, 60), reflected = brightest(mirrored, 40, 60);
+    int bar = brightest(plain, 26, 31), bar_after = brightest(mirrored, 26, 31);
+    printf("liquid reflection: under the surface %d -> %d, bar %d -> %d\n", under, reflected, bar, bar_after);
+    ok = ok && under < 20 && reflected > 60 && bar == bar_after;
+    render_reflections_free(reflections);
+    cf_destroy_canvas(source);
+    render_fluid_raster_free(draw);
+    material_fluid_free(fluid);
+    return ok;
+}
+
 bool test_material_effects()
 {
     render_material_raster *r = render_material_raster_new();
@@ -319,7 +408,8 @@ bool test_material_effects()
     ok &= backdrops();
     ok &= caustics(r);
     ok &= glass(r);
+    ok &= liquid_reflection(r);
     render_material_raster_free(r);
-    printf("material effects %s: hit flash, backdrops, caustics, glass\n", ok ? "PASS" : "FAIL");
+    printf("material effects %s: hit flash, backdrops, caustics, glass, liquid reflection\n", ok ? "PASS" : "FAIL");
     return ok;
 }

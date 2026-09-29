@@ -300,3 +300,22 @@ transport; light behind colored glass is gray light plus the glass's colored
 re-emission, which also spreads backward. Refractive solids do not focus
 caustics. Adding the two inputs changed the Surface Output pin layout; the
 shipped materials were migrated and `CHIBI_PROJECT_VERSION` is now 4.
+
+### Reflections
+
+`GameHRC2D.reflections` (zero disables; RenderLab uses 0.6) makes liquid
+surfaces mirror what lies above them. Each liquid pixel marches up the
+material normal's liquid mask, 24 steps over 60 world units, to its surface.
+Where that surface faces up (its normal's upward component above about 0.35,
+as a pool's does), the pixel shows the frame mirrored across the surface,
+rippled by time and by the surface normal, fading over 36 world units of
+depth. An object h above the surface appears h below it, so only things near
+the water show; the mirror is the finished linear frame, so reflected lights
+bloom.
+
+The same pass draws `GameReflection`'s planar reflections. With tone mapping
+both now run on the linear frame before distortion and bloom; without it they
+run on the display frame as before. The pass runs only while liquid is in
+view with nonzero strength or a reflector is collected: 0.06 ms at 1080p for
+RenderLab. It shows only what is on screen, and a surface deeper than 60
+world units below its pixel does not reflect there.

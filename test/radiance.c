@@ -1174,12 +1174,18 @@ static bool reflection_pixels()
         .tint = { 1, 1, 1, 1 },
         .strength = 1
     };
-    render_view_2d view = { .min_x = -64, .max_y = 64, .width = SIDE, .height = SIDE };
-    CF_Canvas output = render_reflections_draw(r, source, SIDE, SIDE, view, &surface, 1);
+    render_reflection_frame frame = {
+        .source = source,
+        .destination = render_reflections_canvas(r, SIDE, SIDE),
+        .view = { .min_x = -64, .max_y = 64, .width = SIDE, .height = SIDE },
+        .surfaces = &surface,
+        .count = 1,
+    };
+    bool ok = render_reflections_draw(r, &frame);
     cf_draw_pop();
     cf_app_draw_onto_screen(false);
     CF_Pixel pixels[PIXELS];
-    bool ok = output.id && read_pixels(output, pixels, PIXELS);
+    ok = ok && read_pixels(frame.destination, pixels, PIXELS);
     if (ok) {
         CF_Pixel red = pixels[52 * SIDE + 88], green = pixels[76 * SIDE + 88];
         printf(

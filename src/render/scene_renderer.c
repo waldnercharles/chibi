@@ -1193,6 +1193,53 @@ static bool draw_backdrops(
     return true;
 }
 
+/* Adds liquid and planar reflections to the composited frame. A linear frame
+ * flips to the HDR spare; a display frame moves to output. */
+static bool reflect(
+    app_scene_renderer *renderer,
+    CF_Canvas frame,
+    render_view_2d screen,
+    CF_Texture normal,
+    CF_Canvas *output
+)
+{
+    bool liquid = renderer->lighting.reflections > 0 && renderer->fluid &&
+                  render_fluid_raster_seen(renderer->fluid).liquid;
+    if (!liquid && !acount(renderer->reflectors)) {
+        return true;
+    }
+    if (!renderer->reflections) {
+        renderer->reflections = render_reflections_new();
+    }
+    bool hdr = renderer->hdr && frame.id == render_post_2d_target(renderer->hdr).id;
+    render_reflection_frame reflection = {
+        .source = frame,
+        .destination = hdr ? render_post_2d_spare(renderer->hdr)
+                           : render_reflections_canvas(
+                                 renderer->reflections,
+                                 renderer->width,
+                                 renderer->height
+                             ),
+        .view = screen,
+        .normal = normal,
+        .liquid = liquid ? renderer->lighting.reflections : 0,
+        .time = renderer->time,
+        .surfaces = renderer->reflectors,
+        .count = acount(renderer->reflectors),
+    };
+    if (!render_reflections_draw(renderer->reflections, &reflection)) {
+        snprintf(renderer->error, sizeof renderer->error, "Reflections could not compile their shaders or allocate a canvas");
+        return false;
+    }
+    render_gpu_timing_mark("Reflections");
+    if (hdr) {
+        render_post_2d_flip(renderer->hdr);
+        return true;
+    }
+    *output = reflection.destination;
+    return true;
+}
+
 /* Distorts, grades and tone maps the linear frame into the output. */
 static bool present_hdr(
     app_scene_renderer *renderer,
@@ -1209,7 +1256,7 @@ static bool present_hdr(
                                              .time = renderer->time,
                                              .refraction = renderer->refraction };
     render_post_2d_collect(world, runtime, screen, &settings, &distortion);
-    if (!renderer->fluid || !render_fluid_raster_hot(renderer->fluid)) {
+    if (!renderer->fluid || !render_fluid_raster_seen(renderer->fluid).hot) {
         distortion.fluid_haze = 0;
     }
     if (render_post_2d_distorts(&distortion)) {
@@ -1425,27 +1472,12 @@ bool app_scene_renderer_draw(
     if (!render_radiance_composite(renderer->radiance, inputs, view, composite)) {
         return false;
     }
-    if (hdr && !present_hdr(renderer, world, runtime, screen, textures)) {
+    CF_Canvas output = renderer->output;
+    if (!reflect(renderer, composite, screen, textures.normal, &output)) {
         return false;
     }
-    CF_Canvas output = renderer->output;
-    if (acount(renderer->reflectors)) {
-        if (!renderer->reflections) {
-            renderer->reflections = render_reflections_new();
-        }
-        output = render_reflections_draw(
-            renderer->reflections,
-            output,
-            width,
-            height,
-            screen,
-            renderer->reflectors,
-            acount(renderer->reflectors)
-        );
-        if (!output.id) {
-            return false;
-        }
-        render_gpu_timing_mark("Reflections");
+    if (hdr && !present_hdr(renderer, world, runtime, screen, textures)) {
+        return false;
     }
     render_gpu_span_end(&renderer->span);
     cf_draw_canvas(

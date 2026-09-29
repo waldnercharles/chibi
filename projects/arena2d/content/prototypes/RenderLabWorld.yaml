@@ -13,6 +13,7 @@ components:
     min_resolution: 0.25
     particle_focal_length: 300.0
     radiance_hysteresis: 1.0
+    reflections: 0.6
     resolution: 0.5
     shadow_floor: 0.0005
     specular: 1.0

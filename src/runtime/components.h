@@ -945,6 +945,9 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameHRC2D)
      * lines. Zero disables them; 0.3 is typical. Liquid refraction scales it
      * per volume. Caustics light the surroundings through feedback. */
     float caustics;
+    /* Strength of liquid reflections: surfaces facing up mirror what lies
+     * above them, fading with depth. Zero disables them; 0.6 is typical. */
+    float reflections;
 }
 GameHRC2D;
 

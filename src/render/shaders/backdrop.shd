@@ -1,0 +1,24 @@
+// One material filling the screen behind the 2D scene. Position is the offset
+// from the camera center, UV spans the screen, and World Position follows the
+// camera by parallax: zero pins the layer to the camera, one moves it with
+// the world. Lit layers multiply Base Color by received light.
+layout(set = 2, binding = SG_LIGHT_BINDING) uniform sampler2D sg_light;
+
+vec4 shader(vec4 color, ShaderParams params)
+{
+    vec2 uv = params.screen_uv;
+    vec2 offset = (uv - 0.5) * vec2(1.0, -1.0) * sg_camera.zw;
+    vec2 world = sg_camera.xy * sg_layer.x + offset;
+    vec4 values[32];
+    for (int i = 0; i < 32; i++) values[i] = sg_values[i];
+    vec4 result[8];
+    sg_dispatch_2d(int(sg_layer.w), offset, world, 0.5 * sg_camera.zw, sg_layer.z, values, result);
+    vec3 base = result[0].rgb;
+    if (sg_light_map.w > 0.0) {
+        vec2 light_uv = mix(sg_crop.xy, sg_crop.zw, uv) * sg_light_map.xy;
+        vec4 light = texture(sg_light, light_uv);
+        base *= light.rgb / (sg_light_map.z > 0.0 ? max(light.a, 1e-3) : 1.0);
+    }
+    float alpha = clamp(result[0].a, 0.0, 1.0);
+    return vec4((base + result[1].rgb) * sg_layer.y * alpha, alpha);
+}

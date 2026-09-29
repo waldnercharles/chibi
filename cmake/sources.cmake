@@ -269,6 +269,7 @@ set(RUNTIME_SUPPORT_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/render/sdf_motion.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/rhythm.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/audio.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/visual_effects.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/ui.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/save.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/visibility.c

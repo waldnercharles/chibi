@@ -62,6 +62,7 @@ struct game_behavior_world
     ecs_world *ecs;
     game_save *save;
     game_audio *audio;
+    game_visual_effects *visual_effects;
     game_ui *ui;
     game_run run;
     eval_component_reader component_reader;
@@ -463,6 +464,7 @@ static behavior_instance *acquire_instance(
     }
     behavior_instance_bind_service(instance, "game.save", world->save);
     behavior_instance_bind_service(instance, "game.audio", world->audio);
+    behavior_instance_bind_service(instance, "game.visual_effects", world->visual_effects);
     behavior_instance_bind_service(instance, "game.ui", world->ui);
     behavior_instance_bind_service(instance, "game.visibility", world->visibility);
     behavior_instance_bind_service(instance, "game.run", &world->run);
@@ -528,6 +530,7 @@ game_behavior_world *game_behavior_world_new(ecs_world *world)
     result->ecs = world;
     result->save = game_save_new();
     result->audio = game_audio_new();
+    result->visual_effects = game_visual_effects_new();
     result->ui = game_ui_new();
     result->update_parallel = game_behavior_parallel_new();
     result->profile_disabled = true;
@@ -551,6 +554,11 @@ static void use_random(game_behavior_world *world)
 game_audio *game_behavior_audio(game_behavior_world *world)
 {
     return world->audio;
+}
+
+game_visual_effects *game_behavior_visual_effects(game_behavior_world *world)
+{
+    return world->visual_effects;
 }
 
 game_ui *game_behavior_ui(game_behavior_world *world)
@@ -651,6 +659,7 @@ void game_behavior_world_free(game_behavior_world *world)
     free(world->pump_results);
     game_save_free(world->save);
     game_audio_free(world->audio);
+    game_visual_effects_free(world->visual_effects);
     game_ui_free(world->ui);
     free(world);
 }

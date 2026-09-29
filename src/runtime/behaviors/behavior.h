@@ -7,6 +7,7 @@
 #include "runtime/run.h"
 #include "runtime/save.h"
 #include "runtime/ui.h"
+#include "runtime/visual_effects.h"
 
 #include <stdint.h>
 
@@ -14,6 +15,7 @@ typedef struct game_behavior_world game_behavior_world;
 game_audio *game_behavior_audio(game_behavior_world *world);
 game_ui *game_behavior_ui(game_behavior_world *world);
 game_run *game_behavior_run(game_behavior_world *world);
+game_visual_effects *game_behavior_visual_effects(game_behavior_world *world);
 
 #define GAME_BEHAVIOR_PROFILE_MAX 256
 typedef struct

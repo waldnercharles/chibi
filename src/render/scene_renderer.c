@@ -4,6 +4,7 @@
 #include "platform/cute.h"
 #include "render/appearance_geometry.h"
 #include "render/arena_post.h"
+#include "render/backdrop_2d.h"
 #include "render/fluid_raster.h"
 #include "render/fog.h"
 #include "render/geometry_2d.h"
@@ -12,6 +13,7 @@
 #include "render/material.h"
 #include "render/material_raster.h"
 #include "render/post_2d.h"
+#include "render/post_2d_scene.h"
 #include "render/radiance.h"
 #include "render/reflections.h"
 #include "render/sdf_motion.h"
@@ -49,6 +51,7 @@ struct app_scene_renderer
     GameHRC2D lighting;
     render_reflections *reflections;
     render_reflection *reflectors;
+    render_backdrops *backdrops;
     CF_Canvas output, background;
     CF_Shader background_shader;
     GameStarfield2D background_style;
@@ -117,6 +120,7 @@ void app_scene_renderer_free(app_scene_renderer *renderer)
     }
     render_reflections_free(renderer->reflections);
     afree(renderer->reflectors);
+    render_backdrops_free(renderer->backdrops);
     if (renderer->output.id) {
         cf_destroy_canvas(renderer->output);
     }
@@ -721,6 +725,21 @@ static void collect_chunks(
     }
 }
 
+/* Tints the entities appended since first with the actor's hit flash. */
+static void flash_entities(app_scene_renderer *renderer, int first, const GameFlash *flash)
+{
+    if (!flash || !isfinite(flash->amount) || flash->amount <= 0) {
+        return;
+    }
+    float tint[4] = { (flash->color >> 24) / 255.f,
+                      ((flash->color >> 16) & 255) / 255.f,
+                      ((flash->color >> 8) & 255) / 255.f,
+                      fminf(flash->amount, 1) };
+    for (int i = first; i < acount(renderer->entities); i++) {
+        memcpy(renderer->entities[i].flash, tint, sizeof tint);
+    }
+}
+
 static void collect(
     app_scene_renderer *renderer,
     ecs_world *world,
@@ -777,6 +796,8 @@ static void collect(
             engine_render_position(runtime, entity, &position);
         }
         const material_mask *mask = game_materials_mask(engine_materials(runtime), entity);
+        const GameFlash *flash = GAME_GameFlash_get_const(world, entity);
+        int actor_first = acount(renderer->entities);
         if (mask) {
             float padding = fmaxf(appearance.antialias, renderer->pixel_aa);
             material_rect bounds = { 0,
@@ -862,6 +883,7 @@ static void collect(
                 }
             }
             tile_group(renderer, first, group);
+            flash_entities(renderer, actor_first, flash);
             continue;
         }
         if (!append_entity(
@@ -888,6 +910,7 @@ static void collect(
                 render_shader_parameters(shape, world, entity, binding->parameters, draw->shape_parameters);
             }
         }
+        flash_entities(renderer, actor_first, flash);
     }
     collect_chunks(renderer, world, runtime, view);
     const game_particle *items = game_particles_data(particles);
@@ -1130,6 +1153,72 @@ static CF_Texture scene_background(
     return cf_canvas_get_target(renderer->background);
 }
 
+/* Draws the scene's backdrop layers, if any, into layers. */
+static bool draw_backdrops(
+    app_scene_renderer *renderer,
+    ecs_world *world,
+    render_view_2d screen,
+    CF_Texture *layers
+)
+{
+    if (!renderer->backdrops) {
+        renderer->backdrops = render_backdrops_new();
+    }
+    if (!render_backdrops_collect(renderer->backdrops, world)) {
+        return true;
+    }
+    render_backdrop_frame frame = {
+        .camera = screen,
+        .time = renderer->time,
+        .light = render_radiance_received_light(renderer->radiance),
+        .width = renderer->width,
+        .height = renderer->height,
+    };
+    *layers = render_backdrops_draw(renderer->backdrops, &frame);
+    if (!layers->id) {
+        snprintf(
+            renderer->error,
+            sizeof renderer->error,
+            "%s",
+            render_backdrops_error(renderer->backdrops)
+        );
+        return false;
+    }
+    render_gpu_timing_mark("Backdrops");
+    return true;
+}
+
+/* Distorts, grades and tone maps the linear frame into the output. */
+static bool present_hdr(
+    app_scene_renderer *renderer,
+    ecs_world *world,
+    const engine *runtime,
+    render_view_2d screen,
+    render_material_textures textures
+)
+{
+    render_post_2d_settings settings = { .exposure = renderer->lighting.exposure,
+                                         .bloom = renderer->lighting.bloom,
+                                         .dither_phase = fmodf(renderer->time * 60, 64) };
+    render_post_2d_distortion distortion = { .normal = textures.normal,
+                                             .cover = textures.cover,
+                                             .time = renderer->time };
+    render_post_2d_collect(world, runtime, screen, &settings, &distortion);
+    if (!renderer->fluid || !render_fluid_raster_hot(renderer->fluid)) {
+        distortion.fluid_haze = 0;
+    }
+    if (render_post_2d_distorts(&distortion)) {
+        if (!render_post_2d_distort(renderer->hdr, &distortion)) {
+            snprintf(renderer->error, sizeof renderer->error, "Screen distortion could not allocate its RGBA16F canvas");
+            return false;
+        }
+        render_gpu_timing_mark("Distortion");
+    }
+    render_post_2d_present(renderer->hdr, renderer->output, &settings);
+    render_gpu_timing_mark("Tone map and bloom");
+    return true;
+}
+
 bool app_scene_renderer_draw(
     app_scene_renderer *renderer,
     ecs_world *world,
@@ -1279,6 +1368,13 @@ bool app_scene_renderer_draw(
         if (!renderer->fluid) {
             renderer->fluid = render_fluid_raster_new();
         }
+        if (renderer->fluid) {
+            render_fluid_raster_set_caustics(
+                renderer->fluid,
+                renderer->time,
+                renderer->lighting.caustics
+            );
+        }
         if (!renderer->fluid || !render_fluid_raster_draw(
                                     renderer->fluid,
                                     game_materials_fluid(materials),
@@ -1295,6 +1391,20 @@ bool app_scene_renderer_draw(
     render_radiance_inputs inputs = { .material = textures };
     inputs.background = scene_background(renderer, world, &camera);
     render_gpu_timing_mark("Background");
+    render_view_2d screen = { .min_x = camera.center_x - camera.span_width * .5f,
+                              .max_y = camera.center_y + camera.span_height * .5f,
+                              .width = camera.span_width,
+                              .height = camera.span_height,
+                              .crop_min_u = view.crop_min_u,
+                              .crop_min_v = view.crop_min_v,
+                              .crop_max_u = view.crop_max_u,
+                              .crop_max_v = view.crop_max_v };
+    if (!render_radiance_solve(renderer->radiance, textures, view)) {
+        return false;
+    }
+    if (!draw_backdrops(renderer, world, screen, &inputs.layers)) {
+        return false;
+    }
     bool hdr = renderer->lighting.tone_mapping > 0;
     CF_Canvas composite = renderer->output;
     if (hdr) {
@@ -1307,28 +1417,17 @@ bool app_scene_renderer_draw(
         }
         composite = render_post_2d_target(renderer->hdr);
     }
-    if (!render_radiance_draw(renderer->radiance, inputs, view, composite)) {
+    if (!render_radiance_composite(renderer->radiance, inputs, view, composite)) {
         return false;
     }
-    if (hdr) {
-        render_post_2d_present(
-            renderer->hdr,
-            renderer->output,
-            renderer->lighting.exposure,
-            renderer->lighting.bloom,
-            fmodf(renderer->time * 60, 64)
-        );
-        render_gpu_timing_mark("Tone map and bloom");
+    if (hdr && !present_hdr(renderer, world, runtime, screen, textures)) {
+        return false;
     }
     CF_Canvas output = renderer->output;
     if (acount(renderer->reflectors)) {
         if (!renderer->reflections) {
             renderer->reflections = render_reflections_new();
         }
-        render_view_2d screen = { .min_x = camera.center_x - camera.span_width * .5f,
-                                  .max_y = camera.center_y + camera.span_height * .5f,
-                                  .width = camera.span_width,
-                                  .height = camera.span_height };
         output = render_reflections_draw(
             renderer->reflections,
             output,

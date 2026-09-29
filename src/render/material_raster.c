@@ -19,11 +19,11 @@ enum
 {
     GPU_ENTITY_BYTES = offsetof(render_material_entity, material_parameters)
 };
-_Static_assert(sizeof(render_material_entity) == 1360, "entity std430 stride");
+_Static_assert(sizeof(render_material_entity) == 1376, "entity std430 stride");
 _Static_assert(offsetof(render_material_entity, points) == 80, "entity point offset");
 _Static_assert(offsetof(render_material_entity, scene) == 144, "entity material offset");
 _Static_assert(offsetof(render_material_entity, time) == 304, "entity clock offset");
-_Static_assert(GPU_ENTITY_BYTES == 336, "entity GPU size");
+_Static_assert(GPU_ENTITY_BYTES == 352, "entity GPU size");
 
 typedef struct
 {
@@ -396,8 +396,7 @@ CF_Canvas render_material_canvas(int width, int height)
     CF_CanvasParams params = cf_canvas_defaults(width, height);
     params.target_count = 6;
     for (int i = 0; i < 6; i++) {
-        params.targets[i].pixel_format = i < 5 ? CF_PIXEL_FORMAT_R16G16B16A16_FLOAT
-                                               : CF_PIXEL_FORMAT_R16_FLOAT;
+        params.targets[i].pixel_format = CF_PIXEL_FORMAT_R16G16B16A16_FLOAT;
         params.targets[i].filter = CF_FILTER_LINEAR;
         params.targets[i].wrap_u = params.targets[i].wrap_v = CF_WRAP_MODE_CLAMP_TO_EDGE;
     }

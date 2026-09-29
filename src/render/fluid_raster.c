@@ -32,6 +32,9 @@ struct render_fluid_raster
     /* The material targets of fluid's tiles before fluid. */
     CF_Canvas before;
     int width, height;
+    /* Whether a burning or emissive parcel lay in the last view. */
+    bool hot;
+    float time, caustics;
     int particle_capacity, offset_capacity, index_capacity;
     raster_particle *data;
     tile_rect *rects;
@@ -185,6 +188,7 @@ static void collect(
 {
     aclear(r->data);
     aclear(r->rects);
+    r->hot = false;
     int count;
     const fluid_particle *particles = material_fluid_particles(fluid, &count);
     float px = width / view.width, py = height / view.height;
@@ -271,6 +275,7 @@ static void collect(
             data.optical[1] *= fminf(1, p.lifetime * 2);
             data.optical[0] *= fminf(1, p.lifetime * 2);
         }
+        r->hot |= data.optical[1] > 0 || data.optical[3] > 0;
         apush(r->data, data);
         apush(r->rects, rect);
     }
@@ -308,6 +313,17 @@ static bool bin(render_fluid_raster *r, int tx, int ty)
         }
     }
     return true;
+}
+
+void render_fluid_raster_set_caustics(render_fluid_raster *r, float time, float strength)
+{
+    r->time = time;
+    r->caustics = strength;
+}
+
+bool render_fluid_raster_hot(const render_fluid_raster *r)
+{
+    return r->hot;
 }
 
 bool render_fluid_raster_draw(
@@ -378,6 +394,8 @@ bool render_fluid_raster_draw(
     float camera[4] = { view.min_x, view.max_y, view.width / width, view.height / height };
     cf_material_set_uniform_fs(r->material, "u_view", camera, CF_UNIFORM_TYPE_FLOAT4, 1);
     cf_material_set_uniform_fs(r->material, "u_tiles_x", &tx, CF_UNIFORM_TYPE_INT, 1);
+    cf_material_set_uniform_fs(r->material, "u_time", &r->time, CF_UNIFORM_TYPE_FLOAT, 1);
+    cf_material_set_uniform_fs(r->material, "u_caustics", &r->caustics, CF_UNIFORM_TYPE_FLOAT, 1);
     /* Fluid reads a copy of its tiles and writes the material itself. */
     cf_push_gpu_label("Fluid density raster");
     if (s_tile_mesh(r, tx, ty, width, height)) {

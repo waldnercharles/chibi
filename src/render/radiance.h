@@ -22,8 +22,9 @@ typedef struct
 typedef struct
 {
     render_material_textures material;
-    /* Optional: the backdrop behind open space. */
-    CF_Texture background;
+    /* Optional: the backdrop behind open space, and premultiplied layers over
+     * it at any resolution. */
+    CF_Texture background, layers;
 } render_radiance_inputs;
 /* Requires a current Cute context and shader directory containing the hrc shader subdirectory. */
 render_radiance *render_radiance_new();
@@ -57,11 +58,31 @@ typedef struct
     int rung, rungs;
 } render_radiance_status;
 render_radiance_status render_radiance_get_status(const render_radiance *radiance);
-/* Inputs are borrowed RGBA16F textures at the configured padded size. */
+/* Inputs are borrowed RGBA16F textures at the configured padded size.
+ * Solve transports light and blurs surface light; composite then lights the
+ * materials into output. Draw does both. */
+bool render_radiance_solve(render_radiance *radiance, render_material_textures material, render_view_2d view);
+bool render_radiance_composite(
+    render_radiance *radiance,
+    render_radiance_inputs inputs,
+    render_view_2d view,
+    CF_Canvas output
+);
 bool render_radiance_draw(
     render_radiance *radiance,
     render_radiance_inputs inputs,
     render_view_2d view,
     CF_Canvas output
 );
+
+/* The last solve's received light, heavily blurred when surface light is on.
+ * Sample at the material canvas uv times map. With openness, divide RGB by A,
+ * the open fraction it averaged over. */
+typedef struct
+{
+    CF_Texture texture;
+    float map[2];
+    bool openness;
+} render_radiance_light;
+render_radiance_light render_radiance_received_light(const render_radiance *radiance);
 #endif

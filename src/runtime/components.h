@@ -810,6 +810,70 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameStarfield2D)
 }
 GameStarfield2D;
 
+/* Optional grading and lens effects for tone-mapped 2D scenes
+ * (GameHRC2D.tone_mapping). Zero leaves every field neutral. */
+typedef NODE_COMPONENT_TYPE_DENSE(GamePost2D)
+{
+    /* Darkening toward the corners, 0 to 1. */
+    float vignette;
+    /* Red and blue split at the screen corners, in output pixels. */
+    float chromatic_aberration;
+    /* Film grain amplitude in display units; 0.04 is subtle. */
+    float grain;
+    /* Added to one: 0.2 raises contrast by a fifth, -1 flattens it. */
+    float contrast;
+    /* Added to one: -1 is grayscale. */
+    float saturation;
+    /* White balance from cool (-1) to warm (1). */
+    float temperature;
+    /* White balance from green (-1) to magenta (1). */
+    float tint;
+    /* Display color added to the shadows. */
+    CF_V3 lift;
+    /* Added to one as a per-channel display multiplier. */
+    CF_V3 gain;
+    /* Output pixels of shimmer over burning fluid. */
+    float heat_haze;
+}
+GamePost2D;
+
+/* Tints an entity's drawn material toward color by amount and adds that color
+ * as emission, so a hit lights its surroundings. Amount falls by decay per
+ * second. */
+typedef NODE_COMPONENT_TYPE_DENSE(GameFlash)
+{
+    unsigned color;
+    float amount;
+    float decay;
+}
+GameFlash;
+
+/* Shimmers the frame behind an entity, as heat does above fire. */
+typedef NODE_COMPONENT_TYPE_DENSE(GameHeatHaze)
+{
+    /* World units from the entity's center. */
+    float radius;
+    /* Output pixels of displacement at the center. */
+    float strength;
+}
+GameHeatHaze;
+
+/* A material graph filling the screen behind the 2D scene, over the starfield.
+ * Its Position is the offset from the camera center and its World Position
+ * follows the camera by parallax: 0 pins the layer to the camera, 1 moves it
+ * with the world. Layers draw in ascending layer order. Base Color and
+ * Emission are scaled by intensity; lit multiplies Base Color by blurred
+ * received light, so nearby lights pick the layer out of the dark. */
+typedef NODE_COMPONENT_TYPE_DENSE(GameBackdrop2D)
+{
+    const char *material;
+    float parallax;
+    int layer;
+    float intensity;
+    bool lit;
+}
+GameBackdrop2D;
+
 /* Color detail of HRC lighting relative to its resolution. */
 typedef enum
 {
@@ -912,6 +976,10 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameHRC2D)
     float exposure;
     /* Fraction of the blurred image mixed into the frame, in [0, 1]. */
     float bloom;
+    /* Strength of caustics: light that rippling liquid focuses into bright
+     * lines. Zero disables them; 0.3 is typical. Liquid refraction scales it
+     * per volume. Caustics light the surroundings through feedback. */
+    float caustics;
 }
 GameHRC2D;
 

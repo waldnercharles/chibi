@@ -13,6 +13,9 @@ int render_shader_parameter_width(int index, int slot);
 bool render_shader_parameters_validate(int index, const char *json, shader_error *error);
 bool render_shader_is_shape(int index);
 bool render_shader_may_be_transparent(int index);
+/* Whether the graph reads time, the beat or scene activity, so its image
+ * changes while nothing else does. */
+bool render_shader_animated(int index);
 bool render_shader_sample(
     int index,
     const shader_sample_context *sample,

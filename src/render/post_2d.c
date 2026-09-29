@@ -14,11 +14,12 @@ enum
 
 struct render_post_2d
 {
-    CF_Canvas target;
+    /* The linear frame, and the spare that passes rewrite it into. */
+    CF_Canvas target, spare;
     /* down[i] halves the previous level; up[i] adds the blurred level below. */
     CF_Canvas down[LEVELS], up[LEVELS];
     int width, height, count;
-    CF_Shader downsample, upsample, present;
+    CF_Shader downsample, upsample, present, distort;
 };
 
 static void destroy(CF_Canvas *canvas)
@@ -32,6 +33,7 @@ static void destroy(CF_Canvas *canvas)
 static void destroy_targets(render_post_2d *post)
 {
     destroy(&post->target);
+    destroy(&post->spare);
     for (int i = 0; i < LEVELS; i++) {
         destroy(&post->down[i]);
         destroy(&post->up[i]);
@@ -45,7 +47,9 @@ render_post_2d *render_post_2d_new()
     post->downsample = cf_make_draw_shader("post_2d_down.shd");
     post->upsample = cf_make_draw_shader("post_2d_up.shd");
     post->present = cf_make_draw_shader("post_2d_present.shd");
-    if (!post->downsample.id || !post->upsample.id || !post->present.id) {
+    post->distort = cf_make_draw_shader("post_2d_distort.shd");
+    if (!post->downsample.id || !post->upsample.id || !post->present.id ||
+        !post->distort.id) {
         render_post_2d_free(post);
         return NULL;
     }
@@ -58,8 +62,8 @@ void render_post_2d_free(render_post_2d *post)
         return;
     }
     destroy_targets(post);
-    CF_Shader shaders[] = { post->downsample, post->upsample, post->present };
-    for (int i = 0; i < 3; i++) {
+    CF_Shader shaders[] = { post->downsample, post->upsample, post->present, post->distort };
+    for (int i = 0; i < 4; i++) {
         if (shaders[i].id) {
             cf_destroy_shader(shaders[i]);
         }
@@ -117,6 +121,21 @@ CF_Canvas render_post_2d_target(const render_post_2d *post)
     return post->target;
 }
 
+CF_Canvas render_post_2d_spare(render_post_2d *post)
+{
+    if (!post->spare.id) {
+        post->spare = hdr_canvas(post->width, post->height);
+    }
+    return post->spare;
+}
+
+void render_post_2d_flip(render_post_2d *post)
+{
+    CF_Canvas frame = post->target;
+    post->target = post->spare;
+    post->spare = frame;
+}
+
 static void pass(CF_Canvas source, CF_Canvas destination)
 {
     cf_draw_canvas(source, (CF_V2){ 0 }, (CF_V2){ 2, 2 });
@@ -130,10 +149,10 @@ static CF_V2 texel(CF_Canvas canvas)
     return (CF_V2){ 1.0f / width, 1.0f / height };
 }
 
-void render_post_2d_present(render_post_2d *post, CF_Canvas output, float exposure, float bloom, float dither_phase)
+/* Draws with a fullscreen canvas quad in the unit projection, without
+ * blending, filtering linearly. */
+static void begin_passes()
 {
-    assert(post && post->count && output.id);
-    cf_push_gpu_label("2D HDR present");
     cf_draw_push();
     cf_draw_TSR_absolute((CF_V2){ 0 }, (CF_V2){ 1, 1 }, 0);
     cf_draw_projection(cf_ortho_2d(0, 0, 2, 2));
@@ -144,46 +163,126 @@ void render_post_2d_present(render_post_2d *post, CF_Canvas output, float exposu
     cf_draw_push_scissor((CF_Rect){ 0, 0, -1, -1 });
     cf_draw_push_filter(CF_DRAW_FILTER_LINEAR);
     cf_draw_push_alpha_discard(false);
-    if (bloom > 0) {
-        /* Downsample to the smallest level, then add each blurred level back
-         * up the chain; the first level suppresses isolated fireflies. */
-        cf_draw_push_shader(post->downsample);
-        CF_Canvas source = post->target;
-        for (int i = 0; i < post->count; i++) {
-            cf_draw_set_uniform_v2("source_texel", texel(source));
-            cf_draw_set_uniform_float("karis", i == 0);
-            pass(source, post->down[i]);
-            source = post->down[i];
-        }
-        cf_draw_pop_shader();
-        cf_draw_push_shader(post->upsample);
-        CF_Canvas below = post->down[post->count - 1];
-        for (int i = post->count - 2; i >= 0; i--) {
-            cf_draw_set_uniform_v2("source_texel", texel(below));
-            cf_draw_set_texture("current", cf_canvas_get_target(post->down[i]));
-            pass(below, post->up[i]);
-            below = post->up[i];
-        }
-        cf_draw_pop_shader();
-    }
-    CF_Canvas glow = post->count > 1 ? post->up[0] : post->down[0];
-    cf_draw_push_shader(post->present);
-    cf_draw_set_texture("bloom_tex", cf_canvas_get_target(glow));
-    cf_draw_set_uniform_float("exposure", exposure);
-    cf_draw_set_uniform_float("bloom", bloom);
-    /* Each level carries the frame's full energy; average them. */
-    cf_draw_set_uniform_float("bloom_scale", 1.0f / post->count);
-    cf_draw_set_uniform_float("dither_phase", dither_phase);
-    cf_draw_push_filter(CF_DRAW_FILTER_NEAREST);
-    pass(post->target, output);
-    RENDER_DRAW_UNBIND_TEXTURES("current", "bloom_tex");
-    cf_draw_pop_filter();
-    cf_draw_pop_shader();
+}
+
+static void end_passes()
+{
     cf_draw_pop_alpha_discard();
     cf_draw_pop_filter();
     cf_draw_pop_scissor();
     cf_draw_pop_viewport();
     cf_draw_pop_render_state();
     cf_draw_pop();
+}
+
+bool render_post_2d_distorts(const render_post_2d_distortion *d)
+{
+    return d->wave_count || d->haze_count || d->fluid_haze > 0 || d->refraction;
+}
+
+bool render_post_2d_distort(render_post_2d *post, const render_post_2d_distortion *d)
+{
+    assert(
+        post && post->count && d->wave_count <= RENDER_POST_2D_WAVES &&
+        d->haze_count <= RENDER_POST_2D_HAZES
+    );
+    CF_Canvas spare = render_post_2d_spare(post);
+    if (!spare.id) {
+        return false;
+    }
+    cf_push_gpu_label("2D distortion");
+    begin_passes();
+    cf_draw_push_shader(post->distort);
+    cf_draw_set_texture("normal_tex", d->normal);
+    cf_draw_set_texture("cover_tex", d->cover);
+    render_view_2d v = d->view;
+    float view[] = { v.min_x, v.max_y, v.width, v.height };
+    float crop[] = { v.crop_min_u, v.crop_min_v, v.crop_max_u, v.crop_max_v };
+    cf_draw_set_uniform("view", view, CF_UNIFORM_TYPE_FLOAT4, 1);
+    cf_draw_set_uniform("crop_uv", crop, CF_UNIFORM_TYPE_FLOAT4, 1);
+    cf_draw_set_uniform_v2("output_texel", texel(post->target));
+    cf_draw_set_uniform_float("time", d->time);
+    cf_draw_set_uniform_float("fluid_haze", d->fluid_haze);
+    cf_draw_set_uniform_float("refraction", d->refraction);
+    cf_draw_set_uniform_int("wave_count", d->wave_count);
+    cf_draw_set_uniform_int("haze_count", d->haze_count);
+    cf_draw_set_uniform("waves", (void *)d->waves, CF_UNIFORM_TYPE_FLOAT4, 2 * RENDER_POST_2D_WAVES);
+    cf_draw_set_uniform("hazes", (void *)d->hazes, CF_UNIFORM_TYPE_FLOAT4, RENDER_POST_2D_HAZES);
+    pass(post->target, spare);
+    RENDER_DRAW_UNBIND_TEXTURES("normal_tex", "cover_tex");
+    cf_draw_pop_shader();
+    end_passes();
+    cf_pop_gpu_label();
+    render_post_2d_flip(post);
+    return true;
+}
+
+static void bloom_passes(render_post_2d *post)
+{
+    /* Downsample to the smallest level, then add each blurred level back up
+     * the chain; the first level suppresses isolated fireflies. */
+    cf_draw_push_shader(post->downsample);
+    CF_Canvas source = post->target;
+    for (int i = 0; i < post->count; i++) {
+        cf_draw_set_uniform_v2("source_texel", texel(source));
+        cf_draw_set_uniform_float("karis", i == 0);
+        pass(source, post->down[i]);
+        source = post->down[i];
+    }
+    cf_draw_pop_shader();
+    cf_draw_push_shader(post->upsample);
+    CF_Canvas below = post->down[post->count - 1];
+    for (int i = post->count - 2; i >= 0; i--) {
+        cf_draw_set_uniform_v2("source_texel", texel(below));
+        cf_draw_set_texture("current", cf_canvas_get_target(post->down[i]));
+        pass(below, post->up[i]);
+        below = post->up[i];
+    }
+    cf_draw_pop_shader();
+}
+
+/* White balance as linear channel gains, from cool/warm and green/magenta. */
+static CF_V3 white_balance(float temperature, float tint)
+{
+    return (CF_V3){ 1 + .2f * temperature + .1f * tint,
+                    1 - .2f * tint,
+                    1 - .2f * temperature + .1f * tint };
+}
+
+void render_post_2d_present(render_post_2d *post, CF_Canvas output, const render_post_2d_settings *s)
+{
+    assert(post && post->count && output.id);
+    cf_push_gpu_label("2D HDR present");
+    begin_passes();
+    if (s->bloom > 0) {
+        bloom_passes(post);
+    }
+    CF_Canvas glow = post->count > 1 ? post->up[0] : post->down[0];
+    const GamePost2D *look = &s->look;
+    cf_draw_push_shader(post->present);
+    cf_draw_set_texture("bloom_tex", cf_canvas_get_target(glow));
+    cf_draw_set_uniform_float("exposure", s->exposure);
+    cf_draw_set_uniform_float("bloom", s->bloom);
+    /* Each level carries the frame's full energy; average them. */
+    cf_draw_set_uniform_float("bloom_scale", 1.0f / post->count);
+    cf_draw_set_uniform_float("dither_phase", s->dither_phase);
+    CF_V3 balance = white_balance(look->temperature, look->tint);
+    float grade[] = { look->vignette, look->chromatic_aberration, look->grain, 0 };
+    float tone[] = { 1 + look->contrast, 1 + look->saturation, 0, 0 };
+    float lift[] = { look->lift.x, look->lift.y, look->lift.z, 0 };
+    float gain[] = { 1 + look->gain.x, 1 + look->gain.y, 1 + look->gain.z, 0 };
+    float white[] = { balance.x, balance.y, balance.z, 0 };
+    cf_draw_set_uniform("lens", grade, CF_UNIFORM_TYPE_FLOAT4, 1);
+    cf_draw_set_uniform("tone", tone, CF_UNIFORM_TYPE_FLOAT4, 1);
+    cf_draw_set_uniform("lift", lift, CF_UNIFORM_TYPE_FLOAT4, 1);
+    cf_draw_set_uniform("gain", gain, CF_UNIFORM_TYPE_FLOAT4, 1);
+    cf_draw_set_uniform("white", white, CF_UNIFORM_TYPE_FLOAT4, 1);
+    cf_draw_set_uniform("flash", (void *)s->flash, CF_UNIFORM_TYPE_FLOAT4, 1);
+    cf_draw_push_filter(CF_DRAW_FILTER_NEAREST);
+    pass(post->target, output);
+    RENDER_DRAW_UNBIND_TEXTURES("current", "bloom_tex");
+    cf_draw_pop_filter();
+    cf_draw_pop_shader();
+    end_passes();
     cf_pop_gpu_label();
 }

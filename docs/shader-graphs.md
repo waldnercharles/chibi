@@ -202,6 +202,11 @@ The strength, threshold and radius vocabulary also follows
 [Unreal's bloom controls](https://dev.epicgames.com/documentation/unreal-engine/bloom-in-unreal-engine?lang=en-US).
 It does not implement those engines' full post-processing feature sets.
 
+A 2D scene can also draw a material behind everything with
+`GameBackdrop2D`; see [backdrops](neon-material-style.md#backdrops). Its
+Position is the offset from the camera center and World Position follows the
+camera by the layer's parallax.
+
 On desktop, the 2D renderer translates Surface values into its internal scene,
 emission, albedo and absorption buffers for radiance cascades. Designers do not
 wire those buffers themselves. Normal still faces the camera along +Y; its X and

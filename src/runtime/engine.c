@@ -70,6 +70,13 @@ game_audio *engine_audio(const engine *engine)
     return game_behavior_audio(engine->live->behaviors);
 }
 
+const game_visual_effects *engine_visual_effects(const engine *engine)
+{
+    return engine && engine->live
+             ? game_behavior_visual_effects(engine->live->behaviors)
+             : NULL;
+}
+
 game_ui *engine_ui(const engine *engine)
 {
     return game_behavior_ui(engine->live->behaviors);
@@ -380,6 +387,7 @@ void engine_reset(engine *engine)
         game_materials_reset(engine->live->materials);
         game_visibility_reset(engine->live->visibility);
         game_audio_reset(engine_audio(engine));
+        game_visual_effects_reset(game_behavior_visual_effects(engine->live->behaviors));
         game_ui_reset(game_behavior_ui(engine->live->behaviors));
         begin_run(engine, seed);
     }
@@ -677,6 +685,8 @@ static int continue_step(engine *engine)
         }
         CHIBI_TRACE_ZONE_BEGIN(visual_zone, "Visual systems");
         result = game_particles_tick(live->particles, ENGINE_FIXED_SECONDS);
+        game_visual_effects_tick(game_behavior_visual_effects(live->behaviors), (float)ENGINE_FIXED_SECONDS);
+        game_visual_effects_fade_flashes(engine->world, (float)ENGINE_FIXED_SECONDS);
         if (result >= 0) {
             result = game_sdf_motion_tick(engine->world, ENGINE_FIXED_SECONDS);
         }

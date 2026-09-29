@@ -1,15 +1,29 @@
-// Linear HDR frame to display: energy-conserving bloom mix, exposure and AgX
-// tone mapping (Troy Sobotka's AgX, polynomial fit of the default contrast
-// curve by Benjamin Wrensch). The AgX curve already encodes for display.
+// Linear HDR frame to display: chromatic aberration, energy-conserving bloom
+// mix, white balance, exposure and AgX tone mapping (Troy Sobotka's AgX,
+// polynomial fit of the default contrast curve by Benjamin Wrensch), then
+// display grading, vignette, flash and grain. The AgX curve already encodes
+// for display.
 layout(set = 2, binding = 1) uniform sampler2D bloom_tex;
 layout(set = 3, binding = 1) uniform shd_uniforms {
     float exposure;
     float bloom;
     float bloom_scale;
     float dither_phase;
+    // x vignette, y chromatic aberration in pixels, z grain.
+    vec4 lens;
+    // x contrast, y saturation.
+    vec4 tone;
+    vec4 lift;
+    vec4 gain;
+    // Linear white balance gains.
+    vec4 white;
+    // Display color and weight.
+    vec4 flash;
 };
 
 #include "color.shd"
+
+const vec3 LUMA = vec3(0.2126, 0.7152, 0.0722);
 
 vec3 finite_hdr(vec3 c)
 {
@@ -39,12 +53,39 @@ vec3 agx(vec3 c)
     return outset * agx_contrast(c);
 }
 
+// Red and blue sampled apart along the direction from the screen center, by
+// lens.y pixels at the corners.
+vec3 frame(vec2 uv)
+{
+    vec3 hdr = finite_hdr(texture(u_image, uv).rgb);
+    if (lens.y <= 0.0) return hdr;
+    vec2 split = (uv - 0.5) * 2.0 * lens.y / vec2(textureSize(u_image, 0)) * 0.7071;
+    hdr.r = finite_hdr(texture(u_image, uv - split).rgb).r;
+    hdr.b = finite_hdr(texture(u_image, uv + split).rgb).b;
+    return hdr;
+}
+
+vec3 grade(vec3 c)
+{
+    c = (c - 0.45) * tone.x + 0.45;
+    c = mix(vec3(dot(c, LUMA)), c, tone.y);
+    c = c * gain.rgb + lift.rgb * (1.0 - clamp(c, 0.0, 1.0));
+    return c;
+}
+
 vec4 shader(vec4 color, ShaderParams params)
 {
     vec2 uv = params.uv;
-    vec3 hdr = finite_hdr(texture(u_image, uv).rgb);
     vec3 glow = finite_hdr(texture(bloom_tex, uv).rgb) * bloom_scale;
-    vec3 mapped = agx(mix(hdr, glow, bloom) * exp2(exposure));
+    vec3 linear = mix(frame(uv), glow, bloom) * white.rgb;
+    vec3 mapped = grade(agx(linear * exp2(exposure)));
+    vec2 centered = (uv - 0.5) * vec2(textureSize(u_image, 0)) / float(textureSize(u_image, 0).y);
+    mapped *= 1.0 - lens.x * smoothstep(0.35, 1.05, length(centered));
+    mapped = mix(mapped, flash.rgb, flash.a);
+    // Grain is strongest in the midtones, where film shows it.
+    float luma = clamp(dot(mapped, LUMA), 0.0, 1.0);
+    float noise = fract(sin(dot(gl_FragCoord.xy + dither_phase * 17.0, vec2(12.9898, 78.233))) * 43758.5453);
+    mapped += (noise - 0.5) * lens.z * 4.0 * luma * (1.0 - luma);
     float dither = dither8bit_ign(gl_FragCoord.xy, dither_phase);
     return vec4(clamp(mapped + vec3(dither), vec3(0), vec3(1)), 1);
 }

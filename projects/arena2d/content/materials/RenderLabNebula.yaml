@@ -1,0 +1,86 @@
+version: 3
+name: RenderLabNebula
+domain: material
+id_counter: 165
+description: Slowly drifting violet and teal nebula for a far backdrop layer.
+graphs:
+- kind: event
+  name: ""
+  nodes:
+  - id: 1
+    type: Shader Surface Output
+    inputs:
+      Base Color:
+        default: {x: 0.0, "y": 0.0, z: 0.0}
+      Emission:
+        default: {x: 0.0, "y": 0.0, z: 0.0}
+      Normal:
+        default: {x: 0.0, "y": 0.0, z: 0.0}
+  - {id: 10, type: Shader WorldPosition}
+  - id: 12
+    type: Shader X
+    inputs:
+      Value: {type: struct, type_name: ShaderVec3}
+  - id: 15
+    type: Shader Z
+    inputs:
+      Value: {type: struct, type_name: ShaderVec3}
+  - {id: 18, type: Shader Time}
+  - id: 50
+    type: Behavior Expression
+    reference_id: 20
+    reference_name: vec3(x + t * 4, t * 1.5, z)
+    inputs:
+      x: {type: float}
+      t: {type: float}
+      z: {type: float}
+    outputs:
+      Result: {type: struct, type_name: ShaderVec3}
+  - id: 55
+    type: Shader Fractal Noise
+    inputs: {Scale: 0.004, Detail: 6.0, Roughness: 0.58}
+  - id: 61
+    type: Shader Fractal Noise
+    inputs: {Scale: 0.0015, Detail: 2.0}
+  - id: 83
+    type: Behavior Expression
+    reference_id: 67
+    reference_name: smoothstep(0.42, 0.85, n)
+    inputs:
+      "n": {type: float}
+    outputs:
+      Result: {type: float}
+  - id: 161
+    type: Behavior Expression
+    reference_id: 86
+    reference_name: mix(vec3(0.03, 0.09, 0.14), vec3(0.24, 0.05, 0.3), smoothstep(0.35, 0.65, h)) * d + vec3(0.35, 0.16, 0.3) * d * d * d
+    inputs:
+      h: {type: float}
+      d: {type: float}
+    outputs:
+      Result: {type: struct, type_name: ShaderVec3}
+  edges:
+  - {from: 10.Value, to: 12.Value}
+  - {from: 10.Value, to: 15.Value}
+  - {from: 10.Value, to: 61.Position}
+  - {from: 12.Value, to: 50.x}
+  - {from: 15.Value, to: 50.z}
+  - {from: 18.Value, to: 50.t}
+  - {from: 50.Result, to: 55.Position}
+  - {from: 55.Value, to: 83.n}
+  - {from: 61.Value, to: 161.h}
+  - {from: 83.Result, to: 1.Opacity}
+  - {from: 83.Result, to: 161.d}
+  - {from: 161.Result, to: 1.Emission}
+- id: 20
+  kind: function
+  math_expression: vec3(x + t * 4, t * 1.5, z)
+  entry_id: 21
+- id: 67
+  kind: function
+  math_expression: smoothstep(0.42, 0.85, n)
+  entry_id: 68
+- id: 86
+  kind: function
+  math_expression: mix(vec3(0.03, 0.09, 0.14), vec3(0.24, 0.05, 0.3), smoothstep(0.35, 0.65, h)) * d + vec3(0.35, 0.16, 0.3) * d * d * d
+  entry_id: 87

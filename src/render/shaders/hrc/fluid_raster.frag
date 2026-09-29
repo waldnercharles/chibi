@@ -58,9 +58,18 @@ void main()
     vec3 luma = vec3(.2126, .7152, .0722);
     float shown = dot(old_source.rgb * texelFetch(u_cover, pixel, 0).r * (1.0 - cover * .6) + f.emission, luma);
     float dense = dot(out_source.rgb, luma);
-    out_cover = vec4(dense > 1e-8 ? min(shown / dense, 60000.0) : 1.0, 0.0, 0.0, 0.0);
-    // Albedo alpha is material relief, which fluid leaves.
+    vec4 old_cover = texelFetch(u_cover, pixel, 0);
+    out_cover = vec4(dense > 1e-8 ? min(shown / dense, 60000.0) : 1.0, old_cover.g,
+                     min(old_cover.b + f.heat, 1.0), 0.0);
+    // Albedo alpha is material relief, which fluid leaves. Caustics brighten
+    // lit liquid like extra albedo, which bounce turns into light.
     out_albedo = vec4(old_albedo.rgb * (1.0 - cover) + surface.rgb * max(visible, cover), old_albedo.a);
+    if (u_caustics > 0.0 && f.liquid_alpha > 0.0) {
+        float refraction = f.liquid_refraction / max(f.liquid, .00001);
+        vec2 world = u_view.xy + (vec2(pixel) + .5) * u_view.zw * vec2(1, -1);
+        float light = caustic_excess(world, f.curvature, refraction) * f.liquid_alpha * visible;
+        out_albedo.rgb += (0.15 + 0.35 * f.liquid_color.rgb) * light;
+    }
     vec3 readability = f.liquid_alpha * f.liquid_visibility / max(f.liquid, .00001);
     readability += f.gas_alpha * f.gas_visibility / max(f.gas, .00001) * (1.0 - f.liquid_alpha);
     // Alpha marks participating fluid for camera exposure, not radiance feedback.

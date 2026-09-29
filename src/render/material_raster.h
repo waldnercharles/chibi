@@ -55,6 +55,8 @@ typedef struct
      * the material was laid out. Zero cos and sin sample materials at the
      * pixel's current world position. */
     float material_frame[4];
+    /* Linear RGB and amount of a hit flash; see GameFlash. */
+    float flash[4];
     /* Uploaded separately: Cute storage-buffer structs cannot contain arrays. */
     float material_parameters[32][4], shape_parameters[32][4];
 } render_material_entity;
@@ -79,7 +81,9 @@ typedef struct
     CF_Texture visibility;
     /* R: display's scale from source's emission density to emission
      * premultiplied by coverage. Absorbers emit their radiance times their
-     * optical depth (hrc/source_average.shd); clear emitters' scale is one. */
+     * optical depth (hrc/source_average.shd); clear emitters' scale is one.
+     * G: output pixels solids refract along their tilt. B: heat haze weight
+     * of burning and emissive fluid, at most one. A: zero. */
     CF_Texture cover;
 } render_material_textures;
 

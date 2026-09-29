@@ -168,3 +168,107 @@ The complete world and material hashes at frame 420 match before and after both
 optimizations. Particle count, material rules and solver substeps are unchanged.
 Regression fixtures cover rotated offset occluders, carved gaps, and compound
 contact deduplication in addition to the gameplay checks above.
+
+## Starwell rendering capabilities
+
+These optional capabilities serve [Starwell](starwell.md)'s visual direction.
+A scene pays for each only while it uses it. Timings are Metal GPU pass
+timestamps from the Release build at 1920x1080 on an Apple M4 Pro; the
+fixture is `scenes/RenderLab.yaml`, a noncombat scene that shows every effect.
+
+### Screen effects
+
+Screen effects need tone mapping (`GameHRC2D.tone_mapping`): they act on the
+linear frame and its presentation.
+
+`GamePost2D` grades and lenses the presented frame. Zero is neutral for every
+field, so an absent component and an all-zero one look the same:
+
+| Field | Effect |
+| --- | --- |
+| `vignette` | Darkening toward the corners, 0 to 1. |
+| `chromatic_aberration` | Red and blue split at the corners, in output pixels. |
+| `grain` | Film grain amplitude in display units, strongest in midtones. |
+| `contrast`, `saturation` | Added to one; -1 saturation is grayscale. |
+| `temperature`, `tint` | Linear white balance: cool to warm, green to magenta. |
+| `lift`, `gain` | Display color added to shadows; per-channel multiplier added to one. |
+| `heat_haze` | Output pixels of shimmer over burning or emissive fluid. |
+
+Behaviors add transient juice with nodes in *Visual/Effects*:
+
+- **Flash Screen**(Color, Amount, Duration) washes the display toward Color.
+- **Pulse Chromatic Aberration**(Amount, Duration) adds to the authored split.
+- **Add Shockwave**(Position, Radius, Thickness, Strength, Duration) expands a
+  ring that bends the frame by up to Strength output pixels. Sixteen rings can
+  run at once; a seventeenth replaces the oldest.
+
+Pulses fall off quadratically. A new flash or aberration pulse replaces the
+current one when it is at least as strong now. The engine ages them on the
+fixed clock (`src/runtime/visual_effects.c`); they are transient presentation,
+not saved state.
+
+`GameHeatHaze{radius, strength}` shimmers the frame within radius world
+units of an entity, strongest at its center. Up to sixteen sources in view
+contribute. Burning and emissive fluid writes a heat weight into the material
+cover texture's blue channel, which `GamePost2D.heat_haze` scales.
+
+Shockwaves, heat haze and solid refraction share one distortion pass that
+resamples the linear frame before bloom, so bent highlights still bloom. It
+runs only while one of them is on screen: 0.09 ms at 1080p. Grading, vignette,
+grain, flash and chromatic aberration are part of the tone-map pass; the
+pass went from 0.29 to 0.35 ms with aberration active. The distortion is
+screen space: it does not reveal what is offscreen, and edges clamp.
+
+### Hit flash
+
+`GameFlash{color, amount, decay}` tints an entity's drawn material toward
+color by amount and adds that color as emission (0.3 times the amount per
+unit of coverage), so a hit lights its surroundings through HRC. Amount falls
+by decay per second on the fixed clock. **Flash Entity**(Entity, Color,
+Amount) sets the color and raises the amount; Entity defaults to Self and must
+carry a `GameFlash`, which sets its decay. The flash applies after a graph
+material's Surface Output, so plain `GameMaterial`, graph materials and
+material-mask pieces all flash, borders included. Material entities grew by
+one vec4 (352 GPU bytes); the raster cost is within measurement noise.
+
+### Backdrops
+
+`GameBackdrop2D{material, parallax, layer, intensity, lit}` fills the screen
+behind the scene with a material graph, over the starfield. The graph's
+Position is the offset from the camera center, UV spans the screen and World
+Position is the camera position times `parallax` plus that offset: 0 pins the
+layer to the camera, 1 moves it with the world. Layers draw back to front in
+ascending `layer`, blending by Opacity. Base Color plus Emission, times
+`intensity`, is the layer's color; `lit` multiplies Base Color by the HRC
+surface light, received light that `GameHRC2D.surface_radius` has already
+blurred, so nearby lamps pick silhouettes out of the dark. Without surface
+light, lit layers use the unblurred received light.
+
+Layers render at half the output resolution into one premultiplied RGBA16F
+canvas that the composite lays over the starfield wherever the scene is open.
+The canvas is reused while the camera, layers, parameters and shader revision
+are unchanged and no layer is lit or reads Time, the beat or Surface
+Influence. RenderLab's six-octave animated nebula plus a lit ridge cost
+0.50 ms at 1080p; a full-resolution version cost 1.78 ms. The cost is the
+graphs': keep backdrop noise cheap, and prefer a static layer where possible.
+
+### Caustics
+
+`GameHRC2D.caustics` (zero disables; RenderLab uses 0.4) focuses light passing
+through liquid into bright moving lines. The fluid raster treats the liquid
+surface as a height field: four drifting waves plus the curvature of the
+particles' own density, so moving matter bends the pattern. A patch of
+surface at x lands at x + depth times its slope; its brightness is
+1 / |det J| for that mapping's Jacobian J = I + depth H, evaluated
+analytically per pixel. Depth is the strength times each volume's
+`GameFluidVolume.refraction`, so per-volume refraction scales caustics too.
+
+The brightness above the mean is added to the liquid's albedo. The composite
+multiplies albedo by received light, so caustics show only where light
+reaches the liquid, and bounce feeds the same albedo times the previous
+frame's light back into the transport as emission, so caustics light their
+surroundings (this needs `GameHRC2D.feedback`). The cost is part of the fluid
+raster: about 0.03 ms at 1080p for RenderLab's pool. Caustics appear on the
+liquid body, the plane behind it; light reaching floors below arrives through
+bounce as a soft, moving glow rather than a focused pattern. The waves are
+procedural, not a simulated surface.

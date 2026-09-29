@@ -110,6 +110,8 @@ struct render_radiance
     /* Blocks of 4 pixels or more first seed 2-pixel blocks here. */
     CF_Canvas surface_half;
     int surface_w, surface_h, surface_block;
+    /* This frame's surface light blur in blocks, or zero when it is off. */
+    float surface_sigma;
 };
 typedef render_radiance HRC;
 #define HRC_LEVEL_NAMES(phase)                                                 \
@@ -1161,6 +1163,7 @@ static const s_float_range s_float_ranges[] = {
     { offsetof(GameHRC2D, specular), 0, 100, "specular" },
     { offsetof(GameHRC2D, exposure), -16, 16, "exposure" },
     { offsetof(GameHRC2D, bloom), 0, 1, "bloom" },
+    { offsetof(GameHRC2D, caustics), 0, 4, "caustics" },
 };
 
 static const s_int_range s_int_ranges[] = {
@@ -1364,7 +1367,7 @@ static void s_solve_luminance_pair(HRC *luminance, int pair)
     s_solve_merge(luminance, pair, luminance->frustum[pair], s_luminance_merge_names);
 }
 
-static bool s_dispatch_transport(HRC *hrc, render_radiance_inputs inputs, render_view_2d view)
+static bool s_dispatch_transport(HRC *hrc, render_material_textures material, render_view_2d view)
 {
     if (!hrc->canvas_w) {
         return false;
@@ -1374,9 +1377,9 @@ static bool s_dispatch_transport(HRC *hrc, render_radiance_inputs inputs, render
                                       view.max_y - view.height * view.crop_max_v },
                              .max = { view.min_x + view.width * view.crop_max_u,
                                       view.max_y - view.height * view.crop_min_v } };
-    hrc->scene = inputs.material.scene;
-    hrc->source = inputs.material.source;
-    hrc->albedo = inputs.material.albedo;
+    hrc->scene = material.scene;
+    hrc->source = material.source;
+    hrc->albedo = material.albedo;
     /* Luminance prefilters the canvas once; color box-averages it. */
     HRC *luminance = hrc->luminance;
     s_push_hrc_label(hrc, "prefilter");
@@ -1425,31 +1428,58 @@ static bool s_dispatch_transport(HRC *hrc, render_radiance_inputs inputs, render
     return true;
 }
 
-bool render_radiance_draw(HRC *hrc, render_radiance_inputs inputs, render_view_2d view, CF_Canvas output)
+bool render_radiance_solve(HRC *hrc, render_material_textures material, render_view_2d view)
 {
     assert(hrc);
-    if (!hrc->canvas_w || !output.id || !inputs.material.scene.id ||
-        !inputs.material.source.id || !inputs.material.albedo.id) {
+    if (!hrc->canvas_w || !material.scene.id || !material.source.id ||
+        !material.albedo.id) {
         return false;
     }
     CHIBI_TRACE_ZONE_BEGIN(zone, "HRC submission");
     /* Prefilter averages full-resolution inputs directly; only gather at a
      * reduced reconstruction resolution samples emission mipmaps. */
     if (hrc->radiance_w != hrc->canvas_w || hrc->radiance_h != hrc->canvas_h) {
-        cf_generate_mipmaps(inputs.material.source);
+        cf_generate_mipmaps(material.source);
         render_gpu_timing_mark("Emission mipmaps");
     }
-    if (!s_dispatch_transport(hrc, inputs, view)) {
-        CHIBI_TRACE_ZONE_END(zone);
-        return false;
+    bool solved = s_dispatch_transport(hrc, material, view);
+    if (solved) {
+        s_push_hrc_label(hrc, "surface");
+        int block = 1;
+        hrc->surface_sigma = s_dispatch_surface(hrc, view, &block);
+        cf_pop_gpu_label();
+        render_gpu_timing_mark("Surface light");
     }
+    CHIBI_TRACE_ZONE_END(zone);
+    return solved;
+}
+
+render_radiance_light render_radiance_received_light(const HRC *hrc)
+{
+    if (hrc->surface_sigma <= 0) {
+        return (render_radiance_light){ .texture = s_radiance(hrc), .map = { 1, 1 } };
+    }
+    return (render_radiance_light){
+        .texture = cf_canvas_get_target2(hrc->surface_canvas[0], 0),
+        .map = { (float)hrc->canvas_w / (float)(hrc->surface_w * hrc->surface_block),
+                 (float)hrc->canvas_h / (float)(hrc->surface_h * hrc->surface_block) },
+        .openness = true,
+    };
+}
+
+bool render_radiance_draw(HRC *hrc, render_radiance_inputs inputs, render_view_2d view, CF_Canvas output)
+{
+    return render_radiance_solve(hrc, inputs.material, view) &&
+           render_radiance_composite(hrc, inputs, view, output);
+}
+
+bool render_radiance_composite(HRC *hrc, render_radiance_inputs inputs, render_view_2d view, CF_Canvas output)
+{
+    assert(hrc && output.id);
     GameHRC2D lighting = hrc->authored_lighting ? hrc->lighting
                                                 : game_hrc2d_defaults();
-    int block = 1;
-    s_push_hrc_label(hrc, "surface");
-    float surface_sigma = s_dispatch_surface(hrc, view, &block);
-    cf_pop_gpu_label();
-    render_gpu_timing_mark("Surface light");
+    int block = hrc->surface_block;
+    float surface_sigma = hrc->surface_sigma;
     float ambient = lighting.ambient;
     float intensity = lighting.intensity;
     float shadow_floor = lighting.shadow_floor;
@@ -1465,6 +1495,7 @@ bool render_radiance_draw(HRC *hrc, render_radiance_inputs inputs, render_view_2
     cf_draw_set_texture("fluence_tex", s_radiance(hrc));
     cf_draw_set_texture("normal_tex", inputs.material.normal);
     cf_draw_set_texture("background_tex", inputs.background.id ? inputs.background : hrc->black);
+    cf_draw_set_texture("layers_tex", inputs.layers.id ? inputs.layers : hrc->black);
     cf_draw_set_texture("visibility_tex", inputs.material.visibility);
     cf_draw_set_texture("cover_tex", inputs.material.cover);
     cf_draw_set_texture(
@@ -1516,6 +1547,7 @@ bool render_radiance_draw(HRC *hrc, render_radiance_inputs inputs, render_view_2
         "fluence_tex",
         "normal_tex",
         "background_tex",
+        "layers_tex",
         "visibility_tex",
         "cover_tex",
         "surface_tex",
@@ -1524,6 +1556,5 @@ bool render_radiance_draw(HRC *hrc, render_radiance_inputs inputs, render_view_2
     cf_pop_gpu_label();
     render_gpu_timing_mark("Composite");
     hrc->frame_count = (hrc->frame_count + 1) & 63;
-    CHIBI_TRACE_ZONE_END(zone);
     return true;
 }

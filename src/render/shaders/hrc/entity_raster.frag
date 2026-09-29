@@ -10,7 +10,8 @@
 //           scene's alpha, which the same over-recurrence accumulates
 //   normal: see render_material_textures
 //   visibility: zero; fluid adds it
-//   cover: R, the scale that returns source's emission to display's
+//   cover: R, the scale that returns source's emission to display's; G
+//          refraction and B heat haze, which later batches keep
 // Later batches start from the previous batch's targets.
 
 #include "entity.shd"
@@ -50,7 +51,7 @@ layout(set = 2, binding = SG_COUNTS_BINDING) readonly buffer TileOffsets { uvec4
 layout(set = 2, binding = SG_INDICES_BINDING) readonly buffer TileEntities { uvec4 tile_entities[]; };
 layout(set = 2, binding = SG_PARAMETERS_BINDING) readonly buffer ShaderParameters { vec4 shader_parameters[]; };
 
-#define ENTITY_VEC4S 21u
+#define ENTITY_VEC4S 22u
 
 uint tile_offset(uint i) { return tile_offsets[i >> 2u][i & 3u]; }
 uint tile_entity(uint i) { return tile_entities[i >> 2u][i & 3u]; }
@@ -97,6 +98,7 @@ Entity entity_at(uint index)
     e.simulation_time = v.xyz;
     e.tile_group = v.w;
     e.material_frame = entity_vec4(b + 20u);
+    e.flash = entity_vec4(b + 21u);
     return e;
 }
 
@@ -316,6 +318,8 @@ vec4 normal_acc;
 float tau_acc;
 float absorption_cover;
 float relief_acc;
+// Cover's refraction and heat haze.
+vec2 optics_acc;
 
 void emission_over(vec4 em, bool absorbs)
 {
@@ -436,6 +440,7 @@ void main()
     albedo_acc = vec4(0, 0, 0, 1);
     normal_acc = vec4(0);
     relief_acc = 0.0;
+    optics_acc = vec2(0.0);
     group_id = 0.0;
     border_cover = 0.0;
     group_layer = layer_empty();
@@ -444,7 +449,9 @@ void main()
     // absorbed, over the whole pixel.
     scene_acc = texelFetch(u_prev_scene, pixel, 0);
     vec4 prev_source = texelFetch(u_prev_source, pixel, 0);
-    emission_acc.rgb = prev_source.rgb * texelFetch(u_prev_cover, pixel, 0).r;
+    vec4 prev_cover = texelFetch(u_prev_cover, pixel, 0);
+    emission_acc.rgb = prev_source.rgb * prev_cover.r;
+    optics_acc = prev_cover.gb;
     absorber_emission = prev_source.a > 0.0 ? emission_acc.rgb : vec3(0.0);
     absorption_cover = prev_source.a > 0.0 ? 1.0 : 0.0;
     tau_acc = prev_source.a;
@@ -583,6 +590,8 @@ void main()
             surface.xyw = graph_output[4].xyz;
             height = graph_output[4].w;
         }
+        apply_flash(e.scene, e.emission, e.albedo, e.flash);
+        apply_flash(e.border_scene, e.border_emission, e.border_albedo, e.flash);
 
         if (e.metaball_group > 0u) {
             // Accumulate into metaball group.
@@ -756,7 +765,7 @@ void main()
     float display = dense > 1e-8 ? min(dot(emission_acc.rgb, luma) / dense, 60000.0) : 1.0;
     out_scene = scene_acc;
     out_source = vec4(density, depth);
-    out_cover = vec4(display, 0.0, 0.0, 0.0);
+    out_cover = vec4(display, optics_acc, 0.0);
     out_albedo = vec4(albedo_acc.rgb, relief_acc);
     out_normal = normal_acc;
     out_visibility = vec4(0);

@@ -468,6 +468,27 @@ does not. Any fused bytecode operation must retain budgets, waits, exceptions,
 source maps and debugger behavior. AOT-to-Wasm exports are a separate extension
 to the export contract; ordinary browser-authored behavior remains bytecode.
 
+**C8. Generate WebAssembly for behavior graphs at runtime in the browser.**
+The browser cannot execute SLJIT output, so web behavior runs as bytecode. The
+MovementSystem benchmark measures native SLJIT at 18 ns per entity-frame, typed
+bytecode in WASM at 70 ns and generic bytecode at about 750 ns. The browser's
+equivalent of SLJIT is to emit a small Wasm module per published program from the
+shared IR. Each module would import the linear memory, function table and host
+helpers, and be instantiated with `WebAssembly.Module`/`Instance`. The browser
+then compiles it with its own optimizing tiers.
+
+Open questions:
+- Compilation latency. Chrome limits synchronous compilation on the main thread
+  to small modules, so larger programs need asynchronous compilation, with
+  bytecode running until the module is ready.
+- Calls across the JS boundary for host helpers.
+- How waits and continuations resume in generated code.
+- How to preserve budgets, errors, source maps and debugger safe points.
+
+Keep bytecode as the reference backend and require parity with it, as SLJIT
+does. Emit through a small in-tree encoder, not an external toolchain. See
+[WebAssembly JS API](https://webassembly.github.io/spec/js-api/).
+
 Sources: [shared optimizer](../../src/graph/compiler/behavior_function_opt.c),
 [whole-function measurements](whole-function-performance.md),
 [system/sequence C comparison](tick-sequences.md),

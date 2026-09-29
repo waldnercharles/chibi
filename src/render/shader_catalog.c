@@ -173,6 +173,18 @@ bool render_shader_parameters_validate(int index, const char *json, shader_error
     yyjson_doc_free(doc);
     return true;
 }
+/* One past the highest parameter slot the compiled graph reads. */
+static int parameter_count(const shader_asset *asset)
+{
+    int count = 0;
+    for (int i = 0; i < acount(asset->graph.nodes); i++) {
+        const shader_node *n = &asset->graph.nodes[i];
+        if (n->op == SHADER_PARAMETER && n->parameter >= count) {
+            count = n->parameter + 1;
+        }
+    }
+    return count;
+}
 bool render_shader_is_shape(int index)
 {
     return index > 0 && index <= acount(assets) && assets[index - 1].shape;
@@ -499,6 +511,14 @@ char *render_shader_glsl(const render_shader_set *set, int sampler_set, int firs
         append(&text, "case %d: sg_asset_%d(sg_context,values,result); break;\n", i + 1, i + 1);
     }
     append(&text, "default: break;\n }\n}\n");
+    /* Callers fill only the parameter slots a graph reads, not all 32. */
+    append(&text, "int sg_parameter_count(int id) {\n switch(id) {\n");
+    for (int i = 0; i < acount(assets); i++) {
+        if (render_shader_set_contains(set, i + 1)) {
+            append(&text, "case %d: return %d;\n", i + 1, parameter_count(&assets[i]));
+        }
+    }
+    append(&text, "default: return 0;\n }\n}\n");
     append(
         &text,
         "void sg_dispatch_2d(int id,vec2 p,vec2 wp,vec2 half_size,float "

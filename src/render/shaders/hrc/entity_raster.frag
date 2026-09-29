@@ -32,6 +32,7 @@
 void sg_dispatch_2d(int id,vec2 p,vec2 wp,vec2 half_size,float time,vec4 values[32],out vec4 result[8]) {
  for(int i=0;i<8;i++) result[i]=vec4(0);
 }
+int sg_parameter_count(int id) { return 0; }
 layout(set = 3, binding = 0) uniform uniform_block {
     float u_world_min_x;
     float u_world_max_y;
@@ -550,7 +551,7 @@ void main()
         vec4 graph_output[8];
         vec4 parameters[32];
         if (e.reserved1 > 0.0) {
-            for(int p=0;p<32;p++) parameters[p]=shader_parameters[eidx*64u+32u+uint(p)];
+            for(int p=0;p<sg_parameter_count(int(e.reserved1));p++) parameters[p]=shader_parameters[eidx*64u+32u+uint(p)];
             sg_dispatch_2d(int(e.reserved1), local_p, material_pos, half_size, e.simulation_time.x, parameters, graph_output);
             sdf = graph_output[0].x;
         }
@@ -574,7 +575,7 @@ void main()
         vec4 surface = vec4(0.0, 0.0, e.reserved2, 0.0);
         float height = 0.0;
         if (e.reserved0 > 0.0) {
-            for(int p=0;p<32;p++) parameters[p]=shader_parameters[eidx*64u+uint(p)];
+            for(int p=0;p<sg_parameter_count(int(e.reserved0));p++) parameters[p]=shader_parameters[eidx*64u+uint(p)];
             sg_dispatch_2d(int(e.reserved0), local_p, material_pos, half_size, e.simulation_time.x, parameters, graph_output);
             e.scene=graph_output[0]; e.emission=graph_output[1];
             e.albedo=graph_output[2]; e.absorption=graph_output[3];

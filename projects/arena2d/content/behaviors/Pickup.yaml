@@ -1,0 +1,317 @@
+version: 3
+name: Pickup
+id_counter: 550
+description: 'Scrap, resonance and repair motes: drift and slow, spin, fly to the player within reach, and credit them on arrival.'
+owner_type: ecs.entity
+graphs:
+- kind: event
+  name: ""
+  nodes:
+  - id: 1
+    type: Event
+    reference_name: Tick
+    outputs:
+      DeltaSeconds: {type: float, kind: data}
+  - id: 16
+    type: Behavior Expression
+    reference_id: 4
+    reference_name: age += dt
+    inputs:
+      Exec: {id: 20, kind: exec}
+      age:
+        id: 17
+        type: float
+        binding: {kind: component_field, component: GAME.GamePickup, field: age}
+      dt:
+        type: double
+        binding: {kind: delta_time}
+    outputs:
+      Then: {id: 21, kind: exec}
+      Result: {id: 19, type: float}
+  - id: 84
+    type: Behavior Expression
+    reference_id: 59
+    reference_name: velocity *= exp(-dt * 2.2)
+    inputs:
+      Exec: {id: 88, kind: exec}
+      velocity:
+        id: 85
+        type: struct
+        type_name: GameVelocity
+        binding: {kind: component, component: GAME.GameVelocity}
+      dt:
+        type: double
+        binding: {kind: delta_time}
+    outputs:
+      Then: {id: 89, kind: exec}
+      Result: {id: 87, type: struct, type_name: GameVelocity}
+  - id: 139
+    type: Behavior Expression
+    reference_id: 120
+    reference_name: heading += dt * 5
+    inputs:
+      Exec: {id: 143, kind: exec}
+      heading:
+        id: 140
+        type: float
+        binding: {kind: component_field, component: GAME.GameOrientation, field: radians}
+      dt:
+        type: double
+        binding: {kind: delta_time}
+    outputs:
+      Then: {id: 144, kind: exec}
+      Result: {id: 142, type: float}
+  - id: 177
+    type: Get Global Variable
+    inputs: {Name: Player}
+    outputs:
+      Value: {type: handle, type_name: ecs.entity}
+  - {id: 180, type: GetEntity_GameTransform}
+  - id: 183
+    type: Get Global Variable
+    inputs: {Name: Magnet}
+    outputs:
+      Value: {type: double}
+  - id: 203
+    type: Behavior Expression
+    reference_id: 186
+    reference_name: distance(pos, p) < reach
+    inputs:
+      pos:
+        type: struct
+        type_name: GameTransform
+        binding: {kind: component, component: GAME.GameTransform}
+      p: {type: struct, type_name: GameTransform}
+      reach: {type: double, flags: 0}
+    outputs:
+      Result: {type: bool}
+  - {id: 211, type: Branch}
+  - id: 275
+    type: Behavior Expression
+    reference_id: 216
+    reference_name: velocity += normalize(p - pos) * dt * (900 + 2600 * (1 - distance(pos, p) / reach))
+    inputs:
+      Exec: {id: 282, kind: exec}
+      velocity:
+        id: 276
+        type: struct
+        type_name: GameVelocity
+        binding: {kind: component, component: GAME.GameVelocity}
+      p: {type: struct, type_name: GameTransform}
+      pos:
+        type: struct
+        type_name: GameTransform
+        binding: {kind: component, component: GAME.GameTransform}
+      dt:
+        type: double
+        binding: {kind: delta_time}
+      reach: {type: double}
+    outputs:
+      Then: {id: 283, kind: exec}
+      Result: {id: 281, type: struct, type_name: GameVelocity}
+  - id: 367
+    type: Behavior Expression
+    reference_id: 348
+    reference_name: distance(pos, p) < 14
+    inputs:
+      pos:
+        type: struct
+        type_name: GameTransform
+        binding: {kind: component, component: GAME.GameTransform}
+      p: {type: struct, type_name: GameTransform}
+    outputs:
+      Result: {type: bool}
+  - {id: 374, type: Branch}
+  - id: 379
+    type: Switch on Int
+    inputs:
+      Selection:
+        binding: {kind: component_field, component: GAME.GamePickup, field: state}
+    outputs:
+    - 382
+    - 383
+    - {id: 385, name: Case2}
+    - 384
+  - id: 386
+    type: Get Global Variable
+    inputs: {Name: Scrap}
+    outputs:
+      Value: {type: int}
+  - id: 401
+    type: Behavior Expression
+    reference_id: 389
+    reference_name: c + v
+    inputs:
+      c: {type: int}
+      v:
+        type: double
+        binding: {kind: component_field, component: GAME.GamePickup, field: value}
+    outputs:
+      Result: {type: double}
+  - id: 405
+    type: Set Global Variable
+    inputs:
+      Name: Scrap
+      Value: {type: int}
+    outputs:
+      Value: {type: int}
+  - id: 411
+    type: Get Global Variable
+    inputs: {Name: Resonance}
+    outputs:
+      Value: {type: int}
+  - id: 426
+    type: Behavior Expression
+    reference_id: 414
+    reference_name: c + v
+    inputs:
+      c: {type: int}
+      v:
+        type: double
+        binding: {kind: component_field, component: GAME.GamePickup, field: value}
+    outputs:
+      Result: {type: double}
+  - id: 430
+    type: Set Global Variable
+    inputs:
+      Name: Resonance
+      Value: {type: int}
+    outputs:
+      Value: {type: int}
+  - id: 436
+    type: Get Global Variable
+    inputs: {Name: Player}
+    outputs:
+      Value: {type: handle, type_name: ecs.entity}
+  - id: 439
+    type: Self
+    outputs:
+      Self: {type_name: ecs.entity}
+  - id: 441
+    type: Send Event
+    reference_name: Hit
+    inputs:
+      Amount:
+        id: 445
+        declaration_id: 1
+        type: int
+        binding: {kind: component_field, component: GAME.GamePickup, field: value}
+      Source: {declaration_id: 2}
+      Point: {declaration_id: 3, type: struct, type_name: CF_V2}
+      Direction:
+        declaration_id: 4
+        type: struct
+        type_name: CF_V2
+        default: {x: 0.0, "y": 0.0}
+      Element: {declaration_id: 5, type: int, default: 7}
+      Knockback: {declaration_id: 6, type: float}
+    outputs:
+      Then: {id: 444}
+  - id: 485
+    type: Behavior Expression
+    reference_id: 451
+    reference_name: 1200 + state * 500 + rand() * 120
+    inputs:
+      state:
+        type: double
+        binding: {kind: component_field, component: GAME.GamePickup, field: state}
+    outputs:
+      Result: {type: double}
+  - id: 502
+    type: Behavior Expression
+    reference_id: 488
+    reference_name: f * 1.5
+    inputs:
+      f: {type: double}
+    outputs:
+      Result: {type: double}
+  - id: 505
+    type: Play Sound
+    inputs: {Duration: 0.06, Volume: 0.1, Pan: 0.0}
+  - id: 514
+    type: Self
+    outputs:
+      Self: {type_name: ecs.entity}
+  - {id: 516, type: Destroy Entity}
+  - id: 532
+    type: Behavior Expression
+    reference_id: 520
+    reference_name: age > lifetime
+    inputs:
+      age:
+        type: double
+        flags: 0
+        binding: {kind: component_field, component: GAME.GamePickup, field: age}
+      lifetime:
+        type: double
+        flags: 0
+        binding: {kind: component_field, component: GAME.GamePickup, field: lifetime}
+    outputs:
+      Result: {type: bool}
+  - {id: 539, type: Branch}
+  - id: 544
+    type: Self
+    outputs:
+      Self: {type_name: ecs.entity}
+  - {id: 546, type: Destroy Entity}
+  edges:
+  - {from: 1.Then, to: 16.Exec}
+  - {from: 16.Then, to: 84.Exec}
+  - {from: 84.Then, to: 139.Exec}
+  - {from: 139.Then, to: 211.Exec}
+  - {from: 177.Value, to: 180.Entity}
+  - {from: 180.Value, to: 203.p}
+  - {from: 180.Value, to: 275.p}
+  - {from: 180.Value, to: 367.p}
+  - {from: 180.Value, to: 441.Point, conversion: game_transform_to_cf}
+  - {from: 183.Value, to: 203.reach}
+  - {from: 183.Value, to: 275.reach}
+  - {from: 203.Result, to: 211.Condition}
+  - {from: 211.True, to: 275.Exec}
+  - {from: 211.False, to: 539.Exec}
+  - {from: 275.Then, to: 374.Exec}
+  - {from: 367.Result, to: 374.Condition}
+  - {from: 374.True, to: 379.Exec}
+  - {from: 374.False, to: 539.Exec}
+  - {from: 379.Case0, to: 405.Exec}
+  - {from: 379.Case1, to: 430.Exec}
+  - {from: 379.Default, to: 505.Exec}
+  - {from: 379.Case2, to: 441.Exec}
+  - {from: 386.Value, to: 401.c}
+  - {from: 405.Then, to: 505.Exec}
+  - {from: 411.Value, to: 426.c}
+  - {from: 430.Then, to: 505.Exec}
+  - {from: 436.Value, to: 441.Entity}
+  - {from: 439.Self, to: 441.Source}
+  - {from: 441.Then, to: 505.Exec}
+  - {from: 485.Result, to: 502.f}
+  - {from: 485.Result, to: 505.Frequency}
+  - {from: 502.Result, to: 505.End Frequency}
+  - {from: 505.Then, to: 516.Exec}
+  - {from: 514.Self, to: 516.Entity}
+  - {from: 532.Result, to: 539.Condition}
+  - {from: 539.True, to: 546.Exec}
+  - {from: 544.Self, to: 546.Entity}
+- {id: 4, kind: function, math_expression: age += dt, entry_id: 23}
+- id: 59
+  kind: function
+  math_expression: velocity *= exp(-dt * 2.2)
+  entry_id: 91
+- {id: 120, kind: function, math_expression: heading += dt * 5, entry_id: 146}
+- id: 186
+  kind: function
+  math_expression: distance(pos, p) < reach
+  entry_id: 187
+- id: 216
+  kind: function
+  math_expression: velocity += normalize(p - pos) * dt * (900 + 2600 * (1 - distance(pos, p) / reach))
+  entry_id: 285
+- {id: 348, kind: function, math_expression: 'distance(pos, p) < 14', entry_id: 349}
+- {id: 389, kind: function, math_expression: c + v, entry_id: 390}
+- {id: 414, kind: function, math_expression: c + v, entry_id: 415}
+- id: 451
+  kind: function
+  math_expression: 1200 + state * 500 + rand() * 120
+  entry_id: 452
+- {id: 488, kind: function, math_expression: f * 1.5, entry_id: 489}
+- {id: 520, kind: function, math_expression: age > lifetime, entry_id: 521}

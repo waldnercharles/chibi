@@ -1,0 +1,25 @@
+version: 3
+name: SpitterShape
+domain: shape
+bounds_x: 18.0
+bounds_y: 18.0
+id_counter: 8
+description: The Spitter's silhouette.
+graphs:
+- kind: event
+  name: ""
+  nodes:
+  - {id: 1, type: Shader Shape Output}
+  - {id: 3, type: Shader Position}
+  - id: 5
+    type: Call Pure Function
+    reference_id: 285
+    reference_name: Spitter
+    reference_asset: EnemyForms
+    inputs:
+      Position: {declaration_id: 290, type: struct, type_name: ShaderVec2}
+    outputs:
+      Distance: {declaration_id: 291, type: float}
+  edges:
+  - {from: 3.Position, to: 5.Position}
+  - {from: 5.Distance, to: 1.Distance}

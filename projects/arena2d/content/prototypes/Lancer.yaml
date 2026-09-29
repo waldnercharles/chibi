@@ -1,0 +1,19 @@
+name: Lancer
+components:
+  GAME.GameBody: {type: Dynamic}
+  GAME.GameCollider: {category: 2, mask: 15, radius: 9.0, restitution: 0.3}
+  GAME.GameDrive: {acceleration: 900.0}
+  GAME.GameExperience: {current: 7}
+  GAME.GameGeometry3D: {depth: 40.0, height: 4.0, width: 40.0}
+  GAME.GameHealth: {current: 48, maximum: 48}
+  GAME.GameMovement: {speed: 150.0}
+  GAME.GameOrientation: {}
+  GAME.GameShader:
+    material: LancerSkin
+    parameters: '{"Glow":[0.706,0.361,1.0],"Body":[0.071,0.027,0.122]}'
+    shape: LancerShape
+  GAME.GameSpawnRequest: {prototype: LancerDeath}
+  GAME.GameTransform: {}
+  GAME.GameVelocity: {}
+  GAME.GameWeapon: {damage: 18}
+behaviors: [Creature, Lancer]

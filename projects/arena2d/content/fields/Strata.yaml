@@ -1,7 +1,7 @@
 version: 3
 name: Strata
 domain: field
-id_counter: 4040
+id_counter: 4800
 description: 'One stratum of the Starwell: a sanctum at the top, a lattice of chambers joined by a guaranteed descending route, sealed vault pockets and a boss arena at the bottom. Positive is open space.'
 variables:
 - {id: 547, name: Width, type: float, default: 3200.0}
@@ -1160,133 +1160,133 @@ graphs:
 - id: 94
   kind: function
   math_expression: select(min(i - lo + 0.5, hi + 0.5 - i), -1, hash(i, j, salt + 6) - 0.68)
-  entry_id: 3846
+  entry_id: 4226
 - id: 102
   kind: function
   math_expression: select(min(i + 1.5 - lo, hi - 0.5 - i), -1, hash(i + 1, j, salt + 6) - 0.68)
-  entry_id: 3846
+  entry_id: 4606
 - id: 110
   kind: function
   math_expression: select(min(i - min(k, kn) + 0.5, max(k, kn) + 0.5 - i), -1, hash(i, j + 1, salt + 6) - 0.68)
-  entry_id: 3846
+  entry_id: 4606
 - id: 122
   kind: function
   math_expression: min(min(select(min(i - lo + 0.5, hi - 0.5 - i), 1, hash(i, j, salt + 4) - 0.15), negate(max(vault, vaultR))), min(cols - 1.5 - i, inb))
-  entry_id: 3846
+  entry_id: 4606
 - id: 133
   kind: function
   math_expression: min(min(select(0.5 - abs(i - k), 1, hash(i, j, salt + 5) - 0.4), negate(max(vault, vaultD))), min(rows - 1.5 - j, inb))
-  entry_id: 3846
+  entry_id: 4606
 - id: 141
   kind: function
   math_expression: select(vault, 72 + 30 * u, select(hash(i, j, salt + 10) - 0.8, 330 + 60 * u, 140 + 115 * u))
-  entry_id: 3846
+  entry_id: 4606
 - id: 148
   kind: function
   math_expression: hash(i, j, salt + 11) * r * 0.5
-  entry_id: 3846
+  entry_id: 4606
 - id: 155
   kind: function
   math_expression: hash(i, j, salt + 12) * r * 0.4
-  entry_id: 3846
+  entry_id: 4606
 - id: 166
   kind: function
   math_expression: smooth_union(circle(x - cx, y - cy, r), circle(x - cx - ox, y - cy - oy, r * (0.5 + 0.2 * u)), 70)
-  entry_id: 3846
+  entry_id: 4606
 - id: 177
   kind: function
   math_expression: select(inb, (1 - boxy) * lobe + boxy * (box(x - cx, y - cy, r * 0.95, r * 0.62) - 12), 100000)
-  entry_id: 3846
+  entry_id: 4606
 - id: 190
   kind: function
   math_expression: select(hon, capsule(x, y, cx, cy, cxr, cyr, 46 + 26 * (hash(i, j, salt + 8) * 0.5 + 0.5)), 100000)
-  entry_id: 3846
+  entry_id: 4606
 - id: 203
   kind: function
   math_expression: select(von, capsule(x, y, cx, cy, cxd, cyd, 44 + 24 * (hash(i, j, salt + 9) * 0.5 + 0.5)), 100000)
-  entry_id: 3846
+  entry_id: 4606
 - id: 209
   kind: function
   math_expression: min(chamber, min(ht, vt))
-  entry_id: 3846
-- {id: 266, kind: function, math_expression: x + width * 0.5, entry_id: 3846}
-- {id: 271, kind: function, math_expression: y + height * 0.5, entry_id: 3846}
+  entry_id: 4606
+- {id: 266, kind: function, math_expression: x + width * 0.5, entry_id: 4606}
+- {id: 271, kind: function, math_expression: y + height * 0.5, entry_id: 4606}
 - id: 278
   kind: function
   math_expression: X + warp * noise(X / 620, Y / 620, salt + 20) + warp * 0.35 * noise(X / 190, Y / 190, salt + 22)
-  entry_id: 3846
+  entry_id: 4606
 - id: 285
   kind: function
   math_expression: Y + warp * noise(X / 620 + 17.3, Y / 620 - 5.1, salt + 21) + warp * 0.35 * noise(X / 190 - 3.7, Y / 190 + 9.2, salt + 23)
-  entry_id: 3846
+  entry_id: 4606
 - id: 290
   kind: function
   math_expression: floor(width / spacingX)
-  entry_id: 3846
+  entry_id: 4606
 - id: 297
   kind: function
   math_expression: floor((height - top - bottom) / spacingY)
-  entry_id: 3846
-- {id: 302, kind: function, math_expression: floor(wx / spacingX), entry_id: 3846}
+  entry_id: 4606
+- {id: 302, kind: function, math_expression: floor(wx / spacingX), entry_id: 4606}
 - id: 308
   kind: function
   math_expression: floor((wy - top) / spacingY)
-  entry_id: 3846
+  entry_id: 4606
 - id: 314
   kind: function
   math_expression: i0 - select(wx / spacingX - i0 - 0.5, 0, 1)
-  entry_id: 3846
+  entry_id: 4606
 - id: 321
   kind: function
   math_expression: j0 - select((wy - top) / spacingY - j0 - 0.5, 0, 1)
-  entry_id: 3846
-- {id: 325, kind: function, math_expression: ia + 1, entry_id: 3846}
+  entry_id: 4606
+- {id: 325, kind: function, math_expression: ia + 1, entry_id: 4606}
 - {id: 329, kind: function, math_expression: ja + 1, entry_id: 597}
 - id: 335
   kind: function
   math_expression: select(ja - 0.5, floor((hash(ja - 1, 0, salt + 7) * 0.5 + 0.5) * cols * 0.999), floor(cols / 2))
-  entry_id: 3846
+  entry_id: 4606
 - id: 341
   kind: function
   math_expression: floor((hash(ja, 0, salt + 7) * 0.5 + 0.5) * cols * 0.999)
-  entry_id: 3846
+  entry_id: 4606
 - id: 347
   kind: function
   math_expression: floor((hash(ja + 1, 0, salt + 7) * 0.5 + 0.5) * cols * 0.999)
-  entry_id: 3846
+  entry_id: 4606
 - id: 353
   kind: function
   math_expression: floor((hash(ja + 2, 0, salt + 7) * 0.5 + 0.5) * cols * 0.999)
-  entry_id: 3846
+  entry_id: 4606
 - id: 359
   kind: function
   math_expression: select(ja + 0.5, kA, floor(cols / 2))
-  entry_id: 3846
+  entry_id: 4606
 - id: 365
   kind: function
   math_expression: select(ja + 1.5, kB, floor(cols / 2))
-  entry_id: 3846
+  entry_id: 4606
 - id: 436
   kind: function
   math_expression: min(min(riaa, riab), min(riba, ribb))
-  entry_id: 3846
+  entry_id: 4606
 - id: 446
   kind: function
   math_expression: max(140 - 420 * max(fractal(wx / 520, wy / 520, salt + 60, 3, 2.0, 0.5), 0), max(top + 150 - Y, Y - (height - bottom - 250)))
-  entry_id: 3846
+  entry_id: 4606
 - id: 452
   kind: function
   math_expression: smooth_union(cave, select(pockets, pocket, 100000), 40)
-  entry_id: 3846
+  entry_id: 4606
 - id: 463
   kind: function
   math_expression: cave2 + roughness * fractal(wx / 150, wy / 150, salt + 30, 3, 2.1, 0.5) + columnStep * hash(floor(wx / 26), floor(wy / 380), salt + 40) + ridge * (abs(noise(wx / 70, wy / 70, salt + 41)) - 0.3) + terrace * floor(noise(wx / 230, wy / 230, salt + 42) * 3) / 3
-  entry_id: 3846
-- {id: 467, kind: function, math_expression: width * 0.5, entry_id: 3846}
+  entry_id: 4606
+- {id: 467, kind: function, math_expression: width * 0.5, entry_id: 4606}
 - id: 473
   kind: function
   math_expression: box(X - mid, Y - 330, 330, 105) - 45
-  entry_id: 3846
+  entry_id: 4606
 - id: 480
   kind: function
   math_expression: select(entry, capsule(X, Y, mid, -200, mid, 330, 62), 100000)
@@ -1294,32 +1294,32 @@ graphs:
 - id: 488
   kind: function
   math_expression: capsule(X, Y, mid, 380, mid, top + 0.5 * spacingY, 58)
-  entry_id: 3846
+  entry_id: 4606
 - id: 494
   kind: function
   math_expression: floor((hash(rows - 1, 0, salt + 7) * 0.5 + 0.5) * cols * 0.999)
-  entry_id: 3846
+  entry_id: 4606
 - id: 499
   kind: function
   math_expression: height - bottom * 0.55
-  entry_id: 3846
+  entry_id: 4606
 - id: 507
   kind: function
   math_expression: circle(X - mid, Y - arenaY, 540) + 40 * noise(X / 160, Y / 160, salt + 50)
-  entry_id: 3846
+  entry_id: 4606
 - id: 519
   kind: function
   math_expression: capsule(X, Y, (kl + 0.5) * spacingX, top + (rows - 0.5) * spacingY, mid, arenaY, 64)
-  entry_id: 3846
+  entry_id: 4606
 - id: 528
   kind: function
   math_expression: select(exit, capsule(X, Y, mid, arenaY, mid, height + 200, 60), 100000)
-  entry_id: 3846
+  entry_id: 4606
 - id: 538
   kind: function
   math_expression: min(min(styled, min(sanct, entryS)), min(min(drop, arena), min(link, exitS)))
-  entry_id: 3846
+  entry_id: 4606
 - id: 544
   kind: function
   math_expression: negate(max(air, abs(X - mid) - (mid - 60)))
-  entry_id: 3846
+  entry_id: 4606

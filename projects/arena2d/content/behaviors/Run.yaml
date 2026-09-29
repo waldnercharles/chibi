@@ -1,0 +1,235 @@
+version: 3
+name: Run
+id_counter: 281
+description: 'The run''s ledger: starts scrap, resonance, kills and level at zero, keeps time, and grants a level and a skill point whenever enough resonance has gathered.'
+owner_type: ecs.entity
+variables:
+- {id: 1, name: time, type: float}
+- {id: 2, name: next, type: float, default: 14.0}
+- {id: 3, name: level, type: float, default: 1.0}
+graphs:
+- kind: event
+  name: ""
+  nodes:
+  - {id: 4, type: Event, reference_name: Begin}
+  - id: 6
+    type: Set Global Variable
+    inputs:
+      Name: Scrap
+      Value: {type: int}
+    outputs:
+      Value: {type: int}
+  - id: 12
+    type: Set Global Variable
+    inputs:
+      Name: Resonance
+      Value: {type: int}
+    outputs:
+      Value: {type: int}
+  - id: 18
+    type: Set Global Variable
+    inputs:
+      Name: Kills
+      Value: {type: int}
+    outputs:
+      Value: {type: int}
+  - id: 24
+    type: Set Global Variable
+    inputs:
+      Name: SkillPoints
+      Value: {type: int}
+    outputs:
+      Value: {type: int}
+  - id: 30
+    type: Set Global Variable
+    inputs:
+      Name: Magnet
+      Value: {type: float, default: 110.0}
+    outputs:
+      Value: {type: float}
+  - id: 36
+    type: Set Global Variable
+    inputs:
+      Name: Level
+      Value: {type: int, default: 1}
+    outputs:
+      Value: {type: int}
+  - id: 42
+    type: Set Global Variable
+    inputs:
+      Name: NextLevel
+      Value: {type: int, default: 14}
+    outputs:
+      Value: {type: int}
+  - id: 48
+    type: Self
+    outputs:
+      Self: {type_name: ecs.entity}
+  - id: 50
+    type: Set Global Variable
+    inputs:
+      Name: RunEntity
+      Value: {type: handle, type_name: ecs.entity}
+    outputs:
+      Value: {type: handle, type_name: ecs.entity}
+  - id: 56
+    type: Event
+    reference_name: Tick
+    outputs:
+      DeltaSeconds: {type: float, kind: data}
+  - id: 71
+    type: Behavior Expression
+    reference_id: 59
+    reference_name: time += dt
+    inputs:
+      Exec: {id: 75, kind: exec}
+      time:
+        id: 72
+        type: float
+        binding: {kind: variable, variable_id: 1, source_asset: Run}
+      dt:
+        type: double
+        binding: {kind: delta_time}
+    outputs:
+      Then: {id: 76, kind: exec}
+      Result: {id: 74, type: float}
+  - id: 94
+    type: Get Variable
+    reference_id: 1
+    reference_name: time
+    outputs:
+      Value: {type: float}
+  - id: 96
+    type: Set Global Variable
+    inputs:
+      Name: Time
+      Value: {type: float}
+    outputs:
+      Value: {type: float}
+  - id: 102
+    type: Get Global Variable
+    inputs: {Name: Resonance}
+    outputs:
+      Value: {type: double}
+  - id: 117
+    type: Behavior Expression
+    reference_id: 105
+    reference_name: r >= next
+    inputs:
+      r: {type: double, flags: 0}
+      next:
+        type: double
+        flags: 0
+        binding: {kind: variable, variable_id: 2, source_asset: Run}
+    outputs:
+      Result: {type: bool}
+  - {id: 124, type: Branch}
+  - id: 143
+    type: Behavior Expression
+    reference_id: 129
+    reference_name: level += 1
+    inputs:
+      Exec: {id: 146, kind: exec}
+      level:
+        id: 144
+        type: float
+        binding: {kind: variable, variable_id: 3, source_asset: Run}
+    outputs:
+      Then: {id: 147, kind: exec}
+      Result: {id: 145, type: float}
+  - id: 193
+    type: Behavior Expression
+    reference_id: 167
+    reference_name: next += 10 + level * 7
+    inputs:
+      Exec: {id: 197, kind: exec}
+      next:
+        id: 194
+        type: float
+        binding: {kind: variable, variable_id: 2, source_asset: Run}
+      level:
+        type: double
+        binding: {kind: variable, variable_id: 3, source_asset: Run}
+    outputs:
+      Then: {id: 198, kind: exec}
+      Result: {id: 196, type: float}
+  - id: 230
+    type: Get Global Variable
+    inputs: {Name: SkillPoints}
+    outputs:
+      Value: {type: int}
+  - id: 247
+    type: Behavior Expression
+    reference_id: 233
+    reference_name: s + 1
+    inputs:
+      s: {type: int}
+    outputs:
+      Result: {type: double}
+  - id: 250
+    type: Set Global Variable
+    inputs:
+      Name: SkillPoints
+      Value: {type: int}
+    outputs:
+      Value: {type: int}
+  - id: 256
+    type: Get Variable
+    reference_id: 3
+    reference_name: level
+    outputs:
+      Value: {type: float}
+  - id: 258
+    type: Set Global Variable
+    inputs:
+      Name: Level
+      Value: {type: int}
+    outputs:
+      Value: {type: int}
+  - id: 264
+    type: Get Variable
+    reference_id: 2
+    reference_name: next
+    outputs:
+      Value: {type: float}
+  - id: 266
+    type: Set Global Variable
+    inputs:
+      Name: NextLevel
+      Value: {type: int}
+    outputs:
+      Value: {type: int}
+  - id: 272
+    type: Play Sound
+    inputs: {Frequency: 660.0, End Frequency: 1320.0, Duration: 0.45, Volume: 0.3, Pan: 0.0}
+  edges:
+  - {from: 4.Then, to: 6.Exec}
+  - {from: 6.Then, to: 12.Exec}
+  - {from: 12.Then, to: 18.Exec}
+  - {from: 18.Then, to: 24.Exec}
+  - {from: 24.Then, to: 30.Exec}
+  - {from: 30.Then, to: 36.Exec}
+  - {from: 36.Then, to: 42.Exec}
+  - {from: 42.Then, to: 50.Exec}
+  - {from: 48.Self, to: 50.Value}
+  - {from: 56.Then, to: 71.Exec}
+  - {from: 71.Then, to: 96.Exec}
+  - {from: 94.Value, to: 96.Value}
+  - {from: 96.Then, to: 124.Exec}
+  - {from: 102.Value, to: 117.r}
+  - {from: 117.Result, to: 124.Condition}
+  - {from: 124.True, to: 143.Exec}
+  - {from: 143.Then, to: 193.Exec}
+  - {from: 193.Then, to: 250.Exec}
+  - {from: 230.Value, to: 247.s}
+  - {from: 250.Then, to: 258.Exec}
+  - {from: 258.Then, to: 266.Exec}
+  - {from: 266.Then, to: 272.Exec}
+- {id: 59, kind: function, math_expression: time += dt, entry_id: 78}
+- {id: 105, kind: function, math_expression: r >= next, entry_id: 106}
+- {id: 129, kind: function, math_expression: level += 1, entry_id: 149}
+- id: 167
+  kind: function
+  math_expression: next += 10 + level * 7
+  entry_id: 200
+- {id: 233, kind: function, math_expression: s + 1, entry_id: 234}

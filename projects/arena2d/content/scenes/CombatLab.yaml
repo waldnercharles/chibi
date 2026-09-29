@@ -1,0 +1,55 @@
+version: 1
+name: CombatLab
+entities:
+- name: Player
+  prototype: Wren
+  components:
+    GameTransform: {x: -250, "y": 330}
+  behaviors: [ShipFlight, Hardpoints, ShipHull]
+- name: Camera
+  prototype: Camera
+  components:
+    GameTransform: {x: -250, "y": 330}
+  behaviors: [CameraFollow]
+- name: Lighting
+  prototype: HRC
+  components:
+    GameHRC2D: {resolution: 1, adaptive: true, min_resolution: 0.5, fog: 0.4, bloom: 0.2}
+- {name: FireMouse, prototype: FireMouse}
+- {name: FireStick, prototype: FireStick}
+- {name: SecondaryMouse, prototype: SecondaryMouse}
+- {name: Basalt Throat, prototype: StratumThroat}
+- name: Run
+  prototype: RunState
+  behaviors: [Run]
+- name: Mite 1
+  prototype: Mite
+  components:
+    GameTransform: {x: 150, "y": 300}
+  behaviors: [Chaser, Creature]
+- name: Mite 2
+  prototype: Mite
+  components:
+    GameTransform: {x: 180, "y": 340}
+  behaviors: [Chaser, Creature]
+- name: Mite 3
+  prototype: Mite
+  components:
+    GameTransform: {x: 160, "y": 380}
+  behaviors: [Chaser, Creature]
+- name: Spitter
+  prototype: Spitter
+  components:
+    GameTransform: {x: 250, "y": 280}
+  behaviors: [Creature, Spitter]
+- name: Lancer
+  prototype: Lancer
+  components:
+    GameTransform: {x: 200, "y": 420}
+  behaviors: [Creature, Lancer]
+- name: Barnacle
+  prototype: Barnacle
+  components:
+    GameTransform: {x: 330, "y": 420}
+    GameOrientation: {radians: 3.14}
+  behaviors: [Barnacle, Creature]

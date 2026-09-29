@@ -1,0 +1,19 @@
+name: Barnacle
+components:
+  GAME.GameBody: {}
+  GAME.GameCollider: {category: 2, mask: 15, radius: 12.0, restitution: 0.3}
+  GAME.GameDrive: {}
+  GAME.GameExperience: {current: 6}
+  GAME.GameGeometry3D: {depth: 38.0, height: 4.0, width: 38.0}
+  GAME.GameHealth: {current: 55, maximum: 55}
+  GAME.GameMovement: {}
+  GAME.GameOrientation: {}
+  GAME.GameShader:
+    material: BarnacleSkin
+    parameters: '{"Glow":[1.0,0.631,0.227],"Body":[0.11,0.071,0.024]}'
+    shape: BarnacleShape
+  GAME.GameSpawnRequest: {prototype: BarnacleDeath}
+  GAME.GameTransform: {}
+  GAME.GameVelocity: {}
+  GAME.GameWeapon: {damage: 6}
+behaviors: [Barnacle, Creature]

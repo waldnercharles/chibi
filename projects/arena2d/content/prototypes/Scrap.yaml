@@ -1,0 +1,15 @@
+name: Scrap
+components:
+  GAME.GameAppearance: {antialias: 1.0, color: 4291913471, height: 4.5, shape: Diamond, width: 4.5}
+  GAME.GameBody: {type: Kinematic}
+  GAME.GameMaterial:
+    absorption: 0.1
+    emission_color: 4291913471
+    emission_intensity: 0.25
+    emission_multiplier: 1.0
+    scene: 4291913471
+  GAME.GameOrientation: {}
+  GAME.GamePickup: {lifetime: 30.0, value: 2}
+  GAME.GameTransform: {}
+  GAME.GameVelocity: {}
+behaviors: [Pickup]

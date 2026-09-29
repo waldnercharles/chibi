@@ -1,0 +1,5 @@
+name: RunState
+components:
+  GAME.GameEncounter: {}
+  GAME.GameTransform: {}
+behaviors: [Run]

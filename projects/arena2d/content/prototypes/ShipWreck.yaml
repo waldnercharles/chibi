@@ -1,0 +1,35 @@
+name: ShipWreck
+components:
+  GAME.GameAppearance: {antialias: 2.0, color: 2415329024, height: 60.0, shape: Circle, width: 60.0}
+  GAME.GameMaterial:
+    emission_color: 3388735487
+    emission_intensity: 4.0
+    emission_multiplier: 1.0
+    scene: 2415329024
+  GAME.GameOrientation: {}
+  GAME.GameParticleEmitter:
+    absorption: 0.001
+    active: true
+    burst_count: 90
+    color: 3388735487
+    direction: {x: 1.0}
+    drag:
+      end: {x: 1.0, "y": 2.5}
+      exponent: 1.0
+      start: {x: 1.0, "y": 2.5}
+    emission:
+      exponent: 1.0
+      start: {x: 0.8, "y": 1.4}
+    end_color: 711786240
+    lifetime: {x: 0.6, "y": 1.8}
+    planar: true
+    shape: Streak
+    size:
+      exponent: 1.0
+      start: {x: 0.8, "y": 2.4}
+    speed: {x: 60.0, "y": 420.0}
+    spread: 6.2831855
+    stretch: {x: 0.02, "y": 0.06}
+    velocity_align: true
+  GAME.GameTransform: {}
+behaviors: [Glow]

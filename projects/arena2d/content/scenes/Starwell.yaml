@@ -5,7 +5,7 @@ entities:
   prototype: Wren
   components:
     GameTransform: {x: 0, "y": 330}
-  behaviors: [ShipFlight, Hardpoints]
+  behaviors: [ShipFlight, Hardpoints, ShipHull]
 - name: Camera
   prototype: Camera
   components:
@@ -19,3 +19,6 @@ entities:
 - {name: FireStick, prototype: FireStick}
 - {name: SecondaryMouse, prototype: SecondaryMouse}
 - {name: Basalt Throat, prototype: StratumThroat}
+- name: Run
+  prototype: RunState
+  behaviors: [Run]

@@ -1,0 +1,16 @@
+name: Spit
+components:
+  GAME.GameAppearance: {antialias: 1.0, color: 3388955903, height: 8.0, shape: Circle, width: 8.0}
+  GAME.GameBody: {continuous: true, type: Kinematic}
+  GAME.GameCollider: {category: 16, mask: 1, radius: 4.8, sensor: true}
+  GAME.GameMaterial:
+    absorption: 0.05
+    emission_color: 3388955903
+    emission_intensity: 0.55
+    emission_multiplier: 1.0
+    scene: 3388955903
+  GAME.GameOrientation: {}
+  GAME.GameProjectile: {damage: 9, element: 3, lifetime: 2.2, payload: -1, speed: 240.0}
+  GAME.GameTransform: {}
+  GAME.GameVelocity: {}
+behaviors: [Shot]

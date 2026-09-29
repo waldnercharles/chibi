@@ -1,0 +1,612 @@
+version: 3
+name: Lancer
+id_counter: 1309
+description: Stalk, draw back and glow as a warning, then lance straight along the locked line and recover.
+owner_type: ecs.entity
+variables:
+- {id: 1, name: age, type: float}
+- {id: 2, name: ly, type: float}
+- {id: 3, name: t, type: float}
+- {id: 4, name: state, type: float}
+- {id: 5, name: seed, type: float}
+- {id: 6, name: lx, type: float}
+graphs:
+- kind: event
+  name: ""
+  nodes:
+  - {id: 7, type: Event, reference_name: Begin}
+  - id: 25
+    type: Behavior Expression
+    reference_id: 9
+    reference_name: seed = rand() * 100
+    inputs:
+      Exec: {id: 28, kind: exec}
+      seed:
+        id: 26
+        type: float
+        binding: {kind: variable, variable_id: 5, source_asset: Lancer}
+    outputs:
+      Then: {id: 29, kind: exec}
+      Result: {id: 27, type: float}
+  - id: 51
+    type: Event
+    reference_name: Tick
+    outputs:
+      DeltaSeconds: {type: float, kind: data}
+  - id: 66
+    type: Behavior Expression
+    reference_id: 54
+    reference_name: t += dt
+    inputs:
+      Exec: {id: 70, kind: exec}
+      t:
+        id: 67
+        type: float
+        binding: {kind: variable, variable_id: 3, source_asset: Lancer}
+      dt:
+        type: double
+        binding: {kind: delta_time}
+    outputs:
+      Then: {id: 71, kind: exec}
+      Result: {id: 69, type: float}
+  - id: 101
+    type: Behavior Expression
+    reference_id: 89
+    reference_name: age += dt
+    inputs:
+      Exec: {id: 105, kind: exec}
+      age:
+        id: 102
+        type: float
+        binding: {kind: variable, variable_id: 1, source_asset: Lancer}
+      dt:
+        type: double
+        binding: {kind: delta_time}
+    outputs:
+      Then: {id: 106, kind: exec}
+      Result: {id: 104, type: float}
+  - id: 124
+    type: Get Global Variable
+    inputs: {Name: Player}
+    outputs:
+      Value: {type: handle, type_name: ecs.entity}
+  - {id: 127, type: GetEntity_GameTransform}
+  - id: 137
+    type: Behavior Expression
+    reference_id: 130
+    reference_name: state
+    inputs:
+      state:
+        type: double
+        binding: {kind: variable, variable_id: 4, source_asset: Lancer}
+    outputs:
+      Result: {type: double}
+  - id: 140
+    type: Switch on Int
+    outputs:
+    - 143
+    - 144
+    - {id: 146, name: Case2}
+    - {id: 147, name: Case3}
+    - 145
+  - id: 248
+    type: Behavior Expression
+    reference_id: 148
+    reference_name: target = (normalize(p - pos) * clamp((distance(pos, p) - 320) / 100, -1, 1) + normalize(vec2(pos.y - p.y, p.x - pos.x)) * 0.6 * sin(age + seed)) * speed
+    inputs:
+      Exec: {id: 256, kind: exec}
+      target:
+        id: 249
+        type: struct
+        type_name: CF_V2
+        binding: {kind: component_field, component: GAME.GameDrive, field: target}
+      p: {type: struct, type_name: GameTransform}
+      pos:
+        type: struct
+        type_name: GameTransform
+        binding: {kind: component, component: GAME.GameTransform}
+      age:
+        type: double
+        binding: {kind: variable, variable_id: 1, source_asset: Lancer}
+      seed:
+        type: double
+        binding: {kind: variable, variable_id: 5, source_asset: Lancer}
+      speed:
+        type: double
+        binding: {kind: component_field, component: GAME.GameMovement, field: speed}
+    outputs:
+      Then: {id: 257, kind: exec}
+      Result: {id: 255, type: struct, type_name: CF_V2}
+  - id: 394
+    type: Behavior Expression
+    reference_id: 373
+    reference_name: heading = atan2(t.y - pos.y, t.x - pos.x)
+    inputs:
+      Exec: {id: 399, kind: exec}
+      heading:
+        id: 395
+        type: float
+        binding: {kind: component_field, component: GAME.GameOrientation, field: radians}
+      t: {type: struct, type_name: GameTransform}
+      pos:
+        type: struct
+        type_name: GameTransform
+        binding: {kind: component, component: GAME.GameTransform}
+    outputs:
+      Then: {id: 400, kind: exec}
+      Result: {id: 398, type: double}
+  - id: 439
+    type: Raycast
+    inputs:
+      Start:
+        type_name: GameTransform
+        binding: {kind: component, component: GAME.GameTransform}
+        default: null
+      Categories: 8
+  - id: 460
+    type: Behavior Expression
+    reference_id: 450
+    reference_name: '!blocked'
+    inputs:
+      blocked: {type: bool, flags: 0}
+    outputs:
+      Result: {type: bool}
+  - id: 502
+    type: Behavior Expression
+    reference_id: 466
+    reference_name: t > 2.2 && distance(pos, p) < 430 && sees
+    inputs:
+      t:
+        type: double
+        flags: 0
+        binding: {kind: variable, variable_id: 3, source_asset: Lancer}
+      pos:
+        type: struct
+        type_name: GameTransform
+        binding: {kind: component, component: GAME.GameTransform}
+      p: {type: struct, type_name: GameTransform}
+      sees: {type: bool, flags: 0}
+    outputs:
+      Result: {type: bool}
+  - {id: 511, type: Branch}
+  - id: 536
+    type: Behavior Expression
+    reference_id: 516
+    reference_name: lx = normalize(p - pos).x
+    inputs:
+      Exec: {id: 541, kind: exec}
+      lx:
+        id: 537
+        type: float
+        binding: {kind: variable, variable_id: 6, source_asset: Lancer}
+      p: {type: struct, type_name: GameTransform}
+      pos:
+        type: struct
+        type_name: GameTransform
+        binding: {kind: component, component: GAME.GameTransform}
+    outputs:
+      Then: {id: 542, kind: exec}
+      Result: {id: 540, type: float}
+  - id: 588
+    type: Behavior Expression
+    reference_id: 568
+    reference_name: ly = normalize(p - pos).y
+    inputs:
+      Exec: {id: 593, kind: exec}
+      ly:
+        id: 589
+        type: float
+        binding: {kind: variable, variable_id: 2, source_asset: Lancer}
+      p: {type: struct, type_name: GameTransform}
+      pos:
+        type: struct
+        type_name: GameTransform
+        binding: {kind: component, component: GAME.GameTransform}
+    outputs:
+      Then: {id: 594, kind: exec}
+      Result: {id: 592, type: float}
+  - id: 630
+    type: Behavior Expression
+    reference_id: 620
+    reference_name: state = 1
+    inputs:
+      Exec: {id: 633, kind: exec}
+      state:
+        id: 631
+        type: float
+        binding: {kind: variable, variable_id: 4, source_asset: Lancer}
+    outputs:
+      Then: {id: 634, kind: exec}
+      Result: {id: 632, type: float}
+  - id: 660
+    type: Behavior Expression
+    reference_id: 650
+    reference_name: t = 0
+    inputs:
+      Exec: {id: 663, kind: exec}
+      t:
+        id: 661
+        type: float
+        binding: {kind: variable, variable_id: 3, source_asset: Lancer}
+    outputs:
+      Then: {id: 664, kind: exec}
+      Result: {id: 662, type: float}
+  - id: 708
+    type: Behavior Expression
+    reference_id: 680
+    reference_name: target = vec2(lx, ly) * speed * -0.35
+    inputs:
+      Exec: {id: 714, kind: exec}
+      target:
+        id: 709
+        type: struct
+        type_name: CF_V2
+        binding: {kind: component_field, component: GAME.GameDrive, field: target}
+      lx:
+        type: float
+        binding: {kind: variable, variable_id: 6, source_asset: Lancer}
+      ly:
+        type: float
+        binding: {kind: variable, variable_id: 2, source_asset: Lancer}
+      speed:
+        type: double
+        binding: {kind: component_field, component: GAME.GameMovement, field: speed}
+    outputs:
+      Then: {id: 715, kind: exec}
+      Result: {id: 713, type: struct, type_name: CF_V2}
+  - id: 772
+    type: Behavior Expression
+    reference_id: 759
+    reference_name: heading = atan2(ly, lx)
+    inputs:
+      Exec: {id: 777, kind: exec}
+      heading:
+        id: 773
+        type: float
+        binding: {kind: component_field, component: GAME.GameOrientation, field: radians}
+      ly:
+        type: double
+        binding: {kind: variable, variable_id: 2, source_asset: Lancer}
+      lx:
+        type: double
+        binding: {kind: variable, variable_id: 6, source_asset: Lancer}
+    outputs:
+      Then: {id: 778, kind: exec}
+      Result: {id: 776, type: double}
+  - id: 830
+    type: Behavior Expression
+    reference_id: 805
+    reference_name: clamp(t / 0.65, 0, 1)
+    inputs:
+      t:
+        type: double
+        binding: {kind: variable, variable_id: 3, source_asset: Lancer}
+    outputs:
+      Result: {type: double}
+  - id: 833
+    type: Self
+    outputs:
+      Self: {type_name: ecs.entity}
+  - id: 835
+    type: Set Material Parameter
+    inputs:
+      Name: Charge
+      Value: {type: double}
+  - id: 855
+    type: Behavior Expression
+    reference_id: 841
+    reference_name: t >= 0.65
+    inputs:
+      t:
+        type: double
+        flags: 0
+        binding: {kind: variable, variable_id: 3, source_asset: Lancer}
+    outputs:
+      Result: {type: bool}
+  - {id: 861, type: Branch}
+  - id: 876
+    type: Behavior Expression
+    reference_id: 866
+    reference_name: state = 2
+    inputs:
+      Exec: {id: 879, kind: exec}
+      state:
+        id: 877
+        type: float
+        binding: {kind: variable, variable_id: 4, source_asset: Lancer}
+    outputs:
+      Then: {id: 880, kind: exec}
+      Result: {id: 878, type: float}
+  - id: 906
+    type: Behavior Expression
+    reference_id: 896
+    reference_name: t = 0
+    inputs:
+      Exec: {id: 909, kind: exec}
+      t:
+        id: 907
+        type: float
+        binding: {kind: variable, variable_id: 3, source_asset: Lancer}
+    outputs:
+      Then: {id: 910, kind: exec}
+      Result: {id: 908, type: float}
+  - id: 926
+    type: Play Sound
+    inputs:
+      Frequency: 180.0
+      End Frequency: 900.0
+      Duration: 0.25
+      Volume: 0.25
+      Pan: 0.0
+      Noise: 0.3
+  - id: 955
+    type: Behavior Expression
+    reference_id: 935
+    reference_name: target = vec2(lx, ly) * 720
+    inputs:
+      Exec: {id: 960, kind: exec}
+      target:
+        id: 956
+        type: struct
+        type_name: CF_V2
+        binding: {kind: component_field, component: GAME.GameDrive, field: target}
+      lx:
+        type: float
+        binding: {kind: variable, variable_id: 6, source_asset: Lancer}
+      ly:
+        type: float
+        binding: {kind: variable, variable_id: 2, source_asset: Lancer}
+    outputs:
+      Then: {id: 961, kind: exec}
+      Result: {id: 959, type: struct, type_name: CF_V2}
+  - id: 1012
+    type: Behavior Expression
+    reference_id: 997
+    reference_name: rand() < 0.6
+    outputs:
+      Result: {type: bool}
+  - {id: 1017, type: Branch}
+  - id: 1040
+    type: Behavior Expression
+    reference_id: 1022
+    reference_name: vec2(-lx, -ly)
+    inputs:
+      lx:
+        type: double
+        binding: {kind: variable, variable_id: 6, source_asset: Lancer}
+      ly:
+        type: double
+        binding: {kind: variable, variable_id: 2, source_asset: Lancer}
+    outputs:
+      Result: {type: struct, type_name: CF_V2}
+  - id: 1044
+    type: Emit Directed Particles
+    inputs:
+      Position:
+        type_name: GameTransform
+        binding: {kind: component, component: GAME.GameTransform}
+        default: null
+      Count: 2
+      Color: 3025993727
+      End Color: 0
+      Min Speed: 20.0
+      Max Speed: 80.0
+      Max Lifetime: 0.45
+      Min Size: 1.0
+      Max Size: 2.2
+      Spread: 0.4
+      Min Drag: 1.5
+      Max Drag: 4.0
+      Min Emission: 0.6
+      Max Emission: 1.1
+      Size Exponent: 1.0
+      Shape: 4
+  - id: 1080
+    type: Behavior Expression
+    reference_id: 1066
+    reference_name: t >= 0.4
+    inputs:
+      t:
+        type: double
+        flags: 0
+        binding: {kind: variable, variable_id: 3, source_asset: Lancer}
+    outputs:
+      Result: {type: bool}
+  - {id: 1086, type: Branch}
+  - id: 1101
+    type: Behavior Expression
+    reference_id: 1091
+    reference_name: state = 3
+    inputs:
+      Exec: {id: 1104, kind: exec}
+      state:
+        id: 1102
+        type: float
+        binding: {kind: variable, variable_id: 4, source_asset: Lancer}
+    outputs:
+      Then: {id: 1105, kind: exec}
+      Result: {id: 1103, type: float}
+  - id: 1131
+    type: Behavior Expression
+    reference_id: 1121
+    reference_name: t = 0
+    inputs:
+      Exec: {id: 1134, kind: exec}
+      t:
+        id: 1132
+        type: float
+        binding: {kind: variable, variable_id: 3, source_asset: Lancer}
+    outputs:
+      Then: {id: 1135, kind: exec}
+      Result: {id: 1133, type: float}
+  - id: 1168
+    type: Behavior Expression
+    reference_id: 1151
+    reference_name: target = vec2(0, 0)
+    inputs:
+      Exec: {id: 1171, kind: exec}
+      target:
+        id: 1169
+        type: struct
+        type_name: CF_V2
+        binding: {kind: component_field, component: GAME.GameDrive, field: target}
+    outputs:
+      Then: {id: 1172, kind: exec}
+      Result: {id: 1170, type: struct, type_name: CF_V2}
+  - id: 1214
+    type: Behavior Expression
+    reference_id: 1205
+    reference_name: "0"
+    outputs:
+      Result: {type: double}
+  - id: 1216
+    type: Self
+    outputs:
+      Self: {type_name: ecs.entity}
+  - id: 1218
+    type: Set Material Parameter
+    inputs:
+      Name: Charge
+      Value: {type: double}
+  - id: 1238
+    type: Behavior Expression
+    reference_id: 1224
+    reference_name: t >= 0.9
+    inputs:
+      t:
+        type: double
+        flags: 0
+        binding: {kind: variable, variable_id: 3, source_asset: Lancer}
+    outputs:
+      Result: {type: bool}
+  - {id: 1244, type: Branch}
+  - id: 1259
+    type: Behavior Expression
+    reference_id: 1249
+    reference_name: state = 0
+    inputs:
+      Exec: {id: 1262, kind: exec}
+      state:
+        id: 1260
+        type: float
+        binding: {kind: variable, variable_id: 4, source_asset: Lancer}
+    outputs:
+      Then: {id: 1263, kind: exec}
+      Result: {id: 1261, type: float}
+  - id: 1289
+    type: Behavior Expression
+    reference_id: 1279
+    reference_name: t = 0
+    inputs:
+      Exec: {id: 1292, kind: exec}
+      t:
+        id: 1290
+        type: float
+        binding: {kind: variable, variable_id: 3, source_asset: Lancer}
+    outputs:
+      Then: {id: 1293, kind: exec}
+      Result: {id: 1291, type: float}
+  edges:
+  - {from: 7.Then, to: 25.Exec}
+  - {from: 51.Then, to: 66.Exec}
+  - {from: 66.Then, to: 101.Exec}
+  - {from: 101.Then, to: 140.Exec}
+  - {from: 124.Value, to: 127.Entity}
+  - {from: 127.Value, to: 248.p}
+  - {from: 127.Value, to: 394.t}
+  - {from: 127.Value, to: 439.End, conversion: game_transform_to_cf}
+  - {from: 127.Value, to: 502.p}
+  - {from: 127.Value, to: 536.p}
+  - {from: 127.Value, to: 588.p}
+  - {from: 137.Result, to: 140.Selection, conversion: To Integer}
+  - {from: 140.Case0, to: 248.Exec}
+  - {from: 140.Case1, to: 708.Exec}
+  - {from: 140.Case2, to: 955.Exec}
+  - {from: 140.Case3, to: 1168.Exec}
+  - {from: 248.Then, to: 394.Exec}
+  - {from: 394.Then, to: 511.Exec}
+  - {from: 439.Found, to: 460.blocked}
+  - {from: 460.Result, to: 502.sees}
+  - {from: 502.Result, to: 511.Condition}
+  - {from: 511.True, to: 536.Exec}
+  - {from: 536.Then, to: 588.Exec}
+  - {from: 588.Then, to: 630.Exec}
+  - {from: 630.Then, to: 660.Exec}
+  - {from: 708.Then, to: 772.Exec}
+  - {from: 772.Then, to: 835.Exec}
+  - {from: 830.Result, to: 835.Value}
+  - {from: 833.Self, to: 835.Entity}
+  - {from: 835.Then, to: 861.Exec}
+  - {from: 855.Result, to: 861.Condition}
+  - {from: 861.True, to: 876.Exec}
+  - {from: 876.Then, to: 906.Exec}
+  - {from: 906.Then, to: 926.Exec}
+  - {from: 955.Then, to: 1017.Exec}
+  - {from: 1012.Result, to: 1017.Condition}
+  - {from: 1017.True, to: 1044.Exec}
+  - {from: 1017.False, to: 1086.Exec}
+  - {from: 1040.Result, to: 1044.Direction}
+  - {from: 1044.Then, to: 1086.Exec}
+  - {from: 1080.Result, to: 1086.Condition}
+  - {from: 1086.True, to: 1101.Exec}
+  - {from: 1101.Then, to: 1131.Exec}
+  - {from: 1168.Then, to: 1218.Exec}
+  - {from: 1214.Result, to: 1218.Value}
+  - {from: 1216.Self, to: 1218.Entity}
+  - {from: 1218.Then, to: 1244.Exec}
+  - {from: 1238.Result, to: 1244.Condition}
+  - {from: 1244.True, to: 1259.Exec}
+  - {from: 1259.Then, to: 1289.Exec}
+- {id: 9, kind: function, math_expression: seed = rand() * 100, entry_id: 31}
+- {id: 54, kind: function, math_expression: t += dt, entry_id: 73}
+- {id: 89, kind: function, math_expression: age += dt, entry_id: 108}
+- {id: 130, kind: function, math_expression: state, entry_id: 131}
+- id: 148
+  kind: function
+  math_expression: target = (normalize(p - pos) * clamp((distance(pos, p) - 320) / 100, -1, 1) + normalize(vec2(pos.y - p.y, p.x - pos.x)) * 0.6 * sin(age + seed)) * speed
+  entry_id: 259
+- id: 373
+  kind: function
+  math_expression: heading = atan2(t.y - pos.y, t.x - pos.x)
+  entry_id: 402
+- {id: 450, kind: function, math_expression: '!blocked', entry_id: 451}
+- id: 466
+  kind: function
+  math_expression: t > 2.2 && distance(pos, p) < 430 && sees
+  entry_id: 467
+- id: 516
+  kind: function
+  math_expression: lx = normalize(p - pos).x
+  entry_id: 544
+- id: 568
+  kind: function
+  math_expression: ly = normalize(p - pos).y
+  entry_id: 596
+- {id: 620, kind: function, math_expression: state = 1, entry_id: 636}
+- {id: 650, kind: function, math_expression: t = 0, entry_id: 666}
+- id: 680
+  kind: function
+  math_expression: target = vec2(lx, ly) * speed * -0.35
+  entry_id: 717
+- id: 759
+  kind: function
+  math_expression: heading = atan2(ly, lx)
+  entry_id: 780
+- {id: 805, kind: function, math_expression: 'clamp(t / 0.65, 0, 1)', entry_id: 806}
+- {id: 841, kind: function, math_expression: t >= 0.65, entry_id: 842}
+- {id: 866, kind: function, math_expression: state = 2, entry_id: 882}
+- {id: 896, kind: function, math_expression: t = 0, entry_id: 912}
+- id: 935
+  kind: function
+  math_expression: target = vec2(lx, ly) * 720
+  entry_id: 963
+- {id: 997, kind: function, math_expression: rand() < 0.6, entry_id: 998}
+- {id: 1022, kind: function, math_expression: 'vec2(-lx, -ly)', entry_id: 1023}
+- {id: 1066, kind: function, math_expression: t >= 0.4, entry_id: 1067}
+- {id: 1091, kind: function, math_expression: state = 3, entry_id: 1107}
+- {id: 1121, kind: function, math_expression: t = 0, entry_id: 1137}
+- {id: 1151, kind: function, math_expression: 'target = vec2(0, 0)', entry_id: 1174}
+- {id: 1205, kind: function, math_expression: "0", entry_id: 1206}
+- {id: 1224, kind: function, math_expression: t >= 0.9, entry_id: 1225}
+- {id: 1249, kind: function, math_expression: state = 0, entry_id: 1265}
+- {id: 1279, kind: function, math_expression: t = 0, entry_id: 1295}

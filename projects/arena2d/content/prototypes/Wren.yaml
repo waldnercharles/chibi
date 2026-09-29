@@ -15,4 +15,4 @@ components:
   GAME.GameShader: {material: WrenHull, parameters: "", shape: WrenShape}
   GAME.GameTransform: {}
   GAME.GameVelocity: {}
-behaviors: [Hardpoints, ShipFlight]
+behaviors: [Hardpoints, ShipFlight, ShipHull]

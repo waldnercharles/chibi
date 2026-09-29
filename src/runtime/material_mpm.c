@@ -36,6 +36,9 @@ static const float J_MIN = .5f, STRETCH = .3f;
 static const float STRETCH_MIN = .3f, STRETCH_MAX = 3;
 /* Rigid bodies weigh one unit of mass per square meter of 32 units. */
 static const float RIGID_DENSITY = 1.f / 1024;
+/* Material constants scale with the longest step, so matter behaves the
+ * same when time runs slower. */
+static const float LONGEST_STEP = 1.f / 60;
 
 typedef struct
 {
@@ -96,7 +99,7 @@ struct material_mpm
     int ground_capacity;
     mpm_ground *ground;
     int *pending;
-    float dx, dt, speed;
+    float dx, dt, speed, viscous;
 };
 
 material_mpm *material_mpm_new()
@@ -196,7 +199,7 @@ static mpm_moduli moduli(const material_mpm *m, const fluid_substance *s)
     return (mpm_moduli){ .bulk = e,
                          .mu = e / (2 * (1 + POISSON)),
                          .lambda = e * POISSON / ((1 + POISSON) * (1 - 2 * POISSON)),
-                         .viscosity = s->viscosity * .2f * rho * m->dx * m->dx / m->dt };
+                         .viscosity = s->viscosity * rho * m->viscous };
 }
 
 /* Kirchhoff stress of a particle. */
@@ -805,7 +808,9 @@ void material_mpm_step(material_fluid *fluid, material_mpm *m)
     }
     m->dx = material_fluid_spacing(fluid, FLUID_LIQUID) * 2;
     m->dt = fluid->step->delta / SUBSTEPS;
-    m->speed = COURANT * m->dx / m->dt;
+    float longest = LONGEST_STEP / SUBSTEPS;
+    m->speed = COURANT * m->dx / longest;
+    m->viscous = .2f * m->dx * m->dx / longest;
     mpm_pass pass = { fluid, m };
     for (int substep = 0; substep < SUBSTEPS; substep++) {
         CHIBI_TRACE_ZONE_BEGIN(build_zone, "MPM blocks");

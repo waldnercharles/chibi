@@ -82,7 +82,9 @@ node_desc GAME_NODE_DamageMaterial = {
     .name = "Damage Material",
     .category = "Physics",
     .description = "Queues Energy damage that carves Entity's material within "
-                   "Radius of Point; non-material targets are ignored.",
+                   "Radius of Point and removes matter Entity owns there; "
+                   "other "
+                   "targets are ignored.",
     .input_count = 7,
     .inputs = DAMAGE_IN,
     .output_count = 1,

@@ -1,6 +1,6 @@
 version: 3
 name: Hardpoints
-id_counter: 3151
+id_counter: 3196
 description: 'Casts the ship''s two weapon module lists in order: modifiers shape the next emitter, a carrier arms it with the rest of the group as a payload, and an emitter fires and ends the cast. Draws on a shared capacitor.'
 owner_type: ecs.entity
 variables:
@@ -524,7 +524,35 @@ graphs:
   - id: 3130
     type: Set Global Variable
     inputs: {Name: CapacitorMax}
-  - id: 3136
+  - id: 3155
+    type: Behavior Expression
+    reference_id: 3136
+    reference_name: max(0, capacitor / capacitorMax)
+    inputs:
+      capacitor:
+        type: double
+        binding: {kind: variable, variable_id: 15, source_asset: Hardpoints}
+      capacitorMax:
+        type: double
+        binding: {kind: variable, variable_id: 16, source_asset: Hardpoints}
+    outputs:
+      Result: {type: double}
+  - id: 3159
+    type: Set Global Variable
+    inputs:
+      Name: CapacitorRatio
+      Value: {type: double}
+    outputs:
+      Value: {type: double}
+  - {id: 3165, type: Get Variable, reference_id: 34, reference_name: cursor0}
+  - id: 3167
+    type: Set Global Variable
+    inputs: {Name: Cursor0}
+  - {id: 3173, type: Get Variable, reference_id: 35, reference_name: cursor1}
+  - id: 3175
+    type: Set Global Variable
+    inputs: {Name: Cursor1}
+  - id: 3181
     type: Event
     reference_name: CastPayload
     outputs:
@@ -532,18 +560,18 @@ graphs:
       Index: {declaration_id: 2, type: int, kind: data}
       Position: {declaration_id: 3, type: struct, type_name: CF_V2, kind: data}
       Direction: {declaration_id: 4, type: struct, type_name: CF_V2, kind: data}
-  - id: 3142
+  - id: 3187
     type: Call Function
     reference_id: 1256
     reference_name: Cast
     inputs:
-      Hardpoint: {id: 3145, type: int, kind: data}
+      Hardpoint: {id: 3190, type: int, kind: data}
       Start: {type: int, kind: data}
       Origin: {type: struct, type_name: CF_V2, kind: data}
       Direction: {type: struct, type_name: CF_V2, kind: data}
     outputs:
-      Then: {id: 3144}
-      Next: {id: 3149, type: int, kind: data}
+      Then: {id: 3189}
+      Next: {id: 3194, type: int, kind: data}
       Cost: {type: float, kind: data}
   edges:
   - {from: 2787.Then, to: 2791.Exec}
@@ -575,11 +603,17 @@ graphs:
   - {from: 3120.Value, to: 3122.Value}
   - {from: 3122.Then, to: 3130.Exec}
   - {from: 3128.Value, to: 3130.Value}
-  - {from: 3136.Then, to: 3142.Exec}
-  - {from: 3136.Hardpoint, to: 3142.Hardpoint}
-  - {from: 3136.Index, to: 3142.Start}
-  - {from: 3136.Position, to: 3142.Origin, conversion: game_transform_to_cf}
-  - {from: 3136.Direction, to: 3142.Direction, conversion: game_transform_to_cf}
+  - {from: 3130.Then, to: 3159.Exec}
+  - {from: 3155.Result, to: 3159.Value}
+  - {from: 3159.Then, to: 3167.Exec}
+  - {from: 3165.Value, to: 3167.Value}
+  - {from: 3167.Then, to: 3175.Exec}
+  - {from: 3173.Value, to: 3175.Value}
+  - {from: 3181.Then, to: 3187.Exec}
+  - {from: 3181.Hardpoint, to: 3187.Hardpoint}
+  - {from: 3181.Index, to: 3187.Start}
+  - {from: 3181.Position, to: 3187.Origin, conversion: game_transform_to_cf}
+  - {from: 3181.Direction, to: 3187.Direction, conversion: game_transform_to_cf}
 - id: 40
   kind: function
   name: Apply Modifier
@@ -2279,3 +2313,7 @@ graphs:
   kind: function
   math_expression: cooldown1 = max(cooldown1 - dt, 0)
   entry_id: 3097
+- id: 3136
+  kind: function
+  math_expression: max(0, capacitor / capacitorMax)
+  entry_id: 3137

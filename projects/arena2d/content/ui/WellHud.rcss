@@ -1,0 +1,78 @@
+#hud {
+  position: absolute; left: 0; top: 0; right: 0; bottom: 0;
+  font-size: 12dp; color: #d8e6ee;
+}
+
+.track {
+  display: inline-block; height: 4dp; background-color: #ffffff14; border-radius: 2dp;
+  .fill { display: block; height: 100%; border-radius: 2dp; transition: width 0.18s cubic-out; }
+}
+
+#vitals {
+  position: absolute; left: 22dp; bottom: 22dp; width: 250dp;
+  .vital { display: block; height: 18dp; line-height: 18dp; margin-top: 3dp; }
+  .tag {
+    display: inline-block; width: 52dp; font-size: 9dp; letter-spacing: 1.5dp;
+    text-transform: uppercase; color: #8aa3b3;
+  }
+  .track { width: 132dp; vertical-align: middle; }
+  .value { display: inline-block; width: 36dp; margin-left: 8dp; font-size: 11dp; color: #eef6ff; }
+  .shield .fill { background-color: #6ff6ff; }
+  .hull .fill { background-color: #eef3ff; }
+  .cap .fill { background-color: #ffcf5a; }
+  .low .tag { color: #ff7a8a; }
+  .hull.low .fill { background-color: #ff4d6d; }
+  .cap.low .fill { background-color: #ff8a3c; }
+}
+
+#ledger {
+  position: absolute; right: 24dp; top: 20dp; width: 220dp; text-align: right;
+  .depth { display: block; font-size: 26dp; line-height: 28dp; color: #f2f7ff; }
+  .stratum { display: block; font-size: 10dp; letter-spacing: 2dp; text-transform: uppercase; color: #ffb45a; margin-top: 2dp; }
+  .counts { display: block; margin-top: 10dp; font-size: 12dp; }
+  .scrap { color: #ffd166; }
+  .glyph {
+    display: inline-block; width: 7dp; height: 7dp; margin-right: 5dp;
+    background-color: #ffd166; transform: rotate(45deg);
+  }
+  .kills { margin-left: 14dp; color: #c7d3dc; }
+  .unit { font-size: 9dp; color: #8aa3b3; }
+  .level { display: block; margin-top: 8dp; height: 16dp; line-height: 16dp; }
+  .lv { font-size: 11dp; color: #b9a6ff; margin-right: 8dp; }
+  .xp { width: 110dp; vertical-align: middle; .fill { background-color: #9d7bff; } }
+  .points {
+    margin-left: 8dp; padding: 0 5dp; border-radius: 3dp; font-size: 10dp;
+    color: #140c2a; background-color: #b9a6ff;
+  }
+}
+
+#loadout {
+  position: absolute; left: 0; right: 0; bottom: 20dp; text-align: center;
+  .hardpoint { display: block; height: 20dp; margin-top: 4dp; }
+  .key {
+    display: inline-block; width: 16dp; margin-right: 6dp; font-size: 9dp;
+    color: #6a8190; text-align: center;
+  }
+  .chip {
+    display: inline-block; height: 16dp; line-height: 16dp; padding: 0 7dp; margin: 0 2dp;
+    font-size: 10dp; color: #9fb4c2; border-radius: 3dp;
+    background-color: #0c1a2280; border: 1dp #ffffff12;
+    transition: background-color color 0.12s linear-out;
+  }
+  .chip.armed { color: #0a1a20; background-color: #6ff6ff; border-color: #6ff6ff; }
+}
+
+#title {
+  position: absolute; left: 0; right: 0; top: 118dp; text-align: center;
+  transition: opacity 0.9s cubic-out;
+  .kicker { display: block; font-size: 10dp; letter-spacing: 6dp; text-transform: uppercase; color: #ffb45a; }
+  .name { display: block; font-size: 38dp; letter-spacing: 10dp; color: #f4f8ff; margin-top: 6dp; text-transform: uppercase; }
+}
+#title[data-starting-style], #title[data-ending-style] { opacity: 0; }
+
+#toast {
+  position: absolute; left: 0; right: 0; top: 190dp; text-align: center;
+  font-size: 13dp; letter-spacing: 3dp; text-transform: uppercase; color: #d6ccff;
+  transition: opacity 0.35s cubic-out;
+}
+#toast[data-starting-style], #toast[data-ending-style] { opacity: 0; }

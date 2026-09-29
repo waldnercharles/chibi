@@ -20,6 +20,9 @@ entities:
 - name: Run
   prototype: RunState
   behaviors: [Run]
+- name: HUD
+  prototype: WellHud
+  behaviors: [WellHudDisplay]
 - {name: Basalt Throat, prototype: StratumThroat}
 - name: Throat deep
   prototype: Backdrop

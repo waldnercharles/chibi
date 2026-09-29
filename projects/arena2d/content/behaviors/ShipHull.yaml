@@ -1,6 +1,6 @@
 version: 3
 name: ShipHull
-id_counter: 1115
+id_counter: 1159
 description: 'The ship''s shield and hull: a shield soaks hits and recharges after a quiet spell, the hull takes the rest with a brief invulnerability, repair motes restore it, and losing it ends the run.'
 owner_type: ecs.entity
 variables:
@@ -431,6 +431,46 @@ graphs:
       Value: {type: double}
     outputs:
       Value: {type: double}
+  - id: 1127
+    type: Behavior Expression
+    reference_id: 1115
+    reference_name: shield / shieldMax
+    inputs:
+      shield:
+        type: double
+        binding: {kind: variable, variable_id: 1, source_asset: ShipHull}
+      shieldMax:
+        type: double
+        binding: {kind: variable, variable_id: 2, source_asset: ShipHull}
+    outputs:
+      Result: {type: double}
+  - id: 1131
+    type: Set Global Variable
+    inputs:
+      Name: ShieldRatio
+      Value: {type: double}
+    outputs:
+      Value: {type: double}
+  - id: 1149
+    type: Behavior Expression
+    reference_id: 1137
+    reference_name: health / maximum
+    inputs:
+      health:
+        type: double
+        binding: {kind: component_field, component: GAME.GameHealth, field: current}
+      maximum:
+        type: double
+        binding: {kind: component_field, component: GAME.GameHealth, field: maximum}
+    outputs:
+      Result: {type: double}
+  - id: 1153
+    type: Set Global Variable
+    inputs:
+      Name: HullRatio
+      Value: {type: double}
+    outputs:
+      Value: {type: double}
   edges:
   - {from: 117.Then, to: 148.Exec}
   - {from: 117.Amount, to: 125.Value}
@@ -486,6 +526,10 @@ graphs:
   - {from: 1047.Result, to: 1050.Value}
   - {from: 1050.Then, to: 1109.Exec}
   - {from: 1080.Result, to: 1109.Value}
+  - {from: 1109.Then, to: 1131.Exec}
+  - {from: 1127.Result, to: 1131.Value}
+  - {from: 1131.Then, to: 1153.Exec}
+  - {from: 1149.Result, to: 1153.Value}
 - id: 8
   kind: function
   name: Die
@@ -629,3 +673,5 @@ graphs:
   kind: function
   math_expression: floor(max(0, pos.y) / 10)
   entry_id: 1084
+- {id: 1115, kind: function, math_expression: shield / shieldMax, entry_id: 1116}
+- {id: 1137, kind: function, math_expression: health / maximum, entry_id: 1138}

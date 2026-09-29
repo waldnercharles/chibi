@@ -1,0 +1,49 @@
+<div id="hud">
+  <div id="vitals">
+    <div class="vital shield" data-class-low="self.shield < 0.25">
+      <span class="tag">Shield</span>
+      <div class="track"><div class="fill" data-style-width="(self.shield * 100) + '%'"/></div>
+    </div>
+    <div class="vital hull" data-class-low="self.hull < 0.3">
+      <span class="tag">Hull</span>
+      <div class="track"><div class="fill" data-style-width="(self.hull * 100) + '%'"/></div>
+      <span class="value"><number-flow data-attr-value="self.hullValue"/></span>
+    </div>
+    <div class="vital cap" data-class-low="self.capacitor < 0.2">
+      <span class="tag">Charge</span>
+      <div class="track"><div class="fill" data-style-width="(self.capacitor * 100) + '%'"/></div>
+    </div>
+  </div>
+
+  <div id="ledger">
+    <div class="depth"><number-flow data-attr-value="self.depth" suffix=" m"/></div>
+    <div class="stratum"><morph-text>{{ self.stratum }}</morph-text></div>
+    <div class="counts">
+      <span class="scrap"><span class="glyph"/><number-flow data-attr-value="self.scrap"/></span>
+      <span class="kills"><number-flow data-attr-value="self.kills"/> <span class="unit">kills</span></span>
+    </div>
+    <div class="level">
+      <span class="lv">Lv <number-flow data-attr-value="self.level"/></span>
+      <div class="track xp"><div class="fill" data-style-width="(self.xp * 100) + '%'"/></div>
+      <span class="points" data-if="self.points > 0">+<number-flow data-attr-value="self.points"/></span>
+    </div>
+  </div>
+
+  <div id="loadout">
+    <div class="hardpoint">
+      <span class="key">L</span>
+      <span class="chip" data-for="m, i : self.primary" data-class-armed="i == self.cursor0">{{ m }}</span>
+    </div>
+    <div class="hardpoint">
+      <span class="key">R</span>
+      <span class="chip" data-for="m, i : self.secondary" data-class-armed="i == self.cursor1">{{ m }}</span>
+    </div>
+  </div>
+
+  <div id="title" data-if="self.title != ''" presence>
+    <div class="kicker">{{ self.kicker }}</div>
+    <div class="name">{{ self.title }}</div>
+  </div>
+
+  <div id="toast" data-if="self.toast != ''" presence>{{ self.toast }}</div>
+</div>

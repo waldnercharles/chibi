@@ -1,0 +1,701 @@
+version: 3
+name: WellHudDisplay
+id_counter: 753
+description: 'Feeds the Starwell HUD: vitals, depth, scrap, kills, level and both hardpoints'' module lists each frame; announces each stratum with a title card and each level with a toast.'
+owner_type: ecs.entity
+variables:
+- {id: 1, name: lastStratum, type: float, default: -1.0}
+- {id: 2, name: titleTimer, type: float}
+- {id: 3, name: toastTimer, type: float}
+- {id: 4, name: lastLevel, type: float, default: 1.0}
+- {id: 5, name: listTimer, type: float}
+- id: 6
+  name: strata
+  type: name
+  container: 1
+  default: [Basalt Throat, Lumen Grotto, Glass Refractory, Foundry Deep, The Heart]
+- id: 7
+  name: kickers
+  type: name
+  container: 1
+  default: [Stratum I, Stratum II, Stratum III, Stratum IV, Stratum V]
+- id: 8
+  name: names0
+  type: name
+  container: 1
+  default: [""]
+- id: 9
+  name: names1
+  type: name
+  container: 1
+  default: [""]
+- id: 10
+  name: ids
+  type: int
+  container: 1
+  default: [0]
+graphs:
+- kind: event
+  name: ""
+  nodes:
+  - id: 11
+    type: Event
+    reference_name: Tick
+    outputs:
+      DeltaSeconds: {type: float, kind: data}
+  - id: 14
+    type: Get Global Variable
+    inputs: {Name: ShieldRatio}
+    outputs:
+      Value: {type: double}
+  - id: 17
+    type: Set UI Data
+    inputs:
+      Name: shield
+      Value: {type: double}
+  - id: 23
+    type: Get Global Variable
+    inputs: {Name: HullRatio}
+    outputs:
+      Value: {type: double}
+  - id: 26
+    type: Set UI Data
+    inputs:
+      Name: hull
+      Value: {type: double}
+  - id: 32
+    type: Get Global Variable
+    inputs: {Name: Hull}
+    outputs:
+      Value: {type: double}
+  - id: 35
+    type: Set UI Data
+    inputs:
+      Name: hullValue
+      Value: {type: double}
+  - id: 41
+    type: Get Global Variable
+    inputs: {Name: CapacitorRatio}
+    outputs:
+      Value: {type: double}
+  - id: 44
+    type: Set UI Data
+    inputs:
+      Name: capacitor
+      Value: {type: double}
+  - id: 50
+    type: Get Global Variable
+    inputs: {Name: Depth}
+    outputs:
+      Value: {type: double}
+  - id: 53
+    type: Set UI Data
+    inputs:
+      Name: depth
+      Value: {type: double}
+  - id: 59
+    type: Get Global Variable
+    inputs: {Name: Scrap}
+    outputs:
+      Value: {type: int}
+  - id: 62
+    type: Set UI Data
+    inputs:
+      Name: scrap
+      Value: {type: int}
+  - id: 68
+    type: Get Global Variable
+    inputs: {Name: Kills}
+    outputs:
+      Value: {type: int}
+  - id: 71
+    type: Set UI Data
+    inputs:
+      Name: kills
+      Value: {type: int}
+  - id: 77
+    type: Get Global Variable
+    inputs: {Name: Level}
+    outputs:
+      Value: {type: int}
+  - id: 80
+    type: Set UI Data
+    inputs:
+      Name: level
+      Value: {type: int}
+  - id: 86
+    type: Get Global Variable
+    inputs: {Name: SkillPoints}
+    outputs:
+      Value: {type: int}
+  - id: 89
+    type: Set UI Data
+    inputs:
+      Name: points
+      Value: {type: int}
+  - id: 95
+    type: Get Global Variable
+    inputs: {Name: LevelProgress}
+    outputs:
+      Value: {type: double}
+  - id: 98
+    type: Set UI Data
+    inputs:
+      Name: xp
+      Value: {type: double}
+  - id: 104
+    type: Get Global Variable
+    inputs: {Name: Cursor0}
+    outputs:
+      Value: {type: int}
+  - id: 107
+    type: Set UI Data
+    inputs:
+      Name: cursor0
+      Value: {type: int}
+  - id: 113
+    type: Get Global Variable
+    inputs: {Name: Cursor1}
+    outputs:
+      Value: {type: int}
+  - id: 116
+    type: Set UI Data
+    inputs:
+      Name: cursor1
+      Value: {type: int}
+  - id: 134
+    type: Behavior Expression
+    reference_id: 122
+    reference_name: listTimer -= dt
+    inputs:
+      Exec: {id: 138, kind: exec}
+      listTimer:
+        id: 135
+        type: float
+        binding: {kind: variable, variable_id: 5, source_asset: WellHudDisplay}
+      dt:
+        type: double
+        binding: {kind: delta_time}
+    outputs:
+      Then: {id: 139, kind: exec}
+      Result: {id: 137, type: float}
+  - id: 171
+    type: Behavior Expression
+    reference_id: 157
+    reference_name: listTimer <= 0
+    inputs:
+      listTimer:
+        type: double
+        flags: 0
+        binding: {kind: variable, variable_id: 5, source_asset: WellHudDisplay}
+    outputs:
+      Result: {type: bool}
+  - {id: 177, type: Branch}
+  - id: 192
+    type: Behavior Expression
+    reference_id: 182
+    reference_name: listTimer = 0.2
+    inputs:
+      Exec: {id: 195, kind: exec}
+      listTimer:
+        id: 193
+        type: float
+        binding: {kind: variable, variable_id: 5, source_asset: WellHudDisplay}
+    outputs:
+      Then: {id: 196, kind: exec}
+      Result: {id: 194, type: float}
+  - id: 212
+    type: Get Global Variable
+    inputs: {Name: ModuleNames}
+    outputs:
+      Value: {type: name, container: 1}
+  - id: 215
+    type: Get Variable
+    reference_id: 8
+    reference_name: names0
+    outputs:
+      Value: {type: name, container: 1}
+  - id: 217
+    type: Clear
+    inputs:
+      Array: {type: name}
+    outputs:
+      Array: {type: name}
+  - id: 220
+    type: Set Variable
+    reference_id: 8
+    reference_name: names0
+    inputs:
+      Value: {type: name, container: 1}
+    outputs:
+      Value: {type: name, container: 1}
+  - id: 225
+    type: Get Global Variable
+    inputs: {Name: Hardpoint0}
+    outputs:
+      Value: {type: int, container: 1}
+  - id: 228
+    type: ForEach
+    inputs:
+      Array: {type: int}
+    outputs:
+      Array Element: {type: int}
+  - id: 235
+    type: Get
+    inputs:
+      Array: {type: name}
+    outputs:
+      Item: {type: name}
+  - id: 239
+    type: Get Variable
+    reference_id: 8
+    reference_name: names0
+    outputs:
+      Value: {type: name, container: 1}
+  - id: 241
+    type: Array Add
+    inputs:
+      Array: {type: name}
+      Item: {type: name}
+    outputs:
+      Array: {type: name}
+  - id: 245
+    type: Set Variable
+    reference_id: 8
+    reference_name: names0
+    inputs:
+      Value: {type: name, container: 1}
+    outputs:
+      Value: {type: name, container: 1}
+  - id: 250
+    type: Get Variable
+    reference_id: 8
+    reference_name: names0
+    outputs:
+      Value: {type: name, container: 1}
+  - id: 252
+    type: Set UI Data
+    inputs:
+      Name: primary
+      Value: {type: name, container: 1}
+  - id: 258
+    type: Get Variable
+    reference_id: 9
+    reference_name: names1
+    outputs:
+      Value: {type: name, container: 1}
+  - id: 260
+    type: Clear
+    inputs:
+      Array: {type: name}
+    outputs:
+      Array: {type: name}
+  - id: 263
+    type: Set Variable
+    reference_id: 9
+    reference_name: names1
+    inputs:
+      Value: {type: name, container: 1}
+    outputs:
+      Value: {type: name, container: 1}
+  - id: 268
+    type: Get Global Variable
+    inputs: {Name: Hardpoint1}
+    outputs:
+      Value: {type: int, container: 1}
+  - id: 271
+    type: ForEach
+    inputs:
+      Array: {type: int}
+    outputs:
+      Array Element: {type: int}
+  - id: 278
+    type: Get
+    inputs:
+      Array: {type: name}
+    outputs:
+      Item: {type: name}
+  - id: 282
+    type: Get Variable
+    reference_id: 9
+    reference_name: names1
+    outputs:
+      Value: {type: name, container: 1}
+  - id: 284
+    type: Array Add
+    inputs:
+      Array: {type: name}
+      Item: {type: name}
+    outputs:
+      Array: {type: name}
+  - id: 288
+    type: Set Variable
+    reference_id: 9
+    reference_name: names1
+    inputs:
+      Value: {type: name, container: 1}
+    outputs:
+      Value: {type: name, container: 1}
+  - id: 293
+    type: Get Variable
+    reference_id: 9
+    reference_name: names1
+    outputs:
+      Value: {type: name, container: 1}
+  - id: 295
+    type: Set UI Data
+    inputs:
+      Name: secondary
+      Value: {type: name, container: 1}
+  - id: 301
+    type: Get Global Variable
+    inputs: {Name: Depth}
+    outputs:
+      Value: {type: double}
+  - id: 332
+    type: Behavior Expression
+    reference_id: 304
+    reference_name: clamp(floor(d / 600), 0, 4)
+    inputs:
+      d: {type: double}
+    outputs:
+      Result: {type: double}
+  - id: 347
+    type: Behavior Expression
+    reference_id: 335
+    reference_name: idx != lastStratum
+    inputs:
+      idx: {type: double, flags: 0}
+      lastStratum:
+        type: double
+        flags: 0
+        binding: {kind: variable, variable_id: 1, source_asset: WellHudDisplay}
+    outputs:
+      Result: {type: bool}
+  - {id: 354, type: Branch}
+  - id: 367
+    type: Behavior Expression
+    reference_id: 359
+    reference_name: lastStratum = idx
+    inputs:
+      Exec: {id: 371, kind: exec}
+      lastStratum:
+        id: 368
+        type: float
+        binding: {kind: variable, variable_id: 1, source_asset: WellHudDisplay}
+      idx: {type: double}
+    outputs:
+      Then: {id: 372, kind: exec}
+      Result: {id: 370, type: float}
+  - id: 386
+    type: Get Variable
+    reference_id: 6
+    reference_name: strata
+    outputs:
+      Value: {type: name, container: 1}
+  - id: 388
+    type: Get
+    inputs:
+      Array: {type: name}
+    outputs:
+      Item: {type: name}
+  - id: 392
+    type: Get Variable
+    reference_id: 7
+    reference_name: kickers
+    outputs:
+      Value: {type: name, container: 1}
+  - id: 394
+    type: Get
+    inputs:
+      Array: {type: name}
+    outputs:
+      Item: {type: name}
+  - id: 398
+    type: Set UI Data
+    inputs:
+      Name: title
+      Value: {type: name}
+  - id: 404
+    type: Set UI Data
+    inputs:
+      Name: kicker
+      Value: {type: name}
+  - id: 410
+    type: Set UI Data
+    inputs:
+      Name: stratum
+      Value: {type: name}
+  - id: 426
+    type: Behavior Expression
+    reference_id: 416
+    reference_name: titleTimer = 4.5
+    inputs:
+      Exec: {id: 429, kind: exec}
+      titleTimer:
+        id: 427
+        type: float
+        binding: {kind: variable, variable_id: 2, source_asset: WellHudDisplay}
+    outputs:
+      Then: {id: 430, kind: exec}
+      Result: {id: 428, type: float}
+  - id: 446
+    type: Play Sound
+    inputs: {Frequency: 110.0, Duration: 1.6, Volume: 0.25, Noise: 0.15}
+  - id: 485
+    type: Behavior Expression
+    reference_id: 455
+    reference_name: titleTimer > 0 && titleTimer - dt <= 0
+    inputs:
+      titleTimer:
+        type: double
+        flags: 0
+        binding: {kind: variable, variable_id: 2, source_asset: WellHudDisplay}
+      dt:
+        type: double
+        binding: {kind: delta_time}
+    outputs:
+      Result: {type: bool}
+  - {id: 492, type: Branch}
+  - id: 497
+    type: Set UI Data
+    inputs:
+      Name: title
+      Value: {type: name}
+  - id: 522
+    type: Behavior Expression
+    reference_id: 503
+    reference_name: titleTimer = max(0, titleTimer - dt)
+    inputs:
+      Exec: {id: 526, kind: exec}
+      titleTimer:
+        id: 523
+        type: float
+        binding: {kind: variable, variable_id: 2, source_asset: WellHudDisplay}
+      dt:
+        type: double
+        binding: {kind: delta_time}
+    outputs:
+      Then: {id: 527, kind: exec}
+      Result: {id: 525, type: float}
+  - id: 552
+    type: Get Global Variable
+    inputs: {Name: Level}
+    outputs:
+      Value: {type: double}
+  - id: 567
+    type: Behavior Expression
+    reference_id: 555
+    reference_name: lv > lastLevel
+    inputs:
+      lv: {type: double, flags: 0}
+      lastLevel:
+        type: double
+        flags: 0
+        binding: {kind: variable, variable_id: 4, source_asset: WellHudDisplay}
+    outputs:
+      Result: {type: bool}
+  - {id: 574, type: Branch}
+  - id: 587
+    type: Behavior Expression
+    reference_id: 579
+    reference_name: lastLevel = lv
+    inputs:
+      Exec: {id: 591, kind: exec}
+      lastLevel:
+        id: 588
+        type: float
+        binding: {kind: variable, variable_id: 4, source_asset: WellHudDisplay}
+      lv: {type: double}
+    outputs:
+      Then: {id: 592, kind: exec}
+      Result: {id: 590, type: float}
+  - id: 606
+    type: Set UI Data
+    inputs:
+      Name: toast
+      Value: {type: name, default: Resonance rises · a skill point}
+  - id: 622
+    type: Behavior Expression
+    reference_id: 612
+    reference_name: toastTimer = 2.6
+    inputs:
+      Exec: {id: 625, kind: exec}
+      toastTimer:
+        id: 623
+        type: float
+        binding: {kind: variable, variable_id: 3, source_asset: WellHudDisplay}
+    outputs:
+      Then: {id: 626, kind: exec}
+      Result: {id: 624, type: float}
+  - id: 672
+    type: Behavior Expression
+    reference_id: 642
+    reference_name: toastTimer > 0 && toastTimer - dt <= 0
+    inputs:
+      toastTimer:
+        type: double
+        flags: 0
+        binding: {kind: variable, variable_id: 3, source_asset: WellHudDisplay}
+      dt:
+        type: double
+        binding: {kind: delta_time}
+    outputs:
+      Result: {type: bool}
+  - {id: 679, type: Branch}
+  - id: 684
+    type: Set UI Data
+    inputs:
+      Name: toast
+      Value: {type: name}
+  - id: 709
+    type: Behavior Expression
+    reference_id: 690
+    reference_name: toastTimer = max(0, toastTimer - dt)
+    inputs:
+      Exec: {id: 713, kind: exec}
+      toastTimer:
+        id: 710
+        type: float
+        binding: {kind: variable, variable_id: 3, source_asset: WellHudDisplay}
+      dt:
+        type: double
+        binding: {kind: delta_time}
+    outputs:
+      Then: {id: 714, kind: exec}
+      Result: {id: 712, type: float}
+  - {id: 739, type: Event, reference_name: Begin}
+  - id: 741
+    type: Set UI Data
+    inputs:
+      Name: title
+      Value: {type: name}
+  - id: 747
+    type: Set UI Data
+    inputs:
+      Name: toast
+      Value: {type: name}
+  edges:
+  - {from: 11.Then, to: 17.Exec}
+  - {from: 14.Value, to: 17.Value}
+  - {from: 17.Then, to: 26.Exec}
+  - {from: 23.Value, to: 26.Value}
+  - {from: 26.Then, to: 35.Exec}
+  - {from: 32.Value, to: 35.Value}
+  - {from: 35.Then, to: 44.Exec}
+  - {from: 41.Value, to: 44.Value}
+  - {from: 44.Then, to: 53.Exec}
+  - {from: 50.Value, to: 53.Value}
+  - {from: 53.Then, to: 62.Exec}
+  - {from: 59.Value, to: 62.Value}
+  - {from: 62.Then, to: 71.Exec}
+  - {from: 68.Value, to: 71.Value}
+  - {from: 71.Then, to: 80.Exec}
+  - {from: 77.Value, to: 80.Value}
+  - {from: 80.Then, to: 89.Exec}
+  - {from: 86.Value, to: 89.Value}
+  - {from: 89.Then, to: 98.Exec}
+  - {from: 95.Value, to: 98.Value}
+  - {from: 98.Then, to: 107.Exec}
+  - {from: 104.Value, to: 107.Value}
+  - {from: 107.Then, to: 116.Exec}
+  - {from: 113.Value, to: 116.Value}
+  - {from: 116.Then, to: 134.Exec}
+  - {from: 134.Then, to: 177.Exec}
+  - {from: 171.Result, to: 177.Condition}
+  - {from: 177.True, to: 192.Exec}
+  - {from: 177.False, to: 354.Exec}
+  - {from: 192.Then, to: 220.Exec}
+  - {from: 212.Value, to: 235.Array}
+  - {from: 212.Value, to: 278.Array}
+  - {from: 215.Value, to: 217.Array}
+  - {from: 217.Array, to: 220.Value}
+  - {from: 220.Then, to: 228.Exec}
+  - {from: 225.Value, to: 228.Array}
+  - {from: 228.Body, to: 245.Exec}
+  - {from: 228.Array Element, to: 235.Index}
+  - {from: 228.Completed, to: 252.Exec}
+  - {from: 235.Item, to: 241.Item}
+  - {from: 239.Value, to: 241.Array}
+  - {from: 241.Array, to: 245.Value}
+  - {from: 250.Value, to: 252.Value}
+  - {from: 252.Then, to: 263.Exec}
+  - {from: 258.Value, to: 260.Array}
+  - {from: 260.Array, to: 263.Value}
+  - {from: 263.Then, to: 271.Exec}
+  - {from: 268.Value, to: 271.Array}
+  - {from: 271.Body, to: 288.Exec}
+  - {from: 271.Array Element, to: 278.Index}
+  - {from: 271.Completed, to: 295.Exec}
+  - {from: 278.Item, to: 284.Item}
+  - {from: 282.Value, to: 284.Array}
+  - {from: 284.Array, to: 288.Value}
+  - {from: 293.Value, to: 295.Value}
+  - {from: 295.Then, to: 354.Exec}
+  - {from: 301.Value, to: 332.d}
+  - {from: 332.Result, to: 347.idx}
+  - {from: 332.Result, to: 367.idx}
+  - {from: 332.Result, to: 388.Index, conversion: To Integer}
+  - {from: 332.Result, to: 394.Index, conversion: To Integer}
+  - {from: 347.Result, to: 354.Condition}
+  - {from: 354.True, to: 367.Exec}
+  - {from: 354.False, to: 492.Exec}
+  - {from: 367.Then, to: 398.Exec}
+  - {from: 386.Value, to: 388.Array}
+  - {from: 388.Item, to: 398.Value}
+  - {from: 388.Item, to: 410.Value}
+  - {from: 392.Value, to: 394.Array}
+  - {from: 394.Item, to: 404.Value}
+  - {from: 398.Then, to: 404.Exec}
+  - {from: 404.Then, to: 410.Exec}
+  - {from: 410.Then, to: 426.Exec}
+  - {from: 426.Then, to: 446.Exec}
+  - {from: 446.Then, to: 492.Exec}
+  - {from: 485.Result, to: 492.Condition}
+  - {from: 492.True, to: 497.Exec}
+  - {from: 492.False, to: 522.Exec}
+  - {from: 497.Then, to: 522.Exec}
+  - {from: 522.Then, to: 574.Exec}
+  - {from: 552.Value, to: 567.lv}
+  - {from: 552.Value, to: 587.lv}
+  - {from: 567.Result, to: 574.Condition}
+  - {from: 574.True, to: 587.Exec}
+  - {from: 574.False, to: 679.Exec}
+  - {from: 587.Then, to: 606.Exec}
+  - {from: 606.Then, to: 622.Exec}
+  - {from: 622.Then, to: 679.Exec}
+  - {from: 672.Result, to: 679.Condition}
+  - {from: 679.True, to: 684.Exec}
+  - {from: 679.False, to: 709.Exec}
+  - {from: 684.Then, to: 709.Exec}
+  - {from: 739.Then, to: 741.Exec}
+  - {from: 741.Then, to: 747.Exec}
+- {id: 122, kind: function, math_expression: listTimer -= dt, entry_id: 141}
+- {id: 157, kind: function, math_expression: listTimer <= 0, entry_id: 158}
+- {id: 182, kind: function, math_expression: listTimer = 0.2, entry_id: 198}
+- id: 304
+  kind: function
+  math_expression: clamp(floor(d / 600), 0, 4)
+  entry_id: 305
+- {id: 335, kind: function, math_expression: idx != lastStratum, entry_id: 336}
+- {id: 359, kind: function, math_expression: lastStratum = idx, entry_id: 374}
+- {id: 416, kind: function, math_expression: titleTimer = 4.5, entry_id: 432}
+- id: 455
+  kind: function
+  math_expression: titleTimer > 0 && titleTimer - dt <= 0
+  entry_id: 456
+- id: 503
+  kind: function
+  math_expression: titleTimer = max(0, titleTimer - dt)
+  entry_id: 529
+- {id: 555, kind: function, math_expression: lv > lastLevel, entry_id: 556}
+- {id: 579, kind: function, math_expression: lastLevel = lv, entry_id: 594}
+- {id: 612, kind: function, math_expression: toastTimer = 2.6, entry_id: 628}
+- id: 642
+  kind: function
+  math_expression: toastTimer > 0 && toastTimer - dt <= 0
+  entry_id: 643
+- id: 690
+  kind: function
+  math_expression: toastTimer = max(0, toastTimer - dt)
+  entry_id: 716

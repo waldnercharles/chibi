@@ -1,0 +1,5 @@
+name: WellHud
+components:
+  GAME.GameUi: {document: WellHud}
+  GAME.GameUnscaledTime: {}
+behaviors: [WellHudDisplay]

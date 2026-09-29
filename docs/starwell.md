@@ -206,6 +206,11 @@ What has landed, and its contract. Every node is in searchNodes and Studio.
   simulation, particles, visual motion, system phases and fog. A
   `GameUnscaledTime` entity's behaviors run on real time, which is how the dock
   screens keep working at scale 0. Restarts return to scale 1.
+- **Camera trauma.** `GameCameraShake{trauma, decay, max_offset, frequency}`
+  beside `GameCamera`; `Add Camera Trauma(Amount)` adds to every shake, clamped
+  0–1. Trauma falls by `decay` per real second; `game_camera_view` offsets the
+  view (not the entity) by `max_offset * trauma²` times smooth noise at
+  `frequency`.
 
 ## Status
 

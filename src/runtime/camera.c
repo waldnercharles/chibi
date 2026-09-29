@@ -1,8 +1,16 @@
 #include "runtime/camera.h"
 
+#include "runtime/camera_shake.h"
 #include "runtime/generated.h"
 
 #include <math.h>
+
+/* Real seconds the runtime has run, between fixed steps as presented. */
+static double real_seconds(const engine *runtime)
+{
+    const engine_frame_timing *timing = engine_last_timing(runtime);
+    return (timing->simulation_steps + timing->alpha) * ENGINE_FIXED_SECONDS;
+}
 
 int game_camera_view(ecs_world *world, const engine *runtime, engine_viewport_view *out)
 {
@@ -29,6 +37,10 @@ int game_camera_view(ecs_world *world, const engine *runtime, engine_viewport_vi
         GameTransform position = *transform;
         if (runtime) {
             engine_render_position(runtime, entity, &position);
+        }
+        const GameCameraShake *shake = GAME_GameCameraShake_get_const(world, entity);
+        if (shake && runtime) {
+            position = cf_add(position, game_camera_shake_offset(shake, real_seconds(runtime)));
         }
         *out = (engine_viewport_view){ position.x + camera->offset.x,
                                        -position.y - camera->offset.y,

@@ -327,6 +327,9 @@ extern const GameCamera *GAME_GameCamera_get_const(const ecs_world *, ecs_entity
 extern int GAME_GameCamera_has(const ecs_world *, ecs_entity);
 extern int GAME_GameCamera_add(ecs_world *, ecs_entity, uint64_t);
 extern int GAME_GameCamera_remove(ecs_world *, ecs_entity, uint64_t);
+extern const ecs_component_desc GAME_COMPONENT_GameCameraShake;
+extern GameCameraShake *GAME_GameCameraShake_get(ecs_world *, ecs_entity);
+extern const GameCameraShake *GAME_GameCameraShake_get_const(const ecs_world *, ecs_entity);
 extern const ecs_component_desc GAME_COMPONENT_GameUnscaledTime;
 extern const GameUnscaledTime *GAME_GameUnscaledTime_get_const(const ecs_world *, ecs_entity);
 

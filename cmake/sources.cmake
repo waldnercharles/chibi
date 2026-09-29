@@ -272,6 +272,7 @@ set(RUNTIME_SUPPORT_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/save.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/visibility.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/run.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/camera_shake.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/rhythm_lower.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/visual_transform.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/visual_motion.c

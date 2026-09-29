@@ -5,6 +5,7 @@
 #include "graph/document/events.h"
 #include "graph/document/serialize.h"
 #include "render/sdf_motion.h"
+#include "runtime/camera_shake.h"
 #include "runtime/components.h" /* IWYU pragma: keep */
 #include "runtime/engine_input.h"
 #include "runtime/generated.h"
@@ -702,6 +703,7 @@ static int continue_step(engine *engine)
         if (result >= 0) {
             result = update_visual_motion(engine, (float)engine->step_seconds);
         }
+        game_camera_shake_tick(engine->world, (float)ENGINE_FIXED_SECONDS);
         if (clock_now(&end) != 0) {
             CHIBI_TRACE_ZONE_END(visual_zone);
             return FLOW_ERR_STATE;

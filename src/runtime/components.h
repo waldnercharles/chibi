@@ -652,6 +652,19 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameCamera)
 }
 GameCamera;
 
+/* Trauma-driven shake for a GameCamera's view. Add Camera Trauma raises
+ * trauma (0 to 1) and it falls by decay per real second. The view moves up to
+ * max_offset units along smooth noise, frequency cells per second, scaled by
+ * trauma squared; the camera entity itself stays put. */
+typedef NODE_COMPONENT_TYPE_DENSE(GameCameraShake)
+{
+    float trauma;
+    float decay;
+    float max_offset;
+    float frequency;
+}
+GameCameraShake;
+
 /* Behaviors on this entity tick in real time: Tick's Delta, Delta Time and
  * Delay ignore Set Time Scale and Hit Stop, so menus keep running while the
  * game is paused at scale 0. The clock switches when the entity's behaviors

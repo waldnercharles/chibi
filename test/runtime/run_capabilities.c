@@ -1,4 +1,6 @@
 #include "graph/runtime/random.h"
+#include "runtime/camera.h"
+#include "runtime/camera_shake.h"
 #include "runtime/material_terrain.h"
 #include "support/text_file.h"
 #include "support/value_noise.h"
@@ -606,11 +608,67 @@ static void time_scale()
     assert(full > 50 && fabsf(half - full * .5f) < 1 && frozen == 0);
 }
 
+/* Begin adds Amount of camera trauma. */
+static behavior_asset *trauma_behavior(float amount)
+{
+    behavior_asset *asset = behavior("Trauma");
+    graph *g = asset->graph;
+    node *shake = add(g, "Add Camera Trauma");
+    set_input(g, shake, 1, (pin_value){ .type = PIN_F32, .type_name = "float", .f = amount });
+    flow(g, event(g, "Begin"), shake);
+    return asset;
+}
+
+static const char SHAKEN[] = "{\"name\":\"Shaken\",\"behaviors\":[\"Trauma\"],"
+                             "\"components\":{"
+                             "\"GameTransform\":{\"x\":40,\"y\":-20},"
+                             "\"GameCamera\":{\"width\":320,\"height\":180},"
+                             "\"GameCameraShake\":{\"decay\":1,\"max_offset\":"
+                             "12,\"frequency\":15}}}";
+
+static void camera_trauma()
+{
+    run_fixture f = fixture_new();
+    fixture_behavior(&f, trauma_behavior(.8f));
+    ecs_entity camera = fixture_spawn(&f, SHAKEN);
+    const GameCameraShake *shake = GAME_GameCameraShake_get_const(f.world, camera);
+    assert(fabsf(shake->trauma - .8f) < 1e-6f);
+    /* Trauma decays per real second, even when time is frozen. */
+    game_behavior_run(f.live->behaviors)->time_scale = 0;
+    fixture_steps(&f, 30);
+    assert(fabsf(shake->trauma - .3f) < 1e-4f);
+    /* The view, not the camera, moves: within max_offset times trauma squared. */
+    engine_viewport_view view;
+    float moved = 0;
+    for (int i = 0; i < 6; i++) {
+        fixture_steps(&f, 1);
+        assert(game_camera_view(f.world, f.runtime, &view) == 1);
+        float dx = view.center_x - 40, dy = view.center_y - 20;
+        float limit = 12 * shake->trauma * shake->trauma + 1e-4f;
+        assert(fabsf(dx) <= limit && fabsf(dy) <= limit);
+        moved = fmaxf(moved, fabsf(dx) + fabsf(dy));
+    }
+    assert(moved > 0);
+    assert(GAME_GameTransform_get_const(f.world, camera)->x == 40);
+    fixture_steps(&f, 30);
+    assert(shake->trauma == 0);
+    assert(game_camera_view(f.world, f.runtime, &view) == 1);
+    assert(view.center_x == 40 && view.center_y == 20);
+    fixture_free(&f);
+    /* Trauma stays within 0 to 1. */
+    f = fixture_new();
+    fixture_behavior(&f, trauma_behavior(5));
+    camera = fixture_spawn(&f, SHAKEN);
+    assert(GAME_GameCameraShake_get_const(f.world, camera)->trauma == 1);
+    fixture_free(&f);
+}
+
 void test_run_capabilities()
 {
     seeded_randomness();
     run_seed();
     terrain_queries();
     time_scale();
-    puts("Run capabilities PASS: seeded per-world randomness, run seeds, seed_from_run terrain, restart requests, Sample Field, Terrain Distance, time scale and hit-stop");
+    camera_trauma();
+    puts("Run capabilities PASS: seeded per-world randomness, run seeds, seed_from_run terrain, restart requests, Sample Field, Terrain Distance, time scale, hit-stop and camera trauma");
 }

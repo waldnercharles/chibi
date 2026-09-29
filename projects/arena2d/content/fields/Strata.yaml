@@ -1,100 +1,101 @@
 version: 3
 name: Strata
 domain: field
-id_counter: 4800
+id_counter: 3330
 description: 'One stratum of the Starwell: a sanctum at the top, a lattice of chambers joined by a guaranteed descending route, sealed vault pockets and a boss arena at the bottom. Positive is open space.'
 variables:
-- {id: 547, name: Width, type: float, default: 3200.0}
-- {id: 548, name: Height, type: float, default: 6000.0}
-- {id: 549, name: SpacingX, type: float, default: 640.0}
-- {id: 550, name: SpacingY, type: float, default: 580.0}
-- {id: 551, name: Top, type: float, default: 620.0}
-- {id: 552, name: Bottom, type: float, default: 1300.0}
-- {id: 553, name: Salt, type: float}
-- {id: 554, name: Warp, type: float, default: 150.0}
-- {id: 555, name: Roughness, type: float, default: 30.0}
-- {id: 556, name: Boxy, type: float}
-- {id: 557, name: ColumnStep, type: float}
-- {id: 558, name: Ridge, type: float}
-- {id: 559, name: Terrace, type: float}
-- {id: 560, name: Pockets, type: float, default: 1.0}
-- {id: 561, name: Entry, type: float, default: 1.0}
-- {id: 562, name: Exit, type: float, default: 1.0}
+- {id: 4, name: Width, type: float, default: 3200.0}
+- {id: 5, name: Height, type: float, default: 6000.0}
+- {id: 6, name: SpacingX, type: float, default: 640.0}
+- {id: 7, name: SpacingY, type: float, default: 580.0}
+- {id: 8, name: Top, type: float, default: 620.0}
+- {id: 9, name: Bottom, type: float, default: 1300.0}
+- {id: 10, name: Salt, type: float}
+- {id: 11, name: Warp, type: float, default: 150.0}
+- {id: 12, name: Roughness, type: float, default: 30.0}
+- {id: 13, name: Boxy, type: float}
+- {id: 14, name: ColumnStep, type: float}
+- {id: 15, name: Ridge, type: float}
+- {id: 16, name: Terrace, type: float}
+- {id: 17, name: Pockets, type: float, default: 1.0}
+- {id: 18, name: Entry, type: float, default: 1.0}
+- {id: 19, name: Exit, type: float, default: 1.0}
 graphs:
 - kind: event
   name: ""
   nodes:
-  - {id: 210, type: Field X}
-  - {id: 212, type: Field Y}
-  - id: 214
+  - {id: 1, type: Field Output}
+  - {id: 1514, type: Field X}
+  - {id: 1516, type: Field Y}
+  - id: 1518
     type: Field Parameter
     inputs: {Name: Width}
-  - id: 217
+  - id: 1521
     type: Field Parameter
     inputs: {Name: Height}
-  - id: 220
+  - id: 1524
     type: Field Parameter
     inputs: {Name: SpacingX}
-  - id: 223
+  - id: 1527
     type: Field Parameter
     inputs: {Name: SpacingY}
-  - id: 226
+  - id: 1530
     type: Field Parameter
     inputs: {Name: Top}
-  - id: 229
+  - id: 1533
     type: Field Parameter
     inputs: {Name: Bottom}
-  - id: 232
+  - id: 1536
     type: Field Parameter
     inputs: {Name: Salt}
-  - id: 235
+  - id: 1539
     type: Field Parameter
     inputs: {Name: Warp}
-  - id: 238
+  - id: 1542
     type: Field Parameter
     inputs: {Name: Roughness}
-  - id: 241
+  - id: 1545
     type: Field Parameter
     inputs: {Name: Boxy}
-  - id: 244
+  - id: 1548
     type: Field Parameter
     inputs: {Name: ColumnStep}
-  - id: 247
+  - id: 1551
     type: Field Parameter
     inputs: {Name: Ridge}
-  - id: 250
+  - id: 1554
     type: Field Parameter
     inputs: {Name: Terrace}
-  - id: 253
+  - id: 1557
     type: Field Parameter
     inputs: {Name: Pockets}
-  - id: 256
+  - id: 1560
     type: Field Parameter
     inputs: {Name: Entry}
-  - id: 259
+  - id: 1563
     type: Field Parameter
     inputs: {Name: Exit}
-  - id: 262
+  - id: 1585
     type: Behavior Expression
-    reference_id: 266
+    reference_id: 1566
     reference_name: x + width * 0.5
     inputs:
       x: {type: float, flags: 0}
       width: {type: float, flags: 0}
     outputs:
       Result: {type: float}
-  - id: 267
+  - id: 1608
     type: Behavior Expression
-    reference_id: 271
+    reference_id: 1589
     reference_name: y + height * 0.5
     inputs:
       "y": {type: float, flags: 0}
       height: {type: float, flags: 0}
     outputs:
       Result: {type: float}
-  - id: 272
+  - id: 1697
     type: Behavior Expression
-    reference_id: 278
+    reference_id: 1612
     reference_name: X + warp * noise(X / 620, Y / 620, salt + 20) + warp * 0.35 * noise(X / 190, Y / 190, salt + 22)
     inputs:
       X: {type: float, flags: 0}
@@ -103,9 +104,9 @@ graphs:
       salt: {type: float, flags: 0}
     outputs:
       Result: {type: float}
-  - id: 279
+  - id: 1816
     type: Behavior Expression
-    reference_id: 285
+    reference_id: 1703
     reference_name: Y + warp * noise(X / 620 + 17.3, Y / 620 - 5.1, salt + 21) + warp * 0.35 * noise(X / 190 - 3.7, Y / 190 + 9.2, salt + 23)
     inputs:
       "Y": {type: float, flags: 0}
@@ -114,18 +115,18 @@ graphs:
       salt: {type: float, flags: 0}
     outputs:
       Result: {type: float}
-  - id: 286
+  - id: 1837
     type: Behavior Expression
-    reference_id: 290
+    reference_id: 1822
     reference_name: floor(width / spacingX)
     inputs:
       width: {type: float, flags: 0}
       spacingX: {type: float, flags: 0}
     outputs:
       Result: {type: float}
-  - id: 291
+  - id: 1866
     type: Behavior Expression
-    reference_id: 297
+    reference_id: 1841
     reference_name: floor((height - top - bottom) / spacingY)
     inputs:
       height: {type: float, flags: 0}
@@ -134,18 +135,18 @@ graphs:
       spacingY: {type: float, flags: 0}
     outputs:
       Result: {type: float}
-  - id: 298
+  - id: 1887
     type: Behavior Expression
-    reference_id: 302
+    reference_id: 1872
     reference_name: floor(wx / spacingX)
     inputs:
       wx: {type: float, flags: 0}
       spacingX: {type: float, flags: 0}
     outputs:
       Result: {type: float}
-  - id: 303
+  - id: 1911
     type: Behavior Expression
-    reference_id: 308
+    reference_id: 1891
     reference_name: floor((wy - top) / spacingY)
     inputs:
       wy: {type: float, flags: 0}
@@ -153,9 +154,9 @@ graphs:
       spacingY: {type: float, flags: 0}
     outputs:
       Result: {type: float}
-  - id: 309
+  - id: 1955
     type: Behavior Expression
-    reference_id: 314
+    reference_id: 1916
     reference_name: i0 - select(wx / spacingX - i0 - 0.5, 0, 1)
     inputs:
       i0: {type: float, flags: 0}
@@ -163,9 +164,9 @@ graphs:
       spacingX: {type: float, flags: 0}
     outputs:
       Result: {type: float}
-  - id: 315
+  - id: 2004
     type: Behavior Expression
-    reference_id: 321
+    reference_id: 1960
     reference_name: j0 - select((wy - top) / spacingY - j0 - 0.5, 0, 1)
     inputs:
       j0: {type: float, flags: 0}
@@ -174,25 +175,25 @@ graphs:
       spacingY: {type: float, flags: 0}
     outputs:
       Result: {type: float}
-  - id: 322
+  - id: 2024
     type: Behavior Expression
-    reference_id: 325
+    reference_id: 2010
     reference_name: ia + 1
     inputs:
       ia: {type: float, flags: 0}
     outputs:
       Result: {type: float}
-  - id: 326
+  - id: 2041
     type: Behavior Expression
-    reference_id: 329
+    reference_id: 2027
     reference_name: ja + 1
     inputs:
       ja: {type: float, flags: 0}
     outputs:
       Result: {type: float}
-  - id: 330
+  - id: 2125
     type: Behavior Expression
-    reference_id: 335
+    reference_id: 2044
     reference_name: select(ja - 0.5, floor((hash(ja - 1, 0, salt + 7) * 0.5 + 0.5) * cols * 0.999), floor(cols / 2))
     inputs:
       ja: {type: float, flags: 0}
@@ -200,9 +201,9 @@ graphs:
       cols: {type: float, flags: 0}
     outputs:
       Result: {type: float}
-  - id: 336
+  - id: 2182
     type: Behavior Expression
-    reference_id: 341
+    reference_id: 2130
     reference_name: floor((hash(ja, 0, salt + 7) * 0.5 + 0.5) * cols * 0.999)
     inputs:
       ja: {type: float, flags: 0}
@@ -210,9 +211,9 @@ graphs:
       cols: {type: float, flags: 0}
     outputs:
       Result: {type: float}
-  - id: 342
+  - id: 2246
     type: Behavior Expression
-    reference_id: 347
+    reference_id: 2187
     reference_name: floor((hash(ja + 1, 0, salt + 7) * 0.5 + 0.5) * cols * 0.999)
     inputs:
       ja: {type: float, flags: 0}
@@ -220,9 +221,9 @@ graphs:
       cols: {type: float, flags: 0}
     outputs:
       Result: {type: float}
-  - id: 348
+  - id: 2310
     type: Behavior Expression
-    reference_id: 353
+    reference_id: 2251
     reference_name: floor((hash(ja + 2, 0, salt + 7) * 0.5 + 0.5) * cols * 0.999)
     inputs:
       ja: {type: float, flags: 0}
@@ -230,9 +231,9 @@ graphs:
       cols: {type: float, flags: 0}
     outputs:
       Result: {type: float}
-  - id: 354
+  - id: 2346
     type: Behavior Expression
-    reference_id: 359
+    reference_id: 2315
     reference_name: select(ja + 0.5, kA, floor(cols / 2))
     inputs:
       ja: {type: float, flags: 0}
@@ -240,9 +241,9 @@ graphs:
       cols: {type: float, flags: 0}
     outputs:
       Result: {type: float}
-  - id: 360
+  - id: 2382
     type: Behavior Expression
-    reference_id: 365
+    reference_id: 2351
     reference_name: select(ja + 1.5, kB, floor(cols / 2))
     inputs:
       ja: {type: float, flags: 0}
@@ -250,9 +251,9 @@ graphs:
       cols: {type: float, flags: 0}
     outputs:
       Result: {type: float}
-  - id: 366
+  - id: 2387
     type: Call Pure Function
-    reference_id: 1
+    reference_id: 20
     reference_name: Room
     inputs:
       x: {type: float}
@@ -271,9 +272,9 @@ graphs:
       boxy: {type: float}
     outputs:
       room: {type: float}
-  - id: 382
+  - id: 2403
     type: Call Pure Function
-    reference_id: 1
+    reference_id: 20
     reference_name: Room
     inputs:
       x: {type: float}
@@ -292,9 +293,9 @@ graphs:
       boxy: {type: float}
     outputs:
       room: {type: float}
-  - id: 398
+  - id: 2419
     type: Call Pure Function
-    reference_id: 1
+    reference_id: 20
     reference_name: Room
     inputs:
       x: {type: float}
@@ -313,9 +314,9 @@ graphs:
       boxy: {type: float}
     outputs:
       room: {type: float}
-  - id: 414
+  - id: 2435
     type: Call Pure Function
-    reference_id: 1
+    reference_id: 20
     reference_name: Room
     inputs:
       x: {type: float}
@@ -334,9 +335,9 @@ graphs:
       boxy: {type: float}
     outputs:
       room: {type: float}
-  - id: 430
+  - id: 2473
     type: Behavior Expression
-    reference_id: 436
+    reference_id: 2451
     reference_name: min(min(riaa, riab), min(riba, ribb))
     inputs:
       riaa: {type: float, flags: 0}
@@ -345,9 +346,9 @@ graphs:
       ribb: {type: float, flags: 0}
     outputs:
       Result: {type: float}
-  - id: 437
+  - id: 2585
     type: Behavior Expression
-    reference_id: 446
+    reference_id: 2479
     reference_name: max(140 - 420 * max(fractal(wx / 520, wy / 520, salt + 60, 3, 2.0, 0.5), 0), max(top + 150 - Y, Y - (height - bottom - 250)))
     inputs:
       wx: {type: float, flags: 0}
@@ -359,9 +360,9 @@ graphs:
       bottom: {type: float, flags: 0}
     outputs:
       Result: {type: float}
-  - id: 447
+  - id: 2619
     type: Behavior Expression
-    reference_id: 452
+    reference_id: 2594
     reference_name: smooth_union(cave, select(pockets, pocket, 100000), 40)
     inputs:
       cave: {type: float, flags: 0}
@@ -369,9 +370,9 @@ graphs:
       pocket: {type: float, flags: 0}
     outputs:
       Result: {type: float}
-  - id: 453
+  - id: 2819
     type: Behavior Expression
-    reference_id: 463
+    reference_id: 2624
     reference_name: cave2 + roughness * fractal(wx / 150, wy / 150, salt + 30, 3, 2.1, 0.5) + columnStep * hash(floor(wx / 26), floor(wy / 380), salt + 40) + ridge * (abs(noise(wx / 70, wy / 70, salt + 41)) - 0.3) + terrace * floor(noise(wx / 230, wy / 230, salt + 42) * 3) / 3
     inputs:
       cave2: {type: float, flags: 0}
@@ -384,17 +385,17 @@ graphs:
       terrace: {type: float, flags: 0}
     outputs:
       Result: {type: float}
-  - id: 464
+  - id: 2843
     type: Behavior Expression
-    reference_id: 467
+    reference_id: 2829
     reference_name: width * 0.5
     inputs:
       width: {type: float, flags: 0}
     outputs:
       Result: {type: float}
-  - id: 468
+  - id: 2885
     type: Behavior Expression
-    reference_id: 473
+    reference_id: 2846
     reference_name: box(X - mid, Y - 330, 330, 105) - 45
     inputs:
       X: {type: float, flags: 0}
@@ -402,9 +403,9 @@ graphs:
       "Y": {type: float, flags: 0}
     outputs:
       Result: {type: float}
-  - id: 474
+  - id: 2926
     type: Behavior Expression
-    reference_id: 480
+    reference_id: 2890
     reference_name: select(entry, capsule(X, Y, mid, -200, mid, 330, 62), 100000)
     inputs:
       entry: {type: float, flags: 0}
@@ -413,9 +414,9 @@ graphs:
       mid: {type: float, flags: 0}
     outputs:
       Result: {type: float}
-  - id: 481
+  - id: 2969
     type: Behavior Expression
-    reference_id: 488
+    reference_id: 2932
     reference_name: capsule(X, Y, mid, 380, mid, top + 0.5 * spacingY, 58)
     inputs:
       X: {type: float, flags: 0}
@@ -425,9 +426,9 @@ graphs:
       spacingY: {type: float, flags: 0}
     outputs:
       Result: {type: float}
-  - id: 489
+  - id: 3035
     type: Behavior Expression
-    reference_id: 494
+    reference_id: 2976
     reference_name: floor((hash(rows - 1, 0, salt + 7) * 0.5 + 0.5) * cols * 0.999)
     inputs:
       rows: {type: float, flags: 0}
@@ -435,18 +436,18 @@ graphs:
       cols: {type: float, flags: 0}
     outputs:
       Result: {type: float}
-  - id: 495
+  - id: 3059
     type: Behavior Expression
-    reference_id: 499
+    reference_id: 3040
     reference_name: height - bottom * 0.55
     inputs:
       height: {type: float, flags: 0}
       bottom: {type: float, flags: 0}
     outputs:
       Result: {type: float}
-  - id: 500
+  - id: 3127
     type: Behavior Expression
-    reference_id: 507
+    reference_id: 3063
     reference_name: circle(X - mid, Y - arenaY, 540) + 40 * noise(X / 160, Y / 160, salt + 50)
     inputs:
       X: {type: float, flags: 0}
@@ -456,9 +457,9 @@ graphs:
       salt: {type: float, flags: 0}
     outputs:
       Result: {type: float}
-  - id: 508
+  - id: 3187
     type: Behavior Expression
-    reference_id: 519
+    reference_id: 3134
     reference_name: capsule(X, Y, (kl + 0.5) * spacingX, top + (rows - 0.5) * spacingY, mid, arenaY, 64)
     inputs:
       X: {type: float, flags: 0}
@@ -472,9 +473,9 @@ graphs:
       arenaY: {type: float, flags: 0}
     outputs:
       Result: {type: float}
-  - id: 520
+  - id: 3237
     type: Behavior Expression
-    reference_id: 528
+    reference_id: 3198
     reference_name: select(exit, capsule(X, Y, mid, arenaY, mid, height + 200, 60), 100000)
     inputs:
       exit: {type: float, flags: 0}
@@ -485,9 +486,9 @@ graphs:
       height: {type: float, flags: 0}
     outputs:
       Result: {type: float}
-  - id: 529
+  - id: 3282
     type: Behavior Expression
-    reference_id: 538
+    reference_id: 3245
     reference_name: min(min(styled, min(sanct, entryS)), min(min(drop, arena), min(link, exitS)))
     inputs:
       styled: {type: float, flags: 0}
@@ -499,9 +500,9 @@ graphs:
       exitS: {type: float, flags: 0}
     outputs:
       Result: {type: float}
-  - id: 539
+  - id: 3325
     type: Behavior Expression
-    reference_id: 544
+    reference_id: 3291
     reference_name: negate(max(air, abs(X - mid) - (mid - 60)))
     inputs:
       air: {type: float, flags: 0}
@@ -509,216 +510,215 @@ graphs:
       mid: {type: float, flags: 0}
     outputs:
       Result: {type: float}
-  - {id: 545, type: Field Output}
   edges:
-  - {from: 210.Value, to: 262.x}
-  - {from: 212.Value, to: 267.y}
-  - {from: 214.Value, to: 262.width}
-  - {from: 214.Value, to: 286.width}
-  - {from: 214.Value, to: 464.width}
-  - {from: 217.Value, to: 267.height}
-  - {from: 217.Value, to: 291.height}
-  - {from: 217.Value, to: 437.height}
-  - {from: 217.Value, to: 495.height}
-  - {from: 217.Value, to: 520.height}
-  - {from: 220.Value, to: 286.spacingX}
-  - {from: 220.Value, to: 298.spacingX}
-  - {from: 220.Value, to: 309.spacingX}
-  - {from: 220.Value, to: 366.sx}
-  - {from: 220.Value, to: 382.sx}
-  - {from: 220.Value, to: 398.sx}
-  - {from: 220.Value, to: 414.sx}
-  - {from: 220.Value, to: 508.spacingX}
-  - {from: 223.Value, to: 291.spacingY}
-  - {from: 223.Value, to: 303.spacingY}
-  - {from: 223.Value, to: 315.spacingY}
-  - {from: 223.Value, to: 366.sy}
-  - {from: 223.Value, to: 382.sy}
-  - {from: 223.Value, to: 398.sy}
-  - {from: 223.Value, to: 414.sy}
-  - {from: 223.Value, to: 481.spacingY}
-  - {from: 223.Value, to: 508.spacingY}
-  - {from: 226.Value, to: 291.top}
-  - {from: 226.Value, to: 303.top}
-  - {from: 226.Value, to: 315.top}
-  - {from: 226.Value, to: 366.top}
-  - {from: 226.Value, to: 382.top}
-  - {from: 226.Value, to: 398.top}
-  - {from: 226.Value, to: 414.top}
-  - {from: 226.Value, to: 437.top}
-  - {from: 226.Value, to: 481.top}
-  - {from: 226.Value, to: 508.top}
-  - {from: 229.Value, to: 291.bottom}
-  - {from: 229.Value, to: 437.bottom}
-  - {from: 229.Value, to: 495.bottom}
-  - {from: 232.Value, to: 272.salt}
-  - {from: 232.Value, to: 279.salt}
-  - {from: 232.Value, to: 330.salt}
-  - {from: 232.Value, to: 336.salt}
-  - {from: 232.Value, to: 342.salt}
-  - {from: 232.Value, to: 348.salt}
-  - {from: 232.Value, to: 366.salt}
-  - {from: 232.Value, to: 382.salt}
-  - {from: 232.Value, to: 398.salt}
-  - {from: 232.Value, to: 414.salt}
-  - {from: 232.Value, to: 437.salt}
-  - {from: 232.Value, to: 453.salt}
-  - {from: 232.Value, to: 489.salt}
-  - {from: 232.Value, to: 500.salt}
-  - {from: 235.Value, to: 272.warp}
-  - {from: 235.Value, to: 279.warp}
-  - {from: 238.Value, to: 453.roughness}
-  - {from: 241.Value, to: 366.boxy}
-  - {from: 241.Value, to: 382.boxy}
-  - {from: 241.Value, to: 398.boxy}
-  - {from: 241.Value, to: 414.boxy}
-  - {from: 244.Value, to: 453.columnStep}
-  - {from: 247.Value, to: 453.ridge}
-  - {from: 250.Value, to: 453.terrace}
-  - {from: 253.Value, to: 447.pockets}
-  - {from: 256.Value, to: 474.entry}
-  - {from: 259.Value, to: 520.exit}
-  - {from: 262.Result, to: 272.X}
-  - {from: 262.Result, to: 279.X}
-  - {from: 262.Result, to: 468.X}
-  - {from: 262.Result, to: 474.X}
-  - {from: 262.Result, to: 481.X}
-  - {from: 262.Result, to: 500.X}
-  - {from: 262.Result, to: 508.X}
-  - {from: 262.Result, to: 520.X}
-  - {from: 262.Result, to: 539.X}
-  - {from: 267.Result, to: 272.Y}
-  - {from: 267.Result, to: 279.Y}
-  - {from: 267.Result, to: 437.Y}
-  - {from: 267.Result, to: 468.Y}
-  - {from: 267.Result, to: 474.Y}
-  - {from: 267.Result, to: 481.Y}
-  - {from: 267.Result, to: 500.Y}
-  - {from: 267.Result, to: 508.Y}
-  - {from: 267.Result, to: 520.Y}
-  - {from: 272.Result, to: 298.wx}
-  - {from: 272.Result, to: 309.wx}
-  - {from: 272.Result, to: 366.x}
-  - {from: 272.Result, to: 382.x}
-  - {from: 272.Result, to: 398.x}
-  - {from: 272.Result, to: 414.x}
-  - {from: 272.Result, to: 437.wx}
-  - {from: 272.Result, to: 453.wx}
-  - {from: 279.Result, to: 303.wy}
-  - {from: 279.Result, to: 315.wy}
-  - {from: 279.Result, to: 366.y}
-  - {from: 279.Result, to: 382.y}
-  - {from: 279.Result, to: 398.y}
-  - {from: 279.Result, to: 414.y}
-  - {from: 279.Result, to: 437.wy}
-  - {from: 279.Result, to: 453.wy}
-  - {from: 286.Result, to: 330.cols}
-  - {from: 286.Result, to: 336.cols}
-  - {from: 286.Result, to: 342.cols}
-  - {from: 286.Result, to: 348.cols}
-  - {from: 286.Result, to: 354.cols}
-  - {from: 286.Result, to: 360.cols}
-  - {from: 286.Result, to: 366.cols}
-  - {from: 286.Result, to: 382.cols}
-  - {from: 286.Result, to: 398.cols}
-  - {from: 286.Result, to: 414.cols}
-  - {from: 286.Result, to: 489.cols}
-  - {from: 291.Result, to: 366.rows}
-  - {from: 291.Result, to: 382.rows}
-  - {from: 291.Result, to: 398.rows}
-  - {from: 291.Result, to: 414.rows}
-  - {from: 291.Result, to: 489.rows}
-  - {from: 291.Result, to: 508.rows}
-  - {from: 298.Result, to: 309.i0}
-  - {from: 303.Result, to: 315.j0}
-  - {from: 309.Result, to: 322.ia}
-  - {from: 309.Result, to: 366.i}
-  - {from: 309.Result, to: 382.i}
-  - {from: 315.Result, to: 326.ja}
-  - {from: 315.Result, to: 330.ja}
-  - {from: 315.Result, to: 336.ja}
-  - {from: 315.Result, to: 342.ja}
-  - {from: 315.Result, to: 348.ja}
-  - {from: 315.Result, to: 354.ja}
-  - {from: 315.Result, to: 360.ja}
-  - {from: 315.Result, to: 366.j}
-  - {from: 315.Result, to: 398.j}
-  - {from: 322.Result, to: 398.i}
-  - {from: 322.Result, to: 414.i}
-  - {from: 326.Result, to: 382.j}
-  - {from: 326.Result, to: 414.j}
-  - {from: 330.Result, to: 354.kA}
-  - {from: 336.Result, to: 360.kB}
-  - {from: 336.Result, to: 366.k}
-  - {from: 336.Result, to: 398.k}
-  - {from: 342.Result, to: 366.kn}
-  - {from: 342.Result, to: 382.k}
-  - {from: 342.Result, to: 398.kn}
-  - {from: 342.Result, to: 414.k}
-  - {from: 348.Result, to: 382.kn}
-  - {from: 348.Result, to: 414.kn}
-  - {from: 354.Result, to: 366.kp}
-  - {from: 354.Result, to: 398.kp}
-  - {from: 360.Result, to: 382.kp}
-  - {from: 360.Result, to: 414.kp}
-  - {from: 366.room, to: 430.riaa}
-  - {from: 382.room, to: 430.riab}
-  - {from: 398.room, to: 430.riba}
-  - {from: 414.room, to: 430.ribb}
-  - {from: 430.Result, to: 447.cave}
-  - {from: 437.Result, to: 447.pocket}
-  - {from: 447.Result, to: 453.cave2}
-  - {from: 453.Result, to: 529.styled}
-  - {from: 464.Result, to: 468.mid}
-  - {from: 464.Result, to: 474.mid}
-  - {from: 464.Result, to: 481.mid}
-  - {from: 464.Result, to: 500.mid}
-  - {from: 464.Result, to: 508.mid}
-  - {from: 464.Result, to: 520.mid}
-  - {from: 464.Result, to: 539.mid}
-  - {from: 468.Result, to: 529.sanct}
-  - {from: 474.Result, to: 529.entryS}
-  - {from: 481.Result, to: 529.drop}
-  - {from: 489.Result, to: 508.kl}
-  - {from: 495.Result, to: 500.arenaY}
-  - {from: 495.Result, to: 508.arenaY}
-  - {from: 495.Result, to: 520.arenaY}
-  - {from: 500.Result, to: 529.arena}
-  - {from: 508.Result, to: 529.link}
-  - {from: 520.Result, to: 529.exitS}
-  - {from: 529.Result, to: 539.air}
-  - {from: 539.Result, to: 545.Value}
-- id: 1
+  - {from: 1514.Value, to: 1585.x}
+  - {from: 1516.Value, to: 1608.y}
+  - {from: 1518.Value, to: 1585.width}
+  - {from: 1518.Value, to: 1837.width}
+  - {from: 1518.Value, to: 2843.width}
+  - {from: 1521.Value, to: 1608.height}
+  - {from: 1521.Value, to: 1866.height}
+  - {from: 1521.Value, to: 2585.height}
+  - {from: 1521.Value, to: 3059.height}
+  - {from: 1521.Value, to: 3237.height}
+  - {from: 1524.Value, to: 1837.spacingX}
+  - {from: 1524.Value, to: 1887.spacingX}
+  - {from: 1524.Value, to: 1955.spacingX}
+  - {from: 1524.Value, to: 2387.sx}
+  - {from: 1524.Value, to: 2403.sx}
+  - {from: 1524.Value, to: 2419.sx}
+  - {from: 1524.Value, to: 2435.sx}
+  - {from: 1524.Value, to: 3187.spacingX}
+  - {from: 1527.Value, to: 1866.spacingY}
+  - {from: 1527.Value, to: 1911.spacingY}
+  - {from: 1527.Value, to: 2004.spacingY}
+  - {from: 1527.Value, to: 2387.sy}
+  - {from: 1527.Value, to: 2403.sy}
+  - {from: 1527.Value, to: 2419.sy}
+  - {from: 1527.Value, to: 2435.sy}
+  - {from: 1527.Value, to: 2969.spacingY}
+  - {from: 1527.Value, to: 3187.spacingY}
+  - {from: 1530.Value, to: 1866.top}
+  - {from: 1530.Value, to: 1911.top}
+  - {from: 1530.Value, to: 2004.top}
+  - {from: 1530.Value, to: 2387.top}
+  - {from: 1530.Value, to: 2403.top}
+  - {from: 1530.Value, to: 2419.top}
+  - {from: 1530.Value, to: 2435.top}
+  - {from: 1530.Value, to: 2585.top}
+  - {from: 1530.Value, to: 2969.top}
+  - {from: 1530.Value, to: 3187.top}
+  - {from: 1533.Value, to: 1866.bottom}
+  - {from: 1533.Value, to: 2585.bottom}
+  - {from: 1533.Value, to: 3059.bottom}
+  - {from: 1536.Value, to: 1697.salt}
+  - {from: 1536.Value, to: 1816.salt}
+  - {from: 1536.Value, to: 2125.salt}
+  - {from: 1536.Value, to: 2182.salt}
+  - {from: 1536.Value, to: 2246.salt}
+  - {from: 1536.Value, to: 2310.salt}
+  - {from: 1536.Value, to: 2387.salt}
+  - {from: 1536.Value, to: 2403.salt}
+  - {from: 1536.Value, to: 2419.salt}
+  - {from: 1536.Value, to: 2435.salt}
+  - {from: 1536.Value, to: 2585.salt}
+  - {from: 1536.Value, to: 2819.salt}
+  - {from: 1536.Value, to: 3035.salt}
+  - {from: 1536.Value, to: 3127.salt}
+  - {from: 1539.Value, to: 1697.warp}
+  - {from: 1539.Value, to: 1816.warp}
+  - {from: 1542.Value, to: 2819.roughness}
+  - {from: 1545.Value, to: 2387.boxy}
+  - {from: 1545.Value, to: 2403.boxy}
+  - {from: 1545.Value, to: 2419.boxy}
+  - {from: 1545.Value, to: 2435.boxy}
+  - {from: 1548.Value, to: 2819.columnStep}
+  - {from: 1551.Value, to: 2819.ridge}
+  - {from: 1554.Value, to: 2819.terrace}
+  - {from: 1557.Value, to: 2619.pockets}
+  - {from: 1560.Value, to: 2926.entry}
+  - {from: 1563.Value, to: 3237.exit}
+  - {from: 1585.Result, to: 1697.X}
+  - {from: 1585.Result, to: 1816.X}
+  - {from: 1585.Result, to: 2885.X}
+  - {from: 1585.Result, to: 2926.X}
+  - {from: 1585.Result, to: 2969.X}
+  - {from: 1585.Result, to: 3127.X}
+  - {from: 1585.Result, to: 3187.X}
+  - {from: 1585.Result, to: 3237.X}
+  - {from: 1585.Result, to: 3325.X}
+  - {from: 1608.Result, to: 1697.Y}
+  - {from: 1608.Result, to: 1816.Y}
+  - {from: 1608.Result, to: 2585.Y}
+  - {from: 1608.Result, to: 2885.Y}
+  - {from: 1608.Result, to: 2926.Y}
+  - {from: 1608.Result, to: 2969.Y}
+  - {from: 1608.Result, to: 3127.Y}
+  - {from: 1608.Result, to: 3187.Y}
+  - {from: 1608.Result, to: 3237.Y}
+  - {from: 1697.Result, to: 1887.wx}
+  - {from: 1697.Result, to: 1955.wx}
+  - {from: 1697.Result, to: 2387.x}
+  - {from: 1697.Result, to: 2403.x}
+  - {from: 1697.Result, to: 2419.x}
+  - {from: 1697.Result, to: 2435.x}
+  - {from: 1697.Result, to: 2585.wx}
+  - {from: 1697.Result, to: 2819.wx}
+  - {from: 1816.Result, to: 1911.wy}
+  - {from: 1816.Result, to: 2004.wy}
+  - {from: 1816.Result, to: 2387.y}
+  - {from: 1816.Result, to: 2403.y}
+  - {from: 1816.Result, to: 2419.y}
+  - {from: 1816.Result, to: 2435.y}
+  - {from: 1816.Result, to: 2585.wy}
+  - {from: 1816.Result, to: 2819.wy}
+  - {from: 1837.Result, to: 2125.cols}
+  - {from: 1837.Result, to: 2182.cols}
+  - {from: 1837.Result, to: 2246.cols}
+  - {from: 1837.Result, to: 2310.cols}
+  - {from: 1837.Result, to: 2346.cols}
+  - {from: 1837.Result, to: 2382.cols}
+  - {from: 1837.Result, to: 2387.cols}
+  - {from: 1837.Result, to: 2403.cols}
+  - {from: 1837.Result, to: 2419.cols}
+  - {from: 1837.Result, to: 2435.cols}
+  - {from: 1837.Result, to: 3035.cols}
+  - {from: 1866.Result, to: 2387.rows}
+  - {from: 1866.Result, to: 2403.rows}
+  - {from: 1866.Result, to: 2419.rows}
+  - {from: 1866.Result, to: 2435.rows}
+  - {from: 1866.Result, to: 3035.rows}
+  - {from: 1866.Result, to: 3187.rows}
+  - {from: 1887.Result, to: 1955.i0}
+  - {from: 1911.Result, to: 2004.j0}
+  - {from: 1955.Result, to: 2024.ia}
+  - {from: 1955.Result, to: 2387.i}
+  - {from: 1955.Result, to: 2403.i}
+  - {from: 2004.Result, to: 2041.ja}
+  - {from: 2004.Result, to: 2125.ja}
+  - {from: 2004.Result, to: 2182.ja}
+  - {from: 2004.Result, to: 2246.ja}
+  - {from: 2004.Result, to: 2310.ja}
+  - {from: 2004.Result, to: 2346.ja}
+  - {from: 2004.Result, to: 2382.ja}
+  - {from: 2004.Result, to: 2387.j}
+  - {from: 2004.Result, to: 2419.j}
+  - {from: 2024.Result, to: 2419.i}
+  - {from: 2024.Result, to: 2435.i}
+  - {from: 2041.Result, to: 2403.j}
+  - {from: 2041.Result, to: 2435.j}
+  - {from: 2125.Result, to: 2346.kA}
+  - {from: 2182.Result, to: 2382.kB}
+  - {from: 2182.Result, to: 2387.k}
+  - {from: 2182.Result, to: 2419.k}
+  - {from: 2246.Result, to: 2387.kn}
+  - {from: 2246.Result, to: 2403.k}
+  - {from: 2246.Result, to: 2419.kn}
+  - {from: 2246.Result, to: 2435.k}
+  - {from: 2310.Result, to: 2403.kn}
+  - {from: 2310.Result, to: 2435.kn}
+  - {from: 2346.Result, to: 2387.kp}
+  - {from: 2346.Result, to: 2419.kp}
+  - {from: 2382.Result, to: 2403.kp}
+  - {from: 2382.Result, to: 2435.kp}
+  - {from: 2387.room, to: 2473.riaa}
+  - {from: 2403.room, to: 2473.riab}
+  - {from: 2419.room, to: 2473.riba}
+  - {from: 2435.room, to: 2473.ribb}
+  - {from: 2473.Result, to: 2619.cave}
+  - {from: 2585.Result, to: 2619.pocket}
+  - {from: 2619.Result, to: 2819.cave2}
+  - {from: 2819.Result, to: 3282.styled}
+  - {from: 2843.Result, to: 2885.mid}
+  - {from: 2843.Result, to: 2926.mid}
+  - {from: 2843.Result, to: 2969.mid}
+  - {from: 2843.Result, to: 3127.mid}
+  - {from: 2843.Result, to: 3187.mid}
+  - {from: 2843.Result, to: 3237.mid}
+  - {from: 2843.Result, to: 3325.mid}
+  - {from: 2885.Result, to: 3282.sanct}
+  - {from: 2926.Result, to: 3282.entryS}
+  - {from: 2969.Result, to: 3282.drop}
+  - {from: 3035.Result, to: 3187.kl}
+  - {from: 3059.Result, to: 3127.arenaY}
+  - {from: 3059.Result, to: 3187.arenaY}
+  - {from: 3059.Result, to: 3237.arenaY}
+  - {from: 3127.Result, to: 3282.arena}
+  - {from: 3187.Result, to: 3282.link}
+  - {from: 3237.Result, to: 3282.exitS}
+  - {from: 3282.Result, to: 3325.air}
+  - {from: 3325.Result, to: 1.Value}
+- id: 20
   kind: function
   name: Room
-  entry_id: 2
-  return_id: 3
+  entry_id: 21
+  return_id: 23
   call_depth_limit: 64
   nodes:
-  - id: 2
+  - id: 21
     type: Function Entry
     outputs:
-    - {id: 4, name: x, type: float, kind: data}
-    - {id: 5, name: "y", type: float, kind: data}
-    - {id: 6, name: i, type: float, kind: data}
-    - {id: 7, name: j, type: float, kind: data}
-    - {id: 8, name: k, type: float, kind: data}
-    - {id: 9, name: kp, type: float, kind: data}
-    - {id: 10, name: kn, type: float, kind: data}
-    - {id: 11, name: salt, type: float, kind: data}
-    - {id: 12, name: cols, type: float, kind: data}
-    - {id: 13, name: rows, type: float, kind: data}
-    - {id: 14, name: top, type: float, kind: data}
-    - {id: 15, name: sx, type: float, kind: data}
-    - {id: 16, name: sy, type: float, kind: data}
-    - {id: 17, name: boxy, type: float, kind: data}
-  - id: 3
+    - {id: 25, name: x, type: float, kind: data}
+    - {id: 26, name: "y", type: float, kind: data}
+    - {id: 27, name: i, type: float, kind: data}
+    - {id: 28, name: j, type: float, kind: data}
+    - {id: 29, name: k, type: float, kind: data}
+    - {id: 30, name: kp, type: float, kind: data}
+    - {id: 31, name: kn, type: float, kind: data}
+    - {id: 32, name: salt, type: float, kind: data}
+    - {id: 33, name: cols, type: float, kind: data}
+    - {id: 34, name: rows, type: float, kind: data}
+    - {id: 35, name: top, type: float, kind: data}
+    - {id: 36, name: sx, type: float, kind: data}
+    - {id: 37, name: sy, type: float, kind: data}
+    - {id: 38, name: boxy, type: float, kind: data}
+  - id: 23
     type: Return
     inputs:
-    - {id: 18, name: room, type: float, kind: data}
-  - id: 19
+    - {id: 39, name: room, type: float, kind: data}
+  - id: 75
     type: Behavior Expression
-    reference_id: 24
+    reference_id: 40
     reference_name: hash(i, j, salt + 3) * 0.5 + 0.5
     inputs:
       i: {type: float, flags: 0}
@@ -726,9 +726,9 @@ graphs:
       salt: {type: float, flags: 0}
     outputs:
       Result: {type: float}
-  - id: 25
+  - id: 128
     type: Behavior Expression
-    reference_id: 31
+    reference_id: 80
     reference_name: (i + 0.5) * sx + hash(i, j, salt + 1) * sx * 0.15
     inputs:
       i: {type: float, flags: 0}
@@ -737,9 +737,9 @@ graphs:
       salt: {type: float, flags: 0}
     outputs:
       Result: {type: float}
-  - id: 32
+  - id: 187
     type: Behavior Expression
-    reference_id: 39
+    reference_id: 134
     reference_name: top + (j + 0.5) * sy + hash(i, j, salt + 2) * sy * 0.15
     inputs:
       top: {type: float, flags: 0}
@@ -749,9 +749,9 @@ graphs:
       salt: {type: float, flags: 0}
     outputs:
       Result: {type: float}
-  - id: 40
+  - id: 249
     type: Behavior Expression
-    reference_id: 46
+    reference_id: 194
     reference_name: (i + 1.5) * sx + hash(i + 1, j, salt + 1) * sx * 0.15
     inputs:
       i: {type: float, flags: 0}
@@ -760,9 +760,9 @@ graphs:
       salt: {type: float, flags: 0}
     outputs:
       Result: {type: float}
-  - id: 47
+  - id: 315
     type: Behavior Expression
-    reference_id: 54
+    reference_id: 255
     reference_name: top + (j + 0.5) * sy + hash(i + 1, j, salt + 2) * sy * 0.15
     inputs:
       top: {type: float, flags: 0}
@@ -772,9 +772,9 @@ graphs:
       salt: {type: float, flags: 0}
     outputs:
       Result: {type: float}
-  - id: 55
+  - id: 377
     type: Behavior Expression
-    reference_id: 61
+    reference_id: 322
     reference_name: (i + 0.5) * sx + hash(i, j + 1, salt + 1) * sx * 0.15
     inputs:
       i: {type: float, flags: 0}
@@ -783,9 +783,9 @@ graphs:
       salt: {type: float, flags: 0}
     outputs:
       Result: {type: float}
-  - id: 62
+  - id: 443
     type: Behavior Expression
-    reference_id: 69
+    reference_id: 383
     reference_name: top + (j + 1.5) * sy + hash(i, j + 1, salt + 2) * sy * 0.15
     inputs:
       top: {type: float, flags: 0}
@@ -795,27 +795,27 @@ graphs:
       salt: {type: float, flags: 0}
     outputs:
       Result: {type: float}
-  - id: 70
+  - id: 462
     type: Behavior Expression
-    reference_id: 74
+    reference_id: 450
     reference_name: min(kp, k)
     inputs:
       kp: {type: float, flags: 0}
       k: {type: float, flags: 0}
     outputs:
       Result: {type: float}
-  - id: 75
+  - id: 478
     type: Behavior Expression
-    reference_id: 79
+    reference_id: 466
     reference_name: max(kp, k)
     inputs:
       kp: {type: float, flags: 0}
       k: {type: float, flags: 0}
     outputs:
       Result: {type: float}
-  - id: 80
+  - id: 540
     type: Behavior Expression
-    reference_id: 86
+    reference_id: 482
     reference_name: min(min(i + 0.5, cols - 0.5 - i), min(j + 0.5, rows - 0.5 - j))
     inputs:
       i: {type: float, flags: 0}
@@ -824,9 +824,9 @@ graphs:
       rows: {type: float, flags: 0}
     outputs:
       Result: {type: float}
-  - id: 87
+  - id: 610
     type: Behavior Expression
-    reference_id: 94
+    reference_id: 546
     reference_name: select(min(i - lo + 0.5, hi + 0.5 - i), -1, hash(i, j, salt + 6) - 0.68)
     inputs:
       i: {type: float, flags: 0}
@@ -836,9 +836,9 @@ graphs:
       salt: {type: float, flags: 0}
     outputs:
       Result: {type: float}
-  - id: 95
+  - id: 688
     type: Behavior Expression
-    reference_id: 102
+    reference_id: 617
     reference_name: select(min(i + 1.5 - lo, hi - 0.5 - i), -1, hash(i + 1, j, salt + 6) - 0.68)
     inputs:
       i: {type: float, flags: 0}
@@ -848,9 +848,9 @@ graphs:
       salt: {type: float, flags: 0}
     outputs:
       Result: {type: float}
-  - id: 103
+  - id: 774
     type: Behavior Expression
-    reference_id: 110
+    reference_id: 695
     reference_name: select(min(i - min(k, kn) + 0.5, max(k, kn) + 0.5 - i), -1, hash(i, j + 1, salt + 6) - 0.68)
     inputs:
       i: {type: float, flags: 0}
@@ -860,9 +860,9 @@ graphs:
       salt: {type: float, flags: 0}
     outputs:
       Result: {type: float}
-  - id: 111
+  - id: 879
     type: Behavior Expression
-    reference_id: 122
+    reference_id: 781
     reference_name: min(min(select(min(i - lo + 0.5, hi - 0.5 - i), 1, hash(i, j, salt + 4) - 0.15), negate(max(vault, vaultR))), min(cols - 1.5 - i, inb))
     inputs:
       i: {type: float, flags: 0}
@@ -876,9 +876,9 @@ graphs:
       inb: {type: float, flags: 0}
     outputs:
       Result: {type: float}
-  - id: 123
+  - id: 975
     type: Behavior Expression
-    reference_id: 133
+    reference_id: 890
     reference_name: min(min(select(0.5 - abs(i - k), 1, hash(i, j, salt + 5) - 0.4), negate(max(vault, vaultD))), min(rows - 1.5 - j, inb))
     inputs:
       i: {type: float, flags: 0}
@@ -891,9 +891,9 @@ graphs:
       inb: {type: float, flags: 0}
     outputs:
       Result: {type: float}
-  - id: 134
+  - id: 1067
     type: Behavior Expression
-    reference_id: 141
+    reference_id: 985
     reference_name: select(vault, 72 + 30 * u, select(hash(i, j, salt + 10) - 0.8, 330 + 60 * u, 140 + 115 * u))
     inputs:
       vault: {type: float, flags: 0}
@@ -903,9 +903,9 @@ graphs:
       salt: {type: float, flags: 0}
     outputs:
       Result: {type: float}
-  - id: 142
+  - id: 1107
     type: Behavior Expression
-    reference_id: 148
+    reference_id: 1074
     reference_name: hash(i, j, salt + 11) * r * 0.5
     inputs:
       i: {type: float, flags: 0}
@@ -914,9 +914,9 @@ graphs:
       r: {type: float, flags: 0}
     outputs:
       Result: {type: float}
-  - id: 149
+  - id: 1146
     type: Behavior Expression
-    reference_id: 155
+    reference_id: 1113
     reference_name: hash(i, j, salt + 12) * r * 0.4
     inputs:
       i: {type: float, flags: 0}
@@ -925,9 +925,9 @@ graphs:
       r: {type: float, flags: 0}
     outputs:
       Result: {type: float}
-  - id: 156
+  - id: 1226
     type: Behavior Expression
-    reference_id: 166
+    reference_id: 1152
     reference_name: smooth_union(circle(x - cx, y - cy, r), circle(x - cx - ox, y - cy - oy, r * (0.5 + 0.2 * u)), 70)
     inputs:
       x: {type: float, flags: 0}
@@ -940,9 +940,9 @@ graphs:
       u: {type: float, flags: 0}
     outputs:
       Result: {type: float}
-  - id: 167
+  - id: 1312
     type: Behavior Expression
-    reference_id: 177
+    reference_id: 1236
     reference_name: select(inb, (1 - boxy) * lobe + boxy * (box(x - cx, y - cy, r * 0.95, r * 0.62) - 12), 100000)
     inputs:
       inb: {type: float, flags: 0}
@@ -955,9 +955,9 @@ graphs:
       r: {type: float, flags: 0}
     outputs:
       Result: {type: float}
-  - id: 178
+  - id: 1395
     type: Behavior Expression
-    reference_id: 190
+    reference_id: 1322
     reference_name: select(hon, capsule(x, y, cx, cy, cxr, cyr, 46 + 26 * (hash(i, j, salt + 8) * 0.5 + 0.5)), 100000)
     inputs:
       hon: {type: float, flags: 0}
@@ -972,9 +972,9 @@ graphs:
       salt: {type: float, flags: 0}
     outputs:
       Result: {type: float}
-  - id: 191
+  - id: 1480
     type: Behavior Expression
-    reference_id: 203
+    reference_id: 1407
     reference_name: select(von, capsule(x, y, cx, cy, cxd, cyd, 44 + 24 * (hash(i, j, salt + 9) * 0.5 + 0.5)), 100000)
     inputs:
       von: {type: float, flags: 0}
@@ -989,9 +989,9 @@ graphs:
       salt: {type: float, flags: 0}
     outputs:
       Result: {type: float}
-  - id: 204
+  - id: 1509
     type: Behavior Expression
-    reference_id: 209
+    reference_id: 1492
     reference_name: min(chamber, min(ht, vt))
     inputs:
       chamber: {type: float, flags: 0}
@@ -1000,326 +1000,329 @@ graphs:
     outputs:
       Result: {type: float}
   edges:
-  - {from: 2.x, to: 156.x}
-  - {from: 2.x, to: 167.x}
-  - {from: 2.x, to: 178.x}
-  - {from: 2.x, to: 191.x}
-  - {from: 2.y, to: 156.y}
-  - {from: 2.y, to: 167.y}
-  - {from: 2.y, to: 178.y}
-  - {from: 2.y, to: 191.y}
-  - {from: 2.i, to: 19.i}
-  - {from: 2.i, to: 25.i}
-  - {from: 2.i, to: 32.i}
-  - {from: 2.i, to: 40.i}
-  - {from: 2.i, to: 47.i}
-  - {from: 2.i, to: 55.i}
-  - {from: 2.i, to: 62.i}
-  - {from: 2.i, to: 80.i}
-  - {from: 2.i, to: 87.i}
-  - {from: 2.i, to: 95.i}
-  - {from: 2.i, to: 103.i}
-  - {from: 2.i, to: 111.i}
-  - {from: 2.i, to: 123.i}
-  - {from: 2.i, to: 134.i}
-  - {from: 2.i, to: 142.i}
-  - {from: 2.i, to: 149.i}
-  - {from: 2.i, to: 178.i}
-  - {from: 2.i, to: 191.i}
-  - {from: 2.j, to: 19.j}
-  - {from: 2.j, to: 25.j}
-  - {from: 2.j, to: 32.j}
-  - {from: 2.j, to: 40.j}
-  - {from: 2.j, to: 47.j}
-  - {from: 2.j, to: 55.j}
-  - {from: 2.j, to: 62.j}
-  - {from: 2.j, to: 80.j}
-  - {from: 2.j, to: 87.j}
-  - {from: 2.j, to: 95.j}
-  - {from: 2.j, to: 103.j}
-  - {from: 2.j, to: 111.j}
-  - {from: 2.j, to: 123.j}
-  - {from: 2.j, to: 134.j}
-  - {from: 2.j, to: 142.j}
-  - {from: 2.j, to: 149.j}
-  - {from: 2.j, to: 178.j}
-  - {from: 2.j, to: 191.j}
-  - {from: 2.k, to: 70.k}
-  - {from: 2.k, to: 75.k}
-  - {from: 2.k, to: 103.k}
-  - {from: 2.k, to: 123.k}
-  - {from: 2.kp, to: 70.kp}
-  - {from: 2.kp, to: 75.kp}
-  - {from: 2.kn, to: 103.kn}
-  - {from: 2.salt, to: 19.salt}
-  - {from: 2.salt, to: 25.salt}
-  - {from: 2.salt, to: 32.salt}
-  - {from: 2.salt, to: 40.salt}
-  - {from: 2.salt, to: 47.salt}
-  - {from: 2.salt, to: 55.salt}
-  - {from: 2.salt, to: 62.salt}
-  - {from: 2.salt, to: 87.salt}
-  - {from: 2.salt, to: 95.salt}
-  - {from: 2.salt, to: 103.salt}
-  - {from: 2.salt, to: 111.salt}
-  - {from: 2.salt, to: 123.salt}
-  - {from: 2.salt, to: 134.salt}
-  - {from: 2.salt, to: 142.salt}
-  - {from: 2.salt, to: 149.salt}
-  - {from: 2.salt, to: 178.salt}
-  - {from: 2.salt, to: 191.salt}
-  - {from: 2.cols, to: 80.cols}
-  - {from: 2.cols, to: 111.cols}
-  - {from: 2.rows, to: 80.rows}
-  - {from: 2.rows, to: 123.rows}
-  - {from: 2.top, to: 32.top}
-  - {from: 2.top, to: 47.top}
-  - {from: 2.top, to: 62.top}
-  - {from: 2.sx, to: 25.sx}
-  - {from: 2.sx, to: 40.sx}
-  - {from: 2.sx, to: 55.sx}
-  - {from: 2.sy, to: 32.sy}
-  - {from: 2.sy, to: 47.sy}
-  - {from: 2.sy, to: 62.sy}
-  - {from: 2.boxy, to: 167.boxy}
-  - {from: 19.Result, to: 134.u}
-  - {from: 19.Result, to: 156.u}
-  - {from: 25.Result, to: 156.cx}
-  - {from: 25.Result, to: 167.cx}
-  - {from: 25.Result, to: 178.cx}
-  - {from: 25.Result, to: 191.cx}
-  - {from: 32.Result, to: 156.cy}
-  - {from: 32.Result, to: 167.cy}
-  - {from: 32.Result, to: 178.cy}
-  - {from: 32.Result, to: 191.cy}
-  - {from: 40.Result, to: 178.cxr}
-  - {from: 47.Result, to: 178.cyr}
-  - {from: 55.Result, to: 191.cxd}
-  - {from: 62.Result, to: 191.cyd}
-  - {from: 70.Result, to: 87.lo}
-  - {from: 70.Result, to: 95.lo}
-  - {from: 70.Result, to: 111.lo}
-  - {from: 75.Result, to: 87.hi}
-  - {from: 75.Result, to: 95.hi}
-  - {from: 75.Result, to: 111.hi}
-  - {from: 80.Result, to: 111.inb}
-  - {from: 80.Result, to: 123.inb}
-  - {from: 80.Result, to: 167.inb}
-  - {from: 87.Result, to: 111.vault}
-  - {from: 87.Result, to: 123.vault}
-  - {from: 87.Result, to: 134.vault}
-  - {from: 95.Result, to: 111.vaultR}
-  - {from: 103.Result, to: 123.vaultD}
-  - {from: 111.Result, to: 178.hon}
-  - {from: 123.Result, to: 191.von}
-  - {from: 134.Result, to: 142.r}
-  - {from: 134.Result, to: 149.r}
-  - {from: 134.Result, to: 156.r}
-  - {from: 134.Result, to: 167.r}
-  - {from: 142.Result, to: 156.ox}
-  - {from: 149.Result, to: 156.oy}
-  - {from: 156.Result, to: 167.lobe}
-  - {from: 167.Result, to: 204.chamber}
-  - {from: 178.Result, to: 204.ht}
-  - {from: 191.Result, to: 204.vt}
-  - {from: 204.Result, to: 3.room}
-- id: 24
+  - {from: 21.x, to: 1226.x}
+  - {from: 21.x, to: 1312.x}
+  - {from: 21.x, to: 1395.x}
+  - {from: 21.x, to: 1480.x}
+  - {from: 21.y, to: 1226.y}
+  - {from: 21.y, to: 1312.y}
+  - {from: 21.y, to: 1395.y}
+  - {from: 21.y, to: 1480.y}
+  - {from: 21.i, to: 75.i}
+  - {from: 21.i, to: 128.i}
+  - {from: 21.i, to: 187.i}
+  - {from: 21.i, to: 249.i}
+  - {from: 21.i, to: 315.i}
+  - {from: 21.i, to: 377.i}
+  - {from: 21.i, to: 443.i}
+  - {from: 21.i, to: 540.i}
+  - {from: 21.i, to: 610.i}
+  - {from: 21.i, to: 688.i}
+  - {from: 21.i, to: 774.i}
+  - {from: 21.i, to: 879.i}
+  - {from: 21.i, to: 975.i}
+  - {from: 21.i, to: 1067.i}
+  - {from: 21.i, to: 1107.i}
+  - {from: 21.i, to: 1146.i}
+  - {from: 21.i, to: 1395.i}
+  - {from: 21.i, to: 1480.i}
+  - {from: 21.j, to: 75.j}
+  - {from: 21.j, to: 128.j}
+  - {from: 21.j, to: 187.j}
+  - {from: 21.j, to: 249.j}
+  - {from: 21.j, to: 315.j}
+  - {from: 21.j, to: 377.j}
+  - {from: 21.j, to: 443.j}
+  - {from: 21.j, to: 540.j}
+  - {from: 21.j, to: 610.j}
+  - {from: 21.j, to: 688.j}
+  - {from: 21.j, to: 774.j}
+  - {from: 21.j, to: 879.j}
+  - {from: 21.j, to: 975.j}
+  - {from: 21.j, to: 1067.j}
+  - {from: 21.j, to: 1107.j}
+  - {from: 21.j, to: 1146.j}
+  - {from: 21.j, to: 1395.j}
+  - {from: 21.j, to: 1480.j}
+  - {from: 21.k, to: 462.k}
+  - {from: 21.k, to: 478.k}
+  - {from: 21.k, to: 774.k}
+  - {from: 21.k, to: 975.k}
+  - {from: 21.kp, to: 462.kp}
+  - {from: 21.kp, to: 478.kp}
+  - {from: 21.kn, to: 774.kn}
+  - {from: 21.salt, to: 75.salt}
+  - {from: 21.salt, to: 128.salt}
+  - {from: 21.salt, to: 187.salt}
+  - {from: 21.salt, to: 249.salt}
+  - {from: 21.salt, to: 315.salt}
+  - {from: 21.salt, to: 377.salt}
+  - {from: 21.salt, to: 443.salt}
+  - {from: 21.salt, to: 610.salt}
+  - {from: 21.salt, to: 688.salt}
+  - {from: 21.salt, to: 774.salt}
+  - {from: 21.salt, to: 879.salt}
+  - {from: 21.salt, to: 975.salt}
+  - {from: 21.salt, to: 1067.salt}
+  - {from: 21.salt, to: 1107.salt}
+  - {from: 21.salt, to: 1146.salt}
+  - {from: 21.salt, to: 1395.salt}
+  - {from: 21.salt, to: 1480.salt}
+  - {from: 21.cols, to: 540.cols}
+  - {from: 21.cols, to: 879.cols}
+  - {from: 21.rows, to: 540.rows}
+  - {from: 21.rows, to: 975.rows}
+  - {from: 21.top, to: 187.top}
+  - {from: 21.top, to: 315.top}
+  - {from: 21.top, to: 443.top}
+  - {from: 21.sx, to: 128.sx}
+  - {from: 21.sx, to: 249.sx}
+  - {from: 21.sx, to: 377.sx}
+  - {from: 21.sy, to: 187.sy}
+  - {from: 21.sy, to: 315.sy}
+  - {from: 21.sy, to: 443.sy}
+  - {from: 21.boxy, to: 1312.boxy}
+  - {from: 75.Result, to: 1067.u}
+  - {from: 75.Result, to: 1226.u}
+  - {from: 128.Result, to: 1226.cx}
+  - {from: 128.Result, to: 1312.cx}
+  - {from: 128.Result, to: 1395.cx}
+  - {from: 128.Result, to: 1480.cx}
+  - {from: 187.Result, to: 1226.cy}
+  - {from: 187.Result, to: 1312.cy}
+  - {from: 187.Result, to: 1395.cy}
+  - {from: 187.Result, to: 1480.cy}
+  - {from: 249.Result, to: 1395.cxr}
+  - {from: 315.Result, to: 1395.cyr}
+  - {from: 377.Result, to: 1480.cxd}
+  - {from: 443.Result, to: 1480.cyd}
+  - {from: 462.Result, to: 610.lo}
+  - {from: 462.Result, to: 688.lo}
+  - {from: 462.Result, to: 879.lo}
+  - {from: 478.Result, to: 610.hi}
+  - {from: 478.Result, to: 688.hi}
+  - {from: 478.Result, to: 879.hi}
+  - {from: 540.Result, to: 879.inb}
+  - {from: 540.Result, to: 975.inb}
+  - {from: 540.Result, to: 1312.inb}
+  - {from: 610.Result, to: 879.vault}
+  - {from: 610.Result, to: 975.vault}
+  - {from: 610.Result, to: 1067.vault}
+  - {from: 688.Result, to: 879.vaultR}
+  - {from: 774.Result, to: 975.vaultD}
+  - {from: 879.Result, to: 1395.hon}
+  - {from: 975.Result, to: 1480.von}
+  - {from: 1067.Result, to: 1107.r}
+  - {from: 1067.Result, to: 1146.r}
+  - {from: 1067.Result, to: 1226.r}
+  - {from: 1067.Result, to: 1312.r}
+  - {from: 1107.Result, to: 1226.ox}
+  - {from: 1146.Result, to: 1226.oy}
+  - {from: 1226.Result, to: 1312.lobe}
+  - {from: 1312.Result, to: 1509.chamber}
+  - {from: 1395.Result, to: 1509.ht}
+  - {from: 1480.Result, to: 1509.vt}
+  - {from: 1509.Result, to: 23.room}
+- id: 40
   kind: function
   math_expression: hash(i, j, salt + 3) * 0.5 + 0.5
-  entry_id: 563
-- id: 31
+  entry_id: 41
+- id: 80
   kind: function
   math_expression: (i + 0.5) * sx + hash(i, j, salt + 1) * sx * 0.15
-  entry_id: 806
-- id: 39
+  entry_id: 81
+- id: 134
   kind: function
   math_expression: top + (j + 0.5) * sy + hash(i, j, salt + 2) * sy * 0.15
-  entry_id: 1186
-- id: 46
+  entry_id: 135
+- id: 194
   kind: function
   math_expression: (i + 1.5) * sx + hash(i + 1, j, salt + 1) * sx * 0.15
-  entry_id: 1566
-- id: 54
+  entry_id: 195
+- id: 255
   kind: function
   math_expression: top + (j + 0.5) * sy + hash(i + 1, j, salt + 2) * sy * 0.15
-  entry_id: 1946
-- id: 61
+  entry_id: 256
+- id: 322
   kind: function
   math_expression: (i + 0.5) * sx + hash(i, j + 1, salt + 1) * sx * 0.15
-  entry_id: 2326
-- id: 69
+  entry_id: 323
+- id: 383
   kind: function
   math_expression: top + (j + 1.5) * sy + hash(i, j + 1, salt + 2) * sy * 0.15
-  entry_id: 2706
-- {id: 74, kind: function, math_expression: 'min(kp, k)', entry_id: 3086}
-- {id: 79, kind: function, math_expression: 'max(kp, k)', entry_id: 3466}
-- id: 86
+  entry_id: 384
+- {id: 450, kind: function, math_expression: 'min(kp, k)', entry_id: 451}
+- {id: 466, kind: function, math_expression: 'max(kp, k)', entry_id: 467}
+- id: 482
   kind: function
   math_expression: min(min(i + 0.5, cols - 0.5 - i), min(j + 0.5, rows - 0.5 - j))
-  entry_id: 3846
-- id: 94
+  entry_id: 483
+- id: 546
   kind: function
   math_expression: select(min(i - lo + 0.5, hi + 0.5 - i), -1, hash(i, j, salt + 6) - 0.68)
-  entry_id: 4226
-- id: 102
+  entry_id: 547
+- id: 617
   kind: function
   math_expression: select(min(i + 1.5 - lo, hi - 0.5 - i), -1, hash(i + 1, j, salt + 6) - 0.68)
-  entry_id: 4606
-- id: 110
+  entry_id: 618
+- id: 695
   kind: function
   math_expression: select(min(i - min(k, kn) + 0.5, max(k, kn) + 0.5 - i), -1, hash(i, j + 1, salt + 6) - 0.68)
-  entry_id: 4606
-- id: 122
+  entry_id: 696
+- id: 781
   kind: function
   math_expression: min(min(select(min(i - lo + 0.5, hi - 0.5 - i), 1, hash(i, j, salt + 4) - 0.15), negate(max(vault, vaultR))), min(cols - 1.5 - i, inb))
-  entry_id: 4606
-- id: 133
+  entry_id: 782
+- id: 890
   kind: function
   math_expression: min(min(select(0.5 - abs(i - k), 1, hash(i, j, salt + 5) - 0.4), negate(max(vault, vaultD))), min(rows - 1.5 - j, inb))
-  entry_id: 4606
-- id: 141
+  entry_id: 891
+- id: 985
   kind: function
   math_expression: select(vault, 72 + 30 * u, select(hash(i, j, salt + 10) - 0.8, 330 + 60 * u, 140 + 115 * u))
-  entry_id: 4606
-- id: 148
+  entry_id: 986
+- id: 1074
   kind: function
   math_expression: hash(i, j, salt + 11) * r * 0.5
-  entry_id: 4606
-- id: 155
+  entry_id: 1075
+- id: 1113
   kind: function
   math_expression: hash(i, j, salt + 12) * r * 0.4
-  entry_id: 4606
-- id: 166
+  entry_id: 1114
+- id: 1152
   kind: function
   math_expression: smooth_union(circle(x - cx, y - cy, r), circle(x - cx - ox, y - cy - oy, r * (0.5 + 0.2 * u)), 70)
-  entry_id: 4606
-- id: 177
+  entry_id: 1153
+- id: 1236
   kind: function
   math_expression: select(inb, (1 - boxy) * lobe + boxy * (box(x - cx, y - cy, r * 0.95, r * 0.62) - 12), 100000)
-  entry_id: 4606
-- id: 190
+  entry_id: 1237
+- id: 1322
   kind: function
   math_expression: select(hon, capsule(x, y, cx, cy, cxr, cyr, 46 + 26 * (hash(i, j, salt + 8) * 0.5 + 0.5)), 100000)
-  entry_id: 4606
-- id: 203
+  entry_id: 1323
+- id: 1407
   kind: function
   math_expression: select(von, capsule(x, y, cx, cy, cxd, cyd, 44 + 24 * (hash(i, j, salt + 9) * 0.5 + 0.5)), 100000)
-  entry_id: 4606
-- id: 209
+  entry_id: 1408
+- id: 1492
   kind: function
   math_expression: min(chamber, min(ht, vt))
-  entry_id: 4606
-- {id: 266, kind: function, math_expression: x + width * 0.5, entry_id: 4606}
-- {id: 271, kind: function, math_expression: y + height * 0.5, entry_id: 4606}
-- id: 278
+  entry_id: 1493
+- {id: 1566, kind: function, math_expression: x + width * 0.5, entry_id: 1567}
+- {id: 1589, kind: function, math_expression: y + height * 0.5, entry_id: 1590}
+- id: 1612
   kind: function
   math_expression: X + warp * noise(X / 620, Y / 620, salt + 20) + warp * 0.35 * noise(X / 190, Y / 190, salt + 22)
-  entry_id: 4606
-- id: 285
+  entry_id: 1613
+- id: 1703
   kind: function
   math_expression: Y + warp * noise(X / 620 + 17.3, Y / 620 - 5.1, salt + 21) + warp * 0.35 * noise(X / 190 - 3.7, Y / 190 + 9.2, salt + 23)
-  entry_id: 4606
-- id: 290
+  entry_id: 1704
+- id: 1822
   kind: function
   math_expression: floor(width / spacingX)
-  entry_id: 4606
-- id: 297
+  entry_id: 1823
+- id: 1841
   kind: function
   math_expression: floor((height - top - bottom) / spacingY)
-  entry_id: 4606
-- {id: 302, kind: function, math_expression: floor(wx / spacingX), entry_id: 4606}
-- id: 308
+  entry_id: 1842
+- id: 1872
+  kind: function
+  math_expression: floor(wx / spacingX)
+  entry_id: 1873
+- id: 1891
   kind: function
   math_expression: floor((wy - top) / spacingY)
-  entry_id: 4606
-- id: 314
+  entry_id: 1892
+- id: 1916
   kind: function
   math_expression: i0 - select(wx / spacingX - i0 - 0.5, 0, 1)
-  entry_id: 4606
-- id: 321
+  entry_id: 1917
+- id: 1960
   kind: function
   math_expression: j0 - select((wy - top) / spacingY - j0 - 0.5, 0, 1)
-  entry_id: 4606
-- {id: 325, kind: function, math_expression: ia + 1, entry_id: 4606}
-- {id: 329, kind: function, math_expression: ja + 1, entry_id: 597}
-- id: 335
+  entry_id: 1961
+- {id: 2010, kind: function, math_expression: ia + 1, entry_id: 2011}
+- {id: 2027, kind: function, math_expression: ja + 1, entry_id: 2028}
+- id: 2044
   kind: function
   math_expression: select(ja - 0.5, floor((hash(ja - 1, 0, salt + 7) * 0.5 + 0.5) * cols * 0.999), floor(cols / 2))
-  entry_id: 4606
-- id: 341
+  entry_id: 2045
+- id: 2130
   kind: function
   math_expression: floor((hash(ja, 0, salt + 7) * 0.5 + 0.5) * cols * 0.999)
-  entry_id: 4606
-- id: 347
+  entry_id: 2131
+- id: 2187
   kind: function
   math_expression: floor((hash(ja + 1, 0, salt + 7) * 0.5 + 0.5) * cols * 0.999)
-  entry_id: 4606
-- id: 353
+  entry_id: 2188
+- id: 2251
   kind: function
   math_expression: floor((hash(ja + 2, 0, salt + 7) * 0.5 + 0.5) * cols * 0.999)
-  entry_id: 4606
-- id: 359
+  entry_id: 2252
+- id: 2315
   kind: function
   math_expression: select(ja + 0.5, kA, floor(cols / 2))
-  entry_id: 4606
-- id: 365
+  entry_id: 2316
+- id: 2351
   kind: function
   math_expression: select(ja + 1.5, kB, floor(cols / 2))
-  entry_id: 4606
-- id: 436
+  entry_id: 2352
+- id: 2451
   kind: function
   math_expression: min(min(riaa, riab), min(riba, ribb))
-  entry_id: 4606
-- id: 446
+  entry_id: 2452
+- id: 2479
   kind: function
   math_expression: max(140 - 420 * max(fractal(wx / 520, wy / 520, salt + 60, 3, 2.0, 0.5), 0), max(top + 150 - Y, Y - (height - bottom - 250)))
-  entry_id: 4606
-- id: 452
+  entry_id: 2480
+- id: 2594
   kind: function
   math_expression: smooth_union(cave, select(pockets, pocket, 100000), 40)
-  entry_id: 4606
-- id: 463
+  entry_id: 2595
+- id: 2624
   kind: function
   math_expression: cave2 + roughness * fractal(wx / 150, wy / 150, salt + 30, 3, 2.1, 0.5) + columnStep * hash(floor(wx / 26), floor(wy / 380), salt + 40) + ridge * (abs(noise(wx / 70, wy / 70, salt + 41)) - 0.3) + terrace * floor(noise(wx / 230, wy / 230, salt + 42) * 3) / 3
-  entry_id: 4606
-- {id: 467, kind: function, math_expression: width * 0.5, entry_id: 4606}
-- id: 473
+  entry_id: 2625
+- {id: 2829, kind: function, math_expression: width * 0.5, entry_id: 2830}
+- id: 2846
   kind: function
   math_expression: box(X - mid, Y - 330, 330, 105) - 45
-  entry_id: 4606
-- id: 480
+  entry_id: 2847
+- id: 2890
   kind: function
   math_expression: select(entry, capsule(X, Y, mid, -200, mid, 330, 62), 100000)
-  entry_id: 610
-- id: 488
+  entry_id: 2891
+- id: 2932
   kind: function
   math_expression: capsule(X, Y, mid, 380, mid, top + 0.5 * spacingY, 58)
-  entry_id: 4606
-- id: 494
+  entry_id: 2933
+- id: 2976
   kind: function
   math_expression: floor((hash(rows - 1, 0, salt + 7) * 0.5 + 0.5) * cols * 0.999)
-  entry_id: 4606
-- id: 499
+  entry_id: 2977
+- id: 3040
   kind: function
   math_expression: height - bottom * 0.55
-  entry_id: 4606
-- id: 507
+  entry_id: 3041
+- id: 3063
   kind: function
   math_expression: circle(X - mid, Y - arenaY, 540) + 40 * noise(X / 160, Y / 160, salt + 50)
-  entry_id: 4606
-- id: 519
+  entry_id: 3064
+- id: 3134
   kind: function
   math_expression: capsule(X, Y, (kl + 0.5) * spacingX, top + (rows - 0.5) * spacingY, mid, arenaY, 64)
-  entry_id: 4606
-- id: 528
+  entry_id: 3135
+- id: 3198
   kind: function
   math_expression: select(exit, capsule(X, Y, mid, arenaY, mid, height + 200, 60), 100000)
-  entry_id: 4606
-- id: 538
+  entry_id: 3199
+- id: 3245
   kind: function
   math_expression: min(min(styled, min(sanct, entryS)), min(min(drop, arena), min(link, exitS)))
-  entry_id: 4606
-- id: 544
+  entry_id: 3246
+- id: 3291
   kind: function
   math_expression: negate(max(air, abs(X - mid) - (mid - 60)))
-  entry_id: 4606
+  entry_id: 3292

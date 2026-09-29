@@ -36,12 +36,16 @@ static void place_solids(game_materials *materials)
             *p = GAME_GameTransform_get_const(materials->world, record->entity);
         const GameOrientation
             *o = GAME_GameOrientation_get_const(materials->world, record->entity);
+        const GameSubstance
+            *s = GAME_GameSubstance_get_const(materials->world, record->entity);
         apush(
             materials->solid_scratch,
             ((material_solid){ record->mask,
                                { p->x, p->y },
                                o ? o->radians : 0,
-                               ecs_entity_to_u64(record->entity) })
+                               ecs_entity_to_u64(record->entity),
+                               s ? s->corrosion_resistance : 0,
+                               s ? s->melts_at : 0 })
         );
     }
     material_solids_set(

@@ -244,6 +244,12 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameSubstance)
     float hardness;
     float blast_multiplier;
     bool retain_chips;
+    /* Fraction of corrosion it shrugs off: zero dissolves, one is immune. */
+    float corrosion_resistance;
+    /* Matter at least this hot melts touching cells into melts_to; zero
+     * never melts. */
+    float melts_at;
+    const char *melts_to;
 }
 GameSubstance;
 

@@ -54,6 +54,7 @@ void game_materials_reset(game_materials *materials)
     aclear(materials->records);
     material_destruction_reset(materials->destruction);
     aclear(materials->damage_requests);
+    aclear(materials->deposit_requests);
     aclear(materials->regions);
     materials->fragments = 0;
     if (materials->debris) {
@@ -74,6 +75,7 @@ void game_materials_free(game_materials *materials)
     afree(materials->records);
     material_destruction_free(materials->destruction);
     afree(materials->damage_requests);
+    afree(materials->deposit_requests);
     material_fields_free(materials->fields);
     afree(materials->regions);
     material_debris_free(materials->debris);
@@ -370,10 +372,16 @@ static const char *create_mask(game_materials *materials, ecs_entity entity)
                "axis";
     }
     const GameSubstance *substance = GAME_GameSubstance_get_const(materials->world, entity);
-    if (substance && (!isfinite(substance->hardness + substance->blast_multiplier) ||
-                      substance->hardness <= 0 || substance->blast_multiplier < 0)) {
-        return "Substance needs positive hardness and nonnegative blast "
-               "multiplier";
+    if (substance && (!isfinite(
+                          substance->hardness + substance->blast_multiplier +
+                          substance->corrosion_resistance + substance->melts_at
+                      ) ||
+                      substance->hardness <= 0 || substance->blast_multiplier < 0 ||
+                      substance->corrosion_resistance < 0 ||
+                      substance->corrosion_resistance > 1 || substance->melts_at < 0)) {
+        return "Substance needs positive hardness, nonnegative blast "
+               "multiplier "
+               "and melting point, and corrosion resistance 0..1";
     }
     material_record *record = material_ecs_record(materials, entity);
     if (!record->mask) {
@@ -797,6 +805,30 @@ static void destroy_source(void *user, uint64_t target)
 /* Physics and render adapters consume mask revision at this boundary. */
 static void invalidate_geometry(void *, uint64_t) {}
 
+/* A melted solid releases its melts_to substance where its cells were. */
+static void melt(game_materials *materials, const material_event *event, float cell_size)
+{
+    const GameSubstance *solid = GAME_GameSubstance_get_const(
+        materials->world,
+        ecs_entity_from_u64(event->target)
+    );
+    int substance = solid ? game_materials_substance(materials, solid->melts_to) : -1;
+    if (substance < 0 || !materials->fluid) {
+        return;
+    }
+    fluid_vec point = { event->point.x, event->point.y };
+    fluid_particle p = material_fluid_particle(materials->fluid, substance, point);
+    float spacing = material_fluid_spacing(materials->fluid, p.phase);
+    int count = (int)ceilf(event->removed * cell_size * cell_size / (spacing * spacing));
+    for (int i = 0; i < count; i++) {
+        p.position = (fluid_vec){
+            point.x + (crater_random(point, i, 7) - .5f) * cell_size * 2,
+            point.y + (crater_random(point, i, 8) - .5f) * cell_size * 2
+        };
+        game_materials_emit(materials, p);
+    }
+}
+
 static void material_result(void *user, const material_event *event)
 {
     if (event->kind != MATERIAL_EVENT_DAMAGE) {
@@ -805,6 +837,13 @@ static void material_result(void *user, const material_event *event)
     game_materials *materials = user;
     ecs_entity entity = ecs_entity_from_u64(event->target);
     ecs_world *world = materials->world;
+    if (event->cause == MATERIAL_DAMAGE_CORROSION ||
+        event->cause == MATERIAL_DAMAGE_MELT) {
+        if (event->cause == MATERIAL_DAMAGE_MELT) {
+            melt(materials, event, game_materials_mask(materials, entity)->cell_size);
+        }
+        return;
+    }
     const GameAppearance *appearance = GAME_GameAppearance_get_const(world, entity);
     const material_mask *mask = game_materials_mask(materials, entity);
     /* Find the crater's open side in the mask's local frame, then rotate back. */
@@ -888,6 +927,9 @@ const char *game_materials_prepare(game_materials *materials)
         }
     }
     error = material_ecs_generate_terrains(materials);
+    if (!error) {
+        error = material_ecs_apply_deposits(materials);
+    }
     if (error) {
         return error;
     }

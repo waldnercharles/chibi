@@ -32,6 +32,7 @@ struct material_fluid
     contact_work *contact_work;
     fluid_blast *blasts;
     fluid_deposit *deposits;
+    fluid_touch *touches;
     fluid_substance *substances;
     fluid_reaction *reactions;
     fluid_heat heat;
@@ -82,3 +83,5 @@ void material_fluid_run(material_fluid *fluid, game_task_range *fn, int count, v
 void material_fluid_doom(material_fluid *fluid, int i);
 /* Heat exchange, burning, phase changes and reactions for the active set. */
 void material_fluid_react(material_fluid *fluid);
+/* Corrosive and hot matter touching static solids, after motion. */
+void material_fluid_touch_solids(material_fluid *fluid);

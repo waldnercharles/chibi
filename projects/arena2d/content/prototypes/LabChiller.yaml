@@ -1,0 +1,11 @@
+name: LabChiller
+components:
+  GAME.GameAppearance: {color: 2295267327, height: 16.0, shape: Circle, width: 16.0}
+  GAME.GameCollider: {category: 8, mask: 15, radius: 8.0}
+  GAME.GameIgniter: {heat: -3.0}
+  GAME.GameMaterial:
+    emission_color: 2295267327
+    emission_intensity: 1.0
+    emission_multiplier: 1.0
+    scene: 2295267327
+  GAME.GameTransform: {}

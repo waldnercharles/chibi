@@ -116,7 +116,7 @@ typedef struct
     /* Zero is persistent. Positive lifetimes advance only in active chunks. */
     float lifetime;
     float temperature;
-    /* Unburned fraction of a flammable particle, from one to zero. */
+    /* What remains of a flammable or corrosive particle, from one to zero. */
     float fuel;
     /* Incandescence from zero to one, derived each step from temperature. */
     float glow;
@@ -199,6 +199,16 @@ typedef struct
     float area;
 } fluid_deposit;
 
+/* Matter touching a static solid this tick, merged per solid and patch: the
+ * corrosion damage it deals and whether it is hot enough to melt it. */
+typedef struct
+{
+    int solid;
+    fluid_vec point;
+    float corrosion;
+    bool melts;
+} fluid_touch;
+
 typedef struct material_fluid material_fluid;
 typedef struct
 {
@@ -228,6 +238,7 @@ const fluid_contact *material_fluid_contacts(const material_fluid *fluid, int *c
 uint64_t material_fluid_flow_hash(const material_fluid *fluid);
 const fluid_blast *material_fluid_blasts(const material_fluid *fluid, int *count);
 const fluid_deposit *material_fluid_deposits(const material_fluid *fluid, int *count);
+const fluid_touch *material_fluid_touches(const material_fluid *fluid, int *count);
 /* Shared occlusion test for heat and blasts: static solids and body
  * obstacles. Hot bodies never block; ignore_body may be -1. */
 bool material_fluid_blocked(

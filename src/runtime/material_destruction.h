@@ -13,7 +13,11 @@ typedef struct
 enum
 {
     MATERIAL_DAMAGE_CONTACT,
-    MATERIAL_DAMAGE_BLAST
+    MATERIAL_DAMAGE_BLAST,
+    /* Touching matter dissolving a solid. */
+    MATERIAL_DAMAGE_CORROSION,
+    /* Hot matter melting a solid into its melts_to substance. */
+    MATERIAL_DAMAGE_MELT
 };
 
 /* What struck the material: the color of the source's light and its heat.

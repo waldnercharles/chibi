@@ -138,6 +138,38 @@ uses neighbor averages, not a conserved heat equation; reactions are
 probabilistic contact rules without stoichiometry; fuel carries its own
 oxidizer; blasts are bounded radial impulses.
 
+## Matter and terrain
+
+Corrosive and hot matter touching static solids reports merged touches per
+solid and two-cell patch. Corrosion deals `corrosion × (1 −
+GameSubstance.corrosion_resistance)` damage per second there (cause
+`Corrosion`), spending the particle's potency by the same unresisted share,
+a quarter per second; a spent particle leaves. A resistance of one, like
+metal, is immune and spends nothing. Matter at least as hot as a solid's
+`GameSubstance.melts_at` melts the touched cells at once (cause `Melt`) and
+loses half that temperature; the removed area returns as particles of
+`melts_to` at the crater. `Heat Area` melts solids the same way. Neither cause
+throws crater debris.
+
+Deposition: a product that names a deposit removes the particle and adds a
+disk of its area to the streamed `MaterialTerrain` whose `deposit` matches, at
+the next preparation boundary. Cells fill with no damage, the signed distance
+takes the union, and collision and contours rebuild. Cold and new tiles load
+to receive deposits; streaming stores and restores them like damage. A
+terrain that receives deposits must stream; `Empty` is a field with no
+material, for terrains that only hold deposits. Neon Swarm's
+`BasaltDeposits`, `SlagDeposits` and `IceDeposits` receive Basalt, Slag and
+Ice; ice melts back into water at 0.4.
+
+`scenes/MatterLab.yaml` is a noncombat gravity scene with a station for each
+rule: lava falling into water, burning oil, acid in a metal basin eating the
+floor, a fuel and spore cloud beside a heater, sand, slime, molten metal cast
+into water, and water frozen by a chiller.
+
+Approximations: touches merge per two-cell patch and cap at 512 per tick;
+melting removes whole cells; deposits add disks, not the particle's shape;
+a mixed damage batch reports its first request's cause.
+
 ## Procedural fields
 
 Field documents live in `content/fields` with domain `field`. They have one

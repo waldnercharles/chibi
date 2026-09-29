@@ -2165,10 +2165,223 @@ static void gravity_pooling()
     puts("PASS: liquid pools on a floor, runs down a slope and falls down a shaft");
 }
 
+static game_live_world *matter_world(ecs_world **world, const char *const *substances, int count)
+{
+    *world = ecs_world_new();
+    for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
+        assert(ecs_world_register_component(*world, GAME_REGISTRY_COMPONENTS[i], NULL) == ECS_OK);
+    }
+    game_live_world *live = game_live_world_new(*world);
+    test_register_prototypes(live, substances, count);
+    game_physics_settings settings = game_physics_defaults();
+    settings.gravity_y = 320;
+    assert(game_physics_configure(live->physics, settings) == 0);
+    ecs_entity config = ecs_world_create_entity(*world),
+               camera = ecs_world_create_entity(*world);
+    component(*world, config, &GAME_COMPONENT_MaterialDestructionWorld, &(MaterialDestructionWorld){ 8 });
+    component(
+        *world,
+        config,
+        &GAME_COMPONENT_MaterialFluidWorld,
+        &(MaterialFluidWorld){ .chunk_size = 64,
+                               .buffer = 32,
+                               .kernel = 10,
+                               .particle_limit = 400,
+                               .heat_conduction = 2 }
+    );
+    component(*world, camera, &GAME_COMPONENT_GameCamera, &(GameCamera){ .width = 256, .height = 256 });
+    component(*world, camera, &GAME_COMPONENT_GameTransform, &(GameTransform){ 0 });
+    return live;
+}
+
+static ecs_entity slab(ecs_world *world, float x, float y, GameSubstance substance)
+{
+    ecs_entity entity = ecs_world_create_entity(world);
+    component(world, entity, &GAME_COMPONENT_GameTransform, &(GameTransform){ x, y });
+    component(
+        world,
+        entity,
+        &GAME_COMPONENT_GameCollider,
+        &(
+            GameCollider
+        ){ .shape = GAME_COLLIDER_BOX, .width = 40, .height = 20, .category = 8, .mask = 15 }
+    );
+    component(world, entity, &GAME_COMPONENT_GameDestructible, &(GameDestructible){ 2, 4 });
+    component(world, entity, &GAME_COMPONENT_GameSubstance, &substance);
+    return entity;
+}
+
+static void pour(game_live_world *live, const char *substance, fluid_vec at, int columns, int rows)
+{
+    const material_fluid *fluid = game_materials_fluid(live->materials);
+    int index = game_materials_substance(live->materials, substance);
+    assert(fluid && index >= 0);
+    float spacing = material_fluid_spacing(
+        fluid,
+        material_fluid_substances(fluid, &(int){ 0 })[index].phase
+    );
+    for (int y = 0; y < rows; y++) {
+        for (int x = 0; x < columns; x++) {
+            fluid_vec p = { at.x + (x - columns * .5f) * spacing, at.y - y * spacing };
+            assert(game_materials_emit(live->materials, material_fluid_particle(fluid, index, p)));
+        }
+    }
+}
+
+/* Acid eats a soft slab but not a resistant one, and is spent by eating. */
+static void corrosion()
+{
+    ecs_world *world;
+    const char *substances[] = { "Acid" };
+    game_live_world *live = matter_world(&world, substances, 1);
+    ecs_entity soft = slab(world, -40, 30, (GameSubstance){ .hardness = 1 });
+    ecs_entity metal = slab(world, 40, 30, (GameSubstance){ .hardness = 1, .corrosion_resistance = 1 });
+    assert(ecs_world_apply_commands(world) == ECS_OK);
+    assert(game_physics_tick(live->physics, 0) == 0);
+    int soft_cells = game_materials_mask(live->materials, soft)->count;
+    int metal_cells = game_materials_mask(live->materials, metal)->count;
+    pour(live, "Acid", (fluid_vec){ -40, 12 }, 8, 2);
+    pour(live, "Acid", (fluid_vec){ 40, 12 }, 8, 2);
+    int poured = game_materials_inspect(live->materials).particles;
+    for (int i = 0; i < 480; i++) {
+        assert(game_physics_tick(live->physics, 1.f / 60) == 0);
+    }
+    int eaten = soft_cells - game_materials_mask(live->materials, soft)->count;
+    int left = game_materials_inspect(live->materials).particles;
+    printf("corrosion: %d of %d soft cells dissolved, %d of %d acid parcels left\n", eaten, soft_cells, left, poured);
+    assert(eaten > 0 && game_materials_mask(live->materials, metal)->count == metal_cells);
+    assert(left < poured && left >= poured / 2);
+    game_live_world_free(live);
+    ecs_world_free(world);
+}
+
+static ecs_entity deposit_terrain(ecs_world *world, game_live_world *live, const char *deposit, GameSubstance substance)
+{
+    char *text = text_file_read("projects/arena2d/content/fields/Empty.yaml");
+    behavior_asset *field = behavior_asset_load_json(text);
+    free(text);
+    char error[256];
+    assert(
+        field &&
+        material_field_compile(game_materials_fields(live->materials), field, error, sizeof error)
+    );
+    behavior_asset_free(field);
+    ecs_entity entity = ecs_world_create_entity(world);
+    component(world, entity, &GAME_COMPONENT_GameTransform, &(GameTransform){ 0 });
+    component(world, entity, &GAME_COMPONENT_GameSubstance, &substance);
+    component(
+        world,
+        entity,
+        &GAME_COMPONENT_MaterialTerrain,
+        &(MaterialTerrain){ .cell_size = 2,
+                            .field = "Empty",
+                            .category = 8,
+                            .mask = 15,
+                            .min_fragment_cells = 4,
+                            .stream_radius = 128,
+                            .stream_budget = 64,
+                            .deposit = deposit }
+    );
+    return entity;
+}
+
+static int deposited_cells(game_live_world *live)
+{
+    return game_materials_inspect(live->materials).cells;
+}
+
+/* Lava cooling on its own becomes basalt cells in the terrain that receives
+ * them; they persist when the camera leaves and returns. Heat melts ice
+ * deposits back into water. */
+static void deposition()
+{
+    ecs_world *world;
+    const char *substances[] = { "Lava", "Water", "Steam", "ReactionQuench" };
+    game_live_world *live = matter_world(&world, substances, 4);
+    deposit_terrain(world, live, "Basalt", (GameSubstance){ .hardness = 2 });
+    assert(ecs_world_apply_commands(world) == ECS_OK);
+    assert(game_physics_tick(live->physics, 0) == 0);
+    assert(deposited_cells(live) == 0);
+    const material_fluid *fluid = game_materials_fluid(live->materials);
+    fluid_particle lava = material_fluid_particle(
+        fluid,
+        game_materials_substance(live->materials, "Lava"),
+        (fluid_vec){ 20, 30 }
+    );
+    lava.temperature = .8f;
+    assert(game_materials_emit(live->materials, lava));
+    for (int i = 0; i < 10; i++) {
+        assert(game_physics_tick(live->physics, 1.f / 60) == 0);
+    }
+    int cells = deposited_cells(live);
+    printf(
+        "deposit: %d cells, %d particles, resident %d\n",
+        cells,
+        game_materials_inspect(live->materials).particles,
+        game_materials_inspect(live->materials).streaming.resident
+    );
+    assert(cells > 0 && game_materials_inspect(live->materials).particles == 0);
+    ecs_entity camera = { 0 };
+    ecs_component_id id = GAME_COMPONENT_GameCamera.id;
+    ecs_query query;
+    assert(ecs_query_begin(world, &query, &id, 1) == ECS_OK);
+    assert(ecs_query_next(&query, &camera));
+    ecs_query_end(&query);
+    GAME_GameTransform_get(world, camera)->x = 5000;
+    assert(game_physics_tick(live->physics, 1.f / 60) == 0);
+    assert(
+        deposited_cells(live) == 0 &&
+        game_materials_inspect(live->materials).streaming.unloaded > 0
+    );
+    GAME_GameTransform_get(world, camera)->x = 0;
+    assert(game_physics_tick(live->physics, 1.f / 60) == 0);
+    assert(game_physics_tick(live->physics, 1.f / 60) == 0);
+    assert(deposited_cells(live) == cells);
+    game_live_world_free(live);
+    ecs_world_free(world);
+
+    /* Heat melts a deposit of ice back into water. */
+    live = matter_world(&world, substances, 4);
+    deposit_terrain(world, live, "Ice", (GameSubstance){ .hardness = 1, .melts_at = .5f, .melts_to = "Water" });
+    assert(ecs_world_apply_commands(world) == ECS_OK);
+    assert(game_physics_tick(live->physics, 0) == 0);
+    fluid = game_materials_fluid(live->materials);
+    fluid_particle water = material_fluid_particle(
+        fluid,
+        game_materials_substance(live->materials, "Water"),
+        (fluid_vec){ -20, 30 }
+    );
+    assert(game_materials_emit(live->materials, water));
+    assert(game_physics_tick(live->physics, 1.f / 60) == 0);
+    game_materials_heat_area(live->materials, (fluid_vec){ -20, 30 }, 4, -3);
+    for (int i = 0; i < 3; i++) {
+        assert(game_physics_tick(live->physics, 1.f / 60) == 0);
+    }
+    int ice = deposited_cells(live);
+    assert(ice > 0 && game_materials_inspect(live->materials).particles == 0);
+    game_materials_heat_area(live->materials, (fluid_vec){ -20, 30 }, 6, 1);
+    for (int i = 0; i < 2; i++) {
+        assert(game_physics_tick(live->physics, 1.f / 60) == 0);
+    }
+    printf(
+        "melting: %d ice cells melted into %d water parcels\n",
+        ice - deposited_cells(live),
+        game_materials_inspect(live->materials).particles
+    );
+    assert(
+        deposited_cells(live) < ice && game_materials_inspect(live->materials).particles > 0
+    );
+    game_live_world_free(live);
+    ecs_world_free(world);
+    puts("PASS: corrosion resistance, deposits that stream and persist, and melting");
+}
+
 void test_materials()
 {
     gravity_pooling();
     substance_chemistry();
+    corrosion();
+    deposition();
     blast_policy();
     rotated_occlusion();
     fragment_penetration();

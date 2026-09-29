@@ -5000,6 +5000,15 @@ static int prepare_scene_scenario(
         scenario_context_free(context);
         return status;
     }
+    /* Scenes run with their own physics settings, as in the editor. */
+    if (game_prototype_preview_configure_physics(
+            context->preview,
+            context->scene->physics
+        ) != 0) {
+        scenario_context_free(context);
+        set_error(error, error_size, "could not apply the scene's physics settings");
+        return CHIBI_AUTOMATION_EXECUTION_ERROR;
+    }
     for (int i = 0; i < acount(context->scene->entities); i++) {
         game_scene_entity *entity = &context->scene->entities[i];
         asset_ref prototype_ref = { 0 };

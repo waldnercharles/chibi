@@ -18,6 +18,15 @@ static const float BODY_CONDUCTION = 6;
 static const float AMBIENT = 1e-3f;
 /* Pairs react within this fraction of the kernel. */
 static const float CONTACT = .7f;
+/* Share of its potency corrosive matter spends per second of corroding. */
+static const float CORROSION_USE = .25f;
+/* Fraction of a solid's melting temperature a particle spends melting it. */
+static const float LATENT_HEAT = .5f;
+enum
+{
+    /* Touches beyond this many merged patches per tick are dropped. */
+    TOUCH_LIMIT = 512
+};
 enum
 {
     /* Simultaneous ignitions keep burning, with bounded blast work. */
@@ -410,5 +419,68 @@ void material_fluid_react(material_fluid *fluid)
     if (acount(fluid->reactions)) {
         group(fluid);
         react_pairs(fluid);
+    }
+}
+
+static void touch(material_fluid *fluid, int solid, fluid_vec point, float cell, float corrosion, bool melts)
+{
+    int x = (int)floorf(point.x / cell), y = (int)floorf(point.y / cell);
+    for (int i = 0; i < acount(fluid->touches); i++) {
+        fluid_touch *t = &fluid->touches[i];
+        if (t->solid == solid && (int)floorf(t->point.x / cell) == x &&
+            (int)floorf(t->point.y / cell) == y) {
+            t->corrosion += corrosion;
+            t->melts |= melts;
+            return;
+        }
+    }
+    if (acount(fluid->touches) < TOUCH_LIMIT) {
+        apush(fluid->touches, ((fluid_touch){ solid, point, corrosion, melts }));
+    }
+}
+
+void material_fluid_touch_solids(material_fluid *fluid)
+{
+    aclear(fluid->touches);
+    const material_solids *solids = fluid->step->solids;
+    if (!solids) {
+        return;
+    }
+    float melting = material_solids_melting(solids), dt = fluid->step->delta;
+    int count;
+    const material_solid *items = material_solids_items(solids, &count);
+    for (int n = 0; n < acount(fluid->active); n++) {
+        int i = fluid->active[n];
+        fluid_particle *p = &fluid->particles[i];
+        const fluid_substance *s = substance_of(fluid, p);
+        if (fluid->work[i].doomed || (s->corrosion <= 0 && p->temperature < melting)) {
+            continue;
+        }
+        material_solid_sample at = material_solids_sample(solids, p->position);
+        if (at.solid < 0) {
+            continue;
+        }
+        material_solid solid = items[at.solid];
+        float cell = solid.mask->cell_size;
+        if (at.distance > p->radius * .3f + cell) {
+            continue;
+        }
+        float bite = s->corrosion * (1 - solid.resistance) * dt;
+        bool melts = solid.melts_at > 0 && p->temperature >= solid.melts_at;
+        if (bite <= 0 && !melts) {
+            continue;
+        }
+        /* Just inside the surface, where the touched cells are. */
+        fluid_vec point = fluid_sub(p->position, fluid_scale(at.normal, at.distance + cell * .5f));
+        touch(fluid, at.solid, point, cell * 2, fmaxf(0, bite), melts);
+        if (melts) {
+            p->temperature -= solid.melts_at * LATENT_HEAT;
+        }
+        if (bite > 0) {
+            p->fuel -= (1 - solid.resistance) * CORROSION_USE * dt;
+            if (p->fuel <= 0) {
+                material_fluid_doom(fluid, i);
+            }
+        }
     }
 }

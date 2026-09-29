@@ -408,6 +408,79 @@ static void blasts(game_materials *materials, const fluid_step *step)
     }
 }
 
+/* Corrosive matter dissolves the solids it touches; hot matter melts those
+ * with a melting point. */
+static void touch_solids(game_materials *materials, const fluid_step *step)
+{
+    int count, solids;
+    const fluid_touch *touches = material_fluid_touches(materials->fluid, &count);
+    const material_solid *items = count ? material_solids_items(step->solids, &solids)
+                                        : NULL;
+    for (int i = 0; i < count; i++) {
+        fluid_touch t = touches[i];
+        material_solid solid = items[t.solid];
+        ecs_entity entity = ecs_entity_from_u64(solid.owner);
+        float radius = solid.mask->cell_size * 1.5f;
+        if (t.corrosion > 0) {
+            game_materials_damage(
+                materials,
+                entity,
+                t.point,
+                radius,
+                t.corrosion,
+                MATERIAL_DAMAGE_CORROSION,
+                (material_impact){ 0 }
+            );
+        }
+        if (t.melts) {
+            game_materials_damage(
+                materials,
+                entity,
+                t.point,
+                radius,
+                MATERIAL_MELT_ENERGY,
+                MATERIAL_DAMAGE_MELT,
+                (material_impact){ 0 }
+            );
+        }
+    }
+}
+
+void game_materials_heat_area(game_materials *materials, fluid_vec point, float radius, float delta)
+{
+    assert(isfinite(point.x + point.y + radius + delta) && radius >= 0);
+    if (materials->fluid) {
+        material_fluid_heat_area(materials->fluid, point, radius, delta);
+    }
+    for (int i = 0; delta > 0 && i < acount(materials->records); i++) {
+        material_record *record = &materials->records[i];
+        if (!record->mask || !ecs_entity_is_alive(materials->world, record->entity) ||
+            !game_materials_static_solid(materials, record->entity)) {
+            continue;
+        }
+        const GameSubstance
+            *solid = GAME_GameSubstance_get_const(materials->world, record->entity);
+        const GameTransform
+            *p = GAME_GameTransform_get_const(materials->world, record->entity);
+        float reach = hypotf(record->mask->width, record->mask->height) *
+                          record->mask->cell_size * .5f +
+                      radius;
+        if (!solid || solid->melts_at <= 0 || delta < solid->melts_at ||
+            hypotf(point.x - p->x, point.y - p->y) > reach) {
+            continue;
+        }
+        game_materials_damage(
+            materials,
+            record->entity,
+            point,
+            radius,
+            MATERIAL_MELT_ENERGY,
+            MATERIAL_DAMAGE_MELT,
+            (material_impact){ 0 }
+        );
+    }
+}
+
 static float clamp01(float value)
 {
     return fminf(1, fmaxf(0, value));
@@ -513,6 +586,12 @@ void material_ecs_tick_fluid(game_materials *materials, fluid_step *step)
     game_task_pool_begin(materials->pool, true);
     material_fluid_tick(materials->fluid, step);
     game_task_pool_end(materials->pool);
+    int count;
+    const fluid_deposit *deposits = material_fluid_deposits(materials->fluid, &count);
+    for (int i = 0; i < count; i++) {
+        apush(materials->deposit_requests, deposits[i]);
+    }
+    touch_solids(materials, step);
     CHIBI_TRACE_ZONE_BEGIN(contact_zone, "Fluid contact effects");
     emit_contact_effects(materials);
     CHIBI_TRACE_ZONE_END(contact_zone);

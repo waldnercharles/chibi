@@ -68,6 +68,9 @@ bool game_materials_emit(game_materials *materials, fluid_particle particle);
  * world lives. */
 int game_materials_substance(const game_materials *materials, const char *name);
 const char *game_materials_substance_name(const game_materials *materials, int substance);
+/* Adds delta to the temperature of matter within radius of point; heat at
+ * least a solid's melting point melts its cells there. */
+void game_materials_heat_area(game_materials *materials, fluid_vec point, float radius, float delta);
 /* Index of a deposit target name that some product uses, or -1. */
 int game_materials_deposit(const game_materials *materials, const char *name);
 

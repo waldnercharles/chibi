@@ -22,6 +22,9 @@ typedef struct
     bool streamed_mask;
 } material_record;
 
+/* Damage energy that removes a cell of any hardness at once. */
+#define MATERIAL_MELT_ENERGY 1e6f
+
 struct game_materials
 {
     ecs_world *world;
@@ -39,6 +42,9 @@ struct game_materials
     material_record *records;
     material_destruction *destruction;
     material_damage *damage_requests;
+    /* Matter that turned into deposits last tick, applied at the next
+     * preparation boundary. */
+    fluid_deposit *deposit_requests;
     int fragment_limit;
     fluid_region *regions;
     int fragments;
@@ -58,6 +64,8 @@ void material_ecs_add_component(
 );
 MaterialBreakProfile material_ecs_break_profile(game_materials *materials, ecs_entity entity);
 const char *material_ecs_generate_terrains(game_materials *materials);
+/* Adds queued deposits to the streamed terrains that receive their names. */
+const char *material_ecs_apply_deposits(game_materials *materials);
 const char *material_ecs_configure_fluid(game_materials *materials);
 /* Rebuilds the fluid's substance and reaction tables after prototypes change. */
 const char *material_ecs_load_substances(game_materials *materials);

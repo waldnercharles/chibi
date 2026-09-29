@@ -64,6 +64,9 @@ int material_mask_carve(material_mask *mask, float x, float y, float radius);
 /* Batch damage edits cells locally. Rebuild once before using rectangles. */
 int material_mask_apply_damage(material_mask *mask, float x, float y, float radius, float energy, float hardness);
 void material_mask_rebuild(material_mask *mask);
+/* Adds the disk to the mask: empty cells inside turn solid with no damage
+ * and the signed distance takes the union. Rebuild before using rectangles. */
+int material_mask_deposit(material_mask *mask, float x, float y, float radius);
 bool material_mask_contains(const material_mask *mask, float x, float y);
 /* Bilinear signed distance from the cell-center samples at a local point,
  * clamped at the mask edge: negative inside. Writes its local gradient. */

@@ -174,6 +174,7 @@ void material_fluid_free(material_fluid *fluid)
     afree(fluid->contact_work);
     afree(fluid->blasts);
     afree(fluid->deposits);
+    afree(fluid->touches);
     afree(fluid->substances);
     afree(fluid->reactions);
     afree(fluid->by_substance);
@@ -197,6 +198,7 @@ void material_fluid_clear(material_fluid *fluid)
     aclear(fluid->contacts);
     aclear(fluid->blasts);
     aclear(fluid->deposits);
+    aclear(fluid->touches);
     memset(fluid->contact_heads, -1, (size_t)fluid->buckets * sizeof *fluid->contact_heads);
     material_flow_clear(fluid->flow);
 }
@@ -309,7 +311,7 @@ fluid_particle material_fluid_particle(const material_fluid *fluid, int substanc
         .refraction = s.refraction,
         .lifetime = s.lifetime,
         .temperature = s.temperature,
-        .fuel = s.ignite_at > 0,
+        .fuel = s.ignite_at > 0 || s.corrosion > 0,
         .billow = billow,
         .style = { .duration = billow ? s.lifetime : 0 },
     };
@@ -325,6 +327,12 @@ const fluid_deposit *material_fluid_deposits(const material_fluid *fluid, int *c
 {
     *count = acount(fluid->deposits);
     return fluid->deposits;
+}
+
+const fluid_touch *material_fluid_touches(const material_fluid *fluid, int *count)
+{
+    *count = acount(fluid->touches);
+    return fluid->touches;
 }
 
 void material_fluid_heat_area(material_fluid *fluid, fluid_vec point, float radius, float delta)
@@ -1146,6 +1154,9 @@ void material_fluid_tick(material_fluid *fluid, const fluid_step *step)
         }
         CHIBI_TRACE_ZONE_END(collision_zone);
     }
+    CHIBI_TRACE_ZONE_BEGIN(touch_zone, "Fluid touches solids");
+    material_fluid_touch_solids(fluid);
+    CHIBI_TRACE_ZONE_END(touch_zone);
     remove_doomed(fluid);
     fluid->tick++;
     fluid->step = NULL;

@@ -1,0 +1,18 @@
+name: LabMetal
+components:
+  GAME.GameAppearance: {color: 2021161215, height: 40.0, width: 200.0}
+  GAME.GameCollider: {category: 8, height: 40.0, mask: 15, shape: Box, width: 200.0}
+  GAME.GameDestructible: {cell_size: 2.0, min_fragment_cells: 12}
+  GAME.GameMaterial: {absorption: 0.5, albedo: 2290649343, edge_light: 1.0, scene: 2021161215}
+  GAME.GameSubstance: {corrosion_resistance: 1.0, hardness: 6.0}
+  GAME.GameTransform: {}
+  GAME.MaterialBreakProfile:
+    chip_speed: 35.0
+    dust_lifetime_max: 0.4
+    dust_lifetime_min: 0.2
+    dust_limit: 8
+    dust_size_max: 0.5
+    dust_size_min: 0.25
+    dust_speed_max: 12.0
+    dust_speed_min: 4.0
+    fragment_speed: 30.0

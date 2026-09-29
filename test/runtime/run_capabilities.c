@@ -719,6 +719,110 @@ static void components_on_any_entity()
     fixture_free(&f);
 }
 
+static ecs_entity follower(run_fixture *f, const char *json, ecs_entity target, GameFollow rule)
+{
+    ecs_entity entity = fixture_spawn(f, json);
+    rule.target = ecs_entity_to_u64(target);
+    assert(
+        ecs_world_record_add(f->world, entity, GAME_COMPONENT_GameFollow.id, &rule, 0) == ECS_OK
+    );
+    assert(ecs_world_apply_commands(f->world) == ECS_OK);
+    return entity;
+}
+
+static const char HEAD[] = "{\"name\":\"Head\",\"components\":{"
+                           "\"GameTransform\":{\"x\":0,\"y\":0},"
+                           "\"GameVelocity\":{\"x\":90,\"y\":30},"
+                           "\"GameOrientation\":{\"radians\":0.5},"
+                           "\"GameBody\":{\"type\":2},\"GameCollider\":{"
+                           "\"radius\":4,\"category\":1}}}";
+static const char
+    PART[] = "{\"name\":\"Part\",\"components\":{"
+             "\"GameTransform\":{\"x\":-40,\"y\":0},\"GameOrientation\":{}}}";
+static const char
+    SEGMENT[] = "{\"name\":\"Segment\",\"components\":{"
+                "\"GameTransform\":{\"x\":-40,\"y\":5},\"GameOrientation\":{},"
+                "\"GameVelocity\":{},\"GameBody\":{\"type\":1},"
+                "\"GameCollider\":{\"radius\":3,\"category\":2,\"mask\":2}}}";
+
+static float gap(run_fixture *f, ecs_entity a, ecs_entity b)
+{
+    return cf_distance(
+        *GAME_GameTransform_get_const(f->world, a),
+        *GAME_GameTransform_get_const(f->world, b)
+    );
+}
+
+static void follow_rules()
+{
+    run_fixture f = fixture_new();
+    ecs_entity head = fixture_spawn(&f, HEAD);
+    ecs_entity turret = follower(
+        &f,
+        PART,
+        head,
+        (GameFollow){ .mode = GAME_FOLLOW_ATTACH, .offset = { 10, 0 }, .inherit_heading = true }
+    );
+    /* The tail is spawned before the segment it follows. */
+    ecs_entity tail = fixture_spawn(&f, SEGMENT);
+    ecs_entity segment = follower(
+        &f,
+        SEGMENT,
+        head,
+        (GameFollow){ .mode = GAME_FOLLOW_CHAIN, .distance = 12, .inherit_heading = true }
+    );
+    GameFollow rule = { .target = ecs_entity_to_u64(segment),
+                        .mode = GAME_FOLLOW_CHAIN,
+                        .distance = 12,
+                        .stiffness = 8,
+                        .inherit_heading = true };
+    assert(ecs_world_record_add(f.world, tail, GAME_COMPONENT_GameFollow.id, &rule, 0) == ECS_OK);
+    assert(ecs_world_apply_commands(f.world) == ECS_OK);
+    fixture_steps(&f, 40);
+    CF_V2 at = *GAME_GameTransform_get_const(f.world, head);
+    assert(at.x > 50);
+    CF_V2 arm = { 10 * cosf(.5f), 10 * sinf(.5f) };
+    CF_V2 mount = cf_add(at, arm);
+    assert(cf_distance(*GAME_GameTransform_get_const(f.world, turret), mount) < 1e-3f);
+    assert(GAME_GameOrientation_get_const(f.world, turret)->radians == .5f);
+    assert(
+        fabsf(gap(&f, segment, head) - 12) < 1e-3f &&
+        fabsf(gap(&f, tail, segment) - 12) < 1e-3f
+    );
+    CF_V2 toward = cf_sub(at, *GAME_GameTransform_get_const(f.world, segment));
+    assert(
+        fabsf(remainderf(
+            GAME_GameOrientation_get_const(f.world, segment)->radians -
+                atan2f(toward.y, toward.x),
+            6.2831853f
+        )) < 1e-3f
+    );
+    /* Bodies ride with their target. */
+    CF_V2 carried = { 90, 30 };
+    assert(cf_distance(*GAME_GameVelocity_get_const(f.world, segment), carried) < 1e-3f);
+    /* A destroyed target releases its followers where they are. */
+    assert(ecs_world_destroy_entity(f.world, head) == ECS_OK);
+    assert(ecs_world_apply_commands(f.world) == ECS_OK);
+    CF_V2 left = *GAME_GameTransform_get_const(f.world, turret);
+    fixture_steps(&f, 1);
+    assert(!GAME_GameFollow_get(f.world, turret)->target);
+    assert(!GAME_GameFollow_get(f.world, segment)->target);
+    assert(cf_distance(*GAME_GameTransform_get_const(f.world, turret), left) == 0);
+    assert(GAME_GameFollow_get(f.world, tail)->target == ecs_entity_to_u64(segment));
+    fixture_free(&f);
+    /* Followers that follow each other are an authoring error. */
+    f = fixture_new();
+    ecs_entity a = fixture_spawn(&f, PART);
+    ecs_entity b = follower(&f, PART, a, (GameFollow){ .mode = GAME_FOLLOW_ATTACH });
+    GameFollow back = { .target = ecs_entity_to_u64(b) };
+    assert(ecs_world_record_add(f.world, a, GAME_COMPONENT_GameFollow.id, &back, 0) == ECS_OK);
+    assert(ecs_world_apply_commands(f.world) == ECS_OK);
+    fixture_frame(&f);
+    f.time += ENGINE_FIXED_SECONDS;
+    assert(engine_frame(f.runtime, f.time) < 0 && strstr(engine_error(f.runtime), "cycle"));
+    fixture_free(&f);
+}
+
 void test_run_capabilities()
 {
     seeded_randomness();
@@ -727,5 +831,6 @@ void test_run_capabilities()
     time_scale();
     camera_trauma();
     components_on_any_entity();
-    puts("Run capabilities PASS: seeded per-world randomness, run seeds, seed_from_run terrain, restart requests, Sample Field, Terrain Distance, time scale, hit-stop, camera trauma and components on any entity");
+    follow_rules();
+    puts("Run capabilities PASS: seeded per-world randomness, run seeds, seed_from_run terrain, restart requests, Sample Field, Terrain Distance, time scale, hit-stop, camera trauma, components on any entity and follow rules");
 }

@@ -8,6 +8,7 @@
 #include "runtime/camera_shake.h"
 #include "runtime/components.h" /* IWYU pragma: keep */
 #include "runtime/engine_input.h"
+#include "runtime/follow.h"
 #include "runtime/generated.h"
 #include "runtime/particle_emitters.h"
 #include "runtime/scenes/physics.h"
@@ -589,6 +590,15 @@ static int finish_systems(engine *engine)
                     game_physics_error(engine->live->physics)
                 );
                 return result;
+            }
+            const char *follow_error = game_follow_update(
+                engine->world,
+                engine->live->physics,
+                (float)engine->step_seconds
+            );
+            if (follow_error) {
+                snprintf(engine->error, sizeof engine->error, "%s", follow_error);
+                return FLOW_ERR_ARGUMENT;
             }
             result = run_system_phase(engine, SYSTEM_POST_PHYSICS);
             if (result < 0) {

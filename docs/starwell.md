@@ -214,6 +214,14 @@ What has landed, and its contract. Every node is in searchNodes and Studio.
 - **Add and Remove Component on any entity.** Both nodes (and the generated
   `Add_<C>`/`Remove_<C>`) take an Entity input that defaults to Self; a dead
   entity adds or removes nothing and Value is false.
+- **Follow.** `GameFollow{target, mode Attach|Chain, offset, distance,
+  stiffness, inherit_heading}` runs natively after physics, each target before
+  its followers. Anchor = target Transform + offset turned by its Orientation.
+  Attach pins to the anchor (and copies heading); Chain holds `distance` from
+  the anchor and turns to face it at `stiffness`/s. Velocity copies the
+  target's and the body is placed at the new pose. A dead target clears
+  `target`. Followers without a body render at their stepped pose, not
+  interpolated.
 
 ## Status
 

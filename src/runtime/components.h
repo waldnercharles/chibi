@@ -58,6 +58,31 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameCollider)
 }
 GameCollider;
 
+typedef enum
+{
+    GAME_FOLLOW_ATTACH,
+    GAME_FOLLOW_CHAIN
+} GameFollowMode;
+
+/* Keeps this entity on target after each physics step. The anchor is the
+ * target's Transform plus offset turned by the target's Orientation. Attach
+ * pins the entity at the anchor (turrets, boss parts); Chain keeps it distance
+ * from the anchor along the line between them (worm segments, tails). With
+ * inherit_heading, Attach copies the target's Orientation and Chain turns to
+ * face the anchor at stiffness per second, or at once when zero. Velocity
+ * copies the target's, so bodies move with it through contacts. A destroyed
+ * target clears target and the entity stays where it is. */
+typedef NODE_COMPONENT_TYPE_DENSE(GameFollow)
+{
+    uint64_t target NODE_HANDLE(ecs.entity);
+    GameFollowMode mode;
+    CF_V2 offset;
+    float distance;
+    float stiffness;
+    bool inherit_heading;
+}
+GameFollow;
+
 /* Target velocity with finite acceleration; physics owns actual velocity. */
 typedef NODE_COMPONENT_TYPE_DENSE(GameDrive)
 {

@@ -1,7 +1,7 @@
 version: 3
 name: ThroatColumns
 domain: material
-id_counter: 541
+id_counter: 543
 description: Distant basalt columns behind the playable rock; lit layers pick them out of the dark near lights.
 graphs:
 - kind: event
@@ -17,34 +17,34 @@ graphs:
       Roughness: 0.9
       Normal:
         default: {x: 0.0, "y": 0.0, z: 0.0}
-  - {id: 10, type: Shader WorldPosition}
-  - id: 23
+  - {id: 12, type: Shader WorldPosition}
+  - id: 25
     type: Behavior Expression
-    reference_id: 12
+    reference_id: 14
     reference_name: vec2(wp.x, wp.z)
     inputs:
       wp: {type: struct, type_name: ShaderVec3}
     outputs:
       Result: {type: struct, type_name: ShaderVec2}
-  - id: 69
+  - id: 71
     type: Behavior Expression
-    reference_id: 43
+    reference_id: 45
     reference_name: p.x / 38 - fract(p.x / 38)
     inputs:
       p: {type: struct, type_name: ShaderVec2}
     outputs:
       Result: {type: float}
-  - id: 129
+  - id: 131
     type: Behavior Expression
-    reference_id: 104
+    reference_id: 106
     reference_name: fract(sin(c * 12.9898) * 43758.547)
     inputs:
       c: {type: float}
     outputs:
       Result: {type: float}
-  - id: 173
+  - id: 175
     type: Behavior Expression
-    reference_id: 132
+    reference_id: 134
     reference_name: noise(vec2(c * 0.37, p.y * 0.0021 + h * 0.6), 1)
     inputs:
       c: {type: float}
@@ -52,88 +52,88 @@ graphs:
       h: {type: float}
     outputs:
       Result: {type: float}
-  - id: 277
+  - id: 279
     type: Behavior Expression
-    reference_id: 222
+    reference_id: 224
     reference_name: smoothstep(0.52, 0.56, band) * step(0.07, fract(p.x / 38)) * step(fract(p.x / 38), 0.95)
     inputs:
       band: {type: float}
       p: {type: struct, type_name: ShaderVec2}
     outputs:
       Result: {type: float}
-  - id: 399
+  - id: 401
     type: Behavior Expression
-    reference_id: 342
+    reference_id: 344
     reference_name: 1 - 0.35 * smoothstep(0.03, 0.0, abs(fract(p.y / 60 + h) - 0.5) - 0.47)
     inputs:
       p: {type: struct, type_name: ShaderVec2}
       h: {type: float}
     outputs:
       Result: {type: float}
-  - id: 502
+  - id: 504
     type: Behavior Expression
-    reference_id: 463
+    reference_id: 465
     reference_name: vec3(0.07, 0.065, 0.07) * (0.7 + 0.3 * h) * joint
     inputs:
       h: {type: float}
       joint: {type: float}
     outputs:
       Result: {type: struct, type_name: ShaderVec3}
-  - id: 523
+  - id: 525
     type: Behavior Expression
-    reference_id: 506
+    reference_id: 508
     reference_name: vec3(0, 0, 0)
     outputs:
       Result: {type: struct, type_name: ShaderVec3}
-  - id: 538
+  - id: 540
     type: Behavior Expression
-    reference_id: 525
+    reference_id: 527
     reference_name: mask * 0.9
     inputs:
       mask: {type: float}
     outputs:
       Result: {type: float}
   edges:
-  - {from: 10.Value, to: 23.wp}
-  - {from: 23.Result, to: 69.p}
-  - {from: 23.Result, to: 173.p}
-  - {from: 23.Result, to: 277.p}
-  - {from: 23.Result, to: 399.p}
-  - {from: 69.Result, to: 129.c}
-  - {from: 69.Result, to: 173.c}
-  - {from: 129.Result, to: 173.h}
-  - {from: 129.Result, to: 399.h}
-  - {from: 129.Result, to: 502.h}
-  - {from: 173.Result, to: 277.band}
-  - {from: 277.Result, to: 538.mask}
-  - {from: 399.Result, to: 502.joint}
-  - {from: 502.Result, to: 1.Base Color}
-  - {from: 523.Result, to: 1.Emission}
-  - {from: 538.Result, to: 1.Opacity}
-- {id: 12, kind: function, math_expression: 'vec2(wp.x, wp.z)', entry_id: 27}
-- id: 43
+  - {from: 12.Value, to: 25.wp}
+  - {from: 25.Result, to: 71.p}
+  - {from: 25.Result, to: 175.p}
+  - {from: 25.Result, to: 279.p}
+  - {from: 25.Result, to: 401.p}
+  - {from: 71.Result, to: 131.c}
+  - {from: 71.Result, to: 175.c}
+  - {from: 131.Result, to: 175.h}
+  - {from: 131.Result, to: 401.h}
+  - {from: 131.Result, to: 504.h}
+  - {from: 175.Result, to: 279.band}
+  - {from: 279.Result, to: 540.mask}
+  - {from: 401.Result, to: 504.joint}
+  - {from: 504.Result, to: 1.Base Color}
+  - {from: 525.Result, to: 1.Emission}
+  - {from: 540.Result, to: 1.Opacity}
+- {id: 14, kind: function, math_expression: 'vec2(wp.x, wp.z)', entry_id: 29}
+- id: 45
   kind: function
   math_expression: p.x / 38 - fract(p.x / 38)
-  entry_id: 73
-- id: 104
+  entry_id: 75
+- id: 106
   kind: function
   math_expression: fract(sin(c * 12.9898) * 43758.547)
-  entry_id: 105
-- id: 132
+  entry_id: 107
+- id: 134
   kind: function
   math_expression: noise(vec2(c * 0.37, p.y * 0.0021 + h * 0.6), 1)
-  entry_id: 179
-- id: 222
+  entry_id: 181
+- id: 224
   kind: function
   math_expression: smoothstep(0.52, 0.56, band) * step(0.07, fract(p.x / 38)) * step(fract(p.x / 38), 0.95)
-  entry_id: 282
-- id: 342
+  entry_id: 284
+- id: 344
   kind: function
   math_expression: 1 - 0.35 * smoothstep(0.03, 0.0, abs(fract(p.y / 60 + h) - 0.5) - 0.47)
-  entry_id: 404
-- id: 463
+  entry_id: 406
+- id: 465
   kind: function
   math_expression: vec3(0.07, 0.065, 0.07) * (0.7 + 0.3 * h) * joint
-  entry_id: 464
-- {id: 506, kind: function, math_expression: 'vec3(0, 0, 0)', entry_id: 507}
-- {id: 525, kind: function, math_expression: mask * 0.9, entry_id: 526}
+  entry_id: 466
+- {id: 508, kind: function, math_expression: 'vec3(0, 0, 0)', entry_id: 509}
+- {id: 527, kind: function, math_expression: mask * 0.9, entry_id: 528}

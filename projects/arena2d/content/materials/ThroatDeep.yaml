@@ -1,7 +1,7 @@
 version: 3
 name: ThroatDeep
 domain: material
-id_counter: 307
+id_counter: 309
 description: 'The Basalt Throat''s far distance: warm soot haze with the glow of fires far below.'
 graphs:
 - kind: event
@@ -17,52 +17,52 @@ graphs:
       Roughness: 0.9
       Normal:
         default: {x: 0.0, "y": 0.0, z: 0.0}
-  - {id: 10, type: Shader WorldPosition}
-  - id: 23
+  - {id: 12, type: Shader WorldPosition}
+  - id: 25
     type: Behavior Expression
-    reference_id: 12
+    reference_id: 14
     reference_name: vec2(wp.x, wp.z)
     inputs:
       wp: {type: struct, type_name: ShaderVec3}
     outputs:
       Result: {type: struct, type_name: ShaderVec2}
-  - id: 90
+  - id: 92
     type: Behavior Expression
-    reference_id: 43
+    reference_id: 45
     reference_name: noise(p, 0.0016) * 0.65 + noise(p + vec2(311, -97), 0.0047) * 0.35
     inputs:
       p: {type: struct, type_name: ShaderVec2}
     outputs:
       Result: {type: float}
-  - id: 115
+  - id: 117
     type: Behavior Expression
-    reference_id: 93
+    reference_id: 95
     reference_name: saturate(p.y * 0.00012 + 0.2)
     inputs:
       p: {type: struct, type_name: ShaderVec2}
     outputs:
       Result: {type: float}
-  - id: 182
+  - id: 184
     type: Behavior Expression
-    reference_id: 143
+    reference_id: 145
     reference_name: mix(vec3(0.004, 0.004, 0.007), vec3(0.03, 0.016, 0.012), fog * depth)
     inputs:
       fog: {type: float}
       depth: {type: float}
     outputs:
       Result: {type: struct, type_name: ShaderVec3}
-  - id: 225
+  - id: 227
     type: Behavior Expression
-    reference_id: 186
+    reference_id: 188
     reference_name: smoothstep(0.72, 0.95, noise(p + vec2(-53, 211), 0.0032)) * depth
     inputs:
       p: {type: struct, type_name: ShaderVec2}
       depth: {type: float}
     outputs:
       Result: {type: float}
-  - id: 292
+  - id: 294
     type: Behavior Expression
-    reference_id: 229
+    reference_id: 231
     reference_name: vec3(0.55, 0.2, 0.05) * fires * 0.22 + vec3(0.12, 0.05, 0.02) * fog * fog * depth * 0.2
     inputs:
       fires: {type: float}
@@ -70,45 +70,45 @@ graphs:
       depth: {type: float}
     outputs:
       Result: {type: struct, type_name: ShaderVec3}
-  - id: 305
+  - id: 307
     type: Behavior Expression
-    reference_id: 297
+    reference_id: 299
     reference_name: "1"
     outputs:
       Result: {type: float}
   edges:
-  - {from: 10.Value, to: 23.wp}
-  - {from: 23.Result, to: 90.p}
-  - {from: 23.Result, to: 115.p}
-  - {from: 23.Result, to: 225.p}
-  - {from: 90.Result, to: 182.fog}
-  - {from: 90.Result, to: 292.fog}
-  - {from: 115.Result, to: 182.depth}
-  - {from: 115.Result, to: 225.depth}
-  - {from: 115.Result, to: 292.depth}
-  - {from: 182.Result, to: 1.Base Color}
-  - {from: 225.Result, to: 292.fires}
-  - {from: 292.Result, to: 1.Emission}
-  - {from: 305.Result, to: 1.Opacity}
-- {id: 12, kind: function, math_expression: 'vec2(wp.x, wp.z)', entry_id: 27}
-- id: 43
+  - {from: 12.Value, to: 25.wp}
+  - {from: 25.Result, to: 92.p}
+  - {from: 25.Result, to: 117.p}
+  - {from: 25.Result, to: 227.p}
+  - {from: 92.Result, to: 184.fog}
+  - {from: 92.Result, to: 294.fog}
+  - {from: 117.Result, to: 184.depth}
+  - {from: 117.Result, to: 227.depth}
+  - {from: 117.Result, to: 294.depth}
+  - {from: 184.Result, to: 1.Base Color}
+  - {from: 227.Result, to: 294.fires}
+  - {from: 294.Result, to: 1.Emission}
+  - {from: 307.Result, to: 1.Opacity}
+- {id: 14, kind: function, math_expression: 'vec2(wp.x, wp.z)', entry_id: 29}
+- id: 45
   kind: function
   math_expression: noise(p, 0.0016) * 0.65 + noise(p + vec2(311, -97), 0.0047) * 0.35
-  entry_id: 44
-- id: 93
+  entry_id: 46
+- id: 95
   kind: function
   math_expression: saturate(p.y * 0.00012 + 0.2)
-  entry_id: 119
-- id: 143
+  entry_id: 121
+- id: 145
   kind: function
   math_expression: mix(vec3(0.004, 0.004, 0.007), vec3(0.03, 0.016, 0.012), fog * depth)
-  entry_id: 144
-- id: 186
+  entry_id: 146
+- id: 188
   kind: function
   math_expression: smoothstep(0.72, 0.95, noise(p + vec2(-53, 211), 0.0032)) * depth
-  entry_id: 187
-- id: 229
+  entry_id: 189
+- id: 231
   kind: function
   math_expression: vec3(0.55, 0.2, 0.05) * fires * 0.22 + vec3(0.12, 0.05, 0.02) * fog * fog * depth * 0.2
-  entry_id: 230
-- {id: 297, kind: function, math_expression: "1", entry_id: 298}
+  entry_id: 232
+- {id: 299, kind: function, math_expression: "1", entry_id: 300}

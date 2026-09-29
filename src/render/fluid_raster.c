@@ -323,7 +323,7 @@ static void collect(
             data.optical[0] *= fminf(1, p.lifetime * 2);
         }
         r->seen.hot |= data.optical[1] > 0 || data.optical[3] > 0;
-        r->seen.liquid |= p.kind == FLUID_LIQUID;
+        r->seen.liquid |= p.phase == FLUID_LIQUID;
         apush(r->data, data);
         apush(r->rects, rect);
     }

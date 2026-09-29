@@ -1,7 +1,7 @@
 version: 3
 name: GrinderPlateSkin
 domain: material
-id_counter: 339
+id_counter: 341
 description: Armored basalt plates with molten seams that glow hotter when Charge rises; Flash whitens it on a hit.
 graphs:
 - kind: event
@@ -18,7 +18,7 @@ graphs:
       Metallic: 0.2
       Normal:
         default: {x: 0.0, "y": 0.0, z: 0.0}
-  - id: 10
+  - id: 12
     type: Shader Parameter
     reference_name: Body
     outputs:
@@ -26,7 +26,7 @@ graphs:
         type: struct
         type_name: ShaderVec3
         default: {x: 0.07, "y": 0.06, z: 0.065}
-  - id: 12
+  - id: 14
     type: Shader Parameter
     reference_id: 1
     reference_name: Glow
@@ -35,11 +35,11 @@ graphs:
         type: struct
         type_name: ShaderVec3
         default: {x: 1.0, "y": 0.42, z: 0.1}
-  - {id: 14, type: Shader Parameter, reference_id: 2, reference_name: Flash}
-  - {id: 16, type: Shader Parameter, reference_id: 3, reference_name: Charge}
-  - {id: 18, type: Shader Position}
-  - {id: 20, type: Shader Time}
-  - id: 22
+  - {id: 16, type: Shader Parameter, reference_id: 2, reference_name: Flash}
+  - {id: 18, type: Shader Parameter, reference_id: 3, reference_name: Charge}
+  - {id: 20, type: Shader Position}
+  - {id: 22, type: Shader Time}
+  - id: 24
     type: Call Pure Function
     reference_id: 1254
     reference_name: GrinderPlate
@@ -48,34 +48,34 @@ graphs:
       Position: {declaration_id: 1259, type: struct, type_name: ShaderVec2}
     outputs:
       Distance: {declaration_id: 1260, type: float}
-  - id: 41
+  - id: 43
     type: Behavior Expression
-    reference_id: 25
+    reference_id: 27
     reference_name: smoothstep(-2.5, -0.2, d)
     inputs:
       d: {type: float}
     outputs:
       Result: {type: float}
-  - id: 93
+  - id: 95
     type: Behavior Expression
-    reference_id: 44
+    reference_id: 46
     reference_name: smoothstep(0.86, 0.97, 1 - abs(noise(p * 0.22, 1) - 0.5) * 2)
     inputs:
       p: {type: struct, type_name: ShaderVec2}
     outputs:
       Result: {type: float}
-  - id: 135
+  - id: 137
     type: Behavior Expression
-    reference_id: 96
+    reference_id: 98
     reference_name: 0.5 + 0.5 * sin(t * 3 + p.x * 0.2)
     inputs:
       t: {type: float}
       p: {type: struct, type_name: ShaderVec2}
     outputs:
       Result: {type: float}
-  - id: 248
+  - id: 250
     type: Behavior Expression
-    reference_id: 181
+    reference_id: 183
     reference_name: mix(body * (0.6 + 0.4 * smoothstep(-10, 0, d)) * (1 - cracks * 0.6), vec3(1, 1, 1), flash)
     inputs:
       body: {type: struct, type_name: ShaderVec3}
@@ -84,9 +84,9 @@ graphs:
       flash: {type: float}
     outputs:
       Result: {type: struct, type_name: ShaderVec3}
-  - id: 331
+  - id: 333
     type: Behavior Expression
-    reference_id: 254
+    reference_id: 256
     reference_name: glow * (cracks * (0.35 + 0.25 * heat + charge * 1.4) + rim * 0.08) + vec3(1, 1, 1) * flash * 0.7
     inputs:
       glow: {type: struct, type_name: ShaderVec3}
@@ -98,40 +98,40 @@ graphs:
     outputs:
       Result: {type: struct, type_name: ShaderVec3}
   edges:
-  - {from: 10.Value, to: 248.body}
-  - {from: 12.Value, to: 331.glow}
-  - {from: 14.Value, to: 248.flash}
-  - {from: 14.Value, to: 331.flash}
-  - {from: 16.Value, to: 331.charge}
-  - {from: 18.Position, to: 22.Position}
-  - {from: 18.Position, to: 93.p}
-  - {from: 18.Position, to: 135.p}
-  - {from: 20.Value, to: 135.t}
-  - {from: 22.Distance, to: 41.d}
-  - {from: 22.Distance, to: 248.d}
-  - {from: 41.Result, to: 331.rim}
-  - {from: 93.Result, to: 248.cracks}
-  - {from: 93.Result, to: 331.cracks}
-  - {from: 135.Result, to: 331.heat}
-  - {from: 248.Result, to: 1.Base Color}
-  - {from: 331.Result, to: 1.Emission}
-- id: 25
+  - {from: 12.Value, to: 250.body}
+  - {from: 14.Value, to: 333.glow}
+  - {from: 16.Value, to: 250.flash}
+  - {from: 16.Value, to: 333.flash}
+  - {from: 18.Value, to: 333.charge}
+  - {from: 20.Position, to: 24.Position}
+  - {from: 20.Position, to: 95.p}
+  - {from: 20.Position, to: 137.p}
+  - {from: 22.Value, to: 137.t}
+  - {from: 24.Distance, to: 43.d}
+  - {from: 24.Distance, to: 250.d}
+  - {from: 43.Result, to: 333.rim}
+  - {from: 95.Result, to: 250.cracks}
+  - {from: 95.Result, to: 333.cracks}
+  - {from: 137.Result, to: 333.heat}
+  - {from: 250.Result, to: 1.Base Color}
+  - {from: 333.Result, to: 1.Emission}
+- id: 27
   kind: function
   math_expression: smoothstep(-2.5, -0.2, d)
-  entry_id: 26
-- id: 44
+  entry_id: 28
+- id: 46
   kind: function
   math_expression: smoothstep(0.86, 0.97, 1 - abs(noise(p * 0.22, 1) - 0.5) * 2)
-  entry_id: 45
-- id: 96
+  entry_id: 47
+- id: 98
   kind: function
   math_expression: 0.5 + 0.5 * sin(t * 3 + p.x * 0.2)
-  entry_id: 140
-- id: 181
+  entry_id: 142
+- id: 183
   kind: function
   math_expression: mix(body * (0.6 + 0.4 * smoothstep(-10, 0, d)) * (1 - cracks * 0.6), vec3(1, 1, 1), flash)
-  entry_id: 182
-- id: 254
+  entry_id: 184
+- id: 256
   kind: function
   math_expression: glow * (cracks * (0.35 + 0.25 * heat + charge * 1.4) + rim * 0.08) + vec3(1, 1, 1) * flash * 0.7
-  entry_id: 255
+  entry_id: 257

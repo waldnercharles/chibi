@@ -272,3 +272,23 @@ section below and updated as work lands.
 - [ ] Content: Sanctums, shop, refit, skill tree
 - [ ] Content: title, HUD, death and victory screens
 - [ ] Tuning pass and full-run playtest
+
+## Run state contract
+
+Behaviors share run state through global variables. `Run` seeds them at Begin;
+the Sanctum screens write them; the ship's behaviors read them every tick, so a
+change takes effect at once. Types are fixed by the first write.
+
+| Global | Type | Meaning |
+| --- | --- | --- |
+| `Scrap`, `Resonance`, `Kills`, `Level`, `SkillPoints`, `NextLevel` | int | The ledger. |
+| `Hardpoint0`, `Hardpoint1` | int array | Module ids fitted to the primary and secondary weapon, in cast order. |
+| `Stash` | int array | Module ids owned but not fitted. |
+| `ModuleNames` | name array | Catalog names by module id (published by Hardpoints). |
+| `Slots0`, `Slots1` | int | Module slots on each weapon frame (default 4 and 5). |
+| `Skills` | int array | Skill node ids owned. |
+| `StatHull`, `StatShield`, `StatCapacitor` | double | Added to the ship's hull, shield and capacitor maxima. |
+| `StatRegen`, `StatCastDelay`, `StatDamage`, `StatSpeed`, `StatBoost` | double | Multipliers, 1 by default: capacitor regen, cast delay, shot damage, flight speed, boost drain. |
+| `Magnet` | double | Pickup reach in world units. |
+| `InSanctum` | int | 1 while the ship is inside a Sanctum. |
+| `Toast`, `ToastSerial` | name, int | Post a HUD toast by setting Toast and incrementing ToastSerial. |

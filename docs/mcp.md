@@ -707,7 +707,10 @@ means the backend exists in the build and does not mean the asset is using it.
 
 `profileScenario` runs optional warmup frames before collecting samples. It
 aggregates engine frame timing and behavior invocation and CPU counters across
-all sampled frames, and returns the target's final world hash. Timing is
+all sampled frames, and returns the target's final world hash. `timing.frame_ms`
+reports the p50, p95, p99 and max sampled frame cost, and `timing.worst_frames`
+lists the costliest frames with their phase breakdown, so hitches that the
+averages hide remain visible. Timing is
 diagnostic data from the isolated runtime; it does not alter authored assets.
 Each behavior row exposes `inclusive_cpu_ms` (including nested root events) and
 `cpu_ms` (exclusive time), plus an average for each.

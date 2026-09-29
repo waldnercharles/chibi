@@ -5284,6 +5284,7 @@ static int advance_scenario(
 
 #define SCENARIO_PROFILE_MAX_ROWS 1024
 #define SCENARIO_PROFILE_MAX_TOTAL 1200
+#define SCENARIO_PROFILE_WORST_FRAMES 5
 
 typedef struct
 {
@@ -5313,6 +5314,22 @@ typedef struct
     uint64_t calls;
     uint64_t requested_bytes;
 } scenario_profile_allocations;
+
+/* One sampled frame, so hitches remain visible beside the totals. */
+typedef struct
+{
+    int frame;
+    int steps;
+    double behavior_ms;
+    double physics_ms;
+    double systems_ms;
+    double rendering_ms;
+} scenario_profile_frame;
+
+static double frame_total_ms(const scenario_profile_frame *frame)
+{
+    return frame->behavior_ms + frame->physics_ms + frame->systems_ms + frame->rendering_ms;
+}
 
 static void profile_add_row(
     scenario_profile_row **rows,
@@ -5370,6 +5387,7 @@ static int scenario_profile_compare(const void *left, const void *right)
 
 static void profile_add_timing(
     scenario_profile_timing *total,
+    scenario_profile_frame **frames,
     const engine_frame_timing *timing,
     uint64_t previous_steps,
     uint64_t previous_commands,
@@ -5380,6 +5398,17 @@ static void profile_add_timing(
 {
     xalloc_stats current_allocations;
     xalloc_stats_get(&current_allocations);
+    apush(
+        *frames,
+        ((scenario_profile_frame){
+            .frame = (int)total->frames,
+            .steps = (int)(timing->simulation_steps - previous_steps),
+            .behavior_ms = timing->behavior_ms,
+            .physics_ms = timing->physics_ms,
+            .systems_ms = timing->systems_ms,
+            .rendering_ms = timing->rendering_ms,
+        })
+    );
     total->frames++;
     total->steps += timing->simulation_steps - previous_steps;
     total->command_apply_count += timing->command_apply_count - previous_commands;
@@ -5394,7 +5423,53 @@ static void profile_add_timing(
                                     previous_allocations.requested_bytes;
 }
 
-static void add_profile_timing(yyjson_mut_doc *doc, yyjson_mut_val *object, const scenario_profile_timing *timing)
+static int compare_frame_cost(const void *left, const void *right)
+{
+    double a = frame_total_ms(left), b = frame_total_ms(right);
+    if (a != b) {
+        return a > b ? -1 : 1;
+    }
+    return ((const scenario_profile_frame *)left)->frame -
+           ((const scenario_profile_frame *)right)->frame;
+}
+
+/* Nearest-rank percentile of frames sorted from most to least costly. */
+static double costliest_percentile(const scenario_profile_frame *sorted, int count, double percentile)
+{
+    int rank = (int)ceil(percentile / 100 * count);
+    return frame_total_ms(&sorted[count - (rank < 1 ? 1 : rank)]);
+}
+
+static void add_profile_frames(yyjson_mut_doc *doc, yyjson_mut_val *timing, scenario_profile_frame *frames)
+{
+    int count = acount(frames);
+    qsort(frames, (size_t)count, sizeof *frames, compare_frame_cost);
+    yyjson_mut_val *distribution = yyjson_mut_obj_add_obj(doc, timing, "frame_ms");
+    if (count) {
+        yyjson_mut_obj_add_real(doc, distribution, "p50", costliest_percentile(frames, count, 50));
+        yyjson_mut_obj_add_real(doc, distribution, "p95", costliest_percentile(frames, count, 95));
+        yyjson_mut_obj_add_real(doc, distribution, "p99", costliest_percentile(frames, count, 99));
+        yyjson_mut_obj_add_real(doc, distribution, "max", frame_total_ms(&frames[0]));
+    }
+    yyjson_mut_val *worst = yyjson_mut_obj_add_arr(doc, timing, "worst_frames");
+    for (int i = 0; i < count && i < SCENARIO_PROFILE_WORST_FRAMES; i++) {
+        yyjson_mut_val *value = yyjson_mut_arr_add_obj(doc, worst);
+        yyjson_mut_obj_add_int(doc, value, "frame", frames[i].frame);
+        yyjson_mut_obj_add_int(doc, value, "simulation_steps", frames[i].steps);
+        yyjson_mut_obj_add_real(doc, value, "total_ms", frame_total_ms(&frames[i]));
+        yyjson_mut_obj_add_real(doc, value, "behavior_ms", frames[i].behavior_ms);
+        yyjson_mut_obj_add_real(doc, value, "physics_ms", frames[i].physics_ms);
+        yyjson_mut_obj_add_real(doc, value, "systems_ms", frames[i].systems_ms);
+        yyjson_mut_obj_add_real(doc, value, "rendering_ms", frames[i].rendering_ms);
+    }
+}
+
+static void add_profile_timing(
+    yyjson_mut_doc *doc,
+    yyjson_mut_val *object,
+    const scenario_profile_timing *timing,
+    scenario_profile_frame *frames
+)
 {
     yyjson_mut_val *value = yyjson_mut_obj_add_obj(doc, object, "timing");
     yyjson_mut_obj_add_uint(doc, value, "sampled_frames", timing->frames);
@@ -5415,6 +5490,7 @@ static void add_profile_timing(yyjson_mut_doc *doc, yyjson_mut_val *object, cons
         "average_frame_ms",
         timing->frames ? total_ms / timing->frames : 0
     );
+    add_profile_frames(doc, value, frames);
 }
 
 static void add_profile_allocations(
@@ -5533,6 +5609,7 @@ static int handle_profile_scenario(const char *root, yyjson_val *request, respon
                    : prepare_scenario(root, name, &context, error, sizeof error);
     scenario_profile_row *rows = NULL;
     scenario_profile_timing timing = { 0 };
+    scenario_profile_frame *samples = NULL;
     scenario_profile_allocations allocations = { 0 };
     bool rows_truncated = false;
     if (status == CHIBI_AUTOMATION_OK) {
@@ -5596,6 +5673,7 @@ static int handle_profile_scenario(const char *root, yyjson_val *request, respon
             const engine_frame_timing *sample = engine_last_timing(runtime);
             profile_add_timing(
                 &timing,
+                &samples,
                 sample,
                 previous_steps,
                 previous_commands,
@@ -5618,6 +5696,7 @@ static int handle_profile_scenario(const char *root, yyjson_val *request, respon
     }
     if (status != CHIBI_AUTOMATION_OK) {
         afree(rows);
+        afree(samples);
         scenario_context_free(&context);
         response_error(result, exit_code, status, error);
         return -1;
@@ -5656,10 +5735,11 @@ static int handle_profile_scenario(const char *root, yyjson_val *request, respon
         false,
         "behavior event graphs execute through the flow interpreter"
     );
-    add_profile_timing(result->doc, value, &timing);
+    add_profile_timing(result->doc, value, &timing, samples);
     add_profile_allocations(result->doc, value, &allocations, timing.frames);
     add_profile_rows(result->doc, value, rows, acount(rows), rows_truncated);
     afree(rows);
+    afree(samples);
     scenario_context_free(&context);
     return 0;
 }

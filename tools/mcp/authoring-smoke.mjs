@@ -363,7 +363,7 @@ try {
   assert(sceneRead.ok === true && sceneRead.result?.document?.presentation === "3d" && sceneRead.result.document.entities?.[0]?.name === "Warden" && sceneRead.result.document.entities[0].components?.["GAME.GameTransform"]?.x === 24, `scene readback failed: ${JSON.stringify(sceneRead)}`);
   assert(executionStatus.ok === true && executionStatus.result?.execution?.backend === "interpreter" && executionStatus.result.execution.fully_jit === false, `execution status failed: ${JSON.stringify(executionStatus)}`);
   assert(optimize.ok === true && optimize.result?.dry_run === true && optimize.result?.changed === false, `graph optimization dry run failed: ${JSON.stringify(optimize)}`);
-  assert(profile.ok === true && profile.result?.timing?.sampled_frames === 2 && profile.result?.warmup_frames === 1 && profile.result?.allocations?.scope === "xalloc wrappers", `scenario profiling failed: ${JSON.stringify(profile)}`);
+  assert(profile.ok === true && profile.result?.timing?.sampled_frames === 2 && profile.result?.warmup_frames === 1 && profile.result?.allocations?.scope === "xalloc wrappers" && profile.result?.timing?.frame_ms?.max >= profile.result?.timing?.frame_ms?.p50 && profile.result?.timing?.worst_frames?.length === 2, `scenario profiling failed: ${JSON.stringify(profile)}`);
   assert(sceneRun.ok === true && sceneRun.result?.authored_entities === 1, `scene scenario failed: ${JSON.stringify(sceneRun)}`);
   assert(sceneSnapshot.ok === true && sceneSnapshot.result?.entity_count === 1 && sceneSnapshot.result?.entities?.length === 1, `scene runtime snapshot failed: ${JSON.stringify(sceneSnapshot)}`);
   const sceneRenameRun = runMcp(projectRoot, [

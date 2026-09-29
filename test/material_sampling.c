@@ -102,7 +102,7 @@ static bool capture_energy(
     size_t count = (size_t)width * height * 4;
     int bytes = (int)(count * sizeof(uint16_t));
     uint16_t *pixels = xmalloc(count * sizeof *pixels);
-    bool ok = read_emission(render_material_raster_textures(raster).emission, pixels, bytes);
+    bool ok = read_emission(render_material_raster_textures(raster).source, pixels, bytes);
     double sum = 0;
     for (int i = 0; ok && i < width * height; i++) {
         sum += half_value(pixels[i * 4]);
@@ -137,7 +137,7 @@ static bool stable_tile_order(render_material_raster *raster)
     }
 
     uint16_t pixels[BASE_W * BASE_H * 4];
-    if (!read_emission(render_material_raster_textures(raster).emission, pixels, sizeof pixels)) {
+    if (!read_emission(render_material_raster_textures(raster).source, pixels, sizeof pixels)) {
         return false;
     }
 
@@ -155,6 +155,78 @@ static bool stable_tile_order(render_material_raster *raster)
         }
     }
     return true;
+}
+
+/* A square ring two cells wide of one-unit boxes, the way material masks draw
+ * their borders, turned by angle and shifted by a fraction of a pixel. */
+static bool ring_energy(render_material_raster *raster, float group, float angle, float phase, float *energy)
+{
+    enum
+    {
+        SIDE = 10,
+        WIDTH = 2
+    };
+    render_material_entity cells[SIDE * SIDE];
+    int count = 0;
+    for (int y = 0; y < SIDE; y++) {
+        for (int x = 0; x < SIDE; x++) {
+            if (x >= WIDTH && x < SIDE - WIDTH && y >= WIDTH && y < SIDE - WIDTH) {
+                continue;
+            }
+            float ox = x - SIDE * .5f + .5f, oy = y - SIDE * .5f + .5f;
+            float c = cosf(angle), s = sinf(angle);
+            cells[count++] = (render_material_entity){
+                .inv_rot = { c, s, -s, c },
+                .pos = { c * ox - s * oy + phase, s * ox + c * oy + phase * .5f },
+                .extent = { 2, 2 },
+                .shape_type = RENDER_SHAPE_BOX,
+                .points = { .5f, .5f },
+                .aa = .1f,
+                .emission = { 1, 1, 1, 1 },
+                .tile_group = group,
+            };
+        }
+    }
+    /* One world unit per pixel. */
+    if (!draw_material_view(raster, cells, count, (render_material_view){ -32, 24, BASE_W, BASE_H })) {
+        return false;
+    }
+    uint16_t pixels[BASE_W * BASE_H * 4];
+    bool ok = read_emission(render_material_raster_textures(raster).source, pixels, sizeof pixels);
+    double sum = 0;
+    for (int i = 0; ok && i < BASE_W * BASE_H; i++) {
+        sum += half_value(pixels[i * 4]);
+    }
+    *energy = (float)sum;
+    return ok;
+}
+
+/* Tile groups keep a moving mask's emission constant: its pieces' coverages
+ * add, where layering them counted shared edges twice at some phases. */
+static bool tiled_ring(render_material_raster *raster)
+{
+    static const char *const names[] = { "layered", "tile group", "tile group turned" };
+    static const float groups[] = { 0, 1, 1 }, angles[] = { 0, 0, .3f };
+    bool ok = true;
+    float range[3];
+    for (int ring = 0; ring < 3 && ok; ring++) {
+        float minimum = INFINITY, maximum = 0;
+        for (int phase = 0; phase < PHASES && ok; phase++) {
+            float energy;
+            ok = ring_energy(raster, groups[ring], angles[ring], (float)phase / PHASES, &energy);
+            minimum = fminf(minimum, energy);
+            maximum = fmaxf(maximum, energy);
+        }
+        range[ring] = (maximum - minimum) / fmaxf(maximum, 1e-8f);
+        printf(
+            "material ring %s: energy %.2f to %.2f of 64, phase range %.2f%%\n",
+            names[ring],
+            minimum,
+            maximum,
+            range[ring] * 100
+        );
+    }
+    return ok && range[1] < .01f && range[2] < .01f;
 }
 
 bool test_material_sampling()
@@ -218,11 +290,11 @@ bool test_material_sampling()
     }
     if (ok) {
         ok = render_material_raster_resize(raster, BASE_W, BASE_H) &&
-             stable_tile_order(raster);
+             stable_tile_order(raster) && tiled_ring(raster);
     }
     if (raster) {
         render_material_raster_free(raster);
     }
-    printf("material sampling %s: phase/resolution energy and stable tile order\n", ok ? "PASS" : "FAIL");
+    printf("material sampling %s: phase/resolution energy, stable tile order and tiled rings\n", ok ? "PASS" : "FAIL");
     return ok;
 }

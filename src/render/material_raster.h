@@ -38,11 +38,19 @@ typedef struct
     /* reserved[0/1] select catalog material/shape; zero uses authored data.
      * reserved[2] is received-light gain near the silhouette. */
     float border_thickness, reserved[3];
+    /* Boxes: 0-1 half extents, and 4-7 an optional cut (normal, offset, 1)
+     * that keeps the side where dot(normal, p) <= offset. */
     float points[16];
     float scene[4], emission[4], absorption[4], albedo[4];
     float border_scene[4], border_emission[4], border_absorption[4],
         border_albedo[4];
-    float wobble[4], pluck[4], time[4];
+    float wobble[4], pluck[4], time[3];
+    /* Nonzero for boxes that tile one shape without overlapping, such as a
+     * material mask's cells. Consecutive pieces that share it add coverage.
+     * Pieces
+     * with a whole number plus a half, such as a mask's border, come just
+     * before the pieces with that whole number and lie over them. */
+    float tile_group;
     /* Y-up position and cos/sin of the rotation where the local frame sat when
      * the material was laid out. Zero cos and sin sample materials at the
      * pixel's current world position. */
@@ -51,14 +59,28 @@ typedef struct
     float material_parameters[32][4], shape_parameters[32][4];
 } render_material_entity;
 
+/* The material raster's RGBA16F render targets. */
 typedef struct
 {
-    /* Solids: normal.xy = bump tilt in world axes (Y up), z = edge-light gain,
-     * w = gloss (one minus roughness). Liquids: xy = surface normal, negative
-     * z = refraction strength, w = surface confidence. */
-    CF_Texture scene, emission, absorption, albedo, normal;
-    /* RG16F: x = material height (world units) times coverage, y = coverage. */
-    CF_Texture relief;
+    /* Premultiplied color; A coverage. */
+    CF_Texture scene;
+    /* RGB emission density and A optical depth per pixel, the transport's
+     * sources; see hrc/source_average.shd. Mipmapped. */
+    CF_Texture source;
+    /* RGB albedo; A material height (world units) times coverage, whose
+     * coverage is scene's alpha where no fluid covers the solid. */
+    CF_Texture albedo;
+    /* Solids: xy bump tilt in world axes (Y up), z edge-light gain, w gloss
+     * (one minus roughness). Liquids: xy surface normal, negative z refraction
+     * strength, w surface confidence. */
+    CF_Texture normal;
+    /* Fluid's camera-only readability floor in RGB and coverage for display
+     * exposure in A, excluded from all HRC feedback; zero without fluid. */
+    CF_Texture visibility;
+    /* R: display's scale from source's emission density to emission
+     * premultiplied by coverage. Absorbers emit their radiance times their
+     * optical depth (hrc/source_average.shd); clear emitters' scale is one. */
+    CF_Texture cover;
 } render_material_textures;
 
 typedef render_view_2d render_material_view;
@@ -79,5 +101,10 @@ bool render_material_raster_draw(
     render_material_view view
 );
 render_material_textures render_material_raster_textures(const render_material_raster *raster);
+/* The canvas holding those targets, for passes that add to them. */
+CF_Canvas render_material_raster_canvas(const render_material_raster *raster);
+/* A canvas of the material targets, for passes that rewrite them. */
+CF_Canvas render_material_canvas(int width, int height);
+render_material_textures render_material_canvas_textures(CF_Canvas canvas);
 
 #endif

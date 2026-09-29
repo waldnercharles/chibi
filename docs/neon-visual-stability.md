@@ -10,8 +10,7 @@ Sandbox's `HRC` prototype now uses:
 
 | Setting | Value | Effect |
 | --- | --- | --- |
-| `lighting_margin` | 64 world units | Includes nearby offscreen sources and occluders. |
-| `split_frames` | 1 | Updates all four directional lighting solves every frame. |
+| `lighting_margin` | 0 | Leaves offscreen sources and occluders out until the margin is redesigned. |
 | `trace_levels` | 3 | Directly traces cascades 0, 1 and 2 before extending the hierarchy. |
 | `radiance_hysteresis` | 1 | Uses current radiance without temporal averaging. |
 | `bounce_hysteresis` | 1 | Uses the current bounce result without temporal averaging. |
@@ -26,8 +25,9 @@ objects have no individual motion vectors; neighborhood clamping limits their
 trails but does not provide complete disocclusion tracking.
 
 The padded view follows a world-aligned grid at the current RGB work scale.
-Camera motion does not resize buffers. A fixed reserve based on `min_scale`
-also prevents adaptive scaling from changing full-resolution raster dimensions.
+Camera motion does not resize buffers. A fixed reserve based on the color grid
+at adaptive's lowest step also prevents adaptive resolution from changing
+full-resolution raster dimensions.
 The final crop follows the exact camera rectangle. Emission fades through the
 outer half of the margin; occlusion stays intact. The margin shrinks per axis at
 the 4096-pixel raster limit, with an unpadded fallback when alignment cannot fit.
@@ -39,11 +39,8 @@ emitters use a separate 1.5-pixel lighting filter with an analytic power
 normalization, including radii below one pixel. Graph shapes, strokes, borders,
 deformed shapes and metaballs retain their existing coverage.
 
-Adaptive scaling still changes the RGB solve only. An independent luminance
-solve keeps its authored `luminance_scale`; reuse mode derives luminance from
-the adaptively scaled RGB result. Reuse no longer applies spatial and temporal
-filtering a second time. Full-resolution derived luminance cannot restore detail
-lost in the RGB solve.
+Adaptive scaling changes `scale`, and a luminance transport keeps its ratio to
+it.
 
 ## Material response and destruction
 
@@ -104,7 +101,7 @@ crossing the screen edge had no sampled receiver-brightness step above one
 and motion.
 
 Regression coverage includes camera crop/grid stability, adaptive scale and 4K
-limits, zoom invalidation of split transport, camera history reprojection,
+limits, camera history reprojection,
 ghost rejection, subpixel emission power, odd-sized tiles and painter order,
 destruction capacity, and bounded gas/liquid contact responses.
 

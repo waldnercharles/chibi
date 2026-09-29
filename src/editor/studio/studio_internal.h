@@ -98,6 +98,7 @@ typedef struct
     float time;
     float frame_ms;
     float ms[4]; /* behavior, physics, systems, rendering while the scene runs */
+    float scene_gpu_ms; /* the scene's GPU time, or negative when not measured */
     bool running;
 } studio_perf_sample;
 

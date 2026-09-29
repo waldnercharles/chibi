@@ -1,14 +1,25 @@
 // Adapted from the user-supplied Neon-Swarm shaders. Original shader equations retained.
 // Entity tile rasterization pass.
 //
-// One workgroup per tile (16x16 = 256 threads = one thread per pixel).
-// Each thread iterates its tile's entity list, transforms to entity local
-// space, evaluates the shape SDF, and blends results for all 4 canvases.
-//
-// Dispatch: (tiles_x, tiles_y, 1)
+// A full-screen fragment pass. Each pixel iterates its 16x16 tile's entity
+// list, transforms to entity local space, evaluates the shape SDF, and blends
+// the results into render targets, which the GPU compresses:
+//   scene:  premultiplied color, A coverage
+//   source: RGB emission, A optical depth (mean absorption) for the transport
+//   albedo: RGB albedo, A material height times coverage; the coverage is
+//           scene's alpha, which the same over-recurrence accumulates
+//   normal: see render_material_textures
+//   visibility: zero; fluid adds it
+//   cover: R, the scale that returns source's emission to display's
+// Later batches start from the previous batch's targets.
 
 #include "entity.shd"
 #ifndef SG_ENTITY_BINDING
+#define SG_PREVIOUS_SCENE_BINDING 0
+#define SG_PREVIOUS_SOURCE_BINDING 1
+#define SG_PREVIOUS_ALBEDO_BINDING 2
+#define SG_PREVIOUS_NORMAL_BINDING 3
+#define SG_PREVIOUS_COVER_BINDING 4
 #define SG_ENTITY_BINDING 0
 #define SG_COUNTS_BINDING 1
 #define SG_INDICES_BINDING 2
@@ -21,44 +32,88 @@
 void sg_dispatch_2d(int id,vec2 p,vec2 wp,vec2 half_size,float time,vec4 values[32],out vec4 result[8]) {
  for(int i=0;i<8;i++) result[i]=vec4(0);
 }
-layout(set = 2, binding = 0) uniform Params {
+layout(set = 3, binding = 0) uniform uniform_block {
     float u_world_min_x;
     float u_world_max_y;
     vec2 u_unit_per_px;
     int u_tiles_x;
-    int u_tiles_y;
-    int u_canvas_w;
-    int u_canvas_h;
     int u_first_entity;
     int u_last_entity;
     int u_metaball_group;
-    int u_accumulate;
     vec4 sg_ramp_data[SG_RAMP_COUNT];
 };
 #endif
-layout(set = 0, binding = SG_ENTITY_BINDING) readonly buffer EntityBuf {
-    Entity entities[];
-};
+// GLSL ES emulates each storage buffer as texel fetches of a single vec4 or
+// uvec4 array, so entities and tile lists are read through uvec4 arrays.
+layout(set = 2, binding = SG_ENTITY_BINDING) readonly buffer EntityBuf { uvec4 entity_data[]; };
+layout(set = 2, binding = SG_COUNTS_BINDING) readonly buffer TileOffsets { uvec4 tile_offsets[]; };
+layout(set = 2, binding = SG_INDICES_BINDING) readonly buffer TileEntities { uvec4 tile_entities[]; };
+layout(set = 2, binding = SG_PARAMETERS_BINDING) readonly buffer ShaderParameters { vec4 shader_parameters[]; };
 
-layout(set = 0, binding = SG_COUNTS_BINDING) readonly buffer TileOffsets {
-    uint tile_offsets[];
-};
+#define ENTITY_VEC4S 21u
 
-layout(set = 0, binding = SG_INDICES_BINDING) readonly buffer TileEntities {
-    uint tile_entities[];
-};
+uint tile_offset(uint i) { return tile_offsets[i >> 2u][i & 3u]; }
+uint tile_entity(uint i) { return tile_entities[i >> 2u][i & 3u]; }
+vec4 entity_vec4(uint i) { return uintBitsToFloat(entity_data[i]); }
 
-layout(set = 0, binding = SG_PARAMETERS_BINDING) readonly buffer ShaderParameters { vec4 shader_parameters[]; };
-layout(set = 1, binding = 0, rgba16f) uniform image2D u_scene;
-layout(set = 1, binding = 1, rgba16f) uniform image2D u_emission;
-layout(set = 1, binding = 2, rgba16f) uniform image2D u_absorption;
-layout(set = 1, binding = 3, rgba16f) uniform image2D u_albedo;
-layout(set = 1, binding = 4, rgba16f) uniform image2D u_normal;
-// Relief: x = height times coverage (world units), y = coverage.
-layout(set = 1, binding = 5, rg16f) uniform image2D u_relief;
+Entity entity_at(uint index)
+{
+    uint b = index * ENTITY_VEC4S;
+    Entity e;
+    e.inv_rot = entity_vec4(b);
+    vec4 v = entity_vec4(b + 1u);
+    e.pos = v.xy;
+    e.extent = v.zw;
+    uvec4 u = entity_data[b + 2u];
+    e.shape_type = u.x;
+    e.radius = uintBitsToFloat(u.y);
+    e.thickness = uintBitsToFloat(u.z);
+    e.chubbiness = uintBitsToFloat(u.w);
+    u = entity_data[b + 3u];
+    e.aa = uintBitsToFloat(u.x);
+    e.point_count = u.y;
+    e.metaball_group = u.z;
+    e.metaball_blend = uintBitsToFloat(u.w);
+    v = entity_vec4(b + 4u);
+    e.border_thickness = v.x;
+    e.reserved0 = v.y;
+    e.reserved1 = v.z;
+    e.reserved2 = v.w;
+    e.points_01 = entity_vec4(b + 5u);
+    e.points_23 = entity_vec4(b + 6u);
+    e.points_45 = entity_vec4(b + 7u);
+    e.points_67 = entity_vec4(b + 8u);
+    e.scene = entity_vec4(b + 9u);
+    e.emission = entity_vec4(b + 10u);
+    e.absorption = entity_vec4(b + 11u);
+    e.albedo = entity_vec4(b + 12u);
+    e.border_scene = entity_vec4(b + 13u);
+    e.border_emission = entity_vec4(b + 14u);
+    e.border_absorption = entity_vec4(b + 15u);
+    e.border_albedo = entity_vec4(b + 16u);
+    e.wobble_pad = entity_vec4(b + 17u);
+    e.pluck_data = entity_vec4(b + 18u);
+    v = entity_vec4(b + 19u);
+    e.simulation_time = v.xyz;
+    e.tile_group = v.w;
+    e.material_frame = entity_vec4(b + 20u);
+    return e;
+}
 
-layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
-shared uint tile_has_batch_entity;
+#ifdef SG_ACCUMULATE
+layout(set = 2, binding = SG_PREVIOUS_SCENE_BINDING) uniform sampler2D u_prev_scene;
+layout(set = 2, binding = SG_PREVIOUS_SOURCE_BINDING) uniform sampler2D u_prev_source;
+layout(set = 2, binding = SG_PREVIOUS_ALBEDO_BINDING) uniform sampler2D u_prev_albedo;
+layout(set = 2, binding = SG_PREVIOUS_NORMAL_BINDING) uniform sampler2D u_prev_normal;
+layout(set = 2, binding = SG_PREVIOUS_COVER_BINDING) uniform sampler2D u_prev_cover;
+#endif
+
+layout(location = 0) out vec4 out_scene;
+layout(location = 1) out vec4 out_source;
+layout(location = 2) out vec4 out_albedo;
+layout(location = 3) out vec4 out_normal;
+layout(location = 4) out vec4 out_visibility;
+layout(location = 5) out vec4 out_cover;
 
 // Tile lists are already ordered by stable CPU sort and deterministic binning.
 
@@ -186,6 +241,7 @@ float evaluate_sdf(vec2 local_p, Entity e)
         d = sdf_circle(local_p, e.radius);
     } else if (shape == SHAPE_BOX) {
         d = sdf_box(local_p, abs(e.points_01.xy), e.chubbiness);
+        if (e.points_23.w > 0.0) d = max(d, dot(e.points_23.xy, local_p) - e.points_23.z);
     } else if (shape == SHAPE_CAPSULE) {
         d = sdf_capsule(local_p, e.points_01.xy, e.points_01.zw, e.radius);
     } else if (shape == SHAPE_TRI) {
@@ -220,31 +276,147 @@ float circle_emission_coverage(float sdf, float half_width)
     return 1.0 - smoothstep(-half_width, half_width, sdf);
 }
 
+// Area of the rectangle [lo, hi] where dot(n, q) <= d, for a box's cut.
+// Corners' clamped squared distances give the exact area by inclusion and
+// exclusion.
+float cut_area(vec2 lo, vec2 hi, vec2 n, float d)
+{
+    // Mirror so both normal components are positive.
+    vec2 m = vec2(n.x < 0.0 ? -1.0 : 1.0, n.y < 0.0 ? -1.0 : 1.0);
+    vec2 a = min(lo * m, hi * m), b = max(lo * m, hi * m);
+    n = max(abs(n), vec2(1e-3));
+    vec4 f = max(vec4(d) - vec4(dot(n, a), dot(n, vec2(b.x, a.y)), dot(n, vec2(a.x, b.y)), dot(n, b)), 0.0);
+    f *= f;
+    return max((f.x - f.y - f.z + f.w) / (2.0 * n.x * n.y), 0.0);
+}
+
+// The fraction of a square footprint of half size r around local point p
+// that a tile group box, cut or not, covers. Boxes tiling a shape cover each
+// footprint exactly once between them.
+float footprint_coverage(Entity e, vec2 p, float r)
+{
+    vec2 h = abs(e.points_01.xy);
+    vec2 lo = max(p - r, -h), hi = min(p + r, h);
+    if (any(lessThanEqual(hi, lo))) return 0.0;
+    float area = e.points_23.w > 0.0 ? cut_area(lo, hi, e.points_23.xy, e.points_23.z)
+                                     : (hi.x - lo.x) * (hi.y - lo.y);
+    return clamp(area / (4.0 * r * r), 0.0, 1.0);
+}
+
+// Material accumulated at this pixel. Emission and albedo alpha never reach
+// their color. Absorption blends under earlier absorbers by its own alpha;
+// only its mean, the optical depth, is kept.
+vec4 scene_acc;
+vec4 emission_acc;
+// The part of emission_acc from absorbing layers. The transport reads it as
+// radiance and the rest as density; see hrc/source_average.shd.
+vec3 absorber_emission;
+vec4 albedo_acc;
+vec4 normal_acc;
+float tau_acc;
+float absorption_cover;
+float relief_acc;
+
+void emission_over(vec4 em, bool absorbs)
+{
+    absorber_emission = (absorbs ? em.rgb : vec3(0.0)) + absorber_emission * (1.0 - em.a);
+    emission_acc = alpha_over(em, emission_acc);
+}
+
+// Composites one layer of premultiplied channels over the accumulated material.
+void layer_over(vec4 sc, vec4 em, vec4 tr, vec4 al, vec4 surface, float height)
+{
+    scene_acc = alpha_over(sc, scene_acc);
+    normal_acc = mix(normal_acc, surface, sc.a);
+    relief_acc = mix(relief_acc, height, sc.a);
+    emission_over(em, tr.a > 0.0);
+    tau_acc += dot(tr.rgb, vec3(1.0 / 3.0)) * (1.0 - absorption_cover);
+    absorption_cover += tr.a * (1.0 - absorption_cover);
+    albedo_acc = alpha_over(al, albedo_acc);
+}
+
+// A layer of premultiplied channels and the footprint coverage behind them.
+// Surface and height are weighted by scene alpha until it is composited.
+struct Layer
+{
+    vec4 scene;
+    vec4 emission;
+    vec4 absorption;
+    vec4 albedo;
+    vec4 surface;
+    float height;
+    float cover;
+};
+
+Layer layer_empty()
+{
+    return Layer(vec4(0), vec4(0), vec4(0), vec4(0), vec4(0), 0.0, 0.0);
+}
+
+Layer layer_scaled(Layer l, float k)
+{
+    return Layer(l.scene * k, l.emission * k, l.absorption * k, l.albedo * k,
+                 l.surface * k, l.height * k, l.cover * k);
+}
+
+Layer layer_sum(Layer a, Layer b)
+{
+    return Layer(a.scene + b.scene, a.emission + b.emission, a.absorption + b.absorption,
+                 a.albedo + b.albedo, a.surface + b.surface, a.height + b.height,
+                 a.cover + b.cover);
+}
+
+// Pieces that overlap by float error still cover a footprint once.
+// Pieces that overlap by float error still cover a footprint once.
+void layer_composite(Layer l)
+{
+    l = layer_scaled(l, 1.0 / max(l.cover, 1.0));
+    float a = max(l.scene.a, 1e-6);
+    layer_over(l.scene, l.emission, l.absorption, l.albedo, l.surface / a, l.height / a);
+}
+
+// The pieces of a tile group composite as one layer: their footprint
+// coverages add, so edges they share stay covered wherever the shape sits
+// against the pixels. Layering each piece would dim those edges by an amount
+// that follows the shape's subpixel position, which flickers as it moves.
+//
+// A group whose id has a half, a mask's border, comes before the group with
+// its whole part, the mask's fill, and lies over it. Both share the
+// silhouette, so the border hides as much fill as it can: fill pieces add
+// only where they cover more than the border. Layering them independently
+// would count partly covered silhouette pixels twice.
+float group_id;
+Layer group_layer;
+float border_cover;
+
+void group_flush()
+{
+    if (group_id == 0.0) return;
+    layer_composite(group_layer);
+    group_id = 0.0;
+    group_layer = layer_empty();
+}
+
+void group_add(float id, float cover, vec4 sc, vec4 em, vec4 tr, vec4 al, vec4 surface, float height)
+{
+    if (id != group_id) {
+        bool fill = fract(group_id) > 0.0 && id == floor(group_id);
+        border_cover = fill ? group_layer.cover : 0.0;
+        if (!fill) group_flush();
+        group_id = id;
+    }
+    float k = border_cover > 0.0 ? max(cover - border_cover, 0.0) / max(cover, 1e-6) : 1.0;
+    Layer piece = Layer(sc, em, tr, al, surface * sc.a, height * sc.a, cover);
+    group_layer = layer_sum(group_layer, layer_scaled(piece, k));
+}
+
 void main()
 {
-    ivec2 tile_id = ivec2(gl_WorkGroupID.xy);
+    ivec2 pixel = ivec2(gl_FragCoord.xy);
+    ivec2 tile_id = pixel / 16;
     uint tile_idx = uint(tile_id.y * u_tiles_x + tile_id.x);
-    uint tile_begin = tile_offsets[tile_idx];
-    uint tile_end = tile_offsets[tile_idx + 1u];
-    if (gl_LocalInvocationIndex == 0u) {
-        tile_has_batch_entity = u_accumulate == 0 ? 1u : 0u;
-        for (uint i = tile_begin; i < tile_end && tile_has_batch_entity == 0u; i++) {
-            uint eidx = tile_entities[i];
-            if (eidx < uint(u_first_entity) || eidx >= uint(u_last_entity)) continue;
-            if (entities[eidx].metaball_group == uint(u_metaball_group)) {
-                tile_has_batch_entity = 1u;
-            }
-        }
-    }
-    // Every lane, including lanes in partial edge tiles, reaches this barrier.
-    barrier();
-    if (tile_has_batch_entity == 0u) return;
-
-    ivec2 local_id = ivec2(gl_LocalInvocationID.xy);
-    ivec2 pixel = tile_id * 16 + local_id;
-
-    // Bounds check.
-    if (pixel.x >= u_canvas_w || pixel.y >= u_canvas_h) return;
+    uint tile_begin = tile_offset(tile_idx);
+    uint tile_end = tile_offset(tile_idx + 1u);
 
     // Pixel center -> world position (Y flipped: pixel 0 = world max Y).
     vec2 world_pos = vec2(
@@ -256,13 +428,31 @@ void main()
     uint total = tile_end - tile_begin;
     uint base = tile_begin;
 
-    // Accumulators (initialized to canvas clear colors).
-    vec4 scene_acc = u_accumulate != 0 ? imageLoad(u_scene, pixel) : vec4(0, 0, 0, 0);
-    vec4 emission_acc = u_accumulate != 0 ? imageLoad(u_emission, pixel) : vec4(0, 0, 0, 1);
-    vec4 absorption_acc = u_accumulate != 0 ? imageLoad(u_absorption, pixel) : vec4(0, 0, 0, 0);
-    vec4 albedo_acc = u_accumulate != 0 ? imageLoad(u_albedo, pixel) : vec4(0, 0, 0, 1);
-    vec4 normal_acc = u_accumulate != 0 ? imageLoad(u_normal, pixel) : vec4(0, 0, 0, 0);
-    vec4 relief_acc = u_accumulate != 0 ? imageLoad(u_relief, pixel) : vec4(0, 0, 0, 0);
+    scene_acc = vec4(0);
+    emission_acc = vec4(0, 0, 0, 1);
+    absorber_emission = vec3(0.0);
+    tau_acc = 0.0;
+    absorption_cover = 0.0;
+    albedo_acc = vec4(0, 0, 0, 1);
+    normal_acc = vec4(0);
+    relief_acc = 0.0;
+    group_id = 0.0;
+    border_cover = 0.0;
+    group_layer = layer_empty();
+#ifdef SG_ACCUMULATE
+    // Earlier batches continue as displayed emission, absorbing wherever they
+    // absorbed, over the whole pixel.
+    scene_acc = texelFetch(u_prev_scene, pixel, 0);
+    vec4 prev_source = texelFetch(u_prev_source, pixel, 0);
+    emission_acc.rgb = prev_source.rgb * texelFetch(u_prev_cover, pixel, 0).r;
+    absorber_emission = prev_source.a > 0.0 ? emission_acc.rgb : vec3(0.0);
+    absorption_cover = prev_source.a > 0.0 ? 1.0 : 0.0;
+    tau_acc = prev_source.a;
+    vec4 prev_albedo = texelFetch(u_prev_albedo, pixel, 0);
+    albedo_acc.rgb = prev_albedo.rgb;
+    relief_acc = prev_albedo.a;
+    normal_acc = texelFetch(u_prev_normal, pixel, 0);
+#endif
 
     // Metaball group accumulators.
     #define MAX_METABALL_GROUPS 1
@@ -299,9 +489,9 @@ void main()
     }
 
     for (uint i = 0u; i < total; i++) {
-        uint eidx = tile_entities[base + i];
+        uint eidx = tile_entity(base + i);
         if (eidx < uint(u_first_entity) || eidx >= uint(u_last_entity)) continue;
-        Entity e = entities[eidx];
+        Entity e = entity_at(eidx);
         if (e.metaball_group != uint(u_metaball_group)) continue;
 
         // Transform pixel to entity local space.
@@ -374,8 +564,12 @@ void main()
         float emission_half_width = filtered_circle_emission
                                       ? circle_emission_half_width(e)
                                       : aa;
+        // Tile group pieces cover the pixel's footprint, at least a pixel wide.
+        bool tiled = e.tile_group != 0.0 && e.shape_type == SHAPE_BOX;
+        float footprint = 0.5 * max(aa, max(u_unit_per_px.x, u_unit_per_px.y));
+        float reach = tiled ? 1.4143 * footprint : aa;
         // Uncovered pixels need no material; metaballs still blend beyond their edge.
-        if (e.metaball_group == 0u && sdf >= aa &&
+        if (e.metaball_group == 0u && sdf >= reach &&
             (!filtered_circle_emission || !may_emit || sdf >= emission_half_width)) continue;
         vec4 surface = vec4(0.0, 0.0, e.reserved2, 0.0);
         float height = 0.0;
@@ -445,6 +639,7 @@ void main()
         float bt = e.border_thickness;
 
         if (bt > 0.0) {
+            group_flush();
             // Border rendering: fill is interior, border is edge band.
             float shape_coverage = 1.0 - smoothstep(0.0, aa, sdf);
             float fill_coverage = 1.0 - smoothstep(-bt, -bt + aa, sdf);
@@ -457,20 +652,19 @@ void main()
             scene_acc = alpha_over(alpha_over(bsc, sc), scene_acc);
             float cover = bsc.a + sc.a * (1.0 - bsc.a);
             normal_acc = mix(normal_acc, surface, cover);
-            relief_acc.xy = mix(relief_acc.xy, vec2(height, 1.0), cover);
+            relief_acc = mix(relief_acc, height, cover);
 
-            // Emission.
+            // Emission and absorption.
             vec4 em = unpack_color(e.emission); em.rgb *= em.a;
             em *= fill_coverage;
             vec4 bem = unpack_color(e.border_emission); bem.rgb *= bem.a; bem *= border_coverage;
-            emission_acc = alpha_over(alpha_over(bem, em), emission_acc);
-
-            // Absorption.
             vec4 tr = unpack_color(e.absorption); tr *= fill_coverage;
             vec4 btr = unpack_color(e.border_absorption); btr *= border_coverage;
+            emission_over(em, tr.a > 0.0);
+            emission_over(bem, btr.a > 0.0);
             vec4 combined_tr = tr + btr;
-            absorption_acc.rgb += combined_tr.rgb * (1.0 - absorption_acc.a);
-            absorption_acc.a += combined_tr.a * (1.0 - absorption_acc.a);
+            tau_acc += dot(combined_tr.rgb, vec3(1.0 / 3.0)) * (1.0 - absorption_cover);
+            absorption_cover += combined_tr.a * (1.0 - absorption_cover);
 
             // Albedo.
             vec4 al = unpack_color(e.albedo); al.rgb *= al.a; al *= fill_coverage;
@@ -478,30 +672,29 @@ void main()
             albedo_acc = alpha_over(alpha_over(bal, al), albedo_acc);
         } else {
             // No border: original path.
-            float coverage = 1.0 - smoothstep(0.0, aa, sdf);
+            float coverage = !tiled         ? 1.0 - smoothstep(0.0, aa, sdf)
+                           : sdf <= -reach ? 1.0
+                                           : footprint_coverage(e, local_p, footprint);
             float emission_coverage = filtered_circle_emission
                                         ? circle_emission_coverage(sdf, emission_half_width)
                                         : coverage;
             if (coverage <= 0.0 && emission_coverage <= 0.0) continue;
 
             vec4 sc = unpack_color(e.scene); sc.rgb *= sc.a; sc *= coverage;
-            scene_acc = alpha_over(sc, scene_acc);
-            normal_acc = mix(normal_acc, surface, sc.a);
-            relief_acc.xy = mix(relief_acc.xy, vec2(height, 1.0), sc.a);
-
             vec4 em = unpack_color(e.emission); em.rgb *= em.a;
             em.rgb *= e.simulation_time.z;
             em *= emission_coverage;
-            emission_acc = alpha_over(em, emission_acc);
-
             vec4 tr = unpack_color(e.absorption); tr *= coverage;
-            absorption_acc.rgb += tr.rgb * (1.0 - absorption_acc.a);
-            absorption_acc.a += tr.a * (1.0 - absorption_acc.a);
-
             vec4 al = unpack_color(e.albedo); al.rgb *= al.a; al *= coverage;
-            albedo_acc = alpha_over(al, albedo_acc);
+            if (tiled) {
+                group_add(e.tile_group, coverage, sc, em, tr, al, surface, height);
+                continue;
+            }
+            group_flush();
+            layer_over(sc, em, tr, al, surface, height);
         }
     }
+    group_flush();
 
 
     // Composite metaball groups on top.
@@ -521,17 +714,17 @@ void main()
             scene_acc = alpha_over(alpha_over(bsc, sc), scene_acc);
             float cover = bsc.a + sc.a * (1.0 - bsc.a);
             normal_acc = mix(normal_acc, mb_surface[g], cover);
-            relief_acc.xy = mix(relief_acc.xy, vec2(mb_height[g], 1.0), cover);
+            relief_acc = mix(relief_acc, mb_height[g], cover);
 
             vec4 em = mb_emission[g]; em.rgb *= em.a; em *= fill_coverage;
             vec4 bem = mb_border_emission[g]; bem.rgb *= bem.a; bem *= border_coverage;
-            emission_acc = alpha_over(alpha_over(bem, em), emission_acc);
-
             vec4 tr = mb_absorption[g]; tr *= fill_coverage;
             vec4 btr = mb_border_absorption[g]; btr *= border_coverage;
+            emission_over(em, tr.a > 0.0);
+            emission_over(bem, btr.a > 0.0);
             vec4 combined_tr = tr + btr;
-            absorption_acc.rgb += combined_tr.rgb * (1.0 - absorption_acc.a);
-            absorption_acc.a += combined_tr.a * (1.0 - absorption_acc.a);
+            tau_acc += dot(combined_tr.rgb, vec3(1.0 / 3.0)) * (1.0 - absorption_cover);
+            absorption_cover += combined_tr.a * (1.0 - absorption_cover);
 
             vec4 al = mb_albedo[g]; al.rgb *= al.a; al *= fill_coverage;
             vec4 bal = mb_border_albedo[g]; bal.rgb *= bal.a; bal *= border_coverage;
@@ -541,26 +734,30 @@ void main()
             if (coverage <= 0.0) continue;
 
             vec4 sc = mb_scene[g]; sc.rgb *= sc.a; sc *= coverage;
-            scene_acc = alpha_over(sc, scene_acc);
-            normal_acc = mix(normal_acc, mb_surface[g], sc.a);
-            relief_acc.xy = mix(relief_acc.xy, vec2(mb_height[g], 1.0), sc.a);
-
             vec4 em = mb_emission[g]; em.rgb *= em.a; em *= coverage;
-            emission_acc = alpha_over(em, emission_acc);
-
-            vec4 tr = mb_absorption[g]; tr *= coverage;
-            absorption_acc.rgb += tr.rgb * (1.0 - absorption_acc.a);
-            absorption_acc.a += tr.a * (1.0 - absorption_acc.a);
-
             vec4 al = mb_albedo[g]; al.rgb *= al.a; al *= coverage;
-            albedo_acc = alpha_over(al, albedo_acc);
+            layer_over(sc, em, mb_absorption[g] * coverage, al, mb_surface[g], mb_height[g]);
         }
     }
 
-    imageStore(u_scene, pixel, scene_acc);
-    imageStore(u_emission, pixel, emission_acc);
-    imageStore(u_absorption, pixel, absorption_acc);
-    imageStore(u_albedo, pixel, albedo_acc);
-    imageStore(u_normal, pixel, normal_acc);
-    imageStore(u_relief, pixel, relief_acc);
+    // Transport sources are emission density; see hrc/source_average.shd.
+    // Absorbers covering part of the pixel give the transmittance of a whole
+    // pixel of them scaled by their coverage, so it follows coverage
+    // linearly, and emit their radiance times the pixel's optical depth.
+    // Clear emitters emit by density. Display scales the density back to
+    // emission premultiplied by coverage.
+    float tau = absorption_cover > 1e-4 ? tau_acc / absorption_cover : 0.0;
+    float opacity = absorption_cover * (1.0 - exp(-tau));
+    float depth = -log(max(1.0 - opacity, 1e-6));
+    vec3 clear = max(emission_acc.rgb - absorber_emission, 0.0);
+    vec3 density = clear + absorber_emission / max(absorption_cover, 1e-4) * depth;
+    vec3 luma = vec3(.2126, .7152, .0722);
+    float dense = dot(density, luma);
+    float display = dense > 1e-8 ? min(dot(emission_acc.rgb, luma) / dense, 60000.0) : 1.0;
+    out_scene = scene_acc;
+    out_source = vec4(density, depth);
+    out_cover = vec4(display, 0.0, 0.0, 0.0);
+    out_albedo = vec4(albedo_acc.rgb, relief_acc);
+    out_normal = normal_acc;
+    out_visibility = vec4(0);
 }

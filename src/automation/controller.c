@@ -7494,6 +7494,9 @@ static void add_component_schema(
         if (field->type_name) {
             yyjson_mut_obj_add_strcpy(result->doc, entry, "type_name", field->type_name);
         }
+        if (field->description) {
+            yyjson_mut_obj_add_str(result->doc, entry, "description", field->description);
+        }
     }
     char *defaults_json = game_prototype_component_defaults_json(registry, component);
     if (!defaults_json) {

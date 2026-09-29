@@ -1,6 +1,7 @@
 #include "render/fluid_raster.h"
 
 #include "diagnostics/tracy.h"
+#include "render/fullscreen.h"
 #include "render/particles.h"
 #include "support/array.h"
 #include "support/xalloc.h"
@@ -21,10 +22,15 @@ typedef struct
 
 struct render_fluid_raster
 {
-    CF_ComputeShader shader;
+    CF_Shader shader, copy_shader;
     CF_Material material;
+    /* Two triangles over each tile that fluid covers; passes draw only there. */
+    CF_Mesh tiles;
+    float *tile_vertices;
+    int tile_capacity;
     CF_StorageBuffer particles, offsets, indices;
-    CF_Texture visibility;
+    /* The material targets of fluid's tiles before fluid. */
+    CF_Canvas before;
     int width, height;
     int particle_capacity, offset_capacity, index_capacity;
     raster_particle *data;
@@ -35,9 +41,10 @@ struct render_fluid_raster
 render_fluid_raster *render_fluid_raster_new()
 {
     render_fluid_raster *r = xcalloc(1, sizeof *r);
-    r->shader = cf_make_compute_shader("hrc/fluid_raster.shd");
+    r->shader = cf_make_shader("/chibi-render/hrc/pass.vert", "/chibi-render/hrc/fluid_raster.frag");
+    r->copy_shader = cf_make_shader("/chibi-render/hrc/pass.vert", "/chibi-render/hrc/material_copy.frag");
     r->material = cf_make_material();
-    if (!r->shader.id || !r->material.id) {
+    if (!r->shader.id || !r->copy_shader.id || !r->material.id) {
         render_fluid_raster_free(r);
         return NULL;
     }
@@ -50,8 +57,15 @@ void render_fluid_raster_free(render_fluid_raster *r)
         return;
     }
     if (r->shader.id) {
-        cf_destroy_compute_shader(r->shader);
+        cf_destroy_shader(r->shader);
     }
+    if (r->copy_shader.id) {
+        cf_destroy_shader(r->copy_shader);
+    }
+    if (r->tiles.id) {
+        cf_destroy_mesh(r->tiles);
+    }
+    afree(r->tile_vertices);
     if (r->material.id) {
         cf_destroy_material(r->material);
     }
@@ -64,8 +78,8 @@ void render_fluid_raster_free(render_fluid_raster *r)
     if (r->indices.id) {
         cf_destroy_storage_buffer(r->indices);
     }
-    if (r->visibility.id) {
-        cf_destroy_texture(r->visibility);
+    if (r->before.id) {
+        cf_destroy_canvas(r->before);
     }
     afree(r->data);
     afree(r->rects);
@@ -75,9 +89,69 @@ void render_fluid_raster_free(render_fluid_raster *r)
     free(r);
 }
 
-CF_Texture render_fluid_raster_visibility(const render_fluid_raster *r)
+/* Clip-space triangles over the tiles with particles. Returns their vertex
+ * count, zero when fluid covers nothing. */
+static int s_tile_mesh(render_fluid_raster *r, int tx, int ty, int width, int height)
 {
-    return r->visibility;
+    aclear(r->tile_vertices);
+    for (int tile = 0; tile < tx * ty; tile++) {
+        if (r->starts[tile] == r->starts[tile + 1]) {
+            continue;
+        }
+        int x = tile % tx, y = tile / tx;
+        float x0 = 32.0f * x / width - 1, x1 = fminf(32.0f * (x + 1) / width - 1, 1);
+        float y0 = 1 - 32.0f * y / height,
+              y1 = fmaxf(1 - 32.0f * (y + 1) / height, -1);
+        float quad[12] = { x0, y0, x1, y0, x0, y1, x1, y0, x1, y1, x0, y1 };
+        for (int i = 0; i < 12; i++) {
+            apush(r->tile_vertices, quad[i]);
+        }
+    }
+    int vertices = acount(r->tile_vertices) / 2;
+    if (vertices > r->tile_capacity) {
+        if (r->tiles.id) {
+            cf_destroy_mesh(r->tiles);
+        }
+        CF_VertexAttribute attribute = { .name = "in_pos",
+                                         .format = CF_VERTEX_FORMAT_FLOAT2 };
+        r->tiles = cf_make_mesh(vertices * 2 * (int)sizeof(float), &attribute, 1, 2 * (int)sizeof(float));
+        r->tile_capacity = vertices;
+    }
+    if (vertices) {
+        cf_mesh_update_vertex_data(r->tiles, r->tile_vertices, vertices);
+    }
+    return vertices;
+}
+
+static void s_draw_tiles(
+    render_fluid_raster *r,
+    CF_Shader shader,
+    CF_Canvas target,
+    bool clear,
+    int width,
+    int height
+)
+{
+    cf_apply_canvas(target, clear);
+    cf_apply_mesh(r->tiles);
+    cf_apply_shader(shader, r->material);
+    CF_StorageBuffer inputs[] = { r->particles, r->offsets, r->indices };
+    if (shader.id != r->copy_shader.id) {
+        cf_apply_fs_storage_buffers(inputs, 3);
+    }
+    cf_apply_viewport(0, 0, width, height);
+    cf_apply_scissor(0, 0, width, height);
+    cf_draw_elements();
+}
+
+static void s_set_material(CF_Material material, render_material_textures textures)
+{
+    cf_material_set_texture_fs(material, "u_scene", textures.scene);
+    cf_material_set_texture_fs(material, "u_source", textures.source);
+    cf_material_set_texture_fs(material, "u_albedo", textures.albedo);
+    cf_material_set_texture_fs(material, "u_normal", textures.normal);
+    cf_material_set_texture_fs(material, "u_visibility", textures.visibility);
+    cf_material_set_texture_fs(material, "u_cover", textures.cover);
 }
 
 static bool reserve(CF_StorageBuffer *buffer, int *capacity, int count, int stride)
@@ -239,7 +313,7 @@ static bool bin(render_fluid_raster *r, int tx, int ty)
 bool render_fluid_raster_draw(
     render_fluid_raster *r,
     const material_fluid *fluid,
-    render_material_textures textures,
+    CF_Canvas material,
     render_material_view view,
     int width,
     int height
@@ -247,19 +321,14 @@ bool render_fluid_raster_draw(
 {
     assert(width > 0 && height > 0);
     if (r->width != width || r->height != height) {
-        CF_TextureParams params = cf_texture_defaults(width, height);
-        params.pixel_format = CF_PIXEL_FORMAT_R16G16B16A16_FLOAT;
-        params.usage = CF_TEXTURE_USAGE_SAMPLER_BIT |
-                       CF_TEXTURE_USAGE_COMPUTE_STORAGE_WRITE_BIT;
-        params.filter = CF_FILTER_LINEAR;
-        CF_Texture next = cf_make_texture(params);
-        if (!next.id) {
+        CF_Canvas before = render_material_canvas(width, height);
+        if (!before.id) {
             return false;
         }
-        if (r->visibility.id) {
-            cf_destroy_texture(r->visibility);
+        if (r->before.id) {
+            cf_destroy_canvas(r->before);
         }
-        r->visibility = next;
+        r->before = before;
         r->width = width;
         r->height = height;
     }
@@ -307,21 +376,16 @@ bool render_fluid_raster_draw(
         );
     }
     float camera[4] = { view.min_x, view.max_y, view.width / width, view.height / height };
-    int dimensions[2] = { width, height };
-    cf_material_set_uniform_cs(r->material, "u_view", camera, CF_UNIFORM_TYPE_FLOAT, 4);
-    cf_material_set_uniform_cs(r->material, "u_dimensions", dimensions, CF_UNIFORM_TYPE_INT, 2);
-    cf_material_set_uniform_cs(r->material, "u_tiles_x", &tx, CF_UNIFORM_TYPE_INT, 1);
-    CF_StorageBuffer inputs[] = { r->particles, r->offsets, r->indices };
-    CF_Texture outputs[] = { textures.scene,      textures.emission,
-                             textures.absorption, textures.albedo,
-                             textures.normal,     r->visibility };
-    CF_ComputeDispatch dispatch = cf_compute_dispatch_defaults(tx, ty, 1);
-    dispatch.ro_buffers = inputs;
-    dispatch.ro_buffer_count = 3;
-    dispatch.rw_textures = outputs;
-    dispatch.rw_texture_count = 6;
+    cf_material_set_uniform_fs(r->material, "u_view", camera, CF_UNIFORM_TYPE_FLOAT4, 1);
+    cf_material_set_uniform_fs(r->material, "u_tiles_x", &tx, CF_UNIFORM_TYPE_INT, 1);
+    /* Fluid reads a copy of its tiles and writes the material itself. */
     cf_push_gpu_label("Fluid density raster");
-    cf_dispatch_compute(r->shader, r->material, dispatch);
+    if (s_tile_mesh(r, tx, ty, width, height)) {
+        s_set_material(r->material, render_material_canvas_textures(material));
+        s_draw_tiles(r, r->copy_shader, r->before, true, width, height);
+        s_set_material(r->material, render_material_canvas_textures(r->before));
+        s_draw_tiles(r, r->shader, material, false, width, height);
+    }
     cf_pop_gpu_label();
     CHIBI_TRACE_ZONE_END(submit_zone);
     return true;

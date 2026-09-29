@@ -10,7 +10,9 @@
 
 enum
 {
-    FLUID_CONTACT_PARTICLE_LIMIT = 256
+    FLUID_CONTACT_PARTICLE_LIMIT = 256,
+    /* Blasts push every active particle and chunk in range. */
+    COMBUSTION_BLAST_RADIUS_MAX = 1024
 };
 
 bool game_materials_emit(game_materials *materials, fluid_particle particle)
@@ -104,19 +106,19 @@ const char *material_ecs_configure_fluid(game_materials *materials)
     }
     materials->settings = settings;
     GameCombustion r = materials->combustion;
-    if (reactive &&
-        (!isfinite(
-             r.ignition + r.cooling + r.burn_rate + r.heat_release +
-             r.smoke_lifetime + r.smoke_absorption + r.flame_emission +
-             r.blast_radius + r.blast_speed + r.blast_damage
-         ) ||
-         r.ignition <= 0 || r.cooling < 0 || r.burn_rate <= 0 ||
-         r.heat_release <= r.ignition || r.smoke_lifetime <= 0 ||
-         r.smoke_absorption < 0 || r.flame_emission < 0 || r.blast_radius < 0 ||
-         r.blast_radius > 256 || r.blast_speed < 0 || r.blast_damage < 0)) {
+    if (reactive && (!isfinite(
+                         r.ignition + r.cooling + r.burn_rate + r.heat_release +
+                         r.smoke_lifetime + r.smoke_absorption + r.flame_emission +
+                         r.blast_radius + r.blast_speed + r.blast_damage
+                     ) ||
+                     r.ignition <= 0 || r.cooling < 0 || r.burn_rate <= 0 ||
+                     r.heat_release <= r.ignition || r.smoke_lifetime <= 0 ||
+                     r.smoke_absorption < 0 || r.flame_emission < 0 ||
+                     r.blast_radius < 0 || r.blast_radius > COMBUSTION_BLAST_RADIUS_MAX ||
+                     r.blast_speed < 0 || r.blast_damage < 0)) {
         return "Combustion requires finite nonnegative tuning, positive "
                "ignition/burn/lifetime, heat above ignition and blast radius "
-               "<=256";
+               "<=1024";
     }
     if (!materials->fluid) {
         materials->fluid = material_fluid_new(settings.kernel, settings.particle_limit);

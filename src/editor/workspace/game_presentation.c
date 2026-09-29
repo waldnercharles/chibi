@@ -31,7 +31,8 @@ struct app_game_presentation
     double showcase_time;
     double showcase_last_time;
     bool showcase_time_started;
-    char ui_error[256]; /* the last UI asset error reported */
+    char ui_error[256];         /* the last UI asset error reported */
+    char lighting_warning[512]; /* the last lighting adjustment reported */
 };
 
 static render_arena_camera game_camera(const app_game_presentation *game)
@@ -247,17 +248,31 @@ static int menu_command(app_game_presentation *game, int status)
     return 0;
 }
 
-/* Prints a UI asset error once when it appears. */
-static void report_ui_error(app_game_presentation *game)
+/* Prints a message once when it appears or changes. */
+static void report_once(char *last, size_t size, const char *message)
 {
-    const char *error = render_ui_error(engine_viewport_ui(game->viewport));
-    if (!strcmp(error, game->ui_error)) {
+    if (!strcmp(message, last)) {
         return;
     }
-    snprintf(game->ui_error, sizeof game->ui_error, "%s", error);
-    if (error[0]) {
-        fprintf(stderr, "%s\n", error);
+    snprintf(last, size, "%s", message);
+    if (message[0]) {
+        fprintf(stderr, "%s\n", message);
     }
+}
+
+/* UI asset errors and lighting adjustments. */
+static void report_ui_error(app_game_presentation *game)
+{
+    report_once(
+        game->ui_error,
+        sizeof game->ui_error,
+        render_ui_error(engine_viewport_ui(game->viewport))
+    );
+    report_once(
+        game->lighting_warning,
+        sizeof game->lighting_warning,
+        app_scene_renderer_warning(game->scene->renderer)
+    );
 }
 
 int app_game_presentation_frame(app_game_presentation *game, double now)

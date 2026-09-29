@@ -1,2 +1,0 @@
-#define HRC_LUMINANCE 1
-#include "hrc/merge.shd"

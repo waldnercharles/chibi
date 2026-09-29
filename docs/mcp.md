@@ -84,8 +84,9 @@ For reproducible rendering measurements, `previewScene` accepts
 `freeze_simulation` and an `input_timeline` spanning preparation and advancing
 render frames. Results include initial/final runtime state and the active GPU
 backend. Optional `metal_capture` and `capture_frame` record one warmed frame on
-supported Macs. Without vendor tools, `pass_timing` waits for the GPU after each
-render pass and reports average milliseconds per pass, and `capture_frames`
+supported Macs. `pass_timing` reports average GPU milliseconds per render pass,
+from command-buffer timestamps on Metal and by waiting for the GPU elsewhere;
+`pass_timing_detail` also splits each HRC cascade level. `capture_frames`
 writes every measured frame to a raw RGBA8 file for judging motion and temporal
 effects. Both serialize or read back each frame, so their frame totals are not
 benchmarks. See [the GPU benchmark workflow](neon-gpu-benchmarks.md).
@@ -706,7 +707,7 @@ extraction policy.
 | Player UI | `GameUi` shows `content/ui/<document>.yaml` (RML markup and RCSS) over the game view. `Set UI Text`, `Set UI Class`, `Set UI Visible`, `Set UI Value` and `Focus UI Element` change every element their RCSS selector matches, such as `#score` or `#hull .fill`; `Click UI Element` clicks the first match, and `Move UI Focus` steps focus through the matches, wrapping. `Get UI Value` reads what was last set under the same selector, and an emitting input's value under `#id`. `data-event-click="emit('Resume')"` sends that event to the entity when clicked; on an input, `data-event-change` sends it with the input's value. |
 | Save progress | `Read Saved Text`, `Set Saved Text`, `Remove Saved Text`, `Commit Save`, `Discard Save Changes`. Pending changes become durable only on commit. `Commit Save.Failed` supports retry/error UI. |
 | Sound | `Play Sound` synthesizes a swept tone/noise cue. Frequency and end frequency: 20–10,000 Hz; duration: 0.01–4 s; volume/noise: 0–1; pan: 0 left, 0.5 center, 1 right. Editor Play and standalone Play mix up to 64 voices. A zero volume mutes a cue. |
-| Lighting | `GameHRC2D` authors fractional 2D transport resolution, trace/feedback settings, ambient, intensity, radiance fog, shadow floor, falloff, temporal blending, upscaling and debug view. `GameEnvironment` authors 3D exposure and bloom. |
+| Lighting | `GameHRC2D` authors 2D light `resolution`, `color_resolution` and `gather_resolution` detail, adaptive resolution that keeps the scene's GPU time within `target_fps`, trace/feedback settings, ambient, intensity, radiance fog, shadow floor, falloff, temporal blending, upscaling and debug view. `describeComponents` returns each field's description. `GameEnvironment` authors 3D exposure and bloom. |
 | Line of sight | `Raycast` returns Found, Entity, Point, Normal and Distance against circles and rotated boxes. Category filtering is independent of collision masks. New colliders and teleports are visible to the query. |
 | Fog | One enabled `GameFog` defines origin, 1–256 rows/columns, cell size, color and ambient drift. `drift: 0` removes fog animation. `GameVision` sources reveal nearby cells, blocked by `occluders`. |
 | Terrain memory | `GameVision.remember` adds explored terrain. Positive duration creates a shrinking temporary clearing; age starts at zero. `Visibility At` reads Visible/Explored/Obstacle. `GameRenderState.visibility_culled` opts an actor into current-sight culling; `hidden` always hides it. |

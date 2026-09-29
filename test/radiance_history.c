@@ -1,4 +1,5 @@
 #include "platform/cute.h"
+#include "render/fullscreen.h"
 
 #include <math.h>
 #include <stdint.h>
@@ -31,11 +32,11 @@ bool test_radiance_history()
     }
     CF_CanvasParams params = cf_canvas_defaults(W, H);
     params.target.pixel_format = CF_PIXEL_FORMAT_R16G16B16A16_FLOAT;
-    params.target.usage |= CF_TEXTURE_USAGE_COMPUTE_STORAGE_WRITE_BIT;
     CF_Canvas canvas = cf_make_canvas(params);
     CF_Material material = cf_make_material();
-    CF_ComputeShader shader = cf_make_compute_shader("hrc/blur.shd");
-    bool ok = canvas.id && material.id && shader.id;
+    CF_Mesh mesh = render_make_pass_mesh();
+    CF_Shader shader = cf_make_shader("/chibi-render/hrc/pass.vert", "/chibi-render/hrc/filter.frag");
+    bool ok = canvas.id && material.id && mesh.id && shader.id;
     for (int i = 0; i < 3; i++) {
         ok &= textures[i].id != 0;
     }
@@ -50,23 +51,22 @@ bool test_radiance_history()
         cf_texture_update(textures[0], current, sizeof current);
         cf_texture_update(textures[1], absorption, sizeof absorption);
         cf_texture_update(textures[2], history, sizeof history);
-        cf_material_set_texture_cs(material, "u_in_radiance", textures[0]);
-        cf_material_set_texture_cs(material, "u_transmittance", textures[1]);
-        cf_material_set_texture_cs(material, "u_prev_radiance", textures[2]);
+        cf_material_set_texture_fs(material, "u_in_radiance", textures[0]);
+        cf_material_set_texture_fs(material, "u_source", textures[1]);
+        cf_material_set_texture_fs(material, "u_prev_radiance", textures[2]);
         float texel[] = { 1.f / W, 1.f / H };
         float offset[] = { scenario == 0 ? .5f / W : 0, 0 };
         float threshold = .1f, weight = .1f;
         int valid = scenario != 2;
-        cf_material_set_uniform_cs(material, "u_texel_size", texel, CF_UNIFORM_TYPE_FLOAT2, 1);
-        cf_material_set_uniform_cs(material, "u_history_offset", offset, CF_UNIFORM_TYPE_FLOAT2, 1);
-        cf_material_set_uniform_cs(material, "u_history_valid", &valid, CF_UNIFORM_TYPE_INT, 1);
-        cf_material_set_uniform_cs(material, "u_threshold", &threshold, CF_UNIFORM_TYPE_FLOAT, 1);
-        cf_material_set_uniform_cs(material, "u_hysteresis", &weight, CF_UNIFORM_TYPE_FLOAT, 1);
-        CF_Texture target = cf_canvas_get_target(canvas);
-        CF_ComputeDispatch dispatch = cf_compute_dispatch_defaults(1, 1, 1);
-        dispatch.rw_textures = &target;
-        dispatch.rw_texture_count = 1;
-        cf_dispatch_compute(shader, material, dispatch);
+        cf_material_set_uniform_fs(material, "u_texel_size", texel, CF_UNIFORM_TYPE_FLOAT2, 1);
+        cf_material_set_uniform_fs(material, "u_history_offset", offset, CF_UNIFORM_TYPE_FLOAT2, 1);
+        cf_material_set_uniform_fs(material, "u_history_valid", &valid, CF_UNIFORM_TYPE_INT, 1);
+        cf_material_set_uniform_fs(material, "u_threshold", &threshold, CF_UNIFORM_TYPE_FLOAT, 1);
+        cf_material_set_uniform_fs(material, "u_hysteresis", &weight, CF_UNIFORM_TYPE_FLOAT, 1);
+        cf_apply_canvas(canvas, true);
+        cf_apply_mesh(mesh);
+        cf_apply_shader(shader, material);
+        cf_draw_elements();
         cf_app_draw_onto_screen(false);
         CF_Readback readback = cf_canvas_readback(canvas);
         uint16_t pixels[W * H][4];
@@ -103,7 +103,10 @@ bool test_radiance_history()
         cf_destroy_material(material);
     }
     if (shader.id) {
-        cf_destroy_compute_shader(shader);
+        cf_destroy_shader(shader);
+    }
+    if (mesh.id) {
+        cf_destroy_mesh(mesh);
     }
     return ok;
 }

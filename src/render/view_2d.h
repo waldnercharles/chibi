@@ -42,6 +42,13 @@ typedef struct
     bool grid_aligned;
 } render_view_2d_frame;
 
+/* Rasters are whole multiples of this many pixels, so work grids at scales of
+ * 1/2^n up to 1/8 have cells of whole pixels. */
+#define RENDER_VIEW_2D_RASTER_STEP 8
+/* The coarsest work grid, as a fraction of the raster: color at an eighth of
+ * the lowest HRC resolution. */
+#define RENDER_VIEW_2D_MIN_SCALE .01f
+
 typedef struct
 {
     float center, span, margin, scale, min_scale;
@@ -60,8 +67,9 @@ static inline bool render_view_2d_axis(render_view_2d_axis_input input, render_v
 {
     if (!frame || !isfinite(input.center) || !isfinite(input.span) ||
         input.span <= 0 || input.output_pixels < 2 || !isfinite(input.margin) ||
-        input.margin < 0 || !isfinite(input.scale) || input.scale < .1f ||
-        input.scale > 1 || !isfinite(input.min_scale) || input.min_scale < .1f ||
+        input.margin < 0 || !isfinite(input.scale) ||
+        input.scale < RENDER_VIEW_2D_MIN_SCALE || input.scale > 1 ||
+        !isfinite(input.min_scale) || input.min_scale < RENDER_VIEW_2D_MIN_SCALE ||
         input.min_scale > input.scale || input.max_pixels < input.output_pixels) {
         return false;
     }
@@ -73,8 +81,9 @@ static inline bool render_view_2d_axis(render_view_2d_axis_input input, render_v
         return false;
     }
 
-    /* Reserve one cell at the lowest adaptive scale plus two pixels so snapping
-     * never changes texture dimensions as the camera moves or scale adapts. */
+    /* Reserve one work cell at the lowest adaptive scale plus two pixels so
+     * snapping never changes texture dimensions as the camera moves or scale
+     * adapts. */
     int reserve = (int)ceilf(1.0f / input.min_scale) + 2;
     if (input.max_pixels - input.output_pixels < reserve) {
         frame->raster_pixels = input.output_pixels;
@@ -92,9 +101,14 @@ static inline bool render_view_2d_axis(render_view_2d_axis_input input, render_v
         return false;
     }
     int base_pixels = (int)ceil(requested - 1e-6);
-    int pixels = base_pixels + reserve;
-    if (pixels > input.max_pixels) {
-        pixels = input.max_pixels;
+    int step = RENDER_VIEW_2D_RASTER_STEP;
+    int pixels = (base_pixels + reserve + step - 1) / step * step;
+    int limit = input.max_pixels / step * step;
+    if (limit - input.output_pixels < reserve) {
+        limit = input.max_pixels;
+    }
+    if (pixels > limit) {
+        pixels = limit;
         base_pixels = pixels - reserve;
         margin = fminf(margin, (base_pixels - input.output_pixels) / (2 * pixels_per_unit));
     }

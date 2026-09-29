@@ -1,7 +1,7 @@
 // Stylized 2D planar image mapping. HRC supplies the already-lit source.
 // No recursive feedback, offscreen reconstruction, refraction or extra lights.
 layout(set = 2, binding = 1) uniform sampler2D u_scene;
-layout(set = 3, binding = 1) uniform Params {
+layout(set = 3, binding = 1) uniform shd_uniforms {
     vec4 u_view;
     vec4 u_plane;
     vec4 u_tint;

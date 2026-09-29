@@ -5,10 +5,8 @@ components:
     ambient: 1.0
     debug_view: 1
     falloff: 1.0
-    max_scale: 0.25
-    min_scale: 0.25
+    min_resolution: 0.25
     particle_focal_length: 300.0
-    reconstruction_scale: 1.0
-    scale: 0.25
+    resolution: 0.25
     target_fps: 60.0
     trace_levels: 1

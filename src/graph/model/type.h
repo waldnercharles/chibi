@@ -12,6 +12,7 @@ typedef struct
     size_t offset;
     size_t size; /* byte size of the field (needed to copy PIN_STRUCT fields) */
     const char *type_name; /* C spelling, or a nominal handle type such as "ecs.entity". */
+    const char *description; /* First paragraph of the field's comment, or NULL. */
 } type_field;
 
 typedef struct

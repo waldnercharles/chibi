@@ -11,12 +11,22 @@ enum
     CURR_W = 3
 };
 
-static CF_StorageBuffer interval_buffer(int width)
+static CF_Canvas level_canvas(int width, CF_PixelFormat format)
 {
-    CF_StorageBufferParams params = cf_storage_buffer_defaults(width * WORLD_H * 8);
-    params.compute_readable = true;
-    params.compute_writable = true;
-    return cf_make_storage_buffer(params);
+    CF_CanvasParams params = cf_canvas_defaults(width, WORLD_H);
+    params.target.pixel_format = format;
+    params.target.filter = CF_FILTER_NEAREST;
+    return cf_make_canvas(params);
+}
+
+static void draw_pass(CF_Mesh mesh, CF_Shader shader, CF_Material material, CF_Canvas target, int width)
+{
+    cf_apply_canvas(target, true);
+    cf_apply_mesh(mesh);
+    cf_apply_shader(shader, material);
+    cf_apply_viewport(0, 0, width, WORLD_H);
+    cf_apply_scissor(0, 0, width, WORLD_H);
+    cf_draw_elements();
 }
 
 static bool check_paths(CF_Canvas canvas, const char *name, float segments[4][4])
@@ -50,7 +60,10 @@ static bool check_paths(CF_Canvas canvas, const char *name, float segments[4][4]
             double want = direction == 1
                             ? (paths[0][channel] + paths[1][channel]) * .5
                             : paths[direction / 2][channel];
-            float actual = pixels[2][direction][channel];
+            /* Levels store directions evens first; see hrc/hrc_slots.shd. */
+            int slot = direction & 1 ? (CURR_W + 1) / 2 + direction / 2
+                                     : direction / 2;
+            float actual = pixels[2][slot][channel];
             double tolerance = channel == 3
                                  ? .002 * fmax(fmin(want, 1 - want), .000001)
                                  : .002 * fmax(want, .01);
@@ -67,44 +80,42 @@ bool test_radiance_intervals()
 {
     /* At the center row, even directions traverse A or B alone. The odd
      * direction combines them. Populate both far directions identically so
-     * all three have an independent analytic reference. */
-    const char *seed_source = "#include \"hrc_common.shd\"\n"
-                              "layout(local_size_x=32) in;\n"
-                              "layout(std430,set=1,binding=0) writeonly buffer "
-                              "Seed { uvec2 data[]; };\n"
-                              "layout(set=2,binding=0) uniform Inputs { vec4 "
-                              "segments[4]; };\n"
-                              "void main(){int "
-                              "i=int(gl_GlobalInvocationID.x);if(i>=20)return;"
-                              "vec4 value=vec4(0);"
-                              "if(i==8)value=segments[0];"
-                              "if(i==6||i==7)value=segments[1];"
-                              "if(i==9)value=segments[2];"
-                              "if(i==14||i==15)value=segments[3];"
-                              "data[i]=f16_store(value);}\n";
+     * all three have an independent analytic reference. Levels are half-float
+     * render targets, as in production. */
     const char
-        *decode_source = "#include \"hrc_common.shd\"\n"
-                         "layout(local_size_x=3,local_size_y=5) in;\n"
-                         "layout(std430,set=0,binding=0) readonly buffer "
-                         "Result { uvec2 data[]; };\n"
-                         "layout(set=1,binding=0,rgba32f) uniform writeonly "
-                         "image2D result_image;\n"
-                         "void main(){ivec2 p=ivec2(gl_GlobalInvocationID.xy);"
-                         "vec4 value=f16_load(data[p.y*3+p.x]);"
-                         "imageStore(result_image,p,vec4(value.rgb,exp(-value."
-                         "a)));}\n";
-    CF_ComputeShader seed = cf_make_compute_shader_from_source(seed_source);
-    CF_ComputeShader extend = cf_make_compute_shader("hrc/extend.shd");
-    CF_ComputeShader decode = cf_make_compute_shader_from_source(decode_source);
+        *vertex_source = "layout(location=0) in vec2 in_pos;\n"
+                         "void main(){gl_Position=vec4(in_pos,0.0,1.0);}\n";
+    const char
+        *seed_source = "layout(location=0) out vec4 out_value;\n"
+                       "layout(set=3,binding=0) uniform uniform_block { vec4 "
+                       "segments[4]; };\n"
+                       "void main(){ivec2 p=ivec2(gl_FragCoord.xy);"
+                       "int i=p.y*4+p.x;vec4 value=vec4(0);"
+                       "if(i==8)value=segments[0];"
+                       "if(i==6||i==7)value=segments[1];"
+                       "if(i==9)value=segments[2];"
+                       "if(i==14||i==15)value=segments[3];"
+                       "out_value=value;}\n";
+    const char *decode_source = "layout(location=0) out vec4 out_value;\n"
+                                "layout(set=2,binding=0) uniform sampler2D "
+                                "u_curr;\n"
+                                "void main(){vec4 v=texelFetch(u_curr,"
+                                "ivec2(gl_FragCoord.xy),0);"
+                                "out_value=vec4(v.rgb,exp(-v.a));}\n";
+    CF_Shader seed = cf_make_shader_from_source(vertex_source, seed_source);
+    CF_Shader extend = cf_make_shader("/chibi-render/hrc/pass.vert", "/chibi-render/hrc/extend.frag");
+    CF_Shader decode = cf_make_shader_from_source(vertex_source, decode_source);
+    const float vertices[6] = { -1, -1, 3, -1, -1, 3 };
+    CF_VertexAttribute attribute = { .name = "in_pos",
+                                     .format = CF_VERTEX_FORMAT_FLOAT2 };
+    CF_Mesh mesh = cf_make_mesh(sizeof vertices, &attribute, 1, 2 * (int)sizeof(float));
+    cf_mesh_update_vertex_data(mesh, (void *)vertices, 3);
     CF_Material material = cf_make_material();
-    CF_StorageBuffer prev = interval_buffer(PREV_W);
-    CF_StorageBuffer curr = interval_buffer(CURR_W);
-    CF_CanvasParams params = cf_canvas_defaults(CURR_W, WORLD_H);
-    params.target.pixel_format = CF_PIXEL_FORMAT_R32G32B32A32_FLOAT;
-    params.target.usage |= CF_TEXTURE_USAGE_COMPUTE_STORAGE_WRITE_BIT;
-    CF_Canvas canvas = cf_make_canvas(params);
-    bool ok = seed.id && extend.id && decode.id && material.id && prev.id &&
-              curr.id && canvas.id;
+    CF_Canvas prev = level_canvas(PREV_W, CF_PIXEL_FORMAT_R16G16B16A16_FLOAT);
+    CF_Canvas curr = level_canvas(CURR_W, CF_PIXEL_FORMAT_R16G16B16A16_FLOAT);
+    CF_Canvas canvas = level_canvas(CURR_W, CF_PIXEL_FORMAT_R32G32B32A32_FLOAT);
+    bool ok = seed.id && extend.id && decode.id && mesh.id && material.id &&
+              prev.id && curr.id && canvas.id;
     const struct
     {
         const char *name;
@@ -128,55 +139,40 @@ bool test_radiance_intervals()
                 { 0, 0, 4, cases[i].tau[3] },
             };
             cf_app_update(NULL);
-            cf_material_set_uniform_cs(material, "segments", segments, CF_UNIFORM_TYPE_FLOAT4, 4);
-            CF_ComputeDispatch dispatch = cf_compute_dispatch_defaults(1, 1, 1);
-            dispatch.rw_buffers = &prev;
-            dispatch.rw_buffer_count = 1;
-            cf_dispatch_compute(seed, material, dispatch);
-
-            int values[] = { 1, WORLD_W, WORLD_H, PREV_W, CURR_W };
-            const char *names[] = { "u_cascade", "u_world_w", "u_world_h", "u_prev_w", "u_curr_w" };
-            for (int j = 0; j < 5; j++) {
-                cf_material_set_uniform_cs(material, names[j], values + j, CF_UNIFORM_TYPE_INT, 1);
+            cf_material_set_uniform_fs(material, "segments", segments, CF_UNIFORM_TYPE_FLOAT4, 4);
+            draw_pass(mesh, seed, material, prev, PREV_W);
+            int values[] = { 1, 0, WORLD_W, WORLD_H };
+            const char *names[] = { "u_cascade", "u_transposed", "u_world_w", "u_world_h" };
+            for (int j = 0; j < 4; j++) {
+                cf_material_set_uniform_fs(material, names[j], values + j, CF_UNIFORM_TYPE_INT, 1);
             }
-            dispatch.ro_buffers = &prev;
-            dispatch.ro_buffer_count = 1;
-            dispatch.rw_buffers = &curr;
-            cf_dispatch_compute(extend, material, dispatch);
-
-            CF_Texture target = cf_canvas_get_target(canvas);
-            dispatch.ro_buffers = &curr;
-            dispatch.rw_buffers = NULL;
-            dispatch.rw_buffer_count = 0;
-            dispatch.rw_textures = &target;
-            dispatch.rw_texture_count = 1;
-            cf_dispatch_compute(decode, material, dispatch);
+            cf_material_set_texture_fs(material, "u_prev", cf_canvas_get_target(prev));
+            draw_pass(mesh, extend, material, curr, CURR_W);
+            cf_material_set_texture_fs(material, "u_curr", cf_canvas_get_target(curr));
+            draw_pass(mesh, decode, material, canvas, CURR_W);
             cf_app_draw_onto_screen(false);
             bool passed = check_paths(canvas, cases[i].name, segments);
             printf("%s: HRC intervals %s\n", passed ? "PASS" : "FAIL", cases[i].name);
             ok &= passed;
         }
     }
-    if (canvas.id) {
-        cf_destroy_canvas(canvas);
-    }
-    if (curr.id) {
-        cf_destroy_storage_buffer(curr);
-    }
-    if (prev.id) {
-        cf_destroy_storage_buffer(prev);
+    CF_Canvas canvases[] = { canvas, curr, prev };
+    for (int i = 0; i < 3; i++) {
+        if (canvases[i].id) {
+            cf_destroy_canvas(canvases[i]);
+        }
     }
     if (material.id) {
         cf_destroy_material(material);
     }
-    if (decode.id) {
-        cf_destroy_compute_shader(decode);
+    if (mesh.id) {
+        cf_destroy_mesh(mesh);
     }
-    if (extend.id) {
-        cf_destroy_compute_shader(extend);
-    }
-    if (seed.id) {
-        cf_destroy_compute_shader(seed);
+    CF_Shader shaders[] = { decode, extend, seed };
+    for (int i = 0; i < 3; i++) {
+        if (shaders[i].id) {
+            cf_destroy_shader(shaders[i]);
+        }
     }
     return ok;
 }

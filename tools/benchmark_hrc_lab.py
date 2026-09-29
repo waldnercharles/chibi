@@ -1,5 +1,13 @@
 #!/usr/bin/env python3
-"""Capture static HRC fixtures at several scales and preserve comparison evidence."""
+"""Capture static HRC fixtures at several resolutions and preserve comparison evidence.
+
+Each case copies the project and fixes its HRC prototype with adaptive off: the
+finest light grid at one --resolution, and the shared color resolution, gather
+resolution, trace levels and upscale mode. Every case records frame
+time (median, p95, p99) and lighting GPU milliseconds per frame, the sum of the
+HRC passes, Surface light, Emission mipmaps and Composite. Frames are compared
+with the resolution 1 case of the same scene and repeat.
+"""
 import argparse
 import base64
 import hashlib
@@ -34,22 +42,10 @@ CLEAN_SCENES = [
     'HRCLabOpaqueInterior',
 ]
 
-GPU_LABELS = [
-    'Material tile binning',
-    'Material raster batches',
-    'Fluid density raster',
-    'HRC prefilter',
-    'HRC luminance prefilter',
-    'HRC +X/+Y/-X/-Y: Trace, Extend, Merge',
-    'HRC luminance +X/+Y/-X/-Y: Trace, Extend, Merge',
-    'HRC gather',
-    'HRC luminance gather',
-    'HRC filter',
-    'HRC luminance filter',
-    'HRC bounce',
-    'HRC luminance bounce',
-    'HRC composite',
-]
+# Passes outside the "HRC " prefix that lighting also pays for.
+LIGHTING_PASSES = ['Surface light', 'Emission mipmaps', 'Composite']
+COLOR_RESOLUTIONS = ['Full', 'Half', 'Quarter', 'Eighth']
+GATHER_RESOLUTIONS = ['Full', 'Half']
 
 UPSCALE_MODE_NAMES = {
     0: 'plain bilinear',
@@ -73,27 +69,30 @@ def fingerprint(path):
     return digest.hexdigest()
 
 
-def prepare(args, output, scene, scale):
+def lighting_ms(passes):
+    return sum(item['ms'] for item in passes
+               if item['name'].startswith('HRC ') or item['name'] in LIGHTING_PASSES)
+
+
+def prepare(args, output, scene, resolution):
     project = output / 'project'
     shutil.copytree(args.project, project, ignore=shutil.ignore_patterns('.chibi', 'build'))
     runner = Runner(args.build, output, project)
     asset = runner.author('readAsset', dict(kind='prototype', name=args.hrc_prototype))
+    fields = dict(adaptive=False, resolution=resolution,
+                  color_resolution=args.color_resolution,
+                  gather_resolution=args.gather_resolution,
+                  trace_levels=args.trace_levels, upscale_mode=args.upscale_mode)
     runner.author('buildPrototype', dict(
         kind='prototype', name=args.hrc_prototype, expected_hash=asset['hash'],
-        operations=[
-            dict(op='set_field', component='GameHRC2D', field='adaptive', value=False),
-            dict(op='set_field', component='GameHRC2D', field='scale', value=scale),
-            dict(op='set_field', component='GameHRC2D', field='luminance_scale', value=args.luminance_scale),
-            dict(op='set_field', component='GameHRC2D', field='luminance_mode', value=args.luminance_mode),
-            dict(op='set_field', component='GameHRC2D', field='trace_levels', value=args.trace_levels),
-            dict(op='set_field', component='GameHRC2D', field='upscale_mode', value=args.upscale_mode),
-        ]))
+        operations=[dict(op='set_field', component='GameHRC2D', field=field, value=value)
+                    for field, value in fields.items()]))
     runner.author('validateAsset', dict(kind='prototype', name=args.hrc_prototype))
     runner.author('validateAsset', dict(kind='scene', name=scene))
     return runner
 
 
-def render(args, output, runner, scene, scale, repeat):
+def render(args, output, runner, scene, resolution, repeat):
     request = dict(
         contract=1,
         operation='preview_scene',
@@ -102,6 +101,7 @@ def render(args, output, runner, scene, scale, repeat):
         frames=1,
         render_frames=args.render_frames,
         freeze_simulation=True,
+        pass_timing=True,
         width=args.width,
         height=args.height,
     )
@@ -120,7 +120,7 @@ def render(args, output, runner, scene, scale, repeat):
     (output / 'render.log').write_text(process.stderr)
     (output / 'response.json').write_text(process.stdout)
     if process.returncode:
-        raise RuntimeError(f'render failed for {scene} scale {scale}; see {output / "render.log"}')
+        raise RuntimeError(f'render failed for {scene} resolution {resolution}; see {output / "render.log"}')
     response = json.loads(process.stdout)
     if not response.get('ok'):
         raise RuntimeError(response)
@@ -131,12 +131,16 @@ def render(args, output, runner, scene, scale, repeat):
     expected_samples = args.render_frames - 16
     if performance['samples'] != expected_samples:
         raise RuntimeError(f'expected {expected_samples} samples, got {performance["samples"]}')
+    if abs(performance['hrc_resolution'] - resolution) > 1e-6:
+        raise RuntimeError(f'{scene} rendered at HRC resolution {performance["hrc_resolution"]:g}; '
+                           'does the scene override GameHRC2D?')
+    lighting =lighting_ms(performance['passes'])
     (output / 'frame.png').write_bytes(base64.b64decode(result['preview']['data']))
     report = dict(
         scene=scene,
-        scale=scale,
-        luminance_scale=args.luminance_scale,
-        luminance_mode=args.luminance_mode,
+        resolution=resolution,
+        color_resolution=args.color_resolution,
+        gather_resolution=args.gather_resolution,
         repeat=repeat,
         trace_levels=args.trace_levels,
         upscale_mode=args.upscale_mode,
@@ -149,27 +153,29 @@ def render(args, output, runner, scene, scale, repeat):
         hrc_prototype=args.hrc_prototype,
         backend=result['backend'],
         performance=performance,
-        gpu_label_groups=GPU_LABELS,
+        lighting_gpu_ms=lighting,
         capture=result.get('metal_capture'),
         directory=output.name,
         project_sha256=fingerprint(runner.project),
     )
     write_json(output / 'report.json', report)
     print(
-        f'{scene:28} scale={scale:g}: median {performance["median_ms"]:.2f} ms, '
-        f'p95 {performance["p95_ms"]:.2f} ms', flush=True)
+        f'{scene:28} resolution={resolution:g} color={args.color_resolution} '
+        f'gather={args.gather_resolution}: '
+        f'median {performance["median_ms"]:.2f} ms, p95 {performance["p95_ms"]:.2f} ms, '
+        f'p99 {performance["p99_ms"]:.2f} ms, lighting GPU {lighting:.2f} ms', flush=True)
     return report
 
 
 def compare_frozen(output, reports):
     comparisons = []
     for candidate in reports:
-        if candidate.get('purpose') != 'benchmark' or candidate['scale'] == 1:
+        if candidate.get('purpose') != 'benchmark' or candidate['resolution'] == 1:
             continue
         reference = next((item for item in reports
                           if item.get('purpose') == 'benchmark'
                           and item['scene'] == candidate['scene']
-                          and item['scale'] == 1
+                          and item['resolution'] == 1
                           and item['repeat'] == candidate['repeat']), None)
         if not reference:
             continue
@@ -178,7 +184,8 @@ def compare_frozen(output, reports):
         metrics = json.loads(subprocess.check_output(
             ['node', str(ROOT / 'tools/compare_neon_frames.mjs'), *paths], text=True))
         comparisons.append(dict(
-            scene=candidate['scene'], scale=candidate['scale'], repeat=candidate['repeat'],
+            scene=candidate['scene'], resolution=candidate['resolution'],
+            repeat=candidate['repeat'],
             reference=paths[0], candidate=paths[1], metrics=metrics))
     write_json(output / 'comparisons.json', comparisons)
     return comparisons
@@ -187,35 +194,37 @@ def compare_frozen(output, reports):
 def summary(output, reports, comparisons=()):
     write_json(output / 'summary.json', reports)
     comparison_by_key = {
-        (item['scene'], item['scale'], item['repeat']): item['metrics']
+        (item['scene'], item['resolution'], item['repeat']): item['metrics']
         for item in comparisons
     }
     lines = [
         '# HRC lab results', '',
         'Frozen scenes use 240 renderer warmup frames and discard the first 16 measured frames.',
-        'Frame time includes GPU completion; it is not a per-dispatch GPU timestamp.', '',
+        'Frame time includes GPU completion; it is not a per-dispatch GPU timestamp.',
+        'Lighting GPU ms is the per-frame average of the passes named `HRC …`, '
+        + ', '.join(f'`{name}`' for name in LIGHTING_PASSES) + ', measured with '
+        f'`{reports[0]["performance"]["pass_timing_source"]}`; pass timing also runs '
+        'during the frame-time samples.' if reports else '', '',
         f'Reconstruction mode: {reports[0]["upscale_mode"]} ({reports[0]["upscale_mode_name"]}).' if reports else '',
         '',
-        'Every row links to its captured `frame.png`.', '',
-        '| Scene | Color scale | Luminance scale | Luminance mode | Median ms | p95 ms | p99 ms | Mean RGB error vs 1.0 | Screenshot |',
-        '| --- | ---: | ---: | --- | ---: | ---: | ---: | ---: | --- |',
+        'Every row links to its captured `frame.png`; `performance.passes` in each `report.json` lists every pass.', '',
+        '| Scene | Resolution | Color | Gather | Median ms | p95 ms | p99 ms '
+        '| Lighting GPU ms | Mean RGB error vs resolution 1 | Screenshot |',
+        '| --- | ---: | --- | --- | ---: | ---: | ---: | ---: | ---: | --- |',
     ]
     for report in reports:
         performance = report.get('performance')
         if not performance:
             continue
         metrics = comparison_by_key.get(
-            (report['scene'], report['scale'], report['repeat']))
+            (report['scene'], report['resolution'], report['repeat']))
         error = '—' if metrics is None else f'{metrics["mean_absolute_rgb_8bit"]:.2f}'
         link = f'[{report["directory"]}/frame.png]({report["directory"]}/frame.png)'
         lines.append(
-            f'| {report["scene"]} | {report["scale"]:g} | {report.get("luminance_scale", 0):g} | '
-            f'{report.get("luminance_mode", 0)} | '
+            f'| {report["scene"]} | {report["resolution"]:g} | {report["color_resolution"]} | '
+            f'{report["gather_resolution"]} | '
             f'{performance["median_ms"]:.2f} | {performance["p95_ms"]:.2f} | '
-            f'{performance["p99_ms"]:.2f} | {error} | {link} |')
-    lines += ['', 'GPU capture label groups:', '']
-    lines.extend(f'- `{label}`' for label in GPU_LABELS)
-    lines += ['', 'Per-pass numeric timings require opening the `.gputrace` in a Metal debugger or a backend timestamp-query implementation.']
+            f'{performance["p99_ms"]:.2f} | {report["lighting_gpu_ms"]:.2f} | {error} | {link} |')
     (output / 'summary.md').write_text('\n'.join(lines) + '\n')
 
     gallery = [
@@ -225,15 +234,14 @@ def summary(output, reports, comparisons=()):
     for report in reports:
         image = (output / report['directory'] / 'frame.png').resolve()
         gallery += [
-            f'## {report["scene"]} — color scale {report["scale"]:g}, '
-            f'luminance scale {report.get("luminance_scale", 0):g}, '
-            f'mode {report.get("luminance_mode", 0)}', '',
-            f'![{report["scene"]} color {report["scale"]:g} luminance {report.get("luminance_scale", 0):g}]({image})', '',
+            f'## {report["scene"]} — resolution {report["resolution"]:g}, '
+            f'color {report["color_resolution"]}, gather {report["gather_resolution"]}', '',
+            f'![{report["scene"]} resolution {report["resolution"]:g}]({image})', '',
         ]
     (output / 'gallery.md').write_text('\n'.join(gallery) + '\n')
 
     comparison_by_key = {
-        (item['scene'], item['scale'], item['repeat']): item['metrics']
+        (item['scene'], item['resolution'], item['repeat']): item['metrics']
         for item in comparisons
     }
     rows = []
@@ -242,16 +250,17 @@ def summary(output, reports, comparisons=()):
         if not performance:
             continue
         metrics = comparison_by_key.get(
-            (report['scene'], report['scale'], report['repeat']))
+            (report['scene'], report['resolution'], report['repeat']))
         rows.append(dict(
             scene=report['scene'],
-            scale=report['scale'],
-            luminance_scale=report.get('luminance_scale', 0),
-            luminance_mode=report.get('luminance_mode', 0),
+            resolution=report['resolution'],
+            color_resolution=report['color_resolution'],
+            gather_resolution=report['gather_resolution'],
             repeat=report['repeat'],
             image=(Path(report['directory']) / 'frame.png').as_posix(),
             median_ms=performance['median_ms'],
             p95_ms=performance['p95_ms'],
+            lighting_ms=report['lighting_gpu_ms'],
             error=None if metrics is None else metrics['mean_absolute_rgb_8bit'],
         ))
     data = json.dumps(rows, separators=(',', ':')).replace('<', '\\u003c')
@@ -314,12 +323,13 @@ def summary(output, reports, comparisons=()):
     const scenes = [...new Set(rows.map(row => row.scene))];
     for (const name of scenes) scene.add(new Option(name, name));
 
-    function formatScale(value) {{
-      return Number(value).toString();
+    function caseLabel(row) {{
+      return `resolution ${{Number(row.resolution)}} · color ${{row.color_resolution}} · ` +
+        `gather ${{row.gather_resolution}}`;
     }}
 
-    function scaleLabel(row) {{
-        return `color ${{formatScale(row.scale)}} · luminance ${{formatScale(row.luminance_scale)}} · mode ${{row.luminance_mode}}`;
+    function timing(row) {{
+      return `${{row.median_ms.toFixed(2)}} ms median · ${{row.lighting_ms.toFixed(2)}} ms lighting GPU`;
     }}
 
     function sceneRows() {{
@@ -327,7 +337,7 @@ def summary(output, reports, comparisons=()):
     }}
 
     function referenceRow(items) {{
-      return items.find(row => row.scale === 1) || items[0];
+      return items.find(row => row.resolution === 1) || items[0];
     }}
 
     function updateCandidates() {{
@@ -336,26 +346,26 @@ def summary(output, reports, comparisons=()):
       candidate.replaceChildren();
       for (const row of items) {{
         if (row === reference) continue;
-        candidate.add(new Option(scaleLabel(row), `${{row.scale}}:${{row.luminance_scale}}:${{row.repeat}}`));
+        candidate.add(new Option(caseLabel(row), `${{row.resolution}}:${{row.repeat}}`));
       }}
-      if (!candidate.options.length) candidate.add(new Option(scaleLabel(reference), 'reference'));
+      if (!candidate.options.length) candidate.add(new Option(caseLabel(reference), 'reference'));
       update();
     }}
 
     function update() {{
       const items = sceneRows();
       const reference = referenceRow(items);
-      const selected = items.find(row => `${{row.scale}}:${{row.luminance_scale}}:${{row.repeat}}` === candidate.value) ||
+      const selected = items.find(row => `${{row.resolution}}:${{row.repeat}}` === candidate.value) ||
         items.find(row => row !== reference) || reference;
       before.src = reference.image;
       after.src = selected.image;
-      before.alt = `${{reference.scene}} reference, ${{scaleLabel(reference)}}`;
-      after.alt = `${{selected.scene}} candidate, ${{scaleLabel(selected)}}`;
-      beforeLabel.textContent = `Reference · ${{scaleLabel(reference)}}`;
-      afterLabel.textContent = `Candidate · ${{scaleLabel(selected)}}`;
+      before.alt = `${{reference.scene}} reference, ${{caseLabel(reference)}}`;
+      after.alt = `${{selected.scene}} candidate, ${{caseLabel(selected)}}`;
+      beforeLabel.textContent = `Reference · ${{caseLabel(reference)}}`;
+      afterLabel.textContent = `Candidate · ${{caseLabel(selected)}}`;
       const error = selected.error === null ? 'not measured' : `${{selected.error.toFixed(2)}} RGB error`;
-      stats.innerHTML = `<strong>Reference:</strong> ${{reference.median_ms.toFixed(2)}} ms median · ` +
-        `<strong>Candidate:</strong> ${{selected.median_ms.toFixed(2)}} ms median · ` +
+      stats.innerHTML = `<strong>Reference:</strong> ${{timing(reference)}} · ` +
+        `<strong>Candidate:</strong> ${{timing(selected)}} · ` +
         `${{selected.p95_ms.toFixed(2)}} ms p95 · ${{error}}`;
       stage.style.setProperty('--position', `${{range.value}}%`);
     }}
@@ -380,11 +390,14 @@ def main():
     parser.add_argument('--scene', default='all')
     parser.add_argument('--width', type=int, default=1920)
     parser.add_argument('--height', type=int, default=1080)
-    parser.add_argument('--scale', type=float, nargs='+', default=[1.0, .75, .5])
-    parser.add_argument('--luminance-scale', type=float, default=0,
-                        help='Optional higher-resolution monochrome HRC scale; 0 disables split transport')
-    parser.add_argument('--luminance-mode', type=int, choices=[0, 1], default=0,
-                        help='0 runs independent monochrome transport; 1 derives luminance from RGB gather')
+    parser.add_argument('--resolution', type=float, nargs='+', default=[1.0, .5],
+                        help='Finest light grid as a fraction of the canvas, one case each; '
+                             'distinct values in 0.1..1, and 1 is the comparison reference')
+    parser.add_argument('--color-resolution', choices=COLOR_RESOLUTIONS, default='Full',
+                        help='Color grid relative to --resolution; below Full, brightness solves '
+                             'at --resolution and color 2, 4 or 8 times coarser')
+    parser.add_argument('--gather-resolution', choices=GATHER_RESOLUTIONS, default='Full',
+                        help='Received-light image (gather, filter, bounce) at the full canvas or half')
     parser.add_argument('--trace-levels', type=int, choices=range(1, 6), default=1)
     parser.add_argument('--upscale-mode', type=int, choices=[0, 1, 2, 3], default=1)
     parser.add_argument('--render-frames', type=int, default=180)
@@ -393,14 +406,13 @@ def main():
     args = parser.parse_args()
     if not 17 <= args.render_frames <= 1200 or args.repeat < 1:
         parser.error('use 17..1200 render frames and a positive repeat count')
-    if any(not .1 <= scale <= 1 for scale in args.scale) or len(set(args.scale)) != len(args.scale):
-        parser.error('HRC scales must be distinct values in 0.1..1')
-    if args.luminance_scale != 0 and not .1 <= args.luminance_scale <= 1:
-        parser.error('luminance scale must be 0 or a value in 0.1..1')
+    if any(not .1 <= value <= 1 for value in args.resolution) or \
+            len(set(args.resolution)) != len(args.resolution):
+        parser.error('HRC resolutions must be distinct values in 0.1..1')
     if not all(64 <= size <= 2048 for size in [args.width, args.height]):
         parser.error('dimensions must be 64..2048 pixels')
-    if args.metal_capture and (args.scene == 'all' or len(args.scale) != 1 or args.repeat != 1):
-        parser.error('Metal capture selects one scene, scale and repeat')
+    if args.metal_capture and (args.scene == 'all' or len(args.resolution) != 1 or args.repeat != 1):
+        parser.error('Metal capture selects one scene, resolution and repeat')
     args.project = args.project.resolve()
     if not args.project.is_dir():
         parser.error(f'project does not exist: {args.project}')
@@ -421,12 +433,12 @@ def main():
     )
     reports = []
     for scene in scenes:
-        for scale in args.scale:
+        for resolution in args.resolution:
             for repeat in range(1, args.repeat + 1):
-                case = args.output / f'{scene}-{scale:g}-{repeat}'
+                case = args.output / f'{scene}-{resolution:g}-{repeat}'
                 case.mkdir(parents=True, exist_ok=False)
-                runner = prepare(args, case, scene, scale)
-                report = render(args, case, runner, scene, scale, repeat)
+                runner = prepare(args, case, scene, resolution)
+                report = render(args, case, runner, scene, resolution, repeat)
                 report.update(provenance)
                 write_json(case / 'report.json', report)
                 reports.append(report)

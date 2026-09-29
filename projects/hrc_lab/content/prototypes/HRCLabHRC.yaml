@@ -6,14 +6,11 @@ components:
     falloff: 1.0
     feedback: true
     fog: 0.2
-    fps_tolerance: 0.1
     intensity: 7.5
-    max_scale: 1.0
-    min_scale: 0.1
+    min_resolution: 0.25
     particle_focal_length: 300.0
     radiance_hysteresis: 0.8
-    reconstruction_scale: 1.0
-    scale: 1.0
+    resolution: 1.0
     target_fps: 60.0
     trace_levels: 3
     upscale_mode: 1

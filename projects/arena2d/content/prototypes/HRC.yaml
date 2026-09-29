@@ -21,18 +21,13 @@ components:
     falloff: 1.0
     feedback: true
     fog: 0.15
-    fps_tolerance: 0.1
     intensity: 7.5
-    lighting_margin: 64.0
-    max_scale: 1.0
-    min_scale: 0.1
+    min_resolution: 0.25
     particle_focal_length: 300.0
     radiance_hysteresis: 1.0
-    reconstruction_scale: 1.0
-    scale: 0.5
+    resolution: 0.5
     shadow_floor: 0.0005
     specular: 1.0
-    split_frames: 1
     surface_bevel: 0.4
     surface_radius: 64.0
     surface_relief: 1.5

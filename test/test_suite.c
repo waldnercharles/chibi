@@ -208,9 +208,10 @@ int main(int argc, char **argv)
 {
     setvbuf(stdout, NULL, _IOLBF, 0);
     program_name = argc ? argv[0] : "test_suite";
-    if (argc == 2 && !strcmp(argv[1], "--radiance")) {
-        extern int radiance_run(const char *program);
-        return radiance_run(program_name);
+    if (argc == 2 &&
+        (!strcmp(argv[1], "--radiance") || !strcmp(argv[1], "--radiance-gles"))) {
+        extern int radiance_run(const char *program, bool gles);
+        return radiance_run(program_name, !strcmp(argv[1], "--radiance-gles"));
     }
     if (argc == 2 && !strcmp(argv[1], "--math-expression")) {
         registry_validate();

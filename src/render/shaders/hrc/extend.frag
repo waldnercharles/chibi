@@ -5,26 +5,20 @@
 // Stores optical depth. Serial segments add depths; alternative paths average
 // transmission (Sec 4.1, Eq 20), then convert back to optical depth.
 //
-// Buffer layout:
-//   width  = ceil(world_w / 2^n) * (2^n + 1)
-//   height = world_h
-//   index  = y * width + probe_x * directions + k
+// Level layout: element = probe_x * directions + slot of k, row = y; see
+// hrc_slots.shd.
 
-#include "hrc_common.shd"
+#include "hrc/hrc_pass.shd"
 
-layout(std430, set = 0, binding = 0) readonly  buffer PrevBuf { HRC_INTERVAL_STORAGE data[]; } u_prev;
-layout(std430, set = 1, binding = 0) writeonly buffer CurrBuf { HRC_INTERVAL_STORAGE data[]; } u_curr;
+layout(set = 2, binding = 0) uniform sampler2D u_prev;
 
-layout(set = 2, binding = 0) uniform Params
+layout(set = 3, binding = 0) uniform uniform_block
 {
 	int u_cascade;
+	int u_transposed;
 	int u_world_w;
 	int u_world_h;
-	int u_prev_w;
-	int u_curr_w;
 };
-
-layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 
 Interval merge(Interval a, Interval b)
 {
@@ -34,12 +28,17 @@ Interval merge(Interval a, Interval b)
 	);
 }
 
-float blend_tau(float a, float b)
+float blend_depth(float a, float b)
 {
 	// -log((exp(-a) + exp(-b)) / 2), without underflow for opaque paths.
 	// Equal depths also cover two half-float infinities without inf - inf.
 	if (a == b) return a;
 	return min(a, b) - log(0.5 + 0.5 * exp(-abs(a - b)));
+}
+
+vec2 blend_depth(vec2 a, vec2 b)
+{
+	return vec2(blend_depth(a.x, b.x), blend_depth(a.y, b.y));
 }
 
 Interval T_load_prev(int probe_x, int k, int y)
@@ -49,12 +48,11 @@ Interval T_load_prev(int probe_x, int k, int y)
 	int num_probes = probe_count(u_world_w, prev_n);
 
 	if (probe_x < 0 || probe_x >= num_probes || k < 0 || k >= directions || y < 0 || y >= u_world_h) {
-		return Interval(vec3(0.0), 0.0);
+		return Interval(HRC_LIGHT(0.0), HRC_DEPTH(0.0));
 	}
 
-	int idx = y * u_prev_w + probe_x * directions + k;
-	vec4 v = f16_load(u_prev.data[idx]);
-	return Interval(v.rgb, v.w);
+	int element = probe_x * directions + hrc_parity_slot(k, directions);
+	return interval_fetch(u_prev, hrc_texel(element, y, u_transposed));
 }
 
 int far_y_offset(int k)
@@ -86,21 +84,15 @@ Interval extend(int probe_x, int k, int y)
 
 	return Interval(
 		(A.rad + B.rad) * 0.5,
-		blend_tau(A.tau, B.tau)
+		blend_depth(A.tau, B.tau)
 	);
 }
 
 void main()
 {
-	ivec2 gid = ivec2(gl_GlobalInvocationID.xy);
-	if (gid.x >= u_curr_w || gid.y >= u_world_h) return;
-
 	int directions = (1 << u_cascade) + 1;
-	int probe_x = gid.x / directions;
-	int k = gid.x - probe_x * directions;
-
-	Interval iv = extend(probe_x, k, gid.y);
-
-	int out_idx = gid.y * u_curr_w + gid.x;
-	u_curr.data[out_idx] = f16_store(vec4(iv.rad, iv.tau));
+	ivec2 er = hrc_element_row(u_transposed);
+	int probe_x = er.x / directions;
+	int k = hrc_parity_item(er.x - probe_x * directions, directions);
+	out_value = interval_texel(extend(probe_x, k, er.y));
 }

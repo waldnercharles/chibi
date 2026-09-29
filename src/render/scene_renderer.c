@@ -7,6 +7,7 @@
 #include "render/fluid_raster.h"
 #include "render/fog.h"
 #include "render/geometry_2d.h"
+#include "render/gpu_clock.h"
 #include "render/gpu_timing.h"
 #include "render/material.h"
 #include "render/material_raster.h"
@@ -27,7 +28,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <time.h>
 
 typedef struct
 {
@@ -53,8 +53,13 @@ struct app_scene_renderer
     CF_Shader background_shader;
     GameStarfield2D background_style;
     engine_viewport_camera background_camera;
-    bool background_valid;
-    double previous_frame;
+    bool background_valid, gpu_clock;
+    /* The scene's GPU work each frame, for adaptive lighting resolution. */
+    render_gpu_span span;
+    /* Without GPU timestamps, the previous frame's start in ticks. */
+    uint64_t frame_start;
+    /* Tile groups numbered so far this frame. */
+    int tile_groups;
     render_material_entity *entities;
     draw_actor *actors;
     ecs_world *world;
@@ -65,6 +70,8 @@ struct app_scene_renderer
     render_programs *fragment;
     int *fragment_programs;
     char error[256];
+    /* Lighting settings adjusted to what HRC supports, for authors. */
+    char warning[512];
 };
 
 void app_scene_renderer_initialize()
@@ -81,11 +88,11 @@ app_scene_renderer *app_scene_renderer_new()
 {
     app_scene_renderer *renderer = xcalloc(1, sizeof *renderer);
     renderer->fog = render_fog_new();
-    if (cf_query_backend() == CF_BACKEND_TYPE_GLES3) {
-        return renderer;
-    }
     renderer->raster = render_material_raster_new();
     renderer->radiance = render_radiance_new();
+    /* Adaptive lighting resolution times lighting with GPU timestamps. */
+    renderer->gpu_clock = cf_query_backend() == CF_BACKEND_TYPE_METAL &&
+                          render_gpu_clock_install();
     if (!renderer->raster || !renderer->radiance) {
         app_scene_renderer_free(renderer);
         return NULL;
@@ -105,6 +112,9 @@ void app_scene_renderer_free(app_scene_renderer *renderer)
     render_post_2d_free(renderer->hdr);
     render_fog_free(renderer->fog);
     render_radiance_free(renderer->radiance);
+    if (renderer->gpu_clock) {
+        render_gpu_clock_release();
+    }
     render_reflections_free(renderer->reflections);
     afree(renderer->reflectors);
     if (renderer->output.id) {
@@ -137,6 +147,11 @@ static bool arena_ready(app_scene_renderer *renderer)
 const char *app_scene_renderer_error(const app_scene_renderer *renderer)
 {
     return renderer ? renderer->error : "";
+}
+
+const char *app_scene_renderer_warning(const app_scene_renderer *renderer)
+{
+    return renderer ? renderer->warning : "";
 }
 
 int app_scene_renderer_particle_count(const app_scene_renderer *renderer)
@@ -272,9 +287,13 @@ void app_scene_renderer_reset(app_scene_renderer *renderer)
     }
 }
 
-float app_scene_renderer_hrc_scale(const app_scene_renderer *renderer)
+bool app_scene_renderer_lighting_status(const app_scene_renderer *renderer, render_radiance_status *status)
 {
-    return render_radiance_get_settings(renderer->radiance).scale;
+    if (!renderer || !renderer->radiance) {
+        return false;
+    }
+    *status = render_radiance_get_status(renderer->radiance);
+    return true;
 }
 
 float app_scene_renderer_time(const app_scene_renderer *renderer)
@@ -471,6 +490,23 @@ static void reflect_rect(
     apush(renderer->reflectors, r);
 }
 
+static bool edge_cell(const material_mask *mask, int reach, int x, int y)
+{
+    const unsigned char *cells = material_mask_occupancy(mask).cells;
+    if (!cells[y * mask->width + x]) {
+        return false;
+    }
+    for (int d = 1; d <= reach; d++) {
+        if (x < d || y < d || x + d >= mask->width || y + d >= mask->height ||
+            !cells[y * mask->width + x - d] || !cells[y * mask->width + x + d] ||
+            !cells[(y - d) * mask->width + x] || !cells[(y + d) * mask->width + x]) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* One box per row run of cells within the border width of the mask's edge. */
 static void mask_edges(
     app_scene_renderer *renderer,
     const material_mask *mask,
@@ -492,34 +528,69 @@ static void mask_edges(
     float c = cosf(heading), s = sinf(heading);
     for (int y = 0; y < mask->height; y++) {
         for (int x = 0; x < mask->width; x++) {
-            if (!material_mask_occupancy(mask).cells[y * mask->width + x]) {
+            if (!edge_cell(mask, reach, x, y)) {
                 continue;
             }
-            bool border = false;
-            for (int d = 1; d <= reach && !border; d++) {
-                border = x < d || y < d || x + d >= mask->width || y + d >= mask->height;
-                if (!border) {
-                    border = !material_mask_occupancy(mask).cells[y * mask->width + x - d] ||
-                             !material_mask_occupancy(mask).cells[y * mask->width + x + d] ||
-                             !material_mask_occupancy(mask).cells[(y - d) * mask->width + x] ||
-                             !material_mask_occupancy(mask).cells[(y + d) * mask->width + x];
-                }
+            int run = 1;
+            while (x + run < mask->width && edge_cell(mask, reach, x + run, y)) {
+                run++;
             }
-            if (!border) {
-                continue;
-            }
-            float px = (x + .5f - mask->width * .5f) * mask->cell_size;
+            float px = (x + run * .5f - mask->width * .5f) * mask->cell_size;
             float py = (y + .5f - mask->height * .5f) * mask->cell_size;
             GameTransform p = { position.x + c * px - s * py,
                                 position.y + s * px + c * py };
-            GameAppearance cell = { .shape = GAME_SHAPE_BOX,
-                                    .width = mask->cell_size,
-                                    .height = mask->cell_size,
-                                    .antialias = .1f,
-                                    .color = look->border_color };
-            append_entity(renderer, &p, &cell, -heading, NULL, &edge);
+            GameAppearance cells = { .shape = GAME_SHAPE_BOX,
+                                     .width = run * mask->cell_size,
+                                     .height = mask->cell_size,
+                                     .antialias = .1f,
+                                     .color = look->border_color };
+            append_entity(renderer, &p, &cells, -heading, NULL, &edge);
+            x += run - 1;
         }
     }
+}
+
+/* Marks the entities appended since first as the pieces of a tile group, and
+ * pads their bounds for the pixel footprint their coverage integrates. */
+static void tile_group(app_scene_renderer *renderer, int first, float group)
+{
+    for (int i = first; i < acount(renderer->entities); i++) {
+        renderer->entities[i].tile_group = group;
+        renderer->entities[i].extent[0] += 2 * renderer->pixel_aa;
+        renderer->entities[i].extent[1] += 2 * renderer->pixel_aa;
+    }
+}
+
+/* Marching squares cuts a piece from its bounding rectangle with at most one
+ * line. Writes that line in the piece's frame, Y up about the rectangle's
+ * center, as a box cut (see render_material_entity); false for polygons
+ * that need more than one. */
+static bool polygon_cut(const material_polygon *polygon, material_rect rect, float cut[4])
+{
+    int count = polygon->count, cuts = 0;
+    float cx = 0, cy = 0;
+    for (int i = 0; i < count; i++) {
+        cx += (polygon->points[2 * i] - rect.x) / count;
+        cy += (rect.y - polygon->points[2 * i + 1]) / count;
+    }
+    for (int i = 0; i < count; i++) {
+        int j = (i + 1) % count;
+        float ax = polygon->points[2 * i] - rect.x,
+              ay = rect.y - polygon->points[2 * i + 1];
+        float bx = polygon->points[2 * j] - rect.x,
+              by = rect.y - polygon->points[2 * j + 1];
+        if (ax == bx || ay == by) {
+            continue;
+        }
+        float nx = by - ay, ny = ax - bx, length = hypotf(nx, ny);
+        float side = nx * (cx - ax) + ny * (cy - ay) > 0 ? -1 : 1;
+        cut[0] = side * nx / length;
+        cut[1] = side * ny / length;
+        cut[2] = cut[0] * ax + cut[1] * ay;
+        cut[3] = 1;
+        cuts++;
+    }
+    return cuts <= 1;
 }
 
 static bool mask_visible(
@@ -659,6 +730,7 @@ static void collect(
 )
 {
     asetlen(renderer->entities, 0);
+    renderer->tile_groups = 0;
     aclear(renderer->reflectors);
     collect_order(renderer, world);
     for (int actor = 0; actor < acount(renderer->actors); actor++) {
@@ -733,6 +805,13 @@ static void collect(
                     );
                 }
             }
+            /* The border comes first as the group's half, which the raster
+             * lays over the fill that follows. */
+            float group = (float)++renderer->tile_groups;
+            int first = acount(renderer->entities);
+            mask_edges(renderer, mask, position, heading, &appearance, GAME_GameMaterial_get_const(world, entity));
+            tile_group(renderer, first, group + .5f);
+            first = acount(renderer->entities);
             for (int i = 0; i < material_mask_surface(mask).count; i++) {
                 const material_polygon *polygon = &material_mask_surface(mask).polygons[i];
                 float min_x = polygon->points[0], max_x = min_x;
@@ -763,12 +842,7 @@ static void collect(
                     continue;
                 }
                 render_material_entity *draw = &alast(renderer->entities);
-                bool box = polygon->count == 4 &&
-                           polygon->points[0] == polygon->points[6] &&
-                           polygon->points[2] == polygon->points[4] &&
-                           polygon->points[1] == polygon->points[3] &&
-                           polygon->points[5] == polygon->points[7];
-                if (!box) {
+                if (!polygon_cut(polygon, rect, draw->points + 4)) {
                     draw->shape_type = RENDER_SHAPE_POLY_FILL;
                     draw->point_count = polygon->count;
                     for (int j = 0; j < polygon->count; j++) {
@@ -787,7 +861,7 @@ static void collect(
                     draw->material_frame[3] = -s;
                 }
             }
-            mask_edges(renderer, mask, position, heading, &appearance, GAME_GameMaterial_get_const(world, entity));
+            tile_group(renderer, first, group);
             continue;
         }
         if (!append_entity(
@@ -948,46 +1022,41 @@ static bool scene_lighting(app_scene_renderer *renderer, ecs_world *world, CF_V2
                            : (GameHRC2D){ .ambient = 1, .intensity = 1 };
     ecs_component_id component = GAME_COMPONENT_GameHRC2D.id;
     ecs_query query;
-    bool found = false, valid = true;
+    int settings = 0;
     if (ecs_world_component(world, component) &&
         ecs_query_begin(world, &query, &component, 1) == ECS_OK) {
         ecs_entity entity;
         while (ecs_query_next(&query, &entity)) {
-            if (ecs_entity_is_retiring(world, entity)) {
-                continue;
+            if (!ecs_entity_is_retiring(world, entity) && settings++ == 0) {
+                lighting = *GAME_GameHRC2D_get_const(world, entity);
             }
-            const GameHRC2D *source = GAME_GameHRC2D_get_const(world, entity);
-            if (found || !isfinite(source->ambient) || !isfinite(source->intensity) ||
-                !isfinite(source->fog) || !isfinite(source->shadow_floor) ||
-                !isfinite(source->luminance_scale) ||
-                !isfinite(source->lighting_margin) || source->ambient < 0 ||
-                source->intensity < 0 || source->fog < 0 || source->shadow_floor < 0 ||
-                source->lighting_margin < 0 || source->lighting_margin > 256 ||
-                source->luminance_scale < 0 || source->luminance_scale > 1 ||
-                source->ambient > 100 || source->intensity > 100 ||
-                source->fog > 100 || source->shadow_floor > 100) {
-                valid = false;
-                break;
-            }
-            lighting = *source;
-            found = true;
         }
         ecs_query_end(&query);
     }
-    if (!valid) {
-        snprintf(renderer->error, sizeof renderer->error, "GameHRC2D requires one settings entity and finite gains from 0 to 100");
-        return false;
+    char notes[400] = "";
+    if (settings > 0) {
+        lighting = render_radiance_normalize(lighting, notes, sizeof notes);
     }
-    renderer->particle_focal_length = lighting.particle_focal_length > 0
-                                        ? lighting.particle_focal_length
-                                        : 300;
+    renderer->warning[0] = '\0';
+    if (settings > 1) {
+        snprintf(
+            renderer->warning,
+            sizeof renderer->warning,
+            "Lighting uses the first of %d GameHRC2D entities. ",
+            settings
+        );
+    }
+    if (notes[0]) {
+        size_t used = strlen(renderer->warning);
+        snprintf(renderer->warning + used, sizeof renderer->warning - used, "Lighting adjusted: %s.", notes);
+    }
+    renderer->particle_focal_length = lighting.particle_focal_length;
     *flat = (CF_V2){ lighting.ambient, lighting.intensity };
     renderer->lighting = lighting;
-    if (renderer->radiance) {
-        if (!render_radiance_set_lighting(renderer->radiance, lighting)) {
-            snprintf(renderer->error, sizeof renderer->error, "Invalid HRC configuration.");
-            return false;
-        }
+    if (renderer->radiance &&
+        !render_radiance_set_lighting(renderer->radiance, lighting)) {
+        snprintf(renderer->error, sizeof renderer->error, "HRC could not allocate its lighting resources.");
+        return false;
     }
     return true;
 }
@@ -1035,12 +1104,12 @@ static CF_Texture scene_background(
     CF_V2 center = { camera->center_x, camera->center_y };
     CF_V2 span = { camera->span_width, camera->span_height };
     cf_draw_push_shader(renderer->background_shader);
-    cf_draw_set_uniform("camera_pos", &center, CF_UNIFORM_TYPE_FLOAT, 2);
-    cf_draw_set_uniform("world_size", &span, CF_UNIFORM_TYPE_FLOAT, 2);
-    cf_draw_set_uniform("far_layer", &style.far_layer, CF_UNIFORM_TYPE_FLOAT, 4);
-    cf_draw_set_uniform("middle_layer", &style.middle_layer, CF_UNIFORM_TYPE_FLOAT, 4);
-    cf_draw_set_uniform("near_layer", &style.near_layer, CF_UNIFORM_TYPE_FLOAT, 4);
-    cf_draw_set_uniform("parallax", &style.parallax, CF_UNIFORM_TYPE_FLOAT, 3);
+    cf_draw_set_uniform("camera_pos", &center, CF_UNIFORM_TYPE_FLOAT2, 1);
+    cf_draw_set_uniform("world_size", &span, CF_UNIFORM_TYPE_FLOAT2, 1);
+    cf_draw_set_uniform("far_layer", &style.far_layer, CF_UNIFORM_TYPE_FLOAT4, 1);
+    cf_draw_set_uniform("middle_layer", &style.middle_layer, CF_UNIFORM_TYPE_FLOAT4, 1);
+    cf_draw_set_uniform("near_layer", &style.near_layer, CF_UNIFORM_TYPE_FLOAT4, 1);
+    cf_draw_set_uniform("parallax", &style.parallax, CF_UNIFORM_TYPE_FLOAT3, 1);
     const unsigned colors[] = { style.color_a,
                                 style.color_b,
                                 style.color_c,
@@ -1051,7 +1120,7 @@ static CF_Texture scene_background(
                          ((colors[i] >> 16) & 255) / 255.f,
                          ((colors[i] >> 8) & 255) / 255.f,
                          (colors[i] & 255) / 255.f };
-        cf_draw_set_uniform(names[i], rgba, CF_UNIFORM_TYPE_FLOAT, 4);
+        cf_draw_set_uniform(names[i], rgba, CF_UNIFORM_TYPE_FLOAT4, 1);
     }
     CF_Aabb screen = { .min = { center.x - span.x * .5f, center.y - span.y * .5f },
                        .max = { center.x + span.x * .5f, center.y + span.y * .5f } };
@@ -1072,13 +1141,21 @@ bool app_scene_renderer_draw(
     if (!renderer) {
         return false;
     }
-    struct timespec now;
-    clock_gettime(CLOCK_MONOTONIC, &now);
-    double seconds = now.tv_sec + now.tv_nsec * 1e-9;
-    if (renderer->previous_frame) {
-        render_radiance_frame_time(renderer->radiance, seconds - renderer->previous_frame);
+    double gpu_ms;
+    while (renderer->radiance && render_gpu_span_take(&renderer->span, &gpu_ms)) {
+        render_radiance_frame_time(renderer->radiance, gpu_ms);
     }
-    renderer->previous_frame = seconds;
+    /* Without GPU timestamps, as on the web, adaptive lighting judges the
+     * whole frame's interval, which includes the rest of the frame's work. */
+    if (renderer->radiance && !render_gpu_span_available()) {
+        uint64_t now = cf_get_ticks();
+        if (renderer->frame_start) {
+            double ms = (double)(now - renderer->frame_start) * 1000 /
+                        (double)cf_get_tick_frequency();
+            render_radiance_frame_time(renderer->radiance, ms);
+        }
+        renderer->frame_start = now;
+    }
     engine_viewport_camera camera;
     engine_viewport_get_camera(viewport, &camera);
     int width, height;
@@ -1125,7 +1202,7 @@ bool app_scene_renderer_draw(
         );
     }
     render_view_2d_frame frame;
-    float work_scale = render_radiance_get_settings(renderer->radiance).scale;
+    render_radiance_settings radiance = render_radiance_get_settings(renderer->radiance);
     render_view_2d_camera camera_view = {
         .min_x = camera.center_x - camera.span_width * .5f,
         .max_y = camera.center_y + camera.span_height * .5f,
@@ -1136,8 +1213,8 @@ bool app_scene_renderer_draw(
     };
     render_view_2d_settings padding = {
         .margin = renderer->lighting.lighting_margin,
-        .work_scale = work_scale,
-        .min_work_scale = renderer->lighting.min_scale,
+        .work_scale = radiance.scale,
+        .min_work_scale = radiance.min_scale,
         .max_raster_size = 4096,
     };
     if (!render_view_2d_world_margin(camera_view, padding, &frame)) {
@@ -1177,6 +1254,7 @@ bool app_scene_renderer_draw(
     collect(renderer, world, particles, runtime, view);
     CHIBI_TRACE_ZONE_END(collect_zone);
     CHIBI_TRACE_ZONE_BEGIN(raster_zone, "Material raster submission");
+    render_gpu_span_begin(&renderer->span);
     render_gpu_timing_start();
     bool drawn = render_material_raster_draw(
         renderer->raster,
@@ -1204,7 +1282,7 @@ bool app_scene_renderer_draw(
         if (!renderer->fluid || !render_fluid_raster_draw(
                                     renderer->fluid,
                                     game_materials_fluid(materials),
-                                    textures,
+                                    render_material_raster_canvas(renderer->raster),
                                     view,
                                     raster_width,
                                     raster_height
@@ -1214,17 +1292,9 @@ bool app_scene_renderer_draw(
         }
         render_gpu_timing_mark("Fluid raster");
     }
-    render_radiance_inputs inputs = { textures.scene,
-                                      textures.emission,
-                                      textures.absorption,
-                                      textures.albedo,
-                                      textures.normal };
+    render_radiance_inputs inputs = { .material = textures };
     inputs.background = scene_background(renderer, world, &camera);
     render_gpu_timing_mark("Background");
-    inputs.relief = textures.relief;
-    if (materials && game_materials_fluid(materials)) {
-        inputs.visibility = render_fluid_raster_visibility(renderer->fluid);
-    }
     bool hdr = renderer->lighting.tone_mapping > 0;
     CF_Canvas composite = renderer->output;
     if (hdr) {
@@ -1271,7 +1341,9 @@ bool app_scene_renderer_draw(
         if (!output.id) {
             return false;
         }
+        render_gpu_timing_mark("Reflections");
     }
+    render_gpu_span_end(&renderer->span);
     cf_draw_canvas(
         output,
         (CF_V2){ camera.center_x, camera.center_y },

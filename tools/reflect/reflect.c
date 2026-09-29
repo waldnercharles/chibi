@@ -153,8 +153,8 @@ int main(int argc, char **argv)
 
     CXIndex idx = clang_createIndex(0, 0);
 
-    const char *args[32] = { "-x", "c", "-I", rootdir };
-    int nargs = 4;
+    const char *args[32] = { "-x", "c", "-fparse-all-comments", "-I", rootdir };
+    int nargs = 5;
     while (option < argc) {
         if (option + 1 >= argc || (strcmp(argv[option], "--include") != 0 &&
                                    strcmp(argv[option], "--sysroot") != 0 &&

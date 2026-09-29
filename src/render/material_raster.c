@@ -1,5 +1,6 @@
 #include "render/material_raster.h"
 
+#include "render/fullscreen.h"
 #include "render/shader_catalog.h"
 #include "render/shader_program.h"
 #include "support/array.h"
@@ -32,27 +33,32 @@ typedef struct
 
 struct render_material_raster
 {
-    render_programs *programs;
+    /* The first batch's programs, and later batches', which continue from
+     * the previous batch's targets. */
+    render_programs *programs, *accumulate;
     material_batch *batches;
     char error[256];
     CF_Material material;
+    CF_Mesh mesh;
     CF_StorageBuffer entities, offsets, indices, parameters;
     unsigned char *entity_data;
     float *parameter_data;
     uint32_t *tile_offsets, *tile_cursor, *tile_indices;
-    /* scene, emission, absorption, albedo, normal, relief */
-    CF_Texture textures[6];
+    /* Batches alternate between these; see render_material_textures. The
+     * second is made when a frame first has several batches. */
+    CF_Canvas canvases[2];
+    int result;
     render_material_entity *sorted;
     int width, height, tiles, capacity, index_capacity;
 };
 
 static void free_targets(render_material_raster *r)
 {
-    for (int i = 0; i < 6; i++) {
-        if (r->textures[i].id) {
-            cf_destroy_texture(r->textures[i]);
+    for (int i = 0; i < 2; i++) {
+        if (r->canvases[i].id) {
+            cf_destroy_canvas(r->canvases[i]);
         }
-        r->textures[i] = (CF_Texture){ 0 };
+        r->canvases[i] = (CF_Canvas){ 0 };
     }
     if (r->offsets.id) {
         cf_destroy_storage_buffer(r->offsets);
@@ -73,9 +79,11 @@ static void free_targets(render_material_raster *r)
 render_material_raster *render_material_raster_new()
 {
     render_material_raster *r = xcalloc(1, sizeof *r);
-    r->programs = render_programs_new(RENDER_PROGRAM_COMPUTE);
+    r->programs = render_programs_new(RENDER_PROGRAM_RASTER);
+    r->accumulate = render_programs_new(RENDER_PROGRAM_RASTER_ACCUMULATE);
     r->material = cf_make_material();
-    if (!r->material.id) {
+    r->mesh = render_make_pass_mesh();
+    if (!r->material.id || !r->mesh.id) {
         render_material_raster_free(r);
         return NULL;
     }
@@ -89,6 +97,10 @@ void render_material_raster_free(render_material_raster *r)
     }
     free_targets(r);
     render_programs_free(r->programs);
+    render_programs_free(r->accumulate);
+    if (r->mesh.id) {
+        cf_destroy_mesh(r->mesh);
+    }
     afree(r->batches);
     if (r->material.id) {
         cf_destroy_material(r->material);
@@ -118,25 +130,14 @@ bool render_material_raster_resize(render_material_raster *r, int width, int hei
         return true;
     }
     free_targets(r);
-    for (int i = 0; i < 6; i++) {
-        CF_TextureParams params = cf_texture_defaults(width, height);
-        params.pixel_format = i == 5 ? CF_PIXEL_FORMAT_R16G16_FLOAT
-                                     : CF_PIXEL_FORMAT_R16G16B16A16_FLOAT;
-        params.usage = CF_TEXTURE_USAGE_SAMPLER_BIT |
-                       CF_TEXTURE_USAGE_COLOR_TARGET_BIT |
-                       CF_TEXTURE_USAGE_COMPUTE_STORAGE_READ_BIT |
-                       CF_TEXTURE_USAGE_COMPUTE_STORAGE_WRITE_BIT;
-        params.filter = CF_FILTER_LINEAR;
-        params.wrap_u = params.wrap_v = CF_WRAP_MODE_CLAMP_TO_EDGE;
-        params.allocate_mipmaps = i == 1 || i == 2;
-        r->textures[i] = cf_make_texture(params);
-        if (!r->textures[i].id) {
-            free_targets(r);
-            return false;
-        }
+    r->canvases[0] = render_material_canvas(width, height);
+    if (!r->canvases[0].id) {
+        free_targets(r);
+        return false;
     }
     r->tiles = ((width + 15) / 16) * ((height + 15) / 16);
-    r->offsets = buffer((r->tiles + 1) * (int)sizeof(uint32_t));
+    /* The shader reads offsets four at a time. */
+    r->offsets = buffer((r->tiles + 4) / 4 * 4 * (int)sizeof(uint32_t));
     if (!r->offsets.id) {
         free_targets(r);
         return false;
@@ -387,7 +388,31 @@ static int compare(const void *a, const void *b)
 
 static void uniform(render_material_raster *r, const char *name, void *data, CF_UniformType type, int n)
 {
-    cf_material_set_uniform_cs(r->material, name, data, type, n);
+    cf_material_set_uniform_fs(r->material, name, data, type, n);
+}
+
+CF_Canvas render_material_canvas(int width, int height)
+{
+    CF_CanvasParams params = cf_canvas_defaults(width, height);
+    params.target_count = 6;
+    for (int i = 0; i < 6; i++) {
+        params.targets[i].pixel_format = i < 5 ? CF_PIXEL_FORMAT_R16G16B16A16_FLOAT
+                                               : CF_PIXEL_FORMAT_R16_FLOAT;
+        params.targets[i].filter = CF_FILTER_LINEAR;
+        params.targets[i].wrap_u = params.targets[i].wrap_v = CF_WRAP_MODE_CLAMP_TO_EDGE;
+    }
+    /* Gather reads emission's mipmaps when it reconstructs below the canvas. */
+    params.targets[1].allocate_mipmaps = true;
+    return cf_make_canvas(params);
+}
+
+render_material_textures render_material_canvas_textures(CF_Canvas canvas)
+{
+    return (render_material_textures){
+        cf_canvas_get_target2(canvas, 0), cf_canvas_get_target2(canvas, 1),
+        cf_canvas_get_target2(canvas, 2), cf_canvas_get_target2(canvas, 3),
+        cf_canvas_get_target2(canvas, 4), cf_canvas_get_target2(canvas, 5)
+    };
 }
 
 const char *render_material_raster_error(const render_material_raster *r)
@@ -459,9 +484,10 @@ static bool prepare_batches(render_material_raster *r)
     }
     for (int i = 0; i < acount(r->batches); i++) {
         material_batch *batch = &r->batches[i];
-        batch->program = render_programs_prepare(r->programs, &batch->set);
-        if (render_programs_error(r->programs)[0]) {
-            snprintf(r->error, sizeof r->error, "%s", render_programs_error(r->programs));
+        render_programs *programs = i ? r->accumulate : r->programs;
+        batch->program = render_programs_prepare(programs, &batch->set);
+        if (render_programs_error(programs)[0]) {
+            snprintf(r->error, sizeof r->error, "%s", render_programs_error(programs));
         }
         if (!batch->program) {
             return false;
@@ -530,40 +556,64 @@ bool render_material_raster_draw(
             acount(r->tile_indices) * (int)sizeof(uint32_t)
         );
     }
+    if (acount(r->batches) > 1 && !r->canvases[1].id) {
+        r->canvases[1] = render_material_canvas(r->width, r->height);
+        if (!r->canvases[1].id) {
+            snprintf(r->error, sizeof r->error, "Material raster could not allocate its second canvas");
+            return false;
+        }
+    }
     uniform(r, "u_world_min_x", &view.min_x, CF_UNIFORM_TYPE_FLOAT, 1);
     uniform(r, "u_world_max_y", &view.max_y, CF_UNIFORM_TYPE_FLOAT, 1);
-    uniform(r, "u_px_per_unit", pixels, CF_UNIFORM_TYPE_FLOAT, 2);
-    uniform(r, "u_unit_per_px", units, CF_UNIFORM_TYPE_FLOAT, 2);
+    uniform(r, "u_unit_per_px", units, CF_UNIFORM_TYPE_FLOAT2, 1);
     uniform(r, "u_tiles_x", &tx, CF_UNIFORM_TYPE_INT, 1);
-    uniform(r, "u_tiles_y", &ty, CF_UNIFORM_TYPE_INT, 1);
-    uniform(r, "u_canvas_w", &r->width, CF_UNIFORM_TYPE_INT, 1);
-    uniform(r, "u_canvas_h", &r->height, CF_UNIFORM_TYPE_INT, 1);
     CF_StorageBuffer inputs[] = { r->entities, r->offsets, r->indices, r->parameters };
-    CF_ComputeDispatch dispatch = cf_compute_dispatch_defaults(tx, ty, 1);
-    dispatch.ro_buffers = inputs;
-    dispatch.ro_buffer_count = 4;
-    dispatch.rw_textures = r->textures;
-    dispatch.rw_texture_count = 6;
+    /* Every target but visibility, which the raster leaves zero. */
+    const char *previous[] = { "u_prev_scene",
+                               "u_prev_source",
+                               "u_prev_albedo",
+                               "u_prev_normal",
+                               "u_prev_cover" };
+    const int targets[] = { 0, 1, 2, 3, 5 };
     cf_push_gpu_label("Material raster batches");
     for (int i = 0; i < acount(r->batches); i++) {
         const material_batch *batch = &r->batches[i];
-        int accumulate = i != 0;
         uniform(r, "u_first_entity", (void *)&batch->first, CF_UNIFORM_TYPE_INT, 1);
         uniform(r, "u_last_entity", (void *)&batch->last, CF_UNIFORM_TYPE_INT, 1);
         uniform(r, "u_metaball_group", (void *)&batch->group, CF_UNIFORM_TYPE_INT, 1);
-        uniform(r, "u_accumulate", &accumulate, CF_UNIFORM_TYPE_INT, 1);
-        CF_ComputeShader
-            shader = render_programs_bind_compute(r->programs, batch->program, r->material);
-        cf_dispatch_compute(shader, r->material, dispatch);
+        for (int t = 0; i && t < 5; t++) {
+            cf_material_set_texture_fs(
+                r->material,
+                previous[t],
+                cf_canvas_get_target2(r->canvases[(i - 1) & 1], targets[t])
+            );
+        }
+        CF_Shader shader = render_programs_bind_raster(
+            i ? r->accumulate : r->programs,
+            batch->program,
+            r->material
+        );
+        cf_apply_canvas(r->canvases[i & 1], true);
+        cf_apply_mesh(r->mesh);
+        cf_apply_shader(shader, r->material);
+        cf_apply_fs_storage_buffers(inputs, 4);
+        cf_apply_viewport(0, 0, r->width, r->height);
+        cf_apply_scissor(0, 0, r->width, r->height);
+        cf_draw_elements();
     }
     cf_pop_gpu_label();
+    r->result = (acount(r->batches) - 1) & 1;
     return true;
 }
 
 render_material_textures render_material_raster_textures(const render_material_raster *r)
 {
     assert(r);
-    return (render_material_textures){ r->textures[0], r->textures[1],
-                                       r->textures[2], r->textures[3],
-                                       r->textures[4], r->textures[5] };
+    return render_material_canvas_textures(r->canvases[r->result]);
+}
+
+CF_Canvas render_material_raster_canvas(const render_material_raster *r)
+{
+    assert(r);
+    return r->canvases[r->result];
 }

@@ -79,6 +79,11 @@ void game_materials_free(game_materials *materials)
     free(materials);
 }
 
+void game_materials_set_run_seed(game_materials *materials, int seed)
+{
+    materials->run_seed = seed;
+}
+
 bool game_materials_enabled(const game_materials *materials)
 {
     return materials && (materials->fluid || acount(materials->records));

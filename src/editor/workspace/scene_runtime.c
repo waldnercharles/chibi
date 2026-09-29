@@ -421,6 +421,9 @@ int app_scene_authoring_frame(app_scene_authoring *scene, double monotonic_time)
     if (frame_result < 0) {
         snprintf(scene->message, sizeof scene->message, "%s", engine_error(scene->runtime));
     }
+    if (frame_result >= 0 && engine_restart_requested(scene->runtime)) {
+        frame_result = app_scene_authoring_runtime_command(scene, APP_RUNTIME_SCENE, APP_RUNTIME_RESTART);
+    }
     app_scene_renderer_set_time(
         scene->renderer,
         (float)engine_last_timing(

@@ -363,6 +363,10 @@ int app_game_presentation_frame(app_game_presentation *game, double now)
         fprintf(stderr, "Game frame failed: %s\n", engine_error(game->scene->runtime));
         return -1;
     }
+    if (engine_restart_requested(game->scene->runtime) &&
+        command(game, APP_RUNTIME_RESTART) != 0) {
+        return -1;
+    }
     app_scene_renderer_set_time(
         game->scene->renderer,
         (float)engine_last_timing(game->scene->runtime)->simulation_time

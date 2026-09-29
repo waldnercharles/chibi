@@ -31,6 +31,7 @@ char *scene_authoring_scene_json(app_scene_authoring *scene)
     }
     game_behavior_world *behaviors = scene->live->behaviors;
     document->perspective = scene->perspective;
+    document->seed = scene->seed;
     game_scene_document_set_ui(document, scene->ui);
     document->physics = game_physics_configuration(scene->live->physics);
     for (int i = 0; i < acount(scene->actors); i++) {
@@ -376,6 +377,8 @@ int scene_authoring_load_json(app_scene_authoring *scene, const char *json, cons
         return -1;
     }
     scene->perspective = document->perspective;
+    scene->seed = document->seed;
+    pin_run_seed(scene);
     free(scene->ui);
     scene->ui = document->ui ? xstrdup(document->ui) : NULL;
     game_scene_document_free(document);

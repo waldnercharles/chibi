@@ -26,6 +26,7 @@ struct game_materials
     ecs_world *world;
     struct game_entities *entities;
     struct game_particles *particles;
+    int run_seed;
     material_fluid *fluid;
     material_fields *fields;
     char error[256];
@@ -53,6 +54,8 @@ void material_ecs_add_component(
 );
 MaterialBreakProfile material_ecs_break_profile(game_materials *materials, ecs_entity entity);
 const char *material_ecs_generate_terrains(game_materials *materials);
+/* The seed a terrain's field generates with. */
+unsigned material_ecs_terrain_seed(const game_materials *materials, MaterialTerrain terrain);
 const char *material_ecs_configure_fluid(game_materials *materials);
 const char *material_ecs_fill_volume(game_materials *materials, ecs_entity entity);
 void material_ecs_fade_fragments(game_materials *materials, float delta);

@@ -63,6 +63,7 @@ struct game_behavior_world
     game_save *save;
     game_audio *audio;
     game_ui *ui;
+    game_run run;
     eval_component_reader component_reader;
     struct game_entities *entities;
     struct game_particles *particles;
@@ -464,6 +465,7 @@ static behavior_instance *acquire_instance(
     behavior_instance_bind_service(instance, "game.audio", world->audio);
     behavior_instance_bind_service(instance, "game.ui", world->ui);
     behavior_instance_bind_service(instance, "game.visibility", world->visibility);
+    behavior_instance_bind_service(instance, "game.run", &world->run);
     behavior_sink_context *context = (behavior_sink_context *)xcalloc(1, sizeof *context);
     context->world = world;
     context->attachment = -1;
@@ -554,6 +556,11 @@ game_audio *game_behavior_audio(game_behavior_world *world)
 game_ui *game_behavior_ui(game_behavior_world *world)
 {
     return world->ui;
+}
+
+game_run *game_behavior_run(game_behavior_world *world)
+{
+    return &world->run;
 }
 
 game_save *game_behavior_save(game_behavior_world *world)

@@ -19,6 +19,17 @@ static uint64_t hash_bytes(uint64_t hash, const void *data, size_t count)
     return hash;
 }
 
+unsigned material_ecs_terrain_seed(const game_materials *materials, MaterialTerrain terrain)
+{
+    if (!terrain.seed_from_run) {
+        return terrain.seed;
+    }
+    unsigned hash = (unsigned)materials->run_seed * 0x9e3779b9u;
+    hash = (hash ^ (hash >> 16)) * 0x7feb352du;
+    hash = (hash ^ (hash >> 15)) * 0x846ca68bu;
+    return terrain.seed ^ hash ^ (hash >> 16);
+}
+
 static void spawn_tile(
     game_materials *materials,
     ecs_entity source,
@@ -119,7 +130,7 @@ static const char *stream_terrain(
                       terrain.cell_size },
             .field = terrain.field,
             .parameters = terrain.parameters,
-            .seed = terrain.seed,
+            .seed = material_ecs_terrain_seed(materials, terrain),
             .island_cells = terrain.island_cells,
             .tasks = game_task_pool_tasks(materials->pool) });
         record->terrain = true;
@@ -272,7 +283,7 @@ static const char *generate_terrain(game_materials *materials, ecs_entity source
     float dimensions[] = { position->x,       position->y,
                            terrain.width,     terrain.height,
                            terrain.cell_size, terrain.stream_radius };
-    unsigned settings[] = { terrain.seed,
+    unsigned settings[] = { material_ecs_terrain_seed(materials, terrain),
                             terrain.category,
                             terrain.mask,
                             (unsigned)terrain.min_fragment_cells,
@@ -303,7 +314,7 @@ static const char *generate_terrain(game_materials *materials, ecs_entity source
         materials->fields,
         terrain.field,
         terrain.parameters,
-        terrain.seed,
+        material_ecs_terrain_seed(materials, terrain),
         grid,
         field,
         game_task_pool_tasks(materials->pool),

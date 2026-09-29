@@ -22,7 +22,11 @@ typedef struct game_scene_document
     game_scene_entity *entities;
     bool perspective;
     game_physics_settings physics;
+    /* Pins every run's seed; GAME_SCENE_RANDOM_SEED draws a new one per run. */
+    int seed;
 } game_scene_document;
+
+#define GAME_SCENE_RANDOM_SEED (-1)
 
 game_scene_document *game_scene_document_new(const char *name);
 void game_scene_document_free(game_scene_document *document);

@@ -1,4 +1,6 @@
 #include "graph/runtime/random.h"
+#include "runtime/material_terrain.h"
+#include "support/text_file.h"
 #include "support/value_noise.h"
 #include "test/suite_internal.h"
 
@@ -113,9 +115,11 @@ static void flow(graph *g, node *from, node *to)
     assert(graph_connect_exec(g, from, 0, to, 0, 0) == 0);
 }
 
+/* Converts between numeric pins as the editor does. */
 static void wire(graph *g, node *from, int output, node *to, int input)
 {
-    assert(graph_connect_data(g, from, output, to, input) == 0);
+    const node_desc *conversion = conversion_for_pins(&from->output_pins[output], &to->input_pins[input]);
+    assert(graph_connect_data_conversion(g, from, output, to, input, conversion) == 0);
 }
 
 static void set_input(graph *g, node *n, int input, pin_value value)
@@ -187,8 +191,153 @@ static void seeded_randomness()
     );
 }
 
+/* Tick writes the run seed to Transform.x; Begin makes Request's restart. */
+static behavior_asset *seed_behavior(const char *request)
+{
+    behavior_asset *asset = behavior("Seeded");
+    graph *g = asset->graph;
+    node *set = add(g, "Set_GameTransform");
+    node *make = add(g, "Make_CF_V2");
+    flow(g, event(g, "Tick"), set);
+    wire(g, add(g, "Get Run Seed"), 0, make, 0);
+    wire(g, make, 0, set, 1);
+    if (request) {
+        flow(g, event(g, "Begin"), add(g, request));
+    }
+    return asset;
+}
+
+static const char
+    SEEDED[] = "{\"name\":\"Seeded\",\"behaviors\":[\"Seeded\"],"
+               "\"components\":{\"GameTransform\":{\"x\":0,\"y\":0}}}";
+
+static int restart(const char *request, int pin)
+{
+    run_fixture f = fixture_new();
+    if (pin >= 0) {
+        engine_pin_run_seed(f.runtime, pin);
+    }
+    fixture_behavior(&f, seed_behavior(request));
+    fixture_spawn(&f, SEEDED);
+    assert(engine_restart_requested(f.runtime));
+    int before = engine_run_seed(f.runtime);
+    engine_reset(f.runtime);
+    assert(!engine_restart_requested(f.runtime));
+    int after = engine_run_seed(f.runtime);
+    fixture_free(&f);
+    return after == before;
+}
+
+/* Hashes every generated terrain tile's cells. */
+static uint64_t terrain_hash(run_fixture *f)
+{
+    assert(!game_materials_prepare(f->live->materials));
+    uint64_t hash = UINT64_C(14695981039346656037);
+    ecs_component_id id = GAME_COMPONENT_GameDestructible.id;
+    ecs_query query;
+    assert(ecs_query_begin(f->world, &query, &id, 1) == ECS_OK);
+    ecs_entity entity;
+    while (ecs_query_next(&query, &entity)) {
+        const material_mask *mask = game_materials_mask(f->live->materials, entity);
+        for (int i = 0; i < mask->width * mask->height; i++) {
+            hash = (hash ^ mask->cells[i]) * UINT64_C(1099511628211);
+        }
+    }
+    ecs_query_end(&query);
+    return hash;
+}
+
+static void run_seed()
+{
+    run_fixture f = fixture_new();
+    fixture_behavior(&f, seed_behavior(NULL));
+    engine_pin_run_seed(f.runtime, 12345);
+    ecs_entity seeded = fixture_spawn(&f, SEEDED);
+    fixture_steps(&f, 1);
+    assert(GAME_GameTransform_get_const(f.world, seeded)->x == 12345);
+    engine_reset(f.runtime);
+    assert(engine_run_seed(f.runtime) == 12345);
+    engine_pin_run_seed(f.runtime, ENGINE_RUN_SEED_RANDOM);
+    int first = engine_run_seed(f.runtime);
+    engine_reset(f.runtime);
+    assert(engine_run_seed(f.runtime) != first && engine_run_seed(f.runtime) >= 0);
+
+    /* seed_from_run terrain regenerates per run seed and repeats for a pin. */
+    char *json = text_file_read("projects/arena2d/content/fields/CaveField.yaml");
+    behavior_asset *field = behavior_asset_load_json(json);
+    free(json);
+    char error[256];
+    assert(
+        field &&
+        material_field_compile(game_materials_fields(f.live->materials), field, error, sizeof error)
+    );
+    behavior_asset_free(field);
+    ecs_entity source = ecs_world_create_entity(f.world);
+    assert(GAME_GameTransform_add(f.world, source, 0) == ECS_OK);
+    MaterialTerrain terrain = {
+        .seed = 1729,
+        .width = 256,
+        .height = 256,
+        .cell_size = 4,
+        .field = "CaveField",
+        .parameters = "{\"Radius\":72,\"Roughness\":30}",
+        .category = 8,
+        .mask = 1,
+        .min_fragment_cells = 4,
+        .seed_from_run = true,
+    };
+    assert(
+        ecs_world_record_add(f.world, source, GAME_COMPONENT_MaterialTerrain.id, &terrain, 0) == ECS_OK
+    );
+    assert(ecs_world_apply_commands(f.world) == ECS_OK);
+    engine_pin_run_seed(f.runtime, 1);
+    uint64_t one = terrain_hash(&f);
+    engine_pin_run_seed(f.runtime, 2);
+    uint64_t two = terrain_hash(&f);
+    engine_pin_run_seed(f.runtime, 1);
+    assert(one != two && terrain_hash(&f) == one);
+    GAME_MaterialTerrain_get(f.world, source)->seed_from_run = false;
+    uint64_t fixed = terrain_hash(&f);
+    engine_pin_run_seed(f.runtime, 2);
+    assert(terrain_hash(&f) == fixed && fixed != one);
+    fixture_free(&f);
+
+    /* Restart Scene keeps the seed, Restart Run draws a new one, and a pin
+     * holds either way. */
+    assert(restart("Restart Scene", -1) && !restart("Restart Run", -1));
+    assert(restart("Restart Run", 77));
+
+    /* A scene's seed: pins every run when present. */
+    char scene_error[256];
+    game_scene_document *scene = game_scene_document_load(
+        "{\"version\":1,\"name\":\"Seeded\",\"seed\":5,\"entities\":[]}",
+        scene_error,
+        sizeof scene_error
+    );
+    assert(scene && scene->seed == 5);
+    char *saved = game_scene_document_save(scene);
+    game_scene_document_free(scene);
+    scene = game_scene_document_load(saved, scene_error, sizeof scene_error);
+    assert(scene && scene->seed == 5);
+    free(saved);
+    game_scene_document_free(scene);
+    scene = game_scene_document_load(
+        "{\"version\":1,\"name\":\"Free\",\"entities\":[]}",
+        scene_error,
+        sizeof scene_error
+    );
+    assert(scene && scene->seed == GAME_SCENE_RANDOM_SEED);
+    game_scene_document_free(scene);
+    assert(!game_scene_document_load(
+        "{\"version\":1,\"name\":\"Bad\",\"seed\":-3,\"entities\":[]}",
+        scene_error,
+        sizeof scene_error
+    ));
+}
+
 void test_run_capabilities()
 {
     seeded_randomness();
-    puts("Run capabilities PASS: seeded per-world randomness");
+    run_seed();
+    puts("Run capabilities PASS: seeded per-world randomness, run seeds, seed_from_run terrain and restart requests");
 }

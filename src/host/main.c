@@ -228,7 +228,7 @@ int main(int argc, char **argv)
             "             [--play] [--project-root "
             "PATH|--project PATH] "
             "[--scene PATH] "
-            "[--fixed-dt SECONDS]\n"
+            "[--fixed-dt SECONDS] [--seed N]\n"
             "             [--open ASSET [--graph NAME]]\n"
             "             [--checkpoint PATH]\n"
             "Play: Escape pauses, Enter resumes, R restarts, Q quits while "

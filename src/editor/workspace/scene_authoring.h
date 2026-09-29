@@ -17,6 +17,9 @@ const char *app_scene_authoring_page(const app_scene_authoring *scene);
 void app_scene_authoring_set_ui(app_scene_authoring *scene, const char *ui);
 /* The project's default root ui document; NULL for none. */
 void app_scene_authoring_set_default_ui(app_scene_authoring *scene, const char *ui);
+/* Pins every run's seed over the scene's own (chibi --seed);
+ * ENGINE_RUN_SEED_RANDOM returns to the scene's. */
+void app_scene_authoring_pin_seed(app_scene_authoring *scene, int seed);
 typedef struct editor editor;
 typedef const char *(*app_scene_prototype_resolve_fn)(const char *name, void *user);
 

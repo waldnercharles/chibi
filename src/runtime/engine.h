@@ -50,8 +50,21 @@ typedef void (*engine_render_fn)(void *user);
 
 engine *engine_new(ecs_world *world, game_live_world *live);
 void engine_free(engine *engine);
-/* Reset time and input before recreating authored entities and their Begin runs. */
+/* Reset time and input before recreating authored entities and their Begin
+ * runs. The run seed is the pinned one, the same one after Restart Scene, or
+ * otherwise new. */
 void engine_reset(engine *engine);
+
+#define ENGINE_RUN_SEED_RANDOM (-1)
+/* Every run from now on uses seed, or a new seed each run for
+ * ENGINE_RUN_SEED_RANDOM. Pinning also reseeds the current run, so a host
+ * pins before the first Begin. */
+void engine_pin_run_seed(engine *engine, int seed);
+/* The seed behavior randomness and seed_from_run terrain derive from. */
+int engine_run_seed(const engine *engine);
+/* A behavior asked for Restart Run or Restart Scene. The host restarts the
+ * scene as its own Restart does; engine_reset then picks the seed. */
+bool engine_restart_requested(const engine *engine);
 int engine_register_system(engine *engine, const engine_system_desc *desc);
 const system_schedule *engine_system_schedule(const engine *engine);
 void engine_set_render_callback(engine *engine, engine_render_fn fn, void *user);

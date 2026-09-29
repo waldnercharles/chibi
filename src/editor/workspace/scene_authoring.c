@@ -932,6 +932,8 @@ app_scene_authoring *app_scene_authoring_new_with_content_root(
     scene->resolve_user = resolve_user;
     scene->registry = app_component_registry();
     scene->runtime = runtime;
+    scene->seed = GAME_SCENE_RANDOM_SEED;
+    scene->pinned_seed = ENGINE_RUN_SEED_RANDOM;
     scene->prototype_preview = game_prototype_preview_new(&scene->registry);
     if (!scene->prototype_preview) {
         scene_history_free(scene->history);

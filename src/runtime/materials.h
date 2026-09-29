@@ -28,6 +28,8 @@ game_materials *game_materials_new(
 );
 void game_materials_free(game_materials *materials);
 void game_materials_reset(game_materials *materials);
+/* Terrains with seed_from_run regenerate from this seed. */
+void game_materials_set_run_seed(game_materials *materials, int seed);
 /* Outside ECS queries: synchronize authored sources and apply queued damage.
  * Errors describe invalid authored data. Fluid simulation is optional. */
 const char *game_materials_prepare(game_materials *materials);

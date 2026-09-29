@@ -101,6 +101,7 @@ game_scene_document *game_scene_document_new(const char *name)
     game_scene_document *document = (game_scene_document *)xcalloc(1, sizeof *document);
     document->name = xstrdup(name);
     document->physics = game_physics_defaults();
+    document->seed = GAME_SCENE_RANDOM_SEED;
     return document;
 }
 
@@ -358,6 +359,9 @@ char *game_scene_document_save(const game_scene_document *document)
     if (yyjson_mut_obj_size(physics)) {
         yyjson_mut_obj_add_val(json, root, "physics", physics);
     }
+    if (document->seed != GAME_SCENE_RANDOM_SEED) {
+        yyjson_mut_obj_add_int(json, root, "seed", document->seed);
+    }
     yyjson_mut_val *entities = yyjson_mut_arr(json);
     for (int i = 0; i < acount(document->entities); i++) {
         const game_scene_entity *entity = &document->entities[i];
@@ -438,6 +442,17 @@ game_scene_document *game_scene_document_load(const char *json, char *error, siz
         game_scene_document_free(document);
         yyjson_doc_free(parsed);
         return NULL;
+    }
+    yyjson_val *seed = yyjson_obj_get(root, "seed");
+    if (seed && (!yyjson_is_int(seed) || yyjson_get_sint(seed) < 0 ||
+                 yyjson_get_sint(seed) > INT32_MAX)) {
+        set_error(error, error_size, "scene seed must be an integer from 0 to 2147483647");
+        game_scene_document_free(document);
+        yyjson_doc_free(parsed);
+        return NULL;
+    }
+    if (seed) {
+        document->seed = (int)yyjson_get_sint(seed);
     }
     yyjson_val *presentation = yyjson_obj_get(root, "presentation");
     if (presentation && (!yyjson_is_str(presentation) ||

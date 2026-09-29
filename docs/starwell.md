@@ -185,6 +185,14 @@ What has landed, and its contract. Every node is in searchNodes and Studio.
   `Set Random Seed(Seed)` restarts the stream. Expressions gain `hash(x, y,
   seed)` and `noise(x, y, seed)` (nodes `Hash` and `Noise`): the field graph's
   lattice functions with `seed` as the whole seed, both from -1 to 1.
+- **Run seed.** The engine draws a new nonnegative run seed at every start and
+  restart unless one is pinned: chibi `--seed N`, a scenario's `seed` (else the
+  scene's, else 1), or the scene document's `seed:`. It seeds the world's
+  random stream. `Get Run Seed` returns it. `MaterialTerrain.seed_from_run`
+  generates with `seed ^ hash(run seed)`. `Restart Run` (new seed) and
+  `Restart Scene` (same seed) set a request (`engine_restart_requested`) that
+  Studio Play and the standalone player service with their own Restart after
+  the step.
 
 ## Status
 

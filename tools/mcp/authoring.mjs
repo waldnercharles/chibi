@@ -605,6 +605,8 @@ const previewSceneDefinition = {
     width: { type: "integer", minimum: 64, maximum: 2048, default: 640 },
     height: { type: "integer", minimum: 64, maximum: 2048, default: 360 },
     frames: { type: "integer", minimum: 0, maximum: 1800, default: 1 },
+    seed: { type: "integer", minimum: 0, maximum: 2147483647,
+      description: "Run seed for behavior randomness and seed_from_run terrain; defaults to the scene's seed, else 1." },
     render_frames: { type: "integer", minimum: 2, maximum: 3600, default: 2,
       description: "Rendered frames; values above two measure complete frames after 240 warmup frames, including GPU completion." },
     freeze_simulation: { type: "boolean", default: false,

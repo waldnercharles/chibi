@@ -112,9 +112,11 @@ struct app_scene_authoring
     unsigned asset_index_generation;
     unsigned asset_index_built_generation;
     char *content_root;
-    char *ui;         /* the scene's root ui document, or NULL for default_ui */
-    char *default_ui; /* the project's, or NULL */
-    tree_watch disk;  /* content files as last loaded or saved */
+    int seed; /* the scene's pinned run seed, or GAME_SCENE_RANDOM_SEED */
+    int pinned_seed; /* a host's pin over the scene's, or ENGINE_RUN_SEED_RANDOM */
+    char *ui;        /* the scene's root ui document, or NULL for default_ui */
+    char *default_ui;    /* the project's, or NULL */
+    tree_watch disk;     /* content files as last loaded or saved */
     char **disk_pending; /* changes waiting for the runtime to stop */
     int selected;
     ecs_entity reveal_actor;
@@ -318,4 +320,7 @@ scene_document_tab *scene_tabs_ui(app_scene_authoring *scene, const char *path);
 int save_ui_document(app_scene_authoring *scene, scene_document_tab *tab);
 /* Replaces a UI document's text with its file, discarding its edits. */
 int reload_ui_document(app_scene_authoring *scene, scene_document_tab *tab);
+/* Pins the runtime's run seed: the host's pin, else the scene's. */
+void pin_run_seed(app_scene_authoring *scene);
+
 #endif

@@ -14,6 +14,7 @@
 #include "support/array.h"
 #include "support/xalloc.h"
 
+#include <assert.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -55,6 +56,7 @@ struct engine
     double accumulator;
     bool has_time;
     bool debug_paused;
+    int pinned_seed;
     char error[256];
 };
 
@@ -100,6 +102,51 @@ static int clock_now(struct timespec *out)
     return clock_gettime(CLOCK_MONOTONIC, out) == 0 ? 0 : -1;
 }
 
+/* A new nonnegative seed per call, even within one clock tick. */
+static int fresh_seed()
+{
+    static uint64_t counter;
+    struct timespec now;
+    clock_gettime(CLOCK_REALTIME, &now);
+    uint64_t x = (uint64_t)now.tv_sec * UINT64_C(1000000000) + (uint64_t)now.tv_nsec;
+    x += ++counter * UINT64_C(0x9e3779b97f4a7c15);
+    x = (x ^ (x >> 30)) * UINT64_C(0xbf58476d1ce4e5b9);
+    x = (x ^ (x >> 27)) * UINT64_C(0x94d049bb133111eb);
+    return (int)((x ^ (x >> 31)) & INT32_MAX);
+}
+
+static void begin_run(engine *engine, int seed)
+{
+    if (!engine->live) {
+        return;
+    }
+    game_run *run = game_behavior_run(engine->live->behaviors);
+    run->seed = seed;
+    run->restart = GAME_RUN_NO_RESTART;
+    game_behavior_seed_random(engine->live->behaviors, (uint64_t)seed);
+    game_materials_set_run_seed(engine->live->materials, seed);
+}
+
+void engine_pin_run_seed(engine *engine, int seed)
+{
+    assert(seed >= ENGINE_RUN_SEED_RANDOM);
+    engine->pinned_seed = seed;
+    if (seed >= 0) {
+        begin_run(engine, seed);
+    }
+}
+
+int engine_run_seed(const engine *engine)
+{
+    return engine->live ? game_behavior_run(engine->live->behaviors)->seed : 0;
+}
+
+bool engine_restart_requested(const engine *engine)
+{
+    return engine->live && game_behavior_run(engine->live->behaviors)->restart !=
+                               GAME_RUN_NO_RESTART;
+}
+
 engine *engine_new(ecs_world *world, game_live_world *live)
 {
     if (!world) {
@@ -118,6 +165,8 @@ engine *engine_new(ecs_world *world, game_live_world *live)
     if (live) {
         game_behavior_set_delta_seconds(live->behaviors, ENGINE_FIXED_SECONDS);
     }
+    result->pinned_seed = ENGINE_RUN_SEED_RANDOM;
+    begin_run(result, fresh_seed());
     return result;
 }
 
@@ -319,6 +368,11 @@ void engine_reset(engine *engine)
     engine->error[0] = 0;
     engine_input_reset(engine->input);
     if (engine->live) {
+        const game_run *run = game_behavior_run(engine->live->behaviors);
+        int seed = engine->pinned_seed;
+        if (seed < 0) {
+            seed = run->restart == GAME_RUN_RESTART_SCENE ? run->seed : fresh_seed();
+        }
         game_save_discard(game_behavior_save(engine->live->behaviors));
         game_behavior_set_time(engine->live->behaviors, 0);
         game_behavior_set_delta_seconds(engine->live->behaviors, ENGINE_FIXED_SECONDS);
@@ -327,6 +381,7 @@ void engine_reset(engine *engine)
         game_visibility_reset(engine->live->visibility);
         game_audio_reset(engine_audio(engine));
         game_ui_reset(game_behavior_ui(engine->live->behaviors));
+        begin_run(engine, seed);
     }
 }
 

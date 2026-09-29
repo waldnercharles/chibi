@@ -38,6 +38,21 @@ node with Integer pins divides as integers, truncating toward zero.
 | `rand` | No arguments; returns a value from 0 inclusive to 1 exclusive |
 | `vec2` | `x, y`; constructs a `CF_V2` |
 | `vec3` | `x, y, z`; constructs a `CF_V3` |
+| `radians`, `degrees` | One angle; converts degrees to radians or back |
+| `saturate` | One scalar, clamped to `[0, 1]` |
+| `smoothstep` | `edge0, edge1, x`; the Hermite ease between the edges |
+| `remap` | `value, from_min, from_max, to_min, to_max`; linear and unclamped |
+| `cross` | Two `CF_V2`; the scalar `a.x * b.y - a.y * b.x` |
+| `angle` | One `CF_V2`; its angle in radians, the inverse of `direction` |
+| `rotate` | `vector, angle`; the `CF_V2` turned counterclockwise by the angle |
+
+`min` and `max` take two or more arguments: `min(chamber, east, west, north)`.
+
+The functions after `vec3` are derived: each is spelled with the functions
+above (`rotate(v, a)` is `v` turned by `direction(a)`), and every argument is
+computed once. They lower to the same nodes those functions use, so every
+backend runs them without new node kinds. Derived functions exist wherever
+their spelling does; the table below lists them per graph kind.
 
 ## Shader and field graphs
 
@@ -50,8 +65,8 @@ a behavior graph.
 
 | Graph | Functions |
 | --- | --- |
-| Shader | `sin`, `cos`, `fract`, `abs`, `min`, `max`, `clamp`, `saturate`, `mix`, `step`, `smoothstep`, `length`, `dot`, `normalize`, `noise(position, scale)`, `vec2`, `vec3`, `vec4` |
-| Field | `sin`, `cos`, `floor`, `abs`, `negate`, `min`, `max`, `clamp`, `remap`, `select`, `noise(x, y, seed)`, `hash(x, y, seed)`, `fractal`, `circle`, `box`, `capsule`, `rotate_x`, `rotate_y`, `smooth_union`, `smooth_subtract` |
+| Shader | `sin`, `cos`, `fract`, `abs`, `min`, `max`, `clamp`, `saturate`, `mix`, `step`, `smoothstep`, `length`, `dot`, `normalize`, `noise(position, scale)`, `vec2`, `vec3`, `vec4`, `radians`, `degrees`, `remap` |
+| Field | `sin`, `cos`, `floor`, `abs`, `negate`, `min`, `max`, `clamp`, `remap`, `select`, `noise(x, y, seed)`, `hash(x, y, seed)`, `fractal`, `circle`, `box`, `capsule`, `rotate_x`, `rotate_y`, `smooth_union`, `smooth_subtract`, `radians`, `degrees`, `saturate`, `smoothstep`, `mix` |
 
 Arguments follow GLSL: `step(edge, x)` and `smoothstep(edge0, edge1, x)`. In
 shaders an input keeps the width of the value wired into it, operations take

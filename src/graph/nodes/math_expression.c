@@ -31,6 +31,7 @@ enum
     TOKEN_SUB_ASSIGN,
     TOKEN_MUL_ASSIGN,
     TOKEN_DIV_ASSIGN,
+    TOKEN_ARGUMENT,
     EXPRESSION_MAX_DEPTH = 128
 };
 
@@ -78,6 +79,8 @@ typedef struct
     int assignment_operator;
     int assignment_left;
     int assignment_right;
+    const int *arguments; /* terms that $1..$9 name while a derived body parses */
+    int expanding;
 } parser;
 
 /* Each function names the node that implements it in behavior, shader and
@@ -144,6 +147,31 @@ static const math_function functions[] = {
     { "rotate_y", 3, { NULL, NULL, "Field Rotate Y" } },
     { "smooth_union", 3, { NULL, NULL, "Field Smooth Union" } },
     { "smooth_subtract", 3, { NULL, NULL, "Field Smooth Subtract" } },
+};
+
+/* Functions spelled with other functions, for graph kinds without a node of
+   their own. $1..$9 name the arguments; each is computed once however often
+   the body reads it. Names starting with '_' serve only other bodies. */
+typedef struct
+{
+    const char *name;
+    int arity;
+    bool dialects[DIALECT_COUNT];
+    const char *body;
+} derived_function;
+
+static const derived_function derived[] = {
+    { "radians", 1, { true, true, true }, "$1 * 0.017453292519943295" },
+    { "degrees", 1, { true, true, true }, "$1 * 57.295779513082323" },
+    { "saturate", 1, { true, false, true }, "clamp($1, 0, 1)" },
+    { "smoothstep", 3, { true, false, true }, "_hermite(clamp(($3 - $1) / ($2 - $1), 0, 1))" },
+    { "_hermite", 1, { true, false, true }, "$1 * $1 * (3 - 2 * $1)" },
+    { "remap", 5, { true, true, false }, "$4 + ($1 - $2) * ($5 - $4) / ($3 - $2)" },
+    { "mix", 3, { false, false, true }, "$1 + ($2 - $1) * $3" },
+    { "cross", 2, { true, false, false }, "$1.x * $2.y - $1.y * $2.x" },
+    { "angle", 1, { true, false, false }, "atan2($1.y, $1.x)" },
+    { "rotate", 2, { true, false, false }, "_turn($1, direction($2))" },
+    { "_turn", 2, { true, false, false }, "vec2($1.x * $2.x - $1.y * $2.y, $1.x * $2.y + $1.y * $2.x)" },
 };
 
 /* Infix operators by binding power; higher binds tighter. */
@@ -293,6 +321,10 @@ static void next(parser *p)
         p->number = strtod(p->cursor, &end);
         p->cursor = end;
         p->token = TOKEN_NUMBER;
+    } else if (c == '$' && p->expanding && isdigit((unsigned char)p->cursor[1])) {
+        p->number = p->cursor[1] - '0';
+        p->cursor += 2;
+        p->token = TOKEN_ARGUMENT;
     } else if (isalpha(c) || c == '_') {
         do {
             p->cursor++;
@@ -384,6 +416,60 @@ static int append(parser *p, term value)
 }
 
 static int expression(parser *p, int precedence);
+static int members(parser *p, int value);
+
+/* Parses a derived function's arguments, then its body with $n naming them.
+   Errors in the body report the call. */
+static int expand(parser *p, const derived_function *f, const char *name, int length)
+{
+    int args[9], count = 0;
+    char arity[96];
+    snprintf(arity, sizeof arity, "%s() takes %d arguments", f->name, f->arity);
+    next(p);
+    while (p->token != ')') {
+        if (count == f->arity) {
+            return fail(p, arity);
+        }
+        int argument = expression(p, 0);
+        if (argument < 0) {
+            return -1;
+        }
+        args[count++] = argument;
+        if (p->token != ',') {
+            break;
+        }
+        next(p);
+        if (p->token == ')') {
+            return fail(p, "Expected an expression after ','");
+        }
+    }
+    if (count != f->arity) {
+        return fail(p, arity);
+    }
+    if (p->token != ')') {
+        return fail(p, "Expected ')' after function arguments");
+    }
+    const char *source = p->source, *cursor = p->cursor;
+    const int *outer = p->arguments;
+    p->arguments = args;
+    p->expanding++;
+    p->source = p->cursor = f->body;
+    next(p);
+    int result = expression(p, 0);
+    bool whole = result >= 0 && !p->token;
+    p->expanding--;
+    p->arguments = outer;
+    p->source = source;
+    p->cursor = cursor;
+    if (!whole) {
+        p->start = name;
+        p->length = length;
+        p->error->message[0] = 0;
+        return fail(p, "Function arguments do not fit its definition");
+    }
+    next(p);
+    return members(p, result);
+}
 
 /* Member reads of a computed value: normalize(v).x, (a + b).xy. */
 static int members(parser *p, int value)
@@ -478,6 +564,15 @@ static int identifier(parser *p)
                      ? &functions[i]
                      : NULL;
     }
+    for (size_t i = 0; i < sizeof derived / sizeof derived[0] && !function; i++) {
+        if (!named(derived[i].name, name, length) || (*name == '_' && !p->expanding)) {
+            continue;
+        }
+        known = true;
+        if (derived[i].dialects[p->dialect]) {
+            return expand(p, &derived[i], name, length);
+        }
+    }
     if (!function) {
         char message[96];
         snprintf(
@@ -498,8 +593,9 @@ static int identifier(parser *p)
                    .symbol = -1 };
     assert(value.desc);
     /* Shader vectors pack like GLSL's: vec3(uv, 0) fills three components
-       from a vec2 and a scalar. */
+       from a vec2 and a scalar. Min and Max take any number of values. */
     bool packs = p->dialect == DIALECT_SHADER && !strncmp(function->name, "vec", 3);
+    bool variadic = !strcmp(function->name, "min") || !strcmp(function->name, "max");
     char arity[96];
     snprintf(
         arity,
@@ -510,7 +606,8 @@ static int identifier(parser *p)
     );
     next(p);
     while (p->token != ')') {
-        if (value.count == function->arity) {
+        if (value.count == (variadic ? (int)(sizeof value.args / sizeof *value.args)
+                                     : function->arity)) {
             return fail(p, arity);
         }
         int argument = expression(p, 0);
@@ -526,14 +623,23 @@ static int identifier(parser *p)
             return fail(p, "Expected an expression after ','");
         }
     }
-    if (value.count != function->arity && !(packs && value.count)) {
+    if (value.count != function->arity && !(packs && value.count) &&
+        !(variadic && value.count > function->arity)) {
         return fail(p, arity);
     }
     if (p->token != ')') {
         return fail(p, "Expected ')' after function arguments");
     }
     next(p);
-    return members(p, append(p, value));
+    int result = -1;
+    for (int i = 0; i + 1 < value.count && variadic; i++) {
+        term pair = value;
+        pair.args[0] = i ? result : value.args[0];
+        pair.args[1] = value.args[i + 1];
+        pair.count = 2;
+        result = append(p, pair);
+    }
+    return members(p, variadic ? result : append(p, value));
 }
 
 /* Shader and field graphs fold a negated literal; otherwise fields negate and
@@ -577,6 +683,11 @@ static int primary(parser *p)
     }
     if (p->token == TOKEN_NAME) {
         return identifier(p);
+    }
+    if (p->token == TOKEN_ARGUMENT) {
+        int argument = p->arguments[(int)p->number - 1];
+        next(p);
+        return members(p, argument);
     }
     if (p->token == '(') {
         next(p);

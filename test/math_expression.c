@@ -1877,6 +1877,85 @@ static void field_domain_expression()
     behavior_asset_free(asset);
 }
 
+/* Derived functions spell themselves with other functions, so every graph
+   kind gains them without new nodes; min and max take any count. */
+static void derived_function_expressions()
+{
+    double pi = acos(-1);
+    expect("radians(180) + degrees(pi)", pi + 180);
+    expect("saturate(1.5) + saturate(-2) + saturate(0.25)", 1.25);
+    expect("smoothstep(0, 2, 1) + smoothstep(0, 1, 2) + smoothstep(1, 3, 0)", 1.5);
+    expect("remap(5, 0, 10, 100, 200)", 150);
+    expect("min(4, 2, 7, 3) + max(1, 9, 5) + min(2, 5)", 13);
+    expect("cross(vec2(1, 0), vec2(0, 1)) + cross(vec2(2, 0), vec2(3, 0))", 1);
+    expect("angle(vec2(0, 2))", pi / 2);
+    expect("rotate(vec2(1, 0), pi / 2).y + rotate(vec2(0, 3), 0).y", 4);
+    behavior_asset *asset = behavior_asset_new("Derived errors");
+    behavior_expression_error error;
+    const char *rejected[] = { "_hermite(1)", "min(1)", "smoothstep(1, 2)", "remap(1, 2, 3, 4)" };
+    for (size_t i = 0; i < sizeof rejected / sizeof rejected[0]; i++) {
+        assert(!behavior_expression_add(asset, asset->graph, rejected[i], &error));
+        assert(error.message[0]);
+    }
+    behavior_asset_free(asset);
+
+    asset = behavior_asset_new("Derived shader");
+    asset->domain = BEHAVIOR_DOMAIN_MATERIAL;
+    graph *g = asset->graph;
+    node *out = shader_graph_add_output(g, false);
+    node *uv = add_named(g, "Shader UV");
+    node *call = behavior_expression_add(
+        asset,
+        g,
+        "remap(uv.x, 0, 1, 10, 20) + radians(180) + min(uv.x, uv.y, 0.1)",
+        &error
+    );
+    assert(call);
+    assert(graph_connect_data(g, uv, 0, call, 0) == 0);
+    assert(behavior_expression_refresh(asset, call, &error) == 0);
+    assert(graph_connect_data(g, call, 0, out, 5) == 0);
+    shader_graph ir;
+    shader_graph_init(&ir);
+    shader_error shader_error = { 0 };
+    assert(shader_graph_from_graph(g, &ir, &shader_error));
+    float result[SHADER_OUTPUT_MAX][4];
+    shader_sample_context sample = { .uv = { .5f, .75f } };
+    assert(shader_graph_eval_outputs(&ir, &sample, NULL, result, &shader_error));
+    assert(fabsf(result[5][0] - (15 + (float)pi + .1f)) < 1e-4f);
+    shader_graph_free(&ir);
+    assert(behavior_expression_set(asset, call, "cross(uv, uv)", &error) == -1);
+    assert(strstr(error.message, "not available in shader graphs"));
+    behavior_asset_free(asset);
+
+    asset = behavior_asset_new("Derived field");
+    asset->domain = BEHAVIOR_DOMAIN_FIELD;
+    g = asset->graph;
+    out = graph_add_node(g, registry_node_by_name("Field Output"));
+    node *x = graph_add_node(g, registry_node_by_name("Field X"));
+    node *y = graph_add_node(g, registry_node_by_name("Field Y"));
+    call = behavior_expression_add(
+        asset,
+        g,
+        "smoothstep(0, 4, x) + saturate(y) + mix(0, 10, 0.5) + max(1, 2, 3)",
+        &error
+    );
+    assert(call && call->input_count == 2);
+    assert(graph_connect_data(g, x, 0, call, 0) == 0);
+    assert(graph_connect_data(g, y, 0, call, 1) == 0);
+    assert(graph_connect_data(g, call, 0, out, 0) == 0);
+    char message[256];
+    field_program *program = field_program_compile(asset, message, sizeof message);
+    assert(program);
+    float value;
+    assert(
+        field_program_sample(program, (field_context){ 0 }, 3, 8, &value, message, sizeof message)
+    );
+    /* smoothstep(0, 4, 3) is 0.84375; saturate(8) is 1. */
+    assert(fabsf(value - 9.84375f) < 1e-5f);
+    field_program_free(program);
+    behavior_asset_free(asset);
+}
+
 void test_math_expression()
 {
     shader_expression();
@@ -1909,6 +1988,7 @@ void test_math_expression()
     expression_source_names();
     expression_title();
     editor_delete_expression();
+    derived_function_expressions();
     /* arena2d end to end (wave 3, workstream X) */
     double_result_feeds_float();
     expect("negate(3) + negate(-2)", -1);

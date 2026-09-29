@@ -1,0 +1,4 @@
+name: Scatter
+components:
+  GAME.GameScatter: {}
+  GAME.GameTransform: {}

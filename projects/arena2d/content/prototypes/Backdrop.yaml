@@ -1,0 +1,3 @@
+name: Backdrop
+components:
+  GAME.GameBackdrop2D: {intensity: 1.0}

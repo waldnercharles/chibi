@@ -1,20 +1,20 @@
 version: 3
 name: Creature
-id_counter: 1410
+id_counter: 1435
 description: 'A creature''s body: takes Hits, flashes, is knocked back, burns, chills and corrodes by element, arcs to neighbours, and on death bursts, drops scrap and resonance and counts the kill. Attach last so it can slow the drive target when chilled.'
 owner_type: ecs.entity
 variables:
-- {id: 1, name: burn, type: float}
+- {id: 1, name: corrode, type: float}
 - {id: 2, name: chill, type: float}
-- {id: 3, name: dot, type: float}
-- {id: 4, name: corrode, type: float}
-- {id: 5, name: flash, type: float}
-- {id: 6, name: dead, type: float}
+- {id: 3, name: flash, type: float}
+- {id: 4, name: dead, type: float}
+- {id: 5, name: burn, type: float}
+- {id: 6, name: dot, type: float}
 graphs:
 - kind: event
   name: ""
   nodes:
-  - id: 280
+  - id: 297
     type: Event
     reference_name: Hit
     outputs:
@@ -24,59 +24,66 @@ graphs:
       Direction: {declaration_id: 4, type: struct, type_name: CF_V2, kind: data}
       Element: {declaration_id: 5, type: int, kind: data}
       Knockback: {declaration_id: 6, type: float, kind: data}
-  - {id: 288, type: To Real}
-  - id: 310
+  - {id: 305, type: To Real}
+  - id: 327
     type: Behavior Expression
-    reference_id: 291
+    reference_id: 308
     reference_name: health = max(health - amount, 0)
     inputs:
-      Exec: {id: 314, kind: exec}
+      Exec: {id: 331, kind: exec}
       health:
-        id: 311
+        id: 328
         type: int
         binding: {kind: component_field, component: GAME.GameHealth, field: current}
       amount: {type: double}
     outputs:
-      Then: {id: 315, kind: exec}
-      Result: {id: 313, type: int}
-  - id: 360
+      Then: {id: 332, kind: exec}
+      Result: {id: 330, type: int}
+  - id: 367
+    type: Self
+    outputs:
+      Self: {type_name: ecs.entity}
+  - id: 369
+    type: Flash Entity
+    inputs: {Amount: 0.8}
+  - id: 385
     type: Behavior Expression
-    reference_id: 350
+    reference_id: 375
     reference_name: flash = 1
     inputs:
-      Exec: {id: 363, kind: exec}
+      Exec: {id: 388, kind: exec}
       flash:
-        id: 361
+        id: 386
         type: float
-        binding: {kind: variable, variable_id: 5, source_asset: Creature}
+        binding: {kind: variable, variable_id: 3, source_asset: Creature}
     outputs:
-      Then: {id: 364, kind: exec}
-      Result: {id: 362, type: float}
-  - id: 404
+      Then: {id: 389, kind: exec}
+      Result: {id: 387, type: float}
+  - id: 429
     type: Behavior Expression
-    reference_id: 380
+    reference_id: 405
     reference_name: velocity += dir * (knock + 45)
     inputs:
-      Exec: {id: 409, kind: exec}
+      Exec: {id: 434, kind: exec}
       velocity:
-        id: 405
+        id: 430
         type: struct
         type_name: GameVelocity
         binding: {kind: component, component: GAME.GameVelocity}
       dir: {type: struct, type_name: CF_V2}
       knock: {type: float}
     outputs:
-      Then: {id: 410, kind: exec}
-      Result: {id: 408, type: struct, type_name: GameVelocity}
-  - id: 457
+      Then: {id: 435, kind: exec}
+      Result: {id: 433, type: struct, type_name: GameVelocity}
+  - id: 482
     type: Behavior Expression
-    reference_id: 440
+    reference_id: 465
     reference_name: dir * -1
     inputs:
       dir: {type: struct, type_name: CF_V2}
     outputs:
       Result: {type: struct, type_name: CF_V2}
-  - id: 460
+  - id: 485
     type: Emit Directed Particles
     inputs:
       Count: 7
@@ -95,69 +102,69 @@ graphs:
       Max Emission: 1.1
       Size Exponent: 1.0
       Shape: 4
-  - id: 504
+  - id: 529
     type: Behavior Expression
-    reference_id: 482
+    reference_id: 507
     reference_name: 520 + rand() * 180
     outputs:
       Result: {type: double}
-  - id: 506
+  - id: 531
     type: Play Sound
     inputs: {End Frequency: 180.0, Duration: 0.05, Volume: 0.16, Pan: 0.0, Noise: 0.5}
-  - id: 515
+  - id: 540
     type: Switch on Int
     outputs:
-    - 518
-    - 519
-    - {id: 521, name: Case2}
-    - {id: 522, name: Case3}
-    - {id: 523, name: Case4}
-    - {id: 524, name: Case5}
-    - 520
-  - id: 535
+    - 543
+    - 544
+    - {id: 546, name: Case2}
+    - {id: 547, name: Case3}
+    - {id: 548, name: Case4}
+    - {id: 549, name: Case5}
+    - 545
+  - id: 560
     type: Behavior Expression
-    reference_id: 525
+    reference_id: 550
     reference_name: burn = 3.5
     inputs:
-      Exec: {id: 538, kind: exec}
+      Exec: {id: 563, kind: exec}
       burn:
-        id: 536
+        id: 561
         type: float
-        binding: {kind: variable, variable_id: 1, source_asset: Creature}
+        binding: {kind: variable, variable_id: 5, source_asset: Creature}
     outputs:
-      Then: {id: 539, kind: exec}
-      Result: {id: 537, type: float}
-  - id: 565
+      Then: {id: 564, kind: exec}
+      Result: {id: 562, type: float}
+  - id: 590
     type: Behavior Expression
-    reference_id: 555
+    reference_id: 580
     reference_name: chill = 3
     inputs:
-      Exec: {id: 568, kind: exec}
+      Exec: {id: 593, kind: exec}
       chill:
-        id: 566
+        id: 591
         type: float
         binding: {kind: variable, variable_id: 2, source_asset: Creature}
     outputs:
-      Then: {id: 569, kind: exec}
-      Result: {id: 567, type: float}
-  - id: 595
+      Then: {id: 594, kind: exec}
+      Result: {id: 592, type: float}
+  - id: 620
     type: Behavior Expression
-    reference_id: 585
+    reference_id: 610
     reference_name: corrode = 5
     inputs:
-      Exec: {id: 598, kind: exec}
+      Exec: {id: 623, kind: exec}
       corrode:
-        id: 596
+        id: 621
         type: float
-        binding: {kind: variable, variable_id: 4, source_asset: Creature}
+        binding: {kind: variable, variable_id: 1, source_asset: Creature}
     outputs:
-      Then: {id: 599, kind: exec}
-      Result: {id: 597, type: float}
-  - id: 615
+      Then: {id: 624, kind: exec}
+      Result: {id: 622, type: float}
+  - id: 640
     type: Self
     outputs:
       Self: {type_name: ecs.entity}
-  - id: 617
+  - id: 642
     type: Find Nearest Entity
     inputs:
       Position:
@@ -166,18 +173,18 @@ graphs:
         default: null
       Radius: 160.0
       Categories: 2
-  - {id: 626, type: Branch}
-  - id: 648
+  - {id: 651, type: Branch}
+  - id: 673
     type: Behavior Expression
-    reference_id: 631
+    reference_id: 656
     reference_name: ceil(amount * 0.6)
     inputs:
       amount: {type: double}
     outputs:
       Result: {type: double}
-  - id: 666
+  - id: 691
     type: Behavior Expression
-    reference_id: 651
+    reference_id: 676
     reference_name: normalize(target - pos)
     inputs:
       target: {type: struct, type_name: CF_V2}
@@ -187,19 +194,19 @@ graphs:
         binding: {kind: component, component: GAME.GameTransform}
     outputs:
       Result: {type: struct, type_name: CF_V2}
-  - id: 670
+  - id: 695
     type: Send Event
     reference_name: Hit
     inputs:
-      Amount: {id: 674, declaration_id: 1, type: int}
+      Amount: {id: 699, declaration_id: 1, type: int}
       Source: {declaration_id: 2}
       Point: {declaration_id: 3, type: struct, type_name: CF_V2}
       Direction: {declaration_id: 4, type: struct, type_name: CF_V2}
       Element: {declaration_id: 5, type: int}
       Knockback: {declaration_id: 6, type: float, default: 20.0}
     outputs:
-      Then: {id: 673}
-  - id: 680
+      Then: {id: 698}
+  - id: 705
     type: Emit Directed Particles
     inputs:
       Position:
@@ -222,9 +229,9 @@ graphs:
       Max Emission: 1.6
       Size Exponent: 1.0
       Shape: 4
-  - id: 716
+  - id: 741
     type: Behavior Expression
-    reference_id: 702
+    reference_id: 727
     reference_name: health <= 0
     inputs:
       health:
@@ -233,155 +240,155 @@ graphs:
         binding: {kind: component_field, component: GAME.GameHealth, field: current}
     outputs:
       Result: {type: bool}
-  - {id: 722, type: Branch}
-  - {id: 727, type: Call Function, reference_id: 7, reference_name: Die}
-  - id: 730
+  - {id: 747, type: Branch}
+  - {id: 752, type: Call Function, reference_id: 7, reference_name: Die}
+  - id: 755
     type: Event
     reference_name: Tick
     outputs:
       DeltaSeconds: {type: float, kind: data}
-  - id: 759
+  - id: 784
     type: Behavior Expression
-    reference_id: 733
+    reference_id: 758
     reference_name: flash = max(0, flash - dt * 7)
     inputs:
-      Exec: {id: 763, kind: exec}
+      Exec: {id: 788, kind: exec}
       flash:
-        id: 760
+        id: 785
+        type: float
+        binding: {kind: variable, variable_id: 3, source_asset: Creature}
+      dt:
+        type: double
+        binding: {kind: delta_time}
+    outputs:
+      Then: {id: 789, kind: exec}
+      Result: {id: 787, type: float}
+  - id: 821
+    type: Self
+    outputs:
+      Self: {type_name: ecs.entity}
+  - id: 823
+    type: Get Variable
+    reference_id: 3
+    reference_name: flash
+    outputs:
+      Value: {type: float}
+  - id: 825
+    type: Set Material Parameter
+    inputs:
+      Name: Flash
+      Value: {type_name: float}
+  - id: 850
+    type: Behavior Expression
+    reference_id: 831
+    reference_name: burn = max(0, burn - dt)
+    inputs:
+      Exec: {id: 854, kind: exec}
+      burn:
+        id: 851
         type: float
         binding: {kind: variable, variable_id: 5, source_asset: Creature}
       dt:
         type: double
         binding: {kind: delta_time}
     outputs:
-      Then: {id: 764, kind: exec}
-      Result: {id: 762, type: float}
-  - id: 796
-    type: Self
-    outputs:
-      Self: {type_name: ecs.entity}
-  - id: 798
-    type: Get Variable
-    reference_id: 5
-    reference_name: flash
-    outputs:
-      Value: {type: float}
-  - id: 800
-    type: Set Material Parameter
-    inputs:
-      Name: Flash
-      Value: {type_name: float}
-  - id: 825
+      Then: {id: 855, kind: exec}
+      Result: {id: 853, type: float}
+  - id: 899
     type: Behavior Expression
-    reference_id: 806
-    reference_name: burn = max(0, burn - dt)
-    inputs:
-      Exec: {id: 829, kind: exec}
-      burn:
-        id: 826
-        type: float
-        binding: {kind: variable, variable_id: 1, source_asset: Creature}
-      dt:
-        type: double
-        binding: {kind: delta_time}
-    outputs:
-      Then: {id: 830, kind: exec}
-      Result: {id: 828, type: float}
-  - id: 874
-    type: Behavior Expression
-    reference_id: 855
+    reference_id: 880
     reference_name: chill = max(0, chill - dt)
     inputs:
-      Exec: {id: 878, kind: exec}
+      Exec: {id: 903, kind: exec}
       chill:
-        id: 875
+        id: 900
         type: float
         binding: {kind: variable, variable_id: 2, source_asset: Creature}
       dt:
         type: double
         binding: {kind: delta_time}
     outputs:
-      Then: {id: 879, kind: exec}
-      Result: {id: 877, type: float}
-  - id: 923
+      Then: {id: 904, kind: exec}
+      Result: {id: 902, type: float}
+  - id: 948
     type: Behavior Expression
-    reference_id: 904
+    reference_id: 929
     reference_name: corrode = max(0, corrode - dt)
     inputs:
-      Exec: {id: 927, kind: exec}
+      Exec: {id: 952, kind: exec}
       corrode:
-        id: 924
+        id: 949
         type: float
-        binding: {kind: variable, variable_id: 4, source_asset: Creature}
+        binding: {kind: variable, variable_id: 1, source_asset: Creature}
       dt:
         type: double
         binding: {kind: delta_time}
     outputs:
-      Then: {id: 928, kind: exec}
-      Result: {id: 926, type: float}
-  - id: 1003
+      Then: {id: 953, kind: exec}
+      Result: {id: 951, type: float}
+  - id: 1028
     type: Behavior Expression
-    reference_id: 953
+    reference_id: 978
     reference_name: dot += dt * (9 * step(0.001, burn) + 6 * step(0.001, corrode))
     inputs:
-      Exec: {id: 1009, kind: exec}
+      Exec: {id: 1034, kind: exec}
       dot:
-        id: 1004
+        id: 1029
         type: float
-        binding: {kind: variable, variable_id: 3, source_asset: Creature}
+        binding: {kind: variable, variable_id: 6, source_asset: Creature}
       dt:
         type: double
         binding: {kind: delta_time}
       burn:
         type: double
-        binding: {kind: variable, variable_id: 1, source_asset: Creature}
+        binding: {kind: variable, variable_id: 5, source_asset: Creature}
       corrode:
         type: double
-        binding: {kind: variable, variable_id: 4, source_asset: Creature}
+        binding: {kind: variable, variable_id: 1, source_asset: Creature}
     outputs:
-      Then: {id: 1010, kind: exec}
-      Result: {id: 1008, type: float}
-  - id: 1080
+      Then: {id: 1035, kind: exec}
+      Result: {id: 1033, type: float}
+  - id: 1105
     type: Behavior Expression
-    reference_id: 1066
+    reference_id: 1091
     reference_name: dot >= 1
     inputs:
       dot:
         type: double
         flags: 0
-        binding: {kind: variable, variable_id: 3, source_asset: Creature}
+        binding: {kind: variable, variable_id: 6, source_asset: Creature}
     outputs:
       Result: {type: bool}
-  - {id: 1086, type: Branch}
-  - id: 1112
+  - {id: 1111, type: Branch}
+  - id: 1137
     type: Behavior Expression
-    reference_id: 1091
+    reference_id: 1116
     reference_name: health = max(health - 1, 0)
     inputs:
-      Exec: {id: 1115, kind: exec}
+      Exec: {id: 1140, kind: exec}
       health:
-        id: 1113
+        id: 1138
         type: int
         binding: {kind: component_field, component: GAME.GameHealth, field: current}
     outputs:
-      Then: {id: 1116, kind: exec}
-      Result: {id: 1114, type: int}
-  - id: 1167
+      Then: {id: 1141, kind: exec}
+      Result: {id: 1139, type: int}
+  - id: 1192
     type: Behavior Expression
-    reference_id: 1153
+    reference_id: 1178
     reference_name: dot -= 1
     inputs:
-      Exec: {id: 1170, kind: exec}
+      Exec: {id: 1195, kind: exec}
       dot:
-        id: 1168
+        id: 1193
         type: float
-        binding: {kind: variable, variable_id: 3, source_asset: Creature}
+        binding: {kind: variable, variable_id: 6, source_asset: Creature}
     outputs:
-      Then: {id: 1171, kind: exec}
-      Result: {id: 1169, type: float}
-  - id: 1205
+      Then: {id: 1196, kind: exec}
+      Result: {id: 1194, type: float}
+  - id: 1230
     type: Behavior Expression
-    reference_id: 1191
+    reference_id: 1216
     reference_name: health <= 0
     inputs:
       health:
@@ -390,16 +397,16 @@ graphs:
         binding: {kind: component_field, component: GAME.GameHealth, field: current}
     outputs:
       Result: {type: bool}
-  - {id: 1211, type: Branch}
-  - {id: 1216, type: Call Function, reference_id: 7, reference_name: Die}
-  - id: 1252
+  - {id: 1236, type: Branch}
+  - {id: 1241, type: Call Function, reference_id: 7, reference_name: Die}
+  - id: 1277
     type: Behavior Expression
-    reference_id: 1219
+    reference_id: 1244
     reference_name: target *= 1 - 0.65 * step(0.001, chill)
     inputs:
-      Exec: {id: 1256, kind: exec}
+      Exec: {id: 1281, kind: exec}
       target:
-        id: 1253
+        id: 1278
         type: struct
         type_name: CF_V2
         binding: {kind: component_field, component: GAME.GameDrive, field: target}
@@ -407,21 +414,21 @@ graphs:
         type: double
         binding: {kind: variable, variable_id: 2, source_asset: Creature}
     outputs:
-      Then: {id: 1257, kind: exec}
-      Result: {id: 1255, type: struct, type_name: CF_V2}
-  - id: 1333
+      Then: {id: 1282, kind: exec}
+      Result: {id: 1280, type: struct, type_name: CF_V2}
+  - id: 1358
     type: Behavior Expression
-    reference_id: 1306
+    reference_id: 1331
     reference_name: burn > 0 && rand() < 0.35
     inputs:
       burn:
         type: double
         flags: 0
-        binding: {kind: variable, variable_id: 1, source_asset: Creature}
+        binding: {kind: variable, variable_id: 5, source_asset: Creature}
     outputs:
       Result: {type: bool}
-  - {id: 1339, type: Branch}
-  - id: 1344
+  - {id: 1364, type: Branch}
+  - id: 1369
     type: Emit Directed Particles
     inputs:
       Position:
@@ -444,19 +451,19 @@ graphs:
       Min Emission: 0.8
       Max Emission: 1.3
       Size Exponent: 1.0
-  - id: 1366
+  - id: 1391
     type: Event
     reference_name: Contact Begin
     outputs:
       Other: {type: handle, type_name: ecs.entity, kind: data}
       Point: {type: struct, type_name: CF_V2, kind: data}
-  - id: 1370
+  - id: 1395
     type: Has Component
     inputs: {Component: GAME.GameInput}
-  - {id: 1374, type: Branch}
-  - id: 1394
+  - {id: 1399, type: Branch}
+  - id: 1419
     type: Behavior Expression
-    reference_id: 1379
+    reference_id: 1404
     reference_name: normalize(target - pos)
     inputs:
       target: {type: struct, type_name: CF_V2}
@@ -466,16 +473,16 @@ graphs:
         binding: {kind: component, component: GAME.GameTransform}
     outputs:
       Result: {type: struct, type_name: CF_V2}
-  - id: 1398
+  - id: 1423
     type: Self
     outputs:
       Self: {type_name: ecs.entity}
-  - id: 1400
+  - id: 1425
     type: Send Event
     reference_name: Hit
     inputs:
       Amount:
-        id: 1404
+        id: 1429
         declaration_id: 1
         type: int
         binding: {kind: component_field, component: GAME.GameWeapon, field: damage}
@@ -485,78 +492,80 @@ graphs:
       Element: {declaration_id: 5, type: int}
       Knockback: {declaration_id: 6, type: float, default: 160.0}
     outputs:
-      Then: {id: 1403}
+      Then: {id: 1428}
   edges:
-  - {from: 280.Then, to: 310.Exec}
-  - {from: 280.Amount, to: 288.Value}
-  - {from: 280.Source, to: 670.Source}
-  - {from: 280.Point, to: 460.Position, conversion: game_transform_to_cf}
-  - {from: 280.Direction, to: 404.dir}
-  - {from: 280.Direction, to: 457.dir}
-  - {from: 280.Element, to: 515.Selection}
-  - {from: 280.Knockback, to: 404.knock}
-  - {from: 288.Real, to: 310.amount}
-  - {from: 288.Real, to: 648.amount}
-  - {from: 310.Then, to: 360.Exec}
-  - {from: 360.Then, to: 404.Exec}
-  - {from: 404.Then, to: 460.Exec}
-  - {from: 457.Result, to: 460.Direction}
-  - {from: 460.Then, to: 506.Exec}
-  - {from: 504.Result, to: 506.Frequency}
-  - {from: 506.Then, to: 515.Exec}
-  - {from: 515.Case0, to: 722.Exec}
-  - {from: 515.Case1, to: 535.Exec}
-  - {from: 515.Default, to: 722.Exec}
-  - {from: 515.Case2, to: 565.Exec}
-  - {from: 515.Case3, to: 595.Exec}
-  - {from: 515.Case4, to: 626.Exec}
-  - {from: 515.Case5, to: 722.Exec}
-  - {from: 535.Then, to: 722.Exec}
-  - {from: 565.Then, to: 722.Exec}
-  - {from: 595.Then, to: 722.Exec}
-  - {from: 615.Self, to: 617.Exclude}
-  - {from: 617.Found, to: 626.Condition}
-  - {from: 617.Entity, to: 670.Entity}
-  - {from: 617.Position, to: 666.target}
-  - {from: 617.Position, to: 670.Point, conversion: game_transform_to_cf}
-  - {from: 626.True, to: 670.Exec}
-  - {from: 626.False, to: 722.Exec}
-  - {from: 648.Result, to: 670.Amount, conversion: To Integer}
-  - {from: 666.Result, to: 670.Direction}
-  - {from: 666.Result, to: 680.Direction}
-  - {from: 670.Then, to: 680.Exec}
-  - {from: 680.Then, to: 722.Exec}
-  - {from: 716.Result, to: 722.Condition}
-  - {from: 722.True, to: 727.Exec}
-  - {from: 730.Then, to: 759.Exec}
-  - {from: 759.Then, to: 800.Exec}
-  - {from: 796.Self, to: 800.Entity}
-  - {from: 798.Value, to: 800.Value}
-  - {from: 800.Then, to: 825.Exec}
-  - {from: 825.Then, to: 874.Exec}
-  - {from: 874.Then, to: 923.Exec}
-  - {from: 923.Then, to: 1003.Exec}
-  - {from: 1003.Then, to: 1086.Exec}
-  - {from: 1080.Result, to: 1086.Condition}
-  - {from: 1086.True, to: 1112.Exec}
-  - {from: 1086.False, to: 1252.Exec}
-  - {from: 1112.Then, to: 1167.Exec}
-  - {from: 1167.Then, to: 1211.Exec}
-  - {from: 1205.Result, to: 1211.Condition}
-  - {from: 1211.True, to: 1216.Exec}
-  - {from: 1211.False, to: 1252.Exec}
-  - {from: 1252.Then, to: 1339.Exec}
-  - {from: 1333.Result, to: 1339.Condition}
-  - {from: 1339.True, to: 1344.Exec}
-  - {from: 1366.Then, to: 1374.Exec}
-  - {from: 1366.Other, to: 1370.Entity}
-  - {from: 1366.Other, to: 1400.Entity}
-  - {from: 1366.Point, to: 1394.target}
-  - {from: 1366.Point, to: 1400.Point, conversion: game_transform_to_cf}
-  - {from: 1370.Value, to: 1374.Condition}
-  - {from: 1374.True, to: 1400.Exec}
-  - {from: 1394.Result, to: 1400.Direction}
-  - {from: 1398.Self, to: 1400.Source}
+  - {from: 297.Then, to: 327.Exec}
+  - {from: 297.Amount, to: 305.Value}
+  - {from: 297.Source, to: 695.Source}
+  - {from: 297.Point, to: 485.Position, conversion: game_transform_to_cf}
+  - {from: 297.Direction, to: 429.dir}
+  - {from: 297.Direction, to: 482.dir}
+  - {from: 297.Element, to: 540.Selection}
+  - {from: 297.Knockback, to: 429.knock}
+  - {from: 305.Real, to: 327.amount}
+  - {from: 305.Real, to: 673.amount}
+  - {from: 327.Then, to: 369.Exec}
+  - {from: 367.Self, to: 369.Entity}
+  - {from: 369.Then, to: 385.Exec}
+  - {from: 385.Then, to: 429.Exec}
+  - {from: 429.Then, to: 485.Exec}
+  - {from: 482.Result, to: 485.Direction}
+  - {from: 485.Then, to: 531.Exec}
+  - {from: 529.Result, to: 531.Frequency}
+  - {from: 531.Then, to: 540.Exec}
+  - {from: 540.Case0, to: 747.Exec}
+  - {from: 540.Case1, to: 560.Exec}
+  - {from: 540.Default, to: 747.Exec}
+  - {from: 540.Case2, to: 590.Exec}
+  - {from: 540.Case3, to: 620.Exec}
+  - {from: 540.Case4, to: 651.Exec}
+  - {from: 540.Case5, to: 747.Exec}
+  - {from: 560.Then, to: 747.Exec}
+  - {from: 590.Then, to: 747.Exec}
+  - {from: 620.Then, to: 747.Exec}
+  - {from: 640.Self, to: 642.Exclude}
+  - {from: 642.Found, to: 651.Condition}
+  - {from: 642.Entity, to: 695.Entity}
+  - {from: 642.Position, to: 691.target}
+  - {from: 642.Position, to: 695.Point, conversion: game_transform_to_cf}
+  - {from: 651.True, to: 695.Exec}
+  - {from: 651.False, to: 747.Exec}
+  - {from: 673.Result, to: 695.Amount, conversion: To Integer}
+  - {from: 691.Result, to: 695.Direction}
+  - {from: 691.Result, to: 705.Direction}
+  - {from: 695.Then, to: 705.Exec}
+  - {from: 705.Then, to: 747.Exec}
+  - {from: 741.Result, to: 747.Condition}
+  - {from: 747.True, to: 752.Exec}
+  - {from: 755.Then, to: 784.Exec}
+  - {from: 784.Then, to: 825.Exec}
+  - {from: 821.Self, to: 825.Entity}
+  - {from: 823.Value, to: 825.Value}
+  - {from: 825.Then, to: 850.Exec}
+  - {from: 850.Then, to: 899.Exec}
+  - {from: 899.Then, to: 948.Exec}
+  - {from: 948.Then, to: 1028.Exec}
+  - {from: 1028.Then, to: 1111.Exec}
+  - {from: 1105.Result, to: 1111.Condition}
+  - {from: 1111.True, to: 1137.Exec}
+  - {from: 1111.False, to: 1277.Exec}
+  - {from: 1137.Then, to: 1192.Exec}
+  - {from: 1192.Then, to: 1236.Exec}
+  - {from: 1230.Result, to: 1236.Condition}
+  - {from: 1236.True, to: 1241.Exec}
+  - {from: 1236.False, to: 1277.Exec}
+  - {from: 1277.Then, to: 1364.Exec}
+  - {from: 1358.Result, to: 1364.Condition}
+  - {from: 1364.True, to: 1369.Exec}
+  - {from: 1391.Then, to: 1399.Exec}
+  - {from: 1391.Other, to: 1395.Entity}
+  - {from: 1391.Other, to: 1425.Entity}
+  - {from: 1391.Point, to: 1419.target}
+  - {from: 1391.Point, to: 1425.Point, conversion: game_transform_to_cf}
+  - {from: 1395.Value, to: 1399.Condition}
+  - {from: 1399.True, to: 1425.Exec}
+  - {from: 1419.Result, to: 1425.Direction}
+  - {from: 1423.Self, to: 1425.Source}
 - id: 7
   kind: function
   name: Die
@@ -574,7 +583,7 @@ graphs:
       dead:
         type: double
         flags: 0
-        binding: {kind: variable, variable_id: 6, source_asset: Creature}
+        binding: {kind: variable, variable_id: 4, source_asset: Creature}
     outputs:
       Result: {type: bool}
   - {id: 32, type: Branch}
@@ -587,7 +596,7 @@ graphs:
       dead:
         id: 48
         type: float
-        binding: {kind: variable, variable_id: 6, source_asset: Creature}
+        binding: {kind: variable, variable_id: 4, source_asset: Creature}
     outputs:
       Then: {id: 51, kind: exec}
       Result: {id: 49, type: float}
@@ -684,10 +693,27 @@ graphs:
       Pan: 0.0
       Noise: 0.6
   - id: 274
+    type: Hit Stop
+    inputs: {Duration: 0.04, Scale: 0.05}
+  - id: 279
+    type: Add Camera Trauma
+    inputs: {Amount: 0.16}
+  - id: 283
+    type: Add Shockwave
+    inputs:
+      Position:
+        type_name: GameTransform
+        binding: {kind: component, component: GAME.GameTransform}
+        default: null
+      Radius: 70.0
+      Thickness: 9.0
+      Strength: 0.45
+      Duration: 0.35
+  - id: 291
     type: Self
     outputs:
       Self: {type_name: ecs.entity}
-  - {id: 276, type: Destroy Entity}
+  - {id: 293, type: Destroy Entity}
   edges:
   - {from: 8.Exec, to: 32.Exec}
   - {from: 26.Result, to: 32.Condition}
@@ -717,9 +743,12 @@ graphs:
   - {from: 231.Result, to: 233.Value}
   - {from: 239.Value, to: 256.k}
   - {from: 259.Then, to: 265.Exec}
-  - {from: 265.Then, to: 276.Exec}
-  - {from: 274.Self, to: 276.Entity}
-  - {from: 276.Then, to: 10.Exec}
+  - {from: 265.Then, to: 274.Exec}
+  - {from: 274.Then, to: 279.Exec}
+  - {from: 279.Then, to: 283.Exec}
+  - {from: 283.Then, to: 293.Exec}
+  - {from: 291.Self, to: 293.Entity}
+  - {from: 293.Then, to: 10.Exec}
 - {id: 12, kind: function, math_expression: dead > 0, entry_id: 13}
 - {id: 37, kind: function, math_expression: dead = 1, entry_id: 53}
 - id: 102
@@ -732,62 +761,62 @@ graphs:
   math_expression: direction(rand() * 6.283) * (60 + rand() * 110)
   entry_id: 194
 - {id: 242, kind: function, math_expression: k + 1, entry_id: 243}
-- id: 291
+- id: 308
   kind: function
   math_expression: health = max(health - amount, 0)
-  entry_id: 317
-- {id: 350, kind: function, math_expression: flash = 1, entry_id: 366}
-- id: 380
+  entry_id: 334
+- {id: 375, kind: function, math_expression: flash = 1, entry_id: 391}
+- id: 405
   kind: function
   math_expression: velocity += dir * (knock + 45)
-  entry_id: 412
-- {id: 440, kind: function, math_expression: dir * -1, entry_id: 441}
-- {id: 482, kind: function, math_expression: 520 + rand() * 180, entry_id: 483}
-- {id: 525, kind: function, math_expression: burn = 3.5, entry_id: 541}
-- {id: 555, kind: function, math_expression: chill = 3, entry_id: 571}
-- {id: 585, kind: function, math_expression: corrode = 5, entry_id: 601}
-- {id: 631, kind: function, math_expression: ceil(amount * 0.6), entry_id: 632}
-- id: 651
+  entry_id: 437
+- {id: 465, kind: function, math_expression: dir * -1, entry_id: 466}
+- {id: 507, kind: function, math_expression: 520 + rand() * 180, entry_id: 508}
+- {id: 550, kind: function, math_expression: burn = 3.5, entry_id: 566}
+- {id: 580, kind: function, math_expression: chill = 3, entry_id: 596}
+- {id: 610, kind: function, math_expression: corrode = 5, entry_id: 626}
+- {id: 656, kind: function, math_expression: ceil(amount * 0.6), entry_id: 657}
+- id: 676
   kind: function
   math_expression: normalize(target - pos)
-  entry_id: 652
-- {id: 702, kind: function, math_expression: health <= 0, entry_id: 703}
-- id: 733
+  entry_id: 677
+- {id: 727, kind: function, math_expression: health <= 0, entry_id: 728}
+- id: 758
   kind: function
   math_expression: flash = max(0, flash - dt * 7)
-  entry_id: 766
-- id: 806
+  entry_id: 791
+- id: 831
   kind: function
   math_expression: burn = max(0, burn - dt)
-  entry_id: 832
-- id: 855
+  entry_id: 857
+- id: 880
   kind: function
   math_expression: chill = max(0, chill - dt)
-  entry_id: 881
-- id: 904
+  entry_id: 906
+- id: 929
   kind: function
   math_expression: corrode = max(0, corrode - dt)
-  entry_id: 930
-- id: 953
+  entry_id: 955
+- id: 978
   kind: function
   math_expression: dot += dt * (9 * step(0.001, burn) + 6 * step(0.001, corrode))
-  entry_id: 1012
-- {id: 1066, kind: function, math_expression: dot >= 1, entry_id: 1067}
-- id: 1091
+  entry_id: 1037
+- {id: 1091, kind: function, math_expression: dot >= 1, entry_id: 1092}
+- id: 1116
   kind: function
   math_expression: health = max(health - 1, 0)
-  entry_id: 1118
-- {id: 1153, kind: function, math_expression: dot -= 1, entry_id: 1173}
-- {id: 1191, kind: function, math_expression: health <= 0, entry_id: 1192}
-- id: 1219
+  entry_id: 1143
+- {id: 1178, kind: function, math_expression: dot -= 1, entry_id: 1198}
+- {id: 1216, kind: function, math_expression: health <= 0, entry_id: 1217}
+- id: 1244
   kind: function
   math_expression: target *= 1 - 0.65 * step(0.001, chill)
-  entry_id: 1259
-- id: 1306
+  entry_id: 1284
+- id: 1331
   kind: function
   math_expression: burn > 0 && rand() < 0.35
-  entry_id: 1307
-- id: 1379
+  entry_id: 1332
+- id: 1404
   kind: function
   math_expression: normalize(target - pos)
-  entry_id: 1380
+  entry_id: 1405

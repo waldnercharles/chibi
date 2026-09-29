@@ -1,6 +1,6 @@
 version: 3
 name: ShipHull
-id_counter: 1063
+id_counter: 1115
 description: 'The ship''s shield and hull: a shield soaks hits and recharges after a quiet spell, the hull takes the rest with a brief invulnerability, repair motes restore it, and losing it ends the run.'
 owner_type: ecs.entity
 variables:
@@ -15,7 +15,7 @@ graphs:
 - kind: event
   name: ""
   nodes:
-  - id: 94
+  - id: 117
     type: Event
     reference_name: Hit
     outputs:
@@ -25,24 +25,24 @@ graphs:
       Direction: {declaration_id: 4, type: struct, type_name: CF_V2, kind: data}
       Element: {declaration_id: 5, type: int, kind: data}
       Knockback: {declaration_id: 6, type: float, kind: data}
-  - {id: 102, type: To Real}
-  - id: 119
+  - {id: 125, type: To Real}
+  - id: 142
     type: Behavior Expression
-    reference_id: 105
+    reference_id: 128
     reference_name: element == 7
     inputs:
       element: {type: double, flags: 0}
     outputs:
       Result: {type: bool}
-  - {id: 125, type: Branch}
-  - id: 147
+  - {id: 148, type: Branch}
+  - id: 170
     type: Behavior Expression
-    reference_id: 130
+    reference_id: 153
     reference_name: health = min(maximum, health + amount)
     inputs:
-      Exec: {id: 152, kind: exec}
+      Exec: {id: 175, kind: exec}
       health:
-        id: 148
+        id: 171
         type: int
         binding: {kind: component_field, component: GAME.GameHealth, field: current}
       maximum:
@@ -50,11 +50,11 @@ graphs:
         binding: {kind: component_field, component: GAME.GameHealth, field: maximum}
       amount: {type: double}
     outputs:
-      Then: {id: 153, kind: exec}
-      Result: {id: 151, type: int}
-  - id: 212
+      Then: {id: 176, kind: exec}
+      Result: {id: 174, type: int}
+  - id: 235
     type: Behavior Expression
-    reference_id: 186
+    reference_id: 209
     reference_name: invuln <= 0 && dead == 0
     inputs:
       invuln:
@@ -67,15 +67,15 @@ graphs:
         binding: {kind: variable, variable_id: 6, source_asset: ShipHull}
     outputs:
       Result: {type: bool}
-  - {id: 219, type: Branch}
-  - id: 237
+  - {id: 242, type: Branch}
+  - id: 260
     type: Behavior Expression
-    reference_id: 224
+    reference_id: 247
     reference_name: absorbed = min(shield, amount)
     inputs:
-      Exec: {id: 242, kind: exec}
+      Exec: {id: 265, kind: exec}
       absorbed:
-        id: 238
+        id: 261
         type: float
         binding: {kind: variable, variable_id: 7, source_asset: ShipHull}
       shield:
@@ -83,32 +83,32 @@ graphs:
         binding: {kind: variable, variable_id: 1, source_asset: ShipHull}
       amount: {type: double}
     outputs:
-      Then: {id: 243, kind: exec}
-      Result: {id: 241, type: float}
-  - id: 274
+      Then: {id: 266, kind: exec}
+      Result: {id: 264, type: float}
+  - id: 297
     type: Behavior Expression
-    reference_id: 262
+    reference_id: 285
     reference_name: shield -= absorbed
     inputs:
-      Exec: {id: 278, kind: exec}
+      Exec: {id: 301, kind: exec}
       shield:
-        id: 275
+        id: 298
         type: float
         binding: {kind: variable, variable_id: 1, source_asset: ShipHull}
       absorbed:
         type: double
         binding: {kind: variable, variable_id: 7, source_asset: ShipHull}
     outputs:
-      Then: {id: 279, kind: exec}
-      Result: {id: 277, type: float}
-  - id: 324
+      Then: {id: 302, kind: exec}
+      Result: {id: 300, type: float}
+  - id: 347
     type: Behavior Expression
-    reference_id: 297
+    reference_id: 320
     reference_name: health = max(health - ceil(amount - absorbed), 0)
     inputs:
-      Exec: {id: 329, kind: exec}
+      Exec: {id: 352, kind: exec}
       health:
-        id: 325
+        id: 348
         type: int
         binding: {kind: component_field, component: GAME.GameHealth, field: current}
       amount: {type: double}
@@ -116,29 +116,29 @@ graphs:
         type: double
         binding: {kind: variable, variable_id: 7, source_asset: ShipHull}
     outputs:
-      Then: {id: 330, kind: exec}
-      Result: {id: 328, type: int}
-  - id: 383
+      Then: {id: 353, kind: exec}
+      Result: {id: 351, type: int}
+  - id: 406
     type: Behavior Expression
-    reference_id: 373
+    reference_id: 396
     reference_name: quiet = 0
     inputs:
-      Exec: {id: 386, kind: exec}
+      Exec: {id: 409, kind: exec}
       quiet:
-        id: 384
+        id: 407
         type: float
         binding: {kind: variable, variable_id: 3, source_asset: ShipHull}
     outputs:
-      Then: {id: 387, kind: exec}
-      Result: {id: 385, type: float}
-  - id: 437
+      Then: {id: 410, kind: exec}
+      Result: {id: 408, type: float}
+  - id: 460
     type: Behavior Expression
-    reference_id: 403
+    reference_id: 426
     reference_name: invuln = 0.25 + 0.3 * step(0.5, amount - absorbed)
     inputs:
-      Exec: {id: 442, kind: exec}
+      Exec: {id: 465, kind: exec}
       invuln:
-        id: 438
+        id: 461
         type: float
         binding: {kind: variable, variable_id: 4, source_asset: ShipHull}
       amount: {type: double}
@@ -146,40 +146,40 @@ graphs:
         type: double
         binding: {kind: variable, variable_id: 7, source_asset: ShipHull}
     outputs:
-      Then: {id: 443, kind: exec}
-      Result: {id: 441, type: float}
-  - id: 507
+      Then: {id: 466, kind: exec}
+      Result: {id: 464, type: float}
+  - id: 530
     type: Behavior Expression
-    reference_id: 483
+    reference_id: 506
     reference_name: velocity += dir * (knock + 60)
     inputs:
-      Exec: {id: 512, kind: exec}
+      Exec: {id: 535, kind: exec}
       velocity:
-        id: 508
+        id: 531
         type: struct
         type_name: GameVelocity
         binding: {kind: component, component: GAME.GameVelocity}
       dir: {type: struct, type_name: CF_V2}
       knock: {type: float}
     outputs:
-      Then: {id: 513, kind: exec}
-      Result: {id: 511, type: struct, type_name: GameVelocity}
-  - id: 553
+      Then: {id: 536, kind: exec}
+      Result: {id: 534, type: struct, type_name: GameVelocity}
+  - id: 576
     type: Behavior Expression
-    reference_id: 543
+    reference_id: 566
     reference_name: glow = 4
     inputs:
-      Exec: {id: 556, kind: exec}
+      Exec: {id: 579, kind: exec}
       glow:
-        id: 554
+        id: 577
         type: float
         binding: {kind: variable, variable_id: 5, source_asset: ShipHull}
     outputs:
-      Then: {id: 557, kind: exec}
-      Result: {id: 555, type: float}
-  - id: 585
+      Then: {id: 580, kind: exec}
+      Result: {id: 578, type: float}
+  - id: 608
     type: Behavior Expression
-    reference_id: 573
+    reference_id: 596
     reference_name: amount > absorbed
     inputs:
       amount: {type: double, flags: 0}
@@ -189,11 +189,29 @@ graphs:
         binding: {kind: variable, variable_id: 7, source_asset: ShipHull}
     outputs:
       Result: {type: bool}
-  - {id: 592, type: Branch}
-  - id: 597
+  - {id: 615, type: Branch}
+  - id: 620
+    type: Hit Stop
+    inputs: {Duration: 0.07, Scale: 0.08}
+  - id: 625
+    type: Add Camera Trauma
+    inputs: {Amount: 0.45}
+  - id: 629
+    type: Pulse Chromatic Aberration
+    inputs: {Amount: 0.9, Duration: 0.35}
+  - id: 634
+    type: Flash Screen
+    inputs: {Color: 4280957695, Amount: 0.14, Duration: 0.3}
+  - id: 640
     type: Play Sound
     inputs: {Frequency: 140.0, End Frequency: 45.0, Duration: 0.35, Pan: 0.0, Noise: 0.7}
-  - id: 606
+  - id: 649
+    type: Add Camera Trauma
+    inputs: {Amount: 0.15}
+  - id: 653
+    type: Pulse Chromatic Aberration
+    inputs: {Amount: 0.3, Duration: 0.2}
+  - id: 658
     type: Play Sound
     inputs:
       Frequency: 1500.0
@@ -202,15 +220,15 @@ graphs:
       Volume: 0.22
       Pan: 0.0
       Noise: 0.1
-  - id: 632
+  - id: 684
     type: Behavior Expression
-    reference_id: 615
+    reference_id: 667
     reference_name: dir * -1
     inputs:
       dir: {type: struct, type_name: CF_V2}
     outputs:
       Result: {type: struct, type_name: CF_V2}
-  - id: 635
+  - id: 687
     type: Emit Directed Particles
     inputs:
       Position:
@@ -232,9 +250,9 @@ graphs:
       Max Emission: 1.1
       Size Exponent: 1.0
       Shape: 4
-  - id: 671
+  - id: 723
     type: Behavior Expression
-    reference_id: 657
+    reference_id: 709
     reference_name: health <= 0
     inputs:
       health:
@@ -243,53 +261,53 @@ graphs:
         binding: {kind: component_field, component: GAME.GameHealth, field: current}
     outputs:
       Result: {type: bool}
-  - {id: 677, type: Branch}
-  - {id: 682, type: Call Function, reference_id: 8, reference_name: Die}
-  - id: 685
+  - {id: 729, type: Branch}
+  - {id: 734, type: Call Function, reference_id: 8, reference_name: Die}
+  - id: 737
     type: Event
     reference_name: Tick
     outputs:
       DeltaSeconds: {type: float, kind: data}
-  - id: 700
+  - id: 752
     type: Behavior Expression
-    reference_id: 688
+    reference_id: 740
     reference_name: quiet += dt
     inputs:
-      Exec: {id: 704, kind: exec}
+      Exec: {id: 756, kind: exec}
       quiet:
-        id: 701
+        id: 753
         type: float
         binding: {kind: variable, variable_id: 3, source_asset: ShipHull}
       dt:
         type: double
         binding: {kind: delta_time}
     outputs:
-      Then: {id: 705, kind: exec}
-      Result: {id: 703, type: float}
-  - id: 742
+      Then: {id: 757, kind: exec}
+      Result: {id: 755, type: float}
+  - id: 794
     type: Behavior Expression
-    reference_id: 723
+    reference_id: 775
     reference_name: invuln = max(0, invuln - dt)
     inputs:
-      Exec: {id: 746, kind: exec}
+      Exec: {id: 798, kind: exec}
       invuln:
-        id: 743
+        id: 795
         type: float
         binding: {kind: variable, variable_id: 4, source_asset: ShipHull}
       dt:
         type: double
         binding: {kind: delta_time}
     outputs:
-      Then: {id: 747, kind: exec}
-      Result: {id: 745, type: float}
-  - id: 808
+      Then: {id: 799, kind: exec}
+      Result: {id: 797, type: float}
+  - id: 860
     type: Behavior Expression
-    reference_id: 772
+    reference_id: 824
     reference_name: shield = min(shieldMax, shield + dt * 16 * step(2.2, quiet))
     inputs:
-      Exec: {id: 814, kind: exec}
+      Exec: {id: 866, kind: exec}
       shield:
-        id: 809
+        id: 861
         type: float
         binding: {kind: variable, variable_id: 1, source_asset: ShipHull}
       shieldMax:
@@ -302,68 +320,68 @@ graphs:
         type: double
         binding: {kind: variable, variable_id: 3, source_asset: ShipHull}
     outputs:
-      Then: {id: 815, kind: exec}
-      Result: {id: 813, type: float}
-  - id: 896
+      Then: {id: 867, kind: exec}
+      Result: {id: 865, type: float}
+  - id: 948
     type: Behavior Expression
-    reference_id: 857
+    reference_id: 909
     reference_name: glow = 1 + (glow - 1) * exp(-dt * 6)
     inputs:
-      Exec: {id: 900, kind: exec}
+      Exec: {id: 952, kind: exec}
       glow:
-        id: 897
+        id: 949
         type: float
         binding: {kind: variable, variable_id: 5, source_asset: ShipHull}
       dt:
         type: double
         binding: {kind: delta_time}
     outputs:
-      Then: {id: 901, kind: exec}
-      Result: {id: 899, type: float}
-  - id: 946
+      Then: {id: 953, kind: exec}
+      Result: {id: 951, type: float}
+  - id: 998
     type: Self
     outputs:
       Self: {type_name: ecs.entity}
-  - id: 948
+  - id: 1000
     type: Get Variable
     reference_id: 5
     reference_name: glow
     outputs:
       Value: {type: float}
-  - id: 950
+  - id: 1002
     type: Set Material Parameter
     inputs:
       Name: Glow
       Value: {type_name: float}
-  - id: 956
+  - id: 1008
     type: Get Variable
     reference_id: 1
     reference_name: shield
     outputs:
       Value: {type: float}
-  - id: 958
+  - id: 1010
     type: Set Global Variable
     inputs:
       Name: Shield
       Value: {type: float}
     outputs:
       Value: {type: float}
-  - id: 964
+  - id: 1016
     type: Get Variable
     reference_id: 2
     reference_name: shieldMax
     outputs:
       Value: {type: float}
-  - id: 966
+  - id: 1018
     type: Set Global Variable
     inputs:
       Name: ShieldMax
       Value: {type: float}
     outputs:
       Value: {type: float}
-  - id: 979
+  - id: 1031
     type: Behavior Expression
-    reference_id: 972
+    reference_id: 1024
     reference_name: health
     inputs:
       health:
@@ -371,16 +389,16 @@ graphs:
         binding: {kind: component_field, component: GAME.GameHealth, field: current}
     outputs:
       Result: {type: double}
-  - id: 982
+  - id: 1034
     type: Set Global Variable
     inputs:
       Name: Hull
       Value: {type: double}
     outputs:
       Value: {type: double}
-  - id: 995
+  - id: 1047
     type: Behavior Expression
-    reference_id: 988
+    reference_id: 1040
     reference_name: maximum
     inputs:
       maximum:
@@ -388,16 +406,16 @@ graphs:
         binding: {kind: component_field, component: GAME.GameHealth, field: maximum}
     outputs:
       Result: {type: double}
-  - id: 998
+  - id: 1050
     type: Set Global Variable
     inputs:
       Name: HullMax
       Value: {type: double}
     outputs:
       Value: {type: double}
-  - id: 1028
+  - id: 1080
     type: Behavior Expression
-    reference_id: 1004
+    reference_id: 1056
     reference_name: floor(max(0, pos.y) / 10)
     inputs:
       pos:
@@ -406,7 +424,7 @@ graphs:
         binding: {kind: component, component: GAME.GameTransform}
     outputs:
       Result: {type: double}
-  - id: 1057
+  - id: 1109
     type: Set Global Variable
     inputs:
       Name: Depth
@@ -414,54 +432,60 @@ graphs:
     outputs:
       Value: {type: double}
   edges:
-  - {from: 94.Then, to: 125.Exec}
-  - {from: 94.Amount, to: 102.Value}
-  - {from: 94.Direction, to: 507.dir}
-  - {from: 94.Direction, to: 632.dir}
-  - {from: 94.Knockback, to: 507.knock}
-  - {from: 102.Real, to: 147.amount}
-  - {from: 102.Real, to: 237.amount}
-  - {from: 102.Real, to: 324.amount}
-  - {from: 102.Real, to: 437.amount}
-  - {from: 102.Real, to: 585.amount}
-  - {from: 119.Result, to: 125.Condition}
-  - {from: 125.True, to: 147.Exec}
-  - {from: 125.False, to: 219.Exec}
-  - {from: 212.Result, to: 219.Condition}
-  - {from: 219.True, to: 237.Exec}
-  - {from: 237.Then, to: 274.Exec}
-  - {from: 274.Then, to: 324.Exec}
-  - {from: 324.Then, to: 383.Exec}
-  - {from: 383.Then, to: 437.Exec}
-  - {from: 437.Then, to: 507.Exec}
-  - {from: 507.Then, to: 553.Exec}
-  - {from: 553.Then, to: 592.Exec}
-  - {from: 585.Result, to: 592.Condition}
-  - {from: 592.True, to: 597.Exec}
-  - {from: 592.False, to: 606.Exec}
-  - {from: 597.Then, to: 635.Exec}
-  - {from: 606.Then, to: 635.Exec}
-  - {from: 632.Result, to: 635.Direction}
-  - {from: 635.Then, to: 677.Exec}
-  - {from: 671.Result, to: 677.Condition}
-  - {from: 677.True, to: 682.Exec}
-  - {from: 685.Then, to: 700.Exec}
-  - {from: 700.Then, to: 742.Exec}
-  - {from: 742.Then, to: 808.Exec}
-  - {from: 808.Then, to: 896.Exec}
-  - {from: 896.Then, to: 950.Exec}
-  - {from: 946.Self, to: 950.Entity}
-  - {from: 948.Value, to: 950.Value}
-  - {from: 950.Then, to: 958.Exec}
-  - {from: 956.Value, to: 958.Value}
-  - {from: 958.Then, to: 966.Exec}
-  - {from: 964.Value, to: 966.Value}
-  - {from: 966.Then, to: 982.Exec}
-  - {from: 979.Result, to: 982.Value}
-  - {from: 982.Then, to: 998.Exec}
-  - {from: 995.Result, to: 998.Value}
-  - {from: 998.Then, to: 1057.Exec}
-  - {from: 1028.Result, to: 1057.Value}
+  - {from: 117.Then, to: 148.Exec}
+  - {from: 117.Amount, to: 125.Value}
+  - {from: 117.Direction, to: 530.dir}
+  - {from: 117.Direction, to: 684.dir}
+  - {from: 117.Knockback, to: 530.knock}
+  - {from: 125.Real, to: 170.amount}
+  - {from: 125.Real, to: 260.amount}
+  - {from: 125.Real, to: 347.amount}
+  - {from: 125.Real, to: 460.amount}
+  - {from: 125.Real, to: 608.amount}
+  - {from: 142.Result, to: 148.Condition}
+  - {from: 148.True, to: 170.Exec}
+  - {from: 148.False, to: 242.Exec}
+  - {from: 235.Result, to: 242.Condition}
+  - {from: 242.True, to: 260.Exec}
+  - {from: 260.Then, to: 297.Exec}
+  - {from: 297.Then, to: 347.Exec}
+  - {from: 347.Then, to: 406.Exec}
+  - {from: 406.Then, to: 460.Exec}
+  - {from: 460.Then, to: 530.Exec}
+  - {from: 530.Then, to: 576.Exec}
+  - {from: 576.Then, to: 615.Exec}
+  - {from: 608.Result, to: 615.Condition}
+  - {from: 615.True, to: 620.Exec}
+  - {from: 615.False, to: 649.Exec}
+  - {from: 620.Then, to: 625.Exec}
+  - {from: 625.Then, to: 629.Exec}
+  - {from: 629.Then, to: 634.Exec}
+  - {from: 634.Then, to: 640.Exec}
+  - {from: 640.Then, to: 687.Exec}
+  - {from: 649.Then, to: 653.Exec}
+  - {from: 653.Then, to: 658.Exec}
+  - {from: 658.Then, to: 687.Exec}
+  - {from: 684.Result, to: 687.Direction}
+  - {from: 687.Then, to: 729.Exec}
+  - {from: 723.Result, to: 729.Condition}
+  - {from: 729.True, to: 734.Exec}
+  - {from: 737.Then, to: 752.Exec}
+  - {from: 752.Then, to: 794.Exec}
+  - {from: 794.Then, to: 860.Exec}
+  - {from: 860.Then, to: 948.Exec}
+  - {from: 948.Then, to: 1002.Exec}
+  - {from: 998.Self, to: 1002.Entity}
+  - {from: 1000.Value, to: 1002.Value}
+  - {from: 1002.Then, to: 1010.Exec}
+  - {from: 1008.Value, to: 1010.Value}
+  - {from: 1010.Then, to: 1018.Exec}
+  - {from: 1016.Value, to: 1018.Value}
+  - {from: 1018.Then, to: 1034.Exec}
+  - {from: 1031.Result, to: 1034.Value}
+  - {from: 1034.Then, to: 1050.Exec}
+  - {from: 1047.Result, to: 1050.Value}
+  - {from: 1050.Then, to: 1109.Exec}
+  - {from: 1080.Result, to: 1109.Value}
 - id: 8
   kind: function
   name: Die
@@ -505,18 +529,38 @@ graphs:
       Value:
         binding: {kind: component, component: GAME.GameTransform}
   - id: 79
+    type: Hit Stop
+    inputs: {Duration: 0.5, Scale: 0.12}
+  - id: 84
+    type: Add Camera Trauma
+    inputs: {Amount: 1.0}
+  - id: 88
+    type: Add Shockwave
+    inputs:
+      Position:
+        type_name: GameTransform
+        binding: {kind: component, component: GAME.GameTransform}
+        default: null
+      Radius: 260.0
+      Thickness: 22.0
+      Strength: 1.2
+      Duration: 0.9
+  - id: 96
+    type: Flash Screen
+    inputs: {Color: 3908829183, Duration: 0.6}
+  - id: 102
     type: Get Global Variable
     inputs: {Name: RunEntity}
     outputs:
       Value: {type: handle, type_name: ecs.entity}
-  - id: 82
+  - id: 105
     type: Set_GameEncounter_status
     inputs: {Value: 2}
-  - id: 88
+  - id: 111
     type: Self
     outputs:
       Self: {type_name: ecs.entity}
-  - {id: 90, type: Destroy Entity}
+  - {id: 113, type: Destroy Entity}
   edges:
   - {from: 9.Exec, to: 33.Exec}
   - {from: 27.Result, to: 33.Condition}
@@ -525,59 +569,63 @@ graphs:
   - {from: 48.Then, to: 68.Exec}
   - {from: 68.Then, to: 73.Exec}
   - {from: 68.Entity, to: 73.Entity}
-  - {from: 73.Then, to: 82.Exec}
-  - {from: 79.Value, to: 82.Target}
-  - {from: 82.Then, to: 90.Exec}
-  - {from: 88.Self, to: 90.Entity}
+  - {from: 73.Then, to: 79.Exec}
+  - {from: 79.Then, to: 84.Exec}
+  - {from: 84.Then, to: 88.Exec}
+  - {from: 88.Then, to: 96.Exec}
+  - {from: 96.Then, to: 105.Exec}
+  - {from: 102.Value, to: 105.Target}
+  - {from: 105.Then, to: 113.Exec}
+  - {from: 111.Self, to: 113.Entity}
 - {id: 13, kind: function, math_expression: dead > 0, entry_id: 14}
 - {id: 38, kind: function, math_expression: dead = 1, entry_id: 54}
-- {id: 105, kind: function, math_expression: element == 7, entry_id: 106}
-- id: 130
+- {id: 128, kind: function, math_expression: element == 7, entry_id: 129}
+- id: 153
   kind: function
   math_expression: health = min(maximum, health + amount)
-  entry_id: 155
-- id: 186
+  entry_id: 178
+- id: 209
   kind: function
   math_expression: invuln <= 0 && dead == 0
-  entry_id: 187
-- id: 224
+  entry_id: 210
+- id: 247
   kind: function
   math_expression: absorbed = min(shield, amount)
-  entry_id: 245
-- {id: 262, kind: function, math_expression: shield -= absorbed, entry_id: 281}
-- id: 297
+  entry_id: 268
+- {id: 285, kind: function, math_expression: shield -= absorbed, entry_id: 304}
+- id: 320
   kind: function
   math_expression: health = max(health - ceil(amount - absorbed), 0)
-  entry_id: 332
-- {id: 373, kind: function, math_expression: quiet = 0, entry_id: 389}
-- id: 403
+  entry_id: 355
+- {id: 396, kind: function, math_expression: quiet = 0, entry_id: 412}
+- id: 426
   kind: function
   math_expression: invuln = 0.25 + 0.3 * step(0.5, amount - absorbed)
-  entry_id: 445
-- id: 483
+  entry_id: 468
+- id: 506
   kind: function
   math_expression: velocity += dir * (knock + 60)
-  entry_id: 515
-- {id: 543, kind: function, math_expression: glow = 4, entry_id: 559}
-- {id: 573, kind: function, math_expression: amount > absorbed, entry_id: 574}
-- {id: 615, kind: function, math_expression: dir * -1, entry_id: 616}
-- {id: 657, kind: function, math_expression: health <= 0, entry_id: 658}
-- {id: 688, kind: function, math_expression: quiet += dt, entry_id: 707}
-- id: 723
+  entry_id: 538
+- {id: 566, kind: function, math_expression: glow = 4, entry_id: 582}
+- {id: 596, kind: function, math_expression: amount > absorbed, entry_id: 597}
+- {id: 667, kind: function, math_expression: dir * -1, entry_id: 668}
+- {id: 709, kind: function, math_expression: health <= 0, entry_id: 710}
+- {id: 740, kind: function, math_expression: quiet += dt, entry_id: 759}
+- id: 775
   kind: function
   math_expression: invuln = max(0, invuln - dt)
-  entry_id: 749
-- id: 772
+  entry_id: 801
+- id: 824
   kind: function
   math_expression: shield = min(shieldMax, shield + dt * 16 * step(2.2, quiet))
-  entry_id: 817
-- id: 857
+  entry_id: 869
+- id: 909
   kind: function
   math_expression: glow = 1 + (glow - 1) * exp(-dt * 6)
-  entry_id: 903
-- {id: 972, kind: function, math_expression: health, entry_id: 973}
-- {id: 988, kind: function, math_expression: maximum, entry_id: 989}
-- id: 1004
+  entry_id: 955
+- {id: 1024, kind: function, math_expression: health, entry_id: 1025}
+- {id: 1040, kind: function, math_expression: maximum, entry_id: 1041}
+- id: 1056
   kind: function
   math_expression: floor(max(0, pos.y) / 10)
-  entry_id: 1032
+  entry_id: 1084

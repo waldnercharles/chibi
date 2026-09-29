@@ -1,24 +1,171 @@
 version: 1
 name: Starwell
+physics:
+  gravity: {x: 0.0, "y": 240.0}
 entities:
 - name: Player
   prototype: Wren
   components:
-    GameTransform: {x: 0, "y": 330}
-  behaviors: [ShipFlight, Hardpoints, ShipHull]
+    GameTransform: {x: 0.0, "y": 330.0}
+  behaviors: [Hardpoints, ShipFlight, ShipHull]
 - name: Camera
-  prototype: Camera
+  prototype: WellCamera
   components:
-    GameTransform: {x: 0, "y": 330}
+    GameTransform: {x: 0.0, "y": 330.0}
   behaviors: [CameraFollow]
-- name: Lighting
-  prototype: HRC
-  components:
-    GameHRC2D: {resolution: 1, adaptive: true, min_resolution: 0.5, fog: 0.4, bloom: 0.2}
+- {name: Lighting, prototype: WellLighting}
 - {name: FireMouse, prototype: FireMouse}
 - {name: FireStick, prototype: FireStick}
 - {name: SecondaryMouse, prototype: SecondaryMouse}
-- {name: Basalt Throat, prototype: StratumThroat}
 - name: Run
   prototype: RunState
   behaviors: [Run]
+- {name: Basalt Throat, prototype: StratumThroat}
+- name: Throat deep
+  prototype: Backdrop
+  components:
+    GameBackdrop2D: {material: ThroatDeep, parallax: 0.12, layer: 0, intensity: 1.0}
+- name: Throat columns
+  prototype: Backdrop
+  components:
+    GameBackdrop2D: {material: ThroatColumns, parallax: 0.45, layer: 1, intensity: 1.0, lit: true}
+- name: Throat embers
+  prototype: Scatter
+  components:
+    GameScatter:
+      prototype: Ember
+      terrain: Throat
+      min: {x: -1600.0, "y": 0.0}
+      max: {x: 1600.0, "y": 6000.0}
+      cell: 130.0
+      chance: 0.6
+      placement: Wall
+      clearance: 130.0
+      salt: 11
+      radius: 500.0
+- name: Throat ceiling embers
+  prototype: Scatter
+  components:
+    GameScatter:
+      prototype: Ember
+      terrain: Throat
+      min: {x: -1600.0, "y": 0.0}
+      max: {x: 1600.0, "y": 6000.0}
+      cell: 150.0
+      chance: 0.5
+      placement: Ceiling
+      clearance: 150.0
+      salt: 12
+      radius: 500.0
+- name: Throat glowmoss
+  prototype: Scatter
+  components:
+    GameScatter:
+      prototype: Glowmoss
+      terrain: Throat
+      min: {x: -1600.0, "y": 0.0}
+      max: {x: 1600.0, "y": 6000.0}
+      cell: 110.0
+      chance: 0.55
+      placement: Floor
+      clearance: 160.0
+      salt: 13
+      radius: 500.0
+- name: Throat mites
+  prototype: Scatter
+  components:
+    GameScatter:
+      prototype: MiteNest
+      terrain: Throat
+      min: {x: -1600.0, "y": 1000.0}
+      max: {x: 1600.0, "y": 4700.0}
+      cell: 520.0
+      chance: 0.42
+      placement: Air
+      clearance: 50.0
+      salt: 21
+      radius: 700.0
+- name: Throat spitters
+  prototype: Scatter
+  components:
+    GameScatter:
+      prototype: Spitter
+      terrain: Throat
+      min: {x: -1600.0, "y": 1300.0}
+      max: {x: 1600.0, "y": 4700.0}
+      cell: 460.0
+      chance: 0.3
+      placement: Air
+      clearance: 60.0
+      salt: 22
+      radius: 700.0
+- name: Throat barnacles
+  prototype: Scatter
+  components:
+    GameScatter:
+      prototype: Barnacle
+      terrain: Throat
+      min: {x: -1600.0, "y": 900.0}
+      max: {x: 1600.0, "y": 4700.0}
+      cell: 360.0
+      chance: 0.3
+      placement: Wall
+      clearance: 200.0
+      salt: 23
+      radius: 700.0
+- name: Throat ceiling barnacles
+  prototype: Scatter
+  components:
+    GameScatter:
+      prototype: Barnacle
+      terrain: Throat
+      min: {x: -1600.0, "y": 900.0}
+      max: {x: 1600.0, "y": 4700.0}
+      cell: 420.0
+      chance: 0.25
+      placement: Ceiling
+      clearance: 220.0
+      salt: 24
+      radius: 700.0
+- name: Throat lancers
+  prototype: Scatter
+  components:
+    GameScatter:
+      prototype: Lancer
+      terrain: Throat
+      min: {x: -1600.0, "y": 2400.0}
+      max: {x: 1600.0, "y": 4700.0}
+      cell: 640.0
+      chance: 0.3
+      placement: Air
+      clearance: 70.0
+      salt: 25
+      radius: 700.0
+- name: Throat fuel
+  prototype: Scatter
+  components:
+    GameScatter:
+      prototype: FuelCloud
+      terrain: Throat
+      min: {x: -1600.0, "y": 1100.0}
+      max: {x: 1600.0, "y": 4600.0}
+      cell: 760.0
+      chance: 0.3
+      placement: Air
+      clearance: 90.0
+      salt: 26
+      radius: 700.0
+- name: Throat repairs
+  prototype: Scatter
+  components:
+    GameScatter:
+      prototype: Repair
+      terrain: Throat
+      min: {x: -1600.0, "y": 1200.0}
+      max: {x: 1600.0, "y": 4700.0}
+      cell: 900.0
+      chance: 0.22
+      placement: Air
+      clearance: 30.0
+      salt: 27
+      radius: 700.0

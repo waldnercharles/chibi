@@ -1,0 +1,139 @@
+version: 3
+name: ThroatColumns
+domain: material
+id_counter: 541
+description: Distant basalt columns behind the playable rock; lit layers pick them out of the dark near lights.
+graphs:
+- kind: event
+  name: ""
+  nodes:
+  - id: 1
+    type: Shader Surface Output
+    inputs:
+      Base Color:
+        default: {x: 1.0, "y": 1.0, z: 1.0}
+      Emission:
+        default: {x: 0.0, "y": 0.0, z: 0.0}
+      Roughness: 0.9
+      Normal:
+        default: {x: 0.0, "y": 0.0, z: 0.0}
+  - {id: 10, type: Shader WorldPosition}
+  - id: 23
+    type: Behavior Expression
+    reference_id: 12
+    reference_name: vec2(wp.x, wp.z)
+    inputs:
+      wp: {type: struct, type_name: ShaderVec3}
+    outputs:
+      Result: {type: struct, type_name: ShaderVec2}
+  - id: 69
+    type: Behavior Expression
+    reference_id: 43
+    reference_name: p.x / 38 - fract(p.x / 38)
+    inputs:
+      p: {type: struct, type_name: ShaderVec2}
+    outputs:
+      Result: {type: float}
+  - id: 129
+    type: Behavior Expression
+    reference_id: 104
+    reference_name: fract(sin(c * 12.9898) * 43758.547)
+    inputs:
+      c: {type: float}
+    outputs:
+      Result: {type: float}
+  - id: 173
+    type: Behavior Expression
+    reference_id: 132
+    reference_name: noise(vec2(c * 0.37, p.y * 0.0021 + h * 0.6), 1)
+    inputs:
+      c: {type: float}
+      p: {type: struct, type_name: ShaderVec2}
+      h: {type: float}
+    outputs:
+      Result: {type: float}
+  - id: 277
+    type: Behavior Expression
+    reference_id: 222
+    reference_name: smoothstep(0.52, 0.56, band) * step(0.07, fract(p.x / 38)) * step(fract(p.x / 38), 0.95)
+    inputs:
+      band: {type: float}
+      p: {type: struct, type_name: ShaderVec2}
+    outputs:
+      Result: {type: float}
+  - id: 399
+    type: Behavior Expression
+    reference_id: 342
+    reference_name: 1 - 0.35 * smoothstep(0.03, 0.0, abs(fract(p.y / 60 + h) - 0.5) - 0.47)
+    inputs:
+      p: {type: struct, type_name: ShaderVec2}
+      h: {type: float}
+    outputs:
+      Result: {type: float}
+  - id: 502
+    type: Behavior Expression
+    reference_id: 463
+    reference_name: vec3(0.07, 0.065, 0.07) * (0.7 + 0.3 * h) * joint
+    inputs:
+      h: {type: float}
+      joint: {type: float}
+    outputs:
+      Result: {type: struct, type_name: ShaderVec3}
+  - id: 523
+    type: Behavior Expression
+    reference_id: 506
+    reference_name: vec3(0, 0, 0)
+    outputs:
+      Result: {type: struct, type_name: ShaderVec3}
+  - id: 538
+    type: Behavior Expression
+    reference_id: 525
+    reference_name: mask * 0.9
+    inputs:
+      mask: {type: float}
+    outputs:
+      Result: {type: float}
+  edges:
+  - {from: 10.Value, to: 23.wp}
+  - {from: 23.Result, to: 69.p}
+  - {from: 23.Result, to: 173.p}
+  - {from: 23.Result, to: 277.p}
+  - {from: 23.Result, to: 399.p}
+  - {from: 69.Result, to: 129.c}
+  - {from: 69.Result, to: 173.c}
+  - {from: 129.Result, to: 173.h}
+  - {from: 129.Result, to: 399.h}
+  - {from: 129.Result, to: 502.h}
+  - {from: 173.Result, to: 277.band}
+  - {from: 277.Result, to: 538.mask}
+  - {from: 399.Result, to: 502.joint}
+  - {from: 502.Result, to: 1.Base Color}
+  - {from: 523.Result, to: 1.Emission}
+  - {from: 538.Result, to: 1.Opacity}
+- {id: 12, kind: function, math_expression: 'vec2(wp.x, wp.z)', entry_id: 27}
+- id: 43
+  kind: function
+  math_expression: p.x / 38 - fract(p.x / 38)
+  entry_id: 73
+- id: 104
+  kind: function
+  math_expression: fract(sin(c * 12.9898) * 43758.547)
+  entry_id: 105
+- id: 132
+  kind: function
+  math_expression: noise(vec2(c * 0.37, p.y * 0.0021 + h * 0.6), 1)
+  entry_id: 179
+- id: 222
+  kind: function
+  math_expression: smoothstep(0.52, 0.56, band) * step(0.07, fract(p.x / 38)) * step(fract(p.x / 38), 0.95)
+  entry_id: 282
+- id: 342
+  kind: function
+  math_expression: 1 - 0.35 * smoothstep(0.03, 0.0, abs(fract(p.y / 60 + h) - 0.5) - 0.47)
+  entry_id: 404
+- id: 463
+  kind: function
+  math_expression: vec3(0.07, 0.065, 0.07) * (0.7 + 0.3 * h) * joint
+  entry_id: 464
+- {id: 506, kind: function, math_expression: 'vec3(0, 0, 0)', entry_id: 507}
+- {id: 525, kind: function, math_expression: mask * 0.9, entry_id: 526}

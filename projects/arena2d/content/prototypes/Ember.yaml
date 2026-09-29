@@ -1,0 +1,12 @@
+name: Ember
+components:
+  GAME.GameAppearance: {antialias: 1.0, color: 4290009855, height: 5.0, shape: Diamond, width: 12.0}
+  GAME.GameMaterial:
+    absorption: 0.3
+    albedo: 4290009855
+    emission_color: 4288298239
+    emission_intensity: 0.22
+    emission_multiplier: 1.0
+    scene: 4290009855
+  GAME.GameOrientation: {}
+  GAME.GameTransform: {}

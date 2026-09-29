@@ -1,6 +1,6 @@
 version: 3
 name: Explosion
-id_counter: 321
+id_counter: 380
 description: On Begin, carve rock along sixteen spokes, strike every body with health inside Blast radius with damage that falls off with distance, then glow out.
 owner_type: ecs.entity
 graphs:
@@ -169,7 +169,40 @@ graphs:
       Max Emission: 1.2
       Size Exponent: 1.0
       Shape: 4
-  - id: 312
+  - id: 326
+    type: Behavior Expression
+    reference_id: 312
+    reference_name: blast * 2.4
+    inputs:
+      blast:
+        type: double
+        binding: {kind: component_field, component: GAME.GameProjectile, field: blast}
+    outputs:
+      Result: {type: double}
+  - id: 329
+    type: Add Shockwave
+    inputs:
+      Position:
+        type_name: GameTransform
+        binding: {kind: component, component: GAME.GameTransform}
+        default: null
+      Thickness: 14.0
+      Strength: 0.9
+  - id: 358
+    type: Behavior Expression
+    reference_id: 337
+    reference_name: min(0.6, blast / 120)
+    inputs:
+      blast:
+        type: double
+        binding: {kind: component_field, component: GAME.GameProjectile, field: blast}
+    outputs:
+      Result: {type: double}
+  - {id: 361, type: Add Camera Trauma}
+  - id: 365
+    type: Flash Screen
+    inputs: {Color: 4289753343, Amount: 0.06, Duration: 0.12}
+  - id: 371
     type: Play Sound
     inputs:
       Frequency: 110.0
@@ -207,7 +240,12 @@ graphs:
   - {from: 220.Result, to: 280.Amount, conversion: To Integer}
   - {from: 253.Result, to: 280.Direction}
   - {from: 276.Result, to: 280.Knockback}
-  - {from: 290.Then, to: 312.Exec}
+  - {from: 290.Then, to: 329.Exec}
+  - {from: 326.Result, to: 329.Radius}
+  - {from: 329.Then, to: 361.Exec}
+  - {from: 358.Result, to: 361.Amount}
+  - {from: 361.Then, to: 365.Exec}
+  - {from: 365.Then, to: 371.Exec}
 - id: 10
   kind: function
   math_expression: pos + direction(index * 0.3926991 + 0.1) * blast
@@ -228,3 +266,5 @@ graphs:
   math_expression: normalize(other - pos + vec2(0.001, 0))
   entry_id: 225
 - {id: 257, kind: function, math_expression: blast * 2.2 * f, entry_id: 258}
+- {id: 312, kind: function, math_expression: blast * 2.4, entry_id: 313}
+- {id: 337, kind: function, math_expression: 'min(0.6, blast / 120)', entry_id: 338}

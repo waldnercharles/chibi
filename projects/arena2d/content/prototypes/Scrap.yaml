@@ -1,7 +1,8 @@
 name: Scrap
 components:
   GAME.GameAppearance: {antialias: 1.0, color: 4291913471, height: 4.5, shape: Diamond, width: 4.5}
-  GAME.GameBody: {type: Kinematic}
+  GAME.GameBody: {gravity_scale: 0.55, type: Dynamic}
+  GAME.GameCollider: {category: 32, friction: 0.4, mask: 8, radius: 2.025, restitution: 0.35}
   GAME.GameMaterial:
     absorption: 0.1
     emission_color: 4291913471

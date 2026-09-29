@@ -1,7 +1,8 @@
 name: Resonance
 components:
   GAME.GameAppearance: {antialias: 1.0, color: 2642149375, height: 5.0, shape: Circle, width: 5.0}
-  GAME.GameBody: {type: Kinematic}
+  GAME.GameBody: {gravity_scale: 0.55, type: Dynamic}
+  GAME.GameCollider: {category: 32, friction: 0.4, mask: 8, radius: 2.25, restitution: 0.35}
   GAME.GameMaterial:
     absorption: 0.1
     emission_color: 2642149375

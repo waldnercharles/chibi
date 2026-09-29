@@ -1,0 +1,6 @@
+name: MiteNest
+components:
+  GAME.GameEncounter: {total: 4}
+  GAME.GameSpawnRequest: {prototype: Mite}
+  GAME.GameTransform: {}
+behaviors: [Nest]

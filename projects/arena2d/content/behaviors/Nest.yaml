@@ -1,0 +1,66 @@
+version: 3
+name: Nest
+id_counter: 103
+description: On Begin, hatch GameEncounter.total creatures of GameSpawnRequest's prototype around this point, then vanish.
+owner_type: ecs.entity
+graphs:
+- kind: event
+  name: ""
+  nodes:
+  - {id: 1, type: Event, reference_name: Begin}
+  - id: 3
+    type: Self
+    outputs:
+      Self: {type_name: ecs.entity}
+  - id: 5
+    type: GetEntity_GameSpawnRequest
+    outputs:
+      Value.prototype: {}
+      Value.delay: {}
+  - id: 24
+    type: Behavior Expression
+    reference_id: 10
+    reference_name: total - 1
+    inputs:
+      total:
+        type: double
+        binding: {kind: component_field, component: GAME.GameEncounter, field: total}
+    outputs:
+      Result: {type: double}
+  - {id: 27, type: ForLoop}
+  - id: 82
+    type: Behavior Expression
+    reference_id: 34
+    reference_name: pos + direction(index * 2.39996 + rand()) * (10 + rand() * 30)
+    inputs:
+      pos:
+        type: struct
+        type_name: GameTransform
+        binding: {kind: component, component: GAME.GameTransform}
+      index: {type: int}
+    outputs:
+      Result: {type: struct, type_name: GameTransform}
+  - {id: 86, type: Spawn Prototype}
+  - {id: 91, type: SetEntity_GameTransform}
+  - id: 97
+    type: Self
+    outputs:
+      Self: {type_name: ecs.entity}
+  - {id: 99, type: Destroy Entity}
+  edges:
+  - {from: 1.Then, to: 27.Exec}
+  - {from: 3.Self, to: 5.Entity}
+  - {from: 5.Value.prototype, to: 86.Prototype, conversion: To Name}
+  - {from: 24.Result, to: 27.LastIndex, conversion: To Integer}
+  - {from: 27.Body, to: 86.Exec}
+  - {from: 27.Index, to: 82.index}
+  - {from: 27.Completed, to: 99.Exec}
+  - {from: 82.Result, to: 91.Value}
+  - {from: 86.Then, to: 91.Exec}
+  - {from: 86.Entity, to: 91.Entity}
+  - {from: 97.Self, to: 99.Entity}
+- {id: 10, kind: function, math_expression: total - 1, entry_id: 11}
+- id: 34
+  kind: function
+  math_expression: pos + direction(index * 2.39996 + rand()) * (10 + rand() * 30)
+  entry_id: 35

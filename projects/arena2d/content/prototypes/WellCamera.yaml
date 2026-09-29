@@ -1,0 +1,6 @@
+name: WellCamera
+components:
+  GAME.GameCamera: {height: 540.0, width: 960.0}
+  GAME.GameCameraShake: {decay: 1.8, frequency: 24.0, max_offset: 16.0}
+  GAME.GameTransform: {}
+behaviors: [CameraFollow]

@@ -1,0 +1,12 @@
+name: Glowmoss
+components:
+  GAME.GameAppearance: {antialias: 1.5, color: 1072089343, height: 34.0, shape: Capsule, width: 5.0}
+  GAME.GameMaterial:
+    absorption: 0.2
+    albedo: 1072089343
+    emission_color: 802601215
+    emission_intensity: 0.07
+    emission_multiplier: 1.0
+    scene: 1072089343
+  GAME.GameOrientation: {}
+  GAME.GameTransform: {}

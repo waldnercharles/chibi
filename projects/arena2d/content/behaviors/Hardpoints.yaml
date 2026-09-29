@@ -1,6 +1,6 @@
 version: 3
 name: Hardpoints
-id_counter: 3147
+id_counter: 3151
 description: 'Casts the ship''s two weapon module lists in order: modifiers shape the next emitter, a carrier arms it with the rest of the group as a payload, and an emitter fires and ends the cast. Draws on a shared capacitor.'
 owner_type: ecs.entity
 variables:
@@ -294,47 +294,47 @@ graphs:
 - kind: event
   name: ""
   nodes:
-  - {id: 2783, type: Event, reference_name: Begin}
-  - id: 2785
+  - {id: 2787, type: Event, reference_name: Begin}
+  - id: 2789
     type: Get Variable
     reference_id: 6
     reference_name: start0
     outputs:
       Value: {container: 1}
-  - id: 2787
+  - id: 2791
     type: Set Global Variable
     inputs: {Name: Hardpoint0}
-  - id: 2793
+  - id: 2797
     type: Get Variable
     reference_id: 7
     reference_name: start1
     outputs:
       Value: {container: 1}
-  - id: 2795
+  - id: 2799
     type: Set Global Variable
     inputs: {Name: Hardpoint1}
-  - id: 2801
+  - id: 2805
     type: Get Variable
     reference_id: 1
     reference_name: modName
     outputs:
       Value: {type: name, container: 1}
-  - id: 2803
+  - id: 2807
     type: Set Global Variable
     inputs: {Name: ModuleNames}
-  - id: 2809
+  - id: 2813
     type: Event
     reference_name: Tick
     outputs:
       DeltaSeconds: {type: float, kind: data}
-  - id: 2834
+  - id: 2838
     type: Behavior Expression
-    reference_id: 2812
+    reference_id: 2816
     reference_name: capacitor = min(capacitorMax, capacitor + capacitorRegen * dt)
     inputs:
-      Exec: {id: 2840, kind: exec}
+      Exec: {id: 2844, kind: exec}
       capacitor:
-        id: 2835
+        id: 2839
         type: float
         binding: {kind: variable, variable_id: 15, source_asset: Hardpoints}
       capacitorMax:
@@ -347,19 +347,19 @@ graphs:
         type: double
         binding: {kind: delta_time}
     outputs:
-      Then: {id: 2841, kind: exec}
-      Result: {id: 2839, type: float}
-  - id: 2869
+      Then: {id: 2845, kind: exec}
+      Result: {id: 2843, type: float}
+  - id: 2873
     type: Branch
     inputs:
       Condition:
         binding: {kind: component_field, component: GAME.GameAim, field: firing}
-  - id: 2874
+  - id: 2878
     type: Call Function
     reference_id: 2374
     reference_name: Try Fire
     inputs:
-      Hardpoint: {id: 2877, type: int, kind: data}
+      Hardpoint: {id: 2881, type: int, kind: data}
       Cooldown:
         type: float
         kind: data
@@ -377,57 +377,57 @@ graphs:
         kind: data
         binding: {kind: variable, variable_id: 11, source_asset: Hardpoints}
     outputs:
-      Then: {id: 2876}
-      Cooldown: {id: 2882, type: float, kind: data}
+      Then: {id: 2880}
+      Cooldown: {id: 2886, type: float, kind: data}
       Cursor: {type: int, kind: data}
-  - id: 2892
+  - id: 2896
     type: Behavior Expression
-    reference_id: 2884
+    reference_id: 2888
     reference_name: cooldown0 = c
     inputs:
-      Exec: {id: 2896, kind: exec}
+      Exec: {id: 2900, kind: exec}
       cooldown0:
-        id: 2893
+        id: 2897
         type: float
         binding: {kind: variable, variable_id: 13, source_asset: Hardpoints}
       c: {}
     outputs:
-      Then: {id: 2897, kind: exec}
-      Result: {id: 2895, type: float}
-  - id: 2919
+      Then: {id: 2901, kind: exec}
+      Result: {id: 2899, type: float}
+  - id: 2923
     type: Behavior Expression
-    reference_id: 2911
+    reference_id: 2915
     reference_name: cursor0 = k
     inputs:
-      Exec: {id: 2923, kind: exec}
+      Exec: {id: 2927, kind: exec}
       cursor0:
-        id: 2920
+        id: 2924
         type: int
         binding: {kind: variable, variable_id: 34, source_asset: Hardpoints}
       k: {}
     outputs:
-      Then: {id: 2924, kind: exec}
-      Result: {id: 2922, type: int}
-  - id: 2957
+      Then: {id: 2928, kind: exec}
+      Result: {id: 2926, type: int}
+  - id: 2961
     type: Behavior Expression
-    reference_id: 2938
+    reference_id: 2942
     reference_name: cooldown0 = max(cooldown0 - dt, 0)
     inputs:
-      Exec: {id: 2961, kind: exec}
+      Exec: {id: 2965, kind: exec}
       cooldown0:
-        id: 2958
+        id: 2962
         type: float
         binding: {kind: variable, variable_id: 13, source_asset: Hardpoints}
       dt:
         type: double
         binding: {kind: delta_time}
     outputs:
-      Then: {id: 2962, kind: exec}
-      Result: {id: 2960, type: float}
-  - id: 2987
+      Then: {id: 2966, kind: exec}
+      Result: {id: 2964, type: float}
+  - id: 2991
     type: Get Global Variable
     inputs: {Name: SecondaryFire}
-  - id: 2990
+  - id: 2994
     type: GetEntity_GameActionBinding
     outputs:
       Value.source: {}
@@ -435,13 +435,13 @@ graphs:
       Value.firing: {}
       Value.disabled: {}
       Value.pressed: {}
-  - {id: 2998, type: Branch}
-  - id: 3003
+  - {id: 3002, type: Branch}
+  - id: 3007
     type: Call Function
     reference_id: 2374
     reference_name: Try Fire
     inputs:
-      Hardpoint: {id: 3006, type: int, kind: data, default: 1}
+      Hardpoint: {id: 3010, type: int, kind: data, default: 1}
       Cooldown:
         type: float
         kind: data
@@ -459,72 +459,72 @@ graphs:
         kind: data
         binding: {kind: variable, variable_id: 12, source_asset: Hardpoints}
     outputs:
-      Then: {id: 3005}
-      Cooldown: {id: 3011, type: float, kind: data}
+      Then: {id: 3009}
+      Cooldown: {id: 3015, type: float, kind: data}
       Cursor: {type: int, kind: data}
-  - id: 3021
+  - id: 3025
     type: Behavior Expression
-    reference_id: 3013
+    reference_id: 3017
     reference_name: cooldown1 = c
     inputs:
-      Exec: {id: 3025, kind: exec}
+      Exec: {id: 3029, kind: exec}
       cooldown1:
-        id: 3022
+        id: 3026
         type: float
         binding: {kind: variable, variable_id: 14, source_asset: Hardpoints}
       c: {}
     outputs:
-      Then: {id: 3026, kind: exec}
-      Result: {id: 3024, type: float}
-  - id: 3048
+      Then: {id: 3030, kind: exec}
+      Result: {id: 3028, type: float}
+  - id: 3052
     type: Behavior Expression
-    reference_id: 3040
+    reference_id: 3044
     reference_name: cursor1 = k
     inputs:
-      Exec: {id: 3052, kind: exec}
+      Exec: {id: 3056, kind: exec}
       cursor1:
-        id: 3049
+        id: 3053
         type: int
         binding: {kind: variable, variable_id: 35, source_asset: Hardpoints}
       k: {}
     outputs:
-      Then: {id: 3053, kind: exec}
-      Result: {id: 3051, type: int}
-  - id: 3086
+      Then: {id: 3057, kind: exec}
+      Result: {id: 3055, type: int}
+  - id: 3090
     type: Behavior Expression
-    reference_id: 3067
+    reference_id: 3071
     reference_name: cooldown1 = max(cooldown1 - dt, 0)
     inputs:
-      Exec: {id: 3090, kind: exec}
+      Exec: {id: 3094, kind: exec}
       cooldown1:
-        id: 3087
+        id: 3091
         type: float
         binding: {kind: variable, variable_id: 14, source_asset: Hardpoints}
       dt:
         type: double
         binding: {kind: delta_time}
     outputs:
-      Then: {id: 3091, kind: exec}
-      Result: {id: 3089, type: float}
-  - id: 3116
+      Then: {id: 3095, kind: exec}
+      Result: {id: 3093, type: float}
+  - id: 3120
     type: Get Variable
     reference_id: 15
     reference_name: capacitor
     outputs:
       Value: {type: float}
-  - id: 3118
+  - id: 3122
     type: Set Global Variable
     inputs: {Name: Capacitor}
-  - id: 3124
+  - id: 3128
     type: Get Variable
     reference_id: 16
     reference_name: capacitorMax
     outputs:
       Value: {type: float}
-  - id: 3126
+  - id: 3130
     type: Set Global Variable
     inputs: {Name: CapacitorMax}
-  - id: 3132
+  - id: 3136
     type: Event
     reference_name: CastPayload
     outputs:
@@ -532,54 +532,54 @@ graphs:
       Index: {declaration_id: 2, type: int, kind: data}
       Position: {declaration_id: 3, type: struct, type_name: CF_V2, kind: data}
       Direction: {declaration_id: 4, type: struct, type_name: CF_V2, kind: data}
-  - id: 3138
+  - id: 3142
     type: Call Function
     reference_id: 1256
     reference_name: Cast
     inputs:
-      Hardpoint: {id: 3141, type: int, kind: data}
+      Hardpoint: {id: 3145, type: int, kind: data}
       Start: {type: int, kind: data}
       Origin: {type: struct, type_name: CF_V2, kind: data}
       Direction: {type: struct, type_name: CF_V2, kind: data}
     outputs:
-      Then: {id: 3140}
-      Next: {id: 3145, type: int, kind: data}
+      Then: {id: 3144}
+      Next: {id: 3149, type: int, kind: data}
       Cost: {type: float, kind: data}
   edges:
-  - {from: 2783.Then, to: 2787.Exec}
-  - {from: 2785.Value, to: 2787.Value}
-  - {from: 2787.Then, to: 2795.Exec}
-  - {from: 2793.Value, to: 2795.Value}
-  - {from: 2795.Then, to: 2803.Exec}
-  - {from: 2801.Value, to: 2803.Value}
-  - {from: 2809.Then, to: 2834.Exec}
-  - {from: 2834.Then, to: 2869.Exec}
-  - {from: 2869.True, to: 2874.Exec}
-  - {from: 2869.False, to: 2957.Exec}
-  - {from: 2874.Then, to: 2892.Exec}
-  - {from: 2874.Cooldown, to: 2892.c}
-  - {from: 2874.Cursor, to: 2919.k}
-  - {from: 2892.Then, to: 2919.Exec}
-  - {from: 2919.Then, to: 2998.Exec}
-  - {from: 2957.Then, to: 2998.Exec}
-  - {from: 2987.Value, to: 2990.Entity}
-  - {from: 2990.Value.pressed, to: 2998.Condition}
-  - {from: 2998.True, to: 3003.Exec}
-  - {from: 2998.False, to: 3086.Exec}
-  - {from: 3003.Then, to: 3021.Exec}
-  - {from: 3003.Cooldown, to: 3021.c}
-  - {from: 3003.Cursor, to: 3048.k}
-  - {from: 3021.Then, to: 3048.Exec}
-  - {from: 3048.Then, to: 3118.Exec}
-  - {from: 3086.Then, to: 3118.Exec}
-  - {from: 3116.Value, to: 3118.Value}
-  - {from: 3118.Then, to: 3126.Exec}
-  - {from: 3124.Value, to: 3126.Value}
-  - {from: 3132.Then, to: 3138.Exec}
-  - {from: 3132.Hardpoint, to: 3138.Hardpoint}
-  - {from: 3132.Index, to: 3138.Start}
-  - {from: 3132.Position, to: 3138.Origin, conversion: game_transform_to_cf}
-  - {from: 3132.Direction, to: 3138.Direction, conversion: game_transform_to_cf}
+  - {from: 2787.Then, to: 2791.Exec}
+  - {from: 2789.Value, to: 2791.Value}
+  - {from: 2791.Then, to: 2799.Exec}
+  - {from: 2797.Value, to: 2799.Value}
+  - {from: 2799.Then, to: 2807.Exec}
+  - {from: 2805.Value, to: 2807.Value}
+  - {from: 2813.Then, to: 2838.Exec}
+  - {from: 2838.Then, to: 2873.Exec}
+  - {from: 2873.True, to: 2878.Exec}
+  - {from: 2873.False, to: 2961.Exec}
+  - {from: 2878.Then, to: 2896.Exec}
+  - {from: 2878.Cooldown, to: 2896.c}
+  - {from: 2878.Cursor, to: 2923.k}
+  - {from: 2896.Then, to: 2923.Exec}
+  - {from: 2923.Then, to: 3002.Exec}
+  - {from: 2961.Then, to: 3002.Exec}
+  - {from: 2991.Value, to: 2994.Entity}
+  - {from: 2994.Value.pressed, to: 3002.Condition}
+  - {from: 3002.True, to: 3007.Exec}
+  - {from: 3002.False, to: 3090.Exec}
+  - {from: 3007.Then, to: 3025.Exec}
+  - {from: 3007.Cooldown, to: 3025.c}
+  - {from: 3007.Cursor, to: 3052.k}
+  - {from: 3025.Then, to: 3052.Exec}
+  - {from: 3052.Then, to: 3122.Exec}
+  - {from: 3090.Then, to: 3122.Exec}
+  - {from: 3120.Value, to: 3122.Value}
+  - {from: 3122.Then, to: 3130.Exec}
+  - {from: 3128.Value, to: 3130.Value}
+  - {from: 3136.Then, to: 3142.Exec}
+  - {from: 3136.Hardpoint, to: 3142.Hardpoint}
+  - {from: 3136.Index, to: 3142.Start}
+  - {from: 3136.Position, to: 3142.Origin, conversion: game_transform_to_cf}
+  - {from: 3136.Direction, to: 3142.Direction, conversion: game_transform_to_cf}
 - id: 40
   kind: function
   name: Apply Modifier
@@ -2177,32 +2177,35 @@ graphs:
       Then: {id: 2684, kind: exec}
       Result: {id: 2682, type: struct, type_name: GameVelocity}
   - id: 2709
+    type: Add Camera Trauma
+    inputs: {Amount: 0.03}
+  - id: 2713
     type: Spawn Prototype
     inputs: {Prototype: MuzzleLight}
-  - {id: 2714, type: SetEntity_GameTransform}
-  - id: 2754
+  - {id: 2718, type: SetEntity_GameTransform}
+  - id: 2758
     type: Behavior Expression
-    reference_id: 2720
+    reference_id: 2724
     reference_name: 880 - hardpoint * 420 + rand() * 60
     inputs:
       hardpoint: {type: int}
     outputs:
       Result: {type: double}
-  - id: 2771
+  - id: 2775
     type: Behavior Expression
-    reference_id: 2757
+    reference_id: 2761
     reference_name: f * 0.45
     inputs:
       f: {type: double}
     outputs:
       Result: {type: double}
-  - id: 2774
+  - id: 2778
     type: Play Sound
     inputs: {Duration: 0.07, Volume: 0.18, Pan: 0.0, Noise: 0.25}
   edges:
   - {from: 2375.Exec, to: 2406.Exec}
   - {from: 2375.Hardpoint, to: 2529.Hardpoint}
-  - {from: 2375.Hardpoint, to: 2754.hardpoint}
+  - {from: 2375.Hardpoint, to: 2758.hardpoint}
   - {from: 2375.Cooldown, to: 2406.cooldown}
   - {from: 2375.Cursor, to: 2446.cursor}
   - {from: 2375.Cursor, to: 2529.Start}
@@ -2215,7 +2218,7 @@ graphs:
   - {from: 2498.True, to: 2529.Exec}
   - {from: 2498.False, to: 2377.Exec}
   - {from: 2525.Result, to: 2529.Origin}
-  - {from: 2525.Result, to: 2714.Value}
+  - {from: 2525.Result, to: 2718.Value}
   - {from: 2529.Then, to: 2550.Exec}
   - {from: 2529.Next, to: 2596.nxt}
   - {from: 2529.Next, to: 2641.nxt}
@@ -2224,13 +2227,14 @@ graphs:
   - {from: 2596.Then, to: 2641.Exec}
   - {from: 2641.Then, to: 2679.Exec}
   - {from: 2679.Then, to: 2709.Exec}
-  - {from: 2709.Then, to: 2714.Exec}
-  - {from: 2709.Entity, to: 2714.Entity}
-  - {from: 2714.Then, to: 2774.Exec}
-  - {from: 2754.Result, to: 2771.f}
-  - {from: 2754.Result, to: 2774.Frequency}
-  - {from: 2771.Result, to: 2774.End Frequency}
-  - {from: 2774.Then, to: 2377.Exec}
+  - {from: 2709.Then, to: 2713.Exec}
+  - {from: 2713.Then, to: 2718.Exec}
+  - {from: 2713.Entity, to: 2718.Entity}
+  - {from: 2718.Then, to: 2778.Exec}
+  - {from: 2758.Result, to: 2775.f}
+  - {from: 2758.Result, to: 2778.Frequency}
+  - {from: 2775.Result, to: 2778.End Frequency}
+  - {from: 2778.Then, to: 2377.Exec}
 - id: 2386
   kind: function
   math_expression: outCool = max(cooldown - dt, 0)
@@ -2254,24 +2258,24 @@ graphs:
   kind: function
   math_expression: velocity -= aim * 18
   entry_id: 2686
-- id: 2720
+- id: 2724
   kind: function
   math_expression: 880 - hardpoint * 420 + rand() * 60
-  entry_id: 2721
-- {id: 2757, kind: function, math_expression: f * 0.45, entry_id: 2758}
-- id: 2812
+  entry_id: 2725
+- {id: 2761, kind: function, math_expression: f * 0.45, entry_id: 2762}
+- id: 2816
   kind: function
   math_expression: capacitor = min(capacitorMax, capacitor + capacitorRegen * dt)
-  entry_id: 2843
-- {id: 2884, kind: function, math_expression: cooldown0 = c, entry_id: 2899}
-- {id: 2911, kind: function, math_expression: cursor0 = k, entry_id: 2926}
-- id: 2938
+  entry_id: 2847
+- {id: 2888, kind: function, math_expression: cooldown0 = c, entry_id: 2903}
+- {id: 2915, kind: function, math_expression: cursor0 = k, entry_id: 2930}
+- id: 2942
   kind: function
   math_expression: cooldown0 = max(cooldown0 - dt, 0)
-  entry_id: 2964
-- {id: 3013, kind: function, math_expression: cooldown1 = c, entry_id: 3028}
-- {id: 3040, kind: function, math_expression: cursor1 = k, entry_id: 3055}
-- id: 3067
+  entry_id: 2968
+- {id: 3017, kind: function, math_expression: cooldown1 = c, entry_id: 3032}
+- {id: 3044, kind: function, math_expression: cursor1 = k, entry_id: 3059}
+- id: 3071
   kind: function
   math_expression: cooldown1 = max(cooldown1 - dt, 0)
-  entry_id: 3093
+  entry_id: 3097

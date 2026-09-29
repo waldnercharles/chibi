@@ -335,11 +335,55 @@ const fluid_touch *material_fluid_touches(const material_fluid *fluid, int *coun
     return fluid->touches;
 }
 
+fluid_sample material_fluid_sample(const material_fluid *fluid, fluid_vec point, float radius)
+{
+    assert(isfinite(point.x + point.y + radius) && radius >= 0);
+    fluid_sample sample = { .substance = -1 };
+    int substances = acount(fluid->substances);
+    float *mass = xcalloc((size_t)substances + 1, sizeof *mass);
+    float h = fluid->kernel, total = 0;
+    for (int y = (int)floorf((point.y - radius) / h);
+         y <= (int)floorf((point.y + radius) / h);
+         y++) {
+        for (int x = (int)floorf((point.x - radius) / h);
+             x <= (int)floorf((point.x + radius) / h);
+             x++) {
+            for (int i = fluid->heads[fluid_bucket(fluid, x, y)]; i >= 0;
+                 i = fluid->work[i].next) {
+                const fluid_particle *p = &fluid->particles[i];
+                fluid_vec d = fluid_sub(p->position, point);
+                if (fluid->work[i].x != x || fluid->work[i].y != y ||
+                    fluid_dot(d, d) > radius * radius) {
+                    continue;
+                }
+                mass[p->substance] += p->mass;
+                total += p->mass;
+                sample.temperature += p->temperature;
+                sample.conductive |= fluid->substances[p->substance].conductive;
+                sample.count++;
+            }
+        }
+    }
+    for (int s = 0; s < substances; s++) {
+        if (mass[s] > 0 && (sample.substance < 0 || mass[s] > mass[sample.substance])) {
+            sample.substance = s;
+        }
+    }
+    free(mass);
+    if (sample.count) {
+        sample.temperature /= sample.count;
+        sample.density = radius > 0
+                           ? total / (3.14159265f * radius * radius * RIGID_DENSITY)
+                           : 0;
+    }
+    return sample;
+}
+
 void material_fluid_heat_area(material_fluid *fluid, fluid_vec point, float radius, float delta)
 {
     assert(isfinite(point.x + point.y + radius + delta) && radius >= 0);
-    for (int n = 0; n < acount(fluid->active); n++) {
-        fluid_particle *p = &fluid->particles[fluid->active[n]];
+    for (int i = 0; i < acount(fluid->particles); i++) {
+        fluid_particle *p = &fluid->particles[i];
         fluid_vec d = fluid_sub(p->position, point);
         if (fluid_dot(d, d) <= radius * radius) {
             p->temperature += delta;
@@ -1158,6 +1202,8 @@ void material_fluid_tick(material_fluid *fluid, const fluid_step *step)
     material_fluid_touch_solids(fluid);
     CHIBI_TRACE_ZONE_END(touch_zone);
     remove_doomed(fluid);
+    /* Queries between ticks read the final positions. */
+    index_particles(fluid);
     fluid->tick++;
     fluid->step = NULL;
 }

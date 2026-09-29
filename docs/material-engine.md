@@ -170,6 +170,17 @@ Approximations: touches merge per two-cell patch and cap at 512 per tick;
 melting removes whole cells; deposits add disks, not the particle's shape;
 a mixed damage batch reports its first request's cause.
 
+## Matter nodes
+
+| Node | Behavior |
+| --- | --- |
+| `Emit Fluid` (Substance, Position, Velocity, Count, Radius, Temperature) | Adds Count parcels of Substance spread evenly within Radius of Position, moving at Velocity, with Temperature added to the substance's own. Fails without a fluid world or for an unknown substance; stops quietly at the population limit. |
+| `Heat Area` (Point, Radius, Delta) | Adds Delta to the temperature of matter within Radius, awake or asleep; a positive Delta at least a static solid's `melts_at` melts its cells there. Incendiary and cryo weapons use it. |
+| `Fluid At` (Point, Radius) → Substance, Density, Temperature, Conductive | The substance with the most mass among awake matter within Radius (empty when none), mass per area relative to rigid bodies (a full pool reads its substance's density), mean temperature, and whether any of it conducts. |
+| `Material At` (Point) → Entity, Solid, Hardness | The entity whose solid cells cover Point, including fragments, and its `GameSubstance.hardness` (one without one). |
+
+Fluid queries read the positions from the end of the last simulation step.
+
 ## Procedural fields
 
 Field documents live in `content/fields` with domain `field`. They have one

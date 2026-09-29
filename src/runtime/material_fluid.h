@@ -255,7 +255,17 @@ void material_fluid_push(
     float speed,
     const fluid_step *step
 );
-/* Adds delta to the temperature of active matter within radius of point. */
+/* Active matter within radius of point: the substance with the most mass
+ * there (-1 when none), mass per area relative to rigid bodies, mean
+ * temperature, and whether any of it conducts. */
+typedef struct
+{
+    int substance, count;
+    float density, temperature;
+    bool conductive;
+} fluid_sample;
+fluid_sample material_fluid_sample(const material_fluid *fluid, fluid_vec point, float radius);
+/* Adds delta to the temperature of matter within radius of point. */
 void material_fluid_heat_area(material_fluid *fluid, fluid_vec point, float radius, float delta);
 /* Optional borrowed executor; the caller owns its submission scope. */
 void material_fluid_set_tasks(material_fluid *fluid, const game_task_system *tasks);

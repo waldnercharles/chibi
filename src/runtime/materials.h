@@ -71,6 +71,14 @@ const char *game_materials_substance_name(const game_materials *materials, int s
 /* Adds delta to the temperature of matter within radius of point; heat at
  * least a solid's melting point melts its cells there. */
 void game_materials_heat_area(game_materials *materials, fluid_vec point, float radius, float delta);
+/* The solid material covering a world point: its entity, and its hardness. */
+typedef struct
+{
+    ecs_entity entity;
+    bool solid;
+    float hardness;
+} material_hit;
+material_hit game_materials_at(const game_materials *materials, fluid_vec point);
 /* Index of a deposit target name that some product uses, or -1. */
 int game_materials_deposit(const game_materials *materials, const char *name);
 
@@ -81,5 +89,9 @@ extern node_desc GAME_NODE_DamageMaterial;
 extern node_desc GAME_NODE_ReleaseMaterial;
 extern node_desc GAME_NODE_IsMaterialFragment;
 extern node_desc GAME_NODE_IsPierceableMaterialFragment;
+extern node_desc GAME_NODE_EmitFluid;
+extern node_desc GAME_NODE_HeatArea;
+extern node_desc GAME_NODE_FluidAt;
+extern node_desc GAME_NODE_MaterialAt;
 
 #endif

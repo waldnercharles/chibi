@@ -1,4 +1,5 @@
 #include "graph/document/serialize.h"
+#include "graph/model/registry.h"
 #include "runtime/behaviors/live.h"
 #include "runtime/engine.h"
 #include "runtime/generated.h"
@@ -2376,12 +2377,117 @@ static void deposition()
     puts("PASS: corrosion resistance, deposits that stream and persist, and melting");
 }
 
+static node *matter_node(graph *g, const char *name)
+{
+    const node_desc *desc = registry_node_by_name(name);
+    assert(desc);
+    return graph_add_node(g, desc);
+}
+
+static void matter_default(graph *g, node *n, int index, pin_value value)
+{
+    assert(graph_set_pin_default(g, n, 0, index, &value) == 0);
+}
+
+static pin_value probe_variable(game_live_world *live, ecs_entity entity, behavior_variable *variable)
+{
+    behavior_instance *instance = game_behavior_instance(live->behaviors, entity, "MatterProbe");
+    pin_value value;
+    assert(behavior_instance_get_variable(instance, variable->id, &value) == 0);
+    return value;
+}
+
+/* Emit Fluid and Heat Area from one event; Fluid At reads the result from
+ * another; Material At finds the solid under a point. */
+static void matter_nodes()
+{
+    ecs_world *world;
+    const char *substances[] = { "Water", "Steam" };
+    game_live_world *live = matter_world(&world, substances, 2);
+    ecs_entity rock = slab(world, 0, 200, (GameSubstance){ .hardness = 3 });
+    ecs_entity owner = ecs_world_create_entity(world);
+    assert(ecs_world_apply_commands(world) == ECS_OK);
+    behavior_asset *asset = behavior_asset_new("MatterProbe");
+    assert(behavior_asset_set_owner_type(asset, "ecs.entity") == 0);
+    pin_value text = { .type = PIN_STR, .type_name = "string", .str = "" };
+    pin_value number = { .type = PIN_F32, .type_name = "float" };
+    behavior_variable *found = behavior_asset_add_variable(
+        asset,
+        "Found",
+        PIN_STR,
+        "string",
+        PIN_CONTAINER_SINGLE,
+        &text,
+        "Test"
+    );
+    behavior_variable *heat = behavior_asset_add_variable(
+        asset,
+        "Heat",
+        PIN_F32,
+        "float",
+        PIN_CONTAINER_SINGLE,
+        &number,
+        "Test"
+    );
+    graph *g = asset->graph;
+    node *pour = matter_node(g, "Event");
+    assert(graph_set_event_name(g, pour, "Pour") == 0);
+    node *emit = matter_node(g, "Emit Fluid");
+    matter_default(g, emit, 1, (pin_value){ .type = PIN_NAME, .str = "Water" });
+    matter_default(g, emit, 4, (pin_value){ .type = PIN_I32, .i = 24 });
+    matter_default(g, emit, 5, (pin_value){ .type = PIN_F32, .f = 6 });
+    node *warm = matter_node(g, "Heat Area");
+    matter_default(g, warm, 2, (pin_value){ .type = PIN_F32, .f = 30 });
+    matter_default(g, warm, 3, (pin_value){ .type = PIN_F32, .f = .5f });
+    assert(graph_connect_exec(g, pour, 0, emit, 0, 0) == 0);
+    assert(graph_connect_exec(g, emit, 0, warm, 0, 0) == 0);
+    node *probe = matter_node(g, "Event");
+    assert(graph_set_event_name(g, probe, "Probe") == 0);
+    node *sample = matter_node(g, "Fluid At");
+    matter_default(g, sample, 1, (pin_value){ .type = PIN_F32, .f = 12 });
+    node *set_found = behavior_asset_add_set_node(asset, found->id);
+    node *set_heat = behavior_asset_add_set_node(asset, heat->id);
+    assert(graph_connect_exec(g, probe, 0, set_found, 0, 0) == 0);
+    assert(graph_connect_exec(g, set_found, 0, set_heat, 0, 0) == 0);
+    assert(graph_connect_data(g, sample, 0, set_found, 1) == 0);
+    assert(graph_connect_data(g, sample, 2, set_heat, 1) == 0);
+    assert(game_behavior_register_asset(live->behaviors, "MatterProbe", asset) == 0);
+    assert(game_behavior_attach(live->behaviors, owner, "MatterProbe") == 0);
+    assert(game_physics_tick(live->physics, 0) == 0);
+    const char *events[] = { "Pour", "Heat", "Probe" };
+    for (int e = 0; e < 3; e++) {
+        if (e != 1) {
+            assert(
+                game_entities_request_event(live->entities, owner, events[e], (flow_inputs){ 0 }) == FLOW_OK
+            );
+            do {
+                assert(game_entities_dispatch_events(live->entities) >= 0);
+            } while (game_entities_pending_events(live->entities));
+        }
+        assert(game_physics_tick(live->physics, 1.f / 60) == 0);
+    }
+    pin_value substance = probe_variable(live, owner, found);
+    float temperature = probe_variable(live, owner, heat).f;
+    printf("matter nodes: found %s at temperature %.3f\n", substance.str, temperature);
+    assert(!strcmp(substance.str, "Water") && temperature > .2f && temperature < .5f);
+    material_hit hit = game_materials_at(live->materials, (fluid_vec){ 0, 200 });
+    assert(
+        hit.solid && ecs_entity_to_u64(hit.entity) == ecs_entity_to_u64(rock) &&
+        hit.hardness == 3
+    );
+    assert(!game_materials_at(live->materials, (fluid_vec){ 0, 0 }).solid);
+    game_live_world_free(live);
+    ecs_world_free(world);
+    puts("PASS: Emit Fluid, Heat Area, Fluid At and Material At");
+}
+
 void test_materials()
 {
     gravity_pooling();
     substance_chemistry();
     corrosion();
     deposition();
+    matter_nodes();
     blast_policy();
     rotated_occlusion();
     fragment_penetration();

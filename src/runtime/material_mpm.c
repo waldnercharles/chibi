@@ -715,76 +715,99 @@ static void couple_bodies(material_fluid *fluid, material_mpm *m, float t)
     }
 }
 
-/* Particles take the grid's velocity and its gradient (APIC), move, and
- * update their deformation; the interpolated terrain distance keeps them
- * out of solids. */
+typedef struct
+{
+    fluid_vec velocity, normal;
+    fluid_matrix gradient;
+    float distance;
+} mpm_sample;
+
+/* Velocity, its APIC gradient and the terrain distance at a particle,
+ * interpolated from its 3x3 nodes. */
+static mpm_sample interpolate(const material_mpm *m, const mpm_point *point)
+{
+    const mpm_block *base = &m->blocks[point->cell / BLOCK_NODES];
+    int lx = point->cell % BLOCK, ly = point->cell % BLOCK_NODES / BLOCK;
+    mpm_sample sample = { 0 };
+    for (int oy = 0; oy < 3; oy++) {
+        for (int ox = 0; ox < 3; ox++) {
+            int x = lx + ox, y = ly + oy;
+            int block = base->neighbor[(y / BLOCK + 1) * 3 + x / BLOCK + 1];
+            float w = point->wx[ox] * point->wy[oy];
+            const mpm_node *node = &m->nodes[block * BLOCK_NODES + (y % BLOCK) * BLOCK + x % BLOCK];
+            const mpm_ground *
+                ground = &m->ground[m->blocks[block].ground + (y % BLOCK) * BLOCK + x % BLOCK];
+            fluid_vec offset = { (ox - point->fx) * m->dx, (oy - point->fy) * m->dx };
+            fluid_vec v = fluid_scale(node->velocity, w);
+            sample.velocity = fluid_add(sample.velocity, v);
+            sample.gradient = mat_add(
+                sample.gradient,
+                mat(v.x * offset.x, v.x * offset.y, v.y * offset.x, v.y * offset.y)
+            );
+            sample.distance += w * ground->distance;
+            sample.normal = fluid_add(sample.normal, fluid_scale(ground->normal, w));
+        }
+    }
+    sample.gradient = mat_scale(sample.gradient, 4 / (m->dx * m->dx));
+    return sample;
+}
+
+/* A particle heading within a quarter cell of solid is pushed back to that
+ * skin and loses its approach speed. */
+static void keep_out(const material_mpm *m, fluid_particle *p, mpm_sample s)
+{
+    float length = sqrtf(fluid_dot(s.normal, s.normal));
+    if (length <= 1e-6f) {
+        return;
+    }
+    fluid_vec normal = fluid_scale(s.normal, 1 / length);
+    float skin = m->dx * .25f,
+          reach = s.distance + fluid_dot(p->velocity, normal) * m->dt;
+    if (reach >= skin) {
+        return;
+    }
+    p->position = fluid_add(p->position, fluid_scale(normal, fminf(skin - reach, m->dx)));
+    float approach = fluid_dot(p->velocity, normal);
+    if (approach < 0) {
+        p->velocity = fluid_sub(p->velocity, fluid_scale(normal, approach));
+    }
+}
+
+/* Advances the deformation gradient: a liquid keeps only its volume; powder
+ * yields to its friction; elastic matter remembers its shape. */
+static void deform(const material_mpm *m, const fluid_substance *s, fluid_particle *p)
+{
+    fluid_matrix f = mat_mul(mat_add(mat(1, 0, 0, 1), mat_scale(p->affine, m->dt)), p->deformation);
+    if (s->phase == FLUID_LIQUID) {
+        float j = fminf(1 + STRETCH * s->cohesion, fmaxf(J_MIN, mat_det(f)));
+        p->deformation = mat(sqrtf(j), 0, 0, sqrtf(j));
+        return;
+    }
+    fluid_matrix u, v;
+    float sigma[2];
+    svd(f, &u, sigma, &v);
+    if (s->phase == FLUID_POWDER) {
+        yield(m, s, sigma);
+    }
+    p->deformation = compose(u, sigma, v);
+}
+
+/* Particles take the grid's velocity and its gradient (APIC), move, stay out
+ * of solids and update their deformation. */
 static void scatter(int start, int end, uint32_t, void *context)
 {
     const mpm_pass *pass = context;
     material_fluid *fluid = pass->fluid;
     material_mpm *m = pass->mpm;
-    float inverse = 4 / (m->dx * m->dx);
     for (int n = start; n < end; n++) {
         const mpm_point *point = &m->points[n];
         fluid_particle *p = &fluid->particles[point->particle];
-        const mpm_block *base = &m->blocks[point->cell / BLOCK_NODES];
-        int lx = point->cell % BLOCK, ly = point->cell % BLOCK_NODES / BLOCK;
-        const float *wx = point->wx, *wy = point->wy;
-        fluid_vec v = { 0 }, normal = { 0 };
-        fluid_matrix b = { 0 };
-        float distance = 0;
-        for (int oy = 0; oy < 3; oy++) {
-            for (int ox = 0; ox < 3; ox++) {
-                int x = lx + ox, y = ly + oy;
-                int block = base->neighbor[(y / BLOCK + 1) * 3 + x / BLOCK + 1];
-                int index = block * BLOCK_NODES + (y % BLOCK) * BLOCK + x % BLOCK;
-                float w = wx[ox] * wy[oy];
-                const mpm_node *node = &m->nodes[index];
-                const mpm_ground
-                    *ground = &m->ground[m->blocks[index / BLOCK_NODES].ground + index % BLOCK_NODES];
-                fluid_vec offset = { (ox - point->fx) * m->dx,
-                                     (oy - point->fy) * m->dx };
-                fluid_vec nv = fluid_scale(node->velocity, w);
-                v = fluid_add(v, nv);
-                b = mat_add(
-                    b,
-                    mat(nv.x * offset.x,
-                        nv.x * offset.y,
-                        nv.y * offset.x,
-                        nv.y * offset.y)
-                );
-                distance += w * ground->distance;
-                normal = fluid_add(normal, fluid_scale(ground->normal, w));
-            }
-        }
-        const fluid_substance *s = &fluid->substances[p->substance];
-        p->velocity = v;
-        p->affine = mat_scale(b, inverse);
-        p->position = fluid_add(p->position, fluid_scale(v, m->dt));
-        float length = sqrtf(fluid_dot(normal, normal));
-        float skin = m->dx * .25f,
-              reach = distance + fluid_dot(v, normal) / fmaxf(length, 1e-6f) * m->dt;
-        if (length > 1e-6f && reach < skin) {
-            normal = fluid_scale(normal, 1 / length);
-            p->position = fluid_add(p->position, fluid_scale(normal, fminf(skin - reach, m->dx)));
-            float approach = fluid_dot(p->velocity, normal);
-            if (approach < 0) {
-                p->velocity = fluid_sub(p->velocity, fluid_scale(normal, approach));
-            }
-        }
-        fluid_matrix f = mat_mul(mat_add(mat(1, 0, 0, 1), mat_scale(p->affine, m->dt)), p->deformation);
-        if (s->phase == FLUID_LIQUID) {
-            float j = fminf(1 + STRETCH * s->cohesion, fmaxf(J_MIN, mat_det(f)));
-            p->deformation = mat(sqrtf(j), 0, 0, sqrtf(j));
-            continue;
-        }
-        fluid_matrix u, vt;
-        float sigma[2];
-        svd(f, &u, sigma, &vt);
-        if (s->phase == FLUID_POWDER) {
-            yield(m, s, sigma);
-        }
-        p->deformation = compose(u, sigma, vt);
+        mpm_sample sample = interpolate(m, point);
+        p->velocity = sample.velocity;
+        p->affine = sample.gradient;
+        p->position = fluid_add(p->position, fluid_scale(p->velocity, m->dt));
+        keep_out(m, p, sample);
+        deform(m, &fluid->substances[p->substance], p);
     }
 }
 

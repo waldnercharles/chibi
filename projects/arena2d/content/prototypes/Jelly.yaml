@@ -1,0 +1,12 @@
+name: Jelly
+components:
+  GAME.MaterialSubstance:
+    absorption: 0.12
+    color: 1792338152
+    density: 0.4
+    emission: 0.2
+    friction: 0.6
+    phase: Elastic
+    refraction: 6.0
+    stiffness: 0.6
+    visibility: 0.02

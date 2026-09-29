@@ -440,3 +440,85 @@ node_desc GAME_NODE_MaterialAt = {
     .read_inputs = material_at_node,
     .access = &MATTER_READ,
 };
+
+static const char *centroid_node(const eval_context *ctx, const pin_value *in, arena *storage, pin_value *out)
+{
+    game_materials *materials = read_materials(ctx);
+    if (!materials) {
+        return "Matter Centroid requires a live world";
+    }
+    const material_fluid *fluid = game_materials_fluid(materials);
+    int count = 0;
+    fluid_vec center = fluid && in[0].u64
+                         ? material_fluid_centroid(fluid, in[0].u64, &count)
+                         : (fluid_vec){ 0 };
+    CF_V2 *position = arena_alloc(storage, sizeof *position);
+    *position = (CF_V2){ center.x, center.y };
+    out[0] = (pin_value){ .type = PIN_STRUCT, .type_name = "CF_V2", .ptr = position };
+    out[1] = (pin_value){ .type = PIN_I32, .i = count };
+    return NULL;
+}
+
+static int push_matter_node(node *, flow_context *ctx)
+{
+    game_materials *materials = node_materials(ctx);
+    pin_value in[2];
+    int result = inputs(ctx, in, 2);
+    if (result < 0) {
+        return result;
+    }
+    material_fluid *fluid = materials ? game_materials_fluid_mut(materials) : NULL;
+    CF_V2 force = vector(in[1]);
+    if (!fluid) {
+        return flow_context_fail(ctx, FLOW_ERR_NODE, "Push Matter requires a material fluid world");
+    }
+    if (!isfinite(force.x + force.y)) {
+        return flow_context_fail(ctx, FLOW_ERR_NODE, "Push Matter needs a finite force");
+    }
+    if (in[0].u64) {
+        material_fluid_push_owner(fluid, in[0].u64, (fluid_vec){ force.x, force.y });
+    }
+    return flow_context_continue(ctx, 0);
+}
+
+static pin_spec OWNER_IN[] = {
+    { .name = "In", .type = PIN_FLOW, .kind = PIN_EXEC },
+    { .name = "Owner", .type = PIN_HANDLE, .type_name = "ecs.entity" },
+    { .name = "Force", .type = PIN_STRUCT, .type_name = "CF_V2" },
+};
+static pin_spec CENTROID_OUT[] = {
+    { .name = "Position", .type = PIN_STRUCT, .type_name = "CF_V2" },
+    { .name = "Count", .type = PIN_I32 },
+};
+
+node_desc GAME_NODE_MatterCentroid = {
+    .name = "Matter Centroid",
+    .category = "Physics",
+    .keywords = "matter jelly owner body center position particles",
+    .description = "Reports the mean position of the matter Owner's fluid "
+                   "volume "
+                   "created and how many parcels remain.",
+    .input_count = 1,
+    .inputs = OWNER_IN + 1,
+    .output_count = 2,
+    .outputs = CENTROID_OUT,
+    .pure_kind = NODE_PURE_READ,
+    .read_inputs = centroid_node,
+    .access = &MATTER_READ,
+};
+
+node_desc GAME_NODE_PushMatter = {
+    .name = "Push Matter",
+    .category = "Physics",
+    .keywords = "matter jelly owner force move steer impulse",
+    .description = "Applies Force to Owner's matter during the next simulation "
+                   "step, shared by its mass.",
+    .input_count = 3,
+    .inputs = OWNER_IN,
+    .output_count = 1,
+    .outputs = DAMAGE_OUT,
+    .flow_kind = NODE_FLOW_CUSTOM,
+    .flow = push_matter_node,
+    .display_class = NODE_DISPLAY_FLOW,
+    .access = &MATTER_WRITE,
+};

@@ -2,12 +2,15 @@ name: Lava
 components:
   GAME.MaterialSubstance:
     absorption: 0.5
+    cohesion: 0.6
     color: 2954889471
     cooling: 0.04
     density: 0.7
     emission: 1.5
     freeze_at: 0.8
     freezes_to: Basalt
+    friction: 0.3
     phase: Liquid
+    stiffness: 0.8
     temperature: 3.0
-    viscosity: 4.0
+    viscosity: 0.6

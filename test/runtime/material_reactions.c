@@ -19,7 +19,8 @@ static fluid_contact contact_for(int kind, float body_speed, unsigned color)
                           .radius = 2,
                           .color = color,
                           .substance = kind,
-                          .phase = kind }
+                          .phase = kind,
+                          .deformation = { 1, 0, 0, 1 } }
     ));
     fluid_region region = { -32, -32, 64, 64 };
     fluid_body body = { .velocity = { 0, body_speed }, .owner = 41 };

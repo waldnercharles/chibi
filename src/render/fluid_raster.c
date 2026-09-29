@@ -201,7 +201,9 @@ static void collect(
                                age
                            )
                          : p.radius;
-        float blend = p.style.blend;
+        /* Powder draws as a smooth union of grains rather than a liquid
+         * surface. */
+        float blend = p.phase == FLUID_POWDER ? radius * .5f : p.style.blend;
         if (p.billow) {
             radius *= 1 + age * .6f;
         }

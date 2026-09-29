@@ -238,6 +238,7 @@ set(RUNTIME_SUPPORT_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/material_fluid.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/material_flow.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/material_reaction.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/material_mpm.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/material_destruction.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/material_ecs.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/material_ecs_terrain.c

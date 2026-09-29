@@ -170,6 +170,67 @@ Approximations: touches merge per two-cell patch and cap at 512 per tick;
 melting removes whole cells; deposits add disks, not the particle's shape;
 a mixed damage batch reports its first request's cause.
 
+## MLS-MPM for liquid, powder and elastic matter
+
+Gas stays on tracer particles and the MAC flow grid. Liquid, Powder and
+Elastic matter runs MLS-MPM with APIC transfers (`material_mpm.c`) on a
+sparse grid of 8x8-node blocks whose spacing is twice the dense particles'
+spacing (8 units at kernel 10, about four particles per cell). Each step
+takes four substeps:
+
+1. Blocks reached by any particle's 3x3 stencil are numbered row by row over
+   a dense map of the particles' bounds, and particles are counting-sorted by
+   the cell of their base node.
+2. Each particle's Kirchhoff stress and APIC matrix form its affine transfer.
+   Liquid: weakly compressible pressure `K (J − 1) J` with cohesion scaling
+   tension and viscosity on the symmetric velocity gradient; `F` resets to
+   `√J I`. Elastic: fixed-corotated `2μ (F − R) Fᵀ + λ (J − 1) J`. Powder:
+   St. Venant-Kirchhoff on Hencky strain with the Drucker-Prager return
+   mapping of Klár et al. (2016), friction angle `friction × 45°`.
+3. Grid nodes gather from the particles whose base cell lies within two
+   cells, in a fixed order, so serial and parallel runs sum identically.
+4. Nodes take gravity, a speed limit, and terrain boundaries from the static
+   solids' distance, sampled once per tick per block: nodes deep inside rock
+   stop; nodes at the surface lose their approach speed and slide with the
+   leading particle's Coulomb friction.
+5. Body obstacles (moving through their swept path across substeps) are
+   velocity boundaries: nodes lose their approach speed relative to the
+   body's surface, and that momentum returns to the body as an impulse. The
+   particle that weighs most on such a node reports one contact, so splashes
+   and wakes still work.
+6. Particles gather velocity and its gradient, move, update `F`, and use the
+   interpolated terrain distance to stay out of solids.
+
+`stiffness`, `viscosity`, `cohesion` and `friction` are fractions of what the
+substeps keep stable: stiffness maps to a wave speed of up to 0.3 cells per
+substep, and matter moves at most half that fast, so impacts stay subsonic.
+Gas parcels are pushed out of dense matter by pair repulsion.
+
+Elastic handles: `GameFluidVolume.owned` makes the fill belong to its entity.
+`Matter Centroid (Owner) → Position, Count` reports where it is; `Push Matter
+(Owner, Force)` applies a force during the next step, shared by its mass; and
+`Damage Material` on the owner removes its parcels within the radius, so a
+jelly can be carved. Powder renders as a smooth union of grains and elastic
+matter as a refracting liquid surface.
+
+Measured on this M4 Pro (Release, eight task-pool workers,
+`build-release/test_suite --bench-matter 20000 120`): a 1,400-unit pool of
+19,722 MPM water particles stirred by a moving body takes 1.80 ms mean and
+2.0 ms worst per 1/60 s step, including heat, reactions, indexing and
+contacts; 39,840 particles take 3.3 ms. Sandbox's simulation (1,000 frames
+of flight and fire, `profile_scenario`) averages 0.85 ms of physics per frame,
+against 1.1–1.25 ms before this work.
+
+Approximations: the liquid is weakly compressible, so deep pools compress
+(about `g·h / c²`) and a liquid stretches at most `0.3 × cohesion` before
+tension saturates, which also means no true surface tension: separated
+droplets do not attract. The grid is 1.5 cells wide in each particle's
+stencil, so nearby matter meets across up to 12 units; thin sheets fracture
+numerically. Powder has no cohesion or volume correction and piles at about
+its friction angle. Stretches clamp to [0.3, 3] and liquid volume to at least
+half, which bounds energy after violent impacts. Body coupling is per grid
+node without torque. Sleeping matter keeps its state without catching up.
+
 ## Matter nodes
 
 | Node | Behavior |

@@ -137,6 +137,11 @@ entities:
   components:
     GAME.GameFluidVolume: {height: 60.0, substance: Sand, width: 60.0}
     GAME.GameTransform: {x: 330.0, "y": -120.0}
+- name: Jelly
+  prototype: Liquid
+  components:
+    GAME.GameFluidVolume: {height: 40.0, owned: true, substance: Jelly, width: 40.0}
+    GAME.GameTransform: {x: 260.0, "y": -160.0}
 - name: Slime blob
   prototype: Liquid
   components:

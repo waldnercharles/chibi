@@ -95,6 +95,11 @@ const material_fluid *game_materials_fluid(const game_materials *materials)
     return materials ? materials->fluid : NULL;
 }
 
+material_fluid *game_materials_fluid_mut(game_materials *materials)
+{
+    return materials->fluid;
+}
+
 static uint64_t hash_bytes(uint64_t hash, const void *data, size_t count)
 {
     const unsigned char *bytes = data;
@@ -179,6 +184,9 @@ game_material_state game_materials_inspect(const game_materials *materials)
         state.hash = hash_bytes(state.hash, &p.billow, sizeof p.billow);
         state.hash = hash_bytes(state.hash, values, sizeof values);
         state.hash = hash_bytes(state.hash, identity, sizeof identity);
+        state.hash = hash_bytes(state.hash, &p.deformation, sizeof p.deformation);
+        state.hash = hash_bytes(state.hash, &p.affine, sizeof p.affine);
+        state.hash = hash_bytes(state.hash, &p.owner, sizeof p.owner);
         state.hash = hash_bytes(state.hash, &p.color, sizeof p.color);
         state.hash = hash_bytes(state.hash, &p.style.end_color, sizeof p.style.end_color);
     }
@@ -690,6 +698,10 @@ void game_materials_damage(
 {
     assert(isfinite(point.x) && isfinite(point.y) && isfinite(radius) && radius >= 0);
     assert(isfinite(energy) && energy >= 0 && isfinite(impact.heat) && impact.heat >= 0);
+    /* Damage carves an entity's own matter, such as a jelly's body. */
+    if (materials->fluid && ecs_entity_to_u64(entity)) {
+        material_fluid_remove_owned(materials->fluid, ecs_entity_to_u64(entity), point, radius);
+    }
     apush(
         materials->damage_requests,
         ((

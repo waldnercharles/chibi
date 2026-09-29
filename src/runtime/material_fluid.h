@@ -46,6 +46,12 @@ enum
     FLUID_BURNING = -1
 };
 
+/* Row-major 2x2 matrix. */
+typedef struct
+{
+    float xx, xy, yx, yy;
+} fluid_matrix;
+
 /* A kind of matter. Heat is a gameplay temperature: zero is ambient and
  * everything cools toward it. Products are indices or the constants above. */
 typedef struct
@@ -53,7 +59,12 @@ typedef struct
     int phase;
     /* Mass per area; one matches rigid bodies. */
     float density;
-    float viscosity, cohesion;
+    /* Liquid, powder and elastic matter, as fractions 0..1 of what the solver
+     * keeps stable: resistance to compression or deformation, and liquid
+     * viscosity. Cohesion is the share of tension a liquid keeps; friction
+     * sets a powder's friction angle up to 45 degrees and every phase's
+     * grip on solids. */
+    float stiffness, viscosity, cohesion, friction;
     /* Gas only: the fraction of gravity that lifts it, times 1 + temperature. */
     float buoyancy;
     unsigned color;
@@ -124,6 +135,11 @@ typedef struct
     /* Formed in the world: it grows and fades over its lifetime. */
     bool billow;
     fluid_style style;
+    /* Liquid, powder and elastic matter: deformation gradient and APIC
+     * velocity gradient. Identity and zero at rest. */
+    fluid_matrix deformation, affine;
+    /* Optional caller identity grouping matter, such as a jelly's core. */
+    uint64_t owner;
 } fluid_particle;
 
 typedef struct
@@ -265,6 +281,12 @@ typedef struct
     bool conductive;
 } fluid_sample;
 fluid_sample material_fluid_sample(const material_fluid *fluid, fluid_vec point, float radius);
+/* Where the matter of owner is: its mean position and particle count. */
+fluid_vec material_fluid_centroid(const material_fluid *fluid, uint64_t owner, int *count);
+/* Owner's matter feels force during the next tick, shared by its mass. */
+void material_fluid_push_owner(material_fluid *fluid, uint64_t owner, fluid_vec force);
+/* Removes owner's matter within radius of point; returns how much. */
+int material_fluid_remove_owned(material_fluid *fluid, uint64_t owner, fluid_vec point, float radius);
 /* Adds delta to the temperature of matter within radius of point. */
 void material_fluid_heat_area(material_fluid *fluid, fluid_vec point, float radius, float delta);
 /* Optional borrowed executor; the caller owns its submission scope. */

@@ -58,6 +58,7 @@ void game_materials_tick(
     const fluid_colliders *colliders
 );
 const material_fluid *game_materials_fluid(const game_materials *materials);
+material_fluid *game_materials_fluid_mut(game_materials *materials);
 /* On-demand inspection includes simulation state outside the ECS columns. */
 game_material_state game_materials_inspect(const game_materials *materials);
 /* Borrowed crater debris; empty without a debris limit. */
@@ -93,5 +94,7 @@ extern node_desc GAME_NODE_EmitFluid;
 extern node_desc GAME_NODE_HeatArea;
 extern node_desc GAME_NODE_FluidAt;
 extern node_desc GAME_NODE_MaterialAt;
+extern node_desc GAME_NODE_MatterCentroid;
+extern node_desc GAME_NODE_PushMatter;
 
 #endif

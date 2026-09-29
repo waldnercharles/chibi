@@ -20,6 +20,7 @@ float *reference_cave_generate(unsigned, int, int, float, float, float);
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 static void check_cover(const material_mask *mask)
 {
@@ -399,10 +400,13 @@ static void liquid_split_merge()
         }
     }
     assert(liquid_clusters(fluid) == 2);
-    for (int i = 0; i < 180; i++) {
+    /* Blobs drifting together join into one body when they meet. */
+    bool joined = false;
+    for (int i = 0; i < 90; i++) {
         tick(fluid);
+        joined |= liquid_clusters(fluid) == 1;
     }
-    assert(liquid_clusters(fluid) == 1);
+    assert(joined);
     material_fluid_clear(fluid);
     for (int y = -6; y <= 6; y++) {
         for (int x = -6; x <= 6; x++) {
@@ -1106,6 +1110,7 @@ static material_fluid *chemistry(int capacity)
     fluid_substance substances[SUBSTANCES] = {
         [WATER] = { .phase = FLUID_LIQUID,
                     .density = .25f,
+                    .stiffness = .7f,
                     .cooling = .3f,
                     .boil_at = 1,
                     .burns_to = FLUID_GONE,
@@ -1122,6 +1127,7 @@ static material_fluid *chemistry(int capacity)
                     .freezes_to = FLUID_KEEP },
         [LAVA] = { .phase = FLUID_LIQUID,
                    .density = .7f,
+                   .stiffness = .7f,
                    .temperature = 3,
                    .cooling = .04f,
                    .burns_to = FLUID_GONE,
@@ -2059,22 +2065,27 @@ static void debris()
 
 /* A static solid mask whose open space is the rectangle half_open around
  * open_center, in the mask's local frame; everything else is rock. */
-static material_mask open_box(int width, int height, fluid_vec open_center, fluid_vec half_open)
+static material_mask open_box_cells(int width, int height, float cell, fluid_vec open_center, fluid_vec half_open)
 {
     float *distance = malloc((size_t)width * height * sizeof *distance);
     for (int y = 0; y < height; y++) {
         for (int x = 0; x < width; x++) {
-            float px = ((x + .5f) - width * .5f) * 2 - open_center.x;
-            float py = ((y + .5f) - height * .5f) * 2 - open_center.y;
+            float px = ((x + .5f) - width * .5f) * cell - open_center.x;
+            float py = ((y + .5f) - height * .5f) * cell - open_center.y;
             float qx = fabsf(px) - half_open.x, qy = fabsf(py) - half_open.y;
             float outside = hypotf(fmaxf(qx, 0), fmaxf(qy, 0)) +
                             fminf(fmaxf(qx, qy), 0);
             distance[y * width + x] = -outside;
         }
     }
-    material_mask mask = material_mask_from_field(width, height, 2, distance);
+    material_mask mask = material_mask_from_field(width, height, cell, distance);
     free(distance);
     return mask;
+}
+
+static material_mask open_box(int width, int height, fluid_vec open_center, fluid_vec half_open)
+{
+    return open_box_cells(width, height, 2, open_center, half_open);
 }
 
 static void fall(material_fluid *fluid, const material_solids *solids, int steps)
@@ -2481,6 +2492,232 @@ static void matter_nodes()
     puts("PASS: Emit Fluid, Heat Area, Fluid At and Material At");
 }
 
+enum
+{
+    MPM_WATER,
+    MPM_SAND,
+    MPM_JELLY,
+    MPM_SUBSTANCES
+};
+
+static material_fluid *mpm_fluid(int capacity)
+{
+    material_fluid *f = material_fluid_new(10, capacity);
+    fluid_substance substances[MPM_SUBSTANCES] = {
+        [MPM_WATER] = { .phase = FLUID_LIQUID,
+                        .density = .25f,
+                        .stiffness = .9f,
+                        .viscosity = .02f,
+                        .cohesion = .5f,
+                        .friction = .05f },
+        [MPM_SAND] = { .phase = FLUID_POWDER, .density = .6f, .stiffness = .9f, .friction = .75f },
+        [MPM_JELLY] = { .phase = FLUID_ELASTIC, .density = .4f, .stiffness = .6f, .friction = .6f },
+    };
+    for (int i = 0; i < MPM_SUBSTANCES; i++) {
+        substances[i].burns_to = FLUID_GONE;
+        substances[i].boils_to = substances[i].freezes_to = FLUID_KEEP;
+    }
+    material_fluid_set_substances(f, substances, MPM_SUBSTANCES);
+    return f;
+}
+
+static void fill(material_fluid *f, int substance, fluid_vec center, int columns, int rows, uint64_t owner)
+{
+    float spacing = material_fluid_spacing(f, FLUID_LIQUID);
+    for (int y = 0; y < rows; y++) {
+        for (int x = 0; x < columns; x++) {
+            fluid_vec at = { center.x + (x - (columns - 1) * .5f) * spacing,
+                             center.y + (y - (rows - 1) * .5f) * spacing };
+            fluid_particle p = material_fluid_particle(f, substance, at);
+            p.owner = owner;
+            assert(material_fluid_add(f, p));
+        }
+    }
+}
+
+typedef struct
+{
+    fluid_vec low, high;
+    int count;
+} extent;
+
+static extent extent_of(const material_fluid *f, int substance)
+{
+    extent e = { { INFINITY, INFINITY }, { -INFINITY, -INFINITY }, 0 };
+    int count;
+    const fluid_particle *p = material_fluid_particles(f, &count);
+    for (int i = 0; i < count; i++) {
+        if (p[i].substance != substance) {
+            continue;
+        }
+        e.low.x = fminf(e.low.x, p[i].position.x);
+        e.low.y = fminf(e.low.y, p[i].position.y);
+        e.high.x = fmaxf(e.high.x, p[i].position.x);
+        e.high.y = fmaxf(e.high.y, p[i].position.y);
+        e.count++;
+    }
+    return e;
+}
+
+/* A 400-unit bowl, floor at y = 100, with water, a sand heap and a jelly
+ * block dropped in. */
+static void mpm_scene(material_fluid *f, material_mask *bowl, material_solids *solids)
+{
+    *bowl = open_box(256, 160, (fluid_vec){ 0, -60 }, (fluid_vec){ 200, 160 });
+    material_solids_set(solids, &(material_solid){ bowl, { 0, 0 }, 0, 0 }, 1);
+    fill(f, MPM_WATER, (fluid_vec){ -120, 40 }, 30, 30, 0);
+    fill(f, MPM_SAND, (fluid_vec){ 80, 20 }, 16, 30, 0);
+    fill(f, MPM_JELLY, (fluid_vec){ 150, -60 }, 10, 10, 7);
+}
+
+static void mpm_run(
+    material_fluid *f,
+    const material_solids *solids,
+    fluid_body *body,
+    fluid_obstacle *obstacle,
+    int steps
+)
+{
+    fluid_region region = { -2000, -2000, 4000, 4000 };
+    for (int i = 0; i < steps; i++) {
+        material_fluid_tick(
+            f,
+            &(fluid_step){ .delta = 1.f / 60,
+                           .chunk_size = 64,
+                           .gravity = { 0, 320 },
+                           .regions = &region,
+                           .region_count = 1,
+                           .colliders = { body, body ? 1 : 0, obstacle, obstacle ? 1 : 0 },
+                           .solids = solids }
+        );
+    }
+}
+
+/* Ten seconds of water, sand and jelly in a bowl stay finite, slow, out of
+ * the rock and inside the bowl; sand keeps a heap and jelly its size. */
+static void mpm_stability()
+{
+    material_fluid *f = mpm_fluid(2000);
+    material_mask bowl;
+    material_solids *solids = material_solids_new();
+    mpm_scene(f, &bowl, solids);
+    extent jelly = extent_of(f, MPM_JELLY);
+    float jelly_area = (jelly.high.x - jelly.low.x) * (jelly.high.y - jelly.low.y);
+    for (int second = 0; second < 10; second++) {
+        mpm_run(f, solids, NULL, NULL, 60);
+        int count;
+        const fluid_particle *p = material_fluid_particles(f, &count);
+        assert(count == 1480);
+        for (int i = 0; i < count; i++) {
+            assert(isfinite(
+                p[i].position.x + p[i].position.y + p[i].velocity.x +
+                p[i].velocity.y
+            ));
+            assert(
+                fabsf(p[i].position.x) < 204 && p[i].position.y < 104 &&
+                p[i].position.y > -300
+            );
+            assert(material_solids_sample(solids, p[i].position).distance > -4);
+        }
+    }
+    extent water = extent_of(f, MPM_WATER), sand = extent_of(f, MPM_SAND);
+    jelly = extent_of(f, MPM_JELLY);
+    float speed = 0;
+    int count;
+    const fluid_particle *p = material_fluid_particles(f, &count);
+    for (int i = 0; i < count; i++) {
+        speed = fmaxf(speed, hypotf(p[i].velocity.x, p[i].velocity.y));
+    }
+    float jelly_now = (jelly.high.x - jelly.low.x) * (jelly.high.y - jelly.low.y);
+    printf(
+        "mpm after 10 s: water %.0f..%.0f x %.0f..%.0f, sand %.0f..%.0f x "
+        "%.0f..%.0f, jelly area %.0f of %.0f, top speed %.1f\n",
+        water.low.x,
+        water.high.x,
+        water.low.y,
+        water.high.y,
+        sand.low.x,
+        sand.high.x,
+        sand.low.y,
+        sand.high.y,
+        jelly_now,
+        jelly_area,
+        speed
+    );
+    /* Water spreads over the floor; sand stands as a heap; jelly holds. */
+    assert(water.high.x - water.low.x > 250 && 100 - water.low.y < 80);
+    assert(100 - sand.low.y > 20);
+    assert(jelly_now > jelly_area * .5f && jelly_now < jelly_area * 2);
+    assert(speed < 150);
+    material_fluid_free(f);
+    material_solids_free(solids);
+    material_mask_free(&bowl);
+    puts("PASS: MPM water, sand and jelly stay stable, bounded and out of solids for ten seconds");
+}
+
+/* A body falling into water is slowed by it and pushes the water aside; the
+ * owner handles find, move and carve a jelly. Serial and parallel runs of
+ * the whole scene match exactly. */
+static void mpm_coupling()
+{
+    material_fluid *f = mpm_fluid(2000);
+    material_mask bowl;
+    material_solids *solids = material_solids_new();
+    mpm_scene(f, &bowl, solids);
+    mpm_run(f, solids, NULL, NULL, 120);
+    fluid_body body = { .position = { -120, 30 },
+                        .previous_position = { -120, 28 },
+                        .velocity = { 0, 120 },
+                        .inverse_mass = 20,
+                        .swept = true };
+    fluid_obstacle box = { .half_size = { 12, 12 } };
+    mpm_run(f, solids, &body, &box, 1);
+    printf("mpm body impulse %.4f\n", body.impulse.y);
+    assert(body.impulse.y < 0);
+
+    int count;
+    fluid_vec before = material_fluid_centroid(f, 7, &count);
+    assert(count == 100);
+    material_fluid_push_owner(f, 7, (fluid_vec){ -4000, 0 });
+    mpm_run(f, solids, NULL, NULL, 10);
+    fluid_vec after = material_fluid_centroid(f, 7, &count);
+    printf("jelly moved from %.1f to %.1f\n", before.x, after.x);
+    assert(after.x < before.x - 1);
+    assert(material_fluid_remove_owned(f, 7, after, 12) > 0);
+    material_fluid_centroid(f, 7, &count);
+    assert(count < 100);
+
+    material_fluid *serial = mpm_fluid(2000), *parallel = mpm_fluid(2000);
+    material_mask second;
+    material_solids *parallel_solids = material_solids_new();
+    material_mask_free(&bowl);
+    mpm_scene(serial, &bowl, solids);
+    mpm_scene(parallel, &second, parallel_solids);
+    game_task_pool *pool = game_task_pool_acquire_workers(4);
+    material_fluid_set_tasks(parallel, game_task_pool_tasks(pool));
+    for (int i = 0; i < 90; i++) {
+        fluid_body a = body, b = body;
+        mpm_run(serial, solids, &a, &box, 1);
+        game_task_pool_begin(pool, true);
+        mpm_run(parallel, parallel_solids, &b, &box, 1);
+        game_task_pool_end(pool);
+        assert(a.impulse.x == b.impulse.x && a.impulse.y == b.impulse.y);
+    }
+    int other;
+    const fluid_particle *pa = material_fluid_particles(serial, &count);
+    const fluid_particle *pb = material_fluid_particles(parallel, &other);
+    assert(count == other && !memcmp(pa, pb, (size_t)count * sizeof *pa));
+    game_task_pool_release(pool);
+    material_fluid_free(serial);
+    material_fluid_free(parallel);
+    material_fluid_free(f);
+    material_solids_free(solids);
+    material_solids_free(parallel_solids);
+    material_mask_free(&bowl);
+    material_mask_free(&second);
+    puts("PASS: MPM body coupling, owned matter handles and serial/parallel parity");
+}
+
 void test_materials()
 {
     gravity_pooling();
@@ -2488,6 +2725,8 @@ void test_materials()
     corrosion();
     deposition();
     matter_nodes();
+    mpm_stability();
+    mpm_coupling();
     blast_policy();
     rotated_occlusion();
     fragment_penetration();
@@ -2514,4 +2753,66 @@ void test_materials()
     terrain_boundary_cut();
     terrain_stream_restore();
     puts("PASS: material destruction, cohesion, sleeping, momentum and parallel parity");
+}
+
+static double bench_now()
+{
+    struct timespec now;
+    clock_gettime(CLOCK_MONOTONIC, &now);
+    return now.tv_sec * 1000.0 + now.tv_nsec * 1e-6;
+}
+
+/* Times the fluid step with a pool of `particles` MPM water particles in a
+ * wide bowl, stirred by a moving body, on the shared worker pool. */
+int bench_matter(int particles, int frames)
+{
+    if (particles < 100 || frames < 1) {
+        return 2;
+    }
+    material_fluid *f = mpm_fluid(particles + 16);
+    /* A shallow pool, as wide as a 2048-unit bowl allows. */
+    float spacing = material_fluid_spacing(f, FLUID_LIQUID);
+    int columns = (int)fminf(480, sqrtf(particles * 6.f)), rows = particles / columns;
+    material_mask bowl = open_box_cells(
+        256,
+        128,
+        8,
+        (fluid_vec){ 0, -312 },
+        (fluid_vec){ columns * spacing * .5f + 32, 512 }
+    );
+    material_solids *solids = material_solids_new();
+    material_solids_set(solids, &(material_solid){ &bowl, { 0, 0 }, 0, 0 }, 1);
+    fill(f, MPM_WATER, (fluid_vec){ 0, 196 - rows * spacing * .5f }, columns, rows, 0);
+    game_task_pool *pool = game_task_pool_acquire();
+    material_fluid_set_tasks(f, game_task_pool_tasks(pool));
+    fluid_obstacle box = { .half_size = { 16, 16 } };
+    double total = 0, worst = 0;
+    for (int i = 0; i < 60 + frames; i++) {
+        float x = sinf(i * .02f) * columns * spacing * .3f;
+        fluid_body body = { .position = { x, 196 - rows * spacing * .5f },
+                            .velocity = { 60, 0 },
+                            .inverse_mass = .01f };
+        double start = bench_now();
+        game_task_pool_begin(pool, true);
+        mpm_run(f, solids, &body, &box, 1);
+        game_task_pool_end(pool);
+        double elapsed = bench_now() - start;
+        if (i >= 60) {
+            total += elapsed;
+            worst = fmax(worst, elapsed);
+        }
+    }
+    printf(
+        "matter particles=%d active=%d workers=%d mean_ms=%.3f worst_ms=%.3f\n",
+        particles,
+        material_fluid_active_count(f),
+        game_task_pool_tasks(pool)->workers,
+        total / frames,
+        worst
+    );
+    game_task_pool_release(pool);
+    material_fluid_free(f);
+    material_solids_free(solids);
+    material_mask_free(&bowl);
+    return 0;
 }

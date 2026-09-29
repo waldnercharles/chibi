@@ -135,8 +135,16 @@ typedef NODE_COMPONENT_TYPE_DENSE(MaterialSubstance)
     MaterialPhase phase;
     /* Mass per area; one matches rigid bodies. */
     float density;
+    /* Liquid, powder and elastic matter, as fractions 0..1 of what the solver
+     * keeps stable: resistance to compression or deformation, and liquid
+     * viscosity. */
+    float stiffness;
     float viscosity;
+    /* Share 0..1 of tension a liquid keeps, holding it together. */
     float cohesion;
+    /* 0..1: a powder's friction angle up to 45 degrees, and its grip on
+     * solids for every dense phase. */
+    float friction;
     /* Gas only: the fraction of gravity that lifts it, times 1 + temperature.
      * Negative gas sinks. */
     float buoyancy;
@@ -341,6 +349,9 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameFluidVolume)
     float emission;
     float visibility;
     float refraction;
+    /* The fill belongs to this entity: Matter Centroid and Push Matter find
+     * it, and Damage Material on the entity carves it. */
+    bool owned;
 }
 GameFluidVolume;
 

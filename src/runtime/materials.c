@@ -13,6 +13,8 @@ static node_desc *const MATERIAL_NODES[] = {
     &GAME_NODE_HeatArea,
     &GAME_NODE_FluidAt,
     &GAME_NODE_MaterialAt,
+    &GAME_NODE_MatterCentroid,
+    &GAME_NODE_PushMatter,
 };
 const registry_pack GAME_MATERIAL_PACK = { .name = "engine.materials",
                                            .nodes = MATERIAL_NODES,

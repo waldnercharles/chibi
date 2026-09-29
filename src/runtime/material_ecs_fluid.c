@@ -282,6 +282,7 @@ const char *material_ecs_fill_volume(game_materials *materials, ecs_entity entit
             }
             p.velocity = (fluid_vec){ c * v.velocity.x - s * v.velocity.y,
                                       s * v.velocity.x + c * v.velocity.y };
+            p.owner = v.owned ? ecs_entity_to_u64(entity) : 0;
             if (!material_fluid_add(materials->fluid, p)) {
                 return "Fluid volumes exceed the world's particle capacity; "
                        "reduce their size or raise the limit";

@@ -42,6 +42,7 @@ void test_shader_image_cpu();
 void test_png_encoding();
 void test_physics();
 void test_materials();
+int bench_matter(int particles, int frames);
 void test_material_reactions();
 void test_fields();
 void test_system_schedule();
@@ -574,6 +575,9 @@ int main(int argc, char **argv)
     if (argc == 3 && !strcmp(argv[1], "--emit-particle-c")) {
         emit_particle_c(argv[2]);
         return 0;
+    }
+    if (argc == 4 && !strcmp(argv[1], "--bench-matter")) {
+        return bench_matter(atoi(argv[2]), atoi(argv[3]));
     }
     if (argc == 5 && !strcmp(argv[1], "--bench-particles")) {
         return bench_particles(argv[2], atoi(argv[3]), atoi(argv[4]));

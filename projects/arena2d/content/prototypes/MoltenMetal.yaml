@@ -2,6 +2,7 @@ name: MoltenMetal
 components:
   GAME.MaterialSubstance:
     absorption: 0.6
+    cohesion: 0.5
     color: 4288688383
     conductive: true
     cooling: 0.06
@@ -9,5 +10,8 @@ components:
     emission: 2.0
     freeze_at: 1.0
     freezes_to: Slag
+    friction: 0.1
     phase: Liquid
+    stiffness: 0.9
     temperature: 3.5
+    viscosity: 0.2

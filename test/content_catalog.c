@@ -200,6 +200,7 @@ void run_content_catalog_checks()
         "Acid.yaml",
         "BasaltDeposits.yaml",
         "IceDeposits.yaml",
+        "Jelly.yaml",
         "SlagDeposits.yaml",
         "LabChiller.yaml",
         "LabHeater.yaml",

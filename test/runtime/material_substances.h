@@ -31,6 +31,9 @@ static inline material_fluid *test_fluid(float kernel, int capacity)
                        .freezes_to = FLUID_KEEP },
         [TEST_LIQUID] = { .phase = FLUID_LIQUID,
                           .density = .25f,
+                          .stiffness = .7f,
+                          .cohesion = 1,
+                          .friction = .1f,
                           .color = 0x22aaffff,
                           .burns_to = FLUID_GONE,
                           .boils_to = FLUID_KEEP,
@@ -68,12 +71,14 @@ static inline material_fluid *test_fluid(float kernel, int capacity)
 static inline fluid_particle test_particle(float x, float y, int substance)
 {
     int phase = substance == TEST_LIQUID ? FLUID_LIQUID : FLUID_GAS;
+    /* Liquid fills four units square at a quarter of rigid density. */
     return (fluid_particle){ .position = { x, y },
                              .substance = substance,
                              .phase = phase,
-                             .mass = .01f,
+                             .mass = phase == FLUID_LIQUID ? .25f * 16 / 1024 : .01f,
                              .radius = 3,
-                             .fuel = substance == TEST_FUEL };
+                             .fuel = substance == TEST_FUEL,
+                             .deformation = { 1, 0, 0, 1 } };
 }
 
 /* Registers the named authored substance and reaction prototypes from Neon

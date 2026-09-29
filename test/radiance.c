@@ -701,6 +701,7 @@ static bool fluid_surfaces(render_material_raster *raster)
             p.radius = 12;
             p.substance = TEST_LIQUID;
             p.phase = FLUID_LIQUID;
+            p.deformation = (fluid_matrix){ 1, 0, 0, 1 };
             p.emission = 0;
             p.visibility = .06f;
             p.style = (fluid_style){ 0 };
@@ -1011,6 +1012,7 @@ static bool fluid_lighting(
                                       .radius = 10,
                                       .substance = kind,
                                       .phase = kind,
+                                      .deformation = { 1, 0, 0, 1 },
                                       .color = 0xffffffffu,
                                       .absorption = .02f,
                                       .visibility = kind == FLUID_GAS ? .02f : 0 }
@@ -1115,6 +1117,7 @@ static bool liquid_refraction(render_material_raster *raster, render_radiance *r
                               .radius = 30,
                               .substance = TEST_LIQUID,
                               .phase = FLUID_LIQUID,
+                              .deformation = { 1, 0, 0, 1 },
                               .color = 0x8080ff99,
                               .refraction = pass ? 12 : 0 }
         );

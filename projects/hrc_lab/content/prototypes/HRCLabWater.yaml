@@ -2,8 +2,12 @@ name: HRCLabWater
 components:
   GAME.MaterialSubstance:
     absorption: 0.035
+    cohesion: 1.0
     color: 951492269
     density: 0.25
+    friction: 0.05
     phase: Liquid
     refraction: 8.0
+    stiffness: 0.9
+    viscosity: 0.02
     visibility: 0.012

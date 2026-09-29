@@ -162,7 +162,7 @@ static void seed(material_flow *flow, const fluid_particle *particles, const int
     apush(grid->cells, ((flow_cell){ 0 })); /* Open boundary sentinel. */
     for (int n = 0; n < count; n++) {
         fluid_particle p = particles[active[n]];
-        if (p.kind != FLUID_GAS) {
+        if (p.phase != FLUID_GAS) {
             continue;
         }
         int x = (int)floorf(p.position.x / size), y = (int)floorf(p.position.y / size);
@@ -380,7 +380,7 @@ void material_flow_step(
     for (int n = 0; n < count; n++) {
         fluid_particle *p = &particles[active[n]];
         /* Ballistic exhaust stirs the grid but keeps its authored motion. */
-        if (p->kind != FLUID_GAS || (p->style.duration > 0 && !p->smoke)) {
+        if (p->phase != FLUID_GAS || (p->style.duration > 0 && !p->billow)) {
             continue;
         }
         float x = p->position.x / settings.cell_size,

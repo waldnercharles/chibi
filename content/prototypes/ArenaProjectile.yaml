@@ -16,7 +16,6 @@ components:
     emission:
       start: {x: 0.45, "y": 0.45}
     end_color: 595435520
-    fluid_mass: 0.0002
     heading_only: true
     lifetime: {x: 0.18, "y": 0.18}
     offset: {x: -6.5}

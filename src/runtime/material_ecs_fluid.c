@@ -21,61 +21,18 @@ bool game_materials_emit(game_materials *materials, fluid_particle particle)
     return materials->fluid && material_fluid_add(materials->fluid, particle);
 }
 
-const char *material_ecs_configure_fluid(game_materials *materials)
+static void free_fluid(game_materials *materials)
 {
-    ecs_component_id id = GAME_COMPONENT_MaterialFluidWorld.id;
-    if (!ecs_world_component(materials->world, id)) {
-        return NULL;
+    material_fluid_free(materials->fluid);
+    materials->fluid = NULL;
+    material_ecs_free_substances(materials);
+    for (int i = 0; i < acount(materials->records); i++) {
+        materials->records[i].volume = false;
     }
-    ecs_query query;
-    int result = ecs_query_begin(materials->world, &query, &id, 1);
-    assert(result == ECS_OK);
-    ecs_entity entity;
-    int count = 0;
-    MaterialFluidWorld settings = { 0 };
-    bool reactive = false;
-    while (ecs_query_next(&query, &entity)) {
-        settings = *GAME_MaterialFluidWorld_get_const(materials->world, entity);
-        const GameCombustion *reaction = GAME_GameCombustion_get_const(materials->world, entity);
-        reactive = reaction != NULL;
-        materials->combustion = reaction ? *reaction : (GameCombustion){ 0 };
-        count++;
-    }
-    ecs_query_end(&query);
-    if (!count) {
-        if (materials->fluid) {
-            material_fluid_free(materials->fluid);
-            materials->fluid = NULL;
-            for (int i = 0; i < acount(materials->records); i++) {
-                materials->records[i].volume = false;
-            }
-        }
-        return NULL;
-    }
-    if (count != 1 ||
-        !isfinite(settings.chunk_size + settings.buffer + settings.kernel) ||
-        settings.chunk_size < 32 || settings.chunk_size > 1024 ||
-        settings.buffer < settings.kernel || settings.buffer > 2048 ||
-        settings.kernel < 2 || settings.kernel > 64 ||
-        settings.particle_limit < 1 || settings.particle_limit > 1000000) {
-        return "Fluid world requires one configuration, chunks 32..1024, "
-               "kernel 2..64, a buffer at least one kernel, 1..1000000 "
-               "particles";
-    }
-    if (materials->fluid &&
-        (settings.kernel != materials->settings.kernel ||
-         settings.particle_limit != materials->settings.particle_limit)) {
-        return "Restart the scene after changing the material kernel or "
-               "particle capacity";
-    }
-    if (!isfinite(settings.gas_cell_size + settings.gas_vorticity + settings.gas_drag) ||
-        (settings.gas_cell_size != 0 &&
-         (settings.gas_cell_size < 2 || settings.gas_cell_size > 64)) ||
-        settings.gas_vorticity < 0 || settings.gas_vorticity > 10 ||
-        settings.gas_drag < 0 || settings.gas_drag > 10) {
-        return "Gas flow requires cell size 0 or 2..64, vorticity 0..10 and "
-               "drag 0..10";
-    }
+}
+
+static const char *validate_responses(MaterialFluidWorld settings)
+{
     float response_values[] = {
         settings.gas_wake_speed,         settings.gas_wake_strength,
         settings.gas_wake_lifetime,      settings.liquid_splash_speed,
@@ -104,22 +61,77 @@ const char *material_ecs_configure_fluid(game_materials *materials)
                "lifetime 0..3 and count 0..8; enabled responses need all "
                "positive values";
     }
-    materials->settings = settings;
-    GameCombustion r = materials->combustion;
-    if (reactive && (!isfinite(
-                         r.ignition + r.cooling + r.burn_rate + r.heat_release +
-                         r.smoke_lifetime + r.smoke_absorption + r.flame_emission +
-                         r.blast_radius + r.blast_speed + r.blast_damage
-                     ) ||
-                     r.ignition <= 0 || r.cooling < 0 || r.burn_rate <= 0 ||
-                     r.heat_release <= r.ignition || r.smoke_lifetime <= 0 ||
-                     r.smoke_absorption < 0 || r.flame_emission < 0 ||
-                     r.blast_radius < 0 || r.blast_radius > COMBUSTION_BLAST_RADIUS_MAX ||
-                     r.blast_speed < 0 || r.blast_damage < 0)) {
-        return "Combustion requires finite nonnegative tuning, positive "
-               "ignition/burn/lifetime, heat above ignition and blast radius "
-               "<=1024";
+    return NULL;
+}
+
+static const char *validate_world(MaterialFluidWorld settings)
+{
+    if (!isfinite(settings.chunk_size + settings.buffer + settings.kernel) ||
+        settings.chunk_size < 32 || settings.chunk_size > 1024 ||
+        settings.buffer < settings.kernel || settings.buffer > 2048 ||
+        settings.kernel < 2 || settings.kernel > 64 ||
+        settings.particle_limit < 1 || settings.particle_limit > 1000000) {
+        return "Fluid world requires one configuration, chunks 32..1024, "
+               "kernel 2..64, a buffer at least one kernel, 1..1000000 "
+               "particles";
     }
+    if (!isfinite(settings.gas_cell_size + settings.gas_vorticity + settings.gas_drag) ||
+        (settings.gas_cell_size != 0 &&
+         (settings.gas_cell_size < 2 || settings.gas_cell_size > 64)) ||
+        settings.gas_vorticity < 0 || settings.gas_vorticity > 10 ||
+        settings.gas_drag < 0 || settings.gas_drag > 10) {
+        return "Gas flow requires cell size 0 or 2..64, vorticity 0..10 and "
+               "drag 0..10";
+    }
+    if (!isfinite(
+            settings.blast_radius + settings.blast_speed + settings.blast_damage +
+            settings.heat_conduction + settings.glow_temperature + settings.glow_emission
+        ) ||
+        settings.blast_radius < 0 || settings.blast_radius > COMBUSTION_BLAST_RADIUS_MAX ||
+        settings.blast_speed < 0 || settings.blast_damage < 0 ||
+        settings.heat_conduction < 0 || settings.glow_temperature < 0 ||
+        settings.glow_emission < 0) {
+        return "Fluid world blasts need radius 0..1024 and nonnegative speed "
+               "and damage; heat needs nonnegative conduction and glow";
+    }
+    return validate_responses(settings);
+}
+
+const char *material_ecs_configure_fluid(game_materials *materials)
+{
+    ecs_component_id id = GAME_COMPONENT_MaterialFluidWorld.id;
+    if (!ecs_world_component(materials->world, id)) {
+        return NULL;
+    }
+    ecs_query query;
+    int result = ecs_query_begin(materials->world, &query, &id, 1);
+    assert(result == ECS_OK);
+    ecs_entity entity;
+    int count = 0;
+    MaterialFluidWorld settings = { 0 };
+    while (ecs_query_next(&query, &entity)) {
+        settings = *GAME_MaterialFluidWorld_get_const(materials->world, entity);
+        count++;
+    }
+    ecs_query_end(&query);
+    if (!count) {
+        if (materials->fluid) {
+            free_fluid(materials);
+        }
+        return NULL;
+    }
+    const char *error = count == 1 ? validate_world(settings)
+                                   : "Fluid world requires one configuration";
+    if (error) {
+        return error;
+    }
+    if (materials->fluid &&
+        (settings.kernel != materials->settings.kernel ||
+         settings.particle_limit != materials->settings.particle_limit)) {
+        return "Restart the scene after changing the material kernel or "
+               "particle capacity";
+    }
+    materials->settings = settings;
     if (!materials->fluid) {
         materials->fluid = material_fluid_new(settings.kernel, settings.particle_limit);
         material_fluid_set_tasks(
@@ -139,26 +151,21 @@ const char *material_ecs_configure_fluid(game_materials *materials)
             settings.gas_wake_count ? settings.gas_wake_speed : 0,
             settings.liquid_splash_count ? settings.liquid_splash_speed : 0 }
     );
-    material_fluid_set_reaction(
+    material_fluid_set_heat(
         materials->fluid,
-        (fluid_reaction){ r.ignition,
-                          r.cooling,
-                          r.burn_rate,
-                          r.heat_release,
-                          r.smoke_lifetime,
-                          r.smoke_color,
-                          r.smoke_absorption,
-                          r.flame_color,
-                          r.flame_emission }
+        (fluid_heat){ settings.heat_conduction,
+                      settings.glow_temperature,
+                      settings.glow_color,
+                      settings.glow_emission }
     );
-    return NULL;
+    return material_ecs_load_substances(materials);
 }
 
-static float volume_density(GameFluidVolume v, float x, float y)
+static float volume_density(int phase, GameFluidVolume v, float x, float y)
 {
     float nx = 2 * x / v.width, ny = 2 * y / v.height;
     float radius = hypotf(nx, ny);
-    if (v.kind == FLUID_LIQUID) {
+    if (phase != FLUID_GAS) {
         return radius <= 1;
     }
     float angle = atan2f(ny, nx);
@@ -187,29 +194,35 @@ static bool in_solid(game_materials *materials, fluid_vec point)
     return false;
 }
 
+/* A volume's look fields replace the substance's where they are nonzero. */
+static fluid_particle volume_particle(game_materials *materials, GameFluidVolume v, int substance, fluid_vec position)
+{
+    fluid_particle p = material_fluid_particle(materials->fluid, substance, position);
+    p.color = v.color ? v.color : p.color;
+    p.absorption = v.absorption ? v.absorption : p.absorption;
+    p.emission = v.emission ? v.emission : p.emission;
+    p.visibility = v.visibility ? v.visibility : p.visibility;
+    p.refraction = v.refraction ? v.refraction : p.refraction;
+    return p;
+}
+
 const char *material_ecs_fill_volume(game_materials *materials, ecs_entity entity)
 {
     GameFluidVolume v = *GAME_GameFluidVolume_get_const(materials->world, entity);
-    const GameFuel *fuel = GAME_GameFuel_get_const(materials->world, entity);
-    const GameIgniter *igniter = GAME_GameIgniter_get_const(materials->world, entity);
-    if ((fuel && (!isfinite(fuel->amount) || fuel->amount < 0)) ||
-        (igniter && (!isfinite(igniter->heat) || igniter->heat < 0))) {
-        return "Fuel and heat must be finite and nonnegative";
-    }
     const GameTransform *origin = GAME_GameTransform_get_const(materials->world, entity);
+    int substance = game_materials_substance(materials, v.substance);
+    if (substance < 0) {
+        return "Fluid volume names an unknown substance";
+    }
     if (!origin || !isfinite(origin->x + origin->y) ||
-        (v.kind != FLUID_GAS && v.kind != FLUID_LIQUID) ||
         !isfinite(
-            v.width + v.height + v.spacing + v.mass + v.absorption + v.emission +
-            v.visibility + v.refraction + v.velocity.x + v.velocity.y
+            v.width + v.height + v.absorption + v.emission + v.visibility +
+            v.refraction + v.velocity.x + v.velocity.y
         ) ||
         v.width <= 0 || v.height <= 0 || v.width > 8192 || v.height > 8192 ||
-        v.spacing < materials->settings.kernel * .3f ||
-        v.spacing > materials->settings.kernel || v.mass <= 0 ||
         v.absorption < 0 || v.emission < 0 || v.visibility < 0 ||
         v.visibility > 1 || v.refraction < 0 || v.refraction > 16) {
-        return "Fluid volume needs Transform, gas/liquid kind, positive "
-               "dimensions up to 8192, spacing 0.3..1 kernels, positive mass "
+        return "Fluid volume needs Transform, positive dimensions up to 8192 "
                "and nonnegative lighting";
     }
     material_record *record = material_ecs_record(materials, entity);
@@ -220,16 +233,19 @@ const char *material_ecs_fill_volume(game_materials *materials, ecs_entity entit
         *orientation = GAME_GameOrientation_get_const(materials->world, entity);
     float angle = orientation ? orientation->radians : 0, c = cosf(angle),
           s = sinf(angle);
-    int nx = (int)ceilf(v.width / v.spacing), ny = (int)ceilf(v.height / v.spacing);
+    int count;
+    int phase = material_fluid_substances(materials->fluid, &count)[substance].phase;
+    float spacing = material_fluid_spacing(materials->fluid, phase);
+    int nx = (int)ceilf(v.width / spacing), ny = (int)ceilf(v.height / spacing);
     int required = 0, existing;
     material_fluid_particles(materials->fluid, &existing);
     for (int y = 0; y < ny; y++) {
         for (int x = 0; x < nx; x++) {
-            float px = (x + .5f - nx * .5f) * v.spacing;
-            float py = (y + .5f - ny * .5f) * v.spacing;
+            float px = (x + .5f - nx * .5f) * spacing;
+            float py = (y + .5f - ny * .5f) * spacing;
             fluid_vec position = { origin->x + c * px - s * py,
                                    origin->y + s * px + c * py };
-            required += volume_density(v, px, py) > 0 &&
+            required += volume_density(phase, v, px, py) > 0 &&
                         !in_solid(materials, position);
         }
     }
@@ -240,16 +256,16 @@ const char *material_ecs_fill_volume(game_materials *materials, ecs_entity entit
     record->volume = true;
     for (int y = 0; y < ny; y++) {
         for (int x = 0; x < nx; x++) {
-            float px = (x + .5f - nx * .5f) * v.spacing;
-            float py = (y + .5f - ny * .5f) * v.spacing;
-            float fill = volume_density(v, px, py);
+            float px = (x + .5f - nx * .5f) * spacing;
+            float py = (y + .5f - ny * .5f) * spacing;
+            float fill = volume_density(phase, v, px, py);
             fluid_vec position = { origin->x + c * px - s * py,
                                    origin->y + s * px + c * py };
             if (fill <= 0 || in_solid(materials, position)) {
                 continue;
             }
-            unsigned color = v.color;
-            if (v.kind == FLUID_GAS) {
+            fluid_particle p = volume_particle(materials, v, substance, position);
+            if (phase == FLUID_GAS) {
                 /* Fixed local texture travels with the particles. Jitter
                  * removes lattice banding; broad opacity variation gives
                  * an art-directed cloud without a second fine fluid solve. */
@@ -257,28 +273,15 @@ const char *material_ecs_fill_volume(game_materials *materials, ecs_entity entit
                                 1597334677u;
                 float density = .6f + .25f * sinf(px * .023f) * cosf(py * .037f) +
                                 .15f * sinf(px * .087f + py * .049f);
-                color = (color & 0xffffff00u) |
-                        (unsigned)((color & 255) * density * fill);
-                px += (((hash & 65535) / 65535.f) - .5f) * v.spacing * .65f;
-                py += (((hash >> 16) / 65535.f) - .5f) * v.spacing * .65f;
+                p.color = (p.color & 0xffffff00u) |
+                          (unsigned)((p.color & 255) * density * fill);
+                px += (((hash & 65535) / 65535.f) - .5f) * spacing * .65f;
+                py += (((hash >> 16) / 65535.f) - .5f) * spacing * .65f;
+                p.position = (fluid_vec){ origin->x + c * px - s * py,
+                                          origin->y + s * px + c * py };
             }
-            fluid_particle p = {
-                .position = { origin->x + c * px - s * py, origin->y + s * px + c * py },
-                .velocity = { c * v.velocity.x - s * v.velocity.y,
-                              s * v.velocity.x + c * v.velocity.y },
-                .mass = v.mass,
-                .radius = v.kind == FLUID_GAS
-                            ? materials->settings.kernel
-                            : fminf(v.spacing * 1.5f, materials->settings.kernel),
-                .kind = v.kind,
-                .color = color,
-                .absorption = v.absorption,
-                .fuel = fuel ? fuel->amount : 0,
-                .heat = igniter ? igniter->heat : 0,
-                .emission = v.emission,
-                .visibility = v.visibility,
-                .refraction = v.refraction
-            };
+            p.velocity = (fluid_vec){ c * v.velocity.x - s * v.velocity.y,
+                                      s * v.velocity.x + c * v.velocity.y };
             if (!material_fluid_add(materials->fluid, p)) {
                 return "Fluid volumes exceed the world's particle capacity; "
                        "reduce their size or raise the limit";
@@ -325,7 +328,7 @@ static void blasts(game_materials *materials, const fluid_step *step)
     int body_count = step->colliders.body_count;
     int count;
     const fluid_blast *events = material_fluid_blasts(materials->fluid, &count);
-    GameCombustion settings = materials->combustion;
+    MaterialFluidWorld settings = materials->settings;
     for (int e = 0; e < count; e++) {
         fluid_blast event = events[e];
         float density = fminf(1, event.ignitions / 8.f);
@@ -395,8 +398,7 @@ static void blasts(game_materials *materials, const fluid_step *step)
                         5,
                         settings.blast_damage * density * (1 - distance / radius),
                         MATERIAL_DAMAGE_BLAST,
-                        (material_impact){ materials->combustion.flame_color,
-                                           materials->combustion.heat_release }
+                        (material_impact){ settings.glow_color, settings.glow_temperature }
                     );
                     hit = true;
                     break;
@@ -440,7 +442,7 @@ static void emit_contact_effects(game_materials *materials)
             break;
         }
         fluid_contact contact = contacts[i];
-        bool gas = contact.kind == FLUID_GAS;
+        bool gas = contact.phase == FLUID_GAS;
         float threshold = gas ? settings.gas_wake_speed : settings.liquid_splash_speed;
         float strength = gas ? settings.gas_wake_strength
                              : settings.liquid_splash_strength;

@@ -17,12 +17,6 @@ components:
         range: [0, 1]
       friction:
         range: [0, 1]
-  GAME.GameCombustion:
-    tab: Gameplay
-    fields:
-      blast_radius:
-        range: [0, 1024]
-        unit: u
   GAME.GameDash:
     fields:
       speed: {unit: u/s}
@@ -39,7 +33,6 @@ components:
       absorption:
         range: [0, 1]
   GAME.GameFragmentGlow: {tab: Material}
-  GAME.GameFuel: {tab: Gameplay}
   GAME.GameHRC2D:
     tab: Material
     icon: light
@@ -112,4 +105,12 @@ components:
     fields:
       cooldown: {unit: s}
   GAME.MaterialBreakProfile: {tab: Physics}
+  GAME.MaterialFluidWorld:
+    tab: Physics
+    fields:
+      blast_radius:
+        range: [0, 1024]
+        unit: u
+  GAME.MaterialReaction: {tab: Physics, icon: water}
+  GAME.MaterialSubstance: {tab: Physics, icon: water}
   GAME.MaterialTerrain: {tab: Material, icon: terrain}

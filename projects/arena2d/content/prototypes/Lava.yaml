@@ -1,0 +1,13 @@
+name: Lava
+components:
+  GAME.MaterialSubstance:
+    absorption: 0.5
+    color: 2954889471
+    cooling: 0.04
+    density: 0.7
+    emission: 1.5
+    freeze_at: 0.8
+    freezes_to: Basalt
+    phase: Liquid
+    temperature: 3.0
+    viscosity: 4.0

@@ -64,6 +64,7 @@ void game_materials_reset(game_materials *materials)
         material_fluid_free(materials->fluid);
         materials->fluid = NULL;
     }
+    material_ecs_free_substances(materials);
     materials->settings = (MaterialFluidWorld){ 0 };
 }
 
@@ -146,8 +147,9 @@ game_material_state game_materials_inspect(const game_materials *materials)
     }
     for (int i = 0; i < state.particles; i++) {
         fluid_particle p = particles[i];
-        state.fuel_particles += p.fuel > 0;
+        state.fuel_particles += p.fuel > 0 && !p.burning;
         state.burning_particles += p.burning;
+        int identity[] = { p.substance, p.phase };
         float values[] = { p.position.x,
                            p.position.y,
                            p.velocity.x,
@@ -158,7 +160,7 @@ game_material_state game_materials_inspect(const game_materials *materials)
                            p.emission,
                            p.lifetime,
                            p.fuel,
-                           p.heat,
+                           p.temperature,
                            p.glow,
                            p.visibility,
                            p.refraction,
@@ -172,9 +174,9 @@ game_material_state game_materials_inspect(const game_materials *materials)
                            p.style.drag_exponent,
                            p.style.blend };
         state.hash = hash_bytes(state.hash, &p.burning, sizeof p.burning);
-        state.hash = hash_bytes(state.hash, &p.smoke, sizeof p.smoke);
+        state.hash = hash_bytes(state.hash, &p.billow, sizeof p.billow);
         state.hash = hash_bytes(state.hash, values, sizeof values);
-        state.hash = hash_bytes(state.hash, &p.kind, sizeof p.kind);
+        state.hash = hash_bytes(state.hash, identity, sizeof identity);
         state.hash = hash_bytes(state.hash, &p.color, sizeof p.color);
         state.hash = hash_bytes(state.hash, &p.style.end_color, sizeof p.style.end_color);
     }
@@ -515,7 +517,8 @@ static void crater(
             profile
         );
     }
-    for (int i = 0; i < profile.smoke_count && facing; i++) {
+    int smoke = game_materials_substance(materials, profile.smoke_substance);
+    for (int i = 0; i < profile.smoke_count && facing && smoke >= 0; i++) {
         /* Gas leaves the crater along its normal and spreads as it slows. */
         float along = 1 + 4 * crater_random(point, i, 0);
         float side = (crater_random(point, i, 1) - .5f) * 8;
@@ -523,27 +526,26 @@ static void crater(
         float swirl = (crater_random(point, i, 3) - .5f) * profile.smoke_speed;
         float lifetime = profile.smoke_lifetime *
                          (.7f + .6f * crater_random(point, i, 4));
-        game_materials_emit(
-            materials,
-            (fluid_particle){
-                .position = { point.x + normal.x * along - normal.y * side,
-                              point.y + normal.y * along + normal.x * side },
-                .velocity = { normal.x * speed - normal.y * swirl,
-                              normal.y * speed + normal.x * swirl },
-                .mass = .0004f,
-                .radius = 3 + 3 * crater_random(point, i, 5),
-                .color = profile.smoke_color,
-                .kind = FLUID_GAS,
-                .absorption = .012f,
-                .lifetime = lifetime,
-                .style = { .duration = lifetime,
-                           .size_end = 2.6f,
-                           .size_exponent = .5f,
-                           .drag = 1.2f,
-                           .drag_end = 3,
-                           .drag_exponent = 1,
-                           .end_color = profile.smoke_color & 0xffffff00u } }
+        fluid_particle parcel = material_fluid_particle(
+            materials->fluid,
+            smoke,
+            (fluid_vec){ point.x + normal.x * along - normal.y * side,
+                         point.y + normal.y * along + normal.x * side }
         );
+        parcel.velocity = (fluid_vec){ normal.x * speed - normal.y * swirl,
+                                       normal.y * speed + normal.x * swirl };
+        parcel.radius = 3 + 3 * crater_random(point, i, 5);
+        parcel.color = profile.smoke_color ? profile.smoke_color : parcel.color;
+        parcel.lifetime = lifetime;
+        parcel.billow = false;
+        parcel.style = (fluid_style){ .duration = lifetime,
+                                      .size_end = 2.6f,
+                                      .size_exponent = .5f,
+                                      .drag = 1.2f,
+                                      .drag_end = 3,
+                                      .drag_exponent = 1,
+                                      .end_color = parcel.color & 0xffffff00u };
+        game_materials_emit(materials, parcel);
     }
 }
 

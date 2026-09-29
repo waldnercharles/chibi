@@ -77,6 +77,67 @@ Approximations: the procedural field is not an exact Euclidean distance far
 from the surface, so a push is capped at two cells per substep; particles
 trapped deeper recover over several steps.
 
+## Substances, heat and reactions
+
+Matter is data. A prototype with `MaterialSubstance` is a substance named by
+the prototype; a prototype with `MaterialReaction` is a reaction. The fluid
+world discovers every registered prototype of either kind, so the same rules
+hold in every scene. Substance indices only grow while the world lives, and
+edited prototypes update the tables in place at the next frame boundary.
+
+| Field | Meaning |
+| --- | --- |
+| `phase` | Gas, Liquid, Powder or Elastic |
+| `density` | Mass per area; one matches rigid bodies |
+| `viscosity`, `cohesion` | Liquid tuning |
+| `buoyancy` | Gas only: fraction of gravity that lifts it, times 1 + temperature; negative sinks |
+| `color`, `emission`, `absorption`, `visibility`, `refraction` | Look |
+| `temperature`, `cooling` | Temperature it forms at; exponential cooling toward ambient zero per second |
+| `lifetime` | Seconds it lasts, zero for persistent; gas that expires billows and fades |
+| `ignite_at`, `burn_rate`, `burn_heat`, `burns_to`, `blast` | Flammability: at `ignite_at` it burns for `1 / burn_rate` seconds, held at `burn_heat`, then becomes `burns_to` (or vanishes); each ignition adds `blast` to its neighborhood's explosion |
+| `boil_at`, `boils_to` | At or above, it becomes `boils_to`; empty never boils |
+| `freeze_at`, `freezes_to` | At or below, it becomes `freezes_to`; empty never freezes |
+| `corrosion` | Damage per second to touching solids |
+| `conductive` | Carries arcs; reported by queries |
+
+Products name another substance or a deposit target, a
+`MaterialTerrain.deposit`. A particle that changes substance keeps its motion,
+takes the new substance's look and lifetime, and keeps the hotter of its
+temperature and the new substance's.
+
+`MaterialReaction {a, b, rate, a_becomes, b_becomes, heat}`: where substance
+`a` touches `b` (within 0.7 kernels), each pair reacts with probability
+`rate` per second; both change (empty keeps them) and gain `heat`. `b` may be
+`Burning`, which matches anything on fire. Each particle reacts at most once
+per tick; the rarer side searches, and proposals commit serially in particle
+order, so parallel runs match serial ones.
+
+Heat: every particle carries a temperature. Touching matter exchanges
+`MaterialFluidWorld.heat_conduction` of the difference per second; flammable
+matter instead takes 0.85 of a hotter neighbor's heat at once unless a wall
+separates them, so flames race through fuel. Bodies with `GameIgniter.heat`
+ignite flammable matter they sweep past and heat or chill the rest; negative
+heat chills. Hot matter glows: from half of `glow_temperature` to all of it,
+its color shifts toward `glow_color` and it adds `glow_emission`; burning gas
+also draws hot cores. `blast_radius`, `blast_speed` and `blast_damage` on the
+fluid world shape ignition blasts.
+
+Neon Swarm's fixtures in `projects/arena2d/content/prototypes`: Fog, FuelGas,
+Smoke, Fire, Exhaust, Dust, Steam, Spores, Water, Oil, Lava, Acid, Slime,
+MoltenMetal, Sand and Ash, with the reactions ReactionQuench (water and lava
+to steam and Basalt), ReactionMetalQuench (water and molten metal to steam and
+Slag) and ReactionDouse (water and anything burning to steam and smoke).
+Lava cools into Basalt and water freezes into Ice. Fuel, oil and spores ignite
+from heat. `GameFluidVolume` fills an ellipse with a substance, and its
+nonzero look fields tint that fill; `GameParticleEmitter.fluid_substance`
+emits the emitter's particles as a substance with the emitter's look and
+`GameIgniter` heat; `MaterialBreakProfile.smoke_substance` names crater gas.
+
+Approximations: temperature is a gameplay quantity, not kelvin; conduction
+uses neighbor averages, not a conserved heat equation; reactions are
+probabilistic contact rules without stoichiometry; fuel carries its own
+oxidizer; blasts are bounded radial impulses.
+
 ## Procedural fields
 
 Field documents live in `content/fields` with domain `field`. They have one

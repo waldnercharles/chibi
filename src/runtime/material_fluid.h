@@ -14,10 +14,14 @@ typedef struct
     float x, y, width, height;
 } fluid_region;
 
+/* Matches MaterialPhase. */
 enum
 {
     FLUID_GAS,
-    FLUID_LIQUID
+    FLUID_LIQUID,
+    FLUID_POWDER,
+    FLUID_ELASTIC,
+    FLUID_PHASE_COUNT
 };
 
 enum
@@ -25,7 +29,72 @@ enum
     MATERIAL_FLUID_CONTACT_LIMIT = 128
 };
 
-/* Optional emitter presentation. A zero duration uses the volume's steady look. */
+/* A product of a transition or reaction: a substance index, or one of these. */
+enum
+{
+    /* Reactions only: the particle stays as it is. */
+    FLUID_KEEP = -1,
+    /* The particle leaves the world. */
+    FLUID_GONE = -2,
+    /* FLUID_DEPOSIT - k adds the particle to deposit target k. */
+    FLUID_DEPOSIT = -3
+};
+
+/* A reaction partner that matches any burning particle. */
+enum
+{
+    FLUID_BURNING = -1
+};
+
+/* A kind of matter. Heat is a gameplay temperature: zero is ambient and
+ * everything cools toward it. Products are indices or the constants above. */
+typedef struct
+{
+    int phase;
+    /* Mass per area; one matches rigid bodies. */
+    float density;
+    float viscosity, cohesion;
+    /* Gas only: the fraction of gravity that lifts it, times 1 + temperature. */
+    float buoyancy;
+    unsigned color;
+    float emission, absorption, visibility, refraction;
+    float temperature, cooling;
+    /* Zero is persistent. */
+    float lifetime;
+    /* Positive ignite_at makes it flammable: it burns for 1 / burn_rate
+     * seconds at no less than burn_heat, then becomes burns_to. Each ignition
+     * adds blast to its neighborhood's explosion. */
+    float ignite_at, burn_rate, burn_heat, blast;
+    int burns_to;
+    float boil_at;
+    int boils_to;
+    float freeze_at;
+    int freezes_to;
+    /* Damage per second to solids it touches. */
+    float corrosion;
+    bool conductive;
+} fluid_substance;
+
+/* Where a touches b, each pair turns into a_becomes and b_becomes with
+ * probability rate per second, and both gain heat. */
+typedef struct
+{
+    int a, b;
+    float rate;
+    int a_becomes, b_becomes;
+    float heat;
+} fluid_reaction;
+
+/* Heat exchange and the incandescence of hot matter. Matter glows from half
+ * glow_temperature and fully at it, toward glow_color and glow_emission. */
+typedef struct
+{
+    float conduction, glow_temperature;
+    unsigned glow_color;
+    float glow_emission;
+} fluid_heat;
+
+/* Optional emitter presentation. A zero duration uses the substance's look. */
 typedef struct
 {
     float duration, size_end, size_exponent;
@@ -39,14 +108,21 @@ typedef struct
 {
     fluid_vec position, velocity;
     float mass, radius;
+    int substance;
+    /* Cached from the substance for solvers and rendering. */
+    int phase;
     unsigned color;
-    int kind;
-    float absorption, emission;
+    float absorption, emission, visibility, refraction;
     /* Zero is persistent. Positive lifetimes advance only in active chunks. */
     float lifetime;
-    float fuel, heat;
-    float glow, visibility, refraction;
-    bool burning, smoke;
+    float temperature;
+    /* Unburned fraction of a flammable particle, from one to zero. */
+    float fuel;
+    /* Incandescence from zero to one, derived each step from temperature. */
+    float glow;
+    bool burning;
+    /* Formed in the world: it grows and fades over its lifetime. */
+    bool billow;
     fluid_style style;
 } fluid_particle;
 
@@ -68,7 +144,7 @@ typedef struct
     fluid_vec point, normal;
     float closing_speed, impulse, mass, emission;
     unsigned color;
-    int kind, contacts;
+    int phase, contacts;
 } fluid_contact;
 
 typedef struct
@@ -110,17 +186,18 @@ typedef struct
 
 typedef struct
 {
-    float ignition, cooling, burn_rate, heat_release, smoke_lifetime;
-    unsigned smoke_color;
-    float smoke_absorption;
-    unsigned flame_color;
-    float flame_emission;
-} fluid_reaction;
+    fluid_vec position;
+    /* Summed blast weight of the ignitions near position this tick. */
+    float ignitions;
+} fluid_blast;
+
+/* Matter that became a deposit this tick: the target and the area it fills. */
 typedef struct
 {
     fluid_vec position;
-    int ignitions;
-} fluid_blast;
+    int target;
+    float area;
+} fluid_deposit;
 
 typedef struct material_fluid material_fluid;
 typedef struct
@@ -134,11 +211,23 @@ void material_fluid_free(material_fluid *fluid);
 void material_fluid_clear(material_fluid *fluid);
 void material_fluid_set_flow(material_fluid *fluid, fluid_flow_settings settings);
 void material_fluid_set_contact_settings(material_fluid *fluid, fluid_contact_settings settings);
-/* Borrowed until the next tick; contacts aggregate by body, kind and surface patch. */
+/* Copies the tables. Particles keep their substance indices, so a new table
+ * may only extend or edit the previous one. */
+void material_fluid_set_substances(material_fluid *fluid, const fluid_substance *substances, int count);
+void material_fluid_set_reactions(material_fluid *fluid, const fluid_reaction *reactions, int count);
+void material_fluid_set_heat(material_fluid *fluid, fluid_heat heat);
+fluid_heat material_fluid_heat(const material_fluid *fluid);
+const fluid_substance *material_fluid_substances(const material_fluid *fluid, int *count);
+/* A particle of substance at rest at position, with its look, heat and the
+ * spacing its phase fills space at. */
+fluid_particle material_fluid_particle(const material_fluid *fluid, int substance, fluid_vec position);
+/* World units between neighboring particles when a phase fills space. */
+float material_fluid_spacing(const material_fluid *fluid, int phase);
+/* Borrowed until the next tick; contacts aggregate by body, phase and surface patch. */
 const fluid_contact *material_fluid_contacts(const material_fluid *fluid, int *count);
 uint64_t material_fluid_flow_hash(const material_fluid *fluid);
-void material_fluid_set_reaction(material_fluid *fluid, fluid_reaction reaction);
 const fluid_blast *material_fluid_blasts(const material_fluid *fluid, int *count);
+const fluid_deposit *material_fluid_deposits(const material_fluid *fluid, int *count);
 /* Shared occlusion test for heat and blasts: static solids and body
  * obstacles. Hot bodies never block; ignore_body may be -1. */
 bool material_fluid_blocked(
@@ -155,6 +244,8 @@ void material_fluid_push(
     float speed,
     const fluid_step *step
 );
+/* Adds delta to the temperature of active matter within radius of point. */
+void material_fluid_heat_area(material_fluid *fluid, fluid_vec point, float radius, float delta);
 /* Optional borrowed executor; the caller owns its submission scope. */
 void material_fluid_set_tasks(material_fluid *fluid, const game_task_system *tasks);
 /* Returns false at the authored population limit. No existing matter is evicted. */

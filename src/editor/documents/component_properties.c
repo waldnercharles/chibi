@@ -63,11 +63,13 @@ static const editor_choice ENCOUNTER_ROLES[] = {
     { GAME_ENCOUNTER_ENEMY, "Enemy" },
 };
 static const editor_choices ENCOUNTER_MEMBERS = { ENCOUNTER_ROLES, 2 };
-static const editor_choice FLUID_KINDS[] = {
-    { FLUID_GAS, "Gas" },
-    { FLUID_LIQUID, "Liquid" },
+static const editor_choice PHASES[] = {
+    { MATERIAL_PHASE_GAS, "Gas" },
+    { MATERIAL_PHASE_LIQUID, "Liquid" },
+    { MATERIAL_PHASE_POWDER, "Powder" },
+    { MATERIAL_PHASE_ELASTIC, "Elastic" },
 };
-static const editor_choices MATERIAL_FLUID_KINDS = { FLUID_KINDS, 2 };
+static const editor_choices MATERIAL_PHASES = { PHASES, 4 };
 static const editor_choice HRC_UPSCALE_MODES[] = {
     { 0, "Plain bilinear" },
     { 1, "Edge aware" },
@@ -95,6 +97,15 @@ bool appearance_color_field(const type_desc *type, const type_field *field)
     }
     if (type == GAME_COMPONENT_GameMaterial.type) {
         return true;
+    }
+    if (type == GAME_COMPONENT_MaterialSubstance.type) {
+        return field->offset == offsetof(MaterialSubstance, color);
+    }
+    if (type == GAME_COMPONENT_MaterialFluidWorld.type) {
+        return field->offset == offsetof(MaterialFluidWorld, glow_color);
+    }
+    if (type == GAME_COMPONENT_GameFluidVolume.type) {
+        return field->offset == offsetof(GameFluidVolume, color);
     }
     if (type == GAME_COMPONENT_GamePointLight.type) {
         return field->offset == offsetof(GamePointLight, color);
@@ -138,13 +149,9 @@ const editor_choices *property_choices(const type_desc *type, const type_field *
         field->offset == offsetof(GameParticleEmitter, shape)) {
         return &EMITTER_SHAPES;
     }
-    if (type == GAME_COMPONENT_GameFluidVolume.type &&
-        field->offset == offsetof(GameFluidVolume, kind)) {
-        return &MATERIAL_FLUID_KINDS;
-    }
-    if (type == GAME_COMPONENT_GameParticleEmitter.type &&
-        field->offset == offsetof(GameParticleEmitter, fluid_kind)) {
-        return &MATERIAL_FLUID_KINDS;
+    if (type == GAME_COMPONENT_MaterialSubstance.type &&
+        field->offset == offsetof(MaterialSubstance, phase)) {
+        return &MATERIAL_PHASES;
     }
     if (type == GAME_COMPONENT_GameBody.type &&
         field->offset == offsetof(GameBody, type)) {

@@ -1,0 +1,15 @@
+name: Spores
+components:
+  GAME.MaterialSubstance:
+    absorption: 0.01
+    blast: 0.3
+    buoyancy: 0.05
+    burn_heat: 1.6
+    burn_rate: 3.0
+    burns_to: Smoke
+    color: 1627377776
+    cooling: 1.0
+    density: 0.012
+    emission: 0.6
+    ignite_at: 0.6
+    visibility: 0.05

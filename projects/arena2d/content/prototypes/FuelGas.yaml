@@ -1,0 +1,13 @@
+name: FuelGas
+components:
+  GAME.MaterialSubstance:
+    absorption: 0.012
+    blast: 1.0
+    burn_heat: 2.0
+    burn_rate: 1.5
+    burns_to: Smoke
+    color: 4290328256
+    cooling: 2.5
+    density: 0.02
+    ignite_at: 1.0
+    visibility: 0.065

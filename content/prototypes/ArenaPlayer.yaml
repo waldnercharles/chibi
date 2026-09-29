@@ -23,7 +23,6 @@ components:
     emission:
       start: {x: 1.3, "y": 1.3}
     end_color: 394308096
-    fluid_mass: 0.0002
     lifetime: {x: 0.24, "y": 0.24}
     offset: {x: -11.0}
     rate: 160.0

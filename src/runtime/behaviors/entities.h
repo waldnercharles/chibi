@@ -46,6 +46,11 @@ int game_entities_set_global_value(game_entities *entities, const char *name, co
 /* Cancel requests and remove host-spawned entities, retaining prototype snapshots. */
 void game_entities_reset(game_entities *entities);
 int game_entities_register(game_entities *entities, const game_prototype *prototype);
+/* Registered prototypes in registration order, borrowed until the next
+ * registration. Each registration that changes one advances the revision. */
+int game_entities_prototype_count(const game_entities *entities);
+const game_prototype *game_entities_prototype(const game_entities *entities, int index);
+unsigned game_entities_prototype_revision(const game_entities *entities);
 void game_entities_request_destroy(game_entities *entities, ecs_entity entity);
 bool game_entities_is_retiring(const game_entities *entities, ecs_entity entity);
 /* Queue copied payloads. Containers and user_data are rejected. Delivery is

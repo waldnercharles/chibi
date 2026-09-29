@@ -1,0 +1,15 @@
+name: Oil
+components:
+  GAME.MaterialSubstance:
+    absorption: 0.08
+    blast: 0.05
+    burn_heat: 1.8
+    burn_rate: 0.25
+    burns_to: Smoke
+    color: 975835880
+    cooling: 0.5
+    density: 0.2
+    ignite_at: 0.9
+    phase: Liquid
+    refraction: 4.0
+    visibility: 0.01

@@ -1,0 +1,13 @@
+name: MoltenMetal
+components:
+  GAME.MaterialSubstance:
+    absorption: 0.6
+    color: 4288688383
+    conductive: true
+    cooling: 0.06
+    density: 2.0
+    emission: 2.0
+    freeze_at: 1.0
+    freezes_to: Slag
+    phase: Liquid
+    temperature: 3.5

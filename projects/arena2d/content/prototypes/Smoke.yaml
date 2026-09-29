@@ -1,0 +1,9 @@
+name: Smoke
+components:
+  GAME.MaterialSubstance:
+    absorption: 0.006
+    buoyancy: 0.15
+    color: 1550153856
+    cooling: 2.5
+    density: 0.016
+    lifetime: 4.5

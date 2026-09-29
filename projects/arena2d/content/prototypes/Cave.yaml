@@ -34,6 +34,7 @@ components:
     smoke_count: 14
     smoke_lifetime: 3.5
     smoke_speed: 22.0
+    smoke_substance: Dust
     spark_color: 4288301823
     spark_density: 0.9
     spark_emission: 1.4

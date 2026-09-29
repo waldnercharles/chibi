@@ -64,6 +64,12 @@ game_material_state game_materials_inspect(const game_materials *materials);
 const material_chunk *game_materials_chunks(const game_materials *materials, int *count);
 /* Used by optional particle emitters. False at the retained population limit. */
 bool game_materials_emit(game_materials *materials, fluid_particle particle);
+/* Index of the named substance, or -1. Indices stay valid while the fluid
+ * world lives. */
+int game_materials_substance(const game_materials *materials, const char *name);
+const char *game_materials_substance_name(const game_materials *materials, int substance);
+/* Index of a deposit target name that some product uses, or -1. */
+int game_materials_deposit(const game_materials *materials, const char *name);
 
 material_fields *game_materials_fields(game_materials *materials);
 int game_materials_dispatch_events(game_materials *materials);

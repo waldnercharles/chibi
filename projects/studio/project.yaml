@@ -1,4 +1,4 @@
-version: 3
+version: 4
 name: Studio
 content: content
 start_scene: scenes/Studio.yaml

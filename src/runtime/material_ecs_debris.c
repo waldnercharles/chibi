@@ -79,8 +79,8 @@ void material_ecs_tick_debris(game_materials *materials, const fluid_step *step)
                 blasts,
                 ((material_debris_blast){
                     events[i].position,
-                    materials->combustion.blast_radius * (.35f + .65f * density),
-                    materials->combustion.blast_speed * density })
+                    materials->settings.blast_radius * (.35f + .65f * density),
+                    materials->settings.blast_speed * density })
             );
         }
     }

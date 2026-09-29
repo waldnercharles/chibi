@@ -16,7 +16,6 @@ components:
       exponent: 0.5
       start: {x: 0.02, "y": 0.04}
     end_color: 864616192
-    fluid_mass: 0.0002
     heading_only: true
     lifetime: {x: 1.0, "y": 2.0}
     metaball_blend: 2.0

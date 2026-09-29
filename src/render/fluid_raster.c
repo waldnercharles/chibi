@@ -187,12 +187,13 @@ static void collect(
     aclear(r->rects);
     int count;
     const fluid_particle *particles = material_fluid_particles(fluid, &count);
+    fluid_heat heat = material_fluid_heat(fluid);
     float px = width / view.width, py = height / view.height;
     int tx = (width + 15) / 16, ty = (height + 15) / 16;
     for (int i = 0; i < count; i++) {
         fluid_particle p = particles[i];
         float age = p.style.duration > 0 ? 1 - p.lifetime / p.style.duration : 0;
-        float radius = p.style.duration > 0 && !p.smoke
+        float radius = p.style.duration > 0 && !p.billow
                          ? game_particle_curve_value(
                                p.radius,
                                p.style.size_end,
@@ -201,12 +202,14 @@ static void collect(
                            )
                          : p.radius;
         float blend = p.style.blend;
-        if (p.smoke) {
+        if (p.billow) {
             radius *= 1 + age * .6f;
         }
+        /* Only hot gas draws separate hot cores; hot liquid just glows. */
+        float cores = p.phase == FLUID_GAS ? p.glow : 0;
         float speed = hypotf(p.velocity.x, p.velocity.y);
-        float stretch = p.glow > 0 ? fminf(1.5f, speed * .012f) : 0;
-        bool wisp = p.kind == FLUID_GAS && blend == 0 && p.emission == 0 &&
+        float stretch = cores > 0 ? fminf(1.5f, speed * .012f) : 0;
+        bool wisp = p.phase == FLUID_GAS && blend == 0 && p.emission == 0 &&
                     p.glow == 0;
         if (wisp) {
             /* Broader support connects sparse parcels. Stretch preserves area;
@@ -236,23 +239,29 @@ static void collect(
                            (int)fminf(tx - 1, floorf((x + rx) / 16)),
                            (int)fminf(ty - 1, floorf((y + ry) / 16)) };
         raster_particle data = {
-            .position = { p.position.x, -p.position.y, radius, p.kind },
-            .optical = { p.absorption, p.emission, blend, p.glow },
+            .position = { p.position.x, -p.position.y, radius, p.phase != FLUID_GAS },
+            .optical = { p.absorption, p.emission + heat.glow_emission * p.glow, blend, cores },
             .detail = { speed > .001f ? p.velocity.x / speed : 1,
                         speed > .001f ? -p.velocity.y / speed : 0,
-                        p.kind == FLUID_LIQUID ? p.refraction
-                        : wisp                 ? -stretch
-                                               : stretch,
+                        p.phase != FLUID_GAS ? p.refraction
+                        : wisp               ? -stretch
+                                             : stretch,
                         p.visibility }
         };
         for (int channel = 0; channel < 4; channel++) {
-            data.color[channel] = ((p.color >> (24 - 8 * channel)) & 255) / 255.f;
-            if (p.style.duration > 0 && !p.smoke) {
-                float end = ((p.style.end_color >> (24 - 8 * channel)) & 255) / 255.f;
+            int shift = 24 - 8 * channel;
+            data.color[channel] = ((p.color >> shift) & 255) / 255.f;
+            if (p.style.duration > 0 && !p.billow) {
+                float end = ((p.style.end_color >> shift) & 255) / 255.f;
                 data.color[channel] += (end - data.color[channel]) * age;
             }
+            /* Hot matter shifts toward the glow color. */
+            if (p.glow > 0) {
+                float hot = ((heat.glow_color >> shift) & 255) / 255.f;
+                data.color[channel] += (hot - data.color[channel]) * p.glow;
+            }
         }
-        if (p.smoke) {
+        if (p.billow) {
             float remaining = fmaxf(0, 1 - age);
             float opacity = remaining * remaining /
                             ((1 + age * .6f) * (1 + age * .6f));

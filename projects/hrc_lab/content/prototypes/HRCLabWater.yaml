@@ -1,0 +1,9 @@
+name: HRCLabWater
+components:
+  GAME.MaterialSubstance:
+    absorption: 0.035
+    color: 951492269
+    density: 0.25
+    phase: Liquid
+    refraction: 8.0
+    visibility: 0.012

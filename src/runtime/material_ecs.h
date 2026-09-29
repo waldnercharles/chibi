@@ -32,7 +32,10 @@ struct game_materials
     char error[256];
     game_task_pool *pool;
     MaterialFluidWorld settings;
-    GameCombustion combustion;
+    /* Substance and deposit names by index; they live as long as the fluid. */
+    char **substance_names, **deposit_names;
+    unsigned substance_revision;
+    bool substances_loaded;
     material_record *records;
     material_destruction *destruction;
     material_damage *damage_requests;
@@ -56,6 +59,9 @@ void material_ecs_add_component(
 MaterialBreakProfile material_ecs_break_profile(game_materials *materials, ecs_entity entity);
 const char *material_ecs_generate_terrains(game_materials *materials);
 const char *material_ecs_configure_fluid(game_materials *materials);
+/* Rebuilds the fluid's substance and reaction tables after prototypes change. */
+const char *material_ecs_load_substances(game_materials *materials);
+void material_ecs_free_substances(game_materials *materials);
 const char *material_ecs_fill_volume(game_materials *materials, ecs_entity entity);
 void material_ecs_fade_fragments(game_materials *materials, float delta);
 /* Seeds a crater's chunks; source names the entity whose material they show. */

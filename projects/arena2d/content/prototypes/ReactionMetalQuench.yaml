@@ -1,0 +1,3 @@
+name: ReactionMetalQuench
+components:
+  GAME.MaterialReaction: {a: Water, a_becomes: Steam, b: MoltenMetal, b_becomes: Slag, rate: 20.0}

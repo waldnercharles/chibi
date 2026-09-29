@@ -2,7 +2,7 @@
 
 #include "diagnostics/tracy.h"
 #include "render/particles.h"
-#include "runtime/material_flow.h"
+#include "runtime/material_fluid_internal.h"
 #include "runtime/material_solid.h"
 #include "support/array.h"
 #include "support/xalloc.h"
@@ -12,72 +12,20 @@
 #include <stdlib.h>
 #include <string.h>
 
-typedef struct
-{
-    fluid_vec previous, correction;
-    float pressure, near_pressure, heat;
-    int x, y, next;
-} particle_work;
-
-typedef struct
-{
-    int body_index, patch_x, patch_y, next;
-    double weight, point_x, point_y, normal_x, normal_y, emission;
-    double color[4];
-} contact_work;
-
-struct material_fluid
-{
-    fluid_particle *particles;
-    particle_work *work;
-    int *heads, *active, *used;
-    int *contact_heads, *contact_used;
-    fluid_contact *contacts;
-    contact_work *contact_work;
-    fluid_blast *blasts;
-    fluid_reaction reaction;
-    fluid_region bounds;
-    int capacity, buckets;
-    float kernel, delta;
-    fluid_contact_settings contact_settings;
-    game_task_system tasks;
-    material_flow *flow;
-    fluid_flow_settings flow_settings;
-    /* Borrowed for the duration of one tick. */
-    const fluid_step *step;
-};
-
-static fluid_vec add(fluid_vec a, fluid_vec b)
-{
-    return (fluid_vec){ a.x + b.x, a.y + b.y };
-}
-static fluid_vec sub(fluid_vec a, fluid_vec b)
-{
-    return (fluid_vec){ a.x - b.x, a.y - b.y };
-}
-static fluid_vec scale(fluid_vec a, float s)
-{
-    return (fluid_vec){ a.x * s, a.y * s };
-}
-static float dot(fluid_vec a, fluid_vec b)
-{
-    return a.x * b.x + a.y * b.y;
-}
-
 static fluid_vec body_surface_velocity(fluid_body body, fluid_vec point)
 {
-    fluid_vec radius = sub(point, body.position);
-    return add(
+    fluid_vec radius = fluid_sub(point, body.position);
+    return fluid_add(
         body.velocity,
         (fluid_vec){ -body.angular_velocity * radius.y,
                      body.angular_velocity * radius.x }
     );
 }
 
-static unsigned contact_bucket(const material_fluid *fluid, int body, int x, int y, int kind)
+static unsigned contact_bucket(const material_fluid *fluid, int body, int x, int y, int phase)
 {
     unsigned h = (unsigned)body * 0x9e3779b9u ^ (unsigned)x * 0x85ebca6bu ^
-                 (unsigned)y * 0xc2b2ae35u ^ (unsigned)kind * 0x27d4eb2fu;
+                 (unsigned)y * 0xc2b2ae35u ^ (unsigned)phase * 0x27d4eb2fu;
     h ^= h >> 16;
     return h & (fluid->buckets - 1);
 }
@@ -120,7 +68,7 @@ static void record_contact(
     float impulse
 )
 {
-    float threshold = particle->kind == FLUID_GAS
+    float threshold = particle->phase == FLUID_GAS
                         ? fluid->contact_settings.gas_speed
                         : fluid->contact_settings.liquid_speed;
     if (threshold <= 0 || closing_speed < threshold) {
@@ -130,12 +78,12 @@ static void record_contact(
     int patch_x = (int)floorf(local_point.x / patch_size);
     int patch_y = (int)floorf(local_point.y / patch_size);
     unsigned
-        bucket = contact_bucket(fluid, body_index, patch_x, patch_y, particle->kind);
+        bucket = contact_bucket(fluid, body_index, patch_x, patch_y, particle->phase);
     int at = fluid->contact_heads[bucket];
     while (at >= 0) {
         contact_work *work = &fluid->contact_work[at];
         if (work->body_index == body_index && work->patch_x == patch_x &&
-            work->patch_y == patch_y && fluid->contacts[at].kind == particle->kind) {
+            work->patch_y == patch_y && fluid->contacts[at].phase == particle->phase) {
             break;
         }
         at = work->next;
@@ -150,7 +98,7 @@ static void record_contact(
         at = acount(fluid->contacts);
         apush(
             fluid->contacts,
-            ((fluid_contact){ .body = body->owner, .kind = particle->kind })
+            ((fluid_contact){ .body = body->owner, .phase = particle->phase })
         );
         apush(
             fluid->contact_work,
@@ -179,8 +127,8 @@ static void record_contact(
     contact->point = (fluid_vec){ (float)(work->point_x / work->weight),
                                   (float)(work->point_y / work->weight) };
     fluid_vec averaged = { (float)work->normal_x, (float)work->normal_y };
-    float length = sqrtf(dot(averaged, averaged));
-    contact->normal = length > 1e-6f ? scale(averaged, 1 / length) : normal;
+    float length = sqrtf(fluid_dot(averaged, averaged));
+    contact->normal = length > 1e-6f ? fluid_scale(averaged, 1 / length) : normal;
     contact->closing_speed = fmaxf(contact->closing_speed, closing_speed);
     contact->impulse += impulse;
     contact->mass += particle->mass;
@@ -201,6 +149,7 @@ material_fluid *material_fluid_new(float kernel, int capacity)
         fluid->buckets *= 2;
     }
     fluid->heads = xmalloc((size_t)fluid->buckets * sizeof *fluid->heads);
+    fluid->warm = xcalloc((size_t)fluid->buckets, 1);
     fluid->contact_heads = xmalloc((size_t)fluid->buckets * sizeof *fluid->contact_heads);
     memset(fluid->heads, -1, (size_t)fluid->buckets * sizeof *fluid->heads);
     memset(fluid->contact_heads, -1, (size_t)fluid->buckets * sizeof *fluid->contact_heads);
@@ -224,7 +173,16 @@ void material_fluid_free(material_fluid *fluid)
     afree(fluid->contacts);
     afree(fluid->contact_work);
     afree(fluid->blasts);
+    afree(fluid->deposits);
+    afree(fluid->substances);
+    afree(fluid->reactions);
+    afree(fluid->by_substance);
+    afree(fluid->substance_start);
+    afree(fluid->burning);
+    afree(fluid->doomed);
     free(fluid->heads);
+    free(fluid->warm);
+    afree(fluid->warm_used);
     free(fluid->contact_heads);
     material_flow_free(fluid->flow);
     free(fluid);
@@ -238,6 +196,7 @@ void material_fluid_clear(material_fluid *fluid)
     aclear(fluid->contact_used);
     aclear(fluid->contacts);
     aclear(fluid->blasts);
+    aclear(fluid->deposits);
     memset(fluid->contact_heads, -1, (size_t)fluid->buckets * sizeof *fluid->contact_heads);
     material_flow_clear(fluid->flow);
 }
@@ -274,15 +233,118 @@ uint64_t material_fluid_flow_hash(const material_fluid *fluid)
     return fluid->flow_settings.cell_size > 0 ? material_flow_hash(fluid->flow) : 0;
 }
 
-void material_fluid_set_reaction(material_fluid *fluid, fluid_reaction reaction)
+void material_fluid_set_substances(material_fluid *fluid, const fluid_substance *substances, int count)
 {
-    fluid->reaction = reaction;
+    assert(count >= acount(fluid->substances));
+    aclear(fluid->substances);
+    for (int i = 0; i < count; i++) {
+        fluid_substance s = substances[i];
+        assert(s.phase >= FLUID_GAS && s.phase < FLUID_PHASE_COUNT);
+        assert(isfinite(s.density) && s.density > 0);
+        assert(isfinite(s.temperature + s.cooling + s.lifetime + s.ignite_at + s.burn_rate));
+        assert(s.cooling >= 0 && s.lifetime >= 0 && s.ignite_at >= 0);
+        assert(s.ignite_at == 0 || s.burn_rate > 0);
+        assert(s.burns_to < count && s.burns_to != FLUID_KEEP);
+        assert(s.boils_to < count && s.freezes_to < count);
+        apush(fluid->substances, s);
+    }
+}
+
+void material_fluid_set_reactions(material_fluid *fluid, const fluid_reaction *reactions, int count)
+{
+    int substances = acount(fluid->substances);
+    aclear(fluid->reactions);
+    for (int i = 0; i < count; i++) {
+        fluid_reaction r = reactions[i];
+        assert(r.a >= 0 && r.a < substances && r.b >= FLUID_BURNING && r.b < substances);
+        assert(isfinite(r.rate + r.heat) && r.rate > 0);
+        assert(r.a_becomes < substances && r.b_becomes < substances);
+        apush(fluid->reactions, r);
+    }
+}
+
+void material_fluid_set_heat(material_fluid *fluid, fluid_heat heat)
+{
+    assert(isfinite(heat.conduction + heat.glow_temperature + heat.glow_emission));
+    assert(heat.conduction >= 0 && heat.glow_temperature >= 0 && heat.glow_emission >= 0);
+    fluid->heat = heat;
+}
+
+fluid_heat material_fluid_heat(const material_fluid *fluid)
+{
+    return fluid->heat;
+}
+
+const fluid_substance *material_fluid_substances(const material_fluid *fluid, int *count)
+{
+    *count = acount(fluid->substances);
+    return fluid->substances;
+}
+
+float material_fluid_spacing(const material_fluid *fluid, int phase)
+{
+    return fluid->kernel * (phase == FLUID_GAS ? .5f : .4f);
+}
+
+/* Box2D bodies weigh one unit of mass per square meter of 32 units. */
+static const float RIGID_DENSITY = 1.f / 1024;
+
+fluid_particle material_fluid_particle(const material_fluid *fluid, int substance, fluid_vec position)
+{
+    assert(substance >= 0 && substance < acount(fluid->substances));
+    fluid_substance s = fluid->substances[substance];
+    float spacing = material_fluid_spacing(fluid, s.phase);
+    bool billow = s.phase == FLUID_GAS && s.lifetime > 0;
+    return (fluid_particle){
+        .position = position,
+        .mass = s.density * spacing * spacing * RIGID_DENSITY,
+        .radius = s.phase == FLUID_GAS ? fluid->kernel
+                                       : fminf(spacing * 1.5f, fluid->kernel),
+        .substance = substance,
+        .phase = s.phase,
+        .color = s.color,
+        .absorption = s.absorption,
+        .emission = s.emission,
+        .visibility = s.visibility,
+        .refraction = s.refraction,
+        .lifetime = s.lifetime,
+        .temperature = s.temperature,
+        .fuel = s.ignite_at > 0,
+        .billow = billow,
+        .style = { .duration = billow ? s.lifetime : 0 },
+    };
 }
 
 const fluid_blast *material_fluid_blasts(const material_fluid *fluid, int *count)
 {
     *count = acount(fluid->blasts);
     return fluid->blasts;
+}
+
+const fluid_deposit *material_fluid_deposits(const material_fluid *fluid, int *count)
+{
+    *count = acount(fluid->deposits);
+    return fluid->deposits;
+}
+
+void material_fluid_heat_area(material_fluid *fluid, fluid_vec point, float radius, float delta)
+{
+    assert(isfinite(point.x + point.y + radius + delta) && radius >= 0);
+    for (int n = 0; n < acount(fluid->active); n++) {
+        fluid_particle *p = &fluid->particles[fluid->active[n]];
+        fluid_vec d = fluid_sub(p->position, point);
+        if (fluid_dot(d, d) <= radius * radius) {
+            p->temperature += delta;
+        }
+    }
+}
+
+void material_fluid_doom(material_fluid *fluid, int i)
+{
+    if (!fluid->work[i].doomed) {
+        fluid->work[i].doomed = true;
+        apush(fluid->doomed, i);
+    }
 }
 
 void material_fluid_set_tasks(material_fluid *fluid, const game_task_system *tasks)
@@ -298,11 +360,10 @@ bool material_fluid_add(material_fluid *fluid, fluid_particle p)
     assert(p.radius <= fluid->kernel);
     assert(isfinite(p.visibility) && p.visibility >= 0 && p.visibility <= 1);
     assert(isfinite(p.refraction) && p.refraction >= 0 && p.refraction <= 16);
-    assert(isfinite(p.fuel) && p.fuel >= 0 && isfinite(p.heat) && p.heat >= 0);
-    assert(
-        (p.kind == FLUID_GAS || p.kind == FLUID_LIQUID) &&
-        isfinite(p.lifetime) && p.lifetime >= 0
-    );
+    assert(isfinite(p.fuel) && p.fuel >= 0 && p.fuel <= 1 && isfinite(p.temperature));
+    assert(p.substance >= 0 && p.substance < acount(fluid->substances));
+    assert(p.phase == fluid->substances[p.substance].phase);
+    assert(isfinite(p.lifetime) && p.lifetime >= 0);
     if (acount(fluid->particles) == fluid->capacity) {
         return false;
     }
@@ -336,11 +397,6 @@ static bool awake(fluid_vec p, float size, const fluid_region *regions, int coun
     return false;
 }
 
-static unsigned bucket(const material_fluid *fluid, int x, int y)
-{
-    return ((unsigned)x * 73856093u ^ (unsigned)y * 19349663u) & (fluid->buckets - 1);
-}
-
 static void index_particles(material_fluid *fluid)
 {
     for (int n = 0; n < acount(fluid->used); n++) {
@@ -354,7 +410,7 @@ static void index_particles(material_fluid *fluid)
         fluid_vec p = fluid->particles[i].position;
         w->x = (int)floorf(p.x / fluid->kernel);
         w->y = (int)floorf(p.y / fluid->kernel);
-        unsigned h = bucket(fluid, w->x, w->y);
+        unsigned h = fluid_bucket(fluid, w->x, w->y);
         if (fluid->heads[h] < 0) {
             apush(fluid->used, (int)h);
         }
@@ -376,21 +432,21 @@ static void densities(int start, int end, uint32_t, void *context)
         int i = fluid->active[n];
         fluid_particle p = fluid->particles[i];
         particle_work *w = &fluid->work[i];
-        if (fluid->flow_settings.cell_size > 0 && p.kind == FLUID_GAS) {
+        if (fluid->flow_settings.cell_size > 0 && p.phase == FLUID_GAS) {
             w->pressure = w->near_pressure = 0;
             continue;
         }
         float density = 0, near_density = 0;
         for (int y = w->y - 1; y <= w->y + 1; y++) {
             for (int x = w->x - 1; x <= w->x + 1; x++) {
-                for (int j = fluid->heads[bucket(fluid, x, y)]; j >= 0;
+                for (int j = fluid->heads[fluid_bucket(fluid, x, y)]; j >= 0;
                      j = fluid->work[j].next) {
                     if (j == i || fluid->work[j].x != x || fluid->work[j].y != y ||
-                        fluid->particles[j].kind != p.kind) {
+                        fluid->particles[j].substance != p.substance) {
                         continue;
                     }
-                    fluid_vec d = sub(fluid->particles[j].position, p.position);
-                    float distance = dot(d, d);
+                    fluid_vec d = fluid_sub(fluid->particles[j].position, p.position);
+                    float distance = fluid_dot(d, d);
                     if (distance >= h * h) {
                         continue;
                     }
@@ -402,9 +458,9 @@ static void densities(int start, int end, uint32_t, void *context)
         }
         /* Double-density relaxation supplies a cheap cohesive liquid. Gas
          * tracers repel only when compressed, so an undisturbed cloud stays. */
-        w->pressure = p.kind == FLUID_LIQUID ? 600 * (density - 6)
-                                             : 250 * fmaxf(0, density - 5);
-        w->near_pressure = p.kind == FLUID_LIQUID ? 1200 * near_density : 0;
+        w->pressure = p.phase != FLUID_GAS ? 600 * (density - 6)
+                                           : 250 * fmaxf(0, density - 5);
+        w->near_pressure = p.phase != FLUID_GAS ? 1200 * near_density : 0;
     }
 }
 
@@ -419,7 +475,7 @@ static void relax(int start, int end, uint32_t, void *context)
         fluid_vec correction = { 0 };
         for (int y = w->y - 1; y <= w->y + 1; y++) {
             for (int x = w->x - 1; x <= w->x + 1; x++) {
-                for (int j = fluid->heads[bucket(fluid, x, y)]; j >= 0;
+                for (int j = fluid->heads[fluid_bucket(fluid, x, y)]; j >= 0;
                      j = fluid->work[j].next) {
                     particle_work *neighbor = &fluid->work[j];
                     if (j == i || neighbor->x != x || neighbor->y != y) {
@@ -427,11 +483,11 @@ static void relax(int start, int end, uint32_t, void *context)
                     }
                     fluid_particle other = fluid->particles[j];
                     if (fluid->flow_settings.cell_size > 0 &&
-                        p.kind == FLUID_GAS && other.kind == FLUID_GAS) {
+                        p.phase == FLUID_GAS && other.phase == FLUID_GAS) {
                         continue;
                     }
-                    fluid_vec d = sub(other.position, p.position);
-                    float distance = dot(d, d);
+                    fluid_vec d = fluid_sub(other.position, p.position);
+                    float distance = fluid_dot(d, d);
                     if (distance >= h * h) {
                         continue;
                     }
@@ -442,7 +498,7 @@ static void relax(int start, int end, uint32_t, void *context)
                     distance = sqrtf(distance);
                     float q = 1 - distance / h;
                     float pressure = 400 * q * q;
-                    if (p.kind == other.kind) {
+                    if (p.substance == other.substance) {
                         pressure = .5f * ((w->pressure + neighbor->pressure) * q +
                                           (w->near_pressure + neighbor->near_pressure) *
                                               q * q);
@@ -451,9 +507,12 @@ static void relax(int start, int end, uint32_t, void *context)
                      * Clamping individual pairs preserves their momentum. */
                     float displacement = fmaxf(-h * .025f, fminf(h * .025f, dt * dt * pressure));
                     float share = other.mass / (p.mass + other.mass);
-                    correction = sub(correction, scale(d, share * displacement / distance));
-                    fluid_vec relative = sub(other.velocity, p.velocity);
-                    correction = add(correction, scale(relative, share * q * q * dt * .04f));
+                    correction = fluid_sub(correction, fluid_scale(d, share * displacement / distance));
+                    fluid_vec relative = fluid_sub(other.velocity, p.velocity);
+                    correction = fluid_add(
+                        correction,
+                        fluid_scale(relative, share * q * q * dt * .04f)
+                    );
                 }
             }
         }
@@ -461,9 +520,8 @@ static void relax(int start, int end, uint32_t, void *context)
     }
 }
 
-static void run(material_fluid *fluid, game_task_range *fn, void *context, int grain)
+void material_fluid_run(material_fluid *fluid, game_task_range *fn, int count, void *context, int grain)
 {
-    int count = acount(fluid->active);
     if (fluid->tasks.workers > 1 && count >= 2048) {
         void *task = fluid->tasks
                          .enqueue(fn, count, grain, context, fluid->tasks.user);
@@ -482,7 +540,7 @@ static fluid_vec rotate(fluid_vec p, float c, float s)
 
 static bool segment_box(fluid_vec a, fluid_vec b, fluid_vec half)
 {
-    fluid_vec d = sub(b, a);
+    fluid_vec d = fluid_sub(b, a);
     float first = .001f, last = .999f;
     float origin[] = { a.x, a.y }, delta[] = { d.x, d.y },
           extent[] = { half.x, half.y };
@@ -528,18 +586,18 @@ static bool obstacle_blocked(fluid_vec a, fluid_vec b, const fluid_colliders *co
             c = cosf(body->angle);
             s = sinf(body->angle);
         }
-        fluid_vec from = sub(rotate(sub(a, body->position), c, -s), o.center);
-        fluid_vec to = sub(rotate(sub(b, body->position), c, -s), o.center);
+        fluid_vec from = fluid_sub(rotate(fluid_sub(a, body->position), c, -s), o.center);
+        fluid_vec to = fluid_sub(rotate(fluid_sub(b, body->position), c, -s), o.center);
         if (o.radius <= 0) {
             if (segment_box(from, to, o.half_size)) {
                 return true;
             }
             continue;
         }
-        fluid_vec d = sub(to, from);
-        float t = fmaxf(.001f, fminf(.999f, -dot(from, d) / fmaxf(dot(d, d), 1e-8f)));
-        fluid_vec nearest = add(from, scale(d, t));
-        if (dot(nearest, nearest) < o.radius * o.radius) {
+        fluid_vec d = fluid_sub(to, from);
+        float t = fmaxf(.001f, fminf(.999f, -fluid_dot(from, d) / fmaxf(fluid_dot(d, d), 1e-8f)));
+        fluid_vec nearest = fluid_add(from, fluid_scale(d, t));
+        if (fluid_dot(nearest, nearest) < o.radius * o.radius) {
             return true;
         }
     }
@@ -558,141 +616,17 @@ bool material_fluid_blocked(
            (solids && material_solids_blocked(solids, a, b));
 }
 
-static void ignition(material_fluid *fluid, fluid_vec p)
-{
-    float size = fluid->kernel * 4;
-    int x = (int)floorf(p.x / size), y = (int)floorf(p.y / size);
-    for (int i = 0; i < acount(fluid->blasts); i++) {
-        fluid_blast *b = &fluid->blasts[i];
-        if ((int)floorf(b->position.x / size) == x &&
-            (int)floorf(b->position.y / size) == y) {
-            b->ignitions++;
-            return;
-        }
-    }
-    /* A pathological simultaneous ignition remains burning but has bounded
-     * blast work. The earliest positions are stable in particle order. */
-    if (acount(fluid->blasts) < 32) {
-        apush(fluid->blasts, ((fluid_blast){ p, 1 }));
-    }
-}
-
-static void reaction_heat(int start, int end, uint32_t, void *context)
-{
-    material_fluid *fluid = context;
-    const fluid_step *step = fluid->step;
-    const fluid_colliders *colliders = &step->colliders;
-    const fluid_body *bodies = colliders->bodies;
-    int body_count = colliders->body_count;
-    float dt = step->delta;
-    fluid_reaction r = fluid->reaction;
-    float h = fluid->kernel;
-    for (int n = start; n < end; n++) {
-        int i = fluid->active[n];
-        fluid_particle p = fluid->particles[i];
-        particle_work *w = &fluid->work[i];
-        w->heat = p.heat;
-        if (p.fuel <= 0 || p.burning) {
-            continue;
-        }
-        for (int k = 0; k < body_count; k++) {
-            fluid_body body = bodies[k];
-            if (body.heat < r.ignition) {
-                continue;
-            }
-            fluid_vec from = sub(body.position, scale(body.velocity, dt));
-            fluid_vec d = sub(body.position, from);
-            float t = fmaxf(0, fminf(1, dot(sub(p.position, from), d) / fmaxf(dot(d, d), 1e-8f)));
-            fluid_vec near = add(from, scale(d, t)), gap = sub(p.position, near);
-            if (dot(gap, gap) <= h * h &&
-                !material_fluid_blocked(near, p.position, colliders, step->solids, k)) {
-                w->heat = fmaxf(w->heat, body.heat);
-            }
-        }
-        for (int y = w->y - 1; y <= w->y + 1; y++) {
-            for (int x = w->x - 1; x <= w->x + 1; x++) {
-                for (int j = fluid->heads[bucket(fluid, x, y)]; j >= 0;
-                     j = fluid->work[j].next) {
-                    fluid_particle other = fluid->particles[j];
-                    if (fluid->work[j].x != x || fluid->work[j].y != y ||
-                        other.heat <= w->heat) {
-                        continue;
-                    }
-                    fluid_vec d = sub(other.position, p.position);
-                    if (dot(d, d) >= h * h ||
-                        material_fluid_blocked(other.position, p.position, colliders, step->solids, -1)) {
-                        continue;
-                    }
-                    w->heat = fmaxf(w->heat, other.heat * .85f);
-                }
-            }
-        }
-    }
-}
-
-static void react(material_fluid *fluid, float dt)
-{
-    fluid_reaction r = fluid->reaction;
-    if (r.ignition <= 0) {
-        return;
-    }
-    /* Queries read the same particle snapshot and write only their own heat.
-     * Commit ignition and blast events in particle order after workers finish. */
-    run(fluid, reaction_heat, fluid, 32);
-    for (int n = 0; n < acount(fluid->active); n++) {
-        int i = fluid->active[n];
-        fluid_particle *p = &fluid->particles[i];
-        p->heat = fluid->work[i].heat;
-        if (p->fuel > 0 && p->heat >= r.ignition) {
-            if (!p->burning) {
-                ignition(fluid, p->position);
-            }
-            p->burning = true;
-            p->glow = 1;
-            p->fuel = fmaxf(0, p->fuel - r.burn_rate * dt);
-            p->heat = fmaxf(p->heat, r.heat_release);
-            p->color = r.flame_color;
-            p->emission = r.flame_emission;
-            if (p->fuel == 0) {
-                p->burning = false;
-                p->smoke = true;
-                p->kind = FLUID_GAS;
-                p->color = r.smoke_color;
-                p->absorption = r.smoke_absorption;
-                p->lifetime = r.smoke_lifetime;
-                p->style = (fluid_style){ .duration = r.smoke_lifetime };
-            }
-        }
-        if (!p->burning && p->heat > 0) {
-            float cooling = expf(-r.cooling * dt);
-            p->heat *= cooling;
-            p->emission *= cooling;
-        }
-        if (p->smoke) {
-            p->glow = fminf(1, p->heat / r.heat_release);
-            unsigned color = 0;
-            for (int channel = 0; channel < 4; channel++) {
-                int shift = 24 - 8 * channel;
-                float cold = (r.smoke_color >> shift) & 255;
-                float hot = (r.flame_color >> shift) & 255;
-                color |= (unsigned)(cold + (hot - cold) * p->glow) << shift;
-            }
-            p->color = color;
-        }
-    }
-}
-
 void material_fluid_push(material_fluid *fluid, fluid_vec point, float radius, float speed, const fluid_step *step)
 {
     for (int n = 0; n < acount(fluid->active); n++) {
         fluid_particle *p = &fluid->particles[fluid->active[n]];
-        fluid_vec d = sub(p->position, point);
-        float distance = sqrtf(dot(d, d));
+        fluid_vec d = fluid_sub(p->position, point);
+        float distance = sqrtf(fluid_dot(d, d));
         if (distance <= 1e-5f || distance >= radius ||
             material_fluid_blocked(point, p->position, &step->colliders, step->solids, -1)) {
             continue;
         }
-        p->velocity = add(p->velocity, scale(d, speed * (1 - distance / radius) / distance));
+        p->velocity = fluid_add(p->velocity, fluid_scale(d, speed * (1 - distance / radius) / distance));
     }
 }
 
@@ -705,10 +639,11 @@ static bool segment_contact(
     fluid_vec *normal
 )
 {
-    fluid_vec d = sub(b, a);
+    fluid_vec d = fluid_sub(b, a);
     if (obstacle.radius > 0) {
         float radius = obstacle.radius + skin;
-        float aa = dot(d, d), bb = dot(a, d), cc = dot(a, a) - radius * radius;
+        float aa = fluid_dot(d, d), bb = fluid_dot(a, d),
+              cc = fluid_dot(a, a) - radius * radius;
         if (aa <= 1e-8f || cc < -1e-5f) {
             return false;
         }
@@ -716,17 +651,17 @@ static bool segment_contact(
             if (bb >= 0) {
                 return false;
             }
-            float distance = sqrtf(dot(a, a));
+            float distance = sqrtf(fluid_dot(a, a));
             if (distance <= 1e-6f) {
                 return false;
             }
-            *normal = scale(a, 1 / distance);
+            *normal = fluid_scale(a, 1 / distance);
             *fraction = 0;
             return true;
         }
         float projection = -bb / aa;
-        fluid_vec closest = add(a, scale(d, projection));
-        float remaining = radius * radius - dot(closest, closest);
+        fluid_vec closest = fluid_add(a, fluid_scale(d, projection));
+        float remaining = radius * radius - fluid_dot(closest, closest);
         if (remaining < 0) {
             return false;
         }
@@ -734,8 +669,8 @@ static bool segment_contact(
         if (t < 0 || t > 1) {
             return false;
         }
-        fluid_vec hit = add(a, scale(d, t));
-        *normal = scale(hit, 1 / sqrtf(dot(hit, hit)));
+        fluid_vec hit = fluid_add(a, fluid_scale(d, t));
+        *normal = fluid_scale(hit, 1 / sqrtf(fluid_dot(hit, hit)));
         *fraction = t;
         return true;
     }
@@ -794,7 +729,7 @@ static bool segment_contact(
             return false;
         }
     }
-    if (first < 0 || first > 1 || dot(entering, entering) < .5f) {
+    if (first < 0 || first > 1 || fluid_dot(entering, entering) < .5f) {
         return false;
     }
     *fraction = first;
@@ -809,7 +744,10 @@ static float lerp_angle(float a, float b, float t)
 
 static fluid_vec body_position_at(fluid_body body, float t)
 {
-    return add(body.previous_position, scale(sub(body.position, body.previous_position), t));
+    return fluid_add(
+        body.previous_position,
+        fluid_scale(fluid_sub(body.position, body.previous_position), t)
+    );
 }
 
 static void collide(
@@ -825,13 +763,17 @@ static void collide(
     fluid_particle *p = &fluid->particles[particle_index];
     float c = cosf(body->angle), s = sinf(body->angle);
     fluid_vec original = p->position;
-    fluid_vec local = sub(rotate(sub(original, body->position), c, -s), obstacle.center);
+    fluid_vec local = fluid_sub(
+        rotate(fluid_sub(original, body->position), c, -s),
+        obstacle.center
+    );
     fluid_vec normal;
     float depth, skin = p->radius * .3f;
     if (obstacle.radius > 0) {
-        float distance = sqrtf(dot(local, local));
+        float distance = sqrtf(fluid_dot(local, local));
         depth = obstacle.radius + skin - distance;
-        normal = distance > 1e-6f ? scale(local, 1 / distance) : (fluid_vec){ 1, 0 };
+        normal = distance > 1e-6f ? fluid_scale(local, 1 / distance)
+                                  : (fluid_vec){ 1, 0 };
     } else {
         float dx = obstacle.half_size.x + skin - fabsf(local.x);
         float dy = obstacle.half_size.y + skin - fabsf(local.y);
@@ -841,8 +783,8 @@ static void collide(
     }
     if (depth <= 0) {
         fluid_vec particle_start = fluid->work[particle_index].previous;
-        fluid_vec particle_delta = sub(p->position, particle_start);
-        bool particle_moved = dot(particle_delta, particle_delta) > 1e-8f;
+        fluid_vec particle_delta = fluid_sub(p->position, particle_start);
+        bool particle_moved = fluid_dot(particle_delta, particle_delta) > 1e-8f;
         if (body->swept || particle_moved) {
             float a = body->swept
                         ? lerp_angle(body->previous_angle, body->angle, sweep_start)
@@ -854,12 +796,12 @@ static void collide(
                                        : body->position;
             fluid_vec p1 = body->swept ? body_position_at(*body, sweep_end)
                                        : body->position;
-            fluid_vec from = sub(
-                rotate(sub(particle_start, p0), cosf(a), -sinf(a)),
+            fluid_vec from = fluid_sub(
+                rotate(fluid_sub(particle_start, p0), cosf(a), -sinf(a)),
                 obstacle.center
             );
-            fluid_vec to = sub(
-                rotate(sub(p->position, p1), cosf(b), -sinf(b)),
+            fluid_vec to = fluid_sub(
+                rotate(fluid_sub(p->position, p1), cosf(b), -sinf(b)),
                 obstacle.center
             );
             float fraction;
@@ -867,24 +809,24 @@ static void collide(
             if (segment_contact(from, to, obstacle, p->radius, &fraction, &local_normal)) {
                 float angle = lerp_angle(a, b, fraction);
                 normal = rotate(local_normal, cosf(angle), sinf(angle));
-                fluid_vec center = add(particle_start, scale(particle_delta, fraction));
-                fluid_vec point = sub(center, scale(normal, p->radius));
+                fluid_vec center = fluid_add(particle_start, fluid_scale(particle_delta, fraction));
+                fluid_vec point = fluid_sub(center, fluid_scale(normal, p->radius));
                 fluid_body at_hit = *body;
                 if (body->swept) {
                     float body_t = sweep_start + (sweep_end - sweep_start) * fraction;
                     at_hit.position = body_position_at(*body, body_t);
                 }
                 fluid_vec surface = body_surface_velocity(at_hit, point);
-                surface = add(surface, scale(body->impulse, body->inverse_mass));
-                float closing = -dot(sub(p->velocity, surface), normal);
-                p->position = add(center, scale(normal, skin + 1e-3f));
+                surface = fluid_add(surface, fluid_scale(body->impulse, body->inverse_mass));
+                float closing = -fluid_dot(fluid_sub(p->velocity, surface), normal);
+                p->position = fluid_add(center, fluid_scale(normal, skin + 1e-3f));
                 if (closing > 0) {
                     float impulse = closing / (1 / p->mass + body->inverse_mass);
-                    p->velocity = add(p->velocity, scale(normal, impulse / p->mass));
-                    body->impulse = sub(body->impulse, scale(normal, impulse));
-                    fluid_vec local_center = add(from, scale(sub(to, from), fraction));
-                    fluid_vec local_point = add(
-                        sub(local_center, scale(local_normal, p->radius)),
+                    p->velocity = fluid_add(p->velocity, fluid_scale(normal, impulse / p->mass));
+                    body->impulse = fluid_sub(body->impulse, fluid_scale(normal, impulse));
+                    fluid_vec local_center = fluid_add(from, fluid_scale(fluid_sub(to, from), fraction));
+                    fluid_vec local_point = fluid_add(
+                        fluid_sub(local_center, fluid_scale(local_normal, p->radius)),
                         obstacle.center
                     );
                     record_contact(fluid, p, body, obstacle.body, point, normal, local_point, closing, impulse);
@@ -894,16 +836,16 @@ static void collide(
         return;
     }
     normal = rotate(normal, c, s);
-    fluid_vec point = sub(original, scale(normal, p->radius));
+    fluid_vec point = fluid_sub(original, fluid_scale(normal, p->radius));
     fluid_vec body_velocity = body_surface_velocity(*body, point);
-    body_velocity = add(body_velocity, scale(body->impulse, body->inverse_mass));
-    float closing = -dot(sub(p->velocity, body_velocity), normal);
-    p->position = add(p->position, scale(normal, depth));
+    body_velocity = fluid_add(body_velocity, fluid_scale(body->impulse, body->inverse_mass));
+    float closing = -fluid_dot(fluid_sub(p->velocity, body_velocity), normal);
+    p->position = fluid_add(p->position, fluid_scale(normal, depth));
     float impulse = fmaxf(0, closing + fminf(depth / dt, 80) * .2f) /
                     (1 / p->mass + body->inverse_mass);
-    p->velocity = add(p->velocity, scale(normal, impulse / p->mass));
-    body->impulse = sub(body->impulse, scale(normal, impulse));
-    fluid_vec local_point = rotate(sub(point, body->position), c, -s);
+    p->velocity = fluid_add(p->velocity, fluid_scale(normal, impulse / p->mass));
+    body->impulse = fluid_sub(body->impulse, fluid_scale(normal, impulse));
+    fluid_vec local_point = rotate(fluid_sub(point, body->position), c, -s);
     record_contact(fluid, p, body, obstacle.body, point, normal, local_point, fmaxf(0, closing), impulse);
 }
 
@@ -936,7 +878,7 @@ static void collide_obstacles(material_fluid *fluid, float sweep_start, float sw
         fluid_obstacle obstacle = obstacles[i];
         fluid_body *body = &bodies[obstacle.body];
         float c = cosf(body->angle), s = sinf(body->angle);
-        fluid_vec center = add(body->position, rotate(obstacle.center, c, s));
+        fluid_vec center = fluid_add(body->position, rotate(obstacle.center, c, s));
         float ex = obstacle.radius > 0 ? obstacle.radius
                                        : fabsf(c) * obstacle.half_size.x +
                                              fabsf(s) * obstacle.half_size.y;
@@ -992,7 +934,7 @@ static void collide_obstacles(material_fluid *fluid, float sweep_start, float sw
         }
         for (int y = y0; y <= y1; y++) {
             for (int x = x0; x <= x1; x++) {
-                for (int j = fluid->heads[bucket(fluid, x, y)]; j >= 0;
+                for (int j = fluid->heads[fluid_bucket(fluid, x, y)]; j >= 0;
                      j = fluid->work[j].next) {
                     if (fluid->work[j].x == x && fluid->work[j].y == y) {
                         collide(fluid, j, body, obstacle, fluid->delta, sweep_start, sweep_end);
@@ -1017,8 +959,8 @@ static void collide_solids(int start, int end, uint32_t, void *context)
         int i = fluid->active[n];
         fluid_particle *p = &fluid->particles[i];
         fluid_vec previous = fluid->work[i].previous;
-        fluid_vec moved = sub(p->position, previous);
-        if (dot(moved, moved) > 1 &&
+        fluid_vec moved = fluid_sub(p->position, previous);
+        if (fluid_dot(moved, moved) > 1 &&
             material_solids_blocked(solids, previous, p->position)) {
             p->position = previous;
         }
@@ -1029,19 +971,23 @@ static void collide_solids(int start, int end, uint32_t, void *context)
         }
         int count;
         float cell = material_solids_items(solids, &count)[s.solid].mask->cell_size;
-        p->position = add(p->position, scale(s.normal, fminf(skin - s.distance, cell * 2)));
-        float approach = dot(p->velocity, s.normal);
+        p->position = fluid_add(
+            p->position,
+            fluid_scale(s.normal, fminf(skin - s.distance, cell * 2))
+        );
+        float approach = fluid_dot(p->velocity, s.normal);
         if (approach >= 0) {
             continue;
         }
-        fluid_vec slide = sub(p->velocity, scale(s.normal, approach));
-        float speed = sqrtf(dot(slide, slide));
-        float friction = p->kind == FLUID_LIQUID ? SOLID_FRICTION * -approach : 0;
-        p->velocity = speed > friction ? scale(slide, 1 - friction / speed)
+        fluid_vec slide = fluid_sub(p->velocity, fluid_scale(s.normal, approach));
+        float speed = sqrtf(fluid_dot(slide, slide));
+        float friction = p->phase != FLUID_GAS ? SOLID_FRICTION * -approach : 0;
+        p->velocity = speed > friction ? fluid_scale(slide, 1 - friction / speed)
                                        : (fluid_vec){ 0 };
     }
 }
 
+/* Dense matter falls; gas rises by its buoyancy, faster when hot. */
 static void gravitate(material_fluid *fluid, float dt)
 {
     fluid_vec g = fluid->step->gravity;
@@ -1050,10 +996,47 @@ static void gravitate(material_fluid *fluid, float dt)
     }
     for (int n = 0; n < acount(fluid->active); n++) {
         fluid_particle *p = &fluid->particles[fluid->active[n]];
-        if (p->kind == FLUID_LIQUID) {
-            p->velocity = add(p->velocity, scale(g, dt));
+        float lift = p->phase == FLUID_GAS
+                       ? -fluid->substances[p->substance].buoyancy *
+                             (1 + fmaxf(0, p->temperature))
+                       : 1;
+        p->velocity = fluid_add(p->velocity, fluid_scale(g, lift * dt));
+    }
+}
+
+static int compare_indices(const void *left, const void *right)
+{
+    return *(const int *)left - *(const int *)right;
+}
+
+/* Removes doomed particles, highest index first, so each swap moves a
+ * surviving particle. The active set stays valid for queries between ticks. */
+static void remove_doomed(material_fluid *fluid)
+{
+    if (!acount(fluid->doomed)) {
+        return;
+    }
+    qsort(fluid->doomed, (size_t)acount(fluid->doomed), sizeof *fluid->doomed, compare_indices);
+    int kept = 0;
+    for (int n = 0; n < acount(fluid->active); n++) {
+        int i = fluid->active[n];
+        if (!fluid->work[i].doomed) {
+            fluid->work[i].slot = kept;
+            fluid->active[kept++] = i;
         }
     }
+    asetlen(fluid->active, kept);
+    for (int n = acount(fluid->doomed) - 1; n >= 0; n--) {
+        int i = fluid->doomed[n], last = acount(fluid->particles) - 1;
+        fluid->particles[i] = fluid->particles[last];
+        fluid->work[i] = fluid->work[last];
+        apop(fluid->particles);
+        apop(fluid->work);
+        if (i != last && fluid->work[i].slot >= 0) {
+            fluid->active[fluid->work[i].slot] = i;
+        }
+    }
+    aclear(fluid->doomed);
 }
 
 void material_fluid_tick(material_fluid *fluid, const fluid_step *step)
@@ -1079,6 +1062,7 @@ void material_fluid_tick(material_fluid *fluid, const fluid_step *step)
     aclear(fluid->blasts);
     for (int i = 0; i < acount(fluid->particles);) {
         fluid_particle *p = &fluid->particles[i];
+        fluid->work[i].slot = -1;
         if (!awake(p->position, step->chunk_size, step->regions, step->region_count)) {
             i++;
             continue;
@@ -1087,6 +1071,7 @@ void material_fluid_tick(material_fluid *fluid, const fluid_step *step)
             p->lifetime -= delta;
             if (p->lifetime <= 0) {
                 *p = alast(fluid->particles);
+                fluid->work[i] = alast(fluid->work);
                 apop(fluid->particles);
                 apop(fluid->work);
                 continue;
@@ -1104,11 +1089,14 @@ void material_fluid_tick(material_fluid *fluid, const fluid_step *step)
             p->velocity.x *= damping;
             p->velocity.y *= damping;
         }
+        fluid->work[i].slot = acount(fluid->active);
+        fluid->work[i].reacted = false;
         apush(fluid->active, i++);
     }
     index_particles(fluid);
     CHIBI_TRACE_ZONE_BEGIN(reaction_zone, "Fluid reactions");
-    react(fluid, delta);
+    aclear(fluid->deposits);
+    material_fluid_react(fluid);
     CHIBI_TRACE_ZONE_END(reaction_zone);
     if (fluid->flow_settings.cell_size > 0) {
         CHIBI_TRACE_ZONE_BEGIN(flow_zone, "Gas flow");
@@ -1131,32 +1119,34 @@ void material_fluid_tick(material_fluid *fluid, const fluid_step *step)
             int i = fluid->active[n];
             fluid_particle *p = &fluid->particles[i];
             fluid->work[i].previous = p->position;
-            p->position = add(p->position, scale(p->velocity, fluid->delta));
+            p->position = fluid_add(p->position, fluid_scale(p->velocity, fluid->delta));
         }
         CHIBI_TRACE_ZONE_BEGIN(index_zone, "Fluid index");
         index_particles(fluid);
         CHIBI_TRACE_ZONE_END(index_zone);
         CHIBI_TRACE_ZONE_BEGIN(density_zone, "Fluid density");
-        run(fluid, densities, fluid, 256);
+        material_fluid_run(fluid, densities, acount(fluid->active), fluid, 256);
         CHIBI_TRACE_ZONE_END(density_zone);
         CHIBI_TRACE_ZONE_BEGIN(relax_zone, "Fluid relaxation");
-        run(fluid, relax, fluid, 256);
+        material_fluid_run(fluid, relax, acount(fluid->active), fluid, 256);
         CHIBI_TRACE_ZONE_END(relax_zone);
         for (int n = 0; n < acount(fluid->active); n++) {
             int i = fluid->active[n];
             fluid_particle *p = &fluid->particles[i];
-            p->position = add(p->position, fluid->work[i].correction);
-            p->velocity = scale(
-                sub(p->position, fluid->work[i].previous),
+            p->position = fluid_add(p->position, fluid->work[i].correction);
+            p->velocity = fluid_scale(
+                fluid_sub(p->position, fluid->work[i].previous),
                 1 / fluid->delta
             );
         }
         CHIBI_TRACE_ZONE_BEGIN(collision_zone, "Fluid collisions");
         collide_obstacles(fluid, substep * .5f, (substep + 1) * .5f);
         if (step->solids) {
-            run(fluid, collide_solids, fluid, 256);
+            material_fluid_run(fluid, collide_solids, acount(fluid->active), fluid, 256);
         }
         CHIBI_TRACE_ZONE_END(collision_zone);
     }
+    remove_doomed(fluid);
+    fluid->tick++;
     fluid->step = NULL;
 }

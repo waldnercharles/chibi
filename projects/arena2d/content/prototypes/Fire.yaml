@@ -1,0 +1,12 @@
+name: Fire
+components:
+  GAME.MaterialSubstance:
+    buoyancy: 0.4
+    burn_heat: 2.0
+    burn_rate: 2.0
+    burns_to: Smoke
+    color: 4284094176
+    cooling: 2.5
+    density: 0.01
+    ignite_at: 0.5
+    temperature: 2.0

@@ -52,6 +52,17 @@ static const struct
     { "GameShader", "shape", REFERENCE_ASSET_SHAPE, REFERENCE_BIND },
     { "GameUi", "document", REFERENCE_ASSET_UI, REFERENCE_BIND },
     { "GameSpawnRequest", "prototype", REFERENCE_ASSET_PROTOTYPE, REFERENCE_SPAWN },
+    /* Substances are prototypes; products may also name deposit targets. */
+    { "GameFluidVolume", "substance", REFERENCE_ASSET_PROTOTYPE, REFERENCE_BIND },
+    { "GameParticleEmitter", "fluid_substance", REFERENCE_ASSET_PROTOTYPE, REFERENCE_BIND },
+    { "MaterialBreakProfile", "smoke_substance", REFERENCE_ASSET_PROTOTYPE, REFERENCE_BIND },
+    { "MaterialSubstance", "burns_to", REFERENCE_ASSET_PROTOTYPE, REFERENCE_BIND },
+    { "MaterialSubstance", "boils_to", REFERENCE_ASSET_PROTOTYPE, REFERENCE_BIND },
+    { "MaterialSubstance", "freezes_to", REFERENCE_ASSET_PROTOTYPE, REFERENCE_BIND },
+    { "MaterialReaction", "a", REFERENCE_ASSET_PROTOTYPE, REFERENCE_BIND },
+    { "MaterialReaction", "b", REFERENCE_ASSET_PROTOTYPE, REFERENCE_BIND },
+    { "MaterialReaction", "a_becomes", REFERENCE_ASSET_PROTOTYPE, REFERENCE_BIND },
+    { "MaterialReaction", "b_becomes", REFERENCE_ASSET_PROTOTYPE, REFERENCE_BIND },
     { "GameActionBinding", "action", REFERENCE_ASSET_EVENT, REFERENCE_SEND },
 };
 

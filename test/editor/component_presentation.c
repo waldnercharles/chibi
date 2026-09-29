@@ -165,7 +165,7 @@ static void shipped_document()
         }
     }
     test_check(
-        ok && player && tabs == 22 && icons == 12 && first == COMPONENT_ICON_GAMEPAD &&
+        ok && player && tabs == 23 && icons == 14 && first == COMPONENT_ICON_GAMEPAD &&
             component_presentation_tab(&p, &GAME_COMPONENT_GameCollider) ==
                 COMPONENT_TAB_PHYSICS &&
             component_presentation_tab(&p, &GAME_COMPONENT_GameMaterial) ==

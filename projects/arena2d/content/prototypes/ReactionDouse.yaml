@@ -1,0 +1,3 @@
+name: ReactionDouse
+components:
+  GAME.MaterialReaction: {a: Water, a_becomes: Steam, b: Burning, b_becomes: Smoke, rate: 20.0}

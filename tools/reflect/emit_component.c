@@ -185,20 +185,22 @@ void emit_component_nodes(FILE *out, const struct_info *s)
 
     fprintf(out, "static int __flow_%s_add_%s(node *n, flow_context *ctx) {\n", g_prefix, name);
     fprintf(out, "    (void)n;\n    ecs_world *__world = flow_context_service(ctx, \"ecs.world\");\n");
-    fputs("    behavior_instance *__instance = flow_context_instance(ctx);\n", out);
-    fputs("    if (!__world || !__instance) return flow_context_fail(ctx, FLOW_ERR_NODE, \"component Add requires ecs.world\");\n", out);
-    fputs("    ecs_entity __entity = ecs_entity_from_u64(behavior_instance_owner(__instance).u64);\n", out);
-    fprintf(out, "    int __added = 0;\n    if (!%s_%s_get(__world, __entity)) {\n", g_prefix, name);
+    fputs("    if (!__world) return flow_context_fail(ctx, FLOW_ERR_NODE, \"component Add requires ecs.world\");\n", out);
+    fputs("    pin_value __target;\n    int __result = flow_context_eval_data(ctx, 1, &__target);\n", out);
+    fputs("    if (__result != FLOW_OK) return __result;\n", out);
+    fputs("    ecs_entity __entity = ecs_entity_from_u64(__target.u64);\n", out);
+    fprintf(out, "    int __added = 0;\n    if (ecs_entity_is_alive(__world, __entity) && !%s_%s_get(__world, __entity)) {\n", g_prefix, name);
     fprintf(out, "        __added = %s_%s_add(__world, __entity, 0) == ECS_OK;\n", g_prefix, name);
     fputs("    }\n    pin_value *__out = flow_context_output_value(ctx, 1);\n    *__out = (pin_value){ .type = PIN_BOOL, .type_name = \"bool\", .b = __added };\n", out);
     fputs("    return flow_context_continue(ctx, 0);\n}\n\n", out);
 
     fprintf(out, "static int __flow_%s_remove_%s(node *n, flow_context *ctx) {\n", g_prefix, name);
     fprintf(out, "    (void)n;\n    ecs_world *__world = flow_context_service(ctx, \"ecs.world\");\n");
-    fputs("    behavior_instance *__instance = flow_context_instance(ctx);\n", out);
-    fputs("    if (!__world || !__instance) return flow_context_fail(ctx, FLOW_ERR_NODE, \"component Remove requires ecs.world\");\n", out);
-    fputs("    ecs_entity __entity = ecs_entity_from_u64(behavior_instance_owner(__instance).u64);\n", out);
-    fprintf(out, "    int __removed = 0;\n    if (%s_%s_get(__world, __entity)) {\n", g_prefix, name);
+    fputs("    if (!__world) return flow_context_fail(ctx, FLOW_ERR_NODE, \"component Remove requires ecs.world\");\n", out);
+    fputs("    pin_value __target;\n    int __result = flow_context_eval_data(ctx, 1, &__target);\n", out);
+    fputs("    if (__result != FLOW_OK) return __result;\n", out);
+    fputs("    ecs_entity __entity = ecs_entity_from_u64(__target.u64);\n", out);
+    fprintf(out, "    int __removed = 0;\n    if (ecs_entity_is_alive(__world, __entity) && %s_%s_get(__world, __entity)) {\n", g_prefix, name);
     fprintf(out, "        __removed = %s_%s_remove(__world, __entity, 0) == ECS_OK;\n", g_prefix, name);
     fputs("    }\n    pin_value *__out = flow_context_output_value(ctx, 1);\n    *__out = (pin_value){ .type = PIN_BOOL, .type_name = \"bool\", .b = __removed };\n", out);
     fputs("    return flow_context_continue(ctx, 0);\n}\n\n", out);
@@ -536,7 +538,16 @@ void emit_component_nodes_desc(FILE *out, const struct_info *s)
         g_prefix,
         name
     );
-    fprintf(out, "static pin_spec %s_%s_exec_inputs[] = { { \"Exec\", PIN_FLOW, NULL, PIN_EXEC } };\n", g_prefix, name);
+    fprintf(
+        out,
+        "static pin_spec %s_%s_structural_inputs[] = { { \"Exec\", PIN_FLOW, "
+        "NULL, PIN_EXEC }, "
+        "{ .name = \"Entity\", .type = PIN_HANDLE, .type_name = "
+        "\"ecs.entity\", .flags = "
+        "PIN_FLAG_DEFAULT_SELF } };\n",
+        g_prefix,
+        name
+    );
     fprintf(
         out,
         "static pin_spec %s_%s_get_outputs[] = { { \"Value\", PIN_STRUCT, "
@@ -653,12 +664,12 @@ void emit_component_nodes_desc(FILE *out, const struct_info *s)
     );
     fprintf(
         out,
-        "node_desc %s_NODE_Add_%s = { .name = \"Add_%s\", .input_count = 1, "
-        ".output_count = 2, .inputs = %s_%s_exec_inputs, .outputs = "
+        "node_desc %s_NODE_Add_%s = { .name = \"Add_%s\", .input_count = 2, "
+        ".output_count = 2, .inputs = %s_%s_structural_inputs, .outputs = "
         "%s_%s_component_outputs, .flow_kind = NODE_FLOW_CUSTOM, .flow = "
         "__flow_%s_add_%s, .access = &%s_%s_structural_access, .description "
-        "= \"Adds %s with default values to Self; Value is whether it was "
-        "added.\" };\n",
+        "= \"Adds %s with default values to Entity, which defaults to Self; "
+        "Value is whether it was added.\" };\n",
         g_prefix,
         name,
         name,
@@ -675,11 +686,11 @@ void emit_component_nodes_desc(FILE *out, const struct_info *s)
     fprintf(
         out,
         "node_desc %s_NODE_Remove_%s = { .name = \"Remove_%s\", .input_count = "
-        "1, .output_count = 2, .inputs = %s_%s_exec_inputs, .outputs = "
+        "2, .output_count = 2, .inputs = %s_%s_structural_inputs, .outputs = "
         "%s_%s_component_outputs, .flow_kind = NODE_FLOW_CUSTOM, .flow = "
         "__flow_%s_remove_%s, .access = &%s_%s_structural_access, "
-        ".description = \"Removes %s from Self; Value is whether it was "
-        "there.\" };\n\n",
+        ".description = \"Removes %s from Entity, which defaults to Self; "
+        "Value is whether it was there.\" };\n\n",
         g_prefix,
         name,
         name,

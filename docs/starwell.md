@@ -200,6 +200,42 @@ What has landed, and its contract. Every node is in searchNodes and Studio.
   points the field at the terrain's effective seed, and points outside a bounded
   terrain the distance to its bounds. About 0.6 µs per probe in a sanitized
   build.
+- **Time scale and hit-stop.** `Set Time Scale(Scale 0–4)` and `Hit Stop(Duration
+  real seconds, Scale)`. Fixed steps stay 1/60 real second; the scaled step
+  drives behaviors (Tick, Delta Time, Delay), physics, material and fluid
+  simulation, particles, visual motion, system phases and fog. A
+  `GameUnscaledTime` entity's behaviors run on real time, which is how the dock
+  screens keep working at scale 0. Restarts return to scale 1.
+- **Camera trauma.** `GameCameraShake{trauma, decay, max_offset, frequency}`
+  beside `GameCamera`; `Add Camera Trauma(Amount)` adds to every shake, clamped
+  0–1. Trauma falls by `decay` per real second; `game_camera_view` offsets the
+  view (not the entity) by `max_offset * trauma²` times smooth noise at
+  `frequency`.
+- **Add and Remove Component on any entity.** Both nodes (and the generated
+  `Add_<C>`/`Remove_<C>`) take an Entity input that defaults to Self; a dead
+  entity adds or removes nothing and Value is false.
+- **Follow.** `GameFollow{target, mode Attach|Chain, offset, distance,
+  stiffness, inherit_heading}` runs natively after physics, each target before
+  its followers. Anchor = target Transform + offset turned by its Orientation.
+  Attach pins to the anchor (and copies heading); Chain holds `distance` from
+  the anchor and turns to face it at `stiffness`/s. Velocity copies the
+  target's and the body is placed at the new pose. A dead target clears
+  `target`. Followers without a body render at their stepped pose, not
+  interpolated.
+- **Broadcast.** `Send Event To All(Component, payload…)` queues a typed event
+  for every entity with the component (key or name), mirroring Send Event's
+  payload pins; entities being destroyed are skipped.
+- **Scatter placement.** `GameScatter{prototype, terrain (GameGlobalBinding
+  name of the MaterialTerrain entity), min, max, cell, chance, placement
+  Air|Floor|Ceiling|Wall|Embedded, clearance, salt, radius}` runs after
+  physics, so terrain near cameras is resident. Each cell in view (+ radius)
+  tries one candidate once per run from hash(run seed, salt, cell); Floor
+  searches +y (down), Ceiling −y, Wall ±x (nearest), each within clearance,
+  then snaps to the crossing and faces the terrain gradient. Spawns are owned
+  like Spawn Prototype's (a restart removes them) and get Transform and
+  Orientation before Begin. Bounded to 256 new cells per step.
+- **Controls.** `GameControl` gains Digit 1–4 and Wheel Up/Wheel Down for
+  `GameActionBinding` (a wheel notch holds its control for that frame).
 
 ## Status
 

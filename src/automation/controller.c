@@ -8579,10 +8579,12 @@ static node_match *node_candidates(
         apush(matches, ((node_match){ .desc = &NODE_Event, .host = &GRAPH_HOST_EVENTS[i] }));
     }
     const node_desc *send = registry_node_by_name("Send Event");
+    const node_desc *send_all = registry_node_by_name("Send Event To All");
     for (int i = 0; i < acount(project->definitions); i++) {
         behavior_asset *definition = project->definitions[i];
         apush(matches, ((node_match){ .desc = &NODE_Event, .definition = definition }));
         apush(matches, ((node_match){ .desc = send, .definition = definition }));
+        apush(matches, ((node_match){ .desc = send_all, .definition = definition }));
     }
     for (int i = 0; i < acount(project->ui); i++) {
         apush(matches, ((node_match){ .desc = &NODE_Event, .ui = &project->ui[i] }));

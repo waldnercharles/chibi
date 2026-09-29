@@ -391,8 +391,7 @@ static int link_graph(library_link *link, graph *g)
         if (n->disabled) {
             continue;
         }
-        bool event_call = n->desc == &NODE_CallEvent ||
-                          strcmp(n->desc->name, "Send Event") == 0;
+        bool event_call = n->desc == &NODE_CallEvent || graph_event_sends(n->desc);
         if (event_call || n->desc == &NODE_Event) {
             const behavior_asset *event = NULL;
             for (int d = 0; d < link->count; d++) {

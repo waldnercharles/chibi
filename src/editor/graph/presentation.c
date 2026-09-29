@@ -1,5 +1,6 @@
 #include "editor/ui/labels.h"
 #include "editor/workspace/editor_internal.h"
+#include "graph/document/events.h"
 #include "graph/nodes/behavior_expression.h"
 #include "graph/nodes/component_nodes.h"
 #include "support/array.h"
@@ -74,9 +75,16 @@ const char *ed_node_title_in(
         snprintf(buf, cap, "%s", n->reference_name);
         return buf;
     }
-    if (n->reference_name && (!strcmp(n->desc->name, "Send Event") ||
-                              !strcmp(n->desc->name, "Call Event"))) {
-        snprintf(buf, cap, "%s %s", !strcmp(n->desc->name, "Send Event") ? "Send" : "Call", n->reference_name);
+    if (n->reference_name &&
+        (graph_event_sends(n->desc) || !strcmp(n->desc->name, "Call Event"))) {
+        snprintf(
+            buf,
+            cap,
+            !strcmp(n->desc->name, "Send Event To All") ? "Send %s To All"
+            : graph_event_sends(n->desc)                ? "Send %s"
+                                                        : "Call %s",
+            n->reference_name
+        );
         return buf;
     }
     if (ed_is_graph_call(n)) {

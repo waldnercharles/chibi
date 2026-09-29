@@ -1,14 +1,10 @@
 #include "graph/authoring/describe.h"
 
+#include "graph/document/events.h"
 #include "graph/nodes/component_nodes.h"
 
 #include <stdio.h>
 #include <string.h>
-
-static bool sends(const node_desc *desc)
-{
-    return !strcmp(desc->name, "Send Event");
-}
 
 static const graph_host_event_desc *host_event(const char *name)
 {
@@ -46,7 +42,7 @@ node_subject node_subject_of(const node *n, const behavior_asset *const *catalog
         subject.host = host_event(n->reference_name);
     }
     bool event = n->desc == &NODE_Event || n->desc == &NODE_CallEvent ||
-                 sends(n->desc);
+                 graph_event_sends(n->desc);
     if (event && !subject.host) {
         subject.definition = definition_named(catalog, count, n->reference_name);
     }
@@ -73,8 +69,15 @@ bool node_subject_describe(const node_subject *s, char *text, size_t size)
         component_node_preset_describe(&preset, text, size);
         return true;
     }
-    if (s->definition && sends(s->desc)) {
-        snprintf(text, size, "Sends %s to Entity.", s->definition->name);
+    if (s->definition && graph_event_sends(s->desc)) {
+        snprintf(
+            text,
+            size,
+            strcmp(s->desc->name, "Send Event")
+                ? "Sends %s to every entity with Component."
+                : "Sends %s to Entity.",
+            s->definition->name
+        );
         return true;
     }
     const char *about = s->desc->description;

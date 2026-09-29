@@ -3,6 +3,7 @@
 
 #include "assets/prototype.h"
 #include "runtime/behaviors/behavior.h"
+#include "runtime/components.h"
 
 typedef struct arena arena;
 
@@ -46,6 +47,18 @@ int game_entities_set_global_value(game_entities *entities, const char *name, co
 /* Cancel requests and remove host-spawned entities, retaining prototype snapshots. */
 void game_entities_reset(game_entities *entities);
 int game_entities_register(game_entities *entities, const game_prototype *prototype);
+/* Spawns a registered prototype now, outside behavior execution, at position
+ * (and heading, when not NULL) before its behaviors' Begin runs. Owned like
+ * Spawn Prototype's entities, so a reset removes it. */
+int game_entities_spawn_at(
+    game_entities *entities,
+    const char *prototype,
+    GameTransform position,
+    const float *heading,
+    ecs_entity *out,
+    char *error,
+    size_t size
+);
 void game_entities_request_destroy(game_entities *entities, ecs_entity entity);
 bool game_entities_is_retiring(const game_entities *entities, ecs_entity entity);
 /* Queue copied payloads. Containers and user_data are rejected. Delivery is

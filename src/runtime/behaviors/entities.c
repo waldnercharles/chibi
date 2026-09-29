@@ -570,16 +570,20 @@ int game_entities_register(game_entities *entities, const game_prototype *protot
     return 0;
 }
 
-static game_prototype *prepare_spawn(game_entities *entities, const char *identity, const char **message)
+static const game_prototype *find_prototype(const game_entities *entities, const char *identity)
 {
-    const game_prototype *prototype = NULL;
     for (int i = 0; identity && i < acount(entities->prototypes); i++) {
         if (strcmp(entities->prototypes[i].prototype->identity, identity) == 0 ||
             strcmp(entities->prototypes[i].prototype->name, identity) == 0) {
-            prototype = entities->prototypes[i].prototype;
-            break;
+            return entities->prototypes[i].prototype;
         }
     }
+    return NULL;
+}
+
+static game_prototype *prepare_spawn(game_entities *entities, const char *identity, const char **message)
+{
+    const game_prototype *prototype = find_prototype(entities, identity);
     if (!prototype) {
         *message = "Spawn Prototype: unknown prototype";
         return NULL;
@@ -607,6 +611,63 @@ static int game_entities_request_spawn(game_entities *entities, flow_context *ct
     }
     apush(entities->spawns, ((spawn_request){ .prototype = copy, .wait = wait }));
     return FLOW_OK;
+}
+
+/* Sets a spawned entity's pose, adding the components it lacks. */
+static int place(ecs_world *world, ecs_entity entity, GameTransform position, const float *heading)
+{
+    if ((!GAME_GameTransform_get(world, entity) &&
+         GAME_GameTransform_add(world, entity, 0) != ECS_OK) ||
+        (heading && !GAME_GameOrientation_get(world, entity) &&
+         GAME_GameOrientation_add(world, entity, 0) != ECS_OK) ||
+        ecs_world_apply_commands(world) != ECS_OK) {
+        return ECS_ERR_COMPONENT;
+    }
+    *GAME_GameTransform_get(world, entity) = position;
+    if (heading) {
+        GAME_GameOrientation_get(world, entity)->radians = *heading;
+    }
+    return ECS_OK;
+}
+
+int game_entities_spawn_at(
+    game_entities *entities,
+    const char *identity,
+    GameTransform position,
+    const float *heading,
+    ecs_entity *out,
+    char *error,
+    size_t size
+)
+{
+    const game_prototype *prototype = find_prototype(entities, identity);
+    if (!prototype) {
+        snprintf(error, size, "Unknown prototype: %s", identity ? identity : "");
+        return ECS_ERR_ARGUMENT;
+    }
+    int result = game_prototype_spawn_components(prototype, entities->world, out, error, size);
+    if (result != ECS_OK) {
+        return result;
+    }
+    apush(entities->owned, *out);
+    if (place(entities->world, *out, position, heading) != ECS_OK ||
+        game_entities_rebuild_global_bindings(entities) != 0) {
+        snprintf(error, size, "Could not place %s", prototype->name);
+        return ECS_ERR_COMPONENT;
+    }
+    for (int i = 0; i < acount(prototype->graphs); i++) {
+        if (game_behavior_attach(entities->behaviors, *out, prototype->graphs[i]) != 0) {
+            snprintf(
+                error,
+                size,
+                "%s behavior %s could not attach",
+                prototype->name,
+                prototype->graphs[i]
+            );
+            return ECS_ERR_COMMAND;
+        }
+    }
+    return ECS_OK;
 }
 
 void game_entities_request_destroy(game_entities *entities, ecs_entity entity)
@@ -1267,7 +1328,8 @@ static const ecs_component_desc *query_component(game_entities *entities, const 
 {
     for (int i = 0; key && i < ecs_world_component_count(entities->world); i++) {
         const ecs_component_desc *component = ecs_world_component_at(entities->world, i);
-        if (!strcmp(component->key ? component->key : component->name, key)) {
+        if (!strcmp(component->key ? component->key : component->name, key) ||
+            !strcmp(component->name, key)) {
             return component;
         }
     }
@@ -1360,6 +1422,63 @@ static const char *find_entities_with_component(
     }
     free(snapshot.items);
     return error;
+}
+
+/* Queues the event for every entity with the component, in query order. */
+static int send_all_command(void *service, const char *reference, const pin_value *arguments, int count)
+{
+    assert(count >= 1);
+    game_entities *entities = service;
+    const ecs_component_desc *component = query_component(entities, arguments[0].str);
+    if (!component) {
+        return FLOW_ERR_ARGUMENT;
+    }
+    ecs_entity *targets = NULL, entity;
+    ecs_query query;
+    int result = ecs_query_begin(entities->world, &query, &component->id, 1);
+    assert(result == ECS_OK);
+    while (ecs_query_next(&query, &entity)) {
+        if (!game_entities_is_retiring(entities, entity)) {
+            apush(targets, entity);
+        }
+    }
+    ecs_query_end(&query);
+    flow_inputs payload = { .values = arguments + 1, .count = count - 1 };
+    for (int i = 0; i < acount(targets) && result >= 0; i++) {
+        result = game_entities_request_event(entities, targets[i], reference, payload);
+    }
+    afree(targets);
+    return result;
+}
+static const node_command SEND_ALL_COMMAND = {
+    .service = "game.entities",
+    .missing_service = "Send Event To All requires a game world",
+    .missing_reference = "Choose an event definition",
+    .failure_message = "Send Event To All needs a registered component and a "
+                       "payload it can queue",
+    .invoke = send_all_command
+};
+static int send_all_node(node *n, flow_context *ctx)
+{
+    game_entities *entities = flow_context_service(ctx, "game.entities");
+    if (!entities) {
+        return flow_context_fail(ctx, FLOW_ERR_NODE, SEND_ALL_COMMAND.missing_service);
+    }
+    if (!n->reference_name || !n->reference_name[0]) {
+        return flow_context_fail(ctx, FLOW_ERR_NODE, SEND_ALL_COMMAND.missing_reference);
+    }
+    int count = n->input_count - 1;
+    pin_value *values = flow_context_scratch_alloc(ctx, sizeof *values * (size_t)count);
+    for (int i = 0; i < count; i++) {
+        int result = flow_context_eval_data(ctx, i + 1, &values[i]);
+        if (result < 0) {
+            return result;
+        }
+    }
+    int result = send_all_command(entities, n->reference_name, values, count);
+    return result < 0
+             ? flow_context_fail(ctx, result, SEND_ALL_COMMAND.failure_message)
+             : flow_context_continue(ctx, 0);
 }
 
 static pin_spec HAS_ENTITIES_IN[] = { { .name = "Component", .type = PIN_NAME } };
@@ -1496,9 +1615,31 @@ static node_desc DAMAGE_NODE = {
                    "the current behaviors run; dropped if Entity is gone.",
     .access = &STRUCTURAL_ACCESS,
 };
+static pin_spec SEND_ALL_IN[] = {
+    { .name = "Exec", .type = PIN_FLOW, .kind = PIN_EXEC },
+    { .name = "Component", .type = PIN_NAME },
+};
+static node_desc SEND_ALL_NODE = {
+    .name = "Send Event To All",
+    .input_count = 2,
+    .output_count = 1,
+    .inputs = SEND_ALL_IN,
+    .outputs = DESTROY_OUT,
+    .flow_kind = NODE_FLOW_CUSTOM,
+    .flow = send_all_node,
+    .command = &SEND_ALL_COMMAND,
+    .display_class = NODE_DISPLAY_EVENT,
+    .category = "Events",
+    .keywords = "send broadcast all every entities component custom event "
+                "message",
+    .description = "Queues the chosen event and its payload for every entity "
+                   "with Component after the current behaviors run.",
+    .access = &STRUCTURAL_ACCESS,
+};
 static node_desc *const ENTITY_NODES[] = { &SPAWN_NODE,
                                            &DESTROY_NODE,
                                            &DAMAGE_NODE,
+                                           &SEND_ALL_NODE,
                                            &NEAREST_NODE,
                                            &GET_GLOBAL_VARIABLE_NODE,
                                            &SET_GLOBAL_VARIABLE_NODE,

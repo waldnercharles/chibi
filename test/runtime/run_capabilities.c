@@ -1,4 +1,8 @@
+#include "graph/document/events.h"
+#include "graph/nodes/component_nodes.h"
 #include "graph/runtime/random.h"
+#include "runtime/camera.h"
+#include "runtime/camera_shake.h"
 #include "runtime/material_terrain.h"
 #include "support/text_file.h"
 #include "support/value_noise.h"
@@ -503,10 +507,580 @@ static void terrain_queries()
     fixture_free(&f);
 }
 
+/* Tick writes Delta Time to Velocity.x; Begin waits Wait seconds, then moves
+ * Transform to (7, 7). */
+static behavior_asset *clocked_behavior()
+{
+    behavior_asset *asset = behavior("Clocked");
+    graph *g = asset->graph;
+    node *velocity = add(g, "Set_GameVelocity");
+    node *make = add(g, "Make_CF_V2");
+    flow(g, event(g, "Tick"), velocity);
+    wire(g, add(g, "Delta Time"), 0, make, 0);
+    wire(g, make, 0, velocity, 1);
+    node *delay = add(g, "Delay");
+    set_input(g, delay, 1, (pin_value){ .type = PIN_F64, .d = 0.05 });
+    node *moved = add(g, "Set_GameTransform");
+    node *target = add(g, "Make_CF_V2");
+    set_input(g, target, 0, (pin_value){ .type = PIN_F32, .type_name = "float", .f = 7 });
+    set_input(g, target, 1, (pin_value){ .type = PIN_F32, .type_name = "float", .f = 7 });
+    flow(g, event(g, "Begin"), delay);
+    flow(g, delay, moved);
+    wire(g, target, 0, moved, 1);
+    return asset;
+}
+
+/* Begin sets the time scale, then starts a hit-stop when Hit is positive. */
+static behavior_asset *timing_behavior(float scale, float hit, float hit_scale)
+{
+    behavior_asset *asset = behavior("Timing");
+    graph *g = asset->graph;
+    node *set = add(g, "Set Time Scale");
+    set_input(g, set, 1, (pin_value){ .type = PIN_F32, .type_name = "float", .f = scale });
+    flow(g, event(g, "Begin"), set);
+    if (hit > 0) {
+        node *stop = add(g, "Hit Stop");
+        set_input(g, stop, 1, (pin_value){ .type = PIN_F32, .type_name = "float", .f = hit });
+        set_input(g, stop, 2, (pin_value){ .type = PIN_F32, .type_name = "float", .f = hit_scale });
+        flow(g, set, stop);
+    }
+    return asset;
+}
+
+static const char TIMER[] = "{\"name\":\"Timer\",\"behaviors\":[\"Timing\"],"
+                            "\"components\":{}}";
+static const char
+    CLOCKED[] = "{\"name\":\"Clocked\",\"behaviors\":[\"Clocked\"],"
+                "\"components\":{\"GameTransform\":{\"x\":0,\"y\":0},"
+                "\"GameVelocity\":{\"x\":0,\"y\":0}}}";
+static const char
+    UNSCALED[] = "{\"name\":\"Unscaled\",\"behaviors\":[\"Clocked\"],"
+                 "\"components\":{\"GameTransform\":{\"x\":0,\"y\":0},"
+                 "\"GameVelocity\":{\"x\":0,\"y\":0},\"GameUnscaledTime\":{}}}";
+static const char MOVER[] = "{\"name\":\"Mover\",\"components\":{"
+                            "\"GameTransform\":{\"x\":0,\"y\":0},"
+                            "\"GameVelocity\":{\"x\":120,\"y\":0},"
+                            "\"GameBody\":{\"type\":1},\"GameCollider\":{"
+                            "\"radius\":2,\"category\":1}}}";
+
+/* How far a body moving at 120 units/s travels in 30 real steps at scale. */
+static float traveled(float scale)
+{
+    run_fixture f = fixture_new();
+    fixture_behavior(&f, timing_behavior(scale, 0, 0));
+    fixture_spawn(&f, TIMER);
+    ecs_entity mover = fixture_spawn(&f, MOVER);
+    fixture_steps(&f, 30);
+    float x = GAME_GameTransform_get_const(f.world, mover)->x;
+    fixture_free(&f);
+    return x;
+}
+
+static void time_scale()
+{
+    /* At scale 0 only GameUnscaledTime behaviors see time pass. */
+    run_fixture f = fixture_new();
+    fixture_behavior(&f, timing_behavior(0, 0, 0));
+    fixture_behavior(&f, clocked_behavior());
+    fixture_spawn(&f, TIMER);
+    ecs_entity scaled = fixture_spawn(&f, CLOCKED);
+    ecs_entity unscaled = fixture_spawn(&f, UNSCALED);
+    fixture_steps(&f, 12);
+    assert(GAME_GameVelocity_get_const(f.world, scaled)->x == 0);
+    assert(GAME_GameVelocity_get_const(f.world, unscaled)->x == (float)ENGINE_FIXED_SECONDS);
+    assert(GAME_GameTransform_get_const(f.world, scaled)->x == 0);
+    assert(GAME_GameTransform_get_const(f.world, unscaled)->x == 7);
+    assert(engine_last_timing(f.runtime)->simulation_time == 0);
+    /* Restart returns to real-time speed. */
+    engine_reset(f.runtime);
+    assert(game_run_time_scale(game_behavior_run(f.live->behaviors)) == 1);
+    fixture_free(&f);
+
+    /* Hit-stop runs its scale for its real duration, then the time scale. */
+    f = fixture_new();
+    fixture_behavior(&f, timing_behavior(1, 0.1f, 0.25f));
+    fixture_spawn(&f, TIMER);
+    fixture_steps(&f, 10);
+    double expected = 6 * ENGINE_FIXED_SECONDS * 0.25 + 4 * ENGINE_FIXED_SECONDS;
+    assert(fabs(engine_last_timing(f.runtime)->simulation_time - expected) < 1e-9);
+    fixture_free(&f);
+
+    /* Physics integrates scaled time. */
+    float full = traveled(1), half = traveled(0.5f), frozen = traveled(0);
+    assert(full > 50 && fabsf(half - full * .5f) < 1 && frozen == 0);
+}
+
+/* Begin adds Amount of camera trauma. */
+static behavior_asset *trauma_behavior(float amount)
+{
+    behavior_asset *asset = behavior("Trauma");
+    graph *g = asset->graph;
+    node *shake = add(g, "Add Camera Trauma");
+    set_input(g, shake, 1, (pin_value){ .type = PIN_F32, .type_name = "float", .f = amount });
+    flow(g, event(g, "Begin"), shake);
+    return asset;
+}
+
+static const char SHAKEN[] = "{\"name\":\"Shaken\",\"behaviors\":[\"Trauma\"],"
+                             "\"components\":{"
+                             "\"GameTransform\":{\"x\":40,\"y\":-20},"
+                             "\"GameCamera\":{\"width\":320,\"height\":180},"
+                             "\"GameCameraShake\":{\"decay\":1,\"max_offset\":"
+                             "12,\"frequency\":15}}}";
+
+static void camera_trauma()
+{
+    run_fixture f = fixture_new();
+    fixture_behavior(&f, trauma_behavior(.8f));
+    ecs_entity camera = fixture_spawn(&f, SHAKEN);
+    const GameCameraShake *shake = GAME_GameCameraShake_get_const(f.world, camera);
+    assert(fabsf(shake->trauma - .8f) < 1e-6f);
+    /* Trauma decays per real second, even when time is frozen. */
+    game_behavior_run(f.live->behaviors)->time_scale = 0;
+    fixture_steps(&f, 30);
+    assert(fabsf(shake->trauma - .3f) < 1e-4f);
+    /* The view, not the camera, moves: within max_offset times trauma squared. */
+    engine_viewport_view view;
+    float moved = 0;
+    for (int i = 0; i < 6; i++) {
+        fixture_steps(&f, 1);
+        assert(game_camera_view(f.world, f.runtime, &view) == 1);
+        float dx = view.center_x - 40, dy = view.center_y - 20;
+        float limit = 12 * shake->trauma * shake->trauma + 1e-4f;
+        assert(fabsf(dx) <= limit && fabsf(dy) <= limit);
+        moved = fmaxf(moved, fabsf(dx) + fabsf(dy));
+    }
+    assert(moved > 0);
+    assert(GAME_GameTransform_get_const(f.world, camera)->x == 40);
+    fixture_steps(&f, 30);
+    assert(shake->trauma == 0);
+    assert(game_camera_view(f.world, f.runtime, &view) == 1);
+    assert(view.center_x == 40 && view.center_y == 20);
+    fixture_free(&f);
+    /* Trauma stays within 0 to 1. */
+    f = fixture_new();
+    fixture_behavior(&f, trauma_behavior(5));
+    camera = fixture_spawn(&f, SHAKEN);
+    assert(GAME_GameCameraShake_get_const(f.world, camera)->trauma == 1);
+    fixture_free(&f);
+}
+
+static node *component_node(graph *g, const char *desc, const char *component)
+{
+    node *n = add(g, desc);
+    assert(component_node_configure(g, n, component, NULL) == 0);
+    return n;
+}
+
+/* Run(Target) adds GameHealth to and removes GameVelocity from Target, then
+ * adds GameAim to Self, whose Entity pin is left unwired. */
+static behavior_asset *graft_behavior()
+{
+    behavior_asset *asset = behavior("Graft");
+    graph *g = asset->graph;
+    node *run = event(g, "Run");
+    pin_spec target = { .name = "Target", .type = PIN_HANDLE, .type_name = "ecs.entity" };
+    assert(graph_add_pin(g, run, true, &target) == 1);
+    node *health = component_node(g, "Add Component", "GameHealth");
+    node *velocity = component_node(g, "Remove Component", "GameVelocity");
+    node *aim = component_node(g, "Add Component", "GameAim");
+    assert(!strcmp(health->input_pins[1].name, "Entity"));
+    flow(g, run, health);
+    flow(g, health, velocity);
+    flow(g, velocity, aim);
+    wire(g, run, 1, health, 1);
+    wire(g, run, 1, velocity, 1);
+    return asset;
+}
+
+static void components_on_any_entity()
+{
+    run_fixture f = fixture_new();
+    fixture_behavior(&f, graft_behavior());
+    ecs_entity grafter = fixture_spawn(&f, "{\"name\":\"Grafter\",\"behaviors\":[\"Graft\"],\"components\":{\"GameTransform\":{}}}");
+    ecs_entity stock = fixture_spawn(&f, "{\"name\":\"Stock\",\"components\":{\"GameTransform\":{},\"GameVelocity\":{}}}");
+    assert(
+        GAME_GameVelocity_get_const(f.world, stock) &&
+        !GAME_GameHealth_get_const(f.world, stock)
+    );
+    pin_value target = { .type = PIN_HANDLE,
+                         .type_name = "ecs.entity",
+                         .u64 = ecs_entity_to_u64(stock) };
+    flow_error error;
+    assert(
+        game_behavior_dispatch(f.live->behaviors, grafter, "Run", (flow_inputs){ &target, 1 }, &error) == 1
+    );
+    assert(ecs_world_apply_commands(f.world) == ECS_OK);
+    assert(
+        GAME_GameHealth_get_const(f.world, stock) &&
+        !GAME_GameVelocity_get_const(f.world, stock)
+    );
+    assert(GAME_GameAim_get_const(f.world, grafter) && !GAME_GameAim_get_const(f.world, stock));
+    assert(!GAME_GameHealth_get_const(f.world, grafter));
+    fixture_free(&f);
+}
+
+static ecs_entity follower(run_fixture *f, const char *json, ecs_entity target, GameFollow rule)
+{
+    ecs_entity entity = fixture_spawn(f, json);
+    rule.target = ecs_entity_to_u64(target);
+    assert(
+        ecs_world_record_add(f->world, entity, GAME_COMPONENT_GameFollow.id, &rule, 0) == ECS_OK
+    );
+    assert(ecs_world_apply_commands(f->world) == ECS_OK);
+    return entity;
+}
+
+static const char HEAD[] = "{\"name\":\"Head\",\"components\":{"
+                           "\"GameTransform\":{\"x\":0,\"y\":0},"
+                           "\"GameVelocity\":{\"x\":90,\"y\":30},"
+                           "\"GameOrientation\":{\"radians\":0.5},"
+                           "\"GameBody\":{\"type\":2},\"GameCollider\":{"
+                           "\"radius\":4,\"category\":1}}}";
+static const char
+    PART[] = "{\"name\":\"Part\",\"components\":{"
+             "\"GameTransform\":{\"x\":-40,\"y\":0},\"GameOrientation\":{}}}";
+static const char
+    SEGMENT[] = "{\"name\":\"Segment\",\"components\":{"
+                "\"GameTransform\":{\"x\":-40,\"y\":5},\"GameOrientation\":{},"
+                "\"GameVelocity\":{},\"GameBody\":{\"type\":1},"
+                "\"GameCollider\":{\"radius\":3,\"category\":2,\"mask\":2}}}";
+
+static float gap(run_fixture *f, ecs_entity a, ecs_entity b)
+{
+    return cf_distance(
+        *GAME_GameTransform_get_const(f->world, a),
+        *GAME_GameTransform_get_const(f->world, b)
+    );
+}
+
+static void follow_rules()
+{
+    run_fixture f = fixture_new();
+    ecs_entity head = fixture_spawn(&f, HEAD);
+    ecs_entity turret = follower(
+        &f,
+        PART,
+        head,
+        (GameFollow){ .mode = GAME_FOLLOW_ATTACH, .offset = { 10, 0 }, .inherit_heading = true }
+    );
+    /* The tail is spawned before the segment it follows. */
+    ecs_entity tail = fixture_spawn(&f, SEGMENT);
+    ecs_entity segment = follower(
+        &f,
+        SEGMENT,
+        head,
+        (GameFollow){ .mode = GAME_FOLLOW_CHAIN, .distance = 12, .inherit_heading = true }
+    );
+    GameFollow rule = { .target = ecs_entity_to_u64(segment),
+                        .mode = GAME_FOLLOW_CHAIN,
+                        .distance = 12,
+                        .stiffness = 8,
+                        .inherit_heading = true };
+    assert(ecs_world_record_add(f.world, tail, GAME_COMPONENT_GameFollow.id, &rule, 0) == ECS_OK);
+    assert(ecs_world_apply_commands(f.world) == ECS_OK);
+    fixture_steps(&f, 40);
+    CF_V2 at = *GAME_GameTransform_get_const(f.world, head);
+    assert(at.x > 50);
+    CF_V2 arm = { 10 * cosf(.5f), 10 * sinf(.5f) };
+    CF_V2 mount = cf_add(at, arm);
+    assert(cf_distance(*GAME_GameTransform_get_const(f.world, turret), mount) < 1e-3f);
+    assert(GAME_GameOrientation_get_const(f.world, turret)->radians == .5f);
+    assert(
+        fabsf(gap(&f, segment, head) - 12) < 1e-3f &&
+        fabsf(gap(&f, tail, segment) - 12) < 1e-3f
+    );
+    CF_V2 toward = cf_sub(at, *GAME_GameTransform_get_const(f.world, segment));
+    assert(
+        fabsf(remainderf(
+            GAME_GameOrientation_get_const(f.world, segment)->radians -
+                atan2f(toward.y, toward.x),
+            6.2831853f
+        )) < 1e-3f
+    );
+    /* Bodies ride with their target. */
+    CF_V2 carried = { 90, 30 };
+    assert(cf_distance(*GAME_GameVelocity_get_const(f.world, segment), carried) < 1e-3f);
+    /* A destroyed target releases its followers where they are. */
+    assert(ecs_world_destroy_entity(f.world, head) == ECS_OK);
+    assert(ecs_world_apply_commands(f.world) == ECS_OK);
+    CF_V2 left = *GAME_GameTransform_get_const(f.world, turret);
+    fixture_steps(&f, 1);
+    assert(!GAME_GameFollow_get(f.world, turret)->target);
+    assert(!GAME_GameFollow_get(f.world, segment)->target);
+    assert(cf_distance(*GAME_GameTransform_get_const(f.world, turret), left) == 0);
+    assert(GAME_GameFollow_get(f.world, tail)->target == ecs_entity_to_u64(segment));
+    fixture_free(&f);
+    /* Followers that follow each other are an authoring error. */
+    f = fixture_new();
+    ecs_entity a = fixture_spawn(&f, PART);
+    ecs_entity b = follower(&f, PART, a, (GameFollow){ .mode = GAME_FOLLOW_ATTACH });
+    GameFollow back = { .target = ecs_entity_to_u64(b) };
+    assert(ecs_world_record_add(f.world, a, GAME_COMPONENT_GameFollow.id, &back, 0) == ECS_OK);
+    assert(ecs_world_apply_commands(f.world) == ECS_OK);
+    fixture_frame(&f);
+    f.time += ENGINE_FIXED_SECONDS;
+    assert(engine_frame(f.runtime, f.time) < 0 && strstr(engine_error(f.runtime), "cycle"));
+    fixture_free(&f);
+}
+
+static behavior_asset *ping_definition()
+{
+    behavior_asset *definition = behavior_asset_new("Ping");
+    definition->domain = BEHAVIOR_DOMAIN_EVENT_DEFINITION;
+    assert(
+        behavior_asset_add_variable(definition, "Amount", PIN_F32, "float", PIN_CONTAINER_SINGLE, NULL, "Payload")
+    );
+    return definition;
+}
+
+/* Ping(Amount) writes Amount to Velocity.x. */
+static behavior_asset *pinged_behavior(const behavior_asset *definition)
+{
+    behavior_asset *asset = behavior("Pinged");
+    graph *g = asset->graph;
+    node *ping = add(g, "Event");
+    assert(graph_event_apply(g, ping, definition) == 0);
+    node *set = add(g, "Set_GameVelocity");
+    node *make = add(g, "Make_CF_V2");
+    flow(g, ping, set);
+    wire(g, ping, 1, make, 0);
+    wire(g, make, 0, set, 1);
+    return asset;
+}
+
+/* Begin sends Ping(3) to every GameHealth entity. */
+static behavior_asset *broadcast_behavior(const behavior_asset *definition)
+{
+    behavior_asset *asset = behavior("Broadcast");
+    graph *g = asset->graph;
+    node *send = add(g, "Send Event To All");
+    assert(graph_set_node_reference(g, send, 0, "Ping") == 0);
+    assert(graph_event_apply(g, send, definition) == 0);
+    assert(send->input_count == 3 && !strcmp(send->input_pins[2].name, "Amount"));
+    set_input(g, send, 1, (pin_value){ .type = PIN_NAME, .type_name = "name", .str = "GameHealth" });
+    set_input(g, send, 2, (pin_value){ .type = PIN_F32, .type_name = "float", .f = 3 });
+    flow(g, event(g, "Begin"), send);
+    return asset;
+}
+
+static void broadcast()
+{
+    run_fixture f = fixture_new();
+    behavior_asset *definition = ping_definition();
+    assert(game_live_add_definition(f.live, game_live_definition_new("Ping", definition)) == 0);
+    fixture_behavior(&f, pinged_behavior(definition));
+    fixture_behavior(&f, broadcast_behavior(definition));
+    const char *healthy = "{\"name\":\"Healthy\",\"behaviors\":[\"Pinged\"],"
+                          "\"components\":{"
+                          "\"GameTransform\":{},\"GameVelocity\":{},"
+                          "\"GameHealth\":{\"current\":1,\"maximum\":1}}}";
+    const char *plain = "{\"name\":\"Plain\",\"behaviors\":[\"Pinged\"],"
+                        "\"components\":{"
+                        "\"GameTransform\":{},\"GameVelocity\":{}}}";
+    ecs_entity first = fixture_spawn(&f, healthy), other = fixture_spawn(&f, plain);
+    ecs_entity second = fixture_spawn(&f, healthy);
+    fixture_spawn(&f, "{\"name\":\"Caster\",\"behaviors\":[\"Broadcast\"],\"components\":{}}");
+    fixture_steps(&f, 1);
+    assert(GAME_GameVelocity_get_const(f.world, first)->x == 3);
+    assert(GAME_GameVelocity_get_const(f.world, second)->x == 3);
+    assert(GAME_GameVelocity_get_const(f.world, other)->x == 0);
+    fixture_free(&f);
+}
+
+/* Begin copies the placed Transform into Velocity. */
+static behavior_asset *placed_behavior()
+{
+    behavior_asset *asset = behavior("Placed");
+    graph *g = asset->graph;
+    node *set = add(g, "Set_GameVelocity");
+    flow(g, event(g, "Begin"), set);
+    wire(g, add(g, "Get_GameTransform"), 0, set, 1);
+    return asset;
+}
+
+static void register_prototype(run_fixture *f, const char *json)
+{
+    game_prototype_registry registry = { GAME_REGISTRY_COMPONENTS,
+                                         GAME_REGISTRY_COMPONENT_COUNT };
+    char error[256];
+    game_prototype *prototype = game_prototype_load(json, &registry, error, sizeof error);
+    assert(prototype && game_entities_register(f->live->entities, prototype) == 0);
+    game_prototype_free(prototype);
+}
+
+typedef struct
+{
+    run_fixture f;
+    ecs_entity cave, scatter;
+} scatter_fixture;
+
+static scatter_fixture scatter_new(int seed, GameScatter rule, float view)
+{
+    scatter_fixture s = { .f = fixture_new() };
+    engine_pin_run_seed(s.f.runtime, seed);
+    fixture_behavior(&s.f, placed_behavior());
+    register_prototype(&s.f, "{\"name\":\"Crystal\",\"behaviors\":[\"Placed\"],\"components\":{\"GameTransform\":{},\"GameVelocity\":{}}}");
+    s.cave = cave_terrain(&s.f, (MaterialTerrain){ .width = 512, .height = 512 });
+    GameGlobalBinding binding = { "Cave" };
+    assert(
+        ecs_world_record_add(s.f.world, s.cave, GAME_COMPONENT_GameGlobalBinding.id, &binding, 0) == ECS_OK
+    );
+    ecs_entity camera = ecs_world_create_entity(s.f.world);
+    GameCamera lens = { .width = view, .height = view };
+    assert(
+        ecs_world_record_add(s.f.world, camera, GAME_COMPONENT_GameCamera.id, &lens, 0) == ECS_OK
+    );
+    assert(GAME_GameTransform_add(s.f.world, camera, 0) == ECS_OK);
+    s.scatter = ecs_world_create_entity(s.f.world);
+    rule.prototype = "Crystal";
+    rule.min = (CF_V2){ -250, -250 };
+    rule.max = (CF_V2){ 250, 250 };
+    rule.cell = 20;
+    assert(
+        ecs_world_record_add(s.f.world, s.scatter, GAME_COMPONENT_GameScatter.id, &rule, 0) == ECS_OK
+    );
+    assert(ecs_world_apply_commands(s.f.world) == ECS_OK);
+    return s;
+}
+
+/* The scattered entities: those spawned with a Velocity. */
+static ecs_entity *scattered(run_fixture *f)
+{
+    ecs_entity *out = NULL, entity;
+    ecs_component_id id = GAME_COMPONENT_GameVelocity.id;
+    ecs_query query;
+    assert(ecs_query_begin(f->world, &query, &id, 1) == ECS_OK);
+    while (ecs_query_next(&query, &entity)) {
+        apush(out, entity);
+    }
+    ecs_query_end(&query);
+    return out;
+}
+
+static uint64_t placement_hash(run_fixture *f)
+{
+    ecs_entity *spawned = scattered(f);
+    uint64_t hash = UINT64_C(14695981039346656037);
+    for (int i = 0; i < acount(spawned); i++) {
+        CF_V2 at = *GAME_GameTransform_get_const(f->world, spawned[i]);
+        const unsigned char *bytes = (const unsigned char *)&at;
+        for (size_t b = 0; b < sizeof at; b++) {
+            hash = (hash ^ bytes[b]) * UINT64_C(1099511628211);
+        }
+    }
+    afree(spawned);
+    return hash;
+}
+
+static void scatter_floor()
+{
+    GameScatter floor = { .terrain = "Cave",
+                          .chance = 1,
+                          .placement = GAME_SCATTER_FLOOR,
+                          .clearance = 30,
+                          .salt = 3 };
+    scatter_fixture s = scatter_new(11, floor, 200);
+    fixture_steps(&s.f, 1);
+    ecs_entity *spawned = scattered(&s.f);
+    int count = acount(spawned);
+    assert(count > 3);
+    for (int i = 0; i < count; i++) {
+        CF_V2 at = *GAME_GameTransform_get_const(s.f.world, spawned[i]);
+        /* Begin ran after placement. */
+        assert(cf_distance(*GAME_GameVelocity_get_const(s.f.world, spawned[i]), at) == 0);
+        /* On the rock's upper surface, facing up out of it (+y is down). */
+        assert(terrain_at(&s.f, s.cave, at.x, at.y).solid);
+        assert(!terrain_at(&s.f, s.cave, at.x, at.y - .5f).solid);
+        assert(sinf(GAME_GameOrientation_get_const(s.f.world, spawned[i])->radians) < 0);
+    }
+    uint64_t first = placement_hash(&s.f);
+    /* Each cell tries once per run; destroyed spawns do not return. */
+    assert(ecs_world_destroy_entity(s.f.world, spawned[0]) == ECS_OK);
+    assert(ecs_world_apply_commands(s.f.world) == ECS_OK);
+    afree(spawned);
+    fixture_steps(&s.f, 3);
+    spawned = scattered(&s.f);
+    assert(acount(spawned) == count - 1);
+    afree(spawned);
+    /* A new run, restarted as hosts do, tries every cell again. */
+    engine_reset(s.f.runtime);
+    game_entities_reset(s.f.live->entities);
+    s.f.time = 0;
+    fixture_steps(&s.f, 1);
+    assert(placement_hash(&s.f) == first);
+    fixture_free(&s.f);
+    /* The same seed places the same; another seed places elsewhere. */
+    s = scatter_new(11, floor, 200);
+    fixture_steps(&s.f, 1);
+    assert(placement_hash(&s.f) == first);
+    fixture_free(&s.f);
+    s = scatter_new(12, floor, 200);
+    fixture_steps(&s.f, 1);
+    assert(placement_hash(&s.f) != first);
+    fixture_free(&s.f);
+}
+
+static void scatter_placements()
+{
+    GameScatter air = { .terrain = "Cave",
+                        .chance = 1,
+                        .placement = GAME_SCATTER_AIR,
+                        .clearance = 10 };
+    GameScatter embedded = air;
+    embedded.placement = GAME_SCATTER_EMBEDDED;
+    embedded.clearance = 4;
+    GameScatter wall = air;
+    wall.placement = GAME_SCATTER_WALL;
+    wall.clearance = 25;
+    GameScatter rules[] = { air, embedded, wall };
+    for (int r = 0; r < 3; r++) {
+        scatter_fixture s = scatter_new(5, rules[r], 300);
+        fixture_steps(&s.f, 1);
+        ecs_entity *spawned = scattered(&s.f);
+        assert(acount(spawned) > 2);
+        for (int i = 0; i < acount(spawned); i++) {
+            CF_V2 at = *GAME_GameTransform_get_const(s.f.world, spawned[i]);
+            game_terrain_sample here = terrain_at(&s.f, s.cave, at.x, at.y);
+            const GameOrientation *heading = GAME_GameOrientation_get_const(s.f.world, spawned[i]);
+            if (rules[r].placement == GAME_SCATTER_AIR) {
+                assert(here.distance >= 10 && !heading);
+            }
+            if (rules[r].placement == GAME_SCATTER_EMBEDDED) {
+                assert(here.distance <= -4 && !heading);
+            }
+            if (rules[r].placement == GAME_SCATTER_WALL) {
+                assert(here.solid && fabsf(cosf(heading->radians)) > .3f);
+            }
+        }
+        afree(spawned);
+        fixture_free(&s.f);
+    }
+    /* A camera over many cells spreads their tries across steps. */
+    GameScatter open = { .chance = 1, .placement = GAME_SCATTER_AIR };
+    scatter_fixture s = scatter_new(5, open, 2000);
+    int counts[3];
+    for (int i = 0; i < 3; i++) {
+        fixture_steps(&s.f, 1);
+        ecs_entity *spawned = scattered(&s.f);
+        counts[i] = acount(spawned);
+        afree(spawned);
+    }
+    assert(counts[0] == 256 && counts[1] == 512 && counts[2] == 625);
+    fixture_free(&s.f);
+}
+
 void test_run_capabilities()
 {
     seeded_randomness();
     run_seed();
     terrain_queries();
-    puts("Run capabilities PASS: seeded per-world randomness, run seeds, seed_from_run terrain, restart requests, Sample Field and Terrain Distance");
+    time_scale();
+    camera_trauma();
+    components_on_any_entity();
+    follow_rules();
+    broadcast();
+    scatter_floor();
+    scatter_placements();
+    puts("Run capabilities PASS: seeded per-world randomness, run seeds, seed_from_run terrain, restart requests, Sample Field, Terrain Distance, time scale, hit-stop, camera trauma, components on any entity, follow rules, broadcast events and scatter placement");
 }

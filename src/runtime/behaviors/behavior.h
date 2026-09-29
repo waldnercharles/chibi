@@ -174,6 +174,9 @@ int game_behavior_last_pump_count(const game_behavior_world *world);
 void game_behavior_set_time(game_behavior_world *world, double simulation_time);
 bool game_behavior_paused(const game_behavior_world *world);
 void game_behavior_set_delta_seconds(game_behavior_world *world, double delta_seconds);
+/* The clock GameUnscaledTime entities' behaviors read: real time, unaffected
+ * by the run's time scale. */
+void game_behavior_set_real_time(game_behavior_world *world, double real_time, double delta_seconds);
 void game_behavior_set_parallel_for(
     game_behavior_world *world,
     flow_parallel_for_fn parallel_for,

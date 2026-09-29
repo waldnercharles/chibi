@@ -64,6 +64,63 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameCollider)
 }
 GameCollider;
 
+typedef enum
+{
+    GAME_FOLLOW_ATTACH,
+    GAME_FOLLOW_CHAIN
+} GameFollowMode;
+
+/* Keeps this entity on target after each physics step. The anchor is the
+ * target's Transform plus offset turned by the target's Orientation. Attach
+ * pins the entity at the anchor (turrets, boss parts); Chain keeps it distance
+ * from the anchor along the line between them (worm segments, tails). With
+ * inherit_heading, Attach copies the target's Orientation and Chain turns to
+ * face the anchor at stiffness per second, or at once when zero. Velocity
+ * copies the target's, so bodies move with it through contacts. A destroyed
+ * target clears target and the entity stays where it is. */
+typedef NODE_COMPONENT_TYPE_DENSE(GameFollow)
+{
+    uint64_t target NODE_HANDLE(ecs.entity);
+    GameFollowMode mode;
+    CF_V2 offset;
+    float distance;
+    float stiffness;
+    bool inherit_heading;
+}
+GameFollow;
+
+typedef enum
+{
+    GAME_SCATTER_AIR,
+    GAME_SCATTER_FLOOR,
+    GAME_SCATTER_CEILING,
+    GAME_SCATTER_WALL,
+    GAME_SCATTER_EMBEDDED
+} GameScatterPlacement;
+
+/* Places prototype on a grid of cell-sized squares over [min, max] as cameras
+ * come within radius of it. Each cell tries one jittered point once per run,
+ * chosen by the run seed, salt and the cell, and spawns there with probability
+ * chance when the point fits terrain, the MaterialTerrain entity whose
+ * GameGlobalBinding name this is. Air needs clearance of open space; Floor,
+ * Ceiling and Wall need rock within clearance below (+y), above or beside, and
+ * snap onto it with Orientation facing out of the rock; Embedded needs rock
+ * clearance deep. Spawns are never despawned or replaced. */
+typedef NODE_COMPONENT_TYPE_DENSE(GameScatter)
+{
+    const char *prototype;
+    const char *terrain;
+    CF_V2 min;
+    CF_V2 max;
+    float cell;
+    float chance;
+    GameScatterPlacement placement;
+    float clearance;
+    int salt;
+    float radius;
+}
+GameScatter;
+
 /* Target velocity with finite acceleration; physics owns actual velocity. */
 typedef NODE_COMPONENT_TYPE_DENSE(GameDrive)
 {
@@ -684,6 +741,29 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameCamera)
 }
 GameCamera;
 
+/* Trauma-driven shake for a GameCamera's view. Add Camera Trauma raises
+ * trauma (0 to 1) and it falls by decay per real second. The view moves up to
+ * max_offset units along smooth noise, frequency cells per second, scaled by
+ * trauma squared; the camera entity itself stays put. */
+typedef NODE_COMPONENT_TYPE_DENSE(GameCameraShake)
+{
+    float trauma;
+    float decay;
+    float max_offset;
+    float frequency;
+}
+GameCameraShake;
+
+/* Behaviors on this entity tick in real time: Tick's Delta, Delta Time and
+ * Delay ignore Set Time Scale and Hit Stop, so menus keep running while the
+ * game is paused at scale 0. The clock switches when the entity's behaviors
+ * have no waiting runs. Disabled follows the run's time scale again. */
+typedef NODE_COMPONENT_TYPE_DENSE(GameUnscaledTime)
+{
+    bool disabled;
+}
+GameUnscaledTime;
+
 typedef enum
 {
     GAME_CONTROL_NONE,
@@ -728,6 +808,13 @@ typedef enum
     GAME_CONTROL_PAD_LEFT_TRIGGER,
     GAME_CONTROL_PAD_RIGHT_TRIGGER,
     GAME_CONTROL_AIM_STICK,
+    GAME_CONTROL_DIGIT_1,
+    GAME_CONTROL_DIGIT_2,
+    GAME_CONTROL_DIGIT_3,
+    GAME_CONTROL_DIGIT_4,
+    /* Held for the frames the wheel turns: one press per notch frame. */
+    GAME_CONTROL_WHEEL_UP,
+    GAME_CONTROL_WHEEL_DOWN,
     GAME_CONTROL_COUNT,
 } GameControl;
 

@@ -371,7 +371,7 @@ static int refresh_call_reference(edit_context *ctx, node *call, uint64_t refere
 static int refresh_event(edit_context *ctx, node *n)
 {
     if (!n->reference_name || (n->desc != &NODE_Event && n->desc != &NODE_CallEvent &&
-                               strcmp(n->desc->name, "Send Event"))) {
+                               !graph_event_sends(n->desc))) {
         return 0;
     }
     if (n->desc == &NODE_Event && graph_host_event_apply(ctx->graph, n)) {

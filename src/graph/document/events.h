@@ -36,6 +36,9 @@ bool graph_host_event_is(const char *name, graph_host_event event);
 /* Event-definition variables declare payload fields. Existing connected fields
  * retain IDs; incompatible/removal edits are rejected atomically. */
 int graph_event_apply(graph *g, node *n, const behavior_asset *definition);
+/* Send Event and Send Event To All: an event definition's payload follows
+ * Exec and their target input. */
+bool graph_event_sends(const node_desc *desc);
 bool graph_event_host_name(const char *name);
 /* Gives an Event node named for a host event the payload pins it lacks. */
 int graph_host_event_apply(graph *g, node *n);

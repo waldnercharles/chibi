@@ -268,7 +268,7 @@ const char *studio_event_renameable(const node *n)
 {
     const char *name = n && n->desc ? n->desc->name : "";
     bool event = !strcmp(name, "Event") || !strcmp(name, "Call Event") ||
-                 !strcmp(name, "Send Event");
+                 (n && n->desc && graph_event_sends(n->desc));
     return event && n->reference_name && n->reference_name[0] &&
                    !graph_event_host_name(n->reference_name)
              ? n->reference_name

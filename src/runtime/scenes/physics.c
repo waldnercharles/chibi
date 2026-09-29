@@ -308,6 +308,20 @@ int game_physics_workers(const game_physics *physics)
     return physics->active_workers;
 }
 
+void game_physics_place(game_physics *physics, ecs_entity entity, GameTransform position, float angle)
+{
+    if (entity.slot >= (unsigned)acount(physics->bodies)) {
+        return;
+    }
+    physics_body *body = &physics->bodies[entity.slot];
+    if (!body->body.index1 || !same_entity(body->entity, entity)) {
+        return;
+    }
+    body->end = (b2Transform){ { position.x, position.y }, b2MakeRot(angle) };
+    body->angle = angle;
+    b2Body_SetTransform(body->body, body->end.p, body->end.q);
+}
+
 bool game_physics_interpolate(const game_physics *physics, ecs_entity entity, float alpha, GameTransform *out)
 {
     assert(out && isfinite(alpha));

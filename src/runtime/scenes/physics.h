@@ -41,6 +41,9 @@ const char *game_physics_error(const game_physics *physics);
 /* Optional phase timers for the last physics step; no clock reads when off. */
 void game_physics_set_profiling(game_physics *physics, bool enabled);
 const game_physics_profile *game_physics_last_profile(const game_physics *physics);
+/* Moves an entity's body to where a step's native constraint put it, as its
+ * solved end pose, so presentation interpolates to it. No body: no change. */
+void game_physics_place(game_physics *physics, ecs_entity entity, GameTransform position, float angle);
 /* Borrow solved poses for presentation without modifying authoritative ECS. */
 bool game_physics_interpolate(const game_physics *physics, ecs_entity entity, float alpha, GameTransform *out);
 

@@ -618,7 +618,7 @@ static void struct_authoring()
     node *add = component(&f, &NODE_AddComponent, "GameInput");
     exec(&f, f.event, 0, add);
     pin_value aim = { .type = PIN_NAME, .str = "GameAim" };
-    assert(graph_set_pin_default(f.g, add, 0, 1, &aim) == 0);
+    assert(graph_set_pin_default(f.g, add, 0, component_node_setting(add), &aim) == 0);
     assert(graph_exec_input_count(f.g, add, 0) == 1);
     assert(!strcmp(component_node_key(add), "GAME.GameAim"));
     node *removal = component(&f, &NODE_RemoveComponent, "GameAim");

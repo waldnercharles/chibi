@@ -52,6 +52,7 @@ static const struct
     { "GameShader", "shape", REFERENCE_ASSET_SHAPE, REFERENCE_BIND },
     { "GameUi", "document", REFERENCE_ASSET_UI, REFERENCE_BIND },
     { "GameSpawnRequest", "prototype", REFERENCE_ASSET_PROTOTYPE, REFERENCE_SPAWN },
+    { "GameScatter", "prototype", REFERENCE_ASSET_PROTOTYPE, REFERENCE_SPAWN },
     { "GameActionBinding", "action", REFERENCE_ASSET_EVENT, REFERENCE_SEND },
 };
 
@@ -447,7 +448,7 @@ static void add_event(const site *s)
 {
     const node *n = s->node;
     bool handle = !strcmp(n->desc->name, "Event");
-    bool send = n->desc == &NODE_CallEvent || !strcmp(n->desc->name, "Send Event");
+    bool send = n->desc == &NODE_CallEvent || graph_event_sends(n->desc);
     if ((handle || send) && n->reference_name && n->reference_name[0]) {
         add_at(s, handle ? REFERENCE_HANDLE : REFERENCE_SEND, event_symbol(s->index, n->reference_name), 0);
     }

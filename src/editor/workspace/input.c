@@ -54,6 +54,8 @@ static void key_changed(CF_KeyButton key, bool down)
     int source = GAME_CONTROL_NONE;
     if (key >= CF_KEY_A && key <= CF_KEY_Z) {
         source = GAME_CONTROL_A + key - CF_KEY_A;
+    } else if (key >= CF_KEY_1 && key <= CF_KEY_4) {
+        source = GAME_CONTROL_DIGIT_1 + key - CF_KEY_1;
     } else {
         switch (key) {
             case CF_KEY_SPACE: source = GAME_CONTROL_SPACE; break;
@@ -198,6 +200,9 @@ static bool control_down(GameControl source)
     if (source >= GAME_CONTROL_PAD_A && source <= GAME_CONTROL_PAD_Y) {
         return cf_joypad_button_down(0, CF_JOYPAD_BUTTON_A + source - GAME_CONTROL_PAD_A);
     }
+    if (source >= GAME_CONTROL_DIGIT_1 && source <= GAME_CONTROL_DIGIT_4) {
+        return cf_key_down(CF_KEY_1 + source - GAME_CONTROL_DIGIT_1);
+    }
     switch (source) {
         case GAME_CONTROL_MOUSE_LEFT:
             return cf_mouse_down(CF_MOUSE_BUTTON_LEFT);
@@ -215,6 +220,8 @@ static bool control_down(GameControl source)
             return cf_joypad_axis(0, CF_JOYPAD_AXIS_TRIGGERLEFT) > 8192;
         case GAME_CONTROL_PAD_RIGHT_TRIGGER:
             return cf_joypad_axis(0, CF_JOYPAD_AXIS_TRIGGERRIGHT) > 8192;
+        case GAME_CONTROL_WHEEL_UP: return cf_mouse_wheel_motion() > 0;
+        case GAME_CONTROL_WHEEL_DOWN: return cf_mouse_wheel_motion() < 0;
         case GAME_CONTROL_AIM_STICK: {
             float x, y;
             return app_input_aim(&x, &y);

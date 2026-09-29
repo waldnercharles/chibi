@@ -234,6 +234,8 @@ What has landed, and its contract. Every node is in searchNodes and Studio.
   then snaps to the crossing and faces the terrain gradient. Spawns are owned
   like Spawn Prototype's (a restart removes them) and get Transform and
   Orientation before Begin. Bounded to 256 new cells per step.
+- **Controls.** `GameControl` gains Digit 1–4 and Wheel Up/Wheel Down for
+  `GameActionBinding` (a wheel notch holds its control for that frame).
 
 ## Status
 

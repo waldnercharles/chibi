@@ -776,6 +776,13 @@ typedef enum
     GAME_CONTROL_PAD_LEFT_TRIGGER,
     GAME_CONTROL_PAD_RIGHT_TRIGGER,
     GAME_CONTROL_AIM_STICK,
+    GAME_CONTROL_DIGIT_1,
+    GAME_CONTROL_DIGIT_2,
+    GAME_CONTROL_DIGIT_3,
+    GAME_CONTROL_DIGIT_4,
+    /* Held for the frames the wheel turns: one press per notch frame. */
+    GAME_CONTROL_WHEEL_UP,
+    GAME_CONTROL_WHEEL_DOWN,
     GAME_CONTROL_COUNT,
 } GameControl;
 

@@ -295,7 +295,7 @@ int ed_connection_specs_valid(const pin_spec *output, const pin_spec *input, pin
     if (output->kind != expected_kind || input->kind != expected_kind) {
         return 0;
     }
-    if (expected_kind != PIN_DATA || (output->flags & PIN_FLAG_WILDCARD) ||
+    if (expected_kind != PIN_DATA || pin_wildcard_adopts(output, input) ||
         (input->flags & PIN_FLAG_WILDCARD) || pin_types_compatible(output, input)) {
         return 1;
     }
@@ -343,7 +343,7 @@ int ed_connect(editor *e, const ed_pin_view *a, const ed_pin_view *b)
     int generic_target = out_spec->kind == PIN_DATA &&
                          (in_spec->flags & PIN_FLAG_WILDCARD);
     if (out_spec->kind == PIN_DATA && !generic_target &&
-        (!(out_spec->flags & PIN_FLAG_WILDCARD) ||
+        (!pin_wildcard_adopts(out_spec, in_spec) ||
          (in_spec->type == PIN_STR && conversion_for_pins(out_spec, in_spec))) &&
         !pin_types_compatible(out_spec, in_spec)) {
         const node_desc *conv = conversion_for_pins(out_spec, in_spec);

@@ -826,9 +826,9 @@ graphs:
     type: Set Global Variable
     inputs:
       Name: ToastSerial
-      Value: {type: int}
+      Value: {type: double}
     outputs:
-      Value: {type: int}
+      Value: {type: double}
   - id: 1595
     type: Play Sound
     inputs: {Frequency: 523.0, End Frequency: 1046.0, Duration: 0.5, Volume: 0.22}
@@ -950,6 +950,7 @@ graphs:
   - {from: 1560.Name, to: 1563.Value}
   - {from: 1563.Then, to: 1589.Exec}
   - {from: 1569.Value, to: 1586.s}
+  - {from: 1586.Result, to: 1589.Value}
   - {from: 1589.Then, to: 1595.Exec}
   - {from: 1595.Then, to: 1613.Exec}
   - {from: 1604.Then, to: 1613.Exec}

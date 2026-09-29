@@ -1156,6 +1156,46 @@ static const node_desc *expression_component_set(const char *key, const char *fi
     return NULL;
 }
 
+static bool scalar_number(const pin_spec *pin)
+{
+    return pin->container == PIN_CONTAINER_SINGLE && pin->type >= PIN_I8 &&
+           pin->type <= PIN_F64;
+}
+
+/* Behavior arithmetic runs in double. A number of another width converts on
+   its way in or out, so it neither retypes an operation away from its
+   literals nor reaches an int as raw bits. */
+static int connect_number(graph *g, value_source from, node *to, int pin)
+{
+    const pin_spec *out = &from.node->output_pins[from.pin];
+    const pin_spec *in = &to->input_pins[pin];
+    bool numbers = scalar_number(out) && scalar_number(in) && out->type != in->type;
+    bool widened = numbers && in->type == PIN_F64 && (in->flags & PIN_FLAG_WILDCARD);
+    const node_desc *conversion = numbers ? conversion_for(out->type, in->type) : NULL;
+    int rc = graph_connect_data_conversion(g, from.node, from.pin, to, pin, conversion);
+    /* A float shares the Real category, so it connects as is; the operation
+       stays double. */
+    return rc || !widened || conversion
+             ? rc
+             : graph_set_pin_type(g, to, 0, pin, PIN_F64, "double");
+}
+
+/* An assignment's Result has the category it writes: an int field assigned
+   a double calculation reads back as the int it stores. */
+static int connect_result(graph *g, value_source from, node *ret, int pin, const pin_spec *written)
+{
+    const pin_spec *out = &from.node->output_pins[from.pin];
+    if (!written || !scalar_number(written) || !scalar_number(out) ||
+        pin_compatible(written, out)) {
+        return graph_connect_data(g, from.node, from.pin, ret, pin);
+    }
+    int rc = graph_set_pin_type(g, ret, 0, pin, written->type, written->type_name);
+    assert(rc == 0);
+    (void)rc;
+    ret->input_pins[pin].flags &= ~PIN_FLAG_WILDCARD;
+    return connect_number(g, from, ret, pin);
+}
+
 static int expression_replace_struct_field(
     graph *target,
     value_source base,
@@ -1231,7 +1271,7 @@ static int expression_replace_struct_field(
                 value = replacement;
             }
         }
-        if (graph_connect_data(target, value.node, value.pin, make, i) != 0) {
+        if (connect_number(target, value, make, i) != 0) {
             snprintf(error->message, sizeof error->message, "Could not connect member assignment");
             return -1;
         }
@@ -1655,31 +1695,6 @@ static int lower_dataflow(
     return result;
 }
 
-/* Generation allocates the function's IDs in one run, starting at first_id. */
-static bool scalar_number(const pin_spec *pin)
-{
-    return pin->container == PIN_CONTAINER_SINGLE && pin->type >= PIN_I8 &&
-           pin->type <= PIN_F64;
-}
-
-/* Behavior arithmetic runs in double. A number of another width converts on
-   its way in or out, so it neither retypes an operation away from its
-   literals nor reaches an int as raw bits. */
-static int connect_number(graph *g, value_source from, node *to, int pin)
-{
-    const pin_spec *out = &from.node->output_pins[from.pin];
-    const pin_spec *in = &to->input_pins[pin];
-    bool numbers = scalar_number(out) && scalar_number(in) && out->type != in->type;
-    bool widened = numbers && in->type == PIN_F64 && (in->flags & PIN_FLAG_WILDCARD);
-    const node_desc *conversion = numbers ? conversion_for(out->type, in->type) : NULL;
-    int rc = graph_connect_data_conversion(g, from.node, from.pin, to, pin, conversion);
-    /* A float shares the Real category, so it connects as is; the operation
-       stays double. */
-    return rc || !widened || conversion
-             ? rc
-             : graph_set_pin_type(g, to, 0, pin, PIN_F64, "double");
-}
-
 /* A double result reaching an integer or float input, such as an int field
    it assigns, converts there instead of passing raw bits. */
 static void convert_numbers(graph *g)
@@ -1709,6 +1724,7 @@ static void convert_numbers(graph *g)
     }
 }
 
+/* Generation allocates the function's IDs in one run, starting at first_id. */
 static behavior_asset *generate(
     behavior_asset *asset,
     graph *caller,
@@ -2146,6 +2162,7 @@ static behavior_asset *generate(
         return NULL;
     }
 
+    const pin_spec *written = NULL;
     if (mode == GRAPH_EXPRESSION_ACTION) {
         node *setter = NULL;
         value_source returned = final;
@@ -2164,6 +2181,8 @@ static behavior_asset *generate(
             result = fail(&p, "Assignment target must resolve to a writable reference");
         }
         bool member_write = left->field[0] || left->index_count;
+        written = member_write ? NULL
+                               : &entry->output_pins[symbol_pins[left->symbol]];
         if (binding && binding->kind == PIN_BINDING_VARIABLE) {
             behavior_variable
                 *variable = behavior_asset_find_variable_by_id(asset, binding->variable_id);
@@ -2314,8 +2333,7 @@ static behavior_asset *generate(
     if (result < 0 || result_pin < 0) {
         result = fail(&p, "Generated expression has no Result output");
     }
-    if (result >= 0 &&
-        graph_connect_data(target, final.node, final.pin, ret, result_pin) != 0) {
+    if (result >= 0 && connect_result(target, final, ret, result_pin, written) != 0) {
         result = fail(&p, "Could not connect generated Result");
     }
     if (result < 0) {
@@ -2495,6 +2513,33 @@ static void retype_result(graph *caller, node *call, int output, const pin_spec 
     afree(consumers);
 }
 
+/* Retypes a call's input and keeps its wire, converting where needed: an int
+   still feeds an input the source now reads as a double. */
+static void retype_input(graph *caller, node *call, int input, pin_type type, const char *type_name)
+{
+    node *source = NULL;
+    int source_pin = -1;
+    bool wired = graph_input_source(caller, call, input, &source, &source_pin);
+    int rc = graph_set_pin_type(caller, call, 0, input, type, type_name);
+    assert(rc == 0);
+    node *kept = NULL;
+    int kept_pin = -1;
+    if (!wired || graph_input_source(caller, call, input, &kept, &kept_pin)) {
+        return;
+    }
+    const node_desc *conversion = conversion_for_pins(
+        &source->output_pins[source_pin],
+        &call->input_pins[input]
+    );
+    if (conversion) {
+        /* The source types the input now, so its wire converts to it. */
+        call->input_pins[input].flags &= ~PIN_FLAG_WILDCARD;
+        rc = graph_connect_data_conversion(caller, source, source_pin, call, input, conversion);
+        assert(rc == 0);
+    }
+    (void)rc;
+}
+
 static void synchronize_call(graph *caller, node *call, const node *entry, const node *ret)
 {
     bool entry_exec = false;
@@ -2578,16 +2623,13 @@ static void synchronize_call(graph *caller, node *call, const node *entry, const
             retype = true;
         }
         if (retype) {
-            int rc = graph_set_pin_type(
+            retype_input(
                 caller,
                 call,
-                0,
                 parameter,
                 entry_pin->flags & PIN_FLAG_WILDCARD ? PIN_F64 : entry_pin->type,
                 entry_pin->flags & PIN_FLAG_WILDCARD ? "double" : entry_pin->type_name
             );
-            assert(rc == 0);
-            (void)rc;
         }
         parameter++;
     }

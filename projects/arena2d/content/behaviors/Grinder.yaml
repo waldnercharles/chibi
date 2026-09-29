@@ -4,18 +4,18 @@ id_counter: 2918
 description: 'The Basalt Throat''s guardian: a worm that wakes when the player enters its arena, prowls, telegraphs a charge, burrows through the walls carving tunnels, fans needlets, and grows frantic at half health.'
 owner_type: ecs.entity
 variables:
-- {id: 1, name: carve, type: float}
-- {id: 2, name: cy, type: float}
-- {id: 3, name: angle, type: float}
-- {id: 4, name: atk, type: float}
-- {id: 5, name: cx, type: float}
-- {id: 6, name: t, type: float}
-- {id: 7, name: fired, type: float}
-- {id: 8, name: charge, type: float}
-- {id: 9, name: phase2, type: float}
-- {id: 10, name: state, type: float}
-- {id: 11, name: lx, type: float}
-- {id: 12, name: ly, type: float}
+- {id: 1, name: state, type: float}
+- {id: 2, name: atk, type: float}
+- {id: 3, name: carve, type: float}
+- {id: 4, name: phase2, type: float}
+- {id: 5, name: angle, type: float}
+- {id: 6, name: fired, type: float}
+- {id: 7, name: lx, type: float}
+- {id: 8, name: cx, type: float}
+- {id: 9, name: cy, type: float}
+- {id: 10, name: ly, type: float}
+- {id: 11, name: t, type: float}
+- {id: 12, name: charge, type: float}
 - {id: 13, name: prev, type: handle, type_name: ecs.entity}
 graphs:
 - kind: event
@@ -31,7 +31,7 @@ graphs:
       cx:
         id: 179
         type: float
-        binding: {kind: variable, variable_id: 5, source_asset: Grinder}
+        binding: {kind: variable, variable_id: 8, source_asset: Grinder}
       pos:
         type: struct
         type_name: GameTransform
@@ -48,7 +48,7 @@ graphs:
       cy:
         id: 208
         type: float
-        binding: {kind: variable, variable_id: 2, source_asset: Grinder}
+        binding: {kind: variable, variable_id: 9, source_asset: Grinder}
       pos:
         type: struct
         type_name: GameTransform
@@ -116,7 +116,7 @@ graphs:
       t:
         id: 319
         type: float
-        binding: {kind: variable, variable_id: 6, source_asset: Grinder}
+        binding: {kind: variable, variable_id: 11, source_asset: Grinder}
       dt:
         type: double
         binding: {kind: delta_time}
@@ -136,7 +136,7 @@ graphs:
     inputs:
       state:
         type: double
-        binding: {kind: variable, variable_id: 10, source_asset: Grinder}
+        binding: {kind: variable, variable_id: 1, source_asset: Grinder}
     outputs:
       Result: {type: double}
   - id: 357
@@ -162,7 +162,7 @@ graphs:
         binding: {kind: component_field, component: GAME.GameDrive, field: target}
       t:
         type: double
-        binding: {kind: variable, variable_id: 6, source_asset: Grinder}
+        binding: {kind: variable, variable_id: 11, source_asset: Grinder}
     outputs:
       Then: {id: 418, kind: exec}
       Result: {id: 416, type: struct, type_name: CF_V2}
@@ -174,10 +174,10 @@ graphs:
       p: {type: struct, type_name: GameTransform}
       cx:
         type: float
-        binding: {kind: variable, variable_id: 5, source_asset: Grinder}
+        binding: {kind: variable, variable_id: 8, source_asset: Grinder}
       cy:
         type: float
-        binding: {kind: variable, variable_id: 2, source_asset: Grinder}
+        binding: {kind: variable, variable_id: 9, source_asset: Grinder}
     outputs:
       Result: {type: bool}
   - {id: 512, type: Branch}
@@ -190,7 +190,7 @@ graphs:
       state:
         id: 528
         type: float
-        binding: {kind: variable, variable_id: 10, source_asset: Grinder}
+        binding: {kind: variable, variable_id: 1, source_asset: Grinder}
     outputs:
       Then: {id: 531, kind: exec}
       Result: {id: 529, type: float}
@@ -203,7 +203,7 @@ graphs:
       t:
         id: 558
         type: float
-        binding: {kind: variable, variable_id: 6, source_asset: Grinder}
+        binding: {kind: variable, variable_id: 11, source_asset: Grinder}
     outputs:
       Then: {id: 561, kind: exec}
       Result: {id: 559, type: float}
@@ -247,13 +247,13 @@ graphs:
       angle:
         id: 642
         type: float
-        binding: {kind: variable, variable_id: 3, source_asset: Grinder}
+        binding: {kind: variable, variable_id: 5, source_asset: Grinder}
       dt:
         type: double
         binding: {kind: delta_time}
       phase2:
         type: double
-        binding: {kind: variable, variable_id: 9, source_asset: Grinder}
+        binding: {kind: variable, variable_id: 4, source_asset: Grinder}
     outputs:
       Then: {id: 647, kind: exec}
       Result: {id: 645, type: float}
@@ -270,16 +270,16 @@ graphs:
         binding: {kind: component_field, component: GAME.GameDrive, field: target}
       cx:
         type: float
-        binding: {kind: variable, variable_id: 5, source_asset: Grinder}
+        binding: {kind: variable, variable_id: 8, source_asset: Grinder}
       cy:
         type: float
-        binding: {kind: variable, variable_id: 2, source_asset: Grinder}
+        binding: {kind: variable, variable_id: 9, source_asset: Grinder}
       angle:
         type: double
-        binding: {kind: variable, variable_id: 3, source_asset: Grinder}
+        binding: {kind: variable, variable_id: 5, source_asset: Grinder}
       t:
         type: double
-        binding: {kind: variable, variable_id: 6, source_asset: Grinder}
+        binding: {kind: variable, variable_id: 11, source_asset: Grinder}
       pos:
         type: struct
         type_name: GameTransform
@@ -289,7 +289,7 @@ graphs:
         binding: {kind: component_field, component: GAME.GameMovement, field: speed}
       phase2:
         type: double
-        binding: {kind: variable, variable_id: 9, source_asset: Grinder}
+        binding: {kind: variable, variable_id: 4, source_asset: Grinder}
     outputs:
       Then: {id: 777, kind: exec}
       Result: {id: 775, type: struct, type_name: CF_V2}
@@ -301,10 +301,10 @@ graphs:
       t:
         type: double
         flags: 0
-        binding: {kind: variable, variable_id: 6, source_asset: Grinder}
+        binding: {kind: variable, variable_id: 11, source_asset: Grinder}
       phase2:
         type: double
-        binding: {kind: variable, variable_id: 9, source_asset: Grinder}
+        binding: {kind: variable, variable_id: 4, source_asset: Grinder}
     outputs:
       Result: {type: bool}
   - {id: 908, type: Branch}
@@ -317,7 +317,7 @@ graphs:
       atk:
         id: 928
         type: float
-        binding: {kind: variable, variable_id: 4, source_asset: Grinder}
+        binding: {kind: variable, variable_id: 2, source_asset: Grinder}
     outputs:
       Then: {id: 931, kind: exec}
       Result: {id: 929, type: float}
@@ -330,10 +330,10 @@ graphs:
       state:
         id: 1006
         type: float
-        binding: {kind: variable, variable_id: 10, source_asset: Grinder}
+        binding: {kind: variable, variable_id: 1, source_asset: Grinder}
       atk:
         type: double
-        binding: {kind: variable, variable_id: 4, source_asset: Grinder}
+        binding: {kind: variable, variable_id: 2, source_asset: Grinder}
     outputs:
       Then: {id: 1010, kind: exec}
       Result: {id: 1008, type: float}
@@ -346,7 +346,7 @@ graphs:
       t:
         id: 1081
         type: float
-        binding: {kind: variable, variable_id: 6, source_asset: Grinder}
+        binding: {kind: variable, variable_id: 11, source_asset: Grinder}
     outputs:
       Then: {id: 1084, kind: exec}
       Result: {id: 1082, type: float}
@@ -399,10 +399,10 @@ graphs:
       charge:
         id: 1272
         type: float
-        binding: {kind: variable, variable_id: 8, source_asset: Grinder}
+        binding: {kind: variable, variable_id: 12, source_asset: Grinder}
       t:
         type: double
-        binding: {kind: variable, variable_id: 6, source_asset: Grinder}
+        binding: {kind: variable, variable_id: 11, source_asset: Grinder}
     outputs:
       Then: {id: 1276, kind: exec}
       Result: {id: 1274, type: float}
@@ -414,7 +414,7 @@ graphs:
       t:
         type: double
         flags: 0
-        binding: {kind: variable, variable_id: 6, source_asset: Grinder}
+        binding: {kind: variable, variable_id: 11, source_asset: Grinder}
     outputs:
       Result: {type: bool}
   - {id: 1328, type: Branch}
@@ -427,7 +427,7 @@ graphs:
       lx:
         id: 1354
         type: float
-        binding: {kind: variable, variable_id: 11, source_asset: Grinder}
+        binding: {kind: variable, variable_id: 7, source_asset: Grinder}
       p: {type: struct, type_name: GameTransform}
       pos:
         type: struct
@@ -445,7 +445,7 @@ graphs:
       ly:
         id: 1406
         type: float
-        binding: {kind: variable, variable_id: 12, source_asset: Grinder}
+        binding: {kind: variable, variable_id: 10, source_asset: Grinder}
       p: {type: struct, type_name: GameTransform}
       pos:
         type: struct
@@ -463,7 +463,7 @@ graphs:
       state:
         id: 1448
         type: float
-        binding: {kind: variable, variable_id: 10, source_asset: Grinder}
+        binding: {kind: variable, variable_id: 1, source_asset: Grinder}
     outputs:
       Then: {id: 1451, kind: exec}
       Result: {id: 1449, type: float}
@@ -476,7 +476,7 @@ graphs:
       t:
         id: 1478
         type: float
-        binding: {kind: variable, variable_id: 6, source_asset: Grinder}
+        binding: {kind: variable, variable_id: 11, source_asset: Grinder}
     outputs:
       Then: {id: 1481, kind: exec}
       Result: {id: 1479, type: float}
@@ -496,13 +496,13 @@ graphs:
         binding: {kind: component_field, component: GAME.GameDrive, field: target}
       lx:
         type: float
-        binding: {kind: variable, variable_id: 11, source_asset: Grinder}
+        binding: {kind: variable, variable_id: 7, source_asset: Grinder}
       ly:
         type: float
-        binding: {kind: variable, variable_id: 12, source_asset: Grinder}
+        binding: {kind: variable, variable_id: 10, source_asset: Grinder}
       phase2:
         type: double
-        binding: {kind: variable, variable_id: 9, source_asset: Grinder}
+        binding: {kind: variable, variable_id: 4, source_asset: Grinder}
     outputs:
       Then: {id: 1545, kind: exec}
       Result: {id: 1543, type: struct, type_name: CF_V2}
@@ -515,7 +515,7 @@ graphs:
       charge:
         id: 1604
         type: float
-        binding: {kind: variable, variable_id: 8, source_asset: Grinder}
+        binding: {kind: variable, variable_id: 12, source_asset: Grinder}
     outputs:
       Then: {id: 1607, kind: exec}
       Result: {id: 1605, type: float}
@@ -527,7 +527,7 @@ graphs:
       t:
         type: double
         flags: 0
-        binding: {kind: variable, variable_id: 6, source_asset: Grinder}
+        binding: {kind: variable, variable_id: 11, source_asset: Grinder}
     outputs:
       Result: {type: bool}
   - {id: 1643, type: Branch}
@@ -540,7 +540,7 @@ graphs:
       state:
         id: 1659
         type: float
-        binding: {kind: variable, variable_id: 10, source_asset: Grinder}
+        binding: {kind: variable, variable_id: 1, source_asset: Grinder}
     outputs:
       Then: {id: 1662, kind: exec}
       Result: {id: 1660, type: float}
@@ -553,7 +553,7 @@ graphs:
       t:
         id: 1689
         type: float
-        binding: {kind: variable, variable_id: 6, source_asset: Grinder}
+        binding: {kind: variable, variable_id: 11, source_asset: Grinder}
     outputs:
       Then: {id: 1692, kind: exec}
       Result: {id: 1690, type: float}
@@ -566,7 +566,7 @@ graphs:
       charge:
         id: 1719
         type: float
-        binding: {kind: variable, variable_id: 8, source_asset: Grinder}
+        binding: {kind: variable, variable_id: 12, source_asset: Grinder}
     outputs:
       Then: {id: 1722, kind: exec}
       Result: {id: 1720, type: float}
@@ -583,19 +583,19 @@ graphs:
         binding: {kind: component_field, component: GAME.GameDrive, field: target}
       cx:
         type: float
-        binding: {kind: variable, variable_id: 5, source_asset: Grinder}
+        binding: {kind: variable, variable_id: 8, source_asset: Grinder}
       cy:
         type: float
-        binding: {kind: variable, variable_id: 2, source_asset: Grinder}
+        binding: {kind: variable, variable_id: 9, source_asset: Grinder}
       angle:
         type: double
-        binding: {kind: variable, variable_id: 3, source_asset: Grinder}
+        binding: {kind: variable, variable_id: 5, source_asset: Grinder}
       t:
         type: double
-        binding: {kind: variable, variable_id: 6, source_asset: Grinder}
+        binding: {kind: variable, variable_id: 11, source_asset: Grinder}
       phase2:
         type: double
-        binding: {kind: variable, variable_id: 9, source_asset: Grinder}
+        binding: {kind: variable, variable_id: 4, source_asset: Grinder}
       pos:
         type: struct
         type_name: GameTransform
@@ -614,7 +614,7 @@ graphs:
       t:
         type: double
         flags: 0
-        binding: {kind: variable, variable_id: 6, source_asset: Grinder}
+        binding: {kind: variable, variable_id: 11, source_asset: Grinder}
     outputs:
       Result: {type: bool}
   - {id: 1929, type: Branch}
@@ -627,7 +627,7 @@ graphs:
       angle:
         id: 1949
         type: float
-        binding: {kind: variable, variable_id: 3, source_asset: Grinder}
+        binding: {kind: variable, variable_id: 5, source_asset: Grinder}
     outputs:
       Then: {id: 1952, kind: exec}
       Result: {id: 1950, type: float}
@@ -640,7 +640,7 @@ graphs:
       state:
         id: 1983
         type: float
-        binding: {kind: variable, variable_id: 10, source_asset: Grinder}
+        binding: {kind: variable, variable_id: 1, source_asset: Grinder}
     outputs:
       Then: {id: 1986, kind: exec}
       Result: {id: 1984, type: float}
@@ -653,7 +653,7 @@ graphs:
       t:
         id: 2013
         type: float
-        binding: {kind: variable, variable_id: 6, source_asset: Grinder}
+        binding: {kind: variable, variable_id: 11, source_asset: Grinder}
     outputs:
       Then: {id: 2016, kind: exec}
       Result: {id: 2014, type: float}
@@ -697,11 +697,11 @@ graphs:
       t:
         type: double
         flags: 0
-        binding: {kind: variable, variable_id: 6, source_asset: Grinder}
+        binding: {kind: variable, variable_id: 11, source_asset: Grinder}
       fired:
         type: double
         flags: 0
-        binding: {kind: variable, variable_id: 7, source_asset: Grinder}
+        binding: {kind: variable, variable_id: 6, source_asset: Grinder}
     outputs:
       Result: {type: bool}
   - {id: 2185, type: Branch}
@@ -715,7 +715,7 @@ graphs:
       fired:
         id: 2204
         type: float
-        binding: {kind: variable, variable_id: 7, source_asset: Grinder}
+        binding: {kind: variable, variable_id: 6, source_asset: Grinder}
     outputs:
       Then: {id: 2207, kind: exec}
       Result: {id: 2205, type: float}
@@ -727,15 +727,15 @@ graphs:
       t:
         type: double
         flags: 0
-        binding: {kind: variable, variable_id: 6, source_asset: Grinder}
+        binding: {kind: variable, variable_id: 11, source_asset: Grinder}
       fired:
         type: double
         flags: 0
-        binding: {kind: variable, variable_id: 7, source_asset: Grinder}
+        binding: {kind: variable, variable_id: 6, source_asset: Grinder}
       phase2:
         type: double
         flags: 0
-        binding: {kind: variable, variable_id: 9, source_asset: Grinder}
+        binding: {kind: variable, variable_id: 4, source_asset: Grinder}
     outputs:
       Result: {type: bool}
   - {id: 2269, type: Branch}
@@ -749,7 +749,7 @@ graphs:
       fired:
         id: 2288
         type: float
-        binding: {kind: variable, variable_id: 7, source_asset: Grinder}
+        binding: {kind: variable, variable_id: 6, source_asset: Grinder}
     outputs:
       Then: {id: 2291, kind: exec}
       Result: {id: 2289, type: float}
@@ -761,7 +761,7 @@ graphs:
       t:
         type: double
         flags: 0
-        binding: {kind: variable, variable_id: 6, source_asset: Grinder}
+        binding: {kind: variable, variable_id: 11, source_asset: Grinder}
     outputs:
       Result: {type: bool}
   - {id: 2327, type: Branch}
@@ -774,7 +774,7 @@ graphs:
       state:
         id: 2343
         type: float
-        binding: {kind: variable, variable_id: 10, source_asset: Grinder}
+        binding: {kind: variable, variable_id: 1, source_asset: Grinder}
     outputs:
       Then: {id: 2346, kind: exec}
       Result: {id: 2344, type: float}
@@ -787,7 +787,7 @@ graphs:
       t:
         id: 2373
         type: float
-        binding: {kind: variable, variable_id: 6, source_asset: Grinder}
+        binding: {kind: variable, variable_id: 11, source_asset: Grinder}
     outputs:
       Then: {id: 2376, kind: exec}
       Result: {id: 2374, type: float}
@@ -800,7 +800,7 @@ graphs:
       fired:
         id: 2403
         type: float
-        binding: {kind: variable, variable_id: 7, source_asset: Grinder}
+        binding: {kind: variable, variable_id: 6, source_asset: Grinder}
     outputs:
       Then: {id: 2406, kind: exec}
       Result: {id: 2404, type: float}
@@ -812,7 +812,7 @@ graphs:
       state:
         type: double
         flags: 0
-        binding: {kind: variable, variable_id: 10, source_asset: Grinder}
+        binding: {kind: variable, variable_id: 1, source_asset: Grinder}
     outputs:
       Result: {type: bool}
   - {id: 2442, type: Branch}
@@ -824,7 +824,7 @@ graphs:
       state:
         type: double
         flags: 0
-        binding: {kind: variable, variable_id: 10, source_asset: Grinder}
+        binding: {kind: variable, variable_id: 1, source_asset: Grinder}
     outputs:
       Result: {type: bool}
   - {id: 2478, type: Branch}
@@ -857,7 +857,7 @@ graphs:
       carve:
         id: 2632
         type: float
-        binding: {kind: variable, variable_id: 1, source_asset: Grinder}
+        binding: {kind: variable, variable_id: 3, source_asset: Grinder}
       dt:
         type: double
         binding: {kind: delta_time}
@@ -892,7 +892,7 @@ graphs:
       carve:
         type: double
         flags: 0
-        binding: {kind: variable, variable_id: 1, source_asset: Grinder}
+        binding: {kind: variable, variable_id: 3, source_asset: Grinder}
       dist: {type: double, flags: 0}
     outputs:
       Result: {type: bool}
@@ -906,7 +906,7 @@ graphs:
       carve:
         id: 2737
         type: float
-        binding: {kind: variable, variable_id: 1, source_asset: Grinder}
+        binding: {kind: variable, variable_id: 3, source_asset: Grinder}
     outputs:
       Then: {id: 2740, kind: exec}
       Result: {id: 2738, type: float}
@@ -928,7 +928,7 @@ graphs:
       phase2:
         type: double
         flags: 0
-        binding: {kind: variable, variable_id: 9, source_asset: Grinder}
+        binding: {kind: variable, variable_id: 4, source_asset: Grinder}
       health:
         type: double
         flags: 0
@@ -948,7 +948,7 @@ graphs:
       phase2:
         id: 2826
         type: float
-        binding: {kind: variable, variable_id: 9, source_asset: Grinder}
+        binding: {kind: variable, variable_id: 4, source_asset: Grinder}
     outputs:
       Then: {id: 2829, kind: exec}
       Result: {id: 2827, type: float}
@@ -1003,7 +1003,7 @@ graphs:
       Self: {type_name: ecs.entity}
   - id: 2910
     type: Get Variable
-    reference_id: 8
+    reference_id: 12
     reference_name: charge
     outputs:
       Value: {type: float}

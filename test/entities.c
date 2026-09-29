@@ -1153,8 +1153,20 @@ static void global_values()
     assert(get_global->read_inputs(&context, &name, &storage, &result) == NULL);
     assert(result.type == PIN_F32 && result.f == 1.5f);
     afree(services);
-    pin_value wrong_zoom = { .type = PIN_I32, .type_name = "int", .i = 2 };
-    assert(game_entities_set_global_value(entities, "CameraZoom", &wrong_zoom) != 0);
+    pin_value int_zoom = { .type = PIN_I32, .type_name = "int", .i = 2 };
+    assert(game_entities_set_global_value(entities, "CameraZoom", &int_zoom) == 0);
+    arena_reset(&storage);
+    assert(game_entities_get_global_value(entities, "CameraZoom", &storage, &result) == 0);
+    assert(result.type == PIN_F32 && result.f == 2.0f);
+    pin_value scrap = { .type = PIN_I32, .type_name = "int", .i = 240 };
+    assert(game_entities_set_global_value(entities, "Scrap", &scrap) == 0);
+    pin_value spent = { .type = PIN_F64, .type_name = "double", .d = 208.0 };
+    assert(game_entities_set_global_value(entities, "Scrap", &spent) == 0);
+    arena_reset(&storage);
+    assert(game_entities_get_global_value(entities, "Scrap", &storage, &result) == 0);
+    assert(result.type == PIN_I32 && result.i == 208);
+    pin_value label = { .type = PIN_NAME, .type_name = "name", .str = "zoom" };
+    assert(game_entities_set_global_value(entities, "CameraZoom", &label) != 0);
 
     ecs_entity stale = ecs_world_create_entity(ecs);
     pin_value stale_value = { .type = PIN_HANDLE,
@@ -1179,7 +1191,7 @@ static void global_values()
 
     game_entities_free(entities);
     ecs_world_free(ecs);
-    puts("global values PASS: authored entity bindings and typed world values resolve with lifetime checks");
+    puts("global values PASS: authored entity bindings and typed world values resolve with lifetime checks; number writes keep a global's type");
 }
 
 void test_entities()

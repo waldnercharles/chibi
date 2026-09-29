@@ -394,14 +394,14 @@ void run_content_catalog_checks()
         arena2d_scene = chibi_project_scene_path(&arena2d, NULL);
         arena2d_content_scene = chibi_project_scene_path(&arena2d_content, NULL);
         projects_valid = arena3d.name && !strcmp(arena3d.name, "Arena3D") &&
-                         arena2d.name && !strcmp(arena2d.name, "Neon Swarm") &&
+                         arena2d.name && !strcmp(arena2d.name, "Starwell") &&
                          !strcmp(default_project.root, arena2d.root) &&
                          !strcmp(default_project.start_scene, arena2d.start_scene) &&
                          arena2d_content.name &&
                          !strcmp(arena2d_content.name, "arena2d") && arena3d_scene &&
                          strstr(arena3d_scene, "/content/scenes/Arena3D.yaml") &&
                          arena2d_scene &&
-                         strstr(arena2d_scene, "/projects/arena2d/content/scenes/Sandbox.yaml") &&
+                         strstr(arena2d_scene, "/projects/arena2d/content/scenes/Starwell.yaml") &&
                          arena2d_content_scene &&
                          strstr(arena2d_content_scene, "/projects/arena2d/content/scenes/Sandbox.yaml");
     }

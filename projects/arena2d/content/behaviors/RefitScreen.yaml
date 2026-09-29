@@ -1380,9 +1380,9 @@ graphs:
     type: Set Global Variable
     inputs:
       Name: ToastSerial
-      Value: {type: int}
+      Value: {type: double}
     outputs:
-      Value: {type: int}
+      Value: {type: double}
   - id: 686
     type: Play Sound
     inputs:
@@ -1452,6 +1452,7 @@ graphs:
   - {from: 645.Then, to: 325.Exec}
   - {from: 654.Then, to: 680.Exec}
   - {from: 660.Value, to: 677.s}
+  - {from: 677.Result, to: 680.Value}
   - {from: 680.Then, to: 686.Exec}
   - {from: 686.Then, to: 325.Exec}
 - {id: 373, kind: function, math_expression: v >= 0, entry_id: 374}

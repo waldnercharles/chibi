@@ -1029,7 +1029,7 @@ static int operation_connect(edit_context *ctx, yyjson_val *op, bool disconnect)
             }
         }
         const node_desc *conversion = NULL;
-        if (!disconnect && !(from_pin->flags & PIN_FLAG_WILDCARD) &&
+        if (!disconnect && !pin_wildcard_adopts(from_pin, to_pin) &&
             !(to_pin->flags & PIN_FLAG_WILDCARD) &&
             ctx->asset->domain != BEHAVIOR_DOMAIN_MATERIAL &&
             ctx->asset->domain != BEHAVIOR_DOMAIN_SHAPE) {

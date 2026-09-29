@@ -6,6 +6,7 @@
 #include "graph/model/local.h"
 #include "graph/model/registry.h"
 #include "graph/nodes/behavior_expression.h"
+#include "graph/nodes/conv_nodes.h"
 #include "graph/nodes/vector_nodes.h"
 #include "graph/runtime/eval.h"
 #include "graph/runtime/instance.h"
@@ -654,7 +655,11 @@ static void integer_operand_expressions()
     assert(store && graph_set_node_reference(g, store, after->id, after->name) == 0);
     assert(graph_set_pin_type(g, store, 0, 1, PIN_I32, "int") == 0);
     assert(graph_set_pin_type(g, store, 1, 1, PIN_I32, "int") == 0);
-    assert(graph_connect_data(g, sum, named_pin(sum, true, "Result"), store, 1) == 0);
+    int sum_result = named_pin(sum, true, "Result");
+    assert(graph_connect_data(g, sum, sum_result, store, 1) != 0);
+    assert(
+        graph_connect_data_conversion(g, sum, sum_result, store, 1, conversion_for(PIN_F64, PIN_I32)) == 0
+    );
     assert(behavior_expression_refresh(asset, sum, &error) == 0);
     assert(graph_connect_exec(g, next, named_pin(next, true, "Then"), store, 0, 0) == 0);
     behavior_instance *instance = behavior_instance_create(asset, NULL, NULL, NULL);

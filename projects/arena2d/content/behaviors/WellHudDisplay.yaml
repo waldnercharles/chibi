@@ -483,7 +483,7 @@ graphs:
     type: Get Global Variable
     inputs: {Name: ToastSerial}
     outputs:
-      Value: {type: double}
+      Value: {type: int}
   - id: 568
     type: Behavior Expression
     reference_id: 556
@@ -507,7 +507,7 @@ graphs:
         id: 589
         type: float
         binding: {kind: variable, variable_id: 552, source_asset: WellHudDisplay}
-      s: {type: double}
+      s: {type: int}
     outputs:
       Then: {id: 593, kind: exec}
       Result: {id: 591, type: float}
@@ -692,7 +692,7 @@ graphs:
   - {from: 492.False, to: 522.Exec}
   - {from: 497.Then, to: 522.Exec}
   - {from: 522.Then, to: 575.Exec}
-  - {from: 553.Value, to: 568.s}
+  - {from: 553.Value, to: 568.s, conversion: To Real}
   - {from: 553.Value, to: 588.s}
   - {from: 568.Result, to: 575.Condition}
   - {from: 575.True, to: 588.Exec}

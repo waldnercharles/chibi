@@ -316,9 +316,9 @@ graphs:
     type: Set Global Variable
     inputs:
       Name: Heat
-      Value: {type: int}
+      Value: {type: float}
     outputs:
-      Value: {type: int}
+      Value: {type: float}
   - id: 293
     type: Event
     reference_name: Tick
@@ -406,7 +406,7 @@ graphs:
     type: Get Global Variable
     inputs: {Name: Resonance}
     outputs:
-      Value: {type: double}
+      Value: {type: int}
   - id: 455
     type: Behavior Expression
     reference_id: 443
@@ -482,9 +482,9 @@ graphs:
     type: Set Global Variable
     inputs:
       Name: SkillPoints
-      Value: {type: int}
+      Value: {type: double}
     outputs:
-      Value: {type: int}
+      Value: {type: double}
   - id: 621
     type: Get Variable
     reference_id: 3
@@ -495,9 +495,9 @@ graphs:
     type: Set Global Variable
     inputs:
       Name: Level
-      Value: {type: int}
+      Value: {type: float}
     outputs:
-      Value: {type: int}
+      Value: {type: float}
   - id: 629
     type: Get Variable
     reference_id: 2
@@ -508,15 +508,15 @@ graphs:
     type: Set Global Variable
     inputs:
       Name: NextLevel
-      Value: {type: int}
+      Value: {type: float}
     outputs:
-      Value: {type: int}
+      Value: {type: float}
   - id: 669
     type: Behavior Expression
     reference_id: 637
     reference_name: clamp((r - floor) / (next - floor), 0, 1)
     inputs:
-      r: {type: double}
+      r: {type: int}
       floor:
         type: double
         binding: {kind: variable, variable_id: 4, source_asset: Run}
@@ -556,9 +556,9 @@ graphs:
     type: Set Global Variable
     inputs:
       Name: ToastSerial
-      Value: {type: int}
+      Value: {type: double}
     outputs:
-      Value: {type: int}
+      Value: {type: double}
   - id: 712
     type: Play Sound
     inputs: {Frequency: 660.0, End Frequency: 1320.0, Duration: 0.45, Volume: 0.3, Pan: 0.0}
@@ -610,6 +610,7 @@ graphs:
   - {from: 237.Name, to: 240.Key}
   - {from: 240.Found, to: 245.Condition}
   - {from: 245.True, to: 262.Exec}
+  - {from: 285.Value, to: 287.Value}
   - {from: 293.Then, to: 329.Exec}
   - {from: 322.Result, to: 329.Condition}
   - {from: 329.True, to: 344.Exec}
@@ -624,7 +625,7 @@ graphs:
   - {from: 409.Then, to: 434.Exec}
   - {from: 432.Value, to: 434.Value}
   - {from: 434.Then, to: 462.Exec}
-  - {from: 440.Value, to: 455.r}
+  - {from: 440.Value, to: 455.r, conversion: To Real}
   - {from: 440.Value, to: 669.r}
   - {from: 455.Result, to: 462.Condition}
   - {from: 462.True, to: 475.Exec}
@@ -633,12 +634,16 @@ graphs:
   - {from: 508.Then, to: 558.Exec}
   - {from: 558.Then, to: 615.Exec}
   - {from: 595.Value, to: 612.s}
+  - {from: 612.Result, to: 615.Value}
   - {from: 615.Then, to: 623.Exec}
+  - {from: 621.Value, to: 623.Value}
   - {from: 623.Then, to: 631.Exec}
+  - {from: 629.Value, to: 631.Value}
   - {from: 631.Then, to: 680.Exec}
   - {from: 669.Result, to: 674.Value}
   - {from: 680.Then, to: 706.Exec}
   - {from: 686.Value, to: 703.s}
+  - {from: 703.Result, to: 706.Value}
   - {from: 706.Then, to: 712.Exec}
 - {id: 250, kind: function, math_expression: 'heat = max(heat, k)', entry_id: 269}
 - id: 296

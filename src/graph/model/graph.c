@@ -364,7 +364,7 @@ int graph_connect_data_conversion(graph *g, node *from, int from_pin, node *to, 
         (conversion && !conversion_matches_pins(out, target, conversion))) {
         return -1;
     }
-    if (!conversion && (out->flags & PIN_FLAG_WILDCARD) &&
+    if (!conversion && pin_wildcard_adopts(out, in) &&
         !(in->flags & PIN_FLAG_WILDCARD)) {
         graph_wildcard_resolve_group(g, from, out->group, in->type, in->type_name);
         out = &from->output_pins[from_pin];
@@ -1264,6 +1264,17 @@ int graph_set_pin_name(graph *g, node *n, int output, int index, const char *nam
     return 0;
 }
 
+/* Whether an edge can still carry out to in after a retype, through its
+   conversion or directly. */
+static bool edge_carries(edge *e, const pin_spec *out, const pin_spec *in)
+{
+    if (e->conversion && conversion_matches_pins(out, in, e->conversion)) {
+        return true;
+    }
+    e->conversion = NULL;
+    return pin_compatible(out, in);
+}
+
 int graph_set_pin_type(graph *g, node *n, int output, int index, pin_type type, const char *type_name)
 {
     if (!graph_mutation_allowed(g) || !node_in_graph(g, n)) {
@@ -1307,7 +1318,7 @@ int graph_set_pin_type(graph *g, node *n, int output, int index, pin_type type, 
                 other = from ? node_output_pin(from, fp) : NULL;
             }
             if (!other ||
-                !pin_compatible(output ? p + index : other, output ? other : p + index)) {
+                !edge_carries(e, output ? p + index : other, output ? other : p + index)) {
                 /* A retyped source can strand a wildcard target; return it
                  * to Generic (PIN-11). The retyped pin itself is not a
                  * wildcard victim: the user retyped it on purpose. */

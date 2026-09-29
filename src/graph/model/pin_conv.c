@@ -35,6 +35,22 @@ int pin_compatible(const pin_spec *a, const pin_spec *b)
     return 1;
 }
 
+static bool scalar_number(const pin_spec *pin)
+{
+    return pin->container == PIN_CONTAINER_SINGLE && pin->type >= PIN_I8 &&
+           pin->type <= PIN_F64;
+}
+
+/* A wildcard takes its consumer's type unless both are numbers of different
+   categories: an int then keeps its type and its wire converts. */
+bool pin_wildcard_adopts(const pin_spec *out, const pin_spec *in)
+{
+    if (!(out->flags & PIN_FLAG_WILDCARD)) {
+        return false;
+    }
+    return !scalar_number(out) || !scalar_number(in) || pin_compatible(out, in);
+}
+
 int pin_coerce(pin_value *v, const pin_spec *target)
 {
     if (!v || !target) {

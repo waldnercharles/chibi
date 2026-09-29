@@ -436,6 +436,32 @@ int game_entities_get_global_value(
     return 0;
 }
 
+static bool global_scalar(const pin_value *v, pin_type type)
+{
+    return v->container == PIN_CONTAINER_SINGLE && v->type == type;
+}
+
+/* An int global stays int when a real is written to it, and a real global
+   reads an int write as a real, so writers need not match its number type. */
+static void coerce_global_number(pin_value *v, const pin_value *stored)
+{
+    bool real = global_scalar(v, PIN_F32) || global_scalar(v, PIN_F64);
+    if (global_scalar(stored, PIN_I32) && real) {
+        double d = v->type == PIN_F32 ? v->f : v->d;
+        *v = (pin_value){ .type = PIN_I32, .type_name = stored->type_name, .i = (int)d };
+        return;
+    }
+    if (global_scalar(v, PIN_I32) && global_scalar(stored, PIN_F64)) {
+        *v = (pin_value){ .type = PIN_F64, .type_name = stored->type_name, .d = v->i };
+        return;
+    }
+    if (global_scalar(v, PIN_I32) && global_scalar(stored, PIN_F32)) {
+        *v = (pin_value){ .type = PIN_F32,
+                          .type_name = stored->type_name,
+                          .f = (float)v->i };
+    }
+}
+
 int game_entities_set_global_value(game_entities *entities, const char *name, const pin_value *value)
 {
     if (!entities || !name || !name[0] || !value || value->type == PIN_FLOW ||
@@ -452,6 +478,7 @@ int game_entities_set_global_value(game_entities *entities, const char *name, co
        written with. */
     pin_value coerced = *value;
     if (stored) {
+        coerce_global_number(&coerced, &stored->value);
         pin_coerce(
             &coerced,
             &(pin_spec){ .type = stored->value.type,

@@ -522,6 +522,7 @@ graphs:
   - {from: 117.Amount, to: 125.Value}
   - {from: 117.Direction, to: 530.dir}
   - {from: 117.Direction, to: 684.dir}
+  - {from: 117.Element, to: 142.element, conversion: To Real}
   - {from: 117.Knockback, to: 530.knock}
   - {from: 125.Real, to: 170.amount}
   - {from: 125.Real, to: 260.amount}

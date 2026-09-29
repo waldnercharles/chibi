@@ -1,6 +1,10 @@
 #include "automation/graph_edit.h"
+#include "graph/compiler/compile.h"
 #include "graph/document/serialize.h"
 #include "graph/model/behavior_asset.h"
+#include "graph/model/registry.h"
+#include "graph/runtime/runtime.h"
+#include "runtime/behaviors/entities.h"
 #include "suite_internal.h"
 #include "third_party/yyjson/yyjson.h"
 
@@ -92,6 +96,103 @@ static bool result_has_node_ref(yyjson_mut_doc *doc, const char *name)
         }
     }
     return false;
+}
+
+/* Globals read as int feed expressions in double: the connection converts
+ * them instead of retyping the read, which would reinterpret the int's bits,
+ * and a source edit that types an input keeps its wire. */
+static bool expression_reads_int_globals(behavior_backend backend)
+{
+    behavior_asset *base = behavior_asset_new("IntGlobals");
+    behavior_asset_add_variable(base, "Affordable", PIN_BOOL, "bool", PIN_CONTAINER_SINGLE, NULL, "");
+    behavior_asset_add_variable(base, "Left", PIN_F64, "double", PIN_CONTAINER_SINGLE, NULL, "");
+    behavior_asset_add_variable(base, "Rechecked", PIN_BOOL, "bool", PIN_CONTAINER_SINGLE, NULL, "");
+    node *event = graph_add_node(base->graph, &NODE_Event);
+    graph_set_event_name(base->graph, event, "Check");
+    node *previous = event;
+    for (int i = 0; i < 3; i++) {
+        node *set = behavior_asset_add_set_node(base, base->variables[i].id);
+        graph_connect_exec(base->graph, previous, 0, set, 0, 0);
+        previous = set;
+    }
+    char *source = behavior_asset_save_json(base);
+    char request[4096];
+    snprintf(
+        request,
+        sizeof request,
+        "{\"operations\":["
+        "{\"op\":\"add_node\",\"ref\":\"s\",\"type\":\"Get Global "
+        "Variable\",\"inputs\":{\"Name\":\"Scrap\"}},"
+        "{\"op\":\"set_pin\",\"node\":\"s\",\"side\":\"output\",\"pin\":"
+        "\"Value\",\"type\":\"int\"},"
+        "{\"op\":\"add_node\",\"ref\":\"p\",\"type\":\"Get Global "
+        "Variable\",\"inputs\":{\"Name\":\"Price\"}},"
+        "{\"op\":\"set_pin\",\"node\":\"p\",\"side\":\"output\",\"pin\":"
+        "\"Value\",\"type\":\"int\"},"
+        "{\"op\":\"add_node\",\"ref\":\"ge\",\"type\":\"Behavior "
+        "Expression\",\"source\":\"s >= p\"},"
+        "{\"op\":\"add_node\",\"ref\":\"sub\",\"type\":\"Behavior "
+        "Expression\",\"source\":\"s - p\"},"
+        "{\"op\":\"add_node\",\"ref\":\"re\",\"type\":\"Behavior "
+        "Expression\",\"source\":\"step(p, s)\"},"
+        "{\"op\":\"connect\",\"from\":\"s\",\"from_pin\":\"Value\",\"to\":"
+        "\"ge\",\"to_pin\":\"s\"},"
+        "{\"op\":\"connect\",\"from\":\"p\",\"from_pin\":\"Value\",\"to\":"
+        "\"ge\",\"to_pin\":\"p\"},"
+        "{\"op\":\"connect\",\"from\":\"s\",\"from_pin\":\"Value\",\"to\":"
+        "\"sub\",\"to_pin\":\"s\"},"
+        "{\"op\":\"connect\",\"from\":\"p\",\"from_pin\":\"Value\",\"to\":"
+        "\"sub\",\"to_pin\":\"p\"},"
+        "{\"op\":\"connect\",\"from\":\"s\",\"from_pin\":\"Value\",\"to\":"
+        "\"re\",\"to_pin\":\"s\"},"
+        "{\"op\":\"connect\",\"from\":\"p\",\"from_pin\":\"Value\",\"to\":"
+        "\"re\",\"to_pin\":\"p\"},"
+        "{\"op\":\"set_expression\",\"node\":\"re\",\"source\":\"s > p\"},"
+        "{\"op\":\"connect\",\"from\":\"ge\",\"from_pin\":\"Result\",\"to\":%"
+        "llu,\"to_pin\":\"Value\"},"
+        "{\"op\":\"connect\",\"from\":\"sub\",\"from_pin\":\"Result\",\"to\":%"
+        "llu,\"to_pin\":\"Value\"},"
+        "{\"op\":\"connect\",\"from\":\"re\",\"from_pin\":\"Result\",\"to\":%"
+        "llu,\"to_pin\":\"Value\"}"
+        "]}",
+        (unsigned long long)base->graph->nodes[1]->id,
+        (unsigned long long)base->graph->nodes[2]->id,
+        (unsigned long long)base->graph->nodes[3]->id
+    );
+    behavior_asset_free(base);
+    char *edited = NULL;
+    int status = edit_request(source, "behavior", "IntGlobals", NULL, 0, request, &edited, NULL);
+    free(source);
+    behavior_asset *asset = status == CHIBI_AUTOMATION_OK
+                              ? behavior_asset_load_json(edited)
+                              : NULL;
+    free(edited);
+    if (!asset) {
+        return false;
+    }
+    ecs_world *ecs = ecs_world_new();
+    game_entities *entities = game_entities_new(ecs, NULL);
+    pin_value scrap = { .type = PIN_I32, .type_name = "int", .i = 240 };
+    pin_value price = { .type = PIN_I32, .type_name = "int", .i = 32 };
+    game_entities_set_global_value(entities, "Scrap", &scrap);
+    game_entities_set_global_value(entities, "Price", &price);
+    compile_report report;
+    compile_report_init(&report);
+    bool ok = behavior_asset_compile(asset, &report) == 0;
+    compile_report_free(&report);
+    behavior_instance *instance = behavior_instance_create(asset, NULL, NULL, NULL);
+    ok = ok && instance && !behavior_instance_set_backend(instance, backend) &&
+         !behavior_instance_bind_service(instance, "game.entities", entities);
+    flow_error error = { 0 };
+    flow_run *run = ok ? behavior_instance_dispatch(instance, "Check", (flow_inputs){ 0 }, &error)
+                       : NULL;
+    ok = run && flow_run_status(run) == FLOW_COMPLETED && instance->variables[0].b &&
+         instance->variables[1].d == 208 && instance->variables[2].b;
+    behavior_instance_destroy(instance);
+    game_entities_free(entities);
+    ecs_world_free(ecs);
+    behavior_asset_free(asset);
+    return ok;
 }
 
 void test_automation_graph_edit(void)
@@ -371,6 +472,13 @@ void test_automation_graph_edit(void)
                            find_pin(expression, "False", true) >= 0 &&
                            find_pin(expression, "Result", true) >= 0;
     test_check(expression_edit, "MCP graph edits add and update Behavior Expression nodes");
+    test_check(
+        expression_reads_int_globals(BEHAVIOR_ORACLE) &&
+            expression_reads_int_globals(BEHAVIOR_BYTECODE) &&
+            expression_reads_int_globals(behavior_default_backend()),
+        "MCP wires from int globals into expressions convert to double in "
+        "every backend"
+    );
     behavior_asset_free(expression_result);
     yyjson_mut_doc_free(response);
     free(edited);

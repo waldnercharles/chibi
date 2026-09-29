@@ -4,8 +4,8 @@ id_counter: 827
 description: Drift at a distance and lob globs of spores that burst into flammable clouds.
 owner_type: ecs.entity
 variables:
-- {id: 1, name: age, type: float}
-- {id: 2, name: seed, type: float}
+- {id: 1, name: seed, type: float}
+- {id: 2, name: age, type: float}
 - {id: 3, name: shot, type: float}
 graphs:
 - kind: event
@@ -21,7 +21,7 @@ graphs:
       seed:
         id: 23
         type: float
-        binding: {kind: variable, variable_id: 2, source_asset: Sporeling}
+        binding: {kind: variable, variable_id: 1, source_asset: Sporeling}
     outputs:
       Then: {id: 26, kind: exec}
       Result: {id: 24, type: float}
@@ -39,7 +39,7 @@ graphs:
       age:
         id: 64
         type: float
-        binding: {kind: variable, variable_id: 1, source_asset: Sporeling}
+        binding: {kind: variable, variable_id: 2, source_asset: Sporeling}
       dt:
         type: double
         binding: {kind: delta_time}
@@ -83,10 +83,10 @@ graphs:
         binding: {kind: component, component: GAME.GameTransform}
       age:
         type: double
-        binding: {kind: variable, variable_id: 1, source_asset: Sporeling}
+        binding: {kind: variable, variable_id: 2, source_asset: Sporeling}
       seed:
         type: double
-        binding: {kind: variable, variable_id: 2, source_asset: Sporeling}
+        binding: {kind: variable, variable_id: 1, source_asset: Sporeling}
       speed:
         type: double
         binding: {kind: component_field, component: GAME.GameMovement, field: speed}
@@ -240,10 +240,10 @@ graphs:
         binding: {kind: component_field, component: GAME.GameDrive, field: target}
       seed:
         type: double
-        binding: {kind: variable, variable_id: 2, source_asset: Sporeling}
+        binding: {kind: variable, variable_id: 1, source_asset: Sporeling}
       age:
         type: double
-        binding: {kind: variable, variable_id: 1, source_asset: Sporeling}
+        binding: {kind: variable, variable_id: 2, source_asset: Sporeling}
       speed:
         type: double
         binding: {kind: component_field, component: GAME.GameMovement, field: speed}

@@ -7,6 +7,10 @@
  * F32/F64 treated as one Real category; struct/enum also need equal type_name.
  * Returns 1 compatible, 0 not. */
 int pin_compatible(const pin_spec *a, const pin_spec *b);
+/* Whether a wildcard output takes its consumer's type on connection. A number
+ * feeding a number of another category, such as a global read as int, keeps
+ * its type and its wire converts; any other wildcard adopts. */
+bool pin_wildcard_adopts(const pin_spec *out, const pin_spec *in);
 
 /* TYPE-10 Real auto-coercion: if v->type differs from target->type only as
  * F32<->F64, convert in place and return 1; else return 0 unchanged.

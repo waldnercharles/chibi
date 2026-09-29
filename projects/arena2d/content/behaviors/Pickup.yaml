@@ -184,9 +184,9 @@ graphs:
     type: Set Global Variable
     inputs:
       Name: Scrap
-      Value: {type: int}
+      Value: {type: double}
     outputs:
-      Value: {type: int}
+      Value: {type: double}
   - id: 412
     type: Get Global Variable
     inputs: {Name: Resonance}
@@ -207,9 +207,9 @@ graphs:
     type: Set Global Variable
     inputs:
       Name: Resonance
-      Value: {type: int}
+      Value: {type: double}
     outputs:
-      Value: {type: int}
+      Value: {type: double}
   - id: 439
     type: Get Variable
     reference_id: 437
@@ -303,9 +303,9 @@ graphs:
     type: Set Global Variable
     inputs:
       Name: ToastSerial
-      Value: {type: int}
+      Value: {type: double}
     outputs:
-      Value: {type: int}
+      Value: {type: double}
   - id: 544
     type: Play Sound
     inputs: {Frequency: 660.0, End Frequency: 1760.0, Duration: 0.6, Volume: 0.3}
@@ -410,8 +410,10 @@ graphs:
   - {from: 379.Case2, to: 558.Exec}
   - {from: 379.Case3, to: 476.Exec}
   - {from: 387.Value, to: 402.c}
+  - {from: 402.Result, to: 406.Value}
   - {from: 406.Then, to: 622.Exec}
   - {from: 412.Value, to: 427.c}
+  - {from: 427.Result, to: 431.Value}
   - {from: 431.Then, to: 622.Exec}
   - {from: 439.Value, to: 441.Array}
   - {from: 441.Return Value, to: 467.n}
@@ -430,6 +432,7 @@ graphs:
   - {from: 509.Name, to: 512.Value}
   - {from: 512.Then, to: 538.Exec}
   - {from: 518.Value, to: 535.s}
+  - {from: 535.Result, to: 538.Value}
   - {from: 538.Then, to: 544.Exec}
   - {from: 544.Then, to: 622.Exec}
   - {from: 553.Value, to: 558.Entity}

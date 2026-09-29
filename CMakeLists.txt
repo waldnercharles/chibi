@@ -96,6 +96,24 @@ foreach(name cute-installed-sdl cute-interior-border cute-custom-coverage cute-c
 endforeach()
 chibi_apply_patches("${cute_framework_SOURCE_DIR}" ${CUTE_PATCHES})
 unset(CUTE_PATCHES)
+# Cute downloads SDL3 and s2n as GitHub archives, which sandboxes that allow
+# only Git block. The first declaration of a name wins, so pin them as Git tags.
+FetchContent_Declare(
+    SDL3
+    GIT_REPOSITORY https://github.com/libsdl-org/SDL.git
+    GIT_TAG        release-3.4.0
+    GIT_SHALLOW    TRUE
+    UPDATE_DISCONNECTED TRUE
+    EXCLUDE_FROM_ALL
+)
+FetchContent_Declare(
+    s2n
+    GIT_REPOSITORY https://github.com/aws/s2n-tls.git
+    GIT_TAG        v1.6.3
+    GIT_SHALLOW    TRUE
+    UPDATE_DISCONNECTED TRUE
+    EXCLUDE_FROM_ALL
+)
 add_subdirectory("${cute_framework_SOURCE_DIR}" "${cute_framework_BINARY_DIR}")
 # Apple's SDK uses fixed-underlying enum typedef declarations rejected by
 # upstream Clang 22. Restrict compatibility to the framework's SDK consumers.
@@ -158,17 +176,18 @@ endif()
 
 # libclang (build tool only; runtime stays dependency-free).
 set(LIBCLANG_ROOT "" CACHE PATH "LLVM installation prefix")
+# Debian and Ubuntu install LLVM under /usr/lib/llvm-<major>; prefer the newest.
+file(GLOB LIBCLANG_DISTRO_ROOTS /usr/lib/llvm-*)
+list(SORT LIBCLANG_DISTRO_ROOTS COMPARE NATURAL ORDER DESCENDING)
+set(LIBCLANG_HINTS "${LIBCLANG_ROOT}" /opt/homebrew/opt/llvm /usr/local/opt/llvm ${LIBCLANG_DISTRO_ROOTS})
 find_path(LIBCLANG_INCLUDE_DIR clang-c/Index.h
-    HINTS "${LIBCLANG_ROOT}" /opt/homebrew/opt/llvm /usr/local/opt/llvm
+    HINTS ${LIBCLANG_HINTS}
     PATH_SUFFIXES include)
 find_library(LIBCLANG_LIBRARY NAMES clang libclang clang-18 libclang-18
-    HINTS "${LIBCLANG_ROOT}" /opt/homebrew/opt/llvm /usr/local/opt/llvm
+    HINTS ${LIBCLANG_HINTS}
     PATH_SUFFIXES lib)
-file(GLOB LIBCLANG_RESOURCE_INCLUDE_DIRS
-    "${LIBCLANG_ROOT}/lib/clang/*/include"
-    "/opt/homebrew/opt/llvm/lib/clang/*/include"
-    "/usr/local/opt/llvm/lib/clang/*/include"
-)
+list(TRANSFORM LIBCLANG_HINTS APPEND "/lib/clang/*/include" OUTPUT_VARIABLE LIBCLANG_RESOURCE_GLOBS)
+file(GLOB LIBCLANG_RESOURCE_INCLUDE_DIRS ${LIBCLANG_RESOURCE_GLOBS})
 list(LENGTH LIBCLANG_RESOURCE_INCLUDE_DIRS LIBCLANG_RESOURCE_COUNT)
 if(LIBCLANG_RESOURCE_COUNT)
     list(GET LIBCLANG_RESOURCE_INCLUDE_DIRS 0 LIBCLANG_RESOURCE_INCLUDE_DIR)
@@ -934,7 +953,7 @@ add_library(ui_source STATIC
     src/assets/ui_source.c src/assets/ui_source_complete.c src/assets/ui_source_edit.c)
 target_include_directories(ui_source PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(ui_source PUBLIC runtime_support core chibi_tree_sitter)
-target_link_libraries(editor PRIVATE ui_source)
+target_link_libraries(editor PRIVATE ui_source chibi_render)
 # ui_edit validates through ui_check, which lives with the RmlUi host.
 target_link_libraries(automation PUBLIC ui_source chibi_render)
 target_sources(automation PRIVATE src/automation/ui_edit.c)

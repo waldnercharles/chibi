@@ -271,7 +271,7 @@ static float circle_filter_half_width(float aa, float px, float py)
 static bool circle_emission_filterable(const render_material_entity *entity)
 {
     return entity->shape_type == RENDER_SHAPE_CIRCLE && entity->thickness <= 0 &&
-           entity->border_thickness <= 0 && entity->reserved[0] <= 0 &&
+           entity->border_thickness <= 0 && entity->reserved[0] == 0 &&
            entity->reserved[1] <= 0 && entity->metaball_group == 0 &&
            entity->wobble[0] == 0 && entity->pluck[0] == 0 &&
            (entity->emission[0] != 0 || entity->emission[1] != 0 ||
@@ -421,7 +421,7 @@ const char *render_material_raster_error(const render_material_raster *r)
 
 static bool add_images(render_shader_set *set, const render_material_entity *entity, shader_error *error)
 {
-    return render_shader_set_add(set, (int)entity->reserved[0], error) &&
+    return render_shader_set_add(set, abs((int)entity->reserved[0]), error) &&
            render_shader_set_add(set, (int)entity->reserved[1], error);
 }
 
@@ -538,7 +538,7 @@ bool render_material_raster_draw(
         int slots = 0;
         for (int i = 0; i < count; i++) {
             render_material_entity *entity = &r->sorted[i];
-            bool graph = entity->reserved[0] > 0 || entity->reserved[1] > 0;
+            bool graph = entity->reserved[0] != 0 || entity->reserved[1] > 0;
             entity->time[1] = graph ? (float)slots : 0;
             if (graph) {
                 memcpy(r->parameter_data + (size_t)slots++ * 256, entity->material_parameters, 1024);

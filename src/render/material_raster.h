@@ -2,6 +2,7 @@
 #define CHIBI_RENDER_MATERIAL_RASTER_H
 
 #include "platform/cute.h"
+#include "render/shader_catalog.h"
 #include "render/view_2d.h"
 
 #include <stdbool.h>
@@ -38,6 +39,8 @@ typedef struct
     uint32_t point_count, metaball_group;
     float metaball_blend;
     /* reserved[0/1] select catalog material/shape; zero uses authored data.
+     * A material is negative when its Refraction or Transmission may be
+     * nonzero, so only those evaluate them (render_material_slot).
      * reserved[2] is received-light gain near the silhouette. */
     float border_thickness, reserved[3];
     /* Boxes: 0-1 half extents, and 4-7 an optional cut (normal, offset, 1)
@@ -57,7 +60,8 @@ typedef struct
      * the material was laid out. Zero cos and sin sample materials at the
      * pixel's current world position. */
     float material_frame[4];
-    /* Linear RGB and amount of a hit flash; see GameFlash. */
+    /* Linear RGB and amount of a hit flash on a graph material; see
+     * GameFlash. Other materials take the flash into their coefficients. */
     float flash[4];
     /* Uploaded separately: Cute storage-buffer structs cannot contain arrays. */
     float material_parameters[32][4], shape_parameters[32][4];
@@ -91,6 +95,21 @@ typedef struct
 } render_material_textures;
 
 typedef render_view_2d render_material_view;
+
+/* reserved[0] for a catalog material: its index, negative when it refracts
+ * or transmits light; zero for a shape or none. */
+static inline float render_material_slot(int material)
+{
+    if (!material || render_shader_is_shape(material)) {
+        return 0;
+    }
+    bool optics = render_shader_refracts(material) ||
+                  render_shader_transmits(material);
+    return optics ? -(float)material : (float)material;
+}
+
+/* Emission a full hit flash adds per unit of its color; see entity.shd. */
+#define RENDER_FLASH_EMISSION .3f
 
 typedef struct render_material_raster render_material_raster;
 

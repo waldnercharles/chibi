@@ -48,7 +48,8 @@ char *render_shader_fragment_source()
         "length(radial)*deform;\n"
         " float d=evaluate_sdf(p,e); vec2 half_size=shader_half_size(e); vec4 "
         "values[32], result[SG_OUTPUTS];\n"
-        " int shape=int(sg_entity[4].z), material=int(sg_entity[4].y); float "
+        " int shape=int(sg_entity[4].z), material=abs(int(sg_entity[4].y)); "
+        "float "
         "time=sg_entity[19].x;\n"
         " e.material_frame=sg_entity[20]; vec2 "
         "mp=material_position(e,p,wp);\n"
@@ -61,8 +62,9 @@ char *render_shader_fragment_source()
         "sg_dispatch_2d(material,p,mp,half_size,time,values,result); "
         "sc=result[0]; "
         "em=result[1]; bs=result[0]; be=result[1]; }\n"
-        " vec4 al=vec4(0); apply_flash(sc,em,al,sg_entity[21]); "
-        "apply_flash(bs,be,al,sg_entity[21]);\n"
+        " vec4 al=vec4(0); if(sg_entity[21].a>0.0) { "
+        "apply_flash(sc,em,al,sg_entity[21]); "
+        "apply_flash(bs,be,al,sg_entity[21]); }\n"
         " float aa=max(e.aa,0.001), coverage=1.0-smoothstep(0.0,aa,d);\n"
         " float "
         "fill=e.border_thickness>0.0?1.0-smoothstep(-e.border_thickness,-e."
@@ -97,7 +99,7 @@ int render_shader_fragment_prepare(
 )
 {
     render_shader_set set = { 0 };
-    if (!render_shader_set_add(&set, (int)entity->reserved[0], error) ||
+    if (!render_shader_set_add(&set, abs((int)entity->reserved[0]), error) ||
         !render_shader_set_add(&set, (int)entity->reserved[1], error)) {
         return 0;
     }

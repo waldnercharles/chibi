@@ -186,17 +186,27 @@ bool render_shader_may_be_transparent(int index)
     const shader_node *opacity = &graph->nodes[graph->output[5]];
     return opacity->op != SHADER_CONSTANT || opacity->value[0] < 1;
 }
-bool render_shader_refracts(int index)
+/* Whether a material's Surface Output input may be nonzero. */
+static bool surface_input(int index, int input)
 {
     if (index <= 0 || index > acount(assets) || render_shader_is_shape(index)) {
         return false;
     }
     const shader_graph *graph = &assets[index - 1].graph;
-    if (graph->output_count <= SHADER_SURFACE_REFRACTION) {
+    if (graph->output_count <= input) {
         return false;
     }
-    const shader_node *refraction = &graph->nodes[graph->output[SHADER_SURFACE_REFRACTION]];
-    return refraction->op != SHADER_CONSTANT || refraction->value[0] > 0;
+    const shader_node *node = &graph->nodes[graph->output[input]];
+    return node->op != SHADER_CONSTANT || node->value[0] != 0 ||
+           node->value[1] != 0 || node->value[2] != 0;
+}
+bool render_shader_refracts(int index)
+{
+    return surface_input(index, SHADER_SURFACE_REFRACTION);
+}
+bool render_shader_transmits(int index)
+{
+    return surface_input(index, SHADER_SURFACE_TRANSMISSION);
 }
 bool render_shader_animated(int index)
 {

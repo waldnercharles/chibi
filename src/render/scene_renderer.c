@@ -724,7 +724,7 @@ static void collect_chunks(
             draw->points[2 * k] = chunk->points[2 * k] * scale;
             draw->points[2 * k + 1] = -chunk->points[2 * k + 1] * scale;
         }
-        draw->reserved[0] = hot ? 0 : (float)shader;
+        draw->reserved[0] = hot ? 0 : render_material_slot(shader);
         memcpy(draw->material_parameters, parameters, sizeof parameters);
         /* The pattern stays where the chunk was carved and turns with it. */
         draw->material_frame[0] = chunk->origin.x;
@@ -734,7 +734,23 @@ static void collect_chunks(
     }
 }
 
-/* Tints the entities appended since first with the actor's hit flash. */
+/* entity.shd's apply_flash on straight coefficients: color and albedo turn
+ * toward the flash and it adds emission where the material covers. */
+static void flash_coefficients(float scene[4], float emission[4], float albedo[4], const float flash[4])
+{
+    float alpha = fmaxf(emission[3], scene[3]);
+    for (int c = 0; c < 3; c++) {
+        scene[c] += (flash[c] - scene[c]) * flash[3];
+        albedo[c] += (flash[c] - albedo[c]) * flash[3];
+        float light = emission[c] * emission[3] +
+                      flash[c] * flash[3] * RENDER_FLASH_EMISSION * scene[3];
+        emission[c] = light / fmaxf(alpha, 1e-4f);
+    }
+    emission[3] = alpha;
+}
+
+/* Tints the entities appended since first with the actor's hit flash: graph
+ * materials in the raster, after their Surface Output, others here. */
 static void flash_entities(app_scene_renderer *renderer, int first, const GameFlash *flash)
 {
     if (!flash || !isfinite(flash->amount) || flash->amount <= 0) {
@@ -745,7 +761,13 @@ static void flash_entities(app_scene_renderer *renderer, int first, const GameFl
                       ((flash->color >> 8) & 255) / 255.f,
                       fminf(flash->amount, 1) };
     for (int i = first; i < acount(renderer->entities); i++) {
-        memcpy(renderer->entities[i].flash, tint, sizeof tint);
+        render_material_entity *e = &renderer->entities[i];
+        if (e->reserved[0] != 0) {
+            memcpy(e->flash, tint, sizeof tint);
+            continue;
+        }
+        flash_coefficients(e->scene, e->emission, e->albedo, tint);
+        flash_coefficients(e->border_scene, e->border_emission, e->border_albedo, tint);
     }
 }
 
@@ -952,7 +974,7 @@ static void collect(
                         draw->points[2 * j + 1] = rect.y - polygon->points[2 * j + 1];
                     }
                 }
-                draw->reserved[0] = render_shader_is_shape(shader) ? 0 : (float)shader;
+                draw->reserved[0] = render_material_slot(shader);
                 memcpy(draw->material_parameters, parameters, sizeof parameters);
                 if (frame) {
                     /* The piece's centre and axes where its material was laid out. */
@@ -983,7 +1005,7 @@ static void collect(
             render_material_entity *draw = &renderer->entities[acount(renderer->entities) - 1];
             int material = render_shader_find(binding->material);
             renderer->refraction |= render_shader_refracts(material);
-            draw->reserved[0] = render_shader_is_shape(material) ? 0 : (float)material;
+            draw->reserved[0] = render_material_slot(material);
             draw->reserved[1] = !authored && render_shader_is_shape(shape)
                                   ? (float)shape
                                   : 0;
@@ -1500,10 +1522,11 @@ bool app_scene_renderer_draw(
             renderer->fluid = render_fluid_raster_new();
         }
         if (renderer->fluid) {
-            render_fluid_raster_set_caustics(
+            render_fluid_raster_set_optics(
                 renderer->fluid,
                 renderer->time,
-                renderer->lighting.caustics
+                renderer->lighting.caustics,
+                render_post_2d_heat_haze(world) > 0
             );
         }
         if (!renderer->fluid || !render_fluid_raster_draw(

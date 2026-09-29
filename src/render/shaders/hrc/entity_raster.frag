@@ -99,7 +99,6 @@ Entity entity_at(uint index)
     e.simulation_time = v.xyz;
     e.tile_group = v.w;
     e.material_frame = entity_vec4(b + 20u);
-    e.flash = entity_vec4(b + 21u);
     return e;
 }
 
@@ -266,21 +265,6 @@ float evaluate_sdf(vec2 local_p, Entity e)
 
 #include "color.shd"
 
-// Transmission is the fraction of each channel that crosses a meter (32
-// world units). The transport absorbs gray, like the least transmitted
-// channel; the colored rest joins albedo, so light passing through lights
-// the glass and, by bounce, its surroundings in the glass's color.
-void transmit(inout Entity e, vec3 pass)
-{
-    if (all(equal(pass, vec3(0.0)))) return;
-    float clear = min(pass.r, min(pass.g, pass.b));
-    float depth = -log(max(clear, 1e-3)) / 32.0 * max(u_unit_per_px.x, u_unit_per_px.y);
-    e.absorption = vec4(vec3(depth), 1.0);
-    // Albedo is premultiplied by its alpha, opacity, later.
-    e.albedo.rgb += (pass - clear) / max(e.albedo.a, 1e-3);
-    e.border_absorption = e.absorption;
-    e.border_albedo = e.albedo;
-}
 
 
 vec4 unpack_color(vec4 p) { return p; }
@@ -593,7 +577,7 @@ void main()
         float aa = e.aa > 0.0 ? e.aa : max(u_unit_per_px.x, u_unit_per_px.y) * 0.5;
         bool filtered_circle_emission = e.shape_type == SHAPE_CIRCLE &&
                                         e.thickness <= 0.0 && e.border_thickness <= 0.0 &&
-                                        e.reserved0 <= 0.0 && e.reserved1 <= 0.0 &&
+                                        e.reserved0 == 0.0 && e.reserved1 <= 0.0 &&
                                         e.metaball_group == 0u && e.wobble_pad.x == 0.0 &&
                                         e.pluck_data.x == 0.0;
         bool may_emit = any(notEqual(e.emission.rgb, vec3(0.0)));
@@ -610,20 +594,37 @@ void main()
         vec4 surface = vec4(0.0, 0.0, e.reserved2, 0.0);
         float height = 0.0;
         vec2 bend = vec2(0.0);
-        if (e.reserved0 > 0.0) {
+        if (e.reserved0 != 0.0) {
             for(int p=0;p<32;p++) parameters[p]=shader_parameters[uint(e.simulation_time.y)*64u+uint(p)];
-            sg_dispatch_2d(int(e.reserved0), local_p, material_pos, half_size, e.simulation_time.x, parameters, graph_output);
+            sg_dispatch_2d(int(abs(e.reserved0)), local_p, material_pos, half_size, e.simulation_time.x, parameters, graph_output);
             e.scene=graph_output[0]; e.emission=graph_output[1];
             e.albedo=graph_output[2]; e.absorption=graph_output[3];
             e.border_scene=graph_output[0]; e.border_emission=graph_output[1];
             e.border_albedo=graph_output[2]; e.border_absorption=graph_output[3];
             surface.xyw = graph_output[4].xyz;
             height = graph_output[4].w;
-            bend = graph_output[4].xy * graph_output[5].x;
-            transmit(e, graph_output[5].yzw);
+            // Transmission is the fraction of each channel that crosses a
+            // meter (32 world units). The transport absorbs gray, like the
+            // least transmitted channel; the colored rest joins albedo, which
+            // is premultiplied by opacity later, so light passing through
+            // lights the glass and, by bounce, its surroundings in its color.
+            // A negative material index marks materials with these optics.
+            vec3 pass = graph_output[5].yzw;
+            if (e.reserved0 < 0.0) bend = graph_output[4].xy * graph_output[5].x;
+            if (e.reserved0 < 0.0 && any(greaterThan(pass, vec3(0.0)))) {
+                float clear = min(pass.r, min(pass.g, pass.b));
+                float depth = -log(max(clear, 1e-3)) / 32.0 * max(u_unit_per_px.x, u_unit_per_px.y);
+                e.absorption = e.border_absorption = vec4(vec3(depth), 1.0);
+                e.albedo.rgb += (pass - clear) / max(e.albedo.a, 1e-3);
+                e.border_albedo = e.albedo;
+            }
+            // A graph material's hit flash; others carry theirs.
+            vec4 flash = entity_vec4(eidx * ENTITY_VEC4S + 21u);
+            if (flash.a > 0.0) {
+                apply_flash(e.scene, e.emission, e.albedo, flash);
+                apply_flash(e.border_scene, e.border_emission, e.border_albedo, flash);
+            }
         }
-        apply_flash(e.scene, e.emission, e.albedo, e.flash);
-        apply_flash(e.border_scene, e.border_emission, e.border_albedo, e.flash);
 
         if (e.metaball_group > 0u) {
             // Accumulate into metaball group.
@@ -726,10 +727,10 @@ void main()
             vec4 em = unpack_color(e.emission); em.rgb *= em.a;
             em.rgb *= abs(e.simulation_time.z);
             em *= emission_coverage;
-            if (e.simulation_time.z < 0.0) {
-                hidden_emission += em.rgb;
-                continue;
-            }
+            // A light's emission reaches the transport alone.
+            float light = step(e.simulation_time.z, 0.0);
+            hidden_emission += em.rgb * light;
+            em *= 1.0 - light;
             vec4 tr = unpack_color(e.absorption); tr *= coverage;
             vec4 al = unpack_color(e.albedo); al.rgb *= al.a; al *= coverage;
             if (tiled) {

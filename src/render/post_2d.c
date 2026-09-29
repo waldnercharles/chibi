@@ -240,6 +240,15 @@ static void bloom_passes(render_post_2d *post)
     cf_draw_pop_shader();
 }
 
+/* Whether display grading, vignette, flash or grain change the frame. */
+static bool graded(const GamePost2D *look, float flash)
+{
+    return look->vignette != 0 || look->grain != 0 || look->contrast != 0 ||
+           look->saturation != 0 || look->lift.x != 0 || look->lift.y != 0 ||
+           look->lift.z != 0 || look->gain.x != 0 || look->gain.y != 0 ||
+           look->gain.z != 0 || flash > 0;
+}
+
 /* White balance as linear channel gains, from cool/warm and green/magenta. */
 static CF_V3 white_balance(float temperature, float tint)
 {
@@ -277,6 +286,7 @@ void render_post_2d_present(render_post_2d *post, CF_Canvas output, const render
     cf_draw_set_uniform("gain", gain, CF_UNIFORM_TYPE_FLOAT4, 1);
     cf_draw_set_uniform("white", white, CF_UNIFORM_TYPE_FLOAT4, 1);
     cf_draw_set_uniform("flash", (void *)s->flash, CF_UNIFORM_TYPE_FLOAT4, 1);
+    cf_draw_set_uniform_float("graded", graded(look, s->flash[3]));
     cf_draw_push_filter(CF_DRAW_FILTER_NEAREST);
     pass(post->target, output);
     RENDER_DRAW_UNBIND_TEXTURES("current", "bloom_tex");

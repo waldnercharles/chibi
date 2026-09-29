@@ -4,6 +4,8 @@
 #include "render/post_2d.h"
 #include "runtime/engine.h"
 
+/* The first GamePost2D's heat_haze, zero without one. */
+float render_post_2d_heat_haze(ecs_world *world);
 /* Fills the frame's grading and distortion from the scene's first GamePost2D,
  * its GameHeatHaze entities in view and the runtime's visual effects. The
  * caller sets exposure, bloom, dither and the distortion's textures. camera

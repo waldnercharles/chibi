@@ -79,10 +79,30 @@ static bool raster(render_material_raster *r, const render_material_entity *enti
     return ok;
 }
 
-/* A flashed solid turns toward the flash color and emits it. */
+/* A graph material's color, blue here, whose raster applies hit flashes. */
+static behavior_asset *blue_material()
+{
+    behavior_asset *material = behavior_asset_new("Flash regression");
+    material->domain = BEHAVIOR_DOMAIN_MATERIAL;
+    node *output = shader_graph_add_output(material->graph, false);
+    float blue[3] = { .1f, .2f, .6f };
+    pin_value base = { .type = PIN_STRUCT, .type_name = "ShaderVec3", .ptr = blue };
+    shader_error error;
+    if (graph_set_pin_default(material->graph, output, 0, 0, &base) ||
+        !render_shader_upsert(material, &error)) {
+        behavior_asset_free(material);
+        return NULL;
+    }
+    return material;
+}
+
+/* A flashed graph solid turns toward the flash color and emits it. */
 static bool hit_flash(render_material_raster *r)
 {
-    render_material_entity plain = block(), flashed = block();
+    behavior_asset *material = blue_material();
+    render_material_entity plain = block(), flashed;
+    plain.reserved[0] = render_material_slot(render_shader_find(material->name));
+    flashed = plain;
     flashed.flash[0] = 1;
     flashed.flash[1] = flashed.flash[2] = .9f;
     flashed.flash[3] = .75f;
@@ -104,6 +124,7 @@ static bool hit_flash(render_material_raster *r)
         source[0],
         glow[0]
     );
+    behavior_asset_free(material);
     return ok && fabsf(lit[0] - .775f) < .01f && fabsf(lit[2] - .825f) < .01f &&
            source[0] == 0 && glow[0] > .1f;
 }
@@ -219,18 +240,13 @@ static bool glass(render_material_raster *r)
               !graph_set_pin_default(material->graph, output, 0, 9, &transmission) &&
               render_shader_upsert(material, &error);
     render_material_entity entity = block();
-    entity.reserved[0] = (float)render_shader_find(material->name);
-    render_shader_parameters(
-        (int)entity.reserved[0],
-        NULL,
-        (ecs_entity){ 0 },
-        NULL,
-        entity.material_parameters
-    );
+    int id = render_shader_find(material->name);
+    entity.reserved[0] = render_material_slot(id);
+    render_shader_parameters(id, NULL, (ecs_entity){ 0 }, NULL, entity.material_parameters);
     render_material_textures textures = render_material_raster_textures(r);
     float source[4], albedo[4], cover[4];
-    ok = ok && render_shader_refracts((int)entity.reserved[0]) &&
-         raster(r, &entity, 1) && texel(textures.source, 32, 32, source, SIDE) &&
+    ok = ok && entity.reserved[0] == -id && raster(r, &entity, 1) &&
+         texel(textures.source, 32, 32, source, SIDE) &&
          texel(textures.albedo, 32, 32, albedo, SIDE) &&
          texel(textures.cover, 32, 32, cover, SIDE);
     float depth = -logf(.2f) / 32;
@@ -265,7 +281,7 @@ static bool liquid_albedo(
 {
     render_material_view view = { .min_x = -32, .max_y = 32, .width = SIDE, .height = SIDE };
     cf_app_update(NULL);
-    render_fluid_raster_set_caustics(draw, time, caustics);
+    render_fluid_raster_set_optics(draw, time, caustics, false);
     bool ok = render_material_raster_draw(r, NULL, 0, view) &&
               render_fluid_raster_draw(draw, fluid, render_material_raster_canvas(r), view, SIDE, SIDE);
     cf_app_draw_onto_screen(false);

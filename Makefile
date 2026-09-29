@@ -27,7 +27,7 @@ LOCAL_CMAKE_FLAGS ?= $(SANITIZER_CMAKE_FLAGS)
 # allocator does not report a failed nano-zone reservation.
 NATIVE_RUNTIME_ENV ?= MallocNanoZone=0
 
-.PHONY: all help build build-debug build-tracy build-tracy-mcp mcp mcp-controller mcp-setup tracy-mcp run debug debug-san play build-release run-tracy benchmark web web-serve format check-format test test-fast test-render sdl-package clean
+.PHONY: all help build build-debug build-tracy build-tracy-mcp mcp mcp-controller mcp-setup tracy-mcp run debug debug-san play build-release run-tracy benchmark web web-configure web-serve profile-compare format check-format test test-fast test-render sdl-package clean
 
 all: build
 
@@ -56,6 +56,7 @@ help:
 		'make mcp-setup      Generate local Codex MCP configuration' \
 		'make web            Build the browser application' \
 		'make web-serve      Serve the browser application for PROJECT on WEB_PORT' \
+		'make profile-compare Profile PROJECT headless natively and as WASM' \
 		'make format         Rewrite project C sources with clang-format' \
 		'make check-format   Check project C source formatting' \
 		'make clean          Remove the default build directories'
@@ -138,10 +139,20 @@ benchmark:
 	env $(NATIVE_RUNTIME_ENV) "$(BENCHMARK_BUILD_DIR)/query_benchmark"
 	env $(NATIVE_RUNTIME_ENV) "$(BENCHMARK_BUILD_DIR)/contact_benchmark"
 
-web:
+# Web builds generate reflection with the native tool.
+web-configure:
 	sh tools/configure_native.sh "$(BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) && cmake --build "$(BUILD_DIR)" --target reflect --parallel $(JOBS)
 	emcmake cmake -S . -B "$(WEB_BUILD_DIR)" -DCMAKE_BUILD_TYPE=Release -DCHIBI_COLLAB_URL="$(CHIBI_COLLAB_URL)" -DCHIBI_REFLECT_EXECUTABLE=$(CURDIR)/$(BUILD_DIR)/reflect
+
+web: web-configure
 	cmake --build "$(WEB_BUILD_DIR)" --target chibi check-behavior-backend --parallel $(JOBS)
+
+# Profile PROJECT's start scene (or PROFILE_SCENE) headless, natively and as
+# WASM under Node, with the same fixed-step frames.
+profile-compare: web-configure
+	$(MAKE) build-release BUILD_TARGET=chibi_ctl
+	cmake --build "$(WEB_BUILD_DIR)" --target chibi_ctl --parallel $(JOBS)
+	python3 tools/profile_compare.py --project-root "$(PROJECT)" --native "$(RELEASE_BUILD_DIR)/chibi_ctl" --wasm "$(WEB_BUILD_DIR)/chibi_ctl.js" $(if $(PROFILE_SCENE),--scene "$(PROFILE_SCENE)") $(PROFILE_ARGS)
 
 web-serve: web
 	python3 tools/web_serve.py --build "$(WEB_BUILD_DIR)" --project "$(PROJECT)" --port $(WEB_PORT)

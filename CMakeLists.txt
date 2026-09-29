@@ -598,6 +598,11 @@ else()
     target_sources(chibi_ctl PRIVATE src/automation/gpu_capture.c)
 endif()
 chibi_enable_tracy(chibi_ctl)
+if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+    # Under Node the controller reads projects from disk, so the same headless
+    # scenarios run natively and as WASM (make profile-compare).
+    target_link_options(chibi_ctl PRIVATE "-sENVIRONMENT=node" "-sNODERAWFS=1" "-sEXIT_RUNTIME=1")
+endif()
 
 # Authored assets must stay in the canonical form chibi_ctl --format writes.
 set(CHIBI_ASSET_ROOTS

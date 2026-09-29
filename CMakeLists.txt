@@ -673,7 +673,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
         "--pre-js=${CMAKE_CURRENT_BINARY_DIR}/collab_config.js"
         "--pre-js=${CMAKE_CURRENT_SOURCE_DIR}/tools/collab/client.js"
         "-lidbfs.js"
-        "-sEXPORTED_FUNCTIONS=['_free']"
+        "-sEXPORTED_FUNCTIONS=['_main','_free']"
         "-sEXPORTED_RUNTIME_METHODS=['FS','UTF8ToString','stringToNewUTF8']"
         # Each sample is a self-contained project folder.
         "--preload-file=${CMAKE_CURRENT_SOURCE_DIR}/project.yaml@projects/arena3d/project.yaml"

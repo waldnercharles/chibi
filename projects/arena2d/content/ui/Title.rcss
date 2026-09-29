@@ -11,11 +11,11 @@
 
 .veil {
   position: absolute; left: 0; top: 0; right: 0; bottom: 0;
-  decorator: vertical-gradient(#02050bf2 #050a14d9);
+  decorator: vertical-gradient(#02050bfa #060c16f0);
 }
 .glow {
-  position: absolute; left: 20%; right: 20%; top: 58%; height: 1dp;
-  background-color: #ffb45a55;
+  position: absolute; left: 24%; right: 24%; top: 86%; height: 1dp;
+  background-color: #ffb45a33;
   transition: left right opacity 2.8s 0.6s cubic-out;
 }
 #card[data-starting-style] .glow { left: 50%; right: 50%; opacity: 0; }

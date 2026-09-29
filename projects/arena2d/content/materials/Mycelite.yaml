@@ -1,7 +1,7 @@
 version: 3
 name: Mycelite
 domain: material
-id_counter: 510
+id_counter: 526
 description: 'Lumen Grotto rock: porous violet stone where patches of living veins pulse from cyan to magenta and light the caves.'
 graphs:
 - kind: event
@@ -62,7 +62,7 @@ graphs:
   - id: 210
     type: Behavior Expression
     reference_id: 176
-    reference_name: smoothstep(0.48, 0.72, noise(p + vec2(300, -50), 0.0028))
+    reference_name: smoothstep(0.38, 0.64, noise(p + vec2(300, -50), 0.0028))
     inputs:
       p: {type: struct, type_name: ShaderVec2}
     outputs:
@@ -70,7 +70,7 @@ graphs:
   - id: 255
     type: Behavior Expression
     reference_id: 213
-    reference_name: smoothstep(0.972, 0.997, 1 - abs(n1 - 0.5) * 2) * patch
+    reference_name: smoothstep(0.945, 0.995, 1 - abs(n1 - 0.5) * 2) * patch
     inputs:
       n1: {type: float}
       patch: {type: float}
@@ -87,7 +87,7 @@ graphs:
   - id: 367
     type: Behavior Expression
     reference_id: 296
-    reference_name: mix(vec3(0.02, 0.014, 0.03), vec3(0.06, 0.04, 0.075), n2) * (1 - pores * 0.4) + vec3(0.02, 0.05, 0.05) * veins
+    reference_name: mix(vec3(0.035, 0.024, 0.05), vec3(0.095, 0.062, 0.115), n2) * (1 - pores * 0.4) + vec3(0.02, 0.05, 0.05) * veins
     inputs:
       n2: {type: float}
       pores: {type: float}
@@ -102,20 +102,21 @@ graphs:
       hue: {type: float}
     outputs:
       Result: {type: struct, type_name: ShaderVec3}
-  - id: 464
+  - id: 479
     type: Behavior Expression
     reference_id: 409
-    reference_name: color * veins * 0.07 * (0.6 + 0.4 * sin(t * 1.3 + n2 * 9))
+    reference_name: color * (veins * 0.1 * (0.6 + 0.4 * sin(t * 1.3 + n2 * 9)) + patch * n2 * 0.006)
     inputs:
       color: {type: struct, type_name: ShaderVec3}
       veins: {type: float}
       t: {type: float}
       n2: {type: float}
+      patch: {type: float}
     outputs:
       Result: {type: struct, type_name: ShaderVec3}
-  - id: 505
+  - id: 521
     type: Behavior Expression
-    reference_id: 470
+    reference_id: 486
     reference_name: n2 * 0.6 - pores * 0.4 + veins * 0.3
     inputs:
       n2: {type: float}
@@ -125,7 +126,7 @@ graphs:
       Result: {type: float}
   edges:
   - {from: 12.Value, to: 27.wp}
-  - {from: 14.Value, to: 464.t}
+  - {from: 14.Value, to: 479.t}
   - {from: 27.Result, to: 92.p}
   - {from: 27.Result, to: 136.p}
   - {from: 27.Result, to: 173.p}
@@ -134,19 +135,20 @@ graphs:
   - {from: 92.Result, to: 293.q}
   - {from: 108.Result, to: 255.n1}
   - {from: 136.Result, to: 367.n2}
-  - {from: 136.Result, to: 464.n2}
-  - {from: 136.Result, to: 505.n2}
+  - {from: 136.Result, to: 479.n2}
+  - {from: 136.Result, to: 521.n2}
   - {from: 173.Result, to: 406.hue}
   - {from: 210.Result, to: 255.patch}
+  - {from: 210.Result, to: 479.patch}
   - {from: 255.Result, to: 367.veins}
-  - {from: 255.Result, to: 464.veins}
-  - {from: 255.Result, to: 505.veins}
+  - {from: 255.Result, to: 479.veins}
+  - {from: 255.Result, to: 521.veins}
   - {from: 293.Result, to: 367.pores}
-  - {from: 293.Result, to: 505.pores}
+  - {from: 293.Result, to: 521.pores}
   - {from: 367.Result, to: 1.Base Color}
-  - {from: 406.Result, to: 464.color}
-  - {from: 464.Result, to: 1.Emission}
-  - {from: 505.Result, to: 1.Height}
+  - {from: 406.Result, to: 479.color}
+  - {from: 479.Result, to: 1.Emission}
+  - {from: 521.Result, to: 1.Height}
 - {id: 16, kind: function, math_expression: 'vec2(wp.x, wp.z)', entry_id: 31}
 - id: 47
   kind: function
@@ -163,11 +165,11 @@ graphs:
   entry_id: 140
 - id: 176
   kind: function
-  math_expression: smoothstep(0.48, 0.72, noise(p + vec2(300, -50), 0.0028))
+  math_expression: smoothstep(0.38, 0.64, noise(p + vec2(300, -50), 0.0028))
   entry_id: 177
 - id: 213
   kind: function
-  math_expression: smoothstep(0.972, 0.997, 1 - abs(n1 - 0.5) * 2) * patch
+  math_expression: smoothstep(0.945, 0.995, 1 - abs(n1 - 0.5) * 2) * patch
   entry_id: 214
 - id: 259
   kind: function
@@ -175,7 +177,7 @@ graphs:
   entry_id: 260
 - id: 296
   kind: function
-  math_expression: mix(vec3(0.02, 0.014, 0.03), vec3(0.06, 0.04, 0.075), n2) * (1 - pores * 0.4) + vec3(0.02, 0.05, 0.05) * veins
+  math_expression: mix(vec3(0.035, 0.024, 0.05), vec3(0.095, 0.062, 0.115), n2) * (1 - pores * 0.4) + vec3(0.02, 0.05, 0.05) * veins
   entry_id: 297
 - id: 372
   kind: function
@@ -183,9 +185,9 @@ graphs:
   entry_id: 373
 - id: 409
   kind: function
-  math_expression: color * veins * 0.07 * (0.6 + 0.4 * sin(t * 1.3 + n2 * 9))
+  math_expression: color * (veins * 0.1 * (0.6 + 0.4 * sin(t * 1.3 + n2 * 9)) + patch * n2 * 0.006)
   entry_id: 410
-- id: 470
+- id: 486
   kind: function
   math_expression: n2 * 0.6 - pores * 0.4 + veins * 0.3
-  entry_id: 471
+  entry_id: 487

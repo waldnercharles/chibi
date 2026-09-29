@@ -38,6 +38,26 @@ entities:
   components:
     GameBackdrop2D: {material: GrottoStalks, parallax: 0.45, layer: 1, intensity: 1.0, lit: true}
 - {name: Grotto rock, prototype: StratumGrotto}
+- name: Grotto sanctum
+  prototype: Sanctum
+  components:
+    GameTransform: {x: 0.0, "y": 6330.0}
+  behaviors: [Sanctum]
+- name: Grotto shop
+  prototype: ShopTerminal
+  components:
+    GameTransform: {x: -250.0, "y": 6454.0}
+  behaviors: [ShopScreen]
+- name: Grotto refit
+  prototype: RefitBench
+  components:
+    GameTransform: {x: -120.0, "y": 6462.0}
+  behaviors: [RefitScreen]
+- name: Grotto shrine
+  prototype: ResonanceShrine
+  components:
+    GameTransform: {x: 200.0, "y": 6434.0}
+  behaviors: [SkillScreen]
 - name: Grotto lumen caps
   prototype: Scatter
   components:

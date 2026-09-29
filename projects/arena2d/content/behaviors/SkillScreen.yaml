@@ -1,6 +1,6 @@
 version: 3
 name: SkillScreen
-id_counter: 1556
+id_counter: 1616
 description: 'The Sanctum''s Resonance shrine: opens with E nearby and shows the Pilot, Gunnery and Engineer trees; learning a node spends SkillPoints, adds its id to Skills and applies its effect to the Stat globals.'
 owner_type: ecs.entity
 variables:
@@ -260,10 +260,43 @@ variables:
   - 0.0
   - 0.0
   - 1.2
-- {id: 588, name: near, type: float}
-- {id: 589, name: open, type: float}
-- {id: 590, name: held, type: float}
-- id: 746
+- id: 9
+  name: flags
+  type: int
+  container: 1
+  default:
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+- {id: 662, name: near, type: float}
+- {id: 663, name: open, type: float}
+- {id: 664, name: held, type: float}
+- id: 820
   name: parts
   type: name
   container: 1
@@ -273,12 +306,12 @@ variables:
   - SkillShrineHalo
   - SkillShrineMote
   - SkillShrineMote
-- id: 747
+- id: 821
   name: partX
   type: float
   container: 1
   default: [0.0, 0.0, 0.0, -20.0, 22.0]
-- id: 748
+- id: 822
   name: partY
   type: float
   container: 1
@@ -287,57 +320,57 @@ graphs:
 - kind: event
   name: ""
   nodes:
-  - {id: 732, type: Event, reference_name: Begin}
-  - id: 734
+  - {id: 806, type: Event, reference_name: Begin}
+  - id: 808
     type: Set UI Data
     inputs:
       Name: open
       Value: {type: int}
-  - id: 740
+  - id: 814
     type: Set UI Data
     inputs:
       Name: near
       Value: {type: int}
-  - id: 749
+  - id: 823
     type: Get Variable
-    reference_id: 746
+    reference_id: 820
     reference_name: parts
     outputs:
       Value: {type: name, container: 1}
-  - id: 751
+  - id: 825
     type: ForEach
     inputs:
       Array: {type: name}
     outputs:
       Array Element: {type: name}
-  - id: 758
+  - id: 832
     type: Get Variable
-    reference_id: 747
+    reference_id: 821
     reference_name: partX
     outputs:
       Value: {type: float, container: 1}
-  - id: 760
+  - id: 834
     type: Get
     inputs:
       Array: {type: float}
     outputs:
       Item: {type: float}
-  - id: 764
+  - id: 838
     type: Get Variable
-    reference_id: 748
+    reference_id: 822
     reference_name: partY
     outputs:
       Value: {type: float, container: 1}
-  - id: 766
+  - id: 840
     type: Get
     inputs:
       Array: {type: float}
     outputs:
       Item: {type: float}
-  - {id: 770, type: Spawn Prototype}
-  - id: 787
+  - {id: 844, type: Spawn Prototype}
+  - id: 861
     type: Behavior Expression
-    reference_id: 775
+    reference_id: 849
     reference_name: pos.x + dx
     inputs:
       pos:
@@ -347,9 +380,9 @@ graphs:
       dx: {type: float}
     outputs:
       Result: {type: float}
-  - id: 817
+  - id: 891
     type: Behavior Expression
-    reference_id: 805
+    reference_id: 879
     reference_name: pos.y + dy
     inputs:
       pos:
@@ -359,43 +392,43 @@ graphs:
       dy: {type: float}
     outputs:
       Result: {type: float}
-  - id: 835
+  - id: 909
     type: Make Struct
     inputs:
-      x: {id: 838}
-      Type: {id: 836, default: GameTransform}
+      x: {id: 912}
+      Type: {id: 910, default: GameTransform}
     outputs:
-      GameTransform: {id: 840}
-  - {id: 841, type: SetEntity_GameTransform}
-  - id: 847
+      GameTransform: {id: 914}
+  - {id: 915, type: SetEntity_GameTransform}
+  - id: 921
     type: Event
     reference_name: Tick
     outputs:
       DeltaSeconds: {type: float, kind: data}
-  - id: 850
+  - id: 924
     type: Get Global Variable
     inputs: {Name: Player}
     outputs:
       Value: {type: handle, type_name: ecs.entity}
-  - id: 853
+  - id: 927
     type: Has Component
     inputs: {Component: GAME.GameTransform}
-  - {id: 857, type: Branch}
-  - id: 862
+  - {id: 931, type: Branch}
+  - id: 936
     type: GetEntity_GameTransform
     outputs:
       Value.x: {}
       Value.y: {}
-  - id: 912
+  - id: 986
     type: Behavior Expression
-    reference_id: 867
+    reference_id: 941
     reference_name: near = step((px - pos.x) * (px - pos.x) + (py - pos.y) * (py - pos.y), 4900.0)
     inputs:
-      Exec: {id: 918, kind: exec}
+      Exec: {id: 992, kind: exec}
       near:
-        id: 913
+        id: 987
         type: float
-        binding: {kind: variable, variable_id: 588, source_asset: SkillScreen}
+        binding: {kind: variable, variable_id: 662, source_asset: SkillScreen}
       px: {type: float}
       pos:
         type: struct
@@ -403,194 +436,212 @@ graphs:
         binding: {kind: component, component: GAME.GameTransform}
       py: {type: float}
     outputs:
-      Then: {id: 919, kind: exec}
-      Result: {id: 917, type: float}
-  - id: 982
+      Then: {id: 993, kind: exec}
+      Result: {id: 991, type: float}
+  - id: 1056
     type: Behavior Expression
-    reference_id: 972
+    reference_id: 1046
     reference_name: near = 0
     inputs:
-      Exec: {id: 985, kind: exec}
+      Exec: {id: 1059, kind: exec}
       near:
-        id: 983
+        id: 1057
         type: float
-        binding: {kind: variable, variable_id: 588, source_asset: SkillScreen}
+        binding: {kind: variable, variable_id: 662, source_asset: SkillScreen}
     outputs:
-      Then: {id: 986, kind: exec}
-      Result: {id: 984, type: float}
-  - id: 1002
+      Then: {id: 1060, kind: exec}
+      Result: {id: 1058, type: float}
+  - id: 1076
     type: Get Variable
-    reference_id: 588
+    reference_id: 662
     reference_name: near
     outputs:
       Value: {type: float}
-  - id: 1004
+  - id: 1078
     type: Set UI Data
     inputs:
       Name: near
       Value: {type: float}
-  - id: 1010
+  - id: 1084
     type: Branch
     inputs:
       Condition:
         binding: {kind: component_field, component: GAME.GameActionBinding, field: pressed}
-  - id: 1025
+  - id: 1099
     type: Behavior Expression
-    reference_id: 1015
+    reference_id: 1089
     reference_name: held = 0
     inputs:
-      Exec: {id: 1028, kind: exec}
+      Exec: {id: 1102, kind: exec}
       held:
-        id: 1026
+        id: 1100
         type: float
-        binding: {kind: variable, variable_id: 590, source_asset: SkillScreen}
+        binding: {kind: variable, variable_id: 664, source_asset: SkillScreen}
     outputs:
-      Then: {id: 1029, kind: exec}
-      Result: {id: 1027, type: float}
-  - id: 1059
+      Then: {id: 1103, kind: exec}
+      Result: {id: 1101, type: float}
+  - id: 1133
     type: Behavior Expression
-    reference_id: 1045
+    reference_id: 1119
     reference_name: held < 0.5
     inputs:
       held:
         type: double
         flags: 0
-        binding: {kind: variable, variable_id: 590, source_asset: SkillScreen}
+        binding: {kind: variable, variable_id: 664, source_asset: SkillScreen}
     outputs:
       Result: {type: bool}
-  - {id: 1065, type: Branch}
-  - id: 1080
+  - {id: 1139, type: Branch}
+  - id: 1154
     type: Behavior Expression
-    reference_id: 1070
+    reference_id: 1144
     reference_name: held = 1
     inputs:
-      Exec: {id: 1083, kind: exec}
+      Exec: {id: 1157, kind: exec}
       held:
-        id: 1081
+        id: 1155
         type: float
-        binding: {kind: variable, variable_id: 590, source_asset: SkillScreen}
+        binding: {kind: variable, variable_id: 664, source_asset: SkillScreen}
     outputs:
-      Then: {id: 1084, kind: exec}
-      Result: {id: 1082, type: float}
-  - id: 1114
+      Then: {id: 1158, kind: exec}
+      Result: {id: 1156, type: float}
+  - id: 1188
     type: Behavior Expression
-    reference_id: 1100
+    reference_id: 1174
     reference_name: open > 0.5
     inputs:
       open:
         type: double
         flags: 0
-        binding: {kind: variable, variable_id: 589, source_asset: SkillScreen}
+        binding: {kind: variable, variable_id: 663, source_asset: SkillScreen}
     outputs:
       Result: {type: bool}
-  - {id: 1120, type: Branch}
-  - {id: 1125, type: Call Function, reference_id: 591, reference_name: Close}
-  - id: 1142
+  - {id: 1194, type: Branch}
+  - {id: 1199, type: Call Function, reference_id: 665, reference_name: Close}
+  - id: 1216
     type: Behavior Expression
-    reference_id: 1128
+    reference_id: 1202
     reference_name: near > 0.5
     inputs:
       near:
         type: double
         flags: 0
-        binding: {kind: variable, variable_id: 588, source_asset: SkillScreen}
+        binding: {kind: variable, variable_id: 662, source_asset: SkillScreen}
     outputs:
       Result: {type: bool}
-  - {id: 1148, type: Branch}
-  - {id: 1153, type: Call Function, reference_id: 670, reference_name: Open}
-  - {id: 1156, type: Event, reference_name: Close}
-  - {id: 1158, type: Call Function, reference_id: 591, reference_name: Close}
-  - {id: 1161, type: Event, reference_name: Learn}
-  - id: 1163
+  - {id: 1222, type: Branch}
+  - {id: 1227, type: Call Function, reference_id: 744, reference_name: Open}
+  - {id: 1230, type: Event, reference_name: Close}
+  - {id: 1232, type: Call Function, reference_id: 665, reference_name: Close}
+  - {id: 1235, type: Event, reference_name: Learn}
+  - id: 1237
     type: Get UI Value
     inputs: {Element: '#learn'}
-  - id: 1189
+  - id: 1263
     type: Behavior Expression
-    reference_id: 1168
+    reference_id: 1242
     reference_name: clamp(floor(v), 0, 26)
     inputs:
       v: {type: float}
     outputs:
       Result: {type: double}
-  - {id: 1192, type: To Integer}
-  - id: 1195
-    type: Get Global Variable
-    inputs: {Name: Skills}
+  - {id: 1266, type: To Integer}
+  - id: 1269
+    type: Get Variable
+    reference_id: 9
+    reference_name: flags
     outputs:
-      Value: {type: int, container: 1}
-  - id: 1198
-    type: Find
-    inputs:
-      Array: {type: int}
-      Item: {type: int}
-  - {id: 1202, type: To Real}
-  - id: 1219
+      Value: {container: 1}
+  - {id: 1271, type: To Real}
+  - id: 1288
     type: Behavior Expression
-    reference_id: 1205
-    reference_name: step(0, f)
+    reference_id: 1274
+    reference_name: i + 1
     inputs:
-      f: {type: double}
+      i: {type: double}
     outputs:
       Result: {type: double}
-  - id: 1222
+  - {id: 1291, type: To Integer}
+  - id: 1294
+    type: Get
+    inputs:
+      Array: {type: int}
+    outputs:
+      Item: {type: int}
+  - {id: 1298, type: To Real}
+  - id: 1301
     type: Get Variable
     reference_id: 3
     reference_name: req1
     outputs:
       Value: {container: 1}
-  - id: 1224
+  - id: 1303
     type: Get
     inputs:
       Array: {type: int}
     outputs:
       Item: {type: int}
-  - id: 1228
-    type: Find
-    inputs:
-      Array: {type: int}
-      Item: {type: int}
-  - {id: 1232, type: To Real}
-  - {id: 1235, type: To Real}
-  - id: 1267
+  - id: 1307
+    type: Get Variable
+    reference_id: 9
+    reference_name: flags
+    outputs:
+      Value: {container: 1}
+  - {id: 1309, type: To Real}
+  - id: 1326
     type: Behavior Expression
-    reference_id: 1238
-    reference_name: max(step(r, -0.5), step(0, f))
+    reference_id: 1312
+    reference_name: i + 1
     inputs:
-      r: {type: double}
-      f: {type: double}
+      i: {type: double}
     outputs:
       Result: {type: double}
-  - id: 1271
+  - {id: 1329, type: To Integer}
+  - id: 1332
+    type: Get
+    inputs:
+      Array: {type: int}
+    outputs:
+      Item: {type: int}
+  - {id: 1336, type: To Real}
+  - id: 1339
     type: Get Variable
     reference_id: 4
     reference_name: req2
     outputs:
       Value: {container: 1}
-  - id: 1273
+  - id: 1341
     type: Get
     inputs:
       Array: {type: int}
     outputs:
       Item: {type: int}
-  - id: 1277
-    type: Find
-    inputs:
-      Array: {type: int}
-      Item: {type: int}
-  - {id: 1281, type: To Real}
-  - {id: 1284, type: To Real}
-  - id: 1316
+  - id: 1345
+    type: Get Variable
+    reference_id: 9
+    reference_name: flags
+    outputs:
+      Value: {container: 1}
+  - {id: 1347, type: To Real}
+  - id: 1364
     type: Behavior Expression
-    reference_id: 1287
-    reference_name: max(step(r, -0.5), step(0, f))
+    reference_id: 1350
+    reference_name: i + 1
     inputs:
-      r: {type: double}
-      f: {type: double}
+      i: {type: double}
     outputs:
       Result: {type: double}
-  - id: 1355
+  - {id: 1367, type: To Integer}
+  - id: 1370
+    type: Get
+    inputs:
+      Array: {type: int}
+    outputs:
+      Item: {type: int}
+  - {id: 1374, type: To Real}
+  - id: 1412
     type: Behavior Expression
-    reference_id: 1320
+    reference_id: 1377
     reference_name: o * 2 + (1 - o) * a * b
     inputs:
       o: {type: double}
@@ -598,189 +649,190 @@ graphs:
       b: {type: double}
     outputs:
       Result: {type: double}
-  - id: 1360
+  - id: 1417
     type: Get Global Variable
     inputs: {Name: SkillPoints}
     outputs:
       Value: {type: int}
-  - {id: 1363, type: To Real}
-  - id: 1366
+  - {id: 1420, type: To Real}
+  - id: 1423
     type: Get Variable
     reference_id: 2
     reference_name: cost
     outputs:
       Value: {container: 1}
-  - id: 1368
+  - id: 1425
     type: Get
     inputs:
       Array: {type: int}
     outputs:
       Item: {type: int}
-  - {id: 1372, type: To Real}
-  - id: 1410
+  - {id: 1429, type: To Real}
+  - {id: 1432, type: Call Function, reference_id: 10, reference_name: Mark}
+  - id: 1470
     type: Behavior Expression
-    reference_id: 1375
+    reference_id: 1435
     reference_name: s > 0.5 && s < 1.5 && p >= c
     inputs:
-      Exec: {id: 1415, kind: exec}
-      s: {id: 1411, type: double, flags: 0}
+      Exec: {id: 1475, kind: exec}
+      s: {id: 1471, type: double, flags: 0}
       p: {type: double, flags: 0}
       c: {type: double, flags: 0}
     outputs:
-      "True": {id: 1416, kind: exec}
+      "True": {id: 1476, kind: exec}
       "False": {kind: exec}
-      Result: {id: 1414, type: bool}
-  - id: 1418
+      Result: {id: 1474, type: bool}
+  - id: 1478
     type: Get Global Variable
     inputs: {Name: Skills}
     outputs:
       Value: {type: int, container: 1}
-  - id: 1421
+  - id: 1481
     type: Array Add
     inputs:
       Array: {type: int}
       Item: {type: int}
     outputs:
       Array: {type: int}
-  - id: 1425
+  - id: 1485
     type: Set Global Variable
     inputs:
       Name: Skills
       Value: {type: int, container: 1}
     outputs:
       Value: {type: int}
-  - id: 1443
+  - id: 1503
     type: Behavior Expression
-    reference_id: 1431
+    reference_id: 1491
     reference_name: p - c
     inputs:
       p: {type: double}
       c: {type: double}
     outputs:
       Result: {type: double}
-  - {id: 1447, type: To Integer}
-  - id: 1450
+  - {id: 1507, type: To Integer}
+  - id: 1510
     type: Set Global Variable
     inputs:
       Name: SkillPoints
       Value: {type: int}
     outputs:
       Value: {type: int}
-  - id: 1456
+  - id: 1516
     type: Get Variable
     reference_id: 5
     reference_name: fx0Stat
     outputs:
       Value: {container: 1}
-  - id: 1458
+  - id: 1518
     type: Get
     inputs:
       Array: {type: int}
     outputs:
       Item: {type: int}
-  - id: 1462
+  - id: 1522
     type: Get Variable
     reference_id: 6
     reference_name: fx0Value
     outputs:
       Value: {type: float, container: 1}
-  - id: 1464
+  - id: 1524
     type: Get
     inputs:
       Array: {type: float}
     outputs:
       Item: {type: float}
-  - id: 1468
+  - id: 1528
     type: Call Function
-    reference_id: 9
+    reference_id: 97
     reference_name: Apply
     inputs:
-      Stat: {id: 1471, type: int, kind: data}
+      Stat: {id: 1531, type: int, kind: data}
       Value: {type: float, kind: data}
     outputs:
-      Then: {id: 1470}
-  - id: 1473
+      Then: {id: 1530}
+  - id: 1533
     type: Get Variable
     reference_id: 7
     reference_name: fx1Stat
     outputs:
       Value: {container: 1}
-  - id: 1475
+  - id: 1535
     type: Get
     inputs:
       Array: {type: int}
     outputs:
       Item: {type: int}
-  - id: 1479
+  - id: 1539
     type: Get Variable
     reference_id: 8
     reference_name: fx1Value
     outputs:
       Value: {type: float, container: 1}
-  - id: 1481
+  - id: 1541
     type: Get
     inputs:
       Array: {type: float}
     outputs:
       Item: {type: float}
-  - id: 1485
+  - id: 1545
     type: Call Function
-    reference_id: 9
+    reference_id: 97
     reference_name: Apply
     inputs:
-      Stat: {id: 1488, type: int, kind: data}
+      Stat: {id: 1548, type: int, kind: data}
       Value: {type: float, kind: data}
     outputs:
-      Then: {id: 1487}
-  - id: 1490
+      Then: {id: 1547}
+  - id: 1550
     type: Get Variable
     reference_id: 1
     reference_name: names
     outputs:
       Value: {type: name, container: 1}
-  - id: 1492
+  - id: 1552
     type: Get
     inputs:
       Array: {type: name}
     outputs:
       Item: {type: name}
-  - id: 1496
+  - id: 1556
     type: Format Text
     inputs:
       Format: '{} · resonates'
       Arg0: {type: name}
-  - {id: 1500, type: To Name}
-  - id: 1503
+  - {id: 1560, type: To Name}
+  - id: 1563
     type: Set Global Variable
     inputs:
       Name: Toast
       Value: {type: name}
     outputs:
       Value: {type: name}
-  - id: 1509
+  - id: 1569
     type: Get Global Variable
     inputs: {Name: ToastSerial}
     outputs:
       Value: {type: int}
-  - id: 1526
+  - id: 1586
     type: Behavior Expression
-    reference_id: 1512
+    reference_id: 1572
     reference_name: s + 1
     inputs:
       s: {type: int}
     outputs:
       Result: {type: double}
-  - id: 1529
+  - id: 1589
     type: Set Global Variable
     inputs:
       Name: ToastSerial
       Value: {type: int}
     outputs:
       Value: {type: int}
-  - id: 1535
+  - id: 1595
     type: Play Sound
     inputs: {Frequency: 523.0, End Frequency: 1046.0, Duration: 0.5, Volume: 0.22}
-  - id: 1544
+  - id: 1604
     type: Play Sound
     inputs:
       Frequency: 180.0
@@ -788,396 +840,517 @@ graphs:
       Duration: 0.14
       Volume: 0.16
       Noise: 0.3
-  - {id: 1553, type: Call Function, reference_id: 345, reference_name: Show}
+  - {id: 1613, type: Call Function, reference_id: 433, reference_name: Show}
   edges:
-  - {from: 732.Then, to: 734.Exec}
-  - {from: 734.Then, to: 740.Exec}
-  - {from: 740.Then, to: 751.Exec}
-  - {from: 749.Value, to: 751.Array}
-  - {from: 751.Body, to: 770.Exec}
-  - {from: 751.Array Element, to: 770.Prototype}
-  - {from: 751.Index, to: 760.Index}
-  - {from: 751.Index, to: 766.Index}
-  - {from: 758.Value, to: 760.Array}
-  - {from: 760.Item, to: 787.dx}
-  - {from: 764.Value, to: 766.Array}
-  - {from: 766.Item, to: 817.dy}
-  - {from: 770.Then, to: 841.Exec}
-  - {from: 770.Entity, to: 841.Entity}
-  - {from: 787.Result, to: 835.x}
-  - {from: 817.Result, to: 835.y}
-  - {from: 835.GameTransform, to: 841.Value, conversion: game_transform_to_cf}
-  - {from: 847.Then, to: 857.Exec}
-  - {from: 850.Value, to: 853.Entity}
-  - {from: 850.Value, to: 862.Entity}
-  - {from: 853.Value, to: 857.Condition}
-  - {from: 857.True, to: 912.Exec}
-  - {from: 857.False, to: 982.Exec}
-  - {from: 862.Value.x, to: 912.px}
-  - {from: 862.Value.y, to: 912.py}
-  - {from: 912.Then, to: 1004.Exec}
-  - {from: 982.Then, to: 1004.Exec}
-  - {from: 1002.Value, to: 1004.Value}
-  - {from: 1004.Then, to: 1010.Exec}
-  - {from: 1010.True, to: 1065.Exec}
-  - {from: 1010.False, to: 1025.Exec}
-  - {from: 1059.Result, to: 1065.Condition}
-  - {from: 1065.True, to: 1080.Exec}
-  - {from: 1080.Then, to: 1120.Exec}
-  - {from: 1114.Result, to: 1120.Condition}
-  - {from: 1120.True, to: 1125.Exec}
-  - {from: 1120.False, to: 1148.Exec}
-  - {from: 1142.Result, to: 1148.Condition}
-  - {from: 1148.True, to: 1153.Exec}
-  - {from: 1156.Then, to: 1158.Exec}
-  - {from: 1161.Then, to: 1410.Exec}
-  - {from: 1163.Value, to: 1189.v}
-  - {from: 1189.Result, to: 1192.Value}
-  - {from: 1192.Integer, to: 1198.Item}
-  - {from: 1192.Integer, to: 1224.Index}
-  - {from: 1192.Integer, to: 1273.Index}
-  - {from: 1192.Integer, to: 1368.Index}
-  - {from: 1192.Integer, to: 1421.Item}
-  - {from: 1192.Integer, to: 1458.Index}
-  - {from: 1192.Integer, to: 1464.Index}
-  - {from: 1192.Integer, to: 1475.Index}
-  - {from: 1192.Integer, to: 1481.Index}
-  - {from: 1192.Integer, to: 1492.Index}
-  - {from: 1195.Value, to: 1198.Array}
-  - {from: 1195.Value, to: 1228.Array}
-  - {from: 1195.Value, to: 1277.Array}
-  - {from: 1198.Return Value, to: 1202.Value}
-  - {from: 1202.Real, to: 1219.f}
-  - {from: 1219.Result, to: 1355.o}
-  - {from: 1222.Value, to: 1224.Array}
-  - {from: 1224.Item, to: 1228.Item}
-  - {from: 1224.Item, to: 1235.Value}
-  - {from: 1228.Return Value, to: 1232.Value}
-  - {from: 1232.Real, to: 1267.f}
-  - {from: 1235.Real, to: 1267.r}
-  - {from: 1267.Result, to: 1355.a}
-  - {from: 1271.Value, to: 1273.Array}
-  - {from: 1273.Item, to: 1277.Item}
-  - {from: 1273.Item, to: 1284.Value}
-  - {from: 1277.Return Value, to: 1281.Value}
-  - {from: 1281.Real, to: 1316.f}
-  - {from: 1284.Real, to: 1316.r}
-  - {from: 1316.Result, to: 1355.b}
-  - {from: 1355.Result, to: 1410.s}
-  - {from: 1360.Value, to: 1363.Value}
-  - {from: 1363.Real, to: 1410.p}
-  - {from: 1363.Real, to: 1443.p}
-  - {from: 1366.Value, to: 1368.Array}
-  - {from: 1368.Item, to: 1372.Value}
-  - {from: 1372.Real, to: 1410.c}
-  - {from: 1372.Real, to: 1443.c}
-  - {from: 1410.True, to: 1425.Exec}
-  - {from: 1410.False, to: 1544.Exec}
-  - {from: 1418.Value, to: 1421.Array}
-  - {from: 1421.Array, to: 1425.Value}
-  - {from: 1425.Then, to: 1450.Exec}
-  - {from: 1443.Result, to: 1447.Value}
-  - {from: 1447.Integer, to: 1450.Value}
-  - {from: 1450.Then, to: 1468.Exec}
-  - {from: 1456.Value, to: 1458.Array}
-  - {from: 1458.Item, to: 1468.Stat}
-  - {from: 1462.Value, to: 1464.Array}
-  - {from: 1464.Item, to: 1468.Value}
-  - {from: 1468.Then, to: 1485.Exec}
-  - {from: 1473.Value, to: 1475.Array}
-  - {from: 1475.Item, to: 1485.Stat}
-  - {from: 1479.Value, to: 1481.Array}
-  - {from: 1481.Item, to: 1485.Value}
-  - {from: 1485.Then, to: 1503.Exec}
-  - {from: 1490.Value, to: 1492.Array}
-  - {from: 1492.Item, to: 1496.Arg0}
-  - {from: 1496.Result, to: 1500.Value}
-  - {from: 1500.Name, to: 1503.Value}
-  - {from: 1503.Then, to: 1529.Exec}
-  - {from: 1509.Value, to: 1526.s}
-  - {from: 1529.Then, to: 1535.Exec}
-  - {from: 1535.Then, to: 1553.Exec}
-  - {from: 1544.Then, to: 1553.Exec}
-- id: 9
+  - {from: 806.Then, to: 808.Exec}
+  - {from: 808.Then, to: 814.Exec}
+  - {from: 814.Then, to: 825.Exec}
+  - {from: 823.Value, to: 825.Array}
+  - {from: 825.Body, to: 844.Exec}
+  - {from: 825.Array Element, to: 844.Prototype}
+  - {from: 825.Index, to: 834.Index}
+  - {from: 825.Index, to: 840.Index}
+  - {from: 832.Value, to: 834.Array}
+  - {from: 834.Item, to: 861.dx}
+  - {from: 838.Value, to: 840.Array}
+  - {from: 840.Item, to: 891.dy}
+  - {from: 844.Then, to: 915.Exec}
+  - {from: 844.Entity, to: 915.Entity}
+  - {from: 861.Result, to: 909.x}
+  - {from: 891.Result, to: 909.y}
+  - {from: 909.GameTransform, to: 915.Value, conversion: game_transform_to_cf}
+  - {from: 921.Then, to: 931.Exec}
+  - {from: 924.Value, to: 927.Entity}
+  - {from: 924.Value, to: 936.Entity}
+  - {from: 927.Value, to: 931.Condition}
+  - {from: 931.True, to: 986.Exec}
+  - {from: 931.False, to: 1056.Exec}
+  - {from: 936.Value.x, to: 986.px}
+  - {from: 936.Value.y, to: 986.py}
+  - {from: 986.Then, to: 1078.Exec}
+  - {from: 1056.Then, to: 1078.Exec}
+  - {from: 1076.Value, to: 1078.Value}
+  - {from: 1078.Then, to: 1084.Exec}
+  - {from: 1084.True, to: 1139.Exec}
+  - {from: 1084.False, to: 1099.Exec}
+  - {from: 1133.Result, to: 1139.Condition}
+  - {from: 1139.True, to: 1154.Exec}
+  - {from: 1154.Then, to: 1194.Exec}
+  - {from: 1188.Result, to: 1194.Condition}
+  - {from: 1194.True, to: 1199.Exec}
+  - {from: 1194.False, to: 1222.Exec}
+  - {from: 1216.Result, to: 1222.Condition}
+  - {from: 1222.True, to: 1227.Exec}
+  - {from: 1230.Then, to: 1232.Exec}
+  - {from: 1235.Then, to: 1432.Exec}
+  - {from: 1237.Value, to: 1263.v}
+  - {from: 1263.Result, to: 1266.Value}
+  - {from: 1266.Integer, to: 1271.Value}
+  - {from: 1266.Integer, to: 1303.Index}
+  - {from: 1266.Integer, to: 1341.Index}
+  - {from: 1266.Integer, to: 1425.Index}
+  - {from: 1266.Integer, to: 1481.Item}
+  - {from: 1266.Integer, to: 1518.Index}
+  - {from: 1266.Integer, to: 1524.Index}
+  - {from: 1266.Integer, to: 1535.Index}
+  - {from: 1266.Integer, to: 1541.Index}
+  - {from: 1266.Integer, to: 1552.Index}
+  - {from: 1269.Value, to: 1294.Array}
+  - {from: 1271.Real, to: 1288.i}
+  - {from: 1288.Result, to: 1291.Value}
+  - {from: 1291.Integer, to: 1294.Index}
+  - {from: 1294.Item, to: 1298.Value}
+  - {from: 1298.Real, to: 1412.o}
+  - {from: 1301.Value, to: 1303.Array}
+  - {from: 1303.Item, to: 1309.Value}
+  - {from: 1307.Value, to: 1332.Array}
+  - {from: 1309.Real, to: 1326.i}
+  - {from: 1326.Result, to: 1329.Value}
+  - {from: 1329.Integer, to: 1332.Index}
+  - {from: 1332.Item, to: 1336.Value}
+  - {from: 1336.Real, to: 1412.a}
+  - {from: 1339.Value, to: 1341.Array}
+  - {from: 1341.Item, to: 1347.Value}
+  - {from: 1345.Value, to: 1370.Array}
+  - {from: 1347.Real, to: 1364.i}
+  - {from: 1364.Result, to: 1367.Value}
+  - {from: 1367.Integer, to: 1370.Index}
+  - {from: 1370.Item, to: 1374.Value}
+  - {from: 1374.Real, to: 1412.b}
+  - {from: 1412.Result, to: 1470.s}
+  - {from: 1417.Value, to: 1420.Value}
+  - {from: 1420.Real, to: 1470.p}
+  - {from: 1420.Real, to: 1503.p}
+  - {from: 1423.Value, to: 1425.Array}
+  - {from: 1425.Item, to: 1429.Value}
+  - {from: 1429.Real, to: 1470.c}
+  - {from: 1429.Real, to: 1503.c}
+  - {from: 1432.Then, to: 1470.Exec}
+  - {from: 1470.True, to: 1485.Exec}
+  - {from: 1470.False, to: 1604.Exec}
+  - {from: 1478.Value, to: 1481.Array}
+  - {from: 1481.Array, to: 1485.Value}
+  - {from: 1485.Then, to: 1510.Exec}
+  - {from: 1503.Result, to: 1507.Value}
+  - {from: 1507.Integer, to: 1510.Value}
+  - {from: 1510.Then, to: 1528.Exec}
+  - {from: 1516.Value, to: 1518.Array}
+  - {from: 1518.Item, to: 1528.Stat}
+  - {from: 1522.Value, to: 1524.Array}
+  - {from: 1524.Item, to: 1528.Value}
+  - {from: 1528.Then, to: 1545.Exec}
+  - {from: 1533.Value, to: 1535.Array}
+  - {from: 1535.Item, to: 1545.Stat}
+  - {from: 1539.Value, to: 1541.Array}
+  - {from: 1541.Item, to: 1545.Value}
+  - {from: 1545.Then, to: 1563.Exec}
+  - {from: 1550.Value, to: 1552.Array}
+  - {from: 1552.Item, to: 1556.Arg0}
+  - {from: 1556.Result, to: 1560.Value}
+  - {from: 1560.Name, to: 1563.Value}
+  - {from: 1563.Then, to: 1589.Exec}
+  - {from: 1569.Value, to: 1586.s}
+  - {from: 1589.Then, to: 1595.Exec}
+  - {from: 1595.Then, to: 1613.Exec}
+  - {from: 1604.Then, to: 1613.Exec}
+- id: 10
   kind: function
-  name: Apply
-  entry_id: 10
-  return_id: 12
+  name: Mark
+  entry_id: 11
+  return_id: 13
   call_depth_limit: 64
   nodes:
-  - id: 10
+  - {id: 11, type: Function Entry}
+  - {id: 13, type: Return}
+  - id: 15
+    type: Get Variable
+    reference_id: 9
+    reference_name: flags
+    outputs:
+      Value: {container: 1}
+  - id: 17
+    type: Clear
+    inputs:
+      Array: {type: int}
+    outputs:
+      Array: {type: int}
+  - id: 20
+    type: Resize
+    inputs:
+      Array: {type: int}
+      Index: 28
+    outputs:
+      Array: {type: int}
+  - id: 24
+    type: Set Variable
+    reference_id: 9
+    reference_name: flags
+    inputs:
+      Value: {container: 1}
+    outputs:
+      Value: {container: 1}
+  - id: 29
+    type: Get Variable
+    reference_id: 9
+    reference_name: flags
+    outputs:
+      Value: {container: 1}
+  - id: 31
+    type: Set Array Elem
+    inputs:
+      Array: {type: int}
+      Item: {type: int, default: 1}
+    outputs:
+      Array: {type: int}
+  - id: 36
+    type: Set Variable
+    reference_id: 9
+    reference_name: flags
+    inputs:
+      Value: {container: 1}
+    outputs:
+      Value: {container: 1}
+  - id: 41
+    type: Get Global Variable
+    inputs: {Name: Skills}
+    outputs:
+      Value: {type: int, container: 1}
+  - id: 44
+    type: ForEach
+    inputs:
+      Array: {type: int}
+    outputs:
+      Array Element: {type: int}
+  - {id: 51, type: To Real}
+  - id: 79
+    type: Behavior Expression
+    reference_id: 54
+    reference_name: clamp(s + 1, 0, 27)
+    inputs:
+      s: {type: double}
+    outputs:
+      Result: {type: double}
+  - {id: 82, type: To Integer}
+  - id: 85
+    type: Get Variable
+    reference_id: 9
+    reference_name: flags
+    outputs:
+      Value: {container: 1}
+  - id: 87
+    type: Set Array Elem
+    inputs:
+      Array: {type: int}
+      Item: {type: int, default: 1}
+    outputs:
+      Array: {type: int}
+  - id: 92
+    type: Set Variable
+    reference_id: 9
+    reference_name: flags
+    inputs:
+      Value: {container: 1}
+    outputs:
+      Value: {container: 1}
+  edges:
+  - {from: 11.Exec, to: 24.Exec}
+  - {from: 15.Value, to: 17.Array}
+  - {from: 17.Array, to: 20.Array}
+  - {from: 20.Array, to: 24.Value}
+  - {from: 24.Then, to: 36.Exec}
+  - {from: 29.Value, to: 31.Array}
+  - {from: 31.Array, to: 36.Value}
+  - {from: 36.Then, to: 44.Exec}
+  - {from: 41.Value, to: 44.Array}
+  - {from: 44.Body, to: 92.Exec}
+  - {from: 44.Array Element, to: 51.Value}
+  - {from: 44.Completed, to: 13.Exec}
+  - {from: 51.Real, to: 79.s}
+  - {from: 79.Result, to: 82.Value}
+  - {from: 82.Integer, to: 87.Index}
+  - {from: 85.Value, to: 87.Array}
+  - {from: 87.Array, to: 92.Value}
+- {id: 54, kind: function, math_expression: 'clamp(s + 1, 0, 27)', entry_id: 55}
+- id: 97
+  kind: function
+  name: Apply
+  entry_id: 98
+  return_id: 100
+  call_depth_limit: 64
+  nodes:
+  - id: 98
     type: Function Entry
     outputs:
-      Stat: {id: 14, type: int, kind: data}
+      Stat: {id: 102, type: int, kind: data}
       Value: {type: float, kind: data}
-  - {id: 12, type: Return}
-  - id: 16
+  - {id: 100, type: Return}
+  - id: 104
     type: Switch on Int
     outputs:
-    - 19
-    - 20
-    - {id: 22, name: Case2}
-    - {id: 23, name: Case3}
-    - {id: 24, name: Case4}
-    - {id: 25, name: Case5}
-    - {id: 26, name: Case6}
-    - {id: 27, name: Case7}
-    - {id: 28, name: Case8}
-    - {id: 29, name: Case9}
-    - {id: 30, name: Case10}
-    - {id: 31, name: Case11}
-    - {id: 32, name: Case12}
-    - 21
-  - id: 33
+    - 107
+    - 108
+    - {id: 110, name: Case2}
+    - {id: 111, name: Case3}
+    - {id: 112, name: Case4}
+    - {id: 113, name: Case5}
+    - {id: 114, name: Case6}
+    - {id: 115, name: Case7}
+    - {id: 116, name: Case8}
+    - {id: 117, name: Case9}
+    - {id: 118, name: Case10}
+    - {id: 119, name: Case11}
+    - {id: 120, name: Case12}
+    - 109
+  - id: 121
     type: Get Global Variable
     inputs: {Name: StatHull}
     outputs:
       Value: {type: double}
-  - id: 48
+  - id: 136
     type: Behavior Expression
-    reference_id: 36
+    reference_id: 124
     reference_name: c + v
     inputs:
       c: {type: double}
       v: {type: float}
     outputs:
       Result: {type: double}
-  - id: 52
+  - id: 140
     type: Set Global Variable
     inputs:
       Name: StatHull
       Value: {type: double}
     outputs:
       Value: {type: double}
-  - id: 58
+  - id: 146
     type: Get Global Variable
     inputs: {Name: StatShield}
     outputs:
       Value: {type: double}
-  - id: 73
+  - id: 161
     type: Behavior Expression
-    reference_id: 61
+    reference_id: 149
     reference_name: c + v
     inputs:
       c: {type: double}
       v: {type: float}
     outputs:
       Result: {type: double}
-  - id: 77
+  - id: 165
     type: Set Global Variable
     inputs:
       Name: StatShield
       Value: {type: double}
     outputs:
       Value: {type: double}
-  - id: 83
+  - id: 171
     type: Get Global Variable
     inputs: {Name: StatCapacitor}
     outputs:
       Value: {type: double}
-  - id: 98
+  - id: 186
     type: Behavior Expression
-    reference_id: 86
+    reference_id: 174
     reference_name: c + v
     inputs:
       c: {type: double}
       v: {type: float}
     outputs:
       Result: {type: double}
-  - id: 102
+  - id: 190
     type: Set Global Variable
     inputs:
       Name: StatCapacitor
       Value: {type: double}
     outputs:
       Value: {type: double}
-  - id: 108
+  - id: 196
     type: Get Global Variable
     inputs: {Name: Magnet}
     outputs:
       Value: {type: float}
-  - id: 123
+  - id: 211
     type: Behavior Expression
-    reference_id: 111
+    reference_id: 199
     reference_name: c + v
     inputs:
       c: {type: float}
       v: {type: float}
     outputs:
       Result: {type: float}
-  - id: 127
+  - id: 215
     type: Set Global Variable
     inputs:
       Name: Magnet
       Value: {type: float}
     outputs:
       Value: {type: float}
-  - id: 133
+  - id: 221
     type: Get Global Variable
     inputs: {Name: StatSpeed}
     outputs:
       Value: {type: double}
-  - id: 148
+  - id: 236
     type: Behavior Expression
-    reference_id: 136
+    reference_id: 224
     reference_name: c * v
     inputs:
       c: {type: double}
       v: {type: float}
     outputs:
       Result: {type: double}
-  - id: 152
+  - id: 240
     type: Set Global Variable
     inputs:
       Name: StatSpeed
       Value: {type: double}
     outputs:
       Value: {type: double}
-  - id: 158
+  - id: 246
     type: Get Global Variable
     inputs: {Name: StatBoost}
     outputs:
       Value: {type: double}
-  - id: 173
+  - id: 261
     type: Behavior Expression
-    reference_id: 161
+    reference_id: 249
     reference_name: c * v
     inputs:
       c: {type: double}
       v: {type: float}
     outputs:
       Result: {type: double}
-  - id: 177
+  - id: 265
     type: Set Global Variable
     inputs:
       Name: StatBoost
       Value: {type: double}
     outputs:
       Value: {type: double}
-  - id: 183
+  - id: 271
     type: Get Global Variable
     inputs: {Name: StatCastDelay}
     outputs:
       Value: {type: double}
-  - id: 198
+  - id: 286
     type: Behavior Expression
-    reference_id: 186
+    reference_id: 274
     reference_name: c * v
     inputs:
       c: {type: double}
       v: {type: float}
     outputs:
       Result: {type: double}
-  - id: 202
+  - id: 290
     type: Set Global Variable
     inputs:
       Name: StatCastDelay
       Value: {type: double}
     outputs:
       Value: {type: double}
-  - id: 208
+  - id: 296
     type: Get Global Variable
     inputs: {Name: StatDamage}
     outputs:
       Value: {type: double}
-  - id: 223
+  - id: 311
     type: Behavior Expression
-    reference_id: 211
+    reference_id: 299
     reference_name: c * v
     inputs:
       c: {type: double}
       v: {type: float}
     outputs:
       Result: {type: double}
-  - id: 227
+  - id: 315
     type: Set Global Variable
     inputs:
       Name: StatDamage
       Value: {type: double}
     outputs:
       Value: {type: double}
-  - id: 233
+  - id: 321
     type: Get Global Variable
     inputs: {Name: StatRegen}
     outputs:
       Value: {type: double}
-  - id: 248
+  - id: 336
     type: Behavior Expression
-    reference_id: 236
+    reference_id: 324
     reference_name: c * v
     inputs:
       c: {type: double}
       v: {type: float}
     outputs:
       Result: {type: double}
-  - id: 252
+  - id: 340
     type: Set Global Variable
     inputs:
       Name: StatRegen
       Value: {type: double}
     outputs:
       Value: {type: double}
-  - id: 258
+  - id: 346
     type: Get Global Variable
     inputs: {Name: StatPrice}
     outputs:
       Value: {type: double}
-  - id: 273
+  - id: 361
     type: Behavior Expression
-    reference_id: 261
+    reference_id: 349
     reference_name: c * v
     inputs:
       c: {type: double}
       v: {type: float}
     outputs:
       Result: {type: double}
-  - id: 277
+  - id: 365
     type: Set Global Variable
     inputs:
       Name: StatPrice
       Value: {type: double}
     outputs:
       Value: {type: double}
-  - id: 283
+  - id: 371
     type: Get Global Variable
     inputs: {Name: Slots0}
     outputs:
       Value: {type: int}
-  - {id: 286, type: To Real}
-  - id: 301
+  - {id: 374, type: To Real}
+  - id: 389
     type: Behavior Expression
-    reference_id: 289
+    reference_id: 377
     reference_name: c + v
     inputs:
       c: {type: double}
       v: {type: float}
     outputs:
       Result: {type: double}
-  - {id: 305, type: To Integer}
-  - id: 308
+  - {id: 393, type: To Integer}
+  - id: 396
     type: Set Global Variable
     inputs:
       Name: Slots0
       Value: {type: int}
     outputs:
       Value: {type: int}
-  - id: 314
+  - id: 402
     type: Get Global Variable
     inputs: {Name: Slots1}
     outputs:
       Value: {type: int}
-  - {id: 317, type: To Real}
-  - id: 332
+  - {id: 405, type: To Real}
+  - id: 420
     type: Behavior Expression
-    reference_id: 320
+    reference_id: 408
     reference_name: c + v
     inputs:
       c: {type: double}
       v: {type: float}
     outputs:
       Result: {type: double}
-  - {id: 336, type: To Integer}
-  - id: 339
+  - {id: 424, type: To Integer}
+  - id: 427
     type: Set Global Variable
     inputs:
       Name: Slots1
@@ -1185,174 +1358,205 @@ graphs:
     outputs:
       Value: {type: int}
   edges:
-  - {from: 10.Exec, to: 16.Exec}
-  - {from: 10.Stat, to: 16.Selection}
-  - {from: 10.Value, to: 48.v}
-  - {from: 10.Value, to: 73.v}
-  - {from: 10.Value, to: 98.v}
-  - {from: 10.Value, to: 123.v}
-  - {from: 10.Value, to: 148.v}
-  - {from: 10.Value, to: 173.v}
-  - {from: 10.Value, to: 198.v}
-  - {from: 10.Value, to: 223.v}
-  - {from: 10.Value, to: 248.v}
-  - {from: 10.Value, to: 273.v}
-  - {from: 10.Value, to: 301.v}
-  - {from: 10.Value, to: 332.v}
-  - {from: 16.Case0, to: 12.Exec}
-  - {from: 16.Case1, to: 52.Exec}
-  - {from: 16.Default, to: 12.Exec}
-  - {from: 16.Case2, to: 77.Exec}
-  - {from: 16.Case3, to: 102.Exec}
-  - {from: 16.Case4, to: 127.Exec}
-  - {from: 16.Case5, to: 152.Exec}
-  - {from: 16.Case6, to: 177.Exec}
-  - {from: 16.Case7, to: 202.Exec}
-  - {from: 16.Case8, to: 227.Exec}
-  - {from: 16.Case9, to: 252.Exec}
-  - {from: 16.Case10, to: 277.Exec}
-  - {from: 16.Case11, to: 308.Exec}
-  - {from: 16.Case12, to: 339.Exec}
-  - {from: 33.Value, to: 48.c}
-  - {from: 48.Result, to: 52.Value}
-  - {from: 52.Then, to: 12.Exec}
-  - {from: 58.Value, to: 73.c}
-  - {from: 73.Result, to: 77.Value}
-  - {from: 77.Then, to: 12.Exec}
-  - {from: 83.Value, to: 98.c}
-  - {from: 98.Result, to: 102.Value}
-  - {from: 102.Then, to: 12.Exec}
-  - {from: 108.Value, to: 123.c}
-  - {from: 123.Result, to: 127.Value}
-  - {from: 127.Then, to: 12.Exec}
-  - {from: 133.Value, to: 148.c}
-  - {from: 148.Result, to: 152.Value}
-  - {from: 152.Then, to: 12.Exec}
-  - {from: 158.Value, to: 173.c}
-  - {from: 173.Result, to: 177.Value}
-  - {from: 177.Then, to: 12.Exec}
-  - {from: 183.Value, to: 198.c}
-  - {from: 198.Result, to: 202.Value}
-  - {from: 202.Then, to: 12.Exec}
-  - {from: 208.Value, to: 223.c}
-  - {from: 223.Result, to: 227.Value}
-  - {from: 227.Then, to: 12.Exec}
-  - {from: 233.Value, to: 248.c}
-  - {from: 248.Result, to: 252.Value}
-  - {from: 252.Then, to: 12.Exec}
-  - {from: 258.Value, to: 273.c}
-  - {from: 273.Result, to: 277.Value}
-  - {from: 277.Then, to: 12.Exec}
-  - {from: 283.Value, to: 286.Value}
-  - {from: 286.Real, to: 301.c}
-  - {from: 301.Result, to: 305.Value}
-  - {from: 305.Integer, to: 308.Value}
-  - {from: 308.Then, to: 12.Exec}
-  - {from: 314.Value, to: 317.Value}
-  - {from: 317.Real, to: 332.c}
-  - {from: 332.Result, to: 336.Value}
-  - {from: 336.Integer, to: 339.Value}
-  - {from: 339.Then, to: 12.Exec}
-- {id: 36, kind: function, math_expression: c + v, entry_id: 37}
-- {id: 61, kind: function, math_expression: c + v, entry_id: 62}
-- {id: 86, kind: function, math_expression: c + v, entry_id: 87}
-- {id: 111, kind: function, math_expression: c + v, entry_id: 112}
-- {id: 136, kind: function, math_expression: c * v, entry_id: 137}
-- {id: 161, kind: function, math_expression: c * v, entry_id: 162}
-- {id: 186, kind: function, math_expression: c * v, entry_id: 187}
-- {id: 211, kind: function, math_expression: c * v, entry_id: 212}
-- {id: 236, kind: function, math_expression: c * v, entry_id: 237}
-- {id: 261, kind: function, math_expression: c * v, entry_id: 262}
-- {id: 289, kind: function, math_expression: c + v, entry_id: 290}
-- {id: 320, kind: function, math_expression: c + v, entry_id: 321}
-- id: 345
+  - {from: 98.Exec, to: 104.Exec}
+  - {from: 98.Stat, to: 104.Selection}
+  - {from: 98.Value, to: 136.v}
+  - {from: 98.Value, to: 161.v}
+  - {from: 98.Value, to: 186.v}
+  - {from: 98.Value, to: 211.v}
+  - {from: 98.Value, to: 236.v}
+  - {from: 98.Value, to: 261.v}
+  - {from: 98.Value, to: 286.v}
+  - {from: 98.Value, to: 311.v}
+  - {from: 98.Value, to: 336.v}
+  - {from: 98.Value, to: 361.v}
+  - {from: 98.Value, to: 389.v}
+  - {from: 98.Value, to: 420.v}
+  - {from: 104.Case0, to: 100.Exec}
+  - {from: 104.Case1, to: 140.Exec}
+  - {from: 104.Default, to: 100.Exec}
+  - {from: 104.Case2, to: 165.Exec}
+  - {from: 104.Case3, to: 190.Exec}
+  - {from: 104.Case4, to: 215.Exec}
+  - {from: 104.Case5, to: 240.Exec}
+  - {from: 104.Case6, to: 265.Exec}
+  - {from: 104.Case7, to: 290.Exec}
+  - {from: 104.Case8, to: 315.Exec}
+  - {from: 104.Case9, to: 340.Exec}
+  - {from: 104.Case10, to: 365.Exec}
+  - {from: 104.Case11, to: 396.Exec}
+  - {from: 104.Case12, to: 427.Exec}
+  - {from: 121.Value, to: 136.c}
+  - {from: 136.Result, to: 140.Value}
+  - {from: 140.Then, to: 100.Exec}
+  - {from: 146.Value, to: 161.c}
+  - {from: 161.Result, to: 165.Value}
+  - {from: 165.Then, to: 100.Exec}
+  - {from: 171.Value, to: 186.c}
+  - {from: 186.Result, to: 190.Value}
+  - {from: 190.Then, to: 100.Exec}
+  - {from: 196.Value, to: 211.c}
+  - {from: 211.Result, to: 215.Value}
+  - {from: 215.Then, to: 100.Exec}
+  - {from: 221.Value, to: 236.c}
+  - {from: 236.Result, to: 240.Value}
+  - {from: 240.Then, to: 100.Exec}
+  - {from: 246.Value, to: 261.c}
+  - {from: 261.Result, to: 265.Value}
+  - {from: 265.Then, to: 100.Exec}
+  - {from: 271.Value, to: 286.c}
+  - {from: 286.Result, to: 290.Value}
+  - {from: 290.Then, to: 100.Exec}
+  - {from: 296.Value, to: 311.c}
+  - {from: 311.Result, to: 315.Value}
+  - {from: 315.Then, to: 100.Exec}
+  - {from: 321.Value, to: 336.c}
+  - {from: 336.Result, to: 340.Value}
+  - {from: 340.Then, to: 100.Exec}
+  - {from: 346.Value, to: 361.c}
+  - {from: 361.Result, to: 365.Value}
+  - {from: 365.Then, to: 100.Exec}
+  - {from: 371.Value, to: 374.Value}
+  - {from: 374.Real, to: 389.c}
+  - {from: 389.Result, to: 393.Value}
+  - {from: 393.Integer, to: 396.Value}
+  - {from: 396.Then, to: 100.Exec}
+  - {from: 402.Value, to: 405.Value}
+  - {from: 405.Real, to: 420.c}
+  - {from: 420.Result, to: 424.Value}
+  - {from: 424.Integer, to: 427.Value}
+  - {from: 427.Then, to: 100.Exec}
+- {id: 124, kind: function, math_expression: c + v, entry_id: 125}
+- {id: 149, kind: function, math_expression: c + v, entry_id: 150}
+- {id: 174, kind: function, math_expression: c + v, entry_id: 175}
+- {id: 199, kind: function, math_expression: c + v, entry_id: 200}
+- {id: 224, kind: function, math_expression: c * v, entry_id: 225}
+- {id: 249, kind: function, math_expression: c * v, entry_id: 250}
+- {id: 274, kind: function, math_expression: c * v, entry_id: 275}
+- {id: 299, kind: function, math_expression: c * v, entry_id: 300}
+- {id: 324, kind: function, math_expression: c * v, entry_id: 325}
+- {id: 349, kind: function, math_expression: c * v, entry_id: 350}
+- {id: 377, kind: function, math_expression: c + v, entry_id: 378}
+- {id: 408, kind: function, math_expression: c + v, entry_id: 409}
+- id: 433
   kind: function
   name: Show
-  entry_id: 346
-  return_id: 348
+  entry_id: 434
+  return_id: 436
   call_depth_limit: 64
   nodes:
-  - {id: 346, type: Function Entry}
-  - {id: 348, type: Return}
-  - id: 350
+  - {id: 434, type: Function Entry}
+  - {id: 436, type: Return}
+  - {id: 438, type: Call Function, reference_id: 10, reference_name: Mark}
+  - id: 441
     type: Get Global Variable
     inputs: {Name: SkillPoints}
     outputs:
       Value: {type: int}
-  - id: 353
+  - id: 444
     type: Set UI Data
     inputs:
       Name: points
       Value: {type: int}
-  - id: 359
+  - id: 450
     type: ForLoop
     inputs: {LastIndex: 26}
-  - id: 366
-    type: Get Global Variable
-    inputs: {Name: Skills}
+  - id: 457
+    type: Get Variable
+    reference_id: 9
+    reference_name: flags
     outputs:
-      Value: {type: int, container: 1}
-  - id: 369
-    type: Find
-    inputs:
-      Array: {type: int}
-      Item: {type: int}
-  - {id: 373, type: To Real}
-  - id: 390
+      Value: {container: 1}
+  - {id: 459, type: To Real}
+  - id: 476
     type: Behavior Expression
-    reference_id: 376
-    reference_name: step(0, f)
+    reference_id: 462
+    reference_name: i + 1
     inputs:
-      f: {}
+      i: {type: double}
     outputs:
       Result: {type: double}
-  - id: 393
+  - {id: 479, type: To Integer}
+  - id: 482
+    type: Get
+    inputs:
+      Array: {type: int}
+    outputs:
+      Item: {type: int}
+  - {id: 486, type: To Real}
+  - id: 489
     type: Get Variable
     reference_id: 3
     reference_name: req1
     outputs:
       Value: {container: 1}
-  - {id: 395, type: Get}
-  - id: 399
-    type: Find
+  - id: 491
+    type: Get
     inputs:
       Array: {type: int}
-  - {id: 403, type: To Real}
-  - {id: 406, type: To Real}
-  - id: 438
+    outputs:
+      Item: {type: int}
+  - id: 495
+    type: Get Variable
+    reference_id: 9
+    reference_name: flags
+    outputs:
+      Value: {container: 1}
+  - {id: 497, type: To Real}
+  - id: 514
     type: Behavior Expression
-    reference_id: 409
-    reference_name: max(step(r, -0.5), step(0, f))
+    reference_id: 500
+    reference_name: i + 1
     inputs:
-      r: {}
-      f: {}
+      i: {type: double}
     outputs:
       Result: {type: double}
-  - id: 442
+  - {id: 517, type: To Integer}
+  - id: 520
+    type: Get
+    inputs:
+      Array: {type: int}
+    outputs:
+      Item: {type: int}
+  - {id: 524, type: To Real}
+  - id: 527
     type: Get Variable
     reference_id: 4
     reference_name: req2
     outputs:
       Value: {container: 1}
-  - {id: 444, type: Get}
-  - id: 448
-    type: Find
+  - id: 529
+    type: Get
     inputs:
       Array: {type: int}
-  - {id: 452, type: To Real}
-  - {id: 455, type: To Real}
-  - id: 487
+    outputs:
+      Item: {type: int}
+  - id: 533
+    type: Get Variable
+    reference_id: 9
+    reference_name: flags
+    outputs:
+      Value: {container: 1}
+  - {id: 535, type: To Real}
+  - id: 552
     type: Behavior Expression
-    reference_id: 458
-    reference_name: max(step(r, -0.5), step(0, f))
+    reference_id: 538
+    reference_name: i + 1
     inputs:
-      r: {}
-      f: {}
+      i: {type: double}
     outputs:
       Result: {type: double}
-  - id: 526
+  - {id: 555, type: To Integer}
+  - id: 558
+    type: Get
+    inputs:
+      Array: {type: int}
+    outputs:
+      Item: {type: int}
+  - {id: 562, type: To Real}
+  - id: 600
     type: Behavior Expression
-    reference_id: 491
+    reference_id: 565
     reference_name: o * 2 + (1 - o) * a * b
     inputs:
       o: {type: double}
@@ -1360,233 +1564,235 @@ graphs:
       b: {type: double}
     outputs:
       Result: {type: double}
-  - id: 531
+  - id: 605
     type: Get Global Variable
     inputs: {Name: SkillPoints}
-  - {id: 534, type: To Real}
-  - id: 537
+    outputs:
+      Value: {type: int}
+  - {id: 608, type: To Real}
+  - id: 611
     type: Get Variable
     reference_id: 2
     reference_name: cost
     outputs:
       Value: {container: 1}
-  - {id: 539, type: Get}
-  - {id: 543, type: To Real}
-  - id: 546
+  - id: 613
+    type: Get
+    inputs:
+      Array: {type: int}
+    outputs:
+      Item: {type: int}
+  - {id: 617, type: To Real}
+  - id: 620
     type: Format Text
-    inputs: {Format: 'n{}'}
-  - {id: 550, type: To Name}
-  - id: 553
+    inputs:
+      Format: n{}
+      Arg0: {type: int}
+  - {id: 624, type: To Name}
+  - id: 627
     type: Set UI Data
     inputs:
       Value: {type: double}
-  - id: 571
+  - id: 645
     type: Behavior Expression
-    reference_id: 559
+    reference_id: 633
     reference_name: step(c, p)
     inputs:
-      c: {}
-      p: {}
+      c: {type: double}
+      p: {type: double}
     outputs:
       Result: {type: double}
-  - id: 575
+  - id: 649
     type: Format Text
-    inputs: {Format: 'a{}'}
-  - {id: 579, type: To Name}
-  - id: 582
+    inputs:
+      Format: a{}
+      Arg0: {type: int}
+  - {id: 653, type: To Name}
+  - id: 656
     type: Set UI Data
     inputs:
       Value: {type: double}
   edges:
-  - {from: 346.Exec, to: 353.Exec}
-  - {from: 350.Value, to: 353.Value}
-  - {from: 353.Then, to: 359.Exec}
-  - {from: 359.Body, to: 553.Exec}
-  - {from: 359.Index, to: 369.Item}
-  - {from: 359.Index, to: 395.Index}
-  - {from: 359.Index, to: 444.Index}
-  - {from: 359.Index, to: 539.Index}
-  - {from: 359.Index, to: 546.Arg0}
-  - {from: 359.Index, to: 575.Arg0}
-  - {from: 359.Completed, to: 348.Exec}
-  - {from: 366.Value, to: 369.Array}
-  - {from: 366.Value, to: 399.Array}
-  - {from: 366.Value, to: 448.Array}
-  - {from: 369.Return Value, to: 373.Value}
-  - {from: 373.Real, to: 390.f}
-  - {from: 390.Result, to: 526.o}
-  - {from: 393.Value, to: 395.Array}
-  - {from: 395.Item, to: 399.Item}
-  - {from: 395.Item, to: 406.Value}
-  - {from: 399.Return Value, to: 403.Value}
-  - {from: 403.Real, to: 438.f}
-  - {from: 406.Real, to: 438.r}
-  - {from: 438.Result, to: 526.a}
-  - {from: 442.Value, to: 444.Array}
-  - {from: 444.Item, to: 448.Item}
-  - {from: 444.Item, to: 455.Value}
-  - {from: 448.Return Value, to: 452.Value}
-  - {from: 452.Real, to: 487.f}
-  - {from: 455.Real, to: 487.r}
-  - {from: 487.Result, to: 526.b}
-  - {from: 526.Result, to: 553.Value}
-  - {from: 531.Value, to: 534.Value}
-  - {from: 534.Real, to: 571.p}
-  - {from: 537.Value, to: 539.Array}
-  - {from: 539.Item, to: 543.Value}
-  - {from: 543.Real, to: 571.c}
-  - {from: 546.Result, to: 550.Value}
-  - {from: 550.Name, to: 553.Name}
-  - {from: 553.Then, to: 582.Exec}
-  - {from: 571.Result, to: 582.Value}
-  - {from: 575.Result, to: 579.Value}
-  - {from: 579.Name, to: 582.Name}
-- {id: 376, kind: function, math_expression: 'step(0, f)', entry_id: 377}
-- id: 409
-  kind: function
-  math_expression: max(step(r, -0.5), step(0, f))
-  entry_id: 410
-- id: 458
-  kind: function
-  math_expression: max(step(r, -0.5), step(0, f))
-  entry_id: 459
-- id: 491
+  - {from: 434.Exec, to: 438.Exec}
+  - {from: 438.Then, to: 444.Exec}
+  - {from: 441.Value, to: 444.Value}
+  - {from: 444.Then, to: 450.Exec}
+  - {from: 450.Body, to: 627.Exec}
+  - {from: 450.Index, to: 459.Value}
+  - {from: 450.Index, to: 491.Index}
+  - {from: 450.Index, to: 529.Index}
+  - {from: 450.Index, to: 613.Index}
+  - {from: 450.Index, to: 620.Arg0}
+  - {from: 450.Index, to: 649.Arg0}
+  - {from: 450.Completed, to: 436.Exec}
+  - {from: 457.Value, to: 482.Array}
+  - {from: 459.Real, to: 476.i}
+  - {from: 476.Result, to: 479.Value}
+  - {from: 479.Integer, to: 482.Index}
+  - {from: 482.Item, to: 486.Value}
+  - {from: 486.Real, to: 600.o}
+  - {from: 489.Value, to: 491.Array}
+  - {from: 491.Item, to: 497.Value}
+  - {from: 495.Value, to: 520.Array}
+  - {from: 497.Real, to: 514.i}
+  - {from: 514.Result, to: 517.Value}
+  - {from: 517.Integer, to: 520.Index}
+  - {from: 520.Item, to: 524.Value}
+  - {from: 524.Real, to: 600.a}
+  - {from: 527.Value, to: 529.Array}
+  - {from: 529.Item, to: 535.Value}
+  - {from: 533.Value, to: 558.Array}
+  - {from: 535.Real, to: 552.i}
+  - {from: 552.Result, to: 555.Value}
+  - {from: 555.Integer, to: 558.Index}
+  - {from: 558.Item, to: 562.Value}
+  - {from: 562.Real, to: 600.b}
+  - {from: 600.Result, to: 627.Value}
+  - {from: 605.Value, to: 608.Value}
+  - {from: 608.Real, to: 645.p}
+  - {from: 611.Value, to: 613.Array}
+  - {from: 613.Item, to: 617.Value}
+  - {from: 617.Real, to: 645.c}
+  - {from: 620.Result, to: 624.Value}
+  - {from: 624.Name, to: 627.Name}
+  - {from: 627.Then, to: 656.Exec}
+  - {from: 645.Result, to: 656.Value}
+  - {from: 649.Result, to: 653.Value}
+  - {from: 653.Name, to: 656.Name}
+- {id: 462, kind: function, math_expression: i + 1, entry_id: 463}
+- {id: 500, kind: function, math_expression: i + 1, entry_id: 501}
+- {id: 538, kind: function, math_expression: i + 1, entry_id: 539}
+- id: 565
   kind: function
   math_expression: o * 2 + (1 - o) * a * b
-  entry_id: 492
-- {id: 559, kind: function, math_expression: 'step(c, p)', entry_id: 560}
-- id: 591
+  entry_id: 566
+- {id: 633, kind: function, math_expression: 'step(c, p)', entry_id: 634}
+- id: 665
   kind: function
   name: Close
-  entry_id: 592
-  return_id: 594
+  entry_id: 666
+  return_id: 668
   call_depth_limit: 64
   nodes:
-  - {id: 592, type: Function Entry}
-  - {id: 594, type: Return}
-  - id: 610
+  - {id: 666, type: Function Entry}
+  - {id: 668, type: Return}
+  - id: 684
     type: Behavior Expression
-    reference_id: 596
+    reference_id: 670
     reference_name: open > 0.5
     inputs:
       open:
         type: double
         flags: 0
-        binding: {kind: variable, variable_id: 589, source_asset: SkillScreen}
+        binding: {kind: variable, variable_id: 663, source_asset: SkillScreen}
     outputs:
       Result: {type: bool}
-  - {id: 616, type: Branch}
-  - id: 631
+  - {id: 690, type: Branch}
+  - id: 705
     type: Behavior Expression
-    reference_id: 621
+    reference_id: 695
     reference_name: open = 0
     inputs:
-      Exec: {id: 634, kind: exec}
+      Exec: {id: 708, kind: exec}
       open:
-        id: 632
+        id: 706
         type: float
-        binding: {kind: variable, variable_id: 589, source_asset: SkillScreen}
+        binding: {kind: variable, variable_id: 663, source_asset: SkillScreen}
     outputs:
-      Then: {id: 635, kind: exec}
-      Result: {id: 633, type: float}
-  - id: 651
+      Then: {id: 709, kind: exec}
+      Result: {id: 707, type: float}
+  - id: 725
     type: Set UI Data
     inputs:
       Name: open
       Value: {type: int}
-  - {id: 657, type: Set Time Scale}
-  - id: 661
+  - {id: 731, type: Set Time Scale}
+  - id: 735
     type: Play Sound
     inputs: {Frequency: 520.0, End Frequency: 260.0, Duration: 0.16, Volume: 0.16}
   edges:
-  - {from: 592.Exec, to: 616.Exec}
-  - {from: 610.Result, to: 616.Condition}
-  - {from: 616.True, to: 631.Exec}
-  - {from: 616.False, to: 594.Exec}
-  - {from: 631.Then, to: 651.Exec}
-  - {from: 651.Then, to: 657.Exec}
-  - {from: 657.Then, to: 661.Exec}
-  - {from: 661.Then, to: 594.Exec}
-- {id: 596, kind: function, math_expression: open > 0.5, entry_id: 597}
-- {id: 621, kind: function, math_expression: open = 0, entry_id: 637}
-- id: 670
+  - {from: 666.Exec, to: 690.Exec}
+  - {from: 684.Result, to: 690.Condition}
+  - {from: 690.True, to: 705.Exec}
+  - {from: 690.False, to: 668.Exec}
+  - {from: 705.Then, to: 725.Exec}
+  - {from: 725.Then, to: 731.Exec}
+  - {from: 731.Then, to: 735.Exec}
+  - {from: 735.Then, to: 668.Exec}
+- {id: 670, kind: function, math_expression: open > 0.5, entry_id: 671}
+- {id: 695, kind: function, math_expression: open = 0, entry_id: 711}
+- id: 744
   kind: function
   name: Open
-  entry_id: 671
-  return_id: 673
+  entry_id: 745
+  return_id: 747
   call_depth_limit: 64
   nodes:
-  - {id: 671, type: Function Entry}
-  - {id: 673, type: Return}
-  - id: 685
+  - {id: 745, type: Function Entry}
+  - {id: 747, type: Return}
+  - id: 759
     type: Behavior Expression
-    reference_id: 675
+    reference_id: 749
     reference_name: open = 1
     inputs:
-      Exec: {id: 688, kind: exec}
+      Exec: {id: 762, kind: exec}
       open:
-        id: 686
+        id: 760
         type: float
-        binding: {kind: variable, variable_id: 589, source_asset: SkillScreen}
+        binding: {kind: variable, variable_id: 663, source_asset: SkillScreen}
     outputs:
-      Then: {id: 689, kind: exec}
-      Result: {id: 687, type: float}
-  - {id: 705, type: Call Function, reference_id: 345, reference_name: Show}
-  - id: 708
+      Then: {id: 763, kind: exec}
+      Result: {id: 761, type: float}
+  - {id: 779, type: Call Function, reference_id: 433, reference_name: Show}
+  - id: 782
     type: Set UI Data
     inputs:
       Name: open
       Value: {type: int, default: 1}
-  - id: 714
+  - id: 788
     type: Set Time Scale
     inputs: {Scale: 0.0}
-  - id: 718
+  - id: 792
     type: Focus UI Element
     inputs: {Element: '#root'}
-  - id: 723
+  - id: 797
     type: Play Sound
     inputs: {Frequency: 330.0, End Frequency: 660.0, Duration: 0.22, Volume: 0.18}
   edges:
-  - {from: 671.Exec, to: 685.Exec}
-  - {from: 685.Then, to: 705.Exec}
-  - {from: 705.Then, to: 708.Exec}
-  - {from: 708.Then, to: 714.Exec}
-  - {from: 714.Then, to: 718.Exec}
-  - {from: 718.Then, to: 723.Exec}
-  - {from: 723.Then, to: 673.Exec}
-- {id: 675, kind: function, math_expression: open = 1, entry_id: 691}
-- {id: 775, kind: function, math_expression: pos.x + dx, entry_id: 792}
-- {id: 805, kind: function, math_expression: pos.y + dy, entry_id: 822}
-- id: 867
+  - {from: 745.Exec, to: 759.Exec}
+  - {from: 759.Then, to: 779.Exec}
+  - {from: 779.Then, to: 782.Exec}
+  - {from: 782.Then, to: 788.Exec}
+  - {from: 788.Then, to: 792.Exec}
+  - {from: 792.Then, to: 797.Exec}
+  - {from: 797.Then, to: 747.Exec}
+- {id: 749, kind: function, math_expression: open = 1, entry_id: 765}
+- {id: 849, kind: function, math_expression: pos.x + dx, entry_id: 866}
+- {id: 879, kind: function, math_expression: pos.y + dy, entry_id: 896}
+- id: 941
   kind: function
   math_expression: near = step((px - pos.x) * (px - pos.x) + (py - pos.y) * (py - pos.y), 4900.0)
-  entry_id: 921
-- {id: 972, kind: function, math_expression: near = 0, entry_id: 988}
-- {id: 1015, kind: function, math_expression: held = 0, entry_id: 1031}
-- {id: 1045, kind: function, math_expression: held < 0.5, entry_id: 1046}
-- {id: 1070, kind: function, math_expression: held = 1, entry_id: 1086}
-- {id: 1100, kind: function, math_expression: open > 0.5, entry_id: 1101}
-- {id: 1128, kind: function, math_expression: near > 0.5, entry_id: 1129}
-- id: 1168
+  entry_id: 995
+- {id: 1046, kind: function, math_expression: near = 0, entry_id: 1062}
+- {id: 1089, kind: function, math_expression: held = 0, entry_id: 1105}
+- {id: 1119, kind: function, math_expression: held < 0.5, entry_id: 1120}
+- {id: 1144, kind: function, math_expression: held = 1, entry_id: 1160}
+- {id: 1174, kind: function, math_expression: open > 0.5, entry_id: 1175}
+- {id: 1202, kind: function, math_expression: near > 0.5, entry_id: 1203}
+- id: 1242
   kind: function
   math_expression: clamp(floor(v), 0, 26)
-  entry_id: 1169
-- {id: 1205, kind: function, math_expression: 'step(0, f)', entry_id: 1206}
-- id: 1238
-  kind: function
-  math_expression: max(step(r, -0.5), step(0, f))
-  entry_id: 1239
-- id: 1287
-  kind: function
-  math_expression: max(step(r, -0.5), step(0, f))
-  entry_id: 1288
-- id: 1320
+  entry_id: 1243
+- {id: 1274, kind: function, math_expression: i + 1, entry_id: 1275}
+- {id: 1312, kind: function, math_expression: i + 1, entry_id: 1313}
+- {id: 1350, kind: function, math_expression: i + 1, entry_id: 1351}
+- id: 1377
   kind: function
   math_expression: o * 2 + (1 - o) * a * b
-  entry_id: 1321
-- id: 1375
+  entry_id: 1378
+- id: 1435
   kind: function
   math_expression: s > 0.5 && s < 1.5 && p >= c
-  entry_id: 1376
-- {id: 1431, kind: function, math_expression: p - c, entry_id: 1432}
-- {id: 1512, kind: function, math_expression: s + 1, entry_id: 1513}
+  entry_id: 1436
+- {id: 1491, kind: function, math_expression: p - c, entry_id: 1492}
+- {id: 1572, kind: function, math_expression: s + 1, entry_id: 1573}

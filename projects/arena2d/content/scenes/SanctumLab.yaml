@@ -50,6 +50,3 @@ entities:
 - name: Lab kit
   prototype: SanctumLabKit
   behaviors: [SanctumLabKit]
-- name: Title
-  prototype: TitleScreen
-  behaviors: [TitleScreen, RecapLedger]

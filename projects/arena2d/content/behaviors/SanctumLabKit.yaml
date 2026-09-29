@@ -1,7 +1,7 @@
 version: 3
 name: SanctumLabKit
-id_counter: 81
-description: 'SanctumLab only: once the run has begun, fills the purse with scrap, skill points and a stash of modules for trying the Sanctum screens.'
+id_counter: 90
+description: 'SanctumLab only: once the run has begun, fills the purse with scrap, skill points and a stash of modules, and drops the hull to 40, for trying the Sanctum screens and mending.'
 owner_type: ecs.entity
 variables:
 - {id: 1, name: done, type: float}
@@ -71,6 +71,14 @@ graphs:
       Value: {type: int, container: 1}
     outputs:
       Value: {type: int}
+  - id: 81
+    type: Get Global Variable
+    inputs: {Name: Player}
+    outputs:
+      Value: {type: handle, type_name: ecs.entity}
+  - id: 84
+    type: Set_GameHealth_current
+    inputs: {Value: 40}
   edges:
   - {from: 3.Then, to: 26.Exec}
   - {from: 20.Result, to: 26.Condition}
@@ -79,5 +87,7 @@ graphs:
   - {from: 61.Then, to: 67.Exec}
   - {from: 67.Then, to: 75.Exec}
   - {from: 73.Value, to: 75.Value}
+  - {from: 75.Then, to: 84.Exec}
+  - {from: 81.Value, to: 84.Target}
 - {id: 6, kind: function, math_expression: done < 0.5, entry_id: 7}
 - {id: 31, kind: function, math_expression: done = 1, entry_id: 47}

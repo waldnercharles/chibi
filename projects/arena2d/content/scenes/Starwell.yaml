@@ -37,6 +37,26 @@ entities:
   components:
     GameBackdrop2D: {material: ThroatColumns, parallax: 0.45, layer: 1, intensity: 1.0, lit: true}
 - {name: Throat rock, prototype: StratumThroat}
+- name: Throat sanctum
+  prototype: Sanctum
+  components:
+    GameTransform: {x: 0.0, "y": 330.0}
+  behaviors: [Sanctum]
+- name: Throat shop
+  prototype: ShopTerminal
+  components:
+    GameTransform: {x: -250.0, "y": 454.0}
+  behaviors: [ShopScreen]
+- name: Throat refit
+  prototype: RefitBench
+  components:
+    GameTransform: {x: -120.0, "y": 462.0}
+  behaviors: [RefitScreen]
+- name: Throat shrine
+  prototype: ResonanceShrine
+  components:
+    GameTransform: {x: 200.0, "y": 434.0}
+  behaviors: [SkillScreen]
 - name: Throat embers
   prototype: Scatter
   components:
@@ -188,6 +208,26 @@ entities:
     GameTransform: {x: 0.0, "y": 5905.0}
     GameGlobalBinding: {name: SealThroat}
 - {name: Grotto rock, prototype: StratumGrotto}
+- name: Grotto sanctum
+  prototype: Sanctum
+  components:
+    GameTransform: {x: 0.0, "y": 6330.0}
+  behaviors: [Sanctum]
+- name: Grotto shop
+  prototype: ShopTerminal
+  components:
+    GameTransform: {x: -250.0, "y": 6454.0}
+  behaviors: [ShopScreen]
+- name: Grotto refit
+  prototype: RefitBench
+  components:
+    GameTransform: {x: -120.0, "y": 6462.0}
+  behaviors: [RefitScreen]
+- name: Grotto shrine
+  prototype: ResonanceShrine
+  components:
+    GameTransform: {x: 200.0, "y": 6434.0}
+  behaviors: [SkillScreen]
 - name: Grotto lumen caps
   prototype: Scatter
   components:
@@ -343,6 +383,26 @@ entities:
       salt: 48
       radius: 700.0
 - {name: Refractory rock, prototype: StratumRefractory}
+- name: Refractory sanctum
+  prototype: Sanctum
+  components:
+    GameTransform: {x: 0.0, "y": 12330.0}
+  behaviors: [Sanctum]
+- name: Refractory shop
+  prototype: ShopTerminal
+  components:
+    GameTransform: {x: -250.0, "y": 12454.0}
+  behaviors: [ShopScreen]
+- name: Refractory refit
+  prototype: RefitBench
+  components:
+    GameTransform: {x: -120.0, "y": 12462.0}
+  behaviors: [RefitScreen]
+- name: Refractory shrine
+  prototype: ResonanceShrine
+  components:
+    GameTransform: {x: 200.0, "y": 12434.0}
+  behaviors: [SkillScreen]
 - name: Refractory light shards
   prototype: Scatter
   components:
@@ -470,6 +530,26 @@ entities:
       salt: 59
       radius: 700.0
 - {name: Foundry rock, prototype: StratumFoundry}
+- name: Foundry sanctum
+  prototype: Sanctum
+  components:
+    GameTransform: {x: 0.0, "y": 18330.0}
+  behaviors: [Sanctum]
+- name: Foundry shop
+  prototype: ShopTerminal
+  components:
+    GameTransform: {x: -250.0, "y": 18454.0}
+  behaviors: [ShopScreen]
+- name: Foundry refit
+  prototype: RefitBench
+  components:
+    GameTransform: {x: -120.0, "y": 18462.0}
+  behaviors: [RefitScreen]
+- name: Foundry shrine
+  prototype: ResonanceShrine
+  components:
+    GameTransform: {x: 200.0, "y": 18434.0}
+  behaviors: [SkillScreen]
 - name: Foundry forgelights
   prototype: Scatter
   components:
@@ -611,6 +691,26 @@ entities:
       salt: 70
       radius: 700.0
 - {name: Heart rock, prototype: StratumHeart}
+- name: Heart sanctum
+  prototype: Sanctum
+  components:
+    GameTransform: {x: 0.0, "y": 24330.0}
+  behaviors: [Sanctum]
+- name: Heart shop
+  prototype: ShopTerminal
+  components:
+    GameTransform: {x: -250.0, "y": 24454.0}
+  behaviors: [ShopScreen]
+- name: Heart refit
+  prototype: RefitBench
+  components:
+    GameTransform: {x: -120.0, "y": 24462.0}
+  behaviors: [RefitScreen]
+- name: Heart shrine
+  prototype: ResonanceShrine
+  components:
+    GameTransform: {x: 200.0, "y": 24434.0}
+  behaviors: [SkillScreen]
 - name: Heart light shards
   prototype: Scatter
   components:
@@ -695,3 +795,6 @@ entities:
       clearance: 30.0
       salt: 86
       radius: 700.0
+- name: Title
+  prototype: TitleScreen
+  behaviors: [RecapLedger, TitleScreen]

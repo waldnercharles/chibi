@@ -1,7 +1,7 @@
 version: 3
 name: RefractoryShards
 domain: material
-id_counter: 373
+id_counter: 461
 description: Distant crystal spires, picked out by nearby light.
 graphs:
 - kind: event
@@ -59,34 +59,57 @@ graphs:
       h: {type: float}
     outputs:
       Result: {type: float}
-  - id: 296
+  - id: 281
     type: Behavior Expression
     reference_id: 251
-    reference_name: step(lx, (1 - band) * (0.2 + 0.25 * h)) * step(0.4, h)
+    reference_name: (1 - band) * (0.1 + 0.16 * h)
     inputs:
-      lx: {type: float}
       band: {type: float}
       h: {type: float}
     outputs:
       Result: {type: float}
-  - id: 335
+  - id: 308
     type: Behavior Expression
-    reference_id: 301
-    reference_name: vec3(0.06, 0.08, 0.12) * (0.6 + 0.4 * h)
+    reference_id: 285
+    reference_name: step(lx, w) * step(0.4, h)
+    inputs:
+      lx: {type: float}
+      w: {type: float}
+      h: {type: float}
+    outputs:
+      Result: {type: float}
+  - id: 342
+    type: Behavior Expression
+    reference_id: 313
+    reference_name: spire * (1 - step(lx, w * 0.6))
+    inputs:
+      spire: {type: float}
+      lx: {type: float}
+      w: {type: float}
+    outputs:
+      Result: {type: float}
+  - id: 381
+    type: Behavior Expression
+    reference_id: 347
+    reference_name: vec3(0.07, 0.1, 0.15) * (0.6 + 0.4 * h)
     inputs:
       h: {type: float}
     outputs:
       Result: {type: struct, type_name: ShaderVec3}
-  - id: 355
+  - id: 440
     type: Behavior Expression
-    reference_id: 338
-    reference_name: vec3(0, 0, 0)
+    reference_id: 384
+    reference_name: mix(vec3(0.3, 0.6, 1.0), vec3(0.7, 0.5, 1.0), h) * (rim * 0.05 + spire * 0.008)
+    inputs:
+      h: {type: float}
+      rim: {type: float}
+      spire: {type: float}
     outputs:
       Result: {type: struct, type_name: ShaderVec3}
-  - id: 370
+  - id: 458
     type: Behavior Expression
-    reference_id: 357
-    reference_name: spire * 0.8
+    reference_id: 445
+    reference_name: spire * 0.5
     inputs:
       spire: {type: float}
     outputs:
@@ -98,14 +121,22 @@ graphs:
   - {from: 25.Result, to: 217.p}
   - {from: 71.Result, to: 131.c}
   - {from: 131.Result, to: 217.h}
-  - {from: 131.Result, to: 296.h}
-  - {from: 131.Result, to: 335.h}
-  - {from: 159.Result, to: 296.lx}
-  - {from: 217.Result, to: 296.band}
-  - {from: 296.Result, to: 370.spire}
-  - {from: 335.Result, to: 1.Base Color}
-  - {from: 355.Result, to: 1.Emission}
-  - {from: 370.Result, to: 1.Opacity}
+  - {from: 131.Result, to: 281.h}
+  - {from: 131.Result, to: 308.h}
+  - {from: 131.Result, to: 381.h}
+  - {from: 131.Result, to: 440.h}
+  - {from: 159.Result, to: 308.lx}
+  - {from: 159.Result, to: 342.lx}
+  - {from: 217.Result, to: 281.band}
+  - {from: 281.Result, to: 308.w}
+  - {from: 281.Result, to: 342.w}
+  - {from: 308.Result, to: 342.spire}
+  - {from: 308.Result, to: 440.spire}
+  - {from: 308.Result, to: 458.spire}
+  - {from: 342.Result, to: 440.rim}
+  - {from: 381.Result, to: 1.Base Color}
+  - {from: 440.Result, to: 1.Emission}
+  - {from: 458.Result, to: 1.Opacity}
 - {id: 14, kind: function, math_expression: 'vec2(wp.x, wp.z)', entry_id: 29}
 - id: 45
   kind: function
@@ -125,11 +156,22 @@ graphs:
   entry_id: 222
 - id: 251
   kind: function
-  math_expression: step(lx, (1 - band) * (0.2 + 0.25 * h)) * step(0.4, h)
+  math_expression: (1 - band) * (0.1 + 0.16 * h)
   entry_id: 252
-- id: 301
+- id: 285
   kind: function
-  math_expression: vec3(0.06, 0.08, 0.12) * (0.6 + 0.4 * h)
-  entry_id: 302
-- {id: 338, kind: function, math_expression: 'vec3(0, 0, 0)', entry_id: 339}
-- {id: 357, kind: function, math_expression: spire * 0.8, entry_id: 358}
+  math_expression: step(lx, w) * step(0.4, h)
+  entry_id: 286
+- id: 313
+  kind: function
+  math_expression: spire * (1 - step(lx, w * 0.6))
+  entry_id: 314
+- id: 347
+  kind: function
+  math_expression: vec3(0.07, 0.1, 0.15) * (0.6 + 0.4 * h)
+  entry_id: 348
+- id: 384
+  kind: function
+  math_expression: mix(vec3(0.3, 0.6, 1.0), vec3(0.7, 0.5, 1.0), h) * (rim * 0.05 + spire * 0.008)
+  entry_id: 385
+- {id: 445, kind: function, math_expression: spire * 0.5, entry_id: 446}

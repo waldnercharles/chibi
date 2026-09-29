@@ -262,14 +262,15 @@ section below and updated as work lands.
 
 ## Progress
 
-- [ ] Engine: gameplay runtime capabilities
+- [x] Engine: gameplay runtime capabilities
 - [x] Engine: matter (gravity, substances, reactions, deposition, MPM); see
       [the material engine](material-engine.md) and `scenes/MatterLab.yaml`
 - [x] Engine: rendering spectacle
-- [ ] Content: ship, weapons and modules
-- [ ] Content: strata terrain, materials and backdrops
+- [x] Content: ship, weapons and modules
+- [x] Content: strata terrain, materials and backdrops; every seed connects
+      each Sanctum to its arena (checked over 40 seeds per stratum)
 - [ ] Content: enemies and bosses
-- [ ] Content: Sanctums, shop, refit, skill tree
+- [x] Content: Sanctums, shop, refit, skill tree
 - [ ] Content: title, HUD, death and victory screens
 - [ ] Tuning pass and full-run playtest
 
@@ -292,3 +293,33 @@ change takes effect at once. Types are fixed by the first write.
 | `Magnet` | float | Pickup reach in world units. |
 | `InSanctum` | int | 1 while the ship is inside a Sanctum. |
 | `Toast`, `ToastSerial` | name, int | Post a HUD toast by setting Toast and incrementing ToastSerial. |
+
+## Sanctum screens
+
+A Sanctum is a `Sanctum` entity at the chamber's center (its box is 375 × 150
+half-extents) plus three terminals standing on its floor: `ShopTerminal`,
+`RefitBench` and `ResonanceShrine`. Each terminal spawns its own decorative
+parts and carries its screen (`GameUi` documents `Shop`, `Refit`, `SkillTree`),
+a `Use` binding on E and `GameUnscaledTime`. `scenes/SanctumLab.yaml` shows one
+in the Throat.
+
+- **Sanctum** sets `InSanctum` on entry and exit, toasts "Sanctum · safe", and
+  mends the ship's hull at 15 per second while it is inside.
+- **Terminals** show an "E · Shop" prompt within 70 units. E opens the screen at
+  time scale 0 and E, Escape or Close closes it at scale 1.
+- **Shop** rolls four distinct offers when the terminal appears, priced
+  `(18 + 14 × tier) × StatPrice`. Buying moves the id into `Stash`; Patch hull
+  (25 hull for 12) and New stock (8) also scale with `StatPrice`.
+- **Refit** lays out `Slots0`/`Slots1` slots of `Hardpoint0`/`Hardpoint1` and 24
+  stash cells. Picking two places swaps them. Empty slots compact to the end,
+  and Unfit moves the pick to the stash. Every change writes the three arrays at
+  once and is refused if the primary would hold no emitter.
+- **Resonance** spends `SkillPoints` (capstones cost 2) on nodes 0–26: Pilot
+  P1–P9 are 0–8, Gunnery G1–G9 are 9–17 and Engineer E1–E9 are 18–26. Ids go into
+  `Skills`. Effects add to `StatHull`, `StatShield`, `StatCapacitor`, `Magnet`,
+  `Slots0` and `Slots1`, and multiply the other Stat globals.
+- **Title** (`TitleScreen`) holds time scale 0 behind the reveal until Descend
+  (Enter, Space or click). It also runs `RecapLedger`, which mirrors depth, time,
+  kills, scrap, level, stratum and seed into uncommitted save keys
+  `starwell_*`. The host's `PauseMenu` binds these as `save.starwell_*` for the
+  defeat recap.

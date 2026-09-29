@@ -1,12 +1,16 @@
 name: Ember
 components:
-  GAME.GameAppearance: {antialias: 1.0, color: 4290009855, height: 5.0, shape: Diamond, width: 12.0}
+  GAME.GameAppearance: {antialias: 1.0, color: 4286200575, height: 3.0, shape: Capsule, width: 10.0}
+  GAME.GameBody: {continuous: true, type: Kinematic}
+  GAME.GameCollider: {category: 16, mask: 1, radius: 1.8, sensor: true}
   GAME.GameMaterial:
-    absorption: 0.3
-    albedo: 4290009855
-    emission_color: 4288298239
-    emission_intensity: 0.22
+    absorption: 0.05
+    emission_color: 4286200575
+    emission_intensity: 0.55
     emission_multiplier: 1.0
-    scene: 4290009855
+    scene: 4286200575
   GAME.GameOrientation: {}
+  GAME.GameProjectile: {damage: 7, element: 1, lifetime: 1.8, payload: -1, speed: 420.0}
   GAME.GameTransform: {}
+  GAME.GameVelocity: {}
+behaviors: [Shot]

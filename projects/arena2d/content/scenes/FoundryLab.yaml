@@ -38,6 +38,26 @@ entities:
   components:
     GameBackdrop2D: {material: FoundryGirders, parallax: 0.45, layer: 1, intensity: 1.0, lit: true}
 - {name: Foundry rock, prototype: StratumFoundry}
+- name: Foundry sanctum
+  prototype: Sanctum
+  components:
+    GameTransform: {x: 0.0, "y": 18330.0}
+  behaviors: [Sanctum]
+- name: Foundry shop
+  prototype: ShopTerminal
+  components:
+    GameTransform: {x: -250.0, "y": 18454.0}
+  behaviors: [ShopScreen]
+- name: Foundry refit
+  prototype: RefitBench
+  components:
+    GameTransform: {x: -120.0, "y": 18462.0}
+  behaviors: [RefitScreen]
+- name: Foundry shrine
+  prototype: ResonanceShrine
+  components:
+    GameTransform: {x: 200.0, "y": 18434.0}
+  behaviors: [SkillScreen]
 - name: Foundry forgelights
   prototype: Scatter
   components:

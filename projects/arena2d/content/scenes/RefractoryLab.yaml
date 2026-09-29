@@ -43,6 +43,26 @@ entities:
       intensity: 1.0
       lit: true
 - {name: Refractory rock, prototype: StratumRefractory}
+- name: Refractory sanctum
+  prototype: Sanctum
+  components:
+    GameTransform: {x: 0.0, "y": 12330.0}
+  behaviors: [Sanctum]
+- name: Refractory shop
+  prototype: ShopTerminal
+  components:
+    GameTransform: {x: -250.0, "y": 12454.0}
+  behaviors: [ShopScreen]
+- name: Refractory refit
+  prototype: RefitBench
+  components:
+    GameTransform: {x: -120.0, "y": 12462.0}
+  behaviors: [RefitScreen]
+- name: Refractory shrine
+  prototype: ResonanceShrine
+  components:
+    GameTransform: {x: 200.0, "y": 12434.0}
+  behaviors: [SkillScreen]
 - name: Refractory light shards
   prototype: Scatter
   components:

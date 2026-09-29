@@ -1,4 +1,0 @@
-name: SanctumProbe
-components:
-  GAME.GameTransform: {}
-behaviors: [SanctumProbe]

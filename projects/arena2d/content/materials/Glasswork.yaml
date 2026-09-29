@@ -1,7 +1,7 @@
 version: 3
 name: Glasswork
 domain: material
-id_counter: 452
+id_counter: 514
 description: 'Glass Refractory rock: faceted crystal whose cells tilt light in different directions, bend what lies behind thin walls and let tinted light through.'
 graphs:
 - kind: event
@@ -65,7 +65,7 @@ graphs:
   - id: 300
     type: Behavior Expression
     reference_id: 239
-    reference_name: tint * (0.08 + 0.05 * vc.x + frost * 0.2) + vec3(0.3, 0.45, 0.6) * edge * 0.25
+    reference_name: tint * (0.14 + 0.08 * vc.x + frost * 0.3) + vec3(0.3, 0.45, 0.6) * edge * 0.35
     inputs:
       tint: {type: struct, type_name: ShaderVec3}
       vc: {type: struct, type_name: ShaderVec3}
@@ -73,26 +73,27 @@ graphs:
       edge: {type: float}
     outputs:
       Result: {type: struct, type_name: ShaderVec3}
-  - id: 388
+  - id: 408
     type: Behavior Expression
     reference_id: 370
-    reference_name: tint * edge * 0.04
+    reference_name: tint * (edge * 0.09 + smoothstep(0.75, 1.0, vc.x) * 0.025)
     inputs:
       tint: {type: struct, type_name: ShaderVec3}
       edge: {type: float}
+      vc: {type: struct, type_name: ShaderVec3}
     outputs:
       Result: {type: struct, type_name: ShaderVec3}
-  - id: 411
+  - id: 473
     type: Behavior Expression
-    reference_id: 392
+    reference_id: 454
     reference_name: 4 + 6 * vc.y
     inputs:
       vc: {type: struct, type_name: ShaderVec3}
     outputs:
       Result: {type: float}
-  - id: 449
+  - id: 511
     type: Behavior Expression
-    reference_id: 436
+    reference_id: 498
     reference_name: tint * 0.55
     inputs:
       tint: {type: struct, type_name: ShaderVec3}
@@ -105,19 +106,20 @@ graphs:
   - {from: 14.Cell Color, to: 102.vc}
   - {from: 14.Cell Color, to: 177.vc}
   - {from: 14.Cell Color, to: 300.vc}
-  - {from: 14.Cell Color, to: 411.vc}
+  - {from: 14.Cell Color, to: 408.vc}
+  - {from: 14.Cell Color, to: 473.vc}
   - {from: 31.Result, to: 236.p}
   - {from: 67.Result, to: 300.edge}
-  - {from: 67.Result, to: 388.edge}
+  - {from: 67.Result, to: 408.edge}
   - {from: 102.Result, to: 1.Normal}
   - {from: 177.Result, to: 300.tint}
-  - {from: 177.Result, to: 388.tint}
-  - {from: 177.Result, to: 449.tint}
+  - {from: 177.Result, to: 408.tint}
+  - {from: 177.Result, to: 511.tint}
   - {from: 236.Result, to: 300.frost}
   - {from: 300.Result, to: 1.Base Color}
-  - {from: 388.Result, to: 1.Emission}
-  - {from: 411.Result, to: 1.Refraction}
-  - {from: 449.Result, to: 1.Transmission}
+  - {from: 408.Result, to: 1.Emission}
+  - {from: 473.Result, to: 1.Refraction}
+  - {from: 511.Result, to: 1.Transmission}
 - {id: 20, kind: function, math_expression: 'vec2(wp.x, wp.z)', entry_id: 35}
 - id: 51
   kind: function
@@ -134,8 +136,11 @@ graphs:
 - {id: 217, kind: function, math_expression: 'noise(p, 0.05) * 0.15', entry_id: 218}
 - id: 239
   kind: function
-  math_expression: tint * (0.08 + 0.05 * vc.x + frost * 0.2) + vec3(0.3, 0.45, 0.6) * edge * 0.25
+  math_expression: tint * (0.14 + 0.08 * vc.x + frost * 0.3) + vec3(0.3, 0.45, 0.6) * edge * 0.35
   entry_id: 307
-- {id: 370, kind: function, math_expression: tint * edge * 0.04, entry_id: 371}
-- {id: 392, kind: function, math_expression: 4 + 6 * vc.y, entry_id: 415}
-- {id: 436, kind: function, math_expression: tint * 0.55, entry_id: 437}
+- id: 370
+  kind: function
+  math_expression: tint * (edge * 0.09 + smoothstep(0.75, 1.0, vc.x) * 0.025)
+  entry_id: 414
+- {id: 454, kind: function, math_expression: 4 + 6 * vc.y, entry_id: 477}
+- {id: 498, kind: function, math_expression: tint * 0.55, entry_id: 499}

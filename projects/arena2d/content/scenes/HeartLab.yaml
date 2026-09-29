@@ -38,6 +38,26 @@ entities:
   components:
     GameBackdrop2D: {material: HeartRings, parallax: 0.45, layer: 1, intensity: 1.0, lit: true}
 - {name: Heart rock, prototype: StratumHeart}
+- name: Heart sanctum
+  prototype: Sanctum
+  components:
+    GameTransform: {x: 0.0, "y": 24330.0}
+  behaviors: [Sanctum]
+- name: Heart shop
+  prototype: ShopTerminal
+  components:
+    GameTransform: {x: -250.0, "y": 24454.0}
+  behaviors: [ShopScreen]
+- name: Heart refit
+  prototype: RefitBench
+  components:
+    GameTransform: {x: -120.0, "y": 24462.0}
+  behaviors: [RefitScreen]
+- name: Heart shrine
+  prototype: ResonanceShrine
+  components:
+    GameTransform: {x: 200.0, "y": 24434.0}
+  behaviors: [SkillScreen]
 - name: Heart light shards
   prototype: Scatter
   components:

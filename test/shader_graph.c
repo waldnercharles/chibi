@@ -76,7 +76,7 @@ static void examples()
     shader_error error;
     assert(shader_graph_from_graph(ring->graph, &ir, &error));
     shader_sample_context sample = { .position = { 35, 0 } };
-    float result[8][4], params[32][4] = { { 0 } };
+    float result[SHADER_OUTPUT_MAX][4], params[32][4] = { { 0 } };
     assert(shader_graph_eval_outputs(&ir, &sample, NULL, result, &error));
     near(result[5][0], 1);
     near(result[6][0], 1);
@@ -210,7 +210,7 @@ static void live_shader_library()
     shader_graph_init(&ir);
     shader_error error;
     shader_sample_context sample = { .position = { 35, 0 } };
-    float result[8][4];
+    float result[SHADER_OUTPUT_MAX][4];
     assert(shader_graph_from_graph(ring->applied->graph, &ir, &error));
     assert(shader_graph_eval_outputs(&ir, &sample, NULL, result, &error));
     near(result[1][2], .55f);
@@ -281,7 +281,7 @@ static void math_nodes()
     shader_graph ir;
     math_program(&ir);
     shader_sample_context sample = { 0 };
-    float values[32][4] = { 0 }, out[8][4];
+    float values[32][4] = { 0 }, out[SHADER_OUTPUT_MAX][4];
     shader_error error;
     for (int i = 0; i < (int)(sizeof math_cases / sizeof *math_cases); i++) {
         memcpy(values, math_cases[i], sizeof math_cases[i]);
@@ -405,7 +405,8 @@ int test_shader_graph_gpu()
     dispatch.rw_texture_count = 1;
     for (int i = 0; i < (int)(sizeof math_cases / sizeof *math_cases); i++) {
         shader_sample_context sample = { 0 };
-        float values[32][4] = { 0 }, expected[8][4], actual[8][4];
+        float values[32][4] = { 0 }, expected[SHADER_OUTPUT_MAX][4],
+              actual[SHADER_OUTPUT_MAX][4];
         memcpy(values, math_cases[i], sizeof math_cases[i]);
         assert(shader_graph_eval_outputs(&ir, &sample, values, expected, &error));
         cf_app_update(NULL);
@@ -528,7 +529,7 @@ static void vector_inline_sources()
         shader_graph ir = { 0 };
         shader_error error = { 0 };
         assert(copy && shader_graph_from_graph(copy->graph, &ir, &error));
-        float out[8][4];
+        float out[SHADER_OUTPUT_MAX][4];
         shader_sample_context sample = { 0 };
         assert(shader_graph_eval_outputs(&ir, &sample, NULL, out, &error));
         near(out[0][0], .375f);
@@ -572,7 +573,7 @@ void test_shader_graph()
     assert(shader_graph_from_graph(g, &ir, &error));
     shader_sample_context sample = { .position = { 3, 4 },
                                      .world_position = { 10, 20, 0 } };
-    float outputs[8][4], params[32][4] = { { 0 } };
+    float outputs[SHADER_OUTPUT_MAX][4], params[32][4] = { { 0 } };
     assert(shader_graph_eval_outputs(&ir, &sample, NULL, outputs, &error));
     near(outputs[0][0], 3);
     params[3][0] = 4;
@@ -624,7 +625,7 @@ void test_shader_graph()
     graph_init(&material);
     shader_graph_add_output(&material, false);
     assert(shader_graph_from_graph(&material, &ir, &error));
-    assert(ir.output_count == 8);
+    assert(ir.output_count == SHADER_OUTPUT_MAX);
     assert(shader_graph_eval_outputs(&ir, &sample, NULL, outputs, &error));
     near(outputs[0][0], 1);
     near(outputs[0][1], 1);

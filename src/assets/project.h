@@ -7,7 +7,7 @@
 
 /* The manifest version this build opens. Bump it when an asset contract
    change stops projects saved by earlier builds from loading. */
-#define CHIBI_PROJECT_VERSION 3
+#define CHIBI_PROJECT_VERSION 4
 
 typedef struct
 {

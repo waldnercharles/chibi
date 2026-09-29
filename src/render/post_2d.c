@@ -193,7 +193,6 @@ bool render_post_2d_distort(render_post_2d *post, const render_post_2d_distortio
     cf_push_gpu_label("2D distortion");
     begin_passes();
     cf_draw_push_shader(post->distort);
-    cf_draw_set_texture("normal_tex", d->normal);
     cf_draw_set_texture("cover_tex", d->cover);
     render_view_2d v = d->view;
     float view[] = { v.min_x, v.max_y, v.width, v.height };
@@ -209,7 +208,7 @@ bool render_post_2d_distort(render_post_2d *post, const render_post_2d_distortio
     cf_draw_set_uniform("waves", (void *)d->waves, CF_UNIFORM_TYPE_FLOAT4, 2 * RENDER_POST_2D_WAVES);
     cf_draw_set_uniform("hazes", (void *)d->hazes, CF_UNIFORM_TYPE_FLOAT4, RENDER_POST_2D_HAZES);
     pass(post->target, spare);
-    RENDER_DRAW_UNBIND_TEXTURES("normal_tex", "cover_tex");
+    RENDER_DRAW_UNBIND_TEXTURES("cover_tex");
     cf_draw_pop_shader();
     end_passes();
     cf_pop_gpu_label();

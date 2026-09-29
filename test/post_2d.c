@@ -125,7 +125,6 @@ static bool shockwave(render_post_2d *post, CF_Canvas output, CF_Texture black)
                   .height = SIDE,
                   .crop_max_u = 1,
                   .crop_max_v = 1 },
-        .normal = black,
         .cover = black,
         .waves = { { 0, 0, 13, 6, 6 } },
         .wave_count = 1,

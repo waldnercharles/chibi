@@ -272,3 +272,31 @@ raster: about 0.03 ms at 1080p for RenderLab's pool. Caustics appear on the
 liquid body, the plane behind it; light reaching floors below arrives through
 bounce as a soft, moving glow rather than a focused pattern. The waves are
 procedural, not a simulated surface.
+
+### Refraction and transmission
+
+Surface Output has two more inputs for 2D solids; their zero defaults change
+nothing:
+
+- **Refraction** bends what lies behind the surface by this many output
+  pixels along the Normal's tilt. The material raster writes the offset,
+  weighted by coverage rather than opacity, to the cover texture's GB
+  channels, and the screen distortion pass resamples the finished linear
+  frame there, so the background, lit scene and received light behind glass
+  all bend, and the bent highlights still bloom. The pass runs only while a
+  material that may refract is collected.
+- **Transmission** is the fraction of each channel that crosses a meter (32
+  world units) of the material. HRC transports gray light, so it absorbs like
+  the least transmitted channel, `-ln(min T) / 32` per world unit; the colored
+  rest joins the material's albedo. Glass lit from behind then glows in its
+  color, and bounce carries that color into what the light reaches next.
+
+Plain `GameMaterial` keeps its `filter` and gray absorption. RenderLab's
+`GlassSlab` uses `RenderLabGlass`: a pillowed, slightly wavy cyan pane.
+
+The bend is screen space: it shows what is on screen, clamped at the edges,
+not what a lens would really gather. Transmission is not a colored
+transport; light behind colored glass is gray light plus the glass's colored
+re-emission, which also spreads backward. Refractive solids do not focus
+caustics. Adding the two inputs changed the Surface Output pin layout; the
+shipped materials were migrated and `CHIBI_PROJECT_VERSION` is now 4.

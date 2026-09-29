@@ -186,6 +186,18 @@ bool render_shader_may_be_transparent(int index)
     const shader_node *opacity = &graph->nodes[graph->output[5]];
     return opacity->op != SHADER_CONSTANT || opacity->value[0] < 1;
 }
+bool render_shader_refracts(int index)
+{
+    if (index <= 0 || index > acount(assets) || render_shader_is_shape(index)) {
+        return false;
+    }
+    const shader_graph *graph = &assets[index - 1].graph;
+    if (graph->output_count <= SHADER_SURFACE_REFRACTION) {
+        return false;
+    }
+    const shader_node *refraction = &graph->nodes[graph->output[SHADER_SURFACE_REFRACTION]];
+    return refraction->op != SHADER_CONSTANT || refraction->value[0] > 0;
+}
 bool render_shader_animated(int index)
 {
     if (index <= 0 || index > acount(assets)) {
@@ -508,7 +520,8 @@ char *render_shader_glsl(const render_shader_set *set, int sampler_set, int firs
         }
         free(glsl);
     }
-    append(&text, "void sg_dispatch(int id,SGSample sg_context,vec4 values[32],out vec4 result[8]) {\n for(int i=0;i<8;i++) result[i]=vec4(0);\n switch(id) {\n");
+    append(&text, "#define SG_OUTPUTS %d\n", SHADER_OUTPUT_MAX);
+    append(&text, "void sg_dispatch(int id,SGSample sg_context,vec4 values[32],out vec4 result[SG_OUTPUTS]) {\n for(int i=0;i<SG_OUTPUTS;i++) result[i]=vec4(0);\n switch(id) {\n");
     for (int i = 0; i < acount(assets); i++) {
         if (!render_shader_set_contains(set, i + 1)) {
             continue;
@@ -519,7 +532,7 @@ char *render_shader_glsl(const render_shader_set *set, int sampler_set, int firs
     append(
         &text,
         "void sg_dispatch_2d(int id,vec2 p,vec2 wp,vec2 half_size,float "
-        "time,vec4 values[32],out vec4 result[8]) {\n"
+        "time,vec4 values[32],out vec4 result[SG_OUTPUTS]) {\n"
         " SGSample sg_context; sg_context.position=p; "
         "sg_context.uv=vec2(p.x,-p.y)/max(2.0*half_size,vec2(0.0001))+0.5;\n"
         " sg_context.object_position=vec3(p.x,0.0,p.y); "
@@ -551,7 +564,9 @@ char *render_shader_glsl(const render_shader_set *set, int sampler_set, int firs
         " result[2]=vec4(unlit?vec3(0):base*(1.0-metallic),opacity); "
         "result[3]=vec4(vec3(opacity),opacity);\n"
         " result[4]=unlit?vec4(0):vec4(tilt,gloss,result[7].x);\n"
-        " result[5]=vec4(0); result[6]=vec4(0); result[7]=vec4(0);\n}\n"
+        " result[5]=vec4(max(result[8].x,0.0),clamp(result[9].rgb,vec3(0),vec3("
+        "1)));\n"
+        " for(int i=6;i<SG_OUTPUTS;i++) result[i]=vec4(0);\n}\n"
     );
     return text;
 }
@@ -680,7 +695,7 @@ bool render_shader_contains(
     if (!render_shader_is_shape(id)) {
         return false;
     }
-    float parameters[32][4], result[8][4];
+    float parameters[32][4], result[SHADER_OUTPUT_MAX][4];
     shader_error error;
     render_shader_parameters(id, world, entity, binding->parameters, parameters);
     shader_sample_context sample = {

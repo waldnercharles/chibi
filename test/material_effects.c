@@ -194,6 +194,61 @@ static bool backdrops()
     return ok;
 }
 
+/* Glass: transmission absorbs gray like its least transmitted channel and
+ * adds the colored rest to albedo; refraction writes its offset along the
+ * surface tilt wherever the shape covers. */
+static bool glass(render_material_raster *r)
+{
+    behavior_asset *material = behavior_asset_new("Glass regression");
+    material->domain = BEHAVIOR_DOMAIN_MATERIAL;
+    node *output = shader_graph_add_output(material->graph, false);
+    float black[3] = { 0, 0, 0 }, tilt[3] = { .5f, 1, 0 }, pass[3] = { .2f, .9f, .9f };
+    pin_value base = { .type = PIN_STRUCT, .type_name = "ShaderVec3", .ptr = black };
+    pin_value normal = { .type = PIN_STRUCT, .type_name = "ShaderVec3", .ptr = tilt };
+    pin_value transmission = { .type = PIN_STRUCT, .type_name = "ShaderVec3", .ptr = pass };
+    pin_value opacity = { .type = PIN_F32, .f = .5f },
+              refraction = { .type = PIN_F32, .f = 10 };
+    shader_error error;
+    bool ok = !graph_set_pin_default(material->graph, output, 0, 0, &base) &&
+              !graph_set_pin_default(material->graph, output, 0, 4, &normal) &&
+              !graph_set_pin_default(material->graph, output, 0, 5, &opacity) &&
+              !graph_set_pin_default(material->graph, output, 0, 8, &refraction) &&
+              !graph_set_pin_default(material->graph, output, 0, 9, &transmission) &&
+              render_shader_upsert(material, &error);
+    render_material_entity entity = block();
+    entity.reserved[0] = (float)render_shader_find(material->name);
+    render_shader_parameters(
+        (int)entity.reserved[0],
+        NULL,
+        (ecs_entity){ 0 },
+        NULL,
+        entity.material_parameters
+    );
+    render_material_textures textures = render_material_raster_textures(r);
+    float source[4], albedo[4], cover[4];
+    ok = ok && render_shader_refracts((int)entity.reserved[0]) &&
+         raster(r, &entity, 1) && texel(textures.source, 32, 32, source, SIDE) &&
+         texel(textures.albedo, 32, 32, albedo, SIDE) &&
+         texel(textures.cover, 32, 32, cover, SIDE);
+    float depth = -logf(.2f) / 32;
+    printf(
+        "glass: depth %.4f (expected %.4f) albedo %.2f,%.2f,%.2f bend "
+        "%.2f,%.2f\n",
+        source[3],
+        depth,
+        albedo[0],
+        albedo[1],
+        albedo[2],
+        cover[1],
+        cover[2]
+    );
+    ok = ok && fabsf(source[3] - depth) < .002f && albedo[0] < .01f &&
+         fabsf(albedo[1] - .7f) < .01f &&
+         fabsf(cover[1] - 10 * .5f / sqrtf(1.25f)) < .05f && fabsf(cover[2]) < .01f;
+    behavior_asset_free(material);
+    return ok;
+}
+
 /* Mean and peak albedo red across the liquid's middle rows. */
 static bool liquid_albedo(
     render_material_raster *r,
@@ -263,7 +318,8 @@ bool test_material_effects()
     bool ok = r && render_material_raster_resize(r, SIDE, SIDE) && hit_flash(r);
     ok &= backdrops();
     ok &= caustics(r);
+    ok &= glass(r);
     render_material_raster_free(r);
-    printf("material effects %s: hit flash, backdrops, caustics\n", ok ? "PASS" : "FAIL");
+    printf("material effects %s: hit flash, backdrops, caustics, glass\n", ok ? "PASS" : "FAIL");
     return ok;
 }

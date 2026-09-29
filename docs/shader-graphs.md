@@ -61,6 +61,8 @@ Every material ends in **Surface Output**:
 | Opacity | Zero is invisible; one is opaque. |
 | Unlit | Shows Base Color and Emission without the lighting response. |
 | Height | World units of relief above the surface. 2D solids cast its shadows. |
+| Refraction | 2D: output pixels the surface bends what lies behind it, along the Normal's tilt. |
+| Transmission | 2D: fraction of each color channel that crosses a meter of the material; black keeps the gray absorption Opacity gives. |
 
 Material previews use a sphere with diameter 100 and the same shading path as
 3D actors. The geometry normal and camera are real, so view-dependent effects

@@ -6,7 +6,9 @@
 #include <stdbool.h>
 #define SHADER_PARAMETER_MAX 32
 #define SHADER_NODE_MAX 1024
-#define SHADER_OUTPUT_MAX 8
+#define SHADER_OUTPUT_MAX 10
+/* Surface Output's Refraction input. */
+#define SHADER_SURFACE_REFRACTION 8
 
 typedef enum
 {

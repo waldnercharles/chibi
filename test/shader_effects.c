@@ -196,7 +196,7 @@ static void authored_context()
     assert(shader_graph_from_graph(a->graph, &ir, &error));
     shader_sample_context sample = { .normal = { 0, 0, 1 },
                                      .view_direction = { 0, 0, 1 } };
-    float result[8][4];
+    float result[SHADER_OUTPUT_MAX][4];
     assert(shader_graph_eval_outputs(&ir, &sample, NULL, result, &error));
     assert(fabsf(result[5][0] - .04f) < .00001f);
     sample.view_direction[0] = 1;
@@ -211,7 +211,7 @@ void test_shader_effects_cpu()
     authored_context();
     shader_graph g;
     program(&g, false);
-    float p[32][4], out[8][4];
+    float p[32][4], out[SHADER_OUTPUT_MAX][4];
     inputs(p, 0);
     shader_sample_context sample = { 0 };
     shader_error error = { 0 };
@@ -268,7 +268,8 @@ static void gpu_program(bool ramp)
     dispatch.rw_textures = &texture;
     dispatch.rw_texture_count = 1;
     for (int test = 0; test < 7; test++) {
-        float values[32][4], expected[8][4], actual[8][4];
+        float values[32][4], expected[SHADER_OUTPUT_MAX][4],
+            actual[SHADER_OUTPUT_MAX][4];
         inputs(values, test);
         shader_sample_context sample = { 0 };
         assert(shader_graph_eval_outputs(&ir, &sample, values, expected, &error));

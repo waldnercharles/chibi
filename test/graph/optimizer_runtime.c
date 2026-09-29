@@ -224,7 +224,7 @@ static void shader_locals()
     assert(graph_optimize(g, NULL, &report) == 1);
     assert(shader_graph_from_graph(g, &after, &error));
     shader_sample_context sample = { 0 };
-    float a[8][4], b[8][4];
+    float a[SHADER_OUTPUT_MAX][4], b[SHADER_OUTPUT_MAX][4];
     assert(shader_graph_eval_outputs(&before, &sample, NULL, a, &error));
     assert(shader_graph_eval_outputs(&after, &sample, NULL, b, &error));
     test_check(!memcmp(a, b, sizeof a) && acount(before.nodes) == acount(after.nodes), "shader locals lower through the original scope cache and preserve output samples");

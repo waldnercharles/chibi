@@ -31,6 +31,7 @@ components:
     saturation: 0.1
     temperature: -0.1
     vignette: 0.35
+  GAME.GameRhythm: {bpm: 40.0, pulse_width: 0.18}
   GAME.GameStarfield2D:
     color_a: 1300299775
     color_b: 2572025855

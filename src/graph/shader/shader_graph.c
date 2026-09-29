@@ -679,7 +679,7 @@ char *shader_graph_glsl_named_ramps(const shader_graph *g, const char *prefix, i
     }
     append(&s, "#ifndef SG_INFLUENCE_DEFINED\n#define SG_INFLUENCE_DEFINED\n#ifndef SG_SCENE_INFLUENCE\nvec3 sg_scene_influence(vec3 position) { return vec3(0); }\nfloat sg_scene_beat_phase() { return 0.0; }\nfloat sg_scene_beat_pulse() { return 0.0; }\n#endif\n#endif\n");
     append(&s, "#ifndef SG_SAMPLE_DEFINED\n#define SG_SAMPLE_DEFINED\nstruct SGSample { vec2 position; vec2 uv; vec3 object_position; vec3 world_position; vec3 normal; vec3 view_direction; float time; };\n#endif\n");
-    append(&s, "void %s(SGSample sg_sample, vec4 sg_params[32], out vec4 sg_out[8]) {\n", prefix);
+    append(&s, "void %s(SGSample sg_sample, vec4 sg_params[32], out vec4 sg_out[%d]) {\n", prefix, SHADER_OUTPUT_MAX);
     int *canon = canonical_nodes(g);
     for (int i = 0; i < acount(g->nodes); i++) {
         const shader_node *n = &g->nodes[i];

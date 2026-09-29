@@ -59,8 +59,8 @@ void main()
     float shown = dot(old_source.rgb * texelFetch(u_cover, pixel, 0).r * (1.0 - cover * .6) + f.emission, luma);
     float dense = dot(out_source.rgb, luma);
     vec4 old_cover = texelFetch(u_cover, pixel, 0);
-    out_cover = vec4(dense > 1e-8 ? min(shown / dense, 60000.0) : 1.0, old_cover.g,
-                     min(old_cover.b + f.heat, 1.0), 0.0);
+    out_cover = vec4(dense > 1e-8 ? min(shown / dense, 60000.0) : 1.0, old_cover.gb,
+                     min(old_cover.a + f.heat, 1.0));
     // Albedo alpha is material relief, which fluid leaves. Caustics brighten
     // lit liquid like extra albedo, which bounce turns into light.
     out_albedo = vec4(old_albedo.rgb * (1.0 - cover) + surface.rgb * max(visible, cover), old_albedo.a);

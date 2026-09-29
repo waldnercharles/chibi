@@ -1,7 +1,7 @@
 version: 3
 name: RenderLabNebula
 domain: material
-id_counter: 165
+id_counter: 167
 description: Slowly drifting violet and teal nebula for a far backdrop layer.
 graphs:
 - kind: event
@@ -16,6 +16,7 @@ graphs:
         default: {x: 0.0, "y": 0.0, z: 0.0}
       Normal:
         default: {x: 0.0, "y": 0.0, z: 0.0}
+      Refraction: {id: 165}
   - {id: 10, type: Shader WorldPosition}
   - id: 12
     type: Shader X

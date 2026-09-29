@@ -1,7 +1,7 @@
 version: 3
 name: ArenaSpawnMarker
 domain: material
-id_counter: 18
+id_counter: 20
 description: Thin rose arrival outline, matching the incoming enemy and pointing toward the arena center.
 graphs:
 - kind: event

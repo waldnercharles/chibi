@@ -10,8 +10,8 @@
 //           scene's alpha, which the same over-recurrence accumulates
 //   normal: see render_material_textures
 //   visibility: zero; fluid adds it
-//   cover: R, the scale that returns source's emission to display's; G
-//          refraction and B heat haze, which later batches keep
+//   cover: R, the scale that returns source's emission to display's; GB
+//          refraction and A heat haze, which later batches keep
 // Later batches start from the previous batch's targets.
 
 #include "entity.shd"
@@ -30,8 +30,9 @@
 #define SG_RAMP_COUNT 512
 #endif
 #ifndef SG_GRAPHS
-void sg_dispatch_2d(int id,vec2 p,vec2 wp,vec2 half_size,float time,vec4 values[32],out vec4 result[8]) {
- for(int i=0;i<8;i++) result[i]=vec4(0);
+#define SG_OUTPUTS 10
+void sg_dispatch_2d(int id,vec2 p,vec2 wp,vec2 half_size,float time,vec4 values[32],out vec4 result[SG_OUTPUTS]) {
+ for(int i=0;i<SG_OUTPUTS;i++) result[i]=vec4(0);
 }
 layout(set = 3, binding = 0) uniform uniform_block {
     float u_world_min_x;
@@ -265,6 +266,23 @@ float evaluate_sdf(vec2 local_p, Entity e)
 
 #include "color.shd"
 
+// Transmission is the fraction of each channel that crosses a meter (32
+// world units). The transport absorbs gray, like the least transmitted
+// channel; the colored rest joins albedo, so light passing through lights
+// the glass and, by bounce, its surroundings in the glass's color.
+void transmit(inout Entity e, vec3 pass)
+{
+    if (all(equal(pass, vec3(0.0)))) return;
+    float clear = min(pass.r, min(pass.g, pass.b));
+    float depth = -log(max(clear, 1e-3)) / 32.0 * max(u_unit_per_px.x, u_unit_per_px.y);
+    e.absorption = vec4(vec3(depth), 1.0);
+    // Albedo is premultiplied by its alpha, opacity, later.
+    e.albedo.rgb += (pass - clear) / max(e.albedo.a, 1e-3);
+    e.border_absorption = e.absorption;
+    e.border_albedo = e.albedo;
+}
+
+
 vec4 unpack_color(vec4 p) { return p; }
 
 float circle_emission_half_width(Entity e)
@@ -318,8 +336,8 @@ vec4 normal_acc;
 float tau_acc;
 float absorption_cover;
 float relief_acc;
-// Cover's refraction and heat haze.
-vec2 optics_acc;
+// Cover's refraction offset and heat haze.
+vec3 optics_acc;
 
 void emission_over(vec4 em, bool absorbs)
 {
@@ -328,11 +346,14 @@ void emission_over(vec4 em, bool absorbs)
 }
 
 // Composites one layer of premultiplied channels over the accumulated material.
-void layer_over(vec4 sc, vec4 em, vec4 tr, vec4 al, vec4 surface, float height)
+// Refraction bends by its offset wherever the shape covers, however
+// transparent it is.
+void layer_over(vec4 sc, vec4 em, vec4 tr, vec4 al, vec4 surface, float height, vec2 bend, float cover)
 {
     scene_acc = alpha_over(sc, scene_acc);
     normal_acc = mix(normal_acc, surface, sc.a);
     relief_acc = mix(relief_acc, height, sc.a);
+    optics_acc.xy = mix(optics_acc.xy, bend, cover);
     emission_over(em, tr.a > 0.0);
     tau_acc += dot(tr.rgb, vec3(1.0 / 3.0)) * (1.0 - absorption_cover);
     absorption_cover += tr.a * (1.0 - absorption_cover);
@@ -340,7 +361,8 @@ void layer_over(vec4 sc, vec4 em, vec4 tr, vec4 al, vec4 surface, float height)
 }
 
 // A layer of premultiplied channels and the footprint coverage behind them.
-// Surface and height are weighted by scene alpha until it is composited.
+// Surface and height are weighted by scene alpha until it is composited,
+// and the refraction offset by coverage.
 struct Layer
 {
     vec4 scene;
@@ -349,25 +371,26 @@ struct Layer
     vec4 albedo;
     vec4 surface;
     float height;
+    vec2 bend;
     float cover;
 };
 
 Layer layer_empty()
 {
-    return Layer(vec4(0), vec4(0), vec4(0), vec4(0), vec4(0), 0.0, 0.0);
+    return Layer(vec4(0), vec4(0), vec4(0), vec4(0), vec4(0), 0.0, vec2(0.0), 0.0);
 }
 
 Layer layer_scaled(Layer l, float k)
 {
     return Layer(l.scene * k, l.emission * k, l.absorption * k, l.albedo * k,
-                 l.surface * k, l.height * k, l.cover * k);
+                 l.surface * k, l.height * k, l.bend * k, l.cover * k);
 }
 
 Layer layer_sum(Layer a, Layer b)
 {
     return Layer(a.scene + b.scene, a.emission + b.emission, a.absorption + b.absorption,
                  a.albedo + b.albedo, a.surface + b.surface, a.height + b.height,
-                 a.cover + b.cover);
+                 a.bend + b.bend, a.cover + b.cover);
 }
 
 // Pieces that overlap by float error still cover a footprint once.
@@ -376,7 +399,8 @@ void layer_composite(Layer l)
 {
     l = layer_scaled(l, 1.0 / max(l.cover, 1.0));
     float a = max(l.scene.a, 1e-6);
-    layer_over(l.scene, l.emission, l.absorption, l.albedo, l.surface / a, l.height / a);
+    layer_over(l.scene, l.emission, l.absorption, l.albedo, l.surface / a, l.height / a,
+               l.bend / max(l.cover, 1e-6), l.cover);
 }
 
 // The pieces of a tile group composite as one layer: their footprint
@@ -401,7 +425,7 @@ void group_flush()
     group_layer = layer_empty();
 }
 
-void group_add(float id, float cover, vec4 sc, vec4 em, vec4 tr, vec4 al, vec4 surface, float height)
+void group_add(float id, float cover, vec4 sc, vec4 em, vec4 tr, vec4 al, vec4 surface, float height, vec2 bend)
 {
     if (id != group_id) {
         bool fill = fract(group_id) > 0.0 && id == floor(group_id);
@@ -410,7 +434,7 @@ void group_add(float id, float cover, vec4 sc, vec4 em, vec4 tr, vec4 al, vec4 s
         group_id = id;
     }
     float k = border_cover > 0.0 ? max(cover - border_cover, 0.0) / max(cover, 1e-6) : 1.0;
-    Layer piece = Layer(sc, em, tr, al, surface * sc.a, height * sc.a, cover);
+    Layer piece = Layer(sc, em, tr, al, surface * sc.a, height * sc.a, bend * cover, cover);
     group_layer = layer_sum(group_layer, layer_scaled(piece, k));
 }
 
@@ -440,7 +464,7 @@ void main()
     albedo_acc = vec4(0, 0, 0, 1);
     normal_acc = vec4(0);
     relief_acc = 0.0;
-    optics_acc = vec2(0.0);
+    optics_acc = vec3(0.0);
     group_id = 0.0;
     border_cover = 0.0;
     group_layer = layer_empty();
@@ -451,7 +475,7 @@ void main()
     vec4 prev_source = texelFetch(u_prev_source, pixel, 0);
     vec4 prev_cover = texelFetch(u_prev_cover, pixel, 0);
     emission_acc.rgb = prev_source.rgb * prev_cover.r;
-    optics_acc = prev_cover.gb;
+    optics_acc = prev_cover.gba;
     absorber_emission = prev_source.a > 0.0 ? emission_acc.rgb : vec3(0.0);
     absorption_cover = prev_source.a > 0.0 ? 1.0 : 0.0;
     tau_acc = prev_source.a;
@@ -554,7 +578,7 @@ void main()
         float sdf = evaluate_sdf(local_p, e);
         vec2 half_size = shader_half_size(e);
         vec2 material_pos = material_position(e, local_p, world_pos);
-        vec4 graph_output[8];
+        vec4 graph_output[SG_OUTPUTS];
         vec4 parameters[32];
         if (e.reserved1 > 0.0) {
             for(int p=0;p<32;p++) parameters[p]=shader_parameters[eidx*64u+32u+uint(p)];
@@ -580,6 +604,7 @@ void main()
             (!filtered_circle_emission || !may_emit || sdf >= emission_half_width)) continue;
         vec4 surface = vec4(0.0, 0.0, e.reserved2, 0.0);
         float height = 0.0;
+        vec2 bend = vec2(0.0);
         if (e.reserved0 > 0.0) {
             for(int p=0;p<32;p++) parameters[p]=shader_parameters[eidx*64u+uint(p)];
             sg_dispatch_2d(int(e.reserved0), local_p, material_pos, half_size, e.simulation_time.x, parameters, graph_output);
@@ -589,6 +614,8 @@ void main()
             e.border_albedo=graph_output[2]; e.border_absorption=graph_output[3];
             surface.xyw = graph_output[4].xyz;
             height = graph_output[4].w;
+            bend = graph_output[4].xy * graph_output[5].x;
+            transmit(e, graph_output[5].yzw);
         }
         apply_flash(e.scene, e.emission, e.albedo, e.flash);
         apply_flash(e.border_scene, e.border_emission, e.border_albedo, e.flash);
@@ -662,6 +689,7 @@ void main()
             float cover = bsc.a + sc.a * (1.0 - bsc.a);
             normal_acc = mix(normal_acc, surface, cover);
             relief_acc = mix(relief_acc, height, cover);
+            optics_acc.xy = mix(optics_acc.xy, bend, shape_coverage);
 
             // Emission and absorption.
             vec4 em = unpack_color(e.emission); em.rgb *= em.a;
@@ -696,11 +724,11 @@ void main()
             vec4 tr = unpack_color(e.absorption); tr *= coverage;
             vec4 al = unpack_color(e.albedo); al.rgb *= al.a; al *= coverage;
             if (tiled) {
-                group_add(e.tile_group, coverage, sc, em, tr, al, surface, height);
+                group_add(e.tile_group, coverage, sc, em, tr, al, surface, height, bend);
                 continue;
             }
             group_flush();
-            layer_over(sc, em, tr, al, surface, height);
+            layer_over(sc, em, tr, al, surface, height, bend, coverage);
         }
     }
     group_flush();
@@ -745,7 +773,7 @@ void main()
             vec4 sc = mb_scene[g]; sc.rgb *= sc.a; sc *= coverage;
             vec4 em = mb_emission[g]; em.rgb *= em.a; em *= coverage;
             vec4 al = mb_albedo[g]; al.rgb *= al.a; al *= coverage;
-            layer_over(sc, em, mb_absorption[g] * coverage, al, mb_surface[g], mb_height[g]);
+            layer_over(sc, em, mb_absorption[g] * coverage, al, mb_surface[g], mb_height[g], vec2(0.0), 0.0);
         }
     }
 
@@ -765,7 +793,7 @@ void main()
     float display = dense > 1e-8 ? min(dot(emission_acc.rgb, luma) / dense, 60000.0) : 1.0;
     out_scene = scene_acc;
     out_source = vec4(density, depth);
-    out_cover = vec4(display, optics_acc, 0.0);
+    out_cover = vec4(display, optics_acc);
     out_albedo = vec4(albedo_acc.rgb, relief_acc);
     out_normal = normal_acc;
     out_visibility = vec4(0);

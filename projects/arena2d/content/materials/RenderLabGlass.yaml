@@ -1,0 +1,66 @@
+version: 3
+name: RenderLabGlass
+domain: material
+id_counter: 233
+description: 'Wavy cyan glass with pillowed edges: bends what lies behind it and tints the light passing through.'
+graphs:
+- kind: event
+  name: ""
+  nodes:
+  - id: 1
+    type: Shader Surface Output
+    inputs:
+      Base Color:
+        default: {x: 0.2, "y": 0.45, z: 0.55}
+      Emission:
+        default: {x: 0.0, "y": 0.0, z: 0.0}
+      Roughness: 0.05
+      Normal:
+        default: {x: 0.0, "y": 0.0, z: 0.0}
+      Opacity: 0.12
+      Refraction: 22.0
+      Transmission:
+        default: {x: 0.25, "y": 0.8, z: 0.95}
+  - {id: 12, type: Shader UV}
+  - id: 14
+    type: Shader X
+    inputs:
+      Value: {type: struct, type_name: ShaderVec2}
+  - id: 17
+    type: Shader Y
+    inputs:
+      Value: {type: struct, type_name: ShaderVec2}
+  - {id: 20, type: Shader ObjectPosition}
+  - id: 22
+    type: Shader X
+    inputs:
+      Value: {type: struct, type_name: ShaderVec3}
+  - id: 25
+    type: Shader Z
+    inputs:
+      Value: {type: struct, type_name: ShaderVec3}
+  - id: 227
+    type: Behavior Expression
+    reference_id: 28
+    reference_name: vec3(0.7 * (u * 2 - 1) * (u * 2 - 1) * (u * 2 - 1) + 0.3 * (noise(vec3(x * 0.07, z * 0.05, 1), 1) - 0.5), 1, 0.7 * (1 - v * 2) * (1 - v * 2) * (1 - v * 2) + 0.3 * (noise(vec3(x * 0.07, z * 0.05, 2), 1) - 0.5))
+    inputs:
+      u: {type: float}
+      x: {type: float}
+      z: {type: float}
+      v: {type: float}
+    outputs:
+      Result: {type: struct, type_name: ShaderVec3}
+  edges:
+  - {from: 12.UV, to: 14.Value}
+  - {from: 12.UV, to: 17.Value}
+  - {from: 14.Value, to: 227.u}
+  - {from: 17.Value, to: 227.v}
+  - {from: 20.Value, to: 22.Value}
+  - {from: 20.Value, to: 25.Value}
+  - {from: 22.Value, to: 227.x}
+  - {from: 25.Value, to: 227.z}
+  - {from: 227.Result, to: 1.Normal}
+- id: 28
+  kind: function
+  math_expression: vec3(0.7 * (u * 2 - 1) * (u * 2 - 1) * (u * 2 - 1) + 0.3 * (noise(vec3(x * 0.07, z * 0.05, 1), 1) - 0.5), 1, 0.7 * (1 - v * 2) * (1 - v * 2) * (1 - v * 2) + 0.3 * (noise(vec3(x * 0.07, z * 0.05, 2), 1) - 0.5))
+  entry_id: 29

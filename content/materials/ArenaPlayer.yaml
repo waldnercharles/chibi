@@ -1,7 +1,7 @@
 version: 3
 name: ArenaPlayer
 domain: material
-id_counter: 637
+id_counter: 639
 description: Cyan player surface. A color ramp along local X marks the forward end; Fresnel lifts the edge.
 graphs:
 - kind: event
@@ -17,6 +17,7 @@ graphs:
       Normal:
         default: {x: 0.0, "y": 0.0, z: 0.0}
       Height: {id: 112}
+      Refraction: {id: 637}
   - id: 37
     type: Shader Position
     outputs:

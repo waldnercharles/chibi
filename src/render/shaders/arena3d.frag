@@ -135,7 +135,7 @@ void main()
     bool unlit = false;
     int material = int(v_material.y);
     if (material > 0) {
-        vec4 parameters[32], surface[8];
+        vec4 parameters[32], surface[SG_OUTPUTS];
         for (int i = 0; i < 32; i++) parameters[i] = material_value(i + 2);
         sg_dispatch(material, sg_context, parameters, surface);
         base = max(surface[0].rgb, vec3(0));

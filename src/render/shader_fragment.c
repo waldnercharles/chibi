@@ -47,7 +47,7 @@ char *render_shader_fragment_source()
         "radial=p+vec2(0.0001);if(length(radial)>0.0)p+=radial/"
         "length(radial)*deform;\n"
         " float d=evaluate_sdf(p,e); vec2 half_size=shader_half_size(e); vec4 "
-        "values[32], result[8];\n"
+        "values[32], result[SG_OUTPUTS];\n"
         " int shape=int(sg_entity[4].z), material=int(sg_entity[4].y); float "
         "time=sg_entity[19].x;\n"
         " e.material_frame=sg_entity[20]; vec2 "

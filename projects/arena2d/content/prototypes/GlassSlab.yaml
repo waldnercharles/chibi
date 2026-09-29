@@ -1,0 +1,7 @@
+name: GlassSlab
+components:
+  GAME.GameAppearance: {antialias: 0.5, color: 4294967295, height: 200.0, width: 50.0}
+  GAME.GameMaterial: {edge_light: 1.0}
+  GAME.GameOrientation: {}
+  GAME.GameShader: {material: RenderLabGlass}
+  GAME.GameTransform: {}

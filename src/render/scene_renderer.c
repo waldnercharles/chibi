@@ -63,6 +63,8 @@ struct app_scene_renderer
     uint64_t frame_start;
     /* Tile groups numbered so far this frame. */
     int tile_groups;
+    /* Whether a collected material may refract. */
+    bool refraction;
     render_material_entity *entities;
     draw_actor *actors;
     ecs_world *world;
@@ -750,6 +752,7 @@ static void collect(
 {
     asetlen(renderer->entities, 0);
     renderer->tile_groups = 0;
+    renderer->refraction = false;
     aclear(renderer->reflectors);
     collect_order(renderer, world);
     for (int actor = 0; actor < acount(renderer->actors); actor++) {
@@ -808,6 +811,7 @@ static void collect(
                 continue;
             }
             int shader = binding ? render_shader_find(binding->material) : 0;
+            renderer->refraction |= render_shader_refracts(shader);
             float parameters[32][4] = { 0 };
             if (shader && !render_shader_is_shape(shader)) {
                 render_shader_parameters(shader, world, entity, binding->parameters, parameters);
@@ -901,6 +905,7 @@ static void collect(
         if (binding) {
             render_material_entity *draw = &renderer->entities[acount(renderer->entities) - 1];
             int material = render_shader_find(binding->material);
+            renderer->refraction |= render_shader_refracts(material);
             draw->reserved[0] = render_shader_is_shape(material) ? 0 : (float)material;
             draw->reserved[1] = !authored && render_shader_is_shape(shape)
                                   ? (float)shape
@@ -1200,9 +1205,9 @@ static bool present_hdr(
     render_post_2d_settings settings = { .exposure = renderer->lighting.exposure,
                                          .bloom = renderer->lighting.bloom,
                                          .dither_phase = fmodf(renderer->time * 60, 64) };
-    render_post_2d_distortion distortion = { .normal = textures.normal,
-                                             .cover = textures.cover,
-                                             .time = renderer->time };
+    render_post_2d_distortion distortion = { .cover = textures.cover,
+                                             .time = renderer->time,
+                                             .refraction = renderer->refraction };
     render_post_2d_collect(world, runtime, screen, &settings, &distortion);
     if (!renderer->fluid || !render_fluid_raster_hot(renderer->fluid)) {
         distortion.fluid_haze = 0;

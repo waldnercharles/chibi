@@ -82,8 +82,9 @@ typedef struct
     /* R: display's scale from source's emission density to emission
      * premultiplied by coverage. Absorbers emit their radiance times their
      * optical depth (hrc/source_average.shd); clear emitters' scale is one.
-     * G: output pixels solids refract along their tilt. B: heat haze weight
-     * of burning and emissive fluid, at most one. A: zero. */
+     * GB: output pixels, world axes Y up, by which solids refract what lies
+     * behind them. A: heat haze weight of burning and emissive fluid, at most
+     * one. */
     CF_Texture cover;
 } render_material_textures;
 

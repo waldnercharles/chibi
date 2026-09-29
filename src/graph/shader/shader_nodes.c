@@ -108,7 +108,17 @@ static pin_spec surface[] = {
     FLOAT_DEFAULT("Opacity", 1),
     { .name = "Unlit", .type = PIN_BOOL, .default_value = { .type = PIN_BOOL } },
     /* World units of relief above the surface; 2D shading casts its shadows. */
-    FLOAT_PIN("Height")
+    FLOAT_PIN("Height"),
+    /* 2D output pixels the surface bends what lies behind it, along its
+     * Normal's tilt. */
+    FLOAT_PIN("Refraction"),
+    /* 2D fraction of light passing through per channel; black keeps the gray
+     * absorption Opacity gives. */
+    { .name = "Transmission",
+      .type = PIN_STRUCT,
+      .type_name = "ShaderVec3",
+      .flags = PIN_FLAG_COLOR,
+      .default_value = { .type = PIN_STRUCT, .type_name = "ShaderVec3" } }
 };
 static pin_spec mapping2[] = { VECTOR_PIN("Position", 2),
                                VECTOR_PIN("Offset", 2),
@@ -301,7 +311,7 @@ static node_desc image_node = {
 };
 static node_desc surface_output = {
     .name = "Shader Surface Output",
-    .input_count = 8,
+    .input_count = 10,
     .inputs = surface,
     .category = "Shader",
     .description = "Receives the material's final shading; a zero Normal keeps "

@@ -1,7 +1,7 @@
 version: 3
 name: Basalt
 domain: material
-id_counter: 17237
+id_counter: 17239
 description: 'Physically based basalt on the BasaltCave column grid: prisms with cross-joints, streaks, phenocrysts and relief.'
 graphs:
 - kind: event
@@ -16,6 +16,7 @@ graphs:
         default: {x: 0.0, "y": 0.0, z: 0.0}
       Normal:
         default: {x: 0.0, "y": 0.0, z: 0.0}
+      Refraction: {id: 17237}
   - {id: 10, type: Shader WorldPosition}
   - id: 12
     type: Shader X

@@ -1,7 +1,7 @@
 version: 3
 name: ArenaRim
 domain: material
-id_counter: 217
+id_counter: 219
 description: A metallic cyan boundary with a slow, restrained pulse in its emission.
 graphs:
 - kind: event
@@ -19,6 +19,7 @@ graphs:
       Normal:
         default: {x: 0.0, "y": 0.0, z: 0.0}
       Height: {id: 37}
+      Refraction: {id: 217}
   - id: 9
     type: Shader Parameter
     reference_name: Base Color

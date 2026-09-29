@@ -1,7 +1,7 @@
 version: 3
 name: ArenaProjectile
 domain: material
-id_counter: 18
+id_counter: 20
 description: Bright icy projectile core with an explicit emission control.
 graphs:
 - kind: event

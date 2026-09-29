@@ -76,6 +76,11 @@ entities:
     GAME.GameMaterial: {emission_color: 0, scene: 1789619455, albedo: 1789619455}
     GAME.GameFlash: {decay: 2.5}
   behaviors: [RenderLabFlash]
+- name: Glass slab
+  prototype: GlassSlab
+  components:
+    GAME.GameTransform: {x: -110.0, "y": -80.0}
+    GAME.GameOrientation: {radians: 0.15}
 - name: Pool
   prototype: Liquid
   components:

@@ -343,6 +343,12 @@ static void instance_init_values(behavior_instance *bi)
         instance_prepare_storage(bi, i);
         int result = instance_store_value(bi, i, &bi->asset->variables[i].default_value);
         assert(result == 0);
+        /* A struct declared without a default starts at its zero value. */
+        behavior_variable_storage *fixed = &bi->variable_storage[i];
+        if (fixed->data && !bi->variables[i].ptr) {
+            memset(fixed->data, 0, fixed->type->size);
+            bi->variables[i].ptr = fixed->data;
+        }
     }
 }
 

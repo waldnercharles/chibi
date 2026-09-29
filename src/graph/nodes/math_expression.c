@@ -1156,6 +1156,30 @@ static const node_desc *expression_component_set(const char *key, const char *fi
     return NULL;
 }
 
+static bool scalar_number(const pin_spec *pin)
+{
+    return pin->container == PIN_CONTAINER_SINGLE && pin->type >= PIN_I8 &&
+           pin->type <= PIN_F64;
+}
+
+/* Behavior arithmetic runs in double. A number of another width converts on
+   its way in or out, so it neither retypes an operation away from its
+   literals nor reaches an int as raw bits. */
+static int connect_number(graph *g, value_source from, node *to, int pin)
+{
+    const pin_spec *out = &from.node->output_pins[from.pin];
+    const pin_spec *in = &to->input_pins[pin];
+    bool numbers = scalar_number(out) && scalar_number(in) && out->type != in->type;
+    bool widened = numbers && in->type == PIN_F64 && (in->flags & PIN_FLAG_WILDCARD);
+    const node_desc *conversion = numbers ? conversion_for(out->type, in->type) : NULL;
+    int rc = graph_connect_data_conversion(g, from.node, from.pin, to, pin, conversion);
+    /* A float shares the Real category, so it connects as is; the operation
+       stays double. */
+    return rc || !widened || conversion
+             ? rc
+             : graph_set_pin_type(g, to, 0, pin, PIN_F64, "double");
+}
+
 static int expression_replace_struct_field(
     graph *target,
     value_source base,
@@ -1231,7 +1255,7 @@ static int expression_replace_struct_field(
                 value = replacement;
             }
         }
-        if (graph_connect_data(target, value.node, value.pin, make, i) != 0) {
+        if (connect_number(target, value, make, i) != 0) {
             snprintf(error->message, sizeof error->message, "Could not connect member assignment");
             return -1;
         }
@@ -1655,31 +1679,6 @@ static int lower_dataflow(
     return result;
 }
 
-/* Generation allocates the function's IDs in one run, starting at first_id. */
-static bool scalar_number(const pin_spec *pin)
-{
-    return pin->container == PIN_CONTAINER_SINGLE && pin->type >= PIN_I8 &&
-           pin->type <= PIN_F64;
-}
-
-/* Behavior arithmetic runs in double. A number of another width converts on
-   its way in or out, so it neither retypes an operation away from its
-   literals nor reaches an int as raw bits. */
-static int connect_number(graph *g, value_source from, node *to, int pin)
-{
-    const pin_spec *out = &from.node->output_pins[from.pin];
-    const pin_spec *in = &to->input_pins[pin];
-    bool numbers = scalar_number(out) && scalar_number(in) && out->type != in->type;
-    bool widened = numbers && in->type == PIN_F64 && (in->flags & PIN_FLAG_WILDCARD);
-    const node_desc *conversion = numbers ? conversion_for(out->type, in->type) : NULL;
-    int rc = graph_connect_data_conversion(g, from.node, from.pin, to, pin, conversion);
-    /* A float shares the Real category, so it connects as is; the operation
-       stays double. */
-    return rc || !widened || conversion
-             ? rc
-             : graph_set_pin_type(g, to, 0, pin, PIN_F64, "double");
-}
-
 /* A double result reaching an integer or float input, such as an int field
    it assigns, converts there instead of passing raw bits. */
 static void convert_numbers(graph *g)
@@ -1709,6 +1708,7 @@ static void convert_numbers(graph *g)
     }
 }
 
+/* Generation allocates the function's IDs in one run, starting at first_id. */
 static behavior_asset *generate(
     behavior_asset *asset,
     graph *caller,
@@ -1837,46 +1837,50 @@ static behavior_asset *generate(
     }
     int rc = 0;
     int assignment_symbol = expression_assignment_symbol(&p);
-    const char *assignment_name = assignment_symbol >= 0
-                                    ? p.symbols[assignment_symbol]
-                                    : NULL;
-    pin_binding assignment_binding_storage = { 0 };
-    int assignment_reference = expression_assignment_reference(
-        caller,
-        previous,
-        assignment_name,
-        renames,
-        rename_count,
-        &assignment_binding_storage
-    );
-    const pin_binding *assignment_binding = assignment_reference > 0
-                                              ? &assignment_binding_storage
-                                              : NULL;
-    if (p.assignment_operator && assignment_reference < 0) {
-        fail(&p, "Assignment target must resolve to a writable reference");
-        result = -1;
-    }
-    if (p.assignment_operator && assignment_binding) {
+    /* A bound input takes its binding's type: the assignment target always,
+       any other input where it reads members. */
+    for (int i = 0; i < symbol_count && result >= 0; i++) {
+        bool assigned = p.assignment_operator && i == assignment_symbol;
+        if (!assigned && !symbol_structs[i]) {
+            continue;
+        }
+        pin_binding binding = { 0 };
+        int reference = expression_assignment_reference(
+            caller,
+            previous,
+            p.symbols[i],
+            renames,
+            rename_count,
+            &binding
+        );
+        if (assigned && reference < 0) {
+            result = fail(&p, "Assignment target must resolve to a writable reference");
+            break;
+        }
+        if (reference <= 0) {
+            continue;
+        }
         pin_type type;
         const char *type_name;
         pin_container container;
-        if (assignment_symbol < 0 || expression_binding_type(
-                                         asset,
-                                         assignment_binding,
-                                         &p.terms[p.assignment_left],
-                                         &type,
-                                         &type_name,
-                                         &container
-                                     ) != 0) {
-            fail(&p, "Assignment target binding is invalid");
-            result = -1;
-        } else {
-            rc = graph_set_pin_type(target, entry, 1, symbol_pins[assignment_symbol], type, type_name);
-            assert(rc == 0);
-            rc = graph_set_pin_container(target, entry, 1, symbol_pins[assignment_symbol], container);
-            assert(rc == 0);
-            entry->output_pins[symbol_pins[assignment_symbol]].flags &= ~PIN_FLAG_WILDCARD;
+        if (expression_binding_type(
+                asset,
+                &binding,
+                assigned ? &p.terms[p.assignment_left] : NULL,
+                &type,
+                &type_name,
+                &container
+            ) != 0) {
+            if (assigned) {
+                result = fail(&p, "Assignment target binding is invalid");
+            }
+            continue;
         }
+        rc = graph_set_pin_type(target, entry, 1, symbol_pins[i], type, type_name);
+        assert(rc == 0);
+        rc = graph_set_pin_container(target, entry, 1, symbol_pins[i], container);
+        assert(rc == 0);
+        entry->output_pins[symbol_pins[i]].flags &= ~PIN_FLAG_WILDCARD;
     }
     if (result < 0) {
         free(symbol_structs);

@@ -1024,6 +1024,96 @@ static void indexed_assignment_expression()
     behavior_asset_free(asset);
 }
 
+/* Runs `source` after `previous`, binding each input to the variable it names. */
+static node *bound_expression(behavior_asset *asset, node *previous, const char *source)
+{
+    behavior_expression_error error;
+    node *call = behavior_expression_add(asset, asset->graph, source, &error);
+    assert(call);
+    for (int i = 0; i < acount(asset->variables); i++) {
+        const behavior_variable *variable = &asset->variables[i];
+        int pin = named_pin(call, false, variable->name);
+        pin_binding binding = { .kind = PIN_BINDING_VARIABLE,
+                                .variable_id = variable->id,
+                                .source_asset = asset->name };
+        if (pin >= 0) {
+            assert(graph_set_pin_binding(asset->graph, call, 0, pin, &binding) == 0);
+            assert(behavior_expression_refresh(asset, call, &error) == 0);
+        }
+    }
+    int exec = named_pin(call, false, "Exec");
+    assert(graph_connect_exec(asset->graph, previous, 0, call, exec, 0) == 0);
+    return call;
+}
+
+/* Struct variables read, compound and assign members on every backend; one
+   without a default starts at its zero value. */
+static void struct_variable_member_expressions()
+{
+    static const behavior_backend backends[] = { BEHAVIOR_ORACLE,
+                                                 BEHAVIOR_BYTECODE,
+                                                 BEHAVIOR_SLJIT };
+    static const char *const sources[] = {
+        "spec.current += 1",
+        "spec.maximum = 7",
+        "shot.speed = 1.5",
+        "shot.damage *= 3",
+        "out = spec.current + spec.maximum + shot.speed + shot.damage",
+    };
+    for (int i = 0; i < (int)(sizeof backends / sizeof *backends); i++) {
+        behavior_asset *asset = behavior_asset_new("Struct variable members");
+        GameProjectile projectile = { .speed = 4, .damage = 2 };
+        pin_value shot_value = { .type = PIN_STRUCT, .ptr = &projectile };
+        pin_value out_value = { .type = PIN_F64 };
+        uint64_t spec = behavior_asset_add_variable(
+                            asset,
+                            "spec",
+                            PIN_STRUCT,
+                            "GameHealth",
+                            PIN_CONTAINER_SINGLE,
+                            NULL,
+                            NULL
+        )
+                            ->id;
+        uint64_t shot = behavior_asset_add_variable(
+                            asset,
+                            "shot",
+                            PIN_STRUCT,
+                            "GameProjectile",
+                            PIN_CONTAINER_SINGLE,
+                            &shot_value,
+                            NULL
+        )
+                            ->id;
+        uint64_t out = behavior_asset_add_variable(asset, "out", PIN_F64, "double", PIN_CONTAINER_SINGLE, &out_value, NULL)
+                           ->id;
+        node *call = graph_add_node(asset->graph, &NODE_Event);
+        assert(call && graph_set_event_name(asset->graph, call, "Run") == 0);
+        for (int j = 0; j < (int)(sizeof sources / sizeof *sources); j++) {
+            call = bound_expression(asset, call, sources[j]);
+        }
+
+        behavior_instance *instance = behavior_instance_create(asset, NULL, NULL, NULL);
+        assert(instance && behavior_instance_set_backend(instance, backends[i]) == 0);
+        flow_error flow;
+        flow_run *run = behavior_instance_dispatch(instance, "Run", (flow_inputs){ 0 }, &flow);
+        assert(run && flow_run_status(run) == FLOW_COMPLETED);
+        pin_value value;
+        assert(behavior_instance_get_variable(instance, spec, &value) == 0);
+        const GameHealth *health = value.ptr;
+        assert(health->current == 1 && health->maximum == 7);
+        assert(behavior_instance_get_variable(instance, shot, &value) == 0);
+        const GameProjectile *shot_after = value.ptr;
+        assert(
+            shot_after->speed == 1.5f && shot_after->damage == 6 &&
+            shot_after->lifetime == 0
+        );
+        assert(behavior_instance_get_variable(instance, out, &value) == 0 && value.d == 15.5);
+        behavior_instance_destroy(instance);
+        behavior_asset_free(asset);
+    }
+}
+
 static void branch_expression_flow()
 {
     behavior_asset *asset = behavior_asset_new("Branch expression");
@@ -1895,6 +1985,7 @@ void test_math_expression()
     integer_operand_expressions();
     assignment_root_rename_preserves_binding();
     indexed_assignment_expression();
+    struct_variable_member_expressions();
     branch_expression_flow();
     vector_expression();
     scalar_leading_vector_expression();

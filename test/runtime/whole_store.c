@@ -176,7 +176,10 @@ static void lifecycle(behavior_backend backend)
     flow_run_free(run);
     assert(!behavior_instance_pool_release(bi));
     assert(behavior_instance_pool_reuse(bi, next, NULL, NULL, NULL) == bi);
-    assert(bi->variable_storage[1].data == backing && !bi->variables[1].ptr);
+    /* Reuse resets the undeclared default to the zero value in place. */
+    assert(bi->variable_storage[1].data == backing && bi->variables[1].ptr == backing);
+    static const whole_record zero;
+    assert(!memcmp(backing, &zero, sizeof zero));
     input.position.x = 3;
     assert(!behavior_instance_set_variable(bi, id, &v));
     same(bi->variables[1], retained);

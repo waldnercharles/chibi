@@ -647,11 +647,20 @@ static void emit_wires(studio *s)
         node *from = graph_node_by_id(gr, ed->from_id),
              *to = graph_node_by_id(gr, ed->to_id);
         int fo = 0, to_out = 0, fp = -1, tp = -1;
-        /* A use of a named value reads the name instead of a wire. */
         if (!sg_node_visible(gr, from) || !sg_node_visible(gr, to) ||
             !graph_pin_by_id(from, ed->from_pin_id, &fo, &fp) || !fo ||
-            !graph_pin_by_id(to, ed->to_pin_id, &to_out, &tp) || to_out ||
-            graph_edge_is_local(gr, ed)) {
+            !graph_pin_by_id(to, ed->to_pin_id, &to_out, &tp) || to_out) {
+            continue;
+        }
+        ed_link_ref ref;
+        sg_link_ref_of(ed, &ref);
+        bool attached = ed_node_selected(e, from) || ed_node_selected(e, to) ||
+                        g->hover_node == from->id || g->hover_node == to->id ||
+                        g->hover_edge == i || ed_link_selected(e, &ref);
+        /* A use of a named value reads the name instead of a wire; the wire
+           shows faintly while either end has focus (Houdini, Blender). */
+        bool local = graph_edge_is_local(gr, ed);
+        if (local && !attached) {
             continue;
         }
         apush(g->wire_edges, i);
@@ -660,17 +669,14 @@ static void emit_wires(studio *s)
         socket_path(alast(paths).to, PATH, s, to, ED_PIN_INPUT, tp);
         const pin_spec *spec = &from->output_pins[fp];
         bool exec = spec->kind == PIN_EXEC;
-        ed_link_ref ref;
-        sg_link_ref_of(ed, &ref);
-        bool attached = ed_node_selected(e, from) || ed_node_selected(e, to) ||
-                        g->hover_node == from->id || g->hover_node == to->id ||
-                        g->hover_edge == i || ed_link_selected(e, &ref);
-        float alpha = !focus || attached ? 1 : 0.35f;
+        float alpha = local ? 0.4f : !focus || attached ? 1 : 0.35f;
         if (sg_is_unused(g, from->id) || sg_is_unused(g, to->id)) {
             alpha *= 0.5f;
         }
         kit_wire wire = { .color = pin_color(s, spec, alpha),
-                          .width = (exec ? 2.5f : 1.5f) + (attached && focus ? 0.5f : 0),
+                          .width = local ? 1
+                                         : (exec ? 2.5f : 1.5f) +
+                                               (attached && focus ? 0.5f : 0),
                           .flags = ed->conversion ? KIT_WIRE_DASHED : 0 };
         /* Executed wires glow and carry markers while their heat lasts. */
         editor_edge_activity activity;
@@ -696,7 +702,7 @@ static void emit_wires(studio *s)
                 apush(via, ed->reroutes[r].y - g->y);
             }
             count = ed->reroute_count;
-        } else if (g->edge_route && i < acount(g->edge_route) && g->edge_route[i] >= 0) {
+        } else if (!local && g->edge_route && i < acount(g->edge_route) && g->edge_route[i] >= 0) {
             int link = g->edge_route[i];
             for (int p = g->routes.start[link]; p < g->routes.start[link + 1]; p++) {
                 apush(via, g->routes.points[p].x - g->x);

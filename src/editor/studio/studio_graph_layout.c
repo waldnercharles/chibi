@@ -109,10 +109,25 @@ const char *sg_node_kind(const studio *s, const node *n)
     }
 }
 
+/* An expression in an execution chain either decides or assigns; its flow
+   outputs say which. */
+static bool has_flow_output(const node *n, const char *name)
+{
+    for (int i = 0; i < n->output_count; i++) {
+        if (n->output_pins[i].kind == PIN_EXEC &&
+            !strcmp(n->output_pins[i].name, name)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 uint32_t sg_node_icon(const studio *s, const node *n)
 {
     if (is_expression(s, n)) {
-        return KIT_ICON_EXPRESSION;
+        return has_flow_output(n, "True") ? KIT_ICON_BRANCH
+             : has_flow_output(n, "Then") ? KIT_ICON_VARIABLE
+                                          : KIT_ICON_EXPRESSION;
     }
     if (ed_is_graph_call(n)) {
         return KIT_ICON_FUNCTION;
@@ -413,7 +428,8 @@ static int title_pin(const graph *gr, node *n, int kind)
 }
 
 /* Expressions show their source in the body, so the title carries a name the
-   author gave instead; pills drop the "Get" every read would repeat. */
+   author gave instead, or the role: If for a decision, Set for an assignment.
+   Pills drop the "Get" every read would repeat. */
 const char *sg_node_title(const studio *s, node *n, node_form form, char *buf, size_t size)
 {
     const behavior_asset *asset = sg_graph_editor(s)->asset;
@@ -422,7 +438,10 @@ const char *sg_node_title(const studio *s, node *n, node_form form, char *buf, s
         const graph *generated = behavior_asset_find_graph(asset, n->reference_id);
         const char *name = generated->name && generated->name[0] ? generated->name
                                                                  : source;
-        snprintf(buf, size, "%s", strcmp(name, source) ? name : "Expression");
+        const char *role = has_flow_output(n, "True") ? "If"
+                         : has_flow_output(n, "Then") ? "Set"
+                                                      : "Expression";
+        snprintf(buf, size, "%s", strcmp(name, source) ? name : role);
         return buf;
     }
     ed_node_title(sg_graph_editor(s), n, buf, size);

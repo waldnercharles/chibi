@@ -38,7 +38,8 @@ be expanded into these inputs. Debug state and custom wire routes are preserved.
 Each local has a graph-owned ID, name, source node ID, and source output pin ID.
 Its consumers use `PIN_BINDING_LOCAL` and retain their original logical DATA
 edges. Those edges retain the conversion descriptor, serialized by registry name.
-The editor hides the wires; the existing runtime, flow observer, effect analysis,
+The editor hides the wires until either end is hovered or selected, when they
+draw faintly and ignore the pointer; the existing runtime, flow observer, effect analysis,
 cycle checks, system register lowering, shader scope cache, and arrangement all
 follow the same dependencies. This avoids a second dependency graph or a new
 runtime value store. `graph_node_is_inline` still describes only a single owned

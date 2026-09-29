@@ -1,5 +1,6 @@
 /* Graph canvas input: replayed window events, gestures and shortcuts. */
 #include "editor/studio/studio_graph_internal.h"
+#include "graph/model/local.h"
 #include "support/array.h"
 
 #include <math.h>
@@ -102,6 +103,10 @@ static int hit_wire(const studio *s)
     int found = -1;
     float points[CURVE_POINTS * 2];
     for (int w = 0; w < acount(g->wire_edges); w++) {
+        /* A named value's faint wire only shows the dependency. */
+        if (graph_edge_is_local(gr, &gr->edges[g->wire_edges[w]])) {
+            continue;
+        }
         int count = kit_wire_points(g->kit, "back/wires", w, points, CURVE_POINTS);
         count = count < CURVE_POINTS ? count : CURVE_POINTS;
         for (int i = 1; i < count; i++) {

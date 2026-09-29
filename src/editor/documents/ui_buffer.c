@@ -227,6 +227,59 @@ void ui_buffer_edit(ui_buffer *b, ui_part part, const text_edit *edits, int coun
     apply(b, part, edits, count, false);
 }
 
+static bool valid_edits(const char *text, const text_edit *edits, int count)
+{
+    if (!text || count < 1 || !edits) {
+        return false;
+    }
+    int length = (int)strlen(text);
+    for (int i = 0; i < count; i++) {
+        if (!edits[i].text || edits[i].start < 0 ||
+            edits[i].start > edits[i].end || edits[i].end > length) {
+            return false;
+        }
+        for (int j = 0; j < i; j++) {
+            if ((edits[i].start < edits[j].end && edits[j].start < edits[i].end) ||
+                (edits[i].start == edits[i].end && edits[j].start == edits[j].end &&
+                 edits[i].start == edits[j].start)) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+bool ui_buffer_collab_edit(ui_buffer *b, ui_part part, const text_edit *edits, int count, bool history)
+{
+    if (!b || part < 0 || part >= UI_PART_COUNT ||
+        !valid_edits(b->parts[part], edits, count)) {
+        return false;
+    }
+    if (history) {
+        ui_buffer_edit(b, part, edits, count);
+        return true;
+    }
+    char *text = text_edits_apply(b->parts[part], edits, count);
+    free(b->parts[part]);
+    b->parts[part] = text;
+    b->part = part;
+    b->typed = -1;
+    b->revision++;
+    return true;
+}
+
+bool ui_buffer_collab_type(ui_buffer *b, ui_part part, const text_edit *edits, int count, double now)
+{
+    if (!b || part < 0 || part >= UI_PART_COUNT ||
+        !valid_edits(b->parts[part], edits, count)) {
+        return false;
+    }
+    char *text = text_edits_apply(b->parts[part], edits, count);
+    ui_buffer_type(b, part, text, now);
+    free(text);
+    return true;
+}
+
 void ui_buffer_join_edit(ui_buffer *b, ui_part part, const text_edit *edits, int count)
 {
     assert(ui_buffer_can_undo(b));
@@ -268,6 +321,40 @@ bool ui_buffer_can_undo(const ui_buffer *b)
 bool ui_buffer_can_redo(const ui_buffer *b)
 {
     return acount(b->redo) > 0;
+}
+
+bool ui_buffer_history_target(const ui_buffer *b, bool redo, ui_part *part, const char **text)
+{
+    const ui_buffer_step *steps = redo ? b->redo : b->undo;
+    int count = redo ? acount(b->redo) : acount(b->undo);
+    if (!count) {
+        return false;
+    }
+    const ui_buffer_step *step = &steps[count - 1];
+    *part = step->part;
+    *text = step->parts[step->part];
+    return true;
+}
+
+bool ui_buffer_history_edit_matches(const ui_buffer *b, bool redo, ui_part part, const text_edit *edits, int count)
+{
+    const ui_buffer_step *steps = redo ? b->redo : b->undo;
+    int steps_count = redo ? acount(b->redo) : acount(b->undo);
+    if (part < 0 || part >= UI_PART_COUNT || !steps_count ||
+        steps[steps_count - 1].part != part ||
+        !valid_edits(b->parts[part], edits, count)) {
+        return false;
+    }
+    const ui_buffer_step *step = &steps[steps_count - 1];
+    char *result = text_edits_apply(b->parts[part], edits, count);
+    bool matches = same(result, step->parts[part]);
+    free(result);
+    for (int p = 0; matches && p < UI_PART_COUNT; p++) {
+        if (p != (int)part && !same(b->parts[p], step->parts[p])) {
+            matches = false;
+        }
+    }
+    return matches;
 }
 
 /* Restores the last step of `from`, recording the text it replaces in `to`. */

@@ -1,6 +1,7 @@
 #include "assets/behavior_loader.h"
 #include "assets/prototype.h"
 #include "assets/ui_document.h"
+#include "editor/collab/actions_scene.h"
 #include "editor/workspace/scene_internal.h"
 #include "graph/document/serialize.h"
 #include "support/array.h"
@@ -27,6 +28,7 @@ static void free_tab(scene_document_tab *tab)
     free(tab->scene_json);
     free(tab->scene_history);
     afree(tab->scene_entities);
+    afree(tab->scene_actor_ids);
     free(tab->selected_prototype_name);
     free(tab->asset_saved);
     free(tab->system_json);
@@ -178,8 +180,10 @@ static void capture_scene_tab(app_scene_authoring *scene, scene_document_tab *ta
     free(tab->scene_history);
     tab->scene_history = history;
     afree(tab->scene_entities);
+    afree(tab->scene_actor_ids);
     for (int i = 0; i < acount(scene->actors); i++) {
         apush(tab->scene_entities, ecs_entity_to_u64(scene->actors[i].entity));
+        apush(tab->scene_actor_ids, scene->actors[i].identity);
     }
     tab->scene_entity_count = acount(tab->scene_entities);
     tab->selected_entity = scene->selected >= 0 &&
@@ -524,6 +528,28 @@ static int restore_scene_tab_contents(app_scene_authoring *scene, scene_document
     if (loaded != 0) {
         return -1;
     }
+    if (acount(tab->scene_actor_ids) == acount(scene->actors)) {
+        for (int i = 0; i < acount(scene->actors); i++) {
+            scene->actors[i].identity = 0;
+        }
+        for (int i = 0; i < acount(tab->scene_actor_ids); i++) {
+            uint64_t identity = tab->scene_actor_ids[i];
+            if (!identity || identity >= UINT64_MAX) {
+                return -1;
+            }
+            for (int j = 0; j < i; j++) {
+                if (tab->scene_actor_ids[j] == identity) {
+                    return -1;
+                }
+            }
+            if (identity >= scene->next_actor_id) {
+                scene->next_actor_id = identity + 1;
+            }
+        }
+        for (int i = 0; i < acount(scene->actors); i++) {
+            scene_actor_set_identity(scene, &scene->actors[i], tab->scene_actor_ids[i]);
+        }
+    }
     uint64_t *replacement = NULL;
     int replacement_count = acount(scene->actors);
     for (int i = 0; i < replacement_count; i++) {
@@ -547,6 +573,21 @@ int scene_tabs_activate(app_scene_authoring *scene, int index)
 {
     if (index < 0 || index >= acount(scene->tabs) || index == scene->active_tab) {
         return index == scene->active_tab ? 0 : -1;
+    }
+    yyjson_mut_doc *action_doc = NULL;
+    yyjson_mut_val *action_root = scene_action_root(scene, "tab.activate", &action_doc);
+    yyjson_mut_obj_add_strcpy(
+        action_doc,
+        action_root,
+        "target_tab",
+        scene->tabs[index].key
+    );
+    char *action = scene_action_write(action_doc);
+    collab_action_gate gate = action ? scene_action_begin(scene, action)
+                                     : COLLAB_ACTION_REJECT;
+    if (gate != COLLAB_ACTION_APPLY) {
+        free(action);
+        return gate == COLLAB_ACTION_PENDING ? 1 : -1;
     }
     int previous = scene->active_tab;
     int previous_scene = scene_tab_for_current_document(scene);
@@ -602,6 +643,8 @@ int scene_tabs_activate(app_scene_authoring *scene, int index)
                 scene->active_tab = previous;
                 free_tab(&rollback);
                 scene->tabs_transitioning = false;
+                scene_action_finish(scene, action, false);
+                free(action);
                 return result;
             }
             scene->active_tab = previous;
@@ -624,6 +667,8 @@ int scene_tabs_activate(app_scene_authoring *scene, int index)
     }
     scene->tabs_transitioning = false;
     free_tab(&rollback);
+    scene_action_finish(scene, action, result == 0);
+    free(action);
     return result;
 }
 
@@ -632,8 +677,20 @@ int scene_tabs_open_scene(app_scene_authoring *scene, const char *path)
     if (!path) {
         return -1;
     }
+    yyjson_mut_doc *action_doc = NULL;
+    yyjson_mut_val *action_root = scene_action_root(scene, "tab.open_scene", &action_doc);
+    yyjson_mut_obj_add_strcpy(action_doc, action_root, "path", path);
+    char *action = scene_action_write(action_doc);
+    collab_action_gate gate = action ? scene_action_begin(scene, action)
+                                     : COLLAB_ACTION_REJECT;
+    if (gate != COLLAB_ACTION_APPLY) {
+        free(action);
+        return gate == COLLAB_ACTION_PENDING ? 1 : -1;
+    }
     char *json = read_scene_file(path);
     if (!json) {
+        scene_action_finish(scene, action, false);
+        free(action);
         return -1;
     }
     char *key = tab_key(APP_EDITOR_DOCUMENT_SCENE, path, path);
@@ -647,6 +704,8 @@ int scene_tabs_open_scene(app_scene_authoring *scene, const char *path)
         scene_document_tab *tab = add_tab(scene, APP_EDITOR_DOCUMENT_SCENE, path, path);
         if (!tab) {
             free(json);
+            scene_action_finish(scene, action, false);
+            free(action);
             return -1;
         }
         tab->scene_json = json;
@@ -664,6 +723,8 @@ int scene_tabs_open_scene(app_scene_authoring *scene, const char *path)
             scene->active_tab--;
         }
     }
+    scene_action_finish(scene, action, result == 0);
+    free(action);
     return result;
 }
 

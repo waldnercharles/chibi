@@ -767,6 +767,9 @@ static yyjson_mut_val *history_edits(yyjson_mut_doc *doc, const scene_edit *edit
         if (edit->actor) {
             const scene_actor_edit *actor = edit->actor;
             yyjson_mut_val *item = yyjson_mut_obj_add_obj(doc, object, "actor");
+            if (actor->identity) {
+                yyjson_mut_obj_add_uint(doc, item, "identity", actor->identity);
+            }
             yyjson_mut_obj_add_int(doc, item, "index", actor->index);
             yyjson_mut_obj_add_bool(doc, item, "created", actor->created);
             checkpoint_text(doc, item, "name", actor->name);
@@ -894,6 +897,11 @@ static bool history_read_edits(yyjson_val *array, scene_edit **edits, uint64_t *
         if (item) {
             out->actor = xcalloc(1, sizeof *out->actor);
             scene_actor_edit *actor = out->actor;
+            yyjson_val *identity = yyjson_obj_get(item, "identity");
+            if (identity && !yyjson_is_uint(identity)) {
+                return false;
+            }
+            actor->identity = yyjson_get_uint(identity);
             actor->index = yyjson_get_int(yyjson_obj_get(item, "index"));
             actor->created = yyjson_get_bool(yyjson_obj_get(item, "created"));
             actor->name = checkpoint_copy_text(item, "name");

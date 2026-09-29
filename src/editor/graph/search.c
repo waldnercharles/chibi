@@ -1,6 +1,8 @@
 #include "editor/graph/search.h"
 
 #include "assets/ui_events.h"
+#include "editor/collab/actions_internal.h"
+#include "editor/collab/collab.h"
 #include "editor/ui/labels.h"
 #include "editor/workspace/editor_internal.h"
 #include "graph/document/events.h"
@@ -804,7 +806,7 @@ static int ed_autowire_spawn(editor *e, node *n)
     return ed_autowire_spawn_input(e, n);
 }
 
-node *ed_spawn_match_at(editor *e, const ed_search_match *match, float x, float y)
+static node *ed_spawn_match_at_direct(editor *e, const ed_search_match *match, float x, float y)
 {
     if (match->desc == &ed_comment_box_desc) {
         ed_snapshot_before(e);
@@ -843,6 +845,38 @@ node *ed_spawn_match_at(editor *e, const ed_search_match *match, float x, float 
         e->spawn_link_pending = 0;
     }
     return n;
+}
+
+node *ed_spawn_match_at(editor *e, const ed_search_match *match, float x, float y)
+{
+    /* Comment boxes do not have node IDs and ed_spawn_match_at deliberately
+       returns NULL for them, so they cannot use this node action envelope. */
+    if (collab_active() && !collab_replaying() && match && match->desc &&
+        !strcmp(match->desc->name, "Comment Box")) {
+        return NULL;
+    }
+    char *action = graph_collab_action_spawn_match(e, match, x, y);
+    if (!action) {
+        return collab_active() && !collab_replaying()
+                 ? NULL
+                 : ed_spawn_match_at_direct(e, match, x, y);
+    }
+    collab_action_gate gate = collab_actions_begin(action);
+    if (gate != COLLAB_ACTION_APPLY) {
+        free(action);
+        return NULL;
+    }
+    uint64_t expected_id = e->asset->graph->id_counter;
+    if (!expected_id) {
+        expected_id = 1;
+    }
+    node *made = ed_spawn_match_at_direct(e, match, x, y);
+    if (made) {
+        assert(made->id == expected_id);
+    }
+    collab_actions_finish(action, made != NULL);
+    free(action);
+    return made;
 }
 
 const char *ed_extract_selection(editor *e)

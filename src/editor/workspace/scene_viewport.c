@@ -1,3 +1,4 @@
+#include "editor/collab/actions_scene.h"
 #include "editor/workspace/scene_internal.h"
 #include "platform/cute.h"
 #include "render/appearance_geometry.h"
@@ -383,8 +384,10 @@ static void edit_scene_pointer(app_scene_authoring *scene, engine_viewport *view
             scene->edit_before.x + pointer.world_x - scene->drag_origin.x,
             scene->edit_before.y - pointer.world_y - scene->drag_origin.y,
         };
-        write_position(scene, scene->edit_actor, position);
-        scene->scene_dirty = true;
+        write_transform_edit(scene, scene->edit_actor, position);
+        if (scene_collab_can_write_locally()) {
+            scene->scene_dirty = true;
+        }
     }
     if (pointer.released) {
         finish_transform_edit(scene, false);

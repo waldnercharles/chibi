@@ -13,6 +13,7 @@
 
 typedef struct
 {
+    uint64_t identity;
     ecs_entity entity;
     char *name;
     char *prototype_name;
@@ -55,6 +56,7 @@ typedef struct
     char *scene_json;
     char *scene_history;
     uint64_t *scene_entities;
+    uint64_t *scene_actor_ids;
     int scene_entity_count;
     uint64_t selected_entity;
     engine_viewport_view camera;
@@ -142,6 +144,7 @@ struct app_scene_authoring
     scene_field_edit property_edit;
     bool property_dirty;
     GameTransform edit_before;
+    GameTransform edit_after;
     GameTransform drag_origin;
     bool edit_dirty;
     bool dragging_actor;
@@ -163,6 +166,8 @@ struct app_scene_authoring
     int active_tab;
     char *current_scene_tab_key;
     int next_scene_key;
+    uint64_t next_actor_id;
+    int collab_action_depth;
     bool tabs_transitioning;
     bool scene_tab_restoring;
     char message[256];
@@ -223,6 +228,7 @@ bool editable_scalar(const pin_value *value);
 
 void finish_property_edit(app_scene_authoring *scene);
 void finish_transform_edit(app_scene_authoring *scene, bool cancel);
+void write_transform_edit(app_scene_authoring *scene, ecs_entity entity, GameTransform position);
 void fit_scene_view(engine_viewport *viewport, ecs_world *world, ecs_entity only);
 void free_behavior_names(char **names);
 char **instance_behavior_names(app_scene_authoring *scene, ecs_entity entity);

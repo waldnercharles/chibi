@@ -643,6 +643,24 @@ typedef struct
     } problems;
 } studio_code;
 
+typedef struct
+{
+    char *client, *name, *presentation;
+    uint32_t color;
+    int pointer_area;
+    float pointer_x, pointer_y;
+    bool pointer_valid;
+} studio_collab_peer;
+
+typedef struct
+{
+    studio_collab_peer *peers;
+    char follow_client[64];
+    studio_prefs local_prefs;
+    bool following, saved_prefs, restoring_prefs;
+    double presence_sent;
+} studio_collaboration;
+
 /* Assets ▸ New (studio_assets.c): the kinds of asset Studio makes, each
    new_asset_kind and then each ui_new_kind, and the name of the new one. */
 #define STUDIO_NEW_KIND_COUNT (NEW_ASSET_KIND_COUNT + UI_NEW_KIND_COUNT)
@@ -681,6 +699,7 @@ struct studio
     int focus_area;
     int maximized; /* the area filling the workspace (Blender's Ctrl Space), or -1 */
     studio_prefs prefs;
+    studio_collaboration collaboration;
     int shortcut_recording; /* command + 1 while Settings captures a chord */
     studio_prefs applied; /* last applied copy; changes apply and save by comparison */
     double prefs_changed_at;
@@ -900,6 +919,14 @@ void studio_sources_show(studio *s, studio_sources *sources, ui_data *data);
 /* Sets the Settings page to search the Editor tab for `query`. */
 void studio_sources_search_settings(ui_data *data, const char *query);
 void studio_sources_free(studio_sources *sources);
+
+/* Collaboration presentation, peers and status controls. */
+void studio_collab_free(studio *s);
+void studio_collab_emit(studio *s);
+void studio_collab_after_frame(studio *s);
+void studio_collab_status(studio *s);
+bool studio_collab_follow(studio *s, int peer);
+void studio_collab_unfollow(studio *s);
 
 /* Authored UI. Loads the Studio project's scene; NULL with an error when it
  * cannot. Free it after the kit, whose hosts hold its listener. */

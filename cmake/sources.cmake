@@ -145,6 +145,10 @@ set(ENGINE_SOURCES
 )
 
 set(EDITOR_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/collab/collab.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/collab/protocol.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/collab/actions_gate.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/collab/actions_graph.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/render/audio.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/workspace/viewport.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/workspace/input.c
@@ -193,6 +197,7 @@ set(EDITOR_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_refactor.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_scene.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_code.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_collab.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_commands.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_shell.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_sources.c
@@ -213,6 +218,9 @@ set(APP_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/documents/scene_prototypes.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/documents/scene_retention.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/documents/component_properties.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/collab/workspace.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/collab/actions.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/collab/actions_scene.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/workspace/application.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/workspace/asset_index.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/workspace/game_presentation.c

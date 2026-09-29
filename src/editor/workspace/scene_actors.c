@@ -1,4 +1,6 @@
 #include "assets/scene_document.h"
+#include "editor/collab/actions_scene.h"
+#include "editor/collab/collab.h"
 #include "editor/workspace/scene_internal.h"
 #include "runtime/generated.h"
 
@@ -84,6 +86,7 @@ int add_actor(app_scene_authoring *scene, const char *name, const char *prototyp
         return -1;
     }
     scene_actor actor = {
+        .identity = scene_actor_allocate_identity(scene),
         .entity = entity,
         .name = xstrdup(name),
         .prototype_name = xstrdup(prototype_name),
@@ -197,30 +200,64 @@ static bool actor_name_used(const app_scene_authoring *scene, const char *name)
     return false;
 }
 
+static int next_actor_name(const app_scene_authoring *scene, const char *prototype, char *name, size_t size)
+{
+    int suffix = 1;
+    do {
+        if (snprintf(name, size, "%s_%d", prototype, suffix++) >= (int)size) {
+            return -1;
+        }
+    } while (actor_name_used(scene, name));
+    return 0;
+}
+
 int add_instance_at(app_scene_authoring *scene, const char *prototype_name, const GameTransform *position)
 {
     if (!scene || !prototype_name || !find_prototype(scene, prototype_name)) {
         return -1;
     }
     finish_transform_edit(scene, false);
+    char name[256];
+    if (next_actor_name(scene, prototype_name, name, sizeof name) != 0) {
+        return -1;
+    }
+    yyjson_mut_doc *action_doc = NULL;
+    yyjson_mut_val *action_root = scene_action_root(scene, "instance.add", &action_doc);
+    uint64_t identity = scene_actor_next_identity(scene);
+    yyjson_mut_obj_add_uint(action_doc, action_root, "actor", identity);
+    yyjson_mut_obj_add_strcpy(action_doc, action_root, "prototype", prototype_name);
+    yyjson_mut_obj_add_strcpy(action_doc, action_root, "name", name);
+    if (position) {
+        yyjson_mut_obj_add_real(action_doc, action_root, "x", position->x);
+        yyjson_mut_obj_add_real(action_doc, action_root, "y", position->y);
+    }
+    char *action = scene_action_write(action_doc);
+    collab_action_gate gate = action ? scene_action_begin(scene, action)
+                                     : COLLAB_ACTION_REJECT;
+    if (gate != COLLAB_ACTION_APPLY) {
+        free(action);
+        return gate == COLLAB_ACTION_PENDING ? 1 : -1;
+    }
     if (scene->runtime_snapshot_valid &&
         app_scene_authoring_runtime_command(scene, APP_RUNTIME_SCENE, APP_RUNTIME_STOP) !=
             0) {
+        scene_action_finish(scene, action, false);
+        free(action);
         return -1;
     }
-    char name[256];
-    int suffix = 1;
-    do {
-        if (snprintf(name, sizeof name, "%s_%d", prototype_name, suffix++) >=
-            (int)sizeof name) {
-            return -1;
-        }
-    } while (actor_name_used(scene, name));
     bool was_dirty = scene->scene_dirty;
     if (add_actor(scene, name, prototype_name) != 0) {
+        scene_action_finish(scene, action, false);
+        free(action);
         return -1;
     }
     scene_actor *actor = &alast(scene->actors);
+    if (actor->identity != identity) {
+        remove_actor_at(scene, acount(scene->actors) - 1);
+        scene_action_finish(scene, action, false);
+        free(action);
+        return -1;
+    }
     if (position && GAME_GameTransform_has(scene->world, actor->entity)) {
         write_position(scene, actor->entity, *position);
     }
@@ -232,16 +269,22 @@ int add_instance_at(app_scene_authoring *scene, const char *prototype_name, cons
                               .base_json = base,
                               .state_json = state,
                               .created = true };
+    edit.identity = actor->identity;
     bool recorded = state && base &&
-                    scene_history_push_actor(scene->history, actor->entity, &edit);
+                    (!collab_record_history() ||
+                     scene_history_push_actor(scene->history, actor->entity, &edit));
     free(state);
     free(base);
     if (!recorded) {
         remove_actor_at(scene, acount(scene->actors) - 1);
         scene->scene_dirty = was_dirty;
+        scene_action_finish(scene, action, false);
+        free(action);
         return -1;
     }
     scene_authoring_select_document(scene, APP_EDITOR_DOCUMENT_SCENE, APP_SCENE_DOCUMENT_ID);
+    scene_action_finish(scene, action, true);
+    free(action);
     return 0;
 }
 
@@ -278,12 +321,26 @@ int app_scene_authoring_set_instance_behavior(app_scene_authoring *scene, const 
         return -1;
     }
     finish_transform_edit(scene, false);
+    scene_actor *actor = selected_actor(scene);
+    yyjson_mut_doc *action_doc = NULL;
+    yyjson_mut_val *action_root = scene_action_root(scene, "instance.behavior", &action_doc);
+    yyjson_mut_obj_add_uint(action_doc, action_root, "actor", actor->identity);
+    yyjson_mut_obj_add_strcpy(action_doc, action_root, "behavior", asset_name);
+    yyjson_mut_obj_add_bool(action_doc, action_root, "attached", attached);
+    char *action = scene_action_write(action_doc);
+    collab_action_gate gate = action ? scene_action_begin(scene, action)
+                                     : COLLAB_ACTION_REJECT;
+    if (gate != COLLAB_ACTION_APPLY) {
+        free(action);
+        return gate == COLLAB_ACTION_PENDING ? 1 : -1;
+    }
     if (scene->runtime_snapshot_valid &&
         app_scene_authoring_runtime_command(scene, APP_RUNTIME_SCENE, APP_RUNTIME_STOP) !=
             0) {
+        scene_action_finish(scene, action, false);
+        free(action);
         return -1;
     }
-    scene_actor *actor = selected_actor(scene);
     char **before = instance_behavior_names(scene, actor->entity);
     char **after = NULL;
     bool found = false;
@@ -310,7 +367,8 @@ int app_scene_authoring_set_instance_behavior(app_scene_authoring *scene, const 
                                          .before_count = acount(before),
                                          .after = (const char *const *)after,
                                          .after_count = acount(after) };
-            bool recorded = scene_history_push_behaviors(scene->history, actor->entity, &edit);
+            bool recorded = !collab_record_history() ||
+                            scene_history_push_behaviors(scene->history, actor->entity, &edit);
             assert(recorded);
             scene->scene_dirty = true;
             asset_index_invalidate(scene);
@@ -321,6 +379,8 @@ int app_scene_authoring_set_instance_behavior(app_scene_authoring *scene, const 
     if (result != 0) {
         snprintf(scene->message, sizeof scene->message, "Could not update behavior %s.", asset_name);
     }
+    scene_action_finish(scene, action, result == 0);
+    free(action);
     free_behavior_names(before);
     free_behavior_names(after);
     return result;
@@ -332,12 +392,25 @@ int app_scene_authoring_delete_instance(app_scene_authoring *scene)
         return -1;
     }
     finish_transform_edit(scene, false);
+    scene_actor *actor = selected_actor(scene);
+    yyjson_mut_doc *action_doc = NULL;
+    yyjson_mut_val *action_root = scene_action_root(scene, "instance.delete", &action_doc);
+    yyjson_mut_obj_add_uint(action_doc, action_root, "actor", actor->identity);
+    char *action = scene_action_write(action_doc);
+    collab_action_gate gate = action ? scene_action_begin(scene, action)
+                                     : COLLAB_ACTION_REJECT;
+    if (gate != COLLAB_ACTION_APPLY) {
+        free(action);
+        return gate == COLLAB_ACTION_PENDING ? 1 : -1;
+    }
     if (scene->runtime_snapshot_valid &&
         app_scene_authoring_runtime_command(scene, APP_RUNTIME_SCENE, APP_RUNTIME_STOP) !=
             0) {
+        scene_action_finish(scene, action, false);
+        free(action);
         return -1;
     }
-    scene_actor *actor = selected_actor(scene);
+    actor = selected_actor(scene);
     char *state = capture_actor_state(scene, actor);
     char *base = game_prototype_save(actor->base);
     if (!state || !base) {
@@ -349,6 +422,7 @@ int app_scene_authoring_delete_instance(app_scene_authoring *scene)
     char *retained = scene_retention_save(actor->retained);
     ecs_entity entity = actor->entity;
     scene_actor_edit edit = { .index = scene->selected,
+                              .identity = actor->identity,
                               .name = name,
                               .prototype_name = prototype,
                               .base_json = base,
@@ -356,7 +430,8 @@ int app_scene_authoring_delete_instance(app_scene_authoring *scene)
                               .retained_json = retained };
     int result = remove_actor_at(scene, scene->selected);
     if (!result) {
-        bool recorded = scene_history_push_actor(scene->history, entity, &edit);
+        bool recorded = !collab_record_history() ||
+                        scene_history_push_actor(scene->history, entity, &edit);
         assert(recorded);
         scene_authoring_select_document(scene, APP_EDITOR_DOCUMENT_SCENE, APP_SCENE_DOCUMENT_ID);
     }
@@ -365,6 +440,8 @@ int app_scene_authoring_delete_instance(app_scene_authoring *scene)
     free(prototype);
     free(state);
     free(base);
+    scene_action_finish(scene, action, result == 0);
+    free(action);
     return result;
 }
 
@@ -397,6 +474,9 @@ static int restore_actor(app_scene_authoring *scene, const scene_actor_edit *edi
         return -1;
     }
     scene_actor actor = { .entity = *entity,
+                          .identity = edit->identity
+                                        ? edit->identity
+                                        : scene_actor_allocate_identity(scene),
                           .name = xstrdup(edit->name),
                           .prototype_name = xstrdup(edit->prototype_name),
                           .base = base,
@@ -406,6 +486,7 @@ static int restore_actor(app_scene_authoring *scene, const scene_actor_edit *edi
         free_actor(&actor);
         return -1;
     }
+    scene_actor_set_identity(scene, &actor, actor.identity);
     int count = acount(scene->actors);
     apush(scene->actors, actor);
     memmove(
@@ -424,25 +505,39 @@ int app_scene_authoring_duplicate_instance(app_scene_authoring *scene)
         return -1;
     }
     finish_transform_edit(scene, false);
+    scene_actor *actor = selected_actor(scene);
+    char name[256];
+    if (next_actor_name(scene, actor->prototype_name, name, sizeof name) != 0) {
+        return -1;
+    }
+    uint64_t source_identity = actor->identity;
+    uint64_t created_identity = scene_actor_next_identity(scene);
+    yyjson_mut_doc *action_doc = NULL;
+    yyjson_mut_val *action_root = scene_action_root(scene, "instance.duplicate", &action_doc);
+    yyjson_mut_obj_add_uint(action_doc, action_root, "actor", source_identity);
+    yyjson_mut_obj_add_uint(action_doc, action_root, "created_actor", created_identity);
+    yyjson_mut_obj_add_strcpy(action_doc, action_root, "name", name);
+    char *action = scene_action_write(action_doc);
+    collab_action_gate gate = action ? scene_action_begin(scene, action)
+                                     : COLLAB_ACTION_REJECT;
+    if (gate != COLLAB_ACTION_APPLY) {
+        free(action);
+        return gate == COLLAB_ACTION_PENDING ? 1 : -1;
+    }
     if (scene->runtime_snapshot_valid &&
         app_scene_authoring_runtime_command(scene, APP_RUNTIME_SCENE, APP_RUNTIME_STOP) !=
             0) {
+        scene_action_finish(scene, action, false);
+        free(action);
         return -1;
     }
-    scene_actor *actor = selected_actor(scene);
-    char name[256];
-    int suffix = 1;
-    do {
-        if (snprintf(name, sizeof name, "%s_%d", actor->prototype_name, suffix++) >=
-            (int)sizeof name) {
-            return -1;
-        }
-    } while (actor_name_used(scene, name));
+    actor = selected_actor(scene);
     char *prototype = xstrdup(actor->prototype_name);
     char *state = capture_actor_state(scene, actor);
     char *base = game_prototype_save(actor->base);
     char *retained = scene_retention_save(actor->retained);
     scene_actor_edit edit = { .index = acount(scene->actors),
+                              .identity = created_identity,
                               .name = name,
                               .prototype_name = prototype,
                               .base_json = base,
@@ -452,7 +547,8 @@ int app_scene_authoring_duplicate_instance(app_scene_authoring *scene)
     ecs_entity entity;
     int result = state && base ? restore_actor(scene, &edit, &entity) : -1;
     if (!result) {
-        bool recorded = scene_history_push_actor(scene->history, entity, &edit);
+        bool recorded = !collab_record_history() ||
+                        scene_history_push_actor(scene->history, entity, &edit);
         assert(recorded);
         scene->scene_dirty = true;
         asset_index_invalidate(scene);
@@ -462,6 +558,8 @@ int app_scene_authoring_duplicate_instance(app_scene_authoring *scene)
     free(state);
     free(base);
     free(retained);
+    scene_action_finish(scene, action, result == 0);
+    free(action);
     return result;
 }
 
@@ -499,22 +597,40 @@ int app_scene_authoring_rename_instance(app_scene_authoring *scene, ecs_entity e
         return -1;
     }
     finish_transform_edit(scene, false);
+    scene_actor *actor = &scene->actors[index];
+    uint64_t identity = actor->identity;
+    yyjson_mut_doc *action_doc = NULL;
+    yyjson_mut_val *action_root = scene_action_root(scene, "instance.rename", &action_doc);
+    yyjson_mut_obj_add_uint(action_doc, action_root, "actor", identity);
+    yyjson_mut_obj_add_strcpy(action_doc, action_root, "name", name);
+    char *action = scene_action_write(action_doc);
+    collab_action_gate gate = action ? scene_action_begin(scene, action)
+                                     : COLLAB_ACTION_REJECT;
+    if (gate != COLLAB_ACTION_APPLY) {
+        free(action);
+        return gate == COLLAB_ACTION_PENDING ? 1 : -1;
+    }
     if (scene->runtime_snapshot_valid &&
         app_scene_authoring_runtime_command(scene, APP_RUNTIME_SCENE, APP_RUNTIME_STOP) !=
             0) {
+        scene_action_finish(scene, action, false);
+        free(action);
         return -1;
     }
     /* Stopping respawns the objects, so the index finds it again. */
-    scene_actor *actor = &scene->actors[index];
-    bool recorded = scene_history_push_rename(
-        scene->history,
-        actor->entity,
-        actor->name,
-        name
-    );
+    actor = scene_actor_by_identity(scene, identity);
+    assert(actor);
+    bool recorded = !collab_record_history() || scene_history_push_rename(
+                                                    scene->history,
+                                                    actor->entity,
+                                                    actor->name,
+                                                    name
+                                                );
     assert(recorded);
     set_actor_name(scene, actor, name);
     scene_authoring_select_document(scene, APP_EDITOR_DOCUMENT_SCENE, APP_SCENE_DOCUMENT_ID);
+    scene_action_finish(scene, action, true);
+    free(action);
     return 0;
 }
 

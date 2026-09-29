@@ -25,6 +25,7 @@ if (typeof window !== 'undefined' && !Module['chibiSaveAsset']) {
     const exists = path => fs().analyzePath(path).exists;
     const slug = name => String(name).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
     const manifest = 'project.yaml';
+    let projectRoot;
     const found = id => /^[a-z0-9-]+$/.test(id) && exists(`${workspace}/${id}/${manifest}`);
     const unique = name => {
         const base = slug(name) || 'project';
@@ -157,7 +158,7 @@ if (typeof window !== 'undefined' && !Module['chibiSaveAsset']) {
     Module['chibiDeleteAsset'] = Module['chibiSaveAsset'];
     const exportProject = () => {
         const files = [];
-        walk(`${workspace}/${project}`, (name, data) => files.push([`${project}/${name}`, data]));
+        walk(Module['chibiCollabStorage'].root.replace(/\/$/, ''), (name, data) => files.push([`${project}/${name}`, data]));
         const link = document.createElement('a');
         link.href = URL.createObjectURL(zip(files));
         link.download = `${project}.zip`;
@@ -204,7 +205,11 @@ if (typeof window !== 'undefined' && !Module['chibiSaveAsset']) {
     Module['onRuntimeInitialized'] = () => {
         const previous = lastOpened();
         project = chooseProject();
-        args[1] = `${workspace}/${project}/`;
+        projectRoot = `${workspace}/${project}/`;
+        args[1] = projectRoot;
+        if (!Module['chibiCollabStorage']) {
+            Module['chibiCollabStorage'] = Module['chibiCollabStorageFactory'](projectRoot);
+        }
         Module['recovery'].unshift(['Export Project', exportProject]);
         if (previous === project) return;
         fs().writeFile(last, project);

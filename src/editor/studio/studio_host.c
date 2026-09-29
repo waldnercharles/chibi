@@ -601,6 +601,11 @@ static void apply_prefs(studio *s, bool initial)
         s->applied = *p;
         return;
     }
+    if (s->collaboration.restoring_prefs) {
+        s->applied = *p;
+        s->collaboration.restoring_prefs = false;
+        return;
+    }
     if (!studio_prefs_equal(p, &s->applied)) {
         s->applied = *p;
         s->prefs_changed_at = s->time;

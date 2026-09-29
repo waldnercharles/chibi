@@ -30,6 +30,8 @@ const makeFS = entries => {
       return ['.', '..', ...names.map(p => p.slice(path.length + 1))];
     },
     analyzePath(path) { return { exists: nodes.has(path) }; },
+    unlink(path) { nodes.delete(path); },
+    rmdir(path) { nodes.delete(path); },
     mount(type, options, path) { fs.mounts.push({ type, path }); },
     syncfs(populate, callback) { fs.syncs.push({ populate, callback }); },
     file(path) { return nodes.has(path) ? text(nodes.get(path)) : undefined; },
@@ -42,7 +44,7 @@ const launch = (search, fs, Module = { FS: fs }) => {
   const page = { timers: [], dependencies: [], errors: [], links: [], inputs: [], persisted: 0, location: { search } };
   Module.showError = message => page.errors.push(message);
   const context = {
-    Module, URLSearchParams, Blob, Response, DecompressionStream, TextEncoder, TextDecoder,
+    Module, URLSearchParams, Blob, Response, DecompressionStream, TextEncoder, TextDecoder, Uint8Array,
     window: { location: page.location },
     location: page.location,
     history: { replaceState: (state, title, url) => { page.location.search = url; } },
@@ -105,6 +107,22 @@ assert.equal(fs.file('/workspace/.last'), 'arena2d');
 first.flush();
 assert.equal(fs.syncs.shift().populate, false);
 assert.equal(first.persisted, 0);
+
+// A collaboration room runs from an isolated memory tree and never selects or
+// mutates the user's persistent project as its working directory.
+const room = launch('?room=room-123&role=host', fs);
+room.start();
+const roomPath = '/collab/room-123/project';
+assert.equal(room.Module.arguments[1], `${roomPath}/`);
+assert.equal(fs.file(`${roomPath}/content/scenes/Sandbox.yaml`), 'name: Sandbox\n');
+assert.equal(fs.file('/workspace/.last'), 'arena2d');
+room.Module.chibiCollabStorage.installFiles([
+  {path: 'project.yaml', data: new TextEncoder().encode(manifest)},
+  {path: 'content/scenes/Shared.yaml', data: new TextEncoder().encode('name: Shared\n')},
+]);
+assert.equal(fs.file(`${roomPath}/content/scenes/Sandbox.yaml`), undefined);
+assert.equal(fs.file(`${roomPath}/content/scenes/Shared.yaml`), 'name: Shared\n');
+assert.equal(fs.file('/workspace/arena2d/content/scenes/Sandbox.yaml'), 'name: Sandbox\n');
 
 // Saves flush once after a burst, ask to keep storage, and report failures.
 assert.equal(first.Module.chibiSaveAsset('/workspace/arena2d/content/scenes/Sandbox.yaml', 'a'), 0);

@@ -3,6 +3,9 @@
 #include "assets/project.h"
 #include "assets/prototype.h"
 #include "diagnostics/tracy.h"
+#include "editor/collab/actions.h"
+#include "editor/collab/collab.h"
+#include "editor/collab/workspace.h"
 #include "editor/studio/studio.h"
 #include "editor/workspace/editor.h"
 #include "editor/workspace/game_presentation.h"
@@ -57,17 +60,25 @@ typedef struct
     uint64_t next_frame_ms; /* an idle editor waits for input until then */
     const chibi_host *host;
     char *project_root; /* the open project, as opened */
+    char *local_project_root;
+    char *local_workspace;
+    bool collab_initialized;
+    bool destroying;
 } app_loop;
 
+static void app_collab_prepare(app_loop *loop);
+
 /* Frees what open_workspace built; the loop itself remains. */
-static void close_workspace(app_loop *loop)
+static void close_workspace_state(app_loop *loop, bool clear_renderer)
 {
     app_game_presentation_free(loop->game);
     app_scene_authoring_free(loop->authoring);
     engine_free(loop->runtime);
     game_live_world_free(loop->live);
     editor_free(loop->graph_editor);
-    render_shader_catalog_clear();
+    if (clear_renderer) {
+        render_shader_catalog_clear();
+    }
     ecs_world_free(loop->world);
     engine_viewport_free(loop->viewport);
     free(loop->project_root);
@@ -81,9 +92,23 @@ static void close_workspace(app_loop *loop)
     loop->project_root = NULL;
 }
 
+static void close_workspace(app_loop *loop)
+{
+    close_workspace_state(loop, true);
+}
+
 static void app_cleanup(app_loop *loop)
 {
+    loop->destroying = true;
+    if (loop->collab_initialized) {
+        collab_shutdown();
+        loop->collab_initialized = false;
+    }
+    studio_free(loop->studio);
+    loop->studio = NULL;
     close_workspace(loop);
+    free(loop->local_project_root);
+    free(loop->local_workspace);
     loop->host->release(loop);
 }
 
@@ -119,6 +144,10 @@ static int app_frame(app_loop *loop)
 {
     if (!cf_app_is_running()) {
         return 1;
+    }
+    app_collab_prepare(loop);
+    if (loop->collab_initialized) {
+        collab_tick();
     }
     if (app_idle(loop)) {
         return 0;
@@ -314,6 +343,268 @@ static bool open_workspace(
     loop->authoring = authoring;
     loop->project_root = root;
     return true;
+}
+
+static void app_workspace_take(app_loop *loop, app_loop *candidate)
+{
+    loop->graph_editor = candidate->graph_editor;
+    loop->runtime = candidate->runtime;
+    loop->world = candidate->world;
+    loop->live = candidate->live;
+    loop->viewport = candidate->viewport;
+    loop->authoring = candidate->authoring;
+    loop->project_root = candidate->project_root;
+    loop->studio = candidate->studio;
+    candidate->graph_editor = NULL;
+    candidate->runtime = NULL;
+    candidate->world = NULL;
+    candidate->live = NULL;
+    candidate->viewport = NULL;
+    candidate->authoring = NULL;
+    candidate->project_root = NULL;
+    candidate->studio = NULL;
+}
+
+static bool app_workspace_build(
+    app_loop *candidate,
+    const char *project_root,
+    const char *workspace,
+    char *error,
+    size_t error_size
+)
+{
+    if (!open_workspace(candidate, project_root, NULL, false, error, error_size)) {
+        close_workspace(candidate);
+        return false;
+    }
+    if (!collab_workspace_restore_model(candidate->authoring, candidate->graph_editor, workspace, error, error_size)) {
+        close_workspace(candidate);
+        return false;
+    }
+    candidate->studio = studio_new(
+        candidate->authoring,
+        candidate->viewport,
+        candidate->project_root
+    );
+    if (!candidate->studio ||
+        !collab_workspace_restore_presentation(candidate->studio, workspace, error, error_size)) {
+        studio_free(candidate->studio);
+        candidate->studio = NULL;
+        close_workspace(candidate);
+        if (error_size && !error[0]) {
+            snprintf(error, error_size, "Could not create the candidate Studio view");
+        }
+        return false;
+    }
+    return true;
+}
+
+/* Build the entire remote workspace before replacing the current one. The
+ * old models stay allocated until the candidate has restored successfully. */
+static bool app_replace_workspace(
+    app_loop *loop,
+    const char *project_root,
+    const char *workspace,
+    char *error,
+    size_t error_size
+)
+{
+    if (error_size) {
+        error[0] = '\0';
+    }
+    if (!loop->studio || loop->game || !loop->project_root) {
+        snprintf(error, error_size, "Studio workspace is unavailable");
+        return false;
+    }
+    char *rollback = collab_workspace_checkpoint(
+        loop->authoring,
+        loop->graph_editor,
+        loop->studio,
+        loop->project_root
+    );
+    if (!rollback) {
+        snprintf(error, error_size, "Could not preserve the current workspace");
+        return false;
+    }
+
+    char *previous_root = xstrdup(loop->project_root);
+    studio_free(loop->studio);
+    loop->studio = NULL;
+    /* Images, shader definitions, and mount precedence are process-global. A
+     * candidate must start from a clean catalog and mount its own project. */
+    render_shader_catalog_clear();
+
+    app_loop candidate = { .host = loop->host };
+    bool candidate_ready = app_workspace_build(&candidate, project_root, workspace, error, error_size);
+    if (!candidate_ready) {
+        app_loop previous = { .host = loop->host };
+        char recovery_error[512] = { 0 };
+        bool recovered = app_workspace_build(&previous, previous_root, rollback, recovery_error, sizeof recovery_error);
+        if (recovered) {
+            close_workspace_state(loop, false);
+            app_workspace_take(loop, &previous);
+        } else {
+            studio_free(previous.studio);
+            close_workspace(&previous);
+            loop->studio = studio_new(loop->authoring, loop->viewport, loop->project_root);
+            if (loop->studio) {
+                char ignored[256];
+                (void)collab_workspace_restore_presentation(loop->studio, rollback, ignored, sizeof ignored);
+            }
+            if (error_size) {
+                snprintf(error, error_size, "Could not restore previous workspace: %s", recovery_error);
+            }
+        }
+        free(previous_root);
+        free(rollback);
+        return false;
+    }
+
+    close_workspace_state(loop, false);
+    app_workspace_take(loop, &candidate);
+    free(previous_root);
+    free(rollback);
+    return true;
+}
+
+static bool app_collab_save_local(app_loop *loop)
+{
+    if (loop->local_workspace) {
+        return true;
+    }
+    if (loop->game || !loop->studio || !loop->project_root) {
+        return false;
+    }
+    char *workspace = collab_workspace_checkpoint(
+        loop->authoring,
+        loop->graph_editor,
+        loop->studio,
+        loop->project_root
+    );
+    if (!workspace) {
+        return false;
+    }
+    loop->local_project_root = xstrdup(loop->project_root);
+    loop->local_workspace = workspace;
+    return true;
+}
+
+static void app_collab_prepare(app_loop *loop)
+{
+    if (loop->collab_initialized && collab_active()) {
+        (void)app_collab_save_local(loop);
+    }
+}
+
+static char *app_collab_checkpoint(void *context)
+{
+    app_loop *loop = context;
+    return collab_workspace_checkpoint(loop->authoring, loop->graph_editor, loop->studio, loop->project_root);
+}
+
+static bool app_collab_apply(void *context, const char *action, char *error, size_t error_size)
+{
+    app_loop *loop = context;
+    yyjson_doc *doc = action ? yyjson_read(action, strlen(action), 0) : NULL;
+    yyjson_val *root = doc ? yyjson_doc_get_root(doc) : NULL;
+    const char *family = yyjson_get_str(yyjson_obj_get(root, "family"));
+    bool applied = false;
+    if (family && (!strcmp(family, "graph") || !strcmp(family, "scene"))) {
+        applied = collab_actions_apply(loop->authoring, loop->graph_editor, action, error, error_size);
+    } else if (family && (!strcmp(family, "text") || !strcmp(family, "command"))) {
+        applied = studio_collab_apply(loop->studio, action, error, error_size);
+    } else if (error_size) {
+        snprintf(error, error_size, "Unsupported collaboration action family");
+    }
+    if (applied) {
+        loop->next_frame_ms = 0;
+    }
+    yyjson_doc_free(doc);
+    return applied;
+}
+
+static void app_collab_presence(
+    void *context,
+    const char *client,
+    const char *name,
+    uint32_t color,
+    const char *json
+)
+{
+    app_loop *loop = context;
+    if (loop->studio) {
+        studio_collab_receive(loop->studio, client, name, color, json);
+        loop->next_frame_ms = 0;
+    }
+}
+
+static bool app_collab_restore(void *context, const char *payload, char *error, size_t error_size)
+{
+    app_loop *loop = context;
+    yyjson_doc *doc = payload ? yyjson_read(payload, strlen(payload), 0) : NULL;
+    yyjson_val *root = doc ? yyjson_doc_get_root(doc) : NULL;
+    yyjson_val *workspace_value = yyjson_is_obj(root)
+                                    ? yyjson_obj_get(root, "workspace")
+                                    : NULL;
+    yyjson_val *project_value = yyjson_is_obj(root)
+                                  ? yyjson_obj_get(root, "project_root")
+                                  : NULL;
+    const char *workspace = yyjson_get_str(workspace_value);
+    const char *project_root = yyjson_get_str(project_value);
+    bool valid = yyjson_is_obj(root) &&
+                 yyjson_get_int(yyjson_obj_get(root, "checkpoint_version")) == 1 &&
+                 yyjson_is_str(workspace_value) && workspace &&
+                 yyjson_is_str(project_value) && project_root;
+    if (!valid) {
+        yyjson_doc_free(doc);
+        snprintf(error, error_size, "Invalid collaboration snapshot payload");
+        return false;
+    }
+    bool had_local = loop->local_workspace != NULL;
+    if (!app_collab_save_local(loop)) {
+        yyjson_doc_free(doc);
+        snprintf(error, error_size, "Could not preserve the local workspace");
+        return false;
+    }
+    bool restored = app_replace_workspace(loop, project_root, workspace, error, error_size);
+    if (restored) {
+        loop->next_frame_ms = 0;
+    }
+    yyjson_doc_free(doc);
+    if (!restored && !had_local) {
+        free(loop->local_project_root);
+        free(loop->local_workspace);
+        loop->local_project_root = NULL;
+        loop->local_workspace = NULL;
+    }
+    return restored;
+}
+
+static void app_collab_closed(void *context)
+{
+    app_loop *loop = context;
+    if (loop->destroying || !loop->local_workspace || !loop->local_project_root) {
+        return;
+    }
+    char error[512] = { 0 };
+    bool restored = app_replace_workspace(
+        loop,
+        loop->local_project_root,
+        loop->local_workspace,
+        error,
+        sizeof error
+    );
+    if (restored) {
+        loop->next_frame_ms = 0;
+        free(loop->local_project_root);
+        free(loop->local_workspace);
+        loop->local_project_root = NULL;
+        loop->local_workspace = NULL;
+        return;
+    }
+    if (loop->studio) {
+        studio_error(loop->studio, "Could not restore local workspace", error);
+    }
 }
 
 /* Replaces the open project with the one at `path`, rebuilding the editor as
@@ -521,6 +812,13 @@ static void application_activate(void *state)
         if (loop->show_graph) {
             studio_maximize_graph(loop->studio);
         }
+        collab_init((collab_config){ .context = loop,
+                                     .apply = app_collab_apply,
+                                     .checkpoint = app_collab_checkpoint,
+                                     .restore = app_collab_restore,
+                                     .presence = app_collab_presence,
+                                     .closed = app_collab_closed });
+        loop->collab_initialized = true;
     }
 }
 
@@ -541,6 +839,10 @@ static int application_frame(void *state)
     }
     char *project = loop->game ? NULL : studio_take_project(loop->studio);
     if (project) {
+        if (loop->collab_initialized && collab_active()) {
+            collab_leave();
+            app_collab_closed(loop);
+        }
         open_project(loop, project);
         free(project);
     }

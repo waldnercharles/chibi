@@ -51,6 +51,7 @@ bool scene_history_push_field(
 );
 typedef struct
 {
+    uint64_t identity;
     int index;
     const char *name;
     const char *prototype_name;

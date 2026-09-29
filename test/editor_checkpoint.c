@@ -1,11 +1,14 @@
+#include "editor/collab/workspace.h"
 #include "editor/workspace/editor.h"
 #include "editor/workspace/editor_internal.h"
 #include "graph/model/registry.h"
+#include "runtime/generated.h"
 
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <yyjson.h>
 
 static editor *restore_selection(editor *source)
 {
@@ -50,8 +53,98 @@ static uint64_t selected_id(const editor *e)
     return e->selected[0]->id;
 }
 
+typedef struct
+{
+    ecs_world *world;
+    game_live_world *live;
+    engine *runtime;
+    editor *graph;
+    app_scene_authoring *scene;
+} workspace_fixture;
+
+static workspace_fixture workspace_fixture_new()
+{
+    workspace_fixture f = { .world = ecs_world_new() };
+    for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
+        assert(ecs_world_register_component(f.world, GAME_REGISTRY_COMPONENTS[i], NULL) == ECS_OK);
+    }
+    f.live = game_live_world_new(f.world);
+    game_live_definition *definition = game_live_definition_new(
+        "CollabWorkspaceFixture",
+        behavior_asset_new("CollabWorkspaceFixture")
+    );
+    assert(definition && game_live_add_definition(f.live, definition) == 0);
+    f.graph = editor_new(behavior_asset_new("CollabWorkspaceFixture"));
+    f.runtime = engine_new(f.world, f.live);
+    f.scene = app_scene_authoring_new(
+        f.world,
+        f.live,
+        definition,
+        editor_behavior_asset(f.graph),
+        f.graph,
+        NULL,
+        NULL,
+        f.runtime
+    );
+    assert(f.scene);
+    return f;
+}
+
+static void workspace_fixture_free(workspace_fixture *f)
+{
+    app_scene_authoring_free(f->scene);
+    engine_free(f->runtime);
+    game_live_world_free(f->live);
+    editor_free(f->graph);
+    ecs_world_free(f->world);
+}
+
+static char *workspace_json(const char *scene, const char *graph)
+{
+    yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
+    yyjson_mut_val *root = yyjson_mut_obj(doc);
+    yyjson_mut_doc_set_root(doc, root);
+    yyjson_mut_obj_add_int(doc, root, "version", 1);
+    yyjson_mut_obj_add_str(doc, root, "project", "fixture-project");
+    yyjson_mut_obj_add_str(doc, root, "scene", scene);
+    yyjson_mut_obj_add_str(doc, root, "graph", graph);
+    yyjson_mut_obj_add_str(doc, root, "presentation", "{}");
+    char *json = yyjson_mut_write(doc, 0, NULL);
+    yyjson_mut_doc_free(doc);
+    return json;
+}
+
+static void workspace_checkpoint_restore()
+{
+    workspace_fixture source = workspace_fixture_new();
+    assert(editor_spawn(source.graph, registry_node_by_name("Integer"), 17, 23));
+    char *scene = app_scene_authoring_checkpoint(source.scene);
+    char *graph = editor_checkpoint(source.graph);
+    assert(scene && graph);
+    char *workspace = workspace_json(scene, graph);
+    assert(workspace);
+
+    workspace_fixture candidate = workspace_fixture_new();
+    char error[128] = { 0 };
+    assert(
+        !collab_workspace_restore_model(candidate.scene, candidate.graph, "{\"version\":999}", error, sizeof error)
+    );
+    assert(acount(editor_active_graph(candidate.graph)->nodes) == 0);
+    assert(
+        collab_workspace_restore_model(candidate.scene, candidate.graph, workspace, error, sizeof error)
+    );
+    assert(acount(editor_active_graph(candidate.graph)->nodes) == 1);
+
+    free(scene);
+    free(graph);
+    free(workspace);
+    workspace_fixture_free(&source);
+    workspace_fixture_free(&candidate);
+}
+
 void test_editor_checkpoint()
 {
+    workspace_checkpoint_restore();
     link_checkpoint();
     editor *source = editor_new(behavior_asset_new("Checkpoint A"));
     const node_desc *integer = registry_node_by_name("Integer");

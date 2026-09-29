@@ -1,3 +1,4 @@
+#include "editor/collab/actions_scene.h"
 #include "editor/workspace/scene_internal.h"
 #include "graph/document/serialize.h"
 #include "graph/shader/shader_graph.h"
@@ -72,7 +73,23 @@ int open_behavior_asset(app_scene_authoring *scene, const char *asset_name)
 
 int app_scene_authoring_open_behavior(app_scene_authoring *scene, const char *asset_name)
 {
-    return open_behavior_asset(scene, asset_name);
+    if (!scene || !asset_name) {
+        return -1;
+    }
+    yyjson_mut_doc *doc = NULL;
+    yyjson_mut_val *root = scene_action_root(scene, "tab.open_behavior", &doc);
+    yyjson_mut_obj_add_strcpy(doc, root, "behavior", asset_name);
+    char *action = scene_action_write(doc);
+    collab_action_gate gate = action ? scene_action_begin(scene, action)
+                                     : COLLAB_ACTION_REJECT;
+    if (gate != COLLAB_ACTION_APPLY) {
+        free(action);
+        return gate == COLLAB_ACTION_PENDING ? 1 : -1;
+    }
+    int result = open_behavior_asset(scene, asset_name);
+    scene_action_finish(scene, action, result == 0);
+    free(action);
+    return result;
 }
 
 static int content_behavior_index(const app_scene_authoring *scene, const char *path)
@@ -466,7 +483,23 @@ int open_system_asset(app_scene_authoring *scene, const char *path)
 
 int app_scene_authoring_open_system(app_scene_authoring *scene, const char *path)
 {
-    return scene && path ? open_system_asset(scene, path) : -1;
+    if (!scene || !path) {
+        return -1;
+    }
+    yyjson_mut_doc *doc = NULL;
+    yyjson_mut_val *root = scene_action_root(scene, "tab.open_system", &doc);
+    yyjson_mut_obj_add_strcpy(doc, root, "path", path);
+    char *action = scene_action_write(doc);
+    collab_action_gate gate = action ? scene_action_begin(scene, action)
+                                     : COLLAB_ACTION_REJECT;
+    if (gate != COLLAB_ACTION_APPLY) {
+        free(action);
+        return gate == COLLAB_ACTION_PENDING ? 1 : -1;
+    }
+    int result = open_system_asset(scene, path);
+    scene_action_finish(scene, action, result == 0);
+    free(action);
+    return result;
 }
 
 static int save_system_document(app_scene_authoring *scene, const char *path)

@@ -20,7 +20,16 @@
         if (xhr.status < 200 || xhr.status >= 300) throw new Error(xhr.responseText || 'Local save failed');
         return xhr;
     };
+    const isRoomAsset = path => {
+        const root = Module['chibiCollabStorage']?.root;
+        if (!root) return false;
+        const absolute = path.startsWith('/') ? path : `/${path}`;
+        return absolute.startsWith(root.endsWith('/') ? root : `${root}/`);
+    };
     Module['chibiSaveAsset'] = (path, text) => {
+        // Room files live in MEMFS and are carried by snapshots. The local
+        // development mirror must never write them back to the source project.
+        if (isRoomAsset(path)) return 0;
         try {
             request('POST', '/__chibi/save', {path, text});
             return 0;

@@ -27,6 +27,19 @@ typedef struct ui_code_change
 {
     int start, end, inserted;
 } ui_code_change;
+/* Computes the single edit from the buffer's current `part` to the editor's
+ * text, rebasing the editor change from `base`. The owned `edit->text` is
+ * empty when there is no change; free it after use. */
+bool ui_code_prepare(
+    const ui_buffer *b,
+    ui_part part,
+    kit_code_editor *e,
+    const char *base,
+    ui_code_change *typed,
+    text_edit *edit
+);
+/* Computes one edit from `from` to `to`; `edit->text` is owned. */
+bool ui_code_text_diff(const char *from, const char *to, text_edit *edit);
 /* Records what the editor's text changed from `base`, the text the editor
  * and the buffer's `part` last shared, into the part as it stands: a change
  * made meanwhile elsewhere, as a designer edit in the same frame, composes

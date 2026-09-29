@@ -1,4 +1,5 @@
 #include "assets/scene_document.h"
+#include "editor/collab/actions_scene.h"
 #include "editor/workspace/checkpoint.h"
 #include "editor/workspace/scene_internal.h"
 #include "graph/document/serialize.h"
@@ -56,8 +57,14 @@ static void checkpoint_tabs(yyjson_mut_doc *doc, yyjson_mut_val *root, app_scene
         yyjson_mut_obj_add_int(doc, item, "selected_prototype", tab->selected_prototype);
         checkpoint_text(doc, item, "selected_prototype_name", tab->selected_prototype_name);
         yyjson_mut_val *entities = yyjson_mut_obj_add_arr(doc, item, "entities");
+        yyjson_mut_val *actor_ids = acount(tab->scene_actor_ids) == tab->scene_entity_count
+                                      ? yyjson_mut_obj_add_arr(doc, item, "actor_ids")
+                                      : NULL;
         for (int j = 0; j < tab->scene_entity_count; j++) {
             yyjson_mut_arr_add_uint(doc, entities, tab->scene_entities[j]);
+            if (actor_ids) {
+                yyjson_mut_arr_add_uint(doc, actor_ids, tab->scene_actor_ids[j]);
+            }
         }
         checkpoint_text(doc, item, "system", tab->system_json);
         checkpoint_text(doc, item, "system_saved", tab->system_saved);
@@ -76,6 +83,7 @@ static void free_checkpoint_tab(scene_document_tab *tab)
     free(tab->scene_json);
     free(tab->scene_history);
     afree(tab->scene_entities);
+    afree(tab->scene_actor_ids);
     free(tab->selected_prototype_name);
     free(tab->asset_saved);
     free(tab->system_json);
@@ -96,6 +104,42 @@ static bool restore_next_scene_key(app_scene_authoring *scene, yyjson_val *root)
             scene->next_scene_key = key + 1;
         }
     }
+    return true;
+}
+
+static bool restore_next_actor_id(app_scene_authoring *scene, yyjson_val *root)
+{
+    yyjson_val *stored = yyjson_obj_get(root, "next_actor_id");
+    if (stored && (!yyjson_is_uint(stored) || !yyjson_get_uint(stored) ||
+                   yyjson_get_uint(stored) >= UINT64_MAX)) {
+        return false;
+    }
+    uint64_t next = stored ? yyjson_get_uint(stored) : scene->next_actor_id;
+    for (int i = 0; i < acount(scene->actors); i++) {
+        uint64_t identity = scene->actors[i].identity;
+        if (identity >= UINT64_MAX) {
+            return false;
+        }
+        if (identity >= next) {
+            next = identity + 1;
+        }
+    }
+    for (int i = 0; i < acount(scene->tabs); i++) {
+        const scene_document_tab *tab = &scene->tabs[i];
+        for (int j = 0; j < acount(tab->scene_actor_ids); j++) {
+            uint64_t identity = tab->scene_actor_ids[j];
+            if (identity >= UINT64_MAX) {
+                return false;
+            }
+            if (identity >= next) {
+                next = identity + 1;
+            }
+        }
+    }
+    if (!next || next >= UINT64_MAX) {
+        return false;
+    }
+    scene->next_actor_id = next;
     return true;
 }
 
@@ -164,6 +208,28 @@ static bool restore_tabs(app_scene_authoring *scene, yyjson_val *root)
             apush(tab.scene_entities, yyjson_get_uint(entity));
         }
         tab.scene_entity_count = acount(tab.scene_entities);
+        yyjson_val *actor_ids = yyjson_obj_get(item, "actor_ids");
+        if (actor_ids) {
+            if (!yyjson_is_arr(actor_ids) ||
+                yyjson_arr_size(actor_ids) != (size_t)tab.scene_entity_count) {
+                free_checkpoint_tab(&tab);
+                goto fail;
+            }
+            for (size_t j = 0; j < yyjson_arr_size(actor_ids); j++) {
+                yyjson_val *id = yyjson_arr_get(actor_ids, j);
+                if (!yyjson_is_uint(id) || !yyjson_get_uint(id)) {
+                    free_checkpoint_tab(&tab);
+                    goto fail;
+                }
+                for (int k = 0; k < acount(tab.scene_actor_ids); k++) {
+                    if (tab.scene_actor_ids[k] == yyjson_get_uint(id)) {
+                        free_checkpoint_tab(&tab);
+                        goto fail;
+                    }
+                }
+                apush(tab.scene_actor_ids, yyjson_get_uint(id));
+            }
+        }
         apush(candidate, tab);
     }
     if (!acount(candidate)) {
@@ -243,6 +309,7 @@ char *app_scene_authoring_checkpoint(app_scene_authoring *scene)
             : NULL
     );
     yyjson_mut_obj_add_int(doc, root, "next_scene_key", scene->next_scene_key);
+    yyjson_mut_obj_add_uint(doc, root, "next_actor_id", scene_actor_next_identity(scene));
     yyjson_mut_obj_add_int(doc, root, "runtime_target", scene->active_runtime_target);
     yyjson_mut_obj_add_bool(
         doc,
@@ -270,6 +337,7 @@ char *app_scene_authoring_checkpoint(app_scene_authoring *scene)
             "entity",
             ecs_entity_to_u64(scene->actors[i].entity)
         );
+        yyjson_mut_obj_add_uint(doc, actor, "actor_id", scene->actors[i].identity);
         yyjson_mut_obj_add_bool(doc, actor, "marked", scene->actors[i].marked);
         const scene_actor *source = &scene->actors[i];
         game_prototype *captured = scene->runtime_snapshot_valid
@@ -568,7 +636,7 @@ int app_scene_authoring_restore_checkpoint(app_scene_authoring *scene, const cha
     const char *scene_json = yyjson_get_str(yyjson_obj_get(root, "scene"));
     const char *document = yyjson_get_str(yyjson_obj_get(root, "document"));
     const char *content = yyjson_get_str(yyjson_obj_get(root, "content"));
-    uint64_t *before = NULL, *after = NULL;
+    uint64_t *before = NULL, *after = NULL, *identities = NULL;
     int result = -1;
     if (yyjson_get_int(yyjson_obj_get(root, "version")) != 1 || !scene_json ||
         !document || !content || kind < APP_EDITOR_DOCUMENT_SCENE ||
@@ -589,12 +657,33 @@ int app_scene_authoring_restore_checkpoint(app_scene_authoring *scene, const cha
     for (int i = 0; i < acount(scene->actors); i++) {
         yyjson_val *actor = yyjson_arr_get(actors, i);
         yyjson_val *entity = yyjson_obj_get(actor, "entity");
-        if (!yyjson_is_uint(entity)) {
+        yyjson_val *identity = yyjson_obj_get(actor, "actor_id");
+        if (!yyjson_is_uint(entity) ||
+            (identity && (!yyjson_is_uint(identity) || !yyjson_get_uint(identity) ||
+                          yyjson_get_uint(identity) >= UINT64_MAX))) {
             goto done;
         }
+        uint64_t actor_id = identity ? yyjson_get_uint(identity) : 0;
+        for (int j = 0; actor_id && j < acount(identities); j++) {
+            if (identities[j] == actor_id) {
+                goto done;
+            }
+        }
+        apush(identities, actor_id);
         apush(before, yyjson_get_uint(entity));
         apush(after, ecs_entity_to_u64(scene->actors[i].entity));
         scene->actors[i].marked = yyjson_get_bool(yyjson_obj_get(actor, "marked"));
+        scene->actors[i].identity = 0;
+    }
+    for (int i = 0; i < acount(identities); i++) {
+        if (identities[i] >= scene->next_actor_id) {
+            scene->next_actor_id = identities[i] + 1;
+        }
+    }
+    for (int i = 0; i < acount(scene->actors); i++) {
+        uint64_t identity = identities[i] ? identities[i]
+                                          : scene_actor_allocate_identity(scene);
+        scene_actor_set_identity(scene, &scene->actors[i], identity);
     }
     if (!scene_history_restore_checkpoint(
             scene->history,
@@ -633,13 +722,14 @@ int app_scene_authoring_restore_checkpoint(app_scene_authoring *scene, const cha
     scene->editor_state_seen = false;
     scene->behavior_apply_pending = false;
     app_scene_authoring_refresh_content(scene);
-    if (!restore_tabs(scene, root)) {
+    if (!restore_tabs(scene, root) || !restore_next_actor_id(scene, root)) {
         goto done;
     }
     result = 0;
 done:
     afree(before);
     afree(after);
+    afree(identities);
     yyjson_doc_free(doc);
     return result;
 }

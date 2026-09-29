@@ -2,7 +2,13 @@ name: Deploy web app
 
 on:
   pull_request:
-    paths: [.github/workflows/deploy-web.yml]
+    paths:
+      - .github/workflows/deploy-web.yml
+      - CMakeLists.txt
+      - tools/collab/**
+      - tools/web_storage.js
+      - tools/web_launch.js
+      - tools/web_shell.html
   push:
     branches: [main]
   release:
@@ -47,11 +53,13 @@ jobs:
       - name: Build web app
         env:
           CCACHE_COMPILERCHECK: content
+          CHIBI_COLLAB_URL: ${{ vars.CHIBI_COLLAB_URL }}
         run: |
           emcmake cmake -S . -B build-web \
             -DCMAKE_BUILD_TYPE=Release \
             -DCHIBI_ENABLE_WARNINGS=OFF \
             -DCHIBI_ENABLE_CCACHE=ON \
+            -DCHIBI_COLLAB_URL="$CHIBI_COLLAB_URL" \
             -DLIBCLANG_ROOT=/usr/lib/llvm-18 \
             -DCHIBI_REFLECT_EXECUTABLE="$GITHUB_WORKSPACE/build-reflect/reflect"
           cmake --build build-web --target chibi --parallel 4

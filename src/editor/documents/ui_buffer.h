@@ -66,6 +66,12 @@ const char *ui_buffer_text(const ui_buffer *b, ui_part part);
 
 /* Applies `edits` to a part as one undo step. */
 void ui_buffer_edit(ui_buffer *b, ui_part part, const text_edit *edits, int count);
+/* Applies an accepted collaboration edit. `history` records a normal local
+ * step (for the host or its author); remote replays leave this buffer's
+ * local undo and redo stacks alone. */
+bool ui_buffer_collab_edit(ui_buffer *b, ui_part part, const text_edit *edits, int count, bool history);
+/* Applies accepted typed ranges with the buffer's usual typing coalescing. */
+bool ui_buffer_collab_type(ui_buffer *b, ui_part part, const text_edit *edits, int count, double now);
 /* Applies `edits` to a part within the last undo step, so a change of both
  * parts, as ui_design_extract_class makes, undoes as one. */
 void ui_buffer_join_edit(ui_buffer *b, ui_part part, const text_edit *edits, int count);
@@ -74,6 +80,18 @@ void ui_buffer_join_edit(ui_buffer *b, ui_part part, const text_edit *edits, int
 void ui_buffer_type(ui_buffer *b, ui_part part, const char *text, double now);
 bool ui_buffer_can_undo(const ui_buffer *b);
 bool ui_buffer_can_redo(const ui_buffer *b);
+/* Text the next history step would restore, and its part. Borrowed; false if
+ * there is no step. */
+bool ui_buffer_history_target(const ui_buffer *b, bool redo, ui_part *part, const char **text);
+/* Whether the next history operation matches `edits` on `part` and leaves
+ * every other part unchanged. */
+bool ui_buffer_history_edit_matches(
+    const ui_buffer *b,
+    bool redo,
+    ui_part part,
+    const text_edit *edits,
+    int count
+);
 /* Steps through the history; the Text Editor turns to the part changed. */
 void ui_buffer_undo(ui_buffer *b);
 void ui_buffer_redo(ui_buffer *b);

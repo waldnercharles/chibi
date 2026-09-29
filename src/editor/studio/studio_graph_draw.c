@@ -1,4 +1,5 @@
 /* Graph canvas rendering: nodes, pins, wires and comments as kit elements. */
+#include "editor/collab/collab.h"
 #include "editor/studio/studio_graph_internal.h"
 #include "editor/ui/highlight.h"
 #include "editor/ui/labels.h"
@@ -238,14 +239,26 @@ void sg_emit_value_in(studio *s, kit *k, node *n, int output, int p)
         }
         return;
     }
-    /* A scrub is one undo step; discrete edits, and a step or typed value that
-       commits as it changes, are one each. */
-    if (!streaming || !g->value_editing) {
-        ed_snapshot_before(e);
+    int edited;
+    if (collab_active() && !collab_replaying()) {
+        edited = editor_command_apply(
+            e,
+            (editor_command){ .kind = EDITOR_COMMAND_SET_PIN_DEFAULT,
+                              .data.set_pin_default = { n->id, output, p, &value } }
+        );
+        g->value_editing = edited == 0 && streaming && !committed;
+    } else {
+        /* A scrub is one undo step; discrete edits, and a step or typed value
+           that commits as it changes, are one each. */
+        if (!streaming || !g->value_editing) {
+            ed_snapshot_before(e);
+        }
+        g->value_editing = streaming && !committed;
+        edited = graph_set_pin_default(gr, n, output, p, &value);
     }
-    g->value_editing = streaming && !committed;
-    graph_set_pin_default(gr, n, output, p, &value);
-    touched(e);
+    if (edited == 0) {
+        touched(e);
+    }
 }
 
 static void emit_value(studio *s, node *n, int output, int p)

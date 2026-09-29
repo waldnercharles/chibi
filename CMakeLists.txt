@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.20)
 project(chibi LANGUAGES C CXX)
 
+set(CHIBI_COLLAB_URL "" CACHE STRING "Public collaboration room service HTTP(S) URL")
+
 option(CHIBI_ENABLE_PERFORMANCE_TESTS
        "Run timing-sensitive performance checks in the test suite" OFF)
 
@@ -626,6 +628,8 @@ else()
 endif()
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+    string(JSON CHIBI_COLLAB_CONFIG SET "{}" roomUrl "\"${CHIBI_COLLAB_URL}\"")
+    configure_file(tools/collab/config.js.in "${CMAKE_CURRENT_BINARY_DIR}/collab_config.js" @ONLY)
     set_target_properties(chibi PROPERTIES SUFFIX ".html")
     file(GLOB_RECURSE WEB_ASSETS CONFIGURE_DEPENDS
         "${CMAKE_CURRENT_SOURCE_DIR}/content/*"
@@ -636,14 +640,22 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     set_property(TARGET chibi APPEND PROPERTY LINK_DEPENDS
         ${WEB_ASSETS}
         "${CMAKE_CURRENT_SOURCE_DIR}/tools/web_storage.js"
+        "${CMAKE_CURRENT_SOURCE_DIR}/tools/collab/storage.js"
         "${CMAKE_CURRENT_SOURCE_DIR}/tools/web_launch.js"
+        "${CMAKE_CURRENT_SOURCE_DIR}/tools/collab/client.js"
+        "${CMAKE_CURRENT_SOURCE_DIR}/tools/collab/config.js.in"
+        "${CMAKE_CURRENT_BINARY_DIR}/collab_config.js"
         "${CMAKE_CURRENT_SOURCE_DIR}/tools/web_shell.html")
     target_link_options(chibi PRIVATE
         "--shell-file=${CMAKE_CURRENT_SOURCE_DIR}/tools/web_shell.html"
         "--pre-js=${CMAKE_CURRENT_SOURCE_DIR}/tools/web_storage.js"
+        "--pre-js=${CMAKE_CURRENT_SOURCE_DIR}/tools/collab/storage.js"
         "--pre-js=${CMAKE_CURRENT_SOURCE_DIR}/tools/web_launch.js"
+        "--pre-js=${CMAKE_CURRENT_BINARY_DIR}/collab_config.js"
+        "--pre-js=${CMAKE_CURRENT_SOURCE_DIR}/tools/collab/client.js"
         "-lidbfs.js"
-        "-sEXPORTED_RUNTIME_METHODS=['FS']"
+        "-sEXPORTED_FUNCTIONS=['_free']"
+        "-sEXPORTED_RUNTIME_METHODS=['FS','UTF8ToString','stringToNewUTF8']"
         # Each sample is a self-contained project folder.
         "--preload-file=${CMAKE_CURRENT_SOURCE_DIR}/project.yaml@projects/arena3d/project.yaml"
         "--preload-file=${CMAKE_CURRENT_SOURCE_DIR}/content@projects/arena3d/content"
@@ -663,6 +675,7 @@ file(GLOB_RECURSE TEST_CONCEPT_SOURCES CONFIGURE_DEPENDS
     test/graph/*.c test/ecs/*.c test/runtime/*.c test/editor/*.c test/support/*.c)
 add_executable(test_suite
     test/automation_preview.c
+    test/collab_protocol.c test/collab_replay.c
     ${TEST_CONCEPT_SOURCES}
     test/automation_asset_write.c test/automation_refactor.c test/automation_graph_edit.c test/automation_search.c test/automation_navigation.c test/automation_graph_optimize.c test/automation_prototype_edit.c test/automation_scene_edit.c test/test_suite.c test/host_wait.c test/entities.c test/projectile.c test/system_host_wait.c test/combat.c test/targeting.c test/pursuit.c test/vector.c test/arena.c test/number_serialization.c test/auto_weapon.c test/graph_navigation.c test/extract.c test/component_conversion.c test/field_outputs.c test/function_wait.c test/function_fields.c test/enemy_attack.c test/particles.c test/labels.c test/appearance.c
     test/arena3d.c
@@ -906,7 +919,12 @@ endif()
 
 # UI documents (Studio UI authoring, workstream D): the test suite compiles the
 # scene tabs itself, and they hold UI buffers.
-target_sources(test_suite PRIVATE src/editor/documents/ui_buffer.c)
+target_sources(test_suite PRIVATE
+    src/editor/documents/ui_buffer.c
+    src/editor/collab/workspace.c
+    src/editor/collab/actions.c
+    src/editor/collab/actions_scene.c
+)
 
 # --- UI language service (workstream B) ---------------------------------------
 # ui_source parses ui assets with tree-sitter for Studio and the MCP; ui_check

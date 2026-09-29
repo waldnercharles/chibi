@@ -18,6 +18,8 @@
 #include "suite_internal.h"
 
 void test_automation_graph_edit();
+void test_collab_protocol();
+void test_collab_replay();
 void test_automation_search();
 void test_automation_navigation();
 void test_automation_graph_optimize();
@@ -228,6 +230,8 @@ TEST_CASE(all_checks)
     run_editor_command_checks();
     test_component_presentation();
     test_file_watch();
+    test_collab_protocol();
+    test_collab_replay();
     test_text_overlay();
     test_studio_commands();
     test_ui_document();
@@ -275,6 +279,11 @@ TEST_CASE(all_checks)
 
 int main(int argc, char **argv)
 {
+    if (argc == 2 && !strcmp(argv[1], "--collab")) {
+        test_collab_protocol();
+        test_collab_replay();
+        return 0;
+    }
     setvbuf(stdout, NULL, _IOLBF, 0);
     program_name = argc ? argv[0] : "test_suite";
     if (argc == 2 &&

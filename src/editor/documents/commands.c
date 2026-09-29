@@ -1,3 +1,5 @@
+#include "editor/collab/actions_internal.h"
+#include "editor/collab/collab.h"
 #include "editor/graph/eval_view.h"
 #include "editor/workspace/editor_internal.h"
 #include "graph/document/serialize.h"
@@ -8,7 +10,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-int editor_command_apply(editor *e, editor_command command)
+static int editor_command_apply_direct(editor *e, editor_command command)
 {
     if (!e || !e->asset ||
         (e->active_graph->math_expression && command.kind != EDITOR_COMMAND_OPEN_GRAPH &&
@@ -140,10 +142,12 @@ int editor_command_apply(editor *e, editor_command command)
             int result = ed_connect(e, &output, &input) ? 0 : -1;
             if (result == 0) {
                 e->edit_pending = 1;
-                if (snapshot) {
-                    ed_push_string(&e->undo, snapshot);
+                if (collab_record_history()) {
+                    if (snapshot) {
+                        ed_push_string(&e->undo, snapshot);
+                    }
+                    ed_free_string_stack(&e->redo);
                 }
-                ed_free_string_stack(&e->redo);
                 return 0;
             }
             char *current = ed_snapshot(e);
@@ -166,6 +170,33 @@ int editor_command_apply(editor *e, editor_command command)
             return compile_report_blocked(&e->compile) ? -1 : 0;
     }
     return -1;
+}
+
+int editor_command_apply(editor *e, editor_command command)
+{
+    bool captures = command.kind == EDITOR_COMMAND_CREATE_GRAPH ||
+                    command.kind == EDITOR_COMMAND_RENAME_GRAPH ||
+                    command.kind == EDITOR_COMMAND_SET_PIN_DEFAULT ||
+                    command.kind == EDITOR_COMMAND_CONNECT_DATA ||
+                    command.kind == EDITOR_COMMAND_CONNECT_EXEC;
+    if (!captures) {
+        return editor_command_apply_direct(e, command);
+    }
+    char *action = graph_collab_action_for_command(e, command);
+    if (!action) {
+        return collab_active() && !collab_replaying()
+                 ? -1
+                 : editor_command_apply_direct(e, command);
+    }
+    collab_action_gate gate = collab_actions_begin(action);
+    if (gate != COLLAB_ACTION_APPLY) {
+        free(action);
+        return gate == COLLAB_ACTION_PENDING ? 1 : -1;
+    }
+    int result = editor_command_apply_direct(e, command);
+    bool published = collab_actions_finish(action, result == 0);
+    free(action);
+    return published ? result : -1;
 }
 
 void editor_query_state(const editor *e, editor_query *out)
@@ -272,7 +303,7 @@ int editor_rewire_behavior_expression(
     return 0;
 }
 
-node *editor_spawn(editor *e, const node_desc *desc, float x, float y)
+static node *editor_spawn_direct(editor *e, const node_desc *desc, float x, float y)
 {
     if (e->active_graph->math_expression) {
         return NULL;
@@ -291,6 +322,32 @@ node *editor_spawn(editor *e, const node_desc *desc, float x, float y)
     n->x = x;
     n->y = y;
     return n;
+}
+
+node *editor_spawn(editor *e, const node_desc *desc, float x, float y)
+{
+    uint64_t expected_id = e && e->asset ? e->asset->graph->id_counter : 0;
+    if (!expected_id) {
+        expected_id = 1;
+    }
+    char *action = graph_collab_action_spawn(e, desc, x, y);
+    if (!action) {
+        return collab_active() && !collab_replaying()
+                 ? NULL
+                 : editor_spawn_direct(e, desc, x, y);
+    }
+    collab_action_gate gate = collab_actions_begin(action);
+    if (gate != COLLAB_ACTION_APPLY) {
+        free(action);
+        return NULL;
+    }
+    node *made = editor_spawn_direct(e, desc, x, y);
+    if (made) {
+        assert(made->id == expected_id);
+    }
+    collab_actions_finish(action, made != NULL);
+    free(action);
+    return made;
 }
 
 int editor_delete_graph(editor *e, uint64_t graph_id)

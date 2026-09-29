@@ -1,6 +1,8 @@
 /* The pin menu (Unreal's): links, defaults, promotion, names, struct fields
  * and variadic pins. Each action is one undo step; an action may free the
  * node, so the menu stops after one runs. */
+#include "editor/collab/actions_internal.h"
+#include "editor/collab/collab.h"
 #include "editor/studio/studio_graph_internal.h"
 #include "graph/authoring/optimize.h"
 #include "graph/authoring/pin_edit.h"
@@ -11,6 +13,7 @@
 #include "support/array.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 static const pin_spec *pin_of(const node *n, int kind, int pin)
@@ -131,11 +134,29 @@ static bool resettable(const studio *s, const node *n, int p)
 
 static void reset_pin(studio *s, node *n, int p)
 {
+    editor *e = sg_graph_editor(s);
     graph *gr = sg_active_graph(s);
-    ed_snapshot_before(sg_graph_editor(s));
-    graph_set_pin_binding(gr, n, 0, p, NULL);
     pin_value reset = reset_value(s, n, p);
-    graph_set_pin_default(gr, n, 0, p, &reset);
+    char *action = graph_collab_action_reset_pin(e, n, p, &reset);
+    if (!action) {
+        if (collab_active() && !collab_replaying()) {
+            return;
+        }
+        ed_snapshot_before(e);
+        graph_set_pin_binding(gr, n, 0, p, NULL);
+        graph_set_pin_default(gr, n, 0, p, &reset);
+        return;
+    }
+    collab_action_gate gate = collab_actions_begin(action);
+    if (gate != COLLAB_ACTION_APPLY) {
+        free(action);
+        return;
+    }
+    ed_snapshot_before(e);
+    bool success = graph_set_pin_binding(gr, n, 0, p, NULL) == 0 &&
+                   graph_set_pin_default(gr, n, 0, p, &reset) == 0;
+    collab_actions_finish(action, success);
+    free(action);
 }
 
 /* Variables belong to event behaviors; a wildcard has no type to give one. */

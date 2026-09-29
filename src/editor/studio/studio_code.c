@@ -19,6 +19,8 @@
  * cursor keeps its place; after an undo it lands on the change. Each open
  * document part keeps its own code editor, with its cursor, scroll and Vim
  * state. */
+#include "editor/collab/actions_internal.h"
+#include "editor/collab/collab.h"
 #include "editor/studio/studio_internal.h"
 #include "support/array.h"
 #include "support/xalloc.h"
@@ -42,6 +44,7 @@
 #define COMPLETION_TRIGGERS "<.\"("
 
 static const char *const PART_LABELS[UI_PART_COUNT] = { "RML", "RCSS" };
+static const char *const PART_NAMES[UI_PART_COUNT] = { "rml", "rcss" };
 static const char *const APPLY_LABELS[] = { "Live", "On Save" };
 
 static scene_document_tab *active_ui(studio *s)
@@ -665,6 +668,76 @@ static void follow_text(studio_code *c, studio_code_editor *shown, const char *t
     }
 }
 
+bool studio_code_collab_apply(
+    studio *s,
+    const char *relative_path,
+    ui_part part,
+    const text_edit *edits,
+    int count,
+    uint64_t base_revision,
+    const char *history_op,
+    bool history
+)
+{
+    if (!s || !relative_path || relative_path[0] == '/' ||
+        base_revision != collab_revision() || part < 0 || part >= UI_PART_COUNT) {
+        return false;
+    }
+    for (const char *p = relative_path; *p;) {
+        const char *end = strchr(p, '/');
+        size_t length = end ? (size_t)(end - p) : strlen(p);
+        if (!length || (length == 1 && p[0] == '.') ||
+            (length == 2 && p[0] == '.' && p[1] == '.')) {
+            return false;
+        }
+        p = end ? end + 1 : p + length;
+    }
+    char path[2048];
+    int length = snprintf(path, sizeof path, "%s/%s", s->project_root, relative_path);
+    if (length < 0 || (size_t)length >= sizeof path) {
+        return false;
+    }
+    scene_document_tab *tab = ui_tab(s, path);
+    if (!tab || !tab->ui) {
+        return false;
+    }
+
+    if (history_op && strcmp(history_op, "type") && strcmp(history_op, "step") &&
+        strcmp(history_op, "undo") && strcmp(history_op, "redo")) {
+        return false;
+    }
+    ui_buffer *b = tab->ui;
+    bool own_echo = history && collab_apply_client() && collab_client() &&
+                    !strcmp(collab_apply_client(), collab_client());
+    if (own_echo && history_op &&
+        (!strcmp(history_op, "undo") || !strcmp(history_op, "redo"))) {
+        bool redo = !strcmp(history_op, "redo");
+        if (!ui_buffer_history_edit_matches(b, redo, part, edits, count)) {
+            return false;
+        }
+        if (redo) {
+            ui_buffer_redo(b);
+        } else {
+            ui_buffer_undo(b);
+        }
+        s->code.replayed = true;
+    } else if (history && history_op && !strcmp(history_op, "type")) {
+        if (!ui_buffer_collab_type(b, part, edits, count, s->time)) {
+            return false;
+        }
+    } else if (!ui_buffer_collab_edit(b, part, edits, count, history)) {
+        return false;
+    }
+
+    for (int i = 0; i < acount(s->code.editors); i++) {
+        studio_code_editor *editor = &s->code.editors[i];
+        if (editor->part == part && !strcmp(editor->path, tab->path)) {
+            follow_text(&s->code, editor, ui_buffer_text(b, part));
+        }
+    }
+    return true;
+}
+
 /* ---------- Language ---------- */
 
 /* The scan of the project around `path`, made again once stale; `keep`
@@ -1067,6 +1140,78 @@ static void run_chord(studio *s, const char *chord)
    buffer back to the editor: one history. Typing composes with what
    changed the buffer since they last shared its text, as a designer edit
    in the same frame. Returns what typing changed. */
+static bool project_relative_path(const studio *s, const char *path, char *relative, size_t size)
+{
+    size_t root = strlen(s->project_root);
+    size_t path_length = strlen(path);
+    if (path_length <= root || strncmp(path, s->project_root, root) ||
+        path[root] != '/') {
+        return false;
+    }
+    const char *inside = path + root + 1;
+    if (!inside[0] || strlen(inside) >= size) {
+        return false;
+    }
+    snprintf(relative, size, "%s", inside);
+    return true;
+}
+
+static char *text_action(
+    const studio *s,
+    const ui_buffer *b,
+    ui_part part,
+    const text_edit *edit,
+    const char *history_op
+)
+{
+    char path[1024];
+    if (part < 0 || part >= UI_PART_COUNT ||
+        !project_relative_path(s, b->path, path, sizeof path)) {
+        return NULL;
+    }
+    yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
+    yyjson_mut_val *root = yyjson_mut_obj(doc);
+    yyjson_mut_doc_set_root(doc, root);
+    yyjson_mut_obj_add_strcpy(doc, root, "family", "text");
+    yyjson_mut_obj_add_strcpy(doc, root, "path", path);
+    yyjson_mut_obj_add_strcpy(doc, root, "part", PART_NAMES[part]);
+    yyjson_mut_obj_add_uint(doc, root, "base_revision", collab_revision());
+    if (history_op) {
+        yyjson_mut_obj_add_strcpy(doc, root, "history_op", history_op);
+    }
+    yyjson_mut_val *edits = yyjson_mut_arr(doc);
+    yyjson_mut_val *item = yyjson_mut_arr_add_obj(doc, edits);
+    yyjson_mut_obj_add_int(doc, item, "start", edit->start);
+    yyjson_mut_obj_add_int(doc, item, "end", edit->end);
+    yyjson_mut_obj_add_strcpy(doc, item, "text", edit->text);
+    yyjson_mut_obj_add_val(doc, root, "edits", edits);
+    char *json = yyjson_mut_write(doc, 0, NULL);
+    yyjson_mut_doc_free(doc);
+    return json;
+}
+
+static collab_action_gate text_action_begin(
+    studio *s,
+    ui_buffer *b,
+    ui_part part,
+    const text_edit *edit,
+    const char *history_op,
+    char **action
+)
+{
+    *action = NULL;
+    if (!collab_active() || collab_replaying()) {
+        return COLLAB_ACTION_APPLY;
+    }
+    *action = text_action(s, b, part, edit, history_op);
+    if (!*action) {
+        return COLLAB_ACTION_REJECT;
+    }
+    return collab_actions_begin(*action);
+}
+
+/* The user's text reaches the buffer only after a proposal has been sent.
+   An editor participant's buffer catches up from the accepted echo. */
 static ui_code_change take_edits(studio *s, ui_buffer *b, studio_code_editor *shown, ui_part part, unsigned events)
 {
     studio_code *c = &s->code;
@@ -1074,12 +1219,55 @@ static ui_code_change take_edits(studio *s, ui_buffer *b, studio_code_editor *sh
     bool completed = events & KIT_CODE_COMPLETED;
     ui_code_change typed = { 0 };
     if (events & (KIT_CODE_CHANGED | KIT_CODE_COMPLETED)) {
-        typed = ui_code_record(b, part, shown->editor, shown->synced, s->time, completed);
+        text_edit edit;
+        ui_code_change change;
+        if (ui_code_prepare(b, part, shown->editor, shown->synced, &change, &edit)) {
+            char *action;
+            const char *history_op = completed ? "step" : "type";
+            collab_action_gate gate = text_action_begin(s, b, part, &edit, history_op, &action);
+            if (gate == COLLAB_ACTION_APPLY) {
+                typed = ui_code_record(b, part, shown->editor, shown->synced, s->time, completed);
+                if (action) {
+                    (void)collab_actions_finish(action, true);
+                }
+            } else {
+                typed = change;
+                follow_text(c, shown, ui_buffer_text(b, part));
+            }
+            free(action);
+            free((char *)edit.text);
+        }
     }
     bool redo = events & KIT_CODE_REDO;
-    if ((events & (KIT_CODE_UNDO | KIT_CODE_REDO)) && ui_code_replay(b, redo)) {
-        c->replayed = true;
-        studio_report(s, redo ? "Redo" : "Undo");
+    if (events & (KIT_CODE_UNDO | KIT_CODE_REDO)) {
+        ui_part target_part;
+        const char *target;
+        if (ui_buffer_history_target(b, redo, &target_part, &target)) {
+            text_edit edit;
+            if (ui_code_text_diff(ui_buffer_text(b, target_part), target, &edit)) {
+                const char *history_op = redo ? "redo" : "undo";
+                bool shareable = !collab_active() || collab_replaying() ||
+                                 ui_buffer_history_edit_matches(b, redo, target_part, &edit, 1);
+                if (shareable) {
+                    char *action;
+                    collab_action_gate gate = text_action_begin(s, b, target_part, &edit, history_op, &action);
+                    if (gate == COLLAB_ACTION_APPLY && ui_code_replay(b, redo)) {
+                        c->replayed = true;
+                        if (action) {
+                            (void)collab_actions_finish(action, true);
+                        }
+                        studio_report(s, redo ? "Redo" : "Undo");
+                    } else if (gate != COLLAB_ACTION_APPLY) {
+                        follow_text(c, shown, ui_buffer_text(b, part));
+                    }
+                    free(action);
+                } else {
+                    studio_report(s, "This text history step changes multiple parts");
+                    follow_text(c, shown, ui_buffer_text(b, part));
+                }
+                free((char *)edit.text);
+            }
+        }
     }
     follow_text(c, shown, ui_buffer_text(b, part));
     return typed;

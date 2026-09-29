@@ -136,6 +136,17 @@ static bool unchanged(ui_code_change d)
     return d.start == d.end && !d.inserted;
 }
 
+bool ui_code_text_diff(const char *from, const char *to, text_edit *edit)
+{
+    ui_code_change change = difference(from, (int)strlen(from), to, (int)strlen(to));
+    if (unchanged(change)) {
+        *edit = (text_edit){ 0, 0, NULL };
+        return false;
+    }
+    *edit = edit_of(change, to);
+    return true;
+}
+
 /* What typing changed from `base`, as an edit of `now`, the part as it
    stands: where another change of `base` made meanwhile left the typed
    bytes alone, the typing moves with it; where both changed the same bytes,
@@ -157,6 +168,27 @@ static text_edit rebased(const char *base, ui_code_change typed, const char *tex
     return edit_of(difference(now, now_length, text, length), text);
 }
 
+bool ui_code_prepare(
+    const ui_buffer *b,
+    ui_part part,
+    kit_code_editor *e,
+    const char *base,
+    ui_code_change *typed,
+    text_edit *edit
+)
+{
+    size_t length;
+    const char *text = kit_code_text(e, &length);
+    *typed = difference(base, (int)strlen(base), text, (int)length);
+    *edit = (text_edit){ 0, 0, NULL };
+    if (unchanged(*typed)) {
+        return false;
+    }
+    const char *old = ui_buffer_text(b, part);
+    *edit = rebased(base, *typed, text, (int)length, old);
+    return true;
+}
+
 ui_code_change ui_code_record(
     ui_buffer *b,
     ui_part part,
@@ -166,18 +198,15 @@ ui_code_change ui_code_record(
     bool step
 )
 {
-    size_t length;
-    const char *text = kit_code_text(e, &length);
-    const char *old = ui_buffer_text(b, part);
-    ui_code_change typed = difference(base, (int)strlen(base), text, (int)length);
-    if (unchanged(typed)) {
+    ui_code_change typed;
+    text_edit edit;
+    if (!ui_code_prepare(b, part, e, base, &typed, &edit)) {
         return typed;
     }
-    text_edit edit = rebased(base, typed, text, (int)length, old);
     if (step) {
         ui_buffer_edit(b, part, &edit, 1);
     } else {
-        char *composed = text_edits_apply(old, &edit, 1);
+        char *composed = text_edits_apply(ui_buffer_text(b, part), &edit, 1);
         ui_buffer_type(b, part, composed, now);
         free(composed);
     }

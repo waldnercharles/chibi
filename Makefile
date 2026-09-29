@@ -91,6 +91,7 @@ PROJECT ?= projects/arena2d
 SCENE ?=
 SCENE_ARG = $(if $(SCENE),--scene "$(SCENE)")
 WEB_PORT ?= 8099
+CHIBI_COLLAB_URL ?=
 
 run:
 	$(MAKE) build-release BUILD_TARGET=chibi
@@ -139,7 +140,7 @@ benchmark:
 
 web:
 	sh tools/configure_native.sh "$(BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) && cmake --build "$(BUILD_DIR)" --target reflect --parallel $(JOBS)
-	emcmake cmake -S . -B "$(WEB_BUILD_DIR)" -DCMAKE_BUILD_TYPE=Release -DCHIBI_REFLECT_EXECUTABLE=$(CURDIR)/$(BUILD_DIR)/reflect
+	emcmake cmake -S . -B "$(WEB_BUILD_DIR)" -DCMAKE_BUILD_TYPE=Release -DCHIBI_COLLAB_URL="$(CHIBI_COLLAB_URL)" -DCHIBI_REFLECT_EXECUTABLE=$(CURDIR)/$(BUILD_DIR)/reflect
 	cmake --build "$(WEB_BUILD_DIR)" --target chibi check-behavior-backend --parallel $(JOBS)
 
 web-serve: web
@@ -155,6 +156,7 @@ test:
 	python3 test/web_serve_test.py
 	node test/web_workspace_test.mjs
 	node test/web_storage_test.mjs
+	node test/collab_client_test.mjs
 	sh tools/configure_native.sh "$(BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(LOCAL_CMAKE_FLAGS)
 	cmake --build "$(BUILD_DIR)" --target check-generation check-reflect check-reload check-dev check-mcp check-assets check-behavior-backend test_suite --parallel $(JOBS)
 	env $(NATIVE_RUNTIME_ENV) $(BUILD_DIR)/test_suite

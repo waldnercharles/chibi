@@ -175,7 +175,13 @@ static void actor_history()
     );
     char name[] = "Actor", prototype[] = "Player", base[] = "{base}",
          state[] = "{state}";
-    scene_actor_edit actor = { 2, name, prototype, base, state, true };
+    scene_actor_edit actor = { .identity = 123,
+                               .index = 2,
+                               .name = name,
+                               .prototype_name = prototype,
+                               .base_json = base,
+                               .state_json = state,
+                               .created = true };
     assert(scene_history_push_actor(history, entity, &actor));
     memset(name, 'x', sizeof name - 1);
     memset(prototype, 'x', sizeof prototype - 1);
@@ -184,7 +190,7 @@ static void actor_history()
     ecs_entity observed = { 0 };
     bool present = true;
     const scene_actor_edit *peek = scene_history_peek_actor(history, false, &observed, &present);
-    assert(peek && !present && peek->index == 2 && peek->created);
+    assert(peek && !present && peek->identity == 123 && peek->index == 2 && peek->created);
     assert(strcmp(peek->name, "Actor") == 0 && strcmp(peek->prototype_name, "Player") == 0);
     assert(strcmp(peek->base_json, "{base}") == 0 && strcmp(peek->state_json, "{state}") == 0);
     assert(ecs_entity_to_u64(observed) == ecs_entity_to_u64(entity));
@@ -206,8 +212,11 @@ static void actor_history()
     present = true;
     assert(!scene_history_peek_actor(history, false, &observed, &present));
     assert(observed.slot == 77 && observed.generation == 88 && present);
-    actor = (scene_actor_edit){ 2,        "Actor",           "Player",
-                                "{base}", "{deleted state}", false };
+    actor = (scene_actor_edit){ .index = 2,
+                                .name = "Actor",
+                                .prototype_name = "Player",
+                                .base_json = "{base}",
+                                .state_json = "{deleted state}" };
     assert(ecs_world_destroy_entity(world, entity) == ECS_OK);
     assert(ecs_world_apply_commands(world) == ECS_OK);
     assert(scene_history_push_actor(history, entity, &actor));
@@ -307,7 +316,11 @@ static void behavior_history()
         (pin_value){ .type = PIN_F32, .f = 3 },
         (pin_value){ .type = PIN_F32, .f = 9 }
     ));
-    scene_actor_edit deletion = { 0, "Actor", "Player", "{}", "{}", false };
+    scene_actor_edit deletion = { .index = 0,
+                                  .name = "Actor",
+                                  .prototype_name = "Player",
+                                  .base_json = "{}",
+                                  .state_json = "{}" };
     assert(scene_history_push_actor(history, entity, &deletion));
     assert(ecs_world_destroy_entity(world, entity) == ECS_OK);
     assert(ecs_world_apply_commands(world) == ECS_OK);

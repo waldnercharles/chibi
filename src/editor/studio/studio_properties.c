@@ -1,5 +1,6 @@
 /* Studio Properties editor: context tabs, reflected component fields,
    behaviors and scene physics. */
+#include "editor/collab/actions_scene.h"
 #include "editor/documents/component_properties.h"
 #include "editor/studio/studio_internal.h"
 #include "editor/ui/labels.h"
@@ -145,17 +146,21 @@ static void write_field(
             scene->property_dirty = scene->scene_dirty;
             pending = true;
         }
-        if (ecs_component_write_field(scene->world, actor->entity, component, field, value) ==
-            ECS_OK) {
-            ecs_component_read_field(
-                scene->world,
-                actor->entity,
-                component,
-                field,
-                &scene->property_edit.after
-            );
-            scene->scene_dirty = true;
-            asset_index_invalidate(scene);
+        if (scene_collab_can_write_locally()) {
+            if (ecs_component_write_field(scene->world, actor->entity, component, field, value) ==
+                ECS_OK) {
+                ecs_component_read_field(
+                    scene->world,
+                    actor->entity,
+                    component,
+                    field,
+                    &scene->property_edit.after
+                );
+                scene->scene_dirty = true;
+                asset_index_invalidate(scene);
+            }
+        } else if (scene_collab_is_editor()) {
+            scene->property_edit.after = value;
         }
     }
     if (pending && !active) {
@@ -223,8 +228,10 @@ static void position_row(studio *s, scene_actor *actor, bool locked)
                                            ecs_entity_to_u64(actor->entity)) {
             begin_transform_edit(scene, actor->entity);
         }
-        write_position(scene, actor->entity, after);
-        scene->scene_dirty = true;
+        write_transform_edit(scene, actor->entity, after);
+        if (scene_collab_can_write_locally()) {
+            scene->scene_dirty = true;
+        }
     }
     if (scene->edit_actor.slot && !scene->dragging_actor &&
         (committed || (!active && changed))) {
@@ -445,6 +452,14 @@ static void field_row(
         return;
     }
     pin_value before = value;
+    bool pending = scene->property_actor.slot &&
+                   ecs_entity_to_u64(scene->property_actor) ==
+                       ecs_entity_to_u64(actor->entity) &&
+                   scene->property_edit.component == desc->id &&
+                   scene->property_edit.field == index;
+    if (pending && scene_collab_is_editor()) {
+        value = scene->property_edit.after;
+    }
     unsigned flags = (locked ? KIT_READONLY : 0) |
                      (field_overridden(scene, actor, component, index) ? KIT_OVERRIDDEN
                                                                        : 0);
@@ -508,8 +523,10 @@ static void reset_field(studio *s, scene_actor *actor)
             after.x = inherited.f;
         }
         begin_transform_edit(scene, actor->entity);
-        write_position(scene, actor->entity, after);
-        scene->scene_dirty = true;
+        write_transform_edit(scene, actor->entity, after);
+        if (scene_collab_can_write_locally()) {
+            scene->scene_dirty = true;
+        }
         finish_transform_edit(scene, false);
         return;
     }

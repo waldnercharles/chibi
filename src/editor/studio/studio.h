@@ -3,6 +3,8 @@
 
 #include "editor/workspace/scene_authoring.h"
 
+#include <stdint.h>
+
 /* The RmlUi Studio workspace: a full-window retained document. It reads and
  * edits the scene authoring model directly and shows the Scene render target
  * inside its viewport area. */
@@ -24,5 +26,12 @@ char *studio_take_project(studio *s);
 void studio_error(studio *s, const char *title, const char *message);
 /* Fills the workspace with the graph canvas without changing saved preferences. */
 void studio_maximize_graph(studio *s);
+
+/* Collaboration checkpoint and ephemeral presence. The JSON returned by
+ * capture is owned by the caller. Passing a NULL presence removes that peer. */
+char *studio_collab_capture(studio *s);
+bool studio_collab_restore(studio *s, const char *json);
+void studio_collab_receive(studio *s, const char *client, const char *name, uint32_t color, const char *json);
+bool studio_collab_apply(studio *s, const char *json, char *error, size_t size);
 
 #endif

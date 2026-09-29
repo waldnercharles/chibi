@@ -1,4 +1,6 @@
+#include "editor/collab/actions_scene.h"
 #include "editor/workspace/scene_internal.h"
+#include "graph/document/serialize_internal.h"
 #include "runtime/generated.h"
 
 #include <assert.h>
@@ -25,7 +27,7 @@ static int register_prototype_hosts(app_scene_authoring *scene, const game_proto
     return 0;
 }
 
-int app_scene_authoring_detach_prototype_behavior(
+static int detach_prototype_behavior(
     app_scene_authoring *scene,
     const char *prototype_name,
     const char *asset_name
@@ -76,6 +78,32 @@ int app_scene_authoring_detach_prototype_behavior(
     }
     snprintf(scene->prototype_message, sizeof scene->prototype_message, "Detached %s from %s.", asset_name, prototype_name);
     return 0;
+}
+
+int app_scene_authoring_detach_prototype_behavior(
+    app_scene_authoring *scene,
+    const char *prototype_name,
+    const char *asset_name
+)
+{
+    if (!scene || !prototype_name || !asset_name) {
+        return -1;
+    }
+    yyjson_mut_doc *doc = NULL;
+    yyjson_mut_val *root = scene_action_root(scene, "prototype.behavior_detach", &doc);
+    yyjson_mut_obj_add_strcpy(doc, root, "prototype", prototype_name);
+    yyjson_mut_obj_add_strcpy(doc, root, "behavior", asset_name);
+    char *action = scene_action_write(doc);
+    collab_action_gate gate = action ? scene_action_begin(scene, action)
+                                     : COLLAB_ACTION_REJECT;
+    if (gate != COLLAB_ACTION_APPLY) {
+        free(action);
+        return gate == COLLAB_ACTION_PENDING ? 1 : -1;
+    }
+    int result = detach_prototype_behavior(scene, prototype_name, asset_name);
+    scene_action_finish(scene, action, result == 0);
+    free(action);
+    return result;
 }
 
 bool prototype_has_component_id(const game_prototype *prototype, ecs_component_id id)
@@ -268,7 +296,7 @@ int app_scene_authoring_read_prototype_field(
                  : -1;
 }
 
-int app_scene_authoring_set_prototype_field(
+static int set_prototype_field(
     app_scene_authoring *scene,
     const char *prototype_name,
     const char *component_name,
@@ -285,6 +313,36 @@ int app_scene_authoring_set_prototype_field(
     }
     prototype_history_before(scene, asset->prototype);
     return write_prototype_field(scene, asset, component_name, field_name, value);
+}
+
+int app_scene_authoring_set_prototype_field(
+    app_scene_authoring *scene,
+    const char *prototype_name,
+    const char *component_name,
+    const char *field_name,
+    pin_value value
+)
+{
+    if (!scene || !prototype_name || !component_name || !field_name) {
+        return -1;
+    }
+    yyjson_mut_doc *doc = NULL;
+    yyjson_mut_val *root = scene_action_root(scene, "prototype.field", &doc);
+    yyjson_mut_obj_add_strcpy(doc, root, "prototype", prototype_name);
+    yyjson_mut_obj_add_strcpy(doc, root, "component", component_name);
+    yyjson_mut_obj_add_strcpy(doc, root, "field", field_name);
+    serialize_write_value(doc, root, "value", value.type, value.type_name, &value);
+    char *action = scene_action_write(doc);
+    collab_action_gate gate = action ? scene_action_begin(scene, action)
+                                     : COLLAB_ACTION_REJECT;
+    if (gate != COLLAB_ACTION_APPLY) {
+        free(action);
+        return gate == COLLAB_ACTION_PENDING ? 1 : -1;
+    }
+    int result = set_prototype_field(scene, prototype_name, component_name, field_name, value);
+    scene_action_finish(scene, action, result == 0);
+    free(action);
+    return result;
 }
 
 static const ecs_component_desc *component_descriptor(const app_scene_authoring *scene, const char *name)
@@ -353,7 +411,7 @@ static int edit_components(
     return refresh_prototype_instances(scene, asset);
 }
 
-int app_scene_authoring_add_prototype_component(
+static int add_prototype_component(
     app_scene_authoring *scene,
     const char *prototype_name,
     const char *component_name
@@ -367,7 +425,7 @@ int app_scene_authoring_add_prototype_component(
     return edit_components(scene, asset, desc, true);
 }
 
-int app_scene_authoring_remove_prototype_component(
+static int remove_prototype_component(
     app_scene_authoring *scene,
     const char *prototype_name,
     const char *component_name
@@ -379,6 +437,53 @@ int app_scene_authoring_remove_prototype_component(
         return -1;
     }
     return edit_components(scene, asset, desc, false);
+}
+
+static int collab_component_edit(
+    app_scene_authoring *scene,
+    const char *prototype_name,
+    const char *component_name,
+    const char *operation,
+    bool add
+)
+{
+    if (!scene || !prototype_name || !component_name) {
+        return -1;
+    }
+    yyjson_mut_doc *doc = NULL;
+    yyjson_mut_val *root = scene_action_root(scene, operation, &doc);
+    yyjson_mut_obj_add_strcpy(doc, root, "prototype", prototype_name);
+    yyjson_mut_obj_add_strcpy(doc, root, "component", component_name);
+    char *action = scene_action_write(doc);
+    collab_action_gate gate = action ? scene_action_begin(scene, action)
+                                     : COLLAB_ACTION_REJECT;
+    if (gate != COLLAB_ACTION_APPLY) {
+        free(action);
+        return gate == COLLAB_ACTION_PENDING ? 1 : -1;
+    }
+    int result = add ? add_prototype_component(scene, prototype_name, component_name)
+                     : remove_prototype_component(scene, prototype_name, component_name);
+    scene_action_finish(scene, action, result == 0);
+    free(action);
+    return result;
+}
+
+int app_scene_authoring_add_prototype_component(
+    app_scene_authoring *scene,
+    const char *prototype_name,
+    const char *component_name
+)
+{
+    return collab_component_edit(scene, prototype_name, component_name, "prototype.component_add", true);
+}
+
+int app_scene_authoring_remove_prototype_component(
+    app_scene_authoring *scene,
+    const char *prototype_name,
+    const char *component_name
+)
+{
+    return collab_component_edit(scene, prototype_name, component_name, "prototype.component_remove", false);
 }
 
 static int restore_prototype(
@@ -495,7 +600,7 @@ int app_scene_authoring_save_prototype(
     return result;
 }
 
-int app_scene_authoring_attach_prototype_behavior(
+static int prototype_attach_behavior(
     app_scene_authoring *scene,
     const char *prototype_name,
     const char *asset_name
@@ -610,4 +715,30 @@ int app_scene_authoring_attach_prototype_behavior(
     }
     snprintf(scene->prototype_message, sizeof scene->prototype_message, "Attached %s to %s.", asset_name, prototype_name);
     return 0;
+}
+
+int app_scene_authoring_attach_prototype_behavior(
+    app_scene_authoring *scene,
+    const char *prototype_name,
+    const char *asset_name
+)
+{
+    if (!scene || !prototype_name || !asset_name) {
+        return -1;
+    }
+    yyjson_mut_doc *doc = NULL;
+    yyjson_mut_val *root = scene_action_root(scene, "prototype.behavior_attach", &doc);
+    yyjson_mut_obj_add_strcpy(doc, root, "prototype", prototype_name);
+    yyjson_mut_obj_add_strcpy(doc, root, "behavior", asset_name);
+    char *action = scene_action_write(doc);
+    collab_action_gate gate = action ? scene_action_begin(scene, action)
+                                     : COLLAB_ACTION_REJECT;
+    if (gate != COLLAB_ACTION_APPLY) {
+        free(action);
+        return gate == COLLAB_ACTION_PENDING ? 1 : -1;
+    }
+    int result = prototype_attach_behavior(scene, prototype_name, asset_name);
+    scene_action_finish(scene, action, result == 0);
+    free(action);
+    return result;
 }

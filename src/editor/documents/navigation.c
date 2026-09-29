@@ -1,3 +1,5 @@
+#include "editor/collab/actions_internal.h"
+#include "editor/collab/collab.h"
 #include "editor/workspace/editor_internal.h"
 #include "graph/document/serialize.h"
 #include "graph/model/registry.h"
@@ -39,7 +41,7 @@ int editor_open_behavior_asset(editor *e, const behavior_asset *source, uint64_t
     return editor_open_graph(e, graph_id);
 }
 
-int editor_open_graph(editor *e, uint64_t graph_id)
+static int editor_open_graph_direct(editor *e, uint64_t graph_id)
 {
     if (!e || !e->asset) {
         return -1;
@@ -52,6 +54,35 @@ int editor_open_graph(editor *e, uint64_t graph_id)
         aclear(e->graph_callers);
     }
     return ed_switch_graph(e, target);
+}
+
+int editor_open_graph(editor *e, uint64_t graph_id)
+{
+    if (!e || !e->asset) {
+        return -1;
+    }
+    graph *target = behavior_asset_find_graph(e->asset, graph_id);
+    if (!target) {
+        return -1;
+    }
+    if (target == e->active_graph) {
+        return editor_open_graph_direct(e, graph_id);
+    }
+    char *action = graph_collab_action_open(e, graph_id);
+    if (!action) {
+        return collab_active() && !collab_replaying()
+                 ? -1
+                 : editor_open_graph_direct(e, graph_id);
+    }
+    collab_action_gate gate = collab_actions_begin(action);
+    if (gate != COLLAB_ACTION_APPLY) {
+        free(action);
+        return gate == COLLAB_ACTION_PENDING ? 1 : -1;
+    }
+    int result = editor_open_graph_direct(e, graph_id);
+    bool published = collab_actions_finish(action, result == 0);
+    free(action);
+    return published ? result : -1;
 }
 
 int editor_open_graph_call(editor *e, uint64_t node_id)

@@ -1,3 +1,4 @@
+#include "editor/collab/collab.h"
 #include "editor/graph/eval_view.h"
 #include "editor/workspace/editor_internal.h"
 #include "graph/document/serialize.h"
@@ -35,6 +36,11 @@ void ed_commit_snapshot(editor *e)
         return;
     }
     e->edit_pending = 1;
+    if (!collab_record_history()) {
+        free(e->pending_snapshot);
+        e->pending_snapshot = NULL;
+        return;
+    }
     ed_push_string(&e->undo, e->pending_snapshot);
     e->pending_snapshot = NULL;
     ed_free_string_stack(&e->redo);
@@ -42,11 +48,14 @@ void ed_commit_snapshot(editor *e)
 
 void ed_snapshot_before(editor *e)
 {
+    e->edit_pending = 1;
+    if (!collab_record_history()) {
+        return;
+    }
     char *snapshot = ed_snapshot(e);
     if (!snapshot) {
         return;
     }
-    e->edit_pending = 1;
     ed_push_string(&e->undo, snapshot);
     ed_free_string_stack(&e->redo);
 }

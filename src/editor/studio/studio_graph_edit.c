@@ -1,5 +1,7 @@
 /* Graph canvas edits, refactoring, usage and the add-node palette. */
 #include "assets/ui_events.h"
+#include "editor/collab/actions_internal.h"
+#include "editor/collab/collab.h"
 #include "editor/graph/search.h"
 #include "editor/studio/studio_graph_internal.h"
 #include "editor/ui/labels.h"
@@ -88,7 +90,7 @@ void sg_show_error(studio *s, const char *message)
 
 /* Connects two sockets through the editor's rules (conversions, inline
    sources, exec ordering). Reports the refusal the editor gives. */
-bool sg_connect_pins(studio *s, node *a, int a_kind, int a_pin, node *b, int b_kind, int b_pin)
+static bool sg_connect_pins_direct(studio *s, node *a, int a_kind, int a_pin, node *b, int b_kind, int b_pin)
 {
     editor *e = sg_graph_editor(s);
     ed_pin_view from = { a, a_kind, a_pin };
@@ -105,6 +107,26 @@ bool sg_connect_pins(studio *s, node *a, int a_kind, int a_pin, node *b, int b_k
         }
     }
     return connected;
+}
+
+bool sg_connect_pins(studio *s, node *a, int a_kind, int a_pin, node *b, int b_kind, int b_pin)
+{
+    editor *e = sg_graph_editor(s);
+    char *action = graph_collab_action_connect(e, a, a_kind, a_pin, b, b_kind, b_pin);
+    if (!action) {
+        return collab_active() && !collab_replaying()
+                 ? false
+                 : sg_connect_pins_direct(s, a, a_kind, a_pin, b, b_kind, b_pin);
+    }
+    collab_action_gate gate = collab_actions_begin(action);
+    if (gate != COLLAB_ACTION_APPLY) {
+        free(action);
+        return false;
+    }
+    bool connected = sg_connect_pins_direct(s, a, a_kind, a_pin, b, b_kind, b_pin);
+    bool published = collab_actions_finish(action, connected);
+    free(action);
+    return connected && published;
 }
 
 bool sg_pins_compatible(const node *a, int a_kind, int a_pin, const node *b, int b_kind, int b_pin)

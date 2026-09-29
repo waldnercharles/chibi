@@ -1,6 +1,8 @@
 #include "assets/behavior_loader.h"
 #include "assets/prototype.h"
 #include "assets/scene_document.h"
+#include "editor/collab/actions_scene.h"
+#include "editor/collab/collab.h"
 #include "editor/documents/component_properties.h"
 #include "editor/documents/scene_history.h"
 #include "editor/documents/scene_retention.h"
@@ -10,6 +12,7 @@
 #include "editor/workspace/scene_debug.h"
 #include "editor/workspace/scene_internal.h"
 #include "graph/document/serialize.h"
+#include "graph/document/serialize_internal.h"
 #include "graph/model/pin_fmt.h"
 #include "graph/model/registry.h"
 #include "graph/nodes/component_nodes.h"
@@ -524,6 +527,9 @@ void clear_prototype_history(scene_prototype_asset *asset)
 
 void prototype_history_before(app_scene_authoring *scene, game_prototype *prototype)
 {
+    if (!collab_record_history()) {
+        return;
+    }
     scene_prototype_asset *asset = find_prototype(scene, prototype->name);
     assert(asset && asset->prototype == prototype);
     char *json = game_prototype_save(prototype);
@@ -653,7 +659,19 @@ int app_scene_authoring_open_prototype(app_scene_authoring *scene, const char *n
     if (!asset) {
         return -1;
     }
+    yyjson_mut_doc *doc = NULL;
+    yyjson_mut_val *root = scene_action_root(scene, "tab.open_prototype", &doc);
+    yyjson_mut_obj_add_strcpy(doc, root, "prototype", name);
+    char *action = scene_action_write(doc);
+    collab_action_gate gate = action ? scene_action_begin(scene, action)
+                                     : COLLAB_ACTION_REJECT;
+    if (gate != COLLAB_ACTION_APPLY) {
+        free(action);
+        return gate == COLLAB_ACTION_PENDING ? 1 : -1;
+    }
     open_prototype(scene, (int)(asset - scene->prototypes));
+    scene_action_finish(scene, action, true);
+    free(action);
     return 0;
 }
 
@@ -741,9 +759,73 @@ void finish_property_edit(app_scene_authoring *scene)
     if (!scene->property_actor.slot) {
         return;
     }
-    if (!scene_history_push_fields(scene->history, scene->property_actor, &scene->property_edit, 1)) {
+    scene_field_edit *edit = &scene->property_edit;
+    scene_actor *actor = NULL;
+    uint64_t identity = scene_actor_identity(scene, scene->property_actor);
+    for (int i = 0; identity && i < acount(scene->actors); i++) {
+        if (scene->actors[i].identity == identity) {
+            actor = &scene->actors[i];
+            break;
+        }
+    }
+    char *action = NULL;
+    collab_action_gate gate = COLLAB_ACTION_APPLY;
+    if (actor) {
+        const ecs_component_desc *component = NULL;
+        for (int i = 0; i < scene->registry.component_count; i++) {
+            if (scene->registry.components[i]->id == edit->component) {
+                component = scene->registry.components[i];
+                break;
+            }
+        }
+        if (component && edit->field >= 0 && edit->field < component->type->field_count) {
+            yyjson_mut_doc *doc = NULL;
+            yyjson_mut_val *root = scene_action_root(scene, "property.set", &doc);
+            yyjson_mut_obj_add_uint(doc, root, "actor", identity);
+            yyjson_mut_obj_add_strcpy(doc, root, "component", component->name);
+            yyjson_mut_obj_add_strcpy(
+                doc,
+                root,
+                "field",
+                component->type->fields[edit->field].name
+            );
+            serialize_write_value(
+                doc,
+                root,
+                "value",
+                edit->after.type,
+                edit->after.type_name,
+                &edit->after
+            );
+            action = scene_action_write(doc);
+            gate = action ? scene_action_begin(scene, action) : COLLAB_ACTION_REJECT;
+        }
+    } else if (collab_active() && !collab_replaying()) {
+        gate = COLLAB_ACTION_REJECT;
+    }
+
+    bool recorded = false;
+    if (gate == COLLAB_ACTION_APPLY && collab_record_history()) {
+        recorded = scene_history_push_fields(scene->history, scene->property_actor, edit, 1);
+    }
+    bool success = gate != COLLAB_ACTION_REJECT &&
+                   (recorded || !collab_record_history());
+    if (gate == COLLAB_ACTION_REJECT && scene_collab_can_write_locally()) {
+        ecs_component_write_field(
+            scene->world,
+            scene->property_actor,
+            edit->component,
+            edit->field,
+            edit->before
+        );
+    }
+    if (!recorded && scene_collab_can_write_locally()) {
         scene->scene_dirty = scene->property_dirty;
     }
+    if (action) {
+        scene_action_finish(scene, action, success);
+    }
+    free(action);
     scene->property_actor = (ecs_entity){ 0 };
 }
 
@@ -752,7 +834,20 @@ void begin_transform_edit(app_scene_authoring *scene, ecs_entity entity)
     finish_transform_edit(scene, false);
     scene->edit_actor = entity;
     scene->edit_before = *GAME_GameTransform_get_const(scene->world, entity);
+    scene->edit_after = scene->edit_before;
     scene->edit_dirty = scene->scene_dirty;
+}
+
+void write_transform_edit(app_scene_authoring *scene, ecs_entity entity, GameTransform position)
+{
+    if (scene_collab_is_editor() && scene->edit_actor.slot &&
+        ecs_entity_to_u64(scene->edit_actor) == ecs_entity_to_u64(entity)) {
+        scene->edit_after = position;
+        return;
+    }
+    if (scene_collab_can_write_locally()) {
+        write_position(scene, entity, position);
+    }
 }
 
 void finish_transform_edit(app_scene_authoring *scene, bool cancel)
@@ -763,14 +858,58 @@ void finish_transform_edit(app_scene_authoring *scene, bool cancel)
     }
     const GameTransform
         *position = GAME_GameTransform_get_const(scene->world, scene->edit_actor);
-    if (position && cancel) {
-        write_position(scene, scene->edit_actor, scene->edit_before);
-        scene->scene_dirty = scene->edit_dirty;
-    }
-    if (position && !cancel) {
-        if (!scene_history_push(scene->history, scene->edit_actor, scene->edit_before, *position)) {
-            scene->scene_dirty = scene->edit_dirty;
+    bool editor = scene_collab_is_editor();
+    GameTransform after = editor   ? scene->edit_after
+                        : position ? *position
+                                   : scene->edit_before;
+    uint64_t identity = scene_actor_identity(scene, scene->edit_actor);
+    bool recorded = false;
+    char *action = NULL;
+    collab_action_gate gate = COLLAB_ACTION_APPLY;
+    if (position && !cancel &&
+        (after.x != scene->edit_before.x || after.y != scene->edit_before.y)) {
+        if (identity) {
+            yyjson_mut_doc *doc = NULL;
+            yyjson_mut_val *root = scene_action_root(scene, "transform.set", &doc);
+            yyjson_mut_obj_add_uint(doc, root, "actor", identity);
+            yyjson_mut_obj_add_real(doc, root, "x", after.x);
+            yyjson_mut_obj_add_real(doc, root, "y", after.y);
+            action = scene_action_write(doc);
+            gate = action ? scene_action_begin(scene, action) : COLLAB_ACTION_REJECT;
+        } else if (collab_active() && !collab_replaying()) {
+            gate = COLLAB_ACTION_REJECT;
         }
+        if (gate == COLLAB_ACTION_APPLY && scene_collab_can_write_locally()) {
+            write_position(scene, scene->edit_actor, after);
+            if (collab_record_history()) {
+                recorded = scene_history_push(
+                    scene->history,
+                    scene->edit_actor,
+                    scene->edit_before,
+                    after
+                );
+            }
+        }
+        if (gate == COLLAB_ACTION_REJECT && position &&
+            scene_collab_can_write_locally()) {
+            write_position(scene, scene->edit_actor, scene->edit_before);
+        }
+        bool success = gate != COLLAB_ACTION_REJECT &&
+                       (recorded || !collab_record_history() || editor);
+        if (action) {
+            scene_action_finish(scene, action, success);
+        }
+        free(action);
+        if (!success && scene_collab_can_write_locally()) {
+            scene->scene_dirty = scene->edit_dirty;
+        } else if (success && !editor) {
+            scene->scene_dirty = true;
+        }
+    } else if (position && cancel) {
+        if (!editor && scene_collab_can_write_locally()) {
+            write_position(scene, scene->edit_actor, scene->edit_before);
+        }
+        scene->scene_dirty = scene->edit_dirty;
     }
     scene->edit_actor = (ecs_entity){ 0 };
     scene->dragging_actor = false;

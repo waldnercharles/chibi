@@ -542,6 +542,7 @@ bool shader_graph_from_graph(const graph *source, shader_graph *result, shader_e
     if (!shader_graph_validate(&ir, err)) {
         goto failed;
     }
+    shader_graph_optimize(&ir);
     afree(s.cache);
     afree(s.visiting);
     shader_graph_free(result);

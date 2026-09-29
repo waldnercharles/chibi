@@ -170,6 +170,9 @@ int shader_graph_add_image(shader_graph *g, const shader_image_source *source);
 const char *shader_op_name(shader_op op);
 int shader_op_inputs(shader_op op);
 bool shader_graph_validate(const shader_graph *g, shader_error *error);
+/* Folds constants, removes exact identities and duplicates, and drops nodes no
+ * output reads. The graph must validate; the result evaluates the same. */
+void shader_graph_optimize(shader_graph *g);
 bool shader_graph_eval_outputs(
     const shader_graph *g,
     const shader_sample_context *sample,

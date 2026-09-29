@@ -161,7 +161,20 @@ The authored JSON is loaded into graph assets. Library calls are resolved agains
 the project's asset catalog. The shader adapter checks supported nodes and types,
 rejects cycles, and converts the graph to a small ordered intermediate
 representation. That representation can be evaluated on the CPU or emitted as
-GLSL. The renderer compiles the generated GLSL through Cute's shader backend and
+GLSL.
+
+`shader_graph_optimize` runs on every compiled graph before either backend sees
+it. It folds operations whose inputs are all constants (ramps, images, time
+and sample coordinates stay live), removes exact identities (`x*1`, `x+0`,
+`x-0`, `x/1`, `min(x,x)`, `saturate(saturate(x))`, `mix(a,b,0)`, a Select on a
+constant condition, and a component read of a vector just built), and merges
+duplicate values, treating operand order of commutative operations as
+irrelevant. It then drops nodes no output reads; Parameters stay so the asset
+still lists them. A divisor that is provably positive (a positive constant,
+`max` with one, or a sum or clamp of them) loses its zero guard in GLSL.
+Across the authored materials the CPU evaluator now visits 550 nodes instead of
+1,321; generated GLSL has about 5% fewer statements than the previous
+emit-time deduplication, since GPU compilers already fold constants. The renderer compiles the generated GLSL through Cute's shader backend and
 supplies each entity's parameters, coordinates and time.
 
 The 3D renderer evaluates Surface graphs per fragment. An instance parameter

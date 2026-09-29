@@ -541,8 +541,164 @@ static void vector_inline_sources()
     behavior_asset_free(asset);
 }
 
+static unsigned random_state = 12345;
+static int pick(int count)
+{
+    random_state = random_state * 1103515245u + 12345u;
+    return (int)((random_state >> 16) % (unsigned)count);
+}
+
+/* A random valid program over arithmetic, selection and vector operations,
+ * with constants chosen to exercise identities and folding. */
+static void random_program(shader_graph *ir)
+{
+    static const float constants[] = { 0, 1, -1, 2, 0.5f, 3 };
+    static const shader_op ops[] = {
+        SHADER_ADD,   SHADER_SUBTRACT, SHADER_MULTIPLY,   SHADER_DIVIDE,
+        SHADER_MIN,   SHADER_MAX,      SHADER_ABS,        SHADER_SIN,
+        SHADER_FRACT, SHADER_MIX,      SHADER_SELECT,     SHADER_SATURATE,
+        SHADER_CLAMP, SHADER_STEP,     SHADER_SMOOTHSTEP, SHADER_X,
+        SHADER_Y,     SHADER_VECTOR2,  SHADER_LENGTH,     SHADER_DOT,
+        SHADER_NOISE
+    };
+    shader_graph_init(ir);
+    for (int i = 0; i < 6; i++) {
+        int c = shader_graph_add(ir, SHADER_CONSTANT, 1);
+        ir->nodes[c].value[0] = constants[i];
+    }
+    int p = shader_graph_add(ir, SHADER_PARAMETER, 1);
+    ir->nodes[p].parameter = 0;
+    shader_graph_add(ir, SHADER_POSITION, 2);
+    shader_graph_add(ir, SHADER_TIME, 1);
+    ir->output_count = 1;
+    while (acount(ir->nodes) < 60) {
+        shader_op op = ops[pick((int)(sizeof ops / sizeof *ops))];
+        int width = op == SHADER_VECTOR2 ? 2 : pick(3) ? 1 : 2;
+        int index = shader_graph_add(ir, op, width);
+        for (int j = 0; j < shader_op_inputs(op); j++) {
+            ir->nodes[index].input[j] = pick(index);
+        }
+        ir->output[0] = index;
+        if (!shader_graph_validate(ir, NULL)) {
+            asetlen(ir->nodes, index);
+        }
+    }
+    ir->output_count = 4;
+    for (int i = 1; i < 4; i++) {
+        ir->output[i] = acount(ir->nodes) - 1 - 7 * i;
+    }
+}
+
+static bool same_float(float a, float b)
+{
+    return a == b || (isnan(a) && isnan(b));
+}
+
+static void optimizer_matches_source()
+{
+    int removed = 0;
+    for (int trial = 0; trial < 200; trial++) {
+        shader_graph source, optimized;
+        random_program(&source);
+        shader_graph_init(&optimized);
+        for (int i = 0; i < acount(source.nodes); i++) {
+            apush(optimized.nodes, source.nodes[i]);
+        }
+        memcpy(optimized.output, source.output, sizeof source.output);
+        optimized.output_count = source.output_count;
+        shader_graph_optimize(&optimized);
+        shader_error error;
+        assert(shader_graph_validate(&optimized, &error));
+        assert(acount(optimized.nodes) <= acount(source.nodes));
+        removed += acount(source.nodes) - acount(optimized.nodes);
+        for (int sample_index = 0; sample_index < 8; sample_index++) {
+            shader_sample_context sample = { .position = { sample_index * 0.7f - 2,
+                                                           1.5f - sample_index },
+                                             .time = sample_index * 0.25f };
+            float params[32][4] = { { sample_index - 3.5f } };
+            float a[8][4], b[8][4];
+            assert(shader_graph_eval_outputs(&source, &sample, params, a, &error));
+            assert(shader_graph_eval_outputs(&optimized, &sample, params, b, &error));
+            for (int i = 0; i < source.output_count; i++) {
+                for (int j = 0; j < source.nodes[source.output[i]].width; j++) {
+                    assert(same_float(a[i][j], b[i][j]));
+                }
+            }
+        }
+        shader_graph_free(&source);
+        shader_graph_free(&optimized);
+    }
+    assert(removed > 200 * 10);
+}
+
+static void optimizer_rewrites()
+{
+    shader_graph ir;
+    shader_graph_init(&ir);
+    int one = shader_graph_add(&ir, SHADER_CONSTANT, 1);
+    ir.nodes[one].value[0] = 1;
+    int two = shader_graph_add(&ir, SHADER_CONSTANT, 1);
+    ir.nodes[two].value[0] = 2;
+    int three = shader_graph_add(&ir, SHADER_CONSTANT, 1);
+    ir.nodes[three].value[0] = 3;
+    int speed = shader_graph_add(&ir, SHADER_PARAMETER, 1);
+    ir.nodes[speed].parameter = 4;
+    int unused = shader_graph_add(&ir, SHADER_PARAMETER, 1);
+    ir.nodes[unused].parameter = 5;
+    int time = shader_graph_add(&ir, SHADER_TIME, 1);
+    int five = shader_graph_add(&ir, SHADER_ADD, 1); /* 2 + 3 folds to 5. */
+    ir.nodes[five].input[0] = two;
+    ir.nodes[five].input[1] = three;
+    int scaled = shader_graph_add(&ir, SHADER_MULTIPLY, 1); /* speed * 1 is speed. */
+    ir.nodes[scaled].input[0] = speed;
+    ir.nodes[scaled].input[1] = one;
+    int left = shader_graph_add(&ir, SHADER_MULTIPLY, 1); /* time * speed */
+    ir.nodes[left].input[0] = time;
+    ir.nodes[left].input[1] = scaled;
+    int right = shader_graph_add(&ir, SHADER_MULTIPLY, 1); /* speed * time, the same value */
+    ir.nodes[right].input[0] = speed;
+    ir.nodes[right].input[1] = time;
+    int pair = shader_graph_add(&ir, SHADER_VECTOR2, 2);
+    ir.nodes[pair].input[0] = left;
+    ir.nodes[pair].input[1] = five;
+    int x = shader_graph_add(&ir, SHADER_X, 1); /* vec2(left, 5).x is left. */
+    ir.nodes[x].input[0] = pair;
+    int sum = shader_graph_add(&ir, SHADER_ADD, 1);
+    ir.nodes[sum].input[0] = x;
+    ir.nodes[sum].input[1] = right;
+    int ratio = shader_graph_add(&ir, SHADER_DIVIDE, 1);
+    ir.nodes[ratio].input[0] = sum;
+    ir.nodes[ratio].input[1] = five;
+    ir.output[0] = ratio;
+    ir.output_count = 1;
+    shader_graph_optimize(&ir);
+    shader_error error;
+    assert(shader_graph_validate(&ir, &error));
+    /* speed, unused, time, 5, speed * time, the sum and the ratio remain. */
+    assert(acount(ir.nodes) == 7);
+    const shader_node *out = &ir.nodes[ir.output[0]];
+    assert(out->op == SHADER_DIVIDE);
+    const shader_node *add = &ir.nodes[out->input[0]];
+    assert(add->op == SHADER_ADD && add->input[0] == add->input[1]);
+    assert(
+        ir.nodes[out->input[1]].op == SHADER_CONSTANT &&
+        ir.nodes[out->input[1]].value[0] == 5
+    );
+    int parameters = 0;
+    for (int i = 0; i < acount(ir.nodes); i++) {
+        parameters += ir.nodes[i].op == SHADER_PARAMETER;
+    }
+    assert(parameters == 2);
+    char *glsl = shader_graph_glsl_named(&ir, "optimized", &error);
+    assert(glsl && !strstr(glsl, "== 0.0 ?"));
+    free(glsl);
+    shader_graph_free(&ir);
+}
+
 void test_shader_graph()
 {
+    optimizer_rewrites();
+    optimizer_matches_source();
     vector_inline_sources();
     parameter_slots();
     preview_parameter_validation();

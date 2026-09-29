@@ -1,0 +1,16 @@
+name: PrismBolt
+components:
+  GAME.GameAppearance: {antialias: 1.0, color: 3488546815, height: 3.0, shape: Capsule, width: 12.0}
+  GAME.GameBody: {continuous: true, type: Kinematic}
+  GAME.GameCollider: {category: 16, mask: 1, radius: 1.8, sensor: true}
+  GAME.GameMaterial:
+    absorption: 0.05
+    emission_color: 3488546815
+    emission_intensity: 0.55
+    emission_multiplier: 1.0
+    scene: 3488546815
+  GAME.GameOrientation: {}
+  GAME.GameProjectile: {bounce: 3, damage: 8, lifetime: 2.4, payload: -1, speed: 460.0}
+  GAME.GameTransform: {}
+  GAME.GameVelocity: {}
+behaviors: [Shot]

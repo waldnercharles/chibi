@@ -1,0 +1,35 @@
+name: FrosterDeath
+components:
+  GAME.GameAppearance: {antialias: 2.0, color: 2683633408, height: 26.0, shape: Circle, width: 26.0}
+  GAME.GameMaterial:
+    emission_color: 2683633663
+    emission_intensity: 1.1
+    emission_multiplier: 1.0
+    scene: 2683633408
+  GAME.GameOrientation: {}
+  GAME.GameParticleEmitter:
+    absorption: 0.001
+    active: true
+    burst_count: 34
+    color: 2683633663
+    direction: {x: 1.0}
+    drag:
+      end: {x: 1.5, "y": 3.5}
+      exponent: 1.0
+      start: {x: 1.5, "y": 3.5}
+    emission:
+      exponent: 1.0
+      start: {x: 0.6, "y": 1.1}
+    end_color: 2683633408
+    lifetime: {x: 0.35, "y": 0.9}
+    planar: true
+    shape: Streak
+    size:
+      exponent: 1.0
+      start: {x: 0.7, "y": 1.8}
+    speed: {x: 60.0, "y": 280.0}
+    spread: 6.2831855
+    stretch: {x: 0.02, "y": 0.05}
+    velocity_align: true
+  GAME.GameTransform: {}
+behaviors: [Glow]

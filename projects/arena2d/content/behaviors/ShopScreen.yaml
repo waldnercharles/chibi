@@ -1,0 +1,1004 @@
+version: 3
+name: ShopScreen
+id_counter: 1039
+description: 'A Sanctum shop terminal: rolls four module offers when it appears, opens with E nearby, and sells modules into the Stash, hull repairs and rerolls for scrap.'
+owner_type: ecs.entity
+variables:
+- id: 1
+  name: modName
+  type: name
+  container: 1
+  default:
+  - Pulse Bolt
+  - Plasma Glob
+  - Rail Needle
+  - Seeker
+  - Scatter
+  - Arc Lance
+  - Bore
+  - Cryo Shard
+  - Acid Flask
+  - Mine
+  - Singularity
+  - ""
+  - ""
+  - ""
+  - ""
+  - ""
+  - ""
+  - ""
+  - ""
+  - ""
+  - Twin
+  - Homing
+  - Ricochet
+  - Pierce
+  - Accelerate
+  - Heavy
+  - Incendiary
+  - Cryo
+  - Corrosive
+  - Split
+  - Blast
+  - Overcharge
+  - Conductive
+  - ""
+  - ""
+  - ""
+  - ""
+  - ""
+  - ""
+  - ""
+  - Trigger
+  - Timer
+  - Burst
+- id: 2
+  name: modKind
+  type: int
+  container: 1
+  default:
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 2
+  - 2
+  - 2
+- id: 3
+  name: modTier
+  type: int
+  container: 1
+  default:
+  - 0
+  - 1
+  - 1
+  - 1
+  - 0
+  - 2
+  - 0
+  - 1
+  - 2
+  - 1
+  - 3
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 1
+  - 0
+  - 1
+  - 0
+  - 1
+  - 1
+  - 1
+  - 2
+  - 2
+  - 1
+  - 2
+  - 2
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 1
+  - 1
+  - 2
+- id: 4
+  name: modBlurb
+  type: name
+  container: 1
+  default:
+  - A quick bolt of light.
+  - Slow, hot, and it bursts into flame.
+  - Pierces bodies. Barely slows.
+  - A missile that hunts and bursts.
+  - Five shards in a wide cone.
+  - A crackling lance that leaps between bodies.
+  - A short-lived drill for rock.
+  - Freezes what it touches.
+  - Breaks into eating acid.
+  - Hangs in place until something passes.
+  - A slow knot of gravity.
+  - ""
+  - ""
+  - ""
+  - ""
+  - ""
+  - ""
+  - ""
+  - ""
+  - ""
+  - The next emitter fires twice.
+  - Shots turn toward the nearest body.
+  - Shots bounce off rock twice.
+  - Shots pass through two more bodies.
+  - Shots gain speed as they fly.
+  - Much more damage, slower shots.
+  - Shots set things alight.
+  - Shots chill and freeze.
+  - Shots eat away at bodies.
+  - Shots break into three shards when they end.
+  - Shots explode where they end.
+  - More damage and range.
+  - Shots arc to nearby bodies.
+  - ""
+  - ""
+  - ""
+  - ""
+  - ""
+  - ""
+  - ""
+  - The rest of the list is cast where the next shot hits.
+  - The rest of the list is cast from the next shot after a moment.
+  - The rest of the list is cast where the next shot ends.
+- id: 5
+  name: pool
+  type: int
+  container: 1
+  default:
+  - 0
+  - 1
+  - 2
+  - 3
+  - 4
+  - 5
+  - 6
+  - 7
+  - 8
+  - 9
+  - 10
+  - 20
+  - 21
+  - 22
+  - 23
+  - 24
+  - 25
+  - 26
+  - 27
+  - 28
+  - 29
+  - 30
+  - 31
+  - 32
+  - 40
+  - 41
+  - 42
+- id: 6
+  name: offerId
+  type: int
+  container: 1
+  default: [0, 0, 0, 0]
+- id: 7
+  name: offerSold
+  type: int
+  container: 1
+  default: [0, 0, 0, 0]
+- {id: 8, name: start, type: float}
+- {id: 9, name: stride, type: float, default: 1.0}
+- {id: 10, name: k, type: float}
+- {id: 617, name: near, type: float}
+- {id: 618, name: open, type: float}
+- {id: 619, name: held, type: float}
+- id: 775
+  name: parts
+  type: name
+  container: 1
+  default: [ShopTerminalBase, ShopTerminalDisplay, ShopTerminalBeacon]
+- id: 776
+  name: partX
+  type: float
+  container: 1
+  default: [0.0, 0.0, 0.0]
+- id: 777
+  name: partY
+  type: float
+  container: 1
+  default: [23.0, -6.0, -34.0]
+graphs:
+- kind: event
+  name: ""
+  nodes:
+  - {id: 761, type: Event, reference_name: Begin}
+  - id: 763
+    type: Set UI Data
+    inputs:
+      Name: open
+      Value: {type: int}
+  - id: 769
+    type: Set UI Data
+    inputs:
+      Name: near
+      Value: {type: int}
+  - id: 778
+    type: Get Variable
+    reference_id: 775
+    reference_name: parts
+    outputs:
+      Value: {type: name, container: 1}
+  - id: 780
+    type: ForEach
+    inputs:
+      Array: {type: name}
+    outputs:
+      Array Element: {type: name}
+  - id: 787
+    type: Get Variable
+    reference_id: 776
+    reference_name: partX
+    outputs:
+      Value: {type: float, container: 1}
+  - id: 789
+    type: Get
+    inputs:
+      Array: {type: float}
+    outputs:
+      Item: {type: float}
+  - id: 793
+    type: Get Variable
+    reference_id: 777
+    reference_name: partY
+    outputs:
+      Value: {type: float, container: 1}
+  - id: 795
+    type: Get
+    inputs:
+      Array: {type: float}
+    outputs:
+      Item: {type: float}
+  - {id: 799, type: Spawn Prototype}
+  - id: 816
+    type: Behavior Expression
+    reference_id: 804
+    reference_name: pos.x + dx
+    inputs:
+      pos:
+        type: struct
+        type_name: GameTransform
+        binding: {kind: component, component: GAME.GameTransform}
+      dx: {type: float}
+    outputs:
+      Result: {type: float}
+  - id: 846
+    type: Behavior Expression
+    reference_id: 834
+    reference_name: pos.y + dy
+    inputs:
+      pos:
+        type: struct
+        type_name: GameTransform
+        binding: {kind: component, component: GAME.GameTransform}
+      dy: {type: float}
+    outputs:
+      Result: {type: float}
+  - id: 864
+    type: Make Struct
+    inputs:
+      x: {id: 867}
+      Type: {id: 865, default: GameTransform}
+    outputs:
+      GameTransform: {id: 869}
+  - {id: 870, type: SetEntity_GameTransform}
+  - id: 876
+    type: Event
+    reference_name: Tick
+    outputs:
+      DeltaSeconds: {type: float, kind: data}
+  - id: 879
+    type: Get Global Variable
+    inputs: {Name: Player}
+    outputs:
+      Value: {type: handle, type_name: ecs.entity}
+  - id: 882
+    type: Has Component
+    inputs: {Component: GAME.GameTransform}
+  - {id: 886, type: Branch}
+  - id: 891
+    type: GetEntity_GameTransform
+    outputs:
+      Value.x: {}
+      Value.y: {}
+  - id: 941
+    type: Behavior Expression
+    reference_id: 896
+    reference_name: near = step((px - pos.x) * (px - pos.x) + (py - pos.y) * (py - pos.y), 4900.0)
+    inputs:
+      Exec: {id: 947, kind: exec}
+      near:
+        id: 942
+        type: float
+        binding: {kind: variable, variable_id: 617, source_asset: ShopScreen}
+      px: {type: float}
+      pos:
+        type: struct
+        type_name: GameTransform
+        binding: {kind: component, component: GAME.GameTransform}
+      py: {type: float}
+    outputs:
+      Then: {id: 948, kind: exec}
+      Result: {id: 946, type: float}
+  - id: 1011
+    type: Behavior Expression
+    reference_id: 1001
+    reference_name: near = 0
+    inputs:
+      Exec: {id: 1014, kind: exec}
+      near:
+        id: 1012
+        type: float
+        binding: {kind: variable, variable_id: 617, source_asset: ShopScreen}
+    outputs:
+      Then: {id: 1015, kind: exec}
+      Result: {id: 1013, type: float}
+  - id: 1031
+    type: Get Variable
+    reference_id: 617
+    reference_name: near
+    outputs:
+      Value: {type: float}
+  - {id: 1033, type: Set UI Data}
+  edges:
+  - {from: 761.Then, to: 763.Exec}
+  - {from: 763.Then, to: 769.Exec}
+  - {from: 769.Then, to: 780.Exec}
+  - {from: 778.Value, to: 780.Array}
+  - {from: 780.Body, to: 799.Exec}
+  - {from: 780.Array Element, to: 799.Prototype}
+  - {from: 780.Index, to: 789.Index}
+  - {from: 780.Index, to: 795.Index}
+  - {from: 787.Value, to: 789.Array}
+  - {from: 789.Item, to: 816.dx}
+  - {from: 793.Value, to: 795.Array}
+  - {from: 795.Item, to: 846.dy}
+  - {from: 799.Then, to: 870.Exec}
+  - {from: 799.Entity, to: 870.Entity}
+  - {from: 816.Result, to: 864.x}
+  - {from: 846.Result, to: 864.y}
+  - {from: 864.GameTransform, to: 870.Value, conversion: game_transform_to_cf}
+  - {from: 876.Then, to: 886.Exec}
+  - {from: 879.Value, to: 882.Entity}
+  - {from: 879.Value, to: 891.Entity}
+  - {from: 882.Value, to: 886.Condition}
+  - {from: 886.True, to: 941.Exec}
+  - {from: 886.False, to: 1011.Exec}
+  - {from: 891.Value.x, to: 941.px}
+  - {from: 891.Value.y, to: 941.py}
+- id: 11
+  kind: function
+  name: Roll
+  entry_id: 12
+  return_id: 14
+  call_depth_limit: 64
+  nodes:
+  - {id: 12, type: Function Entry}
+  - {id: 14, type: Return}
+  - id: 35
+    type: Behavior Expression
+    reference_id: 16
+    reference_name: start = floor(rand() * 27)
+    inputs:
+      Exec: {id: 38, kind: exec}
+      start:
+        id: 36
+        type: float
+        binding: {kind: variable, variable_id: 8, source_asset: ShopScreen}
+    outputs:
+      Then: {id: 39, kind: exec}
+      Result: {id: 37, type: float}
+  - id: 83
+    type: Behavior Expression
+    reference_id: 64
+    reference_name: k = floor(rand() * 9)
+    inputs:
+      Exec: {id: 86, kind: exec}
+      k:
+        id: 84
+        type: float
+        binding: {kind: variable, variable_id: 10, source_asset: ShopScreen}
+    outputs:
+      Then: {id: 87, kind: exec}
+      Result: {id: 85, type: float}
+  - id: 141
+    type: Behavior Expression
+    reference_id: 112
+    reference_name: stride = k + floor(k / 2) + 1
+    inputs:
+      Exec: {id: 145, kind: exec}
+      stride:
+        id: 142
+        type: float
+        binding: {kind: variable, variable_id: 9, source_asset: ShopScreen}
+      k:
+        type: double
+        binding: {kind: variable, variable_id: 10, source_asset: ShopScreen}
+    outputs:
+      Then: {id: 146, kind: exec}
+      Result: {id: 144, type: float}
+  - id: 181
+    type: ForLoop
+    inputs: {LastIndex: 3}
+  - id: 212
+    type: Behavior Expression
+    reference_id: 188
+    reference_name: (start + i * stride) % 27
+    inputs:
+      start:
+        type: double
+        binding: {kind: variable, variable_id: 8, source_asset: ShopScreen}
+      i: {type: int}
+      stride:
+        type: double
+        binding: {kind: variable, variable_id: 9, source_asset: ShopScreen}
+    outputs:
+      Result: {type: double}
+  - id: 217
+    type: Get Variable
+    reference_id: 5
+    reference_name: pool
+    outputs:
+      Value: {container: 1}
+  - id: 219
+    type: Get
+    inputs:
+      Array: {type: int}
+    outputs:
+      Item: {type: int}
+  - id: 223
+    type: Get Variable
+    reference_id: 6
+    reference_name: offerId
+    outputs:
+      Value: {container: 1}
+  - id: 225
+    type: Set Array Elem
+    inputs:
+      Array: {type: int}
+      Item: {type: int}
+    outputs:
+      Array: {type: int}
+  - id: 230
+    type: Set Variable
+    reference_id: 6
+    reference_name: offerId
+    inputs:
+      Value: {container: 1}
+    outputs:
+      Value: {container: 1}
+  - id: 235
+    type: Get Variable
+    reference_id: 7
+    reference_name: offerSold
+    outputs:
+      Value: {container: 1}
+  - id: 237
+    type: Set Array Elem
+    inputs:
+      Array: {type: int}
+      Item: {type: int}
+    outputs:
+      Array: {type: int}
+  - id: 242
+    type: Set Variable
+    reference_id: 7
+    reference_name: offerSold
+    inputs:
+      Value: {container: 1}
+    outputs:
+      Value: {container: 1}
+  edges:
+  - {from: 12.Exec, to: 35.Exec}
+  - {from: 35.Then, to: 83.Exec}
+  - {from: 83.Then, to: 141.Exec}
+  - {from: 141.Then, to: 181.Exec}
+  - {from: 181.Body, to: 230.Exec}
+  - {from: 181.Index, to: 212.i}
+  - {from: 181.Index, to: 225.Index}
+  - {from: 181.Index, to: 237.Index}
+  - {from: 181.Completed, to: 14.Exec}
+  - {from: 212.Result, to: 219.Index, conversion: To Integer}
+  - {from: 217.Value, to: 219.Array}
+  - {from: 219.Item, to: 225.Item}
+  - {from: 223.Value, to: 225.Array}
+  - {from: 225.Array, to: 230.Value}
+  - {from: 230.Then, to: 242.Exec}
+  - {from: 235.Value, to: 237.Array}
+  - {from: 237.Array, to: 242.Value}
+- id: 16
+  kind: function
+  math_expression: start = floor(rand() * 27)
+  entry_id: 41
+- {id: 64, kind: function, math_expression: k = floor(rand() * 9), entry_id: 89}
+- id: 112
+  kind: function
+  math_expression: stride = k + floor(k / 2) + 1
+  entry_id: 148
+- id: 188
+  kind: function
+  math_expression: (start + i * stride) % 27
+  entry_id: 189
+- id: 247
+  kind: function
+  name: Show
+  entry_id: 248
+  return_id: 250
+  call_depth_limit: 64
+  nodes:
+  - {id: 248, type: Function Entry}
+  - {id: 250, type: Return}
+  - id: 252
+    type: Get Global Variable
+    inputs: {Name: Scrap}
+    outputs:
+      Value: {type: int}
+  - id: 255
+    type: Get Global Variable
+    inputs: {Name: StatPrice}
+    outputs:
+      Value: {type: double}
+  - id: 258
+    type: Set UI Data
+    inputs:
+      Name: scrap
+      Value: {type: int}
+  - id: 264
+    type: ForLoop
+    inputs: {LastIndex: 3}
+  - id: 271
+    type: Get Variable
+    reference_id: 6
+    reference_name: offerId
+    outputs:
+      Value: {container: 1}
+  - {id: 273, type: Get}
+  - id: 277
+    type: Get Variable
+    reference_id: 3
+    reference_name: modTier
+    outputs:
+      Value: {container: 1}
+  - {id: 279, type: Get}
+  - id: 312
+    type: Behavior Expression
+    reference_id: 283
+    reference_name: round((18 + 14 * t) * m)
+    inputs:
+      t: {}
+      m: {type: double}
+    outputs:
+      Result: {type: double}
+  - id: 316
+    type: Get Variable
+    reference_id: 7
+    reference_name: offerSold
+    outputs:
+      Value: {container: 1}
+  - {id: 318, type: Get}
+  - id: 334
+    type: Behavior Expression
+    reference_id: 322
+    reference_name: step(p, s)
+    inputs:
+      p: {type: double}
+      s: {type: int}
+    outputs:
+      Result: {type: double}
+  - id: 338
+    type: Get Variable
+    reference_id: 1
+    reference_name: modName
+    outputs:
+      Value: {type: name, container: 1}
+  - {id: 340, type: Get}
+  - id: 344
+    type: Get Variable
+    reference_id: 2
+    reference_name: modKind
+    outputs:
+      Value: {container: 1}
+  - {id: 346, type: Get}
+  - id: 350
+    type: Get Variable
+    reference_id: 4
+    reference_name: modBlurb
+    outputs:
+      Value: {type: name, container: 1}
+  - {id: 352, type: Get}
+  - id: 356
+    type: Format Text
+    inputs: {Format: 'offers.{}.name'}
+  - {id: 360, type: To Name}
+  - {id: 363, type: Set UI Data}
+  - id: 369
+    type: Format Text
+    inputs: {Format: 'offers.{}.kind'}
+  - {id: 373, type: To Name}
+  - {id: 376, type: Set UI Data}
+  - id: 382
+    type: Format Text
+    inputs: {Format: 'offers.{}.tier'}
+  - {id: 386, type: To Name}
+  - {id: 389, type: Set UI Data}
+  - id: 395
+    type: Format Text
+    inputs: {Format: 'offers.{}.blurb'}
+  - {id: 399, type: To Name}
+  - {id: 402, type: Set UI Data}
+  - id: 408
+    type: Format Text
+    inputs: {Format: 'offers.{}.price'}
+  - {id: 412, type: To Name}
+  - id: 415
+    type: Set UI Data
+    inputs:
+      Value: {type: double}
+  - id: 421
+    type: Format Text
+    inputs: {Format: 'offers.{}.sold'}
+  - {id: 425, type: To Name}
+  - {id: 428, type: Set UI Data}
+  - id: 434
+    type: Format Text
+    inputs: {Format: 'offers.{}.afford'}
+  - {id: 438, type: To Name}
+  - id: 441
+    type: Set UI Data
+    inputs:
+      Value: {type: double}
+  - id: 447
+    type: Get Global Variable
+    inputs: {Name: Player}
+  - id: 450
+    type: GetEntity_GameHealth
+    outputs:
+      Value.current: {}
+      Value.maximum: {}
+  - id: 455
+    type: Get Global Variable
+    inputs: {Name: StatPrice}
+    outputs:
+      Value: {type: double}
+  - id: 458
+    type: Get Global Variable
+    inputs: {Name: Scrap}
+    outputs:
+      Value: {type: int}
+  - id: 478
+    type: Behavior Expression
+    reference_id: 461
+    reference_name: round(12 * m)
+    inputs:
+      m: {type: double}
+    outputs:
+      Result: {type: double}
+  - id: 498
+    type: Behavior Expression
+    reference_id: 481
+    reference_name: round(8 * m)
+    inputs:
+      m: {type: double}
+    outputs:
+      Result: {type: double}
+  - id: 501
+    type: Set UI Data
+    inputs:
+      Name: repairPrice
+      Value: {type: double}
+  - id: 507
+    type: Set UI Data
+    inputs:
+      Name: rerollPrice
+      Value: {type: double}
+  - id: 513
+    type: Set UI Data
+    inputs: {Name: hull}
+  - id: 519
+    type: Set UI Data
+    inputs: {Name: hullMax}
+  - id: 544
+    type: Behavior Expression
+    reference_id: 525
+    reference_name: c / max(1, m)
+    inputs:
+      c: {}
+      m: {}
+    outputs:
+      Result: {type: double}
+  - id: 548
+    type: Set UI Data
+    inputs:
+      Name: hullRatio
+      Value: {type: double}
+  - id: 583
+    type: Behavior Expression
+    reference_id: 554
+    reference_name: step(p, s) * step(c + 1, m)
+    inputs:
+      p: {type: double}
+      s: {type: int}
+      c: {}
+      m: {}
+    outputs:
+      Result: {type: double}
+  - id: 589
+    type: Set UI Data
+    inputs:
+      Name: canRepair
+      Value: {type: double}
+  - id: 607
+    type: Behavior Expression
+    reference_id: 595
+    reference_name: step(p, s)
+    inputs:
+      p: {type: double}
+      s: {type: int}
+    outputs:
+      Result: {type: double}
+  - id: 611
+    type: Set UI Data
+    inputs:
+      Name: canReroll
+      Value: {type: double}
+  edges:
+  - {from: 248.Exec, to: 258.Exec}
+  - {from: 252.Value, to: 258.Value}
+  - {from: 252.Value, to: 334.s}
+  - {from: 255.Value, to: 312.m}
+  - {from: 258.Then, to: 264.Exec}
+  - {from: 264.Body, to: 363.Exec}
+  - {from: 264.Index, to: 273.Index}
+  - {from: 264.Index, to: 318.Index}
+  - {from: 264.Index, to: 356.Arg0}
+  - {from: 264.Index, to: 369.Arg0}
+  - {from: 264.Index, to: 382.Arg0}
+  - {from: 264.Index, to: 395.Arg0}
+  - {from: 264.Index, to: 408.Arg0}
+  - {from: 264.Index, to: 421.Arg0}
+  - {from: 264.Index, to: 434.Arg0}
+  - {from: 264.Completed, to: 501.Exec}
+  - {from: 271.Value, to: 273.Array}
+  - {from: 273.Item, to: 279.Index}
+  - {from: 273.Item, to: 340.Index}
+  - {from: 273.Item, to: 346.Index}
+  - {from: 273.Item, to: 352.Index}
+  - {from: 277.Value, to: 279.Array}
+  - {from: 279.Item, to: 312.t}
+  - {from: 279.Item, to: 389.Value}
+  - {from: 312.Result, to: 415.Value}
+  - {from: 316.Value, to: 318.Array}
+  - {from: 318.Item, to: 428.Value}
+  - {from: 334.Result, to: 441.Value}
+  - {from: 338.Value, to: 340.Array}
+  - {from: 340.Item, to: 363.Value}
+  - {from: 344.Value, to: 346.Array}
+  - {from: 346.Item, to: 376.Value}
+  - {from: 350.Value, to: 352.Array}
+  - {from: 352.Item, to: 402.Value}
+  - {from: 356.Result, to: 360.Value}
+  - {from: 360.Name, to: 363.Name}
+  - {from: 363.Then, to: 376.Exec}
+  - {from: 369.Result, to: 373.Value}
+  - {from: 373.Name, to: 376.Name}
+  - {from: 376.Then, to: 389.Exec}
+  - {from: 382.Result, to: 386.Value}
+  - {from: 386.Name, to: 389.Name}
+  - {from: 389.Then, to: 402.Exec}
+  - {from: 395.Result, to: 399.Value}
+  - {from: 399.Name, to: 402.Name}
+  - {from: 402.Then, to: 415.Exec}
+  - {from: 408.Result, to: 412.Value}
+  - {from: 412.Name, to: 415.Name}
+  - {from: 415.Then, to: 428.Exec}
+  - {from: 421.Result, to: 425.Value}
+  - {from: 425.Name, to: 428.Name}
+  - {from: 428.Then, to: 441.Exec}
+  - {from: 434.Result, to: 438.Value}
+  - {from: 438.Name, to: 441.Name}
+  - {from: 447.Value, to: 450.Entity}
+  - {from: 450.Value.current, to: 513.Value}
+  - {from: 450.Value.current, to: 544.c}
+  - {from: 450.Value.current, to: 583.c}
+  - {from: 450.Value.maximum, to: 519.Value}
+  - {from: 450.Value.maximum, to: 544.m}
+  - {from: 450.Value.maximum, to: 583.m}
+  - {from: 455.Value, to: 478.m}
+  - {from: 455.Value, to: 498.m}
+  - {from: 458.Value, to: 583.s}
+  - {from: 458.Value, to: 607.s}
+  - {from: 478.Result, to: 501.Value}
+  - {from: 478.Result, to: 583.p}
+  - {from: 498.Result, to: 507.Value}
+  - {from: 498.Result, to: 607.p}
+  - {from: 501.Then, to: 507.Exec}
+  - {from: 507.Then, to: 513.Exec}
+  - {from: 513.Then, to: 519.Exec}
+  - {from: 519.Then, to: 548.Exec}
+  - {from: 544.Result, to: 548.Value}
+  - {from: 548.Then, to: 589.Exec}
+  - {from: 583.Result, to: 589.Value}
+  - {from: 589.Then, to: 611.Exec}
+  - {from: 607.Result, to: 611.Value}
+  - {from: 611.Then, to: 250.Exec}
+- id: 283
+  kind: function
+  math_expression: round((18 + 14 * t) * m)
+  entry_id: 284
+- {id: 322, kind: function, math_expression: 'step(p, s)', entry_id: 323}
+- {id: 461, kind: function, math_expression: round(12 * m), entry_id: 462}
+- {id: 481, kind: function, math_expression: round(8 * m), entry_id: 482}
+- {id: 525, kind: function, math_expression: 'c / max(1, m)', entry_id: 526}
+- id: 554
+  kind: function
+  math_expression: step(p, s) * step(c + 1, m)
+  entry_id: 555
+- {id: 595, kind: function, math_expression: 'step(p, s)', entry_id: 596}
+- id: 620
+  kind: function
+  name: Close
+  entry_id: 621
+  return_id: 623
+  call_depth_limit: 64
+  nodes:
+  - {id: 621, type: Function Entry}
+  - {id: 623, type: Return}
+  - id: 639
+    type: Behavior Expression
+    reference_id: 625
+    reference_name: open > 0.5
+    inputs:
+      open:
+        type: double
+        flags: 0
+        binding: {kind: variable, variable_id: 618, source_asset: ShopScreen}
+    outputs:
+      Result: {type: bool}
+  - {id: 645, type: Branch}
+  - id: 660
+    type: Behavior Expression
+    reference_id: 650
+    reference_name: open = 0
+    inputs:
+      Exec: {id: 663, kind: exec}
+      open:
+        id: 661
+        type: float
+        binding: {kind: variable, variable_id: 618, source_asset: ShopScreen}
+    outputs:
+      Then: {id: 664, kind: exec}
+      Result: {id: 662, type: float}
+  - id: 680
+    type: Set UI Data
+    inputs:
+      Name: open
+      Value: {type: int}
+  - {id: 686, type: Set Time Scale}
+  - id: 690
+    type: Play Sound
+    inputs: {Frequency: 520.0, End Frequency: 260.0, Duration: 0.16, Volume: 0.16}
+  edges:
+  - {from: 621.Exec, to: 645.Exec}
+  - {from: 639.Result, to: 645.Condition}
+  - {from: 645.True, to: 660.Exec}
+  - {from: 645.False, to: 623.Exec}
+  - {from: 660.Then, to: 680.Exec}
+  - {from: 680.Then, to: 686.Exec}
+  - {from: 686.Then, to: 690.Exec}
+  - {from: 690.Then, to: 623.Exec}
+- {id: 625, kind: function, math_expression: open > 0.5, entry_id: 626}
+- {id: 650, kind: function, math_expression: open = 0, entry_id: 666}
+- id: 699
+  kind: function
+  name: Open
+  entry_id: 700
+  return_id: 702
+  call_depth_limit: 64
+  nodes:
+  - {id: 700, type: Function Entry}
+  - {id: 702, type: Return}
+  - id: 714
+    type: Behavior Expression
+    reference_id: 704
+    reference_name: open = 1
+    inputs:
+      Exec: {id: 717, kind: exec}
+      open:
+        id: 715
+        type: float
+        binding: {kind: variable, variable_id: 618, source_asset: ShopScreen}
+    outputs:
+      Then: {id: 718, kind: exec}
+      Result: {id: 716, type: float}
+  - {id: 734, type: Call Function, reference_id: 247, reference_name: Show}
+  - id: 737
+    type: Set UI Data
+    inputs:
+      Name: open
+      Value: {type: int, default: 1}
+  - id: 743
+    type: Set Time Scale
+    inputs: {Scale: 0.0}
+  - id: 747
+    type: Focus UI Element
+    inputs: {Element: '#root'}
+  - id: 752
+    type: Play Sound
+    inputs: {Frequency: 330.0, End Frequency: 660.0, Duration: 0.22, Volume: 0.18}
+  edges:
+  - {from: 700.Exec, to: 714.Exec}
+  - {from: 714.Then, to: 734.Exec}
+  - {from: 734.Then, to: 737.Exec}
+  - {from: 737.Then, to: 743.Exec}
+  - {from: 743.Then, to: 747.Exec}
+  - {from: 747.Then, to: 752.Exec}
+  - {from: 752.Then, to: 702.Exec}
+- {id: 704, kind: function, math_expression: open = 1, entry_id: 720}
+- {id: 804, kind: function, math_expression: pos.x + dx, entry_id: 821}
+- {id: 834, kind: function, math_expression: pos.y + dy, entry_id: 851}
+- id: 896
+  kind: function
+  math_expression: near = step((px - pos.x) * (px - pos.x) + (py - pos.y) * (py - pos.y), 4900.0)
+  entry_id: 950
+- {id: 1001, kind: function, math_expression: near = 0, entry_id: 1017}

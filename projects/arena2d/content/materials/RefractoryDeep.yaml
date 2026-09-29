@@ -1,0 +1,95 @@
+version: 3
+name: RefractoryDeep
+domain: material
+id_counter: 292
+description: 'The Glass Refractory''s distance: cold blue haze crossed by prismatic shafts.'
+graphs:
+- kind: event
+  name: ""
+  nodes:
+  - id: 1
+    type: Shader Surface Output
+    inputs:
+      Base Color:
+        default: {x: 1.0, "y": 1.0, z: 1.0}
+      Emission:
+        default: {x: 0.0, "y": 0.0, z: 0.0}
+      Roughness: 0.9
+      Normal:
+        default: {x: 0.0, "y": 0.0, z: 0.0}
+  - {id: 12, type: Shader WorldPosition}
+  - id: 25
+    type: Behavior Expression
+    reference_id: 14
+    reference_name: vec2(wp.x, wp.z)
+    inputs:
+      wp: {type: struct, type_name: ShaderVec3}
+    outputs:
+      Result: {type: struct, type_name: ShaderVec2}
+  - id: 92
+    type: Behavior Expression
+    reference_id: 45
+    reference_name: noise(p, 0.0015) * 0.6 + noise(p + vec2(211, -9), 0.0045) * 0.4
+    inputs:
+      p: {type: struct, type_name: ShaderVec2}
+    outputs:
+      Result: {type: float}
+  - id: 139
+    type: Behavior Expression
+    reference_id: 95
+    reference_name: smoothstep(0.7, 0.95, noise(vec2(p.x * 0.004 + p.y * 0.002, 3), 1))
+    inputs:
+      p: {type: struct, type_name: ShaderVec2}
+    outputs:
+      Result: {type: float}
+  - id: 226
+    type: Behavior Expression
+    reference_id: 192
+    reference_name: mix(vec3(0.004, 0.008, 0.016), vec3(0.02, 0.04, 0.07), fog)
+    inputs:
+      fog: {type: float}
+    outputs:
+      Result: {type: struct, type_name: ShaderVec3}
+  - id: 278
+    type: Behavior Expression
+    reference_id: 229
+    reference_name: mix(vec3(0.2, 0.5, 0.9), vec3(0.8, 0.5, 0.9), fog) * shaft * fog * 0.05
+    inputs:
+      fog: {type: float}
+      shaft: {type: float}
+    outputs:
+      Result: {type: struct, type_name: ShaderVec3}
+  - id: 290
+    type: Behavior Expression
+    reference_id: 282
+    reference_name: "1"
+    outputs:
+      Result: {type: float}
+  edges:
+  - {from: 12.Value, to: 25.wp}
+  - {from: 25.Result, to: 92.p}
+  - {from: 25.Result, to: 139.p}
+  - {from: 92.Result, to: 226.fog}
+  - {from: 92.Result, to: 278.fog}
+  - {from: 139.Result, to: 278.shaft}
+  - {from: 226.Result, to: 1.Base Color}
+  - {from: 278.Result, to: 1.Emission}
+  - {from: 290.Result, to: 1.Opacity}
+- {id: 14, kind: function, math_expression: 'vec2(wp.x, wp.z)', entry_id: 29}
+- id: 45
+  kind: function
+  math_expression: noise(p, 0.0015) * 0.6 + noise(p + vec2(211, -9), 0.0045) * 0.4
+  entry_id: 46
+- id: 95
+  kind: function
+  math_expression: smoothstep(0.7, 0.95, noise(vec2(p.x * 0.004 + p.y * 0.002, 3), 1))
+  entry_id: 143
+- id: 192
+  kind: function
+  math_expression: mix(vec3(0.004, 0.008, 0.016), vec3(0.02, 0.04, 0.07), fog)
+  entry_id: 193
+- id: 229
+  kind: function
+  math_expression: mix(vec3(0.2, 0.5, 0.9), vec3(0.8, 0.5, 0.9), fog) * shaft * fog * 0.05
+  entry_id: 230
+- {id: 282, kind: function, math_expression: "1", entry_id: 283}

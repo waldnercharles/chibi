@@ -7,6 +7,7 @@
   position: absolute; left: 0; top: 0; right: 0; bottom: 0;
   font-size: 12dp; color: #d8e6ee;
 }
+#root * { box-sizing: border-box; }
 
 .key {
   display: inline-block; min-width: 14dp; height: 16dp; line-height: 16dp; padding: 0 4dp;

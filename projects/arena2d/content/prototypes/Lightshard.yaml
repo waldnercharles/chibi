@@ -1,0 +1,12 @@
+name: Lightshard
+components:
+  GAME.GameAppearance: {antialias: 1.0, color: 3219718143, height: 5.0, shape: Diamond, width: 14.0}
+  GAME.GameMaterial:
+    absorption: 0.1
+    albedo: 3219718143
+    emission_color: 2413363199
+    emission_intensity: 0.16
+    emission_multiplier: 1.0
+    scene: 3219718143
+  GAME.GameOrientation: {}
+  GAME.GameTransform: {}

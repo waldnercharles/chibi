@@ -1,0 +1,115 @@
+version: 3
+name: Voidglass
+domain: material
+id_counter: 297
+description: 'The Heart''s rock: black glass flecked with trapped starlight, rimmed in violet.'
+graphs:
+- kind: event
+  name: ""
+  nodes:
+  - id: 1
+    type: Shader Surface Output
+    inputs:
+      Base Color:
+        default: {x: 1.0, "y": 1.0, z: 1.0}
+      Emission:
+        default: {x: 0.0, "y": 0.0, z: 0.0}
+      Roughness: 0.12
+      Metallic: 0.2
+      Normal:
+        default: {x: 0.0, "y": 0.0, z: 0.0}
+  - {id: 12, type: Shader WorldPosition}
+  - {id: 14, type: Shader Time}
+  - id: 27
+    type: Behavior Expression
+    reference_id: 16
+    reference_name: vec2(wp.x, wp.z)
+    inputs:
+      wp: {type: struct, type_name: ShaderVec3}
+    outputs:
+      Result: {type: struct, type_name: ShaderVec2}
+  - id: 69
+    type: Behavior Expression
+    reference_id: 47
+    reference_name: smoothstep(0.985, 1.0, noise(p, 0.35))
+    inputs:
+      p: {type: struct, type_name: ShaderVec2}
+    outputs:
+      Result: {type: float}
+  - id: 107
+    type: Behavior Expression
+    reference_id: 72
+    reference_name: noise(p + vec2(noise(p, 0.003) * 300, 0), 0.006)
+    inputs:
+      p: {type: struct, type_name: ShaderVec2}
+    outputs:
+      Result: {type: float}
+  - id: 147
+    type: Behavior Expression
+    reference_id: 110
+    reference_name: vec3(0.012, 0.008, 0.02) + vec3(0.05, 0.02, 0.08) * swirl
+    inputs:
+      swirl: {type: float}
+    outputs:
+      Result: {type: struct, type_name: ShaderVec3}
+  - id: 239
+    type: Behavior Expression
+    reference_id: 150
+    reference_name: vec3(0.7, 0.55, 1.0) * stars * 0.25 + vec3(0.3, 0.05, 0.5) * smoothstep(0.7, 0.9, swirl) * 0.06 * (0.7 + 0.3 * sin(t * 0.7))
+    inputs:
+      stars: {type: float}
+      swirl: {type: float}
+      t: {type: float}
+    outputs:
+      Result: {type: struct, type_name: ShaderVec3}
+  - id: 283
+    type: Behavior Expression
+    reference_id: 244
+    reference_name: vec3(swirl - 0.5, 0, noise(p, 0.01) - 0.5) * 0.8
+    inputs:
+      swirl: {type: float}
+      p: {type: struct, type_name: ShaderVec2}
+    outputs:
+      Result: {type: struct, type_name: ShaderVec3}
+  - id: 295
+    type: Behavior Expression
+    reference_id: 287
+    reference_name: "3"
+    outputs:
+      Result: {type: float}
+  edges:
+  - {from: 12.Value, to: 27.wp}
+  - {from: 14.Value, to: 239.t}
+  - {from: 27.Result, to: 69.p}
+  - {from: 27.Result, to: 107.p}
+  - {from: 27.Result, to: 283.p}
+  - {from: 69.Result, to: 239.stars}
+  - {from: 107.Result, to: 147.swirl}
+  - {from: 107.Result, to: 239.swirl}
+  - {from: 107.Result, to: 283.swirl}
+  - {from: 147.Result, to: 1.Base Color}
+  - {from: 239.Result, to: 1.Emission}
+  - {from: 283.Result, to: 1.Normal}
+  - {from: 295.Result, to: 1.Refraction}
+- {id: 16, kind: function, math_expression: 'vec2(wp.x, wp.z)', entry_id: 31}
+- id: 47
+  kind: function
+  math_expression: smoothstep(0.985, 1.0, noise(p, 0.35))
+  entry_id: 48
+- id: 72
+  kind: function
+  math_expression: noise(p + vec2(noise(p, 0.003) * 300, 0), 0.006)
+  entry_id: 73
+- id: 110
+  kind: function
+  math_expression: vec3(0.012, 0.008, 0.02) + vec3(0.05, 0.02, 0.08) * swirl
+  entry_id: 111
+- id: 150
+  kind: function
+  math_expression: vec3(0.7, 0.55, 1.0) * stars * 0.25 + vec3(0.3, 0.05, 0.5) * smoothstep(0.7, 0.9, swirl) * 0.06 * (0.7 + 0.3 * sin(t * 0.7))
+  entry_id: 151
+- id: 244
+  kind: function
+  math_expression: vec3(swirl - 0.5, 0, noise(p, 0.01) - 0.5) * 0.8
+  entry_id: 245
+- {id: 287, kind: function, math_expression: "3", entry_id: 288}

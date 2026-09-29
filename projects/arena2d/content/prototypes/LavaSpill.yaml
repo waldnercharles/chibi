@@ -1,0 +1,4 @@
+name: LavaSpill
+components:
+  GAME.GameFluidVolume: {height: 24.0, substance: Lava, width: 24.0}
+  GAME.GameTransform: {}

@@ -1,0 +1,171 @@
+version: 1
+name: RefractoryLab
+physics:
+  gravity: {x: 0.0, "y": 240.0}
+seed: 13
+entities:
+- name: Player
+  prototype: Wren
+  components:
+    GameTransform: {x: 0.0, "y": 12330.0}
+  behaviors: [Hardpoints, ShipFlight, ShipHull]
+- name: Camera
+  prototype: WellCamera
+  components:
+    GameTransform: {x: 0.0, "y": 12330.0}
+  behaviors: [CameraFollow]
+- name: Lighting
+  prototype: WellLighting
+  behaviors: [Atmosphere]
+- {name: FireMouse, prototype: FireMouse}
+- {name: FireStick, prototype: FireStick}
+- {name: SecondaryMouse, prototype: SecondaryMouse}
+- name: Run
+  prototype: RunState
+  behaviors: [Run]
+- name: HUD
+  prototype: WellHud
+  behaviors: [WellHudDisplay]
+- {name: Basalt deposits, prototype: BasaltDeposits}
+- {name: Ice deposits, prototype: IceDeposits}
+- {name: Slag deposits, prototype: SlagDeposits}
+- name: Refractory deep
+  prototype: BackdropDeep
+  components:
+    GameBackdrop2D: {material: RefractoryDeep, parallax: 0.12, layer: 0, intensity: 1.0}
+- name: Refractory far
+  prototype: BackdropFar
+  components:
+    GameBackdrop2D:
+      material: RefractoryShards
+      parallax: 0.45
+      layer: 1
+      intensity: 1.0
+      lit: true
+- {name: Refractory rock, prototype: StratumRefractory}
+- name: Refractory light shards
+  prototype: Scatter
+  components:
+    GameScatter:
+      prototype: Lightshard
+      terrain: Refractory
+      min: {x: -1600.0, "y": 12000.0}
+      max: {x: 1600.0, "y": 18000.0}
+      cell: 120.0
+      chance: 0.55
+      placement: Wall
+      clearance: 130.0
+      salt: 51
+      radius: 500.0
+- name: Refractory ceiling shards
+  prototype: Scatter
+  components:
+    GameScatter:
+      prototype: Lightshard
+      terrain: Refractory
+      min: {x: -1600.0, "y": 12000.0}
+      max: {x: 1600.0, "y": 18000.0}
+      cell: 130.0
+      chance: 0.45
+      placement: Ceiling
+      clearance: 150.0
+      salt: 52
+      radius: 500.0
+- name: Refractory shardlings
+  prototype: Scatter
+  components:
+    GameScatter:
+      prototype: ShardlingNest
+      terrain: Refractory
+      min: {x: -1600.0, "y": 12900.0}
+      max: {x: 1600.0, "y": 16700.0}
+      cell: 520.0
+      chance: 0.36
+      placement: Air
+      clearance: 50.0
+      salt: 53
+      radius: 700.0
+- name: Refractory prisms
+  prototype: Scatter
+  components:
+    GameScatter:
+      prototype: Prism
+      terrain: Refractory
+      min: {x: -1600.0, "y": 12900.0}
+      max: {x: 1600.0, "y": 16700.0}
+      cell: 380.0
+      chance: 0.32
+      placement: Wall
+      clearance: 200.0
+      salt: 54
+      radius: 700.0
+- name: Refractory glintlancers
+  prototype: Scatter
+  components:
+    GameScatter:
+      prototype: Glintlancer
+      terrain: Refractory
+      min: {x: -1600.0, "y": 13600.0}
+      max: {x: 1600.0, "y": 16700.0}
+      cell: 640.0
+      chance: 0.3
+      placement: Air
+      clearance: 70.0
+      salt: 55
+      radius: 700.0
+- name: Refractory frosters
+  prototype: Scatter
+  components:
+    GameScatter:
+      prototype: Froster
+      terrain: Refractory
+      min: {x: -1600.0, "y": 13000.0}
+      max: {x: 1600.0, "y": 16700.0}
+      cell: 520.0
+      chance: 0.3
+      placement: Air
+      clearance: 70.0
+      salt: 56
+      radius: 700.0
+- name: Refractory cold pools
+  prototype: Scatter
+  components:
+    GameScatter:
+      prototype: ColdPool
+      terrain: Refractory
+      min: {x: -1600.0, "y": 12700.0}
+      max: {x: 1600.0, "y": 16700.0}
+      cell: 480.0
+      chance: 0.4
+      placement: Floor
+      clearance: 220.0
+      salt: 57
+      radius: 700.0
+- name: Refractory frost mist
+  prototype: Scatter
+  components:
+    GameScatter:
+      prototype: FrostMist
+      terrain: Refractory
+      min: {x: -1600.0, "y": 12700.0}
+      max: {x: 1600.0, "y": 16700.0}
+      cell: 700.0
+      chance: 0.3
+      placement: Air
+      clearance: 100.0
+      salt: 58
+      radius: 700.0
+- name: Refractory repairs
+  prototype: Scatter
+  components:
+    GameScatter:
+      prototype: Repair
+      terrain: Refractory
+      min: {x: -1600.0, "y": 13200.0}
+      max: {x: 1600.0, "y": 16700.0}
+      cell: 900.0
+      chance: 0.22
+      placement: Air
+      clearance: 30.0
+      salt: 59
+      radius: 700.0

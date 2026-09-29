@@ -1,84 +1,122 @@
 version: 3
 name: SanctumProbe
-id_counter: 118
+id_counter: 170
 description: probe
 owner_type: ecs.entity
-variables:
-- id: 1
-  name: arr
-  type: int
-  container: 1
-  default: [1, 2, 3]
 graphs:
 - kind: event
   name: ""
   nodes:
-  - id: 2
-    type: Event
-    reference_name: Tick
-    outputs:
-      DeltaSeconds: {type: float, kind: data}
-  - id: 26
-    type: Behavior Expression
-    reference_id: 5
-    reference_name: (x > 1) * 2
+  - {id: 1, type: Event, reference_name: Begin}
+  - id: 3
+    type: Set Global Variable
     inputs:
-      x: {type: double, flags: 0}
+      Name: StatPrice
+      Value: {type: double, default: 1.0}
     outputs:
-      Result: {type: bool}
-  - id: 46
+      Value: {type: double}
+  - id: 9
+    type: Get Global Variable
+    inputs: {Name: StatPrice}
+    outputs:
+      Value: {type: double}
+  - id: 29
     type: Behavior Expression
-    reference_id: 29
-    reference_name: (p || q) && r
+    reference_id: 12
+    reference_name: round(12 * m)
     inputs:
-      Exec: {id: 51, kind: exec}
-      p: {id: 47, type: bool, flags: 0}
-      q: {type: bool, flags: 0}
-      r: {type: bool, flags: 0}
+      m: {type: double}
     outputs:
-      "True": {id: 52, kind: exec}
-      "False": {kind: exec}
-      Result: {id: 50, type: bool}
-  - id: 86
-    type: Behavior Expression
-    reference_id: 54
-    reference_name: abs(x) <= 3 && abs(y) < 2
-    inputs:
-      Exec: {id: 90, kind: exec}
-      x: {id: 87, type: double}
-      "y": {type: double}
-    outputs:
-      "True": {id: 91, kind: exec}
-      "False": {kind: exec}
-      Result: {id: 89, type: bool}
-  - id: 93
+      Result: {type: double}
+  - id: 32
     type: Format Text
     inputs:
-      Format: '{}:{:02}'
-      Arg0: {type: bool}
-      Arg1: {id: 97, type: int, flags: 0}
-    outputs:
-      Result: {id: 96}
-  - id: 98
-    type: Has Component
-    inputs: {Component: GAME.GameHealth}
-  - {id: 102, type: Set_GameHealth_current}
-  - id: 108
-    type: GetEntity_GameTransform
-    outputs:
-      Value.x: {}
-      Value.y: {}
-  - id: 113
-    type: Select
+      Format: round(12 * m) = {}
+      Arg0: {type: double}
+  - {id: 36, type: Print String}
+  - id: 57
+    type: Behavior Expression
+    reference_id: 40
+    reference_name: round(m * 12)
     inputs:
-      Option1: {id: 117}
+      m: {type: double}
     outputs:
-      Return Value: {id: 116}
+      Result: {type: double}
+  - id: 60
+    type: Format Text
+    inputs:
+      Format: round(m * 12) = {}
+      Arg0: {type: double}
+  - {id: 64, type: Print String}
+  - id: 82
+    type: Behavior Expression
+    reference_id: 68
+    reference_name: 12 * m
+    inputs:
+      m: {type: double}
+    outputs:
+      Result: {type: double}
+  - id: 85
+    type: Format Text
+    inputs:
+      Format: 12 * m = {}
+      Arg0: {type: double}
+  - {id: 89, type: Print String}
+  - id: 117
+    type: Behavior Expression
+    reference_id: 93
+    reference_name: floor(12 * m + 0.5)
+    inputs:
+      m: {type: double}
+    outputs:
+      Result: {type: double}
+  - id: 120
+    type: Format Text
+    inputs:
+      Format: floor(12 * m + 0.5) = {}
+      Arg0: {type: double}
+  - {id: 124, type: Print String}
+  - id: 159
+    type: Behavior Expression
+    reference_id: 128
+    reference_name: round((18 + 14 * 1) * m)
+    inputs:
+      m: {type: double}
+    outputs:
+      Result: {type: double}
+  - id: 162
+    type: Format Text
+    inputs:
+      Format: round((18 + 14 * 1) * m) = {}
+      Arg0: {type: double}
+  - {id: 166, type: Print String}
   edges:
-  - {from: 26.Result, to: 93.Arg0}
-- {id: 5, kind: function, math_expression: (x > 1) * 2, entry_id: 6}
-- {id: 29, kind: function, math_expression: (p || q) && r, entry_id: 30}
-- id: 54
+  - {from: 1.Then, to: 3.Exec}
+  - {from: 3.Then, to: 36.Exec}
+  - {from: 9.Value, to: 29.m}
+  - {from: 9.Value, to: 57.m}
+  - {from: 9.Value, to: 82.m}
+  - {from: 9.Value, to: 117.m}
+  - {from: 9.Value, to: 159.m}
+  - {from: 29.Result, to: 32.Arg0}
+  - {from: 32.Result, to: 36.InString}
+  - {from: 36.Then, to: 64.Exec}
+  - {from: 57.Result, to: 60.Arg0}
+  - {from: 60.Result, to: 64.InString}
+  - {from: 64.Then, to: 89.Exec}
+  - {from: 82.Result, to: 85.Arg0}
+  - {from: 85.Result, to: 89.InString}
+  - {from: 89.Then, to: 124.Exec}
+  - {from: 117.Result, to: 120.Arg0}
+  - {from: 120.Result, to: 124.InString}
+  - {from: 124.Then, to: 166.Exec}
+  - {from: 159.Result, to: 162.Arg0}
+  - {from: 162.Result, to: 166.InString}
+- {id: 12, kind: function, math_expression: round(12 * m), entry_id: 13}
+- {id: 40, kind: function, math_expression: round(m * 12), entry_id: 41}
+- {id: 68, kind: function, math_expression: 12 * m, entry_id: 69}
+- {id: 93, kind: function, math_expression: floor(12 * m + 0.5), entry_id: 94}
+- id: 128
   kind: function
-  math_expression: abs(x) <= 3 && abs(y) < 2
-  entry_id: 55
+  math_expression: round((18 + 14 * 1) * m)
+  entry_id: 129

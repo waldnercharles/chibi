@@ -1,0 +1,18 @@
+name: RefitBenchTool
+components:
+  GAME.GameAppearance:
+    antialias: 1.0
+    color: 1878458367
+    height: 9.0
+    layer: 1
+    shape: Triangle
+    width: 10.0
+  GAME.GameMaterial:
+    absorption: 0.2
+    albedo: 1878458367
+    emission_color: 1608972031
+    emission_intensity: 0.3
+    emission_multiplier: 1.0
+    scene: 1878458367
+  GAME.GameOrientation: {radians: 1.5707964}
+  GAME.GameTransform: {}

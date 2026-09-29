@@ -40,7 +40,7 @@ graphs:
       Value: {type: int}
   - id: 41
     type: Get Global Variable
-    inputs: {Name: Seal}
+    inputs: {Name: SealThroat}
     outputs:
       Value: {type: handle, type_name: ecs.entity}
   - {id: 44, type: GetEntity_GameTransform}

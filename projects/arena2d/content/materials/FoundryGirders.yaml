@@ -1,0 +1,119 @@
+version: 3
+name: FoundryGirders
+domain: material
+id_counter: 395
+description: Distant girders and gantries of the ruined foundry.
+graphs:
+- kind: event
+  name: ""
+  nodes:
+  - id: 1
+    type: Shader Surface Output
+    inputs:
+      Base Color:
+        default: {x: 1.0, "y": 1.0, z: 1.0}
+      Emission:
+        default: {x: 0.0, "y": 0.0, z: 0.0}
+      Roughness: 0.9
+      Normal:
+        default: {x: 0.0, "y": 0.0, z: 0.0}
+  - {id: 12, type: Shader WorldPosition}
+  - id: 25
+    type: Behavior Expression
+    reference_id: 14
+    reference_name: vec2(wp.x, wp.z)
+    inputs:
+      wp: {type: struct, type_name: ShaderVec3}
+    outputs:
+      Result: {type: struct, type_name: ShaderVec2}
+  - id: 76
+    type: Behavior Expression
+    reference_id: 45
+    reference_name: step(abs(fract(p.x / 260) - 0.5), 0.035)
+    inputs:
+      p: {type: struct, type_name: ShaderVec2}
+    outputs:
+      Result: {type: float}
+  - id: 144
+    type: Behavior Expression
+    reference_id: 113
+    reference_name: step(abs(fract(p.y / 180) - 0.5), 0.03)
+    inputs:
+      p: {type: struct, type_name: ShaderVec2}
+    outputs:
+      Result: {type: float}
+  - id: 235
+    type: Behavior Expression
+    reference_id: 181
+    reference_name: step(abs(fract((p.x + p.y) / 180) - 0.5), 0.02) * step(0.5, fract(p.x / 520))
+    inputs:
+      p: {type: struct, type_name: ShaderVec2}
+    outputs:
+      Result: {type: float}
+  - id: 335
+    type: Behavior Expression
+    reference_id: 301
+    reference_name: max(max(v, hbar), brace) * step(0.3, noise(p, 0.0012))
+    inputs:
+      v: {type: float}
+      hbar: {type: float}
+      brace: {type: float}
+      p: {type: struct, type_name: ShaderVec2}
+    outputs:
+      Result: {type: float}
+  - id: 358
+    type: Behavior Expression
+    reference_id: 341
+    reference_name: vec3(0.07, 0.055, 0.05)
+    outputs:
+      Result: {type: struct, type_name: ShaderVec3}
+  - id: 377
+    type: Behavior Expression
+    reference_id: 360
+    reference_name: vec3(0, 0, 0)
+    outputs:
+      Result: {type: struct, type_name: ShaderVec3}
+  - id: 392
+    type: Behavior Expression
+    reference_id: 379
+    reference_name: mask * 0.85
+    inputs:
+      mask: {type: float}
+    outputs:
+      Result: {type: float}
+  edges:
+  - {from: 12.Value, to: 25.wp}
+  - {from: 25.Result, to: 76.p}
+  - {from: 25.Result, to: 144.p}
+  - {from: 25.Result, to: 235.p}
+  - {from: 25.Result, to: 335.p}
+  - {from: 76.Result, to: 335.v}
+  - {from: 144.Result, to: 335.hbar}
+  - {from: 235.Result, to: 335.brace}
+  - {from: 335.Result, to: 392.mask}
+  - {from: 358.Result, to: 1.Base Color}
+  - {from: 377.Result, to: 1.Emission}
+  - {from: 392.Result, to: 1.Opacity}
+- {id: 14, kind: function, math_expression: 'vec2(wp.x, wp.z)', entry_id: 29}
+- id: 45
+  kind: function
+  math_expression: step(abs(fract(p.x / 260) - 0.5), 0.035)
+  entry_id: 80
+- id: 113
+  kind: function
+  math_expression: step(abs(fract(p.y / 180) - 0.5), 0.03)
+  entry_id: 148
+- id: 181
+  kind: function
+  math_expression: step(abs(fract((p.x + p.y) / 180) - 0.5), 0.02) * step(0.5, fract(p.x / 520))
+  entry_id: 239
+- id: 301
+  kind: function
+  math_expression: max(max(v, hbar), brace) * step(0.3, noise(p, 0.0012))
+  entry_id: 302
+- id: 341
+  kind: function
+  math_expression: vec3(0.07, 0.055, 0.05)
+  entry_id: 342
+- {id: 360, kind: function, math_expression: 'vec3(0, 0, 0)', entry_id: 361}
+- {id: 379, kind: function, math_expression: mask * 0.85, entry_id: 380}

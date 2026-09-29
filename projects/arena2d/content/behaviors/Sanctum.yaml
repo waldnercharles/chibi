@@ -1,0 +1,273 @@
+version: 3
+name: Sanctum
+id_counter: 452
+description: 'A safe chamber between strata: marks InSanctum while the ship is inside its box, and mends the hull there.'
+owner_type: ecs.entity
+variables:
+- {id: 1, name: halfW, type: float, default: 375.0}
+- {id: 2, name: halfH, type: float, default: 150.0}
+- {id: 3, name: inside, type: float}
+- {id: 4, name: mend, type: float}
+graphs:
+- kind: event
+  name: ""
+  nodes:
+  - id: 5
+    type: Event
+    reference_name: Tick
+    outputs:
+      DeltaSeconds: {type: float, kind: data}
+  - id: 8
+    type: Get Global Variable
+    inputs: {Name: Player}
+    outputs:
+      Value: {type: handle, type_name: ecs.entity}
+  - id: 11
+    type: Has Component
+    inputs: {Component: GAME.GameHealth}
+  - {id: 15, type: Branch}
+  - id: 20
+    type: GetEntity_GameTransform
+    outputs:
+      Value.x: {}
+      Value.y: {}
+  - id: 62
+    type: Behavior Expression
+    reference_id: 25
+    reference_name: abs(px - pos.x) <= halfW && abs(py - pos.y) <= halfH
+    inputs:
+      Exec: {id: 69, kind: exec}
+      px: {id: 63, type: float}
+      pos:
+        type: struct
+        type_name: GameTransform
+        binding: {kind: component, component: GAME.GameTransform}
+      halfW:
+        type: double
+        flags: 0
+        binding: {kind: variable, variable_id: 1, source_asset: Sanctum}
+      py: {type: float}
+      halfH:
+        type: double
+        flags: 0
+        binding: {kind: variable, variable_id: 2, source_asset: Sanctum}
+    outputs:
+      "True": {id: 70, kind: exec}
+      "False": {kind: exec}
+      Result: {id: 68, type: bool}
+  - id: 125
+    type: Behavior Expression
+    reference_id: 111
+    reference_name: inside < 0.5
+    inputs:
+      inside:
+        type: double
+        flags: 0
+        binding: {kind: variable, variable_id: 3, source_asset: Sanctum}
+    outputs:
+      Result: {type: bool}
+  - {id: 131, type: Branch}
+  - id: 146
+    type: Behavior Expression
+    reference_id: 136
+    reference_name: inside = 1
+    inputs:
+      Exec: {id: 149, kind: exec}
+      inside:
+        id: 147
+        type: float
+        binding: {kind: variable, variable_id: 3, source_asset: Sanctum}
+    outputs:
+      Then: {id: 150, kind: exec}
+      Result: {id: 148, type: float}
+  - id: 166
+    type: Set Global Variable
+    inputs:
+      Name: InSanctum
+      Value: {type: int, default: 1}
+    outputs:
+      Value: {type: int}
+  - id: 172
+    type: Set Global Variable
+    inputs:
+      Name: Toast
+      Value: {type: name, default: Sanctum · safe}
+    outputs:
+      Value: {type: name}
+  - id: 178
+    type: Get Global Variable
+    inputs: {Name: ToastSerial}
+    outputs:
+      Value: {type: int}
+  - id: 195
+    type: Behavior Expression
+    reference_id: 181
+    reference_name: s + 1
+    inputs:
+      s: {type: int}
+    outputs:
+      Result: {type: double}
+  - id: 198
+    type: Set Global Variable
+    inputs:
+      Name: ToastSerial
+      Value: {type: int}
+    outputs:
+      Value: {type: int}
+  - id: 204
+    type: Play Sound
+    inputs: {Frequency: 392.0, End Frequency: 587.0, Duration: 0.9, Volume: 0.16}
+  - id: 232
+    type: Behavior Expression
+    reference_id: 213
+    reference_name: mend += dt * 15
+    inputs:
+      Exec: {id: 236, kind: exec}
+      mend:
+        id: 233
+        type: float
+        binding: {kind: variable, variable_id: 4, source_asset: Sanctum}
+      dt:
+        type: double
+        binding: {kind: delta_time}
+    outputs:
+      Then: {id: 237, kind: exec}
+      Result: {id: 235, type: float}
+  - id: 276
+    type: Behavior Expression
+    reference_id: 262
+    reference_name: mend >= 1
+    inputs:
+      mend:
+        type: double
+        flags: 0
+        binding: {kind: variable, variable_id: 4, source_asset: Sanctum}
+    outputs:
+      Result: {type: bool}
+  - {id: 282, type: Branch}
+  - id: 287
+    type: GetEntity_GameHealth
+    outputs:
+      Value.current: {}
+      Value.maximum: {}
+  - id: 312
+    type: Behavior Expression
+    reference_id: 292
+    reference_name: min(m, c + floor(mend))
+    inputs:
+      m: {type: int}
+      c: {type: int}
+      mend:
+        type: double
+        binding: {kind: variable, variable_id: 4, source_asset: Sanctum}
+    outputs:
+      Result: {type: double}
+  - {id: 317, type: Set_GameHealth_current}
+  - id: 337
+    type: Behavior Expression
+    reference_id: 323
+    reference_name: mend -= floor(mend)
+    inputs:
+      Exec: {id: 340, kind: exec}
+      mend:
+        id: 338
+        type: float
+        binding: {kind: variable, variable_id: 4, source_asset: Sanctum}
+    outputs:
+      Then: {id: 341, kind: exec}
+      Result: {id: 339, type: float}
+  - id: 375
+    type: Behavior Expression
+    reference_id: 361
+    reference_name: inside > 0.5
+    inputs:
+      inside:
+        type: double
+        flags: 0
+        binding: {kind: variable, variable_id: 3, source_asset: Sanctum}
+    outputs:
+      Result: {type: bool}
+  - {id: 381, type: Branch}
+  - id: 396
+    type: Behavior Expression
+    reference_id: 386
+    reference_name: inside = 0
+    inputs:
+      Exec: {id: 399, kind: exec}
+      inside:
+        id: 397
+        type: float
+        binding: {kind: variable, variable_id: 3, source_asset: Sanctum}
+    outputs:
+      Then: {id: 400, kind: exec}
+      Result: {id: 398, type: float}
+  - id: 426
+    type: Behavior Expression
+    reference_id: 416
+    reference_name: mend = 0
+    inputs:
+      Exec: {id: 429, kind: exec}
+      mend:
+        id: 427
+        type: float
+        binding: {kind: variable, variable_id: 4, source_asset: Sanctum}
+    outputs:
+      Then: {id: 430, kind: exec}
+      Result: {id: 428, type: float}
+  - id: 446
+    type: Set Global Variable
+    inputs:
+      Name: InSanctum
+      Value: {type: int}
+    outputs:
+      Value: {type: int}
+  edges:
+  - {from: 5.Then, to: 15.Exec}
+  - {from: 8.Value, to: 11.Entity}
+  - {from: 8.Value, to: 20.Entity}
+  - {from: 8.Value, to: 287.Entity}
+  - {from: 8.Value, to: 317.Target}
+  - {from: 11.Value, to: 15.Condition}
+  - {from: 15.True, to: 62.Exec}
+  - {from: 15.False, to: 381.Exec}
+  - {from: 20.Value.x, to: 62.px}
+  - {from: 20.Value.y, to: 62.py}
+  - {from: 62.True, to: 131.Exec}
+  - {from: 62.False, to: 381.Exec}
+  - {from: 125.Result, to: 131.Condition}
+  - {from: 131.True, to: 146.Exec}
+  - {from: 131.False, to: 232.Exec}
+  - {from: 146.Then, to: 166.Exec}
+  - {from: 166.Then, to: 172.Exec}
+  - {from: 172.Then, to: 198.Exec}
+  - {from: 178.Value, to: 195.s}
+  - {from: 198.Then, to: 204.Exec}
+  - {from: 204.Then, to: 232.Exec}
+  - {from: 232.Then, to: 282.Exec}
+  - {from: 276.Result, to: 282.Condition}
+  - {from: 282.True, to: 317.Exec}
+  - {from: 287.Value.current, to: 312.c}
+  - {from: 287.Value.maximum, to: 312.m}
+  - {from: 312.Result, to: 317.Value, conversion: To Integer}
+  - {from: 317.Then, to: 337.Exec}
+  - {from: 375.Result, to: 381.Condition}
+  - {from: 381.True, to: 396.Exec}
+  - {from: 396.Then, to: 426.Exec}
+  - {from: 426.Then, to: 446.Exec}
+- id: 25
+  kind: function
+  math_expression: abs(px - pos.x) <= halfW && abs(py - pos.y) <= halfH
+  entry_id: 73
+- {id: 111, kind: function, math_expression: inside < 0.5, entry_id: 112}
+- {id: 136, kind: function, math_expression: inside = 1, entry_id: 152}
+- {id: 181, kind: function, math_expression: s + 1, entry_id: 182}
+- {id: 213, kind: function, math_expression: mend += dt * 15, entry_id: 239}
+- {id: 262, kind: function, math_expression: mend >= 1, entry_id: 263}
+- id: 292
+  kind: function
+  math_expression: min(m, c + floor(mend))
+  entry_id: 293
+- {id: 323, kind: function, math_expression: mend -= floor(mend), entry_id: 343}
+- {id: 361, kind: function, math_expression: inside > 0.5, entry_id: 362}
+- {id: 386, kind: function, math_expression: inside = 0, entry_id: 402}
+- {id: 416, kind: function, math_expression: mend = 0, entry_id: 432}

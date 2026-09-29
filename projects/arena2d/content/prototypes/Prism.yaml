@@ -1,0 +1,20 @@
+name: Prism
+components:
+  GAME.GameBody: {}
+  GAME.GameCollider: {category: 2, mask: 15, radius: 12.0, restitution: 0.3}
+  GAME.GameDrive: {}
+  GAME.GameExperience: {current: 8}
+  GAME.GameFlash: {color: 4294967295, decay: 12.0}
+  GAME.GameGeometry3D: {depth: 38.0, height: 4.0, width: 38.0}
+  GAME.GameHealth: {current: 70, maximum: 70}
+  GAME.GameMovement: {}
+  GAME.GameOrientation: {}
+  GAME.GameShader:
+    material: BarnacleSkin
+    parameters: '{"Glow":[0.561,0.847,1.0],"Body":[0.031,0.071,0.125]}'
+    shape: BarnacleShape
+  GAME.GameSpawnRequest: {prototype: PrismDeath}
+  GAME.GameTransform: {}
+  GAME.GameVelocity: {}
+  GAME.GameWeapon: {damage: 6}
+behaviors: [Creature, PrismTurret]

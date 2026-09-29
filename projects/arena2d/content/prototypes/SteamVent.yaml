@@ -1,0 +1,21 @@
+name: SteamVent
+components:
+  GAME.GameHeatHaze: {radius: 50.0, strength: 2.0}
+  GAME.GameOrientation: {}
+  GAME.GameParticleEmitter:
+    active: true
+    color: 3756584628
+    direction: {x: 1.0}
+    end_color: 3756584448
+    fluid_substance: Steam
+    heading_only: true
+    lifetime: {x: 1.0, "y": 1.6}
+    planar: true
+    rate: 40.0
+    size:
+      end: {x: 9.0, "y": 12.0}
+      exponent: 1.0
+      start: {x: 4.0, "y": 7.0}
+    speed: {x: 60.0, "y": 110.0}
+    spread: 0.35
+  GAME.GameTransform: {}

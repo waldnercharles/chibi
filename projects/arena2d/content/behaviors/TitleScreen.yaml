@@ -1,0 +1,14 @@
+version: 3
+name: TitleScreen
+id_counter: 4
+description: stub
+owner_type: ecs.entity
+graphs:
+- kind: event
+  name: ""
+  nodes:
+  - id: 1
+    type: Event
+    reference_name: Tick
+    outputs:
+      DeltaSeconds: {type: float, kind: data}

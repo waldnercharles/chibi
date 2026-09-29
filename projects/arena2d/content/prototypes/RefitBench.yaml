@@ -1,0 +1,22 @@
+name: RefitBench
+components:
+  GAME.GameActionBinding: {action: Use, source: E}
+  GAME.GameAppearance:
+    antialias: 1.0
+    border_color: 1878458367
+    border_width: 1.2
+    color: 371470335
+    height: 7.0
+    layer: 1
+    width: 66.0
+  GAME.GameMaterial:
+    absorption: 0.6
+    albedo: 371470335
+    border_emission_color: 1071048447
+    border_scene: 1878458367
+    emission_multiplier: 1.0
+    scene: 371470335
+  GAME.GameTransform: {}
+  GAME.GameUi: {document: Refit, order: 5}
+  GAME.GameUnscaledTime: {}
+behaviors: [RefitScreen]

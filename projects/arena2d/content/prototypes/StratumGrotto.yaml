@@ -1,13 +1,13 @@
 name: StratumGrotto
 components:
-  GAME.GameAppearance: {color: 706687999}
+  GAME.GameAppearance: {color: 504833791}
   GAME.GameGlobalBinding: {name: Grotto}
   GAME.GameMaterial:
-    absorption: 0.18
-    albedo: 1514432767
-    edge_light: 1.0
+    absorption: 0.2
+    albedo: 858275327
+    edge_light: 0.8
     emission_multiplier: 1.0
-    scene: 706687999
+    scene: 504833791
   GAME.GameShader: {material: Mycelite, parameters: "", shape: ""}
   GAME.GameSubstance: {blast_multiplier: 1.4, hardness: 0.7}
   GAME.GameTransform: {"y": 9000.0}

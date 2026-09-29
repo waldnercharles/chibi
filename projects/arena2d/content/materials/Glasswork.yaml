@@ -1,0 +1,141 @@
+version: 3
+name: Glasswork
+domain: material
+id_counter: 452
+description: 'Glass Refractory rock: faceted crystal whose cells tilt light in different directions, bend what lies behind thin walls and let tinted light through.'
+graphs:
+- kind: event
+  name: ""
+  nodes:
+  - id: 1
+    type: Shader Surface Output
+    inputs:
+      Base Color:
+        default: {x: 1.0, "y": 1.0, z: 1.0}
+      Emission:
+        default: {x: 0.0, "y": 0.0, z: 0.0}
+      Roughness: 0.08
+      Metallic: 0.1
+      Normal:
+        default: {x: 0.0, "y": 0.0, z: 0.0}
+  - {id: 12, type: Shader WorldPosition}
+  - id: 14
+    type: Shader Voronoi
+    inputs: {Scale: 0.012, Randomness: 0.9}
+  - id: 31
+    type: Behavior Expression
+    reference_id: 20
+    reference_name: vec2(wp.x, wp.z)
+    inputs:
+      wp: {type: struct, type_name: ShaderVec3}
+    outputs:
+      Result: {type: struct, type_name: ShaderVec2}
+  - id: 67
+    type: Behavior Expression
+    reference_id: 51
+    reference_name: smoothstep(0.08, 0.0, vd)
+    inputs:
+      vd: {type: float}
+    outputs:
+      Result: {type: float}
+  - id: 102
+    type: Behavior Expression
+    reference_id: 70
+    reference_name: vec3(vc.x - 0.5, 0, vc.z - 0.5) * 1.6
+    inputs:
+      vc: {type: struct, type_name: ShaderVec3}
+    outputs:
+      Result: {type: struct, type_name: ShaderVec3}
+  - id: 177
+    type: Behavior Expression
+    reference_id: 143
+    reference_name: mix(vec3(0.55, 0.78, 1.0), vec3(0.85, 0.7, 1.0), vc.y)
+    inputs:
+      vc: {type: struct, type_name: ShaderVec3}
+    outputs:
+      Result: {type: struct, type_name: ShaderVec3}
+  - id: 236
+    type: Behavior Expression
+    reference_id: 217
+    reference_name: noise(p, 0.05) * 0.15
+    inputs:
+      p: {type: struct, type_name: ShaderVec2}
+    outputs:
+      Result: {type: float}
+  - id: 300
+    type: Behavior Expression
+    reference_id: 239
+    reference_name: tint * (0.08 + 0.05 * vc.x + frost * 0.2) + vec3(0.3, 0.45, 0.6) * edge * 0.25
+    inputs:
+      tint: {type: struct, type_name: ShaderVec3}
+      vc: {type: struct, type_name: ShaderVec3}
+      frost: {type: float}
+      edge: {type: float}
+    outputs:
+      Result: {type: struct, type_name: ShaderVec3}
+  - id: 388
+    type: Behavior Expression
+    reference_id: 370
+    reference_name: tint * edge * 0.04
+    inputs:
+      tint: {type: struct, type_name: ShaderVec3}
+      edge: {type: float}
+    outputs:
+      Result: {type: struct, type_name: ShaderVec3}
+  - id: 411
+    type: Behavior Expression
+    reference_id: 392
+    reference_name: 4 + 6 * vc.y
+    inputs:
+      vc: {type: struct, type_name: ShaderVec3}
+    outputs:
+      Result: {type: float}
+  - id: 449
+    type: Behavior Expression
+    reference_id: 436
+    reference_name: tint * 0.55
+    inputs:
+      tint: {type: struct, type_name: ShaderVec3}
+    outputs:
+      Result: {type: struct, type_name: ShaderVec3}
+  edges:
+  - {from: 12.Value, to: 14.Position}
+  - {from: 12.Value, to: 31.wp}
+  - {from: 14.Distance, to: 67.vd}
+  - {from: 14.Cell Color, to: 102.vc}
+  - {from: 14.Cell Color, to: 177.vc}
+  - {from: 14.Cell Color, to: 300.vc}
+  - {from: 14.Cell Color, to: 411.vc}
+  - {from: 31.Result, to: 236.p}
+  - {from: 67.Result, to: 300.edge}
+  - {from: 67.Result, to: 388.edge}
+  - {from: 102.Result, to: 1.Normal}
+  - {from: 177.Result, to: 300.tint}
+  - {from: 177.Result, to: 388.tint}
+  - {from: 177.Result, to: 449.tint}
+  - {from: 236.Result, to: 300.frost}
+  - {from: 300.Result, to: 1.Base Color}
+  - {from: 388.Result, to: 1.Emission}
+  - {from: 411.Result, to: 1.Refraction}
+  - {from: 449.Result, to: 1.Transmission}
+- {id: 20, kind: function, math_expression: 'vec2(wp.x, wp.z)', entry_id: 35}
+- id: 51
+  kind: function
+  math_expression: smoothstep(0.08, 0.0, vd)
+  entry_id: 52
+- id: 70
+  kind: function
+  math_expression: vec3(vc.x - 0.5, 0, vc.z - 0.5) * 1.6
+  entry_id: 106
+- id: 143
+  kind: function
+  math_expression: mix(vec3(0.55, 0.78, 1.0), vec3(0.85, 0.7, 1.0), vc.y)
+  entry_id: 181
+- {id: 217, kind: function, math_expression: 'noise(p, 0.05) * 0.15', entry_id: 218}
+- id: 239
+  kind: function
+  math_expression: tint * (0.08 + 0.05 * vc.x + frost * 0.2) + vec3(0.3, 0.45, 0.6) * edge * 0.25
+  entry_id: 307
+- {id: 370, kind: function, math_expression: tint * edge * 0.04, entry_id: 371}
+- {id: 392, kind: function, math_expression: 4 + 6 * vc.y, entry_id: 415}
+- {id: 436, kind: function, math_expression: tint * 0.55, entry_id: 437}

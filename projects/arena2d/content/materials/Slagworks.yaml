@@ -1,0 +1,139 @@
+version: 3
+name: Slagworks
+domain: material
+id_counter: 669
+description: 'Foundry Deep rock: riveted plate and slag, cooler at the surface, with seams that glow like a forge.'
+graphs:
+- kind: event
+  name: ""
+  nodes:
+  - id: 1
+    type: Shader Surface Output
+    inputs:
+      Base Color:
+        default: {x: 1.0, "y": 1.0, z: 1.0}
+      Emission:
+        default: {x: 0.0, "y": 0.0, z: 0.0}
+      Roughness: 0.55
+      Metallic: 0.55
+      Normal:
+        default: {x: 0.0, "y": 0.0, z: 0.0}
+  - {id: 12, type: Shader WorldPosition}
+  - {id: 14, type: Shader Time}
+  - id: 27
+    type: Behavior Expression
+    reference_id: 16
+    reference_name: vec2(wp.x, wp.z)
+    inputs:
+      wp: {type: struct, type_name: ShaderVec3}
+    outputs:
+      Result: {type: struct, type_name: ShaderVec2}
+  - id: 113
+    type: Behavior Expression
+    reference_id: 47
+    reference_name: step(0.06, fract(p.x / 64)) * step(0.06, fract(p.y / 40 + step(0.5, fract(p.x / 128)) * 0.5))
+    inputs:
+      p: {type: struct, type_name: ShaderVec2}
+    outputs:
+      Result: {type: float}
+  - id: 256
+    type: Behavior Expression
+    reference_id: 191
+    reference_name: smoothstep(2.2, 1.2, length(vec2(fract(p.x / 64) * 64 - 5, fract(p.y / 40) * 40 - 5)))
+    inputs:
+      p: {type: struct, type_name: ShaderVec2}
+    outputs:
+      Result: {type: float}
+  - id: 365
+    type: Behavior Expression
+    reference_id: 330
+    reference_name: noise(p, 0.02) * 0.6 + noise(p, 0.09) * 0.4
+    inputs:
+      p: {type: struct, type_name: ShaderVec2}
+    outputs:
+      Result: {type: float}
+  - id: 413
+    type: Behavior Expression
+    reference_id: 368
+    reference_name: (1 - plate) * smoothstep(0.55, 0.75, noise(p + vec2(4, 9), 0.006))
+    inputs:
+      plate: {type: float}
+      p: {type: struct, type_name: ShaderVec2}
+    outputs:
+      Result: {type: float}
+  - id: 494
+    type: Behavior Expression
+    reference_id: 417
+    reference_name: mix(vec3(0.06, 0.055, 0.055), vec3(0.16, 0.08, 0.045), rust * 0.7) * (0.55 + 0.45 * plate) + vec3(0.12, 0.12, 0.12) * rivet
+    inputs:
+      rust: {type: float}
+      plate: {type: float}
+      rivet: {type: float}
+    outputs:
+      Result: {type: struct, type_name: ShaderVec3}
+  - id: 558
+    type: Behavior Expression
+    reference_id: 499
+    reference_name: vec3(1.0, 0.36, 0.08) * seam * (0.16 + 0.08 * sin(t * 2 + p.x * 0.01))
+    inputs:
+      seam: {type: float}
+      t: {type: float}
+      p: {type: struct, type_name: ShaderVec2}
+    outputs:
+      Result: {type: struct, type_name: ShaderVec3}
+  - id: 665
+    type: Behavior Expression
+    reference_id: 625
+    reference_name: plate * 0.6 + rivet * 0.4 - (1 - plate) * 0.3
+    inputs:
+      plate: {type: float}
+      rivet: {type: float}
+    outputs:
+      Result: {type: float}
+  edges:
+  - {from: 12.Value, to: 27.wp}
+  - {from: 14.Value, to: 558.t}
+  - {from: 27.Result, to: 113.p}
+  - {from: 27.Result, to: 256.p}
+  - {from: 27.Result, to: 365.p}
+  - {from: 27.Result, to: 413.p}
+  - {from: 27.Result, to: 558.p}
+  - {from: 113.Result, to: 413.plate}
+  - {from: 113.Result, to: 494.plate}
+  - {from: 113.Result, to: 665.plate}
+  - {from: 256.Result, to: 494.rivet}
+  - {from: 256.Result, to: 665.rivet}
+  - {from: 365.Result, to: 494.rust}
+  - {from: 413.Result, to: 558.seam}
+  - {from: 494.Result, to: 1.Base Color}
+  - {from: 558.Result, to: 1.Emission}
+  - {from: 665.Result, to: 1.Height}
+- {id: 16, kind: function, math_expression: 'vec2(wp.x, wp.z)', entry_id: 31}
+- id: 47
+  kind: function
+  math_expression: step(0.06, fract(p.x / 64)) * step(0.06, fract(p.y / 40 + step(0.5, fract(p.x / 128)) * 0.5))
+  entry_id: 117
+- id: 191
+  kind: function
+  math_expression: smoothstep(2.2, 1.2, length(vec2(fract(p.x / 64) * 64 - 5, fract(p.y / 40) * 40 - 5)))
+  entry_id: 260
+- id: 330
+  kind: function
+  math_expression: noise(p, 0.02) * 0.6 + noise(p, 0.09) * 0.4
+  entry_id: 331
+- id: 368
+  kind: function
+  math_expression: (1 - plate) * smoothstep(0.55, 0.75, noise(p + vec2(4, 9), 0.006))
+  entry_id: 369
+- id: 417
+  kind: function
+  math_expression: mix(vec3(0.06, 0.055, 0.055), vec3(0.16, 0.08, 0.045), rust * 0.7) * (0.55 + 0.45 * plate) + vec3(0.12, 0.12, 0.12) * rivet
+  entry_id: 418
+- id: 499
+  kind: function
+  math_expression: vec3(1.0, 0.36, 0.08) * seam * (0.16 + 0.08 * sin(t * 2 + p.x * 0.01))
+  entry_id: 564
+- id: 625
+  kind: function
+  math_expression: plate * 0.6 + rivet * 0.4 - (1 - plate) * 0.3
+  entry_id: 626

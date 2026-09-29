@@ -1,0 +1,4 @@
+name: SanctumLabKit
+components:
+  GAME.GameTransform: {}
+behaviors: [SanctumLabKit]

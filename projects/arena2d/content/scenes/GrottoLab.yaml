@@ -1,0 +1,195 @@
+version: 1
+name: GrottoLab
+physics:
+  gravity: {x: 0.0, "y": 240.0}
+seed: 11
+entities:
+- name: Player
+  prototype: Wren
+  components:
+    GameTransform: {x: 0.0, "y": 6330.0}
+  behaviors: [Hardpoints, ShipFlight, ShipHull]
+- name: Camera
+  prototype: WellCamera
+  components:
+    GameTransform: {x: 0.0, "y": 6330.0}
+  behaviors: [CameraFollow]
+- name: Lighting
+  prototype: WellLighting
+  behaviors: [Atmosphere]
+- {name: FireMouse, prototype: FireMouse}
+- {name: FireStick, prototype: FireStick}
+- {name: SecondaryMouse, prototype: SecondaryMouse}
+- name: Run
+  prototype: RunState
+  behaviors: [Run]
+- name: HUD
+  prototype: WellHud
+  behaviors: [WellHudDisplay]
+- {name: Basalt deposits, prototype: BasaltDeposits}
+- {name: Ice deposits, prototype: IceDeposits}
+- {name: Slag deposits, prototype: SlagDeposits}
+- name: Grotto deep
+  prototype: BackdropDeep
+  components:
+    GameBackdrop2D: {material: GrottoDeep, parallax: 0.12, layer: 0, intensity: 1.0}
+- name: Grotto far
+  prototype: BackdropFar
+  components:
+    GameBackdrop2D: {material: GrottoStalks, parallax: 0.45, layer: 1, intensity: 1.0, lit: true}
+- {name: Grotto rock, prototype: StratumGrotto}
+- name: Grotto lumen caps
+  prototype: Scatter
+  components:
+    GameScatter:
+      prototype: LumenCap
+      terrain: Grotto
+      min: {x: -1600.0, "y": 6000.0}
+      max: {x: 1600.0, "y": 12000.0}
+      cell: 110.0
+      chance: 0.4
+      placement: Floor
+      clearance: 140.0
+      salt: 31
+      radius: 500.0
+- name: Grotto hanging caps
+  prototype: Scatter
+  components:
+    GameScatter:
+      prototype: RoseCap
+      terrain: Grotto
+      min: {x: -1600.0, "y": 6000.0}
+      max: {x: 1600.0, "y": 12000.0}
+      cell: 100.0
+      chance: 0.4
+      placement: Ceiling
+      clearance: 140.0
+      salt: 32
+      radius: 500.0
+- name: Grotto wall caps
+  prototype: Scatter
+  components:
+    GameScatter:
+      prototype: LumenCap
+      terrain: Grotto
+      min: {x: -1600.0, "y": 6000.0}
+      max: {x: 1600.0, "y": 12000.0}
+      cell: 140.0
+      chance: 0.35
+      placement: Wall
+      clearance: 140.0
+      salt: 33
+      radius: 500.0
+- name: Grotto glowmites
+  prototype: Scatter
+  components:
+    GameScatter:
+      prototype: MiteNest
+      terrain: Grotto
+      min: {x: -1600.0, "y": 6900.0}
+      max: {x: 1600.0, "y": 10700.0}
+      cell: 520.0
+      chance: 0.3
+      placement: Air
+      clearance: 50.0
+      salt: 41
+      radius: 700.0
+- name: Grotto glowmite nests
+  prototype: Scatter
+  components:
+    GameScatter:
+      prototype: GlowmiteNest
+      terrain: Grotto
+      min: {x: -1600.0, "y": 6900.0}
+      max: {x: 1600.0, "y": 10700.0}
+      cell: 560.0
+      chance: 0.35
+      placement: Air
+      clearance: 50.0
+      salt: 42
+      radius: 700.0
+- name: Grotto sporelings
+  prototype: Scatter
+  components:
+    GameScatter:
+      prototype: Sporeling
+      terrain: Grotto
+      min: {x: -1600.0, "y": 7000.0}
+      max: {x: 1600.0, "y": 10700.0}
+      cell: 480.0
+      chance: 0.34
+      placement: Air
+      clearance: 70.0
+      salt: 43
+      radius: 700.0
+- name: Grotto jellies
+  prototype: Scatter
+  components:
+    GameScatter:
+      prototype: Jelly
+      terrain: Grotto
+      min: {x: -1600.0, "y": 7200.0}
+      max: {x: 1600.0, "y": 10700.0}
+      cell: 620.0
+      chance: 0.3
+      placement: Air
+      clearance: 80.0
+      salt: 44
+      radius: 700.0
+- name: Grotto lancers
+  prototype: Scatter
+  components:
+    GameScatter:
+      prototype: Lancer
+      terrain: Grotto
+      min: {x: -1600.0, "y": 8400.0}
+      max: {x: 1600.0, "y": 10700.0}
+      cell: 720.0
+      chance: 0.22
+      placement: Air
+      clearance: 70.0
+      salt: 45
+      radius: 700.0
+- name: Grotto spore clouds
+  prototype: Scatter
+  components:
+    GameScatter:
+      prototype: SporeCloud
+      terrain: Grotto
+      min: {x: -1600.0, "y": 6900.0}
+      max: {x: 1600.0, "y": 10700.0}
+      cell: 640.0
+      chance: 0.35
+      placement: Air
+      clearance: 100.0
+      salt: 46
+      radius: 700.0
+- name: Grotto slime pools
+  prototype: Scatter
+  components:
+    GameScatter:
+      prototype: SlimePool
+      terrain: Grotto
+      min: {x: -1600.0, "y": 6900.0}
+      max: {x: 1600.0, "y": 10700.0}
+      cell: 520.0
+      chance: 0.3
+      placement: Floor
+      clearance: 200.0
+      salt: 47
+      radius: 700.0
+- name: Grotto repairs
+  prototype: Scatter
+  components:
+    GameScatter:
+      prototype: Repair
+      terrain: Grotto
+      min: {x: -1600.0, "y": 7200.0}
+      max: {x: 1600.0, "y": 10700.0}
+      cell: 900.0
+      chance: 0.22
+      placement: Air
+      clearance: 30.0
+      salt: 48
+      radius: 700.0
+- {name: Throat rock, prototype: StratumThroat}

@@ -1,0 +1,52 @@
+version: 1
+name: SanctumLab
+physics:
+  gravity: {x: 0.0, "y": 240.0}
+seed: 11
+entities:
+- name: Player
+  prototype: Wren
+  components:
+    GameTransform: {x: -220.0, "y": 420.0}
+  behaviors: [Hardpoints, ShipFlight, ShipHull]
+- name: Camera
+  prototype: WellCamera
+  components:
+    GameTransform: {x: -220.0, "y": 420.0}
+  behaviors: [CameraFollow]
+- name: Lighting
+  prototype: WellLighting
+  behaviors: [Atmosphere]
+- {name: FireMouse, prototype: FireMouse}
+- {name: FireStick, prototype: FireStick}
+- {name: SecondaryMouse, prototype: SecondaryMouse}
+- name: Run
+  prototype: RunState
+  behaviors: [Run]
+- name: HUD
+  prototype: WellHud
+  behaviors: [WellHudDisplay]
+- {name: Basalt Throat, prototype: StratumThroat}
+- name: Throat sanctum
+  prototype: Sanctum
+  components:
+    GameTransform: {x: 0.0, "y": 330.0}
+  behaviors: [Sanctum]
+- name: Shop
+  prototype: ShopTerminal
+  components:
+    GameTransform: {x: -220.0, "y": 454.0}
+  behaviors: [ShopScreen]
+- name: Refit
+  prototype: RefitBench
+  components:
+    GameTransform: {x: 0.0, "y": 462.0}
+  behaviors: [RefitScreen]
+- name: Shrine
+  prototype: ResonanceShrine
+  components:
+    GameTransform: {x: 220.0, "y": 434.0}
+  behaviors: [SkillScreen]
+- name: Lab kit
+  prototype: SanctumLabKit
+  behaviors: [SanctumLabKit]

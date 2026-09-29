@@ -4,12 +4,12 @@ id_counter: 1292
 description: Stalk, draw back and glow as a warning, then lance straight along the locked line and recover.
 owner_type: ecs.entity
 variables:
-- {id: 1, name: age, type: float}
-- {id: 2, name: state, type: float}
-- {id: 3, name: t, type: float}
-- {id: 4, name: seed, type: float}
-- {id: 5, name: lx, type: float}
-- {id: 6, name: ly, type: float}
+- {id: 1, name: t, type: float}
+- {id: 2, name: seed, type: float}
+- {id: 3, name: lx, type: float}
+- {id: 4, name: ly, type: float}
+- {id: 5, name: state, type: float}
+- {id: 6, name: age, type: float}
 graphs:
 - kind: event
   name: ""
@@ -24,7 +24,7 @@ graphs:
       seed:
         id: 26
         type: float
-        binding: {kind: variable, variable_id: 4, source_asset: Lancer}
+        binding: {kind: variable, variable_id: 2, source_asset: Lancer}
     outputs:
       Then: {id: 29, kind: exec}
       Result: {id: 27, type: float}
@@ -42,7 +42,7 @@ graphs:
       t:
         id: 67
         type: float
-        binding: {kind: variable, variable_id: 3, source_asset: Lancer}
+        binding: {kind: variable, variable_id: 1, source_asset: Lancer}
       dt:
         type: double
         binding: {kind: delta_time}
@@ -58,7 +58,7 @@ graphs:
       age:
         id: 102
         type: float
-        binding: {kind: variable, variable_id: 1, source_asset: Lancer}
+        binding: {kind: variable, variable_id: 6, source_asset: Lancer}
       dt:
         type: double
         binding: {kind: delta_time}
@@ -78,7 +78,7 @@ graphs:
     inputs:
       state:
         type: double
-        binding: {kind: variable, variable_id: 2, source_asset: Lancer}
+        binding: {kind: variable, variable_id: 5, source_asset: Lancer}
     outputs:
       Result: {type: double}
   - id: 140
@@ -107,10 +107,10 @@ graphs:
         binding: {kind: component, component: GAME.GameTransform}
       age:
         type: double
-        binding: {kind: variable, variable_id: 1, source_asset: Lancer}
+        binding: {kind: variable, variable_id: 6, source_asset: Lancer}
       seed:
         type: double
-        binding: {kind: variable, variable_id: 4, source_asset: Lancer}
+        binding: {kind: variable, variable_id: 2, source_asset: Lancer}
       speed:
         type: double
         binding: {kind: component_field, component: GAME.GameMovement, field: speed}
@@ -151,7 +151,7 @@ graphs:
       t:
         type: double
         flags: 0
-        binding: {kind: variable, variable_id: 3, source_asset: Lancer}
+        binding: {kind: variable, variable_id: 1, source_asset: Lancer}
       pos:
         type: struct
         type_name: GameTransform
@@ -170,7 +170,7 @@ graphs:
       lx:
         id: 520
         type: float
-        binding: {kind: variable, variable_id: 5, source_asset: Lancer}
+        binding: {kind: variable, variable_id: 3, source_asset: Lancer}
       p: {type: struct, type_name: GameTransform}
       pos:
         type: struct
@@ -188,7 +188,7 @@ graphs:
       ly:
         id: 572
         type: float
-        binding: {kind: variable, variable_id: 6, source_asset: Lancer}
+        binding: {kind: variable, variable_id: 4, source_asset: Lancer}
       p: {type: struct, type_name: GameTransform}
       pos:
         type: struct
@@ -206,7 +206,7 @@ graphs:
       state:
         id: 614
         type: float
-        binding: {kind: variable, variable_id: 2, source_asset: Lancer}
+        binding: {kind: variable, variable_id: 5, source_asset: Lancer}
     outputs:
       Then: {id: 617, kind: exec}
       Result: {id: 615, type: float}
@@ -219,7 +219,7 @@ graphs:
       t:
         id: 644
         type: float
-        binding: {kind: variable, variable_id: 3, source_asset: Lancer}
+        binding: {kind: variable, variable_id: 1, source_asset: Lancer}
     outputs:
       Then: {id: 647, kind: exec}
       Result: {id: 645, type: float}
@@ -236,10 +236,10 @@ graphs:
         binding: {kind: component_field, component: GAME.GameDrive, field: target}
       lx:
         type: float
-        binding: {kind: variable, variable_id: 5, source_asset: Lancer}
+        binding: {kind: variable, variable_id: 3, source_asset: Lancer}
       ly:
         type: float
-        binding: {kind: variable, variable_id: 6, source_asset: Lancer}
+        binding: {kind: variable, variable_id: 4, source_asset: Lancer}
       speed:
         type: double
         binding: {kind: component_field, component: GAME.GameMovement, field: speed}
@@ -258,10 +258,10 @@ graphs:
         binding: {kind: component_field, component: GAME.GameOrientation, field: radians}
       ly:
         type: double
-        binding: {kind: variable, variable_id: 6, source_asset: Lancer}
+        binding: {kind: variable, variable_id: 4, source_asset: Lancer}
       lx:
         type: double
-        binding: {kind: variable, variable_id: 5, source_asset: Lancer}
+        binding: {kind: variable, variable_id: 3, source_asset: Lancer}
     outputs:
       Then: {id: 761, kind: exec}
       Result: {id: 759, type: double}
@@ -272,7 +272,7 @@ graphs:
     inputs:
       t:
         type: double
-        binding: {kind: variable, variable_id: 3, source_asset: Lancer}
+        binding: {kind: variable, variable_id: 1, source_asset: Lancer}
     outputs:
       Result: {type: double}
   - id: 816
@@ -292,7 +292,7 @@ graphs:
       t:
         type: double
         flags: 0
-        binding: {kind: variable, variable_id: 3, source_asset: Lancer}
+        binding: {kind: variable, variable_id: 1, source_asset: Lancer}
     outputs:
       Result: {type: bool}
   - {id: 844, type: Branch}
@@ -305,7 +305,7 @@ graphs:
       state:
         id: 860
         type: float
-        binding: {kind: variable, variable_id: 2, source_asset: Lancer}
+        binding: {kind: variable, variable_id: 5, source_asset: Lancer}
     outputs:
       Then: {id: 863, kind: exec}
       Result: {id: 861, type: float}
@@ -318,7 +318,7 @@ graphs:
       t:
         id: 890
         type: float
-        binding: {kind: variable, variable_id: 3, source_asset: Lancer}
+        binding: {kind: variable, variable_id: 1, source_asset: Lancer}
     outputs:
       Then: {id: 893, kind: exec}
       Result: {id: 891, type: float}
@@ -344,10 +344,10 @@ graphs:
         binding: {kind: component_field, component: GAME.GameDrive, field: target}
       lx:
         type: float
-        binding: {kind: variable, variable_id: 5, source_asset: Lancer}
+        binding: {kind: variable, variable_id: 3, source_asset: Lancer}
       ly:
         type: float
-        binding: {kind: variable, variable_id: 6, source_asset: Lancer}
+        binding: {kind: variable, variable_id: 4, source_asset: Lancer}
     outputs:
       Then: {id: 944, kind: exec}
       Result: {id: 942, type: struct, type_name: CF_V2}
@@ -365,10 +365,10 @@ graphs:
     inputs:
       lx:
         type: double
-        binding: {kind: variable, variable_id: 5, source_asset: Lancer}
+        binding: {kind: variable, variable_id: 3, source_asset: Lancer}
       ly:
         type: double
-        binding: {kind: variable, variable_id: 6, source_asset: Lancer}
+        binding: {kind: variable, variable_id: 4, source_asset: Lancer}
     outputs:
       Result: {type: struct, type_name: CF_V2}
   - id: 1027
@@ -401,7 +401,7 @@ graphs:
       t:
         type: double
         flags: 0
-        binding: {kind: variable, variable_id: 3, source_asset: Lancer}
+        binding: {kind: variable, variable_id: 1, source_asset: Lancer}
     outputs:
       Result: {type: bool}
   - {id: 1069, type: Branch}
@@ -414,7 +414,7 @@ graphs:
       state:
         id: 1085
         type: float
-        binding: {kind: variable, variable_id: 2, source_asset: Lancer}
+        binding: {kind: variable, variable_id: 5, source_asset: Lancer}
     outputs:
       Then: {id: 1088, kind: exec}
       Result: {id: 1086, type: float}
@@ -427,7 +427,7 @@ graphs:
       t:
         id: 1115
         type: float
-        binding: {kind: variable, variable_id: 3, source_asset: Lancer}
+        binding: {kind: variable, variable_id: 1, source_asset: Lancer}
     outputs:
       Then: {id: 1118, kind: exec}
       Result: {id: 1116, type: float}
@@ -468,7 +468,7 @@ graphs:
       t:
         type: double
         flags: 0
-        binding: {kind: variable, variable_id: 3, source_asset: Lancer}
+        binding: {kind: variable, variable_id: 1, source_asset: Lancer}
     outputs:
       Result: {type: bool}
   - {id: 1227, type: Branch}
@@ -481,7 +481,7 @@ graphs:
       state:
         id: 1243
         type: float
-        binding: {kind: variable, variable_id: 2, source_asset: Lancer}
+        binding: {kind: variable, variable_id: 5, source_asset: Lancer}
     outputs:
       Then: {id: 1246, kind: exec}
       Result: {id: 1244, type: float}
@@ -494,7 +494,7 @@ graphs:
       t:
         id: 1273
         type: float
-        binding: {kind: variable, variable_id: 3, source_asset: Lancer}
+        binding: {kind: variable, variable_id: 1, source_asset: Lancer}
     outputs:
       Then: {id: 1276, kind: exec}
       Result: {id: 1274, type: float}

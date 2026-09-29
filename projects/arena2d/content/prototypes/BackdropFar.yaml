@@ -1,0 +1,4 @@
+name: BackdropFar
+components:
+  GAME.GameBackdrop2D: {intensity: 1.0, layer: 1, lit: true, parallax: 0.45}
+  GAME.GameGlobalBinding: {name: BackdropFar}

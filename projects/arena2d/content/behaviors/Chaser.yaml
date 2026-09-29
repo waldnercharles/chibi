@@ -4,8 +4,8 @@ id_counter: 439
 description: Swarm toward the player along a weaving path when near; drift aimlessly otherwise.
 owner_type: ecs.entity
 variables:
-- {id: 1, name: seed, type: float}
-- {id: 2, name: age, type: float}
+- {id: 1, name: age, type: float}
+- {id: 2, name: seed, type: float}
 graphs:
 - kind: event
   name: ""
@@ -20,7 +20,7 @@ graphs:
       seed:
         id: 22
         type: float
-        binding: {kind: variable, variable_id: 1, source_asset: Chaser}
+        binding: {kind: variable, variable_id: 2, source_asset: Chaser}
     outputs:
       Then: {id: 25, kind: exec}
       Result: {id: 23, type: float}
@@ -38,7 +38,7 @@ graphs:
       age:
         id: 63
         type: float
-        binding: {kind: variable, variable_id: 2, source_asset: Chaser}
+        binding: {kind: variable, variable_id: 1, source_asset: Chaser}
       dt:
         type: double
         binding: {kind: delta_time}
@@ -82,10 +82,10 @@ graphs:
         binding: {kind: component, component: GAME.GameTransform}
       age:
         type: double
-        binding: {kind: variable, variable_id: 2, source_asset: Chaser}
+        binding: {kind: variable, variable_id: 1, source_asset: Chaser}
       seed:
         type: double
-        binding: {kind: variable, variable_id: 1, source_asset: Chaser}
+        binding: {kind: variable, variable_id: 2, source_asset: Chaser}
       speed:
         type: double
         binding: {kind: component_field, component: GAME.GameMovement, field: speed}
@@ -105,10 +105,10 @@ graphs:
         binding: {kind: component_field, component: GAME.GameDrive, field: target}
       seed:
         type: double
-        binding: {kind: variable, variable_id: 1, source_asset: Chaser}
+        binding: {kind: variable, variable_id: 2, source_asset: Chaser}
       age:
         type: double
-        binding: {kind: variable, variable_id: 2, source_asset: Chaser}
+        binding: {kind: variable, variable_id: 1, source_asset: Chaser}
       speed:
         type: double
         binding: {kind: component_field, component: GAME.GameMovement, field: speed}

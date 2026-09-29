@@ -1,0 +1,20 @@
+name: ShopTerminalDisplay
+components:
+  GAME.GameAppearance:
+    antialias: 1.0
+    border_color: 4291913471
+    border_width: 1.0
+    color: 975833855
+    height: 13.0
+    layer: 1
+    width: 24.0
+  GAME.GameMaterial:
+    absorption: 0.2
+    albedo: 975833855
+    border_emission_color: 4291913471
+    border_scene: 4291913471
+    emission_color: 4290792959
+    emission_intensity: 0.22
+    emission_multiplier: 1.0
+    scene: 975833855
+  GAME.GameTransform: {}

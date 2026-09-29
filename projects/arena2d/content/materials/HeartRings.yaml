@@ -1,0 +1,95 @@
+version: 3
+name: HeartRings
+domain: material
+id_counter: 188
+description: Great rings of matter circling far below.
+graphs:
+- kind: event
+  name: ""
+  nodes:
+  - id: 1
+    type: Shader Surface Output
+    inputs:
+      Base Color:
+        default: {x: 1.0, "y": 1.0, z: 1.0}
+      Emission:
+        default: {x: 0.0, "y": 0.0, z: 0.0}
+      Roughness: 0.9
+      Normal:
+        default: {x: 0.0, "y": 0.0, z: 0.0}
+  - {id: 12, type: Shader WorldPosition}
+  - id: 25
+    type: Behavior Expression
+    reference_id: 14
+    reference_name: vec2(wp.x, wp.z)
+    inputs:
+      wp: {type: struct, type_name: ShaderVec3}
+    outputs:
+      Result: {type: struct, type_name: ShaderVec2}
+  - id: 67
+    type: Behavior Expression
+    reference_id: 45
+    reference_name: length(p - vec2(0, 26000))
+    inputs:
+      p: {type: struct, type_name: ShaderVec2}
+    outputs:
+      Result: {type: float}
+  - id: 118
+    type: Behavior Expression
+    reference_id: 70
+    reference_name: step(abs(fract(r / 420) - 0.5), 0.04) * step(0.35, noise(p, 0.002))
+    inputs:
+      r: {type: float}
+      p: {type: struct, type_name: ShaderVec2}
+    outputs:
+      Result: {type: float}
+  - id: 139
+    type: Behavior Expression
+    reference_id: 122
+    reference_name: vec3(0.06, 0.03, 0.09)
+    outputs:
+      Result: {type: struct, type_name: ShaderVec3}
+  - id: 169
+    type: Behavior Expression
+    reference_id: 141
+    reference_name: vec3(0.5, 0.2, 0.9) * ring * 0.03
+    inputs:
+      ring: {type: float}
+    outputs:
+      Result: {type: struct, type_name: ShaderVec3}
+  - id: 185
+    type: Behavior Expression
+    reference_id: 172
+    reference_name: ring * 0.7
+    inputs:
+      ring: {type: float}
+    outputs:
+      Result: {type: float}
+  edges:
+  - {from: 12.Value, to: 25.wp}
+  - {from: 25.Result, to: 67.p}
+  - {from: 25.Result, to: 118.p}
+  - {from: 67.Result, to: 118.r}
+  - {from: 118.Result, to: 169.ring}
+  - {from: 118.Result, to: 185.ring}
+  - {from: 139.Result, to: 1.Base Color}
+  - {from: 169.Result, to: 1.Emission}
+  - {from: 185.Result, to: 1.Opacity}
+- {id: 14, kind: function, math_expression: 'vec2(wp.x, wp.z)', entry_id: 29}
+- id: 45
+  kind: function
+  math_expression: length(p - vec2(0, 26000))
+  entry_id: 46
+- id: 70
+  kind: function
+  math_expression: step(abs(fract(r / 420) - 0.5), 0.04) * step(0.35, noise(p, 0.002))
+  entry_id: 71
+- id: 122
+  kind: function
+  math_expression: vec3(0.06, 0.03, 0.09)
+  entry_id: 123
+- id: 141
+  kind: function
+  math_expression: vec3(0.5, 0.2, 0.9) * ring * 0.03
+  entry_id: 142
+- {id: 172, kind: function, math_expression: ring * 0.7, entry_id: 173}

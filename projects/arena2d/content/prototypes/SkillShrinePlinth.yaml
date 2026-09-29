@@ -1,0 +1,17 @@
+name: SkillShrinePlinth
+components:
+  GAME.GameAppearance:
+    antialias: 1.0
+    border_color: 2053294335
+    border_width: 1.0
+    color: 371470335
+    height: 8.0
+    width: 24.0
+  GAME.GameMaterial:
+    absorption: 0.6
+    albedo: 371470335
+    border_emission_color: 1514123519
+    border_scene: 2053294335
+    emission_multiplier: 1.0
+    scene: 371470335
+  GAME.GameTransform: {}

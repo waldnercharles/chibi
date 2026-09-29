@@ -54,7 +54,7 @@ graphs:
   - id: 243
     type: Behavior Expression
     reference_id: 184
-    reference_name: mix(vec3(0.08, 0.6, 0.5), vec3(0.6, 0.12, 0.55), fog) * (motes * 0.5 + fog * fog * 0.05)
+    reference_name: mix(vec3(0.08, 0.6, 0.5), vec3(0.6, 0.12, 0.55), fog) * (motes * 0.3 + fog * fog * 0.02)
     inputs:
       fog: {type: float}
       motes: {type: float}
@@ -92,6 +92,6 @@ graphs:
   entry_id: 133
 - id: 184
   kind: function
-  math_expression: mix(vec3(0.08, 0.6, 0.5), vec3(0.6, 0.12, 0.55), fog) * (motes * 0.5 + fog * fog * 0.05)
+  math_expression: mix(vec3(0.08, 0.6, 0.5), vec3(0.6, 0.12, 0.55), fog) * (motes * 0.3 + fog * fog * 0.02)
   entry_id: 185
 - {id: 247, kind: function, math_expression: "1", entry_id: 248}

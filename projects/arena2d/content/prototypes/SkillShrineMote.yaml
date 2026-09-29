@@ -1,0 +1,17 @@
+name: SkillShrineMote
+components:
+  GAME.GameAppearance:
+    antialias: 1.0
+    color: 3654090751
+    height: 4.0
+    layer: 2
+    shape: Circle
+    width: 4.0
+  GAME.GameMaterial:
+    absorption: 0.2
+    albedo: 3654090751
+    emission_color: 2642149375
+    emission_intensity: 0.3
+    emission_multiplier: 1.0
+    scene: 3654090751
+  GAME.GameTransform: {}

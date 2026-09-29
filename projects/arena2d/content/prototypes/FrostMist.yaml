@@ -1,0 +1,4 @@
+name: FrostMist
+components:
+  GAME.GameFluidVolume: {height: 90.0, substance: Fog, width: 160.0}
+  GAME.GameTransform: {}

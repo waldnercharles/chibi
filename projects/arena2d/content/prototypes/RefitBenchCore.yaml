@@ -1,0 +1,17 @@
+name: RefitBenchCore
+components:
+  GAME.GameAppearance:
+    antialias: 1.0
+    color: 3221028863
+    height: 11.0
+    layer: 2
+    shape: Diamond
+    width: 11.0
+  GAME.GameMaterial:
+    absorption: 0.2
+    albedo: 3221028863
+    emission_color: 1878458367
+    emission_intensity: 0.28
+    emission_multiplier: 1.0
+    scene: 3221028863
+  GAME.GameTransform: {}

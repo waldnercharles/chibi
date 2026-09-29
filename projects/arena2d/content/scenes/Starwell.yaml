@@ -13,7 +13,9 @@ entities:
   components:
     GameTransform: {x: 0.0, "y": 330.0}
   behaviors: [CameraFollow]
-- {name: Lighting, prototype: WellLighting}
+- name: Lighting
+  prototype: WellLighting
+  behaviors: [Atmosphere]
 - {name: FireMouse, prototype: FireMouse}
 - {name: FireStick, prototype: FireStick}
 - {name: SecondaryMouse, prototype: SecondaryMouse}
@@ -181,3 +183,4 @@ entities:
   prototype: Seal
   components:
     GameTransform: {x: 0.0, "y": 5905.0}
+    GameGlobalBinding: {name: SealThroat}

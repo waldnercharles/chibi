@@ -13,7 +13,7 @@ components:
     albedo: 1610604799
     border_emission_color: 3372217599
     emission_color: 1073729791
-    emission_intensity: 0.2
+    emission_intensity: 0.1
     emission_multiplier: 1.0
     scene: 1610604799
   GAME.GameOrientation: {}

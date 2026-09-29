@@ -1,0 +1,391 @@
+version: 3
+name: Atmosphere
+id_counter: 933
+description: 'Grades the light by depth: eases fog, exposure, colour temperature, tint, saturation and vignette toward the current stratum''s mood, and swaps the backdrop layers when the ship crosses into a new stratum.'
+owner_type: ecs.entity
+variables:
+- id: 1
+  name: fogs
+  type: float
+  container: 1
+  default: [0.32, 0.16, 0.26, 0.3, 0.22]
+- id: 2
+  name: exposures
+  type: float
+  container: 1
+  default: [0.35, 0.1, 0.2, 0.15, 0.3]
+- id: 3
+  name: temperatures
+  type: float
+  container: 1
+  default: [0.12, -0.08, -0.2, 0.22, 0.0]
+- id: 4
+  name: tints
+  type: float
+  container: 1
+  default: [0.0, 0.08, -0.02, 0.0, 0.12]
+- id: 5
+  name: saturations
+  type: float
+  container: 1
+  default: [0.1, 0.18, 0.05, 0.12, 0.2]
+- id: 6
+  name: vignettes
+  type: float
+  container: 1
+  default: [0.32, 0.38, 0.3, 0.34, 0.45]
+- id: 7
+  name: deeps
+  type: name
+  container: 1
+  default: [ThroatDeep, GrottoDeep, RefractoryDeep, FoundryDeep, HeartDeep]
+- id: 8
+  name: fars
+  type: name
+  container: 1
+  default: [ThroatColumns, GrottoStalks, RefractoryShards, FoundryGirders, HeartRings]
+- {id: 9, name: last, type: float, default: -1.0}
+graphs:
+- kind: event
+  name: ""
+  nodes:
+  - id: 10
+    type: Event
+    reference_name: Tick
+    outputs:
+      DeltaSeconds: {type: float, kind: data}
+  - id: 13
+    type: Get Global Variable
+    inputs: {Name: Player}
+    outputs:
+      Value: {type: handle, type_name: ecs.entity}
+  - {id: 16, type: GetEntity_GameTransform}
+  - id: 47
+    type: Behavior Expression
+    reference_id: 19
+    reference_name: clamp(floor(p.y / 6000), 0, 4)
+    inputs:
+      p: {type: struct, type_name: GameTransform}
+    outputs:
+      Result: {type: double}
+  - id: 80
+    type: Get Variable
+    reference_id: 1
+    reference_name: fogs
+    outputs:
+      Value: {type: float, container: 1}
+  - id: 82
+    type: Get
+    inputs:
+      Array: {type: float}
+    outputs:
+      Item: {type: float}
+  - id: 121
+    type: Behavior Expression
+    reference_id: 86
+    reference_name: value += (goal - value) * min(1, dt * 0.8)
+    inputs:
+      Exec: {id: 126, kind: exec}
+      value:
+        id: 122
+        type: float
+        binding: {kind: component_field, component: GAME.GameHRC2D, field: fog}
+      goal: {type: float}
+      dt:
+        type: double
+        binding: {kind: delta_time}
+    outputs:
+      Then: {id: 127, kind: exec}
+      Result: {id: 125, type: float}
+  - id: 234
+    type: Get Variable
+    reference_id: 2
+    reference_name: exposures
+    outputs:
+      Value: {type: float, container: 1}
+  - id: 236
+    type: Get
+    inputs:
+      Array: {type: float}
+    outputs:
+      Item: {type: float}
+  - id: 275
+    type: Behavior Expression
+    reference_id: 240
+    reference_name: value += (goal - value) * min(1, dt * 0.8)
+    inputs:
+      Exec: {id: 280, kind: exec}
+      value:
+        id: 276
+        type: float
+        binding: {kind: component_field, component: GAME.GameHRC2D, field: exposure}
+      goal: {type: float}
+      dt:
+        type: double
+        binding: {kind: delta_time}
+    outputs:
+      Then: {id: 281, kind: exec}
+      Result: {id: 279, type: float}
+  - id: 388
+    type: Get Variable
+    reference_id: 3
+    reference_name: temperatures
+    outputs:
+      Value: {type: float, container: 1}
+  - id: 390
+    type: Get
+    inputs:
+      Array: {type: float}
+    outputs:
+      Item: {type: float}
+  - id: 429
+    type: Behavior Expression
+    reference_id: 394
+    reference_name: value += (goal - value) * min(1, dt * 0.8)
+    inputs:
+      Exec: {id: 434, kind: exec}
+      value:
+        id: 430
+        type: float
+        binding: {kind: component_field, component: GAME.GamePost2D, field: temperature}
+      goal: {type: float}
+      dt:
+        type: double
+        binding: {kind: delta_time}
+    outputs:
+      Then: {id: 435, kind: exec}
+      Result: {id: 433, type: float}
+  - id: 502
+    type: Get Variable
+    reference_id: 4
+    reference_name: tints
+    outputs:
+      Value: {type: float, container: 1}
+  - id: 504
+    type: Get
+    inputs:
+      Array: {type: float}
+    outputs:
+      Item: {type: float}
+  - id: 543
+    type: Behavior Expression
+    reference_id: 508
+    reference_name: value += (goal - value) * min(1, dt * 0.8)
+    inputs:
+      Exec: {id: 548, kind: exec}
+      value:
+        id: 544
+        type: float
+        binding: {kind: component_field, component: GAME.GamePost2D, field: tint}
+      goal: {type: float}
+      dt:
+        type: double
+        binding: {kind: delta_time}
+    outputs:
+      Then: {id: 549, kind: exec}
+      Result: {id: 547, type: float}
+  - id: 616
+    type: Get Variable
+    reference_id: 5
+    reference_name: saturations
+    outputs:
+      Value: {type: float, container: 1}
+  - id: 618
+    type: Get
+    inputs:
+      Array: {type: float}
+    outputs:
+      Item: {type: float}
+  - id: 657
+    type: Behavior Expression
+    reference_id: 622
+    reference_name: value += (goal - value) * min(1, dt * 0.8)
+    inputs:
+      Exec: {id: 662, kind: exec}
+      value:
+        id: 658
+        type: float
+        binding: {kind: component_field, component: GAME.GamePost2D, field: saturation}
+      goal: {type: float}
+      dt:
+        type: double
+        binding: {kind: delta_time}
+    outputs:
+      Then: {id: 663, kind: exec}
+      Result: {id: 661, type: float}
+  - id: 730
+    type: Get Variable
+    reference_id: 6
+    reference_name: vignettes
+    outputs:
+      Value: {type: float, container: 1}
+  - id: 732
+    type: Get
+    inputs:
+      Array: {type: float}
+    outputs:
+      Item: {type: float}
+  - id: 771
+    type: Behavior Expression
+    reference_id: 736
+    reference_name: value += (goal - value) * min(1, dt * 0.8)
+    inputs:
+      Exec: {id: 776, kind: exec}
+      value:
+        id: 772
+        type: float
+        binding: {kind: component_field, component: GAME.GamePost2D, field: vignette}
+      goal: {type: float}
+      dt:
+        type: double
+        binding: {kind: delta_time}
+    outputs:
+      Then: {id: 777, kind: exec}
+      Result: {id: 775, type: float}
+  - id: 856
+    type: Behavior Expression
+    reference_id: 844
+    reference_name: i != last
+    inputs:
+      i: {type: double, flags: 0}
+      last:
+        type: double
+        flags: 0
+        binding: {kind: variable, variable_id: 9, source_asset: Atmosphere}
+    outputs:
+      Result: {type: bool}
+  - {id: 863, type: Branch}
+  - id: 876
+    type: Behavior Expression
+    reference_id: 868
+    reference_name: last = i
+    inputs:
+      Exec: {id: 880, kind: exec}
+      last:
+        id: 877
+        type: float
+        binding: {kind: variable, variable_id: 9, source_asset: Atmosphere}
+      i: {type: double}
+    outputs:
+      Then: {id: 881, kind: exec}
+      Result: {id: 879, type: float}
+  - id: 895
+    type: Get Global Variable
+    inputs: {Name: BackdropDeep}
+    outputs:
+      Value: {type: handle, type_name: ecs.entity}
+  - id: 898
+    type: Get Global Variable
+    inputs: {Name: BackdropFar}
+    outputs:
+      Value: {type: handle, type_name: ecs.entity}
+  - id: 901
+    type: Get Variable
+    reference_id: 7
+    reference_name: deeps
+    outputs:
+      Value: {type: name, container: 1}
+  - id: 903
+    type: Get
+    inputs:
+      Array: {type: name}
+    outputs:
+      Item: {type: name}
+  - id: 907
+    type: Get Variable
+    reference_id: 8
+    reference_name: fars
+    outputs:
+      Value: {type: name, container: 1}
+  - id: 909
+    type: Get
+    inputs:
+      Array: {type: name}
+    outputs:
+      Item: {type: name}
+  - id: 913
+    type: Format Text
+    inputs:
+      Format: '{}'
+      Arg0: {type: name}
+  - id: 917
+    type: Format Text
+    inputs:
+      Format: '{}'
+      Arg0: {type: name}
+  - {id: 921, type: Set_GameBackdrop2D_material}
+  - {id: 927, type: Set_GameBackdrop2D_material}
+  edges:
+  - {from: 10.Then, to: 121.Exec}
+  - {from: 13.Value, to: 16.Entity}
+  - {from: 16.Value, to: 47.p}
+  - {from: 47.Result, to: 82.Index, conversion: To Integer}
+  - {from: 47.Result, to: 236.Index, conversion: To Integer}
+  - {from: 47.Result, to: 390.Index, conversion: To Integer}
+  - {from: 47.Result, to: 504.Index, conversion: To Integer}
+  - {from: 47.Result, to: 618.Index, conversion: To Integer}
+  - {from: 47.Result, to: 732.Index, conversion: To Integer}
+  - {from: 47.Result, to: 856.i}
+  - {from: 47.Result, to: 876.i}
+  - {from: 47.Result, to: 903.Index, conversion: To Integer}
+  - {from: 47.Result, to: 909.Index, conversion: To Integer}
+  - {from: 80.Value, to: 82.Array}
+  - {from: 82.Item, to: 121.goal}
+  - {from: 121.Then, to: 275.Exec}
+  - {from: 234.Value, to: 236.Array}
+  - {from: 236.Item, to: 275.goal}
+  - {from: 275.Then, to: 429.Exec}
+  - {from: 388.Value, to: 390.Array}
+  - {from: 390.Item, to: 429.goal}
+  - {from: 429.Then, to: 543.Exec}
+  - {from: 502.Value, to: 504.Array}
+  - {from: 504.Item, to: 543.goal}
+  - {from: 543.Then, to: 657.Exec}
+  - {from: 616.Value, to: 618.Array}
+  - {from: 618.Item, to: 657.goal}
+  - {from: 657.Then, to: 771.Exec}
+  - {from: 730.Value, to: 732.Array}
+  - {from: 732.Item, to: 771.goal}
+  - {from: 771.Then, to: 863.Exec}
+  - {from: 856.Result, to: 863.Condition}
+  - {from: 863.True, to: 876.Exec}
+  - {from: 876.Then, to: 921.Exec}
+  - {from: 895.Value, to: 921.Target}
+  - {from: 898.Value, to: 927.Target}
+  - {from: 901.Value, to: 903.Array}
+  - {from: 903.Item, to: 913.Arg0}
+  - {from: 907.Value, to: 909.Array}
+  - {from: 909.Item, to: 917.Arg0}
+  - {from: 913.Result, to: 921.Value}
+  - {from: 917.Result, to: 927.Value}
+  - {from: 921.Then, to: 927.Exec}
+- id: 19
+  kind: function
+  math_expression: clamp(floor(p.y / 6000), 0, 4)
+  entry_id: 51
+- id: 86
+  kind: function
+  math_expression: value += (goal - value) * min(1, dt * 0.8)
+  entry_id: 129
+- id: 240
+  kind: function
+  math_expression: value += (goal - value) * min(1, dt * 0.8)
+  entry_id: 283
+- id: 394
+  kind: function
+  math_expression: value += (goal - value) * min(1, dt * 0.8)
+  entry_id: 437
+- id: 508
+  kind: function
+  math_expression: value += (goal - value) * min(1, dt * 0.8)
+  entry_id: 551
+- id: 622
+  kind: function
+  math_expression: value += (goal - value) * min(1, dt * 0.8)
+  entry_id: 665
+- id: 736
+  kind: function
+  math_expression: value += (goal - value) * min(1, dt * 0.8)
+  entry_id: 779
+- {id: 844, kind: function, math_expression: i != last, entry_id: 845}
+- {id: 868, kind: function, math_expression: last = i, entry_id: 883}

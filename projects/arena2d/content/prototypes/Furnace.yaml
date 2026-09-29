@@ -1,0 +1,20 @@
+name: Furnace
+components:
+  GAME.GameBody: {}
+  GAME.GameCollider: {category: 2, mask: 15, radius: 12.0, restitution: 0.3}
+  GAME.GameDrive: {}
+  GAME.GameExperience: {current: 9}
+  GAME.GameFlash: {color: 4294967295, decay: 12.0}
+  GAME.GameGeometry3D: {depth: 38.0, height: 4.0, width: 38.0}
+  GAME.GameHealth: {current: 85, maximum: 85}
+  GAME.GameMovement: {}
+  GAME.GameOrientation: {}
+  GAME.GameShader:
+    material: BarnacleSkin
+    parameters: '{"Glow":[1.0,0.353,0.165],"Body":[0.102,0.031,0.016]}'
+    shape: BarnacleShape
+  GAME.GameSpawnRequest: {prototype: FurnaceDeath}
+  GAME.GameTransform: {}
+  GAME.GameVelocity: {}
+  GAME.GameWeapon: {damage: 7}
+behaviors: [Creature, FurnaceTurret]

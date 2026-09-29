@@ -1,0 +1,6 @@
+name: CinderNest
+components:
+  GAME.GameEncounter: {total: 4}
+  GAME.GameSpawnRequest: {prototype: Cinder}
+  GAME.GameTransform: {}
+behaviors: [Nest]

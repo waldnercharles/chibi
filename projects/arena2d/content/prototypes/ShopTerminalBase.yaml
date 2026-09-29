@@ -1,0 +1,12 @@
+name: ShopTerminalBase
+components:
+  GAME.GameAppearance:
+    antialias: 1.0
+    border_color: 2322213631
+    border_width: 1.0
+    color: 219685631
+    height: 6.0
+    layer: 1
+    width: 52.0
+  GAME.GameMaterial: {absorption: 0.6, albedo: 219685631, border_scene: 2322213631, scene: 219685631}
+  GAME.GameTransform: {}

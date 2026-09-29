@@ -1,0 +1,19 @@
+name: SkillShrineHalo
+components:
+  GAME.GameAppearance:
+    antialias: 1.0
+    border_color: 2642149375
+    border_width: 1.2
+    color: 2642149120
+    height: 46.0
+    layer: 1
+    shape: Circle
+    width: 46.0
+  GAME.GameMaterial:
+    absorption: 0.6
+    albedo: 2642149120
+    border_emission_color: 2322006015
+    border_scene: 2642149375
+    emission_multiplier: 1.0
+    scene: 2642149120
+  GAME.GameTransform: {}

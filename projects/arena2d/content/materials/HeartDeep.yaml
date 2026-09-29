@@ -1,0 +1,95 @@
+version: 3
+name: HeartDeep
+domain: material
+id_counter: 214
+description: 'The Heart''s distance: a violet void around a dying star.'
+graphs:
+- kind: event
+  name: ""
+  nodes:
+  - id: 1
+    type: Shader Surface Output
+    inputs:
+      Base Color:
+        default: {x: 1.0, "y": 1.0, z: 1.0}
+      Emission:
+        default: {x: 0.0, "y": 0.0, z: 0.0}
+      Roughness: 0.9
+      Normal:
+        default: {x: 0.0, "y": 0.0, z: 0.0}
+  - {id: 12, type: Shader WorldPosition}
+  - id: 25
+    type: Behavior Expression
+    reference_id: 14
+    reference_name: vec2(wp.x, wp.z)
+    inputs:
+      wp: {type: struct, type_name: ShaderVec3}
+    outputs:
+      Result: {type: struct, type_name: ShaderVec2}
+  - id: 92
+    type: Behavior Expression
+    reference_id: 45
+    reference_name: noise(p, 0.0012) * 0.7 + noise(p + vec2(5, 5), 0.004) * 0.3
+    inputs:
+      p: {type: struct, type_name: ShaderVec2}
+    outputs:
+      Result: {type: float}
+  - id: 117
+    type: Behavior Expression
+    reference_id: 95
+    reference_name: smoothstep(0.97, 1.0, noise(p, 0.08))
+    inputs:
+      p: {type: struct, type_name: ShaderVec2}
+    outputs:
+      Result: {type: float}
+  - id: 154
+    type: Behavior Expression
+    reference_id: 120
+    reference_name: mix(vec3(0.004, 0.0, 0.01), vec3(0.04, 0.01, 0.07), fog)
+    inputs:
+      fog: {type: float}
+    outputs:
+      Result: {type: struct, type_name: ShaderVec3}
+  - id: 200
+    type: Behavior Expression
+    reference_id: 157
+    reference_name: vec3(0.6, 0.3, 1.0) * (stars * 0.3 + fog * fog * 0.04)
+    inputs:
+      stars: {type: float}
+      fog: {type: float}
+    outputs:
+      Result: {type: struct, type_name: ShaderVec3}
+  - id: 212
+    type: Behavior Expression
+    reference_id: 204
+    reference_name: "1"
+    outputs:
+      Result: {type: float}
+  edges:
+  - {from: 12.Value, to: 25.wp}
+  - {from: 25.Result, to: 92.p}
+  - {from: 25.Result, to: 117.p}
+  - {from: 92.Result, to: 154.fog}
+  - {from: 92.Result, to: 200.fog}
+  - {from: 117.Result, to: 200.stars}
+  - {from: 154.Result, to: 1.Base Color}
+  - {from: 200.Result, to: 1.Emission}
+  - {from: 212.Result, to: 1.Opacity}
+- {id: 14, kind: function, math_expression: 'vec2(wp.x, wp.z)', entry_id: 29}
+- id: 45
+  kind: function
+  math_expression: noise(p, 0.0012) * 0.7 + noise(p + vec2(5, 5), 0.004) * 0.3
+  entry_id: 46
+- id: 95
+  kind: function
+  math_expression: smoothstep(0.97, 1.0, noise(p, 0.08))
+  entry_id: 96
+- id: 120
+  kind: function
+  math_expression: mix(vec3(0.004, 0.0, 0.01), vec3(0.04, 0.01, 0.07), fog)
+  entry_id: 121
+- id: 157
+  kind: function
+  math_expression: vec3(0.6, 0.3, 1.0) * (stars * 0.3 + fog * fog * 0.04)
+  entry_id: 158
+- {id: 204, kind: function, math_expression: "1", entry_id: 205}

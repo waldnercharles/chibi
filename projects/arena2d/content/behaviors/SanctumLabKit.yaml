@@ -1,0 +1,83 @@
+version: 3
+name: SanctumLabKit
+id_counter: 81
+description: 'SanctumLab only: once the run has begun, fills the purse with scrap, skill points and a stash of modules for trying the Sanctum screens.'
+owner_type: ecs.entity
+variables:
+- {id: 1, name: done, type: float}
+- id: 2
+  name: kit
+  type: int
+  container: 1
+  default: [1, 3, 21, 25, 40, 29, 7, 22]
+graphs:
+- kind: event
+  name: ""
+  nodes:
+  - id: 3
+    type: Event
+    reference_name: Tick
+    outputs:
+      DeltaSeconds: {type: float, kind: data}
+  - id: 20
+    type: Behavior Expression
+    reference_id: 6
+    reference_name: done < 0.5
+    inputs:
+      done:
+        type: double
+        flags: 0
+        binding: {kind: variable, variable_id: 1, source_asset: SanctumLabKit}
+    outputs:
+      Result: {type: bool}
+  - {id: 26, type: Branch}
+  - id: 41
+    type: Behavior Expression
+    reference_id: 31
+    reference_name: done = 1
+    inputs:
+      Exec: {id: 44, kind: exec}
+      done:
+        id: 42
+        type: float
+        binding: {kind: variable, variable_id: 1, source_asset: SanctumLabKit}
+    outputs:
+      Then: {id: 45, kind: exec}
+      Result: {id: 43, type: float}
+  - id: 61
+    type: Set Global Variable
+    inputs:
+      Name: Scrap
+      Value: {type: int, default: 240}
+    outputs:
+      Value: {type: int}
+  - id: 67
+    type: Set Global Variable
+    inputs:
+      Name: SkillPoints
+      Value: {type: int, default: 6}
+    outputs:
+      Value: {type: int}
+  - id: 73
+    type: Get Variable
+    reference_id: 2
+    reference_name: kit
+    outputs:
+      Value: {container: 1}
+  - id: 75
+    type: Set Global Variable
+    inputs:
+      Name: Stash
+      Value: {type: int, container: 1}
+    outputs:
+      Value: {type: int}
+  edges:
+  - {from: 3.Then, to: 26.Exec}
+  - {from: 20.Result, to: 26.Condition}
+  - {from: 26.True, to: 41.Exec}
+  - {from: 41.Then, to: 61.Exec}
+  - {from: 61.Then, to: 67.Exec}
+  - {from: 67.Then, to: 75.Exec}
+  - {from: 73.Value, to: 75.Value}
+- {id: 6, kind: function, math_expression: done < 0.5, entry_id: 7}
+- {id: 31, kind: function, math_expression: done = 1, entry_id: 47}

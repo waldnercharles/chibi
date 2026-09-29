@@ -1,0 +1,19 @@
+name: Forgelight
+components:
+  GAME.GameAppearance:
+    antialias: 1.0
+    border_color: 4291857151
+    border_width: 1.5
+    color: 4288301823
+    height: 6.0
+    width: 16.0
+  GAME.GameMaterial:
+    absorption: 0.3
+    albedo: 4288301823
+    border_emission_color: 4291857151
+    emission_color: 4287249151
+    emission_intensity: 0.2
+    emission_multiplier: 1.0
+    scene: 4288301823
+  GAME.GameOrientation: {}
+  GAME.GameTransform: {}

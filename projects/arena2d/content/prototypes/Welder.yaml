@@ -1,0 +1,20 @@
+name: Welder
+components:
+  GAME.GameBody: {type: Dynamic}
+  GAME.GameCollider: {category: 2, mask: 15, radius: 10.0, restitution: 0.3}
+  GAME.GameDrive: {acceleration: 300.0}
+  GAME.GameExperience: {current: 9}
+  GAME.GameFlash: {color: 4294967295, decay: 12.0}
+  GAME.GameGeometry3D: {depth: 36.0, height: 4.0, width: 36.0}
+  GAME.GameHealth: {current: 60, maximum: 60}
+  GAME.GameMovement: {speed: 85.0}
+  GAME.GameOrientation: {}
+  GAME.GameShader:
+    material: SpitterSkin
+    parameters: '{"Glow":[1.0,0.69,0.29],"Body":[0.11,0.063,0.016]}'
+    shape: SpitterShape
+  GAME.GameSpawnRequest: {prototype: WelderDeath}
+  GAME.GameTransform: {}
+  GAME.GameVelocity: {}
+  GAME.GameWeapon: {damage: 6}
+behaviors: [Creature, Welder]

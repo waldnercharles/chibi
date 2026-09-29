@@ -1,0 +1,54 @@
+name: StratumRefractory
+components:
+  GAME.GameAppearance: {color: 607668991}
+  GAME.GameGlobalBinding: {name: Refractory}
+  GAME.GameMaterial:
+    absorption: 0.35
+    albedo: 2141767935
+    edge_light: 1.4
+    emission_multiplier: 1.0
+    scene: 607668991
+  GAME.GameShader: {material: Glasswork, parameters: "", shape: ""}
+  GAME.GameSubstance: {blast_multiplier: 3.0, hardness: 1.5, retain_chips: true}
+  GAME.GameTransform: {"y": 15000.0}
+  GAME.MaterialBreakProfile:
+    blast_speed: 70.0
+    chip_speed: 35.0
+    chunk_cells: 2.0
+    chunk_lifetime: 1.8
+    chunk_limit: 8
+    chunk_size_max: 3.8
+    chunk_size_min: 1.2
+    chunk_speed_max: 280.0
+    chunk_speed_min: 110.0
+    dust_color: 1044134655
+    dust_lifetime_max: 1.1
+    dust_lifetime_min: 0.4
+    dust_limit: 24
+    dust_size_max: 0.3
+    dust_size_min: 0.12
+    dust_speed_max: 30.0
+    dust_speed_min: 8.0
+    fragment_speed: 30.0
+    release_speed: 12.0
+    smoke_color: 2828964544
+    smoke_count: 10
+    smoke_lifetime: 3.0
+    smoke_speed: 22.0
+    spark_color: 4288301823
+    spark_density: 0.9
+    spark_emission: 1.4
+  GAME.MaterialTerrain:
+    category: 8
+    cell_size: 2.0
+    field: Strata
+    height: 6000.0
+    island_cells: 600
+    mask: 63
+    min_fragment_cells: 24
+    parameters: '{"Salt":2.0,"Entry":1.0,"Exit":1.0,"Terrace":34.0,"Boxy":0.25,"Roughness":14.0,"Warp":120.0,"SpacingX":640.0,"SpacingY":560.0}'
+    seed: 9173
+    seed_from_run: true
+    stream_budget: 2
+    stream_radius: 512.0
+    width: 3200.0

@@ -1,0 +1,4 @@
+name: ColdPool
+components:
+  GAME.GameFluidVolume: {height: 46.0, substance: Water, width: 130.0}
+  GAME.GameTransform: {}

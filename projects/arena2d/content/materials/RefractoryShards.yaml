@@ -1,0 +1,135 @@
+version: 3
+name: RefractoryShards
+domain: material
+id_counter: 373
+description: Distant crystal spires, picked out by nearby light.
+graphs:
+- kind: event
+  name: ""
+  nodes:
+  - id: 1
+    type: Shader Surface Output
+    inputs:
+      Base Color:
+        default: {x: 1.0, "y": 1.0, z: 1.0}
+      Emission:
+        default: {x: 0.0, "y": 0.0, z: 0.0}
+      Roughness: 0.9
+      Normal:
+        default: {x: 0.0, "y": 0.0, z: 0.0}
+  - {id: 12, type: Shader WorldPosition}
+  - id: 25
+    type: Behavior Expression
+    reference_id: 14
+    reference_name: vec2(wp.x, wp.z)
+    inputs:
+      wp: {type: struct, type_name: ShaderVec3}
+    outputs:
+      Result: {type: struct, type_name: ShaderVec2}
+  - id: 71
+    type: Behavior Expression
+    reference_id: 45
+    reference_name: p.x / 90 - fract(p.x / 90)
+    inputs:
+      p: {type: struct, type_name: ShaderVec2}
+    outputs:
+      Result: {type: float}
+  - id: 131
+    type: Behavior Expression
+    reference_id: 106
+    reference_name: fract(sin(c * 13.37) * 43758.547)
+    inputs:
+      c: {type: float}
+    outputs:
+      Result: {type: float}
+  - id: 159
+    type: Behavior Expression
+    reference_id: 134
+    reference_name: abs(fract(p.x / 90) - 0.5)
+    inputs:
+      p: {type: struct, type_name: ShaderVec2}
+    outputs:
+      Result: {type: float}
+  - id: 217
+    type: Behavior Expression
+    reference_id: 190
+    reference_name: fract((p.y + h * 700) / 1100)
+    inputs:
+      p: {type: struct, type_name: ShaderVec2}
+      h: {type: float}
+    outputs:
+      Result: {type: float}
+  - id: 296
+    type: Behavior Expression
+    reference_id: 251
+    reference_name: step(lx, (1 - band) * (0.2 + 0.25 * h)) * step(0.4, h)
+    inputs:
+      lx: {type: float}
+      band: {type: float}
+      h: {type: float}
+    outputs:
+      Result: {type: float}
+  - id: 335
+    type: Behavior Expression
+    reference_id: 301
+    reference_name: vec3(0.06, 0.08, 0.12) * (0.6 + 0.4 * h)
+    inputs:
+      h: {type: float}
+    outputs:
+      Result: {type: struct, type_name: ShaderVec3}
+  - id: 355
+    type: Behavior Expression
+    reference_id: 338
+    reference_name: vec3(0, 0, 0)
+    outputs:
+      Result: {type: struct, type_name: ShaderVec3}
+  - id: 370
+    type: Behavior Expression
+    reference_id: 357
+    reference_name: spire * 0.8
+    inputs:
+      spire: {type: float}
+    outputs:
+      Result: {type: float}
+  edges:
+  - {from: 12.Value, to: 25.wp}
+  - {from: 25.Result, to: 71.p}
+  - {from: 25.Result, to: 159.p}
+  - {from: 25.Result, to: 217.p}
+  - {from: 71.Result, to: 131.c}
+  - {from: 131.Result, to: 217.h}
+  - {from: 131.Result, to: 296.h}
+  - {from: 131.Result, to: 335.h}
+  - {from: 159.Result, to: 296.lx}
+  - {from: 217.Result, to: 296.band}
+  - {from: 296.Result, to: 370.spire}
+  - {from: 335.Result, to: 1.Base Color}
+  - {from: 355.Result, to: 1.Emission}
+  - {from: 370.Result, to: 1.Opacity}
+- {id: 14, kind: function, math_expression: 'vec2(wp.x, wp.z)', entry_id: 29}
+- id: 45
+  kind: function
+  math_expression: p.x / 90 - fract(p.x / 90)
+  entry_id: 75
+- id: 106
+  kind: function
+  math_expression: fract(sin(c * 13.37) * 43758.547)
+  entry_id: 107
+- id: 134
+  kind: function
+  math_expression: abs(fract(p.x / 90) - 0.5)
+  entry_id: 163
+- id: 190
+  kind: function
+  math_expression: fract((p.y + h * 700) / 1100)
+  entry_id: 222
+- id: 251
+  kind: function
+  math_expression: step(lx, (1 - band) * (0.2 + 0.25 * h)) * step(0.4, h)
+  entry_id: 252
+- id: 301
+  kind: function
+  math_expression: vec3(0.06, 0.08, 0.12) * (0.6 + 0.4 * h)
+  entry_id: 302
+- {id: 338, kind: function, math_expression: 'vec3(0, 0, 0)', entry_id: 339}
+- {id: 357, kind: function, math_expression: spire * 0.8, entry_id: 358}

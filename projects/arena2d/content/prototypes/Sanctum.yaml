@@ -1,0 +1,4 @@
+name: Sanctum
+components:
+  GAME.GameTransform: {}
+behaviors: [Sanctum]

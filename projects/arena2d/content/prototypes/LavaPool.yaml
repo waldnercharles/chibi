@@ -1,0 +1,5 @@
+name: LavaPool
+components:
+  GAME.GameFluidVolume: {height: 44.0, substance: Lava, width: 140.0}
+  GAME.GameHeatHaze: {radius: 90.0, strength: 3.0}
+  GAME.GameTransform: {}

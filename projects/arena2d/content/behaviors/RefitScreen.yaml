@@ -1,0 +1,304 @@
+version: 3
+name: RefitScreen
+id_counter: 478
+description: stub
+owner_type: ecs.entity
+variables:
+- {id: 6, name: near, type: float}
+- {id: 7, name: open, type: float}
+- {id: 8, name: held, type: float}
+graphs:
+- kind: event
+  name: ""
+  nodes:
+  - {id: 150, type: Event, reference_name: Begin}
+  - id: 152
+    type: Set UI Data
+    inputs:
+      Name: open
+      Value: {type: int}
+  - id: 158
+    type: Set UI Data
+    inputs:
+      Name: near
+      Value: {type: int}
+  - id: 164
+    type: Event
+    reference_name: Tick
+    outputs:
+      DeltaSeconds: {type: float, kind: data}
+  - id: 167
+    type: Get Global Variable
+    inputs: {Name: Player}
+    outputs:
+      Value: {type: handle, type_name: ecs.entity}
+  - id: 170
+    type: Has Component
+    inputs: {Component: GAME.GameTransform}
+  - {id: 174, type: Branch}
+  - id: 179
+    type: GetEntity_GameTransform
+    outputs:
+      Value.x: {}
+      Value.y: {}
+  - id: 229
+    type: Behavior Expression
+    reference_id: 184
+    reference_name: near = step((px - pos.x) * (px - pos.x) + (py - pos.y) * (py - pos.y), 4900.0)
+    inputs:
+      Exec: {id: 235, kind: exec}
+      near:
+        id: 230
+        type: float
+        binding: {kind: variable, variable_id: 6, source_asset: RefitScreen}
+      px: {type: float}
+      pos:
+        type: struct
+        type_name: GameTransform
+        binding: {kind: component, component: GAME.GameTransform}
+      py: {type: float}
+    outputs:
+      Then: {id: 236, kind: exec}
+      Result: {id: 234, type: float}
+  - id: 299
+    type: Behavior Expression
+    reference_id: 289
+    reference_name: near = 0
+    inputs:
+      Exec: {id: 302, kind: exec}
+      near:
+        id: 300
+        type: float
+        binding: {kind: variable, variable_id: 6, source_asset: RefitScreen}
+    outputs:
+      Then: {id: 303, kind: exec}
+      Result: {id: 301, type: float}
+  - id: 319
+    type: Get Variable
+    reference_id: 6
+    reference_name: near
+    outputs:
+      Value: {type: float}
+  - id: 321
+    type: Set UI Data
+    inputs:
+      Name: near
+      Value: {type: float}
+  - id: 327
+    type: Branch
+    inputs:
+      Condition:
+        binding: {kind: component_field, component: GAME.GameActionBinding, field: pressed}
+  - id: 342
+    type: Behavior Expression
+    reference_id: 332
+    reference_name: held = 0
+    inputs:
+      Exec: {id: 345, kind: exec}
+      held:
+        id: 343
+        type: float
+        binding: {kind: variable, variable_id: 8, source_asset: RefitScreen}
+    outputs:
+      Then: {id: 346, kind: exec}
+      Result: {id: 344, type: float}
+  - id: 376
+    type: Behavior Expression
+    reference_id: 362
+    reference_name: held < 0.5
+    inputs:
+      held:
+        type: double
+        flags: 0
+        binding: {kind: variable, variable_id: 8, source_asset: RefitScreen}
+    outputs:
+      Result: {type: bool}
+  - {id: 382, type: Branch}
+  - id: 397
+    type: Behavior Expression
+    reference_id: 387
+    reference_name: held = 1
+    inputs:
+      Exec: {id: 400, kind: exec}
+      held:
+        id: 398
+        type: float
+        binding: {kind: variable, variable_id: 8, source_asset: RefitScreen}
+    outputs:
+      Then: {id: 401, kind: exec}
+      Result: {id: 399, type: float}
+  - id: 431
+    type: Behavior Expression
+    reference_id: 417
+    reference_name: open > 0.5
+    inputs:
+      open:
+        type: double
+        flags: 0
+        binding: {kind: variable, variable_id: 7, source_asset: RefitScreen}
+    outputs:
+      Result: {type: bool}
+  - {id: 437, type: Branch}
+  - {id: 442, type: Call Function, reference_id: 9, reference_name: Close}
+  - id: 459
+    type: Behavior Expression
+    reference_id: 445
+    reference_name: near > 0.5
+    inputs:
+      near:
+        type: double
+        flags: 0
+        binding: {kind: variable, variable_id: 6, source_asset: RefitScreen}
+    outputs:
+      Result: {type: bool}
+  - {id: 465, type: Branch}
+  - {id: 470, type: Call Function, reference_id: 88, reference_name: Open}
+  - {id: 473, type: Event, reference_name: Close}
+  - {id: 475, type: Call Function, reference_id: 9, reference_name: Close}
+  edges:
+  - {from: 150.Then, to: 152.Exec}
+  - {from: 152.Then, to: 158.Exec}
+  - {from: 164.Then, to: 174.Exec}
+  - {from: 167.Value, to: 170.Entity}
+  - {from: 167.Value, to: 179.Entity}
+  - {from: 170.Value, to: 174.Condition}
+  - {from: 174.True, to: 229.Exec}
+  - {from: 174.False, to: 299.Exec}
+  - {from: 179.Value.x, to: 229.px}
+  - {from: 179.Value.y, to: 229.py}
+  - {from: 229.Then, to: 321.Exec}
+  - {from: 299.Then, to: 321.Exec}
+  - {from: 319.Value, to: 321.Value}
+  - {from: 321.Then, to: 327.Exec}
+  - {from: 327.True, to: 382.Exec}
+  - {from: 327.False, to: 342.Exec}
+  - {from: 376.Result, to: 382.Condition}
+  - {from: 382.True, to: 397.Exec}
+  - {from: 397.Then, to: 437.Exec}
+  - {from: 431.Result, to: 437.Condition}
+  - {from: 437.True, to: 442.Exec}
+  - {from: 437.False, to: 465.Exec}
+  - {from: 459.Result, to: 465.Condition}
+  - {from: 465.True, to: 470.Exec}
+  - {from: 473.Then, to: 475.Exec}
+- id: 1
+  kind: function
+  name: Show
+  entry_id: 2
+  return_id: 4
+  call_depth_limit: 64
+  nodes:
+  - {id: 2, type: Function Entry}
+  - {id: 4, type: Return}
+  edges:
+  - {from: 2.Exec, to: 4.Exec}
+- id: 9
+  kind: function
+  name: Close
+  entry_id: 10
+  return_id: 12
+  call_depth_limit: 64
+  nodes:
+  - {id: 10, type: Function Entry}
+  - {id: 12, type: Return}
+  - id: 28
+    type: Behavior Expression
+    reference_id: 14
+    reference_name: open > 0.5
+    inputs:
+      open:
+        type: double
+        flags: 0
+        binding: {kind: variable, variable_id: 7, source_asset: RefitScreen}
+    outputs:
+      Result: {type: bool}
+  - {id: 34, type: Branch}
+  - id: 49
+    type: Behavior Expression
+    reference_id: 39
+    reference_name: open = 0
+    inputs:
+      Exec: {id: 52, kind: exec}
+      open:
+        id: 50
+        type: float
+        binding: {kind: variable, variable_id: 7, source_asset: RefitScreen}
+    outputs:
+      Then: {id: 53, kind: exec}
+      Result: {id: 51, type: float}
+  - id: 69
+    type: Set UI Data
+    inputs:
+      Name: open
+      Value: {type: int}
+  - {id: 75, type: Set Time Scale}
+  - id: 79
+    type: Play Sound
+    inputs: {Frequency: 520.0, End Frequency: 260.0, Duration: 0.16, Volume: 0.16}
+  edges:
+  - {from: 10.Exec, to: 34.Exec}
+  - {from: 28.Result, to: 34.Condition}
+  - {from: 34.True, to: 49.Exec}
+  - {from: 34.False, to: 12.Exec}
+  - {from: 49.Then, to: 69.Exec}
+  - {from: 69.Then, to: 75.Exec}
+  - {from: 75.Then, to: 79.Exec}
+  - {from: 79.Then, to: 12.Exec}
+- {id: 14, kind: function, math_expression: open > 0.5, entry_id: 15}
+- {id: 39, kind: function, math_expression: open = 0, entry_id: 55}
+- id: 88
+  kind: function
+  name: Open
+  entry_id: 89
+  return_id: 91
+  call_depth_limit: 64
+  nodes:
+  - {id: 89, type: Function Entry}
+  - {id: 91, type: Return}
+  - id: 103
+    type: Behavior Expression
+    reference_id: 93
+    reference_name: open = 1
+    inputs:
+      Exec: {id: 106, kind: exec}
+      open:
+        id: 104
+        type: float
+        binding: {kind: variable, variable_id: 7, source_asset: RefitScreen}
+    outputs:
+      Then: {id: 107, kind: exec}
+      Result: {id: 105, type: float}
+  - {id: 123, type: Call Function, reference_id: 1, reference_name: Show}
+  - id: 126
+    type: Set UI Data
+    inputs:
+      Name: open
+      Value: {type: int, default: 1}
+  - id: 132
+    type: Set Time Scale
+    inputs: {Scale: 0.0}
+  - id: 136
+    type: Focus UI Element
+    inputs: {Element: '#root'}
+  - id: 141
+    type: Play Sound
+    inputs: {Frequency: 330.0, End Frequency: 660.0, Duration: 0.22, Volume: 0.18}
+  edges:
+  - {from: 89.Exec, to: 103.Exec}
+  - {from: 103.Then, to: 123.Exec}
+  - {from: 123.Then, to: 126.Exec}
+  - {from: 126.Then, to: 132.Exec}
+  - {from: 132.Then, to: 136.Exec}
+  - {from: 136.Then, to: 141.Exec}
+  - {from: 141.Then, to: 91.Exec}
+- {id: 93, kind: function, math_expression: open = 1, entry_id: 109}
+- id: 184
+  kind: function
+  math_expression: near = step((px - pos.x) * (px - pos.x) + (py - pos.y) * (py - pos.y), 4900.0)
+  entry_id: 238
+- {id: 289, kind: function, math_expression: near = 0, entry_id: 305}
+- {id: 332, kind: function, math_expression: held = 0, entry_id: 348}
+- {id: 362, kind: function, math_expression: held < 0.5, entry_id: 363}
+- {id: 387, kind: function, math_expression: held = 1, entry_id: 403}
+- {id: 417, kind: function, math_expression: open > 0.5, entry_id: 418}
+- {id: 445, kind: function, math_expression: near > 0.5, entry_id: 446}

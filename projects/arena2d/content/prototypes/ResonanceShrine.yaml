@@ -1,0 +1,21 @@
+name: ResonanceShrine
+components:
+  GAME.GameActionBinding: {action: Use, source: E}
+  GAME.GameAppearance:
+    antialias: 1.0
+    color: 3384213503
+    height: 46.0
+    layer: 2
+    shape: Diamond
+    width: 18.0
+  GAME.GameMaterial:
+    absorption: 0.2
+    albedo: 3384213503
+    emission_color: 2642149375
+    emission_intensity: 0.34
+    emission_multiplier: 1.0
+    scene: 3384213503
+  GAME.GameTransform: {}
+  GAME.GameUi: {document: SkillTree, order: 5}
+  GAME.GameUnscaledTime: {}
+behaviors: [SkillScreen]

@@ -1,0 +1,20 @@
+name: Scorchlancer
+components:
+  GAME.GameBody: {type: Dynamic}
+  GAME.GameCollider: {category: 2, mask: 15, radius: 9.0, restitution: 0.3}
+  GAME.GameDrive: {acceleration: 950.0}
+  GAME.GameExperience: {current: 9}
+  GAME.GameFlash: {color: 4294967295, decay: 12.0}
+  GAME.GameGeometry3D: {depth: 40.0, height: 4.0, width: 40.0}
+  GAME.GameHealth: {current: 60, maximum: 60}
+  GAME.GameMovement: {speed: 170.0}
+  GAME.GameOrientation: {}
+  GAME.GameShader:
+    material: LancerSkin
+    parameters: '{"Glow":[1.0,0.541,0.29],"Body":[0.102,0.039,0.016]}'
+    shape: LancerShape
+  GAME.GameSpawnRequest: {prototype: ScorchlancerDeath}
+  GAME.GameTransform: {}
+  GAME.GameVelocity: {}
+  GAME.GameWeapon: {damage: 22}
+behaviors: [Creature, Lancer]

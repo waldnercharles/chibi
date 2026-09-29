@@ -1,8 +1,8 @@
 version: 3
 name: Mycelite
 domain: material
-id_counter: 438
-description: 'Lumen Grotto rock: porous violet stone threaded with living veins that pulse from cyan to magenta and light the caves.'
+id_counter: 510
+description: 'Lumen Grotto rock: porous violet stone where patches of living veins pulse from cyan to magenta and light the caves.'
 graphs:
 - kind: event
   name: ""
@@ -27,148 +27,165 @@ graphs:
       wp: {type: struct, type_name: ShaderVec3}
     outputs:
       Result: {type: struct, type_name: ShaderVec2}
-  - id: 60
+  - id: 92
     type: Behavior Expression
     reference_id: 47
-    reference_name: noise(p, 0.011)
+    reference_name: p + vec2(noise(p, 0.0045), noise(p + vec2(19, 7), 0.0045)) * 140
     inputs:
       p: {type: struct, type_name: ShaderVec2}
     outputs:
-      Result: {type: float}
-  - id: 88
+      Result: {type: struct, type_name: ShaderVec2}
+  - id: 108
     type: Behavior Expression
-    reference_id: 63
+    reference_id: 95
+    reference_name: noise(q, 0.0085)
+    inputs:
+      q: {type: struct, type_name: ShaderVec2}
+    outputs:
+      Result: {type: float}
+  - id: 136
+    type: Behavior Expression
+    reference_id: 111
     reference_name: noise(p + vec2(71, -33), 0.031)
     inputs:
       p: {type: struct, type_name: ShaderVec2}
     outputs:
       Result: {type: float}
-  - id: 125
+  - id: 173
     type: Behavior Expression
-    reference_id: 91
+    reference_id: 139
     reference_name: smoothstep(0.3, 0.7, noise(p + vec2(-400, 900), 0.0021))
     inputs:
       p: {type: struct, type_name: ShaderVec2}
     outputs:
       Result: {type: float}
-  - id: 165
+  - id: 210
     type: Behavior Expression
-    reference_id: 128
-    reference_name: smoothstep(0.935, 0.995, 1 - abs(n1 - 0.5) * 2)
-    inputs:
-      n1: {type: float}
-    outputs:
-      Result: {type: float}
-  - id: 211
-    type: Behavior Expression
-    reference_id: 168
-    reference_name: smoothstep(0.96, 0.995, 1 - abs(n2 - 0.5) * 2) * 0.5
-    inputs:
-      n2: {type: float}
-    outputs:
-      Result: {type: float}
-  - id: 248
-    type: Behavior Expression
-    reference_id: 214
-    reference_name: smoothstep(0.64, 0.72, noise(p + vec2(9, 17), 0.08))
+    reference_id: 176
+    reference_name: smoothstep(0.48, 0.72, noise(p + vec2(300, -50), 0.0028))
     inputs:
       p: {type: struct, type_name: ShaderVec2}
     outputs:
       Result: {type: float}
-  - id: 302
+  - id: 255
     type: Behavior Expression
-    reference_id: 251
-    reference_name: mix(vec3(0.045, 0.03, 0.065), vec3(0.12, 0.075, 0.14), n2) * (1 - pores * 0.55)
+    reference_id: 213
+    reference_name: smoothstep(0.972, 0.997, 1 - abs(n1 - 0.5) * 2) * patch
+    inputs:
+      n1: {type: float}
+      patch: {type: float}
+    outputs:
+      Result: {type: float}
+  - id: 293
+    type: Behavior Expression
+    reference_id: 259
+    reference_name: smoothstep(0.6, 0.78, noise(q + vec2(9, 17), 0.05))
+    inputs:
+      q: {type: struct, type_name: ShaderVec2}
+    outputs:
+      Result: {type: float}
+  - id: 367
+    type: Behavior Expression
+    reference_id: 296
+    reference_name: mix(vec3(0.02, 0.014, 0.03), vec3(0.06, 0.04, 0.075), n2) * (1 - pores * 0.4) + vec3(0.02, 0.05, 0.05) * veins
     inputs:
       n2: {type: float}
       pores: {type: float}
+      veins: {type: float}
     outputs:
       Result: {type: struct, type_name: ShaderVec3}
-  - id: 340
+  - id: 406
     type: Behavior Expression
-    reference_id: 306
+    reference_id: 372
     reference_name: mix(vec3(0.1, 0.95, 0.78), vec3(0.95, 0.2, 0.85), hue)
     inputs:
       hue: {type: float}
     outputs:
       Result: {type: struct, type_name: ShaderVec3}
-  - id: 403
+  - id: 464
     type: Behavior Expression
-    reference_id: 343
-    reference_name: color * (veins + fine) * 0.22 * (0.65 + 0.35 * sin(t * 1.3 + n2 * 9))
+    reference_id: 409
+    reference_name: color * veins * 0.07 * (0.6 + 0.4 * sin(t * 1.3 + n2 * 9))
     inputs:
       color: {type: struct, type_name: ShaderVec3}
       veins: {type: float}
-      fine: {type: float}
       t: {type: float}
       n2: {type: float}
     outputs:
       Result: {type: struct, type_name: ShaderVec3}
-  - id: 434
+  - id: 505
     type: Behavior Expression
-    reference_id: 410
-    reference_name: n2 * 0.6 - pores * 0.4
+    reference_id: 470
+    reference_name: n2 * 0.6 - pores * 0.4 + veins * 0.3
     inputs:
       n2: {type: float}
       pores: {type: float}
+      veins: {type: float}
     outputs:
       Result: {type: float}
   edges:
   - {from: 12.Value, to: 27.wp}
-  - {from: 14.Value, to: 403.t}
-  - {from: 27.Result, to: 60.p}
-  - {from: 27.Result, to: 88.p}
-  - {from: 27.Result, to: 125.p}
-  - {from: 27.Result, to: 248.p}
-  - {from: 60.Result, to: 165.n1}
-  - {from: 88.Result, to: 211.n2}
-  - {from: 88.Result, to: 302.n2}
-  - {from: 88.Result, to: 403.n2}
-  - {from: 88.Result, to: 434.n2}
-  - {from: 125.Result, to: 340.hue}
-  - {from: 165.Result, to: 403.veins}
-  - {from: 211.Result, to: 403.fine}
-  - {from: 248.Result, to: 302.pores}
-  - {from: 248.Result, to: 434.pores}
-  - {from: 302.Result, to: 1.Base Color}
-  - {from: 340.Result, to: 403.color}
-  - {from: 403.Result, to: 1.Emission}
-  - {from: 434.Result, to: 1.Height}
+  - {from: 14.Value, to: 464.t}
+  - {from: 27.Result, to: 92.p}
+  - {from: 27.Result, to: 136.p}
+  - {from: 27.Result, to: 173.p}
+  - {from: 27.Result, to: 210.p}
+  - {from: 92.Result, to: 108.q}
+  - {from: 92.Result, to: 293.q}
+  - {from: 108.Result, to: 255.n1}
+  - {from: 136.Result, to: 367.n2}
+  - {from: 136.Result, to: 464.n2}
+  - {from: 136.Result, to: 505.n2}
+  - {from: 173.Result, to: 406.hue}
+  - {from: 210.Result, to: 255.patch}
+  - {from: 255.Result, to: 367.veins}
+  - {from: 255.Result, to: 464.veins}
+  - {from: 255.Result, to: 505.veins}
+  - {from: 293.Result, to: 367.pores}
+  - {from: 293.Result, to: 505.pores}
+  - {from: 367.Result, to: 1.Base Color}
+  - {from: 406.Result, to: 464.color}
+  - {from: 464.Result, to: 1.Emission}
+  - {from: 505.Result, to: 1.Height}
 - {id: 16, kind: function, math_expression: 'vec2(wp.x, wp.z)', entry_id: 31}
-- {id: 47, kind: function, math_expression: 'noise(p, 0.011)', entry_id: 48}
-- id: 63
+- id: 47
+  kind: function
+  math_expression: p + vec2(noise(p, 0.0045), noise(p + vec2(19, 7), 0.0045)) * 140
+  entry_id: 48
+- {id: 95, kind: function, math_expression: 'noise(q, 0.0085)', entry_id: 96}
+- id: 111
   kind: function
   math_expression: noise(p + vec2(71, -33), 0.031)
-  entry_id: 64
-- id: 91
+  entry_id: 112
+- id: 139
   kind: function
   math_expression: smoothstep(0.3, 0.7, noise(p + vec2(-400, 900), 0.0021))
-  entry_id: 92
-- id: 128
+  entry_id: 140
+- id: 176
   kind: function
-  math_expression: smoothstep(0.935, 0.995, 1 - abs(n1 - 0.5) * 2)
-  entry_id: 129
-- id: 168
+  math_expression: smoothstep(0.48, 0.72, noise(p + vec2(300, -50), 0.0028))
+  entry_id: 177
+- id: 213
   kind: function
-  math_expression: smoothstep(0.96, 0.995, 1 - abs(n2 - 0.5) * 2) * 0.5
-  entry_id: 169
-- id: 214
+  math_expression: smoothstep(0.972, 0.997, 1 - abs(n1 - 0.5) * 2) * patch
+  entry_id: 214
+- id: 259
   kind: function
-  math_expression: smoothstep(0.64, 0.72, noise(p + vec2(9, 17), 0.08))
-  entry_id: 215
-- id: 251
+  math_expression: smoothstep(0.6, 0.78, noise(q + vec2(9, 17), 0.05))
+  entry_id: 260
+- id: 296
   kind: function
-  math_expression: mix(vec3(0.045, 0.03, 0.065), vec3(0.12, 0.075, 0.14), n2) * (1 - pores * 0.55)
-  entry_id: 252
-- id: 306
+  math_expression: mix(vec3(0.02, 0.014, 0.03), vec3(0.06, 0.04, 0.075), n2) * (1 - pores * 0.4) + vec3(0.02, 0.05, 0.05) * veins
+  entry_id: 297
+- id: 372
   kind: function
   math_expression: mix(vec3(0.1, 0.95, 0.78), vec3(0.95, 0.2, 0.85), hue)
-  entry_id: 307
-- id: 343
+  entry_id: 373
+- id: 409
   kind: function
-  math_expression: color * (veins + fine) * 0.22 * (0.65 + 0.35 * sin(t * 1.3 + n2 * 9))
-  entry_id: 344
-- id: 410
+  math_expression: color * veins * 0.07 * (0.6 + 0.4 * sin(t * 1.3 + n2 * 9))
+  entry_id: 410
+- id: 470
   kind: function
-  math_expression: n2 * 0.6 - pores * 0.4
-  entry_id: 411
+  math_expression: n2 * 0.6 - pores * 0.4 + veins * 0.3
+  entry_id: 471

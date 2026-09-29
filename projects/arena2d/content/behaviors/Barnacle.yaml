@@ -4,10 +4,10 @@ id_counter: 770
 description: 'A rooted turret: track the player while it can see them and fire three-round bursts.'
 owner_type: ecs.entity
 variables:
-- {id: 1, name: shot, type: float}
-- {id: 2, name: sees, type: float}
-- {id: 3, name: burst, type: float}
-- {id: 4, name: look, type: float}
+- {id: 1, name: look, type: float}
+- {id: 2, name: burst, type: float}
+- {id: 3, name: sees, type: float}
+- {id: 4, name: shot, type: float}
 graphs:
 - kind: event
   name: ""
@@ -32,7 +32,7 @@ graphs:
       look:
         id: 27
         type: float
-        binding: {kind: variable, variable_id: 4, source_asset: Barnacle}
+        binding: {kind: variable, variable_id: 1, source_asset: Barnacle}
       dt:
         type: double
         binding: {kind: delta_time}
@@ -47,7 +47,7 @@ graphs:
       look:
         type: double
         flags: 0
-        binding: {kind: variable, variable_id: 4, source_asset: Barnacle}
+        binding: {kind: variable, variable_id: 1, source_asset: Barnacle}
       pos:
         type: struct
         type_name: GameTransform
@@ -65,7 +65,7 @@ graphs:
       look:
         id: 104
         type: float
-        binding: {kind: variable, variable_id: 4, source_asset: Barnacle}
+        binding: {kind: variable, variable_id: 1, source_asset: Barnacle}
     outputs:
       Then: {id: 107, kind: exec}
       Result: {id: 105, type: float}
@@ -87,7 +87,7 @@ graphs:
       sees:
         id: 150
         type: float
-        binding: {kind: variable, variable_id: 2, source_asset: Barnacle}
+        binding: {kind: variable, variable_id: 3, source_asset: Barnacle}
     outputs:
       Then: {id: 153, kind: exec}
       Result: {id: 151, type: float}
@@ -100,7 +100,7 @@ graphs:
       sees:
         id: 180
         type: float
-        binding: {kind: variable, variable_id: 2, source_asset: Barnacle}
+        binding: {kind: variable, variable_id: 3, source_asset: Barnacle}
     outputs:
       Then: {id: 183, kind: exec}
       Result: {id: 181, type: float}
@@ -117,7 +117,7 @@ graphs:
       sees:
         type: double
         flags: 0
-        binding: {kind: variable, variable_id: 2, source_asset: Barnacle}
+        binding: {kind: variable, variable_id: 3, source_asset: Barnacle}
     outputs:
       Result: {type: bool}
   - {id: 238, type: Branch}
@@ -148,7 +148,7 @@ graphs:
       shot:
         id: 322
         type: float
-        binding: {kind: variable, variable_id: 1, source_asset: Barnacle}
+        binding: {kind: variable, variable_id: 4, source_asset: Barnacle}
       dt:
         type: double
         binding: {kind: delta_time}
@@ -158,11 +158,11 @@ graphs:
   - id: 376
     type: Behavior Expression
     reference_id: 344
-    reference_name: clamp((shot - 1.6) / 0.8, 0, 1)
+    reference_name: clamp((shot - 1.5999999999999999) / 0.8, 0, 1)
     inputs:
       shot:
         type: double
-        binding: {kind: variable, variable_id: 1, source_asset: Barnacle}
+        binding: {kind: variable, variable_id: 4, source_asset: Barnacle}
     outputs:
       Result: {type: double}
   - id: 379
@@ -182,7 +182,7 @@ graphs:
       shot:
         type: double
         flags: 0
-        binding: {kind: variable, variable_id: 1, source_asset: Barnacle}
+        binding: {kind: variable, variable_id: 4, source_asset: Barnacle}
     outputs:
       Result: {type: bool}
   - {id: 407, type: Branch}
@@ -232,7 +232,7 @@ graphs:
     type: Play Sound
     inputs:
       Frequency: 700.0
-      End Frequency: 300.0
+      End Frequency: 301.0
       Duration: 0.06
       Volume: 0.16
       Pan: 0.0
@@ -246,7 +246,7 @@ graphs:
       burst:
         id: 564
         type: float
-        binding: {kind: variable, variable_id: 3, source_asset: Barnacle}
+        binding: {kind: variable, variable_id: 2, source_asset: Barnacle}
     outputs:
       Then: {id: 567, kind: exec}
       Result: {id: 565, type: float}
@@ -258,7 +258,7 @@ graphs:
       burst:
         type: double
         flags: 0
-        binding: {kind: variable, variable_id: 3, source_asset: Barnacle}
+        binding: {kind: variable, variable_id: 2, source_asset: Barnacle}
     outputs:
       Result: {type: bool}
   - {id: 607, type: Branch}
@@ -271,7 +271,7 @@ graphs:
       shot:
         id: 623
         type: float
-        binding: {kind: variable, variable_id: 1, source_asset: Barnacle}
+        binding: {kind: variable, variable_id: 4, source_asset: Barnacle}
     outputs:
       Then: {id: 626, kind: exec}
       Result: {id: 624, type: float}
@@ -284,7 +284,7 @@ graphs:
       shot:
         id: 653
         type: float
-        binding: {kind: variable, variable_id: 1, source_asset: Barnacle}
+        binding: {kind: variable, variable_id: 4, source_asset: Barnacle}
     outputs:
       Then: {id: 656, kind: exec}
       Result: {id: 654, type: float}
@@ -297,7 +297,7 @@ graphs:
       burst:
         id: 683
         type: float
-        binding: {kind: variable, variable_id: 3, source_asset: Barnacle}
+        binding: {kind: variable, variable_id: 2, source_asset: Barnacle}
     outputs:
       Then: {id: 686, kind: exec}
       Result: {id: 684, type: float}
@@ -310,7 +310,7 @@ graphs:
       shot:
         id: 722
         type: float
-        binding: {kind: variable, variable_id: 1, source_asset: Barnacle}
+        binding: {kind: variable, variable_id: 4, source_asset: Barnacle}
       dt:
         type: double
         binding: {kind: delta_time}
@@ -393,7 +393,7 @@ graphs:
 - {id: 309, kind: function, math_expression: shot += dt, entry_id: 328}
 - id: 344
   kind: function
-  math_expression: clamp((shot - 1.6) / 0.8, 0, 1)
+  math_expression: clamp((shot - 1.5999999999999999) / 0.8, 0, 1)
   entry_id: 345
 - {id: 387, kind: function, math_expression: shot >= 2.4, entry_id: 388}
 - id: 412

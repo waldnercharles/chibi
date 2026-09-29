@@ -65,3 +65,4 @@ components:
     liquid_splash_speed: 45.0
     liquid_splash_strength: 1.0
     particle_limit: 32768
+behaviors: [Atmosphere]

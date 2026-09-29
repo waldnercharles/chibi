@@ -1,0 +1,6 @@
+name: TitleScreen
+components:
+  GAME.GameActionBinding: {action: Descend, source: Enter}
+  GAME.GameUi: {document: Title, order: 20}
+  GAME.GameUnscaledTime: {}
+behaviors: [RecapLedger, TitleScreen]

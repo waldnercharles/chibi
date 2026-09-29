@@ -1,0 +1,11 @@
+name: SkillShrineBase
+components:
+  GAME.GameAppearance:
+    antialias: 1.0
+    border_color: 1514834687
+    border_width: 1.0
+    color: 219685631
+    height: 7.0
+    width: 44.0
+  GAME.GameMaterial: {absorption: 0.6, albedo: 219685631, border_scene: 1514834687, scene: 219685631}
+  GAME.GameTransform: {}

@@ -1,0 +1,4 @@
+name: BackdropDeep
+components:
+  GAME.GameBackdrop2D: {intensity: 1.0, parallax: 0.12}
+  GAME.GameGlobalBinding: {name: BackdropDeep}

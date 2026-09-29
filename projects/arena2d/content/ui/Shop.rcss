@@ -1,13 +1,13 @@
 @import "SanctumTheme.rcss";
 
-#panel { width: 860dp; }
+#panel { width: 880dp; }
 
 .body { display: flex; }
 
 .offers { display: flex; flex-wrap: wrap; width: 600dp; }
 
 .offer {
-  display: block; position: relative; width: 280dp; height: 132dp; margin: 0 14dp 14dp 0;
+  display: block; position: relative; width: 286dp; height: 132dp; margin: 0 14dp 14dp 0;
   padding: 14dp 16dp 12dp 18dp; overflow: hidden;
   background-color: #0b1a24d9; border: 1dp #ffffff14; border-radius: 5dp;
   transition: background-color border-color transform 0.16s cubic-out;
@@ -44,7 +44,7 @@
 .offer.sold { opacity: 0.32; }
 .offer.sold:hover { transform: none; border-color: #ffffff14; background-color: #0b1a24d9; }
 
-.services { display: block; width: 204dp; padding-left: 4dp; }
+.services { display: block; width: 224dp; padding-left: 4dp; }
 
 .service {
   display: block; position: relative; height: 108dp; margin-bottom: 14dp; padding: 12dp 14dp;

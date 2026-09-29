@@ -1,0 +1,6 @@
+name: ShardlingNest
+components:
+  GAME.GameEncounter: {total: 5}
+  GAME.GameSpawnRequest: {prototype: Shardling}
+  GAME.GameTransform: {}
+behaviors: [Nest]

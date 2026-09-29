@@ -1,0 +1,95 @@
+version: 3
+name: FoundryDeep
+domain: material
+id_counter: 226
+description: 'The Foundry Deep''s distance: furnace glow through smoke.'
+graphs:
+- kind: event
+  name: ""
+  nodes:
+  - id: 1
+    type: Shader Surface Output
+    inputs:
+      Base Color:
+        default: {x: 1.0, "y": 1.0, z: 1.0}
+      Emission:
+        default: {x: 0.0, "y": 0.0, z: 0.0}
+      Roughness: 0.9
+      Normal:
+        default: {x: 0.0, "y": 0.0, z: 0.0}
+  - {id: 12, type: Shader WorldPosition}
+  - id: 25
+    type: Behavior Expression
+    reference_id: 14
+    reference_name: vec2(wp.x, wp.z)
+    inputs:
+      wp: {type: struct, type_name: ShaderVec3}
+    outputs:
+      Result: {type: struct, type_name: ShaderVec2}
+  - id: 92
+    type: Behavior Expression
+    reference_id: 45
+    reference_name: noise(p, 0.0016) * 0.6 + noise(p + vec2(-71, 41), 0.005) * 0.4
+    inputs:
+      p: {type: struct, type_name: ShaderVec2}
+    outputs:
+      Result: {type: float}
+  - id: 129
+    type: Behavior Expression
+    reference_id: 95
+    reference_name: mix(vec3(0.01, 0.005, 0.003), vec3(0.05, 0.02, 0.01), fog)
+    inputs:
+      fog: {type: float}
+    outputs:
+      Result: {type: struct, type_name: ShaderVec3}
+  - id: 166
+    type: Behavior Expression
+    reference_id: 132
+    reference_name: smoothstep(0.75, 0.95, noise(p + vec2(9, 99), 0.0036))
+    inputs:
+      p: {type: struct, type_name: ShaderVec2}
+    outputs:
+      Result: {type: float}
+  - id: 212
+    type: Behavior Expression
+    reference_id: 169
+    reference_name: vec3(0.9, 0.3, 0.06) * (fires * 0.18 + fog * fog * 0.03)
+    inputs:
+      fires: {type: float}
+      fog: {type: float}
+    outputs:
+      Result: {type: struct, type_name: ShaderVec3}
+  - id: 224
+    type: Behavior Expression
+    reference_id: 216
+    reference_name: "1"
+    outputs:
+      Result: {type: float}
+  edges:
+  - {from: 12.Value, to: 25.wp}
+  - {from: 25.Result, to: 92.p}
+  - {from: 25.Result, to: 166.p}
+  - {from: 92.Result, to: 129.fog}
+  - {from: 92.Result, to: 212.fog}
+  - {from: 129.Result, to: 1.Base Color}
+  - {from: 166.Result, to: 212.fires}
+  - {from: 212.Result, to: 1.Emission}
+  - {from: 224.Result, to: 1.Opacity}
+- {id: 14, kind: function, math_expression: 'vec2(wp.x, wp.z)', entry_id: 29}
+- id: 45
+  kind: function
+  math_expression: noise(p, 0.0016) * 0.6 + noise(p + vec2(-71, 41), 0.005) * 0.4
+  entry_id: 46
+- id: 95
+  kind: function
+  math_expression: mix(vec3(0.01, 0.005, 0.003), vec3(0.05, 0.02, 0.01), fog)
+  entry_id: 96
+- id: 132
+  kind: function
+  math_expression: smoothstep(0.75, 0.95, noise(p + vec2(9, 99), 0.0036))
+  entry_id: 133
+- id: 169
+  kind: function
+  math_expression: vec3(0.9, 0.3, 0.06) * (fires * 0.18 + fog * fog * 0.03)
+  entry_id: 170
+- {id: 216, kind: function, math_expression: "1", entry_id: 217}

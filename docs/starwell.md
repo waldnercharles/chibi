@@ -288,7 +288,7 @@ change takes effect at once. Types are fixed by the first write.
 | `Slots0`, `Slots1` | int | Module slots on each weapon frame (default 4 and 5). |
 | `Skills` | int array | Skill node ids owned. |
 | `StatHull`, `StatShield`, `StatCapacitor` | double | Added to the ship's hull, shield and capacitor maxima. |
-| `StatRegen`, `StatCastDelay`, `StatDamage`, `StatSpeed`, `StatBoost` | double | Multipliers, 1 by default: capacitor regen, cast delay, shot damage, flight speed, boost drain. |
-| `Magnet` | double | Pickup reach in world units. |
+| `StatRegen`, `StatCastDelay`, `StatDamage`, `StatSpeed`, `StatBoost`, `StatPrice` | double | Multipliers, 1 by default: capacitor regen, cast delay, shot damage, flight speed, boost drain, shop prices. |
+| `Magnet` | float | Pickup reach in world units. |
 | `InSanctum` | int | 1 while the ship is inside a Sanctum. |
 | `Toast`, `ToastSerial` | name, int | Post a HUD toast by setting Toast and incrementing ToastSerial. |

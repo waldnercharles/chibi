@@ -1,0 +1,38 @@
+version: 3
+name: BoostEmitter
+id_counter: 323
+description: Emit boost exhaust while the parent holds Dash.
+owner_type: ecs.entity
+graphs:
+- kind: event
+  name: ""
+  nodes:
+  - id: 1
+    type: Event
+    reference_name: Tick
+    outputs:
+      DeltaSeconds: {type: float, kind: data}
+  - id: 4
+    type: GetEntity_GameActionBinding
+    inputs:
+      Entity:
+        binding: {kind: component_field, component: GAME.GameParticleEmitter, field: parent}
+  - id: 15
+    type: Behavior Expression
+    reference_id: 7
+    reference_name: active = action.pressed
+    inputs:
+      Exec: {id: 19, kind: exec}
+      active:
+        id: 16
+        type: bool
+        type_name: _Bool
+        binding: {kind: component_field, component: GAME.GameParticleEmitter, field: active}
+      action: {}
+    outputs:
+      Then: {id: 20, kind: exec}
+      Result: {id: 18, type: bool}
+  edges:
+  - {from: 1.Then, to: 15.Exec}
+  - {from: 4.Value, to: 15.action}
+- {id: 7, kind: function, math_expression: active = action.pressed, entry_id: 246}

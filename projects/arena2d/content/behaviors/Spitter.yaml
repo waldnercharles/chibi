@@ -135,7 +135,7 @@ graphs:
   - id: 531
     type: Behavior Expression
     reference_id: 499
-    reference_name: clamp((shot - 1.3) / 0.6, 0, 1)
+    reference_name: clamp((shot - 1.2999999999999998) / 0.6, 0, 1)
     inputs:
       shot:
         type: double
@@ -222,7 +222,7 @@ graphs:
     type: Play Sound
     inputs:
       Frequency: 240.0
-      End Frequency: 90.0
+      End Frequency: 96.0
       Duration: 0.18
       Volume: 0.22
       Pan: 0.0
@@ -294,7 +294,7 @@ graphs:
   entry_id: 466
 - id: 499
   kind: function
-  math_expression: clamp((shot - 1.3) / 0.6, 0, 1)
+  math_expression: clamp((shot - 1.2999999999999998) / 0.6, 0, 1)
   entry_id: 500
 - {id: 542, kind: function, math_expression: shot >= 1.9, entry_id: 543}
 - {id: 567, kind: function, math_expression: shot = 0, entry_id: 583}

@@ -1,0 +1,6 @@
+name: GlowmiteNest
+components:
+  GAME.GameEncounter: {total: 5}
+  GAME.GameSpawnRequest: {prototype: Glowmite}
+  GAME.GameTransform: {}
+behaviors: [Nest]

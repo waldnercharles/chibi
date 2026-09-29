@@ -1,0 +1,180 @@
+version: 3
+name: GrottoStalks
+domain: material
+id_counter: 435
+description: Distant fungal stalks and caps behind the playable rock, picked out by nearby light.
+graphs:
+- kind: event
+  name: ""
+  nodes:
+  - id: 1
+    type: Shader Surface Output
+    inputs:
+      Base Color:
+        default: {x: 1.0, "y": 1.0, z: 1.0}
+      Emission:
+        default: {x: 0.0, "y": 0.0, z: 0.0}
+      Roughness: 0.9
+      Normal:
+        default: {x: 0.0, "y": 0.0, z: 0.0}
+  - {id: 12, type: Shader WorldPosition}
+  - id: 25
+    type: Behavior Expression
+    reference_id: 14
+    reference_name: vec2(wp.x, wp.z)
+    inputs:
+      wp: {type: struct, type_name: ShaderVec3}
+    outputs:
+      Result: {type: struct, type_name: ShaderVec2}
+  - id: 71
+    type: Behavior Expression
+    reference_id: 45
+    reference_name: p.x / 120 - fract(p.x / 120)
+    inputs:
+      p: {type: struct, type_name: ShaderVec2}
+    outputs:
+      Result: {type: float}
+  - id: 131
+    type: Behavior Expression
+    reference_id: 106
+    reference_name: fract(sin(c * 17.13) * 43758.547)
+    inputs:
+      c: {type: float}
+    outputs:
+      Result: {type: float}
+  - id: 156
+    type: Behavior Expression
+    reference_id: 134
+    reference_name: fract(p.x / 120) - 0.5
+    inputs:
+      p: {type: struct, type_name: ShaderVec2}
+    outputs:
+      Result: {type: float}
+  - id: 203
+    type: Behavior Expression
+    reference_id: 184
+    reference_name: h * 900 + 200
+    inputs:
+      h: {type: float}
+    outputs:
+      Result: {type: float}
+  - id: 227
+    type: Behavior Expression
+    reference_id: 206
+    reference_name: fract((p.y - capy) / 1400)
+    inputs:
+      p: {type: struct, type_name: ShaderVec2}
+      capy: {type: float}
+    outputs:
+      Result: {type: float}
+  - id: 293
+    type: Behavior Expression
+    reference_id: 255
+    reference_name: step(abs(lx), 0.05 + 0.03 * h) * step(0.25, band)
+    inputs:
+      lx: {type: float}
+      h: {type: float}
+      band: {type: float}
+    outputs:
+      Result: {type: float}
+  - id: 337
+    type: Behavior Expression
+    reference_id: 298
+    reference_name: step(length(vec2(lx * 2.2, (band - 0.24) * 9)), 0.55)
+    inputs:
+      lx: {type: float}
+      band: {type: float}
+    outputs:
+      Result: {type: float}
+  - id: 364
+    type: Behavior Expression
+    reference_id: 341
+    reference_name: max(stalk, cap) * step(0.35, h)
+    inputs:
+      stalk: {type: float}
+      cap: {type: float}
+      h: {type: float}
+    outputs:
+      Result: {type: float}
+  - id: 386
+    type: Behavior Expression
+    reference_id: 369
+    reference_name: vec3(0.07, 0.05, 0.09)
+    outputs:
+      Result: {type: struct, type_name: ShaderVec3}
+  - id: 416
+    type: Behavior Expression
+    reference_id: 388
+    reference_name: vec3(0.1, 0.5, 0.45) * cap * 0.05
+    inputs:
+      cap: {type: float}
+    outputs:
+      Result: {type: struct, type_name: ShaderVec3}
+  - id: 432
+    type: Behavior Expression
+    reference_id: 419
+    reference_name: mask * 0.85
+    inputs:
+      mask: {type: float}
+    outputs:
+      Result: {type: float}
+  edges:
+  - {from: 12.Value, to: 25.wp}
+  - {from: 25.Result, to: 71.p}
+  - {from: 25.Result, to: 156.p}
+  - {from: 25.Result, to: 227.p}
+  - {from: 71.Result, to: 131.c}
+  - {from: 131.Result, to: 203.h}
+  - {from: 131.Result, to: 293.h}
+  - {from: 131.Result, to: 364.h}
+  - {from: 156.Result, to: 293.lx}
+  - {from: 156.Result, to: 337.lx}
+  - {from: 203.Result, to: 227.capy}
+  - {from: 227.Result, to: 293.band}
+  - {from: 227.Result, to: 337.band}
+  - {from: 293.Result, to: 364.stalk}
+  - {from: 337.Result, to: 364.cap}
+  - {from: 337.Result, to: 416.cap}
+  - {from: 364.Result, to: 432.mask}
+  - {from: 386.Result, to: 1.Base Color}
+  - {from: 416.Result, to: 1.Emission}
+  - {from: 432.Result, to: 1.Opacity}
+- {id: 14, kind: function, math_expression: 'vec2(wp.x, wp.z)', entry_id: 29}
+- id: 45
+  kind: function
+  math_expression: p.x / 120 - fract(p.x / 120)
+  entry_id: 75
+- id: 106
+  kind: function
+  math_expression: fract(sin(c * 17.13) * 43758.547)
+  entry_id: 107
+- id: 134
+  kind: function
+  math_expression: fract(p.x / 120) - 0.5
+  entry_id: 160
+- {id: 184, kind: function, math_expression: h * 900 + 200, entry_id: 185}
+- id: 206
+  kind: function
+  math_expression: fract((p.y - capy) / 1400)
+  entry_id: 232
+- id: 255
+  kind: function
+  math_expression: step(abs(lx), 0.05 + 0.03 * h) * step(0.25, band)
+  entry_id: 256
+- id: 298
+  kind: function
+  math_expression: step(length(vec2(lx * 2.2, (band - 0.24) * 9)), 0.55)
+  entry_id: 299
+- id: 341
+  kind: function
+  math_expression: max(stalk, cap) * step(0.35, h)
+  entry_id: 342
+- id: 369
+  kind: function
+  math_expression: vec3(0.07, 0.05, 0.09)
+  entry_id: 370
+- id: 388
+  kind: function
+  math_expression: vec3(0.1, 0.5, 0.45) * cap * 0.05
+  entry_id: 389
+- {id: 419, kind: function, math_expression: mask * 0.85, entry_id: 420}

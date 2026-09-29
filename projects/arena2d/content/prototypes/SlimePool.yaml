@@ -1,0 +1,4 @@
+name: SlimePool
+components:
+  GAME.GameFluidVolume: {height: 34.0, substance: Slime, width: 90.0}
+  GAME.GameTransform: {}

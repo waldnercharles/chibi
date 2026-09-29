@@ -1,0 +1,4 @@
+name: SporeCloud
+components:
+  GAME.GameFluidVolume: {height: 110.0, substance: Spores, width: 150.0}
+  GAME.GameTransform: {}

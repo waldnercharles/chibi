@@ -1,0 +1,57 @@
+<div id="root" data-keys="Escape:Close">
+  <div id="prompt" data-if="self.near > 0 && self.open == 0" presence>
+    <span class="key">E</span><span class="verb">Shop</span><span class="aside">modules for scrap</span>
+  </div>
+
+  <div id="screen" data-if="self.open > 0" presence>
+    <div id="panel">
+      <div class="head">
+        <div class="titles">
+          <div class="kicker">Sanctum</div>
+          <div class="name">Shop</div>
+        </div>
+        <div class="wallet"><span class="glyph"/><number-flow data-attr-value="self.scrap"/><span class="unit">scrap</span></div>
+        <div class="close" data-event-click="emit('Close')">Close<span class="key">E</span></div>
+      </div>
+
+      <div class="body">
+        <div class="offers">
+          <div class="offer" id="offer" data-for="o, i : self.offers" data-event-click="emit('Buy', i)"
+               data-class-sold="o.sold > 0" data-class-poor="o.afford == 0 && o.sold == 0"
+               data-class-emitter="o.kind == 0" data-class-modifier="o.kind == 1" data-class-carrier="o.kind == 2">
+            <div class="band"/>
+            <div class="kind">
+              <span data-if="o.kind == 0">Emitter</span><span data-if="o.kind == 1">Modifier</span><span data-if="o.kind == 2">Carrier</span>
+              <span class="pips"><span class="pip on"/><span class="pip" data-class-on="o.tier >= 1"/><span class="pip" data-class-on="o.tier >= 2"/><span class="pip" data-class-on="o.tier >= 3"/></span>
+            </div>
+            <div class="title">{{ o.name }}</div>
+            <div class="blurb">{{ o.blurb }}</div>
+            <div class="foot">
+              <span class="price" data-if="o.sold == 0"><span class="glyph"/>{{ o.price }}</span>
+              <span class="soldtag" data-if="o.sold > 0">Sold</span>
+              <span class="buy" data-if="o.sold == 0">Buy</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="services">
+          <div class="label">Services</div>
+          <div class="service repair" data-event-click="emit('Repair')" data-class-poor="self.canRepair == 0">
+            <div class="title">Patch hull</div>
+            <div class="blurb">Restores 25 hull.</div>
+            <div class="hullbar"><div class="fill" data-style-width="(self.hullRatio * 100) + '%'"/></div>
+            <div class="hullnum"><number-flow data-attr-value="self.hull"/> / {{ self.hullMax }}</div>
+            <div class="foot"><span class="price"><span class="glyph"/>{{ self.repairPrice }}</span></div>
+          </div>
+          <div class="service reroll" data-event-click="emit('Reroll')" data-class-poor="self.canReroll == 0">
+            <div class="title">New stock</div>
+            <div class="blurb">Rerolls every offer.</div>
+            <div class="foot"><span class="price"><span class="glyph"/>{{ self.rerollPrice }}</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="hint">Bought modules go to your stash. Fit them at the Refit bench.</div>
+    </div>
+  </div>
+</div>

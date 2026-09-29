@@ -313,7 +313,7 @@ static bool caustics(render_material_raster *r)
                 (fluid_particle){ .position = { (float)x, (float)y },
                                   .mass = 1,
                                   .radius = 10,
-                                  .kind = FLUID_LIQUID,
+                                  .phase = FLUID_LIQUID,
                                   .color = 0x2080a0ffu,
                                   .refraction = 8 }
             );
@@ -369,7 +369,7 @@ static bool liquid_reflection(render_material_raster *r)
                 (fluid_particle){ .position = { (float)x, (float)y },
                                   .mass = 1,
                                   .radius = 6,
-                                  .kind = FLUID_LIQUID,
+                                  .phase = FLUID_LIQUID,
                                   .color = 0x2080a0ffu }
             );
         }

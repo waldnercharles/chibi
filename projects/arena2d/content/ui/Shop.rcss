@@ -1,0 +1,67 @@
+@import "SanctumTheme.rcss";
+
+#panel { width: 860dp; }
+
+.body { display: flex; }
+
+.offers { display: flex; flex-wrap: wrap; width: 600dp; }
+
+.offer {
+  display: block; position: relative; width: 280dp; height: 132dp; margin: 0 14dp 14dp 0;
+  padding: 14dp 16dp 12dp 18dp; overflow: hidden;
+  background-color: #0b1a24d9; border: 1dp #ffffff14; border-radius: 5dp;
+  transition: background-color border-color transform 0.16s cubic-out;
+  .band { position: absolute; left: 0; top: 0; bottom: 0; width: 3dp; background-color: #6ff6ff; }
+  .kind {
+    display: block; font-size: 9dp; letter-spacing: 2.5dp; text-transform: uppercase; color: #6ff6ff;
+  }
+  .pips { float: right; }
+  .pip {
+    display: inline-block; width: 5dp; height: 5dp; margin-left: 3dp;
+    background-color: #ffffff1a; border-radius: 3dp;
+  }
+  .pip.on { background-color: #ffd166; }
+  .title { display: block; margin-top: 7dp; font-size: 16dp; letter-spacing: 1dp; color: #f2f7ff; }
+  .blurb { display: block; margin-top: 5dp; height: 30dp; font-size: 10dp; line-height: 14dp; color: #8ea5b4; }
+  .foot { display: block; position: absolute; left: 18dp; right: 16dp; bottom: 12dp; height: 18dp; line-height: 18dp; }
+  .price { font-size: 13dp; color: #ffd166; }
+  .buy {
+    float: right; font-size: 9dp; letter-spacing: 2dp; text-transform: uppercase; color: #6a8190;
+    transition: color 0.12s linear-out;
+  }
+  .soldtag { font-size: 9dp; letter-spacing: 3dp; text-transform: uppercase; color: #5d7280; }
+}
+.offer:hover { background-color: #10263380; border-color: #6ff6ff55; transform: translateY(-2dp); }
+.offer:hover .buy { color: #eef6ff; }
+.offer:active { transform: translateY(0dp) scale(0.99); }
+.offer.modifier .band { background-color: #7cf5a4; }
+.offer.modifier .kind { color: #7cf5a4; }
+.offer.carrier .band { background-color: #ff8fd0; }
+.offer.carrier .kind { color: #ff8fd0; }
+.offer.poor { opacity: 0.5; }
+.offer.poor .price { color: #ff7a8a; }
+.offer.poor:hover { transform: none; border-color: #ffffff14; background-color: #0b1a24d9; }
+.offer.sold { opacity: 0.32; }
+.offer.sold:hover { transform: none; border-color: #ffffff14; background-color: #0b1a24d9; }
+
+.services { display: block; width: 204dp; padding-left: 4dp; }
+
+.service {
+  display: block; position: relative; height: 108dp; margin-bottom: 14dp; padding: 12dp 14dp;
+  background-color: #0b1a24d9; border: 1dp #ffffff14; border-radius: 5dp;
+  transition: background-color border-color 0.16s cubic-out;
+  .title { display: block; font-size: 14dp; color: #f2f7ff; }
+  .blurb { display: block; margin-top: 4dp; font-size: 10dp; color: #8ea5b4; }
+  .foot { display: block; position: absolute; left: 14dp; right: 14dp; bottom: 10dp; }
+  .price { font-size: 13dp; color: #ffd166; }
+}
+.service:hover { background-color: #10263380; border-color: #ffd16655; }
+.service.poor { opacity: 0.5; }
+.service.poor .price { color: #ff7a8a; }
+.service.reroll { height: 74dp; }
+
+.hullbar {
+  display: block; margin-top: 10dp; height: 4dp; background-color: #ffffff14; border-radius: 2dp;
+  .fill { display: block; height: 100%; background-color: #eef3ff; border-radius: 2dp; transition: width 0.3s cubic-out; }
+}
+.hullnum { display: block; margin-top: 4dp; font-size: 10dp; color: #b8c7d2; }

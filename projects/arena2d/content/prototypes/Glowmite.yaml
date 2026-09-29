@@ -1,0 +1,20 @@
+name: Glowmite
+components:
+  GAME.GameBody: {type: Dynamic}
+  GAME.GameCollider: {category: 2, mask: 15, radius: 6.0, restitution: 0.3}
+  GAME.GameDrive: {acceleration: 800.0}
+  GAME.GameExperience: {current: 2}
+  GAME.GameFlash: {color: 4294967295, decay: 12.0}
+  GAME.GameGeometry3D: {depth: 22.0, height: 4.0, width: 22.0}
+  GAME.GameHealth: {current: 14, maximum: 14}
+  GAME.GameMovement: {speed: 205.0}
+  GAME.GameOrientation: {}
+  GAME.GameShader:
+    material: MiteSkin
+    parameters: '{"Glow":[0.247,1.0,0.816],"Body":[0.024,0.125,0.11]}'
+    shape: MiteShape
+  GAME.GameSpawnRequest: {prototype: GlowmiteDeath}
+  GAME.GameTransform: {}
+  GAME.GameVelocity: {}
+  GAME.GameWeapon: {damage: 6}
+behaviors: [Chaser, Creature]

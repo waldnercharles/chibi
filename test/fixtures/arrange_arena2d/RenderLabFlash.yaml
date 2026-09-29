@@ -1,0 +1,35 @@
+version: 3
+name: RenderLabFlash
+id_counter: 45
+description: Flashes Self white on each beat of the scene rhythm, as a hit would.
+owner_type: ecs.entity
+graphs:
+- kind: event
+  name: ""
+  nodes:
+  - id: 1
+    type: Event
+    reference_name: Tick
+    outputs:
+      DeltaSeconds: {type: float, kind: data}
+  - {id: 4, type: Scene Rhythm}
+  - id: 26
+    type: Behavior Expression
+    reference_id: 9
+    reference_name: dt > phase * period
+    inputs:
+      dt: {type: double, flags: 0}
+      phase: {type: double}
+      period: {type: double}
+    outputs:
+      Result: {type: bool}
+  - {id: 34, type: Branch}
+  - {id: 39, type: Flash Entity}
+  edges:
+  - {from: 1.Then, to: 34.Exec}
+  - {from: 1.DeltaSeconds, to: 26.dt}
+  - {from: 4.Phase, to: 26.phase}
+  - {from: 4.Period, to: 26.period}
+  - {from: 26.Result, to: 34.Condition}
+  - {from: 34.True, to: 39.Exec}
+- {id: 9, kind: function, math_expression: dt > phase * period, entry_id: 10}

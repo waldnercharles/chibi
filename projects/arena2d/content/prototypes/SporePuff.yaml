@@ -1,0 +1,10 @@
+name: SporePuff
+components:
+  GAME.GameAppearance: {antialias: 2.0, color: 3649896192, height: 20.0, shape: Circle, width: 20.0}
+  GAME.GameMaterial:
+    emission_color: 3649896447
+    emission_intensity: 0.6
+    emission_multiplier: 1.0
+    scene: 3649896192
+  GAME.GameTransform: {}
+behaviors: [Glow, SporeBurst]

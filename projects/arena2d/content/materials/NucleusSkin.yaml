@@ -1,0 +1,134 @@
+version: 3
+name: NucleusSkin
+domain: material
+id_counter: 281
+description: 'Creature skin for the Nucleus: dark chitin with glowing veins and a rim that follow its silhouette; Flash whitens it on a hit and Charge pulses it before an attack.'
+graphs:
+- kind: event
+  name: ""
+  nodes:
+  - id: 1
+    type: Shader Surface Output
+    inputs:
+      Base Color:
+        default: {x: 1.0, "y": 1.0, z: 1.0}
+      Emission:
+        default: {x: 0.0, "y": 0.0, z: 0.0}
+      Roughness: 0.6
+      Normal:
+        default: {x: 0.0, "y": 0.0, z: 0.0}
+  - id: 12
+    type: Shader Parameter
+    reference_name: Body
+    outputs:
+      Value:
+        type: struct
+        type_name: ShaderVec3
+        default: {x: 0.09, "y": 0.05, z: 0.07}
+  - id: 14
+    type: Shader Parameter
+    reference_id: 1
+    reference_name: Glow
+    outputs:
+      Value:
+        type: struct
+        type_name: ShaderVec3
+        default: {x: 1.0, "y": 0.25, z: 0.35}
+  - {id: 16, type: Shader Parameter, reference_id: 2, reference_name: Flash}
+  - {id: 18, type: Shader Parameter, reference_id: 3, reference_name: Charge}
+  - {id: 20, type: Shader Position}
+  - {id: 22, type: Shader Time}
+  - id: 24
+    type: Call Pure Function
+    reference_id: 1198
+    reference_name: Nucleus
+    reference_asset: EnemyForms
+    inputs:
+      Position: {declaration_id: 1203, type: struct, type_name: ShaderVec2}
+    outputs:
+      Distance: {declaration_id: 1204, type: float}
+  - id: 43
+    type: Behavior Expression
+    reference_id: 27
+    reference_name: smoothstep(-1.6, -0.1, d)
+    inputs:
+      d: {type: float}
+    outputs:
+      Result: {type: float}
+  - id: 112
+    type: Behavior Expression
+    reference_id: 46
+    reference_name: smoothstep(0.78, 0.95, 1 - abs(noise(p * 0.35 + vec2(t * 0.15, 0), 1) - 0.5) * 2)
+    inputs:
+      p: {type: struct, type_name: ShaderVec2}
+      t: {type: float}
+    outputs:
+      Result: {type: float}
+  - id: 166
+    type: Behavior Expression
+    reference_id: 116
+    reference_name: mix(body * (0.7 + 0.3 * smoothstep(-6, 0, d)), vec3(1, 1, 1), flash)
+    inputs:
+      body: {type: struct, type_name: ShaderVec3}
+      d: {type: float}
+      flash: {type: float}
+    outputs:
+      Result: {type: struct, type_name: ShaderVec3}
+  - id: 204
+    type: Behavior Expression
+    reference_id: 171
+    reference_name: charge * (0.6 + 0.4 * sin(t * 30))
+    inputs:
+      charge: {type: float}
+      t: {type: float}
+    outputs:
+      Result: {type: float}
+  - id: 274
+    type: Behavior Expression
+    reference_id: 208
+    reference_name: glow * (rim * 0.4 + veins * 0.18 + pulse * 1.2) + vec3(1, 1, 1) * flash * 0.8
+    inputs:
+      glow: {type: struct, type_name: ShaderVec3}
+      rim: {type: float}
+      veins: {type: float}
+      pulse: {type: float}
+      flash: {type: float}
+    outputs:
+      Result: {type: struct, type_name: ShaderVec3}
+  edges:
+  - {from: 12.Value, to: 166.body}
+  - {from: 14.Value, to: 274.glow}
+  - {from: 16.Value, to: 166.flash}
+  - {from: 16.Value, to: 274.flash}
+  - {from: 18.Value, to: 204.charge}
+  - {from: 20.Position, to: 24.Position}
+  - {from: 20.Position, to: 112.p}
+  - {from: 22.Value, to: 112.t}
+  - {from: 22.Value, to: 204.t}
+  - {from: 24.Distance, to: 43.d}
+  - {from: 24.Distance, to: 166.d}
+  - {from: 43.Result, to: 274.rim}
+  - {from: 112.Result, to: 274.veins}
+  - {from: 166.Result, to: 1.Base Color}
+  - {from: 204.Result, to: 274.pulse}
+  - {from: 274.Result, to: 1.Emission}
+- id: 27
+  kind: function
+  math_expression: smoothstep(-1.6, -0.1, d)
+  entry_id: 28
+- id: 46
+  kind: function
+  math_expression: smoothstep(0.78, 0.95, 1 - abs(noise(p * 0.35 + vec2(t * 0.15, 0), 1) - 0.5) * 2)
+  entry_id: 47
+- id: 116
+  kind: function
+  math_expression: mix(body * (0.7 + 0.3 * smoothstep(-6, 0, d)), vec3(1, 1, 1), flash)
+  entry_id: 117
+- id: 171
+  kind: function
+  math_expression: charge * (0.6 + 0.4 * sin(t * 30))
+  entry_id: 172
+- id: 208
+  kind: function
+  math_expression: glow * (rim * 0.4 + veins * 0.18 + pulse * 1.2) + vec3(1, 1, 1) * flash * 0.8
+  entry_id: 209

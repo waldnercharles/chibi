@@ -1,0 +1,20 @@
+name: LumenCap
+components:
+  GAME.GameAppearance:
+    antialias: 1.2
+    border_color: 3372217599
+    border_width: 2.0
+    color: 1610604799
+    height: 22.0
+    shape: Capsule
+    width: 10.0
+  GAME.GameMaterial:
+    absorption: 0.3
+    albedo: 1610604799
+    border_emission_color: 3372217599
+    emission_color: 1073729791
+    emission_intensity: 0.2
+    emission_multiplier: 1.0
+    scene: 1610604799
+  GAME.GameOrientation: {}
+  GAME.GameTransform: {}

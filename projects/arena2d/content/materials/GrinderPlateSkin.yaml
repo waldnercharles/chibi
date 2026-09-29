@@ -41,13 +41,13 @@ graphs:
   - {id: 22, type: Shader Time}
   - id: 24
     type: Call Pure Function
-    reference_id: 1254
+    reference_id: 1539
     reference_name: GrinderPlate
     reference_asset: EnemyForms
     inputs:
-      Position: {declaration_id: 1259, type: struct, type_name: ShaderVec2}
+      Position: {declaration_id: 1544, type: struct, type_name: ShaderVec2}
     outputs:
-      Distance: {declaration_id: 1260, type: float}
+      Distance: {declaration_id: 1545, type: float}
   - id: 43
     type: Behavior Expression
     reference_id: 27

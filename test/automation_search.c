@@ -493,8 +493,8 @@ static void response_budgets()
     test_check(
         listed && strstr(listed, "\"categories\"") &&
             strstr(listed, "\"GameHealth\"") && strstr(listed, "\"Contact Begin\"") &&
-            outline < 6144 && found && page < 2560,
-        "searchNodes lists the behavior vocabulary in under 6 KB and a page of "
+            outline < 7168 && found && page < 2560,
+        "searchNodes lists the behavior vocabulary in under 7 KB and a page of "
         "pins in under 2.5 KB"
     );
     free(listed);

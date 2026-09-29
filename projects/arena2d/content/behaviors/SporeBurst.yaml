@@ -1,0 +1,24 @@
+version: 3
+name: SporeBurst
+id_counter: 12
+description: On Begin, release a cloud of glowing, flammable spores here, then glow out.
+owner_type: ecs.entity
+graphs:
+- kind: event
+  name: ""
+  nodes:
+  - {id: 1, type: Event, reference_name: Begin}
+  - id: 3
+    type: Emit Fluid
+    inputs:
+      Substance: Spores
+      Position:
+        type_name: GameTransform
+        binding: {kind: component, component: GAME.GameTransform}
+        default: null
+      Velocity:
+        default: {x: 0.0, "y": -20.0}
+      Count: 46
+      Radius: 26.0
+  edges:
+  - {from: 1.Then, to: 3.In}

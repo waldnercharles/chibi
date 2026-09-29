@@ -1,0 +1,98 @@
+version: 3
+name: JellyBody
+id_counter: 141
+description: Holds a creature's own jelly around its nucleus with a slow heartbeat, and lets hits carve pieces out of it.
+owner_type: ecs.entity
+variables:
+- {id: 1, name: beat, type: float}
+graphs:
+- kind: event
+  name: ""
+  nodes:
+  - id: 2
+    type: Event
+    reference_name: Tick
+    outputs:
+      DeltaSeconds: {type: float, kind: data}
+  - id: 17
+    type: Behavior Expression
+    reference_id: 5
+    reference_name: beat += dt
+    inputs:
+      Exec: {id: 21, kind: exec}
+      beat:
+        id: 18
+        type: float
+        binding: {kind: variable, variable_id: 1, source_asset: JellyBody}
+      dt:
+        type: double
+        binding: {kind: delta_time}
+    outputs:
+      Then: {id: 22, kind: exec}
+      Result: {id: 20, type: float}
+  - id: 40
+    type: Self
+    outputs:
+      Self: {type_name: ecs.entity}
+  - {id: 42, type: Matter Centroid}
+  - id: 107
+    type: Behavior Expression
+    reference_id: 46
+    reference_name: (pos - c) * 1400 + velocity * 60 + (pos - c) * 500 * sin(beat * 3.2)
+    inputs:
+      pos:
+        type: struct
+        type_name: GameTransform
+        binding: {kind: component, component: GAME.GameTransform}
+      c: {type: struct, type_name: CF_V2}
+      velocity:
+        type: struct
+        type_name: GameVelocity
+        binding: {kind: component, component: GAME.GameVelocity}
+      beat:
+        type: double
+        binding: {kind: variable, variable_id: 1, source_asset: JellyBody}
+    outputs:
+      Result: {type: struct, type_name: GameTransform}
+  - id: 113
+    type: Self
+    outputs:
+      Self: {type_name: ecs.entity}
+  - {id: 115, type: Push Matter}
+  - id: 120
+    type: Event
+    reference_name: Hit
+    outputs:
+      Amount: {declaration_id: 1, type: int, kind: data}
+      Source: {declaration_id: 2, type: handle, type_name: ecs.entity, kind: data}
+      Point: {declaration_id: 3, type: struct, type_name: CF_V2, kind: data}
+      Direction: {declaration_id: 4, type: struct, type_name: CF_V2, kind: data}
+      Element: {declaration_id: 5, type: int, kind: data}
+      Knockback: {declaration_id: 6, type: float, kind: data}
+  - id: 128
+    type: Self
+    outputs:
+      Self: {type_name: ecs.entity}
+  - id: 130
+    type: Self
+    outputs:
+      Self: {type_name: ecs.entity}
+  - id: 132
+    type: Damage Material
+    inputs: {Radius: 10.0, Energy: 2.0}
+  edges:
+  - {from: 2.Then, to: 17.Exec}
+  - {from: 17.Then, to: 115.In}
+  - {from: 40.Self, to: 42.Owner}
+  - {from: 42.Position, to: 107.c}
+  - {from: 107.Result, to: 115.Force}
+  - {from: 113.Self, to: 115.Owner}
+  - {from: 120.Then, to: 132.In}
+  - {from: 120.Point, to: 132.Point, conversion: game_transform_to_cf}
+  - {from: 128.Self, to: 132.Entity}
+  - {from: 130.Self, to: 132.Source}
+- {id: 5, kind: function, math_expression: beat += dt, entry_id: 24}
+- id: 46
+  kind: function
+  math_expression: (pos - c) * 1400 + velocity * 60 + (pos - c) * 500 * sin(beat * 3.2)
+  entry_id: 47

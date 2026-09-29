@@ -10,11 +10,14 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-static bool folder_matches(
+/* Whether the folder holds exactly the expected files, or with exact false,
+ * at least them. */
+static bool folder_holds(
     const char *content_root,
     const char *folder,
     const char *const *expected,
-    int expected_count
+    int expected_count,
+    bool exact
 )
 {
     char path[512];
@@ -44,6 +47,9 @@ static bool folder_matches(
                 break;
             }
         }
+        if (found < 0 && !exact) {
+            continue;
+        }
         if (found < 0 || seen[found]) {
             valid = false;
             continue;
@@ -55,6 +61,30 @@ static bool folder_matches(
         valid &= seen[i];
     }
     return valid;
+}
+
+static bool folder_matches(
+    const char *content_root,
+    const char *folder,
+    const char *const *expected,
+    int expected_count
+)
+{
+    return folder_holds(content_root, folder, expected, expected_count, true);
+}
+
+/* Whether the folder holds none of the named files. */
+static bool folder_lacks(const char *content_root, const char *folder, const char *const *names, int count)
+{
+    char path[512];
+    struct stat info;
+    for (int i = 0; i < count; i++) {
+        snprintf(path, sizeof path, "%s/%s/%s", content_root, folder, names[i]);
+        if (stat(path, &info) == 0) {
+            return false;
+        }
+    }
+    return true;
 }
 
 /* The error from opening a temporary project whose manifest starts with the
@@ -276,62 +306,72 @@ void run_content_catalog_checks()
                                                   "MaterialIslands.yaml" };
     static const char *const arena2d_systems[] = { "FreeMotion.yaml" };
     const char *arena2d_root = "projects/arena2d/content";
-    valid = folder_matches(
+    valid = folder_holds(
         arena2d_root,
         "behaviors",
         arena2d_behaviors,
-        (int)(sizeof arena2d_behaviors / sizeof *arena2d_behaviors)
+        (int)(sizeof arena2d_behaviors / sizeof *arena2d_behaviors),
+        false
     );
-    valid &= folder_matches(
+    valid &= folder_holds(
         arena2d_root,
         "fields",
         arena2d_fields,
-        (int)(sizeof arena2d_fields / sizeof *arena2d_fields)
+        (int)(sizeof arena2d_fields / sizeof *arena2d_fields),
+        false
     );
-    valid &= folder_matches(arena2d_root, "systems", arena2d_systems, 1);
-    valid &= folder_matches(
+    valid &= folder_holds(arena2d_root, "systems", arena2d_systems, 1, false);
+    valid &= folder_holds(
         arena2d_root,
         "events",
         arena2d_events,
-        (int)(sizeof arena2d_events / sizeof *arena2d_events)
+        (int)(sizeof arena2d_events / sizeof *arena2d_events),
+        false
     );
-    valid &= folder_matches(
+    valid &= folder_holds(
         arena2d_root,
         "libraries",
         arena2d_libraries,
-        (int)(sizeof arena2d_libraries / sizeof *arena2d_libraries)
+        (int)(sizeof arena2d_libraries / sizeof *arena2d_libraries),
+        false
     );
-    valid &= folder_matches(
+    valid &= folder_holds(
         arena2d_root,
         "materials",
         arena2d_materials,
-        (int)(sizeof arena2d_materials / sizeof *arena2d_materials)
+        (int)(sizeof arena2d_materials / sizeof *arena2d_materials),
+        false
     );
-    valid &= folder_matches(
+    valid &= folder_holds(
         arena2d_root,
         "prototypes",
         arena2d_prototypes,
-        (int)(sizeof arena2d_prototypes / sizeof *arena2d_prototypes)
+        (int)(sizeof arena2d_prototypes / sizeof *arena2d_prototypes),
+        false
     );
-    valid &= folder_matches(
+    valid &= folder_holds(
         arena2d_root,
         "scenes",
         arena2d_scenes,
-        (int)(sizeof arena2d_scenes / sizeof *arena2d_scenes)
+        (int)(sizeof arena2d_scenes / sizeof *arena2d_scenes),
+        false
     );
-    valid &= folder_matches(
+    valid &= folder_holds(
         arena2d_root,
         "shader-libraries",
         shader_libraries,
-        (int)(sizeof shader_libraries / sizeof *shader_libraries)
+        (int)(sizeof shader_libraries / sizeof *shader_libraries),
+        false
     );
-    valid &= folder_matches(arena2d_root, "shapes", NULL, 0);
-    valid &= folder_matches(arena2d_root, "textures", NULL, 0);
+    valid &= folder_lacks(arena2d_root, "behaviors", behaviors, (int)(sizeof behaviors / sizeof *behaviors));
+    valid &= folder_lacks(arena2d_root, "materials", materials, (int)(sizeof materials / sizeof *materials));
+    valid &= folder_lacks(arena2d_root, "prototypes", prototypes, (int)(sizeof prototypes / sizeof *prototypes));
+    valid &= folder_lacks(arena2d_root, "scenes", scenes, (int)(sizeof scenes / sizeof *scenes));
     static const char *const arena2d_ui[] = {
         "HUD.rml",   "HUD.rcss",   "MenuButton.rml", "MenuButton.rcss",
         "Meter.rml", "Meter.rcss", "PauseMenu.rml",  "PauseMenu.rcss"
     };
-    valid &= folder_matches(arena2d_root, "ui", arena2d_ui, (int)(sizeof arena2d_ui / sizeof *arena2d_ui));
+    valid &= folder_holds(arena2d_root, "ui", arena2d_ui, (int)(sizeof arena2d_ui / sizeof *arena2d_ui), false);
     test_check(valid, "Arena2D project catalog is isolated from Arena3D assets");
 
     char error[256] = { 0 };

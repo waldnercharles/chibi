@@ -1,0 +1,12 @@
+name: RoseCap
+components:
+  GAME.GameAppearance: {antialias: 1.2, color: 4285191679, height: 16.0, shape: Capsule, width: 8.0}
+  GAME.GameMaterial:
+    absorption: 0.3
+    albedo: 4285191679
+    emission_color: 4284469503
+    emission_intensity: 0.18
+    emission_multiplier: 1.0
+    scene: 4285191679
+  GAME.GameOrientation: {}
+  GAME.GameTransform: {}

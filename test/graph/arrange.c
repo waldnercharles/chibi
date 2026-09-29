@@ -588,11 +588,12 @@ static void arrange_score_add(arrange_score *total, arrange_score s)
     total->ink_length += s.ink_length;
 }
 
-/* Scores every arena2d behavior graph arranged and drawn in `style`. */
+/* Scores every graph of a frozen copy of the arena2d behaviors, arranged and
+ * drawn in `style`. The copy keeps the budgets fixed while the game grows. */
 static arrange_score arrange_arena_score(arrange_route_style style, int *graphs)
 {
     char **paths = NULL;
-    arrange_collect("projects/arena2d/content/behaviors", &paths);
+    arrange_collect("test/fixtures/arrange_arena2d", &paths);
     arrange_sort_paths(paths);
     arrange_score total = { 0 };
     *graphs = 0;

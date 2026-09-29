@@ -453,8 +453,8 @@ typedef struct
 } asset_case;
 
 static const asset_case ASSET_CASES[] = {
-    /* Cave and RenderLab's flashing basalt. */
-    { REFERENCE_ASSET_MATERIAL, "Basalt", "Rock", "Cave", 2 },
+    /* Cave, RenderLab's flashing basalt and Starwell's Basalt Throat. */
+    { REFERENCE_ASSET_MATERIAL, "Basalt", "Rock", "Cave", 3 },
     { REFERENCE_ASSET_FIELD, "BasaltCave", "Cavern", "Cave", 1 },
     { REFERENCE_ASSET_BEHAVIOR, "Pursuit", "Chase", "Sandbox", 4 },
     { REFERENCE_ASSET_UI, "MenuButton", "MenuItem", "PauseMenu", 3 },
@@ -500,7 +500,7 @@ static void assets()
 
     /* A library call passes Projectile on as a name the index cannot read. */
     refactor_plan plan;
-    bool planned = rename_to(&p, asset_symbol(&p, REFERENCE_ASSET_PROTOTYPE, "Projectile"), "Bolt", &plan);
+    bool planned = rename_to(&p, asset_symbol(&p, REFERENCE_ASSET_PROTOTYPE, "Projectile"), "Slug", &plan);
     bool mentioned = planned && acount(plan.mentions) >= 2;
     refactor_plan_free(&plan);
     test_check(mentioned, "a rename lists values that still name the asset without a reference");
@@ -616,8 +616,8 @@ static void values()
     const char *tile = p.texts[asset_named(&p, REFERENCE_ASSET_PROTOTYPE, "Tile")];
     const char *second = tile ? strstr(tile, "Rock") : NULL;
     test_check(
-        listed && applied && uses == 5 &&
-            asset_uses(&p, REFERENCE_ASSET_MATERIAL, "Rock") == 5 && second &&
+        listed && applied && uses == 6 &&
+            asset_uses(&p, REFERENCE_ASSET_MATERIAL, "Rock") == 6 && second &&
             strstr(second + 4, "Rock"),
         "renaming a material renames mesh parts and scene overrides that name "
         "it"

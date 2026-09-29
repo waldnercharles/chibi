@@ -1,0 +1,4 @@
+name: WaterPool
+components:
+  GAME.GameFluidVolume: {height: 40.0, substance: Water, width: 110.0}
+  GAME.GameTransform: {}

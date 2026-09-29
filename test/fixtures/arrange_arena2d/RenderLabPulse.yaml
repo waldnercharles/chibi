@@ -1,0 +1,47 @@
+version: 3
+name: RenderLabPulse
+id_counter: 60
+description: 'On each beat of the scene rhythm: a shockwave, a flash and a chromatic pulse at Self.'
+owner_type: ecs.entity
+graphs:
+- kind: event
+  name: ""
+  nodes:
+  - id: 1
+    type: Event
+    reference_name: Tick
+    outputs:
+      DeltaSeconds: {type: float, kind: data}
+  - {id: 4, type: Scene Rhythm}
+  - id: 26
+    type: Behavior Expression
+    reference_id: 9
+    reference_name: dt > phase * period
+    inputs:
+      dt: {type: double, flags: 0}
+      phase: {type: double}
+      period: {type: double}
+    outputs:
+      Result: {type: bool}
+  - {id: 34, type: Branch}
+  - {id: 39, type: Get_GameTransform}
+  - id: 41
+    type: Add Shockwave
+    inputs: {Radius: 220.0, Thickness: 30.0, Strength: 14.0, Duration: 0.9}
+  - id: 49
+    type: Flash Screen
+    inputs: {Amount: 0.25, Duration: 0.15}
+  - id: 55
+    type: Pulse Chromatic Aberration
+    inputs: {Amount: 8.0, Duration: 0.4}
+  edges:
+  - {from: 1.Then, to: 34.Exec}
+  - {from: 1.DeltaSeconds, to: 26.dt}
+  - {from: 4.Phase, to: 26.phase}
+  - {from: 4.Period, to: 26.period}
+  - {from: 26.Result, to: 34.Condition}
+  - {from: 34.True, to: 41.Exec}
+  - {from: 39.Value, to: 41.Position, conversion: game_transform_to_cf}
+  - {from: 41.Then, to: 49.Exec}
+  - {from: 49.Then, to: 55.Exec}
+- {id: 9, kind: function, math_expression: dt > phase * period, entry_id: 10}

@@ -1,0 +1,97 @@
+version: 3
+name: GrottoDeep
+domain: material
+id_counter: 257
+description: 'The Lumen Grotto''s far distance: violet murk with drifting clouds of glowing spores.'
+graphs:
+- kind: event
+  name: ""
+  nodes:
+  - id: 1
+    type: Shader Surface Output
+    inputs:
+      Base Color:
+        default: {x: 1.0, "y": 1.0, z: 1.0}
+      Emission:
+        default: {x: 0.0, "y": 0.0, z: 0.0}
+      Roughness: 0.9
+      Normal:
+        default: {x: 0.0, "y": 0.0, z: 0.0}
+  - {id: 12, type: Shader WorldPosition}
+  - id: 25
+    type: Behavior Expression
+    reference_id: 14
+    reference_name: vec2(wp.x, wp.z)
+    inputs:
+      wp: {type: struct, type_name: ShaderVec3}
+    outputs:
+      Result: {type: struct, type_name: ShaderVec2}
+  - id: 92
+    type: Behavior Expression
+    reference_id: 45
+    reference_name: noise(p, 0.0017) * 0.6 + noise(p + vec2(311, -97), 0.0051) * 0.4
+    inputs:
+      p: {type: struct, type_name: ShaderVec2}
+    outputs:
+      Result: {type: float}
+  - id: 129
+    type: Behavior Expression
+    reference_id: 95
+    reference_name: mix(vec3(0.006, 0.004, 0.012), vec3(0.03, 0.012, 0.045), fog)
+    inputs:
+      fog: {type: float}
+    outputs:
+      Result: {type: struct, type_name: ShaderVec3}
+  - id: 180
+    type: Behavior Expression
+    reference_id: 132
+    reference_name: smoothstep(0.8, 0.97, noise(p + vec2(-53, 211), 0.019)) * smoothstep(0.35, 0.8, fog)
+    inputs:
+      p: {type: struct, type_name: ShaderVec2}
+      fog: {type: float}
+    outputs:
+      Result: {type: float}
+  - id: 243
+    type: Behavior Expression
+    reference_id: 184
+    reference_name: mix(vec3(0.08, 0.6, 0.5), vec3(0.6, 0.12, 0.55), fog) * (motes * 0.5 + fog * fog * 0.05)
+    inputs:
+      fog: {type: float}
+      motes: {type: float}
+    outputs:
+      Result: {type: struct, type_name: ShaderVec3}
+  - id: 255
+    type: Behavior Expression
+    reference_id: 247
+    reference_name: "1"
+    outputs:
+      Result: {type: float}
+  edges:
+  - {from: 12.Value, to: 25.wp}
+  - {from: 25.Result, to: 92.p}
+  - {from: 25.Result, to: 180.p}
+  - {from: 92.Result, to: 129.fog}
+  - {from: 92.Result, to: 180.fog}
+  - {from: 92.Result, to: 243.fog}
+  - {from: 129.Result, to: 1.Base Color}
+  - {from: 180.Result, to: 243.motes}
+  - {from: 243.Result, to: 1.Emission}
+  - {from: 255.Result, to: 1.Opacity}
+- {id: 14, kind: function, math_expression: 'vec2(wp.x, wp.z)', entry_id: 29}
+- id: 45
+  kind: function
+  math_expression: noise(p, 0.0017) * 0.6 + noise(p + vec2(311, -97), 0.0051) * 0.4
+  entry_id: 46
+- id: 95
+  kind: function
+  math_expression: mix(vec3(0.006, 0.004, 0.012), vec3(0.03, 0.012, 0.045), fog)
+  entry_id: 96
+- id: 132
+  kind: function
+  math_expression: smoothstep(0.8, 0.97, noise(p + vec2(-53, 211), 0.019)) * smoothstep(0.35, 0.8, fog)
+  entry_id: 133
+- id: 184
+  kind: function
+  math_expression: mix(vec3(0.08, 0.6, 0.5), vec3(0.6, 0.12, 0.55), fog) * (motes * 0.5 + fog * fog * 0.05)
+  entry_id: 185
+- {id: 247, kind: function, math_expression: "1", entry_id: 248}

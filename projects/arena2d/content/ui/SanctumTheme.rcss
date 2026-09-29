@@ -1,0 +1,78 @@
+// Shared look of the Sanctum screens (Shop, Refit, SkillTree): the terminal
+// prompt, the dimmed backdrop, the panel and its header, currency and keys.
+// Accents follow the HUD: cyan ship, gold scrap, violet resonance, amber
+// strata; module kinds are cyan emitters, mint modifiers and rose carriers.
+
+#root {
+  position: absolute; left: 0; top: 0; right: 0; bottom: 0;
+  font-size: 12dp; color: #d8e6ee;
+}
+
+.key {
+  display: inline-block; min-width: 14dp; height: 16dp; line-height: 16dp; padding: 0 4dp;
+  font-size: 9dp; text-align: center; color: #0a1a20; background-color: #6ff6ff;
+  border-radius: 3dp;
+}
+
+.glyph {
+  display: inline-block; width: 7dp; height: 7dp; margin-right: 6dp;
+  background-color: #ffd166; transform: rotate(45deg);
+}
+
+#prompt {
+  position: absolute; left: 0; right: 0; bottom: 74dp; text-align: center;
+  font-size: 11dp; letter-spacing: 2dp; text-transform: uppercase; color: #eef6ff;
+  transition: opacity transform 0.25s cubic-out;
+  .key { margin-right: 9dp; vertical-align: middle; }
+  .verb { vertical-align: middle; }
+  .aside { margin-left: 10dp; font-size: 9dp; letter-spacing: 1.5dp; color: #7f98a8; vertical-align: middle; }
+}
+#prompt[data-starting-style], #prompt[data-ending-style] { opacity: 0; transform: translateY(6dp); }
+
+#screen {
+  position: absolute; left: 0; top: 0; right: 0; bottom: 0;
+  display: flex; align-items: center; justify-content: center;
+  background-color: #02070bcc; pointer-events: auto;
+  transition: opacity 0.22s cubic-out;
+}
+#screen[data-starting-style], #screen[data-ending-style] { opacity: 0; }
+
+#panel {
+  display: block; position: relative; padding: 22dp 26dp 18dp 26dp;
+  background-color: #06111af2; border: 1dp #6ff6ff2e; border-radius: 6dp;
+  transition: transform 0.32s cubic-out;
+}
+#screen[data-starting-style] #panel { transform: translateY(14dp) scale(0.98); }
+#screen[data-ending-style] #panel { transform: translateY(8dp); }
+
+.head {
+  display: flex; align-items: flex-end; padding-bottom: 14dp; margin-bottom: 16dp;
+  border-bottom: 1dp #ffffff12;
+  .titles { display: block; flex: 1; }
+  .kicker { display: block; font-size: 9dp; letter-spacing: 5dp; text-transform: uppercase; color: #ffb45a; }
+  .name { display: block; margin-top: 4dp; font-size: 26dp; letter-spacing: 7dp; text-transform: uppercase; color: #f4f8ff; }
+}
+
+.wallet {
+  display: block; margin-right: 22dp; font-size: 18dp; color: #ffd166;
+  .glyph { width: 9dp; height: 9dp; margin-right: 9dp; vertical-align: middle; }
+  .unit { margin-left: 6dp; font-size: 9dp; letter-spacing: 2dp; text-transform: uppercase; color: #a8925a; }
+}
+
+.close {
+  display: block; height: 26dp; line-height: 26dp; padding: 0 8dp 0 12dp;
+  font-size: 10dp; letter-spacing: 2dp; text-transform: uppercase; color: #9fb4c2;
+  border: 1dp #ffffff1c; border-radius: 4dp;
+  transition: background-color color 0.12s linear-out;
+  .key { margin-left: 10dp; background-color: #9fb4c2; }
+}
+.close:hover { color: #eef6ff; background-color: #ffffff10; }
+
+.hint {
+  display: block; margin-top: 16dp; font-size: 10dp; letter-spacing: 1dp; color: #6a8190;
+}
+
+.label {
+  display: block; margin-bottom: 8dp; font-size: 9dp; letter-spacing: 3dp;
+  text-transform: uppercase; color: #7f98a8;
+}

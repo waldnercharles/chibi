@@ -1,0 +1,48 @@
+version: 3
+name: MovementEmitter
+id_counter: 577
+description: Emit movement exhaust above the input deadzone while boost is released.
+owner_type: ecs.entity
+graphs:
+- kind: event
+  name: ""
+  nodes:
+  - id: 1
+    type: Event
+    reference_name: Tick
+    outputs:
+      DeltaSeconds: {type: float, kind: data}
+  - id: 4
+    type: GetEntity_GameActionBinding
+    inputs:
+      Entity:
+        binding: {kind: component_field, component: GAME.GameParticleEmitter, field: parent}
+  - id: 7
+    type: GetEntity_GameInput
+    inputs:
+      Entity:
+        binding: {kind: component_field, component: GAME.GameParticleEmitter, field: parent}
+  - id: 23
+    type: Behavior Expression
+    reference_id: 10
+    reference_name: active = !action.pressed && length(input.move) > 0.1
+    inputs:
+      Exec: {id: 28, kind: exec}
+      active:
+        id: 24
+        type: bool
+        type_name: _Bool
+        binding: {kind: component_field, component: GAME.GameParticleEmitter, field: active}
+      action: {}
+      input: {}
+    outputs:
+      Then: {id: 29, kind: exec}
+      Result: {id: 27, type: bool}
+  edges:
+  - {from: 1.Then, to: 23.Exec}
+  - {from: 4.Value, to: 23.action}
+  - {from: 7.Value, to: 23.input}
+- id: 10
+  kind: function
+  math_expression: active = !action.pressed && length(input.move) > 0.1
+  entry_id: 481

@@ -2,6 +2,7 @@
  * part's problems as markers, completion accepted into the buffer, Go to
  * Definition's targets, hover descriptions, and one undo history over a code
  * editor and its buffer, in a scratch project on disk. */
+#define _GNU_SOURCE
 #include "editor/documents/ui_code.h"
 #include "support/array.h"
 #include "support/text_edit.h"

@@ -4,24 +4,21 @@
 #
 # SOURCE_SUBDIR names a folder without a CMakeLists.txt, so FetchContent only
 # downloads the sources and the grammars' own targets stay out of the build.
-macro(chibi_tree_sitter_source name url sha256)
+macro(chibi_tree_sitter_source name repository tag)
     FetchContent_Declare(${name}
-        URL ${url}
-        URL_HASH SHA256=${sha256}
-        SOURCE_SUBDIR chibi-sources-only
-        DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
+        GIT_REPOSITORY ${repository}
+        GIT_TAG ${tag}
+        GIT_SHALLOW TRUE
+        SOURCE_SUBDIR chibi-sources-only)
     FetchContent_MakeAvailable(${name})
 endmacro()
 
 chibi_tree_sitter_source(tree_sitter
-    https://github.com/tree-sitter/tree-sitter/archive/refs/tags/v0.25.10.tar.gz
-    ad5040537537012b16ef6e1210a572b927c7cdc2b99d1ee88d44a7dcdc3ff44c)
+    https://github.com/tree-sitter/tree-sitter.git v0.25.10)
 chibi_tree_sitter_source(tree_sitter_css
-    https://github.com/tree-sitter/tree-sitter-css/archive/refs/tags/v0.25.0.tar.gz
-    03965344d8c0435dc54fb45b281578420bb7db8b99df4d34e7e74105a274cb79)
+    https://github.com/tree-sitter/tree-sitter-css.git v0.25.0)
 chibi_tree_sitter_source(tree_sitter_html
-    https://github.com/tree-sitter/tree-sitter-html/archive/refs/tags/v0.23.2.tar.gz
-    21fa4f2d4dcb890ef12d09f4979a0007814f67f1c7294a9b17b0108a09e45ef7)
+    https://github.com/tree-sitter/tree-sitter-html.git v0.23.2)
 
 # The runtime is one translation unit, lib.c; each grammar is its generated
 # parser and hand-written scanner. Their own warnings are not ours to fix.

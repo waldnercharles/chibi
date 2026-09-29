@@ -1,6 +1,7 @@
 /* UI documents: a ui asset's or stylesheet's text open for editing, its undo
  * history, live apply through overlays, saves and disk conflicts; then as
  * Studio document tabs and in the Text Editor. */
+#define _GNU_SOURCE
 #include "assets/ui_document.h"
 #include "editor/studio/studio_internal.h"
 #include "editor/workspace/editor.h"

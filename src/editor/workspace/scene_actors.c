@@ -549,6 +549,20 @@ void app_scene_authoring_set_default_ui(app_scene_authoring *scene, const char *
     set_name(&scene->default_ui, ui);
 }
 
+void pin_run_seed(app_scene_authoring *scene)
+{
+    engine_pin_run_seed(
+        scene->runtime,
+        scene->pinned_seed >= 0 ? scene->pinned_seed : scene->seed
+    );
+}
+
+void app_scene_authoring_pin_seed(app_scene_authoring *scene, int seed)
+{
+    scene->pinned_seed = seed;
+    pin_run_seed(scene);
+}
+
 int app_scene_authoring_set_physics(app_scene_authoring *scene, game_physics_settings settings)
 {
     if (scene->runtime_snapshot_valid || scene->preview_playing ||

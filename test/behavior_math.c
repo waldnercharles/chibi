@@ -7,6 +7,7 @@
 #include "graph/nodes/vector_nodes.h"
 #include "graph/runtime/eval.h"
 #include "graph/runtime/instance.h"
+#include "graph/runtime/random.h"
 #include "runtime/behaviors/live.h"
 #include "runtime/generated.h"
 #include "support/arena.h"
@@ -230,7 +231,7 @@ static void random_ranges()
     arena_init(&storage, 4096);
     eval_context eval;
     eval_context_init(&eval);
-    srand(1234);
+    behavior_srand(1234);
     pin_value real_inputs[] = {
         { .type = PIN_F64, .d = 8 },
         { .type = PIN_F64, .d = -2 },

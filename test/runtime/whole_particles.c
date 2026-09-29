@@ -1,5 +1,6 @@
 #include "graph/compiler/behavior_function_internal.h"
 #include "graph/runtime/flow_internal.h"
+#include "graph/runtime/random.h"
 #include "test/flow_snapshot.h"
 #include "test/suite_internal.h"
 #include "test/whole_particle_fixture.h"
@@ -135,7 +136,7 @@ static void parity(bool directed, bool waits, int scenario, int control, int bud
         assert(run);
         memset(vectors, 0, sizeof vectors);
         afree(args);
-        srand(91);
+        behavior_srand(91);
         uint64_t eval = eval_oracle_calls(), flow = flow_oracle_calls();
         int result = control == 1 ? flow_run_step(run) : flow_run_resume(run), at = 0;
         for (;;) {
@@ -174,9 +175,9 @@ static void parity(bool directed, bool waits, int scenario, int control, int bud
                        : flow_run_step(run);
         }
         if (!mode) {
-            next = rand();
+            next = behavior_rand();
         } else {
-            assert(at == acount(expected) && rand() == next);
+            assert(at == acount(expected) && behavior_rand() == next);
             assert(eval == eval_oracle_calls() && flow == flow_oracle_calls());
         }
         flow_run_free(run);

@@ -3,6 +3,7 @@
 #include "graph/model/registry.h"
 #include "graph/runtime/eval.h"
 #include "graph/runtime/flow.h"
+#include "graph/runtime/random.h"
 #include "runtime/behaviors/live.h"
 #include "runtime/generated.h"
 #include "support/array.h"
@@ -67,7 +68,7 @@ int bench_arena_scale(int count, int frames, bool portable, bool profile, int mo
     assert(count > 0 && count <= 20000 && frames >= 8 && frames <= 10000);
     behavior_backend backend = portable ? BEHAVIOR_BYTECODE : BEHAVIOR_SLJIT;
     behavior_backend previous = behavior_debug_backend(backend);
-    srand(12345);
+    behavior_srand(12345);
     ecs_world *world = ecs_world_new();
     for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
         assert(!ecs_world_register_component(world, GAME_REGISTRY_COMPONENTS[i], NULL));

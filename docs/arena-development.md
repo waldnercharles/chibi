@@ -21,7 +21,9 @@ env MallocNanoZone=0 ASAN_OPTIONS=detect_leaks=0 build/chibi --play \
 Normal play uses elapsed time. `--fixed-dt` supplies the given wall-clock
 increment per display frame for repeatable verification. The shared engine
 consumes it in 1/60-second simulation steps; `--frames` alone only limits
-the run. Screenshots are opt-in and native-only. A web build supports
+the run. `--seed N` pins the run seed, so behavior randomness and
+`seed_from_run` terrain repeat; without it every start and Restart Run draws
+a new seed unless the scene's `seed:` pins one. Screenshots are opt-in and native-only. A web build supports
 `chibi.html?play&project-root=projects/arena2d&scene=scenes/Sandbox.yaml` through
 the same launch parser. Launching the editor with `--project-root PATH` opens
 that project's start scene; `--scene PATH` selects another scene inside it

@@ -28,6 +28,8 @@ game_materials *game_materials_new(
 );
 void game_materials_free(game_materials *materials);
 void game_materials_reset(game_materials *materials);
+/* Terrains with seed_from_run regenerate from this seed. */
+void game_materials_set_run_seed(game_materials *materials, int seed);
 /* Outside ECS queries: synchronize authored sources and apply queued damage.
  * Errors describe invalid authored data. Fluid simulation is optional. */
 const char *game_materials_prepare(game_materials *materials);
@@ -65,11 +67,29 @@ const material_chunk *game_materials_chunks(const game_materials *materials, int
 bool game_materials_emit(game_materials *materials, fluid_particle particle);
 
 material_fields *game_materials_fields(game_materials *materials);
+
+typedef struct
+{
+    float distance; /* signed, negative in rock */
+    bool solid;
+} game_terrain_sample;
+/* A MaterialTerrain entity's rock at a world point. A resident tile answers
+ * from its current, damaged cells; elsewhere the terrain's field answers with
+ * its run-derived seed. Outside a bounded terrain is air. NULL on success,
+ * else why. */
+const char *game_materials_terrain_at(
+    game_materials *materials,
+    ecs_entity terrain,
+    fluid_vec point,
+    game_terrain_sample *out
+);
 int game_materials_dispatch_events(game_materials *materials);
 
 extern node_desc GAME_NODE_DamageMaterial;
 extern node_desc GAME_NODE_ReleaseMaterial;
 extern node_desc GAME_NODE_IsMaterialFragment;
 extern node_desc GAME_NODE_IsPierceableMaterialFragment;
+extern node_desc GAME_NODE_SampleField;
+extern node_desc GAME_NODE_TerrainDistance;
 
 #endif

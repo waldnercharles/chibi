@@ -175,6 +175,32 @@ These are shared, optional capabilities; the game rules stay authored.
 - Material-graph parallax backdrops.
 - Hit flash.
 
+## Engine capabilities
+
+What has landed, and its contract. Every node is in searchNodes and Studio.
+
+- **Seeded randomness.** Every behavior random draw (`Random Real`, `Random
+  Range`, `Random Range Vector`, random state selection, expression `rand()`)
+  reads its world's PCG32 stream, so a seeded world replays the same draws.
+  `Set Random Seed(Seed)` restarts the stream. Expressions gain `hash(x, y,
+  seed)` and `noise(x, y, seed)` (nodes `Hash` and `Noise`): the field graph's
+  lattice functions with `seed` as the whole seed, both from -1 to 1.
+- **Run seed.** The engine draws a new nonnegative run seed at every start and
+  restart unless one is pinned: chibi `--seed N`, a scenario's `seed` (else the
+  scene's, else 1), or the scene document's `seed:`. It seeds the world's
+  random stream. `Get Run Seed` returns it. `MaterialTerrain.seed_from_run`
+  generates with `seed ^ hash(run seed)`. `Restart Run` (new seed) and
+  `Restart Scene` (same seed) set a request (`engine_restart_requested`) that
+  Studio Play and the standalone player service with their own Restart after
+  the step.
+- **Terrain queries.** `Sample Field(Field, Parameters, X, Y, Seed) -> Value`
+  evaluates a compiled field; parsed parameter objects are cached per field.
+  `Terrain Distance(Terrain, Point) -> Distance, Solid` reads a MaterialTerrain
+  entity: resident tiles give their current (damaged) cell distances, other
+  points the field at the terrain's effective seed, and points outside a bounded
+  terrain the distance to its bounds. About 0.6 µs per probe in a sanitized
+  build.
+
 ## Status
 
 The status of each capability and content piece is kept in the Progress

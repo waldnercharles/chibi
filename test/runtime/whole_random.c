@@ -1,5 +1,6 @@
 #include "graph/compiler/behavior_function_internal.h"
 #include "graph/runtime/flow_internal.h"
+#include "graph/runtime/random.h"
 #include "test/flow_snapshot.h"
 #include "test/suite_internal.h"
 #include "test/whole_random_fixture.h"
@@ -60,10 +61,10 @@ static void sample(
     node *entry = g->nodes[0], *ret = g->nodes[1];
     int count = entry->output_count - 1;
     flow_options options = { .step_budget = budget };
-    srand(seed);
+    behavior_srand(seed);
     flow_run *oracle = flow_run_start(g, entry, (flow_inputs){ args, count }, &options, NULL);
     assert(oracle);
-    int expected = flow_run_resume(oracle), next = rand();
+    int expected = flow_run_resume(oracle), next = behavior_rand();
     uint64_t eval = eval_oracle_calls(), flow = flow_oracle_calls();
     for (int mode = 0; mode < (generated ? 3 : 2); mode++) {
         pin_value out[4];
@@ -73,10 +74,13 @@ static void sample(
                                           .argument_count = count,
                                           .results = out,
                                           .budget = budget };
-        srand(seed);
+        behavior_srand(seed);
         int result = mode == 2 ? generated(&ctx)
                                : behavior_function_run(f, &ctx, mode == 1);
-        assert(result == expected && rand() == next && ctx.steps == flow_run_steps(oracle));
+        assert(
+            result == expected && behavior_rand() == next &&
+            ctx.steps == flow_run_steps(oracle)
+        );
         if (result) {
             const flow_error *error = flow_run_error(oracle);
             assert(
@@ -140,7 +144,7 @@ static void inspection(int kind, bool loop)
                 (behavior_backend[]){ BEHAVIOR_ORACLE, BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT }[mode]
             ));
             behavior_instance_set_trace_enabled(bi, true);
-            srand(17);
+            behavior_srand(17);
             uint64_t eval = eval_oracle_calls(), flow = flow_oracle_calls();
             behavior_instance_set_breakpoints_enabled(bi, control == 3);
             flow_run *run = behavior_instance_enqueue(bi, event, (flow_inputs){ 0 }, NULL);
@@ -172,9 +176,9 @@ static void inspection(int kind, bool loop)
                            : flow_run_step(run);
             }
             if (!mode) {
-                next = rand();
+                next = behavior_rand();
             } else {
-                assert(at == acount(expected) && rand() == next);
+                assert(at == acount(expected) && behavior_rand() == next);
                 assert(eval == eval_oracle_calls() && flow == flow_oracle_calls());
             }
             behavior_instance_destroy(bi);
@@ -310,7 +314,7 @@ int bench_random(const char *path, int count, int rotation)
         int expected_next = 0;
         for (int order = 0; order < 3; order++) {
             int mode = (order + rotation) % 3;
-            srand(813);
+            behavior_srand(813);
             double checksum = 0, start = 0;
             uint64_t eval = eval_oracle_calls(), flow = flow_oracle_calls(),
                      allocations = 0;
@@ -337,7 +341,7 @@ int bench_random(const char *path, int count, int rotation)
                 }
             }
             double elapsed = seconds() - start;
-            int next = rand();
+            int next = behavior_rand();
             if (!order) {
                 expected = checksum;
                 expected_next = next;

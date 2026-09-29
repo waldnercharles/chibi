@@ -1,5 +1,6 @@
 #include "graph/compiler/behavior_lower_internal.h"
 #include "graph/nodes/math_nodes.h"
+#include "graph/runtime/random.h"
 
 #include <float.h>
 #include <stdlib.h>
@@ -62,7 +63,7 @@ static int sample(builder *b)
             behavior_function_instruction
         ){ .op = BF_CAST, .type = PIN_F64, .left = value, .right = value }
     );
-    return operation(b, BF_DIV, value, number(b, (double)RAND_MAX + 1));
+    return operation(b, BF_DIV, value, number(b, (double)BEHAVIOR_RAND_MAX + 1));
 }
 static int range(builder *b, int min, int max, bool real)
 {

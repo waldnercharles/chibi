@@ -203,6 +203,8 @@ typedef struct
 } page_options;
 
 #define SCENARIO_DEFAULT_FRAMES 1
+/* Scenarios replay: a scene without its own seed runs on this one. */
+#define SCENARIO_SEED 1
 #define SCENARIO_MAX_FRAMES 1800
 #define SCENARIO_RUN_MAX_FRAMES 108000
 #define SCENARIO_MAX_ACTIONS 32
@@ -286,6 +288,7 @@ static const contract_field CONTRACT_RUN_SCENARIO[] = {
     { "inputs", "array", false, "Per-frame movement, aim, controls, actions, UI interactions and typed entity-targeted events." },
     { "input_timeline", "array", false, "At most 1800 sparse {frame,input} samples in increasing frame order; alternative to inputs." },
     { "saved_state", "object", false, "Isolated initial committed text values; never accesses player save files." },
+    { "seed", "uint64", false, "Run seed; defaults to the scene's seed, else 1." },
 };
 static const contract_field CONTRACT_RUNTIME_SNAPSHOT[] = {
     { "kind", "string", false, "Target family; defaults to prototype." },
@@ -4897,6 +4900,7 @@ static int prepare_scenario(
         set_error(error, error_size, "could not create prototype preview");
         return CHIBI_AUTOMATION_EXECUTION_ERROR;
     }
+    engine_pin_run_seed(game_prototype_preview_runtime(context->preview), SCENARIO_SEED);
 
     int result = register_shared_assets(root, context->preview, error, error_size);
     if (result != CHIBI_AUTOMATION_OK) {
@@ -4995,6 +4999,10 @@ static int prepare_scene_scenario(
         set_error(error, error_size, "could not create scene preview");
         return CHIBI_AUTOMATION_EXECUTION_ERROR;
     }
+    engine_pin_run_seed(
+        game_prototype_preview_runtime(context->preview),
+        context->scene->seed >= 0 ? context->scene->seed : SCENARIO_SEED
+    );
     status = register_shared_assets(root, context->preview, error, error_size);
     if (status != CHIBI_AUTOMATION_OK) {
         scenario_context_free(context);
@@ -5084,6 +5092,22 @@ static int prepare_scene_scenario(
 
 static void add_behavior_failures(yyjson_mut_doc *doc, yyjson_mut_val *value, const scenario_context *context);
 
+/* A request's "seed" pins the run seed over the scene's. */
+static int scenario_seed(scenario_context *context, yyjson_val *request, char *error, size_t error_size)
+{
+    yyjson_val *seed = yyjson_obj_get(request, "seed");
+    if (!seed) {
+        return CHIBI_AUTOMATION_OK;
+    }
+    if (!yyjson_is_int(seed) || yyjson_get_sint(seed) < 0 ||
+        yyjson_get_sint(seed) > INT32_MAX) {
+        set_error(error, error_size, "seed must be an integer from 0 to 2147483647");
+        return CHIBI_AUTOMATION_INVALID_REQUEST;
+    }
+    engine_pin_run_seed(game_prototype_preview_runtime(context->preview), (int)yyjson_get_sint(seed));
+    return CHIBI_AUTOMATION_OK;
+}
+
 static int handle_scene_scenario(const char *root, yyjson_val *request, response *result, int *exit_code)
 {
     const char *name = request_string(request, "name");
@@ -5116,6 +5140,9 @@ static int handle_scene_scenario(const char *root, yyjson_val *request, response
                    ? prepare_scene_scenario(root, name, &context, error, sizeof error)
                    : prepare_scenario(root, name, &context, error, sizeof error);
     if (status == CHIBI_AUTOMATION_OK) {
+        status = scenario_seed(&context, request, error, sizeof error);
+    }
+    if (status == CHIBI_AUTOMATION_OK) {
         status = advance_request_scenario(&context, request, frames, fixed_dt, error, sizeof error);
     }
     if (status != CHIBI_AUTOMATION_OK) {
@@ -5133,6 +5160,12 @@ static int handle_scene_scenario(const char *root, yyjson_val *request, response
     );
     yyjson_mut_obj_add_uint(result->doc, value, "frames", frames);
     yyjson_mut_obj_add_real(result->doc, value, "fixed_dt", fixed_dt);
+    yyjson_mut_obj_add_int(
+        result->doc,
+        value,
+        "seed",
+        engine_run_seed(game_prototype_preview_runtime(context.preview))
+    );
     add_hash_named(result->doc, value, "world_hash", scenario_state_hash(&context));
     yyjson_mut_obj_add_uint(
         result->doc,
@@ -6383,6 +6416,9 @@ int chibi_automation_preview(
     int status = !strcmp(kind, "scene")
                    ? prepare_scene_scenario(root, name, context, error, error_size)
                    : prepare_scenario(root, name, context, error, error_size);
+    if (status == CHIBI_AUTOMATION_OK) {
+        status = scenario_seed(context, value, error, error_size);
+    }
     if (status == CHIBI_AUTOMATION_OK) {
         uint64_t rendered = yyjson_get_uint(yyjson_obj_get(value, "render_frames"));
         uint64_t total = frames +

@@ -3,6 +3,7 @@
 #include "graph/compiler/field_ir.h"
 #include "graph/nodes/field_nodes.h"
 #include "support/array.h"
+#include "support/value_noise.h"
 #include "support/xalloc.h"
 
 #include <float.h>
@@ -448,32 +449,9 @@ int field_program_instruction_count(const field_program *p)
     return acount(p->code);
 }
 
-static float hash_sample(unsigned seed, int x, int y)
-{
-    unsigned hash = seed ^ (unsigned)x * 0x9e3779b9u ^ (unsigned)y * 0x85ebca6bu;
-    hash = (hash ^ (hash >> 16)) * 0x7feb352du;
-    hash = (hash ^ (hash >> 15)) * 0x846ca68bu;
-    return ((hash ^ (hash >> 16)) & 65535) / 32767.5f - 1;
-}
 static float mix(float a, float b, float t)
 {
     return a + (b - a) * t;
-}
-static float noise(unsigned seed, float x, float y)
-{
-    if (!isfinite(x) || !isfinite(y) || fabsf(x) >= 2147483520.f ||
-        fabsf(y) >= 2147483520.f) {
-        return NAN;
-    }
-    int ix = (int)floorf(x), iy = (int)floorf(y);
-    float tx = x - ix, ty = y - iy;
-    tx = tx * tx * (3 - 2 * tx);
-    ty = ty * ty * (3 - 2 * ty);
-    return mix(
-        mix(hash_sample(seed, ix, iy), hash_sample(seed, ix + 1, iy), tx),
-        mix(hash_sample(seed, ix, iy + 1), hash_sample(seed, ix + 1, iy + 1), tx),
-        ty
-    );
 }
 static float clamp(float x, float lo, float hi)
 {
@@ -514,23 +492,23 @@ static float evaluate(field_ir ir, const float *v, float x, float y, unsigned se
         case FIELD_HASH:
         case FIELD_NOISE:
         case FIELD_FRACTAL: {
-            if (fabsf(a) >= 2147483520.f || fabsf(b) >= 2147483520.f ||
-                fabsf(c) >= 2147483520.f) {
+            if (fabsf(a) >= VALUE_NOISE_LIMIT ||
+                fabsf(b) >= VALUE_NOISE_LIMIT || fabsf(c) >= VALUE_NOISE_LIMIT) {
                 return NAN;
             }
             unsigned offset = seed + (unsigned)(int)c;
             if (ir.op == FIELD_HASH) {
-                return hash_sample(offset, (int)floorf(a), (int)floorf(b));
+                return value_hash(offset, (int)floorf(a), (int)floorf(b));
             }
             if (ir.op == FIELD_NOISE) {
-                return noise(offset, a, b);
+                return value_noise(offset, a, b);
             }
             if (d < 1 || d > 16 || floorf(d) != d || e <= 0 || f < 0 || f > 1) {
                 return NAN;
             }
             float total = 0, amplitude = 1, weight = 0;
             for (int i = 0; i < (int)d; i++) {
-                total += amplitude * noise(offset + (unsigned)i, a, b);
+                total += amplitude * value_noise(offset + (unsigned)i, a, b);
                 weight += amplitude;
                 a *= e;
                 b *= e;

@@ -485,6 +485,12 @@ function buildToolDefinitions() {
         maximum: 0.25,
         description: "Fixed timestep in seconds. The engine currently accepts 1/60.",
       },
+      seed: {
+        type: "integer",
+        minimum: 0,
+        maximum: 2147483647,
+        description: "Run seed for behavior randomness and seed_from_run terrain; defaults to the scene's seed, else 1.",
+      },
     },
     required: ["name"],
     additionalProperties: false,

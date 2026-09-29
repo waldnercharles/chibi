@@ -532,7 +532,7 @@ static behavior_emission emit_body(behavior_layout *layout, struct sljit_compile
                 sljit_emit_fop1(c, SLJIT_MOV_F64, destination, offset, SLJIT_FR0, 0);
                 break;
             case BF_RANDOM:
-                sljit_emit_icall(c, SLJIT_CALL, SLJIT_ARGS0(32), SLJIT_IMM, SLJIT_FUNC_ADDR(rand));
+                sljit_emit_icall(c, SLJIT_CALL, SLJIT_ARGS0(32), SLJIT_IMM, SLJIT_FUNC_ADDR(behavior_rand));
                 sljit_emit_op1(c, SLJIT_MOV32, destination, offset, SLJIT_R0, 0);
                 break;
 #define MATH_UNARY(op, name, fn)                                                                \

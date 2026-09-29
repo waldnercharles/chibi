@@ -9,12 +9,14 @@
 #include "graph/nodes/vector_nodes.h"
 #include "graph/runtime/eval.h"
 #include "graph/runtime/instance.h"
+#include "graph/runtime/random.h"
 #include "graph/runtime/value_array.h"
 #include "graph/shader/shader_graph.h"
 #include "runtime/components.h"
 #include "runtime/generated.h"
 #include "runtime/systems/system.h"
 #include "support/arena.h"
+#include "support/value_noise.h"
 
 #include <assert.h>
 #include <cute_defines.h>
@@ -1534,10 +1536,10 @@ static void test_system_expression()
     assert(expression && graph_connect_data(g, expression, 0, set, 0) == 0);
     system = game_system_new(world, asset);
     assert(game_system_uses_bytecode(system));
-    srand(912);
-    double expected = (double)rand() / ((double)RAND_MAX + 1);
-    expected += (double)rand() / ((double)RAND_MAX + 1);
-    srand(912);
+    behavior_srand(912);
+    double expected = (double)behavior_rand() / ((double)BEHAVIOR_RAND_MAX + 1);
+    expected += (double)behavior_rand() / ((double)BEHAVIOR_RAND_MAX + 1);
+    behavior_srand(912);
     assert(
         game_system_tick_mode(system, 0, .016, &error, GAME_SYSTEM_EXEC_GENERIC_BYTECODE) == FLOW_OK
     );
@@ -1987,13 +1989,21 @@ void test_math_expression()
     asset = behavior_asset_new("Random expression");
     call = behavior_expression_add(asset, asset->graph, "rand() + rand()", &error);
     assert(call && call->input_count == 0);
-    srand(1234);
-    double first = (double)rand() / ((double)RAND_MAX + 1);
-    double next = (double)rand() / ((double)RAND_MAX + 1);
-    srand(1234);
+    behavior_srand(1234);
+    double first = (double)behavior_rand() / ((double)BEHAVIOR_RAND_MAX + 1);
+    double next = (double)behavior_rand() / ((double)BEHAVIOR_RAND_MAX + 1);
+    behavior_srand(1234);
     assert(evaluate(asset, call) == first + next);
     double later = evaluate(asset, call);
     assert(later >= 0 && later < 2 && later != first + next);
+    behavior_asset_free(asset);
+
+    /* hash and noise read the field graph's lattice, with the seed whole. */
+    asset = behavior_asset_new("Lattice expression");
+    call = behavior_expression_add(asset, asset->graph, "hash(3.5, -2.25, 7)", &error);
+    assert(call && evaluate(asset, call) == value_hash(7, 3, -3));
+    assert(behavior_expression_set(asset, call, "noise(0.25, 1.75, 11)", &error) == 0);
+    assert(evaluate(asset, call) == value_noise(11, .25f, 1.75f));
     behavior_asset_free(asset);
     editor_history();
     editor_rewire();

@@ -705,7 +705,9 @@ static void body(const behavior_function *f, FILE *out, char prefix, bool inspec
                 MATH_BINARY(HYPOT, Length, hypot)
                 MATH_BINARY(RANDOM_RANGE, RandomRange, behavior_random_range)
 #undef MATH_BINARY
-            case BF_RANDOM: fprintf(out, "v%d=rand();\n", i->output); break;
+            case BF_RANDOM:
+                fprintf(out, "v%d=behavior_rand();\n", i->output);
+                break;
             case BF_CONSTANT: {
                 fprintf(out, "v%d=", i->output);
                 constant(out, i->type, i->value);

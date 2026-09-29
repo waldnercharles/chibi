@@ -54,6 +54,7 @@ typedef struct
     int headless;
     double monotonic_time;
     double fixed_dt;
+    int seed;               /* --seed, or ENGINE_RUN_SEED_RANDOM */
     uint64_t next_frame_ms; /* an idle editor waits for input until then */
     const chibi_host *host;
     char *project_root; /* the open project, as opened */
@@ -277,6 +278,7 @@ static bool open_workspace(
     );
     if (authoring) {
         app_scene_authoring_set_default_ui(authoring, project.ui);
+        app_scene_authoring_pin_seed(authoring, loop->seed);
     }
     bool scene_ready = authoring &&
                        app_scene_authoring_load_content(authoring) == 0 &&
@@ -347,6 +349,7 @@ static void *application_create(const chibi_host *host, const char *checkpoint, 
     int headless = 0;
     bool play = false;
     double fixed_dt = 0;
+    int seed = ENGINE_RUN_SEED_RANDOM;
     const char *scene_path = NULL;
     const char *project_path = NULL;
     const char *screenshot_path = NULL;
@@ -385,6 +388,14 @@ static void *application_create(const chibi_host *host, const char *checkpoint, 
             }
             *(argv[i][2] == 'o' ? &open : &graph_name) = argv[i + 1];
             i++;
+        } else if (strcmp(argv[i], "--seed") == 0) {
+            char *end = NULL;
+            long value = i + 1 < argc ? strtol(argv[++i], &end, 10) : -1;
+            if (!end || *end || value < 0 || value > INT32_MAX) {
+                snprintf(error, error_size, "--seed requires a run seed from 0 to 2147483647");
+                return NULL;
+            }
+            seed = (int)value;
         } else if (strcmp(argv[i], "--fixed-dt") == 0) {
             if (i + 1 == argc) {
                 snprintf(error, error_size, "--fixed-dt requires a positive number of seconds");
@@ -419,7 +430,8 @@ static void *application_create(const chibi_host *host, const char *checkpoint, 
                         .screenshot_path = screenshot_path,
                         .show_graph = open && screenshot_path,
                         .headless = headless,
-                        .fixed_dt = fixed_dt };
+                        .fixed_dt = fixed_dt,
+                        .seed = seed };
     bool opened = open_workspace(loop, project_path, scene_path, play, error, error_size);
     yyjson_doc_free(saved);
     if (!opened) {

@@ -252,6 +252,9 @@ typedef NODE_COMPONENT_TYPE_DENSE(MaterialTerrain)
     /* Solid islands and air pockets smaller than this many cells that lie
      * wholly inside a tile are removed at generation; zero keeps them. */
     int island_cells;
+    /* Mixes the run seed into seed, so every run generates new terrain and a
+     * pinned run seed generates the same terrain again. */
+    bool seed_from_run;
 }
 MaterialTerrain;
 

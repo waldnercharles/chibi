@@ -1,4 +1,5 @@
 #include "graph/runtime/instance.h"
+#include "graph/runtime/random.h"
 #include "graph/runtime/state.h"
 #include "support/xalloc.h"
 
@@ -44,7 +45,7 @@ int behavior_instance_select_state(void *owner, const behavior_state_selection *
     bool valid = start >= 0 && start < count;
     int output = valid ? start : 0;
     int choice = flags & BEHAVIOR_STATE_RANDOM
-                   ? (int)((double)rand() / ((double)RAND_MAX + 1) * remaining)
+                   ? (int)(behavior_random_unit() * remaining)
                    : 0;
     /* The forced first output still consumes the random draw above. */
     if (remaining == count && valid) {

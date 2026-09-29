@@ -3,6 +3,7 @@
 #include "graph/model/registry.h"
 #include "graph/runtime/flow.h"
 #include "graph/runtime/instance.h"
+#include "graph/runtime/random.h"
 #include "support/xalloc.h"
 
 #include <stdlib.h>
@@ -219,8 +220,7 @@ static int flow_multi_gate(node *n, flow_context *ctx)
         return FLOW_OK;
     }
     int first = start.i >= 0 && start.i < n->output_count ? start.i : 0;
-    int choice = random.b ? (int)((double)rand() / ((double)RAND_MAX + 1) * remaining)
-                          : 0;
+    int choice = random.b ? (int)(behavior_random_unit() * remaining) : 0;
     if (remaining == n->output_count && start.i >= 0 && start.i < n->output_count) {
         choice = 0;
     }

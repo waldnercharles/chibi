@@ -2,6 +2,7 @@
 #include "graph/document/serialize.h"
 #include "graph/model/registry.h"
 #include "graph/runtime/eval.h"
+#include "graph/runtime/random.h"
 #include "graph/runtime/value_array.h"
 #include "render/particles.h"
 #include "render/shader_catalog.h"
@@ -1606,7 +1607,7 @@ void test_encounter_backend_parity()
     for (int mode = 0; mode < (int)(sizeof modes / sizeof *modes); mode++) {
         behavior_debug_backend(modes[mode]);
         for (int preview = 0; preview < 2; preview++) {
-            srand(12345);
+            behavior_srand(12345);
             uint64_t eval_before = eval_oracle_calls(),
                      flow_before = flow_oracle_calls();
             encounter_host h = create(preview);

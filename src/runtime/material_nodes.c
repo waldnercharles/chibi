@@ -186,3 +186,131 @@ node_desc GAME_NODE_ReleaseMaterial = {
     .display_class = NODE_DISPLAY_FLOW,
     .access = &DAMAGE_ACCESS,
 };
+
+static const char missing_world[] = "Sampling terrain requires a game world";
+
+static game_materials *materials_of(void *service)
+{
+    return service ? game_entities_materials(service) : NULL;
+}
+
+static const char *sample_field_call(void *service, const pin_value *in, pin_value *out)
+{
+    game_materials *materials = materials_of(service);
+    if (!materials) {
+        return missing_world;
+    }
+    float value;
+    char error[128];
+    if (!material_field_sample(
+            game_materials_fields(materials),
+            in[0].str,
+            in[1].str,
+            (unsigned)in[4].i,
+            in[2].f,
+            in[3].f,
+            &value,
+            error,
+            sizeof error
+        )) {
+        return "Sample Field needs a compiled field, a parameter object of its "
+               "parameters, and a point where it is finite";
+    }
+    out[0].f = value;
+    return NULL;
+}
+static const char *sample_field_read(const eval_context *ctx, const pin_value *in, arena *, pin_value *out)
+{
+    out[0] = (pin_value){ .type = PIN_F32, .type_name = "float" };
+    return sample_field_call(eval_context_service(ctx, "game.entities"), in, out);
+}
+
+static const char *terrain_distance_call(void *service, const pin_value *in, pin_value *out)
+{
+    game_materials *materials = materials_of(service);
+    if (!materials) {
+        return missing_world;
+    }
+    if (!in[1].ptr) {
+        return "Terrain Distance needs a point";
+    }
+    const CF_V2 *point = in[1].ptr;
+    game_terrain_sample sample;
+    const char *error = game_materials_terrain_at(
+        materials,
+        ecs_entity_from_u64(in[0].u64),
+        (fluid_vec){ point->x, point->y },
+        &sample
+    );
+    if (error) {
+        return error;
+    }
+    out[0].f = sample.distance;
+    out[1].b = sample.solid;
+    return NULL;
+}
+static const char *terrain_distance_read(
+    const eval_context *ctx,
+    const pin_value *in,
+    arena *,
+    pin_value *out
+)
+{
+    out[0] = (pin_value){ .type = PIN_F32, .type_name = "float" };
+    out[1] = (pin_value){ .type = PIN_BOOL, .type_name = "bool" };
+    return terrain_distance_call(eval_context_service(ctx, "game.entities"), in, out);
+}
+
+static const node_access SAMPLE_ACCESS = { .flags = NODE_EFFECT_WORLD_READ };
+static pin_spec SAMPLE_FIELD_IN[] = {
+    { .name = "Field", .type = PIN_NAME, .type_name = "name" },
+    { .name = "Parameters", .type = PIN_STR, .type_name = "const char *" },
+    { .name = "X", .type = PIN_F32, .type_name = "float" },
+    { .name = "Y", .type = PIN_F32, .type_name = "float" },
+    { .name = "Seed", .type = PIN_I32, .type_name = "int" },
+};
+static pin_spec VALUE_OUT[] = { { .name = "Value", .type = PIN_F32, .type_name = "float" } };
+node_desc GAME_NODE_SampleField = {
+    .name = "Sample Field",
+    .category = "Terrain",
+    .keywords = "field procedural sample evaluate distance terrain noise seed",
+    .description = "Evaluates procedural Field at (X, Y) with Seed and the "
+                   "Parameters JSON object's overrides, as a terrain bakes it.",
+    .input_count = 5,
+    .inputs = SAMPLE_FIELD_IN,
+    .output_count = 1,
+    .outputs = VALUE_OUT,
+    .pure_kind = NODE_PURE_READ,
+    .read_inputs = sample_field_read,
+    .host_call = &(const node_host_call){ .service = "game.entities",
+                                          .invoke = sample_field_call,
+                                          .missing_service = missing_world },
+    .access = &SAMPLE_ACCESS,
+};
+
+static pin_spec TERRAIN_DISTANCE_IN[] = {
+    { .name = "Terrain", .type = PIN_HANDLE, .type_name = "ecs.entity" },
+    { .name = "Point", .type = PIN_STRUCT, .type_name = "CF_V2" },
+};
+static pin_spec TERRAIN_DISTANCE_OUT[] = {
+    { .name = "Distance", .type = PIN_F32, .type_name = "float" },
+    { .name = "Solid", .type = PIN_BOOL, .type_name = "bool" },
+};
+node_desc GAME_NODE_TerrainDistance = {
+    .name = "Terrain Distance",
+    .category = "Terrain",
+    .keywords = "terrain rock distance solid inside ground wall sdf probe",
+    .description = "Returns the signed distance from Point to Terrain's rock, "
+                   "negative inside, from its current cells where loaded and "
+                   "its field elsewhere.",
+    .input_count = 2,
+    .inputs = TERRAIN_DISTANCE_IN,
+    .output_count = 2,
+    .outputs = TERRAIN_DISTANCE_OUT,
+    .pure_kind = NODE_PURE_READ,
+    .read_inputs = terrain_distance_read,
+    .host_call = &(const node_host_call){ .service = "game.entities",
+                                          .invoke = terrain_distance_call,
+                                          .missing_service = missing_world },
+    .access = &SAMPLE_ACCESS,
+};

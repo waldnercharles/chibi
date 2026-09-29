@@ -379,3 +379,125 @@ const char *material_ecs_generate_terrains(game_materials *materials)
     afree(sources);
     return error;
 }
+
+/* Bilinear signed distance between a mask's cell-center samples, at a point
+ * relative to the mask's center. */
+static float mask_distance(const material_mask *mask, float x, float y)
+{
+    float fx = fminf(fmaxf(x / mask->cell_size + mask->width * .5f - .5f, 0), mask->width - 1);
+    float fy = fminf(fmaxf(y / mask->cell_size + mask->height * .5f - .5f, 0), mask->height - 1);
+    int x0 = (int)fx, y0 = (int)fy;
+    int x1 = x0 + 1 < mask->width ? x0 + 1 : x0;
+    int y1 = y0 + 1 < mask->height ? y0 + 1 : y0;
+    const float *row0 = mask->distance + y0 * mask->width;
+    const float *row1 = mask->distance + y1 * mask->width;
+    float tx = fx - x0, ty = fy - y0;
+    float top = row0[x0] + (row0[x1] - row0[x0]) * tx;
+    float bottom = row1[x0] + (row1[x1] - row1[x0]) * tx;
+    return top + (bottom - top) * ty;
+}
+
+/* Answers from a resident mask when it covers the point, which is relative to
+ * the mask's center. Occupancy decides the sign. */
+static bool mask_sample(const material_mask *mask, float x, float y, game_terrain_sample *out)
+{
+    if (fabsf(x) > mask->width * mask->cell_size * .5f ||
+        fabsf(y) > mask->height * mask->cell_size * .5f) {
+        return false;
+    }
+    out->solid = material_mask_contains(mask, x, y);
+    float distance = mask_distance(mask, x, y);
+    out->distance = out->solid ? fminf(distance, 0) : fmaxf(distance, 0);
+    return true;
+}
+
+/* A bounded terrain's resident chunk covering the world point. */
+static bool chunk_sample(game_materials *materials, ecs_entity source, fluid_vec point, game_terrain_sample *out)
+{
+    for (int i = 0; i < acount(materials->records); i++) {
+        const material_record *r = &materials->records[i];
+        if (!r->mask || r->fragment ||
+            ecs_entity_to_u64(r->terrain_source) != ecs_entity_to_u64(source) ||
+            !ecs_entity_is_alive(materials->world, r->entity)) {
+            continue;
+        }
+        const GameTransform *center = GAME_GameTransform_get_const(materials->world, r->entity);
+        if (mask_sample(r->mask, point.x - center->x, point.y - center->y, out)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+const char *game_materials_terrain_at(
+    game_materials *materials,
+    ecs_entity source,
+    fluid_vec point,
+    game_terrain_sample *out
+)
+{
+    ecs_world *world = materials->world;
+    const MaterialTerrain *terrain = ecs_entity_is_alive(world, source)
+                                       ? GAME_MaterialTerrain_get_const(world, source)
+                                       : NULL;
+    const GameTransform *origin = terrain
+                                    ? GAME_GameTransform_get_const(world, source)
+                                    : NULL;
+    if (!origin) {
+        return "Terrain Distance requires a MaterialTerrain entity with a "
+               "Transform";
+    }
+    float x = point.x - origin->x, y = point.y - origin->y;
+    if (terrain->width > 0 && terrain->height > 0) {
+        float dx = fabsf(x) - terrain->width * .5f,
+              dy = fabsf(y) - terrain->height * .5f;
+        if (dx > 0 || dy > 0) {
+            *out = (game_terrain_sample){ hypotf(fmaxf(dx, 0), fmaxf(dy, 0)), false };
+            return NULL;
+        }
+    }
+    const material_record *record = source.slot < (unsigned)acount(materials->records) &&
+                                            ecs_entity_to_u64(
+                                                materials->records[source.slot].entity
+                                            ) == ecs_entity_to_u64(source)
+                                      ? &materials->records[source.slot]
+                                      : NULL;
+    bool generated = record && record->terrain;
+    if (generated && record->stream) {
+        int count;
+        const material_stream_tile *tiles = material_stream_tiles(record->stream, &count);
+        for (int i = 0; i < count; i++) {
+            if (mask_sample(
+                    tiles[i].mask,
+                    x - tiles[i].grid.center_x,
+                    y - tiles[i].grid.center_y,
+                    out
+                )) {
+                return NULL;
+            }
+        }
+    }
+    if (generated && !record->stream && chunk_sample(materials, source, point, out)) {
+        return NULL;
+    }
+    float value;
+    if (!material_field_sample(
+            materials->fields,
+            terrain->field,
+            terrain->parameters,
+            material_ecs_terrain_seed(materials, *terrain),
+            x,
+            y,
+            &value,
+            materials->error,
+            sizeof materials->error
+        )) {
+        return materials->error;
+    }
+    /* A generated bounded terrain holds all its rock in chunks: elsewhere the
+     * rock was never generated or has been destroyed. */
+    bool bounded = generated && !record->stream;
+    *out = (game_terrain_sample){ bounded ? fmaxf(value, 0) : value,
+                                  !bounded && value <= 0 };
+    return NULL;
+}

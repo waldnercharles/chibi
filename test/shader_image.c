@@ -56,7 +56,7 @@ static void sampling()
     shader_graph g;
     program(&g, SHADER_IMAGE_SRGB, SHADER_IMAGE_NEAREST, SHADER_IMAGE_REPEAT);
     shader_error error = { 0 };
-    float result[8][4];
+    float result[SHADER_OUTPUT_MAX][4];
     assert(shader_graph_eval_outputs(&g, &sample, NULL, result, &error));
     near(result[0][0], .2158605f);
     near(result[1][0], 64.0f / 255);
@@ -159,7 +159,7 @@ static void authoring()
     shader_sample_context sample = { .uv = { .75f, .25f },
                                      .resolve_image = resolve,
                                      .image_userdata = &view };
-    float result[8][4];
+    float result[SHADER_OUTPUT_MAX][4];
     assert(shader_graph_eval_outputs(&ir, &sample, NULL, result, &error));
     near(result[0][0], 1);
     near(result[0][1], 1);
@@ -243,7 +243,7 @@ static void gpu_variant(shader_image_color_space color_space, shader_image_filte
         shader_sample_context sample = { .uv = { coordinates[i][0], coordinates[i][1] },
                                          .resolve_image = resolve,
                                          .image_userdata = &image };
-        float expected[8][4], actual[2][4];
+        float expected[SHADER_OUTPUT_MAX][4], actual[2][4];
         assert(shader_graph_eval_outputs(&ir, &sample, NULL, expected, &error));
         cf_app_update(NULL);
         cf_material_set_uniform_cs(material, "sample_uv", sample.uv, CF_UNIFORM_TYPE_FLOAT2, 1);

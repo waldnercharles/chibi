@@ -24,8 +24,8 @@ typedef struct
     /* The camera rectangle in Y-up world units, and where it lies in the
      * material textures. */
     render_view_2d view;
-    /* Material normal (solid tilt) and cover (G refraction, B heat haze). */
-    CF_Texture normal, cover;
+    /* Material cover: GB solid refraction offset, A heat haze. */
+    CF_Texture cover;
     float time;
     /* Output pixels of shimmer per unit of the cover texture's heat haze. */
     float fluid_haze;

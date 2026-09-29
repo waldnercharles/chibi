@@ -3,8 +3,11 @@
 #include "render/backdrop_2d.h"
 #include "render/fluid_raster.h"
 #include "render/material_raster.h"
+#include "render/reflections.h"
 #include "render/shader_catalog.h"
+#include "render/trail_2d.h"
 #include "runtime/generated.h"
+#include "support/array.h"
 
 #include <math.h>
 #include <stdint.h>
@@ -76,10 +79,30 @@ static bool raster(render_material_raster *r, const render_material_entity *enti
     return ok;
 }
 
-/* A flashed solid turns toward the flash color and emits it. */
+/* A graph material's color, blue here, whose raster applies hit flashes. */
+static behavior_asset *blue_material()
+{
+    behavior_asset *material = behavior_asset_new("Flash regression");
+    material->domain = BEHAVIOR_DOMAIN_MATERIAL;
+    node *output = shader_graph_add_output(material->graph, false);
+    float blue[3] = { .1f, .2f, .6f };
+    pin_value base = { .type = PIN_STRUCT, .type_name = "ShaderVec3", .ptr = blue };
+    shader_error error;
+    if (graph_set_pin_default(material->graph, output, 0, 0, &base) ||
+        !render_shader_upsert(material, &error)) {
+        behavior_asset_free(material);
+        return NULL;
+    }
+    return material;
+}
+
+/* A flashed graph solid turns toward the flash color and emits it. */
 static bool hit_flash(render_material_raster *r)
 {
-    render_material_entity plain = block(), flashed = block();
+    behavior_asset *material = blue_material();
+    render_material_entity plain = block(), flashed;
+    plain.reserved[0] = render_material_slot(render_shader_find(material->name));
+    flashed = plain;
     flashed.flash[0] = 1;
     flashed.flash[1] = flashed.flash[2] = .9f;
     flashed.flash[3] = .75f;
@@ -101,6 +124,7 @@ static bool hit_flash(render_material_raster *r)
         source[0],
         glow[0]
     );
+    behavior_asset_free(material);
     return ok && fabsf(lit[0] - .775f) < .01f && fabsf(lit[2] - .825f) < .01f &&
            source[0] == 0 && glow[0] > .1f;
 }
@@ -194,6 +218,56 @@ static bool backdrops()
     return ok;
 }
 
+/* Glass: transmission absorbs gray like its least transmitted channel and
+ * adds the colored rest to albedo; refraction writes its offset along the
+ * surface tilt wherever the shape covers. */
+static bool glass(render_material_raster *r)
+{
+    behavior_asset *material = behavior_asset_new("Glass regression");
+    material->domain = BEHAVIOR_DOMAIN_MATERIAL;
+    node *output = shader_graph_add_output(material->graph, false);
+    float black[3] = { 0, 0, 0 }, tilt[3] = { .5f, 1, 0 }, pass[3] = { .2f, .9f, .9f };
+    pin_value base = { .type = PIN_STRUCT, .type_name = "ShaderVec3", .ptr = black };
+    pin_value normal = { .type = PIN_STRUCT, .type_name = "ShaderVec3", .ptr = tilt };
+    pin_value transmission = { .type = PIN_STRUCT, .type_name = "ShaderVec3", .ptr = pass };
+    pin_value opacity = { .type = PIN_F32, .f = .5f },
+              refraction = { .type = PIN_F32, .f = 10 };
+    shader_error error;
+    bool ok = !graph_set_pin_default(material->graph, output, 0, 0, &base) &&
+              !graph_set_pin_default(material->graph, output, 0, 4, &normal) &&
+              !graph_set_pin_default(material->graph, output, 0, 5, &opacity) &&
+              !graph_set_pin_default(material->graph, output, 0, 8, &refraction) &&
+              !graph_set_pin_default(material->graph, output, 0, 9, &transmission) &&
+              render_shader_upsert(material, &error);
+    render_material_entity entity = block();
+    int id = render_shader_find(material->name);
+    entity.reserved[0] = render_material_slot(id);
+    render_shader_parameters(id, NULL, (ecs_entity){ 0 }, NULL, entity.material_parameters);
+    render_material_textures textures = render_material_raster_textures(r);
+    float source[4], albedo[4], cover[4];
+    ok = ok && entity.reserved[0] == -id && raster(r, &entity, 1) &&
+         texel(textures.source, 32, 32, source, SIDE) &&
+         texel(textures.albedo, 32, 32, albedo, SIDE) &&
+         texel(textures.cover, 32, 32, cover, SIDE);
+    float depth = -logf(.2f) / 32;
+    printf(
+        "glass: depth %.4f (expected %.4f) albedo %.2f,%.2f,%.2f bend "
+        "%.2f,%.2f\n",
+        source[3],
+        depth,
+        albedo[0],
+        albedo[1],
+        albedo[2],
+        cover[1],
+        cover[2]
+    );
+    ok = ok && fabsf(source[3] - depth) < .002f && albedo[0] < .01f &&
+         fabsf(albedo[1] - .7f) < .01f &&
+         fabsf(cover[1] - 10 * .5f / sqrtf(1.25f)) < .05f && fabsf(cover[2]) < .01f;
+    behavior_asset_free(material);
+    return ok;
+}
+
 /* Mean and peak albedo red across the liquid's middle rows. */
 static bool liquid_albedo(
     render_material_raster *r,
@@ -207,7 +281,7 @@ static bool liquid_albedo(
 {
     render_material_view view = { .min_x = -32, .max_y = 32, .width = SIDE, .height = SIDE };
     cf_app_update(NULL);
-    render_fluid_raster_set_caustics(draw, time, caustics);
+    render_fluid_raster_set_optics(draw, time, caustics, false);
     bool ok = render_material_raster_draw(r, NULL, 0, view) &&
               render_fluid_raster_draw(draw, fluid, render_material_raster_canvas(r), view, SIDE, SIDE);
     cf_app_draw_onto_screen(false);
@@ -257,13 +331,170 @@ static bool caustics(render_material_raster *r)
     return ok;
 }
 
+static bool read_frame(CF_Canvas canvas, CF_Pixel *pixels)
+{
+    CF_Readback readback = cf_canvas_readback(canvas);
+    bool ok = readback.id != 0;
+    if (ok) {
+        while (!cf_readback_ready(readback)) {
+        }
+        int bytes = PIXELS * (int)sizeof *pixels;
+        ok = cf_readback_size(readback) == bytes &&
+             cf_readback_data(readback, pixels, bytes) == bytes;
+        cf_destroy_readback(readback);
+    }
+    return ok;
+}
+
+/* Brightest red in rows [from, to) of a frame. */
+static int brightest(const CF_Pixel *pixels, int from, int to)
+{
+    int best = 0;
+    for (int i = from * SIDE; i < to * SIDE; i++) {
+        best = pixels[i].colors.r > best ? pixels[i].colors.r : best;
+    }
+    return best;
+}
+
+/* A liquid surface mirrors the bright bar just above it below the surface;
+ * without liquid reflection the frame passes through unchanged. */
+static bool liquid_reflection(render_material_raster *r)
+{
+    material_fluid *fluid = material_fluid_new(10, 256);
+    render_fluid_raster *draw = render_fluid_raster_new();
+    for (int y = 12; y <= 30; y += 3) {
+        for (int x = -30; x <= 30; x += 3) {
+            material_fluid_add(
+                fluid,
+                (fluid_particle){ .position = { (float)x, (float)y },
+                                  .mass = 1,
+                                  .radius = 6,
+                                  .kind = FLUID_LIQUID,
+                                  .color = 0x2080a0ffu }
+            );
+        }
+    }
+    render_material_view view = { .min_x = -32,
+                                  .max_y = 32,
+                                  .width = SIDE,
+                                  .height = SIDE,
+                                  .crop_max_u = 1,
+                                  .crop_max_v = 1 };
+    CF_Canvas source = cf_make_canvas(cf_canvas_defaults(SIDE, SIDE));
+    render_reflections *reflections = render_reflections_new();
+    CF_Pixel plain[PIXELS], mirrored[PIXELS];
+    bool ok = draw != NULL;
+    for (int pass = 0; ok && pass < 2; pass++) {
+        cf_app_update(NULL);
+        ok = render_material_raster_draw(r, NULL, 0, view) &&
+             render_fluid_raster_draw(draw, fluid, render_material_raster_canvas(r), view, SIDE, SIDE);
+        cf_draw_push();
+        cf_draw_projection(cf_ortho_2d(0, 0, SIDE, SIDE));
+        cf_draw_push_color(cf_make_color_rgba_f(1, .2f, .2f, 1));
+        cf_draw_box_fill((CF_Aabb){ { -20, 2 }, { 20, 5 } }, 0);
+        cf_draw_pop_color();
+        cf_canvas_set_clear_color(source, cf_make_color_rgba_f(0, 0, 0, 1));
+        cf_render_to(source, true);
+        render_reflection_frame frame = {
+            .source = source,
+            .destination = render_reflections_canvas(reflections, SIDE, SIDE),
+            .view = view,
+            .normal = render_material_raster_textures(r).normal,
+            .liquid = pass ? 1 : 0
+        };
+        ok = ok && render_reflections_draw(reflections, &frame);
+        cf_draw_pop();
+        cf_app_draw_onto_screen(false);
+        ok = ok && read_frame(frame.destination, pass ? mirrored : plain);
+    }
+    /* Rows 32 and below are under the surface, which lies near world y -6. */
+    int under = brightest(plain, 40, 60), reflected = brightest(mirrored, 40, 60);
+    int bar = brightest(plain, 26, 31), bar_after = brightest(mirrored, 26, 31);
+    printf("liquid reflection: under the surface %d -> %d, bar %d -> %d\n", under, reflected, bar, bar_after);
+    ok = ok && under < 20 && reflected > 60 && bar == bar_after;
+    render_reflections_free(reflections);
+    cf_destroy_canvas(source);
+    render_fluid_raster_free(draw);
+    material_fluid_free(fluid);
+    return ok;
+}
+
+/* Two trails become two ribbons of at most eight capsules that widen and
+ * brighten toward their heads and emit their color. */
+static bool trails(render_material_raster *r)
+{
+    arena_trail_segment segments[30];
+    for (int i = 0; i < 30; i++) {
+        int t = i < 20 ? i : i - 20, n = i < 20 ? 20 : 10;
+        float x = -28 + 2.5f * t, fade = (t + 1.0f) / n, y = i < 20 ? 10 : -10;
+        segments[i] = (arena_trail_segment){ .from = { x, 0, y },
+                                             .to = { x + 2.5f, 0, y },
+                                             .color = { 1, .5f, .2f, fade * fade },
+                                             .width = 6 * (.15f + .85f * fade),
+                                             .emission = 2 };
+    }
+    render_material_entity *entities = NULL;
+    render_trail_2d_append(segments, 30, .5f, 0, &entities);
+    bool ok = acount(entities) == 16 && entities[0].radius < entities[7].radius &&
+              entities[0].scene[3] < entities[7].scene[3] &&
+              fabsf(entities[7].emission[0] - 2) < 1e-6f &&
+              entities[0].pos[1] == -10 && entities[8].pos[1] == 10;
+    float head[4] = { 0 }, empty[4] = { 0 };
+    ok = ok && raster(r, entities, acount(entities)) &&
+         texel(render_material_raster_textures(r).source, 20, 42, head, SIDE) &&
+         texel(render_material_raster_textures(r).source, 20, 32, empty, SIDE);
+    printf(
+        "trails: %d capsules, head emission %.2f, between %.2f\n",
+        acount(entities),
+        head[0],
+        empty[0]
+    );
+    ok = ok && head[0] > .5f && empty[0] == 0;
+    afree(entities);
+    return ok;
+}
+
+/* A light's disc feeds the transport but not the display, before and after a
+ * later batch. */
+static bool lights(render_material_raster *r)
+{
+    render_material_entity light = {
+        .inv_rot = { 1, 0, 0, 1 },
+        .extent = { 9, 9 },
+        .shape_type = RENDER_SHAPE_CIRCLE,
+        .radius = 8,
+        .aa = .5f,
+        .emission = { 1, .5f, .2f, 1 },
+        .time = { 0, 0, -1 },
+    };
+    float source[4] = { 0 }, cover[4] = { 0 }, scene[4] = { 0 };
+    render_material_textures textures = render_material_raster_textures(r);
+    bool ok = raster(r, &light, 1) && texel(textures.source, 32, 32, source, SIDE) &&
+              texel(textures.cover, 32, 32, cover, SIDE) &&
+              texel(textures.scene, 32, 32, scene, SIDE);
+    printf(
+        "light: density %.2f,%.2f,%.2f display scale %.3f scene alpha %.2f\n",
+        source[0],
+        source[1],
+        source[2],
+        cover[0],
+        scene[3]
+    );
+    return ok && fabsf(source[0] - 1) < .02f && fabsf(source[1] - .5f) < .02f &&
+           cover[0] < .001f && scene[3] == 0;
+}
+
 bool test_material_effects()
 {
     render_material_raster *r = render_material_raster_new();
     bool ok = r && render_material_raster_resize(r, SIDE, SIDE) && hit_flash(r);
     ok &= backdrops();
     ok &= caustics(r);
+    ok &= glass(r);
+    ok &= liquid_reflection(r);
+    ok &= trails(r);
+    ok &= lights(r);
     render_material_raster_free(r);
-    printf("material effects %s: hit flash, backdrops, caustics\n", ok ? "PASS" : "FAIL");
+    printf("material effects %s: hit flash, backdrops, caustics, glass, liquid reflection, trails, lights\n", ok ? "PASS" : "FAIL");
     return ok;
 }

@@ -522,7 +522,7 @@ bool shader_graph_from_graph(const graph *source, shader_graph *result, shader_e
         goto failed;
     }
     ir.output_count = root->input_count;
-    if (ir.output_count != (shape ? 1 : 8)) {
+    if (ir.output_count != (shape ? 1 : SHADER_OUTPUT_MAX)) {
         error(&l, root->id, "Shader output has the wrong number of inputs");
         goto failed;
     }
@@ -533,7 +533,9 @@ bool shader_graph_from_graph(const graph *source, shader_graph *result, shader_e
         }
     }
     for (int i = 0; i < ir.output_count; i++) {
-        int expected = ir.output_count == 1 || (i != 0 && i != 1 && i != 4) ? 1 : 3;
+        int expected = ir.output_count == 1 || (i != 0 && i != 1 && i != 4 && i != 9)
+                         ? 1
+                         : 3;
         if (ir.nodes[ir.output[i]].width != expected) {
             error(&l, root->id, "Shader output has the wrong type");
             goto failed;

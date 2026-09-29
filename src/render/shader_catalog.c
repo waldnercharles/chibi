@@ -186,6 +186,28 @@ bool render_shader_may_be_transparent(int index)
     const shader_node *opacity = &graph->nodes[graph->output[5]];
     return opacity->op != SHADER_CONSTANT || opacity->value[0] < 1;
 }
+/* Whether a material's Surface Output input may be nonzero. */
+static bool surface_input(int index, int input)
+{
+    if (index <= 0 || index > acount(assets) || render_shader_is_shape(index)) {
+        return false;
+    }
+    const shader_graph *graph = &assets[index - 1].graph;
+    if (graph->output_count <= input) {
+        return false;
+    }
+    const shader_node *node = &graph->nodes[graph->output[input]];
+    return node->op != SHADER_CONSTANT || node->value[0] != 0 ||
+           node->value[1] != 0 || node->value[2] != 0;
+}
+bool render_shader_refracts(int index)
+{
+    return surface_input(index, SHADER_SURFACE_REFRACTION);
+}
+bool render_shader_transmits(int index)
+{
+    return surface_input(index, SHADER_SURFACE_TRANSMISSION);
+}
 bool render_shader_animated(int index)
 {
     if (index <= 0 || index > acount(assets)) {
@@ -508,7 +530,10 @@ char *render_shader_glsl(const render_shader_set *set, int sampler_set, int firs
         }
         free(glsl);
     }
-    append(&text, "void sg_dispatch(int id,SGSample sg_context,vec4 values[32],out vec4 result[8]) {\n for(int i=0;i<8;i++) result[i]=vec4(0);\n switch(id) {\n");
+    /* 2D reads six mapped channels; keeping them apart from the full
+     * Surface Output lets heavy graphs keep fewer values live. */
+    append(&text, "#define SG_OUTPUTS %d\n#define SG_RESULTS_2D 6\n", SHADER_OUTPUT_MAX);
+    append(&text, "void sg_dispatch(int id,SGSample sg_context,vec4 values[32],out vec4 result[SG_OUTPUTS]) {\n for(int i=0;i<SG_OUTPUTS;i++) result[i]=vec4(0);\n switch(id) {\n");
     for (int i = 0; i < acount(assets); i++) {
         if (!render_shader_set_contains(set, i + 1)) {
             continue;
@@ -519,7 +544,7 @@ char *render_shader_glsl(const render_shader_set *set, int sampler_set, int firs
     append(
         &text,
         "void sg_dispatch_2d(int id,vec2 p,vec2 wp,vec2 half_size,float "
-        "time,vec4 values[32],out vec4 result[8]) {\n"
+        "time,vec4 values[32],out vec4 result[SG_RESULTS_2D]) {\n"
         " SGSample sg_context; sg_context.position=p; "
         "sg_context.uv=vec2(p.x,-p.y)/max(2.0*half_size,vec2(0.0001))+0.5;\n"
         " sg_context.object_position=vec3(p.x,0.0,p.y); "
@@ -527,7 +552,10 @@ char *render_shader_glsl(const render_shader_set *set, int sampler_set, int firs
         " sg_context.normal=vec3(0,1,0); "
         "sg_context.view_direction=vec3(0,1,0); "
         "sg_context.time=time;\n"
-        " sg_dispatch(id,sg_context,values,result);\n switch(id) {\n"
+        " vec4 surface[SG_OUTPUTS]; "
+        "sg_dispatch(id,sg_context,values,surface);\n"
+        " for(int i=0;i<SG_RESULTS_2D;i++) result[i]=surface[i];\n switch(id) "
+        "{\n"
     );
     for (int i = 0; i < acount(assets); i++) {
         if (assets[i].shape) {
@@ -537,21 +565,22 @@ char *render_shader_glsl(const render_shader_set *set, int sampler_set, int firs
     append(
         &text,
         "default: break; }\n"
-        " vec3 base=max(result[0].rgb,vec3(0)); vec3 "
-        "emission=max(result[1].rgb,vec3(0));\n"
-        " float opacity=clamp(result[5].x,0.0,1.0); float "
-        "metallic=clamp(result[3].x,0.0,1.0); bool unlit=result[6].x>0.5;\n"
-        " float gloss=1.0-clamp(result[2].x,0.0,1.0);\n"
+        " vec3 base=max(surface[0].rgb,vec3(0)); vec3 "
+        "emission=max(surface[1].rgb,vec3(0));\n"
+        " float opacity=clamp(surface[5].x,0.0,1.0); float "
+        "metallic=clamp(surface[3].x,0.0,1.0); bool unlit=surface[6].x>0.5;\n"
+        " float gloss=1.0-clamp(surface[2].x,0.0,1.0);\n"
         /* The surface normal faces the camera along +Y; its XZ tilt becomes
          * world X and up. A normal facing away keeps a maximal tilt. */
-        " vec3 n=result[4].xyz; float n2=dot(n,n); vec2 tilt=vec2(0);\n"
+        " vec3 n=surface[4].xyz; float n2=dot(n,n); vec2 tilt=vec2(0);\n"
         " if(n2>1e-8) { tilt=n.xz*inversesqrt(n2); float t2=dot(tilt,tilt); "
         "if(n.y<=0.0&&t2>1e-8) tilt*=0.999*inversesqrt(t2); }\n"
         " result[0]=vec4(base,opacity); result[1]=vec4(emission,opacity);\n"
         " result[2]=vec4(unlit?vec3(0):base*(1.0-metallic),opacity); "
         "result[3]=vec4(vec3(opacity),opacity);\n"
-        " result[4]=unlit?vec4(0):vec4(tilt,gloss,result[7].x);\n"
-        " result[5]=vec4(0); result[6]=vec4(0); result[7]=vec4(0);\n}\n"
+        " result[4]=unlit?vec4(0):vec4(tilt,gloss,surface[7].x);\n"
+        " result[5]=vec4(max(surface[8].x,0.0),clamp(surface[9].rgb,vec3(0),"
+        "vec3(1)));\n}\n"
     );
     return text;
 }
@@ -680,7 +709,7 @@ bool render_shader_contains(
     if (!render_shader_is_shape(id)) {
         return false;
     }
-    float parameters[32][4], result[8][4];
+    float parameters[32][4], result[SHADER_OUTPUT_MAX][4];
     shader_error error;
     render_shader_parameters(id, world, entity, binding->parameters, parameters);
     shader_sample_context sample = {

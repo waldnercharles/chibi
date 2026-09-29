@@ -453,7 +453,8 @@ typedef struct
 } asset_case;
 
 static const asset_case ASSET_CASES[] = {
-    { REFERENCE_ASSET_MATERIAL, "Basalt", "Rock", "Cave", 1 },
+    /* Cave and RenderLab's flashing basalt. */
+    { REFERENCE_ASSET_MATERIAL, "Basalt", "Rock", "Cave", 2 },
     { REFERENCE_ASSET_FIELD, "BasaltCave", "Cavern", "Cave", 1 },
     { REFERENCE_ASSET_BEHAVIOR, "Pursuit", "Chase", "Sandbox", 4 },
     { REFERENCE_ASSET_UI, "MenuButton", "MenuItem", "PauseMenu", 3 },
@@ -615,8 +616,8 @@ static void values()
     const char *tile = p.texts[asset_named(&p, REFERENCE_ASSET_PROTOTYPE, "Tile")];
     const char *second = tile ? strstr(tile, "Rock") : NULL;
     test_check(
-        listed && applied && uses == 4 &&
-            asset_uses(&p, REFERENCE_ASSET_MATERIAL, "Rock") == 4 && second &&
+        listed && applied && uses == 5 &&
+            asset_uses(&p, REFERENCE_ASSET_MATERIAL, "Rock") == 5 && second &&
             strstr(second + 4, "Rock"),
         "renaming a material renames mesh parts and scene overrides that name "
         "it"

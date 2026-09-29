@@ -18,10 +18,16 @@ bool render_fluid_raster_draw(
     int width,
     int height
 );
-/* Caustics for the next draws: simulation time animates their ripples and a
- * zero strength disables them. */
-void render_fluid_raster_set_caustics(render_fluid_raster *raster, float time, float strength);
-/* Whether the last draw saw burning or emissive fluid, which shimmers. */
-bool render_fluid_raster_hot(const render_fluid_raster *raster);
+/* Optics for the next draws: simulation time animates caustic ripples, a
+ * zero caustics strength disables them, and heat writes the heat haze weight
+ * to the cover texture. */
+void render_fluid_raster_set_optics(render_fluid_raster *raster, float time, float caustics, bool heat);
+/* What the last draw saw: burning or emissive fluid, which shimmers, and
+ * liquid, which reflects. */
+typedef struct
+{
+    bool hot, liquid;
+} render_fluid_seen;
+render_fluid_seen render_fluid_raster_seen(const render_fluid_raster *raster);
 
 #endif

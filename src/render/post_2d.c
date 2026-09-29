@@ -193,7 +193,6 @@ bool render_post_2d_distort(render_post_2d *post, const render_post_2d_distortio
     cf_push_gpu_label("2D distortion");
     begin_passes();
     cf_draw_push_shader(post->distort);
-    cf_draw_set_texture("normal_tex", d->normal);
     cf_draw_set_texture("cover_tex", d->cover);
     render_view_2d v = d->view;
     float view[] = { v.min_x, v.max_y, v.width, v.height };
@@ -209,7 +208,7 @@ bool render_post_2d_distort(render_post_2d *post, const render_post_2d_distortio
     cf_draw_set_uniform("waves", (void *)d->waves, CF_UNIFORM_TYPE_FLOAT4, 2 * RENDER_POST_2D_WAVES);
     cf_draw_set_uniform("hazes", (void *)d->hazes, CF_UNIFORM_TYPE_FLOAT4, RENDER_POST_2D_HAZES);
     pass(post->target, spare);
-    RENDER_DRAW_UNBIND_TEXTURES("normal_tex", "cover_tex");
+    RENDER_DRAW_UNBIND_TEXTURES("cover_tex");
     cf_draw_pop_shader();
     end_passes();
     cf_pop_gpu_label();
@@ -239,6 +238,15 @@ static void bloom_passes(render_post_2d *post)
         below = post->up[i];
     }
     cf_draw_pop_shader();
+}
+
+/* Whether display grading, vignette, flash or grain change the frame. */
+static bool graded(const GamePost2D *look, float flash)
+{
+    return look->vignette != 0 || look->grain != 0 || look->contrast != 0 ||
+           look->saturation != 0 || look->lift.x != 0 || look->lift.y != 0 ||
+           look->lift.z != 0 || look->gain.x != 0 || look->gain.y != 0 ||
+           look->gain.z != 0 || flash > 0;
 }
 
 /* White balance as linear channel gains, from cool/warm and green/magenta. */
@@ -278,6 +286,7 @@ void render_post_2d_present(render_post_2d *post, CF_Canvas output, const render
     cf_draw_set_uniform("gain", gain, CF_UNIFORM_TYPE_FLOAT4, 1);
     cf_draw_set_uniform("white", white, CF_UNIFORM_TYPE_FLOAT4, 1);
     cf_draw_set_uniform("flash", (void *)s->flash, CF_UNIFORM_TYPE_FLOAT4, 1);
+    cf_draw_set_uniform_float("graded", graded(look, s->flash[3]));
     cf_draw_push_filter(CF_DRAW_FILTER_NEAREST);
     pass(post->target, output);
     RENDER_DRAW_UNBIND_TEXTURES("current", "bloom_tex");

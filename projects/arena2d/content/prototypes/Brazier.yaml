@@ -1,6 +1,7 @@
 name: Brazier
 components:
   GAME.GameHeatHaze: {radius: 70.0, strength: 3.0}
+  GAME.GameLight2D: {color: 4288813567, intensity: 0.35, radius: 12.0}
   GAME.GameParticleEmitter:
     absorption: 0.01
     active: true

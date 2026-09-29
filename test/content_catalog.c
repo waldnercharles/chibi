@@ -186,9 +186,14 @@ void run_content_catalog_checks()
         "SwarmerEffects.yaml",
         "Weapon.yaml",
         "ProjectileLifecycle.yaml",
+        "RenderLabFlash.yaml",
+        "RenderLabPulse.yaml",
     };
     static const char *const arena2d_materials[] = {
         "Basalt.yaml",
+        "RenderLabGlass.yaml",
+        "RenderLabNebula.yaml",
+        "RenderLabSpires.yaml",
     };
     static const char *const arena2d_events[] = {
         "CollectExperience.yaml", "Damage.yaml",
@@ -225,9 +230,11 @@ void run_content_catalog_checks()
         "Steam.yaml",
         "Water.yaml",
         "BoostEmitter.yaml",
+        "Brazier.yaml",
         "Camera.yaml",
         "Cave.yaml",
         "Cloud.yaml",
+        "Comet.yaml",
         "Crystal.yaml",
         "DeathEmitter.yaml",
         "DriftingMarker.yaml",
@@ -235,10 +242,12 @@ void run_content_catalog_checks()
         "FireStick.yaml",
         "FreeMotionSystem.yaml",
         "FuelCloud.yaml",
+        "GlassSlab.yaml",
         "HardRock.yaml",
         "HRC.yaml",
         "HitEmitter.yaml",
         "HUD.yaml",
+        "Lamp.yaml",
         "Liquid.yaml",
         "MovementEmitter.yaml",
         "MaterialSpecimen.yaml",
@@ -246,6 +255,9 @@ void run_content_catalog_checks()
         "MaterialStudyWorld.yaml",
         "Player.yaml",
         "Projectile.yaml",
+        "RenderLabAnchor.yaml",
+        "RenderLabCamera.yaml",
+        "RenderLabWorld.yaml",
         "SpawnEmitter.yaml",
         "Swarmer.yaml",
         "TrailEmitter.yaml",
@@ -253,7 +265,7 @@ void run_content_catalog_checks()
     static const char *const arena2d_scenes[] = {
         "HRCBounce.yaml",      "HRCPinhole.yaml", "HRCShadow.yaml",
         "HRCSinglePixel.yaml", "HRCVolume.yaml",  "MaterialStudy.yaml",
-        "MatterLab.yaml",      "Sandbox.yaml",
+        "MatterLab.yaml",      "RenderLab.yaml",  "Sandbox.yaml",
     };
     static const char *const arena2d_libraries[] = { "DirectionMath.yaml",
                                                      "FieldShapes.yaml",

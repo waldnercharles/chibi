@@ -1010,6 +1010,17 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameFlash)
 }
 GameFlash;
 
+/* An invisible disc of light for 2D lighting: it emits color times intensity,
+ * as GameMaterial's emission does, over radius world units into HRC, and
+ * nothing is drawn. For muzzle flashes, lamps and glows without geometry. */
+typedef NODE_COMPONENT_TYPE_DENSE(GameLight2D)
+{
+    unsigned color;
+    float intensity;
+    float radius;
+}
+GameLight2D;
+
 /* Shimmers the frame behind an entity, as heat does above fire. */
 typedef NODE_COMPONENT_TYPE_DENSE(GameHeatHaze)
 {
@@ -1142,6 +1153,9 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameHRC2D)
      * lines. Zero disables them; 0.3 is typical. Liquid refraction scales it
      * per volume. Caustics light the surroundings through feedback. */
     float caustics;
+    /* Strength of liquid reflections: surfaces facing up mirror what lies
+     * above them, fading with depth. Zero disables them; 0.6 is typical. */
+    float reflections;
 }
 GameHRC2D;
 

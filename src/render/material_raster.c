@@ -23,7 +23,19 @@ _Static_assert(sizeof(render_material_entity) == 1376, "entity std430 stride");
 _Static_assert(offsetof(render_material_entity, points) == 80, "entity point offset");
 _Static_assert(offsetof(render_material_entity, scene) == 144, "entity material offset");
 _Static_assert(offsetof(render_material_entity, time) == 304, "entity clock offset");
-_Static_assert(GPU_ENTITY_BYTES == 352, "entity GPU size");
+_Static_assert(GPU_ENTITY_BYTES == 336, "entity GPU size");
+/* A graph entity's parameter slot: material and shape parameters, then its
+ * hit flash. */
+enum
+{
+    SLOT_BYTES = 1040
+};
+_Static_assert(
+    offsetof(render_material_entity, flash) -
+            offsetof(render_material_entity, material_parameters) ==
+        SLOT_BYTES - 16,
+    "slot layout"
+);
 
 typedef struct
 {
@@ -160,11 +172,12 @@ static bool reserve_entities(render_material_raster *r, int count)
         capacity *= 2;
     }
     count = capacity;
-    if (count > INT_MAX / (int)sizeof(render_material_entity) || count > INT_MAX / 1024) {
+    if (count > INT_MAX / (int)sizeof(render_material_entity) ||
+        count > INT_MAX / SLOT_BYTES) {
         return false;
     }
     CF_StorageBuffer entities = buffer(count * GPU_ENTITY_BYTES);
-    CF_StorageBuffer parameters = buffer(count * 1024);
+    CF_StorageBuffer parameters = buffer(count * SLOT_BYTES);
     if (!entities.id || !parameters.id) {
         if (parameters.id) {
             cf_destroy_storage_buffer(parameters);
@@ -182,7 +195,7 @@ static bool reserve_entities(render_material_raster *r, int count)
     }
     r->parameters = parameters;
     r->entity_data = xrealloc(r->entity_data, (size_t)count * GPU_ENTITY_BYTES);
-    r->parameter_data = xrealloc(r->parameter_data, (size_t)count * 1024);
+    r->parameter_data = xrealloc(r->parameter_data, (size_t)count * SLOT_BYTES);
     r->entities = entities;
     r->capacity = count;
     return true;
@@ -271,7 +284,7 @@ static float circle_filter_half_width(float aa, float px, float py)
 static bool circle_emission_filterable(const render_material_entity *entity)
 {
     return entity->shape_type == RENDER_SHAPE_CIRCLE && entity->thickness <= 0 &&
-           entity->border_thickness <= 0 && entity->reserved[0] <= 0 &&
+           entity->border_thickness <= 0 && entity->reserved[0] == 0 &&
            entity->reserved[1] <= 0 && entity->metaball_group == 0 &&
            entity->wobble[0] == 0 && entity->pluck[0] == 0 &&
            (entity->emission[0] != 0 || entity->emission[1] != 0 ||
@@ -421,7 +434,7 @@ const char *render_material_raster_error(const render_material_raster *r)
 
 static bool add_images(render_shader_set *set, const render_material_entity *entity, shader_error *error)
 {
-    return render_shader_set_add(set, (int)entity->reserved[0], error) &&
+    return render_shader_set_add(set, abs((int)entity->reserved[0]), error) &&
            render_shader_set_add(set, (int)entity->reserved[1], error);
 }
 
@@ -527,18 +540,32 @@ bool render_material_raster_draw(
         qsort(r->sorted, (size_t)count, sizeof *r->sorted, compare);
     }
     for (int i = 0; i < count; i++) {
-        r->sorted[i].time[2] = entity_emission_scale(&r->sorted[i], view, r->width, r->height);
+        float scale = entity_emission_scale(&r->sorted[i], view, r->width, r->height);
+        r->sorted[i].time[2] = r->sorted[i].time[2] < 0 ? -scale : scale;
     }
     if (!prepare_batches(r)) {
         return false;
     }
     if (count) {
+        /* Only graph entities read parameters; time[1] holds their slot. */
+        int slots = 0;
         for (int i = 0; i < count; i++) {
-            memcpy(r->entity_data + (size_t)i * GPU_ENTITY_BYTES, &r->sorted[i], GPU_ENTITY_BYTES);
-            memcpy(r->parameter_data + (size_t)i * 256, r->sorted[i].material_parameters, 1024);
+            render_material_entity *entity = &r->sorted[i];
+            bool graph = entity->reserved[0] != 0 || entity->reserved[1] > 0;
+            entity->time[1] = graph ? (float)slots : 0;
+            if (graph) {
+                memcpy(
+                    r->parameter_data + (size_t)slots++ * SLOT_BYTES / sizeof(float),
+                    entity->material_parameters,
+                    SLOT_BYTES
+                );
+            }
+            memcpy(r->entity_data + (size_t)i * GPU_ENTITY_BYTES, entity, GPU_ENTITY_BYTES);
         }
         cf_update_storage_buffer(r->entities, r->entity_data, count * GPU_ENTITY_BYTES);
-        cf_update_storage_buffer(r->parameters, r->parameter_data, count * 1024);
+        if (slots) {
+            cf_update_storage_buffer(r->parameters, r->parameter_data, slots * SLOT_BYTES);
+        }
     }
     int tx = (r->width + 15) / 16, ty = (r->height + 15) / 16;
     float units[2] = { view.width / r->width, view.height / r->height };

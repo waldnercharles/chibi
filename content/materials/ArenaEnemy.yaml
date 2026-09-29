@@ -1,7 +1,7 @@
 version: 3
 name: ArenaEnemy
 domain: material
-id_counter: 246
+id_counter: 248
 description: Warm rose pursuer surface with a dark body and readable emissive edges.
 graphs:
 - kind: event
@@ -17,6 +17,7 @@ graphs:
       Normal:
         default: {x: 0.0, "y": 0.0, z: 0.0}
       Height: {id: 80}
+      Refraction: {id: 246}
   - id: 37
     type: Shader Parameter
     reference_name: Base Color

@@ -2,6 +2,7 @@
 #define CHIBI_RENDER_MATERIAL_RASTER_H
 
 #include "platform/cute.h"
+#include "render/shader_catalog.h"
 #include "render/view_2d.h"
 
 #include <stdbool.h>
@@ -25,8 +26,10 @@ enum
  * extent must conservatively include AA, deformation and metaball expansion.
  * wobble = amplitude, angular frequency, temporal frequency, sort key.
  * pluck = amplitude, origin, age, speed. time[0] is simulation time;
- * remaining values are reserved by the raster. Equal sort keys retain caller
- * order. */
+ * time[2] below zero marks a light: its emission reaches the transport but
+ * not the display. The raster reserves the rest: time[1] orders the sort,
+ * then holds a graph entity's parameter slot, and time[2]'s magnitude
+ * becomes the emission's filter scale. Equal sort keys retain caller order. */
 typedef struct
 {
     float inv_rot[4], pos[2], extent[2];
@@ -36,6 +39,8 @@ typedef struct
     uint32_t point_count, metaball_group;
     float metaball_blend;
     /* reserved[0/1] select catalog material/shape; zero uses authored data.
+     * A material is negative when its Refraction or Transmission may be
+     * nonzero, so only those evaluate them (render_material_slot).
      * reserved[2] is received-light gain near the silhouette. */
     float border_thickness, reserved[3];
     /* Boxes: 0-1 half extents, and 4-7 an optional cut (normal, offset, 1)
@@ -55,10 +60,12 @@ typedef struct
      * the material was laid out. Zero cos and sin sample materials at the
      * pixel's current world position. */
     float material_frame[4];
-    /* Linear RGB and amount of a hit flash; see GameFlash. */
-    float flash[4];
     /* Uploaded separately: Cute storage-buffer structs cannot contain arrays. */
     float material_parameters[32][4], shape_parameters[32][4];
+    /* Linear RGB and amount of a hit flash on a graph material, uploaded
+     * after its parameters; see GameFlash. Other materials take the flash
+     * into their coefficients. */
+    float flash[4];
 } render_material_entity;
 
 /* The material raster's RGBA16F render targets. */
@@ -82,12 +89,28 @@ typedef struct
     /* R: display's scale from source's emission density to emission
      * premultiplied by coverage. Absorbers emit their radiance times their
      * optical depth (hrc/source_average.shd); clear emitters' scale is one.
-     * G: output pixels solids refract along their tilt. B: heat haze weight
-     * of burning and emissive fluid, at most one. A: zero. */
+     * GB: output pixels, world axes Y up, by which solids refract what lies
+     * behind them. A: heat haze weight of burning and emissive fluid, at most
+     * one. */
     CF_Texture cover;
 } render_material_textures;
 
 typedef render_view_2d render_material_view;
+
+/* reserved[0] for a catalog material: its index, negative when it refracts
+ * or transmits light; zero for a shape or none. */
+static inline float render_material_slot(int material)
+{
+    if (!material || render_shader_is_shape(material)) {
+        return 0;
+    }
+    bool optics = render_shader_refracts(material) ||
+                  render_shader_transmits(material);
+    return optics ? -(float)material : (float)material;
+}
+
+/* Emission a full hit flash adds per unit of its color; see entity.shd. */
+#define RENDER_FLASH_EMISSION .3f
 
 typedef struct render_material_raster render_material_raster;
 

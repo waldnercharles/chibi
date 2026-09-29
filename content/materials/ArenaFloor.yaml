@@ -1,7 +1,7 @@
 version: 3
 name: ArenaFloor
 domain: material
-id_counter: 2690
+id_counter: 2692
 description: Permanent triangular cell outlines surround small breathing inner triangles. Cell boundaries brighten locally around activity; the floor faces remain dark.
 graphs:
 - kind: event
@@ -155,6 +155,7 @@ graphs:
         flags: 64
         default: {x: 0.0, "y": 0.0, z: 0.0}
       Height: {id: 750}
+      Refraction: {id: 2690}
   - id: 739
     type: Call Pure Function
     reference_id: 501

@@ -21,6 +21,13 @@ static void collect_look(ecs_world *world, GamePost2D *look)
     ecs_query_end(&query);
 }
 
+float render_post_2d_heat_haze(ecs_world *world)
+{
+    GamePost2D look = { 0 };
+    collect_look(world, &look);
+    return look.heat_haze;
+}
+
 static bool in_view(render_view_2d view, float x, float y, float reach)
 {
     return x + reach >= view.min_x && x - reach <= view.min_x + view.width &&

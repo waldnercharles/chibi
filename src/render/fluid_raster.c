@@ -3,6 +3,7 @@
 #include "diagnostics/tracy.h"
 #include "render/fullscreen.h"
 #include "render/particles.h"
+#include "render/shader_program.h"
 #include "support/array.h"
 #include "support/xalloc.h"
 
@@ -20,9 +21,17 @@ typedef struct
     int x0, y0, x1, y1;
 } tile_rect;
 
+/* Fluid raster variants: bit 0 caustics, bit 1 heat haze. Uniform branches in
+ * the per-particle loop cost more than a variant each. */
+enum
+{
+    FLUID_VARIANTS = 4
+};
+
 struct render_fluid_raster
 {
-    CF_Shader shader, copy_shader;
+    CF_Shader shaders[FLUID_VARIANTS], copy_shader;
+    char *vertex, *fragment;
     CF_Material material;
     /* Two triangles over each tile that fluid covers; passes draw only there. */
     CF_Mesh tiles;
@@ -32,22 +41,45 @@ struct render_fluid_raster
     /* The material targets of fluid's tiles before fluid. */
     CF_Canvas before;
     int width, height;
-    /* Whether a burning or emissive parcel lay in the last view. */
-    bool hot;
-    float time, caustics;
+    render_fluid_seen seen;
+    float time, caustics, heat;
     int particle_capacity, offset_capacity, index_capacity;
     raster_particle *data;
     tile_rect *rects;
     int *starts, *cursor, *references;
 };
 
+/* The raster shader for the current optics, compiled on first use. */
+static CF_Shader variant(render_fluid_raster *r)
+{
+    int v = (r->caustics > 0) | (r->heat > 0) << 1;
+    if (!r->shaders[v].id) {
+        char defines[64];
+        snprintf(
+            defines,
+            sizeof defines,
+            "#define FLUID_CAUSTICS %d\n#define FLUID_HEAT %d\n",
+            v & 1,
+            v >> 1
+        );
+        size_t bytes = strlen(defines) + strlen(r->fragment) + 1;
+        char *source = xmalloc(bytes);
+        snprintf(source, bytes, "%s%s", defines, r->fragment);
+        r->shaders[v] = cf_make_shader_from_source(r->vertex, source);
+        free(source);
+    }
+    return r->shaders[v];
+}
+
 render_fluid_raster *render_fluid_raster_new()
 {
     render_fluid_raster *r = xcalloc(1, sizeof *r);
-    r->shader = cf_make_shader("/chibi-render/hrc/pass.vert", "/chibi-render/hrc/fluid_raster.frag");
+    r->vertex = render_shader_source("hrc/pass.vert");
+    r->fragment = render_shader_source("hrc/fluid_raster.frag");
     r->copy_shader = cf_make_shader("/chibi-render/hrc/pass.vert", "/chibi-render/hrc/material_copy.frag");
     r->material = cf_make_material();
-    if (!r->shader.id || !r->copy_shader.id || !r->material.id) {
+    if (!r->vertex || !r->fragment || !variant(r).id || !r->copy_shader.id ||
+        !r->material.id) {
         render_fluid_raster_free(r);
         return NULL;
     }
@@ -59,9 +91,13 @@ void render_fluid_raster_free(render_fluid_raster *r)
     if (!r) {
         return;
     }
-    if (r->shader.id) {
-        cf_destroy_shader(r->shader);
+    for (int i = 0; i < FLUID_VARIANTS; i++) {
+        if (r->shaders[i].id) {
+            cf_destroy_shader(r->shaders[i]);
+        }
     }
+    free(r->vertex);
+    free(r->fragment);
     if (r->copy_shader.id) {
         cf_destroy_shader(r->copy_shader);
     }
@@ -188,7 +224,7 @@ static void collect(
 {
     aclear(r->data);
     aclear(r->rects);
-    r->hot = false;
+    r->seen = (render_fluid_seen){ 0 };
     int count;
     const fluid_particle *particles = material_fluid_particles(fluid, &count);
     fluid_heat heat = material_fluid_heat(fluid);
@@ -286,7 +322,8 @@ static void collect(
             data.optical[1] *= fminf(1, p.lifetime * 2);
             data.optical[0] *= fminf(1, p.lifetime * 2);
         }
-        r->hot |= data.optical[1] > 0 || data.optical[3] > 0;
+        r->seen.hot |= data.optical[1] > 0 || data.optical[3] > 0;
+        r->seen.liquid |= p.kind == FLUID_LIQUID;
         apush(r->data, data);
         apush(r->rects, rect);
     }
@@ -326,15 +363,16 @@ static bool bin(render_fluid_raster *r, int tx, int ty)
     return true;
 }
 
-void render_fluid_raster_set_caustics(render_fluid_raster *r, float time, float strength)
+void render_fluid_raster_set_optics(render_fluid_raster *r, float time, float caustics, bool heat)
 {
     r->time = time;
-    r->caustics = strength;
+    r->caustics = caustics;
+    r->heat = heat;
 }
 
-bool render_fluid_raster_hot(const render_fluid_raster *r)
+render_fluid_seen render_fluid_raster_seen(const render_fluid_raster *r)
 {
-    return r->hot;
+    return r->seen;
 }
 
 bool render_fluid_raster_draw(
@@ -347,6 +385,10 @@ bool render_fluid_raster_draw(
 )
 {
     assert(width > 0 && height > 0);
+    CF_Shader shader = variant(r);
+    if (!shader.id) {
+        return false;
+    }
     if (r->width != width || r->height != height) {
         CF_Canvas before = render_material_canvas(width, height);
         if (!before.id) {
@@ -413,7 +455,7 @@ bool render_fluid_raster_draw(
         s_set_material(r->material, render_material_canvas_textures(material));
         s_draw_tiles(r, r->copy_shader, r->before, true, width, height);
         s_set_material(r->material, render_material_canvas_textures(r->before));
-        s_draw_tiles(r, r->shader, material, false, width, height);
+        s_draw_tiles(r, shader, material, false, width, height);
     }
     cf_pop_gpu_label();
     CHIBI_TRACE_ZONE_END(submit_zone);

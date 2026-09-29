@@ -23,6 +23,14 @@ layout(set = 3, binding = 0) uniform uniform_block {
     float u_time;
     float u_caustics;
 };
+// Variants: FLUID_CAUSTICS accumulates liquid curvature for caustics and
+// FLUID_HEAT the parcels' heat for heat haze; see fluid_raster.c.
+#ifndef FLUID_CAUSTICS
+#define FLUID_CAUSTICS 0
+#endif
+#ifndef FLUID_HEAT
+#define FLUID_HEAT 0
+#endif
 
 struct FluidSample
 {
@@ -63,8 +71,10 @@ bool fluid_sample(ivec2 pixel, out FluidSample f)
     for (int i = first; i < last; i++) {
         Particle p = particle_at(i);
         vec2 local = (world - p.position.xy) / p.position.z;
+#if FLUID_HEAT
         float reach = max(0.0, 1.0 - dot(local, local));
         f.heat += reach * reach * (p.optical.w + p.optical.y);
+#endif
         if (p.optical.z > 0.0) {
             float d = length(world - p.position.xy) - p.position.z;
             float k = p.optical.z;
@@ -109,8 +119,10 @@ bool fluid_sample(ivec2 pixel, out FluidSample f)
             f.liquid_visibility += p.color.rgb * p.detail.w * weight;
             f.liquid_refraction += p.detail.z * weight;
             f.gradient -= 6.0 * q * q * local / p.position.z;
-            f.curvature += (24.0 * q * vec3(local.x * local.x, local.x * local.y, local.y * local.y) -
-                                         6.0 * q * q * vec3(1, 0, 1));
+#if FLUID_CAUSTICS
+            f.curvature += 24.0 * q * vec3(local.x * local.x, local.x * local.y, local.y * local.y) -
+                           6.0 * q * q * vec3(1, 0, 1);
+#endif
         }
     }
     f.flame_alpha = (1.0 - smoothstep(-f.aa, f.aa, flame_distance)) * f.flame_color.a;

@@ -5,7 +5,7 @@ components:
     bounce_hysteresis: 1.0
     bounce_intensity: 1.0
     caustics: 0.4
-    exposure: 1.0
+    exposure: 0.3
     falloff: 1.0
     feedback: true
     fog: 0.12
@@ -13,6 +13,7 @@ components:
     min_resolution: 0.25
     particle_focal_length: 300.0
     radiance_hysteresis: 1.0
+    reflections: 0.6
     resolution: 0.5
     shadow_floor: 0.0005
     specular: 1.0
@@ -31,6 +32,7 @@ components:
     saturation: 0.1
     temperature: -0.1
     vignette: 0.35
+  GAME.GameRhythm: {bpm: 40.0, pulse_width: 0.18}
   GAME.GameStarfield2D:
     color_a: 1300299775
     color_b: 2572025855

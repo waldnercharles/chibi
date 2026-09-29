@@ -1,0 +1,53 @@
+// The frame with liquid mirroring what lies above it. A liquid pixel marches
+// up the material normal's liquid mask to the surface; where that surface
+// faces up, it shows the frame mirrored across it, rippled by time and the
+// surface normal, fading with depth below the surface.
+layout(set = 2, binding = 1) uniform sampler2D normal_tex;
+layout(set = 3, binding = 1) uniform shd_uniforms {
+    // Camera rectangle: min x, max y, width, height in Y-up world units.
+    vec4 view;
+    // The camera rectangle within the material textures.
+    vec4 crop_uv;
+    float strength;
+    float time;
+    float world_per_px;
+};
+
+// The march covers 60 world units below the surface.
+const int STEPS = 24;
+const float STRIDE = 2.5;
+// World units over which the mirror image fades below the surface.
+const float FADE = 36.0;
+
+vec4 shader(vec4 color, ShaderParams params)
+{
+    vec2 uv = params.uv;
+    vec3 base = texture(u_image, uv).rgb;
+    vec2 source_uv = mix(crop_uv.xy, crop_uv.zw, uv);
+    vec2 texel = 1.0 / vec2(textureSize(normal_tex, 0));
+    vec4 top = texture(normal_tex, source_uv);
+    if (top.z >= 0.0) return vec4(base, 1.0);
+    // Raster pixels per step; the raster shares the output's scale.
+    float stride = STRIDE / world_per_px;
+    float depth = -1.0;
+    for (int i = 1; i <= STEPS; i++) {
+        vec4 above = texture(normal_tex, source_uv - vec2(0.0, texel.y * stride * float(i)));
+        if (above.z >= 0.0) {
+            depth = stride * (float(i) - 0.5);
+            break;
+        }
+        top = above;
+    }
+    if (depth < 0.0) return vec4(base, 1.0);
+    vec2 normal = top.xy / max(top.w, 1e-3);
+    float facing = smoothstep(0.35, 0.85, normal.y);
+    float world_depth = depth * world_per_px;
+    vec2 frame_texel = 1.0 / vec2(textureSize(u_image, 0));
+    float ripple = sin(world_depth * 0.45 + time * 2.7 + (view.x + uv.x * view.z) * 0.06) * 1.5 +
+                   normal.x * 4.0;
+    vec2 mirrored = uv + vec2(ripple * frame_texel.x, -2.0 * depth * frame_texel.y);
+    float inside = step(0.0, mirrored.y);
+    float weight = strength * facing * exp(-world_depth / FADE) * inside;
+    vec3 reflection = texture(u_image, clamp(mirrored, vec2(0.0), vec2(1.0))).rgb;
+    return vec4(mix(base, reflection, clamp(weight, 0.0, 1.0)), 1.0);
+}

@@ -1,7 +1,7 @@
 version: 3
 name: RenderLabSpires
 domain: material
-id_counter: 221
+id_counter: 223
 description: 'Distant basalt spires: a dark ridge silhouette that nearby light picks out.'
 graphs:
 - kind: event
@@ -16,6 +16,7 @@ graphs:
         default: {x: 0.0, "y": 0.0, z: 0.0}
       Normal:
         default: {x: 0.0, "y": 0.0, z: 0.0}
+      Refraction: {id: 221}
   - {id: 10, type: Shader WorldPosition}
   - id: 12
     type: Shader X

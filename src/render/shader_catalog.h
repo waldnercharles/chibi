@@ -16,6 +16,9 @@ bool render_shader_may_be_transparent(int index);
 /* Whether the graph reads time, the beat or scene activity, so its image
  * changes while nothing else does. */
 bool render_shader_animated(int index);
+/* Whether the material's Refraction or Transmission may be nonzero. */
+bool render_shader_refracts(int index);
+bool render_shader_transmits(int index);
 bool render_shader_sample(
     int index,
     const shader_sample_context *sample,

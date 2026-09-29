@@ -1,7 +1,7 @@
 version: 3
 name: ArenaExperience
 domain: material
-id_counter: 19
+id_counter: 21
 description: Flat hollow lime pickups with a restrained unlit color and a faint collection ribbon.
 graphs:
 - kind: event

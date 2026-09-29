@@ -4,6 +4,7 @@
 #include "platform/cute.h"
 #include "render/appearance_geometry.h"
 #include "render/arena_post.h"
+#include "render/arena_trail.h"
 #include "render/backdrop_2d.h"
 #include "render/fluid_raster.h"
 #include "render/fog.h"
@@ -21,6 +22,7 @@
 #include "render/shader_dir.h"
 #include "render/shader_fragment.h"
 #include "render/shader_images.h"
+#include "render/trail_2d.h"
 #include "runtime/generated.h"
 #include "support/array.h"
 #include "support/xalloc.h"
@@ -52,6 +54,8 @@ struct app_scene_renderer
     render_reflections *reflections;
     render_reflection *reflectors;
     render_backdrops *backdrops;
+    /* GameTrail history, drawn as emissive ribbons. */
+    arena_trails *trails;
     CF_Canvas output, background;
     CF_Shader background_shader;
     GameStarfield2D background_style;
@@ -63,6 +67,8 @@ struct app_scene_renderer
     uint64_t frame_start;
     /* Tile groups numbered so far this frame. */
     int tile_groups;
+    /* Whether a collected material may refract. */
+    bool refraction;
     render_material_entity *entities;
     draw_actor *actors;
     ecs_world *world;
@@ -121,6 +127,9 @@ void app_scene_renderer_free(app_scene_renderer *renderer)
     render_reflections_free(renderer->reflections);
     afree(renderer->reflectors);
     render_backdrops_free(renderer->backdrops);
+    if (renderer->trails) {
+        render_arena_trails_free(renderer->trails);
+    }
     if (renderer->output.id) {
         cf_destroy_canvas(renderer->output);
     }
@@ -715,7 +724,7 @@ static void collect_chunks(
             draw->points[2 * k] = chunk->points[2 * k] * scale;
             draw->points[2 * k + 1] = -chunk->points[2 * k + 1] * scale;
         }
-        draw->reserved[0] = hot ? 0 : (float)shader;
+        draw->reserved[0] = hot ? 0 : render_material_slot(shader);
         memcpy(draw->material_parameters, parameters, sizeof parameters);
         /* The pattern stays where the chunk was carved and turns with it. */
         draw->material_frame[0] = chunk->origin.x;
@@ -725,7 +734,23 @@ static void collect_chunks(
     }
 }
 
-/* Tints the entities appended since first with the actor's hit flash. */
+/* entity.shd's apply_flash on straight coefficients: color and albedo turn
+ * toward the flash and it adds emission where the material covers. */
+static void flash_coefficients(float scene[4], float emission[4], float albedo[4], const float flash[4])
+{
+    float alpha = fmaxf(emission[3], scene[3]);
+    for (int c = 0; c < 3; c++) {
+        scene[c] += (flash[c] - scene[c]) * flash[3];
+        albedo[c] += (flash[c] - albedo[c]) * flash[3];
+        float light = emission[c] * emission[3] +
+                      flash[c] * flash[3] * RENDER_FLASH_EMISSION * scene[3];
+        emission[c] = light / fmaxf(alpha, 1e-4f);
+    }
+    emission[3] = alpha;
+}
+
+/* Tints the entities appended since first with the actor's hit flash: graph
+ * materials in the raster, after their Surface Output, others here. */
 static void flash_entities(app_scene_renderer *renderer, int first, const GameFlash *flash)
 {
     if (!flash || !isfinite(flash->amount) || flash->amount <= 0) {
@@ -736,8 +761,84 @@ static void flash_entities(app_scene_renderer *renderer, int first, const GameFl
                       ((flash->color >> 8) & 255) / 255.f,
                       fminf(flash->amount, 1) };
     for (int i = first; i < acount(renderer->entities); i++) {
-        memcpy(renderer->entities[i].flash, tint, sizeof tint);
+        render_material_entity *e = &renderer->entities[i];
+        if (e->reserved[0] != 0) {
+            memcpy(e->flash, tint, sizeof tint);
+            continue;
+        }
+        flash_coefficients(e->scene, e->emission, e->albedo, tint);
+        flash_coefficients(e->border_scene, e->border_emission, e->border_albedo, tint);
     }
+}
+
+/* Each GameLight2D in view as an emissive disc only the transport sees. */
+static void collect_lights(
+    app_scene_renderer *renderer,
+    ecs_world *world,
+    const engine *runtime,
+    render_material_view view
+)
+{
+    ecs_component_id required[] = { GAME_COMPONENT_GameTransform.id,
+                                    GAME_COMPONENT_GameLight2D.id };
+    ecs_query query;
+    if (!ecs_world_component(world, required[1]) ||
+        ecs_query_begin(world, &query, required, 2) != ECS_OK) {
+        return;
+    }
+    ecs_entity entity;
+    while (ecs_query_next(&query, &entity)) {
+        const GameLight2D *light = GAME_GameLight2D_get_const(world, entity);
+        GameTransform position = *GAME_GameTransform_get_const(world, entity);
+        if (runtime) {
+            engine_render_position(runtime, entity, &position);
+        }
+        float r = light->radius;
+        if (!isfinite(r + light->intensity + position.x + position.y) ||
+            r <= 0 || light->intensity <= 0 ||
+            !mask_visible(view, position, (material_rect){ 0, 0, 2 * r, 2 * r }, 0, 0) ||
+            !engine_entity_visible(runtime, world, entity)) {
+            continue;
+        }
+        float k = light->intensity;
+        render_material_entity disc = {
+            .inv_rot = { 1, 0, 0, 1 },
+            .pos = { position.x, -position.y },
+            .extent = { r + renderer->pixel_aa, r + renderer->pixel_aa },
+            .shape_type = RENDER_SHAPE_CIRCLE,
+            .radius = r,
+            .aa = renderer->pixel_aa,
+            .emission = { (light->color >> 24) / 255.f * k,
+                          ((light->color >> 16) & 255) / 255.f * k,
+                          ((light->color >> 8) & 255) / 255.f * k,
+                          1 },
+            .time = { renderer->time, 0, -1 },
+        };
+        apush(renderer->entities, disc);
+    }
+    ecs_query_end(&query);
+}
+
+/* Each GameTrail as a tapered, fading ribbon of emissive capsules that
+ * lights the world. */
+static void collect_trails(app_scene_renderer *renderer, ecs_world *world, const engine *runtime)
+{
+    if (!ecs_world_component(world, GAME_COMPONENT_GameTrail.id)) {
+        return;
+    }
+    if (!renderer->trails) {
+        renderer->trails = render_arena_trails_new();
+    }
+    render_arena_trails_collect(renderer->trails, world, runtime, renderer->time);
+    int count;
+    const arena_trail_segment *segments = render_arena_trails_segments(renderer->trails, &count);
+    render_trail_2d_append(
+        segments,
+        count,
+        renderer->pixel_aa,
+        renderer->time,
+        &renderer->entities
+    );
 }
 
 static void collect(
@@ -750,6 +851,7 @@ static void collect(
 {
     asetlen(renderer->entities, 0);
     renderer->tile_groups = 0;
+    renderer->refraction = false;
     aclear(renderer->reflectors);
     collect_order(renderer, world);
     for (int actor = 0; actor < acount(renderer->actors); actor++) {
@@ -808,6 +910,7 @@ static void collect(
                 continue;
             }
             int shader = binding ? render_shader_find(binding->material) : 0;
+            renderer->refraction |= render_shader_refracts(shader);
             float parameters[32][4] = { 0 };
             if (shader && !render_shader_is_shape(shader)) {
                 render_shader_parameters(shader, world, entity, binding->parameters, parameters);
@@ -871,7 +974,7 @@ static void collect(
                         draw->points[2 * j + 1] = rect.y - polygon->points[2 * j + 1];
                     }
                 }
-                draw->reserved[0] = render_shader_is_shape(shader) ? 0 : (float)shader;
+                draw->reserved[0] = render_material_slot(shader);
                 memcpy(draw->material_parameters, parameters, sizeof parameters);
                 if (frame) {
                     /* The piece's centre and axes where its material was laid out. */
@@ -901,7 +1004,8 @@ static void collect(
         if (binding) {
             render_material_entity *draw = &renderer->entities[acount(renderer->entities) - 1];
             int material = render_shader_find(binding->material);
-            draw->reserved[0] = render_shader_is_shape(material) ? 0 : (float)material;
+            renderer->refraction |= render_shader_refracts(material);
+            draw->reserved[0] = render_material_slot(material);
             draw->reserved[1] = !authored && render_shader_is_shape(shape)
                                   ? (float)shape
                                   : 0;
@@ -913,6 +1017,8 @@ static void collect(
         flash_entities(renderer, actor_first, flash);
     }
     collect_chunks(renderer, world, runtime, view);
+    collect_trails(renderer, world, runtime);
+    collect_lights(renderer, world, runtime, view);
     const game_particle *items = game_particles_data(particles);
     for (int i = 0; i < game_particles_count(particles); i++) {
         const game_particle *particle = &items[i];
@@ -1188,6 +1294,53 @@ static bool draw_backdrops(
     return true;
 }
 
+/* Adds liquid and planar reflections to the composited frame. A linear frame
+ * flips to the HDR spare; a display frame moves to output. */
+static bool reflect(
+    app_scene_renderer *renderer,
+    CF_Canvas frame,
+    render_view_2d screen,
+    CF_Texture normal,
+    CF_Canvas *output
+)
+{
+    bool liquid = renderer->lighting.reflections > 0 && renderer->fluid &&
+                  render_fluid_raster_seen(renderer->fluid).liquid;
+    if (!liquid && !acount(renderer->reflectors)) {
+        return true;
+    }
+    if (!renderer->reflections) {
+        renderer->reflections = render_reflections_new();
+    }
+    bool hdr = renderer->hdr && frame.id == render_post_2d_target(renderer->hdr).id;
+    render_reflection_frame reflection = {
+        .source = frame,
+        .destination = hdr ? render_post_2d_spare(renderer->hdr)
+                           : render_reflections_canvas(
+                                 renderer->reflections,
+                                 renderer->width,
+                                 renderer->height
+                             ),
+        .view = screen,
+        .normal = normal,
+        .liquid = liquid ? renderer->lighting.reflections : 0,
+        .time = renderer->time,
+        .surfaces = renderer->reflectors,
+        .count = acount(renderer->reflectors),
+    };
+    if (!render_reflections_draw(renderer->reflections, &reflection)) {
+        snprintf(renderer->error, sizeof renderer->error, "Reflections could not compile their shaders or allocate a canvas");
+        return false;
+    }
+    render_gpu_timing_mark("Reflections");
+    if (hdr) {
+        render_post_2d_flip(renderer->hdr);
+        return true;
+    }
+    *output = reflection.destination;
+    return true;
+}
+
 /* Distorts, grades and tone maps the linear frame into the output. */
 static bool present_hdr(
     app_scene_renderer *renderer,
@@ -1200,11 +1353,11 @@ static bool present_hdr(
     render_post_2d_settings settings = { .exposure = renderer->lighting.exposure,
                                          .bloom = renderer->lighting.bloom,
                                          .dither_phase = fmodf(renderer->time * 60, 64) };
-    render_post_2d_distortion distortion = { .normal = textures.normal,
-                                             .cover = textures.cover,
-                                             .time = renderer->time };
+    render_post_2d_distortion distortion = { .cover = textures.cover,
+                                             .time = renderer->time,
+                                             .refraction = renderer->refraction };
     render_post_2d_collect(world, runtime, screen, &settings, &distortion);
-    if (!renderer->fluid || !render_fluid_raster_hot(renderer->fluid)) {
+    if (!renderer->fluid || !render_fluid_raster_seen(renderer->fluid).hot) {
         distortion.fluid_haze = 0;
     }
     if (render_post_2d_distorts(&distortion)) {
@@ -1369,10 +1522,11 @@ bool app_scene_renderer_draw(
             renderer->fluid = render_fluid_raster_new();
         }
         if (renderer->fluid) {
-            render_fluid_raster_set_caustics(
+            render_fluid_raster_set_optics(
                 renderer->fluid,
                 renderer->time,
-                renderer->lighting.caustics
+                renderer->lighting.caustics,
+                render_post_2d_heat_haze(world) > 0
             );
         }
         if (!renderer->fluid || !render_fluid_raster_draw(
@@ -1420,27 +1574,12 @@ bool app_scene_renderer_draw(
     if (!render_radiance_composite(renderer->radiance, inputs, view, composite)) {
         return false;
     }
-    if (hdr && !present_hdr(renderer, world, runtime, screen, textures)) {
+    CF_Canvas output = renderer->output;
+    if (!reflect(renderer, composite, screen, textures.normal, &output)) {
         return false;
     }
-    CF_Canvas output = renderer->output;
-    if (acount(renderer->reflectors)) {
-        if (!renderer->reflections) {
-            renderer->reflections = render_reflections_new();
-        }
-        output = render_reflections_draw(
-            renderer->reflections,
-            output,
-            width,
-            height,
-            screen,
-            renderer->reflectors,
-            acount(renderer->reflectors)
-        );
-        if (!output.id) {
-            return false;
-        }
-        render_gpu_timing_mark("Reflections");
+    if (hdr && !present_hdr(renderer, world, runtime, screen, textures)) {
+        return false;
     }
     render_gpu_span_end(&renderer->span);
     cf_draw_canvas(

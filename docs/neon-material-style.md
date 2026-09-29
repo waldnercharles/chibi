@@ -209,15 +209,18 @@ not saved state.
 
 `GameHeatHaze{radius, strength}` shimmers the frame within radius world
 units of an entity, strongest at its center. Up to sixteen sources in view
-contribute. Burning and emissive fluid writes a heat weight into the material
-cover texture's blue channel, which `GamePost2D.heat_haze` scales.
+contribute. While `GamePost2D.heat_haze` is set, burning and emissive fluid
+writes a heat weight into the material cover texture's alpha channel, which
+that field scales; the fluid raster compiles this, and caustics, as shader
+variants, so neither costs anything while off.
 
 Shockwaves, heat haze and solid refraction share one distortion pass that
 resamples the linear frame before bloom, so bent highlights still bloom. It
-runs only while one of them is on screen: 0.09 ms at 1080p. Grading, vignette,
-grain, flash and chromatic aberration are part of the tone-map pass; the
-pass went from 0.29 to 0.35 ms with aberration active. The distortion is
-screen space: it does not reveal what is offscreen, and edges clamp.
+runs only while one of them is on screen: 0.08 ms at 1080p. Grading, vignette,
+grain, flash and chromatic aberration are part of the tone-map pass, which
+skips grading while it is neutral: 0.26 ms before, 0.27 ms neutral and
+0.31 ms with RenderLab's look. The distortion is screen space: it does not
+reveal what is offscreen, and edges clamp.
 
 ### Hit flash
 
@@ -228,8 +231,9 @@ by decay per second on the fixed clock. **Flash Entity**(Entity, Color,
 Amount) sets the color and raises the amount; Entity defaults to Self and must
 carry a `GameFlash`, which sets its decay. The flash applies after a graph
 material's Surface Output, so plain `GameMaterial`, graph materials and
-material-mask pieces all flash, borders included. Material entities grew by
-one vec4 (352 GPU bytes); the raster cost is within measurement noise.
+material-mask pieces all flash, borders included. Plain materials take the
+flash into their coefficients on the CPU; graph materials carry it after
+their parameters, and the raster reads it only where they cover a pixel.
 
 ### Backdrops
 
@@ -272,3 +276,94 @@ raster: about 0.03 ms at 1080p for RenderLab's pool. Caustics appear on the
 liquid body, the plane behind it; light reaching floors below arrives through
 bounce as a soft, moving glow rather than a focused pattern. The waves are
 procedural, not a simulated surface.
+
+### Refraction and transmission
+
+Surface Output has two more inputs for 2D solids; their zero defaults change
+nothing:
+
+- **Refraction** bends what lies behind the surface by this many output
+  pixels along the Normal's tilt. The material raster writes the offset,
+  weighted by coverage rather than opacity, to the cover texture's GB
+  channels, and the screen distortion pass resamples the finished linear
+  frame there, so the background, lit scene and received light behind glass
+  all bend, and the bent highlights still bloom. The pass runs only while a
+  material that may refract is collected.
+- **Transmission** is the fraction of each channel that crosses a meter (32
+  world units) of the material. HRC transports gray light, so it absorbs like
+  the least transmitted channel, `-ln(min T) / 32` per world unit; the colored
+  rest joins the material's albedo. Glass lit from behind then glows in its
+  color, and bounce carries that color into what the light reaches next.
+
+Plain `GameMaterial` keeps its `filter` and gray absorption. RenderLab's
+`GlassSlab` uses `RenderLabGlass`: a pillowed, slightly wavy cyan pane.
+
+The bend is screen space: it shows what is on screen, clamped at the edges,
+not what a lens would really gather. Transmission is not a colored
+transport; light behind colored glass is gray light plus the glass's colored
+re-emission, which also spreads backward. Refractive solids do not focus
+caustics. Adding the two inputs changed the Surface Output pin layout; the
+shipped materials were migrated and `CHIBI_PROJECT_VERSION` is now 4.
+
+### Reflections
+
+`GameHRC2D.reflections` (zero disables; RenderLab uses 0.6) makes liquid
+surfaces mirror what lies above them. Each liquid pixel marches up the
+material normal's liquid mask, 24 steps over 60 world units, to its surface.
+Where that surface faces up (its normal's upward component above about 0.35,
+as a pool's does), the pixel shows the frame mirrored across the surface,
+rippled by time and by the surface normal, fading over 36 world units of
+depth. An object h above the surface appears h below it, so only things near
+the water show; the mirror is the finished linear frame, so reflected lights
+bloom.
+
+The same pass draws `GameReflection`'s planar reflections. With tone mapping
+both now run on the linear frame before distortion and bloom; without it they
+run on the display frame as before. The pass runs only while liquid is in
+view with nonzero strength or a reflector is collected: 0.06 ms at 1080p for
+RenderLab. It shows only what is on screen, and a surface deeper than 60
+world units below its pixel does not reflect there.
+
+### Trails
+
+`GameTrail{color, width, lifetime, emission}` now draws in 2D scenes too. The
+3D arena's trail history (`src/render/arena_trail.c`) records each entity's
+position on the fixed clock and fades it over `lifetime`; the 2D path
+(`src/render/trail_2d.c`) turns each trail into at most eight capsules of the
+material raster, so a trail tapers from `width` at its head, fades out, emits
+`color` times `emission` and lights the world through HRC. The history holds
+256 trails (it held 64) and records while the scene renders.
+
+200 moving trails cost 0.19 ms of material raster at 1080p (0.31 to
+0.50 ms); drawing every history segment as its own capsule cost 0.73 ms. The
+eight pieces follow the curve by chords, and their overlapping round joints
+show as faint beads along the ribbon. The raster now uploads material
+parameters only for graph entities, which trails, particles and plain
+materials are not.
+
+### Lights
+
+`GameLight2D{color, intensity, radius}` is an invisible disc of light: it
+emits color times intensity, on the same scale as `GameMaterial`'s emission,
+over `radius` world units into the HRC transport, and nothing is drawn. Use
+it for muzzle flashes, lamps and fire glow without geometry; RenderLab's
+brazier carries one. The disc is a material-raster circle marked as a light:
+its emission joins the transport's source density but not the emission the
+composite displays. Fog still shows the glow in open air around it. A light
+costs as much as any small emissive circle.
+
+### Cost summary
+
+Sandbox at 1920x1080, Release, HRC resolution fixed at 1 and simulation
+frozen, medians of five 240-frame runs on an Apple M4 Pro:
+
+| Build | Scene GPU | Notes |
+| --- | --- | --- |
+| Before these capabilities | 13.92 ms | |
+| With them, none used | 14.07 ms | material raster +0.13 (refraction and light bookkeeping per covered pixel), fluid raster and tone map +0.01 each |
+| Every capability on | 15.20 ms | adds two backdrops (0.44 ms), caustics, heat haze, reflections, distortion, a glass slab, a pool and a brazier |
+
+The all-on scene also contains more matter (a pool, a fire that spreads into
+the Sandbox's fuel), so its difference overstates the effects' own cost; the
+per-pass figures in each section above isolate them. 200 trails add 0.19 ms
+of raster on top.

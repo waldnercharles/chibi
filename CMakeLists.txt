@@ -444,7 +444,7 @@ target_include_directories(automation PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(automation PUBLIC runtime_support core authoring_graph editor)
 
 # --- material rasterization and radiance transport --------------------------
-add_library(chibi_render STATIC src/render/fog.c src/render/material_raster.c src/render/fluid_raster.c src/render/reflections.c src/render/radiance.c src/render/post_2d.c src/render/post_2d_scene.c src/render/backdrop_2d.c src/render/gpu_timing.c
+add_library(chibi_render STATIC src/render/fog.c src/render/material_raster.c src/render/fluid_raster.c src/render/reflections.c src/render/radiance.c src/render/post_2d.c src/render/post_2d_scene.c src/render/backdrop_2d.c src/render/trail_2d.c src/render/gpu_timing.c
     src/render/geometry_2d.c
     src/render/arena3d.c src/render/arena_geometry.c src/render/arena_influence.c
     src/render/arena_parts.c src/render/arena_visual.c src/render/arena_trail.c

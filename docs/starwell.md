@@ -175,6 +175,24 @@ These are shared, optional capabilities; the game rules stay authored.
 - Material-graph parallax backdrops.
 - Hit flash.
 
+## Rendering capabilities
+
+The rendering spectacle is shared engine work, documented with its costs in
+[Starwell rendering capabilities](neon-material-style.md#starwell-rendering-capabilities).
+`scenes/RenderLab.yaml` shows each effect without combat.
+
+| Want | Use |
+| --- | --- |
+| Grading, vignette, grain, chromatic aberration | `GamePost2D` |
+| Hit-stop juice: flash, chromatic pulse, blast rings | Flash Screen, Pulse Chromatic Aberration, Add Shockwave |
+| Heat haze over fire and lava | `GameHeatHaze`, `GamePost2D.heat_haze` |
+| Hit flash that lights the room | `GameFlash`, Flash Entity |
+| Per-stratum nebulae and silhouettes | `GameBackdrop2D` with a material graph |
+| Water caustics and pool reflections | `GameHRC2D.caustics`, `GameHRC2D.reflections` |
+| Glass that bends and tints light | Surface Output Refraction and Transmission |
+| Projectile and ship ribbons that light the world | `GameTrail` |
+| Muzzle flashes and lamps without geometry | `GameLight2D` |
+
 ## Status
 
 The status of each capability and content piece is kept in the Progress
@@ -184,7 +202,7 @@ section below and updated as work lands.
 
 - [ ] Engine: gameplay runtime capabilities
 - [ ] Engine: matter (gravity, substances, reactions, deposition, MPM)
-- [ ] Engine: rendering spectacle
+- [x] Engine: rendering spectacle
 - [ ] Content: ship, weapons and modules
 - [ ] Content: strata terrain, materials and backdrops
 - [ ] Content: enemies and bosses

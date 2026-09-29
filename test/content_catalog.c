@@ -207,6 +207,7 @@ void run_content_catalog_checks()
         "Camera.yaml",
         "Cave.yaml",
         "Cloud.yaml",
+        "Comet.yaml",
         "Crystal.yaml",
         "DeathEmitter.yaml",
         "DriftingMarker.yaml",

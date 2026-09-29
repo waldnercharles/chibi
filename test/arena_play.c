@@ -6,6 +6,7 @@
 #include "editor/workspace/scene_internal.h"
 #include "graph/compiler/behavior_program.h"
 #include "graph/model/registry.h"
+#include "graph/runtime/random.h"
 #include "platform/cute.h"
 #include "render/arena3d.h"
 #include "render/arena_geometry.h"
@@ -1768,7 +1769,7 @@ int arena_scene_scale_run(const char *program, int count, int frames, bool profi
     cf_app_set_present_mode(CF_PRESENT_MODE_IMMEDIATE);
     arena_app_start();
     behavior_backend previous = behavior_debug_backend(BEHAVIOR_SLJIT);
-    srand(12345);
+    behavior_srand(12345);
     arena_fixture f = fixture_new();
     app_game_presentation *game = app_game_presentation_new(f.scene, f.viewport, false);
     assert(game);
@@ -2105,7 +2106,7 @@ int compiled_arena_run(const char *program)
     behavior_backend modes[] = { BEHAVIOR_SLJIT, BEHAVIOR_BYTECODE };
     for (int mode = 0; mode < 2; mode++) {
         behavior_backend previous = behavior_debug_backend(modes[mode]);
-        srand(12345);
+        behavior_srand(12345);
         arena_fixture f = fixture_new();
         assert(app_scene_authoring_runtime_command(f.scene, APP_RUNTIME_SCENE, APP_RUNTIME_PLAY) == 0);
         game_behavior_set_profiling(f.live->behaviors, !getenv("CBLUEPRINT_BENCH_NO_PROFILE"));

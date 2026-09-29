@@ -65,6 +65,8 @@ typedef struct
 
 game_behavior_world *game_behavior_world_new(ecs_world *world);
 void game_behavior_world_free(game_behavior_world *world);
+/* Restarts the stream every random draw of this world's graphs reads. */
+void game_behavior_seed_random(game_behavior_world *world, uint64_t seed);
 game_save *game_behavior_save(game_behavior_world *world);
 int game_behavior_register_asset(game_behavior_world *world, const char *asset_name, behavior_asset *definition);
 int game_behavior_unregister_asset(

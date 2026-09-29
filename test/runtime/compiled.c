@@ -1,6 +1,7 @@
 #include "graph/compiler/graph_jit_sljit.h"
 #include "graph/document/library.h"
 #include "graph/runtime/flow_internal.h"
+#include "graph/runtime/random.h"
 #include "graph/runtime/runtime.h"
 #include "test/instance_bank_fixture.h"
 #include "test/pending_fixture.h"
@@ -669,15 +670,15 @@ static void pure_unused_return(behavior_backend backend)
             !behavior_program_function_diagnostic(behavior_program_graph(a->program, a->graph), event)
         );
     }
-    srand(2718);
-    (void)rand();
-    int expected_next = rand();
-    srand(2718);
+    behavior_srand(2718);
+    (void)behavior_rand();
+    int expected_next = behavior_rand();
+    behavior_srand(2718);
     flow_error error = { 0 };
     uint64_t eval = eval_oracle_calls(), flow = flow_oracle_calls();
     flow_run *run = behavior_instance_dispatch(bi, "Run", (flow_inputs){ 0 }, &error);
     assert(run && flow_run_status(run) == FLOW_COMPLETED);
-    assert(bi->variables[0].d == 42 && rand() == expected_next);
+    assert(bi->variables[0].d == 42 && behavior_rand() == expected_next);
     if (backend != BEHAVIOR_ORACLE) {
         assert(run->whole_function_executed);
         assert(eval == eval_oracle_calls() && flow == flow_oracle_calls());

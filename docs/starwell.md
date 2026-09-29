@@ -175,6 +175,17 @@ These are shared, optional capabilities; the game rules stay authored.
 - Material-graph parallax backdrops.
 - Hit flash.
 
+## Engine capabilities
+
+What has landed, and its contract. Every node is in searchNodes and Studio.
+
+- **Seeded randomness.** Every behavior random draw (`Random Real`, `Random
+  Range`, `Random Range Vector`, random state selection, expression `rand()`)
+  reads its world's PCG32 stream, so a seeded world replays the same draws.
+  `Set Random Seed(Seed)` restarts the stream. Expressions gain `hash(x, y,
+  seed)` and `noise(x, y, seed)` (nodes `Hash` and `Noise`): the field graph's
+  lattice functions with `seed` as the whole seed, both from -1 to 1.
+
 ## Status
 
 The status of each capability and content piece is kept in the Progress

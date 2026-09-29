@@ -35,7 +35,9 @@ node with Integer pins divides as integers, truncating toward zero.
 | `atan2` | `y, x` |
 | `direction` | One angle, the unit `CF_V2` `(cos, sin)`; or `from, to`, the unit `CF_V2` between two points |
 | `clamp` | `value, minimum, maximum` |
-| `rand` | No arguments; returns a value from 0 inclusive to 1 exclusive |
+| `rand` | No arguments; returns a value from 0 inclusive to 1 exclusive, drawn from the world's seeded random stream |
+| `hash` | `x, y, seed`; a value from -1 to 1 fixed for the seed and the unit cell holding `(x, y)`, the same value as the field graph's `hash` with that seed |
+| `noise` | `x, y, seed`; smooth value noise from -1 to 1, one lattice cell per unit, the same value as the field graph's `noise` with that seed |
 | `vec2` | `x, y`; constructs a `CF_V2` |
 | `vec3` | `x, y, z`; constructs a `CF_V3` |
 

@@ -3,6 +3,7 @@
 #include "graph/nodes/vector_nodes.h"
 #include "graph/runtime/flow_internal.h"
 #include "graph/runtime/instance.h"
+#include "graph/runtime/random.h"
 #include "test/whole_random_fixture.h"
 
 #include <assert.h>
@@ -94,7 +95,7 @@ static void smoke_case(int kind, double first, double last)
             !behavior_instance_set_backend(bi, mode ? behavior_default_backend() : BEHAVIOR_ORACLE)
         );
         behavior_instance_set_trace_enabled(bi, false);
-        srand(937);
+        behavior_srand(937);
         uint64_t eval = eval_oracle_calls(), flow = flow_oracle_calls();
         flow_run *run = behavior_instance_dispatch(bi, "Tick", (flow_inputs){ args, count }, NULL);
         assert(run && flow_run_status(run) == FLOW_COMPLETED);
@@ -106,9 +107,9 @@ static void smoke_case(int kind, double first, double last)
                     expected[i].ptr = vector[i];
                 }
             }
-            next = rand();
+            next = behavior_rand();
         } else {
-            assert(run->whole_function_executed && rand() == next);
+            assert(run->whole_function_executed && behavior_rand() == next);
             assert(eval == eval_oracle_calls() && flow == flow_oracle_calls());
             for (int i = 0; i < 3; i++) {
                 pin_value actual = bi->variables[i];

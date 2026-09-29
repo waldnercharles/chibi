@@ -3,6 +3,7 @@
 #include "graph/nodes/particle_nodes.h"
 #include "graph/runtime/flow_internal.h"
 #include "graph/runtime/instance.h"
+#include "graph/runtime/random.h"
 #include "test/whole_particle_fixture.h"
 
 #include <assert.h>
@@ -73,16 +74,16 @@ void whole_particle_smoke()
             );
             behavior_instance_set_trace_enabled(bi, false);
             assert(!behavior_instance_bind_service(bi, "game.particles", particles));
-            srand(317);
+            behavior_srand(317);
             uint64_t eval = eval_oracle_calls(), flow = flow_oracle_calls();
             flow_run *run = behavior_instance_dispatch(bi, "Run", (flow_inputs){ 0 }, NULL);
             assert(run && flow_run_status(run) == FLOW_SUSPENDED);
             assert(!behavior_instance_tick(bi, .125));
             assert(flow_run_status(run) == FLOW_COMPLETED);
             if (!mode) {
-                next = rand();
+                next = behavior_rand();
             } else {
-                assert(run->whole_function_executed && rand() == next);
+                assert(run->whole_function_executed && behavior_rand() == next);
                 assert(eval == eval_oracle_calls() && flow == flow_oracle_calls());
                 int count = game_particles_count(actual);
                 assert(count > 0 && count == game_particles_count(expected));

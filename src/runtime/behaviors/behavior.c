@@ -2,6 +2,7 @@
 
 #include "diagnostics/tracy.h"
 #include "graph/runtime/eval.h"
+#include "graph/runtime/random.h"
 #include "graph/runtime/update.h"
 #include "runtime/behaviors/entities.h"
 #include "runtime/behaviors/parallel.h"
@@ -97,6 +98,7 @@ struct game_behavior_world
     int last_pump_count;
     uint64_t next_sequence;
     behavior_clock clock;
+    behavior_random random;
     behavior_profile_record profile[GAME_BEHAVIOR_PROFILE_MAX];
     int profile_count;
     bool profile_disabled;
@@ -529,7 +531,19 @@ game_behavior_world *game_behavior_world_new(ecs_world *world)
     result->profile_disabled = true;
     ecs_eval_component_reader_init(&result->component_reader, world);
     result->next_sequence = 1;
+    behavior_random_seed(&result->random, 0);
     return result;
+}
+
+void game_behavior_seed_random(game_behavior_world *world, uint64_t seed)
+{
+    behavior_random_seed(&world->random, seed);
+}
+
+/* Graphs this world runs draw from its own stream. */
+static void use_random(game_behavior_world *world)
+{
+    behavior_random_use(&world->random);
 }
 
 game_audio *game_behavior_audio(game_behavior_world *world)
@@ -592,6 +606,7 @@ void game_behavior_world_free(game_behavior_world *world)
     if (!world) {
         return;
     }
+    behavior_random_use(NULL);
     behavior_update_free_code(world->update_code);
     clear_update_bindings(world);
     game_behavior_parallel_free(world->update_parallel);
@@ -691,6 +706,7 @@ static int begin_instance(game_behavior_world *world, behavior_attachment *attac
     if (world->defer_begin) {
         return 0;
     }
+    use_random(world);
     /* Mark first: Begin may enqueue work or grow the attachment array. */
     attachment->begin_state = 1;
     behavior_instance *instance = attachment->instance;
@@ -1236,6 +1252,7 @@ static int dispatch_attachment(
     bool batch
 )
 {
+    use_random(world);
     flow_error local = { 0 };
     flow_run *run;
     behavior_instance *instance = attachment->instance;
@@ -1451,6 +1468,7 @@ int game_behavior_update(game_behavior_world *world, flow_error *error)
     if (!world) {
         return FLOW_ERR_ARGUMENT;
     }
+    use_random(world);
     world->update_stats = (game_behavior_update_stats){ 0 };
     pin_value delta = { .type = PIN_F32, .f = (float)world->clock.delta_seconds };
     flow_inputs tick_inputs = { .values = &delta, .count = 1 };
@@ -1667,6 +1685,7 @@ int game_behavior_pump(game_behavior_world *world, double monotonic_time)
     if (!world) {
         return FLOW_ERR_ARGUMENT;
     }
+    use_random(world);
     game_behavior_set_time(world, monotonic_time);
     aclear(world->pumped);
     world->last_pump_count = 0;

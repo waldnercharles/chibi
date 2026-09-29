@@ -3,6 +3,7 @@
 #include "graph/model/registry.h"
 #include "graph/nodes/state_nodes.h"
 #include "graph/runtime/flow_internal.h"
+#include "graph/runtime/random.h"
 #include "test/flow_snapshot.h"
 #include "test/whole_multigate_fixture.h"
 
@@ -68,7 +69,7 @@ static void check(int outputs, int kind, int control, void *library)
                                                          ? control - 4
                                                          : 0 };
         assert(!behavior_instance_bind_service(bi, "test.multigate", &service));
-        srand(5791);
+        behavior_srand(5791);
         int at = 0;
         for (int round = 0; round < ROUNDS; round++) {
             pin_value args[] = { { .type = PIN_BOOL, .b = round == 0 || round == 25 },
@@ -111,7 +112,7 @@ static void check(int outputs, int kind, int control, void *library)
                            ? flow_run_tick_at(run, flow_run_wake_time(run))
                            : flow_run_step(run);
             }
-            int draw = rand();
+            int draw = behavior_rand();
             const pin_value *state = &bi->node_states[0];
             if (!mode) {
                 masks[round] = state->type == PIN_STR ? strdup(state->str) : NULL;
@@ -243,15 +244,15 @@ static void boundaries()
         behavior_instance *bi = behavior_instance_create(a, NULL, NULL, NULL);
         assert(!behavior_instance_set_backend(bi, mode ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE));
         behavior_instance_set_trace_enabled(bi, false);
-        srand(9247);
-        (void)rand();
-        int next_draw = rand();
-        srand(9247);
+        behavior_srand(9247);
+        (void)behavior_rand();
+        int next_draw = behavior_rand();
+        behavior_srand(9247);
         graph *g = whole_multigate_root(a);
         flow_options options = { .instance = bi };
         flow_run *run = flow_run_start(g, g->nodes[0], (flow_inputs){ args, 4 }, &options, NULL);
         assert(run && !flow_run_resume(run) && run->whole_function_executed);
-        assert(bi->variables[0].i == 2 && rand() == next_draw);
+        assert(bi->variables[0].i == 2 && behavior_rand() == next_draw);
         flow_run_free(run);
         behavior_instance_destroy(bi);
     }
@@ -361,7 +362,7 @@ int bench_multigate(const char *path, int count, int rotation)
                                               .budget = 100 };
             behavior_instance_bind_values(bi, &ctx);
             behavior_function_prepare_host(f, &ctx);
-            srand(32719);
+            behavior_srand(32719);
             uint64_t sum = 0, vm = 0, data = 0;
             int strings = 0;
             double start = 0;

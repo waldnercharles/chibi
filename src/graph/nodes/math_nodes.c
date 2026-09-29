@@ -1,7 +1,9 @@
 #include "graph/nodes/math_nodes.h"
 
 #include "graph/compiler/behavior_scalar.h"
+#include "graph/runtime/flow.h"
 #include "graph/runtime/random.h"
+#include "support/value_noise.h"
 
 #include <assert.h>
 #include <math.h>
@@ -135,7 +137,7 @@ node_desc NODE_Mix = { .name = "Mix",
 static pin_value random_sample(const pin_value *, int count, arena *)
 {
     assert(count == 0);
-    return (pin_value){ .type = PIN_F64, .d = (double)rand() / ((double)RAND_MAX + 1) };
+    return (pin_value){ .type = PIN_F64, .d = behavior_random_unit() };
 }
 
 static const char *random_value(const eval_context *, arena *, pin_value *out)
@@ -199,6 +201,100 @@ node_desc NODE_RandomRangeReal = {
     .keywords = "rand random range sample min max",
     .description = "Returns a random number between Min and Max, which default "
                    "to 0 and 1; reversed bounds swap."
+};
+
+static pin_spec lattice_inputs[] = {
+    { .name = "X", .type = PIN_F64, .type_name = "double" },
+    { .name = "Y", .type = PIN_F64, .type_name = "double" },
+    { .name = "Seed", .type = PIN_F64, .type_name = "double" },
+};
+
+/* The field graph's lattice with Seed as its whole seed: truncated to an
+ * integer as the field truncates its Seed Offset. */
+static bool lattice_point(double x, double y, double seed)
+{
+    return fabs(x) < VALUE_NOISE_LIMIT && fabs(y) < VALUE_NOISE_LIMIT &&
+           fabs(seed) < VALUE_NOISE_LIMIT;
+}
+static double lattice_hash(double x, double y, double seed)
+{
+    if (!lattice_point(x, y, seed)) {
+        return NAN;
+    }
+    return value_hash((unsigned)(int)seed, (int)floorf((float)x), (int)floorf((float)y));
+}
+static double lattice_noise(double x, double y, double seed)
+{
+    if (!lattice_point(x, y, seed)) {
+        return NAN;
+    }
+    return value_noise((unsigned)(int)seed, (float)x, (float)y);
+}
+
+#define LATTICE(NAME, LABEL, FN, KEYWORDS, DESCRIPTION)                                         \
+    static pin_value NAME##_value(const pin_value *inputs, int count, arena *)                  \
+    {                                                                                           \
+        assert(count == 3);                                                                     \
+        return (pin_value){ .type = PIN_F64,                                                    \
+                            .d = FN(inputs[0].d, inputs[1].d, inputs[2].d) };                   \
+    }                                                                                           \
+    static const char *NAME##_call(arena *, const pin_value *inputs, int count, pin_value *out) \
+    {                                                                                           \
+        *out = NAME##_value(inputs, count, NULL);                                               \
+        return NULL;                                                                            \
+    }                                                                                           \
+    node_desc NODE_##NAME = { .name = LABEL,                                                    \
+                              .inputs = lattice_inputs,                                         \
+                              .input_count = 3,                                                 \
+                              .outputs = result,                                                \
+                              .output_count = 1,                                                \
+                              .pure_kind = NODE_PURE_CALL,                                      \
+                              .fn = NAME##_value,                                               \
+                              .host_call = &(const node_host_call){ .value = NAME##_call },     \
+                              .access = &pure,                                                  \
+                              .category = "Math/Random",                                        \
+                              .keywords = KEYWORDS,                                             \
+                              .description = DESCRIPTION,                                       \
+                              .foldable = true };
+LATTICE(Hash, "Hash", lattice_hash, "random cell lattice seed deterministic field", "Returns a value from -1 to 1 fixed for Seed and the unit cell holding (X, Y), matching the field graph's hash.")
+LATTICE(Noise, "Noise", lattice_noise, "value noise smooth lattice seed field", "Returns smooth value noise from -1 to 1 at (X, Y) for Seed, one lattice cell per unit, matching the field graph's noise.")
+#undef LATTICE
+
+static const char *seed_call(void *, const pin_value *inputs, pin_value *)
+{
+    behavior_srand((uint32_t)inputs[0].i);
+    return NULL;
+}
+static int set_random_seed(node *, flow_context *ctx)
+{
+    pin_value seed;
+    int result = flow_context_eval_data(ctx, 1, &seed);
+    if (result < 0) {
+        return result;
+    }
+    seed_call(NULL, &seed, NULL);
+    return flow_context_continue(ctx, 0);
+}
+static pin_spec seed_inputs[] = {
+    { .name = "Exec", .type = PIN_FLOW, .kind = PIN_EXEC },
+    { .name = "Seed", .type = PIN_I32, .type_name = "int" },
+};
+static pin_spec seed_outputs[] = { { .name = "Then", .type = PIN_FLOW, .kind = PIN_EXEC } };
+node_desc NODE_SetRandomSeed = {
+    .name = "Set Random Seed",
+    .inputs = seed_inputs,
+    .input_count = 2,
+    .outputs = seed_outputs,
+    .output_count = 1,
+    .flow_kind = NODE_FLOW_CUSTOM,
+    .flow = set_random_seed,
+    .host_call = &(const node_host_call){ .invoke = seed_call },
+    .display_class = NODE_DISPLAY_FLOW,
+    .access = &random_access,
+    .category = "Math/Random",
+    .keywords = "rand random seed reseed deterministic replay",
+    .description = "Restarts this world's random stream from Seed, so later "
+                   "random draws repeat for the same Seed.",
 };
 
 static pin_spec damped_spring_inputs[] = {

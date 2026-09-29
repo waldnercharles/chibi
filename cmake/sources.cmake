@@ -122,6 +122,7 @@ set(CORE_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/runtime/runtime.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/runtime/value_array.c
     src/graph/runtime/value_index.c
+    src/graph/runtime/random.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/support/arena.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/support/asset_text.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/support/file_watch.c

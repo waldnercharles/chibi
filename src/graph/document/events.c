@@ -86,6 +86,12 @@ int graph_host_event_apply(graph *g, node *n)
     return 0;
 }
 
+bool graph_event_sends(const node_desc *desc)
+{
+    return !strcmp(desc->name, "Send Event") ||
+           !strcmp(desc->name, "Send Event To All");
+}
+
 static bool receiver(const node *n)
 {
     return n->desc->flow_kind == NODE_FLOW_EVENT;

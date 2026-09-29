@@ -448,14 +448,15 @@ static void ed_search_events(const editor *e, ed_search_match **matches, const c
 {
     const node_desc *descs[] = { &NODE_Event,
                                  &NODE_CallEvent,
-                                 registry_node_by_name("Send Event") };
-    const char *verbs[] = { "On", "Call", "Send" };
+                                 registry_node_by_name("Send Event"),
+                                 registry_node_by_name("Send Event To All") };
+    const char *names[] = { "On %s", "Call %s", "Send %s", "Send %s To All" };
     for (int i = 0; i < acount(e->asset_catalog); i++) {
         const behavior_asset *event = e->asset_catalog[i];
         if (event->domain != BEHAVIOR_DOMAIN_EVENT_DEFINITION) {
             continue;
         }
-        for (int action = 0; action < 3; action++) {
+        for (int action = 0; action < 4; action++) {
             const node_desc *desc = descs[action];
             if (!desc) {
                 continue;
@@ -485,13 +486,7 @@ static void ed_search_events(const editor *e, ed_search_match **matches, const c
                 signature.output_count = acount(pins);
             }
             ed_search_match match = { .desc = desc, .event = event, .category = "Events" };
-            snprintf(
-                match.name,
-                sizeof match.name,
-                "%s %s",
-                verbs[action],
-                event->name
-            );
+            snprintf(match.name, sizeof match.name, names[action], event->name);
             ed_add_search_match(e, matches, match, &signature, filter);
             afree(pins);
         }

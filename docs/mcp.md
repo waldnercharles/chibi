@@ -428,7 +428,8 @@ with every word:
   `inputs` or `connect`.
 - Events: `on hit` returns `{"type": "Event", "event_name": "Contact Begin",
   "out": ["Then: exec", "Other: ecs.entity", "Point: CF_V2"]}`, and a project
-  event also returns its `Send Event` with `reference_name`. Naming an event
+  event also returns its `Send Event` and `Send Event To All` with
+  `reference_name`. Naming an event
   exactly ranks it first.
 - UI events: each `data-event` and `data-keys` name in `content/ui` reaches the
   `GameUi` entity showing the document, so `extract` returns `{"type":
@@ -561,8 +562,10 @@ generated `Get_<Component>`, `Set_<Component>_<field>`, `Add_<Component>` and
 
 `add_node` honors `event_name`. Tick, Input, and Contact Begin events acquire
 their host payload pins automatically. Declare custom payloads as variables in
-an `event` asset first; adding Event, Call Event, or Send Event for that name
-then applies its declaration IDs and types. Payload declarations participate in
+an `event` asset first; adding Event, Call Event, Send Event or Send Event To
+All for that name then applies its declaration IDs and types. `Send Event To
+All` takes a `Component` name instead of an Entity and queues the event, with
+its payload, for every entity that has the component, in query order. Payload declarations participate in
 link validation. Do not recreate their pins manually.
 
 Use `set_output` on a constant node when a shader value has no input pins;

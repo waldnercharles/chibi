@@ -222,6 +222,9 @@ What has landed, and its contract. Every node is in searchNodes and Studio.
   target's and the body is placed at the new pose. A dead target clears
   `target`. Followers without a body render at their stepped pose, not
   interpolated.
+- **Broadcast.** `Send Event To All(Component, payload…)` queues a typed event
+  for every entity with the component (key or name), mirroring Send Event's
+  payload pins; entities being destroyed are skipped.
 
 ## Status
 

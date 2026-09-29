@@ -3,6 +3,7 @@
  * index, listed in Output's Find view. A row opens its asset and reveals its
  * node. */
 #include "editor/studio/studio_graph_internal.h"
+#include "graph/document/events.h"
 #include "graph/model/registry.h"
 #include "graph/nodes/component_nodes.h"
 #include "support/array.h"
@@ -132,7 +133,7 @@ static bool event_node(const node *n)
     const char *name = n->desc->name;
     return n->reference_name && n->reference_name[0] &&
            (!strcmp(name, "Event") || !strcmp(name, "Call Event") ||
-            !strcmp(name, "Send Event"));
+            graph_event_sends(n->desc));
 }
 
 static const char *spawned_prototype(const node *n)

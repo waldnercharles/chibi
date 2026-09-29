@@ -1,3 +1,4 @@
+#include "graph/document/events.h"
 #include "graph/nodes/component_nodes.h"
 #include "graph/runtime/random.h"
 #include "runtime/camera.h"
@@ -823,6 +824,70 @@ static void follow_rules()
     fixture_free(&f);
 }
 
+static behavior_asset *ping_definition()
+{
+    behavior_asset *definition = behavior_asset_new("Ping");
+    definition->domain = BEHAVIOR_DOMAIN_EVENT_DEFINITION;
+    assert(
+        behavior_asset_add_variable(definition, "Amount", PIN_F32, "float", PIN_CONTAINER_SINGLE, NULL, "Payload")
+    );
+    return definition;
+}
+
+/* Ping(Amount) writes Amount to Velocity.x. */
+static behavior_asset *pinged_behavior(const behavior_asset *definition)
+{
+    behavior_asset *asset = behavior("Pinged");
+    graph *g = asset->graph;
+    node *ping = add(g, "Event");
+    assert(graph_event_apply(g, ping, definition) == 0);
+    node *set = add(g, "Set_GameVelocity");
+    node *make = add(g, "Make_CF_V2");
+    flow(g, ping, set);
+    wire(g, ping, 1, make, 0);
+    wire(g, make, 0, set, 1);
+    return asset;
+}
+
+/* Begin sends Ping(3) to every GameHealth entity. */
+static behavior_asset *broadcast_behavior(const behavior_asset *definition)
+{
+    behavior_asset *asset = behavior("Broadcast");
+    graph *g = asset->graph;
+    node *send = add(g, "Send Event To All");
+    assert(graph_set_node_reference(g, send, 0, "Ping") == 0);
+    assert(graph_event_apply(g, send, definition) == 0);
+    assert(send->input_count == 3 && !strcmp(send->input_pins[2].name, "Amount"));
+    set_input(g, send, 1, (pin_value){ .type = PIN_NAME, .type_name = "name", .str = "GameHealth" });
+    set_input(g, send, 2, (pin_value){ .type = PIN_F32, .type_name = "float", .f = 3 });
+    flow(g, event(g, "Begin"), send);
+    return asset;
+}
+
+static void broadcast()
+{
+    run_fixture f = fixture_new();
+    behavior_asset *definition = ping_definition();
+    assert(game_live_add_definition(f.live, game_live_definition_new("Ping", definition)) == 0);
+    fixture_behavior(&f, pinged_behavior(definition));
+    fixture_behavior(&f, broadcast_behavior(definition));
+    const char *healthy = "{\"name\":\"Healthy\",\"behaviors\":[\"Pinged\"],"
+                          "\"components\":{"
+                          "\"GameTransform\":{},\"GameVelocity\":{},"
+                          "\"GameHealth\":{\"current\":1,\"maximum\":1}}}";
+    const char *plain = "{\"name\":\"Plain\",\"behaviors\":[\"Pinged\"],"
+                        "\"components\":{"
+                        "\"GameTransform\":{},\"GameVelocity\":{}}}";
+    ecs_entity first = fixture_spawn(&f, healthy), other = fixture_spawn(&f, plain);
+    ecs_entity second = fixture_spawn(&f, healthy);
+    fixture_spawn(&f, "{\"name\":\"Caster\",\"behaviors\":[\"Broadcast\"],\"components\":{}}");
+    fixture_steps(&f, 1);
+    assert(GAME_GameVelocity_get_const(f.world, first)->x == 3);
+    assert(GAME_GameVelocity_get_const(f.world, second)->x == 3);
+    assert(GAME_GameVelocity_get_const(f.world, other)->x == 0);
+    fixture_free(&f);
+}
+
 void test_run_capabilities()
 {
     seeded_randomness();
@@ -832,5 +897,6 @@ void test_run_capabilities()
     camera_trauma();
     components_on_any_entity();
     follow_rules();
-    puts("Run capabilities PASS: seeded per-world randomness, run seeds, seed_from_run terrain, restart requests, Sample Field, Terrain Distance, time scale, hit-stop, camera trauma, components on any entity and follow rules");
+    broadcast();
+    puts("Run capabilities PASS: seeded per-world randomness, run seeds, seed_from_run terrain, restart requests, Sample Field, Terrain Distance, time scale, hit-stop, camera trauma, components on any entity, follow rules and broadcast events");
 }

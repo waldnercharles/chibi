@@ -211,6 +211,9 @@ What has landed, and its contract. Every node is in searchNodes and Studio.
   0–1. Trauma falls by `decay` per real second; `game_camera_view` offsets the
   view (not the entity) by `max_offset * trauma²` times smooth noise at
   `frequency`.
+- **Add and Remove Component on any entity.** Both nodes (and the generated
+  `Add_<C>`/`Remove_<C>`) take an Entity input that defaults to Self; a dead
+  entity adds or removes nothing and Value is false.
 
 ## Status
 

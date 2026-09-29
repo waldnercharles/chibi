@@ -45,7 +45,7 @@ static pin_spec get_outputs[] = { VALUE_PIN(PIN_FLAG_REFERENCE) };
 static pin_spec has_outputs[] = { { .name = "Value", .type = PIN_BOOL, .type_name = "bool" } };
 static pin_spec set_inputs[] = { EXEC_PIN, SETTING_PIN, ENTITY_PIN, VALUE_PIN(0) };
 static pin_spec set_outputs[] = { THEN_PIN, VALUE_PIN(0) };
-static pin_spec add_inputs[] = { EXEC_PIN, SETTING_PIN };
+static pin_spec add_inputs[] = { EXEC_PIN, ENTITY_PIN, SETTING_PIN };
 static pin_spec add_outputs[] = { THEN_PIN,
                                   { .name = "Value", .type = PIN_BOOL, .type_name = "bool" } };
 static pin_spec make_inputs[] = { TYPE_PIN };
@@ -89,28 +89,28 @@ node_desc NODE_HasComponent = {
 
 node_desc NODE_AddComponent = {
     .name = "Add Component",
-    .input_count = 2,
+    .input_count = 3,
     .inputs = add_inputs,
     .output_count = 2,
     .outputs = add_outputs,
     .display_class = NODE_DISPLAY_FUNCTION,
     .category = "Components",
-    .keywords = "component add attach insert self",
-    .description = "Adds a component with default values to Self; Value is "
-                   "whether it was added.",
+    .keywords = "component add attach insert entity self",
+    .description = "Adds a component with default values to Entity, which "
+                   "defaults to Self; Value is whether it was added.",
 };
 
 node_desc NODE_RemoveComponent = {
     .name = "Remove Component",
-    .input_count = 2,
+    .input_count = 3,
     .inputs = add_inputs,
     .output_count = 2,
     .outputs = add_outputs,
     .display_class = NODE_DISPLAY_FUNCTION,
     .category = "Components",
-    .keywords = "component remove detach delete self",
-    .description = "Removes a component from Self; Value is whether it was "
-                   "there.",
+    .keywords = "component remove detach delete entity self",
+    .description = "Removes a component from Entity, which defaults to Self; "
+                   "Value is whether it was there.",
 };
 
 node_desc NODE_MakeStruct = {
@@ -654,10 +654,10 @@ void component_node_preset_describe(const component_node_preset *preset, char *b
             snprintf(buf, size, "Whether Entity, which defaults to Self, has %s.", type);
             return;
         case COMPONENT_NODE_ADD:
-            snprintf(buf, size, "Adds %s with default values to Self; Value is whether it was added.", type);
+            snprintf(buf, size, "Adds %s with default values to Entity, which defaults to Self; Value is whether it was added.", type);
             return;
         case COMPONENT_NODE_REMOVE:
-            snprintf(buf, size, "Removes %s from Self; Value is whether it was there.", type);
+            snprintf(buf, size, "Removes %s from Entity, which defaults to Self; Value is whether it was there.", type);
             return;
         case COMPONENT_NODE_MAKE:
             snprintf(buf, size, "Builds a %s from its fields.", type);

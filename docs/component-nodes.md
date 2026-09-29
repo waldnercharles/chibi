@@ -11,13 +11,13 @@ The implementation is in `graph/nodes/component_nodes.{h,c}`.
 | Get Component | Component, Entity | Value, plus the fields it exposes |
 | Set Component | Exec, Component, Entity, Value or field inputs | Then, Value |
 | Has Component | Component, Entity | Value (bool) |
-| Add Component, Remove Component | Exec, Component | Then, Value (bool) |
+| Add Component, Remove Component | Exec, Entity, Component | Then, Value (bool) |
 | Make Struct | the struct's fields, Type | Value, plus the fields it exposes |
 | Break Struct | Value, Type | the struct's fields |
 
 - **Component** is a setting (`PIN_FLAG_SETTING`, `PIN_NAME`) that holds the component's stable key. Setting it with `graph_set_pin_default` retypes the Value pins. It also drops field pins, plus any wires the new type can't carry. Tools may pass the component name; the stored value is always the key.
 - **Type** is the same kind of setting for Make and Break Struct. It holds a reflected struct's name and gives the node the pins of the generated `Make_<T>` or `Break_<T>`, followed by the setting. Add and Remove Component have the same pins for every component, so changing their Component keeps their wires.
-- **Entity** on Get, Set and Has defaults to Self (`PIN_FLAG_DEFAULT_SELF`). A wire, a binding or a literal handle makes the node address that entity instead.
+- **Entity** on every component node defaults to Self (`PIN_FLAG_DEFAULT_SELF`). A wire, a binding or a literal handle makes the node address that entity instead.
 - **Get** shows only the fields it uses as exposed outputs beside Value (the existing Show/Hide unused fields).
 - **Set** writes its whole Value, or only the field inputs it shows. `component_node_show_field` adds or removes one field input. Showing a field replaces Value, and hiding the last field restores it.
   - A field can be shown when it's top-level and has a generated setter. That excludes strings and structs that contain strings.
@@ -36,7 +36,7 @@ The implementation is in `graph/nodes/component_nodes.{h,c}`.
 | Set, Value | Self | `Set_<C>` |
 | Set, Value | another entity | `SetEntity_<C>` |
 | Set, fields f1..fn | either | `Set_<C>_f1` → … → `Set_<C>_fn` |
-| Add, Remove | Self | `Add_<C>`, `Remove_<C>` |
+| Add, Remove | either | `Add_<C>`, `Remove_<C>` |
 | Make, Break Struct | — | `Make_<T>`, `Break_<T>` |
 
 Add, Remove, Make and Break keep every pin except their setting, which is always their last input.

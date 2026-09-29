@@ -1,3 +1,4 @@
+#include "graph/nodes/component_nodes.h"
 #include "graph/runtime/random.h"
 #include "runtime/camera.h"
 #include "runtime/camera_shake.h"
@@ -663,6 +664,61 @@ static void camera_trauma()
     fixture_free(&f);
 }
 
+static node *component_node(graph *g, const char *desc, const char *component)
+{
+    node *n = add(g, desc);
+    assert(component_node_configure(g, n, component, NULL) == 0);
+    return n;
+}
+
+/* Run(Target) adds GameHealth to and removes GameVelocity from Target, then
+ * adds GameAim to Self, whose Entity pin is left unwired. */
+static behavior_asset *graft_behavior()
+{
+    behavior_asset *asset = behavior("Graft");
+    graph *g = asset->graph;
+    node *run = event(g, "Run");
+    pin_spec target = { .name = "Target", .type = PIN_HANDLE, .type_name = "ecs.entity" };
+    assert(graph_add_pin(g, run, true, &target) == 1);
+    node *health = component_node(g, "Add Component", "GameHealth");
+    node *velocity = component_node(g, "Remove Component", "GameVelocity");
+    node *aim = component_node(g, "Add Component", "GameAim");
+    assert(!strcmp(health->input_pins[1].name, "Entity"));
+    flow(g, run, health);
+    flow(g, health, velocity);
+    flow(g, velocity, aim);
+    wire(g, run, 1, health, 1);
+    wire(g, run, 1, velocity, 1);
+    return asset;
+}
+
+static void components_on_any_entity()
+{
+    run_fixture f = fixture_new();
+    fixture_behavior(&f, graft_behavior());
+    ecs_entity grafter = fixture_spawn(&f, "{\"name\":\"Grafter\",\"behaviors\":[\"Graft\"],\"components\":{\"GameTransform\":{}}}");
+    ecs_entity stock = fixture_spawn(&f, "{\"name\":\"Stock\",\"components\":{\"GameTransform\":{},\"GameVelocity\":{}}}");
+    assert(
+        GAME_GameVelocity_get_const(f.world, stock) &&
+        !GAME_GameHealth_get_const(f.world, stock)
+    );
+    pin_value target = { .type = PIN_HANDLE,
+                         .type_name = "ecs.entity",
+                         .u64 = ecs_entity_to_u64(stock) };
+    flow_error error;
+    assert(
+        game_behavior_dispatch(f.live->behaviors, grafter, "Run", (flow_inputs){ &target, 1 }, &error) == 1
+    );
+    assert(ecs_world_apply_commands(f.world) == ECS_OK);
+    assert(
+        GAME_GameHealth_get_const(f.world, stock) &&
+        !GAME_GameVelocity_get_const(f.world, stock)
+    );
+    assert(GAME_GameAim_get_const(f.world, grafter) && !GAME_GameAim_get_const(f.world, stock));
+    assert(!GAME_GameHealth_get_const(f.world, grafter));
+    fixture_free(&f);
+}
+
 void test_run_capabilities()
 {
     seeded_randomness();
@@ -670,5 +726,6 @@ void test_run_capabilities()
     terrain_queries();
     time_scale();
     camera_trauma();
-    puts("Run capabilities PASS: seeded per-world randomness, run seeds, seed_from_run terrain, restart requests, Sample Field, Terrain Distance, time scale, hit-stop and camera trauma");
+    components_on_any_entity();
+    puts("Run capabilities PASS: seeded per-world randomness, run seeds, seed_from_run terrain, restart requests, Sample Field, Terrain Distance, time scale, hit-stop, camera trauma and components on any entity");
 }

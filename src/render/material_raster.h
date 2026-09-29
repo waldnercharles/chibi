@@ -60,11 +60,12 @@ typedef struct
      * the material was laid out. Zero cos and sin sample materials at the
      * pixel's current world position. */
     float material_frame[4];
-    /* Linear RGB and amount of a hit flash on a graph material; see
-     * GameFlash. Other materials take the flash into their coefficients. */
-    float flash[4];
     /* Uploaded separately: Cute storage-buffer structs cannot contain arrays. */
     float material_parameters[32][4], shape_parameters[32][4];
+    /* Linear RGB and amount of a hit flash on a graph material, uploaded
+     * after its parameters; see GameFlash. Other materials take the flash
+     * into their coefficients. */
+    float flash[4];
 } render_material_entity;
 
 /* The material raster's RGBA16F render targets. */

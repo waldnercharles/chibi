@@ -11,7 +11,7 @@ vec4 shader(vec4 color, ShaderParams params)
     vec2 world = sg_camera.xy * sg_layer.x + offset;
     vec4 values[32];
     for (int i = 0; i < 32; i++) values[i] = sg_values[i];
-    vec4 result[SG_OUTPUTS];
+    vec4 result[SG_RESULTS_2D];
     sg_dispatch_2d(int(sg_layer.w), offset, world, 0.5 * sg_camera.zw, sg_layer.z, values, result);
     vec3 base = result[0].rgb;
     if (sg_light_map.w > 0.0) {

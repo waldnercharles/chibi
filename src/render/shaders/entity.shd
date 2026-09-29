@@ -41,7 +41,6 @@ struct Entity {
     vec3 simulation_time;
     float tile_group;   // nonzero: adds coverage with neighbors sharing it
     vec4 material_frame; // laid-out position (Y up), cos, sin; zero cos and sin = none
-    // vec4 21, the hit flash (linear rgb, amount), is read where it applies.
 };
 
 // Tints the material toward the flash color and adds it as emission, so the

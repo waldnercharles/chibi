@@ -30,9 +30,9 @@
 #define SG_RAMP_COUNT 512
 #endif
 #ifndef SG_GRAPHS
-#define SG_OUTPUTS 10
-void sg_dispatch_2d(int id,vec2 p,vec2 wp,vec2 half_size,float time,vec4 values[32],out vec4 result[SG_OUTPUTS]) {
- for(int i=0;i<SG_OUTPUTS;i++) result[i]=vec4(0);
+#define SG_RESULTS_2D 6
+void sg_dispatch_2d(int id,vec2 p,vec2 wp,vec2 half_size,float time,vec4 values[32],out vec4 result[SG_RESULTS_2D]) {
+ for(int i=0;i<SG_RESULTS_2D;i++) result[i]=vec4(0);
 }
 layout(set = 3, binding = 0) uniform uniform_block {
     float u_world_min_x;
@@ -52,7 +52,9 @@ layout(set = 2, binding = SG_COUNTS_BINDING) readonly buffer TileOffsets { uvec4
 layout(set = 2, binding = SG_INDICES_BINDING) readonly buffer TileEntities { uvec4 tile_entities[]; };
 layout(set = 2, binding = SG_PARAMETERS_BINDING) readonly buffer ShaderParameters { vec4 shader_parameters[]; };
 
-#define ENTITY_VEC4S 22u
+#define ENTITY_VEC4S 21u
+// A parameter slot: 32 material and 32 shape parameters, then the flash.
+#define SLOT_VEC4S 65u
 
 uint tile_offset(uint i) { return tile_offsets[i >> 2u][i & 3u]; }
 uint tile_entity(uint i) { return tile_entities[i >> 2u][i & 3u]; }
@@ -339,7 +341,8 @@ void layer_over(vec4 sc, vec4 em, vec4 tr, vec4 al, vec4 surface, float height, 
     scene_acc = alpha_over(sc, scene_acc);
     normal_acc = mix(normal_acc, surface, sc.a);
     relief_acc = mix(relief_acc, height, sc.a);
-    optics_acc.xy = mix(optics_acc.xy, bend, cover);
+    // Most pixels never refract; skip the blend there.
+    if (any(notEqual(vec4(optics_acc.xy, bend), vec4(0.0)))) optics_acc.xy = mix(optics_acc.xy, bend, cover);
     emission_over(em, tr.a > 0.0);
     tau_acc += dot(tr.rgb, vec3(1.0 / 3.0)) * (1.0 - absorption_cover);
     absorption_cover += tr.a * (1.0 - absorption_cover);
@@ -567,10 +570,10 @@ void main()
         float sdf = evaluate_sdf(local_p, e);
         vec2 half_size = shader_half_size(e);
         vec2 material_pos = material_position(e, local_p, world_pos);
-        vec4 graph_output[SG_OUTPUTS];
+        vec4 graph_output[SG_RESULTS_2D];
         vec4 parameters[32];
         if (e.reserved1 > 0.0) {
-            for(int p=0;p<32;p++) parameters[p]=shader_parameters[uint(e.simulation_time.y)*64u+32u+uint(p)];
+            for(int p=0;p<32;p++) parameters[p]=shader_parameters[uint(e.simulation_time.y)*SLOT_VEC4S+32u+uint(p)];
             sg_dispatch_2d(int(e.reserved1), local_p, material_pos, half_size, e.simulation_time.x, parameters, graph_output);
             sdf = graph_output[0].x;
         }
@@ -595,7 +598,7 @@ void main()
         float height = 0.0;
         vec2 bend = vec2(0.0);
         if (e.reserved0 != 0.0) {
-            for(int p=0;p<32;p++) parameters[p]=shader_parameters[uint(e.simulation_time.y)*64u+uint(p)];
+            for(int p=0;p<32;p++) parameters[p]=shader_parameters[uint(e.simulation_time.y)*SLOT_VEC4S+uint(p)];
             sg_dispatch_2d(int(abs(e.reserved0)), local_p, material_pos, half_size, e.simulation_time.x, parameters, graph_output);
             e.scene=graph_output[0]; e.emission=graph_output[1];
             e.albedo=graph_output[2]; e.absorption=graph_output[3];
@@ -619,7 +622,7 @@ void main()
                 e.border_albedo = e.albedo;
             }
             // A graph material's hit flash; others carry theirs.
-            vec4 flash = entity_vec4(eidx * ENTITY_VEC4S + 21u);
+            vec4 flash = shader_parameters[uint(e.simulation_time.y) * SLOT_VEC4S + 64u];
             if (flash.a > 0.0) {
                 apply_flash(e.scene, e.emission, e.albedo, flash);
                 apply_flash(e.border_scene, e.border_emission, e.border_albedo, flash);
@@ -695,7 +698,7 @@ void main()
             float cover = bsc.a + sc.a * (1.0 - bsc.a);
             normal_acc = mix(normal_acc, surface, cover);
             relief_acc = mix(relief_acc, height, cover);
-            optics_acc.xy = mix(optics_acc.xy, bend, shape_coverage);
+            if (any(notEqual(vec4(optics_acc.xy, bend), vec4(0.0)))) optics_acc.xy = mix(optics_acc.xy, bend, shape_coverage);
 
             // Emission and absorption.
             vec4 em = unpack_color(e.emission); em.rgb *= em.a;

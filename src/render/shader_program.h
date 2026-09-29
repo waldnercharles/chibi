@@ -5,13 +5,15 @@
 #include "render/shader_catalog.h"
 
 /* RASTER is the material raster's first batch, a fragment pass into four
- * render targets; RASTER_ACCUMULATE continues from the previous batch's. */
+ * render targets; RASTER_ACCUMULATE continues from the previous batch's.
+ * BACKDROP is a draw shader that fills the screen with one material. */
 typedef enum
 {
     RENDER_PROGRAM_ARENA,
     RENDER_PROGRAM_FRAGMENT,
     RENDER_PROGRAM_RASTER,
-    RENDER_PROGRAM_RASTER_ACCUMULATE
+    RENDER_PROGRAM_RASTER_ACCUMULATE,
+    RENDER_PROGRAM_BACKDROP
 } render_program_kind;
 typedef struct render_programs render_programs;
 render_programs *render_programs_new(render_program_kind kind);

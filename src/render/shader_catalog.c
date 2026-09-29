@@ -186,6 +186,23 @@ bool render_shader_may_be_transparent(int index)
     const shader_node *opacity = &graph->nodes[graph->output[5]];
     return opacity->op != SHADER_CONSTANT || opacity->value[0] < 1;
 }
+bool render_shader_animated(int index)
+{
+    if (index <= 0 || index > acount(assets)) {
+        return false;
+    }
+    const shader_graph *graph = &assets[index - 1].graph;
+    for (int i = 0; i < acount(graph->nodes); i++) {
+        switch (graph->nodes[i].op) {
+            case SHADER_TIME:
+            case SHADER_BEAT_PHASE:
+            case SHADER_BEAT_PULSE:
+            case SHADER_SURFACE_INFLUENCE: return true;
+            default: break;
+        }
+    }
+    return false;
+}
 bool render_shader_sample(
     int index,
     const shader_sample_context *sample,

@@ -823,6 +823,22 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameHeatHaze)
 }
 GameHeatHaze;
 
+/* A material graph filling the screen behind the 2D scene, over the starfield.
+ * Its Position is the offset from the camera center and its World Position
+ * follows the camera by parallax: 0 pins the layer to the camera, 1 moves it
+ * with the world. Layers draw in ascending layer order. Base Color and
+ * Emission are scaled by intensity; lit multiplies Base Color by blurred
+ * received light, so nearby lights pick the layer out of the dark. */
+typedef NODE_COMPONENT_TYPE_DENSE(GameBackdrop2D)
+{
+    const char *material;
+    float parallax;
+    int layer;
+    float intensity;
+    bool lit;
+}
+GameBackdrop2D;
+
 /* Color detail of HRC lighting relative to its resolution. */
 typedef enum
 {

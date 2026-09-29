@@ -3,6 +3,19 @@ name: RenderLab
 entities:
 - {name: Camera, prototype: RenderLabCamera}
 - {name: World, prototype: RenderLabWorld}
+- name: Nebula
+  prototype: RenderLabAnchor
+  components:
+    GAME.GameBackdrop2D: {material: RenderLabNebula, parallax: 0.15, layer: 0, intensity: 1.6}
+- name: Spires
+  prototype: RenderLabAnchor
+  components:
+    GAME.GameBackdrop2D:
+      material: RenderLabSpires
+      parallax: 0.45
+      layer: 1
+      intensity: 1.0
+      lit: true
 - name: Warm lamp
   prototype: Lamp
   components:

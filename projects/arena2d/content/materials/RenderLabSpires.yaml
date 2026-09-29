@@ -1,0 +1,75 @@
+version: 3
+name: RenderLabSpires
+domain: material
+id_counter: 221
+description: 'Distant basalt spires: a dark ridge silhouette that nearby light picks out.'
+graphs:
+- kind: event
+  name: ""
+  nodes:
+  - id: 1
+    type: Shader Surface Output
+    inputs:
+      Base Color:
+        default: {x: 1.0, "y": 1.0, z: 1.0}
+      Emission:
+        default: {x: 0.0, "y": 0.0, z: 0.0}
+      Normal:
+        default: {x: 0.0, "y": 0.0, z: 0.0}
+  - {id: 10, type: Shader WorldPosition}
+  - id: 12
+    type: Shader X
+    inputs:
+      Value: {type: struct, type_name: ShaderVec3}
+  - id: 15
+    type: Shader Z
+    inputs:
+      Value: {type: struct, type_name: ShaderVec3}
+  - id: 134
+    type: Behavior Expression
+    reference_id: 18
+    reference_name: -40 + 70 * noise(vec3(x * 0.006, 0, 5), 1) + 55 * noise(vec3(x * 0.021, 0, 6), 1) + 90 * smoothstep(0.72, 0.9, noise(vec3(x * 0.012, 0, 7), 1)) - z
+    inputs:
+      x: {type: float}
+      z: {type: float}
+    outputs:
+      Result: {type: float}
+  - id: 154
+    type: Behavior Expression
+    reference_id: 138
+    reference_name: smoothstep(-1.5, 1.5, r)
+    inputs:
+      r: {type: float}
+    outputs:
+      Result: {type: float}
+  - id: 217
+    type: Behavior Expression
+    reference_id: 157
+    reference_name: vec3(0.045, 0.04, 0.05) * (0.7 + 0.3 * noise(vec3(x * 0.08, z * 0.05, 8), 1))
+    inputs:
+      x: {type: float}
+      z: {type: float}
+    outputs:
+      Result: {type: struct, type_name: ShaderVec3}
+  edges:
+  - {from: 10.Value, to: 12.Value}
+  - {from: 10.Value, to: 15.Value}
+  - {from: 12.Value, to: 134.x}
+  - {from: 12.Value, to: 217.x}
+  - {from: 15.Value, to: 134.z}
+  - {from: 15.Value, to: 217.z}
+  - {from: 134.Result, to: 154.r}
+  - {from: 154.Result, to: 1.Opacity}
+  - {from: 217.Result, to: 1.Base Color}
+- id: 18
+  kind: function
+  math_expression: -40 + 70 * noise(vec3(x * 0.006, 0, 5), 1) + 55 * noise(vec3(x * 0.021, 0, 6), 1) + 90 * smoothstep(0.72, 0.9, noise(vec3(x * 0.012, 0, 7), 1)) - z
+  entry_id: 19
+- id: 138
+  kind: function
+  math_expression: smoothstep(-1.5, 1.5, r)
+  entry_id: 139
+- id: 157
+  kind: function
+  math_expression: vec3(0.045, 0.04, 0.05) * (0.7 + 0.3 * noise(vec3(x * 0.08, z * 0.05, 8), 1))
+  entry_id: 158

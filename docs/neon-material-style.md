@@ -230,3 +230,24 @@ carry a `GameFlash`, which sets its decay. The flash applies after a graph
 material's Surface Output, so plain `GameMaterial`, graph materials and
 material-mask pieces all flash, borders included. Material entities grew by
 one vec4 (352 GPU bytes); the raster cost is within measurement noise.
+
+### Backdrops
+
+`GameBackdrop2D{material, parallax, layer, intensity, lit}` fills the screen
+behind the scene with a material graph, over the starfield. The graph's
+Position is the offset from the camera center, UV spans the screen and World
+Position is the camera position times `parallax` plus that offset: 0 pins the
+layer to the camera, 1 moves it with the world. Layers draw back to front in
+ascending `layer`, blending by Opacity. Base Color plus Emission, times
+`intensity`, is the layer's color; `lit` multiplies Base Color by the HRC
+surface light, received light that `GameHRC2D.surface_radius` has already
+blurred, so nearby lamps pick silhouettes out of the dark. Without surface
+light, lit layers use the unblurred received light.
+
+Layers render at half the output resolution into one premultiplied RGBA16F
+canvas that the composite lays over the starfield wherever the scene is open.
+The canvas is reused while the camera, layers, parameters and shader revision
+are unchanged and no layer is lit or reads Time, the beat or Surface
+Influence. RenderLab's six-octave animated nebula plus a lit ridge cost
+0.50 ms at 1080p; a full-resolution version cost 1.78 ms. The cost is the
+graphs': keep backdrop noise cheap, and prefer a static layer where possible.

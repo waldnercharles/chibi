@@ -54,11 +54,19 @@ render_programs *render_programs_new(render_program_kind kind)
         programs->scene = render_shader_source("arena3d_scene.glsl");
     } else if (kind == RENDER_PROGRAM_FRAGMENT) {
         programs->body = render_shader_fragment_source();
+    } else if (kind == RENDER_PROGRAM_BACKDROP) {
+        programs->body = render_shader_source("backdrop.shd");
     } else {
         programs->vertex = render_shader_source("hrc/pass.vert");
         programs->body = render_shader_source("hrc/entity_raster.frag");
     }
     return programs;
+}
+
+/* Kinds compiled as Cute draw shaders rather than fragment passes. */
+static bool draw_kind(render_program_kind kind)
+{
+    return kind == RENDER_PROGRAM_FRAGMENT || kind == RENDER_PROGRAM_BACKDROP;
 }
 
 static bool compile(render_programs *programs, program *entry)
@@ -78,19 +86,23 @@ static bool compile(render_programs *programs, program *entry)
     }
     char *graphs = render_shader_glsl(&entry->set, 2, raster ? 0 : 1);
     const char *scene = programs->scene ? programs->scene : "";
-    const char
-        *uniforms = programs->kind == RENDER_PROGRAM_FRAGMENT
-                      ? "layout(set=3,binding=1) uniform shd_uniforms { "
-                        "vec2 sg_lighting; vec4 sg_entity[86]; vec4 "
-                        "sg_ramp_data[SG_RAMP_COUNT]; };\n"
-                  : raster ? "layout(set=3,binding=0) uniform uniform_block { "
-                             "float u_world_min_x; "
-                             "float u_world_max_y; vec2 u_unit_per_px; "
-                             "int u_tiles_x; "
-                             "int u_first_entity; int u_last_entity; "
-                             "int u_metaball_group; "
-                             "vec4 sg_ramp_data[SG_RAMP_COUNT]; };\n"
-                           : "";
+    const char *uniforms =
+        programs->kind == RENDER_PROGRAM_FRAGMENT
+            ? "layout(set=3,binding=1) uniform shd_uniforms { "
+              "vec2 sg_lighting; vec4 sg_entity[86]; vec4 "
+              "sg_ramp_data[SG_RAMP_COUNT]; };\n"
+        : programs->kind == RENDER_PROGRAM_BACKDROP
+            ? "layout(set=3,binding=1) uniform shd_uniforms { "
+              "vec4 sg_camera; vec4 sg_layer; vec4 sg_crop; vec4 sg_light_map; "
+              "vec4 sg_values[32]; vec4 sg_ramp_data[SG_RAMP_COUNT]; };\n"
+        : raster ? "layout(set=3,binding=0) uniform uniform_block { "
+                   "float u_world_min_x; "
+                   "float u_world_max_y; vec2 u_unit_per_px; "
+                   "int u_tiles_x; "
+                   "int u_first_entity; int u_last_entity; "
+                   "int u_metaball_group; "
+                   "vec4 sg_ramp_data[SG_RAMP_COUNT]; };\n"
+                 : "";
     /* Room for the defines ahead of the sources. */
     size_t bytes = strlen(graphs) + strlen(programs->body) + strlen(scene) +
                    strlen(uniforms) + 1024;
@@ -106,7 +118,8 @@ static bool compile(render_programs *programs, program *entry)
         "#define SG_PREVIOUS_COVER_BINDING %d\n"
         "#define SG_ENTITY_BINDING %d\n"
         "#define SG_COUNTS_BINDING %d\n#define SG_INDICES_BINDING %d\n"
-        "#define SG_PARAMETERS_BINDING %d\n%s%s%s\n%s",
+        "#define SG_PARAMETERS_BINDING %d\n#define SG_LIGHT_BINDING "
+        "%d\n%s%s%s\n%s",
         RENDER_SHADER_RAMP_VEC4_MAX,
         previous ? "#define SG_ACCUMULATE 1\n" : "",
         entry->set.count,
@@ -118,12 +131,13 @@ static bool compile(render_programs *programs, program *entry)
         entry->set.count + previous + 1,
         entry->set.count + previous + 2,
         entry->set.count + previous + 3,
+        entry->set.count + 1,
         scene,
         uniforms,
         graphs,
         programs->body
     );
-    CF_Shader draw = programs->kind == RENDER_PROGRAM_FRAGMENT
+    CF_Shader draw = draw_kind(programs->kind)
                        ? cf_make_draw_shader_from_source(source)
                        : cf_make_shader_from_source(programs->vertex, source);
     const char *dump = getenv("CHIBI_SHADER_DUMP");
@@ -162,8 +176,7 @@ int render_programs_prepare(render_programs *programs, const render_shader_set *
 {
     render_images_collect();
     programs->error[0] = 0;
-    if (!programs->body ||
-        (programs->kind != RENDER_PROGRAM_FRAGMENT && !programs->vertex) ||
+    if (!programs->body || (!draw_kind(programs->kind) && !programs->vertex) ||
         (programs->kind == RENDER_PROGRAM_ARENA && !programs->scene)) {
         snprintf(programs->error, sizeof programs->error, "Cannot read material shader sources.");
         return 0;

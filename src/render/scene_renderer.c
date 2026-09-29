@@ -4,6 +4,7 @@
 #include "platform/cute.h"
 #include "render/appearance_geometry.h"
 #include "render/arena_post.h"
+#include "render/backdrop_2d.h"
 #include "render/fluid_raster.h"
 #include "render/fog.h"
 #include "render/geometry_2d.h"
@@ -50,6 +51,7 @@ struct app_scene_renderer
     GameHRC2D lighting;
     render_reflections *reflections;
     render_reflection *reflectors;
+    render_backdrops *backdrops;
     CF_Canvas output, background;
     CF_Shader background_shader;
     GameStarfield2D background_style;
@@ -118,6 +120,7 @@ void app_scene_renderer_free(app_scene_renderer *renderer)
     }
     render_reflections_free(renderer->reflections);
     afree(renderer->reflectors);
+    render_backdrops_free(renderer->backdrops);
     if (renderer->output.id) {
         cf_destroy_canvas(renderer->output);
     }
@@ -1150,6 +1153,41 @@ static CF_Texture scene_background(
     return cf_canvas_get_target(renderer->background);
 }
 
+/* Draws the scene's backdrop layers, if any, into layers. */
+static bool draw_backdrops(
+    app_scene_renderer *renderer,
+    ecs_world *world,
+    render_view_2d screen,
+    CF_Texture *layers
+)
+{
+    if (!renderer->backdrops) {
+        renderer->backdrops = render_backdrops_new();
+    }
+    if (!render_backdrops_collect(renderer->backdrops, world)) {
+        return true;
+    }
+    render_backdrop_frame frame = {
+        .camera = screen,
+        .time = renderer->time,
+        .light = render_radiance_received_light(renderer->radiance),
+        .width = renderer->width,
+        .height = renderer->height,
+    };
+    *layers = render_backdrops_draw(renderer->backdrops, &frame);
+    if (!layers->id) {
+        snprintf(
+            renderer->error,
+            sizeof renderer->error,
+            "%s",
+            render_backdrops_error(renderer->backdrops)
+        );
+        return false;
+    }
+    render_gpu_timing_mark("Backdrops");
+    return true;
+}
+
 /* Distorts, grades and tone maps the linear frame into the output. */
 static bool present_hdr(
     app_scene_renderer *renderer,
@@ -1346,6 +1384,20 @@ bool app_scene_renderer_draw(
     render_radiance_inputs inputs = { .material = textures };
     inputs.background = scene_background(renderer, world, &camera);
     render_gpu_timing_mark("Background");
+    render_view_2d screen = { .min_x = camera.center_x - camera.span_width * .5f,
+                              .max_y = camera.center_y + camera.span_height * .5f,
+                              .width = camera.span_width,
+                              .height = camera.span_height,
+                              .crop_min_u = view.crop_min_u,
+                              .crop_min_v = view.crop_min_v,
+                              .crop_max_u = view.crop_max_u,
+                              .crop_max_v = view.crop_max_v };
+    if (!render_radiance_solve(renderer->radiance, textures, view)) {
+        return false;
+    }
+    if (!draw_backdrops(renderer, world, screen, &inputs.layers)) {
+        return false;
+    }
     bool hdr = renderer->lighting.tone_mapping > 0;
     CF_Canvas composite = renderer->output;
     if (hdr) {
@@ -1358,17 +1410,9 @@ bool app_scene_renderer_draw(
         }
         composite = render_post_2d_target(renderer->hdr);
     }
-    if (!render_radiance_draw(renderer->radiance, inputs, view, composite)) {
+    if (!render_radiance_composite(renderer->radiance, inputs, view, composite)) {
         return false;
     }
-    render_view_2d screen = { .min_x = camera.center_x - camera.span_width * .5f,
-                              .max_y = camera.center_y + camera.span_height * .5f,
-                              .width = camera.span_width,
-                              .height = camera.span_height,
-                              .crop_min_u = view.crop_min_u,
-                              .crop_min_v = view.crop_min_v,
-                              .crop_max_u = view.crop_max_u,
-                              .crop_max_v = view.crop_max_v };
     if (hdr && !present_hdr(renderer, world, runtime, screen, textures)) {
         return false;
     }

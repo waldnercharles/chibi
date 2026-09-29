@@ -1,6 +1,6 @@
 version: 3
 name: ProjectileLifecycle
-id_counter: 517
+id_counter: 529
 description: Age and expire projectiles; face velocity while moving.
 owner_type: ecs.entity
 graphs:
@@ -92,7 +92,7 @@ graphs:
   - {from: 127.Self, to: 129.Entity}
   - {from: 424.True, to: 459.Exec}
 - {id: 4, kind: function, math_expression: age += dt, entry_id: 314}
-- {id: 84, kind: function, math_expression: age >= lifetime, entry_id: 345}
+- {id: 84, kind: function, math_expression: age >= lifetime, entry_id: 518}
 - id: 407
   kind: function
   math_expression: length(velocity) > 0.0001

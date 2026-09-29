@@ -1,0 +1,831 @@
+version: 3
+name: Shot
+id_counter: 1522
+description: 'A weapon shot: steers toward targets when homing, accelerates, ricochets off rock while it has bounces, carves craters, hits bodies, pierces, and at its end casts its payload, splits and blasts.'
+owner_type: ecs.entity
+graphs:
+- kind: event
+  name: ""
+  nodes:
+  - id: 533
+    type: Event
+    reference_name: Tick
+    outputs:
+      DeltaSeconds: {type: float, kind: data}
+  - id: 548
+    type: Behavior Expression
+    reference_id: 536
+    reference_name: age += dt
+    inputs:
+      Exec: {id: 552, kind: exec}
+      age:
+        id: 549
+        type: float
+        binding: {kind: component_field, component: GAME.GameProjectile, field: age}
+      dt:
+        type: double
+        binding: {kind: delta_time}
+    outputs:
+      Then: {id: 553, kind: exec}
+      Result: {id: 551, type: float}
+  - id: 625
+    type: Behavior Expression
+    reference_id: 611
+    reference_name: homing > 0
+    inputs:
+      homing:
+        type: double
+        flags: 0
+        binding: {kind: component_field, component: GAME.GameProjectile, field: homing}
+    outputs:
+      Result: {type: bool}
+  - {id: 631, type: Branch}
+  - id: 636
+    type: Find Nearest Entity
+    inputs:
+      Position:
+        type_name: GameTransform
+        binding: {kind: component, component: GAME.GameTransform}
+        default: null
+      Radius: 420.0
+      Categories: 2
+  - {id: 645, type: Branch}
+  - id: 745
+    type: Behavior Expression
+    reference_id: 650
+    reference_name: velocity = direction(atan2(velocity.y, velocity.x) + clamp(atan2(sin(atan2(target.y - pos.y, target.x - pos.x) - atan2(velocity.y, velocity.x)), cos(atan2(target.y - pos.y, target.x - pos.x) - atan2(velocity.y, velocity.x))), -homing * dt, homing * dt)) * length(velocity)
+    inputs:
+      Exec: {id: 752, kind: exec}
+      velocity:
+        id: 746
+        type: struct
+        type_name: GameVelocity
+        binding: {kind: component, component: GAME.GameVelocity}
+      target: {type: struct, type_name: CF_V2}
+      pos:
+        type: struct
+        type_name: GameTransform
+        binding: {kind: component, component: GAME.GameTransform}
+      homing:
+        type: double
+        binding: {kind: component_field, component: GAME.GameProjectile, field: homing}
+      dt:
+        type: double
+        binding: {kind: delta_time}
+    outputs:
+      Then: {id: 753, kind: exec}
+      Result: {id: 751, type: struct, type_name: GameVelocity}
+  - id: 894
+    type: Behavior Expression
+    reference_id: 860
+    reference_name: velocity = normalize(velocity) * max(30, length(velocity) + acceleration * dt)
+    inputs:
+      Exec: {id: 899, kind: exec}
+      velocity:
+        id: 895
+        type: struct
+        type_name: GameVelocity
+        binding: {kind: component, component: GAME.GameVelocity}
+      acceleration:
+        type: double
+        binding: {kind: component_field, component: GAME.GameProjectile, field: acceleration}
+      dt:
+        type: double
+        binding: {kind: delta_time}
+    outputs:
+      Then: {id: 900, kind: exec}
+      Result: {id: 898, type: struct, type_name: GameVelocity}
+  - id: 952
+    type: Behavior Expression
+    reference_id: 940
+    reference_name: heading = atan2(velocity.y, velocity.x)
+    inputs:
+      Exec: {id: 956, kind: exec}
+      heading:
+        id: 953
+        type: float
+        binding: {kind: component_field, component: GAME.GameOrientation, field: radians}
+      velocity:
+        type: struct
+        type_name: GameVelocity
+        binding: {kind: component, component: GAME.GameVelocity}
+    outputs:
+      Then: {id: 957, kind: exec}
+      Result: {id: 955, type: double}
+  - id: 1023
+    type: Behavior Expression
+    reference_id: 985
+    reference_name: pos + velocity * dt * 1.5 + normalize(velocity) * 3
+    inputs:
+      pos:
+        type: struct
+        type_name: GameTransform
+        binding: {kind: component, component: GAME.GameTransform}
+      velocity:
+        type: struct
+        type_name: GameVelocity
+        binding: {kind: component, component: GAME.GameVelocity}
+      dt:
+        type: double
+        binding: {kind: delta_time}
+    outputs:
+      Result: {type: struct, type_name: GameTransform}
+  - id: 1028
+    type: Raycast
+    inputs:
+      Start:
+        type_name: GameTransform
+        binding: {kind: component, component: GAME.GameTransform}
+        default: null
+      Categories: 8
+  - {id: 1039, type: Branch}
+  - id: 1058
+    type: Behavior Expression
+    reference_id: 1044
+    reference_name: bounce > 0
+    inputs:
+      bounce:
+        type: double
+        flags: 0
+        binding: {kind: component_field, component: GAME.GameProjectile, field: bounce}
+    outputs:
+      Result: {type: bool}
+  - {id: 1064, type: Branch}
+  - id: 1096
+    type: Behavior Expression
+    reference_id: 1069
+    reference_name: velocity = velocity - normal * 2 * dot(velocity, normal)
+    inputs:
+      Exec: {id: 1100, kind: exec}
+      velocity:
+        id: 1097
+        type: struct
+        type_name: GameVelocity
+        binding: {kind: component, component: GAME.GameVelocity}
+      normal: {type: struct, type_name: CF_V2}
+    outputs:
+      Then: {id: 1101, kind: exec}
+      Result: {id: 1099, type: struct, type_name: GameVelocity}
+  - id: 1148
+    type: Behavior Expression
+    reference_id: 1134
+    reference_name: bounce -= 1
+    inputs:
+      Exec: {id: 1151, kind: exec}
+      bounce:
+        id: 1149
+        type: int
+        binding: {kind: component_field, component: GAME.GameProjectile, field: bounce}
+    outputs:
+      Then: {id: 1152, kind: exec}
+      Result: {id: 1150, type: int}
+  - id: 1232
+    type: Behavior Expression
+    reference_id: 1212
+    reference_name: pos = point + normal * 3
+    inputs:
+      Exec: {id: 1237, kind: exec}
+      pos:
+        id: 1233
+        type: struct
+        type_name: GameTransform
+        binding: {kind: component, component: GAME.GameTransform}
+      point: {type: struct, type_name: CF_V2}
+      normal: {type: struct, type_name: CF_V2}
+    outputs:
+      Then: {id: 1238, kind: exec}
+      Result: {id: 1236, type: struct, type_name: GameTransform}
+  - id: 1264
+    type: Emit Directed Particles
+    inputs:
+      Count: 5
+      Color:
+        binding: {kind: component_field, component: GAME.GameMaterial, field: emission_color}
+      End Color: 0
+      Min Speed: 50.0
+      Max Speed: 160.0
+      Min Lifetime: 0.1
+      Max Lifetime: 0.3
+      Min Size: 0.4
+      Max Size: 1.0
+      Spread: 1.0
+      Min Drag: 2.0
+      Max Drag: 4.0
+      Min Emission: 0.5
+      Max Emission: 0.9
+      Size Exponent: 1.0
+      Shape: 4
+  - id: 1286
+    type: Call Function
+    reference_id: 345
+    reference_name: Impact
+    inputs:
+      Point: {id: 1289, type: struct, type_name: CF_V2, kind: data}
+      Normal: {type: struct, type_name: CF_V2, kind: data}
+      Target: {type: handle, type_name: ecs.entity, kind: data}
+    outputs:
+      Then: {id: 1288}
+  - id: 1328
+    type: Behavior Expression
+    reference_id: 1292
+    reference_name: payload >= 0 && trigger == 1 && age >= delay
+    inputs:
+      payload:
+        type: double
+        flags: 0
+        binding: {kind: component_field, component: GAME.GameProjectile, field: payload}
+      trigger:
+        type: double
+        flags: 0
+        binding: {kind: component_field, component: GAME.GameProjectile, field: trigger}
+      age:
+        type: double
+        flags: 0
+        binding: {kind: component_field, component: GAME.GameProjectile, field: age}
+      delay:
+        type: double
+        flags: 0
+        binding: {kind: component_field, component: GAME.GameProjectile, field: delay}
+    outputs:
+      Result: {type: bool}
+  - {id: 1337, type: Branch}
+  - id: 1352
+    type: Behavior Expression
+    reference_id: 1342
+    reference_name: normalize(velocity)
+    inputs:
+      velocity:
+        type: struct
+        type_name: GameVelocity
+        binding: {kind: component, component: GAME.GameVelocity}
+    outputs:
+      Result: {type: struct, type_name: CF_V2}
+  - id: 1355
+    type: Call Function
+    reference_id: 1
+    reference_name: Send Payload
+    inputs:
+      Position:
+        id: 1358
+        type: struct
+        type_name: GameTransform
+        kind: data
+        binding: {kind: component, component: GAME.GameTransform}
+      Direction: {type: struct, type_name: CF_V2, kind: data}
+    outputs:
+      Then: {id: 1357}
+  - id: 1372
+    type: Behavior Expression
+    reference_id: 1360
+    reference_name: age >= lifetime
+    inputs:
+      age:
+        type: double
+        flags: 0
+        binding: {kind: component_field, component: GAME.GameProjectile, field: age}
+      lifetime:
+        type: double
+        flags: 0
+        binding: {kind: component_field, component: GAME.GameProjectile, field: lifetime}
+    outputs:
+      Result: {type: bool}
+  - {id: 1379, type: Branch}
+  - id: 1384
+    type: Call Function
+    reference_id: 92
+    reference_name: Finish
+    inputs:
+      Position:
+        id: 1387
+        type: struct
+        type_name: GameTransform
+        kind: data
+        binding: {kind: component, component: GAME.GameTransform}
+      Direction: {type: struct, type_name: CF_V2, kind: data}
+    outputs:
+      Then: {id: 1386}
+  - id: 1389
+    type: Event
+    reference_name: Contact Begin
+    outputs:
+      Other: {type: handle, type_name: ecs.entity, kind: data}
+      Point: {type: struct, type_name: CF_V2, kind: data}
+  - id: 1393
+    type: Send Event
+    reference_name: Hit
+    inputs:
+      Amount:
+        id: 1397
+        declaration_id: 1
+        type: int
+        binding: {kind: component_field, component: GAME.GameProjectile, field: damage}
+      Source:
+        declaration_id: 2
+        binding: {kind: component_field, component: GAME.GameProjectile, field: source}
+      Point: {declaration_id: 3, type: struct, type_name: CF_V2}
+      Direction: {declaration_id: 4, type: struct, type_name: CF_V2}
+      Element:
+        declaration_id: 5
+        type: int
+        binding: {kind: component_field, component: GAME.GameProjectile, field: element}
+      Knockback:
+        declaration_id: 6
+        type: float
+        binding: {kind: component_field, component: GAME.GameProjectile, field: knockback}
+    outputs:
+      Then: {id: 1396}
+  - id: 1403
+    type: Spawn Prototype
+    inputs: {Prototype: ImpactLight}
+  - {id: 1408, type: SetEntity_GameTransform}
+  - id: 1428
+    type: Behavior Expression
+    reference_id: 1414
+    reference_name: pierce > 0
+    inputs:
+      pierce:
+        type: double
+        flags: 0
+        binding: {kind: component_field, component: GAME.GameProjectile, field: pierce}
+    outputs:
+      Result: {type: bool}
+  - {id: 1434, type: Branch}
+  - id: 1453
+    type: Behavior Expression
+    reference_id: 1439
+    reference_name: pierce -= 1
+    inputs:
+      Exec: {id: 1456, kind: exec}
+      pierce:
+        id: 1454
+        type: int
+        binding: {kind: component_field, component: GAME.GameProjectile, field: pierce}
+    outputs:
+      Then: {id: 1457, kind: exec}
+      Result: {id: 1455, type: int}
+  - id: 1517
+    type: Call Function
+    reference_id: 92
+    reference_name: Finish
+    inputs:
+      Position: {id: 1520, type: struct, type_name: CF_V2, kind: data}
+      Direction: {type: struct, type_name: CF_V2, kind: data}
+    outputs:
+      Then: {id: 1519}
+  edges:
+  - {from: 533.Then, to: 548.Exec}
+  - {from: 548.Then, to: 631.Exec}
+  - {from: 625.Result, to: 631.Condition}
+  - {from: 631.True, to: 645.Exec}
+  - {from: 631.False, to: 894.Exec}
+  - {from: 636.Found, to: 645.Condition}
+  - {from: 636.Position, to: 745.target}
+  - {from: 645.True, to: 745.Exec}
+  - {from: 645.False, to: 894.Exec}
+  - {from: 745.Then, to: 894.Exec}
+  - {from: 894.Then, to: 952.Exec}
+  - {from: 952.Then, to: 1039.Exec}
+  - {from: 1023.Result, to: 1028.End}
+  - {from: 1028.Found, to: 1039.Condition}
+  - {from: 1028.Entity, to: 1286.Target}
+  - {from: 1028.Point, to: 1232.point}
+  - {from: 1028.Point, to: 1264.Position, conversion: game_transform_to_cf}
+  - {from: 1028.Point, to: 1286.Point, conversion: game_transform_to_cf}
+  - {from: 1028.Normal, to: 1096.normal}
+  - {from: 1028.Normal, to: 1232.normal}
+  - {from: 1028.Normal, to: 1264.Direction, conversion: game_transform_to_cf}
+  - {from: 1028.Normal, to: 1286.Normal, conversion: game_transform_to_cf}
+  - {from: 1039.True, to: 1064.Exec}
+  - {from: 1039.False, to: 1337.Exec}
+  - {from: 1058.Result, to: 1064.Condition}
+  - {from: 1064.True, to: 1096.Exec}
+  - {from: 1064.False, to: 1286.Exec}
+  - {from: 1096.Then, to: 1148.Exec}
+  - {from: 1148.Then, to: 1232.Exec}
+  - {from: 1232.Then, to: 1264.Exec}
+  - {from: 1264.Then, to: 1337.Exec}
+  - {from: 1328.Result, to: 1337.Condition}
+  - {from: 1337.True, to: 1355.Exec}
+  - {from: 1337.False, to: 1379.Exec}
+  - {from: 1352.Result, to: 1355.Direction}
+  - {from: 1352.Result, to: 1384.Direction}
+  - {from: 1352.Result, to: 1393.Direction}
+  - {from: 1352.Result, to: 1517.Direction}
+  - {from: 1355.Then, to: 1379.Exec}
+  - {from: 1372.Result, to: 1379.Condition}
+  - {from: 1379.True, to: 1384.Exec}
+  - {from: 1389.Then, to: 1393.Exec}
+  - {from: 1389.Other, to: 1393.Entity}
+  - {from: 1389.Point, to: 1393.Point, conversion: game_transform_to_cf}
+  - {from: 1389.Point, to: 1408.Value, conversion: game_transform_to_cf}
+  - {from: 1389.Point, to: 1517.Position, conversion: game_transform_to_cf}
+  - {from: 1393.Then, to: 1403.Exec}
+  - {from: 1403.Then, to: 1408.Exec}
+  - {from: 1403.Entity, to: 1408.Entity}
+  - {from: 1408.Then, to: 1434.Exec}
+  - {from: 1428.Result, to: 1434.Condition}
+  - {from: 1434.True, to: 1453.Exec}
+  - {from: 1434.False, to: 1517.Exec}
+- id: 1
+  kind: function
+  name: Send Payload
+  entry_id: 2
+  return_id: 4
+  call_depth_limit: 64
+  nodes:
+  - id: 2
+    type: Function Entry
+    outputs:
+      Position: {id: 6, type: struct, type_name: CF_V2, kind: data}
+      Direction: {type: struct, type_name: CF_V2, kind: data}
+  - {id: 4, type: Return}
+  - id: 8
+    type: Send Event
+    reference_name: CastPayload
+    inputs:
+      Entity:
+        binding: {kind: component_field, component: GAME.GameProjectile, field: source}
+      Hardpoint:
+        id: 12
+        declaration_id: 1
+        type: int
+        binding: {kind: component_field, component: GAME.GameProjectile, field: hardpoint}
+      Index:
+        declaration_id: 2
+        type: int
+        binding: {kind: component_field, component: GAME.GameProjectile, field: payload}
+      Position: {declaration_id: 3, type: struct, type_name: CF_V2}
+      Direction: {declaration_id: 4, type: struct, type_name: CF_V2}
+    outputs:
+      Then: {id: 11}
+  - id: 29
+    type: Behavior Expression
+    reference_id: 16
+    reference_name: payload = -1
+    inputs:
+      Exec: {id: 32, kind: exec}
+      payload:
+        id: 30
+        type: int
+        binding: {kind: component_field, component: GAME.GameProjectile, field: payload}
+    outputs:
+      Then: {id: 33, kind: exec}
+      Result: {id: 31, type: int}
+  edges:
+  - {from: 2.Exec, to: 8.Exec}
+  - {from: 2.Position, to: 8.Position, conversion: game_transform_to_cf}
+  - {from: 2.Direction, to: 8.Direction, conversion: game_transform_to_cf}
+  - {from: 8.Then, to: 29.Exec}
+  - {from: 29.Then, to: 4.Exec}
+- {id: 16, kind: function, math_expression: payload = -1, entry_id: 35}
+- id: 92
+  kind: function
+  name: Finish
+  entry_id: 93
+  return_id: 95
+  call_depth_limit: 64
+  nodes:
+  - id: 93
+    type: Function Entry
+    outputs:
+      Position: {id: 97, type: struct, type_name: CF_V2, kind: data}
+      Direction: {type: struct, type_name: CF_V2, kind: data}
+  - {id: 95, type: Return}
+  - id: 125
+    type: Behavior Expression
+    reference_id: 99
+    reference_name: payload >= 0 && trigger != 1
+    inputs:
+      payload:
+        type: double
+        flags: 0
+        binding: {kind: component_field, component: GAME.GameProjectile, field: payload}
+      trigger:
+        type: double
+        flags: 0
+        binding: {kind: component_field, component: GAME.GameProjectile, field: trigger}
+    outputs:
+      Result: {type: bool}
+  - {id: 132, type: Branch}
+  - id: 137
+    type: Call Function
+    reference_id: 1
+    reference_name: Send Payload
+    inputs:
+      Position: {id: 140, type: struct, type_name: CF_V2, kind: data}
+      Direction: {type: struct, type_name: CF_V2, kind: data}
+    outputs:
+      Then: {id: 139}
+  - id: 156
+    type: Behavior Expression
+    reference_id: 142
+    reference_name: split > 0
+    inputs:
+      split:
+        type: double
+        flags: 0
+        binding: {kind: component_field, component: GAME.GameProjectile, field: split}
+    outputs:
+      Result: {type: bool}
+  - {id: 162, type: Branch}
+  - id: 181
+    type: Behavior Expression
+    reference_id: 167
+    reference_name: split - 1
+    inputs:
+      split:
+        type: double
+        binding: {kind: component_field, component: GAME.GameProjectile, field: split}
+    outputs:
+      Result: {type: double}
+  - {id: 184, type: ForLoop}
+  - id: 229
+    type: Behavior Expression
+    reference_id: 191
+    reference_name: direction(atan2(direction.y, direction.x) + 0.35 + index * 6.2831853 / split)
+    inputs:
+      direction: {type: struct, type_name: CF_V2}
+      index: {type: int}
+      split:
+        type: double
+        binding: {kind: component_field, component: GAME.GameProjectile, field: split}
+    outputs:
+      Result: {type: struct, type_name: CF_V2}
+  - id: 274
+    type: Self
+    outputs:
+      Self: {type_name: ecs.entity}
+  - id: 276
+    type: Call Function
+    reference_id: 1
+    reference_name: Launch Shot
+    reference_asset: ShotActions
+    inputs:
+      Prototype: {id: 279, declaration_id: 6, type: name, kind: data, default: Shard}
+      Origin: {declaration_id: 7, type: struct, type_name: CF_V2, kind: data}
+      Direction: {declaration_id: 8, type: struct, type_name: CF_V2, kind: data}
+      Source:
+        declaration_id: 9
+        type: handle
+        type_name: ecs.entity
+        kind: data
+        binding: {kind: component_field, component: GAME.GameProjectile, field: source}
+      Hardpoint:
+        declaration_id: 10
+        type: int
+        kind: data
+        binding: {kind: component_field, component: GAME.GameProjectile, field: hardpoint}
+    outputs:
+      Then: {id: 278}
+      Entity: {id: 284, declaration_id: 11, type: handle, type_name: ecs.entity, kind: data}
+  - id: 299
+    type: Behavior Expression
+    reference_id: 285
+    reference_name: blast > 0
+    inputs:
+      blast:
+        type: double
+        flags: 0
+        binding: {kind: component_field, component: GAME.GameProjectile, field: blast}
+    outputs:
+      Result: {type: bool}
+  - {id: 305, type: Branch}
+  - id: 310
+    type: Spawn Prototype
+    inputs: {Prototype: Explosion}
+  - {id: 315, type: SetEntity_GameTransform}
+  - id: 321
+    type: Set_GameProjectile_blast
+    inputs:
+      Value:
+        binding: {kind: component_field, component: GAME.GameProjectile, field: blast}
+  - id: 327
+    type: Set_GameProjectile_damage
+    inputs:
+      Value:
+        binding: {kind: component_field, component: GAME.GameProjectile, field: damage}
+  - id: 333
+    type: Set_GameProjectile_source
+    inputs:
+      Value:
+        binding: {kind: component_field, component: GAME.GameProjectile, field: source}
+  - id: 339
+    type: Self
+    outputs:
+      Self: {type_name: ecs.entity}
+  - {id: 341, type: Destroy Entity}
+  edges:
+  - {from: 93.Exec, to: 132.Exec}
+  - {from: 93.Position, to: 137.Position, conversion: game_transform_to_cf}
+  - {from: 93.Position, to: 276.Origin, conversion: game_transform_to_cf}
+  - {from: 93.Position, to: 315.Value, conversion: game_transform_to_cf}
+  - {from: 93.Direction, to: 137.Direction, conversion: game_transform_to_cf}
+  - {from: 93.Direction, to: 229.direction}
+  - {from: 125.Result, to: 132.Condition}
+  - {from: 132.True, to: 137.Exec}
+  - {from: 132.False, to: 162.Exec}
+  - {from: 137.Then, to: 162.Exec}
+  - {from: 156.Result, to: 162.Condition}
+  - {from: 162.True, to: 184.Exec}
+  - {from: 162.False, to: 305.Exec}
+  - {from: 181.Result, to: 184.LastIndex, conversion: To Integer}
+  - {from: 184.Body, to: 276.Exec}
+  - {from: 184.Index, to: 229.index}
+  - {from: 184.Completed, to: 305.Exec}
+  - {from: 229.Result, to: 276.Direction}
+  - {from: 299.Result, to: 305.Condition}
+  - {from: 305.True, to: 310.Exec}
+  - {from: 305.False, to: 341.Exec}
+  - {from: 310.Then, to: 315.Exec}
+  - {from: 310.Entity, to: 315.Entity}
+  - {from: 310.Entity, to: 321.Target}
+  - {from: 310.Entity, to: 327.Target}
+  - {from: 310.Entity, to: 333.Target}
+  - {from: 315.Then, to: 321.Exec}
+  - {from: 321.Then, to: 327.Exec}
+  - {from: 327.Then, to: 333.Exec}
+  - {from: 333.Then, to: 341.Exec}
+  - {from: 339.Self, to: 341.Entity}
+  - {from: 341.Then, to: 95.Exec}
+- id: 99
+  kind: function
+  math_expression: payload >= 0 && trigger != 1
+  entry_id: 100
+- {id: 142, kind: function, math_expression: split > 0, entry_id: 143}
+- {id: 167, kind: function, math_expression: split - 1, entry_id: 168}
+- id: 191
+  kind: function
+  math_expression: direction(atan2(direction.y, direction.x) + 0.35 + index * 6.2831853 / split)
+  entry_id: 235
+- {id: 285, kind: function, math_expression: blast > 0, entry_id: 286}
+- id: 345
+  kind: function
+  name: Impact
+  entry_id: 346
+  return_id: 348
+  call_depth_limit: 64
+  nodes:
+  - id: 346
+    type: Function Entry
+    outputs:
+      Point: {id: 350, type: struct, type_name: CF_V2, kind: data}
+      Normal: {type: struct, type_name: CF_V2, kind: data}
+      Target: {type: handle, type_name: ecs.entity, kind: data}
+  - {id: 348, type: Return}
+  - id: 372
+    type: Behavior Expression
+    reference_id: 353
+    reference_name: point - normal * 1.5
+    inputs:
+      point: {type: struct, type_name: CF_V2}
+      normal: {type: struct, type_name: CF_V2}
+    outputs:
+      Result: {type: struct, type_name: CF_V2}
+  - id: 400
+    type: Behavior Expression
+    reference_id: 376
+    reference_name: 2.5 + sqrt(damage) * 0.7
+    inputs:
+      damage:
+        type: double
+        binding: {kind: component_field, component: GAME.GameProjectile, field: damage}
+    outputs:
+      Result: {type: double}
+  - id: 424
+    type: Behavior Expression
+    reference_id: 403
+    reference_name: 0.4 + damage * 0.06
+    inputs:
+      damage:
+        type: double
+        binding: {kind: component_field, component: GAME.GameProjectile, field: damage}
+    outputs:
+      Result: {type: double}
+  - id: 427
+    type: Self
+    outputs:
+      Self: {type_name: ecs.entity}
+  - {id: 429, type: Damage Material}
+  - id: 438
+    type: Emit Directed Particles
+    inputs:
+      Count: 9
+      Color:
+        binding: {kind: component_field, component: GAME.GameMaterial, field: emission_color}
+      End Color: 0
+      Min Speed: 60.0
+      Max Speed: 240.0
+      Min Lifetime: 0.12
+      Min Size: 0.5
+      Max Size: 1.3
+      Spread: 1.3
+      Min Drag: 2.0
+      Max Drag: 5.0
+      Min Emission: 0.5
+      Max Emission: 1.0
+      Size Exponent: 1.0
+      Shape: 4
+  - id: 460
+    type: Spawn Prototype
+    inputs: {Prototype: ImpactLight}
+  - id: 484
+    type: Behavior Expression
+    reference_id: 465
+    reference_name: point + normal * 3
+    inputs:
+      point: {type: struct, type_name: CF_V2}
+      normal: {type: struct, type_name: CF_V2}
+    outputs:
+      Result: {type: struct, type_name: CF_V2}
+  - {id: 488, type: SetEntity_GameTransform}
+  - id: 524
+    type: Behavior Expression
+    reference_id: 494
+    reference_name: normalize(velocity - normal * 2 * dot(velocity, normal))
+    inputs:
+      velocity:
+        type: struct
+        type_name: GameVelocity
+        binding: {kind: component, component: GAME.GameVelocity}
+      normal: {type: struct, type_name: CF_V2}
+    outputs:
+      Result: {type: struct, type_name: CF_V2}
+  - id: 528
+    type: Call Function
+    reference_id: 92
+    reference_name: Finish
+    inputs:
+      Position: {id: 531, type: struct, type_name: CF_V2, kind: data}
+      Direction: {type: struct, type_name: CF_V2, kind: data}
+    outputs:
+      Then: {id: 530}
+  edges:
+  - {from: 346.Exec, to: 429.In}
+  - {from: 346.Point, to: 372.point}
+  - {from: 346.Point, to: 438.Position, conversion: game_transform_to_cf}
+  - {from: 346.Point, to: 484.point}
+  - {from: 346.Normal, to: 372.normal}
+  - {from: 346.Normal, to: 438.Direction, conversion: game_transform_to_cf}
+  - {from: 346.Normal, to: 484.normal}
+  - {from: 346.Normal, to: 524.normal}
+  - {from: 346.Target, to: 429.Entity}
+  - {from: 372.Result, to: 429.Point}
+  - {from: 400.Result, to: 429.Radius}
+  - {from: 424.Result, to: 429.Energy}
+  - {from: 427.Self, to: 429.Source}
+  - {from: 429.Out, to: 438.Exec}
+  - {from: 438.Then, to: 460.Exec}
+  - {from: 460.Then, to: 488.Exec}
+  - {from: 460.Entity, to: 488.Entity}
+  - {from: 484.Result, to: 488.Value}
+  - {from: 484.Result, to: 528.Position}
+  - {from: 488.Then, to: 528.Exec}
+  - {from: 524.Result, to: 528.Direction}
+  - {from: 528.Then, to: 348.Exec}
+- {id: 353, kind: function, math_expression: point - normal * 1.5, entry_id: 354}
+- id: 376
+  kind: function
+  math_expression: 2.5 + sqrt(damage) * 0.7
+  entry_id: 377
+- {id: 403, kind: function, math_expression: 0.4 + damage * 0.06, entry_id: 404}
+- {id: 465, kind: function, math_expression: point + normal * 3, entry_id: 466}
+- id: 494
+  kind: function
+  math_expression: normalize(velocity - normal * 2 * dot(velocity, normal))
+  entry_id: 495
+- {id: 536, kind: function, math_expression: age += dt, entry_id: 555}
+- {id: 611, kind: function, math_expression: homing > 0, entry_id: 612}
+- id: 650
+  kind: function
+  math_expression: velocity = direction(atan2(velocity.y, velocity.x) + clamp(atan2(sin(atan2(target.y - pos.y, target.x - pos.x) - atan2(velocity.y, velocity.x)), cos(atan2(target.y - pos.y, target.x - pos.x) - atan2(velocity.y, velocity.x))), -homing * dt, homing * dt)) * length(velocity)
+  entry_id: 755
+- id: 860
+  kind: function
+  math_expression: velocity = normalize(velocity) * max(30, length(velocity) + acceleration * dt)
+  entry_id: 902
+- id: 940
+  kind: function
+  math_expression: heading = atan2(velocity.y, velocity.x)
+  entry_id: 959
+- id: 985
+  kind: function
+  math_expression: pos + velocity * dt * 1.5 + normalize(velocity) * 3
+  entry_id: 986
+- {id: 1044, kind: function, math_expression: bounce > 0, entry_id: 1045}
+- id: 1069
+  kind: function
+  math_expression: velocity = velocity - normal * 2 * dot(velocity, normal)
+  entry_id: 1103
+- {id: 1134, kind: function, math_expression: bounce -= 1, entry_id: 1154}
+- id: 1212
+  kind: function
+  math_expression: pos = point + normal * 3
+  entry_id: 1240
+- id: 1292
+  kind: function
+  math_expression: payload >= 0 && trigger == 1 && age >= delay
+  entry_id: 1293
+- {id: 1342, kind: function, math_expression: normalize(velocity), entry_id: 1343}
+- {id: 1360, kind: function, math_expression: age >= lifetime, entry_id: 1361}
+- {id: 1414, kind: function, math_expression: pierce > 0, entry_id: 1415}
+- {id: 1439, kind: function, math_expression: pierce -= 1, entry_id: 1459}

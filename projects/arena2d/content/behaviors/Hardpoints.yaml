@@ -1,0 +1,2277 @@
+version: 3
+name: Hardpoints
+id_counter: 3147
+description: 'Casts the ship''s two weapon module lists in order: modifiers shape the next emitter, a carrier arms it with the rest of the group as a payload, and an emitter fires and ends the cast. Draws on a shared capacitor.'
+owner_type: ecs.entity
+variables:
+- id: 1
+  name: modName
+  type: name
+  container: 1
+  default:
+  - Pulse Bolt
+  - Plasma Glob
+  - Rail Needle
+  - Seeker
+  - Scatter
+  - Arc Lance
+  - Bore
+  - Cryo Shard
+  - Acid Flask
+  - Mine
+  - Singularity
+  - ""
+  - ""
+  - ""
+  - ""
+  - ""
+  - ""
+  - ""
+  - ""
+  - ""
+  - Twin
+  - Homing
+  - Ricochet
+  - Pierce
+  - Accelerate
+  - Heavy
+  - Incendiary
+  - Cryo
+  - Corrosive
+  - Split
+  - Blast
+  - Overcharge
+  - Conductive
+  - ""
+  - ""
+  - ""
+  - ""
+  - ""
+  - ""
+  - ""
+  - Trigger
+  - Timer
+  - Burst
+- id: 2
+  name: modCost
+  type: float
+  container: 1
+  default:
+  - 3.0
+  - 9.0
+  - 8.0
+  - 12.0
+  - 7.0
+  - 6.0
+  - 5.0
+  - 5.0
+  - 7.0
+  - 12.0
+  - 20.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 2.0
+  - 3.0
+  - 2.0
+  - 3.0
+  - 1.0
+  - 4.0
+  - 3.0
+  - 3.0
+  - 3.0
+  - 4.0
+  - 5.0
+  - 4.0
+  - 3.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 2.0
+  - 2.0
+  - 2.0
+- id: 3
+  name: modShot
+  type: name
+  container: 1
+  default:
+  - Bolt
+  - Plasma
+  - Needle
+  - Seeker
+  - Shard
+  - Arc
+  - Bore
+  - CryoShard
+  - AcidFlask
+  - Mine
+  - Singularity
+  - ""
+  - ""
+  - ""
+  - ""
+  - ""
+  - ""
+  - ""
+  - ""
+  - ""
+  - ""
+  - ""
+  - ""
+  - ""
+  - ""
+  - ""
+  - ""
+  - ""
+  - ""
+  - ""
+  - ""
+  - ""
+  - ""
+  - ""
+  - ""
+  - ""
+  - ""
+  - ""
+  - ""
+  - ""
+  - ""
+  - ""
+  - ""
+- id: 4
+  name: modCount
+  type: int
+  container: 1
+  default:
+  - 1
+  - 1
+  - 1
+  - 1
+  - 5
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+- id: 5
+  name: modSpread
+  type: float
+  container: 1
+  default:
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.5
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+- id: 6
+  name: start0
+  type: int
+  container: 1
+  default: [4, 0]
+- id: 7
+  name: start1
+  type: int
+  container: 1
+  default: [40, 0, 30, 1]
+- id: 8
+  name: mods
+  type: int
+  container: 1
+  default: [0]
+- {id: 9, name: castDelay0, type: float, default: 0.16}
+- {id: 10, name: castDelay1, type: float, default: 0.45}
+- {id: 11, name: recharge0, type: float, default: 0.35}
+- {id: 12, name: recharge1, type: float, default: 0.9}
+- {id: 13, name: cooldown0, type: float}
+- {id: 14, name: cooldown1, type: float}
+- {id: 15, name: capacitor, type: float, default: 60.0}
+- {id: 16, name: capacitorMax, type: float, default: 60.0}
+- {id: 17, name: capacitorRegen, type: float, default: 22.0}
+- {id: 18, name: sSpeed, type: float, default: 1.0}
+- {id: 19, name: sLife, type: float, default: 1.0}
+- {id: 20, name: sDamage, type: float}
+- {id: 21, name: sHoming, type: float}
+- {id: 22, name: sAccel, type: float}
+- {id: 23, name: sPierce, type: float}
+- {id: 24, name: sBounce, type: float}
+- {id: 25, name: sSplit, type: float}
+- {id: 26, name: sElement, type: float}
+- {id: 27, name: sBlast, type: float}
+- {id: 28, name: sKnock, type: float}
+- {id: 29, name: sTrigger, type: float}
+- {id: 30, name: sDelay, type: float}
+- {id: 31, name: dmgMul, type: float, default: 1.0}
+- {id: 32, name: castCost, type: float}
+- {id: 33, name: outCool, type: float}
+- {id: 34, name: cursor0, type: int}
+- {id: 35, name: cursor1, type: int}
+- {id: 36, name: twin, type: int}
+- {id: 37, name: carrier, type: int}
+- {id: 38, name: next, type: int}
+- {id: 39, name: outCursor, type: int}
+graphs:
+- kind: event
+  name: ""
+  nodes:
+  - {id: 2783, type: Event, reference_name: Begin}
+  - id: 2785
+    type: Get Variable
+    reference_id: 6
+    reference_name: start0
+    outputs:
+      Value: {container: 1}
+  - id: 2787
+    type: Set Global Variable
+    inputs: {Name: Hardpoint0}
+  - id: 2793
+    type: Get Variable
+    reference_id: 7
+    reference_name: start1
+    outputs:
+      Value: {container: 1}
+  - id: 2795
+    type: Set Global Variable
+    inputs: {Name: Hardpoint1}
+  - id: 2801
+    type: Get Variable
+    reference_id: 1
+    reference_name: modName
+    outputs:
+      Value: {type: name, container: 1}
+  - id: 2803
+    type: Set Global Variable
+    inputs: {Name: ModuleNames}
+  - id: 2809
+    type: Event
+    reference_name: Tick
+    outputs:
+      DeltaSeconds: {type: float, kind: data}
+  - id: 2834
+    type: Behavior Expression
+    reference_id: 2812
+    reference_name: capacitor = min(capacitorMax, capacitor + capacitorRegen * dt)
+    inputs:
+      Exec: {id: 2840, kind: exec}
+      capacitor:
+        id: 2835
+        type: float
+        binding: {kind: variable, variable_id: 15, source_asset: Hardpoints}
+      capacitorMax:
+        type: double
+        binding: {kind: variable, variable_id: 16, source_asset: Hardpoints}
+      capacitorRegen:
+        type: double
+        binding: {kind: variable, variable_id: 17, source_asset: Hardpoints}
+      dt:
+        type: double
+        binding: {kind: delta_time}
+    outputs:
+      Then: {id: 2841, kind: exec}
+      Result: {id: 2839, type: float}
+  - id: 2869
+    type: Branch
+    inputs:
+      Condition:
+        binding: {kind: component_field, component: GAME.GameAim, field: firing}
+  - id: 2874
+    type: Call Function
+    reference_id: 2374
+    reference_name: Try Fire
+    inputs:
+      Hardpoint: {id: 2877, type: int, kind: data}
+      Cooldown:
+        type: float
+        kind: data
+        binding: {kind: variable, variable_id: 13, source_asset: Hardpoints}
+      Cursor:
+        type: int
+        kind: data
+        binding: {kind: variable, variable_id: 34, source_asset: Hardpoints}
+      Delay:
+        type: float
+        kind: data
+        binding: {kind: variable, variable_id: 9, source_asset: Hardpoints}
+      Recharge:
+        type: float
+        kind: data
+        binding: {kind: variable, variable_id: 11, source_asset: Hardpoints}
+    outputs:
+      Then: {id: 2876}
+      Cooldown: {id: 2882, type: float, kind: data}
+      Cursor: {type: int, kind: data}
+  - id: 2892
+    type: Behavior Expression
+    reference_id: 2884
+    reference_name: cooldown0 = c
+    inputs:
+      Exec: {id: 2896, kind: exec}
+      cooldown0:
+        id: 2893
+        type: float
+        binding: {kind: variable, variable_id: 13, source_asset: Hardpoints}
+      c: {}
+    outputs:
+      Then: {id: 2897, kind: exec}
+      Result: {id: 2895, type: float}
+  - id: 2919
+    type: Behavior Expression
+    reference_id: 2911
+    reference_name: cursor0 = k
+    inputs:
+      Exec: {id: 2923, kind: exec}
+      cursor0:
+        id: 2920
+        type: int
+        binding: {kind: variable, variable_id: 34, source_asset: Hardpoints}
+      k: {}
+    outputs:
+      Then: {id: 2924, kind: exec}
+      Result: {id: 2922, type: int}
+  - id: 2957
+    type: Behavior Expression
+    reference_id: 2938
+    reference_name: cooldown0 = max(cooldown0 - dt, 0)
+    inputs:
+      Exec: {id: 2961, kind: exec}
+      cooldown0:
+        id: 2958
+        type: float
+        binding: {kind: variable, variable_id: 13, source_asset: Hardpoints}
+      dt:
+        type: double
+        binding: {kind: delta_time}
+    outputs:
+      Then: {id: 2962, kind: exec}
+      Result: {id: 2960, type: float}
+  - id: 2987
+    type: Get Global Variable
+    inputs: {Name: SecondaryFire}
+  - id: 2990
+    type: GetEntity_GameActionBinding
+    outputs:
+      Value.source: {}
+      Value.action: {}
+      Value.firing: {}
+      Value.disabled: {}
+      Value.pressed: {}
+  - {id: 2998, type: Branch}
+  - id: 3003
+    type: Call Function
+    reference_id: 2374
+    reference_name: Try Fire
+    inputs:
+      Hardpoint: {id: 3006, type: int, kind: data, default: 1}
+      Cooldown:
+        type: float
+        kind: data
+        binding: {kind: variable, variable_id: 14, source_asset: Hardpoints}
+      Cursor:
+        type: int
+        kind: data
+        binding: {kind: variable, variable_id: 35, source_asset: Hardpoints}
+      Delay:
+        type: float
+        kind: data
+        binding: {kind: variable, variable_id: 10, source_asset: Hardpoints}
+      Recharge:
+        type: float
+        kind: data
+        binding: {kind: variable, variable_id: 12, source_asset: Hardpoints}
+    outputs:
+      Then: {id: 3005}
+      Cooldown: {id: 3011, type: float, kind: data}
+      Cursor: {type: int, kind: data}
+  - id: 3021
+    type: Behavior Expression
+    reference_id: 3013
+    reference_name: cooldown1 = c
+    inputs:
+      Exec: {id: 3025, kind: exec}
+      cooldown1:
+        id: 3022
+        type: float
+        binding: {kind: variable, variable_id: 14, source_asset: Hardpoints}
+      c: {}
+    outputs:
+      Then: {id: 3026, kind: exec}
+      Result: {id: 3024, type: float}
+  - id: 3048
+    type: Behavior Expression
+    reference_id: 3040
+    reference_name: cursor1 = k
+    inputs:
+      Exec: {id: 3052, kind: exec}
+      cursor1:
+        id: 3049
+        type: int
+        binding: {kind: variable, variable_id: 35, source_asset: Hardpoints}
+      k: {}
+    outputs:
+      Then: {id: 3053, kind: exec}
+      Result: {id: 3051, type: int}
+  - id: 3086
+    type: Behavior Expression
+    reference_id: 3067
+    reference_name: cooldown1 = max(cooldown1 - dt, 0)
+    inputs:
+      Exec: {id: 3090, kind: exec}
+      cooldown1:
+        id: 3087
+        type: float
+        binding: {kind: variable, variable_id: 14, source_asset: Hardpoints}
+      dt:
+        type: double
+        binding: {kind: delta_time}
+    outputs:
+      Then: {id: 3091, kind: exec}
+      Result: {id: 3089, type: float}
+  - id: 3116
+    type: Get Variable
+    reference_id: 15
+    reference_name: capacitor
+    outputs:
+      Value: {type: float}
+  - id: 3118
+    type: Set Global Variable
+    inputs: {Name: Capacitor}
+  - id: 3124
+    type: Get Variable
+    reference_id: 16
+    reference_name: capacitorMax
+    outputs:
+      Value: {type: float}
+  - id: 3126
+    type: Set Global Variable
+    inputs: {Name: CapacitorMax}
+  - id: 3132
+    type: Event
+    reference_name: CastPayload
+    outputs:
+      Hardpoint: {declaration_id: 1, type: int, kind: data}
+      Index: {declaration_id: 2, type: int, kind: data}
+      Position: {declaration_id: 3, type: struct, type_name: CF_V2, kind: data}
+      Direction: {declaration_id: 4, type: struct, type_name: CF_V2, kind: data}
+  - id: 3138
+    type: Call Function
+    reference_id: 1256
+    reference_name: Cast
+    inputs:
+      Hardpoint: {id: 3141, type: int, kind: data}
+      Start: {type: int, kind: data}
+      Origin: {type: struct, type_name: CF_V2, kind: data}
+      Direction: {type: struct, type_name: CF_V2, kind: data}
+    outputs:
+      Then: {id: 3140}
+      Next: {id: 3145, type: int, kind: data}
+      Cost: {type: float, kind: data}
+  edges:
+  - {from: 2783.Then, to: 2787.Exec}
+  - {from: 2785.Value, to: 2787.Value}
+  - {from: 2787.Then, to: 2795.Exec}
+  - {from: 2793.Value, to: 2795.Value}
+  - {from: 2795.Then, to: 2803.Exec}
+  - {from: 2801.Value, to: 2803.Value}
+  - {from: 2809.Then, to: 2834.Exec}
+  - {from: 2834.Then, to: 2869.Exec}
+  - {from: 2869.True, to: 2874.Exec}
+  - {from: 2869.False, to: 2957.Exec}
+  - {from: 2874.Then, to: 2892.Exec}
+  - {from: 2874.Cooldown, to: 2892.c}
+  - {from: 2874.Cursor, to: 2919.k}
+  - {from: 2892.Then, to: 2919.Exec}
+  - {from: 2919.Then, to: 2998.Exec}
+  - {from: 2957.Then, to: 2998.Exec}
+  - {from: 2987.Value, to: 2990.Entity}
+  - {from: 2990.Value.pressed, to: 2998.Condition}
+  - {from: 2998.True, to: 3003.Exec}
+  - {from: 2998.False, to: 3086.Exec}
+  - {from: 3003.Then, to: 3021.Exec}
+  - {from: 3003.Cooldown, to: 3021.c}
+  - {from: 3003.Cursor, to: 3048.k}
+  - {from: 3021.Then, to: 3048.Exec}
+  - {from: 3048.Then, to: 3118.Exec}
+  - {from: 3086.Then, to: 3118.Exec}
+  - {from: 3116.Value, to: 3118.Value}
+  - {from: 3118.Then, to: 3126.Exec}
+  - {from: 3124.Value, to: 3126.Value}
+  - {from: 3132.Then, to: 3138.Exec}
+  - {from: 3132.Hardpoint, to: 3138.Hardpoint}
+  - {from: 3132.Index, to: 3138.Start}
+  - {from: 3132.Position, to: 3138.Origin, conversion: game_transform_to_cf}
+  - {from: 3132.Direction, to: 3138.Direction, conversion: game_transform_to_cf}
+- id: 40
+  kind: function
+  name: Apply Modifier
+  entry_id: 41
+  return_id: 43
+  call_depth_limit: 64
+  nodes:
+  - id: 41
+    type: Function Entry
+    outputs:
+      M: {id: 45, type: int, kind: data}
+  - {id: 43, type: Return}
+  - id: 60
+    type: Behavior Expression
+    reference_id: 46
+    reference_name: m - 20
+    inputs:
+      m: {type: int}
+    outputs:
+      Result: {type: double}
+  - id: 63
+    type: Switch on Int
+    outputs:
+    - 66
+    - 67
+    - {id: 69, name: Case2}
+    - {id: 70, name: Case3}
+    - {id: 71, name: Case4}
+    - {id: 72, name: Case5}
+    - {id: 73, name: Case6}
+    - {id: 74, name: Case7}
+    - {id: 75, name: Case8}
+    - {id: 76, name: Case9}
+    - {id: 77, name: Case10}
+    - {id: 78, name: Case11}
+    - {id: 79, name: Case12}
+    - 68
+  - id: 94
+    type: Behavior Expression
+    reference_id: 80
+    reference_name: twin += 1
+    inputs:
+      Exec: {id: 97, kind: exec}
+      twin:
+        id: 95
+        type: int
+        binding: {kind: variable, variable_id: 36, source_asset: Hardpoints}
+    outputs:
+      Then: {id: 98, kind: exec}
+      Result: {id: 96, type: int}
+  - id: 132
+    type: Behavior Expression
+    reference_id: 118
+    reference_name: sHoming += 3.5
+    inputs:
+      Exec: {id: 135, kind: exec}
+      sHoming:
+        id: 133
+        type: float
+        binding: {kind: variable, variable_id: 21, source_asset: Hardpoints}
+    outputs:
+      Then: {id: 136, kind: exec}
+      Result: {id: 134, type: float}
+  - id: 170
+    type: Behavior Expression
+    reference_id: 156
+    reference_name: sBounce += 2
+    inputs:
+      Exec: {id: 173, kind: exec}
+      sBounce:
+        id: 171
+        type: float
+        binding: {kind: variable, variable_id: 24, source_asset: Hardpoints}
+    outputs:
+      Then: {id: 174, kind: exec}
+      Result: {id: 172, type: float}
+  - id: 208
+    type: Behavior Expression
+    reference_id: 194
+    reference_name: sPierce += 2
+    inputs:
+      Exec: {id: 211, kind: exec}
+      sPierce:
+        id: 209
+        type: float
+        binding: {kind: variable, variable_id: 23, source_asset: Hardpoints}
+    outputs:
+      Then: {id: 212, kind: exec}
+      Result: {id: 210, type: float}
+  - id: 246
+    type: Behavior Expression
+    reference_id: 232
+    reference_name: sAccel += 1200
+    inputs:
+      Exec: {id: 249, kind: exec}
+      sAccel:
+        id: 247
+        type: float
+        binding: {kind: variable, variable_id: 22, source_asset: Hardpoints}
+    outputs:
+      Then: {id: 250, kind: exec}
+      Result: {id: 248, type: float}
+  - id: 284
+    type: Behavior Expression
+    reference_id: 270
+    reference_name: sSpeed *= 0.45
+    inputs:
+      Exec: {id: 287, kind: exec}
+      sSpeed:
+        id: 285
+        type: float
+        binding: {kind: variable, variable_id: 18, source_asset: Hardpoints}
+    outputs:
+      Then: {id: 288, kind: exec}
+      Result: {id: 286, type: float}
+  - id: 322
+    type: Behavior Expression
+    reference_id: 308
+    reference_name: dmgMul *= 1.9
+    inputs:
+      Exec: {id: 325, kind: exec}
+      dmgMul:
+        id: 323
+        type: float
+        binding: {kind: variable, variable_id: 31, source_asset: Hardpoints}
+    outputs:
+      Then: {id: 326, kind: exec}
+      Result: {id: 324, type: float}
+  - id: 360
+    type: Behavior Expression
+    reference_id: 346
+    reference_name: sSpeed *= 0.7
+    inputs:
+      Exec: {id: 363, kind: exec}
+      sSpeed:
+        id: 361
+        type: float
+        binding: {kind: variable, variable_id: 18, source_asset: Hardpoints}
+    outputs:
+      Then: {id: 364, kind: exec}
+      Result: {id: 362, type: float}
+  - id: 398
+    type: Behavior Expression
+    reference_id: 384
+    reference_name: sElement = max(sElement, 1)
+    inputs:
+      Exec: {id: 401, kind: exec}
+      sElement:
+        id: 399
+        type: float
+        binding: {kind: variable, variable_id: 26, source_asset: Hardpoints}
+    outputs:
+      Then: {id: 402, kind: exec}
+      Result: {id: 400, type: float}
+  - id: 436
+    type: Behavior Expression
+    reference_id: 422
+    reference_name: sElement = max(sElement, 2)
+    inputs:
+      Exec: {id: 439, kind: exec}
+      sElement:
+        id: 437
+        type: float
+        binding: {kind: variable, variable_id: 26, source_asset: Hardpoints}
+    outputs:
+      Then: {id: 440, kind: exec}
+      Result: {id: 438, type: float}
+  - id: 474
+    type: Behavior Expression
+    reference_id: 460
+    reference_name: sElement = max(sElement, 3)
+    inputs:
+      Exec: {id: 477, kind: exec}
+      sElement:
+        id: 475
+        type: float
+        binding: {kind: variable, variable_id: 26, source_asset: Hardpoints}
+    outputs:
+      Then: {id: 478, kind: exec}
+      Result: {id: 476, type: float}
+  - id: 512
+    type: Behavior Expression
+    reference_id: 498
+    reference_name: sSplit += 3
+    inputs:
+      Exec: {id: 515, kind: exec}
+      sSplit:
+        id: 513
+        type: float
+        binding: {kind: variable, variable_id: 25, source_asset: Hardpoints}
+    outputs:
+      Then: {id: 516, kind: exec}
+      Result: {id: 514, type: float}
+  - id: 550
+    type: Behavior Expression
+    reference_id: 536
+    reference_name: sBlast += 34
+    inputs:
+      Exec: {id: 553, kind: exec}
+      sBlast:
+        id: 551
+        type: float
+        binding: {kind: variable, variable_id: 27, source_asset: Hardpoints}
+    outputs:
+      Then: {id: 554, kind: exec}
+      Result: {id: 552, type: float}
+  - id: 588
+    type: Behavior Expression
+    reference_id: 574
+    reference_name: dmgMul *= 1.35
+    inputs:
+      Exec: {id: 591, kind: exec}
+      dmgMul:
+        id: 589
+        type: float
+        binding: {kind: variable, variable_id: 31, source_asset: Hardpoints}
+    outputs:
+      Then: {id: 592, kind: exec}
+      Result: {id: 590, type: float}
+  - id: 626
+    type: Behavior Expression
+    reference_id: 612
+    reference_name: sLife *= 1.4
+    inputs:
+      Exec: {id: 629, kind: exec}
+      sLife:
+        id: 627
+        type: float
+        binding: {kind: variable, variable_id: 19, source_asset: Hardpoints}
+    outputs:
+      Then: {id: 630, kind: exec}
+      Result: {id: 628, type: float}
+  - id: 664
+    type: Behavior Expression
+    reference_id: 650
+    reference_name: sElement = max(sElement, 4)
+    inputs:
+      Exec: {id: 667, kind: exec}
+      sElement:
+        id: 665
+        type: float
+        binding: {kind: variable, variable_id: 26, source_asset: Hardpoints}
+    outputs:
+      Then: {id: 668, kind: exec}
+      Result: {id: 666, type: float}
+  edges:
+  - {from: 41.Exec, to: 63.Exec}
+  - {from: 41.M, to: 60.m}
+  - {from: 60.Result, to: 63.Selection, conversion: To Integer}
+  - {from: 63.Case0, to: 94.Exec}
+  - {from: 63.Case1, to: 132.Exec}
+  - {from: 63.Default, to: 43.Exec}
+  - {from: 63.Case2, to: 170.Exec}
+  - {from: 63.Case3, to: 208.Exec}
+  - {from: 63.Case4, to: 246.Exec}
+  - {from: 63.Case5, to: 322.Exec}
+  - {from: 63.Case6, to: 398.Exec}
+  - {from: 63.Case7, to: 436.Exec}
+  - {from: 63.Case8, to: 474.Exec}
+  - {from: 63.Case9, to: 512.Exec}
+  - {from: 63.Case10, to: 550.Exec}
+  - {from: 63.Case11, to: 588.Exec}
+  - {from: 63.Case12, to: 664.Exec}
+  - {from: 94.Then, to: 43.Exec}
+  - {from: 132.Then, to: 43.Exec}
+  - {from: 170.Then, to: 43.Exec}
+  - {from: 208.Then, to: 43.Exec}
+  - {from: 246.Then, to: 284.Exec}
+  - {from: 284.Then, to: 43.Exec}
+  - {from: 322.Then, to: 360.Exec}
+  - {from: 360.Then, to: 43.Exec}
+  - {from: 398.Then, to: 43.Exec}
+  - {from: 436.Then, to: 43.Exec}
+  - {from: 474.Then, to: 43.Exec}
+  - {from: 512.Then, to: 43.Exec}
+  - {from: 550.Then, to: 43.Exec}
+  - {from: 588.Then, to: 626.Exec}
+  - {from: 626.Then, to: 43.Exec}
+  - {from: 664.Then, to: 43.Exec}
+- {id: 46, kind: function, math_expression: m - 20, entry_id: 47}
+- {id: 80, kind: function, math_expression: twin += 1, entry_id: 100}
+- {id: 118, kind: function, math_expression: sHoming += 3.5, entry_id: 138}
+- {id: 156, kind: function, math_expression: sBounce += 2, entry_id: 176}
+- {id: 194, kind: function, math_expression: sPierce += 2, entry_id: 214}
+- {id: 232, kind: function, math_expression: sAccel += 1200, entry_id: 252}
+- {id: 270, kind: function, math_expression: sSpeed *= 0.45, entry_id: 290}
+- {id: 308, kind: function, math_expression: dmgMul *= 1.9, entry_id: 328}
+- {id: 346, kind: function, math_expression: sSpeed *= 0.7, entry_id: 366}
+- id: 384
+  kind: function
+  math_expression: sElement = max(sElement, 1)
+  entry_id: 404
+- id: 422
+  kind: function
+  math_expression: sElement = max(sElement, 2)
+  entry_id: 442
+- id: 460
+  kind: function
+  math_expression: sElement = max(sElement, 3)
+  entry_id: 480
+- {id: 498, kind: function, math_expression: sSplit += 3, entry_id: 518}
+- {id: 536, kind: function, math_expression: sBlast += 34, entry_id: 556}
+- {id: 574, kind: function, math_expression: dmgMul *= 1.35, entry_id: 594}
+- {id: 612, kind: function, math_expression: sLife *= 1.4, entry_id: 632}
+- id: 650
+  kind: function
+  math_expression: sElement = max(sElement, 4)
+  entry_id: 670
+- id: 688
+  kind: function
+  name: Apply Spec
+  entry_id: 689
+  return_id: 691
+  call_depth_limit: 64
+  nodes:
+  - id: 689
+    type: Function Entry
+    outputs:
+      Shot: {id: 693, type: handle, type_name: ecs.entity, kind: data}
+      Payload: {type: int, kind: data}
+      Direction: {type: struct, type_name: CF_V2, kind: data}
+  - {id: 691, type: Return}
+  - id: 696
+    type: GetEntity_GameProjectile
+    outputs:
+      Value.speed: {}
+      Value.lifetime: {}
+      Value.damage: {}
+      Value.age: {}
+      Value.homing: {}
+      Value.acceleration: {}
+      Value.pierce: {}
+      Value.bounce: {}
+      Value.split: {}
+      Value.element: {}
+      Value.blast: {}
+      Value.payload: {}
+      Value.trigger: {}
+      Value.delay: {}
+      Value.knockback: {}
+      Value.source: {}
+      Value.hardpoint: {}
+  - id: 736
+    type: Behavior Expression
+    reference_id: 716
+    reference_name: ceil(b * dmgMul + sDamage)
+    inputs:
+      b: {type: int}
+      dmgMul:
+        type: double
+        binding: {kind: variable, variable_id: 31, source_asset: Hardpoints}
+      sDamage:
+        type: double
+        binding: {kind: variable, variable_id: 20, source_asset: Hardpoints}
+    outputs:
+      Result: {type: double}
+  - {id: 741, type: Set_GameProjectile_damage}
+  - id: 759
+    type: Behavior Expression
+    reference_id: 747
+    reference_name: b * sSpeed
+    inputs:
+      b: {type: float}
+      sSpeed:
+        type: double
+        binding: {kind: variable, variable_id: 18, source_asset: Hardpoints}
+    outputs:
+      Result: {type: float}
+  - {id: 763, type: Set_GameProjectile_speed}
+  - id: 781
+    type: Behavior Expression
+    reference_id: 769
+    reference_name: b * sLife
+    inputs:
+      b: {type: float}
+      sLife:
+        type: double
+        binding: {kind: variable, variable_id: 19, source_asset: Hardpoints}
+    outputs:
+      Result: {type: float}
+  - {id: 785, type: Set_GameProjectile_lifetime}
+  - id: 803
+    type: Behavior Expression
+    reference_id: 791
+    reference_name: b + sHoming
+    inputs:
+      b: {type: float}
+      sHoming:
+        type: double
+        binding: {kind: variable, variable_id: 21, source_asset: Hardpoints}
+    outputs:
+      Result: {type: float}
+  - {id: 807, type: Set_GameProjectile_homing}
+  - id: 825
+    type: Behavior Expression
+    reference_id: 813
+    reference_name: b + sAccel
+    inputs:
+      b: {type: float}
+      sAccel:
+        type: double
+        binding: {kind: variable, variable_id: 22, source_asset: Hardpoints}
+    outputs:
+      Result: {type: float}
+  - {id: 829, type: Set_GameProjectile_acceleration}
+  - id: 847
+    type: Behavior Expression
+    reference_id: 835
+    reference_name: b + sPierce
+    inputs:
+      b: {type: int}
+      sPierce:
+        type: double
+        binding: {kind: variable, variable_id: 23, source_asset: Hardpoints}
+    outputs:
+      Result: {type: double}
+  - {id: 851, type: Set_GameProjectile_pierce}
+  - id: 869
+    type: Behavior Expression
+    reference_id: 857
+    reference_name: b + sBounce
+    inputs:
+      b: {type: int}
+      sBounce:
+        type: double
+        binding: {kind: variable, variable_id: 24, source_asset: Hardpoints}
+    outputs:
+      Result: {type: double}
+  - {id: 873, type: Set_GameProjectile_bounce}
+  - id: 891
+    type: Behavior Expression
+    reference_id: 879
+    reference_name: b + sSplit
+    inputs:
+      b: {type: int}
+      sSplit:
+        type: double
+        binding: {kind: variable, variable_id: 25, source_asset: Hardpoints}
+    outputs:
+      Result: {type: double}
+  - {id: 895, type: Set_GameProjectile_split}
+  - id: 913
+    type: Behavior Expression
+    reference_id: 901
+    reference_name: b + sBlast
+    inputs:
+      b: {type: float}
+      sBlast:
+        type: double
+        binding: {kind: variable, variable_id: 27, source_asset: Hardpoints}
+    outputs:
+      Result: {type: float}
+  - {id: 917, type: Set_GameProjectile_blast}
+  - id: 935
+    type: Behavior Expression
+    reference_id: 923
+    reference_name: max(b, sElement)
+    inputs:
+      b: {type: int}
+      sElement:
+        type: double
+        binding: {kind: variable, variable_id: 26, source_asset: Hardpoints}
+    outputs:
+      Result: {type: double}
+  - {id: 939, type: Set_GameProjectile_element}
+  - id: 957
+    type: Behavior Expression
+    reference_id: 945
+    reference_name: b + sKnock
+    inputs:
+      b: {type: float}
+      sKnock:
+        type: double
+        binding: {kind: variable, variable_id: 28, source_asset: Hardpoints}
+    outputs:
+      Result: {type: float}
+  - {id: 961, type: Set_GameProjectile_knockback}
+  - id: 974
+    type: Behavior Expression
+    reference_id: 967
+    reference_name: sTrigger
+    inputs:
+      sTrigger:
+        type: double
+        binding: {kind: variable, variable_id: 29, source_asset: Hardpoints}
+    outputs:
+      Result: {type: double}
+  - {id: 977, type: Set_GameProjectile_trigger}
+  - id: 990
+    type: Behavior Expression
+    reference_id: 983
+    reference_name: sDelay
+    inputs:
+      sDelay:
+        type: double
+        binding: {kind: variable, variable_id: 30, source_asset: Hardpoints}
+    outputs:
+      Result: {type: double}
+  - {id: 993, type: Set_GameProjectile_delay}
+  - {id: 999, type: Set_GameProjectile_payload}
+  - id: 1025
+    type: Behavior Expression
+    reference_id: 1005
+    reference_name: normalize(direction) * b * sSpeed
+    inputs:
+      direction: {type: struct, type_name: CF_V2}
+      b: {type: float}
+      sSpeed:
+        type: double
+        binding: {kind: variable, variable_id: 18, source_asset: Hardpoints}
+    outputs:
+      Result: {type: struct, type_name: CF_V2}
+  - {id: 1030, type: SetEntity_GameVelocity}
+  edges:
+  - {from: 689.Exec, to: 741.Exec}
+  - {from: 689.Shot, to: 696.Entity}
+  - {from: 689.Shot, to: 741.Target}
+  - {from: 689.Shot, to: 763.Target}
+  - {from: 689.Shot, to: 785.Target}
+  - {from: 689.Shot, to: 807.Target}
+  - {from: 689.Shot, to: 829.Target}
+  - {from: 689.Shot, to: 851.Target}
+  - {from: 689.Shot, to: 873.Target}
+  - {from: 689.Shot, to: 895.Target}
+  - {from: 689.Shot, to: 917.Target}
+  - {from: 689.Shot, to: 939.Target}
+  - {from: 689.Shot, to: 961.Target}
+  - {from: 689.Shot, to: 977.Target}
+  - {from: 689.Shot, to: 993.Target}
+  - {from: 689.Shot, to: 999.Target}
+  - {from: 689.Shot, to: 1030.Entity}
+  - {from: 689.Payload, to: 999.Value}
+  - {from: 689.Direction, to: 1025.direction}
+  - {from: 696.Value.speed, to: 759.b}
+  - {from: 696.Value.speed, to: 1025.b}
+  - {from: 696.Value.lifetime, to: 781.b}
+  - {from: 696.Value.damage, to: 736.b}
+  - {from: 696.Value.homing, to: 803.b}
+  - {from: 696.Value.acceleration, to: 825.b}
+  - {from: 696.Value.pierce, to: 847.b}
+  - {from: 696.Value.bounce, to: 869.b}
+  - {from: 696.Value.split, to: 891.b}
+  - {from: 696.Value.element, to: 935.b}
+  - {from: 696.Value.blast, to: 913.b}
+  - {from: 696.Value.knockback, to: 957.b}
+  - {from: 736.Result, to: 741.Value, conversion: To Integer}
+  - {from: 741.Then, to: 763.Exec}
+  - {from: 759.Result, to: 763.Value}
+  - {from: 763.Then, to: 785.Exec}
+  - {from: 781.Result, to: 785.Value}
+  - {from: 785.Then, to: 807.Exec}
+  - {from: 803.Result, to: 807.Value}
+  - {from: 807.Then, to: 829.Exec}
+  - {from: 825.Result, to: 829.Value}
+  - {from: 829.Then, to: 851.Exec}
+  - {from: 847.Result, to: 851.Value, conversion: To Integer}
+  - {from: 851.Then, to: 873.Exec}
+  - {from: 869.Result, to: 873.Value, conversion: To Integer}
+  - {from: 873.Then, to: 895.Exec}
+  - {from: 891.Result, to: 895.Value, conversion: To Integer}
+  - {from: 895.Then, to: 917.Exec}
+  - {from: 913.Result, to: 917.Value}
+  - {from: 917.Then, to: 939.Exec}
+  - {from: 935.Result, to: 939.Value, conversion: To Integer}
+  - {from: 939.Then, to: 961.Exec}
+  - {from: 957.Result, to: 961.Value}
+  - {from: 961.Then, to: 977.Exec}
+  - {from: 974.Result, to: 977.Value, conversion: To Integer}
+  - {from: 977.Then, to: 993.Exec}
+  - {from: 990.Result, to: 993.Value}
+  - {from: 993.Then, to: 999.Exec}
+  - {from: 999.Then, to: 1030.Exec}
+  - {from: 1025.Result, to: 1030.Value}
+  - {from: 1030.Then, to: 691.Exec}
+- id: 716
+  kind: function
+  math_expression: ceil(b * dmgMul + sDamage)
+  entry_id: 717
+- {id: 747, kind: function, math_expression: b * sSpeed, entry_id: 748}
+- {id: 769, kind: function, math_expression: b * sLife, entry_id: 770}
+- {id: 791, kind: function, math_expression: b + sHoming, entry_id: 792}
+- {id: 813, kind: function, math_expression: b + sAccel, entry_id: 814}
+- {id: 835, kind: function, math_expression: b + sPierce, entry_id: 836}
+- {id: 857, kind: function, math_expression: b + sBounce, entry_id: 858}
+- {id: 879, kind: function, math_expression: b + sSplit, entry_id: 880}
+- {id: 901, kind: function, math_expression: b + sBlast, entry_id: 902}
+- {id: 923, kind: function, math_expression: 'max(b, sElement)', entry_id: 924}
+- {id: 945, kind: function, math_expression: b + sKnock, entry_id: 946}
+- {id: 967, kind: function, math_expression: sTrigger, entry_id: 968}
+- {id: 983, kind: function, math_expression: sDelay, entry_id: 984}
+- id: 1005
+  kind: function
+  math_expression: normalize(direction) * b * sSpeed
+  entry_id: 1006
+- id: 1036
+  kind: function
+  name: Fire Emitter
+  entry_id: 1037
+  return_id: 1039
+  call_depth_limit: 64
+  nodes:
+  - id: 1037
+    type: Function Entry
+    outputs:
+      M: {id: 1041, type: int, kind: data}
+      Origin: {type: struct, type_name: CF_V2, kind: data}
+      Direction: {type: struct, type_name: CF_V2, kind: data}
+      Hardpoint: {type: int, kind: data}
+      Payload: {type: int, kind: data}
+  - {id: 1039, type: Return}
+  - id: 1046
+    type: Get Variable
+    reference_id: 4
+    reference_name: modCount
+    outputs:
+      Value: {container: 1}
+  - id: 1048
+    type: Get
+    inputs:
+      Array: {type: int}
+    outputs:
+      Item: {type: int}
+  - id: 1052
+    type: Get Variable
+    reference_id: 5
+    reference_name: modSpread
+    outputs:
+      Value: {type: float, container: 1}
+  - id: 1054
+    type: Get
+    inputs:
+      Array: {type: float}
+    outputs:
+      Item: {type: float}
+  - id: 1058
+    type: Get Variable
+    reference_id: 3
+    reference_name: modShot
+    outputs:
+      Value: {type: name, container: 1}
+  - id: 1060
+    type: Get
+    inputs:
+      Array: {type: name}
+    outputs:
+      Item: {type: name}
+  - id: 1083
+    type: Behavior Expression
+    reference_id: 1064
+    reference_name: count + twin - 1
+    inputs:
+      count: {type: int}
+      twin:
+        type: double
+        binding: {kind: variable, variable_id: 36, source_asset: Hardpoints}
+    outputs:
+      Result: {type: double}
+  - {id: 1087, type: ForLoop}
+  - id: 1162
+    type: Behavior Expression
+    reference_id: 1094
+    reference_name: direction(atan2(dir.y, dir.x) + (k - total * 0.5) * (spread + twin * 0.09) + (rand() - 0.5) * 0.03)
+    inputs:
+      dir: {type: struct, type_name: CF_V2}
+      k: {type: int}
+      total: {type: double}
+      spread: {type: float}
+      twin:
+        type: double
+        binding: {kind: variable, variable_id: 36, source_asset: Hardpoints}
+    outputs:
+      Result: {type: struct, type_name: CF_V2}
+  - id: 1239
+    type: Self
+    outputs:
+      Self: {type_name: ecs.entity}
+  - id: 1241
+    type: Call Function
+    reference_id: 1
+    reference_name: Launch Shot
+    reference_asset: ShotActions
+    inputs:
+      Prototype: {id: 1244, declaration_id: 6, type: name, kind: data}
+      Origin: {declaration_id: 7, type: struct, type_name: CF_V2, kind: data}
+      Direction: {declaration_id: 8, type: struct, type_name: CF_V2, kind: data}
+      Source: {declaration_id: 9, type: handle, type_name: ecs.entity, kind: data}
+      Hardpoint: {declaration_id: 10, type: int, kind: data}
+    outputs:
+      Then: {id: 1243}
+      Entity: {id: 1249, declaration_id: 11, type: handle, type_name: ecs.entity, kind: data}
+  - id: 1250
+    type: Call Function
+    reference_id: 688
+    reference_name: Apply Spec
+    inputs:
+      Shot: {id: 1253, type: handle, type_name: ecs.entity, kind: data}
+      Payload: {type: int, kind: data}
+      Direction: {type: struct, type_name: CF_V2, kind: data}
+    outputs:
+      Then: {id: 1252}
+  edges:
+  - {from: 1037.Exec, to: 1087.Exec}
+  - {from: 1037.M, to: 1048.Index}
+  - {from: 1037.M, to: 1054.Index}
+  - {from: 1037.M, to: 1060.Index}
+  - {from: 1037.Origin, to: 1241.Origin, conversion: game_transform_to_cf}
+  - {from: 1037.Direction, to: 1162.dir}
+  - {from: 1037.Hardpoint, to: 1241.Hardpoint}
+  - {from: 1037.Payload, to: 1250.Payload}
+  - {from: 1046.Value, to: 1048.Array}
+  - {from: 1048.Item, to: 1083.count}
+  - {from: 1052.Value, to: 1054.Array}
+  - {from: 1054.Item, to: 1162.spread}
+  - {from: 1058.Value, to: 1060.Array}
+  - {from: 1060.Item, to: 1241.Prototype}
+  - {from: 1083.Result, to: 1087.LastIndex, conversion: To Integer}
+  - {from: 1083.Result, to: 1162.total}
+  - {from: 1087.Body, to: 1241.Exec}
+  - {from: 1087.Index, to: 1162.k}
+  - {from: 1087.Completed, to: 1039.Exec}
+  - {from: 1162.Result, to: 1241.Direction}
+  - {from: 1162.Result, to: 1250.Direction}
+  - {from: 1239.Self, to: 1241.Source}
+  - {from: 1241.Then, to: 1250.Exec}
+  - {from: 1241.Entity, to: 1250.Shot}
+- {id: 1064, kind: function, math_expression: count + twin - 1, entry_id: 1065}
+- id: 1094
+  kind: function
+  math_expression: direction(atan2(dir.y, dir.x) + (k - total * 0.5) * (spread + twin * 0.09) + (rand() - 0.5) * 0.03)
+  entry_id: 1170
+- id: 1256
+  kind: function
+  name: Cast
+  entry_id: 1257
+  return_id: 1259
+  call_depth_limit: 64
+  nodes:
+  - id: 1257
+    type: Function Entry
+    outputs:
+      Hardpoint: {id: 1261, type: int, kind: data}
+      Start: {type: int, kind: data}
+      Origin: {type: struct, type_name: CF_V2, kind: data}
+      Direction: {type: struct, type_name: CF_V2, kind: data}
+  - id: 1259
+    type: Return
+    inputs:
+      Next:
+        id: 1265
+        type: int
+        kind: data
+        binding: {kind: variable, variable_id: 38, source_asset: Hardpoints}
+      Cost:
+        type: float
+        kind: data
+        binding: {kind: variable, variable_id: 32, source_asset: Hardpoints}
+  - id: 1281
+    type: Behavior Expression
+    reference_id: 1267
+    reference_name: hardpoint == 0
+    inputs:
+      hardpoint: {type: double, flags: 0}
+    outputs:
+      Result: {type: bool}
+  - {id: 1287, type: Branch}
+  - id: 1292
+    type: Get Global Variable
+    inputs: {Name: Hardpoint0}
+    outputs:
+      Value: {type: int, container: 1}
+  - id: 1295
+    type: Get Global Variable
+    inputs: {Name: Hardpoint1}
+    outputs:
+      Value: {type: int, container: 1}
+  - id: 1298
+    type: Set Variable
+    reference_id: 8
+    reference_name: mods
+    inputs:
+      Value: {container: 1}
+    outputs:
+      Value: {container: 1}
+  - id: 1303
+    type: Set Variable
+    reference_id: 8
+    reference_name: mods
+    inputs:
+      Value: {container: 1}
+    outputs:
+      Value: {container: 1}
+  - id: 1318
+    type: Behavior Expression
+    reference_id: 1308
+    reference_name: sSpeed = 1.0
+    inputs:
+      Exec: {id: 1321, kind: exec}
+      sSpeed:
+        id: 1319
+        type: float
+        binding: {kind: variable, variable_id: 18, source_asset: Hardpoints}
+    outputs:
+      Then: {id: 1322, kind: exec}
+      Result: {id: 1320, type: float}
+  - id: 1348
+    type: Behavior Expression
+    reference_id: 1338
+    reference_name: sLife = 1.0
+    inputs:
+      Exec: {id: 1351, kind: exec}
+      sLife:
+        id: 1349
+        type: float
+        binding: {kind: variable, variable_id: 19, source_asset: Hardpoints}
+    outputs:
+      Then: {id: 1352, kind: exec}
+      Result: {id: 1350, type: float}
+  - id: 1378
+    type: Behavior Expression
+    reference_id: 1368
+    reference_name: sDamage = 0.0
+    inputs:
+      Exec: {id: 1381, kind: exec}
+      sDamage:
+        id: 1379
+        type: float
+        binding: {kind: variable, variable_id: 20, source_asset: Hardpoints}
+    outputs:
+      Then: {id: 1382, kind: exec}
+      Result: {id: 1380, type: float}
+  - id: 1408
+    type: Behavior Expression
+    reference_id: 1398
+    reference_name: sHoming = 0.0
+    inputs:
+      Exec: {id: 1411, kind: exec}
+      sHoming:
+        id: 1409
+        type: float
+        binding: {kind: variable, variable_id: 21, source_asset: Hardpoints}
+    outputs:
+      Then: {id: 1412, kind: exec}
+      Result: {id: 1410, type: float}
+  - id: 1438
+    type: Behavior Expression
+    reference_id: 1428
+    reference_name: sAccel = 0.0
+    inputs:
+      Exec: {id: 1441, kind: exec}
+      sAccel:
+        id: 1439
+        type: float
+        binding: {kind: variable, variable_id: 22, source_asset: Hardpoints}
+    outputs:
+      Then: {id: 1442, kind: exec}
+      Result: {id: 1440, type: float}
+  - id: 1468
+    type: Behavior Expression
+    reference_id: 1458
+    reference_name: sPierce = 0.0
+    inputs:
+      Exec: {id: 1471, kind: exec}
+      sPierce:
+        id: 1469
+        type: float
+        binding: {kind: variable, variable_id: 23, source_asset: Hardpoints}
+    outputs:
+      Then: {id: 1472, kind: exec}
+      Result: {id: 1470, type: float}
+  - id: 1498
+    type: Behavior Expression
+    reference_id: 1488
+    reference_name: sBounce = 0.0
+    inputs:
+      Exec: {id: 1501, kind: exec}
+      sBounce:
+        id: 1499
+        type: float
+        binding: {kind: variable, variable_id: 24, source_asset: Hardpoints}
+    outputs:
+      Then: {id: 1502, kind: exec}
+      Result: {id: 1500, type: float}
+  - id: 1528
+    type: Behavior Expression
+    reference_id: 1518
+    reference_name: sSplit = 0.0
+    inputs:
+      Exec: {id: 1531, kind: exec}
+      sSplit:
+        id: 1529
+        type: float
+        binding: {kind: variable, variable_id: 25, source_asset: Hardpoints}
+    outputs:
+      Then: {id: 1532, kind: exec}
+      Result: {id: 1530, type: float}
+  - id: 1558
+    type: Behavior Expression
+    reference_id: 1548
+    reference_name: sElement = 0.0
+    inputs:
+      Exec: {id: 1561, kind: exec}
+      sElement:
+        id: 1559
+        type: float
+        binding: {kind: variable, variable_id: 26, source_asset: Hardpoints}
+    outputs:
+      Then: {id: 1562, kind: exec}
+      Result: {id: 1560, type: float}
+  - id: 1588
+    type: Behavior Expression
+    reference_id: 1578
+    reference_name: sBlast = 0.0
+    inputs:
+      Exec: {id: 1591, kind: exec}
+      sBlast:
+        id: 1589
+        type: float
+        binding: {kind: variable, variable_id: 27, source_asset: Hardpoints}
+    outputs:
+      Then: {id: 1592, kind: exec}
+      Result: {id: 1590, type: float}
+  - id: 1618
+    type: Behavior Expression
+    reference_id: 1608
+    reference_name: sKnock = 0.0
+    inputs:
+      Exec: {id: 1621, kind: exec}
+      sKnock:
+        id: 1619
+        type: float
+        binding: {kind: variable, variable_id: 28, source_asset: Hardpoints}
+    outputs:
+      Then: {id: 1622, kind: exec}
+      Result: {id: 1620, type: float}
+  - id: 1648
+    type: Behavior Expression
+    reference_id: 1638
+    reference_name: sTrigger = 0.0
+    inputs:
+      Exec: {id: 1651, kind: exec}
+      sTrigger:
+        id: 1649
+        type: float
+        binding: {kind: variable, variable_id: 29, source_asset: Hardpoints}
+    outputs:
+      Then: {id: 1652, kind: exec}
+      Result: {id: 1650, type: float}
+  - id: 1678
+    type: Behavior Expression
+    reference_id: 1668
+    reference_name: sDelay = 0.0
+    inputs:
+      Exec: {id: 1681, kind: exec}
+      sDelay:
+        id: 1679
+        type: float
+        binding: {kind: variable, variable_id: 30, source_asset: Hardpoints}
+    outputs:
+      Then: {id: 1682, kind: exec}
+      Result: {id: 1680, type: float}
+  - id: 1708
+    type: Behavior Expression
+    reference_id: 1698
+    reference_name: dmgMul = 1.0
+    inputs:
+      Exec: {id: 1711, kind: exec}
+      dmgMul:
+        id: 1709
+        type: float
+        binding: {kind: variable, variable_id: 31, source_asset: Hardpoints}
+    outputs:
+      Then: {id: 1712, kind: exec}
+      Result: {id: 1710, type: float}
+  - id: 1738
+    type: Behavior Expression
+    reference_id: 1728
+    reference_name: castCost = 0.0
+    inputs:
+      Exec: {id: 1741, kind: exec}
+      castCost:
+        id: 1739
+        type: float
+        binding: {kind: variable, variable_id: 32, source_asset: Hardpoints}
+    outputs:
+      Then: {id: 1742, kind: exec}
+      Result: {id: 1740, type: float}
+  - id: 1768
+    type: Behavior Expression
+    reference_id: 1758
+    reference_name: twin = 0
+    inputs:
+      Exec: {id: 1771, kind: exec}
+      twin:
+        id: 1769
+        type: int
+        binding: {kind: variable, variable_id: 36, source_asset: Hardpoints}
+    outputs:
+      Then: {id: 1772, kind: exec}
+      Result: {id: 1770, type: int}
+  - id: 1798
+    type: Behavior Expression
+    reference_id: 1788
+    reference_name: carrier = 0
+    inputs:
+      Exec: {id: 1801, kind: exec}
+      carrier:
+        id: 1799
+        type: int
+        binding: {kind: variable, variable_id: 37, source_asset: Hardpoints}
+    outputs:
+      Then: {id: 1802, kind: exec}
+      Result: {id: 1800, type: int}
+  - id: 1826
+    type: Behavior Expression
+    reference_id: 1818
+    reference_name: next = start
+    inputs:
+      Exec: {id: 1830, kind: exec}
+      next:
+        id: 1827
+        type: int
+        binding: {kind: variable, variable_id: 38, source_asset: Hardpoints}
+      start: {type: int}
+    outputs:
+      Then: {id: 1831, kind: exec}
+      Result: {id: 1829, type: int}
+  - id: 1845
+    type: Get Variable
+    reference_id: 8
+    reference_name: mods
+    outputs:
+      Value: {container: 1}
+  - id: 1847
+    type: Length
+    inputs:
+      Array: {type: int}
+  - id: 1864
+    type: Behavior Expression
+    reference_id: 1850
+    reference_name: n - 1
+    inputs:
+      "n": {type: int}
+    outputs:
+      Result: {type: double}
+  - {id: 1867, type: ForLoopWithBreak}
+  - id: 1892
+    type: Behavior Expression
+    reference_id: 1875
+    reference_name: (start + step) % n
+    inputs:
+      start: {type: int}
+      step: {type: int}
+      "n": {type: int}
+    outputs:
+      Result: {type: double}
+  - id: 1897
+    type: Get Variable
+    reference_id: 8
+    reference_name: mods
+    outputs:
+      Value: {container: 1}
+  - id: 1899
+    type: Get
+    inputs:
+      Array: {type: int}
+    outputs:
+      Item: {type: int}
+  - id: 1903
+    type: Get Variable
+    reference_id: 2
+    reference_name: modCost
+    outputs:
+      Value: {type: float, container: 1}
+  - id: 1905
+    type: Get
+    inputs:
+      Array: {type: float}
+    outputs:
+      Item: {type: float}
+  - id: 1921
+    type: Behavior Expression
+    reference_id: 1909
+    reference_name: castCost += c
+    inputs:
+      Exec: {id: 1925, kind: exec}
+      castCost:
+        id: 1922
+        type: float
+        binding: {kind: variable, variable_id: 32, source_asset: Hardpoints}
+      c: {type: float}
+    outputs:
+      Then: {id: 1926, kind: exec}
+      Result: {id: 1924, type: float}
+  - id: 1961
+    type: Behavior Expression
+    reference_id: 1944
+    reference_name: floor(m / 20)
+    inputs:
+      m: {type: int}
+    outputs:
+      Result: {type: double}
+  - id: 1964
+    type: Switch on Int
+    outputs:
+    - 1967
+    - 1968
+    - {id: 1970, name: Case2}
+    - 1969
+  - id: 1995
+    type: Behavior Expression
+    reference_id: 1971
+    reference_name: (start + step + 1) % n
+    inputs:
+      start: {type: int}
+      step: {type: int}
+      "n": {type: int}
+    outputs:
+      Result: {type: double}
+  - id: 2023
+    type: Behavior Expression
+    reference_id: 2000
+    reference_name: after * carrier + carrier - 1
+    inputs:
+      after: {type: double}
+      carrier:
+        type: double
+        binding: {kind: variable, variable_id: 37, source_asset: Hardpoints}
+    outputs:
+      Result: {type: double}
+  - id: 2027
+    type: Call Function
+    reference_id: 1036
+    reference_name: Fire Emitter
+    inputs:
+      M: {id: 2030, type: int, kind: data}
+      Origin: {type: struct, type_name: CF_V2, kind: data}
+      Direction: {type: struct, type_name: CF_V2, kind: data}
+      Hardpoint: {type: int, kind: data}
+      Payload: {type: int, kind: data}
+    outputs:
+      Then: {id: 2029}
+  - id: 2043
+    type: Behavior Expression
+    reference_id: 2035
+    reference_name: next = after
+    inputs:
+      Exec: {id: 2047, kind: exec}
+      next:
+        id: 2044
+        type: int
+        binding: {kind: variable, variable_id: 38, source_asset: Hardpoints}
+      after: {type: double}
+    outputs:
+      Then: {id: 2048, kind: exec}
+      Result: {id: 2046, type: int}
+  - id: 2076
+    type: Behavior Expression
+    reference_id: 2062
+    reference_name: carrier > 0
+    inputs:
+      carrier:
+        type: double
+        flags: 0
+        binding: {kind: variable, variable_id: 37, source_asset: Hardpoints}
+    outputs:
+      Result: {type: bool}
+  - {id: 2082, type: Branch}
+  - id: 2101
+    type: Behavior Expression
+    reference_id: 2087
+    reference_name: step + 1
+    inputs:
+      step: {type: int}
+    outputs:
+      Result: {type: double}
+  - {id: 2104, type: ForLoopWithBreak}
+  - id: 2129
+    type: Behavior Expression
+    reference_id: 2112
+    reference_name: (start + j) % n
+    inputs:
+      start: {type: int}
+      j: {type: int}
+      "n": {type: int}
+    outputs:
+      Result: {type: double}
+  - id: 2134
+    type: Get Variable
+    reference_id: 8
+    reference_name: mods
+    outputs:
+      Value: {container: 1}
+  - id: 2136
+    type: Get
+    inputs:
+      Array: {type: int}
+    outputs:
+      Item: {type: int}
+  - id: 2140
+    type: Get Variable
+    reference_id: 2
+    reference_name: modCost
+    outputs:
+      Value: {type: float, container: 1}
+  - id: 2142
+    type: Get
+    inputs:
+      Array: {type: float}
+    outputs:
+      Item: {type: float}
+  - id: 2158
+    type: Behavior Expression
+    reference_id: 2146
+    reference_name: castCost += c
+    inputs:
+      Exec: {id: 2162, kind: exec}
+      castCost:
+        id: 2159
+        type: float
+        binding: {kind: variable, variable_id: 32, source_asset: Hardpoints}
+      c: {type: float}
+    outputs:
+      Then: {id: 2163, kind: exec}
+      Result: {id: 2161, type: float}
+  - id: 2206
+    type: Behavior Expression
+    reference_id: 2181
+    reference_name: next = (start + j + 1) % n
+    inputs:
+      Exec: {id: 2212, kind: exec}
+      next:
+        id: 2207
+        type: int
+        binding: {kind: variable, variable_id: 38, source_asset: Hardpoints}
+      start: {type: int}
+      j: {type: int}
+      "n": {type: int}
+    outputs:
+      Then: {id: 2213, kind: exec}
+      Result: {id: 2211, type: int}
+  - id: 2258
+    type: Behavior Expression
+    reference_id: 2244
+    reference_name: m < 20
+    inputs:
+      m: {type: double, flags: 0}
+    outputs:
+      Result: {type: bool}
+  - {id: 2264, type: Branch}
+  - id: 2269
+    type: Call Function
+    reference_id: 40
+    reference_name: Apply Modifier
+    inputs:
+      M: {id: 2272, type: int, kind: data}
+    outputs:
+      Then: {id: 2271}
+  - id: 2288
+    type: Behavior Expression
+    reference_id: 2273
+    reference_name: sTrigger = m - 40
+    inputs:
+      Exec: {id: 2292, kind: exec}
+      sTrigger:
+        id: 2289
+        type: float
+        binding: {kind: variable, variable_id: 29, source_asset: Hardpoints}
+      m: {type: int}
+    outputs:
+      Then: {id: 2293, kind: exec}
+      Result: {id: 2291, type: float}
+  - id: 2324
+    type: Behavior Expression
+    reference_id: 2314
+    reference_name: sDelay = 0.4
+    inputs:
+      Exec: {id: 2327, kind: exec}
+      sDelay:
+        id: 2325
+        type: float
+        binding: {kind: variable, variable_id: 30, source_asset: Hardpoints}
+    outputs:
+      Then: {id: 2328, kind: exec}
+      Result: {id: 2326, type: float}
+  - id: 2354
+    type: Behavior Expression
+    reference_id: 2344
+    reference_name: carrier = 1
+    inputs:
+      Exec: {id: 2357, kind: exec}
+      carrier:
+        id: 2355
+        type: int
+        binding: {kind: variable, variable_id: 37, source_asset: Hardpoints}
+    outputs:
+      Then: {id: 2358, kind: exec}
+      Result: {id: 2356, type: int}
+  edges:
+  - {from: 1257.Exec, to: 1287.Exec}
+  - {from: 1257.Hardpoint, to: 1281.hardpoint, conversion: To Real}
+  - {from: 1257.Hardpoint, to: 2027.Hardpoint}
+  - {from: 1257.Start, to: 1826.start}
+  - {from: 1257.Start, to: 1892.start}
+  - {from: 1257.Start, to: 1995.start}
+  - {from: 1257.Start, to: 2129.start}
+  - {from: 1257.Start, to: 2206.start}
+  - {from: 1257.Origin, to: 2027.Origin, conversion: game_transform_to_cf}
+  - {from: 1257.Direction, to: 2027.Direction, conversion: game_transform_to_cf}
+  - {from: 1281.Result, to: 1287.Condition}
+  - {from: 1287.True, to: 1298.Exec}
+  - {from: 1287.False, to: 1303.Exec}
+  - {from: 1292.Value, to: 1298.Value}
+  - {from: 1295.Value, to: 1303.Value}
+  - {from: 1298.Then, to: 1318.Exec}
+  - {from: 1303.Then, to: 1318.Exec}
+  - {from: 1318.Then, to: 1348.Exec}
+  - {from: 1348.Then, to: 1378.Exec}
+  - {from: 1378.Then, to: 1408.Exec}
+  - {from: 1408.Then, to: 1438.Exec}
+  - {from: 1438.Then, to: 1468.Exec}
+  - {from: 1468.Then, to: 1498.Exec}
+  - {from: 1498.Then, to: 1528.Exec}
+  - {from: 1528.Then, to: 1558.Exec}
+  - {from: 1558.Then, to: 1588.Exec}
+  - {from: 1588.Then, to: 1618.Exec}
+  - {from: 1618.Then, to: 1648.Exec}
+  - {from: 1648.Then, to: 1678.Exec}
+  - {from: 1678.Then, to: 1708.Exec}
+  - {from: 1708.Then, to: 1738.Exec}
+  - {from: 1738.Then, to: 1768.Exec}
+  - {from: 1768.Then, to: 1798.Exec}
+  - {from: 1798.Then, to: 1826.Exec}
+  - {from: 1826.Then, to: 1867.Exec}
+  - {from: 1845.Value, to: 1847.Array}
+  - {from: 1847.Return Value, to: 1864.n}
+  - {from: 1847.Return Value, to: 1892.n}
+  - {from: 1847.Return Value, to: 1995.n}
+  - {from: 1847.Return Value, to: 2129.n}
+  - {from: 1847.Return Value, to: 2206.n}
+  - {from: 1864.Result, to: 1867.LastIndex, conversion: To Integer}
+  - {from: 1864.Result, to: 2104.LastIndex, conversion: To Integer}
+  - {from: 1867.Body, to: 1921.Exec}
+  - {from: 1867.Index, to: 1892.step}
+  - {from: 1867.Index, to: 1995.step}
+  - {from: 1867.Index, to: 2101.step}
+  - {from: 1867.Completed, to: 1259.Exec}
+  - {from: 1892.Result, to: 1899.Index, conversion: To Integer}
+  - {from: 1897.Value, to: 1899.Array}
+  - {from: 1899.Item, to: 1905.Index}
+  - {from: 1899.Item, to: 1961.m}
+  - {from: 1899.Item, to: 2027.M}
+  - {from: 1899.Item, to: 2269.M}
+  - {from: 1899.Item, to: 2288.m}
+  - {from: 1903.Value, to: 1905.Array}
+  - {from: 1905.Item, to: 1921.c}
+  - {from: 1921.Then, to: 1964.Exec}
+  - {from: 1961.Result, to: 1964.Selection, conversion: To Integer}
+  - {from: 1964.Case0, to: 2027.Exec}
+  - {from: 1964.Case1, to: 2269.Exec}
+  - {from: 1964.Case2, to: 2288.Exec}
+  - {from: 1995.Result, to: 2023.after}
+  - {from: 1995.Result, to: 2043.after}
+  - {from: 2023.Result, to: 2027.Payload, conversion: To Integer}
+  - {from: 2027.Then, to: 2043.Exec}
+  - {from: 2043.Then, to: 2082.Exec}
+  - {from: 2076.Result, to: 2082.Condition}
+  - {from: 2082.True, to: 2104.Exec}
+  - {from: 2082.False, to: 1867.Break}
+  - {from: 2101.Result, to: 2104.FirstIndex, conversion: To Integer}
+  - {from: 2104.Body, to: 2158.Exec}
+  - {from: 2104.Index, to: 2129.j}
+  - {from: 2104.Index, to: 2206.j}
+  - {from: 2104.Completed, to: 1867.Break}
+  - {from: 2129.Result, to: 2136.Index, conversion: To Integer}
+  - {from: 2134.Value, to: 2136.Array}
+  - {from: 2136.Item, to: 2142.Index}
+  - {from: 2140.Value, to: 2142.Array}
+  - {from: 2142.Item, to: 2158.c}
+  - {from: 2158.Then, to: 2206.Exec}
+  - {from: 2206.Then, to: 2264.Exec}
+  - {from: 2258.Result, to: 2264.Condition}
+  - {from: 2264.True, to: 2104.Break}
+  - {from: 2288.Then, to: 2324.Exec}
+  - {from: 2324.Then, to: 2354.Exec}
+- {id: 1267, kind: function, math_expression: hardpoint == 0, entry_id: 1268}
+- {id: 1308, kind: function, math_expression: sSpeed = 1.0, entry_id: 1324}
+- {id: 1338, kind: function, math_expression: sLife = 1.0, entry_id: 1354}
+- {id: 1368, kind: function, math_expression: sDamage = 0.0, entry_id: 1384}
+- {id: 1398, kind: function, math_expression: sHoming = 0.0, entry_id: 1414}
+- {id: 1428, kind: function, math_expression: sAccel = 0.0, entry_id: 1444}
+- {id: 1458, kind: function, math_expression: sPierce = 0.0, entry_id: 1474}
+- {id: 1488, kind: function, math_expression: sBounce = 0.0, entry_id: 1504}
+- {id: 1518, kind: function, math_expression: sSplit = 0.0, entry_id: 1534}
+- {id: 1548, kind: function, math_expression: sElement = 0.0, entry_id: 1564}
+- {id: 1578, kind: function, math_expression: sBlast = 0.0, entry_id: 1594}
+- {id: 1608, kind: function, math_expression: sKnock = 0.0, entry_id: 1624}
+- {id: 1638, kind: function, math_expression: sTrigger = 0.0, entry_id: 1654}
+- {id: 1668, kind: function, math_expression: sDelay = 0.0, entry_id: 1684}
+- {id: 1698, kind: function, math_expression: dmgMul = 1.0, entry_id: 1714}
+- {id: 1728, kind: function, math_expression: castCost = 0.0, entry_id: 1744}
+- {id: 1758, kind: function, math_expression: twin = 0, entry_id: 1774}
+- {id: 1788, kind: function, math_expression: carrier = 0, entry_id: 1804}
+- {id: 1818, kind: function, math_expression: next = start, entry_id: 1833}
+- {id: 1850, kind: function, math_expression: n - 1, entry_id: 1851}
+- {id: 1875, kind: function, math_expression: (start + step) % n, entry_id: 1876}
+- {id: 1909, kind: function, math_expression: castCost += c, entry_id: 1928}
+- {id: 1944, kind: function, math_expression: floor(m / 20), entry_id: 1945}
+- id: 1971
+  kind: function
+  math_expression: (start + step + 1) % n
+  entry_id: 1972
+- id: 2000
+  kind: function
+  math_expression: after * carrier + carrier - 1
+  entry_id: 2001
+- {id: 2035, kind: function, math_expression: next = after, entry_id: 2050}
+- {id: 2062, kind: function, math_expression: carrier > 0, entry_id: 2063}
+- {id: 2087, kind: function, math_expression: step + 1, entry_id: 2088}
+- {id: 2112, kind: function, math_expression: (start + j) % n, entry_id: 2113}
+- {id: 2146, kind: function, math_expression: castCost += c, entry_id: 2165}
+- id: 2181
+  kind: function
+  math_expression: next = (start + j + 1) % n
+  entry_id: 2215
+- {id: 2244, kind: function, math_expression: m < 20, entry_id: 2245}
+- {id: 2273, kind: function, math_expression: sTrigger = m - 40, entry_id: 2295}
+- {id: 2314, kind: function, math_expression: sDelay = 0.4, entry_id: 2330}
+- {id: 2344, kind: function, math_expression: carrier = 1, entry_id: 2360}
+- id: 2374
+  kind: function
+  name: Try Fire
+  entry_id: 2375
+  return_id: 2377
+  call_depth_limit: 64
+  nodes:
+  - id: 2375
+    type: Function Entry
+    outputs:
+      Hardpoint: {id: 2379, type: int, kind: data}
+      Cooldown: {type: float, kind: data}
+      Cursor: {type: int, kind: data}
+      Delay: {type: float, kind: data}
+      Recharge: {type: float, kind: data}
+  - id: 2377
+    type: Return
+    inputs:
+      Cooldown:
+        id: 2384
+        type: float
+        kind: data
+        binding: {kind: variable, variable_id: 33, source_asset: Hardpoints}
+      Cursor:
+        type: int
+        kind: data
+        binding: {kind: variable, variable_id: 39, source_asset: Hardpoints}
+  - id: 2406
+    type: Behavior Expression
+    reference_id: 2386
+    reference_name: outCool = max(cooldown - dt, 0)
+    inputs:
+      Exec: {id: 2411, kind: exec}
+      outCool:
+        id: 2407
+        type: float
+        binding: {kind: variable, variable_id: 33, source_asset: Hardpoints}
+      cooldown: {type: float}
+      dt:
+        type: double
+        binding: {kind: delta_time}
+    outputs:
+      Then: {id: 2412, kind: exec}
+      Result: {id: 2410, type: float}
+  - id: 2446
+    type: Behavior Expression
+    reference_id: 2438
+    reference_name: outCursor = cursor
+    inputs:
+      Exec: {id: 2450, kind: exec}
+      outCursor:
+        id: 2447
+        type: int
+        binding: {kind: variable, variable_id: 39, source_asset: Hardpoints}
+      cursor: {type: int}
+    outputs:
+      Then: {id: 2451, kind: exec}
+      Result: {id: 2449, type: int}
+  - id: 2491
+    type: Behavior Expression
+    reference_id: 2465
+    reference_name: outCool <= 0 && capacitor > 0.5
+    inputs:
+      outCool:
+        type: double
+        flags: 0
+        binding: {kind: variable, variable_id: 33, source_asset: Hardpoints}
+      capacitor:
+        type: double
+        flags: 0
+        binding: {kind: variable, variable_id: 15, source_asset: Hardpoints}
+    outputs:
+      Result: {type: bool}
+  - {id: 2498, type: Branch}
+  - id: 2525
+    type: Behavior Expression
+    reference_id: 2503
+    reference_name: pos + direction(heading) * 13
+    inputs:
+      pos:
+        type: struct
+        type_name: GameTransform
+        binding: {kind: component, component: GAME.GameTransform}
+      heading:
+        type: double
+        binding: {kind: component_field, component: GAME.GameOrientation, field: radians}
+    outputs:
+      Result: {type: struct, type_name: GameTransform}
+  - id: 2529
+    type: Call Function
+    reference_id: 1256
+    reference_name: Cast
+    inputs:
+      Hardpoint: {id: 2532, type: int, kind: data}
+      Start: {type: int, kind: data}
+      Origin: {type: struct, type_name: CF_V2, kind: data}
+      Direction:
+        type: struct
+        type_name: CF_V2
+        kind: data
+        binding: {kind: component_field, component: GAME.GameAim, field: direction}
+    outputs:
+      Then: {id: 2531}
+      Next: {id: 2536, type: int, kind: data}
+      Cost: {type: float, kind: data}
+  - id: 2550
+    type: Behavior Expression
+    reference_id: 2538
+    reference_name: capacitor -= cost
+    inputs:
+      Exec: {id: 2554, kind: exec}
+      capacitor:
+        id: 2551
+        type: float
+        binding: {kind: variable, variable_id: 15, source_asset: Hardpoints}
+      cost: {type: float}
+    outputs:
+      Then: {id: 2555, kind: exec}
+      Result: {id: 2553, type: float}
+  - id: 2596
+    type: Behavior Expression
+    reference_id: 2573
+    reference_name: outCool = delay + recharge * step(nxt, cursor)
+    inputs:
+      Exec: {id: 2603, kind: exec}
+      outCool:
+        id: 2597
+        type: float
+        binding: {kind: variable, variable_id: 33, source_asset: Hardpoints}
+      delay: {type: float}
+      recharge: {type: float}
+      nxt: {type: int}
+      cursor: {type: int}
+    outputs:
+      Then: {id: 2604, kind: exec}
+      Result: {id: 2602, type: float}
+  - id: 2641
+    type: Behavior Expression
+    reference_id: 2633
+    reference_name: outCursor = nxt
+    inputs:
+      Exec: {id: 2645, kind: exec}
+      outCursor:
+        id: 2642
+        type: int
+        binding: {kind: variable, variable_id: 39, source_asset: Hardpoints}
+      nxt: {type: int}
+    outputs:
+      Then: {id: 2646, kind: exec}
+      Result: {id: 2644, type: int}
+  - id: 2679
+    type: Behavior Expression
+    reference_id: 2660
+    reference_name: velocity -= aim * 18
+    inputs:
+      Exec: {id: 2683, kind: exec}
+      velocity:
+        id: 2680
+        type: struct
+        type_name: GameVelocity
+        binding: {kind: component, component: GAME.GameVelocity}
+      aim:
+        type: struct
+        type_name: CF_V2
+        binding: {kind: component_field, component: GAME.GameAim, field: direction}
+    outputs:
+      Then: {id: 2684, kind: exec}
+      Result: {id: 2682, type: struct, type_name: GameVelocity}
+  - id: 2709
+    type: Spawn Prototype
+    inputs: {Prototype: MuzzleLight}
+  - {id: 2714, type: SetEntity_GameTransform}
+  - id: 2754
+    type: Behavior Expression
+    reference_id: 2720
+    reference_name: 880 - hardpoint * 420 + rand() * 60
+    inputs:
+      hardpoint: {type: int}
+    outputs:
+      Result: {type: double}
+  - id: 2771
+    type: Behavior Expression
+    reference_id: 2757
+    reference_name: f * 0.45
+    inputs:
+      f: {type: double}
+    outputs:
+      Result: {type: double}
+  - id: 2774
+    type: Play Sound
+    inputs: {Duration: 0.07, Volume: 0.18, Pan: 0.0, Noise: 0.25}
+  edges:
+  - {from: 2375.Exec, to: 2406.Exec}
+  - {from: 2375.Hardpoint, to: 2529.Hardpoint}
+  - {from: 2375.Hardpoint, to: 2754.hardpoint}
+  - {from: 2375.Cooldown, to: 2406.cooldown}
+  - {from: 2375.Cursor, to: 2446.cursor}
+  - {from: 2375.Cursor, to: 2529.Start}
+  - {from: 2375.Cursor, to: 2596.cursor}
+  - {from: 2375.Delay, to: 2596.delay}
+  - {from: 2375.Recharge, to: 2596.recharge}
+  - {from: 2406.Then, to: 2446.Exec}
+  - {from: 2446.Then, to: 2498.Exec}
+  - {from: 2491.Result, to: 2498.Condition}
+  - {from: 2498.True, to: 2529.Exec}
+  - {from: 2498.False, to: 2377.Exec}
+  - {from: 2525.Result, to: 2529.Origin}
+  - {from: 2525.Result, to: 2714.Value}
+  - {from: 2529.Then, to: 2550.Exec}
+  - {from: 2529.Next, to: 2596.nxt}
+  - {from: 2529.Next, to: 2641.nxt}
+  - {from: 2529.Cost, to: 2550.cost}
+  - {from: 2550.Then, to: 2596.Exec}
+  - {from: 2596.Then, to: 2641.Exec}
+  - {from: 2641.Then, to: 2679.Exec}
+  - {from: 2679.Then, to: 2709.Exec}
+  - {from: 2709.Then, to: 2714.Exec}
+  - {from: 2709.Entity, to: 2714.Entity}
+  - {from: 2714.Then, to: 2774.Exec}
+  - {from: 2754.Result, to: 2771.f}
+  - {from: 2754.Result, to: 2774.Frequency}
+  - {from: 2771.Result, to: 2774.End Frequency}
+  - {from: 2774.Then, to: 2377.Exec}
+- id: 2386
+  kind: function
+  math_expression: outCool = max(cooldown - dt, 0)
+  entry_id: 2414
+- {id: 2438, kind: function, math_expression: outCursor = cursor, entry_id: 2453}
+- id: 2465
+  kind: function
+  math_expression: outCool <= 0 && capacitor > 0.5
+  entry_id: 2466
+- id: 2503
+  kind: function
+  math_expression: pos + direction(heading) * 13
+  entry_id: 2504
+- {id: 2538, kind: function, math_expression: capacitor -= cost, entry_id: 2557}
+- id: 2573
+  kind: function
+  math_expression: outCool = delay + recharge * step(nxt, cursor)
+  entry_id: 2606
+- {id: 2633, kind: function, math_expression: outCursor = nxt, entry_id: 2648}
+- id: 2660
+  kind: function
+  math_expression: velocity -= aim * 18
+  entry_id: 2686
+- id: 2720
+  kind: function
+  math_expression: 880 - hardpoint * 420 + rand() * 60
+  entry_id: 2721
+- {id: 2757, kind: function, math_expression: f * 0.45, entry_id: 2758}
+- id: 2812
+  kind: function
+  math_expression: capacitor = min(capacitorMax, capacitor + capacitorRegen * dt)
+  entry_id: 2843
+- {id: 2884, kind: function, math_expression: cooldown0 = c, entry_id: 2899}
+- {id: 2911, kind: function, math_expression: cursor0 = k, entry_id: 2926}
+- id: 2938
+  kind: function
+  math_expression: cooldown0 = max(cooldown0 - dt, 0)
+  entry_id: 2964
+- {id: 3013, kind: function, math_expression: cooldown1 = c, entry_id: 3028}
+- {id: 3040, kind: function, math_expression: cursor1 = k, entry_id: 3055}
+- id: 3067
+  kind: function
+  math_expression: cooldown1 = max(cooldown1 - dt, 0)
+  entry_id: 3093

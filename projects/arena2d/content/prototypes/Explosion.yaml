@@ -1,0 +1,11 @@
+name: Explosion
+components:
+  GAME.GameAppearance: {antialias: 2.0, color: 4288301568, height: 30.0, shape: Circle, width: 30.0}
+  GAME.GameMaterial:
+    emission_color: 4288301823
+    emission_intensity: 1.6
+    emission_multiplier: 1.0
+    scene: 4288301568
+  GAME.GameProjectile: {blast: 40.0, damage: 20, payload: -1}
+  GAME.GameTransform: {}
+behaviors: [Explosion, Glow]

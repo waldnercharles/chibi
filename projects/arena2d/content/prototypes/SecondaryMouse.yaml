@@ -1,0 +1,4 @@
+name: SecondaryMouse
+components:
+  GAME.GameActionBinding: {action: Secondary, source: Mouse Right}
+  GAME.GameGlobalBinding: {name: SecondaryFire}

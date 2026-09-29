@@ -1,0 +1,101 @@
+version: 3
+name: ShotActions
+domain: library
+id_counter: 113
+description: 'Launching shots: spawn a shot prototype at a point, send it along a direction at its authored speed and record which weapon fired it.'
+graphs:
+- {kind: event, name: ""}
+- id: 1
+  kind: function
+  name: Launch Shot
+  entry_id: 2
+  return_id: 4
+  call_depth_limit: 64
+  nodes:
+  - id: 2
+    type: Function Entry
+    outputs:
+      Prototype: {id: 6, type: name, kind: data}
+      Origin: {type: struct, type_name: CF_V2, kind: data}
+      Direction: {type: struct, type_name: CF_V2, kind: data}
+      Source: {type: handle, type_name: ecs.entity, kind: data}
+      Hardpoint: {type: int, kind: data}
+  - id: 4
+    type: Return
+    inputs:
+      Entity: {id: 11, type: handle, type_name: ecs.entity, kind: data}
+  - {id: 12, type: Spawn Prototype}
+  - {id: 17, type: SetEntity_GameTransform}
+  - id: 23
+    type: GetEntity_GameProjectile
+    outputs:
+      Value.speed: {}
+      Value.lifetime: {}
+      Value.damage: {}
+      Value.age: {}
+      Value.homing: {}
+      Value.acceleration: {}
+      Value.pierce: {}
+      Value.bounce: {}
+      Value.split: {}
+      Value.element: {}
+      Value.blast: {}
+      Value.payload: {}
+      Value.trigger: {}
+      Value.delay: {}
+      Value.knockback: {}
+      Value.source: {}
+      Value.hardpoint: {}
+  - id: 58
+    type: Behavior Expression
+    reference_id: 43
+    reference_name: normalize(direction) * speed
+    inputs:
+      direction: {type: struct, type_name: CF_V2}
+      speed: {type: float}
+    outputs:
+      Result: {type: struct, type_name: CF_V2}
+  - {id: 62, type: SetEntity_GameVelocity}
+  - id: 79
+    type: Behavior Expression
+    reference_id: 68
+    reference_name: atan2(direction.y, direction.x)
+    inputs:
+      direction: {type: struct, type_name: CF_V2}
+    outputs:
+      Result: {type: double}
+  - {id: 95, type: Set_GameOrientation_radians}
+  - {id: 101, type: Set_GameProjectile_source}
+  - {id: 107, type: Set_GameProjectile_hardpoint}
+  edges:
+  - {from: 2.Exec, to: 12.Exec}
+  - {from: 2.Prototype, to: 12.Prototype}
+  - {from: 2.Origin, to: 17.Value, conversion: game_transform_to_cf}
+  - {from: 2.Direction, to: 58.direction}
+  - {from: 2.Direction, to: 79.direction}
+  - {from: 2.Source, to: 101.Value}
+  - {from: 2.Hardpoint, to: 107.Value}
+  - {from: 12.Then, to: 17.Exec}
+  - {from: 12.Entity, to: 4.Entity}
+  - {from: 12.Entity, to: 17.Entity}
+  - {from: 12.Entity, to: 23.Entity}
+  - {from: 12.Entity, to: 62.Entity}
+  - {from: 12.Entity, to: 95.Target}
+  - {from: 12.Entity, to: 101.Target}
+  - {from: 12.Entity, to: 107.Target}
+  - {from: 17.Then, to: 62.Exec}
+  - {from: 23.Value.speed, to: 58.speed}
+  - {from: 58.Result, to: 62.Value}
+  - {from: 62.Then, to: 95.Exec}
+  - {from: 79.Result, to: 95.Value}
+  - {from: 95.Then, to: 101.Exec}
+  - {from: 101.Then, to: 107.Exec}
+  - {from: 107.Then, to: 4.Exec}
+- id: 43
+  kind: function
+  math_expression: normalize(direction) * speed
+  entry_id: 44
+- id: 68
+  kind: function
+  math_expression: atan2(direction.y, direction.x)
+  entry_id: 83

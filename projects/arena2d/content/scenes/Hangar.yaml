@@ -1,0 +1,20 @@
+version: 1
+name: Hangar
+entities:
+- name: Ship
+  prototype: Wren
+  components:
+    GameTransform: {x: 0, "y": 330}
+    GameOrientation: {radians: -0.5}
+    GameShader: {material: WrenHull, shape: WrenShape, parameters: '{"Thrust":0.7}'}
+- name: Camera
+  prototype: Camera
+  components:
+    GameTransform: {x: 0, "y": 330}
+    GameCamera: {width: 160, height: 90}
+  behaviors: [CameraFollow]
+- name: Lighting
+  prototype: HRC
+  components:
+    GameHRC2D: {resolution: 1, fog: 0.4, bloom: 0.2}
+- {name: Basalt Throat, prototype: StratumThroat}

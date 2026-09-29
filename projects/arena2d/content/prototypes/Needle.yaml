@@ -1,0 +1,23 @@
+name: Needle
+components:
+  GAME.GameAppearance: {antialias: 1.0, color: 4008378367, height: 1.6, shape: Capsule, width: 22.0}
+  GAME.GameBody: {continuous: true, type: Kinematic}
+  GAME.GameCollider: {category: 4, mask: 2, radius: 1.8, sensor: true}
+  GAME.GameMaterial:
+    absorption: 0.05
+    albedo: 4008378367
+    emission_color: 4008378367
+    emission_intensity: 0.6
+    emission_multiplier: 1.0
+    scene: 4008378367
+  GAME.GameOrientation: {}
+  GAME.GameProjectile:
+    damage: 15
+    knockback: 60.0
+    lifetime: 0.55
+    payload: -1
+    pierce: 3
+    speed: 1100.0
+  GAME.GameTransform: {}
+  GAME.GameVelocity: {}
+behaviors: [Shot]

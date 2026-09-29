@@ -1,0 +1,58 @@
+version: 3
+name: Glow
+id_counter: 126
+description: Fade this entity's emission and remove it once dark; for flashes, sparks of light and afterglows.
+owner_type: ecs.entity
+graphs:
+- kind: event
+  name: ""
+  nodes:
+  - id: 1
+    type: Event
+    reference_name: Tick
+    outputs:
+      DeltaSeconds: {type: float, kind: data}
+  - id: 29
+    type: Behavior Expression
+    reference_id: 4
+    reference_name: intensity *= exp(-dt * 11)
+    inputs:
+      Exec: {id: 33, kind: exec}
+      intensity:
+        id: 30
+        type: float
+        binding: {kind: component_field, component: GAME.GameMaterial, field: emission_intensity}
+      dt:
+        type: double
+        binding: {kind: delta_time}
+    outputs:
+      Then: {id: 34, kind: exec}
+      Result: {id: 32, type: float}
+  - id: 109
+    type: Behavior Expression
+    reference_id: 95
+    reference_name: intensity < 0.003
+    inputs:
+      intensity:
+        type: double
+        flags: 0
+        binding: {kind: component_field, component: GAME.GameMaterial, field: emission_intensity}
+    outputs:
+      Result: {type: bool}
+  - {id: 115, type: Branch}
+  - id: 120
+    type: Self
+    outputs:
+      Self: {type_name: ecs.entity}
+  - {id: 122, type: Destroy Entity}
+  edges:
+  - {from: 1.Then, to: 29.Exec}
+  - {from: 29.Then, to: 115.Exec}
+  - {from: 109.Result, to: 115.Condition}
+  - {from: 115.True, to: 122.Exec}
+  - {from: 120.Self, to: 122.Entity}
+- id: 4
+  kind: function
+  math_expression: intensity *= exp(-dt * 11)
+  entry_id: 36
+- {id: 95, kind: function, math_expression: intensity < 0.003, entry_id: 96}

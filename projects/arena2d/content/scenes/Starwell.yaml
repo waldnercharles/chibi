@@ -1,0 +1,21 @@
+version: 1
+name: Starwell
+entities:
+- name: Player
+  prototype: Wren
+  components:
+    GameTransform: {x: 0, "y": 330}
+  behaviors: [ShipFlight, Hardpoints]
+- name: Camera
+  prototype: Camera
+  components:
+    GameTransform: {x: 0, "y": 330}
+  behaviors: [CameraFollow]
+- name: Lighting
+  prototype: HRC
+  components:
+    GameHRC2D: {resolution: 1, adaptive: true, min_resolution: 0.5, fog: 0.4, bloom: 0.2}
+- {name: FireMouse, prototype: FireMouse}
+- {name: FireStick, prototype: FireStick}
+- {name: SecondaryMouse, prototype: SecondaryMouse}
+- {name: Basalt Throat, prototype: StratumThroat}

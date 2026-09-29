@@ -1,0 +1,25 @@
+name: StratumThroat
+components:
+  GAME.GameAppearance: {color: 591155711}
+  GAME.GameMaterial:
+    absorption: 0.15
+    albedo: 1316326655
+    edge_light: 1.2
+    emission_multiplier: 1.0
+    scene: 591155711
+  GAME.GameShader: {material: Basalt, parameters: "", shape: ""}
+  GAME.GameSubstance: {blast_multiplier: 1.0, hardness: 1.0}
+  GAME.GameTransform: {"y": 3000.0}
+  GAME.MaterialTerrain:
+    category: 8
+    cell_size: 2.0
+    field: Strata
+    height: 6000.0
+    island_cells: 600
+    mask: 15
+    min_fragment_cells: 24
+    parameters: '{"Salt":0.0,"ColumnStep":14.0,"Entry":0.0}'
+    seed: 1729
+    stream_budget: 2
+    stream_radius: 512.0
+    width: 3200.0

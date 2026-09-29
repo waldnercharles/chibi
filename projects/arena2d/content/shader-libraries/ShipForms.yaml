@@ -1,0 +1,108 @@
+version: 3
+name: ShipForms
+domain: shader-library
+id_counter: 631
+description: Signed distance silhouettes for Starwell ships, shared by their shapes and materials so emissive trim follows the outline.
+graphs:
+- {kind: event, name: ""}
+- id: 1
+  kind: function
+  name: Wren Hull
+  entry_id: 2
+  return_id: 4
+  call_depth_limit: 64
+  nodes:
+  - id: 2
+    type: Function Entry
+    outputs:
+    - {id: 6, name: Position, type: struct, type_name: ShaderVec2, kind: data}
+  - id: 4
+    type: Return
+    inputs:
+    - {id: 7, name: Distance, type: float, kind: data}
+  - id: 22
+    type: Behavior Expression
+    reference_id: 8
+    reference_name: vec2(position.x, abs(position.y))
+    inputs:
+      position: {type: struct, type_name: ShaderVec2}
+    outputs:
+      Result: {type: struct, type_name: ShaderVec2}
+  - id: 111
+    type: Behavior Expression
+    reference_id: 45
+    reference_name: max(max(dot(q - vec2(14, 0), vec2(0.2533, 0.9674)), -7 - q.x), 2.6 - length(q - vec2(-8, 0)))
+    inputs:
+      q: {type: struct, type_name: ShaderVec2}
+    outputs:
+      Result: {type: float}
+  - id: 266
+    type: Behavior Expression
+    reference_id: 183
+    reference_name: length(q - vec2(-0.5, 3.8) - vec2(-8, 8.2) * h) - mix(1.7, 0.45, h)
+    inputs:
+      q: {type: struct, type_name: ShaderVec2}
+      h: {id: 547, type: float}
+    outputs:
+      Result: {id: 268, type: float}
+  - id: 352
+    type: Behavior Expression
+    reference_id: 269
+    reference_name: length(q - vec2(-1.5, 4.6) - vec2(-9, 0.4) * clamp(dot(q - vec2(-1.5, 4.6), vec2(-9, 0.4)) / 81.16, 0, 1)) - 1.45
+    inputs:
+      q: {type: struct, type_name: ShaderVec2}
+    outputs:
+      Result: {type: float}
+  - id: 372
+    type: Behavior Expression
+    reference_id: 355
+    reference_name: min(hull, min(wing, pod))
+    inputs:
+      hull: {type: float}
+      wing: {type: float}
+      pod: {type: float}
+    outputs:
+      Result: {type: float}
+  - id: 492
+    type: Behavior Expression
+    reference_id: 446
+    reference_name: clamp(dot(q - vec2(-0.5, 3.8), vec2(-8, 8.2)) / 131.24, 0, 1)
+    inputs:
+      q: {type: struct, type_name: ShaderVec2}
+    outputs:
+      Result: {type: float}
+  edges:
+  - {from: 2.Position, to: 22.position}
+  - {from: 22.Result, to: 111.q}
+  - {from: 22.Result, to: 266.q}
+  - {from: 22.Result, to: 352.q}
+  - {from: 22.Result, to: 492.q}
+  - {from: 111.Result, to: 372.hull}
+  - {from: 266.Result, to: 372.wing}
+  - {from: 352.Result, to: 372.pod}
+  - {from: 372.Result, to: 4.Distance}
+  - {from: 492.Result, to: 266.h}
+- id: 8
+  kind: function
+  math_expression: vec2(position.x, abs(position.y))
+  entry_id: 26
+- id: 45
+  kind: function
+  math_expression: max(max(dot(q - vec2(14, 0), vec2(0.2533, 0.9674)), -7 - q.x), 2.6 - length(q - vec2(-8, 0)))
+  entry_id: 378
+- id: 183
+  kind: function
+  math_expression: length(q - vec2(-0.5, 3.8) - vec2(-8, 8.2) * h) - mix(1.7, 0.45, h)
+  entry_id: 496
+- id: 269
+  kind: function
+  math_expression: length(q - vec2(-1.5, 4.6) - vec2(-9, 0.4) * clamp(dot(q - vec2(-1.5, 4.6), vec2(-9, 0.4)) / 81.16, 0, 1)) - 1.45
+  entry_id: 549
+- id: 355
+  kind: function
+  math_expression: min(hull, min(wing, pod))
+  entry_id: 356
+- id: 446
+  kind: function
+  math_expression: clamp(dot(q - vec2(-0.5, 3.8), vec2(-8, 8.2)) / 131.24, 0, 1)
+  entry_id: 447

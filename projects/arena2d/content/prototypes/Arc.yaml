@@ -1,0 +1,17 @@
+name: Arc
+components:
+  GAME.GameAppearance: {antialias: 1.0, color: 2411003903, height: 1.8, shape: Capsule, width: 26.0}
+  GAME.GameBody: {continuous: true, type: Kinematic}
+  GAME.GameCollider: {category: 4, mask: 2, radius: 3.0, sensor: true}
+  GAME.GameMaterial:
+    absorption: 0.05
+    albedo: 2411003903
+    emission_color: 2411003903
+    emission_intensity: 0.9
+    emission_multiplier: 1.0
+    scene: 2411003903
+  GAME.GameOrientation: {}
+  GAME.GameProjectile: {damage: 9, element: 4, lifetime: 0.16, payload: -1, pierce: 2, speed: 1500.0}
+  GAME.GameTransform: {}
+  GAME.GameVelocity: {}
+behaviors: [Shot]

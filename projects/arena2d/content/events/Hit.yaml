@@ -1,0 +1,14 @@
+version: 3
+name: Hit
+domain: event
+id_counter: 8
+description: A weapon hit on a body, with where it struck, which way it was travelling and its element.
+variables:
+- {id: 1, name: Amount, type: int, category: Payload}
+- {id: 2, name: Source, type: handle, type_name: ecs.entity, category: Payload}
+- {id: 3, name: Point, type: struct, type_name: CF_V2, category: Payload}
+- {id: 4, name: Direction, type: struct, type_name: CF_V2, category: Payload}
+- {id: 5, name: Element, type: int, category: Payload}
+- {id: 6, name: Knockback, type: float, category: Payload}
+graphs:
+- {kind: event, name: Events}

@@ -1,0 +1,18 @@
+name: Bolt
+components:
+  GAME.GameAppearance: {antialias: 1.0, color: 1609760767, height: 3.0, shape: Capsule, width: 13.0}
+  GAME.GameBody: {continuous: true, type: Kinematic}
+  GAME.GameCollider: {category: 4, mask: 2, radius: 2.5, sensor: true}
+  GAME.GameIgniter: {heat: 1.2}
+  GAME.GameMaterial:
+    absorption: 0.05
+    albedo: 1609760767
+    emission_color: 1609760767
+    emission_intensity: 0.45
+    emission_multiplier: 1.0
+    scene: 1609760767
+  GAME.GameOrientation: {}
+  GAME.GameProjectile: {damage: 9, lifetime: 0.8, payload: -1, speed: 640.0}
+  GAME.GameTransform: {}
+  GAME.GameVelocity: {}
+behaviors: [Shot]

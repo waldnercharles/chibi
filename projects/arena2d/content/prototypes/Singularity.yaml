@@ -1,0 +1,24 @@
+name: Singularity
+components:
+  GAME.GameAppearance: {antialias: 1.0, color: 3010199551, height: 14.0, shape: Circle, width: 14.0}
+  GAME.GameBody: {continuous: true, type: Kinematic}
+  GAME.GameCollider: {category: 4, mask: 2, radius: 7.0, sensor: true}
+  GAME.GameMaterial:
+    absorption: 0.05
+    albedo: 3010199551
+    emission_color: 3010199551
+    emission_intensity: 0.9
+    emission_multiplier: 1.0
+    scene: 3010199551
+  GAME.GameOrientation: {}
+  GAME.GameProjectile:
+    blast: 60.0
+    damage: 3
+    element: 6
+    lifetime: 4.0
+    payload: -1
+    pierce: 99
+    speed: 90.0
+  GAME.GameTransform: {}
+  GAME.GameVelocity: {}
+behaviors: [Shot]

@@ -1,0 +1,230 @@
+version: 3
+name: Explosion
+id_counter: 321
+description: On Begin, carve rock along sixteen spokes, strike every body with health inside Blast radius with damage that falls off with distance, then glow out.
+owner_type: ecs.entity
+graphs:
+- kind: event
+  name: ""
+  nodes:
+  - {id: 1, type: Event, reference_name: Begin}
+  - id: 3
+    type: ForLoop
+    inputs: {LastIndex: 15}
+  - id: 44
+    type: Behavior Expression
+    reference_id: 10
+    reference_name: pos + direction(index * 0.3926991 + 0.1) * blast
+    inputs:
+      pos:
+        type: struct
+        type_name: GameTransform
+        binding: {kind: component, component: GAME.GameTransform}
+      index: {type: int}
+      blast:
+        type: double
+        binding: {kind: component_field, component: GAME.GameProjectile, field: blast}
+    outputs:
+      Result: {type: struct, type_name: GameTransform}
+  - id: 49
+    type: Raycast
+    inputs:
+      Start:
+        type_name: GameTransform
+        binding: {kind: component, component: GAME.GameTransform}
+        default: null
+      Categories: 8
+  - {id: 60, type: Branch}
+  - id: 86
+    type: Behavior Expression
+    reference_id: 65
+    reference_name: 3 + blast * 0.22
+    inputs:
+      blast:
+        type: double
+        binding: {kind: component_field, component: GAME.GameProjectile, field: blast}
+    outputs:
+      Result: {type: double}
+  - id: 110
+    type: Behavior Expression
+    reference_id: 89
+    reference_name: 1.2 + damage * 0.05
+    inputs:
+      damage:
+        type: double
+        binding: {kind: component_field, component: GAME.GameProjectile, field: damage}
+    outputs:
+      Result: {type: double}
+  - id: 113
+    type: Self
+    outputs:
+      Self: {type_name: ecs.entity}
+  - id: 115
+    type: Damage Material
+    inputs: {Cause: 1}
+  - id: 124
+    type: Find Entities With Component
+    inputs: {Component: GameHealth}
+  - id: 127
+    type: ForEach
+    inputs:
+      Array: {type: handle, type_name: ecs.entity}
+    outputs:
+      Array Element: {type: handle, type_name: ecs.entity}
+  - {id: 134, type: GetEntity_GameTransform}
+  - id: 161
+    type: Behavior Expression
+    reference_id: 137
+    reference_name: 1 - distance(pos, other) / blast
+    inputs:
+      pos:
+        type: struct
+        type_name: GameTransform
+        binding: {kind: component, component: GAME.GameTransform}
+      other: {type: struct, type_name: GameTransform}
+      blast:
+        type: double
+        binding: {kind: component_field, component: GAME.GameProjectile, field: blast}
+    outputs:
+      Result: {type: double}
+  - id: 180
+    type: Behavior Expression
+    reference_id: 166
+    reference_name: f > 0
+    inputs:
+      f: {type: double, flags: 0}
+    outputs:
+      Result: {type: bool}
+  - {id: 186, type: Branch}
+  - id: 220
+    type: Behavior Expression
+    reference_id: 191
+    reference_name: ceil(damage * (0.35 + 0.65 * f))
+    inputs:
+      damage:
+        type: double
+        binding: {kind: component_field, component: GAME.GameProjectile, field: damage}
+      f: {type: double}
+    outputs:
+      Result: {type: double}
+  - id: 253
+    type: Behavior Expression
+    reference_id: 224
+    reference_name: normalize(other - pos + vec2(0.001, 0))
+    inputs:
+      other: {type: struct, type_name: GameTransform}
+      pos:
+        type: struct
+        type_name: GameTransform
+        binding: {kind: component, component: GAME.GameTransform}
+    outputs:
+      Result: {type: struct, type_name: CF_V2}
+  - id: 276
+    type: Behavior Expression
+    reference_id: 257
+    reference_name: blast * 2.2 * f
+    inputs:
+      blast:
+        type: double
+        binding: {kind: component_field, component: GAME.GameProjectile, field: blast}
+      f: {type: double}
+    outputs:
+      Result: {type: double}
+  - id: 280
+    type: Send Event
+    reference_name: Hit
+    inputs:
+      Amount: {id: 284, declaration_id: 1, type: int}
+      Source:
+        declaration_id: 2
+        binding: {kind: component_field, component: GAME.GameProjectile, field: source}
+      Point: {declaration_id: 3, type: struct, type_name: CF_V2}
+      Direction: {declaration_id: 4, type: struct, type_name: CF_V2}
+      Element: {declaration_id: 5, type: int, default: 5}
+      Knockback: {declaration_id: 6, type: float}
+    outputs:
+      Then: {id: 283}
+  - id: 290
+    type: Emit Directed Particles
+    inputs:
+      Position:
+        type_name: GameTransform
+        binding: {kind: component, component: GAME.GameTransform}
+        default: null
+      Direction:
+        default: {x: 1.0, "y": 0.0}
+      Count: 40
+      Color:
+        binding: {kind: component_field, component: GAME.GameMaterial, field: emission_color}
+      End Color: 0
+      Min Speed: 80.0
+      Max Speed: 420.0
+      Max Lifetime: 0.7
+      Min Size: 0.6
+      Max Size: 2.0
+      Spread: 3.14159
+      Min Drag: 1.5
+      Max Drag: 4.0
+      Min Emission: 0.6
+      Max Emission: 1.2
+      Size Exponent: 1.0
+      Shape: 4
+  - id: 312
+    type: Play Sound
+    inputs:
+      Frequency: 110.0
+      End Frequency: 38.0
+      Duration: 0.55
+      Volume: 0.55
+      Pan: 0.0
+      Noise: 0.8
+  edges:
+  - {from: 1.Then, to: 3.Exec}
+  - {from: 3.Body, to: 60.Exec}
+  - {from: 3.Index, to: 44.index}
+  - {from: 3.Completed, to: 127.Exec}
+  - {from: 44.Result, to: 49.End}
+  - {from: 49.Found, to: 60.Condition}
+  - {from: 49.Entity, to: 115.Entity}
+  - {from: 49.Point, to: 115.Point, conversion: game_transform_to_cf}
+  - {from: 60.True, to: 115.In}
+  - {from: 86.Result, to: 115.Radius}
+  - {from: 110.Result, to: 115.Energy}
+  - {from: 113.Self, to: 115.Source}
+  - {from: 124.Entities, to: 127.Array}
+  - {from: 127.Body, to: 186.Exec}
+  - {from: 127.Array Element, to: 134.Entity}
+  - {from: 127.Array Element, to: 280.Entity}
+  - {from: 127.Completed, to: 290.Exec}
+  - {from: 134.Value, to: 161.other}
+  - {from: 134.Value, to: 253.other}
+  - {from: 134.Value, to: 280.Point, conversion: game_transform_to_cf}
+  - {from: 161.Result, to: 180.f}
+  - {from: 161.Result, to: 220.f}
+  - {from: 161.Result, to: 276.f}
+  - {from: 180.Result, to: 186.Condition}
+  - {from: 186.True, to: 280.Exec}
+  - {from: 220.Result, to: 280.Amount, conversion: To Integer}
+  - {from: 253.Result, to: 280.Direction}
+  - {from: 276.Result, to: 280.Knockback}
+  - {from: 290.Then, to: 312.Exec}
+- id: 10
+  kind: function
+  math_expression: pos + direction(index * 0.3926991 + 0.1) * blast
+  entry_id: 11
+- {id: 65, kind: function, math_expression: 3 + blast * 0.22, entry_id: 66}
+- {id: 89, kind: function, math_expression: 1.2 + damage * 0.05, entry_id: 90}
+- id: 137
+  kind: function
+  math_expression: 1 - distance(pos, other) / blast
+  entry_id: 138
+- {id: 166, kind: function, math_expression: f > 0, entry_id: 167}
+- id: 191
+  kind: function
+  math_expression: ceil(damage * (0.35 + 0.65 * f))
+  entry_id: 192
+- id: 224
+  kind: function
+  math_expression: normalize(other - pos + vec2(0.001, 0))
+  entry_id: 225
+- {id: 257, kind: function, math_expression: blast * 2.2 * f, entry_id: 258}

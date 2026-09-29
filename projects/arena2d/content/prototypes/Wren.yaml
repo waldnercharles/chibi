@@ -1,0 +1,18 @@
+name: Wren
+components:
+  GAME.GameActionBinding: {action: Boost, source: Space}
+  GAME.GameAim:
+    direction: {x: 1.0}
+  GAME.GameBody: {continuous: true, type: Dynamic}
+  GAME.GameCollider: {category: 1, mask: 26, radius: 8.0}
+  GAME.GameDrive: {acceleration: 1500.0}
+  GAME.GameGeometry3D: {depth: 30.0, height: 4.0, width: 30.0}
+  GAME.GameGlobalBinding: {name: Player}
+  GAME.GameHealth: {current: 100, maximum: 100}
+  GAME.GameInput: {}
+  GAME.GameMovement: {speed: 230.0}
+  GAME.GameOrientation: {}
+  GAME.GameShader: {material: WrenHull, parameters: "", shape: WrenShape}
+  GAME.GameTransform: {}
+  GAME.GameVelocity: {}
+behaviors: [Hardpoints, ShipFlight]

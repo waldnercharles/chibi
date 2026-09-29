@@ -1,0 +1,17 @@
+name: Shard
+components:
+  GAME.GameAppearance: {antialias: 1.0, color: 4291984127, height: 2.2, shape: Capsule, width: 7.0}
+  GAME.GameBody: {continuous: true, type: Kinematic}
+  GAME.GameCollider: {category: 4, mask: 2, radius: 2.0, sensor: true}
+  GAME.GameMaterial:
+    absorption: 0.05
+    albedo: 4291984127
+    emission_color: 4291984127
+    emission_intensity: 0.35
+    emission_multiplier: 1.0
+    scene: 4291984127
+  GAME.GameOrientation: {}
+  GAME.GameProjectile: {acceleration: -900.0, damage: 5, lifetime: 0.38, payload: -1, speed: 700.0}
+  GAME.GameTransform: {}
+  GAME.GameVelocity: {}
+behaviors: [Shot]

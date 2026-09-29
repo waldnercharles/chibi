@@ -300,12 +300,38 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameWeapon)
 }
 GameWeapon;
 
+/* Shot state that a weapon writes and the shot's own behaviors read. */
 typedef NODE_COMPONENT_TYPE_DENSE(GameProjectile)
 {
     float speed;
     float lifetime;
     int damage;
     float age;
+    /* Radians per second the shot turns toward its target. */
+    float homing;
+    /* Speed gained per second; negative slows the shot. */
+    float acceleration;
+    /* Bodies the shot passes through before it stops. */
+    int pierce;
+    /* Wall reflections left. */
+    int bounce;
+    /* Shards released when the shot ends. */
+    int split;
+    /* Authored element code the target's behaviors interpret. */
+    int element;
+    /* Blast radius where the shot ends; zero for none. */
+    float blast;
+    /* First module the source casts where the shot triggers; -1 for none. */
+    int payload;
+    /* Authored trigger code: when the payload is cast. */
+    int trigger;
+    /* Seconds after launch a timed trigger fires. */
+    float delay;
+    float knockback;
+    /* The entity whose weapon fired the shot. */
+    uint64_t source NODE_HANDLE(ecs.entity);
+    /* Which of the source's weapons fired the shot. */
+    int hardpoint;
 }
 GameProjectile;
 

@@ -1,0 +1,10 @@
+name: ImpactLight
+components:
+  GAME.GameAppearance: {antialias: 2.0, color: 4292454400, height: 8.0, shape: Circle, width: 8.0}
+  GAME.GameMaterial:
+    emission_color: 4292454655
+    emission_intensity: 0.32
+    emission_multiplier: 1.0
+    scene: 4292454400
+  GAME.GameTransform: {}
+behaviors: [Glow]

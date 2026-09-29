@@ -1,0 +1,226 @@
+version: 3
+name: ShipFlight
+id_counter: 553
+description: Turn toward the aim, drive from movement input, boost on Boost while the boost meter lasts, and light the engines with speed.
+owner_type: ecs.entity
+variables:
+- {id: 1, name: boost, type: float, default: 1.0}
+- {id: 2, name: desired, type: float}
+graphs:
+- kind: event
+  name: ""
+  nodes:
+  - id: 3
+    type: Event
+    reference_name: Tick
+    outputs:
+      DeltaSeconds: {type: float, kind: data}
+  - id: 18
+    type: Behavior Expression
+    reference_id: 6
+    reference_name: desired = atan2(aim.y, aim.x)
+    inputs:
+      Exec: {id: 22, kind: exec}
+      desired:
+        id: 19
+        type: float
+        binding: {kind: variable, variable_id: 2, source_asset: ShipFlight}
+      aim:
+        type: struct
+        type_name: CF_V2
+        binding: {kind: component_field, component: GAME.GameAim, field: direction}
+    outputs:
+      Then: {id: 23, kind: exec}
+      Result: {id: 21, type: float}
+  - id: 92
+    type: Behavior Expression
+    reference_id: 43
+    reference_name: heading += atan2(sin(desired - heading), cos(desired - heading)) * min(1, 18 * dt)
+    inputs:
+      Exec: {id: 97, kind: exec}
+      heading:
+        id: 93
+        type: float
+        binding: {kind: component_field, component: GAME.GameOrientation, field: radians}
+      desired:
+        type: double
+        binding: {kind: variable, variable_id: 2, source_asset: ShipFlight}
+      dt:
+        type: double
+        binding: {kind: delta_time}
+    outputs:
+      Then: {id: 98, kind: exec}
+      Result: {id: 96, type: float}
+  - id: 180
+    type: Behavior Expression
+    reference_id: 161
+    reference_name: pressed && boost > 0.05
+    inputs:
+      pressed:
+        type: bool
+        flags: 0
+        binding: {kind: component_field, component: GAME.GameActionBinding, field: pressed}
+      boost:
+        type: double
+        flags: 0
+        binding: {kind: variable, variable_id: 1, source_asset: ShipFlight}
+    outputs:
+      Result: {type: bool}
+  - {id: 187, type: Branch}
+  - id: 251
+    type: Behavior Expression
+    reference_id: 192
+    reference_name: target = normalize(move + direction(heading) * max(0, 0.2 - length(move)) * 5) * speed * 1.9
+    inputs:
+      Exec: {id: 257, kind: exec}
+      target:
+        id: 252
+        type: struct
+        type_name: CF_V2
+        binding: {kind: component_field, component: GAME.GameDrive, field: target}
+      move:
+        type: struct
+        type_name: CF_V2
+        binding: {kind: component_field, component: GAME.GameInput, field: move}
+      heading:
+        type: double
+        binding: {kind: component_field, component: GAME.GameOrientation, field: radians}
+      speed:
+        type: double
+        binding: {kind: component_field, component: GAME.GameMovement, field: speed}
+    outputs:
+      Then: {id: 258, kind: exec}
+      Result: {id: 256, type: struct, type_name: CF_V2}
+  - id: 359
+    type: Behavior Expression
+    reference_id: 333
+    reference_name: boost = max(0, boost - dt * 0.9)
+    inputs:
+      Exec: {id: 363, kind: exec}
+      boost:
+        id: 360
+        type: float
+        binding: {kind: variable, variable_id: 1, source_asset: ShipFlight}
+      dt:
+        type: double
+        binding: {kind: delta_time}
+    outputs:
+      Then: {id: 364, kind: exec}
+      Result: {id: 362, type: float}
+  - id: 409
+    type: Behavior Expression
+    reference_id: 396
+    reference_name: target = move * speed
+    inputs:
+      Exec: {id: 414, kind: exec}
+      target:
+        id: 410
+        type: struct
+        type_name: CF_V2
+        binding: {kind: component_field, component: GAME.GameDrive, field: target}
+      move:
+        type: struct
+        type_name: CF_V2
+        binding: {kind: component_field, component: GAME.GameInput, field: move}
+      speed:
+        type: double
+        binding: {kind: component_field, component: GAME.GameMovement, field: speed}
+    outputs:
+      Then: {id: 415, kind: exec}
+      Result: {id: 413, type: struct, type_name: CF_V2}
+  - id: 470
+    type: Behavior Expression
+    reference_id: 444
+    reference_name: boost = min(1, boost + dt * 0.4)
+    inputs:
+      Exec: {id: 474, kind: exec}
+      boost:
+        id: 471
+        type: float
+        binding: {kind: variable, variable_id: 1, source_asset: ShipFlight}
+      dt:
+        type: double
+        binding: {kind: delta_time}
+    outputs:
+      Then: {id: 475, kind: exec}
+      Result: {id: 473, type: float}
+  - id: 533
+    type: Behavior Expression
+    reference_id: 507
+    reference_name: clamp(length(velocity) / speed, 0, 1.5)
+    inputs:
+      velocity:
+        type: struct
+        type_name: GameVelocity
+        binding: {kind: component, component: GAME.GameVelocity}
+      speed:
+        type: double
+        binding: {kind: component_field, component: GAME.GameMovement, field: speed}
+    outputs:
+      Result: {type: double}
+  - id: 537
+    type: Self
+    outputs:
+      Self: {type_name: ecs.entity}
+  - id: 539
+    type: Set Material Parameter
+    inputs:
+      Name: Thrust
+      Value: {type: double}
+  - id: 545
+    type: Get Variable
+    reference_id: 1
+    reference_name: boost
+    outputs:
+      Value: {type: float}
+  - id: 547
+    type: Set Global Variable
+    inputs:
+      Name: Boost
+      Value: {type: float}
+    outputs:
+      Value: {type: float}
+  edges:
+  - {from: 3.Then, to: 18.Exec}
+  - {from: 18.Then, to: 92.Exec}
+  - {from: 92.Then, to: 187.Exec}
+  - {from: 180.Result, to: 187.Condition}
+  - {from: 187.True, to: 251.Exec}
+  - {from: 187.False, to: 409.Exec}
+  - {from: 251.Then, to: 359.Exec}
+  - {from: 359.Then, to: 539.Exec}
+  - {from: 409.Then, to: 470.Exec}
+  - {from: 470.Then, to: 539.Exec}
+  - {from: 533.Result, to: 539.Value}
+  - {from: 537.Self, to: 539.Entity}
+  - {from: 539.Then, to: 547.Exec}
+  - {from: 545.Value, to: 547.Value}
+- id: 6
+  kind: function
+  math_expression: desired = atan2(aim.y, aim.x)
+  entry_id: 25
+- id: 43
+  kind: function
+  math_expression: heading += atan2(sin(desired - heading), cos(desired - heading)) * min(1, 18 * dt)
+  entry_id: 100
+- id: 161
+  kind: function
+  math_expression: pressed && boost > 0.05
+  entry_id: 162
+- id: 192
+  kind: function
+  math_expression: target = normalize(move + direction(heading) * max(0, 0.2 - length(move)) * 5) * speed * 1.9
+  entry_id: 260
+- id: 333
+  kind: function
+  math_expression: boost = max(0, boost - dt * 0.9)
+  entry_id: 366
+- {id: 396, kind: function, math_expression: target = move * speed, entry_id: 417}
+- id: 444
+  kind: function
+  math_expression: boost = min(1, boost + dt * 0.4)
+  entry_id: 477
+- id: 507
+  kind: function
+  math_expression: clamp(length(velocity) / speed, 0, 1.5)
+  entry_id: 508

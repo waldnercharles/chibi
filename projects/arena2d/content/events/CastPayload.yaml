@@ -1,0 +1,12 @@
+version: 3
+name: CastPayload
+domain: event
+id_counter: 6
+description: A shot asks the weapon that fired it to cast the module group starting at Index from Position along Direction.
+variables:
+- {id: 1, name: Hardpoint, type: int, category: Payload}
+- {id: 2, name: Index, type: int, category: Payload}
+- {id: 3, name: Position, type: struct, type_name: CF_V2, category: Payload}
+- {id: 4, name: Direction, type: struct, type_name: CF_V2, category: Payload}
+graphs:
+- {kind: event, name: Events}

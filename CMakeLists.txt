@@ -734,6 +734,7 @@ add_executable(test_suite
     test/wave.c
     test/radiance.c
     test/post_2d.c
+    test/material_effects.c
     test/material_sampling.c
     test/radiance_history.c
     test/radiance_intervals.c

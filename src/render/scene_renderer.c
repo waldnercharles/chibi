@@ -722,6 +722,21 @@ static void collect_chunks(
     }
 }
 
+/* Tints the entities appended since first with the actor's hit flash. */
+static void flash_entities(app_scene_renderer *renderer, int first, const GameFlash *flash)
+{
+    if (!flash || !isfinite(flash->amount) || flash->amount <= 0) {
+        return;
+    }
+    float tint[4] = { (flash->color >> 24) / 255.f,
+                      ((flash->color >> 16) & 255) / 255.f,
+                      ((flash->color >> 8) & 255) / 255.f,
+                      fminf(flash->amount, 1) };
+    for (int i = first; i < acount(renderer->entities); i++) {
+        memcpy(renderer->entities[i].flash, tint, sizeof tint);
+    }
+}
+
 static void collect(
     app_scene_renderer *renderer,
     ecs_world *world,
@@ -778,6 +793,8 @@ static void collect(
             engine_render_position(runtime, entity, &position);
         }
         const material_mask *mask = game_materials_mask(engine_materials(runtime), entity);
+        const GameFlash *flash = GAME_GameFlash_get_const(world, entity);
+        int actor_first = acount(renderer->entities);
         if (mask) {
             float padding = fmaxf(appearance.antialias, renderer->pixel_aa);
             material_rect bounds = { 0,
@@ -863,6 +880,7 @@ static void collect(
                 }
             }
             tile_group(renderer, first, group);
+            flash_entities(renderer, actor_first, flash);
             continue;
         }
         if (!append_entity(
@@ -889,6 +907,7 @@ static void collect(
                 render_shader_parameters(shape, world, entity, binding->parameters, draw->shape_parameters);
             }
         }
+        flash_entities(renderer, actor_first, flash);
     }
     collect_chunks(renderer, world, runtime, view);
     const game_particle *items = game_particles_data(particles);

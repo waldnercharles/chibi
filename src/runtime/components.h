@@ -802,6 +802,17 @@ typedef NODE_COMPONENT_TYPE_DENSE(GamePost2D)
 }
 GamePost2D;
 
+/* Tints an entity's drawn material toward color by amount and adds that color
+ * as emission, so a hit lights its surroundings. Amount falls by decay per
+ * second. */
+typedef NODE_COMPONENT_TYPE_DENSE(GameFlash)
+{
+    unsigned color;
+    float amount;
+    float decay;
+}
+GameFlash;
+
 /* Shimmers the frame behind an entity, as heat does above fire. */
 typedef NODE_COMPONENT_TYPE_DENSE(GameHeatHaze)
 {

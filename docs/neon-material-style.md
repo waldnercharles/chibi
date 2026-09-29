@@ -218,3 +218,15 @@ runs only while one of them is on screen: 0.09 ms at 1080p. Grading, vignette,
 grain, flash and chromatic aberration are part of the tone-map pass; the
 pass went from 0.29 to 0.35 ms with aberration active. The distortion is
 screen space: it does not reveal what is offscreen, and edges clamp.
+
+### Hit flash
+
+`GameFlash{color, amount, decay}` tints an entity's drawn material toward
+color by amount and adds that color as emission (0.3 times the amount per
+unit of coverage), so a hit lights its surroundings through HRC. Amount falls
+by decay per second on the fixed clock. **Flash Entity**(Entity, Color,
+Amount) sets the color and raises the amount; Entity defaults to Self and must
+carry a `GameFlash`, which sets its decay. The flash applies after a graph
+material's Surface Output, so plain `GameMaterial`, graph materials and
+material-mask pieces all flash, borders included. Material entities grew by
+one vec4 (352 GPU bytes); the raster cost is within measurement noise.

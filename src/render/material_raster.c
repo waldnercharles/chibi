@@ -19,11 +19,11 @@ enum
 {
     GPU_ENTITY_BYTES = offsetof(render_material_entity, material_parameters)
 };
-_Static_assert(sizeof(render_material_entity) == 1360, "entity std430 stride");
+_Static_assert(sizeof(render_material_entity) == 1376, "entity std430 stride");
 _Static_assert(offsetof(render_material_entity, points) == 80, "entity point offset");
 _Static_assert(offsetof(render_material_entity, scene) == 144, "entity material offset");
 _Static_assert(offsetof(render_material_entity, time) == 304, "entity clock offset");
-_Static_assert(GPU_ENTITY_BYTES == 336, "entity GPU size");
+_Static_assert(GPU_ENTITY_BYTES == 352, "entity GPU size");
 
 typedef struct
 {

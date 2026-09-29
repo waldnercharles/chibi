@@ -631,6 +631,7 @@ static int continue_step(engine *engine)
         CHIBI_TRACE_ZONE_BEGIN(visual_zone, "Visual systems");
         result = game_particles_tick(live->particles, ENGINE_FIXED_SECONDS);
         game_visual_effects_tick(game_behavior_visual_effects(live->behaviors), (float)ENGINE_FIXED_SECONDS);
+        game_visual_effects_fade_flashes(engine->world, (float)ENGINE_FIXED_SECONDS);
         if (result >= 0) {
             result = game_sdf_motion_tick(engine->world, ENGINE_FIXED_SECONDS);
         }

@@ -1,0 +1,18 @@
+version: 3
+name: RenderLabFlash
+id_counter: 13
+description: Flashes Self white every second, as a hit would.
+owner_type: ecs.entity
+graphs:
+- kind: event
+  name: ""
+  nodes:
+  - {id: 1, type: Event, reference_name: Begin}
+  - {id: 3, type: Flash Entity}
+  - id: 9
+    type: Delay
+    inputs: {Duration: 1.0}
+  edges:
+  - {from: 1.Then, to: 3.Exec}
+  - {from: 3.Then, to: 9.Exec}
+  - {from: 9.Completed, to: 3.Exec}

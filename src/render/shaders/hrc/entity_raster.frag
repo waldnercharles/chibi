@@ -51,7 +51,7 @@ layout(set = 2, binding = SG_COUNTS_BINDING) readonly buffer TileOffsets { uvec4
 layout(set = 2, binding = SG_INDICES_BINDING) readonly buffer TileEntities { uvec4 tile_entities[]; };
 layout(set = 2, binding = SG_PARAMETERS_BINDING) readonly buffer ShaderParameters { vec4 shader_parameters[]; };
 
-#define ENTITY_VEC4S 21u
+#define ENTITY_VEC4S 22u
 
 uint tile_offset(uint i) { return tile_offsets[i >> 2u][i & 3u]; }
 uint tile_entity(uint i) { return tile_entities[i >> 2u][i & 3u]; }
@@ -98,6 +98,7 @@ Entity entity_at(uint index)
     e.simulation_time = v.xyz;
     e.tile_group = v.w;
     e.material_frame = entity_vec4(b + 20u);
+    e.flash = entity_vec4(b + 21u);
     return e;
 }
 
@@ -589,6 +590,8 @@ void main()
             surface.xyw = graph_output[4].xyz;
             height = graph_output[4].w;
         }
+        apply_flash(e.scene, e.emission, e.albedo, e.flash);
+        apply_flash(e.border_scene, e.border_emission, e.border_albedo, e.flash);
 
         if (e.metaball_group > 0u) {
             // Accumulate into metaball group.

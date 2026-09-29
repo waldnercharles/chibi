@@ -55,6 +55,8 @@ typedef struct
      * the material was laid out. Zero cos and sin sample materials at the
      * pixel's current world position. */
     float material_frame[4];
+    /* Linear RGB and amount of a hit flash; see GameFlash. */
+    float flash[4];
     /* Uploaded separately: Cute storage-buffer structs cannot contain arrays. */
     float material_parameters[32][4], shape_parameters[32][4];
 } render_material_entity;

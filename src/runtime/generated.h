@@ -380,6 +380,9 @@ extern int GAME_GameHRC2D_add(ecs_world *, ecs_entity, uint64_t);
 extern int GAME_GameHRC2D_remove(ecs_world *, ecs_entity, uint64_t);
 extern const ecs_component_desc GAME_COMPONENT_GamePost2D;
 extern const GamePost2D *GAME_GamePost2D_get_const(const ecs_world *, ecs_entity);
+extern const ecs_component_desc GAME_COMPONENT_GameFlash;
+extern GameFlash *GAME_GameFlash_get(ecs_world *, ecs_entity);
+extern const GameFlash *GAME_GameFlash_get_const(const ecs_world *, ecs_entity);
 extern const ecs_component_desc GAME_COMPONENT_GameHeatHaze;
 extern const GameHeatHaze *GAME_GameHeatHaze_get_const(const ecs_world *, ecs_entity);
 

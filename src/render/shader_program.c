@@ -81,7 +81,7 @@ static bool compile(render_programs *programs, program *entry)
     const char
         *uniforms = programs->kind == RENDER_PROGRAM_FRAGMENT
                       ? "layout(set=3,binding=1) uniform shd_uniforms { "
-                        "vec2 sg_lighting; vec4 sg_entity[85]; vec4 "
+                        "vec2 sg_lighting; vec4 sg_entity[86]; vec4 "
                         "sg_ramp_data[SG_RAMP_COUNT]; };\n"
                   : raster ? "layout(set=3,binding=0) uniform uniform_block { "
                              "float u_world_min_x; "

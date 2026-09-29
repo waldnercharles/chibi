@@ -1,6 +1,7 @@
 #include "runtime/visual_effects.h"
 
 #include "graph/runtime/flow.h"
+#include "runtime/generated.h"
 #include "support/xalloc.h"
 
 #include <math.h>
@@ -133,6 +134,24 @@ bool game_visual_effects_add_shockwave(game_visual_effects *effects, game_shockw
     return true;
 }
 
+void game_visual_effects_fade_flashes(ecs_world *world, float delta)
+{
+    ecs_component_id component = GAME_COMPONENT_GameFlash.id;
+    ecs_query query;
+    if (!ecs_world_component(world, component) ||
+        ecs_query_begin(world, &query, &component, 1) != ECS_OK) {
+        return;
+    }
+    ecs_entity entity;
+    while (ecs_query_next(&query, &entity)) {
+        GameFlash *flash = GAME_GameFlash_get(world, entity);
+        if (flash->amount > 0) {
+            flash->amount = fmaxf(flash->amount - fmaxf(flash->decay, 0) * delta, 0);
+        }
+    }
+    ecs_query_end(&query);
+}
+
 /* Reads a flow node's data inputs after its exec pin. */
 static int inputs(flow_context *ctx, pin_value *values, int count)
 {
@@ -209,6 +228,32 @@ static int add_shockwave(node *, flow_context *ctx)
     return flow_context_continue(ctx, 0);
 }
 
+static int flash_entity(node *, flow_context *ctx)
+{
+    ecs_world *world = flow_context_service(ctx, "ecs.world");
+    if (!world) {
+        return flow_context_fail(ctx, FLOW_ERR_NODE, "Flash Entity requires a live world");
+    }
+    pin_value v[3];
+    int result = inputs(ctx, v, 3);
+    if (result < 0) {
+        return result;
+    }
+    ecs_entity entity = ecs_entity_from_u64(v[0].u64);
+    GameFlash *flash = ecs_entity_is_alive(world, entity)
+                         ? GAME_GameFlash_get(world, entity)
+                         : NULL;
+    if (!flash) {
+        return flow_context_fail(ctx, FLOW_ERR_NODE, "Flash Entity needs a live Entity with a GameFlash component");
+    }
+    if (!isfinite(v[2].f) || v[2].f < 0) {
+        return flow_context_fail(ctx, FLOW_ERR_ARGUMENT, "Flash Entity needs a nonnegative Amount");
+    }
+    flash->color = v[1].u;
+    flash->amount = fmaxf(flash->amount, fminf(v[2].f, 1));
+    return flow_context_continue(ctx, 0);
+}
+
 #define FLOAT_PIN(label, value)                                                  \
     {                                                                            \
         .name = label, .type = PIN_F32, .type_name = "float", .default_value = { \
@@ -226,6 +271,16 @@ static pin_spec FLASH_IN[] = { EXEC_PIN,
                                  .default_value = { .type = PIN_U32, .u = 0xffffffffu } },
                                FLOAT_PIN("Amount", .5f),
                                FLOAT_PIN("Duration", .2f) };
+static pin_spec FLASH_ENTITY_IN[] = {
+    EXEC_PIN,
+    { .name = "Entity", .type = PIN_HANDLE, .type_name = "ecs.entity", .flags = PIN_FLAG_DEFAULT_SELF },
+    { .name = "Color",
+      .flags = PIN_FLAG_COLOR,
+      .type = PIN_U32,
+      .type_name = "unsigned int",
+      .default_value = { .type = PIN_U32, .u = 0xffffffffu } },
+    FLOAT_PIN("Amount", 1)
+};
 static pin_spec PULSE_IN[] = { EXEC_PIN,
                                FLOAT_PIN("Amount", 6),
                                FLOAT_PIN("Duration", .3f) };
@@ -291,7 +346,28 @@ static node_desc ADD_SHOCKWAVE = {
     .access = &ACCESS,
 };
 
-static node_desc *const NODES[] = { &FLASH_SCREEN, &PULSE_ABERRATION, &ADD_SHOCKWAVE };
+static const node_access FLASH_ENTITY_ACCESS = { .flags = NODE_EFFECT_STRUCTURAL };
+static node_desc FLASH_ENTITY = {
+    .name = "Flash Entity",
+    .category = "Visual/Effects",
+    .keywords = "hit flash damage white blink tint",
+    .description = "Tints Entity's material, which defaults to Self, toward "
+                   "Color by Amount (0 to 1) and lights its surroundings; its "
+                   "GameFlash decay fades it.",
+    .input_count = 4,
+    .inputs = FLASH_ENTITY_IN,
+    .output_count = 1,
+    .outputs = THEN,
+    .flow_kind = NODE_FLOW_CUSTOM,
+    .flow = flash_entity,
+    .display_class = NODE_DISPLAY_FLOW,
+    .access = &FLASH_ENTITY_ACCESS,
+};
+
+static node_desc *const NODES[] = { &FLASH_SCREEN,
+                                    &PULSE_ABERRATION,
+                                    &ADD_SHOCKWAVE,
+                                    &FLASH_ENTITY };
 const registry_pack GAME_VISUAL_EFFECTS_PACK = { .name = "game.visual_effects",
                                                  .nodes = NODES,
-                                                 .node_count = 3 };
+                                                 .node_count = 4 };

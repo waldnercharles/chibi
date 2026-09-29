@@ -107,6 +107,7 @@ struct game_system
     node *tick;
     int match_count;
     ecs_entity *snapshot;
+    uint32_t *batch_slots; /* Matched slots, retained across ticks. */
 };
 
 static void set_error(flow_error *error, int code, const node *origin, const char *message)
@@ -1801,6 +1802,7 @@ void game_system_free(game_system *system)
     compile_report_free(&system->compile);
     afree(system->query);
     afree(system->snapshot);
+    afree(system->batch_slots);
     behavior_asset_free(system->definition);
     free(system);
 }
@@ -1866,19 +1868,17 @@ static int run_sljit_batch_query(
     const graph_jit_host *host
 )
 {
-    int capacity = (int)ecs_world_high_water_mark(system->world);
-    uint32_t *slots = (uint32_t *)xcalloc((size_t)capacity, sizeof *slots);
+    aclear(system->batch_slots);
     ecs_entity entity;
-    int entity_count = 0;
     int result;
     while ((result = ecs_query_next(query, &entity)) > 0) {
-        assert(entity_count < capacity);
-        slots[entity_count++] = entity.slot;
+        apush(system->batch_slots, entity.slot);
     }
     if (result < 0) {
-        free(slots);
         return FLOW_ERR_STATE;
     }
+    uint32_t *slots = system->batch_slots;
+    int entity_count = acount(slots);
     if (entity_count) {
         graph_sljit_batch_context context = {
             .abi_version = GRAPH_JIT_ABI_VERSION,
@@ -1890,12 +1890,10 @@ static int run_sljit_batch_query(
             .host = host,
         };
         if (entry(&context) != GRAPH_JIT_OK) {
-            free(slots);
             return FLOW_ERR_NODE;
         }
     }
     system->match_count += entity_count;
-    free(slots);
     return FLOW_OK;
 }
 

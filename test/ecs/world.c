@@ -83,9 +83,65 @@ static void sparse_component_growth()
     ecs_world_free(world);
 }
 
+/* Queries without a dense term scan occupancy a word at a time; they still
+   visit exactly the entities holding every term, in ascending slots, across
+   word boundaries and after destruction. */
+static void bitset_query_words()
+{
+    ecs_world *world = ecs_world_new();
+    ecs_component_id a = 0, b = 0;
+    ecs_component_desc a_desc = { .key = "ecs.BitsetA",
+                                  .name = "BitsetA",
+                                  .element_size = sizeof(ecs_position),
+                                  .type = &g_ecs_position_type,
+                                  .index = ECS_INDEX_BITSET };
+    ecs_component_desc b_desc = { .key = "ecs.BitsetB",
+                                  .name = "BitsetB",
+                                  .element_size = sizeof(ecs_health),
+                                  .type = &g_ecs_health_type,
+                                  .index = ECS_INDEX_BITSET };
+    assert(ecs_world_register_component(world, &a_desc, &a) == ECS_OK);
+    assert(ecs_world_register_component(world, &b_desc, &b) == ECS_OK);
+    ecs_entity entities[300];
+    for (int i = 0; i < 300; i++) {
+        entities[i] = ecs_world_create_entity(world);
+        if (i % 3 == 0 || (i >= 60 && i < 70) || i == 127 || i == 128 || i == 255) {
+            assert(ecs_world_record_add(world, entities[i], a, NULL, (uint64_t)i) == ECS_OK);
+        }
+        if (i % 2 == 0 || i == 127 || i == 255) {
+            assert(ecs_world_record_add(world, entities[i], b, NULL, (uint64_t)i) == ECS_OK);
+        }
+    }
+    assert(ecs_world_apply_commands(world) == ECS_OK);
+    assert(ecs_world_record_destroy(world, entities[66], 0) == ECS_OK);
+    assert(ecs_world_apply_commands(world) == ECS_OK);
+    ecs_component_id terms[] = { a, b };
+    for (int count = 1; count <= 2; count++) {
+        ecs_query query;
+        assert(ecs_query_begin(world, &query, terms, count) == ECS_OK);
+        ecs_entity entity;
+        uint32_t previous = 0;
+        int visited = 0;
+        while (ecs_query_next(&query, &entity) > 0) {
+            assert(entity.slot > previous && ecs_entity_is_alive(world, entity));
+            previous = entity.slot;
+            visited++;
+        }
+        ecs_query_end(&query);
+        int expected = 0;
+        for (int i = 0; i < 300; i++) {
+            expected += ecs_component_has(world, entities[i], a) &&
+                        (count == 1 || ecs_component_has(world, entities[i], b));
+        }
+        assert(visited == expected);
+    }
+    ecs_world_free(world);
+}
+
 void run_ecs_checks(void)
 {
     sparse_component_growth();
+    bitset_query_words();
     ecs_world *world = ecs_world_new();
     ecs_component_id position = 0;
     ecs_component_id health = 0;

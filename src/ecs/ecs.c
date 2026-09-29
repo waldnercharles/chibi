@@ -1283,10 +1283,45 @@ static int query_expression_matches(const ecs_world *world, const ecs_query_expr
     return 1;
 }
 
+/* The first slot from `from` on whose bits are set in every term's
+   occupancy, 64 slots per step, or a slot past the limit. */
+static uint32_t next_occupied(const ecs_query *query, uint32_t from)
+{
+    const ecs_component *const *refs = (const ecs_component *const *)query->component_refs;
+    for (uint32_t word = from / 64u; word <= query->limit / 64u; word++) {
+        uint64_t bits = word == from / 64u ? ~UINT64_C(0) << (from % 64u)
+                                           : ~UINT64_C(0);
+        for (int i = 0; i < query->component_count && bits; i++) {
+            bits &= refs[i]->occupancy[word];
+        }
+        if (bits) {
+            return word * 64u + (uint32_t)__builtin_ctzll(bits);
+        }
+    }
+    return query->limit + 1;
+}
+
 int ecs_query_next(ecs_query *query, ecs_entity *out_entity)
 {
     if (!query || !query->world || !out_entity) {
         return ECS_ERR_ARGUMENT;
+    }
+    /* Without a dense term, skip empty occupancy words instead of testing
+       every slot. */
+    if (query->dense_count < 0 && query->component_count && !query->expression) {
+        while (query->cursor <= query->limit) {
+            query->cursor = next_occupied(query, query->cursor + 1);
+            if (query->cursor > query->limit) {
+                break;
+            }
+            ecs_entity entity = { query->cursor,
+                                  query->world->generations[query->cursor] };
+            if (entity_matches(query->world, entity)) {
+                *out_entity = entity;
+                return 1;
+            }
+        }
+        return 0;
     }
     while (query->dense_count >= 0 ? ++query->dense_cursor < query->dense_count
                                    : ++query->cursor <= query->limit) {

@@ -1368,6 +1368,13 @@ bool app_scene_renderer_draw(
         if (!renderer->fluid) {
             renderer->fluid = render_fluid_raster_new();
         }
+        if (renderer->fluid) {
+            render_fluid_raster_set_caustics(
+                renderer->fluid,
+                renderer->time,
+                renderer->lighting.caustics
+            );
+        }
         if (!renderer->fluid || !render_fluid_raster_draw(
                                     renderer->fluid,
                                     game_materials_fluid(materials),

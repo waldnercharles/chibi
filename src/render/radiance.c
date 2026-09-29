@@ -1163,6 +1163,7 @@ static const s_float_range s_float_ranges[] = {
     { offsetof(GameHRC2D, specular), 0, 100, "specular" },
     { offsetof(GameHRC2D, exposure), -16, 16, "exposure" },
     { offsetof(GameHRC2D, bloom), 0, 1, "bloom" },
+    { offsetof(GameHRC2D, caustics), 0, 4, "caustics" },
 };
 
 static const s_int_range s_int_ranges[] = {

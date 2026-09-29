@@ -1,6 +1,7 @@
 #include "graph/shader/shader_graph.h"
 #include "platform/cute.h"
 #include "render/backdrop_2d.h"
+#include "render/fluid_raster.h"
 #include "render/material_raster.h"
 #include "render/shader_catalog.h"
 #include "runtime/generated.h"
@@ -193,12 +194,76 @@ static bool backdrops()
     return ok;
 }
 
+/* Mean and peak albedo red across the liquid's middle rows. */
+static bool liquid_albedo(
+    render_material_raster *r,
+    render_fluid_raster *draw,
+    const material_fluid *fluid,
+    float caustics,
+    float time,
+    float *mean,
+    float *peak
+)
+{
+    render_material_view view = { .min_x = -32, .max_y = 32, .width = SIDE, .height = SIDE };
+    cf_app_update(NULL);
+    render_fluid_raster_set_caustics(draw, time, caustics);
+    bool ok = render_material_raster_draw(r, NULL, 0, view) &&
+              render_fluid_raster_draw(draw, fluid, render_material_raster_canvas(r), view, SIDE, SIDE);
+    cf_app_draw_onto_screen(false);
+    *mean = *peak = 0;
+    float sample[4];
+    int count = 0;
+    for (int y = 24; ok && y < 40; y += 3) {
+        for (int x = 12; ok && x < 52; x += 3) {
+            ok = texel(render_material_raster_textures(r).albedo, x, y, sample, SIDE);
+            *mean += sample[0];
+            *peak = fmaxf(*peak, sample[0]);
+            count++;
+        }
+    }
+    *mean /= count;
+    return ok;
+}
+
+/* Rippling liquid focuses light into caustic lines that brighten its albedo
+ * and move with time; zero strength leaves the liquid plain. */
+static bool caustics(render_material_raster *r)
+{
+    material_fluid *fluid = material_fluid_new(10, 256);
+    render_fluid_raster *draw = render_fluid_raster_new();
+    for (int y = -16; y <= 16; y += 4) {
+        for (int x = -28; x <= 28; x += 4) {
+            material_fluid_add(
+                fluid,
+                (fluid_particle){ .position = { (float)x, (float)y },
+                                  .mass = 1,
+                                  .radius = 10,
+                                  .kind = FLUID_LIQUID,
+                                  .color = 0x2080a0ffu,
+                                  .refraction = 8 }
+            );
+        }
+    }
+    float plain = 0, plain_peak = 0, lit = 0, lit_peak = 0, later = 0, later_peak = 0;
+    bool ok = draw && liquid_albedo(r, draw, fluid, 0, 0, &plain, &plain_peak) &&
+              liquid_albedo(r, draw, fluid, .5f, 0, &lit, &lit_peak) &&
+              liquid_albedo(r, draw, fluid, .5f, 1.3f, &later, &later_peak);
+    printf("liquid caustics: plain %.3f (peak %.3f), caustic %.3f (peak %.3f), later %.3f\n", plain, plain_peak, lit, lit_peak, later);
+    ok = ok && plain_peak - plain < .01f && lit > plain + .02f &&
+         lit_peak > plain_peak + .5f && fabsf(later - lit) > .001f;
+    render_fluid_raster_free(draw);
+    material_fluid_free(fluid);
+    return ok;
+}
+
 bool test_material_effects()
 {
     render_material_raster *r = render_material_raster_new();
     bool ok = r && render_material_raster_resize(r, SIDE, SIDE) && hit_flash(r);
     ok &= backdrops();
+    ok &= caustics(r);
     render_material_raster_free(r);
-    printf("material effects %s: hit flash, backdrops\n", ok ? "PASS" : "FAIL");
+    printf("material effects %s: hit flash, backdrops, caustics\n", ok ? "PASS" : "FAIL");
     return ok;
 }

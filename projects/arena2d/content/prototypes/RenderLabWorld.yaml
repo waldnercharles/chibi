@@ -4,6 +4,7 @@ components:
     bloom: 0.2
     bounce_hysteresis: 1.0
     bounce_intensity: 1.0
+    caustics: 0.4
     exposure: 1.0
     falloff: 1.0
     feedback: true

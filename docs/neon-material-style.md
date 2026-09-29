@@ -251,3 +251,24 @@ are unchanged and no layer is lit or reads Time, the beat or Surface
 Influence. RenderLab's six-octave animated nebula plus a lit ridge cost
 0.50 ms at 1080p; a full-resolution version cost 1.78 ms. The cost is the
 graphs': keep backdrop noise cheap, and prefer a static layer where possible.
+
+### Caustics
+
+`GameHRC2D.caustics` (zero disables; RenderLab uses 0.4) focuses light passing
+through liquid into bright moving lines. The fluid raster treats the liquid
+surface as a height field: four drifting waves plus the curvature of the
+particles' own density, so moving matter bends the pattern. A patch of
+surface at x lands at x + depth times its slope; its brightness is
+1 / |det J| for that mapping's Jacobian J = I + depth H, evaluated
+analytically per pixel. Depth is the strength times each volume's
+`GameFluidVolume.refraction`, so per-volume refraction scales caustics too.
+
+The brightness above the mean is added to the liquid's albedo. The composite
+multiplies albedo by received light, so caustics show only where light
+reaches the liquid, and bounce feeds the same albedo times the previous
+frame's light back into the transport as emission, so caustics light their
+surroundings (this needs `GameHRC2D.feedback`). The cost is part of the fluid
+raster: about 0.03 ms at 1080p for RenderLab's pool. Caustics appear on the
+liquid body, the plane behind it; light reaching floors below arrives through
+bounce as a soft, moving glow rather than a focused pattern. The waves are
+procedural, not a simulated surface.

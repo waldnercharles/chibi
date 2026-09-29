@@ -941,6 +941,10 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameHRC2D)
     float exposure;
     /* Fraction of the blurred image mixed into the frame, in [0, 1]. */
     float bloom;
+    /* Strength of caustics: light that rippling liquid focuses into bright
+     * lines. Zero disables them; 0.3 is typical. Liquid refraction scales it
+     * per volume. Caustics light the surroundings through feedback. */
+    float caustics;
 }
 GameHRC2D;
 

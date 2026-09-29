@@ -233,6 +233,7 @@ set(APP_SOURCES
 
 set(RUNTIME_SUPPORT_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/material_mask.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/material_solid.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/material_field.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/material_terrain.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/material_fluid.c

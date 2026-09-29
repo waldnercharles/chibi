@@ -293,7 +293,8 @@ void run_scene_document_checks(void)
                                                  .continuous = true,
                                                  .force_drive = true,
                                                  .contact_hertz = 15,
-                                                 .contact_damping = 1 };
+                                                 .contact_damping = 1,
+                                                 .gravity_y = 320 };
     char *saved = game_scene_document_save(document);
     char error[256];
     game_scene_document *loaded = game_scene_document_load(saved, error, sizeof error);
@@ -313,10 +314,12 @@ void run_scene_document_checks(void)
     );
     game_scene_document_free(minimal);
     const char *invalid_physics[] = {
-        "{\"substeps\":0}",         "{\"substeps\":1.5}", "{\"workers\":33}",
-        "{\"contact_damping\":-1}", "{\"sleep\":0}",      "{\"unknown\":true}"
+        "{\"substeps\":0}", "{\"substeps\":1.5}",
+        "{\"workers\":33}", "{\"contact_damping\":-1}",
+        "{\"sleep\":0}",    "{\"unknown\":true}",
+        "{\"gravity\":1}",  "{\"gravity\":{\"z\":1}}"
     };
-    for (int i = 0; i < 6; i++) {
+    for (int i = 0; i < 8; i++) {
         char json[256];
         snprintf(json, sizeof json, "{\"version\":1,\"name\":\"Invalid\",\"entities\":[],\"physics\":%s}", invalid_physics[i]);
         game_scene_document *bad = game_scene_document_load(json, error, sizeof error);

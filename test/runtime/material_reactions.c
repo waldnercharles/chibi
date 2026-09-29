@@ -18,7 +18,14 @@ static fluid_contact contact_for(int kind, float body_speed, unsigned color)
     fluid_region region = { -32, -32, 64, 64 };
     fluid_body body = { .velocity = { 0, body_speed }, .owner = 41 };
     fluid_obstacle obstacle = { .body = 0, .half_size = { 10, 10 } };
-    material_fluid_tick(fluid, 1.f / 60, 64, &region, 1, &body, 1, &obstacle, 1);
+    material_fluid_tick(
+        fluid,
+        &(fluid_step){ .delta = 1.f / 60,
+                       .chunk_size = 64,
+                       .regions = &region,
+                       .region_count = 1,
+                       .colliders = { &body, 1, &obstacle, 1 } }
+    );
     int count;
     const fluid_contact *contacts = material_fluid_contacts(fluid, &count);
     assert(count == 1 && contacts);
@@ -41,7 +48,14 @@ static void quiet_rest()
     fluid_region region = { -32, -32, 64, 64 };
     fluid_body body = { 0 };
     fluid_obstacle obstacle = { .body = 0, .half_size = { 10, 10 } };
-    material_fluid_tick(fluid, 1.f / 60, 64, &region, 1, &body, 1, &obstacle, 1);
+    material_fluid_tick(
+        fluid,
+        &(fluid_step){ .delta = 1.f / 60,
+                       .chunk_size = 64,
+                       .regions = &region,
+                       .region_count = 1,
+                       .colliders = { &body, 1, &obstacle, 1 } }
+    );
     int count;
     material_fluid_contacts(fluid, &count);
     assert(count == 0);
@@ -76,7 +90,14 @@ static void bounded_contacts()
         ));
     }
     fluid_region region = { -20, -32, PARTICLES * 24.f + 40, 64 };
-    material_fluid_tick(fluid, 1.f / 60, 64, &region, 1, bodies, PARTICLES, obstacles, PARTICLES);
+    material_fluid_tick(
+        fluid,
+        &(fluid_step){ .delta = 1.f / 60,
+                       .chunk_size = 64,
+                       .regions = &region,
+                       .region_count = 1,
+                       .colliders = { bodies, PARTICLES, obstacles, PARTICLES } }
+    );
     int count;
     material_fluid_contacts(fluid, &count);
     assert(count == MATERIAL_FLUID_CONTACT_LIMIT);
@@ -100,7 +121,14 @@ static fluid_contact box_sweep(float start, float end, float speed)
                         .owner = 45,
                         .swept = true };
     fluid_obstacle obstacle = { .body = 0, .half_size = { 5, 5 } };
-    material_fluid_tick(fluid, 1.f / 60, 64, &region, 1, &body, 1, &obstacle, 1);
+    material_fluid_tick(
+        fluid,
+        &(fluid_step){ .delta = 1.f / 60,
+                       .chunk_size = 64,
+                       .regions = &region,
+                       .region_count = 1,
+                       .colliders = { &body, 1, &obstacle, 1 } }
+    );
     int count;
     const fluid_contact *contacts = material_fluid_contacts(fluid, &count);
     assert(count == 1);
@@ -126,7 +154,14 @@ static void swept_and_rotating_bodies()
                         .owner = 42,
                         .swept = true };
     fluid_obstacle obstacle = { .body = 0, .radius = 4 };
-    material_fluid_tick(fluid, 1.f / 60, 64, &region, 1, &body, 1, &obstacle, 1);
+    material_fluid_tick(
+        fluid,
+        &(fluid_step){ .delta = 1.f / 60,
+                       .chunk_size = 64,
+                       .regions = &region,
+                       .region_count = 1,
+                       .colliders = { &body, 1, &obstacle, 1 } }
+    );
     int count;
     const fluid_contact *contacts = material_fluid_contacts(fluid, &count);
     assert(count == 1 && contacts[0].closing_speed > 1000);
@@ -150,7 +185,14 @@ static void swept_and_rotating_bodies()
     ));
     body = (fluid_body){ .angular_velocity = 30, .owner = 43 };
     obstacle = (fluid_obstacle){ .body = 0, .half_size = { 10, 10 } };
-    material_fluid_tick(fluid, 1.f / 60, 64, &region, 1, &body, 1, &obstacle, 1);
+    material_fluid_tick(
+        fluid,
+        &(fluid_step){ .delta = 1.f / 60,
+                       .chunk_size = 64,
+                       .regions = &region,
+                       .region_count = 1,
+                       .colliders = { &body, 1, &obstacle, 1 } }
+    );
     contacts = material_fluid_contacts(fluid, &count);
     assert(count == 1 && contacts[0].closing_speed > 100);
     material_fluid_free(fluid);
@@ -172,7 +214,14 @@ static void fast_particle_sweeps_stationary_wall()
     fluid_region region = { -32, -32, 64, 64 };
     fluid_body body = { 0 };
     fluid_obstacle obstacle = { .body = 0, .half_size = { 5, 20 } };
-    material_fluid_tick(fluid, 1.f / 60, 64, &region, 1, &body, 1, &obstacle, 1);
+    material_fluid_tick(
+        fluid,
+        &(fluid_step){ .delta = 1.f / 60,
+                       .chunk_size = 64,
+                       .regions = &region,
+                       .region_count = 1,
+                       .colliders = { &body, 1, &obstacle, 1 } }
+    );
     int count;
     const fluid_contact *contacts = material_fluid_contacts(fluid, &count);
     assert(count == 1 && contacts[0].closing_speed > 4000);
@@ -198,7 +247,14 @@ static void huge_diagonal_particle_sweep()
     fluid_region region = { -1100, -1100, 2200, 2200 };
     fluid_body body = { 0 };
     fluid_obstacle obstacle = { .body = 0, .half_size = { 5, 5 } };
-    material_fluid_tick(fluid, 1.f / 60, 64, &region, 1, &body, 1, &obstacle, 1);
+    material_fluid_tick(
+        fluid,
+        &(fluid_step){ .delta = 1.f / 60,
+                       .chunk_size = 64,
+                       .regions = &region,
+                       .region_count = 1,
+                       .colliders = { &body, 1, &obstacle, 1 } }
+    );
     int count;
     const fluid_contact *contacts = material_fluid_contacts(fluid, &count);
     assert(count == 1 && contacts[0].closing_speed > 200000);
@@ -224,7 +280,14 @@ static void huge_sweep()
                         .owner = 44,
                         .swept = true };
     fluid_obstacle obstacle = { .body = 0, .radius = 4 };
-    material_fluid_tick(fluid, 1.f / 60, 64, &region, 1, &body, 1, &obstacle, 1);
+    material_fluid_tick(
+        fluid,
+        &(fluid_step){ .delta = 1.f / 60,
+                       .chunk_size = 64,
+                       .regions = &region,
+                       .region_count = 1,
+                       .colliders = { &body, 1, &obstacle, 1 } }
+    );
     int count;
     const fluid_contact *contacts = material_fluid_contacts(fluid, &count);
     assert(count == 1 && contacts[0].closing_speed > 100000000.f);
@@ -260,7 +323,12 @@ static int ecs_contact_spray_count(int maximum)
     ));
     fluid_body body = { .velocity = { 0, 80 }, .owner = 48 };
     fluid_obstacle obstacle = { .body = 0, .half_size = { 10, 10 } };
-    game_materials_tick(live->materials, 1.f / 60, &body, 1, &obstacle, 1);
+    game_materials_tick(
+        live->materials,
+        1.f / 60,
+        (fluid_vec){ 0 },
+        &(fluid_colliders){ &body, 1, &obstacle, 1 }
+    );
     game_material_state state = game_materials_inspect(live->materials);
     assert(state.particles == 1 && state.active_particles == 1);
     int emitted = game_particles_count(live->particles);
@@ -293,12 +361,26 @@ static void repeat_step_resets_contacts()
     fluid_region region = { -32, -32, 64, 64 };
     fluid_body body = { .velocity = { 0, 80 } };
     fluid_obstacle obstacle = { .body = 0, .half_size = { 10, 10 } };
-    material_fluid_tick(fluid, 1.f / 60, 64, &region, 1, &body, 1, &obstacle, 1);
+    material_fluid_tick(
+        fluid,
+        &(fluid_step){ .delta = 1.f / 60,
+                       .chunk_size = 64,
+                       .regions = &region,
+                       .region_count = 1,
+                       .colliders = { &body, 1, &obstacle, 1 } }
+    );
     int count;
     material_fluid_contacts(fluid, &count);
     assert(count == 1);
     body.velocity = (fluid_vec){ 0 };
-    material_fluid_tick(fluid, 1.f / 60, 64, &region, 1, &body, 1, &obstacle, 1);
+    material_fluid_tick(
+        fluid,
+        &(fluid_step){ .delta = 1.f / 60,
+                       .chunk_size = 64,
+                       .regions = &region,
+                       .region_count = 1,
+                       .colliders = { &body, 1, &obstacle, 1 } }
+    );
     material_fluid_contacts(fluid, &count);
     assert(count == 0);
     material_fluid_free(fluid);

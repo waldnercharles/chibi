@@ -39,6 +39,12 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameBody)
     GameBodyType type;
     bool continuous;
     float angular_velocity; /* Kinematic radians/second; requires Orientation. */
+    /* Fraction of the scene's gravity a dynamic body feels. Ships held by a
+     * Drive use zero; loose debris uses one. */
+    float gravity_scale;
+    /* Dynamic bodies turn under contacts and write Orientation; otherwise
+     * their rotation stays locked. */
+    bool free_rotation;
 }
 GameBody;
 

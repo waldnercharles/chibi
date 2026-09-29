@@ -84,6 +84,30 @@ typedef struct
     float radius;
 } fluid_obstacle;
 
+/* Snapshots of moving bodies and their geometry; impulses return in bodies. */
+typedef struct
+{
+    fluid_body *bodies;
+    int body_count;
+    const fluid_obstacle *obstacles;
+    int obstacle_count;
+} fluid_colliders;
+
+typedef struct material_solids material_solids;
+
+/* One fixed simulation step, no longer than 1/60 second. Regions select whole
+ * chunks. Gravity is an acceleration in world units per second squared.
+ * Solids are optional static material. */
+typedef struct
+{
+    float delta, chunk_size;
+    fluid_vec gravity;
+    const fluid_region *regions;
+    int region_count;
+    fluid_colliders colliders;
+    const material_solids *solids;
+} fluid_step;
+
 typedef struct
 {
     float ignition, cooling, burn_rate, heat_release, smoke_lifetime;
@@ -115,13 +139,13 @@ const fluid_contact *material_fluid_contacts(const material_fluid *fluid, int *c
 uint64_t material_fluid_flow_hash(const material_fluid *fluid);
 void material_fluid_set_reaction(material_fluid *fluid, fluid_reaction reaction);
 const fluid_blast *material_fluid_blasts(const material_fluid *fluid, int *count);
-/* Shared obstacle test for ignition and blast occlusion. ignore_body may be -1. */
+/* Shared occlusion test for heat and blasts: static solids and body
+ * obstacles. Hot bodies never block; ignore_body may be -1. */
 bool material_fluid_blocked(
     fluid_vec a,
     fluid_vec b,
-    const fluid_body *bodies,
-    const fluid_obstacle *obstacles,
-    int count,
+    const fluid_colliders *colliders,
+    const material_solids *solids,
     int ignore_body
 );
 void material_fluid_push(
@@ -129,9 +153,7 @@ void material_fluid_push(
     fluid_vec point,
     float radius,
     float speed,
-    const fluid_body *bodies,
-    const fluid_obstacle *obstacles,
-    int count
+    const fluid_step *step
 );
 /* Optional borrowed executor; the caller owns its submission scope. */
 void material_fluid_set_tasks(material_fluid *fluid, const game_task_system *tasks);
@@ -139,19 +161,7 @@ void material_fluid_set_tasks(material_fluid *fluid, const game_task_system *tas
 bool material_fluid_add(material_fluid *fluid, fluid_particle particle);
 const fluid_particle *material_fluid_particles(const material_fluid *fluid, int *count);
 int material_fluid_active_count(const material_fluid *fluid);
-/* Regions select whole chunks. Sleeping particles keep position, velocity and
- * lifetime. Bodies/obstacles are snapshots; their impulses are returned here.
- * The caller supplies a fixed step no greater than 1/60 second. */
-void material_fluid_tick(
-    material_fluid *fluid,
-    float delta,
-    float chunk_size,
-    const fluid_region *regions,
-    int region_count,
-    fluid_body *bodies,
-    int body_count,
-    const fluid_obstacle *obstacles,
-    int obstacle_count
-);
+/* Sleeping particles keep position, velocity and lifetime. */
+void material_fluid_tick(material_fluid *fluid, const fluid_step *step);
 
 #endif

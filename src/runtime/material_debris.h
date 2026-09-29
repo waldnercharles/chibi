@@ -34,10 +34,6 @@ typedef struct
     float age, lifetime;
 } material_chunk;
 
-/* Signed distance to solid material at point: negative inside. Returns false
- * where nothing solid is known. */
-typedef bool material_debris_distance(void *user, fluid_vec point, float *distance);
-
 typedef struct
 {
     fluid_vec position;
@@ -56,15 +52,10 @@ void material_chunk_shape(material_chunk *chunk, unsigned seed);
 void material_debris_add(material_debris *debris, material_chunk chunk);
 /* Shoves chunks away from the blast center at once. */
 void material_debris_push(material_debris *debris, material_debris_blast blast);
+/* Chunks fall with the step's gravity and bounce off its solids and bodies. */
 void material_debris_tick(
     material_debris *debris,
-    float delta,
-    material_debris_distance *distance,
-    void *user,
-    const fluid_body *bodies,
-    int body_count,
-    const fluid_obstacle *obstacles,
-    int obstacle_count,
+    const fluid_step *step,
     const material_debris_blast *blasts,
     int blast_count
 );

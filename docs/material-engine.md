@@ -16,6 +16,7 @@ world, health, projectile, encounter, or combat configuration.
 | `material_stream` | Tile selection, generation budget, eviction and restoration of cold masks |
 | `material_mask` | Occupancy, accumulated damage, distance, connected components and immutable geometry views |
 | `material_destruction` | Queued energy, resistance, splitting, retained chips, release and typed results |
+| `material_solid` | Signed distance, segment and cell queries over static masks placed in the world |
 | `material_fluid` | Fluid solving and activation |
 | `material_ecs` / `material_ecs_fluid` / `material_ecs_terrain` | Entity ownership, configuration, terrain views, fragments, particles and event delivery |
 | `material_nodes` | Graph service bindings |
@@ -49,6 +50,32 @@ color. `Damage Material`
 takes the striking entity as `Source`; its `GameMaterial` emission color and
 `GameIgniter` heat describe the impact. `MaterialTerrain` names a field,
 typed parameter object, seed, bounds, cell size, connectivity and collision filters.
+
+## Gravity and static solids
+
+A scene's `physics.gravity` (`{x, y}` in units per second squared, +Y down,
+default zero) is the one world acceleration. Box2D applies it to dynamic
+bodies scaled by `GameBody.gravity_scale`; a ship held by a `GameDrive` uses
+zero. Omitted fields read as zero, so existing bodies float; adding a GameBody
+in the editor starts at one. `GameBody.free_rotation` lets a dynamic body turn
+under contacts and writes its Orientation. Detached fragments fall with scale
+one; terrain fragments tumble, other fragments keep their source's setting.
+Crater chunks fall with the same gravity.
+
+Static masks (terrain tiles and destructibles without a dynamic or kinematic
+body) reach matter through `material_solids`, rebuilt each tick, instead of
+per-rectangle obstacles. Queries bilinearly sample the masks' signed distance
+samples, the contour the renderer draws, and union overlapping masks. Liquids
+collide with that distance: a swept segment test stops fast particles at thin
+walls, then particles are pushed to a skin outside the surface, lose their
+approach speed and slide with light friction, so they pool on floors and run
+down slopes and shafts. Gas flow cells near solids hold still; heat and blast
+occlusion trace the same distance. Moving bodies remain box and circle
+obstacles with two-way impulses.
+
+Approximations: the procedural field is not an exact Euclidean distance far
+from the surface, so a push is capped at two cells per substep; particles
+trapped deeper recover over several steps.
 
 ## Procedural fields
 

@@ -5,7 +5,9 @@
 #include "render/material_raster.h"
 #include "render/reflections.h"
 #include "render/shader_catalog.h"
+#include "render/trail_2d.h"
 #include "runtime/generated.h"
+#include "support/array.h"
 
 #include <math.h>
 #include <stdint.h>
@@ -401,6 +403,41 @@ static bool liquid_reflection(render_material_raster *r)
     return ok;
 }
 
+/* Two trails become two ribbons of at most eight capsules that widen and
+ * brighten toward their heads and emit their color. */
+static bool trails(render_material_raster *r)
+{
+    arena_trail_segment segments[30];
+    for (int i = 0; i < 30; i++) {
+        int t = i < 20 ? i : i - 20, n = i < 20 ? 20 : 10;
+        float x = -28 + 2.5f * t, fade = (t + 1.0f) / n, y = i < 20 ? 10 : -10;
+        segments[i] = (arena_trail_segment){ .from = { x, 0, y },
+                                             .to = { x + 2.5f, 0, y },
+                                             .color = { 1, .5f, .2f, fade * fade },
+                                             .width = 6 * (.15f + .85f * fade),
+                                             .emission = 2 };
+    }
+    render_material_entity *entities = NULL;
+    render_trail_2d_append(segments, 30, .5f, 0, &entities);
+    bool ok = acount(entities) == 16 && entities[0].radius < entities[7].radius &&
+              entities[0].scene[3] < entities[7].scene[3] &&
+              fabsf(entities[7].emission[0] - 2) < 1e-6f &&
+              entities[0].pos[1] == -10 && entities[8].pos[1] == 10;
+    float head[4] = { 0 }, empty[4] = { 0 };
+    ok = ok && raster(r, entities, acount(entities)) &&
+         texel(render_material_raster_textures(r).source, 20, 42, head, SIDE) &&
+         texel(render_material_raster_textures(r).source, 20, 32, empty, SIDE);
+    printf(
+        "trails: %d capsules, head emission %.2f, between %.2f\n",
+        acount(entities),
+        head[0],
+        empty[0]
+    );
+    ok = ok && head[0] > .5f && empty[0] == 0;
+    afree(entities);
+    return ok;
+}
+
 bool test_material_effects()
 {
     render_material_raster *r = render_material_raster_new();
@@ -409,7 +446,8 @@ bool test_material_effects()
     ok &= caustics(r);
     ok &= glass(r);
     ok &= liquid_reflection(r);
+    ok &= trails(r);
     render_material_raster_free(r);
-    printf("material effects %s: hit flash, backdrops, caustics, glass, liquid reflection\n", ok ? "PASS" : "FAIL");
+    printf("material effects %s: hit flash, backdrops, caustics, glass, liquid reflection, trails\n", ok ? "PASS" : "FAIL");
     return ok;
 }

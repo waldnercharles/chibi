@@ -319,3 +319,20 @@ run on the display frame as before. The pass runs only while liquid is in
 view with nonzero strength or a reflector is collected: 0.06 ms at 1080p for
 RenderLab. It shows only what is on screen, and a surface deeper than 60
 world units below its pixel does not reflect there.
+
+### Trails
+
+`GameTrail{color, width, lifetime, emission}` now draws in 2D scenes too. The
+3D arena's trail history (`src/render/arena_trail.c`) records each entity's
+position on the fixed clock and fades it over `lifetime`; the 2D path
+(`src/render/trail_2d.c`) turns each trail into at most eight capsules of the
+material raster, so a trail tapers from `width` at its head, fades out, emits
+`color` times `emission` and lights the world through HRC. The history holds
+256 trails (it held 64) and records while the scene renders.
+
+200 moving trails cost 0.19 ms of material raster at 1080p (0.31 to
+0.50 ms); drawing every history segment as its own capsule cost 0.73 ms. The
+eight pieces follow the curve by chords, and their overlapping round joints
+show as faint beads along the ribbon. The raster now uploads material
+parameters only for graph entities, which trails, particles and plain
+materials are not.

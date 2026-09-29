@@ -25,7 +25,8 @@ enum
  * extent must conservatively include AA, deformation and metaball expansion.
  * wobble = amplitude, angular frequency, temporal frequency, sort key.
  * pluck = amplitude, origin, age, speed. time[0] is simulation time;
- * remaining values are reserved by the raster. Equal sort keys retain caller
+ * remaining values are reserved by the raster: time[1] orders the sort, then
+ * holds a graph entity's parameter slot. Equal sort keys retain caller
  * order. */
 typedef struct
 {

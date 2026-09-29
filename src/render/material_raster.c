@@ -533,12 +533,21 @@ bool render_material_raster_draw(
         return false;
     }
     if (count) {
+        /* Only graph entities read parameters; time[1] holds their slot. */
+        int slots = 0;
         for (int i = 0; i < count; i++) {
-            memcpy(r->entity_data + (size_t)i * GPU_ENTITY_BYTES, &r->sorted[i], GPU_ENTITY_BYTES);
-            memcpy(r->parameter_data + (size_t)i * 256, r->sorted[i].material_parameters, 1024);
+            render_material_entity *entity = &r->sorted[i];
+            bool graph = entity->reserved[0] > 0 || entity->reserved[1] > 0;
+            entity->time[1] = graph ? (float)slots : 0;
+            if (graph) {
+                memcpy(r->parameter_data + (size_t)slots++ * 256, entity->material_parameters, 1024);
+            }
+            memcpy(r->entity_data + (size_t)i * GPU_ENTITY_BYTES, entity, GPU_ENTITY_BYTES);
         }
         cf_update_storage_buffer(r->entities, r->entity_data, count * GPU_ENTITY_BYTES);
-        cf_update_storage_buffer(r->parameters, r->parameter_data, count * 1024);
+        if (slots) {
+            cf_update_storage_buffer(r->parameters, r->parameter_data, slots * 1024);
+        }
     }
     int tx = (r->width + 15) / 16, ty = (r->height + 15) / 16;
     float units[2] = { view.width / r->width, view.height / r->height };

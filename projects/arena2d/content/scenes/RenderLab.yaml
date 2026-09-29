@@ -96,6 +96,23 @@ entities:
       emission_intensity: 0.5
       emission_multiplier: 1.0
       scene: 4294955263
+- {name: Free motion, prototype: FreeMotionSystem}
+- name: Comet
+  prototype: Comet
+  components:
+    GAME.GameTransform: {x: -560.0, "y": -40.0}
+    GAME.GameVelocity: {x: 230.0, "y": -40.0}
+- name: Ember comet
+  prototype: Comet
+  components:
+    GAME.GameTransform: {x: -620.0, "y": -120.0}
+    GAME.GameVelocity: {x: 260.0, "y": 60.0}
+    GAME.GameTrail: {color: 4288233727, emission: 0.7, lifetime: 0.35, width: 5.0}
+    GAME.GameMaterial:
+      emission_color: 4288233727
+      emission_intensity: 0.8
+      emission_multiplier: 1.0
+      scene: 4294967295
 - name: Pulse
   prototype: RenderLabAnchor
   components:

@@ -581,7 +581,7 @@ void main()
         vec4 graph_output[SG_OUTPUTS];
         vec4 parameters[32];
         if (e.reserved1 > 0.0) {
-            for(int p=0;p<32;p++) parameters[p]=shader_parameters[eidx*64u+32u+uint(p)];
+            for(int p=0;p<32;p++) parameters[p]=shader_parameters[uint(e.simulation_time.y)*64u+32u+uint(p)];
             sg_dispatch_2d(int(e.reserved1), local_p, material_pos, half_size, e.simulation_time.x, parameters, graph_output);
             sdf = graph_output[0].x;
         }
@@ -606,7 +606,7 @@ void main()
         float height = 0.0;
         vec2 bend = vec2(0.0);
         if (e.reserved0 > 0.0) {
-            for(int p=0;p<32;p++) parameters[p]=shader_parameters[eidx*64u+uint(p)];
+            for(int p=0;p<32;p++) parameters[p]=shader_parameters[uint(e.simulation_time.y)*64u+uint(p)];
             sg_dispatch_2d(int(e.reserved0), local_p, material_pos, half_size, e.simulation_time.x, parameters, graph_output);
             e.scene=graph_output[0]; e.emission=graph_output[1];
             e.albedo=graph_output[2]; e.absorption=graph_output[3];

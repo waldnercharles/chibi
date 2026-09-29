@@ -4,6 +4,7 @@
 #include "platform/cute.h"
 #include "render/appearance_geometry.h"
 #include "render/arena_post.h"
+#include "render/arena_trail.h"
 #include "render/backdrop_2d.h"
 #include "render/fluid_raster.h"
 #include "render/fog.h"
@@ -21,6 +22,7 @@
 #include "render/shader_dir.h"
 #include "render/shader_fragment.h"
 #include "render/shader_images.h"
+#include "render/trail_2d.h"
 #include "runtime/generated.h"
 #include "support/array.h"
 #include "support/xalloc.h"
@@ -52,6 +54,8 @@ struct app_scene_renderer
     render_reflections *reflections;
     render_reflection *reflectors;
     render_backdrops *backdrops;
+    /* GameTrail history, drawn as emissive ribbons. */
+    arena_trails *trails;
     CF_Canvas output, background;
     CF_Shader background_shader;
     GameStarfield2D background_style;
@@ -123,6 +127,9 @@ void app_scene_renderer_free(app_scene_renderer *renderer)
     render_reflections_free(renderer->reflections);
     afree(renderer->reflectors);
     render_backdrops_free(renderer->backdrops);
+    if (renderer->trails) {
+        render_arena_trails_free(renderer->trails);
+    }
     if (renderer->output.id) {
         cf_destroy_canvas(renderer->output);
     }
@@ -742,6 +749,28 @@ static void flash_entities(app_scene_renderer *renderer, int first, const GameFl
     }
 }
 
+/* Each GameTrail as a tapered, fading ribbon of emissive capsules that
+ * lights the world. */
+static void collect_trails(app_scene_renderer *renderer, ecs_world *world, const engine *runtime)
+{
+    if (!ecs_world_component(world, GAME_COMPONENT_GameTrail.id)) {
+        return;
+    }
+    if (!renderer->trails) {
+        renderer->trails = render_arena_trails_new();
+    }
+    render_arena_trails_collect(renderer->trails, world, runtime, renderer->time);
+    int count;
+    const arena_trail_segment *segments = render_arena_trails_segments(renderer->trails, &count);
+    render_trail_2d_append(
+        segments,
+        count,
+        renderer->pixel_aa,
+        renderer->time,
+        &renderer->entities
+    );
+}
+
 static void collect(
     app_scene_renderer *renderer,
     ecs_world *world,
@@ -918,6 +947,7 @@ static void collect(
         flash_entities(renderer, actor_first, flash);
     }
     collect_chunks(renderer, world, runtime, view);
+    collect_trails(renderer, world, runtime);
     const game_particle *items = game_particles_data(particles);
     for (int i = 0; i < game_particles_count(particles); i++) {
         const game_particle *particle = &items[i];

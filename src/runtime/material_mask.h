@@ -65,6 +65,9 @@ int material_mask_carve(material_mask *mask, float x, float y, float radius);
 int material_mask_apply_damage(material_mask *mask, float x, float y, float radius, float energy, float hardness);
 void material_mask_rebuild(material_mask *mask);
 bool material_mask_contains(const material_mask *mask, float x, float y);
+/* Bilinear signed distance from the cell-center samples at a local point,
+ * clamped at the mask edge: negative inside. Writes its local gradient. */
+float material_mask_sample(const material_mask *mask, float x, float y, float *gradient_x, float *gradient_y);
 
 /* Retains the largest connected component in mask, or with anchored every
  * component touching a chunk edge. Returns an owned array of the other

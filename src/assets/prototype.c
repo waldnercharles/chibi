@@ -1530,6 +1530,14 @@ int game_prototype_add_component(game_prototype *prototype, const ecs_component_
                             (pin_value){ .type = PIN_F32, .f = .18f }
                         );
     }
+    if (!strcmp(desc->name, "GameBody")) {
+        return game_prototype_write_field(
+            prototype,
+            desc->name,
+            "gravity_scale",
+            (pin_value){ .type = PIN_F32, .f = 1 }
+        );
+    }
     if (!strcmp(desc->name, "GameMeshParts")) {
         return game_prototype_write_field(
             prototype,

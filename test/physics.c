@@ -814,8 +814,48 @@ static void authored_bounce_and_drive()
     puts("physics authored motion PASS: restitution, angular strike, stop, unwrapped angles and invalid configuration");
 }
 
+static void gravity_and_tumbling()
+{
+    fixture f = create();
+    game_physics_settings settings = game_physics_defaults();
+    settings.gravity_y = 320;
+    assert(game_physics_configure(f.live->physics, settings) == 0);
+    ecs_entity floor = body(&f, 0, 100, GAME_BODY_STATIC, 2, 1);
+    *GAME_GameCollider_get(f.world, floor) = (GameCollider){ .shape = GAME_COLLIDER_BOX,
+                                                             .width = 400,
+                                                             .height = 10,
+                                                             .category = 2,
+                                                             .mask = 1 };
+    ecs_entity falling = body(&f, 0, 0, GAME_BODY_DYNAMIC, 1, 2);
+    GAME_GameBody_get(f.world, falling)->gravity_scale = 1;
+    ecs_entity held = body(&f, 60, 0, GAME_BODY_DYNAMIC, 1, 2);
+    /* A box hanging over the floor's edge tips off it and tumbles. */
+    ecs_entity tumbler = body(&f, 205, 60, GAME_BODY_DYNAMIC, 1, 2);
+    *GAME_GameCollider_get(f.world, tumbler) = (GameCollider){ .shape = GAME_COLLIDER_BOX,
+                                                               .width = 16,
+                                                               .height = 16,
+                                                               .category = 1,
+                                                               .mask = 2 };
+    *GAME_GameBody_get(f.world, tumbler) = (GameBody){ .type = GAME_BODY_DYNAMIC,
+                                                       .gravity_scale = 1,
+                                                       .free_rotation = true };
+    for (int i = 0; i < 90; i++) {
+        assert(step(&f, 1.0f / 60) >= 0);
+    }
+    float y = GAME_GameTransform_get(f.world, falling)->y;
+    assert(y > 85 && y < 92);
+    assert(GAME_GameTransform_get(f.world, held)->y == 0);
+    assert(fabsf(GAME_GameOrientation_get(f.world, tumbler)->radians) > .3f);
+    assert(GAME_GameTransform_get(f.world, tumbler)->y > 100);
+    settings.gravity_y = NAN;
+    assert(game_physics_configure(f.live->physics, settings) < 0);
+    dispose(&f);
+    puts("physics gravity PASS: scaled gravity, resting on a floor, held bodies and tumbling");
+}
+
 void test_physics()
 {
+    gravity_and_tumbling();
     authored_bounce_and_drive();
     test_task_pool();
     configured_motion();

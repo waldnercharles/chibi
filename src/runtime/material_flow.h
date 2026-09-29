@@ -17,9 +17,8 @@ void material_flow_step(
     fluid_particle *particles,
     const int *active,
     int count,
-    const fluid_body *bodies,
-    const fluid_obstacle *obstacles,
-    int obstacle_count
+    const fluid_colliders *colliders,
+    const material_solids *solids
 );
 
 #endif

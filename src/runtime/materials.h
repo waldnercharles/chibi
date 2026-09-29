@@ -48,13 +48,14 @@ void game_materials_damage(
 /* Replace the remaining hull with unowned debris at the next physics boundary. */
 void game_materials_release(game_materials *materials, ecs_entity entity);
 bool game_materials_enabled(const game_materials *materials);
+/* Static masks join matter as solids; every other body is a collider. */
+bool game_materials_static_solid(const game_materials *materials, ecs_entity entity);
+/* Gravity is an acceleration in world units per second squared. */
 void game_materials_tick(
     game_materials *materials,
     float delta,
-    fluid_body *bodies,
-    int body_count,
-    const fluid_obstacle *obstacles,
-    int obstacle_count
+    fluid_vec gravity,
+    const fluid_colliders *colliders
 );
 const material_fluid *game_materials_fluid(const game_materials *materials);
 /* On-demand inspection includes simulation state outside the ECS columns. */

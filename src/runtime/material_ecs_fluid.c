@@ -319,14 +319,10 @@ static void camera_regions(game_materials *materials)
     ecs_query_end(&query);
 }
 
-static void blasts(
-    game_materials *materials,
-    fluid_body *bodies,
-    int body_count,
-    const fluid_obstacle *obstacles,
-    int obstacle_count
-)
+static void blasts(game_materials *materials, const fluid_step *step)
 {
+    fluid_body *bodies = step->colliders.bodies;
+    int body_count = step->colliders.body_count;
     int count;
     const fluid_blast *events = material_fluid_blasts(materials->fluid, &count);
     GameCombustion settings = materials->combustion;
@@ -337,22 +333,14 @@ static void blasts(
         if (radius <= 0) {
             continue;
         }
-        material_fluid_push(
-            materials->fluid,
-            event.position,
-            radius,
-            settings.blast_speed * density,
-            bodies,
-            obstacles,
-            obstacle_count
-        );
+        material_fluid_push(materials->fluid, event.position, radius, settings.blast_speed * density, step);
         for (int i = 0; i < body_count; i++) {
             fluid_body *b = &bodies[i];
             float dx = b->position.x - event.position.x,
                   dy = b->position.y - event.position.y;
             float distance = hypotf(dx, dy);
             if (b->inverse_mass <= 0 || distance < .001f || distance >= radius ||
-                material_fluid_blocked(event.position, b->position, bodies, obstacles, obstacle_count, i)) {
+                material_fluid_blocked(event.position, b->position, &step->colliders, step->solids, i)) {
                 continue;
             }
             float impulse = settings.blast_speed * density *
@@ -502,22 +490,15 @@ static void emit_contact_effects(game_materials *materials)
     }
 }
 
-void material_ecs_tick_fluid(
-    game_materials *materials,
-    float delta,
-    fluid_body *bodies,
-    int body_count,
-    const fluid_obstacle *obstacles,
-    int obstacle_count
-)
+void material_ecs_tick_fluid(game_materials *materials, fluid_step *step)
 {
     if (!materials->fluid) {
         return;
     }
     camera_regions(materials);
     float buffer = materials->settings.buffer;
-    for (int i = 0; i < body_count; i++) {
-        fluid_body b = bodies[i];
+    for (int i = 0; i < step->colliders.body_count; i++) {
+        fluid_body b = step->colliders.bodies[i];
         if (b.velocity.x * b.velocity.x + b.velocity.y * b.velocity.y > 1) {
             apush(
                 materials->regions,
@@ -525,23 +506,15 @@ void material_ecs_tick_fluid(
             );
         }
     }
+    step->regions = materials->regions;
+    step->region_count = acount(materials->regions);
     game_task_pool_begin(materials->pool, true);
-    material_fluid_tick(
-        materials->fluid,
-        delta,
-        materials->settings.chunk_size,
-        materials->regions,
-        acount(materials->regions),
-        bodies,
-        body_count,
-        obstacles,
-        obstacle_count
-    );
+    material_fluid_tick(materials->fluid, step);
     game_task_pool_end(materials->pool);
     CHIBI_TRACE_ZONE_BEGIN(contact_zone, "Fluid contact effects");
     emit_contact_effects(materials);
     CHIBI_TRACE_ZONE_END(contact_zone);
     CHIBI_TRACE_ZONE_BEGIN(blast_zone, "Material blast effects");
-    blasts(materials, bodies, body_count, obstacles, obstacle_count);
+    blasts(materials, step);
     CHIBI_TRACE_ZONE_END(blast_zone);
 }

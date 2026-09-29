@@ -34,6 +34,16 @@ bool game_physics_settings_read(yyjson_val *object, game_physics_settings *out)
                          : !strcmp(name, "continuous") ? &settings.continuous
                                                        : &settings.force_drive;
             *target = yyjson_get_bool(value);
+        } else if (!strcmp(name, "gravity")) {
+            yyjson_val *x = yyjson_obj_get(value, "x"),
+                       *y = yyjson_obj_get(value, "y");
+            if (!yyjson_is_obj(value) ||
+                yyjson_obj_size(value) != (size_t)(!!x + !!y) ||
+                (x && !yyjson_is_num(x)) || (y && !yyjson_is_num(y))) {
+                return false;
+            }
+            settings.gravity_x = x ? (float)yyjson_get_num(x) : 0;
+            settings.gravity_y = y ? (float)yyjson_get_num(y) : 0;
         } else if (!strcmp(name, "contact_hertz") || !strcmp(name, "contact_damping")) {
             if (!yyjson_is_num(value)) {
                 return false;
@@ -79,6 +89,12 @@ yyjson_mut_val *game_physics_settings_write(yyjson_mut_doc *doc, game_physics_se
     }
     if (settings.contact_damping != defaults.contact_damping) {
         yyjson_mut_obj_add_float(doc, object, "contact_damping", settings.contact_damping);
+    }
+    if (settings.gravity_x != defaults.gravity_x ||
+        settings.gravity_y != defaults.gravity_y) {
+        yyjson_mut_val *gravity = yyjson_mut_obj_add_obj(doc, object, "gravity");
+        yyjson_mut_obj_add_float(doc, gravity, "x", settings.gravity_x);
+        yyjson_mut_obj_add_float(doc, gravity, "y", settings.gravity_y);
     }
     return object;
 }

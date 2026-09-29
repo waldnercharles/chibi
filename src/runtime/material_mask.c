@@ -224,6 +224,26 @@ bool material_mask_contains(const material_mask *mask, float x, float y)
     return mask->cells[(int)py * mask->width + (int)px] != 0;
 }
 
+float material_mask_sample(const material_mask *mask, float x, float y, float *gradient_x, float *gradient_y)
+{
+    float fx = x / mask->cell_size + mask->width * .5f - .5f;
+    float fy = y / mask->cell_size + mask->height * .5f - .5f;
+    int x0 = (int)floorf(fx), y0 = (int)floorf(fy);
+    float tx = fx - x0, ty = fy - y0;
+    int x1 = x0 + 1, y1 = y0 + 1;
+    x0 = x0 < 0 ? 0 : x0 >= mask->width ? mask->width - 1 : x0;
+    x1 = x1 < 0 ? 0 : x1 >= mask->width ? mask->width - 1 : x1;
+    y0 = y0 < 0 ? 0 : y0 >= mask->height ? mask->height - 1 : y0;
+    y1 = y1 < 0 ? 0 : y1 >= mask->height ? mask->height - 1 : y1;
+    const float *d = mask->distance;
+    float a = d[y0 * mask->width + x0], b = d[y0 * mask->width + x1];
+    float c = d[y1 * mask->width + x0], e = d[y1 * mask->width + x1];
+    float top = a + (b - a) * tx, bottom = c + (e - c) * tx;
+    *gradient_x = ((b - a) * (1 - ty) + (e - c) * ty) / mask->cell_size;
+    *gradient_y = (bottom - top) / mask->cell_size;
+    return top + (bottom - top) * ty;
+}
+
 void material_mask_rebuild(material_mask *mask)
 {
     rectangles(mask);

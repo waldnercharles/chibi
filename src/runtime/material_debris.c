@@ -1,5 +1,6 @@
 #include "runtime/material_debris.h"
 
+#include "runtime/material_solid.h"
 #include "support/array.h"
 #include "support/xalloc.h"
 
@@ -166,16 +167,11 @@ static void contact(material_chunk *chunk, fluid_vec n, float overlap, fluid_vec
                                    v.y + surface_velocity.y };
 }
 
-static void collide_bodies(
-    material_chunk *chunk,
-    const fluid_body *bodies,
-    const fluid_obstacle *obstacles,
-    int count
-)
+static void collide_bodies(material_chunk *chunk, const fluid_colliders *colliders)
 {
-    for (int i = 0; i < count; i++) {
-        fluid_obstacle o = obstacles[i];
-        fluid_body b = bodies[o.body];
+    for (int i = 0; i < colliders->obstacle_count; i++) {
+        fluid_obstacle o = colliders->obstacles[i];
+        fluid_body b = colliders->bodies[o.body];
         if (b.inverse_mass <= 0) {
             continue;
         }
@@ -206,32 +202,22 @@ static void collide_bodies(
     }
 }
 
-static void collide_solid(material_chunk *chunk, material_debris_distance *distance, void *user)
+static void collide_solid(material_chunk *chunk, const material_solids *solids)
 {
-    float d;
-    if (!distance(user, chunk->position, &d) || d >= chunk->radius) {
+    material_solid_sample s = material_solids_sample(solids, chunk->position);
+    if (s.distance >= chunk->radius) {
         return;
     }
-    const float h = 1;
-    float px = d, nx = d, py = d, ny = d;
-    fluid_vec p = chunk->position;
-    int known = distance(user, (fluid_vec){ p.x + h, p.y }, &px) +
-                distance(user, (fluid_vec){ p.x - h, p.y }, &nx) +
-                distance(user, (fluid_vec){ p.x, p.y + h }, &py) +
-                distance(user, (fluid_vec){ p.x, p.y - h }, &ny);
-    fluid_vec n = { px - nx, py - ny };
-    float length = hypotf(n.x, n.y);
-    if (known < 4 || length < 1e-5f) {
+    fluid_vec n = s.normal;
+    if (!n.x && !n.y) {
         /* No usable gradient: back out along the direction of travel. */
-        length = hypotf(chunk->velocity.x, chunk->velocity.y);
+        float length = hypotf(chunk->velocity.x, chunk->velocity.y);
         if (length < 1e-5f) {
             return;
         }
-        n = (fluid_vec){ -chunk->velocity.x, -chunk->velocity.y };
+        n = (fluid_vec){ -chunk->velocity.x / length, -chunk->velocity.y / length };
     }
-    n.x /= length;
-    n.y /= length;
-    contact(chunk, n, fminf(chunk->radius - d, chunk->radius * 2), (fluid_vec){ 0 });
+    contact(chunk, n, fminf(chunk->radius - s.distance, chunk->radius * 2), (fluid_vec){ 0 });
 }
 
 /* Two or three smaller pieces fly apart from where the chunk was; the pattern
@@ -272,18 +258,13 @@ static void split(material_debris *debris, const material_chunk *chunk)
 
 void material_debris_tick(
     material_debris *debris,
-    float delta,
-    material_debris_distance *distance,
-    void *user,
-    const fluid_body *bodies,
-    int body_count,
-    const fluid_obstacle *obstacles,
-    int obstacle_count,
+    const fluid_step *step,
     const material_debris_blast *blasts,
     int blast_count
 )
 {
-    assert(delta > 0 && body_count >= 0);
+    float delta = step->delta;
+    assert(delta > 0);
     float drag = expf(-DRAG * delta), spin_drag = expf(-SPIN_DRAG * delta);
     float cooling = expf(-COOLING * delta);
     aclear(debris->expired);
@@ -299,16 +280,16 @@ void material_debris_tick(
         for (int b = 0; b < blast_count; b++) {
             push(chunk, blasts[b]);
         }
-        chunk->velocity.x *= drag;
-        chunk->velocity.y *= drag;
+        chunk->velocity.x = (chunk->velocity.x + step->gravity.x * delta) * drag;
+        chunk->velocity.y = (chunk->velocity.y + step->gravity.y * delta) * drag;
         chunk->spin *= spin_drag;
         chunk->heat *= cooling;
         chunk->position.x += chunk->velocity.x * delta;
         chunk->position.y += chunk->velocity.y * delta;
         chunk->angle += chunk->spin * delta;
-        collide_bodies(chunk, bodies, obstacles, obstacle_count);
-        if (distance) {
-            collide_solid(chunk, distance, user);
+        collide_bodies(chunk, &step->colliders);
+        if (step->solids) {
+            collide_solid(chunk, step->solids);
         }
         if (chunk->shock > SPLIT_SHOCK && chunk->radius >= SPLIT_RADIUS &&
             chunk->generation < SPLIT_GENERATIONS && chunk->age > SPLIT_AGE) {

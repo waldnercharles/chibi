@@ -3,6 +3,7 @@
 #include "diagnostics/tracy.h"
 #include "render/particles.h"
 #include "runtime/material_flow.h"
+#include "runtime/material_solid.h"
 #include "support/array.h"
 #include "support/xalloc.h"
 
@@ -42,6 +43,8 @@ struct material_fluid
     game_task_system tasks;
     material_flow *flow;
     fluid_flow_settings flow_settings;
+    /* Borrowed for the duration of one tick. */
+    const fluid_step *step;
 };
 
 static fluid_vec add(fluid_vec a, fluid_vec b)
@@ -501,20 +504,13 @@ static bool segment_box(fluid_vec a, fluid_vec b, fluid_vec half)
     return true;
 }
 
-bool material_fluid_blocked(
-    fluid_vec a,
-    fluid_vec b,
-    const fluid_body *bodies,
-    const fluid_obstacle *obstacles,
-    int count,
-    int ignore_body
-)
+static bool obstacle_blocked(fluid_vec a, fluid_vec b, const fluid_colliders *colliders, int ignore_body)
 {
     fluid_vec low = { fminf(a.x, b.x), fminf(a.y, b.y) },
               high = { fmaxf(a.x, b.x), fmaxf(a.y, b.y) };
-    for (int i = 0; i < count; i++) {
-        fluid_obstacle o = obstacles[i];
-        const fluid_body *body = &bodies[o.body];
+    for (int i = 0; i < colliders->obstacle_count; i++) {
+        fluid_obstacle o = colliders->obstacles[i];
+        const fluid_body *body = &colliders->bodies[o.body];
         if (o.body == ignore_body || body->heat > 0) {
             continue;
         }
@@ -550,6 +546,18 @@ bool material_fluid_blocked(
     return false;
 }
 
+bool material_fluid_blocked(
+    fluid_vec a,
+    fluid_vec b,
+    const fluid_colliders *colliders,
+    const material_solids *solids,
+    int ignore_body
+)
+{
+    return obstacle_blocked(a, b, colliders, ignore_body) ||
+           (solids && material_solids_blocked(solids, a, b));
+}
+
 static void ignition(material_fluid *fluid, fluid_vec p)
 {
     float size = fluid->kernel * 4;
@@ -569,24 +577,14 @@ static void ignition(material_fluid *fluid, fluid_vec p)
     }
 }
 
-typedef struct
-{
-    material_fluid *fluid;
-    float dt;
-    const fluid_body *bodies;
-    int body_count;
-    const fluid_obstacle *obstacles;
-    int obstacle_count;
-} reaction_query;
-
 static void reaction_heat(int start, int end, uint32_t, void *context)
 {
-    const reaction_query *query = context;
-    material_fluid *fluid = query->fluid;
-    const fluid_body *bodies = query->bodies;
-    const fluid_obstacle *obstacles = query->obstacles;
-    int body_count = query->body_count, obstacle_count = query->obstacle_count;
-    float dt = query->dt;
+    material_fluid *fluid = context;
+    const fluid_step *step = fluid->step;
+    const fluid_colliders *colliders = &step->colliders;
+    const fluid_body *bodies = colliders->bodies;
+    int body_count = colliders->body_count;
+    float dt = step->delta;
     fluid_reaction r = fluid->reaction;
     float h = fluid->kernel;
     for (int n = start; n < end; n++) {
@@ -607,7 +605,7 @@ static void reaction_heat(int start, int end, uint32_t, void *context)
             float t = fmaxf(0, fminf(1, dot(sub(p.position, from), d) / fmaxf(dot(d, d), 1e-8f)));
             fluid_vec near = add(from, scale(d, t)), gap = sub(p.position, near);
             if (dot(gap, gap) <= h * h &&
-                !material_fluid_blocked(near, p.position, bodies, obstacles, obstacle_count, k)) {
+                !material_fluid_blocked(near, p.position, colliders, step->solids, k)) {
                 w->heat = fmaxf(w->heat, body.heat);
             }
         }
@@ -622,7 +620,7 @@ static void reaction_heat(int start, int end, uint32_t, void *context)
                     }
                     fluid_vec d = sub(other.position, p.position);
                     if (dot(d, d) >= h * h ||
-                        material_fluid_blocked(other.position, p.position, bodies, obstacles, obstacle_count, -1)) {
+                        material_fluid_blocked(other.position, p.position, colliders, step->solids, -1)) {
                         continue;
                     }
                     w->heat = fmaxf(w->heat, other.heat * .85f);
@@ -632,14 +630,7 @@ static void reaction_heat(int start, int end, uint32_t, void *context)
     }
 }
 
-static void react(
-    material_fluid *fluid,
-    float dt,
-    const fluid_body *bodies,
-    int body_count,
-    const fluid_obstacle *obstacles,
-    int obstacle_count
-)
+static void react(material_fluid *fluid, float dt)
 {
     fluid_reaction r = fluid->reaction;
     if (r.ignition <= 0) {
@@ -647,9 +638,7 @@ static void react(
     }
     /* Queries read the same particle snapshot and write only their own heat.
      * Commit ignition and blast events in particle order after workers finish. */
-    reaction_query query = { fluid,      dt,        bodies,
-                             body_count, obstacles, obstacle_count };
-    run(fluid, reaction_heat, &query, 32);
+    run(fluid, reaction_heat, fluid, 32);
     for (int n = 0; n < acount(fluid->active); n++) {
         int i = fluid->active[n];
         fluid_particle *p = &fluid->particles[i];
@@ -693,22 +682,14 @@ static void react(
     }
 }
 
-void material_fluid_push(
-    material_fluid *fluid,
-    fluid_vec point,
-    float radius,
-    float speed,
-    const fluid_body *bodies,
-    const fluid_obstacle *obstacles,
-    int count
-)
+void material_fluid_push(material_fluid *fluid, fluid_vec point, float radius, float speed, const fluid_step *step)
 {
     for (int n = 0; n < acount(fluid->active); n++) {
         fluid_particle *p = &fluid->particles[fluid->active[n]];
         fluid_vec d = sub(p->position, point);
         float distance = sqrtf(dot(d, d));
         if (distance <= 1e-5f || distance >= radius ||
-            material_fluid_blocked(point, p->position, bodies, obstacles, count, -1)) {
+            material_fluid_blocked(point, p->position, &step->colliders, step->solids, -1)) {
             continue;
         }
         p->velocity = add(p->velocity, scale(d, speed * (1 - distance / radius) / distance));
@@ -926,15 +907,11 @@ static void collide(
     record_contact(fluid, p, body, obstacle.body, point, normal, local_point, fmaxf(0, closing), impulse);
 }
 
-static void collide_obstacles(
-    material_fluid *fluid,
-    fluid_body *bodies,
-    const fluid_obstacle *obstacles,
-    int count,
-    float sweep_start,
-    float sweep_end
-)
+static void collide_obstacles(material_fluid *fluid, float sweep_start, float sweep_end)
 {
+    fluid_body *bodies = fluid->step->colliders.bodies;
+    const fluid_obstacle *obstacles = fluid->step->colliders.obstacles;
+    int count = fluid->step->colliders.obstacle_count;
     /* Query the particle hash with each collider's AABB, instead of testing
      * every particle against every cave wall. Corrections use a fresh index. */
     if (!acount(fluid->active)) {
@@ -1026,31 +1003,83 @@ static void collide_obstacles(
     }
 }
 
-void material_fluid_tick(
-    material_fluid *fluid,
-    float delta,
-    float chunk_size,
-    const fluid_region *regions,
-    int region_count,
-    fluid_body *bodies,
-    int body_count,
-    const fluid_obstacle *obstacles,
-    int obstacle_count
-)
+/* Liquid slides along static solids with this Coulomb friction. */
+static const float SOLID_FRICTION = .1f;
+
+/* Keeps particles out of static solids. A swept test stops fast particles at
+ * thin walls; the signed distance then pushes each one to its skin outside
+ * the surface and removes its approach velocity, with friction for liquid. */
+static void collide_solids(int start, int end, uint32_t, void *context)
 {
-    assert(delta > 0 && delta <= 1.f / 60 + 1e-6f && isfinite(chunk_size) && chunk_size > 0);
-    clear_contacts(fluid);
-    for (int i = 0; i < body_count; i++) {
-        bodies[i].impulse = (fluid_vec){ 0 };
+    material_fluid *fluid = context;
+    const material_solids *solids = fluid->step->solids;
+    for (int n = start; n < end; n++) {
+        int i = fluid->active[n];
+        fluid_particle *p = &fluid->particles[i];
+        fluid_vec previous = fluid->work[i].previous;
+        fluid_vec moved = sub(p->position, previous);
+        if (dot(moved, moved) > 1 &&
+            material_solids_blocked(solids, previous, p->position)) {
+            p->position = previous;
+        }
+        material_solid_sample s = material_solids_sample(solids, p->position);
+        float skin = p->radius * .3f;
+        if (s.solid < 0 || s.distance >= skin || !(s.normal.x || s.normal.y)) {
+            continue;
+        }
+        int count;
+        float cell = material_solids_items(solids, &count)[s.solid].mask->cell_size;
+        p->position = add(p->position, scale(s.normal, fminf(skin - s.distance, cell * 2)));
+        float approach = dot(p->velocity, s.normal);
+        if (approach >= 0) {
+            continue;
+        }
+        fluid_vec slide = sub(p->velocity, scale(s.normal, approach));
+        float speed = sqrtf(dot(slide, slide));
+        float friction = p->kind == FLUID_LIQUID ? SOLID_FRICTION * -approach : 0;
+        p->velocity = speed > friction ? scale(slide, 1 - friction / speed)
+                                       : (fluid_vec){ 0 };
     }
-    for (int i = 0; i < obstacle_count; i++) {
-        assert(obstacles[i].body >= 0 && obstacles[i].body < body_count);
+}
+
+static void gravitate(material_fluid *fluid, float dt)
+{
+    fluid_vec g = fluid->step->gravity;
+    if (!g.x && !g.y) {
+        return;
+    }
+    for (int n = 0; n < acount(fluid->active); n++) {
+        fluid_particle *p = &fluid->particles[fluid->active[n]];
+        if (p->kind == FLUID_LIQUID) {
+            p->velocity = add(p->velocity, scale(g, dt));
+        }
+    }
+}
+
+void material_fluid_tick(material_fluid *fluid, const fluid_step *step)
+{
+    float delta = step->delta;
+    assert(
+        delta > 0 && delta <= 1.f / 60 + 1e-6f && isfinite(step->chunk_size) &&
+        step->chunk_size > 0 && isfinite(step->gravity.x + step->gravity.y)
+    );
+    fluid->step = step;
+    const fluid_colliders *colliders = &step->colliders;
+    clear_contacts(fluid);
+    for (int i = 0; i < colliders->body_count; i++) {
+        colliders->bodies[i].impulse = (fluid_vec){ 0 };
+    }
+    for (int i = 0; i < colliders->obstacle_count; i++) {
+        assert(
+            colliders->obstacles[i].body >= 0 &&
+            colliders->obstacles[i].body < colliders->body_count
+        );
     }
     aclear(fluid->active);
     aclear(fluid->blasts);
     for (int i = 0; i < acount(fluid->particles);) {
         fluid_particle *p = &fluid->particles[i];
-        if (!awake(p->position, chunk_size, regions, region_count)) {
+        if (!awake(p->position, step->chunk_size, step->regions, step->region_count)) {
             i++;
             continue;
         }
@@ -1079,7 +1108,7 @@ void material_fluid_tick(
     }
     index_particles(fluid);
     CHIBI_TRACE_ZONE_BEGIN(reaction_zone, "Fluid reactions");
-    react(fluid, delta, bodies, body_count, obstacles, obstacle_count);
+    react(fluid, delta);
     CHIBI_TRACE_ZONE_END(reaction_zone);
     if (fluid->flow_settings.cell_size > 0) {
         CHIBI_TRACE_ZONE_BEGIN(flow_zone, "Gas flow");
@@ -1090,14 +1119,14 @@ void material_fluid_tick(
             fluid->particles,
             fluid->active,
             acount(fluid->active),
-            bodies,
-            obstacles,
-            obstacle_count
+            colliders,
+            step->solids
         );
         CHIBI_TRACE_ZONE_END(flow_zone);
     }
     fluid->delta = delta * .5f;
-    for (int step = 0; step < 2; step++) {
+    for (int substep = 0; substep < 2; substep++) {
+        gravitate(fluid, fluid->delta);
         for (int n = 0; n < acount(fluid->active); n++) {
             int i = fluid->active[n];
             fluid_particle *p = &fluid->particles[i];
@@ -1123,7 +1152,11 @@ void material_fluid_tick(
             );
         }
         CHIBI_TRACE_ZONE_BEGIN(collision_zone, "Fluid collisions");
-        collide_obstacles(fluid, bodies, obstacles, obstacle_count, step * .5f, (step + 1) * .5f);
+        collide_obstacles(fluid, substep * .5f, (substep + 1) * .5f);
+        if (step->solids) {
+            run(fluid, collide_solids, fluid, 256);
+        }
         CHIBI_TRACE_ZONE_END(collision_zone);
     }
+    fluid->step = NULL;
 }

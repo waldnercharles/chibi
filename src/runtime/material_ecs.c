@@ -24,6 +24,7 @@ game_materials *game_materials_new(ecs_world *world, game_entities *entities, ga
     materials->pool = game_task_pool_acquire();
     materials->destruction = material_destruction_new();
     materials->fields = material_fields_new();
+    materials->solids = material_solids_new();
     return materials;
 }
 
@@ -58,6 +59,7 @@ void game_materials_reset(game_materials *materials)
     if (materials->debris) {
         material_debris_clear(materials->debris);
     }
+    material_solids_set(materials->solids, NULL, 0);
     if (materials->fluid) {
         material_fluid_free(materials->fluid);
         materials->fluid = NULL;
@@ -74,7 +76,8 @@ void game_materials_free(game_materials *materials)
     material_fields_free(materials->fields);
     afree(materials->regions);
     material_debris_free(materials->debris);
-    afree(materials->debris_tiles);
+    material_solids_free(materials->solids);
+    afree(materials->solid_scratch);
     game_task_pool_release(materials->pool);
     free(materials);
 }
@@ -593,6 +596,15 @@ static void detach(game_materials *materials, ecs_entity source, material_mask m
                                                : (GameReflection){ 0 };
     const GameFragmentGlow *glow_ptr = GAME_GameFragmentGlow_get_const(world, source);
     GameFragmentGlow glow = glow_ptr ? *glow_ptr : (GameFragmentGlow){ 0 };
+    /* Loose pieces fall. Terrain pieces tumble; others keep their source's
+     * rotation setting. */
+    const GameBody *source_body = GAME_GameBody_get_const(world, source);
+    GameBody body = {
+        .type = GAME_BODY_DYNAMIC,
+        .gravity_scale = 1,
+        .free_rotation = ecs_entity_to_u64(materials->records[source.slot].terrain_source) ||
+                         (source_body && source_body->free_rotation)
+    };
     float cx = 0, cy = 0;
     for (int i = 0; i < acount(mask.rects); i++) {
         material_rect r = mask.rects[i];
@@ -625,7 +637,7 @@ static void detach(game_materials *materials, ecs_entity source, material_mask m
     material_ecs_add_component(world, entity, &GAME_COMPONENT_GameVelocity, &velocity);
     material_ecs_add_component(world, entity, &GAME_COMPONENT_GameOrientation, &orientation);
     material_ecs_add_component(world, entity, &GAME_COMPONENT_GameCollider, &collider);
-    material_ecs_add_component(world, entity, &GAME_COMPONENT_GameBody, &(GameBody){ .type = GAME_BODY_DYNAMIC });
+    material_ecs_add_component(world, entity, &GAME_COMPONENT_GameBody, &body);
     material_ecs_add_component(world, entity, &GAME_COMPONENT_GameDestructible, &destructible);
     material_ecs_add_component(world, entity, &GAME_COMPONENT_GameAppearance, &appearance);
     material_ecs_add_component(world, entity, &GAME_COMPONENT_GameMaterial, &material);

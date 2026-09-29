@@ -814,6 +814,32 @@ static void scene_panels(studio *s, bool locked)
             }
             kit_prop_end(k);
         }
+        static const struct
+        {
+            const char *key, *label;
+            size_t offset;
+        } gravity[] = {
+            { "gravity_x", "Gravity X", offsetof(game_physics_settings, gravity_x) },
+            { "gravity_y", "Gravity Y", offsetof(game_physics_settings, gravity_y) },
+        };
+        for (size_t i = 0; i < sizeof gravity / sizeof *gravity; i++) {
+            if (!studio_matches(s->property_search, gravity[i].label)) {
+                continue;
+            }
+            kit_prop_begin(k, gravity[i].key, gravity[i].label);
+            float *value = (float *)((char *)&next + gravity[i].offset);
+            double v = *value;
+            kit_number_desc d = { .min = -10000,
+                                  .max = 10000,
+                                  .step = 1,
+                                  .precision = 1,
+                                  .unit = "u/s²",
+                                  .flags = flags };
+            if (kit_number(k, "value", &v, &d)) {
+                *value = (float)v;
+            }
+            kit_prop_end(k);
+        }
     }
     kit_panel_end(k);
     if (!locked && memcmp(&next, &settings, sizeof next) != 0 &&

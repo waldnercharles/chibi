@@ -1,5 +1,6 @@
 #include "runtime/material_flow.h"
 
+#include "runtime/material_solid.h"
 #include "support/array.h"
 #include "support/xalloc.h"
 
@@ -182,17 +183,24 @@ static void seed(material_flow *flow, const fluid_particle *particles, const int
     }
 }
 
-static void boundaries(
-    flow_grid *grid,
-    float size,
-    const fluid_body *bodies,
-    const fluid_obstacle *obstacles,
-    int count
-)
+/* Cells within half a cell of static solids hold still. */
+static void solid_boundaries(flow_grid *grid, float size, const material_solids *solids)
 {
-    for (int i = 0; i < count; i++) {
-        fluid_obstacle o = obstacles[i];
-        fluid_body b = bodies[o.body];
+    for (int i = 1; i < acount(grid->cells); i++) {
+        flow_cell *c = &grid->cells[i];
+        fluid_vec center = { (c->x + .5f) * size, (c->y + .5f) * size };
+        if (material_solids_sample(solids, center).distance < size * .5f) {
+            c->solid = true;
+            c->boundary = (fluid_vec){ 0 };
+        }
+    }
+}
+
+static void boundaries(flow_grid *grid, float size, const fluid_colliders *colliders)
+{
+    for (int i = 0; i < colliders->obstacle_count; i++) {
+        fluid_obstacle o = colliders->obstacles[i];
+        fluid_body b = colliders->bodies[o.body];
         float c = cosf(b.angle), s = sinf(b.angle);
         fluid_vec center = { b.position.x + c * o.center.x - s * o.center.y,
                              b.position.y + s * o.center.x + c * o.center.y };
@@ -357,13 +365,15 @@ void material_flow_step(
     fluid_particle *particles,
     const int *active,
     int count,
-    const fluid_body *bodies,
-    const fluid_obstacle *obstacles,
-    int obstacle_count
+    const fluid_colliders *colliders,
+    const material_solids *solids
 )
 {
     seed(flow, particles, active, count, settings.cell_size);
-    boundaries(&flow->grid, settings.cell_size, bodies, obstacles, obstacle_count);
+    if (solids) {
+        solid_boundaries(&flow->grid, settings.cell_size, solids);
+    }
+    boundaries(&flow->grid, settings.cell_size, colliders);
     advect(flow, settings, dt);
     confine(&flow->grid, settings, dt);
     project(&flow->grid, settings.cell_size, dt);

@@ -9,6 +9,7 @@ float *reference_cave_generate(unsigned, int, int, float, float, float);
 #include "runtime/material_destruction.h"
 #include "runtime/material_fluid.h"
 #include "runtime/material_mask.h"
+#include "runtime/material_solid.h"
 #include "runtime/task_pool.h"
 #include "support/array.h"
 
@@ -254,7 +255,14 @@ static fluid_particle particle(float x, float y, int kind)
 static void tick(material_fluid *fluid)
 {
     fluid_region region = { -1000, -1000, 2000, 2000 };
-    material_fluid_tick(fluid, 1.f / 60, 64, &region, 1, NULL, 0, NULL, 0);
+    material_fluid_tick(
+        fluid,
+        &(fluid_step){ .delta = 1.f / 60,
+                       .chunk_size = 64,
+                       .regions = &region,
+                       .region_count = 1,
+                       .colliders = { 0 } }
+    );
 }
 
 static void sleeping()
@@ -267,7 +275,14 @@ static void sleeping()
     assert(material_fluid_add(fluid, particle(500, 0, FLUID_GAS)));
     assert(!material_fluid_add(fluid, p));
     for (int i = 0; i < 100; i++) {
-        material_fluid_tick(fluid, 1.f / 60, 64, NULL, 0, NULL, 0, NULL, 0);
+        material_fluid_tick(
+            fluid,
+            &(fluid_step){ .delta = 1.f / 60,
+                           .chunk_size = 64,
+                           .regions = NULL,
+                           .region_count = 0,
+                           .colliders = { 0 } }
+        );
     }
     int count;
     const fluid_particle *values = material_fluid_particles(fluid, &count);
@@ -275,12 +290,26 @@ static void sleeping()
     assert(!material_fluid_active_count(fluid));
     /* A region elsewhere in the same negative-coordinate chunk wakes it. */
     fluid_region region = { -60, 5, 2, 2 };
-    material_fluid_tick(fluid, 1.f / 60, 64, &region, 1, NULL, 0, NULL, 0);
+    material_fluid_tick(
+        fluid,
+        &(fluid_step){ .delta = 1.f / 60,
+                       .chunk_size = 64,
+                       .regions = &region,
+                       .region_count = 1,
+                       .colliders = { 0 } }
+    );
     assert(material_fluid_active_count(fluid) == 1);
     assert(fabsf(values[0].position.x - (p.position.x + .2f)) < .001f);
     assert(values[1].position.x == 500);
     for (int i = 0; i < 4; i++) {
-        material_fluid_tick(fluid, 1.f / 60, 64, &region, 1, NULL, 0, NULL, 0);
+        material_fluid_tick(
+            fluid,
+            &(fluid_step){ .delta = 1.f / 60,
+                           .chunk_size = 64,
+                           .regions = &region,
+                           .region_count = 1,
+                           .colliders = { 0 } }
+        );
     }
     values = material_fluid_particles(fluid, &count);
     assert(count == 1 && values[0].position.x == 500);
@@ -403,7 +432,14 @@ static void body_response()
     fluid_body body = { .inverse_mass = 2 };
     fluid_obstacle obstacle = { .radius = 10 };
     fluid_region region = { -100, -100, 200, 200 };
-    material_fluid_tick(fluid, 1.f / 60, 64, &region, 1, &body, 1, &obstacle, 1);
+    material_fluid_tick(
+        fluid,
+        &(fluid_step){ .delta = 1.f / 60,
+                       .chunk_size = 64,
+                       .regions = &region,
+                       .region_count = 1,
+                       .colliders = { &body, 1, &obstacle, 1 } }
+    );
     int count;
     const fluid_particle *out = material_fluid_particles(fluid, &count);
     assert(out[0].position.x >= 10 && body.impulse.x < 0);
@@ -418,7 +454,14 @@ static void body_response()
     p.velocity.x = 0;
     material_fluid_add(fluid, p);
     body.velocity.x = 40;
-    material_fluid_tick(fluid, 1.f / 60, 64, &region, 1, &body, 1, &obstacle, 1);
+    material_fluid_tick(
+        fluid,
+        &(fluid_step){ .delta = 1.f / 60,
+                       .chunk_size = 64,
+                       .regions = &region,
+                       .region_count = 1,
+                       .colliders = { &body, 1, &obstacle, 1 } }
+    );
     out = material_fluid_particles(fluid, &count);
     assert(out[0].velocity.x > 0 && body.impulse.x < 0);
     material_fluid_free(fluid);
@@ -445,7 +488,14 @@ static void gas_flow()
     fluid_body probe = { .position = { -20, 0 }, .velocity = { 60, 0 } };
     fluid_obstacle obstacle = { .radius = 10 };
     fluid_region region = { -128, -128, 256, 256 };
-    material_fluid_tick(fluid, 1.f / 60, 64, &region, 1, &probe, 1, &obstacle, 1);
+    material_fluid_tick(
+        fluid,
+        &(fluid_step){ .delta = 1.f / 60,
+                       .chunk_size = 64,
+                       .regions = &region,
+                       .region_count = 1,
+                       .colliders = { &probe, 1, &obstacle, 1 } }
+    );
     float lateral = 0;
     for (int i = 0; i < count; i++) {
         /* These parcels never touch the probe. Pressure must turn the flow. */
@@ -469,7 +519,14 @@ static void gas_flow()
     assert(motion > 1);
     fluid_particle saved = p[100];
     for (int step = 0; step < 30; step++) {
-        material_fluid_tick(fluid, 1.f / 60, 64, NULL, 0, NULL, 0, NULL, 0);
+        material_fluid_tick(
+            fluid,
+            &(fluid_step){ .delta = 1.f / 60,
+                           .chunk_size = 64,
+                           .regions = NULL,
+                           .region_count = 0,
+                           .colliders = { 0 } }
+        );
     }
     assert(!memcmp(&saved, p + 100, sizeof saved));
     tick(fluid);
@@ -986,7 +1043,14 @@ static void reactions()
     material_fluid_blasts(f, &blasts);
     assert(!blasts);
     float heat = p[1].heat, life = p[1].lifetime;
-    material_fluid_tick(f, 1.f / 60, 64, NULL, 0, NULL, 0, NULL, 0);
+    material_fluid_tick(
+        f,
+        &(fluid_step){ .delta = 1.f / 60,
+                       .chunk_size = 64,
+                       .regions = NULL,
+                       .region_count = 0,
+                       .colliders = { 0 } }
+    );
     assert(p[1].heat == heat && p[1].lifetime == life);
     float glow = p[1].glow, emission = p[1].emission;
     unsigned red = p[1].color >> 24;
@@ -1002,13 +1066,27 @@ static void reactions()
     fluid_body wall = { .position = { -4, 0 } };
     fluid_obstacle obstacle = { .body = 0, .half_size = { 1, 20 } };
     fluid_region region = { -50, -50, 100, 100 };
-    material_fluid_tick(f, 1.f / 60, 64, &region, 1, &wall, 1, &obstacle, 1);
+    material_fluid_tick(
+        f,
+        &(fluid_step){ .delta = 1.f / 60,
+                       .chunk_size = 64,
+                       .regions = &region,
+                       .region_count = 1,
+                       .colliders = { &wall, 1, &obstacle, 1 } }
+    );
     p = material_fluid_particles(f, &count);
     assert(!p[1].burning); /* even a thin wall shields the fuel */
     material_fluid_clear(f);
     material_fluid_add(f, fuel);
     fluid_body shot = { .position = { 20, 0 }, .velocity = { 2400, 0 }, .heat = 2 };
-    material_fluid_tick(f, 1.f / 60, 64, &region, 1, &shot, 1, NULL, 0);
+    material_fluid_tick(
+        f,
+        &(fluid_step){ .delta = 1.f / 60,
+                       .chunk_size = 64,
+                       .regions = &region,
+                       .region_count = 1,
+                       .colliders = { &shot, 1, NULL, 0 } }
+    );
     p = material_fluid_particles(f, &count);
     assert(p[0].burning);
     material_fluid_free(f);
@@ -1419,22 +1497,42 @@ static void rotated_occlusion()
     fluid_obstacle obstacle = { .center = { 30, 0 }, .half_size = { 8, 2 } };
     /* An offset box rotates far from its body's origin. Conservative culling
      * must preserve both a short crossing and a segment starting far away. */
-    assert(
-        material_fluid_blocked((fluid_vec){ 0, 50 }, (fluid_vec){ 20, 50 }, &body, &obstacle, 1, -1)
-    );
-    assert(
-        material_fluid_blocked((fluid_vec){ -1000, 50 }, (fluid_vec){ 1000, 50 }, &body, &obstacle, 1, -1)
-    );
-    assert(
-        !material_fluid_blocked((fluid_vec){ 100, 50 }, (fluid_vec){ 120, 50 }, &body, &obstacle, 1, -1)
-    );
+    assert(material_fluid_blocked(
+        (fluid_vec){ 0, 50 },
+        (fluid_vec){ 20, 50 },
+        &(fluid_colliders){ &body, 1, &obstacle, 1 },
+        NULL,
+        -1
+    ));
+    assert(material_fluid_blocked(
+        (fluid_vec){ -1000, 50 },
+        (fluid_vec){ 1000, 50 },
+        &(fluid_colliders){ &body, 1, &obstacle, 1 },
+        NULL,
+        -1
+    ));
+    assert(!material_fluid_blocked(
+        (fluid_vec){ 100, 50 },
+        (fluid_vec){ 120, 50 },
+        &(fluid_colliders){ &body, 1, &obstacle, 1 },
+        NULL,
+        -1
+    ));
     obstacle.radius = 2;
-    assert(
-        material_fluid_blocked((fluid_vec){ 0, 50 }, (fluid_vec){ 20, 50 }, &body, &obstacle, 1, -1)
-    );
-    assert(
-        !material_fluid_blocked((fluid_vec){ 0, 55 }, (fluid_vec){ 20, 55 }, &body, &obstacle, 1, -1)
-    );
+    assert(material_fluid_blocked(
+        (fluid_vec){ 0, 50 },
+        (fluid_vec){ 20, 50 },
+        &(fluid_colliders){ &body, 1, &obstacle, 1 },
+        NULL,
+        -1
+    ));
+    assert(!material_fluid_blocked(
+        (fluid_vec){ 0, 55 },
+        (fluid_vec){ 20, 55 },
+        &(fluid_colliders){ &body, 1, &obstacle, 1 },
+        NULL,
+        -1
+    ));
 }
 
 static void fragment_penetration()
@@ -1683,12 +1781,25 @@ static void blast_policy()
     ecs_world_free(world);
 }
 
-/* Solid below y = 10 (gameplay y runs down). */
-static bool debris_floor(void *user, fluid_vec point, float *distance)
+/* A static solid below y = floor (gameplay y runs down), 128 units wide. */
+static material_solids *floor_solids(material_mask *mask, float floor)
 {
-    (void)user;
-    *distance = 10 - point.y;
-    return true;
+    enum
+    {
+        WIDTH = 64,
+        HEIGHT = 16
+    };
+    float distance[WIDTH * HEIGHT];
+    for (int y = 0; y < HEIGHT; y++) {
+        for (int x = 0; x < WIDTH; x++) {
+            distance[y * WIDTH + x] = 10 - (y + .5f) * 2;
+        }
+    }
+    *mask = material_mask_from_field(WIDTH, HEIGHT, 2, distance);
+    material_solids *solids = material_solids_new();
+    material_solid solid = { mask, { 0, floor + 6 }, 0, 0 };
+    material_solids_set(solids, &solid, 1);
+    return solids;
 }
 
 static material_chunk debris_chunk(fluid_vec position, fluid_vec velocity, float age)
@@ -1704,6 +1815,8 @@ static material_chunk debris_chunk(fluid_vec position, fluid_vec velocity, float
 
 static void debris()
 {
+    material_mask floor;
+    material_solids *solids = floor_solids(&floor, 10);
     material_debris *debris = material_debris_new(4);
     material_debris_add(debris, debris_chunk((fluid_vec){ 0, 0 }, (fluid_vec){ 0, 60 }, 0));
     int count;
@@ -1713,7 +1826,12 @@ static void debris()
         assert(hypotf(chunk->points[2 * k], chunk->points[2 * k + 1]) <= chunk->radius + 1e-4f);
     }
     for (int i = 0; i < 60; i++) {
-        material_debris_tick(debris, 1 / 60.f, debris_floor, NULL, NULL, 0, NULL, 0, NULL, 0);
+        material_debris_tick(
+            debris,
+            &(fluid_step){ .delta = 1 / 60.f, .colliders = { 0 }, .solids = solids },
+            NULL,
+            0
+        );
         chunk = material_debris_chunks(debris, &count);
         assert(count == 1 && chunk->position.y <= 9.25f);
     }
@@ -1730,7 +1848,12 @@ static void debris()
     material_chunk_shape(&large, 3);
     material_debris_add(debris, large);
     for (int i = 0; i < 30; i++) {
-        material_debris_tick(debris, 1 / 60.f, debris_floor, NULL, NULL, 0, NULL, 0, NULL, 0);
+        material_debris_tick(
+            debris,
+            &(fluid_step){ .delta = 1 / 60.f, .colliders = { 0 }, .solids = solids },
+            NULL,
+            0
+        );
     }
     chunk = material_debris_chunks(debris, &count);
     assert(count >= 2 && count <= 4);
@@ -1753,7 +1876,12 @@ static void debris()
                         .velocity = { 40, 0 },
                         .inverse_mass = 1 };
     fluid_obstacle box = { .body = 0, .half_size = { 1, 1 } };
-    material_debris_tick(debris, 1 / 60.f, NULL, NULL, &body, 1, &box, 1, NULL, 0);
+    material_debris_tick(
+        debris,
+        &(fluid_step){ .delta = 1 / 60.f, .colliders = { &body, 1, &box, 1 }, .solids = NULL },
+        NULL,
+        0
+    );
     chunk = material_debris_chunks(debris, &count);
     assert(chunk->position.x >= .29f && chunk->velocity.x > 30);
 
@@ -1768,7 +1896,12 @@ static void debris()
     assert(material_chunk_scale(&chunk[0]) == 1);
     int expired = 0;
     for (int i = 0; i < 280; i++) {
-        material_debris_tick(debris, 1 / 60.f, NULL, NULL, NULL, 0, NULL, 0, NULL, 0);
+        material_debris_tick(
+            debris,
+            &(fluid_step){ .delta = 1 / 60.f, .colliders = { 0 }, .solids = NULL },
+            NULL,
+            0
+        );
         int gone;
         const material_chunk *spent = material_debris_expired(debris, &gone);
         assert(gone == 0 || (gone == 1 && spent->position.x == 2));
@@ -1778,10 +1911,122 @@ static void debris()
     assert(expired == 1 && count == 1 && chunk->position.x == 3);
     assert(material_chunk_scale(chunk) < 1 && material_chunk_scale(chunk) > 0);
     material_debris_free(debris);
+    material_solids_free(solids);
+    material_mask_free(&floor);
+}
+
+/* A static solid mask whose open space is the rectangle half_open around
+ * open_center, in the mask's local frame; everything else is rock. */
+static material_mask open_box(int width, int height, fluid_vec open_center, fluid_vec half_open)
+{
+    float *distance = malloc((size_t)width * height * sizeof *distance);
+    for (int y = 0; y < height; y++) {
+        for (int x = 0; x < width; x++) {
+            float px = ((x + .5f) - width * .5f) * 2 - open_center.x;
+            float py = ((y + .5f) - height * .5f) * 2 - open_center.y;
+            float qx = fabsf(px) - half_open.x, qy = fabsf(py) - half_open.y;
+            float outside = hypotf(fmaxf(qx, 0), fmaxf(qy, 0)) +
+                            fminf(fmaxf(qx, qy), 0);
+            distance[y * width + x] = -outside;
+        }
+    }
+    material_mask mask = material_mask_from_field(width, height, 2, distance);
+    free(distance);
+    return mask;
+}
+
+static void fall(material_fluid *fluid, const material_solids *solids, int steps)
+{
+    fluid_region region = { -1000, -1000, 2000, 2000 };
+    for (int i = 0; i < steps; i++) {
+        material_fluid_tick(
+            fluid,
+            &(fluid_step){ .delta = 1.f / 60,
+                           .chunk_size = 64,
+                           .gravity = { 0, 320 },
+                           .regions = &region,
+                           .region_count = 1,
+                           .solids = solids }
+        );
+    }
+}
+
+static void gravity_pooling()
+{
+    /* A bowl 96 units wide with its floor at y = 32. Liquid dropped as a tall
+     * column spreads over the whole floor and comes to rest above it. */
+    material_mask bowl = open_box(64, 48, (fluid_vec){ 0, -14 }, (fluid_vec){ 48, 46 });
+    material_solids *solids = material_solids_new();
+    material_solids_set(solids, &(material_solid){ &bowl, { 0, 0 }, 0, 0 }, 1);
+    material_fluid *fluid = material_fluid_new(10, 400);
+    for (int y = 0; y < 16; y++) {
+        for (int x = 0; x < 8; x++) {
+            assert(material_fluid_add(fluid, particle(-14 + x * 4, -50 + y * 4, FLUID_LIQUID)));
+        }
+    }
+    fall(fluid, solids, 360);
+    int count;
+    const fluid_particle *p = material_fluid_particles(fluid, &count);
+    float left = INFINITY, right = -INFINITY, top = INFINITY, speed = 0;
+    for (int i = 0; i < count; i++) {
+        material_solid_sample s = material_solids_sample(solids, p[i].position);
+        assert(s.distance > -1 && p[i].position.y < 32);
+        left = fminf(left, p[i].position.x);
+        right = fmaxf(right, p[i].position.x);
+        top = fminf(top, p[i].position.y);
+        speed += hypotf(p[i].velocity.x, p[i].velocity.y) / count;
+    }
+    printf("liquid pool: width %.1f, depth %.1f, mean speed %.2f\n", right - left, 32 - top, speed);
+    assert(count == 128 && right - left > 80 && 32 - top < 40 && speed < 15);
+    material_fluid_free(fluid);
+
+    /* A blob on a slope runs downhill and falls down a shaft. The slope
+     * descends to the right into a shaft at its low end. */
+    material_mask ramp = { 0 };
+    {
+        enum
+        {
+            WIDTH = 96,
+            HEIGHT = 96
+        };
+        float *distance = malloc(WIDTH * HEIGHT * sizeof *distance);
+        for (int y = 0; y < HEIGHT; y++) {
+            for (int x = 0; x < WIDTH; x++) {
+                float px = ((x + .5f) - WIDTH * .5f) * 2,
+                      py = ((y + .5f) - HEIGHT * .5f) * 2;
+                /* Ground under the line y = x / 2 and right of x = 80,
+                 * except the shaft 60 < x < 80. */
+                float ground = fmaxf((py - px * .5f) * .894f, px - 80);
+                float shaft = fminf(px - 60, 80 - px);
+                distance[y * WIDTH + x] = fmaxf(-ground, shaft);
+            }
+        }
+        ramp = material_mask_from_field(WIDTH, HEIGHT, 2, distance);
+        free(distance);
+    }
+    material_solids_set(solids, &(material_solid){ &ramp, { 0, 0 }, 0, 0 }, 1);
+    fluid = material_fluid_new(10, 100);
+    for (int y = 0; y < 4; y++) {
+        for (int x = 0; x < 4; x++) {
+            assert(material_fluid_add(fluid, particle(-60 + x * 4, -46 + y * 4, FLUID_LIQUID)));
+        }
+    }
+    fall(fluid, solids, 240);
+    p = material_fluid_particles(fluid, &count);
+    for (int i = 0; i < count; i++) {
+        assert(material_solids_sample(solids, p[i].position).distance > -1);
+        assert(p[i].position.y > 60);
+    }
+    material_fluid_free(fluid);
+    material_solids_free(solids);
+    material_mask_free(&bowl);
+    material_mask_free(&ramp);
+    puts("PASS: liquid pools on a floor, runs down a slope and falls down a shaft");
 }
 
 void test_materials()
 {
+    gravity_pooling();
     blast_policy();
     rotated_occlusion();
     fragment_penetration();

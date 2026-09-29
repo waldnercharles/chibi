@@ -3,6 +3,7 @@
 #include "runtime/generated.h"
 #include "runtime/material_debris.h"
 #include "runtime/material_destruction.h"
+#include "runtime/material_solid.h"
 #include "runtime/material_stream.h"
 #include "runtime/materials.h"
 #include "runtime/task_pool.h"
@@ -39,8 +40,9 @@ struct game_materials
     fluid_region *regions;
     int fragments;
     material_debris *debris;
-    /* Scratch: resident terrain masks and their offsets, rebuilt each tick. */
-    struct material_debris_tile *debris_tiles;
+    /* Static masks in the world, rebuilt each tick for matter queries. */
+    material_solids *solids;
+    material_solid *solid_scratch;
 };
 
 material_record *material_ecs_record(game_materials *materials, ecs_entity entity);
@@ -66,19 +68,5 @@ void material_ecs_throw_chunks(
     float heat,
     MaterialBreakProfile profile
 );
-void material_ecs_tick_debris(
-    game_materials *materials,
-    float delta,
-    fluid_body *bodies,
-    int body_count,
-    const fluid_obstacle *obstacles,
-    int obstacle_count
-);
-void material_ecs_tick_fluid(
-    game_materials *materials,
-    float delta,
-    fluid_body *bodies,
-    int body_count,
-    const fluid_obstacle *obstacles,
-    int obstacle_count
-);
+void material_ecs_tick_debris(game_materials *materials, const fluid_step *step);
+void material_ecs_tick_fluid(game_materials *materials, fluid_step *step);

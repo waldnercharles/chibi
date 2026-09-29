@@ -77,6 +77,171 @@ Approximations: the procedural field is not an exact Euclidean distance far
 from the surface, so a push is capped at two cells per substep; particles
 trapped deeper recover over several steps.
 
+## Substances, heat and reactions
+
+Matter is data. A prototype with `MaterialSubstance` is a substance named by
+the prototype; a prototype with `MaterialReaction` is a reaction. The fluid
+world discovers every registered prototype of either kind, so the same rules
+hold in every scene. Substance indices only grow while the world lives, and
+edited prototypes update the tables in place at the next frame boundary.
+
+| Field | Meaning |
+| --- | --- |
+| `phase` | Gas, Liquid, Powder or Elastic |
+| `density` | Mass per area; one matches rigid bodies |
+| `viscosity`, `cohesion` | Liquid tuning |
+| `buoyancy` | Gas only: fraction of gravity that lifts it, times 1 + temperature; negative sinks |
+| `color`, `emission`, `absorption`, `visibility`, `refraction` | Look |
+| `temperature`, `cooling` | Temperature it forms at; exponential cooling toward ambient zero per second |
+| `lifetime` | Seconds it lasts, zero for persistent; gas that expires billows and fades |
+| `ignite_at`, `burn_rate`, `burn_heat`, `burns_to`, `blast` | Flammability: at `ignite_at` it burns for `1 / burn_rate` seconds, held at `burn_heat`, then becomes `burns_to` (or vanishes); each ignition adds `blast` to its neighborhood's explosion |
+| `boil_at`, `boils_to` | At or above, it becomes `boils_to`; empty never boils |
+| `freeze_at`, `freezes_to` | At or below, it becomes `freezes_to`; empty never freezes |
+| `corrosion` | Damage per second to touching solids |
+| `conductive` | Carries arcs; reported by queries |
+
+Products name another substance or a deposit target, a
+`MaterialTerrain.deposit`. A particle that changes substance keeps its motion,
+takes the new substance's look and lifetime, and keeps the hotter of its
+temperature and the new substance's.
+
+`MaterialReaction {a, b, rate, a_becomes, b_becomes, heat}`: where substance
+`a` touches `b` (within 0.7 kernels), each pair reacts with probability
+`rate` per second; both change (empty keeps them) and gain `heat`. `b` may be
+`Burning`, which matches anything on fire. Each particle reacts at most once
+per tick; the rarer side searches, and proposals commit serially in particle
+order, so parallel runs match serial ones.
+
+Heat: every particle carries a temperature. Touching matter exchanges
+`MaterialFluidWorld.heat_conduction` of the difference per second; flammable
+matter instead takes 0.85 of a hotter neighbor's heat at once unless a wall
+separates them, so flames race through fuel. Bodies with `GameIgniter.heat`
+ignite flammable matter they sweep past and heat or chill the rest; negative
+heat chills. Hot matter glows: from half of `glow_temperature` to all of it,
+its color shifts toward `glow_color` and it adds `glow_emission`; burning gas
+also draws hot cores. `blast_radius`, `blast_speed` and `blast_damage` on the
+fluid world shape ignition blasts.
+
+Neon Swarm's fixtures in `projects/arena2d/content/prototypes`: Fog, FuelGas,
+Smoke, Fire, Exhaust, Dust, Steam, Spores, Water, Oil, Lava, Acid, Slime,
+MoltenMetal, Sand and Ash, with the reactions ReactionQuench (water and lava
+to steam and Basalt), ReactionMetalQuench (water and molten metal to steam and
+Slag) and ReactionDouse (water and anything burning to steam and smoke).
+Lava cools into Basalt and water freezes into Ice. Fuel, oil and spores ignite
+from heat. `GameFluidVolume` fills an ellipse with a substance, and its
+nonzero look fields tint that fill; `GameParticleEmitter.fluid_substance`
+emits the emitter's particles as a substance with the emitter's look and
+`GameIgniter` heat; `MaterialBreakProfile.smoke_substance` names crater gas.
+
+Approximations: temperature is a gameplay quantity, not kelvin; conduction
+uses neighbor averages, not a conserved heat equation; reactions are
+probabilistic contact rules without stoichiometry; fuel carries its own
+oxidizer; blasts are bounded radial impulses.
+
+## Matter and terrain
+
+Corrosive and hot matter touching static solids reports merged touches per
+solid and two-cell patch. Corrosion deals `corrosion × (1 −
+GameSubstance.corrosion_resistance)` damage per second there (cause
+`Corrosion`), spending the particle's potency by the same unresisted share,
+a quarter per second; a spent particle leaves. A resistance of one, like
+metal, is immune and spends nothing. Matter at least as hot as a solid's
+`GameSubstance.melts_at` melts the touched cells at once (cause `Melt`) and
+loses half that temperature; the removed area returns as particles of
+`melts_to` at the crater. `Heat Area` melts solids the same way. Neither cause
+throws crater debris.
+
+Deposition: a product that names a deposit removes the particle and adds a
+disk of its area to the streamed `MaterialTerrain` whose `deposit` matches, at
+the next preparation boundary. Cells fill with no damage, the signed distance
+takes the union, and collision and contours rebuild. Cold and new tiles load
+to receive deposits; streaming stores and restores them like damage. A
+terrain that receives deposits must stream; `Empty` is a field with no
+material, for terrains that only hold deposits. Neon Swarm's
+`BasaltDeposits`, `SlagDeposits` and `IceDeposits` receive Basalt, Slag and
+Ice; ice melts back into water at 0.4.
+
+`scenes/MatterLab.yaml` is a noncombat gravity scene with a station for each
+rule: lava falling into water, burning oil, acid in a metal basin eating the
+floor, a fuel and spore cloud beside a heater, sand, slime, molten metal cast
+into water, and water frozen by a chiller.
+
+Approximations: touches merge per two-cell patch and cap at 512 per tick;
+melting removes whole cells; deposits add disks, not the particle's shape;
+a mixed damage batch reports its first request's cause.
+
+## MLS-MPM for liquid, powder and elastic matter
+
+Gas stays on tracer particles and the MAC flow grid. Liquid, Powder and
+Elastic matter runs MLS-MPM with APIC transfers (`material_mpm.c`) on a
+sparse grid of 8x8-node blocks whose spacing is twice the dense particles'
+spacing (8 units at kernel 10, about four particles per cell). Each step
+takes four substeps:
+
+1. Blocks reached by any particle's 3x3 stencil are numbered row by row over
+   a dense map of the particles' bounds, and particles are counting-sorted by
+   the cell of their base node.
+2. Each particle's Kirchhoff stress and APIC matrix form its affine transfer.
+   Liquid: weakly compressible pressure `K (J − 1) J` with cohesion scaling
+   tension and viscosity on the symmetric velocity gradient; `F` resets to
+   `√J I`. Elastic: fixed-corotated `2μ (F − R) Fᵀ + λ (J − 1) J`. Powder:
+   St. Venant-Kirchhoff on Hencky strain with the Drucker-Prager return
+   mapping of Klár et al. (2016), friction angle `friction × 45°`.
+3. Grid nodes gather from the particles whose base cell lies within two
+   cells, in a fixed order, so serial and parallel runs sum identically.
+4. Nodes take gravity, a speed limit, and terrain boundaries from the static
+   solids' distance, sampled once per tick per block: nodes deep inside rock
+   stop; nodes at the surface lose their approach speed and slide with the
+   leading particle's Coulomb friction.
+5. Body obstacles (moving through their swept path across substeps) are
+   velocity boundaries: nodes lose their approach speed relative to the
+   body's surface, and that momentum returns to the body as an impulse. The
+   particle that weighs most on such a node reports one contact, so splashes
+   and wakes still work.
+6. Particles gather velocity and its gradient, move, update `F`, and use the
+   interpolated terrain distance to stay out of solids.
+
+`stiffness`, `viscosity`, `cohesion` and `friction` are fractions of what the
+substeps keep stable: stiffness maps to a wave speed of up to 0.3 cells per
+substep, and matter moves at most half that fast, so impacts stay subsonic.
+Gas parcels are pushed out of dense matter by pair repulsion.
+
+Elastic handles: `GameFluidVolume.owned` makes the fill belong to its entity.
+`Matter Centroid (Owner) → Position, Count` reports where it is; `Push Matter
+(Owner, Force)` applies a force during the next step, shared by its mass; and
+`Damage Material` on the owner removes its parcels within the radius, so a
+jelly can be carved. Powder renders as a smooth union of grains and elastic
+matter as a refracting liquid surface.
+
+Measured on this M4 Pro (Release, eight task-pool workers,
+`build-release/test_suite --bench-matter 20000 120`): a 1,400-unit pool of
+19,722 MPM water particles stirred by a moving body takes 1.80 ms mean and
+2.0 ms worst per 1/60 s step, including heat, reactions, indexing and
+contacts; 39,840 particles take 3.3 ms. Sandbox's simulation (1,000 frames
+of flight and fire, `profile_scenario`) averages 0.85 ms of physics per frame,
+against 1.1–1.25 ms before this work.
+
+Approximations: the liquid is weakly compressible, so deep pools compress
+(about `g·h / c²`) and a liquid stretches at most `0.3 × cohesion` before
+tension saturates, which also means no true surface tension: separated
+droplets do not attract. The grid is 1.5 cells wide in each particle's
+stencil, so nearby matter meets across up to 12 units; thin sheets fracture
+numerically. Powder has no cohesion or volume correction and piles at about
+its friction angle. Stretches clamp to [0.3, 3] and liquid volume to at least
+half, which bounds energy after violent impacts. Body coupling is per grid
+node without torque. Sleeping matter keeps its state without catching up.
+
+## Matter nodes
+
+| Node | Behavior |
+| --- | --- |
+| `Emit Fluid` (Substance, Position, Velocity, Count, Radius, Temperature) | Adds Count parcels of Substance spread evenly within Radius of Position, moving at Velocity, with Temperature added to the substance's own. Fails without a fluid world or for an unknown substance; stops quietly at the population limit. |
+| `Heat Area` (Point, Radius, Delta) | Adds Delta to the temperature of matter within Radius, awake or asleep; a positive Delta at least a static solid's `melts_at` melts its cells there. Incendiary and cryo weapons use it. |
+| `Fluid At` (Point, Radius) → Substance, Density, Temperature, Conductive | The substance with the most mass among awake matter within Radius (empty when none), mass per area relative to rigid bodies (a full pool reads its substance's density), mean temperature, and whether any of it conducts. |
+| `Material At` (Point) → Entity, Solid, Hardness | The entity whose solid cells cover Point, including fragments, and its `GameSubstance.hardness` (one without one). |
+
+Fluid queries read the positions from the end of the last simulation step.
+
 ## Procedural fields
 
 Field documents live in `content/fields` with domain `field`. They have one

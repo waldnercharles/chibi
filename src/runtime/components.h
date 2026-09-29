@@ -160,8 +160,98 @@ typedef NODE_COMPONENT_TYPE_DENSE(MaterialFluidWorld)
     float liquid_splash_strength; /* Scales droplet speed and response intensity. */
     int liquid_splash_count; /* Maximum visual particles per body/patch/tick. */
     float liquid_splash_lifetime; /* Maximum visual particle lifetime, seconds. */
+    /* Burning ignitions push gas, bodies and debris within blast_radius (at
+     * most 1024) and damage what they reach. */
+    float blast_radius;
+    float blast_speed;
+    float blast_damage;
+    /* Fraction of the temperature difference with touching matter exchanged
+     * per second. */
+    float heat_conduction;
+    /* Hot matter glows from half this temperature and fully at it, shifting
+     * toward glow_color and adding glow_emission. Zero disables the glow. */
+    float glow_temperature;
+    unsigned glow_color;
+    float glow_emission;
 }
 MaterialFluidWorld;
+
+typedef enum
+{
+    MATERIAL_PHASE_GAS,
+    MATERIAL_PHASE_LIQUID,
+    MATERIAL_PHASE_POWDER,
+    MATERIAL_PHASE_ELASTIC
+} MaterialPhase;
+
+/* A kind of matter, named by its prototype. Heat is a gameplay temperature:
+ * zero is ambient, and matter cools toward it by `cooling` per second. A
+ * product names another substance or a MaterialTerrain.deposit. */
+typedef NODE_COMPONENT_TYPE_DENSE(MaterialSubstance)
+{
+    MaterialPhase phase;
+    /* Mass per area; one matches rigid bodies. */
+    float density;
+    /* Liquid, powder and elastic matter, as fractions 0..1 of what the solver
+     * keeps stable: resistance to compression or deformation, and liquid
+     * viscosity. */
+    float stiffness;
+    float viscosity;
+    /* Share 0..1 of tension a liquid keeps, holding it together. */
+    float cohesion;
+    /* 0..1: a powder's friction angle up to 45 degrees, and its grip on
+     * solids for every dense phase. */
+    float friction;
+    /* Gas only: the fraction of gravity that lifts it, times 1 + temperature.
+     * Negative gas sinks. */
+    float buoyancy;
+    unsigned color;
+    float emission;
+    float absorption;
+    /* Camera-only minimum visibility; contributes no radiance or bounce. */
+    float visibility;
+    /* Screen-space liquid distortion in pixels; zero disables refraction. */
+    float refraction;
+    /* Temperature it forms at. */
+    float temperature;
+    float cooling;
+    /* Seconds it lasts; zero is persistent. */
+    float lifetime;
+    /* Positive ignite_at makes it flammable. At that temperature it starts
+     * burning: it stays at least burn_heat for 1 / burn_rate seconds, then
+     * becomes burns_to, or vanishes when that is empty. Each ignition adds
+     * blast to its neighborhood's explosion. */
+    float ignite_at;
+    float burn_rate;
+    float burn_heat;
+    const char *burns_to;
+    float blast;
+    /* At or above boil_at it becomes boils_to; empty never boils. */
+    float boil_at;
+    const char *boils_to;
+    /* At or below freeze_at it becomes freezes_to; empty never freezes. */
+    float freeze_at;
+    const char *freezes_to;
+    /* Damage per second to the solids it touches. */
+    float corrosion;
+    /* Carries electric arcs. */
+    bool conductive;
+}
+MaterialSubstance;
+
+/* Where substance `a` touches `b` (a substance, or Burning for anything on
+ * fire), each pair reacts with probability `rate` per second: a becomes
+ * a_becomes and b becomes b_becomes (empty keeps it), and both gain heat. */
+typedef NODE_COMPONENT_TYPE_DENSE(MaterialReaction)
+{
+    const char *a;
+    const char *b;
+    float rate;
+    const char *a_becomes;
+    const char *b_becomes;
+    float heat;
+}
+MaterialReaction;
 
 typedef NODE_COMPONENT_TYPE_DENSE(MaterialDestructionWorld)
 {
@@ -195,8 +285,9 @@ typedef NODE_COMPONENT_TYPE_DENSE(MaterialBreakProfile)
     float chunk_size_min, chunk_size_max;
     float chunk_speed_min, chunk_speed_max;
     float chunk_lifetime;
-    /* Gas parcels released into the fluid world per crater; zero disables. */
+    /* Parcels of smoke_substance released per crater; zero disables. */
     int smoke_count;
+    const char *smoke_substance;
     unsigned smoke_color;
     float smoke_lifetime;
     /* Outward drift speed of the released gas in world units per second. */
@@ -204,32 +295,8 @@ typedef NODE_COMPONENT_TYPE_DENSE(MaterialBreakProfile)
 }
 MaterialBreakProfile;
 
-/* Optional local combustion. Heat is a gameplay quantity, not kelvin. */
-typedef NODE_COMPONENT_TYPE_DENSE(GameCombustion)
-{
-    float ignition;
-    float cooling;
-    float burn_rate;
-    float heat_release;
-    float smoke_lifetime;
-    unsigned smoke_color;
-    float smoke_absorption;
-    unsigned flame_color;
-    float flame_emission;
-    /* World units a burst of ignitions pushes gas, bodies and debris; at most
-     * 1024. */
-    float blast_radius;
-    float blast_speed;
-    float blast_damage;
-}
-GameCombustion;
-
-typedef NODE_COMPONENT_TYPE_DENSE(GameFuel)
-{
-    float amount;
-}
-GameFuel;
-
+/* Heat a body or emitter carries into matter: positive heats and ignites,
+ * negative chills. Heat is a gameplay temperature, not kelvin. */
 typedef NODE_COMPONENT_TYPE_DENSE(GameIgniter)
 {
     float heat;
@@ -242,6 +309,12 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameSubstance)
     float hardness;
     float blast_multiplier;
     bool retain_chips;
+    /* Fraction of corrosion it shrugs off: zero dissolves, one is immune. */
+    float corrosion_resistance;
+    /* Matter at least this hot melts touching cells into melts_to; zero
+     * never melts. */
+    float melts_at;
+    const char *melts_to;
 }
 GameSubstance;
 
@@ -318,25 +391,27 @@ typedef NODE_COMPONENT_TYPE_DENSE(MaterialTerrain)
     /* Mixes the run seed into seed, so every run generates new terrain and a
      * pinned run seed generates the same terrain again. */
     bool seed_from_run;
+    /* Matter turning into this name adds cells here; empty receives none. */
+    const char *deposit;
 }
 MaterialTerrain;
 
-/* A one-time, elliptical fill in local space; its matter then lives freely. */
+/* A one-time, elliptical fill of a substance in local space; its matter then
+ * lives freely. Nonzero look fields replace the substance's for this fill. */
 typedef NODE_COMPONENT_TYPE_DENSE(GameFluidVolume)
 {
-    int kind;
+    const char *substance;
     float width;
     float height;
-    float spacing;
-    float mass;
+    CF_V2 velocity;
     unsigned color;
     float absorption;
     float emission;
-    /* Camera-only minimum visibility; contributes no radiance or bounce. */
     float visibility;
-    /* Screen-space liquid distortion in pixels; zero disables refraction. */
     float refraction;
-    CF_V2 velocity;
+    /* The fill belongs to this entity: Matter Centroid and Push Matter find
+     * it, and Damage Material on the entity carves it. */
+    bool owned;
 }
 GameFluidVolume;
 
@@ -679,9 +754,9 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameParticleEmitter)
     bool active;
     bool planar;
     bool heading_only;
-    bool fluid;
-    int fluid_kind;
-    float fluid_mass;
+    /* Emits into the material world as this substance, keeping the
+     * emitter's look; empty emits ordinary particles. */
+    const char *fluid_substance;
 }
 GameParticleEmitter;
 

@@ -1,0 +1,3 @@
+name: ReactionQuench
+components:
+  GAME.MaterialReaction: {a: Water, a_becomes: Steam, b: Lava, b_becomes: Basalt, rate: 20.0}

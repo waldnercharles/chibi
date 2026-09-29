@@ -3,17 +3,24 @@
 #include "runtime/generated.h"
 #include "runtime/material_fluid.h"
 #include "runtime/materials.h"
+#include "test/runtime/material_substances.h"
 
 #include <assert.h>
 #include <stdio.h>
 
 static fluid_contact contact_for(int kind, float body_speed, unsigned color)
 {
-    material_fluid *fluid = material_fluid_new(10, 4);
+    material_fluid *fluid = test_fluid(10, 4);
     material_fluid_set_contact_settings(fluid, (fluid_contact_settings){ 10, 20 });
     assert(material_fluid_add(
         fluid,
-        (fluid_particle){ .position = { 0, 9 }, .mass = .01f, .radius = 2, .color = color, .kind = kind }
+        (fluid_particle){ .position = { 0, 9 },
+                          .mass = .01f,
+                          .radius = 2,
+                          .color = color,
+                          .substance = kind,
+                          .phase = kind,
+                          .deformation = { 1, 0, 0, 1 } }
     ));
     fluid_region region = { -32, -32, 64, 64 };
     fluid_body body = { .velocity = { 0, body_speed }, .owner = 41 };
@@ -36,14 +43,17 @@ static fluid_contact contact_for(int kind, float body_speed, unsigned color)
 
 static void quiet_rest()
 {
-    material_fluid *fluid = material_fluid_new(10, 4);
+    material_fluid *fluid = test_fluid(10, 4);
     material_fluid_set_flow(fluid, (fluid_flow_settings){ 20, 2, .1f });
     material_fluid_set_contact_settings(fluid, (fluid_contact_settings){ 10, 20 });
     assert(material_fluid_add(
         fluid,
-        (
-            fluid_particle
-        ){ .position = { 0, 9 }, .mass = .01f, .radius = 2, .color = 0x80c0ffff, .kind = FLUID_GAS }
+        (fluid_particle){ .position = { 0, 9 },
+                          .mass = .01f,
+                          .radius = 2,
+                          .color = 0x80c0ffff,
+                          .substance = TEST_GAS,
+                          .phase = FLUID_GAS }
     ));
     fluid_region region = { -32, -32, 64, 64 };
     fluid_body body = { 0 };
@@ -68,7 +78,7 @@ static void bounded_contacts()
     {
         PARTICLES = 160
     };
-    material_fluid *fluid = material_fluid_new(10, PARTICLES);
+    material_fluid *fluid = test_fluid(10, PARTICLES);
     material_fluid_set_contact_settings(fluid, (fluid_contact_settings){ 10, 20 });
     fluid_body bodies[PARTICLES] = { 0 };
     fluid_obstacle obstacles[PARTICLES] = { 0 };
@@ -86,7 +96,8 @@ static void bounded_contacts()
                               .mass = .01f,
                               .radius = 1,
                               .color = 0x40c0ffff,
-                              .kind = FLUID_GAS }
+                              .substance = TEST_GAS,
+                              .phase = FLUID_GAS }
         ));
     }
     fluid_region region = { -20, -32, PARTICLES * 24.f + 40, 64 };
@@ -106,13 +117,16 @@ static void bounded_contacts()
 
 static fluid_contact box_sweep(float start, float end, float speed)
 {
-    material_fluid *fluid = material_fluid_new(10, 4);
+    material_fluid *fluid = test_fluid(10, 4);
     material_fluid_set_contact_settings(fluid, (fluid_contact_settings){ 10, 20 });
     assert(material_fluid_add(
         fluid,
-        (
-            fluid_particle
-        ){ .position = { 0, 0 }, .mass = .01f, .radius = 1, .color = 0x80c0ffff, .kind = FLUID_GAS }
+        (fluid_particle){ .position = { 0, 0 },
+                          .mass = .01f,
+                          .radius = 1,
+                          .color = 0x80c0ffff,
+                          .substance = TEST_GAS,
+                          .phase = FLUID_GAS }
     ));
     fluid_region region = { -32, -32, 64, 64 };
     fluid_body body = { .position = { end, 0 },
@@ -139,13 +153,16 @@ static fluid_contact box_sweep(float start, float end, float speed)
 
 static void swept_and_rotating_bodies()
 {
-    material_fluid *fluid = material_fluid_new(10, 4);
+    material_fluid *fluid = test_fluid(10, 4);
     material_fluid_set_contact_settings(fluid, (fluid_contact_settings){ 10, 20 });
     assert(material_fluid_add(
         fluid,
-        (
-            fluid_particle
-        ){ .position = { 0, 0 }, .mass = .01f, .radius = 1, .color = 0x80c0ffff, .kind = FLUID_GAS }
+        (fluid_particle){ .position = { 0, 0 },
+                          .mass = .01f,
+                          .radius = 1,
+                          .color = 0x80c0ffff,
+                          .substance = TEST_GAS,
+                          .phase = FLUID_GAS }
     ));
     fluid_region region = { -32, -32, 64, 64 };
     fluid_body body = { .position = { 20, 0 },
@@ -175,13 +192,16 @@ static void swept_and_rotating_bodies()
     assert(rightward.closing_speed > 2000 && rightward.normal.x > .99f);
     assert(leftward.closing_speed > 2000 && leftward.normal.x < -.99f);
 
-    fluid = material_fluid_new(10, 4);
+    fluid = test_fluid(10, 4);
     material_fluid_set_contact_settings(fluid, (fluid_contact_settings){ 10, 20 });
     assert(material_fluid_add(
         fluid,
-        (
-            fluid_particle
-        ){ .position = { 9, 9 }, .mass = .01f, .radius = 2, .color = 0x80c0ffff, .kind = FLUID_GAS }
+        (fluid_particle){ .position = { 9, 9 },
+                          .mass = .01f,
+                          .radius = 2,
+                          .color = 0x80c0ffff,
+                          .substance = TEST_GAS,
+                          .phase = FLUID_GAS }
     ));
     body = (fluid_body){ .angular_velocity = 30, .owner = 43 };
     obstacle = (fluid_obstacle){ .body = 0, .half_size = { 10, 10 } };
@@ -200,7 +220,7 @@ static void swept_and_rotating_bodies()
 
 static void fast_particle_sweeps_stationary_wall()
 {
-    material_fluid *fluid = material_fluid_new(10, 4);
+    material_fluid *fluid = test_fluid(10, 4);
     material_fluid_set_contact_settings(fluid, (fluid_contact_settings){ 10, 20 });
     assert(material_fluid_add(
         fluid,
@@ -209,7 +229,8 @@ static void fast_particle_sweeps_stationary_wall()
                           .mass = .01f,
                           .radius = 1,
                           .color = 0x80c0ffff,
-                          .kind = FLUID_GAS }
+                          .substance = TEST_GAS,
+                          .phase = FLUID_GAS }
     ));
     fluid_region region = { -32, -32, 64, 64 };
     fluid_body body = { 0 };
@@ -233,7 +254,7 @@ static void fast_particle_sweeps_stationary_wall()
 
 static void huge_diagonal_particle_sweep()
 {
-    material_fluid *fluid = material_fluid_new(10, 4);
+    material_fluid *fluid = test_fluid(10, 4);
     material_fluid_set_contact_settings(fluid, (fluid_contact_settings){ 10, 20 });
     assert(material_fluid_add(
         fluid,
@@ -242,7 +263,8 @@ static void huge_diagonal_particle_sweep()
                           .mass = .01f,
                           .radius = 1,
                           .color = 0x80c0ffff,
-                          .kind = FLUID_GAS }
+                          .substance = TEST_GAS,
+                          .phase = FLUID_GAS }
     ));
     fluid_region region = { -1100, -1100, 2200, 2200 };
     fluid_body body = { 0 };
@@ -265,13 +287,16 @@ static void huge_diagonal_particle_sweep()
 
 static void huge_sweep()
 {
-    material_fluid *fluid = material_fluid_new(10, 4);
+    material_fluid *fluid = test_fluid(10, 4);
     material_fluid_set_contact_settings(fluid, (fluid_contact_settings){ 10, 20 });
     assert(material_fluid_add(
         fluid,
-        (
-            fluid_particle
-        ){ .position = { 0, 0 }, .mass = .01f, .radius = 1, .color = 0x80c0ffff, .kind = FLUID_GAS }
+        (fluid_particle){ .position = { 0, 0 },
+                          .mass = .01f,
+                          .radius = 1,
+                          .color = 0x80c0ffff,
+                          .substance = TEST_GAS,
+                          .phase = FLUID_GAS }
     ));
     fluid_region region = { -32, -32, 64, 64 };
     fluid_body body = { .position = { 1000000, 0 },
@@ -314,13 +339,17 @@ static int ecs_contact_spray_count(int maximum)
         ecs_world_record_add(world, settings, GAME_COMPONENT_MaterialFluidWorld.id, &config, 0) == ECS_OK
     );
     assert(ecs_world_apply_commands(world) == ECS_OK);
+    const char *fog[] = { "Fog" };
+    test_register_prototypes(live, fog, 1);
     assert(!game_materials_prepare(live->materials));
-    assert(game_materials_emit(
-        live->materials,
-        (
-            fluid_particle
-        ){ .position = { 0, 9 }, .mass = .01f, .radius = 2, .color = 0x80c0ffff, .kind = FLUID_GAS }
-    ));
+    fluid_particle parcel = material_fluid_particle(
+        game_materials_fluid(live->materials),
+        game_materials_substance(live->materials, "Fog"),
+        (fluid_vec){ 0, 9 }
+    );
+    parcel.mass = .01f;
+    parcel.radius = 2;
+    assert(game_materials_emit(live->materials, parcel));
     fluid_body body = { .velocity = { 0, 80 }, .owner = 48 };
     fluid_obstacle obstacle = { .body = 0, .half_size = { 10, 10 } };
     game_materials_tick(
@@ -350,13 +379,16 @@ static void ecs_contact_sprays_are_transient()
 
 static void repeat_step_resets_contacts()
 {
-    material_fluid *fluid = material_fluid_new(10, 4);
+    material_fluid *fluid = test_fluid(10, 4);
     material_fluid_set_contact_settings(fluid, (fluid_contact_settings){ 10, 20 });
     assert(material_fluid_add(
         fluid,
-        (
-            fluid_particle
-        ){ .position = { 0, 9 }, .mass = .01f, .radius = 2, .color = 0x80c0ffff, .kind = FLUID_GAS }
+        (fluid_particle){ .position = { 0, 9 },
+                          .mass = .01f,
+                          .radius = 2,
+                          .color = 0x80c0ffff,
+                          .substance = TEST_GAS,
+                          .phase = FLUID_GAS }
     ));
     fluid_region region = { -32, -32, 64, 64 };
     fluid_body body = { .velocity = { 0, 80 } };
@@ -392,7 +424,7 @@ static bool same_contact(fluid_contact a, fluid_contact b)
            a.normal.x == b.normal.x && a.normal.y == b.normal.y &&
            a.closing_speed == b.closing_speed && a.impulse == b.impulse &&
            a.mass == b.mass && a.emission == b.emission && a.color == b.color &&
-           a.kind == b.kind && a.contacts == b.contacts;
+           a.phase == b.phase && a.contacts == b.contacts;
 }
 
 void test_material_reactions()
@@ -402,12 +434,12 @@ void test_material_reactions()
     fluid_contact repeat = contact_for(FLUID_GAS, 80, 0x80c0ffff);
     fluid_contact strong = contact_for(FLUID_GAS, 160, 0x80c0ffff);
     assert(same_contact(moderate, repeat));
-    assert(moderate.kind == FLUID_GAS && moderate.body == 41);
+    assert(moderate.phase == FLUID_GAS && moderate.body == 41);
     assert(moderate.closing_speed >= 10 && moderate.mass > 0);
     assert(strong.closing_speed > moderate.closing_speed);
     assert(strong.impulse > moderate.impulse);
     fluid_contact liquid = contact_for(FLUID_LIQUID, 80, 0x22aaffff);
-    assert(liquid.kind == FLUID_LIQUID && liquid.color == 0x22aaffff);
+    assert(liquid.phase == FLUID_LIQUID && liquid.color == 0x22aaffff);
     assert(liquid.normal.y > .99f);
     fast_particle_sweeps_stationary_wall();
     huge_diagonal_particle_sweep();

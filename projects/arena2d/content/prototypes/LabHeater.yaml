@@ -1,0 +1,11 @@
+name: LabHeater
+components:
+  GAME.GameAppearance: {color: 4282392831, height: 16.0, shape: Circle, width: 16.0}
+  GAME.GameCollider: {category: 8, mask: 15, radius: 8.0}
+  GAME.GameIgniter: {heat: 3.0}
+  GAME.GameMaterial:
+    emission_color: 4282392831
+    emission_intensity: 2.0
+    emission_multiplier: 1.0
+    scene: 4282392831
+  GAME.GameTransform: {}

@@ -1,11 +1,4 @@
 name: HRCLabSmoke
 components:
-  GAME.GameFluidVolume:
-    absorption: 0.006
-    color: 1670097312
-    height: 280.0
-    mass: 0.0004
-    spacing: 5.0
-    visibility: 0.012
-    width: 500.0
+  GAME.GameFluidVolume: {height: 280.0, substance: HRCLabFog, width: 500.0}
   GAME.GameTransform: {}

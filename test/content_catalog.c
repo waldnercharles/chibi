@@ -197,6 +197,33 @@ void run_content_catalog_checks()
         "RefreshEncounter.yaml",
     };
     static const char *const arena2d_prototypes[] = {
+        "Acid.yaml",
+        "BasaltDeposits.yaml",
+        "IceDeposits.yaml",
+        "Jelly.yaml",
+        "SlagDeposits.yaml",
+        "LabChiller.yaml",
+        "LabHeater.yaml",
+        "LabMetal.yaml",
+        "LabWall.yaml",
+        "Ash.yaml",
+        "Dust.yaml",
+        "Exhaust.yaml",
+        "Fire.yaml",
+        "Fog.yaml",
+        "FuelGas.yaml",
+        "Lava.yaml",
+        "MoltenMetal.yaml",
+        "Oil.yaml",
+        "ReactionDouse.yaml",
+        "ReactionMetalQuench.yaml",
+        "ReactionQuench.yaml",
+        "Sand.yaml",
+        "Slime.yaml",
+        "Smoke.yaml",
+        "Spores.yaml",
+        "Steam.yaml",
+        "Water.yaml",
         "BoostEmitter.yaml",
         "Camera.yaml",
         "Cave.yaml",
@@ -226,13 +253,14 @@ void run_content_catalog_checks()
     static const char *const arena2d_scenes[] = {
         "HRCBounce.yaml",      "HRCPinhole.yaml", "HRCShadow.yaml",
         "HRCSinglePixel.yaml", "HRCVolume.yaml",  "MaterialStudy.yaml",
-        "Sandbox.yaml",
+        "MatterLab.yaml",      "Sandbox.yaml",
     };
     static const char *const arena2d_libraries[] = { "DirectionMath.yaml",
                                                      "FieldShapes.yaml",
                                                      "WeaponActions.yaml" };
     static const char *const arena2d_fields[] = { "BasaltCave.yaml",
                                                   "CaveField.yaml",
+                                                  "Empty.yaml",
                                                   "MaterialIslands.yaml" };
     static const char *const arena2d_systems[] = { "FreeMotion.yaml" };
     const char *arena2d_root = "projects/arena2d/content";

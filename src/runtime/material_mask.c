@@ -315,6 +315,38 @@ int material_mask_apply_damage(material_mask *mask, float x, float y, float radi
     return removed;
 }
 
+int material_mask_deposit(material_mask *mask, float x, float y, float radius)
+{
+    assert(isfinite(x + y + radius) && radius >= 0);
+    float reach = radius + mask->cell_size;
+    int left = (int)fmaxf(0, floorf((x - reach) / mask->cell_size + mask->width * .5f));
+    int right = (int)
+        fminf(mask->width - 1, floorf((x + reach) / mask->cell_size + mask->width * .5f));
+    int top = (int)fmaxf(0, floorf((y - reach) / mask->cell_size + mask->height * .5f));
+    int bottom = (int)
+        fminf(mask->height - 1, floorf((y + reach) / mask->cell_size + mask->height * .5f));
+    int added = 0;
+    for (int row = top; row <= bottom; row++) {
+        float dy = (row + .5f - mask->height * .5f) * mask->cell_size - y;
+        for (int col = left; col <= right; col++) {
+            int i = row * mask->width + col;
+            float dx = (col + .5f - mask->width * .5f) * mask->cell_size - x;
+            float inside = hypotf(dx, dy) - radius;
+            mask->distance[i] = fminf(mask->distance[i], inside);
+            if (inside > 0 || mask->cells[i]) {
+                continue;
+            }
+            mask->cells[i] = 1;
+            if (mask->damage) {
+                mask->damage[i] = 0;
+            }
+            added++;
+        }
+    }
+    mask->count += added;
+    return added;
+}
+
 int material_mask_carve(material_mask *mask, float x, float y, float radius)
 {
     int removed = material_mask_apply_damage(mask, x, y, radius, 1, 1);

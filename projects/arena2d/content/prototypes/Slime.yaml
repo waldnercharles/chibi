@@ -1,0 +1,13 @@
+name: Slime
+components:
+  GAME.MaterialSubstance:
+    absorption: 0.1
+    cohesion: 1.0
+    color: 1523600104
+    density: 0.35
+    emission: 0.1
+    friction: 0.5
+    phase: Liquid
+    refraction: 3.0
+    stiffness: 0.7
+    viscosity: 0.9

@@ -18,12 +18,12 @@ def scenario(name):
     if name == 'dense-fog':
         frames, inputs = 60, [sample(0)]
         operations.append(entity('Benchmark atmosphere', 'Cloud', -200, 0,
-            GameFluidVolume=dict(width=1000, height=600, spacing=5)))
+            GameFluidVolume=dict(width=1000, height=600)))
     if name == 'ignition':
         frames, inputs = 90, [sample(0, fire=True)]
         for i, x in enumerate([-180, 0, 180]):
             operations.append(entity(f'Benchmark fuel {i}', 'FuelCloud', x, 0,
-                GameFluidVolume=dict(width=180, height=180, spacing=7), GameFuel=dict(amount=8)))
+                GameFluidVolume=dict(width=180, height=180)))
             operations.append(entity(f'Benchmark igniter {i}', 'Projectile', x, 0,
                 GameVelocity=dict(x=0, y=0), GameCollider=dict(radius=8),
                 GameIgniter=dict(heat=2.5)))

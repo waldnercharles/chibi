@@ -1,18 +1,5 @@
 name: HRC
 components:
-  GAME.GameCombustion:
-    blast_damage: 1.5
-    blast_radius: 80.0
-    blast_speed: 100.0
-    burn_rate: 1.5
-    cooling: 2.5
-    flame_color: 4284094176
-    flame_emission: 0.08
-    heat_release: 2.0
-    ignition: 1.0
-    smoke_absorption: 0.006
-    smoke_color: 1550153856
-    smoke_lifetime: 4.5
   GAME.GameHRC2D:
     bloom: 0.08
     bounce_hysteresis: 1.0
@@ -47,6 +34,9 @@ components:
     parallax: {x: 0.1, "y": 0.3, z: 0.6}
   GAME.MaterialDestructionWorld: {debris_limit: 600, fragment_limit: 96}
   GAME.MaterialFluidWorld:
+    blast_damage: 1.5
+    blast_radius: 80.0
+    blast_speed: 100.0
     buffer: 192.0
     chunk_size: 256.0
     gas_cell_size: 20.0
@@ -56,6 +46,9 @@ components:
     gas_wake_lifetime: 0.28
     gas_wake_speed: 12.0
     gas_wake_strength: 0.7
+    glow_color: 4284094176
+    glow_emission: 0.08
+    glow_temperature: 2.0
     kernel: 10.0
     liquid_splash_count: 5
     liquid_splash_lifetime: 0.45

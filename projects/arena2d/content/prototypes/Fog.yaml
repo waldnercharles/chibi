@@ -1,0 +1,3 @@
+name: Fog
+components:
+  GAME.MaterialSubstance: {absorption: 0.006, color: 1670097312, density: 0.016, visibility: 0.012}

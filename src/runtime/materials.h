@@ -60,12 +60,30 @@ void game_materials_tick(
     const fluid_colliders *colliders
 );
 const material_fluid *game_materials_fluid(const game_materials *materials);
+material_fluid *game_materials_fluid_mut(game_materials *materials);
 /* On-demand inspection includes simulation state outside the ECS columns. */
 game_material_state game_materials_inspect(const game_materials *materials);
 /* Borrowed crater debris; empty without a debris limit. */
 const material_chunk *game_materials_chunks(const game_materials *materials, int *count);
 /* Used by optional particle emitters. False at the retained population limit. */
 bool game_materials_emit(game_materials *materials, fluid_particle particle);
+/* Index of the named substance, or -1. Indices stay valid while the fluid
+ * world lives. */
+int game_materials_substance(const game_materials *materials, const char *name);
+const char *game_materials_substance_name(const game_materials *materials, int substance);
+/* Adds delta to the temperature of matter within radius of point; heat at
+ * least a solid's melting point melts its cells there. */
+void game_materials_heat_area(game_materials *materials, fluid_vec point, float radius, float delta);
+/* The solid material covering a world point: its entity, and its hardness. */
+typedef struct
+{
+    ecs_entity entity;
+    bool solid;
+    float hardness;
+} material_hit;
+material_hit game_materials_at(const game_materials *materials, fluid_vec point);
+/* Index of a deposit target name that some product uses, or -1. */
+int game_materials_deposit(const game_materials *materials, const char *name);
 
 material_fields *game_materials_fields(game_materials *materials);
 
@@ -92,5 +110,11 @@ extern node_desc GAME_NODE_IsMaterialFragment;
 extern node_desc GAME_NODE_IsPierceableMaterialFragment;
 extern node_desc GAME_NODE_SampleField;
 extern node_desc GAME_NODE_TerrainDistance;
+extern node_desc GAME_NODE_EmitFluid;
+extern node_desc GAME_NODE_HeatArea;
+extern node_desc GAME_NODE_FluidAt;
+extern node_desc GAME_NODE_MaterialAt;
+extern node_desc GAME_NODE_MatterCentroid;
+extern node_desc GAME_NODE_PushMatter;
 
 #endif

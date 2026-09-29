@@ -1,0 +1,12 @@
+name: Steam
+components:
+  GAME.MaterialSubstance:
+    absorption: 0.004
+    buoyancy: 0.5
+    color: 3706253424
+    cooling: 0.8
+    density: 0.01
+    freeze_at: 0.15
+    freezes_to: Water
+    temperature: 1.2
+    visibility: 0.03

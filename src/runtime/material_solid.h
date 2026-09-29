@@ -18,6 +18,9 @@ typedef struct
     float angle;
     /* Caller identity, never interpreted here. */
     uint64_t owner;
+    /* Fraction of corrosion ignored, and the temperature that melts it;
+     * zero never melts. */
+    float resistance, melts_at;
 } material_solid;
 
 typedef struct
@@ -42,3 +45,5 @@ bool material_solids_blocked(const material_solids *solids, fluid_vec a, fluid_v
 /* The solid whose occupied cell contains point, or -1. Writes the point in
  * that solid's local mask coordinates. */
 int material_solids_find(const material_solids *solids, fluid_vec point, fluid_vec *local);
+/* Lowest positive melting temperature among the solids, or infinity. */
+float material_solids_melting(const material_solids *solids);

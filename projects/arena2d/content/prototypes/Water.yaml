@@ -1,0 +1,19 @@
+name: Water
+components:
+  GAME.MaterialSubstance:
+    absorption: 0.035
+    boil_at: 1.0
+    boils_to: Steam
+    cohesion: 0.5
+    color: 951492269
+    conductive: true
+    cooling: 0.3
+    density: 0.25
+    freeze_at: -0.5
+    freezes_to: Ice
+    friction: 0.05
+    phase: Liquid
+    refraction: 8.0
+    stiffness: 0.9
+    viscosity: 0.02
+    visibility: 0.012

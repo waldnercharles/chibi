@@ -35,6 +35,7 @@ struct material_solids
     bucket_member *members;
     solid_bucket *table;
     int capacity;
+    float melting;
 };
 
 material_solids *material_solids_new()
@@ -93,10 +94,15 @@ void material_solids_set(material_solids *solids, const material_solid *items, i
     aclear(solids->placed);
     aclear(solids->items);
     aclear(solids->members);
+    solids->melting = INFINITY;
     for (int i = 0; i < count; i++) {
         material_solid solid = items[i];
         assert(solid.mask && solid.mask->width > 0);
         assert(isfinite(solid.position.x + solid.position.y + solid.angle));
+        assert(isfinite(solid.resistance + solid.melts_at) && solid.melts_at >= 0);
+        if (solid.melts_at > 0) {
+            solids->melting = fminf(solids->melting, solid.melts_at);
+        }
         apush(solids->items, solid);
         apush(
             solids->placed,
@@ -238,6 +244,11 @@ bool material_solids_blocked(const material_solids *solids, fluid_vec a, fluid_v
         t += fminf(fmaxf(s.distance * .8f, cell * .4f), cell * 2);
     }
     return false;
+}
+
+float material_solids_melting(const material_solids *solids)
+{
+    return solids->melting;
 }
 
 int material_solids_find(const material_solids *solids, fluid_vec point, fluid_vec *local)

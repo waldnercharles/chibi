@@ -54,6 +54,7 @@ void game_materials_reset(game_materials *materials)
     aclear(materials->records);
     material_destruction_reset(materials->destruction);
     aclear(materials->damage_requests);
+    aclear(materials->deposit_requests);
     aclear(materials->regions);
     materials->fragments = 0;
     if (materials->debris) {
@@ -64,6 +65,7 @@ void game_materials_reset(game_materials *materials)
         material_fluid_free(materials->fluid);
         materials->fluid = NULL;
     }
+    material_ecs_free_substances(materials);
     materials->settings = (MaterialFluidWorld){ 0 };
 }
 
@@ -73,6 +75,7 @@ void game_materials_free(game_materials *materials)
     afree(materials->records);
     material_destruction_free(materials->destruction);
     afree(materials->damage_requests);
+    afree(materials->deposit_requests);
     material_fields_free(materials->fields);
     afree(materials->regions);
     material_debris_free(materials->debris);
@@ -95,6 +98,11 @@ bool game_materials_enabled(const game_materials *materials)
 const material_fluid *game_materials_fluid(const game_materials *materials)
 {
     return materials ? materials->fluid : NULL;
+}
+
+material_fluid *game_materials_fluid_mut(game_materials *materials)
+{
+    return materials->fluid;
 }
 
 static uint64_t hash_bytes(uint64_t hash, const void *data, size_t count)
@@ -151,8 +159,9 @@ game_material_state game_materials_inspect(const game_materials *materials)
     }
     for (int i = 0; i < state.particles; i++) {
         fluid_particle p = particles[i];
-        state.fuel_particles += p.fuel > 0;
+        state.fuel_particles += p.fuel > 0 && !p.burning;
         state.burning_particles += p.burning;
+        int identity[] = { p.substance, p.phase };
         float values[] = { p.position.x,
                            p.position.y,
                            p.velocity.x,
@@ -163,7 +172,7 @@ game_material_state game_materials_inspect(const game_materials *materials)
                            p.emission,
                            p.lifetime,
                            p.fuel,
-                           p.heat,
+                           p.temperature,
                            p.glow,
                            p.visibility,
                            p.refraction,
@@ -177,9 +186,12 @@ game_material_state game_materials_inspect(const game_materials *materials)
                            p.style.drag_exponent,
                            p.style.blend };
         state.hash = hash_bytes(state.hash, &p.burning, sizeof p.burning);
-        state.hash = hash_bytes(state.hash, &p.smoke, sizeof p.smoke);
+        state.hash = hash_bytes(state.hash, &p.billow, sizeof p.billow);
         state.hash = hash_bytes(state.hash, values, sizeof values);
-        state.hash = hash_bytes(state.hash, &p.kind, sizeof p.kind);
+        state.hash = hash_bytes(state.hash, identity, sizeof identity);
+        state.hash = hash_bytes(state.hash, &p.deformation, sizeof p.deformation);
+        state.hash = hash_bytes(state.hash, &p.affine, sizeof p.affine);
+        state.hash = hash_bytes(state.hash, &p.owner, sizeof p.owner);
         state.hash = hash_bytes(state.hash, &p.color, sizeof p.color);
         state.hash = hash_bytes(state.hash, &p.style.end_color, sizeof p.style.end_color);
     }
@@ -373,10 +385,16 @@ static const char *create_mask(game_materials *materials, ecs_entity entity)
                "axis";
     }
     const GameSubstance *substance = GAME_GameSubstance_get_const(materials->world, entity);
-    if (substance && (!isfinite(substance->hardness + substance->blast_multiplier) ||
-                      substance->hardness <= 0 || substance->blast_multiplier < 0)) {
-        return "Substance needs positive hardness and nonnegative blast "
-               "multiplier";
+    if (substance && (!isfinite(
+                          substance->hardness + substance->blast_multiplier +
+                          substance->corrosion_resistance + substance->melts_at
+                      ) ||
+                      substance->hardness <= 0 || substance->blast_multiplier < 0 ||
+                      substance->corrosion_resistance < 0 ||
+                      substance->corrosion_resistance > 1 || substance->melts_at < 0)) {
+        return "Substance needs positive hardness, nonnegative blast "
+               "multiplier "
+               "and melting point, and corrosion resistance 0..1";
     }
     material_record *record = material_ecs_record(materials, entity);
     if (!record->mask) {
@@ -520,7 +538,8 @@ static void crater(
             profile
         );
     }
-    for (int i = 0; i < profile.smoke_count && facing; i++) {
+    int smoke = game_materials_substance(materials, profile.smoke_substance);
+    for (int i = 0; i < profile.smoke_count && facing && smoke >= 0; i++) {
         /* Gas leaves the crater along its normal and spreads as it slows. */
         float along = 1 + 4 * crater_random(point, i, 0);
         float side = (crater_random(point, i, 1) - .5f) * 8;
@@ -528,27 +547,26 @@ static void crater(
         float swirl = (crater_random(point, i, 3) - .5f) * profile.smoke_speed;
         float lifetime = profile.smoke_lifetime *
                          (.7f + .6f * crater_random(point, i, 4));
-        game_materials_emit(
-            materials,
-            (fluid_particle){
-                .position = { point.x + normal.x * along - normal.y * side,
-                              point.y + normal.y * along + normal.x * side },
-                .velocity = { normal.x * speed - normal.y * swirl,
-                              normal.y * speed + normal.x * swirl },
-                .mass = .0004f,
-                .radius = 3 + 3 * crater_random(point, i, 5),
-                .color = profile.smoke_color,
-                .kind = FLUID_GAS,
-                .absorption = .012f,
-                .lifetime = lifetime,
-                .style = { .duration = lifetime,
-                           .size_end = 2.6f,
-                           .size_exponent = .5f,
-                           .drag = 1.2f,
-                           .drag_end = 3,
-                           .drag_exponent = 1,
-                           .end_color = profile.smoke_color & 0xffffff00u } }
+        fluid_particle parcel = material_fluid_particle(
+            materials->fluid,
+            smoke,
+            (fluid_vec){ point.x + normal.x * along - normal.y * side,
+                         point.y + normal.y * along + normal.x * side }
         );
+        parcel.velocity = (fluid_vec){ normal.x * speed - normal.y * swirl,
+                                       normal.y * speed + normal.x * swirl };
+        parcel.radius = 3 + 3 * crater_random(point, i, 5);
+        parcel.color = profile.smoke_color ? profile.smoke_color : parcel.color;
+        parcel.lifetime = lifetime;
+        parcel.billow = false;
+        parcel.style = (fluid_style){ .duration = lifetime,
+                                      .size_end = 2.6f,
+                                      .size_exponent = .5f,
+                                      .drag = 1.2f,
+                                      .drag_end = 3,
+                                      .drag_exponent = 1,
+                                      .end_color = parcel.color & 0xffffff00u };
+        game_materials_emit(materials, parcel);
     }
 }
 
@@ -685,6 +703,10 @@ void game_materials_damage(
 {
     assert(isfinite(point.x) && isfinite(point.y) && isfinite(radius) && radius >= 0);
     assert(isfinite(energy) && energy >= 0 && isfinite(impact.heat) && impact.heat >= 0);
+    /* Damage carves an entity's own matter, such as a jelly's body. */
+    if (materials->fluid && ecs_entity_to_u64(entity)) {
+        material_fluid_remove_owned(materials->fluid, ecs_entity_to_u64(entity), point, radius);
+    }
     apush(
         materials->damage_requests,
         ((
@@ -800,6 +822,30 @@ static void destroy_source(void *user, uint64_t target)
 /* Physics and render adapters consume mask revision at this boundary. */
 static void invalidate_geometry(void *, uint64_t) {}
 
+/* A melted solid releases its melts_to substance where its cells were. */
+static void melt(game_materials *materials, const material_event *event, float cell_size)
+{
+    const GameSubstance *solid = GAME_GameSubstance_get_const(
+        materials->world,
+        ecs_entity_from_u64(event->target)
+    );
+    int substance = solid ? game_materials_substance(materials, solid->melts_to) : -1;
+    if (substance < 0 || !materials->fluid) {
+        return;
+    }
+    fluid_vec point = { event->point.x, event->point.y };
+    fluid_particle p = material_fluid_particle(materials->fluid, substance, point);
+    float spacing = material_fluid_spacing(materials->fluid, p.phase);
+    int count = (int)ceilf(event->removed * cell_size * cell_size / (spacing * spacing));
+    for (int i = 0; i < count; i++) {
+        p.position = (fluid_vec){
+            point.x + (crater_random(point, i, 7) - .5f) * cell_size * 2,
+            point.y + (crater_random(point, i, 8) - .5f) * cell_size * 2
+        };
+        game_materials_emit(materials, p);
+    }
+}
+
 static void material_result(void *user, const material_event *event)
 {
     if (event->kind != MATERIAL_EVENT_DAMAGE) {
@@ -808,6 +854,13 @@ static void material_result(void *user, const material_event *event)
     game_materials *materials = user;
     ecs_entity entity = ecs_entity_from_u64(event->target);
     ecs_world *world = materials->world;
+    if (event->cause == MATERIAL_DAMAGE_CORROSION ||
+        event->cause == MATERIAL_DAMAGE_MELT) {
+        if (event->cause == MATERIAL_DAMAGE_MELT) {
+            melt(materials, event, game_materials_mask(materials, entity)->cell_size);
+        }
+        return;
+    }
     const GameAppearance *appearance = GAME_GameAppearance_get_const(world, entity);
     const material_mask *mask = game_materials_mask(materials, entity);
     /* Find the crater's open side in the mask's local frame, then rotate back. */
@@ -891,6 +944,9 @@ const char *game_materials_prepare(game_materials *materials)
         }
     }
     error = material_ecs_generate_terrains(materials);
+    if (!error) {
+        error = material_ecs_apply_deposits(materials);
+    }
     if (error) {
         return error;
     }

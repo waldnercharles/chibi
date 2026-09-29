@@ -276,6 +276,9 @@ static const char *generate_terrain(game_materials *materials, ecs_entity source
         return "Streamed terrain requires radius 0..4096, budget 1..64, all "
                "connectivity and no border";
     }
+    if (terrain.deposit && terrain.deposit[0] && terrain.stream_radius <= 0) {
+        return "Terrain that receives deposits must stream";
+    }
     unsigned revision = material_field_revision(materials->fields, terrain.field);
     if (!revision) {
         return "Terrain references an unavailable procedural field";
@@ -500,4 +503,104 @@ const char *game_materials_terrain_at(
     *out = (game_terrain_sample){ bounded ? fmaxf(value, 0) : value,
                                   !bounded && value <= 0 };
     return NULL;
+}
+/* The streamed terrain receiving deposits named name, or NULL. */
+static material_record *deposit_target(game_materials *materials, const char *name, GameTransform *origin)
+{
+    for (int i = 0; i < acount(materials->records); i++) {
+        material_record *record = &materials->records[i];
+        if (!record->stream || !ecs_entity_is_alive(materials->world, record->entity)) {
+            continue;
+        }
+        const MaterialTerrain
+            *terrain = GAME_MaterialTerrain_get_const(materials->world, record->entity);
+        if (terrain && terrain->deposit && !strcmp(terrain->deposit, name)) {
+            *origin = *GAME_GameTransform_get_const(materials->world, record->entity);
+            return record;
+        }
+    }
+    return NULL;
+}
+
+/* Adds one deposit disk to every tile it overlaps, loading cold tiles.
+ * Marks the tiles it changed in dirty. */
+static const char *deposit_disk(
+    game_materials *materials,
+    material_stream *stream,
+    fluid_vec center,
+    float radius,
+    material_mask ***dirty
+)
+{
+    float corners[4][2] = { { -radius, -radius },
+                            { radius, -radius },
+                            { -radius, radius },
+                            { radius, radius } };
+    material_mask *touched[4] = { 0 };
+    for (int c = 0; c < 4; c++) {
+        material_stream_tile *tile = material_stream_require(
+            stream,
+            materials->fields,
+            center.x + corners[c][0],
+            center.y + corners[c][1],
+            materials->error,
+            sizeof materials->error
+        );
+        if (!tile) {
+            if (materials->error[0]) {
+                return materials->error;
+            }
+            continue;
+        }
+        bool seen = false;
+        for (int k = 0; k < c; k++) {
+            seen |= touched[k] == tile->mask;
+        }
+        touched[c] = tile->mask;
+        if (seen || !material_mask_deposit(
+                        tile->mask,
+                        center.x - tile->grid.center_x,
+                        center.y - tile->grid.center_y,
+                        radius
+                    )) {
+            continue;
+        }
+        bool listed = false;
+        for (int k = 0; k < acount(*dirty); k++) {
+            listed |= (*dirty)[k] == tile->mask;
+        }
+        if (!listed) {
+            apush(*dirty, tile->mask);
+        }
+    }
+    return NULL;
+}
+
+const char *material_ecs_apply_deposits(game_materials *materials)
+{
+    material_mask **dirty = NULL;
+    const char *error = NULL;
+    materials->error[0] = 0;
+    for (int i = 0; i < acount(materials->deposit_requests) && !error; i++) {
+        fluid_deposit d = materials->deposit_requests[i];
+        GameTransform origin;
+        material_record *target = deposit_target(materials, materials->deposit_names[d.target], &origin);
+        /* Matter depositing where nothing receives it leaves the world. */
+        if (!target) {
+            continue;
+        }
+        error = deposit_disk(
+            materials,
+            target->stream,
+            (fluid_vec){ d.position.x - origin.x, d.position.y - origin.y },
+            sqrtf(d.area / 3.14159265f),
+            &dirty
+        );
+    }
+    for (int i = 0; i < acount(dirty); i++) {
+        material_mask_rebuild(dirty[i]);
+    }
+    afree(dirty);
+    aclear(materials->deposit_requests);
+    return error;
 }

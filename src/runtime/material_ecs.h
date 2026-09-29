@@ -22,6 +22,9 @@ typedef struct
     bool streamed_mask;
 } material_record;
 
+/* Damage energy that removes a cell of any hardness at once. */
+#define MATERIAL_MELT_ENERGY 1e6f
+
 struct game_materials
 {
     ecs_world *world;
@@ -33,10 +36,16 @@ struct game_materials
     char error[256];
     game_task_pool *pool;
     MaterialFluidWorld settings;
-    GameCombustion combustion;
+    /* Substance and deposit names by index; they live as long as the fluid. */
+    char **substance_names, **deposit_names;
+    unsigned substance_revision;
+    bool substances_loaded;
     material_record *records;
     material_destruction *destruction;
     material_damage *damage_requests;
+    /* Matter that turned into deposits last tick, applied at the next
+     * preparation boundary. */
+    fluid_deposit *deposit_requests;
     int fragment_limit;
     fluid_region *regions;
     int fragments;
@@ -58,7 +67,12 @@ MaterialBreakProfile material_ecs_break_profile(game_materials *materials, ecs_e
 const char *material_ecs_generate_terrains(game_materials *materials);
 /* The seed a terrain's field generates with. */
 unsigned material_ecs_terrain_seed(const game_materials *materials, MaterialTerrain terrain);
+/* Adds queued deposits to the streamed terrains that receive their names. */
+const char *material_ecs_apply_deposits(game_materials *materials);
 const char *material_ecs_configure_fluid(game_materials *materials);
+/* Rebuilds the fluid's substance and reaction tables after prototypes change. */
+const char *material_ecs_load_substances(game_materials *materials);
+void material_ecs_free_substances(game_materials *materials);
 const char *material_ecs_fill_volume(game_materials *materials, ecs_entity entity);
 void material_ecs_fade_fragments(game_materials *materials, float delta);
 /* Seeds a crater's chunks; source names the entity whose material they show. */

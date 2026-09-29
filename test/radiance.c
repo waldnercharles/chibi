@@ -11,6 +11,7 @@
 #include "render/shader_fragment.h"
 #include "runtime/generated.h"
 #include "support/xalloc.h"
+#include "test/runtime/material_substances.h"
 
 #include <math.h>
 #include <stdint.h>
@@ -634,7 +635,7 @@ static bool graph_material_pixels(render_material_raster *raster)
  * fluid draw path at nonzero positions and after vertical camera movement. */
 static bool fluid_alignment(render_material_raster *raster)
 {
-    material_fluid *fluid = material_fluid_new(10, 1);
+    material_fluid *fluid = test_fluid(10, 1);
     render_fluid_raster *draw = render_fluid_raster_new();
     material_fluid_add(
         fluid,
@@ -671,7 +672,7 @@ static bool fluid_alignment(render_material_raster *raster)
 
 static bool fluid_surfaces(render_material_raster *raster)
 {
-    material_fluid *fluid = material_fluid_new(20, 2);
+    material_fluid *fluid = test_fluid(20, 2);
     render_fluid_raster *draw = render_fluid_raster_new();
     render_material_view view = { .min_x = -64,
                                   .max_y = 64,
@@ -698,7 +699,9 @@ static bool fluid_surfaces(render_material_raster *raster)
         if (stage == 2) {
             p.position = (fluid_vec){ .5f, .5f };
             p.radius = 12;
-            p.kind = FLUID_LIQUID;
+            p.substance = TEST_LIQUID;
+            p.phase = FLUID_LIQUID;
+            p.deformation = (fluid_matrix){ 1, 0, 0, 1 };
             p.emission = 0;
             p.visibility = .06f;
             p.style = (fluid_style){ 0 };
@@ -985,7 +988,7 @@ static bool fluid_lighting(
     int trace_levels
 )
 {
-    material_fluid *fluid = material_fluid_new(20, 16);
+    material_fluid *fluid = test_fluid(20, 16);
     render_fluid_raster *draw = render_fluid_raster_new();
     render_material_view view = { .min_x = -64,
                                   .max_y = 64,
@@ -1007,7 +1010,9 @@ static bool fluid_lighting(
                     (fluid_particle){ .position = { 11 + 6 * x, -9 + 6 * y },
                                       .mass = 1,
                                       .radius = 10,
-                                      .kind = kind,
+                                      .substance = kind,
+                                      .phase = kind,
+                                      .deformation = { 1, 0, 0, 1 },
                                       .color = 0xffffffffu,
                                       .absorption = .02f,
                                       .visibility = kind == FLUID_GAS ? .02f : 0 }
@@ -1083,7 +1088,7 @@ static bool fluid_lighting(
 
 static bool liquid_refraction(render_material_raster *raster, render_radiance *radiance, CF_Canvas canvas)
 {
-    material_fluid *fluid = material_fluid_new(32, 1);
+    material_fluid *fluid = test_fluid(32, 1);
     render_fluid_raster *draw = render_fluid_raster_new();
     CF_Texture background = cf_make_texture(cf_texture_defaults(SIDE, SIDE));
     CF_Pixel pattern[PIXELS], images[2][PIXELS];
@@ -1110,7 +1115,9 @@ static bool liquid_refraction(render_material_raster *raster, render_radiance *r
             (fluid_particle){ .position = { .5f, .5f },
                               .mass = 1,
                               .radius = 30,
-                              .kind = FLUID_LIQUID,
+                              .substance = TEST_LIQUID,
+                              .phase = FLUID_LIQUID,
+                              .deformation = { 1, 0, 0, 1 },
                               .color = 0x8080ff99,
                               .refraction = pass ? 12 : 0 }
         );

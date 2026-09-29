@@ -11,7 +11,6 @@ components:
     emission:
       exponent: 1.0
       start: {x: 0.3, "y": 0.5}
-    fluid_mass: 0.0002
     heading_only: true
     lifetime: {x: 0.3, "y": 0.6}
     planar: true

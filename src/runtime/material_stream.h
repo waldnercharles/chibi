@@ -53,4 +53,14 @@ bool material_stream_update(
     size_t size
 );
 const material_stream_tile *material_stream_tiles(const material_stream *stream, int *count);
+/* The resident tile holding a terrain-local point, loading it first when it
+ * is cold or new. NULL outside bounded terrain, or with error set. */
+material_stream_tile *material_stream_require(
+    material_stream *stream,
+    const material_fields *fields,
+    float x,
+    float y,
+    char *error,
+    size_t size
+);
 material_stream_state material_stream_inspect(const material_stream *stream);

@@ -1,0 +1,12 @@
+version: 3
+name: Empty
+domain: field
+id_counter: 4
+description: 'Open space everywhere: terrain that starts empty and holds only the matter deposited into it.'
+graphs:
+- kind: event
+  name: ""
+  nodes:
+  - id: 1
+    type: Field Output
+    inputs: {Value: 1.0}

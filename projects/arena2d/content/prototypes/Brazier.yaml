@@ -12,8 +12,7 @@ components:
       exponent: 1.0
       start: {x: 0.5, "y": 0.8}
     end_color: 4281335808
-    fluid: true
-    fluid_mass: 0.0004
+    fluid_substance: Fire
     lifetime: {x: 0.6, "y": 0.9}
     planar: true
     rate: 220.0

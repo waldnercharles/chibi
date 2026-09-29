@@ -10,10 +10,10 @@ extern const type_desc GAME_T_CF_V2;
 extern const ecs_component_desc GAME_COMPONENT_EngineSystem;
 extern const EngineSystem *GAME_EngineSystem_get_const(const ecs_world *, ecs_entity);
 
-extern const ecs_component_desc GAME_COMPONENT_GameCombustion;
-extern const GameCombustion *GAME_GameCombustion_get_const(const ecs_world *, ecs_entity);
-extern const ecs_component_desc GAME_COMPONENT_GameFuel;
-extern const GameFuel *GAME_GameFuel_get_const(const ecs_world *, ecs_entity);
+extern const ecs_component_desc GAME_COMPONENT_MaterialSubstance;
+extern const MaterialSubstance *GAME_MaterialSubstance_get_const(const ecs_world *, ecs_entity);
+extern const ecs_component_desc GAME_COMPONENT_MaterialReaction;
+extern const MaterialReaction *GAME_MaterialReaction_get_const(const ecs_world *, ecs_entity);
 extern const ecs_component_desc GAME_COMPONENT_GameIgniter;
 extern const GameIgniter *GAME_GameIgniter_get_const(const ecs_world *, ecs_entity);
 extern const ecs_component_desc GAME_COMPONENT_GameSubstance;

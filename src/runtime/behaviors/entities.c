@@ -95,6 +95,7 @@ struct game_entities
     bool parallel_queries;
     bool query_scope, profile_queries;
     game_entity_query_profile query_profile;
+    unsigned prototype_revision;
 };
 
 game_entities *game_entities_new(ecs_world *world, game_behavior_world *behaviors)
@@ -560,6 +561,7 @@ int game_entities_register(game_entities *entities, const game_prototype *protot
         return -1;
     }
     prototype_record replacement = { .prototype = copy, .json = json };
+    entities->prototype_revision++;
     if (existing >= 0) {
         game_prototype_free(entities->prototypes[existing].prototype);
         free(entities->prototypes[existing].json);
@@ -568,6 +570,22 @@ int game_entities_register(game_entities *entities, const game_prototype *protot
     }
     apush(entities->prototypes, replacement);
     return 0;
+}
+
+int game_entities_prototype_count(const game_entities *entities)
+{
+    return acount(entities->prototypes);
+}
+
+const game_prototype *game_entities_prototype(const game_entities *entities, int index)
+{
+    assert(index >= 0 && index < acount(entities->prototypes));
+    return entities->prototypes[index].prototype;
+}
+
+unsigned game_entities_prototype_revision(const game_entities *entities)
+{
+    return entities->prototype_revision;
 }
 
 static const game_prototype *find_prototype(const game_entities *entities, const char *identity)

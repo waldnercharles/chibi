@@ -14,11 +14,7 @@ entities:
 - name: HRC
   prototype: HRC
   components:
-    GAME.GameCombustion:
-      flame_emission: 1.0
-      blast_radius: 400.0
-      blast_speed: 200.0
-      blast_damage: 0.2
+    GAME.MaterialFluidWorld: {glow_emission: 1.0, blast_radius: 400.0, blast_speed: 200.0, blast_damage: 0.2}
     GAME.GameHRC2D:
       resolution: 1.0
       adaptive: true

@@ -1,0 +1,9 @@
+name: Sand
+components:
+  GAME.MaterialSubstance:
+    absorption: 0.8
+    color: 3365953791
+    density: 0.6
+    friction: 0.75
+    phase: Powder
+    stiffness: 0.9

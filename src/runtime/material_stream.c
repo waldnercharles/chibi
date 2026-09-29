@@ -320,6 +320,46 @@ bool material_stream_update(
     return true;
 }
 
+/* The tile key holding a terrain-local point; false outside bounded terrain. */
+static bool key_at(const material_stream *s, float x, float y, uint64_t *key)
+{
+    field_grid grid = s->desc.grid;
+    float span = grid.cell_size * MATERIAL_TERRAIN_CHUNK_CELLS;
+    float left = grid.center_x - grid.width * grid.cell_size * .5f;
+    float top = grid.center_y - grid.height * grid.cell_size * .5f;
+    int tx = (int)floorf((x - left) / span), ty = (int)floorf((y - top) / span);
+    if (!s->columns) {
+        *key = (uint64_t)(uint32_t)ty << 32 | (uint32_t)tx;
+        return true;
+    }
+    if (tx < 0 || ty < 0 || tx >= s->columns || ty >= s->rows) {
+        return false;
+    }
+    *key = (uint64_t)ty * s->columns + tx;
+    return true;
+}
+
+material_stream_tile *material_stream_require(
+    material_stream *s,
+    const material_fields *fields,
+    float x,
+    float y,
+    char *error,
+    size_t size
+)
+{
+    uint64_t key;
+    if (!key_at(s, x, y, &key)) {
+        return NULL;
+    }
+    for (int i = 0; i < acount(s->tiles); i++) {
+        if (s->tiles[i].key == key) {
+            return &s->tiles[i];
+        }
+    }
+    return load_tile(s, fields, key, error, size) ? &alast(s->tiles) : NULL;
+}
+
 const material_stream_tile *material_stream_tiles(const material_stream *s, int *count)
 {
     *count = acount(s->tiles);

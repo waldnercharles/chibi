@@ -14,8 +14,7 @@ components:
       exponent: 0.8
       start: {x: 0.18, "y": 0.3}
     end_color: 1275133824
-    fluid: true
-    fluid_mass: 0.0004
+    fluid_substance: Exhaust
     heading_only: true
     lifetime: {x: 0.35, "y": 0.6}
     metaball_blend: 2.0

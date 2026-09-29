@@ -1,0 +1,192 @@
+version: 1
+name: MatterLab
+physics:
+  gravity: {x: 0.0, "y": 320.0}
+entities:
+- name: Camera
+  prototype: MaterialStudyCamera
+  components:
+    GAME.GameCamera: {height: 700.0, width: 1600.0}
+    GAME.GameTransform: {x: 0.0, "y": -40.0}
+- name: World
+  prototype: HRC
+  components:
+    GAME.GameHRC2D: {ambient: 0.25, adaptive: false}
+    GAME.MaterialFluidWorld: {glow_emission: 1.0, heat_conduction: 2.0}
+- {name: Basalt deposits, prototype: BasaltDeposits}
+- {name: Slag deposits, prototype: SlagDeposits}
+- {name: Ice deposits, prototype: IceDeposits}
+- name: Floor 1
+  prototype: LabWall
+  components:
+    GAME.GameAppearance: {height: 60.0, width: 240.0}
+    GAME.GameCollider: {height: 60.0, width: 240.0}
+    GAME.GameTransform: {x: -720.0, "y": 130.0}
+- name: Floor 2
+  prototype: LabWall
+  components:
+    GAME.GameAppearance: {height: 60.0, width: 240.0}
+    GAME.GameCollider: {height: 60.0, width: 240.0}
+    GAME.GameTransform: {x: -480.0, "y": 130.0}
+- name: Floor 3
+  prototype: LabWall
+  components:
+    GAME.GameAppearance: {height: 60.0, width: 240.0}
+    GAME.GameCollider: {height: 60.0, width: 240.0}
+    GAME.GameTransform: {x: -240.0, "y": 130.0}
+- name: Floor 4
+  prototype: LabWall
+  components:
+    GAME.GameAppearance: {height: 60.0, width: 240.0}
+    GAME.GameCollider: {height: 60.0, width: 240.0}
+    GAME.GameTransform: {x: 0.0, "y": 130.0}
+- name: Floor 5
+  prototype: LabWall
+  components:
+    GAME.GameAppearance: {height: 60.0, width: 240.0}
+    GAME.GameCollider: {height: 60.0, width: 240.0}
+    GAME.GameTransform: {x: 240.0, "y": 130.0}
+- name: Floor 6
+  prototype: LabWall
+  components:
+    GAME.GameAppearance: {height: 60.0, width: 240.0}
+    GAME.GameCollider: {height: 60.0, width: 240.0}
+    GAME.GameTransform: {x: 480.0, "y": 130.0}
+- name: Floor 7
+  prototype: LabWall
+  components:
+    GAME.GameAppearance: {height: 60.0, width: 240.0}
+    GAME.GameCollider: {height: 60.0, width: 240.0}
+    GAME.GameTransform: {x: 720.0, "y": 130.0}
+- name: Quench wall left
+  prototype: LabWall
+  components:
+    GAME.GameAppearance: {height: 120.0, width: 12.0}
+    GAME.GameCollider: {height: 120.0, width: 12.0}
+    GAME.GameTransform: {x: -690.0, "y": 40.0}
+- name: Quench wall right
+  prototype: LabWall
+  components:
+    GAME.GameAppearance: {height: 120.0, width: 12.0}
+    GAME.GameCollider: {height: 120.0, width: 12.0}
+    GAME.GameTransform: {x: -510.0, "y": 40.0}
+- name: Quench water
+  prototype: Liquid
+  components:
+    GAME.GameFluidVolume: {height: 90.0, width: 160.0}
+    GAME.GameTransform: {x: -600.0, "y": 50.0}
+- name: Falling lava
+  prototype: Liquid
+  components:
+    GAME.GameFluidVolume: {height: 40.0, substance: Lava, width: 50.0}
+    GAME.GameTransform: {x: -600.0, "y": -200.0}
+- name: Oil wall left
+  prototype: LabWall
+  components:
+    GAME.GameAppearance: {height: 80.0, width: 12.0}
+    GAME.GameCollider: {height: 80.0, width: 12.0}
+    GAME.GameTransform: {x: -430.0, "y": 60.0}
+- name: Oil wall right
+  prototype: LabWall
+  components:
+    GAME.GameAppearance: {height: 80.0, width: 12.0}
+    GAME.GameCollider: {height: 80.0, width: 12.0}
+    GAME.GameTransform: {x: -290.0, "y": 60.0}
+- name: Oil pool
+  prototype: Liquid
+  components:
+    GAME.GameFluidVolume: {height: 50.0, substance: Oil, width: 120.0}
+    GAME.GameTransform: {x: -360.0, "y": 70.0}
+- name: Match
+  prototype: Cloud
+  components:
+    GAME.GameFluidVolume: {height: 20.0, substance: Fire, width: 30.0}
+    GAME.GameTransform: {x: -360.0, "y": 42.0}
+- name: Acid wall left
+  prototype: LabMetal
+  components:
+    GAME.GameAppearance: {height: 80.0, width: 12.0}
+    GAME.GameCollider: {height: 80.0, width: 12.0}
+    GAME.GameTransform: {x: -210.0, "y": 60.0}
+- name: Acid wall right
+  prototype: LabMetal
+  components:
+    GAME.GameAppearance: {height: 80.0, width: 12.0}
+    GAME.GameCollider: {height: 80.0, width: 12.0}
+    GAME.GameTransform: {x: -70.0, "y": 60.0}
+- name: Acid pool
+  prototype: Liquid
+  components:
+    GAME.GameFluidVolume: {height: 50.0, substance: Acid, width: 120.0}
+    GAME.GameTransform: {x: -140.0, "y": 70.0}
+- name: Fuel pocket
+  prototype: FuelCloud
+  components:
+    GAME.GameTransform: {x: 60.0, "y": -20.0}
+- name: Spore drift
+  prototype: Cloud
+  components:
+    GAME.GameFluidVolume: {height: 100.0, substance: Spores, width: 140.0}
+    GAME.GameTransform: {x: 200.0, "y": -30.0}
+- name: Heater
+  prototype: LabHeater
+  components:
+    GAME.GameTransform: {x: 40.0, "y": 10.0}
+- name: Sand pile
+  prototype: Liquid
+  components:
+    GAME.GameFluidVolume: {height: 60.0, substance: Sand, width: 60.0}
+    GAME.GameTransform: {x: 330.0, "y": -120.0}
+- name: Jelly
+  prototype: Liquid
+  components:
+    GAME.GameFluidVolume: {height: 40.0, owned: true, substance: Jelly, width: 40.0}
+    GAME.GameTransform: {x: 260.0, "y": -160.0}
+- name: Slime blob
+  prototype: Liquid
+  components:
+    GAME.GameFluidVolume: {height: 50.0, substance: Slime, width: 50.0}
+    GAME.GameTransform: {x: 420.0, "y": -80.0}
+- name: Metal wall left
+  prototype: LabWall
+  components:
+    GAME.GameAppearance: {height: 60.0, width: 12.0}
+    GAME.GameCollider: {height: 60.0, width: 12.0}
+    GAME.GameTransform: {x: 470.0, "y": 70.0}
+- name: Metal wall right
+  prototype: LabWall
+  components:
+    GAME.GameAppearance: {height: 60.0, width: 12.0}
+    GAME.GameCollider: {height: 60.0, width: 12.0}
+    GAME.GameTransform: {x: 560.0, "y": 70.0}
+- name: Casting water
+  prototype: Liquid
+  components:
+    GAME.GameFluidVolume: {height: 40.0, width: 80.0}
+    GAME.GameTransform: {x: 515.0, "y": 78.0}
+- name: Molten pour
+  prototype: Liquid
+  components:
+    GAME.GameFluidVolume: {height: 30.0, substance: MoltenMetal, width: 30.0}
+    GAME.GameTransform: {x: 515.0, "y": -160.0}
+- name: Freeze wall left
+  prototype: LabWall
+  components:
+    GAME.GameAppearance: {height: 80.0, width: 12.0}
+    GAME.GameCollider: {height: 80.0, width: 12.0}
+    GAME.GameTransform: {x: 600.0, "y": 60.0}
+- name: Freeze wall right
+  prototype: LabWall
+  components:
+    GAME.GameAppearance: {height: 80.0, width: 12.0}
+    GAME.GameCollider: {height: 80.0, width: 12.0}
+    GAME.GameTransform: {x: 760.0, "y": 60.0}
+- name: Freezing water
+  prototype: Liquid
+  components:
+    GAME.GameFluidVolume: {height: 50.0, width: 140.0}
+    GAME.GameTransform: {x: 680.0, "y": 70.0}
+- name: Chiller
+  prototype: LabChiller
+  components:
+    GAME.GameTransform: {x: 680.0, "y": 90.0}

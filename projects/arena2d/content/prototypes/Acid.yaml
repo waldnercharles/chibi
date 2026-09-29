@@ -1,0 +1,15 @@
+name: Acid
+components:
+  GAME.MaterialSubstance:
+    absorption: 0.05
+    cohesion: 0.4
+    color: 2633968352
+    corrosion: 2.0
+    density: 0.3
+    emission: 0.15
+    friction: 0.05
+    phase: Liquid
+    refraction: 6.0
+    stiffness: 0.9
+    viscosity: 0.03
+    visibility: 0.02

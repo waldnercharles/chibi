@@ -1,0 +1,3 @@
+name: Exhaust
+components:
+  GAME.MaterialSubstance: {color: 4288223999, cooling: 2.5, density: 0.016}

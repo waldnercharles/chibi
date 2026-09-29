@@ -245,7 +245,8 @@ section below and updated as work lands.
 ## Progress
 
 - [ ] Engine: gameplay runtime capabilities
-- [ ] Engine: matter (gravity, substances, reactions, deposition, MPM)
+- [x] Engine: matter (gravity, substances, reactions, deposition, MPM); see
+      [the material engine](material-engine.md) and `scenes/MatterLab.yaml`
 - [ ] Engine: rendering spectacle
 - [ ] Content: ship, weapons and modules
 - [ ] Content: strata terrain, materials and backdrops

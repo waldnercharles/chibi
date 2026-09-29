@@ -9,6 +9,25 @@ static void predecessor(int *parents, int target, int pc)
 {
     parents[target] = parents[target] == -1 && pc < target ? pc : -2;
 }
+int *behavior_function_parents(const behavior_function_instruction *code, int count)
+{
+    int *parents = xmalloc((size_t)(count + 1) * sizeof *parents);
+    for (int pc = 0; pc < count; pc++) {
+        parents[pc] = -1;
+    }
+    parents[0] = -2;
+    for (int pc = 0; pc < count; pc++) {
+        behavior_function_op op = code[pc].op;
+        if (op == BF_JUMP || op == BF_BRANCH) {
+            predecessor(parents, code[pc].target, pc);
+        }
+        if (pc + 1 < count && op != BF_JUMP && op != BF_RETURN &&
+            op != BF_END && op != BF_FAIL) {
+            predecessor(parents, pc + 1, pc);
+        }
+    }
+    return parents;
+}
 static bool reusable_call(const behavior_function *f, const behavior_function_instruction *i)
 {
     return i->op == BF_HOST_CALL && i->left == BEHAVIOR_FUNCTION_HOST_DATA &&
@@ -46,27 +65,13 @@ void behavior_function_reuse_reads(behavior_function *f, bool *keep)
     asetlen(f->runtime_body, count);
     memcpy(f->runtime_body, f->instructions, (size_t)count * sizeof *f->instructions);
     behavior_function_instruction *code = f->runtime_body;
-    int *parents = xmalloc((size_t)count * sizeof *parents);
+    int *parents = behavior_function_parents(code, count);
     int *slots = xmalloc((size_t)(values + 1) * sizeof *slots);
     int *banks = xmalloc((size_t)(acount(f->data_values) + 1) * sizeof *banks);
     bool *unused = xcalloc((size_t)(acount(f->data_values) + 1), sizeof *unused);
     bool *pinned = xcalloc((size_t)(values + 1), sizeof *pinned);
     int *scratch = xcalloc((size_t)(values + 1), sizeof *scratch);
     bool *writes = xcalloc((size_t)count, sizeof *writes);
-    for (int pc = 0; pc < count; pc++) {
-        parents[pc] = -1;
-    }
-    parents[0] = -2;
-    for (int pc = 0; pc < count; pc++) {
-        behavior_function_op op = code[pc].op;
-        if (op == BF_JUMP || op == BF_BRANCH) {
-            predecessor(parents, code[pc].target, pc);
-        }
-        if (pc + 1 < count && op != BF_JUMP && op != BF_RETURN &&
-            op != BF_END && op != BF_FAIL) {
-            predecessor(parents, pc + 1, pc);
-        }
-    }
     for (int j = 0; j < acount(f->suspensions); j++) {
         const behavior_function_suspension *s = &f->suspensions[j];
         if (code[s->pc].op == BF_POINT) {

@@ -509,6 +509,115 @@ void behavior_function_reuse_accesses(behavior_function *f)
     free(locals);
 }
 
+/* Pure values depend only on their operands, and constants and scalar
+ * arguments are fixed for an invocation. An equal value earlier on the single
+ * forward predecessor chain dominates, so later copies read its slot. Checked
+ * integer division, reads through pointers, randomness and effects always
+ * execute. */
+static bool pure(const behavior_function_instruction *i)
+{
+    if ((i->op == BF_DIV || i->op == BF_MOD) && behavior_scalar_integer(i->type)) {
+        return false;
+    }
+    return (i->op >= BF_ADD && i->op <= BF_SELECT) || behavior_function_math(i->op);
+}
+static bool invariant(const behavior_function_instruction *i)
+{
+    return (i->op == BF_CONSTANT || i->op == BF_ARGUMENT) && !i->indirect;
+}
+static bool same_operand(const behavior_function *f, const int *definitions, int a, int b)
+{
+    if (a == b) {
+        return true;
+    }
+    if (definitions[a] < 0 || definitions[b] < 0) {
+        return false;
+    }
+    const behavior_function_instruction *x = &f->instructions[definitions[a]],
+                                        *y = &f->instructions[definitions[b]];
+    return invariant(x) && invariant(y) && x->op == y->op && x->type == y->type &&
+           x->left == y->left && x->value.u64 == y->value.u64;
+}
+static bool same_value(
+    const behavior_function *f,
+    const int *definitions,
+    const behavior_function_instruction *a,
+    const behavior_function_instruction *b
+)
+{
+    return a->op == b->op && a->type == b->type &&
+           same_operand(f, definitions, a->left, b->left) &&
+           same_operand(f, definitions, a->right, b->right) &&
+           (!behavior_function_third_slot(a->op) ||
+            same_operand(f, definitions, a->target, b->target));
+}
+/* Waits save live values; keep shared values out of that state. Inspection
+ * points only suspend observed runs, so values may cross them. */
+static bool resumes(behavior_function_op op)
+{
+    return op == BF_SUSPEND || op == BF_DELAY || op == BF_INVOKE;
+}
+void behavior_function_reuse_values(behavior_function *f)
+{
+    int count = acount(f->instructions), values = acount(f->slots);
+    int *parents = behavior_function_parents(f->instructions, count);
+    int *slots = xmalloc((size_t)(values + 1) * sizeof *slots);
+    int *definitions = xmalloc((size_t)(values + 1) * sizeof *definitions);
+    int *pcs = xmalloc((size_t)(count + 1) * sizeof *pcs);
+    bool *keep = xmalloc((size_t)(count + 1) * sizeof *keep);
+    for (int i = 0; i < values; i++) {
+        slots[i] = i;
+        definitions[i] = -1;
+    }
+    for (int pc = 0; pc < count; pc++) {
+        behavior_function_instruction *i = &f->instructions[pc];
+        if (behavior_function_left_slot(i->op)) {
+            i->left = slots[i->left];
+        }
+        if (behavior_function_right_slot(i->op)) {
+            i->right = slots[i->right];
+        }
+        if (behavior_function_third_slot(i->op)) {
+            i->target = slots[i->target];
+        }
+        keep[pc] = true;
+        if (i->op < BF_STORE) {
+            definitions[i->output] = pc;
+        }
+        for (int at = parents[pc]; pure(i) && at >= 0; at = parents[at]) {
+            const behavior_function_instruction *previous = &f->instructions[at];
+            if (resumes(previous->op)) {
+                break;
+            }
+            if (keep[at] && same_value(f, definitions, previous, i)) {
+                slots[i->output] = previous->output;
+                keep[pc] = false;
+                break;
+            }
+        }
+    }
+    int kept = 0;
+    for (int pc = 0; pc < count; pc++) {
+        pcs[pc] = kept;
+        if (keep[pc]) {
+            f->instructions[kept++] = f->instructions[pc];
+        }
+    }
+    pcs[count] = kept;
+    asetlen(f->instructions, kept);
+    for (int pc = 0; pc < kept; pc++) {
+        behavior_function_instruction *i = &f->instructions[pc];
+        if (i->op == BF_JUMP || i->op == BF_BRANCH) {
+            i->target = pcs[i->target];
+        }
+    }
+    free(keep);
+    free(pcs);
+    free(definitions);
+    free(slots);
+    free(parents);
+}
+
 /* Fold locals whose only writes repeat their initial scalar value, including
  * loop break flags when the body has no Break. No control-flow assumption is
  * needed: entry, re-entry and every store all write the same bits. */

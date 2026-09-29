@@ -350,6 +350,10 @@ void behavior_function_prune_values(behavior_function *function);
 void behavior_function_runtime_code(behavior_function *function);
 void behavior_function_reuse_accesses(behavior_function *function);
 void behavior_function_reuse_reads(behavior_function *function, bool *keep);
+void behavior_function_reuse_values(behavior_function *function);
+/* The single forward predecessor of each instruction, -2 at the entry, joins
+ * and loop headers, or -1 when unreachable. The caller frees the result. */
+int *behavior_function_parents(const behavior_function_instruction *code, int count);
 void behavior_function_optimize(behavior_function *function);
 void behavior_function_fuse_queries(behavior_function *function);
 static inline bool behavior_function_fast_allowed(

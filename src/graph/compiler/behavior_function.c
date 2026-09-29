@@ -727,6 +727,7 @@ static bool lower_definition(
         behavior_function_constant_locals(b.function);
         compact_locals(b.function);
         behavior_function_reuse_accesses(b.function);
+        behavior_function_reuse_values(b.function);
         compact_locals(b.function);
         behavior_function_prune_values(b.function);
         behavior_function_optimize(b.function);

@@ -1,3 +1,4 @@
+#include "graph/compiler/behavior_function_internal.h"
 #include "graph/runtime/flow_internal.h"
 #include "graph/runtime/runtime.h"
 #include "test/suite_internal.h"
@@ -163,6 +164,94 @@ static void calls_preserve_state()
     behavior_asset_free(a);
 }
 
+static int count_ops(const behavior_function *f, behavior_function_op op)
+{
+    int count = 0;
+    for (int i = 0; i < acount(f->instructions); i++) {
+        count += f->instructions[i].op == op;
+    }
+    return count;
+}
+
+/* Each flow node re-evaluates the pure data it reads. The compiled body
+ * shares an equal dominating value, including one rebuilt from constants and
+ * arguments, but recomputes a value whose input a state write changed. */
+static void shared_values()
+{
+    behavior_asset *a = behavior_asset_new("Shared pure values");
+    const char *names[] = { "X", "Y", "Z", "W" };
+    for (int i = 0; i < 4; i++) {
+        assert(
+            behavior_asset_add_variable(a, names[i], PIN_F64, "double", PIN_CONTAINER_SINGLE, NULL, "")
+        );
+    }
+    graph *g = a->graph;
+    node *event = graph_add_node(g, &NODE_Event);
+    assert(graph_set_event_name(g, event, "Run") == 0);
+    pin_spec argument = { .name = "A",
+                          .kind = PIN_DATA,
+                          .type = PIN_F64,
+                          .type_name = "double",
+                          .default_value = { .type = PIN_F64, .d = .5 } };
+    assert(graph_add_pin(g, event, 1, &argument) >= 0);
+    node *sine = graph_add_node(g, registry_node_by_name("Sine"));
+    node *scaled = graph_add_node(g, registry_node_by_name("Multiply"));
+    for (int i = 0; i < 2; i++) {
+        assert(graph_set_pin_type(g, scaled, 0, i, PIN_F64, "double") == 0);
+    }
+    assert(graph_set_pin_type(g, scaled, 1, 0, PIN_F64, "double") == 0);
+    assert(graph_set_pin_default(g, scaled, 0, 1, &(pin_value){ .type = PIN_F64, .d = 2 }) == 0);
+    assert(graph_connect_data(g, event, 1, sine, 0) == 0);
+    assert(graph_connect_data(g, sine, 0, scaled, 0) == 0);
+    node *state = behavior_asset_add_get_node(a, a->variables[2].id);
+    node *state_sine = graph_add_node(g, registry_node_by_name("Sine"));
+    assert(graph_connect_data(g, state, 0, state_sine, 0) == 0);
+    node *previous = event;
+    for (int i = 0; i < 4; i++) {
+        node *set = behavior_asset_add_set_node(a, a->variables[i].id);
+        assert(graph_connect_data(g, i < 2 ? scaled : state_sine, 0, set, 1) == 0);
+        assert(graph_connect_exec(g, previous, 0, set, 0, 0) == 0);
+        previous = set;
+    }
+    pin_value input = argument.default_value;
+    double expected[4];
+    for (int mode = 0; mode < 3; mode++) {
+        behavior_backend backend = (behavior_backend[]){ BEHAVIOR_ORACLE,
+                                                         BEHAVIOR_BYTECODE,
+                                                         behavior_default_backend() }[mode];
+        behavior_instance *bi = behavior_instance_create(a, NULL, NULL, NULL);
+        assert(!behavior_instance_set_backend(bi, backend));
+        behavior_instance_set_trace_enabled(bi, 0);
+        bi->variables[2].d = .25;
+        flow_options options = { .instance = bi };
+        flow_error error = { 0 };
+        flow_run *run = flow_run_start(
+            g,
+            event,
+            (flow_inputs){ .values = &input, .count = 1 },
+            &options,
+            &error
+        );
+        assert(run && flow_run_resume(run) == 0);
+        for (int i = 0; i < 4; i++) {
+            if (!mode) {
+                expected[i] = bi->variables[i].d;
+            } else {
+                same_real(bi->variables[i].d, expected[i]);
+            }
+        }
+        assert(!mode || run->whole_function_executed);
+        flow_run_free(run);
+        behavior_instance_destroy(bi);
+    }
+    assert(expected[0] == sin(.5) * 2 && expected[1] == expected[0]);
+    assert(expected[2] == sin(.25) && expected[3] == sin(expected[2]));
+    const behavior_function
+        *f = behavior_program_function(behavior_program_graph(a->program, g), event);
+    assert(f && count_ops(f, BF_SIN) == 3 && count_ops(f, BF_MUL) == 1);
+    behavior_asset_free(a);
+}
+
 void test_compiled_math()
 {
     const char *names[] = { "Sine",        "Cosine",     "Tangent",
@@ -174,5 +263,6 @@ void test_compiled_math()
     }
     primitive("Clamp", PIN_F32);
     calls_preserve_state();
-    puts("PASS: whole math calls preserve scalar values, ABI registers, frame budgets and clamp edge cases");
+    shared_values();
+    puts("PASS: whole math calls preserve scalar values, ABI registers, frame budgets, clamp edge cases and shared pure values");
 }

@@ -19,6 +19,7 @@ components:
     payload: -1
     pierce: 99
     speed: 90.0
+  GAME.GameTrail: {color: 3010199551, emission: 0.5, lifetime: 0.5, width: 8.0}
   GAME.GameTransform: {}
   GAME.GameVelocity: {}
 behaviors: [Shot]

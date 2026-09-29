@@ -20,6 +20,7 @@ components:
     lifetime: 2.4
     payload: -1
     speed: 170.0
+  GAME.GameTrail: {color: 4283410175, emission: 0.4, lifetime: 0.4, width: 3.0}
   GAME.GameTransform: {}
   GAME.GameVelocity: {}
 behaviors: [Shot]

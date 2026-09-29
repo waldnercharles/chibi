@@ -7,16 +7,16 @@ entities:
 - name: Player
   prototype: Wren
   components:
-    GameTransform: {x: -220.0, "y": 420.0}
-  behaviors: [Hardpoints, ShipFlight, ShipHull]
+    GameTransform: {x: 0.0, "y": 330.0}
+  behaviors: [Hardpoints, PlayerEffects, ShipFlight, ShipHull]
 - name: Camera
   prototype: WellCamera
   components:
-    GameTransform: {x: -220.0, "y": 420.0}
+    GameTransform: {x: 0.0, "y": 330.0}
   behaviors: [CameraFollow]
 - name: Lighting
   prototype: WellLighting
-  behaviors: [Atmosphere]
+  behaviors: [Ambience, Atmosphere]
 - {name: FireMouse, prototype: FireMouse}
 - {name: FireStick, prototype: FireStick}
 - {name: SecondaryMouse, prototype: SecondaryMouse}
@@ -50,3 +50,6 @@ entities:
 - name: Lab kit
   prototype: SanctumLabKit
   behaviors: [SanctumLabKit]
+- name: Title
+  prototype: TitleScreen
+  behaviors: [TitleScreen, RecapLedger]

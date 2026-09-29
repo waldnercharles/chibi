@@ -1,6 +1,6 @@
 version: 3
 name: SanctumProbe
-id_counter: 170
+id_counter: 171
 description: probe
 owner_type: ecs.entity
 graphs:
@@ -11,112 +11,132 @@ graphs:
   - id: 3
     type: Set Global Variable
     inputs:
-      Name: StatPrice
-      Value: {type: double, default: 1.0}
+      Name: Scrap
+      Value: {type: int, default: 240}
     outputs:
-      Value: {type: double}
+      Value: {type: int}
   - id: 9
     type: Get Global Variable
-    inputs: {Name: StatPrice}
+    inputs: {Name: Scrap}
     outputs:
-      Value: {type: double}
-  - id: 29
+      Value: {type: int}
+  - {id: 12, type: To Real}
+  - id: 27
     type: Behavior Expression
-    reference_id: 12
-    reference_name: round(12 * m)
-    inputs:
-      m: {type: double}
+    reference_id: 15
+    reference_name: round(32.2)
     outputs:
       Result: {type: double}
-  - id: 32
+  - {id: 29, type: To Integer}
+  - {id: 32, type: To Real}
+  - id: 47
+    type: Behavior Expression
+    reference_id: 35
+    reference_name: s >= p
+    inputs:
+      s: {type: double, flags: 0}
+      p: {type: double, flags: 0}
+    outputs:
+      Result: {type: bool}
+  - id: 54
     type: Format Text
     inputs:
-      Format: round(12 * m) = {}
-      Arg0: {type: double}
-  - {id: 36, type: Print String}
-  - id: 57
+      Format: s >= p = {}
+      Arg0: {type: bool}
+  - {id: 58, type: Print String}
+  - id: 81
     type: Behavior Expression
-    reference_id: 40
-    reference_name: round(m * 12)
+    reference_id: 62
+    reference_name: s - p >= 0
     inputs:
-      m: {type: double}
+      s: {type: double}
+      p: {type: double}
+    outputs:
+      Result: {type: bool}
+  - id: 88
+    type: Format Text
+    inputs:
+      Format: s - p >= 0 = {}
+      Arg0: {type: bool}
+  - {id: 92, type: Print String}
+  - id: 108
+    type: Behavior Expression
+    reference_id: 96
+    reference_name: step(p, s)
+    inputs:
+      p: {type: double}
+      s: {type: double}
     outputs:
       Result: {type: double}
-  - id: 60
+  - id: 112
     type: Format Text
     inputs:
-      Format: round(m * 12) = {}
+      Format: step(p, s) = {}
       Arg0: {type: double}
-  - {id: 64, type: Print String}
-  - id: 82
+  - {id: 116, type: Print String}
+  - id: 132
     type: Behavior Expression
-    reference_id: 68
-    reference_name: 12 * m
+    reference_id: 120
+    reference_name: s > p
     inputs:
-      m: {type: double}
+      s: {type: double, flags: 0}
+      p: {type: double, flags: 0}
     outputs:
-      Result: {type: double}
-  - id: 85
+      Result: {type: bool}
+  - id: 139
     type: Format Text
     inputs:
-      Format: 12 * m = {}
-      Arg0: {type: double}
-  - {id: 89, type: Print String}
-  - id: 117
-    type: Behavior Expression
-    reference_id: 93
-    reference_name: floor(12 * m + 0.5)
-    inputs:
-      m: {type: double}
-    outputs:
-      Result: {type: double}
-  - id: 120
-    type: Format Text
-    inputs:
-      Format: floor(12 * m + 0.5) = {}
-      Arg0: {type: double}
-  - {id: 124, type: Print String}
+      Format: s > p = {}
+      Arg0: {type: bool}
+  - {id: 143, type: Print String}
   - id: 159
     type: Behavior Expression
-    reference_id: 128
-    reference_name: round((18 + 14 * 1) * m)
+    reference_id: 147
+    reference_name: s - p
     inputs:
-      m: {type: double}
+      s: {type: double}
+      p: {type: double}
     outputs:
       Result: {type: double}
-  - id: 162
+  - id: 163
     type: Format Text
     inputs:
-      Format: round((18 + 14 * 1) * m) = {}
+      Format: s - p = {}
       Arg0: {type: double}
-  - {id: 166, type: Print String}
+  - {id: 167, type: Print String}
   edges:
   - {from: 1.Then, to: 3.Exec}
-  - {from: 3.Then, to: 36.Exec}
-  - {from: 9.Value, to: 29.m}
-  - {from: 9.Value, to: 57.m}
-  - {from: 9.Value, to: 82.m}
-  - {from: 9.Value, to: 117.m}
-  - {from: 9.Value, to: 159.m}
-  - {from: 29.Result, to: 32.Arg0}
-  - {from: 32.Result, to: 36.InString}
-  - {from: 36.Then, to: 64.Exec}
-  - {from: 57.Result, to: 60.Arg0}
-  - {from: 60.Result, to: 64.InString}
-  - {from: 64.Then, to: 89.Exec}
-  - {from: 82.Result, to: 85.Arg0}
-  - {from: 85.Result, to: 89.InString}
-  - {from: 89.Then, to: 124.Exec}
-  - {from: 117.Result, to: 120.Arg0}
-  - {from: 120.Result, to: 124.InString}
-  - {from: 124.Then, to: 166.Exec}
-  - {from: 159.Result, to: 162.Arg0}
-  - {from: 162.Result, to: 166.InString}
-- {id: 12, kind: function, math_expression: round(12 * m), entry_id: 13}
-- {id: 40, kind: function, math_expression: round(m * 12), entry_id: 41}
-- {id: 68, kind: function, math_expression: 12 * m, entry_id: 69}
-- {id: 93, kind: function, math_expression: floor(12 * m + 0.5), entry_id: 94}
-- id: 128
-  kind: function
-  math_expression: round((18 + 14 * 1) * m)
-  entry_id: 129
+  - {from: 3.Then, to: 58.Exec}
+  - {from: 9.Value, to: 12.Value}
+  - {from: 12.Real, to: 47.s}
+  - {from: 12.Real, to: 81.s}
+  - {from: 12.Real, to: 108.s}
+  - {from: 12.Real, to: 132.s}
+  - {from: 12.Real, to: 159.s}
+  - {from: 27.Result, to: 29.Value}
+  - {from: 29.Integer, to: 32.Value}
+  - {from: 32.Real, to: 47.p}
+  - {from: 32.Real, to: 81.p}
+  - {from: 32.Real, to: 108.p}
+  - {from: 32.Real, to: 132.p}
+  - {from: 32.Real, to: 159.p}
+  - {from: 47.Result, to: 54.Arg0}
+  - {from: 54.Result, to: 58.InString}
+  - {from: 58.Then, to: 92.Exec}
+  - {from: 81.Result, to: 88.Arg0}
+  - {from: 88.Result, to: 92.InString}
+  - {from: 92.Then, to: 116.Exec}
+  - {from: 108.Result, to: 112.Arg0}
+  - {from: 112.Result, to: 116.InString}
+  - {from: 116.Then, to: 143.Exec}
+  - {from: 132.Result, to: 139.Arg0}
+  - {from: 139.Result, to: 143.InString}
+  - {from: 143.Then, to: 167.Exec}
+  - {from: 159.Result, to: 163.Arg0}
+  - {from: 163.Result, to: 167.InString}
+- {id: 15, kind: function, math_expression: round(32.2), entry_id: 16}
+- {id: 35, kind: function, math_expression: s >= p, entry_id: 36}
+- {id: 62, kind: function, math_expression: s - p >= 0, entry_id: 63}
+- {id: 96, kind: function, math_expression: 'step(p, s)', entry_id: 97}
+- {id: 120, kind: function, math_expression: s > p, entry_id: 121}
+- {id: 147, kind: function, math_expression: s - p, entry_id: 148}

@@ -8,7 +8,7 @@ entities:
   prototype: Wren
   components:
     GameTransform: {x: 0.0, "y": 4800.0}
-  behaviors: [Hardpoints, ShipFlight, ShipHull]
+  behaviors: [Hardpoints, PlayerEffects, ShipFlight, ShipHull]
 - name: Camera
   prototype: WellCamera
   components:
@@ -16,7 +16,7 @@ entities:
   behaviors: [CameraFollow]
 - name: Lighting
   prototype: WellLighting
-  behaviors: [Atmosphere]
+  behaviors: [Ambience, Atmosphere]
 - {name: FireMouse, prototype: FireMouse}
 - {name: FireStick, prototype: FireStick}
 - {name: SecondaryMouse, prototype: SecondaryMouse}
@@ -28,11 +28,11 @@ entities:
   behaviors: [WellHudDisplay]
 - {name: Basalt Throat, prototype: StratumThroat}
 - name: Throat deep
-  prototype: Backdrop
+  prototype: BackdropDeep
   components:
     GameBackdrop2D: {material: ThroatDeep, parallax: 0.12, layer: 0, intensity: 1.0}
 - name: Throat columns
-  prototype: Backdrop
+  prototype: BackdropFar
   components:
     GameBackdrop2D: {material: ThroatColumns, parallax: 0.45, layer: 1, intensity: 1.0, lit: true}
 - name: The Grinder

@@ -1,0 +1,164 @@
+version: 3
+name: WardenNodeSkin
+domain: material
+id_counter: 394
+description: 'The WardenNode''s skin. Prismatic crystal: pale facets whose edges and spokes blaze Glow with Accent iridescence that shifts across the face; Charge floods it with light before an attack and Flash whitens it on a hit.'
+graphs:
+- kind: event
+  name: ""
+  nodes:
+  - id: 1
+    type: Shader Surface Output
+    inputs:
+      Base Color:
+        default: {x: 1.0, "y": 1.0, z: 1.0}
+      Emission:
+        default: {x: 0.0, "y": 0.0, z: 0.0}
+      Roughness: 0.12
+      Normal:
+        default: {x: 0.0, "y": 0.0, z: 0.0}
+  - id: 12
+    type: Shader Parameter
+    reference_name: Body
+    outputs:
+      Value:
+        type: struct
+        type_name: ShaderVec3
+        default: {x: 0.08, "y": 0.04, z: 0.08}
+  - id: 14
+    type: Shader Parameter
+    reference_id: 1
+    reference_name: Glow
+    outputs:
+      Value:
+        type: struct
+        type_name: ShaderVec3
+        default: {x: 1.0, "y": 0.3, z: 0.8}
+  - {id: 16, type: Shader Parameter, reference_id: 2, reference_name: Flash}
+  - {id: 18, type: Shader Parameter, reference_id: 3, reference_name: Charge}
+  - id: 20
+    type: Shader Parameter
+    reference_id: 4
+    reference_name: Accent
+    outputs:
+      Value:
+        type: struct
+        type_name: ShaderVec3
+        default: {x: 0.2, "y": 1.0, z: 0.9}
+  - {id: 22, type: Shader Parameter, reference_id: 5, reference_name: Pulse}
+  - {id: 24, type: Shader Position}
+  - {id: 26, type: Shader Time}
+  - id: 28
+    type: Call Pure Function
+    reference_id: 648
+    reference_name: WardenNode
+    reference_asset: BossForms
+    inputs:
+      Position: {declaration_id: 653, type: struct, type_name: ShaderVec2}
+    outputs:
+      Distance: {declaration_id: 654, type: float}
+  - id: 47
+    type: Behavior Expression
+    reference_id: 31
+    reference_name: smoothstep(-2.4, -0.2, d)
+    inputs:
+      d: {type: float}
+    outputs:
+      Result: {type: float}
+  - id: 66
+    type: Behavior Expression
+    reference_id: 50
+    reference_name: smoothstep(-6, -22, d)
+    inputs:
+      d: {type: float}
+    outputs:
+      Result: {type: float}
+  - id: 118
+    type: Behavior Expression
+    reference_id: 69
+    reference_name: 0.5 + 0.5 * sin(p.x * 0.35 + p.y * 0.21 + t * 3)
+    inputs:
+      p: {type: struct, type_name: ShaderVec2}
+      t: {type: float}
+    outputs:
+      Result: {type: float}
+  - id: 227
+    type: Behavior Expression
+    reference_id: 177
+    reference_name: mix(body * (0.55 + 0.45 * smoothstep(-12, 0, d)), vec3(1, 1, 1), flash)
+    inputs:
+      body: {type: struct, type_name: ShaderVec3}
+      d: {type: float}
+      flash: {type: float}
+    outputs:
+      Result: {type: struct, type_name: ShaderVec3}
+  - id: 298
+    type: Behavior Expression
+    reference_id: 232
+    reference_name: (glow * (rim * 1.8 + core * 1.2 + pulse * 0.6) + accent * pattern * (0.6 + rim)) * 1.3
+    inputs:
+      glow: {type: struct, type_name: ShaderVec3}
+      rim: {type: float}
+      core: {type: float}
+      pulse: {type: float}
+      accent: {type: struct, type_name: ShaderVec3}
+      pattern: {type: float}
+    outputs:
+      Result: {type: struct, type_name: ShaderVec3}
+  - id: 386
+    type: Behavior Expression
+    reference_id: 306
+    reference_name: lum + glow * charge * (0.8 + 0.6 * sin(t * 26)) * (0.4 + rim) + vec3(1, 1, 1) * flash * 0.9
+    inputs:
+      lum: {type: struct, type_name: ShaderVec3}
+      glow: {type: struct, type_name: ShaderVec3}
+      charge: {type: float}
+      t: {type: float}
+      rim: {type: float}
+      flash: {type: float}
+    outputs:
+      Result: {type: struct, type_name: ShaderVec3}
+  edges:
+  - {from: 12.Value, to: 227.body}
+  - {from: 14.Value, to: 298.glow}
+  - {from: 14.Value, to: 386.glow}
+  - {from: 16.Value, to: 227.flash}
+  - {from: 16.Value, to: 386.flash}
+  - {from: 18.Value, to: 386.charge}
+  - {from: 20.Value, to: 298.accent}
+  - {from: 22.Value, to: 298.pulse}
+  - {from: 24.Position, to: 28.Position}
+  - {from: 24.Position, to: 118.p}
+  - {from: 26.Value, to: 118.t}
+  - {from: 26.Value, to: 386.t}
+  - {from: 28.Distance, to: 47.d}
+  - {from: 28.Distance, to: 66.d}
+  - {from: 28.Distance, to: 227.d}
+  - {from: 47.Result, to: 298.rim}
+  - {from: 47.Result, to: 386.rim}
+  - {from: 66.Result, to: 298.core}
+  - {from: 118.Result, to: 298.pattern}
+  - {from: 227.Result, to: 1.Base Color}
+  - {from: 298.Result, to: 386.lum}
+  - {from: 386.Result, to: 1.Emission}
+- id: 31
+  kind: function
+  math_expression: smoothstep(-2.4, -0.2, d)
+  entry_id: 32
+- {id: 50, kind: function, math_expression: 'smoothstep(-6, -22, d)', entry_id: 51}
+- id: 69
+  kind: function
+  math_expression: 0.5 + 0.5 * sin(p.x * 0.35 + p.y * 0.21 + t * 3)
+  entry_id: 123
+- id: 177
+  kind: function
+  math_expression: mix(body * (0.55 + 0.45 * smoothstep(-12, 0, d)), vec3(1, 1, 1), flash)
+  entry_id: 178
+- id: 232
+  kind: function
+  math_expression: (glow * (rim * 1.8 + core * 1.2 + pulse * 0.6) + accent * pattern * (0.6 + rim)) * 1.3
+  entry_id: 233
+- id: 306
+  kind: function
+  math_expression: lum + glow * charge * (0.8 + 0.6 * sin(t * 26)) * (0.4 + rim) + vec3(1, 1, 1) * flash * 0.9
+  entry_id: 307

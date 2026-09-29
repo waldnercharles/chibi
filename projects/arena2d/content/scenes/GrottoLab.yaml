@@ -8,7 +8,7 @@ entities:
   prototype: Wren
   components:
     GameTransform: {x: 0.0, "y": 6330.0}
-  behaviors: [Hardpoints, ShipFlight, ShipHull]
+  behaviors: [Hardpoints, PlayerEffects, ShipFlight, ShipHull]
 - name: Camera
   prototype: WellCamera
   components:
@@ -16,7 +16,7 @@ entities:
   behaviors: [CameraFollow]
 - name: Lighting
   prototype: WellLighting
-  behaviors: [Atmosphere]
+  behaviors: [Ambience, Atmosphere]
 - {name: FireMouse, prototype: FireMouse}
 - {name: FireStick, prototype: FireStick}
 - {name: SecondaryMouse, prototype: SecondaryMouse}

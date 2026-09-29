@@ -13,6 +13,7 @@ components:
   GAME.GameMovement: {speed: 230.0}
   GAME.GameOrientation: {}
   GAME.GameShader: {material: WrenHull, parameters: "", shape: WrenShape}
+  GAME.GameTrail: {color: 1878458367, emission: 0.18, lifetime: 0.22, width: 2.5}
   GAME.GameTransform: {}
   GAME.GameVelocity: {}
-behaviors: [Hardpoints, ShipFlight, ShipHull]
+behaviors: [Hardpoints, PlayerEffects, ShipFlight, ShipHull]

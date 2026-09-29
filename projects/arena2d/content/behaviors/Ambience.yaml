@@ -1,0 +1,276 @@
+version: 3
+name: Ambience
+id_counter: 435
+description: 'The well''s soundscape: a slow drone on each stratum''s root and fifth, and now and then a distant drip, chime or clank.'
+owner_type: ecs.entity
+variables:
+- id: 1
+  name: roots
+  type: float
+  container: 1
+  default: [55.0, 73.42, 98.0, 49.0, 41.2]
+- id: 2
+  name: noises
+  type: float
+  container: 1
+  default: [0.35, 0.1, 0.05, 0.55, 0.25]
+- id: 3
+  name: sparks
+  type: float
+  container: 1
+  default: [880.0, 1318.5, 1567.98, 440.0, 1975.5]
+- {id: 4, name: drone, type: float}
+- {id: 5, name: detail, type: float, default: 2.0}
+graphs:
+- kind: event
+  name: ""
+  nodes:
+  - id: 6
+    type: Event
+    reference_name: Tick
+    outputs:
+      DeltaSeconds: {type: float, kind: data}
+  - id: 9
+    type: Get Global Variable
+    inputs: {Name: Player}
+    outputs:
+      Value: {type: handle, type_name: ecs.entity}
+  - {id: 12, type: GetEntity_GameTransform}
+  - id: 43
+    type: Behavior Expression
+    reference_id: 15
+    reference_name: clamp(floor(p.y / 6000), 0, 4)
+    inputs:
+      p: {type: struct, type_name: GameTransform}
+    outputs:
+      Result: {type: double}
+  - id: 76
+    type: Get Variable
+    reference_id: 1
+    reference_name: roots
+    outputs:
+      Value: {type: float, container: 1}
+  - id: 78
+    type: Get
+    inputs:
+      Array: {type: float}
+    outputs:
+      Item: {type: float}
+  - id: 82
+    type: Get Variable
+    reference_id: 2
+    reference_name: noises
+    outputs:
+      Value: {type: float, container: 1}
+  - id: 84
+    type: Get
+    inputs:
+      Array: {type: float}
+    outputs:
+      Item: {type: float}
+  - id: 88
+    type: Get Variable
+    reference_id: 3
+    reference_name: sparks
+    outputs:
+      Value: {type: float, container: 1}
+  - id: 90
+    type: Get
+    inputs:
+      Array: {type: float}
+    outputs:
+      Item: {type: float}
+  - id: 106
+    type: Behavior Expression
+    reference_id: 94
+    reference_name: drone -= dt
+    inputs:
+      Exec: {id: 110, kind: exec}
+      drone:
+        id: 107
+        type: float
+        binding: {kind: variable, variable_id: 4, source_asset: Ambience}
+      dt:
+        type: double
+        binding: {kind: delta_time}
+    outputs:
+      Then: {id: 111, kind: exec}
+      Result: {id: 109, type: float}
+  - id: 143
+    type: Behavior Expression
+    reference_id: 129
+    reference_name: drone <= 0
+    inputs:
+      drone:
+        type: double
+        flags: 0
+        binding: {kind: variable, variable_id: 4, source_asset: Ambience}
+    outputs:
+      Result: {type: bool}
+  - {id: 149, type: Branch}
+  - id: 164
+    type: Behavior Expression
+    reference_id: 154
+    reference_name: drone = 3.6
+    inputs:
+      Exec: {id: 167, kind: exec}
+      drone:
+        id: 165
+        type: float
+        binding: {kind: variable, variable_id: 4, source_asset: Ambience}
+    outputs:
+      Then: {id: 168, kind: exec}
+      Result: {id: 166, type: float}
+  - id: 198
+    type: Behavior Expression
+    reference_id: 184
+    reference_name: r * 0.985
+    inputs:
+      r: {type: float}
+    outputs:
+      Result: {type: float}
+  - id: 201
+    type: Play Sound
+    inputs: {Duration: 4.0, Volume: 0.07}
+  - id: 224
+    type: Behavior Expression
+    reference_id: 210
+    reference_name: r * 1.5
+    inputs:
+      r: {type: float}
+    outputs:
+      Result: {type: float}
+  - id: 241
+    type: Behavior Expression
+    reference_id: 227
+    reference_name: r * 1.49
+    inputs:
+      r: {type: float}
+    outputs:
+      Result: {type: float}
+  - id: 244
+    type: Play Sound
+    inputs: {Duration: 3.8, Volume: 0.035}
+  - id: 265
+    type: Behavior Expression
+    reference_id: 253
+    reference_name: detail -= dt
+    inputs:
+      Exec: {id: 269, kind: exec}
+      detail:
+        id: 266
+        type: float
+        binding: {kind: variable, variable_id: 5, source_asset: Ambience}
+      dt:
+        type: double
+        binding: {kind: delta_time}
+    outputs:
+      Then: {id: 270, kind: exec}
+      Result: {id: 268, type: float}
+  - id: 302
+    type: Behavior Expression
+    reference_id: 288
+    reference_name: detail <= 0
+    inputs:
+      detail:
+        type: double
+        flags: 0
+        binding: {kind: variable, variable_id: 5, source_asset: Ambience}
+    outputs:
+      Result: {type: bool}
+  - {id: 308, type: Branch}
+  - id: 336
+    type: Behavior Expression
+    reference_id: 313
+    reference_name: detail = 2.5 + rand() * 6
+    inputs:
+      Exec: {id: 339, kind: exec}
+      detail:
+        id: 337
+        type: float
+        binding: {kind: variable, variable_id: 5, source_asset: Ambience}
+    outputs:
+      Then: {id: 340, kind: exec}
+      Result: {id: 338, type: float}
+  - id: 396
+    type: Behavior Expression
+    reference_id: 369
+    reference_name: s * (0.8 + rand() * 0.5)
+    inputs:
+      s: {type: float}
+    outputs:
+      Result: {type: float}
+  - id: 413
+    type: Behavior Expression
+    reference_id: 399
+    reference_name: s * 0.6
+    inputs:
+      s: {type: float}
+    outputs:
+      Result: {type: float}
+  - id: 424
+    type: Behavior Expression
+    reference_id: 416
+    reference_name: rand()
+    outputs:
+      Result: {type: double}
+  - id: 426
+    type: Play Sound
+    inputs: {Duration: 0.35, Volume: 0.045}
+  edges:
+  - {from: 6.Then, to: 106.Exec}
+  - {from: 9.Value, to: 12.Entity}
+  - {from: 12.Value, to: 43.p}
+  - {from: 43.Result, to: 78.Index, conversion: To Integer}
+  - {from: 43.Result, to: 84.Index, conversion: To Integer}
+  - {from: 43.Result, to: 90.Index, conversion: To Integer}
+  - {from: 76.Value, to: 78.Array}
+  - {from: 78.Item, to: 198.r}
+  - {from: 78.Item, to: 201.Frequency}
+  - {from: 78.Item, to: 224.r}
+  - {from: 78.Item, to: 241.r}
+  - {from: 82.Value, to: 84.Array}
+  - {from: 84.Item, to: 201.Noise}
+  - {from: 84.Item, to: 426.Noise}
+  - {from: 88.Value, to: 90.Array}
+  - {from: 90.Item, to: 396.s}
+  - {from: 90.Item, to: 413.s}
+  - {from: 106.Then, to: 149.Exec}
+  - {from: 143.Result, to: 149.Condition}
+  - {from: 149.True, to: 164.Exec}
+  - {from: 149.False, to: 265.Exec}
+  - {from: 164.Then, to: 201.Exec}
+  - {from: 198.Result, to: 201.End Frequency}
+  - {from: 201.Then, to: 244.Exec}
+  - {from: 224.Result, to: 244.Frequency}
+  - {from: 241.Result, to: 244.End Frequency}
+  - {from: 244.Then, to: 265.Exec}
+  - {from: 265.Then, to: 308.Exec}
+  - {from: 302.Result, to: 308.Condition}
+  - {from: 308.True, to: 336.Exec}
+  - {from: 336.Then, to: 426.Exec}
+  - {from: 396.Result, to: 426.Frequency}
+  - {from: 413.Result, to: 426.End Frequency}
+  - {from: 424.Result, to: 426.Pan}
+- id: 15
+  kind: function
+  math_expression: clamp(floor(p.y / 6000), 0, 4)
+  entry_id: 47
+- {id: 94, kind: function, math_expression: drone -= dt, entry_id: 113}
+- {id: 129, kind: function, math_expression: drone <= 0, entry_id: 130}
+- {id: 154, kind: function, math_expression: drone = 3.6, entry_id: 170}
+- {id: 184, kind: function, math_expression: r * 0.985, entry_id: 185}
+- {id: 210, kind: function, math_expression: r * 1.5, entry_id: 211}
+- {id: 227, kind: function, math_expression: r * 1.49, entry_id: 228}
+- {id: 253, kind: function, math_expression: detail -= dt, entry_id: 272}
+- {id: 288, kind: function, math_expression: detail <= 0, entry_id: 289}
+- id: 313
+  kind: function
+  math_expression: detail = 2.5 + rand() * 6
+  entry_id: 342
+- id: 369
+  kind: function
+  math_expression: s * (0.8 + rand() * 0.5)
+  entry_id: 370
+- {id: 399, kind: function, math_expression: s * 0.6, entry_id: 400}
+- {id: 416, kind: function, math_expression: rand(), entry_id: 417}

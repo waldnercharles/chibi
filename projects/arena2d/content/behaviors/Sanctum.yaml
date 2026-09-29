@@ -1,6 +1,6 @@
 version: 3
 name: Sanctum
-id_counter: 452
+id_counter: 461
 description: 'A safe chamber between strata: marks InSanctum while the ship is inside its box, and mends the hull there.'
 owner_type: ecs.entity
 variables:
@@ -150,35 +150,38 @@ graphs:
     outputs:
       Value.current: {}
       Value.maximum: {}
-  - id: 312
+  - {id: 292, type: To Real}
+  - {id: 295, type: To Real}
+  - id: 318
     type: Behavior Expression
-    reference_id: 292
+    reference_id: 298
     reference_name: min(m, c + floor(mend))
     inputs:
-      m: {type: int}
-      c: {type: int}
+      m: {type: double}
+      c: {type: double}
       mend:
         type: double
         binding: {kind: variable, variable_id: 4, source_asset: Sanctum}
     outputs:
       Result: {type: double}
-  - {id: 317, type: Set_GameHealth_current}
-  - id: 337
+  - {id: 323, type: To Integer}
+  - {id: 326, type: Set_GameHealth_current}
+  - id: 346
     type: Behavior Expression
-    reference_id: 323
+    reference_id: 332
     reference_name: mend -= floor(mend)
     inputs:
-      Exec: {id: 340, kind: exec}
+      Exec: {id: 349, kind: exec}
       mend:
-        id: 338
+        id: 347
         type: float
         binding: {kind: variable, variable_id: 4, source_asset: Sanctum}
     outputs:
-      Then: {id: 341, kind: exec}
-      Result: {id: 339, type: float}
-  - id: 375
+      Then: {id: 350, kind: exec}
+      Result: {id: 348, type: float}
+  - id: 384
     type: Behavior Expression
-    reference_id: 361
+    reference_id: 370
     reference_name: inside > 0.5
     inputs:
       inside:
@@ -187,34 +190,34 @@ graphs:
         binding: {kind: variable, variable_id: 3, source_asset: Sanctum}
     outputs:
       Result: {type: bool}
-  - {id: 381, type: Branch}
-  - id: 396
+  - {id: 390, type: Branch}
+  - id: 405
     type: Behavior Expression
-    reference_id: 386
+    reference_id: 395
     reference_name: inside = 0
     inputs:
-      Exec: {id: 399, kind: exec}
+      Exec: {id: 408, kind: exec}
       inside:
-        id: 397
+        id: 406
         type: float
         binding: {kind: variable, variable_id: 3, source_asset: Sanctum}
     outputs:
-      Then: {id: 400, kind: exec}
-      Result: {id: 398, type: float}
-  - id: 426
+      Then: {id: 409, kind: exec}
+      Result: {id: 407, type: float}
+  - id: 435
     type: Behavior Expression
-    reference_id: 416
+    reference_id: 425
     reference_name: mend = 0
     inputs:
-      Exec: {id: 429, kind: exec}
+      Exec: {id: 438, kind: exec}
       mend:
-        id: 427
+        id: 436
         type: float
         binding: {kind: variable, variable_id: 4, source_asset: Sanctum}
     outputs:
-      Then: {id: 430, kind: exec}
-      Result: {id: 428, type: float}
-  - id: 446
+      Then: {id: 439, kind: exec}
+      Result: {id: 437, type: float}
+  - id: 455
     type: Set Global Variable
     inputs:
       Name: InSanctum
@@ -226,14 +229,14 @@ graphs:
   - {from: 8.Value, to: 11.Entity}
   - {from: 8.Value, to: 20.Entity}
   - {from: 8.Value, to: 287.Entity}
-  - {from: 8.Value, to: 317.Target}
+  - {from: 8.Value, to: 326.Target}
   - {from: 11.Value, to: 15.Condition}
   - {from: 15.True, to: 62.Exec}
-  - {from: 15.False, to: 381.Exec}
+  - {from: 15.False, to: 390.Exec}
   - {from: 20.Value.x, to: 62.px}
   - {from: 20.Value.y, to: 62.py}
   - {from: 62.True, to: 131.Exec}
-  - {from: 62.False, to: 381.Exec}
+  - {from: 62.False, to: 390.Exec}
   - {from: 125.Result, to: 131.Condition}
   - {from: 131.True, to: 146.Exec}
   - {from: 131.False, to: 232.Exec}
@@ -245,15 +248,18 @@ graphs:
   - {from: 204.Then, to: 232.Exec}
   - {from: 232.Then, to: 282.Exec}
   - {from: 276.Result, to: 282.Condition}
-  - {from: 282.True, to: 317.Exec}
-  - {from: 287.Value.current, to: 312.c}
-  - {from: 287.Value.maximum, to: 312.m}
-  - {from: 312.Result, to: 317.Value, conversion: To Integer}
-  - {from: 317.Then, to: 337.Exec}
-  - {from: 375.Result, to: 381.Condition}
-  - {from: 381.True, to: 396.Exec}
-  - {from: 396.Then, to: 426.Exec}
-  - {from: 426.Then, to: 446.Exec}
+  - {from: 282.True, to: 326.Exec}
+  - {from: 287.Value.current, to: 292.Value}
+  - {from: 287.Value.maximum, to: 295.Value}
+  - {from: 292.Real, to: 318.c}
+  - {from: 295.Real, to: 318.m}
+  - {from: 318.Result, to: 323.Value}
+  - {from: 323.Integer, to: 326.Value}
+  - {from: 326.Then, to: 346.Exec}
+  - {from: 384.Result, to: 390.Condition}
+  - {from: 390.True, to: 405.Exec}
+  - {from: 405.Then, to: 435.Exec}
+  - {from: 435.Then, to: 455.Exec}
 - id: 25
   kind: function
   math_expression: abs(px - pos.x) <= halfW && abs(py - pos.y) <= halfH
@@ -263,11 +269,11 @@ graphs:
 - {id: 181, kind: function, math_expression: s + 1, entry_id: 182}
 - {id: 213, kind: function, math_expression: mend += dt * 15, entry_id: 239}
 - {id: 262, kind: function, math_expression: mend >= 1, entry_id: 263}
-- id: 292
+- id: 298
   kind: function
   math_expression: min(m, c + floor(mend))
-  entry_id: 293
-- {id: 323, kind: function, math_expression: mend -= floor(mend), entry_id: 343}
-- {id: 361, kind: function, math_expression: inside > 0.5, entry_id: 362}
-- {id: 386, kind: function, math_expression: inside = 0, entry_id: 402}
-- {id: 416, kind: function, math_expression: mend = 0, entry_id: 432}
+  entry_id: 299
+- {id: 332, kind: function, math_expression: mend -= floor(mend), entry_id: 352}
+- {id: 370, kind: function, math_expression: inside > 0.5, entry_id: 371}
+- {id: 395, kind: function, math_expression: inside = 0, entry_id: 411}
+- {id: 425, kind: function, math_expression: mend = 0, entry_id: 441}

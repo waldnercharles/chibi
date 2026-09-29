@@ -1,14 +1,229 @@
 version: 3
 name: RecapLedger
-id_counter: 4
-description: stub
+id_counter: 271
+description: Mirrors the run's ledger into uncommitted save keys (starwell_depth, _time, _kills, _scrap, _level, _stratum, _seed) twice a second, so the host's PauseMenu can show a recap when the run ends.
 owner_type: ecs.entity
+variables:
+- {id: 1, name: wait, type: float}
+- id: 2
+  name: strata
+  type: name
+  container: 1
+  default: [Basalt Throat, Lumen Grotto, Glass Refractory, Foundry Deep, The Heart]
 graphs:
 - kind: event
   name: ""
   nodes:
-  - id: 1
+  - id: 3
     type: Event
     reference_name: Tick
     outputs:
       DeltaSeconds: {type: float, kind: data}
+  - id: 18
+    type: Behavior Expression
+    reference_id: 6
+    reference_name: wait -= dt
+    inputs:
+      Exec: {id: 22, kind: exec}
+      wait:
+        id: 19
+        type: float
+        binding: {kind: variable, variable_id: 1, source_asset: RecapLedger}
+      dt:
+        type: double
+        binding: {kind: delta_time}
+    outputs:
+      Then: {id: 23, kind: exec}
+      Result: {id: 21, type: float}
+  - id: 55
+    type: Behavior Expression
+    reference_id: 41
+    reference_name: wait <= 0
+    inputs:
+      wait:
+        type: double
+        flags: 0
+        binding: {kind: variable, variable_id: 1, source_asset: RecapLedger}
+    outputs:
+      Result: {type: bool}
+  - {id: 61, type: Branch}
+  - id: 76
+    type: Behavior Expression
+    reference_id: 66
+    reference_name: wait = 0.5
+    inputs:
+      Exec: {id: 79, kind: exec}
+      wait:
+        id: 77
+        type: float
+        binding: {kind: variable, variable_id: 1, source_asset: RecapLedger}
+    outputs:
+      Then: {id: 80, kind: exec}
+      Result: {id: 78, type: float}
+  - id: 96
+    type: Get Global Variable
+    inputs: {Name: Depth}
+    outputs:
+      Value: {type: double}
+  - id: 99
+    type: Get Global Variable
+    inputs: {Name: Time}
+    outputs:
+      Value: {type: float}
+  - id: 102
+    type: Format Text
+    inputs:
+      Format: '{:.0f}'
+      Arg0: {type: double}
+  - id: 106
+    type: Set Saved Text
+    inputs: {Key: starwell_depth}
+  - id: 128
+    type: Behavior Expression
+    reference_id: 111
+    reference_name: floor(t / 60)
+    inputs:
+      t: {type: float}
+    outputs:
+      Result: {type: double}
+  - id: 162
+    type: Behavior Expression
+    reference_id: 131
+    reference_name: floor(t - floor(t / 60) * 60)
+    inputs:
+      t: {type: float}
+    outputs:
+      Result: {type: double}
+  - id: 165
+    type: Format Text
+    inputs:
+      Format: '{:.0f}:{:02.0f}'
+      Arg0: {type: double}
+      Arg1: {id: 169, type: double, flags: 0}
+    outputs:
+      Result: {id: 168}
+  - id: 170
+    type: Set Saved Text
+    inputs: {Key: starwell_time}
+  - id: 175
+    type: Get Global Variable
+    inputs: {Name: Kills}
+    outputs:
+      Value: {type: int}
+  - id: 178
+    type: Format Text
+    inputs:
+      Format: '{}'
+      Arg0: {type: int}
+  - id: 182
+    type: Set Saved Text
+    inputs: {Key: starwell_kills}
+  - id: 187
+    type: Get Global Variable
+    inputs: {Name: Scrap}
+    outputs:
+      Value: {type: int}
+  - id: 190
+    type: Format Text
+    inputs:
+      Format: '{}'
+      Arg0: {type: int}
+  - id: 194
+    type: Set Saved Text
+    inputs: {Key: starwell_scrap}
+  - id: 199
+    type: Get Global Variable
+    inputs: {Name: Level}
+    outputs:
+      Value: {type: int}
+  - id: 202
+    type: Format Text
+    inputs:
+      Format: '{}'
+      Arg0: {type: int}
+  - id: 206
+    type: Set Saved Text
+    inputs: {Key: starwell_level}
+  - id: 211
+    type: Get Variable
+    reference_id: 2
+    reference_name: strata
+    outputs:
+      Value: {type: name, container: 1}
+  - id: 241
+    type: Behavior Expression
+    reference_id: 213
+    reference_name: clamp(floor(d / 600), 0, 4)
+    inputs:
+      d: {type: double}
+    outputs:
+      Result: {type: double}
+  - {id: 244, type: To Integer}
+  - id: 247
+    type: Get
+    inputs:
+      Array: {type: name}
+    outputs:
+      Item: {type: name}
+  - id: 251
+    type: Format Text
+    inputs:
+      Format: '{}'
+      Arg0: {type: name}
+  - id: 255
+    type: Set Saved Text
+    inputs: {Key: starwell_stratum}
+  - {id: 260, type: Get Run Seed}
+  - id: 262
+    type: Format Text
+    inputs:
+      Format: '{}'
+      Arg0: {type: int}
+  - id: 266
+    type: Set Saved Text
+    inputs: {Key: starwell_seed}
+  edges:
+  - {from: 3.Then, to: 18.Exec}
+  - {from: 18.Then, to: 61.Exec}
+  - {from: 55.Result, to: 61.Condition}
+  - {from: 61.True, to: 76.Exec}
+  - {from: 76.Then, to: 106.Exec}
+  - {from: 96.Value, to: 102.Arg0}
+  - {from: 96.Value, to: 241.d}
+  - {from: 99.Value, to: 128.t}
+  - {from: 99.Value, to: 162.t}
+  - {from: 102.Result, to: 106.Text}
+  - {from: 106.Then, to: 170.Exec}
+  - {from: 128.Result, to: 165.Arg0}
+  - {from: 162.Result, to: 165.Arg1}
+  - {from: 165.Result, to: 170.Text}
+  - {from: 170.Then, to: 182.Exec}
+  - {from: 175.Value, to: 178.Arg0}
+  - {from: 178.Result, to: 182.Text}
+  - {from: 182.Then, to: 194.Exec}
+  - {from: 187.Value, to: 190.Arg0}
+  - {from: 190.Result, to: 194.Text}
+  - {from: 194.Then, to: 206.Exec}
+  - {from: 199.Value, to: 202.Arg0}
+  - {from: 202.Result, to: 206.Text}
+  - {from: 206.Then, to: 255.Exec}
+  - {from: 211.Value, to: 247.Array}
+  - {from: 241.Result, to: 244.Value}
+  - {from: 244.Integer, to: 247.Index}
+  - {from: 247.Item, to: 251.Arg0}
+  - {from: 251.Result, to: 255.Text}
+  - {from: 255.Then, to: 266.Exec}
+  - {from: 260.Seed, to: 262.Arg0}
+  - {from: 262.Result, to: 266.Text}
+- {id: 6, kind: function, math_expression: wait -= dt, entry_id: 25}
+- {id: 41, kind: function, math_expression: wait <= 0, entry_id: 42}
+- {id: 66, kind: function, math_expression: wait = 0.5, entry_id: 82}
+- {id: 111, kind: function, math_expression: floor(t / 60), entry_id: 112}
+- id: 131
+  kind: function
+  math_expression: floor(t - floor(t / 60) * 60)
+  entry_id: 132
+- id: 213
+  kind: function
+  math_expression: clamp(floor(d / 600), 0, 4)
+  entry_id: 214

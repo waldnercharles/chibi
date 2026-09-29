@@ -1,0 +1,25 @@
+version: 3
+name: HeartCoreShape
+domain: shape
+bounds_x: 58.0
+bounds_y: 58.0
+id_counter: 8
+description: The HeartCore's silhouette.
+graphs:
+- kind: event
+  name: ""
+  nodes:
+  - {id: 1, type: Shader Shape Output}
+  - {id: 3, type: Shader Position}
+  - id: 5
+    type: Call Pure Function
+    reference_id: 1507
+    reference_name: HeartCore
+    reference_asset: BossForms
+    inputs:
+      Position: {declaration_id: 1512, type: struct, type_name: ShaderVec2}
+    outputs:
+      Distance: {declaration_id: 1513, type: float}
+  edges:
+  - {from: 3.Position, to: 5.Position}
+  - {from: 5.Distance, to: 1.Distance}

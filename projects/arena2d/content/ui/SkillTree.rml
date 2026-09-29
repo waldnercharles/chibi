@@ -1,0 +1,278 @@
+<div id="root" data-keys="Escape:Close">
+  <div id="prompt" data-if="self.near > 0 &amp;&amp; self.open == 0" presence>
+    <span class="key">E</span><span class="verb">Resonance</span><span class="aside">spend skill points</span>
+  </div>
+
+  <div id="screen" data-if="self.open > 0" presence>
+    <div id="panel">
+      <div class="head">
+        <div class="titles">
+          <div class="kicker">Sanctum</div>
+          <div class="name">Resonance</div>
+        </div>
+        <div class="wallet res"><span class="orb"/><number-flow data-attr-value="self.points"/><span class="unit">points</span></div>
+        <div class="close" data-event-click="emit('Close')">Close<span class="key">E</span></div>
+      </div>
+      <div class="branches">
+        <div class="branch pilot">
+          <div class="btitle">Pilot</div>
+          <div class="bsub">Hull, shield and thrust</div>
+          <div class="tree">
+            <div class="edge" style="left: 42dp; top: 79dp; width: 36dp; transform: rotate(90deg);" data-class-lit="self.n0 == 2" data-class-done="self.n4 == 2"/>
+            <div class="edge" style="left: 114dp; top: 79dp; width: 36dp; transform: rotate(90deg);" data-class-lit="self.n1 == 2" data-class-done="self.n5 == 2"/>
+            <div class="edge" style="left: 186dp; top: 79dp; width: 36dp; transform: rotate(90deg);" data-class-lit="self.n2 == 2" data-class-done="self.n6 == 2"/>
+            <div class="edge" style="left: 258dp; top: 79dp; width: 36dp; transform: rotate(90deg);" data-class-lit="self.n3 == 2" data-class-done="self.n7 == 2"/>
+            <div class="edge" style="left: 46.8dp; top: 158.5dp; width: 114dp; transform: rotate(77.3deg);" data-class-lit="self.n4 == 2" data-class-done="self.n8 == 2"/>
+            <div class="edge" style="left: 109.2dp; top: 158.5dp; width: 114dp; transform: rotate(102.7deg);" data-class-lit="self.n5 == 2" data-class-done="self.n8 == 2"/>
+            <div class="node" id="learn" style="left: 20dp; top: 36dp;" data-event-click="emit('Learn', 0)" data-class-owned="self.n0 == 2" data-class-open="self.n0 == 1" data-class-poor="self.a0 == 0">
+              <div class="ring"><div class="val">+25</div><div class="tag">Hull</div></div>
+              <div class="tip" style="left: -32dp;">
+                <div class="tname">Reinforced Hull</div>
+                <div class="tdesc">+25 maximum hull.</div>
+                <div class="tfoot"><span class="cost">1 point</span></div>
+              </div>
+            </div>
+            <div class="node" id="learn" style="left: 92dp; top: 36dp;" data-event-click="emit('Learn', 1)" data-class-owned="self.n1 == 2" data-class-open="self.n1 == 1" data-class-poor="self.a1 == 0">
+              <div class="ring"><div class="val">+15</div><div class="tag">Shield</div></div>
+              <div class="tip" style="left: -73dp;">
+                <div class="tname">Shield Capacitors</div>
+                <div class="tdesc">+15 maximum shield.</div>
+                <div class="tfoot"><span class="cost">1 point</span></div>
+              </div>
+            </div>
+            <div class="node" id="learn" style="left: 164dp; top: 36dp;" data-event-click="emit('Learn', 2)" data-class-owned="self.n2 == 2" data-class-open="self.n2 == 1" data-class-poor="self.a2 == 0">
+              <div class="ring"><div class="val">+12%</div><div class="tag">Thrust</div></div>
+              <div class="tip" style="left: -73dp;">
+                <div class="tname">Vector Thrusters</div>
+                <div class="tdesc">Fly 12% faster.</div>
+                <div class="tfoot"><span class="cost">1 point</span></div>
+              </div>
+            </div>
+            <div class="node" id="learn" style="left: 236dp; top: 36dp;" data-event-click="emit('Learn', 3)" data-class-owned="self.n3 == 2" data-class-open="self.n3 == 1" data-class-poor="self.a3 == 0">
+              <div class="ring"><div class="val">-30%</div><div class="tag">Boost</div></div>
+              <div class="tip" style="left: -114dp;">
+                <div class="tname">Afterburner</div>
+                <div class="tdesc">Boosting drains 30% less.</div>
+                <div class="tfoot"><span class="cost">1 point</span></div>
+              </div>
+            </div>
+            <div class="node" id="learn" style="left: 20dp; top: 116dp;" data-event-click="emit('Learn', 4)" data-class-owned="self.n4 == 2" data-class-open="self.n4 == 1" data-class-poor="self.a4 == 0">
+              <div class="ring"><div class="val">+35</div><div class="tag">Hull</div></div>
+              <div class="tip" style="left: -32dp;">
+                <div class="tname">Plating II</div>
+                <div class="tdesc">+35 maximum hull.</div>
+                <div class="tfoot"><span class="cost">1 point</span><span class="need">Needs Reinforced Hull</span></div>
+              </div>
+            </div>
+            <div class="node" id="learn" style="left: 92dp; top: 116dp;" data-event-click="emit('Learn', 5)" data-class-owned="self.n5 == 2" data-class-open="self.n5 == 1" data-class-poor="self.a5 == 0">
+              <div class="ring"><div class="val">+25</div><div class="tag">Shield</div></div>
+              <div class="tip" style="left: -73dp;">
+                <div class="tname">Phase Shield</div>
+                <div class="tdesc">+25 maximum shield.</div>
+                <div class="tfoot"><span class="cost">1 point</span><span class="need">Needs Shield Capacitors</span></div>
+              </div>
+            </div>
+            <div class="node" id="learn" style="left: 164dp; top: 116dp;" data-event-click="emit('Learn', 6)" data-class-owned="self.n6 == 2" data-class-open="self.n6 == 1" data-class-poor="self.a6 == 0">
+              <div class="ring"><div class="val">+12%</div><div class="tag">Thrust</div></div>
+              <div class="tip" style="left: -73dp;">
+                <div class="tname">Slipstream</div>
+                <div class="tdesc">Fly another 12% faster.</div>
+                <div class="tfoot"><span class="cost">1 point</span><span class="need">Needs Vector Thrusters</span></div>
+              </div>
+            </div>
+            <div class="node" id="learn" style="left: 236dp; top: 116dp;" data-event-click="emit('Learn', 7)" data-class-owned="self.n7 == 2" data-class-open="self.n7 == 1" data-class-poor="self.a7 == 0">
+              <div class="ring"><div class="val">+60</div><div class="tag">Magnet</div></div>
+              <div class="tip" style="left: -114dp;">
+                <div class="tname">Scrap Magnet</div>
+                <div class="tdesc">Pull pickups from 60 units further.</div>
+                <div class="tfoot"><span class="cost">1 point</span><span class="need">Needs Afterburner</span></div>
+              </div>
+            </div>
+            <div class="node cap" id="learn" style="left: 50dp; top: 270dp;" data-event-click="emit('Learn', 8)" data-class-owned="self.n8 == 2" data-class-open="self.n8 == 1" data-class-poor="self.a8 == 0">
+              <div class="ring"><div class="gem"/></div>
+              <div class="caption">Unbreakable</div>
+              <div class="tip up" style="left: -62dp;">
+                <div class="tname">Unbreakable</div>
+                <div class="tdesc">+60 maximum hull and +30 shield.</div>
+                <div class="tfoot"><span class="cost">2 points</span><span class="need">Needs Plating II · Phase Shield</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="branch gunnery">
+          <div class="btitle">Gunnery</div>
+          <div class="bsub">Charge, cadence and damage</div>
+          <div class="tree">
+            <div class="edge" style="left: 78dp; top: 79dp; width: 36dp; transform: rotate(90deg);" data-class-lit="self.n9 == 2" data-class-done="self.n12 == 2"/>
+            <div class="edge" style="left: 150dp; top: 79dp; width: 36dp; transform: rotate(90deg);" data-class-lit="self.n10 == 2" data-class-done="self.n13 == 2"/>
+            <div class="edge" style="left: 222dp; top: 79dp; width: 36dp; transform: rotate(90deg);" data-class-lit="self.n11 == 2" data-class-done="self.n14 == 2"/>
+            <div class="edge" style="left: 78dp; top: 159dp; width: 36dp; transform: rotate(90deg);" data-class-lit="self.n12 == 2" data-class-done="self.n15 == 2"/>
+            <div class="edge" style="left: 150dp; top: 159dp; width: 36dp; transform: rotate(90deg);" data-class-lit="self.n13 == 2" data-class-done="self.n16 == 2"/>
+            <div class="edge" style="left: 217.2dp; top: 158.5dp; width: 114dp; transform: rotate(102.7deg);" data-class-lit="self.n14 == 2" data-class-done="self.n17 == 2"/>
+            <div class="edge" style="left: 95.7dp; top: 230.1dp; width: 84.4dp; transform: rotate(36.5deg);" data-class-lit="self.n15 == 2" data-class-done="self.n17 == 2"/>
+            <div class="node" id="learn" style="left: 56dp; top: 36dp;" data-event-click="emit('Learn', 9)" data-class-owned="self.n9 == 2" data-class-open="self.n9 == 1" data-class-poor="self.a9 == 0">
+              <div class="ring"><div class="val">+25</div><div class="tag">Charge</div></div>
+              <div class="tip" style="left: -68dp;">
+                <div class="tname">Capacitor Banks</div>
+                <div class="tdesc">+25 maximum charge.</div>
+                <div class="tfoot"><span class="cost">1 point</span></div>
+              </div>
+            </div>
+            <div class="node" id="learn" style="left: 128dp; top: 36dp;" data-event-click="emit('Learn', 10)" data-class-owned="self.n10 == 2" data-class-open="self.n10 == 1" data-class-poor="self.a10 == 0">
+              <div class="ring"><div class="val">-10%</div><div class="tag">Delay</div></div>
+              <div class="tip" style="left: -73dp;">
+                <div class="tname">Quick Loader</div>
+                <div class="tdesc">Casts come 10% sooner.</div>
+                <div class="tfoot"><span class="cost">1 point</span></div>
+              </div>
+            </div>
+            <div class="node" id="learn" style="left: 200dp; top: 36dp;" data-event-click="emit('Learn', 11)" data-class-owned="self.n11 == 2" data-class-open="self.n11 == 1" data-class-poor="self.a11 == 0">
+              <div class="ring"><div class="val">+10%</div><div class="tag">Damage</div></div>
+              <div class="tip" style="left: -78dp;">
+                <div class="tname">Hot Rounds</div>
+                <div class="tdesc">Shots deal 10% more damage.</div>
+                <div class="tfoot"><span class="cost">1 point</span></div>
+              </div>
+            </div>
+            <div class="node" id="learn" style="left: 56dp; top: 116dp;" data-event-click="emit('Learn', 12)" data-class-owned="self.n12 == 2" data-class-open="self.n12 == 1" data-class-poor="self.a12 == 0">
+              <div class="ring"><div class="val">+25%</div><div class="tag">Regen</div></div>
+              <div class="tip" style="left: -68dp;">
+                <div class="tname">Overclock</div>
+                <div class="tdesc">Charge refills 25% faster.</div>
+                <div class="tfoot"><span class="cost">1 point</span><span class="need">Needs Capacitor Banks</span></div>
+              </div>
+            </div>
+            <div class="node" id="learn" style="left: 128dp; top: 116dp;" data-event-click="emit('Learn', 13)" data-class-owned="self.n13 == 2" data-class-open="self.n13 == 1" data-class-poor="self.a13 == 0">
+              <div class="ring"><div class="val">-15%</div><div class="tag">Delay</div></div>
+              <div class="tip" style="left: -73dp;">
+                <div class="tname">Hair Trigger</div>
+                <div class="tdesc">Casts come 15% sooner.</div>
+                <div class="tfoot"><span class="cost">1 point</span><span class="need">Needs Quick Loader</span></div>
+              </div>
+            </div>
+            <div class="node" id="learn" style="left: 200dp; top: 116dp;" data-event-click="emit('Learn', 14)" data-class-owned="self.n14 == 2" data-class-open="self.n14 == 1" data-class-poor="self.a14 == 0">
+              <div class="ring"><div class="val">+15%</div><div class="tag">Damage</div></div>
+              <div class="tip" style="left: -78dp;">
+                <div class="tname">Hollow Points</div>
+                <div class="tdesc">Shots deal 15% more damage.</div>
+                <div class="tfoot"><span class="cost">1 point</span><span class="need">Needs Hot Rounds</span></div>
+              </div>
+            </div>
+            <div class="node" id="learn" style="left: 56dp; top: 196dp;" data-event-click="emit('Learn', 15)" data-class-owned="self.n15 == 2" data-class-open="self.n15 == 1" data-class-poor="self.a15 == 0">
+              <div class="ring"><div class="val">L+1</div><div class="tag">Slot</div></div>
+              <div class="tip up" style="left: -68dp;">
+                <div class="tname">Extra Primary Slot</div>
+                <div class="tdesc">One more module slot on the primary.</div>
+                <div class="tfoot"><span class="cost">1 point</span><span class="need">Needs Overclock</span></div>
+              </div>
+            </div>
+            <div class="node" id="learn" style="left: 128dp; top: 196dp;" data-event-click="emit('Learn', 16)" data-class-owned="self.n16 == 2" data-class-open="self.n16 == 1" data-class-poor="self.a16 == 0">
+              <div class="ring"><div class="val">R+1</div><div class="tag">Slot</div></div>
+              <div class="tip up" style="left: -73dp;">
+                <div class="tname">Extra Secondary Slot</div>
+                <div class="tdesc">One more module slot on the secondary.</div>
+                <div class="tfoot"><span class="cost">1 point</span><span class="need">Needs Hair Trigger</span></div>
+              </div>
+            </div>
+            <div class="node cap" id="learn" style="left: 158dp; top: 270dp;" data-event-click="emit('Learn', 17)" data-class-owned="self.n17 == 2" data-class-open="self.n17 == 1" data-class-poor="self.a17 == 0">
+              <div class="ring"><div class="gem"/></div>
+              <div class="caption">Resonant Cannon</div>
+              <div class="tip up" style="left: -67dp;">
+                <div class="tname">Resonant Cannon</div>
+                <div class="tdesc">+30% damage and +40 maximum charge.</div>
+                <div class="tfoot"><span class="cost">2 points</span><span class="need">Needs Hollow Points · Extra Primary Slot</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="branch engineer">
+          <div class="btitle">Engineer</div>
+          <div class="bsub">Salvage, trade and matter</div>
+          <div class="tree">
+            <div class="edge" style="left: 78dp; top: 79dp; width: 36dp; transform: rotate(90deg);" data-class-lit="self.n18 == 2" data-class-done="self.n21 == 2"/>
+            <div class="edge" style="left: 150dp; top: 79dp; width: 36dp; transform: rotate(90deg);" data-class-lit="self.n19 == 2" data-class-done="self.n22 == 2"/>
+            <div class="edge" style="left: 222dp; top: 79dp; width: 36dp; transform: rotate(90deg);" data-class-lit="self.n20 == 2" data-class-done="self.n23 == 2"/>
+            <div class="edge" style="left: 78dp; top: 159dp; width: 36dp; transform: rotate(90deg);" data-class-lit="self.n21 == 2" data-class-done="self.n24 == 2"/>
+            <div class="edge" style="left: 222dp; top: 159dp; width: 36dp; transform: rotate(90deg);" data-class-lit="self.n23 == 2" data-class-done="self.n25 == 2"/>
+            <div class="edge" style="left: 92.7dp; top: 233.4dp; width: 57.6dp; transform: rotate(48deg);" data-class-lit="self.n24 == 2" data-class-done="self.n26 == 2"/>
+            <div class="edge" style="left: 207.3dp; top: 233.4dp; width: 57.6dp; transform: rotate(132deg);" data-class-lit="self.n25 == 2" data-class-done="self.n26 == 2"/>
+            <div class="node" id="learn" style="left: 56dp; top: 36dp;" data-event-click="emit('Learn', 18)" data-class-owned="self.n18 == 2" data-class-open="self.n18 == 1" data-class-poor="self.a18 == 0">
+              <div class="ring"><div class="val">+40</div><div class="tag">Magnet</div></div>
+              <div class="tip" style="left: -68dp;">
+                <div class="tname">Salvager</div>
+                <div class="tdesc">Pull pickups from 40 units further.</div>
+                <div class="tfoot"><span class="cost">1 point</span></div>
+              </div>
+            </div>
+            <div class="node" id="learn" style="left: 128dp; top: 36dp;" data-event-click="emit('Learn', 19)" data-class-owned="self.n19 == 2" data-class-open="self.n19 == 1" data-class-poor="self.a19 == 0">
+              <div class="ring"><div class="val">-15%</div><div class="tag">Prices</div></div>
+              <div class="tip" style="left: -73dp;">
+                <div class="tname">Haggler</div>
+                <div class="tdesc">Shop prices drop 15%.</div>
+                <div class="tfoot"><span class="cost">1 point</span></div>
+              </div>
+            </div>
+            <div class="node" id="learn" style="left: 200dp; top: 36dp;" data-event-click="emit('Learn', 20)" data-class-owned="self.n20 == 2" data-class-open="self.n20 == 1" data-class-poor="self.a20 == 0">
+              <div class="ring"><div class="val">+15%</div><div class="tag">Regen</div></div>
+              <div class="tip" style="left: -78dp;">
+                <div class="tname">Coolant</div>
+                <div class="tdesc">Charge refills 15% faster.</div>
+                <div class="tfoot"><span class="cost">1 point</span></div>
+              </div>
+            </div>
+            <div class="node" id="learn" style="left: 56dp; top: 116dp;" data-event-click="emit('Learn', 21)" data-class-owned="self.n21 == 2" data-class-open="self.n21 == 1" data-class-poor="self.a21 == 0">
+              <div class="ring"><div class="val">+20</div><div class="tag">Armor</div></div>
+              <div class="tip" style="left: -68dp;">
+                <div class="tname">Scrap Plating</div>
+                <div class="tdesc">+20 maximum hull and +10 shield.</div>
+                <div class="tfoot"><span class="cost">1 point</span><span class="need">Needs Salvager</span></div>
+              </div>
+            </div>
+            <div class="node" id="learn" style="left: 128dp; top: 116dp;" data-event-click="emit('Learn', 22)" data-class-owned="self.n22 == 2" data-class-open="self.n22 == 1" data-class-poor="self.a22 == 0">
+              <div class="ring"><div class="val">-15%</div><div class="tag">Prices</div></div>
+              <div class="tip" style="left: -73dp;">
+                <div class="tname">Bulk Buyer</div>
+                <div class="tdesc">Shop prices drop another 15%.</div>
+                <div class="tfoot"><span class="cost">1 point</span><span class="need">Needs Haggler</span></div>
+              </div>
+            </div>
+            <div class="node" id="learn" style="left: 200dp; top: 116dp;" data-event-click="emit('Learn', 23)" data-class-owned="self.n23 == 2" data-class-open="self.n23 == 1" data-class-poor="self.a23 == 0">
+              <div class="ring"><div class="val">+20</div><div class="tag">Charge</div></div>
+              <div class="tip" style="left: -78dp;">
+                <div class="tname">Flux Coils</div>
+                <div class="tdesc">+20 maximum charge.</div>
+                <div class="tfoot"><span class="cost">1 point</span><span class="need">Needs Coolant</span></div>
+              </div>
+            </div>
+            <div class="node" id="learn" style="left: 56dp; top: 196dp;" data-event-click="emit('Learn', 24)" data-class-owned="self.n24 == 2" data-class-open="self.n24 == 1" data-class-poor="self.a24 == 0">
+              <div class="ring"><div class="val">R+1</div><div class="tag">Slot</div></div>
+              <div class="tip up" style="left: -68dp;">
+                <div class="tname">Deep Pockets</div>
+                <div class="tdesc">One more module slot on the secondary.</div>
+                <div class="tfoot"><span class="cost">1 point</span><span class="need">Needs Scrap Plating</span></div>
+              </div>
+            </div>
+            <div class="node" id="learn" style="left: 200dp; top: 196dp;" data-event-click="emit('Learn', 25)" data-class-owned="self.n25 == 2" data-class-open="self.n25 == 1" data-class-poor="self.a25 == 0">
+              <div class="ring"><div class="val">+20</div><div class="tag">Shield</div></div>
+              <div class="tip up" style="left: -78dp;">
+                <div class="tname">Ionized Hull</div>
+                <div class="tdesc">+20 maximum shield.</div>
+                <div class="tfoot"><span class="cost">1 point</span><span class="need">Needs Flux Coils</span></div>
+              </div>
+            </div>
+            <div class="node cap" id="learn" style="left: 122dp; top: 270dp;" data-event-click="emit('Learn', 26)" data-class-owned="self.n26 == 2" data-class-open="self.n26 == 1" data-class-poor="self.a26 == 0">
+              <div class="ring"><div class="gem"/></div>
+              <div class="caption">Matter Mastery</div>
+              <div class="tip up" style="left: -67dp;">
+                <div class="tname">Matter Mastery</div>
+                <div class="tdesc">+15% damage and 20% faster charge.</div>
+                <div class="tfoot"><span class="cost">2 points</span><span class="need">Needs Deep Pockets · Ionized Hull</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="hint">Each level of Resonance grants a point. Hover a node to read it; capstones cost two.</div>
+    </div>
+  </div>
+</div>

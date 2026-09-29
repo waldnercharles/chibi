@@ -1,0 +1,21 @@
+<div id="title" data-keys="Enter:Descend Space:Descend">
+  <div id="card" data-if="self.show > 0" presence>
+    <div class="veil"/>
+    <div class="glow"/>
+    <div class="center">
+      <div class="kicker">A descent through a dead star</div>
+      <div class="word">Starwell</div>
+      <div class="rule"/>
+      <div class="sub">Salvage the well, build your ship from what you find, and reach its Heart.</div>
+      <div class="descend" data-event-click="emit('Descend')">Descend<span class="key">Enter</span></div>
+      <div class="seed">Run seed <span class="num">{{ self.seed }}</span></div>
+    </div>
+    <div class="legend">
+      <span class="ctl"><span class="cap">WASD</span>Fly</span>
+      <span class="ctl"><span class="cap">Mouse</span>Aim</span>
+      <span class="ctl"><span class="cap">L</span><span class="cap">R</span>Fire hardpoints</span>
+      <span class="ctl"><span class="cap">Space</span>Boost</span>
+      <span class="ctl"><span class="cap">E</span>Use terminal</span>
+    </div>
+  </div>
+</div>

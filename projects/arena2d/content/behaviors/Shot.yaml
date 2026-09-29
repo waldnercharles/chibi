@@ -1,36 +1,36 @@
 version: 3
 name: Shot
-id_counter: 1597
+id_counter: 1711
 description: 'A weapon shot: steers toward targets when homing, accelerates, ricochets off rock while it has bounces, carves craters, hits bodies, pierces, and at its end casts its payload, splits and blasts.'
 owner_type: ecs.entity
 graphs:
 - kind: event
   name: ""
   nodes:
-  - id: 608
+  - id: 665
     type: Event
     reference_name: Tick
     outputs:
       DeltaSeconds: {type: float, kind: data}
-  - id: 623
+  - id: 680
     type: Behavior Expression
-    reference_id: 611
+    reference_id: 668
     reference_name: age += dt
     inputs:
-      Exec: {id: 627, kind: exec}
+      Exec: {id: 684, kind: exec}
       age:
-        id: 624
+        id: 681
         type: float
         binding: {kind: component_field, component: GAME.GameProjectile, field: age}
       dt:
         type: double
         binding: {kind: delta_time}
     outputs:
-      Then: {id: 628, kind: exec}
-      Result: {id: 626, type: float}
-  - id: 700
+      Then: {id: 685, kind: exec}
+      Result: {id: 683, type: float}
+  - id: 757
     type: Behavior Expression
-    reference_id: 686
+    reference_id: 743
     reference_name: homing > 0
     inputs:
       homing:
@@ -39,8 +39,8 @@ graphs:
         binding: {kind: component_field, component: GAME.GameProjectile, field: homing}
     outputs:
       Result: {type: bool}
-  - {id: 706, type: Branch}
-  - id: 711
+  - {id: 763, type: Branch}
+  - id: 768
     type: Find Nearest Entity
     inputs:
       Position:
@@ -49,15 +49,15 @@ graphs:
         default: null
       Radius: 420.0
       Categories: 2
-  - {id: 720, type: Branch}
-  - id: 820
+  - {id: 777, type: Branch}
+  - id: 877
     type: Behavior Expression
-    reference_id: 725
+    reference_id: 782
     reference_name: velocity = direction(atan2(velocity.y, velocity.x) + clamp(atan2(sin(atan2(target.y - pos.y, target.x - pos.x) - atan2(velocity.y, velocity.x)), cos(atan2(target.y - pos.y, target.x - pos.x) - atan2(velocity.y, velocity.x))), -homing * dt, homing * dt)) * length(velocity)
     inputs:
-      Exec: {id: 827, kind: exec}
+      Exec: {id: 884, kind: exec}
       velocity:
-        id: 821
+        id: 878
         type: struct
         type_name: GameVelocity
         binding: {kind: component, component: GAME.GameVelocity}
@@ -73,16 +73,16 @@ graphs:
         type: double
         binding: {kind: delta_time}
     outputs:
-      Then: {id: 828, kind: exec}
-      Result: {id: 826, type: struct, type_name: GameVelocity}
-  - id: 969
+      Then: {id: 885, kind: exec}
+      Result: {id: 883, type: struct, type_name: GameVelocity}
+  - id: 1026
     type: Behavior Expression
-    reference_id: 935
+    reference_id: 992
     reference_name: velocity = normalize(velocity) * max(30, length(velocity) + acceleration * dt)
     inputs:
-      Exec: {id: 974, kind: exec}
+      Exec: {id: 1031, kind: exec}
       velocity:
-        id: 970
+        id: 1027
         type: struct
         type_name: GameVelocity
         binding: {kind: component, component: GAME.GameVelocity}
@@ -93,16 +93,16 @@ graphs:
         type: double
         binding: {kind: delta_time}
     outputs:
-      Then: {id: 975, kind: exec}
-      Result: {id: 973, type: struct, type_name: GameVelocity}
-  - id: 1027
+      Then: {id: 1032, kind: exec}
+      Result: {id: 1030, type: struct, type_name: GameVelocity}
+  - id: 1084
     type: Behavior Expression
-    reference_id: 1015
+    reference_id: 1072
     reference_name: heading = atan2(velocity.y, velocity.x)
     inputs:
-      Exec: {id: 1031, kind: exec}
+      Exec: {id: 1088, kind: exec}
       heading:
-        id: 1028
+        id: 1085
         type: float
         binding: {kind: component_field, component: GAME.GameOrientation, field: radians}
       velocity:
@@ -110,11 +110,11 @@ graphs:
         type_name: GameVelocity
         binding: {kind: component, component: GAME.GameVelocity}
     outputs:
-      Then: {id: 1032, kind: exec}
-      Result: {id: 1030, type: double}
-  - id: 1098
+      Then: {id: 1089, kind: exec}
+      Result: {id: 1087, type: double}
+  - id: 1155
     type: Behavior Expression
-    reference_id: 1060
+    reference_id: 1117
     reference_name: pos + velocity * dt * 1.5 + normalize(velocity) * 3
     inputs:
       pos:
@@ -130,7 +130,7 @@ graphs:
         binding: {kind: delta_time}
     outputs:
       Result: {type: struct, type_name: GameTransform}
-  - id: 1103
+  - id: 1160
     type: Raycast
     inputs:
       Start:
@@ -138,10 +138,10 @@ graphs:
         binding: {kind: component, component: GAME.GameTransform}
         default: null
       Categories: 8
-  - {id: 1114, type: Branch}
-  - id: 1133
+  - {id: 1171, type: Branch}
+  - id: 1190
     type: Behavior Expression
-    reference_id: 1119
+    reference_id: 1176
     reference_name: bounce > 0
     inputs:
       bounce:
@@ -150,52 +150,73 @@ graphs:
         binding: {kind: component_field, component: GAME.GameProjectile, field: bounce}
     outputs:
       Result: {type: bool}
-  - {id: 1139, type: Branch}
-  - id: 1171
+  - {id: 1196, type: Branch}
+  - id: 1228
     type: Behavior Expression
-    reference_id: 1144
+    reference_id: 1201
     reference_name: velocity = velocity - normal * 2 * dot(velocity, normal)
     inputs:
-      Exec: {id: 1175, kind: exec}
+      Exec: {id: 1232, kind: exec}
       velocity:
-        id: 1172
+        id: 1229
         type: struct
         type_name: GameVelocity
         binding: {kind: component, component: GAME.GameVelocity}
       normal: {type: struct, type_name: CF_V2}
     outputs:
-      Then: {id: 1176, kind: exec}
-      Result: {id: 1174, type: struct, type_name: GameVelocity}
-  - id: 1223
+      Then: {id: 1233, kind: exec}
+      Result: {id: 1231, type: struct, type_name: GameVelocity}
+  - id: 1280
     type: Behavior Expression
-    reference_id: 1209
+    reference_id: 1266
     reference_name: bounce -= 1
     inputs:
-      Exec: {id: 1226, kind: exec}
+      Exec: {id: 1283, kind: exec}
       bounce:
-        id: 1224
+        id: 1281
         type: int
         binding: {kind: component_field, component: GAME.GameProjectile, field: bounce}
     outputs:
-      Then: {id: 1227, kind: exec}
-      Result: {id: 1225, type: int}
-  - id: 1307
+      Then: {id: 1284, kind: exec}
+      Result: {id: 1282, type: int}
+  - id: 1364
     type: Behavior Expression
-    reference_id: 1287
+    reference_id: 1344
     reference_name: pos = point + normal * 3
     inputs:
-      Exec: {id: 1312, kind: exec}
+      Exec: {id: 1369, kind: exec}
       pos:
-        id: 1308
+        id: 1365
         type: struct
         type_name: GameTransform
         binding: {kind: component, component: GAME.GameTransform}
       point: {type: struct, type_name: CF_V2}
       normal: {type: struct, type_name: CF_V2}
     outputs:
-      Then: {id: 1313, kind: exec}
-      Result: {id: 1311, type: struct, type_name: GameTransform}
-  - id: 1339
+      Then: {id: 1370, kind: exec}
+      Result: {id: 1368, type: struct, type_name: GameTransform}
+  - id: 1421
+    type: Behavior Expression
+    reference_id: 1396
+    reference_name: normalize(normal + normalize(velocity) * 0.05)
+    inputs:
+      normal: {type: struct, type_name: CF_V2}
+      velocity:
+        type: struct
+        type_name: GameVelocity
+        binding: {kind: component, component: GAME.GameVelocity}
+    outputs:
+      Result: {type: struct, type_name: CF_V2}
+  - id: 1442
+    type: Behavior Expression
+    reference_id: 1425
+    reference_name: length(d) > 0.5
+    inputs:
+      d: {type: struct, type_name: CF_V2}
+    outputs:
+      Result: {type: bool}
+  - {id: 1448, type: Branch}
+  - id: 1453
     type: Emit Directed Particles
     inputs:
       Count: 5
@@ -215,19 +236,19 @@ graphs:
       Max Emission: 0.9
       Size Exponent: 1.0
       Shape: 4
-  - id: 1361
+  - id: 1475
     type: Call Function
     reference_id: 420
     reference_name: Impact
     inputs:
-      Point: {id: 1364, type: struct, type_name: CF_V2, kind: data}
+      Point: {id: 1478, type: struct, type_name: CF_V2, kind: data}
       Normal: {type: struct, type_name: CF_V2, kind: data}
       Target: {type: handle, type_name: ecs.entity, kind: data}
     outputs:
-      Then: {id: 1363}
-  - id: 1403
+      Then: {id: 1477}
+  - id: 1517
     type: Behavior Expression
-    reference_id: 1367
+    reference_id: 1481
     reference_name: payload >= 0 && trigger == 1 && age >= delay
     inputs:
       payload:
@@ -248,10 +269,10 @@ graphs:
         binding: {kind: component_field, component: GAME.GameProjectile, field: delay}
     outputs:
       Result: {type: bool}
-  - {id: 1412, type: Branch}
-  - id: 1427
+  - {id: 1526, type: Branch}
+  - id: 1541
     type: Behavior Expression
-    reference_id: 1417
+    reference_id: 1531
     reference_name: normalize(velocity)
     inputs:
       velocity:
@@ -260,23 +281,23 @@ graphs:
         binding: {kind: component, component: GAME.GameVelocity}
     outputs:
       Result: {type: struct, type_name: CF_V2}
-  - id: 1430
+  - id: 1544
     type: Call Function
     reference_id: 1
     reference_name: Send Payload
     inputs:
       Position:
-        id: 1433
+        id: 1547
         type: struct
         type_name: GameTransform
         kind: data
         binding: {kind: component, component: GAME.GameTransform}
       Direction: {type: struct, type_name: CF_V2, kind: data}
     outputs:
-      Then: {id: 1432}
-  - id: 1447
+      Then: {id: 1546}
+  - id: 1561
     type: Behavior Expression
-    reference_id: 1435
+    reference_id: 1549
     reference_name: age >= lifetime
     inputs:
       age:
@@ -289,33 +310,33 @@ graphs:
         binding: {kind: component_field, component: GAME.GameProjectile, field: lifetime}
     outputs:
       Result: {type: bool}
-  - {id: 1454, type: Branch}
-  - id: 1459
+  - {id: 1568, type: Branch}
+  - id: 1573
     type: Call Function
     reference_id: 92
     reference_name: Finish
     inputs:
       Position:
-        id: 1462
+        id: 1576
         type: struct
         type_name: GameTransform
         kind: data
         binding: {kind: component, component: GAME.GameTransform}
       Direction: {type: struct, type_name: CF_V2, kind: data}
     outputs:
-      Then: {id: 1461}
-  - id: 1464
+      Then: {id: 1575}
+  - id: 1578
     type: Event
     reference_name: Contact Begin
     outputs:
       Other: {type: handle, type_name: ecs.entity, kind: data}
       Point: {type: struct, type_name: CF_V2, kind: data}
-  - id: 1468
+  - id: 1582
     type: Send Event
     reference_name: Hit
     inputs:
       Amount:
-        id: 1472
+        id: 1586
         declaration_id: 1
         type: int
         binding: {kind: component_field, component: GAME.GameProjectile, field: damage}
@@ -333,14 +354,14 @@ graphs:
         type: float
         binding: {kind: component_field, component: GAME.GameProjectile, field: knockback}
     outputs:
-      Then: {id: 1471}
-  - id: 1478
+      Then: {id: 1585}
+  - id: 1592
     type: Spawn Prototype
     inputs: {Prototype: ImpactLight}
-  - {id: 1483, type: SetEntity_GameTransform}
-  - id: 1503
+  - {id: 1597, type: SetEntity_GameTransform}
+  - id: 1617
     type: Behavior Expression
-    reference_id: 1489
+    reference_id: 1603
     reference_name: pierce > 0
     inputs:
       pierce:
@@ -349,83 +370,88 @@ graphs:
         binding: {kind: component_field, component: GAME.GameProjectile, field: pierce}
     outputs:
       Result: {type: bool}
-  - {id: 1509, type: Branch}
-  - id: 1528
+  - {id: 1623, type: Branch}
+  - id: 1642
     type: Behavior Expression
-    reference_id: 1514
+    reference_id: 1628
     reference_name: pierce -= 1
     inputs:
-      Exec: {id: 1531, kind: exec}
+      Exec: {id: 1645, kind: exec}
       pierce:
-        id: 1529
+        id: 1643
         type: int
         binding: {kind: component_field, component: GAME.GameProjectile, field: pierce}
     outputs:
-      Then: {id: 1532, kind: exec}
-      Result: {id: 1530, type: int}
-  - id: 1592
+      Then: {id: 1646, kind: exec}
+      Result: {id: 1644, type: int}
+  - id: 1706
     type: Call Function
     reference_id: 92
     reference_name: Finish
     inputs:
-      Position: {id: 1595, type: struct, type_name: CF_V2, kind: data}
+      Position: {id: 1709, type: struct, type_name: CF_V2, kind: data}
       Direction: {type: struct, type_name: CF_V2, kind: data}
     outputs:
-      Then: {id: 1594}
+      Then: {id: 1708}
   edges:
-  - {from: 608.Then, to: 623.Exec}
-  - {from: 623.Then, to: 706.Exec}
-  - {from: 700.Result, to: 706.Condition}
-  - {from: 706.True, to: 720.Exec}
-  - {from: 706.False, to: 969.Exec}
-  - {from: 711.Found, to: 720.Condition}
-  - {from: 711.Position, to: 820.target}
-  - {from: 720.True, to: 820.Exec}
-  - {from: 720.False, to: 969.Exec}
-  - {from: 820.Then, to: 969.Exec}
-  - {from: 969.Then, to: 1027.Exec}
-  - {from: 1027.Then, to: 1114.Exec}
-  - {from: 1098.Result, to: 1103.End}
-  - {from: 1103.Found, to: 1114.Condition}
-  - {from: 1103.Entity, to: 1361.Target}
-  - {from: 1103.Point, to: 1307.point}
-  - {from: 1103.Point, to: 1339.Position, conversion: game_transform_to_cf}
-  - {from: 1103.Point, to: 1361.Point, conversion: game_transform_to_cf}
-  - {from: 1103.Normal, to: 1171.normal}
-  - {from: 1103.Normal, to: 1307.normal}
-  - {from: 1103.Normal, to: 1339.Direction, conversion: game_transform_to_cf}
-  - {from: 1103.Normal, to: 1361.Normal, conversion: game_transform_to_cf}
-  - {from: 1114.True, to: 1139.Exec}
-  - {from: 1114.False, to: 1412.Exec}
-  - {from: 1133.Result, to: 1139.Condition}
-  - {from: 1139.True, to: 1171.Exec}
-  - {from: 1139.False, to: 1361.Exec}
-  - {from: 1171.Then, to: 1223.Exec}
-  - {from: 1223.Then, to: 1307.Exec}
-  - {from: 1307.Then, to: 1339.Exec}
-  - {from: 1339.Then, to: 1412.Exec}
-  - {from: 1403.Result, to: 1412.Condition}
-  - {from: 1412.True, to: 1430.Exec}
-  - {from: 1412.False, to: 1454.Exec}
-  - {from: 1427.Result, to: 1430.Direction}
-  - {from: 1427.Result, to: 1459.Direction}
-  - {from: 1427.Result, to: 1468.Direction}
-  - {from: 1427.Result, to: 1592.Direction}
-  - {from: 1430.Then, to: 1454.Exec}
-  - {from: 1447.Result, to: 1454.Condition}
-  - {from: 1454.True, to: 1459.Exec}
-  - {from: 1464.Then, to: 1468.Exec}
-  - {from: 1464.Other, to: 1468.Entity}
-  - {from: 1464.Point, to: 1468.Point, conversion: game_transform_to_cf}
-  - {from: 1464.Point, to: 1483.Value, conversion: game_transform_to_cf}
-  - {from: 1464.Point, to: 1592.Position, conversion: game_transform_to_cf}
-  - {from: 1468.Then, to: 1478.Exec}
-  - {from: 1478.Then, to: 1483.Exec}
-  - {from: 1478.Entity, to: 1483.Entity}
-  - {from: 1483.Then, to: 1509.Exec}
-  - {from: 1503.Result, to: 1509.Condition}
-  - {from: 1509.True, to: 1528.Exec}
-  - {from: 1509.False, to: 1592.Exec}
+  - {from: 665.Then, to: 680.Exec}
+  - {from: 680.Then, to: 763.Exec}
+  - {from: 757.Result, to: 763.Condition}
+  - {from: 763.True, to: 777.Exec}
+  - {from: 763.False, to: 1026.Exec}
+  - {from: 768.Found, to: 777.Condition}
+  - {from: 768.Position, to: 877.target}
+  - {from: 777.True, to: 877.Exec}
+  - {from: 777.False, to: 1026.Exec}
+  - {from: 877.Then, to: 1026.Exec}
+  - {from: 1026.Then, to: 1084.Exec}
+  - {from: 1084.Then, to: 1171.Exec}
+  - {from: 1155.Result, to: 1160.End}
+  - {from: 1160.Found, to: 1171.Condition}
+  - {from: 1160.Entity, to: 1475.Target}
+  - {from: 1160.Point, to: 1364.point}
+  - {from: 1160.Point, to: 1453.Position, conversion: game_transform_to_cf}
+  - {from: 1160.Point, to: 1475.Point, conversion: game_transform_to_cf}
+  - {from: 1160.Normal, to: 1228.normal}
+  - {from: 1160.Normal, to: 1364.normal}
+  - {from: 1160.Normal, to: 1421.normal}
+  - {from: 1160.Normal, to: 1475.Normal, conversion: game_transform_to_cf}
+  - {from: 1171.True, to: 1196.Exec}
+  - {from: 1171.False, to: 1526.Exec}
+  - {from: 1190.Result, to: 1196.Condition}
+  - {from: 1196.True, to: 1228.Exec}
+  - {from: 1196.False, to: 1475.Exec}
+  - {from: 1228.Then, to: 1280.Exec}
+  - {from: 1280.Then, to: 1364.Exec}
+  - {from: 1364.Then, to: 1448.Exec}
+  - {from: 1421.Result, to: 1442.d}
+  - {from: 1421.Result, to: 1453.Direction}
+  - {from: 1442.Result, to: 1448.Condition}
+  - {from: 1448.True, to: 1453.Exec}
+  - {from: 1448.False, to: 1526.Exec}
+  - {from: 1453.Then, to: 1526.Exec}
+  - {from: 1517.Result, to: 1526.Condition}
+  - {from: 1526.True, to: 1544.Exec}
+  - {from: 1526.False, to: 1568.Exec}
+  - {from: 1541.Result, to: 1544.Direction}
+  - {from: 1541.Result, to: 1573.Direction}
+  - {from: 1541.Result, to: 1582.Direction}
+  - {from: 1541.Result, to: 1706.Direction}
+  - {from: 1544.Then, to: 1568.Exec}
+  - {from: 1561.Result, to: 1568.Condition}
+  - {from: 1568.True, to: 1573.Exec}
+  - {from: 1578.Then, to: 1582.Exec}
+  - {from: 1578.Other, to: 1582.Entity}
+  - {from: 1578.Point, to: 1582.Point, conversion: game_transform_to_cf}
+  - {from: 1578.Point, to: 1597.Value, conversion: game_transform_to_cf}
+  - {from: 1578.Point, to: 1706.Position, conversion: game_transform_to_cf}
+  - {from: 1582.Then, to: 1592.Exec}
+  - {from: 1592.Then, to: 1597.Exec}
+  - {from: 1592.Entity, to: 1597.Entity}
+  - {from: 1597.Then, to: 1623.Exec}
+  - {from: 1617.Result, to: 1623.Condition}
+  - {from: 1623.True, to: 1642.Exec}
+  - {from: 1623.False, to: 1706.Exec}
 - id: 1
   kind: function
   name: Send Payload
@@ -777,7 +803,19 @@ graphs:
     outputs:
       Self: {type_name: ecs.entity}
   - {id: 504, type: Damage Material}
-  - id: 513
+  - id: 538
+    type: Behavior Expression
+    reference_id: 513
+    reference_name: normalize(normal - normalize(velocity) * 0.05)
+    inputs:
+      normal: {type: struct, type_name: CF_V2}
+      velocity:
+        type: struct
+        type_name: GameVelocity
+        binding: {kind: component, component: GAME.GameVelocity}
+    outputs:
+      Result: {type: struct, type_name: CF_V2}
+  - id: 542
     type: Emit Directed Particles
     inputs:
       Count: 9
@@ -796,22 +834,31 @@ graphs:
       Max Emission: 1.0
       Size Exponent: 1.0
       Shape: 4
-  - id: 535
+  - id: 581
+    type: Behavior Expression
+    reference_id: 564
+    reference_name: length(d) > 0.5
+    inputs:
+      d: {type: struct, type_name: CF_V2}
+    outputs:
+      Result: {type: bool}
+  - {id: 587, type: Branch}
+  - id: 592
     type: Spawn Prototype
     inputs: {Prototype: ImpactLight}
-  - id: 559
+  - id: 616
     type: Behavior Expression
-    reference_id: 540
+    reference_id: 597
     reference_name: point + normal * 3
     inputs:
       point: {type: struct, type_name: CF_V2}
       normal: {type: struct, type_name: CF_V2}
     outputs:
       Result: {type: struct, type_name: CF_V2}
-  - {id: 563, type: SetEntity_GameTransform}
-  - id: 599
+  - {id: 620, type: SetEntity_GameTransform}
+  - id: 656
     type: Behavior Expression
-    reference_id: 569
+    reference_id: 626
     reference_name: normalize(velocity - normal * 2 * dot(velocity, normal))
     inputs:
       velocity:
@@ -821,82 +868,97 @@ graphs:
       normal: {type: struct, type_name: CF_V2}
     outputs:
       Result: {type: struct, type_name: CF_V2}
-  - id: 603
+  - id: 660
     type: Call Function
     reference_id: 92
     reference_name: Finish
     inputs:
-      Position: {id: 606, type: struct, type_name: CF_V2, kind: data}
+      Position: {id: 663, type: struct, type_name: CF_V2, kind: data}
       Direction: {type: struct, type_name: CF_V2, kind: data}
     outputs:
-      Then: {id: 605}
+      Then: {id: 662}
   edges:
   - {from: 421.Exec, to: 504.In}
   - {from: 421.Point, to: 447.point}
-  - {from: 421.Point, to: 513.Position, conversion: game_transform_to_cf}
-  - {from: 421.Point, to: 559.point}
+  - {from: 421.Point, to: 542.Position, conversion: game_transform_to_cf}
+  - {from: 421.Point, to: 616.point}
   - {from: 421.Normal, to: 447.normal}
-  - {from: 421.Normal, to: 513.Direction, conversion: game_transform_to_cf}
-  - {from: 421.Normal, to: 559.normal}
-  - {from: 421.Normal, to: 599.normal}
+  - {from: 421.Normal, to: 538.normal}
+  - {from: 421.Normal, to: 616.normal}
+  - {from: 421.Normal, to: 656.normal}
   - {from: 421.Target, to: 504.Entity}
   - {from: 447.Result, to: 504.Point}
   - {from: 475.Result, to: 504.Radius}
   - {from: 499.Result, to: 504.Energy}
   - {from: 502.Self, to: 504.Source}
-  - {from: 504.Out, to: 513.Exec}
-  - {from: 513.Then, to: 535.Exec}
-  - {from: 535.Then, to: 563.Exec}
-  - {from: 535.Entity, to: 563.Entity}
-  - {from: 559.Result, to: 563.Value}
-  - {from: 559.Result, to: 603.Position}
-  - {from: 563.Then, to: 603.Exec}
-  - {from: 599.Result, to: 603.Direction}
-  - {from: 603.Then, to: 423.Exec}
+  - {from: 504.Out, to: 587.Exec}
+  - {from: 538.Result, to: 542.Direction}
+  - {from: 538.Result, to: 581.d}
+  - {from: 542.Then, to: 592.Exec}
+  - {from: 581.Result, to: 587.Condition}
+  - {from: 587.True, to: 542.Exec}
+  - {from: 587.False, to: 592.Exec}
+  - {from: 592.Then, to: 620.Exec}
+  - {from: 592.Entity, to: 620.Entity}
+  - {from: 616.Result, to: 620.Value}
+  - {from: 616.Result, to: 660.Position}
+  - {from: 620.Then, to: 660.Exec}
+  - {from: 656.Result, to: 660.Direction}
+  - {from: 660.Then, to: 423.Exec}
 - {id: 428, kind: function, math_expression: point - normal * 1.5, entry_id: 429}
 - id: 451
   kind: function
   math_expression: 2.5 + sqrt(damage) * 0.7
   entry_id: 452
 - {id: 478, kind: function, math_expression: 0.4 + damage * 0.06, entry_id: 479}
-- {id: 540, kind: function, math_expression: point + normal * 3, entry_id: 541}
-- id: 569
+- id: 513
+  kind: function
+  math_expression: normalize(normal - normalize(velocity) * 0.05)
+  entry_id: 514
+- {id: 564, kind: function, math_expression: length(d) > 0.5, entry_id: 565}
+- {id: 597, kind: function, math_expression: point + normal * 3, entry_id: 598}
+- id: 626
   kind: function
   math_expression: normalize(velocity - normal * 2 * dot(velocity, normal))
-  entry_id: 570
-- {id: 611, kind: function, math_expression: age += dt, entry_id: 630}
-- {id: 686, kind: function, math_expression: homing > 0, entry_id: 687}
-- id: 725
+  entry_id: 627
+- {id: 668, kind: function, math_expression: age += dt, entry_id: 687}
+- {id: 743, kind: function, math_expression: homing > 0, entry_id: 744}
+- id: 782
   kind: function
   math_expression: velocity = direction(atan2(velocity.y, velocity.x) + clamp(atan2(sin(atan2(target.y - pos.y, target.x - pos.x) - atan2(velocity.y, velocity.x)), cos(atan2(target.y - pos.y, target.x - pos.x) - atan2(velocity.y, velocity.x))), -homing * dt, homing * dt)) * length(velocity)
-  entry_id: 830
-- id: 935
+  entry_id: 887
+- id: 992
   kind: function
   math_expression: velocity = normalize(velocity) * max(30, length(velocity) + acceleration * dt)
-  entry_id: 977
-- id: 1015
+  entry_id: 1034
+- id: 1072
   kind: function
   math_expression: heading = atan2(velocity.y, velocity.x)
-  entry_id: 1034
-- id: 1060
+  entry_id: 1091
+- id: 1117
   kind: function
   math_expression: pos + velocity * dt * 1.5 + normalize(velocity) * 3
-  entry_id: 1061
-- {id: 1119, kind: function, math_expression: bounce > 0, entry_id: 1120}
-- id: 1144
+  entry_id: 1118
+- {id: 1176, kind: function, math_expression: bounce > 0, entry_id: 1177}
+- id: 1201
   kind: function
   math_expression: velocity = velocity - normal * 2 * dot(velocity, normal)
-  entry_id: 1178
-- {id: 1209, kind: function, math_expression: bounce -= 1, entry_id: 1229}
-- id: 1287
+  entry_id: 1235
+- {id: 1266, kind: function, math_expression: bounce -= 1, entry_id: 1286}
+- id: 1344
   kind: function
   math_expression: pos = point + normal * 3
-  entry_id: 1315
-- id: 1367
+  entry_id: 1372
+- id: 1396
+  kind: function
+  math_expression: normalize(normal + normalize(velocity) * 0.05)
+  entry_id: 1397
+- {id: 1425, kind: function, math_expression: length(d) > 0.5, entry_id: 1426}
+- id: 1481
   kind: function
   math_expression: payload >= 0 && trigger == 1 && age >= delay
-  entry_id: 1368
-- {id: 1417, kind: function, math_expression: normalize(velocity), entry_id: 1418}
-- {id: 1435, kind: function, math_expression: age >= lifetime, entry_id: 1436}
-- {id: 1489, kind: function, math_expression: pierce > 0, entry_id: 1490}
-- {id: 1514, kind: function, math_expression: pierce -= 1, entry_id: 1534}
+  entry_id: 1482
+- {id: 1531, kind: function, math_expression: normalize(velocity), entry_id: 1532}
+- {id: 1549, kind: function, math_expression: age >= lifetime, entry_id: 1550}
+- {id: 1603, kind: function, math_expression: pierce > 0, entry_id: 1604}
+- {id: 1628, kind: function, math_expression: pierce -= 1, entry_id: 1648}

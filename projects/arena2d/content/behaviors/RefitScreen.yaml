@@ -1,56 +1,405 @@
 version: 3
 name: RefitScreen
-id_counter: 478
-description: stub
+id_counter: 2733
+description: 'The Sanctum refit bench: opens with E nearby and lays out both weapons'' ordered module slots and the Stash; picking two places swaps them, and every change writes Hardpoint0, Hardpoint1 and Stash at once, keeping an emitter in the primary.'
 owner_type: ecs.entity
 variables:
-- {id: 6, name: near, type: float}
-- {id: 7, name: open, type: float}
-- {id: 8, name: held, type: float}
+- id: 1
+  name: modName
+  type: name
+  container: 1
+  default:
+  - Pulse Bolt
+  - Plasma Glob
+  - Rail Needle
+  - Seeker
+  - Scatter
+  - Arc Lance
+  - Bore
+  - Cryo Shard
+  - Acid Flask
+  - Mine
+  - Singularity
+  - ""
+  - ""
+  - ""
+  - ""
+  - ""
+  - ""
+  - ""
+  - ""
+  - ""
+  - Twin
+  - Homing
+  - Ricochet
+  - Pierce
+  - Accelerate
+  - Heavy
+  - Incendiary
+  - Cryo
+  - Corrosive
+  - Split
+  - Blast
+  - Overcharge
+  - Conductive
+  - ""
+  - ""
+  - ""
+  - ""
+  - ""
+  - ""
+  - ""
+  - Trigger
+  - Timer
+  - Burst
+- id: 2
+  name: modKind
+  type: int
+  container: 1
+  default:
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 2
+  - 2
+  - 2
+- id: 3
+  name: modTier
+  type: int
+  container: 1
+  default:
+  - 0
+  - 1
+  - 1
+  - 1
+  - 0
+  - 2
+  - 0
+  - 1
+  - 2
+  - 1
+  - 3
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 1
+  - 0
+  - 1
+  - 0
+  - 1
+  - 1
+  - 1
+  - 2
+  - 2
+  - 1
+  - 2
+  - 2
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 1
+  - 1
+  - 2
+- id: 4
+  name: modBlurb
+  type: name
+  container: 1
+  default:
+  - A quick bolt of light.
+  - Slow, hot, and it bursts into flame.
+  - Pierces bodies. Barely slows.
+  - A missile that hunts and bursts.
+  - Five shards in a wide cone.
+  - A crackling lance that leaps between bodies.
+  - A short-lived drill for rock.
+  - Freezes what it touches.
+  - Breaks into eating acid.
+  - Hangs in place until something passes.
+  - A slow knot of gravity.
+  - ""
+  - ""
+  - ""
+  - ""
+  - ""
+  - ""
+  - ""
+  - ""
+  - ""
+  - The next emitter fires twice.
+  - Shots turn toward the nearest body.
+  - Shots bounce off rock twice.
+  - Shots pass through two more bodies.
+  - Shots gain speed as they fly.
+  - Much more damage, slower shots.
+  - Shots set things alight.
+  - Shots chill and freeze.
+  - Shots eat away at bodies.
+  - Shots break into three shards when they end.
+  - Shots explode where they end.
+  - More damage and range.
+  - Shots arc to nearby bodies.
+  - ""
+  - ""
+  - ""
+  - ""
+  - ""
+  - ""
+  - ""
+  - The rest of the list is cast where the next shot hits.
+  - The rest of the list is cast from the next shot after a moment.
+  - The rest of the list is cast where the next shot ends.
+- id: 5
+  name: cells
+  type: int
+  container: 1
+  default:
+  - -1
+  - -1
+  - -1
+  - -1
+  - -1
+  - -1
+  - -1
+  - -1
+  - -1
+  - -1
+  - -1
+  - -1
+  - -1
+  - -1
+  - -1
+  - -1
+  - -1
+  - -1
+  - -1
+  - -1
+  - -1
+  - -1
+  - -1
+  - -1
+  - -1
+  - -1
+  - -1
+  - -1
+  - -1
+  - -1
+  - -1
+  - -1
+  - -1
+  - -1
+  - -1
+  - -1
+  - -1
+  - -1
+  - -1
+  - -1
+- id: 6
+  name: extra
+  type: int
+  container: 1
+  default: [0]
+- id: 7
+  name: tmp0
+  type: int
+  container: 1
+  default: [0]
+- id: 8
+  name: tmp1
+  type: int
+  container: 1
+  default: [0]
+- id: 9
+  name: tmpS
+  type: int
+  container: 1
+  default: [0]
+- {id: 10, name: sel, type: float, default: -1.0}
+- {id: 11, name: cnt, type: float}
+- {id: 1904, name: near, type: float}
+- {id: 1905, name: open, type: float}
+- {id: 1906, name: held, type: float}
+- id: 2062
+  name: parts
+  type: name
+  container: 1
+  default:
+  - RefitBenchLeg
+  - RefitBenchLeg
+  - RefitBenchPost
+  - RefitBenchBoom
+  - RefitBenchTool
+  - RefitBenchCore
+- id: 2063
+  name: partX
+  type: float
+  container: 1
+  default: [-26.0, 26.0, 34.0, 18.0, 4.0, -8.0]
+- id: 2064
+  name: partY
+  type: float
+  container: 1
+  default: [11.0, 11.0, -7.0, -32.0, -26.0, -9.0]
 graphs:
 - kind: event
   name: ""
   nodes:
-  - {id: 150, type: Event, reference_name: Begin}
-  - id: 152
+  - {id: 2048, type: Event, reference_name: Begin}
+  - id: 2050
     type: Set UI Data
     inputs:
       Name: open
       Value: {type: int}
-  - id: 158
+  - id: 2056
     type: Set UI Data
     inputs:
       Name: near
       Value: {type: int}
-  - id: 164
+  - id: 2065
+    type: Get Variable
+    reference_id: 2062
+    reference_name: parts
+    outputs:
+      Value: {type: name, container: 1}
+  - id: 2067
+    type: ForEach
+    inputs:
+      Array: {type: name}
+    outputs:
+      Array Element: {type: name}
+  - id: 2074
+    type: Get Variable
+    reference_id: 2063
+    reference_name: partX
+    outputs:
+      Value: {type: float, container: 1}
+  - id: 2076
+    type: Get
+    inputs:
+      Array: {type: float}
+    outputs:
+      Item: {type: float}
+  - id: 2080
+    type: Get Variable
+    reference_id: 2064
+    reference_name: partY
+    outputs:
+      Value: {type: float, container: 1}
+  - id: 2082
+    type: Get
+    inputs:
+      Array: {type: float}
+    outputs:
+      Item: {type: float}
+  - {id: 2086, type: Spawn Prototype}
+  - id: 2103
+    type: Behavior Expression
+    reference_id: 2091
+    reference_name: pos.x + dx
+    inputs:
+      pos:
+        type: struct
+        type_name: GameTransform
+        binding: {kind: component, component: GAME.GameTransform}
+      dx: {type: float}
+    outputs:
+      Result: {type: float}
+  - id: 2133
+    type: Behavior Expression
+    reference_id: 2121
+    reference_name: pos.y + dy
+    inputs:
+      pos:
+        type: struct
+        type_name: GameTransform
+        binding: {kind: component, component: GAME.GameTransform}
+      dy: {type: float}
+    outputs:
+      Result: {type: float}
+  - id: 2151
+    type: Make Struct
+    inputs:
+      x: {id: 2154}
+      Type: {id: 2152, default: GameTransform}
+    outputs:
+      GameTransform: {id: 2156}
+  - {id: 2157, type: SetEntity_GameTransform}
+  - id: 2163
     type: Event
     reference_name: Tick
     outputs:
       DeltaSeconds: {type: float, kind: data}
-  - id: 167
+  - id: 2166
     type: Get Global Variable
     inputs: {Name: Player}
     outputs:
       Value: {type: handle, type_name: ecs.entity}
-  - id: 170
+  - id: 2169
     type: Has Component
     inputs: {Component: GAME.GameTransform}
-  - {id: 174, type: Branch}
-  - id: 179
+  - {id: 2173, type: Branch}
+  - id: 2178
     type: GetEntity_GameTransform
     outputs:
       Value.x: {}
       Value.y: {}
-  - id: 229
+  - id: 2228
     type: Behavior Expression
-    reference_id: 184
+    reference_id: 2183
     reference_name: near = step((px - pos.x) * (px - pos.x) + (py - pos.y) * (py - pos.y), 4900.0)
     inputs:
-      Exec: {id: 235, kind: exec}
+      Exec: {id: 2234, kind: exec}
       near:
-        id: 230
+        id: 2229
         type: float
-        binding: {kind: variable, variable_id: 6, source_asset: RefitScreen}
+        binding: {kind: variable, variable_id: 1904, source_asset: RefitScreen}
       px: {type: float}
       pos:
         type: struct
@@ -58,247 +407,2245 @@ graphs:
         binding: {kind: component, component: GAME.GameTransform}
       py: {type: float}
     outputs:
-      Then: {id: 236, kind: exec}
-      Result: {id: 234, type: float}
-  - id: 299
+      Then: {id: 2235, kind: exec}
+      Result: {id: 2233, type: float}
+  - id: 2298
     type: Behavior Expression
-    reference_id: 289
+    reference_id: 2288
     reference_name: near = 0
     inputs:
-      Exec: {id: 302, kind: exec}
+      Exec: {id: 2301, kind: exec}
       near:
-        id: 300
+        id: 2299
         type: float
-        binding: {kind: variable, variable_id: 6, source_asset: RefitScreen}
+        binding: {kind: variable, variable_id: 1904, source_asset: RefitScreen}
     outputs:
-      Then: {id: 303, kind: exec}
-      Result: {id: 301, type: float}
-  - id: 319
+      Then: {id: 2302, kind: exec}
+      Result: {id: 2300, type: float}
+  - id: 2318
     type: Get Variable
-    reference_id: 6
+    reference_id: 1904
     reference_name: near
     outputs:
       Value: {type: float}
-  - id: 321
+  - id: 2320
     type: Set UI Data
     inputs:
       Name: near
       Value: {type: float}
-  - id: 327
+  - id: 2326
     type: Branch
     inputs:
       Condition:
         binding: {kind: component_field, component: GAME.GameActionBinding, field: pressed}
-  - id: 342
+  - id: 2341
     type: Behavior Expression
-    reference_id: 332
+    reference_id: 2331
     reference_name: held = 0
     inputs:
-      Exec: {id: 345, kind: exec}
+      Exec: {id: 2344, kind: exec}
       held:
-        id: 343
+        id: 2342
         type: float
-        binding: {kind: variable, variable_id: 8, source_asset: RefitScreen}
+        binding: {kind: variable, variable_id: 1906, source_asset: RefitScreen}
     outputs:
-      Then: {id: 346, kind: exec}
-      Result: {id: 344, type: float}
-  - id: 376
+      Then: {id: 2345, kind: exec}
+      Result: {id: 2343, type: float}
+  - id: 2375
     type: Behavior Expression
-    reference_id: 362
+    reference_id: 2361
     reference_name: held < 0.5
     inputs:
       held:
         type: double
         flags: 0
-        binding: {kind: variable, variable_id: 8, source_asset: RefitScreen}
+        binding: {kind: variable, variable_id: 1906, source_asset: RefitScreen}
     outputs:
       Result: {type: bool}
-  - {id: 382, type: Branch}
-  - id: 397
+  - {id: 2381, type: Branch}
+  - id: 2396
     type: Behavior Expression
-    reference_id: 387
+    reference_id: 2386
     reference_name: held = 1
     inputs:
-      Exec: {id: 400, kind: exec}
+      Exec: {id: 2399, kind: exec}
       held:
-        id: 398
+        id: 2397
         type: float
-        binding: {kind: variable, variable_id: 8, source_asset: RefitScreen}
+        binding: {kind: variable, variable_id: 1906, source_asset: RefitScreen}
     outputs:
-      Then: {id: 401, kind: exec}
-      Result: {id: 399, type: float}
-  - id: 431
+      Then: {id: 2400, kind: exec}
+      Result: {id: 2398, type: float}
+  - id: 2430
     type: Behavior Expression
-    reference_id: 417
+    reference_id: 2416
     reference_name: open > 0.5
     inputs:
       open:
         type: double
         flags: 0
-        binding: {kind: variable, variable_id: 7, source_asset: RefitScreen}
+        binding: {kind: variable, variable_id: 1905, source_asset: RefitScreen}
     outputs:
       Result: {type: bool}
-  - {id: 437, type: Branch}
-  - {id: 442, type: Call Function, reference_id: 9, reference_name: Close}
-  - id: 459
+  - {id: 2436, type: Branch}
+  - {id: 2441, type: Call Function, reference_id: 1907, reference_name: Close}
+  - id: 2458
     type: Behavior Expression
-    reference_id: 445
+    reference_id: 2444
     reference_name: near > 0.5
     inputs:
       near:
         type: double
         flags: 0
-        binding: {kind: variable, variable_id: 6, source_asset: RefitScreen}
+        binding: {kind: variable, variable_id: 1904, source_asset: RefitScreen}
     outputs:
       Result: {type: bool}
-  - {id: 465, type: Branch}
-  - {id: 470, type: Call Function, reference_id: 88, reference_name: Open}
-  - {id: 473, type: Event, reference_name: Close}
-  - {id: 475, type: Call Function, reference_id: 9, reference_name: Close}
+  - {id: 2464, type: Branch}
+  - {id: 2469, type: Call Function, reference_id: 1986, reference_name: Open}
+  - {id: 2472, type: Event, reference_name: Close}
+  - {id: 2474, type: Call Function, reference_id: 1907, reference_name: Close}
+  - {id: 2477, type: Event, reference_name: Primary}
+  - id: 2479
+    type: Get UI Value
+    inputs: {Element: '#slot0'}
+  - id: 2501
+    type: Behavior Expression
+    reference_id: 2484
+    reference_name: floor(v) + 0
+    inputs:
+      v: {type: float}
+    outputs:
+      Result: {type: double}
+  - {id: 2504, type: To Integer}
+  - id: 2507
+    type: Call Function
+    reference_id: 1626
+    reference_name: Pick
+    inputs:
+      C: {id: 2510, type: int, kind: data}
+    outputs:
+      Then: {id: 2509}
+  - {id: 2511, type: Event, reference_name: Secondary}
+  - id: 2513
+    type: Get UI Value
+    inputs: {Element: '#slot1'}
+  - id: 2535
+    type: Behavior Expression
+    reference_id: 2518
+    reference_name: floor(v) + 8
+    inputs:
+      v: {type: float}
+    outputs:
+      Result: {type: double}
+  - {id: 2538, type: To Integer}
+  - id: 2541
+    type: Call Function
+    reference_id: 1626
+    reference_name: Pick
+    inputs:
+      C: {id: 2544, type: int, kind: data}
+    outputs:
+      Then: {id: 2543}
+  - {id: 2545, type: Event, reference_name: Stash}
+  - id: 2547
+    type: Get UI Value
+    inputs: {Element: '#stash'}
+  - id: 2569
+    type: Behavior Expression
+    reference_id: 2552
+    reference_name: floor(v) + 16
+    inputs:
+      v: {type: float}
+    outputs:
+      Result: {type: double}
+  - {id: 2572, type: To Integer}
+  - id: 2575
+    type: Call Function
+    reference_id: 1626
+    reference_name: Pick
+    inputs:
+      C: {id: 2578, type: int, kind: data}
+    outputs:
+      Then: {id: 2577}
+  - {id: 2579, type: Event, reference_name: Remove}
+  - id: 2581
+    type: Get Variable
+    reference_id: 5
+    reference_name: cells
+    outputs:
+      Value: {container: 1}
+  - id: 2583
+    type: Slice
+    inputs:
+      Array: {type: int}
+      Start: 16
+      Count: 24
+    outputs:
+      Array: {type: int}
+  - id: 2588
+    type: Find
+    inputs:
+      Array: {type: int}
+      Item: {type: int, default: -1}
+  - {id: 2592, type: To Real}
+  - id: 2632
+    type: Behavior Expression
+    reference_id: 2595
+    reference_name: sel >= 0 && sel < 16 && k >= 0
+    inputs:
+      sel:
+        type: double
+        flags: 0
+        binding: {kind: variable, variable_id: 10, source_asset: RefitScreen}
+      k: {type: double, flags: 0}
+    outputs:
+      Result: {type: bool}
+  - {id: 2639, type: Branch}
+  - id: 2651
+    type: Behavior Expression
+    reference_id: 2644
+    reference_name: sel
+    inputs:
+      sel:
+        type: double
+        binding: {kind: variable, variable_id: 10, source_asset: RefitScreen}
+    outputs:
+      Result: {type: double}
+  - {id: 2654, type: To Integer}
+  - id: 2671
+    type: Behavior Expression
+    reference_id: 2657
+    reference_name: k + 16
+    inputs:
+      k: {type: double}
+    outputs:
+      Result: {type: double}
+  - {id: 2674, type: To Integer}
+  - id: 2677
+    type: Call Function
+    reference_id: 1590
+    reference_name: Swap Cells
+    inputs:
+      A: {id: 2680, type: int, kind: data}
+      B: {type: int, kind: data}
+    outputs:
+      Then: {id: 2679}
+  - id: 2695
+    type: Behavior Expression
+    reference_id: 2682
+    reference_name: sel = -1
+    inputs:
+      Exec: {id: 2698, kind: exec}
+      sel:
+        id: 2696
+        type: float
+        binding: {kind: variable, variable_id: 10, source_asset: RefitScreen}
+    outputs:
+      Then: {id: 2699, kind: exec}
+      Result: {id: 2697, type: float}
+  - {id: 2718, type: Call Function, reference_id: 322, reference_name: Commit}
+  - id: 2721
+    type: Play Sound
+    inputs:
+      Frequency: 180.0
+      End Frequency: 120.0
+      Duration: 0.14
+      Volume: 0.16
+      Noise: 0.3
+  - {id: 2730, type: Call Function, reference_id: 695, reference_name: Show}
   edges:
-  - {from: 150.Then, to: 152.Exec}
-  - {from: 152.Then, to: 158.Exec}
-  - {from: 164.Then, to: 174.Exec}
-  - {from: 167.Value, to: 170.Entity}
-  - {from: 167.Value, to: 179.Entity}
-  - {from: 170.Value, to: 174.Condition}
-  - {from: 174.True, to: 229.Exec}
-  - {from: 174.False, to: 299.Exec}
-  - {from: 179.Value.x, to: 229.px}
-  - {from: 179.Value.y, to: 229.py}
-  - {from: 229.Then, to: 321.Exec}
-  - {from: 299.Then, to: 321.Exec}
-  - {from: 319.Value, to: 321.Value}
-  - {from: 321.Then, to: 327.Exec}
-  - {from: 327.True, to: 382.Exec}
-  - {from: 327.False, to: 342.Exec}
-  - {from: 376.Result, to: 382.Condition}
-  - {from: 382.True, to: 397.Exec}
-  - {from: 397.Then, to: 437.Exec}
-  - {from: 431.Result, to: 437.Condition}
-  - {from: 437.True, to: 442.Exec}
-  - {from: 437.False, to: 465.Exec}
-  - {from: 459.Result, to: 465.Condition}
-  - {from: 465.True, to: 470.Exec}
-  - {from: 473.Then, to: 475.Exec}
-- id: 1
+  - {from: 2048.Then, to: 2050.Exec}
+  - {from: 2050.Then, to: 2056.Exec}
+  - {from: 2056.Then, to: 2067.Exec}
+  - {from: 2065.Value, to: 2067.Array}
+  - {from: 2067.Body, to: 2086.Exec}
+  - {from: 2067.Array Element, to: 2086.Prototype}
+  - {from: 2067.Index, to: 2076.Index}
+  - {from: 2067.Index, to: 2082.Index}
+  - {from: 2074.Value, to: 2076.Array}
+  - {from: 2076.Item, to: 2103.dx}
+  - {from: 2080.Value, to: 2082.Array}
+  - {from: 2082.Item, to: 2133.dy}
+  - {from: 2086.Then, to: 2157.Exec}
+  - {from: 2086.Entity, to: 2157.Entity}
+  - {from: 2103.Result, to: 2151.x}
+  - {from: 2133.Result, to: 2151.y}
+  - {from: 2151.GameTransform, to: 2157.Value, conversion: game_transform_to_cf}
+  - {from: 2163.Then, to: 2173.Exec}
+  - {from: 2166.Value, to: 2169.Entity}
+  - {from: 2166.Value, to: 2178.Entity}
+  - {from: 2169.Value, to: 2173.Condition}
+  - {from: 2173.True, to: 2228.Exec}
+  - {from: 2173.False, to: 2298.Exec}
+  - {from: 2178.Value.x, to: 2228.px}
+  - {from: 2178.Value.y, to: 2228.py}
+  - {from: 2228.Then, to: 2320.Exec}
+  - {from: 2298.Then, to: 2320.Exec}
+  - {from: 2318.Value, to: 2320.Value}
+  - {from: 2320.Then, to: 2326.Exec}
+  - {from: 2326.True, to: 2381.Exec}
+  - {from: 2326.False, to: 2341.Exec}
+  - {from: 2375.Result, to: 2381.Condition}
+  - {from: 2381.True, to: 2396.Exec}
+  - {from: 2396.Then, to: 2436.Exec}
+  - {from: 2430.Result, to: 2436.Condition}
+  - {from: 2436.True, to: 2441.Exec}
+  - {from: 2436.False, to: 2464.Exec}
+  - {from: 2458.Result, to: 2464.Condition}
+  - {from: 2464.True, to: 2469.Exec}
+  - {from: 2472.Then, to: 2474.Exec}
+  - {from: 2477.Then, to: 2507.Exec}
+  - {from: 2479.Value, to: 2501.v}
+  - {from: 2501.Result, to: 2504.Value}
+  - {from: 2504.Integer, to: 2507.C}
+  - {from: 2511.Then, to: 2541.Exec}
+  - {from: 2513.Value, to: 2535.v}
+  - {from: 2535.Result, to: 2538.Value}
+  - {from: 2538.Integer, to: 2541.C}
+  - {from: 2545.Then, to: 2575.Exec}
+  - {from: 2547.Value, to: 2569.v}
+  - {from: 2569.Result, to: 2572.Value}
+  - {from: 2572.Integer, to: 2575.C}
+  - {from: 2579.Then, to: 2639.Exec}
+  - {from: 2581.Value, to: 2583.Array}
+  - {from: 2583.Array, to: 2588.Array}
+  - {from: 2588.Return Value, to: 2592.Value}
+  - {from: 2592.Real, to: 2632.k}
+  - {from: 2592.Real, to: 2671.k}
+  - {from: 2632.Result, to: 2639.Condition}
+  - {from: 2639.True, to: 2677.Exec}
+  - {from: 2639.False, to: 2721.Exec}
+  - {from: 2651.Result, to: 2654.Value}
+  - {from: 2654.Integer, to: 2677.A}
+  - {from: 2671.Result, to: 2674.Value}
+  - {from: 2674.Integer, to: 2677.B}
+  - {from: 2677.Then, to: 2695.Exec}
+  - {from: 2695.Then, to: 2718.Exec}
+  - {from: 2718.Then, to: 2730.Exec}
+  - {from: 2721.Then, to: 2730.Exec}
+- id: 12
+  kind: function
+  name: Load
+  entry_id: 13
+  return_id: 15
+  call_depth_limit: 64
+  nodes:
+  - {id: 13, type: Function Entry}
+  - {id: 15, type: Return}
+  - id: 17
+    type: Get Variable
+    reference_id: 5
+    reference_name: cells
+    outputs:
+      Value: {container: 1}
+  - id: 19
+    type: Clear
+    inputs:
+      Array: {type: int}
+    outputs:
+      Array: {type: int}
+  - id: 22
+    type: Set Variable
+    reference_id: 5
+    reference_name: cells
+    inputs:
+      Value: {container: 1}
+    outputs:
+      Value: {container: 1}
+  - id: 27
+    type: ForLoop
+    inputs: {LastIndex: 7}
+  - id: 34
+    type: Get Global Variable
+    inputs: {Name: Hardpoint0}
+    outputs:
+      Value: {type: int, container: 1}
+  - id: 37
+    type: Length
+    inputs:
+      Array: {type: int}
+  - {id: 40, type: To Real}
+  - id: 43
+    type: Resize
+    inputs:
+      Array: {type: int}
+      Index: 8
+    outputs:
+      Array: {type: int}
+  - id: 47
+    type: Get
+    inputs:
+      Array: {type: int}
+    outputs:
+      Item: {type: int}
+  - {id: 51, type: To Real}
+  - {id: 54, type: To Real}
+  - id: 76
+    type: Behavior Expression
+    reference_id: 57
+    reference_name: step(j + 1, n)
+    inputs:
+      j: {type: double}
+      "n": {type: double}
+    outputs:
+      Result: {type: double}
+  - id: 103
+    type: Behavior Expression
+    reference_id: 80
+    reference_name: v * f + f - 1
+    inputs:
+      v: {type: double}
+      f: {type: double}
+    outputs:
+      Result: {type: double}
+  - {id: 107, type: To Integer}
+  - id: 110
+    type: Get Variable
+    reference_id: 5
+    reference_name: cells
+    outputs:
+      Value: {container: 1}
+  - id: 112
+    type: Array Add
+    inputs:
+      Array: {type: int}
+      Item: {type: int}
+    outputs:
+      Array: {type: int}
+  - id: 116
+    type: Set Variable
+    reference_id: 5
+    reference_name: cells
+    inputs:
+      Value: {container: 1}
+    outputs:
+      Value: {container: 1}
+  - id: 121
+    type: ForLoop
+    inputs: {LastIndex: 7}
+  - id: 128
+    type: Get Global Variable
+    inputs: {Name: Hardpoint1}
+    outputs:
+      Value: {type: int, container: 1}
+  - id: 131
+    type: Length
+    inputs:
+      Array: {type: int}
+  - {id: 134, type: To Real}
+  - id: 137
+    type: Resize
+    inputs:
+      Array: {type: int}
+      Index: 8
+    outputs:
+      Array: {type: int}
+  - id: 141
+    type: Get
+    inputs:
+      Array: {type: int}
+    outputs:
+      Item: {type: int}
+  - {id: 145, type: To Real}
+  - {id: 148, type: To Real}
+  - id: 170
+    type: Behavior Expression
+    reference_id: 151
+    reference_name: step(j + 1, n)
+    inputs:
+      j: {type: double}
+      "n": {type: double}
+    outputs:
+      Result: {type: double}
+  - id: 197
+    type: Behavior Expression
+    reference_id: 174
+    reference_name: v * f + f - 1
+    inputs:
+      v: {type: double}
+      f: {type: double}
+    outputs:
+      Result: {type: double}
+  - {id: 201, type: To Integer}
+  - id: 204
+    type: Get Variable
+    reference_id: 5
+    reference_name: cells
+    outputs:
+      Value: {container: 1}
+  - id: 206
+    type: Array Add
+    inputs:
+      Array: {type: int}
+      Item: {type: int}
+    outputs:
+      Array: {type: int}
+  - id: 210
+    type: Set Variable
+    reference_id: 5
+    reference_name: cells
+    inputs:
+      Value: {container: 1}
+    outputs:
+      Value: {container: 1}
+  - id: 215
+    type: ForLoop
+    inputs: {LastIndex: 23}
+  - id: 222
+    type: Get Global Variable
+    inputs: {Name: Stash}
+    outputs:
+      Value: {type: int, container: 1}
+  - id: 225
+    type: Length
+    inputs:
+      Array: {type: int}
+  - {id: 228, type: To Real}
+  - id: 231
+    type: Resize
+    inputs:
+      Array: {type: int}
+      Index: 24
+    outputs:
+      Array: {type: int}
+  - id: 235
+    type: Get
+    inputs:
+      Array: {type: int}
+    outputs:
+      Item: {type: int}
+  - {id: 239, type: To Real}
+  - {id: 242, type: To Real}
+  - id: 264
+    type: Behavior Expression
+    reference_id: 245
+    reference_name: step(j + 1, n)
+    inputs:
+      j: {type: double}
+      "n": {type: double}
+    outputs:
+      Result: {type: double}
+  - id: 291
+    type: Behavior Expression
+    reference_id: 268
+    reference_name: v * f + f - 1
+    inputs:
+      v: {type: double}
+      f: {type: double}
+    outputs:
+      Result: {type: double}
+  - {id: 295, type: To Integer}
+  - id: 298
+    type: Get Variable
+    reference_id: 5
+    reference_name: cells
+    outputs:
+      Value: {container: 1}
+  - id: 300
+    type: Array Add
+    inputs:
+      Array: {type: int}
+      Item: {type: int}
+    outputs:
+      Array: {type: int}
+  - id: 304
+    type: Set Variable
+    reference_id: 5
+    reference_name: cells
+    inputs:
+      Value: {container: 1}
+    outputs:
+      Value: {container: 1}
+  - id: 309
+    type: Get Global Variable
+    inputs: {Name: Stash}
+    outputs:
+      Value: {type: int, container: 1}
+  - id: 312
+    type: Slice
+    inputs:
+      Array: {type: int}
+      Start: 24
+      Count: 1000
+    outputs:
+      Array: {type: int}
+  - id: 317
+    type: Set Variable
+    reference_id: 6
+    reference_name: extra
+    inputs:
+      Value: {container: 1}
+    outputs:
+      Value: {container: 1}
+  edges:
+  - {from: 13.Exec, to: 22.Exec}
+  - {from: 17.Value, to: 19.Array}
+  - {from: 19.Array, to: 22.Value}
+  - {from: 22.Then, to: 27.Exec}
+  - {from: 27.Body, to: 116.Exec}
+  - {from: 27.Index, to: 47.Index}
+  - {from: 27.Index, to: 54.Value}
+  - {from: 27.Completed, to: 121.Exec}
+  - {from: 34.Value, to: 37.Array}
+  - {from: 34.Value, to: 43.Array}
+  - {from: 37.Return Value, to: 40.Value}
+  - {from: 40.Real, to: 76.n}
+  - {from: 43.Array, to: 47.Array}
+  - {from: 47.Item, to: 51.Value}
+  - {from: 51.Real, to: 103.v}
+  - {from: 54.Real, to: 76.j}
+  - {from: 76.Result, to: 103.f}
+  - {from: 103.Result, to: 107.Value}
+  - {from: 107.Integer, to: 112.Item}
+  - {from: 110.Value, to: 112.Array}
+  - {from: 112.Array, to: 116.Value}
+  - {from: 121.Body, to: 210.Exec}
+  - {from: 121.Index, to: 141.Index}
+  - {from: 121.Index, to: 148.Value}
+  - {from: 121.Completed, to: 215.Exec}
+  - {from: 128.Value, to: 131.Array}
+  - {from: 128.Value, to: 137.Array}
+  - {from: 131.Return Value, to: 134.Value}
+  - {from: 134.Real, to: 170.n}
+  - {from: 137.Array, to: 141.Array}
+  - {from: 141.Item, to: 145.Value}
+  - {from: 145.Real, to: 197.v}
+  - {from: 148.Real, to: 170.j}
+  - {from: 170.Result, to: 197.f}
+  - {from: 197.Result, to: 201.Value}
+  - {from: 201.Integer, to: 206.Item}
+  - {from: 204.Value, to: 206.Array}
+  - {from: 206.Array, to: 210.Value}
+  - {from: 215.Body, to: 304.Exec}
+  - {from: 215.Index, to: 235.Index}
+  - {from: 215.Index, to: 242.Value}
+  - {from: 215.Completed, to: 317.Exec}
+  - {from: 222.Value, to: 225.Array}
+  - {from: 222.Value, to: 231.Array}
+  - {from: 225.Return Value, to: 228.Value}
+  - {from: 228.Real, to: 264.n}
+  - {from: 231.Array, to: 235.Array}
+  - {from: 235.Item, to: 239.Value}
+  - {from: 239.Real, to: 291.v}
+  - {from: 242.Real, to: 264.j}
+  - {from: 264.Result, to: 291.f}
+  - {from: 291.Result, to: 295.Value}
+  - {from: 295.Integer, to: 300.Item}
+  - {from: 298.Value, to: 300.Array}
+  - {from: 300.Array, to: 304.Value}
+  - {from: 309.Value, to: 312.Array}
+  - {from: 312.Array, to: 317.Value}
+  - {from: 317.Then, to: 15.Exec}
+- {id: 57, kind: function, math_expression: 'step(j + 1, n)', entry_id: 58}
+- {id: 80, kind: function, math_expression: v * f + f - 1, entry_id: 81}
+- {id: 151, kind: function, math_expression: 'step(j + 1, n)', entry_id: 152}
+- {id: 174, kind: function, math_expression: v * f + f - 1, entry_id: 175}
+- {id: 245, kind: function, math_expression: 'step(j + 1, n)', entry_id: 246}
+- {id: 268, kind: function, math_expression: v * f + f - 1, entry_id: 269}
+- id: 322
+  kind: function
+  name: Commit
+  entry_id: 323
+  return_id: 325
+  call_depth_limit: 64
+  nodes:
+  - {id: 323, type: Function Entry}
+  - {id: 325, type: Return}
+  - id: 327
+    type: Get Variable
+    reference_id: 7
+    reference_name: tmp0
+    outputs:
+      Value: {container: 1}
+  - id: 329
+    type: Clear
+    inputs:
+      Array: {type: int}
+    outputs:
+      Array: {type: int}
+  - id: 332
+    type: Set Variable
+    reference_id: 7
+    reference_name: tmp0
+    inputs:
+      Value: {container: 1}
+    outputs:
+      Value: {container: 1}
+  - id: 337
+    type: Get Variable
+    reference_id: 8
+    reference_name: tmp1
+    outputs:
+      Value: {container: 1}
+  - id: 339
+    type: Clear
+    inputs:
+      Array: {type: int}
+    outputs:
+      Array: {type: int}
+  - id: 342
+    type: Set Variable
+    reference_id: 8
+    reference_name: tmp1
+    inputs:
+      Value: {container: 1}
+    outputs:
+      Value: {container: 1}
+  - id: 347
+    type: Get Variable
+    reference_id: 9
+    reference_name: tmpS
+    outputs:
+      Value: {container: 1}
+  - id: 349
+    type: Clear
+    inputs:
+      Array: {type: int}
+    outputs:
+      Array: {type: int}
+  - id: 352
+    type: Set Variable
+    reference_id: 9
+    reference_name: tmpS
+    inputs:
+      Value: {container: 1}
+    outputs:
+      Value: {container: 1}
+  - id: 357
+    type: ForLoop
+    inputs: {LastIndex: 39}
+  - id: 364
+    type: Get Variable
+    reference_id: 5
+    reference_name: cells
+    outputs:
+      Value: {container: 1}
+  - id: 366
+    type: Get
+    inputs:
+      Array: {type: int}
+    outputs:
+      Item: {type: int}
+  - {id: 370, type: To Real}
+  - id: 387
+    type: Behavior Expression
+    reference_id: 373
+    reference_name: v >= 0
+    inputs:
+      v: {type: double, flags: 0}
+    outputs:
+      Result: {type: bool}
+  - {id: 393, type: Branch}
+  - {id: 398, type: To Real}
+  - id: 425
+    type: Behavior Expression
+    reference_id: 401
+    reference_name: min(floor(c / 8), 2)
+    inputs:
+      c: {type: double}
+    outputs:
+      Result: {type: double}
+  - {id: 428, type: To Integer}
+  - id: 431
+    type: Switch on Int
+    outputs:
+    - 434
+    - 435
+    - {id: 437, name: Case2}
+    - 436
+  - id: 438
+    type: Get Variable
+    reference_id: 7
+    reference_name: tmp0
+    outputs:
+      Value: {container: 1}
+  - id: 440
+    type: Array Add
+    inputs:
+      Array: {type: int}
+      Item: {type: int}
+    outputs:
+      Array: {type: int}
+  - id: 444
+    type: Set Variable
+    reference_id: 7
+    reference_name: tmp0
+    inputs:
+      Value: {container: 1}
+    outputs:
+      Value: {container: 1}
+  - id: 449
+    type: Get Variable
+    reference_id: 8
+    reference_name: tmp1
+    outputs:
+      Value: {container: 1}
+  - id: 451
+    type: Array Add
+    inputs:
+      Array: {type: int}
+      Item: {type: int}
+    outputs:
+      Array: {type: int}
+  - id: 455
+    type: Set Variable
+    reference_id: 8
+    reference_name: tmp1
+    inputs:
+      Value: {container: 1}
+    outputs:
+      Value: {container: 1}
+  - id: 460
+    type: Get Variable
+    reference_id: 9
+    reference_name: tmpS
+    outputs:
+      Value: {container: 1}
+  - id: 462
+    type: Array Add
+    inputs:
+      Array: {type: int}
+      Item: {type: int}
+    outputs:
+      Array: {type: int}
+  - id: 466
+    type: Set Variable
+    reference_id: 9
+    reference_name: tmpS
+    inputs:
+      Value: {container: 1}
+    outputs:
+      Value: {container: 1}
+  - id: 471
+    type: Get Variable
+    reference_id: 6
+    reference_name: extra
+    outputs:
+      Value: {container: 1}
+  - id: 473
+    type: ForEach
+    inputs:
+      Array: {type: int}
+    outputs:
+      Array Element: {type: int}
+  - id: 480
+    type: Get Variable
+    reference_id: 9
+    reference_name: tmpS
+    outputs:
+      Value: {container: 1}
+  - id: 482
+    type: Array Add
+    inputs:
+      Array: {type: int}
+      Item: {type: int}
+    outputs:
+      Array: {type: int}
+  - id: 486
+    type: Set Variable
+    reference_id: 9
+    reference_name: tmpS
+    inputs:
+      Value: {container: 1}
+    outputs:
+      Value: {container: 1}
+  - id: 501
+    type: Behavior Expression
+    reference_id: 491
+    reference_name: cnt = 0
+    inputs:
+      Exec: {id: 504, kind: exec}
+      cnt:
+        id: 502
+        type: float
+        binding: {kind: variable, variable_id: 11, source_asset: RefitScreen}
+    outputs:
+      Then: {id: 505, kind: exec}
+      Result: {id: 503, type: float}
+  - id: 521
+    type: Get Variable
+    reference_id: 7
+    reference_name: tmp0
+    outputs:
+      Value: {container: 1}
+  - id: 523
+    type: ForEach
+    inputs:
+      Array: {type: int}
+    outputs:
+      Array Element: {type: int}
+  - {id: 530, type: To Real}
+  - id: 547
+    type: Behavior Expression
+    reference_id: 533
+    reference_name: m < 20
+    inputs:
+      m: {type: double, flags: 0}
+    outputs:
+      Result: {type: bool}
+  - {id: 553, type: Branch}
+  - id: 572
+    type: Behavior Expression
+    reference_id: 558
+    reference_name: cnt += 1
+    inputs:
+      Exec: {id: 575, kind: exec}
+      cnt:
+        id: 573
+        type: float
+        binding: {kind: variable, variable_id: 11, source_asset: RefitScreen}
+    outputs:
+      Then: {id: 576, kind: exec}
+      Result: {id: 574, type: float}
+  - id: 610
+    type: Behavior Expression
+    reference_id: 596
+    reference_name: cnt > 0
+    inputs:
+      cnt:
+        type: double
+        flags: 0
+        binding: {kind: variable, variable_id: 11, source_asset: RefitScreen}
+    outputs:
+      Result: {type: bool}
+  - {id: 616, type: Branch}
+  - id: 621
+    type: Get Variable
+    reference_id: 7
+    reference_name: tmp0
+    outputs:
+      Value: {container: 1}
+  - id: 623
+    type: Set Global Variable
+    inputs:
+      Name: Hardpoint0
+      Value: {type: int, container: 1}
+    outputs:
+      Value: {type: int}
+  - id: 629
+    type: Get Variable
+    reference_id: 8
+    reference_name: tmp1
+    outputs:
+      Value: {container: 1}
+  - id: 631
+    type: Set Global Variable
+    inputs:
+      Name: Hardpoint1
+      Value: {type: int, container: 1}
+    outputs:
+      Value: {type: int}
+  - id: 637
+    type: Get Variable
+    reference_id: 9
+    reference_name: tmpS
+    outputs:
+      Value: {container: 1}
+  - id: 639
+    type: Set Global Variable
+    inputs:
+      Name: Stash
+      Value: {type: int, container: 1}
+    outputs:
+      Value: {type: int}
+  - id: 645
+    type: Play Sound
+    inputs:
+      Frequency: 660.0
+      End Frequency: 990.0
+      Duration: 0.12
+      Volume: 0.18
+      Noise: 0.05
+  - id: 654
+    type: Set Global Variable
+    inputs:
+      Name: Toast
+      Value: {type: name, default: The primary needs an emitter}
+    outputs:
+      Value: {type: name}
+  - id: 660
+    type: Get Global Variable
+    inputs: {Name: ToastSerial}
+    outputs:
+      Value: {type: int}
+  - id: 677
+    type: Behavior Expression
+    reference_id: 663
+    reference_name: s + 1
+    inputs:
+      s: {type: int}
+    outputs:
+      Result: {type: double}
+  - id: 680
+    type: Set Global Variable
+    inputs:
+      Name: ToastSerial
+      Value: {type: int}
+    outputs:
+      Value: {type: int}
+  - id: 686
+    type: Play Sound
+    inputs:
+      Frequency: 180.0
+      End Frequency: 120.0
+      Duration: 0.16
+      Volume: 0.16
+      Noise: 0.3
+  edges:
+  - {from: 323.Exec, to: 332.Exec}
+  - {from: 327.Value, to: 329.Array}
+  - {from: 329.Array, to: 332.Value}
+  - {from: 332.Then, to: 342.Exec}
+  - {from: 337.Value, to: 339.Array}
+  - {from: 339.Array, to: 342.Value}
+  - {from: 342.Then, to: 352.Exec}
+  - {from: 347.Value, to: 349.Array}
+  - {from: 349.Array, to: 352.Value}
+  - {from: 352.Then, to: 357.Exec}
+  - {from: 357.Body, to: 393.Exec}
+  - {from: 357.Index, to: 366.Index}
+  - {from: 357.Index, to: 398.Value}
+  - {from: 357.Completed, to: 473.Exec}
+  - {from: 364.Value, to: 366.Array}
+  - {from: 366.Item, to: 370.Value}
+  - {from: 366.Item, to: 440.Item}
+  - {from: 366.Item, to: 451.Item}
+  - {from: 366.Item, to: 462.Item}
+  - {from: 370.Real, to: 387.v}
+  - {from: 387.Result, to: 393.Condition}
+  - {from: 393.True, to: 431.Exec}
+  - {from: 398.Real, to: 425.c}
+  - {from: 425.Result, to: 428.Value}
+  - {from: 428.Integer, to: 431.Selection}
+  - {from: 431.Case0, to: 444.Exec}
+  - {from: 431.Case1, to: 455.Exec}
+  - {from: 431.Case2, to: 466.Exec}
+  - {from: 438.Value, to: 440.Array}
+  - {from: 440.Array, to: 444.Value}
+  - {from: 449.Value, to: 451.Array}
+  - {from: 451.Array, to: 455.Value}
+  - {from: 460.Value, to: 462.Array}
+  - {from: 462.Array, to: 466.Value}
+  - {from: 471.Value, to: 473.Array}
+  - {from: 473.Body, to: 486.Exec}
+  - {from: 473.Array Element, to: 482.Item}
+  - {from: 473.Completed, to: 501.Exec}
+  - {from: 480.Value, to: 482.Array}
+  - {from: 482.Array, to: 486.Value}
+  - {from: 501.Then, to: 523.Exec}
+  - {from: 521.Value, to: 523.Array}
+  - {from: 523.Body, to: 553.Exec}
+  - {from: 523.Array Element, to: 530.Value}
+  - {from: 523.Completed, to: 616.Exec}
+  - {from: 530.Real, to: 547.m}
+  - {from: 547.Result, to: 553.Condition}
+  - {from: 553.True, to: 572.Exec}
+  - {from: 610.Result, to: 616.Condition}
+  - {from: 616.True, to: 623.Exec}
+  - {from: 616.False, to: 654.Exec}
+  - {from: 621.Value, to: 623.Value}
+  - {from: 623.Then, to: 631.Exec}
+  - {from: 629.Value, to: 631.Value}
+  - {from: 631.Then, to: 639.Exec}
+  - {from: 637.Value, to: 639.Value}
+  - {from: 639.Then, to: 645.Exec}
+  - {from: 645.Then, to: 325.Exec}
+  - {from: 654.Then, to: 680.Exec}
+  - {from: 660.Value, to: 677.s}
+  - {from: 680.Then, to: 686.Exec}
+  - {from: 686.Then, to: 325.Exec}
+- {id: 373, kind: function, math_expression: v >= 0, entry_id: 374}
+- {id: 401, kind: function, math_expression: 'min(floor(c / 8), 2)', entry_id: 402}
+- {id: 491, kind: function, math_expression: cnt = 0, entry_id: 507}
+- {id: 533, kind: function, math_expression: m < 20, entry_id: 534}
+- {id: 558, kind: function, math_expression: cnt += 1, entry_id: 578}
+- {id: 596, kind: function, math_expression: cnt > 0, entry_id: 597}
+- {id: 663, kind: function, math_expression: s + 1, entry_id: 664}
+- id: 695
   kind: function
   name: Show
-  entry_id: 2
-  return_id: 4
+  entry_id: 696
+  return_id: 698
   call_depth_limit: 64
   nodes:
-  - {id: 2, type: Function Entry}
-  - {id: 4, type: Return}
+  - {id: 696, type: Function Entry}
+  - {id: 698, type: Return}
+  - {id: 700, type: Call Function, reference_id: 12, reference_name: Load}
+  - id: 703
+    type: Get Global Variable
+    inputs: {Name: Slots0}
+    outputs:
+      Value: {type: int}
+  - id: 706
+    type: Set UI Data
+    inputs:
+      Name: cap0
+      Value: {type: int}
+  - id: 712
+    type: Get Global Variable
+    inputs: {Name: Slots1}
+    outputs:
+      Value: {type: int}
+  - id: 715
+    type: Set UI Data
+    inputs:
+      Name: cap1
+      Value: {type: int}
+  - id: 721
+    type: Get Global Variable
+    inputs: {Name: Hardpoint0}
+    outputs:
+      Value: {type: int, container: 1}
+  - id: 724
+    type: Length
+    inputs:
+      Array: {type: int}
+  - id: 727
+    type: Set UI Data
+    inputs:
+      Name: count0
+      Value: {type: int}
+  - id: 733
+    type: Get Global Variable
+    inputs: {Name: Hardpoint1}
+    outputs:
+      Value: {type: int, container: 1}
+  - id: 736
+    type: Length
+    inputs:
+      Array: {type: int}
+  - id: 739
+    type: Set UI Data
+    inputs:
+      Name: count1
+      Value: {type: int}
+  - id: 745
+    type: ForLoop
+    inputs: {LastIndex: 7}
+  - {id: 752, type: To Real}
+  - id: 769
+    type: Behavior Expression
+    reference_id: 755
+    reference_name: j + 0
+    inputs:
+      j: {type: double}
+    outputs:
+      Result: {type: double}
+  - id: 772
+    type: Get Variable
+    reference_id: 5
+    reference_name: cells
+    outputs:
+      Value: {container: 1}
+  - {id: 774, type: To Integer}
+  - id: 777
+    type: Get
+    inputs:
+      Array: {type: int}
+    outputs:
+      Item: {type: int}
+  - {id: 781, type: To Real}
+  - id: 798
+    type: Behavior Expression
+    reference_id: 784
+    reference_name: step(0, v)
+    inputs:
+      v: {type: double}
+    outputs:
+      Result: {type: double}
+  - id: 815
+    type: Behavior Expression
+    reference_id: 801
+    reference_name: max(v, 0)
+    inputs:
+      v: {type: double}
+    outputs:
+      Result: {type: double}
+  - {id: 818, type: To Integer}
+  - id: 821
+    type: Get Variable
+    reference_id: 2
+    reference_name: modKind
+    outputs:
+      Value: {container: 1}
+  - id: 823
+    type: Get
+    inputs:
+      Array: {type: int}
+    outputs:
+      Item: {type: int}
+  - {id: 827, type: To Real}
+  - id: 853
+    type: Behavior Expression
+    reference_id: 830
+    reference_name: k * f + f - 1
+    inputs:
+      k: {type: double}
+      f: {type: double}
+    outputs:
+      Result: {type: double}
+  - id: 879
+    type: Behavior Expression
+    reference_id: 857
+    reference_name: step(abs(c - sel), 0.5)
+    inputs:
+      c: {type: double}
+      sel:
+        type: double
+        binding: {kind: variable, variable_id: 10, source_asset: RefitScreen}
+    outputs:
+      Result: {type: double}
+  - id: 883
+    type: Get Variable
+    reference_id: 1
+    reference_name: modName
+    outputs:
+      Value: {type: name, container: 1}
+  - id: 885
+    type: Get
+    inputs:
+      Array: {type: name}
+    outputs:
+      Item: {type: name}
+  - {id: 889, type: To Real}
+  - id: 892
+    type: Get Global Variable
+    inputs: {Name: Slots0}
+    outputs:
+      Value: {type: int}
+  - {id: 895, type: To Real}
+  - id: 917
+    type: Behavior Expression
+    reference_id: 898
+    reference_name: step(j + 1, n)
+    inputs:
+      j: {type: double}
+      "n": {type: double}
+    outputs:
+      Result: {type: double}
+  - id: 921
+    type: Format Text
+    inputs:
+      Format: primary.{}.name
+      Arg0: {type: int}
+  - {id: 925, type: To Name}
+  - id: 928
+    type: Set UI Data
+    inputs:
+      Value: {type: name}
+  - id: 934
+    type: Format Text
+    inputs:
+      Format: primary.{}.kind
+      Arg0: {type: int}
+  - {id: 938, type: To Name}
+  - id: 941
+    type: Set UI Data
+    inputs:
+      Value: {type: double}
+  - id: 947
+    type: Format Text
+    inputs:
+      Format: primary.{}.filled
+      Arg0: {type: int}
+  - {id: 951, type: To Name}
+  - id: 954
+    type: Set UI Data
+    inputs:
+      Value: {type: double}
+  - id: 960
+    type: Format Text
+    inputs:
+      Format: primary.{}.sel
+      Arg0: {type: int}
+  - {id: 964, type: To Name}
+  - id: 967
+    type: Set UI Data
+    inputs:
+      Value: {type: double}
+  - id: 973
+    type: Format Text
+    inputs:
+      Format: primary.{}.show
+      Arg0: {type: int}
+  - {id: 977, type: To Name}
+  - id: 980
+    type: Set UI Data
+    inputs:
+      Value: {type: double}
+  - id: 986
+    type: ForLoop
+    inputs: {LastIndex: 7}
+  - {id: 993, type: To Real}
+  - id: 1010
+    type: Behavior Expression
+    reference_id: 996
+    reference_name: j + 8
+    inputs:
+      j: {type: double}
+    outputs:
+      Result: {type: double}
+  - id: 1013
+    type: Get Variable
+    reference_id: 5
+    reference_name: cells
+    outputs:
+      Value: {container: 1}
+  - {id: 1015, type: To Integer}
+  - id: 1018
+    type: Get
+    inputs:
+      Array: {type: int}
+    outputs:
+      Item: {type: int}
+  - {id: 1022, type: To Real}
+  - id: 1039
+    type: Behavior Expression
+    reference_id: 1025
+    reference_name: step(0, v)
+    inputs:
+      v: {type: double}
+    outputs:
+      Result: {type: double}
+  - id: 1056
+    type: Behavior Expression
+    reference_id: 1042
+    reference_name: max(v, 0)
+    inputs:
+      v: {type: double}
+    outputs:
+      Result: {type: double}
+  - {id: 1059, type: To Integer}
+  - id: 1062
+    type: Get Variable
+    reference_id: 2
+    reference_name: modKind
+    outputs:
+      Value: {container: 1}
+  - id: 1064
+    type: Get
+    inputs:
+      Array: {type: int}
+    outputs:
+      Item: {type: int}
+  - {id: 1068, type: To Real}
+  - id: 1094
+    type: Behavior Expression
+    reference_id: 1071
+    reference_name: k * f + f - 1
+    inputs:
+      k: {type: double}
+      f: {type: double}
+    outputs:
+      Result: {type: double}
+  - id: 1120
+    type: Behavior Expression
+    reference_id: 1098
+    reference_name: step(abs(c - sel), 0.5)
+    inputs:
+      c: {type: double}
+      sel:
+        type: double
+        binding: {kind: variable, variable_id: 10, source_asset: RefitScreen}
+    outputs:
+      Result: {type: double}
+  - id: 1124
+    type: Get Variable
+    reference_id: 1
+    reference_name: modName
+    outputs:
+      Value: {type: name, container: 1}
+  - id: 1126
+    type: Get
+    inputs:
+      Array: {type: name}
+    outputs:
+      Item: {type: name}
+  - {id: 1130, type: To Real}
+  - id: 1133
+    type: Get Global Variable
+    inputs: {Name: Slots1}
+    outputs:
+      Value: {type: int}
+  - {id: 1136, type: To Real}
+  - id: 1158
+    type: Behavior Expression
+    reference_id: 1139
+    reference_name: step(j + 1, n)
+    inputs:
+      j: {type: double}
+      "n": {type: double}
+    outputs:
+      Result: {type: double}
+  - id: 1162
+    type: Format Text
+    inputs:
+      Format: secondary.{}.name
+      Arg0: {type: int}
+  - {id: 1166, type: To Name}
+  - id: 1169
+    type: Set UI Data
+    inputs:
+      Value: {type: name}
+  - id: 1175
+    type: Format Text
+    inputs:
+      Format: secondary.{}.kind
+      Arg0: {type: int}
+  - {id: 1179, type: To Name}
+  - id: 1182
+    type: Set UI Data
+    inputs:
+      Value: {type: double}
+  - id: 1188
+    type: Format Text
+    inputs:
+      Format: secondary.{}.filled
+      Arg0: {type: int}
+  - {id: 1192, type: To Name}
+  - id: 1195
+    type: Set UI Data
+    inputs:
+      Value: {type: double}
+  - id: 1201
+    type: Format Text
+    inputs:
+      Format: secondary.{}.sel
+      Arg0: {type: int}
+  - {id: 1205, type: To Name}
+  - id: 1208
+    type: Set UI Data
+    inputs:
+      Value: {type: double}
+  - id: 1214
+    type: Format Text
+    inputs:
+      Format: secondary.{}.show
+      Arg0: {type: int}
+  - {id: 1218, type: To Name}
+  - id: 1221
+    type: Set UI Data
+    inputs:
+      Value: {type: double}
+  - id: 1227
+    type: ForLoop
+    inputs: {LastIndex: 23}
+  - {id: 1234, type: To Real}
+  - id: 1251
+    type: Behavior Expression
+    reference_id: 1237
+    reference_name: j + 16
+    inputs:
+      j: {type: double}
+    outputs:
+      Result: {type: double}
+  - id: 1254
+    type: Get Variable
+    reference_id: 5
+    reference_name: cells
+    outputs:
+      Value: {container: 1}
+  - {id: 1256, type: To Integer}
+  - id: 1259
+    type: Get
+    inputs:
+      Array: {type: int}
+    outputs:
+      Item: {type: int}
+  - {id: 1263, type: To Real}
+  - id: 1280
+    type: Behavior Expression
+    reference_id: 1266
+    reference_name: step(0, v)
+    inputs:
+      v: {type: double}
+    outputs:
+      Result: {type: double}
+  - id: 1297
+    type: Behavior Expression
+    reference_id: 1283
+    reference_name: max(v, 0)
+    inputs:
+      v: {type: double}
+    outputs:
+      Result: {type: double}
+  - {id: 1300, type: To Integer}
+  - id: 1303
+    type: Get Variable
+    reference_id: 2
+    reference_name: modKind
+    outputs:
+      Value: {container: 1}
+  - id: 1305
+    type: Get
+    inputs:
+      Array: {type: int}
+    outputs:
+      Item: {type: int}
+  - {id: 1309, type: To Real}
+  - id: 1335
+    type: Behavior Expression
+    reference_id: 1312
+    reference_name: k * f + f - 1
+    inputs:
+      k: {type: double}
+      f: {type: double}
+    outputs:
+      Result: {type: double}
+  - id: 1361
+    type: Behavior Expression
+    reference_id: 1339
+    reference_name: step(abs(c - sel), 0.5)
+    inputs:
+      c: {type: double}
+      sel:
+        type: double
+        binding: {kind: variable, variable_id: 10, source_asset: RefitScreen}
+    outputs:
+      Result: {type: double}
+  - id: 1365
+    type: Get Variable
+    reference_id: 1
+    reference_name: modName
+    outputs:
+      Value: {type: name, container: 1}
+  - id: 1367
+    type: Get
+    inputs:
+      Array: {type: name}
+    outputs:
+      Item: {type: name}
+  - id: 1371
+    type: Format Text
+    inputs:
+      Format: stash.{}.name
+      Arg0: {type: int}
+  - {id: 1375, type: To Name}
+  - id: 1378
+    type: Set UI Data
+    inputs:
+      Value: {type: name}
+  - id: 1384
+    type: Format Text
+    inputs:
+      Format: stash.{}.kind
+      Arg0: {type: int}
+  - {id: 1388, type: To Name}
+  - id: 1391
+    type: Set UI Data
+    inputs:
+      Value: {type: double}
+  - id: 1397
+    type: Format Text
+    inputs:
+      Format: stash.{}.filled
+      Arg0: {type: int}
+  - {id: 1401, type: To Name}
+  - id: 1404
+    type: Set UI Data
+    inputs:
+      Value: {type: double}
+  - id: 1410
+    type: Format Text
+    inputs:
+      Format: stash.{}.sel
+      Arg0: {type: int}
+  - {id: 1414, type: To Name}
+  - id: 1417
+    type: Set UI Data
+    inputs:
+      Value: {type: double}
+  - id: 1437
+    type: Behavior Expression
+    reference_id: 1423
+    reference_name: step(0, sel)
+    inputs:
+      sel:
+        type: double
+        binding: {kind: variable, variable_id: 10, source_asset: RefitScreen}
+    outputs:
+      Result: {type: double}
+  - id: 1440
+    type: Get Variable
+    reference_id: 5
+    reference_name: cells
+    outputs:
+      Value: {container: 1}
+  - id: 1456
+    type: Behavior Expression
+    reference_id: 1442
+    reference_name: max(sel, 0)
+    inputs:
+      sel:
+        type: double
+        binding: {kind: variable, variable_id: 10, source_asset: RefitScreen}
+    outputs:
+      Result: {type: double}
+  - {id: 1459, type: To Integer}
+  - id: 1462
+    type: Get
+    inputs:
+      Array: {type: int}
+    outputs:
+      Item: {type: int}
+  - {id: 1466, type: To Real}
+  - id: 1483
+    type: Behavior Expression
+    reference_id: 1469
+    reference_name: max(v, 0)
+    inputs:
+      v: {type: double}
+    outputs:
+      Result: {type: double}
+  - {id: 1486, type: To Integer}
+  - id: 1508
+    type: Behavior Expression
+    reference_id: 1489
+    reference_name: h * step(0, v)
+    inputs:
+      h: {type: double}
+      v: {type: double}
+    outputs:
+      Result: {type: double}
+  - id: 1512
+    type: Set UI Data
+    inputs:
+      Name: hasSel
+      Value: {type: double}
+  - id: 1518
+    type: Get Variable
+    reference_id: 1
+    reference_name: modName
+    outputs:
+      Value: {type: name, container: 1}
+  - id: 1520
+    type: Get
+    inputs:
+      Array: {type: name}
+    outputs:
+      Item: {type: name}
+  - id: 1524
+    type: Set UI Data
+    inputs:
+      Name: selName
+      Value: {type: name}
+  - id: 1530
+    type: Get Variable
+    reference_id: 2
+    reference_name: modKind
+    outputs:
+      Value: {container: 1}
+  - id: 1532
+    type: Get
+    inputs:
+      Array: {type: int}
+    outputs:
+      Item: {type: int}
+  - id: 1536
+    type: Set UI Data
+    inputs:
+      Name: selKind
+      Value: {type: int}
+  - id: 1542
+    type: Get Variable
+    reference_id: 4
+    reference_name: modBlurb
+    outputs:
+      Value: {type: name, container: 1}
+  - id: 1544
+    type: Get
+    inputs:
+      Array: {type: name}
+    outputs:
+      Item: {type: name}
+  - id: 1548
+    type: Set UI Data
+    inputs:
+      Name: selBlurb
+      Value: {type: name}
+  - id: 1580
+    type: Behavior Expression
+    reference_id: 1554
+    reference_name: h * step(sel + 1, 16)
+    inputs:
+      h: {type: double}
+      sel:
+        type: double
+        binding: {kind: variable, variable_id: 10, source_asset: RefitScreen}
+    outputs:
+      Result: {type: double}
+  - id: 1584
+    type: Set UI Data
+    inputs:
+      Name: selFitted
+      Value: {type: double}
   edges:
-  - {from: 2.Exec, to: 4.Exec}
-- id: 9
+  - {from: 696.Exec, to: 700.Exec}
+  - {from: 700.Then, to: 706.Exec}
+  - {from: 703.Value, to: 706.Value}
+  - {from: 706.Then, to: 715.Exec}
+  - {from: 712.Value, to: 715.Value}
+  - {from: 715.Then, to: 727.Exec}
+  - {from: 721.Value, to: 724.Array}
+  - {from: 724.Return Value, to: 727.Value}
+  - {from: 727.Then, to: 739.Exec}
+  - {from: 733.Value, to: 736.Array}
+  - {from: 736.Return Value, to: 739.Value}
+  - {from: 739.Then, to: 745.Exec}
+  - {from: 745.Body, to: 928.Exec}
+  - {from: 745.Index, to: 752.Value}
+  - {from: 745.Index, to: 889.Value}
+  - {from: 745.Index, to: 921.Arg0}
+  - {from: 745.Index, to: 934.Arg0}
+  - {from: 745.Index, to: 947.Arg0}
+  - {from: 745.Index, to: 960.Arg0}
+  - {from: 745.Index, to: 973.Arg0}
+  - {from: 745.Completed, to: 986.Exec}
+  - {from: 752.Real, to: 769.j}
+  - {from: 769.Result, to: 774.Value}
+  - {from: 769.Result, to: 879.c}
+  - {from: 772.Value, to: 777.Array}
+  - {from: 774.Integer, to: 777.Index}
+  - {from: 777.Item, to: 781.Value}
+  - {from: 781.Real, to: 798.v}
+  - {from: 781.Real, to: 815.v}
+  - {from: 798.Result, to: 853.f}
+  - {from: 798.Result, to: 954.Value}
+  - {from: 815.Result, to: 818.Value}
+  - {from: 818.Integer, to: 823.Index}
+  - {from: 818.Integer, to: 885.Index}
+  - {from: 821.Value, to: 823.Array}
+  - {from: 823.Item, to: 827.Value}
+  - {from: 827.Real, to: 853.k}
+  - {from: 853.Result, to: 941.Value}
+  - {from: 879.Result, to: 967.Value}
+  - {from: 883.Value, to: 885.Array}
+  - {from: 885.Item, to: 928.Value}
+  - {from: 889.Real, to: 917.j}
+  - {from: 892.Value, to: 895.Value}
+  - {from: 895.Real, to: 917.n}
+  - {from: 917.Result, to: 980.Value}
+  - {from: 921.Result, to: 925.Value}
+  - {from: 925.Name, to: 928.Name}
+  - {from: 928.Then, to: 941.Exec}
+  - {from: 934.Result, to: 938.Value}
+  - {from: 938.Name, to: 941.Name}
+  - {from: 941.Then, to: 954.Exec}
+  - {from: 947.Result, to: 951.Value}
+  - {from: 951.Name, to: 954.Name}
+  - {from: 954.Then, to: 967.Exec}
+  - {from: 960.Result, to: 964.Value}
+  - {from: 964.Name, to: 967.Name}
+  - {from: 967.Then, to: 980.Exec}
+  - {from: 973.Result, to: 977.Value}
+  - {from: 977.Name, to: 980.Name}
+  - {from: 986.Body, to: 1169.Exec}
+  - {from: 986.Index, to: 993.Value}
+  - {from: 986.Index, to: 1130.Value}
+  - {from: 986.Index, to: 1162.Arg0}
+  - {from: 986.Index, to: 1175.Arg0}
+  - {from: 986.Index, to: 1188.Arg0}
+  - {from: 986.Index, to: 1201.Arg0}
+  - {from: 986.Index, to: 1214.Arg0}
+  - {from: 986.Completed, to: 1227.Exec}
+  - {from: 993.Real, to: 1010.j}
+  - {from: 1010.Result, to: 1015.Value}
+  - {from: 1010.Result, to: 1120.c}
+  - {from: 1013.Value, to: 1018.Array}
+  - {from: 1015.Integer, to: 1018.Index}
+  - {from: 1018.Item, to: 1022.Value}
+  - {from: 1022.Real, to: 1039.v}
+  - {from: 1022.Real, to: 1056.v}
+  - {from: 1039.Result, to: 1094.f}
+  - {from: 1039.Result, to: 1195.Value}
+  - {from: 1056.Result, to: 1059.Value}
+  - {from: 1059.Integer, to: 1064.Index}
+  - {from: 1059.Integer, to: 1126.Index}
+  - {from: 1062.Value, to: 1064.Array}
+  - {from: 1064.Item, to: 1068.Value}
+  - {from: 1068.Real, to: 1094.k}
+  - {from: 1094.Result, to: 1182.Value}
+  - {from: 1120.Result, to: 1208.Value}
+  - {from: 1124.Value, to: 1126.Array}
+  - {from: 1126.Item, to: 1169.Value}
+  - {from: 1130.Real, to: 1158.j}
+  - {from: 1133.Value, to: 1136.Value}
+  - {from: 1136.Real, to: 1158.n}
+  - {from: 1158.Result, to: 1221.Value}
+  - {from: 1162.Result, to: 1166.Value}
+  - {from: 1166.Name, to: 1169.Name}
+  - {from: 1169.Then, to: 1182.Exec}
+  - {from: 1175.Result, to: 1179.Value}
+  - {from: 1179.Name, to: 1182.Name}
+  - {from: 1182.Then, to: 1195.Exec}
+  - {from: 1188.Result, to: 1192.Value}
+  - {from: 1192.Name, to: 1195.Name}
+  - {from: 1195.Then, to: 1208.Exec}
+  - {from: 1201.Result, to: 1205.Value}
+  - {from: 1205.Name, to: 1208.Name}
+  - {from: 1208.Then, to: 1221.Exec}
+  - {from: 1214.Result, to: 1218.Value}
+  - {from: 1218.Name, to: 1221.Name}
+  - {from: 1227.Body, to: 1378.Exec}
+  - {from: 1227.Index, to: 1234.Value}
+  - {from: 1227.Index, to: 1371.Arg0}
+  - {from: 1227.Index, to: 1384.Arg0}
+  - {from: 1227.Index, to: 1397.Arg0}
+  - {from: 1227.Index, to: 1410.Arg0}
+  - {from: 1227.Completed, to: 1512.Exec}
+  - {from: 1234.Real, to: 1251.j}
+  - {from: 1251.Result, to: 1256.Value}
+  - {from: 1251.Result, to: 1361.c}
+  - {from: 1254.Value, to: 1259.Array}
+  - {from: 1256.Integer, to: 1259.Index}
+  - {from: 1259.Item, to: 1263.Value}
+  - {from: 1263.Real, to: 1280.v}
+  - {from: 1263.Real, to: 1297.v}
+  - {from: 1280.Result, to: 1335.f}
+  - {from: 1280.Result, to: 1404.Value}
+  - {from: 1297.Result, to: 1300.Value}
+  - {from: 1300.Integer, to: 1305.Index}
+  - {from: 1300.Integer, to: 1367.Index}
+  - {from: 1303.Value, to: 1305.Array}
+  - {from: 1305.Item, to: 1309.Value}
+  - {from: 1309.Real, to: 1335.k}
+  - {from: 1335.Result, to: 1391.Value}
+  - {from: 1361.Result, to: 1417.Value}
+  - {from: 1365.Value, to: 1367.Array}
+  - {from: 1367.Item, to: 1378.Value}
+  - {from: 1371.Result, to: 1375.Value}
+  - {from: 1375.Name, to: 1378.Name}
+  - {from: 1378.Then, to: 1391.Exec}
+  - {from: 1384.Result, to: 1388.Value}
+  - {from: 1388.Name, to: 1391.Name}
+  - {from: 1391.Then, to: 1404.Exec}
+  - {from: 1397.Result, to: 1401.Value}
+  - {from: 1401.Name, to: 1404.Name}
+  - {from: 1404.Then, to: 1417.Exec}
+  - {from: 1410.Result, to: 1414.Value}
+  - {from: 1414.Name, to: 1417.Name}
+  - {from: 1437.Result, to: 1508.h}
+  - {from: 1437.Result, to: 1580.h}
+  - {from: 1440.Value, to: 1462.Array}
+  - {from: 1456.Result, to: 1459.Value}
+  - {from: 1459.Integer, to: 1462.Index}
+  - {from: 1462.Item, to: 1466.Value}
+  - {from: 1466.Real, to: 1483.v}
+  - {from: 1466.Real, to: 1508.v}
+  - {from: 1483.Result, to: 1486.Value}
+  - {from: 1486.Integer, to: 1520.Index}
+  - {from: 1486.Integer, to: 1532.Index}
+  - {from: 1486.Integer, to: 1544.Index}
+  - {from: 1508.Result, to: 1512.Value}
+  - {from: 1512.Then, to: 1524.Exec}
+  - {from: 1518.Value, to: 1520.Array}
+  - {from: 1520.Item, to: 1524.Value}
+  - {from: 1524.Then, to: 1536.Exec}
+  - {from: 1530.Value, to: 1532.Array}
+  - {from: 1532.Item, to: 1536.Value}
+  - {from: 1536.Then, to: 1548.Exec}
+  - {from: 1542.Value, to: 1544.Array}
+  - {from: 1544.Item, to: 1548.Value}
+  - {from: 1548.Then, to: 1584.Exec}
+  - {from: 1580.Result, to: 1584.Value}
+  - {from: 1584.Then, to: 698.Exec}
+- {id: 755, kind: function, math_expression: j + 0, entry_id: 756}
+- {id: 784, kind: function, math_expression: 'step(0, v)', entry_id: 785}
+- {id: 801, kind: function, math_expression: 'max(v, 0)', entry_id: 802}
+- {id: 830, kind: function, math_expression: k * f + f - 1, entry_id: 831}
+- id: 857
+  kind: function
+  math_expression: step(abs(c - sel), 0.5)
+  entry_id: 858
+- {id: 898, kind: function, math_expression: 'step(j + 1, n)', entry_id: 899}
+- {id: 996, kind: function, math_expression: j + 8, entry_id: 997}
+- {id: 1025, kind: function, math_expression: 'step(0, v)', entry_id: 1026}
+- {id: 1042, kind: function, math_expression: 'max(v, 0)', entry_id: 1043}
+- {id: 1071, kind: function, math_expression: k * f + f - 1, entry_id: 1072}
+- id: 1098
+  kind: function
+  math_expression: step(abs(c - sel), 0.5)
+  entry_id: 1099
+- {id: 1139, kind: function, math_expression: 'step(j + 1, n)', entry_id: 1140}
+- {id: 1237, kind: function, math_expression: j + 16, entry_id: 1238}
+- {id: 1266, kind: function, math_expression: 'step(0, v)', entry_id: 1267}
+- {id: 1283, kind: function, math_expression: 'max(v, 0)', entry_id: 1284}
+- {id: 1312, kind: function, math_expression: k * f + f - 1, entry_id: 1313}
+- id: 1339
+  kind: function
+  math_expression: step(abs(c - sel), 0.5)
+  entry_id: 1340
+- {id: 1423, kind: function, math_expression: 'step(0, sel)', entry_id: 1424}
+- {id: 1442, kind: function, math_expression: 'max(sel, 0)', entry_id: 1443}
+- {id: 1469, kind: function, math_expression: 'max(v, 0)', entry_id: 1470}
+- {id: 1489, kind: function, math_expression: 'h * step(0, v)', entry_id: 1490}
+- id: 1554
+  kind: function
+  math_expression: h * step(sel + 1, 16)
+  entry_id: 1555
+- id: 1590
+  kind: function
+  name: Swap Cells
+  entry_id: 1591
+  return_id: 1593
+  call_depth_limit: 64
+  nodes:
+  - id: 1591
+    type: Function Entry
+    outputs:
+      A: {id: 1595, type: int, kind: data}
+      B: {type: int, kind: data}
+  - {id: 1593, type: Return}
+  - id: 1597
+    type: Get Variable
+    reference_id: 5
+    reference_name: cells
+    outputs:
+      Value: {container: 1}
+  - {id: 1599, type: Get}
+  - id: 1603
+    type: Get Variable
+    reference_id: 5
+    reference_name: cells
+    outputs:
+      Value: {container: 1}
+  - {id: 1605, type: Get}
+  - id: 1609
+    type: Get Variable
+    reference_id: 5
+    reference_name: cells
+    outputs:
+      Value: {container: 1}
+  - {id: 1611, type: Set Array Elem}
+  - {id: 1616, type: Set Array Elem}
+  - id: 1621
+    type: Set Variable
+    reference_id: 5
+    reference_name: cells
+    inputs:
+      Value: {container: 1}
+    outputs:
+      Value: {container: 1}
+  edges:
+  - {from: 1591.Exec, to: 1621.Exec}
+  - {from: 1591.A, to: 1599.Index}
+  - {from: 1591.A, to: 1611.Index}
+  - {from: 1591.B, to: 1605.Index}
+  - {from: 1591.B, to: 1616.Index}
+  - {from: 1597.Value, to: 1599.Array}
+  - {from: 1599.Item, to: 1616.Item}
+  - {from: 1603.Value, to: 1605.Array}
+  - {from: 1605.Item, to: 1611.Item}
+  - {from: 1609.Value, to: 1611.Array}
+  - {from: 1611.Array, to: 1616.Array}
+  - {from: 1616.Array, to: 1621.Value}
+  - {from: 1621.Then, to: 1593.Exec}
+- id: 1626
+  kind: function
+  name: Pick
+  entry_id: 1627
+  return_id: 1629
+  call_depth_limit: 64
+  nodes:
+  - id: 1627
+    type: Function Entry
+    outputs:
+      C: {id: 1631, type: int, kind: data}
+  - {id: 1629, type: Return}
+  - {id: 1632, type: To Real}
+  - id: 1657
+    type: Behavior Expression
+    reference_id: 1635
+    reference_name: abs(c - sel) < 0.5
+    inputs:
+      c: {type: double}
+      sel:
+        type: double
+        binding: {kind: variable, variable_id: 10, source_asset: RefitScreen}
+    outputs:
+      Result: {type: bool}
+  - {id: 1664, type: Branch}
+  - id: 1682
+    type: Behavior Expression
+    reference_id: 1669
+    reference_name: sel = -1
+    inputs:
+      Exec: {id: 1685, kind: exec}
+      sel:
+        id: 1683
+        type: float
+        binding: {kind: variable, variable_id: 10, source_asset: RefitScreen}
+    outputs:
+      Then: {id: 1686, kind: exec}
+      Result: {id: 1684, type: float}
+  - id: 1719
+    type: Behavior Expression
+    reference_id: 1705
+    reference_name: sel >= 0
+    inputs:
+      sel:
+        type: double
+        flags: 0
+        binding: {kind: variable, variable_id: 10, source_asset: RefitScreen}
+    outputs:
+      Result: {type: bool}
+  - {id: 1725, type: Branch}
+  - id: 1737
+    type: Behavior Expression
+    reference_id: 1730
+    reference_name: sel
+    inputs:
+      sel:
+        type: double
+        binding: {kind: variable, variable_id: 10, source_asset: RefitScreen}
+    outputs:
+      Result: {type: double}
+  - {id: 1740, type: To Integer}
+  - id: 1743
+    type: Call Function
+    reference_id: 1590
+    reference_name: Swap Cells
+    inputs:
+      A: {id: 1746, type: int, kind: data}
+      B: {type: int, kind: data}
+    outputs:
+      Then: {id: 1745}
+  - id: 1761
+    type: Behavior Expression
+    reference_id: 1748
+    reference_name: sel = -1
+    inputs:
+      Exec: {id: 1764, kind: exec}
+      sel:
+        id: 1762
+        type: float
+        binding: {kind: variable, variable_id: 10, source_asset: RefitScreen}
+    outputs:
+      Then: {id: 1765, kind: exec}
+      Result: {id: 1763, type: float}
+  - {id: 1784, type: Call Function, reference_id: 322, reference_name: Commit}
+  - id: 1787
+    type: Get Variable
+    reference_id: 5
+    reference_name: cells
+    outputs:
+      Value: {container: 1}
+  - id: 1789
+    type: Get
+    inputs:
+      Array: {type: int}
+    outputs:
+      Item: {type: int}
+  - {id: 1793, type: To Real}
+  - id: 1810
+    type: Behavior Expression
+    reference_id: 1796
+    reference_name: v >= 0
+    inputs:
+      v: {type: double, flags: 0}
+    outputs:
+      Result: {type: bool}
+  - {id: 1816, type: Branch}
+  - id: 1829
+    type: Behavior Expression
+    reference_id: 1821
+    reference_name: sel = c
+    inputs:
+      Exec: {id: 1833, kind: exec}
+      sel:
+        id: 1830
+        type: float
+        binding: {kind: variable, variable_id: 10, source_asset: RefitScreen}
+      c: {type: double}
+    outputs:
+      Then: {id: 1834, kind: exec}
+      Result: {id: 1832, type: float}
+  - id: 1848
+    type: Play Sound
+    inputs: {Frequency: 1200.0, End Frequency: 1500.0, Duration: 0.05, Volume: 0.12}
+  - {id: 1857, type: Call Function, reference_id: 695, reference_name: Show}
+  edges:
+  - {from: 1627.Exec, to: 1664.Exec}
+  - {from: 1627.C, to: 1632.Value}
+  - {from: 1627.C, to: 1743.B}
+  - {from: 1627.C, to: 1789.Index}
+  - {from: 1632.Real, to: 1657.c}
+  - {from: 1632.Real, to: 1829.c}
+  - {from: 1657.Result, to: 1664.Condition}
+  - {from: 1664.True, to: 1682.Exec}
+  - {from: 1664.False, to: 1725.Exec}
+  - {from: 1682.Then, to: 1857.Exec}
+  - {from: 1719.Result, to: 1725.Condition}
+  - {from: 1725.True, to: 1743.Exec}
+  - {from: 1725.False, to: 1816.Exec}
+  - {from: 1737.Result, to: 1740.Value}
+  - {from: 1740.Integer, to: 1743.A}
+  - {from: 1743.Then, to: 1761.Exec}
+  - {from: 1761.Then, to: 1784.Exec}
+  - {from: 1784.Then, to: 1857.Exec}
+  - {from: 1787.Value, to: 1789.Array}
+  - {from: 1789.Item, to: 1793.Value}
+  - {from: 1793.Real, to: 1810.v}
+  - {from: 1810.Result, to: 1816.Condition}
+  - {from: 1816.True, to: 1829.Exec}
+  - {from: 1816.False, to: 1857.Exec}
+  - {from: 1829.Then, to: 1848.Exec}
+  - {from: 1848.Then, to: 1857.Exec}
+  - {from: 1857.Then, to: 1629.Exec}
+- {id: 1635, kind: function, math_expression: abs(c - sel) < 0.5, entry_id: 1636}
+- {id: 1669, kind: function, math_expression: sel = -1, entry_id: 1688}
+- {id: 1705, kind: function, math_expression: sel >= 0, entry_id: 1706}
+- {id: 1730, kind: function, math_expression: sel, entry_id: 1731}
+- {id: 1748, kind: function, math_expression: sel = -1, entry_id: 1767}
+- {id: 1796, kind: function, math_expression: v >= 0, entry_id: 1797}
+- {id: 1821, kind: function, math_expression: sel = c, entry_id: 1836}
+- id: 1860
+  kind: function
+  name: Open Screen
+  entry_id: 1861
+  return_id: 1863
+  call_depth_limit: 64
+  nodes:
+  - {id: 1861, type: Function Entry}
+  - {id: 1863, type: Return}
+  - id: 1878
+    type: Behavior Expression
+    reference_id: 1865
+    reference_name: sel = -1
+    inputs:
+      Exec: {id: 1881, kind: exec}
+      sel:
+        id: 1879
+        type: float
+        binding: {kind: variable, variable_id: 10, source_asset: RefitScreen}
+    outputs:
+      Then: {id: 1882, kind: exec}
+      Result: {id: 1880, type: float}
+  - {id: 1901, type: Call Function, reference_id: 695, reference_name: Show}
+  edges:
+  - {from: 1861.Exec, to: 1878.Exec}
+  - {from: 1878.Then, to: 1901.Exec}
+  - {from: 1901.Then, to: 1863.Exec}
+- {id: 1865, kind: function, math_expression: sel = -1, entry_id: 1884}
+- id: 1907
   kind: function
   name: Close
-  entry_id: 10
-  return_id: 12
+  entry_id: 1908
+  return_id: 1910
   call_depth_limit: 64
   nodes:
-  - {id: 10, type: Function Entry}
-  - {id: 12, type: Return}
-  - id: 28
+  - {id: 1908, type: Function Entry}
+  - {id: 1910, type: Return}
+  - id: 1926
     type: Behavior Expression
-    reference_id: 14
+    reference_id: 1912
     reference_name: open > 0.5
     inputs:
       open:
         type: double
         flags: 0
-        binding: {kind: variable, variable_id: 7, source_asset: RefitScreen}
+        binding: {kind: variable, variable_id: 1905, source_asset: RefitScreen}
     outputs:
       Result: {type: bool}
-  - {id: 34, type: Branch}
-  - id: 49
+  - {id: 1932, type: Branch}
+  - id: 1947
     type: Behavior Expression
-    reference_id: 39
+    reference_id: 1937
     reference_name: open = 0
     inputs:
-      Exec: {id: 52, kind: exec}
+      Exec: {id: 1950, kind: exec}
       open:
-        id: 50
+        id: 1948
         type: float
-        binding: {kind: variable, variable_id: 7, source_asset: RefitScreen}
+        binding: {kind: variable, variable_id: 1905, source_asset: RefitScreen}
     outputs:
-      Then: {id: 53, kind: exec}
-      Result: {id: 51, type: float}
-  - id: 69
+      Then: {id: 1951, kind: exec}
+      Result: {id: 1949, type: float}
+  - id: 1967
     type: Set UI Data
     inputs:
       Name: open
       Value: {type: int}
-  - {id: 75, type: Set Time Scale}
-  - id: 79
+  - {id: 1973, type: Set Time Scale}
+  - id: 1977
     type: Play Sound
     inputs: {Frequency: 520.0, End Frequency: 260.0, Duration: 0.16, Volume: 0.16}
   edges:
-  - {from: 10.Exec, to: 34.Exec}
-  - {from: 28.Result, to: 34.Condition}
-  - {from: 34.True, to: 49.Exec}
-  - {from: 34.False, to: 12.Exec}
-  - {from: 49.Then, to: 69.Exec}
-  - {from: 69.Then, to: 75.Exec}
-  - {from: 75.Then, to: 79.Exec}
-  - {from: 79.Then, to: 12.Exec}
-- {id: 14, kind: function, math_expression: open > 0.5, entry_id: 15}
-- {id: 39, kind: function, math_expression: open = 0, entry_id: 55}
-- id: 88
+  - {from: 1908.Exec, to: 1932.Exec}
+  - {from: 1926.Result, to: 1932.Condition}
+  - {from: 1932.True, to: 1947.Exec}
+  - {from: 1932.False, to: 1910.Exec}
+  - {from: 1947.Then, to: 1967.Exec}
+  - {from: 1967.Then, to: 1973.Exec}
+  - {from: 1973.Then, to: 1977.Exec}
+  - {from: 1977.Then, to: 1910.Exec}
+- {id: 1912, kind: function, math_expression: open > 0.5, entry_id: 1913}
+- {id: 1937, kind: function, math_expression: open = 0, entry_id: 1953}
+- id: 1986
   kind: function
   name: Open
-  entry_id: 89
-  return_id: 91
+  entry_id: 1987
+  return_id: 1989
   call_depth_limit: 64
   nodes:
-  - {id: 89, type: Function Entry}
-  - {id: 91, type: Return}
-  - id: 103
+  - {id: 1987, type: Function Entry}
+  - {id: 1989, type: Return}
+  - id: 2001
     type: Behavior Expression
-    reference_id: 93
+    reference_id: 1991
     reference_name: open = 1
     inputs:
-      Exec: {id: 106, kind: exec}
+      Exec: {id: 2004, kind: exec}
       open:
-        id: 104
+        id: 2002
         type: float
-        binding: {kind: variable, variable_id: 7, source_asset: RefitScreen}
+        binding: {kind: variable, variable_id: 1905, source_asset: RefitScreen}
     outputs:
-      Then: {id: 107, kind: exec}
-      Result: {id: 105, type: float}
-  - {id: 123, type: Call Function, reference_id: 1, reference_name: Show}
-  - id: 126
+      Then: {id: 2005, kind: exec}
+      Result: {id: 2003, type: float}
+  - {id: 2021, type: Call Function, reference_id: 1860, reference_name: Open Screen}
+  - id: 2024
     type: Set UI Data
     inputs:
       Name: open
       Value: {type: int, default: 1}
-  - id: 132
+  - id: 2030
     type: Set Time Scale
     inputs: {Scale: 0.0}
-  - id: 136
+  - id: 2034
     type: Focus UI Element
     inputs: {Element: '#root'}
-  - id: 141
+  - id: 2039
     type: Play Sound
     inputs: {Frequency: 330.0, End Frequency: 660.0, Duration: 0.22, Volume: 0.18}
   edges:
-  - {from: 89.Exec, to: 103.Exec}
-  - {from: 103.Then, to: 123.Exec}
-  - {from: 123.Then, to: 126.Exec}
-  - {from: 126.Then, to: 132.Exec}
-  - {from: 132.Then, to: 136.Exec}
-  - {from: 136.Then, to: 141.Exec}
-  - {from: 141.Then, to: 91.Exec}
-- {id: 93, kind: function, math_expression: open = 1, entry_id: 109}
-- id: 184
+  - {from: 1987.Exec, to: 2001.Exec}
+  - {from: 2001.Then, to: 2021.Exec}
+  - {from: 2021.Then, to: 2024.Exec}
+  - {from: 2024.Then, to: 2030.Exec}
+  - {from: 2030.Then, to: 2034.Exec}
+  - {from: 2034.Then, to: 2039.Exec}
+  - {from: 2039.Then, to: 1989.Exec}
+- {id: 1991, kind: function, math_expression: open = 1, entry_id: 2007}
+- {id: 2091, kind: function, math_expression: pos.x + dx, entry_id: 2108}
+- {id: 2121, kind: function, math_expression: pos.y + dy, entry_id: 2138}
+- id: 2183
   kind: function
   math_expression: near = step((px - pos.x) * (px - pos.x) + (py - pos.y) * (py - pos.y), 4900.0)
-  entry_id: 238
-- {id: 289, kind: function, math_expression: near = 0, entry_id: 305}
-- {id: 332, kind: function, math_expression: held = 0, entry_id: 348}
-- {id: 362, kind: function, math_expression: held < 0.5, entry_id: 363}
-- {id: 387, kind: function, math_expression: held = 1, entry_id: 403}
-- {id: 417, kind: function, math_expression: open > 0.5, entry_id: 418}
-- {id: 445, kind: function, math_expression: near > 0.5, entry_id: 446}
+  entry_id: 2237
+- {id: 2288, kind: function, math_expression: near = 0, entry_id: 2304}
+- {id: 2331, kind: function, math_expression: held = 0, entry_id: 2347}
+- {id: 2361, kind: function, math_expression: held < 0.5, entry_id: 2362}
+- {id: 2386, kind: function, math_expression: held = 1, entry_id: 2402}
+- {id: 2416, kind: function, math_expression: open > 0.5, entry_id: 2417}
+- {id: 2444, kind: function, math_expression: near > 0.5, entry_id: 2445}
+- {id: 2484, kind: function, math_expression: floor(v) + 0, entry_id: 2485}
+- {id: 2518, kind: function, math_expression: floor(v) + 8, entry_id: 2519}
+- {id: 2552, kind: function, math_expression: floor(v) + 16, entry_id: 2553}
+- id: 2595
+  kind: function
+  math_expression: sel >= 0 && sel < 16 && k >= 0
+  entry_id: 2596
+- {id: 2644, kind: function, math_expression: sel, entry_id: 2645}
+- {id: 2657, kind: function, math_expression: k + 16, entry_id: 2658}
+- {id: 2682, kind: function, math_expression: sel = -1, entry_id: 2701}

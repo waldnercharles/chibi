@@ -1,0 +1,79 @@
+<div id="root" data-keys="Escape:Close">
+  <div id="prompt" data-if="self.near > 0 && self.open == 0" presence>
+    <span class="key">E</span><span class="verb">Refit</span><span class="aside">fit and order modules</span>
+  </div>
+
+  <div id="screen" data-if="self.open > 0" presence>
+    <div id="panel">
+      <div class="head">
+        <div class="titles">
+          <div class="kicker">Sanctum</div>
+          <div class="name">Refit bench</div>
+        </div>
+        <div class="close" data-event-click="emit('Close')">Close<span class="key">E</span></div>
+      </div>
+
+      <div class="frame">
+        <div class="framehead"><span class="key">L</span><span class="label">Primary</span><span class="cap">{{ self.count0 }} / {{ self.cap0 }} slots</span></div>
+        <div class="slots">
+          <div class="slot" id="slot0" data-for="m, i : self.primary" data-event-click="emit('Primary', i)"
+               data-class-off="m.show == 0" data-class-filled="m.filled > 0" data-class-picked="m.sel > 0"
+               data-class-emitter="m.kind == 0" data-class-modifier="m.kind == 1" data-class-carrier="m.kind == 2">
+            <div class="band"/>
+            <div class="order">{{ i + 1 }}</div>
+            <div class="title" data-if="m.filled > 0">{{ m.name }}</div>
+            <div class="empty" data-if="m.filled == 0">Empty</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="frame">
+        <div class="framehead"><span class="key">R</span><span class="label">Secondary</span><span class="cap">{{ self.count1 }} / {{ self.cap1 }} slots</span></div>
+        <div class="slots">
+          <div class="slot" id="slot1" data-for="m, i : self.secondary" data-event-click="emit('Secondary', i)"
+               data-class-off="m.show == 0" data-class-filled="m.filled > 0" data-class-picked="m.sel > 0"
+               data-class-emitter="m.kind == 0" data-class-modifier="m.kind == 1" data-class-carrier="m.kind == 2">
+            <div class="band"/>
+            <div class="order">{{ i + 1 }}</div>
+            <div class="title" data-if="m.filled > 0">{{ m.name }}</div>
+            <div class="empty" data-if="m.filled == 0">Empty</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="lower">
+        <div class="stashbox">
+          <div class="label">Stash</div>
+          <div class="stash">
+            <div class="cell" id="stash" data-for="m, i : self.stash" data-event-click="emit('Stash', i)"
+                 data-class-filled="m.filled > 0" data-class-picked="m.sel > 0"
+                 data-class-emitter="m.kind == 0" data-class-modifier="m.kind == 1" data-class-carrier="m.kind == 2">
+              <div class="band"/>
+              <div class="title" data-if="m.filled > 0">{{ m.name }}</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="detail" data-class-live="self.hasSel > 0">
+          <div data-if="self.hasSel > 0">
+            <div class="kind" data-class-emitter="self.selKind == 0" data-class-modifier="self.selKind == 1" data-class-carrier="self.selKind == 2">
+              <span data-if="self.selKind == 0">Emitter</span><span data-if="self.selKind == 1">Modifier</span><span data-if="self.selKind == 2">Carrier</span>
+            </div>
+            <div class="title">{{ self.selName }}</div>
+            <div class="blurb">{{ self.selBlurb }}</div>
+            <div class="remove" data-if="self.selFitted > 0" data-event-click="emit('Remove')">Unfit to stash</div>
+            <div class="then">Now pick a slot or a stash cell to swap with.</div>
+          </div>
+          <div data-if="self.hasSel == 0">
+            <div class="title quiet">Pick a module</div>
+            <div class="blurb">Then pick a slot to fit it, or another module to swap places. Modules cast left to right: modifiers shape the next emitter, carriers take the rest of the list along.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="legend">
+        <span class="swatch emitter"/>Emitter<span class="swatch modifier"/>Modifier<span class="swatch carrier"/>Carrier
+      </div>
+    </div>
+  </div>
+</div>

@@ -1,14 +1,112 @@
 version: 3
 name: TitleScreen
-id_counter: 4
-description: stub
+id_counter: 131
+description: 'Starwell''s title card: holds the world at time scale 0 behind the reveal, shows the run seed, and descends (time scale 1, card fades) on Enter, Space or a click.'
 owner_type: ecs.entity
+variables:
+- {id: 1, name: done, type: float}
 graphs:
 - kind: event
   name: ""
   nodes:
-  - id: 1
+  - {id: 81, type: Event, reference_name: Begin}
+  - id: 83
+    type: Set Time Scale
+    inputs: {Scale: 0.0}
+  - {id: 87, type: Get Run Seed}
+  - id: 89
+    type: Set UI Data
+    inputs: {Name: seed}
+  - id: 95
+    type: Set UI Data
+    inputs:
+      Name: show
+      Value: {type: int, default: 1}
+  - id: 101
+    type: Focus UI Element
+    inputs: {Element: '#title'}
+  - id: 106
+    type: Play Sound
+    inputs: {Frequency: 55.0, End Frequency: 82.0, Duration: 3.5, Volume: 0.2, Noise: 0.35}
+  - id: 115
     type: Event
     reference_name: Tick
     outputs:
       DeltaSeconds: {type: float, kind: data}
+  - id: 118
+    type: Branch
+    inputs:
+      Condition:
+        binding: {kind: component_field, component: GAME.GameActionBinding, field: pressed}
+  - {id: 123, type: Call Function, reference_id: 2, reference_name: Descend}
+  - {id: 126, type: Event, reference_name: Descend}
+  - {id: 128, type: Call Function, reference_id: 2, reference_name: Descend}
+  edges:
+  - {from: 81.Then, to: 83.Exec}
+  - {from: 83.Then, to: 89.Exec}
+  - {from: 87.Seed, to: 89.Value}
+  - {from: 89.Then, to: 95.Exec}
+  - {from: 95.Then, to: 101.Exec}
+  - {from: 101.Then, to: 106.Exec}
+  - {from: 115.Then, to: 118.Exec}
+  - {from: 118.True, to: 123.Exec}
+  - {from: 126.Then, to: 128.Exec}
+- id: 2
+  kind: function
+  name: Descend
+  entry_id: 3
+  return_id: 5
+  call_depth_limit: 64
+  nodes:
+  - {id: 3, type: Function Entry}
+  - {id: 5, type: Return}
+  - id: 21
+    type: Behavior Expression
+    reference_id: 7
+    reference_name: done < 0.5
+    inputs:
+      done:
+        type: double
+        flags: 0
+        binding: {kind: variable, variable_id: 1, source_asset: TitleScreen}
+    outputs:
+      Result: {type: bool}
+  - {id: 27, type: Branch}
+  - id: 42
+    type: Behavior Expression
+    reference_id: 32
+    reference_name: done = 1
+    inputs:
+      Exec: {id: 45, kind: exec}
+      done:
+        id: 43
+        type: float
+        binding: {kind: variable, variable_id: 1, source_asset: TitleScreen}
+    outputs:
+      Then: {id: 46, kind: exec}
+      Result: {id: 44, type: float}
+  - id: 62
+    type: Set UI Data
+    inputs:
+      Name: show
+      Value: {type: int}
+  - {id: 68, type: Set Time Scale}
+  - id: 72
+    type: Play Sound
+    inputs:
+      Frequency: 110.0
+      End Frequency: 55.0
+      Duration: 1.8
+      Volume: 0.28
+      Noise: 0.25
+  edges:
+  - {from: 3.Exec, to: 27.Exec}
+  - {from: 21.Result, to: 27.Condition}
+  - {from: 27.True, to: 42.Exec}
+  - {from: 27.False, to: 5.Exec}
+  - {from: 42.Then, to: 62.Exec}
+  - {from: 62.Then, to: 68.Exec}
+  - {from: 68.Then, to: 72.Exec}
+  - {from: 72.Then, to: 5.Exec}
+- {id: 7, kind: function, math_expression: done < 0.5, entry_id: 8}
+- {id: 32, kind: function, math_expression: done = 1, entry_id: 48}

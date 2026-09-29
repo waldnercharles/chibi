@@ -12,6 +12,7 @@ components:
     scene: 2834628607
   GAME.GameOrientation: {}
   GAME.GameProjectile: {damage: 6, element: 2, lifetime: 0.7, payload: -1, speed: 560.0}
+  GAME.GameTrail: {color: 2834628607, emission: 0.35, lifetime: 0.15, width: 2.0}
   GAME.GameTransform: {}
   GAME.GameVelocity: {}
 behaviors: [Shot]

@@ -1,27 +1,40 @@
 version: 1
 name: CombatLab
+physics:
+  gravity: {x: 0.0, "y": 240.0}
+seed: 3
 entities:
 - name: Player
   prototype: Wren
   components:
-    GameTransform: {x: -250, "y": 330}
-  behaviors: [ShipFlight, Hardpoints, ShipHull]
+    GameTransform: {x: 0.0, "y": 330.0}
+  behaviors: [Hardpoints, PlayerEffects, ShipFlight, ShipHull]
 - name: Camera
-  prototype: Camera
+  prototype: WellCamera
   components:
-    GameTransform: {x: -250, "y": 330}
+    GameTransform: {x: 0.0, "y": 330.0}
   behaviors: [CameraFollow]
 - name: Lighting
-  prototype: HRC
-  components:
-    GameHRC2D: {resolution: 1, adaptive: true, min_resolution: 0.5, fog: 0.4, bloom: 0.2}
+  prototype: WellLighting
+  behaviors: [Ambience, Atmosphere]
 - {name: FireMouse, prototype: FireMouse}
 - {name: FireStick, prototype: FireStick}
 - {name: SecondaryMouse, prototype: SecondaryMouse}
-- {name: Basalt Throat, prototype: StratumThroat}
 - name: Run
   prototype: RunState
   behaviors: [Run]
+- name: HUD
+  prototype: WellHud
+  behaviors: [WellHudDisplay]
+- name: Throat deep
+  prototype: BackdropDeep
+  components:
+    GameBackdrop2D: {material: ThroatDeep, parallax: 0.12, layer: 0, intensity: 1.0}
+- name: Throat columns
+  prototype: BackdropFar
+  components:
+    GameBackdrop2D: {material: ThroatColumns, parallax: 0.45, layer: 1, intensity: 1.0, lit: true}
+- {name: Basalt Throat, prototype: StratumThroat}
 - name: Mite 1
   prototype: Mite
   components:

@@ -1,0 +1,25 @@
+version: 3
+name: WardenCoreShape
+domain: shape
+bounds_x: 36.0
+bounds_y: 36.0
+id_counter: 8
+description: The WardenCore's silhouette.
+graphs:
+- kind: event
+  name: ""
+  nodes:
+  - {id: 1, type: Shader Shape Output}
+  - {id: 3, type: Shader Position}
+  - id: 5
+    type: Call Pure Function
+    reference_id: 274
+    reference_name: WardenCore
+    reference_asset: BossForms
+    inputs:
+      Position: {declaration_id: 279, type: struct, type_name: ShaderVec2}
+    outputs:
+      Distance: {declaration_id: 280, type: float}
+  edges:
+  - {from: 3.Position, to: 5.Position}
+  - {from: 5.Distance, to: 1.Distance}

@@ -5,8 +5,8 @@ description: Hold a wary distance from the player, circle, and spit a telegraphe
 owner_type: ecs.entity
 variables:
 - {id: 1, name: age, type: float}
-- {id: 2, name: shot, type: float}
-- {id: 3, name: seed, type: float}
+- {id: 2, name: seed, type: float}
+- {id: 3, name: shot, type: float}
 graphs:
 - kind: event
   name: ""
@@ -21,7 +21,7 @@ graphs:
       seed:
         id: 23
         type: float
-        binding: {kind: variable, variable_id: 3, source_asset: Spitter}
+        binding: {kind: variable, variable_id: 2, source_asset: Spitter}
     outputs:
       Then: {id: 26, kind: exec}
       Result: {id: 24, type: float}
@@ -86,7 +86,7 @@ graphs:
         binding: {kind: variable, variable_id: 1, source_asset: Spitter}
       seed:
         type: double
-        binding: {kind: variable, variable_id: 3, source_asset: Spitter}
+        binding: {kind: variable, variable_id: 2, source_asset: Spitter}
       speed:
         type: double
         binding: {kind: component_field, component: GAME.GameMovement, field: speed}
@@ -120,7 +120,7 @@ graphs:
       shot:
         id: 458
         type: float
-        binding: {kind: variable, variable_id: 2, source_asset: Spitter}
+        binding: {kind: variable, variable_id: 3, source_asset: Spitter}
       dt:
         type: double
         binding: {kind: delta_time}
@@ -139,7 +139,7 @@ graphs:
     inputs:
       shot:
         type: double
-        binding: {kind: variable, variable_id: 2, source_asset: Spitter}
+        binding: {kind: variable, variable_id: 3, source_asset: Spitter}
     outputs:
       Result: {type: double}
   - id: 534
@@ -159,7 +159,7 @@ graphs:
       shot:
         type: double
         flags: 0
-        binding: {kind: variable, variable_id: 2, source_asset: Spitter}
+        binding: {kind: variable, variable_id: 3, source_asset: Spitter}
     outputs:
       Result: {type: bool}
   - {id: 562, type: Branch}
@@ -172,7 +172,7 @@ graphs:
       shot:
         id: 578
         type: float
-        binding: {kind: variable, variable_id: 2, source_asset: Spitter}
+        binding: {kind: variable, variable_id: 3, source_asset: Spitter}
     outputs:
       Then: {id: 581, kind: exec}
       Result: {id: 579, type: float}
@@ -240,7 +240,7 @@ graphs:
         binding: {kind: component_field, component: GAME.GameDrive, field: target}
       seed:
         type: double
-        binding: {kind: variable, variable_id: 3, source_asset: Spitter}
+        binding: {kind: variable, variable_id: 2, source_asset: Spitter}
       age:
         type: double
         binding: {kind: variable, variable_id: 1, source_asset: Spitter}

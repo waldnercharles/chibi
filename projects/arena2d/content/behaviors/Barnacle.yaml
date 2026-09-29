@@ -1,27 +1,75 @@
 version: 3
 name: Barnacle
-id_counter: 603
+id_counter: 770
 description: 'A rooted turret: track the player while it can see them and fire three-round bursts.'
 owner_type: ecs.entity
 variables:
-- {id: 1, name: shot, type: float}
+- {id: 1, name: sees, type: float}
 - {id: 2, name: burst, type: float}
+- {id: 3, name: shot, type: float}
+- {id: 4, name: look, type: float}
 graphs:
 - kind: event
   name: ""
   nodes:
-  - id: 3
+  - id: 5
     type: Event
     reference_name: Tick
     outputs:
       DeltaSeconds: {type: float, kind: data}
-  - id: 6
+  - id: 8
     type: Get Global Variable
     inputs: {Name: Player}
     outputs:
       Value: {type: handle, type_name: ecs.entity}
-  - {id: 9, type: GetEntity_GameTransform}
-  - id: 12
+  - {id: 11, type: GetEntity_GameTransform}
+  - id: 26
+    type: Behavior Expression
+    reference_id: 14
+    reference_name: look -= dt
+    inputs:
+      Exec: {id: 30, kind: exec}
+      look:
+        id: 27
+        type: float
+        binding: {kind: variable, variable_id: 4, source_asset: Barnacle}
+      dt:
+        type: double
+        binding: {kind: delta_time}
+    outputs:
+      Then: {id: 31, kind: exec}
+      Result: {id: 29, type: float}
+  - id: 80
+    type: Behavior Expression
+    reference_id: 49
+    reference_name: look <= 0 && distance(pos, p) < 520
+    inputs:
+      look:
+        type: double
+        flags: 0
+        binding: {kind: variable, variable_id: 4, source_asset: Barnacle}
+      pos:
+        type: struct
+        type_name: GameTransform
+        binding: {kind: component, component: GAME.GameTransform}
+      p: {type: struct, type_name: GameTransform}
+    outputs:
+      Result: {type: bool}
+  - {id: 88, type: Branch}
+  - id: 103
+    type: Behavior Expression
+    reference_id: 93
+    reference_name: look = 0.25
+    inputs:
+      Exec: {id: 106, kind: exec}
+      look:
+        id: 104
+        type: float
+        binding: {kind: variable, variable_id: 4, source_asset: Barnacle}
+    outputs:
+      Then: {id: 107, kind: exec}
+      Result: {id: 105, type: float}
+  - id: 123
     type: Raycast
     inputs:
       Start:
@@ -29,36 +77,58 @@ graphs:
         binding: {kind: component, component: GAME.GameTransform}
         default: null
       Categories: 8
-  - id: 33
+  - {id: 134, type: Branch}
+  - id: 149
     type: Behavior Expression
-    reference_id: 23
-    reference_name: '!blocked'
+    reference_id: 139
+    reference_name: sees = 0
     inputs:
-      blocked: {type: bool, flags: 0}
+      Exec: {id: 152, kind: exec}
+      sees:
+        id: 150
+        type: float
+        binding: {kind: variable, variable_id: 1, source_asset: Barnacle}
     outputs:
-      Result: {type: bool}
-  - id: 63
+      Then: {id: 153, kind: exec}
+      Result: {id: 151, type: float}
+  - id: 179
     type: Behavior Expression
-    reference_id: 39
-    reference_name: distance(pos, p) < 520 && sees
+    reference_id: 169
+    reference_name: sees = 1
+    inputs:
+      Exec: {id: 182, kind: exec}
+      sees:
+        id: 180
+        type: float
+        binding: {kind: variable, variable_id: 1, source_asset: Barnacle}
+    outputs:
+      Then: {id: 183, kind: exec}
+      Result: {id: 181, type: float}
+  - id: 230
+    type: Behavior Expression
+    reference_id: 199
+    reference_name: distance(pos, p) < 520 && sees > 0.5
     inputs:
       pos:
         type: struct
         type_name: GameTransform
         binding: {kind: component, component: GAME.GameTransform}
       p: {type: struct, type_name: GameTransform}
-      sees: {type: bool, flags: 0}
+      sees:
+        type: double
+        flags: 0
+        binding: {kind: variable, variable_id: 1, source_asset: Barnacle}
     outputs:
       Result: {type: bool}
-  - {id: 71, type: Branch}
-  - id: 97
+  - {id: 238, type: Branch}
+  - id: 264
     type: Behavior Expression
-    reference_id: 76
+    reference_id: 243
     reference_name: heading = atan2(t.y - pos.y, t.x - pos.x)
     inputs:
-      Exec: {id: 102, kind: exec}
+      Exec: {id: 269, kind: exec}
       heading:
-        id: 98
+        id: 265
         type: float
         binding: {kind: component_field, component: GAME.GameOrientation, field: radians}
       t: {type: struct, type_name: GameTransform}
@@ -67,58 +137,58 @@ graphs:
         type_name: GameTransform
         binding: {kind: component, component: GAME.GameTransform}
     outputs:
-      Then: {id: 103, kind: exec}
-      Result: {id: 101, type: double}
-  - id: 154
+      Then: {id: 270, kind: exec}
+      Result: {id: 268, type: double}
+  - id: 321
     type: Behavior Expression
-    reference_id: 142
+    reference_id: 309
     reference_name: shot += dt
     inputs:
-      Exec: {id: 158, kind: exec}
+      Exec: {id: 325, kind: exec}
       shot:
-        id: 155
+        id: 322
         type: float
-        binding: {kind: variable, variable_id: 1, source_asset: Barnacle}
+        binding: {kind: variable, variable_id: 3, source_asset: Barnacle}
       dt:
         type: double
         binding: {kind: delta_time}
     outputs:
-      Then: {id: 159, kind: exec}
-      Result: {id: 157, type: float}
-  - id: 209
+      Then: {id: 326, kind: exec}
+      Result: {id: 324, type: float}
+  - id: 376
     type: Behavior Expression
-    reference_id: 177
+    reference_id: 344
     reference_name: clamp((shot - 1.6) / 0.8, 0, 1)
     inputs:
       shot:
         type: double
-        binding: {kind: variable, variable_id: 1, source_asset: Barnacle}
+        binding: {kind: variable, variable_id: 3, source_asset: Barnacle}
     outputs:
       Result: {type: double}
-  - id: 212
+  - id: 379
     type: Self
     outputs:
       Self: {type_name: ecs.entity}
-  - id: 214
+  - id: 381
     type: Set Material Parameter
     inputs:
       Name: Charge
       Value: {type: double}
-  - id: 234
+  - id: 401
     type: Behavior Expression
-    reference_id: 220
+    reference_id: 387
     reference_name: shot >= 2.4
     inputs:
       shot:
         type: double
         flags: 0
-        binding: {kind: variable, variable_id: 1, source_asset: Barnacle}
+        binding: {kind: variable, variable_id: 3, source_asset: Barnacle}
     outputs:
       Result: {type: bool}
-  - {id: 240, type: Branch}
-  - id: 288
+  - {id: 407, type: Branch}
+  - id: 455
     type: Behavior Expression
-    reference_id: 245
+    reference_id: 412
     reference_name: direction(atan2(t.y - pos.y, t.x - pos.x) + (rand() - 0.5) * 0.08)
     inputs:
       t: {type: struct, type_name: GameTransform}
@@ -128,9 +198,9 @@ graphs:
         binding: {kind: component, component: GAME.GameTransform}
     outputs:
       Result: {type: struct, type_name: CF_V2}
-  - id: 358
+  - id: 525
     type: Behavior Expression
-    reference_id: 339
+    reference_id: 506
     reference_name: pos + d * 16.0
     inputs:
       pos:
@@ -140,25 +210,25 @@ graphs:
       d: {type: struct, type_name: CF_V2}
     outputs:
       Result: {type: struct, type_name: GameTransform}
-  - id: 362
+  - id: 529
     type: Self
     outputs:
       Self: {type_name: ecs.entity}
-  - id: 364
+  - id: 531
     type: Call Function
     reference_id: 1
     reference_name: Launch Shot
     reference_asset: ShotActions
     inputs:
-      Prototype: {id: 367, declaration_id: 6, type: name, kind: data, default: Needlet}
+      Prototype: {id: 534, declaration_id: 6, type: name, kind: data, default: Needlet}
       Origin: {declaration_id: 7, type: struct, type_name: CF_V2, kind: data}
       Direction: {declaration_id: 8, type: struct, type_name: CF_V2, kind: data}
       Source: {declaration_id: 9, type: handle, type_name: ecs.entity, kind: data}
       Hardpoint: {declaration_id: 10, type: int, kind: data}
     outputs:
-      Then: {id: 366}
-      Entity: {id: 372, declaration_id: 11, type: handle, type_name: ecs.entity, kind: data}
-  - id: 373
+      Then: {id: 533}
+      Entity: {id: 539, declaration_id: 11, type: handle, type_name: ecs.entity, kind: data}
+  - id: 540
     type: Play Sound
     inputs:
       Frequency: 700.0
@@ -167,22 +237,22 @@ graphs:
       Volume: 0.16
       Pan: 0.0
       Noise: 0.2
-  - id: 396
+  - id: 563
     type: Behavior Expression
-    reference_id: 382
+    reference_id: 549
     reference_name: burst += 1
     inputs:
-      Exec: {id: 399, kind: exec}
+      Exec: {id: 566, kind: exec}
       burst:
-        id: 397
+        id: 564
         type: float
         binding: {kind: variable, variable_id: 2, source_asset: Barnacle}
     outputs:
-      Then: {id: 400, kind: exec}
-      Result: {id: 398, type: float}
-  - id: 434
+      Then: {id: 567, kind: exec}
+      Result: {id: 565, type: float}
+  - id: 601
     type: Behavior Expression
-    reference_id: 420
+    reference_id: 587
     reference_name: burst < 3
     inputs:
       burst:
@@ -191,137 +261,153 @@ graphs:
         binding: {kind: variable, variable_id: 2, source_asset: Barnacle}
     outputs:
       Result: {type: bool}
-  - {id: 440, type: Branch}
-  - id: 455
+  - {id: 607, type: Branch}
+  - id: 622
     type: Behavior Expression
-    reference_id: 445
+    reference_id: 612
     reference_name: shot = 2.28
     inputs:
-      Exec: {id: 458, kind: exec}
+      Exec: {id: 625, kind: exec}
       shot:
-        id: 456
+        id: 623
         type: float
-        binding: {kind: variable, variable_id: 1, source_asset: Barnacle}
+        binding: {kind: variable, variable_id: 3, source_asset: Barnacle}
     outputs:
-      Then: {id: 459, kind: exec}
-      Result: {id: 457, type: float}
-  - id: 485
+      Then: {id: 626, kind: exec}
+      Result: {id: 624, type: float}
+  - id: 652
     type: Behavior Expression
-    reference_id: 475
+    reference_id: 642
     reference_name: shot = 0
     inputs:
-      Exec: {id: 488, kind: exec}
+      Exec: {id: 655, kind: exec}
       shot:
-        id: 486
+        id: 653
         type: float
-        binding: {kind: variable, variable_id: 1, source_asset: Barnacle}
+        binding: {kind: variable, variable_id: 3, source_asset: Barnacle}
     outputs:
-      Then: {id: 489, kind: exec}
-      Result: {id: 487, type: float}
-  - id: 515
+      Then: {id: 656, kind: exec}
+      Result: {id: 654, type: float}
+  - id: 682
     type: Behavior Expression
-    reference_id: 505
+    reference_id: 672
     reference_name: burst = 0
     inputs:
-      Exec: {id: 518, kind: exec}
+      Exec: {id: 685, kind: exec}
       burst:
-        id: 516
+        id: 683
         type: float
         binding: {kind: variable, variable_id: 2, source_asset: Barnacle}
     outputs:
-      Then: {id: 519, kind: exec}
-      Result: {id: 517, type: float}
-  - id: 554
+      Then: {id: 686, kind: exec}
+      Result: {id: 684, type: float}
+  - id: 721
     type: Behavior Expression
-    reference_id: 535
+    reference_id: 702
     reference_name: shot = max(0, shot - dt)
     inputs:
-      Exec: {id: 558, kind: exec}
+      Exec: {id: 725, kind: exec}
       shot:
-        id: 555
+        id: 722
         type: float
-        binding: {kind: variable, variable_id: 1, source_asset: Barnacle}
+        binding: {kind: variable, variable_id: 3, source_asset: Barnacle}
       dt:
         type: double
         binding: {kind: delta_time}
     outputs:
-      Then: {id: 559, kind: exec}
-      Result: {id: 557, type: float}
-  - id: 593
+      Then: {id: 726, kind: exec}
+      Result: {id: 724, type: float}
+  - id: 760
     type: Behavior Expression
-    reference_id: 584
+    reference_id: 751
     reference_name: "0"
     outputs:
       Result: {type: double}
-  - id: 595
+  - id: 762
     type: Self
     outputs:
       Self: {type_name: ecs.entity}
-  - id: 597
+  - id: 764
     type: Set Material Parameter
     inputs:
       Name: Charge
       Value: {type: double}
   edges:
-  - {from: 3.Then, to: 71.Exec}
-  - {from: 6.Value, to: 9.Entity}
-  - {from: 9.Value, to: 12.End, conversion: game_transform_to_cf}
-  - {from: 9.Value, to: 63.p}
-  - {from: 9.Value, to: 97.t}
-  - {from: 9.Value, to: 288.t}
-  - {from: 12.Found, to: 33.blocked}
-  - {from: 33.Result, to: 63.sees}
-  - {from: 63.Result, to: 71.Condition}
-  - {from: 71.True, to: 97.Exec}
-  - {from: 71.False, to: 554.Exec}
-  - {from: 97.Then, to: 154.Exec}
-  - {from: 154.Then, to: 214.Exec}
-  - {from: 209.Result, to: 214.Value}
-  - {from: 212.Self, to: 214.Entity}
-  - {from: 214.Then, to: 240.Exec}
-  - {from: 234.Result, to: 240.Condition}
-  - {from: 240.True, to: 364.Exec}
-  - {from: 288.Result, to: 358.d}
-  - {from: 288.Result, to: 364.Direction}
-  - {from: 358.Result, to: 364.Origin}
-  - {from: 362.Self, to: 364.Source}
-  - {from: 364.Then, to: 373.Exec}
-  - {from: 373.Then, to: 396.Exec}
-  - {from: 396.Then, to: 440.Exec}
-  - {from: 434.Result, to: 440.Condition}
-  - {from: 440.True, to: 455.Exec}
-  - {from: 440.False, to: 485.Exec}
-  - {from: 485.Then, to: 515.Exec}
-  - {from: 554.Then, to: 597.Exec}
-  - {from: 593.Result, to: 597.Value}
-  - {from: 595.Self, to: 597.Entity}
-- {id: 23, kind: function, math_expression: '!blocked', entry_id: 24}
-- id: 39
+  - {from: 5.Then, to: 26.Exec}
+  - {from: 8.Value, to: 11.Entity}
+  - {from: 11.Value, to: 80.p}
+  - {from: 11.Value, to: 123.End, conversion: game_transform_to_cf}
+  - {from: 11.Value, to: 230.p}
+  - {from: 11.Value, to: 264.t}
+  - {from: 11.Value, to: 455.t}
+  - {from: 26.Then, to: 88.Exec}
+  - {from: 80.Result, to: 88.Condition}
+  - {from: 88.True, to: 103.Exec}
+  - {from: 88.False, to: 238.Exec}
+  - {from: 103.Then, to: 134.Exec}
+  - {from: 123.Found, to: 134.Condition}
+  - {from: 134.True, to: 149.Exec}
+  - {from: 134.False, to: 179.Exec}
+  - {from: 149.Then, to: 238.Exec}
+  - {from: 179.Then, to: 238.Exec}
+  - {from: 230.Result, to: 238.Condition}
+  - {from: 238.True, to: 264.Exec}
+  - {from: 238.False, to: 721.Exec}
+  - {from: 264.Then, to: 321.Exec}
+  - {from: 321.Then, to: 381.Exec}
+  - {from: 376.Result, to: 381.Value}
+  - {from: 379.Self, to: 381.Entity}
+  - {from: 381.Then, to: 407.Exec}
+  - {from: 401.Result, to: 407.Condition}
+  - {from: 407.True, to: 531.Exec}
+  - {from: 455.Result, to: 525.d}
+  - {from: 455.Result, to: 531.Direction}
+  - {from: 525.Result, to: 531.Origin}
+  - {from: 529.Self, to: 531.Source}
+  - {from: 531.Then, to: 540.Exec}
+  - {from: 540.Then, to: 563.Exec}
+  - {from: 563.Then, to: 607.Exec}
+  - {from: 601.Result, to: 607.Condition}
+  - {from: 607.True, to: 622.Exec}
+  - {from: 607.False, to: 652.Exec}
+  - {from: 652.Then, to: 682.Exec}
+  - {from: 721.Then, to: 764.Exec}
+  - {from: 760.Result, to: 764.Value}
+  - {from: 762.Self, to: 764.Entity}
+- {id: 14, kind: function, math_expression: look -= dt, entry_id: 33}
+- id: 49
   kind: function
-  math_expression: distance(pos, p) < 520 && sees
-  entry_id: 40
-- id: 76
+  math_expression: look <= 0 && distance(pos, p) < 520
+  entry_id: 50
+- {id: 93, kind: function, math_expression: look = 0.25, entry_id: 109}
+- {id: 139, kind: function, math_expression: sees = 0, entry_id: 155}
+- {id: 169, kind: function, math_expression: sees = 1, entry_id: 185}
+- id: 199
+  kind: function
+  math_expression: distance(pos, p) < 520 && sees > 0.5
+  entry_id: 200
+- id: 243
   kind: function
   math_expression: heading = atan2(t.y - pos.y, t.x - pos.x)
-  entry_id: 105
-- {id: 142, kind: function, math_expression: shot += dt, entry_id: 161}
-- id: 177
+  entry_id: 272
+- {id: 309, kind: function, math_expression: shot += dt, entry_id: 328}
+- id: 344
   kind: function
   math_expression: clamp((shot - 1.6) / 0.8, 0, 1)
-  entry_id: 178
-- {id: 220, kind: function, math_expression: shot >= 2.4, entry_id: 221}
-- id: 245
+  entry_id: 345
+- {id: 387, kind: function, math_expression: shot >= 2.4, entry_id: 388}
+- id: 412
   kind: function
   math_expression: direction(atan2(t.y - pos.y, t.x - pos.x) + (rand() - 0.5) * 0.08)
-  entry_id: 293
-- {id: 339, kind: function, math_expression: pos + d * 16.0, entry_id: 340}
-- {id: 382, kind: function, math_expression: burst += 1, entry_id: 402}
-- {id: 420, kind: function, math_expression: burst < 3, entry_id: 421}
-- {id: 445, kind: function, math_expression: shot = 2.28, entry_id: 461}
-- {id: 475, kind: function, math_expression: shot = 0, entry_id: 491}
-- {id: 505, kind: function, math_expression: burst = 0, entry_id: 521}
-- id: 535
+  entry_id: 460
+- {id: 506, kind: function, math_expression: pos + d * 16.0, entry_id: 507}
+- {id: 549, kind: function, math_expression: burst += 1, entry_id: 569}
+- {id: 587, kind: function, math_expression: burst < 3, entry_id: 588}
+- {id: 612, kind: function, math_expression: shot = 2.28, entry_id: 628}
+- {id: 642, kind: function, math_expression: shot = 0, entry_id: 658}
+- {id: 672, kind: function, math_expression: burst = 0, entry_id: 688}
+- id: 702
   kind: function
   math_expression: shot = max(0, shot - dt)
-  entry_id: 561
-- {id: 584, kind: function, math_expression: "0", entry_id: 585}
+  entry_id: 728
+- {id: 751, kind: function, math_expression: "0", entry_id: 752}

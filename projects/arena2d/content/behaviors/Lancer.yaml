@@ -1,15 +1,15 @@
 version: 3
 name: Lancer
-id_counter: 1309
+id_counter: 1292
 description: Stalk, draw back and glow as a warning, then lance straight along the locked line and recover.
 owner_type: ecs.entity
 variables:
-- {id: 1, name: age, type: float}
-- {id: 2, name: ly, type: float}
-- {id: 3, name: t, type: float}
-- {id: 4, name: state, type: float}
-- {id: 5, name: seed, type: float}
-- {id: 6, name: lx, type: float}
+- {id: 1, name: lx, type: float}
+- {id: 2, name: age, type: float}
+- {id: 3, name: ly, type: float}
+- {id: 4, name: seed, type: float}
+- {id: 5, name: t, type: float}
+- {id: 6, name: state, type: float}
 graphs:
 - kind: event
   name: ""
@@ -24,7 +24,7 @@ graphs:
       seed:
         id: 26
         type: float
-        binding: {kind: variable, variable_id: 5, source_asset: Lancer}
+        binding: {kind: variable, variable_id: 4, source_asset: Lancer}
     outputs:
       Then: {id: 29, kind: exec}
       Result: {id: 27, type: float}
@@ -42,7 +42,7 @@ graphs:
       t:
         id: 67
         type: float
-        binding: {kind: variable, variable_id: 3, source_asset: Lancer}
+        binding: {kind: variable, variable_id: 5, source_asset: Lancer}
       dt:
         type: double
         binding: {kind: delta_time}
@@ -58,7 +58,7 @@ graphs:
       age:
         id: 102
         type: float
-        binding: {kind: variable, variable_id: 1, source_asset: Lancer}
+        binding: {kind: variable, variable_id: 2, source_asset: Lancer}
       dt:
         type: double
         binding: {kind: delta_time}
@@ -78,7 +78,7 @@ graphs:
     inputs:
       state:
         type: double
-        binding: {kind: variable, variable_id: 4, source_asset: Lancer}
+        binding: {kind: variable, variable_id: 6, source_asset: Lancer}
     outputs:
       Result: {type: double}
   - id: 140
@@ -107,10 +107,10 @@ graphs:
         binding: {kind: component, component: GAME.GameTransform}
       age:
         type: double
-        binding: {kind: variable, variable_id: 1, source_asset: Lancer}
+        binding: {kind: variable, variable_id: 2, source_asset: Lancer}
       seed:
         type: double
-        binding: {kind: variable, variable_id: 5, source_asset: Lancer}
+        binding: {kind: variable, variable_id: 4, source_asset: Lancer}
       speed:
         type: double
         binding: {kind: component_field, component: GAME.GameMovement, field: speed}
@@ -143,194 +143,186 @@ graphs:
         binding: {kind: component, component: GAME.GameTransform}
         default: null
       Categories: 8
-  - id: 460
+  - id: 481
     type: Behavior Expression
     reference_id: 450
-    reference_name: '!blocked'
-    inputs:
-      blocked: {type: bool, flags: 0}
-    outputs:
-      Result: {type: bool}
-  - id: 502
-    type: Behavior Expression
-    reference_id: 466
-    reference_name: t > 2.2 && distance(pos, p) < 430 && sees
+    reference_name: t > 2.2 && distance(pos, p) < 430
     inputs:
       t:
         type: double
         flags: 0
-        binding: {kind: variable, variable_id: 3, source_asset: Lancer}
+        binding: {kind: variable, variable_id: 5, source_asset: Lancer}
       pos:
         type: struct
         type_name: GameTransform
         binding: {kind: component, component: GAME.GameTransform}
       p: {type: struct, type_name: GameTransform}
-      sees: {type: bool, flags: 0}
     outputs:
       Result: {type: bool}
-  - {id: 511, type: Branch}
-  - id: 536
+  - {id: 489, type: Branch}
+  - {id: 494, type: Branch}
+  - id: 519
     type: Behavior Expression
-    reference_id: 516
+    reference_id: 499
     reference_name: lx = normalize(p - pos).x
     inputs:
-      Exec: {id: 541, kind: exec}
+      Exec: {id: 524, kind: exec}
       lx:
-        id: 537
+        id: 520
         type: float
-        binding: {kind: variable, variable_id: 6, source_asset: Lancer}
+        binding: {kind: variable, variable_id: 1, source_asset: Lancer}
       p: {type: struct, type_name: GameTransform}
       pos:
         type: struct
         type_name: GameTransform
         binding: {kind: component, component: GAME.GameTransform}
     outputs:
-      Then: {id: 542, kind: exec}
-      Result: {id: 540, type: float}
-  - id: 588
+      Then: {id: 525, kind: exec}
+      Result: {id: 523, type: float}
+  - id: 571
     type: Behavior Expression
-    reference_id: 568
+    reference_id: 551
     reference_name: ly = normalize(p - pos).y
     inputs:
-      Exec: {id: 593, kind: exec}
+      Exec: {id: 576, kind: exec}
       ly:
-        id: 589
+        id: 572
         type: float
-        binding: {kind: variable, variable_id: 2, source_asset: Lancer}
+        binding: {kind: variable, variable_id: 3, source_asset: Lancer}
       p: {type: struct, type_name: GameTransform}
       pos:
         type: struct
         type_name: GameTransform
         binding: {kind: component, component: GAME.GameTransform}
     outputs:
-      Then: {id: 594, kind: exec}
-      Result: {id: 592, type: float}
-  - id: 630
+      Then: {id: 577, kind: exec}
+      Result: {id: 575, type: float}
+  - id: 613
     type: Behavior Expression
-    reference_id: 620
+    reference_id: 603
     reference_name: state = 1
     inputs:
-      Exec: {id: 633, kind: exec}
+      Exec: {id: 616, kind: exec}
       state:
-        id: 631
+        id: 614
         type: float
-        binding: {kind: variable, variable_id: 4, source_asset: Lancer}
+        binding: {kind: variable, variable_id: 6, source_asset: Lancer}
     outputs:
-      Then: {id: 634, kind: exec}
-      Result: {id: 632, type: float}
-  - id: 660
+      Then: {id: 617, kind: exec}
+      Result: {id: 615, type: float}
+  - id: 643
     type: Behavior Expression
-    reference_id: 650
+    reference_id: 633
     reference_name: t = 0
     inputs:
-      Exec: {id: 663, kind: exec}
+      Exec: {id: 646, kind: exec}
       t:
-        id: 661
+        id: 644
         type: float
-        binding: {kind: variable, variable_id: 3, source_asset: Lancer}
+        binding: {kind: variable, variable_id: 5, source_asset: Lancer}
     outputs:
-      Then: {id: 664, kind: exec}
-      Result: {id: 662, type: float}
-  - id: 708
+      Then: {id: 647, kind: exec}
+      Result: {id: 645, type: float}
+  - id: 691
     type: Behavior Expression
-    reference_id: 680
+    reference_id: 663
     reference_name: target = vec2(lx, ly) * speed * -0.35
     inputs:
-      Exec: {id: 714, kind: exec}
+      Exec: {id: 697, kind: exec}
       target:
-        id: 709
+        id: 692
         type: struct
         type_name: CF_V2
         binding: {kind: component_field, component: GAME.GameDrive, field: target}
       lx:
         type: float
-        binding: {kind: variable, variable_id: 6, source_asset: Lancer}
+        binding: {kind: variable, variable_id: 1, source_asset: Lancer}
       ly:
         type: float
-        binding: {kind: variable, variable_id: 2, source_asset: Lancer}
+        binding: {kind: variable, variable_id: 3, source_asset: Lancer}
       speed:
         type: double
         binding: {kind: component_field, component: GAME.GameMovement, field: speed}
     outputs:
-      Then: {id: 715, kind: exec}
-      Result: {id: 713, type: struct, type_name: CF_V2}
-  - id: 772
+      Then: {id: 698, kind: exec}
+      Result: {id: 696, type: struct, type_name: CF_V2}
+  - id: 755
     type: Behavior Expression
-    reference_id: 759
+    reference_id: 742
     reference_name: heading = atan2(ly, lx)
     inputs:
-      Exec: {id: 777, kind: exec}
+      Exec: {id: 760, kind: exec}
       heading:
-        id: 773
+        id: 756
         type: float
         binding: {kind: component_field, component: GAME.GameOrientation, field: radians}
       ly:
         type: double
-        binding: {kind: variable, variable_id: 2, source_asset: Lancer}
+        binding: {kind: variable, variable_id: 3, source_asset: Lancer}
       lx:
         type: double
-        binding: {kind: variable, variable_id: 6, source_asset: Lancer}
+        binding: {kind: variable, variable_id: 1, source_asset: Lancer}
     outputs:
-      Then: {id: 778, kind: exec}
-      Result: {id: 776, type: double}
-  - id: 830
+      Then: {id: 761, kind: exec}
+      Result: {id: 759, type: double}
+  - id: 813
     type: Behavior Expression
-    reference_id: 805
+    reference_id: 788
     reference_name: clamp(t / 0.65, 0, 1)
     inputs:
       t:
         type: double
-        binding: {kind: variable, variable_id: 3, source_asset: Lancer}
+        binding: {kind: variable, variable_id: 5, source_asset: Lancer}
     outputs:
       Result: {type: double}
-  - id: 833
+  - id: 816
     type: Self
     outputs:
       Self: {type_name: ecs.entity}
-  - id: 835
+  - id: 818
     type: Set Material Parameter
     inputs:
       Name: Charge
       Value: {type: double}
-  - id: 855
+  - id: 838
     type: Behavior Expression
-    reference_id: 841
+    reference_id: 824
     reference_name: t >= 0.65
     inputs:
       t:
         type: double
         flags: 0
-        binding: {kind: variable, variable_id: 3, source_asset: Lancer}
+        binding: {kind: variable, variable_id: 5, source_asset: Lancer}
     outputs:
       Result: {type: bool}
-  - {id: 861, type: Branch}
-  - id: 876
+  - {id: 844, type: Branch}
+  - id: 859
     type: Behavior Expression
-    reference_id: 866
+    reference_id: 849
     reference_name: state = 2
     inputs:
-      Exec: {id: 879, kind: exec}
+      Exec: {id: 862, kind: exec}
       state:
-        id: 877
+        id: 860
         type: float
-        binding: {kind: variable, variable_id: 4, source_asset: Lancer}
+        binding: {kind: variable, variable_id: 6, source_asset: Lancer}
     outputs:
-      Then: {id: 880, kind: exec}
-      Result: {id: 878, type: float}
-  - id: 906
+      Then: {id: 863, kind: exec}
+      Result: {id: 861, type: float}
+  - id: 889
     type: Behavior Expression
-    reference_id: 896
+    reference_id: 879
     reference_name: t = 0
     inputs:
-      Exec: {id: 909, kind: exec}
+      Exec: {id: 892, kind: exec}
       t:
-        id: 907
+        id: 890
         type: float
-        binding: {kind: variable, variable_id: 3, source_asset: Lancer}
+        binding: {kind: variable, variable_id: 5, source_asset: Lancer}
     outputs:
-      Then: {id: 910, kind: exec}
-      Result: {id: 908, type: float}
-  - id: 926
+      Then: {id: 893, kind: exec}
+      Result: {id: 891, type: float}
+  - id: 909
     type: Play Sound
     inputs:
       Frequency: 180.0
@@ -339,47 +331,47 @@ graphs:
       Volume: 0.25
       Pan: 0.0
       Noise: 0.3
-  - id: 955
+  - id: 938
     type: Behavior Expression
-    reference_id: 935
+    reference_id: 918
     reference_name: target = vec2(lx, ly) * 720
     inputs:
-      Exec: {id: 960, kind: exec}
+      Exec: {id: 943, kind: exec}
       target:
-        id: 956
+        id: 939
         type: struct
         type_name: CF_V2
         binding: {kind: component_field, component: GAME.GameDrive, field: target}
       lx:
         type: float
-        binding: {kind: variable, variable_id: 6, source_asset: Lancer}
+        binding: {kind: variable, variable_id: 1, source_asset: Lancer}
       ly:
         type: float
-        binding: {kind: variable, variable_id: 2, source_asset: Lancer}
+        binding: {kind: variable, variable_id: 3, source_asset: Lancer}
     outputs:
-      Then: {id: 961, kind: exec}
-      Result: {id: 959, type: struct, type_name: CF_V2}
-  - id: 1012
+      Then: {id: 944, kind: exec}
+      Result: {id: 942, type: struct, type_name: CF_V2}
+  - id: 995
     type: Behavior Expression
-    reference_id: 997
+    reference_id: 980
     reference_name: rand() < 0.6
     outputs:
       Result: {type: bool}
-  - {id: 1017, type: Branch}
-  - id: 1040
+  - {id: 1000, type: Branch}
+  - id: 1023
     type: Behavior Expression
-    reference_id: 1022
+    reference_id: 1005
     reference_name: vec2(-lx, -ly)
     inputs:
       lx:
         type: double
-        binding: {kind: variable, variable_id: 6, source_asset: Lancer}
+        binding: {kind: variable, variable_id: 1, source_asset: Lancer}
       ly:
         type: double
-        binding: {kind: variable, variable_id: 2, source_asset: Lancer}
+        binding: {kind: variable, variable_id: 3, source_asset: Lancer}
     outputs:
       Result: {type: struct, type_name: CF_V2}
-  - id: 1044
+  - id: 1027
     type: Emit Directed Particles
     inputs:
       Position:
@@ -401,111 +393,111 @@ graphs:
       Max Emission: 1.1
       Size Exponent: 1.0
       Shape: 4
-  - id: 1080
+  - id: 1063
     type: Behavior Expression
-    reference_id: 1066
+    reference_id: 1049
     reference_name: t >= 0.4
     inputs:
       t:
         type: double
         flags: 0
-        binding: {kind: variable, variable_id: 3, source_asset: Lancer}
+        binding: {kind: variable, variable_id: 5, source_asset: Lancer}
     outputs:
       Result: {type: bool}
-  - {id: 1086, type: Branch}
-  - id: 1101
+  - {id: 1069, type: Branch}
+  - id: 1084
     type: Behavior Expression
-    reference_id: 1091
+    reference_id: 1074
     reference_name: state = 3
     inputs:
-      Exec: {id: 1104, kind: exec}
+      Exec: {id: 1087, kind: exec}
       state:
-        id: 1102
+        id: 1085
         type: float
-        binding: {kind: variable, variable_id: 4, source_asset: Lancer}
+        binding: {kind: variable, variable_id: 6, source_asset: Lancer}
     outputs:
-      Then: {id: 1105, kind: exec}
-      Result: {id: 1103, type: float}
-  - id: 1131
+      Then: {id: 1088, kind: exec}
+      Result: {id: 1086, type: float}
+  - id: 1114
     type: Behavior Expression
-    reference_id: 1121
+    reference_id: 1104
     reference_name: t = 0
     inputs:
-      Exec: {id: 1134, kind: exec}
+      Exec: {id: 1117, kind: exec}
       t:
-        id: 1132
+        id: 1115
         type: float
-        binding: {kind: variable, variable_id: 3, source_asset: Lancer}
+        binding: {kind: variable, variable_id: 5, source_asset: Lancer}
     outputs:
-      Then: {id: 1135, kind: exec}
-      Result: {id: 1133, type: float}
-  - id: 1168
+      Then: {id: 1118, kind: exec}
+      Result: {id: 1116, type: float}
+  - id: 1151
     type: Behavior Expression
-    reference_id: 1151
+    reference_id: 1134
     reference_name: target = vec2(0, 0)
     inputs:
-      Exec: {id: 1171, kind: exec}
+      Exec: {id: 1154, kind: exec}
       target:
-        id: 1169
+        id: 1152
         type: struct
         type_name: CF_V2
         binding: {kind: component_field, component: GAME.GameDrive, field: target}
     outputs:
-      Then: {id: 1172, kind: exec}
-      Result: {id: 1170, type: struct, type_name: CF_V2}
-  - id: 1214
+      Then: {id: 1155, kind: exec}
+      Result: {id: 1153, type: struct, type_name: CF_V2}
+  - id: 1197
     type: Behavior Expression
-    reference_id: 1205
+    reference_id: 1188
     reference_name: "0"
     outputs:
       Result: {type: double}
-  - id: 1216
+  - id: 1199
     type: Self
     outputs:
       Self: {type_name: ecs.entity}
-  - id: 1218
+  - id: 1201
     type: Set Material Parameter
     inputs:
       Name: Charge
       Value: {type: double}
-  - id: 1238
+  - id: 1221
     type: Behavior Expression
-    reference_id: 1224
+    reference_id: 1207
     reference_name: t >= 0.9
     inputs:
       t:
         type: double
         flags: 0
-        binding: {kind: variable, variable_id: 3, source_asset: Lancer}
+        binding: {kind: variable, variable_id: 5, source_asset: Lancer}
     outputs:
       Result: {type: bool}
-  - {id: 1244, type: Branch}
-  - id: 1259
+  - {id: 1227, type: Branch}
+  - id: 1242
     type: Behavior Expression
-    reference_id: 1249
+    reference_id: 1232
     reference_name: state = 0
     inputs:
-      Exec: {id: 1262, kind: exec}
+      Exec: {id: 1245, kind: exec}
       state:
-        id: 1260
+        id: 1243
         type: float
-        binding: {kind: variable, variable_id: 4, source_asset: Lancer}
+        binding: {kind: variable, variable_id: 6, source_asset: Lancer}
     outputs:
-      Then: {id: 1263, kind: exec}
-      Result: {id: 1261, type: float}
-  - id: 1289
+      Then: {id: 1246, kind: exec}
+      Result: {id: 1244, type: float}
+  - id: 1272
     type: Behavior Expression
-    reference_id: 1279
+    reference_id: 1262
     reference_name: t = 0
     inputs:
-      Exec: {id: 1292, kind: exec}
+      Exec: {id: 1275, kind: exec}
       t:
-        id: 1290
+        id: 1273
         type: float
-        binding: {kind: variable, variable_id: 3, source_asset: Lancer}
+        binding: {kind: variable, variable_id: 5, source_asset: Lancer}
     outputs:
-      Then: {id: 1293, kind: exec}
-      Result: {id: 1291, type: float}
+      Then: {id: 1276, kind: exec}
+      Result: {id: 1274, type: float}
   edges:
   - {from: 7.Then, to: 25.Exec}
   - {from: 51.Then, to: 66.Exec}
@@ -515,48 +507,48 @@ graphs:
   - {from: 127.Value, to: 248.p}
   - {from: 127.Value, to: 394.t}
   - {from: 127.Value, to: 439.End, conversion: game_transform_to_cf}
-  - {from: 127.Value, to: 502.p}
-  - {from: 127.Value, to: 536.p}
-  - {from: 127.Value, to: 588.p}
+  - {from: 127.Value, to: 481.p}
+  - {from: 127.Value, to: 519.p}
+  - {from: 127.Value, to: 571.p}
   - {from: 137.Result, to: 140.Selection, conversion: To Integer}
   - {from: 140.Case0, to: 248.Exec}
-  - {from: 140.Case1, to: 708.Exec}
-  - {from: 140.Case2, to: 955.Exec}
-  - {from: 140.Case3, to: 1168.Exec}
+  - {from: 140.Case1, to: 691.Exec}
+  - {from: 140.Case2, to: 938.Exec}
+  - {from: 140.Case3, to: 1151.Exec}
   - {from: 248.Then, to: 394.Exec}
-  - {from: 394.Then, to: 511.Exec}
-  - {from: 439.Found, to: 460.blocked}
-  - {from: 460.Result, to: 502.sees}
-  - {from: 502.Result, to: 511.Condition}
-  - {from: 511.True, to: 536.Exec}
-  - {from: 536.Then, to: 588.Exec}
-  - {from: 588.Then, to: 630.Exec}
-  - {from: 630.Then, to: 660.Exec}
-  - {from: 708.Then, to: 772.Exec}
-  - {from: 772.Then, to: 835.Exec}
-  - {from: 830.Result, to: 835.Value}
-  - {from: 833.Self, to: 835.Entity}
-  - {from: 835.Then, to: 861.Exec}
-  - {from: 855.Result, to: 861.Condition}
-  - {from: 861.True, to: 876.Exec}
-  - {from: 876.Then, to: 906.Exec}
-  - {from: 906.Then, to: 926.Exec}
-  - {from: 955.Then, to: 1017.Exec}
-  - {from: 1012.Result, to: 1017.Condition}
-  - {from: 1017.True, to: 1044.Exec}
-  - {from: 1017.False, to: 1086.Exec}
-  - {from: 1040.Result, to: 1044.Direction}
-  - {from: 1044.Then, to: 1086.Exec}
-  - {from: 1080.Result, to: 1086.Condition}
-  - {from: 1086.True, to: 1101.Exec}
-  - {from: 1101.Then, to: 1131.Exec}
-  - {from: 1168.Then, to: 1218.Exec}
-  - {from: 1214.Result, to: 1218.Value}
-  - {from: 1216.Self, to: 1218.Entity}
-  - {from: 1218.Then, to: 1244.Exec}
-  - {from: 1238.Result, to: 1244.Condition}
-  - {from: 1244.True, to: 1259.Exec}
-  - {from: 1259.Then, to: 1289.Exec}
+  - {from: 394.Then, to: 489.Exec}
+  - {from: 439.Found, to: 494.Condition}
+  - {from: 481.Result, to: 489.Condition}
+  - {from: 489.True, to: 494.Exec}
+  - {from: 494.False, to: 519.Exec}
+  - {from: 519.Then, to: 571.Exec}
+  - {from: 571.Then, to: 613.Exec}
+  - {from: 613.Then, to: 643.Exec}
+  - {from: 691.Then, to: 755.Exec}
+  - {from: 755.Then, to: 818.Exec}
+  - {from: 813.Result, to: 818.Value}
+  - {from: 816.Self, to: 818.Entity}
+  - {from: 818.Then, to: 844.Exec}
+  - {from: 838.Result, to: 844.Condition}
+  - {from: 844.True, to: 859.Exec}
+  - {from: 859.Then, to: 889.Exec}
+  - {from: 889.Then, to: 909.Exec}
+  - {from: 938.Then, to: 1000.Exec}
+  - {from: 995.Result, to: 1000.Condition}
+  - {from: 1000.True, to: 1027.Exec}
+  - {from: 1000.False, to: 1069.Exec}
+  - {from: 1023.Result, to: 1027.Direction}
+  - {from: 1027.Then, to: 1069.Exec}
+  - {from: 1063.Result, to: 1069.Condition}
+  - {from: 1069.True, to: 1084.Exec}
+  - {from: 1084.Then, to: 1114.Exec}
+  - {from: 1151.Then, to: 1201.Exec}
+  - {from: 1197.Result, to: 1201.Value}
+  - {from: 1199.Self, to: 1201.Entity}
+  - {from: 1201.Then, to: 1227.Exec}
+  - {from: 1221.Result, to: 1227.Condition}
+  - {from: 1227.True, to: 1242.Exec}
+  - {from: 1242.Then, to: 1272.Exec}
 - {id: 9, kind: function, math_expression: seed = rand() * 100, entry_id: 31}
 - {id: 54, kind: function, math_expression: t += dt, entry_id: 73}
 - {id: 89, kind: function, math_expression: age += dt, entry_id: 108}
@@ -569,44 +561,43 @@ graphs:
   kind: function
   math_expression: heading = atan2(t.y - pos.y, t.x - pos.x)
   entry_id: 402
-- {id: 450, kind: function, math_expression: '!blocked', entry_id: 451}
-- id: 466
+- id: 450
   kind: function
-  math_expression: t > 2.2 && distance(pos, p) < 430 && sees
-  entry_id: 467
-- id: 516
+  math_expression: t > 2.2 && distance(pos, p) < 430
+  entry_id: 451
+- id: 499
   kind: function
   math_expression: lx = normalize(p - pos).x
-  entry_id: 544
-- id: 568
+  entry_id: 527
+- id: 551
   kind: function
   math_expression: ly = normalize(p - pos).y
-  entry_id: 596
-- {id: 620, kind: function, math_expression: state = 1, entry_id: 636}
-- {id: 650, kind: function, math_expression: t = 0, entry_id: 666}
-- id: 680
+  entry_id: 579
+- {id: 603, kind: function, math_expression: state = 1, entry_id: 619}
+- {id: 633, kind: function, math_expression: t = 0, entry_id: 649}
+- id: 663
   kind: function
   math_expression: target = vec2(lx, ly) * speed * -0.35
-  entry_id: 717
-- id: 759
+  entry_id: 700
+- id: 742
   kind: function
   math_expression: heading = atan2(ly, lx)
-  entry_id: 780
-- {id: 805, kind: function, math_expression: 'clamp(t / 0.65, 0, 1)', entry_id: 806}
-- {id: 841, kind: function, math_expression: t >= 0.65, entry_id: 842}
-- {id: 866, kind: function, math_expression: state = 2, entry_id: 882}
-- {id: 896, kind: function, math_expression: t = 0, entry_id: 912}
-- id: 935
+  entry_id: 763
+- {id: 788, kind: function, math_expression: 'clamp(t / 0.65, 0, 1)', entry_id: 789}
+- {id: 824, kind: function, math_expression: t >= 0.65, entry_id: 825}
+- {id: 849, kind: function, math_expression: state = 2, entry_id: 865}
+- {id: 879, kind: function, math_expression: t = 0, entry_id: 895}
+- id: 918
   kind: function
   math_expression: target = vec2(lx, ly) * 720
-  entry_id: 963
-- {id: 997, kind: function, math_expression: rand() < 0.6, entry_id: 998}
-- {id: 1022, kind: function, math_expression: 'vec2(-lx, -ly)', entry_id: 1023}
-- {id: 1066, kind: function, math_expression: t >= 0.4, entry_id: 1067}
-- {id: 1091, kind: function, math_expression: state = 3, entry_id: 1107}
-- {id: 1121, kind: function, math_expression: t = 0, entry_id: 1137}
-- {id: 1151, kind: function, math_expression: 'target = vec2(0, 0)', entry_id: 1174}
-- {id: 1205, kind: function, math_expression: "0", entry_id: 1206}
-- {id: 1224, kind: function, math_expression: t >= 0.9, entry_id: 1225}
-- {id: 1249, kind: function, math_expression: state = 0, entry_id: 1265}
-- {id: 1279, kind: function, math_expression: t = 0, entry_id: 1295}
+  entry_id: 946
+- {id: 980, kind: function, math_expression: rand() < 0.6, entry_id: 981}
+- {id: 1005, kind: function, math_expression: 'vec2(-lx, -ly)', entry_id: 1006}
+- {id: 1049, kind: function, math_expression: t >= 0.4, entry_id: 1050}
+- {id: 1074, kind: function, math_expression: state = 3, entry_id: 1090}
+- {id: 1104, kind: function, math_expression: t = 0, entry_id: 1120}
+- {id: 1134, kind: function, math_expression: 'target = vec2(0, 0)', entry_id: 1157}
+- {id: 1188, kind: function, math_expression: "0", entry_id: 1189}
+- {id: 1207, kind: function, math_expression: t >= 0.9, entry_id: 1208}
+- {id: 1232, kind: function, math_expression: state = 0, entry_id: 1248}
+- {id: 1262, kind: function, math_expression: t = 0, entry_id: 1278}

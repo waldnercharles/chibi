@@ -1,0 +1,176 @@
+version: 3
+name: GrinderPlate
+id_counter: 196
+description: 'One armored plate of the Grinder: passes hits on to the head, and when the plate it follows is gone it bursts, taking the next plate with it.'
+owner_type: ecs.entity
+variables:
+- {id: 1, name: doom, type: float}
+graphs:
+- kind: event
+  name: ""
+  nodes:
+  - id: 2
+    type: Event
+    reference_name: Hit
+    outputs:
+      Amount: {declaration_id: 1, type: int, kind: data}
+      Source: {declaration_id: 2, type: handle, type_name: ecs.entity, kind: data}
+      Point: {declaration_id: 3, type: struct, type_name: CF_V2, kind: data}
+      Direction: {declaration_id: 4, type: struct, type_name: CF_V2, kind: data}
+      Element: {declaration_id: 5, type: int, kind: data}
+      Knockback: {declaration_id: 6, type: float, kind: data}
+  - id: 10
+    type: Get Global Variable
+    inputs: {Name: Grinder}
+    outputs:
+      Value: {type: handle, type_name: ecs.entity}
+  - {id: 13, type: To Real}
+  - id: 33
+    type: Behavior Expression
+    reference_id: 16
+    reference_name: ceil(a * 0.55)
+    inputs:
+      a: {type: double}
+    outputs:
+      Result: {type: double}
+  - id: 36
+    type: Send Event
+    reference_name: Hit
+    inputs:
+      Amount: {id: 40, declaration_id: 1, type: int}
+      Source: {declaration_id: 2}
+      Point: {declaration_id: 3, type: struct, type_name: CF_V2}
+      Direction: {declaration_id: 4, type: struct, type_name: CF_V2}
+      Element: {declaration_id: 5, type: int}
+      Knockback: {declaration_id: 6, type: float}
+    outputs:
+      Then: {id: 39}
+  - id: 46
+    type: Self
+    outputs:
+      Self: {type_name: ecs.entity}
+  - id: 48
+    type: Flash Entity
+    inputs: {Amount: 0.6}
+  - id: 71
+    type: Behavior Expression
+    reference_id: 54
+    reference_name: dir * -1
+    inputs:
+      dir: {type: struct, type_name: CF_V2}
+    outputs:
+      Result: {type: struct, type_name: CF_V2}
+  - id: 74
+    type: Emit Directed Particles
+    inputs:
+      Count: 6
+      Color: 4289749247
+      End Color: 0
+      Min Speed: 80.0
+      Max Speed: 240.0
+      Min Lifetime: 0.1
+      Max Lifetime: 0.35
+      Min Size: 0.5
+      Max Size: 1.2
+      Spread: 1.0
+      Min Drag: 1.5
+      Max Drag: 4.0
+      Min Emission: 0.6
+      Max Emission: 1.1
+      Size Exponent: 1.0
+      Shape: 4
+  - id: 96
+    type: Event
+    reference_name: Tick
+    outputs:
+      DeltaSeconds: {type: float, kind: data}
+  - id: 99
+    type: Self
+    outputs:
+      Self: {type_name: ecs.entity}
+  - id: 101
+    type: GetEntity_GameFollow
+    outputs:
+      Value.target: {}
+      Value.mode: {}
+      Value.offset: {}
+      Value.distance: {}
+      Value.stiffness: {}
+      Value.inherit_heading: {}
+  - id: 110
+    type: Has Component
+    inputs: {Component: GAME.GameTransform}
+  - {id: 114, type: Branch}
+  - id: 131
+    type: Behavior Expression
+    reference_id: 119
+    reference_name: doom += dt
+    inputs:
+      Exec: {id: 135, kind: exec}
+      doom:
+        id: 132
+        type: float
+        binding: {kind: variable, variable_id: 1, source_asset: GrinderPlate}
+      dt:
+        type: double
+        binding: {kind: delta_time}
+    outputs:
+      Then: {id: 136, kind: exec}
+      Result: {id: 134, type: float}
+  - id: 168
+    type: Behavior Expression
+    reference_id: 154
+    reference_name: doom > 0.09
+    inputs:
+      doom:
+        type: double
+        flags: 0
+        binding: {kind: variable, variable_id: 1, source_asset: GrinderPlate}
+    outputs:
+      Result: {type: bool}
+  - {id: 174, type: Branch}
+  - id: 179
+    type: Spawn Prototype
+    inputs: {Prototype: GrinderBurst}
+  - id: 184
+    type: SetEntity_GameTransform
+    inputs:
+      Value:
+        binding: {kind: component, component: GAME.GameTransform}
+  - id: 190
+    type: Self
+    outputs:
+      Self: {type_name: ecs.entity}
+  - {id: 192, type: Destroy Entity}
+  edges:
+  - {from: 2.Then, to: 36.Exec}
+  - {from: 2.Amount, to: 13.Value}
+  - {from: 2.Source, to: 36.Source}
+  - {from: 2.Point, to: 36.Point, conversion: game_transform_to_cf}
+  - {from: 2.Point, to: 74.Position, conversion: game_transform_to_cf}
+  - {from: 2.Direction, to: 36.Direction, conversion: game_transform_to_cf}
+  - {from: 2.Direction, to: 71.dir}
+  - {from: 2.Element, to: 36.Element}
+  - {from: 10.Value, to: 36.Entity}
+  - {from: 13.Real, to: 33.a}
+  - {from: 33.Result, to: 36.Amount, conversion: To Integer}
+  - {from: 36.Then, to: 48.Exec}
+  - {from: 46.Self, to: 48.Entity}
+  - {from: 48.Then, to: 74.Exec}
+  - {from: 71.Result, to: 74.Direction}
+  - {from: 96.Then, to: 114.Exec}
+  - {from: 99.Self, to: 101.Entity}
+  - {from: 101.Value.target, to: 110.Entity}
+  - {from: 110.Value, to: 114.Condition}
+  - {from: 114.False, to: 131.Exec}
+  - {from: 131.Then, to: 174.Exec}
+  - {from: 168.Result, to: 174.Condition}
+  - {from: 174.True, to: 179.Exec}
+  - {from: 179.Then, to: 184.Exec}
+  - {from: 179.Entity, to: 184.Entity}
+  - {from: 184.Then, to: 192.Exec}
+  - {from: 190.Self, to: 192.Entity}
+- {id: 16, kind: function, math_expression: ceil(a * 0.55), entry_id: 17}
+- {id: 54, kind: function, math_expression: dir * -1, entry_id: 55}
+- {id: 119, kind: function, math_expression: doom += dt, entry_id: 138}
+- {id: 154, kind: function, math_expression: doom > 0.09, entry_id: 155}

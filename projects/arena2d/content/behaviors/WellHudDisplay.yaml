@@ -1,6 +1,6 @@
 version: 3
 name: WellHudDisplay
-id_counter: 753
+id_counter: 784
 description: 'Feeds the Starwell HUD: vitals, depth, scrap, kills, level and both hardpoints'' module lists each frame; announces each stratum with a title card and each level with a toast.'
 owner_type: ecs.entity
 variables:
@@ -34,6 +34,7 @@ variables:
   type: int
   container: 1
   default: [0]
+- {id: 552, name: lastSerial, type: float}
 graphs:
 - kind: event
   name: ""
@@ -478,59 +479,64 @@ graphs:
     outputs:
       Then: {id: 527, kind: exec}
       Result: {id: 525, type: float}
-  - id: 552
+  - id: 553
     type: Get Global Variable
-    inputs: {Name: Level}
+    inputs: {Name: ToastSerial}
     outputs:
       Value: {type: double}
-  - id: 567
+  - id: 568
     type: Behavior Expression
-    reference_id: 555
-    reference_name: lv > lastLevel
+    reference_id: 556
+    reference_name: s != lastSerial
     inputs:
-      lv: {type: double, flags: 0}
-      lastLevel:
+      s: {type: double, flags: 0}
+      lastSerial:
         type: double
         flags: 0
-        binding: {kind: variable, variable_id: 4, source_asset: WellHudDisplay}
+        binding: {kind: variable, variable_id: 552, source_asset: WellHudDisplay}
     outputs:
       Result: {type: bool}
-  - {id: 574, type: Branch}
-  - id: 587
+  - {id: 575, type: Branch}
+  - id: 588
     type: Behavior Expression
-    reference_id: 579
-    reference_name: lastLevel = lv
+    reference_id: 580
+    reference_name: lastSerial = s
     inputs:
-      Exec: {id: 591, kind: exec}
-      lastLevel:
-        id: 588
+      Exec: {id: 592, kind: exec}
+      lastSerial:
+        id: 589
         type: float
-        binding: {kind: variable, variable_id: 4, source_asset: WellHudDisplay}
-      lv: {type: double}
+        binding: {kind: variable, variable_id: 552, source_asset: WellHudDisplay}
+      s: {type: double}
     outputs:
-      Then: {id: 592, kind: exec}
-      Result: {id: 590, type: float}
-  - id: 606
+      Then: {id: 593, kind: exec}
+      Result: {id: 591, type: float}
+  - id: 607
+    type: Get Global Variable
+    inputs: {Name: Toast}
+    outputs:
+      Value: {type: name}
+  - id: 610
     type: Set UI Data
     inputs:
       Name: toast
-      Value: {type: name, default: Resonance rises · a skill point}
-  - id: 622
+      Value: {type: name}
+  - id: 626
     type: Behavior Expression
-    reference_id: 612
-    reference_name: toastTimer = 2.6
+    reference_id: 616
+    reference_name: toastTimer = 2.8
     inputs:
-      Exec: {id: 625, kind: exec}
+      Exec: {id: 629, kind: exec}
       toastTimer:
-        id: 623
+        id: 627
         type: float
         binding: {kind: variable, variable_id: 3, source_asset: WellHudDisplay}
     outputs:
-      Then: {id: 626, kind: exec}
-      Result: {id: 624, type: float}
-  - id: 672
+      Then: {id: 630, kind: exec}
+      Result: {id: 628, type: float}
+  - id: 676
     type: Behavior Expression
-    reference_id: 642
+    reference_id: 646
     reference_name: toastTimer > 0 && toastTimer - dt <= 0
     inputs:
       toastTimer:
@@ -542,35 +548,65 @@ graphs:
         binding: {kind: delta_time}
     outputs:
       Result: {type: bool}
-  - {id: 679, type: Branch}
-  - id: 684
+  - {id: 683, type: Branch}
+  - id: 688
     type: Set UI Data
     inputs:
       Name: toast
       Value: {type: name}
-  - id: 709
+  - id: 713
     type: Behavior Expression
-    reference_id: 690
+    reference_id: 694
     reference_name: toastTimer = max(0, toastTimer - dt)
     inputs:
-      Exec: {id: 713, kind: exec}
+      Exec: {id: 717, kind: exec}
       toastTimer:
-        id: 710
+        id: 714
         type: float
         binding: {kind: variable, variable_id: 3, source_asset: WellHudDisplay}
       dt:
         type: double
         binding: {kind: delta_time}
     outputs:
-      Then: {id: 714, kind: exec}
-      Result: {id: 712, type: float}
-  - {id: 739, type: Event, reference_name: Begin}
-  - id: 741
+      Then: {id: 718, kind: exec}
+      Result: {id: 716, type: float}
+  - id: 743
+    type: Get Global Variable
+    inputs: {Name: BossActive}
+    outputs:
+      Value: {type: int}
+  - id: 746
+    type: Set UI Data
+    inputs:
+      Name: boss
+      Value: {type: int}
+  - id: 752
+    type: Get Global Variable
+    inputs: {Name: BossHealth}
+    outputs:
+      Value: {type: double}
+  - id: 755
+    type: Set UI Data
+    inputs:
+      Name: bossHealth
+      Value: {type: double}
+  - id: 761
+    type: Get Global Variable
+    inputs: {Name: BossName}
+    outputs:
+      Value: {type: name}
+  - id: 764
+    type: Set UI Data
+    inputs:
+      Name: bossName
+      Value: {type: name}
+  - {id: 770, type: Event, reference_name: Begin}
+  - id: 772
     type: Set UI Data
     inputs:
       Name: title
       Value: {type: name}
-  - id: 747
+  - id: 778
     type: Set UI Data
     inputs:
       Name: toast
@@ -655,21 +691,28 @@ graphs:
   - {from: 492.True, to: 497.Exec}
   - {from: 492.False, to: 522.Exec}
   - {from: 497.Then, to: 522.Exec}
-  - {from: 522.Then, to: 574.Exec}
-  - {from: 552.Value, to: 567.lv}
-  - {from: 552.Value, to: 587.lv}
-  - {from: 567.Result, to: 574.Condition}
-  - {from: 574.True, to: 587.Exec}
-  - {from: 574.False, to: 679.Exec}
-  - {from: 587.Then, to: 606.Exec}
-  - {from: 606.Then, to: 622.Exec}
-  - {from: 622.Then, to: 679.Exec}
-  - {from: 672.Result, to: 679.Condition}
-  - {from: 679.True, to: 684.Exec}
-  - {from: 679.False, to: 709.Exec}
-  - {from: 684.Then, to: 709.Exec}
-  - {from: 739.Then, to: 741.Exec}
-  - {from: 741.Then, to: 747.Exec}
+  - {from: 522.Then, to: 575.Exec}
+  - {from: 553.Value, to: 568.s}
+  - {from: 553.Value, to: 588.s}
+  - {from: 568.Result, to: 575.Condition}
+  - {from: 575.True, to: 588.Exec}
+  - {from: 575.False, to: 683.Exec}
+  - {from: 588.Then, to: 610.Exec}
+  - {from: 607.Value, to: 610.Value}
+  - {from: 610.Then, to: 626.Exec}
+  - {from: 626.Then, to: 683.Exec}
+  - {from: 676.Result, to: 683.Condition}
+  - {from: 683.True, to: 688.Exec}
+  - {from: 683.False, to: 713.Exec}
+  - {from: 688.Then, to: 713.Exec}
+  - {from: 713.Then, to: 746.Exec}
+  - {from: 743.Value, to: 746.Value}
+  - {from: 746.Then, to: 755.Exec}
+  - {from: 752.Value, to: 755.Value}
+  - {from: 755.Then, to: 764.Exec}
+  - {from: 761.Value, to: 764.Value}
+  - {from: 770.Then, to: 772.Exec}
+  - {from: 772.Then, to: 778.Exec}
 - {id: 122, kind: function, math_expression: listTimer -= dt, entry_id: 141}
 - {id: 157, kind: function, math_expression: listTimer <= 0, entry_id: 158}
 - {id: 182, kind: function, math_expression: listTimer = 0.2, entry_id: 198}
@@ -688,14 +731,14 @@ graphs:
   kind: function
   math_expression: titleTimer = max(0, titleTimer - dt)
   entry_id: 529
-- {id: 555, kind: function, math_expression: lv > lastLevel, entry_id: 556}
-- {id: 579, kind: function, math_expression: lastLevel = lv, entry_id: 594}
-- {id: 612, kind: function, math_expression: toastTimer = 2.6, entry_id: 628}
-- id: 642
+- {id: 556, kind: function, math_expression: s != lastSerial, entry_id: 557}
+- {id: 580, kind: function, math_expression: lastSerial = s, entry_id: 595}
+- {id: 616, kind: function, math_expression: toastTimer = 2.8, entry_id: 632}
+- id: 646
   kind: function
   math_expression: toastTimer > 0 && toastTimer - dt <= 0
-  entry_id: 643
-- id: 690
+  entry_id: 647
+- id: 694
   kind: function
   math_expression: toastTimer = max(0, toastTimer - dt)
-  entry_id: 716
+  entry_id: 720

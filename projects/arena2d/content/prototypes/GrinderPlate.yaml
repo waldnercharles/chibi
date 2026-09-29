@@ -1,0 +1,15 @@
+name: GrinderPlate
+components:
+  GAME.GameBody: {type: Dynamic}
+  GAME.GameCollider: {category: 2, mask: 5, radius: 13.0}
+  GAME.GameFlash: {color: 4294967295, decay: 10.0}
+  GAME.GameFollow: {distance: 21.0, inherit_heading: true, mode: Chain, stiffness: 10.0}
+  GAME.GameGeometry3D: {depth: 44.0, height: 4.0, width: 44.0}
+  GAME.GameOrientation: {}
+  GAME.GameShader:
+    material: GrinderPlateSkin
+    parameters: '{"Glow":[1.0,0.416,0.102],"Body":[0.063,0.047,0.043]}'
+    shape: GrinderPlateShape
+  GAME.GameTransform: {}
+  GAME.GameVelocity: {}
+behaviors: [GrinderPlate]

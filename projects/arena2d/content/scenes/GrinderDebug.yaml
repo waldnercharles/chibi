@@ -1,0 +1,36 @@
+version: 1
+name: GrinderDebug
+physics:
+  gravity: {x: 0.0, "y": 240.0}
+seed: 7
+entities:
+- name: The Grinder
+  prototype: Grinder
+  components:
+    GameTransform: {x: 0.0, "y": 5285.0}
+  behaviors: [Creature, Grinder]
+- name: Throat seal
+  prototype: Seal
+  components:
+    GameTransform: {x: 0.0, "y": 5905.0}
+- name: Player
+  prototype: Wren
+  components:
+    GameTransform: {x: 0.0, "y": 4800.0}
+  behaviors: [Hardpoints, ShipFlight, ShipHull]
+- name: Camera
+  prototype: WellCamera
+  components:
+    GameTransform: {x: 0.0, "y": 4800.0}
+  behaviors: [CameraFollow]
+- {name: Lighting, prototype: WellLighting}
+- {name: FireMouse, prototype: FireMouse}
+- {name: FireStick, prototype: FireStick}
+- {name: SecondaryMouse, prototype: SecondaryMouse}
+- name: Run
+  prototype: RunState
+  behaviors: [Run]
+- name: HUD
+  prototype: WellHud
+  behaviors: [WellHudDisplay]
+- {name: Basalt Throat, prototype: StratumThroat}

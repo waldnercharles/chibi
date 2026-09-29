@@ -76,3 +76,11 @@
   transition: opacity 0.35s cubic-out;
 }
 #toast[data-starting-style], #toast[data-ending-style] { opacity: 0; }
+
+#boss {
+  position: absolute; left: 0; right: 0; top: 26dp; text-align: center;
+  transition: opacity 0.6s cubic-out;
+  .name { display: block; font-size: 11dp; letter-spacing: 5dp; text-transform: uppercase; color: #ffb07a; }
+  .track { width: 420dp; height: 5dp; margin-top: 6dp; background-color: #ff6a2a22; .fill { background-color: #ff7a3a; } }
+}
+#boss[data-starting-style], #boss[data-ending-style] { opacity: 0; }

@@ -1,0 +1,25 @@
+version: 3
+name: GrinderPlateShape
+domain: shape
+bounds_x: 22.0
+bounds_y: 22.0
+id_counter: 8
+description: The GrinderPlate's silhouette.
+graphs:
+- kind: event
+  name: ""
+  nodes:
+  - {id: 1, type: Shader Shape Output}
+  - {id: 3, type: Shader Position}
+  - id: 5
+    type: Call Pure Function
+    reference_id: 1254
+    reference_name: GrinderPlate
+    reference_asset: EnemyForms
+    inputs:
+      Position: {declaration_id: 1259, type: struct, type_name: ShaderVec2}
+    outputs:
+      Distance: {declaration_id: 1260, type: float}
+  edges:
+  - {from: 3.Position, to: 5.Position}
+  - {from: 5.Distance, to: 1.Distance}

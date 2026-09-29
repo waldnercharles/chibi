@@ -1,0 +1,11 @@
+name: SealBreak
+components:
+  GAME.GameAppearance: {antialias: 2.0, color: 4285147648, height: 70.0, shape: Circle, width: 70.0}
+  GAME.GameMaterial:
+    emission_color: 4285147903
+    emission_intensity: 3.0
+    emission_multiplier: 1.0
+    scene: 4285147648
+  GAME.GameProjectile: {blast: 90.0, damage: 1, payload: -1}
+  GAME.GameTransform: {}
+behaviors: [Explosion, Glow]

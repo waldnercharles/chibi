@@ -1,7 +1,7 @@
 version: 3
 name: EnemyForms
 domain: shader-library
-id_counter: 983
+id_counter: 1517
 description: Signed distance silhouettes for Starwell creatures, shared by their shapes and materials.
 graphs:
 - {kind: event, name: ""}
@@ -300,3 +300,154 @@ graphs:
   math_expression: length(q - vec2(-4, 3) - vec2(-7, 6) * clamp(dot(q - vec2(-4, 3), vec2(-7, 6)) / 85, 0, 1)) - 1.3
   entry_id: 882
 - {id: 967, kind: function, math_expression: 'min(lance, fin)', entry_id: 968}
+- id: 983
+  kind: function
+  name: GrinderHead
+  entry_id: 984
+  return_id: 986
+  call_depth_limit: 64
+  nodes:
+  - id: 984
+    type: Function Entry
+    outputs:
+    - {id: 988, name: Position, type: struct, type_name: ShaderVec2, kind: data}
+  - id: 986
+    type: Return
+    inputs:
+    - {id: 989, name: Distance, type: float, kind: data}
+  - id: 1004
+    type: Behavior Expression
+    reference_id: 990
+    reference_name: vec2(position.x, abs(position.y))
+    inputs:
+      position: {type: struct, type_name: ShaderVec2}
+    outputs:
+      Result: {type: struct, type_name: ShaderVec2}
+  - id: 1055
+    type: Behavior Expression
+    reference_id: 1027
+    reference_name: length(q * vec2(0.85, 1)) - 17
+    inputs:
+      q: {type: struct, type_name: ShaderVec2}
+    outputs:
+      Result: {type: float}
+  - id: 1099
+    type: Behavior Expression
+    reference_id: 1058
+    reference_name: max(dot(q - vec2(34, 0), vec2(0.42, 0.907)), 8 - q.x)
+    inputs:
+      q: {type: struct, type_name: ShaderVec2}
+    outputs:
+      Result: {type: float}
+  - id: 1229
+    type: Behavior Expression
+    reference_id: 1146
+    reference_name: length(q - vec2(14, 13) - vec2(12, -5) * clamp(dot(q - vec2(14, 13), vec2(12, -5)) / 169, 0, 1)) - 3
+    inputs:
+      q: {type: struct, type_name: ShaderVec2}
+    outputs:
+      Result: {type: float}
+  - id: 1249
+    type: Behavior Expression
+    reference_id: 1232
+    reference_name: min(min(skull, drill), jaw)
+    inputs:
+      skull: {type: float}
+      drill: {type: float}
+      jaw: {type: float}
+    outputs:
+      Result: {type: float}
+  edges:
+  - {from: 984.Position, to: 1004.position}
+  - {from: 1004.Result, to: 1055.q}
+  - {from: 1004.Result, to: 1099.q}
+  - {from: 1004.Result, to: 1229.q}
+  - {from: 1055.Result, to: 1249.skull}
+  - {from: 1099.Result, to: 1249.drill}
+  - {from: 1229.Result, to: 1249.jaw}
+  - {from: 1249.Result, to: 986.Distance}
+- id: 990
+  kind: function
+  math_expression: vec2(position.x, abs(position.y))
+  entry_id: 1008
+- id: 1027
+  kind: function
+  math_expression: length(q * vec2(0.85, 1)) - 17
+  entry_id: 1028
+- id: 1058
+  kind: function
+  math_expression: max(dot(q - vec2(34, 0), vec2(0.42, 0.907)), 8 - q.x)
+  entry_id: 1103
+- id: 1146
+  kind: function
+  math_expression: length(q - vec2(14, 13) - vec2(12, -5) * clamp(dot(q - vec2(14, 13), vec2(12, -5)) / 169, 0, 1)) - 3
+  entry_id: 1147
+- id: 1232
+  kind: function
+  math_expression: min(min(skull, drill), jaw)
+  entry_id: 1233
+- id: 1254
+  kind: function
+  name: GrinderPlate
+  entry_id: 1255
+  return_id: 1257
+  call_depth_limit: 64
+  nodes:
+  - id: 1255
+    type: Function Entry
+    outputs:
+    - {id: 1259, name: Position, type: struct, type_name: ShaderVec2, kind: data}
+  - id: 1257
+    type: Return
+    inputs:
+    - {id: 1260, name: Distance, type: float, kind: data}
+  - id: 1271
+    type: Behavior Expression
+    reference_id: 1261
+    reference_name: abs(position)
+    inputs:
+      position: {type: struct, type_name: ShaderVec2}
+    outputs:
+      Result: {type: struct, type_name: ShaderVec2}
+  - id: 1340
+    type: Behavior Expression
+    reference_id: 1274
+    reference_name: length(max(q - vec2(9, 13), vec2(0, 0))) + min(max(q.x - 9, q.y - 13), 0) - 3
+    inputs:
+      q: {type: struct, type_name: ShaderVec2}
+    outputs:
+      Result: {type: float}
+  - id: 1498
+    type: Behavior Expression
+    reference_id: 1415
+    reference_name: length(q - vec2(0, 14) - vec2(0, 5) * clamp(dot(q - vec2(0, 14), vec2(0, 5)) / 25, 0, 1)) - 2
+    inputs:
+      q: {type: struct, type_name: ShaderVec2}
+    outputs:
+      Result: {type: float}
+  - id: 1513
+    type: Behavior Expression
+    reference_id: 1501
+    reference_name: min(plate, spine)
+    inputs:
+      plate: {type: float}
+      spine: {type: float}
+    outputs:
+      Result: {type: float}
+  edges:
+  - {from: 1255.Position, to: 1271.position}
+  - {from: 1271.Result, to: 1340.q}
+  - {from: 1271.Result, to: 1498.q}
+  - {from: 1340.Result, to: 1513.plate}
+  - {from: 1498.Result, to: 1513.spine}
+  - {from: 1513.Result, to: 1257.Distance}
+- {id: 1261, kind: function, math_expression: abs(position), entry_id: 1262}
+- id: 1274
+  kind: function
+  math_expression: length(max(q - vec2(9, 13), vec2(0, 0))) + min(max(q.x - 9, q.y - 13), 0) - 3
+  entry_id: 1344
+- id: 1415
+  kind: function
+  math_expression: length(q - vec2(0, 14) - vec2(0, 5) * clamp(dot(q - vec2(0, 14), vec2(0, 5)) / 25, 0, 1)) - 2
+  entry_id: 1416
+- {id: 1501, kind: function, math_expression: 'min(plate, spine)', entry_id: 1502}

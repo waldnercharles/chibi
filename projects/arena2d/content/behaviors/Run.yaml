@@ -1,6 +1,6 @@
 version: 3
 name: Run
-id_counter: 400
+id_counter: 471
 description: 'The run''s ledger: starts scrap, resonance, kills and level at zero, keeps time, and grants a level and a skill point whenever enough resonance has gathered.'
 owner_type: ecs.entity
 variables:
@@ -8,6 +8,11 @@ variables:
 - {id: 2, name: next, type: float, default: 14.0}
 - {id: 3, name: level, type: float, default: 1.0}
 - {id: 4, name: floor, type: float}
+- id: 127
+  name: stash0
+  type: int
+  container: 1
+  default: []
 graphs:
 - kind: event
   name: ""
@@ -119,58 +124,106 @@ graphs:
     outputs:
       Value: {type: int}
   - id: 97
+    type: Set Global Variable
+    inputs:
+      Name: BossActive
+      Value: {type: int}
+    outputs:
+      Value: {type: int}
+  - id: 103
+    type: Set Global Variable
+    inputs:
+      Name: BossHealth
+      Value: {type: double, default: 1.0}
+    outputs:
+      Value: {type: double}
+  - id: 109
+    type: Set Global Variable
+    inputs:
+      Name: BossName
+      Value: {type: name}
+    outputs:
+      Value: {type: name}
+  - id: 115
+    type: Set Global Variable
+    inputs:
+      Name: Toast
+      Value: {type: name}
+    outputs:
+      Value: {type: name}
+  - id: 121
+    type: Set Global Variable
+    inputs:
+      Name: ToastSerial
+      Value: {type: int}
+    outputs:
+      Value: {type: int}
+  - id: 128
+    type: Get Variable
+    reference_id: 127
+    reference_name: stash0
+    outputs:
+      Value: {container: 1}
+  - id: 130
+    type: Set Global Variable
+    inputs:
+      Name: Stash
+      Value: {type: int, container: 1}
+    outputs:
+      Value: {type: int}
+  - id: 136
     type: Self
     outputs:
       Self: {type_name: ecs.entity}
-  - id: 99
+  - id: 138
     type: Set Global Variable
     inputs:
       Name: RunEntity
       Value: {type: handle, type_name: ecs.entity}
     outputs:
       Value: {type: handle, type_name: ecs.entity}
-  - id: 105
+  - id: 144
     type: Event
     reference_name: Tick
     outputs:
       DeltaSeconds: {type: float, kind: data}
-  - id: 120
+  - id: 159
     type: Behavior Expression
-    reference_id: 108
+    reference_id: 147
     reference_name: time += dt
     inputs:
-      Exec: {id: 124, kind: exec}
+      Exec: {id: 163, kind: exec}
       time:
-        id: 121
+        id: 160
         type: float
         binding: {kind: variable, variable_id: 1, source_asset: Run}
       dt:
         type: double
         binding: {kind: delta_time}
     outputs:
-      Then: {id: 125, kind: exec}
-      Result: {id: 123, type: float}
-  - id: 143
+      Then: {id: 164, kind: exec}
+      Result: {id: 162, type: float}
+  - id: 182
     type: Get Variable
     reference_id: 1
     reference_name: time
     outputs:
       Value: {type: float}
-  - id: 145
+  - id: 184
     type: Set Global Variable
     inputs:
       Name: Time
       Value: {type: float}
     outputs:
       Value: {type: float}
-  - id: 151
+  - id: 190
     type: Get Global Variable
     inputs: {Name: Resonance}
     outputs:
       Value: {type: double}
-  - id: 166
+  - id: 205
     type: Behavior Expression
-    reference_id: 154
+    reference_id: 193
     reference_name: r >= next
     inputs:
       r: {type: double, flags: 0}
@@ -180,101 +233,101 @@ graphs:
         binding: {kind: variable, variable_id: 2, source_asset: Run}
     outputs:
       Result: {type: bool}
-  - {id: 173, type: Branch}
-  - id: 186
+  - {id: 212, type: Branch}
+  - id: 225
     type: Behavior Expression
-    reference_id: 178
+    reference_id: 217
     reference_name: floor = next
     inputs:
-      Exec: {id: 190, kind: exec}
+      Exec: {id: 229, kind: exec}
       floor:
-        id: 187
+        id: 226
         type: float
         binding: {kind: variable, variable_id: 4, source_asset: Run}
       next:
         type: double
         binding: {kind: variable, variable_id: 2, source_asset: Run}
     outputs:
-      Then: {id: 191, kind: exec}
-      Result: {id: 189, type: float}
-  - id: 219
+      Then: {id: 230, kind: exec}
+      Result: {id: 228, type: float}
+  - id: 258
     type: Behavior Expression
-    reference_id: 205
+    reference_id: 244
     reference_name: level += 1
     inputs:
-      Exec: {id: 222, kind: exec}
+      Exec: {id: 261, kind: exec}
       level:
-        id: 220
+        id: 259
         type: float
         binding: {kind: variable, variable_id: 3, source_asset: Run}
     outputs:
-      Then: {id: 223, kind: exec}
-      Result: {id: 221, type: float}
-  - id: 269
+      Then: {id: 262, kind: exec}
+      Result: {id: 260, type: float}
+  - id: 308
     type: Behavior Expression
-    reference_id: 243
+    reference_id: 282
     reference_name: next += 10 + level * 7
     inputs:
-      Exec: {id: 273, kind: exec}
+      Exec: {id: 312, kind: exec}
       next:
-        id: 270
+        id: 309
         type: float
         binding: {kind: variable, variable_id: 2, source_asset: Run}
       level:
         type: double
         binding: {kind: variable, variable_id: 3, source_asset: Run}
     outputs:
-      Then: {id: 274, kind: exec}
-      Result: {id: 272, type: float}
-  - id: 306
+      Then: {id: 313, kind: exec}
+      Result: {id: 311, type: float}
+  - id: 345
     type: Get Global Variable
     inputs: {Name: SkillPoints}
     outputs:
       Value: {type: int}
-  - id: 323
+  - id: 362
     type: Behavior Expression
-    reference_id: 309
+    reference_id: 348
     reference_name: s + 1
     inputs:
       s: {type: int}
     outputs:
       Result: {type: double}
-  - id: 326
+  - id: 365
     type: Set Global Variable
     inputs:
       Name: SkillPoints
       Value: {type: int}
     outputs:
       Value: {type: int}
-  - id: 332
+  - id: 371
     type: Get Variable
     reference_id: 3
     reference_name: level
     outputs:
       Value: {type: float}
-  - id: 334
+  - id: 373
     type: Set Global Variable
     inputs:
       Name: Level
       Value: {type: int}
     outputs:
       Value: {type: int}
-  - id: 340
+  - id: 379
     type: Get Variable
     reference_id: 2
     reference_name: next
     outputs:
       Value: {type: float}
-  - id: 342
+  - id: 381
     type: Set Global Variable
     inputs:
       Name: NextLevel
       Value: {type: int}
     outputs:
       Value: {type: int}
-  - id: 380
+  - id: 419
     type: Behavior Expression
-    reference_id: 348
+    reference_id: 387
     reference_name: clamp((r - floor) / (next - floor), 0, 1)
     inputs:
       r: {type: double}
@@ -286,14 +339,41 @@ graphs:
         binding: {kind: variable, variable_id: 2, source_asset: Run}
     outputs:
       Result: {type: double}
-  - id: 385
+  - id: 424
     type: Set Global Variable
     inputs:
       Name: LevelProgress
       Value: {type: double}
     outputs:
       Value: {type: double}
-  - id: 391
+  - id: 430
+    type: Set Global Variable
+    inputs:
+      Name: Toast
+      Value: {type: name, default: Resonance rises · a skill point}
+    outputs:
+      Value: {type: name}
+  - id: 436
+    type: Get Global Variable
+    inputs: {Name: ToastSerial}
+    outputs:
+      Value: {type: int}
+  - id: 453
+    type: Behavior Expression
+    reference_id: 439
+    reference_name: s + 1
+    inputs:
+      s: {type: int}
+    outputs:
+      Result: {type: double}
+  - id: 456
+    type: Set Global Variable
+    inputs:
+      Name: ToastSerial
+      Value: {type: int}
+    outputs:
+      Value: {type: int}
+  - id: 462
     type: Play Sound
     inputs: {Frequency: 660.0, End Frequency: 1320.0, Duration: 0.45, Volume: 0.3, Pan: 0.0}
   edges:
@@ -312,35 +392,46 @@ graphs:
   - {from: 73.Then, to: 79.Exec}
   - {from: 79.Then, to: 85.Exec}
   - {from: 85.Then, to: 91.Exec}
-  - {from: 91.Then, to: 99.Exec}
-  - {from: 97.Self, to: 99.Value}
-  - {from: 105.Then, to: 120.Exec}
-  - {from: 120.Then, to: 145.Exec}
-  - {from: 143.Value, to: 145.Value}
-  - {from: 145.Then, to: 173.Exec}
-  - {from: 151.Value, to: 166.r}
-  - {from: 151.Value, to: 380.r}
-  - {from: 166.Result, to: 173.Condition}
-  - {from: 173.True, to: 186.Exec}
-  - {from: 173.False, to: 385.Exec}
-  - {from: 186.Then, to: 219.Exec}
-  - {from: 219.Then, to: 269.Exec}
-  - {from: 269.Then, to: 326.Exec}
-  - {from: 306.Value, to: 323.s}
-  - {from: 326.Then, to: 334.Exec}
-  - {from: 334.Then, to: 342.Exec}
-  - {from: 342.Then, to: 391.Exec}
-  - {from: 380.Result, to: 385.Value}
-- {id: 108, kind: function, math_expression: time += dt, entry_id: 127}
-- {id: 154, kind: function, math_expression: r >= next, entry_id: 155}
-- {id: 178, kind: function, math_expression: floor = next, entry_id: 193}
-- {id: 205, kind: function, math_expression: level += 1, entry_id: 225}
-- id: 243
+  - {from: 91.Then, to: 97.Exec}
+  - {from: 97.Then, to: 103.Exec}
+  - {from: 103.Then, to: 109.Exec}
+  - {from: 109.Then, to: 115.Exec}
+  - {from: 115.Then, to: 121.Exec}
+  - {from: 121.Then, to: 130.Exec}
+  - {from: 128.Value, to: 130.Value}
+  - {from: 130.Then, to: 138.Exec}
+  - {from: 136.Self, to: 138.Value}
+  - {from: 144.Then, to: 159.Exec}
+  - {from: 159.Then, to: 184.Exec}
+  - {from: 182.Value, to: 184.Value}
+  - {from: 184.Then, to: 212.Exec}
+  - {from: 190.Value, to: 205.r}
+  - {from: 190.Value, to: 419.r}
+  - {from: 205.Result, to: 212.Condition}
+  - {from: 212.True, to: 225.Exec}
+  - {from: 212.False, to: 424.Exec}
+  - {from: 225.Then, to: 258.Exec}
+  - {from: 258.Then, to: 308.Exec}
+  - {from: 308.Then, to: 365.Exec}
+  - {from: 345.Value, to: 362.s}
+  - {from: 365.Then, to: 373.Exec}
+  - {from: 373.Then, to: 381.Exec}
+  - {from: 381.Then, to: 430.Exec}
+  - {from: 419.Result, to: 424.Value}
+  - {from: 430.Then, to: 456.Exec}
+  - {from: 436.Value, to: 453.s}
+  - {from: 456.Then, to: 462.Exec}
+- {id: 147, kind: function, math_expression: time += dt, entry_id: 166}
+- {id: 193, kind: function, math_expression: r >= next, entry_id: 194}
+- {id: 217, kind: function, math_expression: floor = next, entry_id: 232}
+- {id: 244, kind: function, math_expression: level += 1, entry_id: 264}
+- id: 282
   kind: function
   math_expression: next += 10 + level * 7
-  entry_id: 276
-- {id: 309, kind: function, math_expression: s + 1, entry_id: 310}
-- id: 348
+  entry_id: 315
+- {id: 348, kind: function, math_expression: s + 1, entry_id: 349}
+- id: 387
   kind: function
   math_expression: clamp((r - floor) / (next - floor), 0, 1)
-  entry_id: 349
+  entry_id: 388
+- {id: 439, kind: function, math_expression: s + 1, entry_id: 440}

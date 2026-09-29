@@ -45,5 +45,10 @@
     <div class="name">{{ self.title }}</div>
   </div>
 
+  <div id="boss" data-if="self.boss > 0" presence>
+    <div class="name">{{ self.bossName }}</div>
+    <div class="track"><div class="fill" data-style-width="(self.bossHealth * 100) + '%'"/></div>
+  </div>
+
   <div id="toast" data-if="self.toast != ''" presence>{{ self.toast }}</div>
 </div>

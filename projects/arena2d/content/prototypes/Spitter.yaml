@@ -4,6 +4,7 @@ components:
   GAME.GameCollider: {category: 2, mask: 15, radius: 10.0, restitution: 0.3}
   GAME.GameDrive: {acceleration: 320.0}
   GAME.GameExperience: {current: 5}
+  GAME.GameFlash: {color: 4294967295, decay: 12.0}
   GAME.GameGeometry3D: {depth: 36.0, height: 4.0, width: 36.0}
   GAME.GameHealth: {current: 42, maximum: 42}
   GAME.GameMovement: {speed: 95.0}

@@ -1,0 +1,174 @@
+version: 3
+name: GrinderDeath
+id_counter: 275
+description: 'Where the Grinder dies: a long rumble, a great shockwave, a hoard of scrap and resonance, and the seal below the arena breaks open.'
+owner_type: ecs.entity
+graphs:
+- kind: event
+  name: ""
+  nodes:
+  - {id: 1, type: Event, reference_name: Begin}
+  - id: 3
+    type: Hit Stop
+    inputs: {Duration: 0.35, Scale: 0.1}
+  - id: 8
+    type: Add Camera Trauma
+    inputs: {Amount: 1.0}
+  - id: 12
+    type: Add Shockwave
+    inputs:
+      Position:
+        type_name: GameTransform
+        binding: {kind: component, component: GAME.GameTransform}
+        default: null
+      Radius: 420.0
+      Thickness: 26.0
+      Strength: 1.4
+      Duration: 1.1
+  - id: 20
+    type: Flash Screen
+    inputs: {Color: 4290806015, Amount: 0.4, Duration: 0.7}
+  - id: 26
+    type: Play Sound
+    inputs: {Frequency: 55.0, End Frequency: 25.0, Duration: 2.2, Volume: 0.9, Noise: 0.9}
+  - id: 35
+    type: Set Global Variable
+    inputs:
+      Name: BossActive
+      Value: {type: int}
+    outputs:
+      Value: {type: int}
+  - id: 41
+    type: Get Global Variable
+    inputs: {Name: Seal}
+    outputs:
+      Value: {type: handle, type_name: ecs.entity}
+  - {id: 44, type: GetEntity_GameTransform}
+  - id: 47
+    type: Spawn Prototype
+    inputs: {Prototype: SealBreak}
+  - {id: 52, type: SetEntity_GameTransform}
+  - {id: 58, type: Destroy Entity}
+  - id: 62
+    type: ForLoop
+    inputs: {LastIndex: 23}
+  - id: 83
+    type: Behavior Expression
+    reference_id: 69
+    reference_name: index % 3
+    inputs:
+      index: {type: int}
+    outputs:
+      Result: {type: double}
+  - id: 86
+    type: Switch on Int
+    outputs:
+    - 89
+    - 90
+    - {id: 92, name: Case2}
+    - 91
+  - id: 93
+    type: Spawn Prototype
+    inputs: {Prototype: Scrap}
+  - id: 98
+    type: SetEntity_GameTransform
+    inputs:
+      Value:
+        binding: {kind: component, component: GAME.GameTransform}
+  - id: 142
+    type: Behavior Expression
+    reference_id: 104
+    reference_name: direction(rand() * 6.283) * (120 + rand() * 260)
+    outputs:
+      Result: {type: struct, type_name: CF_V2}
+  - {id: 144, type: SetEntity_GameVelocity}
+  - id: 150
+    type: Spawn Prototype
+    inputs: {Prototype: Scrap}
+  - id: 155
+    type: SetEntity_GameTransform
+    inputs:
+      Value:
+        binding: {kind: component, component: GAME.GameTransform}
+  - id: 199
+    type: Behavior Expression
+    reference_id: 161
+    reference_name: direction(rand() * 6.283) * (120 + rand() * 260)
+    outputs:
+      Result: {type: struct, type_name: CF_V2}
+  - {id: 201, type: SetEntity_GameVelocity}
+  - id: 207
+    type: Spawn Prototype
+    inputs: {Prototype: Resonance}
+  - id: 212
+    type: SetEntity_GameTransform
+    inputs:
+      Value:
+        binding: {kind: component, component: GAME.GameTransform}
+  - id: 256
+    type: Behavior Expression
+    reference_id: 218
+    reference_name: direction(rand() * 6.283) * (120 + rand() * 260)
+    outputs:
+      Result: {type: struct, type_name: CF_V2}
+  - {id: 258, type: SetEntity_GameVelocity}
+  - id: 264
+    type: Spawn Prototype
+    inputs: {Prototype: ModuleCache}
+  - id: 269
+    type: SetEntity_GameTransform
+    inputs:
+      Value:
+        binding: {kind: component, component: GAME.GameTransform}
+  edges:
+  - {from: 1.Then, to: 3.Exec}
+  - {from: 3.Then, to: 8.Exec}
+  - {from: 8.Then, to: 12.Exec}
+  - {from: 12.Then, to: 20.Exec}
+  - {from: 20.Then, to: 26.Exec}
+  - {from: 26.Then, to: 35.Exec}
+  - {from: 35.Then, to: 47.Exec}
+  - {from: 41.Value, to: 44.Entity}
+  - {from: 41.Value, to: 58.Entity}
+  - {from: 44.Value, to: 52.Value, conversion: game_transform_to_cf}
+  - {from: 47.Then, to: 52.Exec}
+  - {from: 47.Entity, to: 52.Entity}
+  - {from: 52.Then, to: 58.Exec}
+  - {from: 58.Then, to: 62.Exec}
+  - {from: 62.Body, to: 86.Exec}
+  - {from: 62.Index, to: 83.index}
+  - {from: 62.Completed, to: 264.Exec}
+  - {from: 83.Result, to: 86.Selection, conversion: To Integer}
+  - {from: 86.Case0, to: 93.Exec}
+  - {from: 86.Case1, to: 150.Exec}
+  - {from: 86.Case2, to: 207.Exec}
+  - {from: 93.Then, to: 98.Exec}
+  - {from: 93.Entity, to: 98.Entity}
+  - {from: 93.Entity, to: 144.Entity}
+  - {from: 98.Then, to: 144.Exec}
+  - {from: 142.Result, to: 144.Value}
+  - {from: 150.Then, to: 155.Exec}
+  - {from: 150.Entity, to: 155.Entity}
+  - {from: 150.Entity, to: 201.Entity}
+  - {from: 155.Then, to: 201.Exec}
+  - {from: 199.Result, to: 201.Value}
+  - {from: 207.Then, to: 212.Exec}
+  - {from: 207.Entity, to: 212.Entity}
+  - {from: 207.Entity, to: 258.Entity}
+  - {from: 212.Then, to: 258.Exec}
+  - {from: 256.Result, to: 258.Value}
+  - {from: 264.Then, to: 269.Exec}
+  - {from: 264.Entity, to: 269.Entity}
+- {id: 69, kind: function, math_expression: index % 3, entry_id: 70}
+- id: 104
+  kind: function
+  math_expression: direction(rand() * 6.283) * (120 + rand() * 260)
+  entry_id: 105
+- id: 161
+  kind: function
+  math_expression: direction(rand() * 6.283) * (120 + rand() * 260)
+  entry_id: 162
+- id: 218
+  kind: function
+  math_expression: direction(rand() * 6.283) * (120 + rand() * 260)
+  entry_id: 219

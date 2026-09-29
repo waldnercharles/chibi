@@ -1,0 +1,21 @@
+name: Seal
+components:
+  GAME.GameAppearance:
+    antialias: 1.0
+    border_color: 4285147903
+    border_width: 3.0
+    color: 437261055
+    height: 36.0
+    width: 190.0
+  GAME.GameBody: {}
+  GAME.GameCollider: {category: 8, height: 36.0, mask: 63, shape: Box, width: 190.0}
+  GAME.GameGlobalBinding: {name: Seal}
+  GAME.GameMaterial:
+    absorption: 1.0
+    albedo: 807410943
+    border_emission_color: 4285147903
+    border_scene: 4285147903
+    emission_intensity: 0.45
+    emission_multiplier: 1.0
+    scene: 437261055
+  GAME.GameTransform: {}

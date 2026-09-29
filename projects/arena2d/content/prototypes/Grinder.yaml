@@ -1,0 +1,22 @@
+name: Grinder
+components:
+  GAME.GameBody: {continuous: true, type: Dynamic}
+  GAME.GameCollider: {category: 2, mask: 5, radius: 20.0}
+  GAME.GameDrive: {acceleration: 700.0}
+  GAME.GameExperience: {current: 60}
+  GAME.GameFlash: {color: 4294967295, decay: 10.0}
+  GAME.GameGeometry3D: {depth: 76.0, height: 4.0, width: 76.0}
+  GAME.GameGlobalBinding: {name: Grinder}
+  GAME.GameHealth: {current: 1500, maximum: 1500}
+  GAME.GameIgniter: {heat: 3.0}
+  GAME.GameMovement: {speed: 230.0}
+  GAME.GameOrientation: {}
+  GAME.GameShader:
+    material: GrinderHeadSkin
+    parameters: '{"Glow":[1.0,0.478,0.165],"Body":[0.071,0.055,0.047]}'
+    shape: GrinderHeadShape
+  GAME.GameSpawnRequest: {prototype: GrinderDeath}
+  GAME.GameTransform: {}
+  GAME.GameVelocity: {}
+  GAME.GameWeapon: {damage: 24}
+behaviors: [Creature, Grinder]

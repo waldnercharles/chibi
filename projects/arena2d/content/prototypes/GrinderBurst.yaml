@@ -1,0 +1,11 @@
+name: GrinderBurst
+components:
+  GAME.GameAppearance: {antialias: 2.0, color: 4287248896, height: 36.0, shape: Circle, width: 36.0}
+  GAME.GameMaterial:
+    emission_color: 4287249151
+    emission_intensity: 1.8
+    emission_multiplier: 1.0
+    scene: 4287248896
+  GAME.GameProjectile: {blast: 34.0, damage: 8, payload: -1}
+  GAME.GameTransform: {}
+behaviors: [Explosion, Glow]

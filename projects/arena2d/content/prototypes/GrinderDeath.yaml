@@ -1,0 +1,11 @@
+name: GrinderDeath
+components:
+  GAME.GameAppearance: {antialias: 2.0, color: 4290801664, height: 90.0, shape: Circle, width: 90.0}
+  GAME.GameMaterial:
+    emission_color: 4290801919
+    emission_intensity: 5.0
+    emission_multiplier: 1.0
+    scene: 4290801664
+  GAME.GameProjectile: {payload: -1}
+  GAME.GameTransform: {}
+behaviors: [Glow, GrinderDeath]

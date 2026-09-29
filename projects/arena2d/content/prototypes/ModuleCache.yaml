@@ -1,0 +1,24 @@
+name: ModuleCache
+components:
+  GAME.GameAppearance:
+    antialias: 1.0
+    border_color: 3909089535
+    border_width: 2.0
+    color: 2113921279
+    height: 16.0
+    shape: Diamond
+    width: 16.0
+  GAME.GameBody: {gravity_scale: 0.35, type: Dynamic}
+  GAME.GameCollider: {category: 32, friction: 0.4, mask: 8, radius: 7.0, restitution: 0.4}
+  GAME.GameMaterial:
+    absorption: 0.2
+    border_emission_color: 4294967295
+    emission_color: 2113921279
+    emission_intensity: 0.8
+    emission_multiplier: 1.0
+    scene: 2113921279
+  GAME.GameOrientation: {}
+  GAME.GamePickup: {lifetime: 600.0, state: 3, value: 1}
+  GAME.GameTransform: {}
+  GAME.GameVelocity: {}
+behaviors: [Pickup]

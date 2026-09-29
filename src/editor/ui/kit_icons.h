@@ -97,6 +97,7 @@ enum
     KIT_ICON_CALLEES = 0xeb93,      /* nf-cod-call_outgoing */
     KIT_ICON_SYSTEM = 0xeba2,       /* nf-cod-server_process */
     KIT_ICON_TERMINAL = 0xea85,     /* nf-cod-terminal */
+    KIT_ICON_SIDE_PANE = 0xebf4,    /* nf-cod-layout_sidebar_right */
     KIT_ICON_LAYOUT = 0xebeb,       /* nf-cod-layout */
     KIT_ICON_SUN = 0xf0599,         /* nf-md-weather_sunny */
     KIT_ICON_MOON = 0xf0594,        /* nf-md-weather_night */

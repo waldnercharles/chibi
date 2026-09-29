@@ -35,6 +35,7 @@ typedef struct
     bool focus_rename, b_renames; /* item B opens the popover focused */
     char rename[32];
     int rename_commits, rename_applied;
+    int panel_menus; /* the panel's menu asked for */
 } kit_fixture;
 
 static const kit_command_item COMMANDS[] = {
@@ -92,6 +93,9 @@ static void emit(kit_fixture *f)
         f->focus_note = false;
     }
     kit_prop_end(k);
+    kit_panel_begin(k, "panel", "Panel", NULL, true);
+    kit_panel_end(k);
+    f->panel_menus += kit_panel_menu(k);
     kit_pop(k);
     kit_push(k, "list", NULL, NULL);
     for (int i = 0; i < f->order_count; i++) {
@@ -395,6 +399,33 @@ bool test_rmlui_kit()
     frame(&f);
     ok &= check(f.context == 1 && !kit_wants_text(f.k, NULL), "right press is a context click");
 
+    /* A panel's menu button asks for its menu without folding the panel, as a
+       right press on its header does. */
+    rml_element *doc = rml_context_document(rml_backend_context(f.backend), 0);
+    rml_element *more = rml_element_query_selector(doc, ".panel[data-menu] .panel-head .menu");
+    ok &= check(more != NULL, "the panel's header holds its menu button");
+    if (more) {
+        rml_vec2 at = rml_element_absolute_offset(more, RML_BOX_BORDER);
+        rml_vec2 size = rml_element_box_size(more, RML_BOX_BORDER);
+        x = at.x + size.x * 0.5f;
+        y = at.y + size.y * 0.5f;
+        pointer(&f, RML_INPUT_POINTER_MOVE, x, y);
+        pointer(&f, RML_INPUT_POINTER_DOWN, x, y);
+        pointer(&f, RML_INPUT_POINTER_UP, x, y);
+        frame(&f);
+        rml_element *panel = rml_element_query_selector(doc, ".panel[data-menu]");
+        ok &= check(
+            f.panel_menus == 1 && rml_element_has_attribute(panel, "data-open"),
+            "the menu button asks for the menu and leaves the panel open"
+        );
+        right = (rml_input){ .type = RML_INPUT_POINTER_DOWN, .x = x - 60, .y = y, .button = 1 };
+        rml_backend_process_input(f.backend, &right);
+        right.type = RML_INPUT_POINTER_UP;
+        rml_backend_process_input(f.backend, &right);
+        frame(&f);
+        ok &= check(f.panel_menus == 2, "a right press on the header asks for it too");
+    }
+
     /* A text area: Shift+Enter starts a line, Enter commits both once. */
     f.focus_note = true;
     frame(&f);
@@ -469,8 +500,27 @@ bool test_rmlui_kit()
     frame(&f);
     key(&f, RML_INPUT_KEY_ENTER, 0);
     frame(&f);
-    ok &= check(f.chosen == 2, "command-score ranks Frame Selected for \"fs\"");
+    ok &= check(f.chosen == 2, "the palette ranks Frame Selected by its initials, \"fs\"");
     ok &= check(!kit_command_is_open(f.k), "choosing closes the command");
+
+    /* Rows a new query brings under a still pointer leave the selection on
+       the best match (cmdk): only a pointer that moves chooses a row. */
+    f.open_command = true;
+    settle(&f);
+    rml_element *rows[4];
+    rml_element *input = rml_context_focus_element(rml_backend_context(f.backend));
+    int row_count = rml_element_query_selector_all(rml_element_owner_document(input), ".cmd-item", rows, 4);
+    rml_vec2 at = row_count > 1 ? rml_element_absolute_offset(rows[1], RML_BOX_BORDER)
+                                : (rml_vec2){ 0 };
+    pointer(&f, RML_INPUT_POINTER_MOVE, at.x + 4, at.y + 4);
+    frame(&f);
+    /* "l" drops Beta, so Frame Selected's row comes under the pointer. */
+    f.chosen = -1;
+    type(&f, "l");
+    settle(&f);
+    key(&f, RML_INPUT_KEY_ENTER, 0);
+    frame(&f);
+    ok &= check(row_count > 1 && f.chosen == 0, "a still pointer leaves Enter on the best match");
 
     /* Match highlighting keeps the spaces RmlUi would drop as blank text:
        one inside a bold run and one alone between two. */

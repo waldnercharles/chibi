@@ -14,7 +14,6 @@ const expectedPublicNames = [
   "previewField",
   "buildPrototype",
   "buildScene",
-  "buildUi",
   "optimizeGraph",
   "renameSymbol",
   "deleteSymbol",

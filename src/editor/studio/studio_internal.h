@@ -1,6 +1,8 @@
 #ifndef CHIBI_EDITOR_STUDIO_INTERNAL_H
 #define CHIBI_EDITOR_STUDIO_INTERNAL_H
 
+#include "assets/new_asset.h"
+#include "assets/project.h"
 #include "assets/ui_source.h"
 #include "editor/documents/component_presentation.h"
 #include "editor/documents/ui_code.h"
@@ -69,14 +71,82 @@ typedef enum
     STUDIO_THEME_COUNT,
 } studio_theme;
 
-/* Editor preferences (studio_prefs.c). The one store for view settings and the
- * area layout; everything else is authoring state owned by the C model. */
+typedef enum
+{
+    STUDIO_COMMAND_SEARCH,
+    STUDIO_COMMAND_SETTINGS,
+    STUDIO_COMMAND_SAVE,
+    STUDIO_COMMAND_RELOAD,
+    STUDIO_COMMAND_UNDO,
+    STUDIO_COMMAND_REDO,
+    STUDIO_COMMAND_DUPLICATE,
+    STUDIO_COMMAND_DELETE,
+    STUDIO_COMMAND_OPEN_PROTOTYPE,
+    STUDIO_COMMAND_FRAME,
+    STUDIO_COMMAND_RESET_CAMERA,
+    STUDIO_COMMAND_TOGGLE_ASSETS,
+    STUDIO_COMMAND_TOGGLE_OUTPUT,
+    STUDIO_COMMAND_TOGGLE_PERFORMANCE,
+    STUDIO_COMMAND_MAXIMIZE,
+    STUDIO_COMMAND_RESET_LAYOUT,
+    STUDIO_COMMAND_ZOOM_IN,
+    STUDIO_COMMAND_ZOOM_OUT,
+    STUDIO_COMMAND_ZOOM_RESET,
+    STUDIO_COMMAND_PLAY,
+    STUDIO_COMMAND_STOP,
+    STUDIO_COMMAND_STEP,
+    STUDIO_COMMAND_DENSITY,
+    STUDIO_COMMAND_MOTION,
+    STUDIO_COMMAND_THEME,
+    STUDIO_COMMAND_INSPECT, /* UI Inspector: pick an element */
+    STUDIO_COMMAND_PREVIEW_UI,
+    /* Authored top bar and area headers (workstream T) */
+    STUDIO_COMMAND_SELECT_TAB,
+    STUDIO_COMMAND_CLOSE_TAB,
+    STUDIO_COMMAND_CLOSE_DRAWER,
+    STUDIO_COMMAND_RESUME,
+    STUDIO_COMMAND_STEP_OVER,
+    STUDIO_COMMAND_STEP_INTO,
+    STUDIO_COMMAND_STEP_OUT,
+    STUDIO_COMMAND_SELECT_PREVIOUS,
+    STUDIO_COMMAND_SELECT_NEXT,
+    /* Added after the persisted command ids above to keep shortcut prefs stable. */
+    STUDIO_COMMAND_NEW_SCENE,
+    STUDIO_COMMAND_NEW_PROTOTYPE,
+    STUDIO_COMMAND_NEW_BEHAVIOR,
+    STUDIO_COMMAND_NEW_EVENT,
+    STUDIO_COMMAND_NEW_SYSTEM,
+    STUDIO_COMMAND_NEW_LIBRARY,
+    STUDIO_COMMAND_NEW_MATERIAL,
+    STUDIO_COMMAND_NEW_SHAPE,
+    STUDIO_COMMAND_NEW_FIELD,
+    STUDIO_COMMAND_NEW_SHADER_LIBRARY,
+    STUDIO_COMMAND_NEW_UI_WIDGET,
+    STUDIO_COMMAND_NEW_UI_DOCUMENT,
+    STUDIO_COMMAND_NEW_STYLESHEET,
+    STUDIO_COMMAND_RENAME,
+    STUDIO_COMMAND_ADD_COMPONENT,
+    STUDIO_COMMAND_WORKSPACE_LAYOUT,
+    STUDIO_COMMAND_WORKSPACE_UI,
+    STUDIO_COMMAND_TOGGLE_SIDE_PANE,
+    STUDIO_COMMAND_COUNT,
+} studio_command;
+
+#define STUDIO_CHORD_SIZE 64
+
+/* Workspace presets (Blender's workspaces): each arranges the areas for a
+ * task, and switching one never touches documents, selection or playback. */
+typedef enum
+{
+    STUDIO_WORKSPACE_LAYOUT, /* Scene over Behavior */
+    STUDIO_WORKSPACE_UI,     /* Canvas beside the Text Editor */
+    STUDIO_WORKSPACE_COUNT,
+} studio_workspace;
+
+/* A workspace's arrangement, as the user last left it. */
 typedef struct
 {
-    studio_theme theme;
-    bool comfortable;
-    bool reduced_motion;
-    float ui_scale; /* the editor's size, as Blender's Resolution Scale; games' UI keeps its own */
+    bool side_open; /* the right column shows */
     float side_width;
     float main_split;
     float side_split;
@@ -84,7 +154,31 @@ typedef struct
     float drawer_height;
     studio_editor editors[STUDIO_AREA_COUNT];
     char panels[STUDIO_AREA_COUNT][64]; /* the panel each STUDIO_EDITOR_PANEL area shows */
-    kit_wire_style wires;               /* graph wire routing */
+} studio_layout;
+
+#define STUDIO_RECENT_COUNT 32
+
+/* An item chosen in the palette: its key ("command:save") and how often. */
+typedef struct
+{
+    char key[96];
+    int uses;
+} studio_recent;
+
+/* Editor preferences (studio_prefs.c). The one store for view settings and the
+ * area layout; everything else is authoring state owned by the C model. */
+typedef struct
+{
+    char shortcuts[STUDIO_COMMAND_COUNT][STUDIO_CHORD_SIZE]; /* empty uses the default */
+    studio_recent recent[STUDIO_RECENT_COUNT]; /* most recent first; an empty key ends them */
+    studio_theme theme;
+    bool comfortable;
+    bool reduced_motion;
+    float ui_scale; /* the editor's size, as Blender's Resolution Scale; games' UI keeps its own */
+    studio_workspace workspace;
+    studio_layout layouts[STUDIO_WORKSPACE_COUNT];
+    bool follow_documents; /* the active tab's kind picks the workspace */
+    kit_wire_style wires;  /* graph wire routing */
     bool short_bindings; /* graph chips name "Aim › Manual", not "Self.GameAim.manual" */
     bool title_flow;      /* unlabeled execution pins sit in node titles */
     bool compact_nodes;   /* operators as symbols, one-output reads as pills */
@@ -105,6 +199,7 @@ typedef struct
     float time;
     float frame_ms;
     float ms[4]; /* behavior, physics, systems, rendering while the scene runs */
+    float scene_gpu_ms; /* the scene's GPU time, or negative when not measured */
     bool running;
 } studio_perf_sample;
 
@@ -492,7 +587,7 @@ typedef struct
     int overwrite_toast;  /* offers to save over a file changed on disk */
     char overwrite[1024]; /* that file */
     int close_toast;      /* confirms closing a document with unsaved edits */
-    char close[1024];     /* that document */
+    char close[1024];     /* that document's tab key */
     /* Workstream I: a code editor (kit_code) per open document part, and
        the one shown with the document and part it holds (the designer
        follows its cursor). */
@@ -529,6 +624,14 @@ typedef struct
     int hover_at;
     const ui_source *hover_source;
     bool replayed; /* Undo or Redo from the editor changed the text */
+    /* Find (Mod+F): the query, where its shown match starts and how many
+       the part holds. */
+    struct
+    {
+        bool open, focus, typing, refocus;
+        char query[128], seen[128];
+        int at, count, index;
+    } find;
     /* Workstream Q: the shown document's problems for Output
        (studio_code_problems), and the revisions of the text and the check
        they describe. */
@@ -540,21 +643,27 @@ typedef struct
     } problems;
 } studio_code;
 
-/* Assets ▸ New: the name of a new UI asset (studio_assets.c). */
+/* Assets ▸ New (studio_assets.c): the kinds of asset Studio makes, each
+   new_asset_kind and then each ui_new_kind, and the name of the new one. */
+#define STUDIO_NEW_KIND_COUNT (NEW_ASSET_KIND_COUNT + UI_NEW_KIND_COUNT)
 typedef struct
 {
-    int kind;     /* ui_new_kind */
-    bool opening; /* open the popover this frame */
+    int kind;     /* below STUDIO_NEW_KIND_COUNT */
+    bool opening; /* open the name popover this frame */
     bool focus;   /* focus the name field on its first frame */
+    bool shown;   /* the popover showed last frame, so an Enter is for it */
     char name[64];
     char error[160];
-} studio_new_ui;
+} studio_new_asset;
 
 struct studio
 {
     app_scene_authoring *scene;
     engine_viewport *viewport;
     const char *project_root; /* the open project, owned by the application */
+    /* Its manifest as opened, with the name and start scene it defaults to;
+       Settings ▸ Project shows and rewrites it. Empty when it would not open. */
+    chibi_project project;
     bool own_project; /* the open project is the Studio project, whose settings are these preferences */
     uint64_t scene_prefs_seen, preview_prefs_seen;
     studio_project *projects;
@@ -572,6 +681,7 @@ struct studio
     int focus_area;
     int maximized; /* the area filling the workspace (Blender's Ctrl Space), or -1 */
     studio_prefs prefs;
+    int shortcut_recording; /* command + 1 while Settings captures a chord */
     studio_prefs applied; /* last applied copy; changes apply and save by comparison */
     double prefs_changed_at;
     bool system_light;
@@ -579,6 +689,8 @@ struct studio
     bool light;
     int theme_switching; /* frames left with transitions suspended */
     bool drawer_dragging;
+    bool side_dragging;
+    int followed_tab, followed_kind; /* the active tab the workspace last followed */
     SDL_Cursor *cursors[SDL_SYSTEM_CURSOR_COUNT];
     int cursor_shown; /* SDL_SystemCursor applied, -1 before the first frame */
     kit_rect main_rect;
@@ -667,7 +779,7 @@ struct studio
     double active_until; /* frames run at full rate until then, after input */
     /* UI documents (workstream D). */
     studio_code code;
-    studio_new_ui new_ui;
+    studio_new_asset new_asset;
     struct studio_inspect *inspect; /* the UI Inspector, NULL until used */
     /* UI wiring (workstream K): the asset picker, the shown game UI's error
        and the Canvas preview. */
@@ -690,6 +802,13 @@ struct studio
         bool read; /* events holds them while the Add menu is open */
         struct ui_event *events; /* studio_behavior_ui_events */
     } add_menu;
+    /* What the ui documents showing the open behavior's entities bind under
+       self, for Set UI Data (studio_graph_ui_data). */
+    struct
+    {
+        int behavior; /* the asset index entry they are for; -2 before any */
+        struct ui_data_binding *bindings;
+    } bound;
     /* Visual designer (workstream H): NULL until a UI document is active. */
     struct studio_designer *designer;
     /* Workstream Q: Problems ▸ Project's ui problems as of its last check
@@ -697,6 +816,31 @@ struct studio
     struct studio_ui_problem *ui_project_problems; /* array */
     /* ---------- arena2d end to end (wave 3, workstream X) ---------- */
     rml_input *game_input; /* keys pressed and text typed this frame, for the Scene's game UI */
+    /* ---------- Studio in Studio (studio_host.c) ---------- */
+    struct studio *guest; /* the Studio Play runs in the Scene area, or NULL */
+    int guest_request; /* 1 starts the guest, -1 stops it, at the next frame */
+    bool hosted;      /* a guest: its host feeds it input and shows its frame */
+    bool guest_hover; /* the pointer is over the guest */
+    bool guest_keys;  /* a press in the guest gave it the keyboard */
+    bool guest_capture; /* a button pressed in the guest is held */
+    bool typing;        /* a field or the graph had the keyboard last frame */
+    /* ---------- Rename objects and prototype components ---------- */
+    struct
+    {
+        uint64_t entity; /* the object renamed in place, or 0 */
+        bool outliner; /* in its Outliner row, else in Properties' name field */
+        bool focus;    /* focus the field on its next frame */
+        char name[256];
+    } rename;
+    struct
+    {
+        bool open; /* the command surface adds a component to `prototype` */
+        char prototype[128];
+        char added[128];  /* the component added last, whose panel opens */
+        char menu[128];   /* the component whose panel menu is open */
+        int toast;        /* offers Undo after Remove Component */
+        const char *step; /* the removal's undo snapshot; never dereferenced */
+    } components;
 };
 
 /* Whether frames run at full rate for input or a playing scene, rather than
@@ -712,6 +856,9 @@ const char *studio_chord(const studio *s, const char *chord);
 
 /* Preferences. */
 studio_prefs studio_prefs_default();
+studio_layout studio_layout_default(studio_workspace workspace);
+/* The arrangement the areas show: the active workspace's. */
+studio_layout *studio_active_layout(studio *s);
 studio_prefs studio_prefs_load();
 bool studio_prefs_save(const studio_prefs *prefs);
 bool studio_prefs_equal(const studio_prefs *a, const studio_prefs *b);
@@ -740,12 +887,18 @@ typedef struct studio_sources
     ui_page page;            /* the open scene's root document */
     studio_token *tokens;    /* in the order `theme` lists its rows */
     uint64_t writes_seen;
+    int inspected; /* the Inspector model's revision `inspector` shows */
 } studio_sources;
 
-/* Adds the variables authored panels bind to a data model's JSON. */
-void studio_sources_add(yyjson_mut_doc *doc);
+/* A data model's JSON with the variables authored panels bind. */
+yyjson_mut_doc *studio_sources_new();
 /* Applies what bindings changed, then shows the current values. */
 void studio_sources_sync(studio *s, studio_sources *sources, ui_data *data);
+/* Shows the current values in a preview's model, applying nothing its
+ * bindings write (studio_canvas.c). */
+void studio_sources_show(studio *s, studio_sources *sources, ui_data *data);
+/* Sets the Settings page to search the Editor tab for `query`. */
+void studio_sources_search_settings(ui_data *data, const char *query);
 void studio_sources_free(studio_sources *sources);
 
 /* Authored UI. Loads the Studio project's scene; NULL with an error when it
@@ -771,6 +924,13 @@ void studio_ui_area(studio *s, int area, const char *name);
 void studio_ui_modal(studio *s, const char *name);
 /* Clears its GameUi.hidden. */
 void studio_ui_show(studio *s, const char *name);
+/* Shows Settings searching for `query`. */
+void studio_ui_show_settings(studio *s, const char *query);
+
+/* The command palette (studio_palette.c), while open. */
+#define STUDIO_PALETTE_PLACEHOLDER                                             \
+    "Search, or type > for commands, @ for symbols, ? for help"
+void studio_palette(studio *s);
 
 /* Content changed on disk (studio_disk.c): reloads it and raises failures and
    unsaved conflicts as toasts. */
@@ -884,6 +1044,8 @@ void studio_output_find(studio *s);
 void studio_output_calls(studio *s);
 /* Shows an editor: in an area already showing it, else in the drawer. */
 void studio_show_editor(studio *s, studio_editor editor);
+/* Whether an area or the open drawer shows the editor. */
+bool studio_editor_shown(const studio *s, studio_editor editor);
 
 /* Find References (studio_find.c): lists what references an asset, or a
    function, variable, event or prototype, in Output's Find view; rows open
@@ -936,7 +1098,8 @@ void studio_record(studio *s, kit_toast_type kind, const char *text);
    popover with the new name and the assets it rewrites; a delete of what is
    still used lists the uses and asks. Applied changes offer Undo in a toast. */
 /* Whether an asset renames and deletes as a file: scenes and systems are
-   named elsewhere, and a missing asset has no file. */
+   named elsewhere, a missing asset has no file, and nothing indexes the
+   imports of a stylesheet. */
 bool studio_asset_refactorable(const reference_asset *asset);
 /* Renames an event, its definition when it has one, and what sends and
    handles it; host events keep their names. */
@@ -982,9 +1145,6 @@ void studio_node_place(const studio *s, const studio_node_ref *at, char *out, si
 studio_node_ref studio_problem_at(const studio *s, const compile_diagnostic *d);
 /* Continues the paused run; false while none is paused. */
 bool studio_debug(studio *s, studio_debug_command command);
-/* F5, F10, F11 and Shift F11 act while a run is paused, even over a focused
-   game, and repeat to walk a run. True when the key continued the run. */
-bool studio_debug_key(studio *s, SDL_Keycode key, bool shift);
 /* Step Over, Into and Out in the transport while a run is paused. */
 void studio_debug_steps(studio *s);
 /* Resume and the steps as menu items, enabled while a run is paused. */
@@ -997,42 +1157,6 @@ void studio_debug_call_stack(studio *s);
  * UI runs one with emit('studio.<id>'), or on a tab or an area with
  * emit('studio.<id>', index), and binds its state as `commands.<id>`
  * (studio_sources.c). */
-typedef enum
-{
-    STUDIO_COMMAND_SEARCH,
-    STUDIO_COMMAND_SETTINGS,
-    STUDIO_COMMAND_SAVE,
-    STUDIO_COMMAND_RELOAD,
-    STUDIO_COMMAND_UNDO,
-    STUDIO_COMMAND_REDO,
-    STUDIO_COMMAND_DUPLICATE,
-    STUDIO_COMMAND_DELETE,
-    STUDIO_COMMAND_OPEN_PROTOTYPE,
-    STUDIO_COMMAND_FRAME,
-    STUDIO_COMMAND_RESET_CAMERA,
-    STUDIO_COMMAND_TOGGLE_ASSETS,
-    STUDIO_COMMAND_TOGGLE_OUTPUT,
-    STUDIO_COMMAND_TOGGLE_PERFORMANCE,
-    STUDIO_COMMAND_MAXIMIZE,
-    STUDIO_COMMAND_RESET_LAYOUT,
-    STUDIO_COMMAND_ZOOM_IN,
-    STUDIO_COMMAND_ZOOM_OUT,
-    STUDIO_COMMAND_ZOOM_RESET,
-    STUDIO_COMMAND_PLAY,
-    STUDIO_COMMAND_STOP,
-    STUDIO_COMMAND_STEP,
-    STUDIO_COMMAND_DENSITY,
-    STUDIO_COMMAND_MOTION,
-    STUDIO_COMMAND_THEME,
-    STUDIO_COMMAND_INSPECT, /* UI Inspector: pick an element */
-    STUDIO_COMMAND_PREVIEW_UI,
-    /* Authored top bar and area headers (workstream T) */
-    STUDIO_COMMAND_SELECT_TAB,
-    STUDIO_COMMAND_CLOSE_TAB,
-    STUDIO_COMMAND_CLOSE_DRAWER,
-    STUDIO_COMMAND_COUNT,
-} studio_command;
-
 typedef struct
 {
     const char *id; /* stable, camelCase, as in emit('studio.toggleAssets') */
@@ -1062,17 +1186,50 @@ const char *studio_command_id(studio_command command);
 /* A menu item for the command, run when chosen; true then. */
 bool studio_command_item(studio *s, studio_command command);
 
+/* Effective shortcuts and the contexts that can receive them. */
+int studio_command_for_key(
+    const studio_prefs *prefs,
+    SDL_Keycode key,
+    SDL_Keymod mod,
+    studio_editor editor,
+    bool mac
+);
+const char *studio_command_chord(const studio_prefs *prefs, studio_command command);
+const char *studio_command_default_chord(studio_command command);
+const char *studio_command_context(studio_command command);
+int studio_command_conflict(const studio_prefs *prefs, studio_command command, const char *chord, bool mac);
+bool studio_chord_parse(const char *chord, bool mac, studio_key *out);
+bool studio_chord_valid(const char *chord);
+bool studio_chord_matches(const char *chord, SDL_Keycode key, SDL_Keymod mod, bool mac);
+void studio_chord_format(char *out, size_t size, const char *chord, bool mac);
+bool studio_shortcut_record(studio_prefs *prefs, int *recording, studio_key key, bool mac);
+
 /* What commands run (studio_shell.c). */
 void studio_save(studio *s);
 void studio_history(studio *s, bool redo);
 void studio_runtime(studio *s, app_runtime_command command);
+/* A scene run, a preview or a guest Studio is running. */
+bool studio_session(const studio *s);
+/* Play in the Studio project runs Studio itself, as the project's game: a
+ * guest Studio in the Scene area, built from the project's working copy and
+ * editing the same scene authoring. Both take effect at the next frame. */
+void studio_guest_start(studio *s);
+void studio_guest_stop(studio *s);
 bool studio_can_replay(studio *s, bool redo);
 /* The active document has unsaved edits. */
 bool studio_active_dirty(studio *s);
 /* Fills the workspace with one area, or restores the layout; -1 is no area. */
 void studio_toggle_maximized(studio *s, int area);
-/* The default split sizes and area editors. */
+/* The active workspace's default split sizes and area editors. */
 void studio_reset_layout(studio *s);
+/* Shows `workspace`'s arrangement as it was left. */
+void studio_set_workspace(studio *s, studio_workspace workspace);
+/* With Follow Documents, the workspace for the active tab's kind: UI for a
+ * ui document, Layout for any other. Runs when the active tab changes, so a
+ * workspace chosen by hand holds until then. */
+void studio_follow_document(studio *s);
+/* Hides or shows the right column, at its last width. */
+void studio_toggle_side_pane(studio *s);
 void studio_toggle_drawer(studio *s, studio_editor editor);
 /* Steps UI Scale up (1) or down (-1), or restores it (0), within
  * [STUDIO_UI_SCALE_MIN, STUDIO_UI_SCALE_MAX]. */
@@ -1090,25 +1247,32 @@ uint32_t studio_prototype_icon(const studio *s, const char *prototype);
 /* Before the areas: applies UI edits live (the code_apply_live preference)
  * and shows the Text Editor when a UI document becomes active. */
 void studio_code_frame(studio *s);
-/* Opens a UI document's part at a 1-based line of that part's text, as a
- * style origin names a line of a ui asset's rcss block (UI_PART_RCSS); false
- * when it cannot be opened. studio_open_ui_source opens the rml block, whose
- * lines data-src names; a stylesheet has only its RCSS, numbered by file. */
+/* Opens the UI document `path` belongs to (ui_buffer_document) at a 1-based
+ * line of its part, as a style origin names a line of a ui asset's .rcss
+ * (UI_PART_RCSS); false when it cannot be opened. studio_open_ui_source opens
+ * the part `path` is: a .rml's lines, which data-src names, or a .rcss's. */
 bool studio_open_ui_part(studio *s, const char *path, ui_part part, int line);
 /* The active UI document's text, or NULL when another kind is active. */
 ui_buffer *studio_ui_buffer(studio *s);
 /* Saves the active UI document, offering to save over a file that changed
  * on disk. */
 void studio_code_save(studio *s);
-/* Closes a UI document's tab, asking first when it has unsaved edits. */
-void studio_code_close(studio *s, int tab);
+/* Closes a document's tab, asking first when it has unsaved edits, which
+ * closing discards. */
+void studio_close_tab(studio *s, int tab);
 /* Workstream C: frees the Text Editor's code editor. */
 void studio_code_free(studio *s);
 /* Workstream I: opens a place in a UI document's part, as Go to Definition
  * and Find References rows do; false when it cannot be opened. */
 bool studio_code_open_place(studio *s, const ui_code_place *place);
-/* Assets ▸ New (studio_assets.c): a menu of UI asset kinds, then the name. */
-void studio_new_ui_button(studio *s);
+/* Assets ▸ New (studio_assets.c): the header's button opens a menu of every
+   kind, grouped, with the Assets filter's kind first. A kind, from the menu
+   or its New … command, asks for a name, then writes the asset and opens it
+   as Assets opens it. The frame draws the menu and the name popover wherever
+   they opened. */
+void studio_new_asset_button(studio *s);
+void studio_new_asset_start(studio *s, int kind);
+void studio_new_asset_frame(studio *s);
 
 /* ---------- UI Inspector (studio_inspect.c) ---------- */
 
@@ -1176,7 +1340,7 @@ typedef struct studio_inspect_model
     bool picking;
     bool wide;         /* its area is wider than tall: panes side by side */
     char shortcut[32]; /* Inspect Element's, in the platform's notation */
-    bool changed;      /* since the last read */
+    int revision;      /* counts the syncs that changed it */
     studio_inspect_row *rows;
     bool more; /* rows stopped at their limit */
     bool selection;
@@ -1222,11 +1386,15 @@ bool studio_inspect_key(studio *s, const SDL_KeyboardEvent *key);
 /* Applies what the panel asked and reads what it shows; NULL while neither
  * an area shows the panel nor a pick is on. */
 const studio_inspect_model *studio_inspect_sync(studio *s, const studio_inspect_input *input);
+/* The model the last sync read, whose strings last until its revision
+ * changes; NULL before the Inspector opens. */
+const studio_inspect_model *studio_inspect_shown(const studio *s);
 /* After studio_emit: the pick overlay and the highlight. */
 void studio_inspect_emit(studio *s);
 /* ---------- UI wiring (workstream K) ---------- */
 
 struct ui_event;
+struct ui_data_binding;
 /* The events the GameUi documents shown on whatever attaches the open
  * behavior send it (studio_graph_edit.c), which the Add menu offers as Event
  * nodes. Free them with ui_events_free. */
@@ -1234,6 +1402,9 @@ struct ui_event *studio_behavior_ui_events(studio *s);
 /* Drops the events the open Add menu read once; it reads them again when it
  * next opens. */
 void studio_add_menu_close(studio *s);
+/* Reads what the open behavior's documents bind under self when the behavior
+ * changes, or when `again`, and offers them to its graph editor. */
+void studio_graph_ui_data(studio *s, bool again);
 
 /* Asset pickers (studio_pick.c): a field naming an asset chooses one of its
  * kind on the command surface, as Unity's object field and Unreal's asset
@@ -1268,7 +1439,7 @@ void studio_pick_open(studio *s, const char *key, const char *current, const stu
 bool studio_pick_palette(studio *s);
 
 /* Game UI errors (studio_canvas.c): the shown documents' error, the scene's
- * or the preview's, as "ui/Name.yaml message". A change is recorded in
+ * or the preview's, as "ui/Name.rml message". A change is recorded in
  * Output once; the Scene's notice and Output's Problems show it while it
  * lasts. */
 void studio_ui_error(studio *s, const char *error);
@@ -1316,6 +1487,7 @@ typedef struct studio_canvas
     engine_viewport *viewport; /* its frame and documents */
     ecs_world *world;          /* empty: only the preview shows */
     game_save *save;           /* what its bindings set */
+    studio_sources sources; /* Studio's data, which it shows with the Studio project open */
     studio_canvas_action *actions;
 } studio_canvas;
 
@@ -1406,8 +1578,20 @@ bool studio_settings_match(const char *query, const char *text);
 /* The preferences in a preferences file's JSON, NULL for none: defaults
  * where a value is missing or invalid (studio_prefs.c). */
 studio_prefs studio_prefs_read(const char *json);
-/* Owned JSON text of the preferences file. */
-char *studio_prefs_write(const studio_prefs *prefs);
+/* Owned JSON text of the preferences file. Members of `saved`, the file's
+ * text or NULL, that this build does not write stay, so builds of different
+ * ages share the file without dropping each other's settings. */
+char *studio_prefs_write(const studio_prefs *prefs, const char *saved);
+
+/* The Project tab's rows: fields of the open project's project.yaml, in the
+ * page's order. */
+typedef enum
+{
+    STUDIO_PROJECT_NAME,        /* text */
+    STUDIO_PROJECT_START_SCENE, /* a scene, by its path under content */
+    STUDIO_PROJECT_UI,          /* the root document: a ui asset, or none */
+    STUDIO_PROJECT_FIELD_COUNT,
+} studio_project_field;
 
 /* The Settings page's variable, `settings` (studio_sources.c): the Editor or
  * Project tab, the category, the search query, the categories and the rows
@@ -1417,9 +1601,15 @@ typedef struct studio_settings_view
     studio_prefs *prefs;                 /* edited in place */
     const studio_command_info *commands; /* the Keyboard category's */
     int command_count;
+    int recording; /* command + 1, zero when idle */
+    bool mac;
     const char *project; /* the open project's name */
-    char root[128]; /* the project's root document, "" for none; the page may set it */
-    const char **documents; /* the project's ui assets (support/array.h) */
+    /* Each project.yaml field as the project reads it, "" for none; the
+       page may set them. */
+    char fields[STUDIO_PROJECT_FIELD_COUNT][256];
+    /* The assets a field chooses from (support/array.h): Start Scene's
+       scenes and Root Document's ui assets; none for Name. */
+    studio_setting_choice *choices[STUDIO_PROJECT_FIELD_COUNT];
 } studio_settings_view;
 
 /* Adds the `settings` variable to a data model's JSON. */
@@ -1437,6 +1627,7 @@ typedef struct studio_hint
     uint32_t icon;   /* a kit icon, or 0 for the key */
     const char *key; /* in the platform's notation */
     const char *label;
+    int command; /* command + 1 for a rebindable hint, zero for editor gestures */
 } studio_hint;
 
 #define STUDIO_HINT_MAX 4
@@ -1570,5 +1761,22 @@ studio_tab_view *studio_document_tabs(studio *s);
  * (data-alias-area), as a prop. Returns the host, or NULL when the panel
  * has no document. */
 rml_element *studio_ui_area_header(studio *s, int area, const char *name);
+
+/* ---------- Rename objects and prototype components ---------- */
+
+/* Renames the selected object in place, as Blender's F2 and Unity's
+ * Inspector name do: in its Outliner row while an area shows the Outliner,
+ * else in Properties' name field. */
+void studio_rename_object(studio *s);
+/* Names the object `entity` authors, as one Undo step; a refused name
+ * toasts why. */
+void studio_rename_commit(studio *s, uint64_t entity, const char *name);
+/* Add Component (Unity's Inspector): the command surface lists the
+ * components the open prototype lacks, by the Properties tab each shows in. */
+void studio_add_component_open(studio *s);
+/* Its items while it is open. */
+bool studio_component_palette(studio *s);
+/* Runs the Undo a Remove Component toast offers; call every frame. */
+void studio_component_toast(studio *s);
 
 #endif

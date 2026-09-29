@@ -84,8 +84,9 @@ For reproducible rendering measurements, `previewScene` accepts
 `freeze_simulation` and an `input_timeline` spanning preparation and advancing
 render frames. Results include initial/final runtime state and the active GPU
 backend. Optional `metal_capture` and `capture_frame` record one warmed frame on
-supported Macs. Without vendor tools, `pass_timing` waits for the GPU after each
-render pass and reports average milliseconds per pass, and `capture_frames`
+supported Macs. `pass_timing` reports average GPU milliseconds per render pass,
+from command-buffer timestamps on Metal and by waiting for the GPU elsewhere;
+`pass_timing_detail` also splits each HRC cascade level. `capture_frames`
 writes every measured frame to a raw RGBA8 file for judging motion and temporal
 effects. Both serialize or read back each frame, so their frame totals are not
 benchmarks. See [the GPU benchmark workflow](neon-gpu-benchmarks.md).
@@ -104,9 +105,9 @@ domain:
 - Studio's component tabs, prototype icons, and number ranges and units:
   edit `content/editor/Components.yaml` (kind `editor`), run `--format`, then
   call `validateAsset`.
-- Game UI documents (`content/ui/<Name>.yaml`, kind `ui`, with `rml` body
-  markup and optional `rcss` styles): read one with `inspectUi`, change it
-  with `buildUi`, then call `validateAsset`; see
+- Game UI documents (kind `ui`): write `content/ui/<Name>.rml`, its body
+  markup, and `content/ui/<Name>.rcss`, its styles, when it has any; then call
+  `validateAsset`. `inspectUi` summarizes one and completes at a position. See
   [Author a UI document](#author-a-ui-document).
 
 Before changing or removing a function, variable, event, component field or
@@ -123,14 +124,15 @@ saving them. Tool results include complete `structuredContent` and
 - `buildGraph`: create or edit any graph asset; `query` replaces a System's ECS query.
 - `previewField`: bake a bounded scalar field and return its PNG, range and hash.
 - `buildPrototype`: create or edit reflected components, fields, and behavior attachments.
-- `buildScene`: create or edit named entities, prototype instances, overrides, and attachments.
-- `buildUi`: create or edit a ui asset's markup and styles as text edits that keep its formatting, validated with RmlUi before saving.
+- `buildScene`: create or edit named entities, prototype instances, overrides, and attachments; `rename_entity` renames an entity within the scene.
 - `optimizeGraph`: analyze or publish proven graph folds and graph-local aliases.
 - `renameSymbol`: rename an asset, event, function, parameter, variable or local and every reference to it across assets, dry run first.
 - `deleteSymbol`: delete an asset, event definition, function, macro or variable nothing references, or force it and list what dangles.
 - `previewShader`: compile and render a material or shape graph.
 - `previewScene`: render a prototype or scene with its authored presentation.
-- `searchAssets`: find catalog entries by kind, name, path, or description.
+- `searchAssets`: find catalog entries by kind, name, path, description, or
+  member names, best match first: every query word must start a word, and a
+  word of the name ranks above one elsewhere, as Studio's palette ranks.
 - `searchNodes`: list a domain's node types, or find nodes, configured component nodes, and their pins by words.
 - `inspectGraph`: inspect graph content, diagnostics, and the current content hash; with `include_uses: true`, the asset, its functions and macros, and a behavior's variables carry `uses`, their project-wide use counts by role. Counting reads every asset, so it is off by default.
 - `inspectUi`: read a ui asset's outline, props, events, slots, widgets, tokens, save keys, syntax errors and hash; with `complete`, the completions Studio's Text Editor offers at a line and column.
@@ -281,17 +283,18 @@ uses never dangle. Deleting an asset or an event definition removes its file.
 
 ## Author a UI document
 
-A ui asset is YAML with an `rml` block of body markup and an optional `rcss`
-block of styles (see [Player-facing capabilities](#player-facing-capabilities)
-for bindings, widgets and pages). tree-sitter parses the markup with the HTML
-grammar and the styles with the CSS grammar, so every result points at the
-file's own lines.
+A ui asset `Name` is two files in `content/ui`: `Name.rml`, its body markup,
+and `Name.rcss`, the styles scoped to it, when it has any (see
+[Player-facing capabilities](#player-facing-capabilities) for bindings,
+widgets and pages). Other `.rcss` files there are stylesheets that `@import`
+reads. tree-sitter parses the markup with the HTML grammar and the styles with
+the CSS grammar, so every result points at a file's own lines.
 
 `inspectUi` with `{"kind": "ui", "name": "PauseMenu"}` returns:
 
-- `elements`: each element in document order with its `index`, `tag`,
-  `attributes`, `line` and `parent` index; `rules`: each rule with its
-  `selector`, `line`, `parent` rule and `declarations`.
+- `elements`: each element of the `.rml` in document order with its `index`,
+  `tag`, `attributes`, `line` and `parent` index; `rules`: each rule of the
+  `.rcss` with its `selector`, `line`, `parent` rule and `declarations`.
 - `props`: the names the bindings read that the document does not define,
   which hosts pass with `data-alias-<name>`; `widgets`: each `<use ui>` with
   the `props` it passes; `slots`; and `events`, as `searchNodes` lists them.
@@ -299,58 +302,43 @@ file's own lines.
   `styled_classes`, `save_keys`, `diagnostics` and the content `hash`.
 
 With `"complete": {"line": 6, "column": 5}`, a 1-based line and byte column
-of the file, it adds `completion`: what Studio's Text Editor offers there,
+of the `.rml`, or with `"file": "rcss"` of the `.rcss`, it adds `completion`:
+what Studio's Text Editor offers there,
 from the same language service. `items` lists each choice's `label` and
 `kind` (`tag`, `attribute`, `widget`, `class`, `property`,
 `custom_property` or `save_key`); each label replaces the text from `from`
 to `at`, the word typed so far. `total` counts them all; at most 200 are
 listed.
 
-`buildUi` applies `operations` in order, each to the text the one before it
-left, and names an element by its `inspectUi` index or by a selector exactly
-one element matches: a tag, `#id` and `.class` parts, as `#resume` or
-`use.card`. Indexes after an insert, move or delete refer to the new text.
+Write the asset as you would HTML and CSS. `content/ui/Panel.rml`:
 
-| Operation | Fields |
-| --- | --- |
-| `set_attribute`, `remove_attribute` | `element`, `name`, and `value` to set |
-| `add_class`, `remove_class` | `element`, `class` |
-| `set_style`, `remove_style` | `element`, `property`, and `value` to set: one declaration of the `style` attribute |
-| `insert_element` | `markup`, and `target` with `position` `inside` (after its children, the default), `before` or `after`; without `target`, at the end of the markup |
-| `move_element` | `element`, `target`, `position` |
-| `delete_element` | `element` |
-| `set_rml`, `set_rcss` | `text`: the block's whole value |
-
-Edits keep the author's formatting: new lines take the indentation of the
-lines around them, and a self-closing element opened to hold a child gains a
-close tag. The result lists each operation's `changes` as file edits by line
-and column. Like the other build tools it needs `expected_hash` unless it
-`create`s the asset (whose operations must `set_rml`), and `dry_run: true`
-returns the new `text` without saving. The edited asset is written in
-canonical form and validated first, as `validateAsset` does; an invalid one
-is refused with its `diagnostics`:
-
-```json
-{"kind": "ui", "name": "PauseMenu", "expected_hash": "eade8b8fb50dc048",
- "operations": [
-   {"op": "insert_element", "target": "#panel", "markup": "<div class=\"hint\">Esc to resume</div>"},
-   {"op": "set_style", "element": "#defeated", "property": "color", "value": "#ff8c96"}]}
+```html
+<div id="panel">
+  <span class="title">{{ save.name }}</span>
+</div>
 ```
 
-`validateAsset` on a ui asset reports, as `rule_name`:
+`content/ui/Panel.rcss`:
+
+```css
+.title { color: var(--accent); }
+```
+
+Then call `validateAsset`. The files are kept as written; `--format` leaves
+them alone. `readAsset` returns a ui asset as its `rml` and `rcss` texts.
+
+`validateAsset` on a ui asset reports, as `rule_name`, each at the `path` of
+the file it is about with its `line` and `column` when it has them:
 
 - `SYNTAX`: what the grammars reject, as an element left open (RML closes
-  every element, as XML does) or a declaration missing its value, with its
-  file `line`, `column`, `block` and `block_line`.
-- `LOAD`: what the asset loader rejects, as an unknown key, a missing widget
-  or an unreadable `@import`.
+  every element, as XML does) or a declaration missing its value.
+- `LOAD`: what the asset loader rejects, as empty markup, a missing widget or
+  an unreadable `@import`.
 - `RMLUI`: every warning RmlUi logs loading the asset in a scratch document
   with the ui data model, as a binding expression it cannot parse or an RCSS
-  property it rejects, at the line that wrote it. `block` is `rml` for the
-  markup and `rcss` for the styles, with the file `line`; a warning about an
-  imported stylesheet names it as `source`, with its `block_line` in that
-  file. `widgets` is what only the markup with its widgets expanded shows,
-  with the widget as `source` and its line in the widget's `rml` block.
+  property it rejects, at the line that wrote it: in the asset's `.rml` or
+  `.rcss`, an imported stylesheet, or, for what only the markup with its
+  widgets expanded shows, the widget's `.rml`.
 
 ## Check adapter distribution
 
@@ -403,6 +391,16 @@ editor values, and behavior attachments are semantic JSON objects. The scene
 loader validates every prototype, override, and behavior before publication.
 Scene scenarios use the authored entity list, so a test can include a target,
 enemy, and support entity without constructing a second JSON fixture by hand.
+Use `rename_entity` with `entity` set to the current name and `name` set to the
+new name. Renames reject empty and duplicate names, accept an unchanged name,
+and take effect in operation order, so later operations in the same batch use
+the new name. A failed operation rejects the whole batch; dry runs report the
+proposed hash without publishing it.
+
+In a project named Studio, a successful scene object rename includes a
+`warnings` array. Studio's C code looks up chrome entities such as `TopBar`,
+`StatusBar` and `AreaHeader` by name, and name-based references elsewhere are
+not rewritten.
 
 ## Author a graph or shader
 
@@ -484,7 +482,7 @@ For example, these `buildGraph` arguments create a material:
 }
 ```
 
-New material and shape assets have an `output` node alias. New shapes start
+New material, shape and field assets have an `output` node alias. New shapes start
 with 32-unit half extents; use `{"op":"set_bounds","value":[32,24]}`
 to set the finite positive half extents that enclose a shape. Other aliases last
 only for the current request; use the stable IDs returned in `result.nodes`
@@ -794,10 +792,10 @@ extraction policy.
 | --- | --- |
 | Camera | One enabled `GameCamera` plus `GameTransform`. Positive width/height set the logical span; offset follows the entity. Disable it to release the camera. |
 | Controls | `GameActionBinding` maps one physical source to an event name. Multiple entities can bind the same action; their held states combine. `firing` also sets GameAim.firing. Remove GameInput while fitting to suspend ship controls. |
-| Player UI | `GameUi` shows `content/ui/<document>.yaml` (RML markup and RCSS) over the game view. `Set UI Text`, `Set UI Class`, `Set UI Visible`, `Set UI Value` and `Focus UI Element` change every element their RCSS selector matches, such as `#score` or `#hull .fill`; `Click UI Element` clicks the first match, and `Move UI Focus` steps focus through the matches, wrapping. `Get UI Value` reads what was last set under the same selector, and an emitting input's value under `#id`. `data-event-click="emit('Resume')"` sends that event to the entity when clicked; on an input, `data-event-change` sends it with the input's value. |
+| Player UI | `GameUi` shows `content/ui/<document>.rml` (RML markup, styled by the `.rcss` beside it) over the game view. `Set UI Text`, `Set UI Class`, `Set UI Style` (an RCSS property such as `width: 40%`; an empty value returns it to the stylesheets), `Set UI Visible`, `Set UI Value` and `Focus UI Element` change every element their RCSS selector matches, such as `#score` or `#hull .fill`; `Click UI Element` clicks the first match, and `Move UI Focus` steps focus through the matches, wrapping. `Get UI Value` reads what was last set under the same selector, and an emitting input's value under `#id`. `Get UI Scroll` reads, in dp, how far an element with an id and `data-event-scroll` is scrolled and the heights of its view and content. `data-event-click="emit('Resume')"` sends that event to the entity when clicked; on an input, `data-event-change` sends it with the input's value. `Set UI Data` gives the entity's documents a value to bind as `self.<Name>`: text, a number, a struct's fields, or an array that `data-for="row : self.items"` repeats (`{{ row.name }}`); Name `items.2.name` sets one row's field. searchNodes offers a `Set UI Data` for each value a document binds, with Name set and its rows' fields described. |
 | Save progress | `Read Saved Text`, `Set Saved Text`, `Remove Saved Text`, `Commit Save`, `Discard Save Changes`. Pending changes become durable only on commit. `Commit Save.Failed` supports retry/error UI. |
 | Sound | `Play Sound` synthesizes a swept tone/noise cue. Frequency and end frequency: 20–10,000 Hz; duration: 0.01–4 s; volume/noise: 0–1; pan: 0 left, 0.5 center, 1 right. Editor Play and standalone Play mix up to 64 voices. A zero volume mutes a cue. |
-| Lighting | `GameHRC2D` authors fractional 2D transport resolution, trace/feedback settings, ambient, intensity, radiance fog, shadow floor, falloff, temporal blending, upscaling and debug view. `GameEnvironment` authors 3D exposure and bloom. |
+| Lighting | `GameHRC2D` authors 2D light `resolution`, `color_resolution` and `gather_resolution` detail, adaptive resolution that keeps the scene's GPU time within `target_fps`, trace/feedback settings, ambient, intensity, radiance fog, shadow floor, falloff, temporal blending, upscaling and debug view. `describeComponents` returns each field's description. `GameEnvironment` authors 3D exposure and bloom. |
 | Line of sight | `Raycast` returns Found, Entity, Point, Normal and Distance against circles and rotated boxes. Category filtering is independent of collision masks. New colliders and teleports are visible to the query. |
 | Fog | One enabled `GameFog` defines origin, 1–256 rows/columns, cell size, color and ambient drift. `drift: 0` removes fog animation. `GameVision` sources reveal nearby cells, blocked by `occluders`. |
 | Terrain memory | `GameVision.remember` adds explored terrain. Positive duration creates a shrinking temporary clearing; age starts at zero. `Visibility At` reads Visible/Explored/Obstacle. `GameRenderState.visibility_culled` opts an actor into current-sight culling; `hidden` always hides it. |
@@ -888,7 +886,7 @@ animations do: `.toast { transition: opacity 0.2s; }` with
 `.toast[data-starting-style], .toast[data-ending-style] { opacity: 0; }`.
 All three change at once under the `reduced-motion` theme and while hidden.
 
-The player shows `content/ui/PauseMenu.yaml` while paused. Its `body` has the
+The player shows `content/ui/PauseMenu.rml` while paused. Its `body` has the
 class `paused`, `cleared` or `defeated`, and its `Resume`, `Restart` and `Quit`
 events control the session.
 

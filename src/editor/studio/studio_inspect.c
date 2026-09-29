@@ -32,7 +32,7 @@
 #define INDENT_ROOT 4
 /* Frames the picked row has to appear in the panel before it scrolls to it. */
 #define REVEAL_FRAMES 3
-/* The panel's tree (ui/Inspector.yaml), and how it marks the selected row. */
+/* The panel's tree (ui/Inspector.rml), and how it marks the selected row. */
 #define TREE_CLASS "inspect-tree"
 #define SELECTED_ROW "." TREE_CLASS " .selected"
 
@@ -487,16 +487,9 @@ static bool same_rule(const declared *a, const declared *b)
            !strcmp(a->rule, b->rule);
 }
 
-static bool ends_with(const char *text, const char *suffix)
-{
-    size_t n = strlen(text), m = strlen(suffix);
-    return n >= m && !strcmp(text + n - m, suffix);
-}
-
 /* The file and line a rule was written at, which ui_style_origin maps from
  * the sheet RmlUi names and the rule's line in it; else the line in the
- * sheet, as for a host's built-in style. A ui asset's rcss block numbers
- * its own lines. */
+ * sheet, as for a host's built-in style. */
 static void describe_origin(studio_inspect_style *s, const declared *d)
 {
     int line = d->line;
@@ -504,15 +497,7 @@ static void describe_origin(studio_inspect_style *s, const declared *d)
     s->line = line;
     const char *base = strrchr(s->file, '/');
     base = s->linked ? (base ? base + 1 : s->file) : "";
-    snprintf(
-        s->origin,
-        sizeof s->origin,
-        !s->linked                    ? "%sline %d"
-        : ends_with(s->file, ".yaml") ? "%s rcss:%d"
-                                      : "%s:%d",
-        base,
-        line
-    );
+    snprintf(s->origin, sizeof s->origin, s->linked ? "%s:%d" : "%sline %d", base, line);
 }
 
 /* Headings and declarations for `list`, sorted. */
@@ -911,9 +896,10 @@ static studio_inspect *inspector(studio *s)
 
 static int panel_area(const studio *s)
 {
+    const studio_layout *layout = &s->prefs.layouts[s->prefs.workspace];
     for (int i = 0; i < STUDIO_AREA_COUNT; i++) {
-        if (s->prefs.editors[i] == STUDIO_EDITOR_PANEL &&
-            !strcmp(s->prefs.panels[i], INSPECT_PANEL) && s->areas[i].rect.w > 0) {
+        if (layout->editors[i] == STUDIO_EDITOR_PANEL &&
+            !strcmp(layout->panels[i], INSPECT_PANEL) && s->areas[i].rect.w > 0) {
             return i;
         }
     }
@@ -926,9 +912,10 @@ static void show_panel(studio *s)
     if (panel_area(s) >= 0) {
         return;
     }
-    s->prefs.editors[STUDIO_AREA_DRAWER] = STUDIO_EDITOR_PANEL;
-    snprintf(s->prefs.panels[STUDIO_AREA_DRAWER], sizeof s->prefs.panels[STUDIO_AREA_DRAWER], "%s", INSPECT_PANEL);
-    s->prefs.drawer_open = true;
+    studio_layout *layout = studio_active_layout(s);
+    layout->editors[STUDIO_AREA_DRAWER] = STUDIO_EDITOR_PANEL;
+    snprintf(layout->panels[STUDIO_AREA_DRAWER], sizeof layout->panels[STUDIO_AREA_DRAWER], "%s", INSPECT_PANEL);
+    layout->drawer_open = true;
 }
 
 bool studio_inspect_picking(const studio *s)
@@ -947,8 +934,14 @@ void studio_inspect_toggle(studio *s)
 
 bool studio_inspect_key(studio *s, const SDL_KeyboardEvent *key)
 {
-    bool chord = key->key == SDLK_C && (key->mod & SDL_KMOD_SHIFT) &&
-                 studio_primary(s, key->mod);
+    bool gameplay = !studio_previewed_ui(s) && engine_viewport_focused(s->viewport);
+    studio_editor editor = s->hover_area >= 0
+                             ? studio_active_layout(s)->editors[s->hover_area]
+                             : STUDIO_EDITOR_COUNT;
+    bool typing = kit_wants_keyboard(s->kit) || studio_graph_wants_keyboard(s);
+    bool chord = (!(gameplay || typing) || studio_primary(s, key->mod)) &&
+                 studio_command_for_key(&s->prefs, key->key, key->mod, editor, s->mac) ==
+                     STUDIO_COMMAND_INSPECT;
     if (chord) {
         if (!key->repeat) {
             studio_command_run(s, STUDIO_COMMAND_INSPECT);
@@ -962,9 +955,9 @@ bool studio_inspect_key(studio *s, const SDL_KeyboardEvent *key)
     return true;
 }
 
-/* In the Text Editor at a line of the part: a ui asset's rml block, whose
- * lines data-src names, or its rcss block, whose lines a rule's origin
- * names; a stylesheet has only its RCSS. */
+/* In the Text Editor at a line of the part: a ui asset's .rml, whose lines
+ * data-src names, or its .rcss, whose lines a rule's origin names; a
+ * stylesheet has only its RCSS. */
 static void open_source(studio *s, const char *path, ui_part part, int line)
 {
     bool opened = part == UI_PART_RCSS ? studio_open_ui_part(s, path, part, line)
@@ -997,7 +990,7 @@ static void edit_source(studio *s, const studio_inspect *in)
     snprintf(
         path,
         sizeof path,
-        "%s/ui/%.*s.yaml",
+        "%s/ui/%.*s" UI_MARKUP_EXTENSION,
         in->target == STUDIO_INSPECT_GAME ? s->scene->content_root
                                           : STUDIO_PROJECT "/content",
         asset,
@@ -1081,9 +1074,14 @@ const studio_inspect_model *studio_inspect_sync(studio *s, const studio_inspect_
         studio_command_describe(s, STUDIO_COMMAND_INSPECT).shortcut
     );
     uint64_t hash = model_hash(m);
-    m->changed = hash != in->seen;
+    m->revision += hash != in->seen;
     in->seen = hash;
     return m;
+}
+
+const studio_inspect_model *studio_inspect_shown(const studio *s)
+{
+    return s->inspect ? &s->inspect->model : NULL;
 }
 
 static kit_rect box_rect(rml_element *el, rml_box_area area, mapping m)

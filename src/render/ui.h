@@ -47,6 +47,7 @@ typedef struct ui_data
     rml_data_model *model;
     game_save *save; /* the one `save` shows */
     uint64_t save_seen;
+    uint64_t data_seen; /* the game_ui revision `entities` shows */
 } ui_data;
 
 /* Creates the model in `context` over `doc`, which it takes, adding `save`
@@ -60,11 +61,21 @@ void ui_data_sync(ui_data *data, game_save *save);
 /* Sets `value` to a copy of `text` unless it holds it already; the JSON keeps
  * what it copies until it is freed, so views update values in place. */
 void ui_data_set_text(yyjson_mut_doc *doc, yyjson_mut_val *value, const char *text);
+/* Binds `self` in the document mounted at `root` to `entity`'s data, which
+ * behaviors set with Set UI Data and the model holds under `entities`; call
+ * before the mount installs its markup. Binding the same entity again
+ * changes nothing. */
+void ui_data_bind_self(ui_data *data, rml_element *root, uint64_t entity);
+/* Shows what behaviors set with Set UI Data since the last call, changing
+ * values in place so views keep their bindings. */
+void ui_data_show_entities(ui_data *data, const game_ui *model);
+/* Drops an entity's data, as when its document closes. */
+void ui_data_forget_entity(ui_data *data, uint64_t entity);
 void ui_data_free(ui_data *data);
 
 /* ---------- Mounts ---------- */
 
-/* One ui asset shown inside a host element: content/ui/<name>.yaml expanded
+/* One ui asset shown inside a host element: content/ui/<name>.rml expanded
  * with its widgets, re-read within a second of an edit to either, keeping the
  * last valid version. The host element gets data-ui="<name>" and binds the
  * context's UI_DATA_MODEL, and the mount's RCSS is scoped to it; the host
@@ -114,6 +125,9 @@ void ui_mount_emit(ui_mount *mount, rml_element *element, const char *event, con
 bool ui_mount_take(ui_mount *mount, ui_activation *out);
 /* Applies what behaviors set for `entity` in `model` since the last call. */
 void ui_mount_apply(ui_mount *mount, game_ui *model, uint64_t entity);
+/* Records under #id, in dp, where each element with an id and a
+ * data-event-scroll binding is scrolled, for Get UI Scroll. */
+void ui_mount_measure(ui_mount *mount, game_ui *model, uint64_t entity);
 
 /* ---------- Pages ---------- */
 
@@ -129,7 +143,7 @@ typedef struct ui_page
 {
     char name[128]; /* the ui asset shown; "" for none */
     file_watch asset;
-    file_watch *imports;  /* the stylesheets its RCSS imports */
+    file_watch *imports;  /* its .rcss and the stylesheets that imports */
     ui_document document; /* its last valid version, RCSS unscoped */
     char error[256]; /* why the asset is not the version shown; "" when it is */
 } ui_page;
@@ -151,8 +165,14 @@ void ui_page_free(ui_page *page);
  * pixels being 1. */
 typedef struct render_ui render_ui;
 
-render_ui *render_ui_new(const char *content_root);
+/* `data`, NULL for none, gives the documents its root's members as
+ * variables beside `save` and `system` (ui_data_init), so a caller can show
+ * them its own state; the new host takes it. */
+render_ui *render_ui_new(const char *content_root, yyjson_mut_doc *data);
 void render_ui_free(render_ui *ui);
+/* The documents' data model, in which the host shows the variables it gave
+ * render_ui_new. */
+ui_data *render_ui_data(render_ui *ui);
 /* Shows `world`'s GameUi documents. An input's change first stores its value
  * in the model under `#id` for Get UI Value. */
 void render_ui_update(render_ui *ui, const ui_world *world, int width, int height, double dt);

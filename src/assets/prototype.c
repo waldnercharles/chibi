@@ -561,6 +561,17 @@ static int game_prototype_register_tag(const game_prototype *prototype, ecs_worl
     return ecs_world_register_component(world, &prototype->tag.desc, NULL);
 }
 
+game_prototype *game_prototype_new(const char *name)
+{
+    assert(name && name[0]);
+    game_prototype *prototype = (game_prototype *)xcalloc(1, sizeof *prototype);
+    prototype->name = xstrdup(name);
+    prototype->identity = name_identity(name);
+    prototype->registry = &prototype->registry_storage;
+    setup_tag(prototype);
+    return prototype;
+}
+
 game_prototype *game_prototype_capture_entity(
     const char *name,
     const ecs_world *world,
@@ -573,12 +584,8 @@ game_prototype *game_prototype_capture_entity(
         !ecs_entity_is_alive(world, entity)) {
         return NULL;
     }
-    game_prototype *prototype = (game_prototype *)xcalloc(1, sizeof *prototype);
-    prototype->name = xstrdup(name);
-    prototype->identity = name_identity(name);
+    game_prototype *prototype = game_prototype_new(name);
     prototype->registry_storage = *registry;
-    prototype->registry = &prototype->registry_storage;
-    setup_tag(prototype);
     for (int i = 0; i < registry->component_count; i++) {
         const ecs_component_desc *desc = registry->components[i];
         if (!desc || !ecs_component_has(world, entity, desc->id)) {

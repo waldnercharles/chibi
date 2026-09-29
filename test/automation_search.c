@@ -365,23 +365,34 @@ static void ui_events()
     snprintf(manifest, sizeof manifest, "%s/" CHIBI_PROJECT_MANIFEST, root);
     snprintf(content, sizeof content, "%s/content", root);
     snprintf(ui, sizeof ui, "%s/content/ui", root);
-    snprintf(hud, sizeof hud, "%s/Hud.yaml", ui);
-    snprintf(pause, sizeof pause, "%s/PauseMenu.yaml", ui);
+    snprintf(hud, sizeof hud, "%s/Hud.rml", ui);
+    snprintf(pause, sizeof pause, "%s/PauseMenu.rml", ui);
     assert(!mkdir(content, 0755) && !mkdir(ui, 0755));
     char version[64];
     snprintf(version, sizeof version, "version: %d\ncontent: content\n", CHIBI_PROJECT_VERSION);
     write_text(manifest, version);
     write_text(
         hud,
-        "rml: '<div class=\"button\" id=\"go\" "
-        "data-event-click=\"emit(''Go'')\">Go</div>"
+        "<div class=\"button\" id=\"go\" "
+        "data-event-click=\"emit('Go')\">Go</div>"
         "<input type=\"range\" id=\"volume\" "
-        "data-event-change=\"emit(''Volume'')\"/>"
+        "data-event-change=\"emit('Volume')\"/>"
         "<div class=\"menu wide\" data-keys=\"Enter:Choose Space:Choose\"/>"
-        "<div data-event-click=\"emit(''Tick'')\"/>'\n"
+        "<div data-event-click=\"emit('Tick')\"/>"
+        "<div data-for=\"row : self.items\">{{ row.name }} {{ row.count "
+        "}}</div>\n"
     );
-    write_text(pause, "rml: '<div data-event-click=\"emit(''Resume'')\">Resume</div>'\n");
+    write_text(pause, "<div data-event-click=\"emit('Resume')\">Resume</div>\n");
     size_t bytes;
+    char *items = search_in(root, "\"query\":\"set ui data items\",\"limit\":1", &bytes);
+    bool bound = items && strstr(items, "\"type\":\"Set UI Data\"") &&
+                 strstr(items, "\"inputs\":{\"Name\":\"items\"}") &&
+                 strstr(items, "Gives Hud self.items, a list data-for repeats whose rows bind name, count; Name items.0.name sets one row's name.");
+    if (!bound) {
+        printf("  %s\n", items ? items : "(none)");
+    }
+    test_check(bound, "searchNodes offers Set UI Data for each value a ui document binds, with its list's row fields");
+    free(items);
     char *outline = search_in(root, "\"domain\":\"behavior\"", &bytes);
     char *go = search_in(root, "\"query\":\"go\",\"limit\":1", &bytes);
     char *volume = search_in(root, "\"query\":\"volume\",\"limit\":1", &bytes);
@@ -425,9 +436,8 @@ static void behavior_ui_events()
                                            "content/prototypes",
                                            "content/behaviors" };
     static const char *const FILES[][2] = {
-        { "content/ui/Hud.yaml", "rml: '<div data-event-click=\"emit(''Go'')\">Go</div>'\n" },
-        { "content/ui/Shop.yaml",
-          "rml: '<div data-event-click=\"emit(''Buy'')\">Buy</div>'\n" },
+        { "content/ui/Hud.rml", "<div data-event-click=\"emit('Go')\">Go</div>\n" },
+        { "content/ui/Shop.rml", "<div data-event-click=\"emit('Buy')\">Buy</div>\n" },
         { "content/prototypes/Hero.yaml", "name: Hero\ncomponents:\n  GAME.GameUi: {document: Hud}\nbehaviors: [Player]\n" },
         { "content/behaviors/Player.yaml", "version: 3\nname: Player\nid_counter: 1\nowner_type: ecs.entity\ngraphs: []\n" },
     };
@@ -540,9 +550,34 @@ static void text_search_scores()
     assert(text_search_score("cot", "Cat", NULL) < 0);
 }
 
+/* Asset search ranks as Studio's palette does: a name that is the query
+   first, then names that start with it, then matches in paths. */
+static void assets_rank()
+{
+    int exit_code = 0;
+    char *response = chibi_automation_handle(
+        "{\"contract\":1,\"operation\":\"search_assets\",\"query\":\"health "
+        "behavior\","
+        "\"summary\":true}",
+        ".",
+        &exit_code
+    );
+    yyjson_doc *doc = yyjson_read(response, strlen(response), 0);
+    yyjson_val *assets = yyjson_ptr_get(yyjson_doc_get_root(doc), "/result/assets");
+    const char *first = yyjson_get_str(yyjson_obj_get(yyjson_arr_get(assets, 0), "name"));
+    bool ranked = exit_code == 0 && first && !strcmp(first, "HealthBehavior");
+    if (!ranked) {
+        printf("  assets: first %s of %zu\n", first ? first : "(none)", yyjson_arr_size(assets));
+    }
+    test_check(ranked, "searchAssets ranks the asset its name matches first, as Studio's palette does");
+    yyjson_doc_free(doc);
+    free(response);
+}
+
 void test_automation_search()
 {
     text_search_scores();
+    assets_rank();
     intents_rank();
     behavior_vocabulary();
     expression_forms();

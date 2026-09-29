@@ -1,0 +1,108 @@
+<header class="topbar">
+  <div class="brand"><div class="mark"/></div>
+  <nav id="menubar" class="menus"/>
+  <!-- The menubar's menus, drawn natively in #menubar: each <li command>
+       runs a Studio command by its id, each <li list> is a list Studio
+       fills, a <li label> heads a group, <hr/> separates and a <menu> inside
+       a menu is a submenu. -->
+  <div id="menus">
+    <menu label="File">
+      <menu label="New">
+        <li command="newScene"/>
+        <li command="newPrototype"/>
+        <hr/>
+        <li command="newBehavior"/>
+        <li command="newEvent"/>
+        <li command="newSystem"/>
+        <li command="newLibrary"/>
+        <hr/>
+        <li command="newMaterial"/>
+        <li command="newShape"/>
+        <li command="newField"/>
+        <li command="newShaderLibrary"/>
+        <hr/>
+        <li command="newUiWidget"/>
+        <li command="newUiDocument"/>
+        <li command="newStylesheet"/>
+      </menu>
+      <li command="search"/>
+      <li list="projects"/>
+      <hr/>
+      <li command="save"/>
+      <li command="reload"/>
+      <li list="webProjects"/>
+      <hr/>
+      <li command="settings"/>
+    </menu>
+    <menu label="Edit">
+      <li command="undo"/>
+      <li command="redo"/>
+      <hr/>
+      <li command="duplicate"/>
+      <li command="rename"/>
+      <li command="delete"/>
+    </menu>
+    <menu label="View">
+      <li command="frame"/>
+      <li command="resetCamera"/>
+      <hr/>
+      <li label="Drawers"/>
+      <li command="toggleAssets"/>
+      <li command="toggleOutput"/>
+      <li command="togglePerformance"/>
+      <hr/>
+      <li command="inspectElement"/>
+      <hr/>
+      <li label="Workspace"/>
+      <li command="workspaceLayout"/>
+      <li command="workspaceUi"/>
+      <li command="toggleSidePane"/>
+      <li command="maximize"/>
+      <li command="resetLayout"/>
+      <hr/>
+      <li list="uiScale"/>
+    </menu>
+    <menu label="Object">
+      <li list="add"/>
+      <li command="duplicate"/>
+      <li command="rename"/>
+      <li command="delete"/>
+      <hr/>
+      <li command="openPrototype"/>
+      <li command="addComponent"/>
+    </menu>
+    <menu label="Play">
+      <li command="play"/>
+      <li command="stop"/>
+      <li command="step"/>
+      <hr/>
+      <li list="debugger"/>
+    </menu>
+  </div>
+  <!-- Workspaces, as Blender's tabs: each arranges the areas for a task. -->
+  <div class="workspaces">
+    <button class="btn workspace-tab" data-attr-data-state="commands.workspaceLayout.checked ? 'on' : 'off'" data-attr-data-tip="commands.workspaceLayout.label" data-event-click="emit('studio.workspaceLayout')"><span class="label">{{ commands.workspaceLayout.menu }}</span></button>
+    <button class="btn workspace-tab" data-attr-data-state="commands.workspaceUi.checked ? 'on' : 'off'" data-attr-data-tip="commands.workspaceUi.label" data-event-click="emit('studio.workspaceUi')"><span class="label">{{ commands.workspaceUi.menu }}</span></button>
+  </div>
+  <div class="sep"/>
+  <nav class="doc-tabs">
+    <div class="btn doc-tab" data-for="tab, i : editor.tabs" data-attr-data-state="tab.active ? 'on' : 'off'">
+      <span class="face" data-attr-data-tip="tab.path != '' ? tab.path : tab.label" data-event-click="emit('studio.selectTab', i)"><span class="icon">{{ tab.icon }}</span><span class="label">{{ tab.label }}</span><span class="dirty-dot" data-if="tab.dirty"/></span>
+      <button class="btn sm icon-only doc-close" data-if="tab.closable" data-attr-data-tip="commands.closeTab.label" data-event-click="emit('studio.closeTab', i)"><span class="icon">&#xea76;</span></button>
+    </div>
+  </nav>
+  <div class="spacer"/>
+  <div class="transport">
+    <div id="play-target"/>
+    <div class="group">
+      <button class="btn icon-only" data-attr-data-tip="commands.play.label" data-attr-data-kbd="commands.play.shortcut" data-attr-data-state="editor.playing && !editor.paused ? 'on' : 'off'" data-event-click="emit('studio.play')" data-attrif-data-disabled="!commands.play.enabled"><span class="icon">{{ commands.play.icon }}</span></button>
+      <button class="btn icon-only" data-attr-data-tip="commands.stop.label" data-attrif-data-disabled="!commands.stop.enabled" data-event-click="emit('studio.stop')"><span class="icon">{{ commands.stop.icon }}</span></button>
+      <button class="btn icon-only" data-if="!editor.paused" data-attr-data-tip="commands.step.label" data-event-click="emit('studio.step')" data-attrif-data-disabled="!commands.step.enabled"><span class="icon">{{ commands.step.icon }}</span></button>
+      <div id="debug-steps"/>
+    </div>
+  </div>
+  <div class="spacer"/>
+  <button class="btn icon-only side-pane" data-attr-data-tip="commands.toggleSidePane.label" data-attr-data-state="commands.toggleSidePane.checked ? 'on' : 'off'" data-event-click="emit('studio.toggleSidePane')"><span class="icon">{{ commands.toggleSidePane.icon }}</span></button>
+  <button class="btn icon-only" data-attr-data-tip="commands.settings.label" data-attr-data-kbd="commands.settings.shortcut" data-event-click="emit('studio.settings')"><span class="icon">{{ commands.settings.icon }}</span></button>
+  <button class="btn search-trigger" data-event-click="emit('studio.search')"><span class="icon">{{ commands.search.icon }}</span><span class="label">{{ commands.search.label }}</span><span class="kbd">{{ commands.search.shortcut }}</span></button>
+</header>

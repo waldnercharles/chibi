@@ -378,7 +378,7 @@ static void open_widget(studio *s, studio_designer *d, int element)
     }
     char path[sizeof d->path + 160];
     const char *base = content_basename(d->path);
-    snprintf(path, sizeof path, "%.*s%s.yaml", (int)(base - d->path), d->path, widget);
+    snprintf(path, sizeof path, "%.*s%s" UI_MARKUP_EXTENSION, (int)(base - d->path), d->path, widget);
     free(widget);
     studio_open_ui_source(s, path, 1);
 }
@@ -643,7 +643,7 @@ static void ask(tree_request *request, tree_action action, int element)
 static void element_menu(studio *s, const studio_designer *d, int e, tree_request *request)
 {
     kit *k = s->kit;
-    if (menu_item(k, "duplicate", "Duplicate", KIT_ICON_COPY, "Shift+D")) {
+    if (menu_item(k, "duplicate", "Duplicate", KIT_ICON_COPY, studio_chord(s, "Shift+D"))) {
         ask(request, DO_DUPLICATE, e);
     }
     if (menu_item(k, "wrap", "Wrap in Div", KIT_ICON_WRAP, NULL)) {
@@ -1065,8 +1065,9 @@ typedef struct
 
 static bool scene_shown(const studio *s)
 {
+    const studio_layout *layout = &s->prefs.layouts[s->prefs.workspace];
     for (int i = 0; i < STUDIO_AREA_COUNT; i++) {
-        if (s->prefs.editors[i] == STUDIO_EDITOR_SCENE && s->areas[i].rect.w > 0) {
+        if (layout->editors[i] == STUDIO_EDITOR_SCENE && s->areas[i].rect.w > 0) {
             return true;
         }
     }
@@ -1079,25 +1080,6 @@ static bool shows_document(const studio *s, const studio_designer *d)
     return shown && !strcmp(shown, d->asset) && scene_shown(s);
 }
 
-/* Whether the Canvas shows the text as it is: its last settled edit stands
- * in for the file, or it has no edits since it was saved. */
-static bool canvas_current(studio_designer *d, const ui_buffer *b)
-{
-    unsigned long long overlay = text_overlay_revision(b->path);
-    if (d->canvas.compared && d->canvas.revision == b->revision &&
-        d->canvas.overlay == overlay) {
-        return d->canvas.current;
-    }
-    const char *shown = text_overlay_text(b->path);
-    char *text = shown ? ui_buffer_compose(b) : NULL;
-    d->canvas.compared = true;
-    d->canvas.revision = b->revision;
-    d->canvas.overlay = overlay;
-    d->canvas.current = shown ? !strcmp(text, shown) : !ui_buffer_dirty(b);
-    free(text);
-    return d->canvas.current;
-}
-
 /* The Canvas's documents while they show the document as it is. */
 static rml_context *canvas(studio *s, studio_designer *d, const ui_buffer *b, canvas_map *m)
 {
@@ -1108,7 +1090,7 @@ static rml_context *canvas(studio *s, studio_designer *d, const ui_buffer *b, ca
     if (ui) {
         engine_viewport_pixel_size(viewport, &w, &h);
     }
-    if (!ui || r.w <= 0 || r.h <= 0 || w <= 0 || h <= 0 || !canvas_current(d, b)) {
+    if (!ui || r.w <= 0 || r.h <= 0 || w <= 0 || h <= 0 || !ui_buffer_shown(b)) {
         return NULL;
     }
     float zoom = s->view.zoom;

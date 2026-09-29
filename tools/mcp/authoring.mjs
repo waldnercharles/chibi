@@ -466,6 +466,7 @@ const sceneOperationSchema = object({
     enum: [
       "set_presentation",
       "add_entity",
+      "rename_entity",
       "remove_entity",
       "set_entity_prototype",
       "set_entity_components",
@@ -478,11 +479,11 @@ const sceneOperationSchema = object({
   },
   name: {
     type: "string",
-    description: "Entity name for add_entity.",
+    description: "Entity name for add_entity or the new name for rename_entity.",
   },
   entity: {
     type: "string",
-    description: "Existing entity name.",
+    description: "Existing entity name; later operations in the same batch use its new name after rename_entity.",
   },
   prototype: {
     type: "string",
@@ -611,7 +612,9 @@ const previewSceneDefinition = {
     capture_frames: { type: "string", minLength: 2, maxLength: 4095,
       description: "Performance runs only: absolute path of a raw RGBA8 file receiving every measured frame in order (width x height each), for judging motion and temporal effects. Instrumented, not a benchmark." },
     pass_timing: { type: "boolean", default: false,
-      description: "Performance runs only: wait for the GPU after each render pass and report average milliseconds per pass. Serializes CPU and GPU, so frame totals are instrumented, not benchmark results." },
+      description: "Performance runs only: report average GPU milliseconds per render pass. Metal uses command-buffer timestamps (pass_timing_source); other backends wait for the GPU after each pass. Frame totals are instrumented, not benchmark results." },
+    pass_timing_detail: { type: "boolean", default: false,
+      description: "Requires pass_timing: also time each HRC cascade level's trace, extension and merge." },
     input_timeline: { type: "array", maxItems: 1800, items: { type: "object" },
       description: "Sparse scenario inputs across initial and advancing render frames. Samples must have increasing frame indices." },
     metal_capture: { type: "string",

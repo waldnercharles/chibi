@@ -4,11 +4,14 @@
 #include "platform/cute.h"
 #include "render/shader_catalog.h"
 
+/* RASTER is the material raster's first batch, a fragment pass into four
+ * render targets; RASTER_ACCUMULATE continues from the previous batch's. */
 typedef enum
 {
     RENDER_PROGRAM_ARENA,
     RENDER_PROGRAM_FRAGMENT,
-    RENDER_PROGRAM_COMPUTE
+    RENDER_PROGRAM_RASTER,
+    RENDER_PROGRAM_RASTER_ACCUMULATE
 } render_program_kind;
 typedef struct render_programs render_programs;
 render_programs *render_programs_new(render_program_kind kind);
@@ -24,7 +27,9 @@ void render_programs_unbind3d(render_programs *programs, int program);
 void render_programs_bind2d(render_programs *programs, int program);
 /* Ends a bind2d draw: releases its images so shader_images can destroy them. */
 void render_programs_unbind2d(render_programs *programs, int program);
-CF_ComputeShader render_programs_bind_compute(render_programs *programs, int program, CF_Material material);
+/* Sets the program's images and ramps on material; draw with the returned
+ * shader and hrc/pass.vert's pass mesh. */
+CF_Shader render_programs_bind_raster(render_programs *programs, int program, CF_Material material);
 char *render_shader_source(const char *name);
 
 #endif

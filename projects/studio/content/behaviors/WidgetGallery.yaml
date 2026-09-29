@@ -1,0 +1,61 @@
+version: 3
+name: WidgetGallery
+id_counter: 41
+description: 'Feeds the widget gallery''s VirtualList ten thousand rows: it sets self.total, and answers ShowRows with the rows in view as self.rows.'
+owner_type: ecs.entity
+variables:
+- {id: 1, name: Rows, type: int, container: 1, category: List}
+graphs:
+- kind: event
+  name: ""
+  nodes:
+  - {id: 2, type: Event, reference_name: Begin}
+  - id: 4
+    type: Get Variable
+    reference_id: 1
+    reference_name: Rows
+    outputs:
+      Value: {container: 1}
+  - id: 6
+    type: Resize
+    inputs: {Index: 10000}
+  - id: 10
+    type: Set Variable
+    reference_id: 1
+    reference_name: Rows
+    inputs:
+      Value: {container: 1}
+    outputs:
+      Value: {container: 1}
+  - id: 15
+    type: Set UI Data
+    inputs: {Name: total}
+  - {id: 21, type: Length}
+  - id: 24
+    type: Event
+    reference_name: ShowRows
+    outputs:
+      First: {declaration_id: 1, type: int, kind: data}
+      Count: {declaration_id: 2, type: int, kind: data}
+  - id: 28
+    type: Get Variable
+    reference_id: 1
+    reference_name: Rows
+    outputs:
+      Value: {container: 1}
+  - {id: 30, type: Slice}
+  - id: 35
+    type: Set UI Data
+    inputs: {Name: rows}
+  edges:
+  - {from: 2.Then, to: 10.Exec}
+  - {from: 4.Value, to: 6.Array}
+  - {from: 6.Array, to: 10.Value}
+  - {from: 10.Then, to: 15.Exec}
+  - {from: 10.Value, to: 21.Array}
+  - {from: 21.Return Value, to: 15.Value}
+  - {from: 24.Then, to: 35.Exec}
+  - {from: 24.First, to: 30.Start}
+  - {from: 24.Count, to: 30.Count}
+  - {from: 28.Value, to: 30.Array}
+  - {from: 30.Array, to: 35.Value}

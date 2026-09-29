@@ -1,0 +1,10 @@
+// Fade only the outer half of the lighting margin. The camera rectangle and
+// nearby offscreen sources retain their full power; occluders are never faded.
+float hrc_emission_weight(vec2 uv, vec4 crop)
+{
+    if (crop.z <= crop.x || crop.w <= crop.y) return 1.0;
+    vec4 margin = vec4(crop.xy, vec2(1.0) - crop.zw);
+    vec4 weight = smoothstep(vec4(0.0), max(margin * 0.5, vec4(1e-6)),
+                             vec4(uv, vec2(1.0) - uv));
+    return min(min(weight.x, weight.y), min(weight.z, weight.w));
+}

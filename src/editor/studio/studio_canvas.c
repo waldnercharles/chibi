@@ -1,8 +1,11 @@
 /* The Canvas preview: one ui asset alone over an empty world, as Storybook
  * shows a story and Unity's UI Builder its Canvas, on its own frame and game
  * UI host so nothing of the scene shows or hears it. Its events land in a
- * log (Storybook's Actions) instead of reaching behaviors. Also the game UI
- * errors of whatever the Scene shows, recorded once per change. */
+ * log (Storybook's Actions) instead of reaching behaviors or running
+ * commands. With the Studio project open, its ui assets are Studio's own
+ * chrome, so the preview binds the data Studio's does (studio_sources.c).
+ * Also the game UI errors of whatever the Scene shows, recorded once per
+ * change. */
 #include "editor/studio/studio_internal.h"
 #include "platform/cute.h"
 #include "support/array.h"
@@ -38,7 +41,7 @@ studio_canvas_size_info studio_canvas_size_of(studio_canvas_size size)
 
 bool studio_ui_error_asset(const char *error, char *out, size_t size)
 {
-    static const char PREFIX[] = "ui/", SUFFIX[] = ".yaml";
+    static const char PREFIX[] = "ui/", SUFFIX[] = UI_MARKUP_EXTENSION;
     const char *end = strncmp(error, PREFIX, sizeof PREFIX - 1)
                         ? NULL
                         : strstr(error, SUFFIX);
@@ -112,7 +115,7 @@ void studio_preview_ui(studio *s, const char *asset)
     }
 }
 
-/* The ui asset a UI document is, in `name`: a .yaml file directly in the open
+/* The ui asset a UI document is, in `name`: a .rml file directly in the open
    project's ui folder, as mounts find assets by name; false for a stylesheet
    or another project's asset. */
 static bool document_asset(const studio *s, const char *path, char *name, size_t size)
@@ -120,9 +123,9 @@ static bool document_asset(const studio *s, const char *path, char *name, size_t
     char ui[PATH_MAX], folder[PATH_MAX];
     snprintf(ui, sizeof ui, "%s/ui", s->scene->content_root);
     const char *base = content_basename(path);
-    size_t length = strlen(base), extension = strlen(ASSET_EXTENSION);
+    size_t length = strlen(base), extension = strlen(UI_MARKUP_EXTENSION);
     if (!realpath(ui, folder) || length <= extension ||
-        strcmp(base + length - extension, ASSET_EXTENSION) ||
+        strcmp(base + length - extension, UI_MARKUP_EXTENSION) ||
         strncmp(path, folder, strlen(folder)) || base != path + strlen(folder) + 1) {
         return false;
     }
@@ -188,6 +191,16 @@ static void log_action(studio_canvas *c, const ui_activation *a, double time)
     apush(c->actions, action);
 }
 
+static engine_viewport *canvas_viewport(studio *s, studio_canvas *c)
+{
+    engine_viewport *viewport = engine_viewport_new(1, 1);
+    assert(viewport);
+    engine_viewport_set_render_callback(viewport, draw_backdrop, c);
+    yyjson_mut_doc *data = s->own_project ? studio_sources_new() : NULL;
+    engine_viewport_adopt_ui(viewport, render_ui_new(s->scene->content_root, data));
+    return viewport;
+}
+
 bool studio_canvas_draw(studio *s, engine_viewport_host_input *input)
 {
     if (!studio_previewed_ui(s)) {
@@ -196,15 +209,16 @@ bool studio_canvas_draw(studio *s, engine_viewport_host_input *input)
     }
     studio_canvas *c = s->canvas;
     if (!c->viewport) {
-        c->viewport = engine_viewport_new(1, 1);
-        assert(c->viewport);
-        engine_viewport_set_render_callback(c->viewport, draw_backdrop, c);
+        c->viewport = canvas_viewport(s, c);
     }
     ui_world world = { .ecs = c->world,
                        .page = app_scene_authoring_page(s->scene),
                        .save = c->save };
     engine_viewport_set_ui(c->viewport, &world, s->scene->content_root);
     render_ui *ui = engine_viewport_ui(c->viewport);
+    if (s->own_project) {
+        studio_sources_show(s, &c->sources, render_ui_data(ui));
+    }
     /* The theme is the root's class, as a page's .dark tokens expect. */
     render_ui_set_overlay(ui, c->asset, c->light ? "light" : "dark");
     engine_viewport_set_host_input(c->viewport, input);
@@ -226,6 +240,7 @@ void studio_canvas_free(studio *s)
     }
     rml_backend_set_texture(s->backend, "canvas", 0);
     engine_viewport_free(c->viewport);
+    studio_sources_free(&c->sources);
     ecs_world_free(c->world);
     game_save_free(c->save);
     afree(c->actions);

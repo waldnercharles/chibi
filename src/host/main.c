@@ -329,9 +329,7 @@ int main(int argc, char **argv)
         return 1;
     }
     cf_fs_mount(render_shader_dir(), "/chibi-render", true);
-    if (cf_query_backend() != CF_BACKEND_TYPE_GLES3) {
-        cf_shader_directory("/chibi-render");
-    }
+    cf_shader_directory("/chibi-render");
     cf_app_init_imgui();
     /* ImGui draws only game UI, which keeps no window settings. */
     ImGui_GetIO()->IniFilename = NULL;

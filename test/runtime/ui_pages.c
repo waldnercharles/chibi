@@ -24,8 +24,8 @@ void test_ui_pages()
     reference_index *index = reference_index_new();
     int dock = reference_index_add_asset(index, REFERENCE_ASSET_SCENE, "Dock", "content/scenes/Dock.yaml", NULL);
     int bay = reference_index_add_asset(index, REFERENCE_ASSET_SCENE, "Bay", "content/scenes/Bay.yaml", NULL);
-    int shell = reference_index_add_asset(index, REFERENCE_ASSET_UI, "Shell", "content/ui/Shell.yaml", NULL);
-    int page = reference_index_add_asset(index, REFERENCE_ASSET_UI, "Page", "content/ui/Page.yaml", NULL);
+    int shell = reference_index_add_asset(index, REFERENCE_ASSET_UI, "Shell", "content/ui/Shell.rml", NULL);
+    int page = reference_index_add_asset(index, REFERENCE_ASSET_UI, "Page", "content/ui/Page.rml", NULL);
     reference_index_add_page(index, dock, "Shell", "Page");
     reference_index_add_page(index, bay, NULL, "Page");
     reference_index_add_page(index, bay, "", NULL);
@@ -40,8 +40,8 @@ void test_ui_pages()
     const char *texts[] = {
         "version: 1\nname: Dock\nui: Shell\nentities: []\n",
         "version: 1\nname: Bay\nentities: []\n",
-        "rml: <slot/>\n",
-        "rml: <slot/>\n",
+        "<slot/>\n",
+        "<slot/>\n",
     };
     game_prototype_registry registry = { .components = GAME_REGISTRY_COMPONENTS,
                                          .component_count = GAME_REGISTRY_COMPONENT_COUNT };

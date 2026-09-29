@@ -1,0 +1,4 @@
+div { position: absolute; left: 50%; text-align: center; white-space: pre; color: #ffffff; }
+#title { top: 120dp; width: 236dp; margin-left: -118dp; font-size: 30dp; }
+#score { top: 62%; width: 132dp; margin-left: -66dp; margin-top: -29dp; line-height: 58dp; font-size: 42dp; }
+#controls { bottom: 60dp; width: 340dp; margin-left: -170dp; line-height: 32dp; font-size: 16dp; }

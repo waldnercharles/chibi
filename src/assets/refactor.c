@@ -35,7 +35,7 @@ typedef struct
     game_system_document *system;
     game_prototype *prototype;
     game_scene_document *scene;
-    ui_document ui;
+    char *rml; /* a ui asset's markup */
     char *name;
     bool deleted;
     const reference **references;
@@ -101,11 +101,22 @@ static void release(loaded *l)
         game_prototype_free(l->prototype);
     }
     game_scene_document_free(l->scene);
-    ui_document_free(&l->ui);
+    free(l->rml);
+    l->rml = NULL;
     l->graphs = NULL;
     l->system = NULL;
     l->prototype = NULL;
     l->scene = NULL;
+}
+
+/* A ui asset's markup, kept as written: renames rewrite it in place. */
+static bool read_markup(const char *text, loaded *l, char *why, size_t size)
+{
+    ui_document document = { 0 };
+    bool read = ui_document_read(text, NULL, NULL, NULL, &document, why, size);
+    ui_document_free(&document);
+    l->rml = read ? xstrdup(text) : NULL;
+    return read;
 }
 
 /* Reads an asset's text with its kind's loader; false with why. */
@@ -130,8 +141,7 @@ static bool read_asset(
         case REFERENCE_ASSET_SCENE:
             l->scene = game_scene_document_load(text, why, size);
             return l->scene != NULL;
-        case REFERENCE_ASSET_UI:
-            return ui_document_read(text, NULL, NULL, &l->ui, why, size);
+        case REFERENCE_ASSET_UI: return read_markup(text, l, why, size);
         case REFERENCE_ASSET_KIND_COUNT: break;
         default:
             l->graphs = behavior_asset_load_json(text);
@@ -188,20 +198,6 @@ static void note(loaded *l, const reference *r)
     }
 }
 
-static char *ui_json(const ui_document *ui)
-{
-    yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
-    yyjson_mut_val *root = yyjson_mut_obj(doc);
-    yyjson_mut_doc_set_root(doc, root);
-    yyjson_mut_obj_add_str(doc, root, "rml", ui->rml);
-    if (ui->rcss[0]) {
-        yyjson_mut_obj_add_str(doc, root, "rcss", ui->rcss);
-    }
-    char *json = yyjson_mut_write(doc, 0, NULL);
-    yyjson_mut_doc_free(doc);
-    return json;
-}
-
 static char *saved_json(const refactor_project *project, reference_asset_kind kind, loaded *l)
 {
     switch (kind) {
@@ -217,11 +213,28 @@ static char *saved_json(const refactor_project *project, reference_asset_kind ki
         case REFERENCE_ASSET_PROTOTYPE:
             return game_prototype_save(l->prototype);
         case REFERENCE_ASSET_SCENE: return game_scene_document_save(l->scene);
-        case REFERENCE_ASSET_UI: return ui_json(&l->ui);
         case REFERENCE_ASSET_KIND_COUNT: break;
         default: return behavior_asset_save_json(l->graphs);
     }
     return NULL;
+}
+
+/* The asset's file text: YAML, or a ui asset's markup as it stands. */
+static char *saved_text(
+    const refactor_project *project,
+    reference_asset_kind kind,
+    loaded *l,
+    char *why,
+    size_t size
+)
+{
+    if (kind == REFERENCE_ASSET_UI) {
+        return xstrdup(l->rml);
+    }
+    char *json = saved_json(project, kind, l);
+    char *text = json ? asset_text_to_disk(json, why, size) : NULL;
+    free(json);
+    return text;
 }
 
 /* The asset's new file text, checked to load again; NULL with the error. */
@@ -229,9 +242,7 @@ static char *file_text(work *w, loaded *l)
 {
     reference_asset_kind kind = asset_at(w, l->asset)->kind;
     char why[256] = "";
-    char *json = saved_json(w->project, kind, l);
-    char *text = json ? asset_text_to_disk(json, why, sizeof why) : NULL;
-    free(json);
+    char *text = saved_text(w->project, kind, l, why, sizeof why);
     loaded check = { 0 };
     if (!text || !read_asset(w->project, kind, text, &check, why, sizeof why)) {
         fail(w, "the rewritten %s would not load: %s", asset_name(w, l->asset), why);
@@ -599,9 +610,9 @@ static bool rename_ui(work *w, loaded *l, const reference *r, const char *from, 
         return fail(w, "%s cannot send an event named \"%s\"", asset_name(w, l->asset), to);
     }
     int count;
-    char *rml = ui_document_rename(l->ui.rml, event, from, to, &count);
-    free(l->ui.rml);
-    l->ui.rml = rml;
+    char *rml = ui_document_rename(l->rml, event, from, to, &count);
+    free(l->rml);
+    l->rml = rml;
     /* One element's keys bound to one event are one reference. */
     return renamed_count(w, r, count > expected ? expected : count, expected);
 }

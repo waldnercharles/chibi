@@ -1,8 +1,14 @@
+#include "graph/document/serialize.h"
 #include "graph/model/registry.h"
+#include "graph/runtime/instance.h"
+#include "graph/runtime/value_array.h"
 #include "runtime/ui.h"
+#include "support/array.h"
 #include "test/suite_internal.h"
 
+#include <assert.h>
 #include <math.h>
+#include <stdlib.h>
 #include <string.h>
 
 static void element_state()
@@ -47,6 +53,7 @@ static void nodes()
 {
     static const char *const names[] = { "Set UI Text",      "Set UI Class",
                                          "Set UI Visible",   "Set UI Value",
+                                         "Set UI Data",      "Set UI Style",
                                          "Focus UI Element", "Get UI Value" };
     bool found = true;
     for (size_t i = 0; i < sizeof names / sizeof *names; i++) {
@@ -62,8 +69,102 @@ static void nodes()
     test_check(found, "UI nodes target their own entity by default");
 }
 
+static bool json_is(const pin_value *value, const char *expected)
+{
+    char *json = serialize_value_json(value);
+    bool same = !strcmp(json, expected);
+    if (!same) {
+        printf("  %s, not %s\n", json, expected);
+    }
+    free(json);
+    return same;
+}
+
+/* Set UI Data's values reach documents as JSON: numbers, text, a struct's
+   fields by name, and a list of structs data-for repeats. */
+static void data_values()
+{
+    CF_V2 points[2] = { { 1, 2 }, { 3, 4 } };
+    pin_array *list = pin_array_new(PIN_STRUCT, "CF_V2", 2);
+    for (int i = 0; i < 2; i++) {
+        pin_array_push(
+            list,
+            &(pin_value){ .type = PIN_STRUCT, .type_name = "CF_V2", .ptr = &points[i] }
+        );
+    }
+    bool written = json_is(&(pin_value){ .type = PIN_I32, .i = 7 }, "7") &&
+                   json_is(&(pin_value){ .type = PIN_STR, .str = "Gem" }, "\"Gem\"") &&
+                   json_is(
+                       &(pin_value){ .type = PIN_STRUCT,
+                                     .type_name = "CF_V2",
+                                     .ptr = &points[0] },
+                       "{\"x\":1.0,\"y\":2.0}"
+                   ) &&
+                   json_is(
+                       &(pin_value){ .type = PIN_STRUCT,
+                                     .container = PIN_CONTAINER_ARRAY,
+                                     .type_name = "CF_V2",
+                                     .ptr = list },
+                       "[{\"x\":1.0,\"y\":2.0},{\"x\":3.0,\"y\":4.0}]"
+                   );
+    pin_array_free(list);
+    game_ui *ui = game_ui_new();
+    bool kept = game_ui_set_data(ui, 7, "items", "[1,2]") &&
+                !game_ui_set_data(ui, 7, "2items", "1") &&
+                !game_ui_set_data(ui, 7, "items", "[1,") &&
+                game_ui_data_count(ui) == 1 &&
+                !strcmp(game_ui_data_at(ui, 0)->json, "[1,2]");
+    game_ui_forget(ui, 7);
+    kept &= game_ui_data_count(ui) == 0;
+    bool styled = game_ui_set_style(ui, 7, ".bar", "width", "40%") &&
+                  game_ui_set_style(ui, 7, ".bar", "width", "") &&
+                  !game_ui_set_style(ui, 7, ".bar", "Width", "1dp") &&
+                  !game_ui_set_style(ui, 7, ".bar", "width", NULL) &&
+                  acount(game_ui_element_at(ui, 0)->styles) == 1 &&
+                  !game_ui_element_at(ui, 0)->styles[0].value;
+    test_check(styled, "Set UI Style keeps each property's last value, an empty one returning it to the stylesheets");
+    game_ui_free(ui);
+    test_check(written && kept, "Set UI Data turns any value into JSON for self.<name>, and keeps a word's last valid value per entity");
+}
+
+/* A behavior's Set UI Data stores its value, retyped from the wildcard's
+   default, for the entity it names. */
+static void data_node()
+{
+    behavior_asset *asset = behavior_asset_new("Scoreboard");
+    graph *g = asset->graph;
+    node *event = graph_add_node(g, registry_node_by_name("Event"));
+    node *set = graph_add_node(g, registry_node_by_name("Set UI Data"));
+    assert(event && set && graph_set_event_name(g, event, "Show") == 0);
+    pin_value entity = { .type = PIN_HANDLE, .type_name = "ecs.entity", .u64 = 7 };
+    pin_value name = { .type = PIN_NAME, .type_name = "name", .str = "score" };
+    pin_value value = { .type = PIN_I32, .type_name = "int", .i = 17 };
+    assert(
+        graph_set_pin_default(g, set, 0, 1, &entity) == 0 &&
+        graph_set_pin_default(g, set, 0, 2, &name) == 0 &&
+        graph_set_pin_default(g, set, 0, 3, &value) == 0 &&
+        graph_connect_exec(g, event, 0, set, 0, 0) == 0
+    );
+    game_ui *ui = game_ui_new();
+    behavior_instance *instance = behavior_instance_create(asset, NULL, NULL, NULL);
+    assert(instance && behavior_instance_bind_service(instance, "game.ui", ui) == 0);
+    flow_error error;
+    flow_run *run = behavior_instance_dispatch(instance, "Show", (flow_inputs){ 0 }, &error);
+    bool stored = run && flow_run_status(run) == FLOW_COMPLETED &&
+                  game_ui_data_count(ui) == 1 &&
+                  game_ui_data_at(ui, 0)->entity == 7 &&
+                  !strcmp(game_ui_data_at(ui, 0)->name, "score") &&
+                  !strcmp(game_ui_data_at(ui, 0)->json, "17");
+    test_check(stored, "a behavior's Set UI Data stores its value for the entity it names");
+    behavior_instance_destroy(instance);
+    game_ui_free(ui);
+    behavior_asset_free(asset);
+}
+
 void test_game_ui()
 {
     element_state();
     nodes();
+    data_values();
+    data_node();
 }

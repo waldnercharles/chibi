@@ -1,0 +1,2 @@
+.panel-head .badge { margin-left: auto; }
+.empty { display: block; padding: 12dp 0dp; color: var(--faint-foreground); text-align: center; }

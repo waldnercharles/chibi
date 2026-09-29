@@ -51,10 +51,9 @@ colliders are authored separately. Arena2D saves its `presentation` as `2d`;
 Arena3D remains available as a visual and gameplay reference scene.
 
 Arena2D's desktop renderer uses the physical HRC channels `scene`, `emission`,
-`absorption` and `albedo`, plus SDF-derived planar normals. The Scene Inspector's
-Radiance Cascades section edits Work scale, Trace levels and Feedback. The
-Performance pane reports frame history and p95 timing. The prototype Inspector's
-`GameHRC2D` fields tune transport and composition. HRC transport
+`absorption` and `albedo`, plus SDF-derived planar normals. The Inspector's
+`GameHRC2D` fields tune transport and composition. The Performance pane reports
+frame history and lighting's GPU time against its budget. HRC transport
 uses a fixed work grid, so its dispatch cost does not grow with the number of
 entities. The 2D path feeds material emission directly into HRC.
 The GLES3 path shows an explicit unavailable diagnostic when desktop compute is

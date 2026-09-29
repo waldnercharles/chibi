@@ -474,6 +474,20 @@ void zep_select(zep_editor *z, long anchor, long cursor)
     z->mode().SelectRange(z->at(anchor), z->at(cursor));
 }
 
+bool zep_selection(const zep_editor *z, long *start, long *end)
+{
+    if (z->mode().GetEditorMode() != Zep::EditorMode::Visual) {
+        return false;
+    }
+    Zep::GlyphRange range = z->mode().GetInclusiveVisualRange();
+    if (!range.first.Valid()) {
+        return false;
+    }
+    *start = range.first.Index();
+    *end = range.second.Peek(1).Index();
+    return true;
+}
+
 void zep_set_vim(zep_editor *z, bool vim)
 {
     z->editor.SetGlobalMode(

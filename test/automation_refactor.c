@@ -278,6 +278,48 @@ static void deletes(const char *root)
     reply_free(&unused);
 }
 
+#define RENAME_METER                                                           \
+    "{\"contract\":1,\"operation\":\"rename_symbol\",\"asset\":{\"kind\":"     \
+    "\"ui\",\"name\":\"Meter\"},\"new_name\":\"Gauge\"%s}"
+#define DELETE_GAUGE                                                           \
+    "{\"contract\":1,\"operation\":\"delete_symbol\",\"asset\":{\"kind\":"     \
+    "\"ui\",\"name\":\"Gauge\"},\"force\":true%s}"
+
+/* A ui asset's .rcss follows its .rml: renamed with it, and deleted with
+   it. */
+static void ui_assets(const char *root)
+{
+    reply dry = ask(root, RENAME_METER, NULL);
+    char *expected = hashes(&dry);
+    char extra[2048];
+    snprintf(extra, sizeof extra, ",\"dry_run\":false,\"expected_hashes\":%s", expected);
+    reply renamed = ask(root, RENAME_METER, extra);
+    test_check(
+        ok(&renamed) && exists(root, "content/ui/Gauge.rml") &&
+            exists(root, "content/ui/Gauge.rcss") &&
+            !exists(root, "content/ui/Meter.rml") &&
+            !exists(root, "content/ui/Meter.rcss") &&
+            holds(root, "content/ui/HUD.rml", "ui=\"Gauge\""),
+        "renameSymbol moves a ui asset's .rml and .rcss and renames the "
+        "widget's uses"
+    );
+    free(expected);
+    reply forced = ask(root, DELETE_GAUGE, NULL);
+    expected = hashes(&forced);
+    snprintf(extra, sizeof extra, ",\"dry_run\":false,\"expected_hashes\":%s", expected);
+    reply deleted = ask(root, DELETE_GAUGE, extra);
+    test_check(
+        ok(&deleted) && !exists(root, "content/ui/Gauge.rml") &&
+            !exists(root, "content/ui/Gauge.rcss"),
+        "deleteSymbol deletes a ui asset's .rml and .rcss"
+    );
+    free(expected);
+    reply_free(&dry);
+    reply_free(&renamed);
+    reply_free(&forced);
+    reply_free(&deleted);
+}
+
 void test_automation_refactor()
 {
     char root[PATH_MAX];
@@ -286,5 +328,6 @@ void test_automation_refactor()
     conflicts(root);
     refusals(root);
     deletes(root);
+    ui_assets(root);
     remove_tree(root);
 }

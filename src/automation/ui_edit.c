@@ -15,11 +15,6 @@
 #include <string.h>
 #include <yyjson.h>
 
-/* The most operations one buildUi request applies. */
-#define UI_EDIT_MAX_OPERATIONS 128
-
-static const char *const BLOCK_NAMES[] = { "rml", "rcss" };
-
 static int failf(char *error, size_t size, int status, const char *format, ...)
 {
     va_list args;
@@ -31,13 +26,13 @@ static int failf(char *error, size_t size, int status, const char *format, ...)
 
 /* ---------- Validation ---------- */
 
+/* A diagnostic at a line of the file `path`, content-relative; line 0 when
+ * it names no line. */
 typedef struct diagnostic
 {
     const char *rule;
-    const char *block;  /* NULL outside the blocks */
-    const char *source; /* a widget or import the line is in, or NULL */
-    int block_line;     /* in `source` when set; 0 when unknown */
-    int line, column;   /* in the file; 0 when unknown */
+    const char *path;
+    int line, column;
     const char *message;
 } diagnostic;
 
@@ -47,42 +42,33 @@ static void add_diagnostic(yyjson_mut_doc *doc, yyjson_mut_val *array, const dia
     yyjson_mut_obj_add_str(doc, object, "severity", "error");
     yyjson_mut_obj_add_str(doc, object, "rule_name", d->rule);
     yyjson_mut_obj_add_strcpy(doc, object, "message", d->message);
-    if (d->block) {
-        yyjson_mut_obj_add_str(doc, object, "block", d->block);
-    }
-    if (d->source) {
-        yyjson_mut_obj_add_strcpy(doc, object, "source", d->source);
-    }
-    if (d->block_line) {
-        yyjson_mut_obj_add_int(doc, object, "block_line", d->block_line);
-    }
+    yyjson_mut_obj_add_strcpy(doc, object, "path", d->path);
     if (d->line) {
         yyjson_mut_obj_add_int(doc, object, "line", d->line);
         yyjson_mut_obj_add_int(doc, object, "column", d->column);
     }
 }
 
-static const ui_source_block *block_of(const ui_source *source, ui_source_language language)
+/* "content/ui/<name><extension>". */
+static void asset_file(const char *name, const char *extension, char *out, size_t size)
 {
-    for (int i = 0; i < acount(source->blocks); i++) {
-        if (source->blocks[i].language == language) {
-            return &source->blocks[i];
-        }
-    }
-    return NULL;
+    snprintf(out, size, "content/ui/%s%s", name, extension);
 }
 
-static int syntax_diagnostics(const ui_source *source, yyjson_mut_doc *doc, yyjson_mut_val *diagnostics)
+static int syntax_diagnostics(
+    const ui_source *source,
+    const char *path,
+    yyjson_mut_doc *doc,
+    yyjson_mut_val *diagnostics
+)
 {
     for (int i = 0; i < acount(source->diagnostics); i++) {
         const ui_source_diagnostic *d = &source->diagnostics[i];
-        const ui_source_block *block = ui_source_block_at(source, d->start);
         add_diagnostic(
             doc,
             diagnostics,
-            &(diagnostic){ .rule = block ? "SYNTAX" : "LOAD",
-                           .block = block ? BLOCK_NAMES[block->language] : NULL,
-                           .block_line = block ? d->line - block->line + 1 : 0,
+            &(diagnostic){ .rule = "SYNTAX",
+                           .path = path,
                            .line = d->line,
                            .column = d->column,
                            .message = d->message }
@@ -91,353 +77,84 @@ static int syntax_diagnostics(const ui_source *source, yyjson_mut_doc *doc, yyjs
     return acount(source->diagnostics);
 }
 
-/* A block line's file line, when the block's lines are the file's. */
-static int file_line(const ui_source *source, ui_source_language language, int block_line)
+/* The syntax errors of the asset's markup and styles. */
+static int asset_syntax(
+    const char *name,
+    const char *rml,
+    const char *rcss,
+    yyjson_mut_doc *doc,
+    yyjson_mut_val *diagnostics
+)
 {
-    const ui_source_block *block = block_of(source, language);
-    if (!block || !block_line) {
-        return 0;
+    char path[512];
+    asset_file(name, UI_MARKUP_EXTENSION, path, sizeof path);
+    ui_source *markup = ui_source_parse(rml, UI_SOURCE_RML);
+    int errors = syntax_diagnostics(markup, path, doc, diagnostics);
+    ui_source_free(markup);
+    if (rcss) {
+        asset_file(name, UI_STYLE_EXTENSION, path, sizeof path);
+        ui_source *styles = ui_source_parse(rcss, UI_SOURCE_RCSS);
+        errors += syntax_diagnostics(styles, path, doc, diagnostics);
+        ui_source_free(styles);
     }
-    int end_line, column;
-    ui_source_position(source, block->end, &end_line, &column);
-    return end_line > block->line ? block->line + block_line - 1 : block->line;
+    return errors;
+}
+
+/* The file a check message is in, content-relative. */
+static void message_file(
+    const char *content_root,
+    const char *name,
+    const ui_check_message *m,
+    char *out,
+    size_t size
+)
+{
+    size_t root = strlen(content_root);
+    if (m->part == UI_CHECK_WIDGETS) {
+        asset_file(m->source ? m->source : name, UI_MARKUP_EXTENSION, out, size);
+    } else if (!m->source) {
+        asset_file(name, m->part == UI_CHECK_RML ? UI_MARKUP_EXTENSION : UI_STYLE_EXTENSION, out, size);
+    } else if (!strncmp(m->source, content_root, root) && m->source[root] == '/') {
+        snprintf(out, size, "content%s", m->source + root);
+    } else {
+        snprintf(out, size, "%s", m->source);
+    }
 }
 
 int automation_ui_validate(
     const char *content_root,
     const char *name,
-    const char *text,
+    const char *rml,
+    const char *rcss,
     yyjson_mut_doc *doc,
     yyjson_mut_val *diagnostics
 )
 {
-    static const char *const PARTS[] = { "rml", "rcss", "widgets" };
-    ui_source *source = ui_source_parse(text, false);
-    int errors = syntax_diagnostics(source, doc, diagnostics);
+    int errors = asset_syntax(name, rml, rcss, doc, diagnostics);
     ui_check_message *messages = NULL;
-    char error[256];
-    if (!errors && !ui_check(content_root, name, text, &messages, error, sizeof error)) {
-        add_diagnostic(doc, diagnostics, &(diagnostic){ .rule = "LOAD", .message = error });
+    char error[256], path[1024];
+    if (!errors &&
+        !ui_check(content_root, name, rml, rcss, &messages, error, sizeof error)) {
+        asset_file(name, UI_MARKUP_EXTENSION, path, sizeof path);
+        add_diagnostic(doc, diagnostics, &(diagnostic){ .rule = "LOAD", .path = path, .message = error });
         errors++;
     }
     for (int i = 0; i < acount(messages); i++) {
         const ui_check_message *m = &messages[i];
-        bool own = !m->source && m->part != UI_CHECK_WIDGETS;
-        ui_source_language block = m->part == UI_CHECK_RML ? UI_SOURCE_RML
-                                                           : UI_SOURCE_RCSS;
-        int line = own ? file_line(source, block, m->line) : 0;
+        message_file(content_root, name, m, path, sizeof path);
         add_diagnostic(
             doc,
             diagnostics,
             &(diagnostic){ .rule = "RMLUI",
-                           .block = PARTS[m->part],
-                           .source = m->source,
-                           .block_line = m->line,
-                           .line = line,
-                           .column = line ? 1 : 0,
+                           .path = path,
+                           .line = m->line,
+                           .column = m->line ? 1 : 0,
                            .message = m->text }
         );
     }
     errors += acount(messages);
     ui_check_messages_free(messages);
-    ui_source_free(source);
     return errors;
-}
-
-/* ---------- Element selectors ---------- */
-
-/* Whether the element's class attribute holds `name`. */
-static bool has_class(const char *classes, const char *name, size_t length)
-{
-    for (const char *p = classes; p && *p;) {
-        p += strspn(p, " \t\n");
-        size_t word = strcspn(p, " \t\n");
-        if (word == length && !strncmp(p, name, length)) {
-            return true;
-        }
-        p += word;
-    }
-    return false;
-}
-
-/* Whether the element matches a compound selector: a tag, #id and .class
- * parts, as "use#resume" or "div.card.wide". */
-static bool matches(const ui_source_element *e, const char *selector)
-{
-    const char *p = selector;
-    size_t tag = strcspn(p, "#.");
-    if (tag && (strlen(e->tag) != tag || strncmp(e->tag, p, tag))) {
-        return false;
-    }
-    for (p += tag; *p;) {
-        char kind = *p++;
-        size_t length = strcspn(p, "#.");
-        bool ok = kind == '#'
-                    ? e->id && strlen(e->id) == length && !strncmp(e->id, p, length)
-                    : has_class(e->classes, p, length);
-        if (!ok || !length) {
-            return false;
-        }
-        p += length;
-    }
-    return true;
-}
-
-/* The element a request names: its index in the outline inspectUi lists,
- * or a selector exactly one element matches. */
-static int find_element(const ui_source *source, yyjson_val *value, int *element, char *error, size_t size)
-{
-    int count = acount(source->elements);
-    if (yyjson_is_int(value)) {
-        int64_t index = yyjson_get_sint(value);
-        *element = (int)index;
-        return index >= 0 && index < count ? CHIBI_AUTOMATION_OK
-                                           : failf(
-                                                 error,
-                                                 size,
-                                                 CHIBI_AUTOMATION_INVALID_REQUEST,
-                                                 "there is no element %lld",
-                                                 (long long)index
-                                             );
-    }
-    const char *selector = yyjson_get_str(value);
-    if (!selector || !selector[0] || strpbrk(selector, " >+~[:")) {
-        return failf(error, size, CHIBI_AUTOMATION_INVALID_REQUEST, "an element is an index or a selector such as \"#id\" or \"div.card\"");
-    }
-    int found = 0;
-    for (int i = 0; i < count; i++) {
-        if (matches(&source->elements[i], selector)) {
-            *element = i;
-            found++;
-        }
-    }
-    return found == 1 ? CHIBI_AUTOMATION_OK
-                      : failf(
-                            error,
-                            size,
-                            CHIBI_AUTOMATION_INVALID_REQUEST,
-                            "\"%s\" matches %d elements, not one",
-                            selector,
-                            found
-                        );
-}
-
-static int find_place(yyjson_val *op, ui_source_place *place, char *error, size_t size)
-{
-    const char *position = yyjson_get_str(yyjson_obj_get(op, "position"));
-    *place = !position || !strcmp(position, "inside") ? UI_SOURCE_INSIDE
-           : !strcmp(position, "before")              ? UI_SOURCE_BEFORE
-                                                      : UI_SOURCE_AFTER;
-    bool valid = !position || !strcmp(position, "inside") ||
-                 !strcmp(position, "before") || !strcmp(position, "after");
-    return valid
-             ? CHIBI_AUTOMATION_OK
-             : failf(error, size, CHIBI_AUTOMATION_INVALID_REQUEST, "position is inside, before or after");
-}
-
-/* ---------- Operations ---------- */
-
-static const char *text_field(yyjson_val *op, const char *key)
-{
-    return yyjson_get_str(yyjson_obj_get(op, key));
-}
-
-static int missing(char *error, size_t size, const char *op, const char *field)
-{
-    return failf(error, size, CHIBI_AUTOMATION_INVALID_REQUEST, "%s needs %s", op, field);
-}
-
-/* An operation on one element: set or remove an attribute, a class or a
- * style property, or delete it. */
-static int element_operation(
-    const ui_source *source,
-    yyjson_val *op,
-    const char *name,
-    text_edit **edits,
-    char *error,
-    size_t size
-)
-{
-    int element = 0;
-    int status = find_element(source, yyjson_obj_get(op, "element"), &element, error, size);
-    if (status != CHIBI_AUTOMATION_OK) {
-        return status;
-    }
-    const char *attribute = text_field(op, "name"), *value = text_field(op, "value");
-    const char *class_name = text_field(op, "class"),
-               *property = text_field(op, "property");
-    bool ok;
-    if (!strcmp(name, "set_attribute")) {
-        if (!attribute || !value) {
-            return missing(error, size, name, "name and value");
-        }
-        ok = ui_source_set_attribute(source, element, attribute, value, edits, error, size);
-    } else if (!strcmp(name, "remove_attribute")) {
-        if (!attribute) {
-            return missing(error, size, name, "name");
-        }
-        ok = ui_source_remove_attribute(source, element, attribute, edits, error, size);
-    } else if (!strcmp(name, "add_class") || !strcmp(name, "remove_class")) {
-        if (!class_name) {
-            return missing(error, size, name, "class");
-        }
-        ok = name[0] == 'a'
-               ? ui_source_add_class(source, element, class_name, edits, error, size)
-               : ui_source_remove_class(source, element, class_name, edits, error, size);
-    } else if (!strcmp(name, "set_style") || !strcmp(name, "remove_style")) {
-        if (!property || (name[0] == 's' && !value)) {
-            return missing(error, size, name, name[0] == 's' ? "property and value" : "property");
-        }
-        ok = ui_source_set_style(source, element, property, name[0] == 's' ? value : NULL, edits, error, size);
-    } else {
-        ok = ui_source_delete_element(source, element, edits, error, size);
-    }
-    return ok ? CHIBI_AUTOMATION_OK : CHIBI_AUTOMATION_INVALID_REQUEST;
-}
-
-/* insert_element and move_element: the target is an element, or the markup
- * itself when omitted. */
-static int structure_operation(
-    const ui_source *source,
-    yyjson_val *op,
-    const char *name,
-    text_edit **edits,
-    char *error,
-    size_t size
-)
-{
-    int target = -1, element = 0;
-    ui_source_place place;
-    yyjson_val *selector = yyjson_obj_get(op, "target");
-    int status = find_place(op, &place, error, size);
-    if (status == CHIBI_AUTOMATION_OK && selector && !yyjson_is_null(selector)) {
-        status = find_element(source, selector, &target, error, size);
-    }
-    bool move = !strcmp(name, "move_element");
-    if (status == CHIBI_AUTOMATION_OK && move) {
-        status = find_element(source, yyjson_obj_get(op, "element"), &element, error, size);
-    }
-    if (status != CHIBI_AUTOMATION_OK) {
-        return status;
-    }
-    const char *markup = text_field(op, "markup");
-    if (!move && !markup) {
-        return missing(error, size, name, "markup");
-    }
-    bool ok = move
-                ? ui_source_move_element(source, element, target, place, edits, error, size)
-                : ui_source_insert_element(source, target, place, markup, edits, error, size);
-    return ok ? CHIBI_AUTOMATION_OK : CHIBI_AUTOMATION_INVALID_REQUEST;
-}
-
-static int apply_operation(const ui_source *source, yyjson_val *op, text_edit **edits, char *error, size_t size)
-{
-    static const char *const ELEMENT_OPERATIONS[] = {
-        "set_attribute", "remove_attribute", "add_class",      "remove_class",
-        "set_style",     "remove_style",     "delete_element", NULL
-    };
-    const char *name = text_field(op, "op");
-    if (!name) {
-        return missing(error, size, "an operation", "op");
-    }
-    for (int i = 0; ELEMENT_OPERATIONS[i]; i++) {
-        if (!strcmp(name, ELEMENT_OPERATIONS[i])) {
-            return element_operation(source, op, name, edits, error, size);
-        }
-    }
-    if (!strcmp(name, "insert_element") || !strcmp(name, "move_element")) {
-        return structure_operation(source, op, name, edits, error, size);
-    }
-    if (strcmp(name, "set_rml") && strcmp(name, "set_rcss")) {
-        return failf(error, size, CHIBI_AUTOMATION_INVALID_REQUEST, "unknown operation %s", name);
-    }
-    const char *text = text_field(op, "text");
-    if (!text) {
-        return missing(error, size, name, "text");
-    }
-    ui_source_set_block(source, strcmp(name, "set_rml") ? UI_SOURCE_RCSS : UI_SOURCE_RML, text, edits);
-    return CHIBI_AUTOMATION_OK;
-}
-
-/* The edits of one operation, placed in the text they apply to. */
-static void add_edits(
-    yyjson_mut_doc *doc,
-    yyjson_mut_val *changes,
-    yyjson_val *op,
-    const ui_source *source,
-    const text_edit *edits
-)
-{
-    yyjson_mut_val *change = yyjson_mut_arr_add_obj(doc, changes);
-    yyjson_mut_obj_add_strcpy(doc, change, "op", text_field(op, "op"));
-    yyjson_mut_val *list = yyjson_mut_obj_add_arr(doc, change, "edits");
-    for (int i = 0; i < acount(edits); i++) {
-        int line, column, end_line, end_column;
-        ui_source_position(source, edits[i].start, &line, &column);
-        ui_source_position(source, edits[i].end, &end_line, &end_column);
-        yyjson_mut_val *edit = yyjson_mut_arr_add_obj(doc, list);
-        yyjson_mut_obj_add_int(doc, edit, "line", line);
-        yyjson_mut_obj_add_int(doc, edit, "column", column);
-        yyjson_mut_obj_add_int(doc, edit, "end_line", end_line);
-        yyjson_mut_obj_add_int(doc, edit, "end_column", end_column);
-        yyjson_mut_obj_add_strcpy(doc, edit, "text", edits[i].text);
-    }
-}
-
-int automation_ui_edit(
-    const char *source,
-    yyjson_val *request,
-    yyjson_mut_doc *doc,
-    yyjson_mut_val *result,
-    char **edited,
-    char *error,
-    size_t error_size
-)
-{
-    yyjson_val *operations = yyjson_obj_get(request, "operations");
-    size_t count = yyjson_arr_size(operations);
-    if (!yyjson_is_arr(operations) || !count || count > UI_EDIT_MAX_OPERATIONS) {
-        return failf(
-            error,
-            error_size,
-            CHIBI_AUTOMATION_INVALID_REQUEST,
-            "operations must list 1 to %d edits",
-            UI_EDIT_MAX_OPERATIONS
-        );
-    }
-    yyjson_mut_val *changes = yyjson_mut_obj_add_arr(doc, result, "changes");
-    char *text = xstrdup(source);
-    int status = CHIBI_AUTOMATION_OK;
-    size_t index, total;
-    yyjson_val *op;
-    yyjson_arr_foreach(operations, index, total, op)
-    {
-        ui_source *parsed = ui_source_parse(text, false);
-        text_edit *edits = NULL;
-        char why[200] = "";
-        status = yyjson_is_obj(op)
-                   ? apply_operation(parsed, op, &edits, why, sizeof why)
-                   : failf(why, sizeof why, CHIBI_AUTOMATION_INVALID_REQUEST, "an operation is an object");
-        if (status == CHIBI_AUTOMATION_OK) {
-            add_edits(doc, changes, op, parsed, edits);
-            char *next = text_edits_apply(text, edits, acount(edits));
-            free(text);
-            text = next;
-        } else {
-            snprintf(error, error_size, "operation %zu: %s", index, why);
-        }
-        ui_source_edits_free(edits);
-        ui_source_free(parsed);
-        if (status != CHIBI_AUTOMATION_OK) {
-            break;
-        }
-    }
-    if (status != CHIBI_AUTOMATION_OK) {
-        free(text);
-        return status;
-    }
-    *edited = text;
-    return CHIBI_AUTOMATION_OK;
 }
 
 /* ---------- Inspection ---------- */
@@ -546,9 +263,7 @@ static char **props(const ui_source *source)
             free(name);
         }
     }
-    const ui_source_block *block = block_of(source, UI_SOURCE_RML);
-    char *markup = block ? slice(source, block->start, block->end) : xstrdup("");
-    for (const char *p = markup; (p = strstr(p, "{{"));) {
+    for (const char *p = source->text; (p = strstr(p, "{{"));) {
         const char *close = strstr(p, "}}");
         if (!close) {
             break;
@@ -559,7 +274,6 @@ static char **props(const ui_source *source)
         free(expression);
         p = close + 2;
     }
-    free(markup);
     char **out = NULL;
     for (int i = 0; i < acount(roots); i++) {
         bool model = !strcmp(roots[i], "save") || !strcmp(roots[i], "system") ||
@@ -664,16 +378,11 @@ static void add_widgets_and_slots(yyjson_mut_doc *doc, yyjson_mut_val *result, c
     }
 }
 
-static void add_events(yyjson_mut_doc *doc, yyjson_mut_val *result, const char *text)
+static void add_events(yyjson_mut_doc *doc, yyjson_mut_val *result, const char *rml)
 {
     yyjson_mut_val *array = yyjson_mut_obj_add_arr(doc, result, "events");
-    ui_document document = { 0 };
-    char error[160];
-    if (!ui_document_read(text, NULL, NULL, &document, error, sizeof error)) {
-        return;
-    }
     ui_document_event *events = NULL;
-    ui_document_events(document.rml, &events);
+    ui_document_events(rml, &events);
     for (int i = 0; i < acount(events); i++) {
         yyjson_mut_val *event = yyjson_mut_arr_add_obj(doc, array);
         yyjson_mut_obj_add_strcpy(doc, event, "name", events[i].name);
@@ -684,14 +393,22 @@ static void add_events(yyjson_mut_doc *doc, yyjson_mut_val *result, const char *
         yyjson_mut_obj_add_bool(doc, event, "input", events[i].input);
     }
     ui_document_events_free(events);
-    ui_document_free(&document);
 }
 
-/* The custom properties, classes and save keys the asset names. */
-static void add_symbols(yyjson_mut_doc *doc, yyjson_mut_val *result, const ui_source *source)
+/* The custom properties, classes and save keys the asset's markup and
+ * styles name. */
+static void add_symbols(
+    yyjson_mut_doc *doc,
+    yyjson_mut_val *result,
+    const ui_source *markup,
+    const ui_source *styles
+)
 {
     ui_source_symbol *symbols = NULL;
-    ui_source_symbols(source, &symbols);
+    ui_source_symbols(markup, &symbols);
+    if (styles) {
+        ui_source_symbols(styles, &symbols);
+    }
     char **tokens = NULL, **declared = NULL, **classes = NULL, **styled = NULL,
          **keys = NULL;
     for (int i = 0; i < acount(symbols); i++) {
@@ -719,37 +436,34 @@ static void add_symbols(yyjson_mut_doc *doc, yyjson_mut_val *result, const ui_so
     free_names(keys);
 }
 
-void automation_ui_inspect(const char *text, yyjson_mut_doc *doc, yyjson_mut_val *result)
+void automation_ui_inspect(
+    const char *name,
+    const char *rml,
+    const char *rcss,
+    yyjson_mut_doc *doc,
+    yyjson_mut_val *result
+)
 {
-    ui_source *source = ui_source_parse(text, false);
-    yyjson_mut_val *blocks = yyjson_mut_obj_add_arr(doc, result, "blocks");
-    for (int i = 0; i < acount(source->blocks); i++) {
-        yyjson_mut_val *block = yyjson_mut_arr_add_obj(doc, blocks);
-        yyjson_mut_obj_add_str(
-            doc,
-            block,
-            "block",
-            BLOCK_NAMES[source->blocks[i].language]
-        );
-        yyjson_mut_obj_add_int(doc, block, "line", source->blocks[i].line);
-    }
+    ui_source *markup = ui_source_parse(rml, UI_SOURCE_RML);
+    ui_source *styles = rcss ? ui_source_parse(rcss, UI_SOURCE_RCSS) : NULL;
     yyjson_mut_val *elements = yyjson_mut_obj_add_arr(doc, result, "elements");
-    for (int i = 0; i < acount(source->elements); i++) {
-        add_element(doc, elements, source, i);
+    for (int i = 0; i < acount(markup->elements); i++) {
+        add_element(doc, elements, markup, i);
     }
     yyjson_mut_val *rules = yyjson_mut_obj_add_arr(doc, result, "rules");
-    for (int i = 0; i < acount(source->rules); i++) {
-        add_rule(doc, rules, source, &source->rules[i]);
+    for (int i = 0; styles && i < acount(styles->rules); i++) {
+        add_rule(doc, rules, styles, &styles->rules[i]);
     }
-    char **read = props(source);
+    char **read = props(markup);
     add_names(doc, result, "props", read);
     free_names(read);
-    add_events(doc, result, text);
-    add_widgets_and_slots(doc, result, source);
-    add_symbols(doc, result, source);
+    add_events(doc, result, rml);
+    add_widgets_and_slots(doc, result, markup);
+    add_symbols(doc, result, markup, styles);
     yyjson_mut_val *diagnostics = yyjson_mut_obj_add_arr(doc, result, "diagnostics");
-    syntax_diagnostics(source, doc, diagnostics);
-    ui_source_free(source);
+    asset_syntax(name, rml, rcss, doc, diagnostics);
+    ui_source_free(styles);
+    ui_source_free(markup);
 }
 
 /* ---------- References ---------- */
@@ -891,7 +605,8 @@ static void add_position(
 
 int automation_ui_complete(
     const char *content_root,
-    const char *text,
+    const char *rml,
+    const char *rcss,
     yyjson_val *at,
     yyjson_mut_doc *doc,
     yyjson_mut_val *result,
@@ -901,11 +616,15 @@ int automation_ui_complete(
 {
     yyjson_val *line = yyjson_obj_get(at, "line"),
                *column = yyjson_obj_get(at, "column");
+    const char *file = yyjson_get_str(yyjson_obj_get(at, "file"));
+    bool styles = file && !strcmp(file, "rcss");
     if (!yyjson_is_obj(at) || !yyjson_is_int(line) || !yyjson_is_int(column) ||
-        yyjson_get_int(line) < 1 || yyjson_get_int(column) < 1) {
-        return failf(error, error_size, CHIBI_AUTOMATION_INVALID_REQUEST, "complete takes a 1-based line and column");
+        yyjson_get_int(line) < 1 || yyjson_get_int(column) < 1 ||
+        (file && !styles && strcmp(file, "rml"))) {
+        return failf(error, error_size, CHIBI_AUTOMATION_INVALID_REQUEST, "complete takes a 1-based line and column, and file rml or rcss");
     }
-    ui_source *source = ui_source_parse(text, false);
+    ui_source *source = styles ? ui_source_parse(rcss ? rcss : "", UI_SOURCE_RCSS)
+                               : ui_source_parse(rml, UI_SOURCE_RML);
     int offset = ui_source_offset(source, yyjson_get_int(line), yyjson_get_int(column));
     ui_source_project project = { 0 };
     scan_project(&project, content_root);

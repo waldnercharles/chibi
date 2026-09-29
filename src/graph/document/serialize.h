@@ -31,4 +31,9 @@ bool serialize_resolve_ref(const graph *g, const char *ref, int output, node **n
  * record a declaration only when it differs. */
 uint64_t serialize_call_declaration(const behavior_asset *asset, const node *call, int output, int index);
 
+/* Owned JSON text of a runtime value: flags, numbers, text, enum labels,
+ * structs as objects of their fields, and arrays and sets as lists; flow and
+ * handles are null. */
+char *serialize_value_json(const pin_value *value);
+
 #endif

@@ -37,13 +37,6 @@ struct studio_designer
     } gesture;
     struct
     {
-        bool compared;
-        unsigned revision;          /* the buffer's when last compared */
-        unsigned long long overlay; /* its file's overlay's then */
-        bool current;               /* the Canvas shows the text as it is */
-    } canvas;
-    struct
-    {
         int toast;         /* offers Undo while the delete is the latest edit */
         unsigned revision; /* the buffer's right after it */
     } undo;

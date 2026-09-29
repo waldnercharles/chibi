@@ -116,6 +116,9 @@ struct editor
     int event_catalog_count;
     const struct ui_event *ui_event_catalog; /* borrowed; the host's GameUi documents send them */
     int ui_event_catalog_count;
+    const struct ui_data_binding *ui_data_catalog; /* borrowed; what those documents bind */
+    int ui_data_catalog_count;
+    editor_choices ui_data_choices; /* owned: Set UI Data's Name, from the catalog */
     int (*open_asset)(void *, const char *, uint64_t);
     void *open_asset_user;
     const char **prototype_catalog; /* Owned array, borrowed project names. */

@@ -21,24 +21,17 @@
 
 #define CONTEXT "code intelligence test"
 
-static const char *const DIALOG = "rml: |\n"
-                                  "  <div class=\"dialog\"><slot/></div>\n";
 static const char *const BASE = ".panel { padding: var(--gap); }\n"
                                 "body { --gap: 4dp; }\n";
-static const char *const OTHER = "rml: |\n"
-                                 "  <div class=\"shared\">x</div>\n"
-                                 "rcss: |\n"
-                                 "  .shared { color: #f00; }\n"
-                                 "  .shared .x { margin: 0dp; }\n";
+static const char *const OTHER_RCSS = ".shared { color: #f00; }\n"
+                                      ".shared .x { margin: 0dp; }\n";
 static const char *const
-    DOC = "rml: |\n"
-          "  <use ui=\"Dialog\">\n"
-          "    <div class=\"panel own shared\">{{ save.volume }}</div>\n"
-          "  </use>\n"
-          "rcss: |\n"
-          "  @import \"theme/base.rcss\";\n"
-          "  .own { margin: var(--gap); }\n"
-          "  .own { colour: red; }\n";
+    DOC_RML = "<use ui=\"Dialog\">\n"
+              "  <div class=\"panel own shared\">{{ save.volume }}</div>\n"
+              "</use>\n";
+static const char *const DOC_RCSS = "@import \"theme/base.rcss\";\n"
+                                    ".own { margin: var(--gap); }\n"
+                                    ".own { colour: red; }\n";
 
 typedef struct scratch
 {
@@ -68,14 +61,15 @@ static scratch scratch_new()
     assert(mkdir(folder, 0777) == 0);
     snprintf(folder, sizeof folder, "%s/ui/theme", s.root);
     assert(mkdir(folder, 0777) == 0);
-    snprintf(s.doc, sizeof s.doc, "%s/ui/Doc.yaml", s.root);
-    snprintf(s.dialog, sizeof s.dialog, "%s/ui/Dialog.yaml", s.root);
+    snprintf(s.doc, sizeof s.doc, "%s/ui/Doc.rml", s.root);
+    snprintf(s.dialog, sizeof s.dialog, "%s/ui/Dialog.rml", s.root);
     snprintf(s.base, sizeof s.base, "%s/ui/theme/base.rcss", s.root);
-    snprintf(s.other, sizeof s.other, "%s/ui/Other.yaml", s.root);
-    write_file(s.doc, DOC);
-    write_file(s.dialog, DIALOG);
+    snprintf(s.other, sizeof s.other, "%s/ui/Other.rml", s.root);
+    snprintf(folder, sizeof folder, "%s/ui", s.root);
+    test_write_ui(folder, "Doc", DOC_RML, DOC_RCSS);
+    test_write_ui(folder, "Dialog", "<div class=\"dialog\"><slot/></div>\n", NULL);
+    test_write_ui(folder, "Other", "<div class=\"shared\">x</div>\n", OTHER_RCSS);
     write_file(s.base, BASE);
-    write_file(s.other, OTHER);
     ui_code_scan(&s.project, s.root);
     char error[256];
     s.b = ui_buffer_open(s.doc, error, sizeof error);
@@ -133,7 +127,7 @@ static bool underlines(const kit_code_marker *m, const char *text, const char *n
 
 static void problems(scratch *s)
 {
-    ui_source *broken = ui_source_parse_block("<div class=\"a\">\n  <span class=></span>\n", UI_SOURCE_RML);
+    ui_source *broken = ui_source_parse("<div class=\"a\">\n  <span class=></span>\n", UI_SOURCE_RML);
     kit_code_marker *markers = NULL;
     const ui_check_message messages[] = {
         { UI_CHECK_RML, NULL, 1, "the first line\n  \"expr\"\n  ^" },
@@ -145,7 +139,7 @@ static void problems(scratch *s)
         apush(listed, messages[i]);
     }
     const char *markup = ui_buffer_text(s->b, UI_PART_RML);
-    ui_source *rml = ui_source_parse_block(markup, UI_SOURCE_RML);
+    ui_source *rml = ui_source_parse(markup, UI_SOURCE_RML);
     ui_code_markers(broken, UI_PART_RML, NULL, NULL, &markers);
     test_check(acount(markers) > 0 && markers[0].severity == KIT_CODE_ERROR, "a syntax error marks its line as an error");
     test_check(
@@ -185,7 +179,7 @@ static void problems(scratch *s)
         "RmlUi checks a ui document's text"
     );
     rml_backend_destroy(checker);
-    ui_source *rcss = ui_source_parse_block(ui_buffer_text(s->b, UI_PART_RCSS), UI_SOURCE_RCSS);
+    ui_source *rcss = ui_source_parse(ui_buffer_text(s->b, UI_PART_RCSS), UI_SOURCE_RCSS);
     markers = NULL;
     ui_code_markers(rcss, UI_PART_RCSS, checked, NULL, &markers);
     test_check(has_marker(markers, 3, KIT_CODE_WARNING, "colour"), "an unknown property marks its line of the RCSS");
@@ -214,7 +208,7 @@ static void stylesheet_problems(scratch *s)
     bool ok = ui_code_check(b, rml_backend_context(checker), &checked, error, sizeof error);
     rml_backend_destroy(checker);
     const char *text = ui_buffer_text(b, UI_PART_RCSS);
-    ui_source *rcss = ui_source_parse_block(text, UI_SOURCE_RCSS);
+    ui_source *rcss = ui_source_parse(text, UI_SOURCE_RCSS);
     kit_code_marker *markers = NULL;
     ui_code_markers(rcss, UI_PART_RCSS, checked, NULL, &markers);
     test_check(ok && underlines(find_marker(markers, 3, KIT_CODE_WARNING, "colour"), text, "colour: red;"), "a stylesheet's unknown property marks its line, underlining the declaration");
@@ -254,8 +248,8 @@ static void definitions(scratch *s)
 {
     const char *markup = ui_buffer_text(s->b, UI_PART_RML);
     const char *style = ui_buffer_text(s->b, UI_PART_RCSS);
-    ui_source *rml = ui_source_parse_block(markup, UI_SOURCE_RML);
-    ui_source *rcss = ui_source_parse_block(style, UI_SOURCE_RCSS);
+    ui_source *rml = ui_source_parse(markup, UI_SOURCE_RML);
+    ui_source *rcss = ui_source_parse(style, UI_SOURCE_RCSS);
     ui_code_place place;
     s->b->part = UI_PART_RML;
     test_check(
@@ -276,7 +270,7 @@ static void definitions(scratch *s)
     test_check(
         ui_code_definition(s->b, rml, offset_of(markup, "shared", 0), &s->project, &place) &&
             at_place(&place, s->other, UI_PART_RCSS, 1),
-        "a class goes to another asset's RCSS, in that part's text"
+        "a class goes to another asset's RCSS, in that file's text"
     );
     s->b->part = UI_PART_RCSS;
     test_check(
@@ -300,15 +294,10 @@ static void definitions(scratch *s)
     test_check(
         symbol.kind == UI_SYMBOL_CLASS && acount(places) == 4 &&
             definitions == 2 && places[0].definition && places[1].definition &&
-            at_place(
-                &places[1],
-                s->other,
-                UI_PART_RCSS,
-                offset_of(".shared { color: #f00; }\n.shared .x { margin: 0dp; }\n", "shared", 1)
-            ) &&
+            at_place(&places[1], s->other, UI_PART_RCSS, offset_of(OTHER_RCSS, "shared", 1)) &&
             places[1].line == 2,
-        "Find References lists every place, definitions first, the same "
-        "occurrence in each part"
+        "Find References lists every place, definitions first, each in its "
+        "file's text"
     );
     afree(places);
     ui_source_free(rcss);
@@ -319,13 +308,13 @@ static void hovers(scratch *s)
 {
     const char *markup = ui_buffer_text(s->b, UI_PART_RML);
     const char *style = ui_buffer_text(s->b, UI_PART_RCSS);
-    ui_source *rml = ui_source_parse_block(markup, UI_SOURCE_RML);
-    ui_source *rcss = ui_source_parse_block(style, UI_SOURCE_RCSS);
+    ui_source *rml = ui_source_parse(markup, UI_SOURCE_RML);
+    ui_source *rcss = ui_source_parse(style, UI_SOURCE_RCSS);
     char *panel = ui_source_hover(rml, offset_of(markup, "panel", 0), &s->project);
     char *widget = ui_source_hover(rml, offset_of(markup, "Dialog", 0), &s->project);
     char *token = ui_source_hover(rcss, offset_of(style, "--gap", 0), &s->project);
     char *property = ui_code_hover(rcss, offset_of(style, "margin", 0), &s->project);
-    ui_source *inherits = ui_source_parse_block(".a { color: red; }", UI_SOURCE_RCSS);
+    ui_source *inherits = ui_source_parse(".a { color: red; }", UI_SOURCE_RCSS);
     char *inherited = ui_code_hover(inherits, 5, &s->project);
     test_check(
         inherited && strstr(inherited, "Property color\nRCSS property\nInitial") &&
@@ -343,7 +332,7 @@ static void hovers(scratch *s)
     );
     test_check(
         widget && !strncmp(widget, "Widget Dialog\n", 14) &&
-            strstr(widget, "ui/Dialog.yaml"),
+            strstr(widget, "ui/Dialog.rml"),
         "a widget names its asset"
     );
     test_check(
@@ -508,7 +497,7 @@ static void one_history(scratch *s)
     type(&f, "<use ui=\"Di");
     step(&f, b);
     test_check(strstr(ui_buffer_text(b, UI_PART_RML), "</use><use ui=\"Di") != NULL, "typing reaches the buffer as typed text");
-    ui_source *parsed = ui_source_parse_block(kit_code_text(f.e, NULL), UI_SOURCE_RML);
+    ui_source *parsed = ui_source_parse(kit_code_text(f.e, NULL), UI_SOURCE_RML);
     ui_code_completions found;
     ui_code_complete(parsed, kit_code_cursor(f.e), &s->project, &found);
     bool offered = acount(found.items) == 1 &&

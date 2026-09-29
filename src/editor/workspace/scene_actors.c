@@ -1,3 +1,4 @@
+#include "assets/scene_document.h"
 #include "editor/workspace/scene_internal.h"
 #include "runtime/generated.h"
 
@@ -464,6 +465,59 @@ int app_scene_authoring_duplicate_instance(app_scene_authoring *scene)
     return result;
 }
 
+static int actor_index(const app_scene_authoring *scene, ecs_entity entity)
+{
+    for (int i = 0; i < acount(scene->actors); i++) {
+        if (ecs_entity_to_u64(scene->actors[i].entity) == ecs_entity_to_u64(entity)) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+static void set_actor_name(app_scene_authoring *scene, scene_actor *actor, const char *name)
+{
+    free(actor->name);
+    actor->name = xstrdup(name);
+    scene->scene_dirty = true;
+    asset_index_invalidate(scene);
+}
+
+int app_scene_authoring_rename_instance(app_scene_authoring *scene, ecs_entity entity, const char *name)
+{
+    int index = actor_index(scene, entity);
+    assert(index >= 0);
+    if (!strcmp(scene->actors[index].name, name)) {
+        return 0;
+    }
+    if (game_scene_entity_validate_name(
+            name,
+            actor_name_used(scene, name),
+            scene->message,
+            sizeof scene->message
+        )) {
+        return -1;
+    }
+    finish_transform_edit(scene, false);
+    if (scene->runtime_snapshot_valid &&
+        app_scene_authoring_runtime_command(scene, APP_RUNTIME_SCENE, APP_RUNTIME_STOP) !=
+            0) {
+        return -1;
+    }
+    /* Stopping respawns the objects, so the index finds it again. */
+    scene_actor *actor = &scene->actors[index];
+    bool recorded = scene_history_push_rename(
+        scene->history,
+        actor->entity,
+        actor->name,
+        name
+    );
+    assert(recorded);
+    set_actor_name(scene, actor, name);
+    scene_authoring_select_document(scene, APP_EDITOR_DOCUMENT_SCENE, APP_SCENE_DOCUMENT_ID);
+    return 0;
+}
+
 static void apply_physics_settings(app_scene_authoring *scene, game_physics_settings settings)
 {
     game_physics_reset(scene->live->physics);
@@ -527,6 +581,17 @@ static int replay_scene_edit_one(app_scene_authoring *scene, bool redo)
         return 0;
     }
     ecs_entity entity;
+    const char *name = scene_history_peek_rename(scene->history, redo, &entity);
+    if (name) {
+        int index = actor_index(scene, entity);
+        if (index < 0 || actor_name_used(scene, name)) {
+            return -1;
+        }
+        set_actor_name(scene, &scene->actors[index], name);
+        scene_history_complete_rename(scene->history, redo);
+        select_instance(scene, index);
+        return 0;
+    }
     bool present;
     const scene_actor_edit
         *actor_edit = scene_history_peek_actor(scene->history, redo, &entity, &present);

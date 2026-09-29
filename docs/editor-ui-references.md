@@ -18,9 +18,9 @@ the earlier library catalog from the Codex RmlUi branch.
 
 | Library | Problem | Kit equivalent | State |
 | --- | --- | --- | --- |
-| [Base UI](https://base-ui.com) | Behavior contracts for fields, menus, popovers, dialogs, tooltips | Controls in `kit_controls.c` (toggle groups: `kit_toggle_group`; a Combobox trigger over the command surface for asset fields: `kit_picker`) and `kit_number.c`; popups, menus (color swatches: `kit_menu_item_desc.swatch`) and tooltips in `kit_popup.c`. Authored UI, the editor's and games', uses the widgets in `projects/studio/content/ui`: Switch, Select, Slider, Segmented, SidebarNav, SettingRow, Dialog and KeyHint | Done |
+| [Base UI](https://base-ui.com) | Behavior contracts for fields, menus, popovers, dialogs, tooltips | Controls in `kit_controls.c` (toggle groups: `kit_toggle_group`; a Combobox trigger over the command surface for asset fields: `kit_picker`) and `kit_number.c`; popups, menus (color swatches: `kit_menu_item_desc.swatch`; a panel header's menu: `kit_panel_menu`) and tooltips in `kit_popup.c`. Authored UI, the editor's and games', uses the widgets in `projects/studio/content/ui`: Switch, Select, Slider, Segmented, SidebarNav, SettingRow, Dialog and KeyHint | Done |
 | [shadcn/ui](https://ui.shadcn.com) | Semantic tokens, variant discipline, control anatomy | Tokens in the Studio theme (`projects/studio/content/ui/theme/tokens.rcss`, imported by the `StudioShell` root document); Textarea as `kit_text_area` | Done |
-| [cmdk](https://github.com/dip/cmdk) | Command palette: ranking, groups, keyboard | `kit_command` (`kit_command.c`) | Done; pages and group jumps open |
+| [cmdk](https://github.com/dip/cmdk), [VS Code Quick Open](https://code.visualstudio.com/docs/getstarted/userinterface#_quick-open) | Command palette: ranking, groups, keyboard; prefixes and recent items | `kit_command` (`kit_command.c`), Studio's palette (`studio_palette.c`) | Done; pages and group jumps open |
 | [DialKit](https://github.com/joshpuckett/dialkit) | Live tuning of values, scrub feel, spring and easing controls | `kit_number` (`kit_number.c`; scrub, fine/coarse/snap) | Partial; rubber-band and spring controls open |
 | [Motion](https://github.com/motiondivision/motion) | Springs, enter/exit presence, layout (FLIP) animation | `kit_presence`, `kit_layout` (`kit_motion.c`); springs in `src/ui/motion.c`. Authored UI, the editor's and games': `presence` on a `data-if` element | Done |
 | [NumberFlow](https://github.com/barvian/number-flow) | Number changes as spinning digit wheels | The native `<number-flow>` element (`src/ui/text_motion.c`), which `kit_number_flow` emits | Done |
@@ -32,6 +32,7 @@ the earlier library catalog from the Codex RmlUi branch.
 | [Liveline](https://github.com/benjitaylor/liveline) | Streaming line chart that feels alive | `kit_chart` (`kit_chart.c`, element `kit-chart`) | Done |
 | [Recharts](https://github.com/recharts/recharts) | Axes, ticks, tooltips for static charts | `kit_chart` ticks, scrub value, Performance legend | Partial; bars open |
 | [zustand](https://github.com/pmndrs/zustand) | One store, selective updates, persistence | `studio_prefs`, whose preferences are rows of `studio_settings[]` | Done |
+| [Blender Workspaces](https://docs.blender.org/manual/en/latest/interface/window_system/workspaces.html), [Godot main screens](https://docs.godotengine.org/en/stable/getting_started/introduction/first_look_at_the_editor.html) | Named arrangements of areas for a task, switched without touching documents; Godot follows the selection | `studio_prefs.layouts` per `studio_workspace`, the top bar's workspace tabs, and `studio_follow_document` (Workspace Follows Tab) | Done; two fixed presets |
 | [next-themes](https://github.com/pacocoursey/next-themes) | Theme preference: system, no flash, no mixed transitions | Theme in `studio_prefs` | Done |
 | [clsx](https://github.com/lukeed/clsx) | Conditional class lists | `KIT_CX` | Done |
 | [cva](https://github.com/joe-bell/cva) | Variants mapped to classes in one table | `kit_variant`, `kit_size` | Done |
@@ -58,11 +59,14 @@ control's contract.
 
 ### cmdk
 
-- Ranking follows `command-score`:
-  - A continuous match scores 1, a match after a space 0.9 and after another separator 0.8.
-  - A mid-word jump scores 0.17 and a transposition 0.1.
-  - Each skipped character multiplies the score by 0.999 and a case mismatch by 0.9999.
-- Zero scores are hidden. Items sort within groups, and groups sort by their best item.
+- Ranking is `text_search_score` (`src/support/text_search.h`), the search the
+  graph's Add menu uses and, in its whole-word form, the MCP's `searchNodes` and
+  `searchAssets`. Every query word must match: a word start in the label ranks
+  above a match inside a word, then initials, then letters in order, and the
+  keywords score half. An item's `boost` adds to its score; Studio gives recently
+  and often chosen items up to 300, as Raycast's frecency does.
+- Items that do not match are hidden. Items sort within groups, and groups sort
+  by their best item. Matched words show in bold, or else their letters in order.
 - Selection resets to the first item when the query changes.
 - Keys:
   - Up and Down move; Home and End jump.
@@ -205,10 +209,11 @@ control's contract.
 - The persist middleware saves the whole store under one key, with a version for migration.
 - Kit version:
   - `studio_prefs` is the one store for view settings and layout.
-  - Each preference is a row of `studio_settings[]` (`studio_settings.c`): its JSON path, the saved key panels bind, its category, label, description, keywords, type and range. The preferences file, the saved keys and the Settings page all read and write through it; only the area layout is kept by hand.
+  - Each preference is a row of `studio_settings[]` (`studio_settings.c`): its JSON path, the saved key panels bind, its category, label, description, keywords, type and range. The preferences file, the saved keys and the Settings page all read and write through it; the area layout and command shortcut overrides are kept by hand.
   - Studio applies changes by comparison with the last applied copy.
   - It saves 0.5 s after the last change: a JSON file on desktop, `localStorage["chibi.studio"]` in the browser.
   - Missing fields keep their defaults.
+  - Keyboard uses the command registry for defaults, area contexts, aliases and repeat policy. Overrides persist by command ID. Record captures one chord before editor input, Escape cancels, and Reset restores the default and its aliases. Overlapping assignments are shown on both rows; an override takes priority over a default binding.
 - Authoring state never goes in this store; it belongs to the C model.
 
 ### next-themes

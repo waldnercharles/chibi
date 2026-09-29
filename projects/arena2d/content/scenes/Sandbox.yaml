@@ -4,79 +4,94 @@ entities:
 - name: Player
   prototype: Player
   components:
-    GameTransform: {x: -320, "y": 0}
+    GAME.GameTransform: {x: -320.0}
   behaviors: [Movement, Weapon, PlayerEffects, MaterialImpactHealth]
 - name: Camera
   prototype: Camera
   components:
-    GameTransform: {x: -320, "y": 0}
+    GAME.GameTransform: {x: -320.0}
   behaviors: [CameraFollow]
-- {name: HRC, prototype: HRC}
+- name: HRC
+  prototype: HRC
+  components:
+    GAME.GameCombustion:
+      flame_emission: 1.0
+      blast_radius: 400.0
+      blast_speed: 200.0
+      blast_damage: 0.2
+    GAME.GameHRC2D:
+      resolution: 1.0
+      adaptive: true
+      min_resolution: 0.5
+      fog: 0.66
+      upscale_mode: 0
+      trace_levels: 2
+      bloom: 0.2
 - {name: FireMouse, prototype: FireMouse}
 - {name: FireStick, prototype: FireStick}
 - name: Entry cloud
   prototype: Cloud
   components:
-    GameTransform: {x: 70, "y": 0}
+    GAME.GameTransform: {x: 70.0}
 - name: Floating liquid
   prototype: Liquid
   components:
-    GameTransform: {x: 330, "y": 100}
+    GAME.GameTransform: {x: 330.0, "y": 100.0}
 - name: Distant cloud
   prototype: Cloud
   components:
-    GameTransform: {x: 1480, "y": 0}
-    GameFluidVolume: {width: 640, height: 360, color: 2288896187}
+    GAME.GameFluidVolume: {width: 640.0, height: 360.0, color: 2288896187}
+    GAME.GameTransform: {x: 1480.0}
 - name: Distant liquid
   prototype: Liquid
   components:
-    GameTransform: {x: 1800, "y": -60}
-    GameFluidVolume: {width: 160, height: 160}
+    GAME.GameFluidVolume: {width: 160.0, height: 160.0}
+    GAME.GameTransform: {x: 1800.0, "y": -60.0}
 - name: Cave guardian 1
   prototype: Swarmer
   components:
-    GameTransform: {x: 580, "y": 90}
+    GAME.GameTransform: {x: 580.0, "y": 90.0}
   behaviors: [Pursuit, SwarmerEffects, MaterialImpactHealth]
 - name: Cave guardian 2
   prototype: Swarmer
   components:
-    GameTransform: {x: 1550, "y": -100}
+    GAME.GameTransform: {x: 1550.0, "y": -100.0}
   behaviors: [Pursuit, SwarmerEffects, MaterialImpactHealth]
 - name: Cave guardian 3
   prototype: Swarmer
   components:
-    GameTransform: {x: 2150, "y": 60}
+    GAME.GameTransform: {x: 2150.0, "y": 60.0}
   behaviors: [Pursuit, SwarmerEffects, MaterialImpactHealth]
 - name: Cave terrain
   prototype: Cave
   components:
-    GameTransform: {x: 960, "y": 0}
+    GAME.GameTransform: {x: 960.0}
 - name: Reflective crystal
   prototype: Crystal
   components:
-    GameTransform: {x: -245, "y": -62}
+    GAME.GameTransform: {x: -245.0, "y": -62.0}
 - name: Brittle crystal seam
   prototype: Crystal
   components:
-    GameTransform: {x: 180, "y": -100}
-    GameOrientation: {radians: 0.24}
+    GAME.GameOrientation: {radians: 0.24}
+    GAME.GameTransform: {x: 180.0, "y": -100.0}
 - name: Hard rock shelf
   prototype: HardRock
   components:
-    GameTransform: {x: 420, "y": 110}
+    GAME.GameTransform: {x: 420.0, "y": 110.0}
 - name: Fuel cloud
   prototype: FuelCloud
   components:
-    GameTransform: {x: 50, "y": 0}
+    GAME.GameTransform: {x: 50.0}
 - name: Distant fuel cloud
   prototype: FuelCloud
   components:
-    GameTransform: {x: 1230, "y": 40}
+    GAME.GameTransform: {x: 1230.0, "y": 40.0}
 - {name: Free motion, prototype: FreeMotionSystem}
 - name: Drifting marker
   prototype: DriftingMarker
   components:
-    GameTransform: {x: -400, "y": 90}
+    GAME.GameTransform: {x: -400.0, "y": 90.0}
 - name: HUD
   prototype: HUD
   behaviors: [HudDisplay]

@@ -29,21 +29,29 @@ def fingerprint(path):
     return digest.hexdigest()
 
 
-def prepare(build, output, fixture, scale, trace_levels):
+def prepare(build, output, fixture, resolution, trace_levels, gather_resolution, lighting_margin):
     project = output / 'project'
     shutil.copytree(PROJECT, project, ignore=shutil.ignore_patterns('.chibi', 'build'))
     runner = Runner(build, output, project)
+    fields = dict(adaptive=False, resolution=resolution, trace_levels=trace_levels,
+        gather_resolution=gather_resolution, lighting_margin=lighting_margin)
     asset = runner.author('readAsset', dict(kind='prototype', name='HRC'))
     runner.author('buildPrototype', dict(kind='prototype', name='HRC',
         expected_hash=asset['hash'], operations=[
-            dict(op='set_field', component='GameHRC2D', field='adaptive', value=False),
-            dict(op='set_field', component='GameHRC2D', field='scale', value=scale),
-            dict(op='set_field', component='GameHRC2D', field='trace_levels', value=trace_levels)]))
+            dict(op='set_field', component='GameHRC2D', field=field, value=value)
+            for field, value in fields.items()]))
     runner.author('validateAsset', dict(kind='prototype', name='HRC'))
-    if fixture['operations']:
-        asset = runner.author('readAsset', dict(kind='scene', name='Sandbox'))
+    # A scene entity that overrides GameHRC2D would shadow the prototype, so fix
+    # the same fields there; set_entity_components replaces all its overrides.
+    asset = runner.author('readAsset', dict(kind='scene', name='Sandbox'))
+    overrides = [dict(op='set_entity_components', entity=entity['name'],
+        components=dict(entity['components'], **{'GAME.GameHRC2D':
+            dict(entity['components']['GAME.GameHRC2D'], **fields)}))
+        for entity in asset['document']['entities']
+        if 'GAME.GameHRC2D' in entity.get('components', {})]
+    if overrides or fixture['operations']:
         runner.author('buildScene', dict(kind='scene', name='Sandbox',
-            expected_hash=asset['hash'], operations=fixture['operations']))
+            expected_hash=asset['hash'], operations=overrides + fixture['operations']))
     runner.author('validateAsset', dict(kind='scene', name='Sandbox'))
     return runner
 
@@ -90,11 +98,12 @@ def render(command, output, environment, tracy):
                     raise
 
 
-def run_case(args, name, mode, scale, repeat, provenance):
-    output = args.output / f'{name}-{mode}-{scale:g}-{repeat}'
+def run_case(args, name, mode, resolution, repeat, provenance):
+    output = args.output / f'{name}-{mode}-{resolution:g}-{repeat}'
     output.mkdir(parents=True, exist_ok=False)
     fixture = scenario(name)
-    runner = prepare(args.build, output, fixture, scale, args.trace_levels)
+    runner = prepare(args.build, output, fixture, resolution, args.trace_levels,
+        args.gather_resolution, args.lighting_margin)
     frozen = mode == 'frozen'
     initial_frames = fixture['frames'] + (args.render_frames if frozen else 0)
     final_frames = initial_frames + (0 if frozen else args.render_frames)
@@ -109,11 +118,12 @@ def run_case(args, name, mode, scale, repeat, provenance):
     binary = (ROOT / args.build / 'chibi_ctl').resolve()
     command = replay_files(output, binary, runner.project, request, environment)
     manifest = dict(provenance, project_sha256=fingerprint(runner.project), scenario=name,
-        fixture=fixture, mode=mode, scale=scale, trace_levels=args.trace_levels,
+        fixture=fixture, mode=mode, resolution=resolution, trace_levels=args.trace_levels,
+        gather_resolution=args.gather_resolution, lighting_margin=args.lighting_margin,
         adaptive=False, width=args.width, height=args.height)
     write_json(output / 'manifest.json', manifest)
     if args.prepare_only:
-        return dict(scenario=name, mode=mode, scale=scale, prepared=str(output))
+        return dict(scenario=name, mode=mode, resolution=resolution, prepared=str(output))
     result = render(command, output, environment, args.tracy_capture)
     before, after = result['initial_state'], result['final_state']
     assert before['frame'] == initial_frames and after['frame'] == final_frames
@@ -130,16 +140,18 @@ def run_case(args, name, mode, scale, repeat, provenance):
     if name == 'ignition':
         check_load(name, before)
     performance = result['performance']
-    assert abs(performance['hrc_scale'] - scale) < 1e-6, 'HRC scale changed during benchmark'
+    assert abs(performance['hrc_resolution'] - resolution) < 1e-6, 'HRC resolution changed during benchmark'
     assert performance['samples'] == args.render_frames - 16
     (output / 'frame.png').write_bytes(base64.b64decode(result['preview']['data']))
-    report = dict(scenario=name, mode=mode, scale=scale, repeat=repeat,
-        trace_levels=args.trace_levels, adaptive=False, width=args.width, height=args.height,
+    report = dict(scenario=name, mode=mode, resolution=resolution, repeat=repeat,
+        trace_levels=args.trace_levels, gather_resolution=args.gather_resolution,
+        lighting_margin=args.lighting_margin, adaptive=False, width=args.width, height=args.height,
         purpose='metal-capture' if args.metal_capture else 'tracy-capture' if args.tracy_capture else 'benchmark',
         backend=result['backend'], initial_state=before, final_state=after, performance=performance,
         directory=output.name, manifest='manifest.json', capture=result.get('metal_capture'))
     write_json(output / 'report.json', report)
-    print(f"{name:12} {mode:6} scale={scale:g}: median {performance['median_ms']:.2f} ms, "
+    print(f"{name:12} {mode:6} resolution={resolution:g} gather={args.gather_resolution} "
+        f"margin={args.lighting_margin:g}: median {performance['median_ms']:.2f} ms, "
         f"p95 {performance['p95_ms']:.2f} ms; material {after['materials']['hash']}", flush=True)
     return report
 
@@ -147,14 +159,14 @@ def run_case(args, name, mode, scale, repeat, provenance):
 def compare_frozen(output, reports):
     comparisons = []
     for candidate in reports:
-        if candidate['mode'] != 'frozen' or candidate['scale'] == 1:
+        if candidate['mode'] != 'frozen' or candidate['resolution'] == 1:
             continue
-        reference = next((r for r in reports if r['mode'] == 'frozen' and r['scale'] == 1
+        reference = next((r for r in reports if r['mode'] == 'frozen' and r['resolution'] == 1
             and r['scenario'] == candidate['scenario'] and r['repeat'] == candidate['repeat']), None)
         if reference:
             paths = [str(output / r['directory'] / 'frame.png') for r in [reference, candidate]]
             metrics = json.loads(subprocess.check_output(['node', str(ROOT / 'tools/compare_neon_frames.mjs'), *paths], text=True))
-            comparisons.append(dict(scenario=candidate['scenario'], scale=candidate['scale'],
+            comparisons.append(dict(scenario=candidate['scenario'], resolution=candidate['resolution'],
                 repeat=candidate['repeat'], reference=paths[0], candidate=paths[1], metrics=metrics))
     write_json(output / 'comparisons.json', comparisons)
 
@@ -191,13 +203,14 @@ def summary(output, reports):
     write_json(output / 'summary.json', reports)
     lines = ['# NeonSwarm benchmark results', '',
         'Frame work includes GPU completion and excludes pacing. Render/present is host elapsed time, not GPU pass time.', '',
-        '| Scenario | Mode | HRC scale | Median ms | p95 ms | Simulation mean ms | Render/present mean ms |',
-        '| --- | --- | --- | --- | --- | --- | --- |']
+        '| Scenario | Mode | HRC resolution | Gather resolution | Margin | Median ms | p95 ms | Simulation mean ms | Render/present mean ms |',
+        '| --- | --- | --- | --- | --- | --- | --- | --- | --- |']
     for r in reports:
         if 'performance' not in r:
             continue
         p = r['performance']
-        lines.append(f"| {r['scenario']} | {r['mode']} | {r['scale']:g} | {p['median_ms']:.2f} | {p['p95_ms']:.2f} | "
+        lines.append(f"| {r['scenario']} | {r['mode']} | {r['resolution']:g} | {r['gather_resolution']} | "
+            f"{r['lighting_margin']:g} | {p['median_ms']:.2f} | {p['p95_ms']:.2f} | "
             f"{p['simulation_average_ms']:.2f} | {p['render_average_ms']:.2f} |")
     if any(r.get('purpose', 'benchmark') != 'benchmark' or r.get('performance', {}).get('instrumented') for r in reports):
         lines += ['', '**Instrumented capture run. Its timings are not benchmark results.**']
@@ -214,8 +227,12 @@ def main():
     parser.add_argument('--mode', choices=['live', 'frozen', 'both'], default='both')
     parser.add_argument('--width', type=int, default=1920)
     parser.add_argument('--height', type=int, default=1080)
-    parser.add_argument('--scale', type=float, nargs='+', default=[.5, 1])
-    parser.add_argument('--trace-levels', type=int, choices=range(1, 6), default=1)
+    parser.add_argument('--resolution', type=float, nargs='+', default=[.5, 1],
+        help='Finest HRC light grid as a fraction of the canvas, one case each; distinct values in 0.1..1')
+    parser.add_argument('--trace-levels', type=int, choices=range(1, 6), default=3)
+    parser.add_argument('--gather-resolution', choices=['Full', 'Half'], default='Full',
+        help='Received-light image (gather, filter, bounce) at the full canvas or half')
+    parser.add_argument('--lighting-margin', type=float, default=64)
     parser.add_argument('--render-frames', type=int, default=180)
     parser.add_argument('--repeat', type=int, default=1)
     parser.add_argument('--prepare-only', action='store_true')
@@ -227,17 +244,20 @@ def main():
         return
     if not args.output or args.allow_renderer_changes:
         parser.error('Use --output for a new run; --allow-renderer-changes requires --replay')
+    if not 0 <= args.lighting_margin <= 256:
+        parser.error('Lighting margin must be 0–256')
     if not 17 <= args.render_frames <= 1200 or args.repeat < 1:
         parser.error('Use 17..1200 render frames and a positive repeat count')
-    if any(not .1 <= scale <= 1 for scale in args.scale) or len(set(args.scale)) != len(args.scale):
-        parser.error('HRC scales must be distinct values in 0.1..1')
+    if any(not .1 <= value <= 1 for value in args.resolution) or \
+            len(set(args.resolution)) != len(args.resolution):
+        parser.error('HRC resolutions must be distinct values in 0.1..1')
     if not all(64 <= size <= 2048 for size in [args.width, args.height]):
         parser.error('Dimensions must be 64..2048 pixels')
     if args.metal_capture and args.tracy_capture:
         parser.error('Capture GPU and Tracy traces in separate runs')
     if args.metal_capture or args.tracy_capture:
-        if args.scenario == 'all' or args.mode == 'both' or len(args.scale) != 1 or args.repeat != 1:
-            parser.error('Select one scenario, mode, scale and repeat for an instrumented capture')
+        if args.scenario == 'all' or args.mode == 'both' or len(args.resolution) != 1 or args.repeat != 1:
+            parser.error('Select one scenario, mode, resolution and repeat for an instrumented capture')
     if not args.metal_capture and os.environ.get('MTL_CAPTURE_ENABLED') == '1':
         parser.error('Unset MTL_CAPTURE_ENABLED for ordinary benchmarks')
     args.output = args.output.resolve()
@@ -252,9 +272,9 @@ def main():
     reports = []
     for name in SCENARIOS if args.scenario == 'all' else [args.scenario]:
         for mode in ['live', 'frozen'] if args.mode == 'both' else [args.mode]:
-            for scale in args.scale:
+            for resolution in args.resolution:
                 for repeat in range(1, args.repeat + 1):
-                    report = run_case(args, name, mode, scale, repeat, provenance)
+                    report = run_case(args, name, mode, resolution, repeat, provenance)
                     if not args.prepare_only:
                         peers = [r for r in reports if r['scenario'] == name]
                         assert all(r['final_state']['materials'] == report['final_state']['materials'] for r in peers), \

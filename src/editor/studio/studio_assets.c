@@ -1,10 +1,11 @@
 /* Assets: every indexed asset as a virtualized list, filtered by kind and name.
  * Prototypes drag into the Scene or the Outliner to place an instance;
  * behaviors drag onto an Outliner row to attach. Double-click opens the asset.
- * New makes a UI widget, document or stylesheet and opens it. */
+ * New makes an asset of any kind Studio indexes and opens it. */
 #include "editor/studio/studio_internal.h"
 #include "editor/workspace/asset_index.h"
 #include "support/array.h"
+#include "support/asset_text.h"
 #include "support/xalloc.h"
 
 #include <ctype.h>
@@ -82,7 +83,7 @@ void studio_assets_header(studio *s, int area)
     kit_push(k, "filter", NULL, "assets-filter");
     kit_search(k, "search", s->assets_filter, sizeof s->assets_filter, "Filter");
     kit_pop(k);
-    studio_new_ui_button(s);
+    studio_new_asset_button(s);
 }
 
 /* Rows of the list: a group header (asset < 0, kind set) or an asset. */
@@ -293,101 +294,267 @@ bool studio_assets_key(studio *s, SDL_Keycode key, SDL_Keymod mod)
     return false;
 }
 
-/* ---------- New UI assets ---------- */
+/* ---------- New assets ---------- */
 
-static const char *const NEW_LABELS[UI_NEW_KIND_COUNT] = { "UI Widget",
-                                                           "UI Document",
-                                                           "Stylesheet" };
-static const uint32_t NEW_ICONS[UI_NEW_KIND_COUNT] = { KIT_ICON_LAYOUT,
-                                                       KIT_ICON_LAYOUT,
-                                                       KIT_ICON_FILE };
-static const mode_t UI_FOLDER_MODE = 0777;
-#define NAME_POPOVER "new-ui-name"
-
-static bool enter_pressed(const studio *s)
+/* Each kind New makes, in the order of new_asset_kind and then ui_new_kind,
+   grouped as Blender's Add and Unity's Create menus group theirs. Its New …
+   command gives its label and icon. */
+static const struct
 {
-    for (int i = 0; i < acount(s->keys); i++) {
-        if (s->keys[i].key == SDLK_RETURN || s->keys[i].key == SDLK_KP_ENTER) {
+    const char *group;
+    const char *name;          /* its default name, numbered when taken */
+    reference_asset_kind kind; /* the Assets filter that lists it first */
+} NEW_KINDS[STUDIO_NEW_KIND_COUNT] = {
+    { "Scene", "NewScene", REFERENCE_ASSET_SCENE },
+    { "Scene", "NewPrototype", REFERENCE_ASSET_PROTOTYPE },
+    { "Logic", "NewBehavior", REFERENCE_ASSET_BEHAVIOR },
+    { "Logic", "NewEvent", REFERENCE_ASSET_EVENT },
+    { "Logic", "NewSystem", REFERENCE_ASSET_SYSTEM },
+    { "Logic", "NewLibrary", REFERENCE_ASSET_LIBRARY },
+    { "Rendering", "NewMaterial", REFERENCE_ASSET_MATERIAL },
+    { "Rendering", "NewShape", REFERENCE_ASSET_SHAPE },
+    { "Rendering", "NewField", REFERENCE_ASSET_FIELD },
+    { "Rendering", "NewShaderLibrary", REFERENCE_ASSET_LIBRARY },
+    { "UI", "NewWidget", REFERENCE_ASSET_UI },
+    { "UI", "NewDocument", REFERENCE_ASSET_UI },
+    { "UI", "NewStylesheet", REFERENCE_ASSET_UI },
+};
+static const mode_t FOLDER_MODE = 0777;
+#define KIND_MENU "new-asset"
+#define NAME_POPOVER "new-asset-name"
+
+static bool is_ui(int kind)
+{
+    return kind >= NEW_ASSET_KIND_COUNT;
+}
+
+static studio_command new_command(int kind)
+{
+    return (studio_command)(STUDIO_COMMAND_NEW_SCENE + kind);
+}
+
+/* Whether an asset of the project has the name; a name only referenced is
+   free, so making the asset resolves its references. */
+static bool named(studio *s, const char *name)
+{
+    const reference_index *index = app_scene_authoring_asset_index(s->scene);
+    for (int i = 0; i < reference_index_asset_count(index); i++) {
+        const reference_asset *asset = reference_index_asset_at(index, i);
+        if (!asset->unresolved && asset->name && !strcmp(asset->name, name)) {
             return true;
         }
     }
     return false;
 }
 
-/* Writes the new asset in the project's ui folder and opens it; false when
-   the name is invalid or taken. */
+static char *yaml_path(const char *folder, const char *name, char *error, size_t size)
+{
+    size_t length = strlen(folder) + strlen(name) + sizeof "/" ASSET_EXTENSION;
+    char *path = xmalloc(length);
+    snprintf(path, length, "%s/%s" ASSET_EXTENSION, folder, name);
+    struct stat info;
+    if (stat(path, &info) != 0) {
+        return path;
+    }
+    snprintf(error, size, "%s already exists", content_basename(path));
+    free(path);
+    return NULL;
+}
+
+/* The new asset's file: a .yaml in its kind's folder, a ui asset's .rml or a
+   stylesheet's .rcss; NULL with why in `error` when the name is invalid or
+   taken. */
+static char *new_path(studio *s, int kind, const char *name, char *error, size_t size)
+{
+    if (!new_asset_name_valid(name, error, size)) {
+        return NULL;
+    }
+    if (named(s, name)) {
+        snprintf(error, size, "%s already exists", name);
+        return NULL;
+    }
+    const char *folder_name = is_ui(kind) ? "ui"
+                                          : new_asset_folder((new_asset_kind)kind);
+    char *folder = content_path_join(s->scene->content_root, folder_name);
+    char *path = is_ui(kind)
+                   ? ui_buffer_new_path(folder, (ui_new_kind)(kind - NEW_ASSET_KIND_COUNT), name, error, size)
+                   : yaml_path(folder, name, error, size);
+    free(folder);
+    return path;
+}
+
+/* The kind's name, numbered from 2 until no asset or file has it. */
+static void default_name(studio *s, int kind, char *out, size_t size)
+{
+    const char *base = NEW_KINDS[kind].name;
+    snprintf(out, size, "%s", base);
+    for (int i = 2;; i++) {
+        char error[160];
+        char *path = new_path(s, kind, out, error, sizeof error);
+        bool free_name = path != NULL;
+        free(path);
+        if (free_name) {
+            return;
+        }
+        snprintf(out, size, "%s%d", base, i);
+    }
+}
+
+void studio_new_asset_start(studio *s, int kind)
+{
+    studio_new_asset *n = &s->new_asset;
+    *n = (studio_new_asset){ .kind = kind, .opening = true, .focus = true };
+    app_scene_authoring_refresh_asset_index(s->scene);
+    default_name(s, kind, n->name, sizeof n->name);
+}
+
+static bool write_ui(ui_new_kind kind, const char *path)
+{
+    int result = 0;
+    for (int p = 0; p < UI_PART_COUNT && !result; p++) {
+        const char *text = ui_buffer_template(kind, (ui_part)p);
+        char *file = text ? ui_buffer_part_file(path, (ui_part)p) : NULL;
+        result = file ? write_file_atomic(file, text) : 0;
+        free(file);
+    }
+    return result == 0;
+}
+
+/* The asset as its model writes it (assets/new_asset.h), which loads back
+   unchanged and is what --format writes. */
+static bool write_yaml(new_asset_kind kind, const char *name, const char *path)
+{
+    char *json = new_asset_json(kind, name);
+    bool written = write_text_file_atomic(path, json) == 0;
+    free(json);
+    return written;
+}
+
+/* Studio takes the new file up, as it takes up any file that appears, and
+   opens it as Assets does: a UI document in the Text Editor. */
+static void open_new(studio *s, int kind, const char *path)
+{
+    if (is_ui(kind)) {
+        content_refresh(s->scene);
+        app_scene_authoring_refresh_asset_index(s->scene);
+        studio_open_ui_source(s, path, 1);
+        return;
+    }
+    scene_disk_follow(s->scene, &(scene_move){ .to = path }, 1);
+    app_scene_authoring_refresh_asset_index(s->scene);
+    const reference_index *index = app_scene_authoring_asset_index(s->scene);
+    finish_transform_edit(s->scene, false);
+    int asset = reference_index_find_asset(index, NEW_KINDS[kind].kind, path, NULL);
+    if (app_scene_authoring_open_asset(s->scene, asset) != 0) {
+        studio_error(s, "Could not open", app_scene_authoring_message(s->scene));
+    }
+}
+
+/* Writes the new asset in its kind's folder and opens it; false when the
+   name is invalid or taken. */
 static bool create(studio *s)
 {
-    studio_new_ui *n = &s->new_ui;
-    char *folder = content_path_join(s->scene->content_root, "ui");
-    mkdir(folder, UI_FOLDER_MODE);
-    char *path = ui_buffer_new_path(
-        folder,
-        (ui_new_kind)n->kind,
-        n->name,
-        n->error,
-        sizeof n->error
-    );
-    free(folder);
+    studio_new_asset *n = &s->new_asset;
+    app_scene_authoring_refresh_asset_index(s->scene);
+    char *path = new_path(s, n->kind, n->name, n->error, sizeof n->error);
     if (!path) {
         return false;
     }
-    char *text = ui_buffer_template((ui_new_kind)n->kind);
-    if (write_file_atomic(path, text) != 0) {
-        studio_error(s, "Could not create", content_basename(path));
+    char *folder = xstrdup(path);
+    *strrchr(folder, '/') = '\0';
+    mkdir(folder, FOLDER_MODE);
+    free(folder);
+    bool written = is_ui(n->kind)
+                     ? write_ui((ui_new_kind)(n->kind - NEW_ASSET_KIND_COUNT), path)
+                     : write_yaml((new_asset_kind)n->kind, n->name, path);
+    if (written) {
+        open_new(s, n->kind, path);
     } else {
-        content_refresh(s->scene);
-        studio_open_ui_source(s, path, 1);
+        studio_error(s, "Could not create", content_basename(path));
     }
-    free(text);
     free(path);
     return true;
 }
 
+/* Every kind in its group; with the Assets filter on a kind, that kind's
+   first. */
 static void kind_menu(studio *s)
 {
     kit *k = s->kit;
-    if (!kit_popup_begin(k, "new-ui", "menu")) {
+    if (!kit_popup_begin(k, KIND_MENU, "menu")) {
         return;
     }
-    kit_menu_group(k, "group", "New");
-    for (int i = 0; i < UI_NEW_KIND_COUNT; i++) {
-        char key[8];
-        snprintf(key, sizeof key, "k%d", i);
-        if (menu_item(k, key, NEW_LABELS[i], NEW_ICONS[i], NULL)) {
-            s->new_ui = (studio_new_ui){ .kind = i, .opening = true, .focus = true };
+    bool primary = false;
+    for (int i = 0; i < STUDIO_NEW_KIND_COUNT; i++) {
+        if ((int)NEW_KINDS[i].kind == s->assets_kind) {
+            studio_command_item(s, new_command(i));
+            primary = true;
         }
     }
+    if (primary) {
+        kit_menu_separator(k, "primary");
+    }
+    const char *group = NULL;
+    for (int i = 0; i < STUDIO_NEW_KIND_COUNT; i++) {
+        if ((int)NEW_KINDS[i].kind == s->assets_kind) {
+            continue;
+        }
+        if (!group || strcmp(group, NEW_KINDS[i].group)) {
+            group = NEW_KINDS[i].group;
+            kit_menu_group(k, group, group);
+        }
+        studio_command_item(s, new_command(i));
+    }
     kit_popup_end(k);
+}
+
+static bool enter_pressed(const studio *s)
+{
+    for (int i = 0; i < acount(s->keys); i++) {
+        if ((s->keys[i].key == SDLK_RETURN || s->keys[i].key == SDLK_KP_ENTER) &&
+            !s->keys[i].repeat) {
+            return true;
+        }
+    }
+    return false;
 }
 
 static void name_popover(studio *s)
 {
     kit *k = s->kit;
-    studio_new_ui *n = &s->new_ui;
-    if (!kit_popup_begin(k, NAME_POPOVER, "menu new-ui")) {
+    studio_new_asset *n = &s->new_asset;
+    if (!kit_popup_begin(k, NAME_POPOVER, "menu new-asset")) {
+        n->shown = false;
         return;
     }
     char title[64];
-    snprintf(title, sizeof title, "New %s", NEW_LABELS[n->kind]);
+    snprintf(
+        title,
+        sizeof title,
+        "New %s",
+        studio_command_describe(s, new_command(n->kind)).menu
+    );
     kit_menu_group(k, "title", title);
-    kit_push(k, "field", NULL, "new-ui-field");
-    bool committed = kit_text_field(k, "name", n->name, sizeof n->name, "Name", 0);
+    kit_push(k, "field", NULL, "new-asset-field");
+    kit_text_field(k, "name", n->name, sizeof n->name, "Name", 0);
     if (n->focus) {
         kit_focus(k);
         n->focus = false;
     }
     kit_pop(k);
     if (n->error[0]) {
-        kit_push(k, "error", NULL, "new-ui-error");
+        kit_push(k, "error", NULL, "new-asset-error");
         kit_icon(k, "icon", NULL, KIT_ICON_WARNING);
         kit_label(k, "label", "label", n->error);
         kit_pop(k);
     }
     kit_menu_separator(k, "sep");
     bool chosen = menu_item(k, "create", "Create", KIT_ICON_ADD, NULL);
-    bool entered = committed && enter_pressed(s);
+    /* Enter makes the asset, with the name as typed or as offered; the
+       Enter that ran a New command opened the popover and is not for it. */
+    bool entered = n->shown && enter_pressed(s);
     kit_popup_end(k);
+    n->shown = true;
     if (!chosen && !entered) {
         return;
     }
@@ -399,16 +566,26 @@ static void name_popover(studio *s)
     n->opening = n->focus = true;
 }
 
-void studio_new_ui_button(studio *s)
+void studio_new_asset_button(studio *s)
 {
     kit *k = s->kit;
-    kit_button_desc add = { .icon = KIT_ICON_ADD, .tip = "New UI asset" };
+    kit_button_desc add = { .icon = KIT_ICON_ADD, .tip = "New Asset" };
     if (kit_button(k, "new", &add)) {
-        kit_popup_open(k, "new-ui");
+        kit_popup_open(k, KIND_MENU);
     }
-    if (s->new_ui.opening) {
+    /* A kind chosen from the menu asks for its name under the button. */
+    if (s->new_asset.opening) {
         kit_popup_open(k, NAME_POPOVER);
-        s->new_ui.opening = false;
+        s->new_asset.opening = false;
+    }
+}
+
+void studio_new_asset_frame(studio *s)
+{
+    /* A New … command asks at the pointer when no Assets header shows. */
+    if (s->new_asset.opening) {
+        kit_popup_open_at(s->kit, NAME_POPOVER, s->in.mouse_x, s->in.mouse_y);
+        s->new_asset.opening = false;
     }
     kind_menu(s);
     name_popover(s);

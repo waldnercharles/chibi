@@ -18,16 +18,27 @@ typedef struct
     int x, y, next;
 } particle_work;
 
+typedef struct
+{
+    int body_index, patch_x, patch_y, next;
+    double weight, point_x, point_y, normal_x, normal_y, emission;
+    double color[4];
+} contact_work;
+
 struct material_fluid
 {
     fluid_particle *particles;
     particle_work *work;
     int *heads, *active, *used;
+    int *contact_heads, *contact_used;
+    fluid_contact *contacts;
+    contact_work *contact_work;
     fluid_blast *blasts;
     fluid_reaction reaction;
     fluid_region bounds;
     int capacity, buckets;
     float kernel, delta;
+    fluid_contact_settings contact_settings;
     game_task_system tasks;
     material_flow *flow;
     fluid_flow_settings flow_settings;
@@ -50,6 +61,132 @@ static float dot(fluid_vec a, fluid_vec b)
     return a.x * b.x + a.y * b.y;
 }
 
+static fluid_vec body_surface_velocity(fluid_body body, fluid_vec point)
+{
+    fluid_vec radius = sub(point, body.position);
+    return add(
+        body.velocity,
+        (fluid_vec){ -body.angular_velocity * radius.y,
+                     body.angular_velocity * radius.x }
+    );
+}
+
+static unsigned contact_bucket(const material_fluid *fluid, int body, int x, int y, int kind)
+{
+    unsigned h = (unsigned)body * 0x9e3779b9u ^ (unsigned)x * 0x85ebca6bu ^
+                 (unsigned)y * 0xc2b2ae35u ^ (unsigned)kind * 0x27d4eb2fu;
+    h ^= h >> 16;
+    return h & (fluid->buckets - 1);
+}
+
+static void clear_contacts(material_fluid *fluid)
+{
+    for (int i = 0; i < acount(fluid->contact_used); i++) {
+        fluid->contact_heads[fluid->contact_used[i]] = -1;
+    }
+    aclear(fluid->contact_used);
+    aclear(fluid->contacts);
+    aclear(fluid->contact_work);
+}
+
+static float contact_channel(unsigned color, int shift)
+{
+    return (float)((color >> shift) & 255u);
+}
+
+static unsigned pack_contact_color(const contact_work *work)
+{
+    unsigned color = 0;
+    for (int shift = 24; shift >= 0; shift -= 8) {
+        unsigned channel = (unsigned)
+            fmin(255, fmax(0, work->color[(24 - shift) / 8] / work->weight + .5));
+        color |= channel << shift;
+    }
+    return color;
+}
+
+static void record_contact(
+    material_fluid *fluid,
+    const fluid_particle *particle,
+    const fluid_body *body,
+    int body_index,
+    fluid_vec point,
+    fluid_vec normal,
+    fluid_vec local_point,
+    float closing_speed,
+    float impulse
+)
+{
+    float threshold = particle->kind == FLUID_GAS
+                        ? fluid->contact_settings.gas_speed
+                        : fluid->contact_settings.liquid_speed;
+    if (threshold <= 0 || closing_speed < threshold) {
+        return;
+    }
+    float patch_size = fluid->kernel * 2;
+    int patch_x = (int)floorf(local_point.x / patch_size);
+    int patch_y = (int)floorf(local_point.y / patch_size);
+    unsigned
+        bucket = contact_bucket(fluid, body_index, patch_x, patch_y, particle->kind);
+    int at = fluid->contact_heads[bucket];
+    while (at >= 0) {
+        contact_work *work = &fluid->contact_work[at];
+        if (work->body_index == body_index && work->patch_x == patch_x &&
+            work->patch_y == patch_y && fluid->contacts[at].kind == particle->kind) {
+            break;
+        }
+        at = work->next;
+    }
+    if (at < 0) {
+        if (acount(fluid->contacts) >= MATERIAL_FLUID_CONTACT_LIMIT) {
+            return;
+        }
+        if (fluid->contact_heads[bucket] < 0) {
+            apush(fluid->contact_used, (int)bucket);
+        }
+        at = acount(fluid->contacts);
+        apush(
+            fluid->contacts,
+            ((fluid_contact){ .body = body->owner, .kind = particle->kind })
+        );
+        apush(
+            fluid->contact_work,
+            ((contact_work){ .body_index = body_index,
+                             .patch_x = patch_x,
+                             .patch_y = patch_y,
+                             .next = fluid->contact_heads[bucket] })
+        );
+        fluid->contact_heads[bucket] = at;
+    }
+    fluid_contact *contact = &fluid->contacts[at];
+    contact_work *work = &fluid->contact_work[at];
+    float weight = fmaxf(impulse, particle->mass * closing_speed);
+    if (weight <= 0) {
+        return;
+    }
+    work->weight += weight;
+    work->point_x += point.x * weight;
+    work->point_y += point.y * weight;
+    work->normal_x += normal.x * weight;
+    work->normal_y += normal.y * weight;
+    work->color[0] += contact_channel(particle->color, 24) * weight;
+    work->color[1] += contact_channel(particle->color, 16) * weight;
+    work->color[2] += contact_channel(particle->color, 8) * weight;
+    work->color[3] += contact_channel(particle->color, 0) * weight;
+    contact->point = (fluid_vec){ (float)(work->point_x / work->weight),
+                                  (float)(work->point_y / work->weight) };
+    fluid_vec averaged = { (float)work->normal_x, (float)work->normal_y };
+    float length = sqrtf(dot(averaged, averaged));
+    contact->normal = length > 1e-6f ? scale(averaged, 1 / length) : normal;
+    contact->closing_speed = fmaxf(contact->closing_speed, closing_speed);
+    contact->impulse += impulse;
+    contact->mass += particle->mass;
+    work->emission += particle->emission * weight;
+    contact->emission = (float)(work->emission / work->weight);
+    contact->contacts++;
+    contact->color = pack_contact_color(work);
+}
+
 material_fluid *material_fluid_new(float kernel, int capacity)
 {
     assert(isfinite(kernel) && kernel > 0 && capacity > 0 && capacity <= 1000000);
@@ -61,10 +198,15 @@ material_fluid *material_fluid_new(float kernel, int capacity)
         fluid->buckets *= 2;
     }
     fluid->heads = xmalloc((size_t)fluid->buckets * sizeof *fluid->heads);
+    fluid->contact_heads = xmalloc((size_t)fluid->buckets * sizeof *fluid->contact_heads);
     memset(fluid->heads, -1, (size_t)fluid->buckets * sizeof *fluid->heads);
+    memset(fluid->contact_heads, -1, (size_t)fluid->buckets * sizeof *fluid->contact_heads);
     asetcap(fluid->particles, capacity);
     asetcap(fluid->work, capacity);
     asetcap(fluid->active, capacity);
+    asetcap(fluid->contact_used, MATERIAL_FLUID_CONTACT_LIMIT);
+    asetcap(fluid->contacts, MATERIAL_FLUID_CONTACT_LIMIT);
+    asetcap(fluid->contact_work, MATERIAL_FLUID_CONTACT_LIMIT);
     fluid->flow = material_flow_new();
     return fluid;
 }
@@ -75,8 +217,12 @@ void material_fluid_free(material_fluid *fluid)
     afree(fluid->work);
     afree(fluid->active);
     afree(fluid->used);
+    afree(fluid->contact_used);
+    afree(fluid->contacts);
+    afree(fluid->contact_work);
     afree(fluid->blasts);
     free(fluid->heads);
+    free(fluid->contact_heads);
     material_flow_free(fluid->flow);
     free(fluid);
 }
@@ -86,7 +232,10 @@ void material_fluid_clear(material_fluid *fluid)
     aclear(fluid->particles);
     aclear(fluid->work);
     aclear(fluid->active);
+    aclear(fluid->contact_used);
+    aclear(fluid->contacts);
     aclear(fluid->blasts);
+    memset(fluid->contact_heads, -1, (size_t)fluid->buckets * sizeof *fluid->contact_heads);
     material_flow_clear(fluid->flow);
 }
 
@@ -102,6 +251,19 @@ void material_fluid_set_flow(material_fluid *fluid, fluid_flow_settings settings
         material_flow_clear(fluid->flow);
     }
     fluid->flow_settings = settings;
+}
+
+void material_fluid_set_contact_settings(material_fluid *fluid, fluid_contact_settings settings)
+{
+    assert(isfinite(settings.gas_speed + settings.liquid_speed));
+    assert(settings.gas_speed >= 0 && settings.liquid_speed >= 0);
+    fluid->contact_settings = settings;
+}
+
+const fluid_contact *material_fluid_contacts(const material_fluid *fluid, int *count)
+{
+    *count = acount(fluid->contacts);
+    return acount(fluid->contacts) ? fluid->contacts : NULL;
 }
 
 uint64_t material_fluid_flow_hash(const material_fluid *fluid)
@@ -553,14 +715,138 @@ void material_fluid_push(
     }
 }
 
-static void collide(fluid_particle *p, fluid_body *body, fluid_obstacle obstacle, float dt)
+static bool segment_contact(
+    fluid_vec a,
+    fluid_vec b,
+    fluid_obstacle obstacle,
+    float skin,
+    float *fraction,
+    fluid_vec *normal
+)
 {
+    fluid_vec d = sub(b, a);
+    if (obstacle.radius > 0) {
+        float radius = obstacle.radius + skin;
+        float aa = dot(d, d), bb = dot(a, d), cc = dot(a, a) - radius * radius;
+        if (aa <= 1e-8f || cc < -1e-5f) {
+            return false;
+        }
+        if (cc <= 1e-5f) {
+            if (bb >= 0) {
+                return false;
+            }
+            float distance = sqrtf(dot(a, a));
+            if (distance <= 1e-6f) {
+                return false;
+            }
+            *normal = scale(a, 1 / distance);
+            *fraction = 0;
+            return true;
+        }
+        float projection = -bb / aa;
+        fluid_vec closest = add(a, scale(d, projection));
+        float remaining = radius * radius - dot(closest, closest);
+        if (remaining < 0) {
+            return false;
+        }
+        float t = projection - sqrtf(remaining / aa);
+        if (t < 0 || t > 1) {
+            return false;
+        }
+        fluid_vec hit = add(a, scale(d, t));
+        *normal = scale(hit, 1 / sqrtf(dot(hit, hit)));
+        *fraction = t;
+        return true;
+    }
+    fluid_vec half = { obstacle.half_size.x + skin, obstacle.half_size.y + skin };
+    float first = 0, last = 1;
+    fluid_vec entering = { 0 };
+    float origin[] = { a.x, a.y }, delta[] = { d.x, d.y },
+          extent[] = { half.x, half.y };
+    bool inside = fabsf(a.x) <= half.x && fabsf(a.y) <= half.y;
+    if (inside) {
+        float best = 0;
+        if (fabsf(fabsf(a.x) - half.x) <= 1e-5f) {
+            float sign = a.x < 0 ? -1 : 1;
+            if (-delta[0] * sign > best) {
+                best = -delta[0] * sign;
+                entering = (fluid_vec){ sign, 0 };
+            }
+        }
+        if (fabsf(fabsf(a.y) - half.y) <= 1e-5f) {
+            float sign = a.y < 0 ? -1 : 1;
+            if (-delta[1] * sign > best) {
+                best = -delta[1] * sign;
+                entering = (fluid_vec){ 0, sign };
+            }
+        }
+        if (best <= 0) {
+            return false;
+        }
+        *fraction = 0;
+        *normal = entering;
+        return true;
+    }
+    for (int axis = 0; axis < 2; axis++) {
+        if (fabsf(delta[axis]) < 1e-6f) {
+            if (fabsf(origin[axis]) > extent[axis]) {
+                return false;
+            }
+            continue;
+        }
+        float near = (-extent[axis] - origin[axis]) / delta[axis];
+        float far = (extent[axis] - origin[axis]) / delta[axis];
+        float sign = -1;
+        if (near > far) {
+            float swap = near;
+            near = far;
+            far = swap;
+            sign = 1;
+        }
+        fluid_vec axis_normal = { axis == 0 ? sign : 0, axis == 1 ? sign : 0 };
+        if (near > first) {
+            first = near;
+            entering = axis_normal;
+        }
+        last = fminf(last, far);
+        if (first > last) {
+            return false;
+        }
+    }
+    if (first < 0 || first > 1 || dot(entering, entering) < .5f) {
+        return false;
+    }
+    *fraction = first;
+    *normal = entering;
+    return true;
+}
+
+static float lerp_angle(float a, float b, float t)
+{
+    return a + remainderf(b - a, 6.28318530718f) * t;
+}
+
+static fluid_vec body_position_at(fluid_body body, float t)
+{
+    return add(body.previous_position, scale(sub(body.position, body.previous_position), t));
+}
+
+static void collide(
+    material_fluid *fluid,
+    int particle_index,
+    fluid_body *body,
+    fluid_obstacle obstacle,
+    float dt,
+    float sweep_start,
+    float sweep_end
+)
+{
+    fluid_particle *p = &fluid->particles[particle_index];
     float c = cosf(body->angle), s = sinf(body->angle);
-    fluid_vec
-        local = sub(rotate(sub(p->position, body->position), c, -s), obstacle.center);
+    fluid_vec original = p->position;
+    fluid_vec local = sub(rotate(sub(original, body->position), c, -s), obstacle.center);
     fluid_vec normal;
-    float depth;
-    float skin = p->radius * .3f;
+    float depth, skin = p->radius * .3f;
     if (obstacle.radius > 0) {
         float distance = sqrtf(dot(local, local));
         depth = obstacle.radius + skin - distance;
@@ -573,23 +859,80 @@ static void collide(fluid_particle *p, fluid_body *body, fluid_obstacle obstacle
                          : (fluid_vec){ 0, local.y < 0 ? -1 : 1 };
     }
     if (depth <= 0) {
+        fluid_vec particle_start = fluid->work[particle_index].previous;
+        fluid_vec particle_delta = sub(p->position, particle_start);
+        bool particle_moved = dot(particle_delta, particle_delta) > 1e-8f;
+        if (body->swept || particle_moved) {
+            float a = body->swept
+                        ? lerp_angle(body->previous_angle, body->angle, sweep_start)
+                        : body->angle;
+            float b = body->swept
+                        ? lerp_angle(body->previous_angle, body->angle, sweep_end)
+                        : body->angle;
+            fluid_vec p0 = body->swept ? body_position_at(*body, sweep_start)
+                                       : body->position;
+            fluid_vec p1 = body->swept ? body_position_at(*body, sweep_end)
+                                       : body->position;
+            fluid_vec from = sub(
+                rotate(sub(particle_start, p0), cosf(a), -sinf(a)),
+                obstacle.center
+            );
+            fluid_vec to = sub(
+                rotate(sub(p->position, p1), cosf(b), -sinf(b)),
+                obstacle.center
+            );
+            float fraction;
+            fluid_vec local_normal;
+            if (segment_contact(from, to, obstacle, p->radius, &fraction, &local_normal)) {
+                float angle = lerp_angle(a, b, fraction);
+                normal = rotate(local_normal, cosf(angle), sinf(angle));
+                fluid_vec center = add(particle_start, scale(particle_delta, fraction));
+                fluid_vec point = sub(center, scale(normal, p->radius));
+                fluid_body at_hit = *body;
+                if (body->swept) {
+                    float body_t = sweep_start + (sweep_end - sweep_start) * fraction;
+                    at_hit.position = body_position_at(*body, body_t);
+                }
+                fluid_vec surface = body_surface_velocity(at_hit, point);
+                surface = add(surface, scale(body->impulse, body->inverse_mass));
+                float closing = -dot(sub(p->velocity, surface), normal);
+                p->position = add(center, scale(normal, skin + 1e-3f));
+                if (closing > 0) {
+                    float impulse = closing / (1 / p->mass + body->inverse_mass);
+                    p->velocity = add(p->velocity, scale(normal, impulse / p->mass));
+                    body->impulse = sub(body->impulse, scale(normal, impulse));
+                    fluid_vec local_center = add(from, scale(sub(to, from), fraction));
+                    fluid_vec local_point = add(
+                        sub(local_center, scale(local_normal, p->radius)),
+                        obstacle.center
+                    );
+                    record_contact(fluid, p, body, obstacle.body, point, normal, local_point, closing, impulse);
+                }
+            }
+        }
         return;
     }
     normal = rotate(normal, c, s);
+    fluid_vec point = sub(original, scale(normal, p->radius));
+    fluid_vec body_velocity = body_surface_velocity(*body, point);
+    body_velocity = add(body_velocity, scale(body->impulse, body->inverse_mass));
+    float closing = -dot(sub(p->velocity, body_velocity), normal);
     p->position = add(p->position, scale(normal, depth));
-    fluid_vec body_velocity = add(body->velocity, scale(body->impulse, body->inverse_mass));
-    float closing = dot(sub(p->velocity, body_velocity), normal);
-    float impulse = fmaxf(0, -closing + fminf(depth / dt, 80) * .2f) /
+    float impulse = fmaxf(0, closing + fminf(depth / dt, 80) * .2f) /
                     (1 / p->mass + body->inverse_mass);
     p->velocity = add(p->velocity, scale(normal, impulse / p->mass));
     body->impulse = sub(body->impulse, scale(normal, impulse));
+    fluid_vec local_point = rotate(sub(point, body->position), c, -s);
+    record_contact(fluid, p, body, obstacle.body, point, normal, local_point, fmaxf(0, closing), impulse);
 }
 
 static void collide_obstacles(
     material_fluid *fluid,
     fluid_body *bodies,
     const fluid_obstacle *obstacles,
-    int count
+    int count,
+    float sweep_start,
+    float sweep_end
 )
 {
     /* Query the particle hash with each collider's AABB, instead of testing
@@ -598,6 +941,20 @@ static void collide_obstacles(
         return;
     }
     index_particles(fluid);
+    fluid_region bounds = fluid->bounds;
+    float particle_motion_x = 0, particle_motion_y = 0;
+    for (int n = 0; n < acount(fluid->active); n++) {
+        int particle = fluid->active[n];
+        fluid_vec previous = fluid->work[particle].previous;
+        fluid_vec current = fluid->particles[particle].position;
+        float high_x = bounds.x + bounds.width, high_y = bounds.y + bounds.height;
+        bounds.x = fminf(bounds.x, previous.x);
+        bounds.y = fminf(bounds.y, previous.y);
+        bounds.width = fmaxf(high_x, previous.x) - bounds.x;
+        bounds.height = fmaxf(high_y, previous.y) - bounds.y;
+        particle_motion_x = fmaxf(particle_motion_x, fabsf(current.x - previous.x));
+        particle_motion_y = fmaxf(particle_motion_y, fabsf(current.y - previous.y));
+    }
     for (int i = 0; i < count; i++) {
         fluid_obstacle obstacle = obstacles[i];
         fluid_body *body = &bodies[obstacle.body];
@@ -609,23 +966,59 @@ static void collide_obstacles(
         float ey = obstacle.radius > 0 ? obstacle.radius
                                        : fabsf(s) * obstacle.half_size.x +
                                              fabsf(c) * obstacle.half_size.y;
-        fluid_region bounds = fluid->bounds;
+        if (body->swept) {
+            float reach = fabsf(obstacle.center.x) + fabsf(obstacle.center.y) +
+                          (obstacle.radius > 0
+                               ? obstacle.radius
+                               : obstacle.half_size.x + obstacle.half_size.y);
+            fluid_vec previous = body_position_at(*body, sweep_start),
+                      current = body_position_at(*body, sweep_end);
+            center.x = (previous.x + current.x) * .5f;
+            center.y = (previous.y + current.y) * .5f;
+            ex = reach + fabsf(previous.x - current.x) * .5f;
+            ey = reach + fabsf(previous.y - current.y) * .5f;
+        }
         float skin = fluid->kernel;
-        if (center.x + ex + skin < bounds.x || center.y + ey + skin < bounds.y ||
-            center.x - ex - skin > bounds.x + bounds.width ||
-            center.y - ey - skin > bounds.y + bounds.height) {
+        float query_ex = ex + particle_motion_x, query_ey = ey + particle_motion_y;
+        if (center.x + query_ex + skin < bounds.x ||
+            center.y + query_ey + skin < bounds.y ||
+            center.x - query_ex - skin > bounds.x + bounds.width ||
+            center.y - query_ey - skin > bounds.y + bounds.height) {
             continue;
         }
-        int x0 = (int)floorf((center.x - ex - fluid->kernel) / fluid->kernel);
-        int y0 = (int)floorf((center.y - ey - fluid->kernel) / fluid->kernel);
-        int x1 = (int)floorf((center.x + ex + fluid->kernel) / fluid->kernel);
-        int y1 = (int)floorf((center.y + ey + fluid->kernel) / fluid->kernel);
+        int x0 = (int)floorf((center.x - query_ex - fluid->kernel) / fluid->kernel);
+        int y0 = (int)floorf((center.y - query_ey - fluid->kernel) / fluid->kernel);
+        int x1 = (int)floorf((center.x + query_ex + fluid->kernel) / fluid->kernel);
+        int y1 = (int)floorf((center.y + query_ey + fluid->kernel) / fluid->kernel);
+        x0 = x0 > (int)floorf(bounds.x / fluid->kernel)
+               ? x0
+               : (int)floorf(bounds.x / fluid->kernel);
+        y0 = y0 > (int)floorf(bounds.y / fluid->kernel)
+               ? y0
+               : (int)floorf(bounds.y / fluid->kernel);
+        x1 = x1 < (int)floorf((bounds.x + bounds.width) / fluid->kernel)
+               ? x1
+               : (int)floorf((bounds.x + bounds.width) / fluid->kernel);
+        y1 = y1 < (int)floorf((bounds.y + bounds.height) / fluid->kernel)
+               ? y1
+               : (int)floorf((bounds.y + bounds.height) / fluid->kernel);
+        if (x0 > x1 || y0 > y1) {
+            continue;
+        }
+        double query_cells = ((double)x1 - x0 + 1) * ((double)y1 - y0 + 1);
+        if (query_cells > acount(fluid->active)) {
+            for (int n = 0; n < acount(fluid->active); n++) {
+                int particle = fluid->active[n];
+                collide(fluid, particle, body, obstacle, fluid->delta, sweep_start, sweep_end);
+            }
+            continue;
+        }
         for (int y = y0; y <= y1; y++) {
             for (int x = x0; x <= x1; x++) {
                 for (int j = fluid->heads[bucket(fluid, x, y)]; j >= 0;
                      j = fluid->work[j].next) {
                     if (fluid->work[j].x == x && fluid->work[j].y == y) {
-                        collide(&fluid->particles[j], body, obstacle, fluid->delta);
+                        collide(fluid, j, body, obstacle, fluid->delta, sweep_start, sweep_end);
                     }
                 }
             }
@@ -646,6 +1039,7 @@ void material_fluid_tick(
 )
 {
     assert(delta > 0 && delta <= 1.f / 60 + 1e-6f && isfinite(chunk_size) && chunk_size > 0);
+    clear_contacts(fluid);
     for (int i = 0; i < body_count; i++) {
         bodies[i].impulse = (fluid_vec){ 0 };
     }
@@ -729,7 +1123,7 @@ void material_fluid_tick(
             );
         }
         CHIBI_TRACE_ZONE_BEGIN(collision_zone, "Fluid collisions");
-        collide_obstacles(fluid, bodies, obstacles, obstacle_count);
+        collide_obstacles(fluid, bodies, obstacles, obstacle_count, step * .5f, (step + 1) * .5f);
         CHIBI_TRACE_ZONE_END(collision_zone);
     }
 }

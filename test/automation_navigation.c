@@ -118,8 +118,8 @@ static project project_new()
         snprintf(path, sizeof path, "%s/%s", p.root, FOLDERS[i]);
         assert(!mkdir(path, 0755));
     }
-    snprintf(path, sizeof path, "%s/content/ui/Panel.yaml", p.root);
-    write_file(path, "rml: '<div id=\"strike\" data-event-click=\"emit(''Hit'')\">Strike</div>'\n");
+    snprintf(path, sizeof path, "%s/content/ui/Panel.rml", p.root);
+    write_file(path, "<div id=\"strike\" data-event-click=\"emit('Hit')\">Strike</div>\n");
     assert(ok(
         ask(&p, "edit_graph", "\"kind\":\"event\",\"name\":\"Hit\",\"create\":true,\"operations\":[{\"op\":\"add_variable\",\"name\":\"Amount\",\"type\":\"int\"}]")
     ));

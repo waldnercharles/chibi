@@ -1,0 +1,63 @@
+/* Studio's top bar (studio_shell.c hosts it; studio_sources.c binds
+   `editor` and `commands`): the brand, the menubar, native in the
+   #menubar slot, the document tabs, the transport with the play target's
+   menu and a paused run's steps, native in the #play-target and
+   #debug-steps slots, Settings and Search. Each button runs its command
+   with emit('studio.<id>'), and a tab's with the tab's index. */
+body { flex: 0 0 auto; }
+// The transport stays clear of the tabs as the window narrows.
+.spacer { min-width: 12dp; }
+.topbar {
+  height: 30dp; display: flex; align-items: center; gap: 2dp; padding: 0dp 6dp;
+  background-color: var(--muted); border-bottom: 1dp var(--edge);
+}
+.brand {
+  width: 22dp; height: 22dp; display: flex; align-items: center; justify-content: center;
+  margin-right: 4dp; flex-shrink: 0;
+}
+.mark { width: 11dp; height: 11dp; border-radius: 3dp; background-color: var(--primary); transform: rotate(45deg); }
+.menus { display: flex; flex: 0 0 auto; }
+// The menus' definitions, which the native menubar draws.
+#menus { display: none; }
+.btn { flex-shrink: 0; }
+.trigger { color: var(--foreground); padding: 0dp 7dp; }
+// Workspace tabs: the active one reads as a selected document tab does.
+.workspaces { display: flex; align-items: center; gap: 1dp; flex: 0 0 auto; }
+.workspace-tab {
+  height: 24dp; padding: 0dp 8dp; color: var(--muted-foreground);
+  &:hover { color: var(--foreground); }
+  &[data-state=on] { background-color: var(--background); color: var(--foreground); border-color: var(--border); }
+}
+// The side pane's toggle shows its state by the icon alone, as VS Code's layout toggles do.
+.btn.side-pane[data-state=on] { background-color: transparent; }
+.btn.side-pane[data-state=on] .icon { color: var(--foreground); }
+.btn.side-pane[data-state=off] .icon { color: var(--muted-foreground); }
+.sep { width: 1dp; height: 14dp; background-color: var(--border); margin: 0dp 6dp; flex-shrink: 0; }
+// Tabs give way first when the window narrows; menus and transport keep their size.
+.doc-tabs { display: flex; align-items: center; gap: 1dp; height: 100%; flex: 0 1 auto; min-width: 96dp; overflow: hidden; }
+// A tab selects from its face and closes from its button, hover-revealed on the others.
+.doc-tab {
+  height: 24dp; padding: 0dp; gap: 0dp; color: var(--muted-foreground);
+  &:hover { color: var(--foreground); }
+  &[data-state=on] { background-color: var(--background); color: var(--foreground); border-color: var(--border); }
+  &[data-state=on] .icon { color: var(--foreground); }
+}
+.face { display: flex; align-items: center; gap: 6dp; height: 100%; padding: 0dp 6dp 0dp 8dp; }
+.dirty-dot { width: 6dp; height: 6dp; border-radius: 3dp; background-color: var(--muted-foreground); }
+.doc-close { width: 16dp; height: 16dp; margin-right: 4dp; opacity: 0; }
+.doc-tab:hover .doc-close, .doc-tab[data-state=on] .doc-close { opacity: 1; }
+.transport { display: flex; align-items: center; gap: 4dp; flex: 0 0 auto; }
+#play-target { display: flex; flex: 0 0 auto; }
+.target { width: 168dp; }
+.group { display: flex; background-color: var(--secondary); border-radius: var(--r); }
+.group .btn { border-radius: 0dp; width: 26dp; padding: 0dp; }
+.group .btn[data-state=on] { background-color: var(--primary); }
+.group .btn[data-state=on] .icon { color: var(--primary-foreground); }
+#debug-steps { display: flex; }
+// Search narrows before anything else but the tabs.
+.search-trigger {
+  flex: 0 4 220dp; min-width: 28dp; width: 220dp; overflow: hidden; justify-content: flex-start;
+  padding: 0dp 6dp 0dp 7dp; background-color: var(--field-edit); color: var(--faint-foreground);
+  &:hover { background-color: var(--input-hover); color: var(--muted-foreground); }
+  .label { flex: 1 1 0dp; }
+}

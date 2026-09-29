@@ -239,10 +239,7 @@ studio_ui *studio_ui_new(rml_context *context, const char *project_root, char *e
         ui->default_page = xstrdup(project.ui);
     }
     chibi_project_free(&project);
-    yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
-    yyjson_mut_doc_set_root(doc, yyjson_mut_obj(doc));
-    studio_sources_add(doc);
-    ui_data_init(&ui->data, context, doc, on_emit, ui);
+    ui_data_init(&ui->data, context, studio_sources_new(), on_emit, ui);
     size_t length = strlen(project_root) + sizeof "/content";
     ui->content_root = xmalloc(length);
     snprintf(ui->content_root, length, "%s/content", project_root);
@@ -288,6 +285,10 @@ void studio_ui_frame(studio *s)
     follow_disk(s);
     game_prototype_preview_tick(s->ui->world, s->time);
     ui_data_sync(&s->ui->data, settings(s->ui));
+    ui_data_show_entities(
+        &s->ui->data,
+        engine_ui(game_prototype_preview_runtime(s->ui->world))
+    );
     studio_sources_sync(s, &s->ui->sources, &s->ui->data);
     studio_prefs_share(&s->prefs, settings(s->ui), &s->ui->prefs_seen);
 }
@@ -378,10 +379,13 @@ static void show_panel(studio *s, panel *p, ui_mount **mount, rml_element *host,
     if (!*mount) {
         *mount = ui_mount_new(ui->content_root, document);
     }
+    ui_data_bind_self(&ui->data, host, ecs_entity_to_u64(entity));
     if (ui_mount_sync(*mount, host, ui->listener, s->time)) {
         kit_style_sheet(s->kit, document, ui_mount_style(*mount));
     }
-    ui_mount_apply(*mount, engine_ui(game_prototype_preview_runtime(ui->world)), ecs_entity_to_u64(entity));
+    game_ui *model = engine_ui(game_prototype_preview_runtime(ui->world));
+    ui_mount_measure(*mount, model, ecs_entity_to_u64(entity));
+    ui_mount_apply(*mount, model, ecs_entity_to_u64(entity));
     send_activations(s, *mount, entity);
     report(s, p, *mount);
 }
@@ -458,6 +462,8 @@ void studio_ui_modal(studio *s, const char *name)
     if (component && !component->hidden && component->document &&
         component->document[0]) {
         show_panel(s, p, &p->mount, kit_modal_host(s->kit, name), component->document);
+    } else if (!strcmp(name, "Settings")) {
+        s->shortcut_recording = 0;
     }
 }
 
@@ -468,4 +474,13 @@ void studio_ui_show(studio *s, const char *name)
         ecs_entity entity = game_prototype_preview_entity_at(s->ui->world, p->index);
         GAME_GameUi_get(game_prototype_preview_world(s->ui->world), entity)->hidden = false;
     }
+}
+
+void studio_ui_show_settings(studio *s, const char *query)
+{
+    if (!s->ui) {
+        return;
+    }
+    studio_sources_search_settings(&s->ui->data, query);
+    studio_ui_show(s, "Settings");
 }

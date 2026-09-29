@@ -1,0 +1,36 @@
+/* Studio's status bar (studio_shell.c hosts it; studio_sources.c binds
+   `editor` and `commands`): the hovered area's key hints, the last
+   operation's report, the drawer toggles, which run and read their
+   commands, the scene's stats and UI Scale, a native kit control in the
+   #ui-scale slot. The report comes and goes with presence and morphs with
+   <morph-text>; the counts roll with <number-flow>. */
+body { flex: 0 0 auto; }
+.statusbar {
+  height: 24dp; display: flex; align-items: center; gap: 14dp; padding: 0dp 10dp;
+  background-color: var(--muted); border-top: 1dp var(--edge); color: var(--muted-foreground);
+  font-size: 11dp; white-space: nowrap;
+}
+.statusbar.live { border-top-color: var(--primary-edge); }
+// Hints give way first when the window narrows.
+.hints { display: flex; align-items: center; gap: 12dp; flex: 0 1 auto; min-width: 0dp; overflow: hidden; }
+// The report's area takes the free space, so a report coming or going moves nothing.
+.report-area {
+  flex: 1 1 0dp; min-width: 0dp; overflow: hidden; display: flex; align-items: center; justify-content: center;
+}
+.report {
+  display: flex; align-items: center; gap: 6dp; color: var(--foreground); transition: opacity 0.2s cubic-out;
+  &[data-starting-style], &[data-ending-style] { opacity: 0; }
+  .icon { color: var(--success); font-size: 12dp; }
+}
+.drawers { display: flex; align-items: center; gap: 2dp; flex-shrink: 0; }
+.toggle-drawer {
+  color: var(--faint-foreground);
+  .icon { font-size: 12dp; width: 14dp; }
+  &[data-state=on] { background-color: transparent; color: var(--foreground); }
+  &[data-state=on] .icon { color: var(--primary-text); }
+}
+.stats { display: flex; gap: 10dp; flex-shrink: 0; color: var(--faint-foreground); font-family: InterNumeric; }
+.stats .strong { color: var(--muted-foreground); }
+.count { display: block; white-space: nowrap; line-height: 16dp; }
+#ui-scale { display: flex; flex-shrink: 0; }
+.ui-scale { color: var(--faint-foreground); font-family: InterNumeric; }

@@ -247,6 +247,7 @@ set(RUNTIME_SUPPORT_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/materials.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/particle_emitters.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/task_pool.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/assets/new_asset.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/assets/prototype.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/assets/scene_document.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/assets/physics_settings.c
@@ -303,6 +304,7 @@ list(APPEND APP_SOURCES
 list(APPEND RUNTIME_SUPPORT_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/src/assets/ui_events.c)
 list(APPEND EDITOR_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_canvas.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_palette.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_pick.c
 )
 

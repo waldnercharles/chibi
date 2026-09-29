@@ -1,0 +1,36 @@
+#panel {
+  position: absolute; left: 81%; top: 50%;
+  width: 255dp; height: 555dp; margin-left: -127.5dp; margin-top: -277.5dp;
+  background-color: #101522; border: 1dp #5c7390; border-radius: 4dp;
+}
+.row {
+  position: absolute; left: 81%; width: 245dp; height: 45dp;
+  margin-left: -122.5dp; margin-top: -22.5dp;
+  line-height: 45dp; white-space: pre; text-align: center;
+}
+.title { font-size: 34dp; font-weight: bold; color: #d9e8f2; }
+.small { font-size: 12dp; color: #6fa3b8; }
+.caption { font-size: 13dp; color: #b88045; }
+.stat { font-size: 18dp; color: #abc0cd; }
+.hint { font-size: 13dp; color: #9db3bf; }
+#space { top: 17%; }
+#cadet { top: 22%; }
+#flight { top: 28%; }
+#caption { top: 35%; }
+#score { top: 40%; font-size: 34dp; font-weight: bold; color: #ffb343; }
+#lives { top: 48%; }
+#rank { top: 53.5%; }
+#mission {
+  top: 62.5%; width: 240dp; height: 70dp; margin-left: -120dp; margin-top: -35dp;
+  line-height: 26dp; padding-top: 9dp; font-size: 18dp; color: #ffc25c; white-space: pre-line;
+}
+#charge {
+  position: absolute; left: 81%; top: 73%; width: 215dp; height: 12dp;
+  margin-left: -107.5dp; margin-top: -6dp;
+  background-color: #283548; border-radius: 3dp;
+}
+#charge fill { background-color: #ffb53d; border-radius: 3dp; }
+#plunger { top: 77%; color: #7ca4b7; }
+#flippers { top: 84%; }
+#launch { top: 87.5%; }
+#restart { top: 91%; font-size: 11dp; color: #77919e; }

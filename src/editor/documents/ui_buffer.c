@@ -1,15 +1,14 @@
 #include "editor/documents/ui_buffer.h"
 
+#include "assets/new_asset.h"
 #include "assets/ui_document.h"
 #include "support/array.h"
-#include "support/asset_text.h"
 #include "support/rcss.h"
 #include "support/text_file.h"
 #include "support/text_overlay.h"
 #include "support/xalloc.h"
 
 #include <assert.h>
-#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -19,9 +18,6 @@
 #define UI_BUFFER_TYPING 1.0
 /* Seconds between looks at the file on disk. */
 #define UI_BUFFER_POLL 1.0
-#define UI_NAME_MAX 64
-
-static const char *const PART_KEYS[UI_PART_COUNT] = { "rml", "rcss" };
 
 static char *copy(const char *text)
 {
@@ -33,15 +29,15 @@ static bool same(const char *a, const char *b)
     return a == b || (a && b && !strcmp(a, b));
 }
 
-/* FNV-1a; 0 for a file that cannot be read. */
-static uint64_t hash_text(const char *text)
+/* FNV-1a over each text in turn, each ended by a byte no text holds. */
+static uint64_t hash_texts(char *const *texts)
 {
-    if (!text) {
-        return 0;
-    }
     uint64_t hash = 14695981039346656037ull;
-    for (const char *c = text; *c; c++) {
-        hash = (hash ^ (unsigned char)*c) * 1099511628211ull;
+    for (int p = 0; p < UI_PART_COUNT; p++) {
+        for (const char *c = texts[p]; c && *c; c++) {
+            hash = (hash ^ (unsigned char)*c) * 1099511628211ull;
+        }
+        hash = (hash ^ 0xff) * 1099511628211ull;
     }
     return hash;
 }
@@ -63,74 +59,94 @@ static void clear_steps(ui_buffer_step **steps)
     *steps = NULL;
 }
 
-/* A ui asset's text as its parts: a mapping of rml and rcss text. */
-static bool split(const char *text, char **parts, char *error, size_t size)
-{
-    yyjson_doc *doc = asset_text_read(text, error, size);
-    if (!doc) {
-        return false;
-    }
-    yyjson_val *root = yyjson_doc_get_root(doc);
-    size_t found = 0;
-    bool text_values = true;
-    for (int p = 0; p < UI_PART_COUNT; p++) {
-        yyjson_val *value = yyjson_obj_get(root, PART_KEYS[p]);
-        found += value != NULL;
-        text_values = text_values && (!value || yyjson_is_str(value));
-        parts[p] = xstrdup(yyjson_is_str(value) ? yyjson_get_str(value) : "");
-    }
-    bool ok = yyjson_is_obj(root) && yyjson_obj_size(root) == found && text_values;
-    yyjson_doc_free(doc);
-    if (!ok) {
-        free_parts(parts);
-        snprintf(error, size, "a ui asset is a mapping of rml and rcss text");
-    }
-    return ok;
-}
-
-/* The file's text as parts, and its hash. */
-static bool read_parts(const char *path, bool stylesheet, char **parts, uint64_t *hash, char *error, size_t size)
-{
-    char *text = text_file_read_disk(path);
-    if (!text) {
-        snprintf(error, size, "cannot read %s", path);
-        return false;
-    }
-    *hash = hash_text(text);
-    if (stylesheet) {
-        parts[UI_PART_RML] = NULL;
-        parts[UI_PART_RCSS] = text;
-        return true;
-    }
-    bool ok = split(text, parts, error, size);
-    free(text);
-    return ok;
-}
-
 static bool ends_with(const char *text, const char *suffix)
 {
     size_t length = strlen(text), suffix_length = strlen(suffix);
     return length >= suffix_length && !strcmp(text + length - suffix_length, suffix);
 }
 
+/* `path` with its extension `from` made `to`, owned. */
+static char *with_extension(const char *path, const char *from, const char *to)
+{
+    size_t stem = strlen(path) - strlen(from), size = stem + strlen(to) + 1;
+    char *out = xmalloc(size);
+    snprintf(out, size, "%.*s%s", (int)stem, path, to);
+    return out;
+}
+
+static bool file_exists(const char *path)
+{
+    struct stat info;
+    return stat(path, &info) == 0;
+}
+
+char *ui_buffer_document(const char *path)
+{
+    if (!ends_with(path, UI_STYLE_EXTENSION)) {
+        return xstrdup(path);
+    }
+    char *markup = with_extension(path, UI_STYLE_EXTENSION, UI_MARKUP_EXTENSION);
+    if (file_exists(markup)) {
+        return markup;
+    }
+    free(markup);
+    return xstrdup(path);
+}
+
+char *ui_buffer_part_file(const char *path, ui_part part)
+{
+    if (ends_with(path, UI_STYLE_EXTENSION)) {
+        return part == UI_PART_RCSS ? xstrdup(path) : NULL;
+    }
+    return part == UI_PART_RCSS
+             ? with_extension(path, UI_MARKUP_EXTENSION, UI_STYLE_EXTENSION)
+             : xstrdup(path);
+}
+
+/* Each part's file text on disk, the files' hash, and whether the document
+ * reads: its own file must, and a ui asset's styles are empty without one. */
+static bool read_parts(char *const *files, char **parts, uint64_t *hash, char *error, size_t size)
+{
+    for (int p = 0; p < UI_PART_COUNT; p++) {
+        parts[p] = files[p] ? text_file_read_disk(files[p]) : NULL;
+    }
+    *hash = hash_texts(parts);
+    ui_part own = files[UI_PART_RML] ? UI_PART_RML : UI_PART_RCSS;
+    if (!parts[own]) {
+        snprintf(error, size, "cannot read %s", files[own]);
+        free_parts(parts);
+        return false;
+    }
+    if (files[UI_PART_RML] && !parts[UI_PART_RCSS]) {
+        parts[UI_PART_RCSS] = xstrdup("");
+    }
+    return true;
+}
+
+static void set_files(ui_buffer *b, const char *path)
+{
+    b->path = xstrdup(path);
+    b->stylesheet = ends_with(path, UI_STYLE_EXTENSION);
+    for (int p = 0; p < UI_PART_COUNT; p++) {
+        b->files[p] = ui_buffer_part_file(path, (ui_part)p);
+    }
+}
+
 ui_buffer *ui_buffer_open(const char *path, char *error, size_t size)
 {
     assert(path[0] == '/');
-    bool stylesheet = ends_with(path, ".rcss");
-    char *parts[UI_PART_COUNT] = { 0 };
+    ui_buffer *b = xcalloc(1, sizeof *b);
+    set_files(b, path);
     uint64_t hash = 0;
-    if (!read_parts(path, stylesheet, parts, &hash, error, size)) {
+    if (!read_parts(b->files, b->parts, &hash, error, size)) {
+        ui_buffer_free(b);
         return NULL;
     }
-    ui_buffer *b = xcalloc(1, sizeof *b);
-    b->path = xstrdup(path);
-    b->stylesheet = stylesheet;
     for (int p = 0; p < UI_PART_COUNT; p++) {
-        b->parts[p] = parts[p];
-        b->saved[p] = copy(parts[p]);
+        b->saved[p] = copy(b->parts[p]);
     }
     b->disk = b->disk_seen = hash;
-    b->part = stylesheet ? UI_PART_RCSS : UI_PART_RML;
+    b->part = b->stylesheet ? UI_PART_RCSS : UI_PART_RML;
     b->typed = -1;
     b->revision = 1;
     ui_buffer_check(b);
@@ -139,18 +155,22 @@ ui_buffer *ui_buffer_open(const char *path, char *error, size_t size)
 
 static void publish(ui_buffer *b)
 {
-    char *text = ui_buffer_compose(b);
-    text_overlay_set(b->path, text);
-    free(text);
+    for (int p = 0; p < UI_PART_COUNT; p++) {
+        if (b->files[p]) {
+            text_overlay_set(b->files[p], b->parts[p]);
+        }
+    }
     b->published = true;
 }
 
-/* The file stands again; true when the text stood in for it. */
+/* The files stand again; true when the text stood in for them. */
 static bool unpublish(ui_buffer *b)
 {
     bool was = b->published;
-    if (was) {
-        text_overlay_set(b->path, NULL);
+    for (int p = 0; was && p < UI_PART_COUNT; p++) {
+        if (b->files[p]) {
+            text_overlay_set(b->files[p], NULL);
+        }
     }
     b->published = false;
     return was;
@@ -163,6 +183,7 @@ void ui_buffer_free(ui_buffer *b)
     }
     unpublish(b);
     free(b->path);
+    free_parts(b->files);
     free_parts(b->parts);
     free_parts(b->saved);
     clear_steps(&b->undo);
@@ -283,49 +304,41 @@ bool ui_buffer_dirty(const ui_buffer *b)
     return false;
 }
 
-/* ---------- The file's text ---------- */
-
-/* Canonical ui asset YAML: the markup, then the RCSS when there is any. */
-static char *compose_yaml(char *const *parts)
+bool ui_buffer_shown(const ui_buffer *b)
 {
-    yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
-    yyjson_mut_val *root = yyjson_mut_obj(doc);
-    yyjson_mut_doc_set_root(doc, root);
     for (int p = 0; p < UI_PART_COUNT; p++) {
-        if (p == UI_PART_RML || parts[p][0]) {
-            yyjson_mut_obj_add_strcpy(doc, root, PART_KEYS[p], parts[p]);
+        const char *shown = b->files[p] ? text_overlay_text(b->files[p]) : NULL;
+        if (shown ? strcmp(shown, b->parts[p]) : !same(b->parts[p], b->saved[p])) {
+            return false;
         }
     }
-    char *json = yyjson_mut_write(doc, 0, NULL);
-    yyjson_mut_doc_free(doc);
-    char error[128];
-    char *text = asset_text_to_disk(json, error, sizeof error);
-    assert(text);
-    free(json);
-    return text;
+    return true;
 }
 
-char *ui_buffer_compose(const ui_buffer *b)
-{
-    return b->stylesheet ? xstrdup(b->parts[UI_PART_RCSS]) : compose_yaml(b->parts);
-}
+/* ---------- The files' text ---------- */
 
 bool ui_buffer_check(ui_buffer *b)
 {
-    char *text = ui_buffer_compose(b);
     char directory[1024];
     const char *slash = strrchr(b->path, '/');
     snprintf(directory, sizeof directory, "%.*s", (int)(slash - b->path), b->path);
     b->error[0] = '\0';
     bool ok;
     if (b->stylesheet) {
-        char *flat = rcss_expand(text, directory, NULL, b->error, sizeof b->error);
+        char *flat = rcss_expand(
+            b->parts[UI_PART_RCSS],
+            directory,
+            NULL,
+            b->error,
+            sizeof b->error
+        );
         ok = flat != NULL;
         free(flat);
     } else {
         ui_document document = { 0 };
         ok = ui_document_read(
-            text,
+            b->parts[UI_PART_RML],
+            b->parts[UI_PART_RCSS],
             directory,
             NULL,
             &document,
@@ -335,7 +348,6 @@ bool ui_buffer_check(ui_buffer *b)
         ui_document_free(&document);
     }
     b->checked = b->revision;
-    free(text);
     return ok;
 }
 
@@ -367,9 +379,12 @@ bool ui_buffer_update(ui_buffer *b, double now, bool live)
 
 static uint64_t disk_hash(const ui_buffer *b)
 {
-    char *text = text_file_read_disk(b->path);
-    uint64_t hash = hash_text(text);
-    free(text);
+    char *texts[UI_PART_COUNT] = { 0 };
+    for (int p = 0; p < UI_PART_COUNT; p++) {
+        texts[p] = b->files[p] ? text_file_read_disk(b->files[p]) : NULL;
+    }
+    uint64_t hash = hash_texts(texts);
+    free_parts(texts);
     return hash;
 }
 
@@ -390,13 +405,18 @@ bool ui_buffer_poll_disk(ui_buffer *b, double now)
     return changed;
 }
 
-void ui_buffer_saved(ui_buffer *b, const char *text)
+bool ui_buffer_saves(const ui_buffer *b, ui_part part)
+{
+    return b->files[part] && (b->parts[part][0] || file_exists(b->files[part]));
+}
+
+void ui_buffer_saved(ui_buffer *b)
 {
     for (int p = 0; p < UI_PART_COUNT; p++) {
         free(b->saved[p]);
         b->saved[p] = copy(b->parts[p]);
     }
-    b->disk = b->disk_seen = hash_text(text);
+    b->disk = b->disk_seen = disk_hash(b);
     b->typed = -1;
     unpublish(b);
 }
@@ -405,7 +425,7 @@ bool ui_buffer_reload(ui_buffer *b, char *error, size_t size)
 {
     char *parts[UI_PART_COUNT] = { 0 };
     uint64_t hash = 0;
-    if (!read_parts(b->path, b->stylesheet, parts, &hash, error, size)) {
+    if (!read_parts(b->files, parts, &hash, error, size)) {
         return false;
     }
     free_parts(b->parts);
@@ -506,8 +526,7 @@ ui_buffer *ui_buffer_restore(yyjson_val *value)
         return NULL;
     }
     ui_buffer *b = xcalloc(1, sizeof *b);
-    b->path = xstrdup(path);
-    b->stylesheet = ends_with(path, ".rcss");
+    set_files(b, path);
     b->disk = b->disk_seen = yyjson_get_uint(yyjson_obj_get(value, "disk"));
     b->typed = -1;
     b->revision = 1;
@@ -525,41 +544,33 @@ ui_buffer *ui_buffer_restore(yyjson_val *value)
 
 /* ---------- New assets ---------- */
 
-static const char *const NEW_EXTENSIONS[UI_NEW_KIND_COUNT] = { ".yaml", ".yaml", ".rcss" };
-
 /* Names become file names and <use ui="Name"> values. */
-static bool valid_name(const char *name)
-{
-    if (!isalpha((unsigned char)name[0]) || strlen(name) > UI_NAME_MAX) {
-        return false;
-    }
-    for (const char *c = name; *c; c++) {
-        if (!isalnum((unsigned char)*c) && *c != '_' && *c != '-') {
-            return false;
-        }
-    }
-    return true;
-}
-
 char *ui_buffer_new_path(const char *folder, ui_new_kind kind, const char *name, char *error, size_t size)
 {
-    if (!valid_name(name)) {
-        snprintf(error, size, name[0] ? "Start with a letter; use letters, digits, - and _" : "Enter a name");
+    if (!new_asset_name_valid(name, error, size)) {
         return NULL;
     }
-    size_t length = strlen(folder) + strlen(name) + strlen(NEW_EXTENSIONS[kind]) + 2;
+    const char *extension = kind == UI_NEW_STYLESHEET ? UI_STYLE_EXTENSION
+                                                      : UI_MARKUP_EXTENSION;
+    size_t length = strlen(folder) + strlen(name) + strlen(extension) + 2;
     char *path = xmalloc(length);
-    snprintf(path, length, "%s/%s%s", folder, name, NEW_EXTENSIONS[kind]);
-    struct stat info;
-    if (stat(path, &info) == 0) {
-        snprintf(error, size, "%s%s already exists", name, NEW_EXTENSIONS[kind]);
-        free(path);
-        return NULL;
+    snprintf(path, length, "%s/%s%s", folder, name, extension);
+    for (int p = 0; p < UI_PART_COUNT; p++) {
+        char *file = ui_buffer_part_file(path, (ui_part)p);
+        bool taken = file && file_exists(file);
+        if (taken) {
+            snprintf(error, size, "%s already exists", strrchr(file, '/') + 1);
+        }
+        free(file);
+        if (taken) {
+            free(path);
+            return NULL;
+        }
     }
     return path;
 }
 
-char *ui_buffer_template(ui_new_kind kind)
+const char *ui_buffer_template(ui_new_kind kind, ui_part part)
 {
     static const char *const RML[UI_NEW_KIND_COUNT] = {
         [UI_NEW_WIDGET] = "<div class=\"content\"><slot/></div>",
@@ -574,9 +585,5 @@ char *ui_buffer_template(ui_new_kind kind)
                             ".title { font-size: 16dp; font-weight: 600; }\n",
         [UI_NEW_STYLESHEET] = "/* Rules ui assets share with @import. */\n",
     };
-    if (kind == UI_NEW_STYLESHEET) {
-        return xstrdup(RCSS[kind]);
-    }
-    char *const parts[UI_PART_COUNT] = { (char *)RML[kind], (char *)RCSS[kind] };
-    return compose_yaml(parts);
+    return part == UI_PART_RML ? RML[kind] : RCSS[kind];
 }

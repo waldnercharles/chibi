@@ -747,6 +747,19 @@ static const char *match_about(studio *s, const editor *e, const ed_search_match
         snprintf(text, sizeof text, "%s.", match->ui_event->description);
         return kit_string(s->kit, text);
     }
+    const ui_data_binding *b = match->ui_data;
+    if (b) {
+        snprintf(
+            text,
+            sizeof text,
+            "Gives %s self.%s%s%s.",
+            b->document,
+            b->binding.name,
+            b->binding.list ? ", a list whose rows bind " : "",
+            b->binding.list ? b->binding.fields : ""
+        );
+        return kit_string(s->kit, text);
+    }
     return node_subject_describe(&subject, text, sizeof text)
              ? kit_string(s->kit, text)
              : NULL;
@@ -755,13 +768,13 @@ static const char *match_about(studio *s, const editor *e, const ed_search_match
 /* ---------- UI events ---------- */
 
 /* The events a ui asset's markup sends that no host event or event
- * definition names already. An invalid document sends none until it reads. */
+ * definition names already. */
 static void add_document_events(ui_event **events, const reference_index *index, const reference_asset *asset)
 {
     char *text = text_file_read(asset->path);
     ui_document_event *found = NULL;
     if (text) {
-        ui_events_read(text, &found);
+        ui_document_events(text, &found);
     }
     for (int i = 0; i < acount(found); i++) {
         if (!graph_event_host_name(found[i].name) &&
@@ -771,6 +784,53 @@ static void add_document_events(ui_event **events, const reference_index *index,
     }
     ui_document_events_free(found);
     free(text);
+}
+
+static void add_document_bindings(ui_data_binding **out, const reference_asset *asset)
+{
+    char *text = text_file_read(asset->path);
+    ui_document_binding *found = NULL;
+    if (text) {
+        ui_document_bindings(text, &found);
+    }
+    for (int i = 0; i < acount(found); i++) {
+        ui_data_binding bound = { .binding = found[i] };
+        snprintf(bound.document, sizeof bound.document, "%s", asset->name);
+        apush(*out, bound);
+    }
+    afree(found);
+    free(text);
+}
+
+void studio_graph_ui_data(studio *s, bool again)
+{
+    /* A guest shares its host's graph editor, whose catalog the host keeps. */
+    if (s->hosted) {
+        return;
+    }
+    const reference_index *index = app_scene_authoring_asset_index(s->scene);
+    int behavior = index ? studio_document_asset(s) : -1;
+    if (!again && behavior == s->bound.behavior) {
+        return;
+    }
+    s->bound.behavior = behavior;
+    afree(s->bound.bindings);
+    int *documents = NULL;
+    if (behavior >= 0) {
+        reference_index_attached_documents(index, behavior, &documents);
+    }
+    for (int i = 0; i < acount(documents); i++) {
+        const reference_asset *asset = reference_index_asset_at(index, documents[i]);
+        if (asset->path) {
+            add_document_bindings(&s->bound.bindings, asset);
+        }
+    }
+    afree(documents);
+    editor_set_ui_data_catalog(
+        sg_graph_editor(s),
+        s->bound.bindings,
+        acount(s->bound.bindings)
+    );
 }
 
 void studio_add_menu_close(studio *s)
@@ -803,6 +863,7 @@ bool studio_graph_palette(studio *s)
 {
     studio_graph *g = &s->graph;
     editor *e = sg_graph_editor(s);
+    studio_graph_ui_data(s, false);
     if (!g->spawn_pending) {
         return false;
     }
@@ -818,6 +879,7 @@ bool studio_graph_palette(studio *s)
     if (!s->add_menu.read) {
         s->add_menu.events = studio_behavior_ui_events(s);
         s->add_menu.read = true;
+        studio_graph_ui_data(s, true);
     }
     editor_set_ui_event_catalog(e, s->add_menu.events, acount(s->add_menu.events));
     ed_search_match *found = ed_search_matches(e, kit_command_query(s->kit));

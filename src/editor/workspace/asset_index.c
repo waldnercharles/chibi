@@ -3,6 +3,7 @@
 #include "assets/prototype.h"
 #include "assets/scene_document.h"
 #include "assets/ui_document.h"
+#include "editor/documents/ui_buffer.h"
 #include "editor/workspace/scene_internal.h"
 #include "graph/document/serialize.h"
 #include "support/array.h"
@@ -31,6 +32,25 @@ static bool current_scene_tab(const app_scene_authoring *scene, const scene_docu
            !strcmp(scene->current_scene_tab_key, tab->key);
 }
 
+static bool has_extension(const char *path, const char *extension)
+{
+    const char *dot = strrchr(content_basename(path), '.');
+    return dot && !strcmp(dot, extension);
+}
+
+/* The ui folder lists each ui asset by its .rml, and each stylesheet; an
+   asset's .rcss opens with its .rml. */
+static bool ui_listed(const char *path)
+{
+    if (!has_extension(path, UI_STYLE_EXTENSION)) {
+        return has_extension(path, UI_MARKUP_EXTENSION);
+    }
+    char *document = ui_buffer_document(path);
+    bool own = !strcmp(document, path);
+    free(document);
+    return own;
+}
+
 static reference_asset_kind content_asset_kind(const app_scene_authoring *scene, const char *path)
 {
     static const struct
@@ -52,7 +72,9 @@ static reference_asset_kind content_asset_kind(const app_scene_authoring *scene,
     };
     for (int i = 0; i < (int)(sizeof folders / sizeof *folders); i++) {
         if (content_path_in_folder(scene, path, folders[i].folder)) {
-            return folders[i].kind;
+            return folders[i].kind != REFERENCE_ASSET_UI || ui_listed(path)
+                     ? folders[i].kind
+                     : REFERENCE_ASSET_KIND_COUNT;
         }
     }
     return REFERENCE_ASSET_KIND_COUNT;
@@ -64,7 +86,8 @@ static const char *content_asset_name(const char *path)
     static char name[256];
     snprintf(name, sizeof name, "%s", base);
     char *extension = strrchr(name, '.');
-    if (extension && !strcmp(extension, ASSET_EXTENSION)) {
+    if (extension && (!strcmp(extension, ASSET_EXTENSION) ||
+                      !strcmp(extension, UI_MARKUP_EXTENSION))) {
         *extension = '\0';
     }
     return name;
@@ -145,22 +168,20 @@ static void add_ui_references(reference_index *index, app_scene_authoring *scene
     for (int i = 0; i < acount(scene->content); i++) {
         scene_content_entry *entry = &scene->content[i];
         if (entry->directory || entry->image ||
-            content_asset_kind(scene, entry->path) != REFERENCE_ASSET_UI) {
+            content_asset_kind(scene, entry->path) != REFERENCE_ASSET_UI ||
+            !has_extension(entry->path, UI_MARKUP_EXTENSION)) {
             continue;
         }
         char *text = text_file_read(entry->path);
-        ui_document document = { 0 };
-        char error[160];
-        if (text && ui_document_read(text, NULL, NULL, &document, error, sizeof error)) {
+        if (text) {
             int source = reference_index_find_asset(
                 index,
                 REFERENCE_ASSET_UI,
                 entry->path,
                 NULL
             );
-            reference_index_add_ui(index, source, document.rml);
+            reference_index_add_ui(index, source, text);
         }
-        ui_document_free(&document);
         free(text);
     }
 }

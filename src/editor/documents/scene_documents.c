@@ -436,7 +436,7 @@ int load_system_document_json(app_scene_authoring *scene, const char *json, cons
     scene_document_tab *tab = scene->active_tab >= 0 ? &scene->tabs[scene->active_tab]
                                                      : NULL;
     if (tab && !tab->system_saved) {
-        tab->system_saved = xstrdup(json);
+        tab->system_saved = tab->system_json ? xstrdup(tab->system_json) : NULL;
     }
     snprintf(
         scene->message,
@@ -598,14 +598,18 @@ int save_behavior_document(app_scene_authoring *scene)
 
 int save_ui_document(app_scene_authoring *scene, scene_document_tab *tab)
 {
-    char *text = ui_buffer_compose(tab->ui);
-    int result = write_file_atomic(tab->path, text);
+    ui_buffer *b = tab->ui;
+    int result = 0;
+    for (int p = 0; p < UI_PART_COUNT && !result; p++) {
+        result = ui_buffer_saves(b, (ui_part)p)
+                   ? write_file_atomic(b->files[p], b->parts[p])
+                   : 0;
+    }
     if (result == 0) {
-        ui_buffer_saved(tab->ui, text);
+        ui_buffer_saved(b);
     } else {
         snprintf(scene->message, sizeof scene->message, "Could not write %s.", tab->label);
     }
-    free(text);
     return result;
 }
 

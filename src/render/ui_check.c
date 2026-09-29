@@ -15,7 +15,7 @@
 #include <string.h>
 
 /* The markup's document opens with a line of its own, so its lines are the
- * rml block's plus one, and closes on another. It has a face, as a page's
+ * .rml file's plus one, and closes on another. It has a face, as a page's
  * body has, so text lays out. */
 static const char
     DOCUMENT[] = "<rml><head><style>body { font-family: Inter; }</style></head>"
@@ -226,7 +226,7 @@ static char **load_markup(rml_context *context, const char *body, const char *ma
     return kept;
 }
 
-/* The asset's markup alone, whose lines are its rml block's; returns what
+/* The asset's markup alone, whose lines are its .rml file's; returns what
  * RmlUi logged, as it logged it. */
 static char **check_markup(rml_context *context, const ui_document *document, ui_check_message **out)
 {
@@ -350,14 +350,15 @@ static bool check_widgets(
 bool ui_check(
     const char *content_root,
     const char *name,
-    const char *text,
+    const char *rml,
+    const char *rcss,
     ui_check_message **messages,
     char *error,
     size_t error_size
 )
 {
     rml_backend *backend = rml_backend_create(1280, 720, 1);
-    bool ok = ui_check_in(rml_backend_context(backend), content_root, name, text, messages, error, error_size);
+    bool ok = ui_check_in(rml_backend_context(backend), content_root, name, rml, rcss, messages, error, error_size);
     rml_backend_destroy(backend);
     return ok;
 }
@@ -366,7 +367,8 @@ bool ui_check_in(
     rml_context *context,
     const char *content_root,
     const char *name,
-    const char *text,
+    const char *rml,
+    const char *rcss,
     ui_check_message **messages,
     char *error,
     size_t error_size
@@ -375,7 +377,7 @@ bool ui_check_in(
     char directory[1024];
     snprintf(directory, sizeof directory, "%s/ui", content_root);
     ui_document document = { 0 };
-    if (!ui_document_read(text, directory, NULL, &document, error, error_size)) {
+    if (!ui_document_read(rml, rcss, directory, NULL, &document, error, error_size)) {
         return false;
     }
     ui_data data;

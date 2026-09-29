@@ -893,4 +893,4 @@ entities:
 - name: Table lighting
   prototype: TableLighting
   components:
-    GAME.GameHRC2D: {target_fps: 60.0, debug_view: 1, particle_focal_length: 300.0}
+    GAME.GameHRC2D: {debug_view: 1, particle_focal_length: 300.0}

@@ -74,16 +74,14 @@ void sg_camera_step(studio *s)
     g->camera.active = t < 1;
 }
 
-/* Fits the selection, or everything, with 10% padding and never past 1:1. */
-void sg_frame_nodes(studio *s, bool selection, bool animate)
+/* The bounds of the selection's nodes, or of every node; false when there
+   are none. */
+static bool nodes_bounds(studio *s, bool selection, float lo[2], float hi[2])
 {
-    studio_graph *g = &s->graph;
     graph *gr = sg_active_graph(s);
     editor *e = sg_graph_editor(s);
-    if (!gr || g->surface.rect.w <= 0) {
-        return;
-    }
-    float lo[2] = { INFINITY, INFINITY }, hi[2] = { -INFINITY, -INFINITY };
+    lo[0] = lo[1] = INFINITY;
+    hi[0] = hi[1] = -INFINITY;
     for (int i = 0; i < acount(gr->nodes); i++) {
         node *n = gr->nodes[i];
         float box[4];
@@ -96,17 +94,53 @@ void sg_frame_nodes(studio *s, bool selection, bool animate)
         hi[0] = fmaxf(hi[0], box[0] + box[2]);
         hi[1] = fmaxf(hi[1], box[1] + box[3]);
     }
-    if (lo[0] > hi[0]) {
+    return lo[0] <= hi[0];
+}
+
+/* The zoom fitting the bounds with 10% padding, never past 1:1. */
+static float fit_zoom(const studio_graph *g, const float lo[2], const float hi[2])
+{
+    float w = g->surface.rect.w, h = g->surface.rect.h;
+    float zoom = fminf(fminf(w / ((hi[0] - lo[0]) * 1.2f), h / ((hi[1] - lo[1]) * 1.2f)), 1);
+    return fminf(fmaxf(zoom, ZOOM_MIN), ZOOM_MAX);
+}
+
+/* Fits the selection, or everything, with 10% padding and never past 1:1. */
+void sg_frame_nodes(studio *s, bool selection, bool animate)
+{
+    studio_graph *g = &s->graph;
+    float lo[2], hi[2];
+    if (!sg_active_graph(s) || g->surface.rect.w <= 0) {
+        return;
+    }
+    if (!nodes_bounds(s, selection, lo, hi)) {
         if (selection) {
             sg_frame_nodes(s, false, animate);
         }
         return;
     }
-    float w = g->surface.rect.w, h = g->surface.rect.h;
-    float bw = hi[0] - lo[0], bh = hi[1] - lo[1];
-    float zoom = fminf(fminf(w / (bw * 1.2f), h / (bh * 1.2f)), 1);
-    zoom = fminf(fmaxf(zoom, ZOOM_MIN), ZOOM_MAX);
-    camera_to(s, zoom, lo[0] + bw / 2 - w / 2 / zoom, lo[1] + bh / 2 - h / 2 / zoom, animate);
+    float w = g->surface.rect.w, h = g->surface.rect.h, zoom = fit_zoom(g, lo, hi);
+    float cx = (lo[0] + hi[0]) / 2, cy = (lo[1] + hi[1]) / 2;
+    camera_to(s, zoom, cx - w / 2 / zoom, cy - h / 2 / zoom, animate);
+}
+
+/* Below this, a graph opening in a small area shows its start legibly
+   instead of all of it as unreadable titles. */
+static const float OPEN_ZOOM_MIN = 0.75f, OPEN_MARGIN = 32;
+
+/* A graph opens fitted when that leaves its nodes legible; otherwise at a
+   legible zoom with its top-left corner in view, where its events start, as
+   Unreal opens a graph. Frame All (Home) still fits everything. */
+void sg_frame_open(studio *s)
+{
+    studio_graph *g = &s->graph;
+    float lo[2], hi[2];
+    if (!sg_active_graph(s) || g->surface.rect.w <= 0 ||
+        !nodes_bounds(s, false, lo, hi) || fit_zoom(g, lo, hi) >= OPEN_ZOOM_MIN) {
+        sg_frame_nodes(s, false, false);
+        return;
+    }
+    camera_to(s, OPEN_ZOOM_MIN, lo[0] - OPEN_MARGIN, lo[1] - OPEN_MARGIN, false);
 }
 
 /* A node near the edges, where overlays sit, is not in view (VS Code's reveal

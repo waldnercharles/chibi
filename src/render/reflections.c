@@ -66,15 +66,15 @@ CF_Canvas render_reflections_draw(
     cf_draw_set_texture("u_scene", cf_canvas_get_target(source));
     float rect[] = { view.min_x, view.max_y, view.width, view.height };
     float pixels[] = { 1.f / width, 1.f / height };
-    cf_draw_set_uniform("u_view", rect, CF_UNIFORM_TYPE_FLOAT, 4);
-    cf_draw_set_uniform("u_pixel", pixels, CF_UNIFORM_TYPE_FLOAT, 2);
+    cf_draw_set_uniform("u_view", rect, CF_UNIFORM_TYPE_FLOAT4, 1);
+    cf_draw_set_uniform("u_pixel", pixels, CF_UNIFORM_TYPE_FLOAT2, 1);
     for (int i = 0; i < count; i++) {
         render_reflection surface = surfaces[i];
         render_reflection *s = &surface;
-        cf_draw_set_uniform("u_plane", s->plane, CF_UNIFORM_TYPE_FLOAT, 4);
-        cf_draw_set_uniform("u_tint", s->tint, CF_UNIFORM_TYPE_FLOAT, 4);
+        cf_draw_set_uniform("u_plane", s->plane, CF_UNIFORM_TYPE_FLOAT4, 1);
+        cf_draw_set_uniform("u_tint", s->tint, CF_UNIFORM_TYPE_FLOAT4, 1);
         float optics[] = { s->strength, s->roughness };
-        cf_draw_set_uniform("u_optics", optics, CF_UNIFORM_TYPE_FLOAT, 2);
+        cf_draw_set_uniform("u_optics", optics, CF_UNIFORM_TYPE_FLOAT2, 1);
         cf_draw_quad_fill2(s->corners[0], s->corners[1], s->corners[2], s->corners[3], 0);
     }
     cf_draw_pop_shader();

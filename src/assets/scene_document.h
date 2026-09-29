@@ -30,6 +30,16 @@ int game_scene_document_set_perspective(game_scene_document *document, bool pers
 /* Names the scene's root ui document; NULL or "" leaves the project's. */
 void game_scene_document_set_ui(game_scene_document *document, const char *ui);
 int game_scene_document_entity_index(const game_scene_document *document, const char *name);
+/* Shared by document edits and Studio's live actors. name_used excludes the
+ * object being renamed. Returns the user-facing rejection in error. */
+int game_scene_entity_validate_name(const char *name, bool name_used, char *error, size_t error_size);
+int game_scene_document_rename_entity(
+    game_scene_document *document,
+    int index,
+    const char *name,
+    char *error,
+    size_t error_size
+);
 int game_scene_document_add_entity(
     game_scene_document *document,
     const char *name,

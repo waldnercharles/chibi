@@ -360,6 +360,8 @@ static void scene_tabs_discard_reverts_shared_assets()
     assert(scene_tabs_discard(f.scene, behavior_tab) == 0);
     assert(!f.scene->definition->dirty && !f.scene->definition->unsaved);
     assert(acount(f.scene->definition->working->graph->nodes) == behavior_nodes);
+    /* The closed behavior leaves the Behavior area. */
+    assert(!f.scene->graph_document_id);
     fixture_free(&f);
 }
 
@@ -517,7 +519,10 @@ static void scene_tabs_retain_system_state()
     write_system_fixture(second_path, "SystemB");
     assert(app_scene_authoring_open_system(f.scene, first_path) == 0);
     int first = f.scene->active_tab;
+    assert(!scene_tabs_dirty(f.scene, &f.scene->tabs[first]));
     assert(editor_spawn(f.graph, registry_node_by_name("Integer"), 12, 34));
+    editor_tick(f.graph, 0);
+    assert(scene_tabs_dirty(f.scene, &f.scene->tabs[first]));
     ecs_query_expr *first_query = ecs_query_expr_has(GAME_COMPONENT_GameVelocity.id);
     assert(
         first_query &&
@@ -528,6 +533,8 @@ static void scene_tabs_retain_system_state()
     assert(app_scene_authoring_open_system(f.scene, second_path) == 0);
     int second = f.scene->active_tab;
     assert(first != second);
+    assert(scene_tabs_dirty(f.scene, &f.scene->tabs[first]));
+    assert(!scene_tabs_dirty(f.scene, &f.scene->tabs[second]));
     assert(editor_spawn(f.graph, registry_node_by_name("Integer"), 56, 78));
     ecs_query_expr *second_query = ecs_query_expr_has(
         GAME_COMPONENT_GameOrientation.id
@@ -545,6 +552,7 @@ static void scene_tabs_retain_system_state()
         GAME_COMPONENT_GameVelocity.id
     );
     assert(acount(editor_active_graph(f.graph)->nodes) == first_nodes);
+    assert(scene_tabs_dirty(f.scene, &f.scene->tabs[first]));
     assert(
         f.scene->tabs[first].system_saved && f.scene->tabs[first].system_json &&
         strcmp(f.scene->tabs[first].system_saved, f.scene->tabs[first].system_json) != 0
@@ -560,6 +568,11 @@ static void scene_tabs_retain_system_state()
         GAME_COMPONENT_GameOrientation.id
     );
     assert(acount(editor_active_graph(f.graph)->nodes) == second_nodes);
+    assert(save_active_document(f.scene) == 0);
+    assert(!scene_tabs_dirty(f.scene, &f.scene->tabs[second]));
+    assert(scene_tabs_activate(f.scene, first) == 0);
+    assert(scene_tabs_dirty(f.scene, &f.scene->tabs[first]));
+    assert(!scene_tabs_dirty(f.scene, &f.scene->tabs[second]));
     remove(first_path);
     remove(second_path);
     fixture_free(&f);

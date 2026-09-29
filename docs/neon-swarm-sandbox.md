@@ -19,7 +19,7 @@ scene to reset damage and consumed fuel; the current run retains them.
 The HUD in the top-left corner shows the ship's hull as a meter, which turns
 red below 30%, and its speed, whose digits roll (`<number-flow>`). Its Repair
 hull button, or H, restores the hull.
-The `HUD` prototype shows `ui/HUD.yaml`, which reuses the `Meter` widget, and
+The `HUD` prototype shows `ui/HUD.rml`, which reuses the `Meter` widget, and
 its `HudDisplay` behavior sets both each Tick and handles the HUD's `Repair`
 event.
 

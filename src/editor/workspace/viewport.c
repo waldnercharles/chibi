@@ -127,8 +127,14 @@ void engine_viewport_set_ui(engine_viewport *viewport, const ui_world *world, co
 {
     viewport->ui_world = *world;
     if (!viewport->ui) {
-        viewport->ui = render_ui_new(content_root);
+        viewport->ui = render_ui_new(content_root, NULL);
     }
+}
+
+void engine_viewport_adopt_ui(engine_viewport *viewport, render_ui *ui)
+{
+    assert(!viewport->ui);
+    viewport->ui = ui;
 }
 
 render_ui *engine_viewport_ui(const engine_viewport *viewport)

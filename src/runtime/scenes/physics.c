@@ -1496,20 +1496,31 @@ static void solve_fluid(game_physics *physics, float delta)
         }
         b2Vec2 p = b2Body_GetPosition(body->body),
                v = b2Body_GetLinearVelocity(body->body);
+        b2Vec2 previous = body->start.p;
+        float angle = b2Rot_GetAngle(body->end.q),
+              previous_angle = b2Rot_GetAngle(body->start.q),
+              angle_delta = remainderf(angle - previous_angle, 6.28318530718f);
+        float dx = p.x - previous.x, dy = p.y - previous.y;
         float mass = b2Body_GetMass(body->body);
         const GameIgniter *igniter = GAME_GameIgniter_get_const(physics->world, body->entity);
         int index = acount(physics->fluid_bodies);
         apush(physics->fluid_ids, body->body);
         apush(
             physics->fluid_bodies,
-            ((fluid_body){ .position = { p.x, p.y },
-                           .velocity = { v.x, v.y },
-                           .angle = body->angle,
-                           .heat = igniter ? igniter->heat : 0,
-                           .owner = ecs_entity_to_u64(body->entity),
-                           .inverse_mass = body->settings.type == GAME_BODY_DYNAMIC && mass > 0
-                                             ? 1 / mass
-                                             : 0 })
+            ((fluid_body){
+                .position = { p.x, p.y },
+                .velocity = { v.x, v.y },
+                .previous_position = { previous.x, previous.y },
+                .angle = angle,
+                .previous_angle = previous_angle,
+                .angular_velocity = b2Body_GetAngularVelocity(body->body),
+                .heat = igniter ? igniter->heat : 0,
+                .owner = ecs_entity_to_u64(body->entity),
+                .swept = delta > 0 &&
+                         (dx * dx + dy * dy > 1e-6f || fabsf(angle_delta) > 1e-4f),
+                .inverse_mass = body->settings.type == GAME_BODY_DYNAMIC && mass > 0
+                                  ? 1 / mass
+                                  : 0 })
         );
         for (int part = 0; part < geometry_count(body); part++) {
             b2ShapeProxy geometry = geometry_at(body, part);

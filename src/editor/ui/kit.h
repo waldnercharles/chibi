@@ -21,7 +21,7 @@ extern "C"
      *
      * Keys are unique among siblings. Paths join ancestor keys with '/' and name
      * items for tests and inspection. Styling lives in the Studio scene's root
-     * document (projects/studio/content/ui/StudioShell.yaml and the theme files
+     * document (projects/studio/content/ui/StudioShell.rml, its .rcss and the theme files
      * it imports); behavior follows the Base UI contracts in
      * docs/prototypes/studio/kit.html. */
 
@@ -219,6 +219,11 @@ extern "C"
     /* Containers. */
     bool kit_panel_begin(kit *k, const char *key, const char *title, const char *badge, bool default_open);
     void kit_panel_end(kit *k);
+    /* After kit_panel_end: the panel's header shows a menu button while it is
+     * hovered, as Unity's component header and Blender's modifier panels offer
+     * their operations. True on the frame the button is pressed or the header
+     * right-pressed; open the panel's menu at the pointer. */
+    bool kit_panel_menu(kit *k);
     void kit_prop_begin(kit *k, const char *key, const char *label);
     void kit_prop_end(kit *k);
 
@@ -296,7 +301,9 @@ extern "C"
     bool kit_menubar_trigger(kit *k, const char *key, const char *label);
 
     /* Command palette (cmdk). Emit items while open; returns the chosen index
-     * or -1. A description shows as a muted second line under the label. */
+     * or -1. A description shows as a muted second line under the label.
+     * Items rank by text_search_score on their label, then their keywords,
+     * plus their boost, as for items used recently. */
     typedef struct kit_command_item
     {
         const char *label;
@@ -306,14 +313,20 @@ extern "C"
         const char *keywords;
         uint32_t icon;
         const char *description;
+        int boost;
     } kit_command_item;
     void kit_command_open(kit *k, const char *placeholder);
     bool kit_command_is_open(const kit *k);
     int kit_command(kit *k, const kit_command_item *items, int count);
+    /* The same, ranked against `query` rather than the typed text, as the
+     * text after a prefix such as '>'. */
+    int kit_command_filtered(kit *k, const kit_command_item *items, int count, const char *query);
     /* Items already filtered and ranked by the caller for the current query,
      * shown in order and grouped by first appearance. */
     int kit_command_ranked(kit *k, const kit_command_item *items, int count);
     const char *kit_command_query(const kit *k);
+    /* Replaces the typed text, as choosing a prefix does. */
+    void kit_command_set_query(kit *k, const char *query);
 
     /* Splitter: drag along axis 0 (x) or 1 (y). Returns true while value changes. */
     bool kit_splitter(kit *k, const char *key, int axis, float *value, float minimum, float maximum, bool invert);
@@ -568,6 +581,8 @@ extern "C"
     void kit_code_redo(kit_code_editor *e);
     int kit_code_cursor(const kit_code_editor *e);
     void kit_code_set_cursor(kit_code_editor *e, int byte);
+    /* Selects [start, end), the cursor at its end, as Find shows a match. */
+    void kit_code_select(kit_code_editor *e, int start, int end);
     /* The byte whose glyph the pointer has rested on, or -1: what the next
      * frame's desc.hover describes. */
     int kit_code_hover(const kit_code_editor *e);

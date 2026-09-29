@@ -28,7 +28,6 @@
 #include "editor/ui/kit.h"
 #include "platform/cute.h"
 #include "support/array.h"
-#include "support/file_watch.h"
 #include "ui/motion.h"
 #include "ui/rml.h"
 
@@ -135,7 +134,7 @@ typedef struct widget
     float body_height, body_top; /* list: the content sizing applied, in dp */
     rml_element *value_el, *fill_el, *input_el, *addon_el, *unit_el, *label_el,
         *icon_el, *meta_el, *twisty_el, *kbd_el, *badge_el, *head_el,
-        *swatch_el, *about_el;
+        *swatch_el, *about_el, *menu_el;
 } widget;
 
 /* Charts (kit_chart.c): what the chart element draws this frame. The chart
@@ -272,9 +271,8 @@ struct kit
     rml_context *context;
     rml_element *doc;
     rml_listener *listener;
-    file_watch *styles; /* the resource stylesheets; an edit restyles */
-    char *sheet;        /* the document's own stylesheet, beside its markup */
-    char *theme;        /* kit_theme's RCSS, before the document's own */
+    char *document;     /* the markup's file name, which names its sheets */
+    char *theme;        /* kit_theme's RCSS, the document's stylesheet */
     pair *extra_styles; /* kit_style's RCSS, added after the stylesheets */
     bool restyle;       /* the theme or the extra styles changed */
     node **roots;       /* owned: the layer, then kit_root elements */

@@ -293,7 +293,7 @@ static void test_documents()
         NULL
     );
     int scene = reference_index_add_asset(index, REFERENCE_ASSET_SCENE, "Dock", "content/scenes/Dock.yaml", NULL);
-    int hud = reference_index_add_asset(index, REFERENCE_ASSET_UI, "Hud", "content/ui/Hud.yaml", NULL);
+    int hud = reference_index_add_asset(index, REFERENCE_ASSET_UI, "Hud", "content/ui/Hud.rml", NULL);
     reference_index_add_prototype(index, prototype, ship);
     int flight = reference_index_find_name(index, REFERENCE_ASSET_BEHAVIOR, "Flight");
     int hull = reference_index_find_name(index, REFERENCE_ASSET_MATERIAL, "Hull");

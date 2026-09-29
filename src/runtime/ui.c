@@ -1,12 +1,15 @@
 #include "runtime/ui.h"
 
+#include "graph/document/serialize.h"
 #include "graph/runtime/eval.h"
 #include "graph/runtime/flow.h"
 #include "support/arena.h"
 #include "support/array.h"
 #include "support/xalloc.h"
+#include "third_party/yyjson/yyjson.h"
 
 #include <assert.h>
+#include <ctype.h>
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
@@ -14,6 +17,7 @@
 struct game_ui
 {
     game_ui_element *elements;
+    game_ui_datum *data;
     uint64_t revision;
 };
 
@@ -30,6 +34,17 @@ static void element_free(game_ui_element *e)
         free(e->classes[i].name);
     }
     afree(e->classes);
+    for (int i = 0; i < acount(e->styles); i++) {
+        free(e->styles[i].property);
+        free(e->styles[i].value);
+    }
+    afree(e->styles);
+}
+
+static void datum_free(game_ui_datum *d)
+{
+    free(d->name);
+    free(d->json);
 }
 
 void game_ui_reset(game_ui *ui)
@@ -38,6 +53,10 @@ void game_ui_reset(game_ui *ui)
         element_free(&ui->elements[i]);
     }
     afree(ui->elements);
+    for (int i = 0; i < acount(ui->data); i++) {
+        datum_free(&ui->data[i]);
+    }
+    afree(ui->data);
     ui->revision++;
 }
 
@@ -107,6 +126,41 @@ bool game_ui_set_class(game_ui *ui, uint64_t entity, const char *element, const 
     return true;
 }
 
+/* An RCSS property name: lowercase words joined by '-'. */
+static bool property_name(const char *name)
+{
+    if (!name || !islower((unsigned char)name[0])) {
+        return false;
+    }
+    for (const char *c = name; *c; c++) {
+        if (!islower((unsigned char)*c) && *c != '-') {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool game_ui_set_style(game_ui *ui, uint64_t entity, const char *element, const char *property, const char *value)
+{
+    game_ui_element *e = property_name(property) && value
+                           ? change(ui, entity, element)
+                           : NULL;
+    if (!e) {
+        return false;
+    }
+    game_ui_style *style = NULL;
+    for (int i = 0; !style && i < acount(e->styles); i++) {
+        style = !strcmp(e->styles[i].property, property) ? &e->styles[i] : NULL;
+    }
+    if (!style) {
+        apush(e->styles, ((game_ui_style){ .property = xstrdup(property) }));
+        style = &alast(e->styles);
+    }
+    free(style->value);
+    style->value = value[0] ? xstrdup(value) : NULL;
+    return true;
+}
+
 bool game_ui_set_visible(game_ui *ui, uint64_t entity, const char *element, bool visible)
 {
     game_ui_element *e = change(ui, entity, element);
@@ -158,6 +212,93 @@ bool game_ui_move_focus(game_ui *ui, uint64_t entity, const char *element, int s
     return true;
 }
 
+/* A path bindings can reach under self: a word, then words or list indices,
+   each after a '.': "score", "items.2.name". */
+static bool data_path(const char *path)
+{
+    if (!path || !(isalpha((unsigned char)path[0]) || path[0] == '_')) {
+        return false;
+    }
+    for (const char *segment = path; segment;) {
+        size_t length = strcspn(segment, ".");
+        bool index = length && isdigit((unsigned char)segment[0]);
+        for (size_t i = 0; i < length; i++) {
+            char c = segment[i];
+            if (index ? !isdigit((unsigned char)c)
+                      : !isalnum((unsigned char)c) && c != '_') {
+                return false;
+            }
+        }
+        if (!length) {
+            return false;
+        }
+        segment = segment[length] ? segment + length + 1 : NULL;
+    }
+    return true;
+}
+
+bool game_ui_set_data(game_ui *ui, uint64_t entity, const char *name, const char *json)
+{
+    yyjson_doc *doc = data_path(name) && json ? yyjson_read(json, strlen(json), 0)
+                                              : NULL;
+    if (!doc) {
+        return false;
+    }
+    yyjson_doc_free(doc);
+    game_ui_datum *d = NULL;
+    for (int i = 0; !d && i < acount(ui->data); i++) {
+        d = ui->data[i].entity == entity && !strcmp(ui->data[i].name, name)
+              ? &ui->data[i]
+              : NULL;
+    }
+    if (d && !strcmp(d->json, json)) {
+        return true;
+    }
+    if (!d) {
+        apush(ui->data, ((game_ui_datum){ .entity = entity, .name = xstrdup(name) }));
+        d = &alast(ui->data);
+    }
+    free(d->json);
+    d->json = xstrdup(json);
+    d->revision = ++ui->revision;
+    return true;
+}
+
+int game_ui_data_count(const game_ui *ui)
+{
+    return acount(ui->data);
+}
+
+const game_ui_datum *game_ui_data_at(const game_ui *ui, int index)
+{
+    assert(index >= 0 && index < acount(ui->data));
+    return &ui->data[index];
+}
+
+void game_ui_measure(
+    game_ui *ui,
+    uint64_t entity,
+    const char *element,
+    float scroll_top,
+    float view_height,
+    float content_height
+)
+{
+    assert(element && element[0]);
+    game_ui_element *e = find(ui, entity, element);
+    if (!e) {
+        apush(
+            ui->elements,
+            ((game_ui_element){ .entity = entity, .selector = xstrdup(element), .visible = -1 })
+        );
+        e = &alast(ui->elements);
+    }
+    e->measured = true;
+    e->scroll_top = scroll_top;
+    e->view_height = view_height;
+    e->content_height = content_height;
+}
+
 bool game_ui_value(const game_ui *ui, uint64_t entity, const char *element, float *value)
 {
     const game_ui_element *e = element ? find(ui, entity, element) : NULL;
@@ -170,7 +311,7 @@ bool game_ui_value(const game_ui *ui, uint64_t entity, const char *element, floa
 
 void game_ui_forget(game_ui *ui, uint64_t entity)
 {
-    int kept = 0;
+    int kept = 0, before = acount(ui->elements) + acount(ui->data);
     for (int i = 0; i < acount(ui->elements); i++) {
         if (ui->elements[i].entity == entity) {
             element_free(&ui->elements[i]);
@@ -178,8 +319,17 @@ void game_ui_forget(game_ui *ui, uint64_t entity)
         }
         ui->elements[kept++] = ui->elements[i];
     }
-    if (kept != acount(ui->elements)) {
-        asetlen(ui->elements, kept);
+    asetlen(ui->elements, kept);
+    kept = 0;
+    for (int i = 0; i < acount(ui->data); i++) {
+        if (ui->data[i].entity == entity) {
+            datum_free(&ui->data[i]);
+            continue;
+        }
+        ui->data[kept++] = ui->data[i];
+    }
+    asetlen(ui->data, kept);
+    if (acount(ui->elements) + acount(ui->data) != before) {
         ui->revision++;
     }
 }
@@ -221,6 +371,13 @@ static const char *class_call(void *ui, const pin_value *a, pin_value *)
     return game_ui_set_class(ui, a[0].u64, a[1].str, a[2].str, a[3].b) ? NULL : INVALID_UI;
 }
 
+static const char *style_call(void *ui, const pin_value *a, pin_value *)
+{
+    return game_ui_set_style(ui, a[0].u64, a[1].str, a[2].str, a[3].str ? a[3].str : "")
+             ? NULL
+             : INVALID_UI;
+}
+
 static const char *visible_call(void *ui, const pin_value *a, pin_value *)
 {
     return game_ui_set_visible(ui, a[0].u64, a[1].str, a[2].b) ? NULL : INVALID_UI;
@@ -244,6 +401,17 @@ static const char *click_call(void *ui, const pin_value *a, pin_value *)
 static const char *move_focus_call(void *ui, const pin_value *a, pin_value *)
 {
     return game_ui_move_focus(ui, a[0].u64, a[1].str, a[2].i) ? NULL : INVALID_UI;
+}
+
+static const char *scroll_call(void *ui, const pin_value *a, pin_value *results)
+{
+    const game_ui_element *e = a[1].str ? find(ui, a[0].u64, a[1].str) : NULL;
+    bool known = e && e->measured;
+    results[0].f = known ? e->scroll_top : 0;
+    results[1].f = known ? e->view_height : 0;
+    results[2].f = known ? e->content_height : 0;
+    results[3].b = known;
+    return NULL;
 }
 
 static const char *get_call(void *ui, const pin_value *a, pin_value *results)
@@ -306,6 +474,13 @@ static pin_spec CLASS_IN[] = { EXEC_IN,
                                  .type = PIN_BOOL,
                                  .type_name = "bool",
                                  .default_value = { .type = PIN_BOOL, .b = true } } };
+static pin_spec STYLE_IN[] = {
+    EXEC_IN,
+    ENTITY_IN,
+    ELEMENT_IN,
+    { .name = "Property", .type = PIN_NAME, .type_name = "name" },
+    { .name = "Value", .type = PIN_STR, .type_name = "const char *" }
+};
 static pin_spec VISIBLE_IN[] = { EXEC_IN,
                                  ENTITY_IN,
                                  ELEMENT_IN,
@@ -372,6 +547,17 @@ EFFECT_NODE(
     class_call
 );
 EFFECT_NODE(
+    SET_STYLE,
+    "Set UI Style",
+    "css rcss property width height color transform position size inline "
+    "style widget element selector",
+    "Sets an RCSS property, such as width to 40%, on the entity's UI elements "
+    "that match the Element selector; an empty Value returns it to the "
+    "stylesheets.",
+    STYLE_IN,
+    style_call
+);
+EFFECT_NODE(
     SET_VISIBLE,
     "Set UI Visible",
     "show hide display widget menu hud element selector",
@@ -416,6 +602,97 @@ EFFECT_NODE(
     move_focus_call
 );
 
+/* Any value converts to JSON, so the node takes a wildcard; an array does
+   not fit a host call's signature, so it runs as its own flow. */
+static int set_data_flow(node *, flow_context *ctx)
+{
+    game_ui *ui = flow_context_service(ctx, "game.ui");
+    if (!ui) {
+        return flow_context_fail(ctx, FLOW_ERR_NODE, MISSING_UI);
+    }
+    pin_value values[3];
+    for (int i = 0; i < 3; i++) {
+        int result = flow_context_eval_data(ctx, i + 1, &values[i]);
+        if (result < 0) {
+            return result;
+        }
+    }
+    char *json = serialize_value_json(&values[2]);
+    bool set = game_ui_set_data(ui, values[0].u64, values[1].str, json);
+    free(json);
+    return set ? flow_context_continue(ctx, 0)
+               : flow_context_fail(ctx, FLOW_ERR_ARGUMENT, "Name must be a word, or a path such as items.2.name");
+}
+
+static pin_spec DATA_IN[] = {
+    EXEC_IN,
+    ENTITY_IN,
+    { .name = "Name", .type = PIN_NAME, .type_name = "name" },
+    { .name = "Value", .type = PIN_FLOW, .kind = PIN_DATA, .flags = PIN_FLAG_WILDCARD },
+};
+static node_desc SET_DATA = {
+    .name = "Set UI Data",
+    .category = "UI",
+    .keywords = "bind binding self list rows table inventory leaderboard "
+                "data-for record json hud widget",
+    .description = "Gives the entity's UI documents Value to bind as "
+                   "self.<Name>: text, a number, a struct's fields, or a list "
+                   "data-for repeats; a path such as items.2.name sets one "
+                   "row's field.",
+    .input_count = sizeof DATA_IN / sizeof *DATA_IN,
+    .inputs = DATA_IN,
+    .output_count = 1,
+    .outputs = THEN_OUT,
+    .flow_kind = NODE_FLOW_CUSTOM,
+    .flow = set_data_flow,
+    .display_class = NODE_DISPLAY_FLOW,
+    .access = &WRITE
+};
+
+static const char *get_scroll(const eval_context *ctx, const pin_value *inputs, arena *, pin_value *out)
+{
+    void *ui = eval_context_service(ctx, "game.ui");
+    if (!ui) {
+        return "Get UI Scroll requires a game world";
+    }
+    for (int i = 0; i < 3; i++) {
+        out[i] = (pin_value){ .type = PIN_F32, .type_name = "float" };
+    }
+    out[3] = (pin_value){ .type = PIN_BOOL, .type_name = "bool" };
+    return scroll_call(ui, inputs, out);
+}
+
+static pin_spec SCROLL_OUT[] = {
+    { .name = "Scroll Top", .type = PIN_F32, .type_name = "float" },
+    { .name = "View Height", .type = PIN_F32, .type_name = "float" },
+    { .name = "Content Height", .type = PIN_F32, .type_name = "float" },
+    { .name = "Known", .type = PIN_BOOL, .type_name = "bool" },
+};
+static const node_host_call SCROLL_CALL = {
+    .service = "game.ui",
+    .invoke = scroll_call,
+    .missing_service = "Get UI Scroll requires a game world",
+    .reusable = true
+};
+static node_desc GET_SCROLL = {
+    .name = "Get UI Scroll",
+    .category = "UI",
+    .keywords = "scroll position offset list virtual window height view "
+                "content measure element selector",
+    .description = "Reads, in dp, how far the element under #id is scrolled "
+                   "and the heights of its view and its content, as the "
+                   "presenter last measured an element with data-event-scroll; "
+                   "Known is false until it has.",
+    .input_count = 2,
+    .inputs = GET_IN,
+    .output_count = 4,
+    .outputs = SCROLL_OUT,
+    .pure_kind = NODE_PURE_READ,
+    .read_inputs = get_scroll,
+    .host_call = &SCROLL_CALL,
+    .access = &READ
+};
+
 static const node_host_call GET_CALL = {
     .service = "game.ui",
     .invoke = get_call,
@@ -439,9 +716,10 @@ static node_desc GET_VALUE = {
     .access = &READ
 };
 
-static node_desc *const NODES[] = { &SET_TEXT,   &SET_CLASS, &SET_VISIBLE,
-                                    &SET_VALUE,  &FOCUS,     &CLICK,
-                                    &MOVE_FOCUS, &GET_VALUE };
+static node_desc *const NODES[] = { &SET_TEXT,    &SET_CLASS, &SET_STYLE,
+                                    &SET_VISIBLE, &SET_VALUE, &SET_DATA,
+                                    &FOCUS,       &CLICK,     &MOVE_FOCUS,
+                                    &GET_VALUE,   &GET_SCROLL };
 const registry_pack GAME_UI_PACK = { .name = "game.ui",
                                      .nodes = NODES,
                                      .node_count = sizeof NODES / sizeof *NODES };

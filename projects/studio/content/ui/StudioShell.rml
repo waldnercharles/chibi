@@ -1,0 +1,1 @@
+<body data-class-dark="save.theme == 'dark' || (save.theme == 'system' && system.dark)" data-class-comfortable="save.density == 'comfortable'"><slot/></body>

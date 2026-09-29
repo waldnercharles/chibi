@@ -1,0 +1,17 @@
+/* An Elements tree row: tag#id.class, the ui asset or widget it shows, and
+   its text. The Inspector scrolls to the row marked selected. */
+body { display: block; }
+.inspect-row { gap: 0dp; border-radius: 0dp; padding-right: 8dp; }
+.inspect-row.selected { background-color: var(--selected); }
+.inspect-row.picked { background-color: var(--primary-soft); }
+.inspect-row.hidden { opacity: 0.5; }
+.inspect-row .twisty { flex: 0 0 auto; width: 14dp; margin-right: 2dp; text-align: center; }
+.inspect-row .twisty.open { transform: rotate(90deg); }
+.inspect-row .tag { color: var(--tok-keyword); }
+.inspect-row .ident { color: var(--tok-number); }
+.inspect-row .cls { color: var(--tok-name); }
+.inspect-row .widget {
+  flex: 0 0 auto; height: 14dp; line-height: 14dp; margin-left: 6dp; padding: 0dp 4dp; border-radius: 3dp;
+  font-size: 10dp; color: var(--primary-text); background-color: var(--primary-soft);
+}
+.inspect-row .text { margin-left: 6dp; color: var(--muted-foreground); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

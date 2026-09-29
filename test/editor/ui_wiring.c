@@ -6,6 +6,7 @@
 #include "assets/ui_events.h"
 #include "editor/graph/search.h"
 #include "editor/studio/studio_internal.h"
+#include "editor/workspace/editor_internal.h"
 #include "runtime/generated.h"
 #include "test/suite_internal.h"
 
@@ -28,10 +29,10 @@ static bool names_are(const char **names, const char *const *expected, int count
 static void picker_choices()
 {
     reference_index *index = reference_index_new();
-    reference_index_add_asset(index, REFERENCE_ASSET_UI, "Settings", "content/ui/Settings.yaml", NULL);
+    reference_index_add_asset(index, REFERENCE_ASSET_UI, "Settings", "content/ui/Settings.rml", NULL);
     reference_index_add_asset(index, REFERENCE_ASSET_PROTOTYPE, "Vault", "content/prototypes/Vault.yaml", NULL);
-    reference_index_add_asset(index, REFERENCE_ASSET_UI, "bank", "content/ui/bank.yaml", NULL);
-    int widgets = reference_index_add_asset(index, REFERENCE_ASSET_UI, "Widgets", "content/ui/Widgets.yaml", NULL);
+    reference_index_add_asset(index, REFERENCE_ASSET_UI, "bank", "content/ui/bank.rml", NULL);
+    int widgets = reference_index_add_asset(index, REFERENCE_ASSET_UI, "Widgets", "content/ui/Widgets.rml", NULL);
     reference_index_add_ui(index, widgets, "<use ui=\"Missing\"/>");
     reference_index_add_asset(index, REFERENCE_ASSET_UI, "base.rcss", "content/ui/theme/base.rcss", NULL);
     static const char *const UI[] = { "bank", "Settings", "Widgets" };
@@ -125,9 +126,9 @@ static void attached_documents()
     );
     assert(vault && sign);
     reference_index *index = reference_index_new();
-    int bank = reference_index_add_asset(index, REFERENCE_ASSET_UI, "Bank", "content/ui/Bank.yaml", NULL);
-    int desk = reference_index_add_asset(index, REFERENCE_ASSET_UI, "Desk", "content/ui/Desk.yaml", NULL);
-    reference_index_add_asset(index, REFERENCE_ASSET_UI, "Notice", "content/ui/Notice.yaml", NULL);
+    int bank = reference_index_add_asset(index, REFERENCE_ASSET_UI, "Bank", "content/ui/Bank.rml", NULL);
+    int desk = reference_index_add_asset(index, REFERENCE_ASSET_UI, "Desk", "content/ui/Desk.rml", NULL);
+    reference_index_add_asset(index, REFERENCE_ASSET_UI, "Notice", "content/ui/Notice.rml", NULL);
     int teller = reference_index_add_asset(index, REFERENCE_ASSET_BEHAVIOR, "Teller", "content/behaviors/Teller.yaml", NULL);
     int prototype = reference_index_add_asset(
         index,
@@ -198,10 +199,53 @@ static void add_menu_events()
     editor_free(e);
 }
 
+/* The Add menu offers each value a document binds under self as a Set UI
+   Data that names it, and Name's choices are those values, each once with
+   the documents that bind it. */
+static void add_menu_data()
+{
+    editor *e = editor_new(behavior_asset_new("Teller"));
+    ui_document_binding *found = NULL;
+    ui_document_bindings("<div data-for=\"coin : self.coins\">{{ coin.value }}</div>{{ self.total }}", &found);
+    ui_data_binding *bindings = NULL;
+    for (int i = 0; i < acount(found); i++) {
+        ui_data_binding bank = { .binding = found[i] },
+                        till = { .binding = found[i] };
+        snprintf(bank.document, sizeof bank.document, "Bank");
+        snprintf(till.document, sizeof till.document, "Till");
+        apush(bindings, bank);
+        if (i) {
+            apush(bindings, till);
+        }
+    }
+    afree(found);
+    editor_set_ui_data_catalog(e, bindings, acount(bindings));
+    ed_search_match *matches = ed_search_matches(e, "coins value");
+    const ed_search_match *coins = NULL;
+    for (int i = 0; i < acount(matches); i++) {
+        coins = matches[i].ui_data ? &matches[i] : coins;
+    }
+    bool offered = coins && !strcmp(coins->name, "Set coins (Bank)") &&
+                   !strcmp(coins->category, "UI Data");
+    node *n = coins ? ed_spawn_match_at(e, coins, 0, 0) : NULL;
+    bool named = n && n->input_pins[2].default_value.str &&
+                 !strcmp(n->input_pins[2].default_value.str, "coins");
+    const editor_choices *choices = n ? ed_pin_choices(e, n, 0, 2) : NULL;
+    bool chosen = choices && choices->count == 2 &&
+                  !strcmp(choices->items[1].label, "total (Bank, Till)") &&
+                  !strcmp(choices->items[0].name, "coins");
+    test_check(offered && named && chosen, "the Add menu offers Set UI Data for each value a document binds, and Name chooses among them");
+    afree(matches);
+    editor_set_ui_data_catalog(e, NULL, 0);
+    afree(bindings);
+    editor_free(e);
+}
+
 void test_ui_wiring()
 {
     picker_choices();
     event_sentences();
     attached_documents();
     add_menu_events();
+    add_menu_data();
 }

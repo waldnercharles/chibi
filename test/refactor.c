@@ -87,13 +87,9 @@ static void add_content(test_project *p, int position, const test_asset *asset)
             game_scene_document_free(scene);
             return;
         }
-        case REFERENCE_ASSET_UI: {
-            ui_document document = { 0 };
-            assert(ui_document_read(asset->text, NULL, NULL, &document, error, sizeof error));
-            reference_index_add_ui(p->index, position, document.rml);
-            ui_document_free(&document);
+        case REFERENCE_ASSET_UI:
+            reference_index_add_ui(p->index, position, asset->text);
             return;
-        }
         default: {
             behavior_asset *graphs = behavior_asset_load_json(asset->text);
             assert(graphs);
@@ -149,10 +145,14 @@ static test_project project_load(const char *content)
         snprintf(folder, sizeof folder, "%s/%s", content, FOLDERS[f].folder);
         DIR *directory = opendir(folder);
         struct dirent *item;
+        /* A ui asset is its markup. */
+        const char *extension = FOLDERS[f].kind == REFERENCE_ASSET_UI ? UI_MARKUP_EXTENSION
+                                                                      : ".yaml";
+        size_t suffix = strlen(extension);
         while (directory && (item = readdir(directory))) {
             size_t length = strlen(item->d_name);
-            if (item->d_name[0] == '.' || length < 6 ||
-                strcmp(item->d_name + length - 5, ".yaml")) {
+            if (item->d_name[0] == '.' || length <= suffix ||
+                strcmp(item->d_name + length - suffix, extension)) {
                 continue;
             }
             char path[512];
@@ -160,7 +160,7 @@ static test_project project_load(const char *content)
             test_asset asset = { .kind = FOLDERS[f].kind,
                                  .name = xstrdup(item->d_name),
                                  .text = text_file_read(path) };
-            asset.name[length - 5] = '\0';
+            asset.name[length - suffix] = '\0';
             assert(asset.text);
             apush(p.assets, asset);
         }

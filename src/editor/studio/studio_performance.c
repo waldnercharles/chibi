@@ -1,8 +1,10 @@
 /* Performance: live charts of the last 30 seconds (Liveline). Frame time
- * against the 60 Hz budget, and the running scene's behavior, physics, systems
- * and rendering time with a legend (Recharts). Readouts refresh four times a
- * second so they stay readable. */
+ * against the 60 Hz budget, the running scene's behavior, physics, systems
+ * and rendering time with a legend (Recharts), and the scene's GPU time
+ * against target_fps with the lighting grids adaptive resolution chose.
+ * Readouts refresh four times a second so they stay readable. */
 #include "editor/studio/studio_internal.h"
+#include "render/scene_renderer.h"
 #include "support/array.h"
 #include "support/xalloc.h"
 
@@ -42,9 +44,12 @@ void studio_performance_sample(studio *s, double delta_seconds)
     }
     const engine_frame_timing *timing = app_scene_authoring_runtime_timing(s->scene);
     bool running = timing && app_scene_authoring_runtime_state(s->scene).playing;
+    render_radiance_status lighting;
+    bool lit = app_scene_renderer_lighting_status(s->scene->renderer, &lighting);
     studio_perf_sample sample = {
         .time = (float)s->time,
         .frame_ms = (float)(delta_seconds * 1000),
+        .scene_gpu_ms = lit ? (float)lighting.gpu_ms : -1,
         .running = running,
     };
     if (running) {
@@ -108,6 +113,67 @@ void studio_performance_header(studio *s, int area)
     kit_label(k, "title", "perf-title", "Performance");
     kit_leaf(k, "spacer", NULL, "spacer");
     kit_label(k, "readout", "perf-readout", s->perf_readout);
+}
+
+static const char *const COLOR_DETAIL[] = { "Full", "Half", "Quarter", "Eighth" };
+
+/* The scene's GPU time against a frame at target_fps, and the lighting grids
+ * adaptive resolution chose. */
+static void lighting_section(studio *s)
+{
+    kit *k = s->kit;
+    int count = acount(s->perf);
+    render_radiance_status lighting;
+    if (!app_scene_renderer_lighting_status(s->scene->renderer, &lighting)) {
+        return;
+    }
+    kit_label(k, "lighting-title", "perf-heading", "Scene GPU and lighting");
+    char text[128];
+    int used = snprintf(
+        text,
+        sizeof text,
+        "Resolution %g \xc2\xb7 color %s \xc2\xb7 gather %s",
+        lighting.resolution,
+        COLOR_DETAIL[lighting.color],
+        lighting.gather_half ? "Half" : "Full"
+    );
+    if (lighting.adaptive && lighting.rungs > 1) {
+        snprintf(
+            text + used,
+            sizeof text - used,
+            " \xc2\xb7 step %d of %d",
+            lighting.rung + 1,
+            lighting.rungs
+        );
+    }
+    kit_label(k, "lighting-state", "perf-status", text);
+    float *times = xmalloc((size_t)(count ? count : 1) * sizeof *times);
+    float *ms = xmalloc((size_t)(count ? count : 1) * sizeof *ms);
+    int measured = 0;
+    for (int i = 0; i < count; i++) {
+        if (s->perf[i].scene_gpu_ms >= 0) {
+            times[measured] = s->perf[i].time;
+            ms[measured++] = s->perf[i].scene_gpu_ms;
+        }
+    }
+    if (measured) {
+        kit_chart_series series = { times, ms, measured, SERIES_COLORS[SERIES_RENDERING] };
+        kit_chart_desc chart = {
+            .series = &series,
+            .series_count = 1,
+            .now = s->perf[count - 1].time,
+            .window = (float)WINDOW,
+            .reference = (float)lighting.budget_ms,
+            .unit = "ms",
+            .precision = 2,
+            .live = studio_active(s),
+        };
+        kit_chart(k, "lighting", "perf-chart", &chart);
+    } else {
+        kit_label(k, "lighting-idle", "perf-status", "This GPU reports no timestamps");
+    }
+    free(times);
+    free(ms);
 }
 
 void studio_performance_body(studio *s, int area)
@@ -183,6 +249,7 @@ void studio_performance_body(studio *s, int area)
     } else {
         kit_label(k, "idle", "perf-idle", "Not running");
     }
+    lighting_section(s);
     kit_pop(k);
     for (int c = 0; c < SERIES_COUNT; c++) {
         free(ms[c]);

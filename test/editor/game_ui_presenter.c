@@ -16,14 +16,6 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-static void write_file(const char *path, const char *text)
-{
-    FILE *file = fopen(path, "wb");
-    assert(file);
-    fputs(text, file);
-    fclose(file);
-}
-
 static void click(render_ui *ui, float x, float y)
 {
     rml_input_type types[] = { RML_INPUT_POINTER_MOVE,
@@ -53,26 +45,23 @@ static bool shipped_documents_load(
         chibi_project_free(&project);
         return true;
     }
-    render_ui *ui = render_ui_new(project.content);
+    render_ui *ui = render_ui_new(project.content, NULL);
     ui_world w = { .ecs = world };
     bool ok = true;
     for (struct dirent *e; ok && (e = readdir(dir));) {
         char name[128];
-        size_t length = strlen(e->d_name);
-        if (length < 6 || strcmp(e->d_name + length - 5, ".yaml") != 0 ||
-            length - 5 >= sizeof name) {
+        size_t length = strlen(e->d_name), extension = strlen(UI_MARKUP_EXTENSION);
+        if (length <= extension ||
+            strcmp(e->d_name + length - extension, UI_MARKUP_EXTENSION) ||
+            length - extension >= sizeof name) {
             continue;
         }
-        snprintf(name, sizeof name, "%.*s", (int)(length - 5), e->d_name);
+        snprintf(name, sizeof name, "%.*s", (int)(length - extension), e->d_name);
         /* A root document, with its <body>, shows as the page. */
-        char path[1300];
-        snprintf(path, sizeof path, "%s/%s", folder, e->d_name);
-        char *text = text_file_read(path), error[64];
+        char error[64];
         ui_document document = { 0 };
-        bool page = text &&
-                    ui_document_read(text, NULL, NULL, &document, error, sizeof error) &&
+        bool page = ui_document_load(folder, name, NULL, &document, error, sizeof error) &&
                     document.body;
-        free(text);
         ui_document_free(&document);
         /* Other documents show on the project's default page, as in a scene. */
         w.page = page ? name : project.ui;
@@ -82,7 +71,7 @@ static bool shipped_documents_load(
         render_ui_update(ui, &w, 1280, 720, 1.0 / 60);
         const char *warning = rml_backend_take_warning();
         ok = !render_ui_error(ui)[0] && !warning[0];
-        snprintf(failure, size, "ui/%s.yaml: %s", name, warning[0] ? warning : render_ui_error(ui));
+        snprintf(failure, size, "ui/%s.rml: %s", name, warning[0] ? warning : render_ui_error(ui));
     }
     closedir(dir);
     render_ui_free(ui);
@@ -135,13 +124,14 @@ static int destroyed_views()
  * the overlay installs. */
 static void overlay_on_page(const char *root)
 {
-    char page[96], bound[96];
-    snprintf(page, sizeof page, "%s/ui/Shell.yaml", root);
-    snprintf(bound, sizeof bound, "%s/ui/Bound.yaml", root);
-    write_file(page, "rml: '<body><slot/></body>'\n");
-    write_file(bound, "rml: '<div data-class-live=\"save.live\">{{ save.label }}</div>'\n");
+    char folder[96], page[128], bound[128];
+    snprintf(folder, sizeof folder, "%s/ui", root);
+    snprintf(page, sizeof page, "%s/Shell.rml", folder);
+    snprintf(bound, sizeof bound, "%s/Bound.rml", folder);
+    test_write_ui(folder, "Shell", "<body><slot/></body>", NULL);
+    test_write_ui(folder, "Bound", "<div data-class-live=\"save.live\">{{ save.label }}</div>", NULL);
     ecs_world *world = ecs_world_new();
-    render_ui *ui = render_ui_new(root);
+    render_ui *ui = render_ui_new(root, NULL);
     ui_world w = { .ecs = world, .page = "Shell" };
     rml_backend_keep_warnings();
     for (int i = 0; i < 3; i++) {
@@ -150,8 +140,8 @@ static void overlay_on_page(const char *root)
     }
     int first = destroyed_views();
     rml_backend_keep_warnings();
-    text_overlay_set(bound, "rml: '<p data-class-live=\"save.live\">{{ save.label }}</p>'\n");
-    text_overlay_set(page, "rml: '<body class=\"edited\"><slot/></body>'\n");
+    text_overlay_set(bound, "<p data-class-live=\"save.live\">{{ save.label }}</p>");
+    text_overlay_set(page, "<body class=\"edited\"><slot/></body>");
     for (int i = 0; i < 3; i++) {
         render_ui_set_overlay(ui, "Bound", "dark");
         render_ui_update(ui, &w, 1280, 720, 1.0 / 60);
@@ -165,24 +155,108 @@ static void overlay_on_page(const char *root)
     text_overlay_set(page, NULL);
     render_ui_free(ui);
     ecs_world_free(world);
-    unlink(page);
-    unlink(bound);
+    test_remove_ui(folder, "Shell");
+    test_remove_ui(folder, "Bound");
+}
+
+/* The text of the elements `selector` matches in the host's documents,
+   joined by '|', leaving out data-for's templates. */
+static void texts(render_ui *ui, const char *selector, char *out, size_t size)
+{
+    out[0] = '\0';
+    rml_context *context = render_ui_context(ui);
+    for (int d = 0; d < rml_context_document_count(context); d++) {
+        rml_element *found[8];
+        int count = rml_element_query_selector_all(rml_context_document(context, d), selector, found, 8);
+        for (int i = 0; i < count; i++) {
+            if (rml_element_has_attribute(found[i], "data-for")) {
+                continue;
+            }
+            char text[64];
+            rml_element_inner_rml(found[i], text, sizeof text);
+            size_t used = strlen(out);
+            snprintf(out + used, size - used, "%s%s", used ? "|" : "", text);
+        }
+    }
+}
+
+/* Set UI Data's values reach the entity's document as self: a number, and
+   a list of records data-for repeats, both changed in place; another
+   entity's document keeps its own; and a closed document drops its data. */
+static void self_data(const char *root)
+{
+    char folder[96];
+    snprintf(folder, sizeof folder, "%s/ui", root);
+    test_write_ui(
+        folder,
+        "Board",
+        "<div class=\"score\">{{ self.score }}</div>"
+        "<div class=\"item\" data-for=\"item : self.items\">{{ item.name }} {{ "
+        "item.count }}</div>",
+        NULL
+    );
+    ecs_world *world = ecs_world_new();
+    for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
+        assert(ecs_world_register_component(world, GAME_REGISTRY_COMPONENTS[i], NULL) == ECS_OK);
+    }
+    ecs_entity boards[2];
+    for (int i = 0; i < 2; i++) {
+        boards[i] = ecs_world_create_entity(world);
+        assert(GAME_GameUi_add(world, boards[i], 0) == ECS_OK);
+    }
+    assert(ecs_world_apply_commands(world) == ECS_OK);
+    for (int i = 0; i < 2; i++) {
+        *GAME_GameUi_get(world, boards[i]) = (GameUi){ .document = "Board" };
+    }
+    game_ui *model = game_ui_new();
+    ui_world w = { .ecs = world, .model = model };
+    render_ui *ui = render_ui_new(root, NULL);
+    render_ui_update(ui, &w, 1280, 720, 1.0 / 60);
+    uint64_t first = ecs_entity_to_u64(boards[0]),
+             second = ecs_entity_to_u64(boards[1]);
+    bool set = game_ui_set_data(model, first, "score", "42") &&
+               game_ui_set_data(model, first, "items", "[{\"name\":\"Gem\",\"count\":3},{\"name\":\"Key\",\"count\":1}]") &&
+               game_ui_set_data(model, second, "score", "\"none\"") &&
+               !game_ui_set_data(model, first, "bad name", "1") &&
+               !game_ui_set_data(model, first, "score", "{");
+    render_ui_update(ui, &w, 1280, 720, 1.0 / 60);
+    render_ui_update(ui, &w, 1280, 720, 1.0 / 60);
+    char scores[64], items[128];
+    texts(ui, ".score", scores, sizeof scores);
+    texts(ui, ".item", items, sizeof items);
+    bool shown = !strcmp(scores, "42|none") && !strcmp(items, "Gem 3|Key 1");
+    game_ui_set_data(model, first, "items", "[{\"name\":\"Gem\",\"count\":3}]");
+    game_ui_set_data(model, first, "items.0.count", "4");
+    render_ui_update(ui, &w, 1280, 720, 1.0 / 60);
+    render_ui_update(ui, &w, 1280, 720, 1.0 / 60);
+    texts(ui, ".item", items, sizeof items);
+    bool changed = !strcmp(items, "Gem 4");
+    ecs_world_destroy_entity(world, boards[0]);
+    assert(ecs_world_apply_commands(world) == ECS_OK);
+    render_ui_update(ui, &w, 1280, 720, 1.0 / 60);
+    bool forgotten = game_ui_data_count(model) == 1;
+    if (!(set && shown && changed && forgotten)) {
+        printf("  %d %d %d %d '%s' '%s'\n", set, shown, changed, forgotten, scores, items);
+    }
+    test_check(set && shown && changed && forgotten, "Set UI Data's values reach their entity's document as self, lists repeat and change in place, a path sets one row's field, and a closed document forgets them");
+    render_ui_free(ui);
+    game_ui_free(model);
+    ecs_world_free(world);
+    test_remove_ui(folder, "Board");
 }
 
 void test_game_ui_presenter()
 {
     shipped_documents();
-    char root[] = "/tmp/chibi-game-ui-XXXXXX", folder[64], path[96];
+    char root[] = "/tmp/chibi-game-ui-XXXXXX", folder[64];
     assert(mkdtemp(root));
     snprintf(folder, sizeof folder, "%s/ui", root);
     assert(mkdir(folder, 0700) == 0);
-    snprintf(path, sizeof path, "%s/Menu.yaml", folder);
-    write_file(
-        path,
-        "rml: |\n"
-        "  <div id=\"resume\" "
-        "data-event-click=\"emit('Resume')\">Resume</div>\n"
-        "rcss: '#resume { display: block; width: 200dp; height: 60dp; }'\n"
+    test_write_ui(
+        folder,
+        "Menu",
+        "<div id=\"resume\" data-event-click=\"emit('Resume')\">Resume</div>\n",
+        "#resume { display: block; width: 200dp; height: 60dp; }\n"
     );
     ecs_world *world = ecs_world_new();
     for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
@@ -198,7 +272,7 @@ void test_game_ui_presenter()
                    .model = model,
                    .entities = live->entities,
                    .save = game_behavior_save(live->behaviors) };
-    render_ui *ui = render_ui_new(root);
+    render_ui *ui = render_ui_new(root, NULL);
     render_ui_update(ui, &w, 1280, 720, 1.0 / 60);
     test_check(!render_ui_error(ui)[0], "a GameUi document loads from content/ui");
 
@@ -214,10 +288,10 @@ void test_game_ui_presenter()
     render_ui_update(ui, &w, 1280, 720, 1.0 / 60);
     test_check(game_entities_pending_events(live->entities) == before, "clicking outside every emitting element sends nothing");
 
-    write_file(path, "rml: ''\n");
+    test_write_ui(folder, "Menu", "", NULL);
     render_ui_update(ui, &w, 1280, 720, 1.1);
     test_check(
-        strstr(render_ui_error(ui), "ui/Menu.yaml") != NULL,
+        strstr(render_ui_error(ui), "ui/Menu.rml") != NULL,
         "an invalid edit reports its asset and keeps the last valid document"
     );
     before = game_entities_pending_events(live->entities);
@@ -228,14 +302,13 @@ void test_game_ui_presenter()
         "the last valid document keeps working after an invalid edit"
     );
 
-    char overlay[96], event[32];
-    snprintf(overlay, sizeof overlay, "%s/Pause.yaml", folder);
-    write_file(
-        overlay,
-        "rml: <div id=\"go\" data-event-click=\"emit('Resume')\">Go</div>\n"
-        "rcss: 'body { pointer-events: auto; } #go { display: block; width: "
-        "200dp; height: "
-        "60dp; } body.done #go { display: none; }'\n"
+    char event[32];
+    test_write_ui(
+        folder,
+        "Pause",
+        "<div id=\"go\" data-event-click=\"emit('Resume')\">Go</div>\n",
+        "body { pointer-events: auto; } #go { display: block; width: 200dp; "
+        "height: 60dp; } body.done #go { display: none; }\n"
     );
     before = game_entities_pending_events(live->entities);
     render_ui_set_overlay(ui, "Pause", "paused");
@@ -259,7 +332,7 @@ void test_game_ui_presenter()
         game_entities_pending_events(live->entities) == before + 1,
         "a hidden overlay lets clicks reach the world's documents"
     );
-    unlink(overlay);
+    test_remove_ui(folder, "Pause");
 
     ecs_world_destroy_entity(world, menu);
     assert(ecs_world_apply_commands(world) == ECS_OK);
@@ -267,14 +340,13 @@ void test_game_ui_presenter()
     render_ui_update(ui, &w, 1280, 720, 1.0 / 60);
     test_check(game_ui_element_count(model) == 0, "removing a GameUi forgets its elements");
 
-    char tags[96];
-    snprintf(tags, sizeof tags, "%s/Tags.yaml", folder);
-    write_file(
-        tags,
-        "rml: <div class=\"tag\" data-event-click=\"emit('A')\">A</div><div "
+    test_write_ui(
+        folder,
+        "Tags",
+        "<div class=\"tag\" data-event-click=\"emit('A')\">A</div><div "
         "class=\"tag\" "
-        "data-event-click=\"emit('B')\">B</div>\n"
-        "rcss: '.tag { display: block; height: 60dp; }'\n"
+        "data-event-click=\"emit('B')\">B</div>\n",
+        ".tag { display: block; height: 60dp; }\n"
     );
     ecs_entity strip = ecs_world_create_entity(world);
     assert(GAME_GameUi_add(world, strip, 0) == ECS_OK);
@@ -297,17 +369,14 @@ void test_game_ui_presenter()
         hidden && game_entities_pending_events(live->entities) == before + 2,
         "a selector applies a setting to every element it matches"
     );
-    unlink(tags);
+    test_remove_ui(folder, "Tags");
 
-    char host[96], button[96];
-    snprintf(host, sizeof host, "%s/Host.yaml", folder);
-    snprintf(button, sizeof button, "%s/Button.yaml", folder);
-    write_file(host, "rml: <use ui=\"Button\" id=\"go\">Go</use>\n");
-    write_file(
-        button,
-        "rml: <div class=\"button\" "
-        "data-event-click=\"emit('Go')\"><slot/></div>\n"
-        "rcss: '.button { display: block; height: 60dp; }'\n"
+    test_write_ui(folder, "Host", "<use ui=\"Button\" id=\"go\">Go</use>\n", NULL);
+    test_write_ui(
+        folder,
+        "Button",
+        "<div class=\"button\" data-event-click=\"emit('Go')\"><slot/></div>\n",
+        ".button { display: block; height: 60dp; }\n"
     );
     *GAME_GameUi_get(world, strip) = (GameUi){ .document = "Host" };
     render_ui_update(ui, &w, 1280, 720, 1.0 / 60);
@@ -316,24 +385,22 @@ void test_game_ui_presenter()
     render_ui_update(ui, &w, 1280, 720, 1.0 / 60);
     bool used = !render_ui_error(ui)[0] &&
                 game_entities_pending_events(live->entities) == before + 1;
-    write_file(button, "rml: <div class=\"button\"><slot/></div>\n");
+    test_write_ui(folder, "Button", "<div class=\"button\"><slot/></div>\n", ".button { display: block; height: 60dp; }\n");
     render_ui_update(ui, &w, 1280, 720, 1.1);
     before = game_entities_pending_events(live->entities);
     click(ui, 40, 20);
     render_ui_update(ui, &w, 1280, 720, 1.0 / 60);
     test_check(used && game_entities_pending_events(live->entities) == before, "a widget's events reach its host's entity, and editing it reloads the host");
-    unlink(host);
-    unlink(button);
+    test_remove_ui(folder, "Host");
+    test_remove_ui(folder, "Button");
 
-    char options[96];
-    snprintf(options, sizeof options, "%s/Options.yaml", folder);
-    write_file(
-        options,
-        "rml: <input type=\"checkbox\" id=\"sound\" "
-        "data-checked=\"save.sound\"/>"
+    test_write_ui(
+        folder,
+        "Options",
+        "<input type=\"checkbox\" id=\"sound\" data-checked=\"save.sound\"/>"
         "<input type=\"radio\" id=\"loud\" data-checked=\"save.volume\" "
-        "value=\"loud\"/>\n"
-        "rcss: 'input { display: block; width: 40dp; height: 40dp; }'\n"
+        "value=\"loud\"/>\n",
+        "input { display: block; width: 40dp; height: 40dp; }\n"
     );
     game_save *settings = game_behavior_save(live->behaviors);
     game_save_set(settings, "sound", "true");
@@ -361,15 +428,14 @@ void test_game_ui_presenter()
         "a binding saves only the key it changed, so a key saved in the same "
         "frame keeps its value"
     );
-    unlink(options);
+    test_remove_ui(folder, "Options");
 
-    char keys[96];
-    snprintf(keys, sizeof keys, "%s/Keys.yaml", folder);
-    write_file(
-        keys,
-        "rml: <div data-keys=\"Enter:Choose\"><div id=\"row\" autofocus "
-        "data-event-click=\"emit('Row')\">Row</div></div>\n"
-        "rcss: '#row { display: block; height: 40dp; tab-index: auto; }'\n"
+    test_write_ui(
+        folder,
+        "Keys",
+        "<div data-keys=\"Enter:Choose\"><div id=\"row\" autofocus "
+        "data-event-click=\"emit('Row')\">Row</div></div>\n",
+        "#row { display: block; height: 40dp; tab-index: auto; }\n"
     );
     *GAME_GameUi_get(world, strip) = (GameUi){ .document = "Keys" };
     render_ui_update(ui, &w, 1280, 720, 1.0 / 60);
@@ -381,14 +447,16 @@ void test_game_ui_presenter()
     render_ui_update(ui, &w, 1280, 720, 1.0 / 60);
     render_ui_update(ui, &w, 1280, 720, 1.0 / 60);
     test_check(keyed && game_entities_pending_events(live->entities) == before + 2, "data-keys sends an event from the autofocused element, and Click UI Element clicks");
-    unlink(keys);
+    test_remove_ui(folder, "Keys");
 
     /* A page's RCSS styles the documents in its slot, unscoped. */
-    char page[96], tall[96];
-    snprintf(page, sizeof page, "%s/Page.yaml", folder);
-    snprintf(tall, sizeof tall, "%s/Tall.yaml", folder);
-    write_file(page, "rml: '<body class=\"page\"><div class=\"bar\"/><slot/></body>'\nrcss: '.page .tall { display: block; height: 80dp; }'\n");
-    write_file(tall, "rml: <div class=\"tall\" data-event-click=\"emit('Hit')\">Hit</div>\n");
+    test_write_ui(
+        folder,
+        "Page",
+        "<body class=\"page\"><div class=\"bar\"/><slot/></body>",
+        ".page .tall { display: block; height: 80dp; }"
+    );
+    test_write_ui(folder, "Tall", "<div class=\"tall\" data-event-click=\"emit('Hit')\">Hit</div>\n", NULL);
     *GAME_GameUi_get(world, strip) = (GameUi){ .document = "Tall" };
     w.page = "Page";
     render_ui_update(ui, &w, 1280, 720, 1.0 / 60);
@@ -402,23 +470,20 @@ void test_game_ui_presenter()
     );
     w.page = NULL;
     render_ui_update(ui, &w, 1280, 720, 1.0 / 60);
-    unlink(page);
-    unlink(tall);
+    test_remove_ui(folder, "Page");
+    test_remove_ui(folder, "Tall");
 
-    char broken[96];
-    snprintf(broken, sizeof broken, "%s/Broken.yaml", folder);
-    write_file(broken, "rml: <div data-event-click=\"emit('Go'\">Go</div>\n");
+    test_write_ui(folder, "Broken", "<div data-event-click=\"emit('Go'\">Go</div>\n", NULL);
     *GAME_GameUi_get(world, strip) = (GameUi){ .document = "Broken" };
     render_ui_update(ui, &w, 1280, 720, 1.0 / 60);
-    test_check(strstr(render_ui_error(ui), "ui/Broken.yaml") != NULL, "a binding RmlUi rejects is the asset's error");
-    unlink(broken);
+    test_check(strstr(render_ui_error(ui), "ui/Broken.rml") != NULL, "a binding RmlUi rejects is the asset's error");
+    test_remove_ui(folder, "Broken");
 
-    char panel[96];
-    snprintf(panel, sizeof panel, "%s/Panel.yaml", folder);
-    write_file(
-        panel,
-        "rml: <div id=\"go\" data-event-click=\"emit('Go')\">Go</div>\n"
-        "rcss: '#go { display: block; width: 200dp; height: 60dp; }'\n"
+    test_write_ui(
+        folder,
+        "Panel",
+        "<div id=\"go\" data-event-click=\"emit('Go')\">Go</div>\n",
+        "#go { display: block; width: 200dp; height: 60dp; }\n"
     );
     *GAME_GameUi_get(world, strip) = (GameUi){ .document = "Panel", .hidden = true };
     render_ui_update(ui, &w, 1280, 720, 1.0 / 60);
@@ -435,13 +500,14 @@ void test_game_ui_presenter()
         "a hidden GameUi shows while the editor reveals its entity"
     );
     w.revealed = 0;
-    unlink(panel);
+    test_remove_ui(folder, "Panel");
     overlay_on_page(root);
+    self_data(root);
 
     render_ui_free(ui);
     game_live_world_free(live);
     ecs_world_free(world);
-    unlink(path);
+    test_remove_ui(folder, "Menu");
     rmdir(folder);
     rmdir(root);
 }

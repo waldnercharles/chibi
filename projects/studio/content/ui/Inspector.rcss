@@ -1,0 +1,37 @@
+/* The UI Inspector (studio_inspect.c; studio_sources.c binds `inspector`).
+   The tree and the details scroll apart, side by side in a wide area. */
+body { overflow: hidden; padding: 0dp; }
+.inspector { position: absolute; left: 0dp; top: 0dp; right: 0dp; bottom: 0dp; display: flex; flex-direction: column; }
+.toolbar {
+  flex: 0 0 auto; display: flex; align-items: center; gap: 6dp; height: 30dp; padding: 0dp 6dp;
+  border-bottom: 1dp var(--line);
+}
+.toolbar .targets { flex: 0 0 auto; margin-left: auto; }
+.toolbar .targets .seg { flex: 0 0 auto; }
+.segmented .seg.on { background-color: var(--primary); color: var(--primary-foreground); }
+.panes { flex: 1 1 0dp; display: flex; flex-direction: column; }
+.inspector.wide .panes { flex-direction: row; }
+.inspect-tree { flex: 1 1 0dp; overflow: auto; padding: 4dp 0dp; }
+.details { flex: 1 1 0dp; overflow-y: auto; padding: 6dp 8dp 10dp; border-top: 1dp var(--line); }
+.inspector.wide .details { border-top-width: 0dp; border-left: 1dp var(--line); }
+.note { display: block; padding: 10dp 8dp; color: var(--faint-foreground); text-align: center; }
+.heading { display: flex; align-items: center; gap: 6dp; }
+.heading .title { color: var(--tok-keyword); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.path { display: block; margin-top: 2dp; font-size: 11dp; color: var(--faint-foreground); word-break: break-all; }
+.source { display: flex; align-items: center; gap: 6dp; margin-top: 6dp; }
+.force { display: flex; align-items: center; gap: 4dp; margin-top: 8dp; }
+.force-label { color: var(--muted-foreground); margin-right: 4dp; }
+.chip { position: relative; display: block; height: 20dp; }
+.chip input { position: absolute; left: 0dp; top: 0dp; width: 100%; height: 100%; opacity: 0; }
+.chip span {
+  display: block; height: 20dp; line-height: 20dp; padding: 0dp 6dp; border-radius: var(--r); font-size: 11dp;
+  color: var(--muted-foreground); background-color: var(--secondary);
+}
+.chip:hover span { background-color: var(--field-hover); color: var(--foreground); }
+.chip input:checked ~ span { background-color: var(--primary); color: var(--primary-foreground); }
+.pseudo { display: block; margin-top: 4dp; font-size: 11dp; color: var(--faint-foreground); }
+.tabs { margin-top: 10dp; }
+.pane { display: block; margin-top: 6dp; }
+.pair { display: flex; gap: 8dp; min-height: 18dp; line-height: 18dp; }
+.pair .name { flex: 0 0 40%; color: var(--tok-name); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pair .value { flex: 1 1 0dp; color: var(--foreground); word-break: break-all; }

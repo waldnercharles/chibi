@@ -18,7 +18,7 @@ Unity's UI Toolkit is the closest analog: UXML/USS map to RML/RCSS.
 
 ## Decisions
 
-- **Text is the source of truth.** The Text Editor, the visual designer and the MCP all change a UI document through `text_edit`s (`src/support/text_edit.h`). There is one undo stack, and the author's formatting survives.
+- **Text is the source of truth.** The Text Editor and the visual designer change a UI document through `text_edit`s (`src/support/text_edit.h`). There is one undo stack, and the author's formatting survives. Agents write the `.rml` and `.rcss` files, as a person does.
 - **One history: the document's buffer.** The `ui_buffer` keeps the undo history and the Text Editor's code editors keep none (`kit_code_desc.history`). Typing reaches the buffer as typed text, which joins the step being typed; an accepted completion is a step of its own; and the editor's undo keys (⌘Z, Vim's `u` and Control+R) step the buffer as Studio's Undo does. Whatever changes the buffer comes back to the editor as one edit, so its cursor keeps its place, and after an undo it lands on the change. Each open document part keeps its own code editor, with its cursor, scroll and Vim state.
 - **The text editor is [Zep](https://github.com/Rezonality/zep)** (MIT; Vim and standard modes), drawn through RmlUi, not ImGui.
   - `src/editor/text/zep_bridge.{h,cpp}` is a pass-through C wrapper, like `src/ui/rml.cpp`.
@@ -30,6 +30,30 @@ Unity's UI Toolkit is the closest analog: UXML/USS map to RML/RCSS.
   - Properties is its Details;
   - Assets is its Library;
   - the Text Editor area (`STUDIO_EDITOR_CODE`) shows its source.
+- **A UI document's tab selects the UI workspace**: Canvas beside the Text
+  Editor, Hierarchy and Details on the right. Any other tab selects Layout.
+  Each workspace remembers its sizes, editors, drawer and side pane; View ▸
+  Workspace or the top bar's tabs switch by hand until the tab changes, and
+  Settings ▸ Workspace Follows Tab turns following off. Switching changes only
+  the areas: documents, selection, history and playback stay.
+- **Behaviors feed documents data as `self`.** Set UI Data (Entity, Name,
+  Value) gives an entity's documents a value to bind as `self.<Name>`, the way
+  a component's props reach it. Value takes any type and arrives as JSON:
+  `{{ self.score }}` shows a number; an array of structs repeats with
+  `data-for="row : self.items"` and `{{ row.name }}`; Name `items.2.name` sets
+  one row's field. Values change in place, so bound views stay bound. Studio's
+  own panels bind `self` to their Studio-scene entity the same way.
+  - Studio reflects each document's `self` bindings
+    (`ui_document_bindings`): the Add menu offers "Set items (Hud)" for the
+    documents on what attaches the behavior, Name offers their names, and the
+    MCP's searchNodes returns the same presets with the rows' fields.
+- **VirtualList is an authored widget.** `<use ui="VirtualList" id="list">`
+  wraps a row template (`data-for="row, i : self.rows"`, rows of one fixed
+  height). The VirtualList behavior reads where the list is scrolled (Get UI
+  Scroll), sets `self.first` and `self.row`, and sends ShowRows(First, Count)
+  when the rows in view change; the entity's own behavior answers with
+  `self.rows` (Array's Slice of its data) and `self.total`. The widget gallery
+  (the Widgets panel, WidgetGallery) shows ten thousand rows this way.
 - **Live apply is an overlay.** `src/support/text_overlay.h` holds unsaved text:
   - `text_file_read` returns it in place of the file;
   - `file_watch_changed` sees each change at once.
@@ -49,10 +73,11 @@ These are on `main` and used by more than one workstream.
 | Command registry | `studio_internal.h` (`studio_command_*`), `studio_commands.c` | Add a command by adding a table row plus its `enabled`/`run` cases |
 | `STUDIO_EDITOR_CODE` | `studio_code.c` | The Text Editor area: the shown UI document's part in `kit_code`. Typing reaches the `ui_buffer` as typed text; edits made elsewhere come back to the editor as `text_edit`s. `s->code.editor` is the code editor shown, holding `editor_path`'s `editor_part`; each open part keeps its own (I) |
 | `kit_code`, `kit_code_editor` | `src/editor/ui/kit.h` (C, I) | The code editor on Zep: `kit_code_apply` takes `text_edit`s as one undo step; results report changes, `:w`, cursor moves, chords for the command registry, accepted completions, and the undo keys (with `desc.history`), Go to Definition, Find References and Control+Space for the host; `desc` carries highlighting spans, diagnostics by line, completion items and the hover card's text for the byte `kit_code_hover` names |
-| `studio_open_ui_source(s, path, line)`, `studio_open_ui_part(s, path, part, line)` | `studio_code.c` | Opens a UI document in the Text Editor and selects a 1-based line of one part: `studio_open_ui_source` takes an element source (`data-src`, the `rml` block's line), `studio_open_ui_part` with `UI_PART_RCSS` a style origin in a `.yaml` asset (the `rcss` block's line). A `.rcss` path has one part, so either takes its file line |
-| `ui_buffer` | `src/editor/documents/ui_buffer.h` | A UI document's text (`APP_EDITOR_DOCUMENT_UI` tabs): parts changed through `text_edit`s with undo, checked, published as overlays, saved as canonical YAML |
-| `studio_preview_ui(s, asset)` | `studio_canvas.c` (K) | Shows one ui asset alone in the Scene area (the Canvas); NULL returns the area to the scene. The Scene area follows the active UI document with it |
+| `studio_open_ui_source(s, path, line)`, `studio_open_ui_part(s, path, part, line)` | `studio_code.c` | Opens a UI document in the Text Editor and selects a 1-based line of one part: `studio_open_ui_source` takes an element source (`data-src`, the `.rml` line) or a `.rcss` path, `studio_open_ui_part` with `UI_PART_RCSS` a style origin. A ui asset's `.rcss` opens the document its `.rml` is (`ui_buffer_document`) |
+| `ui_buffer` | `src/editor/documents/ui_buffer.h` | A UI document's text (`APP_EDITOR_DOCUMENT_UI` tabs): a ui asset's `.rml` and `.rcss` as its RML and RCSS parts, or a stylesheet's `.rcss`; changed through `text_edit`s with undo, checked, published as overlays, each part saved to its file as written |
+| `studio_preview_ui(s, asset)` | `studio_canvas.c` (K) | Shows one ui asset alone in the Scene area (the Canvas); NULL returns the area to the scene. The Scene area follows the active UI document with it. With the Studio project open, the Canvas binds the data Studio's chrome does (`world`, `theme`, `inspector`, `settings`, `editor`, `commands`) through `studio_sources_show`, which applies nothing the preview writes; its `studio.*` events only reach the Actions log |
 | `render_ui_context(ui)` | `src/render/ui.h` | The game UI's RmlUi context, for the Inspector |
+| Host data | `render_ui_new(content_root, data)`, `render_ui_data(ui)` in `src/render/ui.h`; `engine_viewport_adopt_ui` in `src/runtime/engine.h` | A host gives its documents `data`'s root members as variables beside `save` and `system`, and shows them in `render_ui_data`'s model; a viewport takes documents a host made this way |
 | Game UI keyboard (X) | `render_ui_wants_text` in `src/render/ui.h`; `engine_viewport_ui_keys`, `engine_viewport_ui_typing` and the host input's `keys` in `src/runtime/engine.h` | Hosts give game documents key presses and typed text, in order, while the game plays: Studio's Scene and Canvas preview through the host input, the standalone player from ImGui and Cute. While a text field has focus (`engine_viewport_ui_typing`), gameplay and single-key shortcuts leave its letters alone and the host starts SDL text input |
 | Text Editor preferences | `studio_prefs`: `code_vim`, `code_font_size`, `code_apply_live`, `code_wrap` | Mirrored to `save.codeVim`, `save.codeFontSize`, `save.codeApplyLive` and `save.codeWrap` |
 | Settings table (F) | `studio_settings[]` in `studio_settings.c`, `studio_setting_*` in `studio_internal.h` | Add a preference by adding a `studio_prefs` field and a row; the preferences file, its saved key and the Settings page follow |
@@ -60,10 +85,10 @@ These are on `main` and used by more than one workstream.
 | Places (I) | `studio_code_open_place(s, place)` in `studio_code.c`; `studio_reference.ui` | Opens a `ui_code_place` in the Text Editor at its byte; a Find row with a `ui` place opens that way |
 | Hover (I) | `ui_source_hover`, `ui_source_describe` in `src/assets/ui_source.h` | What a name is, where the project defines it and how often it is used; the Text Editor's hover card, and `findReferences`' `description` for ui symbols |
 | Checking in a kept context (I) | `ui_check_in(context, …)` in `src/render/ui_check.h` | `ui_check` in a scratch context the caller keeps: destroying a backend releases every context's font resources |
-| Element source | `data-src="<Asset>:<line>"` on each element: `ui_document_sources(rml, asset, first)` and `ui_document_expand(…, sources, …)` in `src/assets/ui_document.h` (A) | The line is 1-based in the asset's `rml` block. A widget's elements name the widget, and the div in place of a `<use>` names the use element. Every `ui_mount` and `render_ui`'s page mark their elements; `<slot>` is never marked, and `data-src` is reserved |
-| Stylesheet origin | `rml_element_property_source(element, property, sheet, size, &line)` (`src/ui/rml.h`), then `ui_style_origin(sheet, line, path, size, &source_line)` (`src/support/ui_style.h`) (A) | RmlUi reports the rule's sheet name and its line. Hosts install named sheets (`rml_document_set_named_style_sheet`, `rml_document_add_named_style_sheet`) and record each sheet's `rcss_map` with `ui_style_set`. The sheets are `game-ui-<n>` for a `render_ui`, `kit-<document>` for a kit's theme and resources, and `kit-<document>-<key>` for each `kit_style_sheet`. `path` is an imported stylesheet's path; for a line of a ui asset's own `rcss` block it is the asset's `.yaml` path, and the line counts from the block's first line |
-| UI language service | `src/assets/ui_source.h` (B) | Parses a ui asset's file (or a `.rcss` file) with tree-sitter: spans, outline, diagnostics, completion, symbols and references, and edits as `text_edit`s on the file. Positions are file byte offsets |
-| UI check | `ui_check(content_root, name, text, …)` in `src/render/ui_check.h` (B) | Every RmlUi warning of a ui asset, at the line of its rml or rcss block, or of the import or widget that wrote it |
+| Element source | `data-src="<Asset>:<line>"` on each element: `ui_document_sources(rml, asset, first)` and `ui_document_expand(…, sources, …)` in `src/assets/ui_document.h` (A) | The line is 1-based in the asset's `.rml`. A widget's elements name the widget, and the div in place of a `<use>` names the use element. Every `ui_mount` and `render_ui`'s page mark their elements; `<slot>` is never marked, and `data-src` is reserved |
+| Stylesheet origin | `rml_element_property_source(element, property, sheet, size, &line)` (`src/ui/rml.h`), then `ui_style_origin(sheet, line, path, size, &source_line)` (`src/support/ui_style.h`) (A) | RmlUi reports the rule's sheet name and its line. Hosts install named sheets (`rml_document_set_named_style_sheet`, `rml_document_add_named_style_sheet`) and record each sheet's `rcss_map` with `ui_style_set`. The sheets are `game-ui-<n>` for a `render_ui`, `kit-<document>` for a kit's theme and resources, and `kit-<document>-<key>` for each `kit_style_sheet`. `path` is an imported stylesheet's path, or a ui asset's `.rcss` for its own lines |
+| UI language service | `src/assets/ui_source.h` (B) | Parses one `.rml` or `.rcss` file with tree-sitter: spans, outline, diagnostics, completion, symbols and references, and edits of markup as `text_edit`s on the file. Positions are file byte offsets |
+| UI check | `ui_check(content_root, name, rml, rcss, …)` in `src/render/ui_check.h` (B) | Every RmlUi warning of a ui asset, at the line of its `.rml` or `.rcss`, or of the import or widget that wrote it |
 | RCSS properties | `ui_check_property_names` in `src/render/ui_check.h` (B), over `rml_property_name` and `rml_shorthand_name` in `src/ui/rml.h` | What `ui_source_project.properties` takes |
 | Native slots | `kit_slot_begin(k, key, host, selector)` and `kit_slot_end` in `src/editor/ui/kit.h` (`kit_slot.c`, J) | Kit content inside a `kit_host`'s authored content, as Unity's IMGUIContainer: the element the selector finds is marked `data-kit-slot="<key>"` and found again every frame, so a reinstalled mount or a recreated data-for item gets its content anew; a slot not begun in a frame loses it. Its path is the host's and the key |
 | Chrome focus | `kit_release_focus(k, host)` (J) | RmlUi focuses what is clicked; authored chrome calls it every frame so Studio's shortcuts keep working. Kit content in the host's slots keeps focus, so a header's filter field takes typing |
@@ -79,6 +104,9 @@ These are on `main` and used by more than one workstream.
 | UI problems (Q) | `studio_code_problems`, `studio_code_project_problems` in `studio_internal.h` | Output's Problems rows for the shown UI document, and in Project every ui asset and stylesheet with open documents' unsaved text; each opens its place (`ui_code_place`) |
 | Back and Forward (Q) | `studio_nav_jump`, `studio_nav_can_step`, `studio_nav_step` in `studio_internal.h` (`studio_graph_nav.c`) | One history over the graphs visited and the Text Editor's Go to Definition jumps: a jump records the place it leaves and the one it lands on |
 | UI completion in the MCP (Q) | `inspectUi`'s `complete` (`automation_ui_complete` in `src/automation/ui_edit.h`) | `ui_source_complete`'s items at a file line and column, as the Text Editor offers them |
+| Studio in Studio | `studio_guest_start`, `studio_guest_stop`, `studio_session` in `studio_internal.h` (`studio_host.c`) | Play in the Studio project (`own_project`) runs a guest `studio` in the Scene area over the same scene authoring: its own kit, backend and `studio_ui`, the host's preferences copied and never saved, input routed by the host (`to_guest`), drawn to the host's `kit:guest`. It has no Play, Stop or Open Project; the host names no `kit:viewport` while it runs |
+| Kit styles | `kit_theme` in `kit.h` | The theme is every kit document's only stylesheet: the workspace and the graph canvas are the Studio project's `theme/workspace.rcss` and `theme/graph.rcss`, scoped to `body.studio` and `body.graph-canvas` |
+| Authored menus | `TopBar.rml`'s `#menus`, `menus` in `studio_shell.c` | `<menu label>` per menu; `<li command="id">` runs a command by id, `<li list>` is one Studio fills (`projects`, `webProjects`, `add`, `uiScale`, `debugger`), `<li label>` heads a group, `<hr/>` separates and a nested `<menu label>` is a submenu. An unknown id shows as a disabled entry naming it |
 | Native motion elements (N) | `src/ui/motion.h` (`motion.c`, `text_motion.c`) | `<number-flow data-attr-value="expr" precision grouping prefix suffix/>`, `<morph-text>{{ expr }}</morph-text>`, and `presence` on a `data-if` element, registered for every RmlUi context by the backend. `kit_number_flow`, `kit_morph` and `kit_button_desc.morph` emit the same elements. Each follows the context's `reduced-motion` theme; presence keeps a leaving element until its transitions end through RmlUi's data-if handler (`rml_set_data_if_handler`) and `presence_settle`, which `rml_backend_update` runs |
 
 ## Workstreams

@@ -25,16 +25,6 @@ static void clause_of(const ui_document_event *found, const char *document, char
     );
 }
 
-void ui_events_read(const char *text, ui_document_event **found)
-{
-    ui_document document = { 0 };
-    char error[160];
-    if (ui_document_read(text, NULL, NULL, &document, error, sizeof error)) {
-        ui_document_events(document.rml, found);
-    }
-    ui_document_free(&document);
-}
-
 void ui_events_add(ui_event **events, const ui_document_event *found, const char *document)
 {
     char clause[192];

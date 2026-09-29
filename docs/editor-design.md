@@ -36,8 +36,11 @@ use framebuffer pixels, and RCSS uses `dp` for display scaling. Application
 deactivation destroys retained documents, context and GPU resources before unloading
 the application library. Plain game presentation does not create this UI.
 
-Resources live in `src/editor/rmlui/resources` and currently load at startup from
-the source checkout. RCSS edits apply within a second; restart the editor after editing RML. CMake pins
+The kit's documents (`studio.rml`, `graph.rml`) live in `src/editor/rmlui/resources`
+and load at startup from the source checkout. Their styles are the Studio project's
+theme (`projects/studio/content/ui/StudioShell.rcss` and its `theme/` imports, among
+them `workspace.rcss` and `graph.rcss`), so Studio edits its own chrome and RCSS edits
+apply at once; restart the editor after editing the kit's RML. CMake pins
 RmlUi 6.3 and FreeType 2.14.3; no system installation is required. Panels
 consume C state and emit C commands rather than expose engine objects to
 markup.
@@ -844,7 +847,7 @@ and coral diamond have now been replaced with these source geometries and
 8-bit color equivalents. Border coverage and lighting still need the source
 shader treatment.
 
-The actual raster SDF is in `shaders/hrc/entity_raster.shd`, with shared functions
+The actual raster SDF is in `shaders/hrc/entity_raster.frag`, with shared functions
 in `shaders/sdf.shd`; `shaders/entity.shd` defines the GPU layout. Match interior
 border coverage, then radial wobble and traveling pluck deformation, hit and
 beat envelopes, and emission. Cute custom shapes can supply a bounded SDF, but

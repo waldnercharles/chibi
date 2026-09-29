@@ -29,6 +29,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 
 /* Frames before a revealed line is laid out and can scroll into view. */
 #define REVEAL_FRAMES 2
@@ -121,12 +122,23 @@ void studio_code_save(studio *s)
     );
 }
 
-void studio_code_close(studio *s, int index)
+/* A UI document's tab closes with its text; another discards what its
+   document has unsaved, as reverting it would. */
+static void close_tab(studio *s, int index)
 {
     scene_document_tab *tab = &s->scene->tabs[index];
-    assert(tab->kind == APP_EDITOR_DOCUMENT_UI);
-    if (!ui_buffer_dirty(tab->ui)) {
+    if (tab->kind == APP_EDITOR_DOCUMENT_UI) {
         scene_tabs_close(s->scene, APP_EDITOR_DOCUMENT_UI, tab->path);
+        return;
+    }
+    scene_tabs_discard(s->scene, index);
+}
+
+void studio_close_tab(studio *s, int index)
+{
+    scene_document_tab *tab = &s->scene->tabs[index];
+    if (!scene_tabs_dirty(s->scene, tab)) {
+        close_tab(s, index);
         return;
     }
     char title[160];
@@ -138,7 +150,7 @@ void studio_code_close(studio *s, int index)
         .duration = 6,
     };
     kit_toast_dismiss(s->kit, s->code.close_toast);
-    snprintf(s->code.close, sizeof s->code.close, "%s", tab->path);
+    snprintf(s->code.close, sizeof s->code.close, "%s", tab->key);
     s->code.close_toast = kit_toast(s->kit, 0, &ask);
 }
 
@@ -154,8 +166,11 @@ static void toast_actions(studio *s)
     }
     if (s->code.close_toast && kit_toast_action(k, s->code.close_toast)) {
         s->code.close_toast = 0;
-        if (ui_tab(s, s->code.close)) {
-            scene_tabs_close(s->scene, APP_EDITOR_DOCUMENT_UI, s->code.close);
+        for (int i = 0; i < acount(s->scene->tabs); i++) {
+            if (!strcmp(s->scene->tabs[i].key, s->code.close)) {
+                close_tab(s, i);
+                break;
+            }
         }
     }
 }
@@ -272,6 +287,15 @@ static void check_shown(studio *s)
     c->markers_stale = true;
 }
 
+/* The Text Editor shows the active UI document; the workspace that shows
+   the Text Editor follows the tab (studio_follow_document). */
+static void follow_active(studio *s, const scene_document_tab *active)
+{
+    if (active) {
+        snprintf(s->code.path, sizeof s->code.path, "%s", active->path);
+    }
+}
+
 void studio_code_frame(studio *s)
 {
     bool applied = false;
@@ -285,17 +309,14 @@ void studio_code_frame(studio *s)
     if (applied) {
         asset_index_invalidate(s->scene);
     }
-    scene_document_tab *active = active_ui(s);
-    if (active && strcmp(active->path, s->code.path)) {
-        snprintf(s->code.path, sizeof s->code.path, "%s", active->path);
-        studio_show_editor(s, STUDIO_EDITOR_CODE);
-    }
+    follow_active(s, active_ui(s));
     prune_editors(s);
     check_shown(s);
     toast_actions(s);
     /* Mouse buttons 4 and 5 over the Text Editor step Back and Forward. */
     int over = s->hover_area;
-    if (s->nav_button && over >= 0 && s->prefs.editors[over] == STUDIO_EDITOR_CODE) {
+    if (s->nav_button && over >= 0 &&
+        studio_active_layout(s)->editors[over] == STUDIO_EDITOR_CODE) {
         studio_nav_step(s, s->nav_button);
         s->nav_button = 0;
     }
@@ -315,13 +336,18 @@ bool studio_open_ui_part(studio *s, const char *path, ui_part part, int line)
     s->code.reveal = line;
     s->code.reveal_offset = -1;
     s->code.reveal_wait = REVEAL_FRAMES;
+    /* The UI workspace, when it follows, has the Text Editor in place. */
+    studio_follow_document(s);
     studio_show_editor(s, STUDIO_EDITOR_CODE);
     return true;
 }
 
 bool studio_open_ui_source(studio *s, const char *path, int line)
 {
-    return studio_open_ui_part(s, path, UI_PART_RML, line);
+    size_t length = strlen(path), extension = strlen(UI_STYLE_EXTENSION);
+    bool styles = length > extension &&
+                  !strcmp(path + length - extension, UI_STYLE_EXTENSION);
+    return studio_open_ui_part(s, path, styles ? UI_PART_RCSS : UI_PART_RML, line);
 }
 
 bool studio_code_open_place(studio *s, const ui_code_place *place)
@@ -349,7 +375,7 @@ static void add_problems(
         if (!text) {
             continue;
         }
-        ui_source *source = ui_source_parse_block(text, ui_code_language((ui_part)p));
+        ui_source *source = ui_source_parse(text, ui_code_language((ui_part)p));
         kit_code_marker *markers = NULL;
         ui_code_markers(source, (ui_part)p, messages, failure, &markers);
         for (int i = 0; i < acount(markers); i++) {
@@ -440,7 +466,12 @@ void studio_code_project_problems(studio *s, studio_ui_problem **out)
         ui_source_project_scan(&project, root);
     }
     for (int i = 0; i < acount(project.files); i++) {
-        file_problems(s, project.files[i].path, out);
+        /* A ui asset's .rcss is a part of the document its .rml opens. */
+        char *document = ui_buffer_document(project.files[i].path);
+        if (!strcmp(document, project.files[i].path)) {
+            file_problems(s, document, out);
+        }
+        free(document);
     }
     for (int i = 0; i < acount(s->scene->tabs); i++) {
         const scene_document_tab *tab = &s->scene->tabs[i];
@@ -453,13 +484,15 @@ void studio_code_project_problems(studio *s, studio_ui_problem **out)
 
 /* ---------- Header ---------- */
 
+/* The shown part's file. */
 static void file_label(studio *s, const scene_document_tab *tab)
 {
     kit *k = s->kit;
+    const char *file = tab->ui->files[tab->ui->part];
     kit_push(k, "file", NULL, "code-file");
     kit_icon(k, "icon", NULL, tab->ui->stylesheet ? KIT_ICON_FILE : KIT_ICON_LAYOUT);
-    kit_label(k, "name", "name", content_basename(tab->path));
-    kit_tip(k, tab->path, NULL, NULL);
+    kit_label(k, "name", "name", content_basename(file));
+    kit_tip(k, file, NULL, NULL);
     if (ui_buffer_dirty(tab->ui)) {
         kit_leaf(k, "dirty", NULL, "dirty-dot");
         kit_tip(k, "Unsaved", studio_chord(s, "Mod+S"), NULL);
@@ -573,6 +606,8 @@ static void history_buttons(studio *s)
     kit_pop(k);
 }
 
+static void open_find(studio_code *c);
+
 void studio_code_header(studio *s, int)
 {
     kit *k = s->kit;
@@ -593,6 +628,13 @@ void studio_code_header(studio *s, int)
     }
     file_label(s, tab);
     kit_leaf(k, "spacer", NULL, "spacer");
+    kit_button_desc find = { .icon = KIT_ICON_SEARCH,
+                             .tip = "Find",
+                             .shortcut = studio_chord(s, "Mod+F"),
+                             .flags = s->code.find.open ? KIT_ON : 0 };
+    if (kit_button(k, "find", &find)) {
+        open_find(&s->code);
+    }
     const char *mode = s->code.editor ? kit_code_mode(s->code.editor) : NULL;
     if (mode) {
         kit_label(k, "mode", "code-mode", mode);
@@ -654,12 +696,11 @@ static bool parse_part(studio_code *c, kit_code_editor *e, ui_part part)
 {
     ui_source_language language = ui_code_language(part);
     const char *text = kit_code_text(e, NULL);
-    if (c->source && c->source->blocks[0].language == language &&
-        !strcmp(c->source->text, text)) {
+    if (c->source && c->source->language == language && !strcmp(c->source->text, text)) {
         return false;
     }
     ui_source_free(c->source);
-    c->source = ui_source_parse_block(text, language);
+    c->source = ui_source_parse(text, language);
     asetlen(c->spans, 0);
     for (int i = 0; i < acount(c->source->spans); i++) {
         const ui_source_span *span = &c->source->spans[i];
@@ -680,7 +721,7 @@ static void mark_problems(studio_code *c, const scene_document_tab *tab, ui_part
     for (int p = 0; p < UI_PART_COUNT; p++) {
         const char *text = ui_buffer_text(tab->ui, (ui_part)p);
         ui_source *other = p != (int)shown && text
-                             ? ui_source_parse_block(text, ui_code_language((ui_part)p))
+                             ? ui_source_parse(text, ui_code_language((ui_part)p))
                              : NULL;
         ui_code_markers_free(c->markers[p]);
         c->markers[p] = NULL;
@@ -787,22 +828,16 @@ static const char *symbol_title(const ui_source_symbol *symbol, char *out, size_
     return out;
 }
 
-/* A Find row for a place: its file, part and line. */
+/* A Find row for a place: its file and line. */
 static studio_reference place_row(const ui_code_place *place)
 {
     studio_reference row = { .kind = REFERENCE_ASSET_UI,
                              .use = place->definition ? "Define" : "Use",
                              .ui = *place };
-    snprintf(row.asset, sizeof row.asset, "%s", content_basename(place->path));
-    bool stylesheet = strstr(place->path, ".rcss") != NULL;
-    snprintf(
-        row.place,
-        sizeof row.place,
-        "%s%sline %d",
-        stylesheet ? "" : PART_LABELS[place->part],
-        stylesheet ? "" : " ",
-        place->line
-    );
+    char *file = ui_buffer_part_file(place->path, place->part);
+    snprintf(row.asset, sizeof row.asset, "%s", content_basename(file));
+    snprintf(row.place, sizeof row.place, "line %d", place->line);
+    free(file);
     return row;
 }
 
@@ -848,26 +883,183 @@ static void reveal(studio *s, kit_code_editor *e, const ui_buffer *b)
     s->code.reveal_offset = -1;
 }
 
+/* ---------- Find (VS Code's find widget) ---------- */
+
+/* Where the next match of `query` starts at or after `from`, wrapping past
+   the end, or -1 without one. Case is ignored, as VS Code's default. */
+static int next_match(const char *text, const char *query, int from)
+{
+    int length = (int)strlen(text);
+    size_t size = strlen(query);
+    for (int i = 0; i < length; i++) {
+        int at = (from + i) % length;
+        if (!strncasecmp(text + at, query, size)) {
+            return at;
+        }
+    }
+    return -1;
+}
+
+/* Where the last match before `from` starts, wrapping past the start. */
+static int previous_match(const char *text, const char *query, int from)
+{
+    int length = (int)strlen(text);
+    size_t size = strlen(query);
+    for (int i = 1; i <= length; i++) {
+        int at = ((from - i) % length + length) % length;
+        if (!strncasecmp(text + at, query, size)) {
+            return at;
+        }
+    }
+    return -1;
+}
+
+/* Counts the matches, and places the shown one among them. */
+static void count_matches(studio_code *c, const char *text)
+{
+    size_t size = strlen(c->find.query);
+    c->find.count = 0;
+    c->find.index = -1;
+    for (const char *at = text; size && *at; at++) {
+        if (!strncasecmp(at, c->find.query, size)) {
+            c->find.index = at - text == c->find.at ? c->find.count : c->find.index;
+            c->find.count++;
+        }
+    }
+}
+
+static void show_match(studio_code *c, kit_code_editor *e, int at)
+{
+    c->find.at = at;
+    if (at >= 0) {
+        kit_code_select(e, at, at + (int)strlen(c->find.query));
+    }
+}
+
+static void step_find(studio_code *c, kit_code_editor *e, const char *text, int direction)
+{
+    if (!c->find.query[0]) {
+        return;
+    }
+    int from = c->find.at >= 0 ? c->find.at : kit_code_cursor(e);
+    show_match(
+        c,
+        e,
+        direction > 0 ? next_match(text, c->find.query, from + (c->find.at >= 0))
+                      : previous_match(text, c->find.query, from)
+    );
+}
+
+static void open_find(studio_code *c)
+{
+    c->find.open = c->find.focus = true;
+    c->find.at = -1;
+}
+
+static void close_find(studio_code *c)
+{
+    c->find.open = false;
+    c->find.refocus = true;
+}
+
+/* Enter and Down show the next match, Shift+Enter and Up the previous one,
+   and Escape closes the widget, returning to the text. */
+static void find_keys(studio *s, kit_code_editor *e, const char *text)
+{
+    studio_code *c = &s->code;
+    for (int i = 0; i < acount(s->keys); i++) {
+        SDL_Keycode key = s->keys[i].key;
+        bool shift = s->keys[i].mod & SDL_KMOD_SHIFT;
+        if (key == SDLK_ESCAPE) {
+            close_find(c);
+            return;
+        }
+        if (key == SDLK_RETURN || key == SDLK_KP_ENTER) {
+            step_find(c, e, text, shift ? -1 : 1);
+        } else if (key == SDLK_DOWN || key == SDLK_UP) {
+            step_find(c, e, text, key == SDLK_DOWN ? 1 : -1);
+        }
+    }
+}
+
+/* The widget over the text's top right. A new query shows the first match
+   from the shown one or the cursor, so typing narrows in place. */
+static void find_widget(studio *s, kit_code_editor *e, const char *text)
+{
+    studio_code *c = &s->code;
+    kit *k = s->kit;
+    if (strcmp(c->find.seen, c->find.query)) {
+        snprintf(c->find.seen, sizeof c->find.seen, "%s", c->find.query);
+        int from = c->find.at >= 0 ? c->find.at : kit_code_cursor(e);
+        show_match(c, e, c->find.query[0] ? next_match(text, c->find.query, from) : -1);
+    }
+    count_matches(c, text);
+    kit_push(k, "find", NULL, "find-widget");
+    kit_push(k, "bar", NULL, "find-widget-bar");
+    kit_search(k, "query", c->find.query, sizeof c->find.query, "Find");
+    /* Escape clears and blurs the field in the frame it arrives, so the
+       field's focus a frame ago counts too. */
+    bool typing = kit_item_active(k) || c->find.typing;
+    c->find.typing = kit_item_active(k);
+    if (c->find.focus) {
+        kit_focus(k);
+        c->find.focus = false;
+    }
+    char label[32] = "";
+    if (c->find.query[0] && !c->find.count) {
+        snprintf(label, sizeof label, "No results");
+    } else if (c->find.index >= 0) {
+        snprintf(label, sizeof label, "%d/%d", c->find.index + 1, c->find.count);
+    } else if (c->find.count) {
+        snprintf(label, sizeof label, "%d", c->find.count);
+    }
+    kit_label(k, "count", "find-widget-count", label);
+    unsigned none = c->find.count ? 0 : KIT_DISABLED;
+    kit_button_desc previous = { .icon = KIT_ICON_UP,
+                                 .tip = "Previous",
+                                 .shortcut = "\xe2\x87\xa7\xe2\x86\xb5",
+                                 .flags = none };
+    if (kit_button(k, "previous", &previous)) {
+        step_find(c, e, text, -1);
+    }
+    kit_button_desc next = { .icon = KIT_ICON_DOWN,
+                             .tip = "Next",
+                             .shortcut = "\xe2\x86\xb5",
+                             .flags = none };
+    if (kit_button(k, "next", &next)) {
+        step_find(c, e, text, 1);
+    }
+    kit_button_desc close = { .icon = KIT_ICON_CLOSE, .tip = "Close", .shortcut = "Esc" };
+    if (kit_button(k, "close", &close)) {
+        close_find(c);
+    }
+    kit_pop(k);
+    kit_pop(k);
+    if (typing && c->find.open) {
+        find_keys(s, e, text);
+    }
+}
+
 /* A chord the editor leaves to Studio runs the command it names, as the
    shortcuts would if typing had not turned them off; Mod+[ and Mod+] step
-   Back and Forward, as in JetBrains' editors. */
+   Back and Forward, as in JetBrains' editors, and Mod+F finds. */
 static void run_chord(studio *s, const char *chord)
 {
+    if (!strcmp(chord, "Mod+F")) {
+        open_find(&s->code);
+        return;
+    }
     if (!strcmp(chord, "Mod+[") || !strcmp(chord, "Mod+]")) {
         studio_nav_step(s, chord[4] == ']' ? 1 : -1);
         return;
     }
-    const char *shown = studio_chord(s, chord);
-    for (int c = 0; c < STUDIO_COMMAND_COUNT; c++) {
-        studio_command_info info = studio_command_describe(s, (studio_command)c);
-        if (info.shortcut && !strcmp(info.shortcut, shown)) {
-            studio_command_run(s, (studio_command)c);
-            return;
-        }
+    studio_key key;
+    if (!studio_chord_parse(chord, s->mac, &key)) {
+        return;
     }
-    /* Studio's shortcuts search with Mod+P as well as Mod+K. */
-    if (!strcmp(chord, "Mod+P")) {
-        studio_command_run(s, STUDIO_COMMAND_SEARCH);
+    int command = studio_command_for_key(&s->prefs, key.key, key.mod, STUDIO_EDITOR_CODE, s->mac);
+    if (command >= 0) {
+        studio_command_run(s, command);
     }
 }
 
@@ -996,7 +1188,14 @@ void studio_code_body(studio *s, int)
         .hover = c->hover,
     };
     kit_code_result r = kit_code(k, "text", e, &desc);
+    if (c->find.refocus) {
+        kit_focus(k);
+        c->find.refocus = false;
+    }
     reveal(s, e, b);
+    if (c->find.open) {
+        find_widget(s, e, ui_buffer_text(b, part));
+    }
     respond(s, tab, shown_editor, part, &r);
     if (b->error[0]) {
         kit_push(k, "status", NULL, "code-status");

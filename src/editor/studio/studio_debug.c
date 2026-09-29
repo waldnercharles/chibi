@@ -13,17 +13,27 @@
 
 /* ---------- Jumping to a node ---------- */
 
-/* A Behavior area shows the graph: a maximized area gives way to it, and
-   without one the bottom area becomes one. */
-static void show_behavior_area(studio *s)
+static int behavior_area(const studio_layout *layout)
 {
     int area = -1;
     for (int i = 0; i < STUDIO_AREA_COUNT; i++) {
-        area = s->prefs.editors[i] == STUDIO_EDITOR_BEHAVIOR ? i : area;
+        area = layout->editors[i] == STUDIO_EDITOR_BEHAVIOR ? i : area;
     }
+    return area;
+}
+
+/* A Behavior area shows the graph: Layout's, when the workspace has none, a
+   maximized area gives way to it, and without one the bottom area becomes
+   one. */
+static void show_behavior_area(studio *s)
+{
+    if (behavior_area(studio_active_layout(s)) < 0) {
+        studio_set_workspace(s, STUDIO_WORKSPACE_LAYOUT);
+    }
+    int area = behavior_area(studio_active_layout(s));
     if (area < 0) {
         area = STUDIO_AREA_BOTTOM;
-        s->prefs.editors[area] = STUDIO_EDITOR_BEHAVIOR;
+        studio_active_layout(s)->editors[area] = STUDIO_EDITOR_BEHAVIOR;
     }
     if (s->maximized >= 0 && s->maximized != area) {
         s->maximized = -1;
@@ -327,35 +337,24 @@ void studio_debug_frame(studio *s)
 /* ---------- Transport and call stack ---------- */
 
 /* Visual Studio's keys, which Unreal follows. */
-static const struct
-{
-    const char *key, *label, *shortcut;
-    uint32_t icon;
-} COMMANDS[] = {
-    [STUDIO_RESUME] = { "resume", "Resume", "F5", KIT_ICON_CONTINUE },
-    [STUDIO_STEP_OVER] = { "over", "Step Over", "F10", KIT_ICON_STEP_OVER },
-    [STUDIO_STEP_INTO] = { "into", "Step Into", "F11", KIT_ICON_STEP_INTO },
-    [STUDIO_STEP_OUT] = { "out", "Step Out", "Shift F11", KIT_ICON_STEP_OUT },
+static const char *const DEBUG_IDS[] = { "resume", "over", "into", "out" };
+static const studio_command STUDIO_DEBUG_COMMANDS[] = {
+    STUDIO_COMMAND_RESUME,
+    STUDIO_COMMAND_STEP_OVER,
+    STUDIO_COMMAND_STEP_INTO,
+    STUDIO_COMMAND_STEP_OUT,
 };
-
-bool studio_debug_key(studio *s, SDL_Keycode key, bool shift)
-{
-    studio_debug_command command = key == SDLK_F5  ? STUDIO_RESUME
-                                 : key == SDLK_F10 ? STUDIO_STEP_OVER
-                                 : shift           ? STUDIO_STEP_OUT
-                                                   : STUDIO_STEP_INTO;
-    return (key == SDLK_F5 || key == SDLK_F10 || key == SDLK_F11) &&
-           studio_debug(s, command);
-}
 
 void studio_debug_steps(studio *s)
 {
     for (int c = STUDIO_STEP_OVER; c <= STUDIO_STEP_OUT; c++) {
-        kit_button_desc d = { .icon = COMMANDS[c].icon,
-                              .tip = COMMANDS[c].label,
-                              .shortcut = COMMANDS[c].shortcut };
-        if (kit_button(s->kit, COMMANDS[c].key, &d)) {
-            studio_debug(s, (studio_debug_command)c);
+        studio_command command = STUDIO_DEBUG_COMMANDS[c];
+        studio_command_info info = studio_command_describe(s, command);
+        kit_button_desc d = { .icon = info.icon,
+                              .tip = info.label,
+                              .shortcut = info.shortcut };
+        if (kit_button(s->kit, DEBUG_IDS[c], &d)) {
+            studio_command_run(s, command);
         }
     }
 }
@@ -363,13 +362,15 @@ void studio_debug_steps(studio *s)
 void studio_debug_menu(studio *s)
 {
     for (int c = STUDIO_RESUME; c <= STUDIO_STEP_OUT; c++) {
-        kit_menu_item_desc d = { .label = COMMANDS[c].label,
-                                 .icon = COMMANDS[c].icon,
-                                 .shortcut = COMMANDS[c].shortcut,
+        studio_command command = STUDIO_DEBUG_COMMANDS[c];
+        studio_command_info info = studio_command_describe(s, command);
+        kit_menu_item_desc d = { .label = info.menu,
+                                 .icon = info.icon,
+                                 .shortcut = info.shortcut,
                                  .checked = -1,
-                                 .disabled = !s->pause.active };
-        if (kit_menu_item(s->kit, COMMANDS[c].key, &d)) {
-            studio_debug(s, (studio_debug_command)c);
+                                 .disabled = !studio_command_enabled(s, command) };
+        if (kit_menu_item(s->kit, DEBUG_IDS[c], &d)) {
+            studio_command_run(s, command);
         }
     }
 }

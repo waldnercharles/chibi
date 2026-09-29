@@ -87,6 +87,16 @@ typedef NODE_COMPONENT_TYPE_DENSE(MaterialFluidWorld)
     float gas_cell_size;
     float gas_vorticity;
     float gas_drag;
+    /* Optional transient visual responses to fast fluid/body contacts. Zero
+     * count disables that response; particles never add matter to the solver. */
+    float gas_wake_speed; /* Minimum normal closing speed, world units/sec. */
+    float gas_wake_strength; /* Scales puff speed and response intensity. */
+    int gas_wake_count;      /* Maximum visual particles per body/patch/tick. */
+    float gas_wake_lifetime; /* Maximum visual particle lifetime, seconds. */
+    float liquid_splash_speed; /* Minimum normal closing speed, world units/sec. */
+    float liquid_splash_strength; /* Scales droplet speed and response intensity. */
+    int liquid_splash_count; /* Maximum visual particles per body/patch/tick. */
+    float liquid_splash_lifetime; /* Maximum visual particle lifetime, seconds. */
 }
 MaterialFluidWorld;
 
@@ -143,6 +153,8 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameCombustion)
     float smoke_absorption;
     unsigned flame_color;
     float flame_emission;
+    /* World units a burst of ignitions pushes gas, bodies and debris; at most
+     * 1024. */
     float blast_radius;
     float blast_speed;
     float blast_damage;
@@ -696,7 +708,7 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameActionBinding)
 }
 GameActionBinding;
 
-/* Shows the ui asset content/ui/<document>.yaml over the game view, above
+/* Shows the ui asset content/ui/<document>.rml over the game view, above
  * documents with a lower order. An element's emit('Event') binding, as in
  * data-event-click="emit('Resume')", sends that event to this entity; an
  * emitting input's value is read with Get UI Value and `#id`. UI nodes set
@@ -763,36 +775,91 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameStarfield2D)
 }
 GameStarfield2D;
 
+/* Color detail of HRC lighting relative to its resolution. */
+typedef enum
+{
+    GAME_HRC_COLOR_FULL,
+    GAME_HRC_COLOR_HALF,
+    GAME_HRC_COLOR_QUARTER,
+    GAME_HRC_COLOR_EIGHTH,
+} GameHRCColor;
+
+/* Resolution of HRC's received-light image relative to the canvas. */
+typedef enum
+{
+    GAME_HRC_GATHER_FULL,
+    GAME_HRC_GATHER_HALF,
+    GAME_HRC_GATHER_AUTO,
+} GameHRCGather;
+
 typedef NODE_COMPONENT_TYPE_DENSE(GameHRC2D)
 {
-    float scale;
-    /* Optional higher-resolution monochrome transport for split-scale HRC. */
-    float luminance_scale;
-    /* 0: independent monochrome transport, 1: derive luminance from RGB gather. */
-    int luminance_mode;
-    float min_scale;
-    float max_scale;
+    /* Finest light grid as a fraction of the padded canvas; 0.5 solves one
+     * probe per 2x2 pixels. Brightness keeps this detail, and most lighting
+     * cost scales with its area. 1, 0.5, 0.25 and 0.125 give whole-pixel
+     * cells. With adaptive on, the highest resolution it uses. */
+    float resolution;
+    /* Color detail relative to resolution. Below Full, a brightness-only
+     * transport solves at resolution and color on a grid 2, 4 or 8 times
+     * coarser; color then blurs where differently colored lights meet. */
+    GameHRCColor color_resolution;
+    /* Received-light image: gather, temporal filtering and bounce, at the full
+     * canvas or half of it. Half saves about 2 ms at 1080p and softens sharp
+     * shadow edges. Auto lets adaptive choose, before it lowers resolution. */
+    GameHRCGather gather_resolution;
+    /* Steps lighting down while the scene's GPU time misses target_fps, first
+     * gather when Auto, then resolution by halves down to min_resolution, and
+     * back up when there is room. It measures GPU time, so frames limited by
+     * the CPU or vsync keep their lighting. Needs Metal's GPU timestamps. */
     bool adaptive;
+    /* Frame rate adaptive keeps the scene's GPU work within. */
     float target_fps;
-    float fps_tolerance;
+    /* Lowest resolution adaptive may choose. */
+    float min_resolution;
+    /* Gain of the unlit scene color added to the frame. */
     float ambient;
+    /* Brightness of emissive surfaces as drawn; the light they cast is
+     * unchanged. */
     float intensity;
+    /* Brightness of light seen in open air: the glow around lights. */
     float fog;
+    /* Fraction of a solid's albedo that stays visible where no light reaches
+     * it. */
     float shadow_floor;
+    /* How quickly light dims with distance; zero keeps it at full strength
+     * across the view. */
     float falloff;
+    /* World-space raster guard around the camera for nearby light transport.
+     * The default, zero, leaves offscreen sources and occluders out. */
+    float lighting_margin;
+    /* Gain of light that lit surfaces reflect back into the transport; needs
+     * feedback. */
     float bounce_intensity;
+    /* Current-frame weight of bounce light: 1 disables temporal smoothing, not
+     * bounce, and lower values retain more history. Camera movement resets it. */
     float bounce_hysteresis;
+    /* Current-frame weight of received light: 1 disables temporal smoothing,
+     * and lower values retain more history. */
     float radiance_hysteresis;
+    /* How received light is upsampled from the transport grid: 0 bilinear,
+     * 1 bilinear that turns nearest at absorption edges, 2 joint bilateral on
+     * absorption, 3 five-tap cross. Ignored with a luminance transport. */
     int upscale_mode;
+    /* Absorption difference that upscale modes 1 and 2 treat as an edge. */
     float upscale_threshold;
+    /* 0 draws the lit frame; 1 scene, 2 emission, 3 transmittance, 4 albedo,
+     * 5 received light, 6 normals, 7 surface light, 8 dominant light
+     * direction, 9 shading normals. */
     int debug_view;
+    /* Perspective distance for particles: raised particles scale by
+     * focal / (focal + elevation). */
     float particle_focal_length;
+    /* Cascade levels traced through the scene. Higher levels are extended
+     * from the ones below, which is cheaper but less exact. */
     int trace_levels;
+    /* Feeds light reflected by lit surfaces back into the transport as bounce
+     * light. */
     bool feedback;
-    /* Frames over which the four light directions are solved: 1, 2 or 4. Above
-     * one, each frame solves a share and reuses the rest from earlier frames,
-     * shifted with the camera. */
-    int split_frames;
     /* World units that light received near a solid's surface reaches into it,
      * scaled by GameMaterial.edge_light. Zero disables surface lighting. */
     float surface_radius;
@@ -815,14 +882,10 @@ GameHRC2D;
 
 static inline GameHRC2D game_hrc2d_defaults()
 {
-    return (GameHRC2D){ .scale = .976883f,
-                        .luminance_scale = 0,
-                        .luminance_mode = 0,
-                        .min_scale = .1f,
-                        .max_scale = 1,
+    return (GameHRC2D){ .resolution = 1,
                         .adaptive = true,
                         .target_fps = 60,
-                        .fps_tolerance = .1f,
+                        .min_resolution = .25f,
                         .intensity = 7.5f,
                         .fog = 1,
                         .falloff = 1,
@@ -834,7 +897,6 @@ static inline GameHRC2D game_hrc2d_defaults()
                         .particle_focal_length = 300,
                         .trace_levels = 3,
                         .feedback = true,
-                        .split_frames = 1,
                         .surface_radius = 24,
                         .surface_relief = 1.5f,
                         .surface_bevel = 1,

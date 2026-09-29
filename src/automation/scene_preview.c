@@ -3,6 +3,7 @@
 #include "automation/render_preview.h"
 #include "diagnostics/tracy.h"
 #include "platform/cute.h"
+#include "render/gpu_clock.h"
 #include "render/gpu_timing.h"
 #include "render/scene_renderer.h"
 #include "render/shader_catalog.h"
@@ -61,15 +62,17 @@ typedef struct
     double median_ms, p95_ms, p99_ms;
     double simulation_ms, render_ms;
     int samples, particles, entities;
-    float scale;
+    float resolution;
+    double scene_gpu_ms;
     const char *backend;
+    bool pass_timestamps;
     char *initial_state, *final_state;
 } render_measurement;
 
 typedef struct
 {
     int width, height, frames, capture_frame;
-    bool frozen, pass_timing;
+    bool frozen, pass_timing, pass_detail;
     const char *capture_path;
     /* Optional raw RGBA8 file receiving every measured frame. */
     const char *frames_path;
@@ -169,7 +172,14 @@ static bool render_scene(
     double simulation_ms = 0, render_ms = 0;
     engine *runtime = ok ? game_prototype_preview_runtime(scene.preview) : NULL;
     int warmup = render_frames > 2 ? 240 : 0;
-    render_gpu_timing_enable(options->pass_timing);
+    /* Command buffer timestamps avoid the per-pass waits of sync timing. */
+    measurement->pass_timestamps = options->pass_timing && render_gpu_clock_install();
+    render_gpu_timing_enable(
+        !options->pass_timing          ? RENDER_GPU_TIMING_OFF
+        : measurement->pass_timestamps ? RENDER_GPU_TIMING_TIMESTAMPS
+                                       : RENDER_GPU_TIMING_SYNC,
+        options->pass_detail
+    );
     FILE *frames = NULL;
     if (ok && options->frames_path && !(frames = fopen(options->frames_path, "wb"))) {
         snprintf(error, size, "Could not open frame capture file");
@@ -189,6 +199,11 @@ static bool render_scene(
         double start = seconds();
         CHIBI_TRACE_ZONE_BEGIN(window_zone, "Preview window update");
         cf_app_update(NULL);
+        /* Window DPI events can recreate the app canvas at display resolution.
+         * A preview request specifies pixels, including per-frame readbacks. */
+        if (cf_app_get_canvas_width() != width || cf_app_get_canvas_height() != height) {
+            cf_app_set_canvas_size(width, height);
+        }
         CHIBI_TRACE_ZONE_END(window_zone);
         double simulation_start = seconds();
         bool advance = render_frames > 2 && i >= warmup && !options->frozen;
@@ -279,7 +294,10 @@ static bool render_scene(
         measurement->entities = ecs_world_live_count(
             game_prototype_preview_world(scene.preview)
         );
-        measurement->scale = app_scene_renderer_hrc_scale(scene.renderer);
+        render_radiance_status lighting = { 0 };
+        app_scene_renderer_lighting_status(scene.renderer, &lighting);
+        measurement->resolution = lighting.resolution;
+        measurement->scene_gpu_ms = lighting.gpu_ms;
         ok = chibi_preview_readback(width, height, png, error, size);
     }
     if (scene.viewport) {
@@ -341,6 +359,7 @@ char *chibi_scene_preview_handle(const char *request, const char *default_root, 
     }
     yyjson_val *freeze = yyjson_obj_get(root, "freeze_simulation");
     yyjson_val *pass_timing = yyjson_obj_get(root, "pass_timing");
+    yyjson_val *pass_detail = yyjson_obj_get(root, "pass_timing_detail");
     yyjson_val *frames_value = yyjson_obj_get(root, "capture_frames");
     const char *frames_path = yyjson_get_str(frames_value);
     if (frames_value && (!frames_path || frames_path[0] != '/' ||
@@ -350,6 +369,10 @@ char *chibi_scene_preview_handle(const char *request, const char *default_root, 
     if (pass_timing && (!yyjson_is_bool(pass_timing) ||
                         (yyjson_get_bool(pass_timing) && render_frames <= 2))) {
         snprintf(error, sizeof error, "pass_timing must be a boolean and requires a performance run");
+    }
+    if (pass_detail &&
+        (!yyjson_is_bool(pass_detail) || !yyjson_get_bool(pass_timing))) {
+        snprintf(error, sizeof error, "pass_timing_detail must be a boolean and requires pass_timing");
     }
     yyjson_val *capture = yyjson_obj_get(root, "metal_capture");
     yyjson_val *capture_frame = yyjson_obj_get(root, "capture_frame");
@@ -375,6 +398,7 @@ char *chibi_scene_preview_handle(const char *request, const char *default_root, 
                                 .capture_frame = capture_at,
                                 .frozen = yyjson_get_bool(freeze),
                                 .pass_timing = yyjson_get_bool(pass_timing),
+                                .pass_detail = yyjson_get_bool(pass_detail),
                                 .capture_path = capture_path,
                                 .frames_path = frames_path };
     render_measurement measurement = { 0 };
@@ -419,6 +443,8 @@ char *chibi_scene_preview_handle(const char *request, const char *default_root, 
         }
         yyjson_mut_val *performance = yyjson_mut_obj_add_obj(response, result, "performance");
         bool instrumented = capture_path != NULL || options.pass_timing || frames_path;
+        const char *metal_hud = getenv("MTL_HUD_ENABLED");
+        instrumented |= metal_hud && !strcmp(metal_hud, "1");
 #ifdef CHIBI_ENABLE_TRACY
         instrumented = true;
 #endif
@@ -443,9 +469,27 @@ char *chibi_scene_preview_handle(const char *request, const char *default_root, 
         );
         yyjson_mut_obj_add_int(response, performance, "particles", measurement.particles);
         yyjson_mut_obj_add_int(response, performance, "entities", measurement.entities);
-        yyjson_mut_obj_add_real(response, performance, "hrc_scale", measurement.scale);
+        yyjson_mut_obj_add_real(
+            response,
+            performance,
+            "hrc_resolution",
+            measurement.resolution
+        );
+        /* The last frame's scene GPU time, or -1 without timestamps. */
+        yyjson_mut_obj_add_real(
+            response,
+            performance,
+            "scene_gpu_ms",
+            measurement.scene_gpu_ms
+        );
         if (options.pass_timing) {
             /* Average milliseconds per rendered frame, in submission order. */
+            yyjson_mut_obj_add_str(
+                response,
+                performance,
+                "pass_timing_source",
+                measurement.pass_timestamps ? "command_buffer_timestamps" : "gpu_sync"
+            );
             yyjson_mut_val *passes = yyjson_mut_obj_add_arr(response, performance, "passes");
             int count;
             const render_gpu_pass *pass = render_gpu_timing_passes(&count);

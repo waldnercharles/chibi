@@ -4,6 +4,7 @@
 #include "support/text_file.h"
 
 #include <assert.h>
+#include <ctype.h>
 #include <math.h>
 #include <stddef.h>
 #include <stdio.h>
@@ -98,7 +99,7 @@ static bool graph_focused(const studio *s)
     if (!studio_graph_active(s) || s->focus_area < 0) {
         return false;
     }
-    studio_editor editor = s->prefs.editors[s->focus_area];
+    studio_editor editor = s->prefs.layouts[s->prefs.workspace].editors[s->focus_area];
     return s->focus_area == s->graph.area || editor == STUDIO_EDITOR_MEMBERS ||
            (editor == STUDIO_EDITOR_PROPERTIES &&
             (s->tab == STUDIO_TAB_NODE || s->tab == STUDIO_TAB_MEMBER));
@@ -266,6 +267,19 @@ void studio_history(studio *s, bool redo)
     document_history(s, redo);
 }
 
+bool studio_session(const studio *s)
+{
+    return runtime_session(s->scene) || s->guest != NULL;
+}
+
+/* The Studio project's game is Studio: Play there runs a guest Studio in
+   the Scene area, and Play again or Stop ends it, as Unity's Play toggles. */
+static bool runs_guest(const studio *s, app_runtime_state state)
+{
+    return s->own_project && state.target == APP_RUNTIME_SCENE &&
+           !state.playing && !runtime_session(s->scene);
+}
+
 void studio_runtime(studio *s, app_runtime_command command)
 {
     /* Play resumes a run paused at a breakpoint (Unreal). */
@@ -274,6 +288,14 @@ void studio_runtime(studio *s, app_runtime_command command)
     }
     finish_transform_edit(s->scene, false);
     app_runtime_state state = app_scene_authoring_runtime_state(s->scene);
+    if (s->guest && command != APP_RUNTIME_STEP) {
+        studio_guest_stop(s);
+        return;
+    }
+    if (command == APP_RUNTIME_PLAY && runs_guest(s, state)) {
+        studio_guest_start(s);
+        return;
+    }
     if (command == APP_RUNTIME_PLAY && state.playing) {
         command = APP_RUNTIME_PAUSE;
     }
@@ -393,10 +415,10 @@ static void add_menu_items(studio *s)
 
 void studio_toggle_drawer(studio *s, studio_editor editor)
 {
-    bool showing = s->prefs.drawer_open &&
-                   s->prefs.editors[STUDIO_AREA_DRAWER] == editor;
-    s->prefs.editors[STUDIO_AREA_DRAWER] = editor;
-    s->prefs.drawer_open = !showing;
+    studio_layout *layout = studio_active_layout(s);
+    bool showing = layout->drawer_open && layout->editors[STUDIO_AREA_DRAWER] == editor;
+    layout->editors[STUDIO_AREA_DRAWER] = editor;
+    layout->drawer_open = !showing;
 }
 
 void studio_toggle_maximized(studio *s, int area)
@@ -404,14 +426,53 @@ void studio_toggle_maximized(studio *s, int area)
     s->maximized = s->maximized >= 0 ? -1 : area;
 }
 
+/* A new arrangement starts unmaximized, with no area focused or hovered
+   until the pointer finds one. */
+static void forget_areas(studio *s)
+{
+    s->maximized = s->focus_area = s->hover_area = -1;
+    memset(s->areas, 0, sizeof s->areas);
+    s->main_rect = s->side_rect = (kit_rect){ 0 };
+    s->drawer_dragging = s->side_dragging = false;
+}
+
 void studio_reset_layout(studio *s)
 {
-    studio_prefs layout = studio_prefs_default();
-    s->prefs.side_width = layout.side_width;
-    s->prefs.main_split = layout.main_split;
-    s->prefs.side_split = layout.side_split;
-    memcpy(s->prefs.editors, layout.editors, sizeof layout.editors);
-    memcpy(s->prefs.panels, layout.panels, sizeof layout.panels);
+    *studio_active_layout(s) = studio_layout_default(s->prefs.workspace);
+    forget_areas(s);
+}
+
+void studio_set_workspace(studio *s, studio_workspace workspace)
+{
+    assert(workspace >= 0 && workspace < STUDIO_WORKSPACE_COUNT);
+    if (s->prefs.workspace == workspace) {
+        return;
+    }
+    s->prefs.workspace = workspace;
+    forget_areas(s);
+}
+
+void studio_follow_document(studio *s)
+{
+    const app_scene_authoring *scene = s->scene;
+    int tab = scene->active_tab;
+    int kind = tab >= 0 && tab < acount(scene->tabs) ? (int)scene->tabs[tab].kind
+                                                     : -1;
+    if (tab == s->followed_tab && kind == s->followed_kind) {
+        return;
+    }
+    s->followed_tab = tab;
+    s->followed_kind = kind;
+    if (s->prefs.follow_documents && kind >= 0) {
+        studio_set_workspace(s, kind == APP_EDITOR_DOCUMENT_UI ? STUDIO_WORKSPACE_UI : STUDIO_WORKSPACE_LAYOUT);
+    }
+}
+
+void studio_toggle_side_pane(studio *s)
+{
+    studio_layout *layout = studio_active_layout(s);
+    layout->side_open = !layout->side_open;
+    s->maximized = -1;
 }
 
 /* The menus' UI Scale choices. */
@@ -460,12 +521,15 @@ static void zoom_items(studio *s)
     studio_command_item(s, STUDIO_COMMAND_ZOOM_RESET);
 }
 
-#ifdef __EMSCRIPTEN__
-/* Export archives saved files and import reloads the page, so both need saved work. */
-static void project_menu_items(studio *s)
+/* Export archives saved files and import reloads the page, so both need
+   saved work; only the browser without a local server offers them. */
+static void web_project_items(studio *s)
 {
+#ifdef __EMSCRIPTEN__
     kit *k = s->kit;
-    kit_menu_separator(k, "s2");
+    if (!web_projects_available()) {
+        return;
+    }
     bool importing = item(k, "import", "Import Project", 0, NULL, false);
     bool exporting = item(k, "export", "Export Project", 0, NULL, false);
     if ((importing || exporting) && studio_unsaved(s)) {
@@ -478,69 +542,110 @@ static void project_menu_items(studio *s)
     if (exporting) {
         web_export_project();
     }
-}
+#else
+    (void)s;
 #endif
+}
 
-/* The menubar, native in the top bar's #menubar slot. */
-static void menus(studio *s)
+/* ---------- Menubar ---------- */
+
+/* An entry the menu names but Studio lacks, shown so its author sees it. */
+static void unknown_entry(kit *k, const char *key, const char *what, const char *name)
+{
+    char label[160];
+    snprintf(label, sizeof label, "No %s \"%s\"", what, name);
+    item(k, key, label, KIT_ICON_WARNING, NULL, true);
+}
+
+static void add_submenu(studio *s)
+{
+    if (kit_submenu_begin(s->kit, "add", "Add", KIT_ICON_ADD)) {
+        add_menu_items(s);
+        kit_submenu_end(s->kit);
+    }
+}
+
+/* The lists Studio fills where a menu names them with <li list="...">. */
+static void menu_list(studio *s, const char *key, const char *name)
 {
     kit *k = s->kit;
-    if (kit_menubar_trigger(k, "file", "File")) {
-        studio_command_item(s, STUDIO_COMMAND_SEARCH);
+    if (!strcmp(name, "projects")) {
         studio_projects_menu(s);
-        kit_menu_separator(k, "s1");
-        studio_command_item(s, STUDIO_COMMAND_SAVE);
-        studio_command_item(s, STUDIO_COMMAND_RELOAD);
-#ifdef __EMSCRIPTEN__
-        if (web_projects_available()) {
-            project_menu_items(s);
-        }
-#endif
-        kit_menu_separator(k, "s2");
-        studio_command_item(s, STUDIO_COMMAND_SETTINGS);
-        kit_popup_end(k);
-    }
-    if (kit_menubar_trigger(k, "edit", "Edit")) {
-        studio_command_item(s, STUDIO_COMMAND_UNDO);
-        studio_command_item(s, STUDIO_COMMAND_REDO);
-        kit_menu_separator(k, "s1");
-        studio_command_item(s, STUDIO_COMMAND_DUPLICATE);
-        studio_command_item(s, STUDIO_COMMAND_DELETE);
-        kit_popup_end(k);
-    }
-    if (kit_menubar_trigger(k, "view", "View")) {
-        studio_command_item(s, STUDIO_COMMAND_FRAME);
-        studio_command_item(s, STUDIO_COMMAND_RESET_CAMERA);
-        kit_menu_separator(k, "s1");
-        kit_menu_group(k, "drawers", "Drawers");
-        studio_command_item(s, STUDIO_COMMAND_TOGGLE_ASSETS);
-        studio_command_item(s, STUDIO_COMMAND_TOGGLE_OUTPUT);
-        studio_command_item(s, STUDIO_COMMAND_TOGGLE_PERFORMANCE);
-        kit_menu_separator(k, "s2");
-        studio_command_item(s, STUDIO_COMMAND_MAXIMIZE);
-        studio_command_item(s, STUDIO_COMMAND_RESET_LAYOUT);
-        kit_menu_separator(k, "s3");
+    } else if (!strcmp(name, "webProjects")) {
+        web_project_items(s);
+    } else if (!strcmp(name, "add")) {
+        add_submenu(s);
+    } else if (!strcmp(name, "uiScale")) {
         zoom_items(s);
-        kit_popup_end(k);
-    }
-    if (kit_menubar_trigger(k, "object", "Object")) {
-        if (kit_submenu_begin(k, "add", "Add", KIT_ICON_ADD)) {
-            add_menu_items(s);
-            kit_submenu_end(k);
-        }
-        studio_command_item(s, STUDIO_COMMAND_DUPLICATE);
-        studio_command_item(s, STUDIO_COMMAND_DELETE);
-        kit_menu_separator(k, "s1");
-        studio_command_item(s, STUDIO_COMMAND_OPEN_PROTOTYPE);
-        kit_popup_end(k);
-    }
-    if (kit_menubar_trigger(k, "play", "Play")) {
-        studio_command_item(s, STUDIO_COMMAND_PLAY);
-        studio_command_item(s, STUDIO_COMMAND_STOP);
-        studio_command_item(s, STUDIO_COMMAND_STEP);
-        kit_menu_separator(k, "s1");
+    } else if (!strcmp(name, "debugger")) {
         studio_debug_menu(s);
-        kit_popup_end(k);
+    } else {
+        unknown_entry(k, key, "list", name);
+    }
+}
+
+static bool entry_attribute(rml_element *entry, const char *name, char *value, size_t size)
+{
+    return rml_element_attribute(entry, name, value, size) > 0;
+}
+
+/* A menu's entries in order: <li command="id"> runs a command by its id,
+   <li list="name"> is a list Studio fills, <li label="..."> heads a group,
+   <hr/> separates and a <menu label> inside opens a submenu. */
+static void menu_entries(studio *s, rml_element *menu)
+{
+    kit *k = s->kit;
+    for (int i = 0; i < rml_element_child_count(menu); i++) {
+        rml_element *entry = rml_element_child(menu, i);
+        const char *tag = rml_element_tag_name(entry);
+        char key[16], value[128];
+        snprintf(key, sizeof key, "e%d", i);
+        if (!strcmp(tag, "hr")) {
+            kit_menu_separator(k, key);
+        } else if (!strcmp(tag, "menu") && entry_attribute(entry, "label", value, sizeof value)) {
+            if (kit_submenu_begin(k, key, value, 0)) {
+                menu_entries(s, entry);
+                kit_submenu_end(k);
+            }
+        } else if (entry_attribute(entry, "command", value, sizeof value)) {
+            int command = studio_command_named(value);
+            if (command < 0) {
+                unknown_entry(k, key, "command", value);
+            } else {
+                studio_command_item(s, (studio_command)command);
+            }
+        } else if (entry_attribute(entry, "list", value, sizeof value)) {
+            menu_list(s, key, value);
+        } else if (entry_attribute(entry, "label", value, sizeof value)) {
+            kit_menu_group(k, key, value);
+        }
+    }
+}
+
+/* The menubar is authored: the top bar's #menus holds a <menu label> per
+   menu, whose entries name commands by id, as VS Code's menus contribute
+   them; the menus themselves are native, in the #menubar slot. */
+static void menus(studio *s, rml_element *host)
+{
+    rml_element *bar = rml_element_query_selector(host, "#menus");
+    for (int i = 0; bar && i < rml_element_child_count(bar); i++) {
+        rml_element *menu = rml_element_child(bar, i);
+        char key[64], label[64];
+        if (strcmp(rml_element_tag_name(menu), "menu") ||
+            !entry_attribute(menu, "label", label, sizeof label)) {
+            continue;
+        }
+        /* Keyed by label, "file" for File, so paths name the menu. */
+        for (size_t c = 0; c < sizeof key; c++) {
+            key[c] = (char)tolower((unsigned char)label[c]);
+            if (!label[c]) {
+                break;
+            }
+        }
+        if (kit_menubar_trigger(s->kit, key, label)) {
+            menu_entries(s, menu);
+            kit_popup_end(s->kit);
+        }
     }
 }
 
@@ -559,10 +664,12 @@ static uint32_t tab_icon(const scene_document_tab *tab)
     return KIT_ICON_FILE;
 }
 
+/* Every document but a scene closes from its tab, as in VS Code; a scene is
+   the root the other documents open over. */
 bool studio_tab_closes(const studio *s, int tab)
 {
     return tab >= 0 && tab < acount(s->scene->tabs) &&
-           s->scene->tabs[tab].kind == APP_EDITOR_DOCUMENT_UI;
+           s->scene->tabs[tab].kind != APP_EDITOR_DOCUMENT_SCENE;
 }
 
 /* The top bar's TopBar lists these from `editor.tabs`; a tab runs
@@ -596,7 +703,7 @@ static void runtime_target(studio *s)
     kit *k = s->kit;
     app_scene_authoring *scene = s->scene;
     app_runtime_state runtime = app_scene_authoring_runtime_state(scene);
-    bool session = runtime_session(scene);
+    bool session = studio_session(s);
     scene_prototype_asset *previewed = prototype_at(scene, scene->runtime_preview_prototype);
     /* The open prototype document, else the selected object's prototype. */
     scene_actor *actor = selected_actor(scene);
@@ -673,7 +780,7 @@ static void topbar(studio *s)
     }
     kit_release_focus(k, host);
     if (kit_slot_begin(k, "menus", host, "#menubar")) {
-        menus(s);
+        menus(s, host);
         kit_slot_end(k);
     }
     if (kit_slot_begin(k, "target", host, "#play-target")) {
@@ -700,6 +807,7 @@ static bool drawer_editor(studio_editor editor)
 static void panel_types(studio *s, int area)
 {
     kit *k = s->kit;
+    studio_layout *layout = studio_active_layout(s);
     int count = studio_ui_panel_count(s);
     if (count) {
         kit_menu_separator(k, "panels-sep");
@@ -713,35 +821,37 @@ static void panel_types(studio *s, int area)
             .label = name,
             .icon = EDITOR_ICONS[STUDIO_EDITOR_PANEL],
             .checked = -1,
-            .current = s->prefs.editors[area] == STUDIO_EDITOR_PANEL &&
-                       !strcmp(s->prefs.panels[area], name),
+            .current = layout->editors[area] == STUDIO_EDITOR_PANEL &&
+                       !strcmp(layout->panels[area], name),
         };
         if (kit_menu_item(k, item_key, &item)) {
-            s->prefs.editors[area] = STUDIO_EDITOR_PANEL;
-            snprintf(s->prefs.panels[area], sizeof s->prefs.panels[area], "%s", name);
+            layout->editors[area] = STUDIO_EDITOR_PANEL;
+            snprintf(layout->panels[area], sizeof layout->panels[area], "%s", name);
         }
     }
 }
 
 void studio_maximize_graph(studio *s)
 {
+    studio_layout *layout = studio_active_layout(s);
     int area = STUDIO_AREA_TOP;
     for (int i = 0; i < STUDIO_AREA_COUNT; i++) {
-        area = s->prefs.editors[i] == STUDIO_EDITOR_BEHAVIOR ? i : area;
+        area = layout->editors[i] == STUDIO_EDITOR_BEHAVIOR ? i : area;
     }
-    s->prefs.editors[area] = STUDIO_EDITOR_BEHAVIOR;
-    s->applied.editors[area] = STUDIO_EDITOR_BEHAVIOR;
+    layout->editors[area] = STUDIO_EDITOR_BEHAVIOR;
+    s->applied.layouts[s->prefs.workspace].editors[area] = STUDIO_EDITOR_BEHAVIOR;
     s->maximized = area;
 }
 
 static void editor_type_menu(studio *s, int area)
 {
     kit *k = s->kit;
-    studio_editor *editor = &s->prefs.editors[area];
+    studio_layout *layout = studio_active_layout(s);
+    studio_editor *editor = &layout->editors[area];
     kit_button_desc d = { .icon = EDITOR_ICONS[*editor],
                           .cls = "editor-type",
                           .tip = *editor == STUDIO_EDITOR_PANEL
-                                   ? s->prefs.panels[area]
+                                   ? layout->panels[area]
                                    : EDITOR_LABELS[*editor] };
     char key[24];
     snprintf(key, sizeof key, "type:%d", area);
@@ -772,7 +882,7 @@ static void editor_type_menu(studio *s, int area)
 /* The editor's own header controls. */
 static void editor_header(studio *s, int index)
 {
-    switch (s->prefs.editors[index]) {
+    switch (studio_active_layout(s)->editors[index]) {
         case STUDIO_EDITOR_SCENE: studio_scene_header(s, index); break;
         case STUDIO_EDITOR_BEHAVIOR: studio_behavior_header(s, index); break;
         case STUDIO_EDITOR_OUTLINER: studio_outliner_header(s, index); break;
@@ -787,7 +897,7 @@ static void editor_header(studio *s, int index)
         case STUDIO_EDITOR_MEMBERS: studio_members_header(s, index); break;
         case STUDIO_EDITOR_CODE: studio_code_header(s, index); break;
         case STUDIO_EDITOR_PANEL:
-            kit_label(s->kit, "title", NULL, s->prefs.panels[index]);
+            kit_label(s->kit, "title", NULL, studio_active_layout(s)->panels[index]);
             break;
         default: break;
     }
@@ -816,16 +926,20 @@ static void area_header(studio *s, int index)
     }
 }
 
-static void area(studio *s, int index, const char *key, float size, bool fill)
+/* An area `size` dp along `axis` (0 across, 1 down), or filling what its
+   row or column leaves. */
+static void area(studio *s, int index, const char *key, int axis, float size, bool fill)
 {
     kit *k = s->kit;
-    studio_editor editor = s->prefs.editors[index];
+    studio_layout *layout = studio_active_layout(s);
+    studio_editor editor = layout->editors[index];
     kit_push(k, key, NULL, KIT_CX(k, "area", { "fill", fill }, { "drawer", index == STUDIO_AREA_DRAWER }));
-    if (!fill) {
-        char height[32];
-        dp(height, sizeof height, size);
-        kit_style(k, "height", height);
-    }
+    /* Styles persist across frames, so the other axis and a filling area
+       reset theirs as a workspace changes. */
+    char extent[32];
+    dp(extent, sizeof extent, size);
+    kit_style(k, "width", !fill && !axis ? extent : "auto");
+    kit_style(k, "height", !fill && axis ? extent : "auto");
     area_header(s, index);
     kit_push(k, "body", NULL, "area-body");
     switch (editor) {
@@ -841,13 +955,61 @@ static void area(studio *s, int index, const char *key, float size, bool fill)
         case STUDIO_EDITOR_MEMBERS: studio_members_body(s, index); break;
         case STUDIO_EDITOR_CODE: studio_code_body(s, index); break;
         case STUDIO_EDITOR_PANEL:
-            studio_ui_area(s, index, s->prefs.panels[index]);
+            studio_ui_area(s, index, layout->panels[index]);
             break;
         default: break;
     }
     kit_pop(k);
     kit_pop(k);
     s->areas[index].rect = kit_item_rect(k);
+}
+
+/* The top and bottom areas: stacked in Layout, side by side in UI. */
+static void main_areas(studio *s, float size)
+{
+    kit *k = s->kit;
+    studio_layout *layout = studio_active_layout(s);
+    int axis = s->prefs.workspace == STUDIO_WORKSPACE_UI ? 0 : 1;
+    float minimum = axis ? 80 : 160;
+    kit_push(k, "editors", NULL, KIT_CX(k, "main-editors", { "across", !axis }));
+    float first = floorf((size - 4) * layout->main_split);
+    area(s, STUDIO_AREA_TOP, "top", axis, first, false);
+    if (kit_splitter(k, "split", axis, &first, minimum, fmaxf(minimum, size - minimum - 4), false)) {
+        layout->main_split = first / fmaxf(1, size - 4);
+    }
+    area(s, STUDIO_AREA_BOTTOM, "bottom", axis, 0, true);
+    kit_pop(k);
+}
+
+/* The right column eases closed and open, at its last width, and follows
+   its splitter directly while dragged. */
+static void side_areas(studio *s)
+{
+    kit *k = s->kit;
+    studio_layout *layout = studio_active_layout(s);
+    float target = layout->side_open ? layout->side_width : 0;
+    float width = kit_spring(k, "side-width", target, s->side_dragging ? 0 : 0.2f);
+    if (width <= 0.5f) {
+        s->side_rect = s->areas[STUDIO_AREA_OUTLINER]
+                           .rect = s->areas[STUDIO_AREA_PROPERTIES].rect = (kit_rect){ 0 };
+        s->side_dragging = false;
+        return;
+    }
+    kit_splitter(k, "split", 0, &layout->side_width, 260, fmaxf(260, s->in.width - 320), true);
+    s->side_dragging = kit_item_active(k);
+    kit_push(k, "side", NULL, "column side");
+    char extent[32];
+    dp(extent, sizeof extent, width);
+    kit_style(k, "width", extent);
+    float height = s->side_rect.h > 0 ? s->side_rect.h : s->in.height - 60;
+    float outliner = floorf((height - 4) * layout->side_split);
+    area(s, STUDIO_AREA_OUTLINER, "outliner", 1, outliner, false);
+    if (kit_splitter(k, "split", 1, &outliner, 80, fmaxf(80, height - 120), false)) {
+        layout->side_split = outliner / fmaxf(1, height - 4);
+    }
+    area(s, STUDIO_AREA_PROPERTIES, "properties", 1, 0, true);
+    kit_pop(k);
+    s->side_rect = kit_item_rect(k);
 }
 
 static void workspace(studio *s)
@@ -858,11 +1020,12 @@ static void workspace(studio *s)
                                                               "properties",
                                                               "drawer" };
     kit *k = s->kit;
+    studio_layout *layout = studio_active_layout(s);
     kit_push(k, "workspace", "main", "workspace");
     kit_push(k, "main", NULL, "column main");
     if (s->maximized >= 0) {
         memset(s->areas, 0, sizeof s->areas);
-        area(s, s->maximized, AREA_KEYS[s->maximized], 0, true);
+        area(s, s->maximized, AREA_KEYS[s->maximized], 1, 0, true);
         kit_pop(k);
         s->main_rect = kit_item_rect(k);
         kit_pop(k);
@@ -871,52 +1034,39 @@ static void workspace(studio *s)
     float column_height = s->main_rect.h > 0 ? s->main_rect.h : s->in.height - 60;
     /* The drawer eases open in 200 ms and closed in 100 ms, and follows its
        splitter directly while dragged. */
-    float drawer_target = s->prefs.drawer_open
-                            ? fminf(s->prefs.drawer_height, fmaxf(80, column_height - 200))
+    float drawer_target = layout->drawer_open
+                            ? fminf(layout->drawer_height, fmaxf(80, column_height - 200))
                             : 0;
     float drawer = kit_spring(
         k,
         "drawer",
         drawer_target,
-        s->drawer_dragging     ? 0
-        : s->prefs.drawer_open ? 0.2f
-                               : 0.1f
+        s->drawer_dragging    ? 0
+        : layout->drawer_open ? 0.2f
+                              : 0.1f
     );
     bool drawer_shown = drawer > 0.5f;
-    float main_height = column_height - (drawer_shown ? drawer + 4 : 0);
-    float top = floorf((main_height - 4) * s->prefs.main_split);
-    area(s, STUDIO_AREA_TOP, "top", top, false);
-    if (kit_splitter(k, "split", 1, &top, 80, fmaxf(80, main_height - 80), false)) {
-        s->prefs.main_split = top / fmaxf(1, main_height - 4);
-    }
-    area(s, STUDIO_AREA_BOTTOM, "bottom", 0, true);
+    float main_width = s->main_rect.w > 0 ? s->main_rect.w : s->in.width;
+    main_areas(
+        s,
+        s->prefs.workspace == STUDIO_WORKSPACE_UI
+            ? main_width
+            : column_height - (drawer_shown ? drawer + 4 : 0)
+    );
     if (drawer_shown) {
-        float height = s->prefs.drawer_height;
+        float height = layout->drawer_height;
         if (kit_splitter(k, "drawer-split", 1, &height, 80, fmaxf(80, column_height - 200), true)) {
-            s->prefs.drawer_height = height;
+            layout->drawer_height = height;
         }
         s->drawer_dragging = kit_item_active(k);
-        area(s, STUDIO_AREA_DRAWER, "drawer", drawer, false);
+        area(s, STUDIO_AREA_DRAWER, "drawer", 1, drawer, false);
     } else {
         s->areas[STUDIO_AREA_DRAWER].rect = (kit_rect){ 0 };
         s->drawer_dragging = false;
     }
     kit_pop(k);
     s->main_rect = kit_item_rect(k);
-    kit_splitter(k, "split", 0, &s->prefs.side_width, 260, fmaxf(260, s->in.width - 320), true);
-    kit_push(k, "side", NULL, "column side");
-    char width[32];
-    dp(width, sizeof width, s->prefs.side_width);
-    kit_style(k, "width", width);
-    float side_height = s->side_rect.h > 0 ? s->side_rect.h : s->in.height - 60;
-    float outliner = floorf((side_height - 4) * s->prefs.side_split);
-    area(s, STUDIO_AREA_OUTLINER, "outliner", outliner, false);
-    if (kit_splitter(k, "split", 1, &outliner, 80, fmaxf(80, side_height - 120), false)) {
-        s->prefs.side_split = outliner / fmaxf(1, side_height - 4);
-    }
-    area(s, STUDIO_AREA_PROPERTIES, "properties", 0, true);
-    kit_pop(k);
-    s->side_rect = kit_item_rect(k);
+    side_areas(s);
     kit_pop(k);
 }
 
@@ -982,102 +1132,6 @@ static void statusbar(studio *s)
     }
 }
 
-/* ---------- Command palette (cmdk) ---------- */
-
-static void palette(studio *s)
-{
-    if (studio_graph_palette(s) || studio_member_palette(s) ||
-        studio_pick_palette(s) || !kit_command_is_open(s->kit)) {
-        return;
-    }
-    app_scene_authoring *scene = s->scene;
-    kit_command_item *items = NULL;
-    studio_command *commands = NULL;
-    for (int c = STUDIO_COMMAND_SEARCH + 1; c < STUDIO_COMMAND_COUNT; c++) {
-        studio_command_info info = studio_command_describe(s, (studio_command)c);
-        /* A command that needs a tab has none here. */
-        if (info.indexed) {
-            continue;
-        }
-        apush(commands, (studio_command)c);
-        apush(
-            items,
-            ((
-                kit_command_item
-            ){ info.label, "Commands", NULL, info.shortcut, info.keywords, info.icon })
-        );
-    }
-    int objects = acount(items);
-    for (int i = 0; i < acount(scene->actors); i++) {
-        const scene_actor *actor = &scene->actors[i];
-        apush(
-            items,
-            ((kit_command_item){ actor->name,
-                                 "Objects",
-                                 actor->prototype_name,
-                                 NULL,
-                                 actor->prototype_name,
-                                 studio_prototype_icon(s, actor->prototype_name) })
-        );
-    }
-    int assets = acount(items);
-    const reference_index *index = app_scene_authoring_asset_index(scene);
-    int asset_count = index ? reference_index_asset_count(index) : 0;
-    for (int i = 0; i < asset_count; i++) {
-        const reference_asset *asset = reference_index_asset_at(index, i);
-        if (!asset->name || asset->kind < 0 || asset->kind >= REFERENCE_ASSET_KIND_COUNT) {
-            continue;
-        }
-        const char *kind = studio_asset_kind_name(asset->kind);
-        apush(
-            items,
-            ((kit_command_item){ asset->name,
-                                 "Assets",
-                                 kind,
-                                 NULL,
-                                 kind,
-                                 studio_asset_kind_icon(asset->kind) })
-        );
-    }
-    int projects = acount(items);
-    for (int i = 0; i < acount(s->projects); i++) {
-        if (!studio_project_current(s, i)) {
-            apush(
-                items,
-                ((kit_command_item){ s->projects[i].name, "Projects", NULL, NULL, "open switch", KIT_ICON_FOLDER })
-            );
-        }
-    }
-    int chosen = kit_command(s->kit, items, acount(items));
-    if (chosen >= 0 && chosen < objects) {
-        studio_command_run(s, commands[chosen]);
-    } else if (chosen >= objects && chosen < assets) {
-        finish_transform_edit(scene, false);
-        select_instance(scene, chosen - objects);
-        studio_frame_selection(s);
-    } else if (chosen >= projects) {
-        int position = projects;
-        for (int i = 0; i < acount(s->projects); i++) {
-            if (!studio_project_current(s, i) && position++ == chosen) {
-                studio_open_project(s, i);
-            }
-        }
-    } else if (chosen >= assets) {
-        int position = 0;
-        for (int i = 0; i < asset_count; i++) {
-            const reference_asset *asset = reference_index_asset_at(index, i);
-            if (asset->name && asset->kind >= 0 &&
-                asset->kind < REFERENCE_ASSET_KIND_COUNT &&
-                position++ == chosen - assets) {
-                app_scene_authoring_open_asset(scene, i);
-                break;
-            }
-        }
-    }
-    afree(items);
-    afree(commands);
-}
-
 /* ---------- Frame ---------- */
 
 static void track_pointer(studio *s)
@@ -1122,6 +1176,7 @@ void studio_emit(studio *s)
 {
     sync_presentation(s);
     studio_disk_frame(s);
+    studio_follow_document(s);
     studio_code_frame(s);
     studio_canvas_follow(s);
     track_pointer(s);
@@ -1131,116 +1186,12 @@ void studio_emit(studio *s)
     /* Visual designer (workstream H): the Text Editor's cursor and the Canvas. */
     studio_designer_frame(s);
     statusbar(s);
-    palette(s);
+    studio_palette(s);
+    studio_new_asset_frame(s);
     undo_toast(s);
     studio_projects_frame(s);
     studio_rewire_toast(s);
     studio_members_toast(s);
     studio_refactor_frame(s);
-}
-
-/* Up and Down walk the Outliner's visible rows (Blender). */
-static void step_selection(studio *s, int direction)
-{
-    int *rows = studio_outliner_rows(s);
-    int count = acount(rows), at = -1;
-    for (int r = 0; r < count; r++) {
-        at = rows[r] == s->scene->selected ? r : at;
-    }
-    int next = at < 0 ? (direction > 0 ? 0 : count - 1) : at + direction;
-    if (count && next >= 0 && next < count) {
-        finish_transform_edit(s->scene, false);
-        select_instance(s->scene, rows[next]);
-        s->outliner_reveal = true;
-    }
-    afree(rows);
-}
-
-/* Mod = and Mod - step UI Scale and Mod 0 restores it, as browsers and VS
-   Code zoom. */
-static bool zoom_key(SDL_Keycode key, int *step)
-{
-    switch (key) {
-        case SDLK_EQUALS:
-        case SDLK_PLUS:
-        case SDLK_KP_PLUS: *step = 1; return true;
-        case SDLK_MINUS:
-        case SDLK_KP_MINUS: *step = -1; return true;
-        case SDLK_0:
-        case SDLK_KP_0: *step = 0; return true;
-        default: return false;
-    }
-}
-
-/* Held keys repeat to walk the Outliner, to undo or redo and to zoom, never
-   to toggle, delete or reset. */
-static bool repeats(SDL_Keycode key, bool mod)
-{
-    int step = 0;
-    return mod ? key == SDLK_Z || key == SDLK_Y || (zoom_key(key, &step) && step)
-               : key == SDLK_UP || key == SDLK_DOWN;
-}
-
-void studio_shortcuts(studio *s)
-{
-    studio_editor editor = s->hover_area >= 0 ? s->prefs.editors[s->hover_area]
-                                              : STUDIO_EDITOR_COUNT;
-    /* A game playing in the focused viewport owns keys without a modifier,
-       such as Space for a dash. The Canvas preview hears keys too, but its
-       events only reach its Actions log, so Studio keeps them there, as the
-       designer's keys need. */
-    bool gameplay = !studio_previewed_ui(s) && engine_viewport_focused(s->viewport);
-    for (int i = 0; i < acount(s->keys); i++) {
-        SDL_Keycode key = s->keys[i].key;
-        bool mod = studio_primary(s, s->keys[i].mod);
-        bool shift = s->keys[i].mod & SDL_KMOD_SHIFT;
-        int step;
-        if (studio_debug_key(s, key, shift)) {
-            continue;
-        }
-        if ((gameplay && !mod) || (s->keys[i].repeat && !repeats(key, mod))) {
-            continue;
-        }
-        if (mod && shift && (key == SDLK_A || key == SDLK_U)) {
-            studio_command_run(s, key == SDLK_A ? STUDIO_COMMAND_TOGGLE_ASSETS : STUDIO_COMMAND_TOGGLE_OUTPUT);
-        } else if (mod && (key == SDLK_K || key == SDLK_P)) {
-            studio_command_run(s, STUDIO_COMMAND_SEARCH);
-        } else if (mod && key == SDLK_S) {
-            studio_save(s);
-        } else if (mod && key == SDLK_COMMA) {
-            studio_command_run(s, STUDIO_COMMAND_SETTINGS);
-        } else if (mod && zoom_key(key, &step)) {
-            studio_zoom(s, step);
-        } else if (mod && key == SDLK_Z) {
-            studio_history(s, shift);
-        } else if (mod && key == SDLK_Y) {
-            studio_history(s, true);
-        } else if ((s->keys[i].mod & SDL_KMOD_CTRL) && key == SDLK_SPACE) {
-            studio_toggle_maximized(s, s->hover_area);
-        } else if (studio_designer_key(s, editor, key, s->keys[i].mod)) {
-            /* Visual designer (workstreams H and Q): the Hierarchy's and the
-               Canvas's keys, before Space plays, as it carries a row. */
-            continue;
-        } else if (!mod && key == SDLK_SPACE && editor != STUDIO_EDITOR_BEHAVIOR) {
-            studio_runtime(s, APP_RUNTIME_PLAY);
-        } else if (
-            editor == STUDIO_EDITOR_MEMBERS &&
-            studio_members_key(s, key, s->keys[i].mod)
-        ) {
-            continue;
-        } else if (
-            editor == STUDIO_EDITOR_ASSETS &&
-            studio_assets_key(s, key, s->keys[i].mod)
-        ) {
-            continue;
-        } else if (!mod && key == SDLK_F && (editor == STUDIO_EDITOR_SCENE || editor == STUDIO_EDITOR_OUTLINER)) {
-            studio_frame_selection(s);
-        } else if (!mod && shift && key == SDLK_D && editor != STUDIO_EDITOR_PROPERTIES && editor != STUDIO_EDITOR_BEHAVIOR) {
-            studio_duplicate(s);
-        } else if (!mod && editor == STUDIO_EDITOR_OUTLINER && (key == SDLK_X || key == SDLK_DELETE)) {
-            studio_delete(s);
-        } else if (!mod && editor == STUDIO_EDITOR_OUTLINER && (key == SDLK_UP || key == SDLK_DOWN)) {
-            step_selection(s, key == SDLK_DOWN ? 1 : -1);
-        }
-    }
+    studio_component_toast(s);
 }

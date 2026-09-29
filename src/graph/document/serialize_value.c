@@ -2,6 +2,7 @@
 #include "graph/model/registry.h"
 #include "graph/runtime/value_array.h"
 
+#include <assert.h>
 #include <limits.h>
 #include <stdlib.h>
 #include <string.h>
@@ -125,6 +126,17 @@ void serialize_write_value(
     if (value) {
         yyjson_mut_obj_add(obj, yyjson_mut_strcpy(doc, key), value);
     }
+}
+
+char *serialize_value_json(const pin_value *value)
+{
+    yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
+    yyjson_mut_val *holder = yyjson_mut_obj(doc);
+    serialize_write_value(doc, holder, "value", value->type, value->type_name, value);
+    char *json = yyjson_mut_val_write(yyjson_mut_obj_get(holder, "value"), 0, NULL);
+    yyjson_mut_doc_free(doc);
+    assert(json);
+    return json;
 }
 
 static int read_signed(yyjson_val *v, int64_t *out)

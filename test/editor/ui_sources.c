@@ -17,35 +17,29 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+static const char PAGE_RML[] = "<body\n"
+                               "  class=\"page\">\n"
+                               "  <div id=\"frame\"><slot/></div>\n"
+                               "</body>\n";
 static const char
-    PAGE[] = "rml: |\n"
-             "  <body\n"
-             "    class=\"page\">\n"
-             "    <div id=\"frame\"><slot/></div>\n"
-             "  </body>\n"
-             "rcss: |\n"
-             "  #frame { display: block; width: 100%; height: 100%; }\n";
+    PAGE_RCSS[] = "#frame { display: block; width: 100%; height: 100%; }\n";
 
-static const char MENU[] = "rml: |\n"
-                           "  <div id=\"panel\">\n"
-                           "    <use ui=\"Chip\" id=\"chip\"/>\n"
-                           "  </div>\n"
-                           "rcss: |\n"
-                           "  @import \"theme.rcss\";\n"
-                           "  div { display: block; }\n"
-                           "  #panel {\n"
-                           "    width: 300dp;\n"
-                           "    height: 100dp;\n"
-                           "    pointer-events: auto;\n"
-                           "  }\n";
+static const char MENU_RML[] = "<div id=\"panel\">\n"
+                               "  <use ui=\"Chip\" id=\"chip\"/>\n"
+                               "</div>\n";
+static const char MENU_RCSS[] = "@import \"theme.rcss\";\n"
+                                "div { display: block; }\n"
+                                "#panel {\n"
+                                "  width: 300dp;\n"
+                                "  height: 100dp;\n"
+                                "  pointer-events: auto;\n"
+                                "}\n";
 
-static const char CHIP[] = "rml: <div class=\"chip\" attrs/>\n"
-                           "rcss: |\n"
-                           "  .chip {\n"
-                           "    width: 40dp;\n"
-                           "    height: 30dp;\n"
-                           "    pointer-events: auto;\n"
-                           "  }\n";
+static const char CHIP_RCSS[] = ".chip {\n"
+                                "  width: 40dp;\n"
+                                "  height: 30dp;\n"
+                                "  pointer-events: auto;\n"
+                                "}\n";
 
 static void write_file(const char *root, const char *name, const char *text)
 {
@@ -136,44 +130,45 @@ static void game_ui_sources(render_ui *ui, const ui_world *w)
         !render_ui_error(ui)[0] && written_at(panel, "Menu:1") &&
             written_at(wrapper, "Menu:2") && written_at(chip, "Chip:1") &&
             written_at(frame, "Page:3"),
-        "each shown element carries the asset and rml line that wrote it"
+        "each shown element carries the asset and .rml line that wrote it"
     );
     test_check(
-        styled_from(panel, "width", "/ui/Menu.yaml", 3) &&
-            styled_from(chip, "width", "/ui/Chip.yaml", 1) &&
+        styled_from(panel, "width", "/ui/Menu.rcss", 3) &&
+            styled_from(chip, "width", "/ui/Chip.rcss", 1) &&
             styled_from(chip, "height", "/ui/theme.rcss", 3) &&
-            styled_from(frame, "display", "/ui/Page.yaml", 1) &&
+            styled_from(frame, "display", "/ui/Page.rcss", 1) &&
             built_in(frame, "font-family"),
-        "each rule traces to its asset's rcss line or its import's line"
+        "each rule traces to its asset's .rcss line or its import's line"
     );
 }
 
 /* An unsaved edit remounts at once, from text no file holds. */
 static void overlay_remount(render_ui *ui, const ui_world *w, const char *root)
 {
-    char menu[256], badge[256];
-    snprintf(menu, sizeof menu, "%s/ui/Menu.yaml", root);
-    snprintf(badge, sizeof badge, "%s/ui/Badge.yaml", root);
+    char menu[256], badge[256], badge_styles[256];
+    snprintf(menu, sizeof menu, "%s/ui/Menu.rml", root);
+    snprintf(badge, sizeof badge, "%s/ui/Badge.rml", root);
+    snprintf(badge_styles, sizeof badge_styles, "%s/ui/Badge.rcss", root);
+    text_overlay_set(badge, "<div id=\"badge\"/>\n");
     text_overlay_set(
-        badge,
-        "rml: <div id=\"badge\"/>\n"
-        "rcss: |\n"
-        "  #badge {\n"
-        "    display: block; width: 50dp; height: 50dp; pointer-events: auto;\n"
-        "  }\n"
+        badge_styles,
+        "#badge {\n"
+        "  display: block; width: 50dp; height: 50dp; pointer-events: auto;\n"
+        "}\n"
     );
-    text_overlay_set(menu, "rml: <use ui=\"Badge\"/>\n");
+    text_overlay_set(menu, "<use ui=\"Badge\"/>\n");
     update(ui, w);
     rml_element *shown = pick(ui, 10, 10);
     struct stat info;
-    bool untouched = stat(badge, &info) != 0 && disk_holds(menu, MENU);
+    bool untouched = stat(badge, &info) != 0 && disk_holds(menu, MENU_RML);
     test_check(
         written_at(shown, "Badge:1") &&
-            styled_from(shown, "width", "/ui/Badge.yaml", 1) && untouched,
+            styled_from(shown, "width", "/ui/Badge.rcss", 1) && untouched,
         "an unsaved edit to a ui asset remounts it without touching the disk"
     );
     text_overlay_set(menu, NULL);
     text_overlay_set(badge, NULL);
+    text_overlay_set(badge_styles, NULL);
     update(ui, w);
     test_check(written_at(pick(ui, 10, 10), "Chip:1"), "removing the edit shows the saved asset again");
 }
@@ -211,9 +206,9 @@ static void kit_sources(const char *root)
     rml_element *doc = rml_element_owner_document(host);
     test_check(
         styled_from(doc, "font-size", "/theme/base.rcss", 4) &&
-            styled_from(rml_element_by_id(doc, "app"), "position", "/studio.rcss", 6) &&
-            styled_from(rml_element_query_selector(host, "#panel"), "width", "/ui/Menu.yaml", 3),
-        "a kit's theme, resources and panel sheets trace to their files"
+            styled_from(rml_element_by_id(doc, "app"), "position", "/theme/workspace.rcss", 7) &&
+            styled_from(rml_element_query_selector(host, "#panel"), "width", "/ui/Menu.rcss", 3),
+        "a kit's theme and panel sheets trace to their files"
     );
     kit_destroy(k);
     rml_backend_destroy(backend);
@@ -228,9 +223,9 @@ void test_ui_sources()
     assert(mkdtemp(root));
     snprintf(folder, sizeof folder, "%s/ui", root);
     assert(mkdir(folder, 0700) == 0);
-    write_file(root, "Page.yaml", PAGE);
-    write_file(root, "Menu.yaml", MENU);
-    write_file(root, "Chip.yaml", CHIP);
+    test_write_ui(folder, "Page", PAGE_RML, PAGE_RCSS);
+    test_write_ui(folder, "Menu", MENU_RML, MENU_RCSS);
+    test_write_ui(folder, "Chip", "<div class=\"chip\" attrs/>", CHIP_RCSS);
     write_file(root, "theme.rcss", "// tokens\n\n.chip { height: 20dp; }\n");
     ecs_world *world = ecs_world_new();
     for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
@@ -241,16 +236,17 @@ void test_ui_sources()
     assert(ecs_world_apply_commands(world) == ECS_OK);
     *GAME_GameUi_get(world, entity) = (GameUi){ .document = "Menu" };
     ui_world w = { .ecs = world, .page = "Page" };
-    render_ui *ui = render_ui_new(root);
+    render_ui *ui = render_ui_new(root, NULL);
     game_ui_sources(ui, &w);
     overlay_remount(ui, &w, root);
     render_ui_free(ui);
     ecs_world_free(world);
     kit_sources(root);
-    static const char *const FILES[] = { "Page.yaml", "Menu.yaml", "Chip.yaml", "theme.rcss" };
-    for (size_t i = 0; i < sizeof FILES / sizeof *FILES; i++) {
-        remove_file(root, FILES[i]);
+    static const char *const ASSETS[] = { "Page", "Menu", "Chip" };
+    for (size_t i = 0; i < sizeof ASSETS / sizeof *ASSETS; i++) {
+        test_remove_ui(folder, ASSETS[i]);
     }
+    remove_file(root, "theme.rcss");
     rmdir(folder);
     rmdir(root);
 }

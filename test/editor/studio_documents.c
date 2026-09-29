@@ -1,6 +1,7 @@
 /* Studio frames over a project on disk: drawing a graph never changes what its
  * asset saves, so reloading a viewed asset leaves it saved. */
 #include "assets/ui_events.h"
+#include "editor/studio/studio_designer_internal.h"
 #include "editor/studio/studio_internal.h"
 #include "editor/workspace/editor.h"
 #include "editor/workspace/input.h"
@@ -40,8 +41,9 @@ typedef struct
     double time;
 } studio_fixture;
 
-/* Studio over the fixture project's scene `scene` with `behavior` open. */
-static studio_fixture fixture_open(const char *scene, const char *behavior)
+/* Studio over scene `scene` of the project at `project` with `behavior`
+   open. */
+static studio_fixture fixture_open(const char *project, const char *scene, const char *behavior)
 {
     studio_fixture f = { .world = ecs_world_new() };
     for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
@@ -63,7 +65,9 @@ static studio_fixture fixture_open(const char *scene, const char *behavior)
         NULL,
         f.runtime
     );
-    assert(app_scene_authoring_set_content_root(f.scene, PROJECT "/content") == 0);
+    char content[PATH_MAX];
+    snprintf(content, sizeof content, "%s/content", project);
+    assert(app_scene_authoring_set_content_root(f.scene, content) == 0);
     assert(app_scene_authoring_load_content(f.scene) == 0);
     assert(app_scene_authoring_load(f.scene, scene) == 0);
     assert(app_scene_authoring_open_behavior(f.scene, behavior) == 0);
@@ -72,7 +76,7 @@ static studio_fixture fixture_open(const char *scene, const char *behavior)
 
 static studio_fixture fixture_new()
 {
-    studio_fixture f = fixture_open(PROJECT "/content/scenes/Main.yaml", "Weapons");
+    studio_fixture f = fixture_open(PROJECT, PROJECT "/content/scenes/Main.yaml", "Weapons");
     assert(editor_open_graph(f.graph, FUNCTION_GRAPH) == 0);
     f.studio = studio_new(f.scene, f.viewport, PROJECT);
     studio_maximize_graph(f.studio);
@@ -125,6 +129,8 @@ static void reload_keeps_viewed_graph_saved()
 
 /* UI documents as tabs and in the Text Editor (test/editor/ui_documents.c). */
 void test_ui_document_tabs();
+/* Assets ▸ New and Settings ▸ Project (test/editor/studio_new_assets.c). */
+void test_studio_new_assets();
 /* Workstream I: the Text Editor's code intelligence
    (test/editor/code_intelligence_studio.c). */
 void test_code_intelligence_studio();
@@ -132,19 +138,33 @@ void test_code_intelligence_studio();
 /* ---------- UI wiring (workstream K) ---------- */
 
 #define VAULT PROJECT "/content/scenes/Vault.yaml"
-#define BANK PROJECT "/content/ui/Bank.yaml"
+#define BANK PROJECT "/content/ui/Bank.rml"
+#define BANK_STYLES PROJECT "/content/ui/Bank.rcss"
 
-/* Studio over the Vault scene, whose Vault shows the Bank document and
-   attaches Teller, with the Scene filling the workspace. Preferences stay as
-   saved. */
-static studio_fixture vault_open()
+/* Studio over `project`'s scene `scene` with `behavior` open and the Scene
+   filling the workspace. Preferences stay as saved but for the layout: UI
+   Scale 1 and the default workspaces, following the active tab, so the
+   areas the checks click are the same whatever the user's. */
+static studio_fixture scene_open(const char *project, const char *scene, const char *behavior)
 {
-    studio_fixture f = fixture_open(VAULT, "Teller");
-    f.studio = studio_new(f.scene, f.viewport, PROJECT);
-    f.studio->prefs.editors[STUDIO_AREA_TOP] = STUDIO_EDITOR_SCENE;
-    f.studio->applied.editors[STUDIO_AREA_TOP] = STUDIO_EDITOR_SCENE;
+    studio_fixture f = fixture_open(project, scene, behavior);
+    f.studio = studio_new(f.scene, f.viewport, project);
+    studio_prefs defaults = studio_prefs_default();
+    studio_prefs *p = &f.studio->prefs;
+    p->ui_scale = 1;
+    p->workspace = defaults.workspace;
+    memcpy(p->layouts, defaults.layouts, sizeof defaults.layouts);
+    p->follow_documents = true;
+    f.studio->applied = *p;
     f.studio->maximized = STUDIO_AREA_TOP;
     return f;
+}
+
+/* Studio over the Vault scene, whose Vault shows the Bank document and
+   attaches Teller. */
+static studio_fixture vault_open()
+{
+    return scene_open(PROJECT, VAULT, "Teller");
 }
 
 static void frames(studio_fixture *f, int count)
@@ -161,7 +181,7 @@ static int bank_errors(const studio *s)
     int count = 0;
     for (int i = 0; i < acount(s->records); i++) {
         count += s->records[i].kind == KIT_TOAST_ERROR &&
-                 strstr(s->records[i].text, "ui/Bank.yaml") != NULL;
+                 strstr(s->records[i].text, "ui/Bank.rml") != NULL;
     }
     return count;
 }
@@ -174,12 +194,12 @@ static void ui_errors_recorded()
     studio *s = f.studio;
     frames(&f, 3);
     bool clean = !s->ui_error[0];
-    text_overlay_set(BANK, "rml: [\n");
+    text_overlay_set(BANK, "");
     frames(&f, 3);
-    bool shown = strstr(s->ui_error, "ui/Bank.yaml") != NULL && bank_errors(s) == 1;
+    bool shown = strstr(s->ui_error, "ui/Bank.rml") != NULL && bank_errors(s) == 1;
     frames(&f, 3);
     bool once = bank_errors(s) == 1;
-    text_overlay_set(BANK, "rcss: 4\n");
+    text_overlay_set(BANK, "<div><body/></div>\n");
     frames(&f, 3);
     bool changed = bank_errors(s) == 2;
     text_overlay_set(BANK, NULL);
@@ -297,12 +317,94 @@ static void preview_follows_document()
     fixture_free(&f);
 }
 
+static bool logged_last(const studio *s, const char *event)
+{
+    const studio_canvas *c = s->canvas;
+    return acount(c->actions) &&
+           !strcmp(c->actions[acount(c->actions) - 1].event, event);
+}
+
+/* The elements of the Canvas's asset that `selector` matches, up to 8. */
+static int canvas_elements(studio *s, const char *selector, rml_element **found)
+{
+    char query[192];
+    snprintf(query, sizeof query, "[data-ui=%s] %s", s->canvas->asset, selector);
+    rml_context *context = render_ui_context(engine_viewport_ui(s->canvas->viewport));
+    return rml_element_query_selector_all(rml_context_document(context, 0), query, found, 8);
+}
+
+/* The variables the Canvas's documents bind. */
+static yyjson_mut_val *canvas_variables(studio *s)
+{
+    render_ui *ui = engine_viewport_ui(s->canvas->viewport);
+    return yyjson_mut_doc_get_root(render_ui_data(ui)->doc);
+}
+
+/* Studio over the Studio project's scene, whose root document is its
+   manifest's, as the application opens it. */
+static studio_fixture studio_project_open()
+{
+    static char root[PATH_MAX];
+    char scene[PATH_MAX + 32];
+    assert(realpath("projects/studio", root));
+    snprintf(scene, sizeof scene, "%s/content/scenes/Studio.yaml", root);
+    studio_fixture f = scene_open(root, scene, "Dismiss");
+    app_scene_authoring_set_default_ui(f.scene, "StudioShell");
+    return f;
+}
+
+/* With the Studio project open, its ui assets are Studio's chrome, so the
+   Canvas previews them over Studio's own data: TopBar lists the document
+   tabs and labels its commands, whose studio.* events only reach the
+   Actions log. A game's preview binds only save and system. */
+static void preview_binds_studio_data()
+{
+    studio_fixture f = studio_project_open();
+    studio *s = f.studio;
+    frames(&f, 3);
+    studio_preview_ui(s, "TopBar");
+    frames(&f, 8);
+    rml_element *found[8];
+    /* Besides data-for's template. */
+    int tabs = canvas_elements(s, ".doc-tab", found) - 1;
+    bool listed = s->own_project && tabs > 0 && tabs == acount(f.scene->tabs);
+    char label[64] = "";
+    if (canvas_elements(s, ".search-trigger .label", found) == 1) {
+        rml_element_inner_rml(found[0], label, sizeof label);
+    }
+    bool labeled = !strcmp(
+        label,
+        studio_command_describe(s, STUDIO_COMMAND_SEARCH).label
+    );
+    canvas_elements(s, ".search-trigger", found);
+    rml_element_click(found[0]);
+    frames(&f, 2);
+    bool logged = logged_last(s, "studio.search") && !kit_command_is_open(s->kit);
+    fixture_free(&f);
+
+    f = vault_open();
+    frames(&f, 3);
+    studio_preview_ui(f.studio, "Bank");
+    frames(&f, 3);
+    yyjson_mut_val *variables = canvas_variables(f.studio);
+    bool game = yyjson_mut_obj_size(variables) == 3 &&
+                yyjson_mut_obj_get(variables, "save") &&
+                yyjson_mut_obj_get(variables, "system") &&
+                yyjson_mut_obj_get(variables, "entities");
+    if (!(listed && labeled && logged && game)) {
+        printf("  %d %d %d %d: %d tabs, '%s'\n", listed, labeled, logged, game, tabs, label);
+    }
+    test_check(listed && labeled && logged && game, "a Studio-project Canvas preview binds Studio's data and only logs its commands; a game's binds save, system and entities' self data");
+    fixture_free(&f);
+}
+
 static void ui_wiring_checks()
 {
     ui_errors_recorded();
     ui_events_offered();
     preview_logs_actions();
     preview_follows_document();
+    preview_binds_studio_data();
 }
 
 /* ---------- Authored status bar (workstream J) ---------- */
@@ -384,21 +486,21 @@ static void status_bar_follows_studio()
 
 /* ---------- Wave 2 follow-ups (workstream P) ---------- */
 
-static void key_event(SDL_Scancode key, bool down)
+static void key_event_mod(SDL_Scancode key, bool down, SDL_Keymod mod, bool repeat)
 {
     SDL_Event event = { .type = down ? SDL_EVENT_KEY_DOWN : SDL_EVENT_KEY_UP };
     event.key.windowID = SDL_GetWindowID(cf_app_get_window());
     event.key.scancode = key;
-    event.key.key = SDL_GetKeyFromScancode(key, SDL_KMOD_NONE, true);
+    event.key.key = SDL_GetKeyFromScancode(key, mod, true);
+    event.key.mod = mod;
     event.key.down = down;
+    event.key.repeat = repeat;
     assert(SDL_PushEvent(&event));
 }
 
-static bool logged_last(const studio *s, const char *event)
+static void key_event(SDL_Scancode key, bool down)
 {
-    const studio_canvas *c = s->canvas;
-    return acount(c->actions) &&
-           !strcmp(c->actions[acount(c->actions) - 1].event, event);
+    key_event_mod(key, down, SDL_KMOD_NONE, false);
 }
 
 /* The Canvas preview takes the keys typed while its area has the keyboard,
@@ -408,13 +510,8 @@ static void preview_hears_keys()
 {
     studio_fixture f = vault_open();
     studio *s = f.studio;
-    text_overlay_set(
-        BANK,
-        "rml: |\n  <div id=\"extract\" autofocus "
-        "data-keys=\"C:Close\">Extract</div>\n"
-        "rcss: |\n  #extract { display: block; height: 100%; tab-index: auto; "
-        "}\n"
-    );
+    text_overlay_set(BANK, "<div id=\"extract\" autofocus data-keys=\"C:Close\">Extract</div>\n");
+    text_overlay_set(BANK_STYLES, "#extract { display: block; height: 100%; tab-index: auto; }\n");
     frames(&f, 3);
     studio_preview_ui(s, "Bank");
     frames(&f, 8);
@@ -454,6 +551,7 @@ static void preview_hears_keys()
     bool playing = game_entities_pending_events(entities) == before + 1;
     test_check(editing && playing, "the focused Scene's game documents take keys while the scene plays");
     text_overlay_set(BANK, NULL);
+    text_overlay_set(BANK_STYLES, NULL);
     fixture_free(&f);
 }
 
@@ -466,6 +564,300 @@ static rml_element *studio_element(studio *s, const char *selector)
         found = rml_element_query_selector(rml_context_document(context, i), selector);
     }
     return found;
+}
+
+static void text_event(const char *text);
+static void tap(SDL_Scancode key);
+
+/* Recording consumes key and text events before the normal shortcut and
+   game-input paths. A repeat must leave the recorder active for the next
+   non-repeat keydown. */
+static void settings_records_shortcut()
+{
+    studio_fixture f = fixture_new();
+    studio *s = f.studio;
+    studio_ui_show(s, "Settings");
+    frames(&f, 4);
+    rml_element *search_field = studio_element(s, ".search-input");
+    key_event(SDL_SCANCODE_SPACE, true);
+    key_event(SDL_SCANCODE_SPACE, false);
+    frames(&f, 2);
+    bool text_field_kept = search_field &&
+                           !app_scene_authoring_runtime_state(f.scene).playing;
+
+    /* The Settings page test covers the Record control. Here, exercise the
+       host after that control has requested a recording. */
+    s->shortcut_recording = STUDIO_COMMAND_SEARCH + 1;
+    bool recording = s->shortcut_recording == STUDIO_COMMAND_SEARCH + 1;
+    SDL_Event lost = { .type = SDL_EVENT_WINDOW_FOCUS_LOST };
+    lost.window.windowID = SDL_GetWindowID(cf_app_get_window());
+    assert(SDL_PushEvent(&lost));
+    frames(&f, 1);
+    bool focus_canceled = recording && s->shortcut_recording == 0 &&
+                          !s->prefs.shortcuts[STUDIO_COMMAND_SEARCH][0];
+    lost.type = SDL_EVENT_WINDOW_FOCUS_GAINED;
+    assert(SDL_PushEvent(&lost));
+    frames(&f, 1);
+    s->shortcut_recording = STUDIO_COMMAND_SEARCH + 1;
+    recording = s->shortcut_recording == STUDIO_COMMAND_SEARCH + 1;
+
+    SDL_Keymod primary = s->mac ? SDL_KMOD_GUI : SDL_KMOD_CTRL;
+    SDL_Scancode primary_key = s->mac ? SDL_SCANCODE_LGUI : SDL_SCANCODE_LCTRL;
+    key_event_mod(primary_key, true, primary, false);
+    key_event_mod(SDL_SCANCODE_P, true, primary | SDL_KMOD_SHIFT, true);
+    key_event_mod(SDL_SCANCODE_P, false, primary | SDL_KMOD_SHIFT, false);
+    frames(&f, 2);
+    bool repeat_ignored = recording &&
+                          s->shortcut_recording == STUDIO_COMMAND_SEARCH + 1;
+    text_event("p");
+    key_event_mod(SDL_SCANCODE_P, true, primary | SDL_KMOD_SHIFT, false);
+    key_event_mod(SDL_SCANCODE_P, false, primary | SDL_KMOD_SHIFT, false);
+    key_event_mod(primary_key, false, SDL_KMOD_NONE, false);
+    frames(&f, 3);
+    bool captured = s->shortcut_recording == 0 &&
+                    !strcmp(s->prefs.shortcuts[STUDIO_COMMAND_SEARCH], "Mod+Shift+P");
+    if (!(text_field_kept && focus_canceled && repeat_ignored && captured)) {
+        printf(
+            "  %d %d %d %d (recording %d)\n",
+            text_field_kept,
+            focus_canceled,
+            repeat_ignored,
+            captured,
+            s->shortcut_recording
+        );
+    }
+    test_check(
+        text_field_kept && focus_canceled && repeat_ignored && captured,
+        "Settings text focus blocks Play; focus loss cancels recording, which "
+        "ignores repeats and captures a chord through the host input queue"
+    );
+    fixture_free(&f);
+}
+
+/* The palette finds settings: a switch flips where it is found, and any
+   other setting opens Settings searching for it. */
+static void palette_finds_settings()
+{
+    studio_fixture f = fixture_new();
+    studio *s = f.studio;
+    frames(&f, 2);
+    bool vim = s->prefs.code_vim;
+    studio_command_run(s, STUDIO_COMMAND_SEARCH);
+    frames(&f, 2);
+    text_event("vim");
+    frames(&f, 2);
+    tap(SDL_SCANCODE_RETURN);
+    frames(&f, 2);
+    bool flipped = s->prefs.code_vim == !vim && !kit_command_is_open(s->kit) &&
+                   studio_element(s, ".toast");
+    studio_command_run(s, STUDIO_COMMAND_SEARCH);
+    frames(&f, 2);
+    text_event("wire style");
+    frames(&f, 2);
+    tap(SDL_SCANCODE_RETURN);
+    frames(&f, 4);
+    rml_element *search = studio_element(s, ".search-input");
+    char query[64] = "";
+    if (search) {
+        rml_element_value(search, query, sizeof query);
+    }
+    bool searched = !strcmp(query, "Wire Style");
+    if (!(flipped && searched)) {
+        printf("  %d %d '%s'\n", flipped, searched, query);
+    }
+    test_check(flipped && searched, "the palette flips a switch setting where it finds it and opens Settings at any other");
+    fixture_free(&f);
+}
+
+/* The palette's first row's label, without its highlighting, and the group
+   it heads, or "". */
+static void first_row(studio *s, char *label, char *group, size_t size)
+{
+    label[0] = group[0] = '\0';
+    char rml[256] = "";
+    rml_element *row = studio_element(s, ".cmd-item .label");
+    if (row) {
+        rml_element_inner_rml(row, rml, sizeof rml);
+    }
+    size_t n = 0;
+    bool tag = false;
+    for (const char *c = rml; *c && n + 1 < size; c++) {
+        tag = *c == '<' || (tag && *c != '>');
+        if (!tag && *c != '>') {
+            label[n++] = *c;
+        }
+    }
+    label[n] = '\0';
+    rml_element *heading = studio_element(s, ".cmd-group");
+    if (heading) {
+        rml_element_inner_rml(heading, group, size);
+    }
+}
+
+static void search_for(studio_fixture *f, const char *query)
+{
+    /* The last palette finishes leaving first. */
+    frames(f, 20);
+    studio_command_run(f->studio, STUDIO_COMMAND_SEARCH);
+    frames(f, 2);
+    if (query[0]) {
+        text_event(query);
+    }
+    frames(f, 2);
+}
+
+/* The palette puts what was chosen lately first, alone while nothing is
+   typed and above equal matches after; '>' keeps commands and settings, '@'
+   the open behavior's graphs and nodes, and '?' lists the prefixes, one of
+   which types itself. */
+static void palette_recent_and_prefixes()
+{
+    studio_fixture f = fixture_new();
+    studio *s = f.studio;
+    studio_prefs saved = s->prefs;
+    memset(s->prefs.recent, 0, sizeof s->prefs.recent);
+    frames(&f, 2);
+    char label[128], group[64];
+    search_for(&f, "toggle");
+    first_row(s, label, group, sizeof label);
+    bool unranked = !strcmp(label, "Toggle Assets");
+    tap(SDL_SCANCODE_DOWN);
+    tap(SDL_SCANCODE_DOWN);
+    tap(SDL_SCANCODE_RETURN);
+    frames(&f, 2);
+    bool remembered = !strcmp(s->prefs.recent[0].key, "command:togglePerformance") &&
+                      s->prefs.recent[0].uses == 1;
+    search_for(&f, "toggle");
+    first_row(s, label, group, sizeof label);
+    bool boosted = !strcmp(label, "Toggle Performance");
+    tap(SDL_SCANCODE_ESCAPE);
+    frames(&f, 2);
+    search_for(&f, "");
+    first_row(s, label, group, sizeof label);
+    bool recent_first = !strcmp(label, "Toggle Performance") &&
+                        !strcmp(group, "Recent");
+    tap(SDL_SCANCODE_ESCAPE);
+    frames(&f, 2);
+
+    search_for(&f, ">weapons");
+    first_row(s, label, group, sizeof label);
+    bool commands_only = strcmp(group, "Assets") != 0;
+    tap(SDL_SCANCODE_ESCAPE);
+    frames(&f, 2);
+    search_for(&f, "@");
+    first_row(s, label, group, sizeof label);
+    bool symbols = !strcmp(group, "In This Behavior") && label[0];
+    tap(SDL_SCANCODE_ESCAPE);
+    frames(&f, 2);
+    search_for(&f, "?");
+    tap(SDL_SCANCODE_RETURN);
+    frames(&f, 3);
+    bool prefix = kit_command_is_open(s->kit) &&
+                  !strcmp(kit_command_query(s->kit), ">");
+    tap(SDL_SCANCODE_ESCAPE);
+    frames(&f, 2);
+    if (!(unranked && remembered && boosted && recent_first && commands_only &&
+          symbols && prefix)) {
+        printf(
+            "  %d %d %d %d %d %d %d '%s' '%s'\n",
+            unranked,
+            remembered,
+            boosted,
+            recent_first,
+            commands_only,
+            symbols,
+            prefix,
+            label,
+            group
+        );
+    }
+    test_check(unranked && remembered && boosted && recent_first, "the palette ranks what was chosen lately first, and leads with it while nothing is typed");
+    test_check(commands_only && symbols && prefix, "'>' keeps commands and settings, '@' the open behavior's symbols, and '?' types a prefix");
+    s->prefs = saved;
+    s->applied = saved;
+    fixture_free(&f);
+}
+
+/* The rows data-for made in the element at `selector`, leaving out its
+   template, and the first one's text. */
+static int list_rows(studio *s, const char *selector, char *first, size_t size)
+{
+    first[0] = '\0';
+    rml_element *window = studio_element(s, selector);
+    int rows = 0;
+    for (int i = 0; window && i < rml_element_child_count(window); i++) {
+        rml_element *row = rml_element_child(window, i);
+        if (rml_element_has_attribute(row, "data-for") ||
+            !rml_element_is_visible(row, false)) {
+            continue;
+        }
+        if (!rows++) {
+            rml_element_inner_rml(row, first, size);
+        }
+    }
+    return rows;
+}
+
+/* The widget gallery's VirtualList, driven by the VirtualList and
+   WidgetGallery behaviors, makes only the rows in view of ten thousand, and
+   scrolling shows the rows there. */
+static void virtual_list_rows()
+{
+    studio_fixture f = studio_project_open();
+    studio *s = f.studio;
+    s->maximized = -1;
+    studio_layout *layout = studio_active_layout(s);
+    layout->editors[STUDIO_AREA_TOP] = STUDIO_EDITOR_PANEL;
+    snprintf(layout->panels[STUDIO_AREA_TOP], sizeof layout->panels[0], "Widgets");
+    frames(&f, 12);
+    char first[96];
+    int rows = list_rows(s, ".vlist-window", first, sizeof first);
+    bool windowed = rows > 10 && rows < 60 && !strcmp(first, "Row 1 of 10000");
+    rml_element *view = studio_element(s, ".vlist");
+    if (view) {
+        rml_element_set_scroll_top(view, 24 * 500 * studio_pixel_ratio(s));
+    }
+    frames(&f, 6);
+    int scrolled_rows = list_rows(s, ".vlist-window", first, sizeof first);
+    bool scrolled = scrolled_rows > 10 && scrolled_rows < 60 &&
+                    !strcmp(first, "Row 495 of 10000");
+    if (!(windowed && scrolled)) {
+        printf("  %d %d rows %d then %d, first '%s'\n", windowed, scrolled, rows, scrolled_rows, first);
+    }
+    test_check(windowed && scrolled, "a VirtualList of ten thousand rows makes only those in view, and scrolling shows the rows there");
+    fixture_free(&f);
+}
+
+/* Repeats remain limited to commands that are useful while held. */
+static void shortcut_repeat_policy()
+{
+    studio_fixture zoom = fixture_new();
+    studio *s = zoom.studio;
+    SDL_Keymod primary = s->mac ? SDL_KMOD_GUI : SDL_KMOD_CTRL;
+    snprintf(s->prefs.shortcuts[STUDIO_COMMAND_ZOOM_IN], STUDIO_CHORD_SIZE, "Mod+F12");
+    s->prefs.ui_scale = 1;
+    apush(s->keys, ((studio_key){ SDLK_F12, primary, true }));
+    studio_shortcuts(s);
+    float held_scale = s->prefs.ui_scale;
+    asetlen(s->keys, 0);
+    apush(s->keys, ((studio_key){ SDLK_F12, primary, false }));
+    studio_shortcuts(s);
+    bool zoom_repeat_runs = held_scale > 1;
+    bool zoom_press_runs = s->prefs.ui_scale > held_scale;
+    fixture_free(&zoom);
+
+    studio_fixture search = fixture_new();
+    s = search.studio;
+    primary = s->mac ? SDL_KMOD_GUI : SDL_KMOD_CTRL;
+    apush(s->keys, ((studio_key){ SDLK_K, primary, true }));
+    studio_shortcuts(s);
+    bool toggle_repeat_ignored = !kit_command_is_open(s->kit);
+    asetlen(s->keys, 0);
+    apush(s->keys, ((studio_key){ SDLK_K, primary, false }));
+    studio_shortcuts(s);
+    bool toggle_press_runs = kit_command_is_open(s->kit);
+    test_check(zoom_repeat_runs && zoom_press_runs && toggle_repeat_ignored && toggle_press_runs, "repeatable zoom runs on a held shortcut while the Search toggle waits for a fresh press");
+    fixture_free(&search);
 }
 
 /* Whether the Scene's last draw framed the camera it holds now, as the
@@ -520,12 +912,15 @@ static int panel_elements(studio *s, const char *panel, const char *selector, rm
     return rml_element_query_selector_all(doc, query, found, 8);
 }
 
-/* A press and release on `el`, which focuses it as a click does. */
+/* A press and release on `el`, which focuses it as a click does. Input is
+   in dp, and the element's box in pixels. */
 static void press(studio *s, rml_element *el)
 {
     rml_vec2 at = rml_element_absolute_offset(el, RML_BOX_BORDER);
     rml_vec2 size = rml_element_box_size(el, RML_BOX_BORDER);
-    rml_input input = { .x = at.x + size.x * 0.5f, .y = at.y + size.y * 0.5f };
+    float ratio = studio_pixel_ratio(s);
+    rml_input input = { .x = (at.x + size.x * 0.5f) / ratio,
+                        .y = (at.y + size.y * 0.5f) / ratio };
     rml_input_type types[] = { RML_INPUT_POINTER_MOVE,
                                RML_INPUT_POINTER_DOWN,
                                RML_INPUT_POINTER_UP };
@@ -563,8 +958,8 @@ static void chrome_follows_studio()
     int shown = panel_elements(s, "AreaHeader", ".area-head", heads);
     bool slots = kit_find(s->kit, "app/topbar/menus/file", &r) &&
                  kit_find(s->kit, "app/topbar/target/target", &r) &&
-                 kit_find(s->kit, "app/workspace/main/top/head/type/type", &r) &&
-                 kit_find(s->kit, "app/workspace/main/top/head/controls", &r) &&
+                 kit_find(s->kit, "app/workspace/main/editors/top/head/type/type", &r) &&
+                 kit_find(s->kit, "app/workspace/main/editors/top/head/controls", &r) &&
                  s->maximized < 0 && shown >= STUDIO_AREA_COUNT - 1;
     int count = panel_elements(s, "TopBar", ".doc-tab", tabs) - 1;
     int bank = tab_named(f.scene, "Bank"), scene = bank == 0 ? 1 : 0;
@@ -608,6 +1003,145 @@ static void chrome_follows_studio()
     fixture_free(&f);
 }
 
+static bool beside(const studio *s)
+{
+    kit_rect top = s->areas[STUDIO_AREA_TOP].rect,
+             bottom = s->areas[STUDIO_AREA_BOTTOM].rect;
+    return bottom.w > 0 && fabsf(bottom.y - top.y) < 1 && bottom.x >= top.x + top.w;
+}
+
+static bool stacked(const studio *s)
+{
+    kit_rect top = s->areas[STUDIO_AREA_TOP].rect,
+             bottom = s->areas[STUDIO_AREA_BOTTOM].rect;
+    return bottom.w > 0 && fabsf(bottom.x - top.x) < 1 && bottom.y >= top.y + top.h;
+}
+
+static bool side_shown(const studio *s)
+{
+    return s->areas[STUDIO_AREA_OUTLINER].rect.w > 0 &&
+           s->areas[STUDIO_AREA_PROPERTIES].rect.w > 0;
+}
+
+static void select_tab(studio_fixture *f, int tab)
+{
+    studio_command_run_with(f->studio, STUDIO_COMMAND_SELECT_TAB, tab);
+    frames(f, 3);
+}
+
+/* The workspace follows the active tab: a UI document's shows Canvas beside
+   the Text Editor, any other tab's Layout, each as it was left, and neither
+   touches documents, selections, history or playback. A workspace chosen by
+   hand holds until the tab changes. */
+static void workspaces_follow_tabs()
+{
+    studio_fixture f = vault_open();
+    studio *s = f.studio;
+    s->maximized = -1;
+    studio_layout *layout = &s->prefs.layouts[STUDIO_WORKSPACE_LAYOUT];
+    studio_layout *ui = &s->prefs.layouts[STUDIO_WORKSPACE_UI];
+    layout->side_width = 416;
+    layout->main_split = 0.66f;
+    s->prefs.code_apply_live = false;
+    s->applied = s->prefs;
+    frames(&f, 2);
+    select_instance(f.scene, 0);
+    int actor = f.scene->selected;
+
+    char path[PATH_MAX];
+    assert(realpath(BANK, path) && studio_open_ui_source(s, path, 1));
+    frames(&f, 4);
+    int bank = tab_named(f.scene, "Bank"), scene = bank == 0 ? 1 : 0;
+    kit_rect r;
+    bool ui_shown = s->prefs.workspace == STUDIO_WORKSPACE_UI && beside(s) &&
+                    kit_find(s->kit, "app/workspace/main/editors/bottom/body/code/text", &r) &&
+                    !ui->drawer_open && !layout->drawer_open &&
+                    layout->editors[STUDIO_AREA_DRAWER] == STUDIO_EDITOR_OUTPUT;
+    ui_buffer *buffer = studio_ui_buffer(s);
+    studio_designer *designer = designer_state(s, &buffer);
+    assert(buffer && designer && acount(designer->rml->elements) > 0);
+    designer_select(s, 0);
+    int length = (int)strlen(ui_buffer_text(buffer, UI_PART_RML));
+    text_edit edit = { length, length, "<!-- workspace -->\n" };
+    ui_buffer_edit(buffer, UI_PART_RML, &edit, 1);
+    frames(&f, 2);
+    kit_code_editor *code = s->code.editor;
+    int cursor = kit_code_cursor(code);
+    studio_runtime(s, APP_RUNTIME_PLAY);
+    frames(&f, 2);
+
+    select_tab(&f, scene);
+    bool layout_shown = s->prefs.workspace == STUDIO_WORKSPACE_LAYOUT &&
+                        stacked(s) && layout->side_width == 416 &&
+                        layout->main_split == 0.66f && !layout->drawer_open;
+    studio_command_run(s, STUDIO_COMMAND_WORKSPACE_UI);
+    frames(&f, 3);
+    bool chosen_holds = s->prefs.workspace == STUDIO_WORKSPACE_UI;
+    select_tab(&f, bank);
+    bool returned = s->prefs.workspace == STUDIO_WORKSPACE_UI && beside(s) &&
+                    studio_ui_buffer(s) == buffer && s->code.editor == code &&
+                    kit_code_cursor(code) == cursor &&
+                    designer->selected == 0 && f.scene->selected == actor &&
+                    app_scene_authoring_runtime_state(f.scene).playing;
+
+    rml_element *toggles[2];
+    assert(panel_elements(s, "TopBar", ".side-pane", toggles) == 1);
+    press(s, rml_element_query_selector(toggles[0], ".icon"));
+    frames(&f, 30);
+    bool side_hidden = !ui->side_open && !side_shown(s) && layout->side_open;
+    select_tab(&f, scene);
+    frames(&f, 30);
+    bool side_kept = layout->side_open && side_shown(s);
+    select_tab(&f, bank);
+    frames(&f, 30);
+    bool side_remembered = !ui->side_open && !side_shown(s);
+    studio_show_editor(s, STUDIO_EDITOR_OUTLINER);
+    frames(&f, 30);
+    bool side_reopened = ui->side_open && side_shown(s);
+
+    ui->main_split = 0.75f;
+    studio_command_run(s, STUDIO_COMMAND_RESET_LAYOUT);
+    frames(&f, 2);
+    bool reset_one = ui->main_split == 0.5f && layout->main_split == 0.66f &&
+                     layout->side_width == 416;
+    studio_history(s, false);
+    bool undone = !strstr(ui_buffer_text(buffer, UI_PART_RML), "<!-- workspace -->");
+    studio_history(s, true);
+    bool redone = strstr(ui_buffer_text(buffer, UI_PART_RML), "<!-- workspace -->") !=
+                  NULL;
+    bool playing = app_scene_authoring_runtime_state(f.scene).playing;
+
+    s->prefs.follow_documents = false;
+    select_tab(&f, scene);
+    bool unfollowed = s->prefs.workspace == STUDIO_WORKSPACE_UI;
+    studio_runtime(s, APP_RUNTIME_STOP);
+    frames(&f, 1);
+    if (!(ui_shown && layout_shown && chosen_holds && returned && side_hidden &&
+          side_kept && side_remembered && side_reopened && reset_one &&
+          undone && redone && playing && unfollowed)) {
+        printf(
+            "  %d %d %d %d | %d %d %d %d | %d %d %d %d %d\n",
+            ui_shown,
+            layout_shown,
+            chosen_holds,
+            returned,
+            side_hidden,
+            side_kept,
+            side_remembered,
+            side_reopened,
+            reset_one,
+            undone,
+            redone,
+            playing,
+            unfollowed
+        );
+    }
+    test_check(ui_shown && layout_shown && chosen_holds && returned, "the workspace follows the active tab, each as it was left, and a workspace chosen by hand holds until the tab changes");
+    test_check(side_hidden && side_kept && side_remembered && side_reopened, "the top bar hides the side pane per workspace, and showing one of its editors reopens it");
+    test_check(reset_one && undone && redone && playing && unfollowed, "Reset Layout resets the active workspace only; switching keeps history and playback; with Workspace Follows Tab off the workspace stays");
+    fixture_free(&f);
+}
+
 /* ---------- arena2d end to end (wave 3, workstream X) ---------- */
 
 static void text_event(const char *text)
@@ -636,7 +1170,7 @@ static void scene_text_field()
 {
     studio_fixture f = vault_open();
     studio *s = f.studio;
-    text_overlay_set(BANK, "rml: <input id=\"name\" type=\"text\" autofocus/>\n");
+    text_overlay_set(BANK, "<input id=\"name\" type=\"text\" autofocus/>\n");
     s->focus_area = STUDIO_AREA_TOP;
     frames(&f, 3);
     char value[32];
@@ -675,6 +1209,212 @@ static void scene_text_field()
     fixture_free(&f);
 }
 
+/* ---------- Rename objects and prototype components ---------- */
+
+static void tap(SDL_Scancode key)
+{
+    key_event(key, true);
+    key_event(key, false);
+}
+
+/* The pointer to (x, y) in dp, as SDL reports it in window points. */
+static void mouse_move(const studio *s, float x, float y)
+{
+    SDL_Event move = { .type = SDL_EVENT_MOUSE_MOTION };
+    move.motion.windowID = SDL_GetWindowID(cf_app_get_window());
+    move.motion.x = x * s->prefs.ui_scale;
+    move.motion.y = y * s->prefs.ui_scale;
+    assert(SDL_PushEvent(&move));
+}
+
+static void mouse_click(studio_fixture *f, float x, float y, Uint8 button)
+{
+    const studio *s = f->studio;
+    mouse_move(s, x, y);
+    for (int down = 1; down >= 0; down--) {
+        SDL_Event press = { .type = down ? SDL_EVENT_MOUSE_BUTTON_DOWN
+                                         : SDL_EVENT_MOUSE_BUTTON_UP };
+        press.button.windowID = SDL_GetWindowID(cf_app_get_window());
+        press.button.button = button;
+        press.button.down = down;
+        press.button.clicks = 1;
+        press.button.x = x * s->prefs.ui_scale;
+        press.button.y = y * s->prefs.ui_scale;
+        assert(SDL_PushEvent(&press));
+    }
+    frames(f, 2);
+}
+
+static bool click_path(studio_fixture *f, const char *path, Uint8 button)
+{
+    kit_rect r;
+    if (!kit_find(f->studio->kit, path, &r)) {
+        return false;
+    }
+    mouse_click(f, r.x + r.w * 0.5f, r.y + r.h * 0.5f, button);
+    return true;
+}
+
+static void mouse_over(studio_fixture *f, studio_area_slot area)
+{
+    kit_rect r = f->studio->areas[area].rect;
+    mouse_move(f->studio, r.x + r.w * 0.5f, r.y + r.h * 0.5f);
+    frames(f, 1);
+}
+
+static bool named(const app_scene_authoring *scene, const char *name)
+{
+    for (int i = 0; i < acount(scene->actors); i++) {
+        if (!strcmp(scene->actors[i].name, name)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* Studio over the Vault scene with the Outliner and Properties beside the
+   Scene, whatever layout was saved. */
+static studio_fixture side_open()
+{
+    studio_fixture f = vault_open();
+    studio *s = f.studio;
+    s->maximized = -1;
+    s->focus_area = STUDIO_AREA_OUTLINER;
+    frames(&f, 3);
+    return f;
+}
+
+/* Renames one object at a time: F2 over the Outliner edits its row, Enter
+   renames as one Undo step, Escape keeps the name and a name in use is
+   refused; without the Outliner, F2 edits Properties' name field. */
+static void rename_objects()
+{
+    studio_fixture f = side_open();
+    studio *s = f.studio;
+    app_scene_authoring *scene = f.scene;
+    studio_add_object(s, "Vault");
+    select_instance(scene, 0);
+    frames(&f, 2);
+    mouse_over(&f, STUDIO_AREA_OUTLINER);
+    tap(SDL_SCANCODE_F2);
+    frames(&f, 3);
+    bool field = s->rename.entity && s->rename.outliner && kit_wants_keyboard(s->kit);
+    text_event("Strongroom");
+    tap(SDL_SCANCODE_RETURN);
+    frames(&f, 2);
+    bool renamed = named(scene, "Strongroom") && !named(scene, "Vault") &&
+                   !s->rename.entity;
+    studio_history(s, false);
+    bool undone = named(scene, "Vault") && !named(scene, "Strongroom");
+    studio_history(s, true);
+    bool redone = named(scene, "Strongroom");
+    frames(&f, 1);
+    tap(SDL_SCANCODE_F2);
+    frames(&f, 3);
+    text_event("Nope");
+    tap(SDL_SCANCODE_ESCAPE);
+    frames(&f, 2);
+    bool kept = named(scene, "Strongroom") && !named(scene, "Nope") &&
+                !s->rename.entity;
+    select_instance(scene, 1);
+    frames(&f, 1);
+    tap(SDL_SCANCODE_F2);
+    frames(&f, 3);
+    text_event("Strongroom");
+    tap(SDL_SCANCODE_RETURN);
+    frames(&f, 2);
+    bool refused = named(scene, "Vault_1") && strstr(scene->message, "Strongroom");
+    studio_active_layout(s)->editors[STUDIO_AREA_OUTLINER] = STUDIO_EDITOR_ASSETS;
+    frames(&f, 2);
+    mouse_over(&f, STUDIO_AREA_TOP);
+    tap(SDL_SCANCODE_F2);
+    frames(&f, 3);
+    bool properties = s->tab == STUDIO_TAB_OBJECT && kit_wants_keyboard(s->kit);
+    text_event("Annex");
+    tap(SDL_SCANCODE_RETURN);
+    frames(&f, 2);
+    bool inspector = named(scene, "Annex") && !named(scene, "Vault_1");
+    if (!(field && renamed && undone && redone && kept && refused &&
+          properties && inspector)) {
+        printf("  %d %d %d %d %d %d %d %d\n", field, renamed, undone, redone, kept, refused, properties, inspector);
+    }
+    test_check(field && renamed && undone && redone && kept, "F2 over the Outliner renames its row in place as one Undo step, and Escape keeps the name");
+    test_check(refused && properties && inspector, "a name in use is refused, and F2 edits Properties' name field while no area shows the Outliner");
+    fixture_free(&f);
+}
+
+static bool prototype_has(app_scene_authoring *scene, const char *component)
+{
+    const game_prototype *prototype = find_prototype(scene, "Vault")->prototype;
+    for (int i = 0; i < acount(prototype->components); i++) {
+        if (!strcmp(prototype->components[i].desc->name, component)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* Add Component searches the components the prototype lacks and adds the
+   chosen one; its panel's menu removes it, and the toast's Undo returns it. */
+static void prototype_components()
+{
+    studio_fixture f = side_open();
+    studio *s = f.studio;
+    /* Properties fills the workspace, so its last panels are in view. */
+    s->maximized = s->focus_area = STUDIO_AREA_PROPERTIES;
+    assert(app_scene_authoring_open_prototype(f.scene, "Vault") == 0);
+    frames(&f, 3);
+    const char *scroll = "app/workspace/main/properties/body/properties/scroll";
+    char path[256];
+    snprintf(path, sizeof path, "%s/add/component", scroll);
+    bool button = click_path(&f, path, SDL_BUTTON_LEFT);
+    bool palette = kit_command_is_open(s->kit) && s->components.open;
+    text_event("Health");
+    frames(&f, 2);
+    tap(SDL_SCANCODE_RETURN);
+    frames(&f, 3);
+    char added[128];
+    snprintf(added, sizeof added, "%s", s->components.added);
+    bool gained = added[0] && prototype_has(f.scene, added) && !s->components.open;
+    snprintf(path, sizeof path, "%s/%s", scroll, added);
+    kit_rect panel = { 0 };
+    bool shown = kit_find(s->kit, path, &panel);
+    mouse_click(&f, panel.x + 40, panel.y + 10, SDL_BUTTON_RIGHT);
+    frames(&f, 8);
+    bool menu = kit_popup_is_open(s->kit, "component-menu");
+    click_path(&f, "layer/@component-menu/remove", SDL_BUTTON_LEFT);
+    bool removed = !prototype_has(f.scene, added);
+    rml_element *undo = studio_element(s, ".toast-action");
+    if (undo) {
+        rml_element_click(undo);
+    }
+    frames(&f, 2);
+    bool restored = prototype_has(f.scene, added);
+    studio_history(s, false);
+    bool undone = !prototype_has(f.scene, added);
+    studio_history(s, true);
+    bool redone = prototype_has(f.scene, added);
+    if (!(button && palette && gained && shown && menu && removed && undo &&
+          restored && undone && redone)) {
+        printf(
+            "  %d %d %d %d %d %d %d %d %d %d\n",
+            button,
+            palette,
+            gained,
+            shown,
+            menu,
+            removed,
+            undo != NULL,
+            restored,
+            undone,
+            redone
+        );
+    }
+    test_check(button && palette && gained, "Add Component searches the components a prototype lacks and adds the one chosen");
+    test_check(shown && menu && removed && undo && restored && undone && redone, "a component panel's menu removes it with Undo in a toast, and Undo and Redo step both");
+    fixture_free(&f);
+}
+
 int studio_documents_run(const char *program)
 {
     CF_Result result = cf_make_app(
@@ -695,6 +1435,7 @@ int studio_documents_run(const char *program)
     app_input_initialize();
     reload_keeps_viewed_graph_saved();
     test_ui_document_tabs();
+    test_studio_new_assets();
     /* UI wiring (workstream K) */
     ui_wiring_checks();
     /* Authored status bar (workstream J) */
@@ -703,11 +1444,20 @@ int studio_documents_run(const char *program)
     test_code_intelligence_studio();
     /* Wave 2 follow-ups (workstream P) */
     preview_hears_keys();
+    settings_records_shortcut();
+    palette_finds_settings();
+    palette_recent_and_prefixes();
+    virtual_list_rows();
+    shortcut_repeat_policy();
     readout_follows_camera();
     /* Authored top bar and area headers (workstream T) */
     chrome_follows_studio();
+    workspaces_follow_tabs();
     /* arena2d end to end (wave 3, workstream X) */
     scene_text_field();
+    /* Rename objects and prototype components */
+    rename_objects();
+    prototype_components();
     app_input_shutdown();
     cf_destroy_app();
     return 0;

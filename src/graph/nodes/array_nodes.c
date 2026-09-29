@@ -368,17 +368,55 @@ static pin_value array_swap(const pin_value *inputs, int count, arena *a)
     return result;
 }
 
+/* An array input's items; an empty array may hold none, and keeps the
+   input's element type. */
+static pin_array array_or_empty(const pin_value *inputs, int index)
+{
+    const pin_array *array = array_arg(inputs, index);
+    return array ? *array
+                 : (pin_array){ .element_type = inputs[index].type,
+                                .type_name = inputs[index].type_name };
+}
+
 static pin_value array_resize(const pin_value *inputs, int count, arena *a)
 {
     (void)count;
-    const pin_array *source = array_arg(inputs, 0);
-    if (!source) {
+    pin_array held = array_or_empty(inputs, 0);
+    const pin_array *source = &held;
+    if (source->element_type == PIN_FLOW) {
         return (pin_value){ .type = PIN_FLOW, .container = PIN_CONTAINER_ARRAY };
     }
     int size = inputs[1].i < 0 ? 0 : inputs[1].i;
     pin_array *array = pin_array_allocate(a, source->element_type, source->type_name, size);
     for (int i = 0; i < size && i < source->count; i++) {
         if (pin_value_snapshot_to_arena(a, &array->items[i], &source->items[i])) {
+            return (pin_value){ .type = PIN_FLOW };
+        }
+    }
+    return (pin_value){ .type = source->element_type,
+                        .type_name = array->type_name,
+                        .container = PIN_CONTAINER_ARRAY,
+                        .ptr = array };
+}
+
+/* The Count elements from Start, clamped to the array, as JavaScript's
+   slice(start, start + count). */
+static pin_value array_slice(const pin_value *inputs, int count, arena *a)
+{
+    (void)count;
+    pin_array held = array_or_empty(inputs, 0);
+    const pin_array *source = &held;
+    if (source->element_type == PIN_FLOW) {
+        return (pin_value){ .type = PIN_FLOW, .container = PIN_CONTAINER_ARRAY };
+    }
+    int start = inputs[1].i < 0             ? 0
+              : inputs[1].i > source->count ? source->count
+                                            : inputs[1].i;
+    int size = inputs[2].i < 0 ? 0 : inputs[2].i;
+    size = size > source->count - start ? source->count - start : size;
+    pin_array *array = pin_array_allocate(a, source->element_type, source->type_name, size);
+    for (int i = 0; i < size; i++) {
+        if (pin_value_snapshot_to_arena(a, &array->items[i], &source->items[start + i])) {
             return (pin_value){ .type = PIN_FLOW };
         }
     }
@@ -413,6 +451,7 @@ VALUE_CALL(array_clear)
 VALUE_CALL(array_reverse)
 VALUE_CALL(array_swap)
 VALUE_CALL(array_resize)
+VALUE_CALL(array_slice)
 VALUE_CALL(array_contains)
 VALUE_CALL(array_find)
 #undef VALUE_CALL
@@ -432,6 +471,9 @@ static pin_spec array_set_inputs[] = { ARRAY_INPUT, INDEX_INPUT, ELEMENT_INPUT }
 static pin_spec array_insert_inputs[] = { ARRAY_INPUT, INDEX_INPUT, ELEMENT_INPUT };
 static pin_spec array_swap_inputs[] = { ARRAY_INPUT, INDEX_INPUT, INDEX_INPUT };
 static pin_spec array_resize_inputs[] = { ARRAY_INPUT, INDEX_INPUT };
+static pin_spec array_slice_inputs[] = { ARRAY_INPUT,
+                                         { "Start", PIN_I32, "int", PIN_DATA },
+                                         { "Count", PIN_I32, "int", PIN_DATA } };
 
 node_desc NODE_MakeArray = {
     .name = "Make Array",
@@ -755,6 +797,22 @@ node_desc NODE_ArrayResize = {
                    "empty."
 };
 
+node_desc NODE_ArraySlice = {
+    .name = "Slice",
+    .input_count = 3,
+    .output_count = 1,
+    .inputs = array_slice_inputs,
+    .outputs = array_only_outputs,
+    .pure_kind = NODE_PURE_CALL,
+    .fn = array_slice,
+    .host_call = &(const node_host_call){ .value = array_slice_call },
+    .access = &array_value_access,
+    .category = "Array",
+    .keywords = "array slice sub range window page subset part",
+    .description = "Returns the Count elements of Array from Start, clamped to "
+                   "the array, as a list shows one page of rows."
+};
+
 static node_desc *const ARRAY_NODES[] = {
     &NODE_MakeArray,      &NODE_ArrayGet,         &NODE_ArraySetElem,
     &NODE_ArrayAdd,       &NODE_ArrayAddUnique,   &NODE_ArrayAppend,
@@ -763,6 +821,7 @@ static node_desc *const ARRAY_NODES[] = {
     &NODE_ArrayResize,    &NODE_ArrayRemoveIndex, &NODE_ArrayRemoveItem,
     &NODE_ArrayIsEmpty,   &NODE_ArrayIsNotEmpty,  &NODE_ArrayIsValidIndex,
     &NODE_ArrayReverse,   &NODE_ArraySwap,        &NODE_ArrayInsert,
+    &NODE_ArraySlice,
 };
 
 const registry_pack CORE_ARRAY_PACK = {

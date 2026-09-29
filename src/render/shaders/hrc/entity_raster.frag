@@ -331,6 +331,8 @@ vec4 emission_acc;
 // The part of emission_acc from absorbing layers. The transport reads it as
 // radiance and the rest as density; see hrc/source_average.shd.
 vec3 absorber_emission;
+// Lights' emission, which the transport receives but display does not.
+vec3 hidden_emission;
 vec4 albedo_acc;
 vec4 normal_acc;
 float tau_acc;
@@ -459,6 +461,7 @@ void main()
     scene_acc = vec4(0);
     emission_acc = vec4(0, 0, 0, 1);
     absorber_emission = vec3(0.0);
+    hidden_emission = vec3(0.0);
     tau_acc = 0.0;
     absorption_cover = 0.0;
     albedo_acc = vec4(0, 0, 0, 1);
@@ -477,6 +480,8 @@ void main()
     emission_acc.rgb = prev_source.rgb * prev_cover.r;
     optics_acc = prev_cover.gba;
     absorber_emission = prev_source.a > 0.0 ? emission_acc.rgb : vec3(0.0);
+    // Clear pixels' density beyond what display shows is earlier lights'.
+    hidden_emission = prev_source.a > 0.0 ? vec3(0.0) : max(prev_source.rgb - emission_acc.rgb, 0.0);
     absorption_cover = prev_source.a > 0.0 ? 1.0 : 0.0;
     tau_acc = prev_source.a;
     vec4 prev_albedo = texelFetch(u_prev_albedo, pixel, 0);
@@ -719,8 +724,12 @@ void main()
 
             vec4 sc = unpack_color(e.scene); sc.rgb *= sc.a; sc *= coverage;
             vec4 em = unpack_color(e.emission); em.rgb *= em.a;
-            em.rgb *= e.simulation_time.z;
+            em.rgb *= abs(e.simulation_time.z);
             em *= emission_coverage;
+            if (e.simulation_time.z < 0.0) {
+                hidden_emission += em.rgb;
+                continue;
+            }
             vec4 tr = unpack_color(e.absorption); tr *= coverage;
             vec4 al = unpack_color(e.albedo); al.rgb *= al.a; al *= coverage;
             if (tiled) {
@@ -787,7 +796,7 @@ void main()
     float opacity = absorption_cover * (1.0 - exp(-tau));
     float depth = -log(max(1.0 - opacity, 1e-6));
     vec3 clear = max(emission_acc.rgb - absorber_emission, 0.0);
-    vec3 density = clear + absorber_emission / max(absorption_cover, 1e-4) * depth;
+    vec3 density = clear + absorber_emission / max(absorption_cover, 1e-4) * depth + hidden_emission;
     vec3 luma = vec3(.2126, .7152, .0722);
     float dense = dot(density, luma);
     float display = dense > 1e-8 ? min(dot(emission_acc.rgb, luma) / dense, 60000.0) : 1.0;

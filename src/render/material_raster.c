@@ -527,7 +527,8 @@ bool render_material_raster_draw(
         qsort(r->sorted, (size_t)count, sizeof *r->sorted, compare);
     }
     for (int i = 0; i < count; i++) {
-        r->sorted[i].time[2] = entity_emission_scale(&r->sorted[i], view, r->width, r->height);
+        float scale = entity_emission_scale(&r->sorted[i], view, r->width, r->height);
+        r->sorted[i].time[2] = r->sorted[i].time[2] < 0 ? -scale : scale;
     }
     if (!prepare_batches(r)) {
         return false;

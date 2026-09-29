@@ -336,3 +336,14 @@ eight pieces follow the curve by chords, and their overlapping round joints
 show as faint beads along the ribbon. The raster now uploads material
 parameters only for graph entities, which trails, particles and plain
 materials are not.
+
+### Lights
+
+`GameLight2D{color, intensity, radius}` is an invisible disc of light: it
+emits color times intensity, on the same scale as `GameMaterial`'s emission,
+over `radius` world units into the HRC transport, and nothing is drawn. Use
+it for muzzle flashes, lamps and fire glow without geometry; RenderLab's
+brazier carries one. The disc is a material-raster circle marked as a light:
+its emission joins the transport's source density but not the emission the
+composite displays. Fog still shows the glow in open air around it. A light
+costs as much as any small emissive circle.

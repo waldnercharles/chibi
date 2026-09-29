@@ -749,6 +749,54 @@ static void flash_entities(app_scene_renderer *renderer, int first, const GameFl
     }
 }
 
+/* Each GameLight2D in view as an emissive disc only the transport sees. */
+static void collect_lights(
+    app_scene_renderer *renderer,
+    ecs_world *world,
+    const engine *runtime,
+    render_material_view view
+)
+{
+    ecs_component_id required[] = { GAME_COMPONENT_GameTransform.id,
+                                    GAME_COMPONENT_GameLight2D.id };
+    ecs_query query;
+    if (!ecs_world_component(world, required[1]) ||
+        ecs_query_begin(world, &query, required, 2) != ECS_OK) {
+        return;
+    }
+    ecs_entity entity;
+    while (ecs_query_next(&query, &entity)) {
+        const GameLight2D *light = GAME_GameLight2D_get_const(world, entity);
+        GameTransform position = *GAME_GameTransform_get_const(world, entity);
+        if (runtime) {
+            engine_render_position(runtime, entity, &position);
+        }
+        float r = light->radius;
+        if (!isfinite(r + light->intensity + position.x + position.y) ||
+            r <= 0 || light->intensity <= 0 ||
+            !mask_visible(view, position, (material_rect){ 0, 0, 2 * r, 2 * r }, 0, 0) ||
+            !engine_entity_visible(runtime, world, entity)) {
+            continue;
+        }
+        float k = light->intensity;
+        render_material_entity disc = {
+            .inv_rot = { 1, 0, 0, 1 },
+            .pos = { position.x, -position.y },
+            .extent = { r + renderer->pixel_aa, r + renderer->pixel_aa },
+            .shape_type = RENDER_SHAPE_CIRCLE,
+            .radius = r,
+            .aa = renderer->pixel_aa,
+            .emission = { (light->color >> 24) / 255.f * k,
+                          ((light->color >> 16) & 255) / 255.f * k,
+                          ((light->color >> 8) & 255) / 255.f * k,
+                          1 },
+            .time = { renderer->time, 0, -1 },
+        };
+        apush(renderer->entities, disc);
+    }
+    ecs_query_end(&query);
+}
+
 /* Each GameTrail as a tapered, fading ribbon of emissive capsules that
  * lights the world. */
 static void collect_trails(app_scene_renderer *renderer, ecs_world *world, const engine *runtime)
@@ -948,6 +996,7 @@ static void collect(
     }
     collect_chunks(renderer, world, runtime, view);
     collect_trails(renderer, world, runtime);
+    collect_lights(renderer, world, runtime, view);
     const game_particle *items = game_particles_data(particles);
     for (int i = 0; i < game_particles_count(particles); i++) {
         const game_particle *particle = &items[i];

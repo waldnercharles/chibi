@@ -438,6 +438,36 @@ static bool trails(render_material_raster *r)
     return ok;
 }
 
+/* A light's disc feeds the transport but not the display, before and after a
+ * later batch. */
+static bool lights(render_material_raster *r)
+{
+    render_material_entity light = {
+        .inv_rot = { 1, 0, 0, 1 },
+        .extent = { 9, 9 },
+        .shape_type = RENDER_SHAPE_CIRCLE,
+        .radius = 8,
+        .aa = .5f,
+        .emission = { 1, .5f, .2f, 1 },
+        .time = { 0, 0, -1 },
+    };
+    float source[4] = { 0 }, cover[4] = { 0 }, scene[4] = { 0 };
+    render_material_textures textures = render_material_raster_textures(r);
+    bool ok = raster(r, &light, 1) && texel(textures.source, 32, 32, source, SIDE) &&
+              texel(textures.cover, 32, 32, cover, SIDE) &&
+              texel(textures.scene, 32, 32, scene, SIDE);
+    printf(
+        "light: density %.2f,%.2f,%.2f display scale %.3f scene alpha %.2f\n",
+        source[0],
+        source[1],
+        source[2],
+        cover[0],
+        scene[3]
+    );
+    return ok && fabsf(source[0] - 1) < .02f && fabsf(source[1] - .5f) < .02f &&
+           cover[0] < .001f && scene[3] == 0;
+}
+
 bool test_material_effects()
 {
     render_material_raster *r = render_material_raster_new();
@@ -447,7 +477,8 @@ bool test_material_effects()
     ok &= glass(r);
     ok &= liquid_reflection(r);
     ok &= trails(r);
+    ok &= lights(r);
     render_material_raster_free(r);
-    printf("material effects %s: hit flash, backdrops, caustics, glass, liquid reflection, trails\n", ok ? "PASS" : "FAIL");
+    printf("material effects %s: hit flash, backdrops, caustics, glass, liquid reflection, trails, lights\n", ok ? "PASS" : "FAIL");
     return ok;
 }

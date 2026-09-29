@@ -382,6 +382,8 @@ extern const ecs_component_desc GAME_COMPONENT_GamePost2D;
 extern const GamePost2D *GAME_GamePost2D_get_const(const ecs_world *, ecs_entity);
 extern const ecs_component_desc GAME_COMPONENT_GameBackdrop2D;
 extern const GameBackdrop2D *GAME_GameBackdrop2D_get_const(const ecs_world *, ecs_entity);
+extern const ecs_component_desc GAME_COMPONENT_GameLight2D;
+extern const GameLight2D *GAME_GameLight2D_get_const(const ecs_world *, ecs_entity);
 extern const ecs_component_desc GAME_COMPONENT_GameFlash;
 extern GameFlash *GAME_GameFlash_get(ecs_world *, ecs_entity);
 extern const GameFlash *GAME_GameFlash_get_const(const ecs_world *, ecs_entity);

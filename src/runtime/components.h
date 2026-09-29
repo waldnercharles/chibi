@@ -813,6 +813,17 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameFlash)
 }
 GameFlash;
 
+/* An invisible disc of light for 2D lighting: it emits color times intensity,
+ * as GameMaterial's emission does, over radius world units into HRC, and
+ * nothing is drawn. For muzzle flashes, lamps and glows without geometry. */
+typedef NODE_COMPONENT_TYPE_DENSE(GameLight2D)
+{
+    unsigned color;
+    float intensity;
+    float radius;
+}
+GameLight2D;
+
 /* Shimmers the frame behind an entity, as heat does above fire. */
 typedef NODE_COMPONENT_TYPE_DENSE(GameHeatHaze)
 {

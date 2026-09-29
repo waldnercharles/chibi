@@ -241,7 +241,8 @@ void behavior_function_release_host(behavior_function_context *ctx);
 size_t behavior_function_watch_size(const behavior_function *function);
 bool behavior_function_resumable(const behavior_function *function);
 bool behavior_function_has_invocations(const behavior_function *function);
-/* A parameterless event with synchronous, non-reentrant operations only.
+/* An event whose logic reads no payload, with synchronous, non-reentrant
+ * operations only.
  * Its component accesses may cross entities, so execution order still matters. */
 bool behavior_function_batchable(const behavior_function *function);
 /* Immutable lowering proof. Other-entity reads must not overlap any component
@@ -303,7 +304,7 @@ int behavior_function_run(const behavior_function *function, behavior_function_c
 /* Thread-local count of VM scratch initializations, for allocation profiling. */
 uint64_t behavior_function_vm_allocations();
 /* The exported C function has the same ABI as the SLJIT entry. */
-/* Parameterless synchronous Tick body embedded in an ordered native row loop. */
+/* Batchable Tick body embedded in an ordered native row loop. */
 bool behavior_function_compile_system(behavior_function *function);
 void *behavior_function_system_entry(const behavior_function *function);
 /* Caller owns the sequence kernel; all immutable functions must outlive its

@@ -1,5 +1,6 @@
 #include "graph/runtime/flow_internal.h"
 #include "graph/runtime/update_internal.h"
+#include "support/text_file.h"
 #include "test/suite_internal.h"
 #include "test/whole_aggregate_fixture.h"
 #include "test/whole_batch_fixture.h"
@@ -340,10 +341,18 @@ static void exclusions(behavior_backend backend)
             assert(!graph_connect_exec(g, call, 0, tail, 0, 0));
         }
         if (kind == 2) {
-            assert(
-                graph_add_pin(g, entry, 1, &(pin_spec){ .name = "Value", .type = PIN_I32, .type_name = "int" }) ==
-                1
-            );
+            /* Batched runs pass no event arguments, so logic may not read one. */
+            const behavior_variable *total = &asset->variables[0];
+            pin_spec value = { .name = "Value",
+                               .type = total->type,
+                               .type_name = total->type_name };
+            assert(graph_add_pin(g, entry, 1, &value) == 1);
+            node *set = graph_add_node(g, &NODE_SetVariable);
+            assert(!graph_set_node_reference(g, set, total->id, total->name));
+            assert(!graph_set_pin_type(g, set, 0, 1, total->type, total->type_name));
+            assert(!graph_set_pin_type(g, set, 1, 1, total->type, total->type_name));
+            assert(!graph_connect_data(g, entry, 1, set, 1));
+            assert(!graph_connect_exec(g, call, 0, set, 0, 0));
         }
         if (kind == 3) {
             assert(!graph_set_breakpoint(g, call, true));
@@ -365,6 +374,38 @@ static void exclusions(behavior_backend backend)
         behavior_instance_destroy(instance);
         behavior_asset_free(asset);
     }
+}
+
+/* An event may declare outputs that its logic never reads. */
+static void unread_event_output(behavior_backend backend)
+{
+    behavior_asset *asset = whole_batch_fixture(false);
+    node *entry = tick_entry(asset);
+    pin_spec delta = { .name = "DeltaSeconds", .type = PIN_F32, .type_name = "float" };
+    assert(graph_add_pin(asset->graph, entry, 1, &delta) == 1);
+    behavior_instance *instance = behavior_instance_create(asset, NULL, NULL, NULL);
+    assert(!behavior_instance_set_backend(instance, backend));
+    behavior_instance_set_trace_enabled(instance, false);
+    behavior_instance_set_delta_seconds(instance, .125);
+    behavior_batch *batch = NULL;
+    flow_run *failed;
+    assert(behavior_instance_dispatch_batch(instance, "Tick", &batch, &failed) && !failed);
+    assert(instance->variables[0].d == .125);
+    behavior_batch_free(batch);
+    behavior_instance_destroy(instance);
+    behavior_asset_free(asset);
+}
+
+/* Pursuit's Tick declares DeltaSeconds, which only its debugger watches read. */
+static void watched_event_output()
+{
+    char *text = text_file_read("projects/arena2d/content/behaviors/Pursuit.yaml");
+    behavior_asset *asset = behavior_asset_load_json(text);
+    free(text);
+    node *entry = tick_entry(asset);
+    assert(entry->output_count == 2);
+    assert(behavior_program_batch_event(asset->program, "Tick", &entry));
+    behavior_asset_free(asset);
 }
 
 static void external_profile(const char *, uint64_t, uint64_t, behavior_profile_phase, void *user)
@@ -685,6 +726,7 @@ void test_behavior_batches()
         failure_parity(mode, true, false);
         queued_wait(mode);
         exclusions(mode);
+        unread_event_output(mode);
         indexed_events(mode);
         update_guards(mode);
     }
@@ -693,6 +735,7 @@ void test_behavior_batches()
     system_failure(false);
     system_failure(true);
     observed_profile();
+    watched_event_output();
     whole_batch_smoke();
     puts("PASS: ordered Tick batches, instance state, component dependencies, inspection, profiling, waits and failure snapshots");
 }

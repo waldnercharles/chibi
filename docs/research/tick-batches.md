@@ -10,8 +10,8 @@ activation. The portable backend shares reusable VM scratch across instances of
 the same behavior entry. Native bodies enter SLJIT directly. The scheduler skips
 idle attachments and avoids submitting a job when no activations remain.
 
-Eligibility is inferred from the lowered instructions. A parameterless event
-must be synchronous and contain only explicitly allowed value, component,
+Eligibility is inferred from the lowered instructions. An event whose logic
+reads no payload must be synchronous and contain only explicitly allowed value, component,
 variable and control operations. Unknown operations, host commands, queries,
 waits and observed events retain ordinary compiled activations. Existing queued
 activations also prevent batching. The public single-instance dispatch API still
@@ -124,7 +124,7 @@ The focused `--tick-batch` test compares ordinary and batched execution on SLJIT
 bytecode and the explicit oracle. It covers independent variables, cross-entity
 write dependencies, profiling, debugger holds, waits, partial-write errors,
 step-budget exhaustion, missing returns, hot apply and pooling. It also checks
-that host commands, event payloads and breakpoints exclude batching before any
+that host commands, payloads the logic reads and breakpoints exclude batching before any
 write occurs. Generated-C execution is checked under ASAN/UBSAN. The portable
 backend smoke uses the same batch fixture and requires no oracle calls or new
 activation runtime stores.

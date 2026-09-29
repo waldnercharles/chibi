@@ -532,14 +532,28 @@ static bool batch_operation(behavior_function_op op)
         default: return false;
     }
 }
+static bool reads_argument(const behavior_function_instruction *i)
+{
+    switch (i->op) {
+        case BF_ARGUMENT: return true;
+        case BF_PRESENT:
+        case BF_TYPE_NAME:
+        case BF_ARRAY: return i->target == BF_ARGUMENT;
+        default: return false;
+    }
+}
+/* Batched runs pass no event arguments and execute the runtime body. An event
+ * may declare outputs that only watches read, but not ones its logic reads. */
 static bool batch_event(const behavior_function *f, const graph *g, const node *entry)
 {
     if (!f || !g || !entry || !entry->desc || entry->desc->flow_kind != NODE_FLOW_EVENT ||
-        entry->output_count != 1 || g->return_id || f->waits || f->breakpoints) {
+        g->return_id || f->waits || f->breakpoints) {
         return false;
     }
     for (int i = 0; i < acount(f->instructions); i++) {
-        if (!batch_operation(f->instructions[i].op)) {
+        if (!batch_operation(f->instructions[i].op) ||
+            (reads_argument(&f->instructions[i]) &&
+             behavior_function_runtime_keeps(f, i))) {
             return false;
         }
     }

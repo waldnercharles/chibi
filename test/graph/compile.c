@@ -48,8 +48,8 @@ void run_graph_compile_checks()
         behavior_asset_free(asset);
     }
 
-    /* PERF-1: publication batches a parameterless event, and not one with a
-     * payload or a duplicate name. */
+    /* PERF-1: publication batches an event whose logic reads no payload, and
+     * not one with a duplicate name. */
     {
         behavior_asset *asset = behavior_asset_new("PERF1");
         node *event = graph_add_node(asset->graph, &NODE_Event);
@@ -65,7 +65,11 @@ void run_graph_compile_checks()
         int payload_pin = graph_add_pin(asset->graph, event, 1, &payload);
         test_check(payload_pin >= 0, "an event can expose a payload pin");
         program = behavior_program_publish(asset);
-        test_check(behavior_program_batch_event(program, "Tick", NULL) == NULL, "an event payload prevents batching");
+        entry = NULL;
+        test_check(
+            behavior_program_batch_event(program, "Tick", &entry) && entry == event,
+            "an unread event payload keeps the batch path"
+        );
         graph_remove_pin(asset->graph, event, 1, payload_pin);
         node *duplicate = graph_add_node(asset->graph, &NODE_Event);
         graph_set_event_name(asset->graph, duplicate, "Tick");

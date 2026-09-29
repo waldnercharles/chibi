@@ -57,6 +57,10 @@ struct engine
     bool has_time;
     bool debug_paused;
     int pinned_seed;
+    double step_seconds; /* this step's simulated seconds, at the time scale */
+    /* Simulated time: whole real-time steps, kept exact, plus scaled ones. */
+    uint64_t full_steps;
+    double scaled_seconds;
     char error[256];
 };
 
@@ -120,9 +124,7 @@ static void begin_run(engine *engine, int seed)
     if (!engine->live) {
         return;
     }
-    game_run *run = game_behavior_run(engine->live->behaviors);
-    run->seed = seed;
-    run->restart = GAME_RUN_NO_RESTART;
+    game_run_start(game_behavior_run(engine->live->behaviors), seed);
     game_behavior_seed_random(engine->live->behaviors, (uint64_t)seed);
     game_materials_set_run_seed(engine->live->materials, seed);
 }
@@ -166,6 +168,7 @@ engine *engine_new(ecs_world *world, game_live_world *live)
         game_behavior_set_delta_seconds(live->behaviors, ENGINE_FIXED_SECONDS);
     }
     result->pinned_seed = ENGINE_RUN_SEED_RANDOM;
+    result->step_seconds = ENGINE_FIXED_SECONDS;
     begin_run(result, fresh_seed());
     return result;
 }
@@ -332,7 +335,12 @@ static int sync_authored_systems(engine *engine)
 
 static int run_system_phase(engine *engine, system_phase phase)
 {
-    int result = system_schedule_run(engine->systems, phase, engine->timing.simulation_time, ENGINE_FIXED_SECONDS);
+    int result = system_schedule_run(
+        engine->systems,
+        phase,
+        engine->timing.simulation_time,
+        engine->step_seconds
+    );
     if (result < 0) {
         snprintf(
             engine->error,
@@ -359,6 +367,9 @@ void engine_reset(engine *engine)
         game_particle_emitters_reset(engine->emitters);
     }
     engine->timing = (engine_frame_timing){ .alpha = 1 };
+    engine->step_seconds = ENGINE_FIXED_SECONDS;
+    engine->full_steps = 0;
+    engine->scaled_seconds = 0;
     engine->last_time = 0;
     engine->accumulator = 0;
     engine->has_time = false;
@@ -563,7 +574,7 @@ static int finish_systems(engine *engine)
                 return result;
             }
             CHIBI_TRACE_ZONE_BEGIN(physics_zone, "Physics");
-            result = game_physics_tick(engine->live->physics, (float)ENGINE_FIXED_SECONDS);
+            result = game_physics_tick(engine->live->physics, (float)engine->step_seconds);
             CHIBI_TRACE_ZONE_END(physics_zone);
             if (clock_now(&end) != 0) {
                 return FLOW_ERR_STATE;
@@ -634,7 +645,10 @@ static int finish_systems(engine *engine)
         return result;
     }
     if (engine->live) {
-        const char *error = game_visibility_update(engine->live->visibility, ENGINE_FIXED_SECONDS);
+        const char *error = game_visibility_update(
+            engine->live->visibility,
+            (float)engine->step_seconds
+        );
         if (error) {
             snprintf(engine->error, sizeof engine->error, "%s", error);
             return FLOW_ERR_NODE;
@@ -665,7 +679,12 @@ static int continue_step(engine *engine)
         return finish_step(engine);
     }
     game_behavior_set_time(live->behaviors, engine->timing.simulation_time);
-    game_behavior_set_delta_seconds(live->behaviors, ENGINE_FIXED_SECONDS);
+    game_behavior_set_delta_seconds(live->behaviors, engine->step_seconds);
+    game_behavior_set_real_time(
+        live->behaviors,
+        engine->timing.simulation_steps * ENGINE_FIXED_SECONDS,
+        ENGINE_FIXED_SECONDS
+    );
     int result = flush_initializers(engine);
     if (result != 0) {
         return result < 0 ? result : FLOW_OK;
@@ -676,12 +695,12 @@ static int continue_step(engine *engine)
             return FLOW_ERR_STATE;
         }
         CHIBI_TRACE_ZONE_BEGIN(visual_zone, "Visual systems");
-        result = game_particles_tick(live->particles, ENGINE_FIXED_SECONDS);
+        result = game_particles_tick(live->particles, (float)engine->step_seconds);
         if (result >= 0) {
-            result = game_sdf_motion_tick(engine->world, ENGINE_FIXED_SECONDS);
+            result = game_sdf_motion_tick(engine->world, (float)engine->step_seconds);
         }
         if (result >= 0) {
-            result = update_visual_motion(engine, (float)ENGINE_FIXED_SECONDS);
+            result = update_visual_motion(engine, (float)engine->step_seconds);
         }
         if (clock_now(&end) != 0) {
             CHIBI_TRACE_ZONE_END(visual_zone);
@@ -731,11 +750,30 @@ static int continue_step(engine *engine)
     return finish_step(engine);
 }
 
+/* Every fixed step is one real 1/60 s; the run's time scale sets how much
+ * simulated time it advances. */
+static void scale_step(engine *engine)
+{
+    engine->step_seconds = ENGINE_FIXED_SECONDS;
+    if (engine->live) {
+        game_run *run = game_behavior_run(engine->live->behaviors);
+        engine->step_seconds *= game_run_time_scale(run);
+        game_run_advance(run, (float)ENGINE_FIXED_SECONDS);
+    }
+    if (engine->step_seconds == ENGINE_FIXED_SECONDS) {
+        engine->full_steps++;
+        return;
+    }
+    engine->scaled_seconds += engine->step_seconds;
+}
+
 static int fixed_step(engine *engine)
 {
     CHIBI_TRACE_ZONE_BEGIN(zone, "Fixed step");
+    scale_step(engine);
     engine->timing.simulation_steps++;
-    engine->timing.simulation_time = engine->timing.simulation_steps * ENGINE_FIXED_SECONDS;
+    engine->timing.simulation_time = engine->full_steps * ENGINE_FIXED_SECONDS +
+                                     engine->scaled_seconds;
     engine->timing.steps++;
     int result = continue_step(engine);
     CHIBI_TRACE_ZONE_END(zone);

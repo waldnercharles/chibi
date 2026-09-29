@@ -7,6 +7,7 @@
 #include "runtime/behaviors/entities.h"
 #include "runtime/behaviors/parallel.h"
 #include "runtime/behaviors/pending.h"
+#include "runtime/generated.h"
 #include "support/array.h"
 #include "support/xalloc.h"
 
@@ -98,7 +99,9 @@ struct game_behavior_world
     int *pumped;
     int last_pump_count;
     uint64_t next_sequence;
-    behavior_clock clock;
+    behavior_clock clock;      /* the run's scaled time */
+    behavior_clock real_clock; /* GameUnscaledTime entities' */
+    bool real_clock_used;      /* some instance reads real_clock */
     behavior_random random;
     behavior_profile_record profile[GAME_BEHAVIOR_PROFILE_MAX];
     int profile_count;
@@ -423,6 +426,13 @@ static void services_changed(behavior_instance *instance)
     context->world->update_bindings_invalidated = true;
 }
 
+/* GameUnscaledTime entities' behaviors keep real time. */
+static const behavior_clock *clock_for(const game_behavior_world *world, ecs_entity entity)
+{
+    const GameUnscaledTime *unscaled = GAME_GameUnscaledTime_get_const(world->ecs, entity);
+    return unscaled && !unscaled->disabled ? &world->real_clock : &world->clock;
+}
+
 static behavior_instance *acquire_instance(
     behavior_asset_record *asset,
     game_behavior_world *world,
@@ -444,7 +454,8 @@ static behavior_instance *acquire_instance(
         return NULL;
     }
     behavior_instance_set_trace_enabled(instance, 0);
-    behavior_instance_bind_clock(instance, &world->clock);
+    behavior_instance_bind_clock(instance, clock_for(world, entity));
+    world->real_clock_used |= instance->clock == &world->real_clock;
     if (behavior_instance_set_activation_pool(instance, 1) != 0 ||
         behavior_instance_bind_service(instance, "ecs.world", world->ecs) != 0 ||
         behavior_instance_bind_service(
@@ -534,7 +545,31 @@ game_behavior_world *game_behavior_world_new(ecs_world *world)
     ecs_eval_component_reader_init(&result->component_reader, world);
     result->next_sequence = 1;
     behavior_random_seed(&result->random, 0);
+    game_run_start(&result->run, 0);
     return result;
+}
+
+/* Moves idle instances to the clock their entity asks for now. */
+static void sync_clocks(game_behavior_world *world)
+{
+    ecs_component_id id = GAME_COMPONENT_GameUnscaledTime.id;
+    if (!world->real_clock_used &&
+        (!ecs_world_component(world->ecs, id) ||
+         !ecs_component_has_entities(world->ecs, id, NULL, 0))) {
+        return;
+    }
+    world->real_clock_used = false;
+    for (int i = 0; i < acount(world->attachments); i++) {
+        behavior_attachment *attachment = &world->attachments[i];
+        behavior_instance *instance = attachment->instance;
+        const behavior_clock *clock = ecs_entity_is_alive(world->ecs, attachment->entity)
+                                        ? clock_for(world, attachment->entity)
+                                        : instance->clock;
+        if (clock != instance->clock && !acount(instance->activations)) {
+            behavior_instance_bind_clock(instance, clock);
+        }
+        world->real_clock_used |= instance->clock == &world->real_clock;
+    }
 }
 
 void game_behavior_seed_random(game_behavior_world *world, uint64_t seed)
@@ -1270,6 +1305,12 @@ static int dispatch_attachment(
         !behavior_program_event(program, event_name, &duplicate)) {
         return 0;
     }
+    pin_value real_delta = { .type = PIN_F32,
+                             .f = (float)world->real_clock.delta_seconds };
+    if (instance->clock == &world->real_clock && inputs.count == 1 &&
+        !strcmp(event_name, "Tick")) {
+        inputs = (flow_inputs){ .values = &real_delta, .count = 1 };
+    }
     node *entry;
     const behavior_function *function = batch && program && !duplicate
                                           ? behavior_program_batch_event(program, event_name, &entry)
@@ -1476,6 +1517,7 @@ int game_behavior_update(game_behavior_world *world, flow_error *error)
         return FLOW_ERR_ARGUMENT;
     }
     use_random(world);
+    sync_clocks(world);
     world->update_stats = (game_behavior_update_stats){ 0 };
     pin_value delta = { .type = PIN_F32, .f = (float)world->clock.delta_seconds };
     flow_inputs tick_inputs = { .values = &delta, .count = 1 };
@@ -1752,6 +1794,11 @@ int game_behavior_last_pump_count(const game_behavior_world *world)
 void game_behavior_set_time(game_behavior_world *world, double simulation_time)
 {
     world->clock.current_time = simulation_time;
+}
+
+void game_behavior_set_real_time(game_behavior_world *world, double real_time, double delta_seconds)
+{
+    world->real_clock = (behavior_clock){ real_time, delta_seconds };
 }
 
 static game_behavior_attachment_info info_of(behavior_attachment *attachment)

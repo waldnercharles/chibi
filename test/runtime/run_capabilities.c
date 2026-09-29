@@ -503,10 +503,114 @@ static void terrain_queries()
     fixture_free(&f);
 }
 
+/* Tick writes Delta Time to Velocity.x; Begin waits Wait seconds, then moves
+ * Transform to (7, 7). */
+static behavior_asset *clocked_behavior()
+{
+    behavior_asset *asset = behavior("Clocked");
+    graph *g = asset->graph;
+    node *velocity = add(g, "Set_GameVelocity");
+    node *make = add(g, "Make_CF_V2");
+    flow(g, event(g, "Tick"), velocity);
+    wire(g, add(g, "Delta Time"), 0, make, 0);
+    wire(g, make, 0, velocity, 1);
+    node *delay = add(g, "Delay");
+    set_input(g, delay, 1, (pin_value){ .type = PIN_F64, .d = 0.05 });
+    node *moved = add(g, "Set_GameTransform");
+    node *target = add(g, "Make_CF_V2");
+    set_input(g, target, 0, (pin_value){ .type = PIN_F32, .type_name = "float", .f = 7 });
+    set_input(g, target, 1, (pin_value){ .type = PIN_F32, .type_name = "float", .f = 7 });
+    flow(g, event(g, "Begin"), delay);
+    flow(g, delay, moved);
+    wire(g, target, 0, moved, 1);
+    return asset;
+}
+
+/* Begin sets the time scale, then starts a hit-stop when Hit is positive. */
+static behavior_asset *timing_behavior(float scale, float hit, float hit_scale)
+{
+    behavior_asset *asset = behavior("Timing");
+    graph *g = asset->graph;
+    node *set = add(g, "Set Time Scale");
+    set_input(g, set, 1, (pin_value){ .type = PIN_F32, .type_name = "float", .f = scale });
+    flow(g, event(g, "Begin"), set);
+    if (hit > 0) {
+        node *stop = add(g, "Hit Stop");
+        set_input(g, stop, 1, (pin_value){ .type = PIN_F32, .type_name = "float", .f = hit });
+        set_input(g, stop, 2, (pin_value){ .type = PIN_F32, .type_name = "float", .f = hit_scale });
+        flow(g, set, stop);
+    }
+    return asset;
+}
+
+static const char TIMER[] = "{\"name\":\"Timer\",\"behaviors\":[\"Timing\"],"
+                            "\"components\":{}}";
+static const char
+    CLOCKED[] = "{\"name\":\"Clocked\",\"behaviors\":[\"Clocked\"],"
+                "\"components\":{\"GameTransform\":{\"x\":0,\"y\":0},"
+                "\"GameVelocity\":{\"x\":0,\"y\":0}}}";
+static const char
+    UNSCALED[] = "{\"name\":\"Unscaled\",\"behaviors\":[\"Clocked\"],"
+                 "\"components\":{\"GameTransform\":{\"x\":0,\"y\":0},"
+                 "\"GameVelocity\":{\"x\":0,\"y\":0},\"GameUnscaledTime\":{}}}";
+static const char MOVER[] = "{\"name\":\"Mover\",\"components\":{"
+                            "\"GameTransform\":{\"x\":0,\"y\":0},"
+                            "\"GameVelocity\":{\"x\":120,\"y\":0},"
+                            "\"GameBody\":{\"type\":1},\"GameCollider\":{"
+                            "\"radius\":2,\"category\":1}}}";
+
+/* How far a body moving at 120 units/s travels in 30 real steps at scale. */
+static float traveled(float scale)
+{
+    run_fixture f = fixture_new();
+    fixture_behavior(&f, timing_behavior(scale, 0, 0));
+    fixture_spawn(&f, TIMER);
+    ecs_entity mover = fixture_spawn(&f, MOVER);
+    fixture_steps(&f, 30);
+    float x = GAME_GameTransform_get_const(f.world, mover)->x;
+    fixture_free(&f);
+    return x;
+}
+
+static void time_scale()
+{
+    /* At scale 0 only GameUnscaledTime behaviors see time pass. */
+    run_fixture f = fixture_new();
+    fixture_behavior(&f, timing_behavior(0, 0, 0));
+    fixture_behavior(&f, clocked_behavior());
+    fixture_spawn(&f, TIMER);
+    ecs_entity scaled = fixture_spawn(&f, CLOCKED);
+    ecs_entity unscaled = fixture_spawn(&f, UNSCALED);
+    fixture_steps(&f, 12);
+    assert(GAME_GameVelocity_get_const(f.world, scaled)->x == 0);
+    assert(GAME_GameVelocity_get_const(f.world, unscaled)->x == (float)ENGINE_FIXED_SECONDS);
+    assert(GAME_GameTransform_get_const(f.world, scaled)->x == 0);
+    assert(GAME_GameTransform_get_const(f.world, unscaled)->x == 7);
+    assert(engine_last_timing(f.runtime)->simulation_time == 0);
+    /* Restart returns to real-time speed. */
+    engine_reset(f.runtime);
+    assert(game_run_time_scale(game_behavior_run(f.live->behaviors)) == 1);
+    fixture_free(&f);
+
+    /* Hit-stop runs its scale for its real duration, then the time scale. */
+    f = fixture_new();
+    fixture_behavior(&f, timing_behavior(1, 0.1f, 0.25f));
+    fixture_spawn(&f, TIMER);
+    fixture_steps(&f, 10);
+    double expected = 6 * ENGINE_FIXED_SECONDS * 0.25 + 4 * ENGINE_FIXED_SECONDS;
+    assert(fabs(engine_last_timing(f.runtime)->simulation_time - expected) < 1e-9);
+    fixture_free(&f);
+
+    /* Physics integrates scaled time. */
+    float full = traveled(1), half = traveled(0.5f), frozen = traveled(0);
+    assert(full > 50 && fabsf(half - full * .5f) < 1 && frozen == 0);
+}
+
 void test_run_capabilities()
 {
     seeded_randomness();
     run_seed();
     terrain_queries();
-    puts("Run capabilities PASS: seeded per-world randomness, run seeds, seed_from_run terrain, restart requests, Sample Field and Terrain Distance");
+    time_scale();
+    puts("Run capabilities PASS: seeded per-world randomness, run seeds, seed_from_run terrain, restart requests, Sample Field, Terrain Distance, time scale and hit-stop");
 }

@@ -652,6 +652,16 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameCamera)
 }
 GameCamera;
 
+/* Behaviors on this entity tick in real time: Tick's Delta, Delta Time and
+ * Delay ignore Set Time Scale and Hit Stop, so menus keep running while the
+ * game is paused at scale 0. The clock switches when the entity's behaviors
+ * have no waiting runs. Disabled follows the run's time scale again. */
+typedef NODE_COMPONENT_TYPE_DENSE(GameUnscaledTime)
+{
+    bool disabled;
+}
+GameUnscaledTime;
+
 typedef enum
 {
     GAME_CONTROL_NONE,

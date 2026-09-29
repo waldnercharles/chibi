@@ -200,6 +200,12 @@ What has landed, and its contract. Every node is in searchNodes and Studio.
   points the field at the terrain's effective seed, and points outside a bounded
   terrain the distance to its bounds. About 0.6 µs per probe in a sanitized
   build.
+- **Time scale and hit-stop.** `Set Time Scale(Scale 0–4)` and `Hit Stop(Duration
+  real seconds, Scale)`. Fixed steps stay 1/60 real second; the scaled step
+  drives behaviors (Tick, Delta Time, Delay), physics, material and fluid
+  simulation, particles, visual motion, system phases and fog. A
+  `GameUnscaledTime` entity's behaviors run on real time, which is how the dock
+  screens keep working at scale 0. Restarts return to scale 1.
 
 ## Status
 

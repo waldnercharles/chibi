@@ -840,9 +840,12 @@ static node *ed_spawn_match_at_direct(editor *e, const ed_search_match *match, f
         ed_select_node(e, n, 0);
     }
     if (e->spawn_link_pending) {
+        uint64_t id = n->id;
         ed_autowire_spawn(e, n);
         ed_commit_snapshot(e);
         e->spawn_link_pending = 0;
+        /* Wiring can fold a spawned getter into the pin it feeds. */
+        n = graph_node_by_id(e->active_graph, id);
     }
     return n;
 }
@@ -871,10 +874,9 @@ node *ed_spawn_match_at(editor *e, const ed_search_match *match, float x, float 
         expected_id = 1;
     }
     node *made = ed_spawn_match_at_direct(e, match, x, y);
-    if (made) {
-        assert(made->id == expected_id);
-    }
-    collab_actions_finish(action, made != NULL);
+    assert(!made || made->id == expected_id);
+    /* A spawn folded into its destination changed the graph all the same. */
+    collab_actions_finish(action, made || e->asset->graph->id_counter > expected_id);
     free(action);
     return made;
 }

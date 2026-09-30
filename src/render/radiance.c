@@ -31,6 +31,10 @@
 #define HRC_ADAPT_FALL 2
 #define HRC_ADAPT_RISE 4
 #define HRC_ADAPT_ROOM .8
+/* A frame interval includes the wait for the display, so a frame that fits
+ * measures about the budget. Intervals are judged against this much more,
+ * stepping down only once frames are missed and up only when one fits. */
+#define HRC_ADAPT_INTERVAL_SLACK 1.25
 /* COLOR solves RGB light and owns every presentation pass. LUMINANCE solves
  * luminance on a finer grid than color, pairing each direction with its
  * opposite in one texel. */
@@ -1319,6 +1323,11 @@ void render_radiance_frame_time(render_radiance *hrc, double gpu_ms)
     hrc->settle = HRC_ADAPT_SETTLE;
     bool applied = s_apply_rung(hrc);
     assert(applied);
+}
+
+void render_radiance_frame_interval(render_radiance *hrc, double ms)
+{
+    render_radiance_frame_time(hrc, ms / HRC_ADAPT_INTERVAL_SLACK);
 }
 
 render_radiance_status render_radiance_get_status(const render_radiance *radiance)

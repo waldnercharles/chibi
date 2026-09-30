@@ -1146,13 +1146,14 @@ bool app_scene_renderer_draw(
         render_radiance_frame_time(renderer->radiance, gpu_ms);
     }
     /* Without GPU timestamps, as on the web, adaptive lighting judges the
-     * whole frame's interval, which includes the rest of the frame's work. */
+     * whole frame's interval, which includes the rest of the frame's work
+     * and the wait for the display. */
     if (renderer->radiance && !render_gpu_span_available()) {
         uint64_t now = cf_get_ticks();
         if (renderer->frame_start) {
             double ms = (double)(now - renderer->frame_start) * 1000 /
                         (double)cf_get_tick_frequency();
-            render_radiance_frame_time(renderer->radiance, ms);
+            render_radiance_frame_interval(renderer->radiance, ms);
         }
         renderer->frame_start = now;
     }

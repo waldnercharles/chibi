@@ -42,6 +42,8 @@ bool render_radiance_set_lighting(render_radiance *radiance, GameHRC2D lighting)
 /* Feeds adaptive resolution one frame's scene GPU time, measured by its
  * owner; call it before laying out the next frame. */
 void render_radiance_frame_time(render_radiance *radiance, double gpu_ms);
+/* Feeds the whole frame's interval instead, when GPU time is unmeasured. */
+void render_radiance_frame_interval(render_radiance *radiance, double ms);
 
 typedef struct
 {

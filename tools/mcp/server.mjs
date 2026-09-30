@@ -13,7 +13,7 @@ import {
   renderRequest,
   validateAuthoringArguments,
 } from "./authoring.mjs";
-import { parseControllerJson } from "./controller.mjs";
+import { controllerPath, parseControllerJson } from "./controller.mjs";
 import { getToolCatalogEntry, toolCatalog } from "./tool-catalog.mjs";
 
 const protocolVersion = "2025-11-25";
@@ -80,15 +80,6 @@ function resourceTemplates() {
   }];
 }
 
-function controllerPath() {
-  const candidates = [
-    process.env.CHIBI_CTL,
-    resolve(root, "build", "chibi_ctl"),
-    resolve(root, "build-release", "chibi_ctl"),
-  ].filter(Boolean);
-  return candidates.find((candidate) => existsSync(candidate)) || "chibi_ctl";
-}
-
 // launch.sh sets CHIBI_CTL to the build output; build it on demand so the MCP
 // handshake never waits on a native compile.
 let controllerBuild = null;
@@ -122,23 +113,30 @@ function ensureController() {
   return controllerBuild;
 }
 
-// Renders waiting on the build are not yet cancellable by authoring.mjs.
-const rendersAwaitingBuild = new Map();
+// Requests in flight, and those the client cancelled: a cancelled request gets no reply.
+const inFlight = new Set();
+const cancelled = new Set();
+
+function isCancelled(requestId) {
+  return requestId !== undefined && cancelled.has(String(requestId));
+}
+
+function cancelledError() {
+  return protocolError(-32800, "request cancelled");
+}
+
+// A queued request that never reached a controller runs again on a fresh one.
+function retryError() {
+  const error = new Error("chibi_ctl session ended before the request ran");
+  error.retry = true;
+  return error;
+}
 
 async function builtRenderRequest(renderRoot, request, requestId) {
-  if (!controllerReady() && requestId !== undefined) {
-    const key = String(requestId);
-    const cancelled = new Promise((resolveCancel) => rendersAwaitingBuild.set(key, () => resolveCancel(true)));
-    try {
-      if (await Promise.race([ensureController().then(() => false), cancelled])) {
-        const operation = request.operation || "preview_shader";
-        return { contract: 1, operation, ok: false, error: { code: "cancelled", message: "preview was cancelled" } };
-      }
-    } finally {
-      rendersAwaitingBuild.delete(key);
-    }
-  }
   await ensureController();
+  if (isCancelled(requestId)) {
+    return { contract: 1, operation: request.operation, ok: false, error: { code: "cancelled", message: "request cancelled" } };
+  }
   return renderRequest(renderRoot, request, requestId);
 }
 
@@ -188,33 +186,44 @@ class ControllerSession {
     });
   }
 
-  // A rebuilt controller replaces the running one on the next request.
+  // A rebuilt controller replaces the running one on the next request; while a
+  // rebuild has removed the binary, the running one keeps serving.
   stale() {
-    return statSync(this.executable).mtimeMs !== this.modified;
+    try {
+      return statSync(this.executable).mtimeMs !== this.modified;
+    } catch {
+      return false;
+    }
   }
 
-  request(payload, timeout) {
+  request(payload, timeout, requestId) {
     return new Promise((resolveRequest, rejectRequest) => {
-      this.queue.push({ payload, timeout, resolveRequest, rejectRequest });
+      if (this.closed) {
+        rejectRequest(retryError());
+        return;
+      }
+      this.queue.push({ payload, timeout, requestId, resolveRequest, rejectRequest });
       this.pump();
     });
   }
 
   pump() {
-    if (this.closed || this.pending || !this.queue.length) {
-      return;
-    }
-    this.pending = this.queue.shift();
-    this.timer = setTimeout(() => {
-      const error = protocolError(-32001, "chibi_ctl request timed out");
-      this.fail(error);
-    }, this.pending.timeout);
-    const line = `${JSON.stringify(this.pending.payload)}\n`;
-    this.child.stdin.write(line, (error) => {
-      if (error) {
-        this.fail(error);
+    while (!this.closed && !this.pending && this.queue.length) {
+      const request = this.queue.shift();
+      if (isCancelled(request.requestId)) {
+        request.rejectRequest(cancelledError());
+        continue;
       }
-    });
+      this.pending = request;
+      this.timer = setTimeout(() => {
+        this.fail(protocolError(-32001, "chibi_ctl request timed out"));
+      }, request.timeout);
+      this.child.stdin.write(`${JSON.stringify(request.payload)}\n`, (error) => {
+        if (error) {
+          this.fail(error);
+        }
+      });
+    }
   }
 
   receive(chunk) {
@@ -245,10 +254,32 @@ class ControllerSession {
         this.fail(new Error("chibi_ctl returned invalid JSON"));
         return;
       }
+      if (this.retiring) {
+        this.close();
+        return;
+      }
       this.pump();
     }
   }
 
+  // Stops taking requests: queued ones move to a fresh session and the running
+  // one finishes here.
+  retire() {
+    this.retiring = true;
+    this.retryQueue();
+    if (!this.pending) {
+      this.close();
+    }
+  }
+
+  retryQueue() {
+    for (const request of this.queue) {
+      request.rejectRequest(retryError());
+    }
+    this.queue = [];
+  }
+
+  // Fails only the running request; queued ones never reached this controller.
   fail(error) {
     if (this.closed) {
       return;
@@ -256,17 +287,9 @@ class ControllerSession {
     this.closed = true;
     clearTimeout(this.timer);
     this.timer = null;
-    const failure = error.rpcCode
-      ? error
-      : protocolError(-32603, `chibi_ctl failed: ${error.message}`);
-    if (this.pending) {
-      this.pending.rejectRequest(failure);
-      this.pending = null;
-    }
-    for (const request of this.queue) {
-      request.rejectRequest(failure);
-    }
-    this.queue = [];
+    this.pending?.rejectRequest(error.rpcCode ? error : protocolError(-32603, `chibi_ctl failed: ${error.message}`));
+    this.pending = null;
+    this.retryQueue();
     if (this.child.exitCode === null && !this.child.killed) {
       this.child.kill();
     }
@@ -276,24 +299,7 @@ class ControllerSession {
   }
 
   close() {
-    if (this.closed) {
-      return;
-    }
-    this.closed = true;
-    clearTimeout(this.timer);
-    this.timer = null;
-    const error = protocolError(-32603, "chibi_ctl session closed");
-    if (this.pending) {
-      this.pending.rejectRequest(error);
-      this.pending = null;
-    }
-    for (const request of this.queue) {
-      request.rejectRequest(error);
-    }
-    this.queue = [];
-    if (this.child.exitCode === null && !this.child.killed) {
-      this.child.kill();
-    }
+    this.fail(protocolError(-32603, "chibi_ctl session closed"));
   }
 }
 
@@ -1007,32 +1013,50 @@ function buildToolDefinitions() {
   ];
 }
 
-async function nativeRequest(operation, args = {}) {
+function nativeTimeout() {
   // Long deterministic scenarios can run for minutes; a timeout restarts the controller.
-  const timeoutValue = Number(process.env.CHIBI_CTL_TIMEOUT_MS || 300000);
-  const timeout = Number.isSafeInteger(timeoutValue) && timeoutValue > 0 ? timeoutValue : 300000;
-  await ensureController();
-  const executable = controllerPath();
-  if (controllerSession && !controllerSession.closed && controllerSession.stale()) {
-    controllerSession.close();
+  const value = Number(process.env.CHIBI_CTL_TIMEOUT_MS || 300000);
+  return Number.isSafeInteger(value) && value > 0 ? value : 300000;
+}
+
+async function sessionRequest(payload, requestId) {
+  const timeout = nativeTimeout();
+  // A running controller keeps serving while a rebuild replaces its binary.
+  if (!controllerSession) {
+    await ensureController();
   }
-  if (!controllerSession || controllerSession.closed) {
-    controllerSession = new ControllerSession(executable);
+  if (controllerSession?.stale()) {
+    controllerSession.retire();
+    controllerSession = null;
   }
+  controllerSession ??= new ControllerSession(controllerPath());
   const session = controllerSession;
-  if (!session.rootCheck) {
-    session.rootCheck = session.request({ contract: 1, operation: "status" }, timeout)
-      .then((status) => {
-        const resolvedRoot = status.result?.project_root;
-        if (!status.ok || !resolvedRoot || realpathSync(resolvedRoot) !== realpathSync(root)) {
-          session.close();
-          throw protocolError(-32603, `Chibi project root mismatch: expected ${root}, got ${resolvedRoot}`);
-        }
-        process.stderr.write(`chibi MCP verified project root: ${resolvedRoot}\n`);
-      });
-  }
+  session.rootCheck ??= session.request({ contract: 1, operation: "status" }, timeout)
+    .then((status) => {
+      const resolvedRoot = status.result?.project_root;
+      if (!status.ok || !resolvedRoot || realpathSync(resolvedRoot) !== realpathSync(root)) {
+        session.close();
+        throw protocolError(-32603, `Chibi project root mismatch: expected ${root}, got ${resolvedRoot}`);
+      }
+      process.stderr.write(`chibi MCP verified project root: ${resolvedRoot}\n`);
+    });
   await session.rootCheck;
-  return session.request({ ...args, contract: 1, operation }, timeout);
+  if (isCancelled(requestId)) {
+    throw cancelledError();
+  }
+  return session.request(payload, timeout, requestId);
+}
+
+async function nativeRequest(operation, args = {}, requestId) {
+  for (;;) {
+    try {
+      return await sessionRequest({ ...args, contract: 1, operation }, requestId);
+    } catch (error) {
+      if (!error.retry) {
+        throw error;
+      }
+    }
+  }
 }
 
 function toolDefinition(name) {
@@ -1435,7 +1459,7 @@ function boundedJson(value, label) {
   return text;
 }
 
-async function resourceRead(uri) {
+async function resourceRead(uri, requestId) {
   if (typeof uri !== "string" || !uri) {
     throw protocolError(-32602, "resources/read requires a URI string");
   }
@@ -1451,9 +1475,9 @@ async function resourceRead(uri) {
   };
   let response;
   if (uri === "chibi://project/status") {
-      response = await nativeRequest("status");
+    response = await nativeRequest("status", {}, requestId);
   } else if (uri === "chibi://catalog") {
-    response = await nativeRequest("catalog");
+    response = await nativeRequest("catalog", {}, requestId);
   } else {
     const recordingMatch = /^chibi:\/\/recording\/([^/]+)$/.exec(uri);
     if (recordingMatch) {
@@ -1461,7 +1485,7 @@ async function resourceRead(uri) {
       if (!/^[A-Za-z0-9._-]{1,128}$/.test(id)) {
         throw protocolError(-32602, `invalid recording resource: ${uri}`);
       }
-      response = await nativeRequest("read_recording", { id });
+      response = await nativeRequest("read_recording", { id }, requestId);
     }
     const graphMatch = /^chibi:\/\/asset\/([^/]+)\/([^/]+)\/graph\/([^/]+)$/.exec(uri);
     if (response === undefined && graphMatch) {
@@ -1473,14 +1497,14 @@ async function resourceRead(uri) {
         kind: decode(graphMatch[1]),
         name: decode(graphMatch[2]),
         graph_id: graphId,
-      });
+      }, requestId);
     }
     const dependencyMatch = /^chibi:\/\/asset\/([^/]+)\/([^/]+)\/dependencies$/.exec(uri);
     if (response === undefined && dependencyMatch) {
       response = await nativeRequest("asset_dependencies", {
         kind: decode(dependencyMatch[1]),
         name: decode(dependencyMatch[2]),
-      });
+      }, requestId);
     }
     const match = /^chibi:\/\/asset\/([^/]+)\/([^/]+)$/.exec(uri);
     if (response === undefined && !match) {
@@ -1490,7 +1514,7 @@ async function resourceRead(uri) {
       response = await nativeRequest("read_asset", {
         kind: decode(match[1]),
         name: decode(match[2]),
-      });
+      }, requestId);
     }
   }
   if (response.ok !== true) {
@@ -1511,8 +1535,11 @@ async function dispatch(message) {
   }
   if (message.method === "notifications/cancelled") {
     if (isObject(message.params) && message.params.requestId !== undefined) {
-      rendersAwaitingBuild.get(String(message.params.requestId))?.();
-      cancelAuthoringRequest(message.params.requestId);
+      const key = String(message.params.requestId);
+      if (inFlight.has(key)) {
+        cancelled.add(key);
+        cancelAuthoringRequest(key);
+      }
     }
     return null;
   }
@@ -1570,7 +1597,7 @@ async function dispatch(message) {
         throw protocolError(-32602, "resources/read params are required");
       }
       const uri = message.params.uri;
-      const response = await resourceRead(uri);
+      const response = await resourceRead(uri, message.id);
       return reply(message, {
         jsonrpc: "2.0",
         id: message.id,
@@ -1621,17 +1648,26 @@ process.stdin.on("data", (chunk) => {
     if (!line) continue;
     try {
       const message = JSON.parse(line);
+      const key = isObject(message) && Object.hasOwn(message, "id") ? String(message.id) : undefined;
+      if (key !== undefined) {
+        inFlight.add(key);
+      }
+      const answer = (response) => {
+        if (response && !cancelled.has(key)) {
+          send(response);
+        }
+      };
       activeDispatches++;
       dispatch(message)
-        .then((response) => {
-          if (response) send(response);
-        })
+        .then(answer)
         .catch((error) => {
-          if (!isNotification(message)) {
-            send(errorResponse(message?.id, error.rpcCode || -32603, error.message));
+          if (key !== undefined) {
+            answer(errorResponse(message.id, error.rpcCode || -32603, error.message));
           }
         })
         .finally(() => {
+          inFlight.delete(key);
+          cancelled.delete(key);
           activeDispatches--;
           maybeCloseController();
         });

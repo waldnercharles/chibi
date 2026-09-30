@@ -645,6 +645,12 @@ compact text summary for conversational clients and the complete native
 response in `structuredContent`, including a `next_steps` follow-up.
 The `describeContract` result labels each private native operation with the
 public MCP tool or tools that expose it.
+Arguments that do not match a tool's input schema fail as a tool result with
+`isError: true` and error code `invalid_arguments`, so the model sees what to
+correct; an unknown tool name is a JSON-RPC error. A cancelled request gets no
+response, and a queued native request cancelled before it runs is skipped. A
+timeout fails only the request that timed out; requests queued behind it run on
+a fresh controller.
 
 The native controller also accepts newline-delimited JSON directly:
 

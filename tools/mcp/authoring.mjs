@@ -1,9 +1,7 @@
 #!/usr/bin/env node
 
-import { existsSync } from "node:fs";
-import { resolve } from "node:path";
 import { spawn } from "node:child_process";
-import { parseControllerJson } from "./controller.mjs";
+import { controllerPath, parseControllerJson } from "./controller.mjs";
 import { getToolCatalogEntry } from "./tool-catalog.mjs";
 
 const GRAPH_KINDS = ["behavior", "event", "library", "material", "shape", "shader-library", "field", "system"];
@@ -808,18 +806,13 @@ function failedRender(operation, code, message) {
   };
 }
 
-function controllerPath(root) {
-  const configured = process.env.CHIBI_CTL;
-  const candidates = [
-    configured,
-    resolve(root, "build", "chibi_ctl"),
-    resolve(root, "build-release", "chibi_ctl"),
-  ].filter(Boolean);
-  return candidates.find((candidate) => existsSync(candidate)) || "chibi_ctl";
-}
-
 export function renderRequest(root, request, requestId) {
-  const executable = controllerPath(root);
+  let executable;
+  try {
+    executable = controllerPath();
+  } catch (error) {
+    return Promise.resolve(failedRender(request.operation, "process_error", error.message));
+  }
   const timeout = renderTimeout();
   const maxBytes = renderResponseLimit();
   return new Promise((resolveRequest) => {
@@ -845,12 +838,12 @@ export function renderRequest(root, request, requestId) {
       resolveRequest(value);
     };
     timer = setTimeout(() => {
-      finish(failedRender(request.operation || "preview_shader", "timeout", "preview timed out"));
+      finish(failedRender(request.operation, "timeout", "preview timed out"));
       child.kill("SIGKILL");
     }, timeout);
     if (requestId !== undefined) {
       activeRenders.set(String(requestId), () => {
-        finish(failedRender(request.operation || "preview_shader", "cancelled", "preview was cancelled"));
+        finish(failedRender(request.operation, "cancelled", "preview was cancelled"));
         child.kill("SIGKILL");
       });
     }
@@ -859,7 +852,7 @@ export function renderRequest(root, request, requestId) {
     child.stdout.on("data", (chunk) => {
       buffer += chunk;
       if (Buffer.byteLength(buffer, "utf8") > maxBytes) {
-        finish(failedRender(request.operation || "preview_shader", "response_too_large", "preview response exceeded the configured size limit"));
+        finish(failedRender(request.operation, "response_too_large", "preview response exceeded the configured size limit"));
         child.kill("SIGKILL");
       }
     });
@@ -867,7 +860,7 @@ export function renderRequest(root, request, requestId) {
       stderr = `${stderr}${chunk}`.slice(-4096);
     });
     child.on("error", (error) => {
-      finish(failedRender(request.operation || "preview_shader", "process_error", `chibi_ctl --render failed: ${error.message}`));
+      finish(failedRender(request.operation, "process_error", `chibi_ctl --render failed: ${error.message}`));
     });
     child.on("close", (code, signal) => {
       if (settled) {
@@ -879,13 +872,13 @@ export function renderRequest(root, request, requestId) {
           finish(parseControllerJson(line));
           return;
         } catch (error) {
-          finish(failedRender(request.operation || "preview_shader", "invalid_response", `chibi_ctl --render returned invalid JSON: ${error.message}`));
+          finish(failedRender(request.operation, "invalid_response", `chibi_ctl --render returned invalid JSON: ${error.message}`));
           return;
         }
       }
       const detail = signal ? `terminated by ${signal}` : `exited with status ${code}`;
       finish(failedRender(
-        request.operation || "preview_shader",
+        request.operation,
         "process_error",
         `chibi_ctl --render ${detail}${stderr ? `: ${stderr.trim()}` : ""}`,
       ));
@@ -903,19 +896,12 @@ export function cancelAuthoringRequest(requestId) {
   return true;
 }
 
-export async function authoringToolCall(name, args, context) {
-  const entry = getToolCatalogEntry(name);
-  if (!entry || entry.adapter !== "authoring") {
-    return undefined;
+export function authoringToolCall(name, args, context) {
+  const { operation } = getToolCatalogEntry(name);
+  if (operation === "preview_shader" || operation === "preview_scene") {
+    return context.renderRequest(context.root, { ...args, contract: 1, operation }, context.requestId);
   }
-  if (entry.operation === "preview_shader" || entry.operation === "preview_scene") {
-    return context.renderRequest(
-      context.root,
-      { ...(args || {}), contract: 1, operation: entry.operation },
-      context.requestId,
-    );
-  }
-  return context.nativeRequest(entry.operation, args || {});
+  return context.nativeRequest(operation, args, context.requestId);
 }
 
 function sanitizePreview(response) {

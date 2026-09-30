@@ -1762,6 +1762,18 @@ static bool adaptive_ladder(render_radiance *radiance)
           render_radiance_get_settings(radiance).scale == .25f;
     feed_lighting_time(radiance, 50, 120);
     ok &= rung_is(radiance, 0, .5f, half, false);
+    /* Frame intervals at the display's rate fit; missed frames step down. */
+    lighting.adaptive = true;
+    lighting.target_fps = 60;
+    ok &= render_radiance_set_lighting(radiance, lighting);
+    for (int i = 0; i < 120; i++) {
+        render_radiance_frame_interval(radiance, 1000.0 / 60 + (i % 2 ? 1.5 : -.5));
+    }
+    ok &= rung_is(radiance, 0, .5f, half, false);
+    for (int i = 0; i < 90; i++) {
+        render_radiance_frame_interval(radiance, 1000.0 / 30);
+    }
+    ok &= rung_is(radiance, 1, .5f, half, true);
     if (!ok) {
         render_radiance_status status = render_radiance_get_status(radiance);
         fprintf(

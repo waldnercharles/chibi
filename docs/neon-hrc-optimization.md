@@ -1021,7 +1021,10 @@ RGBA16F and RGBA32F canvases, which the suite's material checks need.
 WebGL has no command buffer timestamps. GPU spans instead time the scene with
 `EXT_disjoint_timer_query_webgl2` where the browser offers it, so the scene GPU
 chart and adaptive resolution work in Chrome. Without timestamps, adaptive
-resolution judges the whole frame's interval instead.
+resolution judges the whole frame's interval instead. That interval includes
+the wait for the display, so a frame that fits measures about the budget:
+intervals are held to 1.25 times the budget, stepping down only once frames
+are missed.
 
 Sandbox in the Studio Scene view at about 1170x740 in Chrome on an M4 Pro,
 scene GPU time from timer queries:

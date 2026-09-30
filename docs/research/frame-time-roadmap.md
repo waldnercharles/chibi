@@ -139,6 +139,47 @@ Sources: [parallel work](parallel-scene-work.md), [Tick sequences](tick-sequence
 [input lookup](input-action-lookup.md). Older reports describe intermediate
 states; their old capacity limits and threading descriptions are not current.
 
+## Web build: measured changes and open work
+
+September 30, 2026. `make profile-compare PROJECT=projects/arena2d
+PROFILE_SCENARIO=Firefight` replays the same 1,800 fixed steps natively and
+as WASM under Node; `make web-profile` names WASM functions and trace zones in
+the browser's profiler, and `Module.chibiFrameSummary()` reports the page's
+frame log. WASM Firefight per-frame times, median of three runs:
+
+| Change | p50 | p99 | max |
+| --- | ---: | ---: | ---: |
+| Starting point | 5.9 ms | 96.2 ms | 113.0 ms |
+| Deterministic field sine and cosine | | 30 ms | 32 ms |
+| Terrain prefetch baked in 16-row slices | 7.2 ms | 10.5 ms | 28.2 ms |
+| Cute without ASYNCIFY, at -O3 | 6.3 ms | 9.5 ms | 18.8 ms |
+
+Slices trade some median time for the tail. Native is 4.2 ms p50 and 6.4 ms
+p99 on the same run; physics (Box2D in Cute) is most of the remaining gap.
+
+Measured and not kept: app-wide `-msimd128` and `-flto` changed no percentile
+beyond run-to-run noise. `INITIAL_MEMORY` would not help: the heap grows eight
+times in the first 0.6 s of loading, each under 1.3 ms, and never during play.
+
+Open work, in rough priority:
+
+- [ ] Find the remaining native/WASM divergence. Firefight's world hash is
+  deterministic on each platform but differs between them.
+- [ ] Use the deterministic sine and cosine (`support/cos_sin.h`) in behavior
+  math, so behavior results match across platforms as fields now do.
+- [ ] Speed up the field VM. Terrain tiles bake through a scalar interpreter;
+  a vectorized or compiled row kernel would shorten each prefetch slice.
+- [ ] Reduce WASM physics cost (6.3 ms against 4.1 native in Firefight).
+  Profile Box2D in `make web-profile` before choosing a change.
+- [ ] Decide the catch-up cap from browser evidence. `ENGINE_STEPS_MAX` (8)
+  lets one hitch run up to eight fixed steps in the next frame. Capping by
+  time instead would slow the game rather than hitch again; measure real
+  pages first, since headless replay runs one step per frame.
+- [ ] Browser threading (T5) and runtime Wasm codegen for behaviors (C8).
+- [ ] Fix the collaboration checkpoint test, which segfaults in
+  `workspace_checkpoint_restore` in `test/editor_checkpoint.c`.
+- [ ] Restore CI, which has not run since September 25.
+
 ## Recommended order
 
 The September 19 [slow-frame attribution and swept-target experiment](swept-targets.md)

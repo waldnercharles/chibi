@@ -4,6 +4,7 @@
 #include "support/array.h"
 #include "third_party/yyjson/yyjson.h"
 
+#include <assert.h>
 #include <stdarg.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -29,24 +30,17 @@ typedef struct
 
 static int fail(edit_context *context, int status, const char *format, ...)
 {
-    if (context->error && context->error_size) {
-        va_list arguments;
-        va_start(arguments, format);
-        vsnprintf(context->error, context->error_size, format, arguments);
-        va_end(arguments);
-    }
+    va_list arguments;
+    va_start(arguments, format);
+    vsnprintf(context->error, context->error_size, format, arguments);
+    va_end(arguments);
     yyjson_mut_obj_add_int(
         context->doc,
         context->result,
         "failed_operation",
         context->operation
     );
-    yyjson_mut_obj_add_strcpy(
-        context->doc,
-        context->result,
-        "error",
-        context->error ? context->error : "scene edit failed"
-    );
+    yyjson_mut_obj_add_strcpy(context->doc, context->result, "error", context->error);
     return status;
 }
 
@@ -167,12 +161,15 @@ static int add_entity(edit_context *context, yyjson_val *operation)
         return fail(context, CHIBI_AUTOMATION_INVALID_REQUEST, "scene has too many entities");
     }
     const char *name = required_string(context, operation, "name");
-    const char *prototype = required_string(context, operation, "prototype");
-    if (!name || !prototype || !safe_asset_name(prototype)) {
-        if (prototype) {
-            fail(context, CHIBI_AUTOMATION_INVALID_REQUEST, "prototype must be a safe asset name");
-        }
+    if (!name) {
         return CHIBI_AUTOMATION_INVALID_REQUEST;
+    }
+    const char *prototype = required_string(context, operation, "prototype");
+    if (!prototype) {
+        return CHIBI_AUTOMATION_INVALID_REQUEST;
+    }
+    if (!safe_asset_name(prototype)) {
+        return fail(context, CHIBI_AUTOMATION_INVALID_REQUEST, "prototype must be a safe asset name");
     }
     char **names = NULL;
     if (behavior_names(context, yyjson_obj_get(operation, "behaviors"), &names, "behaviors") !=
@@ -250,8 +247,11 @@ static int set_entity_behaviors(edit_context *context, yyjson_val *operation)
 static int add_or_remove_behavior(edit_context *context, yyjson_val *operation, bool remove)
 {
     int index = entity_index(context, operation);
+    if (index < 0) {
+        return CHIBI_AUTOMATION_INVALID_REQUEST;
+    }
     const char *name = required_string(context, operation, "behavior");
-    if (index < 0 || !name) {
+    if (!name) {
         return CHIBI_AUTOMATION_INVALID_REQUEST;
     }
     if (!safe_asset_name(name)) {
@@ -342,8 +342,11 @@ static int apply_operation(edit_context *context, yyjson_val *operation)
     }
     if (!strcmp(op, "set_entity_prototype")) {
         int index = entity_index(context, operation);
+        if (index < 0) {
+            return CHIBI_AUTOMATION_INVALID_REQUEST;
+        }
         const char *prototype = required_string(context, operation, "prototype");
-        if (index < 0 || !prototype) {
+        if (!prototype) {
             return CHIBI_AUTOMATION_INVALID_REQUEST;
         }
         if (!safe_asset_name(prototype)) {
@@ -381,29 +384,18 @@ int automation_scene_edit(
     size_t error_size
 )
 {
-    if (edited_json) {
-        *edited_json = NULL;
-    }
-    if (!source_json || !request || !doc || !result || !edited_json) {
-        if (error && error_size) {
-            snprintf(error, error_size, "scene edit arguments are required");
-        }
-        return CHIBI_AUTOMATION_INVALID_REQUEST;
-    }
+    assert(source_json && request && doc && result && edited_json && error && error_size);
+    *edited_json = NULL;
     yyjson_val *operations = yyjson_obj_get(request, "operations");
     if (!yyjson_is_arr(operations) ||
         yyjson_arr_size(operations) > SCENE_EDIT_MAX_OPERATIONS) {
-        if (error && error_size) {
-            snprintf(error, error_size, "operations must be an array with at most %d entries", SCENE_EDIT_MAX_OPERATIONS);
-        }
+        snprintf(error, error_size, "operations must be an array with at most %d entries", SCENE_EDIT_MAX_OPERATIONS);
         return CHIBI_AUTOMATION_INVALID_REQUEST;
     }
     char load_error[256] = { 0 };
     game_scene_document *scene = game_scene_document_load(source_json, load_error, sizeof load_error);
     if (!scene) {
-        if (error && error_size) {
-            snprintf(error, error_size, "%s", load_error);
-        }
+        snprintf(error, error_size, "%s", load_error);
         return CHIBI_AUTOMATION_VALIDATION_ERROR;
     }
     edit_context context = {
@@ -426,18 +418,14 @@ int automation_scene_edit(
     char *saved = game_scene_document_save(scene);
     if (!saved) {
         game_scene_document_free(scene);
-        if (error && error_size) {
-            snprintf(error, error_size, "scene could not be serialized");
-        }
+        snprintf(error, error_size, "scene could not be serialized");
         return CHIBI_AUTOMATION_VALIDATION_ERROR;
     }
     game_scene_document *roundtrip = game_scene_document_load(saved, load_error, sizeof load_error);
     if (!roundtrip) {
         free(saved);
         game_scene_document_free(scene);
-        if (error && error_size) {
-            snprintf(error, error_size, "edited scene failed round-trip validation: %s", load_error);
-        }
+        snprintf(error, error_size, "edited scene failed round-trip validation: %s", load_error);
         return CHIBI_AUTOMATION_VALIDATION_ERROR;
     }
     yyjson_mut_obj_add_uint(doc, result, "operation_count", (uint64_t)context.operation);

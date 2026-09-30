@@ -3,6 +3,7 @@
 #include "support/array.h"
 #include "third_party/yyjson/yyjson.h"
 
+#include <assert.h>
 #include <stdarg.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -27,26 +28,17 @@ typedef struct
 
 static int fail(edit_context *context, int status, const char *format, ...)
 {
-    if (context->error && context->error_size) {
-        va_list arguments;
-        va_start(arguments, format);
-        vsnprintf(context->error, context->error_size, format, arguments);
-        va_end(arguments);
-    }
-    if (context->result) {
-        yyjson_mut_obj_add_int(
-            context->doc,
-            context->result,
-            "failed_operation",
-            context->operation
-        );
-        yyjson_mut_obj_add_strcpy(
-            context->doc,
-            context->result,
-            "error",
-            context->error ? context->error : "prototype edit failed"
-        );
-    }
+    va_list arguments;
+    va_start(arguments, format);
+    vsnprintf(context->error, context->error_size, format, arguments);
+    va_end(arguments);
+    yyjson_mut_obj_add_int(
+        context->doc,
+        context->result,
+        "failed_operation",
+        context->operation
+    );
+    yyjson_mut_obj_add_strcpy(context->doc, context->result, "error", context->error);
     return status;
 }
 
@@ -139,11 +131,14 @@ static int remove_component(edit_context *context, yyjson_val *operation)
 static int set_field(edit_context *context, yyjson_val *operation)
 {
     const char *component = required_string(context, operation, "component");
-    const char *field = required_string(context, operation, "field");
-    yyjson_val *value = yyjson_obj_get(operation, "value");
-    if (!component || !field) {
+    if (!component) {
         return CHIBI_AUTOMATION_INVALID_REQUEST;
     }
+    const char *field = required_string(context, operation, "field");
+    if (!field) {
+        return CHIBI_AUTOMATION_INVALID_REQUEST;
+    }
+    yyjson_val *value = yyjson_obj_get(operation, "value");
     if (!value) {
         return fail(context, CHIBI_AUTOMATION_INVALID_REQUEST, "value is required");
     }
@@ -220,21 +215,12 @@ int automation_prototype_edit(
     size_t error_size
 )
 {
-    if (edited_json) {
-        *edited_json = NULL;
-    }
-    if (!source_json || !registry || !request || !doc || !result || !edited_json) {
-        if (error && error_size) {
-            snprintf(error, error_size, "prototype edit arguments are required");
-        }
-        return CHIBI_AUTOMATION_INVALID_REQUEST;
-    }
+    assert(source_json && registry && request && doc && result && edited_json && error && error_size);
+    *edited_json = NULL;
     yyjson_val *operations = yyjson_obj_get(request, "operations");
     if (!yyjson_is_arr(operations) ||
         yyjson_arr_size(operations) > PROTOTYPE_EDIT_MAX_OPERATIONS) {
-        if (error && error_size) {
-            snprintf(error, error_size, "operations must be an array with at most %d entries", PROTOTYPE_EDIT_MAX_OPERATIONS);
-        }
+        snprintf(error, error_size, "operations must be an array with at most %d entries", PROTOTYPE_EDIT_MAX_OPERATIONS);
         return CHIBI_AUTOMATION_INVALID_REQUEST;
     }
     game_prototype *prototype = game_prototype_load(source_json, registry, error, error_size);
@@ -261,9 +247,7 @@ int automation_prototype_edit(
     char *saved = game_prototype_save(prototype);
     if (!saved) {
         game_prototype_free(prototype);
-        if (error && error_size) {
-            snprintf(error, error_size, "prototype could not be serialized");
-        }
+        snprintf(error, error_size, "prototype could not be serialized");
         return CHIBI_AUTOMATION_VALIDATION_ERROR;
     }
     char roundtrip_error[256] = { 0 };
@@ -271,9 +255,7 @@ int automation_prototype_edit(
     if (!roundtrip) {
         free(saved);
         game_prototype_free(prototype);
-        if (error && error_size) {
-            snprintf(error, error_size, "edited prototype failed round-trip validation: %s", roundtrip_error);
-        }
+        snprintf(error, error_size, "edited prototype failed round-trip validation: %s", roundtrip_error);
         return CHIBI_AUTOMATION_VALIDATION_ERROR;
     }
     yyjson_mut_obj_add_uint(doc, result, "operation_count", (uint64_t)context.operation);

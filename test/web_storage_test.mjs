@@ -4,6 +4,7 @@ import vm from 'node:vm';
 import { deflateRawSync } from 'node:zlib';
 
 const storage = readFileSync(new URL('../tools/web_storage.js', import.meta.url), 'utf8');
+const collabStorage = readFileSync(new URL('../tools/collab/storage.js', import.meta.url), 'utf8');
 const launchSource = readFileSync(new URL('../tools/web_launch.js', import.meta.url), 'utf8');
 const DIRECTORY = 1;
 const manifest = 'version: 1\nname: Neon Swarm\ncontent: content\nstart_scene: scenes/Sandbox.yaml\n';
@@ -62,7 +63,9 @@ const launch = (search, fs, Module = { FS: fs }) => {
     addRunDependency: id => page.dependencies.push(id),
     removeRunDependency: id => page.dependencies.splice(page.dependencies.indexOf(id), 1),
   };
+  // Load the pre-js scripts in the web build's order.
   vm.runInNewContext(storage, context);
+  vm.runInNewContext(collabStorage, context);
   vm.runInNewContext(launchSource, context);
   page.Module = Module;
   page.flush = () => page.timers.splice(0).forEach(run => run());

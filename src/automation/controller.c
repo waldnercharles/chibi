@@ -981,17 +981,15 @@ static bool valid_relative_asset_path(const char *path)
 
 static int set_error(char *error, size_t size, const char *message)
 {
-    if (error && size) {
-        snprintf(error, size, "%s", message ? message : "unknown error");
-    }
+    assert(error && size && message);
+    snprintf(error, size, "%s", message);
     return -1;
 }
 
 static int set_errorf(char *error, size_t size, const char *format, const char *value)
 {
-    if (error && size) {
-        snprintf(error, size, format, value ? value : "");
-    }
+    assert(error && size && value);
+    snprintf(error, size, format, value);
     return -1;
 }
 

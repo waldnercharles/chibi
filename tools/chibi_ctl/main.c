@@ -41,9 +41,9 @@ static int render_request(const char *project_root, const char *path)
     if (length <= 0) {
         free(request);
         fprintf(stderr, "chibi_ctl --render: expected one JSON request on stdin\n");
-        return 2;
+        return CHIBI_AUTOMATION_INVALID_REQUEST;
     }
-    int exit_code = 0;
+    int exit_code = CHIBI_AUTOMATION_OK;
     fflush(stdout);
     int output = dup(STDOUT_FILENO);
     if (output < 0 || dup2(STDERR_FILENO, STDOUT_FILENO) < 0) {
@@ -58,7 +58,7 @@ static int render_request(const char *project_root, const char *path)
     free(request);
     if (!response) {
         fprintf(stderr, "chibi_ctl --render: could not create response\n");
-        return 5;
+        return CHIBI_AUTOMATION_EXECUTION_ERROR;
     }
     fputs(response, stdout);
     fputc('\n', stdout);
@@ -70,15 +70,15 @@ int main(int argc, char **argv)
 {
     const char *project_root = ".";
     const char *request_path = NULL;
-    int render = 0;
+    bool render = false;
     bool format = false, check = false;
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--help")) {
             usage(argv[0]);
-            return 0;
+            return CHIBI_AUTOMATION_OK;
         }
         if (!strcmp(argv[i], "--render")) {
-            render = 1;
+            render = true;
             continue;
         }
         if (!strcmp(argv[i], "--format") || !strcmp(argv[i], "--check")) {
@@ -87,7 +87,7 @@ int main(int argc, char **argv)
             continue;
         }
         if (!strcmp(argv[i], "--render-request") && i + 1 < argc) {
-            render = 1;
+            render = true;
             request_path = argv[++i];
             continue;
         }

@@ -41,7 +41,7 @@ void run_graph_document_checks()
         char *json = graph_save_json(&g2);
         test_check(json != NULL, "roundtrip: serialize to JSON");
         if (json) {
-            printf("\n--- serialized graph ---\n%s--- end ---\n", json);
+            test_note("\n--- serialized graph ---\n%s--- end ---\n", json);
 
             graph *g3 = graph_load_json(json);
             test_check(g3 != NULL, "roundtrip: load from JSON");
@@ -311,7 +311,7 @@ void run_graph_document_checks()
         const char *s_five = pin_value_to_string(&five);
         const char *s_str = pin_value_to_string(&sv);
         const char *s_bool = pin_value_to_string(&bv);
-        printf("  fmt samples: f32 2.5 -> \"%s\", f32 5.0 -> \"%s\", str -> \"%s\", bool -> \"%s\"\n", s_f32, s_five, s_str, s_bool);
+        test_note("  fmt samples: f32 2.5 -> \"%s\", f32 5.0 -> \"%s\", str -> \"%s\", bool -> \"%s\"\n", s_f32, s_five, s_str, s_bool);
 
         test_check(strcmp(s_f32, "2.5") == 0, "fmt: f32 2.5 -> \"2.5\"");
         test_check(strcmp(s_five, "5") == 0, "fmt: f32 5.0 -> \"5\"");
@@ -359,7 +359,7 @@ void run_graph_document_checks()
         char *json = graph_save_nodes_json(&g2, subset, 2);
         test_check(json != NULL, "subset: serialize");
         if (json) {
-            printf("\n--- serialized subset ---\n%s--- end ---\n", json);
+            test_note("\n--- serialized subset ---\n%s--- end ---\n", json);
 
             graph *g3 = graph_load_json(json);
             test_check(g3 != NULL, "subset: load");

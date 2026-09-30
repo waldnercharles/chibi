@@ -6,6 +6,7 @@
 #include "runtime/components.h"
 #include "support/arena.h"
 #include "support/array.h"
+#include "test/support/report.h"
 
 #include <assert.h>
 #include <stdio.h>
@@ -204,5 +205,5 @@ void test_function_fields()
         roundtrip(f);
     }
     stale_signature();
-    puts("function fields PASS: projected parameters and results, appended arguments, waits and roundtrip");
+    test_note("function fields PASS: projected parameters and results, appended arguments, waits and roundtrip\n");
 }

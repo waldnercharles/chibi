@@ -351,7 +351,7 @@ void test_compiled_search(const char *path)
     if (library) {
         assert(!dlclose(library));
     }
-    puts("PASS: compiled typed Contains/Find, first/last/miss/empty, nominal equality, signed zero/NaN, wait snapshots and debugger parity");
+    test_note("PASS: compiled typed Contains/Find, first/last/miss/empty, nominal equality, signed zero/NaN, wait snapshots and debugger parity\n");
 }
 static double seconds()
 {

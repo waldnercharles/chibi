@@ -3,6 +3,7 @@
 #include "graph/model/registry.h"
 #include "graph/runtime/instance.h"
 #include "support/array.h"
+#include "test/support/report.h"
 
 #include <assert.h>
 #include <stdio.h>
@@ -109,5 +110,5 @@ void test_editor_flow()
 
     behavior_instance_destroy(instance);
     editor_free(editor);
-    puts("editor flow PASS: exec-only activity, untaken branches, data values and newest trace");
+    test_note("editor flow PASS: exec-only activity, untaken branches, data values and newest trace\n");
 }

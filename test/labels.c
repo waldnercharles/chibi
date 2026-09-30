@@ -1,6 +1,7 @@
 #include "editor/ui/labels.h"
 
 #include "graph/model/registry.h"
+#include "test/support/report.h"
 
 #include <assert.h>
 #include <stdio.h>
@@ -78,5 +79,5 @@ void test_labels()
     assert(strcmp(guarded + 1, "Get") == 0);
     editor_node_label(reflected, guarded + 1, 1);
     assert(guarded[1] == 0 && guarded[0] == 'L' && guarded[5] == 'R');
-    puts("labels PASS: reflected component prefixes stay out of display names; authored identities are preserved");
+    test_note("labels PASS: reflected component prefixes stay out of display names; authored identities are preserved\n");
 }

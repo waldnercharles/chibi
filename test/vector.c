@@ -4,6 +4,7 @@
 #include "graph/runtime/eval.h"
 #include "runtime/components.h"
 #include "support/arena.h"
+#include "test/support/report.h"
 
 #include <assert.h>
 #include <float.h>
@@ -135,5 +136,5 @@ void test_vector()
     arena_free(&memory);
     test_zero_scale();
     direction_to();
-    puts("[vector] normalization handles zero and extreme magnitudes; zero scaling preserves vector output");
+    test_note("[vector] normalization handles zero and extreme magnitudes; zero scaling preserves vector output\n");
 }

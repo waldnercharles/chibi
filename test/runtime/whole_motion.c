@@ -399,7 +399,7 @@ void test_compiled_motion(const char *path)
     if (library) {
         assert(!dlclose(library));
     }
-    puts("PASS: whole spring, angle, easing, sqrt and rounding match oracle values, errors, source pins, budgets, nested watches and stepping");
+    test_note("PASS: whole spring, angle, easing, sqrt and rounding match oracle values, errors, source pins, budgets, nested watches and stepping\n");
 }
 
 static double seconds()

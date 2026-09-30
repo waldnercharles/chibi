@@ -11,6 +11,7 @@
 #include "runtime/behaviors/live.h"
 #include "runtime/generated.h"
 #include "support/array.h"
+#include "test/support/report.h"
 
 #include <assert.h>
 #include <math.h>
@@ -439,7 +440,7 @@ int test_shader_graph_gpu()
     shader_graph_free(&ir);
     free(source);
     free(function);
-    puts("shader math GPU PASS: vector operations and noise match CPU including negative and extreme inputs");
+    test_note("shader math GPU PASS: vector operations and noise match CPU including negative and extreme inputs\n");
     return 0;
 }
 
@@ -660,5 +661,5 @@ void test_shader_graph()
     examples();
     live_shader_library();
     math_nodes();
-    puts("shader graph PASS: parameter instances, SDF evaluation, portable GLSL, serialization, functions and cycle rejection");
+    test_note("shader graph PASS: parameter instances, SDF evaluation, portable GLSL, serialization, functions and cycle rejection\n");
 }

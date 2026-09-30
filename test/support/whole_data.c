@@ -4,6 +4,7 @@
 #include "graph/runtime/flow_internal.h"
 #include "graph/runtime/instance.h"
 #include "support/arena.h"
+#include "test/support/report.h"
 #include "test/whole_data_fixture.h"
 
 #include <assert.h>
@@ -245,7 +246,7 @@ static void action_smoke()
     behavior_batch_free(batch);
     behavior_instance_destroy(bi);
     behavior_asset_free(a);
-    printf(
+    test_note(
         "PASS: %s typed synchronous host effects, borrowed strings/structs, "
         "partial failures and reused banks; zero oracle calls\n",
         behavior_backend_name(behavior_default_backend())
@@ -304,7 +305,7 @@ static void whole_format_smoke()
     assert(eval == eval_oracle_calls() && flow == flow_oracle_calls());
     behavior_instance_destroy(instance);
     behavior_asset_free(asset);
-    puts("whole Format Text PASS: fixed format, mixed variadic values, unused spare and retained output; zero oracle calls");
+    test_note("whole Format Text PASS: fixed format, mixed variadic values, unused spare and retained output; zero oracle calls\n");
 }
 
 static pin_spec read_inputs[] = { { .name = "Input", .type = PIN_F64 } };
@@ -501,7 +502,7 @@ void whole_read_branch_smoke()
             behavior_asset_free(a);
         }
     }
-    puts("PASS: contextual reads across branches, joins, writes, waits, loops and inspection");
+    test_note("PASS: contextual reads across branches, joins, writes, waits, loops and inspection\n");
 }
 void whole_data_smoke()
 {
@@ -544,7 +545,7 @@ void whole_data_smoke()
     behavior_batch_free(batch);
     behavior_instance_destroy(bi);
     behavior_asset_free(a);
-    printf(
+    test_note(
         "PASS: %s nested host data calls, plain struct snapshots and "
         "pooled/batched buffers; zero oracle calls\n",
         behavior_backend_name(behavior_default_backend())

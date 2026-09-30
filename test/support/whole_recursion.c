@@ -10,6 +10,7 @@
 #include "support/arena.h"
 #include "support/array.h"
 #include "support/xalloc.h"
+#include "test/support/report.h"
 #include "test/whole_async_fixture.h"
 #include "test/whole_managed_fixture.h"
 #include "test/whole_recursion_fixture.h"
@@ -609,7 +610,7 @@ static void runtime_smoke()
     assert(eval == eval_oracle_calls() && flow == flow_oracle_calls());
     behavior_instance_destroy(bi);
     behavior_asset_free(asset);
-    printf(
+    test_note(
         "PASS: %s recursive behavior dispatch, paused host waits, "
         "cancellation, pooling and generation replacement; zero oracle calls\n",
         behavior_backend_name(behavior_default_backend())
@@ -661,7 +662,7 @@ void whole_recursion_smoke()
         behavior_function_free(f);
         behavior_asset_free(asset);
     }
-    printf(
+    test_note(
         "PASS: %s authored/IR recursion, retained frames/owned returns, waits "
         "and "
         "cancellation; zero oracle calls\n",

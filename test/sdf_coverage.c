@@ -1,6 +1,7 @@
 /* The engine and Cute expose ABI-compatible vector types with the same name. */
 #include "platform/cute.h"
 #include "render/sdf_shapes.h"
+#include "test/support/report.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -244,7 +245,7 @@ int test_sdf_coverage(app_sdf_shapes shapes)
         puts("SDF coverage tiled SKIP: compute renderer unavailable");
     }
     if (!failed) {
-        puts("SDF coverage PASS: production radial/pluck shader matches CPU and both renderers");
+        test_note("SDF coverage PASS: production radial/pluck shader matches CPU and both renderers\n");
     }
     return failed;
 }

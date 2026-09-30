@@ -1868,5 +1868,5 @@ void test_input_bindings()
     inline_source_extraction();
     extraction_preserves_bindings();
     executable_extraction_preserves_timing();
-    puts("PASS: input bindings resolve variables, components and context across evaluation, flow, persistence and extraction");
+    test_note("PASS: input bindings resolve variables, components and context across evaluation, flow, persistence and extraction\n");
 }

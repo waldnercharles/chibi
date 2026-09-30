@@ -3,6 +3,7 @@
 ## Commands and checks
 
 - Build with `make build` and test with `make test`, which is the gate before a change is done. For one focused check, use `make test-fast TEST_ARGS=--<selector>`. `make help` lists the other targets.
+- Output is quiet: failures, warnings and summaries. Rerun with `VERBOSE=1` for every command, the CMake log (also in `<build dir>/configure.log`) and each passing check.
 - After hand-editing asset YAML, run `build/chibi_ctl --project-root <root> --format`; `make test` fails on non-canonical assets.
 - Ask before changing existing tests unless the task already covers it. Never weaken an assertion to hide a failure.
 

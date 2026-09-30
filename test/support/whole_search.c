@@ -3,6 +3,7 @@
 #include "graph/runtime/flow_internal.h"
 #include "graph/runtime/instance.h"
 #include "graph/runtime/value_array.h"
+#include "test/support/report.h"
 #include "test/whole_search_fixture.h"
 
 #include <assert.h>
@@ -133,5 +134,5 @@ void whole_search_smoke()
         behavior_instance_destroy(bi);
         behavior_asset_free(a);
     }
-    puts("PASS: whole Contains/Find loops, nested calls and array snapshots across waits; zero oracle calls");
+    test_note("PASS: whole Contains/Find loops, nested calls and array snapshots across waits; zero oracle calls\n");
 }

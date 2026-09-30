@@ -3,6 +3,7 @@
 #include "graph/shader/shader_graph.h"
 #include "platform/cute.h"
 #include "support/array.h"
+#include "test/support/report.h"
 
 #include <assert.h>
 #include <math.h>
@@ -231,7 +232,7 @@ void test_shader_effects_cpu()
     assert(shader_graph_eval_outputs(&g, &sample, p, out, &error));
     assert(out[0][0] == 0 && out[0][1] == 1 && out[0][2] == 1 && out[1][0] == .25f);
     shader_graph_free(&g);
-    puts("shader effects CPU PASS: transform order, Fresnel context, remap, cell center, typed ramp ownership/round trip/rejection");
+    test_note("shader effects CPU PASS: transform order, Fresnel context, remap, cell center, typed ramp ownership/round trip/rejection\n");
 }
 
 static void gpu_program(bool ramp)
@@ -307,6 +308,6 @@ int test_shader_effects_gpu()
 {
     gpu_program(false);
     gpu_program(true);
-    puts("shader effects GPU PASS: mapping, Fresnel, remap, gradients, fractional fBM, 2D/3D Voronoi and all ramp interpolation modes");
+    test_note("shader effects GPU PASS: mapping, Fresnel, remap, gradients, fractional fBM, 2D/3D Voronoi and all ramp interpolation modes\n");
     return 0;
 }

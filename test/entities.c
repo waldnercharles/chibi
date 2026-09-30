@@ -11,6 +11,7 @@
 #include "support/array.h"
 #include "support/simulation_fixture.h"
 #include "support/xalloc.h"
+#include "test/support/report.h"
 
 #include <assert.h>
 #include <stdio.h>
@@ -769,7 +770,7 @@ static void test_attachment_lists()
     behavior_asset_free(b);
     behavior_asset_free(broken);
     ecs_world_free(ecs);
-    puts("attachment lists PASS: ordered replay retains state and rejects invalid sets atomically");
+    test_note("attachment lists PASS: ordered replay retains state and rejects invalid sets atomically\n");
 }
 
 static void test_attachment_index()
@@ -883,7 +884,7 @@ static void test_attachment_index()
         behavior_asset_free(updated);
         behavior_debug_backend(previous);
     }
-    puts("attachment index PASS: growth, grouping, Begin, replacement, deletion and stale handles across all backends");
+    test_note("attachment index PASS: growth, grouping, Begin, replacement, deletion and stale handles across all backends\n");
 }
 
 static void test_deferred_attachments()
@@ -927,7 +928,7 @@ static void test_deferred_attachments()
     behavior_asset_free(a);
     behavior_asset_free(broken);
     ecs_world_free(ecs);
-    puts("deferred attachments PASS: setup is inert, Begin runs once, runtime spawn stays immediate, failures persist");
+    test_note("deferred attachments PASS: setup is inert, Begin runs once, runtime spawn stays immediate, failures persist\n");
 }
 
 static void children_survive_source(bool descendants)
@@ -1034,7 +1035,7 @@ void test_compiled_spawns()
         }
         behavior_debug_backend(previous);
     }
-    puts("PASS: whole compiled Spawn, initialization before Begin, breakpoints, cancellation and deferred destruction on SLJIT/bytecode/oracle");
+    test_note("PASS: whole compiled Spawn, initialization before Begin, breakpoints, cancellation and deferred destruction on SLJIT/bytecode/oracle\n");
 }
 
 static void prototype_registry_lifetime()
@@ -1179,7 +1180,7 @@ static void global_values()
 
     game_entities_free(entities);
     ecs_world_free(ecs);
-    puts("global values PASS: authored entity bindings and typed world values resolve with lifetime checks");
+    test_note("global values PASS: authored entity bindings and typed world values resolve with lifetime checks\n");
 }
 
 void test_entities()
@@ -1195,9 +1196,9 @@ void test_entities()
     assert(set && set->access && set->access->write_count == 1);
     assert(!(set->access->flags & NODE_EFFECT_ENTITY_SCOPED));
     test_compiled_spawns();
-    puts("spawn function PASS: Delay and parent setup complete before Begin, with pause and cancellation in both hosts");
+    test_note("spawn function PASS: Delay and parent setup complete before Begin, with pause and cancellation in both hosts\n");
     test_queued_events(false);
     test_queued_events(true);
-    puts("queued events PASS: copied payloads, bounded delivery, recursion, cancellation, and debugger lifetime");
-    puts("entity host PASS: spawn initialization, targeted reads, cancellation, debugger hold, and deferred destruction");
+    test_note("queued events PASS: copied payloads, bounded delivery, recursion, cancellation, and debugger lifetime\n");
+    test_note("entity host PASS: spawn initialization, targeted reads, cancellation, debugger hold, and deferred destruction\n");
 }

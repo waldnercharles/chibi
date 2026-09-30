@@ -40,6 +40,13 @@ or CMake cache settings trigger configuration again.
 plain Debug and runs that selector. Use another `test_suite` selector for the
 area you changed. `make test` remains the full ASan and UBSan gate.
 
+Build and test output is quiet: Make does not echo commands, Ninja prints only
+warnings, command output and failing commands, a configure writes its full log
+to `<build dir>/configure.log`, and `test_suite` prints failures and a one-line
+summary. Add `VERBOSE=1` to any target, or set it in the environment of a test
+executable such as `build/test_suite`, to print every command, the CMake log
+and each passing check.
+
 Neon Swarm is the default project for native launches, editor profiles, MCP,
 and `make web-serve`. Its manifest selects `scenes/Sandbox.yaml`.
 Use `make debug PROJECT=.` for the Arena3D reference, or

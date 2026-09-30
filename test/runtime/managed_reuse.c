@@ -142,5 +142,5 @@ void test_managed_reuse()
     for (int kind = 0; kind < ARRAY_OP_KINDS; kind++) {
         aliases(kind);
     }
-    puts("PASS: reusable managed variable storage, self-assignment, borrowed slices/text, rejected copies, hot-apply reordering and pooling");
+    test_note("PASS: reusable managed variable storage, self-assignment, borrowed slices/text, rejected copies, hot-apply reordering and pooling\n");
 }

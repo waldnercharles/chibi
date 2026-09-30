@@ -8,6 +8,7 @@
 #include "graph/runtime/value_array.h"
 #include "support/arena.h"
 #include "support/array.h"
+#include "test/support/report.h"
 
 #include <assert.h>
 #include <math.h>
@@ -400,5 +401,5 @@ void test_extract()
     rejected_extractions();
     array_extraction();
     converted_boundaries();
-    puts("PASS: extraction preserves pure calculations, defaults, fanout and arrays; rejected boundaries leave the document unchanged");
+    test_note("PASS: extraction preserves pure calculations, defaults, fanout and arrays; rejected boundaries leave the document unchanged\n");
 }

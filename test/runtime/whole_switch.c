@@ -4,6 +4,7 @@
 #include "graph/runtime/flow_internal.h"
 #include "graph/runtime/instance.h"
 #include "test/flow_snapshot.h"
+#include "test/support/report.h"
 #include "test/whole_switch_fixture.h"
 
 #include <assert.h>
@@ -212,7 +213,7 @@ void test_compiled_switches(const char *path)
     if (library) {
         dlclose(library);
     }
-    printf(
+    test_note(
         "PASS: whole switch oracle/native/bytecode%s parity for cases, state, "
         "loops, waits, debugger snapshots and budgets; zero compiled oracle "
         "calls\n",

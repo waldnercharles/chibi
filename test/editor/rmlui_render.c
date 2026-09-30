@@ -154,7 +154,7 @@ int rmlui_render_run(const char *program, bool gles)
     kit_destroy(k);
     rml_backend_destroy(backend);
     cf_destroy_app();
-    printf(
+    test_note(
         "RmlUi render PASS%s: retained UI renders beside queued layer-0 draws "
         "and under a scissor another pass left\n",
         gles ? " on GLES" : ""

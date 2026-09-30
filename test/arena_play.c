@@ -19,6 +19,7 @@
 #include "support/text_overlay.h"
 #include "support/xalloc.h"
 #include "test/physics_executor.h"
+#include "test/support/report.h"
 
 #include <SDL3/SDL_events.h>
 #include <SDL3/SDL_keyboard.h>
@@ -585,7 +586,7 @@ static void planar_orientation(arena_fixture *f)
     assert(unlink(path) == 0);
     assert(app_scene_authoring_load(f->scene, "content/scenes/Arena3D.yaml") == 0);
     frame(f);
-    puts("planar orientation PASS: authored aim, rendered tips and empty-corner picking in four quadrants");
+    test_note("planar orientation PASS: authored aim, rendered tips and empty-corner picking in four quadrants\n");
 }
 
 static int standalone_frame(arena_fixture *f, app_game_presentation *game)
@@ -673,7 +674,7 @@ static void editor_mouse_play(arena_fixture *f)
     assert(app_scene_authoring_runtime_command(f->scene, APP_RUNTIME_SCENE, APP_RUNTIME_STOP) == 0);
     assert(!app_scene_authoring_runtime_state(f->scene).playing);
     f->sample_controls = false;
-    puts("editor viewport input PASS: editor Play, native held mouse firing with movement, aim drag, repeat shots and release");
+    test_note("editor viewport input PASS: editor Play, native held mouse firing with movement, aim drag, repeat shots and release\n");
 }
 
 static int standalone_fire(arena_fixture *f, app_game_presentation *game, bool mouse)
@@ -814,7 +815,7 @@ static void standalone_play(arena_fixture *f)
     assert(standalone_key(f, game, SDL_SCANCODE_Q, true) == 1);
     key_event(SDL_SCANCODE_Q, false);
     app_game_presentation_free(game);
-    puts("standalone game PASS: Surface rendering, mouse aim, held mouse/Space cadence and release, window focus loss, Escape pause/release, paused time, Enter resume, authored restart and quit");
+    test_note("standalone game PASS: Surface rendering, mouse aim, held mouse/Space cadence and release, window focus loss, Escape pause/release, paused time, Enter resume, authored restart and quit\n");
 }
 
 /* ---------- arena2d end to end (wave 3, workstream X) ---------- */
@@ -900,7 +901,7 @@ static void standalone_ui_keys(arena_fixture *f)
     app_game_presentation_free(game);
     text_overlay_set(path, NULL);
     text_overlay_set(styles, NULL);
-    puts("standalone game UI keys PASS: data-keys while playing, a focused text field takes typed text, R and movement, Escape still pauses");
+    test_note("standalone game UI keys PASS: data-keys while playing, a focused text field takes typed text, R and movement, Escape still pauses\n");
 }
 
 static bool review_target(arena_fixture *f, GameTransform *player, GameTransform *target)
@@ -1484,7 +1485,7 @@ int arena_play_run(const char *program)
     frame(&f);
     assert(!(app_input_controls() & (UINT64_C(1) << GAME_CONTROL_SPACE)));
     assert(!app_input_pressed(APP_INPUT_DELETE));
-    puts("gameplay quick tap PASS: press and release in one frame survives for exactly one sample");
+    test_note("gameplay quick tap PASS: press and release in one frame survives for exactly one sample\n");
     const char *motion_frames = getenv("CHIBI_ARENA_MOTION_FRAMES");
     if (motion_frames && *motion_frames) {
         ship_motion_review(&f, motion_frames);
@@ -1533,7 +1534,7 @@ cleanup:
     fixture_free(&f);
     arena_app_stop();
     if (!input_only) {
-        puts("arena play PASS: scene save/reload, independent preview projection, pointer drag/Undo, resize, current-frame mouse aim, firing and Stop, standalone game");
+        test_note("arena play PASS: scene save/reload, independent preview projection, pointer drag/Undo, resize, current-frame mouse aim, firing and Stop, standalone game\n");
     }
     return 0;
 }

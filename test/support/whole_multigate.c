@@ -3,6 +3,7 @@
 #include "graph/nodes/state_nodes.h"
 #include "graph/runtime/flow_internal.h"
 #include "graph/runtime/update.h"
+#include "test/support/report.h"
 #include "test/whole_multigate_fixture.h"
 
 #include <assert.h>
@@ -233,7 +234,7 @@ void whole_multigate_smoke()
         behavior_asset_free(a);
     }
     assert(eval == eval_oracle_calls() && flow == flow_oracle_calls());
-    printf(
+    test_note(
         "PASS: %s MultiGate, nested calls, loops, waits and persistent "
         "selection; zero oracle calls\n",
         behavior_backend_name(behavior_default_backend())

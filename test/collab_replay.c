@@ -1,6 +1,7 @@
 #include "editor/collab/collab.h"
 #include "editor/collab/protocol.h"
 #include "support/xalloc.h"
+#include "test/support/report.h"
 
 #include <assert.h>
 #include <stdio.h>
@@ -168,5 +169,5 @@ void test_collab_replay()
     assert(!collab_replaying());
     collab_shutdown();
     free(f.last);
-    puts("collaboration replay PASS: order, duplicates, rejection, gaps, restore, non-recursion, departure");
+    test_note("collaboration replay PASS: order, duplicates, rejection, gaps, restore, non-recursion, departure\n");
 }

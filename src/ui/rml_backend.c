@@ -192,11 +192,15 @@ static void keep_warning(rml_log_type type, const char *message); /* workstream 
 static bool log_message(rml_log_type type, const char *message)
 {
     keep_warning(type, message);
+    /* Info is RmlUi's font-load chatter; its own debugger hides it too. */
+    if (type == RML_LOG_INFO) {
+        return true;
+    }
     const char *prefix = type == RML_LOG_ERROR   ? "error"
                        : type == RML_LOG_WARNING ? "warning"
                                                  : "info";
     fprintf(stderr, "RmlUi %s: %s\n", prefix, message);
-    if (type != RML_LOG_INFO && !first_warning[0]) {
+    if (!first_warning[0]) {
         snprintf(first_warning, sizeof first_warning, "%s", message);
     }
     return true;

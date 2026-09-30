@@ -6,6 +6,7 @@
 #include "support/array.h"
 #include "support/xalloc.h"
 #include "test/support/event_fixture.h"
+#include "test/support/report.h"
 #include "test/support/simulation_fixture.h"
 
 #include <assert.h>
@@ -53,7 +54,7 @@ static behavior_asset *behavior(const char *name)
     compile_report report;
     compile_report_init(&report);
     int errors = behavior_asset_compile(asset, &report);
-    for (int i = 0; i < acount(report.items); i++) {
+    for (int i = 0; errors && i < acount(report.items); i++) {
         fprintf(stderr, "%s: %s\n", name, report.items[i].message);
     }
     assert(errors == 0);
@@ -265,5 +266,5 @@ void test_wave()
     game_prototype_free(encounter);
     game_prototype_free(player);
     game_prototype_free(enemy);
-    puts("wave PASS: authored spawn cadence, relative alternating positions, eight cap, pursuit, pause and reset");
+    test_note("wave PASS: authored spawn cadence, relative alternating positions, eight cap, pursuit, pause and reset\n");
 }

@@ -6,6 +6,7 @@
 #include "support/array.h"
 #include "support/asset_text.h"
 #include "support/text_file.h"
+#include "test/support/report.h"
 
 #include <assert.h>
 #include <stdio.h>
@@ -42,7 +43,7 @@ static void prototype_component_gain(app_scene_authoring *scene, ecs_world *worl
     assert(!GAME_GameHealth_has(world, entity));
     assert(history(scene, true) == 0);
     assert(GAME_GameHealth_has(world, entity));
-    puts("prototype components PASS: an added prototype component reaches instances and follows Undo and Redo");
+    test_note("prototype components PASS: an added prototype component reaches instances and follows Undo and Redo\n");
 }
 
 static ecs_entity spawn_registered_child(game_live_world *live, ecs_entity owner)
@@ -151,7 +152,7 @@ static void prototype_spawn_refresh(app_scene_authoring *scene, game_live_world 
     }
     assert(game_behavior_destroy_entity(live->behaviors, owner) == 0);
     game_entities_reset(live->entities);
-    puts("prototype spawn refresh PASS: initial registration, edits, Undo/Redo and behavior attachment changes reach the next scene/preview spawn without changing earlier instances");
+    test_note("prototype spawn refresh PASS: initial registration, edits, Undo/Redo and behavior attachment changes reach the next scene/preview spawn without changing earlier instances\n");
 }
 
 static void duplicate_instance_preserves_edits(app_scene_authoring *scene, ecs_world *world)
@@ -211,7 +212,7 @@ static void prototype_vectors_and_text(app_scene_authoring *scene, ecs_world *wo
     );
     text[0] = 'X';
     assert(!strcmp(GAME_GameUi_get_const(world, entity)->document, "Guide"));
-    puts("prototype fields PASS: vector Undo/Redo and owned text reach instances");
+    test_note("prototype fields PASS: vector Undo/Redo and owned text reach instances\n");
 }
 
 /* The file at `path`, which `canonical` turns into the text
@@ -297,7 +298,7 @@ static void rename_instance(app_scene_authoring *scene, const char *folder)
     assert(strstr(text, "name: Hero"));
     free(text);
     free(before);
-    puts("rename instance PASS: a rename is one Undo step, refuses names in use, survives checkpoints and saves");
+    test_note("rename instance PASS: a rename is one Undo step, refuses names in use, survives checkpoints and saves\n");
 }
 
 /* Whether the object keeps its values of a component its prototype lost. */
@@ -371,7 +372,7 @@ static void prototype_component_removal(app_scene_authoring *scene, ecs_world *w
     text = saved_canonically(path, canonical_prototype);
     assert(strstr(text, "GameAim"));
     free(text);
-    puts("prototype component removal PASS: add and remove are one Undo step each, instances keep their overrides, and the prototype saves canonically");
+    test_note("prototype component removal PASS: add and remove are one Undo step each, instances keep their overrides, and the prototype saves canonically\n");
 }
 
 void test_scene_instances()

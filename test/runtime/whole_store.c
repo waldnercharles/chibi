@@ -227,5 +227,5 @@ void test_compiled_stores()
     lifecycle(behavior_default_backend());
     managed_storage();
     whole_store_smoke();
-    puts("PASS: persistent struct ownership, nulls, snapshots, budget failures, hot apply and pool reuse");
+    test_note("PASS: persistent struct ownership, nulls, snapshots, budget failures, hot apply and pool reuse\n");
 }

@@ -293,7 +293,7 @@ void test_compiled_reaction(const char *path)
         assert(!dlclose(library));
     }
     whole_reaction_smoke();
-    puts("PASS: whole visual reaction, source/error priority, atomic writes, target generations, waits, cancellation, inspection and effect safety");
+    test_note("PASS: whole visual reaction, source/error priority, atomic writes, target generations, waits, cancellation, inspection and effect safety\n");
 }
 static double seconds()
 {

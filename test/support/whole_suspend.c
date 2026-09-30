@@ -3,6 +3,7 @@
 #include "graph/runtime/flow_internal.h"
 #include "graph/runtime/instance.h"
 #include "support/xalloc.h"
+#include "test/support/report.h"
 #include "test/whole_loop_fixture.h"
 #include "test/whole_suspend_fixture.h"
 
@@ -101,7 +102,7 @@ void whole_suspend_smoke()
         behavior_function_free(f);
     }
     assert(eval == eval_oracle_calls() && flow == flow_oracle_calls());
-    printf(
+    test_note(
         "PASS: %s continuation state, nested loops, floating live values and "
         "backend switches; zero "
         "oracle calls\n",

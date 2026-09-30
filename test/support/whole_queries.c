@@ -3,6 +3,7 @@
 #include "graph/runtime/flow_internal.h"
 #include "graph/runtime/instance.h"
 #include "support/array.h"
+#include "test/support/report.h"
 #include "test/whole_query_fixture.h"
 
 #include <stdlib.h>
@@ -153,7 +154,7 @@ void whole_query_smoke()
     assert(bi->variables[0].i == 9 && bi->variables[1].u64 == 125);
     assert(eval == eval_oracle_calls() && flow == flow_oracle_calls());
     flow_run_free(run);
-    printf(
+    test_note(
         "%s: nested whole query snapshots; zero oracle calls\n",
         behavior_backend_name(behavior_instance_backend(bi))
     );

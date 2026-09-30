@@ -401,7 +401,7 @@ void test_array_ops(const char *path)
     if (library) {
         assert(!dlclose(library));
     }
-    puts("PASS: whole array/set construction, mutation, membership, returns, strings/names/structs, errors, nested waits and debugger snapshots");
+    test_note("PASS: whole array/set construction, mutation, membership, returns, strings/names/structs, errors, nested waits and debugger snapshots\n");
 }
 static double seconds()
 {

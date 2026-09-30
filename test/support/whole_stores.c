@@ -1,5 +1,6 @@
 #include "graph/runtime/flow_internal.h"
 #include "graph/runtime/instance.h"
+#include "test/support/report.h"
 #include "test/whole_store_fixture.h"
 
 #include <assert.h>
@@ -107,5 +108,5 @@ void whole_store_smoke()
         behavior_instance_destroy(bi);
         behavior_asset_free(a);
     }
-    puts("PASS: whole persistent structs, nested calls, loops, snapshots and reused storage; zero oracle calls");
+    test_note("PASS: whole persistent structs, nested calls, loops, snapshots and reused storage; zero oracle calls\n");
 }

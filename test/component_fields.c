@@ -5,6 +5,7 @@
 #include "graph/runtime/instance.h"
 #include "runtime/generated.h"
 #include "support/array.h"
+#include "test/support/report.h"
 
 #include <assert.h>
 #include <stdio.h>
@@ -228,7 +229,7 @@ static void ui_fields(ecs_world *world, ecs_entity owner)
     assert(ui->order == 3 && ui->hidden && !strcmp(ui->document, "Rally"));
     behavior_instance_destroy(runtime);
     behavior_asset_free(f.asset);
-    puts("ui fields PASS: expanded getter compiles; changing order preserves document and visibility");
+    test_note("ui fields PASS: expanded getter compiles; changing order preserves document and visibility\n");
 }
 
 void test_component_fields()
@@ -259,5 +260,5 @@ void test_component_fields()
     handle_field(world, owner, other);
     ui_fields(world, owner);
     ecs_world_free(world);
-    puts("component fields PASS: Self, explicit and invalid targets, preserved members, structs and serialization");
+    test_note("component fields PASS: Self, explicit and invalid targets, preserved members, structs and serialization\n");
 }

@@ -214,7 +214,7 @@ void test_compiled_particles(const char *path)
     if (library) {
         assert(!dlclose(library));
     }
-    puts("PASS: whole particle state, errors, service guards, draw order, nested waits, cancellation and inspection");
+    test_note("PASS: whole particle state, errors, service guards, draw order, nested waits, cancellation and inspection\n");
 }
 static double seconds()
 {

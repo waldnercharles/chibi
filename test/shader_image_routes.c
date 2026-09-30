@@ -4,6 +4,7 @@
 #include "render/shader_catalog.h"
 #include "render/shader_fragment.h"
 #include "render/shader_images.h"
+#include "test/support/report.h"
 
 #include <assert.h>
 #include <math.h>
@@ -433,6 +434,6 @@ int test_shader_image_routes()
     assert(!unlink(alpha_key));
     assert(!unlink(sampling_key));
     assert(!rmdir(directory));
-    puts("image routes PASS: more than eight scene images, fragment/compute pixels, authored fragment filter/wrap/color-space seams, smooth-union batching, shape picking and retained output on budget failure");
+    test_note("image routes PASS: more than eight scene images, fragment/compute pixels, authored fragment filter/wrap/color-space seams, smooth-union batching, shape picking and retained output on budget failure\n");
     return 0;
 }

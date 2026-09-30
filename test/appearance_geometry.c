@@ -1,5 +1,7 @@
 #include "render/appearance_geometry.h"
 
+#include "test/support/report.h"
+
 #include <assert.h>
 #include <float.h>
 #include <math.h>
@@ -149,5 +151,5 @@ void test_appearance_geometry()
     legacy_shapes();
     invalid_geometry();
     rotated_geometry();
-    puts("appearance geometry PASS: stroke picking, exact extents, rounded capsules and legacy shapes");
+    test_note("appearance geometry PASS: stroke picking, exact extents, rounded capsules and legacy shapes\n");
 }

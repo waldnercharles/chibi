@@ -327,5 +327,5 @@ void test_compiled_integers()
     for (pin_type type = PIN_I8; type <= PIN_U64; type++) {
         primitive(registry_node_by_name("Integer"), type, type);
     }
-    puts("PASS: nested integer bodies, wrapping arithmetic, shared division/remainder and source scopes");
+    test_note("PASS: nested integer bodies, wrapping arithmetic, shared division/remainder and source scopes\n");
 }

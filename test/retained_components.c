@@ -2,6 +2,7 @@
 #include "assets/prototype.h"
 #include "runtime/generated.h"
 #include "support/array.h"
+#include "test/support/report.h"
 
 #include <assert.h>
 #include <stdio.h>
@@ -52,7 +53,7 @@ static void retained_inheritance()
     }
     assert(!game_prototype_rebase_component_json("{\"Health\":{}}", "{\"Input\":{}}", "{}"));
     assert(!game_prototype_rebase_component_json("{\"Health\":{}}", "{}", "{\"Health\":null}"));
-    puts("retained inheritance PASS: local values, evolving defaults, nested fields, absent bases, and invalid snapshots");
+    test_note("retained inheritance PASS: local values, evolving defaults, nested fields, absent bases, and invalid snapshots\n");
 }
 
 static void retained_strings()
@@ -96,7 +97,7 @@ static void retained_strings()
     assert(game_prototype_read_field(copy, "DisplayLabel", "text", &value) == 0);
     assert(value.type == PIN_STR && strcmp(value.str, "customized") == 0);
     game_prototype_free(copy);
-    puts("retained components PASS: owned strings survive cloning and stable component keys survive display-name changes");
+    test_note("retained components PASS: owned strings survive cloning and stable component keys survive display-name changes\n");
 }
 
 void test_retained_components()
@@ -165,5 +166,5 @@ void test_retained_components()
         sizeof error
     );
     assert(!prototype && strstr(error, "both attached and detached"));
-    puts("retained components PASS: detach, save/reload, clone, nested values, runtime absence, and reattach");
+    test_note("retained components PASS: detach, save/reload, clone, nested values, runtime absence, and reattach\n");
 }

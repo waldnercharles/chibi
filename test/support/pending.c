@@ -4,6 +4,7 @@
 #include "runtime/behaviors/entities.h"
 #include "support/array.h"
 #include "test/pending_fixture.h"
+#include "test/support/report.h"
 
 #include <assert.h>
 #include <math.h>
@@ -542,7 +543,7 @@ void test_pending_backend(behavior_backend backend)
     }
     test_clock_inheritance(backend);
     test_targeted_growth(backend);
-    printf(
+    test_note(
         "PASS: %s indexed pending queues, sparse parallel work, waits, debug "
         "holds, cancellation, pooling and same-pump enqueue order\n",
         behavior_backend_name(backend)

@@ -4,6 +4,7 @@
 #include "runtime/engine.h"
 #include "runtime/generated.h"
 #include "runtime/scenes/prototype_preview.h"
+#include "test/support/report.h"
 #include "test/support/simulation_fixture.h"
 
 #include <assert.h>
@@ -165,5 +166,5 @@ void test_sdf_motion()
     motion_math();
     clocks();
     preview_clocks();
-    puts("sdf motion PASS: radial waves, conservative padding and simulation clock lifecycle");
+    test_note("sdf motion PASS: radial waves, conservative padding and simulation clock lifecycle\n");
 }

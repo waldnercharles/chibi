@@ -7,6 +7,7 @@
 #include "runtime/material_stream.h"
 #include "runtime/material_terrain.h"
 #include "support/text_file.h"
+#include "test/support/report.h"
 
 #include <assert.h>
 #include <math.h>
@@ -566,7 +567,7 @@ void test_fields()
     multiple_results();
     chunks();
     library_hot_apply();
-    puts("PASS: pure field compilation, parameters, deterministic noise, composition, connectivity and chunks");
+    test_note("PASS: pure field compilation, parameters, deterministic noise, composition, connectivity and chunks\n");
 }
 int bench_fields()
 {

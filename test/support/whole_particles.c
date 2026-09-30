@@ -3,6 +3,7 @@
 #include "graph/nodes/particle_nodes.h"
 #include "graph/runtime/flow_internal.h"
 #include "graph/runtime/instance.h"
+#include "test/support/report.h"
 #include "test/whole_particle_fixture.h"
 
 #include <assert.h>
@@ -98,7 +99,7 @@ void whole_particle_smoke()
         game_particles_free(actual);
         behavior_asset_free(a);
     }
-    printf(
+    test_note(
         "PASS: %s whole particle bursts and sprays, nested waits and "
         "deterministic state; zero compiled oracle calls\n",
         behavior_backend_name(behavior_default_backend())

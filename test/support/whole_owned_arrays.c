@@ -1,6 +1,7 @@
 #include "graph/model/registry.h"
 #include "graph/runtime/flow_internal.h"
 #include "graph/runtime/instance.h"
+#include "test/support/report.h"
 #include "test/whole_managed_fixture.h"
 #include "test/whole_owned_array_fixture.h"
 
@@ -148,5 +149,5 @@ void whole_owned_array_smoke()
     assert(eval == eval_oracle_calls() && flow == flow_oracle_calls());
     behavior_instance_destroy(bi);
     behavior_asset_free(a);
-    puts("PASS: whole owned arrays, defaults, retained calls, writes and iteration after replacement; zero oracle calls");
+    test_note("PASS: whole owned arrays, defaults, retained calls, writes and iteration after replacement; zero oracle calls\n");
 }

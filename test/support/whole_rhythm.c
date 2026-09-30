@@ -3,6 +3,7 @@
 #include "graph/runtime/instance.h"
 #include "runtime/generated.h"
 #include "runtime/rhythm.h"
+#include "test/support/report.h"
 #include "test/whole_rhythm_fixture.h"
 
 #include <assert.h>
@@ -76,7 +77,7 @@ void whole_rhythm_smoke()
     behavior_instance_destroy(bi);
     behavior_asset_free(a);
     ecs_world_free(world);
-    printf(
+    test_note(
         "PASS: %s whole Scene Rhythm, nested calls and live clock after wait; "
         "zero oracle calls\n",
         behavior_backend_name(behavior_default_backend())

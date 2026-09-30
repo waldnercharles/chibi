@@ -5,6 +5,7 @@
 #include "graph/runtime/runtime.h"
 #include "support/arena.h"
 #include "test/instance_bank_fixture.h"
+#include "test/support/report.h"
 #include "test/whole_loop_fixture.h"
 #include "test/whole_multigate_fixture.h"
 #include "test/whole_name_fixture.h"
@@ -125,7 +126,7 @@ int main()
     pin_value value;
     assert(behavior_instance_get_variable(instance, variable->id, &value) == 0 && value.d == 42);
     assert(eval_before == eval_oracle_calls() && flow_before == flow_oracle_calls());
-    printf(
+    test_note(
         "%s: event, yield, resume and variable write; zero oracle calls\n",
         behavior_backend_name(behavior_instance_backend(instance))
     );
@@ -155,7 +156,7 @@ int main()
         value.f == 8
     );
     assert(eval_before == eval_oracle_calls() && flow_before == flow_oracle_calls());
-    printf(
+    test_note(
         "%s: whole-function loop, sequence and branch; zero oracle calls\n",
         behavior_backend_name(behavior_instance_backend(instance))
     );
@@ -176,7 +177,7 @@ int main()
         instance->variables[2].b
     );
     assert(eval_before == eval_oracle_calls() && flow_before == flow_oracle_calls());
-    printf(
+    test_note(
         "%s: nested whole-function arguments, conversions, min/max and Return; "
         "zero oracle calls\n",
         behavior_backend_name(behavior_instance_backend(instance))
@@ -204,7 +205,7 @@ int main()
     );
     assert(value.d == 9.25 && runtime_store_creations() == allocations);
     assert(eval_before == eval_oracle_calls() && flow_before == flow_oracle_calls());
-    printf(
+    test_note(
         "%s: nested pure bodies; no callee allocation or oracle calls\n",
         behavior_backend_name(behavior_instance_backend(instance))
     );
@@ -228,7 +229,7 @@ int main()
         instance->variables[1].f == -.5f && instance->variables[2].b
     );
     assert(eval_before == eval_oracle_calls() && flow_before == flow_oracle_calls());
-    printf(
+    test_note(
         "%s: whole math calls and scalar results; zero oracle calls\n",
         behavior_backend_name(behavior_instance_backend(instance))
     );
@@ -280,7 +281,7 @@ int main()
     ));
     assert(value.i64 == INT64_MAX);
     assert(eval_before == eval_oracle_calls() && flow_before == flow_oracle_calls());
-    printf(
+    test_note(
         "%s: whole integer bodies, loop and saturating wide cast; zero oracle "
         "calls\n",
         behavior_backend_name(behavior_instance_backend(instance))

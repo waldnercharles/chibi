@@ -8,6 +8,7 @@
 #include "support/array.h"
 #include "support/xalloc.h"
 #include "test/support/event_fixture.h"
+#include "test/support/report.h"
 
 #include <assert.h>
 #include <math.h>
@@ -43,7 +44,7 @@ static behavior_asset *read_behavior(const char *name)
     compile_report report;
     compile_report_init(&report);
     int errors = behavior_asset_compile(asset, &report);
-    for (int i = 0; i < acount(report.items); i++) {
+    for (int i = 0; errors && i < acount(report.items); i++) {
         fprintf(stderr, "%s: %s\n", path, report.items[i].message);
     }
     assert(errors == 0);
@@ -176,5 +177,5 @@ void test_movement_trail()
 {
     trail_case(false);
     trail_case(true);
-    puts("movement trail PASS: keyboard direction sets velocity and rear exhaust, fractional emission and idle in both hosts");
+    test_note("movement trail PASS: keyboard direction sets velocity and rear exhaust, fractional emission and idle in both hosts\n");
 }

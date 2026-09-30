@@ -2,6 +2,7 @@
 #include "graph/model/registry.h"
 #include "graph/runtime/flow_internal.h"
 #include "graph/runtime/instance.h"
+#include "test/support/report.h"
 #include "test/whole_motion_fixture.h"
 
 #include <assert.h>
@@ -90,7 +91,7 @@ void whole_motion_smoke()
         behavior_asset_free(asset);
     }
     assert(eval == eval_oracle_calls() && flow == flow_oracle_calls());
-    printf(
+    test_note(
         "PASS: %s whole spring, angle, easing and scalar rounding; zero oracle "
         "calls\n",
         behavior_backend_name(behavior_default_backend())

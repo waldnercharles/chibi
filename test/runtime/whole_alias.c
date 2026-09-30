@@ -103,5 +103,5 @@ void test_compiled_aliases()
         }
     }
     whole_alias_smoke();
-    puts("PASS: explicit and edge alias conversions, nested calls, null diagnostics and budgets across all backends");
+    test_note("PASS: explicit and edge alias conversions, nested calls, null diagnostics and budgets across all backends\n");
 }

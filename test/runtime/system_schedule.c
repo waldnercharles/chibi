@@ -5,6 +5,7 @@
 #include "runtime/generated.h"
 #include "runtime/systems/schedule.h"
 #include "support/text_file.h"
+#include "test/support/report.h"
 
 #include <assert.h>
 #include <math.h>
@@ -348,5 +349,5 @@ void test_system_schedule()
     uint64_t serial = parallel_world(false, 128, 20, &elapsed),
              parallel = parallel_world(true, 128, 20, &elapsed);
     assert(serial == parallel);
-    puts("PASS: System read/write dependencies, barriers, diagnostics, stable events and live query hot apply");
+    test_note("PASS: System read/write dependencies, barriers, diagnostics, stable events and live query hot apply\n");
 }

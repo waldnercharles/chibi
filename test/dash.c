@@ -5,6 +5,7 @@
 #include "support/array.h"
 #include "support/text_file.h"
 #include "test/support/event_fixture.h"
+#include "test/support/report.h"
 #include "test/support/simulation_fixture.h"
 
 #include <assert.h>
@@ -41,7 +42,7 @@ static void load_behavior(game_live_world *live, const char *name)
     compile_report report;
     compile_report_init(&report);
     int errors = behavior_asset_compile(asset, &report);
-    for (int i = 0; i < acount(report.items); i++) {
+    for (int i = 0; errors && i < acount(report.items); i++) {
         fprintf(stderr, "%s: %s\n", name, report.items[i].message);
     }
     assert(errors == 0);
@@ -416,5 +417,5 @@ void test_dash()
     corner();
     GameTransform a = cadence(30), b = cadence(60), c = cadence(120);
     assert(fabsf(a.x - b.x) < .001f && fabsf(a.x - c.x) < .001f);
-    puts("  dash: captured input, cooldown, invulnerability, held contact, thin/rotated walls, corner, 30/60/120 cadence PASS");
+    test_note("  dash: captured input, cooldown, invulnerability, held contact, thin/rotated walls, corner, 30/60/120 cadence PASS\n");
 }

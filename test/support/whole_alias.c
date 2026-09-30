@@ -2,6 +2,7 @@
 #include "graph/model/registry.h"
 #include "graph/runtime/flow_internal.h"
 #include "graph/runtime/instance.h"
+#include "test/support/report.h"
 #include "test/whole_alias_fixture.h"
 
 #include <assert.h>
@@ -135,5 +136,5 @@ void whole_alias_smoke()
         behavior_instance_destroy(bi);
         behavior_asset_free(a);
     }
-    puts("PASS: whole struct alias conversions, owned results and no oracle calls");
+    test_note("PASS: whole struct alias conversions, owned results and no oracle calls\n");
 }

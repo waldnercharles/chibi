@@ -82,5 +82,5 @@ void test_compiled_conversions()
             behavior_asset_free(a);
         }
     }
-    puts("PASS: numeric edge conversions, saturation and real widths in whole bodies");
+    test_note("PASS: numeric edge conversions, saturation and real widths in whole bodies\n");
 }

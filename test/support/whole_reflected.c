@@ -2,6 +2,7 @@
 #include "graph/runtime/flow_internal.h"
 #include "graph/runtime/instance.h"
 #include "runtime/components.h"
+#include "test/support/report.h"
 #include "test/whole_reflected_fixture.h"
 
 #include <assert.h>
@@ -89,7 +90,7 @@ void whole_reflected_smoke()
     assert(eval == eval_oracle_calls() && flow == flow_oracle_calls());
     behavior_instance_destroy(bi);
     behavior_asset_free(a);
-    printf(
+    test_note(
         "PASS: %s reflected native read, projected struct fields and caller "
         "snapshots across wait; zero oracle calls\n",
         behavior_backend_name(behavior_default_backend())

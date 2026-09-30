@@ -1,5 +1,6 @@
 #include "src/host/module.h"
 #include "src/host/state_file.h"
+#include "test/support/report.h"
 
 #include <assert.h>
 #include <errno.h>
@@ -107,5 +108,5 @@ int main(int argc, char **argv)
         unlink(staged) == 0 && unlink(lease_path) == 0 && rmdir(directory) == 0 &&
         rmdir(generations) == 0 && rmdir(state_dir) == 0 && rmdir(root) == 0
     );
-    puts("PASS: real library replacement, rejection, repeated generations and checkpoint restart");
+    test_note("PASS: real library replacement, rejection, repeated generations and checkpoint restart\n");
 }

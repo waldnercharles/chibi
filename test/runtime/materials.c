@@ -11,6 +11,7 @@ float *reference_cave_generate(unsigned, int, int, float, float, float);
 #include "runtime/material_mask.h"
 #include "runtime/task_pool.h"
 #include "support/array.h"
+#include "test/support/report.h"
 
 #include <assert.h>
 #include <math.h>
@@ -171,7 +172,7 @@ static void cave_generation()
         max_error = fmaxf(max_error, fabsf(a[i] - reference[i]));
         occupancy_errors += (a[i] <= 0) != (reference[i] <= 0);
     }
-    fprintf(stderr, "Cave parity: max distance error %.9g, occupancy errors %d\n", max_error, occupancy_errors);
+    test_note("Cave parity: max distance error %.9g, occupancy errors %d\n", max_error, occupancy_errors);
     assert(max_error < .0002f && !occupancy_errors);
     free(reference);
     assert(!memcmp(a, b, (size_t)length * sizeof *a));
@@ -240,7 +241,7 @@ static void shipping_cave_parity()
         error = fmaxf(error, fabsf(a[i] - b[i]));
         differences += (a[i] <= 0) != (b[i] <= 0);
     }
-    printf("Shipping cave parity: max distance error %.9g, occupancy errors %d\n", error, differences);
+    test_note("Shipping cave parity: max distance error %.9g, occupancy errors %d\n", error, differences);
     assert(error < .001f && !differences);
     free(a);
     free(b);
@@ -453,7 +454,7 @@ static void gas_flow()
             lateral = fmaxf(lateral, fabsf(p[i].velocity.y));
         }
     }
-    printf("gas probe wake: transverse speed %.3f\n", lateral);
+    test_note("gas probe wake: transverse speed %.3f\n", lateral);
     assert(lateral > .1f);
     for (int step = 0; step < 120; step++) {
         tick(fluid);
@@ -465,7 +466,7 @@ static void gas_flow()
         assert(speed < 120);
         motion += speed;
     }
-    printf("gas wake after two seconds: summed speed %.3f\n", motion);
+    test_note("gas wake after two seconds: summed speed %.3f\n", motion);
     assert(motion > 1);
     fluid_particle saved = p[100];
     for (int step = 0; step < 30; step++) {
@@ -1807,5 +1808,5 @@ void test_materials()
     finite_drive();
     terrain_boundary_cut();
     terrain_stream_restore();
-    puts("PASS: material destruction, cohesion, sleeping, momentum and parallel parity");
+    test_note("PASS: material destruction, cohesion, sleeping, momentum and parallel parity\n");
 }

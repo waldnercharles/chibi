@@ -130,6 +130,26 @@ static void set_prefix(const char *source)
     g_prefix = g_prefix_storage;
 }
 
+/* Lists each reflected struct and function; build noise unless VERBOSE is set. */
+static void print_listing(const collect_ctx *ctx)
+{
+    for (int i = 0; i < acount(ctx->structs); i++) {
+        printf(
+            "reflect:   struct %s (%d fields)\n",
+            ctx->structs[i].name,
+            acount(ctx->structs[i].fields)
+        );
+    }
+    for (int i = 0; i < acount(ctx->fns); i++) {
+        const fn_info *f = &ctx->fns[i];
+        printf("reflect:   fn %s(", f->name);
+        for (int j = 0; j < acount(f->pname); j++) {
+            printf("%s%s %s", j ? ", " : "", f->ptype[j], f->pname[j]);
+        }
+        printf(") -> %s\n", f->ret);
+    }
+}
+
 int main(int argc, char **argv)
 {
     if (argc < 3) {
@@ -225,20 +245,9 @@ int main(int argc, char **argv)
     }
 
     printf("reflect: %d struct(s), %d function(s) -> %s\n", acount(ctx.structs), acount(ctx.fns), output);
-    for (int i = 0; i < acount(ctx.structs); i++) {
-        printf(
-            "reflect:   struct %s (%d fields)\n",
-            ctx.structs[i].name,
-            acount(ctx.structs[i].fields)
-        );
-    }
-    for (int i = 0; i < acount(ctx.fns); i++) {
-        const fn_info *f = &ctx.fns[i];
-        printf("reflect:   fn %s(", f->name);
-        for (int j = 0; j < acount(f->pname); j++) {
-            printf("%s%s %s", j ? ", " : "", f->ptype[j], f->pname[j]);
-        }
-        printf(") -> %s\n", f->ret);
+    const char *verbose = getenv("VERBOSE");
+    if (verbose && *verbose) {
+        print_listing(&ctx);
     }
 
     reflect_dispose(&ctx);

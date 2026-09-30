@@ -15,6 +15,7 @@
 #include "runtime/generated.h"
 #include "runtime/systems/system.h"
 #include "support/arena.h"
+#include "test/support/report.h"
 
 #include <assert.h>
 #include <cute_defines.h>
@@ -1997,5 +1998,5 @@ void test_math_expression()
     behavior_asset_free(asset);
     editor_history();
     editor_rewire();
-    puts("Behavior Expression PASS: precedence, functions, named pins, stable wires, atomic errors, serialization and random sampling");
+    test_note("Behavior Expression PASS: precedence, functions, named pins, stable wires, atomic errors, serialization and random sampling\n");
 }

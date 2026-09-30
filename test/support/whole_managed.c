@@ -1,5 +1,6 @@
 #include "graph/runtime/flow_internal.h"
 #include "graph/runtime/instance.h"
+#include "test/support/report.h"
 #include "test/whole_managed_fixture.h"
 
 #include <assert.h>
@@ -236,7 +237,7 @@ void whole_managed_smoke()
     assert(!strcmp(component->label, "old") && !strcmp(component->nested.text, "nested"));
     ecs_world_free(world);
     behavior_asset_free(a);
-    printf(
+    test_note(
         "PASS: %s managed structs and strings survive nested waits, variable "
         "overwrite and component ownership; zero oracle calls\n",
         behavior_backend_name(behavior_default_backend())

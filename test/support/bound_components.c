@@ -2,6 +2,7 @@
 #include "graph/model/registry.h"
 #include "graph/runtime/flow_internal.h"
 #include "graph/runtime/update.h"
+#include "test/support/report.h"
 #include "test/whole_aggregate_fixture.h"
 #include "test/whole_batch_fixture.h"
 
@@ -155,7 +156,7 @@ static void storage_changes(behavior_backend backend)
     behavior_instance_destroy(bi);
     behavior_asset_free(asset);
     ecs_world_free(test.world);
-    printf(
+    test_note(
         "PASS: %s bound columns, untaken branches, late registration, "
         "relocation and presence diagnostics\n",
         behavior_backend_name(backend)
@@ -234,7 +235,7 @@ static void separate_views(behavior_backend backend)
     behavior_asset_free(asset);
     ecs_world_free(test.world);
     ecs_world_free(other);
-    printf("PASS: %s bound component ID uses independent world and reader columns\n", behavior_backend_name(backend));
+    test_note("PASS: %s bound component ID uses independent world and reader columns\n", behavior_backend_name(backend));
 }
 
 void whole_bound_components_smoke()

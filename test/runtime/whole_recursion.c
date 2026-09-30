@@ -308,7 +308,7 @@ static void runtime_graphs(void *library)
             runtime_graph(kind, 1, 3, budget, library);
         }
     }
-    puts("PASS: recursive runtime frame, wait, debugger and source snapshot parity; zero compiled oracle calls");
+    test_note("PASS: recursive runtime frame, wait, debugger and source snapshot parity; zero compiled oracle calls\n");
 }
 
 static void runtime_host(int kind, int control, int fail_at, void *library)
@@ -436,7 +436,7 @@ static void runtime_hosts(void *library)
         runtime_host(kind, 1, 1, library);
         runtime_host(kind, 1, 3, library);
     }
-    puts("PASS: recursive behavior dispatch, retained host requests, cancellation and paused completion parity; zero compiled oracle calls");
+    test_note("PASS: recursive behavior dispatch, retained host requests, cancellation and paused completion parity; zero compiled oracle calls\n");
 }
 
 static void graphs(void *library)
@@ -486,7 +486,7 @@ static void graphs(void *library)
         behavior_function_free(f);
         behavior_asset_free(asset);
     }
-    puts("PASS: authored recursive function lowering, immutable definitions, oracle return/wait/depth/budget parity and native/portable switching; zero compiled oracle calls");
+    test_note("PASS: authored recursive function lowering, immutable definitions, oracle return/wait/depth/budget parity and native/portable switching; zero compiled oracle calls\n");
 }
 
 static void failed_call(bool native, bool bad_argument)
@@ -648,7 +648,7 @@ void test_compiled_recursion(const char *library)
     if (handle) {
         dlclose(handle);
     }
-    puts("PASS: compiled call IR self/mutual recursion, live values, owned returns, waits, cancellation, depth/budget errors and backend switches; zero oracle calls");
+    test_note("PASS: compiled call IR self/mutual recursion, live values, owned returns, waits, cancellation, depth/budget errors and backend switches; zero oracle calls\n");
 }
 
 void emit_recursion_c(const char *path)

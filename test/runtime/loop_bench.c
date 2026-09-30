@@ -153,6 +153,6 @@ int bench_loop(const char *path, int count, int rotation, int length)
         behavior_asset_free(a);
     }
     assert(!dlclose(library));
-    puts("PASS: generated C, SLJIT and bytecode loop state, budgets and source stacks");
+    test_note("PASS: generated C, SLJIT and bytecode loop state, budgets and source stacks\n");
     return 0;
 }

@@ -5,6 +5,7 @@
 #include "runtime/generated.h"
 #include "support/arena.h"
 #include "support/array.h"
+#include "test/support/report.h"
 
 #include <assert.h>
 #include <stdio.h>
@@ -114,5 +115,5 @@ void run_entity_presence_checks()
 {
     check_presence(ECS_INDEX_DENSE);
     check_presence(ECS_INDEX_BITSET);
-    puts("PASS: component presence survives serialization and follows structural changes and retirement");
+    test_note("PASS: component presence survives serialization and follows structural changes and retirement\n");
 }

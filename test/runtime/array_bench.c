@@ -219,6 +219,6 @@ int bench_array(const char *path, int count, int rotation)
         behavior_asset_free(a);
     }
     assert(!dlclose(library));
-    puts("PASS: generated-C/SLJIT/bytecode array state, results, errors and source stacks; immutable input iteration has no array helpers");
+    test_note("PASS: generated-C/SLJIT/bytecode array state, results, errors and source stacks; immutable input iteration has no array helpers\n");
     return 0;
 }

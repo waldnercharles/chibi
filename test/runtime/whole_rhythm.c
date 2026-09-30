@@ -328,7 +328,7 @@ void test_compiled_rhythm(const char *path)
     if (library) {
         assert(!dlclose(library));
     }
-    puts("PASS: whole rhythm defaults, singleton changes, invalid clocks, nested source/inspection, waits, cancellation and prepared instance clocks");
+    test_note("PASS: whole rhythm defaults, singleton changes, invalid clocks, nested source/inspection, waits, cancellation and prepared instance clocks\n");
 }
 static double seconds()
 {

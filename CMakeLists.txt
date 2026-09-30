@@ -1,4 +1,10 @@
 cmake_minimum_required(VERSION 3.20)
+# Configure reports only warnings and errors by default, including reruns the
+# build tool starts. tools/configure_native.sh logs everything with
+# --log-level=STATUS, which takes precedence.
+if(NOT DEFINED CMAKE_MESSAGE_LOG_LEVEL)
+    set(CMAKE_MESSAGE_LOG_LEVEL WARNING)
+endif()
 project(chibi LANGUAGES C CXX)
 
 set(CHIBI_COLLAB_URL "" CACHE STRING "Public collaboration room service HTTP(S) URL")
@@ -693,7 +699,7 @@ chibi_registry("${TEST_REGISTRY}" WHOLE_ALIAS_PACK WHOLE_VALUE_PACK WHOLE_MANAGE
 file(GLOB_RECURSE TEST_CONCEPT_SOURCES CONFIGURE_DEPENDS
     test/graph/*.c test/ecs/*.c test/runtime/*.c test/editor/*.c test/support/*.c)
 add_executable(test_suite
-    test/automation_preview.c
+    test/automation_preview.c test/support/report.c
     test/collab_protocol.c test/collab_replay.c
     ${TEST_CONCEPT_SOURCES}
     test/automation_asset_write.c test/automation_refactor.c test/automation_graph_edit.c test/automation_search.c test/automation_navigation.c test/automation_graph_optimize.c test/automation_prototype_edit.c test/automation_scene_edit.c test/test_suite.c test/host_wait.c test/entities.c test/projectile.c test/system_host_wait.c test/combat.c test/targeting.c test/pursuit.c test/vector.c test/arena.c test/number_serialization.c test/auto_weapon.c test/graph_navigation.c test/extract.c test/component_conversion.c test/field_outputs.c test/function_wait.c test/function_fields.c test/enemy_attack.c test/particles.c test/labels.c test/appearance.c
@@ -785,7 +791,7 @@ endif()
 # --- activation benchmark: headless per-instance event dispatch -------------
 set(BENCH_BEHAVIOR_REGISTRY ${CMAKE_CURRENT_BINARY_DIR}/generated/bench_behavior_registry.c)
 chibi_registry("${BENCH_BEHAVIOR_REGISTRY}" WHOLE_VALUE_PACK ${BASE_REGISTRY_PACKS})
-add_executable(bench_behavior test/bench_behavior.c test/bench_integer.c test/bench_aggregate.c test/support/whole_values.c test/support/whole_components.c ${BENCH_BEHAVIOR_REGISTRY})
+add_executable(bench_behavior test/bench_behavior.c test/support/report.c test/bench_integer.c test/bench_aggregate.c test/support/whole_values.c test/support/whole_components.c ${BENCH_BEHAVIOR_REGISTRY})
 target_include_directories(bench_behavior PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(bench_behavior PRIVATE ecs core ${CMAKE_DL_LIBS})
 target_compile_options(bench_behavior PRIVATE -UNDEBUG -ffp-contract=off)
@@ -839,7 +845,7 @@ if(NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     target_compile_definitions(reload_two PRIVATE GENERATION=2)
     target_compile_definitions(reload_bad PRIVATE BAD_ABI=1)
     target_compile_definitions(reload_reject PRIVATE REJECT_IMPORT=1)
-    add_executable(test_reload test/reload/loader.c src/host/module.c src/host/state_file.c)
+    add_executable(test_reload test/reload/loader.c test/support/report.c src/host/module.c src/host/state_file.c)
     target_include_directories(test_reload PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/include)
     target_link_libraries(test_reload PRIVATE ${CMAKE_DL_LIBS})
     add_custom_target(check-reload
@@ -855,9 +861,9 @@ if(TARGET chibi_dll)
 endif()
 
 if(NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
-    add_executable(test_dev test/dev/main.c test/dev/watch.c test/dev/process.c test/dev/controller.c
+    add_executable(test_dev test/dev/main.c test/support/report.c test/dev/watch.c test/dev/process.c test/dev/controller.c
         src/host/dev.c src/host/state_file.c third_party/yyjson/yyjson.c)
-    target_include_directories(test_dev PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/third_party/yyjson)
+    target_include_directories(test_dev PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/third_party/yyjson)
     chibi_watch_platform(test_dev)
     add_custom_target(check-dev COMMAND test_dev DEPENDS test_dev VERBATIM)
     find_program(CHIBI_NINJA_EXECUTABLE ninja)
@@ -894,11 +900,11 @@ foreach(driver test_suite test_reload test_dev concurrent_runner bench_activatio
 endforeach()
 
 # Backend policy smoke target also runs under Node in the Emscripten build.
-add_executable(behavior_backend_smoke test/behavior_backend_smoke.c test/support/instance_bank.c test/support/whole_retrigger.c test/support/whole_multigate.c test/support/whole_state.c test/support/whole_switch.c test/support/whole_recursion.c test/support/whole_loops.c test/support/whole_values.c test/support/whole_components.c test/support/whole_alias.c test/support/whole_stores.c test/support/whole_arrays.c test/support/whole_queries.c test/support/whole_commands.c test/support/whole_suspend.c test/support/whole_delay.c test/support/whole_batch.c test/support/bound_components.c test/support/whole_async.c test/support/whole_motion.c test/support/whole_random.c test/support/whole_data.c test/support/whole_particles.c test/support/whole_managed.c test/support/whole_owned_arrays.c test/support/whole_array_ops.c test/support/value_index.c test/support/whole_names.c test/support/whole_search.c src/graph/nodes/vector_nodes.c src/graph/nodes/particle_nodes.c src/render/particles.c)
+add_executable(behavior_backend_smoke test/behavior_backend_smoke.c test/support/report.c test/support/instance_bank.c test/support/whole_retrigger.c test/support/whole_multigate.c test/support/whole_state.c test/support/whole_switch.c test/support/whole_recursion.c test/support/whole_loops.c test/support/whole_values.c test/support/whole_components.c test/support/whole_alias.c test/support/whole_stores.c test/support/whole_arrays.c test/support/whole_queries.c test/support/whole_commands.c test/support/whole_suspend.c test/support/whole_delay.c test/support/whole_batch.c test/support/bound_components.c test/support/whole_async.c test/support/whole_motion.c test/support/whole_random.c test/support/whole_data.c test/support/whole_particles.c test/support/whole_managed.c test/support/whole_owned_arrays.c test/support/whole_array_ops.c test/support/value_index.c test/support/whole_names.c test/support/whole_search.c src/graph/nodes/vector_nodes.c src/graph/nodes/particle_nodes.c src/render/particles.c)
 target_include_directories(behavior_backend_smoke PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${cute_framework_SOURCE_DIR}/include)
 target_link_libraries(behavior_backend_smoke PRIVATE ecs core)
 target_compile_options(behavior_backend_smoke PRIVATE -UNDEBUG)
-add_executable(runtime_backend_smoke test/runtime_backend_smoke.c test/physics.c test/support/task_pool.c test/support/physics_executor.c test/support/whole_reaction.c test/support/whole_rhythm.c test/support/whole_reflected.c test/support/pending.c test/support/entity_query.c)
+add_executable(runtime_backend_smoke test/runtime_backend_smoke.c test/support/report.c test/physics.c test/support/task_pool.c test/support/physics_executor.c test/support/whole_reaction.c test/support/whole_rhythm.c test/support/whole_reflected.c test/support/pending.c test/support/entity_query.c)
 target_link_libraries(runtime_backend_smoke PRIVATE runtime_support)
 target_compile_options(runtime_backend_smoke PRIVATE -UNDEBUG)
 if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
@@ -917,7 +923,7 @@ else()
 endif()
 
 # The same material/field/schedule contracts run natively and in Web bytecode.
-add_executable(material_engine_smoke test/material_engine_smoke.c
+add_executable(material_engine_smoke test/material_engine_smoke.c test/support/report.c
     test/runtime/materials.c test/runtime/material_reactions.c test/runtime/reference_cave.c test/runtime/fields.c
     test/runtime/system_schedule.c ${APP_REGISTRY})
 target_include_directories(material_engine_smoke PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})

@@ -3,6 +3,7 @@
 #include "graph/runtime/runtime.h"
 #include "support/arena.h"
 #include "support/array.h"
+#include "test/support/report.h"
 #include "test/whole_aggregate_fixture.h"
 
 #include <assert.h>
@@ -216,5 +217,5 @@ void whole_aggregate_smoke()
     arena_free(&storage);
     behavior_instance_destroy(bi);
     behavior_asset_free(a);
-    puts("PASS: whole nested aggregates, projected fields, scalar ABI and owned results; no callee allocation or oracle calls");
+    test_note("PASS: whole nested aggregates, projected fields, scalar ABI and owned results; no callee allocation or oracle calls\n");
 }

@@ -1,5 +1,7 @@
 #include "host/process.h"
 
+#include "test/support/report.h"
+
 #include <assert.h>
 #include <errno.h>
 #include <signal.h>
@@ -73,5 +75,5 @@ void test_dev_process()
     assert(process.status == 128 + SIGKILL);
     assert(unlink(log) == 0);
     assert(rmdir(root) == 0);
-    puts("PASS: native processes preserve argv/cwd, capture output, report failure and cancel without blocking");
+    test_note("PASS: native processes preserve argv/cwd, capture output, report failure and cancel without blocking\n");
 }

@@ -278,7 +278,7 @@ void test_owned_arrays(const char *path)
     if (library) {
         dlclose(library);
     }
-    puts("PASS: whole owned array defaults, returns, persistent stores, iteration snapshots, nested waits, cancellation and inspection");
+    test_note("PASS: whole owned array defaults, returns, persistent stores, iteration snapshots, nested waits, cancellation and inspection\n");
 }
 static double seconds()
 {

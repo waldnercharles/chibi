@@ -3,6 +3,7 @@
 #include "editor/workspace/editor_internal.h"
 #include "graph/model/registry.h"
 #include "runtime/generated.h"
+#include "test/support/report.h"
 
 #include <assert.h>
 #include <stdio.h>
@@ -194,5 +195,5 @@ void test_editor_checkpoint()
     free(checkpoint);
     editor_free(source);
     behavior_asset_free(other);
-    printf("PASS: editor checkpoints preserve active and cached documents, baselines, Undo/Redo and node/link selection\n");
+    test_note("PASS: editor checkpoints preserve active and cached documents, baselines, Undo/Redo and node/link selection\n");
 }

@@ -1,5 +1,7 @@
 #include "render/particles.h"
 
+#include "test/support/report.h"
+
 #include <assert.h>
 #include <float.h>
 #include <limits.h>
@@ -150,5 +152,5 @@ void test_particles()
     game_particles_clear(particles);
     assert(game_particles_count(particles) == 0);
     game_particles_free(particles);
-    puts("particles PASS: deterministic bounded bursts, finite values, expiration and reset");
+    test_note("particles PASS: deterministic bounded bursts, finite values, expiration and reset\n");
 }

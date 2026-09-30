@@ -3,6 +3,7 @@
 #include "graph/runtime/instance.h"
 #include "support/array.h"
 #include "test/instance_bank_fixture.h"
+#include "test/support/report.h"
 #include "test/whole_retrigger_fixture.h"
 
 #include <assert.h>
@@ -146,7 +147,7 @@ void instance_bank_smoke(behavior_backend backend)
     if (backend != BEHAVIOR_ORACLE) {
         assert(eval == eval_oracle_calls() && flow == flow_oracle_calls());
     }
-    printf(
+    test_note(
         "PASS: %s instance pages retain waits, independent owned values, "
         "cancellation, schema edits and hot apply\n",
         behavior_backend_name(backend)

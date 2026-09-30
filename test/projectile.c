@@ -7,6 +7,7 @@
 #include "support/event_fixture.h"
 #include "support/xalloc.h"
 #include "test/support/event_fixture.h"
+#include "test/support/report.h"
 #include "test/support/simulation_fixture.h"
 
 #include <assert.h>
@@ -43,7 +44,7 @@ static behavior_asset *read_behavior(const char *path)
     compile_report report;
     compile_report_init(&report);
     int errors = behavior_asset_compile(asset, &report);
-    for (int i = 0; i < acount(report.items); i++) {
+    for (int i = 0; errors && i < acount(report.items); i++) {
         fprintf(stderr, "%s: %s\n", path, report.items[i].message);
     }
     assert(errors == 0);
@@ -267,5 +268,5 @@ void test_projectile()
     }
     game_prototype_free(projectile);
     game_prototype_free(player);
-    puts("projectile PASS: authored launch velocity, shooter exclusion, expiry and fast shots against an adjacent thin wall in both hosts");
+    test_note("projectile PASS: authored launch velocity, shooter exclusion, expiry and fast shots against an adjacent thin wall in both hosts\n");
 }

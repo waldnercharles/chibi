@@ -107,16 +107,6 @@ void test_ui_motion();
 /* ---------- arena2d end to end (wave 3, workstream X) ---------- */
 void test_arena_hud();
 
-static int fails;
-
-void test_check(int ok, const char *msg)
-{
-    printf("%s: %s\n", ok ? "PASS" : "FAIL", msg);
-    if (!ok) {
-        fails++;
-    }
-}
-
 static char *program_name;
 
 TEST_CASE(all_checks)
@@ -272,12 +262,10 @@ TEST_CASE(all_checks)
     /* ---------- arena2d end to end (wave 3, workstream X) ---------- */
     test_arena_hud();
 
-    printf("\n%s\n", fails ? "SOME CHECKS FAILED" : "ALL CHECKS PASSED");
-
-    return fails == 0;
+    return test_failures() == 0;
 }
 
-int main(int argc, char **argv)
+static int run(int argc, char **argv)
 {
     if (argc == 2 && !strcmp(argv[1], "--collab")) {
         test_collab_protocol();
@@ -294,27 +282,27 @@ int main(int argc, char **argv)
     if (argc == 2 && !strcmp(argv[1], "--math-expression")) {
         registry_validate();
         test_math_expression();
-        return fails ? 1 : 0;
+        return test_failures() ? 1 : 0;
     }
     /* UI Inspector */
     if (argc == 2 && !strcmp(argv[1], "--ui-inspector")) {
         test_ui_inspector();
-        return fails ? 1 : 0;
+        return test_failures() ? 1 : 0;
     }
     if (argc > 1 && !strcmp(argv[1], "--graph-arrange")) {
         run_graph_arrange_checks();
-        return fails ? 1 : 0;
+        return test_failures() ? 1 : 0;
     }
     if (argc > 1 && !strcmp(argv[1], "--graph-editing")) {
         registry_validate();
         run_graph_editing_checks();
         run_graph_collapse_checks();
-        return fails ? 1 : 0;
+        return test_failures() ? 1 : 0;
     }
     if (argc > 1 && !strcmp(argv[1], "--graph-inline")) {
         registry_validate();
         run_graph_inline_checks();
-        return fails ? 1 : 0;
+        return test_failures() ? 1 : 0;
     }
     if (argc > 1 && !strcmp(argv[1], "--arrange-bench")) {
         return bench_graph_arrange(
@@ -326,40 +314,40 @@ int main(int argc, char **argv)
     if (argc > 1 && !strcmp(argv[1], "--component-nodes")) {
         registry_validate();
         test_component_nodes();
-        return fails ? 1 : 0;
+        return test_failures() ? 1 : 0;
     }
     if (argc > 1 && !strcmp(argv[1], "--graph-signature")) {
         registry_validate();
         run_graph_signature_checks();
-        return fails ? 1 : 0;
+        return test_failures() ? 1 : 0;
     }
     /* UI language service (workstream B) */
     if (argc > 1 && !strcmp(argv[1], "--ui-source")) {
         test_ui_source();
         test_ui_check();
         test_ui_pages();
-        return fails ? 1 : 0;
+        return test_failures() ? 1 : 0;
     }
     if (argc > 1 && !strcmp(argv[1], "--reference-index")) {
         registry_validate();
         test_reference_index();
-        return fails ? 1 : 0;
+        return test_failures() ? 1 : 0;
     }
     if (argc > 1 && !strcmp(argv[1], "--refactor")) {
         registry_validate();
         test_refactor();
-        return fails ? 1 : 0;
+        return test_failures() ? 1 : 0;
     }
     if (argc > 1 && !strcmp(argv[1], "--debugging")) {
         registry_validate();
         test_debugging();
-        return fails ? 1 : 0;
+        return test_failures() ? 1 : 0;
     }
     if (argc > 1 && strcmp(argv[1], "--graph-optimize") == 0) {
         registry_validate();
         test_graph_optimizer();
         test_input_bindings();
-        return fails ? 1 : 0;
+        return test_failures() ? 1 : 0;
     }
     if (argc == 3 && !strcmp(argv[1], "--emit-encounter-query-c")) {
         extern void encounter_query_code(const char *path, int count, int repeats);
@@ -795,7 +783,7 @@ int main(int argc, char **argv)
     if (argc > 1 && strcmp(argv[1], "--whole-spawn") == 0) {
         registry_validate();
         test_compiled_spawns();
-        return fails ? 1 : 0;
+        return test_failures() ? 1 : 0;
     }
     if (argc == 6 && (!strcmp(argv[1], "--bench-arena-scale") ||
                       !strcmp(argv[1], "--bench-arena-reference") ||
@@ -826,7 +814,7 @@ int main(int argc, char **argv)
     if (argc > 1 && strcmp(argv[1], "--backend-unavailable") == 0) {
         registry_validate();
         test_behavior_unavailable();
-        return fails ? 1 : 0;
+        return test_failures() ? 1 : 0;
     }
     if (argc > 1 && strcmp(argv[1], "--behavior-parity") == 0) {
         registry_validate();
@@ -841,7 +829,7 @@ int main(int argc, char **argv)
         test_encounter();
         test_host_wait();
         behavior_debug_backend(BEHAVIOR_UNAVAILABLE);
-        return fails ? 1 : 0;
+        return test_failures() ? 1 : 0;
     }
     if (argc > 1 && strcmp(argv[1], "--arena-play") == 0) {
         registry_validate();
@@ -861,7 +849,7 @@ int main(int argc, char **argv)
         registry_validate();
         test_graph_navigation();
         run_editor_command_checks();
-        return fails ? 1 : 0;
+        return test_failures() ? 1 : 0;
     }
     if (argc > 1 && strcmp(argv[1], "--scene-documents") == 0) {
         registry_validate();
@@ -870,12 +858,12 @@ int main(int argc, char **argv)
     }
     if (argc > 1 && strcmp(argv[1], "--studio-documents") == 0) {
         registry_validate();
-        return studio_documents_run(program_name) || fails ? 1 : 0;
+        return studio_documents_run(program_name) || test_failures() ? 1 : 0;
     }
     /* UI documents (workstream D). */
     if (argc > 1 && strcmp(argv[1], "--ui-documents") == 0) {
         test_ui_documents();
-        return fails ? 1 : 0;
+        return test_failures() ? 1 : 0;
     }
     if (argc > 1 && strcmp(argv[1], "--rmlui-kit") == 0) {
         return test_rmlui_kit() ? 0 : 1;
@@ -883,7 +871,7 @@ int main(int argc, char **argv)
     /* Visual designer (workstream H) alone. */
     if (argc > 1 && strcmp(argv[1], "--ui-designer") == 0) {
         test_ui_designer();
-        return fails ? 1 : 0;
+        return test_failures() ? 1 : 0;
     }
     /* Workstream C: the code editor alone. */
     if (argc > 1 && strcmp(argv[1], "--kit-code") == 0) {
@@ -892,7 +880,7 @@ int main(int argc, char **argv)
     /* Workstream I: code intelligence in the Text Editor. */
     if (argc > 1 && strcmp(argv[1], "--code-intelligence") == 0) {
         test_code_intelligence();
-        return fails ? 1 : 0;
+        return test_failures() ? 1 : 0;
     }
     if (argc > 1 && strcmp(argv[1], "--rmlui-render") == 0) {
         return rmlui_render_run(program_name, false);
@@ -911,40 +899,40 @@ int main(int argc, char **argv)
         test_automation_asset_write();
         test_automation_refactor();
         test_automation_preview_registration();
-        return fails ? 1 : 0;
+        return test_failures() ? 1 : 0;
     }
     if (argc > 1 && strcmp(argv[1], "--game-capabilities") == 0) {
         registry_validate();
         test_game_capabilities();
-        return fails ? 1 : 0;
+        return test_failures() ? 1 : 0;
     }
     if (argc > 1 && strcmp(argv[1], "--runtime-execution") == 0) {
         registry_validate();
         run_runtime_execution_checks();
-        return fails ? 1 : 0;
+        return test_failures() ? 1 : 0;
     }
     if (argc > 1 && strcmp(argv[1], "--system-arithmetic") == 0) {
         registry_validate();
         test_system_arithmetic();
         test_system_nodes();
-        return fails ? 1 : 0;
+        return test_failures() ? 1 : 0;
     }
     if (argc > 1 && strcmp(argv[1], "--arena-combat") == 0) {
         registry_validate();
         test_physics();
         test_dash();
         test_encounter();
-        return fails ? 1 : 0;
+        return test_failures() ? 1 : 0;
     }
     if (argc > 1 && strcmp(argv[1], "--arena-encounter") == 0) {
         registry_validate();
         test_encounter();
-        return fails ? 1 : 0;
+        return test_failures() ? 1 : 0;
     }
     if (argc > 1 && !strcmp(argv[1], "--material-engine")) {
         test_fields();
         test_system_schedule();
-        return fails ? 1 : 0;
+        return test_failures() ? 1 : 0;
     }
     if (argc > 1 && !strcmp(argv[1], "--bench-fields")) {
         return bench_fields();
@@ -957,14 +945,14 @@ int main(int argc, char **argv)
         test_material_reactions();
         test_fields();
         test_system_schedule();
-        return fails ? 1 : 0;
+        return test_failures() ? 1 : 0;
     }
     if (argc > 1 && strcmp(argv[1], "--simulation") == 0) {
         registry_validate();
         run_engine_checks();
         test_physics();
         test_sdf_motion();
-        return fails ? 1 : 0;
+        return test_failures() ? 1 : 0;
     }
     if (argc > 1 && strcmp(argv[1], "--graph-overhaul") == 0) {
         registry_validate();
@@ -974,17 +962,17 @@ int main(int argc, char **argv)
         test_projectile();
         test_combat();
         test_auto_weapon();
-        return fails ? 1 : 0;
+        return test_failures() ? 1 : 0;
     }
     /* ---------- Settings (workstream F) ---------- */
     if (argc > 1 && !strcmp(argv[1], "--studio-settings")) {
         test_studio_settings();
-        return fails ? 1 : 0;
+        return test_failures() ? 1 : 0;
     }
     /* ---------- Authored status bar (workstream J) ---------- */
     if (argc > 1 && !strcmp(argv[1], "--kit-slot")) {
         test_kit_slot();
-        return fails ? 1 : 0;
+        return test_failures() ? 1 : 0;
     }
     /* ---------- Wave 2 follow-ups (workstream P) ---------- */
     if (argc > 1 && !strcmp(argv[1], "--ui-followups")) {
@@ -993,20 +981,28 @@ int main(int argc, char **argv)
         test_studio_settings();
         test_studio_zoom();
         test_automation_search();
-        return fails ? 1 : 0;
+        return test_failures() ? 1 : 0;
     }
     /* ---------- Native elements for authored UI (workstream N) ---------- */
     if (argc > 1 && !strcmp(argv[1], "--ui-motion")) {
         test_check(test_rmlui_kit(), "Studio kit reconciliation, number fields, menus, and command");
         test_ui_motion();
         test_kit_slot();
-        return fails ? 1 : 0;
+        return test_failures() ? 1 : 0;
     }
     /* ---------- arena2d end to end (wave 3, workstream X) ---------- */
     if (argc > 1 && !strcmp(argv[1], "--arena-hud")) {
         test_arena_hud();
-        return fails ? 1 : 0;
+        return test_failures() ? 1 : 0;
     }
+    pu_display_quiet(!test_verbose());
     pu_run_test("all_checks", all_checks);
     return pu_test_failed() ? 1 : 0;
+}
+
+int main(int argc, char **argv)
+{
+    int status = run(argc, argv);
+    test_summary("test_suite");
+    return status;
 }

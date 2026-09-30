@@ -1,5 +1,7 @@
 #include "editor/workspace/movement_input.h"
 
+#include "test/support/report.h"
+
 #include <assert.h>
 #include <math.h>
 #include <stdio.h>
@@ -14,5 +16,5 @@ void test_movement_input()
         assert((y < 0) == (input.y < 0) && (y > 0) == (input.y > 0));
         assert(fabsf(hypotf(input.x, input.y) - ((x || y) ? 1 : 0)) < 0.00001f);
     }
-    puts("movement input PASS: four directions, opposing keys and normalized diagonals");
+    test_note("movement input PASS: four directions, opposing keys and normalized diagonals\n");
 }

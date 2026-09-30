@@ -2,6 +2,7 @@
 
 #include "assets/prototype.h"
 #include "runtime/generated.h"
+#include "test/support/report.h"
 
 #include <assert.h>
 #include <stdio.h>
@@ -424,7 +425,7 @@ static void component_override_roundtrip()
     game_prototype_free(current);
     game_prototype_free(base);
     ecs_world_free(world);
-    puts("component overrides PASS: added/removed override roundtrip");
+    test_note("component overrides PASS: added/removed override roundtrip\n");
 }
 
 static void grouped_history()
@@ -467,7 +468,7 @@ static void grouped_history()
     assert(!scene_history_group_id(history, false) && !scene_history_group_id(history, true));
     scene_history_free(history);
     ecs_world_free(world);
-    puts("scene groups PASS: explicit scope, stable replay IDs, rollback and empty/no-op preservation");
+    test_note("scene groups PASS: explicit scope, stable replay IDs, rollback and empty/no-op preservation\n");
 }
 
 static void checkpoint_history()
@@ -510,7 +511,7 @@ static void checkpoint_history()
     scene_history_free(source);
     scene_history_free(restored);
     ecs_world_free(world);
-    puts("scene checkpoint PASS: reflected field history, grouped Undo, Redo, entity remapping, invalid import preservation");
+    test_note("scene checkpoint PASS: reflected field history, grouped Undo, Redo, entity remapping, invalid import preservation\n");
 }
 
 static void string_history()
@@ -544,7 +545,7 @@ static void string_history()
     scene_history_free(restored);
     assert(strcmp(GAME_GameShader_get(world, entity)->material, "OutlineGradient") == 0);
     ecs_world_free(world);
-    puts("scene string history PASS: owned component values, checkpoint and Undo/Redo lifetimes");
+    test_note("scene string history PASS: owned component values, checkpoint and Undo/Redo lifetimes\n");
 }
 
 void test_scene_history()
@@ -628,5 +629,5 @@ void test_scene_history()
     assert(!GAME_GameTransform_has(world, replacement));
     scene_history_free(history);
     ecs_world_free(world);
-    puts("scene history PASS: exact transforms, redo preservation and stale entity safety");
+    test_note("scene history PASS: exact transforms, redo preservation and stale entity safety\n");
 }

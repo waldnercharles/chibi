@@ -2,6 +2,7 @@
 #include "graph/nodes/conv_nodes.h"
 #include "graph/runtime/flow_internal.h"
 #include "graph/runtime/instance.h"
+#include "test/support/report.h"
 #include "test/whole_name_fixture.h"
 
 #include <assert.h>
@@ -96,5 +97,5 @@ void whole_name_smoke()
             behavior_asset_free(a);
         }
     }
-    puts("PASS: whole explicit/edge To Name, pure/effectful calls, null normalization and wait retention; zero oracle calls");
+    test_note("PASS: whole explicit/edge To Name, pure/effectful calls, null normalization and wait retention; zero oracle calls\n");
 }

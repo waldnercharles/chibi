@@ -1,5 +1,6 @@
 #include "automation/asset_write.h"
 #include "automation/controller.h"
+#include "test/support/report.h"
 
 #include <assert.h>
 #include <dirent.h>
@@ -524,5 +525,5 @@ void test_automation_asset_write(void)
     test_content_symlink();
     test_folder_symlink();
     test_target_symlink();
-    puts("automation asset publication: complete bytes, CAS, collisions, and symlink guards pass");
+    test_note("automation asset publication: complete bytes, CAS, collisions, and symlink guards pass\n");
 }

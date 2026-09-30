@@ -7,6 +7,7 @@
 #include "support/event_fixture.h"
 #include "support/xalloc.h"
 #include "test/support/event_fixture.h"
+#include "test/support/report.h"
 #include "test/support/simulation_fixture.h"
 
 #include <assert.h>
@@ -257,5 +258,5 @@ void test_enemy_attack()
     attacks(false, &registry, player);
     attacks(true, &registry, player);
     game_prototype_free(player);
-    puts("enemy attack PASS: contact-begin cooldown, filtering, damage bypass, both hosts, engine pause and fresh player state");
+    test_note("enemy attack PASS: contact-begin cooldown, filtering, damage bypass, both hosts, engine pause and fresh player state\n");
 }

@@ -1,5 +1,7 @@
 #include "support/arena.h"
 
+#include "test/support/report.h"
+
 #include <assert.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -45,5 +47,5 @@ void test_arena()
     *value = 17;
     assert(*value == 17);
     arena_free(&zero);
-    puts("PASS: arena growth preserves aligned allocations and reset reuses retained blocks");
+    test_note("PASS: arena growth preserves aligned allocations and reset reuses retained blocks\n");
 }

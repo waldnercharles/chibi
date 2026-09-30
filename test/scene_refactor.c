@@ -3,6 +3,7 @@
 #include "runtime/generated.h"
 #include "support/array.h"
 #include "support/text_file.h"
+#include "test/support/report.h"
 
 #include <assert.h>
 #include <dirent.h>
@@ -387,5 +388,5 @@ void test_scene_refactor()
     prototypes();
     refusals();
     deletes();
-    puts("scene refactor PASS: renames and deletes rewrite files all or none, Studio follows them, and Undo restores every file");
+    test_note("scene refactor PASS: renames and deletes rewrite files all or none, Studio follows them, and Undo restores every file\n");
 }

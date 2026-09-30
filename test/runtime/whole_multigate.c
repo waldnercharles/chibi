@@ -4,6 +4,7 @@
 #include "graph/nodes/state_nodes.h"
 #include "graph/runtime/flow_internal.h"
 #include "test/flow_snapshot.h"
+#include "test/support/report.h"
 #include "test/whole_multigate_fixture.h"
 
 #include <assert.h>
@@ -274,7 +275,7 @@ void test_compiled_multigate(const char *path)
     if (library) {
         assert(!dlclose(library));
     }
-    printf(
+    test_note(
         "PASS: MultiGate oracle/bytecode/SLJIT%s parity, random draws, reset, "
         "input effects, loops, waits, cancellation, source inspection and "
         "state ownership\n",

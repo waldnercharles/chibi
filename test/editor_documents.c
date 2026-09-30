@@ -4,6 +4,7 @@
 #include "graph/model/registry.h"
 #include "graph/nodes/behavior_expression.h"
 #include "support/array.h"
+#include "test/support/report.h"
 
 #include <assert.h>
 #include <stdio.h>
@@ -38,7 +39,7 @@ static void reload_keeps_document_identity()
     editor_free(e);
     behavior_asset_free(disk);
     behavior_asset_free(other);
-    puts("editor documents PASS: explicit Reload replaces cached data and subsequent edits retain independent Undo/Redo");
+    test_note("editor documents PASS: explicit Reload replaces cached data and subsequent edits retain independent Undo/Redo\n");
 }
 
 static void nested_callers_survive_document_visits()
@@ -79,7 +80,7 @@ static void nested_callers_survive_document_visits()
     editor_free(e);
     behavior_asset_free(source);
     behavior_asset_free(other);
-    puts("editor documents PASS: nested caller ancestry and selection survive document visits");
+    test_note("editor documents PASS: nested caller ancestry and selection survive document visits\n");
 }
 
 /* Studio compiles each document it shows, refreshing expressions whose
@@ -120,7 +121,7 @@ static void compile_keeps_unedited_document()
     free(compiled);
     free(saved);
     editor_free(e);
-    puts("editor documents PASS: compiling an unedited document leaves it as saved");
+    test_note("editor documents PASS: compiling an unedited document leaves it as saved\n");
 }
 
 void test_editor_documents()

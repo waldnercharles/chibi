@@ -111,6 +111,19 @@ first.flush();
 assert.equal(fs.syncs.shift().populate, false);
 assert.equal(first.persisted, 0);
 
+// Studio lists the user's projects, then each sample not yet copied into one.
+fs.writeFile('/projects/studio/project.yaml', 'version: 1\nname: Studio\ncontent: content\n');
+assert.deepEqual(JSON.parse(first.Module.chibiProjects()), [
+  { name: 'Neon Swarm', root: '/workspace/arena2d/' },
+  { name: 'Studio', root: '/projects/studio/' },
+]);
+
+// Without a project to reopen, the page opens Neon Swarm.
+const empty = makeFS({ '/projects/arena2d/project.yaml': manifest });
+const byDefault = launch('', empty);
+byDefault.start();
+assert.equal(byDefault.Module.arguments[1], '/workspace/arena2d/');
+
 // A collaboration room runs from an isolated memory tree and never selects or
 // mutates the user's persistent project as its working directory.
 const room = launch('?room=room-123&role=host', fs);

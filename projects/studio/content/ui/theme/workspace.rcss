@@ -1,5 +1,6 @@
-/* Studio workspace (the kit's studio.rml). Areas are Blender-style splits,
-   each with a header and an editor type. */
+/* Studio workspace: the kit's studio.rml. Areas are
+   Blender-style splits, each with a header and an
+   editor type. */
 
 body.studio { width: 100%; height: 100%; margin: 0dp; padding: 0dp; background-color: var(--app); overflow: hidden; }
 

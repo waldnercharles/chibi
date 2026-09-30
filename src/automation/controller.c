@@ -8868,190 +8868,136 @@ static int handle_preview_field(const char *root, yyjson_val *request, response 
     return 0;
 }
 
-static int handle_edit_graph(const char *root, yyjson_val *request, response *result, int *exit_code)
+/* One hash-checked asset edit: its target and flags, and the text it
+   replaces. Opening refuses a stale expected_hash before anything is
+   planned; publishing checks it again as it writes. Dry runs never write. */
+typedef struct
 {
-    yyjson_val *create_value = yyjson_obj_get(request, "create");
-    yyjson_val *dry_value = yyjson_obj_get(request, "dry_run");
-    const char *expected = request_string(request, "expected_hash");
-    bool create = create_value && yyjson_get_bool(create_value);
-    bool dry = dry_value && yyjson_get_bool(dry_value);
-    if ((create_value && !yyjson_is_bool(create_value)) ||
-        (dry_value && !yyjson_is_bool(dry_value)) || yyjson_obj_get(request, "layout") ||
-        (!create && (!expected || strlen(expected) != 16))) {
-        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "editing requires expected_hash and boolean create/dry_run; placement is automatic");
-        return -1;
-    }
-    asset_ref ref = { 0 };
-    char error[256] = { 0 };
-    if (resolve_asset_ref(request, &ref, error, sizeof error) ||
-        (ref.family->loader != ASSET_GRAPH && ref.family->loader != ASSET_SYSTEM)) {
-        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, error[0] ? error : "edit_graph requires a graph asset");
-        return -1;
-    }
-    char *source = NULL;
+    asset_ref ref;
+    const char *expected;
+    bool create;
+    bool dry;
+    char *source; /* NULL when creating */
+    yyjson_mut_val *value;
+    char error[256];
+} asset_edit;
+
+/* Reads create, dry_run and expected_hash; false when they are malformed or
+   an edit of an existing asset lacks its hash. */
+static bool asset_edit_flags(yyjson_val *request, asset_edit *edit)
+{
+    yyjson_val *create = yyjson_obj_get(request, "create");
+    yyjson_val *dry = yyjson_obj_get(request, "dry_run");
+    edit->expected = request_string(request, "expected_hash");
+    edit->create = create && yyjson_get_bool(create);
+    edit->dry = dry && yyjson_get_bool(dry);
+    return (!create || yyjson_is_bool(create)) && (!dry || yyjson_is_bool(dry)) &&
+           (edit->create || (edit->expected && strlen(edit->expected) == 16));
+}
+
+/* Loads the source of `edit->ref`, or checks a new asset's name is free,
+   and starts the result with the asset's identity. */
+static int asset_edit_open(
+    const char *root,
+    yyjson_val *request,
+    asset_edit *edit,
+    response *result,
+    int *exit_code
+)
+{
     size_t bytes = 0;
     uint64_t before = 0;
     int status = CHIBI_AUTOMATION_OK;
-    if (!create) {
-        status = load_asset(root, request, &ref, &source, &bytes, &before, error, sizeof error);
-    } else if (verify_asset_directory(root, ref.family, error, sizeof error) < 0) {
+    if (!edit->create) {
+        status = load_asset(
+            root,
+            request,
+            &edit->ref,
+            &edit->source,
+            &bytes,
+            &before,
+            edit->error,
+            sizeof edit->error
+        );
+    } else if (
+        verify_asset_directory(root, edit->ref.family, edit->error, sizeof edit->error) < 0
+    ) {
         status = CHIBI_AUTOMATION_INVALID_REQUEST;
     } else {
-        char *path = asset_full_path(root, &ref);
+        char *path = asset_full_path(root, &edit->ref);
         struct stat info;
         if (!lstat(path, &info)) {
             status = CHIBI_AUTOMATION_CONFLICT;
-            snprintf(error, sizeof error, "asset already exists");
+            snprintf(edit->error, sizeof edit->error, "asset already exists");
         } else if (errno != ENOENT) {
             status = CHIBI_AUTOMATION_IO_ERROR;
-            snprintf(error, sizeof error, "cannot inspect asset destination");
+            snprintf(edit->error, sizeof edit->error, "cannot inspect asset destination");
         }
         free(path);
     }
     if (status != CHIBI_AUTOMATION_OK) {
-        response_error(result, exit_code, status, error);
-        free(source);
+        response_error(result, exit_code, status, edit->error);
         return -1;
     }
-    yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
-    add_asset_identity(result->doc, value, &ref, bytes, before);
-    yyjson_mut_obj_add_bool(result->doc, value, "published", false);
-    add_hash_named(result->doc, value, "before_hash", before);
+    edit->value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
+    add_asset_identity(result->doc, edit->value, &edit->ref, bytes, before);
+    yyjson_mut_obj_add_bool(result->doc, edit->value, "published", false);
+    add_hash_named(result->doc, edit->value, "before_hash", before);
     char actual[17];
     snprintf(actual, sizeof actual, "%016llx", (unsigned long long)before);
-    if (!create && strcmp(expected, actual)) {
+    if (!edit->create && edit->expected && strcmp(edit->expected, actual)) {
         response_error(result, exit_code, CHIBI_AUTOMATION_CONFLICT, "asset changed; inspect its current hash and retry");
-        free(source);
+        free(edit->source);
         return -1;
     }
-    char *name = asset_name_from_filename(ref.filename);
-    char *edited = NULL;
-    behavior_asset **libraries = NULL;
-    bool shader = !strcmp(ref.family->kind, "material") ||
-                  !strcmp(ref.family->kind, "shape") ||
-                  !strcmp(ref.family->kind, "shader-library");
-    status = load_behavior_family_assets(
-        root,
-        family_by_kind(shader ? "shader-library" : "library"),
-        &libraries,
-        error,
-        sizeof error
-    );
-    if (status == CHIBI_AUTOMATION_OK && !shader) {
-        behavior_asset **events = NULL;
-        status = load_behavior_family_assets(root, family_by_kind("event"), &events, error, sizeof error);
-        for (int i = 0; i < acount(events); i++) {
-            apush(libraries, events[i]);
-        }
-        afree(events);
+    return 0;
+}
+
+/* Reports the edited text and publishes it unless planning failed with
+   `status` or this is a dry run. Frees `edited` and the source. */
+static int asset_edit_finish(
+    const char *root,
+    asset_edit *edit,
+    int status,
+    char *edited,
+    response *result,
+    int *exit_code
+)
+{
+    if (status == CHIBI_AUTOMATION_OK &&
+        to_disk_text(&edited, edit->error, sizeof edit->error)) {
+        status = CHIBI_AUTOMATION_EXECUTION_ERROR;
     }
-    if (status == CHIBI_AUTOMATION_OK) {
-        status = automation_graph_edit(
-            source,
-            ref.family->kind,
-            name,
-            (const behavior_asset *const *)libraries,
-            acount(libraries),
-            request,
-            result->doc,
-            value,
-            &edited,
-            error,
-            sizeof error
-        );
-    }
-    if (status == CHIBI_AUTOMATION_OK && ref.family->loader == ASSET_SYSTEM) {
-        yyjson_doc *original = source ? parse_asset_text(source) : NULL;
-        yyjson_val *query = yyjson_obj_get(request, "query");
-        if (!query && original) {
-            query = yyjson_obj_get(yyjson_doc_get_root(original), "query");
-        }
-        game_system_document *document = game_system_document_load(
-            edited,
-            automation_query_component,
-            NULL,
-            error,
-            sizeof error
-        );
-        char *query_json = query ? yyjson_val_write(query, 0, NULL) : NULL;
-        ecs_query_expr *expression = query && !yyjson_is_null(query)
-                                       ? game_query_load(
-                                             query_json,
-                                             automation_query_component,
-                                             NULL,
-                                             error,
-                                             sizeof error
-                                         )
-                                       : NULL;
-        if (!document || (query && !yyjson_is_null(query) && !expression)) {
-            status = CHIBI_AUTOMATION_VALIDATION_ERROR;
-        }
-        if (status == CHIBI_AUTOMATION_OK) {
-            game_system_document_set_query(document, expression);
-            compile_report report;
-            compile_report_init(&report);
-            if (behavior_asset_compile_for_system(game_system_document_behavior_asset(document), &report)) {
-                snprintf(
-                    error,
-                    sizeof error,
-                    "%s",
-                    compile_report_first_error(&report)->message
-                );
-                status = CHIBI_AUTOMATION_VALIDATION_ERROR;
-            }
-            compile_report_free(&report);
-        }
-        if (status == CHIBI_AUTOMATION_OK) {
-            char *saved = game_system_document_save(
-                document,
-                automation_query_component,
-                automation_query_component_name,
-                NULL
-            );
-            free(edited);
-            edited = saved;
-        }
-        ecs_query_expr_free(expression);
-        free(query_json);
-        game_system_document_free(document);
-        yyjson_doc_free(original);
-    }
-    free_behavior_assets(libraries);
-    free(name);
     if (status != CHIBI_AUTOMATION_OK) {
-        response_error(result, exit_code, status, error);
-        free(source);
+        response_error(result, exit_code, status, edit->error);
         free(edited);
+        free(edit->source);
         return -1;
     }
-    if (to_disk_text(&edited, error, sizeof error)) {
-        response_error(result, exit_code, CHIBI_AUTOMATION_EXECUTION_ERROR, error);
-        free(source);
-        return -1;
-    }
+    yyjson_mut_val *value = edit->value;
     size_t after_bytes = strlen(edited);
     uint64_t after = automation_content_hash(edited, after_bytes);
-    bool changed = !source || strcmp(source, edited);
+    bool changed = !edit->source || strcmp(edit->source, edited);
     yyjson_mut_obj_add_bool(result->doc, value, "changed", changed);
-    yyjson_mut_obj_add_bool(result->doc, value, "dry_run", dry);
+    yyjson_mut_obj_add_bool(result->doc, value, "dry_run", edit->dry);
     add_hash_named(result->doc, value, "after_hash", after);
     yyjson_mut_obj_add_uint(result->doc, value, "after_bytes", after_bytes);
-    if (!dry && changed) {
+    if (!edit->dry && changed) {
         status = automation_asset_publish(
             root,
-            ref.family->folder,
-            ref.filename,
+            edit->ref.family->folder,
+            edit->ref.filename,
             edited,
-            expected,
-            create,
-            error,
-            sizeof error
+            edit->expected,
+            edit->create,
+            edit->error,
+            sizeof edit->error
         );
         if (status != CHIBI_AUTOMATION_OK) {
-            response_error(result, exit_code, status, error);
+            response_error(result, exit_code, status, edit->error);
         }
     }
-    if (status == CHIBI_AUTOMATION_OK && !dry) {
+    if (status == CHIBI_AUTOMATION_OK && !edit->dry) {
         yyjson_mut_obj_remove_key(value, "published");
         yyjson_mut_obj_add_bool(result->doc, value, "published", true);
         yyjson_mut_obj_remove_key(value, "hash");
@@ -9060,8 +9006,141 @@ static int handle_edit_graph(const char *root, yyjson_val *request, response *re
         yyjson_mut_obj_add_uint(result->doc, value, "bytes", after_bytes);
     }
     free(edited);
-    free(source);
+    free(edit->source);
     return status == CHIBI_AUTOMATION_OK ? 0 : -1;
+}
+
+/* A system asset's edited graph, with the request's query or its current
+   one, as the system document saves it. */
+static int finish_system_edit(const char *source, yyjson_val *request, char **edited, char *error, size_t error_size)
+{
+    int status = CHIBI_AUTOMATION_OK;
+    yyjson_doc *original = source ? parse_asset_text(source) : NULL;
+    yyjson_val *query = yyjson_obj_get(request, "query");
+    if (!query && original) {
+        query = yyjson_obj_get(yyjson_doc_get_root(original), "query");
+    }
+    game_system_document *document = game_system_document_load(
+        *edited,
+        automation_query_component,
+        NULL,
+        error,
+        error_size
+    );
+    char *query_json = query ? yyjson_val_write(query, 0, NULL) : NULL;
+    ecs_query_expr *expression = query && !yyjson_is_null(query)
+                                   ? game_query_load(query_json, automation_query_component, NULL, error, error_size)
+                                   : NULL;
+    if (!document || (query && !yyjson_is_null(query) && !expression)) {
+        status = CHIBI_AUTOMATION_VALIDATION_ERROR;
+    }
+    if (status == CHIBI_AUTOMATION_OK) {
+        game_system_document_set_query(document, expression);
+        compile_report report;
+        compile_report_init(&report);
+        if (behavior_asset_compile_for_system(game_system_document_behavior_asset(document), &report)) {
+            snprintf(
+                error,
+                error_size,
+                "%s",
+                compile_report_first_error(&report)->message
+            );
+            status = CHIBI_AUTOMATION_VALIDATION_ERROR;
+        }
+        compile_report_free(&report);
+    }
+    if (status == CHIBI_AUTOMATION_OK) {
+        char *saved = game_system_document_save(
+            document,
+            automation_query_component,
+            automation_query_component_name,
+            NULL
+        );
+        free(*edited);
+        *edited = saved;
+    }
+    ecs_query_expr_free(expression);
+    free(query_json);
+    game_system_document_free(document);
+    yyjson_doc_free(original);
+    return status;
+}
+
+static int handle_edit_graph(const char *root, yyjson_val *request, response *result, int *exit_code)
+{
+    asset_edit edit = { 0 };
+    if (!asset_edit_flags(request, &edit) || yyjson_obj_get(request, "layout")) {
+        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "editing requires expected_hash and boolean create/dry_run; placement is automatic");
+        return -1;
+    }
+    if (resolve_asset_ref(request, &edit.ref, edit.error, sizeof edit.error) ||
+        (edit.ref.family->loader != ASSET_GRAPH &&
+         edit.ref.family->loader != ASSET_SYSTEM)) {
+        response_error(
+            result,
+            exit_code,
+            CHIBI_AUTOMATION_INVALID_REQUEST,
+            edit.error[0] ? edit.error : "edit_graph requires a graph asset"
+        );
+        return -1;
+    }
+    if (asset_edit_open(root, request, &edit, result, exit_code)) {
+        return -1;
+    }
+    char *name = asset_name_from_filename(edit.ref.filename);
+    char *edited = NULL;
+    behavior_asset **libraries = NULL;
+    const char *kind = edit.ref.family->kind;
+    bool shader = !strcmp(kind, "material") || !strcmp(kind, "shape") ||
+                  !strcmp(kind, "shader-library");
+    int status = load_behavior_family_assets(
+        root,
+        family_by_kind(shader ? "shader-library" : "library"),
+        &libraries,
+        edit.error,
+        sizeof edit.error
+    );
+    if (status == CHIBI_AUTOMATION_OK && !shader) {
+        behavior_asset **events = NULL;
+        status = load_behavior_family_assets(
+            root,
+            family_by_kind("event"),
+            &events,
+            edit.error,
+            sizeof edit.error
+        );
+        for (int i = 0; i < acount(events); i++) {
+            apush(libraries, events[i]);
+        }
+        afree(events);
+    }
+    if (status == CHIBI_AUTOMATION_OK) {
+        status = automation_graph_edit(
+            edit.source,
+            kind,
+            name,
+            (const behavior_asset *const *)libraries,
+            acount(libraries),
+            request,
+            result->doc,
+            edit.value,
+            &edited,
+            edit.error,
+            sizeof edit.error
+        );
+    }
+    if (status == CHIBI_AUTOMATION_OK && edit.ref.family->loader == ASSET_SYSTEM) {
+        status = finish_system_edit(
+            edit.source,
+            request,
+            &edited,
+            edit.error,
+            sizeof edit.error
+        );
+    }
+    free_behavior_assets(libraries);
+    free(name);
+    return asset_edit_finish(root, &edit, status, edited, result, exit_code);
 }
 
 static int validate_prototype_behaviors(const char *root, const char *json, char *error, size_t error_size)
@@ -9224,68 +9303,27 @@ static int validate_scene_dependencies(const char *root, const char *json, char 
 
 static int handle_edit_prototype(const char *root, yyjson_val *request, response *result, int *exit_code)
 {
-    yyjson_val *create_value = yyjson_obj_get(request, "create");
-    yyjson_val *dry_value = yyjson_obj_get(request, "dry_run");
-    const char *expected = request_string(request, "expected_hash");
-    bool create = create_value && yyjson_get_bool(create_value);
-    bool dry = dry_value && yyjson_get_bool(dry_value);
-    if ((create_value && !yyjson_is_bool(create_value)) ||
-        (dry_value && !yyjson_is_bool(dry_value)) ||
-        (!create && (!expected || strlen(expected) != 16))) {
+    asset_edit edit = { 0 };
+    if (!asset_edit_flags(request, &edit)) {
         response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "editing requires expected_hash and boolean create/dry_run");
         return -1;
     }
-    asset_ref ref = { 0 };
-    char error[256] = { 0 };
-    if (resolve_asset_ref(request, &ref, error, sizeof error) ||
-        ref.family->loader != ASSET_PROTOTYPE) {
+    if (resolve_asset_ref(request, &edit.ref, edit.error, sizeof edit.error) ||
+        edit.ref.family->loader != ASSET_PROTOTYPE) {
         response_error(
             result,
             exit_code,
             CHIBI_AUTOMATION_INVALID_REQUEST,
-            error[0] ? error : "edit_prototype requires a prototype asset"
+            edit.error[0] ? edit.error : "edit_prototype requires a prototype asset"
         );
         return -1;
     }
-    char *source = NULL;
-    size_t bytes = 0;
-    uint64_t before = 0;
-    int status = CHIBI_AUTOMATION_OK;
-    if (!create) {
-        status = load_asset(root, request, &ref, &source, &bytes, &before, error, sizeof error);
-    } else if (verify_asset_directory(root, ref.family, error, sizeof error) < 0) {
-        status = CHIBI_AUTOMATION_INVALID_REQUEST;
-    } else {
-        char *path = asset_full_path(root, &ref);
-        struct stat info;
-        if (!lstat(path, &info)) {
-            status = CHIBI_AUTOMATION_CONFLICT;
-            snprintf(error, sizeof error, "asset already exists");
-        } else if (errno != ENOENT) {
-            status = CHIBI_AUTOMATION_IO_ERROR;
-            snprintf(error, sizeof error, "cannot inspect asset destination");
-        }
-        free(path);
-    }
-    if (status != CHIBI_AUTOMATION_OK) {
-        response_error(result, exit_code, status, error);
-        free(source);
+    if (asset_edit_open(root, request, &edit, result, exit_code)) {
         return -1;
     }
-    yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
-    add_asset_identity(result->doc, value, &ref, bytes, before);
-    yyjson_mut_obj_add_bool(result->doc, value, "published", false);
-    add_hash_named(result->doc, value, "before_hash", before);
-    char actual[17];
-    snprintf(actual, sizeof actual, "%016llx", (unsigned long long)before);
-    if (!create && strcmp(expected, actual)) {
-        response_error(result, exit_code, CHIBI_AUTOMATION_CONFLICT, "asset changed; inspect its current hash and retry");
-        free(source);
-        return -1;
-    }
-    if (create) {
-        char *name = asset_name_from_filename(ref.filename);
-        source = new_asset_json(NEW_ASSET_PROTOTYPE, name);
+    if (edit.create) {
+        char *name = asset_name_from_filename(edit.ref.filename);
+        edit.source = new_asset_json(NEW_ASSET_PROTOTYPE, name);
         free(name);
     }
     game_prototype_registry registry = {
@@ -9293,63 +9331,31 @@ static int handle_edit_prototype(const char *root, yyjson_val *request, response
         .component_count = GAME_REGISTRY_COMPONENT_COUNT,
     };
     char *edited = NULL;
-    status = automation_prototype_edit(source, &registry, request, result->doc, value, &edited, error, sizeof error);
-    if (status != CHIBI_AUTOMATION_OK) {
-        response_error(result, exit_code, status, error);
-        free(source);
-        free(edited);
-        return -1;
-    }
-    status = validate_prototype_behaviors(root, edited, error, sizeof error);
-    if (status != CHIBI_AUTOMATION_OK) {
-        response_error(result, exit_code, status, error);
-        free(source);
-        free(edited);
-        return -1;
-    }
-    if (to_disk_text(&edited, error, sizeof error)) {
-        response_error(result, exit_code, CHIBI_AUTOMATION_EXECUTION_ERROR, error);
-        free(source);
-        return -1;
-    }
-    size_t after_bytes = strlen(edited);
-    uint64_t after = automation_content_hash(edited, after_bytes);
-    bool changed = !source || strcmp(source, edited);
-    yyjson_mut_obj_add_bool(result->doc, value, "changed", changed);
-    yyjson_mut_obj_add_bool(result->doc, value, "dry_run", dry);
-    add_hash_named(result->doc, value, "after_hash", after);
-    yyjson_mut_obj_add_uint(result->doc, value, "after_bytes", after_bytes);
-    if (!dry && changed) {
-        status = automation_asset_publish(
+    int status = automation_prototype_edit(
+        edit.source,
+        &registry,
+        request,
+        result->doc,
+        edit.value,
+        &edited,
+        edit.error,
+        sizeof edit.error
+    );
+    if (status == CHIBI_AUTOMATION_OK) {
+        status = validate_prototype_behaviors(
             root,
-            ref.family->folder,
-            ref.filename,
             edited,
-            expected,
-            create,
-            error,
-            sizeof error
+            edit.error,
+            sizeof edit.error
         );
-        if (status != CHIBI_AUTOMATION_OK) {
-            response_error(result, exit_code, status, error);
-        }
     }
-    if (status == CHIBI_AUTOMATION_OK && !dry) {
-        yyjson_mut_obj_remove_key(value, "published");
-        yyjson_mut_obj_add_bool(result->doc, value, "published", true);
-        yyjson_mut_obj_remove_key(value, "hash");
-        add_hash(result->doc, value, after);
-        yyjson_mut_obj_remove_key(value, "bytes");
-        yyjson_mut_obj_add_uint(result->doc, value, "bytes", after_bytes);
-    }
-    free(edited);
-    free(source);
-    return status == CHIBI_AUTOMATION_OK ? 0 : -1;
+    return asset_edit_finish(root, &edit, status, edited, result, exit_code);
 }
 
 /* Resolve creation defaults before the IO-free scene edit transaction. An
- * explicit empty list still opts out of the prototype's attached behaviors. */
-static char *scene_request_defaults(const char *root, yyjson_val *request, char *error, size_t size)
+ * explicit empty list still opts out of the prototype's attached behaviors.
+ * Sets `out` to the owned request JSON; a failure is load_named_asset's. */
+static int scene_request_defaults(const char *root, yyjson_val *request, char **out, char *error, size_t size)
 {
     yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
     yyjson_mut_val *copy = yyjson_val_mut_copy(doc, request);
@@ -9357,7 +9363,7 @@ static char *scene_request_defaults(const char *root, yyjson_val *request, char 
     yyjson_mut_val *operations = yyjson_mut_obj_get(copy, "operations");
     size_t index, count;
     yyjson_mut_val *operation;
-    bool valid = true;
+    int status = CHIBI_AUTOMATION_OK;
     yyjson_mut_arr_foreach(operations, index, count, operation)
     {
         const char *op = yyjson_mut_get_str(yyjson_mut_obj_get(operation, "op"));
@@ -9371,9 +9377,8 @@ static char *scene_request_defaults(const char *root, yyjson_val *request, char 
         }
         asset_ref ref = { 0 };
         char *json = NULL;
-        if (load_named_asset(root, family_by_kind("prototype"), name, &ref, &json, NULL, NULL, error, size) !=
-            CHIBI_AUTOMATION_OK) {
-            valid = false;
+        status = load_named_asset(root, family_by_kind("prototype"), name, &ref, &json, NULL, NULL, error, size);
+        if (status != CHIBI_AUTOMATION_OK) {
             break;
         }
         yyjson_doc *prototype = parse_asset_text(json);
@@ -9387,9 +9392,9 @@ static char *scene_request_defaults(const char *root, yyjson_val *request, char 
         yyjson_doc_free(prototype);
         free(json);
     }
-    char *json = valid ? yyjson_mut_write(doc, 0, NULL) : NULL;
+    *out = status == CHIBI_AUTOMATION_OK ? yyjson_mut_write(doc, 0, NULL) : NULL;
     yyjson_mut_doc_free(doc);
-    return json;
+    return status;
 }
 
 static void warn_studio_scene_rename(const char *root, yyjson_val *request, response *result, yyjson_mut_val *value)
@@ -9415,246 +9420,148 @@ static void warn_studio_scene_rename(const char *root, yyjson_val *request, resp
     free(name);
 }
 
+static int validate_optimized_graph(
+    const char *root,
+    const char *edited,
+    yyjson_mut_doc *doc,
+    yyjson_mut_val *value,
+    char *error,
+    size_t error_size
+)
+{
+    behavior_asset *asset = behavior_asset_load_json(edited);
+    if (!asset) {
+        snprintf(error, error_size, "optimized graph asset could not be loaded: %s", graph_last_error());
+        return CHIBI_AUTOMATION_VALIDATION_ERROR;
+    }
+    int status = CHIBI_AUTOMATION_OK;
+    compile_report report;
+    compile_report_init(&report);
+    behavior_asset *linked = link_project_libraries(root, asset, error, error_size);
+    if (linked) {
+        behavior_asset_compile(linked, &report);
+        inspect_add_validation(doc, value, linked, &report);
+    }
+    if (!linked || report.error_count) {
+        snprintf(error, error_size, "optimized graph asset failed validation");
+        status = CHIBI_AUTOMATION_VALIDATION_ERROR;
+    }
+    compile_report_free(&report);
+    behavior_asset_free(linked);
+    behavior_asset_free(asset);
+    return status;
+}
+
 static int handle_edit_scene(const char *root, yyjson_val *request, response *result, int *exit_code)
 {
-    yyjson_val *create_value = yyjson_obj_get(request, "create");
-    yyjson_val *dry_value = yyjson_obj_get(request, "dry_run");
-    const char *expected = request_string(request, "expected_hash");
-    bool create = create_value && yyjson_get_bool(create_value);
-    bool dry = dry_value && yyjson_get_bool(dry_value);
-    if ((create_value && !yyjson_is_bool(create_value)) ||
-        (dry_value && !yyjson_is_bool(dry_value)) ||
-        (!create && (!expected || strlen(expected) != 16))) {
+    asset_edit edit = { 0 };
+    if (!asset_edit_flags(request, &edit)) {
         response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "editing requires expected_hash and boolean create/dry_run");
         return -1;
     }
-    asset_ref ref = { 0 };
-    char error[256] = { 0 };
-    if (resolve_asset_ref(request, &ref, error, sizeof error) ||
-        ref.family->loader != ASSET_SCENE) {
-        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, error[0] ? error : "edit_scene requires a scene asset");
+    if (resolve_asset_ref(request, &edit.ref, edit.error, sizeof edit.error) ||
+        edit.ref.family->loader != ASSET_SCENE) {
+        response_error(
+            result,
+            exit_code,
+            CHIBI_AUTOMATION_INVALID_REQUEST,
+            edit.error[0] ? edit.error : "edit_scene requires a scene asset"
+        );
         return -1;
     }
-    char *source = NULL;
-    size_t bytes = 0;
-    uint64_t before = 0;
-    int status = CHIBI_AUTOMATION_OK;
-    if (!create) {
-        status = load_asset(root, request, &ref, &source, &bytes, &before, error, sizeof error);
-    } else if (verify_asset_directory(root, ref.family, error, sizeof error) < 0) {
-        status = CHIBI_AUTOMATION_INVALID_REQUEST;
-    } else {
-        char *path = asset_full_path(root, &ref);
-        struct stat info;
-        if (!lstat(path, &info)) {
-            status = CHIBI_AUTOMATION_CONFLICT;
-            snprintf(error, sizeof error, "asset already exists");
-        } else if (errno != ENOENT) {
-            status = CHIBI_AUTOMATION_IO_ERROR;
-            snprintf(error, sizeof error, "cannot inspect asset destination");
-        }
-        free(path);
-    }
-    if (status != CHIBI_AUTOMATION_OK) {
-        response_error(result, exit_code, status, error);
-        free(source);
+    if (asset_edit_open(root, request, &edit, result, exit_code)) {
         return -1;
     }
-    yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
-    add_asset_identity(result->doc, value, &ref, bytes, before);
-    yyjson_mut_obj_add_bool(result->doc, value, "published", false);
-    add_hash_named(result->doc, value, "before_hash", before);
-    char actual[17];
-    snprintf(actual, sizeof actual, "%016llx", (unsigned long long)before);
-    if (!create && strcmp(expected, actual)) {
-        response_error(result, exit_code, CHIBI_AUTOMATION_CONFLICT, "asset changed; inspect its current hash and retry");
-        free(source);
-        return -1;
-    }
-    if (create) {
-        char *name = asset_name_from_filename(ref.filename);
-        source = new_asset_json(NEW_ASSET_SCENE, name);
+    if (edit.create) {
+        char *name = asset_name_from_filename(edit.ref.filename);
+        edit.source = new_asset_json(NEW_ASSET_SCENE, name);
         free(name);
     }
     char *edited = NULL;
-    char *defaulted = scene_request_defaults(root, request, error, sizeof error);
-    yyjson_doc *defaults = defaulted ? yyjson_read(defaulted, strlen(defaulted), 0)
-                                     : NULL;
-    status = defaults ? automation_scene_edit(
-                            source,
-                            yyjson_doc_get_root(defaults),
-                            result->doc,
-                            value,
-                            &edited,
-                            error,
-                            sizeof error
-                        )
-                      : CHIBI_AUTOMATION_VALIDATION_ERROR;
-    yyjson_doc_free(defaults);
+    char *defaulted = NULL;
+    int status = scene_request_defaults(
+        root,
+        request,
+        &defaulted,
+        edit.error,
+        sizeof edit.error
+    );
+    if (status == CHIBI_AUTOMATION_OK) {
+        yyjson_doc *defaults = yyjson_read(defaulted, strlen(defaulted), 0);
+        status = automation_scene_edit(
+            edit.source,
+            yyjson_doc_get_root(defaults),
+            result->doc,
+            edit.value,
+            &edited,
+            edit.error,
+            sizeof edit.error
+        );
+        yyjson_doc_free(defaults);
+    }
     free(defaulted);
     if (status == CHIBI_AUTOMATION_OK) {
-        status = validate_scene_dependencies(root, edited, error, sizeof error);
-    }
-    if (status != CHIBI_AUTOMATION_OK) {
-        response_error(result, exit_code, status, error);
-        free(source);
-        free(edited);
-        return -1;
-    }
-    if (to_disk_text(&edited, error, sizeof error)) {
-        response_error(result, exit_code, CHIBI_AUTOMATION_EXECUTION_ERROR, error);
-        free(source);
-        return -1;
-    }
-    size_t after_bytes = strlen(edited);
-    uint64_t after = automation_content_hash(edited, after_bytes);
-    bool changed = !source || strcmp(source, edited);
-    warn_studio_scene_rename(root, request, result, value);
-    yyjson_mut_obj_add_bool(result->doc, value, "changed", changed);
-    yyjson_mut_obj_add_bool(result->doc, value, "dry_run", dry);
-    add_hash_named(result->doc, value, "after_hash", after);
-    yyjson_mut_obj_add_uint(result->doc, value, "after_bytes", after_bytes);
-    if (!dry && changed) {
-        status = automation_asset_publish(
+        status = validate_scene_dependencies(
             root,
-            ref.family->folder,
-            ref.filename,
             edited,
-            expected,
-            create,
-            error,
-            sizeof error
+            edit.error,
+            sizeof edit.error
         );
-        if (status != CHIBI_AUTOMATION_OK) {
-            response_error(result, exit_code, status, error);
-        }
     }
-    if (status == CHIBI_AUTOMATION_OK && !dry) {
-        yyjson_mut_obj_remove_key(value, "published");
-        yyjson_mut_obj_add_bool(result->doc, value, "published", true);
-        yyjson_mut_obj_remove_key(value, "hash");
-        add_hash(result->doc, value, after);
-        yyjson_mut_obj_remove_key(value, "bytes");
-        yyjson_mut_obj_add_uint(result->doc, value, "bytes", after_bytes);
+    if (status == CHIBI_AUTOMATION_OK) {
+        warn_studio_scene_rename(root, request, result, edit.value);
     }
-    free(edited);
-    free(source);
-    return status == CHIBI_AUTOMATION_OK ? 0 : -1;
+    return asset_edit_finish(root, &edit, status, edited, result, exit_code);
 }
 
 static int handle_optimize_graph(const char *root, yyjson_val *request, response *result, int *exit_code)
 {
     yyjson_val *create_value = yyjson_obj_get(request, "create");
     yyjson_val *dry_value = yyjson_obj_get(request, "dry_run");
-    const char *expected = request_string(request, "expected_hash");
-    bool dry = !dry_value || yyjson_get_bool(dry_value);
+    asset_edit edit = { .expected = request_string(request, "expected_hash"),
+                        .dry = !dry_value || yyjson_get_bool(dry_value) };
     if ((create_value && !yyjson_is_bool(create_value)) ||
         (create_value && yyjson_get_bool(create_value)) ||
         (dry_value && !yyjson_is_bool(dry_value)) ||
-        (expected && strlen(expected) != 16) || (!dry && !expected)) {
+        (edit.expected && strlen(edit.expected) != 16) ||
+        (!edit.dry && !edit.expected)) {
         response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "optimize_graph requires a graph asset, expected_hash unless dry_run, and boolean dry_run");
         return -1;
     }
-    asset_ref ref = { 0 };
-    char error[256] = { 0 };
-    if (resolve_asset_ref(request, &ref, error, sizeof error) ||
-        ref.family->loader != ASSET_GRAPH) {
-        response_error(
-            result,
-            exit_code,
-            CHIBI_AUTOMATION_INVALID_REQUEST,
-            error[0] ? error : "optimize_graph requires a graph asset"
-        );
+    if (resolve_asset_ref(request, &edit.ref, edit.error, sizeof edit.error)) {
+        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, edit.error);
         return -1;
     }
-    char *source = NULL;
-    size_t bytes = 0;
-    uint64_t before = 0;
-    int status = load_asset(root, request, &ref, &source, &bytes, &before, error, sizeof error);
-    if (status != CHIBI_AUTOMATION_OK) {
-        response_error(result, exit_code, status, error);
-        free(source);
+    if (edit.ref.family->loader != ASSET_GRAPH) {
+        char message[256];
+        family_kinds(message, sizeof message, "optimize_graph supports only graph asset kinds:", true);
+        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, message);
         return -1;
     }
-    yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
-    add_asset_identity(result->doc, value, &ref, bytes, before);
-    yyjson_mut_obj_add_bool(result->doc, value, "published", false);
-    add_hash_named(result->doc, value, "before_hash", before);
-    char actual[17];
-    snprintf(actual, sizeof actual, "%016llx", (unsigned long long)before);
-    if (expected && strcmp(expected, actual)) {
-        response_error(result, exit_code, CHIBI_AUTOMATION_CONFLICT, "asset changed; inspect its current hash and retry");
-        free(source);
+    if (asset_edit_open(root, request, &edit, result, exit_code)) {
         return -1;
     }
     char *edited = NULL;
-    status = automation_graph_optimize(source, request, result->doc, value, &edited, error, sizeof error);
+    int status = automation_graph_optimize(
+        edit.source,
+        request,
+        result->doc,
+        edit.value,
+        &edited,
+        edit.error,
+        sizeof edit.error
+    );
     if (status == CHIBI_AUTOMATION_OK) {
-        behavior_asset *asset = behavior_asset_load_json(edited);
-        if (!asset) {
-            snprintf(error, sizeof error, "optimized graph asset could not be loaded: %s", graph_last_error());
-            status = CHIBI_AUTOMATION_VALIDATION_ERROR;
-        } else {
-            compile_report report;
-            compile_report_init(&report);
-            behavior_asset *linked = link_project_libraries(root, asset, error, sizeof error);
-            if (linked) {
-                behavior_asset_compile(linked, &report);
-                inspect_add_validation(result->doc, value, linked, &report);
-            }
-            if (!linked || report.error_count) {
-                snprintf(error, sizeof error, "optimized graph asset failed validation");
-                status = CHIBI_AUTOMATION_VALIDATION_ERROR;
-            }
-            compile_report_free(&report);
-            behavior_asset_free(linked);
-            behavior_asset_free(asset);
-        }
-    }
-    if (status != CHIBI_AUTOMATION_OK) {
-        response_error(result, exit_code, status, error);
-        free(source);
-        free(edited);
-        return -1;
-    }
-    if (to_disk_text(&edited, error, sizeof error)) {
-        response_error(result, exit_code, CHIBI_AUTOMATION_EXECUTION_ERROR, error);
-        free(source);
-        return -1;
-    }
-    size_t after_bytes = strlen(edited);
-    uint64_t after = automation_content_hash(edited, after_bytes);
-    bool changed = strcmp(source, edited) != 0;
-    yyjson_mut_obj_add_bool(result->doc, value, "changed", changed);
-    yyjson_mut_obj_add_bool(result->doc, value, "dry_run", dry);
-    add_hash_named(result->doc, value, "after_hash", after);
-    yyjson_mut_obj_add_uint(result->doc, value, "after_bytes", after_bytes);
-    if (!dry && changed) {
-        status = automation_asset_publish(
+        status = validate_optimized_graph(
             root,
-            ref.family->folder,
-            ref.filename,
             edited,
-            expected,
-            false,
-            error,
-            sizeof error
+            result->doc,
+            edit.value,
+            edit.error,
+            sizeof edit.error
         );
-        if (status != CHIBI_AUTOMATION_OK) {
-            response_error(result, exit_code, status, error);
-        }
     }
-    if (status == CHIBI_AUTOMATION_OK && !dry) {
-        yyjson_mut_obj_remove_key(value, "published");
-        yyjson_mut_obj_add_bool(result->doc, value, "published", true);
-        yyjson_mut_obj_remove_key(value, "hash");
-        add_hash(result->doc, value, after);
-        yyjson_mut_obj_remove_key(value, "bytes");
-        yyjson_mut_obj_add_uint(result->doc, value, "bytes", after_bytes);
-    }
-    free(edited);
-    free(source);
-    return status == CHIBI_AUTOMATION_OK ? 0 : -1;
+    return asset_edit_finish(root, &edit, status, edited, result, exit_code);
 }
 
 /* ---------- Rename and safe delete ---------- */

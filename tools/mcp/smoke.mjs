@@ -199,7 +199,8 @@ if (listedTools.some((tool) => tool.name.includes("_") || tool.name.includes("-"
 if (!listedTools.some((tool) => tool.name === "validateAsset" &&
     tool.inputSchema?.required?.includes("kind") && tool.outputSchema) ||
     !listedTools.some((tool) => tool.name === "getAssetCatalog" && tool.outputSchema) ||
-    !listedTools.some((tool) => tool.name === "searchAssets" && tool.inputSchema?.required?.includes("query")) ||
+    !listedTools.some((tool) => tool.name === "searchAssets" && tool.inputSchema?.properties?.query?.type === "string" &&
+      !tool.inputSchema?.required?.includes("query")) ||
     !listedTools.some((tool) => tool.name === "inspectAssetDependencies" && tool.inputSchema?.required?.includes("kind")) ||
     !listedTools.some((tool) => tool.name === "inspectGraph" &&
       tool.inputSchema?.properties?.graph_id?.type === "integer" &&

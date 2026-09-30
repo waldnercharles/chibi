@@ -357,7 +357,7 @@ function buildToolDefinitions() {
     properties: {
       query: {
         type: "string",
-        description: "Words that must each start a word in an asset's name, kind, path, description or member names, such as \"health\" or \"arena scene\"; name matches rank first. An empty string lists every asset in kinds.",
+        description: "Words that must each start a word in an asset's name, kind, path, description or member names, such as \"health\" or \"arena scene\"; name matches rank first. Omit it, or pass an empty string, to list every asset in kinds.",
       },
       kinds: {
         type: "array",
@@ -366,7 +366,6 @@ function buildToolDefinitions() {
       },
       ...pageProperties,
     },
-    required: ["query"],
     additionalProperties: false,
   };
   const dependencyArguments = {

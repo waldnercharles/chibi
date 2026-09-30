@@ -123,6 +123,7 @@ saving them. Tool results include complete `structuredContent` and
 - `searchAssets`: find catalog entries by kind, name, path, description, or
   member names, best match first: every query word must start a word, and a
   word of the name ranks above one elsewhere, as Studio's palette ranks.
+  Without a query it lists every asset in `kinds`.
 - `searchNodes`: list a domain's node types, or find nodes, configured component nodes, and their pins by words.
 - `inspectGraph`: inspect graph content, diagnostics, and the current content hash; with `include_uses: true`, the asset, its functions and macros, and a behavior's variables carry `uses`, their project-wide use counts by role. Counting reads every asset, so it is off by default.
 - `inspectUi`: read a ui asset's outline, props, events, slots, widgets, tokens, save keys, syntax errors and hash; with `complete`, the completions Studio's Text Editor offers at a line and column.
@@ -334,9 +335,8 @@ the file it is about with its `line` and `column` when it has them:
 
 The adapter package keeps the runtime modules and launcher in its published
 file boundary. From `tools/mcp`, run `npm ci`, `npm run audit:names`, and
-`npm run pack:check`. The audit uses `o200k_base` to report candidate name
-token counts, token pieces, description limits, and the serialized
-`tools/list` budget.
+`npm run pack:check`. The audit uses `o200k_base` to hold the serialized
+`tools/list` to 20,000 tokens, each description to 160 and each name to 8.
 
 The client can also read these MCP resources:
 

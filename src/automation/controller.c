@@ -279,6 +279,7 @@ static const contract_field CONTRACT_INSPECT_SYSTEM[] = {
     { "name", "string", false, "System asset name, required with kind when path is omitted." },
 };
 static const contract_field CONTRACT_RUN_SCENARIO[] = {
+    { "project_root", "string", false, "Project directory; defaults to the controller root." },
     { "kind", "string", false, "Target family; defaults to prototype." },
     { "name", "string", true, "Prototype or scene asset name." },
     { "frames", "uint64", false, "Number of deterministic fixed steps; maximum 108000." },
@@ -288,6 +289,7 @@ static const contract_field CONTRACT_RUN_SCENARIO[] = {
     { "saved_state", "object", false, "Isolated initial committed text values; never accesses player save files." },
 };
 static const contract_field CONTRACT_RUNTIME_SNAPSHOT[] = {
+    { "project_root", "string", false, "Project directory; defaults to the controller root." },
     { "kind", "string", false, "Target family; defaults to prototype." },
     { "name", "string", true, "Prototype or scene asset name." },
     { "frames", "uint64", false, "Number of deterministic fixed steps; maximum 108000." },
@@ -429,6 +431,24 @@ static const contract_field CONTRACT_PREVIEW_SHADER[] = {
     { "camera", "object", false, "Optional preview framing with center and span two-vectors." },
     { "sample_grid", "object", false, "Optional bounded CPU shader samples over an explicit UV rectangle." },
     { "include_source", "boolean", false, "Include bounded generated GLSL, default false." },
+};
+static const contract_field CONTRACT_PREVIEW_SCENE[] = {
+    { "project_root", "string", false, "Project directory; defaults to the controller root." },
+    { "kind", "string", true, "scene or prototype." },
+    { "name", "string", true, "Scene or prototype asset name." },
+    { "width", "integer", false, "Image width, default 640, 64 to 2048." },
+    { "height", "integer", false, "Image height, default 360, 64 to 2048." },
+    { "frames", "uint64", false, "Fixed steps before rendering, default 1, maximum 1800." },
+    { "render_frames", "integer", false, "Rendered frames, default 2; above two measures performance after 240 warmup frames." },
+    { "freeze_simulation", "boolean", false, "Hold the simulation at the initial frame while rendering." },
+    { "inputs", "array", false, "Per-frame scenario inputs." },
+    { "input_timeline", "array", false, "Sparse {frame,input} samples in increasing frame order; alternative to inputs." },
+    { "saved_state", "object", false, "Isolated initial committed text values." },
+    { "capture_frames", "string", false, "Performance runs: absolute path of a raw RGBA8 file receiving every measured frame." },
+    { "pass_timing", "boolean", false, "Performance runs: report average GPU milliseconds per render pass." },
+    { "pass_timing_detail", "boolean", false, "With pass_timing: also time each HRC cascade level." },
+    { "metal_capture", "string", false, "Performance runs on macOS: absolute .gputrace output path." },
+    { "capture_frame", "integer", false, "Zero-based rendered frame to capture, default 16; requires metal_capture." },
 };
 
 static const contract_field CONTRACT_FIND_REFERENCES[] = {
@@ -577,6 +597,15 @@ static const operation_descriptor CONTRACT_OPERATIONS[] = {
       "preview.",
       CONTRACT_PREVIEW_SHADER,
       CONTRACT_FIELD_COUNT(CONTRACT_PREVIEW_SHADER),
+      1,
+      true,
+      true,
+      false },
+    { "preview_scene",
+      "Render a running scene or prototype with the game renderer and return "
+      "a PNG; runs only under chibi_ctl --render.",
+      CONTRACT_PREVIEW_SCENE,
+      CONTRACT_FIELD_COUNT(CONTRACT_PREVIEW_SCENE),
       1,
       true,
       true,
@@ -10128,8 +10157,10 @@ char *chibi_automation_handle(const char *request, const char *default_root, int
         handle_describe_components(root_value, &result, exit_code);
     } else if (!strcmp(operation, "preview_field")) {
         handle_preview_field(root, root_value, &result, exit_code);
-    } else if (!strcmp(operation, "preview_shader")) {
-        response_error(&result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "preview_shader requires chibi_ctl --render");
+    } else if (!strcmp(operation, "preview_shader") || !strcmp(operation, "preview_scene")) {
+        char message[64];
+        snprintf(message, sizeof message, "%s requires chibi_ctl --render", operation);
+        response_error(&result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, message);
     } else if (!strcmp(operation, "describe_contract")) {
         handle_describe_contract(&result);
     } else if (!strcmp(operation, "status")) {

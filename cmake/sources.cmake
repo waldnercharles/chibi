@@ -14,6 +14,7 @@ set(CORE_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/compiler/behavior_program.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/compiler/behavior_jit.c
     src/graph/compiler/behavior_expression.c
+    src/graph/compiler/behavior_expression_wasm.c
     src/graph/compiler/behavior_function_loop.c
     src/graph/compiler/behavior_function_switch.c
     src/graph/compiler/behavior_function_state.c

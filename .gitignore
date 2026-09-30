@@ -8,6 +8,8 @@ build-debug/
 build-performance/
 build-web/
 build-web-profile/
+build-web-threads/
+build-web-site/
 build-web-asan/
 build-reflect/
 build-tracy/

@@ -1,6 +1,7 @@
 #include "render/particles.h"
 
 #include "support/array.h"
+#include "support/cos_sin.h"
 #include "support/xalloc.h"
 
 #include <assert.h>
@@ -84,9 +85,10 @@ int game_particles_emit(game_particles *particles, const game_particle_burst *bu
     for (int i = 0; i < count; i++) {
         float angle = random_unit(particles) * 6.2831853071795864769f;
         float speed = burst->speed * (0.4f + 0.6f * random_unit(particles));
+        cos_sin direction = cos_sin_compute(angle);
         game_particle particle = {
             .position = burst->position,
-            .velocity = { cosf(angle) * speed, sinf(angle) * speed },
+            .velocity = { direction.c * speed, direction.s * speed },
             .color = burst->color,
             .lifetime = burst->lifetime,
             .end_color = burst->color & 0xffffff00u,
@@ -141,13 +143,14 @@ int game_particles_emit_directed(game_particles *particles, const game_particle_
         return 0;
     }
     asetcap(particles->items, GAME_PARTICLE_LIMIT);
-    float facing = atan2f(spray->direction.y, spray->direction.x);
+    float facing = cos_sin_atan2(spray->direction.y, spray->direction.x);
     for (int i = 0; i < count; i++) {
         float angle = facing + (random_unit(particles) - 0.5f) * spray->spread;
         float speed = sample(particles, spray->speed_min, spray->speed_max);
+        cos_sin direction = cos_sin_compute(angle);
         game_particle particle = {
             .position = spray->position,
-            .velocity = { cosf(angle) * speed, sinf(angle) * speed },
+            .velocity = { direction.c * speed, direction.s * speed },
             .color = spray->color,
             .end_color = spray->end_color,
             .lifetime = sample(particles, spray->lifetime_min, spray->lifetime_max),

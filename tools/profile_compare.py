@@ -8,7 +8,10 @@ every run comes from the content, while one that moves between runs is noise
 from the machine (scheduling, first-use compilation, heap growth).
 """
 import argparse
+import hashlib
 import json
+import os
+import platform
 import statistics
 import subprocess
 import sys
@@ -58,6 +61,8 @@ def main():
     parser.add_argument('--frames', type=int, help="defaults to the scenario's frames, else 600")
     parser.add_argument('--warmup', type=int, default=60)
     parser.add_argument('--runs', type=int, default=3)
+    parser.add_argument('--output', type=Path, help='save the complete per-run measurements as JSON')
+    parser.add_argument('--require-parity', action='store_true', help='fail if final world hashes differ')
     args = parser.parse_args()
 
     request = {'contract': 1, 'operation': 'profile_scenario', 'warmup_frames': args.warmup}
@@ -89,6 +94,20 @@ def main():
     for row in rows:
         frames = ', '.join(map(str, row['recurring'])) or 'none'
         print(f'{row["build"]}: costliest frames recurring in every run: {frames}')
+    hashes = {name: [result['world_hash'] for result in results] for name, results in runs.items()}
+    parity = len({value for values in hashes.values() for value in values}) == 1
+    print(f'World-hash parity: {"PASS" if parity else "FAIL"} {hashes}')
+    if args.output:
+        binaries = [Path(args.native), Path(args.wasm), Path(args.wasm).with_suffix('.wasm')]
+        report = {
+            'machine': {'system': platform.platform(), 'architecture': platform.machine(), 'logical_cpus': os.cpu_count()},
+            'binaries': {str(path): hashlib.sha256(path.read_bytes()).hexdigest() for path in binaries},
+            'request': request, 'project_root': args.project_root,
+            'summary': rows, 'world_hash_parity': parity, 'runs': runs,
+        }
+        args.output.write_text(json.dumps(report, indent=2) + '\n')
+    if args.require_parity and not parity:
+        sys.exit(1)
 
 
 if __name__ == '__main__':

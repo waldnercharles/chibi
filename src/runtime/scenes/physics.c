@@ -115,6 +115,78 @@ const game_physics_profile *game_physics_last_profile(const game_physics *physic
     return &physics->profile;
 }
 
+static uint64_t physics_hash_byte(uint64_t hash, unsigned char byte)
+{
+    return (hash ^ byte) * UINT64_C(1099511628211);
+}
+
+static uint64_t physics_hash_u64(uint64_t hash, uint64_t value)
+{
+    for (int shift = 0; shift < 64; shift += 8) {
+        hash = physics_hash_byte(hash, (unsigned char)(value >> shift));
+    }
+    return hash;
+}
+
+static uint64_t physics_hash_float(uint64_t hash, float value)
+{
+    uint32_t bits;
+    memcpy(&bits, &value, sizeof bits);
+    for (int shift = 0; shift < 32; shift += 8) {
+        hash = physics_hash_byte(hash, (unsigned char)(bits >> shift));
+    }
+    return hash;
+}
+
+game_physics_hashes game_physics_hash(const game_physics *physics)
+{
+    const uint64_t seed = UINT64_C(14695981039346656037);
+    game_physics_hashes hashes = { seed, seed, seed };
+    uint64_t body_count = 0;
+    for (int i = 0; i < acount(physics->bodies); i++) {
+        const physics_body *body = &physics->bodies[i];
+        if (!body->body.index1) {
+            continue;
+        }
+        b2Transform transform = b2Body_GetTransform(body->body);
+        b2Vec2 velocity = b2Body_GetLinearVelocity(body->body);
+        hashes.body_state = physics_hash_u64(hashes.body_state, ecs_entity_to_u64(body->entity));
+        hashes.body_state = physics_hash_float(hashes.body_state, transform.p.x);
+        hashes.body_state = physics_hash_float(hashes.body_state, transform.p.y);
+        hashes.body_state = physics_hash_float(hashes.body_state, transform.q.c);
+        hashes.body_state = physics_hash_float(hashes.body_state, transform.q.s);
+        hashes.body_state = physics_hash_float(hashes.body_state, velocity.x);
+        hashes.body_state = physics_hash_float(hashes.body_state, velocity.y);
+        hashes.body_state = physics_hash_float(hashes.body_state, b2Body_GetAngularVelocity(body->body));
+        body_count++;
+    }
+    hashes.body_state = physics_hash_u64(hashes.body_state, body_count);
+    int pair_count = acount(physics->previous);
+    hashes.contact_pairs = physics_hash_u64(hashes.contact_pairs, (uint64_t)pair_count);
+    for (int i = 0; i < pair_count; i++) {
+        contact_pair pair = physics->previous[i];
+        hashes.contact_pairs = physics_hash_u64(hashes.contact_pairs, pair.first);
+        hashes.contact_pairs = physics_hash_u64(hashes.contact_pairs, pair.second);
+    }
+    int event_count = acount(physics->begun);
+    hashes.contact_events = physics_hash_u64(hashes.contact_events, (uint64_t)event_count);
+    for (int i = 0; i < event_count; i++) {
+        contact_pair pair = physics->begun[i];
+        hashes.contact_events = physics_hash_u64(hashes.contact_events, pair.first);
+        hashes.contact_events = physics_hash_u64(hashes.contact_events, pair.second);
+        hashes.contact_events = physics_hash_float(
+            hashes.contact_events,
+            pair.point.x
+        );
+        hashes.contact_events = physics_hash_float(
+            hashes.contact_events,
+            pair.point.y
+        );
+        hashes.contact_events = physics_hash_float(hashes.contact_events, pair.fraction);
+    }
+    return hashes;
+}
+
 static bool same_entity(ecs_entity a, ecs_entity b)
 {
     return ecs_entity_to_u64(a) == ecs_entity_to_u64(b);
@@ -1258,7 +1330,7 @@ static void collect_range(int start, int end, uint32_t worker, void *user)
     }
 }
 
-static void collect_pairs(game_physics *physics, bool solved)
+static void collect_pairs(game_physics *physics, bool solved, double *start)
 {
     collect_context context = { physics, solved };
     int count = acount(physics->bodies);
@@ -1270,6 +1342,7 @@ static void collect_pairs(game_physics *physics, bool solved)
         physics->current = buffer.pairs;
         physics->contacts = buffer.contacts;
         physics->visited = buffer.visited;
+        profile_phase(physics, start, &physics->profile.contact_collection_ms);
         return;
     }
     /* The solver and swept-tree writes have finished. Queries read immutable
@@ -1280,8 +1353,10 @@ static void collect_pairs(game_physics *physics, bool solved)
     }
     void *task = physics->tasks
                      .enqueue(collect_range, count, 64, &context, physics->tasks.user);
+    profile_phase(physics, start, &physics->profile.contact_enqueue_ms);
     if (task) {
         physics->tasks.finish(task, physics->tasks.user);
+        profile_phase(physics, start, &physics->profile.contact_join_ms);
     }
     for (int i = 0; i < acount(physics->workers); i++) {
         const contact_pair *pairs = physics->workers[i].pairs;
@@ -1292,6 +1367,7 @@ static void collect_pairs(game_physics *physics, bool solved)
         asetlen(physics->current, at + length);
         memcpy(physics->current + at, pairs, (size_t)length * sizeof *pairs);
     }
+    profile_phase(physics, start, &physics->profile.contact_merge_ms);
 }
 
 static int compare_pairs(const void *left, const void *right)
@@ -1478,7 +1554,7 @@ static void update_poses(game_physics *physics)
     b2DynamicTree_Rebuild(&physics->sweeps, false);
 }
 
-static void solve_fluid(game_physics *physics, float delta)
+static void solve_fluid(game_physics *physics, float delta, double *start)
 {
     game_materials *materials = game_entities_materials(physics->entities);
     if (!game_materials_enabled(materials) || delta <= 0) {
@@ -1543,16 +1619,19 @@ static void solve_fluid(game_physics *physics, float delta)
             apush(physics->fluid_obstacles, obstacle);
         }
     }
+    profile_phase(physics, start, &physics->profile.fluid_prepare_ms);
     CHIBI_TRACE_ZONE_BEGIN(fluid_zone, "Fluid simulation");
-    game_materials_tick(
+    game_materials_tick_profiled(
         materials,
         delta,
         physics->fluid_bodies,
         acount(physics->fluid_bodies),
         physics->fluid_obstacles,
-        acount(physics->fluid_obstacles)
+        acount(physics->fluid_obstacles),
+        physics->profiling ? &physics->profile.material_fluid : NULL
     );
     CHIBI_TRACE_ZONE_END(fluid_zone);
+    profile_phase(physics, start, &physics->profile.material_tick_ms);
     for (int i = 0; i < acount(physics->fluid_bodies); i++) {
         fluid_body body = physics->fluid_bodies[i];
         if (body.inverse_mass > 0 && (body.impulse.x || body.impulse.y)) {
@@ -1563,6 +1642,7 @@ static void solve_fluid(game_physics *physics, float delta)
             );
         }
     }
+    profile_phase(physics, start, &physics->profile.fluid_impulse_ms);
 }
 
 int game_physics_tick(game_physics *physics, float delta_seconds)
@@ -1602,17 +1682,48 @@ int game_physics_tick(game_physics *physics, float delta_seconds)
     CHIBI_TRACE_ZONE_BEGIN(solve_zone, "Physics solve");
     b2World_Step(physics->simulation, delta_seconds, physics->configuration.substeps);
     CHIBI_TRACE_ZONE_END(solve_zone);
+    if (physics->profiling) {
+        b2Profile profile = b2World_GetProfile(physics->simulation);
+        physics->profile.box2d = (game_physics_box2d_profile){
+            .step_ms = profile.step,
+            .pairs_ms = profile.pairs,
+            .collide_ms = profile.collide,
+            .solve_ms = profile.solve,
+            .merge_islands_ms = profile.mergeIslands,
+            .prepare_stages_ms = profile.prepareStages,
+            .solve_constraints_ms = profile.solveConstraints,
+            .prepare_constraints_ms = profile.prepareConstraints,
+            .integrate_velocities_ms = profile.integrateVelocities,
+            .warm_start_ms = profile.warmStart,
+            .solve_impulses_ms = profile.solveImpulses,
+            .integrate_positions_ms = profile.integratePositions,
+            .relax_impulses_ms = profile.relaxImpulses,
+            .apply_restitution_ms = profile.applyRestitution,
+            .store_impulses_ms = profile.storeImpulses,
+            .split_islands_ms = profile.splitIslands,
+            .transforms_ms = profile.transforms,
+            .hit_events_ms = profile.hitEvents,
+            .refit_ms = profile.refit,
+            .bullets_ms = profile.bullets,
+            .sleep_islands_ms = profile.sleepIslands,
+            .sensors_ms = profile.sensors,
+        };
+    }
     profile_phase(physics, &start, &physics->profile.solve_ms);
     CHIBI_TRACE_ZONE_BEGIN(sweeps_zone, "Physics swept targets");
     update_poses(physics);
     CHIBI_TRACE_ZONE_END(sweeps_zone);
     profile_phase(physics, &start, &physics->profile.sweeps_ms);
     CHIBI_TRACE_ZONE_BEGIN(pairs_zone, "Physics collect pairs");
-    collect_pairs(physics, delta_seconds > 0);
+    double pairs_start = physics->profiling ? clock_ms() : 0;
+    collect_pairs(physics, delta_seconds > 0, &start);
     if (physics->pool) {
         game_task_pool_end(physics->pool);
     }
     CHIBI_TRACE_ZONE_END(pairs_zone);
+    if (physics->profiling) {
+        physics->profile.pairs_ms = clock_ms() - pairs_start;
+    }
     /* Fluid interaction must see the swept contact pose. Using the proposed
      * end pose lets a fast igniter heat fuel on the far side of a solid wall. */
     for (int i = 0; i < acount(physics->bodies); i++) {
@@ -1622,8 +1733,12 @@ int game_physics_tick(game_physics *physics, float delta_seconds)
             b2Body_SetTransform(body->body, body->end.p, body->end.q);
         }
     }
-    solve_fluid(physics, delta_seconds);
-    profile_phase(physics, &start, &physics->profile.pairs_ms);
+    profile_phase(physics, &start, &physics->profile.position_clamp_ms);
+    double fluid_start = physics->profiling ? clock_ms() : 0;
+    solve_fluid(physics, delta_seconds, &start);
+    if (physics->profiling) {
+        physics->profile.fluid_ms = clock_ms() - fluid_start;
+    }
     if (physics->profiling) {
         physics->profile.pairs = acount(physics->current);
     }

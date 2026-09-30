@@ -4,17 +4,41 @@
 #include "ecs/ecs.h"
 #include "graph/model/node.h"
 #include "runtime/components.h"
+#include "runtime/material_fluid.h"
 #include "runtime/scenes/physics_settings.h"
 #include "runtime/tasks.h"
+
+#include <stdint.h>
 
 struct game_entities;
 typedef struct game_physics game_physics;
 
 typedef struct
 {
+    double step_ms, pairs_ms, collide_ms, solve_ms;
+    double merge_islands_ms, prepare_stages_ms, solve_constraints_ms;
+    double prepare_constraints_ms, integrate_velocities_ms, warm_start_ms;
+    double solve_impulses_ms, integrate_positions_ms, relax_impulses_ms;
+    double apply_restitution_ms, store_impulses_ms, split_islands_ms;
+    double transforms_ms, hit_events_ms, refit_ms, bullets_ms;
+    double sleep_islands_ms, sensors_ms;
+} game_physics_box2d_profile;
+
+typedef struct
+{
     double synchronize_ms, solve_ms, sweeps_ms, pairs_ms, writeback_ms, dispatch_ms;
+    double contact_collection_ms, contact_enqueue_ms, contact_join_ms, contact_merge_ms;
+    double position_clamp_ms, fluid_ms, fluid_prepare_ms, material_tick_ms,
+        fluid_impulse_ms;
+    game_physics_box2d_profile box2d;
+    material_fluid_profile material_fluid;
     int bodies, pairs;
 } game_physics_profile;
+
+typedef struct
+{
+    uint64_t body_state, contact_pairs, contact_events;
+} game_physics_hashes;
 
 /* Authored lengths use 32 units per meter; velocities use those units/second.
  * One persistent, zero-gravity Box2D world belongs to each live ECS world.
@@ -41,6 +65,7 @@ const char *game_physics_error(const game_physics *physics);
 /* Optional phase timers for the last physics step; no clock reads when off. */
 void game_physics_set_profiling(game_physics *physics, bool enabled);
 const game_physics_profile *game_physics_last_profile(const game_physics *physics);
+game_physics_hashes game_physics_hash(const game_physics *physics);
 /* Borrow solved poses for presentation without modifying authoritative ECS. */
 bool game_physics_interpolate(const game_physics *physics, ecs_entity entity, float alpha, GameTransform *out);
 

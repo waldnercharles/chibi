@@ -67,6 +67,7 @@ typedef struct
     bool collab_initialized;
     bool destroying;
     double log_start_ms, log_last_ms, log_dropped_seconds;
+    uint64_t log_simulation_steps;
 } app_loop;
 
 static void app_collab_prepare(app_loop *loop);
@@ -151,11 +152,16 @@ static void log_frame(app_loop *loop)
         loop->log_start_ms = loop->log_last_ms = now;
     }
     const engine_frame_timing *timing = engine_last_timing(loop->runtime);
+    double dropped = timing->dropped_seconds - loop->log_dropped_seconds;
+    if (dropped < 0 || timing->simulation_steps < loop->log_simulation_steps) {
+        /* The game may replace the scene engine while the app log keeps running. */
+        dropped = timing->dropped_seconds;
+    }
     frame_log_push((frame_log_entry){
         .time_ms = now - loop->log_start_ms,
         .interval_ms = now - loop->log_last_ms,
         .steps = (int)timing->steps,
-        .dropped_ms = (timing->dropped_seconds - loop->log_dropped_seconds) * 1000,
+        .dropped_ms = dropped * 1000,
         .behavior_ms = timing->behavior_ms,
         .physics_ms = timing->physics_ms,
         .systems_ms = timing->systems_ms,
@@ -163,6 +169,7 @@ static void log_frame(app_loop *loop)
     });
     loop->log_last_ms = now;
     loop->log_dropped_seconds = timing->dropped_seconds;
+    loop->log_simulation_steps = timing->simulation_steps;
 }
 
 static int app_frame(app_loop *loop)

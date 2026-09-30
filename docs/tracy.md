@@ -17,12 +17,61 @@ named WASM call stacks.
 Every web build also logs the last two minutes of frame timing: the interval
 since the previous frame, fixed steps run, simulation time dropped, and
 behavior, physics, systems and rendering milliseconds. In the page's console,
-`Module.chibiFrameSummary()` reduces the log to p50, p95, p99 and max,
-`Module.chibiFrames()` lists the frames, and `Module.chibiDownloadFrames()`
-saves them as CSV. Add `?play&scenario=Firefight` to the URL to replay the same
-gameplay each time, so a summary before a change and one after it compare the
-same play on real hardware. `make profile-compare PROFILE_SCENARIO=Firefight`
-compares that play headless, natively and as WASM.
+`Module.chibiFrameSummary()` reports p50, p95, p99 and max for each timing,
+plus a fixed-step histogram, catch-up-frame count and dropped-time totals.
+`Module.chibiFrames()` returns correlated per-frame samples, and
+`Module.chibiDownloadFrames()` saves them as CSV. Add
+`?play&scenario=Firefight` to the URL to replay the same gameplay each time, so
+a summary before a change and one after it compare the same play on real
+hardware. `make profile-compare PROFILE_SCENARIO=Firefight` compares that play
+headless, natively and as WASM. A catch-up frame ran more than one fixed step;
+a dropped frame reports nonzero `dropped_ms`. `interval_ms` is the spacing
+between app log samples, which are recorded before presentation; it is not a
+GPU-completion time. Use the `Present / GPU wait` trace zone to investigate
+presentation stalls.
+
+## Threaded web build
+
+`make web-threads` builds a separate application in `build-web-threads`, with
+four total task workers by default (`WEB_WORKERS=2` through `8`). Emscripten
+prestarts the pthread pool, and the runtime shares one worker budget between
+worlds. `make web-threads-serve` sends COOP and COEP headers for local profiling.
+The serial `make web` build remains available for browsers without isolation.
+
+GitHub Pages does not send those headers. The optional bundle includes
+`chibi-isolation.js`, a service worker that adds them to same-origin responses
+within the bundle's directory. Its bootstrap registers the worker and reloads
+once before loading `chibi.js`. It requires HTTPS or localhost and service-worker
+support. It stores no assets in a cache. This follows the
+[static-host isolation approach](https://github.com/gzuidhof/coi-serviceworker);
+see Emscripten's [pthread requirements](https://emscripten.org/docs/porting/pthreads.html).
+
+Package the serial app at the site root and the optional bundle under `/threads/`:
+
+```sh
+python3 tools/package_web.py --serial build-web --threads build-web-threads --output build-web-site
+```
+
+The Pages workflow's manual `web_threads` input includes that directory for
+that artifact. A later deployment must opt in again to retain `/threads/`.
+Test first-load isolation on a server without headers as well as the header-enabled
+development server; `crossOriginIsolated` must be true before pthread startup.
+
+## Behavior Wasm compilation
+
+Web builds asynchronously compile bounded numeric behavior regions to small
+Wasm modules. Eligible regions contain 4 to 256 float or double arithmetic
+operations, use at most eight scalar inputs, and have no helpers or side effects.
+Execution uses bytecode while compilation is pending, when tracing is enabled,
+or if a region is ineligible or compilation fails. Graph replacement releases
+the old modules, including compilations that have not finished.
+
+Compilation currently runs on the browser main thread. Behavior jobs on pthread
+workers use bytecode: their task loop does not yield to the JavaScript microtasks
+that complete asynchronous compilation. Worker module handoff needs a separate
+implementation and measurement. The backend smoke test covers rounding,
+intermediate values, loop re-entry, tracing and graph replacement; its timings
+measure eligible arithmetic regions rather than a complete game frame.
 
 ## GPU pass profiling
 

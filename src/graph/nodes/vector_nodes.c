@@ -1,6 +1,7 @@
 #include "graph/nodes/vector_nodes.h"
 
 #include "support/arena.h"
+#include "support/cos_sin.h"
 
 #include <assert.h>
 #include <cute_math.h>
@@ -178,7 +179,8 @@ static pin_value direction_from_angle(const pin_value *inputs, int count, arena 
 {
     assert(count == 1 && inputs[0].type == PIN_F64);
     CF_V2 *result = arena_alloc(memory, sizeof *result);
-    *result = (CF_V2){ (float)cos(inputs[0].d), (float)sin(inputs[0].d) };
+    cos_sin pair = cos_sin_compute((float)inputs[0].d);
+    *result = (CF_V2){ pair.c, pair.s };
     return (pin_value){ .type = PIN_STRUCT, .type_name = "CF_V2", .ptr = result };
 }
 

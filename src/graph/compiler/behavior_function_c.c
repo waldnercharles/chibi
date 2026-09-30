@@ -969,7 +969,8 @@ static void write_definition(const behavior_function *f, FILE *out, const char *
         "#include \"graph/compiler/behavior_scalar.h\"\n#include "
         "\"graph/compiler/behavior_function.h\"\n#include "
         "\"graph/runtime/random.h\"\n#include <math.h>\n#include "
-        "<string.h>\n#include \"ecs/execution.h\"\n%sint %s",
+        "<string.h>\n#include \"support/cos_sin.h\"\n#include "
+        "\"ecs/execution.h\"\n%sint %s",
         local ? "static inline " : "",
         name
     );

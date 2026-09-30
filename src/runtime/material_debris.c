@@ -1,6 +1,7 @@
 #include "runtime/material_debris.h"
 
 #include "support/array.h"
+#include "support/exponential.h"
 #include "support/xalloc.h"
 
 #include <assert.h>
@@ -284,8 +285,9 @@ void material_debris_tick(
 )
 {
     assert(delta > 0 && body_count >= 0);
-    float drag = expf(-DRAG * delta), spin_drag = expf(-SPIN_DRAG * delta);
-    float cooling = expf(-COOLING * delta);
+    float drag = deterministic_expf(-DRAG * delta),
+          spin_drag = deterministic_expf(-SPIN_DRAG * delta);
+    float cooling = deterministic_expf(-COOLING * delta);
     aclear(debris->expired);
     aclear(debris->pieces);
     for (int i = acount(debris->chunks) - 1; i >= 0; i--) {

@@ -242,9 +242,9 @@ assert.equal(fresh.Module.arguments[1], '/workspace/arena2d-3/');
 assert.equal(fresh.location.search, '?project=arena2d-3');
 assert.equal(fs.file('/workspace/arena2d-3/content/scenes/Sandbox.yaml'), 'name: Sandbox\n');
 
-// Without a project-root, the Arena3D sample opens.
+// An explicit project-root opens the Arena3D sample.
 const root = makeFS({ '/projects/arena3d/project.yaml': 'version: 1\nname: Arena3D\n', '/projects/arena3d/content/scenes/Arena3D.yaml': 'name: Root\n' });
-const packaged = launch('', root);
+const packaged = launch('?project-root=projects/arena3d', root);
 packaged.start();
 assert.equal(packaged.Module.arguments[1], '/workspace/arena3d/');
 assert.equal(root.file('/workspace/arena3d/content/scenes/Arena3D.yaml'), 'name: Root\n');

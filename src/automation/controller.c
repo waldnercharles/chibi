@@ -4628,6 +4628,79 @@ static uint64_t scenario_state_hash(scenario_context *context)
     return scenario_hash_bytes(hash, &sounds, sizeof sounds);
 }
 
+typedef struct
+{
+    uint64_t ecs, saved_state, visibility, shader_overrides, materials, audio;
+    uint64_t physics_bodies, physics_contacts, physics_events;
+    game_material_hash_parts material;
+} scenario_hash_parts;
+
+static scenario_hash_parts scenario_state_hash_parts(scenario_context *context)
+{
+    const uint64_t seed = UINT64_C(1099511628211);
+    scenario_hash_parts parts = {
+        .ecs = scenario_world_hash(game_prototype_preview_world(context->preview)),
+        .saved_state = seed,
+        .visibility = seed
+    };
+    char *saved = game_save_export(
+        game_behavior_save(game_prototype_preview_behaviors(context->preview))
+    );
+    parts.saved_state = scenario_hash_bytes(parts.saved_state, saved, strlen(saved));
+    free(saved);
+    engine *runtime = game_prototype_preview_runtime(context->preview);
+    GameFog fog;
+    const unsigned char *cells = game_visibility_cells(engine_visibility(runtime), &fog);
+    if (cells) {
+        parts.visibility = scenario_hash_bytes(
+            parts.visibility,
+            cells,
+            (size_t)fog.columns * (size_t)fog.rows * 4
+        );
+    }
+    parts.shader_overrides = render_shader_overrides_hash(
+        game_prototype_preview_world(context->preview)
+    );
+    if (game_materials_enabled(engine_materials(runtime))) {
+        parts.material = game_materials_hash_parts(engine_materials(runtime));
+        parts.materials = parts.material.hash;
+    }
+    parts.audio = game_audio_hash(engine_audio(runtime));
+    game_physics_hashes physics = game_physics_hash(
+        game_prototype_preview_live(context->preview)->physics
+    );
+    parts.physics_bodies = physics.body_state;
+    parts.physics_contacts = physics.contact_pairs;
+    parts.physics_events = physics.contact_events;
+    return parts;
+}
+
+static void add_scenario_hash_parts(yyjson_mut_doc *doc, yyjson_mut_val *value, scenario_context *context)
+{
+    scenario_hash_parts parts = scenario_state_hash_parts(context);
+    yyjson_mut_val *hashes = yyjson_mut_obj_add_obj(doc, value, "hash_parts");
+    add_hash_named(doc, hashes, "ecs", parts.ecs);
+    add_hash_named(doc, hashes, "saved_state", parts.saved_state);
+    add_hash_named(doc, hashes, "visibility", parts.visibility);
+    add_hash_named(doc, hashes, "shader_overrides", parts.shader_overrides);
+    add_hash_named(doc, hashes, "materials", parts.materials);
+    add_hash_named(doc, hashes, "audio", parts.audio);
+    yyjson_mut_val *physics = yyjson_mut_obj_add_obj(doc, hashes, "physics");
+    add_hash_named(doc, physics, "body_state", parts.physics_bodies);
+    add_hash_named(doc, physics, "contact_pairs", parts.physics_contacts);
+    add_hash_named(doc, physics, "contact_events", parts.physics_events);
+    yyjson_mut_val *material_parts = yyjson_mut_obj_add_obj(doc, hashes, "material_parts");
+    add_hash_named(doc, material_parts, "after_flow", parts.material.after_flow);
+    add_hash_named(doc, material_parts, "after_chunks", parts.material.after_chunks);
+    add_hash_named(doc, material_parts, "after_particles", parts.material.after_particles);
+    add_hash_named(doc, material_parts, "after_masks", parts.material.after_masks);
+    yyjson_mut_val *particle_parts = yyjson_mut_obj_add_obj(doc, hashes, "particle_parts");
+    add_hash_named(doc, particle_parts, "position", parts.material.particle_position);
+    add_hash_named(doc, particle_parts, "velocity", parts.material.particle_velocity);
+    add_hash_named(doc, particle_parts, "parameters", parts.material.particle_parameters);
+    add_hash_named(doc, particle_parts, "appearance", parts.material.particle_appearance);
+}
+
 static void add_presentation_state(yyjson_mut_doc *doc, yyjson_mut_val *value, const scenario_context *context)
 {
     engine *runtime = game_prototype_preview_runtime(context->preview);
@@ -5167,6 +5240,11 @@ static void replay_scenario_input(scenario_context *context, const scenario_docu
 
 static int handle_scene_scenario(const char *root, yyjson_val *request, response *result, int *exit_code)
 {
+    yyjson_val *hash_parts = yyjson_obj_get(request, "hash_parts");
+    if (hash_parts && !yyjson_is_bool(hash_parts)) {
+        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "hash_parts must be a boolean");
+        return -1;
+    }
     char error[256] = { 0 };
     int status;
     scenario_document *scenario = request_scenario(root, request, &status, error, sizeof error);
@@ -5225,6 +5303,9 @@ static int handle_scene_scenario(const char *root, yyjson_val *request, response
     yyjson_mut_obj_add_uint(result->doc, value, "frames", frames);
     yyjson_mut_obj_add_real(result->doc, value, "fixed_dt", fixed_dt);
     add_hash_named(result->doc, value, "world_hash", scenario_state_hash(&context));
+    if (hash_parts && yyjson_get_bool(hash_parts)) {
+        add_scenario_hash_parts(result->doc, value, &context);
+    }
     yyjson_mut_obj_add_uint(
         result->doc,
         value,
@@ -5398,6 +5479,7 @@ typedef struct
     double events_ms;
     double systems_ms;
     double rendering_ms;
+    game_physics_profile physics_profile;
 } scenario_profile_timing;
 
 typedef struct
@@ -5415,7 +5497,150 @@ typedef struct
     double physics_ms;
     double systems_ms;
     double rendering_ms;
+    game_physics_profile physics_profile;
 } scenario_profile_frame;
+
+static void add_box2d_profile(yyjson_mut_doc *doc, yyjson_mut_val *object, const game_physics_box2d_profile *profile)
+{
+    yyjson_mut_val *value = yyjson_mut_obj_add_obj(doc, object, "box2d_ms");
+#define ADD_PROFILE(name, field)                                               \
+    yyjson_mut_obj_add_real(doc, value, name, profile->field)
+    ADD_PROFILE("step", step_ms);
+    ADD_PROFILE("pairs", pairs_ms);
+    ADD_PROFILE("collide", collide_ms);
+    ADD_PROFILE("solve", solve_ms);
+    ADD_PROFILE("merge_islands", merge_islands_ms);
+    ADD_PROFILE("prepare_stages", prepare_stages_ms);
+    ADD_PROFILE("solve_constraints", solve_constraints_ms);
+    ADD_PROFILE("prepare_constraints", prepare_constraints_ms);
+    ADD_PROFILE("integrate_velocities", integrate_velocities_ms);
+    ADD_PROFILE("warm_start", warm_start_ms);
+    ADD_PROFILE("solve_impulses", solve_impulses_ms);
+    ADD_PROFILE("integrate_positions", integrate_positions_ms);
+    ADD_PROFILE("relax_impulses", relax_impulses_ms);
+    ADD_PROFILE("apply_restitution", apply_restitution_ms);
+    ADD_PROFILE("store_impulses", store_impulses_ms);
+    ADD_PROFILE("split_islands", split_islands_ms);
+    ADD_PROFILE("transforms", transforms_ms);
+    ADD_PROFILE("hit_events", hit_events_ms);
+    ADD_PROFILE("refit", refit_ms);
+    ADD_PROFILE("bullets", bullets_ms);
+    ADD_PROFILE("sleep_islands", sleep_islands_ms);
+    ADD_PROFILE("sensors", sensors_ms);
+#undef ADD_PROFILE
+}
+
+static void sum_box2d_profile(game_physics_box2d_profile *total, const game_physics_box2d_profile *sample)
+{
+#define SUM_PROFILE(field) total->field += sample->field
+    SUM_PROFILE(step_ms);
+    SUM_PROFILE(pairs_ms);
+    SUM_PROFILE(collide_ms);
+    SUM_PROFILE(solve_ms);
+    SUM_PROFILE(merge_islands_ms);
+    SUM_PROFILE(prepare_stages_ms);
+    SUM_PROFILE(solve_constraints_ms);
+    SUM_PROFILE(prepare_constraints_ms);
+    SUM_PROFILE(integrate_velocities_ms);
+    SUM_PROFILE(warm_start_ms);
+    SUM_PROFILE(solve_impulses_ms);
+    SUM_PROFILE(integrate_positions_ms);
+    SUM_PROFILE(relax_impulses_ms);
+    SUM_PROFILE(apply_restitution_ms);
+    SUM_PROFILE(store_impulses_ms);
+    SUM_PROFILE(split_islands_ms);
+    SUM_PROFILE(transforms_ms);
+    SUM_PROFILE(hit_events_ms);
+    SUM_PROFILE(refit_ms);
+    SUM_PROFILE(bullets_ms);
+    SUM_PROFILE(sleep_islands_ms);
+    SUM_PROFILE(sensors_ms);
+#undef SUM_PROFILE
+}
+
+static void add_physics_profile(yyjson_mut_doc *doc, yyjson_mut_val *object, const game_physics_profile *profile)
+{
+    yyjson_mut_val *value = yyjson_mut_obj_add_obj(doc, object, "physics_detail_ms");
+    yyjson_mut_obj_add_real(doc, value, "synchronize", profile->synchronize_ms);
+    yyjson_mut_obj_add_real(doc, value, "solve", profile->solve_ms);
+    yyjson_mut_obj_add_real(doc, value, "sweeps", profile->sweeps_ms);
+    yyjson_mut_obj_add_real(doc, value, "pairs", profile->pairs_ms);
+    yyjson_mut_obj_add_real(doc, value, "writeback", profile->writeback_ms);
+    yyjson_mut_obj_add_real(doc, value, "dispatch", profile->dispatch_ms);
+    yyjson_mut_obj_add_real(doc, value, "contact_collection", profile->contact_collection_ms);
+    yyjson_mut_obj_add_real(doc, value, "contact_enqueue", profile->contact_enqueue_ms);
+    yyjson_mut_obj_add_real(doc, value, "contact_join", profile->contact_join_ms);
+    yyjson_mut_obj_add_real(doc, value, "contact_merge", profile->contact_merge_ms);
+    yyjson_mut_obj_add_real(doc, value, "position_clamp", profile->position_clamp_ms);
+    yyjson_mut_obj_add_real(doc, value, "fluid", profile->fluid_ms);
+    yyjson_mut_obj_add_real(doc, value, "fluid_prepare", profile->fluid_prepare_ms);
+    yyjson_mut_obj_add_real(doc, value, "material_tick", profile->material_tick_ms);
+    yyjson_mut_obj_add_real(doc, value, "fluid_impulse", profile->fluid_impulse_ms);
+    yyjson_mut_val *material_fluid = yyjson_mut_obj_add_obj(doc, value, "material_fluid_ms");
+    yyjson_mut_obj_add_real(
+        doc,
+        material_fluid,
+        "reactions",
+        profile->material_fluid.reactions_ms
+    );
+    yyjson_mut_obj_add_real(
+        doc,
+        material_fluid,
+        "gas_flow",
+        profile->material_fluid.gas_flow_ms
+    );
+    yyjson_mut_obj_add_real(
+        doc,
+        material_fluid,
+        "index",
+        profile->material_fluid.index_ms
+    );
+    yyjson_mut_obj_add_real(
+        doc,
+        material_fluid,
+        "density",
+        profile->material_fluid.density_ms
+    );
+    yyjson_mut_obj_add_real(
+        doc,
+        material_fluid,
+        "relaxation",
+        profile->material_fluid.relaxation_ms
+    );
+    yyjson_mut_obj_add_real(
+        doc,
+        material_fluid,
+        "collisions",
+        profile->material_fluid.collisions_ms
+    );
+    add_box2d_profile(doc, value, &profile->box2d);
+}
+
+static void sum_physics_profile(game_physics_profile *total, const game_physics_profile *sample)
+{
+    total->synchronize_ms += sample->synchronize_ms;
+    total->solve_ms += sample->solve_ms;
+    total->sweeps_ms += sample->sweeps_ms;
+    total->pairs_ms += sample->pairs_ms;
+    total->writeback_ms += sample->writeback_ms;
+    total->dispatch_ms += sample->dispatch_ms;
+    total->contact_collection_ms += sample->contact_collection_ms;
+    total->contact_enqueue_ms += sample->contact_enqueue_ms;
+    total->contact_join_ms += sample->contact_join_ms;
+    total->contact_merge_ms += sample->contact_merge_ms;
+    total->position_clamp_ms += sample->position_clamp_ms;
+    total->fluid_ms += sample->fluid_ms;
+    total->fluid_prepare_ms += sample->fluid_prepare_ms;
+    total->material_tick_ms += sample->material_tick_ms;
+    total->fluid_impulse_ms += sample->fluid_impulse_ms;
+    total->material_fluid.reactions_ms += sample->material_fluid.reactions_ms;
+    total->material_fluid.gas_flow_ms += sample->material_fluid.gas_flow_ms;
+    total->material_fluid.index_ms += sample->material_fluid.index_ms;
+    total->material_fluid.density_ms += sample->material_fluid.density_ms;
+    total->material_fluid.relaxation_ms += sample->material_fluid.relaxation_ms;
+    total->material_fluid.collisions_ms += sample->material_fluid.collisions_ms;
+    sum_box2d_profile(&total->box2d, &sample->box2d);
+}
 
 static double frame_total_ms(const scenario_profile_frame *frame)
 {
@@ -5480,6 +5705,7 @@ static void profile_add_timing(
     scenario_profile_timing *total,
     scenario_profile_frame **frames,
     const engine_frame_timing *timing,
+    const game_physics_profile *physics,
     uint64_t previous_steps,
     uint64_t previous_commands,
     double previous_dropped,
@@ -5498,8 +5724,10 @@ static void profile_add_timing(
             .physics_ms = timing->physics_ms,
             .systems_ms = timing->systems_ms,
             .rendering_ms = timing->rendering_ms,
+            .physics_profile = *physics,
         })
     );
+    sum_physics_profile(&total->physics_profile, physics);
     total->frames++;
     total->steps += timing->simulation_steps - previous_steps;
     total->command_apply_count += timing->command_apply_count - previous_commands;
@@ -5552,6 +5780,19 @@ static void add_profile_frames(yyjson_mut_doc *doc, yyjson_mut_val *timing, scen
         yyjson_mut_obj_add_real(doc, value, "physics_ms", frames[i].physics_ms);
         yyjson_mut_obj_add_real(doc, value, "systems_ms", frames[i].systems_ms);
         yyjson_mut_obj_add_real(doc, value, "rendering_ms", frames[i].rendering_ms);
+        add_physics_profile(doc, value, &frames[i].physics_profile);
+        yyjson_mut_obj_add_int(
+            doc,
+            value,
+            "physics_bodies",
+            frames[i].physics_profile.bodies
+        );
+        yyjson_mut_obj_add_int(
+            doc,
+            value,
+            "physics_pairs",
+            frames[i].physics_profile.pairs
+        );
     }
 }
 
@@ -5572,6 +5813,7 @@ static void add_profile_timing(
     yyjson_mut_obj_add_real(doc, value, "events_ms", timing->events_ms);
     yyjson_mut_obj_add_real(doc, value, "systems_ms", timing->systems_ms);
     yyjson_mut_obj_add_real(doc, value, "rendering_ms", timing->rendering_ms);
+    add_physics_profile(doc, value, &timing->physics_profile);
     double total_ms = timing->behavior_ms + timing->physics_ms +
                       timing->systems_ms + timing->rendering_ms;
     yyjson_mut_obj_add_real(doc, value, "total_ms", total_ms);
@@ -5727,6 +5969,7 @@ static int profile_scenario(
     }
     if (status == CHIBI_AUTOMATION_OK) {
         engine_set_behavior_profiling(game_prototype_preview_runtime(context.preview), true);
+        game_physics_set_profiling(game_prototype_preview_live(context.preview)->physics, true);
     }
     if (status == CHIBI_AUTOMATION_OK &&
         game_prototype_preview_tick(context.preview, 0) != 0) {
@@ -5768,6 +6011,9 @@ static int profile_scenario(
                 &timing,
                 &samples,
                 sample,
+                game_physics_last_profile(
+                    game_prototype_preview_live(context.preview)->physics
+                ),
                 previous_steps,
                 previous_commands,
                 previous_dropped,

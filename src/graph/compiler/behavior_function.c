@@ -745,12 +745,66 @@ static bool lower_definition(
         behavior_function_prune_values(b.function);
         behavior_function_optimize(b.function);
         behavior_function_finalize(b.function);
+#ifdef __EMSCRIPTEN__
+        behavior_function_compile_wasm_regions(b.function);
+        behavior_function_compile_wasm_regions(b.function->fast);
+#endif
         b.function->batchable = batch_event(b.function, g, entry);
         behavior_function_parallel_proof(b.function);
         return true;
     }
     behavior_lower_unsupported(&b, entry, -1, false, "control shape, breakpoint or compilation limit");
     return false;
+}
+
+void behavior_function_compile_wasm_regions(behavior_function *function)
+{
+    if (!function) {
+        return;
+    }
+    const behavior_function_instruction *source = function->runtime_instructions
+                                                    ? function->runtime_instructions
+                                                    : function->instructions;
+    int instruction_count = acount(source);
+    behavior_expression_wasm_instruction
+        *instructions = xcalloc((size_t)instruction_count, sizeof *instructions);
+    for (int pc = 0; pc < instruction_count; pc++) {
+        const behavior_function_instruction *instruction = &source[pc];
+        behavior_expression_wasm_op op = BEHAVIOR_WASM_NONE;
+        if (instruction->type == PIN_F32 || instruction->type == PIN_F64) {
+            switch (instruction->op) {
+                case BF_ADD: op = BEHAVIOR_WASM_ADD; break;
+                case BF_SUB: op = BEHAVIOR_WASM_SUB; break;
+                case BF_MUL: op = BEHAVIOR_WASM_MUL; break;
+                case BF_DIV: op = BEHAVIOR_WASM_DIV; break;
+                default: break;
+            }
+        }
+        instructions[pc] = (behavior_expression_wasm_instruction){
+            .op = op,
+            .type = instruction->type,
+            .output = instruction->output,
+            .left = instruction->left,
+            .right = instruction->right,
+            .third = instruction->target,
+            .left_slot = instruction->left_slot,
+            .right_slot = instruction->right_slot,
+            .third_slot = behavior_function_third_slot(instruction->op),
+            .control_target = instruction->target,
+            .control_transfer = instruction->op == BF_BRANCH || instruction->op == BF_JUMP,
+        };
+    }
+    int region_count = 0;
+    function->wasm = behavior_expression_wasm_compile_linear(
+        instructions,
+        instruction_count,
+        acount(function->slots),
+        function->slots,
+        &function->wasm_regions,
+        &region_count
+    );
+    assert(region_count == acount(function->wasm_regions));
+    free(instructions);
 }
 
 /* Detect a reachable call cycle before emitting watches. The call graph is
@@ -834,6 +888,8 @@ void behavior_function_free(behavior_function *f)
     behavior_jit_free(f->dispatch);
     free(f->resume_addresses);
     behavior_jit_free(f->inspection_code);
+    behavior_expression_wasm_free(f->wasm);
+    afree(f->wasm_regions);
     free(f->inspection_addresses);
     afree(f->points);
     afree(f->watches);

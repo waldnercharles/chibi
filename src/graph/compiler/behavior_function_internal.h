@@ -1,13 +1,17 @@
 #ifndef CHIBI_BEHAVIOR_FUNCTION_INTERNAL_H
 #define CHIBI_BEHAVIOR_FUNCTION_INTERNAL_H
+#include "graph/compiler/behavior_expression_wasm.h"
 #include "graph/compiler/behavior_function.h"
 #include "graph/compiler/behavior_scalar.h"
+#include "support/cos_sin.h"
 
-/* Scalar math operations share libm semantics across backends. Native targets
- * select hardware instructions where available, otherwise the scalar C ABI. */
+/* Scalar math operations share semantics across backends. Sine and cosine
+ * use the deterministic field approximation; native targets select hardware
+ * instructions for the supported operations and call the scalar C ABI for
+ * the rest. */
 #define BEHAVIOR_MATH_UNARY(X)                                                 \
-    X(SIN, Sine, sin)                                                          \
-    X(COS, Cosine, cos)                                                        \
+    X(SIN, Sine, cos_sin_sine)                                                 \
+    X(COS, Cosine, cos_sin_cosine)                                             \
     X(TAN, Tangent, tan)                                                       \
     X(ASIN, ArcSine, asin)                                                     \
     X(ACOS, ArcCosine, acos)                                                   \
@@ -282,6 +286,8 @@ struct behavior_function
     behavior_function_instruction *runtime_instructions;
     behavior_function_instruction *runtime_body; /* Optimized values at canonical PCs. */
     int *runtime_map; /* Canonical PC to compact, uninspected instruction index. */
+    behavior_expression_wasm *wasm;
+    behavior_expression_wasm_region *wasm_regions;
     unsigned root_steps, child_budget, depth_limit;
     unsigned pure_depth_limit;
     bool component_bindings, component_access;
@@ -348,6 +354,7 @@ bool behavior_function_static_name(const char **name);
 void behavior_function_constant_locals(behavior_function *function);
 void behavior_function_prune_values(behavior_function *function);
 void behavior_function_runtime_code(behavior_function *function);
+void behavior_function_compile_wasm_regions(behavior_function *function);
 void behavior_function_reuse_accesses(behavior_function *function);
 void behavior_function_reuse_reads(behavior_function *function, bool *keep);
 void behavior_function_optimize(behavior_function *function);

@@ -1,9 +1,12 @@
 #include "runtime/material_flow.h"
 
 #include "support/array.h"
+#include "support/cos_sin.h"
+#include "support/exponential.h"
 #include "support/xalloc.h"
 
 #include <math.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -193,7 +196,8 @@ static void boundaries(
     for (int i = 0; i < count; i++) {
         fluid_obstacle o = obstacles[i];
         fluid_body b = bodies[o.body];
-        float c = cosf(b.angle), s = sinf(b.angle);
+        cos_sin rotation = cos_sin_compute(b.angle);
+        float c = rotation.c, s = rotation.s;
         fluid_vec center = { b.position.x + c * o.center.x - s * o.center.y,
                              b.position.y + s * o.center.x + c * o.center.y };
         float ex = o.radius > 0
@@ -238,7 +242,7 @@ static void boundaries(
 static void advect(material_flow *flow, fluid_flow_settings settings, float dt)
 {
     flow_grid *grid = &flow->grid;
-    float damping = expf(-settings.drag * dt);
+    float damping = deterministic_expf(-settings.drag * dt);
     for (int i = 1; i < acount(grid->cells); i++) {
         flow_cell *c = &grid->cells[i];
         bool existed = find(&flow->previous, c->x, c->y) != 0;
@@ -283,7 +287,7 @@ static void confine(flow_grid *grid, fluid_flow_settings settings, float dt)
                    fabsf(grid->cells[c->adjacent[LEFT]].curl);
         float ny = fabsf(grid->cells[c->adjacent[UP]].curl) -
                    fabsf(grid->cells[c->adjacent[DOWN]].curl);
-        float length = hypotf(nx, ny);
+        float length = sqrtf(nx * nx + ny * ny);
         if (length > 1e-6f && !c->solid) {
             float force = dt * settings.vorticity * h * c->curl / length;
             c->velocity.x += ny * force;

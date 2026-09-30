@@ -1,6 +1,7 @@
 #include "editor/workspace/editor_internal.h"
 #include "graph/document/extract.h"
 #include "graph/runtime/flow_internal.h"
+#include "support/cos_sin.h"
 #include "test/suite_internal.h"
 
 #include <assert.h>
@@ -1031,7 +1032,7 @@ static void converted_component_field_binding()
     instance = instance_for(auto_asset, world, owner);
     int inline_status = eval_f32(auto_asset, converted, instance, services, 0, &result, message, sizeof message);
     test_check(
-        inline_status == 0 && fabsf(result - (float)sin(17.0)) < .0001f,
+        inline_status == 0 && result == (float)cos_sin_sine(17.0),
         "an inlined converted getter evaluates through the field binding"
     );
     behavior_instance_destroy(instance);

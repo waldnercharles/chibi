@@ -98,7 +98,7 @@ static uint64_t hash_bytes(uint64_t hash, const void *data, size_t count)
     return hash;
 }
 
-game_material_state game_materials_inspect(const game_materials *materials)
+static game_material_state inspect_materials(const game_materials *materials, game_material_hash_parts *parts)
 {
     game_material_state state = { 0 };
     if (!game_materials_enabled(materials)) {
@@ -117,6 +117,9 @@ game_material_state game_materials_inspect(const game_materials *materials)
     if (flow_hash) {
         state.hash = hash_bytes(state.hash, &flow_hash, sizeof flow_hash);
     }
+    if (parts) {
+        parts->after_flow = state.hash;
+    }
     state.fragments = materials->fragments;
     int chunk_count;
     const material_chunk *chunks = game_materials_chunks(materials, &chunk_count);
@@ -127,6 +130,13 @@ game_material_state game_materials_inspect(const game_materials *materials)
                            chunks[i].angle,
                            chunks[i].age };
         state.hash = hash_bytes(state.hash, values, sizeof values);
+    }
+    if (parts) {
+        parts->after_chunks = state.hash;
+        parts->particle_position = UINT64_C(14695981039346656037);
+        parts->particle_velocity = UINT64_C(14695981039346656037);
+        parts->particle_parameters = UINT64_C(14695981039346656037);
+        parts->particle_appearance = UINT64_C(14695981039346656037);
     }
     for (int i = 0; i < acount(materials->records); i++) {
         material_stream *stream = materials->records[i].stream;
@@ -174,6 +184,66 @@ game_material_state game_materials_inspect(const game_materials *materials)
         state.hash = hash_bytes(state.hash, &p.kind, sizeof p.kind);
         state.hash = hash_bytes(state.hash, &p.color, sizeof p.color);
         state.hash = hash_bytes(state.hash, &p.style.end_color, sizeof p.style.end_color);
+        if (parts) {
+            parts->particle_position = hash_bytes(
+                parts->particle_position,
+                &p.position,
+                sizeof p.position
+            );
+            parts->particle_velocity = hash_bytes(
+                parts->particle_velocity,
+                &p.velocity,
+                sizeof p.velocity
+            );
+            const float parameters[] = { p.mass,
+                                         p.radius,
+                                         p.absorption,
+                                         p.emission,
+                                         p.lifetime,
+                                         p.fuel,
+                                         p.heat,
+                                         p.glow,
+                                         p.visibility,
+                                         p.refraction,
+                                         p.style.duration,
+                                         p.style.size_end,
+                                         p.style.size_exponent,
+                                         p.style.emission_end,
+                                         p.style.emission_exponent,
+                                         p.style.drag,
+                                         p.style.drag_end,
+                                         p.style.drag_exponent,
+                                         p.style.blend };
+            parts->particle_parameters = hash_bytes(parts->particle_parameters, parameters, sizeof parameters);
+            parts->particle_appearance = hash_bytes(
+                parts->particle_appearance,
+                &p.burning,
+                sizeof p.burning
+            );
+            parts->particle_appearance = hash_bytes(
+                parts->particle_appearance,
+                &p.smoke,
+                sizeof p.smoke
+            );
+            parts->particle_appearance = hash_bytes(
+                parts->particle_appearance,
+                &p.kind,
+                sizeof p.kind
+            );
+            parts->particle_appearance = hash_bytes(
+                parts->particle_appearance,
+                &p.color,
+                sizeof p.color
+            );
+            parts->particle_appearance = hash_bytes(
+                parts->particle_appearance,
+                &p.style.end_color,
+                sizeof p.style.end_color
+            );
+        }
+    }
+    if (parts) {
+        parts->after_particles = state.hash;
     }
     for (int i = 0; i < acount(materials->records); i++) {
         const material_record *record = &materials->records[i];
@@ -210,6 +280,9 @@ game_material_state game_materials_inspect(const game_materials *materials)
             );
         }
     }
+    if (parts) {
+        parts->after_masks = state.hash;
+    }
     for (int i = 0; i < acount(materials->damage_requests); i++) {
         material_damage d = materials->damage_requests[i];
         float values[] = { d.point.x, d.point.y, d.radius, d.energy };
@@ -218,7 +291,22 @@ game_material_state game_materials_inspect(const game_materials *materials)
         state.hash = hash_bytes(state.hash, values, sizeof values);
     }
     state.hash = material_destruction_hash(materials->destruction, state.hash);
+    if (parts) {
+        parts->hash = state.hash;
+    }
     return state;
+}
+
+game_material_state game_materials_inspect(const game_materials *materials)
+{
+    return inspect_materials(materials, NULL);
+}
+
+game_material_hash_parts game_materials_hash_parts(const game_materials *materials)
+{
+    game_material_hash_parts parts = { 0 };
+    inspect_materials(materials, &parts);
+    return parts;
 }
 
 const material_mask *game_materials_mask(const game_materials *materials, ecs_entity entity)

@@ -157,6 +157,11 @@ game_task_pool *game_task_pool_acquire_workers(int requested)
     struct enkiTaskSchedulerConfig config = enkiGetTaskSchedulerConfig(scheduler);
     int available = (int)config.numTaskThreadsToCreate + 1;
     workers = requested ? requested : default_workers(available);
+#ifdef CHIBI_WEB_WORKERS
+    /* One shared parallel budget fits the prestarted browser worker pool,
+     * including worlds requesting different native budgets. */
+    workers = requested == 1 ? 1 : CHIBI_WEB_WORKERS;
+#endif
     if (config.numTaskThreadsToCreate < (uint32_t)(workers - 1)) {
         workers = (int)config.numTaskThreadsToCreate + 1;
     }
@@ -175,6 +180,11 @@ game_task_pool *game_task_pool_acquire_workers(int requested)
 #endif
     pool->tasks = (game_task_system){ workers, pool, enqueue, finish };
     shared[workers] = pool;
+#ifdef CHIBI_WEB_WORKERS
+    if (workers > 1) {
+        start_workers(pool);
+    }
+#endif
     return pool;
 }
 

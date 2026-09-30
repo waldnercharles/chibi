@@ -1052,10 +1052,11 @@ app_scene_authoring *app_scene_authoring_new_with_content_root(
         return NULL;
     }
     app_scene_authoring *scene = (app_scene_authoring *)xcalloc(1, sizeof *scene);
+    bool app_running = cf_app_exists() && cf_app_is_running();
     scene->debug_sessions[APP_RUNTIME_PREVIEW] = 1;
     scene->debug_sessions[APP_RUNTIME_SCENE] = 1;
-    scene->shapes = app_sdf_shapes_init();
-    scene->renderer = app_scene_renderer_new();
+    scene->shapes = app_running ? app_sdf_shapes_init() : (app_sdf_shapes){ 0 };
+    scene->renderer = app_running ? app_scene_renderer_new() : NULL;
     scene->history = scene_history_new();
     scene->world = world;
     scene->live = live;
@@ -1125,11 +1126,11 @@ app_scene_authoring *app_scene_authoring_new_with_content_root(
     scene->scene_dirty = false;
     snprintf(scene->message, sizeof scene->message, "No scene entities yet.");
     snprintf(scene->prototype_message, sizeof scene->prototype_message, "No Selection");
-    if (cf_app_is_running() && !render_image_mount_content(
-                                   scene->content_root,
-                                   scene->message,
-                                   sizeof scene->message
-                               )) {
+    if (app_running && !render_image_mount_content(
+                           scene->content_root,
+                           scene->message,
+                           sizeof scene->message
+                       )) {
         fprintf(stderr, "%s\n", scene->message);
         app_scene_authoring_free(scene);
         return NULL;
@@ -1321,7 +1322,7 @@ int app_scene_authoring_set_content_root(app_scene_authoring *scene, const char 
     if (!scene || !path || !path[0]) {
         return -1;
     }
-    if (cf_app_is_running() &&
+    if (cf_app_exists() && cf_app_is_running() &&
         !render_image_mount_content(path, scene->message, sizeof scene->message)) {
         return -1;
     }

@@ -49,6 +49,10 @@ const behavior_function *behavior_program_batch_event(
 );
 const behavior_graph_program *behavior_program_graph(const behavior_program *program, const graph *g);
 const graph_ir *behavior_graph_ir(const behavior_graph_program *program);
+/* Counts small graph-IR numeric blocks used by general behavior evaluation.
+ * Emscripten whole-function BYTECODE execution can also replace eligible
+ * straight-line F32/F64 arithmetic regions with asynchronous Wasm modules. */
+int behavior_graph_program_wasm_expression_count(const behavior_graph_program *program);
 
 /* True when this input has a helper-free native numeric region. */
 bool behavior_program_input_is_direct(const behavior_graph_program *program, const node *n, int pin);

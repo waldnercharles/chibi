@@ -15,6 +15,7 @@
 #include "runtime/generated.h"
 #include "runtime/systems/system.h"
 #include "support/arena.h"
+#include "support/cos_sin.h"
 
 #include <assert.h>
 #include <cute_defines.h>
@@ -1135,7 +1136,8 @@ static void direction_expression()
     );
     assert(behavior_expression_refresh(asset, call, &error) == 0);
     CF_V2 value = evaluate_vector(asset, call);
-    assert(value.x == (float)cos(0.5) * 2 && value.y == (float)sin(0.5) * 2);
+    cos_sin direction = cos_sin_compute(.5f);
+    assert(value.x == direction.c * 2 && value.y == direction.s * 2);
     int binding = 0;
     assert(!strcmp(behavior_expression_spelling(&NODE_Direction_From_Angle, &binding), "direction"));
     behavior_asset_free(asset);

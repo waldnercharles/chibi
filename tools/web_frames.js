@@ -18,11 +18,23 @@
     // Nearest-rank percentiles of each timing across the logged frames.
     const summary = (list = frames()) => {
         const result = { frames: list.length };
-        for (const name of ['interval_ms', 'steps', 'behavior_ms', 'physics_ms', 'systems_ms', 'rendering_ms']) {
+        for (const name of [
+            'interval_ms', 'steps', 'dropped_ms', 'behavior_ms', 'physics_ms', 'systems_ms', 'rendering_ms',
+        ]) {
             const sorted = list.map(frame => frame[name]).sort((a, b) => a - b);
             const rank = p => sorted[Math.max(0, Math.ceil(p / 100 * sorted.length) - 1)];
-            result[name] = { p50: rank(50), p95: rank(95), p99: rank(99), max: sorted[sorted.length - 1] };
+            result[name] = sorted.length
+                ? { p50: rank(50), p95: rank(95), p99: rank(99), max: sorted[sorted.length - 1] }
+                : { p50: null, p95: null, p99: null, max: null };
         }
+        const stepCounts = new Map();
+        for (const frame of list) {
+            stepCounts.set(frame.steps, (stepCounts.get(frame.steps) || 0) + 1);
+        }
+        result.step_counts = Object.fromEntries([...stepCounts].sort(([a], [b]) => a - b));
+        result.catch_up_frames = list.filter(frame => frame.steps > 1).length;
+        result.dropped_frames = list.filter(frame => frame.dropped_ms > 0).length;
+        result.dropped_ms_total = list.reduce((total, frame) => total + frame.dropped_ms, 0);
         return result;
     };
     const download = () => {

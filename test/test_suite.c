@@ -301,6 +301,11 @@ int main(int argc, char **argv)
         test_ui_inspector();
         return fails ? 1 : 0;
     }
+    if (argc == 2 && !strcmp(argv[1], "--editor-checkpoint")) {
+        registry_validate();
+        test_editor_checkpoint();
+        return fails ? 1 : 0;
+    }
     if (argc > 1 && !strcmp(argv[1], "--graph-arrange")) {
         run_graph_arrange_checks();
         return fails ? 1 : 0;

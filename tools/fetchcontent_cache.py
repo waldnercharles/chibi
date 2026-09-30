@@ -17,7 +17,7 @@ import tempfile
 
 
 PATCH_LIST = re.compile(
-    rb"(?m)^\s*foreach\s*\(\s*CUTE_PATCH_NAME\s+([^)]*)\)"
+    rb"(?m)^\s*foreach\s*\(\s*name\s+(cute-[^)]*)\)"
 )
 SCHEMA = 1
 
@@ -46,7 +46,7 @@ def fingerprint(source_dir: Path) -> str:
     cmake_bytes = cmake_path.read_bytes()
     match = PATCH_LIST.search(cmake_bytes)
     if not match:
-        raise RuntimeError(f"cannot find CUTE_PATCH_NAME list in {cmake_path}")
+        raise RuntimeError(f"cannot find Cute patch list in {cmake_path}")
     patch_names = match.group(1).decode("utf-8").split()
     if not patch_names:
         raise RuntimeError(f"empty CUTE_PATCH_NAME list in {cmake_path}")

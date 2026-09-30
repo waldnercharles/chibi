@@ -228,9 +228,6 @@ if (typeof window !== 'undefined' && !Module['chibiSaveAsset']) {
         project = chooseProject();
         projectRoot = `${workspace}/${project}/`;
         args[1] = projectRoot;
-        if (!Module['chibiCollabStorage']) {
-            Module['chibiCollabStorage'] = Module['chibiCollabStorageFactory'](projectRoot);
-        }
         Module['recovery'].unshift(['Export Project', exportProject]);
         if (previous === project) return;
         fs().writeFile(last, project);

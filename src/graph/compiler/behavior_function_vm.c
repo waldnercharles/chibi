@@ -118,7 +118,47 @@ static int run(const behavior_function *f, behavior_function_context *ctx, bool 
         begin = f->runtime_map[begin];
     }
     int instruction_count = acount(instructions);
+    int wasm_region = 0;
+    int region_low = 0, region_high = acount(f->wasm_regions);
+    while (region_low < region_high) {
+        int mid = region_low + (region_high - region_low) / 2;
+        if (f->wasm_regions[mid].first < begin) {
+            region_low = mid + 1;
+        } else {
+            region_high = mid;
+        }
+    }
+    wasm_region = region_low;
+    int previous_pc = begin - 1;
     for (int pc = begin; pc < instruction_count; pc++) {
+        if (pc < previous_pc) {
+            region_low = 0;
+            region_high = acount(f->wasm_regions);
+            while (region_low < region_high) {
+                int mid = region_low + (region_high - region_low) / 2;
+                if (f->wasm_regions[mid].first < pc) {
+                    region_low = mid + 1;
+                } else {
+                    region_high = mid;
+                }
+            }
+            wasm_region = region_low;
+        }
+        previous_pc = pc;
+        while (wasm_region < acount(f->wasm_regions) &&
+               f->wasm_regions[wasm_region].first < pc) {
+            wasm_region++;
+        }
+        if (!inspected && f->wasm && wasm_region < acount(f->wasm_regions) &&
+            f->wasm_regions[wasm_region].first == pc) {
+            const behavior_expression_wasm_region *region = &f->wasm_regions[wasm_region++];
+            pin_value value = { .type = f->slots[region->result_slot] };
+            if (behavior_expression_wasm_run_slots(f->wasm, region->function, slots, &value)) {
+                slots[region->result_slot] = value;
+                pc = region->end - 1;
+                continue;
+            }
+        }
         const behavior_function_instruction *i = &instructions[pc];
         pin_value *out = &slots[i->output];
         pin_value a = i->left_slot ? slots[i->left] : (pin_value){ 0 };

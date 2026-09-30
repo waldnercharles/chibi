@@ -7,6 +7,8 @@ TRACY_BUILD_DIR ?= build-tracy
 TRACY_MCP_BUILD_DIR ?= build-tracy-mcp
 WEB_BUILD_DIR ?= build-web
 WEB_PROFILE_BUILD_DIR ?= build-web-profile
+WEB_THREADS_BUILD_DIR ?= build-web-threads
+WEB_WORKERS ?= 4
 WEB_CMAKE_FLAGS ?=
 FAST_BUILD_DIR ?= build-debug
 JOBS ?= 8
@@ -29,7 +31,7 @@ LOCAL_CMAKE_FLAGS ?= $(SANITIZER_CMAKE_FLAGS)
 # allocator does not report a failed nano-zone reservation.
 NATIVE_RUNTIME_ENV ?= MallocNanoZone=0
 
-.PHONY: all help build build-debug build-tracy build-tracy-mcp mcp mcp-controller mcp-setup tracy-mcp run debug debug-san play build-release run-tracy benchmark web web-configure web-serve web-profile profile-compare format check-format test test-fast test-render sdl-package clean
+.PHONY: all help build build-debug build-tracy build-tracy-mcp mcp mcp-controller mcp-setup tracy-mcp run debug debug-san play build-release run-tracy benchmark web web-configure web-serve web-profile web-threads web-threads-serve profile-compare format check-format test test-fast test-render sdl-package clean
 
 all: build
 
@@ -59,6 +61,8 @@ help:
 		'make web            Build the browser application' \
 		'make web-serve      Serve the browser application for PROJECT on WEB_PORT' \
 		'make web-profile    Serve a web build named for the browser profiler' \
+		'make web-threads    Build a separate isolated web application with workers' \
+		'make web-threads-serve Serve the threaded application with isolation headers' \
 		'make profile-compare Profile PROJECT headless natively and as WASM' \
 		'make format         Rewrite project C sources with clang-format' \
 		'make check-format   Check project C source formatting' \
@@ -165,6 +169,12 @@ web-serve: web
 web-profile:
 	$(MAKE) web-serve WEB_BUILD_DIR="$(WEB_PROFILE_BUILD_DIR)" WEB_CMAKE_FLAGS=-DCHIBI_WEB_PROFILING=ON
 
+web-threads:
+	$(MAKE) web WEB_BUILD_DIR="$(WEB_THREADS_BUILD_DIR)" WEB_CMAKE_FLAGS="-DCHIBI_WEB_THREADS=ON -DCHIBI_WEB_WORKERS=$(WEB_WORKERS) $(WEB_CMAKE_FLAGS)"
+
+web-threads-serve: web-threads
+	python3 tools/web_serve.py --build "$(WEB_THREADS_BUILD_DIR)" --project "$(PROJECT)" --port $(WEB_PORT) --isolated
+
 format:
 	sh tools/clang-format.sh
 
@@ -175,6 +185,8 @@ test:
 	python3 test/web_serve_test.py
 	node test/web_workspace_test.mjs
 	node test/web_storage_test.mjs
+	node test/web_frames_test.mjs
+	node test/web_isolation_test.mjs
 	node test/collab_client_test.mjs
 	sh tools/configure_native.sh "$(BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(LOCAL_CMAKE_FLAGS)
 	cmake --build "$(BUILD_DIR)" --target check-generation check-reflect check-reload check-dev check-mcp check-assets check-behavior-backend test_suite --parallel $(JOBS)

@@ -2,6 +2,7 @@
 
 #include "graph/compiler/behavior_scalar.h"
 #include "graph/runtime/random.h"
+#include "support/cos_sin.h"
 
 #include <assert.h>
 #include <math.h>
@@ -37,8 +38,8 @@ static pin_spec result[] = { { .name = "Result", .type = PIN_F64, .type_name = "
                               .category = "Math/Functions",                    \
                               .description = DESCRIPTION,                      \
                               .foldable = true };
-UNARY(Sine, "Sine", sin, "Returns the sine of Value, an angle in radians.")
-UNARY(Cosine, "Cosine", cos, "Returns the cosine of Value, an angle in radians.")
+UNARY(Sine, "Sine", cos_sin_sine, "Returns the sine of Value, an angle in radians.")
+UNARY(Cosine, "Cosine", cos_sin_cosine, "Returns the cosine of Value, an angle in radians.")
 UNARY(Tangent, "Tangent", tan, "Returns the tangent of Value, an angle in radians.")
 UNARY(ArcSine, "Arc Sine", asin, "Returns the angle in radians, from -pi/2 to pi/2, whose sine is Value; NaN outside -1 to 1.")
 UNARY(ArcCosine, "Arc Cosine", acos, "Returns the angle in radians, from 0 to pi, whose cosine is Value; NaN outside -1 to 1.")

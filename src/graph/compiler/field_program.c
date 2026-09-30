@@ -496,6 +496,8 @@ static float smooth_min(float a, float b, float radius)
     return fminf(a, b) - h * h * radius * .25f;
 }
 
+/* The one-point API keeps a scalar interpreter. Besides fitting small
+ * previews, it gives row baking an independent semantic reference in tests. */
 static float evaluate(field_ir ir, const float *v, float x, float y, unsigned seed, const float *parameters)
 {
     float a = v[ir.inputs[0]], b = v[ir.inputs[1]], c = v[ir.inputs[2]],
@@ -578,6 +580,193 @@ static float evaluate(field_ir ir, const float *v, float x, float y, unsigned se
     return NAN;
 }
 
+/* Dispatch once per instruction, then walk contiguous row values. The old
+ * cell-major scratch layout called this switch once per cell and touched each
+ * operand at a stride of the instruction count. */
+static void evaluate_row(
+    field_ir ir,
+    const float *restrict inputs[FIELD_INPUT_MAX],
+    float *restrict out,
+    int count,
+    field_grid grid,
+    float y,
+    unsigned seed,
+    const float *parameters
+)
+{
+#define ROW_1(operation, expression)                                           \
+    case operation:                                                            \
+        for (int column = 0; column < count; column++) {                       \
+            const float a = inputs[0][column];                                 \
+            out[column] = expression;                                          \
+        }                                                                      \
+        break
+#define ROW_2(operation, expression)                                           \
+    case operation:                                                            \
+        for (int column = 0; column < count; column++) {                       \
+            const float a = inputs[0][column], b = inputs[1][column];          \
+            out[column] = expression;                                          \
+        }                                                                      \
+        break
+#define ROW_3(operation, expression)                                           \
+    case operation:                                                            \
+        for (int column = 0; column < count; column++) {                       \
+            const float a = inputs[0][column], b = inputs[1][column],          \
+                        c = inputs[2][column];                                 \
+            out[column] = expression;                                          \
+        }                                                                      \
+        break
+    switch (ir.op) {
+        case FIELD_CONSTANT: out[0] = ir.value; break;
+        case FIELD_X:
+            for (int column = 0; column < count; column++) {
+                out[column] = grid.center_x +
+                              (column + .5f - grid.width * .5f) * grid.cell_size;
+            }
+            break;
+        case FIELD_Y: out[0] = y; break;
+        case FIELD_PARAMETER:
+            out[0] = parameters[ir.parameter];
+            break;
+            ROW_2(FIELD_ADD, a + b);
+            ROW_2(FIELD_SUBTRACT, a - b);
+            ROW_2(FIELD_MULTIPLY, a * b);
+            ROW_2(FIELD_DIVIDE, b != 0 ? a / b : NAN);
+            ROW_2(FIELD_MIN, fminf(a, b));
+            ROW_2(FIELD_MAX, fmaxf(a, b));
+            ROW_1(FIELD_ABS, fabsf(a));
+            ROW_1(FIELD_NEGATE, -a);
+            ROW_1(FIELD_SIN, cos_sin_compute(a).s);
+            ROW_1(FIELD_COS, cos_sin_compute(a).c);
+            ROW_1(FIELD_FLOOR, floorf(a));
+            ROW_3(FIELD_CLAMP, clamp(a, b, c));
+        case FIELD_REMAP:
+            for (int column = 0; column < count; column++) {
+                const float a = inputs[0][column], b = inputs[1][column],
+                            c = inputs[2][column], d = inputs[3][column],
+                            e = inputs[4][column];
+                out[column] = b != c ? mix(d, e, (a - b) / (c - b)) : NAN;
+            }
+            break;
+        case FIELD_HASH:
+            for (int column = 0; column < count; column++) {
+                const float a = inputs[0][column], b = inputs[1][column],
+                            c = inputs[2][column];
+                out[column] = fabsf(a) >= 2147483520.f || fabsf(b) >= 2147483520.f ||
+                                      fabsf(c) >= 2147483520.f
+                                ? NAN
+                                : hash_sample(seed + (unsigned)(int)c, (int)floorf(a), (int)floorf(b));
+            }
+            break;
+        case FIELD_NOISE:
+            for (int column = 0; column < count; column++) {
+                const float a = inputs[0][column], b = inputs[1][column],
+                            c = inputs[2][column];
+                out[column] = fabsf(a) >= 2147483520.f || fabsf(b) >= 2147483520.f ||
+                                      fabsf(c) >= 2147483520.f
+                                ? NAN
+                                : noise(seed + (unsigned)(int)c, a, b);
+            }
+            break;
+        case FIELD_FRACTAL:
+            for (int column = 0; column < count; column++) {
+                float a = inputs[0][column], b = inputs[1][column],
+                      c = inputs[2][column];
+                const float d = inputs[3][column], e = inputs[4][column],
+                            f = inputs[5][column];
+                if (fabsf(a) >= 2147483520.f || fabsf(b) >= 2147483520.f ||
+                    fabsf(c) >= 2147483520.f || d < 1 || d > 16 ||
+                    floorf(d) != d || e <= 0 || f < 0 || f > 1) {
+                    out[column] = NAN;
+                    continue;
+                }
+                unsigned offset = seed + (unsigned)(int)c;
+                float total = 0, amplitude = 1, weight = 0;
+                for (int i = 0; i < (int)d; i++) {
+                    total += amplitude * noise(offset + (unsigned)i, a, b);
+                    weight += amplitude;
+                    a *= e;
+                    b *= e;
+                    amplitude *= f;
+                }
+                out[column] = total / weight;
+            }
+            break;
+        case FIELD_CIRCLE:
+            for (int column = 0; column < count; column++) {
+                const float a = inputs[0][column], b = inputs[1][column],
+                            c = inputs[2][column];
+                out[column] = c >= 0 ? distance(a, b) - c : NAN;
+            }
+            break;
+        case FIELD_BOX: {
+            for (int column = 0; column < count; column++) {
+                const float a = inputs[0][column], b = inputs[1][column],
+                            c = inputs[2][column], d = inputs[3][column];
+                if (c < 0 || d < 0) {
+                    out[column] = NAN;
+                    continue;
+                }
+                float qx = fabsf(a) - c, qy = fabsf(b) - d;
+                out[column] = distance(fmaxf(qx, 0), fmaxf(qy, 0)) +
+                              fminf(fmaxf(qx, qy), 0);
+            }
+            break;
+        }
+        case FIELD_CAPSULE: {
+            for (int column = 0; column < count; column++) {
+                const float a = inputs[0][column], b = inputs[1][column],
+                            c = inputs[2][column], d = inputs[3][column],
+                            e = inputs[4][column], f = inputs[5][column],
+                            g = inputs[6][column];
+                float dx = e - c, dy = f - d, length = dx * dx + dy * dy;
+                float t = length > 0
+                            ? clamp(((a - c) * dx + (b - d) * dy) / length, 0, 1)
+                            : 0;
+                out[column] = g >= 0 ? distance(a - c - t * dx, b - d - t * dy) - g
+                                     : NAN;
+            }
+            break;
+        }
+        case FIELD_ROTATE_X:
+            for (int column = 0; column < count; column++) {
+                const float a = inputs[0][column], b = inputs[1][column],
+                            c = inputs[2][column];
+                cos_sin r = cos_sin_compute(c);
+                out[column] = r.c * a + r.s * b;
+            }
+            break;
+        case FIELD_ROTATE_Y:
+            for (int column = 0; column < count; column++) {
+                const float a = inputs[0][column], b = inputs[1][column],
+                            c = inputs[2][column];
+                cos_sin r = cos_sin_compute(c);
+                out[column] = -r.s * a + r.c * b;
+            }
+            break;
+        case FIELD_SMOOTH_UNION:
+            for (int column = 0; column < count; column++) {
+                const float a = inputs[0][column], b = inputs[1][column],
+                            c = inputs[2][column];
+                out[column] = c >= 0 ? smooth_min(a, b, c) : NAN;
+            }
+            break;
+        case FIELD_SMOOTH_SUBTRACT:
+            for (int column = 0; column < count; column++) {
+                const float a = inputs[0][column], b = inputs[1][column],
+                            c = inputs[2][column];
+                out[column] = c >= 0 ? -smooth_min(-a, b, c) : NAN;
+            }
+            break;
+            ROW_3(FIELD_SELECT, a > 0 ? b : c);
+            ROW_1(FIELD_OUTPUT, a);
+        case FIELD_OP_COUNT: out[0] = NAN; break;
+    }
+#undef ROW_1
+#undef ROW_2
+#undef ROW_3
+}
+
 static float *bind_parameters(const field_program *p, field_context ctx, char *error, size_t size)
 {
     float *values = xcalloc((size_t)acount(p->parameters) + 1, sizeof(float));
@@ -612,8 +801,8 @@ static float *bind_parameters(const field_program *p, field_context ctx, char *e
 }
 
 /* Keep X-only and constant instructions across rows; reuse is zero on the first
- * row a buffer sees. A row's working set is bounded by width * instruction
- * count, independent of grid height. */
+ * row a buffer sees. Values are instruction-major so each row kernel reads and
+ * writes contiguous columns. */
 static bool bake_row(
     const field_program *p,
     float *slots,
@@ -632,17 +821,20 @@ static bool bake_row(
             continue;
         }
         int count = ir.spatial & 1 ? grid.width : 1;
+        const float *restrict inputs[FIELD_INPUT_MAX];
+        for (int k = 0; k < ir.count; k++) {
+            inputs[k] = slots + (size_t)ir.inputs[k] * grid.width;
+        }
+        float *restrict out = slots + (size_t)i * grid.width;
+        evaluate_row(ir, inputs, out, count, grid, y, seed, parameters);
         for (int column = 0; column < count; column++) {
-            float x = grid.center_x + (column + .5f - grid.width * .5f) * grid.cell_size;
-            float *cell = slots + column * stride;
-            cell[i] = evaluate(ir, cell, x, y, seed, parameters);
-            if (!isfinite(cell[i])) {
+            if (!isfinite(out[column])) {
                 return false;
             }
         }
-        if (!(ir.spatial & 1)) {
+        if (count == 1) {
             for (int column = 1; column < grid.width; column++) {
-                slots[column * stride + i] = slots[i];
+                out[column] = out[0];
             }
         }
     }
@@ -686,10 +878,11 @@ static void bake_bands(int start, int end, uint32_t, void *context)
                 atomic_store_explicit(&job->invalid, true, memory_order_relaxed);
                 break;
             }
-            for (int x = 0; x < job->grid.width; x++) {
-                job->out[y * job->grid.width + x] = slots
-                    [x * stride + job->program->output];
-            }
+            memcpy(
+                job->out + y * job->grid.width,
+                slots + (size_t)job->program->output * job->grid.width,
+                (size_t)job->grid.width * sizeof(float)
+            );
         }
     }
     free(slots);
@@ -736,12 +929,13 @@ bool field_program_bake_rows(
                      first, first + count, out,      parallel ? 8 : count,
                      false };
     int bands = (count + job.rows_per_band - 1) / job.rows_per_band;
-    void *task = parallel ? tasks->enqueue(bake_bands, bands, 1, &job, tasks->user)
-                          : NULL;
-    if (task) {
-        tasks->finish(task, tasks->user);
+    if (parallel) {
+        void *task = tasks->enqueue(bake_bands, bands, 1, &job, tasks->user);
+        if (task) {
+            tasks->finish(task, tasks->user);
+        }
+        /* A NULL handle means enqueue already completed the range inline. */
     } else {
-        /* Serial grids, or a pool that could not take the job. */
         bake_bands(0, bands, 0, &job);
     }
     /* finish() orders every band's writes before this load. */
@@ -763,5 +957,27 @@ bool field_program_sample(
     size_t size
 )
 {
-    return field_program_bake(p, ctx, (field_grid){ 1, 1, 1, x, y }, out, NULL, error, size);
+    if (!p || !out || !isfinite(x) || !isfinite(y) || ctx.parameter_count < 0 ||
+        (ctx.parameter_count && !ctx.parameters)) {
+        return fail(error, size, "Invalid field grid or parameters");
+    }
+    float *parameters = bind_parameters(p, ctx, error, size);
+    if (!parameters) {
+        return false;
+    }
+    int stride = acount(p->code);
+    float *values = xcalloc((size_t)stride, sizeof(float));
+    for (int i = 0; i < stride; i++) {
+        values[i] = evaluate(p->code[i], values, x, y, ctx.seed, parameters);
+        if (!isfinite(values[i])) {
+            fail(error, size, "Field evaluation produced an invalid scalar");
+            free(values);
+            free(parameters);
+            return false;
+        }
+    }
+    *out = values[p->output];
+    free(values);
+    free(parameters);
+    return true;
 }

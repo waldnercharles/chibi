@@ -6,7 +6,6 @@
 
 #include <assert.h>
 #include <math.h>
-#include <string.h>
 
 enum
 {
@@ -18,7 +17,8 @@ enum
 bool game_materials_emit(game_materials *materials, fluid_particle particle)
 {
     particle.radius = fminf(particle.radius, materials->settings.kernel);
-    return materials->fluid && material_fluid_add(materials->fluid, particle);
+    bool added = materials->fluid && material_fluid_add(materials->fluid, particle);
+    return added;
 }
 
 const char *material_ecs_configure_fluid(game_materials *materials)
@@ -511,6 +511,19 @@ void material_ecs_tick_fluid(
     int obstacle_count
 )
 {
+    material_ecs_tick_fluid_profiled(materials, delta, bodies, body_count, obstacles, obstacle_count, NULL);
+}
+
+void material_ecs_tick_fluid_profiled(
+    game_materials *materials,
+    float delta,
+    fluid_body *bodies,
+    int body_count,
+    const fluid_obstacle *obstacles,
+    int obstacle_count,
+    material_fluid_profile *profile
+)
+{
     if (!materials->fluid) {
         return;
     }
@@ -526,7 +539,7 @@ void material_ecs_tick_fluid(
         }
     }
     game_task_pool_begin(materials->pool, true);
-    material_fluid_tick(
+    material_fluid_tick_profiled(
         materials->fluid,
         delta,
         materials->settings.chunk_size,
@@ -535,7 +548,8 @@ void material_ecs_tick_fluid(
         bodies,
         body_count,
         obstacles,
-        obstacle_count
+        obstacle_count,
+        profile
     );
     game_task_pool_end(materials->pool);
     CHIBI_TRACE_ZONE_BEGIN(contact_zone, "Fluid contact effects");

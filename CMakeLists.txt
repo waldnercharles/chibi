@@ -1,6 +1,28 @@
 cmake_minimum_required(VERSION 3.20)
 project(chibi LANGUAGES C CXX)
 
+option(CHIBI_WEB_THREADS "Build a separate web application with pthread workers" OFF)
+set(CHIBI_WEB_WORKERS 4 CACHE STRING "Total worker budget for the threaded web build")
+if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+    # Recursive graph publication exceeds Emscripten's 64 KiB default with a
+    # supported 64-operation data chain. Keep it within an explicit stack budget.
+    add_link_options(-sSTACK_SIZE=1048576)
+endif()
+if(CHIBI_WEB_THREADS)
+    if(NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+        message(FATAL_ERROR "CHIBI_WEB_THREADS requires Emscripten")
+    endif()
+    if(NOT CHIBI_WEB_WORKERS MATCHES "^[0-9]+$" OR
+       CHIBI_WEB_WORKERS LESS 2 OR CHIBI_WEB_WORKERS GREATER 8)
+        message(FATAL_ERROR "CHIBI_WEB_WORKERS must be between 2 and 8")
+    endif()
+    math(EXPR CHIBI_WEB_POOL_SIZE "${CHIBI_WEB_WORKERS} - 1")
+    add_compile_options(-pthread)
+    add_compile_definitions(CHIBI_WEB_WORKERS=${CHIBI_WEB_WORKERS})
+    add_link_options(-pthread "-sPTHREAD_POOL_SIZE=${CHIBI_WEB_POOL_SIZE}"
+        -sPTHREAD_POOL_SIZE_STRICT=2 -sALLOW_MEMORY_GROWTH=1)
+endif()
+
 set(CHIBI_COLLAB_URL "" CACHE STRING "Public collaboration room service HTTP(S) URL")
 
 option(CHIBI_ENABLE_PERFORMANCE_TESTS
@@ -17,6 +39,21 @@ endif()
 set(CMAKE_C_STANDARD 23)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
+# WASM executes separate multiply/add instructions. Preserve that rounding in
+# fields, particle seeding and the fluid solver on native builds too.
+if(CMAKE_C_COMPILER_ID MATCHES "Clang|GNU")
+    set_source_files_properties(
+        src/graph/compiler/field_program.c
+        src/runtime/material_ecs_fluid.c
+        src/runtime/material_flow.c
+        src/runtime/material_fluid.c
+        src/runtime/particle_emitters.c
+        src/runtime/scenes/physics.c
+        src/runtime/visual_transform.c
+        src/render/particles.c
+        PROPERTIES COMPILE_OPTIONS -ffp-contract=off)
+endif()
 
 option(CHIBI_ENABLE_SANITIZERS
        "Enable the selected sanitizer for native targets" ON)
@@ -91,7 +128,7 @@ if(NOT cute_framework_POPULATED)
 endif()
 include(cmake/apply_patch.cmake)
 set(CUTE_PATCHES "")
-foreach(name cute-installed-sdl cute-interior-border cute-custom-coverage cute-custom-shape-cache cute-imgui-render-target cute-draw-samplers cute-gles-ring-reuse cute-gles-buffer-streaming cute-zero-size-window cute-png-zlib-window cute-gles-scissor-cache cute-gpu-submit cute-eight-targets cute-gles-float-readback cute-web-no-asyncify)
+foreach(name cute-app-exists cute-installed-sdl cute-interior-border cute-custom-coverage cute-custom-shape-cache cute-imgui-render-target cute-draw-samplers cute-gles-ring-reuse cute-gles-buffer-streaming cute-zero-size-window cute-png-zlib-window cute-gles-scissor-cache cute-gpu-submit cute-eight-targets cute-gles-float-readback cute-web-no-asyncify)
     list(APPEND CUTE_PATCHES "${CMAKE_CURRENT_SOURCE_DIR}/cmake/patches/${name}.patch")
 endforeach()
 chibi_apply_patches("${cute_framework_SOURCE_DIR}" ${CUTE_PATCHES})
@@ -115,6 +152,12 @@ FetchContent_Declare(
     EXCLUDE_FROM_ALL
 )
 add_subdirectory("${cute_framework_SOURCE_DIR}" "${cute_framework_BINARY_DIR}")
+# Cute compiles the physics sources itself, bypassing their upstream CMake
+# deterministic-math settings. Apply the same rounding policy to its targets.
+if(CMAKE_C_COMPILER_ID MATCHES "Clang|GNU")
+    target_compile_options(cute-box2d PRIVATE -ffp-contract=off)
+    target_compile_options(cute-box3d PRIVATE -ffp-contract=off)
+endif()
 # Apple's SDK uses fixed-underlying enum typedef declarations rejected by
 # upstream Clang 22. Restrict compatibility to the framework's SDK consumers.
 if(APPLE AND CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
@@ -230,14 +273,17 @@ function(chibi_enable_tracy target)
     endif()
 endfunction()
 
-# Native worlds share a lazy task pool. The portable runtime stays serial and
-# does not fetch or link EnkiTS or require browser pthread support.
-if(NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+# Native and isolated threaded web builds share the same task executor.
+if(NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" OR CHIBI_WEB_THREADS)
     set(ENKITS_BUILD_C_INTERFACE ON CACHE BOOL "" FORCE)
     set(ENKITS_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
     set(ENKITS_BUILD_SHARED OFF CACHE BOOL "" FORCE)
     set(ENKITS_INSTALL OFF CACHE BOOL "" FORCE)
-    set(ENKITS_SANITIZE ${CHIBI_ENABLE_SANITIZERS} CACHE BOOL "" FORCE)
+    if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+        set(ENKITS_SANITIZE OFF CACHE BOOL "" FORCE)
+    else()
+        set(ENKITS_SANITIZE ${CHIBI_ENABLE_SANITIZERS} CACHE BOOL "" FORCE)
+    endif()
     FetchContent_Declare(enkits
         GIT_REPOSITORY https://github.com/dougbinks/enkiTS.git
         GIT_TAG 4cba61a045d8e759bd35e5d85691bf9f7271f822
@@ -458,7 +504,7 @@ target_include_directories(runtime_support PUBLIC
 )
 target_link_libraries(runtime_support PUBLIC ecs core cute)
 chibi_enable_tracy(runtime_support)
-if(NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+if(NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" OR CHIBI_WEB_THREADS)
     target_link_libraries(runtime_support PRIVATE enkiTS)
     target_compile_definitions(runtime_support PRIVATE CHIBI_HAS_ENKITS=1)
 endif()
@@ -663,6 +709,18 @@ else()
 endif()
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+    set(CHIBI_WEB_SHELL "${CMAKE_CURRENT_SOURCE_DIR}/tools/web_shell.html")
+    if(CHIBI_WEB_THREADS)
+        set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS tools/web_shell.html)
+        file(READ "${CHIBI_WEB_SHELL}" CHIBI_THREADED_SHELL)
+        # Emscripten requires its entry placeholder. Keep the generated entry
+        # inert until the isolation bootstrap can safely load the application.
+        string(REPLACE "{{{ SCRIPT }}}" "<template>{{{ SCRIPT }}}</template><script src=\"chibi-isolation.js\"></script>"
+            CHIBI_THREADED_SHELL "${CHIBI_THREADED_SHELL}")
+        set(CHIBI_WEB_SHELL "${CMAKE_CURRENT_BINARY_DIR}/web_shell_threads.html")
+        file(WRITE "${CHIBI_WEB_SHELL}" "${CHIBI_THREADED_SHELL}")
+        configure_file(tools/web_isolation.js chibi-isolation.js COPYONLY)
+    endif()
     string(JSON CHIBI_COLLAB_CONFIG SET "{}" roomUrl "\"${CHIBI_COLLAB_URL}\"")
     configure_file(tools/collab/config.js.in "${CMAKE_CURRENT_BINARY_DIR}/collab_config.js" @ONLY)
     set_target_properties(chibi PROPERTIES SUFFIX ".html")
@@ -681,9 +739,9 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
         "${CMAKE_CURRENT_SOURCE_DIR}/tools/collab/client.js"
         "${CMAKE_CURRENT_SOURCE_DIR}/tools/collab/config.js.in"
         "${CMAKE_CURRENT_BINARY_DIR}/collab_config.js"
-        "${CMAKE_CURRENT_SOURCE_DIR}/tools/web_shell.html")
+        "${CHIBI_WEB_SHELL}")
     target_link_options(chibi PRIVATE
-        "--shell-file=${CMAKE_CURRENT_SOURCE_DIR}/tools/web_shell.html"
+        "--shell-file=${CHIBI_WEB_SHELL}"
         "--pre-js=${CMAKE_CURRENT_SOURCE_DIR}/tools/web_storage.js"
         "--pre-js=${CMAKE_CURRENT_SOURCE_DIR}/tools/collab/storage.js"
         "--pre-js=${CMAKE_CURRENT_SOURCE_DIR}/tools/web_launch.js"
@@ -884,6 +942,8 @@ if(NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
         add_custom_command(TARGET check-dev POST_BUILD
             COMMAND ${CMAKE_COMMAND} -DROOT=${CMAKE_CURRENT_SOURCE_DIR}
                 -DTEST_DIR=${CMAKE_CURRENT_BINARY_DIR}/ninja-retry-test
+                -DTEST_C_COMPILER=${CMAKE_C_COMPILER}
+                -DTEST_OSX_SYSROOT=${CMAKE_OSX_SYSROOT}
                 -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/tests/dev_ninja_retry.cmake
             VERBATIM)
     endif()
@@ -921,8 +981,8 @@ add_executable(runtime_backend_smoke test/runtime_backend_smoke.c test/physics.c
 target_link_libraries(runtime_backend_smoke PRIVATE runtime_support)
 target_compile_options(runtime_backend_smoke PRIVATE -UNDEBUG)
 if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
-    target_link_options(behavior_backend_smoke PRIVATE "-sENVIRONMENT=node" "-sEXIT_RUNTIME=1" "-sALLOW_MEMORY_GROWTH=1")
-    target_link_options(runtime_backend_smoke PRIVATE "-sENVIRONMENT=node" "-sEXIT_RUNTIME=1" "-sALLOW_MEMORY_GROWTH=1")
+    target_link_options(behavior_backend_smoke PRIVATE --profiling-funcs "-sSTACK_OVERFLOW_CHECK=2" "-sENVIRONMENT=node" "-sEXIT_RUNTIME=1" "-sALLOW_MEMORY_GROWTH=1")
+    target_link_options(runtime_backend_smoke PRIVATE --profiling-funcs "-sENVIRONMENT=node" "-sEXIT_RUNTIME=1" "-sALLOW_MEMORY_GROWTH=1")
     find_program(CHIBI_NODE_EXECUTABLE node REQUIRED)
     add_custom_target(check-behavior-backend
         COMMAND "${CHIBI_NODE_EXECUTABLE}" "$<TARGET_FILE:behavior_backend_smoke>"

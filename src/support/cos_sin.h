@@ -12,8 +12,46 @@ typedef struct
     float c, s;
 } cos_sin;
 
+/* Box2D's deterministic atan2 approximation (MIT, Erin Catto). */
+#if defined(__GNUC__) && !defined(__clang__)
+__attribute__((optimize("fp-contract=off")))
+#endif
+static inline float cos_sin_atan2(float y, float x)
+{
+#if defined(__clang__)
+#pragma clang fp contract(off)
+#endif
+    if (x == 0 && y == 0) {
+        return 0;
+    }
+    float ax = x < 0 ? -x : x, ay = y < 0 ? -y : y;
+    float mx = ay > ax ? ay : ax, mn = ay < ax ? ay : ax;
+    float a = mn / mx;
+    float s = a * a, c = s * a, q = s * s;
+    float r = 0.024840285f * q + 0.18681418f;
+    float t = -0.094097948f * q - 0.33213072f;
+    r = r * s + t;
+    r = r * c + a;
+    if (ay > ax) {
+        r = 1.57079637f - r;
+    }
+    if (x < 0) {
+        r = 3.14159274f - r;
+    }
+    if (y < 0) {
+        r = -r;
+    }
+    return r;
+}
+
+#if defined(__GNUC__) && !defined(__clang__)
+__attribute__((optimize("fp-contract=off")))
+#endif
 static inline cos_sin cos_sin_compute(float radians)
 {
+#if defined(__clang__)
+#pragma clang fp contract(off)
+#endif
     const float pi = 3.14159265359f, pi2 = pi * pi;
     float x = remainderf(radians, 2 * pi);
     /* Cosine needs the angle in [-pi/2, pi/2], sine in [0, pi]. */
@@ -31,6 +69,18 @@ static inline cos_sin cos_sin_compute(float radians)
     float length = sqrtf(s * s + c * c);
     float inverse = length > 0 ? 1 / length : 0;
     return (cos_sin){ c * inverse, s * inverse };
+}
+
+/* Behavior math exposes double values, while the deterministic engine path
+ * intentionally shares the field VM's float approximation. */
+static inline double cos_sin_sine(double radians)
+{
+    return cos_sin_compute((float)radians).s;
+}
+
+static inline double cos_sin_cosine(double radians)
+{
+    return cos_sin_compute((float)radians).c;
 }
 
 #endif

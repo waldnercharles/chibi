@@ -3,9 +3,11 @@
 #include "runtime/engine.h"
 #include "runtime/generated.h"
 #include "runtime/visual_transform.h"
+#include "support/cos_sin.h"
 #include "support/xalloc.h"
 
 #include <math.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -150,9 +152,17 @@ static CF_V3 cone_direction(emitter_source *source, CF_V3 direction, float sprea
     CF_V3 up = cf_cross_v3(right, direction);
     float angle = random_unit(source) * spread * .5f;
     float azimuth = random_unit(source) * 6.2831853072f;
+    cos_sin angle_cs = cos_sin_compute(angle);
+    cos_sin azimuth_cs = cos_sin_compute(azimuth);
     return cf_add_v3(
-        cf_mul_v3_f(direction, cosf(angle)),
-        cf_mul_v3_f(cf_add_v3(cf_mul_v3_f(right, cosf(azimuth)), cf_mul_v3_f(up, sinf(azimuth))), sinf(angle))
+        cf_mul_v3_f(direction, angle_cs.c),
+        cf_mul_v3_f(
+            cf_add_v3(
+                cf_mul_v3_f(right, azimuth_cs.c),
+                cf_mul_v3_f(up, azimuth_cs.s)
+            ),
+            angle_cs.s
+        )
     );
 }
 
@@ -175,7 +185,7 @@ static game_particle particle_at(
                             .elevation = position.y,
                             .elevation_velocity = velocity.y,
                             .angle = style->velocity_align
-                                       ? atan2f(velocity.z, velocity.x)
+                                       ? cos_sin_atan2(velocity.z, velocity.x)
                                        : angle,
                             .shape = style->shape,
                             .color = style->color,
@@ -238,9 +248,10 @@ static bool emit_source(
         forward = cf_dot_v3(forward, forward) > .00001f ? cf_norm_v3(forward) : direction;
         CF_V3 direction;
         if (style->planar) {
-            float angle = atan2f(forward.z, forward.x) +
+            float angle = cos_sin_atan2(forward.z, forward.x) +
                           (random_unit(source) - .5f) * style->spread;
-            direction = (CF_V3){ cosf(angle), 0, sinf(angle) };
+            cos_sin direction_cs = cos_sin_compute(angle);
+            direction = (CF_V3){ direction_cs.c, 0, direction_cs.s };
         } else {
             direction = cone_direction(source, forward, style->spread);
         }
@@ -250,7 +261,7 @@ static bool emit_source(
             style,
             origin,
             velocity,
-            atan2f(forward.z, forward.x)
+            cos_sin_atan2(forward.z, forward.x)
         );
         if (age >= particle.lifetime) {
             continue;
@@ -306,7 +317,7 @@ static bool emit_source(
         style,
         position,
         (CF_V3){ 0 },
-        atan2f(direction.z, direction.x)
+        cos_sin_atan2(direction.z, direction.x)
     );
     head.size *= .65f;
     if (!style->fluid) {

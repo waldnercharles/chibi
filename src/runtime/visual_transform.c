@@ -1,13 +1,20 @@
 #include "runtime/visual_transform.h"
 
+#include "support/cos_sin.h"
+
 #include <math.h>
 
 CF_Quat game_visual_rotation(float heading, CF_V3 rotation)
 {
-    CF_Quat
-        yaw = cf_quat_from_axis_angle((CF_V3){ 0, 1, 0 }, -heading - rotation.y);
-    CF_Quat pitch = cf_quat_from_axis_angle((CF_V3){ 0, 0, 1 }, rotation.x);
-    CF_Quat roll = cf_quat_from_axis_angle((CF_V3){ 1, 0, 0 }, rotation.z);
+    float yaw_half = (-heading - rotation.y) * .5f;
+    float pitch_half = rotation.x * .5f;
+    float roll_half = rotation.z * .5f;
+    cos_sin yaw_trig = cos_sin_compute(yaw_half);
+    cos_sin pitch_trig = cos_sin_compute(pitch_half);
+    cos_sin roll_trig = cos_sin_compute(roll_half);
+    CF_Quat yaw = cf_quat(0, yaw_trig.s, 0, yaw_trig.c);
+    CF_Quat pitch = cf_quat(0, 0, pitch_trig.s, pitch_trig.c);
+    CF_Quat roll = cf_quat(roll_trig.s, 0, 0, roll_trig.c);
     return cf_mul_q(cf_mul_q(yaw, pitch), roll);
 }
 

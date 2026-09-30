@@ -232,9 +232,20 @@ static void contact_set_changes()
     assert(step(&f, 0) == 4);
     assert(other(&f, a) == ecs_entity_to_u64(b));
     assert(other(&f, c) == ecs_entity_to_u64(b));
+    game_physics_hashes contacts = game_physics_hash(f.live->physics);
     assert(step(&f, 0) == 0);
+    game_physics_hashes persistent = game_physics_hash(f.live->physics);
+    assert(contacts.contact_pairs == persistent.contact_pairs);
+    assert(contacts.contact_events != persistent.contact_events);
+    assert(step(&f, 1.0f / 60) == 0);
+    const game_physics_profile *profile = game_physics_last_profile(f.live->physics);
+    assert(isfinite(profile->box2d.step_ms) && profile->box2d.step_ms > 0);
+    assert(isfinite(profile->box2d.collide_ms) && profile->box2d.collide_ms >= 0);
     GAME_GameTransform_get(f.world, a)->x = -20;
     assert(step(&f, 0) == 0); /* Remove the first sorted pair; keep the second. */
+    game_physics_hashes separated = game_physics_hash(f.live->physics);
+    assert(contacts.body_state != separated.body_state);
+    assert(contacts.contact_pairs != separated.contact_pairs);
     GAME_GameTransform_get(f.world, c)->x = 40;
     assert(step(&f, 0) == 0);
     GAME_GameTransform_get(f.world, a)->x = 0;
@@ -255,6 +266,7 @@ static void contact_set_changes()
     game_physics_set_profiling(f.live->physics, false);
     assert(step(&f, 0) == 0);
     assert(!game_physics_last_profile(f.live->physics)->bodies);
+    assert(game_physics_last_profile(f.live->physics)->box2d.step_ms == 0);
     dispose(&f);
 }
 

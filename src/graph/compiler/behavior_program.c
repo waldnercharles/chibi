@@ -1,6 +1,7 @@
 #include "graph/compiler/behavior_program.h"
 
 #include "graph/compiler/behavior_expression.h"
+#include "graph/compiler/behavior_expression_wasm.h"
 #include "graph/compiler/behavior_jit.h"
 #include "graph/compiler/graph_jit_sljit.h"
 #include "graph/model/registry.h"
@@ -51,6 +52,7 @@ struct behavior_graph_program
     compiled_node *nodes; /* indexed by stable authored node ID */
     void **code;          /* one native entry per data block */
     void **expressions;   /* helper-free numeric regions, when eligible */
+    behavior_expression_wasm *wasm;
 };
 
 struct behavior_program
@@ -320,6 +322,7 @@ void behavior_program_free(behavior_program *program)
         for (int j = 0; j < acount(p->expressions); j++) {
             behavior_jit_free(p->expressions[j]);
         }
+        behavior_expression_wasm_free(p->wasm);
         afree(p->exclusions);
         afree(p->expressions);
         afree(p->nodes);
@@ -491,6 +494,9 @@ behavior_program *behavior_program_publish(behavior_asset *asset)
         if (!lower_graph(program, p)) {
             return program;
         }
+#ifdef __EMSCRIPTEN__
+        p->wasm = behavior_expression_wasm_compile(&p->ir, asset);
+#endif
         for (int j = 0; j < acount(p->source->nodes); j++) {
             node *n = p->source->nodes[j];
             bool function_entry = n->desc == &NODE_FunctionEntry &&
@@ -598,6 +604,11 @@ const graph_ir *behavior_graph_ir(const behavior_graph_program *program)
     return &program->ir;
 }
 
+int behavior_graph_program_wasm_expression_count(const behavior_graph_program *program)
+{
+    return behavior_expression_wasm_count(program->wasm);
+}
+
 static int execute_block(
     const behavior_graph_program *program,
     int block,
@@ -649,6 +660,17 @@ int behavior_program_input(
 )
 {
     int block = program->nodes[n->id].inputs[pin];
+    if (backend == BEHAVIOR_BYTECODE && program->wasm && ctx->instance &&
+        !ctx->on_data_edge && !ctx->instance->trace_enabled) {
+        const pin_spec *spec = &n->input_pins[pin];
+        *out = (pin_value){ .type = spec->type,
+                            .container = spec->container,
+                            .type_name = spec->type_name };
+        if (behavior_expression_wasm_run(program->wasm, block, ctx->instance, out)) {
+            runtime_node_inputs(runtime_store_node(ctx->runtime, n))[pin] = *out;
+            return 0;
+        }
+    }
     if (backend == BEHAVIOR_SLJIT && program->expressions[block] &&
         ctx->instance && !ctx->on_data_edge && !ctx->instance->trace_enabled) {
         const pin_spec *spec = &n->input_pins[pin];

@@ -78,6 +78,12 @@ typedef struct
 
 typedef struct
 {
+    double reactions_ms, gas_flow_ms, index_ms, density_ms, relaxation_ms;
+    double collisions_ms;
+} material_fluid_profile;
+
+typedef struct
+{
     int body;
     fluid_vec center, half_size;
     /* Positive for a circle, zero for a box. Geometry is local to body. */
@@ -152,6 +158,19 @@ void material_fluid_tick(
     int body_count,
     const fluid_obstacle *obstacles,
     int obstacle_count
+);
+/* Optional timings for the six hot fluid solver phases. */
+void material_fluid_tick_profiled(
+    material_fluid *fluid,
+    float delta,
+    float chunk_size,
+    const fluid_region *regions,
+    int region_count,
+    fluid_body *bodies,
+    int body_count,
+    const fluid_obstacle *obstacles,
+    int obstacle_count,
+    material_fluid_profile *profile
 );
 
 #endif

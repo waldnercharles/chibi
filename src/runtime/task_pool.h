@@ -6,11 +6,13 @@
 
 typedef struct game_task_pool game_task_pool;
 
-/* Runtime worlds share one pool on their controlling thread. Acquiring it
- * creates no workers. The last release joins and destroys the pool. */
+/* Runtime worlds share one pool on their controlling thread. Native workers
+ * start on demand; threaded web builds prestart their configured pool.
+ * The last release joins and destroys the pool. */
 game_task_pool *game_task_pool_acquire();
 /* Pools are shared by effective worker budget. Zero selects the default;
- * native budgets are capped to available hardware, portable builds to one. */
+ * native budgets are capped to hardware. Serial web builds use one; threaded
+ * web builds share their configured parallel budget or run explicitly serial. */
 game_task_pool *game_task_pool_acquire_workers(int workers);
 void game_task_pool_release(game_task_pool *pool);
 const game_task_system *game_task_pool_tasks(const game_task_pool *pool);

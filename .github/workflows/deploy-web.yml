@@ -1,6 +1,12 @@
 name: Deploy web app
 
 on:
+  workflow_dispatch:
+    inputs:
+      web_threads:
+        description: Include the optional threaded bundle under /threads/
+        type: boolean
+        default: false
   pull_request:
     paths:
       - .github/workflows/deploy-web.yml
@@ -9,6 +15,8 @@ on:
       - tools/web_storage.js
       - tools/web_launch.js
       - tools/web_shell.html
+      - tools/web_isolation.js
+      - tools/package_web.py
   push:
     branches: [main]
   release:
@@ -64,12 +72,23 @@ jobs:
             -DCHIBI_REFLECT_EXECUTABLE="$GITHUB_WORKSPACE/build-reflect/reflect"
           cmake --build build-web --target chibi --parallel 4
 
-      - name: Assemble Pages artifact
+      - name: Build optional threaded app
+        if: inputs.web_threads == true
         run: |
-          mkdir site
-          cp build-web/chibi.html site/index.html
-          cp build-web/chibi.js build-web/chibi.wasm build-web/chibi.data site/
-          touch site/.nojekyll
+          emcmake cmake -S . -B build-web-threads \
+            -DCMAKE_BUILD_TYPE=Release -DCHIBI_ENABLE_WARNINGS=OFF \
+            -DCHIBI_ENABLE_CCACHE=ON -DCHIBI_WEB_THREADS=ON \
+            -DCHIBI_COLLAB_URL="${{ vars.CHIBI_COLLAB_URL }}" \
+            -DCHIBI_REFLECT_EXECUTABLE="$GITHUB_WORKSPACE/build-reflect/reflect"
+          cmake --build build-web-threads --target chibi --parallel 4
+
+      - name: Assemble Pages artifact
+        env:
+          WEB_THREADS: ${{ inputs.web_threads }}
+        run: |
+          args=()
+          if [ "$WEB_THREADS" = true ]; then args+=(--threads build-web-threads); fi
+          python3 tools/package_web.py --serial build-web --output site "${args[@]}"
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3

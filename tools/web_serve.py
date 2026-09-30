@@ -126,6 +126,8 @@ def main():
                         help='directory whose project.yaml and projects/* the browser can open')
     parser.add_argument('--project', type=Path, default=Path('projects/arena2d'))
     parser.add_argument('--port', type=int, default=8099)
+    parser.add_argument('--isolated', action='store_true',
+                        help='send the isolation headers required by the threaded build')
     args = parser.parse_args()
     workspace = args.workspace.resolve()
     project = args.project.resolve()
@@ -148,11 +150,16 @@ def main():
         snapshot = Path(directory)
         for suffix in ('html', 'js', 'wasm', 'data'):
             shutil.copy2(args.build / f'chibi.{suffix}', snapshot)
+        for name in ('chibi-isolation.js', 'chibi.worker.js'):
+            if (args.build / name).is_file():
+                shutil.copy2(args.build / name, snapshot)
         bridge = (Path(__file__).with_name('web_workspace.js')).read_text()
         bridge = bridge.replace('__CHIBI_SAVE_TOKEN__', json.dumps(token))
         bridge = bridge.replace('__CHIBI_PROJECT__', json.dumps(start))
         html = snapshot / 'chibi.html'
-        html.write_text(html.read_text().replace('<script async', f'<script>{bridge}</script><script async'))
+        text = html.read_text()
+        entry = '<script src="chibi-isolation.js"' if (snapshot / 'chibi-isolation.js').is_file() else '<script async'
+        html.write_text(text.replace(entry, f'<script>{bridge}</script>{entry}'))
 
         class Handler(SimpleHTTPRequestHandler):
             def __init__(self, *a, **kw):
@@ -168,6 +175,9 @@ def main():
 
             def end_headers(self):
                 self.send_header('Cache-Control', 'no-store')
+                if args.isolated:
+                    self.send_header('Cross-Origin-Opener-Policy', 'same-origin')
+                    self.send_header('Cross-Origin-Embedder-Policy', 'require-corp')
                 super().end_headers()
 
             def send_json(self, value, version):

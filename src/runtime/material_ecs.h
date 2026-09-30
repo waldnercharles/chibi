@@ -82,3 +82,12 @@ void material_ecs_tick_fluid(
     const fluid_obstacle *obstacles,
     int obstacle_count
 );
+void material_ecs_tick_fluid_profiled(
+    game_materials *materials,
+    float delta,
+    fluid_body *bodies,
+    int body_count,
+    const fluid_obstacle *obstacles,
+    int obstacle_count,
+    material_fluid_profile *profile
+);

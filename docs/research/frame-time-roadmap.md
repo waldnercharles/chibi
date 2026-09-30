@@ -155,30 +155,44 @@ frame log. WASM Firefight per-frame times, median of three runs:
 | Cute without ASYNCIFY, at -O3 | 6.3 ms | 9.5 ms | 18.8 ms |
 
 Slices trade some median time for the tail. Native is 4.2 ms p50 and 6.4 ms
-p99 on the same run; physics (Box2D in Cute) is most of the remaining gap.
+p99 on the same run. Later detailed attribution identifies material-fluid
+relaxation as the larger remaining WASM cost in Firefight; Box2D itself is small.
 
 Measured and not kept: app-wide `-msimd128` and `-flto` changed no percentile
 beyond run-to-run noise. `INITIAL_MEMORY` would not help: the heap grows eight
 times in the first 0.6 s of loading, each under 1.3 ms, and never during play.
 
-Open work, in rough priority:
+Checklist status, September 30. The
+[implementation report](frame-time-implementation.md) records the final checks,
+matched measurements, rejected experiment and remaining optimization candidates.
+The older option catalog below describes future experiments rather than an
+implementation checklist.
 
-- [ ] Find the remaining native/WASM divergence. Firefight's world hash is
-  deterministic on each platform but differs between them.
-- [ ] Use the deterministic sine and cosine (`support/cos_sin.h`) in behavior
-  math, so behavior results match across platforms as fields now do.
-- [ ] Speed up the field VM. Terrain tiles bake through a scalar interpreter;
-  a vectorized or compiled row kernel would shorten each prefetch slice.
-- [ ] Reduce WASM physics cost (6.3 ms against 4.1 native in Firefight).
-  Profile Box2D in `make web-profile` before choosing a change.
-- [ ] Decide the catch-up cap from browser evidence. `ENGINE_STEPS_MAX` (8)
-  lets one hitch run up to eight fixed steps in the next frame. Capping by
-  time instead would slow the game rather than hitch again; measure real
-  pages first, since headless replay runs one step per frame.
-- [ ] Browser threading (T5) and runtime Wasm codegen for behaviors (C8).
-- [ ] Fix the collaboration checkpoint test, which segfaults in
-  `workspace_checkpoint_restore` in `test/editor_checkpoint.c`.
-- [ ] Restore CI, which has not run since September 25.
+- [x] Find the remaining native/WASM divergence. Complete Firefight responses
+  match after 1,800 steps; an independent HRC scene also matches. Deterministic
+  math and upstream physics compilation policies remove the observed drift.
+- [x] Use deterministic sine and cosine in behavior math, vector angles,
+  bytecode, native JIT and generated C.
+- [x] Speed up the field VM with a contiguous row kernel. The matched native
+  bake is 3.95 times faster with identical output hashes.
+- [x] Attribute and reduce WASM physics work. The field kernel reduces terrain
+  preparation inside physics synchronization on both platforms. Detailed phase
+  timings identify material relaxation as the next target. The pressure-neighbor
+  cache was rejected because it had no repeatable benefit. Whole-frame tail
+  improvement remains unproven under varying machine load.
+- [x] Decide the catch-up cap from real browser evidence. Retain
+  `ENGINE_STEPS_MAX` at eight; capture correlated intervals, fixed steps and
+  dropped time, including scene resets. Startup/reset preparation is the next
+  place to smooth bursts.
+- [x] Add optional browser threading and initial runtime Wasm behavior codegen.
+  The scoped service-worker bootstrap supports static hosts without isolation
+  headers. Helper-free numeric regions compile asynchronously; wider function
+  lowering and pthread module handoff remain future C8 work.
+- [x] Fix headless collaboration checkpoint restoration by guarding app-dependent
+  Cute and renderer work. The full native suite passes.
+- [ ] Restore hosted CI. Local checks pass, but repository Actions are disabled
+  and GitHub reports failed payments or a spending limit. An account owner must
+  resolve hosted execution; no Actions or billing setting was changed.
 
 ## Recommended order
 
@@ -510,6 +524,11 @@ source maps and debugger behavior. AOT-to-Wasm exports are a separate extension
 to the export contract; ordinary browser-authored behavior remains bytecode.
 
 **C8. Generate WebAssembly for behavior graphs at runtime in the browser.**
+September 30 status: an initial helper-free numeric-region tier is implemented
+with asynchronous compilation and bytecode fallback. Full function/helper
+lowering, waits and pthread module handoff remain extensions. See the
+[implementation and input-kernel measurements](frame-time-implementation.md).
+
 The browser cannot execute SLJIT output, so web behavior runs as bytecode. The
 MovementSystem benchmark measures native SLJIT at 18 ns per entity-frame, typed
 bytecode in WASM at 70 ns and generic bytecode at about 750 ns. The browser's
@@ -569,7 +588,11 @@ Using an older simulation snapshot may add latency and memory; disclose that
 tradeoff. Asynchronous GPU execution and extra CPU threads are different things.
 
 **T5. Add a separate browser threading deployment option.**
-Browser behavior/physics currently run serially. Evaluate pthread workers and
+September 30 status: the optional prestarted-pthread bundle and static-host
+isolation bootstrap are implemented and validated locally. Live GitHub Pages
+deployment remains untested. The serial build is the default.
+
+Default browser behavior/physics run serially. Evaluate pthread workers and
 prestarted pools, with the required SharedArrayBuffer isolation headers and a
 single-thread deployment alternative. Check whether our hosting can supply the
 headers before planning performance around them. Keep browser UI/main-thread

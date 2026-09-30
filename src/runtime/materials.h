@@ -20,6 +20,12 @@ typedef struct
     material_stream_state streaming;
     uint64_t hash;
 } game_material_state;
+typedef struct
+{
+    uint64_t hash, after_flow, after_chunks, after_particles, after_masks;
+    uint64_t particle_position, particle_velocity, particle_parameters,
+        particle_appearance;
+} game_material_hash_parts;
 
 game_materials *game_materials_new(
     ecs_world *world,
@@ -56,9 +62,20 @@ void game_materials_tick(
     const fluid_obstacle *obstacles,
     int obstacle_count
 );
+void game_materials_tick_profiled(
+    game_materials *materials,
+    float delta,
+    fluid_body *bodies,
+    int body_count,
+    const fluid_obstacle *obstacles,
+    int obstacle_count,
+    material_fluid_profile *profile
+);
 const material_fluid *game_materials_fluid(const game_materials *materials);
 /* On-demand inspection includes simulation state outside the ECS columns. */
 game_material_state game_materials_inspect(const game_materials *materials);
+/* Expensive cross-platform diagnostic hashes; compute only when requested. */
+game_material_hash_parts game_materials_hash_parts(const game_materials *materials);
 /* Borrowed crater debris; empty without a debris limit. */
 const material_chunk *game_materials_chunks(const game_materials *materials, int *count);
 /* Used by optional particle emitters. False at the retained population limit. */

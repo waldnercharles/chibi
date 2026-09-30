@@ -6,11 +6,14 @@
 #include "runtime/material_field.h"
 #include "runtime/material_stream.h"
 #include "runtime/material_terrain.h"
+#include "runtime/tasks.h"
 #include "support/cos_sin.h"
+#include "support/exponential.h"
 #include "support/text_file.h"
 
 #include <assert.h>
 #include <math.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -64,6 +67,24 @@ static uint64_t hash(const float *values, int count)
     }
     return result;
 }
+typedef struct
+{
+    int enqueues, finishes;
+} inline_executor;
+static void *inline_enqueue(game_task_range *run, int count, int minimum, void *context, void *user)
+{
+    inline_executor *executor = user;
+    assert(count > 0 && minimum > 0);
+    executor->enqueues++;
+    run(0, count, 0, context);
+    return NULL;
+}
+static void inline_finish(void *task, void *user)
+{
+    inline_executor *executor = user;
+    assert(!task);
+    executor->finishes++;
+}
 static void primitives()
 {
     const char *names[] = { "Field Circle", "Field Box", "Field Capsule" };
@@ -90,6 +111,26 @@ static void primitives()
         assert(sample(p, 0, 0) == -10);
         assert(sample(p, 40, 0) > 0);
         assert(sample(p, 0, 40) > 0);
+        field_grid grid = { 9, 7, 4, .25f, -.5f };
+        float baked[9 * 7];
+        char error[256];
+        field_context ctx = { .seed = 16 };
+        assert(field_program_bake(p, ctx, grid, baked, NULL, error, sizeof error));
+        for (int y = 0; y < grid.height; y++) {
+            for (int x = 0; x < grid.width; x++) {
+                float scalar_value;
+                assert(field_program_sample(
+                    p,
+                    ctx,
+                    grid.center_x + (x + .5f - grid.width * .5f) * grid.cell_size,
+                    grid.center_y + (y + .5f - grid.height * .5f) * grid.cell_size,
+                    &scalar_value,
+                    error,
+                    sizeof error
+                ));
+                assert(scalar_value == baked[y * grid.width + x]);
+            }
+        }
         field_program_free(p);
         behavior_asset_free(a);
     }
@@ -198,6 +239,32 @@ static void noise_and_composition()
     assert(field_program_bake(p, ctx, grid, values, NULL, error, sizeof error));
     assert(field_program_bake(p, ctx, grid, again, NULL, error, sizeof error));
     assert(hash(values, 256) == hash(again, 256));
+    float partial[16 * 16];
+    for (int i = 0; i < 16 * 16; i++) {
+        partial[i] = -1;
+    }
+    assert(field_program_bake_rows(p, ctx, grid, 4, 5, partial, NULL, error, sizeof error));
+    assert(!memcmp(partial + 4 * 16, values + 4 * 16, 5 * 16 * sizeof(float)));
+    for (int y = 0; y < 16; y++) {
+        if (y >= 4 && y < 9) {
+            continue;
+        }
+        for (int x = 0; x < 16; x++) {
+            assert(partial[y * 16 + x] == -1);
+        }
+    }
+    field_grid wider = { 16, 32, .125f };
+    float serial[16 * 32], submitted[16 * 32];
+    inline_executor executor = { 0 };
+    game_task_system tasks = { 2, &executor, inline_enqueue, inline_finish };
+    assert(
+        field_program_bake_rows(p, ctx, wider, 0, wider.height, serial, NULL, error, sizeof error)
+    );
+    assert(
+        field_program_bake_rows(p, ctx, wider, 0, wider.height, submitted, &tasks, error, sizeof error)
+    );
+    assert(executor.enqueues == 1 && executor.finishes == 0);
+    assert(!memcmp(serial, submitted, sizeof serial));
     for (int y = 0; y < 16; y++) {
         for (int x = 0; x < 16; x++) {
             float scalar_value;
@@ -234,6 +301,38 @@ static void noise_and_composition()
         sample(p, -90, 0) < -60 && sample(p, 60, 0) < -50 &&
         sample(p, 0, 0) < -15 && sample(p, 0, 150) > 50
     );
+    field_program_free(p);
+    behavior_asset_free(a);
+}
+static void repeated_inputs()
+{
+    behavior_asset *a = field("repeated inputs");
+    node *x = add(a, "Field X"), *sum = add(a, "Field Add"),
+         *output = add(a, "Field Output");
+    wire(a, x, sum, 0);
+    wire(a, x, sum, 1);
+    wire(a, sum, output, 0);
+    field_program *p = compile(a);
+    field_grid grid = { 17, 9, .25f, .125f, -.25f };
+    float baked[17 * 9];
+    char error[256];
+    field_context ctx = { .seed = 16 };
+    assert(field_program_bake(p, ctx, grid, baked, NULL, error, sizeof error));
+    for (int y = 0; y < grid.height; y++) {
+        for (int x = 0; x < grid.width; x++) {
+            float sampled;
+            assert(field_program_sample(
+                p,
+                ctx,
+                grid.center_x + (x + .5f - grid.width * .5f) * grid.cell_size,
+                grid.center_y + (y + .5f - grid.height * .5f) * grid.cell_size,
+                &sampled,
+                error,
+                sizeof error
+            ));
+            assert(sampled == baked[y * grid.width + x]);
+        }
+    }
     field_program_free(p);
     behavior_asset_free(a);
 }
@@ -577,6 +676,23 @@ static void streaming_restore()
  * 0.002 of libm across many turns, and exact at zero. */
 static void cos_sin_accuracy()
 {
+    static const struct
+    {
+        float angle;
+        uint32_t cosine, sine;
+    } golden[] = { { 0.0f, 0x3f800000, 0x00000000 },
+                   { 0.1f, 0x3f7eb030, 0x3dcf0f38 },
+                   { 0.5f, 0x3f60943c, 0x3ef5c425 },
+                   { 1.57079632679f, 0x00000000, 0x3f800000 },
+                   { -2.5f, 0xbf4d0e59, 0xbf19420f },
+                   { 9.0f, 0xbf692558, 0x3ed3762b } };
+    for (int i = 0; i < (int)(sizeof golden / sizeof golden[0]); i++) {
+        cos_sin pair = cos_sin_compute(golden[i].angle);
+        uint32_t cosine, sine;
+        memcpy(&cosine, &pair.c, sizeof cosine);
+        memcpy(&sine, &pair.s, sizeof sine);
+        assert(cosine == golden[i].cosine && sine == golden[i].sine);
+    }
     float worst = 0;
     for (float angle = -1000; angle < 1000; angle += 0.37f) {
         cos_sin r = cos_sin_compute(angle);
@@ -586,18 +702,92 @@ static void cos_sin_accuracy()
     assert(worst < 0.002f && zero.c == 1 && zero.s == 0);
 }
 
+static void atan2_accuracy()
+{
+    static const struct
+    {
+        float y, x;
+        uint32_t angle;
+    } golden[] = {
+        { 0, 0, 0x00000000 },           { 0, 1, 0x00000000 },
+        { 1, 0, 0x3fc90fdb },           { 1, 1, 0x3f4911aa },
+        { 1, -1, 0x4016cb70 },          { -1, -1, 0xc016cb70 },
+        { -1, 1, 0xbf4911aa },          { -0.123f, -0.994f, 0xc0412eae },
+        { -0.123f, 0.994f, 0xbdfc2590 }
+    };
+    for (int i = 0; i < (int)(sizeof golden / sizeof golden[0]); i++) {
+        float angle = cos_sin_atan2(golden[i].y, golden[i].x);
+        uint32_t bits;
+        memcpy(&bits, &angle, sizeof bits);
+        assert(bits == golden[i].angle);
+    }
+    float worst = 0;
+    for (float y = -10; y <= 10; y += 0.137f) {
+        for (float x = -10; x <= 10; x += 0.119f) {
+            if (x == 0 && y == 0) {
+                continue;
+            }
+            worst = fmaxf(worst, fabsf(cos_sin_atan2(y, x) - atan2f(y, x)));
+        }
+    }
+    assert(worst < 0.0001f);
+}
+
+static void exponential_accuracy()
+{
+    static const struct
+    {
+        float input;
+        uint32_t result;
+    } golden[] = { { 0, 0x3f800000 },
+                   { -1, 0x3ebc5ab2 },
+                   { 1, 0x402df854 },
+                   { -0.5f, 0x3f1b4598 },
+                   { 0.5f, 0x3fd3094c },
+                   { -2, 0x3e0a9555 },
+                   { 2, 0x40ec7326 },
+                   { -0.08219975233078003f, 0x3f6bcc6c },
+                   { -10, 0x383e6bce },
+                   { 10, 0x46ac14ee },
+                   { -0x1.9fe36ap+6f, 0x00000000 },
+                   { -0x1.9fe368p+6f, 0x00000001 },
+                   { -0x1.9fe366p+6f, 0x00000001 },
+                   { 0x1.62e42cp+6f, 0x7f7fff04 },
+                   { 0x1.62e42ep+6f, 0x7f7fff84 },
+                   { 0x1.62e430p+6f, 0x7f800000 } };
+    for (int i = 0; i < (int)(sizeof golden / sizeof golden[0]); i++) {
+        float result = deterministic_expf(golden[i].input);
+        uint32_t bits;
+        memcpy(&bits, &result, sizeof bits);
+        assert(bits == golden[i].result);
+    }
+    assert(deterministic_expf(-INFINITY) == 0);
+    assert(isinf(deterministic_expf(INFINITY)));
+    assert(isnan(deterministic_expf(NAN)));
+    assert(deterministic_expf(-104) == 0);
+    assert(isinf(deterministic_expf(89)));
+    for (float x = -80; x <= 88; x += 0.125f) {
+        double expected = exp((double)x);
+        double actual = deterministic_expf(x);
+        assert(fabs(actual - expected) <= expected * 1e-6);
+    }
+}
+
 void test_fields()
 {
     cos_sin_accuracy();
+    atan2_accuracy();
+    exponential_accuracy();
     streaming_restore();
     primitives();
     parameters_and_errors();
     noise_and_composition();
+    repeated_inputs();
     functions();
     multiple_results();
     chunks();
     library_hot_apply();
-    puts("PASS: pure field compilation, cosine and sine, parameters, deterministic noise, composition, connectivity and chunks");
+    puts("PASS: pure field compilation, deterministic trigonometry, parameters, noise, composition, connectivity and chunks");
 }
 int bench_fields()
 {

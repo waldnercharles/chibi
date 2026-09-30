@@ -1,0 +1,44 @@
+diff --git a/include/cute_app.h b/include/cute_app.h
+index ead3b79..fb3a280 100644
+--- a/include/cute_app.h
++++ b/include/cute_app.h
+@@ -260,6 +260,15 @@ CF_API CF_Result CF_CALL cf_make_app(const char* window_title, CF_DisplayID disp
+  */
+ CF_API void CF_CALL cf_destroy_app(void);
+ 
++/**
++ * @function cf_app_exists
++ * @category app
++ * @brief    Returns whether `cf_make_app` created an app that has not been destroyed.
++ * @return   Returns true while an app instance exists.
++ * @related  cf_make_app cf_destroy_app cf_app_is_running
++ */
++CF_API bool CF_CALL cf_app_exists(void);
++
+ /**
+  * @function cf_app_is_running
+  * @category app
+@@ -960,6 +969,7 @@ CF_INLINE CF_DisplayOrientation display_orientation(CF_DisplayID display_id = cf
+ CF_INLINE CF_Result make_app(const char* window_title, CF_DisplayID display_id, int x, int y, int w, int h, int options = 0, const char* argv0 = NULL) { return cf_make_app(window_title, display_id, x, y, w, h, options, argv0); }
+ CF_INLINE void destroy_app() { cf_destroy_app(); }
+ CF_INLINE bool app_is_running() { return cf_app_is_running(); }
++CF_INLINE bool app_exists() { return cf_app_exists(); }
+ CF_INLINE void app_signal_shutdown() { cf_app_signal_shutdown(); }
+ CF_INLINE void app_update(CF_OnUpdateFn* on_update = NULL) { cf_app_update(on_update); }
+ CF_INLINE int app_draw_onto_screen(bool clear = false) { return cf_app_draw_onto_screen(clear); }
+diff --git a/src/cute_app.cpp b/src/cute_app.cpp
+index fe7a078..966077e 100644
+--- a/src/cute_app.cpp
++++ b/src/cute_app.cpp
+@@ -443,6 +443,11 @@ void cf_destroy_app()
+ 	cf_fs_destroy();
+ }
+ 
++bool cf_app_exists()
++{
++	return app != NULL;
++}
++
+ bool cf_app_is_running()
+ {
+ 	return app->running;

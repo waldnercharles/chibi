@@ -4,12 +4,16 @@
 #include "render/particles.h"
 #include "runtime/material_flow.h"
 #include "support/array.h"
+#include "support/cos_sin.h"
+#include "support/exponential.h"
 #include "support/xalloc.h"
 
 #include <assert.h>
 #include <math.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 typedef struct
 {
@@ -338,6 +342,14 @@ static unsigned bucket(const material_fluid *fluid, int x, int y)
     return ((unsigned)x * 73856093u ^ (unsigned)y * 19349663u) & (fluid->buckets - 1);
 }
 
+static double profile_clock_ms()
+{
+    struct timespec now;
+    int result = clock_gettime(CLOCK_MONOTONIC, &now);
+    assert(!result);
+    return now.tv_sec * 1000.0 + now.tv_nsec * 1e-6;
+}
+
 static void index_particles(material_fluid *fluid)
 {
     for (int n = 0; n < acount(fluid->used); n++) {
@@ -529,8 +541,9 @@ bool material_fluid_blocked(
         }
         float c = 1, s = 0;
         if (body->angle != 0) {
-            c = cosf(body->angle);
-            s = sinf(body->angle);
+            cos_sin rotation = cos_sin_compute(body->angle);
+            c = rotation.c;
+            s = rotation.s;
         }
         fluid_vec from = sub(rotate(sub(a, body->position), c, -s), o.center);
         fluid_vec to = sub(rotate(sub(b, body->position), c, -s), o.center);
@@ -675,7 +688,7 @@ static void react(
             }
         }
         if (!p->burning && p->heat > 0) {
-            float cooling = expf(-r.cooling * dt);
+            float cooling = deterministic_expf(-r.cooling * dt);
             p->heat *= cooling;
             p->emission *= cooling;
         }
@@ -842,7 +855,8 @@ static void collide(
 )
 {
     fluid_particle *p = &fluid->particles[particle_index];
-    float c = cosf(body->angle), s = sinf(body->angle);
+    cos_sin rotation = cos_sin_compute(body->angle);
+    float c = rotation.c, s = rotation.s;
     fluid_vec original = p->position;
     fluid_vec local = sub(rotate(sub(original, body->position), c, -s), obstacle.center);
     fluid_vec normal;
@@ -873,19 +887,25 @@ static void collide(
                                        : body->position;
             fluid_vec p1 = body->swept ? body_position_at(*body, sweep_end)
                                        : body->position;
+            cos_sin rotation_a = cos_sin_compute(a), rotation_b = cos_sin_compute(b);
             fluid_vec from = sub(
-                rotate(sub(particle_start, p0), cosf(a), -sinf(a)),
+                rotate(sub(particle_start, p0), rotation_a.c, -rotation_a.s),
                 obstacle.center
             );
             fluid_vec to = sub(
-                rotate(sub(p->position, p1), cosf(b), -sinf(b)),
+                rotate(sub(p->position, p1), rotation_b.c, -rotation_b.s),
                 obstacle.center
             );
             float fraction;
             fluid_vec local_normal;
             if (segment_contact(from, to, obstacle, p->radius, &fraction, &local_normal)) {
                 float angle = lerp_angle(a, b, fraction);
-                normal = rotate(local_normal, cosf(angle), sinf(angle));
+                cos_sin contact_rotation = cos_sin_compute(angle);
+                normal = rotate(
+                    local_normal,
+                    contact_rotation.c,
+                    contact_rotation.s
+                );
                 fluid_vec center = add(particle_start, scale(particle_delta, fraction));
                 fluid_vec point = sub(center, scale(normal, p->radius));
                 fluid_body at_hit = *body;
@@ -958,7 +978,8 @@ static void collide_obstacles(
     for (int i = 0; i < count; i++) {
         fluid_obstacle obstacle = obstacles[i];
         fluid_body *body = &bodies[obstacle.body];
-        float c = cosf(body->angle), s = sinf(body->angle);
+        cos_sin rotation = cos_sin_compute(body->angle);
+        float c = rotation.c, s = rotation.s;
         fluid_vec center = add(body->position, rotate(obstacle.center, c, s));
         float ex = obstacle.radius > 0 ? obstacle.radius
                                        : fabsf(c) * obstacle.half_size.x +
@@ -1026,7 +1047,7 @@ static void collide_obstacles(
     }
 }
 
-void material_fluid_tick(
+void material_fluid_tick_profiled(
     material_fluid *fluid,
     float delta,
     float chunk_size,
@@ -1035,9 +1056,13 @@ void material_fluid_tick(
     fluid_body *bodies,
     int body_count,
     const fluid_obstacle *obstacles,
-    int obstacle_count
+    int obstacle_count,
+    material_fluid_profile *profile
 )
 {
+    if (profile) {
+        *profile = (material_fluid_profile){ 0 };
+    }
     assert(delta > 0 && delta <= 1.f / 60 + 1e-6f && isfinite(chunk_size) && chunk_size > 0);
     clear_contacts(fluid);
     for (int i = 0; i < body_count; i++) {
@@ -1071,17 +1096,26 @@ void material_fluid_tick(
                 p->style.drag_exponent,
                 age
             );
-            float damping = expf(-drag * delta);
+            float damping = deterministic_expf(-drag * delta);
             p->velocity.x *= damping;
             p->velocity.y *= damping;
         }
         apush(fluid->active, i++);
     }
+    double phase_start = profile ? profile_clock_ms() : 0;
     index_particles(fluid);
+    if (profile) {
+        profile->index_ms += profile_clock_ms() - phase_start;
+    }
+    phase_start = profile ? profile_clock_ms() : 0;
     CHIBI_TRACE_ZONE_BEGIN(reaction_zone, "Fluid reactions");
     react(fluid, delta, bodies, body_count, obstacles, obstacle_count);
     CHIBI_TRACE_ZONE_END(reaction_zone);
+    if (profile) {
+        profile->reactions_ms = profile_clock_ms() - phase_start;
+    }
     if (fluid->flow_settings.cell_size > 0) {
+        phase_start = profile ? profile_clock_ms() : 0;
         CHIBI_TRACE_ZONE_BEGIN(flow_zone, "Gas flow");
         material_flow_step(
             fluid->flow,
@@ -1095,6 +1129,9 @@ void material_fluid_tick(
             obstacle_count
         );
         CHIBI_TRACE_ZONE_END(flow_zone);
+        if (profile) {
+            profile->gas_flow_ms = profile_clock_ms() - phase_start;
+        }
     }
     fluid->delta = delta * .5f;
     for (int step = 0; step < 2; step++) {
@@ -1105,14 +1142,26 @@ void material_fluid_tick(
             p->position = add(p->position, scale(p->velocity, fluid->delta));
         }
         CHIBI_TRACE_ZONE_BEGIN(index_zone, "Fluid index");
+        phase_start = profile ? profile_clock_ms() : 0;
         index_particles(fluid);
         CHIBI_TRACE_ZONE_END(index_zone);
+        if (profile) {
+            profile->index_ms += profile_clock_ms() - phase_start;
+        }
+        phase_start = profile ? profile_clock_ms() : 0;
         CHIBI_TRACE_ZONE_BEGIN(density_zone, "Fluid density");
         run(fluid, densities, fluid, 256);
         CHIBI_TRACE_ZONE_END(density_zone);
+        if (profile) {
+            profile->density_ms += profile_clock_ms() - phase_start;
+        }
+        phase_start = profile ? profile_clock_ms() : 0;
         CHIBI_TRACE_ZONE_BEGIN(relax_zone, "Fluid relaxation");
         run(fluid, relax, fluid, 256);
         CHIBI_TRACE_ZONE_END(relax_zone);
+        if (profile) {
+            profile->relaxation_ms += profile_clock_ms() - phase_start;
+        }
         for (int n = 0; n < acount(fluid->active); n++) {
             int i = fluid->active[n];
             fluid_particle *p = &fluid->particles[i];
@@ -1122,8 +1171,38 @@ void material_fluid_tick(
                 1 / fluid->delta
             );
         }
+        phase_start = profile ? profile_clock_ms() : 0;
         CHIBI_TRACE_ZONE_BEGIN(collision_zone, "Fluid collisions");
         collide_obstacles(fluid, bodies, obstacles, obstacle_count, step * .5f, (step + 1) * .5f);
         CHIBI_TRACE_ZONE_END(collision_zone);
+        if (profile) {
+            profile->collisions_ms += profile_clock_ms() - phase_start;
+        }
     }
+}
+
+void material_fluid_tick(
+    material_fluid *fluid,
+    float delta,
+    float chunk_size,
+    const fluid_region *regions,
+    int region_count,
+    fluid_body *bodies,
+    int body_count,
+    const fluid_obstacle *obstacles,
+    int obstacle_count
+)
+{
+    material_fluid_tick_profiled(
+        fluid,
+        delta,
+        chunk_size,
+        regions,
+        region_count,
+        bodies,
+        body_count,
+        obstacles,
+        obstacle_count,
+        NULL
+    );
 }

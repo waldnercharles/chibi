@@ -811,14 +811,12 @@ try {
     artifact_path: undefined,
     recording_path: undefined,
     id: undefined,
-    recording_id: undefined,
   };
   const secondRecordingWithoutPath = secondRecording && {
     ...secondRecording,
     artifact_path: undefined,
     recording_path: undefined,
     id: undefined,
-    recording_id: undefined,
   };
   const replayInlineRequest = {
     jsonrpc: "2.0",
@@ -856,7 +854,7 @@ try {
   }
   const replayPathResponse = JSON.parse(replayPathProcess.stdout.trim().split("\n").filter(Boolean).at(-1));
   const replayPathResult = toolPayload(replayPathResponse);
-  const recordingId = firstRecord.result?.recording_id || firstRecording?.recording_id || firstRecording?.id;
+  const recordingId = firstRecording?.id;
   const recordingResourceRequest = {
     jsonrpc: "2.0",
     id: 16,
@@ -953,7 +951,7 @@ try {
       replayPathResponse.result?.isError === true || replayPathResult.ok !== true ||
       replayPathResult.result?.deterministic !== true ||
       recordingResourceResponse.error || recordingResource.ok !== true ||
-      (recordingResourceValue?.recording_id || recordingResourceValue?.id) !== recordingId ||
+      recordingResourceValue?.id !== recordingId ||
       divergenceResponse.result?.isError === true || divergenceResult.ok !== true ||
       firstDivergenceFrame !== 1 ||
       !invalidArguments(scenarioById.get(10)) ||

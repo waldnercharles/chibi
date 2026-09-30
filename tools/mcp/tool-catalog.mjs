@@ -19,7 +19,7 @@ const entries = [
     title: "Preview a procedural field",
     description: "Bake a pure scalar field with a seed, cell size and parameter overrides. Return a deterministic CPU PNG, scalar range and hash without a graphics context.",
     intentTerms: ["preview", "field"], candidates: ["previewField"], legacyName: "preview_field",
-    nextSteps: ["Use buildField to edit the field, then preview it again."],
+    nextSteps: ["Call buildGraph to edit the field graph, then preview it again."],
     annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false },
   },
   {

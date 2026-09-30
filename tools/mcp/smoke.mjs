@@ -144,6 +144,9 @@ if (responses.length !== expectedResponses) {
   throw new Error(`expected ${expectedResponses} responses, got ${responses.length}`);
 }
 const responseById = new Map(responses.map((response) => [response.id, response]));
+// Arguments a model can correct come back as a tool error, not a protocol error.
+const invalidArguments = (response) => response?.result?.isError === true &&
+  response.result.structuredContent?.error?.code === "invalid_arguments";
 
 function toolPayload(response) {
   const structured = response?.result?.structuredContent;
@@ -350,13 +353,13 @@ if (responseById.get(11)?.error?.code !== -32602) {
 if (responseById.get(13)?.error?.code !== -32002) {
   throw new Error("missing resources return the expected JSON-RPC error");
 }
-if (responseById.get(22)?.error?.code !== -32602 ||
-    responseById.get(23)?.error?.code !== -32602 ||
+if (!invalidArguments(responseById.get(22)) ||
+    !invalidArguments(responseById.get(23)) ||
     responseById.get(24)?.error?.code !== -32602 ||
     responseById.get(25)?.error?.code !== -32002 ||
     responseById.get(26)?.error?.code !== -32602 ||
-    responseById.get(32)?.error?.code !== -32602 ||
-    responseById.get(33)?.error?.code !== -32602) {
+    !invalidArguments(responseById.get(32)) ||
+    !invalidArguments(responseById.get(33))) {
   throw new Error("MCP protocol boundary errors are not mapped correctly");
 }
 
@@ -911,7 +914,7 @@ try {
       typeof firstScenario.result?.live_entities !== "number" ||
       !firstScenario.result?.timing ||
       firstScenario.result?.world_hash !== secondScenario.result?.world_hash ||
-      scenarioById.get(4)?.error?.code !== -32602 ||
+      !invalidArguments(scenarioById.get(4)) ||
       firstSnapshot.ok !== true || secondSnapshot.ok !== true ||
       firstSnapshot.result?.kind !== "prototype" ||
       firstSnapshot.result?.name !== "Editor2DPreview" ||
@@ -934,7 +937,7 @@ try {
         component.name.localeCompare(components[index - 1].name) < 0) ||
       fields.some((field, index) => index > 0 &&
         field.name.localeCompare(fields[index - 1].name) < 0) ||
-      scenarioById.get(7)?.error?.code !== -32602 ||
+      !invalidArguments(scenarioById.get(7)) ||
       firstRecord.ok !== true || secondRecord.ok !== true ||
       firstRecordFrames !== 3 || secondRecordFrames !== 3 ||
       firstRecord.result?.recording !== undefined ||
@@ -952,9 +955,9 @@ try {
       (recordingResourceValue?.recording_id || recordingResourceValue?.id) !== recordingId ||
       divergenceResponse.result?.isError === true || divergenceResult.ok !== true ||
       firstDivergenceFrame !== 1 ||
-      scenarioById.get(10)?.error?.code !== -32602 ||
+      !invalidArguments(scenarioById.get(10)) ||
       scenarioById.get(11)?.result?.isError !== true ||
-      scenarioById.get(12)?.error?.code !== -32602) {
+      !invalidArguments(scenarioById.get(12))) {
     throw new Error("deterministic scenario smoke checks failed");
   }
 } finally {

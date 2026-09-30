@@ -1057,6 +1057,24 @@ function toolDefinitions() {
   });
 }
 
+function invalidArguments(message) {
+  return protocolError(-32602, message);
+}
+
+function matchesType(value, type) {
+  switch (type) {
+    case "object": return isObject(value);
+    case "array": return Array.isArray(value);
+    case "string": return typeof value === "string";
+    case "boolean": return typeof value === "boolean";
+    case "number": return typeof value === "number" && Number.isFinite(value);
+    case "integer": return Number.isSafeInteger(value);
+    case "null": return value === null;
+  }
+  throw new Error(`unsupported schema type: ${type}`);
+}
+
+// The JSON Schema subset tool schemas use; keywords apply to values of their type.
 function validateSchema(value, schema, path) {
   if (schema.oneOf) {
     const matches = schema.oneOf.filter((candidate) => {
@@ -1068,95 +1086,99 @@ function validateSchema(value, schema, path) {
       }
     }).length;
     if (matches !== 1) {
-      throw protocolError(-32602, `${path} must match exactly one supported form`);
+      throw invalidArguments(`${path} must match exactly one supported form`);
     }
   }
-  if (schema.type === "object") {
-    if (!isObject(value)) {
-      throw protocolError(-32602, `${path} must be an object`);
+  if (schema.type !== undefined) {
+    const types = [schema.type].flat();
+    if (!types.some((type) => matchesType(value, type))) {
+      throw invalidArguments(`${path} must be of type ${types.join(" or ")}`);
     }
+  }
+  if (isObject(value)) {
     for (const name of schema.required || []) {
       if (!Object.hasOwn(value, name)) {
-        throw protocolError(-32602, `${path}.${name} is required`);
+        throw invalidArguments(`${path}.${name} is required`);
       }
     }
-    if (schema.additionalProperties === false) {
-      for (const name of Object.keys(value)) {
-        if (!Object.hasOwn(schema.properties || {}, name)) {
-          throw protocolError(-32602, `${path}.${name} is not supported`);
-        }
-      }
+    const names = Object.keys(value);
+    if (schema.maxProperties !== undefined && names.length > schema.maxProperties) {
+      throw invalidArguments(`${path} has more than ${schema.maxProperties} properties`);
     }
-    for (const [name, child] of Object.entries(schema.properties || {})) {
-      if (Object.hasOwn(value, name)) {
+    for (const name of names) {
+      const child = schema.properties && Object.hasOwn(schema.properties, name)
+        ? schema.properties[name]
+        : schema.additionalProperties;
+      if (child === false) {
+        throw invalidArguments(`${path}.${name} is not supported`);
+      }
+      if (isObject(child)) {
         validateSchema(value[name], child, `${path}.${name}`);
       }
     }
-    return;
   }
-  if (schema.type === "string" &&
-      (typeof value !== "string" ||
-       (schema.maxLength !== undefined && value.length > schema.maxLength))) {
-    throw protocolError(-32602, `${path} must be a string within the supported length`);
-  }
-  if (schema.type === "boolean" && typeof value !== "boolean") {
-    throw protocolError(-32602, `${path} must be a boolean`);
-  }
-  if (schema.type === "number" &&
-      (typeof value !== "number" || !Number.isFinite(value) ||
-       (schema.minimum !== undefined && value < schema.minimum) ||
-       (schema.maximum !== undefined && value > schema.maximum))) {
-    throw protocolError(-32602, `${path} must be a finite number within the supported range`);
-  }
-  if (schema.type === "integer" &&
-      (!Number.isSafeInteger(value) ||
-       value < (schema.minimum || 0) ||
-       (schema.maximum !== undefined && value > schema.maximum))) {
-    throw protocolError(-32602, `${path} must be a safe integer within the supported range`);
-  }
-  if (schema.type === "array") {
-    if (!Array.isArray(value)) {
-      throw protocolError(-32602, `${path} must be an array`);
+  if (typeof value === "string") {
+    const length = [...value].length;
+    if (schema.minLength !== undefined && length < schema.minLength) {
+      throw invalidArguments(`${path} must be at least ${schema.minLength} characters`);
     }
+    if (schema.maxLength !== undefined && length > schema.maxLength) {
+      throw invalidArguments(`${path} must be at most ${schema.maxLength} characters`);
+    }
+  }
+  if (typeof value === "number") {
+    if (schema.minimum !== undefined && value < schema.minimum) {
+      throw invalidArguments(`${path} must be at least ${schema.minimum}`);
+    }
+    if (schema.maximum !== undefined && value > schema.maximum) {
+      throw invalidArguments(`${path} must be at most ${schema.maximum}`);
+    }
+  }
+  if (Array.isArray(value)) {
     if (schema.minItems !== undefined && value.length < schema.minItems) {
-      throw protocolError(-32602, `${path} must contain at least ${schema.minItems} items`);
+      throw invalidArguments(`${path} must contain at least ${schema.minItems} items`);
     }
     if (schema.maxItems !== undefined && value.length > schema.maxItems) {
-      throw protocolError(-32602, `${path} has too many items`);
+      throw invalidArguments(`${path} must contain at most ${schema.maxItems} items`);
     }
     if (schema.items) {
       value.forEach((item, index) => validateSchema(item, schema.items, `${path}[${index}]`));
     }
   }
   if (schema.enum && !schema.enum.includes(value)) {
-    throw protocolError(-32602, `${path} has an unsupported value`);
+    throw invalidArguments(`${path} must be one of ${schema.enum.join(", ")}`);
   }
 }
 
-function validateToolArguments(name, args) {
-  const tool = toolDefinition(name);
-  if (!tool) {
-    throw protocolError(-32602, "tools/call requires a known tool name");
-  }
-  validateSchema(args === undefined ? {} : args, tool.inputSchema, "arguments");
-  if (isAuthoringTool(name)) {
-    validateAuthoringArguments(name, args === undefined ? {} : args);
+// Arguments the model can correct fail as a tool result it sees, not a protocol error.
+function argumentError(name, args) {
+  try {
+    validateSchema(args, toolDefinition(name).inputSchema, "arguments");
+    if (isAuthoringTool(name)) {
+      validateAuthoringArguments(name, args);
+    }
+    return null;
+  } catch (error) {
+    if (error.rpcCode !== -32602) {
+      throw error;
+    }
+    return { ok: false, error: { code: "invalid_arguments", message: error.message } };
   }
 }
 
-async function toolCall(name, args, requestId) {
-  if (typeof name !== "string") {
-    throw protocolError(-32602, "tools/call requires a tool name");
-  }
-  validateToolArguments(name, args);
-  if (isAuthoringTool(name)) {
-    return authoringToolCall(name, args, { nativeRequest, renderRequest: builtRenderRequest, root, requestId });
-  }
-  const entry = getToolCatalogEntry(name);
-  if (!entry || entry.adapter !== "native") {
+async function toolCall(name, args = {}, requestId) {
+  const entry = typeof name === "string" ? getToolCatalogEntry(name) : undefined;
+  if (!entry) {
     throw protocolError(-32602, `unknown tool: ${name}`);
   }
-  return nativeRequest(entry.operation, args || {});
+  const invalid = argumentError(name, args);
+  if (invalid) {
+    return invalid;
+  }
+  if (entry.adapter === "authoring") {
+    return authoringToolCall(name, args, { nativeRequest, renderRequest: builtRenderRequest, root, requestId });
+  }
+  return nativeRequest(entry.operation, args, requestId);
 }
 
 function defaultNextSteps(name) {
@@ -1180,6 +1202,9 @@ function uiEventSteps(response, args) {
 
 function responseNextSteps(name, response, args) {
   const code = response?.error?.code;
+  if (code === "invalid_arguments") {
+    return ["Correct the arguments to match the tool's inputSchema, then call it again."];
+  }
   if (code === "asset_not_found") {
     return ["Call searchAssets with a broader query or the expected asset kind."];
   }

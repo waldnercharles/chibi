@@ -2,6 +2,7 @@
 
 #include "automation/asset_write.h"
 #include "automation/controller.h"
+#include "automation/json_int.h"
 #include "graph/compiler/compile.h"
 #include "graph/document/library.h"
 #include "graph/document/serialize.h"
@@ -910,346 +911,304 @@ static bool validate_shader_images(const behavior_asset *asset, const char *root
     return valid;
 }
 
-char *chibi_render_preview_handle(const char *request, const char *default_root, int *exit_code)
+typedef struct
 {
-    if (exit_code) {
-        *exit_code = PREVIEW_OK;
+    const char *project_root;
+    int width, height;
+    float time;
+    yyjson_val *parameters;
+    preview_camera camera;
+    render_arena_activity activity;
+    preview_sample_grid sample_grid;
+    bool include_source;
+} preview_request;
+
+static bool parse_preview_side(yyjson_val *root, const char *key, int *side, char *error, size_t error_size)
+{
+    yyjson_val *value = yyjson_obj_get(root, key);
+    *side = PREVIEW_DEFAULT_SIDE;
+    if (value && !json_int_in_range(value, PREVIEW_MIN_SIDE, PREVIEW_MAX_SIDE, side)) {
+        snprintf(error, error_size, "%s must be between %d and %d", key, PREVIEW_MIN_SIDE, PREVIEW_MAX_SIDE);
+        return false;
     }
-    preview_response response;
-    response_init(&response);
-    yyjson_doc *document = request ? yyjson_read(request, strlen(request), 0) : NULL;
-    yyjson_val *root = document ? yyjson_doc_get_root(document) : NULL;
-    char error[PREVIEW_MAX_ERROR] = { 0 };
-    if (!root || !yyjson_is_obj(root)) {
-        response_error(&response, PREVIEW_INVALID_REQUEST, "request must be a JSON object");
-        if (exit_code) {
-            *exit_code = response.status;
-        }
-        yyjson_doc_free(document);
-        return response_finish(&response);
-    }
-    yyjson_val *operation = yyjson_obj_get(root, "operation");
-    if (yyjson_is_str(operation) &&
-        !strcmp(yyjson_get_str(operation), "preview_scene")) {
-        yyjson_doc_free(document);
-        yyjson_mut_doc_free(response.doc);
-        return chibi_scene_preview_handle(request, default_root, exit_code);
-    }
-    if (!yyjson_is_str(operation) ||
-        strcmp(yyjson_get_str(operation), "preview_shader")) {
-        response_error(&response, PREVIEW_INVALID_REQUEST, "operation must be preview_shader");
-        if (exit_code) {
-            *exit_code = response.status;
-        }
-        yyjson_doc_free(document);
-        return response_finish(&response);
-    }
-    const char *project_root = default_root && default_root[0] ? default_root : ".";
+    return true;
+}
+
+/* The request's options; false with `error` naming the first invalid one. */
+static bool parse_preview_request(
+    yyjson_val *root,
+    const char *default_root,
+    preview_request *out,
+    char *error,
+    size_t error_size
+)
+{
+    *out = (preview_request){ .project_root = default_root && default_root[0]
+                                                ? default_root
+                                                : "." };
     yyjson_val *project_value = yyjson_obj_get(root, "project_root");
     if (project_value) {
         if (!yyjson_is_str(project_value) || !yyjson_get_len(project_value)) {
-            response_error(&response, PREVIEW_INVALID_REQUEST, "project_root must be a non-empty string");
-            if (exit_code) {
-                *exit_code = response.status;
-            }
-            yyjson_doc_free(document);
-            return response_finish(&response);
+            set_error(error, error_size, "project_root must be a non-empty string");
+            return false;
         }
-        project_root = yyjson_get_str(project_value);
+        out->project_root = yyjson_get_str(project_value);
     }
-    int width = PREVIEW_DEFAULT_SIDE, height = PREVIEW_DEFAULT_SIDE;
-    yyjson_val *value = yyjson_obj_get(root, "width");
-    if (value) {
-        if (!yyjson_is_int(value) || yyjson_get_sint(value) < PREVIEW_MIN_SIDE ||
-            yyjson_get_sint(value) > PREVIEW_MAX_SIDE) {
-            response_error(&response, PREVIEW_INVALID_REQUEST, "width must be between 16 and 512");
-            if (exit_code) {
-                *exit_code = response.status;
-            }
-            yyjson_doc_free(document);
-            return response_finish(&response);
-        }
-        width = (int)yyjson_get_sint(value);
+    if (!parse_preview_side(root, "width", &out->width, error, error_size) ||
+        !parse_preview_side(root, "height", &out->height, error, error_size)) {
+        return false;
     }
-    value = yyjson_obj_get(root, "height");
-    if (value) {
-        if (!yyjson_is_int(value) || yyjson_get_sint(value) < PREVIEW_MIN_SIDE ||
-            yyjson_get_sint(value) > PREVIEW_MAX_SIDE) {
-            response_error(&response, PREVIEW_INVALID_REQUEST, "height must be between 16 and 512");
-            if (exit_code) {
-                *exit_code = response.status;
-            }
-            yyjson_doc_free(document);
-            return response_finish(&response);
-        }
-        height = (int)yyjson_get_sint(value);
-    }
-    float time = 0;
-    value = yyjson_obj_get(root, "time");
+    yyjson_val *value = yyjson_obj_get(root, "time");
     if (value) {
         if (!yyjson_is_num(value) || !isfinite(yyjson_get_num(value)) ||
             fabs(yyjson_get_num(value)) > 3600) {
-            response_error(&response, PREVIEW_INVALID_REQUEST, "time must be finite and within +/-3600 seconds");
-            if (exit_code) {
-                *exit_code = response.status;
-            }
-            yyjson_doc_free(document);
-            return response_finish(&response);
+            set_error(error, error_size, "time must be finite and within +/-3600 seconds");
+            return false;
         }
-        time = (float)yyjson_get_num(value);
+        out->time = (float)yyjson_get_num(value);
     }
-    yyjson_val *parameters = yyjson_obj_get(root, "parameters");
-    if (parameters) {
-        if (!yyjson_is_obj(parameters) ||
-            yyjson_obj_size(parameters) > SHADER_PARAMETER_MAX) {
-            response_error(&response, PREVIEW_INVALID_REQUEST, "parameters must be an object with at most 32 entries");
-            if (exit_code) {
-                *exit_code = response.status;
-            }
-            yyjson_doc_free(document);
-            return response_finish(&response);
-        }
+    out->parameters = yyjson_obj_get(root, "parameters");
+    if (out->parameters && (!yyjson_is_obj(out->parameters) ||
+                            yyjson_obj_size(out->parameters) > SHADER_PARAMETER_MAX)) {
+        set_error(error, error_size, "parameters must be an object with at most 32 entries");
+        return false;
     }
-    preview_camera camera;
-    if (!parse_preview_camera(yyjson_obj_get(root, "camera"), &camera, error, sizeof error)) {
-        response_error(&response, PREVIEW_INVALID_REQUEST, error);
-        if (exit_code) {
-            *exit_code = response.status;
-        }
-        yyjson_doc_free(document);
-        return response_finish(&response);
+    if (!parse_preview_camera(yyjson_obj_get(root, "camera"), &out->camera, error, error_size) ||
+        !parse_preview_activity(root, &out->activity, error, error_size) ||
+        !parse_preview_sample_grid(yyjson_obj_get(root, "sample_grid"), &out->sample_grid, error, error_size)) {
+        return false;
     }
-    render_arena_activity activity;
-    if (!parse_preview_activity(root, &activity, error, sizeof error)) {
-        response_error(&response, PREVIEW_INVALID_REQUEST, error);
-        if (exit_code) {
-            *exit_code = response.status;
-        }
-        yyjson_doc_free(document);
-        return response_finish(&response);
-    }
-    preview_sample_grid sample_grid;
-    if (!parse_preview_sample_grid(yyjson_obj_get(root, "sample_grid"), &sample_grid, error, sizeof error)) {
-        response_error(&response, PREVIEW_INVALID_REQUEST, error);
-        if (exit_code) {
-            *exit_code = response.status;
-        }
-        yyjson_doc_free(document);
-        return response_finish(&response);
-    }
-    bool include_source = false;
     value = yyjson_obj_get(root, "include_source");
     if (value) {
         if (!yyjson_is_bool(value)) {
-            response_error(&response, PREVIEW_INVALID_REQUEST, "include_source must be a boolean");
-            if (exit_code) {
-                *exit_code = response.status;
-            }
-            yyjson_doc_free(document);
-            return response_finish(&response);
+            set_error(error, error_size, "include_source must be a boolean");
+            return false;
         }
-        include_source = yyjson_get_bool(value);
+        out->include_source = yyjson_get_bool(value);
     }
+    return true;
+}
 
+/* Fails the response after its asset loaded: the result says it is not valid. */
+static void response_invalid(preview_response *response, int status, const char *diagnostic, const char *message)
+{
+    if (diagnostic) {
+        response_diagnostic(response, "error", 0, diagnostic);
+    }
+    yyjson_mut_obj_add_bool(response->doc, response->result, "valid", false);
+    response_error(response, status, message);
+}
+
+static void add_generated_source(const behavior_asset *linked, preview_response *response)
+{
+    char *source = generated_source(linked, response);
+    if (!source) {
+        return;
+    }
+    if (strlen(source) > PREVIEW_MAX_SOURCE) {
+        source[PREVIEW_MAX_SOURCE] = 0;
+        yyjson_mut_obj_add_bool(response->doc, response->result, "source_truncated", true);
+        response_diagnostic(response, "warning", 0, "generated shader source truncated to 65536 bytes");
+    }
+    yyjson_mut_obj_add_strcpy(response->doc, response->result, "source", source);
+    free(source);
+}
+
+/* The linked, compiled asset the request names, and the resolved project
+   root in `root_abs`; NULL once the response says why not. */
+static behavior_asset *load_preview_asset(
+    yyjson_val *root,
+    const preview_request *options,
+    char root_abs[PATH_MAX],
+    preview_response *response
+)
+{
+    char error[PREVIEW_MAX_ERROR] = { 0 };
     preview_ref ref;
     int status = resolve_preview_ref(root, &ref, error, sizeof error);
     if (status != PREVIEW_OK) {
-        response_error(&response, status, error);
-        if (exit_code) {
-            *exit_code = response.status;
-        }
-        yyjson_doc_free(document);
-        return response_finish(&response);
+        response_error(response, status, error);
+        return NULL;
     }
-    char *json = read_ref(project_root, &ref, error, sizeof error);
+    char *json = read_ref(options->project_root, &ref, error, sizeof error);
     if (!json) {
-        response_error(&response, PREVIEW_NOT_FOUND, error);
-        if (exit_code) {
-            *exit_code = response.status;
-        }
-        yyjson_doc_free(document);
-        return response_finish(&response);
+        response_error(response, PREVIEW_NOT_FOUND, error);
+        return NULL;
     }
-    response_identity(&response, &ref);
+    response_identity(response, &ref);
     behavior_asset *asset = behavior_asset_load_json(json);
     free(json);
     if (!asset) {
-        response_diagnostic(&response, "error", 0, graph_last_error());
-        yyjson_mut_obj_add_bool(response.doc, response.result, "valid", false);
-        response_error(&response, PREVIEW_VALIDATION_ERROR, "asset is not a valid behavior asset");
-        if (exit_code) {
-            *exit_code = response.status;
-        }
-        yyjson_doc_free(document);
-        return response_finish(&response);
+        response_invalid(response, PREVIEW_VALIDATION_ERROR, graph_last_error(), "asset is not a valid behavior asset");
+        return NULL;
     }
     if (asset->domain != ref.family->domain) {
         behavior_asset_free(asset);
-        response_diagnostic(&response, "error", 0, "asset domain does not match its requested kind");
-        yyjson_mut_obj_add_bool(response.doc, response.result, "valid", false);
-        response_error(&response, PREVIEW_VALIDATION_ERROR, "asset domain does not match its path");
-        if (exit_code) {
-            *exit_code = response.status;
-        }
-        yyjson_doc_free(document);
-        return response_finish(&response);
+        response_invalid(
+            response,
+            PREVIEW_VALIDATION_ERROR,
+            "asset domain does not match its requested kind",
+            "asset domain does not match its path"
+        );
+        return NULL;
     }
     if (asset->domain == BEHAVIOR_DOMAIN_SHADER_LIBRARY) {
         behavior_asset_free(asset);
-        response_diagnostic(&response, "error", 0, "shader libraries are reusable functions; preview a material or shape that consumes one");
-        yyjson_mut_obj_add_bool(response.doc, response.result, "valid", false);
-        response_error(&response, PREVIEW_INVALID_REQUEST, "shader-library assets have no standalone image preview");
-        if (exit_code) {
-            *exit_code = response.status;
-        }
-        yyjson_doc_free(document);
-        return response_finish(&response);
+        response_invalid(
+            response,
+            PREVIEW_INVALID_REQUEST,
+            "shader libraries are reusable functions; preview a material or "
+            "shape that consumes one",
+            "shader-library assets have no standalone image preview"
+        );
+        return NULL;
     }
-
-    char root_abs[PATH_MAX];
-    if (!realpath(project_root, root_abs)) {
+    if (!realpath(options->project_root, root_abs)) {
         behavior_asset_free(asset);
-        response_error(&response, PREVIEW_IO_ERROR, "project root cannot be resolved");
-        if (exit_code) {
-            *exit_code = response.status;
-        }
-        yyjson_doc_free(document);
-        return response_finish(&response);
+        response_error(response, PREVIEW_IO_ERROR, "project root cannot be resolved");
+        return NULL;
     }
     behavior_asset **libraries = load_libraries(root_abs);
-    char link_error[PREVIEW_MAX_ERROR] = { 0 };
     behavior_asset *linked = behavior_asset_link_libraries(
         asset,
         (const behavior_asset *const *)libraries,
         acount(libraries),
-        link_error,
-        sizeof link_error
+        error,
+        sizeof error
     );
     free_libraries(libraries);
-    if (!linked) {
-        response_diagnostic(&response, "error", 0, link_error[0] ? link_error : "shader library linking failed");
-        yyjson_mut_obj_add_bool(response.doc, response.result, "valid", false);
-        response_error(&response, PREVIEW_VALIDATION_ERROR, "shader library linking failed");
-        behavior_asset_free(asset);
-        if (exit_code) {
-            *exit_code = response.status;
-        }
-        yyjson_doc_free(document);
-        return response_finish(&response);
-    }
     behavior_asset_free(asset);
+    if (!linked) {
+        response_invalid(
+            response,
+            PREVIEW_VALIDATION_ERROR,
+            error[0] ? error : "shader library linking failed",
+            "shader library linking failed"
+        );
+        return NULL;
+    }
     compile_report report;
     compile_report_init(&report);
     behavior_asset_compile(linked, &report);
-    add_compile_diagnostics(&response, &report);
-    if (report.error_count) {
-        yyjson_mut_obj_add_bool(response.doc, response.result, "valid", false);
-        response_error(&response, PREVIEW_VALIDATION_ERROR, "shader graph validation failed");
-        compile_report_free(&report);
-        behavior_asset_free(linked);
-        if (exit_code) {
-            *exit_code = response.status;
-        }
-        yyjson_doc_free(document);
-        return response_finish(&response);
-    }
-    if (!validate_shader_images(linked, root_abs, &response)) {
-        yyjson_mut_obj_add_bool(response.doc, response.result, "valid", false);
-        response_error(&response, PREVIEW_VALIDATION_ERROR, "shader image paths must remain inside the project");
-        compile_report_free(&report);
-        behavior_asset_free(linked);
-        if (exit_code) {
-            *exit_code = response.status;
-        }
-        yyjson_doc_free(document);
-        return response_finish(&response);
-    }
-    if (include_source) {
-        char *source = generated_source(linked, &response);
-        if (source) {
-            if (strlen(source) > PREVIEW_MAX_SOURCE) {
-                source[PREVIEW_MAX_SOURCE] = 0;
-                yyjson_mut_obj_add_bool(response.doc, response.result, "source_truncated", true);
-                response_diagnostic(&response, "warning", 0, "generated shader source truncated to 65536 bytes");
-            }
-            yyjson_mut_obj_add_strcpy(response.doc, response.result, "source", source);
-        }
-        free(source);
-    }
+    add_compile_diagnostics(response, &report);
+    int errors = report.error_count;
     compile_report_free(&report);
-    char render_error[PREVIEW_MAX_ERROR] = { 0 };
-    char *png = NULL;
-    char *parameters_json = parameters ? yyjson_val_write(parameters, 0, NULL) : NULL;
-    if (parameters && !parameters_json) {
-        response_diagnostic(&response, "error", 0, "parameters could not be serialized");
-        yyjson_mut_obj_add_bool(response.doc, response.result, "valid", false);
-        response_error(&response, PREVIEW_INVALID_REQUEST, "parameters could not be serialized");
+    if (errors) {
         behavior_asset_free(linked);
-        if (exit_code) {
-            *exit_code = response.status;
-        }
-        yyjson_doc_free(document);
-        return response_finish(&response);
+        response_invalid(response, PREVIEW_VALIDATION_ERROR, NULL, "shader graph validation failed");
+        return NULL;
+    }
+    if (!validate_shader_images(linked, root_abs, response)) {
+        behavior_asset_free(linked);
+        response_invalid(response, PREVIEW_VALIDATION_ERROR, NULL, "shader image paths must remain inside the project");
+        return NULL;
+    }
+    return linked;
+}
+
+static void preview_shader(yyjson_val *root, const char *default_root, preview_response *response)
+{
+    char error[PREVIEW_MAX_ERROR] = { 0 };
+    preview_request options;
+    if (!parse_preview_request(root, default_root, &options, error, sizeof error)) {
+        response_error(response, PREVIEW_INVALID_REQUEST, error);
+        return;
+    }
+    char root_abs[PATH_MAX];
+    behavior_asset *linked = load_preview_asset(root, &options, root_abs, response);
+    if (!linked) {
+        return;
+    }
+    if (options.include_source) {
+        add_generated_source(linked, response);
+    }
+    char *parameters_json = options.parameters
+                              ? yyjson_val_write(options.parameters, 0, NULL)
+                              : NULL;
+    if (options.parameters && !parameters_json) {
+        behavior_asset_free(linked);
+        response_invalid(
+            response,
+            PREVIEW_INVALID_REQUEST,
+            "parameters could not be serialized",
+            "parameters could not be serialized"
+        );
+        return;
     }
     render_shader_preview_options preview_options = {
-        .has_camera = camera.enabled,
-        .center_x = camera.center_x,
-        .center_y = camera.center_y,
-        .span_width = camera.span_width,
-        .span_height = camera.span_height,
-        .activity = activity,
+        .has_camera = options.camera.enabled,
+        .center_x = options.camera.center_x,
+        .center_y = options.camera.center_y,
+        .span_width = options.camera.span_width,
+        .span_height = options.camera.span_height,
+        .activity = options.activity,
     };
     char original_directory[PATH_MAX];
     if (!getcwd(original_directory, sizeof original_directory) || chdir(root_abs)) {
-        response_diagnostic(&response, "error", 0, "project root could not be opened for GPU preview");
-        yyjson_mut_obj_add_bool(response.doc, response.result, "valid", false);
-        response_error(&response, PREVIEW_IO_ERROR, "project root could not be opened");
         free(parameters_json);
         behavior_asset_free(linked);
-        if (exit_code) {
-            *exit_code = response.status;
-        }
-        yyjson_doc_free(document);
-        return response_finish(&response);
+        response_invalid(
+            response,
+            PREVIEW_IO_ERROR,
+            "project root could not be opened for GPU preview",
+            "project root could not be opened"
+        );
+        return;
     }
+    char *png = NULL;
     bool rendered = render_asset(
         linked,
-        time,
-        width,
-        height,
+        options.time,
+        options.width,
+        options.height,
         parameters_json,
         &preview_options,
-        &sample_grid,
-        &response,
+        &options.sample_grid,
+        response,
         &png,
-        render_error,
-        sizeof render_error,
+        error,
+        sizeof error,
         "chibi_ctl --render"
     );
     free(parameters_json);
     chdir(original_directory);
     behavior_asset_free(linked);
     if (!rendered) {
-        response_diagnostic(&response, "error", 0, render_error[0] ? render_error : "shader preview failed");
-        yyjson_mut_obj_add_bool(response.doc, response.result, "valid", false);
-        response_error(&response, PREVIEW_EXECUTION_ERROR, "shader preview failed");
-        if (exit_code) {
-            *exit_code = response.status;
-        }
         free(png);
-        yyjson_doc_free(document);
-        return response_finish(&response);
+        response_invalid(response, PREVIEW_EXECUTION_ERROR, error[0] ? error : "shader preview failed", "shader preview failed");
+        return;
     }
-    yyjson_mut_obj_add_bool(response.doc, response.result, "valid", true);
-    yyjson_mut_val *preview = yyjson_mut_obj_add_obj(response.doc, response.result, "preview");
-    yyjson_mut_obj_add_strcpy(response.doc, preview, "mime_type", "image/png");
-    yyjson_mut_obj_add_int(response.doc, preview, "width", width);
-    yyjson_mut_obj_add_int(response.doc, preview, "height", height);
-    yyjson_mut_obj_add_strcpy(response.doc, preview, "data", png);
+    yyjson_mut_obj_add_bool(response->doc, response->result, "valid", true);
+    yyjson_mut_val *preview = yyjson_mut_obj_add_obj(response->doc, response->result, "preview");
+    yyjson_mut_obj_add_strcpy(response->doc, preview, "mime_type", "image/png");
+    yyjson_mut_obj_add_int(response->doc, preview, "width", options.width);
+    yyjson_mut_obj_add_int(response->doc, preview, "height", options.height);
+    yyjson_mut_obj_add_strcpy(response->doc, preview, "data", png);
     free(png);
-    yyjson_mut_obj_add_bool(response.doc, response.root, "ok", true);
+    yyjson_mut_obj_add_bool(response->doc, response->root, "ok", true);
+}
+
+char *chibi_render_preview_handle(const char *request, const char *default_root, int *exit_code)
+{
+    yyjson_doc *document = request ? yyjson_read(request, strlen(request), 0) : NULL;
+    yyjson_val *root = document ? yyjson_doc_get_root(document) : NULL;
+    yyjson_val *operation = yyjson_obj_get(root, "operation");
+    if (yyjson_is_obj(root) && yyjson_is_str(operation) &&
+        !strcmp(yyjson_get_str(operation), "preview_scene")) {
+        yyjson_doc_free(document);
+        return chibi_scene_preview_handle(request, default_root, exit_code);
+    }
+    preview_response response;
+    response_init(&response);
+    if (!yyjson_is_obj(root)) {
+        response_error(&response, PREVIEW_INVALID_REQUEST, "request must be a JSON object");
+    } else if (!yyjson_is_str(operation) || strcmp(yyjson_get_str(operation), "preview_shader")) {
+        response_error(&response, PREVIEW_INVALID_REQUEST, "operation must be preview_shader");
+    } else {
+        preview_shader(root, default_root, &response);
+    }
     if (exit_code) {
-        *exit_code = PREVIEW_OK;
+        *exit_code = response.status;
     }
     yyjson_doc_free(document);
     return response_finish(&response);

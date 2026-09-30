@@ -10,6 +10,7 @@
 #include "support/xalloc.h"
 #include "third_party/yyjson/yyjson.h"
 
+#include <assert.h>
 #include <stdarg.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -34,9 +35,6 @@ typedef struct
 
 static void set_error(optimize_context *context, const char *format, ...)
 {
-    if (!context->error || !context->error_size) {
-        return;
-    }
     va_list arguments;
     va_start(arguments, format);
     vsnprintf(context->error, context->error_size, format, arguments);
@@ -45,20 +43,13 @@ static void set_error(optimize_context *context, const char *format, ...)
 
 static int fail(optimize_context *context, int status, const char *format, ...)
 {
-    if (context->error && context->error_size) {
-        va_list arguments;
-        va_start(arguments, format);
-        char message[512];
-        vsnprintf(message, sizeof message, format, arguments);
-        va_end(arguments);
-        snprintf(context->error, context->error_size, "%s", message);
-    }
-    yyjson_mut_obj_add_strcpy(
-        context->doc,
-        context->result,
-        "error",
-        context->error ? context->error : "graph optimization failed"
-    );
+    va_list arguments;
+    va_start(arguments, format);
+    char message[512];
+    vsnprintf(message, sizeof message, format, arguments);
+    va_end(arguments);
+    snprintf(context->error, context->error_size, "%s", message);
+    yyjson_mut_obj_add_strcpy(context->doc, context->result, "error", context->error);
     return status;
 }
 
@@ -227,21 +218,14 @@ int automation_graph_optimize(
     size_t error_size
 )
 {
-    if (edited_json) {
-        *edited_json = NULL;
-    }
-    if (!source_json || !request || !yyjson_is_obj(request) || !doc ||
-        !result || !edited_json) {
-        if (error && error_size) {
-            snprintf(error, error_size, "graph optimization requires a source and request object");
-        }
-        return CHIBI_AUTOMATION_INVALID_REQUEST;
-    }
+    assert(
+        source_json && yyjson_is_obj(request) && doc && result && edited_json &&
+        error && error_size
+    );
+    *edited_json = NULL;
     behavior_asset *asset = behavior_asset_load_json(source_json);
     if (!asset) {
-        if (error && error_size) {
-            snprintf(error, error_size, "could not load asset: %s", graph_last_error());
-        }
+        snprintf(error, error_size, "could not load asset: %s", graph_last_error());
         return CHIBI_AUTOMATION_VALIDATION_ERROR;
     }
     optimize_context context = {
@@ -283,7 +267,7 @@ int automation_graph_optimize(
             &context,
             CHIBI_AUTOMATION_INVALID_REQUEST,
             "%s",
-            error && error[0] ? error : "invalid graph optimization options"
+            error[0] ? error : "invalid graph optimization options"
         );
         behavior_asset_free(asset);
         return status;
@@ -353,9 +337,7 @@ int automation_graph_optimize(
         behavior_asset_free(reloaded);
     }
     if (!serialized) {
-        if (error && error_size) {
-            snprintf(error, error_size, "could not serialize optimized asset");
-        }
+        snprintf(error, error_size, "could not serialize optimized asset");
         return CHIBI_AUTOMATION_VALIDATION_ERROR;
     }
     *edited_json = serialized;

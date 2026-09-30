@@ -3,6 +3,7 @@
 #include "graph/compiler/field_ir.h"
 #include "graph/nodes/field_nodes.h"
 #include "support/array.h"
+#include "support/cos_sin.h"
 #include "support/xalloc.h"
 
 #include <float.h>
@@ -455,6 +456,12 @@ static float hash_sample(unsigned seed, int x, int y)
     hash = (hash ^ (hash >> 15)) * 0x846ca68bu;
     return ((hash ^ (hash >> 16)) & 65535) / 32767.5f - 1;
 }
+/* Exactly rounded, unlike libm's hypotf, so every platform agrees. */
+static float distance(float x, float y)
+{
+    return sqrtf(x * x + y * y);
+}
+
 static float mix(float a, float b, float t)
 {
     return a + (b - a) * t;
@@ -506,8 +513,8 @@ static float evaluate(field_ir ir, const float *v, float x, float y, unsigned se
         case FIELD_MAX: return fmaxf(a, b);
         case FIELD_ABS: return fabsf(a);
         case FIELD_NEGATE: return -a;
-        case FIELD_SIN: return sinf(a);
-        case FIELD_COS: return cosf(a);
+        case FIELD_SIN: return cos_sin_compute(a).s;
+        case FIELD_COS: return cos_sin_compute(a).c;
         case FIELD_FLOOR: return floorf(a);
         case FIELD_CLAMP: return clamp(a, b, c);
         case FIELD_REMAP: return b != c ? mix(d, e, (a - b) / (c - b)) : NAN;
@@ -538,23 +545,29 @@ static float evaluate(field_ir ir, const float *v, float x, float y, unsigned se
             }
             return total / weight;
         }
-        case FIELD_CIRCLE: return c >= 0 ? hypotf(a, b) - c : NAN;
+        case FIELD_CIRCLE: return c >= 0 ? distance(a, b) - c : NAN;
         case FIELD_BOX: {
             if (c < 0 || d < 0) {
                 return NAN;
             }
             float qx = fabsf(a) - c, qy = fabsf(b) - d;
-            return hypotf(fmaxf(qx, 0), fmaxf(qy, 0)) + fminf(fmaxf(qx, qy), 0);
+            return distance(fmaxf(qx, 0), fmaxf(qy, 0)) + fminf(fmaxf(qx, qy), 0);
         }
         case FIELD_CAPSULE: {
             float dx = e - c, dy = f - d, length = dx * dx + dy * dy;
             float t = length > 0
                         ? clamp(((a - c) * dx + (b - d) * dy) / length, 0, 1)
                         : 0;
-            return g >= 0 ? hypotf(a - c - t * dx, b - d - t * dy) - g : NAN;
+            return g >= 0 ? distance(a - c - t * dx, b - d - t * dy) - g : NAN;
         }
-        case FIELD_ROTATE_X: return cosf(c) * a + sinf(c) * b;
-        case FIELD_ROTATE_Y: return -sinf(c) * a + cosf(c) * b;
+        case FIELD_ROTATE_X: {
+            cos_sin r = cos_sin_compute(c);
+            return r.c * a + r.s * b;
+        }
+        case FIELD_ROTATE_Y: {
+            cos_sin r = cos_sin_compute(c);
+            return -r.s * a + r.c * b;
+        }
         case FIELD_SMOOTH_UNION: return c >= 0 ? smooth_min(a, b, c) : NAN;
         case FIELD_SMOOTH_SUBTRACT: return c >= 0 ? -smooth_min(-a, b, c) : NAN;
         case FIELD_SELECT: return a > 0 ? b : c;

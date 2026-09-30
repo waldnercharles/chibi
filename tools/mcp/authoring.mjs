@@ -251,7 +251,6 @@ const operationSchema = {
 const searchNodesDefinition = {
   name: "searchNodes",
   operation: "search_nodes",
-  description: "Find graph nodes and events by words, domain, or typed pin signature. Without a query or filter, list the domain's node types by category, its events, and the settings they take.",
   inputSchema: object({
     query: {
       type: "string",
@@ -315,7 +314,6 @@ function graphDefinition(name, kinds, kindDescription) {
   return {
     name,
     operation: "edit_graph",
-    description: "Apply a bounded semantic graph edit atomically, compile it, and optionally publish it with a content hash check.",
     inputSchema: object({
       ...assetSelectorProperties,
       kind: {
@@ -374,16 +372,16 @@ buildGraphDefinition.inputSchema.properties.query = {
 };
 const previewFieldDefinition = {
   name: "previewField", operation: "preview_field",
-  description: "Bake a ProceduralField into a bounded PNG preview.",
   inputSchema: object({
-    kind: { type: "string", enum: ["field"] },
-    name: { type: "string" },
-    width: { type: "integer", minimum: 1, maximum: 512 },
-    height: { type: "integer", minimum: 1, maximum: 512 },
-    cell_size: { type: "number", minimum: 0.000001, maximum: 1024 },
-    seed: { type: "integer", minimum: 0, maximum: 4294967295 },
-    parameters: { type: "object", additionalProperties: true },
-  }, ["kind", "name"]),
+    path: assetSelectorProperties.path,
+    kind: { type: "string", enum: ["field"], description: "Always field." },
+    name: assetSelectorProperties.name,
+    width: { type: "integer", minimum: 1, maximum: 512, description: "Preview width in pixels, one sample each; defaults to 256." },
+    height: { type: "integer", minimum: 1, maximum: 512, description: "Preview height in pixels, one sample each; defaults to 256." },
+    cell_size: { type: "number", minimum: 0.000001, maximum: 1024, description: "Field-space distance between samples; defaults to 2." },
+    seed: { type: "integer", minimum: 0, maximum: 4294967295, description: "Deterministic noise seed; defaults to 0." },
+    parameters: { type: "object", additionalProperties: true, description: "Field parameter overrides keyed by authored parameter name." },
+  }),
   outputSchema: { type: "object", additionalProperties: true },
 };
 
@@ -426,7 +424,6 @@ const prototypeOperationSchema = object({
 const editPrototypeDefinition = {
   name: "buildPrototype",
   operation: "edit_prototype",
-  description: "Create or edit a prototype with semantic component, field, and behavior operations; native defaults and serialization are applied automatically.",
   inputSchema: object({
     ...prototypeAssetSelectorProperties,
     expected_hash: {
@@ -517,7 +514,6 @@ const sceneOperationSchema = object({
 const editSceneDefinition = {
   name: "buildScene",
   operation: "edit_scene",
-  description: "Create or edit a scene with semantic entity composition, component overrides, and behavior attachments; entity and node placement is automatic.",
   inputSchema: object({
     ...sceneAssetSelectorProperties,
     expected_hash: {
@@ -545,7 +541,6 @@ const editSceneDefinition = {
 const optimizeGraphDefinition = {
   name: "optimizeGraph",
   operation: "optimize_graph",
-  description: "Analyze or apply proven graph readability improvements, preserving debug state and reporting every skipped opportunity.",
   inputSchema: object({
     ...assetSelectorProperties,
     expected_hash: {
@@ -599,7 +594,6 @@ const shaderAssetSelectorProperties = {
 
 const previewSceneDefinition = {
   name: "previewScene", operation: "preview_scene",
-  description: "Render a running scene or prototype using the game renderer, authored camera, fog and player UI. Returns a PNG. Inputs and saved state use the scenario contract; storage stays isolated.",
   inputSchema: { type: "object", additionalProperties: false, required: ["kind", "name"], properties: {
     kind: { type: "string", enum: ["scene", "prototype"] }, name: { type: "string" },
     width: { type: "integer", minimum: 64, maximum: 2048, default: 640 },
@@ -628,7 +622,6 @@ const previewSceneDefinition = {
 const previewShaderDefinition = {
   name: "previewShader",
   operation: "preview_shader",
-  description: "Compile a material or shape graph and return a bounded rendered preview image with optional generated source.",
   inputSchema: object({
     ...shaderAssetSelectorProperties,
     width: {
@@ -847,12 +840,12 @@ export function renderRequest(root, request, requestId) {
       resolveRequest(value);
     };
     timer = setTimeout(() => {
-      finish(failedRender(request.operation || "preview_shader", "timeout", "shader preview timed out"));
+      finish(failedRender(request.operation || "preview_shader", "timeout", "preview timed out"));
       child.kill("SIGKILL");
     }, timeout);
     if (requestId !== undefined) {
       activeRenders.set(String(requestId), () => {
-        finish(failedRender(request.operation || "preview_shader", "cancelled", "shader preview was cancelled"));
+        finish(failedRender(request.operation || "preview_shader", "cancelled", "preview was cancelled"));
         child.kill("SIGKILL");
       });
     }
@@ -861,7 +854,7 @@ export function renderRequest(root, request, requestId) {
     child.stdout.on("data", (chunk) => {
       buffer += chunk;
       if (Buffer.byteLength(buffer, "utf8") > maxBytes) {
-        finish(failedRender(request.operation || "preview_shader", "response_too_large", "shader preview response exceeded the configured size limit"));
+        finish(failedRender(request.operation || "preview_shader", "response_too_large", "preview response exceeded the configured size limit"));
         child.kill("SIGKILL");
       }
     });
@@ -952,6 +945,12 @@ function previewSummary(response, name) {
   }
   if (response?.result?.source !== undefined) {
     summary.source_included = true;
+  }
+  // previewField: the scalar range and its hash.
+  for (const key of ["minimum", "maximum", "field_hash"]) {
+    if (response?.result?.[key] !== undefined) {
+      summary[key] = response.result[key];
+    }
   }
   if (Array.isArray(response?.next_steps) && response.next_steps.length) {
     summary.next_steps = response.next_steps;

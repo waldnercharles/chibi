@@ -132,7 +132,7 @@ async function builtRenderRequest(renderRoot, request, requestId) {
     try {
       if (await Promise.race([ensureController().then(() => false), cancelled])) {
         const operation = request.operation || "preview_shader";
-        return { contract: 1, operation, ok: false, error: { code: "cancelled", message: "shader preview was cancelled" } };
+        return { contract: 1, operation, ok: false, error: { code: "cancelled", message: "preview was cancelled" } };
       }
     } finally {
       rendersAwaitingBuild.delete(key);
@@ -351,7 +351,7 @@ function buildToolDefinitions() {
     properties: {
       query: {
         type: "string",
-        description: "Case-insensitive text to match against asset kind, name, path, or description.",
+        description: "Words that must each start a word in an asset's name, kind, path, description or member names, such as \"health\" or \"arena scene\"; name matches rank first. An empty string lists every asset in kinds.",
       },
       kinds: {
         type: "array",
@@ -370,11 +370,11 @@ function buildToolDefinitions() {
       direction: {
         type: "string",
         enum: ["outgoing", "incoming", "both"],
-        description: "Which side of the dependency graph to return.",
+        description: "Which side of the dependency graph to return; defaults to outgoing.",
       },
       transitive: {
         type: "boolean",
-        description: "Traverse dependencies beyond the requested asset.",
+        description: "Traverse dependencies beyond the requested asset; defaults to false.",
       },
     },
   };
@@ -706,15 +706,14 @@ function buildToolDefinitions() {
   const savedState = { type: "object", maxProperties: 1024, additionalProperties: { type: "string" },
     description: "Initial committed save values in an isolated scenario store. Use returned saved_state for the next run." };
   const scenePreview = authoringToolDefinitions().find(tool => tool.name === "previewScene");
-  scenePreview.inputSchema.properties.inputs = normalizedInputs;
   scenePreview.inputSchema.properties.saved_state = savedState;
   scenarioArguments.properties.saved_state = savedState;
   runtimeSnapshotArguments.properties.saved_state = savedState;
   const timeline = { type: "array", maxItems: 1800, items: { type: "object", additionalProperties: false,
-    required: ["frame", "input"], properties: { frame: { type: "integer", minimum: 0, maximum: 107999 }, input: normalizedInputs.items } } };
-  scenarioArguments.properties.frames.maximum = 108000;
-  runtimeSnapshotArguments.properties.frames.maximum = 108000;
-  scenePreview.inputSchema.properties.input_timeline = timeline;
+    required: ["frame", "input"], properties: { frame: { type: "integer", minimum: 0, maximum: 107999 }, input: normalizedInputs.items } },
+    description: "Sparse {frame, input} samples in increasing frame order, each frame below frames; use instead of inputs." };
+  scenePreview.inputSchema.properties.input_timeline = {
+    ...timeline, description: scenePreview.inputSchema.properties.input_timeline.description };
   scenarioArguments.properties.input_timeline = timeline;
   runtimeSnapshotArguments.properties.input_timeline = timeline;
   // One detailed input schema per tool; chibi_ctl validates every sample.
@@ -734,13 +733,13 @@ function buildToolDefinitions() {
       },
       name: {
         type: "string",
-        description: "Prototype asset name without the .yaml suffix.",
+        description: "Prototype or scene asset name without the .yaml suffix.",
       },
       frames: {
         type: "integer",
         minimum: 0,
         maximum: 1800,
-        description: "Number of deterministic fixed steps to record.",
+        description: "Number of deterministic fixed steps to record; at most 1800, unlike runScenario.",
       },
       fixed_dt: {
         type: "number",
@@ -749,6 +748,7 @@ function buildToolDefinitions() {
         description: "Fixed timestep in seconds. The engine currently accepts 1/60.",
       },
       inputs: normalizedInputs,
+      input_timeline: timeline,
       saved_state: savedState,
     },
     required: ["name"],
@@ -760,7 +760,7 @@ function buildToolDefinitions() {
       recording,
       recording_path: {
         type: "string",
-        description: "Safe recording artifact path returned by record_scenario.",
+        description: "Recording artifact path returned by recordScenario.",
       },
     },
     oneOf: [
@@ -821,10 +821,13 @@ function buildToolDefinitions() {
     required: ["new_name"],
     additionalProperties: false,
   };
+  // Native delete refuses parameters and locals.
+  const { parameter, local, ...deleteProperties } = editProperties;
   const deleteArguments = {
     type: "object",
     properties: {
-      ...editProperties,
+      ...deleteProperties,
+      graph: { type: "string", description: "Function or macro name in asset." },
       force: { type: "boolean", description: "Delete while references remain, and list them as dangling." },
     },
     additionalProperties: false,
@@ -833,14 +836,12 @@ function buildToolDefinitions() {
     {
       name: "getProjectStatus",
       operation: "status",
-      description: "Return project paths, asset counts, and reflected registry counts.",
       inputSchema: noArguments,
       outputSchema,
     },
     {
       name: "listAssets",
       operation: "list_assets",
-      description: "List authored YAML assets with stable paths, sizes, and content hashes.",
       inputSchema: {
         type: "object",
         properties: { limit: pageProperties.limit, cursor: pageProperties.cursor },
@@ -851,133 +852,120 @@ function buildToolDefinitions() {
     {
       name: "getAssetCatalog",
       operation: "catalog",
-      description: "Return the semantic asset catalog, dependency edges, diagnostics, and reflected registry metadata.",
       inputSchema: pageArguments,
       outputSchema,
     },
     {
       name: "searchAssets",
       operation: "search_assets",
-      description: "Search the semantic asset catalog by kind, name, path, or description.",
       inputSchema: searchArguments,
       outputSchema,
     },
     {
       name: "inspectAssetDependencies",
       operation: "asset_dependencies",
-      description: "Inspect direct or transitive incoming and outgoing asset dependencies.",
       inputSchema: dependencyArguments,
       outputSchema,
     },
     {
       name: "findReferences",
       operation: "find_references",
-      description: "Find a symbol's definition and its uses across the project, by role.",
       inputSchema: referenceArguments,
       outputSchema,
     },
     {
       name: "callHierarchy",
       operation: "call_hierarchy",
-      description: "Trace a function's or event's callers and callees as a tree.",
       inputSchema: hierarchyArguments,
       outputSchema,
     },
     {
       name: "renameSymbol",
       operation: "rename_symbol",
-      description: "Rename a symbol and every reference to it across assets.",
       inputSchema: renameArguments,
       outputSchema,
     },
     {
       name: "deleteSymbol",
       operation: "delete_symbol",
-      description: "Delete a symbol nothing references, or force it and list what dangles.",
       inputSchema: deleteArguments,
       outputSchema,
     },
     {
       name: "inspectUi",
       operation: "inspect_ui",
-      description: "Read a ui asset's outline, props, events, slots, widgets, tokens and syntax errors; with complete, the completions at a position.",
       inputSchema: inspectUiArguments,
       outputSchema,
     },
     {
       name: "inspectGraph",
       operation: "inspect_graph",
-      description: "Return normalized graph nodes, pins, edges, calls, effects, and validation diagnostics.",
       inputSchema: graphArguments,
       outputSchema,
     },
     {
       name: "inspectSystem",
       operation: "inspect_system",
-      description: "Inspect a typed system query, compiled graph, inferred component effects, and diagnostics.",
-      inputSchema: assetArguments,
+      inputSchema: {
+        ...assetArguments,
+        properties: {
+          kind: { type: "string", enum: ["system"], description: "Always system." },
+          name: { type: "string", description: "System asset name without the .yaml suffix." },
+        },
+      },
       outputSchema,
     },
     {
       name: "getExecutionStatus",
       operation: "execution_status",
-      description: "Report the backend selected for a behavior or system and whether its Tick path is runnable.",
       inputSchema: executionStatusArguments,
       outputSchema,
     },
     {
       name: "profileScenario",
       operation: "profile_scenario",
-      description: "Run a bounded prototype or scene scenario with warmup and return engine timing, per-behavior inclusive/exclusive samples, and scoped xalloc allocation counters.",
       inputSchema: profileScenarioArguments,
       outputSchema,
     },
     {
       name: "runScenario",
       operation: "run_scenario",
-      description: "Run a bounded deterministic prototype or scene scenario and return structured runtime evidence.",
       inputSchema: scenarioArguments,
       outputSchema,
     },
     {
       name: "captureRuntimeSnapshot",
       operation: "runtime_snapshot",
-      description: "Capture bounded deterministic ECS entities, reflected fields, behaviors, and timing.",
       inputSchema: runtimeSnapshotArguments,
       outputSchema,
     },
     {
       name: "recordScenario",
       operation: "record_scenario",
-      description: "Record bounded normalized inputs and deterministic frame hashes for a prototype scenario.",
       inputSchema: recordArguments,
       outputSchema,
     },
     {
       name: "replayScenario",
       operation: "replay_scenario",
-      description: "Replay a versioned deterministic scenario recording and report the first divergence.",
       inputSchema: replayArguments,
       outputSchema,
     },
     {
       name: "readAsset",
       operation: "read_asset",
-      description: "Read one authored asset as parsed JSON.",
       inputSchema: assetArguments,
       outputSchema,
     },
     {
       name: "validateAsset",
       operation: "validate_asset",
-      description: "Load and validate one asset through the engine's native loader/compiler.",
       inputSchema: assetArguments,
       outputSchema,
     },
     {
       name: "describeRegistry",
       operation: "describe_registry",
-      description: "Describe reflected graph nodes, pins, types, services, and components.",
       inputSchema: {
         type: "object",
         properties: {
@@ -995,7 +983,6 @@ function buildToolDefinitions() {
     {
       name: "describeComponents",
       operation: "describe_components",
-      description: "Describe reflected prototype component fields, stable keys, and native defaults.",
       inputSchema: {
         type: "object",
         properties: {
@@ -1013,7 +1000,6 @@ function buildToolDefinitions() {
     {
       name: "describeContract",
       operation: "describe_contract",
-      description: "Describe native operations, response versions, errors, safety annotations, and reflection counts.",
       inputSchema: noArguments,
       outputSchema,
     },
@@ -1215,8 +1201,12 @@ function responseNextSteps(name, response, args) {
   if (code === "recording_not_found") {
     return ["Call recordScenario to create a recording for the current project state."];
   }
-  if (code === "invalid_request" && /node|pin|reference/i.test(response?.error?.message || "")) {
+  if (name === "buildGraph" && code === "invalid_request" && /node|pin|reference/i.test(response?.error?.message || "")) {
     return ["Call searchNodes for the node or pin signature, then retry the graph edit."];
+  }
+  // The default steps follow a success; the error message covers other failures.
+  if (response?.ok !== true) {
+    return [];
   }
   const result = response?.result;
   if (name === "searchAssets" && Array.isArray(result?.assets) && result.assets.length === 0) {
@@ -1239,8 +1229,17 @@ function responseNextSteps(name, response, args) {
       result?.dry_run === true) {
     return [
       "Review the dry-run diagnostics and proposed changes.",
-      "Call the same build tool with dry_run false and the current expected_hash to publish.",
+      "To publish, call the same build tool with dry_run false and the same expected_hash, or create: true for a new asset.",
     ];
+  }
+  if (name === "optimizeGraph" && result?.dry_run === true) {
+    return [
+      "Review the applied and skipped changes.",
+      "Call optimizeGraph with dry_run false and the returned before_hash as expected_hash to publish.",
+    ];
+  }
+  if (name === "replayScenario" && result?.diverged === false) {
+    return [];
   }
   return defaultNextSteps(name);
 }
@@ -1298,10 +1297,12 @@ function errorDetails(result) {
   // A refused delete names what still uses the symbol; a failed publish, what no longer validates.
   if (Array.isArray(result.references) && result.references.length) {
     details.references = result.references.slice(0, 8).map((item) => ({
-      kind: item.kind,
-      name: item.name,
       role: item.role,
+      asset: item.asset,
+      graph_id: item.graph_id,
       graph: item.graph,
+      node: item.node,
+      pin: item.pin,
       object: item.object,
       component: item.component,
     }));
@@ -1313,12 +1314,14 @@ function errorDetails(result) {
   if (Array.isArray(diagnostics) && diagnostics.length) {
     details.diagnostics = diagnostics.slice(0, 8).map((item) => ({
       severity: item.severity,
+      path: item.path,
       graph: item.graph,
       node: item.node,
+      pin: item.pin,
       rule: item.rule_name,
       message: item.message,
-      block: item.block,
       line: item.line,
+      column: item.column,
     }));
   }
   return details;
@@ -1369,7 +1372,7 @@ function toolSummary(name, response) {
     "live_entities",
     "valid",
     "deterministic",
-    "recording_id",
+    "diverged",
     "recording_path",
     "first_divergence_frame",
   ];

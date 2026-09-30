@@ -14,6 +14,9 @@
 
 static void put(char **out, const char *text, size_t length)
 {
+    if (!length) {
+        return; /* an empty source array is NULL */
+    }
     int start = acount(*out);
     asetlen(*out, start + (int)length);
     memcpy(*out + start, text, length);

@@ -304,7 +304,7 @@ static const contract_field CONTRACT_RUNTIME_SNAPSHOT[] = {
 static const contract_field CONTRACT_RECORD_SCENARIO[] = {
     { "project_root", "string", false, "Project directory; defaults to the controller root." },
     { "kind", "string", false, "Target family; defaults to prototype." },
-    { "name", "string", true, "Prototype asset name." },
+    { "name", "string", true, "Prototype or scene asset name." },
     { "frames", "uint64", false, "Number of deterministic fixed steps; maximum 1800." },
     { "fixed_dt", "number", false, "Fixed timestep in seconds; currently limited to 1/60." },
     { "inputs", "object[]", false, "Per-frame movement, aim, action, and event input records." },
@@ -314,7 +314,7 @@ static const contract_field CONTRACT_RECORD_SCENARIO[] = {
 static const contract_field CONTRACT_REPLAY_SCENARIO[] = {
     { "project_root", "string", false, "Project directory; defaults to the controller root." },
     { "recording", "object", false, "Inline versioned scenario recording." },
-    { "recording_path", "string", false, "Path returned by record_scenario for a generated recording artifact." },
+    { "recording_path", "string", false, "Path recordScenario returned for its recording artifact." },
 };
 static const contract_field CONTRACT_READ_RECORDING[] = {
     { "id", "string", true, "Generated recording identifier." },
@@ -476,12 +476,10 @@ static const contract_field CONTRACT_RENAME_SYMBOL[] = {
 };
 static const contract_field CONTRACT_DELETE_SYMBOL[] = {
     { "project_root", "string", false, "Project directory; defaults to the controller root." },
-    { "asset", "object", false, "Asset {kind, name}; with graph or graph_id, its function or macro; with variable, parameter or local, that member." },
-    { "graph", "string", false, "Function or macro name in asset: the selected graph, a parameter's function, or where a local is." },
+    { "asset", "object", false, "Asset {kind, name}; with graph or graph_id, its function or macro; with variable, that variable." },
+    { "graph", "string", false, "Function or macro name in asset." },
     { "graph_id", "uint64", false, "Function or macro ID in asset, as inspectGraph lists it." },
     { "variable", "string", false, "Variable name in asset." },
-    { "parameter", "string", false, "Input or output name of the function graph names." },
-    { "local", "string", false, "Named value (local) in asset." },
     { "event", "string", false, "Event name; its definition, when it has one, goes with it." },
     { "component", "string", false, "Component name or key; refused, since C reflection names it." },
     { "field", "string", false, "Field path of component; refused." },
@@ -603,7 +601,7 @@ static const operation_descriptor CONTRACT_OPERATIONS[] = {
     },
     {
         "list_assets",
-        "List authored JSON assets and their stable content identities.",
+        "List authored YAML assets and their stable content identities.",
         CONTRACT_LIST_ASSETS,
         CONTRACT_FIELD_COUNT(CONTRACT_LIST_ASSETS),
         1,
@@ -743,8 +741,8 @@ static const operation_descriptor CONTRACT_OPERATIONS[] = {
         CONTRACT_RECORD_SCENARIO,
         CONTRACT_FIELD_COUNT(CONTRACT_RECORD_SCENARIO),
         1,
-        true,
-        true,
+        false,
+        false,
         false,
     },
     {
@@ -895,6 +893,10 @@ static bool valid_asset_filename(const asset_family *family, const char *filenam
 static const char *name_asset_file(asset_ref *ref, const char *name)
 {
     const char *extension = ref->family->extension;
+    /* Hidden files are never assets; publishing refuses them too. */
+    if (name[0] == '.') {
+        return "asset name is invalid";
+    }
     if (strstr(name, extension)) {
         if (!valid_asset_filename(ref->family, name) ||
             strlen(name) >= sizeof ref->filename) {
@@ -1364,7 +1366,9 @@ static void catalog_scan_members(catalog_asset *asset, yyjson_val *root)
             catalog_member_add(asset, "entity", request_string(entity, "name"));
         }
     }
-    qsort(asset->members, (size_t)acount(asset->members), sizeof *asset->members, catalog_member_compare);
+    if (acount(asset->members) > 1) {
+        qsort(asset->members, (size_t)acount(asset->members), sizeof *asset->members, catalog_member_compare);
+    }
 }
 
 static void catalog_add_diagnostic(
@@ -1763,8 +1767,12 @@ static void catalog_link_references(catalog_asset *assets, const reference_index
     for (int i = 0; i < acount(assets); i++) {
         catalog_reference *dependencies = assets[i].dependencies;
         catalog_reference *dependents = assets[i].dependents;
-        qsort(dependencies, (size_t)acount(dependencies), sizeof *dependencies, catalog_reference_compare);
-        qsort(dependents, (size_t)acount(dependents), sizeof *dependents, catalog_reference_compare);
+        if (acount(dependencies) > 1) {
+            qsort(dependencies, (size_t)acount(dependencies), sizeof *dependencies, catalog_reference_compare);
+        }
+        if (acount(dependents) > 1) {
+            qsort(dependents, (size_t)acount(dependents), sizeof *dependents, catalog_reference_compare);
+        }
     }
 }
 
@@ -2068,7 +2076,9 @@ static int enumerate_assets(const char *root, asset_entry **out, char *error, si
         closedir(directory);
         free(directory_path);
     }
-    qsort(entries, (size_t)acount(entries), sizeof *entries, asset_entry_compare);
+    if (acount(entries) > 1) {
+        qsort(entries, (size_t)acount(entries), sizeof *entries, asset_entry_compare);
+    }
     *out = entries;
     return 0;
 }
@@ -2958,7 +2968,7 @@ static void inspect_add_sorted_array(
         };
     }
     /* Documents already order edges canonically. */
-    if (!edges) {
+    if (!edges && item_count > 1) {
         qsort(items, (size_t)item_count, sizeof *items, inspect_item_compare);
     }
     for (int i = 0; i < item_count; i++) {
@@ -3020,7 +3030,9 @@ static void inspect_add_calls(
     for (int i = 0; i < count; i++) {
         nodes[i] = source->nodes[i];
     }
-    qsort(nodes, (size_t)count, sizeof *nodes, inspect_node_compare);
+    if (count > 1) {
+        qsort(nodes, (size_t)count, sizeof *nodes, inspect_node_compare);
+    }
     for (int i = 0; i < count; i++) {
         const node *call = nodes[i];
         if (!call->reference_id && !call->reference_name && !call->reference_asset) {
@@ -3067,7 +3079,9 @@ static void inspect_add_effects(yyjson_mut_doc *doc, yyjson_mut_val *object, con
     for (int i = 0; i < read_count; i++) {
         ordered_reads[i] = effects->reads[i];
     }
-    qsort(ordered_reads, (size_t)read_count, sizeof *ordered_reads, compare_uint64);
+    if (read_count > 1) {
+        qsort(ordered_reads, (size_t)read_count, sizeof *ordered_reads, compare_uint64);
+    }
     for (int i = 0; i < read_count; i++) {
         yyjson_mut_arr_add_uint(doc, reads, ordered_reads[i]);
     }
@@ -3080,7 +3094,9 @@ static void inspect_add_effects(yyjson_mut_doc *doc, yyjson_mut_val *object, con
     for (int i = 0; i < write_count; i++) {
         ordered_writes[i] = effects->writes[i];
     }
-    qsort(ordered_writes, (size_t)write_count, sizeof *ordered_writes, compare_uint64);
+    if (write_count > 1) {
+        qsort(ordered_writes, (size_t)write_count, sizeof *ordered_writes, compare_uint64);
+    }
     for (int i = 0; i < write_count; i++) {
         yyjson_mut_arr_add_uint(doc, writes, ordered_writes[i]);
     }
@@ -3207,7 +3223,9 @@ static void inspect_add_variables(yyjson_mut_doc *doc, yyjson_mut_val *object, y
             .id = inspect_json_uint(yyjson_obj_get(item, "id")),
         };
     }
-    qsort(items, (size_t)item_count, sizeof *items, inspect_item_compare);
+    if (item_count > 1) {
+        qsort(items, (size_t)item_count, sizeof *items, inspect_item_compare);
+    }
     for (int i = 0; i < item_count; i++) {
         yyjson_mut_arr_add_val(variables, yyjson_val_mut_copy(doc, items[i].value));
     }
@@ -3519,6 +3537,32 @@ static void add_execution_status(
     yyjson_mut_obj_add_strcpy(doc, execution, "reason", reason ? reason : "");
 }
 
+/* Behaviors publish SLJIT code natively and portable bytecode on the web;
+   there is no interpreter fallback. */
+static const char *behavior_backend_json_name(behavior_backend backend)
+{
+    switch (backend) {
+        case BEHAVIOR_SLJIT: return "sljit";
+        case BEHAVIOR_BYTECODE: return "bytecode";
+        case BEHAVIOR_ORACLE: return "oracle";
+        case BEHAVIOR_UNAVAILABLE: return "unavailable";
+    }
+    return "unavailable";
+}
+
+static const char *behavior_backend_reason(behavior_backend backend)
+{
+    switch (backend) {
+        case BEHAVIOR_SLJIT: return "behaviors publish compiled SLJIT code";
+        case BEHAVIOR_BYTECODE:
+            return "behaviors publish portable bytecode; this build has no "
+                   "SLJIT";
+        case BEHAVIOR_ORACLE: return "behaviors run on the reference oracle";
+        case BEHAVIOR_UNAVAILABLE: return "behavior code is unavailable";
+    }
+    return "behavior code is unavailable";
+}
+
 static bool system_has_tick(const behavior_asset *asset)
 {
     if (!asset) {
@@ -3645,9 +3689,13 @@ static int handle_execution_status(const char *root, yyjson_val *request, respon
     if (!strcmp(kind, "behavior")) {
         behavior_asset *asset = behavior_asset_load_json(json);
         free(json);
-        if (!asset) {
+        /* The runtime publishes the asset linked with its libraries and events. */
+        behavior_asset *linked = asset
+                                   ? link_project_libraries(root, asset, error, sizeof error)
+                                   : NULL;
+        if (!linked) {
             yyjson_mut_val *diagnostics = yyjson_mut_obj_add_arr(result->doc, value, "diagnostics");
-            add_load_diagnostic(result->doc, diagnostics, graph_last_error());
+            add_load_diagnostic(result->doc, diagnostics, asset ? error : graph_last_error());
             add_execution_status(
                 result->doc,
                 value,
@@ -3658,28 +3706,33 @@ static int handle_execution_status(const char *root, yyjson_val *request, respon
                 false,
                 "behavior asset could not be loaded"
             );
+            behavior_asset_free(asset);
             response_error(result, exit_code, CHIBI_AUTOMATION_VALIDATION_ERROR, "behavior execution status failed");
             return -1;
         }
-        compile_report report;
-        compile_report_init(&report);
-        behavior_asset_compile(asset, &report);
-        inspect_add_validation(result->doc, value, asset, &report);
-        int errors = report.error_count;
-        compile_report_free(&report);
+        const behavior_program *program = behavior_program_publish(linked);
+        behavior_backend backend = behavior_program_backend(program);
+        const compile_report *report = behavior_program_report(program);
+        const compile_diagnostic *failure = behavior_program_diagnostic(program);
+        char reason[CMPL_MESSAGE_MAX];
+        snprintf(reason, sizeof reason, "%s", failure ? failure->message : behavior_backend_reason(backend));
+        int code = report->error_count ? CHIBI_AUTOMATION_VALIDATION_ERROR
+                                       : CHIBI_AUTOMATION_EXECUTION_ERROR;
+        inspect_add_validation(result->doc, value, asset, report);
         add_execution_status(
             result->doc,
             value,
-            errors ? "unavailable" : "interpreter",
-            errors == 0,
+            behavior_backend_json_name(backend),
+            backend != BEHAVIOR_UNAVAILABLE,
             graph_sljit_available() != 0,
-            false,
-            false,
-            errors ? "behavior validation failed" : "behavior event graphs execute through the flow interpreter"
+            backend == BEHAVIOR_SLJIT,
+            backend == BEHAVIOR_SLJIT,
+            reason
         );
+        behavior_asset_free(linked);
         behavior_asset_free(asset);
-        if (errors) {
-            response_error(result, exit_code, CHIBI_AUTOMATION_VALIDATION_ERROR, "behavior validation failed");
+        if (backend == BEHAVIOR_UNAVAILABLE) {
+            response_error(result, exit_code, code, reason);
             return -1;
         }
         return 0;
@@ -5646,15 +5699,16 @@ static int handle_profile_scenario(const char *root, yyjson_val *request, respon
         "authored_entities",
         game_prototype_preview_entity_count(context.preview)
     );
+    behavior_backend backend = behavior_default_backend();
     add_execution_status(
         result->doc,
         value,
-        "interpreter",
+        behavior_backend_json_name(backend),
         true,
         graph_sljit_available() != 0,
-        false,
-        false,
-        "behavior event graphs execute through the flow interpreter"
+        backend == BEHAVIOR_SLJIT,
+        backend == BEHAVIOR_SLJIT,
+        behavior_backend_reason(backend)
     );
     add_profile_timing(result->doc, value, &timing);
     add_profile_allocations(result->doc, value, &allocations, timing.frames);
@@ -7320,7 +7374,7 @@ static int handle_record_scenario(const char *root, yyjson_val *request, respons
     }
     const char *name = request_string(request, "name");
     if (!name || !name[0]) {
-        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "prototype name is required");
+        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "prototype or scene name is required");
         return -1;
     }
     char error[256] = { 0 };
@@ -8754,7 +8808,9 @@ static int handle_search_nodes(const char *root, yyjson_val *request, response *
         }
         apush(matches, match);
     }
-    qsort(matches, (size_t)acount(matches), sizeof *matches, node_match_compare);
+    if (acount(matches) > 1) {
+        qsort(matches, (size_t)acount(matches), sizeof *matches, node_match_compare);
+    }
     yyjson_mut_val *nodes = yyjson_mut_obj_add_arr(result->doc, value, "nodes");
     int total = acount(matches);
     for (int i = offset; i < total && i < offset + limit; i++) {

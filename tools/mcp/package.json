@@ -19,6 +19,8 @@
   "homepage": "https://github.com/waldnercharles/c-blueprints/tree/main/tools/mcp",
   "files": [
     "authoring.mjs",
+    "controller-cache.sh",
+    "controller.mjs",
     "launch.sh",
     "server.mjs",
     "tool-catalog.mjs"
@@ -27,7 +29,7 @@
     "chibi-mcp": "./server.mjs"
   },
   "scripts": {
-    "check": "node --check server.mjs && node --check authoring.mjs && node --check tool-catalog.mjs && node --check name-audit.mjs && node --check setup-codex.mjs",
+    "check": "node --check server.mjs && node --check authoring.mjs && node --check controller.mjs && node --check tool-catalog.mjs && node --check name-audit.mjs && node --check setup-codex.mjs",
     "audit:names": "node name-audit.mjs",
     "pack:check": "npm pack --dry-run"
   },

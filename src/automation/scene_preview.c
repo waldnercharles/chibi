@@ -510,7 +510,14 @@ char *chibi_scene_preview_handle(const char *request, const char *default_root, 
         yyjson_mut_obj_add_int(response, preview, "height", height);
         yyjson_mut_obj_add_strcpy(response, preview, "data", png);
     } else {
-        yyjson_mut_obj_add_strcpy(response, object, "error", error);
+        yyjson_mut_val *failure = yyjson_mut_obj_add_obj(response, object, "error");
+        yyjson_mut_obj_add_str(
+            response,
+            failure,
+            "code",
+            status == CHIBI_AUTOMATION_INVALID_REQUEST ? "invalid_request" : "execution_failed"
+        );
+        yyjson_mut_obj_add_strcpy(response, failure, "message", error);
     }
     if (exit_code) {
         *exit_code = ok ? CHIBI_AUTOMATION_OK : status;

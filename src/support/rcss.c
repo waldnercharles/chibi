@@ -30,7 +30,9 @@ static void put_text(char **out, const char *text)
 static char *take(char **out)
 {
     char *text = xmalloc((size_t)acount(*out) + 1);
-    memcpy(text, *out, (size_t)acount(*out));
+    if (acount(*out)) {
+        memcpy(text, *out, (size_t)acount(*out));
+    }
     text[acount(*out)] = '\0';
     afree(*out);
     *out = NULL;

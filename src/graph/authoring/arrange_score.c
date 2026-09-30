@@ -164,18 +164,12 @@ static void ar_draw(const arrange_graph *g, const arrange_point *pos, arrange_ro
         arrange_point from = ar_link_start(g, pos, l);
         arrange_point to = ar_link_end(pos, l);
         int first = d->routes.start[i];
+        int bends = d->routes.start[i + 1] - first;
         apush(d->piece_start, acount(d->pieces));
         if (l->custom_handles) {
             apush(d->pieces, ar_handles_of(l, from, to));
         } else {
-            arrange_path(
-                style,
-                from,
-                to,
-                d->routes.points + first,
-                d->routes.start[i + 1] - first,
-                &d->pieces
-            );
+            arrange_path(style, from, to, bends ? d->routes.points + first : NULL, bends, &d->pieces);
         }
         ar_wire w = { .first = acount(d->points), .min = from, .max = from, .monotone = true };
         apush(d->points, from);

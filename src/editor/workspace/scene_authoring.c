@@ -1345,6 +1345,7 @@ void app_scene_authoring_free(app_scene_authoring *scene)
         return;
     }
     scene_debug_clear(&scene->debug);
+    scenario_document_free(scene->scenario);
     free(scene->ui);
     free(scene->default_ui);
     editor_set_inspection_blocked(scene->graph_editor, false);

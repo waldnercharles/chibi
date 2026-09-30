@@ -20,6 +20,7 @@ typedef enum
     PICK_COMPONENT,
     PICK_ASSET,
     PICK_PROJECT,
+    PICK_SCENARIO,
     PICK_GRAPH,
     PICK_NODE,
     PICK_ELEMENT,
@@ -192,6 +193,21 @@ static void add_assets(studio *s, pick **picks)
         snprintf(p->key, sizeof p->key, "asset:%s:%s", kind, asset->name);
         p->icon = studio_asset_kind_icon(asset->kind);
     }
+}
+
+/* Each scenario replays on a loop, until Stop. */
+static void add_scenarios(studio *s, pick **picks)
+{
+    char **names = app_scenario_names(s->scene);
+    for (int i = 0; i < acount(names); i++) {
+        pick *p = add(picks, PICK_SCENARIO, i, "Scenarios", names[i]);
+        snprintf(p->meta, sizeof p->meta, "Replay");
+        snprintf(p->keywords, sizeof p->keywords, "replay scenario gameplay profile");
+        snprintf(p->key, sizeof p->key, "scenario:%s", names[i]);
+        p->icon = KIT_ICON_REPLAY;
+        free(names[i]);
+    }
+    afree(names);
 }
 
 static void add_projects(studio *s, pick **picks)
@@ -377,6 +393,7 @@ static void choose(studio *s, const pick *p)
             break;
         case PICK_ASSET: app_scene_authoring_open_asset(scene, p->index); break;
         case PICK_PROJECT: studio_open_project(s, p->index); break;
+        case PICK_SCENARIO: studio_replay_scenario(s, p->label); break;
         case PICK_GRAPH:
             studio_show_editor(s, STUDIO_EDITOR_BEHAVIOR);
             editor_open_graph(sg_graph_editor(s), p->graph_id);
@@ -435,6 +452,7 @@ static pick *collect(studio *s, scope scope, bool typed)
         add_objects(s, &picks);
         add_assets(s, &picks);
         add_projects(s, &picks);
+        add_scenarios(s, &picks);
     }
     if (scope != SCOPE_SYMBOLS) {
         add_settings(s, &picks);

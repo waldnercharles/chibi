@@ -63,6 +63,15 @@ a new project. A project that cannot open, such as one saved at another project
 version, offers Export Project and New Project. `make web-serve` saves to the
 local project instead.
 
+Gameplay can be recorded and replayed as a `scenarios` asset. In Studio, Record
+Gameplay restarts the scene and records until Stop or Stop Recording, then
+saves `scenarios/<Scene> Recording.yaml`; the command palette lists each
+scenario to replay on a loop until Stop. Scenarios can also be written by hand
+(see [the MCP workflow](docs/mcp.md#scenario-assets)). `ARGS='--play --scenario
+Firefight'`, or `?play&scenario=Firefight` in the browser, replays one on a loop
+in the game, and `make profile-compare PROFILE_SCENARIO=Firefight` profiles the
+same play headless natively and as WASM.
+
 Run `make help` for the complete target list and the purpose of each target.
 
 The [frame-time optimization roadmap](docs/research/frame-time-roadmap.md)

@@ -229,6 +229,7 @@ set(APP_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/workspace/scene_authoring.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/workspace/scene_checkpoint.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/workspace/scene_debug.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/workspace/scenario_playback.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/workspace/scene_runtime.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/workspace/scene_tabs.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/workspace/scene_viewport.c

@@ -280,11 +280,41 @@ static bool runs_guest(const studio *s, app_runtime_state state)
            !state.playing && !runtime_session(s->scene);
 }
 
+void studio_record_gameplay(studio *s)
+{
+    if (!app_scenario_recording(s->scene)) {
+        if (app_scenario_record(s->scene) != 0) {
+            toast(s, KIT_TOAST_ERROR, "Could not record gameplay", app_scene_authoring_message(s->scene));
+        }
+        return;
+    }
+    char name[128];
+    if (app_scenario_save(s->scene, name, sizeof name) != 0) {
+        toast(s, KIT_TOAST_ERROR, "Could not save the recording", NULL);
+        return;
+    }
+    toast(s, KIT_TOAST_SUCCESS, "Saved gameplay recording", name);
+}
+
+void studio_replay_scenario(studio *s, const char *name)
+{
+    if (app_scenario_replay(s->scene, name) != 0) {
+        toast(s, KIT_TOAST_ERROR, "Could not replay scenario", app_scene_authoring_message(s->scene));
+    }
+}
+
 void studio_runtime(studio *s, app_runtime_command command)
 {
     /* Play resumes a run paused at a breakpoint (Unreal). */
     if (command == APP_RUNTIME_PLAY && studio_debug(s, STUDIO_RESUME)) {
         return;
+    }
+    /* Stop keeps a recording and ends a replay. */
+    if (command == APP_RUNTIME_STOP) {
+        if (app_scenario_recording(s->scene)) {
+            studio_record_gameplay(s);
+        }
+        app_scenario_stop(s->scene);
     }
     finish_transform_edit(s->scene, false);
     app_runtime_state state = app_scene_authoring_runtime_state(s->scene);

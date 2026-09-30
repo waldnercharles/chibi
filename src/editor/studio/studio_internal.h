@@ -10,6 +10,7 @@
 #include "editor/ui/kit.h"
 #include "editor/ui/kit_icons.h"
 #include "editor/workspace/asset_index.h"
+#include "editor/workspace/scenario_playback.h"
 #include "editor/workspace/scene_internal.h"
 #include "graph/authoring/arrange.h"
 #include "render/ui.h"
@@ -95,6 +96,7 @@ typedef enum
     STUDIO_COMMAND_PLAY,
     STUDIO_COMMAND_STOP,
     STUDIO_COMMAND_STEP,
+    STUDIO_COMMAND_RECORD_GAMEPLAY,
     STUDIO_COMMAND_DENSITY,
     STUDIO_COMMAND_MOTION,
     STUDIO_COMMAND_THEME,
@@ -1235,6 +1237,10 @@ bool studio_shortcut_record(studio_prefs *prefs, int *recording, studio_key key,
 void studio_save(studio *s);
 void studio_history(studio *s, bool redo);
 void studio_runtime(studio *s, app_runtime_command command);
+/* Record Gameplay toggles: it restarts the scene and records, then saves the
+   play as a scenarios asset. */
+void studio_record_gameplay(studio *s);
+void studio_replay_scenario(studio *s, const char *name);
 /* A scene run, a preview or a guest Studio is running. */
 bool studio_session(const studio *s);
 /* Play in the Studio project runs Studio itself, as the project's game: a

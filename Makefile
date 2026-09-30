@@ -6,6 +6,8 @@ RELEASE_BUILD_DIR ?= build-release
 TRACY_BUILD_DIR ?= build-tracy
 TRACY_MCP_BUILD_DIR ?= build-tracy-mcp
 WEB_BUILD_DIR ?= build-web
+WEB_PROFILE_BUILD_DIR ?= build-web-profile
+WEB_CMAKE_FLAGS ?=
 FAST_BUILD_DIR ?= build-debug
 JOBS ?= 8
 BUILD_TARGET ?=
@@ -27,7 +29,7 @@ LOCAL_CMAKE_FLAGS ?= $(SANITIZER_CMAKE_FLAGS)
 # allocator does not report a failed nano-zone reservation.
 NATIVE_RUNTIME_ENV ?= MallocNanoZone=0
 
-.PHONY: all help build build-debug build-tracy build-tracy-mcp mcp mcp-controller mcp-setup tracy-mcp run debug debug-san play build-release run-tracy benchmark web web-configure web-serve profile-compare format check-format test test-fast test-render sdl-package clean
+.PHONY: all help build build-debug build-tracy build-tracy-mcp mcp mcp-controller mcp-setup tracy-mcp run debug debug-san play build-release run-tracy benchmark web web-configure web-serve web-profile profile-compare format check-format test test-fast test-render sdl-package clean
 
 all: build
 
@@ -56,6 +58,7 @@ help:
 		'make mcp-setup      Generate local Codex MCP configuration' \
 		'make web            Build the browser application' \
 		'make web-serve      Serve the browser application for PROJECT on WEB_PORT' \
+		'make web-profile    Serve a web build named for the browser profiler' \
 		'make profile-compare Profile PROJECT headless natively and as WASM' \
 		'make format         Rewrite project C sources with clang-format' \
 		'make check-format   Check project C source formatting' \
@@ -142,7 +145,7 @@ benchmark:
 # Web builds generate reflection with the native tool.
 web-configure:
 	sh tools/configure_native.sh "$(BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) && cmake --build "$(BUILD_DIR)" --target reflect --parallel $(JOBS)
-	emcmake cmake -S . -B "$(WEB_BUILD_DIR)" -DCMAKE_BUILD_TYPE=Release -DCHIBI_COLLAB_URL="$(CHIBI_COLLAB_URL)" -DCHIBI_REFLECT_EXECUTABLE=$(CURDIR)/$(BUILD_DIR)/reflect
+	emcmake cmake -S . -B "$(WEB_BUILD_DIR)" -DCMAKE_BUILD_TYPE=Release -DCHIBI_COLLAB_URL="$(CHIBI_COLLAB_URL)" -DCHIBI_REFLECT_EXECUTABLE=$(CURDIR)/$(BUILD_DIR)/reflect $(WEB_CMAKE_FLAGS)
 
 web: web-configure
 	cmake --build "$(WEB_BUILD_DIR)" --target chibi check-behavior-backend --parallel $(JOBS)
@@ -156,6 +159,11 @@ profile-compare: web-configure
 
 web-serve: web
 	python3 tools/web_serve.py --build "$(WEB_BUILD_DIR)" --project "$(PROJECT)" --port $(WEB_PORT)
+
+# Serve a web build whose WASM functions and trace zones are named in the
+# browser's Performance panel.
+web-profile:
+	$(MAKE) web-serve WEB_BUILD_DIR="$(WEB_PROFILE_BUILD_DIR)" WEB_CMAKE_FLAGS=-DCHIBI_WEB_PROFILING=ON
 
 format:
 	sh tools/clang-format.sh
@@ -200,7 +208,7 @@ clean:
 	else \
 		rm -rf "$(BUILD_DIR)"; \
 	fi
-	rm -rf "$(DEBUG_BUILD_DIR)" "$(RELEASE_BUILD_DIR)" "$(BENCHMARK_BUILD_DIR)" "$(TRACY_BUILD_DIR)" "$(TRACY_MCP_BUILD_DIR)" "$(WEB_BUILD_DIR)" "$(DEV_BUILD_DIR)"
+	rm -rf "$(DEBUG_BUILD_DIR)" "$(RELEASE_BUILD_DIR)" "$(BENCHMARK_BUILD_DIR)" "$(TRACY_BUILD_DIR)" "$(TRACY_MCP_BUILD_DIR)" "$(WEB_BUILD_DIR)" "$(WEB_PROFILE_BUILD_DIR)" "$(DEV_BUILD_DIR)"
 
 # Watch sources and preserve the workspace across native application changes.
 .PHONY: dev

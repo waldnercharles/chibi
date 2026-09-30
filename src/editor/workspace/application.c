@@ -2,6 +2,7 @@
 
 #include "assets/project.h"
 #include "assets/prototype.h"
+#include "diagnostics/frame_log.h"
 #include "diagnostics/tracy.h"
 #include "editor/collab/actions.h"
 #include "editor/collab/collab.h"
@@ -65,6 +66,7 @@ typedef struct
     char *local_workspace;
     bool collab_initialized;
     bool destroying;
+    double log_start_ms, log_last_ms, log_dropped_seconds;
 } app_loop;
 
 static void app_collab_prepare(app_loop *loop);
@@ -141,6 +143,28 @@ static void schedule_frame(app_loop *loop)
                           (uint64_t)(fmin(idle, APP_IDLE_FRAME) * 1000);
 }
 
+/* The scene runtime's frame timing, for the browser's frame log. */
+static void log_frame(app_loop *loop)
+{
+    double now = (double)SDL_GetTicksNS() / 1e6;
+    if (!loop->log_start_ms) {
+        loop->log_start_ms = loop->log_last_ms = now;
+    }
+    const engine_frame_timing *timing = engine_last_timing(loop->runtime);
+    frame_log_push((frame_log_entry){
+        .time_ms = now - loop->log_start_ms,
+        .interval_ms = now - loop->log_last_ms,
+        .steps = (int)timing->steps,
+        .dropped_ms = (timing->dropped_seconds - loop->log_dropped_seconds) * 1000,
+        .behavior_ms = timing->behavior_ms,
+        .physics_ms = timing->physics_ms,
+        .systems_ms = timing->systems_ms,
+        .rendering_ms = timing->rendering_ms,
+    });
+    loop->log_last_ms = now;
+    loop->log_dropped_seconds = timing->dropped_seconds;
+}
+
 static int app_frame(app_loop *loop)
 {
     if (!cf_app_is_running()) {
@@ -178,6 +202,7 @@ static int app_frame(app_loop *loop)
         studio_frame(loop->studio, dt);
         CHIBI_TRACE_ZONE_END(editor_zone);
     }
+    log_frame(loop);
     CHIBI_TRACE_ZONE_BEGIN(present_zone, "Present / GPU wait");
     cf_app_draw_onto_screen(true);
     CHIBI_TRACE_ZONE_END(present_zone);

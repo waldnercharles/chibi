@@ -1,6 +1,7 @@
 # Explicit compilation ownership, independent of conceptual folder boundaries.
 
 set(CORE_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/diagnostics/web_trace.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/authoring/align.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/authoring/arrange.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/authoring/arrange_path.c
@@ -225,6 +226,7 @@ set(APP_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/workspace/asset_index.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/workspace/game_presentation.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/workspace/gameplay_input.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/diagnostics/frame_log.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/workspace/scene_actors.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/workspace/scene_authoring.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/workspace/scene_checkpoint.c

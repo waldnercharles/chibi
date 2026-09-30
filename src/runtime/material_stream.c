@@ -1,5 +1,6 @@
 #include "runtime/material_stream.h"
 
+#include "diagnostics/tracy.h"
 #include "runtime/material_terrain.h"
 #include "support/array.h"
 #include "support/xalloc.h"
@@ -307,17 +308,19 @@ bool material_stream_update(
         s->state.unloaded++;
     }
     uint64_t key = 0;
-    while (next_tile(s, views, count, true, &key)) {
-        if (!load_tile(s, fields, key, error, size)) {
-            return false;
-        }
+    bool loaded = true;
+    CHIBI_TRACE_ZONE_BEGIN(required_zone, "Terrain required tiles");
+    while (loaded && next_tile(s, views, count, true, &key)) {
+        loaded = load_tile(s, fields, key, error, size);
     }
-    for (int i = 0; i < budget && next_tile(s, views, count, false, &key); i++) {
-        if (!load_tile(s, fields, key, error, size)) {
-            return false;
-        }
+    CHIBI_TRACE_ZONE_END(required_zone);
+    CHIBI_TRACE_ZONE_BEGIN(prefetch_zone, "Terrain prefetch");
+    for (int i = 0; loaded && i < budget && next_tile(s, views, count, false, &key);
+         i++) {
+        loaded = load_tile(s, fields, key, error, size);
     }
-    return true;
+    CHIBI_TRACE_ZONE_END(prefetch_zone);
+    return loaded;
 }
 
 const material_stream_tile *material_stream_tiles(const material_stream *s, int *count)

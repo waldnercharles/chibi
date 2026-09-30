@@ -6,6 +6,7 @@
 #include "runtime/material_field.h"
 #include "runtime/material_stream.h"
 #include "runtime/material_terrain.h"
+#include "support/cos_sin.h"
 #include "support/text_file.h"
 
 #include <assert.h>
@@ -556,8 +557,22 @@ static void streaming_restore()
     free(damage);
 }
 
+/* Fields use Box2D's cosine and sine, identical on every platform: within
+ * 0.002 of libm across many turns, and exact at zero. */
+static void cos_sin_accuracy()
+{
+    float worst = 0;
+    for (float angle = -1000; angle < 1000; angle += 0.37f) {
+        cos_sin r = cos_sin_compute(angle);
+        worst = fmaxf(worst, fmaxf(fabsf(r.c - cosf(angle)), fabsf(r.s - sinf(angle))));
+    }
+    cos_sin zero = cos_sin_compute(0);
+    assert(worst < 0.002f && zero.c == 1 && zero.s == 0);
+}
+
 void test_fields()
 {
+    cos_sin_accuracy();
     streaming_restore();
     primitives();
     parameters_and_errors();
@@ -566,7 +581,7 @@ void test_fields()
     multiple_results();
     chunks();
     library_hot_apply();
-    puts("PASS: pure field compilation, parameters, deterministic noise, composition, connectivity and chunks");
+    puts("PASS: pure field compilation, cosine and sine, parameters, deterministic noise, composition, connectivity and chunks");
 }
 int bench_fields()
 {

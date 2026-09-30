@@ -1,5 +1,6 @@
 
 
+#include "support/cos_sin.h"
 #include "support/xalloc.h"
 
 #include <assert.h>
@@ -83,7 +84,7 @@ float *reference_cave_generate(unsigned seed, int width, int height, float cell_
         float span = radius * (1 + .4f * noise(seed + 4, px / 420, 0));
         float sector = px / (radius * 5);
         int branch = (int)floorf(sector);
-        float arc = sinf((sector - branch) * 3.14159265f);
+        float arc = cos_sin_compute((sector - branch) * 3.14159265f).s;
         float side = sample(seed + 5, branch, 0) > 0 ? 1 : -1;
         float branch_y = center + side * radius * 2.15f * arc;
         for (int y = 0; y < height; y++) {

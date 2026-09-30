@@ -4,7 +4,7 @@ Studio users and MCP agents get the navigation and refactoring a language server
 
 `searchNodes` set the pattern (#105). The editor and the MCP share `component_node_presets`, `support/text_search`, `GRAPH_HOST_EVENTS`, the System node list `game_system_node_supported`, node descriptions (`graph/authoring/describe.h`) and validation linked with the project's libraries (`graph/document/problems.h`) instead of keeping parallel copies.
 
-The reference index (`src/assets/reference_index.h`) is the shared base for navigation, and `src/assets/refactor.h` for rename and safe delete: given the index and each asset's text, it plans every file an edit changes, in canonical form. Studio builds one from its authored state, unsaved edits included (`src/editor/workspace/asset_index.c`); the MCP catalog builds one from the project's files (`CATALOG_SNAPSHOT.references` in `src/automation/controller.c`). It records every reference below with its asset, graph, node, pin and role, and answers find uses, definitions and use counts.
+The reference index (`src/assets/reference_index.h`) is the shared base for navigation, `src/assets/call_hierarchy.h` for callers and callees, and `src/assets/refactor.h` for rename and safe delete: given the index and each asset's text, it plans every file an edit changes, in canonical form. The MCP publishes a plan as one hash-checked batch (`automation_assets_publish`); Studio applies it through `editor/workspace/asset_refactor.h` and follows the moved files in memory. Studio builds one from its authored state, unsaved edits included (`src/editor/workspace/asset_index.c`); the MCP catalog builds one from the project's files (`CATALOG_SNAPSHOT.references` in `src/automation/controller.c`). It records every reference below with its asset, graph, node, pin and role, and answers find uses, definitions and use counts.
 
 ## Symbols
 
@@ -26,7 +26,7 @@ A reference names a symbol by ID or by name. A rename rewrites every by-name ref
 
 ## Features
 
-Status on 2026-09-26, after rename and safe delete landed. Update a row when its feature lands.
+Update a row when a feature lands in Studio or the MCP; the Missing column is the open work.
 
 | Feature | Studio | MCP | Missing |
 | --- | --- | --- | --- |
@@ -43,12 +43,3 @@ Status on 2026-09-26, after rename and safe delete landed. Update a row when its
 | Resolved types | Node tab | `inspectGraph` lists each node's pins with their resolved types | — |
 | Find | ⌘F within one graph asset, and in the Text Editor within a UI document's part | `searchAssets` matches member names | Both: find nodes across the project |
 | Inspect UI | Inspect Element (⇧⌘C) picks any element Studio draws: its chrome and panels, a graph node, or a game's UI in the Scene. The Inspector lists the element tree, styles by rule with their files and lines (`ui_style_origin`), computed values and attributes; Edit Source opens the element's ui asset at its `data-src` line | `captureRuntimeSnapshot`'s `ui`: what behaviors set on a running scene's documents, by entity and selector | MCP: the element tree and styles of a running scene's UI |
-
-## Order
-
-The optimize branch (#106) supplied function signatures and code actions, and step 1 the shared index the rest build on.
-
-1. **Shared index.** Done: `src/assets/reference_index.{c,h}` replaced the core of Studio's asset index and the controller's `catalog_scan_references`, adding event, `Spawn Prototype` and UI links to the MCP.
-2. **Read-only navigation.** Done: `findReferences` (with definitions) and `callHierarchy` in the MCP, over the index's pin names, definition names and the nodes each Event node's run reaches (`reference_index_reaches`), and `src/assets/call_hierarchy.{c,h}`; Studio's Go to Definition, Output ▸ Calls and Members use counts.
-3. **Multi-asset edits.** Done: `src/assets/refactor.{c,h}` plans rename and safe delete from the index; the MCP publishes a plan as one hash-checked batch (`automation_assets_publish`) and Studio through `editor/workspace/asset_refactor.h`, then follows the moved files in memory.
-4. **The rest.** Code-action parity, hover descriptions, completion from a pin, resolved types, project-wide find.

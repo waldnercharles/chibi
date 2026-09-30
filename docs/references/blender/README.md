@@ -1,8 +1,10 @@
 # Blender editor references
 
-Added September 23, 2026 from screenshots supplied by the user. Blender joins
-LichtFeld Studio as a reference for the editor's visual polish and desktop
-interaction. Adapt these patterns to Chibi's workflows and available features.
+Screenshots supplied by the user as a reference, with LichtFeld Studio, for
+Studio's visual polish and desktop interaction. Adapt these patterns to Chibi's
+workflows and available features. Where a node control has a direct Blender
+equivalent, check Blender's manual and its images before inventing a different
+arrangement.
 
 ## What to carry into Chibi
 
@@ -23,10 +25,9 @@ help with the current selection or workflow.
 
 ## Supplied screenshots
 
-The versions below come from the visible status bars. These supplied images are
-visual references; additional sourced screenshots must be verified as Blender
-5.2 before being added. Original publication and artwork credits were not
-included with the supplied files.
+The versions below come from the visible status bars. Add further screenshots
+only from a current Blender release, with the version recorded. Original
+publication and artwork credits were not included with the supplied files.
 
 ### Viewport and grouped properties — Blender 2.80.74
 

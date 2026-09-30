@@ -1,6 +1,6 @@
 # Node editor references
 
-This document is the node-graph counterpart of [Editor UI references](editor-ui-references.md). It covers the libraries and editors whose interaction contracts the RmlUi behavior graph editor ports. We port behavior, not code. Numbers were read from source or official docs on 2026-09-23; **(unverified)** marks the few that weren't.
+This document is the node-graph counterpart of [Editor UI references](editor-ui-references.md). It covers the libraries and editors whose interaction contracts the behavior graph editor ports. We port behavior, not code. The canvas is native C (`src/editor/studio/studio_graph*.c`) shown in Studio's Behavior area; its view options popover is the authored `GraphView` panel. Numbers were read from source or official docs on 2026-09-23; **(unverified)** marks the few that weren't.
 
 What the graphs themselves should offer (nodes, conversions, compiler safety and automation) is in [Graph language: lessons from Unreal and Blender](research/graph-language-2026-09-23.md).
 
@@ -43,6 +43,7 @@ These are our decisions, drawing on the references above. Distances are screen d
 - **Frame:**
   - F frames the selection; pressing F again frames everything (imgui-node-editor). Home frames everything.
   - Fits use 10% padding (xyflow) and animate over 0.3 s easeInOutCubic.
+  - A graph opens fitted while that keeps it at 75% or more; otherwise it opens at 75% with its start in view.
 - **Auto-pan:** while dragging nodes, wires or a box, the view pans within 40 dp of the edge, ramping up to 900 dp/s (xyflow's 15 px per frame).
 - **Level of detail:**
   - Below the zoom where 12 dp text would render under about 7 px (roughly 0.55), hide pin labels and inline widgets and keep node titles (ComfyUI).
@@ -67,14 +68,12 @@ These are our decisions, drawing on the references above. Distances are screen d
   - Snapping aligns the nearest pin to the grid rather than the node corner, so wires stay straight (imgui-node-editor).
   - When several nodes move, the lead node is snapped and the rest move by the same offset (xyflow).
 - **Wires while dragging a node:**
-  - Alt+drag detaches the node from its wires (Blender).
-  - Dragging an unconnected node onto a wire highlights that wire, and dropping inserts the node into it (Blender, Node-RED). Alt skips the insert. Neighbors don't shift aside yet.
+  - Dragging an unconnected node onto a wire highlights that wire, and dropping inserts the node into it (Blender, Node-RED). Alt skips the insert.
 - **Keys:**
-  - X or Delete deletes; Ctrl+Delete deletes and reconnects matching wires through (Node-RED, ComfyUI).
+  - X or Delete deletes.
   - Shift+D duplicates, and Ctrl+C/X/V copy, cut and paste. Pasted nodes center on the pointer (Unreal).
-  - M mutes (disables), H collapses, F2 renames.
-  - Arrow keys walk along wires to the next node in that direction; Shift extends the selection upstream or downstream (n8n).
-  - Q straightens the selection (Unreal): left to right, each node moves level with the wire that drives it, or with its first output wire when nothing drives it. A selected wire, or Straighten Connection in the wire menu, moves its target. Shift+L arranges the selection (Houdini).
+  - The node menu's Disable mutes a node; F2 renames the hovered member or event.
+  - Q straightens the selection (Unreal): left to right, each node moves level with the wire that drives it, or with its first output wire when nothing drives it. A selected wire, or Straighten Connection in the wire menu, moves its target. Shift+L arranges the graph (Houdini).
   - L adds the nodes wired to the selection's inputs and Alt+L those wired to its outputs, one step at a time (Blender's Select Linked From and To; Blender's Shift+L is Arrange here). The node menu's Select submenu also follows the wires to the end (Unreal's Select All Input and Output Nodes). Nodes folded into their consumer are passed through.
 - **Alignment:** with two or more nodes selected, the node menu's Alignment submenu aligns their tops, middles, bottoms, lefts, centers or rights to the selection's bounds, and distributes three or more with equal gaps (Unreal, Figma). Each item shows its alignment icon. The graph menu offers the same for the selection.
 - **Undo:** each gesture is one undo step. The editor already snapshots per mutation; camera and selection changes never enter history.
@@ -121,14 +120,11 @@ Expressions show their source in the node, highlighted and wrapped, under an "Ex
 - **Where the wire lands:**
   - **On a node's body:** it connects to the first free compatible input. The order is exact type, then wildcard, then occupied exact, then occupied wildcard (ComfyUI).
   - **On empty canvas:** it opens the add search at the drop point, filtered by compatibility, with exact types first. The chosen node spawns with its matching pin under the pointer and wired (Blender, Unreal, ComfyUI).
-  - Holding Ctrl on release keeps the wire for fanning out to more inputs (Rivet).
 - **Re-editing wires:**
   - Dragging a connected input picks its wire up; releasing it on empty canvas disconnects it (Blender, Rete, Rivet).
-  - Ctrl+drag from an output moves all of its wires (Blender, Unreal).
   - Alt+click a pin breaks all its wires (Unreal); Alt+click a wire deletes it (imgui-node-editor).
   - Right-clicking a pin opens its menu (Unreal): Break Link, or Break All Links and Break Link To one wire; Reset to Default, which also clears a binding; Promote to Variable, which adds a Get beside an input or a Set beside an output (the Set runs after the node when the node's only execution output is free, as Unreal wires it to Then, and otherwise sits below the node, unwired); Name Value or Remove Name on an output; Split or Recombine Struct Pin; and Remove Pin.
   - Double-click a wire to add a reroute and drag it (Unreal); drag a reroute to move it and Alt+click it to remove it. A wire on arranged lanes takes the first reroute as its only point. The wire menu clears a wire's reroutes.
-  - Ctrl+right-drag cuts the wires it crosses; Shift+right-drag inserts reroutes where it crosses (Blender).
 
 ### Values, adding and structure
 
@@ -137,9 +133,8 @@ Expressions show their source in the node, highlighted and wrapped, under an "Ex
   - Connecting hides the editor but keeps its value, and disconnecting brings it back (Blockly shadow values; our pins already keep `default_value`).
   - Bindings (component fields, variables) show as chips.
   - A folded pure source (see `graph_node_is_inline`) shows as a chip with the expression the input receives, from `behavior_expression_format`, such as `Movement › Speed × 2`. With Short Bindings each value it reads is named like its binding chip, and a chip that is a single read takes that read's icon. The node menu's **Inline** folds an eligible node, and **Expand Inputs** draws a node's folded sources as nodes, which automatic arrangement then places.
-  - Per-input policy: connection only, constant only, or either (egui_node_graph).
 - **Add menu:**
-  - Shift+A, Space or Tab opens the command surface at the pointer, and typing searches immediately (Blender, Houdini).
+  - Shift+A or Tab opens the command surface at the pointer, and typing searches immediately (Blender, Houdini).
   - Categories stay browsable, and synonyms match (Shader Graph).
   - It reuses `kit_command` and the editor's existing search catalog.
   - Holding a key and clicking empty canvas places a node there (Unreal): B Branch, S Sequence, D Delay, F For Each, N Do N, O Do Once, G Gate. F alone frames once released; M stays free to mute.
@@ -162,7 +157,7 @@ Expressions show their source in the node, highlighted and wrapped, under an "Ex
   - Expand Node puts the body of a call to one of the behavior's own functions or macros back in the call's place, wired as the call was; the called graph stays (Unreal). A function expands only when every execution output in its body is wired, since its call continues wherever the body ends.
   - Refresh Nodes updates the selection's library calls to their functions' current signatures (Unreal). Local calls follow signature edits as they happen.
   - Unreal's Collapse Nodes has no counterpart: every graph is a named function or macro of the behavior, and no graph belongs to a single node.
-  - Tab enters a call and Ctrl+Tab leaves it. Breadcrumbs show the behavior and the calls entered; each returns to its graph (Unreal).
+  - Double-clicking a call enters it (Blender's Tab). Breadcrumbs show the behavior and the calls entered; each returns to its graph (Unreal).
   - These map to `editor_open_graph_call`, `editor_graph_back` and `editor_graph_ancestor`.
   - The Member tab edits a function's or macro's inputs and outputs: name, type, container (Single, Array, Set or Map) and removal, and each data input's default. A macro's pins may also be Exec (Unreal's tunnels). Calls follow every edit (`graph/document/graph_signature.h`); a call pin still showing the old default takes the new one, and a value set on the call stays (Unreal).
   - Functions of materials, shapes, shader libraries and fields are pure.
@@ -174,7 +169,6 @@ Expressions show their source in the node, highlighted and wrapped, under an "Ex
 - **Execution:**
   - Executed exec wires pulse. Markers are spaced 30 units apart and move at 150 units/s for 2 s (imgui-node-editor `Flow`); flow-heat timings stay.
   - The running node gets a 3 dp accent outline, and errors a red one (ComfyUI, Unity).
-  - Branches that didn't run draw dashed (Rivet).
 - **Breakpoints:** F9 toggles a breakpoint, drawn as a red octagon; outlined means disabled (Unreal).
 - **Stepping:**
   - A run paused at a breakpoint pauses the scene, opens its node's graph, rings the node and makes its instance the debug target (Unreal).
@@ -188,34 +182,19 @@ Expressions show their source in the node, highlighted and wrapped, under an "Ex
   - While the scene plays, a node where runs failed gets an error badge.
   - Output ▸ Problems lists diagnostics as "Graph › Node" and the message (Unreal's Compiler Results). Output ▸ Runtime lists failed runs as "Behavior › Node", one row per node and message with a count (Unreal's PIE message log). A row opens the node's graph, selects the node and frames it.
 - **Values:** Watch Values in the node menu watches its data pins. Watched pins show value bubbles beside their sockets, and hovering a pin shows its value the same way (Unreal, Blender). Values come from the inspected run, such as one paused at a breakpoint, or from the preview for pins it can evaluate; previews can't read bindings.
-- **Timings:** an optional per-node timing overlay (Blender).
 
 ### Automatic layout
 
-Arrange follows ELK Layered's phases, with Godot's MIT arranger as a size reference:
+Arrange (Shift+L) follows ELK Layered's phases, with Godot's MIT arranger as a size reference. `src/graph/authoring/arrange.h` is pure geometry: the caller measures boxes and pins, and gets positions back, so layout quality is measured headlessly (`arrange_score.h`).
 
-1. **Cycle breaking:** a depth-first search from entry nodes reverses loop back-edges.
-2. **Layering:**
-   - Exec nodes are placed by longest path along exec wires.
-   - A pure data node sits one layer left of its first consumer.
-3. **Crossing minimization:**
-   - A layer sweep by the median of port positions. Ports keep a fixed order: inputs on the left and outputs on the right, in declaration order.
-   - Seeded with the current vertical order, so relayout keeps the user's mental map.
-4. **Placement:**
-   - Brandes–Köpf, aligning ports to ports.
-   - Exec wires are weighted to run straight.
-   - Spacing is 80 units between layers and 30 between nodes, snapped to the grid.
-5. **Result:** positions animate over 0.25 s as one undo step.
+- **Layers.** Nodes go in layered columns; loop back-edges are reversed first. Crossings are driven down by median sweeps seeded with the current vertical order, so relayout keeps the user's mental map. Execution wires count as three data wires when a node lines up with its neighbours, which straightens execution chains.
+- **Lanes.** Arrange leaves a lane beside the nodes of every column a wire skips, and the canvas draws the wire through its lanes, so wires don't cut through nodes. Wires from one output share a trunk until they split. A backward wire passes its own node and its target on the side it heads for, so it never crosses the nodes between its ends.
+- **Routes are never saved.** `arrange_route` recomputes them from positions alone, re-running the layout with every node pinned, so hand-placed nodes get reasonable lanes too. Authored reroutes and custom handles take precedence.
+- **Wire styles.** Settings ▸ Graph ▸ Wire Style (or the Behavior header's view popover) picks Curved, Orthogonal (level and vertical runs on tracks between columns, ordered for the fewest crossings), Straight or Subway (orthogonal tracks with 45° corners). Arrange widens gaps to fit the tracks, so changing the style arranges automatic nodes again. `arrange_path` turns waypoints into cubic pieces, so drawing, hit tests, bounds and scoring agree.
+- **Bands.** Unconnected parts of a graph stack as horizontal bands: Begin, Tick, other host events, custom events, End, then everything else (`graph_layout_band`).
+- **Automatic nodes.** A node whose position the document doesn't keep is laid out when its graph opens, which is neither an edit nor history. A user's Arrange moves every node as one undo step. `graph_layout`, which MCP edits use, measures pin rows in the order Studio draws them.
 
-`graph/authoring/arrange.c` is the current implementation to evolve toward this. The equivalent ELK options, for testing:
-
-- `direction=RIGHT`
-- `portConstraints=FIXED_ORDER`
-- `layering=NETWORK_SIMPLEX`
-- `cycleBreaking=DEPTH_FIRST`
-- `considerModelOrder=NODES_AND_EDGES`
-- `nodePlacement=BRANDES_KOEPF`, with `priority.straightness=10` on exec wires only
-- `spacing.nodeNodeBetweenLayers=80` and `spacing.nodeNode=30`
+`test_suite --arrange-bench [repeats] [filter] [style]`, run from the repository root, arranges and routes every graph under `content/` and `projects/*/content/` and prints time, crossings, wire-node hits, overlaps, turns, ink and cost per graph and style. `--graph-arrange` runs the scoring, routing and determinism checks and holds the arena2d behaviors under a ceiling per style.
 
 ## Canvas architecture
 
@@ -226,20 +205,16 @@ The canvas is a separately scaled RmlUi context, not a transformed element: RmlU
 - **Wires.** `kit_wires` draws the grid and wires. Its ends anchor to socket elements and resolve after layout, so a wire follows its node in the frame the node moves.
 - **Menus and search.** These live in the Studio document, so they stay unscaled.
 
-## Parity with the removed ImGui graph editor
-
-The ImGui graph canvas and panels were removed on September 25, 2026. Studio's graph editor keeps, or must restore, their capabilities:
-
-- Graph calls and caller history.
-- Behavior expressions and their inline math.
-- Component bindings and the binding popup.
-- Inline sources and vector constructors.
-- Split and recombined pins, and exposed struct fields.
-- Event signatures and payload repair.
-- Comment boxes and edge reroutes.
-- Breakpoints and pin watches.
-- Inspection of a runtime instance: flow heat, traces, the debug target.
-- The optimizer, extraction to a function, and auto-arrange.
-- Graph undo/redo per document.
-
 Mutations go through the editor's existing helpers and `editor_command_apply`; the view never edits graph memory directly (the xyflow controlled model).
+
+## Not built yet
+
+These parts of the references are still open:
+
+- Blender's knife (Ctrl+right-drag cuts wires) and reroute sweep (Shift+right-drag).
+- Ctrl on release to keep a wire for fanning out (Rivet); Ctrl+drag from an output to move all its wires (Blender, Unreal).
+- Alt+drag to detach a node from its wires (Blender); Ctrl+Delete to delete and heal (Node-RED, ComfyUI); neighbors shifting aside when a node is inserted on a wire.
+- Arrow keys walking along wires (n8n); M and H keys for mute and collapse (Blender).
+- Dashed wires on branches that didn't run (Rivet), and a per-node timing overlay (Blender).
+- Per-input policy: connection only, constant only, or either (egui_node_graph).
+- Animating Arrange's moves.

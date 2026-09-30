@@ -1,9 +1,7 @@
 /* The Studio scene's page, and so the editor's theme: shadcn/ui's tokens,
    the editor's roles derived from them, and the control styles every Studio
-   document shares, in import order. Ported from
-   docs/prototypes/studio/kit.css; differences from the web source: dp units,
-   seconds for durations, named tweens, borders without a style keyword, and
-   no outline. Documents size and paint their own body. */
+   document shares, in import order. Documents size and paint their own
+   body. */
 @import "theme/base.rcss";
 @import "theme/tokens.rcss";
 @import "theme/roles.rcss";

@@ -23,7 +23,7 @@ extern "C"
      * items for tests and inspection. Styling lives in the Studio scene's root
      * document (projects/studio/content/ui/StudioShell.rml, its .rcss and the theme files
      * it imports); behavior follows the Base UI contracts in
-     * docs/prototypes/studio/kit.html. */
+     * docs/editor-ui-references.md. */
 
     typedef struct kit kit;
 

@@ -1,8 +1,8 @@
 #ifndef CHIBI_EDITOR_UI_KIT_ICONS_H
 #define CHIBI_EDITOR_UI_KIT_ICONS_H
 
-/* Glyphs in third_party/fonts/nerd-fonts-symbols-only, matching the Studio study's
- * icons.js. The comment names the Nerd Fonts glyph for searching the cheat sheet. */
+/* Glyphs in third_party/fonts/nerd-fonts-symbols-only. The comment names the
+ * Nerd Fonts glyph for searching the cheat sheet. */
 enum
 {
     KIT_ICON_ADD = 0xea60,          /* nf-cod-add */

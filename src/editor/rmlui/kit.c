@@ -2,7 +2,7 @@
  * This file keys, updates and retires nodes and routes RmlUi events to the
  * controllers in kit_number.c, kit_controls.c, kit_popup.c and kit_command.c.
  * They implement the Base UI contracts recorded in
- * docs/prototypes/studio/kit.html; the C editor owns every model value. */
+ * docs/editor-ui-references.md; the C editor owns every model value. */
 #include "editor/rmlui/kit_internal.h"
 #include "support/ui_style.h"
 #include "support/xalloc.h"

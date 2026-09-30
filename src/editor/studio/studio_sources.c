@@ -1454,7 +1454,7 @@ static void sync_inspector(studio *s, studio_sources *src, ui_data *data)
  * binds as `area`. Values change only when they differ, so bindings update
  * in place, and items a list sheds wait in `spare`. */
 
-/* Reports show for three seconds, then fade (DESIGN.md). */
+/* Reports show for three seconds, then fade (docs/studio-ui-authoring.md). */
 #define REPORT_SECONDS 3.0
 
 static const char *const HINT_TEXTS[] = { "icon", "key", "label", NULL };

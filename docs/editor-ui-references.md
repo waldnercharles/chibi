@@ -1,24 +1,29 @@
 # Editor UI references
 
-The editor UI is RmlUi driven from C through the Studio kit (`src/editor/ui/kit.h`,
-`src/editor/rmlui/kit*.c`). None of the libraries below can be linked into it: they
-are React/DOM code. Each one solves a problem the editor has too, so the kit carries
-a native version that follows the library's contract: its states, timings,
-thresholds and keyboard model. Before building a UI mechanism inside a panel, find
-the problem here and use, or extend, the kit primitive. Node editors (xyflow,
-imgui-node-editor, Blender, Unreal, ComfyUI and others) have their own map in
+Each library below solves a problem the editor has too. Except Zep, none can be
+linked (they are React/DOM code), so the editor follows each one's contract natively: its states,
+timings, thresholds and keyboard model. Before building a UI mechanism, find its
+problem here and follow the contract. Node editors (xyflow, imgui-node-editor,
+Blender, Unreal, ComfyUI and others) have their own map in
 [Node editor references](editor-graph-references.md).
+
+New editor UI is authored in the Studio project (`projects/studio/content/ui`); see
+[Studio: the editor's UI](studio-ui-authoring.md). Where a contract already has an
+authored form (a widget, a behavior or a native element), use it. Where it exists
+only as a C kit primitive (`src/editor/ui/kit.h`, `src/editor/rmlui/kit*.c`), the
+kit serves the C panels that remain and the content Studio documents host through
+slots; a new authored surface that needs it brings the contract across, keeping the
+states, timings and keys recorded here.
 
 Contracts were read from each project's README, docs and source on 2026-09-23. Where
 the docs and source disagree, the source value is recorded. All are MIT licensed
-except cva (Apache-2.0); no source is copied. This supersedes the "skip" verdicts in
-the earlier library catalog from the Codex RmlUi branch.
+except cva (Apache-2.0); no source is copied.
 
 ## Map
 
-| Library | Problem | Kit equivalent | State |
+| Library | Problem | Where it lives | State |
 | --- | --- | --- | --- |
-| [Base UI](https://base-ui.com) | Behavior contracts for fields, menus, popovers, dialogs, tooltips | Controls in `kit_controls.c` (toggle groups: `kit_toggle_group`; a Combobox trigger over the command surface for asset fields: `kit_picker`) and `kit_number.c`; popups, menus (color swatches: `kit_menu_item_desc.swatch`; a panel header's menu: `kit_panel_menu`) and tooltips in `kit_popup.c`. Authored UI, the editor's and games', uses the widgets in `projects/studio/content/ui`: Switch, Select, Slider, Segmented, SidebarNav, SettingRow, Dialog and KeyHint | Done |
+| [Base UI](https://base-ui.com) | Behavior contracts for fields, menus, popovers, dialogs, tooltips | Controls in `kit_controls.c` (toggle groups: `kit_toggle_group`; a Combobox trigger over the command surface for asset fields: `kit_picker`) and `kit_number.c`; popups, menus (color swatches: `kit_menu_item_desc.swatch`; a panel header's menu: `kit_panel_menu`) and tooltips in `kit_popup.c`. Authored UI, the editor's and games', uses the widgets in `projects/studio/content/ui`: Switch, Select, Slider, Segmented, SidebarNav, SettingRow, TextField, ColorField, MenuOption, MenuCheck, Dialog and KeyHint | Done |
 | [shadcn/ui](https://ui.shadcn.com) | Semantic tokens, variant discipline, control anatomy | Tokens in the Studio theme (`projects/studio/content/ui/theme/tokens.rcss`, imported by the `StudioShell` root document); Textarea as `kit_text_area` | Done |
 | [cmdk](https://github.com/dip/cmdk), [VS Code Quick Open](https://code.visualstudio.com/docs/getstarted/userinterface#_quick-open) | Command palette: ranking, groups, keyboard; prefixes and recent items | `kit_command` (`kit_command.c`), Studio's palette (`studio_palette.c`) | Done; pages and group jumps open |
 | [DialKit](https://github.com/joshpuckett/dialkit) | Live tuning of values, scrub feel, spring and easing controls | `kit_number` (`kit_number.c`; scrub, fine/coarse/snap) | Partial; rubber-band and spring controls open |
@@ -26,7 +31,7 @@ the earlier library catalog from the Codex RmlUi branch.
 | [NumberFlow](https://github.com/barvian/number-flow) | Number changes as spinning digit wheels | The native `<number-flow>` element (`src/ui/text_motion.c`), which `kit_number_flow` emits | Done |
 | [Torph](https://github.com/lochie/torph) | Text continuity when a label changes | The native `<morph-text>` element (`src/ui/text_motion.c`), which `kit_morph` and `kit_button_desc.morph` emit | Done; place-value numbers open |
 | [Sonner](https://github.com/emilkowalski/sonner) | Toast notifications | `kit_toast` (`kit_toast.c`) | Done; Alt+T focus open |
-| [Virtuoso](https://github.com/petyosi/react-virtuoso) | Lists with thousands of rows, follow-output logs | `kit_list` (`kit_list.c`), fixed row height | Done; measured heights open |
+| [Virtuoso](https://github.com/petyosi/react-virtuoso) | Lists with thousands of rows, follow-output logs | `kit_list_begin`/`kit_list_end` (`kit_list.c`), fixed row height. Authored UI: the VirtualList widget and behavior | Done; measured heights open |
 | [dnd-kit](https://github.com/clauderic/dnd-kit) | Accessible drag and drop | `kit_drag_source`, `kit_drop_target` (`kit_drag.c`); the Hierarchy's keyboard sensor over the sortable tree's slots (`ui_design_slots`) | Done; a kit keyboard sensor for other lists and auto-scroll open |
 | [Shiki](https://github.com/shikijs/shiki) | Syntax highlighting as styled token runs | `highlight_runs` / `highlight_markup` (`editor/ui/highlight.c`), `kit_markup` | Done: log, JSON, expressions |
 | [Liveline](https://github.com/benjitaylor/liveline) | Streaming line chart that feels alive | `kit_chart` (`kit_chart.c`, element `kit-chart`) | Done |
@@ -54,8 +59,8 @@ its size on screen. Number fields repeat held
 steps after 400 ms, then every 60 ms. Popups close on Escape or an outside press
 and return focus to their trigger. A modal host (`kit_modal_host`) traps the
 focus as Base UI's Dialog does: Tab and Shift+Tab cycle through its tabbable
-elements and never reach the editor behind it. `docs/prototypes/studio/kit.html` lists every
-control's contract.
+elements and never reach the editor behind it. Authored dialogs use the Dialog
+widget with the `Dismiss` behavior (Escape, the close button or a backdrop click).
 
 ### cmdk
 
@@ -281,15 +286,16 @@ Zep is the one library here that is linked: `zep_bridge.cpp` only forwards, and
 
 ## Common mismatches to catch
 
+- **A new C panel, or a new widget built on the kit.** Author it in `projects/studio` ([Studio: the editor's UI](studio-ui-authoring.md)); only content a document hosts through a slot stays native.
 - **Toasts built by hand, or a modal used for a notice.** Use `kit_toast`. The status-bar report is for the last operation; toasts are for results the user might act on, such as Undo after Delete, or must not miss, such as a failed save.
-- **A plain container with hand-written open, close, focus or outside-press logic.** Use kit popups, menus and the command (Base UI): they handle focus return, Escape and outside dismissal, typeahead and stacking.
-- **A number animated by rewriting its text every frame.** Use `kit_number_flow` for discrete changes. Continuous values stay static.
-- **1,000 or more rows emitted directly.** Use `kit_list` (Virtuoso) before capping or paging results.
-- **A tangle of parameters or duplicated statics for shared state.** Authoring state stays in the C model. View settings and layout go in `studio_prefs` (zustand). Transient widget state lives in the kit node.
-- **Class strings built with ternaries or `snprintf`.** Use `KIT_CX` (clsx) for conditions and `kit_variant`/`kit_size` (cva) for variants. State goes in `data-*` attributes.
-- **Instant show and hide, or animation interpolated by hand in C.** Use `kit_presence` with RCSS starting and ending styles, and `kit_layout` for moves (Motion).
-- **A label swapped instantly where continuity matters.** Use `kit_morph` (Torph).
-- **A drag state machine written inside a panel.** Use kit drag and drop (dnd-kit) for its activation constraints, keyboard support and announcements.
+- **A plain container with hand-written open, close, focus or outside-press logic.** Use the Dialog widget with `Dismiss` in authored UI, and kit popups, menus and the command surface (Base UI) in C: they handle focus return, Escape and outside dismissal, typeahead and stacking.
+- **A number animated by rewriting its text every frame.** Use `<number-flow>` (`kit_number_flow` in C) for discrete changes. Continuous values stay static.
+- **1,000 or more rows emitted directly.** Use the VirtualList widget (`kit_list_begin` in C; Virtuoso) before capping or paging results.
+- **A tangle of parameters or duplicated statics for shared state.** Authoring state stays in the C model. View settings and layout go in `studio_prefs` (zustand), which documents bind as `save.<key>`. Transient widget state lives in the document or the kit node.
+- **Class strings built with ternaries or `snprintf`.** In authored UI, use `data-class-<name>` and `data-attr-data-<state>` bindings; in C, `KIT_CX` (clsx) for conditions and `kit_variant`/`kit_size` (cva) for variants. State goes in `data-*` attributes.
+- **Instant show and hide, or animation interpolated by hand.** Use `presence` on a `data-if` element (`kit_presence` in C) with RCSS starting and ending styles, and `kit_layout` for moves (Motion).
+- **A label swapped instantly where continuity matters.** Use `<morph-text>` (`kit_morph` in C; Torph).
+- **A drag state machine written by hand.** Use kit drag and drop (dnd-kit) for its activation constraints, keyboard support and announcements.
 - **A theme, density or motion toggle that flashes or animates.** Apply preferences before the first frame and suspend transitions for the switch (next-themes).
 - **A chart built from many elements.** Use the chart element (Liveline, Recharts).
 - **Colors matched with regular expressions at the call site.** Use the shared token-run highlighter (Shiki).

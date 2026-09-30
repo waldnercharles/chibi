@@ -4,7 +4,7 @@ Studio (`src/editor/studio`) is the editor, on desktop and in the web build. Its
 
 - **Build new editor UI in `projects/studio`,** not as C panels on the kit (`src/editor/ui/kit.h`, `src/editor/rmlui/kit*.c`).
 - **Convert on contact.** When new work needs an existing C panel or kit widget, convert that piece to Studio as part of the work. The Outliner, Properties, Assets, Output, Members, Performance, the UI designer's Hierarchy, Details and Library, the command palette, menus, popups and toasts are still C on the kit.
-- **Native C stays for what documents host through slots:** the graph canvas, the Scene viewport and the Text Editor (Zep), whose drawing and input a document can't express.
+- **C still drives the graph canvas, the Scene viewport and the Text Editor (Zep).** The graph canvas is RmlUi: the kit builds its nodes from C each frame into `graph.rml`, a second context shown as a texture, and Studio's `theme/graph.rcss` styles them; only the grid and wires are geometry drawn in C (`kit_wires.c`). The viewport is the engine's image, and Zep draws through `kit_code.c`.
 
 Before building a UI mechanism, find its problem in [Editor UI references](editor-ui-references.md) and follow the contract recorded there. The graph canvas follows [Node editor references](editor-graph-references.md). [Blender](references/blender/README.md) is the reference for visual density and desktop interaction.
 

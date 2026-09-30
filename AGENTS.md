@@ -38,7 +38,7 @@
 ## Editor UI
 
 - The editor's UI is moving entirely into the Studio project (`projects/studio`): authored RML/RCSS documents in `content/ui`, driven by its behaviors and scenes, the way games build their UI. Build new editor UI there, not as C panels on the kit (`src/editor/ui/kit.h`). When new work needs an existing C panel or kit widget, convert that piece to Studio as part of the work. `docs/studio-ui-authoring.md` has the decisions and contracts.
-- Native C remains for what Studio documents host through slots, such as the graph canvas and the viewport. The behavior graph editor follows `docs/editor-graph-references.md`.
+- C still drives the graph canvas, the Scene viewport and the Text Editor (Zep). The graph canvas is RmlUi elements the kit builds from C each frame, styled by Studio's `theme/graph.rcss`; only its grid and wires are C-drawn geometry. It follows `docs/editor-graph-references.md`.
 - Before building a UI mechanism, find the problem in `docs/editor-ui-references.md` and follow the reference library's contract it records.
 - Verify UI changes in the web build (`make web`).
 

@@ -21,7 +21,7 @@ const config = [
   `cwd = ${tomlString(root)}`,
   "enabled = true",
   "startup_timeout_sec = 120",
-  "tool_timeout_sec = 120",
+  "tool_timeout_sec = 300",
   ""
 ].join("\n");
 

@@ -258,6 +258,7 @@ set(RUNTIME_SUPPORT_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/assets/new_asset.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/assets/prototype.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/assets/scene_document.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/assets/scenario_document.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/assets/physics_settings.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/assets/refactor.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/assets/reference_index.c

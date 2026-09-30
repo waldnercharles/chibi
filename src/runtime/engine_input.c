@@ -26,6 +26,7 @@ struct engine_input
     bool movement_sampled;
     CF_V2 aim;
     bool aim_sampled, aim_point, firing;
+    uint64_t controls;
     input_button *buttons;
     input_transition *transitions;
     ecs_entity *controlled;
@@ -123,6 +124,7 @@ void engine_input_clear(engine_input *input)
     input->aim_point = false;
     input->aim_sampled = true;
     input->firing = false;
+    input->controls = 0;
     clear_actions(input);
     /* Pause may never run another fixed tick. Clear reflected local input now,
      * without dispatching authored gameplay while transport is stopped. */
@@ -197,6 +199,7 @@ int engine_input_controls(engine_input *input, uint64_t controls, bool *firing)
 {
     _Static_assert(GAME_CONTROL_COUNT < 64, "control bitset");
     *firing = false;
+    input->controls = controls;
     input_button *sample = NULL;
     ecs_component_id component = GAME_COMPONENT_GameActionBinding.id;
     ecs_query query;
@@ -261,6 +264,24 @@ int engine_input_controls(engine_input *input, uint64_t controls, bool *firing)
         }
     }
     afree(sample);
+    return result;
+}
+
+input_keyframe engine_input_held(const engine_input *input)
+{
+    return (input_keyframe){ .movement = input->movement,
+                             .aim = input->aim,
+                             .aim_point = input->aim_point,
+                             .firing = input->firing,
+                             .controls = input->controls };
+}
+
+int engine_input_hold(engine_input *input, const input_keyframe *key)
+{
+    bool firing;
+    int result = engine_input_controls(input, key->controls, &firing);
+    engine_input_movement(input, key->movement);
+    engine_input_aim(input, key->aim, key->firing, key->aim_point);
     return result;
 }
 

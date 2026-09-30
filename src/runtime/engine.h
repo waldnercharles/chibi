@@ -4,6 +4,7 @@
 #include "ecs/ecs.h"
 #include "runtime/behaviors/live.h"
 #include "runtime/components.h"
+#include "runtime/input_timeline.h"
 #include "runtime/systems/schedule.h"
 
 #include <stdbool.h>
@@ -66,6 +67,19 @@ int engine_sample_movement(engine *engine, float x, float y);
 int engine_sample_aim(engine *engine, CF_V2 aim, bool firing, bool point);
 /* Held physical controls interpreted through authored GameActionBinding entities. */
 int engine_sample_controls(engine *engine, uint64_t controls, bool *firing);
+/* Gameplay input recording and replay count fixed steps from the last reset,
+ * so both follow a scene from its start. Recording keeps a key wherever held
+ * input changes. Replay holds each key from its step on in place of live
+ * samples. Both seed the shared random stream, so a replay draws what its
+ * recording did. */
+void engine_record_input(engine *engine, unsigned seed);
+void engine_stop_recording(engine *engine);
+/* Borrowed until the next recording or reset. */
+const input_keyframe *engine_recorded_input(const engine *engine, int *count);
+/* Copies the keys, which start at step zero in increasing order. */
+void engine_replay_input(engine *engine, const input_keyframe *keys, int count, unsigned seed);
+void engine_stop_replay(engine *engine);
+bool engine_replaying_input(const engine *engine);
 int engine_frame(engine *engine, double monotonic_time);
 /* Borrowed diagnostic from the last frame failure, or NULL after success. */
 const char *engine_error(const engine *engine);

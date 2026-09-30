@@ -147,12 +147,12 @@ web-configure:
 web: web-configure
 	cmake --build "$(WEB_BUILD_DIR)" --target chibi check-behavior-backend --parallel $(JOBS)
 
-# Profile PROJECT's start scene (or PROFILE_SCENE) headless, natively and as
-# WASM under Node, with the same fixed-step frames.
+# Profile PROJECT's start scene (or PROFILE_SCENE, or PROFILE_SCENARIO's replayed
+# gameplay) headless, natively and as WASM under Node, with the same fixed steps.
 profile-compare: web-configure
 	$(MAKE) build-release BUILD_TARGET=chibi_ctl
 	cmake --build "$(WEB_BUILD_DIR)" --target chibi_ctl --parallel $(JOBS)
-	python3 tools/profile_compare.py --project-root "$(PROJECT)" --native "$(RELEASE_BUILD_DIR)/chibi_ctl" --wasm "$(WEB_BUILD_DIR)/chibi_ctl.js" $(if $(PROFILE_SCENE),--scene "$(PROFILE_SCENE)") $(PROFILE_ARGS)
+	python3 tools/profile_compare.py --project-root "$(PROJECT)" --native "$(RELEASE_BUILD_DIR)/chibi_ctl" --wasm "$(WEB_BUILD_DIR)/chibi_ctl.js" $(if $(PROFILE_SCENE),--scene "$(PROFILE_SCENE)") $(if $(PROFILE_SCENARIO),--scenario "$(PROFILE_SCENARIO)") $(PROFILE_ARGS)
 
 web-serve: web
 	python3 tools/web_serve.py --build "$(WEB_BUILD_DIR)" --project "$(PROJECT)" --port $(WEB_PORT)

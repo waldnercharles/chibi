@@ -2,6 +2,7 @@
  * makes is written as its model saves it, joins the asset index at once and
  * opens as Assets opens it; the Project rows rewrite project.yaml. */
 #include "assets/new_asset.h"
+#include "assets/project.h"
 #include "assets/system_document.h"
 #include "editor/studio/studio_internal.h"
 #include "editor/workspace/input.h"
@@ -20,9 +21,13 @@
 #include <unistd.h>
 
 #define FRAME_SECONDS (1.0 / 60.0)
+#define STRINGIFY_(x) #x
+#define STRINGIFY(x) STRINGIFY_(x)
+/* Fixtures are saved by this build, so they carry its project version. */
+#define VERSION_LINE "version: " STRINGIFY(CHIBI_PROJECT_VERSION) "\n"
 #define MANIFEST                                                               \
-    "version: 2\nname: Fresh\ncontent: content\nstart_scene: "                 \
-    "scenes/Main.yaml\n"
+    VERSION_LINE                                                               \
+    "name: Fresh\ncontent: content\nstart_scene: scenes/Main.yaml\n"
 
 typedef struct
 {
@@ -372,8 +377,8 @@ static void project_settings_write()
     frames(&f, 3);
     join(path, sizeof path, f.root, CHIBI_PROJECT_MANIFEST);
     char *manifest = text_file_read(path);
-    const char *expected = "version: 2\nname: Renamed\ncontent: content\n"
-                           "start_scene: scenes/Boss.yaml\n";
+    const char *expected = VERSION_LINE "name: Renamed\ncontent: content\n"
+                                        "start_scene: scenes/Boss.yaml\n";
     bool written = manifest && !strcmp(manifest, expected);
     if (!written) {
         printf("  shown '%s', manifest:\n%s\n", shown, manifest ? manifest : "(none)");

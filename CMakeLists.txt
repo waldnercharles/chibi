@@ -277,6 +277,10 @@ if(CHIBI_ENABLE_SANITIZERS AND
     endif()
     add_compile_options("-fsanitize=${CHIBI_SANITIZERS}" -fno-omit-frame-pointer)
     add_link_options("-fsanitize=${CHIBI_SANITIZERS}")
+    # Undefined behavior fails the run instead of printing and carrying on.
+    if(CHIBI_SANITIZERS MATCHES "undefined")
+        add_compile_options(-fno-sanitize-recover=undefined)
+    endif()
 endif()
 
 # Emscripten labels its SDL3 port experimental independently of source warnings.

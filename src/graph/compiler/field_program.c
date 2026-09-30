@@ -804,9 +804,9 @@ static float *bind_parameters(const field_program *p, field_context ctx, char *e
  * row a buffer sees. Values are instruction-major so each row kernel reads and
  * writes contiguous columns. */
 static bool bake_row(
-    const field_program *p,
-    float *slots,
-    const float *parameters,
+    const field_program *restrict p,
+    float *restrict slots,
+    const float *restrict parameters,
     unsigned seed,
     field_grid grid,
     int reuse,
@@ -843,9 +843,20 @@ static bool bake_row(
 
 typedef struct
 {
+    float *slots;
+    int capacity;
+} bake_workspace;
+struct field_program_baker
+{
     const field_program *program;
-    const float *parameters;
+    float *parameters;
     unsigned seed;
+    int worker_count;
+    bake_workspace *workspaces;
+};
+typedef struct
+{
+    field_program_baker *baker;
     field_grid grid;
     int first_row, last_row;
     float *out;
@@ -855,37 +866,129 @@ typedef struct
     atomic_bool invalid;
 } bake_job;
 
-static void bake_bands(int start, int end, uint32_t, void *context)
+static float *workspace_for_worker(field_program_baker *baker, uint32_t worker, int width)
+{
+    assert(worker < (uint32_t)baker->worker_count);
+    bake_workspace *workspace = &baker->workspaces[worker];
+    /* The live width sets slot strides; each band's first row rewrites every
+     * slot, so a high-water allocation can safely serve narrower edge grids. */
+    if (width > workspace->capacity) {
+        workspace->slots = xrealloc(
+            workspace->slots,
+            (size_t)acount(baker->program->code) * width * sizeof(float)
+        );
+        workspace->capacity = width;
+    }
+    return workspace->slots;
+}
+
+static void bake_bands(int start, int end, uint32_t worker, void *context)
 {
     bake_job *job = context;
-    int stride = acount(job->program->code);
-    float *slots = xcalloc((size_t)stride * job->grid.width, sizeof(float));
+    field_program_baker *baker = job->baker;
+    const field_program *program = baker->program;
+    float *slots = workspace_for_worker(baker, worker, job->grid.width);
     for (int band = start; band < end; band++) {
         int first = job->first_row + band * job->rows_per_band;
         int last = first + job->rows_per_band < job->last_row ? first + job->rows_per_band
                                                               : job->last_row;
         /* Each band recomputes its row-invariant instructions on its first row. */
         for (int y = first; y < last; y++) {
-            if (!bake_row(
-                    job->program,
-                    slots,
-                    job->parameters,
-                    job->seed,
-                    job->grid,
-                    y - first == 0 ? 0 : y,
-                    y
-                )) {
+            if (!bake_row(program, slots, baker->parameters, baker->seed, job->grid, y - first == 0 ? 0 : y, y)) {
                 atomic_store_explicit(&job->invalid, true, memory_order_relaxed);
                 break;
             }
             memcpy(
                 job->out + y * job->grid.width,
-                slots + (size_t)job->program->output * job->grid.width,
+                slots + (size_t)program->output * job->grid.width,
                 (size_t)job->grid.width * sizeof(float)
             );
         }
     }
-    free(slots);
+}
+
+field_program_baker *field_program_baker_new(
+    const field_program *p,
+    field_context ctx,
+    int workers,
+    char *error,
+    size_t size
+)
+{
+    if (!p || workers < 1 || workers > GAME_TASK_WORKER_MAX ||
+        ctx.parameter_count < 0 || (ctx.parameter_count && !ctx.parameters)) {
+        fail(error, size, "Invalid field grid or parameters");
+        return NULL;
+    }
+    float *parameters = bind_parameters(p, ctx, error, size);
+    if (!parameters) {
+        return NULL;
+    }
+    field_program_baker *baker = xcalloc(1, sizeof *baker);
+    *baker = (field_program_baker){ p,
+                                    parameters,
+                                    ctx.seed,
+                                    workers,
+                                    xcalloc((size_t)workers, sizeof(bake_workspace)) };
+    return baker;
+}
+
+void field_program_baker_free(field_program_baker *baker)
+{
+    if (!baker) {
+        return;
+    }
+    for (int i = 0; i < baker->worker_count; i++) {
+        free(baker->workspaces[i].slots);
+    }
+    free(baker->workspaces);
+    free(baker->parameters);
+    free(baker);
+}
+
+static bool valid_grid(field_grid grid)
+{
+    return grid.width >= 1 && grid.height >= 1 && grid.width <= 4096 &&
+           grid.height <= 4096 && isfinite(grid.cell_size) && grid.cell_size > 0 &&
+           isfinite(grid.center_x) && isfinite(grid.center_y);
+}
+
+bool field_program_baker_bake_rows(
+    field_program_baker *baker,
+    field_grid grid,
+    int first,
+    int count,
+    float *out,
+    const game_task_system *tasks,
+    char *error,
+    size_t size
+)
+{
+    if (!baker || !out || !valid_grid(grid) ||
+        (tasks && tasks->workers != baker->worker_count)) {
+        return fail(error, size, "Invalid field grid or parameters");
+    }
+    assert(first >= 0 && count > 0 && first + count <= grid.height);
+    bool parallel = tasks && tasks->workers > 1 && count >= 32;
+    bake_job job = { baker,         grid, first,
+                     first + count, out,  parallel ? 8 : count,
+                     false };
+    int bands = (count + job.rows_per_band - 1) / job.rows_per_band;
+    if (parallel) {
+        void *task = tasks->enqueue(bake_bands, bands, 1, &job, tasks->user);
+        if (task) {
+            tasks->finish(task, tasks->user);
+        }
+        /* A NULL handle means enqueue already completed the range inline. */
+    } else {
+        bake_bands(0, bands, 0, &job);
+    }
+    /* finish() orders every band's writes before this load. */
+    bool invalid = atomic_load_explicit(&job.invalid, memory_order_relaxed);
+    if (invalid) {
+        fail(error, size, "Field evaluation produced an invalid scalar");
+    }
+    return !invalid;
 }
 
 bool field_program_bake(
@@ -913,38 +1016,18 @@ bool field_program_bake_rows(
     size_t size
 )
 {
-    if (!p || !out || grid.width < 1 || grid.height < 1 || grid.width > 4096 ||
-        grid.height > 4096 || !isfinite(grid.cell_size) || grid.cell_size <= 0 ||
-        !isfinite(grid.center_x) || !isfinite(grid.center_y) ||
-        ctx.parameter_count < 0 || (ctx.parameter_count && !ctx.parameters)) {
+    if (!out || !valid_grid(grid) || ctx.parameter_count < 0 ||
+        (ctx.parameter_count && !ctx.parameters)) {
         return fail(error, size, "Invalid field grid or parameters");
     }
-    assert(first >= 0 && count > 0 && first + count <= grid.height);
-    float *parameters = bind_parameters(p, ctx, error, size);
-    if (!parameters) {
+    field_program_baker *baker;
+    baker = field_program_baker_new(p, ctx, tasks ? tasks->workers : 1, error, size);
+    if (!baker) {
         return false;
     }
-    bool parallel = tasks && tasks->workers > 1 && count >= 32;
-    bake_job job = { p,     parameters,    ctx.seed, grid,
-                     first, first + count, out,      parallel ? 8 : count,
-                     false };
-    int bands = (count + job.rows_per_band - 1) / job.rows_per_band;
-    if (parallel) {
-        void *task = tasks->enqueue(bake_bands, bands, 1, &job, tasks->user);
-        if (task) {
-            tasks->finish(task, tasks->user);
-        }
-        /* A NULL handle means enqueue already completed the range inline. */
-    } else {
-        bake_bands(0, bands, 0, &job);
-    }
-    /* finish() orders every band's writes before this load. */
-    bool invalid = atomic_load_explicit(&job.invalid, memory_order_relaxed);
-    if (invalid) {
-        fail(error, size, "Field evaluation produced an invalid scalar");
-    }
-    free(parameters);
-    return !invalid;
+    bool ok = field_program_baker_bake_rows(baker, grid, first, count, out, tasks, error, size);
+    field_program_baker_free(baker);
+    return ok;
 }
 
 bool field_program_sample(

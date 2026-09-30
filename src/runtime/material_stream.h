@@ -36,8 +36,9 @@ typedef struct
     size_t resident_bytes, stored_bytes;
 } material_stream_state;
 
-/* Fields are borrowed; configuration strings are copied. Recreate on field or
- * generation changes. Cold masks live in a temporary file owned by the run. */
+/* Fields are borrowed and must outlive the stream; configuration strings are
+ * copied. Recreate on field revision or generation changes. Cold masks live in
+ * a temporary file owned by the run. */
 material_stream *material_stream_new(material_stream_desc desc);
 void material_stream_free(material_stream *stream);
 /* Outside mask consumers: evict distant tiles, prepare every missing required

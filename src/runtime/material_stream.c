@@ -36,6 +36,7 @@ struct material_stream
     material_stream_desc desc;
     material_stream_tile *tiles;
     pending_tile pending;
+    material_field_session *field_session;
     stored_tile *stored;
     FILE *file;
     int columns, rows;
@@ -73,6 +74,7 @@ void material_stream_free(material_stream *s)
     }
     afree(s->tiles);
     free(s->pending.samples);
+    material_field_session_free(s->field_session);
     afree(s->stored);
     if (s->file) {
         fclose(s->file);
@@ -203,11 +205,23 @@ static bool bake_rows(
     size_t size
 )
 {
-    bool ok = material_field_bake_rows(
+    if (!s->field_session) {
+        s->field_session = material_field_session_new(
+            fields,
+            s->desc.field,
+            s->desc.parameters,
+            s->desc.seed,
+            s->desc.tasks,
+            error,
+            size
+        );
+        if (!s->field_session) {
+            return false;
+        }
+    }
+    bool ok = material_field_session_bake_rows(
+        s->field_session,
         fields,
-        s->desc.field,
-        s->desc.parameters,
-        s->desc.seed,
         tile->grid,
         tile->baked_rows,
         count,
@@ -216,7 +230,9 @@ static bool bake_rows(
         error,
         size
     );
-    tile->baked_rows += count;
+    if (ok) {
+        tile->baked_rows += count;
+    }
     return ok;
 }
 
@@ -399,6 +415,10 @@ bool material_stream_update(
 )
 {
     assert(count >= 0 && budget > 0);
+    if (s->field_session && !material_field_session_matches(s->field_session, fields)) {
+        snprintf(error, size, "Procedural field changed; recreate material stream");
+        return false;
+    }
     float margin = s->desc.grid.cell_size * MATERIAL_TERRAIN_CHUNK_CELLS;
     for (int i = acount(s->tiles) - 1; i >= 0; i--) {
         material_stream_tile tile = s->tiles[i];

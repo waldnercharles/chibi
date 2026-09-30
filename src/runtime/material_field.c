@@ -20,6 +20,13 @@ struct material_fields
 {
     field_entry *entries;
 };
+struct material_field_session
+{
+    const material_fields *fields;
+    char *name;
+    unsigned revision;
+    field_program_baker *baker;
+};
 
 material_fields *material_fields_new()
 {
@@ -77,42 +84,16 @@ unsigned material_field_revision(const material_fields *fields, const char *name
     int index = find(fields, name);
     return index < 0 ? 0 : fields->entries[index].revision;
 }
-bool material_field_bake(
-    const material_fields *fields,
-    const char *name,
-    const char *json,
-    unsigned seed,
-    field_grid grid,
-    float *out,
-    const game_task_system *tasks,
-    char *error,
-    size_t size
-)
-{
-    return material_field_bake_rows(fields, name, json, seed, grid, 0, grid.height, out, tasks, error, size);
-}
 
-bool material_field_bake_rows(
-    const material_fields *fields,
-    const char *name,
+static bool parse_parameters(
+    const field_entry *entry,
     const char *json,
-    unsigned seed,
-    field_grid grid,
-    int first,
-    int count,
-    float *out,
-    const game_task_system *tasks,
+    field_parameter **parameters,
     char *error,
     size_t size
 )
 {
-    int index = find(fields, name);
-    if (index < 0) {
-        snprintf(error, size, "Unknown procedural field: %s", name ? name : "");
-        return false;
-    }
-    const field_entry *entry = &fields->entries[index];
-    field_parameter *parameters = NULL;
+    *parameters = NULL;
     yyjson_doc *doc = NULL;
     bool valid = true;
     if (json && json[0]) {
@@ -155,13 +136,54 @@ bool material_field_bake_rows(
                     }
                     p.value.u = (unsigned)number;
                 }
-                apush(parameters, p);
+                apush(*parameters, p);
             }
         }
     }
+    yyjson_doc_free(doc);
     if (!valid) {
+        afree(*parameters);
         snprintf(error, size, "Invalid field parameter object");
     }
+    return valid;
+}
+bool material_field_bake(
+    const material_fields *fields,
+    const char *name,
+    const char *json,
+    unsigned seed,
+    field_grid grid,
+    float *out,
+    const game_task_system *tasks,
+    char *error,
+    size_t size
+)
+{
+    return material_field_bake_rows(fields, name, json, seed, grid, 0, grid.height, out, tasks, error, size);
+}
+
+bool material_field_bake_rows(
+    const material_fields *fields,
+    const char *name,
+    const char *json,
+    unsigned seed,
+    field_grid grid,
+    int first,
+    int count,
+    float *out,
+    const game_task_system *tasks,
+    char *error,
+    size_t size
+)
+{
+    int index = find(fields, name);
+    if (index < 0) {
+        snprintf(error, size, "Unknown procedural field: %s", name ? name : "");
+        return false;
+    }
+    const field_entry *entry = &fields->entries[index];
+    field_parameter *parameters = NULL;
+    bool valid = parse_parameters(entry, json, &parameters, error, size);
     if (valid) {
         valid = field_program_bake_rows(
             entry->program,
@@ -175,7 +197,77 @@ bool material_field_bake_rows(
             size
         );
     }
-    yyjson_doc_free(doc);
     afree(parameters);
     return valid;
+}
+
+material_field_session *material_field_session_new(
+    const material_fields *fields,
+    const char *name,
+    const char *json,
+    unsigned seed,
+    const game_task_system *tasks,
+    char *error,
+    size_t size
+)
+{
+    int index = find(fields, name);
+    if (index < 0) {
+        snprintf(error, size, "Unknown procedural field: %s", name ? name : "");
+        return NULL;
+    }
+    const field_entry *entry = &fields->entries[index];
+    field_parameter *parameters = NULL;
+    if (!parse_parameters(entry, json, &parameters, error, size)) {
+        return NULL;
+    }
+    field_program_baker *baker = field_program_baker_new(
+        entry->program,
+        (field_context){ seed, parameters, acount(parameters) },
+        tasks ? tasks->workers : 1,
+        error,
+        size
+    );
+    afree(parameters);
+    if (!baker) {
+        return NULL;
+    }
+    material_field_session *session = xcalloc(1, sizeof *session);
+    *session = (material_field_session){ fields, xstrdup(name), entry->revision, baker };
+    return session;
+}
+
+void material_field_session_free(material_field_session *session)
+{
+    if (!session) {
+        return;
+    }
+    field_program_baker_free(session->baker);
+    free(session->name);
+    free(session);
+}
+
+bool material_field_session_matches(const material_field_session *session, const material_fields *fields)
+{
+    return session && fields == session->fields &&
+           material_field_revision(fields, session->name) == session->revision;
+}
+
+bool material_field_session_bake_rows(
+    material_field_session *session,
+    const material_fields *fields,
+    field_grid grid,
+    int first,
+    int count,
+    float *out,
+    const game_task_system *tasks,
+    char *error,
+    size_t size
+)
+{
+    if (!material_field_session_matches(session, fields)) {
+        snprintf(error, size, "Procedural field changed; recreate material stream");
+        return false;
+    }
+    return field_program_baker_bake_rows(session->baker, grid, first, count, out, tasks, error, size);
 }

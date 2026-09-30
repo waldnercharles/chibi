@@ -5,6 +5,7 @@
 #include "runtime/tasks.h"
 
 typedef struct field_program field_program;
+typedef struct field_program_baker field_program_baker;
 typedef struct
 {
     const char *name;
@@ -44,6 +45,27 @@ bool field_program_bake(
 bool field_program_bake_rows(
     const field_program *program,
     field_context context,
+    field_grid grid,
+    int first,
+    int count,
+    float *out,
+    const game_task_system *tasks,
+    char *error,
+    size_t size
+);
+/* Prepared row baker for repeated slices of one program and parameter set.
+ * The program is borrowed and must remain compiled at the same revision until
+ * the baker is freed. Calls are serialized; workspace is retained per worker. */
+field_program_baker *field_program_baker_new(
+    const field_program *program,
+    field_context context,
+    int workers,
+    char *error,
+    size_t size
+);
+void field_program_baker_free(field_program_baker *baker);
+bool field_program_baker_bake_rows(
+    field_program_baker *baker,
     field_grid grid,
     int first,
     int count,

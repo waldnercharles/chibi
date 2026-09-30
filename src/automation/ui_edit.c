@@ -3,12 +3,14 @@
 #include "assets/ui_document.h"
 #include "assets/ui_source.h"
 #include "automation/controller.h"
+#include "automation/json_int.h"
 #include "render/ui_check.h"
 #include "support/array.h"
 #include "support/xalloc.h"
 #include "ui/rml_backend.h"
 
 #include <ctype.h>
+#include <limits.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -614,18 +616,19 @@ int automation_ui_complete(
     size_t error_size
 )
 {
-    yyjson_val *line = yyjson_obj_get(at, "line"),
-               *column = yyjson_obj_get(at, "column");
-    const char *file = yyjson_get_str(yyjson_obj_get(at, "file"));
+    yyjson_val *file_value = yyjson_obj_get(at, "file");
+    const char *file = yyjson_get_str(file_value);
     bool styles = file && !strcmp(file, "rcss");
-    if (!yyjson_is_obj(at) || !yyjson_is_int(line) || !yyjson_is_int(column) ||
-        yyjson_get_int(line) < 1 || yyjson_get_int(column) < 1 ||
-        (file && !styles && strcmp(file, "rml"))) {
+    int line, column;
+    if (!yyjson_is_obj(at) ||
+        !json_int_in_range(yyjson_obj_get(at, "line"), 1, INT_MAX, &line) ||
+        !json_int_in_range(yyjson_obj_get(at, "column"), 1, INT_MAX, &column) ||
+        (file_value && !styles && (!file || strcmp(file, "rml")))) {
         return failf(error, error_size, CHIBI_AUTOMATION_INVALID_REQUEST, "complete takes a 1-based line and column, and file rml or rcss");
     }
     ui_source *source = styles ? ui_source_parse(rcss ? rcss : "", UI_SOURCE_RCSS)
                                : ui_source_parse(rml, UI_SOURCE_RML);
-    int offset = ui_source_offset(source, yyjson_get_int(line), yyjson_get_int(column));
+    int offset = ui_source_offset(source, line, column);
     ui_source_project project = { 0 };
     scan_project(&project, content_root);
     ui_source_completions found = { 0 };

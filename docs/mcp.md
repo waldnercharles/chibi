@@ -108,7 +108,7 @@ Call `validateAsset` after every published change. Use `previewShader`,
 `previewScene`, `runScenario`, `captureRuntimeSnapshot`, or
 `profileScenario` for evidence. Existing assets require the current
 `expected_hash`; graph and optimizer dry runs report proposed changes without
-saving them. Tool results include complete `structuredContent` and
+saving them. Tool results carry their data in `structuredContent` and
 `next_steps`.
 
 - `buildGraph`: create or edit any graph asset; `query` replaces a System's ECS query.
@@ -123,6 +123,7 @@ saving them. Tool results include complete `structuredContent` and
 - `searchAssets`: find catalog entries by kind, name, path, description, or
   member names, best match first: every query word must start a word, and a
   word of the name ranks above one elsewhere, as Studio's palette ranks.
+  Without a query it lists every asset in `kinds`.
 - `searchNodes`: list a domain's node types, or find nodes, configured component nodes, and their pins by words.
 - `inspectGraph`: inspect graph content, diagnostics, and the current content hash; with `include_uses: true`, the asset, its functions and macros, and a behavior's variables carry `uses`, their project-wide use counts by role. Counting reads every asset, so it is off by default.
 - `inspectUi`: read a ui asset's outline, props, events, slots, widgets, tokens, save keys, syntax errors and hash; with `complete`, the completions Studio's Text Editor offers at a line and column.
@@ -334,9 +335,8 @@ the file it is about with its `line` and `column` when it has them:
 
 The adapter package keeps the runtime modules and launcher in its published
 file boundary. From `tools/mcp`, run `npm ci`, `npm run audit:names`, and
-`npm run pack:check`. The audit uses `o200k_base` to report candidate name
-token counts, token pieces, description limits, and the serialized
-`tools/list` budget.
+`npm run pack:check`. The audit uses `o200k_base` to hold the serialized
+`tools/list` to 20,000 tokens, each description to 160 and each name to 8.
 
 The client can also read these MCP resources:
 
@@ -641,10 +641,22 @@ The stdio adapter negotiates MCP protocol versions `2025-06-18` and
 recording resource is resolved by the controller so clients never need direct
 filesystem access. The static `chibi://catalog` resource provides the
 same semantic catalog as the `getAssetCatalog` tool. Tool responses include a
-compact text summary for conversational clients and the complete native
-response in `structuredContent`, including a `next_steps` follow-up.
+compact text summary and the native result in `structuredContent`, with a
+`next_steps` follow-up. Because clients such as Claude Code show
+`structuredContent` to the model, the adapter leaves out what no authoring
+decision uses: the native `contract` and `operation` envelope, component IDs,
+layout hashes, byte sizes and offsets, field `type_name`s that repeat the
+type, empty catalog relationship lists, runtime snapshot field types (see
+`describeComponents`), `getProjectStatus`'s native operation list, and
+`previewScene` timings below three rendered frames.
 The `describeContract` result labels each private native operation with the
 public MCP tool or tools that expose it.
+Arguments that do not match a tool's input schema fail as a tool result with
+`isError: true` and error code `invalid_arguments`, so the model sees what to
+correct; an unknown tool name is a JSON-RPC error. A cancelled request gets no
+response, and a queued native request cancelled before it runs is skipped. A
+timeout fails only the request that timed out; requests queued behind it run on
+a fresh controller.
 
 The native controller also accepts newline-delimited JSON directly:
 

@@ -13,7 +13,7 @@ import {
   renderRequest,
   validateAuthoringArguments,
 } from "./authoring.mjs";
-import { parseControllerJson } from "./controller.mjs";
+import { controllerPath, parseControllerJson } from "./controller.mjs";
 import { getToolCatalogEntry, toolCatalog } from "./tool-catalog.mjs";
 
 const protocolVersion = "2025-11-25";
@@ -25,7 +25,7 @@ const serverInstructions = [
   "2. Build with buildGraph, buildPrototype, or buildScene. Write UI documents directly as files: content/ui/<Name>.rml, its markup, and content/ui/<Name>.rcss, its styles. Graph edits are typed, atomic, hash-checked for existing assets, and auto-arranged.",
   "3. Validate every published change with validateAsset. Use dry runs first when available and retry asset conflicts with the latest hash.",
   "4. Use previewShader, previewField, previewScene, runScenario, captureRuntimeSnapshot, or profileScenario for visual and runtime evidence.",
-  "Tool results keep complete machine-readable data in structuredContent and include next_steps. Use the public camelCase names returned by tools/list; native operation names are implementation details.",
+  "Tool results carry machine-readable data in structuredContent and include next_steps. Use the public camelCase names returned by tools/list; native operation names are implementation details.",
 ].join(" ");
 const serverRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const configuredRoot = process.env.CHIBI_ROOT;
@@ -80,15 +80,6 @@ function resourceTemplates() {
   }];
 }
 
-function controllerPath() {
-  const candidates = [
-    process.env.CHIBI_CTL,
-    resolve(root, "build", "chibi_ctl"),
-    resolve(root, "build-release", "chibi_ctl"),
-  ].filter(Boolean);
-  return candidates.find((candidate) => existsSync(candidate)) || "chibi_ctl";
-}
-
 // launch.sh sets CHIBI_CTL to the build output; build it on demand so the MCP
 // handshake never waits on a native compile.
 let controllerBuild = null;
@@ -122,23 +113,30 @@ function ensureController() {
   return controllerBuild;
 }
 
-// Renders waiting on the build are not yet cancellable by authoring.mjs.
-const rendersAwaitingBuild = new Map();
+// Requests in flight, and those the client cancelled: a cancelled request gets no reply.
+const inFlight = new Set();
+const cancelled = new Set();
+
+function isCancelled(requestId) {
+  return requestId !== undefined && cancelled.has(String(requestId));
+}
+
+function cancelledError() {
+  return protocolError(-32800, "request cancelled");
+}
+
+// A queued request that never reached a controller runs again on a fresh one.
+function retryError() {
+  const error = new Error("chibi_ctl session ended before the request ran");
+  error.retry = true;
+  return error;
+}
 
 async function builtRenderRequest(renderRoot, request, requestId) {
-  if (!controllerReady() && requestId !== undefined) {
-    const key = String(requestId);
-    const cancelled = new Promise((resolveCancel) => rendersAwaitingBuild.set(key, () => resolveCancel(true)));
-    try {
-      if (await Promise.race([ensureController().then(() => false), cancelled])) {
-        const operation = request.operation || "preview_shader";
-        return { contract: 1, operation, ok: false, error: { code: "cancelled", message: "preview was cancelled" } };
-      }
-    } finally {
-      rendersAwaitingBuild.delete(key);
-    }
-  }
   await ensureController();
+  if (isCancelled(requestId)) {
+    return { contract: 1, operation: request.operation, ok: false, error: { code: "cancelled", message: "request cancelled" } };
+  }
   return renderRequest(renderRoot, request, requestId);
 }
 
@@ -188,33 +186,44 @@ class ControllerSession {
     });
   }
 
-  // A rebuilt controller replaces the running one on the next request.
+  // A rebuilt controller replaces the running one on the next request; while a
+  // rebuild has removed the binary, the running one keeps serving.
   stale() {
-    return statSync(this.executable).mtimeMs !== this.modified;
+    try {
+      return statSync(this.executable).mtimeMs !== this.modified;
+    } catch {
+      return false;
+    }
   }
 
-  request(payload, timeout) {
+  request(payload, timeout, requestId) {
     return new Promise((resolveRequest, rejectRequest) => {
-      this.queue.push({ payload, timeout, resolveRequest, rejectRequest });
+      if (this.closed) {
+        rejectRequest(retryError());
+        return;
+      }
+      this.queue.push({ payload, timeout, requestId, resolveRequest, rejectRequest });
       this.pump();
     });
   }
 
   pump() {
-    if (this.closed || this.pending || !this.queue.length) {
-      return;
-    }
-    this.pending = this.queue.shift();
-    this.timer = setTimeout(() => {
-      const error = protocolError(-32001, "chibi_ctl request timed out");
-      this.fail(error);
-    }, this.pending.timeout);
-    const line = `${JSON.stringify(this.pending.payload)}\n`;
-    this.child.stdin.write(line, (error) => {
-      if (error) {
-        this.fail(error);
+    while (!this.closed && !this.pending && this.queue.length) {
+      const request = this.queue.shift();
+      if (isCancelled(request.requestId)) {
+        request.rejectRequest(cancelledError());
+        continue;
       }
-    });
+      this.pending = request;
+      this.timer = setTimeout(() => {
+        this.fail(protocolError(-32001, "chibi_ctl request timed out"));
+      }, request.timeout);
+      this.child.stdin.write(`${JSON.stringify(request.payload)}\n`, (error) => {
+        if (error) {
+          this.fail(error);
+        }
+      });
+    }
   }
 
   receive(chunk) {
@@ -245,10 +254,32 @@ class ControllerSession {
         this.fail(new Error("chibi_ctl returned invalid JSON"));
         return;
       }
+      if (this.retiring) {
+        this.close();
+        return;
+      }
       this.pump();
     }
   }
 
+  // Stops taking requests: queued ones move to a fresh session and the running
+  // one finishes here.
+  retire() {
+    this.retiring = true;
+    this.retryQueue();
+    if (!this.pending) {
+      this.close();
+    }
+  }
+
+  retryQueue() {
+    for (const request of this.queue) {
+      request.rejectRequest(retryError());
+    }
+    this.queue = [];
+  }
+
+  // Fails only the running request; queued ones never reached this controller.
   fail(error) {
     if (this.closed) {
       return;
@@ -256,17 +287,9 @@ class ControllerSession {
     this.closed = true;
     clearTimeout(this.timer);
     this.timer = null;
-    const failure = error.rpcCode
-      ? error
-      : protocolError(-32603, `chibi_ctl failed: ${error.message}`);
-    if (this.pending) {
-      this.pending.rejectRequest(failure);
-      this.pending = null;
-    }
-    for (const request of this.queue) {
-      request.rejectRequest(failure);
-    }
-    this.queue = [];
+    this.pending?.rejectRequest(error.rpcCode ? error : protocolError(-32603, `chibi_ctl failed: ${error.message}`));
+    this.pending = null;
+    this.retryQueue();
     if (this.child.exitCode === null && !this.child.killed) {
       this.child.kill();
     }
@@ -276,24 +299,7 @@ class ControllerSession {
   }
 
   close() {
-    if (this.closed) {
-      return;
-    }
-    this.closed = true;
-    clearTimeout(this.timer);
-    this.timer = null;
-    const error = protocolError(-32603, "chibi_ctl session closed");
-    if (this.pending) {
-      this.pending.rejectRequest(error);
-      this.pending = null;
-    }
-    for (const request of this.queue) {
-      request.rejectRequest(error);
-    }
-    this.queue = [];
-    if (this.child.exitCode === null && !this.child.killed) {
-      this.child.kill();
-    }
+    this.fail(protocolError(-32603, "chibi_ctl session closed"));
   }
 }
 
@@ -351,7 +357,7 @@ function buildToolDefinitions() {
     properties: {
       query: {
         type: "string",
-        description: "Words that must each start a word in an asset's name, kind, path, description or member names, such as \"health\" or \"arena scene\"; name matches rank first. An empty string lists every asset in kinds.",
+        description: "Words that must each start a word in an asset's name, kind, path, description or member names, such as \"health\" or \"arena scene\"; name matches rank first. Omit it, or pass an empty string, to list every asset in kinds.",
       },
       kinds: {
         type: "array",
@@ -360,7 +366,6 @@ function buildToolDefinitions() {
       },
       ...pageProperties,
     },
-    required: ["query"],
     additionalProperties: false,
   };
   const dependencyArguments = {
@@ -1007,32 +1012,50 @@ function buildToolDefinitions() {
   ];
 }
 
-async function nativeRequest(operation, args = {}) {
+function nativeTimeout() {
   // Long deterministic scenarios can run for minutes; a timeout restarts the controller.
-  const timeoutValue = Number(process.env.CHIBI_CTL_TIMEOUT_MS || 300000);
-  const timeout = Number.isSafeInteger(timeoutValue) && timeoutValue > 0 ? timeoutValue : 300000;
-  await ensureController();
-  const executable = controllerPath();
-  if (controllerSession && !controllerSession.closed && controllerSession.stale()) {
-    controllerSession.close();
+  const value = Number(process.env.CHIBI_CTL_TIMEOUT_MS || 300000);
+  return Number.isSafeInteger(value) && value > 0 ? value : 300000;
+}
+
+async function sessionRequest(payload, requestId) {
+  const timeout = nativeTimeout();
+  // A running controller keeps serving while a rebuild replaces its binary.
+  if (!controllerSession) {
+    await ensureController();
   }
-  if (!controllerSession || controllerSession.closed) {
-    controllerSession = new ControllerSession(executable);
+  if (controllerSession?.stale()) {
+    controllerSession.retire();
+    controllerSession = null;
   }
+  controllerSession ??= new ControllerSession(controllerPath());
   const session = controllerSession;
-  if (!session.rootCheck) {
-    session.rootCheck = session.request({ contract: 1, operation: "status" }, timeout)
-      .then((status) => {
-        const resolvedRoot = status.result?.project_root;
-        if (!status.ok || !resolvedRoot || realpathSync(resolvedRoot) !== realpathSync(root)) {
-          session.close();
-          throw protocolError(-32603, `Chibi project root mismatch: expected ${root}, got ${resolvedRoot}`);
-        }
-        process.stderr.write(`chibi MCP verified project root: ${resolvedRoot}\n`);
-      });
-  }
+  session.rootCheck ??= session.request({ contract: 1, operation: "status" }, timeout)
+    .then((status) => {
+      const resolvedRoot = status.result?.project_root;
+      if (!status.ok || !resolvedRoot || realpathSync(resolvedRoot) !== realpathSync(root)) {
+        session.close();
+        throw protocolError(-32603, `Chibi project root mismatch: expected ${root}, got ${resolvedRoot}`);
+      }
+      process.stderr.write(`chibi MCP verified project root: ${resolvedRoot}\n`);
+    });
   await session.rootCheck;
-  return session.request({ ...args, contract: 1, operation }, timeout);
+  if (isCancelled(requestId)) {
+    throw cancelledError();
+  }
+  return session.request(payload, timeout, requestId);
+}
+
+async function nativeRequest(operation, args = {}, requestId) {
+  for (;;) {
+    try {
+      return await sessionRequest({ ...args, contract: 1, operation }, requestId);
+    } catch (error) {
+      if (!error.retry) {
+        throw error;
+      }
+    }
+  }
 }
 
 function toolDefinition(name) {
@@ -1057,6 +1080,24 @@ function toolDefinitions() {
   });
 }
 
+function invalidArguments(message) {
+  return protocolError(-32602, message);
+}
+
+function matchesType(value, type) {
+  switch (type) {
+    case "object": return isObject(value);
+    case "array": return Array.isArray(value);
+    case "string": return typeof value === "string";
+    case "boolean": return typeof value === "boolean";
+    case "number": return typeof value === "number" && Number.isFinite(value);
+    case "integer": return Number.isSafeInteger(value);
+    case "null": return value === null;
+  }
+  throw new Error(`unsupported schema type: ${type}`);
+}
+
+// The JSON Schema subset tool schemas use; keywords apply to values of their type.
 function validateSchema(value, schema, path) {
   if (schema.oneOf) {
     const matches = schema.oneOf.filter((candidate) => {
@@ -1068,95 +1109,99 @@ function validateSchema(value, schema, path) {
       }
     }).length;
     if (matches !== 1) {
-      throw protocolError(-32602, `${path} must match exactly one supported form`);
+      throw invalidArguments(`${path} must match exactly one supported form`);
     }
   }
-  if (schema.type === "object") {
-    if (!isObject(value)) {
-      throw protocolError(-32602, `${path} must be an object`);
+  if (schema.type !== undefined) {
+    const types = [schema.type].flat();
+    if (!types.some((type) => matchesType(value, type))) {
+      throw invalidArguments(`${path} must be of type ${types.join(" or ")}`);
     }
+  }
+  if (isObject(value)) {
     for (const name of schema.required || []) {
       if (!Object.hasOwn(value, name)) {
-        throw protocolError(-32602, `${path}.${name} is required`);
+        throw invalidArguments(`${path}.${name} is required`);
       }
     }
-    if (schema.additionalProperties === false) {
-      for (const name of Object.keys(value)) {
-        if (!Object.hasOwn(schema.properties || {}, name)) {
-          throw protocolError(-32602, `${path}.${name} is not supported`);
-        }
-      }
+    const names = Object.keys(value);
+    if (schema.maxProperties !== undefined && names.length > schema.maxProperties) {
+      throw invalidArguments(`${path} has more than ${schema.maxProperties} properties`);
     }
-    for (const [name, child] of Object.entries(schema.properties || {})) {
-      if (Object.hasOwn(value, name)) {
+    for (const name of names) {
+      const child = schema.properties && Object.hasOwn(schema.properties, name)
+        ? schema.properties[name]
+        : schema.additionalProperties;
+      if (child === false) {
+        throw invalidArguments(`${path}.${name} is not supported`);
+      }
+      if (isObject(child)) {
         validateSchema(value[name], child, `${path}.${name}`);
       }
     }
-    return;
   }
-  if (schema.type === "string" &&
-      (typeof value !== "string" ||
-       (schema.maxLength !== undefined && value.length > schema.maxLength))) {
-    throw protocolError(-32602, `${path} must be a string within the supported length`);
-  }
-  if (schema.type === "boolean" && typeof value !== "boolean") {
-    throw protocolError(-32602, `${path} must be a boolean`);
-  }
-  if (schema.type === "number" &&
-      (typeof value !== "number" || !Number.isFinite(value) ||
-       (schema.minimum !== undefined && value < schema.minimum) ||
-       (schema.maximum !== undefined && value > schema.maximum))) {
-    throw protocolError(-32602, `${path} must be a finite number within the supported range`);
-  }
-  if (schema.type === "integer" &&
-      (!Number.isSafeInteger(value) ||
-       value < (schema.minimum || 0) ||
-       (schema.maximum !== undefined && value > schema.maximum))) {
-    throw protocolError(-32602, `${path} must be a safe integer within the supported range`);
-  }
-  if (schema.type === "array") {
-    if (!Array.isArray(value)) {
-      throw protocolError(-32602, `${path} must be an array`);
+  if (typeof value === "string") {
+    const length = [...value].length;
+    if (schema.minLength !== undefined && length < schema.minLength) {
+      throw invalidArguments(`${path} must be at least ${schema.minLength} characters`);
     }
+    if (schema.maxLength !== undefined && length > schema.maxLength) {
+      throw invalidArguments(`${path} must be at most ${schema.maxLength} characters`);
+    }
+  }
+  if (typeof value === "number") {
+    if (schema.minimum !== undefined && value < schema.minimum) {
+      throw invalidArguments(`${path} must be at least ${schema.minimum}`);
+    }
+    if (schema.maximum !== undefined && value > schema.maximum) {
+      throw invalidArguments(`${path} must be at most ${schema.maximum}`);
+    }
+  }
+  if (Array.isArray(value)) {
     if (schema.minItems !== undefined && value.length < schema.minItems) {
-      throw protocolError(-32602, `${path} must contain at least ${schema.minItems} items`);
+      throw invalidArguments(`${path} must contain at least ${schema.minItems} items`);
     }
     if (schema.maxItems !== undefined && value.length > schema.maxItems) {
-      throw protocolError(-32602, `${path} has too many items`);
+      throw invalidArguments(`${path} must contain at most ${schema.maxItems} items`);
     }
     if (schema.items) {
       value.forEach((item, index) => validateSchema(item, schema.items, `${path}[${index}]`));
     }
   }
   if (schema.enum && !schema.enum.includes(value)) {
-    throw protocolError(-32602, `${path} has an unsupported value`);
+    throw invalidArguments(`${path} must be one of ${schema.enum.join(", ")}`);
   }
 }
 
-function validateToolArguments(name, args) {
-  const tool = toolDefinition(name);
-  if (!tool) {
-    throw protocolError(-32602, "tools/call requires a known tool name");
-  }
-  validateSchema(args === undefined ? {} : args, tool.inputSchema, "arguments");
-  if (isAuthoringTool(name)) {
-    validateAuthoringArguments(name, args === undefined ? {} : args);
+// Arguments the model can correct fail as a tool result it sees, not a protocol error.
+function argumentError(name, args) {
+  try {
+    validateSchema(args, toolDefinition(name).inputSchema, "arguments");
+    if (isAuthoringTool(name)) {
+      validateAuthoringArguments(name, args);
+    }
+    return null;
+  } catch (error) {
+    if (error.rpcCode !== -32602) {
+      throw error;
+    }
+    return { ok: false, error: { code: "invalid_arguments", message: error.message } };
   }
 }
 
-async function toolCall(name, args, requestId) {
-  if (typeof name !== "string") {
-    throw protocolError(-32602, "tools/call requires a tool name");
-  }
-  validateToolArguments(name, args);
-  if (isAuthoringTool(name)) {
-    return authoringToolCall(name, args, { nativeRequest, renderRequest: builtRenderRequest, root, requestId });
-  }
-  const entry = getToolCatalogEntry(name);
-  if (!entry || entry.adapter !== "native") {
+async function toolCall(name, args = {}, requestId) {
+  const entry = typeof name === "string" ? getToolCatalogEntry(name) : undefined;
+  if (!entry) {
     throw protocolError(-32602, `unknown tool: ${name}`);
   }
-  return nativeRequest(entry.operation, args || {});
+  const invalid = argumentError(name, args);
+  if (invalid) {
+    return invalid;
+  }
+  if (entry.adapter === "authoring") {
+    return authoringToolCall(name, args, { nativeRequest, renderRequest: builtRenderRequest, root, requestId });
+  }
+  return nativeRequest(entry.operation, args, requestId);
 }
 
 function defaultNextSteps(name) {
@@ -1180,6 +1225,9 @@ function uiEventSteps(response, args) {
 
 function responseNextSteps(name, response, args) {
   const code = response?.error?.code;
+  if (code === "invalid_arguments") {
+    return ["Correct the arguments to match the tool's inputSchema, then call it again."];
+  }
   if (code === "asset_not_found") {
     return ["Call searchAssets with a broader query or the expected asset kind."];
   }
@@ -1264,8 +1312,8 @@ function withToolGuidance(name, response, args) {
 }
 
 function toolResult(name, response, args) {
-  const guidedResponse = withToolGuidance(name, response, args);
-  const authoringResult = authoringToolResult(guidedResponse, name);
+  const guidedResponse = leanResponse(name, withToolGuidance(name, response, args), args);
+  const authoringResult = authoringToolResult(guidedResponse);
   if (authoringResult) {
     return authoringResult;
   }
@@ -1273,7 +1321,6 @@ function toolResult(name, response, args) {
     ? boundedJson(toolSummary(name, guidedResponse), "tool summary")
     : boundedJson({
       ok: false,
-      tool: name,
       error: guidedResponse.error,
       ...errorDetails(guidedResponse.result),
       next_steps: guidedResponse.next_steps,
@@ -1283,6 +1330,99 @@ function toolResult(name, response, args) {
     structuredContent: guidedResponse,
     isError: guidedResponse.ok !== true,
   };
+}
+
+function without(record, keys) {
+  return Object.fromEntries(Object.entries(record).filter(([key]) => !keys.includes(key)));
+}
+
+// Reflection records: binary layout and C spellings mean nothing to an author.
+function leanReflectedField(field) {
+  const lean = without(field, ["offset", "bytes"]);
+  return lean.type_name === lean.type || lean.type_name === "_Bool" ? without(lean, ["type_name"]) : lean;
+}
+
+function leanComponent(component) {
+  const lean = without(component, ["id", "bytes", "layout_hash", ...(component.type === component.name ? ["type"] : [])]);
+  return Array.isArray(lean.fields) ? { ...lean, fields: lean.fields.map(leanReflectedField) } : lean;
+}
+
+function leanRegistryType(type) {
+  const lean = without(type, ["bytes"]);
+  return Array.isArray(lean.fields) ? { ...lean, fields: lean.fields.map(leanReflectedField) } : lean;
+}
+
+// Snapshot fields as name and value; describeComponents has the types.
+function leanSnapshotComponent(component) {
+  return {
+    name: component.name,
+    fields: component.fields?.map(({ name, value }) => ({ name, value })),
+    ...(component.fields_truncated ? { field_count: component.field_count, fields_truncated: true } : {}),
+  };
+}
+
+function leanSnapshotBehavior(behavior) {
+  const empty = [
+    ...(behavior.performance_diagnostics?.length ? [] : ["performance_diagnostics"]),
+    ...(behavior.last_failure === null ? ["last_failure"] : []),
+  ];
+  return without(behavior, empty);
+}
+
+function leanSnapshotEntity(entity) {
+  const lean = without(entity, [
+    "slot", "generation",
+    ...(entity.components_truncated ? [] : ["component_count", "components_truncated"]),
+    ...(entity.behaviors_truncated ? [] : ["behavior_count", "behaviors_truncated"]),
+  ]);
+  return {
+    id: lean.id,
+    name: lean.name,
+    prototype: lean.prototype,
+    ...lean,
+    components: lean.components?.map(leanSnapshotComponent),
+    behaviors: lean.behaviors?.map(leanSnapshotBehavior),
+  };
+}
+
+// Catalog records keep relationships and diagnostics only when there are some.
+function leanAsset(asset) {
+  return Object.fromEntries(Object.entries(asset).filter(([key, value]) =>
+    !(Array.isArray(value) && value.length === 0) &&
+    !((key === "errors" || key === "warnings") && value === 0)));
+}
+
+function leanResult(name, result, args) {
+  switch (name) {
+    case "getProjectStatus":
+      return without(result, ["operations"]);
+    case "getAssetCatalog":
+    case "searchAssets":
+      return { ...without(result, ["project_root", "query"]), assets: result.assets?.map(leanAsset) };
+    case "listAssets":
+      return without(result, ["project_root"]);
+    case "describeComponents":
+      return { ...result, components: result.components?.map(leanComponent) };
+    case "describeRegistry":
+      return {
+        ...result,
+        ...(result.types ? { types: result.types.map(leanRegistryType) } : {}),
+        ...(result.components ? { components: result.components.map(leanComponent) } : {}),
+      };
+    case "captureRuntimeSnapshot":
+      return { ...result, entities: result.entities?.map(leanSnapshotEntity) };
+    case "previewScene":
+      // Timings are measured only past two rendered frames.
+      return (args?.render_frames ?? 2) > 2 ? result : without(result, ["performance"]);
+  }
+  return result;
+}
+
+/* Clients such as Claude Code show structuredContent to the model, so it
+   leaves out the native envelope and fields no authoring decision uses. */
+function leanResponse(name, response, args) {
+  const lean = without(response, ["contract", "operation"]);
+  return isObject(lean.result) ? { ...lean, result: leanResult(name, lean.result, args) } : lean;
 }
 
 /* Clients may show only the text, so a failure names what to fix. */
@@ -1328,14 +1468,13 @@ function errorDetails(result) {
 }
 
 function toolSummary(name, response) {
-  const summary = { ok: true, tool: name };
+  const summary = { ok: true };
   const result = response.result;
   if (!isObject(result)) {
     return summary;
   }
   const scalarKeys = [
-    "project_root",
-    "content_root",
+    ...(name === "getProjectStatus" ? ["project_root", "content_root"] : []),
     "kind",
     "name",
     "path",
@@ -1373,6 +1512,7 @@ function toolSummary(name, response) {
     "valid",
     "deterministic",
     "diverged",
+    "recording_id",
     "recording_path",
     "first_divergence_frame",
   ];
@@ -1388,7 +1528,7 @@ function toolSummary(name, response) {
     summary.counts = result.counts;
   }
   for (const key of ["assets", "graphs", "nodes", "edges", "entities", "components", "operations", "diagnostics", "behaviors", "skipped", "expressions", "locals", "uses", "mentions", "dangling", "references", "invalid"]) {
-    if (Array.isArray(result[key])) {
+    if (Array.isArray(result[key]) && result[key].length !== result.count) {
       summary[`${key}_count`] = result[key].length;
     }
   }
@@ -1410,7 +1550,7 @@ function boundedJson(value, label) {
   return text;
 }
 
-async function resourceRead(uri) {
+async function resourceRead(uri, requestId) {
   if (typeof uri !== "string" || !uri) {
     throw protocolError(-32602, "resources/read requires a URI string");
   }
@@ -1426,9 +1566,9 @@ async function resourceRead(uri) {
   };
   let response;
   if (uri === "chibi://project/status") {
-      response = await nativeRequest("status");
+    response = await nativeRequest("status", {}, requestId);
   } else if (uri === "chibi://catalog") {
-    response = await nativeRequest("catalog");
+    response = await nativeRequest("catalog", {}, requestId);
   } else {
     const recordingMatch = /^chibi:\/\/recording\/([^/]+)$/.exec(uri);
     if (recordingMatch) {
@@ -1436,7 +1576,7 @@ async function resourceRead(uri) {
       if (!/^[A-Za-z0-9._-]{1,128}$/.test(id)) {
         throw protocolError(-32602, `invalid recording resource: ${uri}`);
       }
-      response = await nativeRequest("read_recording", { id });
+      response = await nativeRequest("read_recording", { id }, requestId);
     }
     const graphMatch = /^chibi:\/\/asset\/([^/]+)\/([^/]+)\/graph\/([^/]+)$/.exec(uri);
     if (response === undefined && graphMatch) {
@@ -1448,14 +1588,14 @@ async function resourceRead(uri) {
         kind: decode(graphMatch[1]),
         name: decode(graphMatch[2]),
         graph_id: graphId,
-      });
+      }, requestId);
     }
     const dependencyMatch = /^chibi:\/\/asset\/([^/]+)\/([^/]+)\/dependencies$/.exec(uri);
     if (response === undefined && dependencyMatch) {
       response = await nativeRequest("asset_dependencies", {
         kind: decode(dependencyMatch[1]),
         name: decode(dependencyMatch[2]),
-      });
+      }, requestId);
     }
     const match = /^chibi:\/\/asset\/([^/]+)\/([^/]+)$/.exec(uri);
     if (response === undefined && !match) {
@@ -1465,7 +1605,7 @@ async function resourceRead(uri) {
       response = await nativeRequest("read_asset", {
         kind: decode(match[1]),
         name: decode(match[2]),
-      });
+      }, requestId);
     }
   }
   if (response.ok !== true) {
@@ -1486,8 +1626,11 @@ async function dispatch(message) {
   }
   if (message.method === "notifications/cancelled") {
     if (isObject(message.params) && message.params.requestId !== undefined) {
-      rendersAwaitingBuild.get(String(message.params.requestId))?.();
-      cancelAuthoringRequest(message.params.requestId);
+      const key = String(message.params.requestId);
+      if (inFlight.has(key)) {
+        cancelled.add(key);
+        cancelAuthoringRequest(key);
+      }
     }
     return null;
   }
@@ -1545,7 +1688,7 @@ async function dispatch(message) {
         throw protocolError(-32602, "resources/read params are required");
       }
       const uri = message.params.uri;
-      const response = await resourceRead(uri);
+      const response = await resourceRead(uri, message.id);
       return reply(message, {
         jsonrpc: "2.0",
         id: message.id,
@@ -1596,17 +1739,26 @@ process.stdin.on("data", (chunk) => {
     if (!line) continue;
     try {
       const message = JSON.parse(line);
+      const key = isObject(message) && Object.hasOwn(message, "id") ? String(message.id) : undefined;
+      if (key !== undefined) {
+        inFlight.add(key);
+      }
+      const answer = (response) => {
+        if (response && !cancelled.has(key)) {
+          send(response);
+        }
+      };
       activeDispatches++;
       dispatch(message)
-        .then((response) => {
-          if (response) send(response);
-        })
+        .then(answer)
         .catch((error) => {
-          if (!isNotification(message)) {
-            send(errorResponse(message?.id, error.rpcCode || -32603, error.message));
+          if (key !== undefined) {
+            answer(errorResponse(message.id, error.rpcCode || -32603, error.message));
           }
         })
         .finally(() => {
+          inFlight.delete(key);
+          cancelled.delete(key);
           activeDispatches--;
           maybeCloseController();
         });

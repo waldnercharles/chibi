@@ -40,7 +40,8 @@ try {
     assert(Array.isArray(dry.result.skipped));
     assert.equal(readFileSync(join(project, file), "utf8"), before);
     const denied = rpc("optimizeGraph", { path: file, dry_run: false });
-    assert.equal(denied.error?.code, -32602);
+    assert.equal(denied.result?.isError, true);
+    assert.equal(denied.result.structuredContent?.error?.code, "invalid_arguments");
     const applied = rpc("optimizeGraph", { path: file, dry_run: false, expected_hash: dry.result.before_hash }).result?.structuredContent;
     assert(applied?.ok && applied.result.published, JSON.stringify(applied));
     assert.equal(applied.result.after_hash, dry.result.after_hash);

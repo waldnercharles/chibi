@@ -9,18 +9,21 @@
  *   scene: Sandbox
  *   frames: 600
  *   seed: 7
+ *   saved_state: {best: "12"}
  *   keys:
  *   - {frame: 0, movement: {x: 1, y: 0}, aim: {x: 0, y: 1}, firing: true, controls: [Mouse Left]}
  *   - {frame: 90, movement: {x: 0, y: -1}}
  *
  * Each key holds its whole input from its frame (a fixed step) until the next
  * key; omitted fields are zero. A timeline that does not key frame zero holds
- * no input until its first key. */
+ * no input until its first key. The scene starts as authored, with the
+ * game's saved progress replaced by saved_state (none when omitted). */
 typedef struct
 {
     char *scene;
     int frames;
     unsigned seed;
+    char *saved_state; /* JSON object text of committed save values, or NULL */
     input_keyframe *keys; /* at least one, from frame zero, in increasing frames */
 } scenario_document;
 

@@ -117,9 +117,11 @@ static bool read_document(yyjson_val *root, scenario_document *out, char *error,
     yyjson_val *scene = yyjson_obj_get(root, "scene");
     yyjson_val *frames = yyjson_obj_get(root, "frames");
     yyjson_val *seed = yyjson_obj_get(root, "seed");
+    yyjson_val *saved_state = yyjson_obj_get(root, "saved_state");
     yyjson_val *keys = yyjson_obj_get(root, "keys");
-    if (!yyjson_is_obj(root) || yyjson_obj_size(root) != 3 + (seed != NULL)) {
-        return fail(error, error_size, "a scenario has scene, frames and keys, and may have a seed");
+    if (!yyjson_is_obj(root) ||
+        yyjson_obj_size(root) != 3 + (seed != NULL) + (saved_state != NULL)) {
+        return fail(error, error_size, "a scenario has scene, frames and keys, and may have a seed and saved_state");
     }
     if (!yyjson_is_str(scene) || !yyjson_get_len(scene)) {
         return fail(error, error_size, "scene must name a scene");
@@ -131,12 +133,16 @@ static bool read_document(yyjson_val *root, scenario_document *out, char *error,
     if (seed && (!yyjson_is_uint(seed) || yyjson_get_uint(seed) > UINT32_MAX)) {
         return fail(error, error_size, "seed must be an unsigned 32-bit integer");
     }
+    if (saved_state && !yyjson_is_obj(saved_state)) {
+        return fail(error, error_size, "saved_state must be a mapping of committed save values");
+    }
     if (!yyjson_is_arr(keys)) {
         return fail(error, error_size, "keys must be a list");
     }
     out->scene = xstrdup(yyjson_get_str(scene));
     out->frames = (int)yyjson_get_uint(frames);
     out->seed = seed ? (unsigned)yyjson_get_uint(seed) : 0;
+    out->saved_state = saved_state ? yyjson_val_write(saved_state, 0, NULL) : NULL;
     size_t i, count;
     yyjson_val *value;
     yyjson_arr_foreach(keys, i, count, value)
@@ -219,12 +225,25 @@ char *scenario_document_save(const scenario_document *document)
     if (document->seed) {
         yyjson_mut_obj_add_uint(doc, root, "seed", document->seed);
     }
+    yyjson_doc
+        *saved_state = document->saved_state
+                         ? yyjson_read(document->saved_state, strlen(document->saved_state), 0)
+                         : NULL;
+    if (saved_state) {
+        yyjson_mut_obj_add_val(
+            doc,
+            root,
+            "saved_state",
+            yyjson_val_mut_copy(doc, yyjson_doc_get_root(saved_state))
+        );
+    }
     yyjson_mut_val *keys = yyjson_mut_obj_add_arr(doc, root, "keys");
     for (int i = 0; i < acount(document->keys); i++) {
         write_key(doc, keys, &document->keys[i]);
     }
     char *json = yyjson_mut_write(doc, 0, NULL);
     yyjson_mut_doc_free(doc);
+    yyjson_doc_free(saved_state);
     return json;
 }
 
@@ -234,6 +253,7 @@ void scenario_document_free(scenario_document *document)
         return;
     }
     free(document->scene);
+    free(document->saved_state);
     afree(document->keys);
     free(document);
 }

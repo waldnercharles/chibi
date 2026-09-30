@@ -4592,6 +4592,7 @@ typedef struct
     asset_entry *runtime_assets;
     uint64_t runtime_hash;
     char *initial_saved_state;
+    const char *scenario_saved_state; /* a replayed scenario's, borrowed */
     CF_V2 aim;
     bool aim_firing, aim_point, controls_sampled;
     uint64_t controls;
@@ -4672,7 +4673,9 @@ static void add_presentation_state(yyjson_mut_doc *doc, yyjson_mut_val *value, c
 static int scenario_saved_state(scenario_context *context, yyjson_val *request, char *error, size_t size)
 {
     yyjson_val *state = yyjson_obj_get(request, "saved_state");
-    char *json = state ? yyjson_val_write(state, 0, NULL) : xstrdup("{}");
+    const char *fallback = context->scenario_saved_state ? context->scenario_saved_state
+                                                         : "{}";
+    char *json = state ? yyjson_val_write(state, 0, NULL) : xstrdup(fallback);
     game_save *save = game_behavior_save(
         game_prototype_preview_behaviors(context->preview)
     );
@@ -5147,10 +5150,12 @@ static scenario_document *request_scenario(
     return scenario;
 }
 
-/* Replay a scenario's input from the launch the scenario runs next. */
+/* Replay a scenario's input from the launch the scenario runs next, starting
+ * from its saved progress unless the request gives its own. */
 static void replay_scenario_input(scenario_context *context, const scenario_document *scenario)
 {
     if (scenario) {
+        context->scenario_saved_state = scenario->saved_state;
         engine_replay_input(
             game_prototype_preview_runtime(context->preview),
             scenario->keys,
@@ -5693,6 +5698,7 @@ static int profile_scenario(
                    : prepare_scenario(root, name, &context, error, sizeof error);
     if (status == CHIBI_AUTOMATION_OK) {
         replay_scenario_input(&context, scenario);
+        status = scenario_saved_state(&context, request, error, sizeof error);
     }
     scenario_profile_row *rows = NULL;
     scenario_profile_timing timing = { 0 };

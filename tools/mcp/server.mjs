@@ -464,6 +464,10 @@ function buildToolDefinitions() {
   const scenarioArguments = {
     type: "object",
     properties: {
+      scenario: {
+        type: "string",
+        description: "Scenarios asset name. Its scene runs from the start with the scenario's input replayed; omit kind, name and inputs.",
+      },
       kind: {
         type: "string",
         enum: ["prototype", "scene"],
@@ -477,7 +481,7 @@ function buildToolDefinitions() {
         type: "integer",
         minimum: 0,
         maximum: 108000,
-        description: "Number of deterministic fixed steps to run.",
+        description: "Number of deterministic fixed steps to run; a scenario defaults to its own frames.",
       },
       fixed_dt: {
         type: "number",
@@ -486,7 +490,10 @@ function buildToolDefinitions() {
         description: "Fixed timestep in seconds. The engine currently accepts 1/60.",
       },
     },
-    required: ["name"],
+    oneOf: [
+      { type: "object", required: ["name"] },
+      { type: "object", required: ["scenario"] },
+    ],
     additionalProperties: false,
   };
   const runtimeSnapshotArguments = {
@@ -550,6 +557,10 @@ function buildToolDefinitions() {
   const profileScenarioArguments = {
     type: "object",
     properties: {
+      scenario: {
+        type: "string",
+        description: "Scenarios asset name. Its scene runs from the start with the scenario's input replayed; omit kind, name and inputs.",
+      },
       kind: {
         type: "string",
         enum: ["prototype", "scene"],
@@ -562,14 +573,14 @@ function buildToolDefinitions() {
       frames: {
         type: "integer",
         minimum: 0,
-        maximum: 1800,
-        description: "Number of fixed steps to sample after warmup.",
+        maximum: 108000,
+        description: "Number of fixed steps to sample after warmup; a scenario defaults to its own frames.",
       },
       warmup_frames: {
         type: "integer",
         minimum: 0,
-        maximum: 1800,
-        description: "Fixed steps to run before collecting timing and behavior samples.",
+        maximum: 108000,
+        description: "Fixed steps to run before collecting timing and behavior samples. frames plus warmup_frames is at most 108000.",
       },
       fixed_dt: {
         type: "number",
@@ -578,7 +589,10 @@ function buildToolDefinitions() {
         description: "Fixed timestep in seconds. The engine currently accepts 1/60.",
       },
     },
-    required: ["name"],
+    oneOf: [
+      { type: "object", required: ["name"] },
+      { type: "object", required: ["scenario"] },
+    ],
     additionalProperties: false,
   };
   const executionStatusArguments = {

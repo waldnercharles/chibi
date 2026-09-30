@@ -149,7 +149,7 @@ saving them. Tool results include complete `structuredContent` and
 - `getExecutionStatus`: report the backend selected for a behavior or system.
 - `runScenario`: run a bounded deterministic prototype or scene scenario; `behavior_failures` lists runs that stopped on an error, by node and message.
 - `captureRuntimeSnapshot`: capture bounded ECS entities (32 unless `entity_limit` is set), reflected fields, behaviors, what behaviors set on `GameUi` documents, and timing.
-- `profileScenario`: profile a bounded prototype or scene with warmup and timing samples.
+- `profileScenario`: profile a bounded prototype, scene or scenarios asset with warmup, timing samples and the worst frames.
 - `recordScenario`: record bounded normalized inputs and deterministic frame hashes.
 - `replayScenario`: replay a returned recording and report divergence.
 - `describeRegistry`: inspect reflected types, services, and components; request `sections: ["nodes"]` for every node and pin.
@@ -732,6 +732,29 @@ game shows: each record names its `entity` and `element` selector with the
 `text`, `value`, `visible` and `classes` set under it, so a scenario can
 check a HUD headless. The operation is read-only and does not write authored
 content.
+
+### Scenario assets
+
+A `scenarios` asset replays gameplay input on a scene from its start, so the
+same play can be run, profiled natively or as WASM (`make profile-compare
+PROFILE_SCENARIO=Name`), and replayed in Studio as often as needed:
+
+```yaml
+scene: Sandbox
+frames: 1800
+seed: 7
+keys:
+- {frame: 0, movement: {x: 1, y: 0}, controls: [Mouse Left]}
+- {frame: 90, movement: {x: 0.5, y: -0.3}, aim: {x: 1, y: -0.45}, controls: [Mouse Left]}
+```
+
+Each key holds its whole input from its frame (a fixed step) until the next key:
+`movement` in [-1, 1], `aim` as a direction or, with `aim_point: true`, a world
+position, `firing`, and held `controls` spelled as `GameControl` labels.
+Omitted fields are zero. `seed` seeds the shared random stream before the scene
+starts. Pass `scenario: Name` to `runScenario` or `profileScenario` in place of
+`kind`, `name` and inputs; `frames` defaults to the scenario's. The engine
+replays keys at fixed steps, so a replay matches its recording at any frame rate.
 
 `runScenario` and `captureRuntimeSnapshot` accept up to 600 input changes across a
 run lasting up to 30 simulated minutes. Use `inputs` for consecutive frames or

@@ -205,7 +205,8 @@ if (!listedTools.some((tool) => tool.name === "validateAsset" &&
       tool.inputSchema?.required?.includes("kind") &&
       tool.inputSchema?.required?.includes("name")) ||
     !listedTools.some((tool) => tool.name === "runScenario" &&
-      tool.inputSchema?.required?.includes("name") &&
+      tool.inputSchema?.oneOf?.length === 2 &&
+      tool.inputSchema?.properties?.scenario?.type === "string" &&
       tool.inputSchema?.properties?.frames?.maximum === 108000 &&
       tool.inputSchema?.properties?.fixed_dt?.type === "number") ||
     !listedTools.some((tool) => tool.name === "captureRuntimeSnapshot" &&

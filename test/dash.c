@@ -403,8 +403,53 @@ static void preview_restart()
     dispose(&definitions);
 }
 
+/* Input recorded at an uneven frame rate replays exactly at another, and
+ * live samples cannot disturb the replay. */
+static void recorded_input_replays()
+{
+    dash_fixture f = create();
+    engine_record_input(f.runtime, 7);
+    static const double intervals[] = { .004, .031, .017, .05, .009, .022 };
+    for (int i = 0; i < 90; i++) {
+        float turn = (float)(i / 15) * .7f;
+        engine_sample_movement(f.runtime, cosf(turn), sinf(turn));
+        engine_sample_aim(f.runtime, (CF_V2){ -sinf(turn), cosf(turn) }, i % 30 < 12, false);
+        simulation_frame(&f.simulation, f.simulation.time + intervals[i % 6]);
+    }
+    engine_stop_recording(f.runtime);
+    int count;
+    const input_keyframe *recorded = engine_recorded_input(f.runtime, &count);
+    assert(count > 6 && recorded[0].step == 0);
+    input_keyframe *keys = NULL;
+    for (int i = 0; i < count; i++) {
+        apush(keys, recorded[i]);
+    }
+    uint64_t steps = engine_last_timing(f.runtime)->simulation_steps;
+    GameTransform position = *GAME_GameTransform_get_const(f.world, f.player);
+    GameAim aim = *GAME_GameAim_get_const(f.world, f.player);
+    dispose(&f);
+
+    f = create();
+    engine_replay_input(f.runtime, keys, count, 7);
+    while (engine_last_timing(f.runtime)->simulation_steps < steps) {
+        engine_sample_movement(f.runtime, -1, 0);
+        simulation_step(&f.simulation);
+    }
+    assert(engine_last_timing(f.runtime)->simulation_steps == steps);
+    const GameTransform *replayed = GAME_GameTransform_get_const(f.world, f.player);
+    assert(replayed->x == position.x && replayed->y == position.y);
+    const GameAim *replayed_aim = GAME_GameAim_get_const(f.world, f.player);
+    assert(replayed_aim->direction.x == aim.direction.x && replayed_aim->firing == aim.firing);
+    assert(position.x != 0 || position.y != 0);
+    engine_stop_replay(f.runtime);
+    assert(!engine_replaying_input(f.runtime));
+    afree(keys);
+    dispose(&f);
+}
+
 void test_dash()
 {
+    recorded_input_replays();
     direction_and_timing();
     cooldown_boundaries();
     active_burst_cannot_restart();
@@ -416,5 +461,5 @@ void test_dash()
     corner();
     GameTransform a = cadence(30), b = cadence(60), c = cadence(120);
     assert(fabsf(a.x - b.x) < .001f && fabsf(a.x - c.x) < .001f);
-    puts("  dash: captured input, cooldown, invulnerability, held contact, thin/rotated walls, corner, 30/60/120 cadence PASS");
+    puts("  dash: recorded input replays, captured input, cooldown, invulnerability, held contact, thin/rotated walls, corner, 30/60/120 cadence PASS");
 }

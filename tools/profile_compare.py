@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Profile one headless scene natively and as WASM under Node, and compare them.
 
-Both builds run the same fixed-step frames through chibi_ctl's profile_scenario.
+Both builds run the same fixed-step frames through chibi_ctl's profile_scenario,
+optionally replaying a scenarios asset's gameplay input.
 Each build runs several times: a costly frame that recurs at the same index in
 every run comes from the content, while one that moves between runs is noise
 from the machine (scheduling, first-use compilation, heap growth).
@@ -53,14 +54,21 @@ def main():
     parser.add_argument('--native', required=True, help='native chibi_ctl')
     parser.add_argument('--wasm', required=True, help='chibi_ctl.js built for Node')
     parser.add_argument('--scene', help="scene name; defaults to the project's start scene")
-    parser.add_argument('--frames', type=int, default=600)
+    parser.add_argument('--scenario', help='scenarios asset whose input is replayed on its scene')
+    parser.add_argument('--frames', type=int, help="defaults to the scenario's frames, else 600")
     parser.add_argument('--warmup', type=int, default=60)
     parser.add_argument('--runs', type=int, default=3)
     args = parser.parse_args()
 
-    scene = args.scene or start_scene(args.project_root)
-    request = {'contract': 1, 'operation': 'profile_scenario', 'kind': 'scene', 'name': scene,
-               'frames': args.frames, 'warmup_frames': args.warmup}
+    request = {'contract': 1, 'operation': 'profile_scenario', 'warmup_frames': args.warmup}
+    if args.scenario:
+        title = f'Scenario {args.scenario}'
+        request['scenario'] = args.scenario
+    else:
+        title = args.scene or start_scene(args.project_root)
+        request.update(kind='scene', name=title, frames=args.frames or 600)
+    if args.frames:
+        request['frames'] = args.frames
     builds = {'native': [args.native], 'wasm': ['node', args.wasm]}
     runs = {name: [] for name in builds}
     # Alternate builds so a slow period on the machine affects both.
@@ -68,7 +76,8 @@ def main():
         for name, command in builds.items():
             runs[name].append(profile(command, args.project_root, request))
 
-    print(f'{scene}: {args.frames} frames after {args.warmup} warmup, median of {args.runs} runs (ms per frame)')
+    frames = runs['native'][0]['frames']
+    print(f'{title}: {frames} frames after {args.warmup} warmup, median of {args.runs} runs (ms per frame)')
     header = ['build', *(key.removesuffix('_ms') for key in PHASES), *DISTRIBUTION]
     print(''.join(f'{column:>10}' for column in header))
     rows = [summarize(name, results) for name, results in runs.items()]

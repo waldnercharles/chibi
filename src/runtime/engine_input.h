@@ -3,6 +3,7 @@
 
 #include "runtime/behaviors/behavior.h"
 #include "runtime/components.h"
+#include "runtime/input_timeline.h"
 
 /* Private engine input snapshot, local ownership and transition queue. */
 typedef struct engine_input engine_input;
@@ -15,5 +16,9 @@ void engine_input_movement(engine_input *input, CF_V2 movement);
 void engine_input_aim(engine_input *input, CF_V2 aim, bool firing, bool point);
 int engine_input_controls(engine_input *input, uint64_t controls, bool *firing);
 int engine_input_apply(engine_input *input);
+/* The held input as a key at step zero. */
+input_keyframe engine_input_held(const engine_input *input);
+/* Hold a key's input as the host samples it: controls, movement, then aim. */
+int engine_input_hold(engine_input *input, const input_keyframe *key);
 
 #endif

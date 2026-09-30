@@ -5,6 +5,7 @@
 #include "assets/prototype.h"
 #include "assets/refactor.h"
 #include "assets/reference_index.h"
+#include "assets/scenario_document.h"
 #include "assets/scene_document.h"
 #include "assets/system_document.h"
 #include "assets/ui_document.h"
@@ -70,6 +71,7 @@ typedef enum
     ASSET_SCENE,
     ASSET_EDITOR,
     ASSET_UI,
+    ASSET_SCENARIO,
 } asset_loader;
 
 typedef struct
@@ -94,6 +96,7 @@ static const asset_family ASSET_FAMILIES[] = {
     { "scene", "scenes", ASSET_EXTENSION, ASSET_SCENE, REFERENCE_ASSET_SCENE },
     { "editor", "editor", ASSET_EXTENSION, ASSET_EDITOR, REFERENCE_ASSET_KIND_COUNT },
     { "ui", "ui", UI_MARKUP_EXTENSION, ASSET_UI, REFERENCE_ASSET_UI },
+    { "scenario", "scenarios", ASSET_EXTENSION, ASSET_SCENARIO, REFERENCE_ASSET_KIND_COUNT },
 };
 
 typedef struct
@@ -1406,6 +1409,15 @@ static bool read_editor_asset(const char *json, char *error, size_t error_size)
     return ok;
 }
 
+/* Scenarios replay gameplay input on a scene. */
+static bool read_scenario_asset(const char *json, char *error, size_t error_size)
+{
+    scenario_document *document = scenario_document_load(json, error, error_size);
+    bool ok = document != NULL;
+    scenario_document_free(document);
+    return ok;
+}
+
 /* The ui folder of the project at `root`. */
 static void ui_folder(const char *root, char *out, size_t size)
 {
@@ -1568,9 +1580,12 @@ static void catalog_validate_asset(const catalog_links *links, catalog_asset *as
         } else {
             game_prototype_free(prototype);
         }
-    } else if (family->loader == ASSET_EDITOR) {
+    } else if (family->loader == ASSET_EDITOR || family->loader == ASSET_SCENARIO) {
         char error[256] = { 0 };
-        if (!read_editor_asset(json, error, sizeof error)) {
+        bool ok = family->loader == ASSET_EDITOR
+                    ? read_editor_asset(json, error, sizeof error)
+                    : read_scenario_asset(json, error, sizeof error);
+        if (!ok) {
             asset->errors = 1;
             catalog_add_diagnostic(asset, "error", 0, "LOAD", error);
         }
@@ -1711,7 +1726,8 @@ static void catalog_add_content(
         case ASSET_UI:
             reference_index_add_ui(index, asset->reference, text);
             return;
-        case ASSET_EDITOR: return;
+        case ASSET_EDITOR:
+        case ASSET_SCENARIO: return;
     }
 }
 
@@ -4012,6 +4028,12 @@ static char *canonical_asset(const asset_family *family, const char *json, char 
         case ASSET_EDITOR:
             /* Validated as written; the shared YAML writer canonicalizes it. */
             return read_editor_asset(json, error, error_size) ? xstrdup(json) : NULL;
+        case ASSET_SCENARIO: {
+            scenario_document *scenario = scenario_document_load(json, error, error_size);
+            char *text = scenario ? scenario_document_save(scenario) : NULL;
+            scenario_document_free(scenario);
+            return text;
+        }
         case ASSET_UI: break; /* markup, kept as written */
     }
     return NULL;
@@ -4272,9 +4294,12 @@ static int handle_validate_asset(const char *root, yyjson_val *request, response
         }
     } else if (ref.family->loader == ASSET_UI) {
         errors = validate_ui(root, &ref, json, result->doc, diagnostics);
-    } else if (ref.family->loader == ASSET_EDITOR) {
+    } else if (ref.family->loader == ASSET_EDITOR || ref.family->loader == ASSET_SCENARIO) {
         char load_error[256] = { 0 };
-        if (!read_editor_asset(json, load_error, sizeof load_error)) {
+        bool ok = ref.family->loader == ASSET_EDITOR
+                    ? read_editor_asset(json, load_error, sizeof load_error)
+                    : read_scenario_asset(json, load_error, sizeof load_error);
+        if (!ok) {
             errors = 1;
             add_load_diagnostic(result->doc, diagnostics, load_error);
         }
@@ -5084,17 +5109,76 @@ static int prepare_scene_scenario(
 
 static void add_behavior_failures(yyjson_mut_doc *doc, yyjson_mut_val *value, const scenario_context *context);
 
+/* A request's `scenario` names a scenarios asset, which supplies the scene,
+ * the frames the request leaves out, and the input the engine replays. NULL
+ * with CHIBI_AUTOMATION_OK in `status` when the request names none. */
+static scenario_document *request_scenario(
+    const char *root,
+    yyjson_val *request,
+    int *status,
+    char *error,
+    size_t error_size
+)
+{
+    *status = CHIBI_AUTOMATION_OK;
+    const char *name = request_string(request, "scenario");
+    if (!name) {
+        return NULL;
+    }
+    if (yyjson_obj_get(request, "name") || yyjson_obj_get(request, "kind") ||
+        yyjson_obj_get(request, "inputs") ||
+        yyjson_obj_get(request, "input_timeline")) {
+        set_error(error, error_size, "a scenario supplies the scene and its input; omit name, kind and inputs");
+        *status = CHIBI_AUTOMATION_INVALID_REQUEST;
+        return NULL;
+    }
+    asset_ref ref;
+    char *json = NULL;
+    size_t bytes;
+    uint64_t hash;
+    *status = load_named_asset(root, family_by_kind("scenario"), name, &ref, &json, &bytes, &hash, error, error_size);
+    scenario_document *scenario = *status == CHIBI_AUTOMATION_OK
+                                    ? scenario_document_load(json, error, error_size)
+                                    : NULL;
+    free(json);
+    if (*status == CHIBI_AUTOMATION_OK && !scenario) {
+        *status = CHIBI_AUTOMATION_VALIDATION_ERROR;
+    }
+    return scenario;
+}
+
+/* Replay a scenario's input from the launch the scenario runs next. */
+static void replay_scenario_input(scenario_context *context, const scenario_document *scenario)
+{
+    if (scenario) {
+        engine_replay_input(
+            game_prototype_preview_runtime(context->preview),
+            scenario->keys,
+            acount(scenario->keys),
+            scenario->seed
+        );
+    }
+}
+
 static int handle_scene_scenario(const char *root, yyjson_val *request, response *result, int *exit_code)
 {
-    const char *name = request_string(request, "name");
+    char error[256] = { 0 };
+    int status;
+    scenario_document *scenario = request_scenario(root, request, &status, error, sizeof error);
+    if (status != CHIBI_AUTOMATION_OK) {
+        response_error(result, exit_code, status, error);
+        return -1;
+    }
+    const char *name = scenario ? scenario->scene : request_string(request, "name");
     if (!name || !name[0]) {
         response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "scene name is required");
         return -1;
     }
-    uint64_t frames = SCENARIO_DEFAULT_FRAMES;
+    uint64_t frames = scenario ? (uint64_t)scenario->frames : SCENARIO_DEFAULT_FRAMES;
     yyjson_val *frames_value = yyjson_obj_get(request, "frames");
     if (frames_value && (!request_uint(request, "frames", &frames) ||
                          frames > SCENARIO_RUN_MAX_FRAMES)) {
+        scenario_document_free(scenario);
         response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "frames must be a non-negative integer no greater than 108000");
         return -1;
     }
@@ -5104,20 +5188,22 @@ static int handle_scene_scenario(const char *root, yyjson_val *request, response
         if (!yyjson_is_num(fixed_dt_value) ||
             !isfinite(yyjson_get_num(fixed_dt_value)) ||
             fabs(yyjson_get_num(fixed_dt_value) - SCENARIO_FIXED_DT) > 1e-12) {
+            scenario_document_free(scenario);
             response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "fixed_dt must equal the engine fixed timestep (1/60)");
             return -1;
         }
         fixed_dt = yyjson_get_num(fixed_dt_value);
     }
     scenario_context context = { 0 };
-    char error[256] = { 0 };
     const char *kind = request_string(request, "kind");
-    int status = kind && !strcmp(kind, "scene")
-                   ? prepare_scene_scenario(root, name, &context, error, sizeof error)
-                   : prepare_scenario(root, name, &context, error, sizeof error);
+    status = scenario || (kind && !strcmp(kind, "scene"))
+               ? prepare_scene_scenario(root, name, &context, error, sizeof error)
+               : prepare_scenario(root, name, &context, error, sizeof error);
     if (status == CHIBI_AUTOMATION_OK) {
+        replay_scenario_input(&context, scenario);
         status = advance_request_scenario(&context, request, frames, fixed_dt, error, sizeof error);
     }
+    scenario_document_free(scenario);
     if (status != CHIBI_AUTOMATION_OK) {
         scenario_context_free(&context);
         response_error(result, exit_code, status, error);
@@ -5283,7 +5369,7 @@ static int advance_scenario(
 }
 
 #define SCENARIO_PROFILE_MAX_ROWS 1024
-#define SCENARIO_PROFILE_MAX_TOTAL 1200
+#define SCENARIO_PROFILE_MAX_TOTAL SCENARIO_RUN_MAX_FRAMES
 #define SCENARIO_PROFILE_WORST_FRAMES 5
 
 typedef struct
@@ -5557,9 +5643,15 @@ static void add_profile_rows(
     yyjson_mut_obj_add_bool(doc, object, "behaviors_truncated", truncated);
 }
 
-static int handle_profile_scenario(const char *root, yyjson_val *request, response *result, int *exit_code)
+static int profile_scenario(
+    const char *root,
+    yyjson_val *request,
+    const scenario_document *scenario,
+    response *result,
+    int *exit_code
+)
 {
-    const char *kind = request_string(request, "kind");
+    const char *kind = scenario ? "scene" : request_string(request, "kind");
     if (!kind) {
         kind = "prototype";
     }
@@ -5568,26 +5660,18 @@ static int handle_profile_scenario(const char *root, yyjson_val *request, respon
         response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "profile_scenario supports prototype or scene targets");
         return -1;
     }
-    const char *name = request_string(request, "name");
+    const char *name = scenario ? scenario->scene : request_string(request, "name");
     if (!name || !name[0]) {
         response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "profile target name is required");
         return -1;
     }
-    uint64_t frames = SCENARIO_DEFAULT_FRAMES;
+    uint64_t frames = scenario ? (uint64_t)scenario->frames : SCENARIO_DEFAULT_FRAMES;
     uint64_t warmup = 0;
-    if (yyjson_obj_get(request, "frames") &&
-        (!request_uint(request, "frames", &frames) || frames > SCENARIO_MAX_FRAMES)) {
-        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "frames must be a non-negative integer no greater than 1800");
-        return -1;
-    }
-    if (yyjson_obj_get(request, "warmup_frames") &&
-        (!request_uint(request, "warmup_frames", &warmup) ||
-         warmup > SCENARIO_MAX_FRAMES)) {
-        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "warmup_frames must be a non-negative integer no greater than 1800");
-        return -1;
-    }
-    if (warmup + frames > SCENARIO_PROFILE_MAX_TOTAL) {
-        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "warmup_frames plus frames must not exceed 1200");
+    if ((yyjson_obj_get(request, "frames") && !request_uint(request, "frames", &frames)) ||
+        (yyjson_obj_get(request, "warmup_frames") &&
+         !request_uint(request, "warmup_frames", &warmup)) ||
+        warmup + frames > SCENARIO_PROFILE_MAX_TOTAL) {
+        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "frames and warmup_frames must be non-negative integers totaling at most 108000");
         return -1;
     }
     double fixed_dt = SCENARIO_FIXED_DT;
@@ -5607,6 +5691,9 @@ static int handle_profile_scenario(const char *root, yyjson_val *request, respon
     int status = scene
                    ? prepare_scene_scenario(root, name, &context, error, sizeof error)
                    : prepare_scenario(root, name, &context, error, sizeof error);
+    if (status == CHIBI_AUTOMATION_OK) {
+        replay_scenario_input(&context, scenario);
+    }
     scenario_profile_row *rows = NULL;
     scenario_profile_timing timing = { 0 };
     scenario_profile_frame *samples = NULL;
@@ -5742,6 +5829,20 @@ static int handle_profile_scenario(const char *root, yyjson_val *request, respon
     afree(samples);
     scenario_context_free(&context);
     return 0;
+}
+
+static int handle_profile_scenario(const char *root, yyjson_val *request, response *result, int *exit_code)
+{
+    char error[256] = { 0 };
+    int status;
+    scenario_document *scenario = request_scenario(root, request, &status, error, sizeof error);
+    if (status != CHIBI_AUTOMATION_OK) {
+        response_error(result, exit_code, status, error);
+        return -1;
+    }
+    int reply = profile_scenario(root, request, scenario, result, exit_code);
+    scenario_document_free(scenario);
+    return reply;
 }
 
 typedef struct

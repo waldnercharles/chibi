@@ -14,6 +14,7 @@
 #include "support/array.h"
 #include "support/xalloc.h"
 
+#include <assert.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -55,6 +56,9 @@ struct engine
     double accumulator;
     bool has_time;
     bool debug_paused;
+    bool recording_input;
+    input_keyframe *recorded; /* keys where held input changed, since the last reset */
+    input_keyframe *replay; /* keys held in place of live samples; NULL when live */
     char error[256];
 };
 
@@ -135,6 +139,8 @@ void engine_free(engine *engine)
         free(engine->authored[i].name);
     }
     afree(engine->authored);
+    afree(engine->recorded);
+    afree(engine->replay);
     engine_input_free(engine->input);
     free(engine);
 }
@@ -317,6 +323,8 @@ void engine_reset(engine *engine)
     engine->step_requested = false;
     engine->phase = STEP_IDLE;
     engine->error[0] = 0;
+    /* Recording and replay follow a scene from its start. */
+    aclear(engine->recorded);
     engine_input_reset(engine->input);
     if (engine->live) {
         game_save_discard(game_behavior_save(engine->live->behaviors));
@@ -340,7 +348,8 @@ int engine_set_focus(engine *engine, engine_focus focus)
     if (!engine || focus < ENGINE_FOCUS_NONE || focus > ENGINE_FOCUS_CANVAS) {
         return -1;
     }
-    if (engine->focus == ENGINE_FOCUS_VIEWPORT && focus != ENGINE_FOCUS_VIEWPORT) {
+    if (engine->focus == ENGINE_FOCUS_VIEWPORT &&
+        focus != ENGINE_FOCUS_VIEWPORT && !engine->replay) {
         engine_input_clear(engine->input);
     }
     engine->focus = focus;
@@ -354,7 +363,87 @@ engine_focus engine_get_focus(const engine *engine)
 
 int engine_sample_controls(engine *engine, uint64_t controls, bool *firing)
 {
+    if (engine->replay) {
+        *firing = false;
+        return FLOW_OK;
+    }
     return engine_input_controls(engine->input, controls, firing);
+}
+
+void engine_record_input(engine *engine, unsigned seed)
+{
+    srand(seed);
+    aclear(engine->recorded);
+    engine->recording_input = true;
+}
+
+void engine_stop_recording(engine *engine)
+{
+    engine->recording_input = false;
+}
+
+const input_keyframe *engine_recorded_input(const engine *engine, int *count)
+{
+    *count = acount(engine->recorded);
+    return engine->recorded;
+}
+
+void engine_replay_input(engine *engine, const input_keyframe *keys, int count, unsigned seed)
+{
+    assert(count > 0 && keys[0].step == 0);
+    srand(seed);
+    aclear(engine->replay);
+    for (int i = 0; i < count; i++) {
+        assert(!i || keys[i].step > keys[i - 1].step);
+        apush(engine->replay, keys[i]);
+    }
+}
+
+void engine_stop_replay(engine *engine)
+{
+    afree(engine->replay);
+    engine->replay = NULL;
+}
+
+bool engine_replaying_input(const engine *engine)
+{
+    return engine->replay != NULL;
+}
+
+/* The key in effect at `step`: the last one at or before it. */
+static const input_keyframe *replay_key(const engine *engine, int step)
+{
+    int low = 0, high = acount(engine->replay) - 1;
+    while (low < high) {
+        int middle = (low + high + 1) / 2;
+        if (engine->replay[middle].step <= step) {
+            low = middle;
+        } else {
+            high = middle - 1;
+        }
+    }
+    return &engine->replay[low];
+}
+
+/* Hold the replayed key for this step, or record the held input where it
+ * changes. A replayed key is held every step, which live samples also do, so
+ * a pause or focus change that clears input cannot drop it. */
+static int follow_input(engine *engine)
+{
+    int step = (int)engine->timing.simulation_steps - 1;
+    if (engine->replay) {
+        return engine_input_hold(engine->input, replay_key(engine, step));
+    }
+    if (!engine->recording_input) {
+        return FLOW_OK;
+    }
+    input_keyframe held = engine_input_held(engine->input);
+    int count = acount(engine->recorded);
+    if (!count || !input_keyframe_same(&engine->recorded[count - 1], &held)) {
+        held.step = step;
+        apush(engine->recorded, held);
+    }
+    return FLOW_OK;
 }
 
 int engine_set_playing(engine *engine, bool playing)
@@ -416,6 +505,9 @@ int engine_sample_movement(engine *engine, float x, float y)
     if (engine->focus != ENGINE_FOCUS_VIEWPORT || !engine->playing || !engine->live) {
         return FLOW_ERR_STATE;
     }
+    if (engine->replay) {
+        return FLOW_OK;
+    }
     engine_input_movement(engine->input, (CF_V2){ x, y });
     return FLOW_OK;
 }
@@ -427,6 +519,9 @@ int engine_sample_aim(engine *engine, CF_V2 aim, bool firing, bool point)
     }
     if (!engine->live) {
         return FLOW_ERR_STATE;
+    }
+    if (engine->replay) {
+        return FLOW_OK;
     }
     bool active = engine->playing && engine->focus == ENGINE_FOCUS_VIEWPORT;
     engine_input_aim(engine->input, active ? aim : (CF_V2){ 0 }, active && firing, active && point);
@@ -634,6 +729,9 @@ static int continue_step(engine *engine)
         }
         CHIBI_TRACE_ZONE_END(visual_zone);
         engine->timing.systems_ms += elapsed_ms(start, end);
+        if (result >= 0) {
+            result = follow_input(engine);
+        }
         if (result >= 0) {
             CHIBI_TRACE_ZONE_BEGIN(input_zone, "Input actions");
             result = engine_input_apply(engine->input);

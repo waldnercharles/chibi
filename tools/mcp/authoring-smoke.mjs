@@ -151,6 +151,12 @@ mkdirSync(join(projectRoot, "content", "shapes"), { recursive: true });
 mkdirSync(join(projectRoot, "content", "shader-libraries"), { recursive: true });
 mkdirSync(join(projectRoot, "content", "prototypes"), { recursive: true });
 mkdirSync(join(projectRoot, "content", "scenes"), { recursive: true });
+mkdirSync(join(projectRoot, "content", "scenarios"), { recursive: true });
+// A scenario replays keyed input on the scene the batch below creates.
+writeFileSync(
+  join(projectRoot, "content", "scenarios", "McpAuthoringScenario.yaml"),
+  `scene: ${sceneName}\nframes: 3\nkeys:\n- {frame: 0, movement: {x: 1, y: 0}}\n- {frame: 2, controls: [Space]}\n`,
+);
 
 try {
   const materialCreateArgs = {
@@ -271,6 +277,9 @@ try {
     request(24, "profileScenario", { kind: "prototype", name: prototypeName, frames: 2, warmup_frames: 1 }),
     request(25, "runScenario", { kind: "scene", name: sceneName, frames: 1 }),
     request(26, "captureRuntimeSnapshot", { kind: "scene", name: sceneName, frames: 1, entity_limit: 4 }),
+    request(28, "profileScenario", { scenario: "McpAuthoringScenario" }),
+    request(29, "runScenario", { scenario: "McpAuthoringScenario", kind: "scene" }),
+    request(30, "validateAsset", { kind: "scenario", name: "McpAuthoringScenario" }),
   ]);
 
   const tools = first.get(2)?.result?.tools || [];
@@ -306,6 +315,9 @@ try {
   const profile = structured(first.get(24));
   const sceneRun = structured(first.get(25));
   const sceneSnapshot = structured(first.get(26));
+  const scenarioProfile = structured(first.get(28));
+  const scenarioConflict = structured(first.get(29));
+  const scenarioValidation = structured(first.get(30));
   const surfaceNode = surfaceSearch.result?.nodes?.find((node) => node.type === "Shader Surface Output");
   const shapeNode = shapeSearch.result?.nodes?.find((node) => node.type === "Shader Shape Output");
   // Search lists pins as "name: type".
@@ -365,6 +377,9 @@ try {
   assert(optimize.ok === true && optimize.result?.dry_run === true && optimize.result?.changed === false, `graph optimization dry run failed: ${JSON.stringify(optimize)}`);
   assert(profile.ok === true && profile.result?.timing?.sampled_frames === 2 && profile.result?.warmup_frames === 1 && profile.result?.allocations?.scope === "xalloc wrappers" && profile.result?.timing?.frame_ms?.max >= profile.result?.timing?.frame_ms?.p50 && profile.result?.timing?.worst_frames?.length === 2, `scenario profiling failed: ${JSON.stringify(profile)}`);
   assert(sceneRun.ok === true && sceneRun.result?.authored_entities === 1, `scene scenario failed: ${JSON.stringify(sceneRun)}`);
+  assert(scenarioProfile.ok === true && scenarioProfile.result?.frames === 3 && scenarioProfile.result?.timing?.worst_frames?.length === 3, `scenario profile failed: ${JSON.stringify(scenarioProfile)}`);
+  assert(scenarioConflict.ok === false && /omit name, kind and inputs/.test(scenarioConflict.error?.message || JSON.stringify(scenarioConflict)), `scenario with a kind was not rejected: ${JSON.stringify(scenarioConflict)}`);
+  assert(scenarioValidation.ok === true, `scenario validation failed: ${JSON.stringify(scenarioValidation)}`);
   assert(sceneSnapshot.ok === true && sceneSnapshot.result?.entity_count === 1 && sceneSnapshot.result?.entities?.length === 1, `scene runtime snapshot failed: ${JSON.stringify(sceneSnapshot)}`);
   const sceneRenameRun = runMcp(projectRoot, [
     initialize(),

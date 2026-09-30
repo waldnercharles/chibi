@@ -74,9 +74,13 @@ if [ ! -f "$cache" ]; then
 	fi
 fi
 
+# Every configure logs at STATUS and drops dependencies' author and policy
+# warnings, also from reruns the build tool starts.
+configure_flags="--log-level=STATUS -Wno-author -Wno-policy"
+
 signature()
 {
-	printf '%s\n' "$source_dir" "$cache_root" "$fingerprint" "$package_prefix" "$@"
+	printf '%s\n' "$source_dir" "$cache_root" "$fingerprint" "$package_prefix" "$configure_flags" "$@"
 	if [ -f "$cache" ]; then
 		cksum "$cache"
 	fi
@@ -87,28 +91,55 @@ if [ -f "$cache" ] && cmp -s "$candidate" "$stamp"; then
 	exit 0
 fi
 
+# Configure logs stay out of the console unless VERBOSE is set: the full log
+# goes to configure.log and a failure prints its errors.
+log="$build_dir/configure.log"
+configure()
+{
+	set -- $configure_flags "$@"
+	if [ -n "${VERBOSE:-}" ]; then
+		cmake "$@"
+		return
+	fi
+	if cmake "$@" > "$log" 2>&1; then
+		warnings=$(grep -c '^CMake Warning' "$log") || :
+		printf 'Configured %s (CMake warnings: %s; log: %s)\n' "$build_dir" "$warnings" "$log"
+		return
+	fi
+	errors=$(sed -n '/^CMake Error/,$p' "$log")
+	if [ -n "$errors" ]; then
+		printf '%s\n' "$errors" >&2
+	else
+		tail -n 40 "$log" >&2
+	fi
+	printf 'CMake configure failed; full log: %s\n' "$log" >&2
+	return 1
+}
+
 if [ ! -f "$cache" ] && [ -z "${CMAKE_GENERATOR:-}" ] && command -v ninja >/dev/null 2>&1; then
 	if [ "$fresh" -eq 1 ]; then
-		cmake -S "$source_dir" -B "$build_dir" -G Ninja \
+		configure -S "$source_dir" -B "$build_dir" -G Ninja \
 			-C "$build_dir/.chibi-fetchcontent-cache.cmake" \
 			"-DCHIBI_SDL3_PACKAGE_PREFIX=$package_prefix" "$@"
 	else
-		cmake -S "$source_dir" -B "$build_dir" -G Ninja \
+		configure -S "$source_dir" -B "$build_dir" -G Ninja \
 			"-DCHIBI_SDL3_PACKAGE_PREFIX=$package_prefix" "$@"
 	fi
 else
 	if [ "$fresh" -eq 1 ]; then
-		cmake -S "$source_dir" -B "$build_dir" \
+		configure -S "$source_dir" -B "$build_dir" \
 			-C "$build_dir/.chibi-fetchcontent-cache.cmake" \
 			"-DCHIBI_SDL3_PACKAGE_PREFIX=$package_prefix" "$@"
 	else
-		cmake -S "$source_dir" -B "$build_dir" \
+		configure -S "$source_dir" -B "$build_dir" \
 			"-DCHIBI_SDL3_PACKAGE_PREFIX=$package_prefix" "$@"
 	fi
 fi
 if [ "$cache_available" -eq 1 ]; then
+	published=/dev/stdout
+	[ -n "${VERBOSE:-}" ] || published=$log
 	if ! python3 "$cache_helper" publish --source-dir "$source_dir" \
-		--build-dir "$build_dir" --cache-root "$cache_root"; then
+		--build-dir "$build_dir" --cache-root "$cache_root" >> "$published"; then
 		echo "warning: could not publish FetchContent source cache" >&2
 	fi
 fi

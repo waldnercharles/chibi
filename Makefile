@@ -26,6 +26,15 @@ LOCAL_CMAKE_FLAGS ?= $(SANITIZER_CMAKE_FLAGS)
 # Apple's nano allocator before starting instrumented native binaries so the
 # allocator does not report a failed nano-zone reservation.
 NATIVE_RUNTIME_ENV ?= MallocNanoZone=0
+# Output is quiet by default: no recipe echo, CMake configure log or Ninja
+# progress, and test_suite prints only failures and summaries. VERBOSE=1
+# restores all of it.
+VERBOSE ?=
+Q = $(if $(VERBOSE),,@)
+ifeq ($(VERBOSE),)
+MAKEFLAGS += --no-print-directory
+endif
+CMAKE_BUILD = sh tools/cmake_build.sh
 
 .PHONY: all help build build-debug build-tracy build-tracy-mcp mcp mcp-controller mcp-setup tracy-mcp run debug debug-san play build-release run-tracy benchmark web web-serve format check-format test test-fast test-render sdl-package clean
 
@@ -58,11 +67,16 @@ help:
 		'make web-serve      Serve the browser application for PROJECT on WEB_PORT' \
 		'make format         Rewrite project C sources with clang-format' \
 		'make check-format   Check project C source formatting' \
-		'make clean          Remove the default build directories'
+		'make clean          Remove the default build directories' \
+		'' \
+		'Output is quiet: failures, warnings and summaries only. VERBOSE=1 (on any' \
+		'target, or in the environment for build/test_suite) prints every command,' \
+		'the CMake configure log, build progress and each passing check. A quiet' \
+		'configure writes its full log to <build dir>/configure.log.'
 
 build:
-	sh tools/configure_native.sh "$(BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(LOCAL_CMAKE_FLAGS) $(if $(strip $(LIBCLANG_ROOT)),-DLIBCLANG_ROOT="$(LIBCLANG_ROOT)",)
-	cmake --build "$(BUILD_DIR)" $(if $(strip $(BUILD_TARGET)),--target $(BUILD_TARGET),) --parallel $(JOBS)
+	$(Q)sh tools/configure_native.sh "$(BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(LOCAL_CMAKE_FLAGS) $(if $(strip $(LIBCLANG_ROOT)),-DLIBCLANG_ROOT="$(LIBCLANG_ROOT)",)
+	$(Q)$(CMAKE_BUILD) "$(BUILD_DIR)" $(if $(strip $(BUILD_TARGET)),--target $(BUILD_TARGET),) --parallel $(JOBS)
 # The MCP controller cache keys on sources alone: publish only default-profile
 # builds that refreshed chibi_ctl.
 ifeq ($(origin NATIVE_TOOLCHAIN_FLAGS) $(origin LOCAL_CMAKE_FLAGS) $(origin SANITIZER_CMAKE_FLAGS) $(origin SANITIZERS),file file file file)
@@ -72,18 +86,18 @@ endif
 endif
 
 build-debug:
-	$(MAKE) build BUILD_DIR="$(DEBUG_BUILD_DIR)" LOCAL_CMAKE_FLAGS="$(DEBUG_CMAKE_FLAGS)" BUILD_TARGET="$(BUILD_TARGET)"
+	$(Q)$(MAKE) build BUILD_DIR="$(DEBUG_BUILD_DIR)" LOCAL_CMAKE_FLAGS="$(DEBUG_CMAKE_FLAGS)" BUILD_TARGET="$(BUILD_TARGET)"
 
 mcp-controller:
 	@sh tools/configure_native.sh "$(BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(LOCAL_CMAKE_FLAGS) $(if $(strip $(LIBCLANG_ROOT)),-DLIBCLANG_ROOT="$(LIBCLANG_ROOT)",) >&2
-	@cmake --build "$(BUILD_DIR)" --target chibi_ctl --parallel $(JOBS) >&2
+	@$(CMAKE_BUILD) "$(BUILD_DIR)" --target chibi_ctl --parallel $(JOBS) >&2
 
 mcp: mcp-controller
 	@printf '%s\n' 'MCP server running on stdio. Paste one JSON-RPC request per line, or press Ctrl-D to stop.' >&2
 	@sh tools/mcp/launch.sh
 
 mcp-setup:
-	node tools/mcp/setup-codex.mjs "$(CURDIR)"
+	$(Q)node tools/mcp/setup-codex.mjs "$(CURDIR)"
 
 # PROJECT picks the project a run or web-serve opens; SCENE, when set, opens a
 # scene other than the project's start scene.
@@ -94,93 +108,94 @@ WEB_PORT ?= 8099
 CHIBI_COLLAB_URL ?=
 
 run:
-	$(MAKE) build-release BUILD_TARGET=chibi
-	env $(NATIVE_RUNTIME_ENV) "$(RELEASE_BUILD_DIR)/chibi" --project-root "$(PROJECT)" $(SCENE_ARG) $(ARGS)
+	$(Q)$(MAKE) build-release BUILD_TARGET=chibi
+	$(Q)env $(NATIVE_RUNTIME_ENV) "$(RELEASE_BUILD_DIR)/chibi" --project-root "$(PROJECT)" $(SCENE_ARG) $(ARGS)
 
 debug:
-	$(MAKE) build-debug BUILD_TARGET=chibi
-	env $(NATIVE_RUNTIME_ENV) "$(DEBUG_BUILD_DIR)/chibi" --project-root "$(PROJECT)" $(SCENE_ARG) $(ARGS)
+	$(Q)$(MAKE) build-debug BUILD_TARGET=chibi
+	$(Q)env $(NATIVE_RUNTIME_ENV) "$(DEBUG_BUILD_DIR)/chibi" --project-root "$(PROJECT)" $(SCENE_ARG) $(ARGS)
 
 debug-san:
-	$(MAKE) build BUILD_TARGET=chibi
-	env $(NATIVE_RUNTIME_ENV) "$(BUILD_DIR)/chibi" --project-root "$(PROJECT)" $(SCENE_ARG) $(ARGS)
+	$(Q)$(MAKE) build BUILD_TARGET=chibi
+	$(Q)env $(NATIVE_RUNTIME_ENV) "$(BUILD_DIR)/chibi" --project-root "$(PROJECT)" $(SCENE_ARG) $(ARGS)
 
 play:
-	$(MAKE) build-release BUILD_TARGET=chibi
-	env $(NATIVE_RUNTIME_ENV) "$(RELEASE_BUILD_DIR)/chibi" --play --project-root "$(PROJECT)" $(SCENE_ARG) $(ARGS)
+	$(Q)$(MAKE) build-release BUILD_TARGET=chibi
+	$(Q)env $(NATIVE_RUNTIME_ENV) "$(RELEASE_BUILD_DIR)/chibi" --play --project-root "$(PROJECT)" $(SCENE_ARG) $(ARGS)
 
 # User-facing release builds use the compiler's full Release optimization.
 build-release:
-	$(MAKE) build BUILD_DIR="$(RELEASE_BUILD_DIR)" LOCAL_CMAKE_FLAGS="$(RELEASE_CMAKE_FLAGS)" BUILD_TARGET="$(BUILD_TARGET)"
+	$(Q)$(MAKE) build BUILD_DIR="$(RELEASE_BUILD_DIR)" LOCAL_CMAKE_FLAGS="$(RELEASE_CMAKE_FLAGS)" BUILD_TARGET="$(BUILD_TARGET)"
 
 sdl-package:
-	CHIBI_SDL3_PACKAGE_JOBS=$(JOBS) sh tools/sdl_package.sh build $(NATIVE_TOOLCHAIN_FLAGS)
+	$(Q)CHIBI_SDL3_PACKAGE_JOBS=$(JOBS) sh tools/sdl_package.sh build $(NATIVE_TOOLCHAIN_FLAGS)
 
 build-tracy:
-	sh tools/configure_native.sh "$(TRACY_BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(TRACY_CMAKE_FLAGS) $(if $(strip $(LIBCLANG_ROOT)),-DLIBCLANG_ROOT="$(LIBCLANG_ROOT)",)
-	cmake --build "$(TRACY_BUILD_DIR)" --target chibi chibi_ctl --parallel $(JOBS)
+	$(Q)sh tools/configure_native.sh "$(TRACY_BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(TRACY_CMAKE_FLAGS) $(if $(strip $(LIBCLANG_ROOT)),-DLIBCLANG_ROOT="$(LIBCLANG_ROOT)",)
+	$(Q)$(CMAKE_BUILD) "$(TRACY_BUILD_DIR)" --target chibi chibi_ctl --parallel $(JOBS)
 
 run-tracy: build-tracy
-	env $(NATIVE_RUNTIME_ENV) "$(TRACY_BUILD_DIR)/chibi" --project-root "$(PROJECT)" $(SCENE_ARG) $(ARGS)
+	$(Q)env $(NATIVE_RUNTIME_ENV) "$(TRACY_BUILD_DIR)/chibi" --project-root "$(PROJECT)" $(SCENE_ARG) $(ARGS)
 
 build-tracy-mcp:
-	sh tools/configure_native.sh "$(TRACY_MCP_BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(TRACY_MCP_CMAKE_FLAGS) -DPython_EXECUTABLE="$(TRACY_MCP_PYTHON)" $(if $(strip $(LIBCLANG_ROOT)),-DLIBCLANG_ROOT="$(LIBCLANG_ROOT)",)
-	cmake --build "$(TRACY_MCP_BUILD_DIR)" --target TracyServerBindings --parallel $(JOBS)
+	$(Q)sh tools/configure_native.sh "$(TRACY_MCP_BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(TRACY_MCP_CMAKE_FLAGS) -DPython_EXECUTABLE="$(TRACY_MCP_PYTHON)" $(if $(strip $(LIBCLANG_ROOT)),-DLIBCLANG_ROOT="$(LIBCLANG_ROOT)",)
+	$(Q)$(CMAKE_BUILD) "$(TRACY_MCP_BUILD_DIR)" --target TracyServerBindings --parallel $(JOBS)
 
 tracy-mcp: build-tracy-mcp
-	TRACY_MCP_BUILD_DIR="$(TRACY_MCP_BUILD_DIR)" TRACY_MCP_PYTHON="$(TRACY_MCP_PYTHON)" sh tools/tracy/launch_mcp.sh
+	$(Q)TRACY_MCP_BUILD_DIR="$(TRACY_MCP_BUILD_DIR)" TRACY_MCP_PYTHON="$(TRACY_MCP_PYTHON)" sh tools/tracy/launch_mcp.sh
 
 benchmark:
-	sh tools/configure_native.sh "$(BENCHMARK_BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(BENCHMARK_CMAKE_FLAGS)
-	cmake --build "$(BENCHMARK_BUILD_DIR)" --target bench_activation system_benchmark query_benchmark contact_benchmark --parallel $(JOBS)
-	env $(NATIVE_RUNTIME_ENV) "$(BENCHMARK_BUILD_DIR)/bench_activation" $(ARGS)
-	env $(NATIVE_RUNTIME_ENV) "$(BENCHMARK_BUILD_DIR)/system_benchmark" $(ARGS)
-	env $(NATIVE_RUNTIME_ENV) "$(BENCHMARK_BUILD_DIR)/query_benchmark"
-	env $(NATIVE_RUNTIME_ENV) "$(BENCHMARK_BUILD_DIR)/contact_benchmark"
+	$(Q)sh tools/configure_native.sh "$(BENCHMARK_BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(BENCHMARK_CMAKE_FLAGS)
+	$(Q)$(CMAKE_BUILD) "$(BENCHMARK_BUILD_DIR)" --target bench_activation system_benchmark query_benchmark contact_benchmark --parallel $(JOBS)
+	$(Q)env $(NATIVE_RUNTIME_ENV) "$(BENCHMARK_BUILD_DIR)/bench_activation" $(ARGS)
+	$(Q)env $(NATIVE_RUNTIME_ENV) "$(BENCHMARK_BUILD_DIR)/system_benchmark" $(ARGS)
+	$(Q)env $(NATIVE_RUNTIME_ENV) "$(BENCHMARK_BUILD_DIR)/query_benchmark"
+	$(Q)env $(NATIVE_RUNTIME_ENV) "$(BENCHMARK_BUILD_DIR)/contact_benchmark"
 
 web:
-	sh tools/configure_native.sh "$(BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) && cmake --build "$(BUILD_DIR)" --target reflect --parallel $(JOBS)
-	emcmake cmake -S . -B "$(WEB_BUILD_DIR)" -DCMAKE_BUILD_TYPE=Release -DCHIBI_COLLAB_URL="$(CHIBI_COLLAB_URL)" -DCHIBI_REFLECT_EXECUTABLE=$(CURDIR)/$(BUILD_DIR)/reflect
-	cmake --build "$(WEB_BUILD_DIR)" --target chibi check-behavior-backend --parallel $(JOBS)
+	$(Q)sh tools/configure_native.sh "$(BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) && $(CMAKE_BUILD) "$(BUILD_DIR)" --target reflect --parallel $(JOBS)
+	$(Q)emcmake cmake -S . -B "$(WEB_BUILD_DIR)" -DCMAKE_BUILD_TYPE=Release -DCHIBI_COLLAB_URL="$(CHIBI_COLLAB_URL)" -DCHIBI_REFLECT_EXECUTABLE=$(CURDIR)/$(BUILD_DIR)/reflect
+	$(Q)$(CMAKE_BUILD) "$(WEB_BUILD_DIR)" --target chibi check-behavior-backend --parallel $(JOBS)
 
 web-serve: web
-	python3 tools/web_serve.py --build "$(WEB_BUILD_DIR)" --project "$(PROJECT)" --port $(WEB_PORT)
+	$(Q)python3 tools/web_serve.py --build "$(WEB_BUILD_DIR)" --project "$(PROJECT)" --port $(WEB_PORT)
 
 format:
-	sh tools/clang-format.sh
+	$(Q)sh tools/clang-format.sh
 
 check-format:
-	sh tools/clang-format.sh --check
+	$(Q)sh tools/clang-format.sh --check
 
 test:
-	python3 test/web_serve_test.py
-	node test/web_workspace_test.mjs
-	node test/web_storage_test.mjs
-	node test/collab_client_test.mjs
-	sh tools/configure_native.sh "$(BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(LOCAL_CMAKE_FLAGS)
-	cmake --build "$(BUILD_DIR)" --target check-generation check-reflect check-reload check-dev check-mcp check-assets check-behavior-backend test_suite --parallel $(JOBS)
-	env $(NATIVE_RUNTIME_ENV) $(BUILD_DIR)/test_suite
-	env $(NATIVE_RUNTIME_ENV) ASAN_OPTIONS=detect_leaks=0 $(BUILD_DIR)/test_suite --whole-function-audit
+	$(Q)python3 test/web_serve_test.py
+	$(Q)node test/web_workspace_test.mjs
+	$(Q)node test/web_storage_test.mjs
+	$(Q)node test/collab_client_test.mjs
+	$(Q)sh tools/configure_native.sh "$(BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(LOCAL_CMAKE_FLAGS)
+	$(Q)$(CMAKE_BUILD) "$(BUILD_DIR)" --target check-generation check-reflect check-reload check-dev check-mcp check-assets check-behavior-backend test_suite --parallel $(JOBS)
+	$(Q)env $(NATIVE_RUNTIME_ENV) $(BUILD_DIR)/test_suite
+	$(Q)env $(NATIVE_RUNTIME_ENV) ASAN_OPTIONS=detect_leaks=0 $(BUILD_DIR)/test_suite --whole-function-audit
+	@printf '%s\n' 'make test: all checks passed'
 
 test-fast:
 	@test -n "$(strip $(TEST_ARGS))" || { printf '%s\n' 'Set TEST_ARGS to a test_suite selector, such as --graph-optimize'; exit 2; }
-	sh tools/configure_native.sh "$(FAST_BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(DEBUG_CMAKE_FLAGS)
-	cmake --build "$(FAST_BUILD_DIR)" --target test_suite --parallel $(JOBS)
-	env $(NATIVE_RUNTIME_ENV) "$(FAST_BUILD_DIR)/test_suite" $(TEST_ARGS)
+	$(Q)sh tools/configure_native.sh "$(FAST_BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(DEBUG_CMAKE_FLAGS)
+	$(Q)$(CMAKE_BUILD) "$(FAST_BUILD_DIR)" --target test_suite --parallel $(JOBS)
+	$(Q)env $(NATIVE_RUNTIME_ENV) "$(FAST_BUILD_DIR)/test_suite" $(TEST_ARGS)
 
 test-render:
 	@if [ "$(shell uname -s)" = Darwin ] && [ "$(CHIBI_ALLOW_DESKTOP_RENDER_TESTS)" != 1 ]; then \
 		printf '%s\n' 'Render tests can briefly show a window on macOS. Run them under Xvfb on Linux, or set CHIBI_ALLOW_DESKTOP_RENDER_TESTS=1 for a local run.'; \
 		exit 1; \
 	fi
-	sh tools/configure_native.sh "$(BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(LOCAL_CMAKE_FLAGS)
-	cmake --build "$(BUILD_DIR)" --target check-mcp-gpu test_suite chibi --parallel $(JOBS)
-	env $(NATIVE_RUNTIME_ENV) ASAN_OPTIONS=detect_leaks=0 $(BUILD_DIR)/test_suite --scene-documents
-	env $(NATIVE_RUNTIME_ENV) ASAN_OPTIONS=detect_leaks=0 $(BUILD_DIR)/test_suite --studio-documents
-	env $(NATIVE_RUNTIME_ENV) ASAN_OPTIONS=detect_leaks=0 $(BUILD_DIR)/test_suite --rmlui-render
-	env $(NATIVE_RUNTIME_ENV) ASAN_OPTIONS=detect_leaks=0 $(BUILD_DIR)/test_suite --rmlui-render-gles
-	env $(NATIVE_RUNTIME_ENV) ASAN_OPTIONS=detect_leaks=0 $(BUILD_DIR)/test_suite --arena-play
-	env $(NATIVE_RUNTIME_ENV) ASAN_OPTIONS=detect_leaks=0 $(BUILD_DIR)/chibi --headless --frames 3
+	$(Q)sh tools/configure_native.sh "$(BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(LOCAL_CMAKE_FLAGS)
+	$(Q)$(CMAKE_BUILD) "$(BUILD_DIR)" --target check-mcp-gpu test_suite chibi --parallel $(JOBS)
+	$(Q)env $(NATIVE_RUNTIME_ENV) ASAN_OPTIONS=detect_leaks=0 $(BUILD_DIR)/test_suite --scene-documents
+	$(Q)env $(NATIVE_RUNTIME_ENV) ASAN_OPTIONS=detect_leaks=0 $(BUILD_DIR)/test_suite --studio-documents
+	$(Q)env $(NATIVE_RUNTIME_ENV) ASAN_OPTIONS=detect_leaks=0 $(BUILD_DIR)/test_suite --rmlui-render
+	$(Q)env $(NATIVE_RUNTIME_ENV) ASAN_OPTIONS=detect_leaks=0 $(BUILD_DIR)/test_suite --rmlui-render-gles
+	$(Q)env $(NATIVE_RUNTIME_ENV) ASAN_OPTIONS=detect_leaks=0 $(BUILD_DIR)/test_suite --arena-play
+	$(Q)env $(NATIVE_RUNTIME_ENV) ASAN_OPTIONS=detect_leaks=0 $(BUILD_DIR)/chibi --headless --frames 3
 
 clean:
 	@if git worktree list --porcelain | awk -v root="$(abspath $(BUILD_DIR))" \
@@ -189,7 +204,7 @@ clean:
 	else \
 		rm -rf "$(BUILD_DIR)"; \
 	fi
-	rm -rf "$(DEBUG_BUILD_DIR)" "$(RELEASE_BUILD_DIR)" "$(BENCHMARK_BUILD_DIR)" "$(TRACY_BUILD_DIR)" "$(TRACY_MCP_BUILD_DIR)" "$(WEB_BUILD_DIR)" "$(DEV_BUILD_DIR)"
+	$(Q)rm -rf "$(DEBUG_BUILD_DIR)" "$(RELEASE_BUILD_DIR)" "$(BENCHMARK_BUILD_DIR)" "$(TRACY_BUILD_DIR)" "$(TRACY_MCP_BUILD_DIR)" "$(WEB_BUILD_DIR)" "$(DEV_BUILD_DIR)"
 
 # Watch sources and preserve the workspace across native application changes.
 .PHONY: dev
@@ -197,7 +212,7 @@ DEV_BUILD_DIR ?= build-dev
 DEV_CMAKE_FLAGS ?= -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCHIBI_ENABLE_SANITIZERS=OFF -DCHIBI_ENABLE_WARNINGS=ON -DCHIBI_ENABLE_CCACHE=ON
 
 dev:
-	sh tools/configure_native.sh "$(DEV_BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(DEV_CMAKE_FLAGS) -DCHIBI_DEVELOPMENT_RELOAD=ON
-	cmake --build "$(DEV_BUILD_DIR)" --target chibi chibi_dll --parallel $(JOBS)
-	cmake -DDEV_CONFIG="$(abspath $(DEV_BUILD_DIR))/dev.json" -DRESULT="$(abspath $(DEV_BUILD_DIR))/dev-result.json" -DSKIP_BUILD=ON -DJOBS=$(JOBS) -P cmake/dev_build.cmake
-	env $(NATIVE_RUNTIME_ENV) "$(DEV_BUILD_DIR)/chibi" --bootstrap "$(abspath $(DEV_BUILD_DIR))/dev-result.json" --project-root "$(PROJECT)" $(SCENE_ARG) $(ARGS)
+	$(Q)sh tools/configure_native.sh "$(DEV_BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(DEV_CMAKE_FLAGS) -DCHIBI_DEVELOPMENT_RELOAD=ON
+	$(Q)$(CMAKE_BUILD) "$(DEV_BUILD_DIR)" --target chibi chibi_dll --parallel $(JOBS)
+	$(Q)cmake -DDEV_CONFIG="$(abspath $(DEV_BUILD_DIR))/dev.json" -DRESULT="$(abspath $(DEV_BUILD_DIR))/dev-result.json" -DSKIP_BUILD=ON -DJOBS=$(JOBS) -P cmake/dev_build.cmake
+	$(Q)env $(NATIVE_RUNTIME_ENV) "$(DEV_BUILD_DIR)/chibi" --bootstrap "$(abspath $(DEV_BUILD_DIR))/dev-result.json" --project-root "$(PROJECT)" $(SCENE_ARG) $(ARGS)

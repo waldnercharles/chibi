@@ -1,4 +1,10 @@
 cmake_minimum_required(VERSION 3.20)
+# Configure reports only warnings and errors by default, including reruns the
+# build tool starts. tools/configure_native.sh logs everything with
+# --log-level=STATUS, which takes precedence.
+if(NOT DEFINED CMAKE_MESSAGE_LOG_LEVEL)
+    set(CMAKE_MESSAGE_LOG_LEVEL WARNING)
+endif()
 project(chibi LANGUAGES C CXX)
 
 set(CHIBI_COLLAB_URL "" CACHE STRING "Public collaboration room service HTTP(S) URL")

@@ -839,7 +839,7 @@ char *game_prototype_save(const game_prototype *prototype)
         for (int i = 0; i < acount(prototype->graphs); i++) {
             apush(graphs, prototype->graphs[i]);
         }
-        qsort(graphs, (size_t)acount(graphs), sizeof *graphs, compare_strings);
+        asort(graphs, compare_strings);
         yyjson_mut_val *array = yyjson_mut_arr(doc);
         for (int i = 0; i < acount(graphs); i++) {
             yyjson_mut_arr_add_strcpy(doc, array, graphs[i]);

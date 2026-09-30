@@ -633,14 +633,7 @@ static void collect_order(app_scene_renderer *renderer, ecs_world *world)
         apush(renderer->actors, ((draw_actor){ entity, appearance ? appearance->layer : 0 }));
     }
     ecs_query_end(&query);
-    if (acount(renderer->actors) > 1) {
-        qsort(
-            renderer->actors,
-            (size_t)acount(renderer->actors),
-            sizeof *renderer->actors,
-            compare_actors
-        );
-    }
+    asort(renderer->actors, compare_actors);
 }
 
 /* Crater chunks draw as small rock polygons in their source's material, with

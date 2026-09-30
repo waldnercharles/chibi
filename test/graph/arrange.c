@@ -93,7 +93,7 @@ static arrange_case arrange_case_of(const graph *g)
         );
     }
     if (acount(c.links)) {
-        qsort(c.links, (size_t)acount(c.links), sizeof *c.links, arrange_compare_links);
+        asort(c.links, arrange_compare_links);
     }
     return c;
 }
@@ -560,7 +560,7 @@ static void arrange_collect(const char *dir, char ***paths)
 static void arrange_sort_paths(char **paths)
 {
     if (acount(paths)) {
-        qsort(paths, (size_t)acount(paths), sizeof *paths, arrange_compare_paths);
+        asort(paths, arrange_compare_paths);
     }
 }
 

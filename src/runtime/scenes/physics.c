@@ -1403,9 +1403,7 @@ static int dispatch_pairs(game_physics *physics)
     }
     /* Deliver swept impacts in travel order so a later blocking hit cannot
      * retire the projectile before earlier debris contacts carve their hulls. */
-    if (acount(physics->begun) > 1) {
-        qsort(physics->begun, (size_t)acount(physics->begun), sizeof *physics->begun, compare_hit_times);
-    }
+    asort(physics->begun, compare_hit_times);
     for (int i = 0; i < acount(physics->begun); i++) {
         contact_pair pair = physics->begun[i];
         int first = queue_contact(physics, pair.first, pair.second, pair.point),

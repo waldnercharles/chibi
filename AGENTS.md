@@ -30,7 +30,7 @@
 - Fail fast: `assert` invalid state; use `xmalloc`/`xrealloc`; fix pointer bugs at the source; avoid defensive `NULL` checks that mask defects.
 - Types: `int` for domain values/indices; `size_t` for sizes; unsigned for bits; `bool` for booleans.
 - Signatures: `f()` for no parameters; omit unused parameter names.
-- Vectors: `support/array.h` (`apush`, `acount`, `afree`, `asetlen`).
+- Vectors: `support/array.h` (`apush`, `acount`, `afree`, `asetlen`, `asort`).
 - Includes: `"project.h"` for project code; `<system.h>` otherwise.
 - Keep ownership and lifetimes explicit; mark file-private symbols `static`.
 - Prefer direct calls and `switch` statements to function pointers.

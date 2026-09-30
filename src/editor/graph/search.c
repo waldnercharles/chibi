@@ -659,9 +659,7 @@ ed_search_match *ed_search_matches(const editor *e, const char *filter)
             ed_add_search_match(e, &matches, match, spawn, filter);
         }
     }
-    if (acount(matches) > 1) {
-        qsort(matches, (size_t)acount(matches), sizeof *matches, ed_search_match_cmp);
-    }
+    asort(matches, ed_search_match_cmp);
     return matches;
 }
 

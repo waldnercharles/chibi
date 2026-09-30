@@ -1156,7 +1156,7 @@ char *ui_document_rename(const char *rml, bool event, const char *from, const ch
     } else {
         use_spans(rml, &spans);
     }
-    qsort(spans, (size_t)acount(spans), sizeof *spans, span_order);
+    asort(spans, span_order);
     char *out = NULL;
     const char *p = rml;
     *count = 0;

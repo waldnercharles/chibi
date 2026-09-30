@@ -969,7 +969,7 @@ bool studio_component_palette(studio *s)
         apush(choices, choice);
     }
     if (acount(choices)) {
-        qsort(choices, (size_t)acount(choices), sizeof *choices, by_tab_and_label);
+        asort(choices, by_tab_and_label);
     }
     kit_command_item *items = NULL;
     for (int i = 0; i < acount(choices); i++) {

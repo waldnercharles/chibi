@@ -119,9 +119,7 @@ catalog_problem *behavior_catalog_problems(const behavior_asset *const *catalog,
         compile_report_free(&report);
         behavior_asset_free(linked);
     }
-    if (acount(found) > 1) {
-        qsort(found, (size_t)acount(found), sizeof *found, compare_found);
-    }
+    asort(found, compare_found);
     catalog_problem *problems = NULL;
     for (int i = 0; i < acount(found); i++) {
         apush(problems, found[i].problem);

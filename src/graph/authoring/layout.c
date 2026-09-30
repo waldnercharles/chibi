@@ -179,7 +179,7 @@ static void arrange_boxes(graph *graph, bool keep_placed)
         );
     }
     if (acount(links)) {
-        qsort(links, (size_t)acount(links), sizeof *links, compare_links);
+        asort(links, compare_links);
     }
     arrange_graph input = { .boxes = boxes,
                             .box_count = boxes_count,

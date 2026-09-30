@@ -111,7 +111,7 @@ static command_row *rank_rows(const kit_command_item *items, int count, bool ran
         return rows;
     }
     group_rows(rows, items);
-    qsort(rows, (size_t)acount(rows), sizeof *rows, compare_rows);
+    asort(rows, compare_rows);
     if (filter) {
         limit_groups(rows);
     }

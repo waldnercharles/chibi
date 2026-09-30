@@ -87,7 +87,7 @@ int app_behavior_fixtures_load(game_live_world *world, game_prototype_preview *p
         closedir(directory);
         free(directory_path);
     }
-    qsort(paths, (size_t)acount(paths), sizeof *paths, path_compare);
+    asort(paths, path_compare);
     game_live_definition **pending = NULL;
     for (int i = 0; i < acount(paths); i++) {
         char *json = read_file(paths[i]);

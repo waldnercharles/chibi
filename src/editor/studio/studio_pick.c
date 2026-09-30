@@ -36,9 +36,7 @@ const char **studio_asset_names(const reference_index *index, int kind)
             apush(names, asset->name);
         }
     }
-    if (acount(names) > 1) {
-        qsort(names, (size_t)acount(names), sizeof *names, by_name);
-    }
+    asort(names, by_name);
     return names;
 }
 

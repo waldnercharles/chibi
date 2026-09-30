@@ -160,7 +160,7 @@ static void list_files(const char *folder, const char *suffix, bool deep, char *
         }
     }
     closedir(dir);
-    qsort(found, (size_t)acount(found), sizeof *found, name_order);
+    asort(found, name_order);
     for (int i = 0; i < acount(found); i++) {
         apush(*paths, found[i]);
     }
@@ -569,7 +569,7 @@ void ui_source_complete(
     } else {
         complete_css(&r, project, 0, 0);
     }
-    qsort(out->items, (size_t)acount(out->items), sizeof *out->items, completion_order);
+    asort(out->items, completion_order);
 }
 
 void ui_source_completions_free(ui_source_completions *completions)

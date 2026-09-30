@@ -384,7 +384,7 @@ void content_refresh(app_scene_authoring *scene)
     }
     asetlen(scene->content, 0);
     content_scan_directory(scene, scene->content_root);
-    qsort(scene->content, (size_t)acount(scene->content), sizeof *scene->content, content_entry_compare);
+    asort(scene->content, content_entry_compare);
     if (!acount(scene->content)) {
         return;
     }

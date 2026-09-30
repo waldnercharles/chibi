@@ -552,12 +552,7 @@ static bool submit(render_arena *arena, const render_arena_camera *camera, float
         arena->buffer.pixels,
         acount(arena->buffer.pixels) * (int)sizeof *arena->buffer.pixels
     );
-    qsort(
-        arena->buffer.draws,
-        (size_t)acount(arena->buffer.draws),
-        sizeof *arena->buffer.draws,
-        compare_draws
-    );
+    asort(arena->buffer.draws, compare_draws);
     CF_M4x4 inverse = cf_m4_invert(camera->view);
     CF_V4 eye = { inverse.elements[12], inverse.elements[13], inverse.elements[14], time };
     cf_draw3d_set_uniform("arena_camera_time", &eye, CF_UNIFORM_TYPE_FLOAT4, 1);

@@ -247,12 +247,12 @@ int bench_arena_scale(int count, int frames, bool portable, bool profile, int mo
         }
     }
     assert(eval == eval_oracle_calls() && flow == flow_oracle_calls());
-    qsort(samples, (size_t)acount(samples), sizeof *samples, compare);
-    qsort(updates_ms, (size_t)acount(updates_ms), sizeof *updates_ms, compare);
-    qsort(pumps_ms, (size_t)acount(pumps_ms), sizeof *pumps_ms, compare);
+    asort(samples, compare);
+    asort(updates_ms, compare);
+    asort(pumps_ms, compare);
     if (clocks) {
-        qsort(clock_ms, (size_t)acount(clock_ms), sizeof *clock_ms, compare);
-        qsort(complete_ms, (size_t)acount(complete_ms), sizeof *complete_ms, compare);
+        asort(clock_ms, compare);
+        asort(complete_ms, compare);
         printf(
             "scale_clocks clock_p50_ms=%.6f complete_p50_ms=%.6f "
             "complete_p95_ms=%.6f\n",
@@ -262,7 +262,7 @@ int bench_arena_scale(int count, int frames, bool portable, bool profile, int mo
         );
     }
     if (reference) {
-        qsort(reference_ms, (size_t)acount(reference_ms), sizeof *reference_ms, compare);
+        asort(reference_ms, compare);
         printf(
             "scale_reference c_p50_ms=%.6f c_p95_ms=%.6f update_c_ratio=%.3f "
             "tick_c_ratio=%.3f snapshots=%d\n",
@@ -408,7 +408,7 @@ int bench_neon_pursuit(int count, int frames, bool portable, bool profile)
         assert(q.cache_builds == (uint64_t)frames);
         assert(q.world_candidates == (uint64_t)(count + 1) * frames);
     }
-    qsort(samples, (size_t)acount(samples), sizeof *samples, compare);
+    asort(samples, compare);
     printf(
         "neon_pursuit backend=%s entities=%d frames=%d profile=%d "
         "tick_p50_ms=%.6f tick_p95_ms=%.6f prepared=%llu native_loop=%llu\n",

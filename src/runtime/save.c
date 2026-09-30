@@ -180,9 +180,7 @@ static char *serialize(const game_save *save)
     for (int i = 0; i < acount(save->entries); i++) {
         apush(ordered, &save->entries[i]);
     }
-    if (acount(ordered) > 1) {
-        qsort(ordered, (size_t)acount(ordered), sizeof *ordered, compare_entries);
-    }
+    asort(ordered, compare_entries);
     for (int i = 0; i < acount(ordered); i++) {
         yyjson_mut_obj_add_strcpy(doc, root, ordered[i]->key, ordered[i]->text);
     }

@@ -400,9 +400,7 @@ void sg_straighten(studio *s)
     for (int i = 0; i < acount(e->selected); i++) {
         apush(order, e->selected[i]);
     }
-    if (acount(order) > 1) {
-        qsort(order, (size_t)acount(order), sizeof *order, by_x);
-    }
+    asort(order, by_x);
     for (int i = 0; i < acount(order); i++) {
         bool source = false;
         const edge *ed = leading_wire(gr, order[i], &source);

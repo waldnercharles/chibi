@@ -135,9 +135,7 @@ static fragment_result fragments(
 )
 {
     fragment_result result = { 0 };
-    if (acount(pieces) > 1) {
-        qsort(pieces, (size_t)acount(pieces), sizeof *pieces, compare_piece_size);
-    }
+    asort(pieces, compare_piece_size);
     for (int i = 0; i < acount(pieces); i++) {
         if (pieces[i].count < minimum) {
             material_mask_free(&pieces[i]);

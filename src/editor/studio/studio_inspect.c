@@ -503,9 +503,7 @@ static void describe_origin(studio_inspect_style *s, const declared *d)
 /* Headings and declarations for `list`, sorted. */
 static void add_rules(studio_inspect_model *m, declared *list, bool inherited)
 {
-    if (acount(list) > 1) {
-        qsort(list, (size_t)acount(list), sizeof *list, by_cascade);
-    }
+    asort(list, by_cascade);
     for (int i = 0; i < acount(list); i++) {
         const declared *d = &list[i];
         if (!i || !same_rule(d, &list[i - 1])) {

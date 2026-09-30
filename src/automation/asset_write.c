@@ -270,7 +270,7 @@ static int lock_folders(automation_asset_batch *batch, const automation_asset_ch
             apush(batch->folders, xstrdup(changes[i].folder));
         }
     }
-    qsort(batch->folders, (size_t)acount(batch->folders), sizeof *batch->folders, folder_order);
+    asort(batch->folders, folder_order);
     batch->folder_fds = xmalloc(
         ((size_t)acount(batch->folders) + 1) * sizeof *batch->folder_fds
     );

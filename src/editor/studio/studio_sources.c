@@ -984,7 +984,7 @@ static studio_setting_choice *asset_choices(const studio *s, reference_asset_kin
         }
     }
     if (acount(choices)) {
-        qsort(choices, (size_t)acount(choices), sizeof *choices, by_label);
+        asort(choices, by_label);
     }
     return choices;
 }

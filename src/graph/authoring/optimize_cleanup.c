@@ -394,7 +394,7 @@ void graph_optimize_cleanup(graph *g, graph_optimize_report *report)
         apush(ids, g->nodes[i]->id);
     }
     if (acount(ids)) {
-        qsort(ids, (size_t)acount(ids), sizeof *ids, compare_ids);
+        asort(ids, compare_ids);
     }
     for (int pass = 0; pass < 3; pass++) {
         bool changed = true;

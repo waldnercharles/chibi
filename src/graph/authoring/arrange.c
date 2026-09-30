@@ -1215,7 +1215,7 @@ void arrange_layout(const arrange_graph *g, arrange_route_style style, arrange_p
             apush(components, ((ar_key){ (float)band[i], first[i] }));
         }
     }
-    qsort(components, (size_t)acount(components), sizeof *components, ar_key_compare);
+    asort(components, ar_key_compare);
 
     int *local = NULL;
     asetlen(local, g->box_count);

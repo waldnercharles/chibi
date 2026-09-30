@@ -180,7 +180,7 @@ void studio_assets_body(studio *s, int area)
     }
     sort_index = index;
     if (acount(matches)) {
-        qsort(matches, (size_t)acount(matches), sizeof *matches, by_name);
+        asort(matches, by_name);
     }
     bool grouped = s->assets_kind < 0;
     asset_row *rows = NULL;

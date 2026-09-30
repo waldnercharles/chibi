@@ -93,9 +93,11 @@ Native blast handling does not modify health.
 generation for existing assets. A positive radius enables streaming around
 enabled cameras, including their view extents. Moving bodies retain a small
 nearby area. Tiles a camera can see, and those under a moving body, prepare
-immediately so visible terrain never appears late. `stream_budget` limits the
-remaining prefetch to 1..64 tiles per material preparation boundary. It limits
-tile count, not elapsed milliseconds.
+immediately so visible terrain never appears late. The remaining prefetch bakes
+a tile a slice at a time: `stream_budget` allows 1..64 slices of 16 tile rows
+(a tile is 128) per material preparation boundary, so no step bakes a whole
+prefetched tile at once. It limits rows, not elapsed milliseconds, so streaming
+stays deterministic. Restoring a stored tile costs one slice.
 
 Streamed terrain requires `connectivity = 0` and `border_cells = 0`. Positive
 width and height define finite bounds of up to 65536 cells per axis. Setting both

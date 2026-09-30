@@ -18,3 +18,17 @@ bool material_field_bake(
     char *error,
     size_t size
 );
+/* Rows [first, first + count) only, as field_program_bake_rows. */
+bool material_field_bake_rows(
+    const material_fields *fields,
+    const char *name,
+    const char *parameters,
+    unsigned seed,
+    field_grid grid,
+    int first,
+    int count,
+    float *out,
+    const game_task_system *tasks,
+    char *error,
+    size_t size
+);

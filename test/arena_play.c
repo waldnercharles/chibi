@@ -2250,7 +2250,7 @@ int compiled_arena_run(const char *program)
         );
         assert(app_scene_authoring_frame(f.scene, f.time + 1.0 / 60.0) == FLOW_OK);
         assert(eval_oracle_calls() == eval_before && flow_oracle_calls() == flow_before);
-        test_note(
+        printf(
             "%s: Arena3D firing, simulation and restart; %d instances; zero "
             "oracle calls\n",
             behavior_backend_name(modes[mode]),

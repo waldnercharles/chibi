@@ -13,6 +13,7 @@
 #include "support/array.h"
 #include "support/xalloc.h"
 #include "test/support/event_fixture.h"
+#include "test/support/report.h"
 
 #include <assert.h>
 #include <float.h>
@@ -166,7 +167,7 @@ static void health_damage()
     }
     game_live_world_free(live);
     ecs_world_free(world);
-    puts("PASS: Health expression preserves integer limits, rejects nonpositive damage, and delivers death before destruction");
+    test_note("PASS: Health expression preserves integer limits, rejects nonpositive damage, and delivers death before destruction\n");
 }
 
 static void integer_division()
@@ -316,7 +317,7 @@ static void random_ranges()
     graph_free(&vector_graph);
     eval_context_free(&eval);
     arena_free(&storage);
-    puts("PASS: random range nodes preserve authored bounds through direct and graph evaluation, including reversed/equal endpoints and invalid input");
+    test_note("PASS: random range nodes preserve authored bounds through direct and graph evaluation, including reversed/equal endpoints and invalid input\n");
 }
 
 static void damped_spring()
@@ -352,7 +353,7 @@ static void damped_spring()
     inputs[0].f = NAN;
     assert(NODE_Advance_Damped_Spring.read_inputs(NULL, inputs, &storage, outputs));
     arena_free(&storage);
-    puts("PASS: generic damped spring preserves the authored implicit response, clamps negative delta, and rejects nonfinite input");
+    test_note("PASS: generic damped spring preserves the authored implicit response, clamps negative delta, and rejects nonfinite input\n");
 }
 
 static void angle_helpers()
@@ -365,7 +366,7 @@ static void angle_helpers()
     assert(result.type == PIN_F64 && result.d == 3.14159265358979323846 / 2 * 2);
     inputs[1].d = 0;
     assert(NODE_Quantize_Angle.fn(inputs, 2, NULL).type == PIN_FLOW);
-    puts("PASS: generic angle quantization snaps finite radians and rejects a zero step");
+    test_note("PASS: generic angle quantization snaps finite radians and rejects a zero step\n");
 }
 
 static void easing_helpers()
@@ -381,7 +382,7 @@ static void easing_helpers()
     assert(result.type == PIN_F64 && result.d == 1);
     input.d = NAN;
     assert(NODE_Smooth_Step.fn(&input, 1, NULL).type == PIN_FLOW);
-    puts("PASS: generic Smooth Step clamps normalized easing and rejects nonfinite input");
+    test_note("PASS: generic Smooth Step clamps normalized easing and rejects nonfinite input\n");
 }
 
 void test_behavior_math()
@@ -426,5 +427,5 @@ void test_behavior_math()
     }
     behavior_asset_free(projectile);
     behavior_asset_free(trail);
-    puts("PASS: authored Behavior Expressions preserve projectile and trail float boundaries");
+    test_note("PASS: authored Behavior Expressions preserve projectile and trail float boundaries\n");
 }

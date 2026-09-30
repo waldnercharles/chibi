@@ -5,6 +5,7 @@
 #include "graph/document/serialize.h"
 #include "graph/model/registry.h"
 #include "graph/nodes/component_nodes.h"
+#include "test/support/report.h"
 
 #include <assert.h>
 #include <stdio.h>
@@ -267,5 +268,5 @@ void test_scene_debug()
     behavior_asset_free(working);
     behavior_asset_free(applied);
     scene_debug_clear(&debug);
-    puts("scene debug PASS: instance identity, session, detach/reattach and entity reuse; semantic edits invalidate while layout changes remain compatible");
+    test_note("scene debug PASS: instance identity, session, detach/reattach and entity reuse; semantic edits invalidate while layout changes remain compatible\n");
 }

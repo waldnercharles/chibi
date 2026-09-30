@@ -169,5 +169,5 @@ void test_compiled_material(const char *path)
         assert(!dlclose(library));
     }
     render_shader_catalog_clear();
-    puts("PASS: whole material effects, scalar/vector payloads, error diagnostics, budgets, waits, stepping and watches");
+    test_note("PASS: whole material effects, scalar/vector payloads, error diagnostics, budgets, waits, stepping and watches\n");
 }

@@ -1,6 +1,7 @@
 #include "support/rcss.h"
 
 #include "support/array.h"
+#include "test/support/report.h"
 
 #include <assert.h>
 #include <stdio.h>
@@ -195,5 +196,5 @@ void test_rcss()
     fails(".a { @keyframes k { } }", "line 1: @keyframes k belongs at the top level");
     fails(".a { x: 1 } /* open", "line 1: a comment is missing its */");
     imports_resolve_in_order_once();
-    puts("rcss PASS: imports in order and once, nesting with & and selector lists, nested @media, comments, errors with lines, line maps through imports and joins, and custom properties as written");
+    test_note("rcss PASS: imports in order and once, nesting with & and selector lists, nested @media, comments, errors with lines, line maps through imports and joins, and custom properties as written\n");
 }

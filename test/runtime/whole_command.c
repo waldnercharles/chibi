@@ -274,5 +274,5 @@ void test_compiled_commands()
     parity(WHOLE_COMMAND_MIXED, 0, 1000, true);
     whole_command_smoke();
     test_compiled_entity_commands();
-    puts("PASS: whole command payloads, scalar names, nested calls, loops, borrowed elements, snapshots, ownership, partial effects and error/source parity");
+    test_note("PASS: whole command payloads, scalar names, nested calls, loops, borrowed elements, snapshots, ownership, partial effects and error/source parity\n");
 }

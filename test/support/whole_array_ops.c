@@ -2,6 +2,7 @@
 #include "graph/runtime/flow_internal.h"
 #include "graph/runtime/instance.h"
 #include "graph/runtime/update.h"
+#include "test/support/report.h"
 #include "test/whole_array_op_fixture.h"
 #include "test/whole_managed_fixture.h"
 
@@ -329,7 +330,7 @@ static void owned_tick_arrays()
     }
     behavior_update_free_code(code);
     ecs_world_free(ecs);
-    puts("PASS: owned arrays, sets and managed records in Tick batches and prepared updates; no backing-block growth, activation stores or oracle calls");
+    test_note("PASS: owned arrays, sets and managed records in Tick batches and prepared updates; no backing-block growth, activation stores or oracle calls\n");
 }
 static void owned_tick()
 {
@@ -423,5 +424,5 @@ void whole_array_op_smoke()
         behavior_instance_destroy(bi);
         behavior_asset_free(a);
     }
-    puts("PASS: whole array/set construction, mutation, membership, length and direct Get through nested waits; zero oracle calls");
+    test_note("PASS: whole array/set construction, mutation, membership, length and direct Get through nested waits; zero oracle calls\n");
 }

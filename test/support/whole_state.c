@@ -4,6 +4,7 @@
 #include "graph/runtime/flow_internal.h"
 #include "graph/runtime/instance.h"
 #include "graph/runtime/update.h"
+#include "test/support/report.h"
 #include "test/whole_state_fixture.h"
 
 #include <assert.h>
@@ -257,7 +258,7 @@ void whole_state_smoke()
         behavior_asset_free(a);
     }
     assert(eval == eval_oracle_calls() && flow == flow_oracle_calls());
-    printf(
+    test_note(
         "PASS: %s whole persistent DoOnce/DoN/FlipFlop/Gate, loops, calls and "
         "waits; zero oracle calls\n",
         behavior_backend_name(behavior_default_backend())

@@ -6,6 +6,7 @@
 #include "runtime/task_pool.h"
 #include "support/arena.h"
 #include "support/array.h"
+#include "test/support/report.h"
 #include "test/whole_data_fixture.h"
 
 #include <assert.h>
@@ -468,5 +469,5 @@ void test_targeting()
         parallel_targeting(dynamic, BEHAVIOR_SLJIT);
         parallel_targeting(dynamic, BEHAVIOR_BYTECODE);
     }
-    puts("PASS: nearest entity query filters categories, exclusion, retirement, invalid positions and stable ties");
+    test_note("PASS: nearest entity query filters categories, exclusion, retirement, invalid positions and stable ties\n");
 }

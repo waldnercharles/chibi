@@ -3,6 +3,7 @@
 #include "graph/runtime/flow_internal.h"
 #include "graph/runtime/instance.h"
 #include "graph/runtime/value_array.h"
+#include "test/support/report.h"
 #include "test/whole_array_op_fixture.h"
 
 #include <assert.h>
@@ -155,5 +156,5 @@ void test_value_index()
         behavior_instance_destroy(bi);
         behavior_asset_free(asset);
     }
-    puts("PASS: adaptive ordered Set indexes, equality, duplicates, ownership and compiled waits");
+    test_note("PASS: adaptive ordered Set indexes, equality, duplicates, ownership and compiled waits\n");
 }

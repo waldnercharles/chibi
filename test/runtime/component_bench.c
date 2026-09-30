@@ -155,7 +155,7 @@ int bench_component(const char *path, int count, int rotation)
         arena_free(&storage);
         behavior_asset_free(a);
     }
-    puts("PASS: generated C, SLJIT and bytecode component state, snapshots and error parity");
+    test_note("PASS: generated C, SLJIT and bytecode component state, snapshots and error parity\n");
     ecs_world_free(world);
     assert(!dlclose(library));
     return 0;

@@ -4,6 +4,7 @@
 #include "graph/model/registry.h"
 #include "support/array.h"
 #include "support/text_file.h"
+#include "test/support/report.h"
 
 #include <assert.h>
 #include <glob.h>
@@ -36,6 +37,10 @@ static bool audit_entry(const behavior_asset *a, graph *g, node *entry, const ch
     bool whole = behavior_program_function(body, entry) != NULL;
     const behavior_function_diagnostic *d = behavior_program_function_diagnostic(body, entry);
     assert(whole || d);
+    /* Exclusions and diagnostics always print; whole entries when verbose. */
+    if (whole && !d && !test_verbose()) {
+        return whole;
+    }
     printf(
         "%s_%s %s.%s",
         kind,

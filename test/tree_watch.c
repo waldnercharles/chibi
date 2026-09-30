@@ -1,6 +1,7 @@
 #include "support/tree_watch.h"
 
 #include "support/array.h"
+#include "test/support/report.h"
 
 #include <assert.h>
 #include <stdio.h>
@@ -50,5 +51,5 @@ void test_tree_watch()
     unlink(other);
     rmdir(nested);
     rmdir(root);
-    puts("tree watch PASS: additions, edits, removals and recorded writes by extension, recursively and once a second");
+    test_note("tree watch PASS: additions, edits, removals and recorded writes by extension, recursively and once a second\n");
 }

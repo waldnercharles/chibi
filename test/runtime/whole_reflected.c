@@ -215,7 +215,7 @@ void test_compiled_reflected(const char *path)
     if (library) {
         assert(!dlclose(library));
     }
-    puts("PASS: reflected native calls, interleaved output parameters, projected fields, null inputs, errors, waits and inspection parity");
+    test_note("PASS: reflected native calls, interleaved output parameters, projected fields, null inputs, errors, waits and inspection parity\n");
 }
 static double seconds()
 {

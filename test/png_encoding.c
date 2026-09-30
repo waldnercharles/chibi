@@ -1,4 +1,5 @@
 #include "platform/cute.h"
+#include "test/support/report.h"
 
 #include <assert.h>
 #include <stdint.h>
@@ -58,5 +59,5 @@ void test_png_encoding()
     assert(!memcmp(decoded.pix, pixels, sizeof pixels));
     cf_image_free(&decoded);
     cf_free(data);
-    puts("png encoding PASS: zlib header declares the encoder's 32K window and round-trips");
+    test_note("png encoding PASS: zlib header declares the encoder's 32K window and round-trips\n");
 }

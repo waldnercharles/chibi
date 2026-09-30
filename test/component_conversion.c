@@ -6,6 +6,7 @@
 #include "runtime/components.h"
 #include "support/arena.h"
 #include "support/array.h"
+#include "test/support/report.h"
 
 #include <assert.h>
 #include <math.h>
@@ -236,7 +237,7 @@ static void real_integer_conversions()
             behavior_asset_free(asset);
         }
     }
-    puts("PASS: Real narrowing truncates and saturates through graph edges and serialization");
+    test_note("PASS: Real narrowing truncates and saturates through graph edges and serialization\n");
 }
 
 void test_component_conversion()
@@ -294,5 +295,5 @@ void test_component_conversion()
     rejected_conversions();
     real_integer_conversions();
     manual_integer64_conversion();
-    puts("PASS: one-field component values connect without Break nodes and survive compile, evaluation and reload");
+    test_note("PASS: one-field component values connect without Break nodes and survive compile, evaluation and reload\n");
 }

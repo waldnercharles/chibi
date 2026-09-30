@@ -283,7 +283,7 @@ void test_compiled_queries()
     escaping_snapshot();
     storage_test();
     whole_query_smoke();
-    puts("PASS: compiled query order, empty/dense/sparse worlds, retired/reused entities, nested loops/calls, bounded snapshot storage and error/source parity");
+    test_note("PASS: compiled query order, empty/dense/sparse worlds, retired/reused entities, nested loops/calls, bounded snapshot storage and error/source parity\n");
 }
 void emit_query_c(const char *path)
 {
@@ -431,6 +431,6 @@ int bench_query(const char *path, int count, int rotation)
         behavior_asset_free(a);
     }
     assert(!dlclose(library));
-    puts("PASS: generated-C/SLJIT/bytecode query parity with shared snapshot helper");
+    test_note("PASS: generated-C/SLJIT/bytecode query parity with shared snapshot helper\n");
     return 0;
 }

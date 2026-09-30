@@ -3,6 +3,7 @@
 #include "runtime/generated.h"
 #include "runtime/material_fluid.h"
 #include "runtime/materials.h"
+#include "test/support/report.h"
 
 #include <assert.h>
 #include <stdio.h>
@@ -334,5 +335,5 @@ void test_material_reactions()
     ecs_contact_sprays_are_transient();
     repeat_step_resets_contacts();
     bounded_contacts();
-    puts("PASS: bounded material contact responses, speed thresholds and fluid coloring");
+    test_note("PASS: bounded material contact responses, speed thresholds and fluid coloring\n");
 }

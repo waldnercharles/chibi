@@ -162,7 +162,7 @@ void test_compiled_suspensions()
     float_parity(PIN_F64, NULL, true);
     test_suspended_commands(NULL);
     whole_suspend_smoke();
-    puts("PASS: suspension checkpoints and oracle parity for nested calls, loops, Break, Return, state, errors and budgets");
+    test_note("PASS: suspension checkpoints and oracle parity for nested calls, loops, Break, Return, state, errors and budgets\n");
 }
 void emit_suspend_c(const char *path)
 {
@@ -223,5 +223,5 @@ void test_generated_suspensions(const char *path)
     float_parity(PIN_F64, library, true);
     test_suspended_commands(library);
     assert(!dlclose(library));
-    puts("PASS: generated-C, native, bytecode and mixed-backend continuation parity against oracle");
+    test_note("PASS: generated-C, native, bytecode and mixed-backend continuation parity against oracle\n");
 }

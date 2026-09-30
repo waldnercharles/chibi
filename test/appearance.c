@@ -4,6 +4,7 @@
 #include "runtime/scenes/prototype_preview.h"
 #include "support/array.h"
 #include "support/xalloc.h"
+#include "test/support/report.h"
 
 #include <assert.h>
 #include <stdio.h>
@@ -277,5 +278,5 @@ void test_appearance()
     engine_free(runtime);
     game_live_world_free(live);
     ecs_world_free(world);
-    puts("appearance PASS: distinct authored styles, sparse instance overrides, persistence and preview reset");
+    test_note("appearance PASS: distinct authored styles, sparse instance overrides, persistence and preview reset\n");
 }

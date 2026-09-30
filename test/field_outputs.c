@@ -8,6 +8,7 @@
 #include "runtime/systems/system.h"
 #include "support/arena.h"
 #include "support/array.h"
+#include "test/support/report.h"
 
 #include <assert.h>
 #include <stdio.h>
@@ -481,5 +482,5 @@ void test_field_outputs()
     copied_fields();
     break_fields();
     ecs_world_free(world);
-    puts("PASS: direct output fields preserve aggregate wires, stable IDs, serialized reads and Set snapshots");
+    test_note("PASS: direct output fields preserve aggregate wires, stable IDs, serialized reads and Set snapshots\n");
 }

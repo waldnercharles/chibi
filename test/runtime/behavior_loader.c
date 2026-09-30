@@ -2,6 +2,7 @@
 
 #include "graph/document/serialize.h"
 #include "graph/model/registry.h"
+#include "test/support/report.h"
 
 #include <assert.h>
 #include <stdio.h>
@@ -103,5 +104,5 @@ void run_behavior_loader_checks()
         assert(unlink(path) == 0);
     }
     assert(rmdir(directory) == 0 && rmdir(root) == 0);
-    puts("PASS: rejected graph assets preserve file and failure details while valid assets load");
+    test_note("PASS: rejected graph assets preserve file and failure details while valid assets load\n");
 }

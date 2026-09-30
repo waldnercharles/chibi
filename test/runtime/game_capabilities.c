@@ -1,6 +1,7 @@
 #include "runtime/behaviors/live.h"
 #include "runtime/camera.h"
 #include "runtime/generated.h"
+#include "test/support/report.h"
 
 #include <assert.h>
 #include <math.h>
@@ -193,5 +194,5 @@ void test_game_capabilities()
     engine_free(runtime);
     game_live_world_free(live);
     ecs_world_free(world);
-    puts("Game capability checks passed: committed saves, camera framing, occlusion, terrain memory and sensor expiry");
+    test_note("Game capability checks passed: committed saves, camera framing, occlusion, terrain memory and sensor expiry\n");
 }

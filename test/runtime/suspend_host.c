@@ -172,7 +172,7 @@ void test_suspended_commands(void *library)
             behavior_asset_free(a);
         }
     }
-    puts("PASS: suspended command arguments, FP bits, scalar ownership, host errors, completion and cancellation cleanup");
+    test_note("PASS: suspended command arguments, FP bits, scalar ownership, host errors, completion and cancellation cleanup\n");
 }
 
 void emit_suspended_commands(FILE *out)

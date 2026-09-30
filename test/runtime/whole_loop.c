@@ -99,5 +99,5 @@ void test_compiled_loops()
         behavior_asset_free(a);
     }
     whole_loop_smoke();
-    puts("PASS: whole loops, Break, snapshots, returns, budgets and call stacks across oracle, SLJIT and bytecode");
+    test_note("PASS: whole loops, Break, snapshots, returns, budgets and call stacks across oracle, SLJIT and bytecode\n");
 }

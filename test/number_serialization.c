@@ -3,6 +3,7 @@
 #include "graph/runtime/eval.h"
 #include "support/arena.h"
 #include "support/array.h"
+#include "test/support/report.h"
 
 #include <assert.h>
 #include <stdio.h>
@@ -54,5 +55,5 @@ void test_number_serialization()
     free(loaded);
     graph_free(&original);
     free(json);
-    puts("PASS: integer JSON numbers retain float defaults and graph coordinates");
+    test_note("PASS: integer JSON numbers retain float defaults and graph coordinates\n");
 }

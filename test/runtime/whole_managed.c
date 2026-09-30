@@ -281,7 +281,7 @@ void test_compiled_managed(const char *path)
     if (library) {
         assert(!dlclose(library));
     }
-    puts("PASS: whole managed structs, strings, retention across nested waits, variable overwrite, component lifetime, errors and inspection");
+    test_note("PASS: whole managed structs, strings, retention across nested waits, variable overwrite, component lifetime, errors and inspection\n");
 }
 static double seconds()
 {

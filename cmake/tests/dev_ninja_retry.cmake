@@ -1,5 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 include("${ROOT}/cmake/generated_file.cmake")
+# Nested configure and build output prints only when a command fails.
+include("${ROOT}/cmake/tests/assertions.cmake")
 file(REMOVE_RECURSE "${TEST_DIR}/.chibi/generations")
 file(REMOVE "${TEST_DIR}/.chibi/application.current")
 file(MAKE_DIRECTORY "${TEST_DIR}/src")
@@ -7,9 +9,8 @@ file(WRITE "${TEST_DIR}/src/host.c" "int main(void) { return 0; }\n")
 file(WRITE "${TEST_DIR}/src/application.c" "int value(void) { return 1; }\n")
 file(WRITE "${TEST_DIR}/src/resident.glsl" "resident version one\n")
 file(WRITE "${TEST_DIR}/CMakeLists.txt" "cmake_minimum_required(VERSION 3.20)\nproject(retry C)\nadd_executable(chibi src/host.c)\nadd_library(chibi_dll SHARED src/application.c)\n")
-execute_process(COMMAND "${CMAKE_COMMAND}" -G Ninja -S "${TEST_DIR}" -B "${TEST_DIR}/build"
-    COMMAND_ERROR_IS_FATAL ANY)
-execute_process(COMMAND "${CMAKE_COMMAND}" --build "${TEST_DIR}/build" COMMAND_ERROR_IS_FATAL ANY)
+run_checked("${CMAKE_COMMAND}" -G Ninja -S "${TEST_DIR}" -B "${TEST_DIR}/build")
+run_checked("${CMAKE_COMMAND}" --build "${TEST_DIR}/build")
 if(APPLE)
     set(extension dylib)
 else()
@@ -32,9 +33,9 @@ file(TIMESTAMP "${host}" before "%s.%f")
 file(SHA256 "${application}" application_before)
 execute_process(COMMAND "${CMAKE_COMMAND}" -E sleep 1)
 file(WRITE "${TEST_DIR}/src/application.c" "int value(void) { return 2; }\n")
-execute_process(COMMAND "${CMAKE_COMMAND}" "-DDEV_CONFIG=${TEST_DIR}/dev.json"
+run_checked("${CMAKE_COMMAND}" "-DDEV_CONFIG=${TEST_DIR}/dev.json"
     "-DRESULT=${TEST_DIR}/generation.json" -DFORCE_REBUILD=ON -DJOBS=2
-    -P "${ROOT}/cmake/dev_build_worker.cmake" COMMAND_ERROR_IS_FATAL ANY)
+    -P "${ROOT}/cmake/dev_build_worker.cmake")
 file(TIMESTAMP "${host}" after "%s.%f")
 file(SHA256 "${application}" application_after)
 file(READ "${TEST_DIR}/generation.json" generation)
@@ -49,9 +50,9 @@ file(LOCK "${protected}/.lease" GUARD PROCESS TIMEOUT 0)
 # generation skips staging and keeps its immutable application path.
 file(TIMESTAMP "${host}" cached_host_before "%s.%f")
 file(TIMESTAMP "${application}" cached_application_before "%s.%f")
-execute_process(COMMAND "${CMAKE_COMMAND}" "-DDEV_CONFIG=${TEST_DIR}/dev.json"
+run_checked("${CMAKE_COMMAND}" "-DDEV_CONFIG=${TEST_DIR}/dev.json"
     "-DRESULT=${TEST_DIR}/generation.json"
-    -P "${ROOT}/cmake/dev_build_worker.cmake" COMMAND_ERROR_IS_FATAL ANY)
+    -P "${ROOT}/cmake/dev_build_worker.cmake")
 file(TIMESTAMP "${host}" cached_host_after "%s.%f")
 file(TIMESTAMP "${application}" cached_application_after "%s.%f")
 if(NOT cached_host_before STREQUAL cached_host_after OR
@@ -66,9 +67,9 @@ file(WRITE "${TEST_DIR}/.chibi/application.current" "${current_application}\n")
 file(GLOB generations_before LIST_DIRECTORIES true "${TEST_DIR}/.chibi/generations/*")
 list(LENGTH generations_before count_before)
 foreach(attempt RANGE 1 10)
-    execute_process(COMMAND "${CMAKE_COMMAND}" "-DDEV_CONFIG=${TEST_DIR}/dev.json"
+    run_checked("${CMAKE_COMMAND}" "-DDEV_CONFIG=${TEST_DIR}/dev.json"
         "-DRESULT=${TEST_DIR}/generation.json" -DSKIP_BUILD=ON
-        -P "${ROOT}/cmake/dev_build_worker.cmake" COMMAND_ERROR_IS_FATAL ANY)
+        -P "${ROOT}/cmake/dev_build_worker.cmake")
 endforeach()
 file(GLOB generations LIST_DIRECTORIES true "${TEST_DIR}/.chibi/generations/*")
 list(LENGTH generations count)
@@ -85,14 +86,12 @@ endif()
 set(outside "${TEST_DIR}/outside")
 file(MAKE_DIRECTORY "${outside}")
 get_filename_component(current_name "${current_application}" NAME)
-execute_process(COMMAND "${CMAKE_COMMAND}" -E copy "${current_application}" "${outside}/${current_name}"
-    COMMAND_ERROR_IS_FATAL ANY)
-execute_process(COMMAND "${CMAKE_COMMAND}" -E copy "${current}/.chibi-generation" "${outside}/.chibi-generation"
-    COMMAND_ERROR_IS_FATAL ANY)
+run_checked("${CMAKE_COMMAND}" -E copy "${current_application}" "${outside}/${current_name}")
+run_checked("${CMAKE_COMMAND}" -E copy "${current}/.chibi-generation" "${outside}/.chibi-generation")
 file(WRITE "${TEST_DIR}/.chibi/application.current" "${outside}/${current_name}\n")
-execute_process(COMMAND "${CMAKE_COMMAND}" "-DDEV_CONFIG=${TEST_DIR}/dev.json"
+run_checked("${CMAKE_COMMAND}" "-DDEV_CONFIG=${TEST_DIR}/dev.json"
     "-DRESULT=${TEST_DIR}/generation.json" -DSKIP_BUILD=ON
-    -P "${ROOT}/cmake/dev_build_worker.cmake" COMMAND_ERROR_IS_FATAL ANY)
+    -P "${ROOT}/cmake/dev_build_worker.cmake")
 file(READ "${TEST_DIR}/generation.json" generation)
 string(JSON confined_directory GET "${generation}" directory)
 string(FIND "${confined_directory}/" "${TEST_DIR}/.chibi/generations/" in_generations)
@@ -103,9 +102,9 @@ file(WRITE "${TEST_DIR}/.chibi/application.current" "${current_application}\n")
 
 # Same-source binary changes invalidate reuse.
 file(APPEND "${application}" "same source, new binary bytes\n")
-execute_process(COMMAND "${CMAKE_COMMAND}" "-DDEV_CONFIG=${TEST_DIR}/dev.json"
+run_checked("${CMAKE_COMMAND}" "-DDEV_CONFIG=${TEST_DIR}/dev.json"
     "-DRESULT=${TEST_DIR}/generation.json" -DSKIP_BUILD=ON
-    -P "${ROOT}/cmake/dev_build_worker.cmake" COMMAND_ERROR_IS_FATAL ANY)
+    -P "${ROOT}/cmake/dev_build_worker.cmake")
 file(READ "${TEST_DIR}/generation.json" generation)
 string(JSON binary_directory GET "${generation}" directory)
 if(binary_directory STREQUAL current)
@@ -115,9 +114,9 @@ endif()
 # Changed source and resident fingerprints both stage new generations.
 file(SHA256 "${application}" app_before_change)
 file(WRITE "${TEST_DIR}/src/application.c" "int value(void) { return 3; }\n")
-execute_process(COMMAND "${CMAKE_COMMAND}" "-DDEV_CONFIG=${TEST_DIR}/dev.json"
+run_checked("${CMAKE_COMMAND}" "-DDEV_CONFIG=${TEST_DIR}/dev.json"
     "-DRESULT=${TEST_DIR}/generation.json" -DJOBS=2
-    -P "${ROOT}/cmake/dev_build_worker.cmake" COMMAND_ERROR_IS_FATAL ANY)
+    -P "${ROOT}/cmake/dev_build_worker.cmake")
 file(SHA256 "${application}" app_after_change)
 file(READ "${TEST_DIR}/generation.json" generation)
 string(JSON changed_directory GET "${generation}" directory)
@@ -126,9 +125,9 @@ if(app_before_change STREQUAL app_after_change OR changed_directory STREQUAL bin
 endif()
 file(WRITE "${TEST_DIR}/.chibi/application.current" "${current_application}\n")
 file(WRITE "${TEST_DIR}/src/resident.glsl" "resident version two\n")
-execute_process(COMMAND "${CMAKE_COMMAND}" "-DDEV_CONFIG=${TEST_DIR}/dev.json"
+run_checked("${CMAKE_COMMAND}" "-DDEV_CONFIG=${TEST_DIR}/dev.json"
     "-DRESULT=${TEST_DIR}/generation.json" -DJOBS=2
-    -P "${ROOT}/cmake/dev_build_worker.cmake" COMMAND_ERROR_IS_FATAL ANY)
+    -P "${ROOT}/cmake/dev_build_worker.cmake")
 file(READ "${TEST_DIR}/generation.json" generation)
 string(JSON resident_directory GET "${generation}" directory)
 string(JSON resident_after_change GET "${generation}" resident)

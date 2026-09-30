@@ -1,4 +1,5 @@
 #include "platform/cute.h"
+#include "test/support/report.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -189,7 +190,7 @@ int test_interior_border()
         puts("interior border tiled SKIP: compute renderer unavailable");
     }
     if (!failed) {
-        puts("interior border PASS: GPU circle/diamond coverage and translucent compositing");
+        test_note("interior border PASS: GPU circle/diamond coverage and translucent compositing\n");
     }
     return failed;
 }

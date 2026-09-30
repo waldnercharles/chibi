@@ -1,5 +1,7 @@
 #include "render/material.h"
 
+#include "test/support/report.h"
+
 #include <assert.h>
 #include <float.h>
 #include <math.h>
@@ -74,5 +76,5 @@ void test_material()
     assert(memcmp(&before, &result, sizeof result) == 0);
     material.emission_multiplier = INFINITY;
     assert(!game_material_extract(&material, &result));
-    puts("material PASS: linear coefficients, HDR emission, independent border absorption and invalid inputs");
+    test_note("material PASS: linear coefficients, HDR emission, independent border absorption and invalid inputs\n");
 }

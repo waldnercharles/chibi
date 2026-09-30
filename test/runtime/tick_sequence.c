@@ -162,7 +162,7 @@ void test_tick_sequences()
     sequence_parity(BEHAVIOR_SLJIT);
     sequence_parity(BEHAVIOR_BYTECODE);
     sequence_parity(BEHAVIOR_ORACLE);
-    puts("PASS: interleaved Tick systems preserve cross-entity dependencies, managed values, inspection and hot apply");
+    test_note("PASS: interleaved Tick systems preserve cross-entity dependencies, managed values, inspection and hot apply\n");
 }
 
 static const behavior_function *sequence_tick(behavior_asset *asset, node **entry)

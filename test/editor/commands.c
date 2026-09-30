@@ -604,7 +604,7 @@ static void component_catalog_counts(const editor *e, const char *label)
         structural += !strncmp(d->name, "Add_", 4) || !strncmp(d->name, "Remove_", 7);
         make_break += d->pure_kind == NODE_PURE_MAKE || d->pure_kind == NODE_PURE_BREAK;
     }
-    printf(
+    test_note(
         "node catalog %s: %d entries; %d component access, %d field setters, "
         "%d add/remove, %d make/break\n",
         label,

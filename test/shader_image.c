@@ -3,6 +3,7 @@
 #include "graph/document/serialize.h"
 #include "platform/cute.h"
 #include "support/array.h"
+#include "test/support/report.h"
 
 #include <assert.h>
 #include <math.h>
@@ -177,7 +178,7 @@ void test_shader_image_cpu()
 {
     sampling();
     authoring();
-    puts("shader image CPU PASS: color space, straight alpha, pixel centers, wrap/filter edges, missing image diagnostics and owned JSON/clipboard keys");
+    test_note("shader image CPU PASS: color space, straight alpha, pixel centers, wrap/filter edges, missing image diagnostics and owned JSON/clipboard keys\n");
 }
 
 static void gpu_variant(shader_image_color_space color_space, shader_image_filter filter, shader_image_wrap wrap)
@@ -298,6 +299,6 @@ int test_shader_image_gpu()
             }
         }
     }
-    puts("shader image GPU PASS: RGB/alpha parity across sRGB/linear, nearest/bilinear, repeat/clamp and finite/nonfinite UV edges");
+    test_note("shader image GPU PASS: RGB/alpha parity across sRGB/linear, nearest/bilinear, repeat/clamp and finite/nonfinite UV edges\n");
     return 0;
 }

@@ -195,6 +195,6 @@ int bench_command(const char *path, int count, int rotation)
         }
     }
     assert(!dlclose(library));
-    puts("PASS: generated-C/SLJIT/bytecode command payloads, errors, stores, loops and source parity");
+    test_note("PASS: generated-C/SLJIT/bytecode command payloads, errors, stores, loops and source parity\n");
     return 0;
 }

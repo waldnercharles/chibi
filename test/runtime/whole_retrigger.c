@@ -4,6 +4,7 @@
 #include "graph/nodes/state_nodes.h"
 #include "graph/runtime/flow_internal.h"
 #include "test/flow_snapshot.h"
+#include "test/support/report.h"
 #include "test/whole_retrigger_fixture.h"
 
 #include <assert.h>
@@ -360,7 +361,7 @@ void test_compiled_retrigger(const char *path)
     if (library) {
         assert(!dlclose(library));
     }
-    printf(
+    test_note(
         "PASS: Retriggerable Delay oracle/bytecode/SLJIT%s deadline, input "
         "retention, Sequence tails, recursive waits, cancellation, budget and "
         "debugger snapshot parity\n",

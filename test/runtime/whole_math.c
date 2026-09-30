@@ -174,5 +174,5 @@ void test_compiled_math()
     }
     primitive("Clamp", PIN_F32);
     calls_preserve_state();
-    puts("PASS: whole math calls preserve scalar values, ABI registers, frame budgets and clamp edge cases");
+    test_note("PASS: whole math calls preserve scalar values, ABI registers, frame budgets and clamp edge cases\n");
 }

@@ -1,4 +1,6 @@
 #include "host/watch.h"
+
+#include "test/support/report.h"
 #ifdef __APPLE__
 #include "host/watch_macos_flags.h"
 #endif
@@ -148,5 +150,5 @@ void test_dev_watch()
     assert(rmdir(nested) == 0);
     assert(rmdir(source) == 0);
     assert(rmdir(root) == 0);
-    puts("PASS: native file events cover recursion, topology, exact files, atomic saves and exclusions");
+    test_note("PASS: native file events cover recursion, topology, exact files, atomic saves and exclusions\n");
 }

@@ -7,6 +7,7 @@
 #include "graph/runtime/value_array.h"
 #include "runtime/generated.h"
 #include "support/array.h"
+#include "test/support/report.h"
 
 #include <assert.h>
 #include <limits.h>
@@ -533,7 +534,7 @@ void test_entity_query(behavior_backend backend)
     separate_snapshots(world, &input, backend);
     afree(input.items);
     ecs_world_free(world);
-    printf(
+    test_note(
         "PASS: %s reflected entity reductions, static native loops, dynamic "
         "helper, AND/presence, NaN, empty filters, duplicate and stale "
         "handles\n",

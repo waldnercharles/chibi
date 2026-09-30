@@ -224,5 +224,5 @@ void test_owned_ticks()
             }
         }
     }
-    puts("PASS: owned Tick arrays, strings and structs; batch/update/oracle state, inspection, hot apply and retained failures after bank reuse");
+    test_note("PASS: owned Tick arrays, strings and structs; batch/update/oracle state, inspection, hot apply and retained failures after bank reuse\n");
 }

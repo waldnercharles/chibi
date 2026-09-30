@@ -19,6 +19,7 @@
 #include "runtime/visual_motion.h"
 #include "support/arena.h"
 #include "support/array.h"
+#include "test/support/report.h"
 
 #include <assert.h>
 #include <math.h>
@@ -934,7 +935,7 @@ static void authored_floor()
         motion += fabsf(contours[1][i] - contours[0][i]);
     }
     assert(motion > peaks[0]);
-    printf(
+    test_note(
         "ArenaFloor CPU: idle contour %.6f, center %.6f; beat contour %.6f, "
         "center %.6f\n",
         peaks[0],
@@ -1004,7 +1005,7 @@ void test_surface_cpu()
         behavior_asset_free(asset);
     }
     shader_graph_free(&ir);
-    puts("surface CPU PASS: distinct sample inputs and mismatched material/shape output rejection");
+    test_note("surface CPU PASS: distinct sample inputs and mismatched material/shape output rejection\n");
 }
 
 typedef struct
@@ -2121,6 +2122,6 @@ int test_surface_gpu()
     trail_particle_crossing();
     particle_appearance();
     render_shader_catalog_clear();
-    puts("surface GPU PASS: sample contexts, material inputs, instance batching, transparency, images, bounded point lighting, particle appearance, preview parity and last-valid diagnostics");
+    test_note("surface GPU PASS: sample contexts, material inputs, instance batching, transparency, images, bounded point lighting, particle appearance, preview parity and last-valid diagnostics\n");
     return 0;
 }

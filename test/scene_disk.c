@@ -1,6 +1,7 @@
 #include "editor/workspace/scene_internal.h"
 #include "runtime/generated.h"
 #include "support/array.h"
+#include "test/support/report.h"
 
 #include <assert.h>
 #include <stdio.h>
@@ -198,9 +199,9 @@ void test_scene_disk()
     prototypes_follow_disk_unless_edited();
     behaviors_appear_and_reload();
     the_scene_reloads_after_the_runtime_stops();
-    puts(
+    test_note(
         "scene disk PASS: external edits reload prototypes, behaviors and the "
         "scene; own saves, unsaved edits and "
-        "a running scene wait"
+        "a running scene wait\n"
     );
 }

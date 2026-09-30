@@ -1,5 +1,6 @@
 #include "host/dev.h"
 #include "host/state_file.h"
+#include "test/support/report.h"
 
 #include <assert.h>
 #include <errno.h>
@@ -154,5 +155,5 @@ void test_dev_controller()
         unlink(lease_path) == 0 && rmdir(initial_directory) == 0 &&
         rmdir(generations) == 0 && rmdir(state) == 0 && rmdir(root) == 0
     );
-    puts("PASS: native development publishes only accepted candidates and retains prior state after rejection");
+    test_note("PASS: native development publishes only accepted candidates and retains prior state after rejection\n");
 }

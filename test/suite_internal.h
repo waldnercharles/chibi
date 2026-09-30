@@ -27,6 +27,7 @@
 #include "runtime/generated.h"
 #include "runtime/scenes/prototype_preview.h"
 #include "support/arena.h"
+#include "test/support/report.h"
 #include "third_party/fmt/fmt.h"
 #include "third_party/pico_headers/pico_unit.h"
 
@@ -106,7 +107,6 @@ void test_compiled_aggregates();
 void test_compiled_integers();
 void test_behavior_unavailable();
 void test_editor_checkpoint();
-void test_check(int ok, const char *message);
 extern void test_host_wait();
 extern void test_combat();
 extern void test_targeting();

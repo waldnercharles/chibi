@@ -205,7 +205,7 @@ void test_compiled_names(const char *path)
     if (library) {
         assert(!dlclose(library));
     }
-    puts("PASS: whole To Name, null/empty/UTF-8, explicit/edge conversions, pure/effectful calls, owned returns, waits, cancellation and inspection");
+    test_note("PASS: whole To Name, null/empty/UTF-8, explicit/edge conversions, pure/effectful calls, owned returns, waits, cancellation and inspection\n");
 }
 static double seconds()
 {

@@ -182,5 +182,5 @@ void test_compiled_arrays()
     }
     variable_write();
     whole_array_smoke();
-    puts("PASS: array views, nulls, fields, bounds, nested loops/calls, Break, Return and budget/source parity");
+    test_note("PASS: array views, nulls, fields, bounds, nested loops/calls, Break, Return and budget/source parity\n");
 }

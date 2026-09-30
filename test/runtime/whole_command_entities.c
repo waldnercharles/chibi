@@ -198,5 +198,5 @@ void test_compiled_entity_commands()
         delivery(backends[i]);
         destruction(backends[i]);
     }
-    puts("PASS: whole Send Event FIFO batches, owned payload lifetime, deferred Destroy Entity and query snapshots");
+    test_note("PASS: whole Send Event FIFO batches, owned payload lifetime, deferred Destroy Entity and query snapshots\n");
 }

@@ -3,6 +3,7 @@
 #include "graph/model/behavior_asset.h"
 #include "graph/model/registry.h"
 #include "support/array.h"
+#include "test/support/report.h"
 
 #include <assert.h>
 #include <stdint.h>
@@ -177,5 +178,5 @@ void test_graph_navigation()
     assert(editor_graph_back(editor) == -1);
     behavior_asset_free(replacement.asset);
     editor_free(editor);
-    puts("PASS: graph calls support nested Back, reject invalid targets, preserve positions and clear history on document replacement");
+    test_note("PASS: graph calls support nested Back, reject invalid targets, preserve positions and clear history on document replacement\n");
 }

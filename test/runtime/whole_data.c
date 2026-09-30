@@ -370,5 +370,5 @@ void test_compiled_data(const char *path)
     if (library) {
         assert(!dlclose(library));
     }
-    puts("PASS: nested host data, null structs, retained snapshots, errors, budgets, waits, stepping and watches across whole backends");
+    test_note("PASS: nested host data, null structs, retained snapshots, errors, budgets, waits, stepping and watches across whole backends\n");
 }

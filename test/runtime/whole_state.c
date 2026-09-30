@@ -5,6 +5,7 @@
 #include "graph/runtime/flow_internal.h"
 #include "graph/runtime/instance.h"
 #include "test/flow_snapshot.h"
+#include "test/support/report.h"
 #include "test/whole_state_fixture.h"
 
 #include <assert.h>
@@ -230,7 +231,7 @@ void test_compiled_states(const char *path)
     if (library) {
         dlclose(library);
     }
-    printf(
+    test_note(
         "PASS: whole state oracle/bytecode/SLJIT%s parity for lazy inputs, "
         "resets, loops, waits, debugger and hot apply\n",
         path ? "/generated-C" : ""

@@ -1,4 +1,5 @@
 #include "editor/collab/protocol.h"
+#include "test/support/report.h"
 
 #include <assert.h>
 #include <stdio.h>
@@ -47,5 +48,5 @@ void test_collab_protocol()
     }
     assert(!collab_message_write("r", "c", 0, 0, "unknown", "{}"));
     assert(!collab_message_write("r", "c", 0, 0, "accepted", "[]"));
-    puts("collaboration protocol PASS: envelopes, truncation, version, identity, sequence bounds");
+    test_note("collaboration protocol PASS: envelopes, truncation, version, identity, sequence bounds\n");
 }

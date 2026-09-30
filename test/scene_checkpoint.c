@@ -9,6 +9,7 @@
 #include "render/scene_renderer.h"
 #include "runtime/generated.h"
 #include "support/xalloc.h"
+#include "test/support/report.h"
 
 #include <assert.h>
 #include <stdio.h>
@@ -853,7 +854,7 @@ static void asset_references_follow_authored_edits()
     remove(first_path);
     remove(second_path);
     fixture_free(&f);
-    puts("asset references PASS: typed relationships, pending edits, component changes and retained scene overrides");
+    test_note("asset references PASS: typed relationships, pending edits, component changes and retained scene overrides\n");
 }
 
 static void physics_settings_checkpoint()
@@ -979,7 +980,7 @@ static int test_scene_checkpoint()
             ->x == authored_x
     );
     fixture_free(&fixture);
-    puts("scene checkpoint PASS: unsaved graph/prototype/scene, Undo/Redo, camera, paused restart and authored pre-Play pose");
+    test_note("scene checkpoint PASS: unsaved graph/prototype/scene, Undo/Redo, camera, paused restart and authored pre-Play pose\n");
     return 0;
 }
 

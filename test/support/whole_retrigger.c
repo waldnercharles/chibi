@@ -3,6 +3,7 @@
 #include "graph/nodes/state_nodes.h"
 #include "graph/runtime/flow_internal.h"
 #include "graph/runtime/instance.h"
+#include "test/support/report.h"
 #include "test/whole_retrigger_fixture.h"
 
 #include <assert.h>
@@ -153,7 +154,7 @@ void whole_retrigger_smoke()
         behavior_instance_destroy(bi);
         behavior_asset_free(a);
     }
-    printf(
+    test_note(
         "PASS: %s Retriggerable Delay, independent Sequence tails, cached wait "
         "views, nested/recursive calls and loops; zero oracle calls\n",
         behavior_backend_name(behavior_default_backend())

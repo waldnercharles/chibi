@@ -468,7 +468,7 @@ static void preservation_proof_keys()
     assert(!behavior_function_preserves_components(function, written, 2));
     assert(behavior_function_preserves_components(function, preserved, 2));
     behavior_asset_free(asset);
-    puts("preservation proof PASS: component sets remain independent across cached queries");
+    test_note("preservation proof PASS: component sets remain independent across cached queries\n");
 }
 
 void test_parallel_ticks()
@@ -488,5 +488,5 @@ void test_parallel_ticks()
     }
     parallel_failures(false);
     parallel_failures(true);
-    puts("parallel Tick PASS: native and bytecode values, managed scratch, ordered cross-entity writes and observation barriers");
+    test_note("parallel Tick PASS: native and bytecode values, managed scratch, ordered cross-entity writes and observation barriers\n");
 }

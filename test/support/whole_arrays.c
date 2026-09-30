@@ -4,6 +4,7 @@
 #include "graph/runtime/flow_internal.h"
 #include "graph/runtime/instance.h"
 #include "graph/runtime/value_array.h"
+#include "test/support/report.h"
 #include "test/whole_array_fixture.h"
 
 #include <assert.h>
@@ -166,5 +167,5 @@ void whole_array_smoke()
     flow_run_free(run);
     behavior_instance_destroy(bi);
     behavior_asset_free(a);
-    puts("PASS: whole borrowed arrays, nested ForEach and direct element loads; zero oracle calls");
+    test_note("PASS: whole borrowed arrays, nested ForEach and direct element loads; zero oracle calls\n");
 }

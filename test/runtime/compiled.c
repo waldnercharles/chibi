@@ -149,7 +149,7 @@ void test_behavior_unavailable()
     assert(behavior_instance_dispatch(instance, "Count", (flow_inputs){ 0 }, &error));
     behavior_instance_destroy(instance);
     behavior_asset_free(asset);
-    puts("PASS: native JIT unavailable rejects dispatch without oracle fallback");
+    test_note("PASS: native JIT unavailable rejects dispatch without oracle fallback\n");
 }
 
 static void generation_guards()
@@ -883,5 +883,5 @@ void test_compiled_behaviors()
     behavior_debug_backend(BEHAVIOR_ORACLE);
     run_runtime_execution_checks();
     behavior_debug_backend(previous);
-    puts("PASS: compiled native, bytecode and oracle counters, waits, cancellation, source maps and linked runtime contracts");
+    test_note("PASS: compiled native, bytecode and oracle counters, waits, cancellation, source maps and linked runtime contracts\n");
 }

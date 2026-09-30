@@ -335,5 +335,5 @@ void test_compiled_aggregates()
         parity(a, values);
     }
     behavior_asset_free(a);
-    puts("PASS: aggregate ownership, nulls, projections, nested calls, mixed-width arithmetic and robust vector normalization match the oracle");
+    test_note("PASS: aggregate ownership, nulls, projections, nested calls, mixed-width arithmetic and robust vector normalization match the oracle\n");
 }

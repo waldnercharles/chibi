@@ -4,6 +4,7 @@
 #include "runtime/generated.h"
 #include "runtime/scenes/prototype_preview.h"
 #include "support/text_file.h"
+#include "test/support/report.h"
 #include "test/support/simulation_fixture.h"
 
 #include <assert.h>
@@ -480,6 +481,6 @@ int test_arena_input()
     assert(arena_shots(preview, &shot) == 1);
 
     arena_free(&f);
-    puts("arena input PASS: local movement/fire membership, directed AI events, fixed-step movement, independent aim, held/tapped cadence, focus/pause release, physical walls, restart and preview isolation");
+    test_note("arena input PASS: local movement/fire membership, directed AI events, fixed-step movement, independent aim, held/tapped cadence, focus/pause release, physical walls, restart and preview isolation\n");
     return 0;
 }

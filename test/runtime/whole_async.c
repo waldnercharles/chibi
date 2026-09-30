@@ -300,7 +300,7 @@ void test_compiled_async(const char *path)
     lifecycle(BEHAVIOR_BYTECODE);
     lifecycle(BEHAVIOR_SLJIT);
     late_inspection();
-    puts("PASS: asynchronous commands, nested waits, arguments, errors, stepping, breakpoints, watches and traversals across whole backends");
+    test_note("PASS: asynchronous commands, nested waits, arguments, errors, stepping, breakpoints, watches and traversals across whole backends\n");
 }
 
 static double seconds()

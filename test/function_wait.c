@@ -5,6 +5,7 @@
 #include "graph/runtime/instance.h"
 #include "runtime/components.h"
 #include "support/array.h"
+#include "test/support/report.h"
 
 #include <assert.h>
 #include <stdio.h>
@@ -119,7 +120,7 @@ static fixture make_fixture(const node_desc *body_desc, bool nested)
     compile_report report;
     compile_report_init(&report);
     int errors = behavior_asset_compile(f.asset, &report);
-    for (int i = 0; i < acount(report.items); i++) {
+    for (int i = 0; errors && i < acount(report.items); i++) {
         fprintf(stderr, "function wait: %s\n", report.items[i].message);
     }
     assert(errors == 0);
@@ -478,5 +479,5 @@ void test_function_wait()
     bounded_calls();
     stored_struct();
     missing_return();
-    puts("function wait PASS: delayed and nested calls, snapshots, stepping, host completion and cancellation");
+    test_note("function wait PASS: delayed and nested calls, snapshots, stepping, host completion and cancellation\n");
 }

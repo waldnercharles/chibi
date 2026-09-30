@@ -6,6 +6,7 @@
 #include "runtime/task_pool.h"
 #include "support/array.h"
 #include "test/physics_executor.h"
+#include "test/support/report.h"
 
 #include <assert.h>
 #include <math.h>
@@ -176,7 +177,7 @@ static void solid_walls()
      * Retain the original four-step tolerance; all modes must slide, stay on
      * this side of the wall and preserve one Contact Begin per receiver. */
     float max_x = configured_substeps == 4 ? 41.5f : 49;
-    printf(
+    test_note(
         "physics_quality substeps=%d wall_penetration=%.6f contacts=%d\n",
         configured_substeps,
         position.x - 41,
@@ -748,7 +749,7 @@ static void configured_motion()
         assert(continuous ? x < 46 : x > 90);
         dispose(&f);
     }
-    puts("physics settings PASS: force drive, kinematic velocity, CCD tradeoff, validation and retained reset configuration");
+    test_note("physics settings PASS: force drive, kinematic velocity, CCD tradeoff, validation and retained reset configuration\n");
 }
 
 static void authored_bounce_and_drive()
@@ -811,7 +812,7 @@ static void authored_bounce_and_drive()
     assert(ecs_world_apply_commands(f.world) == ECS_OK);
     assert(game_physics_tick(f.live->physics, 1.0f / 60) == FLOW_ERR_ARGUMENT);
     dispose(&f);
-    puts("physics authored motion PASS: restitution, angular strike, stop, unwrapped angles and invalid configuration");
+    test_note("physics authored motion PASS: restitution, angular strike, stop, unwrapped angles and invalid configuration\n");
 }
 
 void test_physics()
@@ -840,8 +841,8 @@ void test_physics()
     physics_cases();
     large_world = false;
     test_tasks = NULL;
-    printf("physics parallel PASS: workers=%d, padded semantic cases and ordered contact re-entry\n", expected_workers);
+    test_note("physics parallel PASS: workers=%d, padded semantic cases and ordered contact re-entry\n", expected_workers);
     test_physics_executor_close(&executor);
     game_task_pool_release(pool);
-    puts("physics PASS: solid thin walls, sliding, contact lifetime, relative moving-target and box sweeps, nearest/filter/owner exclusion, initial overlap, removal/reset and validation");
+    test_note("physics PASS: solid thin walls, sliding, contact lifetime, relative moving-target and box sweeps, nearest/filter/owner exclusion, initial overlap, removal/reset and validation\n");
 }

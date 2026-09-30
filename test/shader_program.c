@@ -8,6 +8,7 @@
 #include "render/shader_catalog.h"
 #include "render/shader_fragment.h"
 #include "support/array.h"
+#include "test/support/report.h"
 
 #include <assert.h>
 #include <math.h>
@@ -396,6 +397,6 @@ int test_shader_program_gpu()
     offsets_checks();
     capacity_checks();
     render_shader_catalog_clear();
-    puts("shader program GPU PASS: Arena, fragment and compute ramp payloads, structural recompiles, program offsets, compile failure retention and ramp capacity");
+    test_note("shader program GPU PASS: Arena, fragment and compute ramp payloads, structural recompiles, program offsets, compile failure retention and ramp capacity\n");
     return 0;
 }

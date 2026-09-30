@@ -1,6 +1,7 @@
 #include "graph/model/registry.h"
 #include "graph/runtime/flow_internal.h"
 #include "graph/runtime/instance.h"
+#include "test/support/report.h"
 #include "test/whole_array_fixture.h"
 #include "test/whole_delay_fixture.h"
 #include "test/whole_loop_fixture.h"
@@ -121,7 +122,7 @@ void whole_delay_smoke()
     flow_run_free(run);
     behavior_instance_destroy(instance);
     behavior_asset_free(asset);
-    printf(
+    test_note(
         "PASS: %s authored Delay and nested calls in whole compiled "
         "activations with frame inputs, watches and traversals; zero oracle "
         "calls\n",

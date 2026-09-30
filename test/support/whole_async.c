@@ -2,6 +2,7 @@
 #include "graph/runtime/flow_internal.h"
 #include "graph/runtime/instance.h"
 #include "support/xalloc.h"
+#include "test/support/report.h"
 #include "test/whole_async_fixture.h"
 
 #include <assert.h>
@@ -193,7 +194,7 @@ void whole_async_smoke()
     behavior_instance_destroy(instance);
     whole_async_clear(&capture);
     behavior_asset_free(asset);
-    printf(
+    test_note(
         "PASS: %s asynchronous command, nested waits and captured string "
         "arguments; zero oracle calls\n",
         behavior_backend_name(behavior_default_backend())

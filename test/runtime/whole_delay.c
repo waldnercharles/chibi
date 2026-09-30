@@ -152,7 +152,7 @@ void test_compiled_delays()
     breakpoints();
     test_delay_entries(NULL);
     whole_delay_smoke();
-    puts("PASS: whole Delay loops, nested calls, budgets, stepping, scalar/array/struct watches and traversal parity");
+    test_note("PASS: whole Delay loops, nested calls, budgets, stepping, scalar/array/struct watches and traversal parity\n");
 }
 
 static behavior_asset *event_fixture(double duration)

@@ -634,7 +634,7 @@ static void arrange_content_checks()
     for (int style = 0; style < ARRANGE_ROUTE_STYLE_COUNT; style++) {
         int graphs = 0;
         arrange_score s = arrange_arena_score(style, &graphs);
-        printf(
+        test_note(
             "arrange arena2d %-10s graphs=%d crossings=%d hits=%d overlaps=%d "
             "wire_overlaps=%d bends=%d flow_bends=%d length=%.0f ink=%.0f\n",
             arrange_style_names[style],

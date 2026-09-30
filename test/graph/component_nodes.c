@@ -10,6 +10,7 @@
 #include "support/array.h"
 #include "support/asset_text.h"
 #include "support/text_file.h"
+#include "test/support/report.h"
 
 #include <assert.h>
 #include <glob.h>
@@ -140,7 +141,7 @@ static void project_equivalence()
         globfree(&paths);
     }
     assert(files > 20 && raised > 100);
-    printf("component node equivalence: %d behaviors, %d generated nodes raised and lowered back\n", files, raised);
+    test_note("component node equivalence: %d behaviors, %d generated nodes raised and lowered back\n", files, raised);
 }
 
 typedef struct
@@ -402,7 +403,7 @@ static void runtime_equivalence()
     behavior_asset_free(raised);
     behavior_asset_free(authored);
     behavior_asset_free(loaded);
-    puts("component node runtime: generated, raised, authored and reloaded forms agree");
+    test_note("component node runtime: generated, raised, authored and reloaded forms agree\n");
 }
 
 /* A Get Component reading Self folds into component field bindings like the
@@ -454,7 +455,7 @@ static void optimizer_folds()
     assert(graph_node_by_id(f.g, last_id) && graph_node_by_id(f.g, unused_id));
     graph_optimize_report_free(&report);
     behavior_asset_free(f.asset);
-    puts("component node optimizer: Self reads and Break Struct fold into bindings; explicit entities and unused reads stay");
+    test_note("component node optimizer: Self reads and Break Struct fold into bindings; explicit entities and unused reads stay\n");
 }
 
 /* Choosing, splitting and saving component nodes, including unfinished ones. */
@@ -590,7 +591,7 @@ static void authoring()
     assert(graph_connect_data(function, entry, parameter, write, 2) == 0);
     assert(!behavior_asset_validate_library(library));
     behavior_asset_free(library);
-    puts("component node authoring: retargeting, splitting, unfinished nodes, bindings and libraries");
+    test_note("component node authoring: retargeting, splitting, unfinished nodes, bindings and libraries\n");
 }
 
 /* Choosing a type reshapes Make and Break Struct; retargeting Add or Remove
@@ -653,7 +654,7 @@ static void struct_authoring()
         "  - {id: 1, type: Make Struct, inputs: {Type: GameNothing}}\n"
     ));
     assert(strstr(graph_last_error(), "unknown Type"));
-    puts("component node structs: Make and Break reshape by type; Add and Remove keep their wires");
+    test_note("component node structs: Make and Break reshape by type; Add and Remove keep their wires\n");
 }
 
 /* Lowering gives a multi-field Set's outputs to its last setter, a node of its
@@ -697,7 +698,7 @@ static void lowered_watches()
     behavior_asset_free(linked);
     behavior_asset_free(f.asset);
     ecs_world_free(world);
-    puts("component node watches: a multi-field Set's outputs read through the authored node");
+    test_note("component node watches: a multi-field Set's outputs read through the authored node\n");
 }
 
 void test_component_nodes()

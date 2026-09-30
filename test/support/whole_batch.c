@@ -3,6 +3,7 @@
 #include "graph/runtime/flow_internal.h"
 #include "graph/runtime/instance.h"
 #include "graph/runtime/update.h"
+#include "test/support/report.h"
 #include "test/whole_aggregate_fixture.h"
 #include "test/whole_batch_fixture.h"
 
@@ -133,7 +134,7 @@ void whole_batch_smoke()
     behavior_instance_destroy(instance);
     behavior_batch_free(batch);
     behavior_asset_free(asset);
-    printf(
+    test_note(
         "PASS: %s synchronous Tick batch and prepared outer loop; no "
         "activation runtime stores or "
         "oracle calls\n",

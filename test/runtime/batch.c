@@ -737,5 +737,5 @@ void test_behavior_batches()
     observed_profile();
     watched_event_output();
     whole_batch_smoke();
-    puts("PASS: ordered Tick batches, instance state, component dependencies, inspection, profiling, waits and failure snapshots");
+    test_note("PASS: ordered Tick batches, instance state, component dependencies, inspection, profiling, waits and failure snapshots\n");
 }

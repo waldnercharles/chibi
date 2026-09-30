@@ -2,6 +2,7 @@
 #include "graph/runtime/flow_internal.h"
 #include "graph/runtime/instance.h"
 #include "support/array.h"
+#include "test/support/report.h"
 #include "test/whole_aggregate_fixture.h"
 
 #include <string.h>
@@ -192,7 +193,7 @@ void whole_component_smoke()
     assert(!ecs_world_apply_commands(world));
     run = flow_run_start(g, entry, (flow_inputs){ &handle, 1 }, &options, &error);
     assert(run && flow_run_resume(run) < 0 && oracle == eval_oracle_calls());
-    printf(
+    test_note(
         "%s: whole component access across 20,001 entities, nested snapshots; "
         "zero "
         "oracle calls\n",

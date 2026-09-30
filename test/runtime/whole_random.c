@@ -256,7 +256,7 @@ void test_compiled_random(const char *path)
     if (library) {
         assert(!dlclose(library));
     }
-    puts("PASS: whole random values and draw order across ranges, errors, nested calls, loops, waits, cancellation and inspection");
+    test_note("PASS: whole random values and draw order across ranges, errors, nested calls, loops, waits, cancellation and inspection\n");
 }
 void emit_random_c(const char *path)
 {

@@ -199,7 +199,7 @@ void test_delay_entries(const char *path)
     if (library) {
         assert(!dlclose(library));
     }
-    puts("PASS: authored Delay, safe points, budgets and native/bytecode variant switches across every suspension");
+    test_note("PASS: authored Delay, safe points, budgets and native/bytecode variant switches across every suspension\n");
 }
 void emit_delay_c(const char *path)
 {

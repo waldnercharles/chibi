@@ -515,5 +515,5 @@ void test_compiled_components()
         whole_component_smoke();
         behavior_debug_backend(previous);
     }
-    puts("PASS: whole component writes, snapshots, stale handles, missing components, source errors and budgets");
+    test_note("PASS: whole component writes, snapshots, stale handles, missing components, source errors and budgets\n");
 }

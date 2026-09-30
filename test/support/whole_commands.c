@@ -4,6 +4,7 @@
 #include "graph/nodes/math_nodes.h"
 #include "graph/runtime/flow_internal.h"
 #include "graph/runtime/instance.h"
+#include "test/support/report.h"
 #include "test/whole_command_fixture.h"
 
 #include <stdio.h>
@@ -274,7 +275,11 @@ void whole_command_smoke()
     uint64_t eval = eval_oracle_calls(), flow = flow_oracle_calls();
     assert(run && !flow_run_resume(run) && run->whole_function_executed && c.calls == 4);
     assert(eval == eval_oracle_calls() && flow == flow_oracle_calls());
-    printf("PASS: %s whole command loop and direct host calls; zero oracle calls\n", behavior_backend_name(behavior_default_backend()));
+    test_note(
+        "PASS: %s whole command loop and direct host calls; zero oracle "
+        "calls\n",
+        behavior_backend_name(behavior_default_backend())
+    );
     flow_run_free(run);
     whole_command_clear(&c);
     behavior_instance_destroy(bi);

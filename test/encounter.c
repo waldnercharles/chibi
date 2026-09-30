@@ -16,6 +16,7 @@
 #include "support/array.h"
 #include "support/text_file.h"
 #include "test/support/event_fixture.h"
+#include "test/support/report.h"
 #include "test/support/simulation_fixture.h"
 
 #include <assert.h>
@@ -46,7 +47,7 @@ static behavior_asset *behavior(const char *name)
     compile_report report;
     compile_report_init(&report);
     int errors = behavior_asset_compile(asset, &report);
-    for (int i = 0; i < acount(report.items); i++) {
+    for (int i = 0; errors && i < acount(report.items); i++) {
         fprintf(stderr, "%s: %s\n", name, report.items[i].message);
     }
     assert(errors == 0);
@@ -1555,7 +1556,7 @@ void test_encounter()
         defeat_encounter(preview, false);
         defeat_encounter(preview, true);
     }
-    puts("encounter PASS: query snapshots, accepted damage, floor pulses, ship motion, source shards, XP lifecycle and final collection, same-tick defeat precedence and fresh runs in both hosts");
+    test_note("encounter PASS: query snapshots, accepted damage, floor pulses, ship motion, source shards, XP lifecycle and final collection, same-tick defeat precedence and fresh runs in both hosts\n");
 }
 
 static uint64_t reflected_world_hash(const ecs_world *world)
@@ -1655,5 +1656,5 @@ void test_encounter_backend_parity()
         }
     }
     behavior_debug_backend(previous);
-    puts("PASS: native, bytecode and oracle frame hashes match for authored encounter spawning, damage and death in Scene and prototype hosts");
+    test_note("PASS: native, bytecode and oracle frame hashes match for authored encounter spawning, damage and death in Scene and prototype hosts\n");
 }

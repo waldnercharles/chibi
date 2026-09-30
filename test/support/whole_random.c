@@ -3,6 +3,7 @@
 #include "graph/nodes/vector_nodes.h"
 #include "graph/runtime/flow_internal.h"
 #include "graph/runtime/instance.h"
+#include "test/support/report.h"
 #include "test/whole_random_fixture.h"
 
 #include <assert.h>
@@ -138,7 +139,7 @@ void whole_random_smoke()
         smoke_case(kind, -limit, limit);
         smoke_case(kind, limit, limit);
     }
-    printf(
+    test_note(
         "PASS: %s whole random scalar/vector values, shared draws, projections "
         "and RNG sequence; zero compiled oracle calls\n",
         behavior_backend_name(behavior_default_backend())

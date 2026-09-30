@@ -1,6 +1,7 @@
 #include "graph/document/events.h"
 #include "graph/document/serialize.h"
 #include "graph/runtime/instance.h"
+#include "test/support/report.h"
 
 #include <assert.h>
 #include <stdio.h>
@@ -106,5 +107,5 @@ void test_typed_events()
     assert(graph_event_matches(call, definition));
     behavior_asset_free(asset);
     behavior_asset_free(definition);
-    puts("typed event signatures, delayed payloads and atomic edits: ok");
+    test_note("typed event signatures, delayed payloads and atomic edits: ok\n");
 }

@@ -6,6 +6,7 @@
 #include "support/array.h"
 #include "support/xalloc.h"
 #include "test/support/event_fixture.h"
+#include "test/support/report.h"
 #include "test/support/simulation_fixture.h"
 
 #include <assert.h>
@@ -62,7 +63,7 @@ static behavior_asset *read_behavior(const char *name)
     compile_report report;
     compile_report_init(&report);
     int errors = behavior_asset_compile(asset, &report);
-    for (int i = 0; i < acount(report.items); i++) {
+    for (int i = 0; errors && i < acount(report.items); i++) {
         fprintf(stderr, "%s: %s\n", path, report.items[i].message);
     }
     assert(errors == 0);
@@ -198,5 +199,5 @@ void test_pursuit()
         ecs_world_free(world);
     }
     game_prototype_free(prototype);
-    puts("pursuit PASS: authored enemy targeting, normalized motion, range, target changes and arrival in both preview hosts");
+    test_note("pursuit PASS: authored enemy targeting, normalized motion, range, target changes and arrival in both preview hosts\n");
 }

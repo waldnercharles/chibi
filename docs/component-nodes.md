@@ -2,7 +2,7 @@
 
 Behavior graphs read, write, add and remove reflected components with **Get Component**, **Set Component**, **Has Component**, **Add Component** and **Remove Component**, and build or split reflected structs with **Make Struct** and **Break Struct**. These seven nodes replace the generated per-component and per-struct nodes in the add-node catalog. The generated descriptors remain, and every component node lowers to them before anything evaluates, compiles or debugs the graph.
 
-The implementation is in `graph/nodes/component_nodes.{h,c}`.
+The implementation is in `src/graph/nodes/component_nodes.{h,c}`.
 
 ## The nodes
 
@@ -109,17 +109,10 @@ Loading prepares a component node from its key and field names before it applies
 
 A preset spawns the component node already configured. Its `ed_search_match.setting` and `.field` carry the preset, and wire compatibility uses the configured pin types. `component_node_presets` lists them for the editor and for MCP `searchNodes`, which returns each as `add_node`'s `type` and `inputs`.
 
-Browsing the catalog of a behavior graph owned by an entity, measured by `test_suite --editor-graph`:
-
-| | Before | After |
-| --- | --- | --- |
-| Entries with an empty query | 1,112 | 178 |
-| Whole-component Get/Set/Has variants | 350 | 3 component nodes |
-| Field setters | 346 | 0 (presets on query) |
-| Add/Remove variants | 116 | 2 component nodes |
-| Make/Break | 129 | 2 struct nodes |
-
-This is the test registry, which adds a few test-only nodes to the application's. For the 58 game components and 63 game structs, queries can find 761 presets: 5 per component, 345 for fields and 2 per struct.
+An empty query therefore lists a handful of component nodes where it once
+listed a generated Get/Set/Has/Add/Remove variant per component, a setter per
+field and a Make/Break per struct; `test_suite --editor-graph` checks the
+catalog.
 
 ## Editors and tools
 

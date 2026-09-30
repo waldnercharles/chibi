@@ -12,7 +12,8 @@ each ends on a checkable state.
 
 1. **See it.** Screenshot the graph as the editor draws it:
    `build/chibi --project-root <root> --open <Asset> [--graph "<Graph>"] --screenshot /tmp/<name>.png`,
-   then read the image (downscale past 2000 px first: `sips -Z 1920`). Also
+   then read it with the zoom MCP's `view_image` (or downscale past 2000 px
+   first, e.g. `sips -Z 1920` on macOS). Also
    `inspectGraph`. Done when you can state what the graph does in two
    sentences and list what reads badly.
 2. **Record a baseline.** Before editing, capture evidence the change must

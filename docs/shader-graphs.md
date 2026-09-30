@@ -5,7 +5,8 @@ that calculation across the object's pixels. They use the same graph editor as
 behaviors, but have data wires rather than execution flow: there are no events,
 delays, spawning, or mutable gameplay variables in a shader.
 
-The three asset folders have different jobs:
+The three asset folders have different jobs. The examples named below are test
+fixtures under `test/fixtures/content`:
 
 | Folder | What an asset defines | Example |
 | --- | --- | --- |
@@ -34,12 +35,10 @@ In a 3D scene, **3D Geometry** supplies the solid: box, sphere, capsule, cone or
 triangle prism or octahedron. Materials shade both paths. A 2D Shape graph does not turn into a 3D solid.
 Without a material graph, ordinary material/appearance colors remain available.
 
-To explore the example, open `scenes/ShaderDemo.yaml`, then open
-`materials/PulseRing.yaml`. Its preview shows the material in isolation. Open the
-`ShaderMath.Pulse` call to inspect the shared calculation. Open
-`shapes/SmoothUnion.yaml` to inspect geometry instead of color. Select an actor
-in the scene to change its Shader parameter values; the material defaults stay
-shared while the selected instance's override is independent.
+The fixture scene `scenes/ShaderDemo.yaml` places `PulseRing`,
+`OutlineGradient` and `SmoothUnion`. Each actor can override its Shader
+parameter values; the material defaults stay shared while an instance's
+override is independent.
 
 Parameters are named scalar, Boolean, vector or color inputs. Select a Parameter or
 Constant to change its type. Vectors have inline numeric controls; Color uses a
@@ -47,7 +46,8 @@ floating point picker that preserves values above one for emission. Choosing the
 current type keeps its value. Type changes preserve the common components. The
 compiler supports up to 32 parameters per graph and assigns their internal slots.
 A behavior can use **Set Material Parameter** to change an instance at runtime;
-`DamageFlashBehavior` sets `Flash` on damage and resets it after a delay.
+the `DamageFlashBehavior` fixture sets `Flash` on damage and resets it after a
+delay.
 
 Every material ends in **Surface Output**:
 
@@ -99,7 +99,7 @@ prototypes or animated by behaviors. `ArenaFloor` samples at each triangular
 cell center, so a whole panel receives the same response. It combines the signal
 with a grid mask to make edges brighter than the fill. This signal is independent
 of Point Light, and isolated material previews have no activity sources. See the
-[reactive arena notes](arena-development.md#reactive-visual-iteration-september-9-2026)
+archived [reactive arena notes](archive/arena-development.md#reactive-visual-iteration-september-9-2026)
 for history limits and an authored hit/death pulse example.
 
 Mapping transforms coordinates, so increasing Scale makes a sampled pattern
@@ -173,7 +173,7 @@ the usual limits of object sorting.
 Direct lighting uses GGX, Smith visibility and Schlick Fresnel, following
 [Filament's standard model](https://google.github.io/filament/main/filament.html#materialsystem/standardmodelsummary).
 The current key light and hemisphere ambient establish material response.
-Opaque and transparent surfaces now accumulate scene-linear color in an RGBA16F
+Opaque and transparent surfaces accumulate scene-linear color in an RGBA16F
 canvas. Bloom and exposure run after transparency, followed by Reinhard tone
 mapping and one exact sRGB display conversion. This retains bright emission for
 the glow pass and blends transparent materials before tone mapping. RGB is
@@ -202,19 +202,16 @@ The strength, threshold and radius vocabulary also follows
 [Unreal's bloom controls](https://dev.epicgames.com/documentation/unreal-engine/bloom-in-unreal-engine?lang=en-US).
 It does not implement those engines' full post-processing feature sets.
 
-On desktop, the 2D renderer translates Surface values into its internal scene,
+The 2D renderer translates Surface values into its internal scene,
 emission, albedo and absorption buffers for radiance cascades. Designers do not
 wire those buffers themselves. Normal still faces the camera along +Y; its X and
 Z tilt the surface sideways and up, and Roughness sets gloss. Solids light that
 relief from the directions of light received around them, and Height casts short
-shadows across it. On web, a fragment shader draws the 2D material and shape graphs;
-2D radiance cascades are not implemented there. The 3D Surface path is shared
-across native and WebGL. Invalid graph edits preserve valid rendering and expose
+shadows across it. The 3D Surface path is shared across native and WebGL. Invalid graph edits preserve valid rendering and expose
 diagnostics.
 
-This is a growing material system. Mesh vertex deformation and the full
-expression catalog of other engines remain open work in [the arena roadmap](arena-roadmap.md). Supplied materials have been
-migrated directly to Surface Output; the old lighting-buffer output is removed.
+Mesh vertex deformation and the full expression catalog of other engines
+remain open work.
 
 ## Arena development
 
@@ -224,7 +221,7 @@ materials. Arena2D material graphs live under
 `content/materials`. Shared pulse/ring functions and the designer effect nodes
 keep each project's example roots focused on their visible effects.
 
-The shared graph vocabulary now includes Vector3, Normalize, Clamp, Saturate,
+The shared graph vocabulary includes Vector3, Normalize, Clamp, Saturate,
 Step, Smoothstep and Noise. Noise is smooth deterministic value noise with a
 Scale input and a scalar result between zero and one. It accepts up to three
 coordinate components, including ordinary 2D Position. It is not a claim of
@@ -235,8 +232,7 @@ checks, including negative coordinates and extreme finite inputs.
 
 Relevant implementation: `src/graph/shader/` owns validation, CPU evaluation and
 GLSL generation; `src/render/shader_catalog.c` owns compiled graph assets and
-parameters; `src/render/scene_renderer.c` connects entities to desktop/web
-rendering.
+parameters; `src/render/scene_renderer.c` connects entities to rendering.
 
 ## Image Texture
 
@@ -314,9 +310,9 @@ for hardware texture interpolation and sRGB decode precision. Tests also cover
 image-key ownership, JSON/clipboard round trips, missing resources, independent
 settings, and rendered material behavior across multiple image sets.
 
-`EnergyCells` is an editable example with eleven connected nodes. Time and Scroll
+The `EnergyCells` fixture is an example with eleven connected nodes. Time and Scroll
 Speed drive Mapping; Image Texture feeds a charcoal/cyan Color Ramp; Intensity
 controls Emission. Tiling sets repetition. The 128-pixel grayscale source is
-`content/textures/EnergyCells.png`. Open `ShaderImageDemo` to see the material on a
-box, prism and sphere with independent instance parameters, or run
-`make play PROJECT=. SCENE=scenes/ShaderImageDemo.yaml`.
+`content/textures/EnergyCells.png`, and the `ShaderImageDemo` fixture scene
+shows the material on a box, prism and sphere with independent instance
+parameters.

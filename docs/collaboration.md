@@ -100,13 +100,12 @@ the collaboration wrapper does not change the project format.
 
 ## Access and deployment
 
-For local development, start the dependency-free Node service and configure the
-web build with its public URL:
+For local development, start the dependency-free Node service and build the
+web editor with its public URL:
 
 ```sh
 node tools/collab/server/server.mjs
-emcmake cmake -S . -B build-web -DCHIBI_COLLAB_URL=http://127.0.0.1:8787
-make web-serve PROJECT=projects/arena2d WEB_PORT=8099
+make web-serve CHIBI_COLLAB_URL=http://127.0.0.1:8787 PROJECT=projects/arena2d WEB_PORT=8099
 ```
 
 Open `http://127.0.0.1:8099` in one browser session and choose **Host room**.
@@ -163,8 +162,10 @@ Room controls explain that connecting requires the web editor.
 
 ## Verification
 
-Run `make test`, `make build`, and `make web`. The focused C protocol/replay
-selector is `build/test_suite --collab`. It checks malformed and truncated
+Run `make test`, `make build`, and `make web`, plus the room service's own
+tests with `node --test tools/collab/server/test/*.test.mjs` (`make test` runs
+only the browser client test). The focused C protocol/replay selector is
+`make test-fast TEST_ARGS=--collab`. It checks malformed and truncated
 messages, ordering, duplicate acceptance, rejection, sequence gaps, snapshot
 failure and recovery, replay non-recursion, and host departure.
 

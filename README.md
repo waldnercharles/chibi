@@ -68,22 +68,12 @@ Run `make help` for the complete target list and the purpose of each target.
 The [frame-time optimization roadmap](docs/research/frame-time-roadmap.md)
 records current Arena measurements, remaining performance options and the
 acceptance criteria for consistent 60 FPS and higher refresh rates.
-The [Tracy workflow](docs/tracy.md) explains the optional native timeline
-profile and its MCP analysis server.
 
 When available, Chibi MCP is the default interface for authoring shaders,
 behaviors, prototypes, and scenes. See [the MCP workflow](docs/mcp.md) for
 the public tools and validation sequence.
 
-### Zed
-
-Open the repository root in Zed and run `Build (Debug)` from `task: spawn` once
-after cloning. The project settings use clangd and the checked-in
-`.clang-format`; the build creates the compilation database that powers
-completion, diagnostics, navigation, and formatting. `.zed/tasks.json` also
-provides editor, Arena3D, development-reload, test, render-check, and release
-tasks. `.zed/debug.json` provides CodeLLDB launch profiles for the editor,
-Arena3D, and the test suite.
+### Toolchain and caches
 
 Native builds require CMake, a C23 compiler, and libclang. Dependencies
 are pinned in CMake. On macOS, the Makefile uses Homebrew
@@ -143,6 +133,9 @@ and offers Reload. `make web-serve` sends the same edits to the browser.
 | `include/chibi` | Versioned application lifecycle contract shared with the host |
 | `src/host` | Window lifetime, module replacement, checkpoint files, native source watching |
 | `src/editor` | Workspace, documents, graph editing and the RmlUi Studio |
+| `src/editor/collab` | Collaboration rooms: protocol, action replay and checkpoints |
+| `src/automation` | Headless controller operations behind `chibi_ctl` and the MCP |
+| `src/ui` | RmlUi integration and native UI motion elements |
 | `src/graph` | Graph model, node catalog, documents, compilation and execution |
 | `src/runtime` | ECS-backed behavior, system and scene execution |
 | `src/ecs` | Entity storage, component layout and queries |
@@ -151,13 +144,33 @@ and offers Reload. `make web-serve` sends the same edits to the browser.
 | `src/support` | Allocation, arrays, text and small shared utilities |
 | `src/platform` | Integration with the actual framework headers |
 | `tools/reflect` | Native reflection generator and identity manifest checks |
+| `tools/chibi_ctl`, `tools/mcp` | Native automation controller and the MCP adapter |
+| `tools/collab` | Browser collaboration client and room service |
 | `cmake` | Build generation, development descriptors and immutable staging |
 | `test` | Tests and fixture-only reflection packs, assets and helpers |
-| `content` | Assets shipped with the editor |
+| `content` | Arena3D reference project assets (the root `project.yaml`) |
+| `projects` | Neon Swarm (`arena2d`), SpaceCadet, HRC Lab and the Studio editor UI project |
 
 Internal headers live beside their implementations. The `include` tree contains
 only the boundary another binary consumes. `cmake/sources.cmake` records compilation
 ownership separately from the conceptual folder layout.
 
-See [the implementation tracker](docs/refactor-plan.md) and
-[the reload contract](docs/reload.md) for the acceptance checks and lifetime rules.
+## Documentation
+
+- [AGENTS.md](AGENTS.md): conventions and checks for every change.
+- [MCP workflow](docs/mcp.md): the authoring tools and validation sequence.
+- [Reload contract](docs/reload.md): host/application lifetime and `make dev`.
+- [Compiled behaviors](docs/compiled-behaviors.md), [component nodes](docs/component-nodes.md),
+  [Behavior Expression](docs/math-expressions.md) and [graph optimizer](docs/graph-optimizer.md):
+  behavior graph language and execution.
+- [Shader graphs](docs/shader-graphs.md): materials, shapes and shader libraries.
+- [Studio UI authoring](docs/studio-ui-authoring.md): the editor UI, authored in `projects/studio`.
+- [Editor UI references](docs/editor-ui-references.md), [node editor references](docs/editor-graph-references.md)
+  and [authoring navigation](docs/authoring-navigation.md): interaction contracts and refactoring features.
+- [Neon Swarm](docs/neon-swarm-sandbox.md) and [world exploration](docs/neon-world-exploration.md): the `arena2d` game.
+- [HRC lighting](docs/hrc-lab.md), [material engine](docs/material-engine.md),
+  [GPU benchmarks](docs/neon-gpu-benchmarks.md) and [SDF terrain](docs/sdf-terrain-notes.md): 2D rendering and simulation.
+- [Collaboration](docs/collaboration.md): web rooms and the room service.
+- [Tracy](docs/tracy.md): native timeline profiling.
+
+Finished plans and past research live in [docs/archive](docs/archive/README.md).

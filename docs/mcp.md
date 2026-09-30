@@ -44,7 +44,8 @@ printf '%s\n' \
 ```
 
 The checked-in `.mcp.json` starts the self-locating adapter for MCP hosts that
-support project configuration. The public catalog and canonical workflow below
+support project configuration, alongside `tools/zoom/server.py`, an image
+crop-and-magnify tool for inspecting previews. The public catalog and canonical workflow below
 are shared by MCP hosts and Codex.
 
 Codex can start the adapter automatically for this repository. Its project
@@ -79,17 +80,6 @@ differ. Prefer the build tools over hand edits; they keep IDs, hashes and
 layout consistent.
 
 ## Default authoring workflow
-
-For reproducible rendering measurements, `previewScene` accepts
-`freeze_simulation` and an `input_timeline` spanning preparation and advancing
-render frames. Results include initial/final runtime state and the active GPU
-backend. Optional `metal_capture` and `capture_frame` record one warmed frame on
-supported Macs. `pass_timing` reports average GPU milliseconds per render pass,
-from command-buffer timestamps on Metal and by waiting for the GPU elsewhere;
-`pass_timing_detail` also splits each HRC cascade level. `capture_frames`
-writes every measured frame to a raw RGBA8 file for judging motion and temporal
-effects. Both serialize or read back each frame, so their frame totals are not
-benchmarks. See [the GPU benchmark workflow](neon-gpu-benchmarks.md).
 
 Use the MCP for authored content whenever it is available. Route requests by
 domain:
@@ -359,7 +349,9 @@ The client can also read these MCP resources:
 All public tools report safety metadata through `describeContract`. They do not
 provide arbitrary shell commands, network access, editor UI control, or access
 to files outside the project data needed by the native controller. `buildGraph`
-writes authored graph assets after validation and an expected-hash check. They are marked as modifying tools. `recordScenario`
+and the other build, optimize, rename and delete tools write authored assets
+only after validation and an expected-hash check, and are marked as modifying
+tools. `recordScenario`
 writes only its bounded generated recording artifact under `/tmp`, and
 `replayScenario` accepts only a returned
 recording or a safe generated recording path.
@@ -612,7 +604,7 @@ that consumes the library to see its effect.
 Requests are bounded: node search returns at most 50 entries, edit batches
 contain at most 128 operations, scene edits contain at most 128 operations and
 64 behavior attachments per entity. Shader previews are at most 512 by
-512; scene previews accept 64–1024 pixels per side. `searchNodes` can filter by pin type, container, pin kind, and purity.
+512; scene previews accept 64–2048 pixels per side. `searchNodes` can filter by pin type, container, pin kind, and purity.
 Preview time is explicit and deterministic. Pass `parameters` as an object
 keyed by `Shader Parameter` names to try scalar values or exact-width vector
 arrays without editing the asset. Unknown names, nonfinite values, and wrong
@@ -661,11 +653,14 @@ printf '%s\n' '{"contract":1,"operation":"status"}' |
   build/chibi_ctl --project-root .
 ```
 
-The repository contains two project roots: Arena3D at the repository root and
-Arena2D at `projects/arena2d`, with its own manifest and `content` tree. The
-MCP launcher defaults to Arena2D when that project is present, matching the
-default Make and editor workflows. Set `CHIBI_ROOT` to select a different
-project explicitly. Point the controller or renderer at the project root when
+Each project root has its own `project.yaml` and `content` tree: Arena3D at
+the repository root, and Neon Swarm (`projects/arena2d`), SpaceCadet, HRC Lab
+and Studio under `projects/`. The MCP launcher defaults to
+`projects/arena2d` when it is present, matching the default Make and editor
+workflows. Set `CHIBI_ROOT` to select a different project explicitly. The
+launcher sets the controller path from its own location; when launching
+`server.mjs` directly outside the repository, set `CHIBI_ROOT` and `CHIBI_CTL`
+to an explicitly built controller executable. Point the controller or renderer at the project root when
 searching, authoring, running, or previewing assets; names are resolved only
 within that project.
 
@@ -683,8 +678,8 @@ printf '%s\n' '{"contract":1,"operation":"asset_dependencies","kind":"behavior",
   build/chibi_ctl --project-root .
 printf '%s\n' '{"contract":1,"operation":"inspect_graph","kind":"library","name":"DirectionMath","graph_name":"Direction Orientation"}' |
   build/chibi_ctl --project-root .
-printf '%s\n' '{"contract":1,"operation":"inspect_system","kind":"system","name":"MovementSystem"}' |
-  build/chibi_ctl --project-root .
+printf '%s\n' '{"contract":1,"operation":"inspect_system","kind":"system","name":"FreeMotion"}' |
+  build/chibi_ctl --project-root projects/arena2d
 printf '%s\n' '{"contract":1,"operation":"run_scenario","kind":"prototype","name":"ArenaPlayer","frames":60,"fixed_dt":0.0166666666666667}' |
   build/chibi_ctl --project-root .
 printf '%s\n' '{"contract":1,"operation":"runtime_snapshot","kind":"prototype","name":"ArenaPlayer","frames":2,"entity_limit":32,"component_limit":16,"field_limit":32}' |
@@ -730,7 +725,7 @@ game shows: each record names its `entity` and `element` selector with the
 check a HUD headless. The operation is read-only and does not write authored
 content.
 
-`runScenario` and `captureRuntimeSnapshot` accept up to 600 input changes across a
+`runScenario` and `captureRuntimeSnapshot` accept up to 1,800 input changes across a
 run lasting up to 30 simulated minutes. Use `inputs` for consecutive frames or
 `input_timeline: [{"frame": 0, "input": {...}}, ...]` for sparse changes. Timeline
 frames must be unique, increasing, and less than `frames`. Movement, aim, and
@@ -756,8 +751,7 @@ Each input can contain:
   the element emits is sent to the target entity, as the rendered document
   does.
 
-Aim goes through the engine's normal input path. An `Aim` event and the old
-object-shaped `actions` input are not part of this contract.
+Aim goes through the engine's normal input path.
 
 Scenario preparation registers the entire runtime prototype catalog and its
 behavior dependencies before launch, including prototypes spawned by name but
@@ -766,15 +760,14 @@ not placed in the scene. `buildScene` copies prototype behaviors when
 attached behaviors. Scene/world positions and player UI layout are authored
 component fields. Only graph node placement is automatic.
 
-`recordScenario` captures at most 600 fixed steps. Recording format **v2** has
+`recordScenario` captures at most 1,800 fixed steps. Recording format **v2** has
 one canonical set of fields: `version`, `contract_version`, `id`, `format`,
 `kind`, `name`, `content_hash`, `runtime_content_hash`, `assets`, `frames`,
 `fixed_dt`, `artifact_path`, `inputs`, `saved_state`, `frame_hashes`,
 `live_entities`, and `world_hash`. `assets` is the runtime dependency manifest.
 Per-frame hashes include reflected world state, committed saves, visibility
 memory and sound cue history. Replaying rejects changed dependencies before
-execution. Old v1 recordings and duplicate field aliases were removed; record
-new evidence after a contract change. Artifact IDs and paths are still bounded
+execution; record new evidence after a contract change. Artifact IDs and paths are still bounded
 and stored outside authored content.
 
 `replayScenario` accepts exactly one returned recording or its generated
@@ -892,8 +885,7 @@ events control the session.
 
 Control codes: mouse left=1, mouse right=2, Space=3, Shift=4, Tab=5, Enter=6,
 A–Z=7–32, pad A/B/X/Y=33–36, shoulders=37/38, triggers=39/40, aim stick=41.
-The editor shows named choices. Existing Arena controls are migrated to
-components in its player prototype and scene.
+The editor shows named choices.
 
 Save stores allow 1,024 namespaced keys of 1–256 bytes, values up to 65,536
 bytes, and 1 MiB total text. Standalone native Play uses the platform's
@@ -905,7 +897,7 @@ only. Restart discards pending values. Store unlock choices at extraction and
 leave run inventory in ordinary variables/components. Saved settings can drive
 sound volume, effect intensity, camera displacement and animation amounts.
 
-The web 2D renderer uses the authored ambient and emission gains directly; indirect lighting, light haze and shadow-floor tuning require the native radiance renderer.
+## Scene previews, paging and checks
 
 Use `previewScene` with a scene/prototype name, optional frames, inputs and
 saved state to inspect a running result. It uses the same 2D/3D renderer,
@@ -914,28 +906,35 @@ This tool needs GPU/display access. Returned images include the UI; structured
 JSON omits the base64 bytes. For visual fixtures, explicitly author material
 emission rather than relying on the emissive appearance fallback.
 
+For reproducible rendering measurements, `previewScene` accepts
+`freeze_simulation` and an `input_timeline` spanning preparation and advancing
+render frames. Results include initial/final runtime state and the active GPU
+backend. Optional `metal_capture` and `capture_frame` record one warmed frame on
+supported Macs. `pass_timing` reports average GPU milliseconds per render pass,
+from command-buffer timestamps on Metal and by waiting for the GPU elsewhere;
+`pass_timing_detail` also splits each HRC cascade level. `capture_frames`
+writes every measured frame to a raw RGBA8 file for judging motion and temporal
+effects. Both serialize or read back each frame, so their frame totals are not
+benchmarks. See [the GPU benchmark workflow](neon-gpu-benchmarks.md).
+
 Catalog, search, and asset-list responses accept a numeric `limit` and `cursor`,
 and return `total`, `count`, `has_more`, and `next_cursor`. Catalog and search
 also accept `summary: true` to omit relationship arrays from each asset record.
 
-The launcher selects the Arena2D project by default when it is present and
-honors an explicit `CHIBI_ROOT`. It sets the controller path from its own
-location. When launching `server.mjs` directly outside the repository, set
-`CHIBI_ROOT` or `CHIBI_CTL` to an explicitly built controller executable.
-
-`make test` includes the MCP protocol and native-controller smoke checks,
-including `design-smoke.mjs`, which builds independent fixtures entirely through
-MCP. `CHIBI_KEEP_DESIGN_FIXTURE=1` retains them; `CHIBI_MCP_GPU=1` also renders
-2D/3D fog, fitting and dock previews. `--game-capabilities` runs native save,
-visibility and sound checks. Set
-`CHIBI_VISIBILITY_BENCH=1` for the moving-observer visibility benchmark.
-Custom build checks use that build's controller and render-controller binaries.
+`make test` includes the MCP protocol and native-controller smoke checks
+(`check-mcp`), including `design-smoke.mjs`, which builds independent fixtures
+entirely through MCP. `CHIBI_KEEP_DESIGN_FIXTURE=1` retains them. `make
+test-render` runs `check-mcp-gpu`, which also renders shader previews and, with
+`CHIBI_MCP_GPU=1`, 2D/3D fog, fitting and dock previews.
+`make test-fast TEST_ARGS=--game-capabilities` runs native save, visibility and
+sound checks; set `CHIBI_VISIBILITY_BENCH=1` for the moving-observer visibility
+benchmark. Each check uses its own build's `chibi_ctl`.
 
 The adapter is intentionally local and bounded. Semantic asset edits, runtime
 inspection, deterministic recordings, and shader previews share the native
 controller contract without adding arbitrary shell or file access.
 
-### Graph optimization
+## Graph optimization
 
 `optimizeGraph` reports proven binding folds, graph locals, cleanup, and skipped
 candidates. It defaults to a dry run. Apply uses `dry_run: false` and the current

@@ -13,7 +13,7 @@ The graph action menu retains the applied counts and skipped-candidate summary.
 
 ## Representation and proof
 
-`graph/authoring/optimize` owns the shared analysis and mutation passes. It checks
+`src/graph/authoring/optimize*.c` own the shared analysis and mutation passes. It checks
 an entire source fanout before applying that group. Component identities are
 emitted by reflection as descriptor metadata and checked against the registered
 descriptor, access contract, aggregate type, and exposed field mapping. Binding
@@ -61,7 +61,8 @@ use aliases without gaining unsupported behavior bindings.
 
 ## Automation
 
-`optimize_graph` uses the same optimizer and report. It defaults to `dry_run: true`,
+The MCP's `optimizeGraph` (native operation `optimize_graph`) uses the same
+optimizer and report. It defaults to `dry_run: true`,
 accepts `graph_name` or `graph_id`, and allows `fanout_threshold` from 2 through
 64. Applying requires the current `expected_hash`. A request is bounded to 512
 nodes and 4096 edges. Apply publishes the proposal atomically after the hash check;
@@ -73,8 +74,7 @@ used three or more times becomes a local. A tree grows through nodes whose only
 use is a plain wire into more math, breadth first, up to about a line of formula;
 a deeper operand becomes its own expression. Computed inputs get placeholder
 letters (`a`, `b`, ...) for the author to rename; named sources keep their names.
-Output is bit-identical: Basalt drops from 298 to 90 nodes and CaveField from 51
-to 16. The report adds `created_expressions`. Studio's graph menu (⋯) offers
+Output is bit-identical. The report adds `created_expressions`. Studio's graph menu (⋯) offers
 Optimize and Math to Expressions.
 
 The report includes `folded_inputs`, `removed_nodes`, `created_aliases`,
@@ -96,66 +96,11 @@ apply, and no-op checks. Set-output differential tests cover intervening writes,
 delays with external variable changes, both branch arms, calls, loops, sequence
 boundaries, and paths that bypass the assignment.
 
-The separate output-promotion regression also exposed reversed Get/Set wiring.
-Explicit output promotion now connects the output to a Set Variable input; the
-automatic optimizer does not use this API.
-
 Useful checks:
 
 ```sh
 make build
 make test
-build/test_suite --graph-optimize
-build/test_suite --ui-optimizer
+make test-fast TEST_ARGS=--graph-optimize
 node tools/mcp/optimizer-smoke.mjs .
 ```
-
-The Set Variable and explicit Self follow-up passed a native Release build, 230
-focused optimizer and binding checks, rendered editor interaction, and MCP checks.
-The changed authoring modules also compile for WebAssembly. The complete suite
-currently has one unrelated catalog failure: `content/prototypes/ActionBinding.json`
-is present but absent from the shipped-content allowlist.
-
-## Authored-example dry runs
-
-The following graph copies were analyzed without modifying content assets.
-The selection covers Get_GameEncounter, Get_GamePickup, Delta Time,
-Call Pure Function, and Spawn Prototype. Counts reflect the snapshot used during
-implementation; existing source debug flags and routes can prevent rewrites.
-
-| Asset | Graph | Folded inputs | Removed nodes | Locals |
-| --- | --- | ---: | ---: | ---: |
-| ArenaDropBehavior | Spawn Surface Pulse | 0 | 0 | 0 |
-| ArenaDropBehavior | Spawn Source Beam | 0 | 0 | 1 |
-| ArenaImpactFeedback | Spawn Surface Pulse | 0 | 0 | 0 |
-| ArenaImpactFeedback | Prepare Enemy Experience | 0 | 0 | 1 |
-| ArenaPickupBehavior | Events | 2 | 1 | 0 |
-| ArenaPickupBehavior | Wait and Pulse | 4 | 2 | 0 |
-| ArenaPickupBehavior | Collect Along Spiral | 7 | 1 | 2 |
-| ArenaShardBehavior | Events | 5 | 3 | 0 |
-| ArenaShardBehavior | Advance Shard Motion | 12 | 8 | 1 |
-| ArenaShipMotionBehavior | Events | 11 | 5 | 0 |
-| ArenaShipMotionBehavior | Advance Face Roll | 0 | 0 | 0 |
-| ArenaShipMotionBehavior | Compute Aim Basis | 0 | 0 | 0 |
-| ArenaShipMotionBehavior | Apply Ship Pose | 0 | 0 | 0 |
-| ArenaWaveBehavior | Events | 1 | 1 | 0 |
-| ArenaWaveBehavior | Refresh Encounter | 8 | 4 | 0 |
-| ArenaWaveBehavior | Advance Wave | 12 | 5 | 0 |
-| ArenaWaveBehavior | Spawn Telegraph | 0 | 0 | 1 |
-| ArenaWaveBehavior | Formation Position | 1 | 1 | 3 |
-| ArenaWaveBehavior | Row Formation | 0 | 0 | 0 |
-| ArenaWaveBehavior | Side Formation | 0 | 0 | 0 |
-| ArenaWaveBehavior | Ellipse Formation | 0 | 0 | 0 |
-| CombatFeedback | Update Hit Flash | 5 | 4 | 0 |
-| EnemyBehavior | Events | 4 | 3 | 0 |
-| HealthBehavior | Apply Damage | 1 | 1 | 2 |
-| PlayerContactBehavior | Events | 4 | 4 | 0 |
-| ProjectileBehavior | Events | 4 | 3 | 0 |
-| ProjectileBehavior | Face Direction | 0 | 0 | 0 |
-| SpawnTelegraphBehavior | Events | 4 | 4 | 0 |
-| SpawnTelegraphBehavior | Arrive At Marker | 0 | 0 | 0 |
-| SurfacePulseBehavior | Events | 6 | 6 | 0 |
-| TwinStickInputBehavior | Events | 3 | 3 | 0 |
-| TwinStickWeaponBehavior | Events | 8 | 5 | 0 |
-| TwinStickWeaponBehavior | Fire Ready Projectiles | 2 | 2 | 0 |
-| WavePulseBehavior | Events | 2 | 2 | 1 |

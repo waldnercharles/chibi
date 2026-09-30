@@ -85,9 +85,7 @@ project content. The preserved file retains unsaved documents for recovery after
 an alpha schema change. Live reload still rejects incompatible candidates and
 keeps the active workspace running.
 
-The earlier Python supervisor and its SIGUSR1/exit-75 automatic restart protocol
-have been removed. The native host remains the running process until the user
-closes it. Static native and web builds keep their normal application lifecycle.
+The native host remains the running process until the user closes it. Static native and web builds keep their normal application lifecycle.
 
 The approach follows the small-host/shared-library structure described by
 [remodule](https://github.com/bullno1/remodule) and the user's

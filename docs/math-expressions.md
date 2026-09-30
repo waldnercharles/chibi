@@ -42,7 +42,7 @@ node with Integer pins divides as integers, truncating toward zero.
 ## Shader and field graphs
 
 The same language works in materials, shapes, shader libraries and procedural
-fields. One table in `graph/nodes/math_expression.c` names the behavior, shader
+fields. One table in `src/graph/nodes/math_expression.c` names the behavior, shader
 and field node behind each function; a function a graph kind lacks reports
 `floor() is not available in shader graphs`. Shader and field expressions are
 values only: no assignments, comparisons or boolean logic, and `%` and `^` need
@@ -79,7 +79,7 @@ boundaries still follow the graph's pin types.
 
 Behavior Expression also works in System graphs, including creation from a dragged
 scalar or structured output pin. The connected input belongs to the inferred
-expression signature. Press Enter to regenerate from the expression Inspector.
+expression signature. Press Enter in Properties to regenerate it.
 
 Applying Source parses the expression into ordinary graph nodes in a generated
 function; runtime execution uses that graph rather than evaluating arbitrary text.
@@ -93,32 +93,23 @@ not turn it into a name lookup.
 Boolean expressions retain their boolean `Result`. When placed in an executable
 behavior graph they also expose `Exec`, `True`, and `False`; dataflow and pure
 contexts keep the boolean result without flow pins.
-**Inspect generated graph** opens the ordinary function graph used to evaluate
-the expression. Its contents are read-only; edit the source to regenerate them.
+Opening the expression's call opens the ordinary function graph used to
+evaluate it. Its contents are read-only; edit the source to regenerate them.
 Deleting that generated definition removes its calls too. Undo restores the
 definition and calls together; source edits also support Undo/Redo.
 
 To replace an existing calculation, select its connected pure numeric math nodes,
-open the node context menu, and choose **Convert to Behavior Expression**. The editor
+open the node context menu, and choose **Convert to Expression**. The editor
 preserves incoming wires and component or variable bindings, including reflected
 numeric structs such as `GameTransform`, reconnects the new call to the selected
 result's consumers, and selects the replacement call. A selection may also end at
 one terminal result before it has a consumer. Keep state, component reads,
 execution nodes, and time reads at the boundary of the selection.
 
-Three supplied behaviors use expressions:
-
-- `ProjectileBehavior`: `abs(x) + abs(y)` replaces the two absolute-value nodes
-  and their sum in the direction check. Its consumer remains a float input.
-- `MovementTrailBehavior`: `clamp(dt, 0, 0.10000000149011612) * 64` combines the
-  bounded frame contribution and particle rate. The upper bound spells out the
-  original float value of `0.1`, preserving the existing calculation's boundary.
-- `HealthBehavior`: `clamp(current - clamp(amount, 0, current), 0, maximum)`
-  combines damage bounds, subtraction, and health bounds. Its result uses
-  To Integer at the existing health setter.
-
-The sample conversions are checked at float boundaries, including subnormal
-values and adjacent values around the trail clamp limit. Real-to-integer edges
-also have graph evaluation and serialization checks for truncation, saturation,
-and non-finite inputs. Health tests dispatch actual Damage events to check
-integer limits, clamping, and destruction at zero health.
+Shipped behaviors use expressions for their formulas; for example,
+`HealthBehavior` computes damage as
+`clamp(current - clamp(amount, 0, current), 0, maximum)` and feeds the result
+to the health setter through To Integer. Tests check conversions at float
+boundaries, Real-to-integer truncation, saturation and non-finite inputs, and
+dispatch real Damage events to check integer limits, clamping and destruction
+at zero health.

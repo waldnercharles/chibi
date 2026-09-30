@@ -2,6 +2,7 @@
 
 #include "assets/scenario_document.h"
 #include "editor/workspace/scene_internal.h"
+#include "runtime/save.h"
 #include "support/array.h"
 #include "support/asset_text.h"
 #include "support/text_file.h"
@@ -38,11 +39,43 @@ static int restart(app_scene_authoring *scene)
     return app_scene_authoring_runtime_command(scene, APP_RUNTIME_SCENE, APP_RUNTIME_RESTART);
 }
 
+static game_save *saved_progress(app_scene_authoring *scene)
+{
+    return game_behavior_save(scene->live->behaviors);
+}
+
 int app_scenario_record(app_scene_authoring *scene)
 {
     app_scenario_stop(scene);
-    engine_record_input(scene->runtime, (unsigned)time(NULL));
+    scene->scenario_seed = (unsigned)time(NULL);
+    scene->scenario_saved_state = game_save_export(saved_progress(scene));
+    engine_record_input(scene->runtime, scene->scenario_seed);
     scene->scenario_recording = true;
+    return restart(scene);
+}
+
+/* Replays from the start with the recording's progress and random stream. */
+static int start_replay(app_scene_authoring *scene)
+{
+    const scenario_document *document = scene->scenario;
+    if (!game_save_import(
+            saved_progress(scene),
+            document->saved_state ? document->saved_state : "{}"
+        )) {
+        snprintf(
+            scene->message,
+            sizeof scene->message,
+            "Cannot replay: %s",
+            game_save_error(saved_progress(scene))
+        );
+        return -1;
+    }
+    engine_replay_input(
+        scene->runtime,
+        document->keys,
+        acount(document->keys),
+        document->seed
+    );
     return restart(scene);
 }
 
@@ -74,7 +107,12 @@ int app_scenario_save(app_scene_authoring *scene, char *name, size_t size)
     }
     char scene_asset[128];
     scene_name(scene, scene_asset, sizeof scene_asset);
-    scenario_document document = { .scene = scene_asset, .frames = frames };
+    bool progress = strcmp(scene->scenario_saved_state, "{}") != 0;
+    scenario_document document = { .scene = scene_asset,
+                                   .frames = frames,
+                                   .seed = scene->scenario_seed,
+                                   .saved_state = progress ? scene->scenario_saved_state
+                                                           : NULL };
     for (int i = 0; i < count; i++) {
         apush(document.keys, keys[i]);
     }
@@ -107,13 +145,7 @@ int app_scenario_replay(app_scene_authoring *scene, const char *name)
         return -1;
     }
     scene->scenario = document;
-    engine_replay_input(
-        scene->runtime,
-        document->keys,
-        acount(document->keys),
-        document->seed
-    );
-    return restart(scene);
+    return start_replay(scene);
 }
 
 void app_scenario_stop(app_scene_authoring *scene)
@@ -121,24 +153,19 @@ void app_scenario_stop(app_scene_authoring *scene)
     engine_stop_recording(scene->runtime);
     engine_stop_replay(scene->runtime);
     scene->scenario_recording = false;
+    free(scene->scenario_saved_state);
+    scene->scenario_saved_state = NULL;
     scenario_document_free(scene->scenario);
     scene->scenario = NULL;
 }
 
 int app_scenario_follow(app_scene_authoring *scene)
 {
-    const scenario_document *document = scene->scenario;
-    if (!document || engine_last_timing(scene->runtime)->simulation_steps <
-                         (uint64_t)document->frames) {
+    if (!scene->scenario || engine_last_timing(scene->runtime)->simulation_steps <
+                                (uint64_t)scene->scenario->frames) {
         return 0;
     }
-    engine_replay_input(
-        scene->runtime,
-        document->keys,
-        acount(document->keys),
-        document->seed
-    );
-    return restart(scene);
+    return start_replay(scene);
 }
 
 bool app_scenario_recording(const app_scene_authoring *scene)

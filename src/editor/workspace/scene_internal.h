@@ -173,6 +173,8 @@ struct app_scene_authoring
     bool scene_tab_restoring;
     scenario_document *scenario; /* replayed on the scene runtime, or NULL */
     bool scenario_recording;
+    unsigned scenario_seed;     /* of the recording */
+    char *scenario_saved_state; /* progress the recording started from, owned */
     char message[256];
     char prototype_message[256];
 };

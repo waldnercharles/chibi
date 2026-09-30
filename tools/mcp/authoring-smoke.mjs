@@ -155,7 +155,7 @@ mkdirSync(join(projectRoot, "content", "scenarios"), { recursive: true });
 // A scenario replays keyed input on the scene the batch below creates.
 writeFileSync(
   join(projectRoot, "content", "scenarios", "McpAuthoringScenario.yaml"),
-  `scene: ${sceneName}\nframes: 3\nkeys:\n- {frame: 0, movement: {x: 1, y: 0}}\n- {frame: 2, controls: [Space]}\n`,
+  `scene: ${sceneName}\nframes: 3\nsaved_state: {best: "7"}\nkeys:\n- {frame: 0, movement: {x: 1, y: 0}}\n- {frame: 2, controls: [Space]}\n`,
 );
 
 try {
@@ -280,6 +280,7 @@ try {
     request(28, "profileScenario", { scenario: "McpAuthoringScenario" }),
     request(29, "runScenario", { scenario: "McpAuthoringScenario", kind: "scene" }),
     request(30, "validateAsset", { kind: "scenario", name: "McpAuthoringScenario" }),
+    request(31, "runScenario", { scenario: "McpAuthoringScenario" }),
   ]);
 
   const tools = first.get(2)?.result?.tools || [];
@@ -318,6 +319,7 @@ try {
   const scenarioProfile = structured(first.get(28));
   const scenarioConflict = structured(first.get(29));
   const scenarioValidation = structured(first.get(30));
+  const scenarioRun = structured(first.get(31));
   const surfaceNode = surfaceSearch.result?.nodes?.find((node) => node.type === "Shader Surface Output");
   const shapeNode = shapeSearch.result?.nodes?.find((node) => node.type === "Shader Shape Output");
   // Search lists pins as "name: type".
@@ -380,6 +382,7 @@ try {
   assert(scenarioProfile.ok === true && scenarioProfile.result?.frames === 3 && scenarioProfile.result?.timing?.worst_frames?.length === 3, `scenario profile failed: ${JSON.stringify(scenarioProfile)}`);
   assert(scenarioConflict.ok === false && /omit name, kind and inputs/.test(scenarioConflict.error?.message || JSON.stringify(scenarioConflict)), `scenario with a kind was not rejected: ${JSON.stringify(scenarioConflict)}`);
   assert(scenarioValidation.ok === true, `scenario validation failed: ${JSON.stringify(scenarioValidation)}`);
+  assert(scenarioRun.ok === true && scenarioRun.result?.frames === 3 && scenarioRun.result?.saved_state?.best === "7", `scenario run did not start from its saved progress: ${JSON.stringify(scenarioRun)}`);
   assert(sceneSnapshot.ok === true && sceneSnapshot.result?.entity_count === 1 && sceneSnapshot.result?.entities?.length === 1, `scene runtime snapshot failed: ${JSON.stringify(sceneSnapshot)}`);
   const sceneRenameRun = runMcp(projectRoot, [
     initialize(),

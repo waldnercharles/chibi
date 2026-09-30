@@ -752,7 +752,8 @@ Each key holds its whole input from its frame (a fixed step) until the next key:
 `movement` in [-1, 1], `aim` as a direction or, with `aim_point: true`, a world
 position, `firing`, and held `controls` spelled as `GameControl` labels.
 Omitted fields are zero. `seed` seeds the shared random stream before the scene
-starts. Pass `scenario: Name` to `runScenario` or `profileScenario` in place of
+starts, and `saved_state` replaces the game's saved progress, so a replay starts
+from the progress its recording did; the scene itself starts as authored. Pass `scenario: Name` to `runScenario` or `profileScenario` in place of
 `kind`, `name` and inputs; `frames` defaults to the scenario's. The engine
 replays keys at fixed steps, so a replay matches its recording at any frame rate.
 

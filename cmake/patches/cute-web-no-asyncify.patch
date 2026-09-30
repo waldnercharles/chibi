@@ -1,0 +1,63 @@
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -318,17 +318,9 @@
+ 		-sFULL_ES3=1
+ 		-sALLOW_MEMORY_GROWTH=1
+ 		-sFILESYSTEM=1
+-		-sASYNCIFY=1
+-		-sASYNCIFY_STACK_SIZE=2040000
+-		# Skip ASYNCIFY instrumentation for functions proven never to suspend
+-		# (never reach cf_sleep / a coroutine yield / a fiber swap). This severs
+-		# the allocator hub (cf_alloc & co, an indirect call) and the cspv shader
+-		# compiler from the instrumented set, shrinking the wasm-opt link pass and
+-		# the output module. See cmake/asyncify_remove.txt for the list + contract.
+-		-sASYNCIFY_REMOVE=@${CMAKE_CURRENT_SOURCE_DIR}/cmake/asyncify_remove.txt
+ 	)
+ 
+-	target_compile_options(cute PRIVATE -O1 -fno-rtti -fno-exceptions)
++	target_compile_options(cute PRIVATE -fno-rtti -fno-exceptions)
+ endif()
+ 
+ if(ANDROID)
+--- a/src/cute_graphics_gles.cpp
++++ b/src/cute_graphics_gles.cpp
+@@ -540,6 +540,16 @@
+ 	if (!ring->count) return NULL;
+ 	int index = ring->head;
+ 	CF_GL_Slot& slot = ring->slots[index];
++#ifdef CF_EMSCRIPTEN
++	// WebGL fences signal only once control returns to the browser, and WebGL
++	// orders each upload after the draws already issued, so reuse the slot now
++	// rather than yield mid-frame.
++	if (slot.fence) {
++		glDeleteSync(slot.fence);
++		slot.fence = 0;
++	}
++	slot.in_flight_frame = 0;
++#else
+ 	if (!s_slot_ready(slot)) {
+ 		// Block the CPU until the GPU is done with this slot.
+ 		// If you're seeing this on the hot-path of a profile or flame-graph it means you're GPU bound.
+@@ -548,12 +558,6 @@
+ 			slot.fence = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
+ 			glFlush();
+ 		}
+-#ifdef CF_EMSCRIPTEN
+-		while (!s_slot_ready(slot)) {
+-			// We can't block in glClientWaitSync on WebGL, so poll and yield to simulate it.
+-			cf_sleep(0);
+-		}
+-#else
+ 		if (slot.fence) {
+ 			glClientWaitSync(slot.fence, GL_SYNC_FLUSH_COMMANDS_BIT, GL_TIMEOUT_IGNORED);
+ 			glDeleteSync(slot.fence);
+@@ -561,8 +565,8 @@
+ 			slot.in_flight_frame = 0;
+ 		}
+ 		while (!s_slot_ready(slot)) cf_sleep(0);
+-#endif
+ 	}
++#endif
+ 	slot.last_use_frame = frame;
+ 	ring->head = (index + 1) % ring->count;
+ 	if (out_index) *out_index = index;

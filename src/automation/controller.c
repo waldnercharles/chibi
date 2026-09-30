@@ -865,18 +865,52 @@ static const char *automation_query_component_name(ecs_component_id id, void *)
     return NULL;
 }
 
+enum
+{
+    ASSET_FAMILY_COUNT = sizeof ASSET_FAMILIES / sizeof *ASSET_FAMILIES
+};
+
 static const asset_family *family_by_kind(const char *kind)
 {
     if (!kind) {
         return NULL;
     }
-    for (int i = 0; i < (int)(sizeof ASSET_FAMILIES / sizeof *ASSET_FAMILIES); i++) {
-        if (!strcmp(kind, ASSET_FAMILIES[i].kind) ||
-            !strcmp(kind, ASSET_FAMILIES[i].folder)) {
+    for (int i = 0; i < ASSET_FAMILY_COUNT; i++) {
+        if (!strcmp(kind, ASSET_FAMILIES[i].kind)) {
             return &ASSET_FAMILIES[i];
         }
     }
     return NULL;
+}
+
+static const asset_family *family_by_folder(const char *folder)
+{
+    for (int i = 0; i < ASSET_FAMILY_COUNT; i++) {
+        if (!strcmp(folder, ASSET_FAMILIES[i].folder)) {
+            return &ASSET_FAMILIES[i];
+        }
+    }
+    return NULL;
+}
+
+/* `prefix` followed by the kinds of every family, or of the graph families. */
+static void family_kinds(char *text, size_t size, const char *prefix, bool graphs)
+{
+    int used = snprintf(text, size, "%s", prefix);
+    const char *separator = " ";
+    for (int i = 0; i < ASSET_FAMILY_COUNT && used < (int)size; i++) {
+        if (graphs && ASSET_FAMILIES[i].loader != ASSET_GRAPH) {
+            continue;
+        }
+        used += snprintf(
+            text + used,
+            size - (size_t)used,
+            "%s%s",
+            separator,
+            ASSET_FAMILIES[i].kind
+        );
+        separator = ", ";
+    }
 }
 
 static bool valid_asset_filename(const asset_family *family, const char *filename)
@@ -1124,7 +1158,7 @@ static int resolve_asset_ref(yyjson_val *root, asset_ref *out, char *error, size
         }
         memcpy(folder_name, folder, folder_length);
         folder_name[folder_length] = '\0';
-        out->family = family_by_kind(folder_name);
+        out->family = family_by_folder(folder_name);
         if (!out->family) {
             set_error(error, error_size, "asset not found");
             return -2;
@@ -1150,6 +1184,11 @@ static int resolve_asset_ref(yyjson_val *root, asset_ref *out, char *error, size
     const char *kind = request_string(root, "kind");
     const char *name = request_string(root, "name");
     out->family = family_by_kind(kind);
+    if (kind && !out->family) {
+        char known[256];
+        family_kinds(known, sizeof known, "unknown asset kind; use one of", false);
+        return set_error(error, error_size, known);
+    }
     if (!out->family || !name || !name[0] || strchr(name, '/') ||
         strchr(name, '\\') || strstr(name, "..")) {
         return set_error(error, error_size, "asset requires a known kind and safe name");
@@ -2577,6 +2616,16 @@ static int handle_search_assets(const char *root, yyjson_val *request, response 
         response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "kinds must be an array");
         return -1;
     }
+    yyjson_arr_iter iterator = yyjson_arr_iter_with(kinds);
+    yyjson_val *kind;
+    while ((kind = yyjson_arr_iter_next(&iterator))) {
+        if (!family_by_kind(yyjson_get_str(kind))) {
+            char message[256];
+            family_kinds(message, sizeof message, "kinds must name asset kinds:", false);
+            response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, message);
+            return -1;
+        }
+    }
     page_options page;
     if (!request_page(request, &page, result, exit_code)) {
         return -1;
@@ -2663,7 +2712,9 @@ static int handle_asset_dependencies(const char *root, yyjson_val *request, resp
     const char *kind = request_string(request, "kind");
     const char *name = request_string(request, "name");
     if (!kind || !name || !name[0] || !family_by_kind(kind)) {
-        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "asset_dependencies requires a known kind and name");
+        char message[256];
+        family_kinds(message, sizeof message, "asset_dependencies requires a name and one of the kinds", false);
+        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, message);
         return -1;
     }
     const char *direction = request_string(request, "direction");

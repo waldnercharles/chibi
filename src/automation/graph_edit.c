@@ -275,7 +275,7 @@ static behavior_domain domain_from_kind(const char *kind)
     if (!strcmp(kind, "library")) {
         return BEHAVIOR_DOMAIN_LIBRARY;
     }
-    if (!strcmp(kind, "material") || !strcmp(kind, "shader")) {
+    if (!strcmp(kind, "material")) {
         return BEHAVIOR_DOMAIN_MATERIAL;
     }
     if (!strcmp(kind, "field")) {

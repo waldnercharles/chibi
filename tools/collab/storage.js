@@ -10,7 +10,7 @@
     const factory = initialRoot => {
         const fs = Module['FS'];
         const localRoot = normalizeRoot(initialRoot);
-        let activeRoot = localRoot, roomBase, checkpoint = 0;
+        let activeRoot = localRoot, roomBase;
         const exists = path => fs.analyzePath(path).exists;
         const removeTree = path => {
             if (!exists(path)) return;
@@ -69,20 +69,6 @@
                 }
                 return `${root}/`;
             },
-            stageFiles(files) {
-                if (!roomBase) throw new Error('Prepare the collaboration room before installing a snapshot');
-                validateFiles(files);
-                let root;
-                do { root = `${roomBase}/checkpoint-${++checkpoint}/project`; } while (exists(root));
-                try {
-                    fs.mkdirTree(root);
-                    for (const file of files) write(`${root}/${file.path}`, file.data);
-                    return `${root}/`;
-                } catch (error) {
-                    removeTree(root);
-                    throw error;
-                }
-            },
             // Replaces the active room tree with a verified snapshot's files.
             installFiles(files) {
                 if (!roomBase || !activeRoot.startsWith(`${roomBase}/`)) {
@@ -97,15 +83,6 @@
                     throw new Error('Snapshot root is outside the room workspace');
                 }
                 activeRoot = root;
-            },
-            discardRoot(root) {
-                const path = root.replace(/\/$/, '');
-                if (activeRoot !== root && roomBase && path.startsWith(`${roomBase}/checkpoint-`)) removeTree(path);
-            },
-            leaveRoom() {
-                activeRoot = localRoot;
-                roomBase = undefined;
-                checkpoint = 0;
             },
         };
     };

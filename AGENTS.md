@@ -37,8 +37,9 @@
 
 ## Editor UI
 
-- The editor UI is RmlUi driven from C through the Studio kit (`src/editor/ui/kit.h`); its design is in `docs/prototypes/studio/DESIGN.md`. The behavior graph editor follows `docs/editor-graph-references.md`.
-- Before building a UI mechanism in a panel, find the problem in `docs/editor-ui-references.md` and use the kit primitive. If it is missing, add it to the kit following the reference library's contract. The doc's "Common mismatches" section lists the usual misses: hand-built toasts, popups, motion, class strings, and long lists.
+- The editor's UI is moving entirely into the Studio project (`projects/studio`): authored RML/RCSS documents in `content/ui`, driven by its behaviors and scenes, the way games build their UI. Build new editor UI there, not as C panels on the kit (`src/editor/ui/kit.h`). When new work needs an existing C panel or kit widget, convert that piece to Studio as part of the work. `docs/studio-ui-authoring.md` has the decisions and contracts.
+- Native C remains for what Studio documents host through slots, such as the graph canvas and the viewport. The behavior graph editor follows `docs/editor-graph-references.md`.
+- Before building a UI mechanism, find the problem in `docs/editor-ui-references.md` and follow the reference library's contract it records.
 - Verify UI changes in the web build (`make web`).
 
 ## Working preferences

@@ -15,6 +15,7 @@ typedef struct
     ecs_component_desc desc;
     uint64_t *occupancy;
     uint32_t *dense;
+    bool dense_stale; /* dense still lists slots removed since it was compacted */
     uint32_t slot_count; /* Allocated payload rows, independent of world capacity. */
     int count;
     uint32_t singleton;
@@ -383,6 +384,31 @@ static void occupancy_count(ecs_world *world, ecs_component *component, uint32_t
     column->count = component->count;
     column->singleton = component->singleton;
 }
+/* Drops the slots removed since the last compaction in one pass, so removing
+ * many entities costs one scan instead of a shift each. */
+static void compact_dense(ecs_component *component)
+{
+    if (!component->dense_stale) {
+        return;
+    }
+    int kept = 0;
+    for (int i = 0; i < acount(component->dense); i++) {
+        uint32_t slot = component->dense[i];
+        if (component->occupancy[slot / 64u] & (UINT64_C(1) << (slot % 64u))) {
+            component->dense[kept++] = slot;
+        }
+    }
+    asetlen(component->dense, kept);
+    component->dense_stale = false;
+}
+
+static void compact_all(ecs_world *world)
+{
+    for (int i = 0; i < acount(world->components); i++) {
+        compact_dense(&world->components[i]);
+    }
+}
+
 static void occupancy_add(ecs_world *world, ecs_component *component, uint32_t slot)
 {
     uint64_t *word = &component->occupancy[slot / 64u];
@@ -393,6 +419,7 @@ static void occupancy_add(ecs_world *world, ecs_component *component, uint32_t s
     if (component->desc.index != ECS_INDEX_DENSE) {
         return;
     }
+    compact_dense(component);
     int count = acount(component->dense);
     asetlen(component->dense, count + 1);
     int at = count;
@@ -410,21 +437,9 @@ static void occupancy_remove(ecs_world *world, ecs_component *component, uint32_
     assert(*word & bit);
     *word &= ~bit;
     occupancy_count(world, component, slot, -1);
-    if (component->desc.index != ECS_INDEX_DENSE) {
-        return;
+    if (component->desc.index == ECS_INDEX_DENSE) {
+        component->dense_stale = true;
     }
-    for (int i = 0; i < acount(component->dense); i++) {
-        if (component->dense[i] == slot) {
-            memmove(
-                component->dense + i,
-                component->dense + i + 1,
-                (size_t)(acount(component->dense) - i - 1) * sizeof *component->dense
-            );
-            asetlen(component->dense, acount(component->dense) - 1);
-            return;
-        }
-    }
-    assert(!"dense occupancy entry missing");
 }
 
 static void *component_address(const ecs_component *component, uint32_t slot)
@@ -523,6 +538,8 @@ static int apply_destroy(ecs_world *world, const ecs_command *command)
         return ECS_ERR_ENTITY;
     }
     if (world->destroy_observer) {
+        /* The observer may query, so it sees the entities destroyed before. */
+        compact_all(world);
         world->destroy_observer(world, entity, world->destroy_observer_user);
     }
     for (int i = 0; i < acount(world->components); i++) {
@@ -841,6 +858,7 @@ int ecs_world_apply_commands(ecs_world *world)
             break;
         }
     }
+    compact_all(world);
     ecs_world_clear_commands(world);
     return result;
 }

@@ -410,13 +410,29 @@ static bool lower_graph(behavior_program *program, behavior_graph_program *p)
     return true;
 }
 
+#define REVISION_PRIME UINT64_C(1099511628211)
+
+static uint64_t revise(uint64_t revision, uint64_t value)
+{
+    return (revision ^ value) * REVISION_PRIME;
+}
+
+/* Programs compile against the graphs' topology and the variables they read,
+ * so adding, removing or retyping a variable revises the asset too. */
 uint64_t behavior_asset_revision(const behavior_asset *asset)
 {
     uint64_t revision = UINT64_C(1469598103934665603);
     for (int i = 0; i < acount(asset->graphs); i++) {
-        revision = (revision ^ asset->graphs[i]->lifetime_id) * UINT64_C(1099511628211);
-        revision = (revision ^ graph_topology_revision(asset->graphs[i])) *
-                   UINT64_C(1099511628211);
+        revision = revise(revision, asset->graphs[i]->lifetime_id);
+        revision = revise(revision, graph_topology_revision(asset->graphs[i]));
+    }
+    for (int i = 0; i < acount(asset->variables); i++) {
+        const behavior_variable *v = &asset->variables[i];
+        revision = revise(revision, v->id);
+        revision = revise(revision, (uint64_t)v->type << 8 | (uint64_t)v->container);
+        for (const char *c = v->type_name; c && *c; c++) {
+            revision = revise(revision, (unsigned char)*c);
+        }
     }
     return revision;
 }

@@ -4096,12 +4096,15 @@ static char *canonical_asset(const asset_family *family, const char *json, char 
     return NULL;
 }
 
-int chibi_automation_format_assets(const char *root, bool check)
+int chibi_automation_format_assets(const char *project_root, bool check)
 {
-    asset_entry *entries = NULL;
     char error[256] = { 0 };
-    if (enumerate_assets(root, &entries, error, sizeof error)) {
+    /* Publishing opens the root without following a link. */
+    char *root = root_path(project_root, NULL, error, sizeof error);
+    asset_entry *entries = NULL;
+    if (!root || enumerate_assets(root, &entries, error, sizeof error)) {
         fprintf(stderr, "chibi_ctl --format: %s\n", error);
+        free(root);
         return -1;
     }
     int differing = 0;
@@ -4131,12 +4134,24 @@ int chibi_automation_format_assets(const char *root, bool check)
                 check ? "not canonical:" : "formatted",
                 entries[i].relative
             );
-            FILE *file = check ? NULL : fopen(path, "wb");
-            if (!check && (!file || fputs(text, file) < 0 || fclose(file))) {
+            /* Replaced atomically, and only while it still holds what was read. */
+            char expected[17];
+            snprintf(expected, sizeof expected, "%016llx", (unsigned long long)hash);
+            if (!check && automation_asset_publish(
+                              root,
+                              entries[i].family->folder,
+                              entries[i].filename,
+                              text,
+                              expected,
+                              false,
+                              error,
+                              sizeof error
+                          ) != CHIBI_AUTOMATION_OK) {
                 fprintf(
                     stderr,
-                    "chibi_ctl --format: could not write %s\n",
-                    entries[i].relative
+                    "chibi_ctl --format: could not write %s: %s\n",
+                    entries[i].relative,
+                    error
                 );
                 differing = -1;
             }
@@ -4146,6 +4161,7 @@ int chibi_automation_format_assets(const char *root, bool check)
         free(path);
     }
     free_asset_entries(entries);
+    free(root);
     return differing;
 }
 

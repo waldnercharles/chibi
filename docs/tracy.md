@@ -5,6 +5,25 @@ frame timing, worker overlap, and presentation waits. Normal, test, and web
 builds leave it disabled. The instrumentation is on demand, so a profiling
 binary does not collect trace data until a Tracy client connects.
 
+## Web profile
+
+Browsers cannot run Tracy, so the web has its own profile. `make web-profile`
+serves a build (`CHIBI_WEB_PROFILING`) that names WASM functions for the
+browser's profiler and records each Tracy zone as a User Timing measure. In
+Chrome, record in the Performance panel: the Timings track shows the same zones
+as Tracy, such as Fixed step, Physics and Terrain required tiles, above the
+named WASM call stacks.
+
+Every web build also logs the last two minutes of frame timing: the interval
+since the previous frame, fixed steps run, simulation time dropped, and
+behavior, physics, systems and rendering milliseconds. In the page's console,
+`Module.chibiFrameSummary()` reduces the log to p50, p95, p99 and max,
+`Module.chibiFrames()` lists the frames, and `Module.chibiDownloadFrames()`
+saves them as CSV. Add `?play&scenario=Firefight` to the URL to replay the same
+gameplay each time, so a summary before a change and one after it compare the
+same play on real hardware. `make profile-compare PROFILE_SCENARIO=Firefight`
+compares that play headless, natively and as WASM.
+
 ## GPU pass profiling
 
 The current Tracy integration measures CPU scopes and submission. It does not

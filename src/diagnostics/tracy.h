@@ -18,6 +18,23 @@
 #define CHIBI_TRACE_ZONE_BEGIN(zone, name) TracyCZoneN(zone, name, 1)
 #define CHIBI_TRACE_ZONE_END(zone) TracyCZoneEnd(zone)
 #define CHIBI_TRACE_PLOT(name, value) TracyCPlot(name, value)
+#elif defined(CHIBI_ENABLE_WEB_TRACE)
+/* The web profiling build shows zones as User Timing measures in the
+ * browser's performance timeline. */
+#include "diagnostics/web_trace.h"
+
+#define CHIBI_TRACE_FRAME_MARK(name)                                           \
+    do {                                                                       \
+    } while (0)
+#define CHIBI_TRACE_SET_THREAD_NAME(name)                                      \
+    do {                                                                       \
+    } while (0)
+#define CHIBI_TRACE_ZONE_BEGIN(zone, name)                                     \
+    web_trace_zone zone = web_trace_begin(name)
+#define CHIBI_TRACE_ZONE_END(zone) web_trace_end(zone)
+#define CHIBI_TRACE_PLOT(name, value)                                          \
+    do {                                                                       \
+    } while (0)
 #else
 #define CHIBI_TRACE_FRAME_MARK(name)                                           \
     do {                                                                       \

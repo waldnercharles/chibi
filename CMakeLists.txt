@@ -273,6 +273,17 @@ if(CHIBI_ENABLE_SANITIZERS AND
     add_link_options("-fsanitize=${CHIBI_SANITIZERS}")
 endif()
 
+# The web profiling build names WASM functions for the browser's profiler and
+# shows trace zones as User Timing measures (make web-profile).
+option(CHIBI_WEB_PROFILING "Name functions and trace zones in the web build" OFF)
+if(CHIBI_WEB_PROFILING)
+    if(NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+        message(FATAL_ERROR "CHIBI_WEB_PROFILING is only supported by web builds")
+    endif()
+    add_compile_definitions(CHIBI_ENABLE_WEB_TRACE=1)
+    add_link_options(--profiling-funcs)
+endif()
+
 # Emscripten labels its SDL3 port experimental independently of source warnings.
 if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     add_compile_options(-Wno-experimental)
@@ -666,6 +677,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
         "${CMAKE_CURRENT_SOURCE_DIR}/tools/web_storage.js"
         "${CMAKE_CURRENT_SOURCE_DIR}/tools/collab/storage.js"
         "${CMAKE_CURRENT_SOURCE_DIR}/tools/web_launch.js"
+        "${CMAKE_CURRENT_SOURCE_DIR}/tools/web_frames.js"
         "${CMAKE_CURRENT_SOURCE_DIR}/tools/collab/client.js"
         "${CMAKE_CURRENT_SOURCE_DIR}/tools/collab/config.js.in"
         "${CMAKE_CURRENT_BINARY_DIR}/collab_config.js"
@@ -675,6 +687,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
         "--pre-js=${CMAKE_CURRENT_SOURCE_DIR}/tools/web_storage.js"
         "--pre-js=${CMAKE_CURRENT_SOURCE_DIR}/tools/collab/storage.js"
         "--pre-js=${CMAKE_CURRENT_SOURCE_DIR}/tools/web_launch.js"
+        "--pre-js=${CMAKE_CURRENT_SOURCE_DIR}/tools/web_frames.js"
         "--pre-js=${CMAKE_CURRENT_BINARY_DIR}/collab_config.js"
         "--pre-js=${CMAKE_CURRENT_SOURCE_DIR}/tools/collab/client.js"
         "-lidbfs.js"

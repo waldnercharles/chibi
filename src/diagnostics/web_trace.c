@@ -3,15 +3,17 @@
 #ifdef CHIBI_ENABLE_WEB_TRACE
 #include <emscripten.h>
 
-/* Names are static, so each is decoded once. */
+/* Names are static, so each is decoded once. clang-format reads this as C,
+   so it avoids operators such as === that C does not have. */
 EM_JS(void, measure, (const char *name, double start), {
-    const names = Module['chibiTraceNames'] || = new Map();
-    let text = names.get(name);
-    if (text == = undefined) {
-        text = UTF8ToString(name);
-        names.set(name, text);
+    let names = Module['chibiTraceNames'];
+    if (!names) {
+        names = Module['chibiTraceNames'] = new Map();
     }
-    performance.measure(text, { start, end: performance.now() });
+    if (!names.has(name)) {
+        names.set(name, UTF8ToString(name));
+    }
+    performance.measure(names.get(name), { start, end: performance.now() });
 })
 
 web_trace_zone web_trace_begin(const char *name)

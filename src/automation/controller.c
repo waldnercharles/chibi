@@ -2133,7 +2133,9 @@ static int enumerate_assets(const char *root, asset_entry **out, char *error, si
             return -1;
         }
     }
-    qsort(entries, (size_t)acount(entries), sizeof *entries, asset_entry_compare);
+    if (acount(entries) > 1) {
+        qsort(entries, (size_t)acount(entries), sizeof *entries, asset_entry_compare);
+    }
     *out = entries;
     return 0;
 }
@@ -4415,7 +4417,9 @@ static int load_behavior_family_assets(
         free_asset_entries(entries);
         return CHIBI_AUTOMATION_IO_ERROR;
     }
-    qsort(entries, (size_t)acount(entries), sizeof *entries, asset_entry_compare);
+    if (acount(entries) > 1) {
+        qsort(entries, (size_t)acount(entries), sizeof *entries, asset_entry_compare);
+    }
     behavior_asset **assets = NULL;
     for (int i = 0; i < acount(entries); i++) {
         size_t path_size = strlen(root) + strlen(entries[i].relative) + 2;

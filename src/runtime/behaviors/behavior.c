@@ -1210,21 +1210,18 @@ int game_behavior_destroy_entities(game_behavior_world *world, const ecs_entity 
     CHIBI_TRACE_ZONE_BEGIN(detach_zone, "Detach behavior attachments");
     detach_entities(world, entities, count, NULL);
     CHIBI_TRACE_ZONE_END(detach_zone);
-    for (int i = 0; i < count; i++) {
-        ecs_entity entity = entities[i];
-        if (!ecs_entity_is_alive(world->ecs, entity)) {
-            continue;
-        }
-        /* Preserve the existing structural boundaries: the ECS command sorter
-         * orders equal-key destroys by slot, not by request order. */
-        int result = ecs_entity_is_retiring(world->ecs, entity)
-                       ? ecs_world_apply_commands(world->ecs)
-                       : ecs_world_destroy_entity(world->ecs, entity);
-        if (result) {
-            return result;
+    /* Pending commands apply first, as they did before these destroys. Keying
+     * each destroy by its request order keeps that order, which the command
+     * sorter would otherwise make slot order, in one application. */
+    int result = ecs_world_apply_commands(world->ecs);
+    for (int i = 0; !result && i < count; i++) {
+        /* A repeated request finds its entity already retiring. */
+        if (ecs_entity_is_alive(world->ecs, entities[i]) &&
+            !ecs_entity_is_retiring(world->ecs, entities[i])) {
+            result = ecs_world_record_destroy(world->ecs, entities[i], (uint64_t)i);
         }
     }
-    return ECS_OK;
+    return result ? result : ecs_world_apply_commands(world->ecs);
 }
 
 static int dispatch_attachment(

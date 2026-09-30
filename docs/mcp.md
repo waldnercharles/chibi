@@ -150,7 +150,7 @@ saving them. Tool results include complete `structuredContent` and
 - `runScenario`: run a bounded deterministic prototype or scene scenario; `behavior_failures` lists runs that stopped on an error, by node and message.
 - `captureRuntimeSnapshot`: capture bounded ECS entities (32 unless `entity_limit` is set), reflected fields, behaviors, what behaviors set on `GameUi` documents, and timing.
 - `profileScenario`: profile a bounded prototype or scene with warmup and timing samples.
-- `recordScenario`: record bounded normalized inputs and deterministic frame hashes.
+- `recordScenario`: record bounded normalized inputs and deterministic frame hashes to a recording artifact, and return its id, path and final world hash.
 - `replayScenario`: replay a returned recording and report divergence.
 - `describeRegistry`: inspect reflected types, services, and components; request `sections: ["nodes"]` for every node and pin.
 - `describeContract`: inspect the private native contract and its public tool mappings.
@@ -777,8 +777,11 @@ execution. Old v1 recordings and duplicate field aliases were removed; record
 new evidence after a contract change. Artifact IDs and paths are still bounded
 and stored outside authored content.
 
-`replayScenario` accepts exactly one returned recording or its generated
-`recording_path`. It reports the first divergent frame when evidence differs.
+`recordScenario` returns the target's identity, `frames`, the final
+`world_hash` and `live_entities`, `asset_count`, and the recording's
+`recording_id` and `recording_path`, not the recording itself; read it as the
+`chibi://recording/<id>` resource. `replayScenario` accepts exactly one
+recording or its generated `recording_path`. It reports the first divergent frame when evidence differs.
 The initial `saved_state` is restored into an isolated store for recording and
 replay. No scenario reads or writes the player's real save file.
 

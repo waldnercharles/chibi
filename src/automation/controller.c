@@ -2715,16 +2715,15 @@ static void add_dependency_edge(
     const catalog_reference *unresolved
 )
 {
+    /* The nodes carry each asset's path. */
     yyjson_mut_val *edge = yyjson_mut_arr_add_obj(doc, array);
     yyjson_mut_val *from_value = yyjson_mut_obj_add_obj(doc, edge, "from");
     yyjson_mut_obj_add_strcpy(doc, from_value, "kind", from->asset.family->kind);
     yyjson_mut_obj_add_strcpy(doc, from_value, "name", from->name);
-    yyjson_mut_obj_add_strcpy(doc, from_value, "path", from->asset.relative);
     yyjson_mut_val *to_value = yyjson_mut_obj_add_obj(doc, edge, "to");
     if (to) {
         yyjson_mut_obj_add_strcpy(doc, to_value, "kind", to->asset.family->kind);
         yyjson_mut_obj_add_strcpy(doc, to_value, "name", to->name);
-        yyjson_mut_obj_add_strcpy(doc, to_value, "path", to->asset.relative);
         yyjson_mut_obj_add_bool(doc, to_value, "resolved", true);
     } else {
         yyjson_mut_obj_add_strcpy(doc, to_value, "kind", unresolved->kind);
@@ -7466,10 +7465,12 @@ static int handle_record_scenario(const char *root, yyjson_val *request, respons
         free(inputs);
         return -1;
     }
-    yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
+    /* The recording goes to its artifact; the result only names it, since
+       replayScenario and read_recording take it from there. */
+    yyjson_mut_doc *artifact = yyjson_mut_doc_new(NULL);
     yyjson_mut_val *recording = add_recording(
-        result->doc,
-        value,
+        artifact,
+        yyjson_mut_obj(artifact),
         &context,
         inputs,
         &observations,
@@ -7477,18 +7478,39 @@ static int handle_record_scenario(const char *root, yyjson_val *request, respons
         fixed_dt,
         artifact_path
     );
-    yyjson_mut_obj_add_uint(result->doc, value, "frames", frames);
-    yyjson_mut_obj_add_real(result->doc, value, "fixed_dt", fixed_dt);
-    yyjson_mut_obj_add_strcpy(result->doc, value, "recording_path", artifact_path);
-    yyjson_mut_obj_add_strcpy(result->doc, value, "artifact_path", artifact_path);
     status = write_recording_artifact(artifact_path, recording, error, sizeof error);
-    scenario_context_free(&context);
+    yyjson_mut_doc_free(artifact);
+    free(inputs);
     if (status != CHIBI_AUTOMATION_OK) {
+        scenario_context_free(&context);
         response_error(result, exit_code, status, error);
-        free(inputs);
         return -1;
     }
-    free(inputs);
+    yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
+    add_asset_identity(
+        result->doc,
+        value,
+        &context.prototype_ref,
+        context.prototype_bytes,
+        context.prototype_hash
+    );
+    yyjson_mut_obj_add_uint(result->doc, value, "frames", frames);
+    yyjson_mut_obj_add_real(result->doc, value, "fixed_dt", fixed_dt);
+    add_hash_named(result->doc, value, "world_hash", frames ? observations.world_hash[frames - 1] : 0);
+    yyjson_mut_obj_add_uint(
+        result->doc,
+        value,
+        "live_entities",
+        frames ? observations.live_entities[frames - 1] : 0
+    );
+    int assets = 0;
+    for (int i = 0; i < acount(context.runtime_assets); i++) {
+        assets += scenario_runtime_asset(&context, &context.runtime_assets[i]);
+    }
+    yyjson_mut_obj_add_int(result->doc, value, "asset_count", assets);
+    yyjson_mut_obj_add_strcpy(result->doc, value, "recording_id", artifact_path + strlen(SCENARIO_RECORDING_PATH_PREFIX));
+    yyjson_mut_obj_add_strcpy(result->doc, value, "recording_path", artifact_path);
+    scenario_context_free(&context);
     return 0;
 }
 

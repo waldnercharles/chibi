@@ -45,7 +45,6 @@
 
 - Complete the requested task at its intended scope. Make routine choices yourself, and ask only when readings of the request would lead to materially different work. If the request looks mistaken or a better approach exists, say so in a sentence and continue as asked.
 - Preserve unrelated changes. Read the relevant code and its callers before editing.
-- Remembered third-party APIs may be out of date. Before writing code or configuration against a dependency, read the pinned version: `third_party/`, or the FetchContent sources in `build/_deps/<name>-src/` (tags in `CMakeLists.txt` and `cmake/*.cmake`). Fall back to that version's official documentation.
 - Use plain language and lead with the outcome. Keep replies brief, with enough evidence to support the result and any blocker.
 - Size written documents to their substance, without filler sections, repeated summaries, or boilerplate.
 - For work spanning sessions, keep open items and blockers in the task list or the relevant plan in `docs/`, not in this file.

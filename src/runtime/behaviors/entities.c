@@ -28,15 +28,23 @@ enum
     EVENT_BATCH_MAX = 64
 };
 
+/* A registered prototype, shared with the spawns waiting on it, so a reload
+ * that replaces its record cannot free it under them. */
 typedef struct
 {
     game_prototype *prototype;
+    int references;
+} shared_prototype;
+
+typedef struct
+{
+    shared_prototype *shared;
     char *json;
 } prototype_record;
 
 typedef struct
 {
-    game_prototype *prototype;
+    shared_prototype *prototype;
     flow_host_request *wait;
     ecs_entity entity;
 } spawn_request;
@@ -189,10 +197,25 @@ game_entity_query_profile game_entities_query_profile(const game_entities *entit
     return entities->query_profile;
 }
 
+static shared_prototype *share(shared_prototype *shared)
+{
+    shared->references++;
+    return shared;
+}
+
+static void unshare(shared_prototype *shared)
+{
+    if (--shared->references) {
+        return;
+    }
+    game_prototype_free(shared->prototype);
+    free(shared);
+}
+
 static void release_request(spawn_request *request)
 {
     flow_host_release(request->wait);
-    game_prototype_free(request->prototype);
+    unshare(request->prototype);
 }
 
 void game_entities_copy_live(const game_entities *entities, ecs_entity **out)
@@ -515,7 +538,7 @@ void game_entities_free(game_entities *entities)
 {
     game_entities_reset(entities);
     for (int i = 0; i < acount(entities->prototypes); i++) {
-        game_prototype_free(entities->prototypes[i].prototype);
+        unshare(entities->prototypes[i].shared);
         free(entities->prototypes[i].json);
     }
     afree(entities->prototypes);
@@ -543,7 +566,7 @@ int game_entities_register(game_entities *entities, const game_prototype *protot
     int existing = -1;
     for (int i = 0; i < acount(entities->prototypes); i++) {
         prototype_record *record = &entities->prototypes[i];
-        if (strcmp(record->prototype->identity, prototype->identity) != 0) {
+        if (strcmp(record->shared->prototype->identity, prototype->identity) != 0) {
             continue;
         }
         if (strcmp(record->json, json) == 0) {
@@ -559,9 +582,11 @@ int game_entities_register(game_entities *entities, const game_prototype *protot
         free(json);
         return -1;
     }
-    prototype_record replacement = { .prototype = copy, .json = json };
+    shared_prototype *shared = xmalloc(sizeof *shared);
+    *shared = (shared_prototype){ copy, 1 };
+    prototype_record replacement = { .shared = shared, .json = json };
     if (existing >= 0) {
-        game_prototype_free(entities->prototypes[existing].prototype);
+        unshare(entities->prototypes[existing].shared);
         free(entities->prototypes[existing].json);
         entities->prototypes[existing] = replacement;
         return 0;
@@ -570,42 +595,33 @@ int game_entities_register(game_entities *entities, const game_prototype *protot
     return 0;
 }
 
-static game_prototype *prepare_spawn(game_entities *entities, const char *identity, const char **message)
+static shared_prototype *prepare_spawn(game_entities *entities, const char *identity, const char **message)
 {
-    const game_prototype *prototype = NULL;
     for (int i = 0; identity && i < acount(entities->prototypes); i++) {
-        if (strcmp(entities->prototypes[i].prototype->identity, identity) == 0 ||
-            strcmp(entities->prototypes[i].prototype->name, identity) == 0) {
-            prototype = entities->prototypes[i].prototype;
-            break;
+        const game_prototype *prototype = entities->prototypes[i].shared->prototype;
+        if (strcmp(prototype->identity, identity) == 0 ||
+            strcmp(prototype->name, identity) == 0) {
+            return share(entities->prototypes[i].shared);
         }
     }
-    if (!prototype) {
-        *message = "Spawn Prototype: unknown prototype";
-        return NULL;
-    }
-    char error[256];
-    game_prototype *copy = game_prototype_clone(prototype, error, sizeof error);
-    if (!copy) {
-        *message = "Spawn Prototype: could not capture defaults";
-    }
-    return copy;
+    *message = "Spawn Prototype: unknown prototype";
+    return NULL;
 }
 
 static int game_entities_request_spawn(game_entities *entities, flow_context *ctx, const char *identity)
 {
     const char *message = NULL;
-    game_prototype *copy = prepare_spawn(entities, identity, &message);
-    if (!copy) {
+    shared_prototype *prototype = prepare_spawn(entities, identity, &message);
+    if (!prototype) {
         return flow_context_fail(ctx, FLOW_ERR_NODE, message);
     }
     int result = flow_context_continue(ctx, 0);
     flow_host_request *wait = result < 0 ? NULL : flow_context_host_wait(ctx);
     if (!wait) {
-        game_prototype_free(copy);
+        unshare(prototype);
         return result < 0 ? result : FLOW_ERR_STATE;
     }
-    apush(entities->spawns, ((spawn_request){ .prototype = copy, .wait = wait }));
+    apush(entities->spawns, ((spawn_request){ .prototype = prototype, .wait = wait }));
     return FLOW_OK;
 }
 
@@ -753,7 +769,7 @@ static int finish_spawn(game_entities *entities, spawn_request *request)
     if (!request->entity.slot) {
         char error[256];
         if (game_prototype_spawn_components(
-                request->prototype,
+                request->prototype->prototype,
                 entities->world,
                 &request->entity,
                 error,
@@ -788,11 +804,11 @@ static int finish_spawn(game_entities *entities, spawn_request *request)
         flow_run_status(run) == FLOW_SUSPENDED) {
         return 1;
     }
-    for (int i = 0; i < acount(request->prototype->graphs); i++) {
+    for (int i = 0; i < acount(request->prototype->prototype->graphs); i++) {
         if (game_behavior_attach(
                 entities->behaviors,
                 request->entity,
-                request->prototype->graphs[i]
+                request->prototype->prototype->graphs[i]
             ) != 0) {
             return -1;
         }
@@ -945,11 +961,11 @@ static int spawn_command(
     assert(count == 1);
     (void)count;
     game_entities *entities = service;
-    game_prototype *copy = prepare_spawn(entities, arguments[0].str, message);
-    if (!copy) {
+    shared_prototype *prototype = prepare_spawn(entities, arguments[0].str, message);
+    if (!prototype) {
         return FLOW_ERR_NODE;
     }
-    apush(entities->spawns, ((spawn_request){ .prototype = copy, .wait = request }));
+    apush(entities->spawns, ((spawn_request){ .prototype = prototype, .wait = request }));
     return FLOW_OK;
 }
 

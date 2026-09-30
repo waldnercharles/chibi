@@ -2057,84 +2057,83 @@ static int build_catalog_from_entries(
     return 0;
 }
 
+/* Appends the files of one family to `entries`, unsorted; -1 on error. */
+static int enumerate_family(
+    const char *root,
+    const asset_family *family,
+    asset_entry **entries,
+    char *error,
+    size_t error_size
+)
+{
+    int directory_status = verify_asset_directory(root, family, error, error_size);
+    if (directory_status <= 0) {
+        return directory_status;
+    }
+    size_t directory_size = strlen(root) + strlen("/content/") +
+                            strlen(family->folder) + 1;
+    char *directory_path = xmalloc(directory_size);
+    snprintf(directory_path, directory_size, "%s/content/%s", root, family->folder);
+    DIR *directory = opendir(directory_path);
+    if (!directory) {
+        free(directory_path);
+        return set_errorf(error, error_size, "could not enumerate %s", family->folder);
+    }
+    int status = 0;
+    struct dirent *entry;
+    while (!status && (entry = readdir(directory))) {
+        if (entry->d_name[0] == '.' || !valid_asset_filename(family, entry->d_name)) {
+            continue;
+        }
+        size_t full_size = strlen(directory_path) + strlen(entry->d_name) + 2;
+        char *full_path = xmalloc(full_size);
+        snprintf(full_path, full_size, "%s/%s", directory_path, entry->d_name);
+        struct stat info;
+        if (lstat(full_path, &info) != 0 || !S_ISREG(info.st_mode)) {
+            free(full_path);
+            continue;
+        }
+        size_t bytes = 0;
+        uint64_t hash = 0;
+        char read_error[160] = { 0 };
+        char *contents = read_file(full_path, &bytes, &hash, read_error, sizeof read_error);
+        free(contents);
+        free(full_path);
+        if (!contents) {
+            status = set_error(error, error_size, read_error);
+            break;
+        }
+        size_t relative_size = strlen("content/") + strlen(family->folder) +
+                               strlen(entry->d_name) + 2;
+        asset_entry item = {
+            .family = family,
+            .filename = xstrdup(entry->d_name),
+            .relative = xmalloc(relative_size),
+            .bytes = bytes,
+            .hash = hash,
+        };
+        snprintf(
+            item.relative,
+            relative_size,
+            "content/%s/%s",
+            family->folder,
+            entry->d_name
+        );
+        apush(*entries, item);
+    }
+    closedir(directory);
+    free(directory_path);
+    return status;
+}
+
 static int enumerate_assets(const char *root, asset_entry **out, char *error, size_t error_size)
 {
     asset_entry *entries = NULL;
-    for (int family_index = 0;
-         family_index < (int)(sizeof ASSET_FAMILIES / sizeof *ASSET_FAMILIES);
-         family_index++) {
-        const asset_family *family = &ASSET_FAMILIES[family_index];
-        int directory_status = verify_asset_directory(root, family, error, error_size);
-        if (directory_status < 0) {
+    for (int i = 0; i < ASSET_FAMILY_COUNT; i++) {
+        if (enumerate_family(root, &ASSET_FAMILIES[i], &entries, error, error_size) < 0) {
             free_asset_entries(entries);
             return -1;
         }
-        if (directory_status == 0) {
-            continue;
-        }
-        size_t directory_size = strlen(root) + strlen("/content/") +
-                                strlen(family->folder) + 1;
-        char *directory_path = xmalloc(directory_size);
-        snprintf(directory_path, directory_size, "%s/content/%s", root, family->folder);
-        DIR *directory = opendir(directory_path);
-        if (!directory) {
-            free(directory_path);
-            free_asset_entries(entries);
-            return set_errorf(
-                error,
-                error_size,
-                "could not enumerate %s",
-                family->folder
-            );
-        }
-        struct dirent *entry;
-        while ((entry = readdir(directory))) {
-            if (entry->d_name[0] == '.' ||
-                !valid_asset_filename(family, entry->d_name)) {
-                continue;
-            }
-            size_t full_size = strlen(directory_path) + strlen(entry->d_name) + 2;
-            char *full_path = xmalloc(full_size);
-            snprintf(full_path, full_size, "%s/%s", directory_path, entry->d_name);
-            struct stat info;
-            int regular = lstat(full_path, &info) == 0 && S_ISREG(info.st_mode);
-            if (!regular) {
-                free(full_path);
-                continue;
-            }
-            size_t bytes = 0;
-            uint64_t hash = 0;
-            char read_error[160] = { 0 };
-            char *contents = read_file(full_path, &bytes, &hash, read_error, sizeof read_error);
-            free(contents);
-            if (!contents) {
-                free(full_path);
-                closedir(directory);
-                free(directory_path);
-                free_asset_entries(entries);
-                return set_error(error, error_size, read_error);
-            }
-            asset_entry item = {
-                .family = family,
-                .filename = xstrdup(entry->d_name),
-                .relative = xmalloc(
-                    strlen("content/") + strlen(family->folder) + strlen(entry->d_name) + 2
-                ),
-                .bytes = bytes,
-                .hash = hash,
-            };
-            snprintf(
-                item.relative,
-                strlen("content/") + strlen(family->folder) + strlen(entry->d_name) + 2,
-                "content/%s/%s",
-                family->folder,
-                entry->d_name
-            );
-            apush(entries, item);
-            free(full_path);
-        }
-        closedir(directory);
-        free(directory_path);
     }
     qsort(entries, (size_t)acount(entries), sizeof *entries, asset_entry_compare);
     *out = entries;
@@ -4399,14 +4398,13 @@ static int load_behavior_family_assets(
 )
 {
     asset_entry *entries = NULL;
-    if (enumerate_assets(root, &entries, error, error_size) != 0) {
+    if (enumerate_family(root, family, &entries, error, error_size) < 0) {
+        free_asset_entries(entries);
         return CHIBI_AUTOMATION_IO_ERROR;
     }
+    qsort(entries, (size_t)acount(entries), sizeof *entries, asset_entry_compare);
     behavior_asset **assets = NULL;
     for (int i = 0; i < acount(entries); i++) {
-        if (entries[i].family != family) {
-            continue;
-        }
         size_t path_size = strlen(root) + strlen(entries[i].relative) + 2;
         char *path = xmalloc(path_size);
         snprintf(path, path_size, "%s/%s", root, entries[i].relative);

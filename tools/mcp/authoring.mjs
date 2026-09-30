@@ -904,67 +904,45 @@ export function authoringToolCall(name, args, context) {
   return context.nativeRequest(operation, args, context.requestId);
 }
 
+// The image travels as image content, not as base64 inside structuredContent.
 function sanitizePreview(response) {
-  const result = response?.result;
-  const preview = result?.preview;
-  if (!result || !preview || typeof preview !== "object") {
-    return response;
-  }
-  const sanitizedPreview = { ...preview };
-  delete sanitizedPreview.data;
-  return {
-    ...response,
-    result: {
-      ...result,
-      preview: sanitizedPreview,
-    },
-  };
+  const { data, ...preview } = response.result.preview;
+  return { ...response, result: { ...response.result, preview } };
 }
 
-function previewSummary(response, name) {
-  const preview = response?.result?.preview;
-  const summary = {
-    ok: response?.ok === true,
-    tool: name,
-  };
-  if (preview && typeof preview === "object") {
-    for (const key of ["mime_type", "width", "height"]) {
-      if (preview[key] !== undefined) {
-        summary[key] = preview[key];
-      }
+function previewSummary(response) {
+  const preview = response.result.preview;
+  const summary = { ok: response.ok === true };
+  for (const key of ["mime_type", "width", "height"]) {
+    if (preview[key] !== undefined) {
+      summary[key] = preview[key];
     }
   }
-  if (response?.result?.source !== undefined) {
+  if (response.result.source !== undefined) {
     summary.source_included = true;
   }
   // previewField: the scalar range and its hash.
   for (const key of ["minimum", "maximum", "field_hash"]) {
-    if (response?.result?.[key] !== undefined) {
+    if (response.result[key] !== undefined) {
       summary[key] = response.result[key];
     }
   }
-  if (Array.isArray(response?.next_steps) && response.next_steps.length) {
+  if (Array.isArray(response.next_steps) && response.next_steps.length) {
     summary.next_steps = response.next_steps;
   }
   return summary;
 }
 
-export function authoringToolResult(response, name) {
-  const preview = response?.result?.preview;
-  if (response?.operation !== "preview_shader" && (!preview || typeof preview !== "object")) {
-    return null;
-  }
-  const data = preview?.data;
+export function authoringToolResult(response) {
+  const data = response?.result?.preview?.data;
   if (typeof data !== "string" || !data) {
     return null;
   }
-  const mimeType = typeof preview.mime_type === "string" && preview.mime_type
-    ? preview.mime_type
-    : "image/png";
+  const mimeType = response.result.preview.mime_type || "image/png";
   return {
     content: [
       { type: "image", data, mimeType },
-      { type: "text", text: JSON.stringify(previewSummary(response, name)) },
+      { type: "text", text: JSON.stringify(previewSummary(response)) },
     ],
     structuredContent: sanitizePreview(response),
     isError: response.ok !== true,

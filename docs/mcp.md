@@ -108,7 +108,7 @@ Call `validateAsset` after every published change. Use `previewShader`,
 `previewScene`, `runScenario`, `captureRuntimeSnapshot`, or
 `profileScenario` for evidence. Existing assets require the current
 `expected_hash`; graph and optimizer dry runs report proposed changes without
-saving them. Tool results include complete `structuredContent` and
+saving them. Tool results carry their data in `structuredContent` and
 `next_steps`.
 
 - `buildGraph`: create or edit any graph asset; `query` replaces a System's ECS query.
@@ -641,8 +641,14 @@ The stdio adapter negotiates MCP protocol versions `2025-06-18` and
 recording resource is resolved by the controller so clients never need direct
 filesystem access. The static `chibi://catalog` resource provides the
 same semantic catalog as the `getAssetCatalog` tool. Tool responses include a
-compact text summary for conversational clients and the complete native
-response in `structuredContent`, including a `next_steps` follow-up.
+compact text summary and the native result in `structuredContent`, with a
+`next_steps` follow-up. Because clients such as Claude Code show
+`structuredContent` to the model, the adapter leaves out what no authoring
+decision uses: the native `contract` and `operation` envelope, component IDs,
+layout hashes, byte sizes and offsets, field `type_name`s that repeat the
+type, empty catalog relationship lists, runtime snapshot field types (see
+`describeComponents`), `getProjectStatus`'s native operation list, and
+`previewScene` timings below three rendered frames.
 The `describeContract` result labels each private native operation with the
 public MCP tool or tools that expose it.
 Arguments that do not match a tool's input schema fail as a tool result with

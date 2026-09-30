@@ -25,7 +25,7 @@ const serverInstructions = [
   "2. Build with buildGraph, buildPrototype, or buildScene. Write UI documents directly as files: content/ui/<Name>.rml, its markup, and content/ui/<Name>.rcss, its styles. Graph edits are typed, atomic, hash-checked for existing assets, and auto-arranged.",
   "3. Validate every published change with validateAsset. Use dry runs first when available and retry asset conflicts with the latest hash.",
   "4. Use previewShader, previewField, previewScene, runScenario, captureRuntimeSnapshot, or profileScenario for visual and runtime evidence.",
-  "Tool results keep complete machine-readable data in structuredContent and include next_steps. Use the public camelCase names returned by tools/list; native operation names are implementation details.",
+  "Tool results carry machine-readable data in structuredContent and include next_steps. Use the public camelCase names returned by tools/list; native operation names are implementation details.",
 ].join(" ");
 const serverRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const configuredRoot = process.env.CHIBI_ROOT;
@@ -1312,8 +1312,8 @@ function withToolGuidance(name, response, args) {
 }
 
 function toolResult(name, response, args) {
-  const guidedResponse = withToolGuidance(name, response, args);
-  const authoringResult = authoringToolResult(guidedResponse, name);
+  const guidedResponse = leanResponse(name, withToolGuidance(name, response, args), args);
+  const authoringResult = authoringToolResult(guidedResponse);
   if (authoringResult) {
     return authoringResult;
   }
@@ -1321,7 +1321,6 @@ function toolResult(name, response, args) {
     ? boundedJson(toolSummary(name, guidedResponse), "tool summary")
     : boundedJson({
       ok: false,
-      tool: name,
       error: guidedResponse.error,
       ...errorDetails(guidedResponse.result),
       next_steps: guidedResponse.next_steps,
@@ -1331,6 +1330,99 @@ function toolResult(name, response, args) {
     structuredContent: guidedResponse,
     isError: guidedResponse.ok !== true,
   };
+}
+
+function without(record, keys) {
+  return Object.fromEntries(Object.entries(record).filter(([key]) => !keys.includes(key)));
+}
+
+// Reflection records: binary layout and C spellings mean nothing to an author.
+function leanReflectedField(field) {
+  const lean = without(field, ["offset", "bytes"]);
+  return lean.type_name === lean.type || lean.type_name === "_Bool" ? without(lean, ["type_name"]) : lean;
+}
+
+function leanComponent(component) {
+  const lean = without(component, ["id", "bytes", "layout_hash", ...(component.type === component.name ? ["type"] : [])]);
+  return Array.isArray(lean.fields) ? { ...lean, fields: lean.fields.map(leanReflectedField) } : lean;
+}
+
+function leanRegistryType(type) {
+  const lean = without(type, ["bytes"]);
+  return Array.isArray(lean.fields) ? { ...lean, fields: lean.fields.map(leanReflectedField) } : lean;
+}
+
+// Snapshot fields as name and value; describeComponents has the types.
+function leanSnapshotComponent(component) {
+  return {
+    name: component.name,
+    fields: component.fields?.map(({ name, value }) => ({ name, value })),
+    ...(component.fields_truncated ? { field_count: component.field_count, fields_truncated: true } : {}),
+  };
+}
+
+function leanSnapshotBehavior(behavior) {
+  const empty = [
+    ...(behavior.performance_diagnostics?.length ? [] : ["performance_diagnostics"]),
+    ...(behavior.last_failure === null ? ["last_failure"] : []),
+  ];
+  return without(behavior, empty);
+}
+
+function leanSnapshotEntity(entity) {
+  const lean = without(entity, [
+    "slot", "generation",
+    ...(entity.components_truncated ? [] : ["component_count", "components_truncated"]),
+    ...(entity.behaviors_truncated ? [] : ["behavior_count", "behaviors_truncated"]),
+  ]);
+  return {
+    id: lean.id,
+    name: lean.name,
+    prototype: lean.prototype,
+    ...lean,
+    components: lean.components?.map(leanSnapshotComponent),
+    behaviors: lean.behaviors?.map(leanSnapshotBehavior),
+  };
+}
+
+// Catalog records keep relationships and diagnostics only when there are some.
+function leanAsset(asset) {
+  return Object.fromEntries(Object.entries(asset).filter(([key, value]) =>
+    !(Array.isArray(value) && value.length === 0) &&
+    !((key === "errors" || key === "warnings") && value === 0)));
+}
+
+function leanResult(name, result, args) {
+  switch (name) {
+    case "getProjectStatus":
+      return without(result, ["operations"]);
+    case "getAssetCatalog":
+    case "searchAssets":
+      return { ...without(result, ["project_root", "query"]), assets: result.assets?.map(leanAsset) };
+    case "listAssets":
+      return without(result, ["project_root"]);
+    case "describeComponents":
+      return { ...result, components: result.components?.map(leanComponent) };
+    case "describeRegistry":
+      return {
+        ...result,
+        ...(result.types ? { types: result.types.map(leanRegistryType) } : {}),
+        ...(result.components ? { components: result.components.map(leanComponent) } : {}),
+      };
+    case "captureRuntimeSnapshot":
+      return { ...result, entities: result.entities?.map(leanSnapshotEntity) };
+    case "previewScene":
+      // Timings are measured only past two rendered frames.
+      return (args?.render_frames ?? 2) > 2 ? result : without(result, ["performance"]);
+  }
+  return result;
+}
+
+/* Clients such as Claude Code show structuredContent to the model, so it
+   leaves out the native envelope and fields no authoring decision uses. */
+function leanResponse(name, response, args) {
+  const lean = without(response, ["contract", "operation"]);
+  return isObject(lean.result) ? { ...lean, result: leanResult(name, lean.result, args) } : lean;
 }
 
 /* Clients may show only the text, so a failure names what to fix. */
@@ -1376,14 +1468,13 @@ function errorDetails(result) {
 }
 
 function toolSummary(name, response) {
-  const summary = { ok: true, tool: name };
+  const summary = { ok: true };
   const result = response.result;
   if (!isObject(result)) {
     return summary;
   }
   const scalarKeys = [
-    "project_root",
-    "content_root",
+    ...(name === "getProjectStatus" ? ["project_root", "content_root"] : []),
     "kind",
     "name",
     "path",
@@ -1436,7 +1527,7 @@ function toolSummary(name, response) {
     summary.counts = result.counts;
   }
   for (const key of ["assets", "graphs", "nodes", "edges", "entities", "components", "operations", "diagnostics", "behaviors", "skipped", "expressions", "locals", "uses", "mentions", "dangling", "references", "invalid"]) {
-    if (Array.isArray(result[key])) {
+    if (Array.isArray(result[key]) && result[key].length !== result.count) {
       summary[`${key}_count`] = result[key].length;
     }
   }

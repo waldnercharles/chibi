@@ -440,7 +440,7 @@ bool sg_spawn_node(studio *s, const char *name, float x, float y)
     node *n = NULL;
     for (int i = 0; i < acount(found) && !n; i++) {
         if (found[i].desc == desc && !found[i].function && !found[i].variable) {
-            n = ed_spawn_match_at(e, &found[i], x, y);
+            n = graph_node_by_id(e->active_graph, ed_spawn_match_at(e, &found[i], x, y));
         }
     }
     afree(found);
@@ -936,7 +936,8 @@ bool studio_graph_palette(studio *s)
     if (chosen >= 0 && chosen < count) {
         bool linked = e->spawn_link_pending;
         ed_pin_view from = e->spawn_link_pin;
-        node *n = ed_spawn_match_at(e, &matches[chosen], g->spawn_x, g->spawn_y);
+        uint64_t id = ed_spawn_match_at(e, &matches[chosen], g->spawn_x, g->spawn_y);
+        node *n = graph_node_by_id(e->active_graph, id);
         if (n) {
             sg_select_only(e, n);
             n->placed = true;

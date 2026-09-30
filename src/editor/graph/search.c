@@ -806,12 +806,12 @@ static int ed_autowire_spawn(editor *e, node *n)
     return ed_autowire_spawn_input(e, n);
 }
 
-static node *ed_spawn_match_at_direct(editor *e, const ed_search_match *match, float x, float y)
+static uint64_t ed_spawn_match_at_direct(editor *e, const ed_search_match *match, float x, float y)
 {
     if (match->desc == &ed_comment_box_desc) {
         ed_snapshot_before(e);
         graph_add_comment_box(e->active_graph, "Comment", x, y, 320.0f, 160.0f);
-        return NULL;
+        return 0;
     }
     if (!e->spawn_link_pending) {
         ed_snapshot_before(e);
@@ -832,49 +832,50 @@ static node *ed_spawn_match_at_direct(editor *e, const ed_search_match *match, f
         n = NULL;
     }
     if (!n) {
-        return NULL;
+        return 0;
     }
     n->x = x;
     n->y = y;
     if (match->desc == &ed_math_desc) {
         ed_select_node(e, n, 0);
     }
+    uint64_t id = n->id;
     if (e->spawn_link_pending) {
+        /* Wiring can fold a spawned component getter into its consumer's
+           binding, which removes n. */
         ed_autowire_spawn(e, n);
         ed_commit_snapshot(e);
         e->spawn_link_pending = 0;
     }
-    return n;
+    return id;
 }
 
-node *ed_spawn_match_at(editor *e, const ed_search_match *match, float x, float y)
+uint64_t ed_spawn_match_at(editor *e, const ed_search_match *match, float x, float y)
 {
     /* Comment boxes do not have node IDs and ed_spawn_match_at deliberately
-       returns NULL for them, so they cannot use this node action envelope. */
+       returns 0 for them, so they cannot use this node action envelope. */
     if (collab_active() && !collab_replaying() && match && match->desc &&
         !strcmp(match->desc->name, "Comment Box")) {
-        return NULL;
+        return 0;
     }
     char *action = graph_collab_action_spawn_match(e, match, x, y);
     if (!action) {
         return collab_active() && !collab_replaying()
-                 ? NULL
+                 ? 0
                  : ed_spawn_match_at_direct(e, match, x, y);
     }
     collab_action_gate gate = collab_actions_begin(action);
     if (gate != COLLAB_ACTION_APPLY) {
         free(action);
-        return NULL;
+        return 0;
     }
     uint64_t expected_id = e->asset->graph->id_counter;
     if (!expected_id) {
         expected_id = 1;
     }
-    node *made = ed_spawn_match_at_direct(e, match, x, y);
-    if (made) {
-        assert(made->id == expected_id);
-    }
-    collab_actions_finish(action, made != NULL);
+    uint64_t made = ed_spawn_match_at_direct(e, match, x, y);
+    assert(!made || made == expected_id);
+    collab_actions_finish(action, made != 0);
     free(action);
     return made;
 }

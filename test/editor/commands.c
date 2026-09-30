@@ -49,6 +49,12 @@ static node_desc g_editor_int_desc = {
     .inputs = g_editor_int_inputs,
 };
 
+/* Spawns a match at the origin and returns its node, if one remains. */
+static node *spawn_at_origin(editor *e, const ed_search_match *match)
+{
+    return graph_node_by_id(e->active_graph, ed_spawn_match_at(e, match, 0, 0));
+}
+
 /* Inserts the top search result, as choosing the first command result does. */
 static void search_insert(editor *e, const char *query)
 {
@@ -268,7 +274,7 @@ static void check_search_catalog()
             acount(matches) > 0 && strcmp(matches[0].name, queries[i]) == 0,
             "search ranks an exact authored member ahead of fuzzy node matches"
         );
-        node *n = acount(matches) ? ed_spawn_match_at(e, &matches[0], 0, 0) : NULL;
+        node *n = acount(matches) ? spawn_at_origin(e, &matches[0]) : NULL;
         expected[i] = n;
         test_check(n != NULL, "search results create configured authored nodes");
         if (n && i < 2) {
@@ -353,7 +359,7 @@ static void check_search_catalog()
     editor_set_asset_catalog(e, shader_assets, 1);
     ed_search_match *shader_matches = ed_search_matches(e, "ShaderMath / Pulse");
     node *shader_call = acount(shader_matches)
-                          ? ed_spawn_match_at(e, &shader_matches[0], 0, 0)
+                          ? spawn_at_origin(e, &shader_matches[0])
                           : NULL;
     test_check(
         shader_call && shader_call->desc == &NODE_CallPureFunction &&
@@ -374,9 +380,8 @@ static void check_search_catalog()
     const behavior_asset *field_assets[] = { fields };
     editor_set_asset_catalog(e, field_assets, 1);
     ed_search_match *field_matches = ed_search_matches(e, "ScalarFields / Disc");
-    node *field_call = acount(field_matches)
-                         ? ed_spawn_match_at(e, &field_matches[0], 0, 0)
-                         : NULL;
+    node *field_call = acount(field_matches) ? spawn_at_origin(e, &field_matches[0])
+                                             : NULL;
     test_check(
         field_call && field_call->desc == &NODE_CallPureFunction &&
             field_call->reference_asset &&
@@ -426,7 +431,7 @@ static void check_library_search_snapshot()
         }
     }
     test_check(functions == 1 && local, "library search excludes the current function and duplicate catalog snapshot functions");
-    node *call = local ? ed_spawn_match_at(e, local, 0, 0) : NULL;
+    node *call = local ? spawn_at_origin(e, local) : NULL;
     test_check(call && call->reference_id == sibling->graph_id && !call->reference_asset, "library search inserts the sibling from the working document as a local call");
     afree(matches);
     editor_free(e);
@@ -616,7 +621,7 @@ static node *spawn_first(editor *e, const char *query, const char *name)
 {
     ed_search_match *matches = ed_search_matches(e, query);
     bool found = acount(matches) && !strcmp(matches[0].name, name);
-    node *n = found ? ed_spawn_match_at(e, &matches[0], 0, 0) : NULL;
+    node *n = found ? spawn_at_origin(e, &matches[0]) : NULL;
     afree(matches);
     return n;
 }

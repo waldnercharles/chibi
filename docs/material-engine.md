@@ -17,7 +17,9 @@ world, health, projectile, encounter, or combat configuration.
 | `material_mask` | Occupancy, accumulated damage, distance, connected components and immutable geometry views |
 | `material_destruction` | Queued energy, resistance, splitting, retained chips, release and typed results |
 | `material_fluid` | Fluid solving and activation |
-| `material_ecs` / `material_ecs_fluid` / `material_ecs_terrain` | Entity ownership, configuration, terrain views, fragments, particles and event delivery |
+| `material_flow` | Persistent gas velocity field; see [Gas flow](#gas-flow) |
+| `material_debris` | Crater rock chunks: bounce, shove, split and shrink |
+| `material_ecs` / `material_ecs_fluid` / `material_ecs_terrain` / `material_ecs_debris` | Entity ownership, configuration, terrain views, fragments, particles, debris and event delivery |
 | `material_nodes` | Graph service bindings |
 | `materials` | Service registration and tick orchestration |
 
@@ -32,9 +34,10 @@ material shader keep a `GameMaterialFrame`: where their source's frame sat when
 the material was laid out. World-space material patterns stay attached to the
 piece as it moves.
 
-`MaterialDestructionWorld` bounds retained fragments. `MaterialFluidWorld`
-configures particles, activation regions and fluid chunk size. Either capability
-works independently; its `debris_limit` also bounds crater rock chunks.
+`MaterialDestructionWorld` bounds retained fragments (`fragment_limit`) and
+crater rock chunks (`debris_limit`). `MaterialFluidWorld` configures particles,
+activation regions, fluid chunk size and [gas flow](#gas-flow). Either
+capability works independently.
 `MaterialBreakProfile` owns kick speeds and crater effects; missing profiles
 produce no impulses or dust. Everything sprays around the crater's outward
 normal, found from the open cells around it: grit, one grain per crumbled cell;
@@ -67,8 +70,9 @@ validation. Compilation is bounded to 4096 instructions; grids are bounded to
 4096 cells per axis. No behavior instance or general behavior VM runs per cell.
 The bulk evaluator retains constants and X-only instructions across rows.
 
-`CaveField` replaces the native cave generator. The old implementation is retained
-only in the test target as a parity oracle. A changed field, dependent library,
+Neon Swarm's `Cave` streams `BasaltCave`; `CaveField` reproduces the original
+native cave generator, which survives only in the test target
+(`test/runtime/reference_cave.c`) as a parity oracle. A changed field, dependent library,
 terrain transform or generation parameter causes a rebake at the next pre-physics
 material boundary. The new grid is validated before old generated entities are
 removed. Rebaking resets runtime damage and removes that source's fragments.
@@ -150,6 +154,65 @@ System backend when typed bytecode or SLJIT cannot handle the graph; backend
 inspection reports the actual selection. `FreeMotion` currently uses generic
 bytecode for its vector expression.
 
+## Gas flow
+
+`material_flow` gives gas a persistent sparse 2D velocity grid, independent of
+combat, rendering and Box2D; `material_fluid` supplies particles, active indices
+and collider data. A moving body redirects nearby gas before contact, and its
+wake keeps moving afterward. This is a CPU grid-and-tracer solver, not MPM.
+Liquids keep the particle density-relaxation solver. `MaterialFluidWorld`
+enables the field:
+
+| Field | Meaning |
+| --- | --- |
+| `gas_cell_size` | World units per cell; zero disables the field. |
+| `gas_vorticity` | Strength of curl reinforcement. |
+| `gas_drag` | Exponential velocity damping per second. |
+
+Each step builds cells around active gas particles with a two-cell halo. Face
+velocities live on a staggered grid. Particle velocities seed the field and feed
+momentum into it; the previous field is advected with semi-Lagrangian sampling.
+Collider velocities, including angular motion, constrain solid faces. Curl
+reinforcement precedes 32 red/black Gauss-Seidel pressure iterations, then
+particles sample the result. The ordinary particle collision step still
+resolves geometry and body impulses. With the field enabled, gas skips gas-gas
+density relaxation; liquid cohesion and gas-liquid contacts remain. Engine
+parcels inject momentum but keep their authored ballistic velocity, drag and
+visual lifetime curves.
+
+`MaterialFluidWorld` also sets transient contact particles per fluid kind
+(`gas_wake_*`, `liquid_splash_*`): minimum normal closing speed, strength,
+particles per contact patch and lifetime. Zero count disables a response.
+Contacts aggregate by body, body-local patch and fluid kind, with at most 128
+events and 256 secondary particles per tick. Relative surface speed and impulse
+set the strength; the participating fluid supplies color and emission. Fast
+colliders use swept checks. These render particles do not join the simulated
+population.
+
+## Approximations
+
+- The gas field covers active gas neighborhoods with open outer boundaries.
+  Cells that leave the active region are discarded and rebuilt from particles
+  on return. The fixed pressure iteration count reduces divergence without
+  guaranteeing incompressibility or exact conservation.
+- Collider masks expand by half a cell to cover thin geometry; particle
+  collisions still use the real geometry. Grid pressure applies no force back
+  to Box2D; particle collision impulses provide the return force.
+- There is no unconditional buoyancy in zero gravity. Bodies, exhaust,
+  combustion and particle motion supply disturbances.
+- Liquid cohesion is double-density relaxation, not MPM, with no elastic
+  stress. Fluid-body exchange applies linear impulses after the rigid solve,
+  with no torque feedback.
+- Sleeping fluid particles keep velocity and lifetime with no catch-up when
+  they wake. Far rigid bodies and behavior schedules are not streamed.
+- Detached solids are rigid Box2D bodies. Terrain components touching a chunk
+  edge stay anchored, so rock connected across chunks cannot detach as one body.
+- When the fragment budget is full, surviving detached components stay in the
+  source mask and retry detachment when a slot frees. Larger components get
+  slots before cut chips; chips can become dust but are never restored.
+- Fuel supplies its own oxidizer; blasts use bounded radial impulses and
+  first-hit damage spokes. This is not a chemistry or deformable-solid solver.
+
 ## Authoring and checks
 
 Use `buildGraph`, `inspectGraph`, `inspectSystem`, `validateAsset`
@@ -164,8 +227,6 @@ Run the noncombat scene with `make play SCENE=scenes/MaterialStudy.yaml`.
 Useful checks:
 
 ```sh
-CCACHE_DISABLE=1 make build
-CCACHE_DISABLE=1 make test
 build/test_suite --materials
 build/test_suite --material-engine
 build-release/test_suite --bench-fields
@@ -173,5 +234,9 @@ build-release/test_suite --bench-system-schedule
 node tools/mcp/material-smoke.mjs .
 ```
 
-See [validation results](material-engine-validation.md) for measured parity,
-runtime evidence and the performance tradeoff of the reusable evaluator.
+`--materials` covers gas flow (collider-driven motion, persistence, sleep/wake,
+serial/parallel parity including field state), liquid cohesion, destruction and
+combustion. The [validation record](archive/material-engine-validation.md)
+measures cave parity with the original generator and the reusable field
+evaluator's cost: about 4.4 times the specialized generator, paid only when a
+field bakes.

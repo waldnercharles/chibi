@@ -1,18 +1,11 @@
 # Neon Swarm world exploration
 
-Design under refinement. The experimental implementation was reverted on
-September 22, 2026 after the visual direction was rejected. The ambition remains,
-but delivery will proceed one feature at a time. The feature sequence is a proposal for
-discussion, not authorization to implement the whole document.
-
-This design now lives in the main working copy. It originated in
-`.worktrees/neon-world-exploration` on `cwaldner/neon-world-exploration`.
-That worktree used baseline `41bc4586`, a snapshot of existing workspace source
-changes. Creating that snapshot did not validate the inherited implementation.
-
-This direction supersedes the earlier [Space Jobs draft](game-design.md) for
-Neon Swarm. Quests remain a possible later feature. Contracts, extraction, and
-permanent unlocks are not the progression model for this first version.
+Design under refinement. An earlier experimental implementation was reverted on
+September 22, 2026 after its visual direction was rejected; delivery now
+proceeds one reviewed feature at a time. The feature sequence is a proposal for
+discussion, not authorization to implement the whole document. Contracts,
+extraction and permanent unlocks are not the progression model for this first
+version; quests remain a possible later feature.
 
 ## How we will work
 
@@ -36,8 +29,8 @@ Do not turn a cave experiment into a simultaneous rewrite of enemies, weapons,
 shops, lighting, and progression. If a result is rejected, revise that feature
 before advancing. Keep the last accepted version available for comparison.
 
-The starting scene is the original `NeonSwarmSandbox`, currently named
-`Sandbox`. It provides the starting point for the existing ship, controls,
+The starting scene is `Sandbox` in `projects/arena2d`; see
+[Neon Swarm](neon-swarm-sandbox.md). It provides the starting point for the existing ship, controls,
 camera, lighting, and material interaction. The agreed visual direction and the
 feature in review are recorded below.
 
@@ -282,32 +275,21 @@ The design document alone does not establish any of those results.
 
 ## References
 
-- [Current material sandbox](neon-swarm-sandbox.md)
+- [Neon Swarm](neon-swarm-sandbox.md)
 - [Material engine and authored fields](material-engine.md)
-- [Material simulation and HRC research](material-simulation-and-hrc-research.md)
+- [HRC lighting](hrc-lab.md)
+- [Material simulation and HRC research](archive/material-simulation-and-hrc-research.md)
 - [Chibi authoring workflow](mcp.md)
 - [Wave Function Collapse](https://github.com/mxgmn/WaveFunctionCollapse)
 - [MLS-MPM and CPIC](https://yuanming.taichi.graphics/publication/2018-mlsmpm/)
 
-## Current implementation
+## What exists
 
-The exploration worktree was reverted to snapshot `41bc4586`. This design and
-the reusable engine changes were subsequently transferred to the main working
-copy at the user's request. The retained changes are opt-in terrain streaming
-with run-local damage restoration, a fix for spawned entities being discarded
-when their source destroys itself, scenario error details, and preview captures
-up to 4096 pixels per side. The [material engine document](material-engine.md)
-describes streaming configuration and limits.
-
-Feature development resumed on September 23, 2026 with the basalt wall shape,
-which is in review. No experimental cave art, enemies, boss, weapon modules,
-shop, or exploration scene was transferred from the rejected experiment.
-
-The rejected experiment, its patch, and its historical validation notes remain
-archived locally under
-`.worktrees/neon-world-exploration/.chibi/revert-archives/20260922-080054/`.
-They are available for deliberate inspection when a feature is selected and are
-not loaded by the game.
-
-Stable 1440p/60 for the intended exploration game remains unproven. Historical
-measurements of the rejected experiment do not establish that target.
+The reverted experiment left reusable engine work: opt-in terrain streaming with
+run-local damage restoration (see
+[optional terrain streaming](material-engine.md#optional-terrain-streaming)),
+spawned entities that survive their source destroying itself, scenario error
+details, and preview captures up to 4096 pixels per side. None of its cave art,
+enemies, boss, weapon modules, shop or exploration scene was kept, and names,
+catalogs and balance from it are not part of any future brief. Stable 1440p/60
+for the exploration game remains unproven.

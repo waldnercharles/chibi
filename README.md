@@ -55,10 +55,11 @@ mirrors all of them into the browser, so `?project-root=projects/<name>` also
 opens one there.
 
 The static `make web` build keeps projects in the browser's IndexedDB and
-reopens the last one. Opening a sample the first time copies it into a project
-of your own; add `?project-root=projects/arena2d` to open Neon Swarm, or
-`?project=<name>` for one of your projects, or `?new` for a fresh copy of the
-sample. File > Export Project downloads a zip, and Import Project opens a zip as
+reopens the last one, starting with Neon Swarm. Opening a sample the first time
+copies it into a project of your own. File > Open Project and the command
+palette list your projects and the samples not yet copied (Arena3D, Neon Swarm
+and Studio); `?project-root=projects/<sample>` opens a sample,
+`?project=<name>` one of your projects, and `?new` a fresh copy of the sample. File > Export Project downloads a zip, and Import Project opens a zip as
 a new project. A project that cannot open, such as one saved at another project
 version, offers Export Project and New Project. `make web-serve` saves to the
 local project instead.

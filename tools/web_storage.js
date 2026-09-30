@@ -46,8 +46,9 @@ if (typeof window !== 'undefined' && !Module['chibiSaveAsset']) {
         fs().mkdirTree(path.slice(0, path.lastIndexOf('/')));
         fs().writeFile(path, data);
     };
-    // Samples are bundled as project folders under /projects.
-    const bundled = `/${launch.get('project-root') || 'projects/arena3d'}`.replace(/\/+/g, '/').replace(/\/$/, '');
+    // Samples are bundled as project folders under /projects; Neon Swarm opens by default.
+    const samples = '/projects';
+    const bundled = `/${launch.get('project-root') || 'projects/arena2d'}`.replace(/\/+/g, '/').replace(/\/$/, '');
     const sample = bundled.slice(bundled.lastIndexOf('/') + 1);
     const copySample = id => {
         walk(bundled, (name, data) => write(`${workspace}/${id}/${name}`, data));
@@ -170,6 +171,26 @@ if (typeof window !== 'undefined' && !Module['chibiSaveAsset']) {
         const search = new URLSearchParams({new: ''});
         if (launch.has('project-root')) search.set('project-root', launch.get('project-root'));
         location.search = `?${search}`;
+    };
+    // Studio's Open Project list: the user's projects, then each sample not yet
+    // copied into one. Opening one reloads the page onto it, as Import does.
+    const projectName = path => fs().readFile(path, {encoding: 'utf8'}).match(/^name:\s*(.+)$/m)?.[1].trim();
+    const folders = path => (exists(path) ? fs().readdir(path).filter(name => !name.startsWith('.')) : []);
+    Module['chibiProjects'] = () => JSON.stringify([
+        ...folders(workspace).filter(found).map(id => ({
+            name: projectName(`${workspace}/${id}/${manifest}`) || id,
+            root: `${workspace}/${id}/`,
+        })),
+        ...folders(samples).filter(sample => !found(slug(sample)) && exists(`${samples}/${sample}/${manifest}`)).map(sample => ({
+            name: projectName(`${samples}/${sample}/${manifest}`) || sample,
+            root: `${samples}/${sample}/`,
+        })),
+    ]);
+    Module['chibiOpenProject'] = root => {
+        const [, folder, name] = root.match(/^\/([^/]+)\/([^/]+)\/$/);
+        const search = folder === 'projects' ? `?project-root=projects/${name}` : `?project=${name}`;
+        clearTimeout(timer);
+        sync().catch(report).finally(() => { location.search = search; });
     };
     // The shell offers these once Chibi stops, so a project that cannot load never traps the user.
     Module['recovery'] = [['New Project', newProject]];

@@ -10,6 +10,38 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <yyjson.h>
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+
+/* In the browser without a local server the page keeps projects in IndexedDB
+   and lists them with the samples not yet copied; opening one reloads onto it. */
+EM_JS(char *, web_project_list, (), {
+    return stringToNewUTF8(Module['chibiProjects']());
+})
+EM_JS(void, web_open_project, (const char *root), {
+    Module['chibiOpenProject'](UTF8ToString(root));
+})
+
+static void add_web_projects(studio *s)
+{
+    char *json = web_project_list();
+    yyjson_doc *doc = yyjson_read(json, strlen(json), 0);
+    free(json);
+    size_t i, count;
+    yyjson_val *project;
+    yyjson_arr_foreach(yyjson_doc_get_root(doc), i, count, project)
+    {
+        apush(
+            s->projects,
+            ((studio_project){
+                .root = xstrdup(yyjson_get_str(yyjson_obj_get(project, "root"))),
+                .name = xstrdup(yyjson_get_str(yyjson_obj_get(project, "name"))) })
+        );
+    }
+    yyjson_doc_free(doc);
+}
+#endif
 
 static void add_project(studio *s, const char *manifest)
 {
@@ -33,8 +65,9 @@ static int compare_names(const void *a, const void *b)
 void studio_projects_load(studio *s)
 {
 #ifdef __EMSCRIPTEN__
-    /* Its projects open through the page (File > Import Project). */
     if (web_projects_available()) {
+        add_web_projects(s);
+        qsort(s->projects, acount(s->projects), sizeof *s->projects, compare_names);
         return;
     }
 #endif
@@ -77,6 +110,12 @@ bool studio_project_current(const studio *s, int index)
 
 static void request(studio *s, int index)
 {
+#ifdef __EMSCRIPTEN__
+    if (web_projects_available()) {
+        web_open_project(s->projects[index].root);
+        return;
+    }
+#endif
     free(s->open_project);
     s->open_project = xstrdup(s->projects[index].root);
 }

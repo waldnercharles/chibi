@@ -320,7 +320,7 @@ function buildToolDefinitions() {
       type: "integer",
       minimum: 1,
       maximum: 256,
-      description: "Maximum number of records to return.",
+      description: "Maximum number of records to return; getAssetCatalog defaults to 32. Follow next_cursor for more.",
     },
     cursor: {
       type: "integer",
@@ -329,7 +329,7 @@ function buildToolDefinitions() {
     },
     summary: {
       type: "boolean",
-      description: "Return compact asset records without full dependency details.",
+      description: "Return compact asset records without dependency details; searchAssets defaults to true, getAssetCatalog to false.",
     },
   };
   const pageArguments = {
@@ -1201,8 +1201,14 @@ async function toolCall(name, args = {}, requestId) {
   if (entry.adapter === "authoring") {
     return authoringToolCall(name, args, { nativeRequest, renderRequest: builtRenderRequest, root, requestId });
   }
-  return nativeRequest(entry.operation, args, requestId);
+  return nativeRequest(entry.operation, { ...leanDefaults[name], ...args }, requestId);
 }
+
+// Defaults that keep a first call small; agents page or ask for details.
+const leanDefaults = {
+  searchAssets: { summary: true },
+  getAssetCatalog: { limit: 32 },
+};
 
 function defaultNextSteps(name) {
   return getToolCatalogEntry(name)?.nextSteps || [];

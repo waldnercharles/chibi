@@ -123,14 +123,15 @@ saving them. Tool results carry their data in `structuredContent` and
 - `searchAssets`: find catalog entries by kind, name, path, description, or
   member names, best match first: every query word must start a word, and a
   word of the name ranks above one elsewhere, as Studio's palette ranks.
-  Without a query it lists every asset in `kinds`.
+  Without a query it lists every asset in `kinds`. Records are compact unless
+  `summary` is false.
 - `searchNodes`: list a domain's node types, or find nodes, configured component nodes, and their pins by words.
 - `inspectGraph`: inspect graph content, diagnostics, and the current content hash; with `include_uses: true`, the asset, its functions and macros, and a behavior's variables carry `uses`, their project-wide use counts by role. Counting reads every asset, so it is off by default.
 - `inspectUi`: read a ui asset's outline, props, events, slots, widgets, tokens, save keys, syntax errors and hash; with `complete`, the completions Studio's Text Editor offers at a line and column.
 - `readAsset`: read one authored asset as parsed JSON.
 - `validateAsset`: run native asset loading and compiler diagnostics; for a ui asset, its syntax errors and every warning RmlUi logs, with lines.
 - `listAssets`: list deterministic asset paths, sizes, and hashes.
-- `getAssetCatalog`: read semantic asset metadata, dependencies, diagnostics, and registry counts. Graph assets compile linked with the project's libraries and events, as Studio's Problems do.
+- `getAssetCatalog`: read semantic asset metadata, dependencies, diagnostics, and registry counts, 32 assets a page unless `limit` says otherwise. Graph assets compile linked with the project's libraries and events, as Studio's Problems do.
 - `inspectAssetDependencies`: inspect incoming or outgoing direct and transitive dependencies. An asset depends on the behaviors it attaches, the prototypes it places or spawns, the libraries it calls, the event definitions whose events it sends or handles, and the materials, shapes, fields, systems and ui documents its component fields, pin defaults and `<use ui>` widgets name.
 - `findReferences`: find a symbol's definition and every use across the project by role, with counts; see [Navigate references](#navigate-references).
 - `callHierarchy`: trace a function's or event's callers and callees as a tree.

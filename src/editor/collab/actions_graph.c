@@ -551,12 +551,12 @@ static bool replay_spawn_match(editor *e, yyjson_val *root, char *error, size_t 
     float x = (float)yyjson_get_real(yyjson_obj_get(root, "x"));
     float y = (float)yyjson_get_real(yyjson_obj_get(root, "y"));
     yyjson_val *expected = yyjson_obj_get(root, "node");
-    node *made = yyjson_is_uint(expected) ? ed_spawn_match_at(e, match, x, y) : NULL;
+    uint64_t made = yyjson_is_uint(expected) ? ed_spawn_match_at(e, match, x, y) : 0;
     uint64_t expected_id = yyjson_get_uint(expected);
     e->spawn_link_pending = pending_link;
     e->spawn_link_pin = saved_link;
     afree(matches);
-    if (!made || made->id != expected_id) {
+    if (!made || made != expected_id) {
         snprintf(error, error_size, "Graph node creation diverged from its expected ID");
         return false;
     }

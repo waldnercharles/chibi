@@ -31,8 +31,10 @@ ed_search_match *ed_search_matches(const editor *e, const char *filter);
 /* What a result stands for, to describe it (node_subject_describe). */
 node_subject ed_search_match_subject(const editor *e, const ed_search_match *match);
 /* Spawns at world (x, y) as one undo step: shader parameters, System compaction
- * and event naming apply, and a pending link-drag wires the new node. Comment
- * boxes are created and return NULL. */
-node *ed_spawn_match_at(editor *e, const ed_search_match *match, float x, float y);
+ * and event naming apply, and a pending link-drag wires the new node. Returns
+ * the spawned node's ID, or 0 when nothing spawned; comment boxes are created
+ * and return 0. Resolve the ID with graph_node_by_id: wiring can fold a spawned
+ * component getter into its consumer's binding, leaving no node. */
+uint64_t ed_spawn_match_at(editor *e, const ed_search_match *match, float x, float y);
 
 #endif

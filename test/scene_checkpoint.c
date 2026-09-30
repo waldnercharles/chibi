@@ -986,6 +986,7 @@ static int test_scene_checkpoint()
 void test_scene_instances();
 void test_scene_disk();
 void test_scene_refactor();
+void test_collab_workspace_restore();
 
 int scene_documents_run(const char *program)
 {
@@ -1009,6 +1010,7 @@ int scene_documents_run(const char *program)
     test_scene_instances();
     test_scene_disk();
     test_scene_refactor();
+    test_collab_workspace_restore();
     app_input_shutdown();
     cf_destroy_app();
     return failed;

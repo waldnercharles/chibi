@@ -185,7 +185,9 @@ static void add_menu_events()
     const ed_search_match *found = ui_match(matches, "On Extract");
     bool offered = ui_match(by_deed, "On Extract") && found &&
                    !strcmp(found->category, "UI Events");
-    node *n = found ? ed_spawn_match_at(e, found, 0, 0) : NULL;
+    node *n = found
+                ? graph_node_by_id(e->active_graph, ed_spawn_match_at(e, found, 0, 0))
+                : NULL;
     bool named = n && n->desc == &NODE_Event && n->reference_name &&
                  !strcmp(n->reference_name, "Extract");
     afree(matches);
@@ -227,7 +229,9 @@ static void add_menu_data()
     }
     bool offered = coins && !strcmp(coins->name, "Set coins (Bank)") &&
                    !strcmp(coins->category, "UI Data");
-    node *n = coins ? ed_spawn_match_at(e, coins, 0, 0) : NULL;
+    node *n = coins
+                ? graph_node_by_id(e->active_graph, ed_spawn_match_at(e, coins, 0, 0))
+                : NULL;
     bool named = n && n->input_pins[2].default_value.str &&
                  !strcmp(n->input_pins[2].default_value.str, "coins");
     const editor_choices *choices = n ? ed_pin_choices(e, n, 0, 2) : NULL;

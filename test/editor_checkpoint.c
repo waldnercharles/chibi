@@ -114,7 +114,9 @@ static char *workspace_json(const char *scene, const char *graph)
     return json;
 }
 
-static void workspace_checkpoint_restore()
+/* Scene authoring draws, so this runs with the scene document checks, inside a
+ * Cute app. */
+void test_collab_workspace_restore()
 {
     workspace_fixture source = workspace_fixture_new();
     assert(editor_spawn(source.graph, registry_node_by_name("Integer"), 17, 23));
@@ -144,7 +146,6 @@ static void workspace_checkpoint_restore()
 
 void test_editor_checkpoint()
 {
-    workspace_checkpoint_restore();
     link_checkpoint();
     editor *source = editor_new(behavior_asset_new("Checkpoint A"));
     const node_desc *integer = registry_node_by_name("Integer");

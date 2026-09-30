@@ -83,6 +83,15 @@
                     throw error;
                 }
             },
+            // Replaces the active room tree with a verified snapshot's files.
+            installFiles(files) {
+                if (!roomBase || !activeRoot.startsWith(`${roomBase}/`)) {
+                    throw new Error('Enter the collaboration room before installing a snapshot');
+                }
+                validateFiles(files);
+                removeTree(activeRoot.replace(/\/$/, ''));
+                for (const file of files) write(`${activeRoot}${file.path}`, file.data);
+            },
             activateRoot(root) {
                 if (!roomBase || !root.startsWith(`${roomBase}/`) || !root.endsWith('/')) {
                     throw new Error('Snapshot root is outside the room workspace');
@@ -100,13 +109,17 @@
             },
         };
     };
-    Module['chibiCollabStorageFactory'] = factory;
 
+    // Runs after the workspace script has chosen the local project root. A page
+    // launched for a room edits a MEMFS copy of that project instead.
     const initialize = Module['onRuntimeInitialized'];
     Module['onRuntimeInitialized'] = () => {
         initialize?.();
-        if (!Module['chibiCollabStorage']) {
-            Module['chibiCollabStorage'] = factory(Module['arguments']?.[1]);
-        }
+        const storage = Module['chibiCollabStorage'] ||= factory(Module['arguments'][1]);
+        const room = new URLSearchParams(window.location.search).get('room');
+        if (!room) return;
+        const root = storage.enterRoom(room, true);
+        storage.activateRoot(root);
+        Module['arguments'][1] = root;
     };
 })();

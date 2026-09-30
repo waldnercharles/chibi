@@ -3,16 +3,17 @@
 September 14, 2026. Planning baseline: `fca335eb`, after editor integration and
 the input-action lookup fix. This document records future options, their likely
 scope, and the measurements needed to choose between them. It implements no
-runtime changes and makes no new benchmark claims.
+runtime changes and makes no new benchmark claims. The experiment records it
+cites are archived under [`docs/archive/research`](../archive/research/).
 
 The goal is good performance by default for hundreds through tens of thousands
 of entities. Prefer compiler/runtime optimizations that preserve authored
 behavior. Changes to collision response, update frequency, or visual quality
 need an explicit authoring contract. Shared capabilities must work beyond Arena.
 
-## What the current numbers establish
+## What the baseline numbers establish
 
-The latest controlled Arena comparison uses 20,000 initial enemies, 1280x720,
+The September 14 controlled Arena comparison uses 20,000 initial enemies, 1280x720,
 Release without sanitizers, Auto eight workers, 30 warmup frames and 240 combat
 frames. Values are medians across three runs, with each run first calculating
 its own percentile. Phase medians do not add up to the whole-frame median.
@@ -30,14 +31,14 @@ its own percentile. Phase medians do not add up to the whole-frame median.
 The same-scene frame median improved from 23.312 ms, about 30%. All paired runs
 used eight behavior/render workers, made zero interpreter calls, matched combat
 traces and passed restart. These are recorded results, not a new measurement.
-[Method and raw results](input-action-lookup.md).
+[Method and raw results](../archive/research/input-action-lookup.md).
 
 The benchmark advances synthetic time by exactly 1/60 second and asserts one
 simulation tick per measured frame. Its P95 is therefore not caused by multiple
 catch-up ticks. It includes host and presentation work, so it is not a direct
 measurement of GPU execution either. Real-time display pacing and catch-up need
 their own acceptance run. See `arena_scene_scale_run` in
-[the scene fixture](../../test/arena_ui.c) and the
+[the scene fixture](../../test/arena_play.c) and the
 [fixed-step engine](../../src/runtime/engine.c).
 
 Earlier profiles provide leads, not current per-phase promises. A separate
@@ -48,7 +49,7 @@ added 1.466 ms inside the behavior bucket. Dependency checks and prepared bindin
 creation accounted for 36% of sampled Tick-update stacks. These overlapping
 samples include descendants and waits; they are not CPU utilization or a
 recoverable millisecond budget. Reprofile after the editor/content changes.
-[Historical diagnostic](remaining-runtime-costs.md).
+[Historical diagnostic](../archive/research/remaining-runtime-costs.md).
 
 ## Frame targets and evidence required
 
@@ -104,7 +105,7 @@ Before claiming consistent 60 FPS:
 
 Existing starting points are [the paired scene runner](../../tools/bench_arena_scene_scale.py),
 [Tick runner](../../tools/bench_ticks.py), [physics settings runner](../../tools/bench_physics_settings.py),
-and [current raw scene results](input-action-lookup-results.json). Fixed input,
+and [the recorded raw scene results](../archive/research/input-action-lookup-results.json). Fixed input,
 uncapped work timing, and real display pacing answer different questions.
 Do not use a tighter catch-up cap or dropped simulation time to pass a speed gate.
 
@@ -133,15 +134,15 @@ These should not reappear as proposals to do for the first time:
 - Indexed input listener checks across active asset generations, rather than
   every behavior instance and graph node.
 
-Sources: [parallel work](parallel-scene-work.md), [Tick sequences](tick-sequences.md),
-[query fusion](query-fusion.md), [containers](container-choice.md),
-[render/contact work](render-contact-optimization.md), and
-[input lookup](input-action-lookup.md). Older reports describe intermediate
+Sources: [parallel work](../archive/research/parallel-scene-work.md), [Tick sequences](../archive/research/tick-sequences.md),
+[query fusion](../archive/research/query-fusion.md), [containers](../archive/research/container-choice.md),
+[render/contact work](../archive/research/render-contact-optimization.md), and
+[input lookup](../archive/research/input-action-lookup.md). Older reports describe intermediate
 states; their old capacity limits and threading descriptions are not current.
 
 ## Recommended order
 
-The September 19 [slow-frame attribution and swept-target experiment](swept-targets.md)
+The September 19 [slow-frame attribution and swept-target experiment](../archive/research/swept-targets.md)
 now guide the order below. In the baseline's slowest engine frames, swept-target
 maintenance averaged 7.964 ms and the contact/lifecycle pump 6.671 ms, compared
 with 0.252 ms for parallel Tick execution. Batched tree repair reduces the
@@ -149,18 +150,18 @@ swept-target phase P95, but repeated full-scene acceptance remains unresolved.
 Prioritize contacts/lifecycle and physics costs before further isolated kernel
 polish. The historical baseline and option catalog remain useful context.
 
-The [contact lifecycle follow-up](contact-lifecycle.md) separates event dispatch
+The [contact lifecycle follow-up](../archive/research/contact-lifecycle.md) separates event dispatch
 from lifecycle maintenance. Incremental attachment removal now preserves the
 unchanged prefix and reduces behavior/runtime P95 in every measured scene pair.
 Contact collection/sorting and the physics solve remain the larger next targets.
 
 Implementation status: cached dependency/binding preparation and incremental
 Tick schedule repair from S1/S2 are present. S3 now uses a shared world clock;
-see [the shared-clock measurements and next behavior work](shared-clock.md).
-Large spans now also [validate rows in parallel](parallel-validation.md), with
+see [the shared-clock measurements and next behavior work](../archive/research/shared-clock.md).
+Large spans now also [validate rows in parallel](../archive/research/parallel-validation.md), with
 a join before behavior effects and serial validation for small spans.
-The compiler now reuses [stable reads across branches](branch-reads.md), and
-parallel plans [prepare only demanded target snapshots](query-snapshots.md).
+The compiler now reuses [stable reads across branches](../archive/research/branch-reads.md), and
+parallel plans [prepare only demanded target snapshots](../archive/research/query-snapshots.md).
 The original measurements above predate these changes.
 
 Impact below is a priority judgment based on current cost and scaling behavior.
@@ -170,8 +171,8 @@ module; large means a new execution/storage contract or several modules.
 | Priority | Work | Potential | Effort | Main acceptance |
 | --- | --- | --- | --- | --- |
 | First | Correlate slow frames and counters | Makes P95 work attributable | Medium | Explain the slow-frame population with low measurement overhead |
-| First | Incremental Tick preparation, indexes and clock access | High when population churn repeats broad work | Medium/large | Stable-frame planning disappears; churn scales with changes |
 | First | Demand-aware contact processing and swept-target maintenance | High in dense/contact-heavy scenes | Large | Preserve exact contact contract and reduce measured candidates/work |
+| Next | Remaining Tick guards, structural branches and event batching (S4-S7) | High when population churn repeats broad work | Medium/large | Churn scales with changes, not population |
 | Next | Retained query plans, spatial queries, incremental reductions | High for query-heavy content | Medium/large | Avoid repeated world scans without stale results |
 | Next | Compact hot state, bulk lifecycle work, bounded allocations | High under churn or memory pressure | Large | Lower bytes touched and growth spikes at equal workload |
 | Next | Better parallel eligibility, partitioning and dependency scheduling | Medium/high when enough independent work exists | Large | Reduce critical-path time, not merely increase worker count |
@@ -181,28 +182,11 @@ module; large means a new execution/storage contract or several modules.
 
 ## Tick scheduling, events and lifecycle
 
-**S1. Cache immutable dependency proofs and binding templates.**
-`prepare_updates` checks query preservation and recreates prepared bindings when
-the attachment revision changes. Cache function-level proof results on immutable
-program generations, with separate revision checks for mutable services/schema.
-Keep reusable binding templates alive across schedule rebuilds. Measure proof
-calls and binding allocations per generation versus per population. Adding one
-enemy must not repeat the same analysis for every other enemy.
-
-**S2. Update only changed schedule segments.**
-Prepared schedules already survive unchanged frames. Extend that to insertion,
-removal, replacement and changed services: retain stable rows, spans and private
-worker bindings, repairing only affected boundaries. Consider stable attachment
-slots plus a separate deterministic iteration order, or chunked ordered storage.
-Benchmark repeated projectile spawn/death and mass retirement. Do not replace
-FIFO/attachment order with unordered swap removal unless equivalence is proven.
-
-**S3. Eliminate remaining population-wide clock writes.**
-Identical clock values are already skipped. Changed simulation time still writes
-every instance. Let compiled rows read a shared tick context and snapshot time
-only when an activation requires it, or update just instances that consume it.
-Preserve pause, waits, delta time, pooled-instance initialization and exact
-authored time values. Count stores/cache misses and measure sparse-active scenes.
+**S1-S3. Cached preparation, incremental schedules and shared clock reads.**
+Done. Dependency proofs and prepared bindings are cached, prepared schedules
+repair only the segments that changed, and attached instances borrow the
+behavior world's clock instead of receiving a write per instance. See
+Implementation status above.
 
 **S4. Hoist stable row guards to safe span boundaries.**
 Program, schema, service and observation checks may be shared across a span when
@@ -298,7 +282,7 @@ crowd-separation tolerance. Sleep/solid-CCD disabling and force drive did not
 justify new defaults. Body damping/friction are already zero and rotation fixed;
 contact damping does not reduce the number of solver passes. Selective CCD and
 sensor sweeps remain quality choices with thin-wall and moving-target tests.
-[Recorded tuning and limitations](physics-settings.md).
+[Recorded tuning and limitations](../archive/research/physics-settings.md).
 
 **P8. Reevaluate upstream Box2D changes on our workloads.**
 Compare a newer pinned version only with a migration/parity plan, phase timings,
@@ -308,7 +292,7 @@ cross-world interactions or defines their handling; splitting a connected crowd
 does not automatically create independent simulations.
 
 Implementation: [physics service](../../src/runtime/scenes/physics.c).
-Contract: [contact queries](physics-queries.md). Upstream reference:
+Contract as of the world-index change: [contact queries](../archive/research/physics-queries.md). Upstream reference:
 [Box2D simulation manual](https://box2d.org/documentation/md_simulation.html) and
 [the pinned 3.1.1 definitions](https://github.com/erincatto/box2d/blob/v3.1.1/include/box2d/types.h).
 The local tests and pinned source remain the authority when online docs advance.
@@ -355,7 +339,7 @@ invalidation and memory against expected reuse; hashing a one-off tiny array can
 be a regression. Arena currently has no Set nodes, so Set improvements primarily
 protect future content rather than explain its present frame cost.
 
-Sources: [query fusion](query-fusion.md), [container choices](container-choice.md),
+Sources: [query fusion](../archive/research/query-fusion.md), [container choices](../archive/research/container-choice.md),
 [entity queries](../../src/runtime/behaviors/entity_query.c),
 [query lowering](../../src/runtime/behaviors/entity_query_lower.c).
 
@@ -402,7 +386,7 @@ replacement would beat targeted fixes. See the primary
 [staging semantics](https://www.flecs.dev/flecs/Systems.html#staging).
 
 Code: [ECS implementation](../../src/ecs/ecs.c) and
-[execution view](../../src/ecs/execution.h). S1-S4 and Q1-Q3 can proceed with the
+[execution view](../../src/ecs/execution.h). S4 and Q1-Q3 can proceed with the
 current ECS; an archetype migration is not a prerequisite.
 
 ## Compiler, native code and exports
@@ -469,9 +453,9 @@ source maps and debugger behavior. AOT-to-Wasm exports are a separate extension
 to the export contract; ordinary browser-authored behavior remains bytecode.
 
 Sources: [shared optimizer](../../src/graph/compiler/behavior_function_opt.c),
-[whole-function measurements](whole-function-performance.md),
-[system/sequence C comparison](tick-sequences.md),
-[latest parallel kernel comparisons](parallel-scene-work.md).
+[whole-function measurements](../archive/research/whole-function-performance.md),
+[system/sequence C comparison](../archive/research/tick-sequences.md),
+[latest parallel kernel comparisons](../archive/research/parallel-scene-work.md).
 Several existing kernels already run close to generated C; do not assume a
 large AoT frame-rate gain from an isolated C/SLJIT ratio.
 
@@ -541,15 +525,17 @@ Cute 3D already coalesces compatible instances. A prior capture averaged roughly
 large win for that workload. Investigate instanced bulk submission, retained
 static lists, fewer mesh/material splits or indirect draws if new captures show
 CPU submission or command count dominating. Dynamic actors still need current
-transforms. [Local batching evidence](render-contact-optimization.md).
+transforms. [Local batching evidence](../archive/research/render-contact-optimization.md).
 
 **R4. Measure and optimize GPU passes separately.**
-Add GPU timestamp scopes where supported. Inspect fill rate, overdraw, shader
-cost, render-target traffic, lighting and postprocess resolution. Options include
-tiled/clustered light selection, cheaper material variants, particle batching,
-occlusion/LOD, half-resolution effects and explicit dynamic resolution. Compare
-fixed-resolution and camera-close worst cases. Visual approximations require a
-quality setting and image review, not a silent compiler optimization.
+[GPU pass timing](../../src/render/gpu_timing.h) already covers the 2D material
+and HRC passes; add marks for the Arena3D geometry and post passes. Inspect fill
+rate, overdraw, shader cost, render-target traffic, lighting and postprocess
+resolution. Options include tiled/clustered light selection, cheaper material
+variants, particle batching, occlusion/LOD, half-resolution effects and explicit
+dynamic resolution. Compare fixed-resolution and camera-close worst cases.
+Visual approximations require a quality setting and image review, not a silent
+compiler optimization.
 
 **R5. Keep editing and inspection work off normal gameplay paths.**
 Measure graph evaluation previews, traversal history, watches, layout, asset
@@ -567,7 +553,7 @@ had little presentation wait; this is a separate real-display validation need.
 
 Code: [geometry preparation/submission](../../src/render/arena3d.c),
 [scene renderer](../../src/render/scene_renderer.c),
-[frame timing](../../src/editor/workspace/frame_profile.c).
+[frame timing](../../src/runtime/engine.c).
 
 ## Explicit fidelity choices and larger experiments
 
@@ -593,7 +579,7 @@ solve/integrate a body twice or maintain two full broad phases without measuring
 their cost. The Neon-Swarm experiment measured 1.118 ms median versus 9.971 ms
 for a serial Box2D circle workload. It is not a production Arena comparison and
 does not prove the frame target. A production simplified backend remains
-unimplemented. [Experiment and limitations](simplified-physics.md).
+unimplemented. [Experiment and limitations](../archive/research/simplified-physics.md).
 
 **A4. Use shared fields or aggregate algorithms for very large crowds.**
 Shared flow fields, cached navigation, density-aware steering and group-level
@@ -654,9 +640,9 @@ evidence; an old 20k benchmark should not certify every future node or scene.
 - Spending heavily on GPU simulation before measuring GPU/CPU critical paths,
   synchronization and readback requirements.
 
-The first implementation sequence should be correlated tail measurements,
-cached dependency/binding preparation, incremental attachment/schedule updates
-and shared clock reads, followed by contact demand and swept-target work.
-Rebaseline after each group. If those preserve semantics and reach the target,
+Cached dependency/binding preparation, incremental attachment/schedule updates
+and shared clock reads are done. The next sequence is correlated tail
+measurements, then contact demand and swept-target work. Rebaseline after each
+group. If those preserve semantics and reach the target,
 keep the larger storage, AoT and fidelity experiments as independently measured
 options for higher populations, richer content and higher refresh rates.

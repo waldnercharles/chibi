@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""CPU operation/storage models for docs/research/hrc-sparse-directional-probes.md.
+"""CPU operation/storage models for docs/archive/research/hrc-sparse-directional-probes.md.
 
 This is not a renderer or a GPU benchmark. Only the interval-tree experiment
 compares numerical transport; the HRC audit enumerates shader dependencies.

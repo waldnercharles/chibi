@@ -77,6 +77,7 @@ The inventory found these problems:
   - Reflected component access becomes three parameterized nodes, **Get**, **Set** and **Has** component. Each has a component picker and split pins, and the entity defaults to Self.
   - This replaces 456 whole-component variants and 317 setters in search. Search still finds "Set Velocity" by keyword.
   - Generated descriptors stay as the lowering targets.
+  - Done: Get, Set, Has, Add and Remove Component plus Make and Break Struct replace the generated nodes in the catalog ([Component nodes](../component-nodes.md)).
 - **One Real type.**
   - Authors see "Real"; the compiler picks single or double precision and inserts widening silently, as Unreal 5 does for floats.
   - The Real/Integer comparison pairs merge into generic comparisons.
@@ -89,11 +90,11 @@ The inventory found these problems:
 A graph should read like the sentence the author had in mind. Presentation never changes evaluation.
 
 Model and arrange work, each its own PR:
-- **Inline by default.** Every pure source that qualifies folds into its consumer's pin row. Qualifying sources are getters, constants, Self, field reads, single-input conversions and small pure trees shown as one expression chip. A per-node choice of auto, always or expanded replaces the `inline_source` bool, and arrange skips inline nodes.
-- **Routing styles.** Arrange routes wires as curved, orthogonal (track-assigned channels with rounded corners, like Electronic Nodes' Manhattan) or straight. It bundles fan-outs into a trunk and scores each style as it is drawn.
+- **Inline by default.** Every pure source that qualifies folds into its consumer's pin row. Qualifying sources are getters, constants, Self, field reads, single-input conversions and small pure trees shown as one expression chip. A per-node choice of auto, always or expanded replaces the `inline_source` bool, and arrange skips inline nodes. Done: nodes carry an `auto`, `inline` or `expanded` presentation (`node_presentation` in `graph/model/node.h`).
+- **Routing styles.** Arrange routes wires as curved, orthogonal (track-assigned channels with rounded corners, like Electronic Nodes' Manhattan) or straight. It bundles fan-outs into a trunk and scores each style as it is drawn. Done: `arrange_route_style` offers curved, orthogonal, straight and subway routes.
 - **Event bands.** Event chains stack in a fixed order (Begin, Tick, input, custom), so a graph reads top to bottom by event.
 - **Long wires become names.** Arrange reports wires that span three or more columns or cross many others, and the editor offers to turn each into a local (a named reroute).
-- **Component access in three nodes.** Reflected components get Get, Set and Has nodes with split pins (see "Simplify the language").
+- **Component access in three nodes.** Reflected components get Get, Set and Has nodes with split pins (see "Simplify the language"). Done.
 
 Editor work, in the RmlUi graph editor:
 - **Follow the selection.** Selecting or hovering a node highlights its wires and dims the rest.
@@ -174,7 +175,7 @@ Ranked by value for gameplay, with sources:
 
 These live in the RmlUi graph editor ([contract](../editor-graph-references.md)). They are listed here for what they need from the model:
 
-- **Format as you go** (Blueprint Assist, Blender Node Arrange). Arrange the selection, a tree or all events, lock nodes, and stack parameters beside their consumer. This consumes the arrange work in progress in the `vigilant-mclean` worktree; the editor calls arrange and never forks it.
+- **Format as you go** (Blueprint Assist, Blender Node Arrange). Arrange the selection, a tree or all events, lock nodes, and stack parameters beside their consumer. The editor calls `graph/authoring/arrange.c` and never forks it.
 - **Link-drag-search with conversions** (Blender, Unreal): results are filtered by type, include operations such as "Math › Add", and auto-wire.
 - **Insert on wire, delete and reconnect, swap node** (Blender, Unreal, Node-RED). Swapping keeps wires by name and type.
 - **Live optimizer suggestions.** Optimize becomes a set of quiet suggestions on the canvas (fold this getter, promote this fan-out) rather than only a command. Each can be applied as one undo step.
@@ -212,18 +213,10 @@ These live in the RmlUi graph editor ([contract](../editor-graph-references.md))
 - no built-in auto-layout
 - no named reroutes
 
-## Coordination
-
-- **`asset-storage-format` (merged, PR #93):** authored assets are YAML, and MCP tool schemas are trimmed.
-  - New asset fields can land now: prototype icons and colors, node versioning, tags, input actions.
-  - The editor must not assume `.json`; scene titles already strip any extension.
-- **`vigilant-mclean` (merged, PR #94):** made `graph/authoring/arrange.c` faster and routes long wires through lanes. Routing styles build on it in their own PR. The graph editor consumes arrange; it doesn't modify it.
-- **This worktree:** the RmlUi editor. It uses the editor's mutation helpers and commands, and adds model-level commands (move, delete, disconnect, reroute) through `editor_command_apply`.
-
 ## Suggested order
 
-1. **The RmlUi graph editor at parity**, built to the interaction contract, together with conversion chips, link-error reasons and the editor legibility work above. In parallel, three separate PRs: inline by default, routing styles with event bands, and component access in three nodes.
+1. **The RmlUi graph editor at parity**, built to the interaction contract, together with conversion chips, link-error reasons and the editor legibility work above. Inline by default, routing styles and component access in three nodes are done; event bands remain.
 2. **Safety rails that need only compiler analysis:** lazy Select/Switch, dominance errors, usage graying, total math, warning IDs.
 3. **Catalog curation:** parameterized component nodes, one Real type, a single struct presentation. The descriptors stay, so this is mostly search and presentation.
-4. **One vocabulary across behavior, shader and field graphs,** after the YAML format lands, since node identities change.
+4. **One vocabulary across behavior, shader and field graphs.** Authored assets are YAML now; node identities change with this step.
 5. **New nodes in the ranked order above,** each validated in a second scene per `AGENTS.md`.

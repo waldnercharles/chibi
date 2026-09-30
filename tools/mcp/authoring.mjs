@@ -5,7 +5,6 @@ import { controllerPath, parseControllerJson } from "./controller.mjs";
 import { getToolCatalogEntry } from "./tool-catalog.mjs";
 
 const GRAPH_KINDS = ["behavior", "event", "library", "material", "shape", "shader-library", "field", "system"];
-const SHADER_KINDS = ["material", "shape", "shader-library"];
 const MAX_NODE_SEARCH_LIMIT = 50;
 const MAX_GRAPH_OPERATIONS = 128;
 const MAX_PROTOTYPE_OPERATIONS = 128;

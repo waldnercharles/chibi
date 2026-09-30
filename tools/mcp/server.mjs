@@ -1512,6 +1512,7 @@ function toolSummary(name, response) {
     "valid",
     "deterministic",
     "diverged",
+    "recording_id",
     "recording_path",
     "first_divergence_frame",
   ];

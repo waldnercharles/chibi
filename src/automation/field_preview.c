@@ -1,5 +1,6 @@
 #include "automation/field_preview.h"
 
+#include "automation/json_int.h"
 #include "platform/cute.h"
 #include "runtime/material_field.h"
 #include "support/xalloc.h"
@@ -21,11 +22,12 @@ bool automation_field_preview(
                *h = yyjson_obj_get(request, "height");
     yyjson_val *cell = yyjson_obj_get(request, "cell_size"),
                *seed = yyjson_obj_get(request, "seed");
-    int width = w ? yyjson_get_int(w) : 256, height = h ? yyjson_get_int(h) : 256;
+    int width = 256, height = 256;
     double spacing = cell ? yyjson_get_num(cell) : 2;
-    if ((w && !yyjson_is_int(w)) || (h && !yyjson_is_int(h)) || width < 1 ||
-        height < 1 || width > 512 || height > 512 || (cell && !yyjson_is_num(cell)) ||
-        !isfinite(spacing) || spacing <= 0 || spacing > 1024 ||
+    if ((w && !json_int_in_range(w, 1, 512, &width)) ||
+        (h && !json_int_in_range(h, 1, 512, &height)) ||
+        (cell && !yyjson_is_num(cell)) || !isfinite(spacing) || spacing <= 0 ||
+        spacing > 1024 ||
         (seed && (!yyjson_is_uint(seed) || yyjson_get_uint(seed) > UINT32_MAX))) {
         snprintf(error, size, "Field preview requires 1..512 pixels, positive cell size up to 1024, and a uint seed");
         return false;

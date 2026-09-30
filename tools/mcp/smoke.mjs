@@ -778,8 +778,20 @@ try {
   const transform = components?.find((component) => component.name === "GameTransform");
   const transformFields = transform?.fields;
   const xField = transformFields?.find((field) => field.name === "x");
-  const firstRecording = firstRecord.result?.recording;
-  const secondRecording = secondRecord.result?.recording;
+  // recordScenario names its recording; the recording resource holds it.
+  const readRecording = (id) => {
+    const read = spawnSync(process.execPath, [server], {
+      cwd: root,
+      env: { ...process.env, CHIBI_ROOT: scenarioRoot, CHIBI_CTL: controller },
+      input: `${JSON.stringify({ jsonrpc: "2.0", id: 17, method: "resources/read", params: { uri: `chibi://recording/${id}` } })}\n`,
+      encoding: "utf8",
+      maxBuffer: 32 * 1024 * 1024,
+    });
+    const response = JSON.parse(read.stdout.trim().split("\n").filter(Boolean).at(-1));
+    return JSON.parse(response.result?.contents?.[0]?.text || "{}").result?.recording;
+  };
+  const firstRecording = readRecording(firstRecord.result?.recording_id);
+  const secondRecording = readRecording(secondRecord.result?.recording_id);
   const firstRecordFrames = firstRecord.result?.frames ?? firstRecording?.frames;
   const secondRecordFrames = secondRecord.result?.frames ?? secondRecording?.frames;
   const firstFrameHashes = firstRecording?.frame_hashes ||
@@ -925,6 +937,8 @@ try {
       scenarioById.get(7)?.error?.code !== -32602 ||
       firstRecord.ok !== true || secondRecord.ok !== true ||
       firstRecordFrames !== 3 || secondRecordFrames !== 3 ||
+      firstRecord.result?.recording !== undefined ||
+      firstRecord.result?.world_hash !== secondRecord.result?.world_hash ||
       !firstRecording || !secondRecording ||
       JSON.stringify(firstRecordingWithoutPath) !== JSON.stringify(secondRecordingWithoutPath) ||
       JSON.stringify(firstFrameHashes) !== JSON.stringify(secondFrameHashes) ||

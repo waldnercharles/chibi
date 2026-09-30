@@ -91,7 +91,8 @@ static int compare_time(const void *a, const void *b)
     return (x > y) - (x < y);
 }
 
-static bool render_scene(
+/* CHIBI_AUTOMATION_OK, or why the scene could not be prepared or rendered. */
+static int render_scene(
     const char *root,
     const char *request,
     const preview_options *options,
@@ -117,7 +118,7 @@ static bool render_scene(
     );
     if (cf_is_error(made)) {
         snprintf(error, size, "%s", made.details);
-        return false;
+        return CHIBI_AUTOMATION_EXECUTION_ERROR;
     }
     cf_app_set_present_mode(CF_PRESENT_MODE_IMMEDIATE);
     cf_app_init_imgui();
@@ -128,8 +129,8 @@ static bool render_scene(
     app_scene_renderer_initialize();
     scene_preview scene = { 0 };
     chibi_preview_run *run = NULL;
-    bool ok = chibi_automation_preview(root, request, &run, &scene.perspective, error, size) ==
-              CHIBI_AUTOMATION_OK;
+    int status = chibi_automation_preview(root, request, &run, &scene.perspective, error, size);
+    bool ok = status == CHIBI_AUTOMATION_OK;
     if (ok) {
         scene.preview = chibi_preview_runtime(run);
         scene.renderer = app_scene_renderer_new();
@@ -309,7 +310,22 @@ static bool render_scene(
     chibi_preview_free(run);
     render_shader_catalog_clear();
     cf_destroy_app();
-    return ok;
+    if (ok) {
+        return CHIBI_AUTOMATION_OK;
+    }
+    return status != CHIBI_AUTOMATION_OK ? status : CHIBI_AUTOMATION_EXECUTION_ERROR;
+}
+
+static const char *status_code(int status)
+{
+    switch (status) {
+        case CHIBI_AUTOMATION_INVALID_REQUEST: return "invalid_request";
+        case CHIBI_AUTOMATION_IO_ERROR: return "io_error";
+        case CHIBI_AUTOMATION_VALIDATION_ERROR: return "validation_failed";
+        case CHIBI_AUTOMATION_NOT_FOUND: return "asset_not_found";
+        case CHIBI_AUTOMATION_CONFLICT: return "asset_conflict";
+        default: return "execution_failed";
+    }
 }
 
 char *chibi_scene_preview_handle(const char *request, const char *default_root, int *exit_code)
@@ -332,6 +348,11 @@ char *chibi_scene_preview_handle(const char *request, const char *default_root, 
     if (!project) {
         project = default_root;
     }
+    enum
+    {
+        MIN_SIDE = 64,
+        MAX_SIDE = 2048,
+    };
     int width = 640, height = 360;
     const char *keys[] = { "width", "height" };
     int *sides[] = { &width, &height };
@@ -340,9 +361,9 @@ char *chibi_scene_preview_handle(const char *request, const char *default_root, 
         if (!value) {
             continue;
         }
-        if (!yyjson_is_int(value) || yyjson_get_sint(value) < 64 ||
-            yyjson_get_sint(value) > 4096) {
-            snprintf(error, sizeof error, "%s must be an integer between 64 and 4096", keys[i]);
+        if (!yyjson_is_int(value) || yyjson_get_sint(value) < MIN_SIDE ||
+            yyjson_get_sint(value) > MAX_SIDE) {
+            snprintf(error, sizeof error, "%s must be an integer between %d and %d", keys[i], MIN_SIDE, MAX_SIDE);
             break;
         }
         *sides[i] = (int)yyjson_get_sint(value);
@@ -411,7 +432,8 @@ char *chibi_scene_preview_handle(const char *request, const char *default_root, 
             !getcwd(directory, sizeof directory) || chdir(canonical)) {
             snprintf(error, sizeof error, "Could not open project root");
         } else {
-            ok = render_scene(canonical, request, &options, &measurement, &png, error, sizeof error);
+            status = render_scene(canonical, request, &options, &measurement, &png, error, sizeof error);
+            ok = status == CHIBI_AUTOMATION_OK;
             if (chdir(directory)) {
                 abort();
             }
@@ -511,16 +533,11 @@ char *chibi_scene_preview_handle(const char *request, const char *default_root, 
         yyjson_mut_obj_add_strcpy(response, preview, "data", png);
     } else {
         yyjson_mut_val *failure = yyjson_mut_obj_add_obj(response, object, "error");
-        yyjson_mut_obj_add_str(
-            response,
-            failure,
-            "code",
-            status == CHIBI_AUTOMATION_INVALID_REQUEST ? "invalid_request" : "execution_failed"
-        );
+        yyjson_mut_obj_add_str(response, failure, "code", status_code(status));
         yyjson_mut_obj_add_strcpy(response, failure, "message", error);
     }
     if (exit_code) {
-        *exit_code = ok ? CHIBI_AUTOMATION_OK : status;
+        *exit_code = status;
     }
     free(png);
     free(measurement.initial_state);

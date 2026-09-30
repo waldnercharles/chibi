@@ -89,9 +89,6 @@ static void free_edit_context(edit_context *ctx)
 
 static void set_error(edit_context *ctx, const char *fmt, ...)
 {
-    if (!ctx->error || !ctx->error_size) {
-        return;
-    }
     va_list ap;
     va_start(ap, fmt);
     vsnprintf(ctx->error, ctx->error_size, fmt, ap);
@@ -115,33 +112,26 @@ static int add_layout_graph(edit_context *ctx, graph *graph)
 
 static void add_failure(edit_context *ctx)
 {
-    if (!ctx->result) {
-        return;
-    }
     yyjson_mut_obj_add_int(ctx->doc, ctx->result, "failed_operation", ctx->operation);
-    yyjson_mut_obj_add_strcpy(ctx->doc, ctx->result, "error", ctx->error ? ctx->error : "edit failed");
+    yyjson_mut_obj_add_strcpy(ctx->doc, ctx->result, "error", ctx->error);
 }
 
 static int fail_request(edit_context *ctx, const char *fmt, ...)
 {
-    if (ctx->error && ctx->error_size) {
-        va_list ap;
-        va_start(ap, fmt);
-        vsnprintf(ctx->error, ctx->error_size, fmt, ap);
-        va_end(ap);
-    }
+    va_list ap;
+    va_start(ap, fmt);
+    vsnprintf(ctx->error, ctx->error_size, fmt, ap);
+    va_end(ap);
     add_failure(ctx);
     return CHIBI_AUTOMATION_INVALID_REQUEST;
 }
 
 static int fail_validation(edit_context *ctx, const char *fmt, ...)
 {
-    if (ctx->error && ctx->error_size) {
-        va_list ap;
-        va_start(ap, fmt);
-        vsnprintf(ctx->error, ctx->error_size, fmt, ap);
-        va_end(ap);
-    }
+    va_list ap;
+    va_start(ap, fmt);
+    vsnprintf(ctx->error, ctx->error_size, fmt, ap);
+    va_end(ap);
     add_failure(ctx);
     return CHIBI_AUTOMATION_VALIDATION_ERROR;
 }
@@ -275,7 +265,7 @@ static behavior_domain domain_from_kind(const char *kind)
     if (!strcmp(kind, "library")) {
         return BEHAVIOR_DOMAIN_LIBRARY;
     }
-    if (!strcmp(kind, "material") || !strcmp(kind, "shader")) {
+    if (!strcmp(kind, "material")) {
         return BEHAVIOR_DOMAIN_MATERIAL;
     }
     if (!strcmp(kind, "field")) {
@@ -351,6 +341,15 @@ static int refresh_call_reference(edit_context *ctx, node *call, uint64_t refere
                 }
             }
         }
+    }
+    if (!target && !reference_id && call->reference_name) {
+        set_error(
+            ctx,
+            "referenced function '%s' does not exist in %s",
+            call->reference_name,
+            reference_asset ? reference_asset : "this asset"
+        );
+        return -1;
     }
     if (!target) {
         set_error(ctx, "referenced graph %llu does not exist", (unsigned long long)reference_id);
@@ -2613,21 +2612,9 @@ int automation_graph_edit(
     size_t error_size
 )
 {
-    if (edited_json) {
-        *edited_json = NULL;
-    }
-    if (!request || !yyjson_is_obj(request) || !doc || !result || !edited_json) {
-        if (error && error_size) {
-            snprintf(error, error_size, "graph edit requires a request object and output document");
-        }
-        return CHIBI_AUTOMATION_INVALID_REQUEST;
-    }
-    if (library_count < 0 || (library_count && !libraries)) {
-        if (error && error_size) {
-            snprintf(error, error_size, "library_count must be nonnegative with a library array");
-        }
-        return CHIBI_AUTOMATION_INVALID_REQUEST;
-    }
+    assert(yyjson_is_obj(request) && doc && result && edited_json && error && error_size);
+    assert(library_count >= 0 && (!library_count || libraries));
+    *edited_json = NULL;
     edit_context ctx = { .doc = doc,
                          .result = result,
                          .libraries = libraries,
@@ -2672,7 +2659,7 @@ int automation_graph_edit(
     }
     ctx.graph = select_graph(&ctx, request);
     if (!ctx.graph) {
-        if (!error || !error[0]) {
+        if (!error[0]) {
             set_error(&ctx, "selected graph does not exist");
         }
         add_failure(&ctx);
@@ -2714,6 +2701,16 @@ int automation_graph_edit(
         }
     }
     ctx.operation = index;
+    /* The batch's graphs are the ones it arranges, and the selected one. */
+    bool oversized = acount(ctx.graph->nodes) > SHADER_NODE_MAX;
+    for (int i = 0; i < acount(ctx.layout_graphs); i++) {
+        oversized |= acount(ctx.layout_graphs[i]->nodes) > SHADER_NODE_MAX;
+    }
+    if (oversized) {
+        int status = fail_validation(&ctx, "a graph this edit batch touches exceeds the %d node authoring limit", SHADER_NODE_MAX);
+        free_edit_context(&ctx);
+        return status;
+    }
     int validation = validate_asset(&ctx);
     if (validation) {
         add_failure(&ctx);

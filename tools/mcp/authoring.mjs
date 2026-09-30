@@ -543,6 +543,11 @@ const optimizeGraphDefinition = {
   operation: "optimize_graph",
   inputSchema: object({
     ...assetSelectorProperties,
+    kind: {
+      type: "string",
+      enum: GRAPH_KINDS.filter((kind) => kind !== "system"),
+      description: "Graph asset family; system assets are not optimized.",
+    },
     expected_hash: {
       type: "string",
       description: "Current 16-character content hash. Required when applying an optimization; optional for a dry run.",

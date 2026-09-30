@@ -722,7 +722,7 @@ function buildToolDefinitions() {
   scenePreview.inputSchema.properties.inputs = frameInputs;
   scenarioArguments.properties.inputs = frameInputs;
   runtimeSnapshotArguments.properties.inputs = frameInputs;
-  const recording = { type: "object", description: "Recording returned by recordScenario, passed back unchanged." };
+  const recording = { type: "object", description: "A recording as the chibi://recording/<id> resource returns it; prefer the recording_path recordScenario returns." };
   const recordArguments = {
     type: "object",
     properties: {

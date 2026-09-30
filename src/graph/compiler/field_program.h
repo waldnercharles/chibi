@@ -38,6 +38,20 @@ bool field_program_bake(
     char *error,
     size_t size
 );
+/* Bakes only rows [first, first + count) of the grid into out, which holds the
+ * whole grid; the values match field_program_bake's exactly, so a grid can be
+ * baked a slice at a time. */
+bool field_program_bake_rows(
+    const field_program *program,
+    field_context context,
+    field_grid grid,
+    int first,
+    int count,
+    float *out,
+    const game_task_system *tasks,
+    char *error,
+    size_t size
+);
 bool field_program_sample(
     const field_program *program,
     field_context context,

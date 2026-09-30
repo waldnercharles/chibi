@@ -245,8 +245,9 @@ typedef NODE_COMPONENT_TYPE_DENSE(MaterialTerrain)
     unsigned mask;
     int min_fragment_cells;
     /* Zero keeps a bounded terrain resident. Positive radius streams around
-     * cameras; zero width and height then allow unbounded terrain. Generation
-     * is limited to stream_budget tiles per boundary. */
+     * cameras; zero width and height then allow unbounded terrain. Prefetch
+     * bakes stream_budget slices of 16 tile rows per boundary, so no step
+     * bakes a whole tile unless it is already visible. */
     float stream_radius;
     int stream_budget;
     /* Solid islands and air pockets smaller than this many cells that lie

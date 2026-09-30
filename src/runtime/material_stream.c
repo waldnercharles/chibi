@@ -12,15 +12,30 @@
 #include <stdlib.h>
 #include <string.h>
 
+enum
+{
+    /* Rows of a prefetched tile each unit of budget bakes per update. */
+    STREAM_SLICE_ROWS = 16
+};
+
 typedef struct
 {
     uint64_t key;
     long offset;
 } stored_tile;
+/* A prefetched tile baked a slice of rows per update; NULL samples when none. */
+typedef struct
+{
+    uint64_t key;
+    field_grid grid;
+    float *samples;
+    int baked_rows;
+} pending_tile;
 struct material_stream
 {
     material_stream_desc desc;
     material_stream_tile *tiles;
+    pending_tile pending;
     stored_tile *stored;
     FILE *file;
     int columns, rows;
@@ -57,6 +72,7 @@ void material_stream_free(material_stream *s)
         free_tile(s->tiles[i]);
     }
     afree(s->tiles);
+    free(s->pending.samples);
     afree(s->stored);
     if (s->file) {
         fclose(s->file);
@@ -162,60 +178,108 @@ static bool store_tile(material_stream *s, material_stream_tile tile)
     return ok;
 }
 
-static bool load_tile(material_stream *s, const material_fields *fields, uint64_t key, char *error, size_t size)
+static void add_tile(material_stream *s, uint64_t key, field_grid grid, material_mask mask)
 {
-    field_grid grid = tile_grid(s, key);
-    int cells = grid.width * grid.height;
-    float *samples = xmalloc((size_t)cells * sizeof(float));
-    int index = stored_index(s, key);
-    material_mask mask = { 0 };
-    bool ok = false;
-    if (index < 0) {
-        ok = material_field_bake(
-            fields,
-            s->desc.field,
-            s->desc.parameters,
-            s->desc.seed,
-            grid,
-            samples,
-            s->desc.tasks,
-            error,
-            size
-        );
-        if (ok) {
-            material_terrain_tidy(samples, grid, s->desc.island_cells);
-            mask = material_mask_from_field(grid.width, grid.height, grid.cell_size, samples);
-        }
-    } else {
-        unsigned char *occupancy = xmalloc((size_t)cells);
-        float *damage = xmalloc((size_t)cells * sizeof(float));
-        ok = !fseek(s->file, s->stored[index].offset, SEEK_SET) &&
-             fread(occupancy, 1, (size_t)cells, s->file) == (size_t)cells &&
-             fread(samples, sizeof(float), (size_t)cells, s->file) == (size_t)cells &&
-             fread(damage, sizeof(float), (size_t)cells, s->file) == (size_t)cells;
-        if (ok) {
-            mask = material_mask_from_field(grid.width, grid.height, grid.cell_size, samples);
-            memcpy(mask.cells, occupancy, (size_t)cells);
-            mask.count = 0;
-            for (int i = 0; i < cells; i++) {
-                mask.count += occupancy[i] != 0;
-            }
-            mask.damage = damage;
-            material_mask_rebuild(&mask);
-        } else {
-            free(damage);
-            snprintf(error, size, "Cannot restore streamed terrain");
-        }
-        free(occupancy);
-    }
-    free(samples);
-    if (!ok) {
-        return false;
-    }
     material_mask *owned = xmalloc(sizeof *owned);
     *owned = mask;
     apush(s->tiles, ((material_stream_tile){ key, grid, owned }));
     s->state.loaded++;
+}
+
+static pending_tile start_tile(const material_stream *s, uint64_t key)
+{
+    field_grid grid = tile_grid(s, key);
+    return (
+        pending_tile
+    ){ key, grid, xmalloc((size_t)grid.width * grid.height * sizeof(float)), 0 };
+}
+
+static bool bake_rows(
+    material_stream *s,
+    const material_fields *fields,
+    pending_tile *tile,
+    int count,
+    char *error,
+    size_t size
+)
+{
+    bool ok = material_field_bake_rows(
+        fields,
+        s->desc.field,
+        s->desc.parameters,
+        s->desc.seed,
+        tile->grid,
+        tile->baked_rows,
+        count,
+        tile->samples,
+        s->desc.tasks,
+        error,
+        size
+    );
+    tile->baked_rows += count;
+    return ok;
+}
+
+/* A fully baked tile becomes resident. */
+static void finish_tile(material_stream *s, pending_tile *tile)
+{
+    field_grid grid = tile->grid;
+    material_terrain_tidy(tile->samples, grid, s->desc.island_cells);
+    add_tile(
+        s,
+        tile->key,
+        grid,
+        material_mask_from_field(grid.width, grid.height, grid.cell_size, tile->samples)
+    );
+    free(tile->samples);
+    *tile = (pending_tile){ 0 };
+}
+
+static bool restore_tile(material_stream *s, uint64_t key, int index, char *error, size_t size)
+{
+    field_grid grid = tile_grid(s, key);
+    int cells = grid.width * grid.height;
+    float *samples = xmalloc((size_t)cells * sizeof(float));
+    unsigned char *occupancy = xmalloc((size_t)cells);
+    float *damage = xmalloc((size_t)cells * sizeof(float));
+    bool ok = !fseek(s->file, s->stored[index].offset, SEEK_SET) &&
+              fread(occupancy, 1, (size_t)cells, s->file) == (size_t)cells &&
+              fread(samples, sizeof(float), (size_t)cells, s->file) == (size_t)cells &&
+              fread(damage, sizeof(float), (size_t)cells, s->file) == (size_t)cells;
+    if (ok) {
+        material_mask mask = material_mask_from_field(grid.width, grid.height, grid.cell_size, samples);
+        memcpy(mask.cells, occupancy, (size_t)cells);
+        mask.count = 0;
+        for (int i = 0; i < cells; i++) {
+            mask.count += occupancy[i] != 0;
+        }
+        mask.damage = damage;
+        material_mask_rebuild(&mask);
+        add_tile(s, key, grid, mask);
+    } else {
+        free(damage);
+        snprintf(error, size, "Cannot restore streamed terrain");
+    }
+    free(occupancy);
+    free(samples);
+    return ok;
+}
+
+/* Restores a stored tile, or bakes whatever rows of it remain. */
+static bool load_tile(material_stream *s, const material_fields *fields, uint64_t key, char *error, size_t size)
+{
+    int index = stored_index(s, key);
+    if (index >= 0) {
+        return restore_tile(s, key, index, error, size);
+    }
+    bool pending = s->pending.samples && s->pending.key == key;
+    pending_tile whole = pending ? (pending_tile){ 0 } : start_tile(s, key);
+    pending_tile *tile = pending ? &s->pending : &whole;
+    if (!bake_rows(s, fields, tile, tile->grid.height - tile->baked_rows, error, size)) {
+        free(whole.samples);
+        return false;
+    }
+    finish_tile(s, tile);
     return true;
 }
 
@@ -282,6 +346,48 @@ static bool next_tile(
     return found;
 }
 
+/* Spends budget slices of rows on the pending tile, starting on the nearest
+ * missing tile when none is pending. Restoring a stored tile costs a slice. */
+static bool prefetch(
+    material_stream *s,
+    const material_fields *fields,
+    const material_stream_view *views,
+    int count,
+    int budget,
+    char *error,
+    size_t size
+)
+{
+    pending_tile *tile = &s->pending;
+    for (int rows = budget * STREAM_SLICE_ROWS; rows > 0;) {
+        uint64_t key = 0;
+        if (!tile->samples && !next_tile(s, views, count, false, &key)) {
+            return true;
+        }
+        int index = tile->samples ? -1 : stored_index(s, key);
+        if (index >= 0) {
+            if (!restore_tile(s, key, index, error, size)) {
+                return false;
+            }
+            rows -= STREAM_SLICE_ROWS;
+            continue;
+        }
+        if (!tile->samples) {
+            *tile = start_tile(s, key);
+        }
+        int left = tile->grid.height - tile->baked_rows;
+        int slice = left < rows ? left : rows;
+        if (!bake_rows(s, fields, tile, slice, error, size)) {
+            return false;
+        }
+        rows -= slice;
+        if (tile->baked_rows == tile->grid.height) {
+            finish_tile(s, tile);
+        }
+    }
+    return true;
+}
+
 bool material_stream_update(
     material_stream *s,
     const material_fields *fields,
@@ -307,6 +413,11 @@ bool material_stream_update(
         adel(s->tiles, i);
         s->state.unloaded++;
     }
+    /* A pending bake the views have left is abandoned. */
+    if (s->pending.samples && !wanted(s->pending.grid, views, count, margin)) {
+        free(s->pending.samples);
+        s->pending = (pending_tile){ 0 };
+    }
     uint64_t key = 0;
     bool loaded = true;
     CHIBI_TRACE_ZONE_BEGIN(required_zone, "Terrain required tiles");
@@ -315,10 +426,7 @@ bool material_stream_update(
     }
     CHIBI_TRACE_ZONE_END(required_zone);
     CHIBI_TRACE_ZONE_BEGIN(prefetch_zone, "Terrain prefetch");
-    for (int i = 0; loaded && i < budget && next_tile(s, views, count, false, &key);
-         i++) {
-        loaded = load_tile(s, fields, key, error, size);
-    }
+    loaded = loaded && prefetch(s, fields, views, count, budget, error, size);
     CHIBI_TRACE_ZONE_END(prefetch_zone);
     return loaded;
 }

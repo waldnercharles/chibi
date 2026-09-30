@@ -6,6 +6,7 @@
 #include "support/cos_sin.h"
 #include "support/xalloc.h"
 
+#include <assert.h>
 #include <float.h>
 #include <math.h>
 #include <stdatomic.h>
@@ -654,6 +655,7 @@ typedef struct
     const float *parameters;
     unsigned seed;
     field_grid grid;
+    int first_row, last_row;
     float *out;
     int rows_per_band;
     /* Set by any failing band, possibly from several workers at once; bands
@@ -667,10 +669,9 @@ static void bake_bands(int start, int end, uint32_t, void *context)
     int stride = acount(job->program->code);
     float *slots = xcalloc((size_t)stride * job->grid.width, sizeof(float));
     for (int band = start; band < end; band++) {
-        int first = band * job->rows_per_band;
-        int last = first + job->rows_per_band < job->grid.height
-                     ? first + job->rows_per_band
-                     : job->grid.height;
+        int first = job->first_row + band * job->rows_per_band;
+        int last = first + job->rows_per_band < job->last_row ? first + job->rows_per_band
+                                                              : job->last_row;
         /* Each band recomputes its row-invariant instructions on its first row. */
         for (int y = first; y < last; y++) {
             if (!bake_row(
@@ -704,21 +705,37 @@ bool field_program_bake(
     size_t size
 )
 {
+    return field_program_bake_rows(p, ctx, grid, 0, grid.height, out, tasks, error, size);
+}
+
+bool field_program_bake_rows(
+    const field_program *p,
+    field_context ctx,
+    field_grid grid,
+    int first,
+    int count,
+    float *out,
+    const game_task_system *tasks,
+    char *error,
+    size_t size
+)
+{
     if (!p || !out || grid.width < 1 || grid.height < 1 || grid.width > 4096 ||
         grid.height > 4096 || !isfinite(grid.cell_size) || grid.cell_size <= 0 ||
         !isfinite(grid.center_x) || !isfinite(grid.center_y) ||
         ctx.parameter_count < 0 || (ctx.parameter_count && !ctx.parameters)) {
         return fail(error, size, "Invalid field grid or parameters");
     }
+    assert(first >= 0 && count > 0 && first + count <= grid.height);
     float *parameters = bind_parameters(p, ctx, error, size);
     if (!parameters) {
         return false;
     }
-    bool parallel = tasks && tasks->workers > 1 && grid.height >= 32;
-    bake_job job = { p,    parameters, ctx.seed,
-                     grid, out,        parallel ? 8 : grid.height,
+    bool parallel = tasks && tasks->workers > 1 && count >= 32;
+    bake_job job = { p,     parameters,    ctx.seed, grid,
+                     first, first + count, out,      parallel ? 8 : count,
                      false };
-    int bands = (grid.height + job.rows_per_band - 1) / job.rows_per_band;
+    int bands = (count + job.rows_per_band - 1) / job.rows_per_band;
     void *task = parallel ? tasks->enqueue(bake_bands, bands, 1, &job, tasks->user)
                           : NULL;
     if (task) {

@@ -407,6 +407,12 @@ static void library_hot_apply()
     ecs_world_free(world);
 }
 
+/* Prefetch budgets count 16-row slices; one 128-row tile takes eight. */
+enum
+{
+    TILE_SLICES = 8
+};
+
 static void streaming_restore()
 {
     behavior_asset *a = field("stream-fixture");
@@ -424,9 +430,15 @@ static void streaming_restore()
                                   .seed = 71 };
     material_stream *stream = material_stream_new(desc);
     material_stream_view view = { -1500, 0, 80 };
-    assert(material_stream_update(stream, fields, &view, 1, 1, error, sizeof error));
+    /* Prefetch bakes a tile a slice per update, publishing it once complete. */
     int count;
-    const material_stream_tile *tiles = material_stream_tiles(stream, &count);
+    const material_stream_tile *tiles;
+    for (int i = 0; i < TILE_SLICES; i++) {
+        material_stream_tiles(stream, &count);
+        assert(count == 0);
+        assert(material_stream_update(stream, fields, &view, 1, 1, error, sizeof error));
+    }
+    tiles = material_stream_tiles(stream, &count);
     assert(count == 1);
     uint64_t key = tiles[0].key;
     material_mask *mask = tiles[0].mask;
@@ -442,10 +454,10 @@ static void streaming_restore()
     memcpy(distance, mask->distance, (size_t)length * sizeof(float));
     memcpy(damage, mask->damage, (size_t)length * sizeof(float));
     view.x = 1500;
-    assert(material_stream_update(stream, fields, &view, 1, 1, error, sizeof error));
+    assert(material_stream_update(stream, fields, &view, 1, TILE_SLICES, error, sizeof error));
     assert(material_stream_inspect(stream).unloaded == 1);
     view.x = -1500;
-    assert(material_stream_update(stream, fields, &view, 1, 1, error, sizeof error));
+    assert(material_stream_update(stream, fields, &view, 1, TILE_SLICES, error, sizeof error));
     tiles = material_stream_tiles(stream, &count);
     assert(count == 1 && tiles[0].key == key);
     mask = tiles[0].mask;
@@ -458,20 +470,22 @@ static void streaming_restore()
     *mask = (material_mask){ 0 };
     size_t stored_bytes = material_stream_inspect(stream).stored_bytes;
     view.x = 1500;
-    assert(material_stream_update(stream, fields, &view, 1, 1, error, sizeof error));
+    assert(material_stream_update(stream, fields, &view, 1, TILE_SLICES, error, sizeof error));
     view.x = -1500;
-    assert(material_stream_update(stream, fields, &view, 1, 1, error, sizeof error));
+    assert(material_stream_update(stream, fields, &view, 1, TILE_SLICES, error, sizeof error));
     tiles = material_stream_tiles(stream, &count);
     assert(tiles[0].mask->count == 0);
     assert(material_stream_inspect(stream).stored_bytes == stored_bytes);
     /* Traversal remains local even though the world exceeds one bake's limit. */
     for (int i = 0; i < 24; i++) {
         view.x = -1800 + 150 * i;
-        assert(material_stream_update(stream, fields, &view, 1, 2, error, sizeof error));
+        assert(
+            material_stream_update(stream, fields, &view, 1, 2 * TILE_SLICES, error, sizeof error)
+        );
         assert(material_stream_inspect(stream).resident <= 20);
     }
     view = (material_stream_view){ 2049, 256, 0 };
-    assert(material_stream_update(stream, fields, &view, 1, 1, error, sizeof error));
+    assert(material_stream_update(stream, fields, &view, 1, TILE_SLICES, error, sizeof error));
     tiles = material_stream_tiles(stream, &count);
     bool edge = false;
     for (int i = 0; i < count; i++) {
@@ -482,7 +496,7 @@ static void streaming_restore()
     /* A fresh run regenerates pristine terrain. */
     stream = material_stream_new(desc);
     view = (material_stream_view){ -1500, 0, 80 };
-    assert(material_stream_update(stream, fields, &view, 1, 1, error, sizeof error));
+    assert(material_stream_update(stream, fields, &view, 1, TILE_SLICES, error, sizeof error));
     tiles = material_stream_tiles(stream, &count);
     assert(tiles[0].mask->count == length);
     assert(material_stream_inspect(stream).stored == 0);
@@ -492,7 +506,7 @@ static void streaming_restore()
     desc.grid = (field_grid){ 0, 0, 1 };
     stream = material_stream_new(desc);
     view = (material_stream_view){ -64, -64, 0 };
-    assert(material_stream_update(stream, fields, &view, 1, 1, error, sizeof error));
+    assert(material_stream_update(stream, fields, &view, 1, TILE_SLICES, error, sizeof error));
     tiles = material_stream_tiles(stream, &count);
     assert(count == 1 && tiles[0].key == UINT64_MAX);
     key = tiles[0].key;
@@ -504,7 +518,9 @@ static void streaming_restore()
                                              { -100064, -100064, 0 } };
     uint64_t keys[4];
     for (int i = 0; i < 4; i++) {
-        assert(material_stream_update(stream, fields, &distant[i], 1, 1, error, sizeof error));
+        assert(
+            material_stream_update(stream, fields, &distant[i], 1, TILE_SLICES, error, sizeof error)
+        );
         tiles = material_stream_tiles(stream, &count);
         assert(count == 1);
         keys[i] = tiles[0].key;
@@ -515,7 +531,7 @@ static void streaming_restore()
         assert(fabsf(tiles[0].grid.center_x - distant[i].x) <= 64);
         assert(fabsf(tiles[0].grid.center_y - distant[i].y) <= 64);
     }
-    assert(material_stream_update(stream, fields, &view, 1, 1, error, sizeof error));
+    assert(material_stream_update(stream, fields, &view, 1, TILE_SLICES, error, sizeof error));
     tiles = material_stream_tiles(stream, &count);
     assert(count == 1 && tiles[0].key == key && tiles[0].mask->count == remaining);
     material_stream_free(stream);
@@ -545,9 +561,9 @@ static void streaming_restore()
      * limits prefetching beyond it. */
     stream = material_stream_new(desc);
     view = (material_stream_view){ 0, 0, 1000, 200 };
-    assert(material_stream_update(stream, fields, &view, 1, 1, error, sizeof error));
+    assert(material_stream_update(stream, fields, &view, 1, TILE_SLICES, error, sizeof error));
     assert(material_stream_inspect(stream).resident == 16 + 1);
-    assert(material_stream_update(stream, fields, &view, 1, 1, error, sizeof error));
+    assert(material_stream_update(stream, fields, &view, 1, TILE_SLICES, error, sizeof error));
     assert(material_stream_inspect(stream).resident == 16 + 2);
     material_stream_free(stream);
     material_fields_free(fields);

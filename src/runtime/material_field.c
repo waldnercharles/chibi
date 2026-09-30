@@ -89,6 +89,23 @@ bool material_field_bake(
     size_t size
 )
 {
+    return material_field_bake_rows(fields, name, json, seed, grid, 0, grid.height, out, tasks, error, size);
+}
+
+bool material_field_bake_rows(
+    const material_fields *fields,
+    const char *name,
+    const char *json,
+    unsigned seed,
+    field_grid grid,
+    int first,
+    int count,
+    float *out,
+    const game_task_system *tasks,
+    char *error,
+    size_t size
+)
+{
     int index = find(fields, name);
     if (index < 0) {
         snprintf(error, size, "Unknown procedural field: %s", name ? name : "");
@@ -146,10 +163,12 @@ bool material_field_bake(
         snprintf(error, size, "Invalid field parameter object");
     }
     if (valid) {
-        valid = field_program_bake(
+        valid = field_program_bake_rows(
             entry->program,
             (field_context){ seed, parameters, acount(parameters) },
             grid,
+            first,
+            count,
             out,
             tasks,
             error,

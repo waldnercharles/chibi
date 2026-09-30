@@ -16,6 +16,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 static node *add(graph *g, const char *name)
 {
@@ -1010,6 +1011,140 @@ static void children_survive_source(bool descendants)
     if (leaf) {
         game_prototype_free(leaf);
     }
+    game_live_world_free(live);
+    ecs_world_free(ecs);
+}
+
+/* A behavior that reads its entity's Transform on Begin and every Tick, as a
+   shot's behaviors do. */
+static behavior_asset *shot_behavior(const char *name)
+{
+    behavior_asset *asset = behavior_asset_new(name);
+    assert(behavior_asset_set_owner_type(asset, "ecs.entity") == 0);
+    uint64_t observed = variable(asset, "ObservedX", PIN_F32, "float")->id;
+    graph *g = asset->graph;
+    const char *events[] = { "Begin", "Tick" };
+    for (int i = 0; i < 2; i++) {
+        node *event = add(g, "Event");
+        assert(graph_set_event_name(g, event, events[i]) == 0);
+        node *get = add(g, "Get_GameTransform");
+        node *split = add(g, "Break_GameTransform");
+        node *set = behavior_asset_add_set_node(asset, observed);
+        data(g, get, 0, split, 0);
+        data(g, split, 0, set, 1);
+        next(g, event, set);
+    }
+    return asset;
+}
+
+static behavior_asset *spawner_behavior()
+{
+    behavior_asset *asset = behavior_asset_new("Spawner");
+    assert(behavior_asset_set_owner_type(asset, "ecs.entity") == 0);
+    graph *g = asset->graph;
+    node *fire = add(g, "Event");
+    assert(graph_set_event_name(g, fire, "Fire") == 0);
+    node *spawn = add(g, "Spawn Prototype");
+    input(g, spawn, 1, (pin_value){ .type = PIN_NAME, .str = "Shot" });
+    next(g, fire, spawn);
+    return asset;
+}
+
+enum
+{
+    SPAWN_BENCH_BATCH = 16
+};
+
+static double elapsed_ns(struct timespec start, struct timespec end)
+{
+    return (double)(end.tv_sec - start.tv_sec) * 1e9 +
+           (double)(end.tv_nsec - start.tv_nsec);
+}
+
+/* Spawns and destroys `count` shots of Neon Swarm's Projectile shape (nine
+   components, three behaviors on Begin and Tick) twice, the second time from
+   warm pools, and prints the cost per entity. */
+void bench_spawn(int count)
+{
+    assert(count > 0 && count <= 20000);
+    ecs_world *ecs = ecs_world_new();
+    for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
+        assert(ecs_world_register_component(ecs, GAME_REGISTRY_COMPONENTS[i], NULL) == ECS_OK);
+    }
+    game_live_world *live = game_live_world_new(ecs);
+    game_prototype_registry registry = { GAME_REGISTRY_COMPONENTS,
+                                         GAME_REGISTRY_COMPONENT_COUNT };
+    char error[256];
+    game_prototype *shot = game_prototype_load(
+        "{\"name\":\"Shot\",\"components\":{"
+        "\"GameAppearance\":{\"color\":16777215,\"height\":4,\"width\":16},"
+        "\"GameBody\":{\"continuous\":true},"
+        "\"GameCollider\":{\"category\":4,\"mask\":10,\"radius\":2,\"sensor\":"
+        "true},"
+        "\"GameIgniter\":{\"heat\":2.5},\"GameMaterial\":{\"absorption\":0.1},"
+        "\"GameOrientation\":{},\"GameProjectile\":{\"damage\":1,\"speed\":400}"
+        ","
+        "\"GameTransform\":{\"x\":1},\"GameVelocity\":{}},"
+        "\"behaviors\":[\"ShotEffects\",\"ShotHit\",\"ShotLifecycle\"]}",
+        &registry,
+        error,
+        sizeof error
+    );
+    assert(shot);
+    assert(game_entities_register(live->entities, shot) == 0);
+    const char *behaviors[] = { "ShotEffects", "ShotHit", "ShotLifecycle", "Spawner" };
+    for (int i = 0; i < 4; i++) {
+        behavior_asset *asset = i < 3 ? shot_behavior(behaviors[i])
+                                      : spawner_behavior();
+        assert(
+            game_live_add_definition(live, game_live_definition_new(behaviors[i], asset)) == 0
+        );
+    }
+    ecs_entity owner = ecs_world_create_entity(ecs);
+    assert(game_behavior_attach(live->behaviors, owner, "Spawner") == 0);
+    for (int round = 0; round < 2; round++) {
+        xalloc_stats before, after;
+        xalloc_stats_get(&before);
+        struct timespec start, spawned, destroyed;
+        clock_gettime(CLOCK_MONOTONIC, &start);
+        /* A busy tick's worth of shots at a time, as weapons fire them. */
+        int fired = 0, flushed = 0;
+        for (int i = 0; i < count; i++) {
+            fired += game_behavior_dispatch(live->behaviors, owner, "Fire", (flow_inputs){ 0 }, NULL);
+            if (i % SPAWN_BENCH_BATCH == SPAWN_BENCH_BATCH - 1 || i == count - 1) {
+                /* As a fixed step does: finish spawns, then reap the runs that waited on them. */
+                flushed |= game_entities_flush_initializers(live->entities, 0);
+                flushed |= game_behavior_pump(live->behaviors, 0);
+            }
+        }
+        int updated = game_behavior_update(live->behaviors, NULL);
+        clock_gettime(CLOCK_MONOTONIC, &spawned);
+        assert(fired == count && flushed >= 0 && updated >= 0);
+        xalloc_stats_get(&after);
+        assert(ecs_world_live_count(ecs) == (uint32_t)count + 1);
+        ecs_entity *shots = NULL;
+        game_entities_copy_live(live->entities, &shots);
+        for (int i = 0; i < acount(shots); i++) {
+            game_entities_request_destroy(live->entities, shots[i]);
+        }
+        flushed = game_entities_flush(live->entities);
+        updated = game_behavior_update(live->behaviors, NULL);
+        clock_gettime(CLOCK_MONOTONIC, &destroyed);
+        assert(flushed == 0 && updated >= 0);
+        assert(ecs_world_live_count(ecs) == 1);
+        afree(shots);
+        printf(
+            "spawn %s entities=%d spawn_ns=%.0f destroy_ns=%.0f "
+            "allocations_per_spawn=%.1f bytes_per_spawn=%.0f\n",
+            round ? "warm" : "cold",
+            count,
+            elapsed_ns(start, spawned) / count,
+            elapsed_ns(spawned, destroyed) / count,
+            (double)(after.calls - before.calls) / count,
+            (double)(after.requested_bytes - before.requested_bytes) / count
+        );
+    }
+    game_prototype_free(shot);
     game_live_world_free(live);
     ecs_world_free(ecs);
 }

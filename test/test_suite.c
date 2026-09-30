@@ -376,6 +376,12 @@ int main(int argc, char **argv)
         bench_encounter_query(atoi(argv[2]), (unsigned)atoi(argv[3]), atoi(argv[4]));
         return 0;
     }
+    if (argc == 3 && !strcmp(argv[1], "--bench-spawn")) {
+        registry_validate();
+        extern void bench_spawn(int count);
+        bench_spawn(atoi(argv[2]));
+        return 0;
+    }
     if (argc == 3 && !strcmp(argv[1], "--bench-behavior-destroy")) {
         bench_behavior_destroy(atoi(argv[2]));
         return 0;

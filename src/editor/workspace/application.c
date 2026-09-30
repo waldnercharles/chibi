@@ -11,6 +11,7 @@
 #include "editor/workspace/game_presentation.h"
 #include "editor/workspace/gameplay_input.h"
 #include "editor/workspace/input.h"
+#include "editor/workspace/scenario_playback.h"
 #include "editor/workspace/scene_authoring.h"
 #include "graph/document/serialize.h"
 #include "graph/model/registry.h"
@@ -170,7 +171,8 @@ static int app_frame(app_loop *loop)
         CHIBI_TRACE_ZONE_BEGIN(editor_zone, "Editor");
         editor_tick(loop->graph_editor, loop->monotonic_time);
         app_gameplay_input(loop->authoring, loop->runtime, loop->viewport);
-        if (app_scene_authoring_frame(loop->authoring, loop->monotonic_time) != FLOW_OK) {
+        if (app_scene_authoring_frame(loop->authoring, loop->monotonic_time) != FLOW_OK ||
+            app_scenario_follow(loop->authoring) != 0) {
             fprintf(stderr, "runtime frame failed\n");
         }
         studio_frame(loop->studio, dt);
@@ -643,6 +645,7 @@ static void *application_create(const chibi_host *host, const char *checkpoint, 
     const char *screenshot_path = NULL;
     const char *open = NULL;
     const char *graph_name = NULL;
+    const char *scenario = NULL;
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--frames") == 0 && i + 1 < argc) {
             frames = atoi(argv[++i]);
@@ -657,6 +660,12 @@ static void *application_create(const chibi_host *host, const char *checkpoint, 
             headless = 1;
         } else if (strcmp(argv[i], "--play") == 0) {
             play = true;
+        } else if (strcmp(argv[i], "--scenario") == 0) {
+            if (i + 1 == argc || argv[i + 1][0] == '-') {
+                snprintf(error, error_size, "--scenario requires a scenarios asset name");
+                return NULL;
+            }
+            scenario = argv[++i];
         } else if (strcmp(argv[i], "--scene") == 0) {
             if (i + 1 == argc || argv[i + 1][0] == '-') {
                 snprintf(error, error_size, "--scene requires an authored scene path");
@@ -733,7 +742,8 @@ static void *application_create(const chibi_host *host, const char *checkpoint, 
     }
     if (play) {
         loop->game = app_game_presentation_new(authoring, viewport, !headless);
-        if (!loop->game) {
+        if (!loop->game ||
+            (scenario && app_scenario_replay(authoring, scenario) != 0)) {
             snprintf(error, error_size, "Could not start game: %s", app_scene_authoring_message(authoring));
             app_cleanup(loop);
             return NULL;

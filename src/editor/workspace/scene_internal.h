@@ -1,5 +1,6 @@
 #ifndef CHIBI_SCENE_INTERNAL_H
 #define CHIBI_SCENE_INTERNAL_H
+#include "assets/scenario_document.h"
 #include "editor/documents/scene_history.h"
 #include "editor/documents/scene_retention.h"
 #include "editor/documents/ui_buffer.h"
@@ -170,6 +171,8 @@ struct app_scene_authoring
     int collab_action_depth;
     bool tabs_transitioning;
     bool scene_tab_restoring;
+    scenario_document *scenario; /* replayed on the scene runtime, or NULL */
+    bool scenario_recording;
     char message[256];
     char prototype_message[256];
 };

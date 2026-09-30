@@ -211,6 +211,13 @@ static const command_entry COMMANDS[STUDIO_COMMAND_COUNT] = {
                               .keywords = "frame advance",
                               .icon = KIT_ICON_STEP,
                               .phase = SHORTCUT_EDITOR },
+    [STUDIO_COMMAND_RECORD_GAMEPLAY] = { .id = "recordGameplay",
+                                         .label = "Record Gameplay",
+                                         .context = "Global",
+                                         .keywords = "scenario capture replay "
+                                                     "input",
+                                         .icon = KIT_ICON_RECORD,
+                                         .phase = SHORTCUT_EDITOR },
     [STUDIO_COMMAND_DENSITY] = { .id = "density",
                                  .label = "Comfortable Density",
                                  .context = "Global",
@@ -554,6 +561,12 @@ studio_command_info studio_command_describe(studio *s, studio_command command)
                 info.icon = KIT_ICON_PAUSE;
             }
             break;
+        case STUDIO_COMMAND_RECORD_GAMEPLAY:
+            if (app_scenario_recording(s->scene)) {
+                info.label = info.menu = "Stop Recording";
+                info.icon = KIT_ICON_STOP;
+            }
+            break;
         case STUDIO_COMMAND_TOGGLE_SIDE_PANE:
             info.label = info.menu = studio_active_layout(s)->side_open
                                        ? e->label
@@ -658,6 +671,8 @@ static bool enabled_with(studio *s, studio_command command, int argument)
         case STUDIO_COMMAND_STOP: return !s->hosted && studio_session(s);
         case STUDIO_COMMAND_STEP:
             return !s->hosted && !s->guest && !s->pause.active;
+        case STUDIO_COMMAND_RECORD_GAMEPLAY:
+            return !s->hosted && !s->guest && s->scene->scene_path;
         case STUDIO_COMMAND_RENAME:
             return editable && selection && !studio_designer_active(s);
         case STUDIO_COMMAND_ADD_COMPONENT:
@@ -734,6 +749,7 @@ void studio_command_run_with(studio *s, studio_command command, int argument)
         case STUDIO_COMMAND_PLAY: studio_runtime(s, APP_RUNTIME_PLAY); break;
         case STUDIO_COMMAND_STOP: studio_runtime(s, APP_RUNTIME_STOP); break;
         case STUDIO_COMMAND_STEP: studio_runtime(s, APP_RUNTIME_STEP); break;
+        case STUDIO_COMMAND_RECORD_GAMEPLAY: studio_record_gameplay(s); break;
         case STUDIO_COMMAND_SELECT_PREVIOUS: step_selection(s, -1); break;
         case STUDIO_COMMAND_SELECT_NEXT: step_selection(s, 1); break;
         case STUDIO_COMMAND_RESUME: studio_debug(s, STUDIO_RESUME); break;

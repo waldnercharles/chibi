@@ -2,6 +2,7 @@
 
 #include "assets/ui_document.h"
 #include "editor/workspace/gameplay_input.h"
+#include "editor/workspace/scenario_playback.h"
 #include "editor/workspace/scene_internal.h"
 #include "platform/cute.h"
 #include "render/audio.h"
@@ -300,19 +301,21 @@ int app_game_presentation_frame(app_game_presentation *game, double now)
     ImVec2 size = display_size();
     int status = encounter_status(game->scene->world);
     bool playing = engine_is_playing(game->scene->runtime);
+    /* A replay plays on unattended, restarting when it finishes. */
+    bool replaying = app_scenario_replaying(game->scene);
     if (!game->showcase_time_started) {
         game->showcase_time_started = true;
     } else if (playing && now > game->showcase_last_time) {
         game->showcase_time += now - game->showcase_last_time;
     }
     game->showcase_last_time = now;
-    if (playing && finished(status)) {
+    if (playing && finished(status) && !replaying) {
         if (command(game, APP_RUNTIME_PAUSE) != 0) {
             return -1;
         }
         playing = false;
     }
-    bool focused = !game->interactive || cf_app_has_focus();
+    bool focused = !game->interactive || replaying || cf_app_has_focus();
     /* A focused game text field takes the letters the shortcuts use; Escape
        still pauses. */
     bool typing = playing && engine_viewport_ui_typing(game->viewport);
@@ -359,7 +362,8 @@ int app_game_presentation_frame(app_game_presentation *game, double now)
     bool mouse = mouse_target(game, &target);
     bool ui_capture = engine_viewport_ui_capture(game->viewport) || typing;
     app_gameplay_sample(game->scene, playing && focused && !ui_capture, mouse ? &target : NULL);
-    if (engine_frame(game->scene->runtime, now) != FLOW_OK) {
+    if (engine_frame(game->scene->runtime, now) != FLOW_OK ||
+        app_scenario_follow(game->scene) != 0) {
         fprintf(stderr, "Game frame failed: %s\n", engine_error(game->scene->runtime));
         return -1;
     }
@@ -368,7 +372,7 @@ int app_game_presentation_frame(app_game_presentation *game, double now)
         (float)engine_last_timing(game->scene->runtime)->simulation_time
     );
     status = encounter_status(game->scene->world);
-    if (playing && finished(status)) {
+    if (playing && finished(status) && !replaying) {
         if (command(game, APP_RUNTIME_PAUSE) != 0) {
             return -1;
         }

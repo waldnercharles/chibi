@@ -748,6 +748,7 @@ add_executable(test_suite
     src/editor/workspace/scene_debug.c
     src/editor/workspace/gameplay_input.c
     src/editor/workspace/game_presentation.c
+    src/editor/workspace/scenario_playback.c
     test/scene_history.c
     test/scene_checkpoint.c
     test/scene_disk.c

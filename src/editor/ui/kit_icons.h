@@ -22,6 +22,8 @@ enum
     KIT_ICON_PAUSE = 0xf03e4,       /* nf-md-pause */
     KIT_ICON_STOP = 0xf04db,        /* nf-md-stop */
     KIT_ICON_STEP = 0xf04ad,        /* nf-md-skip_next */
+    KIT_ICON_RECORD = 0xf044a,      /* nf-md-record */
+    KIT_ICON_REPLAY = 0xf0459,      /* nf-md-replay */
     KIT_ICON_CONTINUE = 0xeacf,     /* nf-cod-debug_continue */
     KIT_ICON_STEP_OVER = 0xead6,    /* nf-cod-debug_step_over */
     KIT_ICON_STEP_INTO = 0xead4,    /* nf-cod-debug_step_into */

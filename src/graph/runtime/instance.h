@@ -119,11 +119,13 @@ struct behavior_instance
      * never execute graphs. Different instances may notify in parallel. */
     void (*activations_changed)(behavior_instance *instance);
 
-    /* RUN-12: cached compile report, rebuilt whenever the topology revision
-     * moves. Any error refuses every dispatch/enqueue start. The report's
-     * message strings stay valid for the instance's lifetime. */
+    /* RUN-12: the compile check, redone whenever the topology revision moves.
+     * Any error refuses every dispatch/enqueue start. A lowered asset uses its
+     * published program's report; only an asset with unlowered component
+     * nodes compiles its own here. */
     compile_report compile;
     unsigned long long compile_revision;
+    bool component_nodes;
     struct behavior_instance_page *page; /* Optional stable bank allocation. */
 };
 

@@ -47,25 +47,31 @@ static void set_error(flow_error *error, int code, const node *n, const char *me
 }
 
 /* RUN-12: refuse to start when the behavior_asset has compile errors, reporting
- * the first blocking diagnostic (CMPL-16 order). The report is cached per
- * instance and rebuilt whenever the topology revision moves, so it stays
- * correct across edits. Messages point into the cached report and remain
- * valid for the instance's lifetime. */
+ * the first blocking diagnostic (CMPL-16 order). A lowered asset's report is
+ * its published program's, compiled once per topology revision for every
+ * instance. Only an asset with unlowered component nodes, which never
+ * publishes, is compiled per instance. Messages point into a report that
+ * stays valid until the revision moves. */
 static int instance_blocked(behavior_instance *bi, flow_error *error)
 {
     unsigned long long rev = behavior_asset_revision(bi->asset);
     if (bi->compile_revision != rev) {
         compile_report_free(&bi->compile);
         compile_report_init(&bi->compile);
-        behavior_asset_compile(bi->asset, &bi->compile);
+        bi->component_nodes = behavior_asset_has_component_nodes(bi->asset);
+        if (bi->component_nodes) {
+            behavior_asset_compile(bi->asset, &bi->compile);
+        }
         bi->compile_revision = rev;
     }
-    if (!compile_report_blocked(&bi->compile)) {
-        if (bi->backend == BEHAVIOR_ORACLE &&
-            !behavior_asset_has_component_nodes(bi->asset)) {
+    behavior_program *program = behavior_program_publish(bi->asset);
+    const compile_report *report = bi->component_nodes
+                                     ? &bi->compile
+                                     : behavior_program_report(program);
+    if (!compile_report_blocked(report)) {
+        if (bi->backend == BEHAVIOR_ORACLE && !bi->component_nodes) {
             return 0;
         }
-        behavior_program *program = behavior_program_publish(bi->asset);
         const compile_diagnostic *d = behavior_program_diagnostic(program);
         if (!d) {
             return 0;
@@ -74,7 +80,7 @@ static int instance_blocked(behavior_instance *bi, flow_error *error)
         set_error(error, FLOW_ERR_COMPILE, g ? graph_node_by_id(g, d->node_id) : NULL, d->message);
         return 1;
     }
-    const compile_diagnostic *d = compile_report_first_error(&bi->compile);
+    const compile_diagnostic *d = compile_report_first_error(report);
     set_error(error, FLOW_ERR_COMPILE, graph_node_by_id(bi->asset->graph, d->node_id), d->message);
     return 1;
 }
@@ -708,9 +714,8 @@ int behavior_instance_pool_release(behavior_instance *bi)
     aclear(bi->scratch);
     aclear(bi->node_states);
     bi->state_ids = NULL;
-    compile_report_free(&bi->compile);
-    compile_report_init(&bi->compile);
-    bi->compile_revision = 0;
+    /* The compile cache stays: a pooled instance keeps its asset, and the
+       revision check still catches edits. */
     bi->breakpoints_override = 0;
     bi->breakpoints_enabled = 0;
     bi->owner = (pin_value){ .type = PIN_FLOW };

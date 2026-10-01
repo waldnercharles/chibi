@@ -1,6 +1,10 @@
 cmake_minimum_required(VERSION 3.20)
 project(chibi LANGUAGES C CXX)
 
+if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+    set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
+endif()
+
 option(CHIBI_ENABLE_PERFORMANCE_TESTS
        "Run timing-sensitive performance checks in the test suite" OFF)
 
@@ -64,7 +68,7 @@ endif()
 # --- cute_framework (window host + dcimgui), pinned commit ---
 include(FetchContent)
 set(CHIBI_SDL3_PACKAGE_PREFIX "" CACHE PATH "Pinned SDL3 package prefix")
-if(CHIBI_DEVELOPMENT_RELOAD AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+if(CHIBI_DEVELOPMENT_RELOAD AND (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" OR CMAKE_BUILD_TYPE STREQUAL "Release"))
     set(CF_FRAMEWORK_STATIC OFF CACHE BOOL "" FORCE)
 else()
     set(CF_FRAMEWORK_STATIC ON CACHE BOOL "" FORCE)
@@ -192,7 +196,7 @@ endfunction()
 
 # Native worlds share a lazy task pool. The portable runtime stays serial and
 # does not fetch or link EnkiTS or require browser pthread support.
-if(NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+if((NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" OR CMAKE_BUILD_TYPE STREQUAL "Release"))
     set(ENKITS_BUILD_C_INTERFACE ON CACHE BOOL "" FORCE)
     set(ENKITS_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
     set(ENKITS_BUILD_SHARED OFF CACHE BOOL "" FORCE)
@@ -407,7 +411,7 @@ target_include_directories(runtime_support PUBLIC
 )
 target_link_libraries(runtime_support PUBLIC ecs core cute)
 chibi_enable_tracy(runtime_support)
-if(NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+if((NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" OR CMAKE_BUILD_TYPE STREQUAL "Release"))
     target_link_libraries(runtime_support PRIVATE enkiTS)
     target_compile_definitions(runtime_support PRIVATE CHIBI_HAS_ENKITS=1)
 endif()
@@ -495,7 +499,7 @@ add_library(chibi_sources OBJECT ${APP_SOURCES} ${APP_REGISTRY})
 target_include_directories(chibi_sources PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_link_libraries(chibi_sources PRIVATE chibi_render editor engine runtime_support cute)
 chibi_enable_tracy(chibi_sources)
-if(CHIBI_DEVELOPMENT_RELOAD AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+if(CHIBI_DEVELOPMENT_RELOAD AND (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" OR CMAKE_BUILD_TYPE STREQUAL "Release"))
     foreach(project_target core ecs runtime_support engine editor chibi_render)
         set_target_properties(${project_target} PROPERTIES POSITION_INDEPENDENT_CODE ON C_VISIBILITY_PRESET hidden)
     endforeach()
@@ -761,7 +765,7 @@ if(NOT CHIBI_COMPILE_COMMANDS_LINK_RESULT STREQUAL "0" AND
 endif()
 
 # Exercise the actual native loader with separately compiled generations.
-if(NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+if((NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" OR CMAKE_BUILD_TYPE STREQUAL "Release"))
     foreach(fixture reload_one reload_two reload_bad reload_reject reload_checkpoint)
         add_library(${fixture} MODULE test/reload/fixture.c)
         target_include_directories(${fixture} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
@@ -788,7 +792,7 @@ if(TARGET chibi_dll)
     include(cmake/dev_config.cmake)
 endif()
 
-if(NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+if((NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" OR CMAKE_BUILD_TYPE STREQUAL "Release"))
     add_executable(test_dev test/dev/main.c test/dev/watch.c test/dev/process.c test/dev/controller.c
         src/host/dev.c src/host/state_file.c third_party/yyjson/yyjson.c)
     target_include_directories(test_dev PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/third_party/yyjson)

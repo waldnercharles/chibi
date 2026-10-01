@@ -5,8 +5,18 @@
 
 #include <assert.h>
 #include <math.h>
+#include <stdatomic.h>
 #include <stdlib.h>
 #include <string.h>
+
+static _Atomic uint64_t next_incarnation = 1;
+
+static uint64_t incarnation()
+{
+    uint64_t value = atomic_fetch_add_explicit(&next_incarnation, 1, memory_order_relaxed);
+    assert(value && value != UINT64_MAX);
+    return value;
+}
 
 struct material_mask_work
 {
@@ -172,14 +182,20 @@ void material_mask_rebuild_work(material_mask *mask, material_mask_work *work)
         }
     }
     surface(mask, work);
-    mask->revision++;
+    if (++mask->revision == 0) {
+        mask->incarnation = incarnation();
+        mask->revision = 1;
+    }
 }
 
 material_mask material_mask_new(int width, int height, float cell_size, bool ellipse)
 {
     assert(width > 0 && height > 0 && width <= 256 && height <= 256);
     assert(isfinite(cell_size) && cell_size > 0);
-    material_mask mask = { .width = width, .height = height, .cell_size = cell_size };
+    material_mask mask = { .width = width,
+                           .height = height,
+                           .cell_size = cell_size,
+                           .incarnation = incarnation() };
     mask.cells = xcalloc((size_t)width * height, 1);
     mask.distance = xmalloc((size_t)width * height * sizeof *mask.distance);
     for (int y = 0; y < height; y++) {
@@ -214,7 +230,10 @@ material_mask material_mask_copy_cells(int width, int height, float cell_size, c
 {
     assert(width > 0 && height > 0 && width <= 256 && height <= 256 && cells);
     assert(isfinite(cell_size) && cell_size > 0);
-    material_mask mask = { .width = width, .height = height, .cell_size = cell_size };
+    material_mask mask = { .width = width,
+                           .height = height,
+                           .cell_size = cell_size,
+                           .incarnation = incarnation() };
     mask.cells = xmalloc((size_t)width * height);
     mask.distance = xmalloc((size_t)width * height * sizeof *mask.distance);
     for (int i = 0; i < width * height; i++) {
@@ -236,7 +255,10 @@ material_mask material_mask_from_field(int width, int height, float cell_size, c
 {
     assert(width > 0 && height > 0 && width <= 256 && height <= 256 && distance);
     assert(isfinite(cell_size) && cell_size > 0);
-    material_mask mask = { .width = width, .height = height, .cell_size = cell_size };
+    material_mask mask = { .width = width,
+                           .height = height,
+                           .cell_size = cell_size,
+                           .incarnation = incarnation() };
     mask.cells = xmalloc((size_t)width * height);
     mask.distance = xmalloc((size_t)width * height * sizeof *mask.distance);
     for (int i = 0; i < width * height; i++) {
@@ -405,7 +427,8 @@ material_mask *material_mask_detach_fragments(
         material_mask piece = { .width = mask->width,
                                 .height = mask->height,
                                 .cell_size = mask->cell_size,
-                                .count = work->counts[label] };
+                                .count = work->counts[label],
+                                .incarnation = incarnation() };
         piece.cells = xcalloc((size_t)length, 1);
         piece.distance = xmalloc((size_t)length * sizeof *piece.distance);
         if (mask->damage) {
@@ -451,10 +474,10 @@ material_mask *material_mask_extract_fragments(material_mask *mask, int minimum,
 
 material_occupancy_view material_mask_occupancy(const material_mask *mask)
 {
-    return (material_occupancy_view){ mask->cells,   mask->distance,
-                                      mask->width,   mask->height,
-                                      mask->count,   mask->cell_size,
-                                      mask->revision };
+    return (material_occupancy_view){ mask->cells,    mask->distance,
+                                      mask->width,    mask->height,
+                                      mask->count,    mask->cell_size,
+                                      mask->revision, mask->incarnation };
 }
 material_collision_view material_mask_collision(const material_mask *mask)
 {

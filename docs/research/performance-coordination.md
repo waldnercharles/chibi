@@ -1,5 +1,15 @@
 # Coordinated performance implementation
 
+## Current delivery note, 2026-10-01
+
+The [runtime ready batch](runtime-ready-20261001.md) records no-map source
+`e0c766b4`, ready renderer/storage/Wasm work, and the exact scope of retained
+combined-candidate validation. Its [evidence JSON](runtime-ready-20261001.json)
+contains source, log and frozen-artifact hashes. Earlier body/fracture and
+profiling checkpoints are already pushed. Shared-map timing remains pending
+review; the map is excluded from this ready batch. The historical results and
+source scopes below remain unchanged.
+
 The first coordinated batch reconciles performance defaults, field evaluation,
 material rendering, replay parity, and current main before implementing two
 further optimizations. Its combined source is

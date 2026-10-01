@@ -55,6 +55,9 @@ void game_materials_reset(game_materials *materials)
     material_destruction_reset(materials->destruction);
     aclear(materials->damage_requests);
     aclear(materials->regions);
+    aclear(materials->debris_tiles);
+    aclear(materials->terrain_views);
+    aclear(materials->debris_blasts);
     materials->fragments = 0;
     if (materials->debris) {
         material_debris_clear(materials->debris);
@@ -76,6 +79,8 @@ void game_materials_free(game_materials *materials)
     afree(materials->regions);
     material_debris_free(materials->debris);
     afree(materials->debris_tiles);
+    afree(materials->terrain_views);
+    afree(materials->debris_blasts);
     game_task_pool_release(materials->pool);
     free(materials);
 }

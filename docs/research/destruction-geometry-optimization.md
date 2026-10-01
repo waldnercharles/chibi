@@ -1,7 +1,7 @@
 # Retained destruction geometry and Box2D shapes
 
-October 1, 2026. This batch continues the shared material spatial work with
-fracture/geometry allocation reuse and collider updates. It applies to arbitrary
+October 1, 2026. This batch adds fracture/geometry allocation reuse and collider
+updates independently of the shared spatial index. It applies to arbitrary
 material masks used by terrain, destructible actors and fragments. It uses the
 existing Box2D solver and authored collision settings.
 
@@ -71,10 +71,37 @@ collision response against a fresh equivalent body, sleeping-contact wakeup,
 static/dynamic/kinematic motion, empty masks, configuration changes, entity reuse
 and material-only reset with reused revisions.
 
-The full sanitizer-enabled native `make test`, paired `make web`, and scalar/
-four-worker WebAssembly `check-material-engine` pass. Fixed-scenario validation
-is in progress. New
-`physics_work` diagnostics report body creations, shape creations/updates/removals
+The full ASan/UBSan native `make test`, paired `make web`, and scalar/four-worker
+WebAssembly `check-material-engine` pass. The Web builds also execute the physics
+regressions in both serial and padded four-worker modes.
+
+The historical source checkpoint `51c9cc64`, which included the shared spatial
+candidate, has exact complete returned `run_scenario` results
+and `hash_parts` across native Release, scalar Wasm and four-worker Wasm for all
+eight cases below. These are final endpoint checks, not complete trajectory
+traces. Fixtures and requests are copied unchanged from the frozen spatial
+validation. The 20,000-enemy crowd remains intact at 20,008 live entities.
+Controller profiles do not report active worker counts; four workers describes
+the configured build pool. The separate padded physics smoke checks report
+`workers=4`.
+
+| Case | Replay steps | Final world hash | Old frozen endpoint |
+| --- | ---: | --- | --- |
+| Terrain barrage | 300 | `cb5fd805c5f5d987` | Equal |
+| Enemy barrage | 300 | `c2eee7d85b452b4c` | Changed |
+| Enemy collisions, 20k | 360 | `269a8b8dae59ab30` | Equal |
+| Fog/liquid | 300 | `339350bde84b6ff3` | Equal |
+| Gas only | 300 | `1aac6f7d520c19f3` | Equal |
+| Liquid only | 300 | `59c9c255688390ce` | Equal |
+| MaterialStudy | 5 | `9a44ae1f43f39495` | No reference |
+| HRCVolume | 5 | `14252b267128ec69` | Equal |
+
+Enemy barrage differs in ECS, material masks and physics/contact state, consistent
+with retained contact history. The physical-contract regressions above test the
+required behavior independently. Future timing pairs must record population,
+damage, occupied cells, shapes and contact density when outcomes differ.
+
+The `physics_work` diagnostics report body creations, shape creations/updates/removals
 and mass updates beside timing objects, with per-frame samples and totals. The
 previous frozen candidate did not include these counters, so it cannot establish
 comparative work-reduction percentages.

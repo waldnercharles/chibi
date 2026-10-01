@@ -139,7 +139,7 @@ benchmark:
 
 web:
 	sh tools/configure_native.sh "$(BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) && cmake --build "$(BUILD_DIR)" --target reflect --parallel $(JOBS)
-	emcmake cmake -S . -B "$(WEB_BUILD_DIR)" -DCMAKE_BUILD_TYPE=Release -DCHIBI_REFLECT_EXECUTABLE=$(CURDIR)/$(BUILD_DIR)/reflect
+	sh tools/configure_web.sh "$(WEB_BUILD_DIR)" -DCMAKE_BUILD_TYPE=Release -DCHIBI_REFLECT_EXECUTABLE=$(CURDIR)/$(BUILD_DIR)/reflect
 	cmake --build "$(WEB_BUILD_DIR)" --target chibi check-behavior-backend --parallel $(JOBS)
 
 web-serve: web
@@ -152,6 +152,8 @@ check-format:
 	sh tools/clang-format.sh --check
 
 test:
+	python3 test/fetchcontent_cache_test.py
+	python3 test/configure_cache_test.py
 	python3 test/web_serve_test.py
 	node test/web_workspace_test.mjs
 	node test/web_storage_test.mjs

@@ -116,7 +116,8 @@
     "parent": "ba5383846be07b38ec936c0f51042661ad787c96",
     "tree": "b640e0f6be7f6fe1e61def172826357a4d487d88",
     "material_flow_sha256": "eb9eea7f4d2d63c5ba92128fa14cd641ec7b2fb7ad407f0f06593acc6cdaab8d",
-    "status": "Coordinator correctness and timing review pending; not accepted"
+    "status": "Coordinator correctness and timing review pending; not accepted",
+    "scope": "Historical candidate identity and status at original report creation; current acceptance is recorded in current_delivery."
   },
   "evidence": [
     {
@@ -165,8 +166,29 @@
   },
   "published_report": {
     "path": "docs/research/runtime-decisions-20261001.md",
-    "sha256": "d440c265daceb690b6f9773a8df30e43b82956a7912b33620360d4e72b9ef2b5",
+    "sha256": "90b4034f1a3bb0f528fa7958bb2cb99cc2004a73a387ca8c06b4af20369f57f5",
     "source_report_sha256": "150c9b660441fec5228ece10359c402705c1ab56c49d33f6f7f3e0fd4907702c",
-    "scope": "Report copied from completed retained evidence; source report and raw artifacts remain unchanged."
+    "scope": "Generic-map evidence copied from retained results; current delivery note links separately audited gas acceptance and rejected index skips. Original source report and raw artifacts remain unchanged."
+  },
+  "current_delivery": {
+    "accepted_source": "4490156b97d7345f676842d981f202cecd93b1c1",
+    "baseline_source": "897dd6deff962a5b97161c7cb02ccf078b4610fd",
+    "status": "Accepted specialized gas cell-ID reuse; pushed to main",
+    "report": "docs/research/gas-activation-20261001.md",
+    "decision": {
+      "path": "/Users/cwaldner/Documents/Codex/2026-09-30/is-x20/outputs/gas-ids-main-20261001/coordinator-decision.json",
+      "sha256": "8daea7402f09f2c3a88df8c08927d52480793b291b4d08550a08c10eec117b80"
+    },
+    "correctness_audit": {
+      "path": "/Users/cwaldner/Documents/Codex/2026-09-30/is-x20/outputs/gas-ids-main-20261001/independent-correctness-audit.json",
+      "sha256": "d0a99a3a23456fca7a003d361d2d222345a242f669833b0ba84ae42927d749c5"
+    },
+    "native_timing_audit": {
+      "path": "/Users/cwaldner/Documents/Codex/2026-09-30/is-x20/outputs/gas-ids-main-20261001/independent-native-audit.json",
+      "sha256": "b2600148d91cf0ad68614a304136778c71b9d02623d1f123d8cc30956920f201"
+    },
+    "unused_index_skips": "Rejected default after disabled-reaction/far-obstacle workload regressed at p50 in all three pairs",
+    "historical_scope": "Original candidate and generic-map evidence below remains frozen at its recorded source. Current accepted source and fresh evidence are separate.",
+    "published_report_sha256": "bb9aa320a3b8d6fe48d8f5a95be6a9df613041f82f6f4045df46a102b81564da"
   }
 }

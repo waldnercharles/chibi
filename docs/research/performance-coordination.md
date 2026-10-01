@@ -11,9 +11,13 @@ profiling checkpoints and this ready batch are pushed. The
 default after its complete matched matrix; gas p50 regresses 29.23%. The
 [current compiler measurements](compiler-measurements-20261001.md) record
 accepted internal Wasm and native-loop checks. External LuaJIT, V8 and
-JavaScriptCore comparisons remain deferred. Existing-grid activation IDs and
-unused-index skips are a separate candidate under validation. The historical
-results and source scopes below remain unchanged.
+JavaScriptCore comparisons remain deferred. The
+[gas activation report](gas-activation-20261001.md) accepts existing-grid cell-ID
+reuse at `4490156b`, tested against current KDL main `897dd6de`. All six native
+timing cases and eight native/scalar/four-worker parity cases pass their audits;
+gas-flow kernel gains do not establish frame-tail improvement. The separate
+unused-index skips remain unmerged after a targeted liquid case regressed in
+every pair. The historical results and source scopes below remain unchanged.
 
 The first coordinated batch reconciles performance defaults, field evaluation,
 material rendering, replay parity, and current main before implementing two

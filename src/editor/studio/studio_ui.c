@@ -590,6 +590,23 @@ static void sync_new_project(studio *s, bool read_input)
     if (changed) {
         ui_data_set_text(data->doc, name, dialog->name);
         ui_data_set_text(data->doc, error, dialog->error);
+        /* Attribute bindings survive a modal host being reordered. Keep the
+           error markup escaped so names and filesystem paths stay text. */
+        char markup[sizeof dialog->error * 6 + 1];
+        size_t length = 0;
+        for (const char *p = dialog->error; *p; p++) {
+            const char *escaped = *p == '&' ? "&amp;"
+                                : *p == '<' ? "&lt;"
+                                : *p == '>' ? "&gt;"
+                                            : NULL;
+            if (escaped) {
+                length += (size_t)snprintf(markup + length, sizeof markup - length, "%s", escaped);
+            } else {
+                markup[length++] = *p;
+            }
+        }
+        markup[length] = '\0';
+        ui_data_set_text(data->doc, yyjson_mut_obj_get(page, "error_markup"), markup);
         yyjson_mut_set_bool(waiting, dialog->waiting);
         yyjson_mut_set_bool(confirmation, dialog->confirm_discard);
         rml_data_model_dirty(data->model, "new_project");

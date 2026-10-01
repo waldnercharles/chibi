@@ -527,7 +527,7 @@ static void document_tabs(const char *folder)
     tab = active(scene);
     test_check(save_active_document(scene) == 0 && !scene_tabs_dirty(scene, tab), "Save writes the active ui document");
     char *saved = read_text(styles);
-    test_check(!strcmp(saved, ".panel { color: #0f0; }\n"), "the saved ui asset's .rcss holds the edit");
+    test_check(!strcmp(saved, ".panel {\n  color: #0f0;\n}\n"), "the saved ui asset's .rcss holds the formatted edit");
     free(saved);
     write_text(path, "<div>Theirs</div>\n");
     ui_buffer_type(tab->ui, UI_PART_RML, "<div>Mine</div>\n", 5);
@@ -618,6 +618,9 @@ static void text_editor(const char *folder)
 {
     tabs_fixture f = fixture_new(true);
     studio *s = f.studio;
+    /* Keep a graph beside Code explicitly; opening a document preserves mode. */
+    studio_set_workspace(s, STUDIO_WORKSPACE_HORIZONTAL_SPLIT);
+    studio_active_layout(s)->editors[STUDIO_AREA_TOP] = STUDIO_EDITOR_BEHAVIOR;
     char path[PATH_MAX], styles[PATH_MAX];
     write_asset(folder, "Edited", path, styles);
     s->prefs.code_apply_live = true;
@@ -656,7 +659,13 @@ static void text_editor(const char *folder)
     /* A document-tab click can leave focus on the last graph area. Save must
        still follow the selected UI tab when its text source is active. */
     test_check(app_scene_authoring_open_behavior(f.scene, "Teller") == 0, "opening a behavior creates a second document tab");
-    test_check(studio_graph_active(s) && s->graph.area >= 0, "the behavior graph remains open beside the ui document");
+    frames(&f, 1);
+    test_check(
+        studio_graph_active(s) && s->graph.area >= 0 &&
+            s->prefs.workspace == STUDIO_WORKSPACE_HORIZONTAL_SPLIT,
+        "the behavior graph remains open beside the ui document in the "
+        "explicitly selected split mode"
+    );
     int ui_tab = (int)(scene_tabs_ui(f.scene, path) - f.scene->tabs);
     test_check(
         scene_tabs_activate(f.scene, ui_tab) == 0 &&

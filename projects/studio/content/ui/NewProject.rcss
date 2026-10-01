@@ -7,6 +7,7 @@
 .project-name { display: flex; flex-direction: column; gap: 7dp; }
 .project-name label { display: block; font-weight: 500; }
 .project-name .field { flex: 0 0 auto; }
+.project-name .field[data-invalid] { border-color: var(--destructive); }
 .project-error { color: var(--destructive); white-space: normal; }
 .project-pending { color: var(--muted-foreground); }
 .project-confirmation { display: flex; flex-direction: column; gap: 4dp; padding: 12dp; border: 1dp var(--border); border-radius: var(--r); background-color: var(--muted); white-space: normal; }

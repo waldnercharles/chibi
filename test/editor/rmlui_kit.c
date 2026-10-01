@@ -17,6 +17,8 @@ typedef struct
     kit_frame_input in;
     int clicks;
     double value, second;
+    bool single_precision;
+    double number_max;
     int choice_value, choice_changes;
     int nested_choice, nested_choice_changes;
     int changes, commits;
@@ -148,7 +150,10 @@ static void emit(kit_fixture *f)
     kit_push(k, "fields", NULL, "prop-scroll");
     kit_style(k, "width", "300dp");
     kit_prop_begin(k, "first", "First");
-    kit_number_desc d = { .step = 1, .precision = 2 };
+    kit_number_desc d = { .step = 1,
+                          .precision = 2,
+                          .single_precision = f->single_precision,
+                          .max = f->number_max };
     if (kit_number(k, "value", &f->value, &d)) {
         f->changes++;
     }
@@ -813,6 +818,48 @@ bool test_rmlui_kit()
     key(&f, RML_INPUT_KEY_ENTER, 0);
     frame(&f);
     ok &= check(!strcmp(decimal_text, "0.1") && f.value == 0.1, "decimal editing shows the short value and preserves it on accept");
+
+    f.single_precision = true;
+    f.value = (double)0.1f;
+    settle(&f);
+    int float_changes = f.changes;
+    ok &= check(click(&f, "app/fields/first/@control/value"), "promoted float edit");
+    decimal = rml_context_focus_element(rml_backend_context(f.backend));
+    rml_element_value(decimal, decimal_text, sizeof decimal_text);
+    key(&f, RML_INPUT_KEY_ENTER, 0);
+    frame(&f);
+    ok &= check(
+        !strcmp(decimal_text, "0.1") && f.value == (double)0.1f && f.changes == float_changes,
+        "float editing shows 0.1 and accepting it does not change the model"
+    );
+    ok &= check(click(&f, "app/fields/first/@control/value"), "changed float edit");
+    type(&f, "0.2");
+    key(&f, RML_INPUT_KEY_ENTER, 0);
+    frame(&f);
+    ok &= check(
+        f.value == (double)0.2f && f.changes == float_changes + 1,
+        "float edits normalize the changed decimal to its exact stored value"
+    );
+    ok &= check(click(&f, "app/fields/first/@control/value"), "overflowing float edit");
+    type(&f, "1e100");
+    key(&f, RML_INPUT_KEY_ENTER, 0);
+    frame(&f);
+    ok &= check(
+        kit_wants_text(f.k, NULL) && f.value == (double)0.2f,
+        "a nonfinite float conversion stays invalid without changing the model"
+    );
+    key(&f, RML_INPUT_KEY_ESCAPE, 0);
+    frame(&f);
+    f.number_max = 1;
+    frame(&f);
+    ok &= check(click(&f, "app/fields/first/@control/value"), "bounded float edit");
+    type(&f, "1e100");
+    key(&f, RML_INPUT_KEY_ENTER, 0);
+    frame(&f);
+    ok &= check(!kit_wants_text(f.k, NULL) && f.value == 1, "bounded float edits clamp before converting to stored precision");
+    f.number_max = 0;
+    f.single_precision = false;
+    frame(&f);
 
     /* Tab follows mixed form order and commits the numeric draft once. */
     f.commits = 0;

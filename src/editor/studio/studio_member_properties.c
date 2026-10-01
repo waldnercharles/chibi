@@ -220,7 +220,11 @@ static void vector_control(kit *k, int width, value_edit *edit, unsigned flags)
         char key[8];
         snprintf(key, sizeof key, "v%d", a);
         double axis = edit->vector[a];
-        kit_number_desc d = { .precision = 2, .step = 0.1, .addon = AXES[a], .flags = flags };
+        kit_number_desc d = { .precision = 2,
+                              .single_precision = true,
+                              .step = 0.1,
+                              .addon = AXES[a],
+                              .flags = flags };
         if (kit_number(k, key, &axis, &d)) {
             edit->vector[a] = (float)axis;
             edit->changed = edit->streaming = true;
@@ -235,6 +239,7 @@ static void number_control(kit *k, pin_type type, value_edit *edit, unsigned fla
     bool integer = type < PIN_F32;
     double number = number_of(&edit->value);
     kit_number_desc d = { .integer = integer,
+                          .single_precision = type == PIN_F32,
                           .precision = integer ? 0 : 2,
                           .step = integer ? 1 : 0.1,
                           .flags = flags };

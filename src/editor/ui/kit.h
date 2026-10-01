@@ -194,7 +194,8 @@ extern "C"
         double step;     /* zero means 1 */
         int precision;
         bool integer;
-        bool slider; /* bounded values draw a fill */
+        bool single_precision; /* edit text round-trips a float rather than a double */
+        bool slider;           /* bounded values draw a fill */
         const char *unit;
         const char *addon; /* leading label inside the field, e.g. "X" */
         const char *addon_cls;

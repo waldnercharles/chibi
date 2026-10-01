@@ -924,6 +924,7 @@ static bool edit_literal_value(
                 double min = 0, max = 0;
                 literal_number_bounds(component.type, &min, &max);
                 kit_number_desc desc = { .precision = 2,
+                                         .single_precision = component.type == PIN_F32,
                                          .min = min,
                                          .max = max,
                                          .step = 0.1,
@@ -1017,6 +1018,7 @@ static bool edit_literal_value(
             max = fmin(max, range->max);
         }
         kit_number_desc desc = { .integer = integer,
+                                 .single_precision = shape->type == PIN_F32,
                                  .min = min,
                                  .max = max,
                                  .precision = integer ? 0 : 2,
@@ -1216,7 +1218,8 @@ void sg_emit_value_in(studio *s, kit *k, node *n, int output, int p)
             char key[8];
             snprintf(key, sizeof key, "v%d", a);
             double axis = vector[a];
-            kit_number_desc desc = { .min = -FLT_MAX,
+            kit_number_desc desc = { .single_precision = true,
+                                     .min = -FLT_MAX,
                                      .max = FLT_MAX,
                                      .precision = 2,
                                      .step = 0.1,
@@ -1266,7 +1269,8 @@ void sg_emit_value_in(studio *s, kit *k, node *n, int output, int p)
         }
         double min = 0, max = 0;
         literal_number_bounds(spec->type, &min, &max);
-        kit_number_desc desc = { .min = min,
+        kit_number_desc desc = { .single_precision = spec->type == PIN_F32,
+                                 .min = min,
                                  .max = max,
                                  .integer = integer,
                                  .precision = integer ? 0 : 2,

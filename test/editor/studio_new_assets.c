@@ -348,11 +348,25 @@ static void project_creation_modal()
     rml_context *context = rml_backend_context(s->backend);
     rml_element *name = settings_element(s, "#new-project-name");
     bool focused = name && rml_context_focus_element(context) == name;
+    /* Reordering keyed modal hosts detaches and reattaches their data model. */
+    rml_element *host = settings_element(s, "[data-ui=NewProject]");
+    if (host && name) {
+        rml_element_move_child(rml_element_parent(host), host, NULL);
+        rml_element_focus(name, true);
+    }
     press(SDL_SCANCODE_RETURN);
     frames(&f, 4);
+    rml_element *error = settings_element(s, "#new-project-error");
+    rml_element *field = settings_element(s, ".project-name .field");
+    char error_text[128] = "";
+    if (error) {
+        rml_element_inner_rml(error, error_text, sizeof error_text);
+    }
     bool invalid = s->new_project.open &&
                    !strcmp(s->new_project.error, "Enter a project name") &&
-                   settings_element(s, ".project-error") && !s->open_project;
+                   error && !strcmp(error_text, "Enter a project name") &&
+                   field && rml_element_has_attribute(field, "data-invalid") &&
+                   !s->open_project;
     if (name) {
         rml_element_focus(name, true);
         rml_backend_process_input(
@@ -361,6 +375,9 @@ static void project_creation_modal()
         );
     }
     frames(&f, 2);
+    bool corrected = field && !s->new_project.error[0] &&
+                     !settings_element(s, "#new-project-error") &&
+                     !rml_element_has_attribute(field, "data-invalid");
     f.scene->scene_dirty = true;
     press(SDL_SCANCODE_RETURN);
     frames(&f, 4);
@@ -381,7 +398,8 @@ static void project_creation_modal()
     bool canceled = !s->new_project.open && !s->new_project.confirm_discard &&
                     !s->open_project && f.scene->scene_dirty;
     test_check(
-        focused && invalid && confirmation && safe_focus && reachable && wrapped && canceled,
+        focused && invalid && corrected && confirmation && safe_focus &&
+            reachable && wrapped && canceled,
         "New Project autofocuses its labeled input, validates an empty name, "
         "and keeps discard confirmation keyboard reachable and cancelable "
         "without losing edits"

@@ -34,8 +34,7 @@ static bool web_wants_text(const studio *s)
         (s->graph.kit && kit_wants_text(s->graph.kit, NULL))) {
         return true;
     }
-    render_ui *ui = s->viewport ? engine_viewport_ui(s->viewport) : NULL;
-    return ui && render_ui_wants_text(ui);
+    return s->viewport && engine_viewport_ui_typing(s->viewport);
 }
 
 EMSCRIPTEN_KEEPALIVE int studio_web_wants_text()
@@ -159,10 +158,9 @@ static int kit_button_index(Uint8 button)
 static void game_input(studio *s, const rml_input *input, const SDL_Event *e)
 {
     bool key = input->type == RML_INPUT_KEY_PRESS && !studio_primary(s, e->key.mod);
-    render_ui *ui = s->viewport ? engine_viewport_ui(s->viewport) : NULL;
-    bool paste = input->type == RML_INPUT_KEY_PRESS &&
-                 e->type == SDL_EVENT_KEY_DOWN && e->key.key == SDLK_V &&
-                 studio_primary(s, e->key.mod) && ui && render_ui_wants_text(ui);
+    bool paste = input->type == RML_INPUT_KEY_PRESS && e->type == SDL_EVENT_KEY_DOWN &&
+                 e->key.key == SDLK_V && studio_primary(s, e->key.mod) &&
+                 s->viewport && engine_viewport_ui_typing(s->viewport);
     if (key || paste || input->type == RML_INPUT_TEXT_INPUT) {
         apush(s->game_input, *input);
     }

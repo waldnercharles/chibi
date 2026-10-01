@@ -84,6 +84,7 @@ static void number_hints(
 
 static void number_bounds(pin_type type, kit_number_desc *d)
 {
+    d->single_precision = type == PIN_F32;
     double min, max;
     switch (type) {
         case PIN_I8:
@@ -320,6 +321,7 @@ static void position_row(studio *s, scene_actor *actor, bool locked)
             .max = FLT_MAX,
             .step = 1,
             .precision = 2,
+            .single_precision = true,
             .addon = axis ? "Y" : "X",
             .addon_cls = axis ? "y" : "x",
             .flags = (locked ? KIT_READONLY : 0) |
@@ -1017,6 +1019,7 @@ static void scene_panels(studio *s, bool locked)
                                   .step = 1,
                                   .precision = 1,
                                   .unit = "Hz",
+                                  .single_precision = true,
                                   .flags = flags };
             if (kit_number(k, "value", &v, &d)) {
                 next.contact_hertz = (float)v;
@@ -1026,7 +1029,8 @@ static void scene_panels(studio *s, bool locked)
         if (studio_matches(s->property_search, "Damping")) {
             kit_prop_begin(k, "damping", "Damping");
             double v = settings.contact_damping;
-            kit_number_desc d = { .min = 0,
+            kit_number_desc d = { .single_precision = true,
+                                  .min = 0,
                                   .max = 100,
                                   .step = 0.1,
                                   .precision = 2,

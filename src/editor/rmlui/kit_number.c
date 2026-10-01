@@ -158,7 +158,7 @@ static double clamp_number(const widget *w, double v)
     if (w->desc.integer) {
         v = round(v);
     }
-    return v;
+    return w->desc.single_precision ? (double)(float)v : v;
 }
 
 static double step_size(const widget *w)
@@ -229,9 +229,14 @@ static void number_begin_edit(node *n, const char *initial)
         if (w->desc.integer) {
             snprintf(text, sizeof text, "%.0f", w->value);
         } else {
-            for (int precision = 1; precision <= 17; precision++) {
+            int digits = w->desc.single_precision ? 9 : 17;
+            for (int precision = 1; precision <= digits; precision++) {
                 snprintf(text, sizeof text, "%.*g", precision, w->value);
-                if (strtod(text, NULL) == w->value) {
+                double parsed = strtod(text, NULL);
+                if (w->desc.single_precision) {
+                    parsed = (double)(float)parsed;
+                }
+                if (parsed == w->value) {
                     break;
                 }
             }
@@ -255,12 +260,15 @@ static bool number_accept(node *n)
     char *text = element_value(w->input_el);
     double v = evaluate(text, w->value);
     free(text);
+    if (isfinite(v)) {
+        v = clamp_number(w, v);
+    }
     if (!isfinite(v)) {
         set_flag(n, "data-invalid", true);
         rml_element_select(w->input_el);
         return false;
     }
-    if (clamp_number(w, v) != w->value) {
+    if (v != w->value) {
         number_change(n, v);
     }
     w->committed = true;
@@ -506,7 +514,7 @@ bool kit_number(kit *k, const char *key, double *value, const kit_number_desc *d
     widget *w = &n->w;
     if (!w->value_el) {
         number_build(n);
-        w->value = *value;
+        w->value = d->single_precision ? (double)(float)*value : *value;
     }
     w->desc = *d;
     bool slider = number_slider(w);
@@ -534,7 +542,7 @@ bool kit_number(kit *k, const char *key, double *value, const kit_number_desc *d
         *value = w->pending_value;
         changed = true;
     } else if (!w->scrubbing && !w->editing && !w->step_dir) {
-        w->value = *value;
+        w->value = d->single_precision ? (double)(float)*value : *value;
     }
     number_display(n);
     return changed;

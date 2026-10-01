@@ -8,6 +8,7 @@
 #include "third_party/yyjson/yyjson.h"
 
 #include <assert.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -152,8 +153,48 @@ static const char *response_world_hash(const yyjson_doc *doc)
     return yyjson_get_str(yyjson_obj_get(result, "world_hash"));
 }
 
+static void profile_fluid_work()
+{
+    yyjson_doc *doc = profile_scenario_request(
+        "{\"contract\":1,\"operation\":\"profile_scenario\","
+        "\"kind\":\"scene\",\"name\":\"HRCVolume\",\"warmup_frames\":2,"
+        "\"frames\":3}"
+    );
+    yyjson_val *result = yyjson_obj_get(yyjson_doc_get_root(doc), "result");
+    yyjson_val *timing = yyjson_obj_get(result, "timing");
+    yyjson_val *frames = yyjson_obj_get(timing, "worst_frames");
+    uint64_t builds = 0;
+    double collision_index_ms = 0;
+    bool valid = response_ok(doc) && yyjson_arr_size(frames) == 3;
+    for (size_t i = 0; i <= yyjson_arr_size(frames); i++) {
+        yyjson_val *sample = i < yyjson_arr_size(frames) ? yyjson_arr_get(frames, i)
+                                                         : timing;
+        yyjson_val *detail = yyjson_obj_get(sample, "physics_detail_ms");
+        yyjson_val *fluid = yyjson_obj_get(detail, "material_fluid_ms");
+        yyjson_val *work = yyjson_obj_get(sample, "material_fluid_work");
+        yyjson_val *index = yyjson_obj_get(fluid, "collision_index");
+        yyjson_val *count = yyjson_obj_get(work, "index_builds");
+        valid &= yyjson_is_num(index) && yyjson_get_num(index) >= 0 &&
+                 yyjson_get_num(index) <=
+                     yyjson_get_num(yyjson_obj_get(fluid, "collisions")) + 1e-9 &&
+                 yyjson_is_uint(count) &&
+                 !yyjson_obj_get(detail, "material_fluid_work") &&
+                 !yyjson_obj_get(fluid, "index_builds");
+        if (sample == timing) {
+            valid &= builds > 0 && yyjson_get_uint(count) == builds &&
+                     fabs(yyjson_get_num(index) - collision_index_ms) < 1e-9;
+            continue;
+        }
+        builds += yyjson_get_uint(count);
+        collision_index_ms += yyjson_get_num(index);
+    }
+    test_check(valid, "fluid profile keeps work counters outside timing objects and sums index builds");
+    yyjson_doc_free(doc);
+}
+
 void test_automation_profile_scenario_inputs()
 {
+    profile_fluid_work();
     static const char *const
         timeline = "\"input_timeline\":["
                    "{\"frame\":0,\"input\":{\"movement\":{\"x\":1,\"y\":0},"

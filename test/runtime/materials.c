@@ -1962,8 +1962,28 @@ static void debris()
     material_debris_free(debris);
 }
 
+static void fluid_profile_index_builds()
+{
+    material_fluid *fluid = material_fluid_new(10, 1);
+    assert(material_fluid_add(fluid, particle(-20, -20, FLUID_LIQUID)));
+    fluid_region region = { -64, -64, 128, 128 };
+    material_fluid_profile profile;
+    material_fluid_tick_profiled(fluid, 1.f / 60, 64, &region, 1, NULL, 0, NULL, 0, &profile);
+    assert(profile.index_builds == 5);
+    assert(isfinite(profile.collision_index_ms) && profile.collision_index_ms >= 0);
+    assert(profile.collision_index_ms <= profile.collisions_ms);
+    material_fluid_tick_profiled(fluid, 1.f / 60, 64, NULL, 0, NULL, 0, NULL, 0, &profile);
+    assert(material_fluid_active_count(fluid) == 0 && profile.index_builds == 3);
+    assert(profile.collision_index_ms == 0 && profile.collisions_ms >= 0);
+    material_fluid_clear(fluid);
+    material_fluid_tick_profiled(fluid, 1.f / 60, 64, &region, 1, NULL, 0, NULL, 0, &profile);
+    assert(profile.index_builds == 3 && profile.collision_index_ms == 0);
+    material_fluid_free(fluid);
+}
+
 void test_materials()
 {
+    fluid_profile_index_builds();
     blast_policy();
     rotated_occlusion();
     fragment_penetration();

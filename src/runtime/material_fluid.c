@@ -350,7 +350,7 @@ static double profile_clock_ms()
     return now.tv_sec * 1000.0 + now.tv_nsec * 1e-6;
 }
 
-static void index_particles(material_fluid *fluid)
+static void index_particles(material_fluid *fluid, material_fluid_profile *profile)
 {
     for (int n = 0; n < acount(fluid->used); n++) {
         fluid->heads[fluid->used[n]] = -1;
@@ -375,6 +375,9 @@ static void index_particles(material_fluid *fluid)
         fluid->heads[h] = i;
     }
     fluid->bounds = (fluid_region){ low.x, low.y, high.x - low.x, high.y - low.y };
+    if (profile) {
+        profile->index_builds++;
+    }
 }
 
 static void densities(int start, int end, uint32_t, void *context)
@@ -952,7 +955,8 @@ static void collide_obstacles(
     const fluid_obstacle *obstacles,
     int count,
     float sweep_start,
-    float sweep_end
+    float sweep_end,
+    material_fluid_profile *profile
 )
 {
     /* Query the particle hash with each collider's AABB, instead of testing
@@ -960,7 +964,11 @@ static void collide_obstacles(
     if (!acount(fluid->active)) {
         return;
     }
-    index_particles(fluid);
+    double index_start = profile ? profile_clock_ms() : 0;
+    index_particles(fluid, profile);
+    if (profile) {
+        profile->collision_index_ms += profile_clock_ms() - index_start;
+    }
     fluid_region bounds = fluid->bounds;
     float particle_motion_x = 0, particle_motion_y = 0;
     for (int n = 0; n < acount(fluid->active); n++) {
@@ -1103,7 +1111,7 @@ void material_fluid_tick_profiled(
         apush(fluid->active, i++);
     }
     double phase_start = profile ? profile_clock_ms() : 0;
-    index_particles(fluid);
+    index_particles(fluid, profile);
     if (profile) {
         profile->index_ms += profile_clock_ms() - phase_start;
     }
@@ -1144,7 +1152,7 @@ void material_fluid_tick_profiled(
         }
         CHIBI_TRACE_ZONE_BEGIN(index_zone, "Fluid index");
         phase_start = profile ? profile_clock_ms() : 0;
-        index_particles(fluid);
+        index_particles(fluid, profile);
         CHIBI_TRACE_ZONE_END(index_zone);
         if (profile) {
             profile->index_ms += profile_clock_ms() - phase_start;
@@ -1174,7 +1182,7 @@ void material_fluid_tick_profiled(
         }
         phase_start = profile ? profile_clock_ms() : 0;
         CHIBI_TRACE_ZONE_BEGIN(collision_zone, "Fluid collisions");
-        collide_obstacles(fluid, bodies, obstacles, obstacle_count, step * .5f, (step + 1) * .5f);
+        collide_obstacles(fluid, bodies, obstacles, obstacle_count, step * .5f, (step + 1) * .5f, profile);
         CHIBI_TRACE_ZONE_END(collision_zone);
         if (profile) {
             profile->collisions_ms += profile_clock_ms() - phase_start;

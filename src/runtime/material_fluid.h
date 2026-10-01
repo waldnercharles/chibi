@@ -4,6 +4,7 @@
 #include "runtime/tasks.h"
 
 #include <stdbool.h>
+#include <stdint.h>
 
 typedef struct
 {
@@ -80,6 +81,9 @@ typedef struct
 {
     double reactions_ms, gas_flow_ms, index_ms, density_ms, relaxation_ms;
     double collisions_ms;
+    /* Collision-index construction is included in collisions_ms. */
+    double collision_index_ms;
+    uint64_t index_builds;
 } material_fluid_profile;
 
 typedef struct

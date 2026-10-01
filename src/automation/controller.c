@@ -5698,6 +5698,14 @@ static void add_physics_profile(yyjson_mut_doc *doc, yyjson_mut_val *object, con
         "collisions",
         profile->material_fluid.collisions_ms
     );
+    yyjson_mut_obj_add_real(
+        doc,
+        material_fluid,
+        "collision_index",
+        profile->material_fluid.collision_index_ms
+    );
+    yyjson_mut_val *work = yyjson_mut_obj_add_obj(doc, object, "material_fluid_work");
+    yyjson_mut_obj_add_uint(doc, work, "index_builds", profile->material_fluid.index_builds);
     add_box2d_profile(doc, value, &profile->box2d);
 }
 
@@ -5724,6 +5732,8 @@ static void sum_physics_profile(game_physics_profile *total, const game_physics_
     total->material_fluid.density_ms += sample->material_fluid.density_ms;
     total->material_fluid.relaxation_ms += sample->material_fluid.relaxation_ms;
     total->material_fluid.collisions_ms += sample->material_fluid.collisions_ms;
+    total->material_fluid.collision_index_ms += sample->material_fluid.collision_index_ms;
+    total->material_fluid.index_builds += sample->material_fluid.index_builds;
     sum_box2d_profile(&total->box2d, &sample->box2d);
 }
 

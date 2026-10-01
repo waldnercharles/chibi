@@ -202,6 +202,30 @@ Fresh 20,000-enemy Arena runs identify Box2D and contact collection as substanti
 costs, unlike Firefight's material-heavy workload. A uniform-circle crowd solver
 remains an optional experiment with an explicit simulation contract.
 
+The [physics/material workloads](physics-material-benchmarks.md) provide four
+repeatable acceptance cases for the next changes: projectile barrages into
+terrain and destructible enemies, a dense destructible crowd, and a player
+interacting with fog and liquid. They retain Box2D and compare native/WASM
+replay state before accepting timings. The [MPM coupling assessment](mpm-box2d-coupling.md)
+describes a bounded liquid experiment and the point-impulse/torque exchange it
+would need with Box2D; that solver experiment remains future work.
+
+The revised fixtures spray roughly 240 bullets/s across 120 degrees and default
+to 20,000 destructible enemies for the collision stress case. That crowd retains
+8 million material cells and exceeds a 60 Hz budget on native and serial WASM.
+The workload report records CPU phases and rendered timings separately so a
+solver experiment is judged against the actual critical path.
+Its [measured next optimizations](physics-material-benchmarks.md#measured-next-optimizations)
+prioritize crowd rendering, behavior/contact work and allocation, idle fluid
+preparation, shape updates after destruction, and liquid density/relaxation.
+The three-run baselines establish substantial load and deterministic parity;
+they do not establish an improvement over a smaller earlier fixture.
+The first [renderer follow-up](material-border-optimization.md) merges arbitrary
+mask border runs into disjoint rectangles. Three matched 20,000-enemy pairs reduce
+native GPU-complete p95 from 311.639 to 88.758 ms, retaining replay state and nearly
+identical images. This changes no gameplay geometry; curved and fragmented masks
+use the same extraction, with savings dependent on their geometry.
+
 ## Recommended order
 
 The September 19 [slow-frame attribution and swept-target experiment](swept-targets.md)

@@ -43,10 +43,13 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # WASM executes separate multiply/add instructions. Preserve that rounding in
-# fields, particle seeding and the fluid solver on native builds too.
+# fields, materials, particle seeding and physics on native builds too.
 if(CMAKE_C_COMPILER_ID MATCHES "Clang|GNU")
     set_source_files_properties(
         src/graph/compiler/field_program.c
+        src/runtime/material_destruction.c
+        src/runtime/material_ecs.c
+        src/runtime/material_mask.c
         src/runtime/material_ecs_fluid.c
         src/runtime/material_flow.c
         src/runtime/material_fluid.c

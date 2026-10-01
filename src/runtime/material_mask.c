@@ -284,7 +284,9 @@ int material_mask_apply_damage(material_mask *mask, float x, float y, float radi
             for (int col = x0; col <= x1; col++) {
                 int i = row * mask->width + col;
                 float dx = (col + .5f - mask->width * .5f) * mask->cell_size - x;
-                float cut = radius - hypotf(dx, dy);
+                /* Float offsets fit safely in double, including their squares.
+                 * One IEEE sqrt avoids platform-specific hypotf rounding. */
+                float cut = radius - (float)sqrt((double)dx * dx + (double)dy * dy);
                 if (mask->cells[i]) {
                     cut = fminf(cut, -.0001f);
                 }

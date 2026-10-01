@@ -969,6 +969,72 @@ static void assignment_root_rename_preserves_binding()
     behavior_asset_free(asset);
 }
 
+static void integer_component_compound_assignment_roundtrip()
+{
+    behavior_asset *asset = behavior_asset_new("Integer component compound assignment");
+    assert(behavior_asset_set_owner_type(asset, "ecs.entity") == 0);
+    node *event = graph_add_node(asset->graph, &NODE_Event);
+    assert(event && graph_set_event_name(asset->graph, event, "Damage") == 0);
+    pin_spec amount = { .name = "Amount", .type = PIN_I32, .type_name = "int" };
+    int amount_output = graph_add_pin(asset->graph, event, 1, &amount);
+    assert(amount_output >= 0);
+    behavior_expression_error error;
+    node *call = behavior_expression_add(asset, asset->graph, "health -= amount", &error);
+    assert(call);
+    int health = named_pin(call, false, "health");
+    int amount_input = named_pin(call, false, "amount");
+    int exec = named_pin(call, false, "Exec");
+    int result = named_pin(call, true, "Result");
+    assert(health >= 0 && amount_input >= 0 && exec >= 0 && result >= 0);
+    pin_binding binding = { .kind = PIN_BINDING_COMPONENT_FIELD,
+                            .component_key = GAME_COMPONENT_GameHealth.key,
+                            .field_name = "current" };
+    assert(graph_set_pin_binding(asset->graph, call, 0, health, &binding) == 0);
+    assert(graph_connect_data(asset->graph, event, amount_output, call, amount_input) == 0);
+    assert(graph_connect_exec(asset->graph, event, 0, call, exec, 0) == 0);
+    assert(behavior_expression_refresh(asset, call, &error) == 0);
+    assert(graph_set_pin_type(asset->graph, call, 1, result, PIN_I32, "int") == 0);
+
+    uint64_t call_id = call->id;
+    char *serialized = behavior_asset_save_json(asset);
+    assert(serialized);
+    behavior_asset *reloaded = behavior_asset_load_json(serialized);
+    free(serialized);
+    assert(reloaded);
+    behavior_asset_free(asset);
+    asset = reloaded;
+    call = graph_node_by_id(asset->graph, call_id);
+    assert(call);
+    result = named_pin(call, true, "Result");
+    assert(result >= 0);
+
+    ecs_world *world = ecs_world_new();
+    assert(world && ecs_world_register_component(world, &GAME_COMPONENT_GameHealth, NULL) == ECS_OK);
+    ecs_entity owner = ecs_world_create_entity(world);
+    assert(GAME_GameHealth_add(world, owner, 0) == ECS_OK);
+    assert(ecs_world_apply_commands(world) == ECS_OK);
+    GAME_GameHealth_get(world, owner)->current = 3;
+    pin_value handle = { .type = PIN_HANDLE,
+                         .type_name = "ecs.entity",
+                         .u64 = ecs_entity_to_u64(owner) };
+    behavior_instance *instance = behavior_instance_create(asset, &handle, NULL, NULL);
+    assert(instance && behavior_instance_bind_service(instance, "ecs.world", world) == 0);
+    eval_component_reader reader;
+    ecs_eval_component_reader_init(&reader, world);
+    assert(behavior_instance_bind_service(instance, EVAL_COMPONENT_READER_SERVICE, &reader) == 0);
+    pin_value inputs[] = { { .type = PIN_I32, .i = 1 } };
+    flow_error flow;
+    flow_run *run = behavior_instance_dispatch(instance, "Damage", (flow_inputs){ inputs, 1 }, &flow);
+    assert(run && flow_run_status(run) == FLOW_COMPLETED);
+    pin_value value;
+    assert(flow_run_watch_output(run, call, result, &value) == 0);
+    assert(value.type == PIN_F64 && value.d == 2);
+    assert(GAME_GameHealth_get_const(world, owner)->current == 2);
+    behavior_instance_destroy(instance);
+    ecs_world_free(world);
+    behavior_asset_free(asset);
+}
+
 static void indexed_assignment_expression()
 {
     behavior_asset *asset = behavior_asset_new("Indexed assignment expression");
@@ -1895,6 +1961,7 @@ void test_math_expression()
     assignment_expressions();
     reference_assignment_expressions();
     integer_operand_expressions();
+    integer_component_compound_assignment_roundtrip();
     assignment_root_rename_preserves_binding();
     indexed_assignment_expression();
     branch_expression_flow();

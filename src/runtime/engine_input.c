@@ -309,7 +309,10 @@ static int apply_aim_sample(engine_input *input)
             direction.x -= position->x;
             direction.y -= position->y;
         }
-        float length = hypotf(direction.x, direction.y);
+        /* Float products fit in double; sqrt rounds the same on native and WASM. */
+        float length = (float)sqrt(
+            (double)direction.x * direction.x + (double)direction.y * direction.y
+        );
         if (length <= .1f) {
             /* Releasing aim ends manual control but keeps the last facing. */
             aim->manual = false;

@@ -362,11 +362,27 @@ static void wall_blocking()
     arena_free(&f);
 }
 
+static void aim_normalization_rounding()
+{
+    arena_fixture f = arena_new();
+    ecs_entity player = arena_player(f.world);
+    /* This unit-length fan direction rounds to 1 in native hypotf but one ULP
+     * below 1 in WASM hypotf, changing the projectile trajectory. */
+    CF_V2 direction = { 0x1.c65302p-1f, -0x1.d828a2p-2f };
+    assert(app_scene_authoring_aim(f.scene, direction, false) == FLOW_OK);
+    steps(&f, 1);
+    const GameAim *aim = GAME_GameAim_get_const(f.world, player);
+    assert(aim->manual && !aim->firing);
+    assert(aim->direction.x == direction.x && aim->direction.y == direction.y);
+    arena_free(&f);
+}
+
 int test_arena_input()
 {
     fire_membership(false);
     fire_membership(true);
     movement_frame_timing();
+    aim_normalization_rounding();
     wall_blocking();
     arena_fixture f = arena_new();
     ecs_entity player = arena_player(f.world);

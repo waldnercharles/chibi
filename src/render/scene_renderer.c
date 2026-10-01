@@ -61,6 +61,7 @@ struct app_scene_renderer
     /* Tile groups numbered so far this frame. */
     int tile_groups;
     render_material_entity *entities;
+    render_material_border border;
     draw_actor *actors;
     ecs_world *world;
     engine_viewport_camera camera;
@@ -129,6 +130,7 @@ void app_scene_renderer_free(app_scene_renderer *renderer)
     render_programs_free(renderer->fragment);
     afree(renderer->fragment_programs);
     afree(renderer->entities);
+    render_material_border_free(&renderer->border);
     afree(renderer->actors);
     free(renderer);
 }
@@ -490,23 +492,7 @@ static void reflect_rect(
     apush(renderer->reflectors, r);
 }
 
-static bool edge_cell(const material_mask *mask, int reach, int x, int y)
-{
-    const unsigned char *cells = material_mask_occupancy(mask).cells;
-    if (!cells[y * mask->width + x]) {
-        return false;
-    }
-    for (int d = 1; d <= reach; d++) {
-        if (x < d || y < d || x + d >= mask->width || y + d >= mask->height ||
-            !cells[y * mask->width + x - d] || !cells[y * mask->width + x + d] ||
-            !cells[(y - d) * mask->width + x] || !cells[(y + d) * mask->width + x]) {
-            return true;
-        }
-    }
-    return false;
-}
-
-/* One box per row run of cells within the border width of the mask's edge. */
+/* Disjoint rectangles cover the cells within the mask's border width. */
 static void mask_edges(
     app_scene_renderer *renderer,
     const material_mask *mask,
@@ -525,28 +511,19 @@ static void mask_edges(
     edge.filter = material->border_filter;
     edge.emission_color = material->border_emission_color;
     int reach = (int)ceilf(look->border_width / mask->cell_size);
+    render_material_border_build(&renderer->border, material_mask_occupancy(mask), reach);
     float c = cosf(heading), s = sinf(heading);
-    for (int y = 0; y < mask->height; y++) {
-        for (int x = 0; x < mask->width; x++) {
-            if (!edge_cell(mask, reach, x, y)) {
-                continue;
-            }
-            int run = 1;
-            while (x + run < mask->width && edge_cell(mask, reach, x + run, y)) {
-                run++;
-            }
-            float px = (x + run * .5f - mask->width * .5f) * mask->cell_size;
-            float py = (y + .5f - mask->height * .5f) * mask->cell_size;
-            GameTransform p = { position.x + c * px - s * py,
-                                position.y + s * px + c * py };
-            GameAppearance cells = { .shape = GAME_SHAPE_BOX,
-                                     .width = run * mask->cell_size,
-                                     .height = mask->cell_size,
-                                     .antialias = .1f,
-                                     .color = look->border_color };
-            append_entity(renderer, &p, &cells, -heading, NULL, &edge);
-            x += run - 1;
-        }
+    for (int i = 0; i < acount(renderer->border.rects); i++) {
+        render_material_border_rect rect = renderer->border.rects[i];
+        float px = (rect.x + rect.width * .5f - mask->width * .5f) * mask->cell_size;
+        float py = (rect.y + rect.height * .5f - mask->height * .5f) * mask->cell_size;
+        GameTransform p = { position.x + c * px - s * py, position.y + s * px + c * py };
+        GameAppearance cells = { .shape = GAME_SHAPE_BOX,
+                                 .width = rect.width * mask->cell_size,
+                                 .height = rect.height * mask->cell_size,
+                                 .antialias = .1f,
+                                 .color = look->border_color };
+        append_entity(renderer, &p, &cells, -heading, NULL, &edge);
     }
 }
 

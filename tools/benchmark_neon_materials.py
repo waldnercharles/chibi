@@ -14,6 +14,10 @@ import tempfile
 
 from check_neon_swarm import PROJECT, ROOT, Runner
 from neon_material_scenarios import SCENARIOS, check_load, scenario
+from physics_material_scenarios import DEFAULT_CROWD_COUNT, MAX_CROWD_COUNT
+from physics_material_scenarios import SCENARIOS as PHYSICS_SCENARIOS
+from physics_material_scenarios import prepare as prepare_physics, scenario as physics_scenario
+from benchmark_physics_materials import validate_workload
 
 
 def write_json(path, value):
@@ -49,7 +53,9 @@ def prepare(build, output, fixture, resolution, trace_levels, gather_resolution,
             dict(entity['components']['GAME.GameHRC2D'], **fields)}))
         for entity in asset['document']['entities']
         if 'GAME.GameHRC2D' in entity.get('components', {})]
-    if overrides or fixture['operations']:
+    if fixture.get('keep_entities'):
+        prepare_physics(runner, fixture, prefix_operations=overrides)
+    elif overrides or fixture['operations']:
         runner.author('buildScene', dict(kind='scene', name='Sandbox',
             expected_hash=asset['hash'], operations=overrides + fixture['operations']))
     runner.author('validateAsset', dict(kind='scene', name='Sandbox'))
@@ -101,11 +107,13 @@ def render(command, output, environment, tracy):
 def run_case(args, name, mode, resolution, repeat, provenance):
     output = args.output / f'{name}-{mode}-{resolution:g}-{repeat}'
     output.mkdir(parents=True, exist_ok=False)
-    fixture = scenario(name)
+    physics = name in PHYSICS_SCENARIOS
+    fixture = physics_scenario(name, args.crowd_count) if physics else scenario(name)
     runner = prepare(args.build, output, fixture, resolution, args.trace_levels,
         args.gather_resolution, args.lighting_margin)
     frozen = mode == 'frozen'
-    initial_frames = fixture['frames'] + (args.render_frames if frozen else 0)
+    preparation_frames = fixture['warmup_frames'] if physics else fixture['frames']
+    initial_frames = preparation_frames + (args.render_frames if frozen else 0)
     final_frames = initial_frames + (0 if frozen else args.render_frames)
     inputs = [s for s in fixture['input_timeline'] if s['frame'] < final_frames]
     request = dict(contract=1, operation='preview_scene', kind='scene', name='Sandbox',
@@ -136,9 +144,15 @@ def run_case(args, name, mode, resolution, repeat, provenance):
     assert after['world_hash'] == expected['world_hash'], 'Rendered inputs diverged from headless replay'
     assert after['materials'] == expected['materials'], 'Rendered material state diverged'
     write_json(output / 'snapshot.json', expected)
-    check_load(name, after)
-    if name == 'ignition':
-        check_load(name, before)
+    validation = None
+    if physics:
+        validation_output = output / 'validation'
+        validation_output.mkdir()
+        validation = validate_workload(runner, fixture, validation_output, runner)
+    else:
+        check_load(name, after)
+        if name == 'ignition':
+            check_load(name, before)
     performance = result['performance']
     assert abs(performance['hrc_resolution'] - resolution) < 1e-6, 'HRC resolution changed during benchmark'
     assert performance['samples'] == args.render_frames - 16
@@ -148,7 +162,8 @@ def run_case(args, name, mode, resolution, repeat, provenance):
         lighting_margin=args.lighting_margin, adaptive=False, width=args.width, height=args.height,
         purpose='metal-capture' if args.metal_capture else 'tracy-capture' if args.tracy_capture else 'benchmark',
         backend=result['backend'], initial_state=before, final_state=after, performance=performance,
-        directory=output.name, manifest='manifest.json', capture=result.get('metal_capture'))
+        directory=output.name, manifest='manifest.json', capture=result.get('metal_capture'),
+        workload_validation=validation)
     write_json(output / 'report.json', report)
     print(f"{name:12} {mode:6} resolution={resolution:g} gather={args.gather_resolution} "
         f"margin={args.lighting_margin:g}: median {performance['median_ms']:.2f} ms, "
@@ -223,7 +238,8 @@ def main():
     parser.add_argument('--output', type=Path)
     parser.add_argument('--replay', type=Path)
     parser.add_argument('--allow-renderer-changes', action='store_true')
-    parser.add_argument('--scenario', choices=SCENARIOS + ['all'], default='travel')
+    parser.add_argument('--scenario', choices=SCENARIOS + list(PHYSICS_SCENARIOS) + ['all', 'physics-all'], default='travel')
+    parser.add_argument('--crowd-count', type=int, default=DEFAULT_CROWD_COUNT)
     parser.add_argument('--mode', choices=['live', 'frozen', 'both'], default='both')
     parser.add_argument('--width', type=int, default=1920)
     parser.add_argument('--height', type=int, default=1080)
@@ -246,8 +262,12 @@ def main():
         parser.error('Use --output for a new run; --allow-renderer-changes requires --replay')
     if not 0 <= args.lighting_margin <= 256:
         parser.error('Lighting margin must be 0–256')
+    if not 16 <= args.crowd_count <= MAX_CROWD_COUNT:
+        parser.error(f'Crowd count must be 16..{MAX_CROWD_COUNT}')
     if not 17 <= args.render_frames <= 1200 or args.repeat < 1:
         parser.error('Use 17..1200 render frames and a positive repeat count')
+    if args.scenario in PHYSICS_SCENARIOS + ('physics-all',) and args.render_frames != 240:
+        parser.error('Physics/material fixtures require --render-frames 240 to match their load checks')
     if any(not .1 <= value <= 1 for value in args.resolution) or \
             len(set(args.resolution)) != len(args.resolution):
         parser.error('HRC resolutions must be distinct values in 0.1..1')
@@ -256,7 +276,7 @@ def main():
     if args.metal_capture and args.tracy_capture:
         parser.error('Capture GPU and Tracy traces in separate runs')
     if args.metal_capture or args.tracy_capture:
-        if args.scenario == 'all' or args.mode == 'both' or len(args.resolution) != 1 or args.repeat != 1:
+        if args.scenario in ('all', 'physics-all') or args.mode == 'both' or len(args.resolution) != 1 or args.repeat != 1:
             parser.error('Select one scenario, mode, resolution and repeat for an instrumented capture')
     if not args.metal_capture and os.environ.get('MTL_CAPTURE_ENABLED') == '1':
         parser.error('Unset MTL_CAPTURE_ENABLED for ordinary benchmarks')
@@ -270,7 +290,8 @@ def main():
     if platform.system() == 'Darwin':
         provenance['gpu'] = json.loads(subprocess.check_output(['system_profiler', 'SPDisplaysDataType', '-json'], text=True))
     reports = []
-    for name in SCENARIOS if args.scenario == 'all' else [args.scenario]:
+    selected = SCENARIOS if args.scenario == 'all' else PHYSICS_SCENARIOS if args.scenario == 'physics-all' else [args.scenario]
+    for name in selected:
         for mode in ['live', 'frozen'] if args.mode == 'both' else [args.mode]:
             for resolution in args.resolution:
                 for repeat in range(1, args.repeat + 1):

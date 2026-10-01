@@ -38,7 +38,7 @@ graphs:
       damage: {}
     outputs:
       Then: {id: 276, kind: exec}
-      Result: {id: 274, type: int}
+      Result: {id: 274, type: double}
   - id: 359
     type: Behavior Expression
     reference_id: 345

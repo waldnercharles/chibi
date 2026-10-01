@@ -1,3 +1,4 @@
+#include "graph/compiler/behavior_function_internal.h"
 #include "test/suite_internal.h"
 #include "test/whole_loop_fixture.h"
 
@@ -24,7 +25,17 @@ void emit_loop_c(const char *path)
         char name[40];
         snprintf(name, sizeof name, "generated_loop%d", kind);
         behavior_asset *a = whole_loop_fixture(kind);
-        behavior_function_write_c(body(a), out, name);
+        const behavior_function *f = body(a);
+        if (kind == WHOLE_LOOP_RANGE) {
+            behavior_loop_budget proof;
+            assert(behavior_function_loop_budget(f, &proof));
+            if (f->runtime_body) {
+                behavior_function runtime = *f;
+                runtime.instructions = f->runtime_body;
+                assert(behavior_function_loop_budget(&runtime, &proof));
+            }
+        }
+        behavior_function_write_c(f, out, name);
         behavior_asset_free(a);
     }
     assert(!fclose(out));

@@ -19,7 +19,8 @@ void material_flow_step(
     int count,
     const fluid_body *bodies,
     const fluid_obstacle *obstacles,
-    int obstacle_count
+    int obstacle_count,
+    const game_task_system *tasks
 );
 
 #endif

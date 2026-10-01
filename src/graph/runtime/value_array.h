@@ -1,7 +1,7 @@
 #ifndef CHIBI_VALUE_ARRAY_H
 #define CHIBI_VALUE_ARRAY_H
 
-#include "graph/model/pin.h"
+#include "graph/model/type.h"
 
 #include <stddef.h>
 
@@ -32,11 +32,17 @@ int pin_set_unique(arena *storage, pin_value *out, const pin_value *items, int c
 pin_array *pin_array_new(pin_type element_type, const char *type_name, int capacity);
 pin_array *pin_array_clone_to_graph(graph *g, const pin_array *src);
 pin_array *pin_array_clone_to_arena(arena *a, const pin_array *src);
+/* Internal snapshot construction: header/name are owned, items uninitialized.
+ * Fill every item before exposing the array; abandon it if any snapshot fails. */
+pin_array *pin_array_snapshot_allocate(arena *a, pin_type type, const char *name, int count);
 /* Fixed-size typed zero values, owned by the arena. */
 pin_array *pin_array_allocate(arena *a, pin_type type, const char *name, int count);
 /* Deep snapshot, including registered struct fields and all nominal names. */
 pin_array *pin_array_snapshot_to_arena(arena *a, const pin_array *src);
 int pin_value_snapshot_to_arena(arena *a, pin_value *dst, const pin_value *src);
+/* Retain managed fields in an already copied struct. Nested structs are inline;
+ * only their strings need separate storage. Publish data only on success. */
+int pin_struct_snapshot_fields(arena *a, const type_desc *type, void *data);
 void pin_array_free(pin_array *array);
 int pin_array_reserve(pin_array *array, int capacity);
 int pin_array_push(pin_array *array, const pin_value *value);

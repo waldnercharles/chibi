@@ -19,7 +19,7 @@ static behavior_function *lower(behavior_asset *asset)
     assert(f && behavior_function_compile(f));
     return f;
 }
-static behavior_asset *pressure_fixture()
+static behavior_asset *pressure_fixture(bool calls)
 {
     behavior_asset *asset = whole_motion_fixture(WHOLE_MOTION_ROUND);
     graph *g = asset->graphs[1];
@@ -37,11 +37,15 @@ static behavior_asset *pressure_fixture()
             !graph_set_pin_default(g, offset, 0, 1, &(pin_value){ .type = PIN_F64, .d = i * .13 })
         );
         assert(!graph_connect_data(g, first, 0, offset, 0));
-        values[i] = graph_add_node(g, registry_node_by_name(names[i % 5]));
-        assert(!graph_connect_data(g, offset, 0, values[i], 0));
+        values[i] = offset;
+        if (calls) {
+            values[i] = graph_add_node(g, registry_node_by_name(names[i % 5]));
+            assert(!graph_connect_data(g, offset, 0, values[i], 0));
+        }
     }
-    /* Every result remains live for the second sum, across both hardware
-     * operations and libm calls, exceeding the native saved-register pool. */
+    /* Every result remains live for the second sum. The call variant tests
+     * saved registers and spills; the arithmetic variant tests scratch values
+     * beyond the old four-register pool. */
     node *sum = first;
     for (int i = 0; i < 20; i++) {
         node *add = graph_add_node(g, &NODE_Add);
@@ -54,6 +58,51 @@ static behavior_asset *pressure_fixture()
         sum = add;
     }
     assert(!graph_connect_data(g, sum, 0, ret, 1));
+    return asset;
+}
+static behavior_asset *repeated_fixture(bool branch_value)
+{
+    behavior_asset *asset = whole_motion_fixture(WHOLE_MOTION_ROUND);
+    graph *g = asset->graphs[1];
+    node *entry = g->nodes[0], *ret = g->nodes[1];
+    assert(!graph_remove_node(g, g->nodes[2]));
+    assert(!graph_remove_edge(g, entry, 0, ret, 0));
+    graph *child = behavior_asset_add_function(asset, "Add one", false);
+    node *input = child->nodes[0], *output = child->nodes[1];
+    assert(graph_add_pin(child, input, 1, &entry->output_pins[1]) == 1);
+    assert(graph_add_pin(child, output, 0, &ret->input_pins[1]) == 1);
+    node *add = graph_add_node(child, &NODE_Add);
+    for (int pin = 0; pin < 2; pin++) {
+        assert(!graph_set_pin_type(child, add, 0, pin, PIN_F64, "double"));
+    }
+    assert(!graph_set_pin_type(child, add, 1, 0, PIN_F64, "double"));
+    assert(!graph_set_pin_default(child, add, 0, 1, &(pin_value){ .type = PIN_F64, .d = 1 }));
+    assert(!graph_connect_data(child, input, 1, add, 0));
+    assert(!graph_connect_data(child, add, 0, output, 1));
+    node *branch = graph_add_node(child, &NODE_Branch);
+    assert(
+        !graph_set_pin_default(child, branch, 0, 1, &(pin_value){ .type = PIN_BOOL, .b = branch_value })
+    );
+    assert(!graph_connect_exec(child, input, 0, branch, 0, 0));
+    for (int pin = 0; pin < 2; pin++) {
+        assert(!graph_connect_exec(child, branch, pin, output, 0, 0));
+    }
+    node *calls[2];
+    node *tail = entry;
+    for (int i = 0; i < 2; i++) {
+        calls[i] = behavior_asset_add_function_call_node_to_graph(asset, g, child);
+        assert(!graph_connect_data(g, entry, 1, calls[i], 1));
+        assert(!graph_connect_exec(g, tail, 0, calls[i], 0, 0));
+        tail = calls[i];
+    }
+    node *sum = graph_add_node(g, &NODE_Add);
+    for (int pin = 0; pin < 2; pin++) {
+        assert(!graph_set_pin_type(g, sum, 0, pin, PIN_F64, "double"));
+        assert(!graph_connect_data(g, calls[pin], 1, sum, pin));
+    }
+    assert(!graph_set_pin_type(g, sum, 1, 0, PIN_F64, "double"));
+    assert(!graph_connect_data(g, sum, 0, ret, 1));
+    assert(!graph_connect_exec(g, tail, 0, ret, 0, 0));
     return asset;
 }
 static void same_value(pin_value actual, pin_value expected)
@@ -78,8 +127,9 @@ static void sample(
     graph *g = asset->graphs[1];
     node *entry = g->nodes[0], *ret = g->nodes[1];
     int count = entry->output_count - 1;
-    flow_options options = { .step_budget = budget };
-    flow_run *oracle = flow_run_start(g, entry, (flow_inputs){ args, count }, &options, NULL);
+    behavior_instance *instance = behavior_instance_create(asset, NULL, NULL, NULL);
+    flow_options options = { .instance = instance, .step_budget = budget };
+    flow_run *oracle = flow_run_start(g, entry, (flow_inputs){ args, args ? count : 0 }, &options, NULL);
     assert(oracle);
     int expected = flow_run_resume(oracle);
     const flow_error *error = flow_run_error(oracle);
@@ -91,7 +141,7 @@ static void sample(
             results[i] = ret->input_pins[i].default_value;
         }
         behavior_function_context ctx = { .arguments = args,
-                                          .argument_count = count,
+                                          .argument_count = args ? count : 0,
                                           .results = results,
                                           .budget = budget };
         int result = mode == 2 ? generated(&ctx)
@@ -113,6 +163,7 @@ static void sample(
     }
     assert(eval == eval_oracle_calls() && flow == flow_oracle_calls());
     flow_run_free(oracle);
+    behavior_instance_destroy(instance);
 }
 
 static void inspection(int kind)
@@ -358,9 +409,11 @@ void emit_motion_c(const char *path)
 {
     FILE *out = fopen(path, "w");
     assert(out);
-    for (int kind = 0; kind <= WHOLE_MOTION_COUNT; kind++) {
-        behavior_asset *asset = kind == WHOLE_MOTION_COUNT
-                                  ? pressure_fixture()
+    for (int kind = 0; kind <= WHOLE_MOTION_COUNT + 3; kind++) {
+        behavior_asset *asset = kind >= WHOLE_MOTION_COUNT + 2
+                                  ? repeated_fixture(kind == WHOLE_MOTION_COUNT + 2)
+                              : kind >= WHOLE_MOTION_COUNT
+                                  ? pressure_fixture(kind == WHOLE_MOTION_COUNT)
                                   : whole_motion_fixture(kind);
         behavior_function *f = lower(asset);
         char symbol[32];
@@ -380,21 +433,66 @@ void test_compiled_motion(const char *path)
         primitives(kind, library);
         inspection(kind);
     }
-    behavior_asset *pressure = pressure_fixture();
-    behavior_function *f = lower(pressure);
-    int (*generated)(
-        behavior_function_context *
-    ) = library
-          ? (int (*)(behavior_function_context *))dlsym(library, "generated_motion7")
-          : NULL;
-    assert(!library || generated);
-    for (int i = -100; i <= 100; i++) {
-        pin_value arg = pressure->graphs[1]->nodes[0]->output_pins[1].default_value;
-        arg.d = i * .125;
-        sample(pressure, f, &arg, 3, generated);
+    for (int calls = 0; calls < 2; calls++) {
+        behavior_asset *pressure = pressure_fixture(calls);
+        behavior_function *f = lower(pressure);
+        int (*generated)(
+            behavior_function_context *
+        ) = library
+              ? (
+                    int (*)(behavior_function_context *)
+                )dlsym(library, calls ? "generated_motion7" : "generated_motion8")
+              : NULL;
+        assert(!library || generated);
+        for (int i = -104; i <= 100; i++) {
+            pin_value arg = pressure->graphs[1]->nodes[0]->output_pins[1].default_value;
+            arg.d = i < -100 ? (double[]){ NAN, INFINITY, -INFINITY, -0. }[i + 104]
+                             : i * .125;
+            for (int budget = 1; budget <= 3; budget++) {
+                sample(pressure, f, &arg, budget, generated);
+            }
+        }
+        behavior_function_free(f);
+        behavior_asset_free(pressure);
     }
-    behavior_function_free(f);
-    behavior_asset_free(pressure);
+    for (int branch = 0; branch < 2; branch++) {
+        behavior_asset *asset = repeated_fixture(branch);
+        behavior_function *f = lower(asset);
+        assert(f->fast);
+        int additions = 0;
+        for (int pc = 0; pc < acount(f->fast->instructions); pc++) {
+            additions += f->fast->instructions[pc].op == BF_ADD;
+            assert(f->fast->instructions[pc].op != BF_BRANCH);
+        }
+        assert(additions == 2);
+        int (*generated)(
+            behavior_function_context *
+        ) = library
+              ? (
+                    int (*)(behavior_function_context *)
+                )dlsym(library, branch ? "generated_motion9" : "generated_motion10")
+              : NULL;
+        assert(!library || generated);
+        double values[] = { NAN, INFINITY, -INFINITY, -0.,
+                            0.,  .125,     -1.,       DBL_MAX };
+        for (int index = 0; index < (int)(sizeof values / sizeof *values); index++) {
+            pin_value arg = asset->graphs[1]->nodes[0]->output_pins[1].default_value;
+            arg.d = values[index];
+            arg.type_name = index & 1 ? "caller supplied scalar" : NULL;
+            for (int budget = 1; budget <= 16; budget++) {
+                sample(asset, f, &arg, budget, generated);
+            }
+        }
+        for (int budget = 1; budget <= 16; budget++) {
+            sample(asset, f, NULL, budget, generated);
+            pin_value wrong = { .type = PIN_BOOL, .b = true, .type_name = "caller bool" };
+            sample(asset, f, &wrong, budget, generated);
+            pin_value converted = { .type = PIN_F32, .f = .125f, .type_name = "caller float" };
+            sample(asset, f, &converted, budget, generated);
+        }
+        behavior_function_free(f);
+        behavior_asset_free(asset);
+    }
     whole_motion_smoke();
     if (library) {
         assert(!dlclose(library));

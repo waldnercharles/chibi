@@ -45,6 +45,10 @@
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
 #endif
+#ifdef __EMSCRIPTEN_PTHREADS__
+#include <emscripten/threading.h>
+#include <pthread.h>
+#endif
 
 static const type_desc entity_type = { .name = "ecs.entity", .size = sizeof(uint64_t) };
 static const type_field vector_fields[] = {
@@ -89,7 +93,7 @@ enum
     WASM_SMOKE_MAX_POLLS = 5000,
     WASM_SMOKE_MAX_OPERATIONS = 64,
 };
-static const int wasm_smoke_operations[WASM_SMOKE_REGIONS] = { 4, 16, 32, 64 };
+static const int wasm_smoke_operations[WASM_SMOKE_REGIONS] = { 16, 24, 32, 64 };
 
 static behavior_asset *wasm_smoke_asset;
 static behavior_instance *wasm_smoke_instance;
@@ -229,109 +233,71 @@ static node *wasm_smoke_expression(graph *g, node *input, int operations)
     return result;
 }
 
-static void wasm_smoke_third_operand_regression()
+static void wasm_smoke_region_selection()
 {
-    behavior_expression_wasm_instruction instructions[] = {
-        { .op = BEHAVIOR_WASM_ADD,
-          .type = PIN_F32,
-          .output = 0,
-          .left = 4,
-          .right = 4,
-          .third = -1,
-          .left_slot = true,
-          .right_slot = true },
-        { .op = BEHAVIOR_WASM_ADD,
-          .type = PIN_F32,
-          .output = 1,
-          .left = 0,
-          .right = 4,
-          .third = -1,
-          .left_slot = true,
-          .right_slot = true },
-        { .op = BEHAVIOR_WASM_ADD,
-          .type = PIN_F32,
-          .output = 2,
-          .left = 1,
-          .right = 4,
-          .third = -1,
-          .left_slot = true,
-          .right_slot = true },
-        { .op = BEHAVIOR_WASM_ADD,
-          .type = PIN_F32,
-          .output = 3,
-          .left = 2,
-          .right = 4,
-          .third = -1,
-          .left_slot = true,
-          .right_slot = true },
-        /* BF_SELECT and BF_FMA both consume target as a third slot. */
-        { .op = BEHAVIOR_WASM_NONE,
-          .type = PIN_F32,
-          .left = 3,
-          .third = 0,
-          .left_slot = true,
-          .third_slot = true },
+    enum
+    {
+        operations = 32,
+        input = operations,
+        slot_count = operations + 1
     };
-    const pin_type slot_types[] = { PIN_F32, PIN_F32, PIN_F32, PIN_F32, PIN_F32 };
-    behavior_expression_wasm_region *regions = NULL;
-    int region_count = 0;
-    behavior_expression_wasm *module = behavior_expression_wasm_compile_linear(
-        instructions,
-        sizeof instructions / sizeof instructions[0],
-        sizeof slot_types / sizeof slot_types[0],
-        slot_types,
-        &regions,
-        &region_count
-    );
-    assert(!module && !region_count && !regions);
-}
-
-static void wasm_smoke_branch_entry_regression()
-{
-    behavior_expression_wasm_instruction instructions[] = {
-        { .op = BEHAVIOR_WASM_NONE, .control_target = 3, .control_transfer = true },
-        { .op = BEHAVIOR_WASM_ADD,
-          .type = PIN_F32,
-          .output = 0,
-          .left = 4,
-          .right = 4,
-          .left_slot = true,
-          .right_slot = true },
-        { .op = BEHAVIOR_WASM_ADD,
-          .type = PIN_F32,
-          .output = 1,
-          .left = 0,
-          .right = 4,
-          .left_slot = true,
-          .right_slot = true },
-        { .op = BEHAVIOR_WASM_ADD,
-          .type = PIN_F32,
-          .output = 2,
-          .left = 1,
-          .right = 4,
-          .left_slot = true,
-          .right_slot = true },
-        { .op = BEHAVIOR_WASM_ADD,
-          .type = PIN_F32,
-          .output = 3,
-          .left = 2,
-          .right = 4,
-          .left_slot = true,
-          .right_slot = true },
-        { .op = BEHAVIOR_WASM_NONE, .left = 3, .left_slot = true },
-    };
-    const pin_type slot_types[] = { PIN_F32, PIN_F32, PIN_F32, PIN_F32, PIN_F32 };
-    behavior_expression_wasm_region *regions = NULL;
-    int region_count = 0;
-    behavior_expression_wasm *module = behavior_expression_wasm_compile_linear(
-        instructions,
-        sizeof instructions / sizeof instructions[0],
-        sizeof slot_types / sizeof slot_types[0],
-        slot_types,
-        &regions,
-        &region_count
-    );
-    assert(!module && !region_count && !regions);
+    behavior_expression_wasm_instruction instructions[operations + 2] = { 0 };
+    pin_type slot_types[slot_count];
+    for (int i = 0; i < slot_count; i++) {
+        slot_types[i] = PIN_F32;
+    }
+    for (int i = 0; i < operations; i++) {
+        instructions[i] = (behavior_expression_wasm_instruction){
+            .op = BEHAVIOR_WASM_ADD,
+            .type = PIN_F32,
+            .output = i,
+            .left = i ? i - 1 : input,
+            .right = input,
+            .left_slot = true,
+            .right_slot = true,
+        };
+    }
+    instructions[operations].left = operations - 1;
+    instructions[operations].left_slot = true;
+    for (int scenario = 0; scenario < 4; scenario++) {
+        int count = operations + 1;
+        if (scenario == 0) {
+            // A short chain stays in bytecode even when all other checks pass.
+            instructions[8].op = BEHAVIOR_WASM_NONE;
+            instructions[8].left = 7;
+            count = 9;
+        } else {
+            instructions[8].op = BEHAVIOR_WASM_ADD;
+            instructions[8].left = 7;
+        }
+        // Another instruction needs an intermediate: it must remain materialized.
+        instructions[operations].third_slot = scenario == 1;
+        instructions[operations].third = 0;
+        // A branch entering the region must execute the original instruction stream.
+        instructions[operations + 1].control_transfer = scenario == 2;
+        instructions[operations + 1].control_target = 3;
+        if (scenario == 2) {
+            count++;
+        }
+        behavior_expression_wasm_region *regions = NULL;
+        int region_count = 0;
+        behavior_expression_wasm *module = behavior_expression_wasm_compile_linear(
+            instructions,
+            count,
+            slot_count,
+            slot_types,
+            &regions,
+            &region_count
+        );
+        if (scenario < 3) {
+            assert(!module && !region_count && !regions);
+        } else {
+            assert(module && region_count == 1 && regions[0].first == 0);
+            assert(regions[0].end == operations && regions[0].result_slot == operations - 1);
+            behavior_expression_wasm_free(module);
+            afree(regions);
+        }
+    }
 }
 
 static void wasm_smoke_poll(void *unused)
@@ -481,10 +447,189 @@ static void wasm_smoke_linear_regression(void)
     behavior_asset_free(asset);
 }
 
+#ifdef __EMSCRIPTEN_PTHREADS__
+enum
+{
+    WASM_WORKER_OPERATIONS = 16,
+    WASM_WORKER_CACHE_CAPACITY = 16,
+    WASM_WORKER_CACHE_TEST_MODULES = WASM_WORKER_CACHE_CAPACITY + 1,
+    WASM_WORKER_SLOT_COUNT = WASM_WORKER_OPERATIONS + 2,
+};
+
+typedef struct
+{
+    bool ran;
+    pin_value result;
+    int cache_size;
+} wasm_worker_result;
+
+static pthread_mutex_t wasm_worker_mutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t wasm_worker_condition = PTHREAD_COND_INITIALIZER;
+static int wasm_worker_state;
+static behavior_expression_wasm *wasm_worker_job_module;
+static pin_value wasm_worker_job_slots[WASM_WORKER_SLOT_COUNT];
+static wasm_worker_result wasm_worker_job_result;
+
+static behavior_expression_wasm *wasm_smoke_worker_module(
+    behavior_expression_wasm_op op,
+    behavior_expression_wasm_region **regions
+)
+{
+    behavior_expression_wasm_instruction instructions[WASM_WORKER_OPERATIONS + 1] = { 0 };
+    pin_type slot_types[WASM_WORKER_SLOT_COUNT];
+    for (int i = 0; i < WASM_WORKER_SLOT_COUNT; i++) {
+        slot_types[i] = PIN_F32;
+    }
+    for (int i = 0; i < WASM_WORKER_OPERATIONS; i++) {
+        instructions[i] = (behavior_expression_wasm_instruction){
+            .op = op,
+            .type = PIN_F32,
+            .output = i,
+            .left = i ? i - 1 : WASM_WORKER_OPERATIONS,
+            .right = WASM_WORKER_OPERATIONS + 1,
+            .left_slot = true,
+            .right_slot = true,
+        };
+    }
+    instructions[WASM_WORKER_OPERATIONS] = (behavior_expression_wasm_instruction){
+        .left = WASM_WORKER_OPERATIONS - 1,
+        .left_slot = true,
+    };
+    int region_count = 0;
+    behavior_expression_wasm *module = behavior_expression_wasm_compile_linear(
+        instructions,
+        WASM_WORKER_OPERATIONS + 1,
+        WASM_WORKER_SLOT_COUNT,
+        slot_types,
+        regions,
+        &region_count
+    );
+    assert(module && region_count == 1);
+    assert((*regions)[0].first == 0 && (*regions)[0].end == WASM_WORKER_OPERATIONS);
+    assert((*regions)[0].function == 0 && (*regions)[0].result_slot == WASM_WORKER_OPERATIONS - 1);
+    return module;
+}
+
+static void *wasm_smoke_worker(void *unused)
+{
+    (void)unused;
+    assert(!emscripten_is_main_runtime_thread());
+    for (;;) {
+        pthread_mutex_lock(&wasm_worker_mutex);
+        while (wasm_worker_state != 1 && wasm_worker_state != 3) {
+            pthread_cond_wait(&wasm_worker_condition, &wasm_worker_mutex);
+        }
+        if (wasm_worker_state == 3) {
+            pthread_mutex_unlock(&wasm_worker_mutex);
+            return NULL;
+        }
+        behavior_expression_wasm *module = wasm_worker_job_module;
+        pin_value slots[WASM_WORKER_SLOT_COUNT];
+        memcpy(slots, wasm_worker_job_slots, sizeof slots);
+        pthread_mutex_unlock(&wasm_worker_mutex);
+
+        wasm_worker_result result = { 0 };
+        result
+            .ran = behavior_expression_wasm_run_slots(module, 0, slots, &result.result);
+        result.cache_size = behavior_expression_wasm_registry_size();
+        module = NULL;
+        memset(slots, 0, sizeof slots);
+
+        pthread_mutex_lock(&wasm_worker_mutex);
+        wasm_worker_job_module = NULL;
+        wasm_worker_job_result = result;
+        wasm_worker_state = 2;
+        pthread_cond_broadcast(&wasm_worker_condition);
+        pthread_mutex_unlock(&wasm_worker_mutex);
+    }
+}
+
+static wasm_worker_result wasm_smoke_worker_run(behavior_expression_wasm *module, const pin_value *slots)
+{
+    pthread_mutex_lock(&wasm_worker_mutex);
+    assert(wasm_worker_state == 0);
+    wasm_worker_job_module = module;
+    memcpy(wasm_worker_job_slots, slots, sizeof wasm_worker_job_slots);
+    wasm_worker_state = 1;
+    pthread_cond_broadcast(&wasm_worker_condition);
+    while (wasm_worker_state != 2) {
+        pthread_cond_wait(&wasm_worker_condition, &wasm_worker_mutex);
+    }
+    wasm_worker_result result = wasm_worker_job_result;
+    wasm_worker_state = 0;
+    pthread_cond_broadcast(&wasm_worker_condition);
+    pthread_mutex_unlock(&wasm_worker_mutex);
+    return result;
+}
+
+static void wasm_smoke_pthread_workers(void)
+{
+    pthread_t worker;
+    assert(!pthread_create(&worker, NULL, wasm_smoke_worker, NULL));
+
+    behavior_expression_wasm_region *regions = NULL;
+    behavior_expression_wasm *add = wasm_smoke_worker_module(BEHAVIOR_WASM_ADD, &regions);
+    afree(regions);
+    pin_value slots[WASM_WORKER_SLOT_COUNT] = { 0 };
+    slots[WASM_WORKER_OPERATIONS] = (pin_value){ .type = PIN_F32, .f = 16777216.0f };
+    slots[WASM_WORKER_OPERATIONS + 1] = (pin_value){ .type = PIN_F32, .f = 1.0f };
+    wasm_worker_result result = wasm_smoke_worker_run(add, slots);
+    assert(result.ran && result.result.f == 16777216.0f && result.cache_size == 1);
+    result = wasm_smoke_worker_run(add, slots);
+    assert(result.ran && result.result.f == 16777216.0f && result.cache_size == 1);
+
+    behavior_expression_wasm_free(add);
+    behavior_expression_wasm_region *subtract_regions = NULL;
+    behavior_expression_wasm *subtract = wasm_smoke_worker_module(BEHAVIOR_WASM_SUB, &subtract_regions);
+    afree(subtract_regions);
+    slots[WASM_WORKER_OPERATIONS] = (pin_value){ .type = PIN_F32, .f = 32.0f };
+    result = wasm_smoke_worker_run(subtract, slots);
+    assert(result.ran && result.result.f == 16.0f && result.cache_size == 1);
+    behavior_expression_wasm_free(subtract);
+
+    behavior_expression_wasm *modules[WASM_WORKER_CACHE_TEST_MODULES];
+    slots[WASM_WORKER_OPERATIONS] = (pin_value){ .type = PIN_F32, .f = 0.0f };
+    slots[WASM_WORKER_OPERATIONS + 1] = (pin_value){ .type = PIN_F32, .f = 0.0f };
+    for (int i = 0; i < WASM_WORKER_CACHE_TEST_MODULES; i++) {
+        behavior_expression_wasm_region *module_regions = NULL;
+        modules[i] = wasm_smoke_worker_module(BEHAVIOR_WASM_ADD, &module_regions);
+        afree(module_regions);
+        result = wasm_smoke_worker_run(modules[i], slots);
+        assert(result.ran && result.result.f == 0.0f);
+        int expected_size = i + 1 < WASM_WORKER_CACHE_CAPACITY
+                              ? i + 1
+                              : WASM_WORKER_CACHE_CAPACITY;
+        assert(result.cache_size == expected_size);
+    }
+    result = wasm_smoke_worker_run(modules[0], slots);
+    assert(result.ran && result.cache_size == WASM_WORKER_CACHE_CAPACITY);
+    for (int i = 0; i < WASM_WORKER_CACHE_TEST_MODULES; i++) {
+        behavior_expression_wasm_free(modules[i]);
+    }
+    behavior_expression_wasm_region *last_regions = NULL;
+    behavior_expression_wasm *last = wasm_smoke_worker_module(BEHAVIOR_WASM_SUB, &last_regions);
+    afree(last_regions);
+    slots[WASM_WORKER_OPERATIONS] = (pin_value){ .type = PIN_F32, .f = 32.0f };
+    slots[WASM_WORKER_OPERATIONS + 1] = (pin_value){ .type = PIN_F32, .f = 1.0f };
+    result = wasm_smoke_worker_run(last, slots);
+    assert(result.ran && result.result.f == 16.0f && result.cache_size == 1);
+    behavior_expression_wasm_free(last);
+
+    pthread_mutex_lock(&wasm_worker_mutex);
+    assert(wasm_worker_state == 0);
+    wasm_worker_state = 3;
+    pthread_cond_broadcast(&wasm_worker_condition);
+    pthread_mutex_unlock(&wasm_worker_mutex);
+    assert(!pthread_join(worker, NULL));
+}
+#endif
+
 static void wasm_smoke_start()
 {
-    wasm_smoke_third_operand_regression();
-    wasm_smoke_branch_entry_regression();
+#ifdef __EMSCRIPTEN_PTHREADS__
+    wasm_smoke_pthread_workers();
+#endif
+    wasm_smoke_region_selection();
     wasm_smoke_linear_regression();
     behavior_expression_wasm_stats before;
     behavior_expression_wasm_get_stats(&before);

@@ -3535,6 +3535,84 @@ static void add_execution_status(
     yyjson_mut_obj_add_strcpy(doc, execution, "reason", reason ? reason : "");
 }
 
+typedef struct
+{
+    unsigned backends;
+    int instances, events, native_events;
+    bool ready;
+} behavior_execution_status;
+
+/* Publication can compile individual blocks without producing a whole-event
+ * body. Report that distinction, and respect each live instance's override. */
+static void collect_behavior_execution(
+    behavior_execution_status *status,
+    const behavior_asset *asset,
+    behavior_backend backend
+)
+{
+    status->instances++;
+    status->backends |= 1u << backend;
+    status->ready &= backend != BEHAVIOR_UNAVAILABLE;
+    for (int g = 0; g < acount(asset->graphs); g++) {
+        const graph *source = asset->graphs[g];
+        const behavior_graph_program *program = behavior_program_graph(asset->program, source);
+        for (int n = 0; n < acount(source->nodes); n++) {
+            const node *entry = source->nodes[n];
+            if (entry->desc->flow_kind != NODE_FLOW_EVENT) {
+                continue;
+            }
+            status->events++;
+            const behavior_function *function = program
+                                                  ? behavior_program_function(program, entry)
+                                                  : NULL;
+            status->native_events += backend == BEHAVIOR_SLJIT && function &&
+                                     behavior_function_entry(function);
+        }
+    }
+}
+
+static void add_behavior_execution_status(
+    yyjson_mut_doc *doc,
+    yyjson_mut_val *object,
+    const behavior_execution_status *status,
+    bool custom_systems
+)
+{
+    bool native = (status->backends & (1u << BEHAVIOR_SLJIT)) != 0;
+    bool full = status->ready && status->events > 0 &&
+                status->native_events == status->events && !custom_systems;
+    const char *backend = !status->instances                         ? "none"
+                        : status->backends == (1u << BEHAVIOR_SLJIT) ? "sljit"
+                        : status->backends == (1u << BEHAVIOR_BYTECODE)
+                            ? "bytecode"
+                        : status->backends == (1u << BEHAVIOR_ORACLE)
+                            ? "interpreter"
+                        : status->backends == (1u << BEHAVIOR_UNAVAILABLE)
+                            ? "unavailable"
+                            : "mixed";
+    const char *
+        reason = !status->ready ? "behavior publication is unavailable"
+               : custom_systems ? "live behavior backends are reported; custom "
+                                  "System execution coverage is unverified"
+               : !status->instances ? "no live behavior attachments"
+               : full
+                   ? "all behavior event entries have published native bodies"
+               : native ? "native behavior blocks are published; whole-event "
+                          "coverage is incomplete"
+               : status->backends == (1u << BEHAVIOR_BYTECODE)
+                   ? "behavior instances execute compiled bytecode"
+               : status->backends == (1u << BEHAVIOR_ORACLE)
+                   ? "behavior instances explicitly use the interpreter oracle"
+                   : "live behavior instances use different execution backends";
+    add_execution_status(doc, object, backend, status->ready, graph_sljit_available() != 0, native, full, reason);
+    yyjson_mut_val *execution = yyjson_mut_obj_get(object, "execution");
+    yyjson_mut_obj_add_str(doc, execution, "scope", "behavior_events");
+    yyjson_mut_obj_add_int(doc, execution, "instances", status->instances);
+    yyjson_mut_obj_add_int(doc, execution, "event_entries", status->events);
+    yyjson_mut_obj_add_int(doc, execution, "native_event_entries", status->native_events);
+    yyjson_mut_obj_add_bool(doc, execution, "custom_systems_unverified", custom_systems);
+}
+
 static bool system_has_tick(const behavior_asset *asset)
 {
     if (!asset) {
@@ -3683,16 +3761,20 @@ static int handle_execution_status(const char *root, yyjson_val *request, respon
         inspect_add_validation(result->doc, value, asset, &report);
         int errors = report.error_count;
         compile_report_free(&report);
-        add_execution_status(
-            result->doc,
-            value,
-            errors ? "unavailable" : "interpreter",
-            errors == 0,
-            graph_sljit_available() != 0,
-            false,
-            false,
-            errors ? "behavior validation failed" : "behavior event graphs execute through the flow interpreter"
-        );
+        behavior_execution_status execution = { .ready = errors == 0 };
+        behavior_backend backend = BEHAVIOR_UNAVAILABLE;
+        if (!errors) {
+            if (behavior_asset_lower_component_nodes(asset, error, sizeof error) == 0) {
+                behavior_program_publish(asset);
+                behavior_backend selected = behavior_default_backend();
+                backend = selected == BEHAVIOR_ORACLE ||
+                                  behavior_program_backend(asset->program) != BEHAVIOR_UNAVAILABLE
+                            ? selected
+                            : BEHAVIOR_UNAVAILABLE;
+            }
+        }
+        collect_behavior_execution(&execution, asset, backend);
+        add_behavior_execution_status(result->doc, value, &execution, false);
         behavior_asset_free(asset);
         if (errors) {
             response_error(result, exit_code, CHIBI_AUTOMATION_VALIDATION_ERROR, "behavior validation failed");
@@ -6064,16 +6146,31 @@ static int profile_scenario(
         "authored_entities",
         game_prototype_preview_entity_count(context.preview)
     );
-    add_execution_status(
-        result->doc,
-        value,
-        "interpreter",
-        true,
-        graph_sljit_available() != 0,
-        false,
-        false,
-        "behavior event graphs execute through the flow interpreter"
-    );
+    behavior_execution_status execution = { .ready = true };
+    ecs_world *world = game_prototype_preview_world(context.preview);
+    game_behavior_world *behaviors = game_prototype_preview_behaviors(context.preview);
+    for (uint32_t slot = 1; slot <= ecs_world_high_water_mark(world); slot++) {
+        ecs_entity entity = { slot, ecs_world_generation(world, slot) };
+        if (!ecs_entity_is_alive(world, entity)) {
+            continue;
+        }
+        int count = game_behavior_attachment_count_for_entity(behaviors, entity);
+        for (int i = 0; i < count; i++) {
+            game_behavior_attachment_info info = { 0 };
+            if (!game_behavior_attachment_info_at(behaviors, entity, i, &info)) {
+                collect_behavior_execution(
+                    &execution,
+                    info.instance->asset,
+                    behavior_instance_backend(info.instance)
+                );
+            }
+        }
+    }
+    bool custom_systems = false;
+    for (int i = 0; i < acount(context.runtime_assets); i++) {
+        custom_systems |= context.runtime_assets[i].family->loader == ASSET_SYSTEM;
+    }
+    add_behavior_execution_status(result->doc, value, &execution, custom_systems);
     add_profile_timing(result->doc, value, &timing, samples);
     add_profile_allocations(result->doc, value, &allocations, timing.frames);
     add_profile_rows(result->doc, value, rows, acount(rows), rows_truncated);

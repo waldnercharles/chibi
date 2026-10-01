@@ -438,7 +438,7 @@ bool behavior_lower_store(builder *b, behavior_function_op op, int slot, int tar
         array_value source = *array;
         int pointer = source.pointer, name = source.name;
         if (!source.stable || op == BF_RESULT) {
-            pointer = behavior_lower_array_copy(b, pointer);
+            pointer = behavior_lower_array_copy(b, pointer, false);
         }
         if (op == BF_RESULT) {
             name = copy_string(b, name, true);

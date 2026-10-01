@@ -12,7 +12,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-static atomic_uint next_handle = 1;
+static atomic_uint_fast64_t next_handle = 1;
+static atomic_uint_fast64_t worker_cache_epoch = 1;
 static atomic_uint requested_modules;
 static atomic_uint executed_expressions;
 static atomic_uint bytecode_fallbacks;
@@ -28,7 +29,9 @@ static atomic_uint eligible_expressions;
 
 enum
 {
-    WASM_MIN_OPERATIONS = 4,
+    /* Amortize the JS crossing; tiny regions lose to the existing Wasm VM. */
+    WASM_MIN_OPERATIONS = 16,
+    WASM_OPERATIONS_PER_PARAMETER = 4,
     WASM_MAX_OPERATIONS = 256,
     WASM_MAX_LINEAR_FUNCTIONS = 128,
     WASM_MAX_LINEAR_OPERATIONS = 4096,
@@ -40,53 +43,72 @@ enum
     WASM_MAX_MODULE_BYTES = 65536,
 };
 
-/* The generated modules have no imports, so they need neither the engine's
- * linear memory nor its table. Compilation runs on the JS event loop; until a
- * safe module handoff exists, pthread workers keep using bytecode. */
+static uint64_t next_module_handle(void)
+{
+    uint_fast64_t current = atomic_load_explicit(&next_handle, memory_order_relaxed);
+    for (;;) {
+        if (current >= UINT64_MAX) {
+            return 0;
+        }
+        if (atomic_compare_exchange_weak_explicit(&next_handle, &current, current + 1, memory_order_relaxed, memory_order_relaxed)) {
+            return (uint64_t)current;
+        }
+    }
+}
+
+/* Generated modules have no imports. Main-thread compilation stays async;
+ * workers synchronously compile a bounded copy on their first execution. */
 // clang-format off
 EM_JS(int, expression_wasm_apply, (int action,
-                                   unsigned handle,
+                                   unsigned handle_low,
+                                   unsigned handle_high,
                                    int block,
                                    const double *arguments,
                                    int argument_count,
                                    double *result,
+                                   unsigned epoch_low,
+                                   unsigned epoch_high,
                                    const unsigned char *bytes,
                                    int byte_count), {
-    if (typeof ENVIRONMENT_IS_PTHREAD !== 'undefined' && ENVIRONMENT_IS_PTHREAD) return 0;
-    const key = '__chibiBehaviorExpressionWasm';
-    let registry = globalThis[key];
-    if (!registry) {
-        registry = new Map();
-        globalThis[key] = registry;
+    const idHigh = handle_high >>> 0;
+    const idLow = handle_low >>> 0;
+    let entry;
+    if (typeof ENVIRONMENT_IS_PTHREAD !== 'undefined' && ENVIRONMENT_IS_PTHREAD) {
+        if (action === 0) return 0;
+        entry = globalThis['__chibiBehaviorExpressionWasmWorkerGet'](
+            handle_low,
+            handle_high,
+            epoch_low,
+            epoch_high,
+            bytes,
+            byte_count
+        );
+    } else {
+        const key = '__chibiBehaviorExpressionWasm';
+        let registry = globalThis[key];
+        if (!registry) {
+            registry = new Map();
+            globalThis[key] = registry;
+        }
+        const modules = registry.get(idHigh);
+        entry = modules && modules.get(idLow);
+        if (!entry) {
+            entry = globalThis['__chibiBehaviorExpressionWasmMainBegin'](
+                registry,
+                idHigh,
+                idLow,
+                bytes,
+                byte_count
+            );
+        }
     }
-    const begin = (id, source, length) => {
-        const existing = registry.get(id);
-        if (existing) return existing;
-        const entry = { state: 0, exports: null };
-        registry.set(id, entry);
-        const start = source >>> 0;
-        const copy = HEAPU8.slice(start, start + length);
-        WebAssembly.compile(copy)
-            .then((compiled) => WebAssembly.instantiate(compiled, {}))
-            .then((instance) => {
-                if (registry.get(id) === entry) {
-                    entry.exports = instance.exports;
-                    entry.state = 1;
-                }
-            })
-            .catch(() => {
-                if (registry.get(id) === entry) entry.state = -1;
-            });
-        return entry;
-    };
-    const entry = begin(handle, bytes, byte_count);
     if (action === 0 || entry.state <= 0) return entry.state;
     try {
         const first = (arguments >>> 0) / Float64Array.BYTES_PER_ELEMENT;
-        const fn = entry.exports['block_' + block];
+        const fn = entry.functions[block];
         if (!fn) {
             entry.state = -1;
-            entry.exports = null;
+            entry.functions = null;
             return -1;
         }
         let value;
@@ -106,25 +128,134 @@ EM_JS(int, expression_wasm_apply, (int action,
         return 1;
     } catch (_) {
         entry.state = -1;
-        entry.exports = null;
+        entry.functions = null;
         return -1;
     }
 })
 // clang-format on
 
 // clang-format off
-EM_JS(void, expression_wasm_registry_drop, (unsigned handle), {
+EM_JS(void, expression_wasm_registry_drop, (unsigned handle_low, unsigned handle_high), {
     const registry = globalThis['__chibiBehaviorExpressionWasm'];
-    if (registry) registry.delete(handle);
+    if (registry) {
+        const high = handle_high >>> 0;
+        const low = handle_low >>> 0;
+        const modules = registry.get(high);
+        if (modules) {
+            modules.delete(low);
+            if (!modules.size) registry.delete(high);
+        }
+    }
 })
 // clang-format on
 
 // clang-format off
 EM_JS(int, expression_wasm_registry_size, (void), {
+    if (typeof ENVIRONMENT_IS_PTHREAD !== 'undefined' && ENVIRONMENT_IS_PTHREAD) {
+        const cache = globalThis['__chibiBehaviorExpressionWasmWorkerCache'];
+        return cache ? cache.entries.length : 0;
+    }
     const registry = globalThis['__chibiBehaviorExpressionWasm'];
-    return registry ? registry.size : 0;
+    if (!registry) return 0;
+    let count = 0;
+    for (const modules of registry.values()) count += modules.size;
+    return count;
 })
 // clang-format on
+
+// clang-format off
+EM_JS(void, expression_wasm_dispatch_setup, (void), {
+    globalThis['__chibiBehaviorExpressionWasmMainBegin'] = (registry, high, low, source, length) => {
+        let modules = registry.get(high);
+        if (!modules) {
+            modules = new Map();
+            registry.set(high, modules);
+        }
+        const existing = modules.get(low);
+        if (existing) return existing;
+        const entry = { state: 0, functions: null };
+        modules.set(low, entry);
+        const copy = HEAPU8.slice(source >>> 0, (source >>> 0) + length);
+        WebAssembly.compile(copy)
+            .then((compiled) => WebAssembly.instantiate(compiled, {}))
+            .then((instance) => {
+                if (registry.get(high) === modules && modules.get(low) === entry) {
+                    entry.functions = [];
+                    for (const [name, fn] of Object.entries(instance.exports)) {
+                        entry.functions[Number(name.slice(6))] = fn;
+                    }
+                    entry.state = 1;
+                }
+            })
+            .catch(() => {
+                if (registry.get(high) === modules && modules.get(low) === entry) entry.state = -1;
+            });
+        return entry;
+    };
+})
+// clang-format on
+
+// clang-format off
+EM_JS(void, expression_wasm_worker_cache_setup, (void), {
+    globalThis['__chibiBehaviorExpressionWasmWorkerGet'] = (
+        handle_low, handle_high, epoch_low, epoch_high, bytes, byte_count
+    ) => {
+        const idHigh = handle_high >>> 0;
+        const idLow = handle_low >>> 0;
+        const retiredHigh = epoch_high >>> 0;
+        const retiredLow = epoch_low >>> 0;
+        let cache = globalThis['__chibiBehaviorExpressionWasmWorkerCache'];
+        if (!cache) {
+            cache = { epochHigh: retiredHigh, epochLow: retiredLow, entries: [], last: null };
+            globalThis['__chibiBehaviorExpressionWasmWorkerCache'] = cache;
+        } else if (cache.epochHigh !== retiredHigh || cache.epochLow !== retiredLow) {
+            cache.entries.length = 0;
+            cache.last = null;
+            cache.epochHigh = retiredHigh;
+            cache.epochLow = retiredLow;
+        }
+        let entry = cache.last;
+        if (!entry || entry.idHigh !== idHigh || entry.idLow !== idLow) {
+            const entries = cache.entries;
+            let index = 0;
+            for (; index < entries.length; index++) {
+                if (entries[index].idHigh === idHigh && entries[index].idLow === idLow) break;
+            }
+            if (index < entries.length) {
+                entry = entries[index];
+                for (let i = index; i < entries.length - 1; i++) entries[i] = entries[i + 1];
+                entries.length--;
+            } else {
+                entry = { idHigh, idLow, state: -1, functions: null };
+                try {
+                    const copy = HEAPU8.slice(bytes >>> 0, (bytes >>> 0) + byte_count);
+                    const instance = new WebAssembly.Instance(new WebAssembly.Module(copy), {});
+                    entry.functions = [];
+                    for (const [name, fn] of Object.entries(instance.exports)) {
+                        entry.functions[Number(name.slice(6))] = fn;
+                    }
+                    entry.state = 1;
+                } catch (_) {}
+            }
+            entries.push(entry);
+            if (entries.length > 16) entries.shift();
+            cache.last = entry;
+        }
+        return entry;
+    };
+})
+// clang-format on
+
+static void expression_wasm_dispatch_initialize(void)
+{
+    static _Thread_local bool initialized;
+    if (initialized) {
+        return;
+    }
+    expression_wasm_dispatch_setup();
+    expression_wasm_worker_cache_setup();
+    initialized = true;
+}
 
 typedef enum
 {
@@ -182,7 +313,7 @@ typedef struct
 
 struct behavior_expression_wasm
 {
-    unsigned handle;
+    uint64_t handle;
     unsigned char *bytes;
     size_t byte_count;
     int expression_count;
@@ -480,7 +611,8 @@ static bool build_body(
     expression_builder builder = { 0 };
     if (!lower(&builder, ir, block, asset) || builder.operations < WASM_MIN_OPERATIONS ||
         builder.operations > WASM_MAX_OPERATIONS ||
-        acount(builder.parameters) > WASM_MAX_PARAMETERS) {
+        acount(builder.parameters) > WASM_MAX_PARAMETERS ||
+        builder.operations < acount(builder.parameters) * WASM_OPERATIONS_PER_PARAMETER) {
         afree(builder.values);
         afree(builder.slots);
         afree(builder.parameters);
@@ -589,7 +721,8 @@ static bool build_linear_body(
             }
         }
     }
-    if (function->parameter_count > WASM_MAX_PARAMETERS) {
+    if (function->parameter_count > WASM_MAX_PARAMETERS ||
+        operation_count < function->parameter_count * WASM_OPERATIONS_PER_PARAMETER) {
         return false;
     }
     function->slot_parameters = true;
@@ -648,6 +781,13 @@ static behavior_expression_wasm *publish_functions(wasm_function *functions, int
         atomic_fetch_add_explicit(&compile_failures, 1, memory_order_relaxed);
         return NULL;
     }
+    uint64_t handle = next_module_handle();
+    if (!handle) {
+        free(encoded.data);
+        free_functions(functions);
+        atomic_fetch_add_explicit(&compile_failures, 1, memory_order_relaxed);
+        return NULL;
+    }
     behavior_expression_wasm *module = xcalloc(1, sizeof *module);
     module->bytes = encoded.data;
     module->byte_count = encoded.count;
@@ -661,17 +801,21 @@ static behavior_expression_wasm *publish_functions(wasm_function *functions, int
         functions[i].parameters = NULL;
         functions[i].body.data = NULL;
     }
-    module->handle = atomic_fetch_add_explicit(&next_handle, 1, memory_order_relaxed);
-    assert(module->handle != 0);
+    module->handle = handle;
+    uint64_t epoch = atomic_load_explicit(&worker_cache_epoch, memory_order_acquire);
+    expression_wasm_dispatch_initialize();
     atomic_fetch_add_explicit(&requested_modules, 1, memory_order_relaxed);
     atomic_fetch_add_explicit(&eligible_expressions, (unsigned)module->expression_count, memory_order_relaxed);
     expression_wasm_apply(
         0,
-        module->handle,
+        (unsigned)module->handle,
+        (unsigned)(module->handle >> 32),
         0,
         NULL,
         0,
         NULL,
+        (unsigned)epoch,
+        (unsigned)(epoch >> 32),
         module->bytes,
         (int)module->byte_count
     );
@@ -946,18 +1090,23 @@ void behavior_expression_wasm_free(behavior_expression_wasm *module)
     if (!module) {
         return;
     }
+    atomic_fetch_add_explicit(&worker_cache_epoch, 1, memory_order_acq_rel);
 #ifdef __EMSCRIPTEN_PTHREADS__
     if (emscripten_is_main_runtime_thread()) {
-        expression_wasm_registry_drop(module->handle);
+        expression_wasm_registry_drop(
+            (unsigned)module->handle,
+            (unsigned)(module->handle >> 32)
+        );
     } else {
         emscripten_async_run_in_main_runtime_thread(
-            EM_FUNC_SIG_VI,
+            EM_FUNC_SIG_VII,
             expression_wasm_registry_drop,
-            module->handle
+            (unsigned)module->handle,
+            (unsigned)(module->handle >> 32)
         );
     }
 #else
-    expression_wasm_registry_drop(module->handle);
+    expression_wasm_registry_drop((unsigned)module->handle, (unsigned)(module->handle >> 32));
 #endif
     for (int i = 0; i < module->block_count; i++) {
         afree(module->expressions[i].parameters);
@@ -995,12 +1144,7 @@ bool behavior_expression_wasm_run(
     if (function->slot_parameters || function->parameter_count > WASM_MAX_PARAMETERS) {
         return false;
     }
-#ifdef __EMSCRIPTEN_PTHREADS__
-    if (!emscripten_is_main_runtime_thread()) {
-        atomic_fetch_add_explicit(&bytecode_fallbacks, 1, memory_order_relaxed);
-        return false;
-    }
-#endif
+    expression_wasm_dispatch_initialize();
     for (int i = 0; i < function->parameter_count; i++) {
         int variable = function->parameters[i];
         assert(variable >= 0 && variable < instance->variable_count);
@@ -1008,13 +1152,17 @@ bool behavior_expression_wasm_run(
         arguments[i] = function->type == PIN_F32 ? (double)value.f : value.d;
     }
     double result = 0;
+    uint64_t epoch = atomic_load_explicit(&worker_cache_epoch, memory_order_acquire);
     int status = expression_wasm_apply(
         1,
-        module->handle,
+        (unsigned)module->handle,
+        (unsigned)(module->handle >> 32),
         block,
         arguments,
         function->parameter_count,
         &result,
+        (unsigned)epoch,
+        (unsigned)(epoch >> 32),
         module->bytes,
         (int)module->byte_count
     );
@@ -1050,25 +1198,24 @@ bool behavior_expression_wasm_run_slots(
     if (!function->slot_parameters || function->parameter_count > WASM_MAX_PARAMETERS) {
         return false;
     }
-#ifdef __EMSCRIPTEN_PTHREADS__
-    if (!emscripten_is_main_runtime_thread()) {
-        atomic_fetch_add_explicit(&bytecode_fallbacks, 1, memory_order_relaxed);
-        return false;
-    }
-#endif
+    expression_wasm_dispatch_initialize();
     double arguments[WASM_MAX_PARAMETERS] = { 0 };
     for (int i = 0; i < function->parameter_count; i++) {
         pin_value value = slots[function->parameters[i]];
         arguments[i] = function->type == PIN_F32 ? (double)value.f : value.d;
     }
     double result = 0;
+    uint64_t epoch = atomic_load_explicit(&worker_cache_epoch, memory_order_acquire);
     int status = expression_wasm_apply(
         1,
-        module->handle,
+        (unsigned)module->handle,
+        (unsigned)(module->handle >> 32),
         block,
         arguments,
         function->parameter_count,
         &result,
+        (unsigned)epoch,
+        (unsigned)(epoch >> 32),
         module->bytes,
         (int)module->byte_count
     );

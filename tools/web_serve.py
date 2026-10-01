@@ -150,16 +150,26 @@ def main():
         snapshot = Path(directory)
         for suffix in ('html', 'js', 'wasm', 'data'):
             shutil.copy2(args.build / f'chibi.{suffix}', snapshot)
-        for name in ('chibi-isolation.js', 'chibi.worker.js'):
+        for name in ('chibi-default.js', 'chibi-isolation.js', 'chibi.worker.js'):
             if (args.build / name).is_file():
                 shutil.copy2(args.build / name, snapshot)
+        if (args.build / 'threads').is_dir():
+            shutil.copytree(args.build / 'threads', snapshot / 'threads')
         bridge = (Path(__file__).with_name('web_workspace.js')).read_text()
         bridge = bridge.replace('__CHIBI_SAVE_TOKEN__', json.dumps(token))
         bridge = bridge.replace('__CHIBI_PROJECT__', json.dumps(start))
         html = snapshot / 'chibi.html'
-        text = html.read_text()
-        entry = '<script src="chibi-isolation.js"' if (snapshot / 'chibi-isolation.js').is_file() else '<script async'
-        html.write_text(text.replace(entry, f'<script>{bridge}</script>{entry}'))
+        entries = [html]
+        if (snapshot / 'threads/chibi.html').is_file():
+            entries.append(snapshot / 'threads/chibi.html')
+        for html in entries:
+            text = html.read_text()
+            entry = '<script async'
+            for script in ('chibi-isolation.js', 'chibi-default.js'):
+                if (html.parent / script).is_file():
+                    entry = f'<script src="{script}"'
+                    break
+            html.write_text(text.replace(entry, f'<script>{bridge}</script>{entry}'))
 
         class Handler(SimpleHTTPRequestHandler):
             def __init__(self, *a, **kw):

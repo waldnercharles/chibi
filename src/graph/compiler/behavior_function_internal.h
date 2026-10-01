@@ -354,10 +354,17 @@ bool behavior_function_static_name(const char **name);
 void behavior_function_constant_locals(behavior_function *function);
 void behavior_function_prune_values(behavior_function *function);
 void behavior_function_runtime_code(behavior_function *function);
+void behavior_function_borrow_arrays(behavior_function *function);
 void behavior_function_compile_wasm_regions(behavior_function *function);
 void behavior_function_reuse_accesses(behavior_function *function);
 void behavior_function_reuse_reads(behavior_function *function, bool *keep);
 void behavior_function_optimize(behavior_function *function);
+typedef struct
+{
+    int first, last; /* Canonical instruction PCs of immutable I32 inputs. */
+    unsigned entry_steps, iteration_steps;
+} behavior_loop_budget;
+bool behavior_function_loop_budget(const behavior_function *function, behavior_loop_budget *proof);
 void behavior_function_fuse_queries(behavior_function *function);
 static inline bool behavior_function_fast_allowed(
     const behavior_function *f,

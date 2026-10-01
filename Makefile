@@ -31,7 +31,7 @@ LOCAL_CMAKE_FLAGS ?= $(SANITIZER_CMAKE_FLAGS)
 # allocator does not report a failed nano-zone reservation.
 NATIVE_RUNTIME_ENV ?= MallocNanoZone=0
 
-.PHONY: all help build build-debug build-tracy build-tracy-mcp mcp mcp-controller mcp-setup tracy-mcp run debug debug-san play build-release run-tracy benchmark web web-configure web-serve web-profile web-threads web-threads-serve profile-compare format check-format test test-fast test-render sdl-package clean
+.PHONY: all help build build-debug build-tracy build-tracy-mcp mcp mcp-controller mcp-setup tracy-mcp run debug debug-san play build-release run-tracy benchmark web web-serial web-configure web-serve web-profile web-threads web-threads-serve profile-compare format check-format test test-fast test-render sdl-package clean
 
 all: build
 
@@ -58,10 +58,11 @@ help:
 		'make mcp            Run the MCP server over stdio' \
 		'make mcp-controller Build only the chibi_ctl MCP controller' \
 		'make mcp-setup      Generate local Codex MCP configuration' \
-		'make web            Build the browser application' \
+		'make web            Build paired serial and worker browser applications' \
 		'make web-serve      Serve the browser application for PROJECT on WEB_PORT' \
 		'make web-profile    Serve a web build named for the browser profiler' \
-		'make web-threads    Build a separate isolated web application with workers' \
+		'make web-serial     Build only the serial browser application' \
+		'make web-threads    Build only the worker browser application' \
 		'make web-threads-serve Serve the threaded application with isolation headers' \
 		'make profile-compare Profile PROJECT headless natively and as WASM' \
 		'make format         Rewrite project C sources with clang-format' \
@@ -151,7 +152,11 @@ web-configure:
 	sh tools/configure_native.sh "$(BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) && cmake --build "$(BUILD_DIR)" --target reflect --parallel $(JOBS)
 	emcmake cmake -S . -B "$(WEB_BUILD_DIR)" -DCMAKE_BUILD_TYPE=Release -DCHIBI_COLLAB_URL="$(CHIBI_COLLAB_URL)" -DCHIBI_REFLECT_EXECUTABLE=$(CURDIR)/$(BUILD_DIR)/reflect $(WEB_CMAKE_FLAGS)
 
-web: web-configure
+web: web-serial
+	$(MAKE) web-threads
+	python3 tools/package_web.py --serial "$(WEB_BUILD_DIR)" --threads "$(WEB_THREADS_BUILD_DIR)" --output "$(WEB_BUILD_DIR)"
+
+web-serial: web-configure
 	cmake --build "$(WEB_BUILD_DIR)" --target chibi check-behavior-backend --parallel $(JOBS)
 
 # Profile PROJECT's start scene (or PROFILE_SCENE, or PROFILE_SCENARIO's replayed
@@ -170,10 +175,10 @@ web-profile:
 	$(MAKE) web-serve WEB_BUILD_DIR="$(WEB_PROFILE_BUILD_DIR)" WEB_CMAKE_FLAGS=-DCHIBI_WEB_PROFILING=ON
 
 web-threads:
-	$(MAKE) web WEB_BUILD_DIR="$(WEB_THREADS_BUILD_DIR)" WEB_CMAKE_FLAGS="-DCHIBI_WEB_THREADS=ON -DCHIBI_WEB_WORKERS=$(WEB_WORKERS) $(WEB_CMAKE_FLAGS)"
+	$(MAKE) web-serial WEB_BUILD_DIR="$(WEB_THREADS_BUILD_DIR)" WEB_CMAKE_FLAGS="-DCHIBI_WEB_THREADS=ON -DCHIBI_WEB_WORKERS=$(WEB_WORKERS) $(WEB_CMAKE_FLAGS)"
 
-web-threads-serve: web-threads
-	python3 tools/web_serve.py --build "$(WEB_THREADS_BUILD_DIR)" --project "$(PROJECT)" --port $(WEB_PORT) --isolated
+web-threads-serve: web
+	python3 tools/web_serve.py --build "$(WEB_BUILD_DIR)" --project "$(PROJECT)" --port $(WEB_PORT) --isolated
 
 format:
 	sh tools/clang-format.sh
@@ -182,6 +187,7 @@ check-format:
 	sh tools/clang-format.sh --check
 
 test:
+	python3 test/package_web_test.py
 	python3 test/web_serve_test.py
 	node test/web_workspace_test.mjs
 	node test/web_storage_test.mjs

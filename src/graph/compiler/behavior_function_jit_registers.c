@@ -3,6 +3,7 @@
 #include "support/xalloc.h"
 
 #include <stdlib.h>
+#include <string.h>
 #if CHIBI_HAVE_SJLIT
 /* Slots are defined before their uses within one lowered expression. Allocate
  * scratch registers by live interval; excess live values spill to the
@@ -72,7 +73,14 @@ int *behavior_jit_registers(const behavior_function *f, bool inspected, int *sav
             break;
         }
     }
-    int until[4] = { -1, -1, -1, -1 }, saved_until[4] = { -1, -1, -1, -1 };
+    int until[SLJIT_NUMBER_OF_SCRATCH_FLOAT_REGISTERS];
+    int saved_until[SLJIT_NUMBER_OF_SAVED_FLOAT_REGISTERS + 1];
+    for (int r = 0; r < SLJIT_NUMBER_OF_SCRATCH_FLOAT_REGISTERS; r++) {
+        until[r] = -1;
+    }
+    for (int r = 0; r < SLJIT_NUMBER_OF_SAVED_FLOAT_REGISTERS; r++) {
+        saved_until[r] = -1;
+    }
     int *next_call = xmalloc((size_t)(acount(f->instructions) + 1) * sizeof *next_call);
     next_call[acount(f->instructions)] = acount(f->instructions);
     for (int pc = acount(f->instructions) - 1; pc >= 0; pc--) {
@@ -99,7 +107,7 @@ int *behavior_jit_registers(const behavior_function *f, bool inspected, int *sav
         if (next_call[pc + 1] < last[i->output]) {
             /* Values crossing a C ABI call must survive scratch clobbers.
              * SysV x86 has no saved FP registers, so those values spill. */
-            for (int r = 0; r < 4 && r < SLJIT_NUMBER_OF_SAVED_FLOAT_REGISTERS; r++) {
+            for (int r = 0; r < SLJIT_NUMBER_OF_SAVED_FLOAT_REGISTERS; r++) {
                 if (saved_until[r] <= pc) {
                     registers[i->output] = SLJIT_FS(r);
                     saved_until[r] = last[i->output];
@@ -111,7 +119,7 @@ int *behavior_jit_registers(const behavior_function *f, bool inspected, int *sav
             }
             continue;
         }
-        for (int r = 0; r < 6 - temporaries; r++) {
+        for (int r = 0; r < SLJIT_NUMBER_OF_SCRATCH_FLOAT_REGISTERS - temporaries; r++) {
             if (until[r] <= pc) {
                 registers[i->output] = SLJIT_FR0 + temporaries + r;
                 until[r] = last[i->output];
@@ -327,6 +335,90 @@ void behavior_jit_coalesce_saves(const behavior_function *f, int *registers, con
             next->op == BF_SAVE && next->left == i->output &&
             locals[next->target] && single_use(f, i->output, pc + 1)) {
             registers[i->output] = locals[next->target];
+        }
+    }
+}
+/* Only the fully guarded, synchronous path can defer scalar publication.
+ * Keep variables in otherwise unused saved registers; the checked path keeps
+ * its eager memory updates and therefore exact partial effects. */
+int *behavior_jit_variable_registers(const behavior_function *f, int base, int scratch, int *count)
+{
+    int variables = 0;
+    for (int pc = 0; pc < acount(f->instructions); pc++) {
+        const behavior_function_instruction *i = &f->instructions[pc];
+        int variable = i->op == BF_VARIABLE ? i->left
+                     : i->op == BF_STORE    ? i->target
+                                            : -1;
+        if (variable >= variables) {
+            variables = variable + 1;
+        }
+    }
+    int *registers = xcalloc((size_t)(variables + 1), sizeof *registers);
+    pin_type *types = xcalloc((size_t)(variables + 1), sizeof *types);
+    bool *written = xcalloc((size_t)(variables + 1), sizeof *written);
+    bool *valid = xmalloc((size_t)(variables + 1) * sizeof *valid);
+    memset(valid, true, (size_t)(variables + 1) * sizeof *valid);
+    for (int pc = 0; pc < acount(f->instructions); pc++) {
+        const behavior_function_instruction *i = &f->instructions[pc];
+        int variable = i->op == BF_VARIABLE ? i->left
+                     : i->op == BF_STORE    ? i->target
+                                            : -1;
+        if (variable < 0) {
+            continue;
+        }
+        /* Arithmetic already normalizes these exact 32/64-bit stored widths.
+         * Narrow integers and bool require a truncating STORE, so retain their
+         * ordinary memory publication rather than aliasing arithmetic outputs. */
+        valid[variable] &= (i->type == PIN_I32 || i->type == PIN_U32 ||
+                            i->type == PIN_I64 || i->type == PIN_U64 ||
+                            i->type == PIN_ENUM) &&
+                           (!types[variable] || types[variable] == i->type);
+        types[variable] = i->type;
+        written[variable] |= i->op == BF_STORE;
+    }
+    *count = 0;
+    for (int pc = 0; pc < acount(f->instructions) && *count < 2 &&
+                     base + *count < SLJIT_NUMBER_OF_SAVED_REGISTERS &&
+                     base + *count + scratch < SLJIT_NUMBER_OF_REGISTERS;
+         pc++) {
+        const behavior_function_instruction *i = &f->instructions[pc];
+        if (i->op == BF_VARIABLE && !registers[i->left] && valid[i->left] &&
+            written[i->left]) {
+            registers[i->left] = SLJIT_S(base + (*count)++);
+        }
+    }
+    free(types);
+    free(written);
+    free(valid);
+    return registers;
+}
+void behavior_jit_alias_variables(const behavior_function *f, int *registers, const int *variables)
+{
+    int *last = lifetimes(f, false, NULL);
+    for (int pc = 0; pc < acount(f->instructions); pc++) {
+        const behavior_function_instruction *i = &f->instructions[pc];
+        if (i->op != BF_VARIABLE || !variables[i->left]) {
+            continue;
+        }
+        bool unchanged = true;
+        for (int at = pc + 1; at <= last[i->output]; at++) {
+            const behavior_function_instruction *next = &f->instructions[at];
+            if (next->op == BF_STORE && next->target == i->left) {
+                unchanged = false;
+                break;
+            }
+        }
+        if (unchanged) {
+            registers[i->output] = variables[i->left];
+        }
+    }
+    free(last);
+    for (int pc = 0; pc + 1 < acount(f->instructions); pc++) {
+        const behavior_function_instruction *i = &f->instructions[pc], *next = i + 1;
+        if ((i->op == BF_ADD || i->op == BF_SUB || i->op == BF_MUL) &&
+            next->op == BF_STORE && next->left == i->output && i->type == next->type &&
+            variables[next->target] && single_use(f, i->output, pc + 1)) {
+            registers[i->output] = variables[next->target];
         }
     }
 }

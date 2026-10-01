@@ -1,6 +1,10 @@
 #include "graph/compiler/behavior_function_jit_internal.h"
 #if CHIBI_HAVE_SJLIT
+#include "support/array.h"
+#include "support/xalloc.h"
+
 #include <stddef.h>
+#include <stdlib.h>
 
 int behavior_jit_integer_move(pin_type type)
 {
@@ -79,6 +83,46 @@ static void argument(const behavior_machine *m, const behavior_function_instruct
         (sljit_sw)behavior_scalar_bits(i->value)
     );
     bind(c, done);
+}
+static void variables(const behavior_machine *m, bool store)
+{
+    if (!m->variable_registers) {
+        return;
+    }
+    int count = 0;
+    for (int pc = 0; pc < acount(m->function->instructions); pc++) {
+        const behavior_function_instruction *i = &m->function->instructions[pc];
+        if (i->op == BF_VARIABLE && i->left >= count) {
+            count = i->left + 1;
+        }
+    }
+    bool *seen = xcalloc((size_t)(count + 1), sizeof *seen);
+    for (int pc = 0; pc < acount(m->function->instructions); pc++) {
+        const behavior_function_instruction *i = &m->function->instructions[pc];
+        if (i->op != BF_VARIABLE || seen[i->left] || !m->variable_registers[i->left]) {
+            continue;
+        }
+        seen[i->left] = true;
+        int reg = m->variable_registers[i->left];
+        sljit_sw offset = i->left * sizeof(pin_value) + offsetof(pin_value, d);
+        sljit_emit_op1(
+            m->compiler,
+            behavior_jit_integer_move(i->type),
+            store ? SLJIT_MEM1(m->variables) : reg,
+            store ? offset : 0,
+            store ? reg : SLJIT_MEM1(m->variables),
+            store ? 0 : offset
+        );
+    }
+    free(seen);
+}
+void behavior_jit_load_variables(const behavior_machine *m)
+{
+    variables(m, false);
+}
+void behavior_jit_flush_variables(const behavior_machine *m)
+{
+    variables(m, true);
 }
 static void cast(const behavior_machine *m, const behavior_function_instruction *i, int dest, sljit_sw offset)
 {
@@ -306,6 +350,14 @@ bool behavior_jit_integer(
             return true;
         case BF_LOCAL:
         case BF_VARIABLE:
+            if (i->op == BF_VARIABLE && m->variable_registers &&
+                m->variable_registers[i->left]) {
+                int variable = m->variable_registers[i->left];
+                if (dest != variable) {
+                    sljit_emit_op1(c, behavior_jit_integer_move(i->type), dest, offset, variable, 0);
+                }
+                return true;
+            }
             if (i->op == BF_LOCAL && m->local_registers[i->left]) {
                 if (dest == m->local_registers[i->left]) {
                     return true;
@@ -335,6 +387,14 @@ bool behavior_jit_integer(
         case BF_SAVE:
         case BF_STORE:
         case BF_RESULT: {
+            if (i->op == BF_STORE && m->variable_registers &&
+                m->variable_registers[i->target]) {
+                int variable = m->variable_registers[i->target];
+                if (m->registers[i->left] != variable) {
+                    load(m, i->left, variable);
+                }
+                return true;
+            }
             if (i->op == BF_SAVE && m->local_registers[i->target]) {
                 if (m->registers[i->left] == m->local_registers[i->target]) {
                     return true;

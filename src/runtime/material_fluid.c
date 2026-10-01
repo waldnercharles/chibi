@@ -1126,7 +1126,8 @@ void material_fluid_tick_profiled(
             acount(fluid->active),
             bodies,
             obstacles,
-            obstacle_count
+            obstacle_count,
+            &fluid->tasks
         );
         CHIBI_TRACE_ZONE_END(flow_zone);
         if (profile) {

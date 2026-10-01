@@ -17,9 +17,11 @@ if(CHIBI_WEB_THREADS)
         message(FATAL_ERROR "CHIBI_WEB_WORKERS must be between 2 and 8")
     endif()
     math(EXPR CHIBI_WEB_POOL_SIZE "${CHIBI_WEB_WORKERS} - 1")
-    add_compile_options(-pthread)
+    # The compatibility bundle remains scalar. Browsers rejecting the worker
+    # bundle's shared memory or SIMD module fall back through its bootstrap.
+    add_compile_options(-pthread -msimd128)
     add_compile_definitions(CHIBI_WEB_WORKERS=${CHIBI_WEB_WORKERS})
-    add_link_options(-pthread "-sPTHREAD_POOL_SIZE=${CHIBI_WEB_POOL_SIZE}"
+    add_link_options(-pthread -msimd128 "-sPTHREAD_POOL_SIZE=${CHIBI_WEB_POOL_SIZE}"
         -sPTHREAD_POOL_SIZE_STRICT=2 -sALLOW_MEMORY_GROWTH=1)
 endif()
 
@@ -152,6 +154,18 @@ FetchContent_Declare(
     EXCLUDE_FROM_ALL
 )
 add_subdirectory("${cute_framework_SOURCE_DIR}" "${cute_framework_BINARY_DIR}")
+# Cute enables SIMD in its physics targets even for the compatibility bundle.
+# Keep that bundle usable on browsers without Wasm SIMD.
+if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND NOT CHIBI_WEB_THREADS)
+    foreach(physics_target cute-box2d cute-box3d)
+        get_target_property(physics_options ${physics_target} COMPILE_OPTIONS)
+        list(REMOVE_ITEM physics_options -msimd128 -msse2)
+        set_property(TARGET ${physics_target} PROPERTY COMPILE_OPTIONS ${physics_options})
+    endforeach()
+    target_compile_definitions(cute-box2d PRIVATE BOX2D_DISABLE_SIMD)
+    target_compile_definitions(cute-box3d PRIVATE BOX3D_DISABLE_SIMD)
+endif()
+
 # Cute compiles the physics sources itself, bypassing their upstream CMake
 # deterministic-math settings. Apply the same rounding policy to its targets.
 if(CMAKE_C_COMPILER_ID MATCHES "Clang|GNU")
@@ -279,11 +293,9 @@ if(NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" OR CHIBI_WEB_THREADS)
     set(ENKITS_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
     set(ENKITS_BUILD_SHARED OFF CACHE BOOL "" FORCE)
     set(ENKITS_INSTALL OFF CACHE BOOL "" FORCE)
-    if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
-        set(ENKITS_SANITIZE OFF CACHE BOOL "" FORCE)
-    else()
-        set(ENKITS_SANITIZE ${CHIBI_ENABLE_SANITIZERS} CACHE BOOL "" FORCE)
-    endif()
+    # Upstream's switch hardcodes ASan+UBSan. Apply our selected sanitizer to
+    # this target below so a ThreadSanitizer build also instruments its workers.
+    set(ENKITS_SANITIZE OFF CACHE BOOL "" FORCE)
     FetchContent_Declare(enkits
         GIT_REPOSITORY https://github.com/dougbinks/enkiTS.git
         GIT_TAG 4cba61a045d8e759bd35e5d85691bf9f7271f822
@@ -317,6 +329,9 @@ if(CHIBI_ENABLE_SANITIZERS AND
     endif()
     add_compile_options("-fsanitize=${CHIBI_SANITIZERS}" -fno-omit-frame-pointer)
     add_link_options("-fsanitize=${CHIBI_SANITIZERS}")
+    if(TARGET enkiTS)
+        target_compile_options(enkiTS PRIVATE "-fsanitize=${CHIBI_SANITIZERS}" -fno-omit-frame-pointer)
+    endif()
 endif()
 
 # The web profiling build names WASM functions for the browser's profiler and
@@ -728,6 +743,14 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
         set(CHIBI_WEB_SHELL "${CMAKE_CURRENT_BINARY_DIR}/web_shell_threads.html")
         file(WRITE "${CHIBI_WEB_SHELL}" "${CHIBI_THREADED_SHELL}")
         configure_file(tools/web_isolation.js chibi-isolation.js COPYONLY)
+    else()
+        set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS tools/web_shell.html)
+        file(READ "${CHIBI_WEB_SHELL}" CHIBI_SERIAL_SHELL)
+        string(REPLACE "{{{ SCRIPT }}}" "<template>{{{ SCRIPT }}}</template><script src=\"chibi-default.js\"></script>"
+            CHIBI_SERIAL_SHELL "${CHIBI_SERIAL_SHELL}")
+        set(CHIBI_WEB_SHELL "${CMAKE_CURRENT_BINARY_DIR}/web_shell_serial.html")
+        file(WRITE "${CHIBI_WEB_SHELL}" "${CHIBI_SERIAL_SHELL}")
+        configure_file(tools/web_default.js chibi-default.js COPYONLY)
     endif()
     string(JSON CHIBI_COLLAB_CONFIG SET "{}" roomUrl "\"${CHIBI_COLLAB_URL}\"")
     configure_file(tools/collab/config.js.in "${CMAKE_CURRENT_BINARY_DIR}/collab_config.js" @ONLY)

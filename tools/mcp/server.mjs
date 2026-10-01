@@ -606,6 +606,11 @@ function buildToolDefinitions() {
         maximum: 108000,
         description: "Fixed steps to run before collecting timing and behavior samples. frames plus warmup_frames is at most 108000.",
       },
+      behavior_details: {
+        type: "boolean",
+        default: true,
+        description: "Collect per-instance behavior timing. False retains frame and physics diagnostics while preserving ordinary prepared behavior execution.",
+      },
       fixed_dt: {
         type: "number",
         minimum: 0.000001,
@@ -1390,6 +1395,7 @@ function toolSummary(name, response) {
     "published",
     "changed",
     "dry_run",
+    "behavior_details",
     "warmup_frames",
     "frames",
     "fixed_dt",

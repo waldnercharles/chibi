@@ -1,3 +1,4 @@
+#include "graph/compiler/behavior_function_internal.h"
 #include "graph/runtime/flow_internal.h"
 #include "test/suite_internal.h"
 #include "test/whole_array_fixture.h"
@@ -165,6 +166,86 @@ static void variable_write()
     }
     behavior_asset_free(a);
 }
+static int array_copies(const behavior_function_instruction *code)
+{
+    int count = 0;
+    for (int pc = 0; pc < acount(code); pc++) {
+        count += code[pc].op == BF_COPY_ARRAY;
+    }
+    return count;
+}
+static void readonly_array_borrow()
+{
+    for (int change = 0; change < 4; change++) {
+        behavior_asset *a = whole_array_fixture(WHOLE_ARRAY_VARIABLE);
+        graph *g = a->graphs[3];
+        node *loop = NULL, *sum = NULL;
+        for (int i = 0; i < acount(g->nodes); i++) {
+            node *n = g->nodes[i];
+            if (n->desc == &NODE_ForEach) {
+                loop = n;
+            }
+            if (n->desc == &NODE_SetVariable) {
+                sum = n;
+            }
+        }
+        assert(loop && sum);
+        if (change == 1) {
+            /* Replacing the iterated variable must retain the original values
+             * for every later iteration, even after both spare arenas recycle. */
+            node *
+                set = behavior_asset_add_set_node_to_graph(a, g, a->variables[3].id);
+            pin_value items[4];
+            for (int i = 0; i < 4; i++) {
+                items[i] = (pin_value){ .type = PIN_F64, .type_name = "double", .d = -999 };
+            }
+            pin_array replacement = { .element_type = PIN_F64,
+                                      .type_name = "double",
+                                      .count = 4,
+                                      .capacity = 4,
+                                      .items = items };
+            pin_value value = { .type = PIN_F64,
+                                .type_name = "double",
+                                .container = PIN_CONTAINER_ARRAY,
+                                .ptr = &replacement };
+            assert(!graph_set_pin_default(g, set, false, 1, &value));
+            assert(!graph_connect_exec(g, sum, 0, set, 0, 0));
+        }
+        if (change == 2) {
+            node *delay = graph_add_node(g, &NODE_Delay);
+            assert(!graph_connect_exec(g, sum, 0, delay, 0, 0));
+        }
+        if (change == 3) {
+            /* Native component stores use raw pointers. The borrow proof must
+             * keep snapshots until it can prove those destinations disjoint. */
+            node *write = graph_add_node(g, &WHOLE_NODE_SetWeight);
+            pin_value target = { .type = PIN_HANDLE, .type_name = "ecs.entity", .u64 = 1 };
+            assert(!graph_set_pin_default(g, write, false, 2, &target));
+            assert(!graph_connect_exec(g, sum, 0, write, 0, 0));
+        }
+        behavior_function_diagnostic diagnostic = { 0 };
+        behavior_function *f = behavior_function_lower(a, g, g->nodes[0], &diagnostic);
+        assert(f && !diagnostic.reason);
+        assert(array_copies(f->instructions) == 1);
+        assert(f->runtime_body && f->runtime_instructions);
+        assert(array_copies(f->runtime_body) == (change != 0));
+        assert(array_copies(f->runtime_instructions) == (change != 0));
+        if (change == 3) {
+            bool raw_write = false;
+            for (int pc = 0; pc < acount(f->runtime_instructions); pc++) {
+                raw_write |= f->runtime_instructions[pc].op == BF_WRITE;
+            }
+            assert(raw_write);
+        }
+        behavior_function_free(f);
+        if (change < 2) {
+            for (int length = -1; length <= 4; length++) {
+                parity(a, WHOLE_ARRAY_VARIABLE, length, 100, 2);
+            }
+        }
+        behavior_asset_free(a);
+    }
+}
 void test_compiled_arrays()
 {
     for (int kind = 0; kind < WHOLE_ARRAY_COUNT; kind++) {
@@ -180,6 +261,7 @@ void test_compiled_arrays()
         parity(a, kind, 4, 100, 99);
         behavior_asset_free(a);
     }
+    readonly_array_borrow();
     variable_write();
     whole_array_smoke();
     puts("PASS: array views, nulls, fields, bounds, nested loops/calls, Break, Return and budget/source parity");

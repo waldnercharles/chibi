@@ -71,14 +71,15 @@ int behavior_lower_array_default(builder *b, pin_value value)
     apush(b->function->data_values, ((behavior_function_data_value){ .initial = value }));
     return acount(b->function->data_values) - 1;
 }
-int behavior_lower_array_copy(builder *b, int pointer)
+int behavior_lower_array_copy(builder *b, int pointer, bool loop)
 {
     b->function->managed = true;
     return behavior_lower_value(
         b,
         (behavior_function_instruction){ .op = BF_COPY_ARRAY,
                                          .type = BF_POINTER_TYPE,
-                                         .left = pointer }
+                                         .left = pointer,
+                                         .target = loop }
     );
 }
 int behavior_lower_read(builder *b, int pointer, size_t offset, pin_type type, bool nullable)

@@ -7,6 +7,7 @@
 #include <math.h>
 #include <stddef.h>
 #include <stdlib.h>
+#include <string.h>
 #if CHIBI_HAVE_SJLIT
 #include <sljitLir.h>
 
@@ -399,7 +400,7 @@ typedef struct
     struct sljit_jump **next;
 } behavior_emission;
 
-static behavior_emission emit_body(behavior_layout *layout, struct sljit_compiler *c)
+static behavior_emission emit_body(behavior_layout *layout, struct sljit_compiler *c, int budget_proven)
 {
     behavior_machine m = layout->machine;
     m.compiler = c;
@@ -412,6 +413,7 @@ static behavior_emission emit_body(behavior_layout *layout, struct sljit_compile
     }
     sljit_emit_op1(c, SLJIT_MOV_P, m.context, 0, SLJIT_R0, 0);
     sljit_emit_op1(c, SLJIT_MOV_P, m.variables, 0, SLJIT_MEM1(m.context), offsetof(behavior_function_context, variables));
+    behavior_jit_load_variables(&m);
     sljit_emit_op1(c, SLJIT_MOV, m.steps, 0, SLJIT_MEM1(m.context), offsetof(behavior_function_context, steps));
     if (arguments) {
         sljit_emit_op1(
@@ -456,7 +458,13 @@ static behavior_emission emit_body(behavior_layout *layout, struct sljit_compile
             0
         );
         m.countdown = true;
+        if (budget_proven >= 0) {
+            /* The entry guard proved the complete node count. Account once;
+             * no accepted instruction observes steps before successful exit. */
+            sljit_emit_op2(c, SLJIT_SUB, m.steps, 0, m.steps, 0, SLJIT_MEM1(SLJIT_SP), budget_proven);
+        }
     }
+    assert(budget_proven < 0 || m.countdown);
     struct sljit_label **labels = xcalloc((size_t)acount(f->instructions), sizeof *labels);
     struct sljit_jump **failures = xcalloc((size_t)acount(f->instructions), sizeof *failures);
     struct sljit_jump **jumps = xcalloc((size_t)acount(f->instructions), sizeof *jumps);
@@ -641,6 +649,9 @@ static behavior_emission emit_body(behavior_layout *layout, struct sljit_compile
             case BF_INVOKE:
             case BF_SUSPEND: behavior_jit_suspend(&m, pc); break;
             case BF_CHECK:
+                if (budget_proven >= 0) {
+                    break;
+                }
                 if (m.countdown) {
                     sljit_emit_op2(c, SLJIT_SUB | SLJIT_SET_CARRY, m.steps, 0, m.steps, 0, SLJIT_IMM, 1);
                     failures[pc] = sljit_emit_jump(c, SLJIT_CARRY);
@@ -730,6 +741,7 @@ static behavior_emission emit_body(behavior_layout *layout, struct sljit_compile
                 );
                 /* fall through */
             case BF_END:
+                behavior_jit_flush_variables(&m);
                 if (f->root_steps) {
                     sljit_emit_op2(c, SLJIT_ADD, m.steps, 0, m.steps, 0, SLJIT_IMM, f->root_steps);
                 }
@@ -807,18 +819,18 @@ static behavior_emission emit_body(behavior_layout *layout, struct sljit_compile
                 break;
             }
             case BF_ARGUMENT: argument(&m, i, destination, offset); break;
-            case BF_CONVERT:
-                load(c, f, registers, i->left, SLJIT_FR0);
+            case BF_CONVERT: {
+                int source = registers[i->left];
                 sljit_emit_fop1(
                     c,
                     i->type == PIN_F32 ? SLJIT_CONV_F32_FROM_F64 : SLJIT_CONV_F64_FROM_F32,
-                    SLJIT_FR0,
-                    0,
-                    SLJIT_FR0,
-                    0
+                    destination,
+                    offset,
+                    source ? source : mem,
+                    source ? 0 : i->left * sizeof(double)
                 );
-                sljit_emit_fop1(c, SLJIT_MOV_F64 | flags, destination, offset, SLJIT_FR0, 0);
                 break;
+            }
             case BF_DELTA:
                 sljit_emit_fop1(
                     c,
@@ -864,6 +876,38 @@ static behavior_emission emit_body(behavior_layout *layout, struct sljit_compile
                 );
                 break;
             }
+            case BF_MIN:
+            case BF_MAX: {
+                int left = registers[i->left], right = registers[i->right];
+                if (!right) {
+                    load(c, f, registers, i->right, SLJIT_FR1);
+                    right = SLJIT_FR1;
+                }
+                int condition = i->op == BF_MIN ? SLJIT_ORDERED_LESS
+                                                : SLJIT_ORDERED_GREATER;
+                sljit_emit_fop1(
+                    c,
+                    SLJIT_CMP_F64 | flags | SLJIT_SET(condition),
+                    left ? left : mem,
+                    left ? 0 : i->left * sizeof(double),
+                    right,
+                    0
+                );
+                /* Equality and unordered comparisons select the right value,
+                 * preserving the language's signed-zero and NaN behavior. */
+                sljit_emit_fselect(
+                    c,
+                    condition | flags,
+                    registers[i->output] ? destination : SLJIT_FR0,
+                    left ? left : mem,
+                    left ? 0 : i->left * sizeof(double),
+                    right
+                );
+                if (!registers[i->output]) {
+                    sljit_emit_fop1(c, SLJIT_MOV_F64 | flags, destination, offset, SLJIT_FR0, 0);
+                }
+                break;
+            }
             default: {
                 load(c, f, registers, i->left, SLJIT_FR0);
                 load(c, f, registers, i->right, SLJIT_FR1);
@@ -892,18 +936,6 @@ static behavior_emission emit_body(behavior_layout *layout, struct sljit_compile
                     if (sljit_get_compiler_error(c) == SLJIT_SUCCESS) {
                         sljit_set_label(done, label);
                     }
-                } else if (i->op == BF_MIN || i->op == BF_MAX) {
-                    struct sljit_jump *left = sljit_emit_fcmp(
-                        c,
-                        (i->op == BF_MIN ? SLJIT_ORDERED_LESS : SLJIT_ORDERED_GREATER) | flags,
-                        SLJIT_FR0,
-                        0,
-                        SLJIT_FR1,
-                        0
-                    );
-                    sljit_emit_fop1(c, SLJIT_MOV_F64 | flags, SLJIT_FR0, 0, SLJIT_FR1, 0);
-                    bind_here(c, left);
-                    sljit_emit_fop1(c, SLJIT_MOV_F64 | flags, destination, offset, SLJIT_FR0, 0);
                 } else {
                     assert(false);
                 }
@@ -939,6 +971,110 @@ static behavior_emission emit_body(behavior_layout *layout, struct sljit_compile
     free(jumps);
     free(failures);
     return (behavior_emission){ resume_labels, m.system_loop, m.system_exits };
+}
+
+/* The guard uses only expression scratch registers before body entry. R3
+ * retains the incoming context for both the unchecked and original paths. */
+static void loop_input(struct sljit_compiler *c, const behavior_function_instruction *i, int reg)
+{
+    if (i->op == BF_CONSTANT) {
+        sljit_emit_op1(c, SLJIT_MOV, reg, 0, SLJIT_IMM, i->value.i);
+        return;
+    }
+    struct sljit_jump *missing = sljit_emit_cmp(
+        c,
+        SLJIT_SIG_LESS_EQUAL | SLJIT_32,
+        SLJIT_MEM1(SLJIT_R3),
+        offsetof(behavior_function_context, argument_count),
+        SLJIT_IMM,
+        i->left
+    );
+    sljit_emit_op1(c, SLJIT_MOV_P, SLJIT_R4, 0, SLJIT_MEM1(SLJIT_R3), offsetof(behavior_function_context, arguments));
+    struct sljit_jump *wrong = sljit_emit_cmp(
+        c,
+        SLJIT_NOT_EQUAL | SLJIT_32,
+        SLJIT_MEM1(SLJIT_R4),
+        i->left * sizeof(pin_value) + offsetof(pin_value, type),
+        SLJIT_IMM,
+        PIN_I32
+    );
+    sljit_emit_op1(
+        c,
+        SLJIT_MOV_S32,
+        reg,
+        0,
+        SLJIT_MEM1(SLJIT_R4),
+        i->left * sizeof(pin_value) + offsetof(pin_value, i)
+    );
+    struct sljit_jump *done = sljit_emit_jump(c, SLJIT_JUMP);
+    bind_here(c, missing);
+    bind_here(c, wrong);
+    sljit_emit_op1(c, SLJIT_MOV, reg, 0, SLJIT_IMM, i->value.i);
+    bind_here(c, done);
+}
+static struct sljit_jump **loop_budget_guard(
+    struct sljit_compiler *c,
+    const behavior_function *f,
+    const behavior_loop_budget *proof,
+    int cost_slot,
+    const int *variables
+)
+{
+    struct sljit_jump **slow = NULL;
+    sljit_emit_op1(c, SLJIT_MOV_P, SLJIT_R3, 0, SLJIT_R0, 0);
+    loop_input(c, &f->instructions[proof->first], SLJIT_R1);
+    loop_input(c, &f->instructions[proof->last], SLJIT_R2);
+    sljit_emit_op2(c, SLJIT_SUB, SLJIT_R0, 0, SLJIT_R2, 0, SLJIT_R1, 0);
+    struct sljit_jump *positive = sljit_emit_cmp(c, SLJIT_SIG_GREATER_EQUAL, SLJIT_R0, 0, SLJIT_IMM, 0);
+    sljit_emit_op2(c, SLJIT_SUB, SLJIT_R0, 0, SLJIT_IMM, 0, SLJIT_R0, 0);
+    bind_here(c, positive);
+    /* The difference is at most UINT32_MAX and each cost is bounded by
+     * the IR's int instruction count. Their product and sum fit in U64. */
+    sljit_emit_op2(c, SLJIT_MUL, SLJIT_R0, 0, SLJIT_R0, 0, SLJIT_IMM, proof->iteration_steps);
+    sljit_emit_op2(c, SLJIT_ADD, SLJIT_R0, 0, SLJIT_R0, 0, SLJIT_IMM, proof->entry_steps);
+    sljit_emit_op1(c, SLJIT_MOV, SLJIT_R1, 0, SLJIT_MEM1(SLJIT_R3), offsetof(behavior_function_context, steps));
+    sljit_emit_op1(c, SLJIT_MOV, SLJIT_R2, 0, SLJIT_MEM1(SLJIT_R3), offsetof(behavior_function_context, budget));
+    apush(slow, sljit_emit_cmp(c, SLJIT_GREATER, SLJIT_R1, 0, SLJIT_R2, 0));
+    sljit_emit_op2(c, SLJIT_SUB, SLJIT_R2, 0, SLJIT_R2, 0, SLJIT_R1, 0);
+    apush(slow, sljit_emit_cmp(c, SLJIT_LESS, SLJIT_R2, 0, SLJIT_R0, 0));
+    if (variables) {
+        /* Result storage may be caller-owned and alias variables. The checked
+         * body retains publication order in that case; promotion cannot. */
+        for (int pc = 0; pc < acount(f->instructions); pc++) {
+            const behavior_function_instruction *i = &f->instructions[pc];
+            if (i->op != BF_VARIABLE || !variables[i->left]) {
+                continue;
+            }
+            sljit_emit_op1(
+                c,
+                SLJIT_MOV_P,
+                SLJIT_R1,
+                0,
+                SLJIT_MEM1(SLJIT_R3),
+                offsetof(behavior_function_context, variables)
+            );
+            sljit_emit_op2(c, SLJIT_ADD, SLJIT_R1, 0, SLJIT_R1, 0, SLJIT_IMM, i->left * sizeof(pin_value));
+            for (int at = 0; at < acount(f->instructions); at++) {
+                const behavior_function_instruction *result = &f->instructions[at];
+                if (result->op != BF_RESULT) {
+                    continue;
+                }
+                sljit_emit_op1(
+                    c,
+                    SLJIT_MOV_P,
+                    SLJIT_R2,
+                    0,
+                    SLJIT_MEM1(SLJIT_R3),
+                    offsetof(behavior_function_context, results)
+                );
+                sljit_emit_op2(c, SLJIT_ADD, SLJIT_R2, 0, SLJIT_R2, 0, SLJIT_IMM, result->target * sizeof(pin_value));
+                apush(slow, sljit_emit_cmp(c, SLJIT_EQUAL, SLJIT_R1, 0, SLJIT_R2, 0));
+            }
+        }
+    }
+    sljit_emit_op1(c, SLJIT_MOV, SLJIT_MEM1(SLJIT_SP), cost_slot, SLJIT_R0, 0);
+    sljit_emit_op1(c, SLJIT_MOV_P, SLJIT_R0, 0, SLJIT_R3, 0);
+    return slow;
 }
 
 static void *emit(
@@ -990,12 +1126,41 @@ static void *emit(
             stack = layouts[i].stack;
         }
     }
+    behavior_loop_budget proof;
+    const behavior_function *body = layouts[0].machine.function;
+    bool guarded = !count && !inspected && sizeof(sljit_sw) == 8 &&
+                   behavior_function_loop_budget(body, &proof);
+    behavior_layout fast_layout = layouts[0];
+    if (guarded) {
+        bool immutable_arguments = true;
+        for (int pc = 0; pc < acount(body->instructions); pc++) {
+            if (body->instructions[pc].op == BF_ARGUMENT && pc != proof.first &&
+                pc != proof.last) {
+                immutable_arguments = false;
+            }
+        }
+        if (immutable_arguments) {
+            int promoted = 0;
+            fast_layout.machine
+                .variable_registers = behavior_jit_variable_registers(body, saved, scratch, &promoted);
+            saved += promoted;
+            size_t register_size = (size_t)(acount(body->slots) + 1) * sizeof(int);
+            int *registers = xmalloc(register_size);
+            memcpy(registers, fast_layout.machine.registers, register_size);
+            behavior_jit_alias_variables(body, registers, fast_layout.machine.variable_registers);
+            fast_layout.machine.registers = registers;
+        }
+    }
+    int cost_slot = stack;
+    if (guarded) {
+        stack += sizeof(sljit_sw);
+    }
     assert(scratch + saved <= SLJIT_NUMBER_OF_REGISTERS);
     sljit_emit_enter(
         c,
         0,
         count ? SLJIT_ARGS4(P, P_R, P_R, P_R, P_R) : SLJIT_ARGS1(32, P_R),
-        scratch | SLJIT_ENTER_FLOAT(6),
+        scratch | SLJIT_ENTER_FLOAT(SLJIT_NUMBER_OF_SCRATCH_FLOAT_REGISTERS),
         saved | SLJIT_ENTER_FLOAT(floats),
         stack
     );
@@ -1010,8 +1175,32 @@ static void *emit(
         layouts[0].machine.compiler = c;
         behavior_jit_system_enter(&layouts[0].machine);
     }
+    if (guarded) {
+        struct sljit_jump **slow = loop_budget_guard(
+            c,
+            body,
+            &proof,
+            cost_slot,
+            fast_layout.machine.variable_registers
+        );
+        behavior_emission fast = emit_body(&fast_layout, c, cost_slot);
+        free(fast.resumes);
+        afree(fast.next);
+        if (fast_layout.machine.registers != layouts[0].machine.registers) {
+            free((void *)fast_layout.machine.registers);
+        }
+        free((void *)fast_layout.machine.variable_registers);
+        struct sljit_label *checked = sljit_emit_label(c);
+        if (sljit_get_compiler_error(c) == SLJIT_SUCCESS) {
+            for (int i = 0; i < acount(slow); i++) {
+                sljit_set_label(slow[i], checked);
+            }
+        }
+        afree(slow);
+        sljit_emit_op1(c, SLJIT_MOV_P, SLJIT_R0, 0, SLJIT_R3, 0);
+    }
     for (int i = 0; i < bodies; i++) {
-        emissions[i] = emit_body(&layouts[i], c);
+        emissions[i] = emit_body(&layouts[i], c, -1);
     }
     void *code = NULL;
     if (sljit_get_compiler_error(c) == SLJIT_SUCCESS) {

@@ -474,6 +474,11 @@ int main(int argc, char **argv)
     if (argc == 5 && !strcmp(argv[1], "--bench-random")) {
         return bench_random(argv[2], atoi(argv[3]), atoi(argv[4]));
     }
+    if (argc > 1 && !strcmp(argv[1], "--whole-math")) {
+        registry_validate();
+        test_compiled_math();
+        return fails ? 1 : 0;
+    }
     if (argc > 1 && !strcmp(argv[1], "--whole-motion")) {
         test_compiled_motion(argc == 3 ? argv[2] : NULL);
         return 0;

@@ -196,19 +196,8 @@ static int instance_copy_value(arena *storage, pin_value *out, const pin_value *
     }
     void *copy = arena_alloc(storage, type->size);
     memcpy(copy, out->ptr, type->size);
-    for (int i = 0; i < type->field_count; i++) {
-        const type_field *field = &type->fields[i];
-        if (field->type != PIN_STRUCT && field->type != PIN_STR &&
-            field->type != PIN_NAME) {
-            continue;
-        }
-        pin_value member;
-        pin_value owned;
-        pin_read_field(out->ptr, field, &member);
-        if (instance_copy_value(storage, &owned, &member, names)) {
-            return -1;
-        }
-        pin_write_field(copy, field, owned);
+    if (pin_struct_snapshot_fields(storage, type, copy)) {
+        return -1;
     }
     out->ptr = copy;
     return 0;
@@ -216,6 +205,19 @@ static int instance_copy_value(arena *storage, pin_value *out, const pin_value *
 
 static int instance_store_value(behavior_instance *bi, int index, const pin_value *value)
 {
+    const pin_value *current_value = &bi->variables[index];
+    /* Borrowed getters expose already owned payloads. Exact self-assignment
+     * changes neither content nor nominal identity and needs no retention copy.
+     * Slices, substrings and externally constructed buffers cannot match. */
+    bool managed = value->container >= PIN_CONTAINER_ARRAY || value->type == PIN_STR ||
+                   value->type == PIN_NAME || value->type == PIN_STRUCT;
+    if (managed && value->ptr && bi->variable_arenas[index].first &&
+        value->type == current_value->type &&
+        value->container == current_value->container &&
+        value->type_name == current_value->type_name &&
+        value->ptr == current_value->ptr) {
+        return 0;
+    }
     if (value->container == PIN_CONTAINER_SINGLE && value->type != PIN_STR &&
         value->type != PIN_NAME && value->type != PIN_STRUCT) {
         pin_value owned = *value;

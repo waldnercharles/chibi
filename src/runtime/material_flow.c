@@ -32,9 +32,16 @@ typedef struct
     int *slots;
     int capacity;
 } flow_grid;
+typedef struct
+{
+    int cell, adjacent[4], neighbors;
+    float divergence;
+} pressure_row;
 struct material_flow
 {
     flow_grid grid, previous;
+    pressure_row *pressure_rows[2];
+    float *pressures;
 };
 
 material_flow *material_flow_new()
@@ -46,6 +53,9 @@ void material_flow_clear(material_flow *flow)
 {
     aclear(flow->grid.cells);
     aclear(flow->previous.cells);
+    aclear(flow->pressure_rows[0]);
+    aclear(flow->pressure_rows[1]);
+    aclear(flow->pressures);
     if (flow->grid.capacity) {
         memset(flow->grid.slots, 0, (size_t)flow->grid.capacity * sizeof(int));
     }
@@ -60,6 +70,9 @@ void material_flow_free(material_flow *flow)
     afree(flow->previous.cells);
     free(flow->grid.slots);
     free(flow->previous.slots);
+    afree(flow->pressure_rows[0]);
+    afree(flow->pressure_rows[1]);
+    afree(flow->pressures);
     free(flow);
 }
 
@@ -311,35 +324,99 @@ static void constrain(flow_grid *grid)
     }
 }
 
-static void project(flow_grid *grid, float h, float dt)
+typedef struct
 {
+    float *values;
+    const pressure_row *rows;
+} pressure_work;
+
+static void pressure(int start, int end, uint32_t, void *context)
+{
+    pressure_work *work = context;
+    for (int row = start; row < end; row++) {
+#if !defined(CHIBI_FLOW_SCALAR) && (defined(__clang__) || defined(__GNUC__)) && \
+    (defined(__ARM_NEON) || defined(__SSE2__) || defined(__wasm_simd128__))
+        /* Interior rows have four open neighbors. Their same-color results
+         * are independent, so SIMD keeps each lane's original addition order. */
+        if (row + 3 < end && work->rows[row].neighbors == 4 &&
+            work->rows[row + 1].neighbors == 4 && work->rows[row + 2].neighbors == 4 &&
+            work->rows[row + 3].neighbors == 4) {
+            typedef float lanes __attribute__((vector_size(16)));
+            const pressure_row *c = &work->rows[row];
+            lanes sum = { 0, 0, 0, 0 };
+            for (int k = 0; k < 4; k++) {
+                lanes next = { work->values[c[0].adjacent[k]],
+                               work->values[c[1].adjacent[k]],
+                               work->values[c[2].adjacent[k]],
+                               work->values[c[3].adjacent[k]] };
+                sum += next;
+            }
+            lanes divergence = { c[0].divergence,
+                                 c[1].divergence,
+                                 c[2].divergence,
+                                 c[3].divergence };
+            lanes result = (sum - divergence) / (lanes){ 4, 4, 4, 4 };
+            for (int lane = 0; lane < 4; lane++) {
+                work->values[c[lane].cell] = result[lane];
+            }
+            row += 3;
+            continue;
+        }
+#endif
+        const pressure_row *c = &work->rows[row];
+        float sum = 0;
+        for (int k = 0; k < 4; k++) {
+            if (c->adjacent[k] >= 0) {
+                sum += work->values[c->adjacent[k]];
+            }
+        }
+        work->values[c->cell] = c->neighbors ? (sum - c->divergence) / c->neighbors
+                                             : 0;
+    }
+}
+
+static void project(material_flow *flow, float h, float dt, const game_task_system *tasks)
+{
+    flow_grid *grid = &flow->grid;
     constrain(grid);
+    aclear(flow->pressure_rows[0]);
+    aclear(flow->pressure_rows[1]);
+    asetlen(flow->pressures, acount(grid->cells));
+    memset(flow->pressures, 0, (size_t)acount(flow->pressures) * sizeof *flow->pressures);
     for (int i = 1; i < acount(grid->cells); i++) {
         flow_cell *c = &grid->cells[i];
         c->divergence = (grid->cells[c->adjacent[RIGHT]].velocity.x -
                          c->velocity.x + grid->cells[c->adjacent[UP]].velocity.y -
                          c->velocity.y) *
                         h / dt;
+        if (!c->solid) {
+            pressure_row row = { .cell = i, .divergence = c->divergence };
+            for (int k = 0; k < 4; k++) {
+                int other = c->adjacent[k];
+                row.adjacent[k] = grid->cells[other].solid ? -1 : other;
+                row.neighbors += row.adjacent[k] >= 0;
+            }
+            apush(flow->pressure_rows[(c->x ^ c->y) & 1], row);
+        }
     }
+    /* Same-color cells have no shared pressure dependencies. Keep the original
+     * neighbor addition order and join every color before starting the next. */
     for (int step = 0; step < PRESSURE_ITERATIONS; step++) {
         for (int parity = 0; parity < 2; parity++) {
-            for (int i = 1; i < acount(grid->cells); i++) {
-                flow_cell *c = &grid->cells[i];
-                if (c->solid || ((c->x ^ c->y) & 1) != parity) {
-                    continue;
+            pressure_work work = { flow->pressures, flow->pressure_rows[parity] };
+            int count = acount(flow->pressure_rows[parity]);
+            if (tasks->workers > 1 && count >= 16384) {
+                void *task = tasks->enqueue(pressure, count, 1024, &work, tasks->user);
+                if (task) {
+                    tasks->finish(task, tasks->user);
                 }
-                float sum = 0;
-                int neighbors = 0;
-                for (int k = 0; k < 4; k++) {
-                    flow_cell *other = &grid->cells[c->adjacent[k]];
-                    if (!other->solid) {
-                        sum += other->pressure;
-                        neighbors++;
-                    }
-                }
-                c->pressure = neighbors ? (sum - c->divergence) / neighbors : 0;
+            } else {
+                pressure(0, count, 0, &work);
             }
         }
+    }
+    for (int i = 1; i < acount(grid->cells); i++) {
+        grid->cells[i].pressure = flow->pressures[i];
     }
     for (int i = 1; i < acount(grid->cells); i++) {
         flow_cell *c = &grid->cells[i];
@@ -363,14 +440,15 @@ void material_flow_step(
     int count,
     const fluid_body *bodies,
     const fluid_obstacle *obstacles,
-    int obstacle_count
+    int obstacle_count,
+    const game_task_system *tasks
 )
 {
     seed(flow, particles, active, count, settings.cell_size);
     boundaries(&flow->grid, settings.cell_size, bodies, obstacles, obstacle_count);
     advect(flow, settings, dt);
     confine(&flow->grid, settings, dt);
-    project(&flow->grid, settings.cell_size, dt);
+    project(flow, settings.cell_size, dt, tasks);
     for (int n = 0; n < count; n++) {
         fluid_particle *p = &particles[active[n]];
         /* Ballistic exhaust stirs the grid but keeps its authored motion. */

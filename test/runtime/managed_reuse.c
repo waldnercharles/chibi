@@ -16,7 +16,14 @@ static void aliases(int kind)
     for (int i = 0; i < 16; i++) {
         pin_value borrowed;
         assert(!behavior_instance_get_variable(bi, source_id, &borrowed));
+        const void *owned = borrowed.ptr;
+        arena current = bi->variable_arenas[0];
         assert(!behavior_instance_set_variable(bi, source_id, &borrowed));
+        assert(bi->variables[0].ptr == owned);
+        assert(
+            bi->variable_arenas[0].first == current.first &&
+            bi->variable_arenas[0].current == current.current
+        );
         assert(pin_value_equal(&bi->variables[0], &snapshot));
     }
     /* A slice borrows the current value's items while replacing that value. */
@@ -108,6 +115,51 @@ static void aliases(int kind)
     arena_free(&retained);
 }
 
+static size_t aligned_size(size_t size)
+{
+    size_t align = _Alignof(max_align_t);
+    return (size + align - 1) / align * align;
+}
+
+static void nested_snapshot()
+{
+    char label[] = "snapshot label", text[] = "snapshot nested text";
+    whole_managed source = { label, { text, 2.5f }, 19 };
+    pin_value value = { .type = PIN_STRUCT, .type_name = "ManagedRecord", .ptr = &source };
+    /* Fit the owned record and its strings exactly. Inline nested structs must
+     * not consume another arena block just to copy their bytes back to parent. */
+    size_t capacity = aligned_size(strlen(value.type_name) + 1) +
+                      aligned_size(sizeof source) + aligned_size(sizeof label) +
+                      sizeof text;
+    arena retained = { 0 };
+    arena_init(&retained, capacity);
+    uint64_t allocations = arena_block_allocations();
+    pin_value snapshot;
+    assert(!pin_value_snapshot_to_arena(&retained, &snapshot, &value));
+    assert(allocations == arena_block_allocations());
+    behavior_asset *a = whole_managed_fixture(false, false);
+    behavior_instance *bi = behavior_instance_create(a, NULL, NULL, NULL);
+    assert(!behavior_instance_set_variable(bi, a->variables[0].id, &value));
+    /* Both escaping copies must own nested strings independently of each other
+     * and of the caller's stack storage. Replacing one cannot invalidate other. */
+    memset(label, 'x', sizeof label - 1);
+    memset(text, 'y', sizeof text - 1);
+    source.nested.weight = 99;
+    source.count = -1;
+    const whole_managed *owned = bi->variables[0].ptr;
+    assert(!strcmp(owned->label, "snapshot label"));
+    assert(!strcmp(owned->nested.text, "snapshot nested text"));
+    assert(owned->nested.weight == 2.5f && owned->count == 19);
+    assert(!behavior_instance_set_variable(bi, a->variables[0].id, &value));
+    behavior_instance_destroy(bi);
+    behavior_asset_free(a);
+    const whole_managed *record = snapshot.ptr;
+    assert(!strcmp(record->label, "snapshot label"));
+    assert(!strcmp(record->nested.text, "snapshot nested text"));
+    assert(record->nested.weight == 2.5f && record->count == 19);
+    arena_free(&retained);
+}
+
 static void scalar_transition()
 {
     behavior_asset *a = behavior_asset_new("ManagedTransition");
@@ -120,6 +172,9 @@ static void scalar_transition()
     pin_value borrowed;
     assert(!behavior_instance_get_variable(bi, id, &borrowed));
     assert(!behavior_instance_set_variable(bi, id, &borrowed));
+    /* Self-assignment intentionally performs no copy. Warm the spare arena with
+     * an external source before requiring allocation-free type transitions. */
+    assert(!behavior_instance_set_variable(bi, id, &value));
     value = (pin_value){ .type = PIN_I32, .type_name = "int", .i = 42 };
     assert(!behavior_instance_set_variable(bi, id, &value));
     assert(!behavior_instance_get_variable(bi, id, &borrowed));
@@ -127,17 +182,43 @@ static void scalar_transition()
     value = (pin_value){ .type = PIN_STR, .type_name = "const char *", .str = "restored" };
     uint64_t allocations = arena_block_allocations();
     for (int i = 0; i < 16; i++) {
+        pin_value scalar = { .type = PIN_I32, .type_name = "int", .i = i };
+        assert(!behavior_instance_set_variable(bi, id, &scalar));
+        assert(!behavior_instance_get_variable(bi, id, &borrowed));
+        assert(borrowed.type == PIN_I32 && borrowed.i == i);
         assert(!behavior_instance_set_variable(bi, id, &value));
         assert(!behavior_instance_get_variable(bi, id, &borrowed));
         assert(!strcmp(borrowed.str, "restored"));
     }
     assert(allocations == arena_block_allocations());
+    arena input = { 0 };
+    pin_value arrays[5];
+    whole_array_op_inputs(ARRAY_OP_STRUCTS, arrays, &input);
+    /* Growing from strings to nested struct arrays must warm both buffers at
+     * their new size, then survive repeated array/scalar/container changes. */
+    assert(!behavior_instance_set_variable(bi, id, &arrays[0]));
+    assert(!behavior_instance_set_variable(bi, id, &arrays[0]));
+    allocations = arena_block_allocations();
+    for (int i = 0; i < 16; i++) {
+        pin_value scalar = { .type = PIN_I32, .type_name = "int", .i = i };
+        assert(!behavior_instance_set_variable(bi, id, &scalar));
+        assert(!behavior_instance_set_variable(bi, id, &arrays[0]));
+        assert(!behavior_instance_get_variable(bi, id, &borrowed));
+        assert(pin_value_equal(&borrowed, &arrays[0]));
+    }
+    assert(allocations == arena_block_allocations());
+    arena_free(&input);
+    const pin_array *array = borrowed.ptr;
+    const whole_managed *record = array->items[0].ptr;
+    assert(array->count == 3 && !strcmp(record->label, "one"));
+    assert(!strcmp(record->nested.text, "one") && record->count == 1);
     behavior_instance_destroy(bi);
     behavior_asset_free(a);
 }
 
 void test_managed_reuse()
 {
+    nested_snapshot();
     scalar_transition();
     for (int kind = 0; kind < ARRAY_OP_KINDS; kind++) {
         aliases(kind);

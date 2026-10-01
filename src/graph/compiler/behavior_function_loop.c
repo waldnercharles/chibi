@@ -86,7 +86,7 @@ static int begin(builder *b, task t)
         loop.entity_snapshot = array->temporary;
         int pointer = array->stable || array->temporary
                         ? array->pointer
-                        : behavior_lower_array_copy(b, array->pointer);
+                        : behavior_lower_array_copy(b, array->pointer, true);
         int zero_pointer = constant(b, (pin_value){ .type = BF_POINTER_TYPE });
         int present = binary(b, BF_NE, pointer, zero_pointer, PIN_BOOL);
         behavior_lower_emit(
@@ -201,4 +201,66 @@ int behavior_lower_loop(builder *b, task t)
     /* Inclusive ranges run once even when the endpoints are equal. Check the
      * endpoint before stepping, so INT_MIN/INT_MAX never overflow. */
     return body;
+}
+
+/* Runtime loops can borrow a variable only when its owned storage cannot change
+ * anywhere in this synchronous invocation. Inspection keeps its deep snapshot:
+ * paused code permits callers to replace variables before continuation. Raw
+ * pointer writes also block borrowing until their destination is proven disjoint. */
+static void borrow_arrays(behavior_function_instruction *code)
+{
+    int count = acount(code);
+    for (int pc = 0; pc < count; pc++) {
+        behavior_function_op op = code[pc].op;
+        if (op == BF_SUSPEND || op == BF_DELAY || op == BF_INVOKE || op == BF_HOST_CALL ||
+            op == BF_COMMAND || op == BF_COMMAND_BEGIN || op == BF_WRITE) {
+            return;
+        }
+    }
+    for (int pc = 0; pc < count; pc++) {
+        behavior_function_instruction *copy = &code[pc];
+        if (copy->op != BF_COPY_ARRAY || !copy->target) {
+            continue;
+        }
+        const behavior_function_instruction *source = NULL;
+        for (int at = pc - 1; at >= 0; at--) {
+            if (code[at].op < BF_STORE && code[at].output == copy->left) {
+                source = &code[at];
+                break;
+            }
+        }
+        if (!source || source->op != BF_ARRAY || source->target != BF_VARIABLE) {
+            continue;
+        }
+        bool written = false;
+        for (int at = 0; at < count; at++) {
+            behavior_function_op op = code[at].op;
+            if ((op == BF_STORE || op == BF_STORE_VALUE ||
+                 op == BF_STORE_HEADER || op == BF_STORE_TYPE_NAME) &&
+                code[at].target == source->left) {
+                written = true;
+                break;
+            }
+        }
+        if (written) {
+            continue;
+        }
+        /* Reloading the same immutable variable defines the existing output
+         * slot without introducing an alias opcode or changing jump targets. */
+        copy->op = BF_ARRAY;
+        copy->left = source->left;
+        copy->target = source->target;
+        copy->value = source->value;
+        copy->offset = source->offset;
+        copy->left_slot = false;
+        copy->right_slot = false;
+    }
+}
+void behavior_function_borrow_arrays(behavior_function *f)
+{
+    if (!f->runtime_body || !f->runtime_instructions) {
+        return;
+    }
+    borrow_arrays(f->runtime_body);
+    borrow_arrays(f->runtime_instructions);
 }

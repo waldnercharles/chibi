@@ -205,6 +205,88 @@ static void helper_ownership(int kind, int op)
     }
     arena_free(&output);
 }
+static size_t array_aligned_size(size_t size)
+{
+    size_t align = _Alignof(max_align_t);
+    return (size + align - 1) / align * align;
+}
+static void final_array_storage()
+{
+    const char *operations[] = { "Array Add", "Append", "Insert" };
+    for (int op = 0; op < 3; op++) {
+        arena input = { 0 }, output = { 0 };
+        pin_value args[5], operands[3], result;
+        whole_array_op_inputs(ARRAY_OP_INTS, args, &input);
+        operands[0] = args[0];
+        operands[1] = op == 0 ? args[2] : op == 1 ? args[0] : args[3];
+        operands[2] = args[2];
+        int count = op == 1 ? 6 : 4;
+        /* One final header/items block plus retained nominal names fits. A
+         * second descriptor buffer would force backing-block growth. */
+        size_t capacity = array_aligned_size(
+                              sizeof(pin_array) + (size_t)count * sizeof(pin_value)
+                          ) +
+                          (size_t)(count + 1) * array_aligned_size(sizeof "int");
+        arena_init(&output, capacity);
+        uint64_t allocations = arena_block_allocations();
+        const node_desc *operation = registry_node_by_name(operations[op]);
+        assert(!operation->host_call->value(&output, operands, op == 2 ? 3 : 2, &result));
+        assert(allocations == arena_block_allocations());
+        const pin_array *source = args[0].ptr;
+        assert(source->count == 3 && source->items[0].i == 1 && source->items[2].i == 3);
+        arena_free(&input);
+        const pin_array *array = result.ptr;
+        assert(array->count == count);
+        static const int expected[3][6] = { { 1, 2, 3, 2 },
+                                            { 1, 2, 3, 1, 2, 3 },
+                                            { 1, 2, 2, 3 } };
+        for (int i = 0; i < count; i++) {
+            assert(array->items[i].i == expected[op][i]);
+            assert(!strcmp(array->items[i].type_name, "int"));
+        }
+        arena_free(&output);
+    }
+    for (int kind = ARRAY_OP_STRINGS; kind < ARRAY_OP_KINDS; kind++) {
+        for (int remove = 0; remove < 2; remove++) {
+            arena input = { 0 }, output = { 0 };
+            pin_value args[5], result;
+            whole_array_op_inputs(kind, args, &input);
+            pin_array *source = args[0].ptr;
+            char discarded[8192];
+            memset(discarded, 'x', sizeof discarded - 1);
+            discarded[sizeof discarded - 1] = 0;
+            whole_managed record = { discarded, { discarded, 2.5f }, 2 };
+            if (kind == ARRAY_OP_STRUCTS) {
+                source->items[1].ptr = &record;
+            } else {
+                source->items[1].str = discarded;
+            }
+            pin_value operands[] = { args[0], args[3], source->items[0] };
+            arena_init(&output, 4096);
+            uint64_t allocations = arena_block_allocations();
+            const node_desc *operation = registry_node_by_name(
+                remove ? "Remove Index" : "Set Array Elem"
+            );
+            assert(!operation->host_call->value(&output, operands, remove ? 2 : 3, &result));
+            assert(allocations == arena_block_allocations());
+            assert(discarded[0] == 'x' && source->count == 3);
+            memset(discarded, 'y', sizeof discarded - 1);
+            arena_free(&input);
+            const pin_array *array = result.ptr;
+            assert(array->count == (remove ? 2 : 3));
+            for (int i = 0; i < array->count; i++) {
+                int id = i == array->count - 1 ? 3 : 1;
+                assert(item_id(&array->items[i]) == id);
+                if (kind == ARRAY_OP_STRUCTS) {
+                    const whole_managed *actual = array->items[i].ptr;
+                    assert(!strcmp(actual->label, actual->nested.text));
+                    assert(actual->nested.weight == id - .75f);
+                }
+            }
+            arena_free(&output);
+        }
+    }
+}
 static void parity(int kind, int op, bool waits, int scenario, int control, int budget, void *library)
 {
     behavior_asset *a = whole_array_op_fixture(kind, op, waits);
@@ -377,6 +459,7 @@ static void set_returns(int kind, int op, void *library)
 }
 void test_array_ops(const char *path)
 {
+    final_array_storage();
     test_owned_ticks();
     whole_array_op_smoke();
     void *library = path ? dlopen(path, RTLD_NOW | RTLD_LOCAL) : NULL;

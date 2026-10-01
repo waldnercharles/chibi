@@ -230,6 +230,19 @@ static void fused_counts(ecs_world *world, pin_array *input, behavior_backend ba
     behavior_instance *bi = behavior_instance_create(asset, NULL, NULL, NULL);
     assert(bi && !behavior_instance_set_backend(bi, backend));
     assert(!behavior_instance_bind_service(bi, "ecs.world", world));
+    const behavior_function *compiled = behavior_program_function(
+        behavior_program_graph(asset->program, g),
+        g->nodes[0]
+    );
+    assert(compiled);
+    int rows = 0, columns = 0;
+    for (int pc = 0; pc < acount(compiled->instructions); pc++) {
+        rows += compiled->instructions[pc].op == BF_ROW;
+        columns += compiled->instructions[pc].op == BF_COLUMN_TRY;
+    }
+    /* Four original rows remain for observation/failure fallback. The fused
+     * traversal needs only three: living and missing share the health row. */
+    assert(rows <= 7 && columns <= 3);
     for (int inspected = 0; inspected < 2; inspected++) {
         behavior_instance_set_trace_enabled(bi, inspected);
         pin_value args = { .type = PIN_HANDLE,
@@ -308,6 +321,58 @@ static void fused_counts(ecs_world *world, pin_array *input, behavior_backend ba
     behavior_instance_destroy(bi);
     behavior_asset_free(asset);
 }
+static void shared_predicate_rows(ecs_world *world, pin_array *input, behavior_backend backend)
+{
+    const EntityCondition first[] = {
+        { GAME_COMPONENT_GameHealth.key, "", "missing", 0 },
+        { GAME_COMPONENT_GameMovement.key, "speed", ">=", 2 }
+    };
+    const EntityCondition second[] = {
+        { GAME_COMPONENT_GameMovement.key, "speed", ">=", 2 },
+        { GAME_COMPONENT_GameHealth.key, "current", ">", 0 }
+    };
+    behavior_asset *asset = fixture(first, 2, false);
+    graph *g = asset->graphs[1];
+    node *count = graph_add_node(g, &NODE_Count_Matching_Entities);
+    pin_spec result = { .name = "Living and moving", .type = PIN_I32, .type_name = "int" };
+    assert(graph_add_pin(g, g->nodes[1], false, &result) == 2);
+    assert(!graph_connect_data(g, g->nodes[0], 1, count, 0));
+    assert(!graph_connect_data(g, count, 0, g->nodes[1], 2));
+    pin_value items[] = {
+        { .type = PIN_STRUCT, .type_name = "EntityCondition", .ptr = (void *)&second[0] },
+        { .type = PIN_STRUCT, .type_name = "EntityCondition", .ptr = (void *)&second[1] }
+    };
+    pin_array conditions = { .element_type = PIN_STRUCT,
+                             .type_name = "EntityCondition",
+                             .count = 2,
+                             .items = items };
+    pin_value value = { .type = PIN_STRUCT,
+                        .type_name = "EntityCondition",
+                        .container = PIN_CONTAINER_ARRAY,
+                        .ptr = &conditions };
+    assert(!graph_set_pin_default(g, count, false, 1, &value));
+    behavior_instance *bi = behavior_instance_create(asset, NULL, NULL, NULL);
+    assert(bi && !behavior_instance_set_backend(bi, backend));
+    assert(!behavior_instance_bind_service(bi, "ecs.world", world));
+    for (int inspected = 0; inspected < 2; inspected++) {
+        behavior_instance_set_trace_enabled(bi, inspected);
+        pin_value args = { .type = PIN_HANDLE,
+                           .type_name = "ecs.entity",
+                           .container = PIN_CONTAINER_ARRAY,
+                           .ptr = input };
+        flow_options options = { .instance = bi };
+        flow_run *run = flow_run_start(g, g->nodes[0], (flow_inputs){ &args, 1 }, &options, NULL);
+        assert(run && !flow_run_resume(run));
+        assert(flow_run_input_value(run, g->nodes[1], 1)->i == 0);
+        assert(flow_run_input_value(run, g->nodes[1], 2)->i == 3);
+        flow_run_free(run);
+    }
+    const compile_report *report = behavior_program_report(asset->program);
+    assert(report->note_count == 2 && !report->warning_count);
+    behavior_instance_destroy(bi);
+    behavior_asset_free(asset);
+}
+
 static void separate_snapshots(ecs_world *world, pin_array *input, behavior_backend backend)
 {
     behavior_asset *a = entity_query_fusion_fixture();
@@ -530,6 +595,7 @@ void test_entity_query(behavior_backend backend)
         }
     }
     fused_counts(world, &input, backend);
+    shared_predicate_rows(world, &input, backend);
     separate_snapshots(world, &input, backend);
     afree(input.items);
     ecs_world_free(world);

@@ -1,7 +1,11 @@
 #include "assets/project.h"
 #include "automation/controller.h"
+#include "graph/compiler/graph_jit_sljit.h"
+#include "graph/document/serialize.h"
+#include "graph/runtime/instance.h"
 #include "suite_internal.h"
 #include "support/text_file.h"
+#include "third_party/yyjson/yyjson.h"
 
 #include <assert.h>
 #include <stdio.h>
@@ -16,6 +20,28 @@ static void preview_test_write(const char *path, const char *text)
     assert(file);
     assert(fputs(text, file) >= 0);
     assert(fclose(file) == 0);
+}
+
+static void execution_status_backend(const char *root, behavior_backend backend, const char *name)
+{
+    behavior_backend previous = behavior_debug_backend(backend);
+    int code = -1;
+    char *reply = chibi_automation_handle(
+        "{\"contract\":1,\"operation\":\"execution_status\","
+        "\"kind\":\"behavior\",\"name\":\"ExecutionBehavior\"}",
+        root,
+        &code
+    );
+    behavior_debug_backend(previous);
+    assert(reply && code == CHIBI_AUTOMATION_OK);
+    yyjson_doc *doc = yyjson_read(reply, strlen(reply), 0);
+    assert(doc);
+    yyjson_val *execution = yyjson_obj_get(yyjson_obj_get(yyjson_doc_get_root(doc), "result"), "execution");
+    assert(!strcmp(yyjson_get_str(yyjson_obj_get(execution, "backend")), name));
+    assert(!yyjson_get_bool(yyjson_obj_get(execution, "fully_jit")));
+    assert(yyjson_get_int(yyjson_obj_get(execution, "event_entries")) == 0);
+    yyjson_doc_free(doc);
+    free(reply);
 }
 
 void test_automation_preview_registration()
@@ -69,6 +95,23 @@ void test_automation_preview_registration()
         "headless scene preview registers a shared shader library once"
     );
     chibi_preview_free(run);
+
+    char behaviors[256];
+    snprintf(behaviors, sizeof behaviors, "%s/behaviors", content);
+    assert(!mkdir(behaviors, 0700));
+    behavior_asset *behavior = behavior_asset_new("ExecutionBehavior");
+    char *json = behavior_asset_save_json(behavior);
+    assert(json);
+    snprintf(path, sizeof path, "%s/ExecutionBehavior.yaml", behaviors);
+    preview_test_write(path, json);
+    free(json);
+    behavior_asset_free(behavior);
+    execution_status_backend(root, BEHAVIOR_ORACLE, "interpreter");
+    if (graph_sljit_available()) {
+        execution_status_backend(root, BEHAVIOR_SLJIT, "sljit");
+        execution_status_backend(root, BEHAVIOR_BYTECODE, "bytecode");
+    }
+    assert(!unlink(path) && !rmdir(behaviors));
 
     const char *files[] = {
         "project.yaml",

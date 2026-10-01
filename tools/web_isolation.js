@@ -1,6 +1,18 @@
-// The optional threaded bundle can run on static hosts without custom headers.
+// The threaded bundle can run on static hosts without custom headers.
 // Its service worker covers only this bundle's directory and stores no assets.
-if (typeof document === 'undefined') {
+if (typeof document === 'undefined' && typeof self.skipWaiting !== 'function') {
+    // The fast bundle requires both SIMD and shared-memory Wasm support.
+    const features = new Uint8Array([
+        0, 97, 115, 109, 1, 0, 0, 0,
+        1, 4, 1, 96, 0, 0, 3, 2, 1, 0,
+        5, 4, 1, 3, 1, 1,
+        10, 23, 1, 21, 0, 253, 12,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        26, 11,
+    ]);
+    const supported = typeof WebAssembly !== 'undefined' && WebAssembly.validate(features);
+    self.postMessage(supported ? 'chibi-worker-ready' : 'chibi-worker-unsupported');
+} else if (typeof document === 'undefined') {
     self.addEventListener('install', event => event.waitUntil(self.skipWaiting()));
     self.addEventListener('activate', event => event.waitUntil(self.clients.claim()));
     self.addEventListener('fetch', event => {
@@ -17,27 +29,80 @@ if (typeof document === 'undefined') {
         }));
     });
 } else {
+    const serial = () => {
+        const current = new URL(window.location.href);
+        const target = new URL('../' + (current.pathname.split('/').pop() || 'index.html'), current);
+        target.search = current.search;
+        target.searchParams.set('serial', '1');
+        target.hash = current.hash;
+        window.location.replace(target.href);
+    };
     (async () => {
+        if (typeof Worker === 'undefined') return serial();
         if (!window.crossOriginIsolated) {
-            if (!window.isSecureContext || !navigator.serviceWorker) {
-                throw new Error('This browser cannot enable workers here. Open the single-threaded build.');
-            }
+            if (!window.isSecureContext || !navigator.serviceWorker) return serial();
             const worker = new URL('chibi-isolation.js', window.location.href);
-            if (navigator.serviceWorker.controller?.scriptURL === worker.href) {
-                throw new Error('Browser isolation is unavailable. Open the single-threaded build.');
-            }
+            if (navigator.serviceWorker.controller?.scriptURL === worker.href) return serial();
+            let changed;
             const controlled = new Promise(resolve => {
-                navigator.serviceWorker.addEventListener('controllerchange', resolve, { once: true });
+                changed = resolve;
+                navigator.serviceWorker.addEventListener('controllerchange', changed);
             });
-            await navigator.serviceWorker.register(worker.href);
-            await navigator.serviceWorker.ready;
-            if (navigator.serviceWorker.controller?.scriptURL !== worker.href) await controlled;
+            let timeout;
+            try {
+                await Promise.race([
+                    (async () => {
+                        await navigator.serviceWorker.register(worker.href);
+                        await navigator.serviceWorker.ready;
+                        if (navigator.serviceWorker.controller?.scriptURL !== worker.href) await controlled;
+                    })(),
+                    new Promise((_, reject) => {
+                        timeout = setTimeout(() => reject(new Error('Isolation timeout')), 4000);
+                    }),
+                ]);
+            } finally {
+                clearTimeout(timeout);
+                navigator.serviceWorker.removeEventListener('controllerchange', changed);
+            }
             window.location.reload();
             return;
         }
+        if (typeof SharedArrayBuffer === 'undefined') return serial();
+        // Emscripten allocates its pool before installing worker error handlers.
+        // Probe the same-origin worker policy first so a blocked pool cannot hang.
+        const probe = new Worker(new URL('chibi-isolation.js', window.location.href));
+        let probeTimeout;
+        try {
+            await new Promise((resolve, reject) => {
+                probe.onmessage = event => {
+                    if (event.data === 'chibi-worker-ready') resolve();
+                    else reject(new Error('Worker Wasm features unavailable'));
+                };
+                probe.onerror = reject;
+                probeTimeout = setTimeout(() => reject(new Error('Worker timeout')), 4000);
+            });
+        } finally {
+            clearTimeout(probeTimeout);
+            probe.terminate();
+        }
+        let started = false;
+        const abort = Module['onAbort'];
+        const failed = () => { if (!started) serial(); };
+        window.addEventListener('error', failed);
+        window.addEventListener('unhandledrejection', failed);
+        (Module['postRun'] ||= []).push(() => {
+            started = true;
+            window.removeEventListener('error', failed);
+            window.removeEventListener('unhandledrejection', failed);
+        });
+        Module['onAbort'] = reason => {
+            if (!started) return serial();
+            abort?.(reason);
+        };
         const script = document.createElement('script');
         script.src = 'chibi.js';
         script.async = true;
+        script.onerror = serial;
         document.body.append(script);
-    })().catch(error => Module['showError'](error.message));
+    })().catch(serial);
 }

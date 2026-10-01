@@ -27,7 +27,7 @@ typedef struct
 {
     struct sljit_compiler *compiler;
     const behavior_function *function;
-    const int *registers, *local_registers;
+    const int *registers, *local_registers, *variable_registers;
     int context, steps, variables, arguments, argument_count;
     int locals, parents;
     int system_stack;
@@ -79,6 +79,10 @@ void behavior_jit_integer_registers(
     int *registers,
     const bool *invariants
 );
+int *behavior_jit_variable_registers(const behavior_function *f, int base, int scratch, int *count);
+void behavior_jit_alias_variables(const behavior_function *f, int *registers, const int *variables);
+void behavior_jit_load_variables(const behavior_machine *m);
+void behavior_jit_flush_variables(const behavior_machine *m);
 void behavior_jit_coalesce_saves(const behavior_function *f, int *registers, const int *locals);
 bool behavior_jit_fused_branch(const behavior_machine *m, int pc, struct sljit_jump **jump);
 int behavior_jit_field_branch(const behavior_machine *m, int pc, struct sljit_jump **jump);

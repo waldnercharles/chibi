@@ -10,7 +10,7 @@ typedef struct
     behavior_function *f;
     behavior_function_instruction *out;
     int *slots, *definitions;
-    int cursor, accumulator;
+    int cursor, accumulator, shared_begin;
 } fusion;
 
 static int emit(fusion *b, behavior_function_instruction i)
@@ -104,6 +104,24 @@ static int copy(fusion *b, const behavior_reduction *r, int pc)
     if (i.op == BF_ASSERT) {
         return branch(b, i.left, true);
     }
+    /* The speculative prelude has no effects and all columns are checked
+     * before the row loop. Share layout lookups and snapshot metadata there;
+     * source-site assertions remain in place for the ordinary fallback. */
+    if (b->shared_begin >= 0 &&
+        (i.op == BF_WORLD || i.op == BF_COLUMN_TRY || i.op == BF_READ)) {
+        for (int pc = b->shared_begin; pc < acount(b->out); pc++) {
+            const behavior_function_instruction *prior = &b->out[pc];
+            if (prior->op == i.op && prior->type == i.type &&
+                (i.op == BF_WORLD ||
+                 (prior->left == i.left && prior->offset == i.offset &&
+                  (i.op == BF_READ ||
+                   (prior->value.u64 == i.value.u64 && prior->layout == i.layout &&
+                    prior->component == i.component))))) {
+                b->slots[output] = prior->output;
+                return pc;
+            }
+        }
+    }
     if (i.op < BF_STORE) {
         b->slots[output] = value(b, i);
         return acount(b->out) - 1;
@@ -195,6 +213,56 @@ static const char *barrier(const behavior_function *f, int first, int last)
     return NULL;
 }
 
+/* A row lookup only tests occupancy and computes an address in a checked
+ * column. Repeated lookups may run before predicate short-circuits, but field
+ * reads stay behind their original presence guards. This makes the shared row
+ * dominate every consumer without speculating a null dereference. */
+static void shared_rows(fusion *b, int first, int last)
+{
+    int *rows = NULL;
+    const behavior_reduction *a = &b->f->reductions[first];
+    for (int j = first; j <= last; j++) {
+        const behavior_reduction *r = &b->f->reductions[j];
+        b->slots[r->index] = b->slots[a->index];
+        b->slots[r->entity] = b->slots[a->entity];
+        for (int pc = r->body; pc < r->next; pc++) {
+            const behavior_function_instruction *i = &b->f->instructions[pc];
+            if (i->op == BF_ROW) {
+                apush(rows, pc);
+            }
+        }
+    }
+    for (int k = 0; k < acount(rows); k++) {
+        const behavior_function_instruction *i = &b->f->instructions[rows[k]];
+        if (b->slots[i->output] >= 0) {
+            continue;
+        }
+        int uses = 0;
+        for (int n = k; n < acount(rows); n++) {
+            const behavior_function_instruction *other = &b->f->instructions[rows[n]];
+            uses += b->slots[i->left] == b->slots[other->left] &&
+                    b->slots[i->right] == b->slots[other->right] &&
+                    i->offset == other->offset;
+        }
+        if (uses < 2) {
+            continue;
+        }
+        behavior_function_instruction shared = *i;
+        shared.left = operand(b, i->left);
+        shared.right = operand(b, i->right);
+        int row = value(b, shared);
+        for (int n = k; n < acount(rows); n++) {
+            const behavior_function_instruction *other = &b->f->instructions[rows[n]];
+            if (b->slots[i->left] == b->slots[other->left] &&
+                b->slots[i->right] == b->slots[other->right] &&
+                i->offset == other->offset) {
+                b->slots[other->output] = row;
+            }
+        }
+    }
+    afree(rows);
+}
+
 static void fused_loop(fusion *b, int first, int last, int flag, const int *counts)
 {
     const behavior_reduction *a = &b->f->reductions[first];
@@ -214,6 +282,7 @@ static void fused_loop(fusion *b, int first, int last, int flag, const int *coun
     }
     /* Guards never fail or publish values. The original preludes still report
      * errors at their original sites if a service or layout is unavailable. */
+    b->shared_begin = acount(b->out);
     for (int j = first; j <= last; j++) {
         const behavior_reduction *r = &b->f->reductions[j];
         b->accumulator = counts[j];
@@ -225,6 +294,7 @@ static void fused_loop(fusion *b, int first, int last, int flag, const int *coun
             }
         }
     }
+    b->shared_begin = -1;
     b->accumulator = counts[first];
     int loop = acount(b->out), finished = -1, stale = -1;
     for (int pc = a->loop; pc < a->body; pc++) {
@@ -238,6 +308,7 @@ static void fused_loop(fusion *b, int first, int last, int flag, const int *coun
         }
     }
     assert(finished >= 0 && stale >= 0);
+    shared_rows(b, first, last);
     for (int j = first; j <= last; j++) {
         const behavior_reduction *r = &b->f->reductions[j];
         b->accumulator = counts[j];
@@ -245,6 +316,10 @@ static void fused_loop(fusion *b, int first, int last, int flag, const int *coun
         b->slots[r->entity] = b->slots[a->entity];
         int *next = NULL;
         for (int pc = r->body; pc < r->next; pc++) {
+            const behavior_function_instruction *i = &b->f->instructions[pc];
+            if (i->op == BF_ROW && b->slots[i->output] >= 0) {
+                continue;
+            }
             int emitted = copy(b, r, pc);
             if (b->f->instructions[pc].op == BF_BRANCH) {
                 assert(b->f->instructions[pc].target == r->next);
@@ -280,7 +355,7 @@ void behavior_function_fuse_queries(behavior_function *f)
         afree(f->reductions);
         return;
     }
-    fusion b = { .f = f };
+    fusion b = { .f = f, .shared_begin = -1 };
     int slots = acount(f->slots), size = acount(f->instructions);
     b.slots = xmalloc((size_t)slots * sizeof *b.slots);
     b.definitions = xmalloc((size_t)slots * sizeof *b.definitions);

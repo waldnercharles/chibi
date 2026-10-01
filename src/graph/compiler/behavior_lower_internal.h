@@ -109,7 +109,7 @@ int behavior_lower_owner(builder *b);
 array_value *behavior_lower_array(builder *b, int slot);
 int behavior_lower_array_value(builder *b, int pointer, int name, const pin_spec *spec);
 int behavior_lower_array_source(builder *b, behavior_function_op op, int index, const pin_spec *spec);
-int behavior_lower_array_copy(builder *b, int pointer);
+int behavior_lower_array_copy(builder *b, int pointer, bool loop);
 int behavior_lower_array_default(builder *b, pin_value value);
 int behavior_lower_array_operation(builder *b, node *n);
 int behavior_lower_query(builder *b, node *n);

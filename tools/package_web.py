@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Assemble a static site with a serial app and an optional threaded app."""
+"""Assemble a static site with a serial app and a threaded app."""
 import argparse
 import shutil
 from pathlib import Path
@@ -13,10 +13,18 @@ def copy_build(build, destination, threaded=False):
         if not (build / name).is_file():
             raise FileNotFoundError(build / name)
     destination.mkdir(parents=True, exist_ok=True)
+    if (build / 'chibi-default.js').is_file():
+        required.append('chibi-default.js')
     for name in required:
-        shutil.copy2(build / name, destination / ('index.html' if name == 'chibi.html' else name))
+        target = destination / ('index.html' if name == 'chibi.html' else name)
+        if (build / name).resolve() != target.resolve():
+            shutil.copy2(build / name, target)
+    # Both the development and packaged entry retain their URL when switching.
+    if build.resolve() != destination.resolve():
+        shutil.copy2(build / 'chibi.html', destination / 'chibi.html')
     if (build / 'chibi.worker.js').is_file():
-        shutil.copy2(build / 'chibi.worker.js', destination)
+        if build.resolve() != destination.resolve():
+            shutil.copy2(build / 'chibi.worker.js', destination)
 
 
 def main():

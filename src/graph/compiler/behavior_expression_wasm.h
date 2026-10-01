@@ -80,7 +80,7 @@ bool behavior_expression_wasm_run_slots(
     pin_value *out
 );
 void behavior_expression_wasm_get_stats(behavior_expression_wasm_stats *out);
-/* Main-thread smoke diagnostic for retained JS modules. */
+/* Current-thread smoke diagnostic for retained JS modules. */
 int behavior_expression_wasm_registry_size();
 
 #endif

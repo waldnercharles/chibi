@@ -177,6 +177,27 @@ pin_array *pin_array_clone_to_arena(arena *a, const pin_array *src)
     return array_clone_arena(a, src);
 }
 
+int pin_struct_snapshot_fields(arena *a, const type_desc *type, void *data)
+{
+    for (int i = 0; i < type->field_count; i++) {
+        const type_field *field = &type->fields[i];
+        unsigned char *member = (unsigned char *)data + field->offset;
+        if (field->type == PIN_STRUCT) {
+            const type_desc *nested = registry_type_by_name(field->type_name);
+            if (!nested || !nested->size || nested->size != field->size) {
+                return -1;
+            }
+            /* The containing memcpy already copied this inline payload. */
+            if (pin_struct_snapshot_fields(a, nested, member)) {
+                return -1;
+            }
+        } else if (value_string(field->type)) {
+            const char *text = *(const char **)member;
+            *(const char **)member = arena_string(a, text);
+        }
+    }
+    return 0;
+}
 int pin_value_snapshot_to_arena(arena *a, pin_value *dst, const pin_value *src)
 {
     *dst = *src;
@@ -201,21 +222,9 @@ int pin_value_snapshot_to_arena(arena *a, pin_value *dst, const pin_value *src)
     }
     dst->ptr = arena_alloc(a, type->size);
     memcpy(dst->ptr, src->ptr, type->size);
-    for (int i = 0; i < type->field_count; i++) {
-        const type_field *f = &type->fields[i];
-        if (f->type != PIN_STRUCT && !value_string(f->type)) {
-            continue;
-        }
-        pin_value value, copy;
-        pin_read_field(src->ptr, f, &value);
-        if (pin_value_snapshot_to_arena(a, &copy, &value)) {
-            return -1;
-        }
-        pin_write_field(dst->ptr, f, copy);
-    }
-    return 0;
+    return pin_struct_snapshot_fields(a, type, dst->ptr);
 }
-pin_array *pin_array_allocate(arena *a, pin_type type, const char *name, int count)
+pin_array *pin_array_snapshot_allocate(arena *a, pin_type type, const char *name, int count)
 {
     assert(count >= 0);
     pin_array *dst = arena_alloc(a, sizeof *dst + (size_t)count * sizeof(pin_value));
@@ -224,6 +233,11 @@ pin_array *pin_array_allocate(arena *a, pin_type type, const char *name, int cou
                         .count = count,
                         .capacity = count,
                         .items = (pin_value *)(dst + 1) };
+    return dst;
+}
+pin_array *pin_array_allocate(arena *a, pin_type type, const char *name, int count)
+{
+    pin_array *dst = pin_array_snapshot_allocate(a, type, name, count);
     for (int i = 0; i < count; i++) {
         dst->items[i] = (pin_value){ .type = type, .type_name = dst->type_name };
     }
@@ -234,12 +248,7 @@ pin_array *pin_array_snapshot_to_arena(arena *a, const pin_array *src)
     if (!src) {
         return NULL;
     }
-    pin_array *dst = arena_alloc(a, sizeof *dst + (size_t)src->count * sizeof(pin_value));
-    *dst = (pin_array){ .element_type = src->element_type,
-                        .type_name = arena_string(a, src->type_name),
-                        .count = src->count,
-                        .capacity = src->count,
-                        .items = (pin_value *)(dst + 1) };
+    pin_array *dst = pin_array_snapshot_allocate(a, src->element_type, src->type_name, src->count);
     for (int i = 0; i < src->count; i++) {
         if (pin_value_snapshot_to_arena(a, &dst->items[i], &src->items[i])) {
             return NULL;

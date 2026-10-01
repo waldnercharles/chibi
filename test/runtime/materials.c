@@ -7,6 +7,7 @@
 float *reference_cave_generate(unsigned, int, int, float, float, float);
 #include "runtime/material_debris.h"
 #include "runtime/material_destruction.h"
+#include "runtime/material_flow.h"
 #include "runtime/material_fluid.h"
 #include "runtime/material_mask.h"
 #include "runtime/task_pool.h"
@@ -534,6 +535,86 @@ static void parallel_parity(bool burning)
     assert(!burning || (a[0].burning && a[1].burning && !a[49].burning));
     material_fluid_free(serial);
     material_fluid_free(parallel);
+    game_task_pool_release(pool);
+}
+
+typedef struct
+{
+    game_task_system tasks;
+    int submissions;
+} flow_executor;
+
+static void *flow_submit(game_task_range *run, int count, int minimum, void *context, void *user)
+{
+    flow_executor *executor = user;
+    executor->submissions++;
+    return executor->tasks.enqueue(run, count, minimum, context, executor->tasks.user);
+}
+
+static void flow_finish(void *task, void *user)
+{
+    flow_executor *executor = user;
+    executor->tasks.finish(task, executor->tasks.user);
+}
+
+static void parallel_flow()
+{
+    enum
+    {
+        SIDE = 192,
+        COUNT = SIDE * SIDE
+    };
+    fluid_particle *serial = calloc(COUNT, sizeof *serial);
+    fluid_particle *parallel = calloc(COUNT, sizeof *parallel);
+    int *active = malloc(COUNT * sizeof *active);
+    assert(serial && parallel && active);
+    for (int i = 0; i < COUNT; i++) {
+        int x = i % SIDE - SIDE / 2, y = i / SIDE - SIDE / 2;
+        serial[i] = particle(x * 10 + 5, y * 10 + 5, FLUID_GAS);
+        serial[i].velocity = (fluid_vec){ (x % 7) * .3f, (y % 5) * .4f };
+        active[i] = i;
+    }
+    memcpy(parallel, serial, COUNT * sizeof *serial);
+    material_flow *a = material_flow_new(), *b = material_flow_new();
+    game_task_pool *pool = game_task_pool_acquire_workers(4);
+    flow_executor executor = { .tasks = *game_task_pool_tasks(pool) };
+    game_task_system tasks = { .workers = executor.tasks.workers,
+                               .user = &executor,
+                               .enqueue = flow_submit,
+                               .finish = flow_finish };
+    game_task_system inline_tasks = { .workers = 1 };
+    fluid_flow_settings settings = { 10, 2, .1f };
+    fluid_body bodies[] = { { .velocity = { 30, -15 }, .angle = .3f },
+                            { .position = { -20, 30 }, .velocity = { -5, 12 } } };
+    fluid_obstacle obstacles[] = { { .half_size = { 30, 15 } },
+                                   { .body = 1, .radius = 25 } };
+    for (int step = 0; step < 4; step++) {
+        bodies[0].position.x += 5;
+        int count = COUNT - step * SIDE;
+        material_flow_step(a, settings, 1.f / 60, serial, active, count, bodies, obstacles, 2, &inline_tasks);
+        game_task_pool_begin(pool, true);
+        material_flow_step(b, settings, 1.f / 60, parallel, active, count, bodies, obstacles, 2, &tasks);
+        game_task_pool_end(pool);
+        assert(!memcmp(serial, parallel, COUNT * sizeof *serial));
+        assert(material_flow_hash(a) == material_flow_hash(b));
+    }
+    if (tasks.workers > 1) {
+        assert(executor.submissions >= 64);
+    }
+    material_flow_clear(a);
+    material_flow_clear(b);
+    int submissions = executor.submissions;
+    material_flow_step(a, settings, 1.f / 60, serial, active, 0, NULL, NULL, 0, &inline_tasks);
+    game_task_pool_begin(pool, true);
+    material_flow_step(b, settings, 1.f / 60, parallel, active, 0, NULL, NULL, 0, &tasks);
+    game_task_pool_end(pool);
+    assert(executor.submissions == submissions);
+    assert(material_flow_hash(a) == material_flow_hash(b));
+    material_flow_free(a);
+    material_flow_free(b);
+    free(serial);
+    free(parallel);
+    free(active);
     game_task_pool_release(pool);
 }
 
@@ -1803,6 +1884,7 @@ void test_materials()
     gas_flow();
     parallel_parity(false);
     parallel_parity(true);
+    parallel_flow();
     physical_destruction();
     finite_drive();
     terrain_boundary_cut();

@@ -217,6 +217,7 @@ static void toggle_popup(kit *k, node *n, const char *prefix)
         rgb_to_hsv(n->w.color, n->w.hsv);
     }
     open_popup(k, key, element_rect(k, n->el), false, 0, 0, "");
+    str_set(&popup_at(k, key)->trigger, n->path);
 }
 
 void control_click(kit *k, node *n, rml_element *target)
@@ -300,6 +301,9 @@ void control_drag(kit *k, node *n, const rml_event *e)
 static void field_key(kit *k, node *n, const rml_event *e)
 {
     widget *w = &n->w;
+    if (locked(n)) {
+        return;
+    }
     bool enter = e->key == RML_KEY_RETURN || e->key == RML_KEY_NUMPADENTER;
     if (enter && w->area && (e->modifiers & RML_KM_SHIFT)) {
         rml_context_process_text_input(k->context, "\n", 1);
@@ -333,7 +337,8 @@ static void field_key(kit *k, node *n, const rml_event *e)
 /* Space and Return press a checkbox or button. */
 static void press_key(node *n, const rml_event *e)
 {
-    if (e->key != RML_KEY_SPACE && e->key != RML_KEY_RETURN) {
+    if (locked(n) || rml_element_has_attribute(n->el, "data-disabled") ||
+        (e->key != RML_KEY_SPACE && e->key != RML_KEY_RETURN)) {
         return;
     }
     if (n->kind == KIND_CHECK) {
@@ -368,12 +373,60 @@ static void color_key(kit *k, node *n, const rml_event *e)
     rml_event_stop_propagation(e);
 }
 
+static void select_key(kit *k, node *n, const rml_event *e)
+{
+    if (locked(n)) {
+        return;
+    }
+    switch (e->key) {
+        case RML_KEY_SPACE:
+        case RML_KEY_RETURN:
+        case RML_KEY_NUMPADENTER:
+        case RML_KEY_DOWN:
+        case RML_KEY_UP:
+            toggle_popup(k, n, "select");
+            rml_event_stop_propagation(e);
+            return;
+        default: return;
+    }
+}
+
+static void toggle_key(node *n, const rml_event *e)
+{
+    if (locked(n)) {
+        return;
+    }
+    int count = acount(n->w.labels);
+    if (!count || !rml_element_has_attribute(e->target, "data-index")) {
+        return;
+    }
+    int at = int_attribute(e->target, "data-index");
+    switch (e->key) {
+        case RML_KEY_SPACE:
+        case RML_KEY_RETURN:
+        case RML_KEY_NUMPADENTER: break;
+        case RML_KEY_LEFT:
+        case RML_KEY_UP: at = (at + count - 1) % count; break;
+        case RML_KEY_RIGHT:
+        case RML_KEY_DOWN: at = (at + 1) % count; break;
+        case RML_KEY_HOME: at = 0; break;
+        case RML_KEY_END: at = count - 1; break;
+        default: return;
+    }
+    n->w.pending_index = at;
+    n->w.pending = true;
+    rml_element_focus(rml_element_child(n->el, at), true);
+    rml_event_stop_propagation(e);
+}
+
 void control_key(kit *k, node *n, const rml_event *e)
 {
     switch (n->kind) {
         case KIND_TEXT:
         case KIND_SEARCH: field_key(k, n, e); return;
         case KIND_COLOR: color_key(k, n, e); return;
+        case KIND_SELECT: select_key(k, n, e); return;
+        case KIND_TOGGLE: toggle_key(n, e); return;
         case KIND_CHECK:
         case KIND_BUTTON: press_key(n, e); return;
         default: return;
@@ -557,15 +610,20 @@ static bool choice_toggle(kit *k, const char *key, int *value, const char *const
         set_segments(n, labels, count);
     }
     bool changed = false;
-    if (w->pending && w->pending_index >= 0 && w->pending_index < count) {
+    if (w->pending && !locked(n) && w->pending_index >= 0 && w->pending_index < count) {
         changed = *value != w->pending_index;
         *value = w->pending_index;
     }
     w->pending = false;
     for (int i = 0; i < count; i++) {
-        flag_element(rml_element_child(n->el, i), "data-pressed", i == *value);
+        rml_element *segment = rml_element_child(n->el, i);
+        flag_element(segment, "data-pressed", i == *value);
+        flag_element(segment, "disabled", flags & KIT_DISABLED);
+        rml_element_set_property(segment, "tab-index", flags & KIT_DISABLED ? "none" : "auto");
     }
     set_flag(n, "data-readonly", flags & KIT_READONLY);
+    set_flag(n, "data-disabled", flags & KIT_DISABLED);
+    rml_element_set_property(n->el, "opacity", flags & KIT_DISABLED ? "0.45" : "1");
     return changed;
 }
 
@@ -597,13 +655,20 @@ static bool choice_select(kit *k, const char *key, int *value, const char *const
     }
     set_element_text(w->value_el, *value >= 0 && *value < count ? labels[*value] : "-");
     set_flag(n, "data-readonly", flags & KIT_READONLY);
+    set_flag(n, "data-disabled", flags & KIT_DISABLED);
+    rml_element_set_property(n->el, "tab-index", flags & KIT_DISABLED ? "none" : "auto");
     const char *menu = frame_format(k, "select:%s", n->path);
+    if (locked(n)) {
+        close_popup(k, menu);
+    }
     set_flag(n, "data-open", kit_popup_is_open(k, menu));
     bool changed = false;
     if (w->pending) {
         w->pending = false;
-        changed = *value != w->pending_index;
-        *value = w->pending_index;
+        if (!locked(n) && w->pending_index >= 0 && w->pending_index < count) {
+            changed = *value != w->pending_index;
+            *value = w->pending_index;
+        }
     }
     if (kit_popup_begin(k, menu, "menu")) {
         select_options(k, n, menu, labels, count, *value);
@@ -654,8 +719,12 @@ static bool edit_text(node *n, char *buffer, size_t size, unsigned flags)
         rml_element_set_attribute(w->input_el, "type", secret ? "password" : "text");
         w->secret = secret;
     }
+    w->desc.flags = flags;
     set_flag(n, "data-readonly", flags & KIT_READONLY);
-    if (flags & KIT_READONLY) {
+    set_flag(n, "data-disabled", flags & KIT_DISABLED);
+    flag_element(w->input_el, "disabled", flags & KIT_DISABLED);
+    rml_element_set_property(w->input_el, "tab-index", flags & KIT_DISABLED ? "none" : "auto");
+    if (locked(n)) {
         rml_element_set_attribute(w->input_el, "readonly", "");
     } else {
         rml_element_remove_attribute(w->input_el, "readonly");
@@ -663,9 +732,9 @@ static bool edit_text(node *n, char *buffer, size_t size, unsigned flags)
     bool committed = false;
     if (w->pending) {
         w->pending = false;
-        committed = true;
-        w->committed = true;
-        if (!str_eq(w->draft, buffer)) {
+        committed = !locked(n);
+        w->committed = committed;
+        if (committed && !str_eq(w->draft, buffer)) {
             snprintf(buffer, size, "%s", w->draft ? w->draft : "");
         }
     }
@@ -836,7 +905,7 @@ bool kit_color(kit *k, const char *key, uint32_t *rgba, unsigned flags)
     set_attr(n, "aria-expanded", open ? "true" : "false");
     set_attr(n, "aria-disabled", locked(n) ? "true" : "false");
     rml_element_set_property(n->el, "tab-index", flags & KIT_DISABLED ? "none" : "auto");
-    if (kit_popup_begin(k, picker, "picker")) {
+    if (kit_popup_begin(k, picker, "picker popover")) {
         node *p = popup_find(k, picker)->node;
         rml_element_set_attribute(p->el, "role", "dialog");
         rml_element_set_attribute(p->el, "aria-label", "Color picker");

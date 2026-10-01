@@ -20,6 +20,11 @@ typedef struct
     uint32_t color;
     int color_changes, color_commits;
     bool focus_color;
+    bool controls;
+    unsigned control_flags;
+    int select, toggle;
+    bool control_check;
+    char control_text[32];
     bool editing;
     int menu_b;
     int chosen;
@@ -115,6 +120,23 @@ static void emit(kit_fixture *f)
         f->focus_note = false;
     }
     kit_prop_end(k);
+    if (f->controls) {
+        const char *const labels[] = { "One", "Two", "Three", "Four" };
+        kit_prop_begin(k, "select", "Select");
+        kit_choice(k, "value", &f->select, labels, 4, f->control_flags);
+        kit_attr(k, "id", "test-select");
+        kit_prop_end(k);
+        kit_prop_begin(k, "toggle", "Toggle");
+        kit_choice(k, "value", &f->toggle, labels, 2, f->control_flags);
+        kit_attr(k, "id", "test-toggle");
+        kit_prop_end(k);
+        kit_prop_begin(k, "control-text", "Text");
+        kit_text_field(k, "value", f->control_text, sizeof f->control_text, NULL, f->control_flags);
+        kit_attr(k, "id", "test-control-text");
+        kit_prop_end(k);
+        kit_checkbox(k, "check", &f->control_check, "Check", f->control_flags);
+        kit_attr(k, "id", "test-check");
+    }
     kit_panel_begin(k, "panel", "Panel", NULL, true);
     kit_panel_end(k);
     f->panel_menus += kit_panel_menu(k);
@@ -397,6 +419,18 @@ bool test_rmlui_kit()
     if (percent) {
         rml_element_inner_rml(percent, percent_text, sizeof percent_text);
     }
+    if (hex && opacity) {
+        rml_element_focus(hex, true);
+        key(&f, RML_INPUT_KEY_TAB, 0);
+        frame(&f);
+        ok &= check(
+            rml_context_focus_element(rml_backend_context(f.backend)) == opacity,
+            "color picker Tab reaches Opacity without closing"
+        );
+        key(&f, RML_INPUT_KEY_TAB, RML_INPUT_MOD_SHIFT);
+        frame(&f);
+        ok &= check(rml_context_focus_element(rml_backend_context(f.backend)) == hex, "color picker Shift+Tab returns to hex");
+    }
     if (opacity) {
         click_element(&f, opacity);
         type(&f, "50");
@@ -407,11 +441,107 @@ bool test_rmlui_kit()
         opacity && !strcmp(percent_text, "%") && f.color == 0xaabbcc80,
         "opacity uses the bounded percent number field and updates alpha"
     );
-    if (color_trigger) {
-        click_element(&f, color_trigger);
-    }
+    key(&f, RML_INPUT_KEY_ESCAPE, 0);
     settle(&f);
     ok &= check(f.color_commits == 1, "all picker edits commit as one color session");
+    ok &= check(
+        rml_context_focus_element(rml_backend_context(f.backend)) == color_trigger,
+        "color picker Escape restores trigger focus"
+    );
+
+    f.controls = true;
+    snprintf(f.control_text, sizeof f.control_text, "Original");
+    settle(&f);
+    rml_element *select = rml_element_query_selector(doc, "#test-select");
+    rml_element *toggle = rml_element_query_selector(doc, "#test-toggle");
+    rml_element *control_text = rml_element_query_selector(doc, "#test-control-text input");
+    rml_element *control_check = rml_element_query_selector(doc, "#test-check");
+    if (select) {
+        rml_element_focus(select, true);
+        key(&f, RML_INPUT_KEY_ENTER, 0);
+        settle(&f);
+        key(&f, RML_INPUT_KEY_DOWN, 0);
+        key(&f, RML_INPUT_KEY_ENTER, 0);
+        settle(&f);
+        ok &= check(f.select == 1, "select keyboard opens menu and chooses next label");
+        rml_element_focus(select, true);
+        key(&f, RML_INPUT_KEY_SPACE, 0);
+        settle(&f);
+        key(&f, RML_INPUT_KEY_DOWN, 0);
+        key(&f, RML_INPUT_KEY_ESCAPE, 0);
+        settle(&f);
+        ok &= check(f.select == 1, "select Escape cancels highlighted option");
+    } else {
+        ok &= check(false, "select control is present");
+    }
+    if (toggle) {
+        rml_element_focus(rml_element_child(toggle, 0), true);
+        key(&f, RML_INPUT_KEY_RIGHT, 0);
+        frame(&f);
+        ok &= check(f.toggle == 1, "segmented choice arrow moves and selects");
+    }
+    f.control_flags = KIT_READONLY;
+    frame(&f);
+    if (control_text) {
+        rml_element_focus(control_text, true);
+        rml_element_select(control_text);
+        type(&f, "Changed");
+        key(&f, RML_INPUT_KEY_ENTER, 0);
+        frame(&f);
+    }
+    if (toggle) {
+        rml_element_focus(rml_element_child(toggle, 0), true);
+        key(&f, RML_INPUT_KEY_SPACE, 0);
+        key(&f, RML_INPUT_KEY_LEFT, 0);
+        frame(&f);
+    }
+    if (select) {
+        rml_element_focus(select, true);
+        key(&f, RML_INPUT_KEY_ENTER, 0);
+        settle(&f);
+    }
+    if (control_check) {
+        rml_element_focus(control_check, true);
+        key(&f, RML_INPUT_KEY_SPACE, 0);
+        frame(&f);
+    }
+    ok &= check(
+        !strcmp(f.control_text, "Original") && f.toggle == 1 &&
+            !f.control_check && f.select == 1 &&
+            !kit_popup_is_open(f.k, "select:app/fields/select/@control/value"),
+        "readonly controls reject typing and keyboard activation"
+    );
+    f.control_flags = KIT_DISABLED;
+    frame(&f);
+    if (control_text) {
+        click_element(&f, control_text);
+        type(&f, "Changed");
+        key(&f, RML_INPUT_KEY_ENTER, 0);
+    }
+    if (toggle) {
+        click_element(&f, rml_element_child(toggle, 0));
+    }
+    if (select) {
+        click_element(&f, select);
+    }
+    settle(&f);
+    ok &= check(
+        !strcmp(f.control_text, "Original") && f.toggle == 1 && f.select == 1 &&
+            !kit_popup_is_open(f.k, "select:app/fields/select/@control/value"),
+        "disabled controls reject pointer activation and typing"
+    );
+    f.control_flags = 0;
+    frame(&f);
+    if (control_text) {
+        rml_element_focus(control_text, true);
+        rml_element_select(control_text);
+        type(&f, "Enabled");
+        key(&f, RML_INPUT_KEY_ENTER, 0);
+        frame(&f);
+    }
+    ok &= check(!strcmp(f.control_text, "Enabled"), "text becomes editable when reenabled");
+    f.controls = false;
+    settle(&f);
 
     /* Highlighting: JSON keys are names, values keep their token; markup is escaped. */
     char markup[512];

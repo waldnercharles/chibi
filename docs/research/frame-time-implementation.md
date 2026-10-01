@@ -161,10 +161,11 @@ synchronously compile a bounded module copy on first use and retain exports in
 a bounded cache. The threaded smoke verifies that eligible samples actually
 execute Wasm, measures the first miss separately from warmed worker execution,
 compares the bytecode interpreter on the same graph, and reports inner worker
-time separately from the condition-variable roundtrip.
-Its operation/input matrix covers the 16-operation and four-operations-per-input
-gates. These measurements have not yet been run in the current validation slot,
-and no Firefight whole-frame gain is established.
+time separately from the condition-variable roundtrip. Its operation/input
+matrix covers the 16-operation and four-operations-per-input gates, alongside a
+separate `(2^24 + 1) - 2^24` F32 intermediate-rounding regression on main and
+worker Wasm. These measurements have not yet been run in the current validation
+slot, and no Firefight whole-frame gain is established.
 
 ## Checks and external blocker
 

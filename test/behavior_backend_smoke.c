@@ -87,8 +87,8 @@ const int REGISTRY_PACK_COUNT = sizeof REGISTRY_PACKS / sizeof REGISTRY_PACKS[0]
 #ifdef __EMSCRIPTEN__
 enum
 {
-    WASM_SMOKE_REGIONS = 7,
-    WASM_SMOKE_ELIGIBLE_REGIONS = 5,
+    WASM_SMOKE_REGIONS = 8,
+    WASM_SMOKE_ELIGIBLE_REGIONS = 6,
     WASM_SMOKE_MAX_INPUTS = 8,
     WASM_SMOKE_LOOP_ITERATIONS = 2,
     WASM_SMOKE_BENCH_ITERATIONS = 4000,
@@ -98,8 +98,12 @@ enum
     WASM_SMOKE_MAX_OPERATIONS = 64,
 };
 static const int wasm_smoke_operations[WASM_SMOKE_REGIONS] = { 12, 16, 16, 24,
-                                                               32, 16, 64 };
-static const int wasm_smoke_inputs[WASM_SMOKE_REGIONS] = { 1, 1, 4, 6, 8, 8, 1 };
+                                                               32, 16, 64, 16 };
+static const int wasm_smoke_inputs[WASM_SMOKE_REGIONS] = { 1, 1, 4, 6,
+                                                           8, 8, 1, 1 };
+static const bool wasm_smoke_rounding[WASM_SMOKE_REGIONS] = {
+    false, false, false, false, false, false, false, true
+};
 
 static behavior_asset *wasm_smoke_asset;
 static behavior_instance *wasm_smoke_instance;
@@ -119,13 +123,15 @@ static void wasm_smoke_retirement_poll(void *unused)
 {
     (void)unused;
     assert(behavior_expression_wasm_registry_size() == 0);
-    puts("browser behavior Wasm: async readiness, bytecode fallback, reuse, NaN/F32 parity, retirement");
+    puts("browser behavior Wasm: async readiness, bytecode fallback, reuse, NaN/F32 rounding parity, retirement");
     emscripten_force_exit(0);
 }
 
-static float wasm_smoke_expected(int operations)
+static float wasm_smoke_expected(int region)
 {
-    return wasm_smoke_input_value * (float)(operations + 1);
+    return wasm_smoke_rounding[region]
+             ? 0.0f
+             : wasm_smoke_input_value * (float)(wasm_smoke_operations[region] + 1);
 }
 
 static void wasm_smoke_dispatch()
@@ -240,6 +246,28 @@ static node *wasm_smoke_expression(graph *g, node *const *inputs, int operations
     return result;
 }
 
+static node *wasm_smoke_rounding_expression(graph *g, node *input, int operations)
+{
+    assert(operations >= 3 && operations <= WASM_SMOKE_MAX_OPERATIONS);
+    /* At 2^24, F32 rounds input + 1 back to input; a wider intermediate yields 1. */
+    node *round = graph_add_node(g, &NODE_Add);
+    for (int pin = 0; pin < 2; pin++) {
+        assert(!graph_set_pin_type(g, round, false, pin, PIN_F32, "float"));
+    }
+    assert(!graph_set_pin_type(g, round, true, 0, PIN_F32, "float"));
+    assert(
+        !graph_set_pin_default(g, round, false, 1, &(pin_value){ .type = PIN_F32, .f = 1.0f })
+    );
+    assert(!graph_connect_data(g, input, 0, round, 0));
+
+    node *result = wasm_smoke_binary(g, &NODE_Subtract, round, input);
+    node *zero = wasm_smoke_binary(g, &NODE_Subtract, input, input);
+    for (int i = 3; i < operations; i++) {
+        result = wasm_smoke_binary(g, &NODE_Add, result, zero);
+    }
+    return result;
+}
+
 static void wasm_smoke_region_selection()
 {
     enum
@@ -323,13 +351,13 @@ static void wasm_smoke_poll(void *unused)
         assert(
             behavior_instance_get_variable(wasm_smoke_instance, wasm_smoke_output_ids[i], &result) == 0
         );
-        assert(result.f == wasm_smoke_expected(wasm_smoke_operations[i]));
+        assert(result.f == wasm_smoke_expected(i));
     }
     pin_value loop_result;
     assert(
         behavior_instance_get_variable(wasm_smoke_instance, wasm_smoke_loop_output_id, &loop_result) == 0
     );
-    assert(loop_result.f == wasm_smoke_expected(wasm_smoke_operations[1]));
+    assert(loop_result.f == wasm_smoke_expected(1));
 
     uint32_t executions = stats.expressions_executed;
     wasm_smoke_dispatch();
@@ -373,7 +401,14 @@ static void wasm_smoke_poll(void *unused)
     for (int i = 0; i < WASM_SMOKE_REGIONS; i++) {
         double bytecode_ns = wasm_smoke_bench(i, false);
         double wasm_ns = wasm_smoke_bench(i, true);
-        printf(" %d ops %.1f/%.1f", wasm_smoke_operations[i], bytecode_ns, wasm_ns);
+        printf(
+            " %d ops/%d inputs%s %.1f/%.1f",
+            wasm_smoke_operations[i],
+            wasm_smoke_inputs[i],
+            wasm_smoke_rounding[i] ? " rounding" : "",
+            bytecode_ns,
+            wasm_ns
+        );
     }
     puts(" (bytecode/Wasm)");
 
@@ -708,7 +743,7 @@ static void wasm_smoke_worker_benchmark(const behavior_graph_program *program)
     int cold_region = 1;
     wasm_worker_result
         cold = wasm_smoke_worker_run_graph(true, cold_region, 1, program, &storage, runtime, &context);
-    assert(cold.ran && cold.result.f == wasm_smoke_expected(wasm_smoke_operations[cold_region]));
+    assert(cold.ran && cold.result.f == wasm_smoke_expected(cold_region));
     assert(cold.wasm_executions == 1);
     printf(
         "browser worker Wasm first miss ops=%d inputs=%d wasm_calls=%u "
@@ -737,10 +772,7 @@ static void wasm_smoke_worker_benchmark(const behavior_graph_program *program)
                     runtime,
                     &context
                 );
-                assert(
-                    result.ran && result.result.f ==
-                                      wasm_smoke_expected(wasm_smoke_operations[region])
-                );
+                assert(result.ran && result.result.f == wasm_smoke_expected(region));
                 assert(
                     result.wasm_executions ==
                     (wasm && wasm_smoke_region_eligible(region) ? WASM_SMOKE_BENCH_ITERATIONS
@@ -764,10 +796,11 @@ static void wasm_smoke_worker_benchmark(const behavior_graph_program *program)
             );
         }
         printf(
-            "browser worker region ops=%d inputs=%d path=%s worker_ns "
+            "browser worker region ops=%d inputs=%d case=%s path=%s worker_ns "
             "wasm/bytecode=%.1f/%.1f batch_roundtrip_ns=%.1f/%.1f\n",
             wasm_smoke_operations[region],
             wasm_smoke_inputs[region],
+            wasm_smoke_rounding[region] ? "f32-rounding" : "sum",
             wasm_smoke_region_eligible(region) ? "wasm" : "fallback",
             wasm_smoke_median(wasm_worker, WASM_SMOKE_WORKER_TRIALS),
             wasm_smoke_median(bytecode_worker, WASM_SMOKE_WORKER_TRIALS),
@@ -788,7 +821,7 @@ static void wasm_smoke_worker_benchmark(const behavior_graph_program *program)
             for (int i = 0; i < WASM_SMOKE_WORKER_HANDOFFS; i++) {
                 wasm_worker_result
                     result = wasm_smoke_worker_run_graph(wasm, 1, 1, program, &storage, runtime, &context);
-                assert(result.ran && result.result.f == wasm_smoke_expected(16));
+                assert(result.ran && result.result.f == wasm_smoke_expected(1));
                 assert(result.wasm_executions == (wasm ? 1u : 0u));
                 caller_ms += result.caller_ms;
                 worker_ms += result.worker_ms;
@@ -939,12 +972,14 @@ static void wasm_smoke_start()
         );
         wasm_smoke_output_ids[i] = output->id;
         wasm_smoke_sets[i] = behavior_asset_add_set_node(wasm_smoke_asset, wasm_smoke_output_ids[i]);
-        node *value = wasm_smoke_expression(
-            g,
-            wasm_smoke_input_gets,
-            wasm_smoke_operations[i],
-            wasm_smoke_inputs[i]
-        );
+        node *value = wasm_smoke_rounding[i]
+                        ? wasm_smoke_rounding_expression(g, wasm_smoke_input_gets[0], wasm_smoke_operations[i])
+                        : wasm_smoke_expression(
+                              g,
+                              wasm_smoke_input_gets,
+                              wasm_smoke_operations[i],
+                              wasm_smoke_inputs[i]
+                          );
         assert(!graph_connect_data(g, value, 0, wasm_smoke_sets[i], 1));
         assert(
             !graph_connect_exec(g, i ? wasm_smoke_sets[i - 1] : loop, i ? 0 : 2, wasm_smoke_sets[i], 0, 0)
@@ -965,7 +1000,7 @@ static void wasm_smoke_start()
         assert(
             behavior_instance_get_variable(wasm_smoke_instance, wasm_smoke_output_ids[i], &result) == 0
         );
-        assert(result.f == wasm_smoke_expected(wasm_smoke_operations[i]));
+        assert(result.f == wasm_smoke_expected(i));
     }
     behavior_expression_wasm_get_stats(&compiled);
     assert(compiled.bytecode_fallbacks > before.bytecode_fallbacks);

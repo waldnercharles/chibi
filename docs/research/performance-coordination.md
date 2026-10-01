@@ -6,9 +6,14 @@ The [runtime ready batch](runtime-ready-20261001.md) records no-map source
 `e0c766b4`, ready renderer/storage/Wasm work, and the exact scope of retained
 combined-candidate validation. Its [evidence JSON](runtime-ready-20261001.json)
 contains source, log and frozen-artifact hashes. Earlier body/fracture and
-profiling checkpoints are already pushed. Shared-map timing remains pending
-review; the map is excluded from this ready batch. The historical results and
-source scopes below remain unchanged.
+profiling checkpoints and this ready batch are pushed. The
+[generic-map decision](runtime-decisions-20261001.md) rejects the map as the
+default after its complete matched matrix; gas p50 regresses 29.23%. The
+[current compiler measurements](compiler-measurements-20261001.md) record
+accepted internal Wasm and native-loop checks. External LuaJIT, V8 and
+JavaScriptCore comparisons remain deferred. Existing-grid activation IDs and
+unused-index skips are a separate candidate under validation. The historical
+results and source scopes below remain unchanged.
 
 The first coordinated batch reconciles performance defaults, field evaluation,
 material rendering, replay parity, and current main before implementing two

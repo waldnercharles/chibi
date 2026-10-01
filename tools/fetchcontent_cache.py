@@ -231,12 +231,16 @@ def validate_donor(source_dir: Path, build_dir: Path) -> list[tuple[str, Path, d
     valid = []
     for source in sorted(deps.glob("*-src")):
         name = source.name[:-4].casefold()
+        # Older dependency trees include extracted archives whose contents cannot
+        # be proven from Git. Leave those to FetchContent instead of caching them.
+        if git_root(source) is None:
+            continue
         if name not in pins:
             raise RuntimeError(f"unknown dependency: {name}")
         identity = pins[name]
-        # Older builds can hold extracted archives despite a new Git declaration.
-        # A version string cannot prove their contents; do not cache those folders.
-        if git_root(source) is None:
+        try:
+            dependency_key(identity)
+        except RuntimeError:
             continue
         validate_source(source, identity)
         valid.append((name, source, identity))
@@ -297,6 +301,11 @@ def prepare(source_dir: Path, build_dir: Path, cache_root: Path,
     overrides = []
     unsets = []
     for name, identity in sorted(pins.items()):
+        try:
+            dependency_key(identity)
+        except RuntimeError:
+            # An upstream archive without a content hash is not a shareable snapshot.
+            continue
         user_override = configured.get(name)
         if user_override and (name not in owned or Path(user_override).resolve() != Path(owned[name]).resolve()):
             continue

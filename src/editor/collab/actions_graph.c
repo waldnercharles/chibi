@@ -1,10 +1,14 @@
 #include "assets/ui_events.h"
 #include "editor/collab/actions_internal.h"
+#include "editor/graph/search.h"
 #include "editor/workspace/editor_internal.h"
 #include "graph/document/events.h"
+#include "graph/model/local.h"
+#include "graph/model/pin_conv.h"
 #include "graph/model/registry.h"
 #include "yyjson.h"
 
+#include <assert.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -46,12 +50,12 @@ static yyjson_mut_val *action_root(yyjson_mut_doc *doc)
     return yyjson_mut_doc_get_root(doc);
 }
 
-static bool write_pin_value(yyjson_mut_doc *doc, yyjson_mut_val *root, const pin_value *value)
+static bool write_pin_value(yyjson_mut_doc *doc, yyjson_mut_val *root, const char *key, const pin_value *value)
 {
     if (!value) {
         return false;
     }
-    yyjson_mut_val *item = yyjson_mut_obj_add_obj(doc, root, "value");
+    yyjson_mut_val *item = yyjson_mut_obj_add_obj(doc, root, key);
     yyjson_mut_obj_add_int(doc, item, "type", value->type);
     if (value->type_name) {
         yyjson_mut_obj_add_strcpy(doc, item, "type_name", value->type_name);
@@ -106,8 +110,13 @@ static bool write_pin_value(yyjson_mut_doc *doc, yyjson_mut_val *root, const pin
         case PIN_ENUM:
             yyjson_mut_obj_add_int(doc, item, "data", value->e);
             break;
-        case PIN_FLOW:
         case PIN_HANDLE:
+            if (value->u64) {
+                return false;
+            }
+            yyjson_mut_obj_add_uint(doc, item, "data", 0);
+            break;
+        case PIN_FLOW:
         case PIN_STRUCT: return false;
     }
     return true;
@@ -203,13 +212,19 @@ static bool read_pin_value(yyjson_val *item, pin_value *out)
             value.str = yyjson_get_str(data);
             break;
         case PIN_ENUM:
-            if (!yyjson_is_int(data)) {
+            if (!yyjson_is_int(data) || yyjson_get_sint(data) < INT32_MIN ||
+                yyjson_get_sint(data) > INT32_MAX) {
                 return false;
             }
             value.e = (int32_t)yyjson_get_sint(data);
             break;
-        case PIN_FLOW:
         case PIN_HANDLE:
+            if (!yyjson_is_uint(data) || yyjson_get_uint(data)) {
+                return false;
+            }
+            value.u64 = 0;
+            break;
+        case PIN_FLOW:
         case PIN_STRUCT: return false;
     }
     *out = value;
@@ -270,7 +285,12 @@ char *graph_collab_action_for_command(const editor *e, editor_command command)
                 "pin",
                 command.data.set_pin_default.pin_index
             );
-            if (!write_pin_value(doc, root, command.data.set_pin_default.value)) {
+            if (!write_pin_value(
+                    doc,
+                    root,
+                    "value",
+                    command.data.set_pin_default.value
+                )) {
                 yyjson_mut_doc_free(doc);
                 return NULL;
             }
@@ -415,10 +435,165 @@ char *graph_collab_action_reset_pin(const editor *e, const node *n, int pin_inde
     yyjson_mut_val *root = action_root(doc);
     yyjson_mut_obj_add_uint(doc, root, "node", n->id);
     yyjson_mut_obj_add_int(doc, root, "pin", pin_index);
-    if (!write_pin_value(doc, root, value)) {
+    if (!write_pin_value(doc, root, "value", value)) {
         yyjson_mut_doc_free(doc);
         return NULL;
     }
+    return action_finish(doc);
+}
+
+static bool write_pin_binding(yyjson_mut_doc *doc, yyjson_mut_val *root, const pin_binding *binding)
+{
+    if (!binding) {
+        yyjson_mut_obj_add_null(doc, root, "binding");
+        return true;
+    }
+    yyjson_mut_val *value = yyjson_mut_obj_add_obj(doc, root, "binding");
+    yyjson_mut_obj_add_int(doc, value, "kind", binding->kind);
+    switch (binding->kind) {
+        case PIN_BINDING_VARIABLE:
+            if (!binding->variable_id) {
+                return false;
+            }
+            yyjson_mut_obj_add_uint(doc, value, "variable", binding->variable_id);
+            if (binding->source_asset) {
+                yyjson_mut_obj_add_strcpy(doc, value, "source_asset", binding->source_asset);
+            }
+            return true;
+        case PIN_BINDING_COMPONENT_FIELD:
+            if (!binding->component_key || !binding->component_key[0] ||
+                !binding->field_name || !binding->field_name[0]) {
+                return false;
+            }
+            yyjson_mut_obj_add_strcpy(doc, value, "component", binding->component_key);
+            yyjson_mut_obj_add_strcpy(doc, value, "field", binding->field_name);
+            return true;
+        case PIN_BINDING_COMPONENT:
+            if (!binding->component_key || !binding->component_key[0] ||
+                binding->field_name) {
+                return false;
+            }
+            yyjson_mut_obj_add_strcpy(doc, value, "component", binding->component_key);
+            return true;
+        case PIN_BINDING_DELTA_TIME: return true;
+        case PIN_BINDING_LOCAL:
+            if (!binding->local_id) {
+                return false;
+            }
+            yyjson_mut_obj_add_uint(doc, value, "local", binding->local_id);
+            return true;
+        case PIN_BINDING_EVENT_OUTPUT:
+            if (!binding->event_node_id || !binding->event_pin_id) {
+                return false;
+            }
+            yyjson_mut_obj_add_uint(doc, value, "event_node", binding->event_node_id);
+            yyjson_mut_obj_add_uint(doc, value, "event_pin", binding->event_pin_id);
+            return true;
+    }
+    return false;
+}
+
+static bool graph_binding_allowed(const editor *e, const pin_binding *binding)
+{
+    if (!binding || binding->kind == PIN_BINDING_LOCAL || !e || !e->asset) {
+        return true;
+    }
+    switch (e->asset->domain) {
+        case BEHAVIOR_DOMAIN_LIBRARY:
+        case BEHAVIOR_DOMAIN_MATERIAL:
+        case BEHAVIOR_DOMAIN_SHAPE:
+        case BEHAVIOR_DOMAIN_EVENT_DEFINITION:
+        case BEHAVIOR_DOMAIN_SHADER_LIBRARY: return false;
+        case BEHAVIOR_DOMAIN_EVENT:
+        case BEHAVIOR_DOMAIN_FIELD: return true;
+    }
+    return false;
+}
+
+char *graph_collab_action_set_binding(
+    const editor *e,
+    const node *target,
+    int input_index,
+    const pin_binding *binding
+)
+{
+    if (!e || !e->asset || !e->active_graph || !target ||
+        graph_node_by_id(e->active_graph, target->id) != target ||
+        input_index < 0 || input_index >= target->input_count ||
+        target->input_pins[input_index].kind != PIN_DATA ||
+        (target->input_pins[input_index].flags & PIN_FLAG_SETTING)) {
+        return NULL;
+    }
+    if (!graph_binding_allowed(e, binding) ||
+        (binding && binding->kind == PIN_BINDING_LOCAL &&
+         !graph_local_by_id(e->active_graph, binding->local_id))) {
+        return NULL;
+    }
+    yyjson_mut_doc *doc = action_start(e, "set_binding", e->active_graph->graph_id);
+    yyjson_mut_val *root = action_root(doc);
+    yyjson_mut_obj_add_uint(doc, root, "node", target->id);
+    yyjson_mut_obj_add_uint(doc, root, "pin_id", target->input_pins[input_index].id);
+    if (!write_pin_binding(doc, root, binding)) {
+        yyjson_mut_doc_free(doc);
+        return NULL;
+    }
+    return action_finish(doc);
+}
+
+static bool input_default_matches(const pin_spec *spec, const pin_value *value)
+{
+    if (!spec || !value || spec->kind != PIN_DATA ||
+        (spec->flags & PIN_FLAG_SETTING) || spec->container != PIN_CONTAINER_SINGLE ||
+        value->container != PIN_CONTAINER_SINGLE || value->type != spec->type) {
+        return false;
+    }
+    return value->type != PIN_ENUM || registry_enum_label(spec->type_name, value->e);
+}
+
+char *graph_collab_action_set_input_default(
+    const editor *e,
+    const node *target,
+    int input_index,
+    const pin_value *value
+)
+{
+    if (!e || !e->asset || !e->active_graph || !target || !value ||
+        !behavior_asset_mutable(e->asset) || e->active_graph->flow_pause_count ||
+        graph_node_by_id(e->active_graph, target->id) != target ||
+        input_index < 0 || input_index >= target->input_count ||
+        !input_default_matches(&target->input_pins[input_index], value)) {
+        return NULL;
+    }
+    yyjson_mut_doc *doc = action_start(e, "set_binding", e->active_graph->graph_id);
+    yyjson_mut_val *root = action_root(doc);
+    yyjson_mut_obj_add_uint(doc, root, "node", target->id);
+    yyjson_mut_obj_add_uint(doc, root, "pin_id", target->input_pins[input_index].id);
+    yyjson_mut_obj_add_null(doc, root, "binding");
+    if (!write_pin_value(doc, root, "default", value)) {
+        yyjson_mut_doc_free(doc);
+        return NULL;
+    }
+    return action_finish(doc);
+}
+
+char *graph_collab_action_expand_inline(const editor *e, const node *target, int input_index)
+{
+    if (!e || !e->asset || !e->active_graph || !target ||
+        graph_node_by_id(e->active_graph, target->id) != target ||
+        input_index < 0 || input_index >= target->input_count ||
+        target->input_pins[input_index].kind != PIN_DATA) {
+        return NULL;
+    }
+    node *source = NULL;
+    int source_pin = -1;
+    if (!graph_input_source(e->active_graph, target, input_index, &source, &source_pin) ||
+        !graph_node_is_inline(e->active_graph, source)) {
+        return NULL;
+    }
+    yyjson_mut_doc *doc = action_start(e, "expand_inline", e->active_graph->graph_id);
+    yyjson_mut_val *root = action_root(doc);
+    yyjson_mut_obj_add_uint(doc, root, "node", target->id);
+    yyjson_mut_obj_add_uint(doc, root, "pin_id", target->input_pins[input_index].id);
     return action_finish(doc);
 }
 
@@ -551,15 +726,264 @@ static bool replay_spawn_match(editor *e, yyjson_val *root, char *error, size_t 
     float x = (float)yyjson_get_real(yyjson_obj_get(root, "x"));
     float y = (float)yyjson_get_real(yyjson_obj_get(root, "y"));
     yyjson_val *expected = yyjson_obj_get(root, "node");
-    node *made = yyjson_is_uint(expected) ? ed_spawn_match_at(e, match, x, y) : NULL;
+    uint64_t created_id = 0;
+    node *made = yyjson_is_uint(expected)
+                   ? ed_spawn_match_at_with_id(e, match, x, y, &created_id)
+                   : NULL;
     uint64_t expected_id = yyjson_get_uint(expected);
     e->spawn_link_pending = pending_link;
     e->spawn_link_pin = saved_link;
     afree(matches);
-    if (!made || made->id != expected_id) {
+    if (!created_id || created_id != expected_id || (made && made->id != expected_id)) {
         snprintf(error, error_size, "Graph node creation diverged from its expected ID");
         return false;
     }
+    return true;
+}
+
+static bool read_pin_binding(yyjson_val *value, pin_binding *out)
+{
+    yyjson_val *kind = yyjson_obj_get(value, "kind");
+    if (!yyjson_is_obj(value) || !yyjson_is_int(kind)) {
+        return false;
+    }
+    pin_binding binding = { .kind = yyjson_get_int(kind) };
+    yyjson_val *field = NULL;
+    switch (binding.kind) {
+        case PIN_BINDING_VARIABLE: {
+            yyjson_val *id = yyjson_obj_get(value, "variable");
+            yyjson_val *asset = yyjson_obj_get(value, "source_asset");
+            if (!yyjson_is_uint(id) || !yyjson_get_uint(id) ||
+                (asset && !yyjson_is_str(asset))) {
+                return false;
+            }
+            binding.variable_id = yyjson_get_uint(id);
+            binding.source_asset = yyjson_get_str(asset);
+            break;
+        }
+        case PIN_BINDING_COMPONENT_FIELD:
+            binding.component_key = yyjson_get_str(yyjson_obj_get(value, "component"));
+            binding.field_name = yyjson_get_str(yyjson_obj_get(value, "field"));
+            if (!binding.component_key || !binding.component_key[0] ||
+                !binding.field_name || !binding.field_name[0]) {
+                return false;
+            }
+            break;
+        case PIN_BINDING_COMPONENT:
+            binding.component_key = yyjson_get_str(yyjson_obj_get(value, "component"));
+            field = yyjson_obj_get(value, "field");
+            if (!binding.component_key || !binding.component_key[0] || field) {
+                return false;
+            }
+            break;
+        case PIN_BINDING_DELTA_TIME: break;
+        case PIN_BINDING_LOCAL: {
+            yyjson_val *id = yyjson_obj_get(value, "local");
+            if (!yyjson_is_uint(id) || !yyjson_get_uint(id)) {
+                return false;
+            }
+            binding.local_id = yyjson_get_uint(id);
+            break;
+        }
+        case PIN_BINDING_EVENT_OUTPUT: {
+            yyjson_val *node_id = yyjson_obj_get(value, "event_node");
+            yyjson_val *pin_id = yyjson_obj_get(value, "event_pin");
+            if (!yyjson_is_uint(node_id) || !yyjson_get_uint(node_id) ||
+                !yyjson_is_uint(pin_id) || !yyjson_get_uint(pin_id)) {
+                return false;
+            }
+            binding.event_node_id = yyjson_get_uint(node_id);
+            binding.event_pin_id = yyjson_get_uint(pin_id);
+            break;
+        }
+        default: return false;
+    }
+    *out = binding;
+    return true;
+}
+
+static void forget_removed_node(editor *e, node *n, uint64_t id)
+{
+    ed_remove_selected(e, n);
+    if (e->front_node == n) {
+        e->front_node = NULL;
+    }
+    if (e->spawn_link_pin.n == n) {
+        e->spawn_link_pin = (ed_pin_view){ 0 };
+    }
+    for (int i = acount(e->selected_links) - 1; i >= 0; i--) {
+        ed_link_ref link = e->selected_links[i];
+        if (link.from_id == id || link.to_id == id) {
+            adel(e->selected_links, i);
+        }
+    }
+}
+
+static int remove_inline_source(editor *e, node *source)
+{
+    graph *gr = e->active_graph;
+    uint64_t *ids = NULL;
+    graph_inline_tree(gr, source, &ids);
+    for (int i = 0; i < acount(ids); i++) {
+        node *part = graph_node_by_id(gr, ids[i]);
+        assert(part);
+        forget_removed_node(e, part, ids[i]);
+    }
+    int result = graph_remove_node_tree(gr, source);
+    afree(ids);
+    return result;
+}
+
+static bool local_binding_valid(graph *gr, node *target, int pin, const pin_binding *binding)
+{
+    const graph_local *local = graph_local_by_id(gr, binding->local_id);
+    node *source = local ? graph_node_by_id(gr, local->source_id) : NULL;
+    int output = 0, source_pin = -1;
+    const pin_spec *source_spec = source
+                                    ? graph_pin_by_id(source, local->source_pin_id, &output, &source_pin)
+                                    : NULL;
+    const pin_spec *target_spec = &target->input_pins[pin];
+    if (!source || source == target || !source_spec || !output ||
+        source_spec->kind != PIN_DATA ||
+        !ed_connection_specs_valid(source_spec, target_spec, PIN_DATA)) {
+        return false;
+    }
+    node *old_source = NULL;
+    int old_source_pin = -1;
+    if (graph_input_source(gr, target, pin, &old_source, &old_source_pin) &&
+        graph_node_is_inline(gr, old_source) && source != old_source) {
+        uint64_t *inline_ids = NULL;
+        graph_inline_tree(gr, old_source, &inline_ids);
+        bool source_is_inline = false;
+        for (int i = 0; i < acount(inline_ids); i++) {
+            source_is_inline |= inline_ids[i] == source->id;
+        }
+        afree(inline_ids);
+        if (source_is_inline) {
+            return false;
+        }
+    }
+    bool wildcard = (source_spec->flags | target_spec->flags) & PIN_FLAG_WILDCARD;
+    if (!pin_compatible(source_spec, target_spec) && !wildcard) {
+        return false;
+    }
+    if (target_spec->flags & PIN_FLAG_REFERENCE) {
+        pin_binding reference = { 0 };
+        return graph_resolve_reference(gr, source, source_pin, &reference) == 0;
+    }
+    return true;
+}
+
+static bool replace_input_binding(editor *e, node *target, int pin, const pin_binding *binding)
+{
+    graph *gr = e->active_graph;
+    const pin_binding *old_binding = graph_pin_binding(gr, target, 0, pin);
+    node *old_source = NULL;
+    int old_source_pin = -1;
+    bool has_source = graph_input_source(gr, target, pin, &old_source, &old_source_pin);
+    bool old_inline = has_source && graph_node_is_inline(gr, old_source);
+
+    if (binding && binding->kind == PIN_BINDING_LOCAL) {
+        if (!local_binding_valid(gr, target, pin, binding)) {
+            return false;
+        }
+        if (old_binding && graph_set_pin_binding(gr, target, 0, pin, NULL) != 0) {
+            return false;
+        }
+        if (graph_use_local(gr, binding->local_id, target, pin) != 0) {
+            return false;
+        }
+        const graph_local *local = graph_local_by_id(gr, binding->local_id);
+        node *local_source = graph_node_by_id(gr, local->source_id);
+        if (old_inline && old_source != local_source &&
+            remove_inline_source(e, old_source) != 0) {
+            return false;
+        }
+        graph_prune_locals(gr);
+        return true;
+    }
+
+    if (has_source) {
+        int removed = old_inline
+                        ? remove_inline_source(e, old_source)
+                        : graph_remove_edge(gr, old_source, old_source_pin, target, pin);
+        if (removed != 0) {
+            return false;
+        }
+    }
+    if (graph_pin_binding(gr, target, 0, pin) &&
+        graph_set_pin_binding(gr, target, 0, pin, NULL) != 0) {
+        return false;
+    }
+    return !binding || graph_set_pin_binding(gr, target, 0, pin, binding) == 0;
+}
+
+static bool apply_input_binding(
+    editor *e,
+    node *target,
+    int pin,
+    const pin_binding *binding,
+    const pin_value *default_value
+)
+{
+    if (!behavior_asset_mutable(e->asset) ||
+        e->active_graph->flow_pause_count || e->pending_snapshot ||
+        (default_value &&
+         (binding || !input_default_matches(&target->input_pins[pin], default_value)))) {
+        return false;
+    }
+    char *before = ed_snapshot(e);
+    if (!before) {
+        return false;
+    }
+    bool edit_pending = e->edit_pending;
+    bool arrange_pending = e->arrange_pending;
+    e->pending_snapshot = before;
+    bool success = replace_input_binding(e, target, pin, binding);
+    if (success && default_value) {
+        success = graph_set_pin_default(e->active_graph, target, 0, pin, default_value) ==
+                  0;
+    }
+    if (success) {
+        ed_commit_snapshot(e);
+        return true;
+    }
+    int restored = ed_adopt_behavior_asset(e, before);
+    assert(restored == 0);
+    (void)restored;
+    ed_cancel_snapshot(e);
+    e->edit_pending = edit_pending;
+    e->arrange_pending = arrange_pending;
+    return false;
+}
+
+static bool expand_inline_input(editor *e, node *target, int pin)
+{
+    graph *gr = e->active_graph;
+    node *source = NULL;
+    int source_pin = -1;
+    if (!graph_input_source(gr, target, pin, &source, &source_pin) ||
+        !graph_node_is_inline(gr, source)) {
+        return false;
+    }
+    uint64_t *ids = NULL;
+    graph_inline_tree(gr, source, &ids);
+    for (int i = 0; i < acount(ids); i++) {
+        if (!graph_node_by_id(gr, ids[i])) {
+            afree(ids);
+            return false;
+        }
+    }
+    ed_snapshot_before(e);
+    for (int i = 0; i < acount(ids); i++) {
+        node *part = graph_node_by_id(gr, ids[i]);
+        int result = graph_set_node_presentation(gr, part, NODE_PRESENTATION_EXPANDED);
+        assert(result == 0);
+        (void)result;
+        part->placed = false;
+    }
+    afree(ids);
+    e->arrange_pending = true;
     return true;
 }
 
@@ -639,7 +1063,8 @@ bool graph_collab_apply_action(editor *e, const char *json, char *error, size_t 
                                   .data.set_pin_default = { yyjson_get_uint(node_id),
                                                             yyjson_get_int(output),
                                                             yyjson_get_int(pin),
-                                                            &value } }
+                                                            &value,
+                                                            false } }
             );
         }
     } else if (!strcmp(op, "reset_pin")) {
@@ -657,6 +1082,51 @@ bool graph_collab_apply_action(editor *e, const char *json, char *error, size_t 
             if (result == 0) {
                 result = graph_set_pin_default(e->active_graph, n, 0, yyjson_get_int(pin), &value);
             }
+        }
+    } else if (!strcmp(op, "set_binding")) {
+        yyjson_val *node_id = yyjson_obj_get(root, "node"),
+                   *pin_id = yyjson_obj_get(root, "pin_id"),
+                   *value = yyjson_obj_get(root, "binding"),
+                   *default_json = yyjson_obj_get(root, "default");
+        node *n = yyjson_is_uint(node_id)
+                    ? graph_node_by_id(e->active_graph, yyjson_get_uint(node_id))
+                    : NULL;
+        int output = 0, pin = -1;
+        const pin_spec *spec = n && yyjson_is_uint(pin_id)
+                                 ? graph_pin_by_id(n, yyjson_get_uint(pin_id), &output, &pin)
+                                 : NULL;
+        pin_binding binding = { 0 };
+        pin_value default_value = { 0 };
+        bool clear = yyjson_is_null(value);
+        bool has_default = default_json != NULL;
+        bool valid_binding = clear || read_pin_binding(value, &binding);
+        bool binding_allowed = clear || graph_binding_allowed(e, &binding);
+        bool valid_default = !has_default ||
+                             read_pin_value(default_json, &default_value);
+        bool default_allowed = !has_default ||
+                               (clear && input_default_matches(spec, &default_value));
+        if (e->active_graph->graph_id == graph_id && spec && !output &&
+            spec->kind == PIN_DATA && !(spec->flags & PIN_FLAG_SETTING) &&
+            valid_binding && binding_allowed && valid_default && default_allowed &&
+            (clear || binding.kind != PIN_BINDING_LOCAL ||
+             local_binding_valid(e->active_graph, n, pin, &binding))) {
+            result = apply_input_binding(e, n, pin, clear ? NULL : &binding, has_default ? &default_value : NULL)
+                       ? 0
+                       : -1;
+        }
+    } else if (!strcmp(op, "expand_inline")) {
+        yyjson_val *node_id = yyjson_obj_get(root, "node"),
+                   *pin_id = yyjson_obj_get(root, "pin_id");
+        node *n = yyjson_is_uint(node_id)
+                    ? graph_node_by_id(e->active_graph, yyjson_get_uint(node_id))
+                    : NULL;
+        int output = 0, pin = -1;
+        const pin_spec *spec = n && yyjson_is_uint(pin_id)
+                                 ? graph_pin_by_id(n, yyjson_get_uint(pin_id), &output, &pin)
+                                 : NULL;
+        if (e->active_graph->graph_id == graph_id && spec && !output &&
+            spec->kind == PIN_DATA) {
+            result = expand_inline_input(e, n, pin) ? 0 : -1;
         }
     } else if (!strcmp(op, "connect")) {
         yyjson_val *kind = yyjson_obj_get(root, "kind"),

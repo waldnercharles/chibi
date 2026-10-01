@@ -185,7 +185,10 @@ bool ui_mount_sync(ui_mount *m, rml_element *root, rml_listener *listener, doubl
 {
     assert(root && listener);
     bool restyled = read_asset(m, time);
-    if (root != m->root) {
+    /* Layouts can destroy a host while a mount keeps its address. The next
+       host may reuse that address, so pointer equality alone is not enough. */
+    bool mounted = rml_element_has_attribute(root, "data-ui");
+    if (root != m->root || !mounted) {
         m->root = root;
         m->installed = false;
         rml_element_set_attribute(root, "data-ui", m->name);

@@ -5,13 +5,22 @@
 #include "editor/studio/studio_internal.h"
 #include "editor/ui/labels.h"
 #include "graph/model/pin_fmt.h"
+#include "graph/model/registry.h"
+#include "graph/model/type.h"
 #include "graph/runtime/value_array.h"
 #include "runtime/generated.h"
 #include "support/array.h"
+#include "support/xalloc.h"
 
+#include <assert.h>
+#include <ctype.h>
+#include <errno.h>
+#include <float.h>
+#include <inttypes.h>
 #include <math.h>
 #include <stddef.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 static const uint32_t TAB_ICONS[STUDIO_TAB_COUNT] = {
@@ -71,6 +80,108 @@ static void number_hints(
     if (hint->unit) {
         d->unit = hint->unit;
     }
+}
+
+static void number_bounds(pin_type type, kit_number_desc *d)
+{
+    double min, max;
+    switch (type) {
+        case PIN_I8:
+            min = INT8_MIN;
+            max = INT8_MAX;
+            break;
+        case PIN_U8:
+            min = 0;
+            max = UINT8_MAX;
+            break;
+        case PIN_I16:
+            min = INT16_MIN;
+            max = INT16_MAX;
+            break;
+        case PIN_U16:
+            min = 0;
+            max = UINT16_MAX;
+            break;
+        case PIN_I32:
+        case PIN_ENUM:
+            min = INT32_MIN;
+            max = INT32_MAX;
+            break;
+        case PIN_U32:
+            min = 0;
+            max = UINT32_MAX;
+            break;
+        case PIN_F32:
+            min = -FLT_MAX;
+            max = FLT_MAX;
+            break;
+        default: return;
+    }
+    bool bounded = d->min != 0 || d->max != 0;
+    d->min = bounded ? fmax(d->min, min) : min;
+    d->max = bounded ? fmin(d->max, max) : max;
+}
+
+static bool integer64_control(kit *k, pin_value *value, unsigned flags)
+{
+    char text[64];
+    if (value->type == PIN_I64) {
+        snprintf(text, sizeof text, "%" PRId64, value->i64);
+    } else {
+        snprintf(text, sizeof text, "%" PRIu64, value->u64);
+    }
+    if (!kit_text_field(k, "value", text, sizeof text, NULL, flags)) {
+        return false;
+    }
+    char *start = text;
+    while (isspace((unsigned char)*start)) {
+        start++;
+    }
+    if (value->type == PIN_U64 && *start == '-') {
+        return false;
+    }
+    errno = 0;
+    char *end;
+    pin_value parsed = *value;
+    if (value->type == PIN_I64) {
+        parsed.i64 = strtoimax(start, &end, 10);
+    } else {
+        parsed.u64 = strtoumax(start, &end, 10);
+    }
+    if (errno == ERANGE || end == start) {
+        return false;
+    }
+    while (isspace((unsigned char)*end)) {
+        end++;
+    }
+    if (*end) {
+        return false;
+    }
+    *value = parsed;
+    return true;
+}
+
+/* Reflected vectors are shown as one joined control with typed axes. */
+static const type_desc *vector_type(const pin_value *value)
+{
+    if (value->type != PIN_STRUCT || value->container != PIN_CONTAINER_SINGLE ||
+        !value->ptr) {
+        return NULL;
+    }
+    const type_desc *type = registry_type_by_name(value->type_name);
+    if (!type || type->field_count < 2 || type->field_count > 4 ||
+        !type_is_plain(type)) {
+        return NULL;
+    }
+    static const char *const axes[] = { "x", "y", "z", "w" };
+    for (int i = 0; i < type->field_count; i++) {
+        const type_field *axis = &type->fields[i];
+        if (!axis->name || strcmp(axis->name, axes[i]) ||
+            (axis->type != PIN_F32 && axis->type != PIN_F64)) {
+            return NULL;
+        }
+    }
+    return type;
 }
 
 void studio_properties_header(studio *s, int area)
@@ -140,27 +251,34 @@ static void write_field(
             finish_transform_edit(scene, false);
             scene->property_actor = actor->entity;
             scene->property_edit = (scene_field_edit){ .component = component,
-                                                       .field = field,
-                                                       .before = before,
-                                                       .after = before };
+                                                       .field = field };
+            if (!scene_property_value_copy(&scene->property_edit.before, before) ||
+                !scene_property_value_copy(&scene->property_edit.after, before)) {
+                abort();
+            }
             scene->property_dirty = scene->scene_dirty;
             pending = true;
         }
         if (scene_collab_can_write_locally()) {
             if (ecs_component_write_field(scene->world, actor->entity, component, field, value) ==
                 ECS_OK) {
-                ecs_component_read_field(
-                    scene->world,
-                    actor->entity,
-                    component,
-                    field,
-                    &scene->property_edit.after
-                );
+                pin_value written = { 0 };
+                if (ecs_component_read_field(scene->world, actor->entity, component, field, &written) !=
+                    ECS_OK) {
+                    abort();
+                }
+                scene_property_value_free(&scene->property_edit.after);
+                if (!scene_property_value_copy(&scene->property_edit.after, written)) {
+                    abort();
+                }
                 scene->scene_dirty = true;
                 asset_index_invalidate(scene);
             }
         } else if (scene_collab_is_editor()) {
-            scene->property_edit.after = value;
+            scene_property_value_free(&scene->property_edit.after);
+            if (!scene_property_value_copy(&scene->property_edit.after, value)) {
+                abort();
+            }
         }
     }
     if (pending && !active) {
@@ -198,6 +316,8 @@ static void position_row(studio *s, scene_actor *actor, bool locked)
     for (int axis = 0; axis < 2; axis++) {
         double v = axis ? position->y : position->x;
         kit_number_desc d = {
+            .min = -FLT_MAX,
+            .max = FLT_MAX,
             .step = 1,
             .precision = 2,
             .addon = axis ? "Y" : "X",
@@ -268,8 +388,42 @@ static bool value_control(
             const editor_choices *choices = property_choices(desc->type, field);
             int *slot = value->type == PIN_ENUM ? &value->e : &value->i;
             int count = choices ? editor_choices_count(choices) : 0;
-            if (count > 0 && count <= 32) {
-                const char *labels[32];
+            if (count > 0) {
+                int metadata_current = -1;
+                bool described = false;
+                for (int i = 0; i < count; i++) {
+                    editor_choice choice = editor_choice_at(choices, i);
+                    described |= choice.group || choice.icon;
+                    if (choice.value == *slot) {
+                        metadata_current = i;
+                    }
+                }
+                if (described) {
+                    kit_command_item *items = NULL;
+                    for (int i = 0; i < count; i++) {
+                        editor_choice choice = editor_choice_at(choices, i);
+                        apush(
+                            items,
+                            ((kit_command_item){ .label = choice.label,
+                                                 .group = choice.group,
+                                                 .keywords = choice.name,
+                                                 .icon = choice.icon,
+                                                 .current = i == metadata_current })
+                        );
+                    }
+                    int selected = metadata_current;
+                    if (kit_choice_items(k, "value", &selected, items, count, flags) &&
+                        selected >= 0) {
+                        *slot = editor_choice_at(choices, selected).value;
+                        changed = true;
+                    }
+                    afree(items);
+                    break;
+                }
+                const char *small_labels[32];
+                const char **labels = count <= 32
+                                        ? small_labels
+                                        : xmalloc((size_t)count * sizeof *labels);
                 int current = -1;
                 for (int i = 0; i < count; i++) {
                     editor_choice choice = editor_choice_at(choices, i);
@@ -284,11 +438,15 @@ static bool value_control(
                     *slot = editor_choice_at(choices, selected).value;
                     changed = true;
                 }
+                if (labels != small_labels) {
+                    free(labels);
+                }
                 break;
             }
             double v = *slot;
             kit_number_desc d = { .step = 1, .integer = true, .flags = flags };
             number_hints(s, desc, field, &d);
+            number_bounds(value->type, &d);
             changed = kit_number(k, "value", &v, &d);
             *slot = (int32_t)v;
             *active = kit_item_active(k) && !kit_item_committed(k);
@@ -306,20 +464,17 @@ static bool value_control(
         case PIN_I8:
         case PIN_U8:
         case PIN_I16:
-        case PIN_U16:
-        case PIN_I64:
-        case PIN_U64: {
+        case PIN_U16: {
             double v = value->type == PIN_U32 ? value->u
                      : value->type == PIN_I8  ? value->i8
                      : value->type == PIN_U8  ? value->u8
                      : value->type == PIN_I16 ? value->i16
-                     : value->type == PIN_U16 ? value->u16
-                     : value->type == PIN_I64 ? (double)value->i64
-                                              : (double)value->u64;
+                                              : value->u16;
             bool unsigned_type = value->type == PIN_U32 || value->type == PIN_U8 ||
                                  value->type == PIN_U16 || value->type == PIN_U64;
             kit_number_desc d = { .step = 1, .integer = true, .flags = flags };
             number_hints(s, desc, field, &d);
+            number_bounds(value->type, &d);
             changed = kit_number(k, "value", &v, &d);
             if (unsigned_type && v < 0) {
                 v = 0;
@@ -329,13 +484,16 @@ static bool value_control(
                 case PIN_I8: value->i8 = (int8_t)v; break;
                 case PIN_U8: value->u8 = (uint8_t)v; break;
                 case PIN_I16: value->i16 = (int16_t)v; break;
-                case PIN_U16: value->u16 = (uint16_t)v; break;
-                case PIN_I64: value->i64 = (int64_t)v; break;
-                default: value->u64 = (uint64_t)v; break;
+                default: value->u16 = (uint16_t)v; break;
             }
             *active = kit_item_active(k) && !kit_item_committed(k);
             break;
         }
+        case PIN_I64:
+        case PIN_U64:
+            changed = integer64_control(k, value, flags);
+            *active = kit_item_active(k) && !kit_item_committed(k);
+            break;
         case PIN_F32:
         case PIN_F64: {
             double v = value->type == PIN_F32 ? value->f : value->d;
@@ -349,6 +507,7 @@ static bool value_control(
                 d.precision = 1;
             }
             number_hints(s, desc, field, &d);
+            number_bounds(value->type, &d);
             changed = kit_number(k, "value", &v, &d);
             if (radians) {
                 v = v * M_PI / 180;
@@ -359,6 +518,53 @@ static bool value_control(
                 value->d = v;
             }
             *active = kit_item_active(k) && !kit_item_committed(k);
+            break;
+        }
+        case PIN_STRUCT: {
+            const type_desc *type = vector_type(value);
+            if (!type) {
+                break;
+            }
+            void *storage = xmalloc(type->size);
+            memcpy(storage, value->ptr, type->size);
+            static const char *const labels[] = { "X", "Y", "Z", "W" };
+            bool vector_active = false;
+            kit_push(k, "joined", NULL, "joined");
+            for (int i = 0; i < type->field_count; i++) {
+                const type_field *axis = &type->fields[i];
+                pin_value component = { 0 };
+                pin_read_field(storage, axis, &component);
+                double v = component.type == PIN_F32 ? component.f : component.d;
+                kit_number_desc d = { .step = fabs(v) >= 100 ? 1 : 0.1,
+                                      .precision = 2,
+                                      .addon = labels[i],
+                                      .addon_cls = i == 0 ? "x"
+                                                 : i == 1 ? "y"
+                                                          : NULL,
+                                      .flags = flags };
+                number_hints(s, desc, field, &d);
+                number_bounds(component.type, &d);
+                if (kit_number(k, axis->name, &v, &d)) {
+                    pin_value updated = { .type = component.type };
+                    if (component.type == PIN_F32) {
+                        updated.f = (float)v;
+                    } else {
+                        updated.d = v;
+                    }
+                    pin_write_field(storage, axis, updated);
+                    changed = true;
+                }
+                vector_active |= kit_item_active(k) && !kit_item_committed(k);
+            }
+            kit_pop(k);
+            *active = vector_active;
+            if (changed) {
+                *value = (pin_value){ .type = PIN_STRUCT,
+                                      .type_name = type->name,
+                                      .ptr = storage };
+            } else {
+                free(storage);
+            }
             break;
         }
         case PIN_NAME:
@@ -460,6 +666,7 @@ static void field_row(
     if (pending && scene_collab_is_editor()) {
         value = scene->property_edit.after;
     }
+    const void *original_struct = value.ptr;
     unsigned flags = (locked ? KIT_READONLY : 0) |
                      (field_overridden(scene, actor, component, index) ? KIT_OVERRIDDEN
                                                                        : 0);
@@ -483,6 +690,9 @@ static void field_row(
     field_tip(k, field, label);
     if (!locked) {
         write_field(s, actor, desc->id, index, before, value, changed, active);
+    }
+    if (value.type == PIN_STRUCT && value.ptr != original_struct) {
+        free(value.ptr);
     }
 }
 
@@ -853,6 +1063,7 @@ static void prototype_row(
     pin_value value = { 0 };
     char label[128], text[512], key[192];
     pin_read_field(component->data, field, &value);
+    const void *original_struct = value.ptr;
     if (!field_label(s, component, field, label, sizeof label)) {
         return;
     }
@@ -875,6 +1086,9 @@ static void prototype_row(
     kit_prop_end(k);
     field_tip(k, field, label);
     if (locked) {
+        if (value.type == PIN_STRUCT && value.ptr != original_struct) {
+            free(value.ptr);
+        }
         return;
     }
     snprintf(key, sizeof key, "%s.%s", component->desc->name, field->name);
@@ -889,6 +1103,9 @@ static void prototype_row(
     }
     if (gesture && !active) {
         s->prototype_edit[0] = '\0';
+    }
+    if (value.type == PIN_STRUCT && value.ptr != original_struct) {
+        free(value.ptr);
     }
 }
 

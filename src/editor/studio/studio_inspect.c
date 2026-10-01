@@ -992,7 +992,7 @@ static void edit_source(studio *s, const studio_inspect *in)
         sizeof path,
         "%s/ui/%.*s" UI_MARKUP_EXTENSION,
         in->target == STUDIO_INSPECT_GAME ? s->scene->content_root
-                                          : STUDIO_PROJECT "/content",
+                                          : resource_studio_content(),
         asset,
         m->source
     );

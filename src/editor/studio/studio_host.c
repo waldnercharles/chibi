@@ -642,7 +642,7 @@ static void share_project_prefs(studio *s)
 static void sync_theme(studio *s)
 {
     const char *name = s->ui ? studio_ui_page(s->ui) : "";
-    if (!ui_page_sync(&s->page, STUDIO_PROJECT "/content", name, s->time) &&
+    if (!ui_page_sync(&s->page, resource_studio_content(), name, s->time) &&
         !s->page.error[0]) {
         return;
     }
@@ -696,7 +696,6 @@ static studio *create(
     s->assets_hover = -1;
     s->cursor_shown = -1;
     s->hover_area = s->focus_area = s->maximized = -1;
-    s->followed_tab = s->followed_kind = -1;
     s->bound.behavior = -2;
     s->view.zoom = 1;
     s->view.x = s->view.y = 0.5f;

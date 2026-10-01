@@ -1,8 +1,13 @@
 #include "editor/documents/scene_history.h"
 
 #include "assets/physics_settings.h"
+#include "graph/document/serialize_internal.h"
+#include "graph/model/registry.h"
+#include "graph/model/type.h"
+#include "graph/runtime/value_array.h"
 #include "runtime/generated.h"
 #include "support/array.h"
+#include "support/xalloc.h"
 
 #include <assert.h>
 #include <math.h>
@@ -53,6 +58,10 @@ static void clear_edits(scene_edit **edits)
             if (fields[j].before.type == PIN_STR || fields[j].before.type == PIN_NAME) {
                 free((void *)fields[j].before.str);
                 free((void *)fields[j].after.str);
+            }
+            if (fields[j].before.type == PIN_STRUCT) {
+                free(fields[j].before.ptr);
+                free(fields[j].after.ptr);
             }
         }
         afree(fields);
@@ -153,6 +162,10 @@ static bool scalar(pin_value value)
         case PIN_HANDLE: return true;
         case PIN_F32: return isfinite(value.f);
         case PIN_F64: return isfinite(value.d);
+        case PIN_STRUCT: {
+            const type_desc *type = registry_type_by_name(value.type_name);
+            return value.ptr && type && type_value_is_finite(type, value.ptr);
+        }
         default: return false;
     }
 }
@@ -162,7 +175,7 @@ static bool same_type(pin_value a, pin_value b)
     if (a.type != b.type) {
         return false;
     }
-    if (a.type != PIN_ENUM && a.type != PIN_HANDLE) {
+    if (a.type != PIN_ENUM && a.type != PIN_HANDLE && a.type != PIN_STRUCT) {
         return true;
     }
     return a.type_name && b.type_name && strcmp(a.type_name, b.type_name) == 0;
@@ -186,6 +199,7 @@ static bool same_value(pin_value a, pin_value b)
         case PIN_ENUM: return a.e == b.e;
         case PIN_STR:
         case PIN_NAME: return !strcmp(a.str ? a.str : "", b.str ? b.str : "");
+        case PIN_STRUCT: return pin_value_equal(&a, &b);
         default: return false;
     }
 }
@@ -222,6 +236,14 @@ bool scene_history_push_fields(
         if (field.before.type == PIN_STR || field.before.type == PIN_NAME) {
             field.before.str = xstrdup(field.before.str ? field.before.str : "");
             field.after.str = xstrdup(field.after.str ? field.after.str : "");
+        }
+        if (field.before.type == PIN_STRUCT) {
+            const type_desc *type = registry_type_by_name(field.before.type_name);
+            assert(type && type_is_plain(type));
+            field.before.ptr = xmalloc(type->size);
+            field.after.ptr = xmalloc(type->size);
+            memcpy(field.before.ptr, fields[i].before.ptr, type->size);
+            memcpy(field.after.ptr, fields[i].after.ptr, type->size);
         }
         field.before.type_name = field.before.type_name
                                    ? xstrdup(field.before.type_name)
@@ -614,9 +636,40 @@ static yyjson_mut_val *history_value(yyjson_mut_doc *doc, pin_value value)
         case PIN_F64:
             yyjson_mut_obj_add_real(doc, object, "value", value.d);
             break;
+        case PIN_STRUCT:
+            serialize_write_value(doc, object, "value", value.type, value.type_name, &value);
+            break;
         default: assert(false);
     }
     return object;
+}
+
+static bool history_read_typed_value(pin_type type, const char *type_name, yyjson_val *json, pin_value *out)
+{
+    if (type != PIN_STRUCT) {
+        return serialize_read_value(type, type_name, json, out, NULL) == 0;
+    }
+    const type_desc *shape = registry_type_by_name(type_name);
+    if (!shape || !type_is_plain(shape) || !yyjson_is_obj(json)) {
+        return false;
+    }
+    void *data = xcalloc(1, shape->size);
+    for (int i = 0; i < shape->field_count; i++) {
+        const type_field *field = &shape->fields[i];
+        yyjson_val *member_json = yyjson_obj_get(json, field->name);
+        pin_value member = { 0 };
+        if (!member_json ||
+            !history_read_typed_value(field->type, field->type_name, member_json, &member)) {
+            free(data);
+            return false;
+        }
+        pin_write_field(data, field, member);
+        if (member.type == PIN_STRUCT) {
+            free(member.ptr);
+        }
+    }
+    *out = (pin_value){ .type = PIN_STRUCT, .type_name = type_name, .ptr = data };
+    return true;
 }
 
 static bool history_read_value(yyjson_val *object, pin_value *out)
@@ -628,6 +681,15 @@ static bool history_read_value(yyjson_val *object, pin_value *out)
     }
     out->type = yyjson_get_int(type);
     out->type_name = checkpoint_copy_text(object, "name");
+    if (out->type == PIN_STRUCT) {
+        yyjson_val *value_object = yyjson_obj_get(object, "value");
+        pin_value value = { 0 };
+        if (!history_read_typed_value(PIN_STRUCT, out->type_name, value_object, &value)) {
+            return false;
+        }
+        out->ptr = value.ptr;
+        return scalar(*out);
+    }
     if (out->type == PIN_STR || out->type == PIN_NAME) {
         if (!yyjson_is_str(value)) {
             return false;

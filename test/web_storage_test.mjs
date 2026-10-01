@@ -124,20 +124,22 @@ const byDefault = launch('', empty);
 byDefault.start();
 assert.equal(byDefault.Module.arguments[1], '/workspace/arena2d/');
 
-// A collaboration room runs from an isolated memory tree and never selects or
-// mutates the user's persistent project as its working directory.
-const room = launch('?room=room-123&role=host', fs);
+// Collaboration snapshots stage in an isolated memory tree and never mutate
+// the user's persistent project.
+const room = launch('?project=arena2d', fs);
 room.start();
-const roomPath = '/collab/room-123/project';
-assert.equal(room.Module.arguments[1], `${roomPath}/`);
-assert.equal(fs.file(`${roomPath}/content/scenes/Sandbox.yaml`), 'name: Sandbox\n');
+const collab = room.Module.chibiCollabStorage;
+const roomPath = collab.enterRoom('room-123', true);
+assert.equal(fs.file(`${roomPath}content/scenes/Sandbox.yaml`), 'name: Sandbox\n');
 assert.equal(fs.file('/workspace/.last'), 'arena2d');
-room.Module.chibiCollabStorage.installFiles([
+const snapshotRoot = collab.stageFiles([
   {path: 'project.yaml', data: new TextEncoder().encode(manifest)},
   {path: 'content/scenes/Shared.yaml', data: new TextEncoder().encode('name: Shared\n')},
 ]);
-assert.equal(fs.file(`${roomPath}/content/scenes/Sandbox.yaml`), undefined);
-assert.equal(fs.file(`${roomPath}/content/scenes/Shared.yaml`), 'name: Shared\n');
+collab.activateRoot(snapshotRoot);
+assert.equal(collab.root, snapshotRoot);
+assert.equal(fs.file(`${snapshotRoot}content/scenes/Sandbox.yaml`), undefined);
+assert.equal(fs.file(`${snapshotRoot}content/scenes/Shared.yaml`), 'name: Shared\n');
 assert.equal(fs.file('/workspace/arena2d/content/scenes/Sandbox.yaml'), 'name: Sandbox\n');
 
 // Saves flush once after a burst, ask to keep storage, and report failures.

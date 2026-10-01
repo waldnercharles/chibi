@@ -72,6 +72,8 @@ void open_popup(kit *k, const char *key, kit_rect anchor, bool at_point, float x
     free(p->parent);
     free(p->sub_hover);
     free(p->typed);
+    free(p->dropdown_placeholder);
+    free(p->dropdown_trigger_path);
     free(p->trigger);
     afree(p->items);
     rml_element *focus = rml_context_focus_element(k->context);
@@ -95,6 +97,86 @@ void open_popup(kit *k, const char *key, kit_rect anchor, bool at_point, float x
 static popup *top_popup(const kit *k)
 {
     return acount(k->popup_stack) ? alast(k->popup_stack) : NULL;
+}
+
+static popup *popup_for_trigger(const kit *k, const node *trigger)
+{
+    if (!trigger) {
+        return NULL;
+    }
+    for (int i = acount(k->popup_stack) - 1; i >= 0; i--) {
+        popup *p = k->popup_stack[i];
+        if (p->node && within(trigger->el, p->node->el)) {
+            return p;
+        }
+    }
+    return NULL;
+}
+
+static void close_popup_children(kit *k, popup *owner)
+{
+    while (top_popup(k) && top_popup(k) != owner) {
+        close_popup(k, top_popup(k)->key);
+    }
+}
+
+void popup_open_on(kit *k, const char *key, kit_rect anchor, const node *trigger)
+{
+    popup *owner = popup_for_trigger(k, trigger);
+    if (owner) {
+        close_popup_children(k, owner);
+    } else {
+        close_all_popups(k);
+    }
+    char *parent = owner ? xstrdup(owner->key) : NULL;
+    open_popup(k, key, anchor, false, 0, 0, parent);
+    free(parent);
+}
+
+void dropdown_open_on(kit *k, const char *key, kit_rect anchor, const char *placeholder, const node *trigger)
+{
+    popup *existing = popup_find(k, key);
+    if (existing && existing->open && existing->dropdown && trigger &&
+        str_eq(existing->dropdown_trigger_path, trigger->path)) {
+        close_popup(k, key);
+        rml_element_focus(trigger->el, true);
+        return;
+    }
+    popup_open_on(k, key, anchor, trigger);
+    popup *p = popup_at(k, key);
+    p->dropdown = true;
+    p->dropdown_focus = true;
+    str_set(&p->dropdown_placeholder, placeholder ? placeholder : "Search…");
+    if (trigger) {
+        str_set(&p->dropdown_trigger_path, trigger->path);
+    }
+}
+
+void autocomplete_open_on(kit *k, const char *key, kit_rect anchor, node *trigger)
+{
+    popup *existing = popup_find(k, key);
+    if (existing && existing->open) {
+        return;
+    }
+    popup_open_on(k, key, anchor, trigger);
+    popup *p = popup_at(k, key);
+    p->dropdown = true;
+    p->autocomplete = true;
+    p->autocomplete_opening = true;
+    if (trigger) {
+        str_set(&p->dropdown_trigger_path, trigger->path);
+    }
+}
+
+static void focus_dropdown_trigger(kit *k, const popup *p)
+{
+    if (!p->dropdown || !p->dropdown_trigger_path) {
+        return;
+    }
+    node *trigger = path_node(k, p->dropdown_trigger_path);
+    if (trigger) {
+        rml_element_focus(trigger->el, true);
+    }
 }
 
 static const char *menu_popup_key(kit *k, const node *trigger)
@@ -133,7 +215,7 @@ static rml_vec2 popup_origin(const kit *k, const popup *p, kit_rect size)
     if (p->at_point) {
         return (rml_vec2){ p->x, p->y };
     }
-    if (!str_eq(p->parent, "")) {
+    if (!str_eq(p->parent, "") && !p->dropdown) {
         float x = a.x + a.w + 2;
         if (x + size.w > k->in.width - 4) {
             x = a.x - size.w - 2;
@@ -167,6 +249,10 @@ void place_popups(kit *k)
         if (!p->placed) {
             p->placed = true;
             rml_element_remove_attribute(p->node->el, "data-unplaced");
+        }
+        if (p->dropdown_reveal && p->highlight >= 0 && p->highlight < acount(p->items)) {
+            rml_element_scroll_into_view(p->items[p->highlight]->el, RML_SCROLL_NEAREST, RML_SCROLL_NEAREST);
+            p->dropdown_reveal = false;
         }
         if (ready && p->popover && p->focus_pending &&
             (focus_step(p->node->el, NULL, 1, false, NULL) ||
@@ -281,7 +367,22 @@ void close_activated_menus(kit *k)
     for (int i = 0; i < cf_map_size(k->popups); i++) {
         popup *p = k->popups[i];
         if (p->open && p->activated) {
-            close_all_popups(k);
+            bool nested_dropdown = p->dropdown && p->parent && p->parent[0];
+            char *trigger_path = p->dropdown && p->dropdown_trigger_path
+                                   ? xstrdup(p->dropdown_trigger_path)
+                                   : NULL;
+            if (nested_dropdown) {
+                close_popup(k, p->key);
+            } else {
+                close_all_popups(k);
+            }
+            if (trigger_path) {
+                node *trigger = path_node(k, trigger_path);
+                if (trigger) {
+                    rml_element_focus(trigger->el, true);
+                }
+                free(trigger_path);
+            }
             return;
         }
     }
@@ -291,15 +392,23 @@ void close_activated_menus(kit *k)
 
 static bool opens_popup(node_kind kind)
 {
-    return kind == KIND_TRIGGER || kind == KIND_SELECT || kind == KIND_COLOR;
+    return kind == KIND_TRIGGER || kind == KIND_SELECT ||
+           kind == KIND_AUTOCOMPLETE || kind == KIND_COLOR;
 }
 
 /* Outside presses dismiss popups (Base UI outside-press). */
 void popup_press(kit *k, node *n, rml_element *target)
 {
-    for (int i = 0; i < acount(k->popup_stack); i++) {
+    for (int i = acount(k->popup_stack) - 1; i >= 0; i--) {
+        popup *p = k->popup_stack[i];
+        if (p->dropdown && n && str_eq(p->dropdown_trigger_path, n->path)) {
+            return;
+        }
+    }
+    for (int i = acount(k->popup_stack) - 1; i >= 0; i--) {
         popup *p = k->popup_stack[i];
         if (p->node && within(target, p->node->el)) {
+            close_popup_children(k, p);
             return;
         }
         node *trigger = path_node(k, p->trigger);
@@ -311,6 +420,17 @@ void popup_press(kit *k, node *n, rml_element *target)
         if (opens_popup(trigger->kind)) {
             return;
         }
+    }
+    for (int i = acount(k->popup_stack) - 1; i >= 0; i--) {
+        popup *p = k->popup_stack[i];
+        if (!p->autocomplete || !p->dropdown_trigger_path) {
+            continue;
+        }
+        node *field = path_node(k, p->dropdown_trigger_path);
+        if (field) {
+            rml_element_blur(field->w.input_el);
+        }
+        break;
     }
     close_all_popups(k);
 }
@@ -428,8 +548,17 @@ static bool apply_menu_key(kit *k, popup *p, rml_key key)
 {
     node *item = highlighted(p);
     switch (key) {
-        case RML_KEY_ESCAPE: close_popup(k, p->key); return true;
-        case RML_KEY_TAB: close_all_popups(k); return true;
+        case RML_KEY_ESCAPE:
+            close_popup(k, p->key);
+            focus_dropdown_trigger(k, p);
+            return true;
+        case RML_KEY_TAB:
+            if (p->dropdown && p->parent && p->parent[0]) {
+                close_popup(k, p->key);
+            } else {
+                close_all_popups(k);
+            }
+            return true;
         case RML_KEY_DOWN: move_highlight(p, 1, false); return true;
         case RML_KEY_UP: move_highlight(p, -1, false); return true;
         case RML_KEY_HOME: move_highlight(p, 1, true); return true;
@@ -497,6 +626,103 @@ bool popup_key(kit *k, const rml_event *e)
     return true;
 }
 
+/* The search field owns ordinary typing. Its dropdown still owns navigation
+ * and selection keys, so Up/Down and Enter work without leaving the field. */
+bool dropdown_key(kit *k, const rml_event *e, node *n)
+{
+    popup *top = top_popup(k);
+    if (!top || !top->dropdown || !n || n->kind != KIND_SEARCH ||
+        e->target != top->dropdown_search) {
+        return false;
+    }
+    switch (e->key) {
+        case RML_KEY_DOWN: move_highlight(top, 1, false); break;
+        case RML_KEY_UP: move_highlight(top, -1, false); break;
+        case RML_KEY_RETURN:
+        case RML_KEY_NUMPADENTER:
+            activate_item(k, top, highlighted(top));
+            break;
+        default: return false;
+    }
+    rml_event_stop_propagation(e);
+    return true;
+}
+
+bool autocomplete_key(kit *k, const rml_event *e, node *n)
+{
+    if (!n || n->kind != KIND_AUTOCOMPLETE || e->target != n->w.input_el) {
+        return false;
+    }
+    if (n->w.desc.flags & (KIT_READONLY | KIT_DISABLED)) {
+        return false;
+    }
+    const char *key = frame_format(k, "autocomplete:%s", n->path);
+    popup *p = popup_find(k, key);
+    switch (e->key) {
+        case RML_KEY_DOWN:
+        case RML_KEY_UP: {
+            if (!p || !p->open) {
+                autocomplete_open_on(k, key, element_rect(k, n->el), n);
+                p = popup_find(k, key);
+            }
+            p->keyboard = true;
+            const char *query = n->w.autocomplete_query_active ? n->w.draft : "";
+            if (str_eq(p->dropdown_query, query)) {
+                move_highlight(p, e->key == RML_KEY_DOWN ? 1 : -1, false);
+            } else {
+                p->highlight = -1;
+            }
+            node *item = highlighted(p);
+            if (item) {
+                rml_element_set_attribute(n->w.input_el, "aria-activedescendant", item->path);
+            } else {
+                rml_element_remove_attribute(n->w.input_el, "aria-activedescendant");
+            }
+            rml_event_stop_propagation(e);
+            return true;
+        }
+        case RML_KEY_RETURN:
+        case RML_KEY_NUMPADENTER: {
+            const char *query = n->w.autocomplete_query_active ? n->w.draft : "";
+            if (p && p->open && str_eq(p->dropdown_query, query) &&
+                highlighted(p) && item_enabled(highlighted(p))) {
+                activate_item(k, p, highlighted(p));
+            } else {
+                n->w.autocomplete_submitted = true;
+            }
+            rml_event_stop_propagation(e);
+            return true;
+        }
+        case RML_KEY_ESCAPE:
+            if (p && p->open) {
+                close_popup(k, key);
+            }
+            str_set(&n->w.draft, n->w.applied);
+            n->w.autocomplete_query_active = false;
+            n->w.autocomplete_canceled = true;
+            rml_element_set_value(n->w.input_el, n->w.applied ? n->w.applied : "");
+            rml_element_focus(n->w.input_el, true);
+            rml_event_stop_propagation(e);
+            return true;
+        case RML_KEY_TAB:
+            if (!(event_modifiers(e) & KIT_MOD_SHIFT) && p && p->open &&
+                str_eq(p->dropdown_query, n->w.autocomplete_query_active ? n->w.draft : "") &&
+                highlighted(p) && item_enabled(highlighted(p))) {
+                activate_item(k, p, highlighted(p));
+                rml_event_stop_propagation(e);
+                return true;
+            }
+            if (p && p->open) {
+                close_popup(k, key);
+            }
+            str_set(&n->w.draft, n->w.applied);
+            n->w.autocomplete_query_active = false;
+            rml_element_set_value(n->w.input_el, n->w.applied ? n->w.applied : "");
+            return true;
+        default: return false;
+    }
+}
+
 void popup_focus(kit *k, rml_element *target)
 {
     popup *top = top_popup(k);
@@ -520,10 +746,36 @@ void popup_focus(kit *k, rml_element *target)
 
 void kit_popup_open(kit *k, const char *key)
 {
-    close_all_popups(k);
     kit_rect anchor = k->last ? element_rect(k, k->last->el) : (kit_rect){ 0 };
-    open_popup(k, key, anchor, false, 0, 0, "");
+    node *trigger = k->last && k->last->kind == KIND_BUTTON &&
+                            (k->last->events & EV_CLICK)
+                      ? k->last
+                      : NULL;
+    popup_open_on(k, key, anchor, trigger);
     str_set(&popup_at(k, key)->trigger, k->last ? k->last->path : "");
+}
+
+void kit_dropdown_open(kit *k, const char *key, const char *placeholder)
+{
+    kit_rect anchor = k->last ? element_rect(k, k->last->el) : (kit_rect){ 0 };
+    dropdown_open_on(k, key, anchor, placeholder, k->last);
+}
+
+void kit_dropdown_open_at(kit *k, const char *key, kit_rect anchor, const char *placeholder)
+{
+    dropdown_open_on(k, key, anchor, placeholder, k->last);
+}
+
+bool kit_dropdown_is_open(const kit *k, const char *key)
+{
+    popup *p = popup_find(k, key);
+    return p && p->open && p->dropdown;
+}
+
+const char *kit_dropdown_query(const kit *k, const char *key)
+{
+    popup *p = popup_find(k, key);
+    return p && p->dropdown ? p->dropdown_query : "";
 }
 
 void kit_popup_open_at(kit *k, const char *key, float x, float y)
@@ -607,6 +859,7 @@ void kit_popup_end(kit *k)
 /* The shortcut, or a submenu's chevron. */
 static void set_row_meta(widget *w, bool sub, const char *shortcut)
 {
+    flag_element(w->kbd_el, "data-empty", !sub && (!shortcut || !shortcut[0]));
     char *rml = NULL;
     if (sub) {
         char chevron[5];
@@ -631,7 +884,7 @@ static float trail_width(kit *k, bool sub, const char *shortcut)
     if (!shortcut || !shortcut[0]) {
         return 0;
     }
-    return 24 + kit_text_width(k, shortcut, 11, 400, dp_ratio(k));
+    return 8 + 24 + kit_text_width(k, shortcut, 11, 400, dp_ratio(k));
 }
 
 /* Padding, lead icon and gaps, then the label and the shortcut or chevron. */
@@ -660,7 +913,9 @@ static node *menu_row(kit *k, const char *key, node_kind kind, const kit_menu_it
     widget *w = &n->w;
     if (!w->label_el) {
         w->icon_el = raw_icon(n->el, "lead", 0);
-        w->label_el = raw(n->el, "span", "label", NULL);
+        w->head_el = raw(n->el, "div", "text", NULL);
+        w->label_el = raw(w->head_el, "span", "label", NULL);
+        w->about_el = raw(w->head_el, "span", "about", NULL);
         w->kbd_el = raw(n->el, "span", "kbd", NULL);
     }
     uint32_t lead = d->checked >= 0 ? (d->checked ? KIT_ICON_CHECK : 0)
@@ -679,10 +934,20 @@ static node *menu_row(kit *k, const char *key, node_kind kind, const kit_menu_it
     if (str_set(&w->label, d->label)) {
         set_inner_text(w->label_el, w->label);
     }
+    set_element_text(w->about_el, d->description);
+    set_flag(n, "data-described", d->description && d->description[0]);
     set_row_meta(w, sub, d->shortcut);
     set_flag(n, "data-disabled", d->disabled);
     set_flag(n, "data-checked", d->checked > 0);
-    fit_row(k, row_width(k, sub, w->label, d->shortcut));
+    float width = row_width(k, sub, w->label, d->shortcut);
+    if (d->description && d->description[0]) {
+        width = math_max(
+            width,
+            6 + 16 + 8 + kit_text_width(k, d->description, 11, 400, dp_ratio(k)) +
+                8 + trail_width(k, sub, d->shortcut)
+        );
+    }
+    fit_row(k, width);
     popup *p = emitting_popup(k);
     if (p) {
         apush(p->items, n);
@@ -814,7 +1079,8 @@ static void show_tip(kit *k, rml_element *target)
     snprintf(size, sizeof size, "%.2fdp", tip_size * tip_scale(k));
     rml_element_set_property(k->tooltip, "font-size", size);
     rml_element_set_property(k->tooltip, "display", "block");
-    /* Warm tooltips in a group switch instantly (Base UI); a cold one fades in. */
+    /* Warm tooltips in a group switch instantly (Base UI); a cold one fades in.
+     */
     flag_element(k->tooltip, "data-instant", k->in.time < k->tip_warm_until);
     flag_element(k->tooltip, "data-starting-style", !k->reduced_motion);
     k->tip_shown_frame = k->frame;

@@ -39,6 +39,20 @@ Blender, Unreal, ComfyUI and others).
 
 Use the kit primitive. If it is missing, add it to the kit following that library's
 contract instead of building a one-off in the panel.
+Before changing a component, inspect and reuse comparable controls already in
+Studio. Before calling it finished, compare its text baselines, icon alignment,
+spacing, grouping and interaction states with those controls in a rendered view.
+
+Pane and graph fields must use controls that match their reflected type: checkboxes
+for booleans, numeric editors for quantities, color pickers for colors, and asset
+pickers for references. Integers that represent choices must be named enums shown
+as searchable dropdowns, including every enum value. Anchor dropdowns to their
+field, and keep labels, values and icons vertically aligned. Graph inputs, bindings
+and folded sources must remain editable in their node and in Properties. Use one
+editable field with type-aware autocomplete for graph sources: typing a literal
+sets a constant, and typing a property path browses compatible fields. Do not add
+a separate source-kind picker for actions the same field can handle. Group input
+controls by device type and reuse the Studio icon set.
 
 Common mismatches to catch:
 

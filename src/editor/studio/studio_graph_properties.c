@@ -120,7 +120,7 @@ static const char *added_input(const graph *gr, const node *n, char **before)
 
 /* Inputs match by name, so a rename drops its wire, as in Unreal's Math
    Expression; the toast keeps it, or undoes an edit that dropped several. */
-static void offer_rewire(studio *s, const node *n, char **before, char **lost)
+static void offer_rewire(studio *s, kit *k, const node *n, char **before, char **lost, const char *source)
 {
     studio_graph *g = &s->graph;
     const char *to = acount(lost) == 1 ? added_input(sg_active_graph(s), n, before)
@@ -129,12 +129,12 @@ static void offer_rewire(studio *s, const node *n, char **before, char **lost)
     snprintf(title, sizeof title, "Unwired %s%s", lost[0], acount(lost) > 1 ? " and more" : "");
     snprintf(g->rewire.from, sizeof g->rewire.from, "%s", to ? lost[0] : "");
     snprintf(g->rewire.to, sizeof g->rewire.to, "%s", to ? to : "");
-    snprintf(g->rewire.source, sizeof g->rewire.source, "%s", g->expression);
+    snprintf(g->rewire.source, sizeof g->rewire.source, "%s", source);
     g->rewire.node = n->id;
     g->rewire.history = acount(sg_graph_editor(s)->undo);
-    kit_toast_dismiss(s->kit, g->rewire.toast);
+    kit_toast_dismiss(k, g->rewire.toast);
     g->rewire.toast = kit_toast(
-        s->kit,
+        k,
         0,
         &(kit_toast_desc){ .type = KIT_TOAST_WARNING,
                            .title = title,
@@ -152,28 +152,37 @@ static char **input_names(const node *n)
     return names;
 }
 
-static void set_expression(studio *s, node *n)
+int sg_set_expression_source(studio *s, node *n, const char *source)
 {
     studio_graph *g = &s->graph;
     graph *gr = sg_active_graph(s);
     char **before = input_names(n), **lost = behavior_expression_fed_inputs(gr, n);
     behavior_expression_error error = { 0 };
-    if (editor_set_behavior_expression(sg_graph_editor(s), n, g->expression, &error) != 0) {
+    if (editor_set_behavior_expression(sg_graph_editor(s), n, source, &error) != 0) {
         snprintf(
             g->expression_error,
             sizeof g->expression_error,
             "%s",
             error.message[0] ? error.message : "Invalid expression"
         );
+        behavior_expression_free_names(before);
+        behavior_expression_free_names(lost);
+        return -1;
     } else {
         g->expression_error[0] = '\0';
         behavior_expression_keep_unfed(gr, n, &lost);
         if (acount(lost)) {
-            offer_rewire(s, n, before, lost);
+            offer_rewire(s, s->kit, n, before, lost, source);
         }
     }
     behavior_expression_free_names(before);
     behavior_expression_free_names(lost);
+    return 0;
+}
+
+static void set_expression(studio *s, node *n)
+{
+    sg_set_expression_source(s, n, s->graph.expression);
 }
 
 void studio_rewire_toast(studio *s)
@@ -229,7 +238,7 @@ void studio_node_properties(studio *s)
         kit_label(k, "empty", "prop-empty", "No node selected");
         return;
     }
-    char title[256], label[160], text[256];
+    char title[256], label[160];
     bool readonly = sg_graph_readonly(s);
     sg_identity(
         k,
@@ -271,27 +280,10 @@ void studio_node_properties(studio *s)
             snprintf(key, sizeof key, "i%d", p);
             ed_pin_label(n, spec, label, sizeof label);
             kit_prop_begin(k, key, label);
-            node *src = NULL;
-            int src_pin = -1;
             if (spec->kind == PIN_EXEC) {
                 kit_label(k, "v", "dim", "Execution");
-            } else if (graph_input_source(gr, n, p, &src, &src_pin)) {
-                char source[160];
-                ed_pin_label(src, &src->output_pins[src_pin], source, sizeof source);
-                snprintf(
-                    text,
-                    sizeof text,
-                    "%s \xe2\x80\xba %s",
-                    ed_node_title(e, src, title, sizeof title),
-                    source
-                );
-                kit_label(k, "v", "dim", text);
-            } else if (spec->binding) {
-                kit_label(k, "v", "chip", ed_binding_label(e, spec->binding, text, sizeof text));
-            } else if (!readonly && sg_value_kind_of(s, n, 0, p) != VALUE_NONE) {
-                sg_emit_value_in(s, k, n, 0, p);
             } else {
-                kit_label(k, "v", "dim", ed_pin_type_name(spec));
+                sg_emit_graph_input(s, k, n, p);
             }
             kit_prop_end(k);
         }

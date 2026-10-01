@@ -4,6 +4,8 @@
 #include "graph/authoring/describe.h"
 #include "graph/model/behavior_asset.h"
 
+#include <stdint.h>
+
 typedef struct editor editor;
 struct ui_event;
 struct ui_data_binding;
@@ -34,5 +36,8 @@ node_subject ed_search_match_subject(const editor *e, const ed_search_match *mat
  * and event naming apply, and a pending link-drag wires the new node. Comment
  * boxes are created and return NULL. */
 node *ed_spawn_match_at(editor *e, const ed_search_match *match, float x, float y);
+/* Returns the surviving node and reports its allocated ID even when autowiring
+ * folds it into an inline source. */
+node *ed_spawn_match_at_with_id(editor *e, const ed_search_match *match, float x, float y, uint64_t *created_id);
 
 #endif

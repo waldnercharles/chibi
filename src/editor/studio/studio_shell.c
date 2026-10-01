@@ -203,11 +203,8 @@ bool studio_can_replay(studio *s, bool redo)
         scene_prototype_asset *asset = selected_prototype(scene);
         return asset && acount(redo ? asset->redo : asset->undo) > 0;
     }
-    if (scene->document.kind == APP_EDITOR_DOCUMENT_SCENE) {
-        return redo ? scene_history_can_redo(scene->history)
-                    : scene_history_can_undo(scene->history);
-    }
-    return false;
+    return redo ? scene_history_can_redo(scene->history)
+                : scene_history_can_undo(scene->history);
 }
 
 bool studio_active_dirty(studio *s)

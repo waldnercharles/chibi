@@ -20,8 +20,12 @@
 #include <unistd.h>
 
 #define FRAME_SECONDS (1.0 / 60.0)
+#define STRINGIFY_INNER(value) #value
+#define STRINGIFY(value) STRINGIFY_INNER(value)
+#define PROJECT_VERSION_TEXT STRINGIFY(CHIBI_PROJECT_VERSION)
 #define MANIFEST                                                               \
-    "version: 3\nname: Fresh\ncontent: content\nstart_scene: "                 \
+    "version: " PROJECT_VERSION_TEXT                                           \
+    "\nname: Fresh\ncontent: content\nstart_scene: "                           \
     "scenes/Main.yaml\n"
 
 typedef struct
@@ -356,7 +360,7 @@ static void project_settings_write()
     frames(&f, 3);
     rml_element *name = settings_element(s, "[data-ui=Settings] .text-control input");
     rml_element *start = settings_element(s, "[data-ui=Settings] select");
-    char shown[64] = "";
+    char shown[64] = "", selected[128] = "";
     if (name && start) {
         rml_element_value(name, shown, sizeof shown);
         rml_element_set_value(start, "scenes/Boss.yaml");
@@ -370,28 +374,33 @@ static void project_settings_write()
         rml_element_blur(name);
     }
     frames(&f, 3);
+    if (start) {
+        rml_element_value(start, selected, sizeof selected);
+    }
     join(path, sizeof path, f.root, CHIBI_PROJECT_MANIFEST);
     char *manifest = text_file_read(path);
-    const char *expected = "version: 3\nname: Renamed\ncontent: content\n"
+    const char *expected = "version: " PROJECT_VERSION_TEXT
+                           "\nname: Renamed\ncontent: content\n"
                            "start_scene: scenes/Boss.yaml\n";
     bool written = manifest && !strcmp(manifest, expected);
-    bool applied = s->project.start_scene &&
-                   !strcmp(s->project.start_scene, "scenes/Boss.yaml");
-    if (!(scope && !strcmp(shown, "Fresh") && written && applied)) {
+    bool current_scene = s->project.start_scene &&
+                         !strcmp(s->project.start_scene, "scenes/Boss.yaml");
+    if (!(scope && name && start && !strcmp(shown, "Fresh") && written && current_scene)) {
         printf(
-            "  project settings: scope=%p name=%p start=%p shown='%s' "
-            "in_memory_start='%s' written=%d current_manifest:\n%s\n",
+            "  scope=%p name=%p start=%p shown='%s' selected='%s' model='%s' "
+            "written=%d\n",
             (void *)scope,
             (void *)name,
             (void *)start,
             shown,
+            selected,
             s->project.start_scene ? s->project.start_scene : "(none)",
-            written,
-            manifest ? manifest : "(none)"
+            written
         );
+        printf("  manifest:\n%s\n", manifest ? manifest : "(none)");
     }
     test_check(
-        scope && !strcmp(shown, "Fresh") && written && applied,
+        scope && name && start && !strcmp(shown, "Fresh") && written && current_scene,
         "Settings ▸ Project renames the project and sets its start scene in "
         "project.yaml"
     );

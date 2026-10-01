@@ -4,9 +4,44 @@
 #include "graph/model/local.h"
 #include "graph/model/pin_conv.h"
 #include "graph/nodes/component_nodes.h"
+#include "graph/shader/shader_graph.h"
 
 #include <stdio.h>
 #include <string.h>
+
+static const editor_choice ramp_interpolation_items[] = {
+    { .value = 0, .label = "Linear" },
+    { .value = 1, .label = "Constant" },
+    { .value = 2, .label = "Smoothstep" },
+};
+static const editor_choices ramp_interpolation_choices = {
+    .items = ramp_interpolation_items,
+    .count = sizeof ramp_interpolation_items / sizeof *ramp_interpolation_items,
+};
+static const editor_choice image_color_space_items[] = {
+    { .value = SHADER_IMAGE_SRGB, .label = "sRGB" },
+    { .value = SHADER_IMAGE_LINEAR, .label = "Linear" },
+};
+static const editor_choices image_color_space_choices = {
+    .items = image_color_space_items,
+    .count = sizeof image_color_space_items / sizeof *image_color_space_items,
+};
+static const editor_choice image_filter_items[] = {
+    { .value = SHADER_IMAGE_NEAREST, .label = "Nearest" },
+    { .value = SHADER_IMAGE_BILINEAR, .label = "Bilinear" },
+};
+static const editor_choices image_filter_choices = {
+    .items = image_filter_items,
+    .count = sizeof image_filter_items / sizeof *image_filter_items,
+};
+static const editor_choice image_wrap_items[] = {
+    { .value = SHADER_IMAGE_REPEAT, .label = "Repeat" },
+    { .value = SHADER_IMAGE_CLAMP, .label = "Clamp" },
+};
+static const editor_choices image_wrap_choices = {
+    .items = image_wrap_items,
+    .count = sizeof image_wrap_items / sizeof *image_wrap_items,
+};
 
 const char *ed_pin_type_name(const pin_spec *spec)
 {
@@ -118,7 +153,20 @@ const editor_choices *ed_pin_choices(editor *e, node *n, int output, int index)
     const editor_choices *choices = e->choices_resolver
                                       ? e->choices_resolver(n, output, index, e->choices_user)
                                       : NULL;
-    return choices                ? choices
-         : spec->type == PIN_ENUM ? editor_choices_for_enum(spec->type_name)
-                                  : NULL;
+    if (choices) {
+        return choices;
+    }
+    if (n->desc == registry_node_by_name("Shader Color Ramp") && index == 2) {
+        return &ramp_interpolation_choices;
+    }
+    if (n->desc == registry_node_by_name("Shader Image Texture")) {
+        switch (index) {
+            case SHADER_IMAGE_INPUT_COLOR_SPACE:
+                return &image_color_space_choices;
+            case SHADER_IMAGE_INPUT_FILTER: return &image_filter_choices;
+            case SHADER_IMAGE_INPUT_WRAP: return &image_wrap_choices;
+            default: break;
+        }
+    }
+    return spec->type == PIN_ENUM ? editor_choices_for_enum(spec->type_name) : NULL;
 }

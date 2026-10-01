@@ -1,6 +1,8 @@
 #include "assets/scene_document.h"
+#include "editor/collab/actions_scene.h"
 #include "editor/workspace/editor.h"
 #include "editor/workspace/scene_internal.h"
+#include "graph/document/serialize_internal.h"
 #include "graph/model/registry.h"
 #include "runtime/generated.h"
 #include "support/array.h"
@@ -211,7 +213,50 @@ static void prototype_vectors_and_text(app_scene_authoring *scene, ecs_world *wo
     );
     text[0] = 'X';
     assert(!strcmp(GAME_GameUi_get_const(world, entity)->document, "Guide"));
-    puts("prototype fields PASS: vector Undo/Redo and owned text reach instances");
+
+    scene_authoring_select_document(scene, APP_EDITOR_DOCUMENT_SCENE, APP_SCENE_DOCUMENT_ID);
+    scene_actor *actor = NULL;
+    for (int i = 0; i < acount(scene->actors); i++) {
+        if (ecs_entity_to_u64(scene->actors[i].entity) == ecs_entity_to_u64(entity)) {
+            actor = &scene->actors[i];
+            break;
+        }
+    }
+    assert(actor);
+    CF_V2 replayed = { -4.5f, 7.25f };
+    yyjson_mut_doc *doc = NULL;
+    yyjson_mut_val *root = scene_action_root(scene, "property.set", &doc);
+    yyjson_mut_obj_add_uint(doc, root, "actor", actor->identity);
+    yyjson_mut_obj_add_strcpy(doc, root, "component", "GameAim");
+    yyjson_mut_obj_add_strcpy(doc, root, "field", "direction");
+    serialize_write_value(
+        doc,
+        root,
+        "value",
+        PIN_STRUCT,
+        "CF_V2",
+        &(pin_value){ .type = PIN_STRUCT, .type_name = "CF_V2", .ptr = &replayed }
+    );
+    char *action = scene_action_write(doc);
+    char error[256] = { 0 };
+    assert(action && scene_collab_apply_action(scene, action, error, sizeof error));
+    free(action);
+    assert(GAME_GameAim_get_const(world, entity)->direction.x == replayed.x);
+    assert(GAME_GameAim_get_const(world, entity)->direction.y == replayed.y);
+    root = scene_action_root(scene, "property.set", &doc);
+    yyjson_mut_obj_add_uint(doc, root, "actor", actor->identity);
+    yyjson_mut_obj_add_strcpy(doc, root, "component", "GameAim");
+    yyjson_mut_obj_add_strcpy(doc, root, "field", "direction");
+    yyjson_mut_val *invalid = yyjson_mut_obj(doc);
+    yyjson_mut_obj_add_val(doc, root, "value", invalid);
+    yyjson_mut_obj_add_real(doc, invalid, "x", 1e39);
+    yyjson_mut_obj_add_real(doc, invalid, "y", 2);
+    action = scene_action_write(doc);
+    assert(action && !scene_collab_apply_action(scene, action, error, sizeof error));
+    free(action);
+    assert(GAME_GameAim_get_const(world, entity)->direction.x == replayed.x);
+    assert(GAME_GameAim_get_const(world, entity)->direction.y == replayed.y);
+    puts("prototype and scene vectors PASS: prototype Undo/Redo, collab replay, and owned text");
 }
 
 /* The file at `path`, which `canonical` turns into the text

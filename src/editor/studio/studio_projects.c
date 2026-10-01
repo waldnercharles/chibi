@@ -71,18 +71,29 @@ void studio_projects_load(studio *s)
         return;
     }
 #endif
-    add_project(s, CHIBI_WORKSPACE_DIR "/" CHIBI_PROJECT_MANIFEST);
-    DIR *dir = opendir(CHIBI_WORKSPACE_DIR "/projects");
+    const char *workspace = resource_workspace();
+    if (!workspace) {
+        char manifest[4096];
+        snprintf(manifest, sizeof manifest, "%s/" CHIBI_PROJECT_MANIFEST, s->project_root);
+        add_project(s, manifest);
+        return;
+    }
+    char manifest[4096];
+    snprintf(manifest, sizeof manifest, "%s/" CHIBI_PROJECT_MANIFEST, workspace);
+    add_project(s, manifest);
+    char projects[4096];
+    snprintf(projects, sizeof projects, "%s/projects", workspace);
+    DIR *dir = opendir(projects);
     struct dirent *entry;
     while (dir && (entry = readdir(dir))) {
         if (entry->d_name[0] == '.') {
             continue;
         }
-        char manifest[1024];
         snprintf(
             manifest,
             sizeof manifest,
-            CHIBI_WORKSPACE_DIR "/projects/%s/" CHIBI_PROJECT_MANIFEST,
+            "%s/projects/%s/" CHIBI_PROJECT_MANIFEST,
+            workspace,
             entry->d_name
         );
         add_project(s, manifest);

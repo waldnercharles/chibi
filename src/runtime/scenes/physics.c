@@ -1765,7 +1765,14 @@ static void solve_fluid(game_physics *physics, float delta, double *start)
     aclear(physics->fluid_bodies);
     aclear(physics->fluid_obstacles);
     aclear(physics->fluid_ids);
-    for (int i = 0; i < acount(physics->bodies); i++) {
+    int particles = 0, chunks;
+    const material_fluid *fluid = game_materials_fluid(materials);
+    if (fluid) {
+        material_fluid_particles(fluid, &particles);
+    }
+    game_materials_chunks(materials, &chunks);
+    /* Dormant particles need body wake regions; debris needs collision proxies. */
+    for (int i = 0; (particles || chunks) && i < acount(physics->bodies); i++) {
         physics_body *body = &physics->bodies[i];
         if (!body->body.index1 ||
             (body->collider.sensor &&

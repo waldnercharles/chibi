@@ -1119,8 +1119,205 @@ static void ordered_contacts()
     dispose(&f);
 }
 
+static void material_component(
+    fixture *f,
+    ecs_entity entity,
+    const ecs_component_desc *desc,
+    const void *value
+)
+{
+    if (!ecs_world_component(f->world, desc->id)) {
+        assert(ecs_world_register_component(f->world, desc, NULL) == ECS_OK);
+    }
+    assert(ecs_world_record_add(f->world, entity, desc->id, value, 0) == ECS_OK);
+}
+
+static void material_world(fixture *f, bool camera)
+{
+    ecs_entity config = ecs_world_create_entity(f->world);
+    material_component(
+        f,
+        config,
+        &GAME_COMPONENT_MaterialFluidWorld,
+        &(MaterialFluidWorld){ .chunk_size = 64, .buffer = 32, .kernel = 10, .particle_limit = 16 }
+    );
+    material_component(
+        f,
+        config,
+        &GAME_COMPONENT_MaterialDestructionWorld,
+        &(MaterialDestructionWorld){ .fragment_limit = 8, .debris_limit = 8 }
+    );
+    if (camera) {
+        material_component(f, config, &GAME_COMPONENT_GameTransform, &(GameTransform){ 0 });
+        material_component(
+            f,
+            config,
+            &GAME_COMPONENT_GameCamera,
+            &(GameCamera){ .width = 200, .height = 200 }
+        );
+    }
+    assert(ecs_world_apply_commands(f->world) == ECS_OK);
+    assert(!game_materials_prepare(f->live->materials));
+}
+
+static void empty_fluid_lifecycle()
+{
+    fixture f = create();
+    material_world(&f, true);
+    ecs_entity actor = body(&f, 0, 0, GAME_BODY_DYNAMIC, 1, 0);
+    GAME_GameCollider_get(f.world, actor)->radius = 10;
+    assert(step(&f, 1.f / 60) == 0);
+    assert(game_materials_inspect(f.live->materials).particles == 0);
+    assert(game_materials_emit(
+        f.live->materials,
+        (fluid_particle){ .position = { 9, 0 },
+                          .velocity = { -10, 0 },
+                          .mass = .01f,
+                          .radius = 3,
+                          .kind = FLUID_GAS,
+                          .lifetime = .03f }
+    ));
+    GAME_GameVelocity_get(f.world, actor)->x = 40;
+    assert(step(&f, 1.f / 60) == 0);
+    int count;
+    const fluid_particle
+        *p = material_fluid_particles(game_materials_fluid(f.live->materials), &count);
+    assert(count == 1 && p[0].velocity.x > 0);
+    assert(p[0].position.x > GAME_GameTransform_get(f.world, actor)->x + 10);
+    assert(GAME_GameVelocity_get(f.world, actor)->x < 40);
+    assert(step(&f, 1.f / 60) == 0);
+    assert(game_materials_inspect(f.live->materials).particles == 0);
+    game_materials_reset(f.live->materials);
+    assert(step(&f, 1.f / 60) == 0);
+    assert(game_materials_inspect(f.live->materials).particles == 0);
+
+    ecs_entity volume = ecs_world_create_entity(f.world);
+    float x = GAME_GameTransform_get(f.world, actor)->x;
+    material_component(&f, volume, &GAME_COMPONENT_GameTransform, &(GameTransform){ x + 9, 0 });
+    material_component(
+        &f,
+        volume,
+        &GAME_COMPONENT_GameFluidVolume,
+        &(GameFluidVolume){ .kind = FLUID_LIQUID,
+                            .width = 1,
+                            .height = 1,
+                            .spacing = 3,
+                            .mass = .01f,
+                            .velocity = { -10, 0 } }
+    );
+    assert(ecs_world_apply_commands(f.world) == ECS_OK);
+    GAME_GameVelocity_get(f.world, actor)->x = 40;
+    assert(step(&f, 1.f / 60) == 0);
+    p = material_fluid_particles(game_materials_fluid(f.live->materials), &count);
+    assert(count == 1 && p[0].kind == FLUID_LIQUID && p[0].velocity.x > 0);
+    assert(GAME_GameVelocity_get(f.world, actor)->x < 40);
+    assert(step(&f, 1.f / 60) == 0);
+    assert(game_materials_inspect(f.live->materials).particles == 1); /* one-time volume */
+    dispose(&f);
+}
+
+static void dormant_fluid_wake()
+{
+    fixture f = create();
+    material_world(&f, false);
+    ecs_entity actor = body(&f, 0, 0, GAME_BODY_DYNAMIC, 1, 0);
+    GAME_GameCollider_get(f.world, actor)->radius = 10;
+    assert(game_materials_emit(
+        f.live->materials,
+        (fluid_particle){ .position = { 9, 0 }, .mass = .01f, .radius = 3, .kind = FLUID_GAS }
+    ));
+    assert(step(&f, 1.f / 60) == 0);
+    game_material_state dormant = game_materials_inspect(f.live->materials);
+    assert(dormant.particles == 1 && dormant.active_particles == 0);
+    int count;
+    const fluid_particle
+        *p = material_fluid_particles(game_materials_fluid(f.live->materials), &count);
+    assert(p[0].position.x == 9 && p[0].velocity.x == 0);
+    GAME_GameVelocity_get(f.world, actor)->x = 40;
+    assert(step(&f, 1.f / 60) == 0);
+    p = material_fluid_particles(game_materials_fluid(f.live->materials), &count);
+    assert(count == 1 && game_materials_inspect(f.live->materials).active_particles == 1);
+    assert(p[0].position.x > 9 && p[0].velocity.x > 0);
+    assert(GAME_GameVelocity_get(f.world, actor)->x < 40);
+    dispose(&f);
+}
+
+static void debris_without_fluid()
+{
+    fixture f = create();
+    material_world(&f, false);
+    ecs_entity slab = mask_body(&f, GAME_BODY_STATIC, false);
+    material_component(
+        &f,
+        slab,
+        &GAME_COMPONENT_MaterialBreakProfile,
+        &(MaterialBreakProfile){ .chunk_limit = 1,
+                                 .chunk_cells = 1,
+                                 .chunk_size_min = 1,
+                                 .chunk_size_max = 1,
+                                 .chunk_lifetime = 1 }
+    );
+    assert(ecs_world_apply_commands(f.world) == ECS_OK);
+    assert(!game_materials_prepare(f.live->materials));
+    game_materials_damage(f.live->materials, slab, (fluid_vec){ 12, 0 }, 5, 1, 0, (material_impact){ 0 });
+    assert(!game_materials_prepare(f.live->materials));
+    int count;
+    const material_chunk *chunks = game_materials_chunks(f.live->materials, &count);
+    assert(count == 1 && game_materials_inspect(f.live->materials).particles == 0);
+    material_chunk before = chunks[0];
+    ecs_entity actor = body(&f, before.position.x + 4, before.position.y, GAME_BODY_DYNAMIC, 1, 0);
+    GAME_GameVelocity_get(f.world, actor)->x = -40;
+    assert(step(&f, 1.f / 60) == 0);
+    chunks = game_materials_chunks(f.live->materials, &count);
+    assert(count == 1 && chunks[0].age > before.age);
+    assert(chunks[0].position.x < before.position.x && chunks[0].velocity.x < -10);
+    assert(game_materials_inspect(f.live->materials).particles == 0);
+    dispose(&f);
+}
+
+static void fragment_fade_without_fluid()
+{
+    fixture f = create();
+    material_world(&f, false);
+    ecs_entity slab = mask_body(&f, GAME_BODY_STATIC, false);
+    material_component(&f, slab, &GAME_COMPONENT_GameMaterial, &(GameMaterial){ .emission_multiplier = .5f });
+    material_component(&f, slab, &GAME_COMPONENT_GameFragmentGlow, &(GameFragmentGlow){ .duration = .5f });
+    assert(ecs_world_apply_commands(f.world) == ECS_OK);
+    assert(!game_materials_prepare(f.live->materials));
+    game_materials_release(f.live->materials, slab);
+    assert(!game_materials_prepare(f.live->materials));
+    ecs_query query;
+    ecs_component_id id = GAME_COMPONENT_GameDestructible.id;
+    assert(ecs_query_begin(f.world, &query, &id, 1) == ECS_OK);
+    ecs_entity entity, fragment = { 0 };
+    while (ecs_query_next(&query, &entity)) {
+        if (game_materials_is_fragment(f.live->materials, entity)) {
+            assert(!ecs_entity_to_u64(fragment));
+            fragment = entity;
+        }
+    }
+    ecs_query_end(&query);
+    assert(ecs_entity_to_u64(fragment));
+    assert(GAME_GameMaterial_get_const(f.world, fragment)->emission_multiplier == .5f);
+    game_material_state state = game_materials_inspect(f.live->materials);
+    assert(state.fragments == 1 && state.particles == 0 && state.chunks == 0);
+    assert(step(&f, 1.f / 60) == 0);
+    float emission = GAME_GameMaterial_get_const(f.world, fragment)->emission_multiplier;
+    assert(emission > 0 && emission < .5f);
+    for (int i = 0; i < 32; i++) {
+        assert(step(&f, 1.f / 60) == 0);
+    }
+    assert(GAME_GameMaterial_get_const(f.world, fragment)->emission_multiplier == 0);
+    assert(game_materials_mask(f.live->materials, fragment)->count > 0);
+    dispose(&f);
+}
+
 static void physics_cases()
 {
+    empty_fluid_lifecycle();
+    dormant_fluid_wake();
+    debris_without_fluid();
+    fragment_fade_without_fluid();
     raycasts();
     solid_walls();
     sustained_dynamic_contact();

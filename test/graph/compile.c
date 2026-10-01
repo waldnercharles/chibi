@@ -25,9 +25,9 @@ void run_graph_compile_checks()
         compile_report rep;
         compile_report_init(&rep);
         unsigned long long rev = graph_topology_revision(asset->graph);
-        char *before = behavior_asset_save_json(asset);
+        char *before = behavior_asset_save(asset);
         int errors = behavior_asset_compile(asset, &rep);
-        char *after = behavior_asset_save_json(asset);
+        char *after = behavior_asset_save(asset);
         test_check(
             errors == 0 && rep.error_count == 0 && rep.warning_count == 0 &&
                 acount(rep.items) == 0,

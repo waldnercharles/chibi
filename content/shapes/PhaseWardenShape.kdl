@@ -1,0 +1,57 @@
+version 3
+name "PhaseWardenShape"
+domain "shape"
+bounds_x 20.0
+bounds_y 20.0
+id_counter 78
+(array)graphs {
+    - {
+        kind "event"
+        name ""
+        (array)nodes {
+            - id=1 type="Shader Shape Output" x=0.0 y=0.0 placed=#false
+            - id=3 type="Shader UV" x=0.0 y=0.0 placed=#false
+            - {
+                id 5
+                type "Shader Circle"
+                x 0.0
+                y 0.0
+                placed #false
+                inputs Radius=0.43999999761581421
+            }
+            - {
+                id 9
+                type "Shader Circle"
+                x 0.0
+                y 0.0
+                placed #false
+                inputs Radius=0.2800000011920929
+            }
+            - id=13 type="Shader Difference" x=0.0 y=0.0 placed=#false
+            - {
+                id 36
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 23
+                reference_name "uv - 0.5"
+                inputs {
+                    uv id=37 type="struct" type_name="ShaderVec2"
+                }
+                outputs {
+                    Result id=38 type="struct" type_name="ShaderVec2"
+                }
+            }
+        }
+        (array)edges {
+            - from="3.UV" to="36.uv"
+            - from="5.Value" to="13.A"
+            - from="9.Value" to="13.B"
+            - from="13.Value" to="1.Distance"
+            - from="36.Result" to="5.Position"
+            - from="36.Result" to="9.Position"
+        }
+    }
+    - id=23 kind="function" math_expression="uv - 0.5" entry_id=66
+}

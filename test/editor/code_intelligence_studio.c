@@ -90,7 +90,7 @@ static fixture fixture_new()
     );
     assert(app_scene_authoring_set_content_root(f.scene, PROJECT "/content") == 0);
     assert(app_scene_authoring_load_content(f.scene) == 0);
-    assert(app_scene_authoring_load(f.scene, PROJECT "/content/scenes/Main.yaml") == 0);
+    assert(app_scene_authoring_load(f.scene, PROJECT "/content/scenes/Main.kdl") == 0);
     f.studio = studio_new(f.scene, f.viewport, PROJECT);
     f.studio->prefs.code_vim = false;
     f.studio->prefs.code_apply_live = false;

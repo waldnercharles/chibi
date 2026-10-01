@@ -1,0 +1,53 @@
+version 3
+name "NavKeys"
+id_counter 27
+description "Up and Down in a SidebarNav move focus to the next or previous item and choose it, so the selection follows focus."
+owner_type "ecs.entity"
+(array)graphs {
+    - {
+        kind "event"
+        name ""
+        (array)nodes {
+            - id=1 type="Event" x=0.0 y=0.0 placed=#false reference_name="NavNext"
+            - {
+                id 3
+                type "Move UI Focus"
+                x 0.0
+                y 0.0
+                placed #false
+                inputs Element=".nav-item input"
+            }
+            - {
+                id 9
+                type "Click UI Element"
+                x 0.0
+                y 0.0
+                placed #false
+                inputs Element=".nav-item input:focus"
+            }
+            - id=14 type="Event" x=0.0 y=0.0 placed=#false reference_name="NavPrevious"
+            - {
+                id 16
+                type "Move UI Focus"
+                x 0.0
+                y 0.0
+                placed #false
+                inputs Element=".nav-item input" Step=-1
+            }
+            - {
+                id 22
+                type "Click UI Element"
+                x 0.0
+                y 0.0
+                placed #false
+                inputs Element=".nav-item input:focus"
+            }
+        }
+        (array)edges {
+            - from="1.Then" to="3.Exec"
+            - from="3.Then" to="9.Exec"
+            - from="14.Then" to="16.Exec"
+            - from="16.Then" to="22.Exec"
+        }
+    }
+}

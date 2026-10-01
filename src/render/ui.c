@@ -656,54 +656,50 @@ void ui_data_bind_self(ui_data *d, rml_element *root, uint64_t entity)
    their places, so bound views stay bound, and only text that changed or
    items a list gained take new memory. A member `value` lacks reads as
    null. */
-static void assign(yyjson_mut_doc *doc, yyjson_mut_val *shown, yyjson_val *value)
+static void assign(yyjson_mut_doc *doc, yyjson_mut_val *shown, av_value *value)
 {
-    switch (yyjson_get_type(value)) {
-        case YYJSON_TYPE_BOOL:
-            yyjson_mut_set_bool(shown, yyjson_get_bool(value));
-            return;
-        case YYJSON_TYPE_NUM:
-            yyjson_mut_set_real(shown, yyjson_get_num(value));
-            return;
-        case YYJSON_TYPE_STR:
-            ui_data_set_text(doc, shown, yyjson_get_str(value));
-            return;
-        case YYJSON_TYPE_OBJ: {
+    switch (av_get_type(value)) {
+        case AV_BOOL: yyjson_mut_set_bool(shown, av_get_bool(value)); return;
+        case AV_SINT:
+        case AV_UINT:
+        case AV_REAL: yyjson_mut_set_real(shown, av_get_num(value)); return;
+        case AV_STRING: ui_data_set_text(doc, shown, av_get_str(value)); return;
+        case AV_OBJECT: {
             if (!yyjson_mut_is_obj(shown)) {
                 yyjson_mut_set_obj(shown);
             }
             yyjson_mut_val *key;
             yyjson_mut_obj_iter kept = yyjson_mut_obj_iter_with(shown);
             while ((key = yyjson_mut_obj_iter_next(&kept))) {
-                if (!yyjson_obj_get(value, yyjson_mut_get_str(key))) {
+                if (!av_obj_get(value, yyjson_mut_get_str(key))) {
                     yyjson_mut_set_null(yyjson_mut_obj_iter_get_val(key));
                 }
             }
             size_t i, max;
-            yyjson_val *name, *member;
-            yyjson_obj_foreach(value, i, max, name, member)
+            av_value *name, *member;
+            av_obj_foreach(value, i, max, name, member)
             {
-                yyjson_mut_val *target = yyjson_mut_obj_get(shown, yyjson_get_str(name));
+                yyjson_mut_val *target = yyjson_mut_obj_get(shown, av_get_str(name));
                 if (!target) {
                     target = yyjson_mut_null(doc);
-                    yyjson_mut_obj_add(shown, yyjson_mut_strcpy(doc, yyjson_get_str(name)), target);
+                    yyjson_mut_obj_add(shown, yyjson_mut_strcpy(doc, av_get_str(name)), target);
                 }
                 assign(doc, target, member);
             }
             return;
         }
-        case YYJSON_TYPE_ARR: {
+        case AV_ARRAY: {
             if (!yyjson_mut_is_arr(shown)) {
                 yyjson_mut_set_arr(shown);
             }
-            size_t count = yyjson_arr_size(value), held = yyjson_mut_arr_size(shown);
+            size_t count = av_arr_size(value), held = yyjson_mut_arr_size(shown);
             if (held > count) {
                 yyjson_mut_arr_remove_range(shown, count, held - count);
             }
             yyjson_mut_arr_iter items = yyjson_mut_arr_iter_with(shown);
-            yyjson_arr_iter values = yyjson_arr_iter_with(value);
-            yyjson_val *item;
-            while ((item = yyjson_arr_iter_next(&values))) {
+            av_arr_iter values = av_arr_iter_with(value);
+            av_value *item;
+            while ((item = av_arr_iter_next(&values))) {
                 yyjson_mut_val *target = yyjson_mut_arr_iter_next(&items);
                 if (!target) {
                     target = yyjson_mut_null(doc);
@@ -778,10 +774,7 @@ void ui_data_show_entities(ui_data *d, const game_ui *model)
         const game_ui_datum *datum = changed[i];
         yyjson_mut_val
             *shown = data_at(d->doc, entity_data(d, datum->entity), datum->name);
-        yyjson_doc *value = yyjson_read(datum->json, strlen(datum->json), 0);
-        assert(value);
-        assign(d->doc, shown, yyjson_doc_get_root(value));
-        yyjson_doc_free(value);
+        assign(d->doc, shown, datum->value);
         d->data_seen = datum->revision;
     }
     afree(changed);

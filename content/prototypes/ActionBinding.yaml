@@ -1,3 +1,0 @@
-name: ActionBinding
-components:
-  GAME.GameActionBinding: {action: Dash, source: Space}

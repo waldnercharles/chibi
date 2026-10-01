@@ -1,0 +1,3739 @@
+version 3
+name "BasaltCave"
+domain "field"
+id_counter 24248
+description "Unbounded columnar basalt caves: a warped chamber network joined to the Sandbox artery, broken into basalt columns that thin, fan and lean gradually, with chaotic ends and hanging columns."
+(array)variables {
+    - id=1 name="Radius" type="float" default=225.0
+    - id=2 name="Roughness" type="float" default=100.0
+    - id=3 name="ChamberSpacing" type="float" default=1300.0
+    - id=4 name="OriginX" type="float" default=960.0
+}
+(array)graphs {
+    - {
+        kind "event"
+        name ""
+        (array)nodes {
+            - id=5 type="Field Output" x=0.0 y=0.0 placed=#false
+            - id=8 type="Field X" x=0.0 y=0.0 placed=#false
+            - id=10 type="Field Y" x=0.0 y=0.0 placed=#false
+            - {
+                id 12
+                type "Field Parameter"
+                x 0.0
+                y 0.0
+                placed #false
+                inputs Name="Radius"
+            }
+            - {
+                id 15
+                type "Field Parameter"
+                x 0.0
+                y 0.0
+                placed #false
+                inputs Name="Roughness"
+            }
+            - {
+                id 18
+                type "Field Parameter"
+                x 0.0
+                y 0.0
+                placed #false
+                inputs Name="ChamberSpacing"
+            }
+            - {
+                id 21
+                type "Field Parameter"
+                x 0.0
+                y 0.0
+                placed #false
+                inputs Name="OriginX"
+            }
+            - {
+                id 20451
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 20439
+                reference_name "x + originX"
+                inputs {
+                    x {
+                        id 20452
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=23832
+                    }
+                    originX id=20453 type="float" flags=0
+                }
+                outputs {
+                    Result id=20454 type="float"
+                }
+            }
+            - {
+                id 20489
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 20479
+                reference_name "-y"
+                inputs {
+                    y id=20490 type="float" flags=0
+                }
+                outputs {
+                    Result id=20491 type="float"
+                }
+            }
+            - {
+                id 20535
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 20502
+                reference_name "x / 180 + z / 420 + 1.3"
+                inputs {
+                    x {
+                        id 20536
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=23833
+                    }
+                    z {
+                        id 20537
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=23834
+                    }
+                }
+                outputs {
+                    Result id=20538 type="float"
+                }
+            }
+            - {
+                id 20594
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 20561
+                reference_name "x / 95 - z / 300 + 0.4"
+                inputs {
+                    x {
+                        id 20595
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=23833
+                    }
+                    z {
+                        id 20596
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=23834
+                    }
+                }
+                outputs {
+                    Result id=20597 type="float"
+                }
+            }
+            - {
+                id 20646
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 20620
+                reference_name "x / 1300 + z / 2100"
+                inputs {
+                    x {
+                        id 20647
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=23833
+                    }
+                    z {
+                        id 20648
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=23834
+                    }
+                }
+                outputs {
+                    Result id=20649 type="float"
+                }
+            }
+            - {
+                id 20705
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 20672
+                reference_name "x / 900 + z / 260 + 2.2"
+                inputs {
+                    x {
+                        id 20706
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=23833
+                    }
+                    z {
+                        id 20707
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=23834
+                    }
+                }
+                outputs {
+                    Result id=20708 type="float"
+                }
+            }
+            - {
+                id 20755
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 20731
+                reference_name "0.5 + 0.5 * sin(drift)"
+                inputs {
+                    drift {
+                        id 20756
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=23837
+                    }
+                }
+                outputs {
+                    Result id=20757 type="float"
+                }
+            }
+            - {
+                id 20848
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 20784
+                reference_name "x / 26 + 0.9 * sin(wobbleA) + 0.5 * sin(wobbleB) + 4.6 * swayAmount * sin(sway)"
+                inputs {
+                    x {
+                        id 20849
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=23833
+                    }
+                    wobbleA {
+                        id 20850
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=23835
+                    }
+                    wobbleB {
+                        id 20851
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=23836
+                    }
+                    swayAmount {
+                        id 20852
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=23839
+                    }
+                    sway {
+                        id 20853
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=23838
+                    }
+                }
+                outputs {
+                    Result id=20854 type="float"
+                }
+            }
+            - {
+                id 21099
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 20990
+                reference_name "1 / 26 + 0.9 * cos(wobbleA) / 180 + 0.5 * cos(wobbleB) / 95 + 4.6 * (0.5 * cos(drift) / 1300 * sin(sway) + swayAmount * cos(sway) / 900)"
+                inputs {
+                    wobbleA {
+                        id 21100
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=23835
+                    }
+                    wobbleB {
+                        id 21101
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=23836
+                    }
+                    drift {
+                        id 21102
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=23837
+                    }
+                    sway {
+                        id 21103
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=23838
+                    }
+                    swayAmount {
+                        id 21104
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=23839
+                    }
+                }
+                outputs {
+                    Result id=21105 type="float"
+                }
+            }
+            - {
+                id 21357
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 21255
+                reference_name "0.9 * cos(wobbleA) / 420 - 0.5 * cos(wobbleB) / 300 + 4.6 * (0.5 * cos(drift) / 2100 * sin(sway) + swayAmount * cos(sway) / 260)"
+                inputs {
+                    wobbleA {
+                        id 21358
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=23835
+                    }
+                    wobbleB {
+                        id 21359
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=23836
+                    }
+                    drift {
+                        id 21360
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=23837
+                    }
+                    sway {
+                        id 21361
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=23838
+                    }
+                    swayAmount {
+                        id 21362
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=23839
+                    }
+                }
+                outputs {
+                    Result id=21363 type="float"
+                }
+            }
+            - {
+                id 21531
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 21513
+                reference_name "floor(columnCoord)"
+                inputs {
+                    columnCoord id=21532 type="float" flags=0
+                }
+                outputs {
+                    Result id=21533 type="float"
+                }
+            }
+            - {
+                id 21624
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 21598
+                reference_name "(columnCoord - floor(columnCoord) - 0.5) / columnsPerX"
+                inputs {
+                    columnCoord id=21625 type="float" flags=0
+                    columnsPerX {
+                        id 21626
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=23840
+                    }
+                }
+                outputs {
+                    Result id=21627 type="float"
+                }
+            }
+            - {
+                id 21815
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 21801
+                reference_name "0.5 / columnsPerX"
+                inputs {
+                    columnsPerX {
+                        id 21816
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=23840
+                    }
+                }
+                outputs {
+                    Result id=21817 type="float"
+                }
+            }
+            - {
+                id 21939
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 21927
+                reference_name "offset / halfWidth"
+                inputs {
+                    offset {
+                        id 21940
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=23842
+                    }
+                    halfWidth id=21941 type="float" flags=0
+                }
+                outputs {
+                    Result id=21942 type="float"
+                }
+            }
+            - {
+                id 21995
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 21983
+                reference_name "columnsPerZ / columnsPerX"
+                inputs {
+                    columnsPerZ id=21996 type="float" flags=0
+                    columnsPerX {
+                        id 21997
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=23840
+                    }
+                }
+                outputs {
+                    Result id=21998 type="float"
+                }
+            }
+            - {
+                id 22227
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 22210
+                reference_name "z - lean * offset"
+                inputs {
+                    z {
+                        id 22228
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=23834
+                    }
+                    lean {
+                        id 22229
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=23843
+                    }
+                    offset {
+                        id 22230
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=23842
+                    }
+                }
+                outputs {
+                    Result id=22231 type="float"
+                }
+            }
+            - {
+                id 22332
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 22280
+                reference_name "26 + 36 * (0.5 + 0.5 * sin(column * 2.3999631 + 0.3))"
+                inputs {
+                    column {
+                        id 22333
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=23841
+                    }
+                }
+                outputs {
+                    Result id=22334 type="float"
+                }
+            }
+            - {
+                id 22391
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 22353
+                reference_name "0.5 + 0.5 * sin(column * 1.93716 + 1.1)"
+                inputs {
+                    column {
+                        id 22392
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=23841
+                    }
+                }
+                outputs {
+                    Result id=22393 type="float"
+                }
+            }
+            - {
+                id 22424
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 22412
+                reference_name "jointSpacing * jointPhase"
+                inputs {
+                    jointSpacing {
+                        id 22425
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=23844
+                    }
+                    jointPhase id=22426 type="float" flags=0
+                }
+                outputs {
+                    Result id=22427 type="float"
+                }
+            }
+            - {
+                id 22570
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 22518
+                reference_name "sin(column * 3.30119 + 2.2)"
+                inputs {
+                    column {
+                        id 22571
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=23841
+                    }
+                }
+                outputs {
+                    Result id=22572 type="float"
+                }
+            }
+            - {
+                id 22643
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 22591
+                reference_name "sin(column * 0.83261 + 4.4)"
+                inputs {
+                    column {
+                        id 22644
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=23841
+                    }
+                }
+                outputs {
+                    Result id=22645 type="float"
+                }
+            }
+            - {
+                id 22760
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 22664
+                reference_name "(along + 0.45 * jointSpacing * sin(along / (0.9 * jointSpacing) + 7 * jointPhase) - start - 0.2 * tilt * offset - 3 * bow * across * across) / jointSpacing"
+                inputs {
+                    along id=22761 type="float" flags=0
+                    jointSpacing {
+                        id 22762
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=23844
+                    }
+                    jointPhase id=22763 type="float" flags=0
+                    start id=22764 type="float" flags=0
+                    tilt id=22765 type="float" flags=0
+                    offset {
+                        id 22766
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=23842
+                    }
+                    bow id=22767 type="float" flags=0
+                    across id=22768 type="float" flags=0
+                }
+                outputs {
+                    Result id=22769 type="float"
+                }
+            }
+            - {
+                id 23041
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 23031
+                reference_name "floor(blockCoord)"
+                inputs {
+                    blockCoord id=23042 type="float" flags=0
+                }
+                outputs {
+                    Result id=23043 type="float"
+                }
+            }
+            - {
+                id 23152
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 23140
+                reference_name "blockCoord - block"
+                inputs {
+                    blockCoord id=23153 type="float" flags=0
+                    block id=23154 type="float" flags=0
+                }
+                outputs {
+                    Result id=23155 type="float"
+                }
+            }
+            - {
+                id 23286
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 23262
+                reference_name "start + (block + 0.5) * jointSpacing"
+                inputs {
+                    start id=23287 type="float" flags=0
+                    block id=23288 type="float" flags=0
+                    jointSpacing {
+                        id 23289
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=23844
+                    }
+                }
+                outputs {
+                    Result id=23290 type="float"
+                }
+            }
+            - {
+                id 23401
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 23365
+                reference_name "min(min(blockT, 1 - blockT) * jointSpacing, halfWidth - abs(offset))"
+                inputs {
+                    blockT id=23402 type="float" flags=0
+                    jointSpacing {
+                        id 23403
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=23844
+                    }
+                    halfWidth id=23404 type="float" flags=0
+                    offset {
+                        id 23405
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=23842
+                    }
+                }
+                outputs {
+                    Result id=23406 type="float"
+                }
+            }
+            - {
+                id 23538
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 23511
+                reference_name "x - offset - lean * (center - z)"
+                inputs {
+                    x {
+                        id 23539
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=23832
+                    }
+                    offset {
+                        id 23540
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=23842
+                    }
+                    lean {
+                        id 23541
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=23843
+                    }
+                    center {
+                        id 23542
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=23845
+                    }
+                    z {
+                        id 23543
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=23834
+                    }
+                }
+                outputs {
+                    Result id=23544 type="float"
+                }
+            }
+            - {
+                id 23654
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 23644
+                reference_name "-center"
+                inputs {
+                    center {
+                        id 23655
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=23845
+                    }
+                }
+                outputs {
+                    Result id=23656 type="float"
+                }
+            }
+            - {
+                id 23681
+                type "Call Pure Function"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 10481
+                reference_name "Cave Clearance"
+                inputs {
+                    X id=23682 type="float"
+                    Y id=23683 type="float"
+                    Column {
+                        id 23684
+                        type "float"
+                        binding kind="local" local_id=23841
+                    }
+                    Radius id=23685 type="float"
+                    Spacing id=23686 type="float"
+                    Roughness id=23687 type="float"
+                }
+                outputs {
+                    Clearance id=23688 type="float"
+                }
+            }
+            - {
+                id 23768
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 23744
+                reference_name "select(clearance, min(clearance, edge), max(clearance, -edge))"
+                inputs {
+                    clearance {
+                        id 23769
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=23846
+                    }
+                    edge id=23770 type="float" flags=0
+                }
+                outputs {
+                    Result id=23771 type="float"
+                }
+            }
+        }
+        (array)edges {
+            - from="8.Value" to="20451.x"
+            - from="8.Value" to="23538.x"
+            - from="10.Value" to="20489.y"
+            - from="12.Value" to="23681.Radius"
+            - from="15.Value" to="23681.Roughness"
+            - from="18.Value" to="23681.Spacing"
+            - from="21.Value" to="20451.originX"
+            - from="20451.Result" to="20535.x"
+            - from="20451.Result" to="20594.x"
+            - from="20451.Result" to="20646.x"
+            - from="20451.Result" to="20705.x"
+            - from="20451.Result" to="20848.x"
+            - from="20489.Result" to="20535.z"
+            - from="20489.Result" to="20594.z"
+            - from="20489.Result" to="20646.z"
+            - from="20489.Result" to="20705.z"
+            - from="20489.Result" to="22227.z"
+            - from="20489.Result" to="23538.z"
+            - from="20535.Result" to="20848.wobbleA"
+            - from="20535.Result" to="21099.wobbleA"
+            - from="20535.Result" to="21357.wobbleA"
+            - from="20594.Result" to="20848.wobbleB"
+            - from="20594.Result" to="21099.wobbleB"
+            - from="20594.Result" to="21357.wobbleB"
+            - from="20646.Result" to="20755.drift"
+            - from="20646.Result" to="21099.drift"
+            - from="20646.Result" to="21357.drift"
+            - from="20705.Result" to="20848.sway"
+            - from="20705.Result" to="21099.sway"
+            - from="20705.Result" to="21357.sway"
+            - from="20755.Result" to="20848.swayAmount"
+            - from="20755.Result" to="21099.swayAmount"
+            - from="20755.Result" to="21357.swayAmount"
+            - from="20848.Result" to="21531.columnCoord"
+            - from="20848.Result" to="21624.columnCoord"
+            - from="21099.Result" to="21624.columnsPerX"
+            - from="21099.Result" to="21815.columnsPerX"
+            - from="21099.Result" to="21995.columnsPerX"
+            - from="21357.Result" to="21995.columnsPerZ"
+            - from="21531.Result" to="22332.column"
+            - from="21531.Result" to="22391.column"
+            - from="21531.Result" to="22570.column"
+            - from="21531.Result" to="22643.column"
+            - from="21531.Result" to="23681.Column"
+            - from="21624.Result" to="21939.offset"
+            - from="21624.Result" to="22227.offset"
+            - from="21624.Result" to="22760.offset"
+            - from="21624.Result" to="23401.offset"
+            - from="21624.Result" to="23538.offset"
+            - from="21815.Result" to="21939.halfWidth"
+            - from="21815.Result" to="23401.halfWidth"
+            - from="21939.Result" to="22760.across"
+            - from="21995.Result" to="22227.lean"
+            - from="21995.Result" to="23538.lean"
+            - from="22227.Result" to="22760.along"
+            - from="22332.Result" to="22424.jointSpacing"
+            - from="22332.Result" to="22760.jointSpacing"
+            - from="22332.Result" to="23286.jointSpacing"
+            - from="22332.Result" to="23401.jointSpacing"
+            - from="22391.Result" to="22424.jointPhase"
+            - from="22391.Result" to="22760.jointPhase"
+            - from="22424.Result" to="22760.start"
+            - from="22424.Result" to="23286.start"
+            - from="22570.Result" to="22760.tilt"
+            - from="22643.Result" to="22760.bow"
+            - from="22760.Result" to="23041.blockCoord"
+            - from="22760.Result" to="23152.blockCoord"
+            - from="23041.Result" to="23152.block"
+            - from="23041.Result" to="23286.block"
+            - from="23152.Result" to="23401.blockT"
+            - from="23286.Result" to="23538.center"
+            - from="23286.Result" to="23654.center"
+            - from="23401.Result" to="23768.edge"
+            - from="23538.Result" to="23681.X"
+            - from="23654.Result" to="23681.Y"
+            - from="23681.Clearance" to="23768.clearance"
+            - from="23768.Result" to="5.Value"
+        }
+        (array)locals {
+            - id=23832 name="x" from="8.Value"
+            - id=23833 name="worldX" from="20451.Result"
+            - id=23834 name="worldZ" from="20489.Result"
+            - id=23835 name="wobbleA" from="20535.Result"
+            - id=23836 name="wobbleB" from="20594.Result"
+            - id=23837 name="drift" from="20646.Result"
+            - id=23838 name="sway" from="20705.Result"
+            - id=23839 name="swayAmount" from="20755.Result"
+            - id=23840 name="columnsPerX" from="21099.Result"
+            - id=23841 name="column" from="21531.Result"
+            - id=23842 name="offset" from="21624.Result"
+            - id=23843 name="lean" from="21995.Result"
+            - id=23844 name="jointSpacing" from="22332.Result"
+            - id=23845 name="center" from="23286.Result"
+            - id=23846 name="clearance" from="23681.Clearance"
+        }
+    }
+    - {
+        id 7089
+        kind "function"
+        name "Chamber"
+        entry_id 7090
+        return_id 7092
+        call_depth_limit 64
+        (array)nodes {
+            - {
+                id 7090
+                type "Function Entry"
+                x 0.0
+                y 0.0
+                placed #false
+                (array)outputs {
+                    - id=7094 name="X" type="float" kind="data"
+                    - id=7095 name="Y" type="float" kind="data"
+                    - id=7096 name="Center X" type="float" kind="data"
+                    - id=7097 name="Center Y" type="float" kind="data"
+                    - id=7098 name="I" type="float" kind="data"
+                    - id=7099 name="J" type="float" kind="data"
+                }
+            }
+            - {
+                id 7092
+                type "Return"
+                x 0.0
+                y 0.0
+                placed #false
+                (array)inputs {
+                    - id=7100 name="Distance" type="float" kind="data"
+                }
+            }
+            - {
+                id 7117
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 7101
+                reference_name "hash(i, j, 13)"
+                inputs {
+                    i id=7118 type="float" flags=0
+                    j id=7119 type="float" flags=0
+                }
+                outputs {
+                    Result id=7120 type="float"
+                }
+            }
+            - {
+                id 7220
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 7153
+                reference_name "circle(x - centerX, y - centerY, select(size + 0.5, 170 + 180 * (size * 0.5 + 0.5), 90))"
+                inputs {
+                    x id=7221 type="float" flags=0
+                    centerX id=7222 type="float" flags=0
+                    y id=7223 type="float" flags=0
+                    centerY id=7224 type="float" flags=0
+                    size id=7225 type="float" flags=0
+                }
+                outputs {
+                    Result id=7226 type="float"
+                }
+            }
+        }
+        (array)edges {
+            - from="7090.X" to="7220.x"
+            - from="7090.Y" to="7220.y"
+            - from="7090.Center X" to="7220.centerX"
+            - from="7090.Center Y" to="7220.centerY"
+            - from="7090.I" to="7117.i"
+            - from="7090.J" to="7117.j"
+            - from="7117.Result" to="7220.size"
+            - from="7220.Result" to="7092.Distance"
+        }
+    }
+    - id=7101 kind="function" math_expression="hash(i, j, 13)" entry_id=7496
+    - id=7153 kind="function" math_expression="circle(x - centerX, y - centerY, select(size + 0.5, 170 + 180 * (size * 0.5 + 0.5), 90))" entry_id=9968
+    - {
+        id 7511
+        kind "function"
+        name "Tunnel"
+        entry_id 7512
+        return_id 7514
+        call_depth_limit 64
+        (array)nodes {
+            - {
+                id 7512
+                type "Function Entry"
+                x 0.0
+                y 0.0
+                placed #false
+                (array)outputs {
+                    - id=7516 name="X" type="float" kind="data"
+                    - id=7517 name="Y" type="float" kind="data"
+                    - id=7518 name="From X" type="float" kind="data"
+                    - id=7519 name="From Y" type="float" kind="data"
+                    - id=7520 name="Door X" type="float" kind="data"
+                    - id=7521 name="Door Y" type="float" kind="data"
+                    - id=7522 name="Door I" type="float" kind="data"
+                    - id=7523 name="Door J" type="float" kind="data"
+                }
+            }
+            - {
+                id 7514
+                type "Return"
+                x 0.0
+                y 0.0
+                placed #false
+                (array)inputs {
+                    - id=7524 name="Distance" type="float" kind="data"
+                }
+            }
+            - {
+                id 7607
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 7525
+                reference_name "select(hash(doorI, doorJ, 22) + 0.5, capsule(x, y, fromX, fromY, doorX, doorY, 65 + 55 * (hash(doorI, doorJ, 23) * 0.5 + 0.5)), 100000)"
+                inputs {
+                    doorI id=7608 type="float" flags=0
+                    doorJ id=7609 type="float" flags=0
+                    x id=7610 type="float" flags=0
+                    y id=7611 type="float" flags=0
+                    fromX id=7612 type="float" flags=0
+                    fromY id=7613 type="float" flags=0
+                    doorX id=7614 type="float" flags=0
+                    doorY id=7615 type="float" flags=0
+                }
+                outputs {
+                    Result id=7616 type="float"
+                }
+            }
+        }
+        (array)edges {
+            - from="7512.X" to="7607.x"
+            - from="7512.Y" to="7607.y"
+            - from="7512.From X" to="7607.fromX"
+            - from="7512.From Y" to="7607.fromY"
+            - from="7512.Door X" to="7607.doorX"
+            - from="7512.Door Y" to="7607.doorY"
+            - from="7512.Door I" to="7607.doorI"
+            - from="7512.Door J" to="7607.doorJ"
+            - from="7607.Result" to="7514.Distance"
+        }
+    }
+    - id=7525 kind="function" math_expression="select(hash(doorI, doorJ, 22) + 0.5, capsule(x, y, fromX, fromY, doorX, doorY, 65 + 55 * (hash(doorI, doorJ, 23) * 0.5 + 0.5)), 100000)" entry_id=10035
+    - {
+        id 8273
+        kind "function"
+        name "Shaft"
+        entry_id 8274
+        return_id 8276
+        call_depth_limit 64
+        (array)nodes {
+            - {
+                id 8274
+                type "Function Entry"
+                x 0.0
+                y 0.0
+                placed #false
+                (array)outputs {
+                    - id=8278 name="X" type="float" kind="data"
+                    - id=8279 name="Y" type="float" kind="data"
+                    - id=8280 name="From X" type="float" kind="data"
+                    - id=8281 name="From Y" type="float" kind="data"
+                    - id=8282 name="Door X" type="float" kind="data"
+                    - id=8283 name="Door Y" type="float" kind="data"
+                    - id=8284 name="Door I" type="float" kind="data"
+                    - id=8285 name="Door J" type="float" kind="data"
+                }
+            }
+            - {
+                id 8276
+                type "Return"
+                x 0.0
+                y 0.0
+                placed #false
+                (array)inputs {
+                    - id=8286 name="Distance" type="float" kind="data"
+                }
+            }
+            - {
+                id 8362
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 8287
+                reference_name "select(hash(doorI, doorJ, 25), capsule(x, y, fromX, fromY, doorX, doorY, 55 + 45 * (hash(doorI, doorJ, 26) * 0.5 + 0.5)), 100000)"
+                inputs {
+                    doorI id=8363 type="float" flags=0
+                    doorJ id=8364 type="float" flags=0
+                    x id=8365 type="float" flags=0
+                    y id=8366 type="float" flags=0
+                    fromX id=8367 type="float" flags=0
+                    fromY id=8368 type="float" flags=0
+                    doorX id=8369 type="float" flags=0
+                    doorY id=8370 type="float" flags=0
+                }
+                outputs {
+                    Result id=8371 type="float"
+                }
+            }
+        }
+        (array)edges {
+            - from="8274.X" to="8362.x"
+            - from="8274.Y" to="8362.y"
+            - from="8274.From X" to="8362.fromX"
+            - from="8274.From Y" to="8362.fromY"
+            - from="8274.Door X" to="8362.doorX"
+            - from="8274.Door Y" to="8362.doorY"
+            - from="8274.Door I" to="8362.doorI"
+            - from="8274.Door J" to="8362.doorJ"
+            - from="8362.Result" to="8276.Distance"
+        }
+    }
+    - id=8287 kind="function" math_expression="select(hash(doorI, doorJ, 25), capsule(x, y, fromX, fromY, doorX, doorY, 55 + 45 * (hash(doorI, doorJ, 26) * 0.5 + 0.5)), 100000)" entry_id=10117
+    - {
+        id 8972
+        kind "function"
+        name "Tunnel Side"
+        entry_id 8973
+        return_id 8975
+        call_depth_limit 64
+        (array)nodes {
+            - {
+                id 8973
+                type "Function Entry"
+                x 0.0
+                y 0.0
+                placed #false
+                (array)outputs {
+                    - id=8977 name="X" type="float" kind="data"
+                    - id=8978 name="Y" type="float" kind="data"
+                    - id=8979 name="From X" type="float" kind="data"
+                    - id=8980 name="From Y" type="float" kind="data"
+                    - id=8981 name="Door X" type="float" kind="data"
+                    - id=8982 name="Door Y" type="float" kind="data"
+                }
+            }
+            - {
+                id 8975
+                type "Return"
+                x 0.0
+                y 0.0
+                placed #false
+                (array)inputs {
+                    - id=8983 name="Side" type="float" kind="data"
+                }
+            }
+            - {
+                id 9035
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 8984
+                reference_name "y - (fromY + clamp((x - fromX) / (doorX - fromX), 0, 1) * (doorY - fromY))"
+                inputs {
+                    y id=9036 type="float" flags=0
+                    fromY id=9037 type="float" flags=0
+                    x id=9038 type="float" flags=0
+                    fromX id=9039 type="float" flags=0
+                    doorX id=9040 type="float" flags=0
+                    doorY id=9041 type="float" flags=0
+                }
+                outputs {
+                    Result id=9042 type="float"
+                }
+            }
+        }
+        (array)edges {
+            - from="8973.X" to="9035.x"
+            - from="8973.Y" to="9035.y"
+            - from="8973.From X" to="9035.fromX"
+            - from="8973.From Y" to="9035.fromY"
+            - from="8973.Door X" to="9035.doorX"
+            - from="8973.Door Y" to="9035.doorY"
+            - from="9035.Result" to="8975.Side"
+        }
+    }
+    - id=8984 kind="function" math_expression="y - (fromY + clamp((x - fromX) / (doorX - fromX), 0, 1) * (doorY - fromY))" entry_id=10192
+    - {
+        id 9349
+        kind "function"
+        name "Shaft Side"
+        entry_id 9350
+        return_id 9352
+        call_depth_limit 64
+        (array)nodes {
+            - {
+                id 9350
+                type "Function Entry"
+                x 0.0
+                y 0.0
+                placed #false
+                (array)outputs {
+                    - id=9354 name="Y" type="float" kind="data"
+                    - id=9355 name="From Y" type="float" kind="data"
+                    - id=9356 name="Door Y" type="float" kind="data"
+                }
+            }
+            - {
+                id 9352
+                type "Return"
+                x 0.0
+                y 0.0
+                placed #false
+                (array)inputs {
+                    - id=9357 name="Side" type="float" kind="data"
+                }
+            }
+            - {
+                id 9382
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 9358
+                reference_name "y - (fromY + doorY) * 0.5"
+                inputs {
+                    y id=9383 type="float" flags=0
+                    fromY id=9384 type="float" flags=0
+                    doorY id=9385 type="float" flags=0
+                }
+                outputs {
+                    Result id=9386 type="float"
+                }
+            }
+        }
+        (array)edges {
+            - from="9350.Y" to="9382.y"
+            - from="9350.From Y" to="9382.fromY"
+            - from="9350.Door Y" to="9382.doorY"
+            - from="9382.Result" to="9352.Side"
+        }
+    }
+    - id=9358 kind="function" math_expression="y - (fromY + doorY) * 0.5" entry_id=10243
+    - {
+        id 9459
+        kind "function"
+        name "Ragged End"
+        entry_id 9460
+        return_id 9462
+        call_depth_limit 64
+        (array)nodes {
+            - {
+                id 9460
+                type "Function Entry"
+                x 0.0
+                y 0.0
+                placed #false
+                (array)outputs {
+                    - id=9464 name="Column" type="float" kind="data"
+                }
+            }
+            - {
+                id 9462
+                type "Return"
+                x 0.0
+                y 0.0
+                placed #false
+                (array)inputs {
+                    - id=9465 name="Length" type="float" kind="data"
+                }
+            }
+            - {
+                id 9484
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 9466
+                reference_name "hash(column, 0, 32)"
+                inputs {
+                    column id=9485 type="float" flags=0
+                }
+                outputs {
+                    Result id=9486 type="float"
+                }
+            }
+            - {
+                id 9597
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 9505
+                reference_name "26 * hash(column, 0, 31) + 14 * noise(column / 2.7, 0, 34) + select(roll - 0.76, 50, select(-0.8 - roll, -40, 0))"
+                inputs {
+                    column id=9598 type="float" flags=0
+                    roll id=9599 type="float" flags=0
+                }
+                outputs {
+                    Result id=9600 type="float"
+                }
+            }
+        }
+        (array)edges {
+            - from="9460.Column" to="9484.column"
+            - from="9460.Column" to="9597.column"
+            - from="9484.Result" to="9597.roll"
+            - from="9597.Result" to="9462.Length"
+        }
+    }
+    - id=9466 kind="function" math_expression="hash(column, 0, 32)" entry_id=9694
+    - id=9505 kind="function" math_expression="26 * hash(column, 0, 31) + 14 * noise(column / 2.7, 0, 34) + select(roll - 0.76, 50, select(-0.8 - roll, -40, 0))" entry_id=10267
+    - {
+        id 9711
+        kind "function"
+        name "Hanging End"
+        entry_id 9712
+        return_id 9714
+        call_depth_limit 64
+        (array)nodes {
+            - {
+                id 9712
+                type "Function Entry"
+                x 0.0
+                y 0.0
+                placed #false
+                (array)outputs {
+                    - id=9716 name="Column" type="float" kind="data"
+                }
+            }
+            - {
+                id 9714
+                type "Return"
+                x 0.0
+                y 0.0
+                placed #false
+                (array)inputs {
+                    - id=9717 name="Length" type="float" kind="data"
+                }
+            }
+            - {
+                id 9841
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 9718
+                reference_name "20 * hash(column, 0, 41) + 10 * noise(column / 2.3, 0, 44) + select(hash(column, 0, 42) - 0.4, 30 + 60 * (hash(column, 0, 43) * 0.5 + 0.5), 0)"
+                inputs {
+                    column id=9842 type="float" flags=0
+                }
+                outputs {
+                    Result id=9843 type="float"
+                }
+            }
+        }
+        (array)edges {
+            - from="9712.Column" to="9841.column"
+            - from="9841.Result" to="9714.Length"
+        }
+    }
+    - id=9718 kind="function" math_expression="20 * hash(column, 0, 41) + 10 * noise(column / 2.3, 0, 44) + select(hash(column, 0, 42) - 0.4, 30 + 60 * (hash(column, 0, 43) * 0.5 + 0.5), 0)" entry_id=10359
+    - {
+        id 10481
+        kind "function"
+        name "Cave Clearance"
+        entry_id 10482
+        return_id 10484
+        call_depth_limit 64
+        (array)nodes {
+            - {
+                id 10482
+                type "Function Entry"
+                x 0.0
+                y 0.0
+                placed #false
+                (array)outputs {
+                    - id=10486 name="X" type="float" kind="data"
+                    - id=10487 name="Y" type="float" kind="data"
+                    - id=10488 name="Column" type="float" kind="data"
+                    - id=10489 name="Radius" type="float" kind="data"
+                    - id=10490 name="Spacing" type="float" kind="data"
+                    - id=10491 name="Roughness" type="float" kind="data"
+                }
+            }
+            - {
+                id 10484
+                type "Return"
+                x 0.0
+                y 0.0
+                placed #false
+                (array)inputs {
+                    - id=10492 name="Clearance" type="float" kind="data"
+                }
+            }
+            - {
+                id 10530
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 10493
+                reference_name "0.55 * radius * noise(x / 700, 0, 3)"
+                inputs {
+                    radius {
+                        id 10531
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=20343
+                    }
+                    x {
+                        id 10532
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=20341
+                    }
+                }
+                outputs {
+                    Result id=10533 type="float"
+                }
+            }
+            - {
+                id 10627
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 10608
+                reference_name "x / (5 * radius)"
+                inputs {
+                    x {
+                        id 10628
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=20341
+                    }
+                    radius {
+                        id 10629
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=20343
+                    }
+                }
+                outputs {
+                    Result id=10630 type="float"
+                }
+            }
+            - {
+                id 10739
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 10669
+                reference_name "arteryCenter + select(hash(floor(segment), 0, 5), 1, -1) * radius * 2.15 * sin((segment - floor(segment)) * pi)"
+                inputs {
+                    arteryCenter {
+                        id 10740
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=20345
+                    }
+                    segment {
+                        id 10741
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=20346
+                    }
+                    radius {
+                        id 10742
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=20343
+                    }
+                }
+                outputs {
+                    Result id=10743 type="float"
+                }
+            }
+            - {
+                id 10882
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 10870
+                reference_name "y - arteryCenter"
+                inputs {
+                    y {
+                        id 10883
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=20342
+                    }
+                    arteryCenter {
+                        id 10884
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=20345
+                    }
+                }
+                outputs {
+                    Result id=10885 type="float"
+                }
+            }
+            - {
+                id 10987
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 10935
+                reference_name "abs(tunnelSide) - radius * (1 + 0.4 * noise(x / 420, 0, 4))"
+                inputs {
+                    tunnelSide id=10988 type="float" flags=0
+                    radius {
+                        id 10989
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=20343
+                    }
+                    x {
+                        id 10990
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=20341
+                    }
+                }
+                outputs {
+                    Result id=10991 type="float"
+                }
+            }
+            - {
+                id 11120
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 11108
+                reference_name "y - pocketCenter"
+                inputs {
+                    y {
+                        id 11121
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=20342
+                    }
+                    pocketCenter id=11122 type="float" flags=0
+                }
+                outputs {
+                    Result id=11123 type="float"
+                }
+            }
+            - {
+                id 11228
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 11206
+                reference_name "abs(pocketSide) - 0.43 * radius"
+                inputs {
+                    pocketSide id=11229 type="float" flags=0
+                    radius {
+                        id 11230
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=20343
+                    }
+                }
+                outputs {
+                    Result id=11231 type="float"
+                }
+            }
+            - {
+                id 11340
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 11266
+                reference_name "x + 220 * noise(x / 900, y / 900, 60) + 70 * noise(x / 260, y / 260, 62)"
+                inputs {
+                    x {
+                        id 11341
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=20341
+                    }
+                    y {
+                        id 11342
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=20342
+                    }
+                }
+                outputs {
+                    Result id=11343 type="float"
+                }
+            }
+            - {
+                id 11594
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 11492
+                reference_name "y + 220 * noise(x / 900 + 17.3, y / 900 - 5.1, 61) + 70 * noise(x / 260 - 8.9, y / 260 + 3.7, 63)"
+                inputs {
+                    y {
+                        id 11595
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=20342
+                    }
+                    x {
+                        id 11596
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=20341
+                    }
+                }
+                outputs {
+                    Result id=11597 type="float"
+                }
+            }
+            - {
+                id 11817
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 11802
+                reference_name "floor(warpX / spacing)"
+                inputs {
+                    warpX {
+                        id 11818
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=20349
+                    }
+                    spacing {
+                        id 11819
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=20344
+                    }
+                }
+                outputs {
+                    Result id=11820 type="float"
+                }
+            }
+            - {
+                id 11925
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 11910
+                reference_name "floor(warpY / spacing)"
+                inputs {
+                    warpY {
+                        id 11926
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=20350
+                    }
+                    spacing {
+                        id 11927
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=20344
+                    }
+                }
+                outputs {
+                    Result id=11928 type="float"
+                }
+            }
+            - {
+                id 12060
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 12046
+                reference_name "i + 1"
+                inputs {
+                    i {
+                        id 12061
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=20351
+                    }
+                }
+                outputs {
+                    Result id=12062 type="float"
+                }
+            }
+            - {
+                id 12092
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 12078
+                reference_name "i - 1"
+                inputs {
+                    i {
+                        id 12093
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=20351
+                    }
+                }
+                outputs {
+                    Result id=12094 type="float"
+                }
+            }
+            - {
+                id 12124
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 12110
+                reference_name "j + 1"
+                inputs {
+                    j {
+                        id 12125
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=20352
+                    }
+                }
+                outputs {
+                    Result id=12126 type="float"
+                }
+            }
+            - {
+                id 12156
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 12142
+                reference_name "j - 1"
+                inputs {
+                    j {
+                        id 12157
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=20352
+                    }
+                }
+                outputs {
+                    Result id=12158 type="float"
+                }
+            }
+            - {
+                id 12213
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 12174
+                reference_name "(i + 0.5 + 0.22 * hash(i, j, 11)) * spacing"
+                inputs {
+                    i {
+                        id 12214
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=20351
+                    }
+                    j {
+                        id 12215
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=20352
+                    }
+                    spacing {
+                        id 12216
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=20344
+                    }
+                }
+                outputs {
+                    Result id=12217 type="float"
+                }
+            }
+            - {
+                id 12326
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 12287
+                reference_name "(j + 0.5 + 0.22 * hash(i, j, 12)) * spacing"
+                inputs {
+                    j {
+                        id 12327
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=20352
+                    }
+                    i {
+                        id 12328
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=20351
+                    }
+                    spacing {
+                        id 12329
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=20344
+                    }
+                }
+                outputs {
+                    Result id=12330 type="float"
+                }
+            }
+            - {
+                id 12439
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 12400
+                reference_name "(east + 0.5 + 0.22 * hash(east, j, 11)) * spacing"
+                inputs {
+                    east {
+                        id 12440
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=20353
+                    }
+                    j {
+                        id 12441
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=20352
+                    }
+                    spacing {
+                        id 12442
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=20344
+                    }
+                }
+                outputs {
+                    Result id=12443 type="float"
+                }
+            }
+            - {
+                id 12551
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 12512
+                reference_name "(j + 0.5 + 0.22 * hash(east, j, 12)) * spacing"
+                inputs {
+                    j {
+                        id 12552
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=20352
+                    }
+                    east {
+                        id 12553
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=20353
+                    }
+                    spacing {
+                        id 12554
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=20344
+                    }
+                }
+                outputs {
+                    Result id=12555 type="float"
+                }
+            }
+            - {
+                id 12663
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 12624
+                reference_name "(west + 0.5 + 0.22 * hash(west, j, 11)) * spacing"
+                inputs {
+                    west {
+                        id 12664
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=20354
+                    }
+                    j {
+                        id 12665
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=20352
+                    }
+                    spacing {
+                        id 12666
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=20344
+                    }
+                }
+                outputs {
+                    Result id=12667 type="float"
+                }
+            }
+            - {
+                id 12775
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 12736
+                reference_name "(j + 0.5 + 0.22 * hash(west, j, 12)) * spacing"
+                inputs {
+                    j {
+                        id 12776
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=20352
+                    }
+                    west {
+                        id 12777
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=20354
+                    }
+                    spacing {
+                        id 12778
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=20344
+                    }
+                }
+                outputs {
+                    Result id=12779 type="float"
+                }
+            }
+            - {
+                id 12887
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 12848
+                reference_name "(i + 0.5 + 0.22 * hash(i, north, 11)) * spacing"
+                inputs {
+                    i {
+                        id 12888
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=20351
+                    }
+                    north {
+                        id 12889
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=20355
+                    }
+                    spacing {
+                        id 12890
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=20344
+                    }
+                }
+                outputs {
+                    Result id=12891 type="float"
+                }
+            }
+            - {
+                id 12999
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 12960
+                reference_name "(north + 0.5 + 0.22 * hash(i, north, 12)) * spacing"
+                inputs {
+                    north {
+                        id 13000
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=20355
+                    }
+                    i {
+                        id 13001
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=20351
+                    }
+                    spacing {
+                        id 13002
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=20344
+                    }
+                }
+                outputs {
+                    Result id=13003 type="float"
+                }
+            }
+            - {
+                id 13111
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 13072
+                reference_name "(i + 0.5 + 0.22 * hash(i, south, 11)) * spacing"
+                inputs {
+                    i {
+                        id 13112
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=20351
+                    }
+                    south {
+                        id 13113
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=20356
+                    }
+                    spacing {
+                        id 13114
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=20344
+                    }
+                }
+                outputs {
+                    Result id=13115 type="float"
+                }
+            }
+            - {
+                id 13223
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 13184
+                reference_name "(south + 0.5 + 0.22 * hash(i, south, 12)) * spacing"
+                inputs {
+                    south {
+                        id 13224
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=20356
+                    }
+                    i {
+                        id 13225
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=20351
+                    }
+                    spacing {
+                        id 13226
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=20344
+                    }
+                }
+                outputs {
+                    Result id=13227 type="float"
+                }
+            }
+            - {
+                id 13308
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 13296
+                reference_name "east * spacing"
+                inputs {
+                    east {
+                        id 13309
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=20353
+                    }
+                    spacing {
+                        id 13310
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=20344
+                    }
+                }
+                outputs {
+                    Result id=13311 type="float"
+                }
+            }
+            - {
+                id 13357
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 13338
+                reference_name "(west + 1) * spacing"
+                inputs {
+                    west {
+                        id 13358
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=20354
+                    }
+                    spacing {
+                        id 13359
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=20344
+                    }
+                }
+                outputs {
+                    Result id=13360 type="float"
+                }
+            }
+            - {
+                id 13406
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 13394
+                reference_name "north * spacing"
+                inputs {
+                    north {
+                        id 13407
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=20355
+                    }
+                    spacing {
+                        id 13408
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=20344
+                    }
+                }
+                outputs {
+                    Result id=13409 type="float"
+                }
+            }
+            - {
+                id 13455
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 13436
+                reference_name "(south + 1) * spacing"
+                inputs {
+                    south {
+                        id 13456
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=20356
+                    }
+                    spacing {
+                        id 13457
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=20344
+                    }
+                }
+                outputs {
+                    Result id=13458 type="float"
+                }
+            }
+            - {
+                id 13531
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 13492
+                reference_name "(j + 0.5 + 0.2 * hash(i, j, 21)) * spacing"
+                inputs {
+                    j {
+                        id 13532
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=20352
+                    }
+                    i {
+                        id 13533
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=20351
+                    }
+                    spacing {
+                        id 13534
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=20344
+                    }
+                }
+                outputs {
+                    Result id=13535 type="float"
+                }
+            }
+            - {
+                id 13644
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 13605
+                reference_name "(j + 0.5 + 0.2 * hash(west, j, 21)) * spacing"
+                inputs {
+                    j {
+                        id 13645
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=20352
+                    }
+                    west {
+                        id 13646
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=20354
+                    }
+                    spacing {
+                        id 13647
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=20344
+                    }
+                }
+                outputs {
+                    Result id=13648 type="float"
+                }
+            }
+            - {
+                id 13756
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 13717
+                reference_name "(i + 0.5 + 0.2 * hash(i, j, 24)) * spacing"
+                inputs {
+                    i {
+                        id 13757
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=20351
+                    }
+                    j {
+                        id 13758
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=20352
+                    }
+                    spacing {
+                        id 13759
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=20344
+                    }
+                }
+                outputs {
+                    Result id=13760 type="float"
+                }
+            }
+            - {
+                id 13869
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 13830
+                reference_name "(i + 0.5 + 0.2 * hash(i, south, 24)) * spacing"
+                inputs {
+                    i {
+                        id 13870
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=20351
+                    }
+                    south {
+                        id 13871
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=20356
+                    }
+                    spacing {
+                        id 13872
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=20344
+                    }
+                }
+                outputs {
+                    Result id=13873 type="float"
+                }
+            }
+            - {
+                id 13942
+                type "Call Pure Function"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 7089
+                reference_name "Chamber"
+                inputs {
+                    X {
+                        id 13943
+                        type "float"
+                        binding kind="local" local_id=20349
+                    }
+                    Y {
+                        id 13944
+                        type "float"
+                        binding kind="local" local_id=20350
+                    }
+                    "Center X" {
+                        id 13945
+                        type "float"
+                        binding kind="local" local_id=20357
+                    }
+                    "Center Y" {
+                        id 13946
+                        type "float"
+                        binding kind="local" local_id=20358
+                    }
+                    I {
+                        id 13947
+                        type "float"
+                        binding kind="local" local_id=20351
+                    }
+                    J {
+                        id 13948
+                        type "float"
+                        binding kind="local" local_id=20352
+                    }
+                }
+                outputs {
+                    Distance id=13949 type="float"
+                }
+            }
+            - {
+                id 14246
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 14234
+                reference_name "warpY - hereY"
+                inputs {
+                    warpY {
+                        id 14247
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=20350
+                    }
+                    hereY {
+                        id 14248
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=20358
+                    }
+                }
+                outputs {
+                    Result id=14249 type="float"
+                }
+            }
+            - {
+                id 14391
+                type "Call Pure Function"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 7511
+                reference_name "Tunnel"
+                inputs {
+                    X {
+                        id 14392
+                        type "float"
+                        binding kind="local" local_id=20349
+                    }
+                    Y {
+                        id 14393
+                        type "float"
+                        binding kind="local" local_id=20350
+                    }
+                    "From X" {
+                        id 14394
+                        type "float"
+                        binding kind="local" local_id=20357
+                    }
+                    "From Y" {
+                        id 14395
+                        type "float"
+                        binding kind="local" local_id=20358
+                    }
+                    "Door X" {
+                        id 14396
+                        type "float"
+                        binding kind="local" local_id=20359
+                    }
+                    "Door Y" {
+                        id 14397
+                        type "float"
+                        binding kind="local" local_id=20363
+                    }
+                    "Door I" {
+                        id 14398
+                        type "float"
+                        binding kind="local" local_id=20351
+                    }
+                    "Door J" {
+                        id 14399
+                        type "float"
+                        binding kind="local" local_id=20352
+                    }
+                }
+                outputs {
+                    Distance id=14400 type="float"
+                }
+            }
+            - {
+                id 14736
+                type "Call Pure Function"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 8972
+                reference_name "Tunnel Side"
+                inputs {
+                    X {
+                        id 14737
+                        type "float"
+                        binding kind="local" local_id=20349
+                    }
+                    Y {
+                        id 14738
+                        type "float"
+                        binding kind="local" local_id=20350
+                    }
+                    "From X" {
+                        id 14739
+                        type "float"
+                        binding kind="local" local_id=20357
+                    }
+                    "From Y" {
+                        id 14740
+                        type "float"
+                        binding kind="local" local_id=20358
+                    }
+                    "Door X" {
+                        id 14741
+                        type "float"
+                        binding kind="local" local_id=20359
+                    }
+                    "Door Y" {
+                        id 14742
+                        type "float"
+                        binding kind="local" local_id=20363
+                    }
+                }
+                outputs {
+                    Side id=14743 type="float"
+                }
+            }
+            - {
+                id 15049
+                type "Call Pure Function"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 7511
+                reference_name "Tunnel"
+                inputs {
+                    X {
+                        id 15050
+                        type "float"
+                        binding kind="local" local_id=20349
+                    }
+                    Y {
+                        id 15051
+                        type "float"
+                        binding kind="local" local_id=20350
+                    }
+                    "From X" id=15052 type="float"
+                    "From Y" id=15053 type="float"
+                    "Door X" {
+                        id 15054
+                        type "float"
+                        binding kind="local" local_id=20359
+                    }
+                    "Door Y" {
+                        id 15055
+                        type "float"
+                        binding kind="local" local_id=20363
+                    }
+                    "Door I" {
+                        id 15056
+                        type "float"
+                        binding kind="local" local_id=20351
+                    }
+                    "Door J" {
+                        id 15057
+                        type "float"
+                        binding kind="local" local_id=20352
+                    }
+                }
+                outputs {
+                    Distance id=15058 type="float"
+                }
+            }
+            - {
+                id 15394
+                type "Call Pure Function"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 8972
+                reference_name "Tunnel Side"
+                inputs {
+                    X {
+                        id 15395
+                        type "float"
+                        binding kind="local" local_id=20349
+                    }
+                    Y {
+                        id 15396
+                        type "float"
+                        binding kind="local" local_id=20350
+                    }
+                    "From X" id=15397 type="float"
+                    "From Y" id=15398 type="float"
+                    "Door X" {
+                        id 15399
+                        type "float"
+                        binding kind="local" local_id=20359
+                    }
+                    "Door Y" {
+                        id 15400
+                        type "float"
+                        binding kind="local" local_id=20363
+                    }
+                }
+                outputs {
+                    Side id=15401 type="float"
+                }
+            }
+            - {
+                id 15707
+                type "Call Pure Function"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 7511
+                reference_name "Tunnel"
+                inputs {
+                    X {
+                        id 15708
+                        type "float"
+                        binding kind="local" local_id=20349
+                    }
+                    Y {
+                        id 15709
+                        type "float"
+                        binding kind="local" local_id=20350
+                    }
+                    "From X" {
+                        id 15710
+                        type "float"
+                        binding kind="local" local_id=20357
+                    }
+                    "From Y" {
+                        id 15711
+                        type "float"
+                        binding kind="local" local_id=20358
+                    }
+                    "Door X" {
+                        id 15712
+                        type "float"
+                        binding kind="local" local_id=20360
+                    }
+                    "Door Y" {
+                        id 15713
+                        type "float"
+                        binding kind="local" local_id=20364
+                    }
+                    "Door I" {
+                        id 15714
+                        type "float"
+                        binding kind="local" local_id=20354
+                    }
+                    "Door J" {
+                        id 15715
+                        type "float"
+                        binding kind="local" local_id=20352
+                    }
+                }
+                outputs {
+                    Distance id=15716 type="float"
+                }
+            }
+            - {
+                id 16058
+                type "Call Pure Function"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 8972
+                reference_name "Tunnel Side"
+                inputs {
+                    X {
+                        id 16059
+                        type "float"
+                        binding kind="local" local_id=20349
+                    }
+                    Y {
+                        id 16060
+                        type "float"
+                        binding kind="local" local_id=20350
+                    }
+                    "From X" {
+                        id 16061
+                        type "float"
+                        binding kind="local" local_id=20357
+                    }
+                    "From Y" {
+                        id 16062
+                        type "float"
+                        binding kind="local" local_id=20358
+                    }
+                    "Door X" {
+                        id 16063
+                        type "float"
+                        binding kind="local" local_id=20360
+                    }
+                    "Door Y" {
+                        id 16064
+                        type "float"
+                        binding kind="local" local_id=20364
+                    }
+                }
+                outputs {
+                    Side id=16065 type="float"
+                }
+            }
+            - {
+                id 16378
+                type "Call Pure Function"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 7511
+                reference_name "Tunnel"
+                inputs {
+                    X {
+                        id 16379
+                        type "float"
+                        binding kind="local" local_id=20349
+                    }
+                    Y {
+                        id 16380
+                        type "float"
+                        binding kind="local" local_id=20350
+                    }
+                    "From X" id=16381 type="float"
+                    "From Y" id=16382 type="float"
+                    "Door X" {
+                        id 16383
+                        type "float"
+                        binding kind="local" local_id=20360
+                    }
+                    "Door Y" {
+                        id 16384
+                        type "float"
+                        binding kind="local" local_id=20364
+                    }
+                    "Door I" {
+                        id 16385
+                        type "float"
+                        binding kind="local" local_id=20354
+                    }
+                    "Door J" {
+                        id 16386
+                        type "float"
+                        binding kind="local" local_id=20352
+                    }
+                }
+                outputs {
+                    Distance id=16387 type="float"
+                }
+            }
+            - {
+                id 16729
+                type "Call Pure Function"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 8972
+                reference_name "Tunnel Side"
+                inputs {
+                    X {
+                        id 16730
+                        type "float"
+                        binding kind="local" local_id=20349
+                    }
+                    Y {
+                        id 16731
+                        type "float"
+                        binding kind="local" local_id=20350
+                    }
+                    "From X" id=16732 type="float"
+                    "From Y" id=16733 type="float"
+                    "Door X" {
+                        id 16734
+                        type "float"
+                        binding kind="local" local_id=20360
+                    }
+                    "Door Y" {
+                        id 16735
+                        type "float"
+                        binding kind="local" local_id=20364
+                    }
+                }
+                outputs {
+                    Side id=16736 type="float"
+                }
+            }
+            - {
+                id 17049
+                type "Call Pure Function"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 8273
+                reference_name "Shaft"
+                inputs {
+                    X {
+                        id 17050
+                        type "float"
+                        binding kind="local" local_id=20349
+                    }
+                    Y {
+                        id 17051
+                        type "float"
+                        binding kind="local" local_id=20350
+                    }
+                    "From X" {
+                        id 17052
+                        type "float"
+                        binding kind="local" local_id=20357
+                    }
+                    "From Y" {
+                        id 17053
+                        type "float"
+                        binding kind="local" local_id=20358
+                    }
+                    "Door X" {
+                        id 17054
+                        type "float"
+                        binding kind="local" local_id=20365
+                    }
+                    "Door Y" {
+                        id 17055
+                        type "float"
+                        binding kind="local" local_id=20361
+                    }
+                    "Door I" {
+                        id 17056
+                        type "float"
+                        binding kind="local" local_id=20351
+                    }
+                    "Door J" {
+                        id 17057
+                        type "float"
+                        binding kind="local" local_id=20352
+                    }
+                }
+                outputs {
+                    Distance id=17058 type="float"
+                }
+            }
+            - {
+                id 17394
+                type "Call Pure Function"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 9349
+                reference_name "Shaft Side"
+                inputs {
+                    Y {
+                        id 17395
+                        type "float"
+                        binding kind="local" local_id=20350
+                    }
+                    "From Y" {
+                        id 17396
+                        type "float"
+                        binding kind="local" local_id=20358
+                    }
+                    "Door Y" {
+                        id 17397
+                        type "float"
+                        binding kind="local" local_id=20361
+                    }
+                }
+                outputs {
+                    Side id=17398 type="float"
+                }
+            }
+            - {
+                id 17552
+                type "Call Pure Function"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 8273
+                reference_name "Shaft"
+                inputs {
+                    X {
+                        id 17553
+                        type "float"
+                        binding kind="local" local_id=20349
+                    }
+                    Y {
+                        id 17554
+                        type "float"
+                        binding kind="local" local_id=20350
+                    }
+                    "From X" id=17555 type="float"
+                    "From Y" id=17556 type="float"
+                    "Door X" {
+                        id 17557
+                        type "float"
+                        binding kind="local" local_id=20365
+                    }
+                    "Door Y" {
+                        id 17558
+                        type "float"
+                        binding kind="local" local_id=20361
+                    }
+                    "Door I" {
+                        id 17559
+                        type "float"
+                        binding kind="local" local_id=20351
+                    }
+                    "Door J" {
+                        id 17560
+                        type "float"
+                        binding kind="local" local_id=20352
+                    }
+                }
+                outputs {
+                    Distance id=17561 type="float"
+                }
+            }
+            - {
+                id 17897
+                type "Call Pure Function"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 9349
+                reference_name "Shaft Side"
+                inputs {
+                    Y {
+                        id 17898
+                        type "float"
+                        binding kind="local" local_id=20350
+                    }
+                    "From Y" id=17899 type="float"
+                    "Door Y" {
+                        id 17900
+                        type "float"
+                        binding kind="local" local_id=20361
+                    }
+                }
+                outputs {
+                    Side id=17901 type="float"
+                }
+            }
+            - {
+                id 18055
+                type "Call Pure Function"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 8273
+                reference_name "Shaft"
+                inputs {
+                    X {
+                        id 18056
+                        type "float"
+                        binding kind="local" local_id=20349
+                    }
+                    Y {
+                        id 18057
+                        type "float"
+                        binding kind="local" local_id=20350
+                    }
+                    "From X" {
+                        id 18058
+                        type "float"
+                        binding kind="local" local_id=20357
+                    }
+                    "From Y" {
+                        id 18059
+                        type "float"
+                        binding kind="local" local_id=20358
+                    }
+                    "Door X" {
+                        id 18060
+                        type "float"
+                        binding kind="local" local_id=20366
+                    }
+                    "Door Y" {
+                        id 18061
+                        type "float"
+                        binding kind="local" local_id=20362
+                    }
+                    "Door I" {
+                        id 18062
+                        type "float"
+                        binding kind="local" local_id=20351
+                    }
+                    "Door J" {
+                        id 18063
+                        type "float"
+                        binding kind="local" local_id=20356
+                    }
+                }
+                outputs {
+                    Distance id=18064 type="float"
+                }
+            }
+            - {
+                id 18406
+                type "Call Pure Function"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 9349
+                reference_name "Shaft Side"
+                inputs {
+                    Y {
+                        id 18407
+                        type "float"
+                        binding kind="local" local_id=20350
+                    }
+                    "From Y" {
+                        id 18408
+                        type "float"
+                        binding kind="local" local_id=20358
+                    }
+                    "Door Y" {
+                        id 18409
+                        type "float"
+                        binding kind="local" local_id=20362
+                    }
+                }
+                outputs {
+                    Side id=18410 type="float"
+                }
+            }
+            - {
+                id 18571
+                type "Call Pure Function"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 8273
+                reference_name "Shaft"
+                inputs {
+                    X {
+                        id 18572
+                        type "float"
+                        binding kind="local" local_id=20349
+                    }
+                    Y {
+                        id 18573
+                        type "float"
+                        binding kind="local" local_id=20350
+                    }
+                    "From X" id=18574 type="float"
+                    "From Y" id=18575 type="float"
+                    "Door X" {
+                        id 18576
+                        type "float"
+                        binding kind="local" local_id=20366
+                    }
+                    "Door Y" {
+                        id 18577
+                        type "float"
+                        binding kind="local" local_id=20362
+                    }
+                    "Door I" {
+                        id 18578
+                        type "float"
+                        binding kind="local" local_id=20351
+                    }
+                    "Door J" {
+                        id 18579
+                        type "float"
+                        binding kind="local" local_id=20356
+                    }
+                }
+                outputs {
+                    Distance id=18580 type="float"
+                }
+            }
+            - {
+                id 18922
+                type "Call Pure Function"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 9349
+                reference_name "Shaft Side"
+                inputs {
+                    Y {
+                        id 18923
+                        type "float"
+                        binding kind="local" local_id=20350
+                    }
+                    "From Y" id=18924 type="float"
+                    "Door Y" {
+                        id 18925
+                        type "float"
+                        binding kind="local" local_id=20362
+                    }
+                }
+                outputs {
+                    Side id=18926 type="float"
+                }
+            }
+            - {
+                id 19144
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 19087
+                reference_name "min(min(min(min(min(min(min(min(min(min(chamber, eastNear), eastFar), westNear), westFar), northNear), northFar), southNear), southFar), tunnel), pocket)"
+                inputs {
+                    chamber {
+                        id 19145
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=20368
+                    }
+                    eastNear {
+                        id 19146
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=20369
+                    }
+                    eastFar {
+                        id 19147
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=20370
+                    }
+                    westNear {
+                        id 19148
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=20371
+                    }
+                    westFar {
+                        id 19149
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=20372
+                    }
+                    northNear {
+                        id 19150
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=20373
+                    }
+                    northFar {
+                        id 19151
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=20374
+                    }
+                    southNear {
+                        id 19152
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=20375
+                    }
+                    southFar {
+                        id 19153
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=20376
+                    }
+                    tunnel {
+                        id 19154
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=20347
+                    }
+                    pocket {
+                        id 19155
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=20348
+                    }
+                }
+                outputs {
+                    Result id=19156 type="float"
+                }
+            }
+            - {
+                id 19250
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 19231
+                reference_name "select(tunnel - nearest, pocketSide, tunnelSide)"
+                inputs {
+                    tunnel {
+                        id 19251
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=20347
+                    }
+                    nearest {
+                        id 19252
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=20367
+                    }
+                    pocketSide id=19253 type="float" flags=0
+                    tunnelSide id=19254 type="float" flags=0
+                }
+                outputs {
+                    Result id=19255 type="float"
+                }
+            }
+            - {
+                id 19419
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 19389
+                reference_name "select(southNear - nearest, select(southFar - nearest, arterySide, southFarSide), southNearSide)"
+                inputs {
+                    southNear {
+                        id 19420
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=20375
+                    }
+                    nearest {
+                        id 19421
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=20367
+                    }
+                    southFar {
+                        id 19422
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=20376
+                    }
+                    arterySide id=19423 type="float" flags=0
+                    southFarSide id=19424 type="float" flags=0
+                    southNearSide id=19425 type="float" flags=0
+                }
+                outputs {
+                    Result id=19426 type="float"
+                }
+            }
+            - {
+                id 19533
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 19503
+                reference_name "select(northNear - nearest, select(northFar - nearest, southSide, northFarSide), northNearSide)"
+                inputs {
+                    northNear {
+                        id 19534
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=20373
+                    }
+                    nearest {
+                        id 19535
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=20367
+                    }
+                    northFar {
+                        id 19536
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=20374
+                    }
+                    southSide id=19537 type="float" flags=0
+                    northFarSide id=19538 type="float" flags=0
+                    northNearSide id=19539 type="float" flags=0
+                }
+                outputs {
+                    Result id=19540 type="float"
+                }
+            }
+            - {
+                id 19658
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 19628
+                reference_name "select(westNear - nearest, select(westFar - nearest, northSide, westFarSide), westNearSide)"
+                inputs {
+                    westNear {
+                        id 19659
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=20371
+                    }
+                    nearest {
+                        id 19660
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=20367
+                    }
+                    westFar {
+                        id 19661
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=20372
+                    }
+                    northSide id=19662 type="float" flags=0
+                    westFarSide id=19663 type="float" flags=0
+                    westNearSide id=19664 type="float" flags=0
+                }
+                outputs {
+                    Result id=19665 type="float"
+                }
+            }
+            - {
+                id 19783
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 19753
+                reference_name "select(eastNear - nearest, select(eastFar - nearest, westSide, eastFarSide), eastNearSide)"
+                inputs {
+                    eastNear {
+                        id 19784
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=20369
+                    }
+                    nearest {
+                        id 19785
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=20367
+                    }
+                    eastFar {
+                        id 19786
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=20370
+                    }
+                    westSide id=19787 type="float" flags=0
+                    eastFarSide id=19788 type="float" flags=0
+                    eastNearSide id=19789 type="float" flags=0
+                }
+                outputs {
+                    Result id=19790 type="float"
+                }
+            }
+            - {
+                id 19897
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 19878
+                reference_name "select(chamber - nearest, eastSide, chamberSide)"
+                inputs {
+                    chamber {
+                        id 19898
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=20368
+                    }
+                    nearest {
+                        id 19899
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=20367
+                    }
+                    eastSide id=19900 type="float" flags=0
+                    chamberSide id=19901 type="float" flags=0
+                }
+                outputs {
+                    Result id=19902 type="float"
+                }
+            }
+            - {
+                id 20002
+                type "Call Pure Function"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 9459
+                reference_name "Ragged End"
+                inputs {
+                    Column id=20003 type="float"
+                }
+                outputs {
+                    Length id=20004 type="float"
+                }
+            }
+            - {
+                id 20005
+                type "Call Pure Function"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 9711
+                reference_name "Hanging End"
+                inputs {
+                    Column id=20006 type="float"
+                }
+                outputs {
+                    Length id=20007 type="float"
+                }
+            }
+            - {
+                id 20070
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 20008
+                reference_name "-(nearest + roughness * 0.4 * noise(x / 170, y / 170, 0)) - select(side, ragged, hanging)"
+                inputs {
+                    nearest {
+                        id 20071
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=20367
+                    }
+                    roughness id=20072 type="float" flags=0
+                    x {
+                        id 20073
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=20341
+                    }
+                    y {
+                        id 20074
+                        type "float"
+                        flags 0
+                        binding kind="local" local_id=20342
+                    }
+                    side id=20075 type="float" flags=0
+                    ragged id=20076 type="float" flags=0
+                    hanging id=20077 type="float" flags=0
+                }
+                outputs {
+                    Result id=20078 type="float"
+                }
+            }
+        }
+        (array)edges {
+            - from="10482.X" to="10530.x"
+            - from="10482.X" to="10627.x"
+            - from="10482.X" to="10987.x"
+            - from="10482.X" to="11340.x"
+            - from="10482.X" to="11594.x"
+            - from="10482.X" to="20070.x"
+            - from="10482.Y" to="10882.y"
+            - from="10482.Y" to="11120.y"
+            - from="10482.Y" to="11340.y"
+            - from="10482.Y" to="11594.y"
+            - from="10482.Y" to="20070.y"
+            - from="10482.Column" to="20002.Column"
+            - from="10482.Column" to="20005.Column"
+            - from="10482.Radius" to="10530.radius"
+            - from="10482.Radius" to="10627.radius"
+            - from="10482.Radius" to="10739.radius"
+            - from="10482.Radius" to="10987.radius"
+            - from="10482.Radius" to="11228.radius"
+            - from="10482.Spacing" to="11817.spacing"
+            - from="10482.Spacing" to="11925.spacing"
+            - from="10482.Spacing" to="12213.spacing"
+            - from="10482.Spacing" to="12326.spacing"
+            - from="10482.Spacing" to="12439.spacing"
+            - from="10482.Spacing" to="12551.spacing"
+            - from="10482.Spacing" to="12663.spacing"
+            - from="10482.Spacing" to="12775.spacing"
+            - from="10482.Spacing" to="12887.spacing"
+            - from="10482.Spacing" to="12999.spacing"
+            - from="10482.Spacing" to="13111.spacing"
+            - from="10482.Spacing" to="13223.spacing"
+            - from="10482.Spacing" to="13308.spacing"
+            - from="10482.Spacing" to="13357.spacing"
+            - from="10482.Spacing" to="13406.spacing"
+            - from="10482.Spacing" to="13455.spacing"
+            - from="10482.Spacing" to="13531.spacing"
+            - from="10482.Spacing" to="13644.spacing"
+            - from="10482.Spacing" to="13756.spacing"
+            - from="10482.Spacing" to="13869.spacing"
+            - from="10482.Roughness" to="20070.roughness"
+            - from="10530.Result" to="10739.arteryCenter"
+            - from="10530.Result" to="10882.arteryCenter"
+            - from="10627.Result" to="10739.segment"
+            - from="10739.Result" to="11120.pocketCenter"
+            - from="10882.Result" to="10987.tunnelSide"
+            - from="10882.Result" to="19250.tunnelSide"
+            - from="10987.Result" to="19144.tunnel"
+            - from="10987.Result" to="19250.tunnel"
+            - from="11120.Result" to="11228.pocketSide"
+            - from="11120.Result" to="19250.pocketSide"
+            - from="11228.Result" to="19144.pocket"
+            - from="11340.Result" to="11817.warpX"
+            - from="11340.Result" to="13942.X"
+            - from="11340.Result" to="14391.X"
+            - from="11340.Result" to="14736.X"
+            - from="11340.Result" to="15049.X"
+            - from="11340.Result" to="15394.X"
+            - from="11340.Result" to="15707.X"
+            - from="11340.Result" to="16058.X"
+            - from="11340.Result" to="16378.X"
+            - from="11340.Result" to="16729.X"
+            - from="11340.Result" to="17049.X"
+            - from="11340.Result" to="17552.X"
+            - from="11340.Result" to="18055.X"
+            - from="11340.Result" to="18571.X"
+            - from="11594.Result" to="11925.warpY"
+            - from="11594.Result" to="13942.Y"
+            - from="11594.Result" to="14246.warpY"
+            - from="11594.Result" to="14391.Y"
+            - from="11594.Result" to="14736.Y"
+            - from="11594.Result" to="15049.Y"
+            - from="11594.Result" to="15394.Y"
+            - from="11594.Result" to="15707.Y"
+            - from="11594.Result" to="16058.Y"
+            - from="11594.Result" to="16378.Y"
+            - from="11594.Result" to="16729.Y"
+            - from="11594.Result" to="17049.Y"
+            - from="11594.Result" to="17394.Y"
+            - from="11594.Result" to="17552.Y"
+            - from="11594.Result" to="17897.Y"
+            - from="11594.Result" to="18055.Y"
+            - from="11594.Result" to="18406.Y"
+            - from="11594.Result" to="18571.Y"
+            - from="11594.Result" to="18922.Y"
+            - from="11817.Result" to="12060.i"
+            - from="11817.Result" to="12092.i"
+            - from="11817.Result" to="12213.i"
+            - from="11817.Result" to="12326.i"
+            - from="11817.Result" to="12887.i"
+            - from="11817.Result" to="12999.i"
+            - from="11817.Result" to="13111.i"
+            - from="11817.Result" to="13223.i"
+            - from="11817.Result" to="13531.i"
+            - from="11817.Result" to="13756.i"
+            - from="11817.Result" to="13869.i"
+            - from="11817.Result" to="13942.I"
+            - from="11817.Result" to="14391.Door I"
+            - from="11817.Result" to="15049.Door I"
+            - from="11817.Result" to="17049.Door I"
+            - from="11817.Result" to="17552.Door I"
+            - from="11817.Result" to="18055.Door I"
+            - from="11817.Result" to="18571.Door I"
+            - from="11925.Result" to="12124.j"
+            - from="11925.Result" to="12156.j"
+            - from="11925.Result" to="12213.j"
+            - from="11925.Result" to="12326.j"
+            - from="11925.Result" to="12439.j"
+            - from="11925.Result" to="12551.j"
+            - from="11925.Result" to="12663.j"
+            - from="11925.Result" to="12775.j"
+            - from="11925.Result" to="13531.j"
+            - from="11925.Result" to="13644.j"
+            - from="11925.Result" to="13756.j"
+            - from="11925.Result" to="13942.J"
+            - from="11925.Result" to="14391.Door J"
+            - from="11925.Result" to="15049.Door J"
+            - from="11925.Result" to="15707.Door J"
+            - from="11925.Result" to="16378.Door J"
+            - from="11925.Result" to="17049.Door J"
+            - from="11925.Result" to="17552.Door J"
+            - from="12060.Result" to="12439.east"
+            - from="12060.Result" to="12551.east"
+            - from="12060.Result" to="13308.east"
+            - from="12092.Result" to="12663.west"
+            - from="12092.Result" to="12775.west"
+            - from="12092.Result" to="13357.west"
+            - from="12092.Result" to="13644.west"
+            - from="12092.Result" to="15707.Door I"
+            - from="12092.Result" to="16378.Door I"
+            - from="12124.Result" to="12887.north"
+            - from="12124.Result" to="12999.north"
+            - from="12124.Result" to="13406.north"
+            - from="12156.Result" to="13111.south"
+            - from="12156.Result" to="13223.south"
+            - from="12156.Result" to="13455.south"
+            - from="12156.Result" to="13869.south"
+            - from="12156.Result" to="18055.Door J"
+            - from="12156.Result" to="18571.Door J"
+            - from="12213.Result" to="13942.Center X"
+            - from="12213.Result" to="14391.From X"
+            - from="12213.Result" to="14736.From X"
+            - from="12213.Result" to="15707.From X"
+            - from="12213.Result" to="16058.From X"
+            - from="12213.Result" to="17049.From X"
+            - from="12213.Result" to="18055.From X"
+            - from="12326.Result" to="13942.Center Y"
+            - from="12326.Result" to="14246.hereY"
+            - from="12326.Result" to="14391.From Y"
+            - from="12326.Result" to="14736.From Y"
+            - from="12326.Result" to="15707.From Y"
+            - from="12326.Result" to="16058.From Y"
+            - from="12326.Result" to="17049.From Y"
+            - from="12326.Result" to="17394.From Y"
+            - from="12326.Result" to="18055.From Y"
+            - from="12326.Result" to="18406.From Y"
+            - from="12439.Result" to="15049.From X"
+            - from="12439.Result" to="15394.From X"
+            - from="12551.Result" to="15049.From Y"
+            - from="12551.Result" to="15394.From Y"
+            - from="12663.Result" to="16378.From X"
+            - from="12663.Result" to="16729.From X"
+            - from="12775.Result" to="16378.From Y"
+            - from="12775.Result" to="16729.From Y"
+            - from="12887.Result" to="17552.From X"
+            - from="12999.Result" to="17552.From Y"
+            - from="12999.Result" to="17897.From Y"
+            - from="13111.Result" to="18571.From X"
+            - from="13223.Result" to="18571.From Y"
+            - from="13223.Result" to="18922.From Y"
+            - from="13308.Result" to="14391.Door X"
+            - from="13308.Result" to="14736.Door X"
+            - from="13308.Result" to="15049.Door X"
+            - from="13308.Result" to="15394.Door X"
+            - from="13357.Result" to="15707.Door X"
+            - from="13357.Result" to="16058.Door X"
+            - from="13357.Result" to="16378.Door X"
+            - from="13357.Result" to="16729.Door X"
+            - from="13406.Result" to="17049.Door Y"
+            - from="13406.Result" to="17394.Door Y"
+            - from="13406.Result" to="17552.Door Y"
+            - from="13406.Result" to="17897.Door Y"
+            - from="13455.Result" to="18055.Door Y"
+            - from="13455.Result" to="18406.Door Y"
+            - from="13455.Result" to="18571.Door Y"
+            - from="13455.Result" to="18922.Door Y"
+            - from="13531.Result" to="14391.Door Y"
+            - from="13531.Result" to="14736.Door Y"
+            - from="13531.Result" to="15049.Door Y"
+            - from="13531.Result" to="15394.Door Y"
+            - from="13644.Result" to="15707.Door Y"
+            - from="13644.Result" to="16058.Door Y"
+            - from="13644.Result" to="16378.Door Y"
+            - from="13644.Result" to="16729.Door Y"
+            - from="13756.Result" to="17049.Door X"
+            - from="13756.Result" to="17552.Door X"
+            - from="13869.Result" to="18055.Door X"
+            - from="13869.Result" to="18571.Door X"
+            - from="13942.Distance" to="19144.chamber"
+            - from="13942.Distance" to="19897.chamber"
+            - from="14246.Result" to="19897.chamberSide"
+            - from="14391.Distance" to="19144.eastNear"
+            - from="14391.Distance" to="19783.eastNear"
+            - from="14736.Side" to="19783.eastNearSide"
+            - from="15049.Distance" to="19144.eastFar"
+            - from="15049.Distance" to="19783.eastFar"
+            - from="15394.Side" to="19783.eastFarSide"
+            - from="15707.Distance" to="19144.westNear"
+            - from="15707.Distance" to="19658.westNear"
+            - from="16058.Side" to="19658.westNearSide"
+            - from="16378.Distance" to="19144.westFar"
+            - from="16378.Distance" to="19658.westFar"
+            - from="16729.Side" to="19658.westFarSide"
+            - from="17049.Distance" to="19144.northNear"
+            - from="17049.Distance" to="19533.northNear"
+            - from="17394.Side" to="19533.northNearSide"
+            - from="17552.Distance" to="19144.northFar"
+            - from="17552.Distance" to="19533.northFar"
+            - from="17897.Side" to="19533.northFarSide"
+            - from="18055.Distance" to="19144.southNear"
+            - from="18055.Distance" to="19419.southNear"
+            - from="18406.Side" to="19419.southNearSide"
+            - from="18571.Distance" to="19144.southFar"
+            - from="18571.Distance" to="19419.southFar"
+            - from="18922.Side" to="19419.southFarSide"
+            - from="19144.Result" to="19250.nearest"
+            - from="19144.Result" to="19419.nearest"
+            - from="19144.Result" to="19533.nearest"
+            - from="19144.Result" to="19658.nearest"
+            - from="19144.Result" to="19783.nearest"
+            - from="19144.Result" to="19897.nearest"
+            - from="19144.Result" to="20070.nearest"
+            - from="19250.Result" to="19419.arterySide"
+            - from="19419.Result" to="19533.southSide"
+            - from="19533.Result" to="19658.northSide"
+            - from="19658.Result" to="19783.westSide"
+            - from="19783.Result" to="19897.eastSide"
+            - from="19897.Result" to="20070.side"
+            - from="20002.Length" to="20070.ragged"
+            - from="20005.Length" to="20070.hanging"
+            - from="20070.Result" to="10484.Clearance"
+        }
+        (array)locals {
+            - id=20341 name="x" from="10482.X"
+            - id=20342 name="y" from="10482.Y"
+            - id=20343 name="radius" from="10482.Radius"
+            - id=20344 name="spacing" from="10482.Spacing"
+            - id=20345 name="arteryCenter" from="10530.Result"
+            - id=20346 name="segment" from="10627.Result"
+            - id=20347 name="tunnel" from="10987.Result"
+            - id=20348 name="pocket" from="11228.Result"
+            - id=20349 name="warpX" from="11340.Result"
+            - id=20350 name="warpY" from="11594.Result"
+            - id=20351 name="i" from="11817.Result"
+            - id=20352 name="j" from="11925.Result"
+            - id=20353 name="east" from="12060.Result"
+            - id=20354 name="west" from="12092.Result"
+            - id=20355 name="north" from="12124.Result"
+            - id=20356 name="south" from="12156.Result"
+            - id=20357 name="hereX" from="12213.Result"
+            - id=20358 name="hereY" from="12326.Result"
+            - id=20359 name="right" from="13308.Result"
+            - id=20360 name="left" from="13357.Result"
+            - id=20361 name="top" from="13406.Result"
+            - id=20362 name="bottom" from="13455.Result"
+            - id=20363 name="eastDoorY" from="13531.Result"
+            - id=20364 name="westDoorY" from="13644.Result"
+            - id=20365 name="northDoorX" from="13756.Result"
+            - id=20366 name="southDoorX" from="13869.Result"
+            - id=20367 name="nearest" from="19144.Result"
+            - id=20368 name="chamber" from="13942.Distance"
+            - id=20369 name="eastNear" from="14391.Distance"
+            - id=20370 name="eastFar" from="15049.Distance"
+            - id=20371 name="westNear" from="15707.Distance"
+            - id=20372 name="westFar" from="16378.Distance"
+            - id=20373 name="northNear" from="17049.Distance"
+            - id=20374 name="northFar" from="17552.Distance"
+            - id=20375 name="southNear" from="18055.Distance"
+            - id=20376 name="southFar" from="18571.Distance"
+        }
+    }
+    - id=10493 kind="function" math_expression="0.55 * radius * noise(x / 700, 0, 3)" entry_id=10887
+    - id=10608 kind="function" math_expression="x / (5 * radius)" entry_id=10745
+    - id=10669 kind="function" math_expression="arteryCenter + select(hash(floor(segment), 0, 5), 1, -1) * radius * 2.15 * sin((segment - floor(segment)) * pi)" entry_id=11125
+    - id=10870 kind="function" math_expression="y - arteryCenter" entry_id=19309
+    - id=10935 kind="function" math_expression="abs(tunnelSide) - radius * (1 + 0.4 * noise(x / 420, 0, 4))" entry_id=19257
+    - id=11108 kind="function" math_expression="y - pocketCenter" entry_id=19378
+    - id=11206 kind="function" math_expression="abs(pocketSide) - 0.43 * radius" entry_id=19158
+    - id=11266 kind="function" math_expression="x + 220 * noise(x / 900, y / 900, 60) + 70 * noise(x / 260, y / 260, 62)" entry_id=18747
+    - id=11492 kind="function" math_expression="y + 220 * noise(x / 900 + 17.3, y / 900 - 5.1, 61) + 70 * noise(x / 260 - 8.9, y / 260 + 3.7, 63)" entry_id=18928
+    - id=11802 kind="function" math_expression="floor(warpX / spacing)" entry_id=18718
+    - id=11910 kind="function" math_expression="floor(warpY / spacing)" entry_id=17707
+    - id=12046 kind="function" math_expression="i + 1" entry_id=13313
+    - id=12078 kind="function" math_expression="i - 1" entry_id=16525
+    - id=12110 kind="function" math_expression="j + 1" entry_id=13411
+    - id=12142 kind="function" math_expression="j - 1" entry_id=18733
+    - id=12174 kind="function" math_expression="(i + 0.5 + 0.22 * hash(i, j, 11)) * spacing" entry_id=18066
+    - id=12287 kind="function" math_expression="(j + 0.5 + 0.22 * hash(i, j, 12)) * spacing" entry_id=18514
+    - id=12400 kind="function" math_expression="(east + 0.5 + 0.22 * hash(east, j, 11)) * spacing" entry_id=15403
+    - id=12512 kind="function" math_expression="(j + 0.5 + 0.22 * hash(east, j, 12)) * spacing" entry_id=15442
+    - id=12624 kind="function" math_expression="(west + 0.5 + 0.22 * hash(west, j, 11)) * spacing" entry_id=16738
+    - id=12736 kind="function" math_expression="(j + 0.5 + 0.22 * hash(west, j, 12)) * spacing" entry_id=16777
+    - id=12848 kind="function" math_expression="(i + 0.5 + 0.22 * hash(i, north, 11)) * spacing" entry_id=17563
+    - id=12960 kind="function" math_expression="(north + 0.5 + 0.22 * hash(i, north, 12)) * spacing" entry_id=18005
+    - id=13072 kind="function" math_expression="(i + 0.5 + 0.22 * hash(i, south, 11)) * spacing" entry_id=18582
+    - id=13184 kind="function" math_expression="(south + 0.5 + 0.22 * hash(i, south, 12)) * spacing" entry_id=19030
+    - id=13296 kind="function" math_expression="east * spacing" entry_id=15481
+    - id=13338 kind="function" math_expression="(west + 1) * spacing" entry_id=16816
+    - id=13394 kind="function" math_expression="north * spacing" entry_id=18044
+    - id=13436 kind="function" math_expression="(south + 1) * spacing" entry_id=19069
+    - id=13492 kind="function" math_expression="(j + 0.5 + 0.2 * hash(i, j, 21)) * spacing" entry_id=15493
+    - id=13605 kind="function" math_expression="(j + 0.5 + 0.2 * hash(west, j, 21)) * spacing" entry_id=16835
+    - id=13717 kind="function" math_expression="(i + 0.5 + 0.2 * hash(i, j, 24)) * spacing" entry_id=17641
+    - id=13830 kind="function" math_expression="(i + 0.5 + 0.2 * hash(i, south, 24)) * spacing" entry_id=18660
+    - id=14234 kind="function" math_expression="warpY - hereY" entry_id=19991
+    - id=19087 kind="function" math_expression="min(min(min(min(min(min(min(min(min(min(chamber, eastNear), eastFar), westNear), westFar), northNear), northFar), southNear), southFar), tunnel), pocket)" entry_id=20285
+    - id=19231 kind="function" math_expression="select(tunnel - nearest, pocketSide, tunnelSide)" entry_id=19428
+    - id=19389 kind="function" math_expression="select(southNear - nearest, select(southFar - nearest, arterySide, southFarSide), southNearSide)" entry_id=19599
+    - id=19503 kind="function" math_expression="select(northNear - nearest, select(northFar - nearest, southSide, northFarSide), northNearSide)" entry_id=19667
+    - id=19628 kind="function" math_expression="select(westNear - nearest, select(westFar - nearest, northSide, westFarSide), westNearSide)" entry_id=19792
+    - id=19753 kind="function" math_expression="select(eastNear - nearest, select(eastFar - nearest, westSide, eastFarSide), eastNearSide)" entry_id=19961
+    - id=19878 kind="function" math_expression="select(chamber - nearest, eastSide, chamberSide)" entry_id=20142
+    - id=20008 kind="function" math_expression="-(nearest + roughness * 0.4 * noise(x / 170, y / 170, 0)) - select(side, ragged, hanging)" entry_id=20378
+    - id=20439 kind="function" math_expression="x + originX" entry_id=20856
+    - id=20479 kind="function" math_expression="-y" entry_id=23609
+    - id=20502 kind="function" math_expression="x / 180 + z / 420 + 1.3" entry_id=23848
+    - id=20561 kind="function" math_expression="x / 95 - z / 300 + 0.4" entry_id=23881
+    - id=20620 kind="function" math_expression="x / 1300 + z / 2100" entry_id=23914
+    - id=20672 kind="function" math_expression="x / 900 + z / 260 + 2.2" entry_id=23940
+    - id=20731 kind="function" math_expression="0.5 + 0.5 * sin(drift)" entry_id=21490
+    - id=20784 kind="function" math_expression="x / 26 + 0.9 * sin(wobbleA) + 0.5 * sin(wobbleB) + 4.6 * swayAmount * sin(sway)" entry_id=21738
+    - id=20990 kind="function" math_expression="1 / 26 + 0.9 * cos(wobbleA) / 180 + 0.5 * cos(wobbleB) / 95 + 4.6 * (0.5 * cos(drift) / 1300 * sin(sway) + swayAmount * cos(sway) / 900)" entry_id=23973
+    - id=21255 kind="function" math_expression="0.9 * cos(wobbleA) / 420 - 0.5 * cos(wobbleB) / 300 + 4.6 * (0.5 * cos(drift) / 2100 * sin(sway) + swayAmount * cos(sway) / 260)" entry_id=24089
+    - id=21513 kind="function" math_expression="floor(columnCoord)" entry_id=24191
+    - id=21598 kind="function" math_expression="(columnCoord - floor(columnCoord) - 0.5) / columnsPerX" entry_id=23619
+    - id=21801 kind="function" math_expression="0.5 / columnsPerX" entry_id=23408
+    - id=21927 kind="function" math_expression="offset / halfWidth" entry_id=22930
+    - id=21983 kind="function" math_expression="columnsPerZ / columnsPerX" entry_id=23597
+    - id=22210 kind="function" math_expression="z - lean * offset" entry_id=22823
+    - id=22280 kind="function" math_expression="26 + 36 * (0.5 + 0.5 * sin(column * 2.3999631 + 0.3))" entry_id=23448
+    - id=22353 kind="function" math_expression="0.5 + 0.5 * sin(column * 1.93716 + 1.1)" entry_id=22994
+    - id=22412 kind="function" math_expression="jointSpacing * jointPhase" entry_id=23292
+    - id=22518 kind="function" math_expression="sin(column * 3.30119 + 2.2)" entry_id=24201
+    - id=22591 kind="function" math_expression="sin(column * 0.83261 + 4.4)" entry_id=24225
+    - id=22664 kind="function" math_expression="(along + 0.45 * jointSpacing * sin(along / (0.9 * jointSpacing) + 7 * jointPhase) - start - 0.2 * tilt * offset - 3 * bow * across * across) / jointSpacing" entry_id=23157
+    - id=23031 kind="function" math_expression="floor(blockCoord)" entry_id=23356
+    - id=23140 kind="function" math_expression="blockCoord - block" entry_id=23500
+    - id=23262 kind="function" math_expression="start + (block + 0.5) * jointSpacing" entry_id=23658
+    - id=23365 kind="function" math_expression="min(min(blockT, 1 - blockT) * jointSpacing, halfWidth - abs(offset))" entry_id=23773
+    - id=23511 kind="function" math_expression="x - offset - lean * (center - z)" entry_id=23690
+    - id=23644 kind="function" math_expression="-center" entry_id=23717
+    - id=23744 kind="function" math_expression="select(clearance, min(clearance, edge), max(clearance, -edge))" entry_id=23809
+}

@@ -1,4 +1,0 @@
-libyaml vendored from https://github.com/yaml/libyaml
-release 0.2.5 (MIT), yaml-0.2.5.tar.gz SHA-256 c642ae9b75fee120b2d96c712538bd2cf283228d2337df2cf2988e3c02678ef4.
-Copied src/{api,emitter,parser,reader,scanner,writer}.c, src/yaml_private.h, include/yaml.h, and License as LICENSE.
-The document loader and dumper are omitted; assets use the event parser and emitter.

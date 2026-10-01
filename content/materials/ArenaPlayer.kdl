@@ -1,0 +1,230 @@
+version 3
+name "ArenaPlayer"
+domain "material"
+id_counter 637
+description "Cyan player surface. A color ramp along local X marks the forward end; Fresnel lifts the edge."
+(array)graphs {
+    - {
+        kind "event"
+        name ""
+        (array)nodes {
+            - {
+                id 29
+                type "Shader Surface Output"
+                x 0.0
+                y 0.0
+                placed #false
+                inputs {
+                    "Base Color" {
+                        default x=1.0 y=1.0 z=1.0
+                    }
+                    Emission {
+                        default x=0.0 y=0.0 z=0.0
+                    }
+                    Normal {
+                        default x=0.0 y=0.0 z=0.0
+                    }
+                    Height id=112
+                }
+            }
+            - {
+                id 37
+                type "Shader Position"
+                x 0.0
+                y 0.0
+                placed #false
+                outputs {
+                    Position {
+                        default x=0.0 y=0.0
+                    }
+                }
+            }
+            - {
+                id 51
+                type "Shader Color Ramp"
+                x 0.0
+                y 0.0
+                placed #false
+                inputs {
+                    Stops {
+                        (array)default {
+                            - {
+                                Position 0.0
+                                Color x=0.0080000003799796104 y=0.15999999642372131 z=0.30000001192092896 w=1.0
+                            }
+                            - {
+                                Position 0.62000000476837158
+                                Color x=0.014999999664723873 y=0.5 z=0.81999999284744263 w=1.0
+                            }
+                            - {
+                                Position 0.86000001430511475
+                                Color x=0.34999999403953552 y=0.94999998807907104 z=1.0499999523162842 w=1.0
+                            }
+                            - {
+                                Position 1.0
+                                Color x=0.72000002861022949 y=1.1000000238418579 z=1.1499999761581421 w=1.0
+                            }
+                        }
+                    }
+                    Interpolation 2
+                }
+                outputs {
+                    Color {
+                        default x=0.0 y=0.0 z=0.0
+                    }
+                    Alpha 1.0
+                }
+            }
+            - {
+                id 57
+                type "Shader Fresnel"
+                x 0.0
+                y 0.0
+                placed #false
+                inputs Power=3.0
+            }
+            - {
+                id 63
+                type "Shader Parameter"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 2
+                reference_name "Edge Glow"
+                outputs {
+                    Value flags=0 group=0 default=2.7999999523162842
+                }
+            }
+            - {
+                id 69
+                type "Shader Parameter"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 5
+                reference_name "Body Glow"
+                outputs {
+                    Value flags=0 group=0 default=0.64999997615814209
+                }
+            }
+            - {
+                id 79
+                type "Shader Parameter"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 3
+                reference_name "Roughness"
+                outputs {
+                    Value flags=0 group=0 default=0.31999999284744263
+                }
+            }
+            - {
+                id 81
+                type "Shader Parameter"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 4
+                reference_name "Metallic"
+                outputs {
+                    Value flags=0 group=0 default=0.18000000715255737
+                }
+            }
+            - {
+                id 84
+                type "Shader Parameter"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_name "Hit Flash"
+                outputs {
+                    Value id=83 type_name="float" flags=0 group=0
+                }
+            }
+            - {
+                id 102
+                type "Shader Parameter"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 1
+                reference_name "Dash Glow"
+                outputs {
+                    Value id=101 type_name="float" flags=0 group=0
+                }
+            }
+            - {
+                id 132
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 113
+                reference_name "position.x / 28 + 0.5"
+                inputs {
+                    position id=133 type="struct" type_name="ShaderVec2"
+                }
+                outputs {
+                    Result id=134 type="float"
+                }
+            }
+            - {
+                id 179
+                type "Call Pure Function"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 399
+                reference_name "Hit Flash"
+                reference_asset "ShaderMath"
+                inputs {
+                    Color id=180 declaration_id=404 type="struct" type_name="ShaderVec3"
+                    Flash id=181 declaration_id=405 type="float"
+                }
+                outputs {
+                    "Base Color" id=182 declaration_id=406 type="struct" type_name="ShaderVec3"
+                    Glow id=183 declaration_id=407 type="struct" type_name="ShaderVec3"
+                }
+            }
+            - {
+                id 231
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 184
+                reference_name "body_color * (fresnel * edge_glow + body_glow) + flash_glow + vec3(0.06, 0.65, 1) * dash_glow"
+                inputs {
+                    body_color id=232 type="struct" type_name="ShaderVec3"
+                    fresnel id=233 type="float"
+                    edge_glow id=234 type="float"
+                    body_glow id=235 type="float"
+                    flash_glow id=236 type="struct" type_name="ShaderVec3"
+                    dash_glow id=237 type="float"
+                }
+                outputs {
+                    Result id=238 type="struct" type_name="ShaderVec3"
+                }
+            }
+        }
+        (array)edges {
+            - from="37.Position" to="132.position"
+            - from="51.Color" to="179.Color"
+            - from="51.Color" to="231.body_color"
+            - from="57.Value" to="231.fresnel"
+            - from="63.Value" to="231.edge_glow"
+            - from="69.Value" to="231.body_glow"
+            - from="79.Value" to="29.Roughness"
+            - from="81.Value" to="29.Metallic"
+            - from="84.Value" to="179.Flash"
+            - from="102.Value" to="231.dash_glow"
+            - from="132.Result" to="51.Factor"
+            - from="179.Base Color" to="29.Base Color"
+            - from="179.Glow" to="231.flash_glow"
+            - from="231.Result" to="29.Emission"
+        }
+    }
+    - id=113 kind="function" math_expression="position.x / 28 + 0.5" entry_id=616
+    - id=184 kind="function" math_expression="body_color * (fresnel * edge_glow + body_glow) + flash_glow + vec3(0.06, 0.65, 1) * dash_glow" entry_id=569
+}

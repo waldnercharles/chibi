@@ -40,13 +40,13 @@ static void library_contract_checks()
         "signature refresh preserves parameter IDs and values across rename "
         "and addition"
     );
-    char *before_refresh = graph_save_json(forward);
+    char *before_refresh = graph_save(forward);
     graph_set_pin_type(function, ret, 0, 0, PIN_F32, "float");
     test_check(
         graph_library_refresh_call(forward, inner, function) != NULL,
         "signature refresh diagnoses incompatible connected results"
     );
-    char *after_refresh = graph_save_json(forward);
+    char *after_refresh = graph_save(forward);
     test_check(strcmp(before_refresh, after_refresh) == 0, "rejected signature refresh preserves every wire and pin");
     free(before_refresh);
     free(after_refresh);
@@ -159,8 +159,8 @@ static void library_contract_checks()
         "isolated preview owns the shared function catalog"
     );
     game_prototype *prototype = game_prototype_load(
-        "{\"name\":\"LibraryActor\",\"components\":{},\"graphs\":["
-        "\"LibraryConsumer\"]}",
+        "name \"LibraryActor\"; components { }; (array)graphs { - "
+        "\"LibraryConsumer\"; }; ",
         &registry,
         error,
         sizeof error
@@ -1028,20 +1028,21 @@ void run_runtime_execution_checks()
         graph_connect_exec(&gj, event, 0, branch, 0, 12);
         graph_connect_data(&gj, condition, 0, branch, 1);
         graph_set_node_presentation(&gj, condition, NODE_PRESENTATION_EXPANDED);
-        char *json = graph_save_json(&gj);
+        char *json = graph_save(&gj);
         test_check(
-            json && strstr(json, "\"version\": 3") &&
-                strstr(json, "\"from\": \"1.Then\"") && strstr(json, "\"order\": 12") &&
-                strstr(json, "\"reference_name\": \"Saved\""),
-            "v3 JSON names flow endpoints by pin"
+            json && strstr(json, "version 3") &&
+                strstr(json, "from=\"1.Then\"") && strstr(json, "order=12") &&
+                (strstr(json, "reference_name \"Saved\"") ||
+                 strstr(json, "reference_name=\"Saved\"")),
+            "v3 KDL names flow endpoints by pin"
         );
-        graph *loaded = json ? graph_load_json(json) : NULL;
+        graph *loaded = json ? graph_load(json) : NULL;
         test_check(
             loaded && acount(loaded->edges) == 2 &&
                 loaded->edges[0].kind == GRAPH_EDGE_EXEC &&
                 graph_event_name(loaded->nodes[0]) &&
                 strcmp(graph_event_name(loaded->nodes[0]), "Saved") == 0,
-            "v3 JSON loads flow metadata"
+            "v3 KDL loads flow metadata"
         );
         if (loaded) {
             graph_free(loaded);
@@ -1050,12 +1051,11 @@ void run_runtime_execution_checks()
         free(json);
 
         node *flow_subset[] = { event, branch };
-        char *subset_json = graph_save_nodes_json(&gj, flow_subset, 2);
+        char *subset_json = graph_save_nodes(&gj, flow_subset, 2);
         graph appended;
         graph_init(&appended);
         test_check(
-            subset_json &&
-                graph_append_json(&appended, subset_json, 10.0f, 20.0f) == 0 &&
+            subset_json && graph_append(&appended, subset_json, 10.0f, 20.0f) == 0 &&
                 acount(appended.edges) == 1 && appended.edges[0].kind == GRAPH_EDGE_EXEC &&
                 appended.edges[0].exec_order == 12,
             "append remaps ID-based flow edge"
@@ -1063,8 +1063,7 @@ void run_runtime_execution_checks()
         uint64_t first_copy = appended.nodes[0]->id;
         uint64_t second_copy = appended.nodes[1]->id;
         test_check(
-            subset_json &&
-                graph_append_json(&appended, subset_json, 20.0f, 30.0f) == 0 &&
+            subset_json && graph_append(&appended, subset_json, 20.0f, 30.0f) == 0 &&
                 acount(appended.nodes) == 4 && acount(appended.edges) == 2 &&
                 appended.nodes[2]->id != first_copy &&
                 appended.nodes[3]->id != second_copy &&
@@ -1078,12 +1077,12 @@ void run_runtime_execution_checks()
         graph_free(&gj);
 
         test_check(
-            graph_load_json("{\"version\":2,\"nodes\":[],\"edges\":[]}") == NULL &&
+            graph_load("version 2; (array)nodes { }; (array)edges { }; ") == NULL &&
                 strstr(graph_last_error(), "version"),
             "v2 documents are rejected"
         );
         test_check(
-            graph_load_json("{\"nodes\":[],\"edges\":[]}") == NULL &&
+            graph_load("(array)nodes { }; (array)edges { }; ") == NULL &&
                 strstr(graph_last_error(), "version"),
             "versionless documents are rejected"
         );
@@ -1382,8 +1381,8 @@ void run_runtime_execution_checks()
         graph_set_pin_default(&gs, delay, 0, 1, &(pin_value){ .type = PIN_F64, .d = 2.0 });
         flow_run *run = flow_run_start(&gs, event, (flow_inputs){ 0 }, NULL, &dispatch_error);
         (void)flow_run_resume(run);
-        char *json = graph_save_json(&gs);
-        graph *loaded = json ? graph_load_json(json) : NULL;
+        char *json = graph_save(&gs);
+        graph *loaded = json ? graph_load(json) : NULL;
         test_check(
             json && !strstr(json, "\\\"run\\\"") && !strstr(json, "\\\"state\\\"") &&
                 loaded && acount(loaded->nodes) == 2,

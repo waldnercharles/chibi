@@ -39,13 +39,43 @@ void run_graph_document_checks()
         radd->x = 100.0f;
         radd->y = -30.0f;
 
-        char *json = graph_save_json(&g2);
-        test_check(json != NULL, "roundtrip: serialize to JSON");
+        av_doc *native = av_doc_new();
+        av_value *native_graph = graph_to_value(native, &g2);
+        graph *native_copy = graph_from_value(native_graph);
+        test_check(
+            native_copy && acount(native_copy->nodes) == 3 &&
+                graph_node_by_id(native_copy, rc1->id)->input_pins[0].id ==
+                    rc1->input_pins[0].id &&
+                graph_node_by_id(native_copy, radd->id)->output_pins[0].type == PIN_F64,
+            "native graph roundtrip preserves stable IDs and inferred types"
+        );
+        av_doc_free(native);
+        if (native_copy) {
+            node *copied_literal = graph_node_by_id(native_copy, rc1->id);
+            graph_set_pin_default(
+                native_copy,
+                copied_literal,
+                0,
+                0,
+                &(pin_value){ .type = PIN_F64, .type_name = "double", .d = 9.0 }
+            );
+            test_check(
+                rc1->input_pins[0].default_value.d == 2.0 &&
+                    copied_literal->input_pins[0].default_value.d == 9.0,
+                "native graph copies own their defaults after the asset tree "
+                "is freed"
+            );
+            graph_free(native_copy);
+            free(native_copy);
+        }
+
+        char *json = graph_save(&g2);
+        test_check(json != NULL, "roundtrip: serialize to KDL");
         if (json) {
             printf("\n--- serialized graph ---\n%s--- end ---\n", json);
 
-            graph *g3 = graph_load_json(json);
-            test_check(g3 != NULL, "roundtrip: load from JSON");
+            graph *g3 = graph_load(json);
+            test_check(g3 != NULL, "roundtrip: load from KDL");
             if (g3) {
                 test_check(acount(g3->nodes) == 3, "roundtrip: node count survives");
                 test_check(acount(g3->edges) == 2, "roundtrip: edge count survives");
@@ -60,9 +90,9 @@ void run_graph_document_checks()
                     "roundtrip: eval loaded add node"
                 );
                 test_check(out.type == PIN_F64 && out.d == 5.0, "roundtrip: 2.0 + 3.0 == 5.0");
-                char *json2 = graph_save_json(g3);
-                graph *g4 = json2 ? graph_load_json(json2) : NULL;
-                char *json3 = g4 ? graph_save_json(g4) : NULL;
+                char *json2 = graph_save(g3);
+                graph *g4 = json2 ? graph_load(json2) : NULL;
+                char *json3 = g4 ? graph_save(g4) : NULL;
                 test_check(json2 && json3 && strcmp(json2, json3) == 0, "load/save/load/save is byte-identical");
                 if (g4) {
                     graph_free(g4);
@@ -77,6 +107,42 @@ void run_graph_document_checks()
             free(json);
         }
         graph_free(&g2);
+    }
+
+    /* Keyed extension fields retain identity when text editors reorder them. */
+    {
+        graph source;
+        graph_init(&source);
+        node *sender = graph_add_node(&source, registry_node_by_name("Send Event"));
+        pin_spec payload = { .name = "Amount", .type = PIN_I32, .kind = PIN_DATA };
+        int amount = graph_add_pin(&source, sender, 0, &payload);
+        payload.name = "Source";
+        int origin = graph_add_pin(&source, sender, 0, &payload);
+        av_doc *doc = av_doc_new();
+        av_value *written = graph_to_value(doc, &source);
+        av_value *node_value = av_arr_get(av_obj_get(written, "nodes"), 0);
+        av_value *inputs = av_obj_get(node_value, "inputs");
+        av_value *amount_value = av_obj_get(inputs, "Amount");
+        av_obj_remove_key(inputs, "Amount");
+        av_obj_set(doc, inputs, "Amount", amount_value);
+        graph *loaded = graph_from_value(written);
+        node *copy = loaded ? graph_node_by_id(loaded, sender->id) : NULL;
+        int copied_amount = copy ? serialize_pin_by_key(copy, 0, "Amount") : -1;
+        int copied_origin = copy ? serialize_pin_by_key(copy, 0, "Source") : -1;
+        test_check(
+            copy && copied_amount >= 0 && copied_origin >= 0 &&
+                copy->input_pins[copied_amount].id == sender->input_pins[amount].id &&
+                copy->input_pins[copied_origin].id == sender->input_pins[origin].id &&
+                copy->output_pins[0].id == sender->output_pins[0].id,
+            "Reordering keyed payload fields preserves pin IDs and "
+            "continuation identity"
+        );
+        if (loaded) {
+            graph_free(loaded);
+            free(loaded);
+        }
+        av_doc_free(doc);
+        graph_free(&source);
     }
 
     /* 9. comprehensive v3 authored-field round trip. */
@@ -181,11 +247,11 @@ void run_graph_document_checks()
                 graph_connect_exec(&full, sequence, added_index, sink, 0, 13) == 0,
             "exec edge order is serialized"
         );
-        char *full_a = graph_save_json(&full);
-        graph *full_b = full_a ? graph_load_json(full_a) : NULL;
-        char *full_c = full_b ? graph_save_json(full_b) : NULL;
-        graph *full_d = full_c ? graph_load_json(full_c) : NULL;
-        char *full_e = full_d ? graph_save_json(full_d) : NULL;
+        char *full_a = graph_save(&full);
+        graph *full_b = full_a ? graph_load(full_a) : NULL;
+        char *full_c = full_b ? graph_save(full_b) : NULL;
+        graph *full_d = full_c ? graph_load(full_c) : NULL;
+        char *full_e = full_d ? graph_save(full_d) : NULL;
         test_check(
             full_b && full_d && full_a && full_c && full_e &&
                 strcmp(full_a, full_c) == 0 && strcmp(full_c, full_e) == 0,
@@ -217,8 +283,8 @@ void run_graph_document_checks()
         node *saved_second = full.nodes[1];
         full.nodes[0] = saved_second;
         full.nodes[1] = saved_first;
-        char *reordered = graph_save_json(&full);
-        graph *reordered_loaded = reordered ? graph_load_json(reordered) : NULL;
+        char *reordered = graph_save(&full);
+        graph *reordered_loaded = reordered ? graph_load(reordered) : NULL;
         test_check(
             reordered && full_a && strcmp(reordered, full_a) == 0 && reordered_loaded,
             "node array position carries no reference meaning"
@@ -257,10 +323,10 @@ void run_graph_document_checks()
                             .str = "hello, world" };
         test_check(graph_set_pin_default(&g4, s1, 0, 0, &hello) == 0, "string const: authored value set");
 
-        char *json = graph_save_json(&g4);
+        char *json = graph_save(&g4);
         test_check(json != NULL, "string const: serialize");
         if (json) {
-            graph *g5 = graph_load_json(json);
+            graph *g5 = graph_load(json);
             test_check(g5 && acount(g5->nodes) == 1, "string const: load");
             if (g5) {
                 test_check(
@@ -285,8 +351,8 @@ void run_graph_document_checks()
         shader_ramp_stop stops[] = { { 0.0f, { 0.12f, 0.34f, 0.56f, 0.78f } },
                                      { 1.0f, { 0.91f, 0.73f, 0.55f, 0.37f } } };
         test_check(ramp && shader_node_ramp_set(&ramp_graph, ramp, stops, 2), "typed struct array default is authored");
-        char *json = graph_save_json(&ramp_graph);
-        graph *loaded = json ? graph_load_json(json) : NULL;
+        char *json = graph_save(&ramp_graph);
+        graph *loaded = json ? graph_load(json) : NULL;
         shader_ramp_stop actual[SHADER_RAMP_MAX];
         int actual_count = loaded ? shader_node_ramp_get(loaded->nodes[0], actual) : 0;
         test_check(loaded && actual_count == 2, "typed struct array default reloads");
@@ -308,19 +374,19 @@ void run_graph_document_checks()
     {
         const char *bad[] = {
             "{ not json",
-            "{\"nodes\": []}",
-            "{\"version\":3,\"id_counter\":1,\"name\":\"\",\"description\":"
-            "\"\",\"nodes\":[{"
-            "\"type\":\"nope\"}],\"edges\":[]}",
-            "{\"version\":3,\"nodes\":[{\"type\":\"Add\"}],\"edges\":[]"
-            "}",
+            "(array)\"nodes\" { }; ",
+            "\"version\" 3; \"id_counter\" 1; \"name\" \"\"; \"description\" "
+            "\"\"; (array)\"nodes\" { \"-\" { \"type\" \"nope\"; }; }; "
+            "(array)\"edges\" { }; ",
+            "\"version\" 3; (array)\"nodes\" { \"-\" { \"type\" \"Add\"; }; }; "
+            "(array)\"edges\" { }; ",
         };
-        test_check(graph_load_json(bad[0]) == NULL && graph_last_error()[0] != '\0', "malformed JSON rejected");
-        test_check(graph_load_json(bad[1]) == NULL && graph_last_error()[0] != '\0', "missing edges array rejected");
-        test_check(graph_load_json(bad[2]) == NULL && strstr(graph_last_error(), "unknown"), "unknown node type rejected");
-        test_check(graph_load_json(bad[3]) == NULL, "malformed pin list rejected");
+        test_check(graph_load(bad[0]) == NULL && graph_last_error()[0] != '\0', "malformed JSON rejected");
+        test_check(graph_load(bad[1]) == NULL && graph_last_error()[0] != '\0', "missing edges array rejected");
+        test_check(graph_load(bad[2]) == NULL && strstr(graph_last_error(), "unknown"), "unknown node type rejected");
+        test_check(graph_load(bad[3]) == NULL, "malformed pin list rejected");
         test_check(
-            graph_load_json("{\"version\":2,\"nodes\":[],\"edges\":[]}") == NULL &&
+            graph_load("\"version\" 2; (array)\"nodes\" { }; (array)\"edges\" { }; ") == NULL &&
                 strstr(graph_last_error(), "version"),
             "unsupported schema version rejected"
         );
@@ -383,12 +449,12 @@ void run_graph_document_checks()
         graph_set_node_presentation(&g2, c1, NODE_PRESENTATION_EXPANDED);
         graph_set_node_presentation(&g2, c2, NODE_PRESENTATION_EXPANDED);
         node *subset[] = { c1, ad }; /* c2 is outside the subset */
-        char *json = graph_save_nodes_json(&g2, subset, 2);
+        char *json = graph_save_nodes(&g2, subset, 2);
         test_check(json != NULL, "subset: serialize");
         if (json) {
             printf("\n--- serialized subset ---\n%s--- end ---\n", json);
 
-            graph *g3 = graph_load_json(json);
+            graph *g3 = graph_load(json);
             test_check(g3 != NULL, "subset: load");
             if (g3) {
                 test_check(acount(g3->nodes) == 2, "subset: node count is 2");
@@ -437,13 +503,13 @@ void run_graph_document_checks()
         graph_set_node_presentation(&g4, c2, NODE_PRESENTATION_EXPANDED);
 
         node *subset[] = { c1, ad };
-        char *json = graph_save_nodes_json(&g4, subset, 2);
+        char *json = graph_save_nodes(&g4, subset, 2);
         test_check(json != NULL, "append: serialize source subset");
         if (json) {
             graph g5;
             graph_init(&g5);
             test_check(acount(g5.nodes) == 0, "append: fresh graph starts empty");
-            test_check(graph_append_json(&g5, json, 100.0f, 200.0f) == 0, "append: returns 0");
+            test_check(graph_append(&g5, json, 100.0f, 200.0f) == 0, "append: returns 0");
             test_check(acount(g5.nodes) == 2, "append: node count");
             test_check(acount(g5.edges) == 1, "append: edge count");
             test_check(g5.nodes[0]->x == 110.0f && g5.nodes[0]->y == 220.0f, "append: node 0 offset");
@@ -451,7 +517,7 @@ void run_graph_document_checks()
             test_check(g5.nodes[0]->input_pins[0].default_value.d == 2.0, "append: literal survives");
 
             int n_before = acount(g5.nodes);
-            test_check(graph_append_json(&g5, "{ not json", 0.0f, 0.0f) == -1, "append: bad json fails");
+            test_check(graph_append(&g5, "{ not json", 0.0f, 0.0f) == -1, "append: bad json fails");
             test_check(acount(g5.nodes) == n_before, "append: graph untouched on error");
 
             graph_free(&g5);

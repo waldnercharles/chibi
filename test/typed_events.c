@@ -57,9 +57,9 @@ void test_typed_events()
     assert(!graph_connect_data(g, event, 1, set, 1));
     /* An untagged wired payload must not disappear during signature refresh. */
     event->output_pins[1].declaration_id = 0;
-    char *untagged = behavior_asset_save_json(asset);
+    char *untagged = behavior_asset_save(asset);
     assert(graph_event_apply(g, event, definition) == -1);
-    char *unchanged = behavior_asset_save_json(asset);
+    char *unchanged = behavior_asset_save(asset);
     assert(!strcmp(untagged, unchanged));
     free(untagged);
     free(unchanged);
@@ -75,8 +75,8 @@ void test_typed_events()
     assert(!graph_event_apply(g, event, definition));
     assert(event->output_pins[1].id == pin_id);
     assert(!strcmp(event->output_pins[1].name, "Value"));
-    char *json = behavior_asset_save_json(asset);
-    behavior_asset *copy = behavior_asset_load_json(json);
+    char *json = behavior_asset_save(asset);
+    behavior_asset *copy = behavior_asset_load(json);
     assert(copy);
     free(json);
     behavior_asset_free(copy);
@@ -92,9 +92,9 @@ void test_typed_events()
     assert(value.i == 23);
     behavior_instance_destroy(instance);
     assert(!behavior_asset_retype_variable(definition, parameter_id, PIN_F32, "float"));
-    json = behavior_asset_save_json(asset);
+    json = behavior_asset_save(asset);
     assert(graph_event_apply(g, event, definition) == -1);
-    char *after = behavior_asset_save_json(asset);
+    char *after = behavior_asset_save(asset);
     assert(!strcmp(json, after));
     free(json);
     free(after);

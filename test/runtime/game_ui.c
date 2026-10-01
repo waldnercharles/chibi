@@ -4,6 +4,7 @@
 #include "graph/runtime/value_array.h"
 #include "runtime/ui.h"
 #include "support/array.h"
+#include "support/asset_text.h"
 #include "test/suite_internal.h"
 
 #include <assert.h>
@@ -69,19 +70,19 @@ static void nodes()
     test_check(found, "UI nodes target their own entity by default");
 }
 
-static bool json_is(const pin_value *value, const char *expected)
+static bool data_is(const pin_value *value, const char *expected)
 {
-    char *json = serialize_value_json(value);
-    bool same = !strcmp(json, expected);
-    if (!same) {
-        printf("  %s, not %s\n", json, expected);
-    }
-    free(json);
+    char error[256];
+    av_doc *doc = av_doc_new();
+    av_doc *wanted = av_doc_read(expected, error, sizeof error);
+    assert(wanted);
+    bool same = av_equals(serialize_value(doc, value), av_obj_get(av_doc_root(wanted), "value"));
+    av_doc_free(doc);
+    av_doc_free(wanted);
     return same;
 }
 
-/* Set UI Data's values reach documents as JSON: numbers, text, a struct's
-   fields by name, and a list of structs data-for repeats. */
+/* Reflected values retain their native scalar, object and array types. */
 static void data_values()
 {
     CF_V2 points[2] = { { 1, 2 }, { 3, 4 } };
@@ -92,28 +93,34 @@ static void data_values()
             &(pin_value){ .type = PIN_STRUCT, .type_name = "CF_V2", .ptr = &points[i] }
         );
     }
-    bool written = json_is(&(pin_value){ .type = PIN_I32, .i = 7 }, "7") &&
-                   json_is(&(pin_value){ .type = PIN_STR, .str = "Gem" }, "\"Gem\"") &&
-                   json_is(
+    bool written = data_is(&(pin_value){ .type = PIN_I32, .i = 7 }, "value 7; ") &&
+                   data_is(&(pin_value){ .type = PIN_STR, .str = "Gem" }, "value \"Gem\"; ") &&
+                   data_is(
                        &(pin_value){ .type = PIN_STRUCT,
                                      .type_name = "CF_V2",
                                      .ptr = &points[0] },
-                       "{\"x\":1.0,\"y\":2.0}"
+                       "value x=1.0 y=2.0; "
                    ) &&
-                   json_is(
+                   data_is(
                        &(pin_value){ .type = PIN_STRUCT,
                                      .container = PIN_CONTAINER_ARRAY,
                                      .type_name = "CF_V2",
                                      .ptr = list },
-                       "[{\"x\":1.0,\"y\":2.0},{\"x\":3.0,\"y\":4.0}]"
+                       "(array)value { - x=1.0 y=2.0; - x=3.0 y=4.0; }; "
                    );
     pin_array_free(list);
     game_ui *ui = game_ui_new();
-    bool kept = game_ui_set_data(ui, 7, "items", "[1,2]") &&
-                !game_ui_set_data(ui, 7, "2items", "1") &&
-                !game_ui_set_data(ui, 7, "items", "[1,") &&
+    av_doc *data = av_doc_new();
+    av_value *items = av_arr(data);
+    av_arr_append(items, av_sint(data, 1));
+    av_arr_append(items, av_sint(data, 2));
+    bool kept = game_ui_set_data(ui, 7, "items", items) &&
+                !game_ui_set_data(ui, 7, "2items", av_sint(data, 1)) &&
+                !game_ui_set_data(ui, 7, "items", NULL) &&
                 game_ui_data_count(ui) == 1 &&
-                !strcmp(game_ui_data_at(ui, 0)->json, "[1,2]");
+                av_equals(game_ui_data_at(ui, 0)->value, items);
+    av_doc_free(data);
+    kept &= av_get_int(av_arr_get(game_ui_data_at(ui, 0)->value, 1)) == 2;
     game_ui_forget(ui, 7);
     kept &= game_ui_data_count(ui) == 0;
     bool styled = game_ui_set_style(ui, 7, ".bar", "width", "40%") &&
@@ -124,7 +131,7 @@ static void data_values()
                   !game_ui_element_at(ui, 0)->styles[0].value;
     test_check(styled, "Set UI Style keeps each property's last value, an empty one returning it to the stylesheets");
     game_ui_free(ui);
-    test_check(written && kept, "Set UI Data turns any value into JSON for self.<name>, and keeps a word's last valid value per entity");
+    test_check(written && kept, "Set UI Data retains native values for self.<name> independently of their source document");
 }
 
 /* A behavior's Set UI Data stores its value, retyped from the wildcard's
@@ -154,7 +161,7 @@ static void data_node()
                   game_ui_data_count(ui) == 1 &&
                   game_ui_data_at(ui, 0)->entity == 7 &&
                   !strcmp(game_ui_data_at(ui, 0)->name, "score") &&
-                  !strcmp(game_ui_data_at(ui, 0)->json, "17");
+                  av_get_int(game_ui_data_at(ui, 0)->value) == 17;
     test_check(stored, "a behavior's Set UI Data stores its value for the entity it names");
     behavior_instance_destroy(instance);
     game_ui_free(ui);

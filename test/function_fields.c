@@ -152,8 +152,8 @@ static void verify(fixture f)
 
 static void roundtrip(fixture f)
 {
-    char *json = behavior_asset_save_json(f.asset);
-    behavior_asset *loaded = behavior_asset_load_json(json);
+    char *json = behavior_asset_save(f.asset);
+    behavior_asset *loaded = behavior_asset_load(json);
     free(json);
     assert(loaded);
     behavior_asset *original = f.asset;

@@ -1,0 +1,231 @@
+version 3
+name "ProjectileBehavior"
+id_counter 304
+description "Face the current velocity and expire after the authored lifetime. Physics integrates movement."
+owner_type "ecs.entity"
+(array)graphs {
+    - {
+        kind "event"
+        name ""
+        (array)nodes {
+            - id=1 type="Event" x=0.0 y=0.0 placed=#false reference_name="Tick"
+            - {
+                id 39
+                type "Add"
+                x 0.0
+                y 0.0
+                placed #false
+                inputs {
+                    A {
+                        binding kind="component_field" component="GAME.GameProjectile" field="age"
+                    }
+                    B {
+                        binding kind="delta_time"
+                    }
+                }
+            }
+            - {
+                id 51
+                type "Set_GameProjectile_age"
+                x 0.0
+                y 0.0
+                placed #false
+                inputs {
+                    Target id=154
+                }
+                outputs {
+                    Then id=54
+                }
+            }
+            - {
+                id 73
+                type "Self"
+                x 0.0
+                y 0.0
+                placed #false
+                outputs {
+                    Self type_name="ecs.entity"
+                }
+            }
+            - id=75 type="Destroy Entity" x=0.0 y=0.0 placed=#false
+            - {
+                id 131
+                type "Call Function"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 79
+                reference_name "Face Direction"
+                inputs {
+                    Exec id=127
+                    X {
+                        id 128
+                        type "float"
+                        kind "data"
+                        binding kind="component_field" component="GAME.GameVelocity" field="x"
+                    }
+                    Y {
+                        id 129
+                        type "float"
+                        kind "data"
+                        binding kind="component_field" component="GAME.GameVelocity" field="y"
+                    }
+                }
+                outputs {
+                    Then id=130
+                }
+            }
+            - {
+                id 191
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 179
+                reference_name "Age >= Lifetime"
+                inputs {
+                    Exec id=195 kind="exec"
+                    Age {
+                        id 192
+                        type "double"
+                        flags 0
+                        binding kind="component_field" component="GAME.GameProjectile" field="age"
+                    }
+                    Lifetime {
+                        id 193
+                        type "double"
+                        flags 0
+                        binding kind="component_field" component="GAME.GameProjectile" field="lifetime"
+                    }
+                }
+                outputs {
+                    True id=196 kind="exec"
+                    False id=197 kind="exec"
+                    Result id=194 type="bool"
+                }
+            }
+        }
+        (array)edges {
+            - from="1.Then" to="131.Exec"
+            - from="39.Result" to="51.Value"
+            - from="51.Then" to="191.Exec"
+            - from="73.Self" to="75.Entity"
+            - from="131.Then" to="51.Exec"
+            - from="191.True" to="75.Exec"
+        }
+    }
+    - {
+        id 79
+        kind "function"
+        name "Face Direction"
+        entry_id 83
+        return_id 85
+        call_depth_limit 64
+        (array)nodes {
+            - {
+                id 83
+                type "Function Entry"
+                x 0.0
+                y 0.0
+                placed #false
+                (array)outputs {
+                    - id=80 name="Then"
+                    - id=81 name="X" type="float" kind="data"
+                    - id=82 name="Y" type="float" kind="data"
+                }
+            }
+            - {
+                id 85
+                type "Return"
+                x 0.0
+                y 0.0
+                placed #false
+                inputs {
+                    Exec id=84
+                }
+            }
+            - {
+                id 87
+                type "Has_GameOrientation"
+                x 0.0
+                y 0.0
+                placed #false
+                outputs {
+                    Value id=86
+                }
+            }
+            - {
+                id 92
+                type "Branch"
+                x 0.0
+                y 0.0
+                placed #false
+                inputs {
+                    Exec id=88
+                }
+            }
+            - {
+                id 114
+                type "Call Pure Function"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 1
+                reference_name "Direction Orientation"
+                reference_asset "DirectionMath"
+                inputs {
+                    X id=112 declaration_id=4 type="float"
+                    Y id=115 declaration_id=5 type="float"
+                }
+                outputs {
+                    Orientation id=120 declaration_id=6 type="struct" type_name="GameOrientation"
+                }
+            }
+            - {
+                id 126
+                type "Set_GameOrientation"
+                x 0.0
+                y 0.0
+                placed #false
+                inputs {
+                    Exec id=122
+                }
+            }
+            - {
+                id 247
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 222
+                reference_name "abs(X) + abs(Y) <= 0"
+                inputs {
+                    Exec id=251 kind="exec"
+                    X id=248
+                    Y id=249
+                }
+                outputs {
+                    True id=252 kind="exec"
+                    False id=253 kind="exec"
+                    Result id=250 type="bool"
+                }
+            }
+        }
+        (array)edges {
+            - from="83.Then" to="92.Exec"
+            - from="83.X" to="114.X"
+            - from="83.X" to="247.X"
+            - from="83.Y" to="114.Y"
+            - from="83.Y" to="247.Y"
+            - from="87.Value" to="92.Condition"
+            - from="92.True" to="247.Exec"
+            - from="92.False" to="85.Exec"
+            - from="114.Orientation" to="126.Value"
+            - from="126.Then" to="85.Exec"
+            - from="247.True" to="85.Exec"
+            - from="247.False" to="126.Exec"
+        }
+    }
+    - id=179 kind="function" math_expression="Age >= Lifetime" entry_id=211
+    - id=222 kind="function" math_expression="abs(X) + abs(Y) <= 0" entry_id=280
+}

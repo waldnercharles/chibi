@@ -2,10 +2,9 @@
 #define CHIBI_GAME_PROTOTYPE_H
 
 #include "ecs/ecs.h"
+#include "support/asset_value.h"
 
 #include <stddef.h>
-
-typedef struct yyjson_val yyjson_val;
 
 typedef const char *(*game_prototype_include_fn)(const char *name, void *user);
 
@@ -63,7 +62,7 @@ const ecs_component_desc *game_prototype_registry_find(
     const char *name
 );
 game_prototype *game_prototype_load(
-    const char *json,
+    const char *value,
     const game_prototype_registry *registry,
     char *error,
     size_t error_size
@@ -81,26 +80,33 @@ game_prototype *game_prototype_capture_entity(
 );
 void game_prototype_free(game_prototype *prototype);
 char *game_prototype_save(const game_prototype *prototype);
-char *game_prototype_components_json(const game_prototype *prototype);
-/* Owned single-component JSON, including reflected nested fields. */
-char *game_prototype_entity_component_json(
+av_value *game_prototype_to_value(const game_prototype *prototype);
+game_prototype *game_prototype_load_value(
+    av_value *value,
+    const game_prototype_registry *registry,
+    char *error,
+    size_t error_size
+);
+av_value *game_prototype_components_value(const game_prototype *prototype);
+/* Owned single-component native value, including reflected nested fields. */
+av_value *game_prototype_entity_component_value(
     const ecs_world *world,
     ecs_entity entity,
     const ecs_component_desc *desc,
     const game_prototype_registry *registry
 );
 /* Sparse fields, full added components, and null removed components, using
- * the same semantics as capturing an entity. Caller owns the returned JSON. */
-char *game_prototype_overrides_json(const game_prototype *base, const game_prototype *current);
-char *game_prototype_capture_overrides_json(
+ * the same semantics as capturing an entity. Caller owns the returned native value. */
+av_value *game_prototype_overrides_value(const game_prototype *base, const game_prototype *current);
+av_value *game_prototype_capture_overrides_value(
     const game_prototype *base,
     const ecs_world *world,
     ecs_entity entity
 );
-int game_prototype_apply_components_json(
+int game_prototype_apply_components_value(
     ecs_world *world,
     ecs_entity entity,
-    const char *components_json,
+    av_value *components,
     const game_prototype_registry *registry,
     char *error,
     size_t error_size
@@ -134,13 +140,13 @@ int game_prototype_write_field(
     const char *field_name,
     pin_value value
 );
-/* Apply one reflected JSON field using the same conversion rules as loading a
- * prototype document. The JSON value is borrowed for the duration of the call. */
-int game_prototype_write_field_json(
+/* Apply one reflected native value field using the same conversion rules as loading a
+ * prototype document. The value is borrowed for the duration of the call. */
+int game_prototype_write_field_value(
     game_prototype *prototype,
     const char *component_name,
     const char *field_name,
-    yyjson_val *json,
+    av_value *value,
     char *error,
     size_t error_size
 );
@@ -148,18 +154,18 @@ int game_prototype_add_component(game_prototype *prototype, const ecs_component_
 int game_prototype_remove_component(game_prototype *prototype, const char *component_name);
 /* Detach retains values for add_component to restore, including after save/load. */
 int game_prototype_detach_component(game_prototype *prototype, const char *component_name);
-/* Single-component objects from entity_component_json. Defaults may be {} when
+/* Single-component objects from entity_component_value. Defaults may be {} when
  * the component is local or no longer in the prototype. The owned result keeps
  * local edits and adopts current defaults for unchanged fields, recursively. */
-char *game_prototype_rebase_component_json(
-    const char *values,
-    const char *previous_defaults,
-    const char *current_defaults
+av_value *game_prototype_rebase_component_value(
+    av_value *values,
+    av_value *previous_defaults,
+    av_value *current_defaults
 );
 /* Owned single-component object; {} if this prototype has no such component. */
-char *game_prototype_component_json(const game_prototype *prototype, const char *name);
+av_value *game_prototype_component_value(const game_prototype *prototype, const char *name);
 /* Owned default component values shared by prototype and scene attachment. */
-char *game_prototype_component_defaults_json(
+av_value *game_prototype_component_defaults_value(
     const game_prototype_registry *registry,
     const ecs_component_desc *desc
 );

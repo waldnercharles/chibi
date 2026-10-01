@@ -8,6 +8,7 @@
 #include "graph/nodes/component_nodes.h"
 #include "runtime/generated.h"
 #include "support/array.h"
+#include "test/asset_fixture.h"
 
 #include <assert.h>
 #include <string.h>
@@ -76,14 +77,14 @@ static void test_assets()
         index,
         REFERENCE_ASSET_PROTOTYPE,
         "Ship",
-        "content/prototypes/Ship.yaml",
+        "content/prototypes/Ship.kdl",
         NULL
     );
-    int material = reference_index_add_asset(index, REFERENCE_ASSET_MATERIAL, "Ship", "content/materials/Ship.yaml", NULL);
+    int material = reference_index_add_asset(index, REFERENCE_ASSET_MATERIAL, "Ship", "content/materials/Ship.kdl", NULL);
     assert(prototype != material);
     assert(reference_index_find_name(index, REFERENCE_ASSET_MATERIAL, "Ship") == material);
     assert(
-        reference_index_find_asset(index, REFERENCE_ASSET_PROTOTYPE, "./content/prototypes/Ship.yaml", NULL) ==
+        reference_index_find_asset(index, REFERENCE_ASSET_PROTOTYPE, "./content/prototypes/Ship.kdl", NULL) ==
         prototype
     );
     /* An unsaved asset keeps its key while renamed, then takes its path. */
@@ -93,7 +94,7 @@ static void test_assets()
     );
     assert(!strcmp(reference_index_asset_at(index, scratch)->name, "Renamed"));
     assert(
-        reference_index_add_asset(index, REFERENCE_ASSET_BEHAVIOR, "Renamed", "content/behaviors/Renamed.yaml", NULL) ==
+        reference_index_add_asset(index, REFERENCE_ASSET_BEHAVIOR, "Renamed", "content/behaviors/Renamed.kdl", NULL) ==
         scratch
     );
     assert(reference_index_asset_at(index, scratch)->path);
@@ -155,7 +156,7 @@ static healer healer_new()
     assert(component_node_show_field(g, h.split, "document", true) == 0);
     set_default(g, h.split, "document", (pin_value){ .type = PIN_STR, .str = "Hud" });
     h.shader = add_named_node(g, "SetEntity_GameShader");
-    GameShader glow = { .material = "Glow", .shape = "", .parameters = "{}" };
+    GameShader glow = { .material = "Glow", .shape = "", .parameters = "" };
     set_default(
         g,
         h.shader,
@@ -169,8 +170,8 @@ static void test_graphs()
 {
     healer h = healer_new();
     reference_index *index = reference_index_new();
-    int event = reference_index_add_asset(index, REFERENCE_ASSET_EVENT, "Damaged", "content/events/Damaged.yaml", NULL);
-    int source = reference_index_add_asset(index, REFERENCE_ASSET_BEHAVIOR, "Healer", "content/behaviors/Healer.yaml", NULL);
+    int event = reference_index_add_asset(index, REFERENCE_ASSET_EVENT, "Damaged", "content/events/Damaged.kdl", NULL);
+    int source = reference_index_add_asset(index, REFERENCE_ASSET_BEHAVIOR, "Healer", "content/behaviors/Healer.kdl", NULL);
     behavior_asset *damaged = behavior_asset_new("Damaged");
     damaged->domain = BEHAVIOR_DOMAIN_EVENT_DEFINITION;
     reference_index_add_graphs(index, event, damaged);
@@ -275,10 +276,21 @@ static void test_documents()
     };
     char error[256];
     game_prototype *ship = game_prototype_load(
-        "{\"name\":\"Ship\",\"behaviors\":[\"Flight\"],\"components\":{"
-        "\"GameShader\":{\"material\":\"Hull\"},\"GameUi\":{\"document\":"
-        "\"Hud\"},"
-        "\"GameActionBinding\":{\"action\":\"Fire\"}}}",
+        "name \"Ship\"\n"
+        "(array)behaviors {\n"
+        "    - \"Flight\"\n"
+        "}\n"
+        "components {\n"
+        "    GameShader {\n"
+        "        material \"Hull\"\n"
+        "    }\n"
+        "    GameUi {\n"
+        "        document \"Hud\"\n"
+        "    }\n"
+        "    GameActionBinding {\n"
+        "        action \"Fire\"\n"
+        "    }\n"
+        "}\n",
         &registry,
         error,
         sizeof error
@@ -289,10 +301,10 @@ static void test_documents()
         index,
         REFERENCE_ASSET_PROTOTYPE,
         "Ship",
-        "content/prototypes/Ship.yaml",
+        "content/prototypes/Ship.kdl",
         NULL
     );
-    int scene = reference_index_add_asset(index, REFERENCE_ASSET_SCENE, "Dock", "content/scenes/Dock.yaml", NULL);
+    int scene = reference_index_add_asset(index, REFERENCE_ASSET_SCENE, "Dock", "content/scenes/Dock.kdl", NULL);
     int hud = reference_index_add_asset(index, REFERENCE_ASSET_UI, "Hud", "content/ui/Hud.rml", NULL);
     reference_index_add_prototype(index, prototype, ship);
     int flight = reference_index_find_name(index, REFERENCE_ASSET_BEHAVIOR, "Flight");
@@ -310,15 +322,17 @@ static void test_documents()
     );
 
     const char *behaviors[] = { "Flight" };
+    av_value *overrides = test_read_asset_value("GAME.GameShader material=\"Chrome\"; ");
     reference_object object = {
         .name = "player",
         .prototype = "Ship",
         .base = ship,
-        .overrides = "{\"GAME.GameShader\":{\"material\":\"Chrome\"}}",
+        .overrides = overrides,
         .behaviors = behaviors,
         .behavior_count = 1,
     };
     reference_index_add_object(index, scene, &object);
+    av_value_free(overrides);
     const reference **found = NULL;
     reference_index_find_uses(index, asset_symbol(prototype), &found);
     assert(
@@ -397,8 +411,8 @@ static void test_calls()
     assert(graph_connect_exec(g, h.tick, 0, h.send, 0, 0) == 0);
     assert(behavior_asset_add_function_call_node_to_graph(h.asset, h.heal, h.heal));
     reference_index *index = reference_index_new();
-    int event = reference_index_add_asset(index, REFERENCE_ASSET_EVENT, "Damaged", "content/events/Damaged.yaml", NULL);
-    int source = reference_index_add_asset(index, REFERENCE_ASSET_BEHAVIOR, "Healer", "content/behaviors/Healer.yaml", NULL);
+    int event = reference_index_add_asset(index, REFERENCE_ASSET_EVENT, "Damaged", "content/events/Damaged.kdl", NULL);
+    int source = reference_index_add_asset(index, REFERENCE_ASSET_BEHAVIOR, "Healer", "content/behaviors/Healer.kdl", NULL);
     behavior_asset *damaged = behavior_asset_new("Damaged");
     damaged->domain = BEHAVIOR_DOMAIN_EVENT_DEFINITION;
     reference_index_add_graphs(index, event, damaged);

@@ -2,6 +2,7 @@
 #define CHIBI_GAME_SCENE_DOCUMENT_H
 
 #include "runtime/scenes/physics_settings.h"
+#include "support/asset_value.h"
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -10,8 +11,8 @@ typedef struct
 {
     char *name;
     char *prototype;
-    char *components_json;
-    char *retained_json;
+    av_value *components;
+    av_value *retained;
     char **behaviors;
 } game_scene_entity;
 
@@ -55,13 +56,11 @@ int game_scene_document_set_entity_behaviors(
     const char *const *behaviors,
     int behavior_count
 );
-int game_scene_document_set_entity_components(
-    game_scene_document *document,
-    int index,
-    const char *components_json
-);
+int game_scene_document_set_entity_components(game_scene_document *document, int index, av_value *components);
+av_value *game_scene_document_to_value(const game_scene_document *document);
+game_scene_document *game_scene_document_load_value(av_value *value, char *error, size_t error_size);
 char *game_scene_document_save(const game_scene_document *document);
-int game_scene_document_set_entity_retained(game_scene_document *document, int index, const char *json);
+int game_scene_document_set_entity_retained(game_scene_document *document, int index, av_value *value);
 game_scene_document *game_scene_document_load(const char *json, char *error, size_t error_size);
 
 #endif

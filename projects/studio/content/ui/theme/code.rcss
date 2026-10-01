@@ -57,17 +57,22 @@ kit-code .zep-info { color: var(--primary); }
 /* Completions under the cursor; choosing one returns focus to the editor. */
 .code-completions {
     position: absolute; pointer-events: auto; background-color: var(--popover); border: 1dp var(--popover-edge);
-    border-radius: var(--r); padding: 4dp; min-width: 160dp; max-width: 420dp; display: block; z-index: 20;
-    font-family: var(--studio-code-font-family, jetbrains mono); font-size: var(--studio-mono-font-12, 12dp); max-height: 272dp; overflow-y: auto;
+    border-radius: var(--radius); padding: 4dp; min-width: 224dp; max-width: 480dp; display: block; z-index: 20;
+    box-shadow: 0dp 4dp 6dp -1dp #0000001a, 0dp 2dp 4dp -2dp #0000001a;
+    font-family: var(--studio-code-font-family, jetbrains mono); font-size: var(--studio-mono-font-13, 13dp); max-height: 272dp; overflow-x: hidden; overflow-y: auto;
 }
 .code-completion, .popup.autocomplete .menu-item {
-    display: flex; align-items: center; gap: 8dp; height: var(--h); padding: 0dp 6dp; border-radius: 2dp;
+    display: flex; align-items: center; gap: 8dp; height: var(--studio-height-24, 24dp); padding: 0dp 8dp 0dp 6dp; border-radius: var(--r);
     white-space: nowrap; color: var(--foreground);
 }
 .code-completion .detail, .popup.autocomplete .detail { margin-left: auto; padding-left: 8dp; flex: 0 0 auto; font-family: var(--studio-standard-font-family, inter); color: var(--muted-foreground); }
-.code-completion[data-highlighted] { background-color: var(--primary); color: var(--primary-foreground); }
-.code-completion[data-highlighted] .detail, .popup.autocomplete .menu-item[data-highlighted] .detail { color: var(--primary-foreground); }
-.popup.autocomplete { border-radius: var(--r); font-family: var(--studio-code-font-family, jetbrains mono); font-size: var(--studio-mono-font-12, 12dp); }
+.code-completion[data-highlighted] { background-color: var(--item-selected); color: var(--foreground); }
+.code-completion .lead { color: var(--primary-text); flex: 0 0 auto; }
+.code-completion .label { display: block; flex: 1 1 auto; overflow: hidden; }
+.code-completion .label b { color: var(--primary-text); }
+.code-completion .detail[data-empty] { display: none; }
+.popup.autocomplete .menu-item[data-highlighted] .detail { color: var(--primary-foreground); }
+.popup.autocomplete { transition: none; overflow-y: auto; border-radius: var(--r); font-family: var(--studio-code-font-family, jetbrains mono); font-size: var(--studio-mono-font-12, 12dp); }
 .popup.autocomplete .menu-group { font-family: var(--font-ui); }
 .popup.autocomplete .detail[data-empty] { display: none; }
 .popup.autocomplete .label b { color: var(--primary-text); }

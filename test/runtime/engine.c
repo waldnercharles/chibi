@@ -74,13 +74,40 @@ static clock_fixture clock_new(bool preview, bool breakpoint)
                                          GAME_REGISTRY_COMPONENT_COUNT };
     char error[256];
     game_prototype *prototype = game_prototype_load(
-        "{\"name\":\"Clock\",\"behaviors\":[\"Clock\"],\"components\":{"
-        "\"GameTransform\":{\"x\":0,\"y\":0},\"GameVelocity\":{\"x\":0,\"y\":0}"
-        ","
-        "\"GameBody\":{\"type\":2},\"GameCollider\":{\"radius\":1,\"category\":"
-        "1},"
-        "\"GameInput\":{\"move\":{\"x\":0,\"y\":0}},"
-        "\"GameAim\":{\"direction\":{\"x\":1,\"y\":0},\"firing\":false}}}",
+        "name \"Clock\"\n"
+        "(array)behaviors {\n"
+        "    - \"Clock\"\n"
+        "}\n"
+        "components {\n"
+        "    GameTransform {\n"
+        "        x 0\n"
+        "        y 0\n"
+        "    }\n"
+        "    GameVelocity {\n"
+        "        x 0\n"
+        "        y 0\n"
+        "    }\n"
+        "    GameBody {\n"
+        "        type 2\n"
+        "    }\n"
+        "    GameCollider {\n"
+        "        radius 1\n"
+        "        category 1\n"
+        "    }\n"
+        "    GameInput {\n"
+        "        move {\n"
+        "            x 0\n"
+        "            y 0\n"
+        "        }\n"
+        "    }\n"
+        "    GameAim {\n"
+        "        direction {\n"
+        "            x 1\n"
+        "            y 0\n"
+        "        }\n"
+        "        firing #false\n"
+        "    }\n"
+        "}\n",
         &registry,
         error,
         sizeof error
@@ -237,7 +264,7 @@ static ecs_entity authored_spawn(clock_fixture *f, const char *behavior_path, co
 {
     char *json = text_file_read(behavior_path);
     assert(json);
-    behavior_asset *asset = behavior_asset_load_json(json);
+    behavior_asset *asset = behavior_asset_load(json);
     free(json);
     assert(
         asset &&
@@ -271,11 +298,7 @@ static void authored_motion_checks()
     for (int mirrored = 0; mirrored < 2; mirrored++) {
         clock_fixture f = clock_new(false, false);
         game_behavior_set_deferred(f.live->behaviors, true);
-        ecs_entity flipper = authored_spawn(
-            &f,
-            "content/behaviors/OrbitFlipperMotion.yaml",
-            "content/prototypes/OrbitFlipper.yaml"
-        );
+        ecs_entity flipper = authored_spawn(&f, "content/behaviors/OrbitFlipperMotion.kdl", "content/prototypes/OrbitFlipper.kdl");
         if (mirrored) {
             GAME_GameOrientation_get(f.world, flipper)->radians = 3.141593f - .35f;
             GAME_GameTransform_get(f.world, flipper)->x *= -1;
@@ -316,7 +339,7 @@ static void authored_motion_checks()
     }
 
     clock_fixture f = clock_new(false, false);
-    ecs_entity ball = authored_spawn(&f, "content/behaviors/OrbitLaunch.yaml", "content/prototypes/OrbitBall.yaml");
+    ecs_entity ball = authored_spawn(&f, "content/behaviors/OrbitLaunch.kdl", "content/prototypes/OrbitBall.kdl");
     assert(engine_frame(f.runtime, 0) == FLOW_OK);
     assert(engine_frame(f.runtime, 1.0 / 60) == FLOW_OK);
     test_check(
@@ -333,8 +356,16 @@ static void spawn_cadence_checks(int count)
                                          GAME_REGISTRY_COMPONENT_COUNT };
     char error[256];
     game_prototype *prototype = game_prototype_load(
-        "{\"name\":\"ClockChild\",\"behaviors\":[\"ClockChild\"],"
-        "\"components\":{\"GameTransform\":{\"x\":0,\"y\":0}}}",
+        "name \"ClockChild\"\n"
+        "(array)behaviors {\n"
+        "    - \"ClockChild\"\n"
+        "}\n"
+        "components {\n"
+        "    GameTransform {\n"
+        "        x 0\n"
+        "        y 0\n"
+        "    }\n"
+        "}\n",
         &registry,
         error,
         sizeof error

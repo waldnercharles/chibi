@@ -87,13 +87,13 @@ static void on_emit(void *user, const rml_event *event, const char *name, const 
 static game_prototype *load_prototype(const studio_ui *ui, const char *name, char *error, size_t size)
 {
     char path[1024];
-    snprintf(path, sizeof path, "%s/prototypes/%s.yaml", ui->content_root, name);
+    snprintf(path, sizeof path, "%s/prototypes/%s.kdl", ui->content_root, name);
     char *text = text_file_read(path);
     game_prototype *prototype = text
                                   ? game_prototype_load(text, &ui->registry, error, size)
                                   : NULL;
     if (!text) {
-        snprintf(error, size, "prototypes/%s.yaml is missing", name);
+        snprintf(error, size, "prototypes/%s.kdl is missing", name);
     }
     free(text);
     return prototype;
@@ -103,9 +103,9 @@ static game_prototype *load_prototype(const studio_ui *ui, const char *name, cha
 static bool launch(studio_ui *ui, char *error, size_t size)
 {
     char path[1024];
-    snprintf(path, sizeof path, "%s/scenes/Studio.yaml", ui->content_root);
+    snprintf(path, sizeof path, "%s/scenes/Studio.kdl", ui->content_root);
     char *text = text_file_read(path);
-    snprintf(error, size, "scenes/Studio.yaml is missing");
+    snprintf(error, size, "scenes/Studio.kdl is missing");
     game_scene_document *scene = text ? game_scene_document_load(text, error, size)
                                       : NULL;
     free(text);
@@ -130,7 +130,7 @@ static bool launch(studio_ui *ui, char *error, size_t size)
             entities,
             ((game_prototype_preview_scene_entity){
                 .prototype = prototype,
-                .components_json = e->components_json,
+                .components = e->components,
                 .behaviors = (const char *const *)e->behaviors,
                 .behavior_count = acount(e->behaviors) })
         );
@@ -160,7 +160,7 @@ static void reload_behavior(studio *s, const char *path)
     if (!text) {
         return;
     }
-    behavior_asset *asset = behavior_asset_load_json(text);
+    behavior_asset *asset = behavior_asset_load(text);
     free(text);
     char message[256] = "is not a behavior";
     if (!asset ||
@@ -211,7 +211,7 @@ static bool in_folder(const studio_ui *ui, const char *path, const char *folder)
 static void follow_disk(studio *s)
 {
     studio_ui *ui = s->ui;
-    char **changed = tree_watch_poll(&ui->files, ui->content_root, ".yaml", s->time);
+    char **changed = tree_watch_poll(&ui->files, ui->content_root, ".kdl", s->time);
     bool relaunch = false;
     for (int i = 0; i < acount(changed); i++) {
         if (in_folder(ui, changed[i], "/behaviors")) {
@@ -227,7 +227,7 @@ static void follow_disk(studio *s)
     free_world(ui);
     char error[256];
     if (!open_world(ui, error, sizeof error)) {
-        report_error(s, "scenes/Studio.yaml", error);
+        report_error(s, "scenes/Studio.kdl", error);
     }
 }
 
@@ -252,7 +252,7 @@ studio_ui *studio_ui_new(rml_context *context, const char *project_root, char *e
         studio_ui_free(ui);
         return NULL;
     }
-    tree_watch_poll(&ui->files, ui->content_root, ".yaml", 0);
+    tree_watch_poll(&ui->files, ui->content_root, ".kdl", 0);
     return ui;
 }
 

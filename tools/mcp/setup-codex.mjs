@@ -32,7 +32,7 @@ export function setupCodex(args) {
   const launcher = resolve(engine ? engine.root : root, engine ? "bin/chibi-mcp" : "tools/mcp/launch.sh");
   if (!existsSync(launcher)) throw new Error(`MCP launcher not found: ${launcher}`);
   if (engine) {
-    if (!existsSync(resolve(root, "project.yaml"))) throw new Error(`No project.yaml in ${root}`);
+    if (!existsSync(resolve(root, "project.kdl"))) throw new Error(`No project.kdl in ${root}`);
     checkEngineLock(root, engine, update || !existsSync(resolve(root, ".chibi-engine.json")));
   } else if (update) throw new Error("--update-engine requires --engine PACKAGE_ROOT");
 

@@ -97,7 +97,7 @@ static bool result_has_node_ref(yyjson_mut_doc *doc, const char *name)
 void test_automation_graph_edit(void)
 {
     behavior_asset *empty = behavior_asset_new("GraphEditBehavior");
-    char *source = behavior_asset_save_json(empty);
+    char *source = behavior_asset_save(empty);
     behavior_asset_free(empty);
     char *edited = NULL;
     yyjson_mut_doc *response = NULL;
@@ -113,7 +113,7 @@ void test_automation_graph_edit(void)
         &response
     );
     bool behavior_ok = status == CHIBI_AUTOMATION_OK && edited &&
-                       strstr(edited, "\"type\": \"Integer\"") &&
+                       strstr(edited, "type \"Integer\"") &&
                        yyjson_mut_obj_get(yyjson_mut_doc_get_root(response), "nodes");
     test_check(behavior_ok, "MCP graph edits add typed behavior nodes and return refs");
     yyjson_mut_doc_free(response);
@@ -156,24 +156,22 @@ void test_automation_graph_edit(void)
         statuses[i] = edit_request(source, "behavior", "GraphEditBehavior", NULL, 0, request, &results[i], NULL);
     }
     int multiplies = 0;
-    for (const char *at = results[1];
-         at && (at = strstr(at, "\"type\": \"Multiply\""));
+    for (const char *at = results[1]; at && (at = strstr(at, "type \"Multiply\""));
          at++) {
         multiplies++;
     }
     test_check(
-        statuses[0] == CHIBI_AUTOMATION_OK &&
-            strstr(results[0], "\"name\": \"Double\"") &&
-            strstr(results[0], "\"type\": \"Call Pure Function\"") &&
+        statuses[0] == CHIBI_AUTOMATION_OK && strstr(results[0], "name \"Double\"") &&
+            strstr(results[0], "type \"Call Pure Function\"") &&
             statuses[1] == CHIBI_AUTOMATION_OK && multiplies == 2 &&
-            !strstr(results[1], "\"type\": \"Call Pure Function\"") &&
+            !strstr(results[1], "type \"Call Pure Function\"") &&
             statuses[2] == CHIBI_AUTOMATION_OK &&
-            strstr(results[2], "\"type\": \"Behavior Expression\"") &&
+            strstr(results[2], "type \"Behavior Expression\"") &&
             statuses[3] == CHIBI_AUTOMATION_OK &&
-            strstr(results[3], "\"name\": \"Condition\"") &&
-            strstr(results[3], "\"type\": \"Get Variable\"") &&
-            statuses[4] == CHIBI_AUTOMATION_OK && strstr(results[4], "\"locals\"") &&
-            statuses[5] == CHIBI_AUTOMATION_OK && !strstr(results[5], "\"locals\""),
+            strstr(results[3], "name \"Condition\"") &&
+            strstr(results[3], "type \"Get Variable\"") &&
+            statuses[4] == CHIBI_AUTOMATION_OK && strstr(results[4], "(array)locals") &&
+            statuses[5] == CHIBI_AUTOMATION_OK && !strstr(results[5], "(array)locals"),
         "MCP graph edits collapse, expand, convert, promote and name values "
         "like Studio"
     );
@@ -210,7 +208,7 @@ void test_automation_graph_edit(void)
         &edited,
         NULL
     );
-    behavior_asset *signature = edited ? behavior_asset_load_json(edited) : NULL;
+    behavior_asset *signature = edited ? behavior_asset_load(edited) : NULL;
     node *call = signature ? find_node_type(signature->graph, "Call Pure Function")
                            : NULL;
     int scale = call ? find_pin(call, "Scale", false) : -1;
@@ -249,7 +247,7 @@ void test_automation_graph_edit(void)
     snprintf(operations, sizeof operations, reorder, 0);
     snprintf(request, sizeof request, "{\"operations\":[%s]}", operations);
     status = edit_request(source, "behavior", "GraphEditBehavior", NULL, 0, request, &edited, NULL);
-    behavior_asset *moved = edited ? behavior_asset_load_json(edited) : NULL;
+    behavior_asset *moved = edited ? behavior_asset_load(edited) : NULL;
     call = moved ? find_node_type(moved->graph, "Call Pure Function") : NULL;
     node *sequence = moved ? find_node_type(moved->graph, "Sequence") : NULL;
     node *two = NULL;
@@ -288,7 +286,7 @@ void test_automation_graph_edit(void)
         &edited,
         NULL
     );
-    behavior_asset *settings = edited ? behavior_asset_load_json(edited) : NULL;
+    behavior_asset *settings = edited ? behavior_asset_load(edited) : NULL;
     node *made = settings ? find_node_type(settings->graph, "Make Struct") : NULL;
     node *set = settings ? find_node_type(settings->graph, "Set Component") : NULL;
     int maximum = made ? find_pin(made, "maximum", false) : -1;
@@ -353,8 +351,7 @@ void test_automation_graph_edit(void)
         &edited,
         &response
     );
-    behavior_asset *expression_result = edited ? behavior_asset_load_json(edited)
-                                               : NULL;
+    behavior_asset *expression_result = edited ? behavior_asset_load(edited) : NULL;
     node *expression = expression_result
                          ? find_node_type(expression_result->graph, "Behavior Expression")
                          : NULL;
@@ -395,7 +392,7 @@ void test_automation_graph_edit(void)
         &edited,
         NULL
     );
-    behavior_asset *named = edited ? behavior_asset_load_json(edited) : NULL;
+    behavior_asset *named = edited ? behavior_asset_load(edited) : NULL;
     int reads = 0;
     for (int i = 0; named && i < acount(named->graph->nodes); i++) {
         const pin_binding *b = named->graph->nodes[i]->input_count
@@ -422,7 +419,7 @@ void test_automation_graph_edit(void)
         &edited,
         &response
     );
-    behavior_asset *metadata = edited ? behavior_asset_load_json(edited) : NULL;
+    behavior_asset *metadata = edited ? behavior_asset_load(edited) : NULL;
     bool metadata_ok = status == CHIBI_AUTOMATION_OK && metadata &&
                        !strcmp(metadata->description, "Enemy movement graph") &&
                        !strcmp(metadata->owner_type_name, "ecs.entity") &&
@@ -474,7 +471,7 @@ void test_automation_graph_edit(void)
         &edited,
         &response
     );
-    behavior_asset *arranged_asset = edited ? behavior_asset_load_json(edited) : NULL;
+    behavior_asset *arranged_asset = edited ? behavior_asset_load(edited) : NULL;
     node *arranged_first = NULL;
     node *arranged_second = NULL;
     if (arranged_asset) {
@@ -516,7 +513,7 @@ void test_automation_graph_edit(void)
         &edited,
         &response
     );
-    behavior_asset *commented = edited ? behavior_asset_load_json(edited) : NULL;
+    behavior_asset *commented = edited ? behavior_asset_load(edited) : NULL;
     node *note = commented ? find_node_type(commented->graph, "Integer") : NULL;
     test_check(
         status == CHIBI_AUTOMATION_OK && note && note->comment &&
@@ -549,7 +546,7 @@ void test_automation_graph_edit(void)
     behavior_asset_set_owner_type(function_asset, "ecs.entity");
     behavior_asset_add_variable(function_asset, "items", PIN_F32, NULL, PIN_CONTAINER_ARRAY, NULL, "Test");
     behavior_asset_add_function(function_asset, "Work", false);
-    char *function_source = behavior_asset_save_json(function_asset);
+    char *function_source = behavior_asset_save(function_asset);
     behavior_asset_free(function_asset);
     edited = NULL;
     response = NULL;
@@ -566,7 +563,7 @@ void test_automation_graph_edit(void)
         &edited,
         &response
     );
-    behavior_asset *function_result = edited ? behavior_asset_load_json(edited) : NULL;
+    behavior_asset *function_result = edited ? behavior_asset_load(edited) : NULL;
     graph *work = function_result
                     ? behavior_asset_find_graph_by_name(function_result, "Work")
                     : NULL;
@@ -601,7 +598,7 @@ void test_automation_graph_edit(void)
     edited = NULL;
     response = NULL;
     status = edit_request(source, "behavior", "GraphEditBehavior", NULL, 0, variable_request, &edited, &response);
-    behavior_asset *variable_result = edited ? behavior_asset_load_json(edited) : NULL;
+    behavior_asset *variable_result = edited ? behavior_asset_load(edited) : NULL;
     bool variable_refs = status == CHIBI_AUTOMATION_OK && variable_result &&
                          behavior_asset_find_variable_by_name(variable_result, "renamed");
     test_check(variable_refs, "MCP variable refs survive variable-array growth");
@@ -654,8 +651,7 @@ void test_automation_graph_edit(void)
         &edited,
         &response
     );
-    behavior_asset *constant_material = edited ? behavior_asset_load_json(edited)
-                                               : NULL;
+    behavior_asset *constant_material = edited ? behavior_asset_load(edited) : NULL;
     node *constant = constant_material
                        ? find_node_type(constant_material->graph, "Shader Constant")
                        : NULL;
@@ -688,7 +684,7 @@ void test_automation_graph_edit(void)
         &edited,
         &response
     );
-    behavior_asset *typed_wildcard = edited ? behavior_asset_load_json(edited) : NULL;
+    behavior_asset *typed_wildcard = edited ? behavior_asset_load(edited) : NULL;
     node *typed_value = typed_wildcard
                           ? find_node_type(typed_wildcard->graph, "Shader Parameter")
                           : NULL;
@@ -720,7 +716,7 @@ void test_automation_graph_edit(void)
         &edited,
         &response
     );
-    behavior_asset *shape_asset = edited ? behavior_asset_load_json(edited) : NULL;
+    behavior_asset *shape_asset = edited ? behavior_asset_load(edited) : NULL;
     bool shape_ok = status == CHIBI_AUTOMATION_OK && shape_asset &&
                     shape_asset->bounds[0] == 24 && shape_asset->bounds[1] == 18;
     test_check(shape_ok, "MCP shape creation authors valid half extents");
@@ -748,15 +744,14 @@ void test_automation_graph_edit(void)
         &response
     );
     bool library_ok = status == CHIBI_AUTOMATION_OK && library_json &&
-                      strstr(library_json, "\"domain\": \"shader-library\"") &&
-                      strstr(library_json, "\"name\": \"Math\"") &&
+                      strstr(library_json, "domain \"shader-library\"") &&
+                      strstr(library_json, "name \"Math\"") &&
                       result_has_node_ref(response, "math.entry") &&
                       result_has_node_ref(response, "math.return");
     test_check(library_ok, "MCP graph edits create a valid shader function library");
     yyjson_mut_doc_free(response);
 
-    behavior_asset *library = library_json ? behavior_asset_load_json(library_json)
-                                           : NULL;
+    behavior_asset *library = library_json ? behavior_asset_load(library_json) : NULL;
     graph *math = library ? behavior_asset_find_graph_by_name(library, "Math") : NULL;
     char invalid_library_request[1024];
     snprintf(

@@ -2,6 +2,7 @@
 #include "editor/workspace/scene_internal.h"
 #include "graph/document/serialize_internal.h"
 #include "runtime/generated.h"
+#include "support/asset_json.h"
 
 #include <assert.h>
 #include <errno.h>
@@ -123,7 +124,7 @@ static int refresh_prototype_actor(
 )
 {
     char error[256];
-    char *overrides = game_prototype_capture_overrides_json(
+    av_value *overrides = game_prototype_capture_overrides_value(
         actor->base,
         scene->world,
         actor->entity
@@ -138,24 +139,24 @@ static int refresh_prototype_actor(
             continue;
         }
         scene_retention_remove(&actor->retained, desc->name);
-        char *values = game_prototype_entity_component_json(
+        av_value *values = game_prototype_entity_component_value(
             scene->world,
             actor->entity,
             desc,
             &scene->registry
         );
-        char *defaults = game_prototype_component_json(actor->base, desc->name);
+        av_value *defaults = game_prototype_component_value(actor->base, desc->name);
         assert(values && defaults);
         /* Only the instance's own values are worth keeping for the
            component's return; the prototype's come back with it. */
-        if (!strcmp(values, defaults)) {
-            free(values);
-            free(defaults);
+        if (av_equals(values, defaults)) {
+            av_value_free(values);
+            av_value_free(defaults);
             continue;
         }
         scene_retained_component retained = { .name = xstrdup(desc->name),
-                                              .values_json = values,
-                                              .defaults_json = defaults,
+                                              .values = values,
+                                              .defaults = defaults,
                                               .automatic = true };
         apush(actor->retained, retained);
         scene->scene_dirty = true;
@@ -167,7 +168,7 @@ static int refresh_prototype_actor(
             ecs_component_has(scene->world, actor->entity, desc->id) &&
             ecs_world_record_remove(scene->world, actor->entity, desc->id, (uint64_t)i + 1) !=
                 ECS_OK) {
-            free(overrides);
+            av_value_free(overrides);
             return -1;
         }
     }
@@ -176,12 +177,12 @@ static int refresh_prototype_actor(
         if (!ecs_component_has(scene->world, actor->entity, component->desc->id) &&
             ecs_world_record_add(scene->world, actor->entity, component->desc->id, NULL, (uint64_t)i + 1) !=
                 ECS_OK) {
-            free(overrides);
+            av_value_free(overrides);
             return -1;
         }
     }
     if (ecs_world_apply_commands(scene->world) != ECS_OK) {
-        free(overrides);
+        av_value_free(overrides);
         return -1;
     }
     for (int i = 0; i < acount(prototype->components); i++) {
@@ -196,12 +197,12 @@ static int refresh_prototype_actor(
                     field,
                     value
                 ) != ECS_OK) {
-                free(overrides);
+                av_value_free(overrides);
                 return -1;
             }
         }
     }
-    if (game_prototype_apply_components_json(
+    if (game_prototype_apply_components_value(
             scene->world,
             actor->entity,
             overrides,
@@ -209,7 +210,7 @@ static int refresh_prototype_actor(
             error,
             sizeof error
         ) != 0) {
-        free(overrides);
+        av_value_free(overrides);
         return -1;
     }
     for (int i = 0; i < scene->registry.component_count; i++) {
@@ -219,26 +220,26 @@ static int refresh_prototype_actor(
             ecs_component_has(scene->world, actor->entity, desc->id) &&
             ecs_world_record_remove(scene->world, actor->entity, desc->id, (uint64_t)i + 1) !=
                 ECS_OK) {
-            free(overrides);
+            av_value_free(overrides);
             return -1;
         }
     }
     if (ecs_world_apply_commands(scene->world) != ECS_OK) {
-        free(overrides);
+        av_value_free(overrides);
         return -1;
     }
     if (restore_retained_components(scene, actor, prototype) != 0) {
-        free(overrides);
+        av_value_free(overrides);
         return -1;
     }
     game_prototype *base = game_prototype_clone(prototype, error, sizeof error);
     if (!base) {
-        free(overrides);
+        av_value_free(overrides);
         return -1;
     }
     game_prototype_free(actor->base);
     actor->base = base;
-    free(overrides);
+    av_value_free(overrides);
     return 0;
 }
 
@@ -331,7 +332,11 @@ int app_scene_authoring_set_prototype_field(
     yyjson_mut_obj_add_strcpy(doc, root, "prototype", prototype_name);
     yyjson_mut_obj_add_strcpy(doc, root, "component", component_name);
     yyjson_mut_obj_add_strcpy(doc, root, "field", field_name);
-    serialize_write_value(doc, root, "value", value.type, value.type_name, &value);
+    av_doc *native = av_doc_new();
+    av_value *native_root = av_obj(native);
+    serialize_write_value(native, native_root, "value", value.type, value.type_name, &value);
+    yyjson_mut_obj_add_val(doc, root, "value", av_to_json(doc, av_obj_get(native_root, "value")));
+    av_doc_free(native);
     char *action = scene_action_write(doc);
     collab_action_gate gate = action ? scene_action_begin(scene, action)
                                      : COLLAB_ACTION_REJECT;
@@ -373,16 +378,16 @@ int restore_retained_components(app_scene_authoring *scene, scene_actor *actor, 
         if (!prototype_has_component_id(prototype, desc->id)) {
             continue;
         }
-        char *defaults = game_prototype_component_json(prototype, desc->name);
-        char *values = game_prototype_rebase_component_json(
-            retained->values_json,
-            retained->defaults_json,
+        av_value *defaults = game_prototype_component_value(prototype, desc->name);
+        av_value *values = game_prototype_rebase_component_value(
+            retained->values,
+            retained->defaults,
             defaults
         );
-        free(defaults);
-        int result = values ? apply_components_json(scene, actor->entity, values)
+        av_value_free(defaults);
+        int result = values ? apply_components_value(scene, actor->entity, values)
                             : -1;
-        free(values);
+        av_value_free(values);
         if (result != 0) {
             return result;
         }
@@ -489,8 +494,8 @@ int app_scene_authoring_remove_prototype_component(
 static int restore_prototype(
     app_scene_authoring *scene,
     scene_prototype_asset *asset,
-    char ***from,
-    char ***to
+    av_value ***from,
+    av_value ***to
 )
 {
     int last = acount(*from) - 1;
@@ -498,11 +503,11 @@ static int restore_prototype(
         return 0;
     }
     char error[256];
-    char *current = game_prototype_save(asset->prototype);
-    char *snapshot = (*from)[last];
-    game_prototype *prototype = game_prototype_load(snapshot, &scene->registry, error, sizeof error);
+    av_value *current = game_prototype_to_value(asset->prototype);
+    av_value *snapshot = (*from)[last];
+    game_prototype *prototype = game_prototype_load_value(snapshot, &scene->registry, error, sizeof error);
     if (!prototype) {
-        free(current);
+        av_value_free(current);
         return -1;
     }
     adel(*from, last);
@@ -512,10 +517,10 @@ static int restore_prototype(
     asset->dirty = 1;
     asset_index_invalidate(scene);
     if (refresh_prototype_instances(scene, asset) != 0) {
-        free(snapshot);
+        av_value_free(snapshot);
         return -1;
     }
-    free(snapshot);
+    av_value_free(snapshot);
     return 0;
 }
 

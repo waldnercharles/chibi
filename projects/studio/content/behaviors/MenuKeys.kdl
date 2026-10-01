@@ -1,0 +1,44 @@
+version 3
+name "MenuKeys"
+id_counter 24
+owner_type "ecs.entity"
+(array)graphs {
+    - {
+        kind "event"
+        name ""
+        (array)nodes {
+            - id=1 type="Event" x=0.0 y=0.0 placed=#false reference_name="Choose"
+            - {
+                id 3
+                type "Click UI Element"
+                x 0.0
+                y 0.0
+                placed #false
+                inputs Element=".menu-item:focus"
+            }
+            - id=8 type="Event" x=0.0 y=0.0 placed=#false reference_name="Next"
+            - {
+                id 10
+                type "Move UI Focus"
+                x 0.0
+                y 0.0
+                placed #false
+                inputs Element=".menu-item"
+            }
+            - id=16 type="Event" x=0.0 y=0.0 placed=#false reference_name="Previous"
+            - {
+                id 18
+                type "Move UI Focus"
+                x 0.0
+                y 0.0
+                placed #false
+                inputs Element=".menu-item" Step=-1
+            }
+        }
+        (array)edges {
+            - from="1.Then" to="3.Exec"
+            - from="8.Then" to="10.Exec"
+            - from="16.Then" to="18.Exec"
+        }
+    }
+}

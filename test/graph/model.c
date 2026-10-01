@@ -46,8 +46,8 @@ static void input_index_edits()
         "disconnecting an input preserves the edge swapped into its old slot"
     );
 
-    char *json = graph_save_json(&g);
-    graph *copy = json ? graph_load_json(json) : NULL;
+    char *json = graph_save(&g);
+    graph *copy = json ? graph_load(json) : NULL;
     node *copy_target = copy ? graph_node_by_id(copy, target->id) : NULL;
     node *copy_integer = copy ? graph_node_by_id(copy, integer->id) : NULL;
     test_check(
@@ -206,12 +206,12 @@ static void pasted_edge_indexes()
             graph_connect_exec(&source, event, 0, branch, 0, 0) == 0,
         "paste fixture contains both data and EXEC edges"
     );
-    char *json = graph_save_json(&source);
+    char *json = graph_save(&source);
     graph target;
     graph_init(&target);
     for (int pass = 0; pass < 3; pass++) {
         test_check(
-            json && graph_append_json(&target, json, pass * 100.0f, 0) == 0,
+            json && graph_append(&target, json, pass * 100.0f, 0) == 0,
             pass ? "append into a graph with warm edge indexes" : "append into an empty graph"
         );
         /* Read before any mutation helper can initialize or invalidate the
@@ -586,8 +586,8 @@ void run_graph_model_checks()
                 graph_pin_by_id(b_id, 0, NULL, NULL) == NULL,
             "zero is never an allocated or resolvable ID"
         );
-        char *id_json = graph_save_json(&ids);
-        graph *id_loaded = id_json ? graph_load_json(id_json) : NULL;
+        char *id_json = graph_save(&ids);
+        graph *id_loaded = id_json ? graph_load(id_json) : NULL;
         test_check(
             id_loaded && graph_node_by_id(id_loaded, b_id->id) &&
                 graph_pin_by_id(
@@ -624,8 +624,8 @@ void run_graph_model_checks()
             "setting an authored default changes evaluation after a "
             "later eval"
         );
-        authored_json = graph_save_json(&authored);
-        authored_loaded = authored_json ? graph_load_json(authored_json) : NULL;
+        authored_json = graph_save(&authored);
+        authored_loaded = authored_json ? graph_load(authored_json) : NULL;
         test_check(
             authored_loaded &&
                 authored_loaded->nodes[0]->input_pins[0].default_value.d == 9.0,
@@ -727,8 +727,8 @@ void run_graph_model_checks()
         graph_set_pin_default(&literals, lr, 0, 0, &vr);
         graph_set_pin_default(&literals, ln, 0, 0, &vn);
         graph_set_pin_default(&literals, ls, 0, 0, &vs);
-        char *literal_json = graph_save_json(&literals);
-        graph *literal_loaded = literal_json ? graph_load_json(literal_json) : NULL;
+        char *literal_json = graph_save(&literals);
+        graph *literal_loaded = literal_json ? graph_load(literal_json) : NULL;
         int literal_values = 0;
         if (literal_loaded && acount(literal_loaded->nodes) == 7) {
             for (int i = 0; i < acount(literal_loaded->nodes); i++) {

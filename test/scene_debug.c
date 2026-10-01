@@ -12,9 +12,9 @@
 
 static behavior_asset *debug_copy(const behavior_asset *source)
 {
-    char *json = behavior_asset_save_json(source);
+    char *json = behavior_asset_save(source);
     assert(json);
-    behavior_asset *copy = behavior_asset_load_json(json);
+    behavior_asset *copy = behavior_asset_load(json);
     free(json);
     assert(copy);
     return copy;
@@ -245,8 +245,8 @@ void test_scene_debug()
     behavior_asset *working = behavior_asset_new("DebugRevision");
     node *value = graph_add_node(working->graph, registry_node_by_name("Integer"));
     assert(value);
-    char *json = behavior_asset_save_json(working);
-    behavior_asset *applied = behavior_asset_load_json(json);
+    char *json = behavior_asset_save(working);
+    behavior_asset *applied = behavior_asset_load(json);
     free(json);
     assert(applied && scene_debug_matches(working, applied));
     node *grouped = graph_node_by_id(applied->graph, value->id);

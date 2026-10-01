@@ -1,3 +1,0 @@
-name: Theme
-components:
-  GAME.GameUi: {document: ThemeTokens, hidden: true}

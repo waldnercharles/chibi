@@ -54,8 +54,8 @@ static void check_presence(ecs_index_kind index)
     expect_presence(&test, "missing.Component", false, "not registered");
     expect_presence(&test, "GAME.GameHealth", false, "not registered");
     expect_presence(&test, component.key, false, NULL);
-    char *json = behavior_asset_save_json(test.asset);
-    behavior_asset *restored = behavior_asset_load_json(json);
+    char *json = behavior_asset_save(test.asset);
+    behavior_asset *restored = behavior_asset_load(json);
     assert(restored);
     free(json);
     eval_context_free(&test.eval);

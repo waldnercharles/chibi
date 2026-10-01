@@ -1,0 +1,11 @@
+name "OrbitBall"
+components {
+    GAME.GameAppearance color=3942121471 height=18.0 shape="Circle" width=18.0
+    GAME.GameBody continuous=#true type="Dynamic"
+    GAME.GameCollider category=1 friction=0.079999998211860657 mask=8 radius=9.0 restitution=0.75
+    (object)GAME.GameInput
+    GAME.GameTransform x=166.0 y=-165.0
+    GAME.GameUi document="OrbitPinball"
+    (object)GAME.GameVelocity
+}
+(array)behaviors "OrbitLaunch"

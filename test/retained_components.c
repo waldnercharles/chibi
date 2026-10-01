@@ -1,7 +1,7 @@
-#include "../third_party/yyjson/yyjson.h"
 #include "assets/prototype.h"
 #include "runtime/generated.h"
 #include "support/array.h"
+#include "test/asset_fixture.h"
 
 #include <assert.h>
 #include <stdio.h>
@@ -10,48 +10,63 @@
 
 static void check_rebase(const char *values, const char *previous, const char *current, const char *expected)
 {
-    char *json = game_prototype_rebase_component_json(values, previous, current);
-    assert(json);
-    yyjson_doc *actual = yyjson_read(json, strlen(json), 0);
-    yyjson_doc *wanted = yyjson_read(expected, strlen(expected), 0);
-    assert(
-        actual && wanted &&
-        yyjson_equals(yyjson_doc_get_root(actual), yyjson_doc_get_root(wanted))
-    );
-    yyjson_doc_free(actual);
-    yyjson_doc_free(wanted);
-    free(json);
+    av_value *input = test_read_asset_value(values);
+    av_value *before = test_read_asset_value(previous);
+    av_value *after = test_read_asset_value(current);
+    av_value *wanted = test_read_asset_value(expected);
+    av_value *actual = game_prototype_rebase_component_value(input, before, after);
+    assert(actual && av_equals(actual, wanted));
+    av_value_free(input);
+    av_value_free(before);
+    av_value_free(after);
+    av_value_free(wanted);
+    av_value_free(actual);
 }
 
 static void retained_inheritance()
 {
     check_rebase(
-        "{\"Health\":{\"current\":73,\"maximum\":100}}",
-        "{\"Health\":{\"current\":100,\"maximum\":100}}",
-        "{\"Health\":{\"current\":200,\"maximum\":200}}",
-        "{\"Health\":{\"current\":73,\"maximum\":200}}"
+        "Health {\n    current 73\n    maximum 100\n}\n",
+        "Health {\n    current 100\n    maximum 100\n}\n",
+        "Health {\n    current 200\n    maximum 200\n}\n",
+        "Health {\n    current 73\n    maximum 200\n}\n"
     );
     check_rebase(
-        "{\"Input\":{\"move\":{\"x\":3,\"y\":0},\"label\":\"custom\"}}",
-        "{\"Input\":{\"move\":{\"x\":0,\"y\":0},\"label\":\"default\"}}",
-        "{\"Input\":{\"move\":{\"x\":1,\"y\":2},\"label\":\"new\",\"enabled\":"
-        "true}}",
-        "{\"Input\":{\"move\":{\"x\":3,\"y\":2},\"label\":\"custom\","
-        "\"enabled\":true}}"
+        "Input {\n    move {\n        x 3\n        y 0\n    }\n    label "
+        "\"custom\"\n}\n",
+        "Input {\n    move {\n        x 0\n        y 0\n    }\n    label "
+        "\"default\"\n}\n",
+        "Input {\n    move {\n        x 1\n        y 2\n    }\n    label "
+        "\"new\"\n    enabled #true\n}\n",
+        "Input {\n    move {\n        x 3\n        y 2\n    }\n    label "
+        "\"custom\"\n    enabled #true\n}\n"
     );
     check_rebase(
-        "{\"Health\":{\"current\":73}}",
-        "{}",
-        "{\"Health\":{\"current\":200,\"maximum\":200}}",
-        "{\"Health\":{\"current\":73,\"maximum\":200}}"
+        "Health {\n    current 73\n}\n",
+        "",
+        "Health {\n    current 200\n    maximum 200\n}\n",
+        "Health {\n    current 73\n    maximum 200\n}\n"
     );
-    check_rebase("{\"Health\":{\"current\":73}}", "{\"Health\":{\"current\":100}}", "{}", "{\"Health\":{\"current\":73}}");
-    const char *invalid[] = { "null", "{}", "{\"Health\":null}", "{\"Health\":{},\"Input\":{}}" };
-    for (int i = 0; i < 4; i++) {
-        assert(!game_prototype_rebase_component_json(invalid[i], "{}", "{}"));
+    check_rebase("Health {\n    current 73\n}\n", "Health {\n    current 100\n}\n", "", "Health {\n    current 73\n}\n");
+    const char *invalid[] = { "", "Health #null\n", "(object)Health\n(object)Input\n" };
+    av_value *empty = test_read_asset_value("");
+    av_doc *null_doc = av_doc_new();
+    assert(!game_prototype_rebase_component_value(av_null(null_doc), empty, empty));
+    av_doc_free(null_doc);
+    for (int i = 0; i < 3; i++) {
+        av_value *value = test_read_asset_value(invalid[i]);
+        assert(!game_prototype_rebase_component_value(value, empty, empty));
+        av_value_free(value);
     }
-    assert(!game_prototype_rebase_component_json("{\"Health\":{}}", "{\"Input\":{}}", "{}"));
-    assert(!game_prototype_rebase_component_json("{\"Health\":{}}", "{}", "{\"Health\":null}"));
+    av_value *health = test_read_asset_value("(object)Health\n");
+    av_value *input = test_read_asset_value("(object)Input\n");
+    av_value *removed = test_read_asset_value("Health #null\n");
+    assert(!game_prototype_rebase_component_value(health, input, empty));
+    assert(!game_prototype_rebase_component_value(health, empty, removed));
+    av_value_free(health);
+    av_value_free(input);
+    av_value_free(removed);
+    av_value_free(empty);
     puts("retained inheritance PASS: local values, evolving defaults, nested fields, absent bases, and invalid snapshots");
 }
 
@@ -70,8 +85,12 @@ static void retained_strings()
     game_prototype_registry registry = { components, 1, NULL, NULL };
     char error[256];
     game_prototype *prototype = game_prototype_load(
-        "{\"name\":\"StringOwner\",\"components\":{\"test.Label\":{\"text\":"
-        "\"customized\"}}}",
+        "name \"StringOwner\"\n"
+        "components {\n"
+        "    test.Label {\n"
+        "        text \"customized\"\n"
+        "    }\n"
+        "}\n",
         &registry,
         error,
         sizeof error
@@ -109,10 +128,23 @@ void test_retained_components()
                                          NULL };
     char error[256];
     game_prototype *prototype = game_prototype_load(
-        "{\"name\":\"Retained\",\"components\":{"
-        "\"GameTransform\":{\"x\":10,\"y\":20},"
-        "\"GameHealth\":{\"current\":73,\"maximum\":100},"
-        "\"GameInput\":{\"move\":{\"x\":3,\"y\":4}}}}",
+        "name \"Retained\"\n"
+        "components {\n"
+        "    GameTransform {\n"
+        "        x 10\n"
+        "        y 20\n"
+        "    }\n"
+        "    GameHealth {\n"
+        "        current 73\n"
+        "        maximum 100\n"
+        "    }\n"
+        "    GameInput {\n"
+        "        move {\n"
+        "            x 3\n"
+        "            y 4\n"
+        "        }\n"
+        "    }\n"
+        "}\n",
         &registry,
         error,
         sizeof error
@@ -158,8 +190,13 @@ void test_retained_components()
     ecs_world_free(world);
 
     prototype = game_prototype_load(
-        "{\"name\":\"Invalid\",\"components\":{\"GameHealth\":{}},"
-        "\"detached_components\":{\"GameHealth\":{}}}",
+        "name \"Invalid\"\n"
+        "components {\n"
+        "    (object)GameHealth\n"
+        "}\n"
+        "detached_components {\n"
+        "    (object)GameHealth\n"
+        "}\n",
         &registry,
         error,
         sizeof error

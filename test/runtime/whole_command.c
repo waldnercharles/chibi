@@ -240,8 +240,8 @@ static void scalar_generation_ownership(behavior_backend backend)
         bi->variables[0].d == 7.5 &&
         !strcmp(bi->variables[0].type_name, "graph owned scalar name")
     );
-    char *json = behavior_asset_save_json(a);
-    behavior_asset *replacement = behavior_asset_load_json(json);
+    char *json = behavior_asset_save(a);
+    behavior_asset *replacement = behavior_asset_load(json);
     free(json);
     assert(replacement && behavior_instance_can_update(bi, replacement) == INSTANCE_UPDATE_READY);
     behavior_instance_update(bi, replacement);

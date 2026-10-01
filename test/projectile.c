@@ -31,7 +31,7 @@ static char *read_content(const char *path)
 static behavior_asset *read_behavior(const char *path)
 {
     char *text = read_content(path);
-    behavior_asset *asset = behavior_asset_load_json(text);
+    behavior_asset *asset = behavior_asset_load(text);
     if (asset) {
         asset = link_test_libraries(asset);
     }
@@ -84,8 +84,8 @@ void test_projectile()
 {
     game_prototype_registry registry = { GAME_REGISTRY_COMPONENTS,
                                          GAME_REGISTRY_COMPONENT_COUNT };
-    game_prototype *player = read_prototype("test/fixtures/content/prototypes/Player.yaml", &registry);
-    game_prototype *projectile = read_prototype("test/fixtures/content/prototypes/Projectile.yaml", &registry);
+    game_prototype *player = read_prototype("test/fixtures/content/prototypes/Player.kdl", &registry);
+    game_prototype *projectile = read_prototype("test/fixtures/content/prototypes/Projectile.kdl", &registry);
     const char *names[] = { "InputBehavior",         "WeaponBehavior",
                             "AutoWeaponBehavior",    "ProjectileBehavior",
                             "HealthBehavior",        "ProjectileHitBehavior",
@@ -117,7 +117,7 @@ void test_projectile()
                                        !strcmp(names[i], "WeaponBehavior")
                                  ? "test/fixtures/content/behaviors"
                                  : "content/behaviors";
-            snprintf(path, sizeof path, "%s/%s.yaml", root, names[i]);
+            snprintf(path, sizeof path, "%s/%s.kdl", root, names[i]);
             behavior_asset *asset = read_behavior(path);
             if (isolated) {
                 assert(game_prototype_preview_register_behavior(preview, names[i], asset) == 0);

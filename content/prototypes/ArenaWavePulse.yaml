@@ -1,5 +1,0 @@
-name: ArenaWavePulse
-components:
-  GAME.GameSurfaceInfluence: {color: 4280633599, radius: 24.0, strength: 0.65}
-  GAME.GameTransform: {}
-behaviors: [WavePulseBehavior]

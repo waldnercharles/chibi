@@ -471,21 +471,20 @@ chibi_registry("${BASE_REGISTRY}" ${BASE_REGISTRY_PACKS})
 
 # --- graph model and execution ---
 
-# Asset files are YAML; libyaml's event parser and emitter convert them.
-add_library(yaml STATIC
-    third_party/libyaml/api.c
-    third_party/libyaml/emitter.c
-    third_party/libyaml/parser.c
-    third_party/libyaml/reader.c
-    third_party/libyaml/scanner.c
-    third_party/libyaml/writer.c
+# KDL 2 parses directly into native asset values.
+add_library(ckdl STATIC
+    third_party/ckdl/src/bigint.c
+    third_party/ckdl/src/compat.c
+    third_party/ckdl/src/emitter.c
+    third_party/ckdl/src/parser.c
+    third_party/ckdl/src/str.c
+    third_party/ckdl/src/tokenizer.c
+    third_party/ckdl/src/utf8.c
 )
-target_include_directories(yaml PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/third_party/libyaml)
-target_compile_definitions(yaml
-    PUBLIC YAML_DECLARE_STATIC
-    PRIVATE YAML_VERSION_MAJOR=0 YAML_VERSION_MINOR=2 YAML_VERSION_PATCH=5
-            YAML_VERSION_STRING="0.2.5")
-target_compile_options(yaml PRIVATE -w)
+target_include_directories(ckdl PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/third_party/ckdl/include)
+target_include_directories(ckdl PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/third_party/ckdl/src)
+target_compile_definitions(ckdl PUBLIC KDL_STATIC_LIB=1 PRIVATE BUILDING_KDL=1)
+target_compile_options(ckdl PRIVATE -w)
 
 add_library(core STATIC
     ${CORE_SOURCES}
@@ -498,7 +497,7 @@ target_include_directories(core PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party/yyjson
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party/fmt
 )
-target_link_libraries(core PRIVATE yaml)
+target_link_libraries(core PRIVATE ckdl)
 if(UNIX)
     target_link_libraries(core PUBLIC m)
 endif()
@@ -782,7 +781,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
         "${CMAKE_CURRENT_SOURCE_DIR}/src/render/shaders/*")
     set_property(TARGET chibi APPEND PROPERTY LINK_DEPENDS
         ${WEB_ASSETS}
-        "${CMAKE_CURRENT_SOURCE_DIR}/project.yaml"
+        "${CMAKE_CURRENT_SOURCE_DIR}/project.kdl"
         "${CMAKE_CURRENT_SOURCE_DIR}/tools/web_storage.js"
         "${CMAKE_CURRENT_SOURCE_DIR}/tools/collab/storage.js"
         "${CMAKE_CURRENT_SOURCE_DIR}/tools/web_launch.js"
@@ -803,7 +802,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
         "-sEXPORTED_FUNCTIONS=['_main','_free']"
         "-sEXPORTED_RUNTIME_METHODS=['FS','UTF8ToString','stringToNewUTF8']"
         # Each sample is a self-contained project folder.
-        "--preload-file=${CMAKE_CURRENT_SOURCE_DIR}/project.yaml@projects/arena3d/project.yaml"
+        "--preload-file=${CMAKE_CURRENT_SOURCE_DIR}/project.kdl@projects/arena3d/project.kdl"
         "--preload-file=${CMAKE_CURRENT_SOURCE_DIR}/content@projects/arena3d/content"
         "--preload-file=${CMAKE_CURRENT_SOURCE_DIR}/projects/arena2d@projects/arena2d"
         "--preload-file=${CMAKE_CURRENT_SOURCE_DIR}/src/editor/rmlui/resources@${CMAKE_CURRENT_SOURCE_DIR}/src/editor/rmlui/resources"
@@ -821,6 +820,7 @@ file(GLOB_RECURSE TEST_CONCEPT_SOURCES CONFIGURE_DEPENDS
     test/graph/*.c test/ecs/*.c test/runtime/*.c test/editor/*.c test/support/*.c)
 add_executable(test_suite
     test/automation_preview.c
+    test/asset_value.c test/asset_source.c test/kdl_text.c
     test/collab_protocol.c test/collab_replay.c
     ${TEST_CONCEPT_SOURCES}
     test/automation_asset_write.c test/automation_refactor.c test/automation_graph_edit.c test/automation_search.c test/automation_navigation.c test/automation_graph_optimize.c test/automation_prototype_edit.c test/automation_scene_edit.c test/test_suite.c test/host_wait.c test/entities.c test/projectile.c test/system_host_wait.c test/combat.c test/targeting.c test/pursuit.c test/vector.c test/arena.c test/number_serialization.c test/auto_weapon.c test/graph_navigation.c test/extract.c test/component_conversion.c test/field_outputs.c test/function_wait.c test/function_fields.c test/enemy_attack.c test/particles.c test/labels.c test/appearance.c

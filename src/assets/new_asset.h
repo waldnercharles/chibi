@@ -6,7 +6,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 
-/* An empty asset of each kind a project's content holds as YAML, the form
+/* An empty asset of each kind a project's content holds as KDL, the form
  * Studio's New menu and the MCP's create requests start from. Each is built
  * as its in-memory model and written by that model's serializer. */
 typedef enum
@@ -33,7 +33,7 @@ bool new_asset_name_valid(const char *name, char *error, size_t size);
  * output node a material, shape or field needs, and a shape has 32-unit
  * half extents. */
 behavior_asset *new_asset_graph(behavior_domain domain, const char *name);
-/* The owned JSON of an empty `kind` named `name`, as its loader reads it. */
-char *new_asset_json(new_asset_kind kind, const char *name);
+/* The owned KDL source of an empty `kind` named `name`, as its loader reads it. */
+char *new_asset_text(new_asset_kind kind, const char *name);
 
 #endif

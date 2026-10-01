@@ -86,9 +86,9 @@ static bool exec_linked(const graph *g, const node *from, int from_pin, uint64_t
 
 static bool round_trips(const behavior_asset *asset)
 {
-    char *first = behavior_asset_save_json(asset);
-    behavior_asset *loaded = behavior_asset_load_json(first);
-    char *second = loaded ? behavior_asset_save_json(loaded) : NULL;
+    char *first = behavior_asset_save(asset);
+    behavior_asset *loaded = behavior_asset_load(first);
+    char *second = loaded ? behavior_asset_save(loaded) : NULL;
     bool same = second && !strcmp(first, second);
     free(first);
     free(second);

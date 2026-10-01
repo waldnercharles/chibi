@@ -32,9 +32,9 @@ static char *read_content(const char *path)
 static behavior_asset *read_behavior(const char *name)
 {
     char path[256];
-    snprintf(path, sizeof path, "test/fixtures/content/behaviors/%s.yaml", name);
+    snprintf(path, sizeof path, "test/fixtures/content/behaviors/%s.kdl", name);
     char *text = read_content(path);
-    behavior_asset *asset = behavior_asset_load_json(text);
+    behavior_asset *asset = behavior_asset_load(text);
     if (asset) {
         asset = link_test_libraries(asset);
     }
@@ -60,7 +60,7 @@ static void trail_case(bool isolated)
 {
     game_prototype_registry registry = { GAME_REGISTRY_COMPONENTS,
                                          GAME_REGISTRY_COMPONENT_COUNT };
-    char *text = read_content("test/fixtures/content/prototypes/Player.yaml");
+    char *text = read_content("test/fixtures/content/prototypes/Player.kdl");
     char error[256];
     game_prototype *prototype = game_prototype_load(text, &registry, error, sizeof error);
     free(text);

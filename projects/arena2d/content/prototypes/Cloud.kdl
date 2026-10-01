@@ -1,0 +1,5 @@
+name "Cloud"
+components {
+    GAME.GameFluidVolume absorption=0.0060000000521540642 color=1670097312 height=280.0 mass=0.00039999998989515007 spacing=5.0 visibility=0.012000000104308128 width=500.0
+    (object)GAME.GameTransform
+}

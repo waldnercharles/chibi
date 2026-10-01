@@ -40,10 +40,10 @@ static field_fixture fixture(const char *name, pin_value value, bool wired_targe
         assert(graph_connect_data(g, event, 1, f.set, 2) == 0);
     }
     uint64_t id = f.set->id;
-    char *json = behavior_asset_save_json(f.asset);
+    char *json = behavior_asset_save(f.asset);
     assert(json);
     behavior_asset_free(f.asset);
-    f.asset = behavior_asset_load_json(json);
+    f.asset = behavior_asset_load(json);
     free(json);
     assert(f.asset);
     f.set = graph_node_by_id(f.asset->graph, id);
@@ -159,8 +159,13 @@ static void handle_field(ecs_world *world, ecs_entity owner, ecs_entity other)
                                          GAME_REGISTRY_COMPONENT_COUNT };
     char error[256];
     game_prototype *prototype = game_prototype_load(
-        "{\"name\":\"Owner\",\"components\":{\"GameCollider\":{\"radius\":12,"
-        "\"ignore_entity\":null}}}",
+        "name \"Owner\"\n"
+        "components {\n"
+        "    GameCollider {\n"
+        "        radius 12\n"
+        "        ignore_entity #null\n"
+        "    }\n"
+        "}\n",
         &registry,
         error,
         sizeof error
@@ -176,8 +181,12 @@ static void handle_field(ecs_world *world, ecs_entity owner, ecs_entity other)
     assert(read.type == PIN_HANDLE && read.u64 == 0);
     game_prototype_free(prototype);
     assert(!game_prototype_load(
-        "{\"name\":\"Stale\",\"components\":{\"GameCollider\":{\"ignore_"
-        "entity\":123}}}",
+        "name \"Stale\"\n"
+        "components {\n"
+        "    GameCollider {\n"
+        "        ignore_entity 123\n"
+        "    }\n"
+        "}\n",
         &registry,
         error,
         sizeof error

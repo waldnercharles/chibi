@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { fixtureKdl } from "./fixture-kdl.mjs";
 import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
 import { join, resolve } from "node:path";
@@ -244,7 +245,7 @@ const buttonNodes = toolPayload(responseById.get(38));
 const renamed = toolPayload(responseById.get(39));
 const refusedDelete = toolPayload(responseById.get(40));
 if (renamed.ok !== true || renamed.result?.dry_run !== true || renamed.result?.published !== false ||
-    !renamed.result?.assets?.some((asset) => asset.path === "content/events/Damage.yaml" && asset.new_name === "Harm") ||
+    !renamed.result?.assets?.some((asset) => asset.path === "content/events/Damage.kdl" && asset.new_name === "Harm") ||
     Object.keys(renamed.result?.expected_hashes || {}).length !== renamed.result.assets.length ||
     !renamed.next_steps?.some((step) => step.includes("expected_hashes")) ||
     refusedDelete.ok !== false || !(refusedDelete.result?.references?.length >= 3) ||
@@ -310,7 +311,7 @@ const contactSend = references.result?.uses?.find((use) =>
 const contactCaller = hierarchy.result?.root?.callers?.find((item) => item.name === "Check Enemy Contact");
 const damageCallee = hierarchy.result?.root?.callees?.find((item) => item.kind === "event" && item.name === "Damage");
 const applyDamage = healthGraph.result?.graphs?.find((graph) => graph.name === "Apply Damage");
-if (references.ok !== true || references.result?.definition?.asset?.path !== "content/events/Damage.yaml" ||
+if (references.ok !== true || references.result?.definition?.asset?.path !== "content/events/Damage.kdl" ||
     !(references.result?.counts?.send >= 2) || references.result?.counts?.handle !== 1 ||
     contactSend?.graph !== "Apply Contact Damage" || !Number.isInteger(contactSend?.node) ||
     referenceSummary.counts?.send !== references.result.counts.send ||
@@ -468,7 +469,7 @@ if (linkedValidation.response.ok !== true || !linkedValidation.response.result?.
 
 const nativeRegistry = nativeRequest("describe_registry", { sections: ["nodes"] });
 const defaultRegistry = nativeRequest("describe_registry");
-const nativeMissing = nativeRequest("read_asset", { path: "content/nope.yaml" });
+const nativeMissing = nativeRequest("read_asset", { path: "content/nope.kdl" });
 if (nativeStatus.status !== 0 || nativeStatus.response.ok !== true ||
     nativeAssets.response.result?.assets?.length < 1 ||
     nativeCatalog.response.ok !== true || !nativeCatalog.response.result?.assets?.some((asset) => asset.name === "HealthBehavior") ||
@@ -511,14 +512,14 @@ const systemRoot = mkdtempSync(join(tmpdir(), "chibi-system-"));
 try {
   const systemDirectory = join(systemRoot, "content", "systems");
   mkdirSync(systemDirectory, { recursive: true });
-  // Asset files are YAML, and loaders also accept JSON documents.
-  const systemPath = join(systemDirectory, "MovementSystem.yaml");
-  const systemDocument = JSON.parse(readFileSync(
-    resolve(root, "test/fixtures/systems/MovementSystem.json"),
-    "utf8"
-  ));
+  // Asset files are KDL, and loaders also accept JSON documents.
+  const systemPath = join(systemDirectory, "MovementSystem.kdl");
+  writeFileSync(systemPath, readFileSync(resolve(root, "test/fixtures/systems/MovementSystem.kdl")));
+  const systemDocument = nativeRequestAt(systemRoot, "read_asset", {
+    kind: "system", name: "MovementSystem",
+  }).response.result.document;
   systemDocument.query = { op: "has", component: "GameTransform" };
-  writeFileSync(systemPath, JSON.stringify(systemDocument));
+  writeFileSync(systemPath, fixtureKdl(systemDocument));
   const inspectedSystem = nativeRequestAt(systemRoot, "inspect_system", {
     kind: "system",
     name: "MovementSystem",
@@ -550,7 +551,7 @@ try {
   document.graphs = [{ ...document.graphs[0], nodes: [], edges: [] }, query];
   const directory = join(queryRoot, "content", "behaviors");
   mkdirSync(directory, { recursive: true });
-  writeFileSync(join(directory, "QueryFusionCheck.yaml"), JSON.stringify(document));
+  writeFileSync(join(directory, "QueryFusionCheck.kdl"), fixtureKdl(document));
   const inspected = nativeRequestAt(queryRoot, "inspect_graph", {
     kind: "behavior", name: "QueryFusionCheck", graph_name: query.name,
   });
@@ -580,12 +581,12 @@ try {
   prototype.components.GameInput = { move: { x: 0, y: 0 } };
   prototype.components.GameVelocity = { x: 0, y: 0 };
   prototype.behaviors = ["ReplayInput"];
-  writeFileSync(join(prototypeDirectory, "Editor2DPreview.yaml"), JSON.stringify(prototype));
+  writeFileSync(join(prototypeDirectory, "Editor2DPreview.kdl"), fixtureKdl(prototype));
   const behaviorDirectory = join(scenarioRoot, "content", "behaviors");
   mkdirSync(behaviorDirectory, { recursive: true });
   writeFileSync(
-    join(behaviorDirectory, "ReplayInput.yaml"),
-    readFileSync(resolve(root, "test/fixtures/content/behaviors/ReplayInput.yaml"))
+    join(behaviorDirectory, "ReplayInput.kdl"),
+    readFileSync(resolve(root, "test/fixtures/content/behaviors/ReplayInput.kdl"))
   );
   const scenarioRequests = [
     {

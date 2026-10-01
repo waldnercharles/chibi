@@ -1,0 +1,34 @@
+version 3
+name "NewProjectKeys"
+id_counter 17
+owner_type "ecs.entity"
+(array)graphs {
+    - {
+        kind "event"
+        name ""
+        (array)nodes {
+            - id=1 type="Event" x=0.0 y=0.0 placed=#false reference_name="ConfirmDiscard"
+            - {
+                id 3
+                type "Move UI Focus"
+                x 0.0
+                y 0.0
+                placed #false
+                inputs Element="#new-project-cancel"
+            }
+            - id=9 type="Event" x=0.0 y=0.0 placed=#false reference_name="InvalidName"
+            - {
+                id 11
+                type "Move UI Focus"
+                x 0.0
+                y 0.0
+                placed #false
+                inputs Element="#new-project-name"
+            }
+        }
+        (array)edges {
+            - from="1.Then" to="3.Exec"
+            - from="9.Then" to="11.Exec"
+        }
+    }
+}

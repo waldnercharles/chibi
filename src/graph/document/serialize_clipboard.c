@@ -1,5 +1,6 @@
 #include "graph/document/serialize_internal.h"
 #include "graph/model/local.h"
+#include "support/asset_text.h"
 #include "support/xalloc.h"
 
 #include <stdio.h>
@@ -16,13 +17,13 @@ static uint64_t remap_id(uint64_t old, const uint64_t *old_ids, const uint64_t *
     return old;
 }
 
-int graph_append_json(graph *g, const char *json, float dx, float dy)
+int graph_append_value(graph *g, av_value *document, float dx, float dy)
 {
     if (!g || g->flow_pause_count) {
         serialize_error_set("cannot append while a flow run is non-idle");
         return -1;
     }
-    graph *tmp = graph_load_json(json);
+    graph *tmp = graph_from_value(document);
     if (!tmp) {
         return -1;
     }
@@ -192,4 +193,17 @@ int graph_append_json(graph *g, const char *json, float dx, float dy)
     graph_free(tmp);
     free(tmp);
     return 0;
+}
+
+int graph_append(graph *g, const char *text, float dx, float dy)
+{
+    char error[160];
+    av_doc *doc = text ? av_doc_read(text, error, sizeof error) : NULL;
+    if (!doc) {
+        serialize_error_set("%s", text ? error : "null KDL input");
+        return -1;
+    }
+    int result = graph_append_value(g, av_doc_root(doc), dx, dy);
+    av_doc_free(doc);
+    return result;
 }

@@ -1,6 +1,6 @@
-/* The Text Editor area (Blender's): the source of a UI document, its RML and
- * RCSS, or a stylesheet's RCSS. It follows the active UI document and keeps
- * the last one while a document of another kind is active; focusing its text
+/* The Text Editor area (Blender's): KDL asset source, a UI document's RML
+ * and RCSS, or a stylesheet's RCSS. KDL follows the active asset; UI editing
+ * keeps its per-part language service and history. Focusing its text
  * makes it active again, so Save and Undo follow it. Edits apply across Studio
  * as they are typed (the code_apply_live preference), or when saved.
  *
@@ -23,6 +23,7 @@
 #include "editor/collab/collab.h"
 #include "editor/studio/studio_internal.h"
 #include "support/array.h"
+#include "support/asset_text.h"
 #include "support/xalloc.h"
 
 #include <assert.h>
@@ -46,6 +47,78 @@
 static const char *const PART_LABELS[UI_PART_COUNT] = { "RML", "RCSS" };
 static const char *const PART_NAMES[UI_PART_COUNT] = { "rml", "rcss" };
 static const char *const APPLY_LABELS[] = { "Live", "On Save" };
+
+static scene_document_tab *active_asset(studio *s)
+{
+    int at = s->scene->active_tab;
+    if (at < 0 || at >= acount(s->scene->tabs)) {
+        return NULL;
+    }
+    scene_document_tab *tab = &s->scene->tabs[at];
+    if (tab->kind == APP_EDITOR_DOCUMENT_UI || !tab->path) {
+        return NULL;
+    }
+    size_t n = strlen(tab->path), ext = strlen(ASSET_EXTENSION);
+    return n >= ext && !strcmp(tab->path + n - ext, ASSET_EXTENSION) ? tab : NULL;
+}
+
+static void capture_asset(studio *s, asset_code *code)
+{
+    for (int i = 0; i < acount(s->scene->tabs); i++) {
+        scene_document_tab *tab = &s->scene->tabs[i];
+        if (!tab->path || strcmp(tab->path, asset_code_path(code))) {
+            continue;
+        }
+        av_value_free(tab->source_state);
+        tab->source_state = asset_code_capture(code);
+        tab->source_dirty = asset_code_dirty(code);
+    }
+}
+
+static asset_code *asset_editor(studio *s, scene_document_tab *tab)
+{
+    for (int i = 0; i < acount(s->code.assets); i++) {
+        asset_code *code = s->code.assets[i];
+        if (strcmp(asset_code_path(code), tab->path)) {
+            continue;
+        }
+        if (tab->source_state && !asset_code_has_state(code, tab->source_state)) {
+            asset_code
+                *restored = asset_code_restore(tab->source_state, &s->scene->registry);
+            if (!restored) {
+                studio_report(s, "Could not restore KDL source draft");
+                return NULL;
+            }
+            asset_code_free(code);
+            s->code.assets[i] = restored;
+            return restored;
+        }
+        return code;
+    }
+    char error[256];
+    asset_code *code = tab->source_state
+                         ? asset_code_restore(tab->source_state, &s->scene->registry)
+                         : asset_code_open(tab->path, error, sizeof error);
+    if (!code) {
+        studio_report(s, tab->source_state ? "Could not restore KDL source draft" : error);
+        return NULL;
+    }
+    asset_code_set_registry(code, &s->scene->registry);
+    apush(s->code.assets, code);
+    capture_asset(s, code);
+    return code;
+}
+
+static void save_asset(studio *s, asset_code *code)
+{
+    char error[256];
+    if (!asset_code_save(code, error, sizeof error)) {
+        studio_error(s, "Could not save", error);
+        return;
+    }
+    capture_asset(s, code);
+    kit_toast(s->kit, 0, &(kit_toast_desc){ .type = KIT_TOAST_SUCCESS, .title = "Saved KDL source" });
+}
 
 static scene_document_tab *active_ui(studio *s)
 {
@@ -106,6 +179,14 @@ static void save(studio *s, scene_document_tab *tab)
  * asked, as editors ask before overwriting. */
 void studio_code_save(studio *s)
 {
+    scene_document_tab *asset = active_asset(s);
+    if (asset) {
+        asset_code *code = asset_editor(s, asset);
+        if (code) {
+            save_asset(s, code);
+        }
+        return;
+    }
     scene_document_tab *tab = active_ui(s);
     assert(tab);
     if (ui_buffer_on_disk(tab->ui)) {
@@ -133,6 +214,13 @@ static void close_tab(studio *s, int index)
     if (tab->kind == APP_EDITOR_DOCUMENT_UI) {
         scene_tabs_close(s->scene, APP_EDITOR_DOCUMENT_UI, tab->path);
         return;
+    }
+    for (int i = acount(s->code.assets) - 1; i >= 0; i--) {
+        if (tab->path && !strcmp(asset_code_path(s->code.assets[i]), tab->path)) {
+            /* Remove the live overlay before the tab reloads its disk state. */
+            asset_code_free(s->code.assets[i]);
+            adel(s->code.assets, i);
+        }
     }
     scene_tabs_discard(s->scene, index);
 }
@@ -214,6 +302,20 @@ static studio_code_editor *part_editor(studio *s, const scene_document_tab *tab)
 static void prune_editors(studio *s)
 {
     studio_code *c = &s->code;
+    for (int i = acount(c->assets) - 1; i >= 0; i--) {
+        bool open = false;
+        for (int t = 0; t < acount(s->scene->tabs); t++) {
+            scene_document_tab *tab = &s->scene->tabs[t];
+            if (tab->path && !strcmp(tab->path, asset_code_path(c->assets[i]))) {
+                tab->source_dirty = asset_code_dirty(c->assets[i]);
+                open = true;
+            }
+        }
+        if (!open) {
+            asset_code_free(c->assets[i]);
+            adel(c->assets, i);
+        }
+    }
     for (int i = acount(c->editors) - 1; i >= 0; i--) {
         if (ui_tab(s, c->editors[i].path)) {
             continue;
@@ -230,6 +332,10 @@ static void prune_editors(studio *s)
 void studio_code_free(studio *s)
 {
     studio_code *c = &s->code;
+    for (int i = 0; i < acount(c->assets); i++) {
+        asset_code_free(c->assets[i]);
+    }
+    afree(c->assets);
     for (int i = 0; i < acount(c->editors); i++) {
         kit_code_editor_destroy(c->editors[i].editor);
         free(c->editors[i].synced);
@@ -611,6 +717,25 @@ static void open_find(studio_code *c);
 void studio_code_header(studio *s, int)
 {
     kit *k = s->kit;
+    scene_document_tab *asset = active_asset(s);
+    if (asset) {
+        asset_code *code = asset_editor(s, asset);
+        kit_label(k, "title", "code-file", asset->label);
+        kit_label(k, "language", "code-mode", "KDL");
+        if (code && asset_code_dirty(code)) {
+            kit_label(k, "dirty", "dim", "Unsaved");
+        }
+        kit_leaf(k, "spacer", NULL, "spacer");
+        if (kit_button(k, "save", &(kit_button_desc){ .icon = KIT_ICON_SAVE, .tip = "Save source" }) &&
+            code) {
+            save_asset(s, code);
+        }
+        int apply = s->prefs.code_apply_live ? 0 : 1;
+        if (kit_toggle_group(k, "apply", &apply, APPLY_LABELS, 2, 0)) {
+            s->prefs.code_apply_live = apply == 0;
+        }
+        return;
+    }
     scene_document_tab *tab = shown(s);
     if (!tab) {
         kit_label(k, "title", "dim", "No UI document open");
@@ -1329,13 +1454,57 @@ static void empty_state(kit *k)
 {
     kit_push(k, "empty", NULL, "pending-editor");
     kit_icon(k, "icon", NULL, KIT_ICON_EXPRESSION);
-    kit_label(k, "name", NULL, "Open a UI asset or stylesheet from Assets");
+    kit_label(k, "name", NULL, "Open an asset or stylesheet from Assets");
     kit_pop(k);
 }
 
 void studio_code_body(studio *s, int)
 {
     kit *k = s->kit;
+    scene_document_tab *asset = active_asset(s);
+    if (asset) {
+        asset_code *code = asset_editor(s, asset);
+        if (!code) {
+            empty_state(k);
+            return;
+        }
+        kit_push(k, "code", NULL, "code-editor");
+        kit_code_desc preferences = { .vim = s->prefs.code_vim,
+                                      .font_size = s->prefs.code_font_size,
+                                      .font_family = studio_code_font(&s->prefs),
+                                      .mac = s->mac,
+                                      .no_wrap = !s->prefs.code_wrap };
+        const reference_index *index = app_scene_authoring_asset_index(s->scene);
+        const char **names = NULL;
+        for (int i = 0; index && i < reference_index_asset_count(index); i++) {
+            const reference_asset *reference = reference_index_asset_at(index, i);
+            if (reference->name) {
+                apush(names, reference->name);
+            }
+        }
+        asset_code_set_names(code, names, acount(names));
+        afree(names);
+        kit_code_result
+            r = asset_code_draw(code, k, "text", &preferences, s->prefs.code_apply_live);
+        if (r.events &
+            (KIT_CODE_CHANGED | KIT_CODE_UNDO | KIT_CODE_REDO | KIT_CODE_CURSOR)) {
+            capture_asset(s, code);
+        }
+        if ((r.events & KIT_CODE_SAVED) ||
+            ((r.events & KIT_CODE_CHORD) && !strcmp(r.chord, "Mod+S"))) {
+            save_asset(s, code);
+        } else if (r.events & KIT_CODE_CHORD) {
+            run_chord(s, r.chord);
+        }
+        if (asset_code_error(code)[0]) {
+            kit_push(k, "status", NULL, "code-status");
+            kit_icon(k, "icon", NULL, KIT_ICON_ERROR);
+            kit_label(k, "message", "message", asset_code_error(code));
+            kit_pop(k);
+        }
+        kit_pop(k);
+        return;
+    }
     studio_code *c = &s->code;
     scene_document_tab *tab = shown(s);
     if (!tab) {

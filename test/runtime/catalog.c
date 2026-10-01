@@ -51,12 +51,9 @@ void run_runtime_catalog_checks()
             "pure/data pin watches remain readable after execution"
         );
         test_check(flow_run_error(break_run)->code == 0, "successful nodes retain a non-failed render state");
-        char *break_json = graph_save_json(&g_break);
-        graph *break_loaded = break_json ? graph_load_json(break_json) : NULL;
-        test_check(
-            break_json && strstr(break_json, "\"flags\": 16"),
-            "breakpoint and watch identity round-trip without position reuse"
-        );
+        char *break_json = graph_save(&g_break);
+        graph *break_loaded = break_json ? graph_load(break_json) : NULL;
+        test_check(break_json && strstr(break_json, "flags=16"), "breakpoint and watch identity round-trip without position reuse");
         free(break_json);
         if (break_loaded) {
             graph_free(break_loaded);
@@ -199,8 +196,8 @@ void run_runtime_catalog_checks()
         graph comment_graph;
         graph_init(&comment_graph);
         graph_comment_box *box = graph_add_comment_box(&comment_graph, "Notes", 1, 2, 100, 80);
-        char *comment_json = graph_save_json(&comment_graph);
-        graph *comment_loaded = comment_json ? graph_load_json(comment_json) : NULL;
+        char *comment_json = graph_save(&comment_graph);
+        graph *comment_loaded = comment_json ? graph_load(comment_json) : NULL;
         test_check(
             box && comment_loaded && acount(comment_loaded->comment_boxes) == 1,
             "comment boxes are authored graph entities"

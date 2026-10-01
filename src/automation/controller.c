@@ -1,5 +1,6 @@
 #include "automation/controller.h"
 
+#include "assets/asset_source.h"
 #include "assets/new_asset.h"
 #include "assets/project.h"
 #include "assets/prototype.h"
@@ -42,6 +43,7 @@
 #include "runtime/systems/system.h"
 #include "runtime/ui.h"
 #include "support/array.h"
+#include "support/asset_json.h"
 #include "support/asset_text.h"
 #include "support/text_file.h"
 #include "support/text_search.h"
@@ -78,7 +80,7 @@ typedef struct
 {
     const char *kind;
     const char *folder;
-    const char *extension; /* of its files: YAML, or a ui asset's markup */
+    const char *extension; /* of its files: KDL, or a ui asset's markup */
     asset_loader loader;
     reference_asset_kind reference; /* KIND_COUNT for assets nothing references */
 } asset_family;
@@ -231,6 +233,13 @@ static const contract_field CONTRACT_ASSET_REFERENCE[] = {
     { "path", "string", false, "Content-relative asset path, alternatively use kind and name." },
     { "kind", "string", false, "Asset family, required with name when path is omitted." },
     { "name", "string", false, "Asset name, required with kind when path is omitted." },
+};
+static const contract_field CONTRACT_READ_ASSET[] = {
+    { "project_root", "string", false, "Project directory; defaults to the controller root." },
+    { "path", "string", false, "Content-relative asset path, alternatively use kind and name." },
+    { "kind", "string", false, "Asset family, required with name when path is omitted." },
+    { "name", "string", false, "Asset name, required with kind when path is omitted." },
+    { "complete", "object", false, "A 1-based source line and column; adds KDL completions, hover, and diagnostics, including for incomplete source." },
 };
 /* Workstream Q: inspect_ui completes at a position too. */
 static const contract_field CONTRACT_INSPECT_UI[] = {
@@ -619,9 +628,10 @@ static const operation_descriptor CONTRACT_OPERATIONS[] = {
     },
     {
         "read_asset",
-        "Read one authored asset as normalized JSON data.",
-        CONTRACT_ASSET_REFERENCE,
-        CONTRACT_FIELD_COUNT(CONTRACT_ASSET_REFERENCE),
+        "Read authored source and normalized asset data, with optional KDL "
+        "language assistance.",
+        CONTRACT_READ_ASSET,
+        CONTRACT_FIELD_COUNT(CONTRACT_READ_ASSET),
         1,
         true,
         true,
@@ -1496,7 +1506,7 @@ static void load_catalog_links(const char *root, const asset_entry *entries, cat
         snprintf(path, path_size, "%s/%s", root, entries[i].relative);
         char *json = read_file(path, NULL, NULL, links->error, sizeof links->error);
         free(path);
-        behavior_asset *asset = json ? behavior_asset_load_json(json) : NULL;
+        behavior_asset *asset = json ? behavior_asset_load(json) : NULL;
         if (json && !asset) {
             snprintf(
                 links->error,
@@ -1533,7 +1543,7 @@ static void catalog_validate_asset(const catalog_links *links, catalog_asset *as
 {
     const asset_family *family = asset->asset.family;
     if (family->loader == ASSET_GRAPH) {
-        behavior_asset *behavior = behavior_asset_load_json(json);
+        behavior_asset *behavior = behavior_asset_load(json);
         if (!behavior || links->error[0]) {
             asset->errors = 1;
             catalog_add_diagnostic(asset, "error", 0, "LOAD", behavior ? links->error : graph_last_error());
@@ -1648,17 +1658,17 @@ static void catalog_reference_add(
     apush(*references, reference);
 }
 
-/* An owned string from project.yaml, or NULL for none. */
+/* An owned string from project.kdl, or NULL for none. */
 static char *manifest_string(const char *root, const char *key)
 {
     char path[1024], error[128];
     snprintf(path, sizeof path, "%s/" CHIBI_PROJECT_MANIFEST, root);
     char *text = text_file_read(path);
-    yyjson_doc *manifest = text ? asset_text_read(text, error, sizeof error) : NULL;
+    av_doc *manifest = text ? av_doc_read(text, error, sizeof error) : NULL;
     free(text);
-    const char *value = yyjson_get_str(yyjson_obj_get(yyjson_doc_get_root(manifest), key));
+    const char *value = av_get_str(av_obj_get(av_doc_root(manifest), key));
     char *copy = value && value[0] ? xstrdup(value) : NULL;
-    yyjson_doc_free(manifest);
+    av_doc_free(manifest);
     return copy;
 }
 
@@ -1678,7 +1688,7 @@ static void catalog_add_content(
     };
     switch (asset->asset.family->loader) {
         case ASSET_GRAPH: {
-            behavior_asset *graph = behavior_asset_load_json(text);
+            behavior_asset *graph = behavior_asset_load(text);
             if (graph) {
                 reference_index_add_graphs(index, asset->reference, graph);
             }
@@ -1714,7 +1724,7 @@ static void catalog_add_content(
                 reference_object object = {
                     .name = entity->name,
                     .prototype = entity->prototype,
-                    .overrides = entity->components_json,
+                    .overrides = entity->components,
                     .behaviors = (const char *const *)entity->behaviors,
                     .behavior_count = acount(entity->behaviors),
                 };
@@ -1839,15 +1849,19 @@ static int catalog_index_references(
 
 static int enumerate_assets(const char *root, asset_entry **out, char *error, size_t error_size);
 
-/* Parses asset file YAML or in-memory JSON where callers report their own
- * error. */
+/* Converts KDL assets at the public automation inspection boundary. */
 static yyjson_doc *parse_asset_text(const char *text)
 {
     char error[160];
-    return asset_text_read(text, error, sizeof error);
+    av_doc *native = av_doc_read(text, error, sizeof error);
+    char *json = native ? av_json_write(av_doc_root(native)) : NULL;
+    yyjson_doc *document = json ? yyjson_read(json, strlen(json), 0) : NULL;
+    free(json);
+    av_doc_free(native);
+    return document;
 }
 
-/* A ui asset's markup and styles, which are not YAML, load as a GameUi
+/* A ui asset's markup and styles, which are not KDL, load as a GameUi
  * shows them. */
 static void catalog_validate_ui(const char *root, catalog_asset *asset)
 {
@@ -1898,7 +1912,7 @@ static int load_catalog_asset(
     if (!document) {
         asset->valid = false;
         asset->errors = 1;
-        catalog_add_diagnostic(asset, "error", 0, "JSON", "asset is not valid JSON");
+        catalog_add_diagnostic(asset, "error", 0, "JSON", "asset is not valid KDL");
     } else {
         yyjson_val *json_root = yyjson_doc_get_root(document);
         yyjson_val *version = yyjson_obj_get(json_root, "version");
@@ -3149,22 +3163,20 @@ static yyjson_mut_val *inspect_graph_value(
     bool include_pins
 )
 {
-    char *serialized = graph_save_json(source);
-    if (include_layout && serialized) {
-        /* Asset files omit automatic positions; report the arranged ones. */
-        graph *arranged = graph_load_json(serialized);
-        free(serialized);
-        serialized = NULL;
-        if (arranged) {
-            graph_place_unplaced(arranged);
-            serialized = graph_save_json(arranged);
-            graph_free(arranged);
-            free(arranged);
-        }
+    av_doc *native = av_doc_new();
+    av_value *serialized = graph_to_value(native, source);
+    graph *arranged = include_layout ? graph_from_value(serialized) : NULL;
+    if (arranged) {
+        graph_place_unplaced(arranged);
+        serialized = graph_to_value(native, arranged);
+        graph_free(arranged);
+        free(arranged);
     }
-    yyjson_doc *document = serialized
-                             ? yyjson_read(serialized, strlen(serialized), 0)
-                             : NULL;
+    yyjson_mut_doc *boundary = yyjson_mut_doc_new(NULL);
+    yyjson_mut_doc_set_root(boundary, av_to_json(boundary, serialized));
+    yyjson_doc *document = yyjson_mut_doc_imut_copy(boundary, NULL);
+    yyjson_mut_doc_free(boundary);
+    av_doc_free(native);
     yyjson_mut_val *object = yyjson_mut_obj(doc);
     yyjson_mut_obj_add_uint(doc, object, "id", source->graph_id);
     yyjson_mut_obj_add_strcpy(doc, object, "kind", graph_kind_name(source->kind));
@@ -3204,7 +3216,6 @@ static yyjson_mut_val *inspect_graph_value(
     if (document) {
         yyjson_doc_free(document);
     }
-    free(serialized);
     return object;
 }
 
@@ -3294,13 +3305,13 @@ static int handle_inspect_graph(const char *root, yyjson_val *request, response 
         return -1;
     }
     yyjson_doc *source_document = parse_asset_text(json);
-    behavior_asset *asset = behavior_asset_load_json(json);
+    behavior_asset *asset = behavior_asset_load(json);
     yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
     add_asset_identity(result->doc, value, &ref, bytes, hash);
     yyjson_mut_obj_add_bool(result->doc, value, "layout_included", include_layout);
     if (!source_document || !asset) {
         yyjson_mut_val *diagnostics = yyjson_mut_obj_add_arr(result->doc, value, "diagnostics");
-        add_load_diagnostic(result->doc, diagnostics, source_document ? graph_last_error() : "asset is not valid JSON");
+        add_load_diagnostic(result->doc, diagnostics, source_document ? graph_last_error() : "asset is not valid KDL");
         yyjson_mut_obj_add_bool(result->doc, value, "valid", false);
         if (source_document) {
             yyjson_doc_free(source_document);
@@ -3484,7 +3495,7 @@ static int handle_inspect_system(const char *root, yyjson_val *request, response
         NULL
     );
     if (query_json) {
-        yyjson_doc *query_document = yyjson_read(query_json, strlen(query_json), 0);
+        yyjson_doc *query_document = parse_asset_text(query_json);
         if (query_document) {
             yyjson_mut_obj_add_val(
                 result->doc,
@@ -3740,7 +3751,7 @@ static int handle_execution_status(const char *root, yyjson_val *request, respon
     yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
     add_asset_identity(result->doc, value, &ref, bytes, hash);
     if (!strcmp(kind, "behavior")) {
-        behavior_asset *asset = behavior_asset_load_json(json);
+        behavior_asset *asset = behavior_asset_load(json);
         free(json);
         if (!asset) {
             yyjson_mut_val *diagnostics = yyjson_mut_obj_add_arr(result->doc, value, "diagnostics");
@@ -3811,11 +3822,7 @@ static int handle_execution_status(const char *root, yyjson_val *request, respon
         return -1;
     }
     const behavior_asset *document_asset = game_system_document_behavior_asset(document);
-    char *definition_json = behavior_asset_save_json(document_asset);
-    behavior_asset *definition = definition_json
-                                   ? behavior_asset_load_json(definition_json)
-                                   : NULL;
-    free(definition_json);
+    behavior_asset *definition = behavior_asset_clone(document_asset);
     free(json);
     ecs_world *world = ecs_world_new();
     for (int i = 0; definition && i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
@@ -4045,9 +4052,15 @@ static int load_named_asset(
 }
 
 /* Replaces an edited in-memory document with its asset file text. */
-static int to_disk_text(char **edited, char *error, size_t error_size)
+static int to_disk_text(char **edited, const char *source, char *error, size_t error_size)
 {
-    char *text = asset_text_to_disk(*edited, error, error_size);
+    av_doc *document = av_doc_read(*edited, error, error_size);
+    char *text = document
+                   ? source
+                       ? asset_source_reconcile(source, av_doc_root(document), error, error_size)
+                       : av_doc_write(document)
+                   : NULL;
+    av_doc_free(document);
     free(*edited);
     *edited = text;
     return text ? 0 : -1;
@@ -4059,12 +4072,12 @@ static char *canonical_asset(const asset_family *family, const char *json, char 
 {
     switch (family->loader) {
         case ASSET_GRAPH: {
-            behavior_asset *asset = behavior_asset_load_json(json);
+            behavior_asset *asset = behavior_asset_load(json);
             if (!asset) {
                 set_error(error, error_size, graph_last_error());
                 return NULL;
             }
-            char *text = behavior_asset_save_json(asset);
+            char *text = behavior_asset_save(asset);
             behavior_asset_free(asset);
             return text;
         }
@@ -4111,7 +4124,7 @@ static char *canonical_asset(const asset_family *family, const char *json, char 
             return text;
         }
         case ASSET_EDITOR:
-            /* Validated as written; the shared YAML writer canonicalizes it. */
+            /* Validated as written; the shared KDL writer canonicalizes it. */
             return read_editor_asset(json, error, error_size) ? xstrdup(json) : NULL;
         case ASSET_SCENARIO: {
             scenario_document *scenario = scenario_document_load(json, error, error_size);
@@ -4145,7 +4158,7 @@ int chibi_automation_format_assets(const char *root, bool check)
         char *json = read_file(path, &bytes, &hash, error, sizeof error);
         char *text = json ? canonical_asset(entries[i].family, json, error, sizeof error)
                           : NULL;
-        if (text && to_disk_text(&text, error, sizeof error)) {
+        if (text && to_disk_text(&text, NULL, error, sizeof error)) {
             text = NULL;
         }
         if (!text) {
@@ -4197,6 +4210,107 @@ static yyjson_doc *ui_asset_document(const char *root, const asset_ref *ref, con
     return document;
 }
 
+static int read_asset_complete(
+    const char *root,
+    const asset_ref *ref,
+    const char *text,
+    yyjson_val *request,
+    response *result,
+    yyjson_mut_val *value,
+    char *error,
+    size_t error_size
+)
+{
+    uint64_t line, column;
+    if (!yyjson_is_obj(request) || !request_uint(request, "line", &line) ||
+        !request_uint(request, "column", &column) || !line || !column) {
+        set_error(error, error_size, "complete requires positive line and column");
+        return CHIBI_AUTOMATION_INVALID_REQUEST;
+    }
+    size_t offset = 0, current_line = 1;
+    while (text[offset] && current_line < line) {
+        if (text[offset++] == '\n') {
+            current_line++;
+        }
+    }
+    size_t current_column = 1;
+    while (text[offset] && text[offset] != '\n' && current_column < column) {
+        offset++;
+        current_column++;
+    }
+    if (current_line != line || current_column != column) {
+        set_error(error, error_size, "completion position is outside asset source");
+        return CHIBI_AUTOMATION_INVALID_REQUEST;
+    }
+    asset_entry *entries = NULL;
+    if (enumerate_assets(root, &entries, error, error_size)) {
+        return CHIBI_AUTOMATION_IO_ERROR;
+    }
+    char **names = NULL;
+    for (int i = 0; i < acount(entries); i++) {
+        apush(names, asset_name_from_filename(entries[i].filename));
+    }
+    asset_source *source = asset_source_parse(text);
+    asset_source_completions completions = { 0 };
+    asset_source_complete(
+        source,
+        (int)offset,
+        ref->relative,
+        (const char *const *)names,
+        acount(names),
+        &completions
+    );
+    yyjson_mut_val *list = yyjson_mut_obj_add_arr(result->doc, value, "completions");
+    for (int i = 0; i < acount(completions.items); i++) {
+        const asset_source_completion *completion = &completions.items[i];
+        yyjson_mut_val *item = yyjson_mut_arr_add_obj(result->doc, list);
+        yyjson_mut_obj_add_strcpy(result->doc, item, "label", completion->label);
+        yyjson_mut_obj_add_strcpy(
+            result->doc,
+            item,
+            "kind",
+            code_completion_kind_name(completion->kind)
+        );
+        yyjson_mut_obj_add_strcpy(
+            result->doc,
+            item,
+            "detail",
+            completion->detail ? completion->detail : ""
+        );
+        yyjson_mut_obj_add_strcpy(
+            result->doc,
+            item,
+            "insert",
+            completion->insert ? completion->insert : completion->label
+        );
+        yyjson_mut_obj_add_int(result->doc, item, "start", completions.start);
+        yyjson_mut_obj_add_int(result->doc, item, "end", completions.end);
+    }
+    char *hover = asset_source_hover(source, (int)offset);
+    if (hover) {
+        yyjson_mut_obj_add_strcpy(result->doc, value, "hover", hover);
+    }
+    yyjson_mut_val *diagnostics = yyjson_mut_obj_add_arr(result->doc, value, "diagnostics");
+    for (int i = 0; i < acount(source->diagnostics); i++) {
+        const asset_source_diagnostic *diagnostic = &source->diagnostics[i];
+        yyjson_mut_val *item = yyjson_mut_arr_add_obj(result->doc, diagnostics);
+        yyjson_mut_obj_add_strcpy(result->doc, item, "message", diagnostic->message);
+        yyjson_mut_obj_add_int(result->doc, item, "start", diagnostic->start);
+        yyjson_mut_obj_add_int(result->doc, item, "end", diagnostic->end);
+        yyjson_mut_obj_add_int(result->doc, item, "line", diagnostic->line);
+        yyjson_mut_obj_add_int(result->doc, item, "column", diagnostic->column);
+    }
+    free(hover);
+    asset_source_completions_free(&completions);
+    asset_source_free(source);
+    for (int i = 0; i < acount(names); i++) {
+        free(names[i]);
+    }
+    afree(names);
+    free_asset_entries(entries);
+    return CHIBI_AUTOMATION_OK;
+}
+
 static int handle_read_asset(const char *root, yyjson_val *request, response *result, int *exit_code)
 {
     asset_ref ref = { 0 };
@@ -4212,21 +4326,36 @@ static int handle_read_asset(const char *root, yyjson_val *request, response *re
     yyjson_doc *document = ref.family->loader == ASSET_UI
                              ? ui_asset_document(root, &ref, json)
                              : parse_asset_text(json);
-    if (!document) {
+    yyjson_val *complete = yyjson_obj_get(request, "complete");
+    if (!document && !complete) {
         free(json);
-        response_error(result, exit_code, CHIBI_AUTOMATION_VALIDATION_ERROR, "asset is not valid JSON");
+        response_error(result, exit_code, CHIBI_AUTOMATION_VALIDATION_ERROR, "asset is not valid KDL");
         return -1;
     }
     yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
     add_asset_identity(result->doc, value, &ref, bytes, hash);
+    yyjson_mut_obj_add_strcpy(result->doc, value, "source", json);
     yyjson_mut_obj_add_val(
         result->doc,
         value,
         "document",
-        yyjson_val_mut_copy(result->doc, yyjson_doc_get_root(document))
+        document ? yyjson_val_mut_copy(result->doc, yyjson_doc_get_root(document))
+                 : yyjson_mut_null(result->doc)
     );
+    if (complete) {
+        status = ref.family->loader == ASSET_UI
+                   ? CHIBI_AUTOMATION_INVALID_REQUEST
+                   : read_asset_complete(root, &ref, json, complete, result, value, error, sizeof error);
+        if (ref.family->loader == ASSET_UI) {
+            set_error(error, sizeof error, "UI language assistance uses inspect_ui");
+        }
+    }
     yyjson_doc_free(document);
     free(json);
+    if (status != CHIBI_AUTOMATION_OK) {
+        response_error(result, exit_code, status, error);
+        return -1;
+    }
     return 0;
 }
 
@@ -4286,7 +4415,7 @@ static int handle_validate_asset(const char *root, yyjson_val *request, response
     int warnings = 0;
     int notes = 0;
     if (ref.family->loader == ASSET_GRAPH) {
-        behavior_asset *asset = behavior_asset_load_json(json);
+        behavior_asset *asset = behavior_asset_load(json);
         if (!asset) {
             errors = 1;
             add_load_diagnostic(result->doc, diagnostics, graph_last_error());
@@ -4329,7 +4458,7 @@ static int handle_validate_asset(const char *root, yyjson_val *request, response
                 NULL
             );
             if (query_json) {
-                yyjson_doc *query_document = yyjson_read(query_json, strlen(query_json), 0);
+                yyjson_doc *query_document = parse_asset_text(query_json);
                 if (query_document) {
                     yyjson_mut_obj_add_val(
                         result->doc,
@@ -4449,7 +4578,7 @@ static int load_behavior_family_assets(
             set_error(error, error_size, read_error);
             return CHIBI_AUTOMATION_IO_ERROR;
         }
-        behavior_asset *asset = behavior_asset_load_json(json);
+        behavior_asset *asset = behavior_asset_load(json);
         free(json);
         if (!asset) {
             char relative[512];
@@ -4638,27 +4767,24 @@ static uint64_t scenario_world_hash(const ecs_world *world)
     return hash;
 }
 
-static char *scenario_prototype_json(const char *json, uint64_t hash)
+static char *scenario_prototype_text(const char *text, uint64_t hash)
 {
-    yyjson_doc *document = parse_asset_text(json);
+    char error[256];
+    av_doc *document = av_doc_read(text, error, sizeof error);
     if (!document) {
         return NULL;
     }
-    yyjson_val *source = yyjson_doc_get_root(document);
-    if (!yyjson_is_obj(source) || yyjson_obj_get(source, "identity")) {
-        char *copy = xstrdup(json);
-        yyjson_doc_free(document);
+    av_value *root = av_doc_root(document);
+    if (!av_is_obj(root) || av_obj_get(root, "identity")) {
+        char *copy = xstrdup(text);
+        av_doc_free(document);
         return copy;
     }
-    yyjson_mut_doc *mutable = yyjson_mut_doc_new(NULL);
-    yyjson_mut_val *root = yyjson_val_mut_copy(mutable, source);
-    yyjson_mut_doc_set_root(mutable, root);
     char identity[32];
     snprintf(identity, sizeof identity, "scenario-%016llx", (unsigned long long)hash);
-    yyjson_mut_obj_add_strcpy(mutable, root, "identity", identity);
-    char *copy = yyjson_mut_write(mutable, 0, NULL);
-    yyjson_mut_doc_free(mutable);
-    yyjson_doc_free(document);
+    av_obj_add_strcpy(document, root, "identity", identity);
+    char *copy = av_doc_write(document);
+    av_doc_free(document);
     return copy;
 }
 
@@ -4677,7 +4803,7 @@ typedef struct
     asset_entry *runtime_assets;
     uint64_t runtime_hash;
     char *initial_saved_state;
-    const char *scenario_saved_state; /* a replayed scenario's, borrowed */
+    const av_value *scenario_saved_state; /* a replayed scenario's, borrowed */
     CF_V2 aim;
     bool aim_firing, aim_point, controls_sampled;
     uint64_t controls;
@@ -4831,9 +4957,10 @@ static void add_presentation_state(yyjson_mut_doc *doc, yyjson_mut_val *value, c
 static int scenario_saved_state(scenario_context *context, yyjson_val *request, char *error, size_t size)
 {
     yyjson_val *state = yyjson_obj_get(request, "saved_state");
-    const char *fallback = context->scenario_saved_state ? context->scenario_saved_state
-                                                         : "{}";
-    char *json = state ? yyjson_val_write(state, 0, NULL) : xstrdup(fallback);
+    char *json = state ? yyjson_val_write(state, 0, NULL)
+               : context->scenario_saved_state
+                   ? av_json_write(context->scenario_saved_state)
+                   : xstrdup("{}");
     game_save *save = game_behavior_save(
         game_prototype_preview_behaviors(context->preview)
     );
@@ -4922,7 +5049,7 @@ static int register_preview_behavior_name(
         free(behavior_json);
         return status;
     }
-    behavior_asset *behavior = behavior_asset_load_json(behavior_json);
+    behavior_asset *behavior = behavior_asset_load(behavior_json);
     free(behavior_json);
     if (!behavior) {
         snprintf(error, error_size, "%s", graph_last_error());
@@ -4967,7 +5094,7 @@ static int register_scenario_prototypes(const char *root, scenario_context *cont
                         status = CHIBI_AUTOMATION_VALIDATION_ERROR;
                     }
                 } else {
-                    behavior_asset *asset = behavior_asset_load_json(json);
+                    behavior_asset *asset = behavior_asset_load(json);
                     if (!asset ||
                         game_prototype_preview_register_behavior(context->preview, name, asset) !=
                             0) {
@@ -4994,7 +5121,7 @@ static int register_scenario_prototypes(const char *root, scenario_context *cont
             free(json);
             break;
         }
-        char *normalized = scenario_prototype_json(json, hash);
+        char *normalized = scenario_prototype_text(json, hash);
         free(json);
         game_prototype *prototype = normalized
                                       ? game_prototype_load(normalized, &context->registry, error, error_size)
@@ -5063,7 +5190,7 @@ static int prepare_scenario(
         .components = GAME_REGISTRY_COMPONENTS,
         .component_count = GAME_REGISTRY_COMPONENT_COUNT,
     };
-    char *scenario_json = scenario_prototype_json(prototype_json, context->prototype_hash);
+    char *scenario_json = scenario_prototype_text(prototype_json, context->prototype_hash);
     context->prototype = scenario_json
                            ? game_prototype_load(scenario_json, &context->registry, error, error_size)
                            : NULL;
@@ -5109,7 +5236,7 @@ static int prepare_scenario(
             scenario_context_free(context);
             return status;
         }
-        behavior_asset *behavior = behavior_asset_load_json(behavior_json);
+        behavior_asset *behavior = behavior_asset_load(behavior_json);
         free(behavior_json);
         if (!behavior) {
             set_error(error, error_size, graph_last_error());
@@ -5207,7 +5334,7 @@ static int prepare_scene_scenario(
             scenario_context_free(context);
             return status;
         }
-        char *scenario_json = scenario_prototype_json(prototype_json, prototype_hash);
+        char *scenario_json = scenario_prototype_text(prototype_json, prototype_hash);
         game_prototype *
             prototype = scenario_json
                           ? game_prototype_load(scenario_json, &context->registry, error, error_size)
@@ -5229,7 +5356,7 @@ static int prepare_scene_scenario(
             context->scene_entities,
             ((game_prototype_preview_scene_entity){
                 .prototype = prototype,
-                .components_json = entity->components_json,
+                .components = entity->components,
                 .behaviors = (const char *const *)entity->behaviors,
                 .behavior_count = acount(entity->behaviors),
             })
@@ -7269,7 +7396,9 @@ static void add_snapshot_component(
         return;
     }
 
-    char *fields_json = game_prototype_entity_component_json(world, entity, component, registry);
+    av_value *component_value = game_prototype_entity_component_value(world, entity, component, registry);
+    char *fields_json = component_value ? av_json_write(component_value) : NULL;
+    av_value_free(component_value);
     yyjson_doc *fields_doc = fields_json
                                ? yyjson_read(fields_json, strlen(fields_json), 0)
                                : NULL;
@@ -8255,7 +8384,9 @@ static void add_component_schema(
             yyjson_mut_obj_add_str(result->doc, entry, "description", field->description);
         }
     }
-    char *defaults_json = game_prototype_component_defaults_json(registry, component);
+    av_value *defaults_value = game_prototype_component_defaults_value(registry, component);
+    char *defaults_json = defaults_value ? av_json_write(defaults_value) : NULL;
+    av_value_free(defaults_value);
     if (!defaults_json) {
         return;
     }
@@ -9376,7 +9507,7 @@ static int handle_preview_field(const char *root, yyjson_val *request, response 
         response_error(result, exit_code, status, error);
         return -1;
     }
-    behavior_asset *asset = behavior_asset_load_json(json);
+    behavior_asset *asset = behavior_asset_load(json);
     free(json);
     behavior_asset **libraries = NULL;
     if (!asset) {
@@ -9513,10 +9644,11 @@ static int handle_edit_graph(const char *root, yyjson_val *request, response *re
             error,
             sizeof error
         );
-        char *query_json = query ? yyjson_val_write(query, 0, NULL) : NULL;
+        av_doc *query_values = av_doc_new();
+        av_value *query_value = query ? av_from_json(query_values, query) : NULL;
         ecs_query_expr *expression = query && !yyjson_is_null(query)
-                                       ? game_query_load(
-                                             query_json,
+                                       ? game_query_load_value(
+                                             query_value,
                                              automation_query_component,
                                              NULL,
                                              error,
@@ -9552,7 +9684,7 @@ static int handle_edit_graph(const char *root, yyjson_val *request, response *re
             edited = saved;
         }
         ecs_query_expr_free(expression);
-        free(query_json);
+        av_doc_free(query_values);
         game_system_document_free(document);
         yyjson_doc_free(original);
     }
@@ -9564,7 +9696,7 @@ static int handle_edit_graph(const char *root, yyjson_val *request, response *re
         free(edited);
         return -1;
     }
-    if (to_disk_text(&edited, error, sizeof error)) {
+    if (to_disk_text(&edited, source, error, sizeof error)) {
         response_error(result, exit_code, CHIBI_AUTOMATION_EXECUTION_ERROR, error);
         free(source);
         return -1;
@@ -9646,7 +9778,7 @@ static int validate_prototype_behaviors(const char *root, const char *json, char
             free(behavior_json);
             return status;
         }
-        behavior_asset *behavior = behavior_asset_load_json(behavior_json);
+        behavior_asset *behavior = behavior_asset_load(behavior_json);
         free(behavior_json);
         if (!behavior) {
             yyjson_doc_free(document);
@@ -9668,7 +9800,7 @@ static int validate_scene_behavior(const char *root, const char *name, char *err
         free(json);
         return status;
     }
-    behavior_asset *behavior = behavior_asset_load_json(json);
+    behavior_asset *behavior = behavior_asset_load(json);
     free(json);
     if (!behavior) {
         snprintf(error, error_size, "%s", graph_last_error());
@@ -9738,15 +9870,9 @@ static int validate_scene_dependencies(const char *root, const char *json, char 
                     ECS_OK) {
                 status = CHIBI_AUTOMATION_VALIDATION_ERROR;
             }
-            if (status == CHIBI_AUTOMATION_OK &&
-                game_prototype_apply_components_json(
-                    world,
-                    actor,
-                    entity->components_json ? entity->components_json : "{}",
-                    &registry,
-                    error,
-                    error_size
-                ) != 0) {
+            if (status == CHIBI_AUTOMATION_OK && entity->components &&
+                game_prototype_apply_components_value(world, actor, entity->components, &registry, error, error_size) !=
+                    0) {
                 status = CHIBI_AUTOMATION_VALIDATION_ERROR;
             }
             ecs_world_free(world);
@@ -9825,7 +9951,7 @@ static int handle_edit_prototype(const char *root, yyjson_val *request, response
     }
     if (create) {
         char *name = asset_name_from_filename(ref.filename);
-        source = new_asset_json(NEW_ASSET_PROTOTYPE, name);
+        source = new_asset_text(NEW_ASSET_PROTOTYPE, name);
         free(name);
     }
     game_prototype_registry registry = {
@@ -9847,7 +9973,7 @@ static int handle_edit_prototype(const char *root, yyjson_val *request, response
         free(edited);
         return -1;
     }
-    if (to_disk_text(&edited, error, sizeof error)) {
+    if (to_disk_text(&edited, source, error, sizeof error)) {
         response_error(result, exit_code, CHIBI_AUTOMATION_EXECUTION_ERROR, error);
         free(source);
         return -1;
@@ -10013,7 +10139,7 @@ static int handle_edit_scene(const char *root, yyjson_val *request, response *re
     }
     if (create) {
         char *name = asset_name_from_filename(ref.filename);
-        source = new_asset_json(NEW_ASSET_SCENE, name);
+        source = new_asset_text(NEW_ASSET_SCENE, name);
         free(name);
     }
     char *edited = NULL;
@@ -10041,7 +10167,7 @@ static int handle_edit_scene(const char *root, yyjson_val *request, response *re
         free(edited);
         return -1;
     }
-    if (to_disk_text(&edited, error, sizeof error)) {
+    if (to_disk_text(&edited, source, error, sizeof error)) {
         response_error(result, exit_code, CHIBI_AUTOMATION_EXECUTION_ERROR, error);
         free(source);
         return -1;
@@ -10130,7 +10256,7 @@ static int handle_optimize_graph(const char *root, yyjson_val *request, response
     char *edited = NULL;
     status = automation_graph_optimize(source, request, result->doc, value, &edited, error, sizeof error);
     if (status == CHIBI_AUTOMATION_OK) {
-        behavior_asset *asset = behavior_asset_load_json(edited);
+        behavior_asset *asset = behavior_asset_load(edited);
         if (!asset) {
             snprintf(error, sizeof error, "optimized graph asset could not be loaded: %s", graph_last_error());
             status = CHIBI_AUTOMATION_VALIDATION_ERROR;
@@ -10157,7 +10283,7 @@ static int handle_optimize_graph(const char *root, yyjson_val *request, response
         free(edited);
         return -1;
     }
-    if (to_disk_text(&edited, error, sizeof error)) {
+    if (to_disk_text(&edited, source, error, sizeof error)) {
         response_error(result, exit_code, CHIBI_AUTOMATION_EXECUTION_ERROR, error);
         free(source);
         return -1;
@@ -10598,6 +10724,14 @@ static int handle_refactor(const char *root, yyjson_val *request, bool rename, r
         (rename ? refactor_rename(&project, symbol, name, &plan, error, sizeof error)
                 : refactor_delete(&project, symbol, force, &plan, error, sizeof error))) {
         status = CHIBI_AUTOMATION_INVALID_REQUEST;
+    }
+    for (int i = 0; status == CHIBI_AUTOMATION_OK && i < acount(plan.edits); i++) {
+        refactor_edit *edit = &plan.edits[i];
+        const catalog_asset *asset = &view.assets[view.catalog[edit->asset]];
+        if (edit->text && asset->asset.family->loader != ASSET_UI &&
+            to_disk_text(&edit->text, view.texts[edit->asset], error, sizeof error)) {
+            status = CHIBI_AUTOMATION_VALIDATION_ERROR;
+        }
     }
     if (status == CHIBI_AUTOMATION_OK) {
         add_refactor_plan(result->doc, value, &view, &plan);

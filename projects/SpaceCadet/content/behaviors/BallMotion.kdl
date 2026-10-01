@@ -1,0 +1,220 @@
+version 3
+name "BallMotion"
+id_counter 491
+owner_type "ecs.entity"
+(array)graphs {
+    - {
+        kind "event"
+        name ""
+        (array)nodes {
+            - {
+                id 1
+                type "Event"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_name "Tick"
+                outputs {
+                    DeltaSeconds id=3 type="float" kind="data"
+                }
+            }
+            - {
+                id 4
+                type "Get Global Variable"
+                x 0.0
+                y 0.0
+                placed #false
+                inputs Name="Ready"
+                outputs {
+                    Value type="double"
+                }
+            }
+            - {
+                id 21
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 7
+                reference_name "ready < 0.5"
+                inputs {
+                    Exec id=24 kind="exec"
+                    ready id=22 type="double" flags=0
+                }
+                outputs {
+                    True id=25 kind="exec"
+                    False id=26 kind="exec"
+                    Result id=23 type="bool"
+                }
+            }
+            - {
+                id 74
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 41
+                reference_name "clamp(vy + gravity * dt, -1150, 1000)"
+                inputs {
+                    vy {
+                        id 75
+                        type "double"
+                        binding kind="component_field" component="GAME.GameVelocity" field="y"
+                    }
+                    dt {
+                        id 76
+                        type "double"
+                        binding kind="delta_time"
+                    }
+                    gravity id=469 type="double" default=480.0
+                }
+                outputs {
+                    Result id=77 type="double"
+                }
+            }
+            - id=144 type="Set_GameVelocity_y" x=0.0 y=0.0 placed=#false
+            - {
+                id 197
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 183
+                reference_name "y > 345"
+                inputs {
+                    Exec id=200 kind="exec"
+                    y {
+                        id 198
+                        type "double"
+                        flags 0
+                        binding kind="component_field" component="GAME.GameTransform" field="y"
+                    }
+                }
+                outputs {
+                    True id=201 kind="exec"
+                    False id=202 kind="exec"
+                    Result id=199 type="bool"
+                }
+            }
+            - {
+                id 217
+                type "Get Global Variable"
+                x 0.0
+                y 0.0
+                placed #false
+                inputs Name="Lives"
+                outputs {
+                    Value type="float"
+                }
+            }
+            - {
+                id 241
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 220
+                reference_name "max(lives - 1, 0)"
+                inputs {
+                    lives id=242 type="float"
+                }
+                outputs {
+                    Result id=243 type="float"
+                }
+            }
+            - {
+                id 265
+                type "Set Global Variable"
+                x 0.0
+                y 0.0
+                placed #false
+                inputs {
+                    Name "Lives"
+                    Value type="float"
+                }
+                outputs {
+                    Value type="float"
+                }
+            }
+            - {
+                id 292
+                type "Set Global Variable"
+                x 0.0
+                y 0.0
+                placed #false
+                inputs {
+                    Name "Ready"
+                    Value type="float" default=1.0
+                }
+                outputs {
+                    Value type="float"
+                }
+            }
+            - {
+                id 298
+                type "Set Global Variable"
+                x 0.0
+                y 0.0
+                placed #false
+                inputs {
+                    Name "Charge"
+                    Value type="float"
+                }
+                outputs {
+                    Value type="float"
+                }
+            }
+            - {
+                id 304
+                type "Set_GameTransform"
+                x 0.0
+                y 0.0
+                placed #false
+                inputs {
+                    Value {
+                        default x=196.0 y=260.0
+                    }
+                }
+            }
+            - {
+                id 309
+                type "Set_GameVelocity"
+                x 0.0
+                y 0.0
+                placed #false
+                inputs {
+                    Value {
+                        default x=0.0 y=0.0
+                    }
+                }
+            }
+            - {
+                id 314
+                type "Play Sound"
+                x 0.0
+                y 0.0
+                placed #false
+                inputs Frequency=190.0 "End Frequency"=55.0 Duration=0.40000000596046448 Volume=0.40000000596046448
+            }
+        }
+        (array)edges {
+            - from="1.Then" to="21.Exec"
+            - from="4.Value" to="21.ready"
+            - from="21.True" to="144.Exec"
+            - from="74.Result" to="144.Value"
+            - from="144.Then" to="197.Exec"
+            - from="197.True" to="265.Exec"
+            - from="217.Value" to="241.lives"
+            - from="241.Result" to="265.Value"
+            - from="265.Then" to="292.Exec"
+            - from="292.Then" to="298.Exec"
+            - from="298.Then" to="304.Exec"
+            - from="304.Then" to="309.Exec"
+            - from="309.Then" to="314.Exec"
+        }
+    }
+    - id=7 kind="function" math_expression="ready < 0.5" entry_id=324
+    - id=41 kind="function" math_expression="clamp(vy + gravity * dt, -1150, 1000)" entry_id=439
+    - id=183 kind="function" math_expression="y > 345" entry_id=371
+    - id=220 kind="function" math_expression="max(lives - 1, 0)" entry_id=471
+}

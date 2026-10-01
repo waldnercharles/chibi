@@ -187,16 +187,12 @@ static void add_ui_references(reference_index *index, app_scene_authoring *scene
 }
 
 /* A saved scene's objects, each also holding what its prototype names. */
-static void add_scene_document(
-    app_scene_authoring *scene,
-    reference_index *index,
-    int source,
-    const char *json
-)
+static void add_scene_document(app_scene_authoring *scene, reference_index *index, int source, av_value *value)
 {
     char error[256];
-    game_scene_document *document = json ? game_scene_document_load(json, error, sizeof error)
-                                         : NULL;
+    game_scene_document *document = value
+                                      ? game_scene_document_load_value(value, error, sizeof error)
+                                      : NULL;
     for (int i = 0; document && i < acount(document->entities); i++) {
         game_scene_entity *entity = &document->entities[i];
         scene_prototype_asset *base = find_prototype(scene, entity->prototype);
@@ -204,7 +200,7 @@ static void add_scene_document(
             .name = entity->name,
             .prototype = entity->prototype,
             .base = base ? base->prototype : NULL,
-            .overrides = entity->components_json,
+            .overrides = entity->components,
             .behaviors = (const char *const *)entity->behaviors,
             .behavior_count = acount(entity->behaviors),
         };
@@ -223,7 +219,7 @@ static void add_scene_tab_references(reference_index *index, app_scene_authoring
         scene_document_tab *tab = &scene->tabs[i];
         if (tab->kind == APP_EDITOR_DOCUMENT_SCENE && !current_scene_tab(scene, tab)) {
             int source = reference_index_find_asset(index, REFERENCE_ASSET_SCENE, tab->path, tab_key(tab));
-            add_scene_document(scene, index, source, tab->scene_json);
+            add_scene_document(scene, index, source, tab->scene_value);
         }
     }
 }
@@ -291,12 +287,13 @@ static void add_actor_references(
             apush(behaviors, info.asset_name);
         }
     }
-    char *overrides = snapshot ? game_prototype_overrides_json(actor->base, snapshot)
-                               : game_prototype_capture_overrides_json(
-                                     actor->base,
-                                     scene->world,
-                                     actor->entity
-                                 );
+    av_value *overrides = snapshot
+                            ? game_prototype_overrides_value(actor->base, snapshot)
+                            : game_prototype_capture_overrides_value(
+                                  actor->base,
+                                  scene->world,
+                                  actor->entity
+                              );
     reference_object object = {
         .name = actor->name,
         .prototype = actor->prototype_name,
@@ -306,7 +303,7 @@ static void add_actor_references(
         .behavior_count = acount(behaviors),
     };
     reference_index_add_object(index, source, &object);
-    free(overrides);
+    av_value_free(overrides);
     afree(behaviors);
 }
 
@@ -349,8 +346,8 @@ static void add_system_references(reference_index *index, app_scene_authoring *s
             reference_index_add_graphs(index, source, working);
             continue;
         }
-        behavior_asset *asset = tab->system_json
-                                  ? behavior_asset_load_json(tab->system_json)
+        behavior_asset *asset = tab->system_value
+                                  ? behavior_asset_from_value(tab->system_value)
                                   : NULL;
         if (asset) {
             reference_index_add_graphs(index, source, asset);

@@ -104,9 +104,7 @@ int game_prototype_preview_register_behavior(
     if (!preview || !asset_name || !asset_name[0] || !source) {
         return -1;
     }
-    char *json = behavior_asset_save_json(source);
-    behavior_asset *copy = json ? behavior_asset_load_json(json) : NULL;
-    free(json);
+    behavior_asset *copy = behavior_asset_clone(source);
     if (!copy) {
         fprintf(stderr, "Could not register preview behavior %s: %s\n", asset_name, graph_last_error());
         return -1;
@@ -257,14 +255,14 @@ int game_prototype_preview_launch_scene(
             clear_entity(preview);
             return result;
         }
-        if (entities[i].components_json && game_prototype_apply_components_json(
-                                               preview->world,
-                                               entity,
-                                               entities[i].components_json,
-                                               entities[i].prototype->registry,
-                                               error,
-                                               error_size
-                                           ) != 0) {
+        if (entities[i].components && game_prototype_apply_components_value(
+                                          preview->world,
+                                          entity,
+                                          entities[i].components,
+                                          entities[i].prototype->registry,
+                                          error,
+                                          error_size
+                                      ) != 0) {
             game_behavior_set_deferred(preview->live->behaviors, false);
             clear_entity(preview);
             return ECS_ERR_COMPONENT;

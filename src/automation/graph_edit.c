@@ -21,6 +21,7 @@
 #include "graph/nodes/conv_nodes.h"
 #include "graph/shader/shader_graph.h"
 #include "support/array.h"
+#include "support/asset_json.h"
 #include "support/xalloc.h"
 #include "third_party/yyjson/yyjson.h"
 
@@ -76,6 +77,34 @@ typedef struct
     char *error;
     size_t error_size;
 } edit_context;
+
+static int request_read_value(
+    pin_type type,
+    const char *type_name,
+    yyjson_val *value,
+    pin_value *out,
+    graph *storage
+)
+{
+    av_doc *doc = av_doc_new();
+    int result = serialize_read_value(type, type_name, av_from_json(doc, value), out, storage);
+    av_doc_free(doc);
+    return result;
+}
+
+static int request_read_array(
+    pin_type type,
+    const char *type_name,
+    yyjson_val *value,
+    pin_value *out,
+    graph *storage
+)
+{
+    av_doc *doc = av_doc_new();
+    int result = serialize_read_array(type, type_name, av_from_json(doc, value), out, storage);
+    av_doc_free(doc);
+    return result;
+}
 
 static void free_edit_context(edit_context *ctx)
 {
@@ -654,8 +683,8 @@ static int parse_pin_value(
         }
     }
     int read_error = pin->container >= PIN_CONTAINER_ARRAY
-                       ? serialize_read_array(type, type_name, json, value, ctx->graph)
-                       : serialize_read_value(type, type_name, json, value, ctx->graph);
+                       ? request_read_array(type, type_name, json, value, ctx->graph)
+                       : request_read_value(type, type_name, json, value, ctx->graph);
     if (read_error) {
         set_error(
             ctx,
@@ -776,10 +805,10 @@ static int operation_add_node(edit_context *ctx, yyjson_val *op)
         set_error(ctx, "unknown node type '%s'", type);
         return -1;
     }
-    yyjson_val *source_json = yyjson_obj_get(op, "source");
+    yyjson_val *source_text = yyjson_obj_get(op, "source");
     if (desc == &NODE_BehaviorExpression) {
         const char *source = NULL;
-        if (!source_json || !string_value(source_json, &source) || !source[0]) {
+        if (!source_text || !string_value(source_text, &source) || !source[0]) {
             set_error(ctx, "Behavior Expression add_node.source is required");
             return -1;
         }
@@ -1450,8 +1479,8 @@ static int operation_add_pin(edit_context *ctx, yyjson_val *op)
     if (default_json) {
         pin_value value;
         int read_error = container >= PIN_CONTAINER_ARRAY
-                           ? serialize_read_array(type, type_name, default_json, &value, ctx->graph)
-                           : serialize_read_value(type, type_name, default_json, &value, ctx->graph);
+                           ? request_read_array(type, type_name, default_json, &value, ctx->graph)
+                           : request_read_value(type, type_name, default_json, &value, ctx->graph);
         /* An input's default is the one its calls show. */
         int set = read_error ? -1
                 : signature == 0
@@ -1495,14 +1524,14 @@ static int operation_add_variable(edit_context *ctx, yyjson_val *op)
     pin_value value = { .type = type, .container = container, .type_name = type_name };
     yyjson_val *default_json = yyjson_obj_get(op, "default");
     int read_error = default_json ? container >= PIN_CONTAINER_ARRAY
-                                      ? serialize_read_array(
+                                      ? request_read_array(
                                             type,
                                             type_name,
                                             default_json,
                                             &value,
                                             ctx->asset->graph
                                         )
-                                      : serialize_read_value(
+                                      : request_read_value(
                                             type,
                                             type_name,
                                             default_json,
@@ -1593,14 +1622,14 @@ static int operation_set_variable(edit_context *ctx, yyjson_val *op)
     if (default_json) {
         pin_value value;
         int read_error = variable->container >= PIN_CONTAINER_ARRAY
-                           ? serialize_read_array(
+                           ? request_read_array(
                                  variable->type,
                                  variable->type_name,
                                  default_json,
                                  &value,
                                  ctx->asset->graph
                              )
-                           : serialize_read_value(
+                           : request_read_value(
                                  variable->type,
                                  variable->type_name,
                                  default_json,
@@ -2600,7 +2629,7 @@ static int apply_metadata(edit_context *ctx, yyjson_val *request)
 }
 
 int automation_graph_edit(
-    const char *source_json,
+    const char *source_text,
     const char *kind,
     const char *name,
     const behavior_asset *const *libraries,
@@ -2608,15 +2637,15 @@ int automation_graph_edit(
     yyjson_val *request,
     yyjson_mut_doc *doc,
     yyjson_mut_val *result,
-    char **edited_json,
+    char **edited_text,
     char *error,
     size_t error_size
 )
 {
-    if (edited_json) {
-        *edited_json = NULL;
+    if (edited_text) {
+        *edited_text = NULL;
     }
-    if (!request || !yyjson_is_obj(request) || !doc || !result || !edited_json) {
+    if (!request || !yyjson_is_obj(request) || !doc || !result || !edited_text) {
         if (error && error_size) {
             snprintf(error, error_size, "graph edit requires a request object and output document");
         }
@@ -2641,8 +2670,8 @@ int automation_graph_edit(
             return fail_request(&ctx, "unknown asset kind '%s'", kind);
         }
     }
-    if (source_json) {
-        ctx.asset = behavior_asset_load_json(source_json);
+    if (source_text) {
+        ctx.asset = behavior_asset_load(source_text);
         if (!ctx.asset) {
             return fail_validation(&ctx, "could not load asset: %s", graph_last_error());
         }
@@ -2724,8 +2753,8 @@ int automation_graph_edit(
         graph_layout(ctx.layout_graphs[i]);
     }
     /* Publish only what loads back, in the form --format writes. */
-    char *saved = behavior_asset_save_json(ctx.asset);
-    behavior_asset *reloaded = saved ? behavior_asset_load_json(saved) : NULL;
+    char *saved = behavior_asset_save(ctx.asset);
+    behavior_asset *reloaded = saved ? behavior_asset_load(saved) : NULL;
     free(saved);
     if (!reloaded) {
         set_error(&ctx, "edited asset does not load back: %s", graph_last_error());
@@ -2733,7 +2762,7 @@ int automation_graph_edit(
         free_edit_context(&ctx);
         return CHIBI_AUTOMATION_VALIDATION_ERROR;
     }
-    char *serialized = behavior_asset_save_json(reloaded);
+    char *serialized = behavior_asset_save(reloaded);
     behavior_asset_free(reloaded);
     assert(serialized);
     yyjson_mut_obj_add_uint(doc, result, "graph_id", ctx.graph->graph_id);
@@ -2754,7 +2783,7 @@ int automation_graph_edit(
     }
     yyjson_mut_obj_add_int(doc, result, "operation_count", index);
     add_refs(&ctx);
-    *edited_json = serialized;
+    *edited_text = serialized;
     free_edit_context(&ctx);
     return CHIBI_AUTOMATION_OK;
 }

@@ -1,0 +1,5 @@
+name "GraphView"
+components {
+    GAME.GameUi document="GraphView" hidden=#true
+}
+(array)behaviors "MenuKeys"

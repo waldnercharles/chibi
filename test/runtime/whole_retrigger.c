@@ -245,8 +245,8 @@ static void clear(behavior_instance *bi)
 static void lifecycle(int kind, behavior_backend backend)
 {
     behavior_asset *a = whole_retrigger_fixture(kind);
-    char *json = behavior_asset_save_json(a);
-    behavior_asset *next = behavior_asset_load_json(json);
+    char *json = behavior_asset_save(a);
+    behavior_asset *next = behavior_asset_load(json);
     free(json);
     assert(next);
     for (int j = 0; j < acount(next->graphs); j++) {

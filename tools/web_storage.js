@@ -1,5 +1,5 @@
 // Without the local server bridge, projects persist in IndexedDB, one folder each under /workspace.
-// A project is its folder: project.yaml plus everything beside it.
+// A project is its folder: project.kdl plus everything beside it.
 if (typeof window !== 'undefined' && !Module['chibiSaveAsset']) {
     const launch = new URLSearchParams(window.location.search);
     const workspace = '/workspace';
@@ -23,8 +23,9 @@ if (typeof window !== 'undefined' && !Module['chibiSaveAsset']) {
         kept ||= navigator.storage?.persist?.();
     };
     const exists = path => fs().analyzePath(path).exists;
+    const kdlString = value => JSON.stringify(value).replace(/\\u([0-9a-f]{4})/gi, (_, hex) => `\\u{${hex}}`);
     const slug = name => String(name).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-    const manifest = 'project.yaml';
+    const manifest = 'project.kdl';
     let projectRoot;
     const found = id => /^[a-z0-9-]+$/.test(id) && exists(`${workspace}/${id}/${manifest}`);
     const unique = name => {
@@ -55,16 +56,16 @@ if (typeof window !== 'undefined' && !Module['chibiSaveAsset']) {
             const id = unique(title);
             root = `${workspace}/${id}`;
             const manifestPath = `${root}/${manifest}`;
-            const scenePath = `${root}/content/scenes/Start.yaml`;
-            write(manifestPath, `version: ${version}\nname: ${JSON.stringify(title)}\ncontent: content\nstart_scene: scenes/Start.yaml\n`);
-            write(scenePath, 'version: 1\nname: Start\nentities: []\n');
+            const scenePath = `${root}/content/scenes/Start.kdl`;
+            write(manifestPath, `version ${version}\nname ${kdlString(title)}\ncontent "content"\nstart_scene "scenes/Start.kdl"\n`);
+            write(scenePath, "version 1\nname \"Start\"\n(array)entities\n");
             keep();
             persist();
             return JSON.stringify({root: `${root}/`});
         } catch (error) {
             if (root) {
                 try {
-                    for (const path of [`${root}/content/scenes/Start.yaml`, `${root}/${manifest}`]) {
+                    for (const path of [`${root}/content/scenes/Start.kdl`, `${root}/${manifest}`]) {
                         if (exists(path)) fs().unlink(path);
                     }
                     for (const path of [`${root}/content/scenes`, `${root}/content`, root]) {
@@ -164,7 +165,7 @@ if (typeof window !== 'undefined' && !Module['chibiSaveAsset']) {
         }
         return files;
     };
-    // The shallowest project.yaml marks the project folder, at the archive root or in one
+    // The shallowest project.kdl marks the project folder, at the archive root or in one
     // top folder; the project takes that folder's name, or the archive's.
     const importFiles = (archive, file) => {
         const manifestName = archive.map(([name]) => name)
@@ -206,13 +207,14 @@ if (typeof window !== 'undefined' && !Module['chibiSaveAsset']) {
     // Studio's Open Project list: the user's projects, then each sample not yet
     // copied into one. Opening one reloads the page onto it, as Import does.
     const projectName = path => {
-        const value = fs().readFile(path, {encoding: 'utf8'}).match(/^name:\s*(.+)$/m)?.[1].trim();
+        const value = fs().readFile(path, {encoding: 'utf8'}).match(/^\s*name\s+("(?:[^"\\]|\\.)*"|[^\s;{}]+)/m)?.[1];
         if (!value) return undefined;
-        if (value.startsWith('"')) {
-            try { return JSON.parse(value); } catch {}
-        }
-        if (value.startsWith("'")) return value.slice(1, -1).replace(/''/g, "'");
-        return value;
+        if (!value.startsWith('"')) return value;
+        const json = value.replace(/\\u\{([0-9a-f]{1,6})\}/gi, (_, hex) => {
+            const code = Number.parseInt(hex, 16);
+            return JSON.stringify(String.fromCodePoint(code)).slice(1, -1);
+        }).replace(/\\s/g, ' ');
+        try { return JSON.parse(json); } catch { return undefined; }
     };
     const folders = path => (exists(path) ? fs().readdir(path).filter(name => !name.startsWith('.')) : []);
     Module['chibiProjects'] = () => JSON.stringify([

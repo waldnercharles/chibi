@@ -567,11 +567,11 @@ static void arrange_sort_paths(char **paths)
 static behavior_asset *arrange_load(const char *path)
 {
     char *json = text_file_read(path);
-    if (!json || !strstr(json, "\ngraphs:")) {
+    if (!json || !strstr(json, "graphs")) {
         free(json);
         return NULL;
     }
-    behavior_asset *asset = behavior_asset_load_json(json);
+    behavior_asset *asset = behavior_asset_load(json);
     free(json);
     return asset;
 }

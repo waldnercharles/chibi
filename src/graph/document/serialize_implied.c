@@ -21,20 +21,20 @@ typedef struct
 
 static const char *const SHAPE_KEYS[] = { "type", "type_name", "container" };
 
-static yyjson_mut_val *pin_side(yyjson_mut_val *node_obj, int output)
+static av_value *pin_side(av_value *node_obj, int output)
 {
-    return yyjson_mut_obj_get(node_obj, output ? "outputs" : "inputs");
+    return av_obj_get(node_obj, output ? "outputs" : "inputs");
 }
 
 /* A keyed side maps pin keys to entries; a listed side holds them in order. */
-static yyjson_mut_val *pin_entry(yyjson_mut_val *side, const node *n, int output, int index)
+static av_value *pin_entry(av_value *side, const node *n, int output, int index)
 {
-    if (yyjson_mut_is_arr(side)) {
-        return yyjson_mut_arr_get(side, (size_t)index);
+    if (av_is_arr(side)) {
+        return av_arr_get(side, (size_t)index);
     }
     char key[SERIALIZE_KEY_SIZE];
     serialize_pin_key(n, output, index, key, sizeof key);
-    return yyjson_mut_obj_get(side, key);
+    return av_obj_get(side, key);
 }
 
 static int find_ref(const pin_ref *refs, uint64_t node_id, uint64_t pin_id)
@@ -47,15 +47,15 @@ static int find_ref(const pin_ref *refs, uint64_t node_id, uint64_t pin_id)
     return -1;
 }
 
-static bool candidate(const pin_spec *p, yyjson_mut_val *entry)
+static bool candidate(const pin_spec *p, av_value *entry)
 {
     if (p->kind != PIN_DATA || !(p->flags & PIN_FLAG_WILDCARD) || p->binding ||
-        !yyjson_mut_is_obj(entry) || yyjson_mut_obj_get(entry, "default") ||
-        yyjson_mut_obj_get(entry, "binding")) {
+        !av_is_obj(entry) || av_obj_get(entry, "default") ||
+        av_obj_get(entry, "binding")) {
         return false;
     }
     for (int i = 0; i < 3; i++) {
-        if (yyjson_mut_obj_get(entry, SHAPE_KEYS[i])) {
+        if (av_obj_get(entry, SHAPE_KEYS[i])) {
             return true;
         }
     }
@@ -63,61 +63,57 @@ static bool candidate(const pin_spec *p, yyjson_mut_val *entry)
 }
 
 /* Rewrites an entry that lost fields the way the writer would have written it. */
-static void tidy_entry(yyjson_mut_doc *doc, yyjson_mut_val *node_obj, const node *n, int output, int index)
+static void tidy_entry(av_doc *doc, av_value *node_obj, const node *n, int output, int index)
 {
-    yyjson_mut_val *side = pin_side(node_obj, output);
-    yyjson_mut_val *entry = pin_entry(side, n, output, index);
-    if (yyjson_mut_is_arr(side)) {
+    av_value *side = pin_side(node_obj, output);
+    av_value *entry = pin_entry(side, n, output, index);
+    if (av_is_arr(side)) {
         /* A listed pin with nothing but its ID is written as the ID. */
-        if (yyjson_mut_obj_size(entry) == 1 && yyjson_mut_obj_get(entry, "id")) {
-            yyjson_mut_arr_replace(side, (size_t)index, yyjson_mut_obj_remove_key(entry, "id"));
+        if (av_obj_size(entry) == 1 && av_obj_get(entry, "id")) {
+            av_arr_replace(side, (size_t)index, av_obj_get(entry, "id"));
         }
         return;
     }
     char key[SERIALIZE_KEY_SIZE];
     serialize_pin_key(n, output, index, key, sizeof key);
-    yyjson_mut_val *value = yyjson_mut_obj_get(entry, "default");
-    if (doc && yyjson_mut_obj_size(entry) == 1 && value && !yyjson_mut_is_ctn(value)) {
+    av_value *value = av_obj_get(entry, "default");
+    if (doc && av_obj_size(entry) == 1 && value && !av_is_ctn(value)) {
         /* A pin with nothing but a scalar default is written as the value. */
-        yyjson_mut_obj_replace(
-            side,
-            yyjson_mut_strcpy(doc, key),
-            yyjson_mut_obj_remove_key(entry, "default")
-        );
+        av_obj_set(doc, side, key, value);
         return;
     }
     int template_count = output ? n->desc->output_count : n->desc->input_count;
-    if (yyjson_mut_obj_size(entry) || index >= template_count) {
+    if (av_obj_size(entry) || index >= template_count) {
         return;
     }
-    yyjson_mut_obj_remove_key(side, key);
-    if (!yyjson_mut_obj_size(side)) {
-        yyjson_mut_obj_remove_key(node_obj, output ? "outputs" : "inputs");
+    av_obj_remove_key(side, key);
+    if (!av_obj_size(side)) {
+        av_obj_remove_key(node_obj, output ? "outputs" : "inputs");
     }
 }
 
-static void strip_pin(yyjson_mut_val *node_obj, const node *n, int output, int index)
+static void strip_pin(av_value *node_obj, const node *n, int output, int index)
 {
-    yyjson_mut_val *entry = pin_entry(pin_side(node_obj, output), n, output, index);
+    av_value *entry = pin_entry(pin_side(node_obj, output), n, output, index);
     for (int i = 0; i < 3; i++) {
-        yyjson_mut_obj_remove_key(entry, SHAPE_KEYS[i]);
+        av_obj_remove_key(entry, SHAPE_KEYS[i]);
     }
     tidy_entry(NULL, node_obj, n, output, index);
 }
 
-static const node *json_node(const graph *g, yyjson_mut_val *node_obj)
+static const node *document_node(const graph *g, av_value *node_obj)
 {
-    return graph_node_by_id(g, yyjson_mut_get_uint(yyjson_mut_obj_get(node_obj, "id")));
+    return graph_node_by_id(g, av_get_uint(av_obj_get(node_obj, "id")));
 }
 
-static pin_ref *collect(yyjson_mut_val *obj, const graph *g)
+static pin_ref *collect(av_value *obj, const graph *g)
 {
     pin_ref *refs = NULL;
     size_t i, count;
-    yyjson_mut_val *node_obj;
-    yyjson_mut_arr_foreach(yyjson_mut_obj_get(obj, "nodes"), i, count, node_obj)
+    av_value *node_obj;
+    av_arr_foreach(av_obj_get(obj, "nodes"), i, count, node_obj)
     {
-        const node *n = json_node(g, node_obj);
+        const node *n = document_node(g, node_obj);
         for (int output = 0; output < 2; output++) {
             const pin_spec *pins = output ? n->output_pins : n->input_pins;
             for (int p = 0; p < (output ? n->output_count : n->input_count); p++) {
@@ -130,13 +126,13 @@ static pin_ref *collect(yyjson_mut_val *obj, const graph *g)
     return refs;
 }
 
-static void strip(yyjson_mut_val *obj, const graph *g, const pin_ref *refs)
+static void strip(av_value *obj, const graph *g, const pin_ref *refs)
 {
     size_t i, count;
-    yyjson_mut_val *node_obj;
-    yyjson_mut_arr_foreach(yyjson_mut_obj_get(obj, "nodes"), i, count, node_obj)
+    av_value *node_obj;
+    av_arr_foreach(av_obj_get(obj, "nodes"), i, count, node_obj)
     {
-        const node *n = json_node(g, node_obj);
+        const node *n = document_node(g, node_obj);
         for (int output = 0; output < 2; output++) {
             const pin_spec *pins = output ? n->output_pins : n->input_pins;
             for (int p = 0; p < (output ? n->output_count : n->input_count); p++) {
@@ -212,27 +208,23 @@ static int keep_mismatches(const graph *g, const graph *loaded, pin_ref *refs)
     return removed;
 }
 
-static int trial(yyjson_mut_val *obj, const graph *g, pin_ref *refs)
+static int trial(av_value *obj, const graph *g, pin_ref *refs)
 {
-    yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
-    yyjson_mut_val *copy = yyjson_mut_val_mut_copy(doc, obj);
-    yyjson_mut_doc_set_root(doc, copy);
+    av_doc *doc = av_doc_new();
+    av_value *copy = av_clone(doc, obj);
+    av_doc_set_root(doc, copy);
     strip(copy, g, refs);
-    yyjson_doc *written = yyjson_mut_doc_imut_copy(doc, NULL);
-    yyjson_mut_doc_free(doc);
-    graph *loaded = written
-                      ? serialize_load_graph_body(yyjson_doc_get_root(written), g->id_counter)
-                      : NULL;
+    graph *loaded = serialize_load_graph_body(copy, g->id_counter);
     int removed = loaded ? keep_mismatches(g, loaded, refs) : -1;
     if (loaded) {
         graph_free(loaded);
         free(loaded);
     }
-    yyjson_doc_free(written);
+    av_doc_free(doc);
     return removed;
 }
 
-void serialize_omit_implied_shapes(yyjson_mut_val *obj, const graph *g)
+void serialize_omit_implied_shapes(av_value *obj, const graph *g)
 {
     pin_ref *refs = collect(obj, g);
     int removed = 1;
@@ -298,57 +290,45 @@ void serialize_derive_declarations(behavior_asset *asset)
 
 /* Loading derives a declaration the entry omits, so the entry records one only
  * when it differs from the derived pin, including an explicit 0. */
-static void write_declaration(
-    yyjson_mut_doc *doc,
-    yyjson_mut_val *node_obj,
-    const node *n,
-    int output,
-    int index,
-    uint64_t derived
-)
+static void write_declaration(av_doc *doc, av_value *node_obj, const node *n, int output, int index, uint64_t derived)
 {
     const pin_spec *p = output ? &n->output_pins[index] : &n->input_pins[index];
-    yyjson_mut_val *side = pin_side(node_obj, output);
-    yyjson_mut_val *entry = pin_entry(side, n, output, index);
+    av_value *side = pin_side(node_obj, output);
+    av_value *entry = pin_entry(side, n, output, index);
     if (!entry) {
         return;
     }
-    if (yyjson_mut_is_obj(entry)) {
+    if (av_is_obj(entry)) {
         if (p->declaration_id == derived) {
-            yyjson_mut_obj_remove_key(entry, "declaration_id");
+            av_obj_remove_key(entry, "declaration_id");
             tidy_entry(doc, node_obj, n, output, index);
-        } else if (!yyjson_mut_obj_get(entry, "declaration_id")) {
-            yyjson_mut_obj_add_uint(doc, entry, "declaration_id", p->declaration_id);
+        } else if (!av_obj_get(entry, "declaration_id")) {
+            av_obj_set(doc, entry, "declaration_id", av_uint(doc, p->declaration_id));
         }
         return;
     }
     if (p->declaration_id == derived) {
         return;
     }
-    yyjson_mut_val *expanded = yyjson_mut_obj(doc);
-    yyjson_mut_obj_add_val(
-        doc,
-        expanded,
-        yyjson_mut_is_arr(side) ? "id" : "default",
-        yyjson_mut_val_mut_copy(doc, entry)
-    );
-    yyjson_mut_obj_add_uint(doc, expanded, "declaration_id", p->declaration_id);
-    if (yyjson_mut_is_arr(side)) {
-        yyjson_mut_arr_replace(side, (size_t)index, expanded);
+    av_value *expanded = av_obj(doc);
+    av_obj_set(doc, expanded, av_is_arr(side) ? "id" : "default", av_clone(doc, entry));
+    av_obj_set(doc, expanded, "declaration_id", av_uint(doc, p->declaration_id));
+    if (av_is_arr(side)) {
+        av_arr_replace(side, (size_t)index, expanded);
         return;
     }
     char key[SERIALIZE_KEY_SIZE];
     serialize_pin_key(n, output, index, key, sizeof key);
-    yyjson_mut_obj_replace(side, yyjson_mut_strcpy(doc, key), expanded);
+    av_obj_set(doc, side, key, expanded);
 }
 
-void serialize_omit_derived_declarations(yyjson_mut_doc *doc, yyjson_mut_val *obj, const graph *g)
+void serialize_omit_derived_declarations(av_doc *doc, av_value *obj, const graph *g)
 {
     size_t i, count;
-    yyjson_mut_val *node_obj;
-    yyjson_mut_arr_foreach(yyjson_mut_obj_get(obj, "nodes"), i, count, node_obj)
+    av_value *node_obj;
+    av_arr_foreach(av_obj_get(obj, "nodes"), i, count, node_obj)
     {
-        const node *n = json_node(g, node_obj);
+        const node *n = document_node(g, node_obj);
         for (int output = 0; serialize_local_call(n) && output < 2; output++) {
             for (int p = 0; p < (output ? n->output_count : n->input_count); p++) {
                 write_declaration(

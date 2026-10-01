@@ -10,7 +10,7 @@ bool render_shader_upsert(const behavior_asset *asset, shader_error *error);
 int render_shader_find(const char *name);
 const char *render_shader_parameter_name(int index, int slot);
 int render_shader_parameter_width(int index, int slot);
-bool render_shader_parameters_validate(int index, const char *json, shader_error *error);
+bool render_shader_parameters_validate(int index, const char *text, shader_error *error);
 bool render_shader_is_shape(int index);
 bool render_shader_may_be_transparent(int index);
 bool render_shader_sample(
@@ -41,7 +41,7 @@ void render_shader_parameters(
     int index,
     ecs_world *world,
     ecs_entity entity,
-    const char *json,
+    const char *text,
     float values[SHADER_PARAMETER_MAX][4]
 );
 bool render_shader_bounds(int index, float bounds[2]);
@@ -68,7 +68,7 @@ void render_shader_parameters_cached(
     int index,
     ecs_world *world,
     ecs_entity entity,
-    const char *json,
+    const char *text,
     float values[32][4],
     render_shader_parameter_cache **cache
 );

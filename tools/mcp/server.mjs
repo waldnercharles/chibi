@@ -348,11 +348,27 @@ function buildToolDefinitions() {
       },
       name: {
         type: "string",
-        description: "Asset filename without the .yaml suffix.",
+        description: "Asset filename without the .kdl suffix.",
       },
     },
     required: ["kind", "name"],
     additionalProperties: false,
+  };
+  const readAssetArguments = {
+    ...assetArguments,
+    properties: {
+      ...assetArguments.properties,
+      complete: {
+        type: "object",
+        properties: {
+          line: { type: "integer", minimum: 1, description: "1-based source line." },
+          column: { type: "integer", minimum: 1, description: "1-based column, in bytes." },
+        },
+        required: ["line", "column"],
+        additionalProperties: false,
+        description: "Return KDL completions, hover, and source diagnostics at this position, including for incomplete source.",
+      },
+    },
   };
   const searchArguments = {
     type: "object",
@@ -483,7 +499,7 @@ function buildToolDefinitions() {
       },
       name: {
         type: "string",
-        description: "Prototype or scene asset name without the .yaml suffix.",
+        description: "Prototype or scene asset name without the .kdl suffix.",
       },
       frames: {
         type: "integer",
@@ -514,7 +530,7 @@ function buildToolDefinitions() {
       },
       name: {
         type: "string",
-        description: "Prototype or scene asset name without the .yaml suffix.",
+        description: "Prototype or scene asset name without the .kdl suffix.",
       },
       frames: {
         type: "integer",
@@ -576,7 +592,7 @@ function buildToolDefinitions() {
       },
       name: {
         type: "string",
-        description: "Prototype or scene asset name without the .yaml suffix.",
+        description: "Prototype or scene asset name without the .kdl suffix.",
       },
       frames: {
         type: "integer",
@@ -613,7 +629,7 @@ function buildToolDefinitions() {
       },
       name: {
         type: "string",
-        description: "Behavior or system asset name without the .yaml suffix.",
+        description: "Behavior or system asset name without the .kdl suffix.",
       },
     },
     required: ["kind", "name"],
@@ -756,7 +772,7 @@ function buildToolDefinitions() {
       },
       name: {
         type: "string",
-        description: "Prototype asset name without the .yaml suffix.",
+        description: "Prototype asset name without the .kdl suffix.",
       },
       frames: {
         type: "integer",
@@ -862,7 +878,7 @@ function buildToolDefinitions() {
     {
       name: "listAssets",
       operation: "list_assets",
-      description: "List authored YAML assets with stable paths, sizes, and content hashes.",
+      description: "List authored KDL assets with stable paths, sizes, and content hashes.",
       inputSchema: {
         type: "object",
         properties: { limit: pageProperties.limit, cursor: pageProperties.cursor },
@@ -985,8 +1001,8 @@ function buildToolDefinitions() {
     {
       name: "readAsset",
       operation: "read_asset",
-      description: "Read one authored asset as parsed JSON.",
-      inputSchema: assetArguments,
+      description: "Read authored KDL source and parsed content, with optional completion, hover, and diagnostics.",
+      inputSchema: readAssetArguments,
       outputSchema,
     },
     {

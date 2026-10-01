@@ -532,6 +532,20 @@ static const char *kind_detail(ui_source_completion_kind kind)
     return NULL;
 }
 
+static code_completion_kind completion_kind(ui_source_completion_kind kind)
+{
+    switch (kind) {
+        case UI_COMPLETE_TAG:
+        case UI_COMPLETE_CLASS: return CODE_COMPLETE_TYPE;
+        case UI_COMPLETE_WIDGET: return CODE_COMPLETE_ASSET;
+        case UI_COMPLETE_ATTRIBUTE:
+        case UI_COMPLETE_PROPERTY: return CODE_COMPLETE_FIELD;
+        case UI_COMPLETE_VARIABLE:
+        case UI_COMPLETE_SAVE_KEY: return CODE_COMPLETE_VALUE;
+    }
+    return CODE_COMPLETE_UNKNOWN;
+}
+
 void ui_code_complete(
     const ui_source *source,
     int offset,
@@ -544,7 +558,12 @@ void ui_code_complete(
     out->start = out->found.start;
     for (int i = 0; i < acount(out->found.items) && i < UI_CODE_COMPLETIONS; i++) {
         const ui_source_completion *c = &out->found.items[i];
-        apush(out->items, ((kit_code_completion){ c->label, kind_detail(c->kind), NULL }));
+        apush(
+            out->items,
+            ((
+                kit_code_completion
+            ){ c->label, kind_detail(c->kind), NULL, completion_kind(c->kind) })
+        );
     }
 }
 

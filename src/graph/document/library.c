@@ -352,9 +352,7 @@ static int import_library(library_link *link, const char *name, uint64_t *offset
     if (error) {
         return fail(link, error, name);
     }
-    char *json = behavior_asset_save_json(source);
-    behavior_asset *copy = json ? behavior_asset_load_json(json) : NULL;
-    free(json);
+    behavior_asset *copy = behavior_asset_clone(source);
     if (!copy) {
         return fail(link, "could not copy library", name);
     }
@@ -449,9 +447,9 @@ static int expand_macros(library_link *link, graph *g, uint64_t *ancestors)
         if (acount(ancestors) >= 64) {
             return fail(link, "macro expansion depth exceeds 64", source->name);
         }
-        char *json = graph_save_json(source);
-        graph *copy = json ? graph_load_json(json) : NULL;
-        free(json);
+        av_doc *doc = av_doc_new();
+        graph *copy = graph_from_value(graph_to_value(doc, source));
+        av_doc_free(doc);
         if (!copy) {
             return fail(link, "could not expand macro", source->name);
         }
@@ -497,9 +495,7 @@ behavior_asset *behavior_asset_link_libraries(
     if (error && error_size) {
         error[0] = '\0';
     }
-    char *json = behavior_asset_save_json(source);
-    behavior_asset *result = json ? behavior_asset_load_json(json) : NULL;
-    free(json);
+    behavior_asset *result = behavior_asset_clone(source);
     if (!result) {
         if (error && error_size) {
             snprintf(error, error_size, "the asset does not load back: %s", graph_last_error());

@@ -727,10 +727,10 @@ static void reference_assignment_expressions()
     uint64_t call_id = call->id;
     uint64_t getter_id = getter->id;
     const graph *generated = behavior_asset_find_graph(asset, call->reference_id);
-    char *serialized = behavior_asset_save_json(asset);
+    char *serialized = behavior_asset_save(asset);
     /* The expression's body is rebuilt from its source rather than stored. */
     assert(serialized && !strstr(serialized, "\"Function Entry\""));
-    behavior_asset *reloaded = behavior_asset_load_json(serialized);
+    behavior_asset *reloaded = behavior_asset_load(serialized);
     free(serialized);
     assert(reloaded);
     node *reloaded_call = graph_node_by_id(reloaded->graph, call_id);
@@ -996,9 +996,9 @@ static void integer_component_compound_assignment_roundtrip()
     assert(graph_set_pin_type(asset->graph, call, 1, result, PIN_I32, "int") == 0);
 
     uint64_t call_id = call->id;
-    char *serialized = behavior_asset_save_json(asset);
+    char *serialized = behavior_asset_save(asset);
     assert(serialized);
-    behavior_asset *reloaded = behavior_asset_load_json(serialized);
+    behavior_asset *reloaded = behavior_asset_load(serialized);
     free(serialized);
     assert(reloaded);
     behavior_asset_free(asset);
@@ -1487,7 +1487,7 @@ static void editor_delete_expression()
     assert(graph_connect_data(asset->graph, value, 0, call, 0) == 0);
     assert(graph_node_is_inline(asset->graph, value));
     assert(graph_connect_data(asset->graph, call, 0, sink, 0) == 0);
-    char *before = behavior_asset_save_json(asset);
+    char *before = behavior_asset_save(asset);
     editor *e = editor_new(asset);
     assert(editor_open_graph_call(e, call_id) == 0);
     assert(editor_delete_graph(e, graph_id) == 0);
@@ -1501,7 +1501,7 @@ static void editor_delete_expression()
     assert(acount(current->graph->edges) == 0);
     editor_undo(e);
     current = editor_behavior_asset(e);
-    char *restored = behavior_asset_save_json(current);
+    char *restored = behavior_asset_save(current);
     assert(!strcmp(before, restored));
     free(restored);
     free(before);
@@ -1665,8 +1665,8 @@ static void shader_expression()
     assert(result[0][0] == 0 && result[0][2] == 0);
     shader_graph_free(&ir);
 
-    char *json = behavior_asset_save_json(asset);
-    behavior_asset *loaded = behavior_asset_load_json(json);
+    char *json = behavior_asset_save(asset);
+    behavior_asset *loaded = behavior_asset_load(json);
     free(json);
     assert(loaded);
     shader_graph_init(&ir);
@@ -2022,14 +2022,14 @@ void test_math_expression()
     assert(graph_set_pin_default(g, call, 0, 2, &(pin_value){ .type = PIN_F64, .d = 4 }) == 0);
     assert(evaluate(asset, call) == 9);
     uint64_t call_id = call->id;
-    char *snapshot = behavior_asset_save_json(asset);
+    char *snapshot = behavior_asset_save(asset);
     const char *invalid[] = { "",          "a +",        "(a + b",  "sin()",
                               "sin(1, 2)", "unknown(2)", "rand(1)", "1 $ 2",
                               "1 2",       "max(1,)",    "1e999" };
     for (size_t i = 0; i < sizeof invalid / sizeof invalid[0]; i++) {
         assert(behavior_expression_set(asset, call, invalid[i], &error) == -1);
         assert(error.message[0] && error.offset >= 0 && error.length > 0);
-        char *after = behavior_asset_save_json(asset);
+        char *after = behavior_asset_save(asset);
         assert(!strcmp(snapshot, after));
         free(after);
     }
@@ -2037,7 +2037,7 @@ void test_math_expression()
     assert(call->input_count == 2 && call->input_pins[0].id == b_id);
     assert(acount(g->edges) == 1 && evaluate(asset, call) == 7);
     behavior_asset_free(asset);
-    asset = behavior_asset_load_json(snapshot);
+    asset = behavior_asset_load(snapshot);
     free(snapshot);
     assert(asset);
     call = graph_node_by_id(asset->graph, call_id);

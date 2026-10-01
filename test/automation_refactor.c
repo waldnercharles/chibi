@@ -158,7 +158,7 @@ static void renames(const char *root)
     reply dry = ask(root, RENAME_DAMAGE, NULL);
     bool listed = ok(&dry) && count(&dry, "assets") == 3 &&
                   yyjson_obj_size(yyjson_obj_get(dry.result, "expected_hashes")) == 3 &&
-                  exists(root, "content/events/Damage.yaml");
+                  exists(root, "content/events/Damage.kdl");
     reply unhashed = ask(root, RENAME_DAMAGE, ",\"dry_run\":false");
     char *expected = hashes(&dry);
     char extra[2048];
@@ -166,9 +166,9 @@ static void renames(const char *root)
     reply applied = ask(root, RENAME_DAMAGE, extra);
     bool published = ok(&applied) &&
                      yyjson_get_bool(yyjson_obj_get(applied.result, "published")) &&
-                     exists(root, "content/events/Harm.yaml") &&
-                     !exists(root, "content/events/Damage.yaml") &&
-                     holds(root, "content/behaviors/HullDamage.yaml", "reference_name: Harm");
+                     exists(root, "content/events/Harm.kdl") &&
+                     !exists(root, "content/events/Damage.kdl") &&
+                     holds(root, "content/behaviors/HullDamage.kdl", "reference_name \"Harm\"");
     reply valid = ask(root, "{\"contract\":1,\"operation\":\"validate_asset\",\"kind\":\"behavior\",\"name\":\"ProjectileHit\"%s}", NULL);
     test_check(listed && !ok(&unhashed) && published && ok(&valid), "renameSymbol dry-runs, then publishes every asset with the dry run's hashes");
     free(expected);
@@ -184,7 +184,10 @@ static void renames(const char *root)
                             "At\",\"parameter\":\"Prototype\",\"new_name\":"
                             "\"Template\"%s}";
     dry = ask(root, parameter, NULL);
-    bool calls = ok(&dry) && strstr(dry.text, "content/behaviors/HullDamage.yaml");
+    bool calls = ok(&dry) && strstr(dry.text, "content/behaviors/HullDamage.kdl");
+    if (!ok(&dry)) {
+        printf("  parameter rename: %s\n", dry.text);
+    }
     reply component = ask(root, "{\"contract\":1,\"operation\":\"rename_symbol\",\"component\":\"GameHealth\",\"new_name\":\"Vitality\"%s}", NULL);
     test_check(
         calls && !ok(&component) && !strcmp(error_code(&component), "invalid_request"),
@@ -204,7 +207,7 @@ static void conflicts(const char *root)
     reply dry = ask(root, RENAME_PURSUIT, NULL);
     char *expected = hashes(&dry);
     char path[PATH_MAX];
-    snprintf(path, sizeof path, "%s/content/prototypes/Swarmer.yaml", root);
+    snprintf(path, sizeof path, "%s/content/prototypes/Swarmer.kdl", root);
     char *swarmer = text_file_read(path);
     size_t size = strlen(swarmer) + 2;
     char *edited = malloc(size);
@@ -215,9 +218,9 @@ static void conflicts(const char *root)
     reply stale = ask(root, RENAME_PURSUIT, extra);
     test_check(
         !ok(&stale) && !strcmp(error_code(&stale), "asset_conflict") &&
-            exists(root, "content/behaviors/Pursuit.yaml") &&
-            !exists(root, "content/behaviors/Chase.yaml") &&
-            holds(root, "content/scenes/Sandbox.yaml", "Pursuit"),
+            exists(root, "content/behaviors/Pursuit.kdl") &&
+            !exists(root, "content/behaviors/Chase.kdl") &&
+            holds(root, "content/scenes/Sandbox.kdl", "Pursuit"),
         "renameSymbol publishes nothing when an asset changed since the dry run"
     );
     write_text(path, swarmer);
@@ -238,7 +241,7 @@ static void refusals(const char *root)
         !ok(&cased) && !strcmp(error_code(&cased), "invalid_request") &&
             strstr(cased.text, "only in case") && !ok(&unsafe) &&
             !strcmp(error_code(&unsafe), "invalid_request") &&
-            exists(root, "content/events/Harm.yaml"),
+            exists(root, "content/events/Harm.kdl"),
         "renameSymbol refuses case-only renames and names no file takes in the "
         "dry run"
     );
@@ -262,13 +265,13 @@ static void deletes(const char *root)
     char extra[2048];
     snprintf(extra, sizeof extra, ",\"force\":true,\"dry_run\":false,\"expected_hashes\":%s", expected);
     reply deleted = ask(root, DELETE_PURSUIT, extra);
-    test_check(listed && dangling && ok(&deleted) && !exists(root, "content/behaviors/Pursuit.yaml"), "deleteSymbol refuses a used asset, listing its references, and force deletes it");
+    test_check(listed && dangling && ok(&deleted) && !exists(root, "content/behaviors/Pursuit.kdl"), "deleteSymbol refuses a used asset, listing its references, and force deletes it");
     reply unused = ask(root, "{\"contract\":1,\"operation\":\"delete_symbol\",\"event\":\"RefreshEncounter\",\"force\":true%s}", NULL);
     yyjson_val *asset = yyjson_arr_get_first(yyjson_obj_get(unused.result, "assets"));
     test_check(
         ok(&unused) && count(&unused, "assets") == 1 &&
             yyjson_get_bool(yyjson_obj_get(asset, "deleted")) &&
-            !strcmp(yyjson_get_str(yyjson_obj_get(asset, "path")), "content/events/RefreshEncounter.yaml"),
+            !strcmp(yyjson_get_str(yyjson_obj_get(asset, "path")), "content/events/RefreshEncounter.kdl"),
         "deleteSymbol deletes an event with its definition"
     );
     free(expected);

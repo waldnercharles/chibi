@@ -138,7 +138,7 @@ static int editor_command_apply_direct(editor *e, editor_command command)
                 )) {
                 return -1;
             }
-            char *snapshot = ed_snapshot(e);
+            behavior_asset *snapshot = ed_snapshot(e);
             int pending = e->edit_pending;
             ed_pin_view output = { from, ED_PIN_OUTPUT, command.data.connect.from_pin };
             ed_pin_view input = { to, ED_PIN_INPUT, command.data.connect.to_pin };
@@ -147,24 +147,26 @@ static int editor_command_apply_direct(editor *e, editor_command command)
                 e->edit_pending = 1;
                 if (collab_record_history()) {
                     if (snapshot) {
-                        ed_push_string(&e->undo, snapshot);
+                        ed_push_asset(&e->undo, snapshot);
                     }
-                    ed_free_string_stack(&e->redo);
+                    ed_free_asset_stack(&e->redo);
+                } else {
+                    behavior_asset_free(snapshot);
                 }
                 return 0;
             }
-            char *current = ed_snapshot(e);
-            if (snapshot && current && strcmp(current, snapshot) != 0) {
+            behavior_asset *current = ed_snapshot(e);
+            if (snapshot && current && !behavior_asset_equal(current, snapshot)) {
                 if (ed_adopt_behavior_asset(e, snapshot) != 0) {
                     abort();
                 }
-                free(e->edit_revision_snapshot);
-                e->edit_revision_snapshot = ed_snapshot(e);
+                av_value_free(e->edit_revision_snapshot);
+                e->edit_revision_snapshot = ed_value_snapshot(e->asset);
                 e->edit_revision_asset = e->asset;
                 e->edit_revision_initialized = 1;
             }
-            free(current);
-            free(snapshot);
+            behavior_asset_free(current);
+            behavior_asset_free(snapshot);
             e->edit_pending = pending;
             return result;
         }
@@ -218,19 +220,19 @@ void editor_query_state(const editor *e, editor_query *out)
     if (e->edit_revision_initialized && !e->edit_pending &&
         e->edit_revision_asset == e->asset && e->edit_revision_snapshot) {
         out->dirty = !e->saved_snapshot ||
-                     strcmp(e->edit_revision_snapshot, e->saved_snapshot) != 0;
+                     !av_equals_ordered(e->edit_revision_snapshot, e->saved_snapshot);
         return;
     }
-    char *json = behavior_asset_save_json(e->asset);
-    out->dirty = !json || !e->saved_snapshot || strcmp(json, e->saved_snapshot) != 0;
-    free(json);
+    av_value *current = ed_value_snapshot(e->asset);
+    out->dirty = !av_equals_ordered(current, e->saved_snapshot);
+    av_value_free(current);
 }
 
-static void ed_record_math_edit(editor *e, char *before)
+static void ed_record_math_edit(editor *e, behavior_asset *before)
 {
     e->edit_pending = 1;
-    ed_push_string(&e->undo, before);
-    ed_free_string_stack(&e->redo);
+    ed_push_asset(&e->undo, before);
+    ed_free_asset_stack(&e->redo);
 }
 
 node *editor_add_behavior_expression(editor *e, const char *source, float x, float y, behavior_expression_error *error)
@@ -238,10 +240,10 @@ node *editor_add_behavior_expression(editor *e, const char *source, float x, flo
     if (!e || e->active_graph->math_expression) {
         return NULL;
     }
-    char *before = ed_snapshot(e);
+    behavior_asset *before = ed_snapshot(e);
     node *n = behavior_expression_add(e->asset, e->active_graph, source, error);
     if (!n) {
-        free(before);
+        behavior_asset_free(before);
         return NULL;
     }
     n->x = x;
@@ -260,9 +262,9 @@ int editor_set_behavior_expression(editor *e, node *call, const char *source, be
     if (source && current && !strcmp(source, current)) {
         return 0;
     }
-    char *before = ed_snapshot(e);
+    behavior_asset *before = ed_snapshot(e);
     if (behavior_expression_set(e->asset, call, source, error) != 0) {
-        free(before);
+        behavior_asset_free(before);
         return -1;
     }
     ed_record_math_edit(e, before);
@@ -277,9 +279,9 @@ int editor_rename_behavior_expression_input(
     behavior_expression_error *error
 )
 {
-    char *before = ed_snapshot(e);
+    behavior_asset *before = ed_snapshot(e);
     if (behavior_expression_rename_input(e->asset, call, from, to, error) != 0) {
-        free(before);
+        behavior_asset_free(before);
         return -1;
     }
     ed_record_math_edit(e, before);
@@ -295,11 +297,11 @@ int editor_rewire_behavior_expression(
     behavior_expression_error *error
 )
 {
-    char *before = ed_snapshot(e);
+    behavior_asset *before = ed_snapshot(e);
     if (behavior_expression_rename_input(e->asset, call, from, to, error) != 0 ||
         behavior_expression_set(e->asset, call, source, error) != 0) {
         ed_adopt_behavior_asset(e, before);
-        free(before);
+        behavior_asset_free(before);
         return -1;
     }
     ed_record_math_edit(e, before);

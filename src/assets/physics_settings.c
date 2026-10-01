@@ -3,45 +3,44 @@
 #include <assert.h>
 #include <string.h>
 
-bool game_physics_settings_read(yyjson_val *object, game_physics_settings *out)
+bool game_physics_settings_read(av_value *object, game_physics_settings *out)
 {
     game_physics_settings settings = game_physics_defaults();
     if (!object) {
         *out = settings;
         return true;
     }
-    if (!yyjson_is_obj(object)) {
+    if (!av_is_obj(object)) {
         return false;
     }
     size_t i, count;
-    yyjson_val *key, *value;
-    yyjson_obj_foreach(object, i, count, key, value)
+    av_value *key, *value;
+    av_obj_foreach(object, i, count, key, value)
     {
-        const char *name = yyjson_get_str(key);
+        const char *name = av_get_str(key);
         if (!strcmp(name, "workers") || !strcmp(name, "substeps")) {
-            if (!yyjson_is_int(value) || yyjson_get_sint(value) < 0 ||
-                yyjson_get_uint(value) > 32) {
+            if (!av_is_int(value) || av_get_sint(value) < 0 || av_get_uint(value) > 32) {
                 return false;
             }
             int *target = !strcmp(name, "workers") ? &settings.workers
                                                    : &settings.substeps;
-            *target = (int)yyjson_get_sint(value);
+            *target = (int)av_get_sint(value);
         } else if (!strcmp(name, "sleep") || !strcmp(name, "continuous") || !strcmp(name, "force_drive")) {
-            if (!yyjson_is_bool(value)) {
+            if (!av_is_bool(value)) {
                 return false;
             }
             bool *target = !strcmp(name, "sleep")      ? &settings.sleep
                          : !strcmp(name, "continuous") ? &settings.continuous
                                                        : &settings.force_drive;
-            *target = yyjson_get_bool(value);
+            *target = av_get_bool(value);
         } else if (!strcmp(name, "contact_hertz") || !strcmp(name, "contact_damping")) {
-            if (!yyjson_is_num(value)) {
+            if (!av_is_num(value)) {
                 return false;
             }
             float *target = !strcmp(name, "contact_hertz")
                               ? &settings.contact_hertz
                               : &settings.contact_damping;
-            *target = (float)yyjson_get_num(value);
+            *target = (float)av_get_num(value);
         } else {
             return false;
         }
@@ -53,32 +52,32 @@ bool game_physics_settings_read(yyjson_val *object, game_physics_settings *out)
     return true;
 }
 
-yyjson_mut_val *game_physics_settings_write(yyjson_mut_doc *doc, game_physics_settings settings)
+av_value *game_physics_settings_write(av_doc *doc, game_physics_settings settings)
 {
     assert(game_physics_settings_valid(settings));
     /* Reading starts from the defaults, so only differences are written. */
     game_physics_settings defaults = game_physics_defaults();
-    yyjson_mut_val *object = yyjson_mut_obj(doc);
+    av_value *object = av_obj(doc);
     if (settings.workers != defaults.workers) {
-        yyjson_mut_obj_add_int(doc, object, "workers", settings.workers);
+        av_obj_add_int(doc, object, "workers", settings.workers);
     }
     if (settings.substeps != defaults.substeps) {
-        yyjson_mut_obj_add_int(doc, object, "substeps", settings.substeps);
+        av_obj_add_int(doc, object, "substeps", settings.substeps);
     }
     if (settings.sleep != defaults.sleep) {
-        yyjson_mut_obj_add_bool(doc, object, "sleep", settings.sleep);
+        av_obj_add_bool(doc, object, "sleep", settings.sleep);
     }
     if (settings.continuous != defaults.continuous) {
-        yyjson_mut_obj_add_bool(doc, object, "continuous", settings.continuous);
+        av_obj_add_bool(doc, object, "continuous", settings.continuous);
     }
     if (settings.force_drive != defaults.force_drive) {
-        yyjson_mut_obj_add_bool(doc, object, "force_drive", settings.force_drive);
+        av_obj_add_bool(doc, object, "force_drive", settings.force_drive);
     }
     if (settings.contact_hertz != defaults.contact_hertz) {
-        yyjson_mut_obj_add_float(doc, object, "contact_hertz", settings.contact_hertz);
+        av_obj_add_float(doc, object, "contact_hertz", settings.contact_hertz);
     }
     if (settings.contact_damping != defaults.contact_damping) {
-        yyjson_mut_obj_add_float(doc, object, "contact_damping", settings.contact_damping);
+        av_obj_add_float(doc, object, "contact_damping", settings.contact_damping);
     }
     return object;
 }

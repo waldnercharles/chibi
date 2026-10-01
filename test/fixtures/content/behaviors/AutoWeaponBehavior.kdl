@@ -1,0 +1,242 @@
+version 3
+name "AutoWeaponBehavior"
+id_counter 225
+description "Fires toward a nearby enemy on each complete cooldown interval, retaining unused time while preserving projectile defaults."
+owner_type "ecs.entity"
+(array)variables {
+    - id=1 name="Elapsed" type="float" type_name="float" category="Weapon"
+}
+(array)graphs {
+    - {
+        kind "event"
+        name ""
+        (array)nodes {
+            - id=5 type="Event" x=0.0 y=0.0 placed=#false reference_name="Tick"
+            - {
+                id 7
+                type "Get_GameTransform"
+                x 0.0
+                y 0.0
+                placed #false
+                outputs {
+                    Value flags=0
+                }
+            }
+            - {
+                id 9
+                type "Self"
+                x 0.0
+                y 0.0
+                placed #false
+                outputs {
+                    Self type_name="ecs.entity"
+                }
+            }
+            - {
+                id 11
+                type "Find Nearest Entity"
+                x 0.0
+                y 0.0
+                placed #false
+                inputs Radius=600.0 Categories=2
+            }
+            - id=20 type="Branch" x=0.0 y=0.0 placed=#false
+            - {
+                id 42
+                type "Get_GameWeapon"
+                x 0.0
+                y 0.0
+                placed #false
+                outputs {
+                    Value flags=0
+                    Value.damage id=46
+                }
+            }
+            - id=145 type="Direction To" x=0.0 y=0.0 placed=#false reference_name="Direction To"
+            - {
+                id 197
+                type "Call Function"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 189
+                reference_name "Fire Ready Projectiles"
+                inputs {
+                    Origin id=199 type="struct" type_name="CF_V2" kind="data"
+                    Direction id=200 type="struct" type_name="CF_V2" kind="data"
+                    Damage id=201 type="int" kind="data"
+                }
+                outputs {
+                    Then id=202
+                }
+            }
+        }
+        (array)edges {
+            - from="5.Then" to="20.Exec"
+            - from="7.Value" to="11.Position"
+            - from="7.Value" to="145.Origin"
+            - from="7.Value" to="197.Origin"
+            - from="9.Self" to="11.Exclude"
+            - from="11.Found" to="20.Condition"
+            - from="11.Position" to="145.Target"
+            - from="20.True" to="197.Exec"
+            - from="42.Value.damage" to="197.Damage"
+            - from="145.Direction" to="197.Direction"
+        }
+    }
+    - {
+        id 189
+        kind "function"
+        name "Fire Ready Projectiles"
+        entry_id 190
+        return_id 195
+        call_depth_limit 64
+        (array)nodes {
+            - {
+                id 54
+                type "Get Variable"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 1
+                outputs {
+                    Value type="float" flags=0
+                }
+            }
+            - id=56 type="Delta Time" x=0.0 y=0.0 placed=#false
+            - id=58 type="Add" x=0.0 y=0.0 placed=#false
+            - {
+                id 62
+                type "Set Variable"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 1
+                inputs {
+                    Value type="float"
+                }
+                outputs {
+                    Value type="float"
+                }
+            }
+            - {
+                id 71
+                type "Get Variable"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 1
+                outputs {
+                    Value type="float" flags=0
+                }
+            }
+            - id=77 type="WhileLoop" x=0.0 y=0.0 placed=#false
+            - {
+                id 86
+                type "Set Variable"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 1
+                inputs {
+                    Value type="float"
+                }
+                outputs {
+                    Value type="float"
+                }
+            }
+            - {
+                id 156
+                type "Call Pure Function"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 149
+                reference_name "Check Firing Interval"
+                reference_asset "WeaponActions"
+                inputs {
+                    Elapsed id=157 type="float"
+                    Cooldown id=158 type="float"
+                }
+                outputs {
+                    Ready id=159 type="bool"
+                    Remainder id=160 type="float"
+                }
+            }
+            - {
+                id 182
+                type "Call Function"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 173
+                reference_name "Fire Projectile"
+                reference_asset "WeaponActions"
+                inputs {
+                    Origin id=184 type="struct" type_name="CF_V2" kind="data"
+                    Direction id=185 type="struct" type_name="CF_V2" kind="data"
+                    Damage id=186 type="int" kind="data"
+                    Prototype id=221 declaration_id=220 type="name" kind="data" default="Projectile"
+                    Shooter id=222 declaration_id=255 type="handle" type_name="ecs.entity" kind="data"
+                }
+                outputs {
+                    Then id=187
+                    Entity id=188 type="handle" type_name="ecs.entity" kind="data"
+                }
+            }
+            - {
+                id 190
+                type "Function Entry"
+                x 0.0
+                y 0.0
+                placed #false
+                (array)outputs {
+                    - id=191 name="Then"
+                    - id=192 name="Origin" type="struct" type_name="CF_V2" kind="data"
+                    - id=193 name="Direction" type="struct" type_name="CF_V2" kind="data"
+                    - id=194 name="Damage" type="int" kind="data"
+                }
+            }
+            - id=195 type="Return" x=0.0 y=0.0 placed=#false
+            - {
+                id 207
+                type "Get_GameWeapon"
+                x 0.0
+                y 0.0
+                placed #false
+                outputs {
+                    Value flags=0
+                    Value.cooldown id=209
+                }
+            }
+            - {
+                id 223
+                type "Self"
+                x 0.0
+                y 0.0
+                placed #false
+                (array)outputs {
+                    - id=224 name="Entity" type_name="ecs.entity"
+                }
+            }
+        }
+        (array)edges {
+            - from="54.Value" to="58.A"
+            - from="56.Seconds" to="58.B"
+            - from="58.Result" to="62.Value"
+            - from="62.Then" to="77.Exec"
+            - from="71.Value" to="156.Elapsed"
+            - from="77.Body" to="86.Exec"
+            - from="77.Completed" to="195.Exec"
+            - from="86.Then" to="182.Exec"
+            - from="156.Ready" to="77.Condition"
+            - from="156.Remainder" to="86.Value"
+            - from="190.Then" to="62.Exec"
+            - from="190.Origin" to="182.Origin"
+            - from="190.Direction" to="182.Direction"
+            - from="190.Damage" to="182.Damage"
+            - from="207.Value.cooldown" to="156.Cooldown"
+            - from="223.Entity" to="182.Shooter"
+        }
+    }
+}

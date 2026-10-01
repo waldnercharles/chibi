@@ -112,8 +112,8 @@ static void setter_outputs()
             graph_set_event_name(g, other, "Other");
             connect_exec(g, other, 0, uses[1]);
         }
-        char *json = behavior_asset_save_json(asset);
-        behavior_asset *original = behavior_asset_load_json(json);
+        char *json = behavior_asset_save(asset);
+        behavior_asset *original = behavior_asset_load(json);
         free(json);
         assert(original);
         graph_optimize_report report = { 0 };
@@ -166,10 +166,10 @@ static void setter_outputs()
             test_check(a.f == (mode == FALSE_BRANCH ? 0 : 7) && b.f == 7, "consumers retain the assigned value even after later writes or external updates during a delay");
             behavior_instance_destroy(instances[i]);
         }
-        char *before = behavior_asset_save_json(asset);
+        char *before = behavior_asset_save(asset);
         graph_optimize_report_free(&report);
         test_check(graph_optimize(g, &options, &report) == 0, "repeating Set-output optimization is a no-op");
-        char *after = behavior_asset_save_json(asset);
+        char *after = behavior_asset_save(asset);
         test_check(!strcmp(before, after), "repeated Set-output optimization preserves IDs and serialized bytes");
         free(before);
         free(after);
@@ -218,8 +218,8 @@ static void explicit_self()
             for (int i = 0; i < 3; i++) {
                 test_check(uses[i]->input_pins[0].default_value.u64 == 99, "inlining Self preserves dormant entity input values");
             }
-            char *json = behavior_asset_save_json(asset);
-            behavior_asset *copy = behavior_asset_load_json(json);
+            char *json = behavior_asset_save(asset);
+            behavior_asset *copy = behavior_asset_load(json);
             free(json);
             assert(copy);
             arena storage;
@@ -239,10 +239,10 @@ static void explicit_self()
             behavior_instance_destroy(instance);
             arena_free(&storage);
             behavior_asset_free(copy);
-            char *before = behavior_asset_save_json(asset);
+            char *before = behavior_asset_save(asset);
             graph_optimize_report_free(&report);
             test_check(graph_optimize(g, NULL, &report) == 0, "already-inline Self is a no-op");
-            char *after = behavior_asset_save_json(asset);
+            char *after = behavior_asset_save(asset);
             test_check(!strcmp(before, after), "Self optimization is idempotent without allocating more nodes");
             free(before);
             free(after);
@@ -254,8 +254,8 @@ static void explicit_self()
 
 static void arena_shard()
 {
-    char *json = text_file_read("test/fixtures/content/behaviors/ArenaShardBehavior.yaml");
-    behavior_asset *asset = behavior_asset_load_json(json);
+    char *json = text_file_read("test/fixtures/content/behaviors/ArenaShardBehavior.kdl");
+    behavior_asset *asset = behavior_asset_load(json);
     free(json);
     assert(asset);
     editor e = { .asset = asset,
@@ -271,7 +271,7 @@ static void arena_shard()
         }
     }
     assert(set);
-    char *before = ed_snapshot(&e);
+    behavior_asset *before = ed_snapshot(&e);
     test_check(ed_optimize_graph(&e) > 0 && acount(e.undo) == 1, "ArenaShard optimization creates one history transaction");
     int age_uses = 0;
     for (int i = 0; i < acount(asset->graph->nodes); i++) {
@@ -292,12 +292,12 @@ static void arena_shard()
     }
     test_check(!wired && age_uses >= 3, "ArenaShard's two Set Age consumers and getter use inline variable inputs");
     ed_undo(&e);
-    char *undone = ed_snapshot(&e);
-    test_check(!strcmp(before, undone), "Undo restores ArenaShard's Set output and Self topology and layout exactly");
-    free(before);
-    free(undone);
-    ed_free_string_stack(&e.undo);
-    ed_free_string_stack(&e.redo);
+    behavior_asset *undone = ed_snapshot(&e);
+    test_check(behavior_asset_equal(before, undone), "Undo restores ArenaShard's Set output and Self topology and layout exactly");
+    behavior_asset_free(before);
+    behavior_asset_free(undone);
+    ed_free_asset_stack(&e.undo);
+    ed_free_asset_stack(&e.redo);
     eval_view_free(e.ev);
     behavior_asset_free(e.asset);
 }

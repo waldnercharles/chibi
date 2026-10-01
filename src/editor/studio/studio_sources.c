@@ -9,6 +9,7 @@
  * which restyles everything the page styles, and a setting to the
  * preferences. A preview of Studio's own ui assets shows the same data and
  * applies nothing. */
+#include "assets/asset_source.h"
 #include "assets/project.h"
 #include "editor/collab/collab.h"
 #include "editor/studio/studio_internal.h"
@@ -362,7 +363,7 @@ static void sync_theme(studio *s, studio_sources *src, ui_data *data, bool wrote
 static const struct
 {
     const char *key;   /* the row's */
-    const char *field; /* in project.yaml */
+    const char *field; /* in project.kdl */
     const char *label, *description;
     bool optional;
 } PROJECT_ROWS[STUDIO_PROJECT_FIELD_COUNT] = {
@@ -983,7 +984,7 @@ static int by_label(const void *a, const void *b)
 }
 
 /* The open project's assets of `kind` by name, sorted: ui assets by their
-   name, scenes by their path under content, as project.yaml names them. */
+   name, scenes by their path under content, as project.kdl names them. */
 static studio_setting_choice *asset_choices(const studio *s, reference_asset_kind kind)
 {
     const reference_index *index = app_scene_authoring_asset_index(s->scene);
@@ -1055,42 +1056,40 @@ static void apply_project_field(studio *s, studio_project_field field, const cha
     assert(!"a project field");
 }
 
-/* Writes a field of the project's project.yaml in its place, adding it last
+/* Writes a field of the project's project.kdl in its place, adding it last
  * or, when empty, leaving it out, then applies it. */
 static void set_project_field(studio *s, studio_project_field field, const char *value)
 {
     char path[1024], error[256] = "cannot be read";
     snprintf(path, sizeof path, "%s/" CHIBI_PROJECT_MANIFEST, s->project_root);
     char *text = text_file_read(path);
-    yyjson_doc *manifest = text ? asset_text_read(text, error, sizeof error) : NULL;
-    free(text);
-    yyjson_mut_doc *doc = manifest ? yyjson_doc_mut_copy(manifest, NULL) : NULL;
-    yyjson_doc_free(manifest);
-    yyjson_mut_val *object = yyjson_mut_doc_get_root(doc);
-    if (!yyjson_mut_is_obj(object)) {
+    av_doc *doc = text ? av_doc_read(text, error, sizeof error) : NULL;
+    av_value *object = av_doc_root(doc);
+    if (!av_is_obj(object)) {
         char message[1400];
         snprintf(message, sizeof message, "%s %s", path, error);
         settings_error(s, message);
-        yyjson_mut_doc_free(doc);
+        av_doc_free(doc);
+        free(text);
         return;
     }
     const char *key = PROJECT_ROWS[field].field;
-    yyjson_mut_val *written = yyjson_mut_strcpy(doc, value);
     if (!value[0]) {
-        yyjson_mut_obj_remove_key(object, key);
-    } else if (!yyjson_mut_obj_replace(object, yyjson_mut_str(doc, key), written)) {
-        yyjson_mut_obj_add(object, yyjson_mut_str(doc, key), written);
+        av_obj_remove_key(object, key);
+    } else {
+        av_obj_set(doc, object, key, av_str(doc, value));
     }
-    char *json = yyjson_mut_write(doc, 0, NULL);
-    yyjson_mut_doc_free(doc);
-    char *yaml = asset_text_to_disk(json, error, sizeof error);
-    free(json);
-    if (!yaml || write_file_atomic(path, yaml) != 0) {
-        char message[1100];
-        snprintf(message, sizeof message, "Could not save %s", path);
+    char *edited = asset_source_reconcile(text, object, error, sizeof error);
+    av_doc_free(doc);
+    free(text);
+    if (!edited || write_file_atomic(path, edited) != 0) {
+        char message[1400];
+        snprintf(message, sizeof message, "Could not save %s: %s", path, edited ? "write failed" : error);
         settings_error(s, message);
+        free(edited);
+        return;
     }
-    free(yaml);
+    free(edited);
     apply_project_field(s, field, value);
 }
 

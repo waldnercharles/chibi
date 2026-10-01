@@ -4,59 +4,57 @@
 #include <limits.h>
 #include <string.h>
 
-int serialize_read_locals(graph *g, yyjson_val *obj)
+int serialize_read_locals(graph *g, av_value *obj)
 {
-    yyjson_val *locals = yyjson_obj_get(obj, "locals");
+    av_value *locals = av_obj_get(obj, "locals");
     if (!locals) {
         return 0;
     }
-    if (!yyjson_is_arr(locals)) {
+    if (!av_is_arr(locals)) {
         serialize_error_set("locals must be an array");
         return -1;
     }
     size_t i, count;
-    yyjson_val *value;
-    yyjson_arr_foreach(locals, i, count, value)
+    av_value *value;
+    av_arr_foreach(locals, i, count, value)
     {
-        yyjson_val *id = yyjson_obj_get(value, "id");
-        yyjson_val *name = yyjson_obj_get(value, "name");
-        yyjson_val *source = yyjson_obj_get(value, "source");
-        yyjson_val *pin = yyjson_obj_get(value, "pin");
+        av_value *id = av_obj_get(value, "id");
+        av_value *name = av_obj_get(value, "name");
+        av_value *source = av_obj_get(value, "source");
+        av_value *pin = av_obj_get(value, "pin");
         /* A "<node>.<pin>" source resolves once nodes are loaded. */
-        bool reference = yyjson_is_str(yyjson_obj_get(value, "from"));
-        if (!yyjson_is_uint(id) || !yyjson_get_uint(id) || yyjson_get_uint(id) >= INT_MAX ||
-            (!reference && (!yyjson_is_uint(source) || !yyjson_get_uint(source) ||
-                            !yyjson_is_uint(pin) || !yyjson_get_uint(pin))) ||
-            !yyjson_is_str(name) || !yyjson_get_len(name)) {
+        bool reference = av_is_str(av_obj_get(value, "from"));
+        if (!av_is_uint(id) || !av_get_uint(id) || av_get_uint(id) >= INT_MAX ||
+            (!reference && (!av_is_uint(source) || !av_get_uint(source) ||
+                            !av_is_uint(pin) || !av_get_uint(pin))) ||
+            !av_is_str(name) || !av_get_len(name)) {
             serialize_error_set("local has invalid identity, name, or source");
             return -1;
         }
-        graph_local local = {
-            .id = yyjson_get_uint(id),
-            .name = graph_own_str(g, yyjson_get_str(name), yyjson_get_len(name)),
-            .source_id = yyjson_get_uint(source),
-            .source_pin_id = yyjson_get_uint(pin)
-        };
+        graph_local local = { .id = av_get_uint(id),
+                              .name = graph_own_str(g, av_get_str(name), av_get_len(name)),
+                              .source_id = av_get_uint(source),
+                              .source_pin_id = av_get_uint(pin) };
         apush(g->locals, local);
     }
     return 0;
 }
 
-int serialize_resolve_locals(graph *g, yyjson_val *obj)
+int serialize_resolve_locals(graph *g, av_value *obj)
 {
-    yyjson_val *locals = yyjson_obj_get(obj, "locals");
+    av_value *locals = av_obj_get(obj, "locals");
     size_t i, count;
-    yyjson_val *value;
-    yyjson_arr_foreach(locals, i, count, value)
+    av_value *value;
+    av_arr_foreach(locals, i, count, value)
     {
-        yyjson_val *from = yyjson_obj_get(value, "from");
+        av_value *from = av_obj_get(value, "from");
         node *source = NULL;
         int index = -1;
-        if (!yyjson_is_str(from)) {
+        if (!av_is_str(from)) {
             continue;
         }
-        if (!serialize_resolve_ref(g, yyjson_get_str(from), 1, &source, &index)) {
-            serialize_error_set("local names no pin: %s", yyjson_get_str(from));
+        if (!serialize_resolve_ref(g, av_get_str(from), 1, &source, &index)) {
+            serialize_error_set("local names no pin: %s", av_get_str(from));
             return -1;
         }
         g->locals[i].source_id = source->id;
@@ -90,18 +88,12 @@ int serialize_validate_locals(graph *g)
     return 0;
 }
 
-void serialize_write_locals(
-    yyjson_mut_doc *doc,
-    yyjson_mut_val *obj,
-    const graph *g,
-    node *const *subset,
-    int count
-)
+void serialize_write_locals(av_doc *doc, av_value *obj, const graph *g, node *const *subset, int count)
 {
     if (!acount(g->locals)) {
         return;
     }
-    yyjson_mut_val *locals = yyjson_mut_arr(doc);
+    av_value *locals = av_arr(doc);
     for (int i = 0; i < acount(g->locals); i++) {
         const graph_local *local = &g->locals[i];
         bool included = !subset;
@@ -111,20 +103,20 @@ void serialize_write_locals(
         if (!included) {
             continue;
         }
-        yyjson_mut_val *value = yyjson_mut_obj(doc);
-        yyjson_mut_obj_add_uint(doc, value, "id", local->id);
-        yyjson_mut_obj_add_str(doc, value, "name", local->name);
+        av_value *value = av_obj(doc);
+        av_obj_set(doc, value, "id", av_uint(doc, local->id));
+        av_obj_set(doc, value, "name", av_str(doc, local->name));
         node *source = graph_node_by_id(g, local->source_id);
         int index = -1;
         char ref[SERIALIZE_KEY_SIZE + 32];
         if (source && graph_pin_by_id(source, local->source_pin_id, NULL, &index) &&
             serialize_pin_ref(source, 1, index, ref, sizeof ref)) {
-            yyjson_mut_obj_add_strcpy(doc, value, "from", ref);
+            av_obj_set(doc, value, "from", av_str(doc, ref));
         } else {
-            yyjson_mut_obj_add_uint(doc, value, "source", local->source_id);
-            yyjson_mut_obj_add_uint(doc, value, "pin", local->source_pin_id);
+            av_obj_set(doc, value, "source", av_uint(doc, local->source_id));
+            av_obj_set(doc, value, "pin", av_uint(doc, local->source_pin_id));
         }
-        yyjson_mut_arr_add_val(locals, value);
+        av_arr_append(locals, value);
     }
-    yyjson_mut_obj_add_val(doc, obj, "locals", locals);
+    av_obj_set(doc, obj, "locals", locals);
 }

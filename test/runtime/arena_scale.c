@@ -37,7 +37,7 @@ static void load_definition(game_live_world *live, const char *path)
 {
     char *json = text_file_read(path);
     assert(json);
-    behavior_asset *asset = behavior_asset_load_json(json);
+    behavior_asset *asset = behavior_asset_load(json);
     free(json);
     assert(asset);
     game_live_definition *definition = game_live_definition_new(asset->name, asset);
@@ -73,18 +73,18 @@ int bench_arena_scale(int count, int frames, bool portable, bool profile, int mo
         assert(!ecs_world_register_component(world, GAME_REGISTRY_COMPONENTS[i], NULL));
     }
     game_live_world *live = game_live_world_new(world);
-    load_catalog(live, "content/events/*.yaml");
-    load_catalog(live, "content/libraries/*.yaml");
+    load_catalog(live, "content/events/*.kdl");
+    load_catalog(live, "content/libraries/*.kdl");
     game_prototype_registry registry = { GAME_REGISTRY_COMPONENTS,
                                          GAME_REGISTRY_COMPONENT_COUNT };
-    char *json = text_file_read("content/prototypes/ArenaEnemy.yaml"), error[256];
+    char *json = text_file_read("content/prototypes/ArenaEnemy.kdl"), error[256];
     assert(json);
     game_prototype *prototype = game_prototype_load(json, &registry, error, sizeof error);
     free(json);
     assert(prototype);
     for (int i = 0; i < acount(prototype->graphs); i++) {
         char path[256];
-        snprintf(path, sizeof path, "content/behaviors/%s.yaml", prototype->graphs[i]);
+        snprintf(path, sizeof path, "content/behaviors/%s.kdl", prototype->graphs[i]);
         load_definition(live, path);
     }
     game_behavior_set_profiling(live->behaviors, profile);
@@ -334,10 +334,10 @@ int bench_neon_pursuit(int count, int frames, bool portable, bool profile)
         assert(!ecs_world_register_component(world, GAME_REGISTRY_COMPONENTS[i], NULL));
     }
     game_live_world *live = game_live_world_new(world);
-    load_definition(live, "projects/arena2d/content/behaviors/Pursuit.yaml");
+    load_definition(live, "projects/arena2d/content/behaviors/Pursuit.kdl");
     game_prototype_registry registry = { GAME_REGISTRY_COMPONENTS,
                                          GAME_REGISTRY_COMPONENT_COUNT };
-    char *json = text_file_read("projects/arena2d/content/prototypes/Swarmer.yaml"),
+    char *json = text_file_read("projects/arena2d/content/prototypes/Swarmer.kdl"),
          error[256];
     assert(json);
     game_prototype *prototype = game_prototype_load(json, &registry, error, sizeof error);

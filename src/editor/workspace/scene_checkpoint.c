@@ -4,6 +4,8 @@
 #include "editor/workspace/scene_internal.h"
 #include "graph/document/serialize.h"
 #include "runtime/generated.h"
+#include "support/asset_json.h"
+#include "support/text_overlay.h"
 
 #include <assert.h>
 #include <stdio.h>
@@ -12,6 +14,48 @@ static void owned_text(yyjson_mut_doc *doc, yyjson_mut_val *object, const char *
 {
     checkpoint_text(doc, object, key, text);
     free(text);
+}
+
+static av_value *checkpoint_native_value(yyjson_val *object, const char *key)
+{
+    yyjson_val *value = yyjson_obj_get(object, key);
+    if (!value || yyjson_is_null(value)) {
+        return NULL;
+    }
+    av_doc *doc = av_doc_new();
+    av_value *copy = av_value_copy(av_from_json(doc, value));
+    av_doc_free(doc);
+    return copy;
+}
+
+static yyjson_mut_val *checkpoint_values(yyjson_mut_doc *doc, av_value *const *values)
+{
+    yyjson_mut_val *array = yyjson_mut_arr(doc);
+    for (int i = 0; i < acount(values); i++) {
+        yyjson_mut_arr_add_val(array, av_to_json(doc, values[i]));
+    }
+    return array;
+}
+
+static bool checkpoint_read_values(yyjson_val *array, av_value ***out)
+{
+    if (!yyjson_is_arr(array)) {
+        return false;
+    }
+    size_t i, count;
+    yyjson_val *value;
+    yyjson_arr_foreach(array, i, count, value)
+    {
+        av_doc *doc = av_doc_new();
+        av_value *root = av_from_json(doc, value);
+        if (!av_is_obj(root)) {
+            av_doc_free(doc);
+            return false;
+        }
+        apush(*out, av_value_copy(root));
+        av_doc_free(doc);
+    }
+    return true;
 }
 
 static const ecs_component_desc *resolve_component(const char *name, void *)
@@ -47,8 +91,8 @@ static void checkpoint_tabs(yyjson_mut_doc *doc, yyjson_mut_val *root, app_scene
         checkpoint_text(doc, item, "key", tab->key);
         checkpoint_text(doc, item, "label", tab->label);
         checkpoint_text(doc, item, "path", tab->path);
-        checkpoint_text(doc, item, "scene", tab->scene_json);
-        checkpoint_text(doc, item, "history", tab->scene_history);
+        yyjson_mut_obj_add_val(doc, item, "scene", av_to_json(doc, tab->scene_value));
+        yyjson_mut_obj_add_val(doc, item, "history", av_to_json(doc, tab->scene_history));
         yyjson_mut_obj_add_uint(doc, item, "selected_entity", tab->selected_entity);
         yyjson_mut_obj_add_val(doc, item, "camera", checkpoint_camera(doc, tab->camera));
         yyjson_mut_obj_add_bool(doc, item, "camera_saved", tab->camera_saved);
@@ -66,9 +110,11 @@ static void checkpoint_tabs(yyjson_mut_doc *doc, yyjson_mut_val *root, app_scene
                 yyjson_mut_arr_add_uint(doc, actor_ids, tab->scene_actor_ids[j]);
             }
         }
-        checkpoint_text(doc, item, "system", tab->system_json);
-        checkpoint_text(doc, item, "system_saved", tab->system_saved);
-        checkpoint_text(doc, item, "asset_saved", tab->asset_saved);
+        yyjson_mut_obj_add_val(doc, item, "system", av_to_json(doc, tab->system_value));
+        yyjson_mut_obj_add_val(doc, item, "system_saved", av_to_json(doc, tab->system_saved));
+        yyjson_mut_obj_add_val(doc, item, "asset_saved", av_to_json(doc, tab->asset_saved));
+        yyjson_mut_obj_add_val(doc, item, "source", av_to_json(doc, tab->source_state));
+        yyjson_mut_obj_add_bool(doc, item, "source_dirty", tab->source_dirty);
         if (tab->ui) {
             yyjson_mut_obj_add_val(doc, item, "ui", ui_buffer_checkpoint(tab->ui, doc));
         }
@@ -80,15 +126,16 @@ static void free_checkpoint_tab(scene_document_tab *tab)
     free(tab->key);
     free(tab->label);
     free(tab->path);
-    free(tab->scene_json);
-    free(tab->scene_history);
+    av_value_free(tab->scene_value);
+    av_value_free(tab->scene_history);
     afree(tab->scene_entities);
     afree(tab->scene_actor_ids);
     free(tab->selected_prototype_name);
-    free(tab->asset_saved);
-    free(tab->system_json);
-    free(tab->system_saved);
+    av_value_free(tab->asset_saved);
+    av_value_free(tab->system_value);
+    av_value_free(tab->system_saved);
     ui_buffer_free(tab->ui);
+    av_value_free(tab->source_state);
 }
 
 static bool restore_next_scene_key(app_scene_authoring *scene, yyjson_val *root)
@@ -174,17 +221,19 @@ static bool restore_tabs(app_scene_authoring *scene, yyjson_val *root)
             .key = xstrdup(key),
             .label = xstrdup(label),
             .path = checkpoint_copy_text(item, "path"),
-            .scene_json = checkpoint_copy_text(item, "scene"),
-            .scene_history = checkpoint_copy_text(item, "history"),
+            .scene_value = checkpoint_native_value(item, "scene"),
+            .scene_history = checkpoint_native_value(item, "history"),
             .selected_entity = yyjson_get_uint(yyjson_obj_get(item, "selected_entity")),
             .camera_saved = yyjson_get_bool(yyjson_obj_get(item, "camera_saved")),
             .scene_dirty = yyjson_get_bool(yyjson_obj_get(item, "dirty")),
             .selected = yyjson_get_int(yyjson_obj_get(item, "selected")),
             .selected_prototype = yyjson_get_int(yyjson_obj_get(item, "selected_prototype")),
             .selected_prototype_name = checkpoint_copy_text(item, "selected_prototype_name"),
-            .system_json = checkpoint_copy_text(item, "system"),
-            .system_saved = checkpoint_copy_text(item, "system_saved"),
-            .asset_saved = checkpoint_copy_text(item, "asset_saved"),
+            .system_value = checkpoint_native_value(item, "system"),
+            .system_saved = checkpoint_native_value(item, "system_saved"),
+            .asset_saved = checkpoint_native_value(item, "asset_saved"),
+            .source_state = checkpoint_native_value(item, "source"),
+            .source_dirty = yyjson_get_bool(yyjson_obj_get(item, "source_dirty")),
             .ui = kind == APP_EDITOR_DOCUMENT_UI
                     ? ui_buffer_restore(yyjson_obj_get(item, "ui"))
                     : NULL,
@@ -241,6 +290,14 @@ static bool restore_tabs(app_scene_authoring *scene, yyjson_val *root)
     }
     scene_tabs_free(scene);
     scene->tabs = candidate;
+    for (int i = 0; i < acount(scene->tabs); i++) {
+        const scene_document_tab *tab = &scene->tabs[i];
+        const char *valid = av_get_str(av_obj_get(tab->source_state, "valid"));
+        if (tab->path && valid &&
+            av_get_bool(av_obj_get(tab->source_state, "overlay"))) {
+            text_overlay_set(tab->path, valid);
+        }
+    }
     scene->active_tab = active;
     free(scene->current_scene_tab_key);
     scene->current_scene_tab_key = NULL;
@@ -279,7 +336,9 @@ char *app_scene_authoring_checkpoint(app_scene_authoring *scene)
     yyjson_mut_obj_add_int(doc, root, "version", 1);
     checkpoint_text(doc, root, "content", scene->content_root);
     checkpoint_text(doc, root, "path", scene->scene_path);
-    owned_text(doc, root, "scene", scene_authoring_scene_json(scene));
+    av_value *scene_value = scene_authoring_scene_value(scene);
+    yyjson_mut_obj_add_val(doc, root, "scene", av_to_json(doc, scene_value));
+    av_value_free(scene_value);
     yyjson_mut_obj_add_bool(doc, root, "dirty", scene->scene_dirty);
     yyjson_mut_obj_add_val(
         doc,
@@ -351,8 +410,12 @@ char *app_scene_authoring_checkpoint(app_scene_authoring *scene)
         const game_prototype *state = scene->runtime_snapshot_valid
                                         ? source->runtime_snapshot
                                         : captured;
-        owned_text(doc, actor, "state", state ? game_prototype_save(state) : NULL);
-        owned_text(doc, actor, "base", game_prototype_save(source->base));
+        av_value *state_value = state ? game_prototype_to_value(state) : NULL;
+        av_value *base_value = game_prototype_to_value(source->base);
+        yyjson_mut_obj_add_val(doc, actor, "state", av_to_json(doc, state_value));
+        yyjson_mut_obj_add_val(doc, actor, "base", av_to_json(doc, base_value));
+        av_value_free(state_value);
+        av_value_free(base_value);
         game_prototype_free(captured);
     }
     yyjson_mut_val *prototypes = yyjson_mut_obj_add_arr(doc, root, "prototypes");
@@ -362,8 +425,8 @@ char *app_scene_authoring_checkpoint(app_scene_authoring *scene)
         checkpoint_text(doc, item, "path", asset->path);
         owned_text(doc, item, "json", game_prototype_save(asset->prototype));
         yyjson_mut_obj_add_bool(doc, item, "dirty", asset->dirty);
-        yyjson_mut_obj_add_val(doc, item, "undo", checkpoint_strings(doc, asset->undo));
-        yyjson_mut_obj_add_val(doc, item, "redo", checkpoint_strings(doc, asset->redo));
+        yyjson_mut_obj_add_val(doc, item, "undo", checkpoint_values(doc, asset->undo));
+        yyjson_mut_obj_add_val(doc, item, "redo", checkpoint_values(doc, asset->redo));
         yyjson_mut_obj_add_val(
             doc,
             item,
@@ -378,8 +441,8 @@ char *app_scene_authoring_checkpoint(app_scene_authoring *scene)
         yyjson_mut_val *item = yyjson_mut_arr_add_obj(doc, behaviors);
         checkpoint_text(doc, item, "name", definition->name);
         checkpoint_text(doc, item, "path", definition->path);
-        owned_text(doc, item, "working", behavior_asset_save_json(definition->working));
-        owned_text(doc, item, "applied", behavior_asset_save_json(definition->applied));
+        owned_text(doc, item, "working", behavior_asset_save(definition->working));
+        owned_text(doc, item, "applied", behavior_asset_save(definition->applied));
         yyjson_mut_obj_add_bool(doc, item, "dirty", definition->dirty);
         yyjson_mut_obj_add_bool(doc, item, "unsaved", definition->unsaved);
     }
@@ -427,7 +490,7 @@ static bool restore_behaviors(app_scene_authoring *scene, yyjson_val *behaviors)
             if (!name || !applied_json || !working_json) {
                 return false;
             }
-            behavior_asset *applied = behavior_asset_load_json(applied_json);
+            behavior_asset *applied = behavior_asset_load(applied_json);
             if (!applied) {
                 return false;
             }
@@ -442,7 +505,7 @@ static bool restore_behaviors(app_scene_authoring *scene, yyjson_val *behaviors)
                 behavior_asset_free(applied);
                 continue;
             }
-            behavior_asset *working = behavior_asset_load_json(working_json);
+            behavior_asset *working = behavior_asset_load(working_json);
             game_live_definition *definition = working
                                                  ? game_live_definition_new(name, applied)
                                                  : NULL;
@@ -480,8 +543,7 @@ static bool restore_prototypes(app_scene_authoring *scene, yyjson_val *prototype
         scene_prototype_asset *asset = &scene->prototypes[i];
         free(asset->path);
         game_prototype_free(asset->prototype);
-        checkpoint_free_strings(asset->undo);
-        checkpoint_free_strings(asset->redo);
+        clear_prototype_history(asset);
     }
     aclear(scene->prototypes);
     scene->selected_prototype = -1;
@@ -500,8 +562,8 @@ static bool restore_prototypes(app_scene_authoring *scene, yyjson_val *prototype
         scene_prototype_asset *asset = &alast(scene->prototypes);
         asset->dirty = yyjson_get_bool(yyjson_obj_get(item, "dirty"));
         asset->camera.saved = yyjson_get_bool(yyjson_obj_get(item, "camera_saved"));
-        if (!checkpoint_read_strings(yyjson_obj_get(item, "undo"), &asset->undo) ||
-            !checkpoint_read_strings(yyjson_obj_get(item, "redo"), &asset->redo) ||
+        if (!checkpoint_read_values(yyjson_obj_get(item, "undo"), &asset->undo) ||
+            !checkpoint_read_values(yyjson_obj_get(item, "redo"), &asset->redo) ||
             !checkpoint_read_camera(
                 yyjson_obj_get(item, "camera"),
                 &asset->camera.view
@@ -536,9 +598,11 @@ static bool restore_system(app_scene_authoring *scene, yyjson_val *root)
 
 static bool restore_scene(app_scene_authoring *scene, yyjson_val *root, yyjson_val *actors)
 {
-    const char *json = yyjson_get_str(yyjson_obj_get(root, "scene"));
+    av_doc *source = av_doc_new();
+    av_value *scene_value = av_from_json(source, yyjson_obj_get(root, "scene"));
     char error[256];
-    game_scene_document *document = game_scene_document_load(json, error, sizeof error);
+    game_scene_document *document = game_scene_document_load_value(scene_value, error, sizeof error);
+    av_doc_free(source);
     if (!document) {
         return false;
     }
@@ -549,35 +613,38 @@ static bool restore_scene(app_scene_authoring *scene, yyjson_val *root, yyjson_v
     }
     for (int i = 0; i < acount(document->entities); i++) {
         yyjson_val *actor = yyjson_arr_get(actors, i);
-        const char *state_json = yyjson_get_str(yyjson_obj_get(actor, "state"));
-        const char *base_json = yyjson_get_str(yyjson_obj_get(actor, "base"));
+        av_doc *native = av_doc_new();
+        av_value *state_value = av_from_json(native, yyjson_obj_get(actor, "state"));
+        av_value *base_value = av_from_json(native, yyjson_obj_get(actor, "base"));
         scene_prototype_asset
             *prototype = find_prototype(scene, document->entities[i].prototype);
-        if (!state_json || !base_json || !prototype) {
+        if (!av_is_obj(state_value) || !av_is_obj(base_value) || !prototype) {
+            av_doc_free(native);
             goto done;
         }
-        game_prototype *state = game_prototype_load(state_json, &scene->registry, error, sizeof error);
-        game_prototype *base = game_prototype_load(base_json, &scene->registry, error, sizeof error);
+        game_prototype *state = game_prototype_load_value(state_value, &scene->registry, error, sizeof error);
+        game_prototype *base = game_prototype_load_value(base_value, &scene->registry, error, sizeof error);
+        av_doc_free(native);
         apush(bases, base);
-        char *overrides = state
-                            ? game_prototype_overrides_json(prototype->prototype, state)
-                            : NULL;
+        av_value *overrides = state
+                                ? game_prototype_overrides_value(prototype->prototype, state)
+                                : NULL;
         game_prototype_free(state);
         bool valid = base && overrides &&
                      game_scene_document_set_entity_components(document, i, overrides) ==
                          0;
-        free(overrides);
+        av_value_free(overrides);
         if (!valid) {
             goto done;
         }
     }
-    char *rebased = game_scene_document_save(document);
-    restored = rebased && scene_authoring_load_json(
+    av_value *rebased = game_scene_document_to_value(document);
+    restored = rebased && scene_authoring_load_value(
                               scene,
                               rebased,
                               yyjson_get_str(yyjson_obj_get(root, "path"))
                           ) == 0;
-    free(rebased);
+    av_value_free(rebased);
     if (restored) {
         for (int i = 0; i < acount(bases); i++) {
             game_prototype_free(scene->actors[i].base);
@@ -633,20 +700,21 @@ int app_scene_authoring_restore_checkpoint(app_scene_authoring *scene, const cha
                *behaviors = yyjson_obj_get(root, "behaviors"),
                *actors = yyjson_obj_get(root, "actors");
     int kind = yyjson_get_int(yyjson_obj_get(root, "document_kind"));
-    const char *scene_json = yyjson_get_str(yyjson_obj_get(root, "scene"));
+    yyjson_val *scene_value = yyjson_obj_get(root, "scene");
     const char *document = yyjson_get_str(yyjson_obj_get(root, "document"));
     const char *content = yyjson_get_str(yyjson_obj_get(root, "content"));
     uint64_t *before = NULL, *after = NULL, *identities = NULL;
     int result = -1;
-    if (yyjson_get_int(yyjson_obj_get(root, "version")) != 1 || !scene_json ||
-        !document || !content || kind < APP_EDITOR_DOCUMENT_SCENE ||
-        kind > APP_EDITOR_DOCUMENT_UI || !yyjson_is_arr(prototypes) ||
-        !yyjson_is_arr(behaviors) || !yyjson_is_arr(actors)) {
+    if (yyjson_get_int(yyjson_obj_get(root, "version")) != 1 ||
+        !yyjson_is_obj(scene_value) || !document || !content ||
+        kind < APP_EDITOR_DOCUMENT_SCENE || kind > APP_EDITOR_DOCUMENT_UI ||
+        !yyjson_is_arr(prototypes) || !yyjson_is_arr(behaviors) ||
+        !yyjson_is_arr(actors)) {
         goto done;
     }
     /* Candidate-only mutation. The host retains the old module and world until
      * the entire workspace, including graph history, has passed restoration. */
-    if (scene_authoring_load_json(scene, "{\"version\":1,\"name\":\"Checkpoint\",\"entities\":[]}", NULL) !=
+    if (scene_authoring_load_text(scene, "version 1\nname Checkpoint\n(array)entities\n", NULL) !=
             0 ||
         !restore_behaviors(scene, behaviors) || !restore_prototypes(scene, prototypes) ||
         !restore_system(scene, root) || !restore_scene(scene, root, actors) ||

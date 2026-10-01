@@ -55,7 +55,7 @@ class PackagingFailureTests(unittest.TestCase):
             self.assertEqual(manifest['files'], actual)
             for name in ('chibi', 'chibi_ctl', 'chibi-mcp'):
                 self.assertTrue(os.access(output / 'bin' / name, os.X_OK))
-            self.assertTrue((output / 'share/chibi/studio/project.yaml').is_file())
+            self.assertTrue((output / 'share/chibi/studio/project.kdl').is_file())
             self.assertTrue((output / 'share/chibi/mcp/server.mjs').is_file())
             self.assertFalse((output / 'share/chibi/licenses/ANCESTOR').exists())
             self.assertFalse((output / 'share/chibi/licenses/REPOSITORY').exists())
@@ -182,8 +182,8 @@ class StandalonePackageTests(unittest.TestCase):
             executable.chmod(0o755)
         self.env['PATH'] = str(blockers) + os.pathsep + self.env.get('PATH', '')
         self.env['CHIBI_TEST_REBUILD_MARKER'] = str(self.rebuild_marker)
-        self.project.joinpath('project.yaml').write_text(
-            f'version: {self.metadata["project_version"]}\nname: Standalone Test\ncontent: content\n')
+        self.project.joinpath('project.kdl').write_text(
+            f'version {self.metadata["project_version"]}\nname "Standalone Test"\ncontent "content"\n')
         config = self.project / '.codex/config.toml'
         config.parent.mkdir()
         retained = '[agents.default]\nmodel = "existing-model"\n\n[mcp_servers.other]\ncommand = "existing-command"\n'
@@ -197,8 +197,8 @@ class StandalonePackageTests(unittest.TestCase):
         self.assertFalse(self.rebuild_marker.exists())
         prototypes = self.project / 'content/prototypes'
         prototypes.mkdir(parents=True)
-        prototypes.joinpath('PackageProbe.yaml').write_text(
-            'name: PackageProbe\ncomponents:\n  GAME.GameTransform: {x: 12.0, y: -8.0}\n')
+        prototypes.joinpath('PackageProbe.kdl').write_text(
+            'name "PackageProbe"\ncomponents {\n    GAME.GameTransform x=12.0 y=-8.0\n}\n')
 
     def mcp(self, name, arguments):
         request = {'jsonrpc': '2.0', 'id': 1, 'method': 'tools/call',

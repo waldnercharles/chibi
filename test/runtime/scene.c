@@ -1,15 +1,15 @@
+#include "test/asset_fixture.h"
 #include "test/suite_internal.h"
 
-static const char
-    *g_prototype_base_json = "{\"name\":\"BaseEnemy\",\"components\":{"
-                             "\"GameHealth\":{\"current\":50,\"maximum\":50},"
-                             "\"GameTransform\":{\"x\":1,\"y\":2}},"
-                             "\"behaviors\":[\"idle.graph\"]}";
+static const char *
+    g_prototype_base_json = "name \"BaseEnemy\"; components { GameHealth { "
+                            "current 50; maximum 50; }; GameTransform { x 1; y "
+                            "2; }; }; (array)behaviors { - \"idle.graph\"; }; ";
 static int g_prototype_attach_count;
 static const char
-    *g_cycle_a = "{\"name\":\"CycleA\",\"includes\":[\"CycleB\"]}";
+    *g_cycle_a = "name \"CycleA\"; (array)includes { - \"CycleB\"; }; ";
 static const char
-    *g_cycle_b = "{\"name\":\"CycleB\",\"includes\":[\"CycleA\"]}";
+    *g_cycle_b = "name \"CycleB\"; (array)includes { - \"CycleA\"; }; ";
 
 static const char *prototype_include(const char *name, void *user)
 {
@@ -41,16 +41,15 @@ static int prototype_attach(ecs_world *world, ecs_entity entity, const char *gra
 void run_prototype_checks(void)
 {
     static const char
-        *derived_json = "{\"name\":\"Enemy\",\"identity\":\"enemy-id\","
-                        "\"includes\":[\"BaseEnemy\"],"
-                        "\"components\":{\"GameHealth\":{\"current\":100}},"
-                        "\"behaviors\":[\"attack.graph\"]}";
-    static const char
-        *reordered_json = "{\"behaviors\":[\"attack.graph\",\"idle.graph\"],"
-                          "\"identity\":\"enemy-id\","
-                          "\"components\":{\"GameTransform\":{\"y\":2,\"x\":1},"
-                          "\"GameHealth\":{\"maximum\":50,\"current\":100}},"
-                          "\"name\":\"Enemy\"}";
+        *derived_json = "name \"Enemy\"; identity \"enemy-id\"; "
+                        "(array)includes { - \"BaseEnemy\"; }; components { "
+                        "GameHealth { current 100; }; }; (array)behaviors { - "
+                        "\"attack.graph\"; }; ";
+    static const char *
+        reordered_json = "(array)behaviors { - \"attack.graph\"; - "
+                         "\"idle.graph\"; }; identity \"enemy-id\"; components "
+                         "{ GameTransform { y 2; x 1; }; GameHealth { maximum "
+                         "50; current 100; }; }; name \"Enemy\"; ";
     const game_prototype_registry registry = {
         GAME_REGISTRY_COMPONENTS,
         GAME_REGISTRY_COMPONENT_COUNT,
@@ -86,8 +85,8 @@ void run_prototype_checks(void)
         saved && strstr(saved, "GameTransform") && strstr(saved, "GameHealth"),
         "prototype output contains generic component values"
     );
-    game_prototype *plain = game_prototype_load("{\"name\":\"Plain\"}", &registry, error, sizeof error);
-    game_prototype *other = game_prototype_load("{\"name\":\"Other\"}", &registry, error, sizeof error);
+    game_prototype *plain = game_prototype_load("name \"Plain\"; ", &registry, error, sizeof error);
+    game_prototype *other = game_prototype_load("name \"Other\"; ", &registry, error, sizeof error);
     char *saved_plain = plain ? game_prototype_save(plain) : NULL;
     test_check(
         plain && other &&
@@ -177,39 +176,37 @@ void run_prototype_checks(void)
     );
     game_prototype *base = game_prototype_clone(prototype, error, sizeof error);
     GAME_GameHealth_get(world, entity)->current = 7;
-    char *overrides = game_prototype_capture_overrides_json(base, world, entity);
+    av_value *overrides = game_prototype_capture_overrides_value(base, world, entity);
     test_check(
-        base && overrides && strstr(overrides, "\"current\": 7") &&
-            !strstr(overrides, "\"maximum\""),
+        base && overrides &&
+            av_get_int(av_obj_get(av_obj_get(overrides, "GAME.GameHealth"), "current")) == 7 &&
+            !av_obj_get(av_obj_get(overrides, "GAME.GameHealth"), "maximum"),
         "instance capture stores sparse field overrides"
     );
+    av_value *sparse = test_read_asset_value("GameHealth { current 7; }; ");
     ecs_entity override_entity = { 0 };
     test_check(
         base &&
             game_prototype_spawn(base, world, &hooks, &override_entity, error, sizeof error) ==
                 ECS_OK &&
-            game_prototype_apply_components_json(
-                world,
-                override_entity,
-                "{\"GameHealth\":{\"current\":7}}",
-                &registry,
-                error,
-                sizeof error
-            ) == 0 &&
+            game_prototype_apply_components_value(world, override_entity, sparse, &registry, error, sizeof error) ==
+                0 &&
             GAME_GameHealth_get(world, override_entity)->current == 7 &&
             GAME_GameHealth_get(world, override_entity)->maximum == 50,
         "sparse field overrides apply without zeroing sibling fields"
     );
+    av_value_free(sparse);
     GAME_GameHealth_get(world, entity)->current = 100;
-    free(overrides);
+    av_value_free(overrides);
     game_prototype_free(base);
     game_prototype *captured = game_prototype_capture_entity("CapturedEnemy", world, entity, &registry);
-    char *captured_components = game_prototype_components_json(captured);
+    av_value *captured_components = game_prototype_components_value(captured);
     test_check(
-        captured && captured_components && strstr(captured_components, "GameHealth"),
+        captured && captured_components &&
+            av_obj_get(captured_components, "GAME.GameHealth"),
         "a live entity can be captured through the generic prototype registry"
     );
-    free(captured_components);
+    av_value_free(captured_components);
     game_prototype_free(captured);
     game_prototype_free(prototype);
     GameHealth *spawned_health = GAME_GameHealth_get(world, entity);
@@ -281,21 +278,38 @@ void run_scene_document_checks(void)
                 0,
         "a scene entity stores its prototype and behavior assets"
     );
+    av_value *component_values = test_read_asset_value("GameHealth { current 7; maximum 9; }; ");
     test_check(
-        game_scene_document_set_entity_components(document, 0, "{\"GameHealth\":{\"current\":7,\"maximum\":9}}") ==
-                0 &&
-            strstr(document->entities[0].components_json, "GameHealth"),
+        game_scene_document_set_entity_components(document, 0, component_values) == 0 &&
+            av_obj_get(document->entities[0].components, "GameHealth"),
         "a scene entity stores generic component overrides"
     );
+    av_value_free(component_values);
+    component_values = test_read_asset_value("GameAppearance shape=0; ");
+    assert(game_scene_document_set_entity_components(document, 0, component_values) == 0);
+    char *enum_text = game_scene_document_save(document);
+    char enum_error[256];
+    av_doc *enum_saved = av_doc_read(enum_text, enum_error, sizeof enum_error);
+    av_value *enum_entity = enum_saved
+                              ? av_arr_get(av_obj_get(av_doc_root(enum_saved), "entities"), 0)
+                              : NULL;
+    av_value *enum_component = av_obj_get(av_obj_get(enum_entity, "components"), "GameAppearance");
     test_check(
-        game_scene_document_set_entity_components(
-            document,
-            0,
-            "{\"GameHealth\":{\"current\":7,\"maximum\":9},"
-            "\"GameAppearance\":{\"shape\":4294967296}}"
-        ) == 0,
+        enum_saved && av_is_str(av_obj_get(enum_component, "shape")) &&
+            av_get_int(av_obj_get(av_obj_get(component_values, "GameAppearance"), "shape")) ==
+                0,
+        "scene enum overrides save as named choices without changing the "
+        "caller's numeric value"
+    );
+    av_doc_free(enum_saved);
+    free(enum_text);
+    av_value_free(component_values);
+    component_values = test_read_asset_value("GameHealth { current 7; maximum 9; }; GameAppearance { shape 4294967296; }; ");
+    test_check(
+        game_scene_document_set_entity_components(document, 0, component_values) == 0,
         "scene overrides accept numeric component data for serialization"
     );
+    av_value_free(component_values);
     document->physics = (game_physics_settings){ .workers = 8,
                                                  .substeps = 2,
                                                  .sleep = false,
@@ -312,7 +326,7 @@ void run_scene_document_checks(void)
         "scene physics settings round-trip"
     );
     game_scene_document *minimal = game_scene_document_load(
-        "{\"version\":1,\"name\":\"Minimal\",\"entities\":[]}",
+        "version 1; name \"Minimal\"; (array)entities { }; ",
         error,
         sizeof error
     );
@@ -322,13 +336,17 @@ void run_scene_document_checks(void)
         "an omitted physics object uses defaults"
     );
     game_scene_document_free(minimal);
-    const char *invalid_physics[] = {
-        "{\"substeps\":0}",         "{\"substeps\":1.5}", "{\"workers\":33}",
-        "{\"contact_damping\":-1}", "{\"sleep\":0}",      "{\"unknown\":true}"
-    };
+    const char *invalid_physics[] = { "substeps 0; ", "substeps 1.5; ",
+                                      "workers 33; ", "contact_damping -1; ",
+                                      "sleep 0; ",    "unknown #true; " };
     for (int i = 0; i < 6; i++) {
         char json[256];
-        snprintf(json, sizeof json, "{\"version\":1,\"name\":\"Invalid\",\"entities\":[],\"physics\":%s}", invalid_physics[i]);
+        snprintf(
+            json,
+            sizeof json,
+            "version 1; name \"Invalid\"; (array)entities; physics { %s }; ",
+            invalid_physics[i]
+        );
         game_scene_document *bad = game_scene_document_load(json, error, sizeof error);
         test_check(!bad && strstr(error, "physics"), "malformed physics settings are rejected");
         game_scene_document_free(bad);
@@ -337,7 +355,7 @@ void run_scene_document_checks(void)
         loaded && acount(loaded->entities) == 1 &&
             strcmp(loaded->entities[0].name, "Player") == 0 &&
             strcmp(loaded->entities[0].prototype, "PlayerPrototype") == 0 &&
-            strstr(loaded->entities[0].components_json, "GameHealth") &&
+            av_obj_get(loaded->entities[0].components, "GameHealth") &&
             acount(loaded->entities[0].behaviors) == 2 &&
             strcmp(loaded->entities[0].behaviors[1], "Damage") == 0,
         "scene documents round-trip behavior attachment names and "
@@ -352,7 +370,7 @@ void run_scene_document_checks(void)
         "duplicate scene entity names are rejected"
     );
     game_scene_document *invalid = game_scene_document_load(
-        "{\"version\":2,\"name\":\"Bad\",\"entities\":[]}",
+        "version 2; name \"Bad\"; (array)entities { }; ",
         error,
         sizeof error
     );

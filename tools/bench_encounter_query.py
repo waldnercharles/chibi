@@ -42,7 +42,7 @@ def main():
         cache = (binaries['after'].parent / 'CMakeCache.txt').read_text()
         args.compiler = re.search(r'^CMAKE_C_COMPILER:[^=]+=(.+)$', cache, re.M).group(1)
     paths = dict(binaries)
-    paths.update({v + '_asset': p / 'content/behaviors/ArenaWaveBehavior.yaml' for v, p in roots.items()})
+    paths.update({v + '_asset': p / 'content/behaviors/ArenaWaveBehavior.kdl' for v, p in roots.items()})
     hashes = {name: digest(path) for name, path in paths.items()}
     env = dict(os.environ, MallocNanoZone='0')
     samples = []

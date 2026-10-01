@@ -498,8 +498,10 @@ static const char *build_graph(
     uint64_t *call_id
 )
 {
-    char *json = graph_save_nodes_json(source, ordered, count);
-    if (!json) {
+    av_doc *document = av_doc_new();
+    av_value *selection = graph_nodes_to_value(document, source, ordered, count);
+    if (!selection) {
+        av_doc_free(document);
         return "Could not copy the selected calculations.";
     }
     bool exec = executable(ordered, count);
@@ -507,11 +509,11 @@ static const char *build_graph(
                         ? behavior_asset_add_macro(asset, name)
                         : behavior_asset_add_function(asset, name, !exec);
     if (!function) {
-        free(json);
+        av_doc_free(document);
         return "Could not create the graph.";
     }
-    int appended = graph_append_json(function, json, 0, 0);
-    free(json);
+    int appended = graph_append_value(function, selection, 0, 0);
+    av_doc_free(document);
     if (appended < 0 || acount(function->nodes) != count + 2) {
         return "Could not copy the selected calculations.";
     }
@@ -890,9 +892,7 @@ static const char *extract(
         free(expanded);
         return "A graph with that name already exists.";
     }
-    char *json = behavior_asset_save_json(asset);
-    behavior_asset *copy = json ? behavior_asset_load_json(json) : NULL;
-    free(json);
+    behavior_asset *copy = behavior_asset_clone(asset);
     if (!copy) {
         free(expanded);
         return "Could not copy the behavior asset.";

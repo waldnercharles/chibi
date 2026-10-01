@@ -21,14 +21,14 @@ static bool fail(char *error, size_t error_size, const char *message)
     return false;
 }
 
-static bool read_vector(yyjson_val *value, float limit, CF_V2 *out)
+static bool read_vector(av_value *value, float limit, CF_V2 *out)
 {
-    yyjson_val *x = yyjson_obj_get(value, "x"), *y = yyjson_obj_get(value, "y");
-    if (!yyjson_is_obj(value) || yyjson_obj_size(value) != 2 ||
-        !yyjson_is_num(x) || !yyjson_is_num(y)) {
+    av_value *x = av_obj_get(value, "x"), *y = av_obj_get(value, "y");
+    if (!av_is_obj(value) || av_obj_size(value) != 2 || !av_is_num(x) ||
+        !av_is_num(y)) {
         return false;
     }
-    double vx = yyjson_get_num(x), vy = yyjson_get_num(y);
+    double vx = av_get_num(x), vy = av_get_num(y);
     if (!isfinite(vx) || !isfinite(vy) || fabs(vx) > limit || fabs(vy) > limit) {
         return false;
     }
@@ -36,18 +36,18 @@ static bool read_vector(yyjson_val *value, float limit, CF_V2 *out)
     return true;
 }
 
-static bool read_controls(yyjson_val *value, uint64_t *out)
+static bool read_controls(av_value *value, uint64_t *out)
 {
-    if (!yyjson_is_arr(value)) {
+    if (!av_is_arr(value)) {
         return false;
     }
     size_t i, count;
-    yyjson_val *label;
-    yyjson_arr_foreach(value, i, count, label)
+    av_value *label;
+    av_arr_foreach(value, i, count, label)
     {
         int control;
-        if (!yyjson_is_str(label) ||
-            !registry_enum_value(CONTROL_ENUM, yyjson_get_str(label), &control) ||
+        if (!av_is_str(label) ||
+            !registry_enum_value(CONTROL_ENUM, av_get_str(label), &control) ||
             control <= GAME_CONTROL_NONE || control >= GAME_CONTROL_COUNT) {
             return false;
         }
@@ -56,13 +56,13 @@ static bool read_controls(yyjson_val *value, uint64_t *out)
     return true;
 }
 
-static bool read_flag(yyjson_val *value, bool *out)
+static bool read_flag(av_value *value, bool *out)
 {
-    *out = yyjson_get_bool(value);
-    return yyjson_is_bool(value);
+    *out = av_get_bool(value);
+    return av_is_bool(value);
 }
 
-static bool read_field(const char *name, yyjson_val *value, input_keyframe *out)
+static bool read_field(const char *name, av_value *value, input_keyframe *out)
 {
     if (!strcmp(name, "frame")) {
         return true;
@@ -82,21 +82,21 @@ static bool read_field(const char *name, yyjson_val *value, input_keyframe *out)
     return !strcmp(name, "controls") && read_controls(value, &out->controls);
 }
 
-static bool read_key(yyjson_val *value, int frames, input_keyframe *out, char *error, size_t error_size)
+static bool read_key(av_value *value, int frames, input_keyframe *out, char *error, size_t error_size)
 {
-    if (!yyjson_is_obj(value)) {
+    if (!av_is_obj(value)) {
         return fail(error, error_size, "each key must be a mapping");
     }
-    yyjson_val *frame = yyjson_obj_get(value, "frame");
-    if (!yyjson_is_uint(frame) || yyjson_get_uint(frame) >= (uint64_t)frames) {
+    av_value *frame = av_obj_get(value, "frame");
+    if (!av_is_uint(frame) || av_get_uint(frame) >= (uint64_t)frames) {
         return fail(error, error_size, "each key needs a frame below the scenario's frames");
     }
-    *out = (input_keyframe){ .step = (int)yyjson_get_uint(frame) };
+    *out = (input_keyframe){ .step = (int)av_get_uint(frame) };
     size_t i, count;
-    yyjson_val *name, *field;
-    yyjson_obj_foreach(value, i, count, name, field)
+    av_value *name, *field;
+    av_obj_foreach(value, i, count, name, field)
     {
-        if (!read_field(yyjson_get_str(name), field, out)) {
+        if (!read_field(av_get_str(name), field, out)) {
             snprintf(
                 error,
                 error_size,
@@ -104,7 +104,7 @@ static bool read_key(yyjson_val *value, int frames, input_keyframe *out, char *e
                 "aim is finite, "
                 "aim_point and firing are booleans, controls are GameControl "
                 "labels",
-                yyjson_get_str(name)
+                av_get_str(name)
             );
             return false;
         }
@@ -112,40 +112,40 @@ static bool read_key(yyjson_val *value, int frames, input_keyframe *out, char *e
     return true;
 }
 
-static bool read_document(yyjson_val *root, scenario_document *out, char *error, size_t error_size)
+static bool read_document(av_value *root, scenario_document *out, char *error, size_t error_size)
 {
-    yyjson_val *scene = yyjson_obj_get(root, "scene");
-    yyjson_val *frames = yyjson_obj_get(root, "frames");
-    yyjson_val *seed = yyjson_obj_get(root, "seed");
-    yyjson_val *saved_state = yyjson_obj_get(root, "saved_state");
-    yyjson_val *keys = yyjson_obj_get(root, "keys");
-    if (!yyjson_is_obj(root) ||
-        yyjson_obj_size(root) != 3 + (seed != NULL) + (saved_state != NULL)) {
+    av_value *scene = av_obj_get(root, "scene");
+    av_value *frames = av_obj_get(root, "frames");
+    av_value *seed = av_obj_get(root, "seed");
+    av_value *saved_state = av_obj_get(root, "saved_state");
+    av_value *keys = av_obj_get(root, "keys");
+    if (!av_is_obj(root) ||
+        av_obj_size(root) != 3 + (seed != NULL) + (saved_state != NULL)) {
         return fail(error, error_size, "a scenario has scene, frames and keys, and may have a seed and saved_state");
     }
-    if (!yyjson_is_str(scene) || !yyjson_get_len(scene)) {
+    if (!av_is_str(scene) || !av_get_len(scene)) {
         return fail(error, error_size, "scene must name a scene");
     }
-    if (!yyjson_is_uint(frames) || !yyjson_get_uint(frames) ||
-        yyjson_get_uint(frames) > SCENARIO_FRAMES_MAX) {
+    if (!av_is_uint(frames) || !av_get_uint(frames) ||
+        av_get_uint(frames) > SCENARIO_FRAMES_MAX) {
         return fail(error, error_size, "frames must be between 1 and 108000");
     }
-    if (seed && (!yyjson_is_uint(seed) || yyjson_get_uint(seed) > UINT32_MAX)) {
+    if (seed && (!av_is_uint(seed) || av_get_uint(seed) > UINT32_MAX)) {
         return fail(error, error_size, "seed must be an unsigned 32-bit integer");
     }
-    if (saved_state && !yyjson_is_obj(saved_state)) {
+    if (saved_state && !av_is_obj(saved_state)) {
         return fail(error, error_size, "saved_state must be a mapping of committed save values");
     }
-    if (!yyjson_is_arr(keys)) {
+    if (!av_is_arr(keys)) {
         return fail(error, error_size, "keys must be a list");
     }
-    out->scene = xstrdup(yyjson_get_str(scene));
-    out->frames = (int)yyjson_get_uint(frames);
-    out->seed = seed ? (unsigned)yyjson_get_uint(seed) : 0;
-    out->saved_state = saved_state ? yyjson_val_write(saved_state, 0, NULL) : NULL;
+    out->scene = xstrdup(av_get_str(scene));
+    out->frames = (int)av_get_uint(frames);
+    out->seed = seed ? (unsigned)av_get_uint(seed) : 0;
+    out->saved_state = saved_state ? av_value_copy(saved_state) : NULL;
     size_t i, count;
-    yyjson_val *value;
-    yyjson_arr_foreach(keys, i, count, value)
+    av_value *value;
+    av_arr_foreach(keys, i, count, value)
     {
         input_keyframe key;
         if (!read_key(value, out->frames, &key, error, error_size)) {
@@ -166,15 +166,15 @@ static bool read_document(yyjson_val *root, scenario_document *out, char *error,
     return true;
 }
 
-scenario_document *scenario_document_load(const char *json, char *error, size_t error_size)
+scenario_document *scenario_document_load(const char *text, char *error, size_t error_size)
 {
-    yyjson_doc *doc = asset_text_read(json, error, error_size);
+    av_doc *doc = av_doc_read(text, error, error_size);
     if (!doc) {
         return NULL;
     }
     scenario_document *document = xcalloc(1, sizeof *document);
-    bool ok = read_document(yyjson_doc_get_root(doc), document, error, error_size);
-    yyjson_doc_free(doc);
+    bool ok = read_document(av_doc_root(doc), document, error, error_size);
+    av_doc_free(doc);
     if (!ok) {
         scenario_document_free(document);
         return NULL;
@@ -182,69 +182,59 @@ scenario_document *scenario_document_load(const char *json, char *error, size_t 
     return document;
 }
 
-static void write_vector(yyjson_mut_doc *doc, yyjson_mut_val *object, const char *name, CF_V2 value)
+static void write_vector(av_doc *doc, av_value *object, const char *name, CF_V2 value)
 {
     if (value.x == 0 && value.y == 0) {
         return;
     }
-    yyjson_mut_val *vector = yyjson_mut_obj_add_obj(doc, object, name);
-    yyjson_mut_obj_add_val(doc, vector, "x", yyjson_mut_float(doc, value.x));
-    yyjson_mut_obj_add_val(doc, vector, "y", yyjson_mut_float(doc, value.y));
+    av_value *vector = av_obj_add_obj(doc, object, name);
+    av_obj_add_val(doc, vector, "x", av_float(doc, value.x));
+    av_obj_add_val(doc, vector, "y", av_float(doc, value.y));
 }
 
-static void write_key(yyjson_mut_doc *doc, yyjson_mut_val *keys, const input_keyframe *key)
+static void write_key(av_doc *doc, av_value *keys, const input_keyframe *key)
 {
-    yyjson_mut_val *value = yyjson_mut_arr_add_obj(doc, keys);
-    yyjson_mut_obj_add_int(doc, value, "frame", key->step);
+    av_value *value = av_arr_add_obj(doc, keys);
+    av_obj_add_int(doc, value, "frame", key->step);
     write_vector(doc, value, "movement", key->movement);
     write_vector(doc, value, "aim", key->aim);
     if (key->aim_point) {
-        yyjson_mut_obj_add_bool(doc, value, "aim_point", true);
+        av_obj_add_bool(doc, value, "aim_point", true);
     }
     if (key->firing) {
-        yyjson_mut_obj_add_bool(doc, value, "firing", true);
+        av_obj_add_bool(doc, value, "firing", true);
     }
     if (!key->controls) {
         return;
     }
-    yyjson_mut_val *controls = yyjson_mut_obj_add_arr(doc, value, "controls");
+    av_value *controls = av_obj_add_arr(doc, value, "controls");
     for (int control = GAME_CONTROL_NONE + 1; control < GAME_CONTROL_COUNT; control++) {
         if (key->controls & (UINT64_C(1) << control)) {
-            yyjson_mut_arr_add_str(doc, controls, registry_enum_label(CONTROL_ENUM, control));
+            av_arr_add_str(doc, controls, registry_enum_label(CONTROL_ENUM, control));
         }
     }
 }
 
 char *scenario_document_save(const scenario_document *document)
 {
-    yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
-    yyjson_mut_val *root = yyjson_mut_obj(doc);
-    yyjson_mut_doc_set_root(doc, root);
-    yyjson_mut_obj_add_str(doc, root, "scene", document->scene);
-    yyjson_mut_obj_add_int(doc, root, "frames", document->frames);
+    av_doc *doc = av_doc_new();
+    av_value *root = av_obj(doc);
+    av_doc_set_root(doc, root);
+    av_obj_add_str(doc, root, "scene", document->scene);
+    av_obj_add_int(doc, root, "frames", document->frames);
     if (document->seed) {
-        yyjson_mut_obj_add_uint(doc, root, "seed", document->seed);
+        av_obj_add_uint(doc, root, "seed", document->seed);
     }
-    yyjson_doc
-        *saved_state = document->saved_state
-                         ? yyjson_read(document->saved_state, strlen(document->saved_state), 0)
-                         : NULL;
-    if (saved_state) {
-        yyjson_mut_obj_add_val(
-            doc,
-            root,
-            "saved_state",
-            yyjson_val_mut_copy(doc, yyjson_doc_get_root(saved_state))
-        );
+    if (document->saved_state) {
+        av_obj_add_val(doc, root, "saved_state", av_clone(doc, document->saved_state));
     }
-    yyjson_mut_val *keys = yyjson_mut_obj_add_arr(doc, root, "keys");
+    av_value *keys = av_obj_add_arr(doc, root, "keys");
     for (int i = 0; i < acount(document->keys); i++) {
         write_key(doc, keys, &document->keys[i]);
     }
-    char *json = yyjson_mut_write(doc, 0, NULL);
-    yyjson_mut_doc_free(doc);
-    yyjson_doc_free(saved_state);
-    return json;
+    char *text = av_doc_write(doc);
+    av_doc_free(doc);
+    return text;
 }
 
 void scenario_document_free(scenario_document *document)
@@ -253,7 +243,7 @@ void scenario_document_free(scenario_document *document)
         return;
     }
     free(document->scene);
-    free(document->saved_state);
+    av_value_free(document->saved_state);
     afree(document->keys);
     free(document);
 }

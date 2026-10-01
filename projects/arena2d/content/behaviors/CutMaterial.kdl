@@ -1,0 +1,52 @@
+version 3
+name "CutMaterial"
+id_counter 18
+owner_type "ecs.entity"
+(array)graphs {
+    - {
+        kind "event"
+        name ""
+        (array)nodes {
+            - {
+                id 1
+                type "Event"
+                x 0.0
+                y 0.0
+                reference_name "Tick"
+                outputs {
+                    DeltaSeconds id=3 type="float" kind="data"
+                }
+            }
+            - {
+                id 4
+                type "Self"
+                x 0.0
+                y 0.0
+                placed #false
+                outputs {
+                    Self type_name="ecs.entity"
+                }
+            }
+            - id=6 type="Get_GameTransform" x=0.0 y=0.0 placed=#false
+            - {
+                id 8
+                type "Damage Material"
+                x 310.0
+                y 96.0
+                inputs {
+                    Radius 24.0
+                    Energy 1.0
+                    Source id=17
+                }
+                outputs {
+                    Out id=15
+                }
+            }
+        }
+        (array)edges {
+            - from="1.Then" to="8.In"
+            - from="4.Self" to="8.Entity"
+            - from="6.Value" to="8.Point" conversion="game_transform_to_cf"
+        }
+    }
+}

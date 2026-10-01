@@ -2,6 +2,7 @@
 
 #include "assets/prototype.h"
 #include "runtime/generated.h"
+#include "test/asset_fixture.h"
 
 #include <assert.h>
 #include <stdio.h>
@@ -173,26 +174,30 @@ static void actor_history()
     assert(
         scene_history_push(history, unrelated, (GameTransform){ 50, 60 }, (GameTransform){ 70, 80 })
     );
-    char name[] = "Actor", prototype[] = "Player", base[] = "{base}",
-         state[] = "{state}";
+    char name[] = "Actor", prototype[] = "Player";
+    av_value *base = test_read_asset_value("marker \"base\"; ");
+    av_value *state = test_read_asset_value("marker \"state\"; ");
     scene_actor_edit actor = { .identity = 123,
                                .index = 2,
                                .name = name,
                                .prototype_name = prototype,
-                               .base_json = base,
-                               .state_json = state,
+                               .base = base,
+                               .state = state,
                                .created = true };
     assert(scene_history_push_actor(history, entity, &actor));
     memset(name, 'x', sizeof name - 1);
     memset(prototype, 'x', sizeof prototype - 1);
-    memset(base, 'x', sizeof base - 1);
-    memset(state, 'x', sizeof state - 1);
+    av_set_str(av_obj_get(base, "marker"), "mutated base");
+    av_set_str(av_obj_get(state, "marker"), "mutated state");
     ecs_entity observed = { 0 };
     bool present = true;
     const scene_actor_edit *peek = scene_history_peek_actor(history, false, &observed, &present);
     assert(peek && !present && peek->identity == 123 && peek->index == 2 && peek->created);
     assert(strcmp(peek->name, "Actor") == 0 && strcmp(peek->prototype_name, "Player") == 0);
-    assert(strcmp(peek->base_json, "{base}") == 0 && strcmp(peek->state_json, "{state}") == 0);
+    assert(
+        strcmp(av_get_str(av_obj_get(peek->base, "marker")), "base") == 0 &&
+        strcmp(av_get_str(av_obj_get(peek->state, "marker")), "state") == 0
+    );
     assert(ecs_entity_to_u64(observed) == ecs_entity_to_u64(entity));
     assert(scene_history_undo(history, world, NULL) == -1);
     expect_position(world, entity, (GameTransform){ 1, 2 });
@@ -212,11 +217,12 @@ static void actor_history()
     present = true;
     assert(!scene_history_peek_actor(history, false, &observed, &present));
     assert(observed.slot == 77 && observed.generation == 88 && present);
+    av_set_str(av_obj_get(state, "marker"), "deleted state");
     actor = (scene_actor_edit){ .index = 2,
                                 .name = "Actor",
                                 .prototype_name = "Player",
-                                .base_json = "{base}",
-                                .state_json = "{deleted state}" };
+                                .base = base,
+                                .state = state };
     assert(ecs_world_destroy_entity(world, entity) == ECS_OK);
     assert(ecs_world_apply_commands(world) == ECS_OK);
     assert(scene_history_push_actor(history, entity, &actor));
@@ -248,7 +254,7 @@ static void actor_history()
     peek = scene_history_peek_actor(history, true, &observed, &present);
     assert(
         peek && !present && !peek->created &&
-        strcmp(peek->state_json, "{deleted state}") == 0
+        strcmp(av_get_str(av_obj_get(peek->state, "marker")), "deleted state") == 0
     );
     assert(ecs_entity_to_u64(observed) == ecs_entity_to_u64(restored));
     assert(scene_history_redo(history, world, NULL) == -1);
@@ -275,6 +281,8 @@ static void actor_history()
     assert(scene_history_undo(history, world, NULL) == 1);
     assert(scene_history_undo(history, world, NULL) == -1);
     expect_position(world, restored, (GameTransform){ 1, 2 });
+    av_value_free(base);
+    av_value_free(state);
     scene_history_free(history);
     ecs_world_free(world);
 }
@@ -316,11 +324,12 @@ static void behavior_history()
         (pin_value){ .type = PIN_F32, .f = 3 },
         (pin_value){ .type = PIN_F32, .f = 9 }
     ));
+    av_value *empty_components = test_read_asset_value("");
     scene_actor_edit deletion = { .index = 0,
                                   .name = "Actor",
                                   .prototype_name = "Player",
-                                  .base_json = "{}",
-                                  .state_json = "{}" };
+                                  .base = empty_components,
+                                  .state = empty_components };
     assert(scene_history_push_actor(history, entity, &deletion));
     assert(ecs_world_destroy_entity(world, entity) == ECS_OK);
     assert(ecs_world_apply_commands(world) == ECS_OK);
@@ -365,6 +374,7 @@ static void behavior_history()
     assert(!scene_history_can_redo(history));
     scene_history_clear(history);
     assert(!scene_history_can_undo(history));
+    av_value_free(empty_components);
     scene_history_free(history);
     ecs_world_free(world);
 }
@@ -381,8 +391,13 @@ static void component_override_roundtrip()
     }
     char error[256];
     game_prototype *base = game_prototype_load(
-        "{\"name\":\"Base\",\"components\":{\"GameTransform\":{\"x\":1,\"y\":2}"
-        "}}",
+        "name \"Base\"\n"
+        "components {\n"
+        "    GameTransform {\n"
+        "        x 1\n"
+        "        y 2\n"
+        "    }\n"
+        "}\n",
         &registry,
         error,
         sizeof error
@@ -390,37 +405,34 @@ static void component_override_roundtrip()
     assert(base);
     ecs_entity entity;
     assert(game_prototype_spawn_components(base, world, &entity, error, sizeof error) == 0);
+    av_value *changes = test_read_asset_value("GameTransform #null\nGameHealth {\n    current 73\n    maximum 100\n}\n");
     assert(
-        game_prototype_apply_components_json(
-            world,
-            entity,
-            "{\"GameTransform\":null,\"GameHealth\":{\"current\":73,"
-            "\"maximum\":100}}",
-            &registry,
-            error,
-            sizeof error
-        ) == 0
+        game_prototype_apply_components_value(world, entity, changes, &registry, error, sizeof error) == 0
     );
-    char *overrides = game_prototype_capture_overrides_json(base, world, entity);
-    assert(overrides && strstr(overrides, "null") && strstr(overrides, "GameHealth"));
+    av_value *overrides = game_prototype_capture_overrides_value(base, world, entity);
+    assert(
+        overrides && av_is_null(av_obj_get(overrides, "GAME.GameTransform")) &&
+        av_obj_get(overrides, "GAME.GameHealth")
+    );
     ecs_entity restored;
     assert(game_prototype_spawn_components(base, world, &restored, error, sizeof error) == 0);
     assert(
-        game_prototype_apply_components_json(world, restored, overrides, &registry, error, sizeof error) == 0
+        game_prototype_apply_components_value(world, restored, overrides, &registry, error, sizeof error) == 0
     );
     assert(!GAME_GameTransform_has(world, restored));
     assert(GAME_GameHealth_get_const(world, restored)->current == 73);
     /* Repeated null removal must stay absent, not accidentally add a default. */
     assert(
-        game_prototype_apply_components_json(world, restored, overrides, &registry, error, sizeof error) == 0
+        game_prototype_apply_components_value(world, restored, overrides, &registry, error, sizeof error) == 0
     );
     assert(!GAME_GameTransform_has(world, restored));
     game_prototype *current = game_prototype_capture_entity("Current", world, entity, &registry);
     assert(current);
-    char *from_prototype = game_prototype_overrides_json(base, current);
-    assert(from_prototype && strcmp(from_prototype, overrides) == 0);
-    free(from_prototype);
-    free(overrides);
+    av_value *from_prototype = game_prototype_overrides_value(base, current);
+    assert(from_prototype && av_equals(from_prototype, overrides));
+    av_value_free(from_prototype);
+    av_value_free(overrides);
+    av_value_free(changes);
     game_prototype_free(current);
     game_prototype_free(base);
     ecs_world_free(world);
@@ -498,7 +510,7 @@ static void checkpoint_history()
     assert(scene_history_undo(restored, world, NULL) == 1);
     expect_position(world, replacement, (GameTransform){ 1, 2 });
     expect_position(world, old, (GameTransform){ 1, 2 });
-    assert(!scene_history_restore_checkpoint(restored, "{}", NULL, NULL, 0));
+    assert(!scene_history_restore_checkpoint(restored, "", NULL, NULL, 0));
     assert(scene_history_can_redo(restored));
     free(json);
     json = scene_history_checkpoint(restored);

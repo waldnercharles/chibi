@@ -46,7 +46,7 @@ static behavior_asset *load_example(const char *path)
     assert(fread(json, 1, (size_t)size, file) == (size_t)size);
     json[size] = 0;
     fclose(file);
-    behavior_asset *asset = behavior_asset_load_json(json);
+    behavior_asset *asset = behavior_asset_load(json);
     free(json);
     assert(asset);
     return asset;
@@ -66,11 +66,9 @@ static behavior_asset *load_linked_example(const char *path, const behavior_asse
 
 static void examples()
 {
-    behavior_asset *library = load_example(
-        "test/fixtures/content/shader-libraries/ShaderMath.yaml"
-    );
+    behavior_asset *library = load_example("test/fixtures/content/shader-libraries/ShaderMath.kdl");
     assert(behavior_asset_validate_library(library) == NULL);
-    behavior_asset *ring = load_linked_example("test/fixtures/content/materials/PulseRing.yaml", library);
+    behavior_asset *ring = load_linked_example("test/fixtures/content/materials/PulseRing.kdl", library);
     shader_graph ir;
     shader_graph_init(&ir);
     shader_error error;
@@ -99,10 +97,7 @@ static void examples()
     sample.position[0] = 35;
     behavior_asset_free(ring);
 
-    behavior_asset *gradient = load_linked_example(
-        "test/fixtures/content/materials/OutlineGradient.yaml",
-        library
-    );
+    behavior_asset *gradient = load_linked_example("test/fixtures/content/materials/OutlineGradient.kdl", library);
     assert(shader_graph_from_graph(gradient->graph, &ir, &error));
     assert(shader_graph_eval_outputs(&ir, &sample, NULL, result, &error));
     float right_red = result[0][0];
@@ -112,7 +107,7 @@ static void examples()
     behavior_asset_free(gradient);
     behavior_asset_free(library);
 
-    behavior_asset *shape = load_example("test/fixtures/content/shapes/SmoothUnion.yaml");
+    behavior_asset *shape = load_example("test/fixtures/content/shapes/SmoothUnion.kdl");
     assert(shader_graph_from_graph(shape->graph, &ir, &error));
     sample.position[0] = sample.position[1] = 0;
     assert(shader_graph_eval_outputs(&ir, &sample, NULL, result, &error));
@@ -124,9 +119,7 @@ static void examples()
     behavior_asset_free(shape);
     shader_graph_free(&ir);
 
-    behavior_asset *flash = load_example(
-        "test/fixtures/content/behaviors/DamageFlashBehavior.yaml"
-    );
+    behavior_asset *flash = load_example("test/fixtures/content/behaviors/DamageFlashBehavior.kdl");
     compile_report report;
     compile_report_init(&report);
     assert(behavior_asset_compile(flash, &report) == 0);
@@ -155,12 +148,12 @@ static void preview_parameter_validation()
     assert(render_shader_upsert(asset, &error));
     int shader = render_shader_find(asset->name);
     assert(shader);
-    assert(render_shader_parameters_validate(shader, "{\"Tint\":[1,-2,0.5],\"Opacity\":4}", &error));
-    assert(!render_shader_parameters_validate(shader, "{\"Tint\":[1]}", &error));
+    assert(render_shader_parameters_validate(shader, "(array)Tint 1 -2 0.5; Opacity 4; \n", &error));
+    assert(!render_shader_parameters_validate(shader, "(array)Tint 1; \n", &error));
     assert(strstr(error.message, "array of 3"));
-    assert(!render_shader_parameters_validate(shader, "{\"Opacity\":[4]}", &error));
+    assert(!render_shader_parameters_validate(shader, "(array)Opacity 4; \n", &error));
     assert(strstr(error.message, "finite number or boolean"));
-    assert(!render_shader_parameters_validate(shader, "{\"Missing\":1}", &error));
+    assert(!render_shader_parameters_validate(shader, "Missing 1; \n", &error));
     assert(strstr(error.message, "Unknown shader preview parameter"));
     behavior_asset_free(asset);
     render_shader_catalog_clear();
@@ -175,15 +168,15 @@ static void live_shader_library()
     game_live_world *live = game_live_world_new(world);
     game_live_definition *library = game_live_definition_new(
         "ShaderMath",
-        load_example("test/fixtures/content/shader-libraries/ShaderMath.yaml")
+        load_example("test/fixtures/content/shader-libraries/ShaderMath.kdl")
     );
     game_live_definition *ring = game_live_definition_new(
         "PulseRing",
-        load_example("test/fixtures/content/materials/PulseRing.yaml")
+        load_example("test/fixtures/content/materials/PulseRing.kdl")
     );
     game_live_definition *gradient = game_live_definition_new(
         "OutlineGradient",
-        load_example("test/fixtures/content/materials/OutlineGradient.yaml")
+        load_example("test/fixtures/content/materials/OutlineGradient.kdl")
     );
     assert(library && ring && gradient);
     assert(game_live_add_definition(live, library) == 0);
@@ -357,8 +350,8 @@ static void math_nodes()
     }
     node *root = shader_graph_add_output(g, true);
     assert(graph_connect_data(g, previous, 0, root, 0) == 0);
-    char *json = behavior_asset_save_json(asset);
-    behavior_asset *copy = behavior_asset_load_json(json);
+    char *json = behavior_asset_save(asset);
+    behavior_asset *copy = behavior_asset_load(json);
     assert(copy && shader_graph_from_graph(copy->graph, &ir, &error));
     assert(shader_graph_eval_outputs(&ir, &sample, NULL, out, &error));
     near(out[0][0], 0.253253296f);
@@ -462,8 +455,8 @@ static void parameter_slots()
     assert(shader_graph_from_graph(g, &ir, &error));
     assert(graph_connect_data(g, second, 0, root, 5) == 0);
     /* Loading a serialized collision must fail without replacing the last valid program. */
-    char *json = behavior_asset_save_json(asset);
-    behavior_asset *loaded = behavior_asset_load_json(json);
+    char *json = behavior_asset_save(asset);
+    behavior_asset *loaded = behavior_asset_load(json);
     assert(loaded);
     free(json);
     assert(!shader_graph_from_graph(loaded->graph, &ir, &error));
@@ -523,8 +516,8 @@ static void vector_inline_sources()
             assert(graph_connect_data(g, constant, 0, vector, 0) == 0);
             assert(graph_node_is_inline(g, constant));
         }
-        char *json = behavior_asset_save_json(asset);
-        behavior_asset *copy = behavior_asset_load_json(json);
+        char *json = behavior_asset_save(asset);
+        behavior_asset *copy = behavior_asset_load(json);
         shader_graph ir = { 0 };
         shader_error error = { 0 };
         assert(copy && shader_graph_from_graph(copy->graph, &ir, &error));
@@ -582,9 +575,9 @@ void test_shader_graph()
     assert(glsl && strstr(glsl, "void test_shape(") && strstr(glsl, "sg_params[3]"));
     free(glsl);
     assert(!shader_graph_glsl_named(&ir, "invalid-name", &error));
-    char *json = behavior_asset_save_json(asset);
+    char *json = behavior_asset_save(asset);
     assert(json);
-    behavior_asset *copy = behavior_asset_load_json(json);
+    behavior_asset *copy = behavior_asset_load(json);
     assert(copy);
     free(json);
     assert(shader_graph_from_graph(copy->graph, &ir, &error));

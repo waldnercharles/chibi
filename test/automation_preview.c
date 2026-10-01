@@ -60,22 +60,32 @@ void test_automation_preview_registration()
     assert(mkdir(shader_libraries, 0700) == 0);
 
     char path[512];
-    snprintf(path, sizeof path, "%s/project.yaml", root);
+    snprintf(path, sizeof path, "%s/project.kdl", root);
     char manifest[128];
-    snprintf(manifest, sizeof manifest, "version: %d\nname: Preview Test\ncontent: content\n", CHIBI_PROJECT_VERSION);
+    snprintf(manifest, sizeof manifest, "version %d\nname \"Preview Test\"\ncontent \"content\"\n", CHIBI_PROJECT_VERSION);
     preview_test_write(path, manifest);
-    snprintf(path, sizeof path, "%s/PreviewScene.yaml", scenes);
+    snprintf(path, sizeof path, "%s/PreviewScene.kdl", scenes);
     preview_test_write(
         path,
-        "{\"version\":1,\"name\":\"PreviewScene\",\"presentation\":\"2d\","
-        "\"entities\":[{\"name\":\"Entity\",\"prototype\":\"PreviewPrototype\"}"
-        "]}"
+        "version 1\n"
+        "name \"PreviewScene\"\n"
+        "presentation \"2d\"\n"
+        "(array)entities {\n"
+        "    - {\n"
+        "        name \"Entity\"\n"
+        "        prototype \"PreviewPrototype\"\n"
+        "    }\n"
+        "}\n"
     );
-    snprintf(path, sizeof path, "%s/PreviewPrototype.yaml", prototypes);
-    preview_test_write(path, "{\"name\":\"PreviewPrototype\",\"components\":{}}");
-    char *library = text_file_read("test/fixtures/content/shader-libraries/ShaderMath.yaml");
+    snprintf(path, sizeof path, "%s/PreviewPrototype.kdl", prototypes);
+    preview_test_write(
+        path,
+        "name \"PreviewPrototype\"\n"
+        "(object)components\n"
+    );
+    char *library = text_file_read("test/fixtures/content/shader-libraries/ShaderMath.kdl");
     assert(library);
-    snprintf(path, sizeof path, "%s/ShaderMath.yaml", shader_libraries);
+    snprintf(path, sizeof path, "%s/ShaderMath.kdl", shader_libraries);
     preview_test_write(path, library);
     free(library);
 
@@ -91,6 +101,9 @@ void test_automation_preview_registration()
         error,
         sizeof error
     );
+    if (status != CHIBI_AUTOMATION_OK) {
+        printf("  scene preview: %s\n", error);
+    }
     test_check(
         status == CHIBI_AUTOMATION_OK && run && !perspective,
         "headless scene preview registers a shared shader library once"
@@ -101,9 +114,9 @@ void test_automation_preview_registration()
     snprintf(behaviors, sizeof behaviors, "%s/behaviors", content);
     assert(!mkdir(behaviors, 0700));
     behavior_asset *behavior = behavior_asset_new("ExecutionBehavior");
-    char *json = behavior_asset_save_json(behavior);
+    char *json = behavior_asset_save(behavior);
     assert(json);
-    snprintf(path, sizeof path, "%s/ExecutionBehavior.yaml", behaviors);
+    snprintf(path, sizeof path, "%s/ExecutionBehavior.kdl", behaviors);
     preview_test_write(path, json);
     free(json);
     behavior_asset_free(behavior);
@@ -115,10 +128,10 @@ void test_automation_preview_registration()
     assert(!unlink(path) && !rmdir(behaviors));
 
     const char *files[] = {
-        "project.yaml",
-        "content/scenes/PreviewScene.yaml",
-        "content/prototypes/PreviewPrototype.yaml",
-        "content/shader-libraries/ShaderMath.yaml",
+        "project.kdl",
+        "content/scenes/PreviewScene.kdl",
+        "content/prototypes/PreviewPrototype.kdl",
+        "content/shader-libraries/ShaderMath.kdl",
     };
     for (int i = 0; i < (int)(sizeof files / sizeof *files); i++) {
         snprintf(path, sizeof path, "%s/%s", root, files[i]);
@@ -137,8 +150,8 @@ static yyjson_doc *profile_scenario_request(const char *request)
     char *response = chibi_automation_handle(request, "projects/arena2d", &exit_code);
     assert(response);
     yyjson_doc *doc = yyjson_read(response, strlen(response), 0);
-    free(response);
     assert(doc);
+    free(response);
     return doc;
 }
 

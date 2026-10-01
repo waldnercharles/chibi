@@ -464,8 +464,8 @@ static void event_context_sources()
         "event output bindings retain stable event and pin identity"
     );
 
-    char *json = behavior_asset_save_json(asset);
-    behavior_asset *roundtrip = json ? behavior_asset_load_json(json) : NULL;
+    char *json = behavior_asset_save(asset);
+    behavior_asset *roundtrip = json ? behavior_asset_load(json) : NULL;
     graph *roundtrip_graph = roundtrip ? roundtrip->graph : NULL;
     node *roundtrip_store = roundtrip_graph
                               ? graph_node_by_id(roundtrip_graph, store_value->id)
@@ -483,10 +483,10 @@ static void event_context_sources()
     behavior_asset_free(roundtrip);
 
     node *subset[] = { store_value };
-    char *clipboard = graph_save_nodes_json(asset->graph, subset, 1);
+    char *clipboard = graph_save_nodes(asset->graph, subset, 1);
     graph partial;
     graph_init(&partial);
-    int appended = clipboard ? graph_append_json(&partial, clipboard, 0, 0) : -1;
+    int appended = clipboard ? graph_append(&partial, clipboard, 0, 0) : -1;
     node *pasted = acount(partial.nodes) == 1 ? partial.nodes[0] : NULL;
     test_check(
         appended == 0 && pasted && !graph_pin_binding(&partial, pasted, 0, 1),
@@ -846,10 +846,10 @@ static void component_and_context_bindings()
     assert(graph_connect_data(whole->graph, whole_source, 0, whole_target, 0) == 0);
     uint64_t whole_target_id = whole_target->id;
     uint64_t whole_source_id = whole_source->id;
-    char *whole_json = behavior_asset_save_json(whole);
+    char *whole_json = behavior_asset_save(whole);
     assert(whole_json);
     behavior_asset_free(whole);
-    whole = behavior_asset_load_json(whole_json);
+    whole = behavior_asset_load(whole_json);
     free(whole_json);
     assert(whole);
     whole_target = graph_node_by_id(whole->graph, whole_target_id);
@@ -1036,7 +1036,7 @@ static void converted_component_field_binding()
         "an inlined converted getter evaluates through the field binding"
     );
     behavior_instance_destroy(instance);
-    ed_free_string_stack(&e.undo);
+    ed_free_asset_stack(&e.undo);
     behavior_asset_free(auto_asset);
 
     behavior_asset *flow_asset = behavior_asset_new("CompiledConvertedComponentBinding");
@@ -1126,10 +1126,10 @@ static void serialization_and_clipboard_ownership()
         ) == 0
     );
     uint64_t target_id = target->id;
-    char *json = behavior_asset_save_json(asset);
+    char *json = behavior_asset_save(asset);
     assert(json);
     behavior_asset_free(asset);
-    asset = behavior_asset_load_json(json);
+    asset = behavior_asset_load(json);
     free(json);
     assert(asset);
     target = graph_node_by_id(asset->graph, target_id);
@@ -1150,9 +1150,9 @@ static void serialization_and_clipboard_ownership()
     behavior_instance_destroy(instance);
 
     node *selection[] = { target };
-    json = graph_save_nodes_json(asset->graph, selection, 1);
+    json = graph_save_nodes(asset->graph, selection, 1);
     assert(json);
-    test_check(graph_append_json(asset->graph, json, 20, 20) == 0, "clipboard copies preserve bindings within the owning behavior");
+    test_check(graph_append(asset->graph, json, 20, 20) == 0, "clipboard copies preserve bindings within the owning behavior");
     free(json);
     behavior_asset_free(asset);
 
@@ -1178,10 +1178,10 @@ static void serialization_and_clipboard_ownership()
         ) == 0
     );
     selection[0] = target;
-    json = graph_save_nodes_json(source->graph, selection, 1);
+    json = graph_save_nodes(source->graph, selection, 1);
     assert(json);
     behavior_asset *same_name = behavior_asset_new("SameName");
-    test_check(graph_append_json(same_name->graph, json, 0, 0) != 0, "clipboard copies reject variable bindings from another owner with the same name");
+    test_check(graph_append(same_name->graph, json, 0, 0) != 0, "clipboard copies reject variable bindings from another owner with the same name");
     free(json);
     behavior_asset_free(same_name);
     behavior_asset_free(source);
@@ -1231,8 +1231,8 @@ static void inline_source_graphs()
 
     uint64_t source_id = source->id;
     uint64_t target_id = target->id;
-    char *json = graph_save_json(&g);
-    graph *roundtrip = json ? graph_load_json(json) : NULL;
+    char *json = graph_save(&g);
+    graph *roundtrip = json ? graph_load(json) : NULL;
     node *roundtrip_source = roundtrip ? graph_node_by_id(roundtrip, source_id) : NULL;
     node *roundtrip_target = roundtrip ? graph_node_by_id(roundtrip, target_id) : NULL;
     inline_source = NULL;
@@ -1252,12 +1252,11 @@ static void inline_source_graphs()
     }
 
     node *selection[] = { target };
-    json = graph_save_nodes_json(&g, selection, 1);
+    json = graph_save_nodes(&g, selection, 1);
     graph pasted = { 0 };
     graph_init(&pasted);
     test_check(
-        json && graph_append_json(&pasted, json, 10, 10) == 0 &&
-            acount(pasted.nodes) == 2,
+        json && graph_append(&pasted, json, 10, 10) == 0 && acount(pasted.nodes) == 2,
         "copying a folded target includes its inline source"
     );
     node *pasted_source = NULL;
@@ -1351,7 +1350,7 @@ static void component_getter_optimization()
         "component getter optimization replaces a single consumer with a Self "
         "binding"
     );
-    ed_free_string_stack(&e.undo);
+    ed_free_asset_stack(&e.undo);
     afree(e.selected);
     behavior_asset_free(asset);
 }
@@ -1656,10 +1655,10 @@ static void extraction_preserves_bindings()
     assert(graph_connect_data(asset->graph, first, 0, sink, 0) == 0);
     assert(graph_connect_data(asset->graph, second, 0, sink2, 0) == 0);
     node *fanout[] = { first, second };
-    char *before = behavior_asset_save_json(asset);
+    char *before = behavior_asset_save(asset);
     extracted = NULL;
     error = behavior_asset_extract_function(asset, asset->graph, fanout, 2, "AmbiguousFanout", &extracted, &call_id);
-    char *after = behavior_asset_save_json(asset);
+    char *after = behavior_asset_save(asset);
     test_check(error && !extracted && before && after && strcmp(before, after) == 0, "pure extraction rejects fanout consumers with different dormant bindings");
     free(before);
     free(after);

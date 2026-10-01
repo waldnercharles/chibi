@@ -2,6 +2,7 @@
 #define CHIBI_GAME_QUERY_H
 
 #include "ecs/ecs.h"
+#include "support/asset_value.h"
 
 #include <stddef.h>
 
@@ -10,6 +11,20 @@
 typedef const ecs_component_desc *(*game_query_component_resolver)(const char *name, void *user);
 typedef const char *(*game_query_component_name_resolver)(ecs_component_id component, void *user);
 
+av_value *game_query_save_value(
+    av_doc *doc,
+    const ecs_query_expr *expression,
+    game_query_component_resolver resolve,
+    game_query_component_name_resolver name,
+    void *user
+);
+ecs_query_expr *game_query_load_value(
+    av_value *value,
+    game_query_component_resolver resolve,
+    void *user,
+    char *error,
+    size_t error_size
+);
 char *game_query_save(
     const ecs_query_expr *expression,
     game_query_component_resolver resolve,
@@ -17,7 +32,7 @@ char *game_query_save(
     void *user
 );
 ecs_query_expr *game_query_load(
-    const char *json,
+    const char *text,
     game_query_component_resolver resolve,
     void *user,
     char *error,

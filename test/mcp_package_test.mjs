@@ -27,7 +27,7 @@ test("packaged MCP pins an external workspace, preserves config, and runs withou
     const manifestPath = resolve(pkg, "share/chibi/engine.json");
     const manifest = build_id => writeFileSync(manifestPath, JSON.stringify({ build_id, project_version: 7 }));
     manifest("first");
-    writeFileSync(resolve(game, "project.yaml"), "version: 7\n");
+    writeFileSync(resolve(game, "project.kdl"), "version 7\n");
     const configPath = resolve(game, ".codex/config.toml");
     const other = 'model = "gpt-6.1-sol"\n[agents.default]\nmodel_reasoning_effort = "medium"\n[mcp_servers.other]\ncommand = "other"\n';
     const skills = '[[skills.config]] # Keep unrelated array tables after the replaced server\npath = "/my/skill"\nenabled = true\n\n[[skills.config]]\npath = "/my/second-skill"\nenabled = false\n';

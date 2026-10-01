@@ -357,8 +357,8 @@ void run_runtime_instance_checks()
         act = behavior_instance_dispatch(bi, "Pulse", (flow_inputs){ 0 }, &error);
         test_check(act && behavior_instance_release_activation(bi, act) == 0, "tracing resumes after being enabled");
 
-        char *json = behavior_asset_save_json(asset);
-        behavior_asset *next = behavior_asset_load_json(json);
+        char *json = behavior_asset_save(asset);
+        behavior_asset *next = behavior_asset_load(json);
         free(json);
         test_check(
             next && graph_set_event_name(next->graph, graph_node_by_id(next->graph, pulse_id), "Renamed") ==
@@ -865,11 +865,8 @@ void run_runtime_instance_checks()
         graph_set_event_name(asset->graph, ev, "Go");
         node *name_lit = graph_add_node(asset->graph, registry_node_by_name("Name"));
         graph_set_pin_default(asset->graph, name_lit, 0, 0, &(pin_value){ .type = PIN_NAME, .str = "ExactSpelling" });
-        char *before = behavior_asset_save_json(asset);
-        test_check(
-            before && strstr(before, "\"owner_type\": \"UnavailableOwner\""),
-            "the authored owner handle type is written"
-        );
+        char *before = behavior_asset_save(asset);
+        test_check(before && strstr(before, "owner_type \"UnavailableOwner\""), "the authored owner handle type is written");
         behavior_instance *bi = behavior_instance_create(
             asset,
             &(pin_value){ .type = PIN_HANDLE, .u64 = 5, .type_name = "UnavailableOwner" },
@@ -877,9 +874,9 @@ void run_runtime_instance_checks()
             NULL
         );
         behavior_instance_destroy(bi);
-        char *after = behavior_asset_save_json(asset);
+        char *after = behavior_asset_save(asset);
         test_check(before && after && strcmp(before, after) == 0 && !strstr(before, "activations"), "saving before and after execution is byte-identical and carries no runtime state");
-        behavior_asset *loaded = before ? behavior_asset_load_json(before) : NULL;
+        behavior_asset *loaded = before ? behavior_asset_load(before) : NULL;
         test_check(
             loaded && loaded->owner_type_name &&
                 strcmp(loaded->owner_type_name, "UnavailableOwner") == 0,
@@ -904,7 +901,7 @@ void run_runtime_instance_checks()
             }
         }
         test_check(spelling, "a Name literal's authored spelling round-trips exactly");
-        char *re = loaded ? behavior_asset_save_json(loaded) : NULL;
+        char *re = loaded ? behavior_asset_save(loaded) : NULL;
         test_check(re && before && strcmp(re, before) == 0, "the Behavior Asset document load/save round-trips byte-identically");
         if (loaded) {
             behavior_asset_free(loaded);

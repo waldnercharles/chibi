@@ -4,6 +4,7 @@
 #include "editor/workspace/scene_internal.h"
 #include "runtime/save.h"
 #include "support/array.h"
+#include "support/asset_json.h"
 #include "support/asset_text.h"
 #include "support/text_file.h"
 #include "support/xalloc.h"
@@ -48,7 +49,11 @@ int app_scenario_record(app_scene_authoring *scene)
 {
     app_scenario_stop(scene);
     scene->scenario_seed = (unsigned)time(NULL);
-    scene->scenario_saved_state = game_save_export(saved_progress(scene));
+    char *saved = game_save_export(saved_progress(scene));
+    av_doc *doc = av_json_read(saved);
+    free(saved);
+    scene->scenario_saved_state = av_value_copy(av_doc_root(doc));
+    av_doc_free(doc);
     engine_record_input(scene->runtime, scene->scenario_seed);
     scene->scenario_recording = true;
     return restart(scene);
@@ -58,10 +63,11 @@ int app_scenario_record(app_scene_authoring *scene)
 static int start_replay(app_scene_authoring *scene)
 {
     const scenario_document *document = scene->scenario;
-    if (!game_save_import(
-            saved_progress(scene),
-            document->saved_state ? document->saved_state : "{}"
-        )) {
+    char *saved = document->saved_state ? av_json_write(document->saved_state)
+                                        : xstrdup("{}");
+    bool imported = game_save_import(saved_progress(scene), saved);
+    free(saved);
+    if (!imported) {
         snprintf(
             scene->message,
             sizeof scene->message,
@@ -107,7 +113,7 @@ int app_scenario_save(app_scene_authoring *scene, char *name, size_t size)
     }
     char scene_asset[128];
     scene_name(scene, scene_asset, sizeof scene_asset);
-    bool progress = strcmp(scene->scenario_saved_state, "{}") != 0;
+    bool progress = av_obj_size(scene->scenario_saved_state) != 0;
     scenario_document document = { .scene = scene_asset,
                                    .frames = frames,
                                    .seed = scene->scenario_seed,
@@ -153,7 +159,7 @@ void app_scenario_stop(app_scene_authoring *scene)
     engine_stop_recording(scene->runtime);
     engine_stop_replay(scene->runtime);
     scene->scenario_recording = false;
-    free(scene->scenario_saved_state);
+    av_value_free(scene->scenario_saved_state);
     scene->scenario_saved_state = NULL;
     scenario_document_free(scene->scenario);
     scene->scenario = NULL;

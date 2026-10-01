@@ -4,416 +4,540 @@
 #include "support/xalloc.h"
 
 #include <ctype.h>
-#include <stdbool.h>
+#include <errno.h>
+#include <inttypes.h>
+#include <kdl/parser.h>
+#include <math.h>
+#include <stdarg.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
-#include <yaml.h>
 
-/* One scalar grammar serves both directions. Plain scalars that spell JSON
- * null, a boolean, or a JSON number keep that type; everything else is a
- * string. Writing quotes strings that would read back as another type or
- * that YAML 1.1 tools would reinterpret. */
-static const char *const NULL_WORDS[] = { "", "~", "null", "Null", "NULL", NULL };
-static const char *const TRUE_WORDS[] = { "true", "True", "TRUE", NULL };
-static const char *const FALSE_WORDS[] = { "false", "False", "FALSE", NULL };
-static const char *const YAML11_WORDS[] = {
-    "y",    "Y",    "yes",  "Yes",   "YES",  "n",    "N",    "no",
-    "No",   "NO",   "on",   "On",    "ON",   "off",  "Off",  "OFF",
-    ".inf", ".Inf", ".INF", "-.inf", ".nan", ".NaN", ".NAN", NULL
-};
-
-static bool is_word(const char *text, size_t length, const char *const *words)
+/* The KDL grammar is parsed by ckdl. This layer defines the typed asset
+ * vocabulary: an implicit object root, named fields, and annotated arrays. */
+typedef struct
 {
-    for (int i = 0; words[i]; i++) {
-        if (strlen(words[i]) == length && !memcmp(text, words[i], length)) {
-            return true;
+    char *name;
+    av_value *object, *arguments;
+    bool array, force_object, children;
+    int argument_count;
+    av_source source;
+} read_node;
+
+static bool text_is(kdl_str text, const char *word)
+{
+    return text.len == strlen(word) && !memcmp(text.data, word, text.len);
+}
+
+static void read_error(const char *text, size_t at, char *error, size_t size, const char *message)
+{
+    int line = 1, column = 1;
+    for (size_t i = 0; text[i] && i < at; i++) {
+        if (text[i] == '\n') {
+            line++;
+            column = 1;
+        } else {
+            column++;
         }
     }
-    return false;
+    if (error && size) {
+        snprintf(error, size, "line %d, column %d: %s", line, column, message);
+    }
 }
 
-static size_t skip_digits(const char *text, size_t length, size_t at)
+static av_value *read_number(av_doc *doc, const kdl_number *number, const char *text, size_t size)
 {
-    while (at < length && isdigit((unsigned char)text[at])) {
-        at++;
+    if (number->type == KDL_NUMBER_TYPE_INTEGER) {
+        return number->integer < 0 ? av_sint(doc, number->integer)
+                                   : av_uint(doc, (uint64_t)number->integer);
     }
-    return at;
-}
-
-static bool is_json_number(const char *text, size_t length)
-{
-    size_t at = length && text[0] == '-';
-    if (at >= length || !isdigit((unsigned char)text[at])) {
-        return false;
-    }
-    at = text[at] == '0' ? at + 1 : skip_digits(text, length, at);
-    if (at < length && text[at] == '.') {
-        if (at + 1 >= length || !isdigit((unsigned char)text[at + 1])) {
-            return false;
+    if (number->type == KDL_NUMBER_TYPE_FLOATING_POINT) {
+        char *literal = xmalloc(size + 1);
+        size_t used = 0;
+        for (size_t i = 0; i < size; i++) {
+            if (text[i] != '_') {
+                literal[used++] = text[i];
+            }
         }
-        at = skip_digits(text, length, at + 1);
+        literal[used] = 0;
+        errno = 0;
+        char *end;
+        double value = strtod(literal, &end);
+        bool valid = used && !*end && isfinite(value) &&
+                     (errno != ERANGE || value != 0);
+        free(literal);
+        return valid ? av_real(doc, value) : NULL;
     }
-    if (at < length && (text[at] == 'e' || text[at] == 'E')) {
-        at++;
-        at += at < length && (text[at] == '+' || text[at] == '-');
-        if (at >= length || !isdigit((unsigned char)text[at])) {
-            return false;
+    /* ckdl preserves integers above LLONG_MAX as text. Parse with the full
+     * unsigned range instead of rounding them through a double. */
+    char *number_text = xmalloc(number->string.len + 1);
+    size_t used = 0;
+    for (size_t i = 0; i < number->string.len; i++) {
+        if (number->string.data[i] != '_') {
+            number_text[used++] = number->string.data[i];
         }
-        at = skip_digits(text, length, at);
     }
-    return at == length;
+    number_text[used] = 0;
+    if (strchr(number_text, '.') || strchr(number_text, 'e') ||
+        strchr(number_text, 'E')) {
+        errno = 0;
+        char *end;
+        double value = strtod(number_text, &end);
+        bool valid = *number_text && !*end && isfinite(value) &&
+                     (errno != ERANGE || value != 0);
+        free(number_text);
+        return valid ? av_real(doc, value) : NULL;
+    }
+    if (number_text[0] == '-') {
+        errno = 0;
+        char *end;
+        int64_t value = strtoll(number_text, &end, 10);
+        bool valid = number_text[1] && !*end && errno != ERANGE;
+        free(number_text);
+        return valid ? av_sint(doc, value) : NULL;
+    }
+    char *digits = number_text;
+    if (*digits == '+') {
+        digits++;
+    }
+    int base = 10;
+    if (digits[0] == '0' && digits[1] && strchr("xob", digits[1])) {
+        base = digits[1] == 'x' ? 16 : digits[1] == 'o' ? 8 : 2;
+        digits += 2;
+    }
+    errno = 0;
+    char *end;
+    uint64_t value = strtoull(digits, &end, base);
+    bool valid = *digits && *digits != '-' && !*end && errno != ERANGE;
+    free(number_text);
+    return valid ? av_uint(doc, value) : NULL;
 }
 
-static size_t skip_chars(const char *text, size_t length, size_t at, const char *allowed)
+static av_value *read_value(av_doc *doc, const kdl_event_data *event, const char *text)
 {
-    while (at < length &&
-           (isdigit((unsigned char)text[at]) || strchr(allowed, text[at]))) {
-        at++;
+    if (event->value.type_annotation.len) {
+        return NULL;
     }
-    return at;
+    av_value *value = NULL;
+    switch (event->value.type) {
+        case KDL_TYPE_NULL: value = av_null(doc); break;
+        case KDL_TYPE_BOOLEAN:
+            value = av_bool(doc, event->value.boolean);
+            break;
+        case KDL_TYPE_STRING:
+            value = av_strn(doc, event->value.string.data, event->value.string.len);
+            break;
+        case KDL_TYPE_NUMBER:
+            value = read_number(
+                doc,
+                &event->value.number,
+                text + event->start,
+                event->end - event->start
+            );
+            break;
+    }
+    if (value) {
+        av_set_source(
+            value,
+            (av_source){ event->start, event->end, event->name_start, event->name_end }
+        );
+    }
+    return value;
 }
 
-/* YAML 1.1 also reads 0x/0b prefixes, underscores, sexagesimal colons and
- * bare dots as numbers; strings of that shape stay quoted for such tools. */
-static bool numeric_looking(const char *text, size_t length)
+av_doc *av_doc_read(const char *text, char *error, size_t error_size)
 {
-    size_t at = length && (text[0] == '-' || text[0] == '+');
-    if (at + 1 < length && text[at] == '0' &&
-        (text[at + 1] == 'x' || text[at + 1] == 'b')) {
-        for (at += 2;
-             at < length && (isxdigit((unsigned char)text[at]) || text[at] == '_');
-             at++) {
-        }
-        return at == length;
+    if (error && error_size) {
+        error[0] = 0;
     }
-    size_t digits = skip_chars(text, length, at, "_.:");
-    if (digits == at) {
-        return false;
+    if (!text) {
+        read_error("", 0, error, error_size, "null KDL input");
+        return NULL;
     }
-    at = digits;
-    if (at < length && (text[at] == 'e' || text[at] == 'E')) {
-        at++;
-        at += at < length && (text[at] == '+' || text[at] == '-');
-        size_t exponent = skip_chars(text, length, at, "");
-        at = exponent > at ? exponent : length + 1;
-    }
-    return at == length;
-}
-
-static bool needs_quotes(const char *text, size_t length)
-{
-    return is_word(text, length, NULL_WORDS) || is_word(text, length, TRUE_WORDS) ||
-           is_word(text, length, FALSE_WORDS) ||
-           is_word(text, length, YAML11_WORDS) || numeric_looking(text, length);
-}
-
-/* --- YAML to JSON -------------------------------------------------------- */
-
-typedef struct reader
-{
-    yyjson_mut_doc *doc;
-    yyjson_mut_val **containers;
-    yyjson_mut_val **keys;
-    yyjson_mut_val *root;
-} reader;
-
-static yyjson_mut_val *scalar_value(yyjson_mut_doc *doc, const yaml_event_t *event)
-{
-    const char *text = (const char *)event->data.scalar.value;
-    size_t length = event->data.scalar.length;
-    if (event->data.scalar.style != YAML_PLAIN_SCALAR_STYLE) {
-        return yyjson_mut_strncpy(doc, text, length);
-    }
-    if (is_word(text, length, NULL_WORDS)) {
-        return yyjson_mut_null(doc);
-    }
-    if (is_word(text, length, TRUE_WORDS) || is_word(text, length, FALSE_WORDS)) {
-        return yyjson_mut_bool(doc, is_word(text, length, TRUE_WORDS));
-    }
-    if (is_json_number(text, length)) {
-        return yyjson_mut_rawncpy(doc, text, length);
-    }
-    return yyjson_mut_strncpy(doc, text, length);
-}
-
-/* Adds a value to the open container; mapping keys must be strings. */
-static bool reader_add(reader *r, yyjson_mut_val *value)
-{
-    int depth = acount(r->containers);
-    if (!depth) {
-        r->root = value;
-        return true;
-    }
-    yyjson_mut_val *parent = r->containers[depth - 1];
-    if (yyjson_mut_is_arr(parent)) {
-        return yyjson_mut_arr_append(parent, value);
-    }
-    if (!r->keys[depth - 1]) {
-        r->keys[depth - 1] = value;
-        return yyjson_mut_is_str(value);
-    }
-    bool added = yyjson_mut_obj_add(parent, r->keys[depth - 1], value);
-    r->keys[depth - 1] = NULL;
-    return added;
-}
-
-static char *yaml_to_json(const char *yaml, char *error, size_t error_size)
-{
-    yaml_parser_t parser;
-    yaml_parser_initialize(&parser);
-    yaml_parser_set_input_string(&parser, (const unsigned char *)yaml, strlen(yaml));
-    reader r = { .doc = yyjson_mut_doc_new(NULL) };
-    int documents = 0;
-    const char *problem = NULL;
-    yaml_mark_t mark = { 0 };
-    bool done = false;
-    while (!done && !problem) {
-        yaml_event_t event;
-        if (!yaml_parser_parse(&parser, &event)) {
-            problem = parser.problem ? parser.problem : "invalid YAML";
-            mark = parser.problem_mark;
+    av_doc *doc = av_doc_new();
+    av_value *root = av_obj(doc);
+    av_doc_set_root(doc, root);
+    kdl_parser *parser = kdl_create_string_parser((kdl_str){ text, strlen(text) }, KDL_READ_VERSION_2);
+    read_node *stack = NULL;
+    const char *failure = NULL;
+    size_t at = 0;
+    for (;;) {
+        kdl_event_data *event = kdl_parser_next_event(parser);
+        at = event->start;
+        if (event->event == KDL_EVENT_EOF) {
             break;
         }
-        mark = event.start_mark;
-        switch (event.type) {
-            case YAML_STREAM_END_EVENT: done = true; break;
-            case YAML_DOCUMENT_START_EVENT:
-                problem = ++documents > 1 ? "expected a single document" : NULL;
-                break;
-            case YAML_ALIAS_EVENT:
-                problem = "anchors and aliases are not supported";
-                break;
-            case YAML_SCALAR_EVENT:
-                problem = reader_add(&r, scalar_value(r.doc, &event))
-                            ? NULL
-                            : "mapping keys must be strings";
-                break;
-            case YAML_SEQUENCE_START_EVENT:
-            case YAML_MAPPING_START_EVENT: {
-                yyjson_mut_val *value = event.type == YAML_SEQUENCE_START_EVENT
-                                          ? yyjson_mut_arr(r.doc)
-                                          : yyjson_mut_obj(r.doc);
-                problem = reader_add(&r, value) ? NULL : "mapping keys must be strings";
-                apush(r.containers, value);
-                apush(r.keys, NULL);
+        if (event->event == KDL_EVENT_PARSE_ERROR) {
+            failure = event->value.string.data ? event->value.string.data : "invalid KDL";
+            break;
+        }
+        if ((event->event == KDL_EVENT_START_NODE || event->event == KDL_EVENT_PROPERTY) &&
+            memchr(event->name.data, 0, event->name.len)) {
+            failure = "asset field names cannot contain a null byte";
+            break;
+        }
+        if (event->event == KDL_EVENT_START_NODE) {
+            if (acount(stack)) {
+                stack[acount(stack) - 1].children = true;
+            }
+            read_node node = { 0 };
+            node.name = xmalloc(event->name.len + 1);
+            memcpy(node.name, event->name.data, event->name.len);
+            node.name[event->name.len] = 0;
+            node.object = av_obj(doc);
+            node.arguments = av_arr(doc);
+            node.array = text_is(event->value.type_annotation, "array");
+            node.force_object = text_is(event->value.type_annotation, "object");
+            node.source = (av_source){ event->start,
+                                       event->end,
+                                       event->name_start,
+                                       event->name_end };
+            apush(stack, node);
+            if (event->value.type_annotation.len && !node.array && !node.force_object) {
+                failure = "asset nodes support only (array) and (object) "
+                          "annotations";
                 break;
             }
-            case YAML_SEQUENCE_END_EVENT:
-            case YAML_MAPPING_END_EVENT:
-                asetlen(r.containers, acount(r.containers) - 1);
-                asetlen(r.keys, acount(r.keys) - 1);
+            continue;
+        }
+        if (!acount(stack)) {
+            failure = "asset value outside a node";
+            break;
+        }
+        read_node *node = &stack[acount(stack) - 1];
+        if (event->event == KDL_EVENT_ARGUMENT || event->event == KDL_EVENT_PROPERTY) {
+            av_value *value = read_value(doc, event, text);
+            if (!value) {
+                failure = "unsupported typed or non-finite asset value, or "
+                          "integer outside 64-bit range";
                 break;
-            default: break;
+            }
+            if (event->event == KDL_EVENT_ARGUMENT) {
+                node->argument_count++;
+                av_arr_append(node->arguments, value);
+                continue;
+            }
+            char *key = xmalloc(event->name.len + 1);
+            memcpy(key, event->name.data, event->name.len);
+            key[event->name.len] = 0;
+            bool duplicate = av_obj_get(node->object, key) != NULL;
+            if (!duplicate) {
+                av_obj_set(doc, node->object, key, value);
+            }
+            free(key);
+            if (duplicate) {
+                failure = "duplicate asset property";
+                break;
+            }
+            continue;
         }
-        yaml_event_delete(&event);
-    }
-    yaml_parser_delete(&parser);
-    char *json = NULL;
-    if (problem) {
-        snprintf(error, error_size, "line %zu, column %zu: %s", mark.line + 1, mark.column + 1, problem);
-    } else if (!r.root) {
-        snprintf(error, error_size, "asset document is empty");
-    } else {
-        yyjson_mut_doc_set_root(r.doc, r.root);
-        json = yyjson_mut_write(r.doc, 0, NULL);
-    }
-    yyjson_mut_doc_free(r.doc);
-    afree(r.containers);
-    afree(r.keys);
-    return json;
-}
-
-/* In-memory documents are JSON objects; files are YAML mappings. */
-static bool json_text(const char *text)
-{
-    while (isspace((unsigned char)*text)) {
-        text++;
-    }
-    return *text == '{';
-}
-
-yyjson_doc *asset_text_read(const char *text, char *error, size_t error_size)
-{
-    if (json_text(text)) {
-        yyjson_doc *doc = yyjson_read(text, strlen(text), 0);
-        if (!doc) {
-            snprintf(error, error_size, "asset document is not valid JSON");
+        if (event->event != KDL_EVENT_END_NODE) {
+            continue;
         }
-        return doc;
+        size_t arguments = av_arr_size(node->arguments),
+               fields = av_obj_size(node->object);
+        if ((node->array && fields) ||
+            (node->argument_count && (fields || node->force_object || node->children)) ||
+            (!node->array && arguments > 1)) {
+            failure = "asset node mixes scalar arguments and object children "
+                      "or properties";
+            break;
+        }
+        av_value *value = node->array ? node->arguments
+                        : arguments   ? av_arr_get(node->arguments, 0)
+                                      : node->object;
+        if (av_is_ctn(value)) {
+            node->source.end = event->start;
+            av_set_source(value, node->source);
+        } else {
+            av_source source = av_get_source(value);
+            source.name_start = node->source.name_start;
+            source.name_end = node->source.name_end;
+            av_set_source(value, source);
+        }
+        read_node *parent = acount(stack) > 1 ? &stack[acount(stack) - 2] : NULL;
+        if (parent && parent->array) {
+            if (strcmp(node->name, "-")) {
+                failure = "array child nodes must be named '-'";
+                break;
+            }
+            av_arr_append(parent->arguments, value);
+        } else {
+            av_value *object = parent ? parent->object : root;
+            if (av_obj_get(object, node->name)) {
+                failure = "duplicate asset field";
+                break;
+            }
+            av_obj_set(doc, object, node->name, value);
+        }
+        free(node->name);
+        asetlen(stack, acount(stack) - 1);
     }
-    char *json = yaml_to_json(text, error, error_size);
-    yyjson_doc *doc = json ? yyjson_read(json, strlen(json), 0) : NULL;
-    free(json);
+    if (!failure && acount(stack)) {
+        failure = "unclosed asset node";
+    }
+    if (failure) {
+        read_error(text, at, error, error_size, failure);
+    }
+    for (int i = 0; i < acount(stack); i++) {
+        free(stack[i].name);
+    }
+    afree(stack);
+    kdl_destroy_parser(parser);
+    if (failure) {
+        av_doc_free(doc);
+        return NULL;
+    }
+    av_set_source(root, (av_source){ 0, strlen(text), SIZE_MAX, SIZE_MAX });
     return doc;
 }
 
-/* --- JSON to YAML -------------------------------------------------------- */
+av_doc *av_value_read(const char *text, char *error, size_t error_size)
+{
+    if (!text) {
+        return av_doc_read(text, error, error_size);
+    }
+    size_t len = strlen(text);
+    char *wrapped = xmalloc(len + 9);
+    memcpy(wrapped, "__value ", 8);
+    memcpy(wrapped + 8, text, len + 1);
+    av_doc *doc = av_doc_read(wrapped, NULL, 0);
+    free(wrapped);
+    if (doc) {
+        av_value *value = av_obj_get(av_doc_root(doc), "__value");
+        if (value && !av_is_ctn(value)) {
+            av_source source = av_get_source(value);
+            source.start -= 8;
+            source.end -= 8;
+            source.name_start = source.name_end = SIZE_MAX;
+            av_set_source(value, source);
+            av_doc_set_root(doc, value);
+            if (error && error_size) {
+                error[0] = 0;
+            }
+            return doc;
+        }
+        av_doc_free(doc);
+    }
+    doc = av_doc_read(text, error, error_size);
+    if (doc && !strncmp(text, "(array)-", 8)) {
+        av_value *array = av_obj_get(av_doc_root(doc), "-");
+        if (av_is_arr(array) && av_obj_size(av_doc_root(doc)) == 1) {
+            av_doc_set_root(doc, array);
+        }
+    }
+    return doc;
+}
 
-typedef struct buffer
+typedef struct
 {
     char *data;
-    size_t size;
-    size_t capacity;
-} buffer;
+    size_t count, capacity;
+    bool invalid;
+} text_buffer;
 
-static int write_buffer(void *user, unsigned char *data, size_t size)
+static void write_text(text_buffer *buffer, const char *text, size_t size)
 {
-    buffer *out = user;
-    if (out->size + size + 1 > out->capacity) {
-        out->capacity = (out->size + size + 1) * 2;
-        out->data = xrealloc(out->data, out->capacity);
+    if (buffer->count + size + 1 > buffer->capacity) {
+        buffer->capacity = (buffer->count + size + 1) * 2;
+        buffer->data = xrealloc(buffer->data, buffer->capacity);
     }
-    memcpy(out->data + out->size, data, size);
-    out->size += size;
-    out->data[out->size] = '\0';
-    return 1;
+    memcpy(buffer->data + buffer->count, text, size);
+    buffer->count += size;
+    buffer->data[buffer->count] = 0;
 }
-
-static bool emit_scalar(yaml_emitter_t *emitter, const char *text, size_t length, yaml_scalar_style_t style)
+static void write_word(text_buffer *buffer, const char *text)
 {
-    yaml_event_t event;
-    yaml_scalar_event_initialize(&event, NULL, NULL, (yaml_char_t *)text, (int)length, 1, 1, style);
-    return yaml_emitter_emit(emitter, &event);
+    write_text(buffer, text, strlen(text));
 }
-
-static bool scalar_fits(yyjson_val *item, size_t *width)
+static void write_string(text_buffer *buffer, const char *text, size_t size)
 {
-    if (yyjson_is_ctn(item) ||
-        (yyjson_is_str(item) && strchr(yyjson_get_str(item), '\n'))) {
-        return false;
+    kdl_str input = { text, size };
+    kdl_owned_string escaped = kdl_escape_v(KDL_VERSION_2, &input, KDL_ESCAPE_DEFAULT);
+    if (!escaped.data) {
+        buffer->invalid = true;
+        return;
     }
-    *width += (yyjson_is_str(item) || yyjson_is_raw(item) ? yyjson_get_len(item) : 5) + 2;
+    write_word(buffer, "\"");
+    write_text(buffer, escaped.data, escaped.len);
+    write_word(buffer, "\"");
+    kdl_free_string(&escaped);
+}
+static void write_name(text_buffer *buffer, const char *name)
+{
+    bool bare = *name == '-' && !name[1];
+    if (isalpha((unsigned char)*name) || *name == '_') {
+        bare = true;
+        for (const char *p = name + 1; *p; p++) {
+            bare &= isalnum((unsigned char)*p) || strchr("_.-", *p) != NULL;
+        }
+    }
+    if (bare) {
+        write_word(buffer, name);
+        return;
+    }
+    write_string(buffer, name, strlen(name));
+}
+static bool write_scalar(text_buffer *buffer, const av_value *value)
+{
+    char number[64];
+    switch (av_get_type(value)) {
+        case AV_NULL: write_word(buffer, "#null"); return true;
+        case AV_BOOL:
+            write_word(buffer, av_get_bool(value) ? "#true" : "#false");
+            return true;
+        case AV_SINT:
+            snprintf(number, sizeof number, "%" PRId64, av_get_sint(value));
+            break;
+        case AV_UINT:
+            snprintf(number, sizeof number, "%" PRIu64, av_get_uint(value));
+            break;
+        case AV_REAL: {
+            double real = av_get_num(value);
+            if (!isfinite(real)) {
+                return false;
+            }
+            snprintf(number, sizeof number, "%.17g", real);
+            if (!strchr(number, '.') && !strchr(number, 'e')) {
+                strncat(number, ".0", sizeof number - strlen(number) - 1);
+            }
+            break;
+        }
+        case AV_STRING:
+            write_string(buffer, av_get_str(value), av_get_len(value));
+            return true;
+        case AV_OBJECT:
+        case AV_ARRAY: return false;
+    }
+    write_word(buffer, number);
     return true;
 }
-
-static bool automatic_position(yyjson_val *object, const char *key)
+static void write_indent(text_buffer *buffer, int depth)
 {
-    return yyjson_is_false(yyjson_obj_get(object, "placed")) &&
-           (!strcmp(key, "x") || !strcmp(key, "y") || !strcmp(key, "placed"));
+    for (int i = 0; i < depth; i++) {
+        write_word(buffer, "    ");
+    }
 }
-
-/* Short lists and mappings of plain values, such as edges, read best on one
- * line. Only what the file keeps counts, so arranging a node never restyles
- * its entry. */
-static bool flow_style(yyjson_val *value)
+static bool write_node(text_buffer *buffer, const char *name, const av_value *value, int depth)
 {
-    size_t width = 0, i, count;
-    yyjson_val *key, *item;
-    if (yyjson_is_arr(value)) {
-        yyjson_arr_foreach(value, i, count, item)
-        {
-            if (!scalar_fits(item, &width)) {
+    write_indent(buffer, depth);
+    if (av_is_arr(value)) {
+        write_word(buffer, "(array)");
+    }
+    if (av_is_obj(value) && !av_obj_size(value)) {
+        write_word(buffer, "(object)");
+    }
+    write_name(buffer, name);
+    if (!av_is_ctn(value)) {
+        write_word(buffer, " ");
+        if (!write_scalar(buffer, value)) {
+            return false;
+        }
+        write_word(buffer, "\n");
+        return true;
+    }
+    size_t count = av_is_arr(value) ? av_arr_size(value) : av_obj_size(value);
+    bool simple = true;
+    for (size_t i = 0; i < count; i++) {
+        simple &= !av_is_ctn(
+            av_is_arr(value) ? av_arr_get(value, i) : av_obj_value_at(value, i)
+        );
+    }
+    if (simple) {
+        for (size_t i = 0; i < count; i++) {
+            write_word(buffer, " ");
+            if (av_is_obj(value)) {
+                write_name(buffer, av_get_str(av_obj_key_at(value, i)));
+                write_word(buffer, "=");
+            }
+            if (!write_scalar(buffer, av_is_arr(value) ? av_arr_get(value, i) : av_obj_value_at(value, i))) {
                 return false;
             }
         }
-        return width <= 80;
+        write_word(buffer, "\n");
+        return true;
     }
-    yyjson_obj_foreach(value, i, count, key, item)
-    {
-        if (automatic_position(value, yyjson_get_str(key))) {
-            continue;
-        }
-        if (!scalar_fits(key, &width) || !scalar_fits(item, &width)) {
+    write_word(buffer, " {\n");
+    for (size_t i = 0; i < count; i++) {
+        const char *key = av_is_arr(value) ? "-"
+                                           : av_get_str(av_obj_key_at(value, i));
+        const av_value *child = av_is_arr(value) ? av_arr_get(value, i)
+                                                 : av_obj_value_at(value, i);
+        if (!write_node(buffer, key, child, depth + 1)) {
             return false;
         }
     }
-    return width <= 80;
+    write_indent(buffer, depth);
+    write_word(buffer, "}\n");
+    return true;
 }
-
-static bool emit_value(yaml_emitter_t *emitter, yyjson_val *value, bool root)
+char *av_value_write(const av_value *value)
 {
-    yaml_event_t event;
-    if (yyjson_is_obj(value)) {
-        bool flow = !yyjson_obj_size(value) || (!root && flow_style(value));
-        yaml_mapping_start_event_initialize(&event, NULL, NULL, 1, flow ? YAML_FLOW_MAPPING_STYLE : YAML_BLOCK_MAPPING_STYLE);
-        if (!yaml_emitter_emit(emitter, &event)) {
-            return false;
+    if (!value) {
+        return NULL;
+    }
+    text_buffer buffer = { 0 };
+    bool valid = true;
+    if (av_is_obj(value)) {
+        for (size_t i = 0; i < av_obj_size(value); i++) {
+            valid &= write_node(
+                &buffer,
+                av_get_str(av_obj_key_at(value, i)),
+                av_obj_value_at(value, i),
+                0
+            );
         }
-        size_t i, count;
-        yyjson_val *key, *item;
-        yyjson_obj_foreach(value, i, count, key, item)
-        {
-            if (automatic_position(value, yyjson_get_str(key))) {
-                continue;
-            }
-            if (!emit_value(emitter, key, false) || !emit_value(emitter, item, false)) {
-                return false;
-            }
-        }
-        yaml_mapping_end_event_initialize(&event);
-        return yaml_emitter_emit(emitter, &event);
+    } else if (av_is_arr(value)) {
+        valid = write_node(&buffer, "-", value, 0);
+    } else {
+        valid = write_scalar(&buffer, value);
     }
-    if (yyjson_is_arr(value)) {
-        bool flow = !yyjson_arr_size(value) || flow_style(value);
-        yaml_sequence_start_event_initialize(&event, NULL, NULL, 1, flow ? YAML_FLOW_SEQUENCE_STYLE : YAML_BLOCK_SEQUENCE_STYLE);
-        if (!yaml_emitter_emit(emitter, &event)) {
-            return false;
-        }
-        size_t i, count;
-        yyjson_val *item;
-        yyjson_arr_foreach(value, i, count, item)
-        {
-            if (!emit_value(emitter, item, false)) {
-                return false;
-            }
-        }
-        yaml_sequence_end_event_initialize(&event);
-        return yaml_emitter_emit(emitter, &event);
+    if (!valid || buffer.invalid) {
+        free(buffer.data);
+        return NULL;
     }
-    if (yyjson_is_null(value)) {
-        return emit_scalar(emitter, "null", 4, YAML_PLAIN_SCALAR_STYLE);
+    if (!buffer.data) {
+        return xstrdup("");
     }
-    if (yyjson_is_bool(value)) {
-        const char *text = yyjson_get_bool(value) ? "true" : "false";
-        return emit_scalar(emitter, text, strlen(text), YAML_PLAIN_SCALAR_STYLE);
-    }
-    if (yyjson_is_raw(value)) {
-        return emit_scalar(emitter, yyjson_get_raw(value), yyjson_get_len(value), YAML_PLAIN_SCALAR_STYLE);
-    }
-    const char *text = yyjson_get_str(value);
-    size_t length = yyjson_get_len(value);
-    yaml_scalar_style_t style = memchr(text, '\n', length) ? YAML_LITERAL_SCALAR_STYLE
-                              : needs_quotes(text, length)
-                                  ? YAML_DOUBLE_QUOTED_SCALAR_STYLE
-                                  : YAML_ANY_SCALAR_STYLE;
-    return emit_scalar(emitter, text, length, style);
+    return buffer.data;
 }
-
+char *av_doc_write(const av_doc *doc)
+{
+    return av_is_obj(av_doc_root(doc)) ? av_value_write(av_doc_root(doc)) : NULL;
+}
+av_doc *asset_text_read(const char *text, char *error, size_t error_size)
+{
+    return av_doc_read(text, error, error_size);
+}
+/* Only file emission drops automatic graph positions. In-memory trees retain
+ * them, so snapshots and undo preserve the editor's current arrangement. */
+static void strip_positions(av_value *value)
+{
+    if (av_is_obj(value)) {
+        av_value *placed = av_obj_get(value, "placed");
+        if (av_is_bool(placed) && !av_get_bool(placed) && av_obj_get(value, "type")) {
+            av_obj_remove_key(value, "x");
+            av_obj_remove_key(value, "y");
+            av_obj_remove_key(value, "placed");
+        }
+        for (size_t i = 0; i < av_obj_size(value); i++) {
+            strip_positions(av_obj_value_at(value, i));
+        }
+    }
+    if (av_is_arr(value)) {
+        for (size_t i = 0; i < av_arr_size(value); i++) {
+            strip_positions(av_arr_get(value, i));
+        }
+    }
+}
 char *asset_text_to_disk(const char *text, char *error, size_t error_size)
 {
-    char *converted = json_text(text) ? NULL : yaml_to_json(text, error, error_size);
-    if (!json_text(text) && !converted) {
-        return NULL;
-    }
-    const char *json = converted ? converted : text;
-    yyjson_doc *doc = yyjson_read(json, strlen(json), YYJSON_READ_NUMBER_AS_RAW);
-    free(converted);
+    av_doc *doc = av_doc_read(text, error, error_size);
     if (!doc) {
-        snprintf(error, error_size, "asset document is not valid JSON");
         return NULL;
     }
-    buffer out = { 0 };
-    yaml_emitter_t emitter;
-    yaml_emitter_initialize(&emitter);
-    yaml_emitter_set_output(&emitter, write_buffer, &out);
-    yaml_emitter_set_unicode(&emitter, 1);
-    yaml_emitter_set_width(&emitter, -1);
-    yaml_event_t event;
-    yaml_stream_start_event_initialize(&event, YAML_UTF8_ENCODING);
-    bool ok = yaml_emitter_emit(&emitter, &event);
-    yaml_document_start_event_initialize(&event, NULL, NULL, NULL, 1);
-    ok = ok && yaml_emitter_emit(&emitter, &event) &&
-         emit_value(&emitter, yyjson_doc_get_root(doc), true);
-    yaml_document_end_event_initialize(&event, 1);
-    ok = ok && yaml_emitter_emit(&emitter, &event);
-    yaml_stream_end_event_initialize(&event);
-    ok = ok && yaml_emitter_emit(&emitter, &event);
-    if (!ok) {
-        snprintf(error, error_size, "%s", emitter.problem ? emitter.problem : "YAML could not be written");
-        free(out.data);
-        out.data = NULL;
-    }
-    yaml_emitter_delete(&emitter);
-    yyjson_doc_free(doc);
-    return out.data;
+    strip_positions(av_doc_root(doc));
+    char *out = av_doc_write(doc);
+    av_doc_free(doc);
+    return out;
 }

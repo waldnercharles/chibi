@@ -5,8 +5,8 @@
 #include "render/shader_images.h"
 #include "runtime/generated.h"
 #include "support/array.h"
+#include "support/asset_text.h"
 #include "support/xalloc.h"
-#include "third_party/yyjson/yyjson.h"
 
 #include <math.h>
 #include <stdarg.h>
@@ -17,7 +17,8 @@
 
 typedef struct
 {
-    char *name, *source_json;
+    char *name;
+    av_value *source_value;
     shader_graph graph;
     char *glsl; /* Structural GLSL used to detect topology changes. */
     int *images;
@@ -84,12 +85,12 @@ static int parameter_slot(const shader_asset *asset, const char *name)
     }
     return -1;
 }
-bool render_shader_parameters_validate(int index, const char *json, shader_error *error)
+bool render_shader_parameters_validate(int index, const char *text, shader_error *error)
 {
     if (error) {
         *error = (shader_error){ 0 };
     }
-    if (!json || !*json) {
+    if (!text || !*text) {
         return true;
     }
     if (index <= 0 || index > acount(assets)) {
@@ -98,20 +99,20 @@ bool render_shader_parameters_validate(int index, const char *json, shader_error
         }
         return false;
     }
-    yyjson_doc *doc = yyjson_read(json, strlen(json), 0);
-    yyjson_val *root = doc ? yyjson_doc_get_root(doc) : NULL;
-    if (!root || !yyjson_is_obj(root)) {
+    av_doc *doc = av_value_read(text, NULL, 0);
+    av_value *root = doc ? av_doc_root(doc) : NULL;
+    if (!root || !av_is_obj(root)) {
         if (error) {
-            snprintf(error->message, sizeof error->message, "Preview parameters must be a JSON object.");
+            snprintf(error->message, sizeof error->message, "Preview parameters must be KDL named values.");
         }
-        yyjson_doc_free(doc);
+        av_doc_free(doc);
         return false;
     }
     shader_asset *asset = &assets[index - 1];
-    yyjson_obj_iter iterator = yyjson_obj_iter_with(root);
-    yyjson_val *key;
+    av_obj_iter iterator = av_obj_iter_with(root);
+    av_value *key;
     int count = 0;
-    while ((key = yyjson_obj_iter_next(&iterator))) {
+    while ((key = av_obj_iter_next(&iterator))) {
         count++;
         if (count > SHADER_PARAMETER_MAX) {
             if (error) {
@@ -122,10 +123,10 @@ bool render_shader_parameters_validate(int index, const char *json, shader_error
                     SHADER_PARAMETER_MAX
                 );
             }
-            yyjson_doc_free(doc);
+            av_doc_free(doc);
             return false;
         }
-        const char *name = yyjson_get_str(key);
+        const char *name = av_get_str(key);
         int slot = parameter_slot(asset, name);
         if (slot < 0) {
             if (error) {
@@ -136,21 +137,19 @@ bool render_shader_parameters_validate(int index, const char *json, shader_error
                     name ? name : ""
                 );
             }
-            yyjson_doc_free(doc);
+            av_doc_free(doc);
             return false;
         }
-        yyjson_val *value = yyjson_obj_iter_get_val(key);
+        av_value *value = av_obj_iter_get_val(key);
         int width = asset->widths[slot];
         bool valid = width == 1 &&
-                     ((yyjson_is_num(value) && isfinite(yyjson_get_num(value))) ||
-                      yyjson_is_bool(value));
-        if (!valid && width > 1 && yyjson_is_arr(value) &&
-            (int)yyjson_arr_size(value) == width) {
+                     ((av_is_num(value) && isfinite(av_get_num(value))) ||
+                      av_is_bool(value));
+        if (!valid && width > 1 && av_is_arr(value) && (int)av_arr_size(value) == width) {
             valid = true;
             for (int i = 0; i < width; i++) {
-                yyjson_val *component = yyjson_arr_get(value, (size_t)i);
-                valid &= yyjson_is_num(component) &&
-                         isfinite(yyjson_get_num(component));
+                av_value *component = av_arr_get(value, (size_t)i);
+                valid &= av_is_num(component) && isfinite(av_get_num(component));
             }
         }
         if (!valid) {
@@ -166,11 +165,11 @@ bool render_shader_parameters_validate(int index, const char *json, shader_error
                     width
                 );
             }
-            yyjson_doc_free(doc);
+            av_doc_free(doc);
             return false;
         }
     }
-    yyjson_doc_free(doc);
+    av_doc_free(doc);
     return true;
 }
 bool render_shader_is_shape(int index)
@@ -211,7 +210,7 @@ unsigned render_shader_ramp_revision()
 static void free_asset(shader_asset *asset)
 {
     free(asset->name);
-    free(asset->source_json);
+    av_value_free(asset->source_value);
     free(asset->glsl);
     afree(asset->images);
     shader_graph_free(&asset->graph);
@@ -234,17 +233,18 @@ bool render_shader_upsert(const behavior_asset *source, shader_error *error)
         }
         return false;
     }
-    char *json = behavior_asset_save_json(source);
+    av_doc *document = av_doc_new();
+    av_value *value = behavior_asset_to_value(document, source);
+    av_doc_set_root(document, value);
     int existing = render_shader_find(source->name);
-    if (existing && json && assets[existing - 1].source_json &&
-        !strcmp(json, assets[existing - 1].source_json)) {
-        free(json);
+    if (existing && av_equals(value, assets[existing - 1].source_value)) {
+        av_value_free(value);
         return true;
     }
     shader_asset fresh = { .shape = source->domain == BEHAVIOR_DOMAIN_SHAPE,
-                           .source_json = json };
+                           .source_value = value };
     if (!shader_graph_from_graph(source->graph, &fresh.graph, error)) {
-        free(json);
+        av_value_free(value);
         return false;
     }
     fresh.name = xstrdup(source->name);
@@ -324,10 +324,10 @@ bool render_shader_upsert(const behavior_asset *source, shader_error *error)
             !strcmp(old->glsl, fresh.glsl) &&
             !memcmp(old->defaults, fresh.defaults, sizeof old->defaults) &&
             !memcmp(old->bounds, fresh.bounds, sizeof old->bounds)) {
-            if (old->source_json && json && !strcmp(old->source_json, json)) {
-                free(old->source_json);
-                old->source_json = fresh.source_json;
-                fresh.source_json = NULL;
+            if (av_equals(old->source_value, value)) {
+                av_value_free(old->source_value);
+                old->source_value = fresh.source_value;
+                fresh.source_value = NULL;
                 free_asset(&fresh);
                 return true;
             }
@@ -541,57 +541,57 @@ char *render_shader_glsl(const render_shader_set *set, int sampler_set, int firs
 struct render_shader_parameter_cache
 {
     unsigned revision;
-    char *json;
+    char *text;
     float values[SHADER_PARAMETER_MAX][4];
 };
 static render_shader_parameter_cache *serial_parameters;
 void render_shader_parameter_cache_free(render_shader_parameter_cache *cache)
 {
     for (int i = 0; i < acount(cache); i++) {
-        free(cache[i].json);
+        free(cache[i].text);
     }
     afree(cache);
 }
-static void parse_parameters(const shader_asset *asset, const char *json, float values[32][4])
+static void parse_parameters(const shader_asset *asset, const char *text, float values[32][4])
 {
     memcpy(values, asset->defaults, sizeof asset->defaults);
-    yyjson_doc *doc = json && *json ? yyjson_read(json, strlen(json), 0) : NULL;
-    yyjson_val *root = doc ? yyjson_doc_get_root(doc) : NULL;
+    av_doc *doc = text && *text ? av_value_read(text, NULL, 0) : NULL;
+    av_value *root = doc ? av_doc_root(doc) : NULL;
     for (int i = 0; i < 32; i++) {
         if (!asset->names[i]) {
             continue;
         }
-        yyjson_val *value = root ? yyjson_obj_get(root, asset->names[i]) : NULL;
+        av_value *value = root ? av_obj_get(root, asset->names[i]) : NULL;
         float parsed[4] = { 0 };
         bool valid = false;
-        if (yyjson_is_num(value) && asset->widths[i] == 1) {
-            parsed[0] = (float)yyjson_get_num(value);
+        if (av_is_num(value) && asset->widths[i] == 1) {
+            parsed[0] = (float)av_get_num(value);
             valid = isfinite(parsed[0]);
         }
-        if (yyjson_is_bool(value) && asset->widths[i] == 1) {
-            parsed[0] = yyjson_get_bool(value);
+        if (av_is_bool(value) && asset->widths[i] == 1) {
+            parsed[0] = av_get_bool(value);
             valid = true;
         }
-        if (yyjson_is_arr(value) && (int)yyjson_arr_size(value) == asset->widths[i]) {
+        if (av_is_arr(value) && (int)av_arr_size(value) == asset->widths[i]) {
             valid = true;
             for (int j = 0; j < asset->widths[i]; j++) {
-                yyjson_val *v = yyjson_arr_get(value, (size_t)j);
-                parsed[j] = (float)yyjson_get_num(v);
-                valid &= yyjson_is_num(v) && isfinite(parsed[j]);
+                av_value *v = av_arr_get(value, (size_t)j);
+                parsed[j] = (float)av_get_num(v);
+                valid &= av_is_num(v) && isfinite(parsed[j]);
             }
         }
         if (valid) {
             memcpy(values[i], parsed, sizeof parsed);
         }
     }
-    yyjson_doc_free(doc);
+    av_doc_free(doc);
 }
 
 void render_shader_parameters_cached(
     int index,
     ecs_world *world,
     ecs_entity entity,
-    const char *json,
+    const char *text,
     float values[32][4],
     render_shader_parameter_cache **cache
 )
@@ -601,18 +601,18 @@ void render_shader_parameters_cached(
         return;
     }
     shader_asset *asset = &assets[index - 1];
-    if (json && *json) {
+    if (text && *text) {
         int count = acount(*cache);
         if (count < index) {
             asetlen(*cache, index);
             memset(*cache + count, 0, (size_t)(index - count) * sizeof **cache);
         }
         render_shader_parameter_cache *c = &(*cache)[index - 1];
-        if (c->revision != revision || !c->json || strcmp(c->json, json)) {
-            free(c->json);
-            c->json = xstrdup(json);
+        if (c->revision != revision || !c->text || strcmp(c->text, text)) {
+            free(c->text);
+            c->text = xstrdup(text);
             c->revision = revision;
-            parse_parameters(asset, json, c->values);
+            parse_parameters(asset, text, c->values);
         }
         memcpy(values, c->values, sizeof c->values);
     } else {
@@ -635,11 +635,11 @@ void render_shader_parameters(
     int index,
     ecs_world *world,
     ecs_entity entity,
-    const char *json,
+    const char *text,
     float values[32][4]
 )
 {
-    render_shader_parameters_cached(index, world, entity, json, values, &serial_parameters);
+    render_shader_parameters_cached(index, world, entity, text, values, &serial_parameters);
 }
 bool render_shader_bounds(int index, float bounds[2])
 {

@@ -13,7 +13,7 @@
 static void write_asset(const char *directory, const char *name, const char *json)
 {
     char path[512];
-    snprintf(path, sizeof path, "%s/%s.yaml", directory, name);
+    snprintf(path, sizeof path, "%s/%s.kdl", directory, name);
     FILE *file = fopen(path, "wb");
     assert(file);
     assert(fputs(json, file) >= 0);
@@ -28,16 +28,16 @@ void run_behavior_loader_checks()
     snprintf(directory, sizeof directory, "%s/behaviors", root);
     assert(mkdir(directory, 0700) == 0);
     behavior_asset *asset = behavior_asset_new("Good");
-    char *json = behavior_asset_save_json(asset);
+    char *json = behavior_asset_save(asset);
     write_asset(directory, "Good", json);
     write_asset(directory, "Duplicate", json);
     free(json);
     behavior_asset_free(asset);
-    write_asset(directory, "Broken", "name: [Broken\n");
+    write_asset(directory, "Broken", "name \"Broken\n");
 
     asset = behavior_asset_new("Unknown");
     graph_add_node(asset->graph, registry_node_by_name("Integer"));
-    json = behavior_asset_save_json(asset);
+    json = behavior_asset_save(asset);
     char *type = strstr(json, "\"Integer\"");
     assert(type);
     memcpy(type, "\"Missing\"", strlen("\"Missing\""));
@@ -49,7 +49,7 @@ void run_behavior_loader_checks()
     node *call = graph_add_node(asset->graph, &NODE_CallFunction);
     assert(graph_set_node_reference(asset->graph, call, 1, "Missing") == 0);
     call->reference_asset = graph_own_str(asset->graph, "AbsentLibrary", strlen("AbsentLibrary"));
-    json = behavior_asset_save_json(asset);
+    json = behavior_asset_save(asset);
     write_asset(directory, "MissingLibrary", json);
     free(json);
     behavior_asset_free(asset);
@@ -61,7 +61,7 @@ void run_behavior_loader_checks()
     );
     asset = behavior_asset_new("PreviewFailed");
     assert(game_prototype_preview_register_behavior(preview, asset->name, asset) == 0);
-    json = behavior_asset_save_json(asset);
+    json = behavior_asset_save(asset);
     write_asset(directory, "PreviewFailed", json);
     free(json);
     behavior_asset_free(asset);
@@ -83,14 +83,14 @@ void run_behavior_loader_checks()
 
     assert(loaded == 1 && game_live_find_definition(world, "Good"));
     assert(!game_live_find_definition(world, "PreviewFailed"));
-    assert(strstr(messages, "Broken.yaml (deserialize): line "));
-    assert(strstr(messages, "Unknown.yaml (deserialize): unknown node type \"Missing\""));
-    assert(strstr(messages, "Good.yaml (register): A definition with this name is already registered."));
-    assert(strstr(messages, "MissingLibrary.yaml (register): AbsentLibrary:"));
+    assert(strstr(messages, "Broken.kdl (deserialize): line "));
+    assert(strstr(messages, "Unknown.kdl (deserialize): unknown node type \"Missing\""));
+    assert(strstr(messages, "Good.kdl (register): A definition with this name is already registered."));
+    assert(strstr(messages, "MissingLibrary.kdl (register): AbsentLibrary:"));
     assert(
         strstr(messages, "Could not register preview behavior PreviewFailed: A definition with this name")
     );
-    assert(strstr(messages, "PreviewFailed.yaml (preview):"));
+    assert(strstr(messages, "PreviewFailed.kdl (preview):"));
     game_prototype_preview_free(preview);
     game_live_world_free(world);
     ecs_world_free(ecs);
@@ -99,7 +99,7 @@ void run_behavior_loader_checks()
                             "Unknown", "MissingLibrary", "PreviewFailed" };
     for (int i = 0; i < (int)(sizeof names / sizeof *names); i++) {
         char path[512];
-        snprintf(path, sizeof path, "%s/%s.yaml", directory, names[i]);
+        snprintf(path, sizeof path, "%s/%s.kdl", directory, names[i]);
         assert(unlink(path) == 0);
     }
     assert(rmdir(directory) == 0 && rmdir(root) == 0);

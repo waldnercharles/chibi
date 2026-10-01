@@ -2,6 +2,7 @@
 #define CHIBI_GAME_UI_H
 
 #include "graph/model/registry.h"
+#include "support/asset_value.h"
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -45,12 +46,12 @@ typedef struct game_ui_element
 } game_ui_element;
 
 /* A value behaviors gave an entity's documents, which bind it as
- * self.<name>: a number, text, flag, list or record, as JSON text. */
+ * self.<name>: a number, text, flag, list or record, owned as a native value. */
 typedef struct game_ui_datum
 {
     uint64_t entity;
     char *name;
-    char *json;
+    av_value *value;
     uint64_t revision; /* the ui revision of its last change */
 } game_ui_datum;
 
@@ -92,10 +93,9 @@ void game_ui_measure(
 );
 /* The value last set under this selector, or false when none was. */
 bool game_ui_value(const game_ui *ui, uint64_t entity, const char *element, float *value);
-/* Sets self.<name> for the entity's documents to `json`; false, changing
- * nothing, for text that is not JSON or a name that is not a path: a word,
- * then words or list indices after dots ("items.2.name"). */
-bool game_ui_set_data(game_ui *ui, uint64_t entity, const char *name, const char *json);
+/* Copies `value` into self.<name>. False for a missing value or an invalid
+ * path: a word, then words or list indices after dots ("items.2.name"). */
+bool game_ui_set_data(game_ui *ui, uint64_t entity, const char *name, const av_value *value);
 /* Drops an entity's elements and data, as when its GameUi goes away. */
 void game_ui_forget(game_ui *ui, uint64_t entity);
 

@@ -1,6 +1,8 @@
 #ifndef CHIBI_EDITOR_UI_KIT_H
 #define CHIBI_EDITOR_UI_KIT_H
 
+#include "support/code_completion.h"
+
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -738,6 +740,7 @@ extern "C"
         const char *label;
         const char *detail;
         const char *insert;
+        code_completion_kind kind;
     } kit_code_completion;
     typedef struct kit_code_desc
     {

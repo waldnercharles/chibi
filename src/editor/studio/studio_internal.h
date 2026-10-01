@@ -4,6 +4,7 @@
 #include "assets/new_asset.h"
 #include "assets/project.h"
 #include "assets/ui_source.h"
+#include "editor/documents/asset_code.h"
 #include "editor/documents/component_presentation.h"
 #include "editor/documents/ui_code.h"
 #include "editor/studio/studio.h"
@@ -33,7 +34,7 @@ typedef enum
     STUDIO_EDITOR_ASSETS,
     STUDIO_EDITOR_PERFORMANCE,
     STUDIO_EDITOR_MEMBERS,
-    STUDIO_EDITOR_CODE, /* Blender's Text Editor: the active UI document's source */
+    STUDIO_EDITOR_CODE, /* Blender's Text Editor: the active asset's source */
     STUDIO_EDITOR_PANEL, /* an authored panel of the Studio project, named in studio_prefs.panels */
     STUDIO_EDITOR_COUNT,
 } studio_editor;
@@ -532,8 +533,8 @@ typedef struct
     bool value_editing; /* a default value gesture has an open undo step */
     struct
     {
-        int toast;        /* offers Undo while the delete is the latest edit */
-        const char *step; /* the delete's undo step in the graph editor */
+        int toast; /* offers Undo while the delete is the latest edit */
+        const behavior_asset *step; /* the delete's undo step in the graph editor */
     } undo;
     struct
     {
@@ -587,7 +588,7 @@ typedef struct
     int undo_toast;
 } studio_refactor;
 
-/* The open project's editor/Components.yaml, re-read when it changes. */
+/* The open project's editor/Components.kdl, re-read when it changes. */
 typedef struct
 {
     component_presentation hints; /* the last valid file; empty while it is missing */
@@ -650,6 +651,7 @@ typedef struct
        the one shown with the document and part it holds (the designer
        follows its cursor). */
     studio_code_editor *editors; /* array */
+    asset_code **assets;         /* KDL source sessions, owned */
     kit_code_editor *editor;
     char editor_path[1024];
     ui_part editor_part;
@@ -913,10 +915,10 @@ struct studio
     {
         bool open; /* the command surface adds a component to `prototype` */
         char prototype[128];
-        char added[128];  /* the component added last, whose panel opens */
-        char menu[128];   /* the component whose panel menu is open */
-        int toast;        /* offers Undo after Remove Component */
-        const char *step; /* the removal's undo snapshot; never dereferenced */
+        char added[128];      /* the component added last, whose panel opens */
+        char menu[128];       /* the component whose panel menu is open */
+        int toast;            /* offers Undo after Remove Component */
+        const av_value *step; /* the removal's undo snapshot; never dereferenced */
     } components;
 };
 
@@ -1611,7 +1613,7 @@ void studio_canvas_free(studio *s);
 
 /* The Settings page's categories, in its sidebar's order. The Keyboard
  * category lists the command registry; Project edits the open project's
- * project.yaml. */
+ * project.kdl. */
 typedef enum
 {
     STUDIO_SETTINGS_APPEARANCE,
@@ -1690,7 +1692,7 @@ studio_prefs studio_prefs_read(const char *json);
  * ages share the file without dropping each other's settings. */
 char *studio_prefs_write(const studio_prefs *prefs, const char *saved);
 
-/* The Project tab's rows: fields of the open project's project.yaml, in the
+/* The Project tab's rows: fields of the open project's project.kdl, in the
  * page's order. */
 typedef enum
 {
@@ -1711,7 +1713,7 @@ typedef struct studio_settings_view
     int recording; /* command + 1, zero when idle */
     bool mac;
     const char *project; /* the open project's name */
-    /* Each project.yaml field as the project reads it, "" for none; the
+    /* Each project.kdl field as the project reads it, "" for none; the
        page may set them. */
     char fields[STUDIO_PROJECT_FIELD_COUNT][256];
     /* The assets a field chooses from (support/array.h): Start Scene's

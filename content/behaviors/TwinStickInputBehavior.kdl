@@ -1,0 +1,152 @@
+version 3
+name "TwinStickInputBehavior"
+id_counter 488
+description "Set movement velocity from local input while facing independent aim."
+owner_type "ecs.entity"
+(array)graphs {
+    - {
+        kind "event"
+        name ""
+        (array)nodes {
+            - {
+                id 1
+                type "Event"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_name "Input"
+                outputs {
+                    Direction id=3 type="struct" type_name="CF_V2" kind="data"
+                }
+            }
+            - {
+                id 14
+                type "Set_GameVelocity"
+                x 0.0
+                y 0.0
+                placed #false
+                outputs {
+                    Value id=35
+                }
+            }
+            - {
+                id 105
+                type "Call Pure Function"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 93
+                reference_name "Movement Velocity"
+                reference_asset "MovementActions"
+                inputs {
+                    direction id=132 type="struct" type_name="CF_V2"
+                    speed {
+                        id 133
+                        type "struct"
+                        type_name "GameMovement"
+                        binding kind="component" component="GAME.GameMovement"
+                    }
+                }
+                outputs {
+                    Velocity id=108 type="struct" type_name="GameVelocity"
+                }
+            }
+            - id=356 type="Event" x=0.0 y=0.0 placed=#false reference_name="Tick"
+            - {
+                id 367
+                type "Call Pure Function"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 1
+                reference_name "Direction Orientation"
+                reference_asset "DirectionMath"
+                inputs {
+                    X {
+                        id 368
+                        declaration_id 4
+                        type "float"
+                        binding kind="component_field" component="GAME.GameAim" field="direction.x"
+                    }
+                    Y {
+                        id 369
+                        declaration_id 5
+                        type "float"
+                        binding kind="component_field" component="GAME.GameAim" field="direction.y"
+                    }
+                }
+                outputs {
+                    Orientation id=370 declaration_id=6 type="struct" type_name="GameOrientation"
+                }
+            }
+            - id=371 type="Set_GameOrientation" x=0.0 y=0.0 placed=#false
+            - id=380 type="Has_GameDash" x=0.0 y=0.0 placed=#false
+            - id=382 type="Branch" x=0.0 y=0.0 placed=#false
+            - id=399 type="Has_GameDash" x=0.0 y=0.0 placed=#false
+            - id=401 type="Branch" x=0.0 y=0.0 placed=#false
+            - {
+                id 434
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 420
+                reference_name "Dashing While Moving"
+                inputs {
+                    Exec id=437 kind="exec"
+                    DashRemaining {
+                        id 435
+                        type "double"
+                        flags 0
+                        binding kind="component_field" component="GAME.GameDash" field="remaining"
+                    }
+                }
+                outputs {
+                    True id=438 kind="exec"
+                    False id=439 kind="exec"
+                    Result id=436 type="bool"
+                }
+            }
+            - {
+                id 468
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 454
+                reference_name "Dashing While Aiming"
+                inputs {
+                    Exec id=471 kind="exec"
+                    DashRemaining {
+                        id 469
+                        type "double"
+                        flags 0
+                        binding kind="component_field" component="GAME.GameDash" field="remaining"
+                    }
+                }
+                outputs {
+                    True id=472 kind="exec"
+                    False id=473 kind="exec"
+                    Result id=470 type="bool"
+                }
+            }
+        }
+        (array)edges {
+            - from="1.Then" to="382.Exec"
+            - from="1.Direction" to="105.direction"
+            - from="105.Velocity" to="14.Value"
+            - from="356.Then" to="401.Exec"
+            - from="367.Orientation" to="371.Value"
+            - from="380.Value" to="382.Condition"
+            - from="382.True" to="434.Exec"
+            - from="382.False" to="14.Exec"
+            - from="399.Value" to="401.Condition"
+            - from="401.True" to="468.Exec"
+            - from="401.False" to="371.Exec"
+            - from="434.False" to="14.Exec"
+            - from="468.False" to="371.Exec"
+        }
+    }
+    - id=420 kind="function" name="Dashing While Moving" math_expression="DashRemaining > 0" entry_id=441
+    - id=454 kind="function" name="Dashing While Aiming" math_expression="DashRemaining > 0" entry_id=475
+}

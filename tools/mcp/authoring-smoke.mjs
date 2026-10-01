@@ -7,6 +7,7 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
+import { fixtureKdl } from "./fixture-kdl.mjs";
 import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
 import { join, resolve } from "node:path";
@@ -154,8 +155,10 @@ mkdirSync(join(projectRoot, "content", "scenes"), { recursive: true });
 mkdirSync(join(projectRoot, "content", "scenarios"), { recursive: true });
 // A scenario replays keyed input on the scene the batch below creates.
 writeFileSync(
-  join(projectRoot, "content", "scenarios", "McpAuthoringScenario.yaml"),
-  `scene: ${sceneName}\nframes: 3\nsaved_state: {best: "7"}\nkeys:\n- {frame: 0, movement: {x: 1, y: 0}}\n- {frame: 2, controls: [Space]}\n`,
+  join(projectRoot, "content", "scenarios", "McpAuthoringScenario.kdl"),
+  fixtureKdl({scene: sceneName, frames: 3, saved_state: {best: "7"}, keys: [
+    {frame: 0, movement: {x: 1, y: 0}}, {frame: 2, controls: ["Space"]},
+  ]}),
 );
 
 try {
@@ -460,7 +463,7 @@ try {
   ]).get(2));
   assert(sceneAfterFailedRenames.ok === true && sceneAfterFailedRenames.result?.hash === sceneRename.result.after_hash && sceneAfterFailedRenames.result.document.entities?.length === 1, "invalid scene rename batches changed the published scene");
 
-  writeFileSync(join(projectRoot, "project.yaml"), "version: 2\nname: Studio\ncontent: content\nstart_scene: scenes/Studio.yaml\n");
+  writeFileSync(join(projectRoot, "project.kdl"), "version 4\nname \"Studio\"\ncontent \"content\"\nstart_scene \"scenes/Studio.kdl\"\n");
   const studioSceneCreateRun = runMcp(projectRoot, [
     initialize(),
     request(2, "buildScene", {
@@ -492,7 +495,7 @@ try {
   const studioRename = structured(studioRenameRun.get(3));
   assert(studioRenameDryRun.ok === true && Array.isArray(studioRenameDryRun.result?.warnings) && studioRenameDryRun.result.warnings.length > 0, `Studio scene rename dry run omitted its warning: ${JSON.stringify(studioRenameDryRun)}`);
   assert(studioRename.ok === true && Array.isArray(studioRename.result?.warnings) && studioRename.result.warnings.length > 0, `Studio scene rename omitted its warning: ${JSON.stringify(studioRename)}`);
-  rmSync(join(projectRoot, "project.yaml"), { force: true });
+  rmSync(join(projectRoot, "project.kdl"), { force: true });
 
   const missingBehaviorRun = runMcp(projectRoot, [
     initialize(),
@@ -577,7 +580,7 @@ try {
   const invalidMaterialName = "McpAuthoringInvalidMaterial";
   const invalidMaterial = JSON.parse(JSON.stringify(materialRead.result.document));
   invalidMaterial.graphs[0].nodes[0].type = "Shader Node That Does Not Exist";
-  writeFileSync(join(projectRoot, "content", "materials", invalidMaterialName + ".yaml"), JSON.stringify(invalidMaterial));
+  writeFileSync(join(projectRoot, "content", "materials", invalidMaterialName + ".kdl"), fixtureKdl(invalidMaterial));
   const publicValidationRun = runMcp(projectRoot, [
     initialize(),
     request(2, "validateAsset", { kind: "material", name: invalidMaterialName }),

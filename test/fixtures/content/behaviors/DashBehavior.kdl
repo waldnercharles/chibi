@@ -1,0 +1,969 @@
+version 3
+name "DashBehavior"
+id_counter 413
+description "Captures a dash direction, drives a solid body for a short burst, and damages each contacted enemy once per dash."
+owner_type "ecs.entity"
+(array)variables {
+    - id=1 name="Just Started" type="bool" type_name="bool" category="State"
+    - {
+        id 2
+        name "Struck Entities"
+        type "handle"
+        type_name "ecs.entity"
+        container 1
+        category "State"
+        (array)default
+    }
+}
+(array)graphs {
+    - {
+        kind "event"
+        name ""
+        (array)nodes {
+            - id=355 type="Event" x=0.0 y=0.0 placed=#false reference_name="Dash"
+            - {
+                id 357
+                type "Get_GameDash"
+                x 0.0
+                y 0.0
+                placed #false
+                outputs {
+                    Value flags=0
+                    Value.cooldown_remaining id=359
+                    Value.remaining id=399
+                }
+            }
+            - id=360 type="Greater Or Equal" x=0.0 y=0.0 placed=#false
+            - id=364 type="Branch" x=0.0 y=0.0 placed=#false
+            - id=369 type="Call Function" x=0.0 y=0.0 placed=#false reference_id=39 reference_name="Start Dash"
+            - id=372 type="Event" x=0.0 y=0.0 placed=#false reference_name="Tick"
+            - id=374 type="Call Function" x=0.0 y=0.0 placed=#false reference_id=23 reference_name="Advance Dash Timers"
+            - {
+                id 377
+                type "Get_GameDash"
+                x 0.0
+                y 0.0
+                placed #false
+                outputs {
+                    Value flags=0
+                    Value.remaining id=379
+                }
+            }
+            - id=380 type="Less" x=0.0 y=0.0 placed=#false
+            - id=384 type="Branch" x=0.0 y=0.0 placed=#false
+            - id=389 type="Call Function" x=0.0 y=0.0 placed=#false reference_id=8 reference_name="Drive Dash"
+            - {
+                id 392
+                type "Event"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_name "Contact Begin"
+                outputs {
+                    Other id=394 type="handle" type_name="ecs.entity" kind="data"
+                    Point id=411 type="struct" type_name="CF_V2" kind="data"
+                }
+            }
+            - {
+                id 395
+                type "Call Function"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 28
+                reference_name "Strike Target"
+                inputs {
+                    Other id=397 type="handle" type_name="ecs.entity" kind="data"
+                }
+                outputs {
+                    Then id=398
+                }
+            }
+            - id=400 type="Delta Time" x=0.0 y=0.0 placed=#false
+            - id=402 type="Greater Or Equal" x=0.0 y=0.0 placed=#false
+            - id=406 type="Branch" x=0.0 y=0.0 placed=#false
+        }
+        (array)edges {
+            - from="355.Then" to="364.Exec"
+            - from="357.Value.cooldown_remaining" to="360.B"
+            - from="357.Value.remaining" to="402.B"
+            - from="360.Result" to="364.Condition"
+            - from="364.True" to="406.Exec"
+            - from="372.Then" to="374.Exec"
+            - from="374.Then" to="384.Exec"
+            - from="377.Value.remaining" to="380.B"
+            - from="380.Result" to="384.Condition"
+            - from="384.True" to="389.Exec"
+            - from="392.Then" to="395.Exec"
+            - from="392.Other" to="395.Other"
+            - from="400.Seconds" to="360.A"
+            - from="402.Result" to="406.Condition"
+            - from="406.True" to="369.Exec"
+        }
+    }
+    - {
+        id 3
+        kind "function"
+        name "Capture Dash Direction"
+        entry_id 4
+        return_id 6
+        call_depth_limit 64
+        (array)nodes {
+            - {
+                id 4
+                type "Function Entry"
+                x 0.0
+                y 0.0
+                placed #false
+                (array)outputs {
+                    - id=5 name="Then"
+                }
+            }
+            - id=6 type="Return" x=0.0 y=0.0 placed=#false
+            - {
+                id 44
+                type "Get_GameInput"
+                x 0.0
+                y 0.0
+                placed #false
+                outputs {
+                    Value flags=0
+                    Value.move id=46
+                }
+            }
+            - {
+                id 47
+                type "Get_GameAim"
+                x 0.0
+                y 0.0
+                placed #false
+                outputs {
+                    Value flags=0
+                    Value.direction id=49
+                }
+            }
+            - {
+                id 50
+                type "Break_CF_V2"
+                x 0.0
+                y 0.0
+                placed #false
+                (array)inputs {
+                    - id=51 name="Value"
+                }
+            }
+            - {
+                id 54
+                type "Abs"
+                x 0.0
+                y 0.0
+                placed #false
+                inputs {
+                    Value group=0
+                }
+                outputs {
+                    Result group=0
+                }
+            }
+            - {
+                id 57
+                type "Abs"
+                x 0.0
+                y 0.0
+                placed #false
+                inputs {
+                    Value group=0
+                }
+                outputs {
+                    Result group=0
+                }
+            }
+            - {
+                id 60
+                type "Add"
+                x 0.0
+                y 0.0
+                placed #false
+                inputs {
+                    A group=0
+                    B group=0
+                }
+                outputs {
+                    Result group=0
+                }
+            }
+            - {
+                id 64
+                type "Greater Or Equal"
+                x 0.0
+                y 0.0
+                placed #false
+                inputs B=9.9999997473787516e-05
+            }
+            - id=68 type="Branch" x=0.0 y=0.0 placed=#false
+            - id=73 type="Normalize Vector 2" x=0.0 y=0.0 placed=#false
+            - id=76 type="Set_GameDash_direction" x=0.0 y=0.0 placed=#false
+            - id=83 type="Normalize Vector 2" x=0.0 y=0.0 placed=#false
+            - id=86 type="Set_GameDash_direction" x=0.0 y=0.0 placed=#false
+        }
+        (array)edges {
+            - from="4.Then" to="68.Exec"
+            - from="44.Value.move" to="50.Value"
+            - from="44.Value.move" to="73.Value"
+            - from="47.Value.direction" to="83.Value"
+            - from="50.x" to="54.Value"
+            - from="50.y" to="57.Value"
+            - from="54.Result" to="60.A"
+            - from="57.Result" to="60.B"
+            - from="60.Result" to="64.A"
+            - from="64.Result" to="68.Condition"
+            - from="68.True" to="76.Exec"
+            - from="68.False" to="86.Exec"
+            - from="73.Result" to="76.Value"
+            - from="76.Then" to="6.Exec"
+            - from="83.Result" to="86.Value"
+            - from="86.Then" to="6.Exec"
+        }
+    }
+    - {
+        id 8
+        kind "function"
+        name "Drive Dash"
+        entry_id 9
+        return_id 11
+        call_depth_limit 64
+        (array)nodes {
+            - {
+                id 9
+                type "Function Entry"
+                x 0.0
+                y 0.0
+                placed #false
+                (array)outputs {
+                    - id=10 name="Then"
+                }
+            }
+            - id=11 type="Return" x=0.0 y=0.0 placed=#false
+            - {
+                id 93
+                type "Get_GameDash"
+                x 0.0
+                y 0.0
+                placed #false
+                outputs {
+                    Value flags=0
+                    Value.direction id=95
+                    Value.speed id=96
+                }
+            }
+            - id=97 type="Multiply" x=0.0 y=0.0 placed=#false
+            - id=101 type="Set_GameVelocity" x=0.0 y=0.0 placed=#false
+            - {
+                id 106
+                type "Break_CF_V2"
+                x 0.0
+                y 0.0
+                placed #false
+                (array)inputs {
+                    - id=107 name="Value"
+                }
+            }
+            - {
+                id 110
+                type "Call Pure Function"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 1
+                reference_name "Direction Orientation"
+                reference_asset "DirectionMath"
+                inputs {
+                    X id=111 type="float"
+                    Y id=112 type="float"
+                }
+                outputs {
+                    Orientation id=113 type="struct" type_name="GameOrientation"
+                }
+            }
+            - id=114 type="Set_GameOrientation" x=0.0 y=0.0 placed=#false
+        }
+        (array)edges {
+            - from="9.Then" to="101.Exec"
+            - from="93.Value.direction" to="97.A"
+            - from="93.Value.direction" to="106.Value"
+            - from="93.Value.speed" to="97.B"
+            - from="97.Result" to="101.Value"
+            - from="101.Then" to="114.Exec"
+            - from="106.x" to="110.X"
+            - from="106.y" to="110.Y"
+            - from="110.Orientation" to="114.Value"
+            - from="114.Then" to="11.Exec"
+        }
+    }
+    - {
+        id 13
+        kind "function"
+        name "Restore Movement"
+        entry_id 14
+        return_id 16
+        call_depth_limit 64
+        (array)nodes {
+            - {
+                id 14
+                type "Function Entry"
+                x 0.0
+                y 0.0
+                placed #false
+                (array)outputs {
+                    - id=15 name="Then"
+                }
+            }
+            - id=16 type="Return" x=0.0 y=0.0 placed=#false
+            - {
+                id 119
+                type "Get_GameInput"
+                x 0.0
+                y 0.0
+                placed #false
+                outputs {
+                    Value flags=0
+                    Value.move id=121
+                }
+            }
+            - {
+                id 122
+                type "Get_GameMovement"
+                x 0.0
+                y 0.0
+                placed #false
+                outputs {
+                    Value flags=0
+                }
+            }
+            - {
+                id 124
+                type "Call Pure Function"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 93
+                reference_name "Movement Velocity"
+                reference_asset "MovementActions"
+                inputs {
+                    direction id=125 type="struct" type_name="CF_V2"
+                    speed id=126 type="struct" type_name="GameMovement"
+                }
+                outputs {
+                    Velocity id=127 type="struct" type_name="GameVelocity"
+                }
+            }
+            - id=128 type="Set_GameVelocity" x=0.0 y=0.0 placed=#false
+            - id=133 type="Has_GameInput" x=0.0 y=0.0 placed=#false
+            - id=135 type="Branch" x=0.0 y=0.0 placed=#false
+            - {
+                id 140
+                type "Set_GameVelocity"
+                x 0.0
+                y 0.0
+                placed #false
+                inputs {
+                    Value {
+                        default x=0.0 y=0.0
+                    }
+                }
+            }
+        }
+        (array)edges {
+            - from="14.Then" to="135.Exec"
+            - from="119.Value.move" to="124.direction"
+            - from="122.Value" to="124.speed"
+            - from="124.Velocity" to="128.Value"
+            - from="128.Then" to="16.Exec"
+            - from="133.Value" to="135.Condition"
+            - from="135.True" to="128.Exec"
+            - from="135.False" to="140.Exec"
+            - from="140.Then" to="16.Exec"
+        }
+    }
+    - {
+        id 18
+        kind "function"
+        name "Advance Dash"
+        entry_id 19
+        return_id 21
+        call_depth_limit 64
+        (array)nodes {
+            - {
+                id 19
+                type "Function Entry"
+                x 0.0
+                y 0.0
+                placed #false
+                (array)outputs {
+                    - id=20 name="Then"
+                }
+            }
+            - id=21 type="Return" x=0.0 y=0.0 placed=#false
+            - {
+                id 145
+                type "Get_GameDash"
+                x 0.0
+                y 0.0
+                placed #false
+                outputs {
+                    Value flags=0
+                    Value.remaining id=147
+                }
+            }
+            - id=148 type="Delta Time" x=0.0 y=0.0 placed=#false
+            - {
+                id 150
+                type "Subtract"
+                x 0.0
+                y 0.0
+                placed #false
+                inputs {
+                    A group=0
+                    B group=0
+                }
+                outputs {
+                    Result group=0
+                }
+            }
+            - {
+                id 154
+                type "Max"
+                x 0.0
+                y 0.0
+                placed #false
+                inputs {
+                    A group=0
+                    B group=0
+                }
+                outputs {
+                    Result group=0
+                }
+            }
+            - {
+                id 158
+                type "Set_GameDash_remaining"
+                x 0.0
+                y 0.0
+                placed #false
+                outputs {
+                    Value.remaining id=164
+                }
+            }
+            - id=165 type="Less" x=0.0 y=0.0 placed=#false
+            - id=169 type="Branch" x=0.0 y=0.0 placed=#false
+            - id=174 type="Call Function" x=0.0 y=0.0 placed=#false reference_id=13 reference_name="Restore Movement"
+        }
+        (array)edges {
+            - from="19.Then" to="158.Exec"
+            - from="145.Value.remaining" to="150.A"
+            - from="148.Seconds" to="150.B"
+            - from="150.Result" to="154.A"
+            - from="154.Result" to="158.Value"
+            - from="158.Then" to="169.Exec"
+            - from="158.Value.remaining" to="165.B"
+            - from="165.Result" to="169.Condition"
+            - from="169.True" to="21.Exec"
+            - from="169.False" to="174.Exec"
+            - from="174.Then" to="21.Exec"
+        }
+    }
+    - {
+        id 23
+        kind "function"
+        name "Advance Dash Timers"
+        entry_id 24
+        return_id 26
+        call_depth_limit 64
+        (array)nodes {
+            - {
+                id 24
+                type "Function Entry"
+                x 0.0
+                y 0.0
+                placed #false
+                (array)outputs {
+                    - id=25 name="Then"
+                }
+            }
+            - id=26 type="Return" x=0.0 y=0.0 placed=#false
+            - {
+                id 177
+                type "Get Variable"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 1
+                outputs {
+                    Value type="bool" flags=0
+                }
+            }
+            - id=179 type="Branch" x=0.0 y=0.0 placed=#false
+            - {
+                id 184
+                type "Set Variable"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 1
+                inputs {
+                    Value type="bool"
+                }
+                outputs {
+                    Value type="bool"
+                }
+            }
+            - {
+                id 189
+                type "Get_GameDash"
+                x 0.0
+                y 0.0
+                placed #false
+                outputs {
+                    Value flags=0
+                    Value.cooldown_remaining id=191
+                    Value.remaining id=192
+                }
+            }
+            - id=193 type="Delta Time" x=0.0 y=0.0 placed=#false
+            - {
+                id 195
+                type "Subtract"
+                x 0.0
+                y 0.0
+                placed #false
+                inputs {
+                    A group=0
+                    B group=0
+                }
+                outputs {
+                    Result group=0
+                }
+            }
+            - {
+                id 199
+                type "Max"
+                x 0.0
+                y 0.0
+                placed #false
+                inputs {
+                    A group=0
+                    B group=0
+                }
+                outputs {
+                    Result group=0
+                }
+            }
+            - id=203 type="Set_GameDash_cooldown_remaining" x=0.0 y=0.0 placed=#false
+            - id=210 type="Less" x=0.0 y=0.0 placed=#false
+            - id=214 type="Branch" x=0.0 y=0.0 placed=#false
+            - id=219 type="Call Function" x=0.0 y=0.0 placed=#false reference_id=18 reference_name="Advance Dash"
+        }
+        (array)edges {
+            - from="24.Then" to="179.Exec"
+            - from="177.Value" to="179.Condition"
+            - from="179.True" to="184.Exec"
+            - from="179.False" to="203.Exec"
+            - from="184.Then" to="26.Exec"
+            - from="189.Value.cooldown_remaining" to="195.A"
+            - from="189.Value.remaining" to="210.B"
+            - from="193.Seconds" to="195.B"
+            - from="195.Result" to="199.A"
+            - from="199.Result" to="203.Value"
+            - from="203.Then" to="214.Exec"
+            - from="210.Result" to="214.Condition"
+            - from="214.True" to="219.Exec"
+            - from="214.False" to="26.Exec"
+            - from="219.Then" to="26.Exec"
+        }
+    }
+    - {
+        id 28
+        kind "function"
+        name "Strike Target"
+        entry_id 29
+        return_id 32
+        call_depth_limit 64
+        (array)nodes {
+            - {
+                id 29
+                type "Function Entry"
+                x 0.0
+                y 0.0
+                placed #false
+                (array)outputs {
+                    - id=30 name="Then"
+                    - id=31 name="Other" type="handle" type_name="ecs.entity" kind="data"
+                }
+            }
+            - id=32 type="Return" x=0.0 y=0.0 placed=#false
+            - {
+                id 222
+                type "Get_GameDash"
+                x 0.0
+                y 0.0
+                placed #false
+                outputs {
+                    Value flags=0
+                    Value.remaining id=224
+                    Value.damage id=225
+                }
+            }
+            - id=226 type="Less" x=0.0 y=0.0 placed=#false
+            - id=230 type="Branch" x=0.0 y=0.0 placed=#false
+            - id=235 type="HasEntity_GameHealth" x=0.0 y=0.0 placed=#false
+            - id=238 type="Branch" x=0.0 y=0.0 placed=#false
+            - id=243 type="HasEntity_GameCollider" x=0.0 y=0.0 placed=#false
+            - id=246 type="Branch" x=0.0 y=0.0 placed=#false
+            - {
+                id 251
+                type "GetEntity_GameCollider"
+                x 0.0
+                y 0.0
+                placed #false
+                outputs {
+                    Value.category id=254
+                }
+            }
+            - {
+                id 255
+                type "Has Any Flags"
+                x 0.0
+                y 0.0
+                placed #false
+                inputs Flags=2
+            }
+            - id=259 type="Branch" x=0.0 y=0.0 placed=#false
+            - {
+                id 264
+                type "Get Variable"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 2
+                outputs {
+                    Value {
+                        type "handle"
+                        type_name "ecs.entity"
+                        container 1
+                        flags 0
+                        (array)default
+                    }
+                }
+            }
+            - {
+                id 266
+                type "Contains"
+                x 0.0
+                y 0.0
+                placed #false
+                inputs {
+                    Array {
+                        type "handle"
+                        type_name "ecs.entity"
+                        (array)default
+                    }
+                }
+            }
+            - id=270 type="Branch" x=0.0 y=0.0 placed=#false
+            - {
+                id 275
+                type "Array Add"
+                x 0.0
+                y 0.0
+                placed #false
+                inputs {
+                    Array {
+                        type "handle"
+                        type_name "ecs.entity"
+                        (array)default
+                    }
+                }
+                outputs {
+                    Array {
+                        type "handle"
+                        type_name "ecs.entity"
+                        (array)default
+                    }
+                }
+            }
+            - {
+                id 279
+                type "Set Variable"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 2
+                inputs {
+                    Value {
+                        type "handle"
+                        type_name "ecs.entity"
+                        container 1
+                        (array)default
+                    }
+                }
+                outputs {
+                    Value {
+                        type "handle"
+                        type_name "ecs.entity"
+                        container 1
+                        (array)default
+                    }
+                }
+            }
+            - {
+                id 284
+                type "Self"
+                x 0.0
+                y 0.0
+                placed #false
+                outputs {
+                    Self type_name="ecs.entity"
+                }
+            }
+            - {
+                id 286
+                type "Send Event"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_name "Damage"
+                inputs {
+                    Amount id=289 declaration_id=2 type="int"
+                    Source id=290 declaration_id=3
+                }
+                outputs {
+                    Then id=291
+                }
+            }
+        }
+        (array)edges {
+            - from="29.Then" to="230.Exec"
+            - from="29.Other" to="235.Entity"
+            - from="29.Other" to="243.Entity"
+            - from="29.Other" to="251.Entity"
+            - from="29.Other" to="266.Item"
+            - from="29.Other" to="275.Item"
+            - from="29.Other" to="286.Entity"
+            - from="222.Value.remaining" to="226.B"
+            - from="222.Value.damage" to="286.Amount"
+            - from="226.Result" to="230.Condition"
+            - from="230.True" to="238.Exec"
+            - from="230.False" to="32.Exec"
+            - from="235.Value" to="238.Condition"
+            - from="238.True" to="246.Exec"
+            - from="238.False" to="32.Exec"
+            - from="243.Value" to="246.Condition"
+            - from="246.True" to="259.Exec"
+            - from="246.False" to="32.Exec"
+            - from="251.Value.category" to="255.Value"
+            - from="255.Result" to="259.Condition"
+            - from="259.True" to="270.Exec"
+            - from="259.False" to="32.Exec"
+            - from="264.Value" to="266.Array"
+            - from="264.Value" to="275.Array"
+            - from="266.Return Value" to="270.Condition"
+            - from="270.True" to="32.Exec"
+            - from="270.False" to="279.Exec"
+            - from="275.Array" to="279.Value"
+            - from="279.Then" to="286.Exec"
+            - from="284.Self" to="286.Source"
+            - from="286.Then" to="32.Exec"
+        }
+    }
+    - {
+        id 34
+        kind "function"
+        name "Strike Current Contacts"
+        entry_id 35
+        return_id 37
+        call_depth_limit 64
+        (array)nodes {
+            - {
+                id 35
+                type "Function Entry"
+                x 0.0
+                y 0.0
+                placed #false
+                (array)outputs {
+                    - id=36 name="Then"
+                }
+            }
+            - id=37 type="Return" x=0.0 y=0.0 placed=#false
+            - {
+                id 292
+                type "Self"
+                x 0.0
+                y 0.0
+                placed #false
+                outputs {
+                    Self type_name="ecs.entity"
+                }
+            }
+            - {
+                id 294
+                type "Get Contact Entities"
+                x 0.0
+                y 0.0
+                placed #false
+                inputs Categories=2
+                outputs {
+                    Entities {
+                        (array)default
+                    }
+                }
+            }
+            - {
+                id 298
+                type "ForEach"
+                x 0.0
+                y 0.0
+                placed #false
+                inputs {
+                    Array {
+                        type "handle"
+                        type_name "ecs.entity"
+                        (array)default
+                    }
+                }
+            }
+            - {
+                id 305
+                type "Call Function"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 28
+                reference_name "Strike Target"
+                inputs {
+                    Other id=307 type="handle" type_name="ecs.entity" kind="data"
+                }
+                outputs {
+                    Then id=308
+                }
+            }
+        }
+        (array)edges {
+            - from="35.Then" to="298.Exec"
+            - from="292.Self" to="294.Entity"
+            - from="294.Entities" to="298.Array"
+            - from="298.Body" to="305.Exec"
+            - from="298.Array Element" to="305.Other"
+            - from="298.Completed" to="37.Exec"
+        }
+    }
+    - {
+        id 39
+        kind "function"
+        name "Start Dash"
+        entry_id 40
+        return_id 42
+        call_depth_limit 64
+        (array)nodes {
+            - {
+                id 40
+                type "Function Entry"
+                x 0.0
+                y 0.0
+                placed #false
+                (array)outputs {
+                    - id=41 name="Then"
+                }
+            }
+            - id=42 type="Return" x=0.0 y=0.0 placed=#false
+            - {
+                id 309
+                type "Get_GameHealth"
+                x 0.0
+                y 0.0
+                placed #false
+                outputs {
+                    Value flags=0
+                    Value.current id=311
+                }
+            }
+            - {
+                id 312
+                type "Integer Greater Or Equal"
+                x 0.0
+                y 0.0
+                placed #false
+                inputs B=1
+            }
+            - id=316 type="Branch" x=0.0 y=0.0 placed=#false
+            - id=321 type="Call Function" x=0.0 y=0.0 placed=#false reference_id=3 reference_name="Capture Dash Direction"
+            - {
+                id 324
+                type "Get_GameDash"
+                x 0.0
+                y 0.0
+                placed #false
+                outputs {
+                    Value flags=0
+                    Value.duration id=326
+                    Value.cooldown id=327
+                }
+            }
+            - id=328 type="Set_GameDash_remaining" x=0.0 y=0.0 placed=#false
+            - id=335 type="Set_GameDash_cooldown_remaining" x=0.0 y=0.0 placed=#false
+            - {
+                id 342
+                type "Set Variable"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 1
+                inputs {
+                    Value type="bool" default=#true
+                }
+                outputs {
+                    Value type="bool"
+                }
+            }
+            - {
+                id 347
+                type "Set Variable"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 2
+                inputs {
+                    Value {
+                        type "handle"
+                        type_name "ecs.entity"
+                        container 1
+                        (array)default
+                    }
+                }
+                outputs {
+                    Value {
+                        type "handle"
+                        type_name "ecs.entity"
+                        container 1
+                        (array)default
+                    }
+                }
+            }
+            - id=352 type="Call Function" x=0.0 y=0.0 placed=#false reference_id=34 reference_name="Strike Current Contacts"
+        }
+        (array)edges {
+            - from="40.Then" to="316.Exec"
+            - from="309.Value.current" to="312.A"
+            - from="312.Result" to="316.Condition"
+            - from="316.True" to="321.Exec"
+            - from="316.False" to="42.Exec"
+            - from="321.Then" to="328.Exec"
+            - from="324.Value.duration" to="328.Value"
+            - from="324.Value.cooldown" to="335.Value"
+            - from="328.Then" to="335.Exec"
+            - from="335.Then" to="342.Exec"
+            - from="342.Then" to="347.Exec"
+            - from="347.Then" to="352.Exec"
+            - from="352.Then" to="42.Exec"
+        }
+    }
+}

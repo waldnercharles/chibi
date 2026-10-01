@@ -16,12 +16,12 @@ typedef struct yyjson_val yyjson_val;
  * graph, and whose operations array contains semantic operations. Node
  * selectors are numeric node IDs or string refs returned by add_node. Pin
  * selectors are pin names or zero-based indices. The helper owns no IO: on
- * success it returns a newly allocated serialized asset in edited_json; on
- * validation or request failure it leaves edited_json NULL and the source
+ * success it returns a newly allocated serialized asset in edited_text; on
+ * validation or request failure it leaves edited_text NULL and the source
  * remains untouched.
  */
 int automation_graph_edit(
-    const char *source_json,
+    const char *source_text,
     const char *kind,
     const char *name,
     const behavior_asset *const *libraries,
@@ -29,7 +29,7 @@ int automation_graph_edit(
     yyjson_val *request,
     yyjson_mut_doc *doc,
     yyjson_mut_val *result,
-    char **edited_json,
+    char **edited_text,
     char *error,
     size_t error_size
 );

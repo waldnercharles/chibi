@@ -6,6 +6,7 @@
 #include "graph/model/type.h"
 #include "runtime/generated.h"
 #include "support/array.h"
+#include "support/asset_json.h"
 #include "support/xalloc.h"
 
 #include <assert.h>
@@ -223,7 +224,11 @@ static bool read_plain_value(pin_type type, const char *type_name, yyjson_val *j
                                 .str = xstrdup(yyjson_get_str(json)) };
             return true;
         }
-        return serialize_read_value(type, type_name, json, out, NULL) == 0;
+        av_doc *doc = av_doc_new();
+        av_value *value = av_from_json(doc, json);
+        bool ok = serialize_read_value(type, type_name, value, out, NULL) == 0;
+        av_doc_free(doc);
+        return ok;
     }
     const type_desc *shape = registry_type_by_name(type_name);
     if (!shape || !type_is_plain(shape) || !yyjson_is_obj(json)) {
@@ -552,7 +557,7 @@ bool scene_collab_apply_action(app_scene_authoring *scene, const char *json, cha
     } else if (!strcmp(operation, "system.replace")) {
         const char *system = text(root, "system");
         const char *path = text(root, "path");
-        ok = system && load_system_document_json(scene, system, path, false) == 0;
+        ok = system && load_system_document_text(scene, system, path, false) == 0;
         if (!ok) {
             fail(error, error_size, "Could not restore the requested system document");
         }

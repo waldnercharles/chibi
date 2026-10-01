@@ -2,6 +2,7 @@
 #define CHIBI_EDITOR_INTERNAL_H
 
 #include "editor/workspace/editor.h"
+#include "support/asset_value.h"
 
 #define ED_HIST_MAX 64
 #define ED_LOG_MAX 128
@@ -61,11 +62,11 @@ typedef struct
 typedef struct
 {
     char *key;
-    char *json;
-    char *saved;
+    behavior_asset *asset;
+    av_value *saved;
     uint64_t owner_identity;
-    char **undo;
-    char **redo;
+    behavior_asset **undo;
+    behavior_asset **redo;
     ed_location location;
     ed_link_ref *links;
 } ed_document_history;
@@ -90,8 +91,8 @@ struct editor
     int inspection_trace_count;
     unsigned edit_revision;
     const behavior_asset *edit_revision_asset;
-    char *edit_revision_snapshot;
-    char *saved_snapshot;
+    av_value *edit_revision_snapshot;
+    av_value *saved_snapshot;
     int edit_revision_initialized;
     int edit_pending;
     compile_report compile;
@@ -106,7 +107,7 @@ struct editor
     ed_link_ref *selected_links;
     node *front_node;
 
-    char *pending_snapshot;
+    behavior_asset *pending_snapshot;
     int spawn_link_pending; /* a dragged wire waits for the node search */
     ed_pin_view spawn_link_pin;
     char *clipboard;
@@ -124,8 +125,8 @@ struct editor
     const char **prototype_catalog; /* Owned array, borrowed project names. */
     const behavior_asset **asset_catalog; /* Owned array, borrowed project assets. */
 
-    char **undo;
-    char **redo;
+    behavior_asset **undo;
+    behavior_asset **redo;
     char *document_key;
     ed_document_history *documents;
 };
@@ -133,8 +134,8 @@ struct editor
 /* Private collaboration between document, graph and runtime owners. */
 int ed_name_spawned_event(editor *e, node *n);
 int ed_event_add_declared_params(editor *e, node *n, const graph_host_event_desc *signature);
-void ed_free_string_stack(char ***stack);
-void ed_push_string(char ***stack, char *value);
+void ed_free_asset_stack(behavior_asset ***stack);
+void ed_push_asset(behavior_asset ***stack, behavior_asset *value);
 bool ed_is_graph_call(const node *n);
 /* An operator's symbol, such as + or ≤, or NULL for a titled node. */
 const char *ed_node_symbol(const node_desc *desc);
@@ -175,13 +176,14 @@ const behavior_instance *ed_display_instance(const editor *e);
 const flow_run *ed_display_run(const editor *e);
 void ed_refresh_values(editor *e);
 void ed_compile(editor *e);
-char *ed_snapshot(const editor *e);
+behavior_asset *ed_snapshot(const editor *e);
+av_value *ed_value_snapshot(const behavior_asset *asset);
 void ed_commit_snapshot(editor *e);
 void ed_snapshot_before(editor *e);
 void ed_cancel_snapshot(editor *e);
 void ed_destroy_preview(editor *e);
-int ed_adopt_behavior_asset(editor *e, const char *json);
-int ed_adopt_behavior_asset_with_identity(editor *e, const char *json, uint64_t owner_identity);
+int ed_adopt_behavior_asset(editor *e, const behavior_asset *source);
+int ed_adopt_behavior_asset_with_identity(editor *e, const behavior_asset *source, uint64_t owner_identity);
 void ed_undo(editor *e);
 void ed_redo(editor *e);
 void ed_delete_selected(editor *e);

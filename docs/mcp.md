@@ -67,7 +67,31 @@ or open a new task after adding or changing project MCP configuration.
 
 ## Asset files
 
-Authored assets under `content/` are YAML. Documents omit what loading
+Authored assets under `content/` are KDL 2 (`.kdl`); `project.kdl` is the
+project manifest, at project version 4. The document is an implicit object.
+Each named node defines one member: a positional argument is a scalar,
+properties define a compact object, and child nodes define a nested object.
+`(array)` marks arrays, whose values are arguments or `-` child nodes;
+`(object)` marks empty objects. Arrays retain their annotation even when
+empty or holding one value. Booleans and null use `#true`, `#false`, and
+`#null`. Duplicate object keys are rejected. For example:
+
+```kdl
+name "Player"
+components {
+    GAME.GameHealth current=20 maximum=20
+    (object)GAME.GameInput
+}
+(array)behaviors "Movement" "Weapon"
+```
+
+Reflected string fields that carry structured asset data also contain KDL:
+`GameShader.parameters` and `MaterialTerrain.parameters` hold an object
+document, while `GameMeshParts.parts` holds a root `(array)-` document.
+An empty string means no parameters. These remain reflected string fields;
+use KDL string escapes or multiline strings for their payload text.
+
+Documents omit what loading
 reproduces: default values, pin fields that match the node type's template
 pin, and `x`/`y` for nodes the editor arranges when it opens a graph. Pins are
 keyed by name, and their IDs follow the node ID in order (inputs, then
@@ -110,7 +134,7 @@ domain:
   unclear, then use `buildPrototype`.
 - Scene or level composition: use `buildScene`.
 - Studio's component tabs, prototype icons, and number ranges and units:
-  edit `content/editor/Components.yaml` (kind `editor`), run `--format`, then
+  edit `content/editor/Components.kdl` (kind `editor`), run `--format`, then
   call `validateAsset`.
 - Game UI documents (kind `ui`): write `content/ui/<Name>.rml`, its body
   markup, and `content/ui/<Name>.rcss`, its styles, when it has any; then call
@@ -143,7 +167,7 @@ saving them. Tool results include complete `structuredContent` and
 - `searchNodes`: list a domain's node types, or find nodes, configured component nodes, and their pins by words.
 - `inspectGraph`: inspect graph content, diagnostics, and the current content hash; with `include_uses: true`, the asset, its functions and macros, and a behavior's variables carry `uses`, their project-wide use counts by role. Counting reads every asset, so it is off by default.
 - `inspectUi`: read a ui asset's outline, props, events, slots, widgets, tokens, save keys, syntax errors and hash; with `complete`, the completions Studio's Text Editor offers at a line and column.
-- `readAsset`: read one authored asset as parsed JSON.
+- `readAsset`: read authored KDL source and parsed content; with `complete: {line, column}`, return shared source editor completions, hover, and diagnostics. Completion uses ranked fuzzy matching and includes each item's symbol `kind`. Spaces after a reflected component or value offer its remaining properties. Line and byte column are 1-based; completion replacement ranges are zero-based byte offsets. Incomplete KDL returns `document: null` with diagnostics when completion is requested.
 - `validateAsset`: run native asset loading and compiler diagnostics; for a ui asset, its syntax errors and every warning RmlUi logs, with lines.
 - `listAssets`: list deterministic asset paths, sizes, and hashes.
 - `getAssetCatalog`: read semantic asset metadata, dependencies, diagnostics, and registry counts. Graph assets compile linked with the project's libraries and events, as Studio's Problems do.
@@ -173,7 +197,7 @@ graph, node, pin and role. Both select a symbol by name:
   library, sends and handles of an event definition's event, and the assets
   component fields, pin defaults and `<use ui>` widgets name. A scene binds
   its page, the ui asset it shows its UI on: its own `ui:` (component `ui`),
-  or for a scene that names none, `project.yaml`'s (component `project ui`).
+  or for a scene that names none, `project.kdl`'s (component `project ui`).
 - A function or macro: add `"graph": "Apply Damage"` or `"graph_id": 1001`
   to the asset.
 - A member of the asset: `"variable": "Health"`; `"parameter": "Amount"`
@@ -203,7 +227,7 @@ field. Pass `graph_id` and the asset to `inspectGraph` to read around a node:
 
 ```json
 {"symbol": {"kind": "event", "name": "Damage"},
- "definition": {"asset": {"kind": "event", "name": "Damage", "path": "content/events/Damage.yaml"}},
+ "definition": {"asset": {"kind": "event", "name": "Damage", "path": "content/events/Damage.kdl"}},
  "counts": {"send": 2, "handle": 1},
  "uses": [{"role": "send", "asset": {"kind": "behavior", "name": "PlayerContactBehavior"},
            "graph_id": 3, "graph": "Apply Contact Damage", "node": 107}, ...],
@@ -238,7 +262,7 @@ symbol as `findReferences` does: an `asset` `{kind, name}`, with `graph` or
 `graph_id` for a function or macro, or `variable`, `parameter` or `local`; or
 an `event`. An event with a definition renames or deletes its
 `content/events` asset too. A `component` or `field` is refused, since C
-reflection names them, and so are scenes, since `project.yaml` names the start
+reflection names them, and so are scenes, since `project.kdl` names the start
 scene by path. An asset's or event's new name must name a file, and a rename
 that only changes an asset's case is refused, since file systems that ignore
 case see the same file; rename it through another name.
@@ -262,13 +286,13 @@ publishes nothing:
 
 ```json
 {"dry_run": true, "published": false,
- "assets": [{"kind": "behavior", "name": "HullDamage", "path": "content/behaviors/HullDamage.yaml",
+ "assets": [{"kind": "behavior", "name": "HullDamage", "path": "content/behaviors/HullDamage.kdl",
              "hash": "1b670a0c93c49454", "after_hash": "2f787d311593ea17",
              "changes": [{"role": "handle", "graph_id": 0, "node": 1}]},
-            {"kind": "event", "name": "Damage", "path": "content/events/Damage.yaml",
-             "hash": "2944b52c078d8949", "new_name": "Harm", "new_path": "content/events/Harm.yaml",
+            {"kind": "event", "name": "Damage", "path": "content/events/Damage.kdl",
+             "hash": "2944b52c078d8949", "new_name": "Harm", "new_path": "content/events/Harm.kdl",
              "after_hash": "7ff62620cd89e472", "changes": [{"role": "define"}]}, ...],
- "expected_hashes": {"content/behaviors/HullDamage.yaml": "1b670a0c93c49454", ...},
+ "expected_hashes": {"content/behaviors/HullDamage.kdl": "1b670a0c93c49454", ...},
  "mentions": [], "dangling": []}
 ```
 
@@ -278,7 +302,7 @@ prototypes, component fields and struct defaults such as a `GameShader`
 value's material, mesh parts, `<use ui>` widgets, library calls'
 `reference_asset` and `reference_name`, the pins of calls in other assets that
 follow a library function's parameter, a scene's `ui:`, and the payload pins
-an event definition's variables name. Renaming the page `project.yaml` names
+an event definition's variables name. Renaming the page `project.kdl` names
 is refused; point `ui:` there at another asset first. The files are written together; each changed
 asset is then validated, and if one that validated before no longer does,
 every file is restored and `invalid` lists its diagnostics.
@@ -746,13 +770,23 @@ A `scenarios` asset replays gameplay input on a scene from its start, so the
 same play can be run, profiled natively or as WASM (`make profile-compare
 PROFILE_SCENARIO=Name`), and replayed in Studio as often as needed:
 
-```yaml
-scene: Sandbox
-frames: 1800
-seed: 7
-keys:
-- {frame: 0, movement: {x: 1, y: 0}, controls: [Mouse Left]}
-- {frame: 90, movement: {x: 0.5, y: -0.3}, aim: {x: 1, y: -0.45}, controls: [Mouse Left]}
+```kdl
+scene "Sandbox"
+frames 1800
+seed 7
+(array)keys {
+    - {
+        frame 0
+        movement x=1 y=0
+        (array)controls "Mouse Left"
+    }
+    - {
+        frame 90
+        movement x=0.5 y=-0.3
+        aim x=1 y=-0.45
+        (array)controls "Mouse Left"
+    }
+}
 ```
 
 Each key holds its whole input from its frame (a fixed step) until the next key:
@@ -857,7 +891,7 @@ document that uses it.
 
 A scene's UI shows on a page, as a web page's content shows in its root
 layout: the scene's root document, named by the scene's `ui:`, or by the
-project's `ui:` in `project.yaml` for scenes that name none. A root document
+project's `ui:` in `project.kdl` for scenes that name none. A root document
 is a ui asset whose RCSS styles the whole page unscoped, so it holds the
 tokens and shared control classes widgets use, usually by
 `@import "theme/tokens.rcss";` of stylesheets beside it (in order, once

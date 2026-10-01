@@ -92,8 +92,8 @@ static void switch_runs()
         graph_run_pin_removable(cases, 1, 2) && !graph_run_pin_removable(cases, 1, 3),
         "a switch's Default stays"
     );
-    char *json = graph_save_json(&g);
-    graph *copy = json ? graph_load_json(json) : NULL;
+    char *json = graph_save(&g);
+    graph *copy = json ? graph_load(json) : NULL;
     node *loaded = copy ? graph_node_by_id(copy, cases->id) : NULL;
     test_check(
         loaded &&

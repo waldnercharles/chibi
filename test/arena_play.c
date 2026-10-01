@@ -15,6 +15,7 @@
 #include "render/screenshot.h"
 #include "render/ui.h"
 #include "runtime/generated.h"
+#include "support/asset_json.h"
 #include "support/text_file.h"
 #include "support/text_overlay.h"
 #include "support/xalloc.h"
@@ -185,12 +186,12 @@ static arena_fixture fixture_new()
     );
     assert(app_scene_authoring_load_content(f.scene) == 0);
     const char
-        *preview_path = "test/fixtures/content/prototypes/Editor2DPreview.yaml";
+        *preview_path = "test/fixtures/content/prototypes/Editor2DPreview.kdl";
     char *preview_json = text_file_read(preview_path);
     assert(preview_json);
     assert(app_scene_authoring_register_prototype(f.scene, preview_json, preview_path) == 0);
     free(preview_json);
-    int loaded = app_scene_authoring_load(f.scene, "content/scenes/Arena3D.yaml");
+    int loaded = app_scene_authoring_load(f.scene, "content/scenes/Arena3D.kdl");
     if (loaded != 0) {
         fprintf(stderr, "Arena scene load: %s\n", app_scene_authoring_message(f.scene));
     }
@@ -404,7 +405,7 @@ static void preview_projection(arena_fixture *f)
     assert(app_scene_authoring_set_runtime_target(f->scene, APP_RUNTIME_SCENE) == 0);
     frame(f);
     assert(engine_viewport_perspective(f->viewport));
-    assert(app_scene_authoring_load(f->scene, "test/fixtures/content/scenes/Editor2D.yaml") == 0);
+    assert(app_scene_authoring_load(f->scene, "test/fixtures/content/scenes/Editor2D.kdl") == 0);
     frame(f);
     assert(!engine_viewport_perspective(f->viewport));
     assert(app_scene_authoring_preview_prototype(f->scene, "ArenaPlayer") == 0);
@@ -414,7 +415,7 @@ static void preview_projection(arena_fixture *f)
     assert(app_scene_authoring_set_runtime_target(f->scene, APP_RUNTIME_SCENE) == 0);
     frame(f);
     assert(!engine_viewport_perspective(f->viewport));
-    assert(app_scene_authoring_load(f->scene, "content/scenes/Arena3D.yaml") == 0);
+    assert(app_scene_authoring_load(f->scene, "content/scenes/Arena3D.kdl") == 0);
     frame(f);
     assert(engine_viewport_perspective(f->viewport));
 }
@@ -507,22 +508,22 @@ static int screen_light(const CF_Pixel *pixels, CF_V2 point)
 
 static void planar_orientation(arena_fixture *f)
 {
-    const char
-        *json = "{\"version\":1,\"name\":\"Planar "
-                "orientation\",\"presentation\":\"2d\","
-                "\"entities\":[{\"name\":\"Player\",\"prototype\":"
-                "\"ArenaPlayer\",\"components\":{"
-                "\"GameTransform\":{\"x\":0,\"y\":0},"
-                "\"GameAppearance\":{\"shape\":3,\"width\":80,\"height\":60,"
-                "\"color\":4294967295,"
-                "\"glow_radius\":0,\"border_width\":0,\"stroke_width\":0},"
-                "\"GameShader\":{\"material\":\"\",\"shape\":\"\","
-                "\"parameters\":\"{}\"},"
-                "\"GameMaterial\":{\"scene\":4294967295,\"emission_color\":"
-                "4294967295,"
-                "\"emission_intensity\":0.1,\"emission_multiplier\":1,"
-                "\"absorption\":1}},"
-                "\"behaviors\":[\"TwinStickInputBehavior\"]}]}";
+    const char *json =
+        "version 1\nname \"Planar orientation\"\npresentation "
+        "\"2d\"\n(array)entities {\n    - {\n        name \"Player\"\n        "
+        "prototype \"ArenaPlayer\"\n        components {\n            "
+        "GameTransform {\n                x 0\n                y 0\n           "
+        " }\n            GameAppearance {\n                shape 3\n           "
+        "     width 80\n                height 60\n                color "
+        "4294967295\n                glow_radius 0\n                "
+        "border_width 0\n                stroke_width 0\n            }\n       "
+        "     GameShader {\n                material \"\"\n                "
+        "shape \"\"\n                parameters \"\"\n            }\n          "
+        "  GameMaterial {\n                scene 4294967295\n                "
+        "emission_color 4294967295\n                emission_intensity 0.1\n   "
+        "             emission_multiplier 1\n                absorption 1\n    "
+        "        }\n        }\n        (array)behaviors {\n            - "
+        "\"TwinStickInputBehavior\"\n        }\n    }\n}\n";
     char path[] = "/tmp/arena-ui-orientation-XXXXXX";
     int descriptor = mkstemp(path);
     assert(descriptor >= 0 && close(descriptor) == 0);
@@ -583,7 +584,7 @@ static void planar_orientation(arena_fixture *f)
     }
     assert(app_scene_authoring_runtime_command(f->scene, APP_RUNTIME_SCENE, APP_RUNTIME_STOP) == 0);
     assert(unlink(path) == 0);
-    assert(app_scene_authoring_load(f->scene, "content/scenes/Arena3D.yaml") == 0);
+    assert(app_scene_authoring_load(f->scene, "content/scenes/Arena3D.kdl") == 0);
     frame(f);
     puts("planar orientation PASS: authored aim, rendered tips and empty-corner picking in four quadrants");
 }
@@ -729,7 +730,7 @@ static int standalone_key(arena_fixture *f, app_game_presentation *game, SDL_Sca
 
 static void standalone_play(arena_fixture *f)
 {
-    assert(app_scene_authoring_load(f->scene, "content/scenes/Arena3D.yaml") == 0);
+    assert(app_scene_authoring_load(f->scene, "content/scenes/Arena3D.kdl") == 0);
     /* Projectile lifetime is part of the firing comparison below. */
     for (int i = 0; i < acount(f->scene->actors); i++) {
         if (!strcmp(f->scene->actors[i].prototype_name, "PhaseWarden")) {
@@ -1386,15 +1387,26 @@ int arena_play_review_run(const char *program, bool editor_mode, bool crowd)
 
 static void ship_motion_review(arena_fixture *f, const char *directory)
 {
-    const char
-        *json = "{\"version\":1,\"name\":\"Ship motion "
-                "review\",\"presentation\":\"3d\","
-                "\"entities\":[{\"name\":\"Player\",\"prototype\":"
-                "\"ArenaPlayer\",\"components\":{},"
-                "\"behaviors\":[\"TwinStickInputBehavior\","
-                "\"ArenaShipMotionBehavior\"]},"
-                "{\"name\":\"Environment\",\"prototype\":\"ArenaEnvironment\","
-                "\"components\":{},\"behaviors\":[]}]}";
+    const char *json = "version 1\n"
+                       "name \"Ship motion review\"\n"
+                       "presentation \"3d\"\n"
+                       "(array)entities {\n"
+                       "    - {\n"
+                       "        name \"Player\"\n"
+                       "        prototype \"ArenaPlayer\"\n"
+                       "        (object)components\n"
+                       "        (array)behaviors {\n"
+                       "            - \"TwinStickInputBehavior\"\n"
+                       "            - \"ArenaShipMotionBehavior\"\n"
+                       "        }\n"
+                       "    }\n"
+                       "    - {\n"
+                       "        name \"Environment\"\n"
+                       "        prototype \"ArenaEnvironment\"\n"
+                       "        (object)components\n"
+                       "        (array)behaviors\n"
+                       "    }\n"
+                       "}\n";
     char path[] = "/tmp/arena-motion-review-XXXXXX";
     int descriptor = mkstemp(path);
     assert(descriptor >= 0 && close(descriptor) == 0);
@@ -1617,7 +1629,7 @@ static ecs_entity *scene_scale_enemies(arena_fixture *f, int count, bool combat)
             encounter->alive = count;
         }
     }
-    char *json = text_file_read("content/prototypes/ArenaEnemy.yaml"), error[256];
+    char *json = text_file_read("content/prototypes/ArenaEnemy.kdl"), error[256];
     assert(json);
     game_prototype *prototype = game_prototype_load(json, &f->scene->registry, error, sizeof error);
     free(json);
@@ -1779,7 +1791,10 @@ int arena_scene_scale_run(const char *program, int count, int frames, bool profi
     if (physics_json) {
         yyjson_doc *doc = yyjson_read(physics_json, strlen(physics_json), 0);
         game_physics_settings settings;
-        assert(doc && game_physics_settings_read(yyjson_doc_get_root(doc), &settings));
+        av_doc *values = av_doc_new();
+        av_value *value = doc ? av_from_json(values, yyjson_doc_get_root(doc)) : NULL;
+        assert(value && game_physics_settings_read(value, &settings));
+        av_doc_free(values);
         assert(game_physics_configure(f.live->physics, settings) == 0);
         yyjson_doc_free(doc);
     }

@@ -1,8 +1,8 @@
 # Working on the arena game
 
 Run `make play` to launch the Arena2D project in a standalone game window. A
-project is a directory containing `project.yaml` and its own `content` tree.
-Use `make play PROJECT=. SCENE=scenes/Arena3D.yaml` to launch the Arena3D
+project is a directory containing `project.kdl` and its own `content` tree.
+Use `make play PROJECT=. SCENE=scenes/Arena3D.kdl` to launch the Arena3D
 reference project, or pass `--project-root PATH` to `build/chibi` directly. Both
 routes use the same scene runtime, input and Surface renderer as editor Play.
 Escape pauses and releases input; Enter resumes, R restarts from authored state,
@@ -13,7 +13,7 @@ For an intentional game-only capture:
 
 ```sh
 env MallocNanoZone=0 ASAN_OPTIONS=detect_leaks=0 build/chibi --play \
-  --project-root projects/arena2d --scene scenes/Sandbox.yaml \
+  --project-root projects/arena2d --scene scenes/Sandbox.kdl \
   --frames 120 --fixed-dt 0.016666667 \
   --screenshot /tmp/arena-game.png
 ```
@@ -22,16 +22,16 @@ Normal play uses elapsed time. `--fixed-dt` supplies the given wall-clock
 increment per display frame for repeatable verification. The shared engine
 consumes it in 1/60-second simulation steps; `--frames` alone only limits
 the run. Screenshots are opt-in and native-only. A web build supports
-`chibi.html?play&project-root=projects/arena2d&scene=scenes/Sandbox.yaml` through
+`chibi.html?play&project-root=projects/arena2d&scene=scenes/Sandbox.kdl` through
 the same launch parser. Launching the editor with `--project-root PATH` opens
 that project's start scene; `--scene PATH` selects another scene inside it
 without starting Play. The Make targets expose the same selection: `make run
-PROJECT=. SCENE=scenes/Arena3D.yaml` opens the 3D reference, while the defaults
+PROJECT=. SCENE=scenes/Arena3D.kdl` opens the 3D reference, while the defaults
 open Arena2D.
 
-Open `projects/arena2d/content/scenes/Sandbox.yaml` from Files after starting
+Open `projects/arena2d/content/scenes/Sandbox.kdl` from Files after starting
 the editor with `--project-root projects/arena2d`. Arena3D remains in the root
-project at `content/scenes/Arena3D.yaml`. Play from the scene toolbar and focus
+project at `content/scenes/Arena3D.kdl`. Play from the scene toolbar and focus
 the scene to control the player. Move with WASD or arrows, aim with the mouse,
 and hold the primary mouse button or Space to fire. Controller bindings use the
 left stick for movement and right stick for aiming/firing. Escape releases scene
@@ -230,7 +230,7 @@ already-visible input changes between automatic, constant and connected values.
 EnergyCells is an eleven-node material with a small tiling line image, Mapping,
 Time, Color Ramp and emission. Intensity, Scroll Speed and Tiling are named
 instance controls. ShaderImageDemo shows it on a box, prism and sphere using the
-shared overhead camera. Run `make play PROJECT=. SCENE=scenes/ShaderImageDemo.yaml`.
+shared overhead camera. Run `make play PROJECT=. SCENE=scenes/ShaderImageDemo.kdl`.
 This is a material-authoring example; the arena's lighting and combat-effect
 acceptance remains open.
 

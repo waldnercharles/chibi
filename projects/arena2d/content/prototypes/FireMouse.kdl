@@ -1,0 +1,4 @@
+name "FireMouse"
+components {
+    GAME.GameActionBinding action="Fire" firing=#true source="Mouse Left"
+}

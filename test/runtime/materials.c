@@ -189,9 +189,9 @@ static void contours()
 
 static behavior_asset *cave_asset()
 {
-    char *json = text_file_read("projects/arena2d/content/fields/CaveField.yaml");
+    char *json = text_file_read("projects/arena2d/content/fields/CaveField.kdl");
     assert(json);
-    behavior_asset *asset = behavior_asset_load_json(json);
+    behavior_asset *asset = behavior_asset_load(json);
     free(json);
     assert(asset);
     return asset;
@@ -861,7 +861,7 @@ static void terrain_boundary_cut()
                             .height = 512,
                             .cell_size = 2,
                             .field = "CaveField",
-                            .parameters = "{\"Radius\":72,\"Roughness\":30}",
+                            .parameters = "Radius 72\nRoughness 30\n",
                             .connectivity = MATERIAL_CONNECTIVITY_FIRST_AIR,
                             .border_cells = 8,
                             .category = 8,
@@ -917,7 +917,7 @@ static void terrain_boundary_cut()
     assert(!ecs_entity_is_alive(world, target));
     MaterialTerrain *terrain = GAME_MaterialTerrain_get(world, source);
     const char *original_parameters = terrain->parameters;
-    terrain->parameters = "{\"Radius\":96,\"Roughness\":30}";
+    terrain->parameters = "Radius 96\nRoughness 30\n";
     assert(!game_materials_prepare(live->materials));
     assert(game_materials_inspect(live->materials).cells < initial.cells);
     terrain = GAME_MaterialTerrain_get(world, source);
@@ -964,7 +964,7 @@ static void terrain_stream_restore()
                             .height = 512,
                             .cell_size = 2,
                             .field = "CaveField",
-                            .parameters = "{\"Radius\":72,\"Roughness\":30}",
+                            .parameters = "Radius 72\nRoughness 30\n",
                             .category = 8,
                             .mask = 1,
                             .min_fragment_cells = 4,
@@ -1982,13 +1982,13 @@ static void blast_policy()
     }
     game_live_world *live = game_live_world_new(world);
     const char *paths[] = {
-        "projects/arena2d/content/events/Material Impact.yaml",
-        "projects/arena2d/content/behaviors/MaterialImpactHealth.yaml"
+        "projects/arena2d/content/events/Material Impact.kdl",
+        "projects/arena2d/content/behaviors/MaterialImpactHealth.kdl"
     };
     for (int i = 0; i < 2; i++) {
         char *json = text_file_read(paths[i]);
         assert(json);
-        behavior_asset *asset = behavior_asset_load_json(json);
+        behavior_asset *asset = behavior_asset_load(json);
         free(json);
         assert(asset);
         assert(!game_live_add_definition(live, game_live_definition_new(asset->name, asset)));

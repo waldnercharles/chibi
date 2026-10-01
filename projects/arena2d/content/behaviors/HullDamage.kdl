@@ -1,0 +1,142 @@
+version 3
+name "HullDamage"
+id_counter 196
+description "Apply damage, emit hit feedback, and release the hull when health reaches zero."
+owner_type "ecs.entity"
+(array)graphs {
+    - {
+        kind "event"
+        name ""
+        (array)nodes {
+            - {
+                id 1
+                type "Event"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_name "Damage"
+                outputs {
+                    Amount id=3 declaration_id=2 type="int" kind="data"
+                    Source id=4 declaration_id=3 type="handle" type_name="ecs.entity" kind="data"
+                }
+            }
+            - {
+                id 17
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 5
+                reference_name "health -= amount"
+                inputs {
+                    Exec id=21 kind="exec"
+                    health {
+                        id 18
+                        type "int"
+                        binding kind="component_field" component="GAME.GameHealth" field="current"
+                    }
+                    amount id=19
+                }
+                outputs {
+                    Then id=22 kind="exec"
+                    Result id=20 type="double"
+                }
+            }
+            - {
+                id 106
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 92
+                reference_name "health <= 0"
+                inputs {
+                    Exec id=109 kind="exec"
+                    health {
+                        id 107
+                        type "double"
+                        flags 0
+                        binding kind="component_field" component="GAME.GameHealth" field="current"
+                    }
+                }
+                outputs {
+                    True id=110 kind="exec"
+                    False id=111 kind="exec"
+                    Result id=108 type="bool"
+                }
+            }
+            - {
+                id 137
+                type "Self"
+                x 0.0
+                y 0.0
+                placed #false
+                outputs {
+                    Self type_name="ecs.entity"
+                }
+            }
+            - id=139 type="Release Material" x=0.0 y=0.0 placed=#false
+            - {
+                id 143
+                type "Call Function"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 256
+                reference_name "Spawn Prototype At"
+                reference_asset "WeaponActions"
+                inputs {
+                    Prototype id=146 declaration_id=261 type="name" kind="data" default="HitEmitter"
+                    Transform {
+                        id 147
+                        declaration_id 262
+                        type "struct"
+                        type_name "GameTransform"
+                        kind "data"
+                        binding kind="component" component="GAME.GameTransform"
+                    }
+                }
+                outputs {
+                    Then id=145
+                    Entity id=148 declaration_id=263 type="handle" type_name="ecs.entity" kind="data"
+                }
+            }
+            - {
+                id 149
+                type "Call Function"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 256
+                reference_name "Spawn Prototype At"
+                reference_asset "WeaponActions"
+                inputs {
+                    Prototype id=152 declaration_id=261 type="name" kind="data" default="DeathEmitter"
+                    Transform {
+                        id 153
+                        declaration_id 262
+                        type "struct"
+                        type_name "GameTransform"
+                        kind "data"
+                        binding kind="component" component="GAME.GameTransform"
+                    }
+                }
+                outputs {
+                    Then id=151
+                    Entity id=154 declaration_id=263 type="handle" type_name="ecs.entity" kind="data"
+                }
+            }
+        }
+        (array)edges {
+            - from="1.Then" to="17.Exec"
+            - from="1.Amount" to="17.amount"
+            - from="17.Then" to="143.Exec"
+            - from="106.True" to="149.Exec"
+            - from="137.Self" to="139.Entity"
+            - from="143.Then" to="106.Exec"
+            - from="149.Then" to="139.In"
+        }
+    }
+    - id=5 kind="function" math_expression="health -= amount" entry_id=156
+    - id=92 kind="function" math_expression="health <= 0" entry_id=183
+}

@@ -1,3 +1,0 @@
-name: Data
-components:
-  GAME.GameUi: {document: SavedData, hidden: true}

@@ -1,0 +1,50 @@
+name "ArenaPlayer"
+components {
+    GAME.GameAim {
+        direction x=1.0
+    }
+    GAME.GameBody continuous=#true type="Dynamic"
+    GAME.GameCollider category=1 mask=10 radius=12.0
+    (object)GAME.GameEncounterMember
+    (object)GAME.GameExperience
+    GAME.GameGeometry3D depth=18.0 elevation=14.0 height=18.0 primitive=7 width=20.0
+    GAME.GameHealth current=100 maximum=100
+    (object)GAME.GameInput
+    GAME.GameMovement speed=180.0
+    (object)GAME.GameOrientation
+    GAME.GameParticleEmitter {
+        absorption 0.0099999997764825821
+        active #true
+        antialias {
+            start x=1.5 y=1.5
+        }
+        color 3304783871
+        direction x=-1.0
+        drag {
+            start x=1.5 y=1.5
+        }
+        emission {
+            start x=1.2999999523162842 y=1.2999999523162842
+        }
+        end_color 394308096
+        fluid_mass 0.00019999999494757503
+        lifetime x=0.23999999463558197 y=0.23999999463558197
+        offset x=-11.0
+        rate 160.0
+        size {
+            exponent 0.85000002384185791
+            start x=2.2000000476837158 y=2.2000000476837158
+        }
+        speed x=105.0 y=105.0
+        spread 0.20000000298023224
+        velocity_inherit 1.0
+    }
+    GAME.GamePointLight color=953090047 elevation=18.0 intensity=0.64999997615814209 radius=62.0
+    GAME.GameShader material="ArenaPlayer" parameters="" shape=""
+    GAME.GameSurfaceInfluence color=953090047 linger=0.2199999988079071 radius=22.0 strength=0.18999999761581421
+    GAME.GameTransform x=320.0 y=-180.0
+    (object)GAME.GameVelocity
+    GAME.GameVisualTransform scale=1.0
+    GAME.GameWeapon cooldown=0.125 damage=10
+}
+(array)behaviors "ArenaImpactFeedback" "ArenaShipMotionBehavior" "CombatFeedback" "HealthBehavior" "PlayerContactBehavior" "TwinStickInputBehavior" "TwinStickWeaponBehavior"

@@ -4,6 +4,7 @@
 #include "assets/ui_source.h"
 #include "support/array.h"
 #include "support/text_file.h"
+#include "support/text_search.h"
 #include "support/xalloc.h"
 
 #include <assert.h>
@@ -278,8 +279,12 @@ static int word_start(const request *r, bool identifier)
 
 static void offer(request *r, ui_source_completion_kind kind, const char *label, int start)
 {
-    size_t typed = (size_t)(r->at - start);
-    if (strncasecmp(label, r->value + start, typed) != 0) {
+    char *query = xmalloc((size_t)(r->at - start + 1));
+    memcpy(query, r->value + start, (size_t)(r->at - start));
+    query[r->at - start] = 0;
+    int score = text_search_match(query, label, NULL, 0);
+    free(query);
+    if (score < 0) {
         return;
     }
     for (int i = 0; i < acount(r->out->items); i++) {
@@ -287,7 +292,7 @@ static void offer(request *r, ui_source_completion_kind kind, const char *label,
             return;
         }
     }
-    apush(r->out->items, ((ui_source_completion){ kind, xstrdup(label) }));
+    apush(r->out->items, ((ui_source_completion){ kind, xstrdup(label), score }));
 }
 
 static void offer_words(request *r, ui_source_completion_kind kind, const char *const *words, int start)
@@ -552,6 +557,9 @@ static void complete_markup(request *r, const ui_source_project *project)
 static int completion_order(const void *a, const void *b)
 {
     const ui_source_completion *x = a, *y = b;
+    if (x->score != y->score) {
+        return x->score > y->score ? -1 : 1;
+    }
     return strcmp(x->label, y->label);
 }
 

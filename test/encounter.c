@@ -14,6 +14,7 @@
 #include "runtime/visual_transform.h"
 #include "support/arena.h"
 #include "support/array.h"
+#include "support/asset_text.h"
 #include "support/text_file.h"
 #include "test/support/event_fixture.h"
 #include "test/support/simulation_fixture.h"
@@ -29,7 +30,7 @@ static behavior_asset *read_asset(const char *path)
 {
     char *json = text_file_read(path);
     assert(json);
-    behavior_asset *asset = behavior_asset_load_json(json);
+    behavior_asset *asset = behavior_asset_load(json);
     if (!asset) {
         fprintf(stderr, "%s: %s\n", path, graph_last_error());
     }
@@ -41,7 +42,7 @@ static behavior_asset *read_asset(const char *path)
 static behavior_asset *behavior(const char *name)
 {
     char path[256];
-    snprintf(path, sizeof path, "content/behaviors/%s.yaml", name);
+    snprintf(path, sizeof path, "content/behaviors/%s.kdl", name);
     behavior_asset *asset = link_test_libraries(read_asset(path));
     compile_report report;
     compile_report_init(&report);
@@ -57,7 +58,7 @@ static behavior_asset *behavior(const char *name)
 static game_prototype *prototype(const char *name, const game_prototype_registry *registry)
 {
     char path[256], error[256];
-    snprintf(path, sizeof path, "content/prototypes/%s.yaml", name);
+    snprintf(path, sizeof path, "content/prototypes/%s.kdl", name);
     char *json = text_file_read(path);
     assert(json);
     game_prototype *result = game_prototype_load(json, registry, error, sizeof error);
@@ -106,8 +107,8 @@ static void query_snapshot(ecs_index_kind index)
     assert(query);
     pin_value key = { .type = PIN_NAME, .str = component.key };
     assert(graph_set_pin_default(asset->graph, query, false, 0, &key) == 0);
-    char *json = behavior_asset_save_json(asset);
-    behavior_asset *restored = behavior_asset_load_json(json);
+    char *json = behavior_asset_save(asset);
+    behavior_asset *restored = behavior_asset_load(json);
     assert(restored);
     free(json);
     behavior_asset_free(asset);
@@ -479,7 +480,7 @@ static void cross_batch_defeat()
 
 static behavior_asset *damage_probe()
 {
-    behavior_asset *definition = read_asset("content/events/Damaged.yaml");
+    behavior_asset *definition = read_asset("content/events/Damaged.kdl");
     behavior_asset *asset = behavior_asset_new("Accepted damage probe");
     uint64_t count = behavior_asset_add_variable(asset, "Count", PIN_I32, "int", PIN_CONTAINER_SINGLE, NULL, "")
                          ->id;
@@ -508,7 +509,7 @@ static behavior_asset *damage_probe()
         graph_connect_data_conversion(asset->graph, event, 1, log, 1, registry_node_by_name("To String")) == 0
     );
     assert(graph_connect_exec(asset->graph, increment, 0, log, 0, 0) == 0);
-    definition = read_asset("content/events/Died.yaml");
+    definition = read_asset("content/events/Died.kdl");
     event = graph_add_node(asset->graph, &NODE_Event);
     assert(graph_event_apply(asset->graph, event, definition) == 0);
     log = graph_add_node(asset->graph, registry_node_by_name("Print String"));
@@ -1100,7 +1101,7 @@ static void combat_feedback_gates()
 {
     encounter_host h = create(false);
     behavior_asset *material = link_test_libraries(
-        read_asset("content/materials/ArenaPlayer.yaml")
+        read_asset("content/materials/ArenaPlayer.kdl")
     );
     shader_error error;
     assert(render_shader_upsert(material, &error));
@@ -1113,7 +1114,7 @@ static void combat_feedback_gates()
         ) == 0
     );
     assert(game_behavior_attach(h.live->behaviors, h.player, "CombatFeedback") == 0);
-    GAME_GameShader_get(h.world, h.player)->parameters = "{\"Hit Flash\":0.7}";
+    GAME_GameShader_get(h.world, h.player)->parameters = "\"Hit Flash\" 0.7; ";
     game_behavior_set_delta_seconds(h.live->behaviors, .07f);
     assert(
         game_behavior_dispatch(h.live->behaviors, h.player, "Tick", (flow_inputs){ 0 }, NULL) >= 0
@@ -1273,7 +1274,7 @@ static void authored_parts_at_birth(bool moving)
     *GAME_GameOrientation_get(h.world, snapshot) = heading;
     *GAME_GameShader_get(h.world, snapshot) = (GameShader){
         .material = "ArenaEnemy",
-        .parameters = "{\"HitFlash\":0.3}"
+        .parameters = "HitFlash 0.3; "
     };
     GAME_GamePickup_get(h.world, snapshot)->state = 3;
     game_behavior_set_delta_seconds(h.live->behaviors, 0);
@@ -1329,7 +1330,7 @@ static void authored_parts_at_birth(bool moving)
         const GameShader *material = GAME_GameShader_get_const(h.world, entity);
         assert(
             !strcmp(material->material, "ArenaEnemy") &&
-            !strcmp(material->parameters, "{\"HitFlash\":0.3}")
+            !strcmp(material->parameters, "HitFlash 0.3; ")
         );
         assert(count < 12);
         pieces[count++] = entity;
@@ -1581,7 +1582,9 @@ static uint64_t reflected_world_hash(const ecs_world *world)
                 hash = (hash ^ 1u) * UINT64_C(1099511628211);
                 continue;
             }
-            char *json = game_prototype_entity_component_json(world, entity, component, &registry);
+            av_value *value = game_prototype_entity_component_value(world, entity, component, &registry);
+            char *json = av_value_write(value);
+            av_value_free(value);
             assert(json);
             for (const unsigned char *p = (const unsigned char *)json; *p; p++) {
                 hash = (hash ^ *p) * UINT64_C(1099511628211);

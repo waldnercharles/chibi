@@ -1,0 +1,36 @@
+version 1
+name "Studio"
+(array)entities {
+    - {
+        name "GraphView"
+        prototype "GraphView"
+        (array)behaviors "MenuKeys"
+    }
+    - {
+        name "Settings"
+        prototype "Settings"
+        (array)behaviors "NavKeys" "Dismiss"
+    }
+    - name="Data" prototype="Data"
+    - name="Theme" prototype="Theme"
+    - name="Inspector" prototype="Inspector"
+    - name="StatusBar" prototype="StatusBar"
+    - name="TopBar" prototype="TopBar"
+    - {
+        name "Collaboration"
+        prototype "Collaboration"
+        (array)behaviors "NavKeys" "Dismiss"
+    }
+    - {
+        name "NewProject"
+        prototype "NewProject"
+        (array)behaviors "NewProjectKeys"
+    }
+    - name="AreaHeader" prototype="AreaHeader"
+    - name="Properties" prototype="Properties"
+    - {
+        name "Widgets"
+        prototype "Widgets"
+        (array)behaviors "VirtualList" "WidgetGallery"
+    }
+}

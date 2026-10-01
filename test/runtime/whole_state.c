@@ -153,8 +153,8 @@ static void generations()
             expected.b = true;
         }
         *behavior_instance_scratch(bi, n->id) = expected;
-        char *json = behavior_asset_save_json(a);
-        behavior_asset *next = behavior_asset_load_json(json);
+        char *json = behavior_asset_save(a);
+        behavior_asset *next = behavior_asset_load(json);
         free(json);
         assert(next);
         node *extra = graph_add_node(next->graphs[1], &NODE_Gate);

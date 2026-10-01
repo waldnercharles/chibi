@@ -1,6 +1,6 @@
 /* Assets ▸ New and Settings ▸ Project over a project on disk: every kind New
  * makes is written as its model saves it, joins the asset index at once and
- * opens as Assets opens it; the Project rows rewrite project.yaml. */
+ * opens as Assets opens it; the Project rows rewrite project.kdl. */
 #include "assets/behavior_loader.h"
 #include "assets/new_asset.h"
 #include "assets/scene_document.h"
@@ -27,9 +27,9 @@
 #define STRINGIFY(value) STRINGIFY_INNER(value)
 #define PROJECT_VERSION_TEXT STRINGIFY(CHIBI_PROJECT_VERSION)
 #define MANIFEST                                                               \
-    "version: " PROJECT_VERSION_TEXT                                           \
-    "\nname: Fresh\ncontent: content\nstart_scene: "                           \
-    "scenes/Main.yaml\n"
+    "version " PROJECT_VERSION_TEXT                                            \
+    "\nname \"Fresh\"\ncontent \"content\"\nstart_scene "                      \
+    "\"scenes/Main.kdl\"\n"
 
 typedef struct
 {
@@ -67,9 +67,9 @@ static new_fixture fixture_new()
     join(f.content, sizeof f.content, f.root, "content");
     join(path, sizeof path, f.content, "scenes");
     assert(mkdir(f.content, 0755) == 0 && mkdir(path, 0755) == 0);
-    char *json = new_asset_json(NEW_ASSET_SCENE, "Main");
+    char *json = new_asset_text(NEW_ASSET_SCENE, "Main");
     char *yaml = asset_text_to_disk(json, error, sizeof error);
-    join(path, sizeof path, f.content, "scenes/Main.yaml");
+    join(path, sizeof path, f.content, "scenes/Main.kdl");
     write_text(path, yaml);
     free(yaml);
     free(json);
@@ -183,8 +183,8 @@ static char *canonical(new_asset_kind kind, const char *text)
         json = system ? game_system_document_save(system, NULL, NULL, NULL) : NULL;
         game_system_document_free(system);
     } else {
-        behavior_asset *asset = behavior_asset_load_json(text);
-        json = asset ? behavior_asset_save_json(asset) : NULL;
+        behavior_asset *asset = behavior_asset_load(text);
+        json = asset ? behavior_asset_save(asset) : NULL;
         behavior_asset_free(asset);
     }
     char *disk = json ? asset_text_to_disk(json, error, sizeof error) : NULL;
@@ -199,7 +199,7 @@ static bool automatic(new_asset_kind kind, const char *text)
     if (kind == NEW_ASSET_SCENE || kind == NEW_ASSET_PROTOTYPE) {
         return true;
     }
-    behavior_asset *asset = behavior_asset_load_json(text);
+    behavior_asset *asset = behavior_asset_load(text);
     bool placed = !asset;
     for (int i = 0; asset && i < acount(asset->graph->nodes); i++) {
         placed |= asset->graph->nodes[i]->placed;
@@ -411,14 +411,14 @@ static void project_creation_modal()
 }
 
 /* Settings ▸ Project renames the project and picks its start scene, each
-   written to project.yaml in its place. */
+   written to project.kdl in its place. */
 static void project_settings_write()
 {
     new_fixture f = fixture_new();
     studio *s = f.studio;
     char path[160];
-    join(path, sizeof path, f.content, "scenes/Boss.yaml");
-    char *json = new_asset_json(NEW_ASSET_SCENE, "Boss"), error[128];
+    join(path, sizeof path, f.content, "scenes/Boss.kdl");
+    char *json = new_asset_text(NEW_ASSET_SCENE, "Boss"), error[128];
     char *yaml = asset_text_to_disk(json, error, sizeof error);
     write_text(path, yaml);
     free(yaml);
@@ -436,7 +436,7 @@ static void project_settings_write()
     char shown[64] = "", selected[128] = "";
     if (name && start) {
         rml_element_value(name, shown, sizeof shown);
-        rml_element_set_value(start, "scenes/Boss.yaml");
+        rml_element_set_value(start, "scenes/Boss.kdl");
         frames(&f, 2);
         rml_element_focus(name, false);
         rml_element_select(name);
@@ -452,12 +452,12 @@ static void project_settings_write()
     }
     join(path, sizeof path, f.root, CHIBI_PROJECT_MANIFEST);
     char *manifest = text_file_read(path);
-    const char *expected = "version: " PROJECT_VERSION_TEXT
-                           "\nname: Renamed\ncontent: content\n"
-                           "start_scene: scenes/Boss.yaml\n";
+    const char *expected = "version " PROJECT_VERSION_TEXT
+                           "\nname \"Renamed\"\ncontent \"content\"\n"
+                           "start_scene \"scenes/Boss.kdl\"\n";
     bool written = manifest && !strcmp(manifest, expected);
     bool current_scene = s->project.start_scene &&
-                         !strcmp(s->project.start_scene, "scenes/Boss.yaml");
+                         !strcmp(s->project.start_scene, "scenes/Boss.kdl");
     if (!(scope && name && start && !strcmp(shown, "Fresh") && written && current_scene)) {
         printf(
             "  scope=%p name=%p start=%p shown='%s' selected='%s' model='%s' "
@@ -475,7 +475,7 @@ static void project_settings_write()
     test_check(
         scope && name && start && !strcmp(shown, "Fresh") && written && current_scene,
         "Settings ▸ Project renames the project and sets its start scene in "
-        "project.yaml"
+        "project.kdl"
     );
     free(manifest);
     fixture_free(&f);
@@ -504,7 +504,7 @@ static void project_creation_reload()
     bool reloaded = app_scene_authoring_load_content(f.scene) == 0 &&
                     app_scene_authoring_load(f.scene, start) == 0 &&
                     app_scene_authoring_apply_pending(f.scene) == 0;
-    char *json = scene_authoring_scene_json(f.scene);
+    char *json = scene_authoring_scene_text(f.scene);
     game_scene_document *scene = json ? game_scene_document_load(json, error, sizeof error)
                                       : NULL;
     free(json);
@@ -512,21 +512,21 @@ static void project_creation_reload()
     game_scene_document_free(scene);
     join(path, sizeof path, project.content, "behaviors");
     assert(mkdir(path, 0755) == 0);
-    join(path, sizeof path, project.content, "behaviors/Broken.yaml");
+    join(path, sizeof path, project.content, "behaviors/Broken.kdl");
     write_text(path, "invalid: [\n");
     bool rejected_behavior = app_scene_authoring_load_content(f.scene) != 0;
     assert(unlink(path) == 0);
     join(path, sizeof path, project.content, "prototypes");
     assert(mkdir(path, 0755) == 0);
-    join(path, sizeof path, project.content, "prototypes/Broken.yaml");
+    join(path, sizeof path, project.content, "prototypes/Broken.kdl");
     write_text(path, "invalid: [\n");
     bool rejected_prototype = app_scene_authoring_load_content(f.scene) != 0;
     test_check(rejected_behavior && rejected_prototype, "UI-only content does not hide invalid required behavior or prototype assets");
     assert(unlink(path) == 0);
     join(path, sizeof path, project.content, "systems");
     assert(mkdir(path, 0755) == 0);
-    join(path, sizeof path, project.content, "systems/OnlySystem.yaml");
-    char *system = new_asset_json(NEW_ASSET_SYSTEM, "OnlySystem");
+    join(path, sizeof path, project.content, "systems/OnlySystem.kdl");
+    char *system = new_asset_text(NEW_ASSET_SYSTEM, "OnlySystem");
     assert(system);
     write_text(path, system);
     free(system);

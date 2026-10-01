@@ -39,7 +39,7 @@ typedef struct
 typedef struct
 {
     shared_prototype *shared;
-    char *json;
+    av_value *value;
 } prototype_record;
 
 typedef struct
@@ -539,7 +539,7 @@ void game_entities_free(game_entities *entities)
     game_entities_reset(entities);
     for (int i = 0; i < acount(entities->prototypes); i++) {
         unshare(entities->prototypes[i].shared);
-        free(entities->prototypes[i].json);
+        av_value_free(entities->prototypes[i].value);
     }
     afree(entities->prototypes);
     afree(entities->spawns);
@@ -559,8 +559,8 @@ void game_entities_free(game_entities *entities)
 
 int game_entities_register(game_entities *entities, const game_prototype *prototype)
 {
-    char *json = game_prototype_save(prototype);
-    if (!json) {
+    av_value *value = game_prototype_to_value(prototype);
+    if (!value) {
         return -1;
     }
     int existing = -1;
@@ -569,25 +569,25 @@ int game_entities_register(game_entities *entities, const game_prototype *protot
         if (strcmp(record->shared->prototype->identity, prototype->identity) != 0) {
             continue;
         }
-        if (strcmp(record->json, json) == 0) {
-            free(json);
+        if (av_equals(record->value, value)) {
+            av_value_free(value);
             return 0;
         }
         existing = i;
         break;
     }
     char error[256];
-    game_prototype *copy = game_prototype_load(json, prototype->registry, error, sizeof error);
+    game_prototype *copy = game_prototype_load_value(value, prototype->registry, error, sizeof error);
     if (!copy) {
-        free(json);
+        av_value_free(value);
         return -1;
     }
     shared_prototype *shared = xmalloc(sizeof *shared);
     *shared = (shared_prototype){ copy, 1 };
-    prototype_record replacement = { .shared = shared, .json = json };
+    prototype_record replacement = { .shared = shared, .value = value };
     if (existing >= 0) {
         unshare(entities->prototypes[existing].shared);
-        free(entities->prototypes[existing].json);
+        av_value_free(entities->prototypes[existing].value);
         entities->prototypes[existing] = replacement;
         return 0;
     }

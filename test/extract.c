@@ -67,9 +67,9 @@ static void expect_real(behavior_asset *asset, uint64_t node_id, float expected)
 
 static behavior_asset *roundtrip(const behavior_asset *asset)
 {
-    char *json = behavior_asset_save_json(asset);
+    char *json = behavior_asset_save(asset);
     assert(json);
-    behavior_asset *copy = behavior_asset_load_json(json);
+    behavior_asset *copy = behavior_asset_load(json);
     if (!copy) {
         fprintf(stderr, "extracted asset reload: %s\n", graph_last_error());
     }
@@ -97,7 +97,7 @@ static void arithmetic_extraction()
     expect_real(asset, result_id, 11.5f);
     node *selected[] = { sum, product };
     assert(behavior_asset_can_extract_function(asset, caller, selected, 2) == NULL);
-    char *before = behavior_asset_save_json(asset);
+    char *before = behavior_asset_save(asset);
     uint64_t counter = caller->id_counter;
     behavior_asset *extracted = NULL;
     uint64_t call_id = 0;
@@ -106,7 +106,7 @@ static void arithmetic_extraction()
         fprintf(stderr, "extract arithmetic: %s\n", error);
     }
     assert(!error && extracted && call_id);
-    char *after = behavior_asset_save_json(asset);
+    char *after = behavior_asset_save(asset);
     assert(strcmp(before, after) == 0 && caller->id_counter == counter);
     free(before);
     free(after);
@@ -142,13 +142,13 @@ static void arithmetic_extraction()
 
 static void rejected(behavior_asset *asset, graph *caller, node *const *selection, int count, const char *name)
 {
-    char *before = behavior_asset_save_json(asset);
+    char *before = behavior_asset_save(asset);
     uint64_t counter = asset->graph->id_counter;
     behavior_asset *result = NULL;
     uint64_t call = 0;
     assert(behavior_asset_extract_function(asset, caller, selection, count, name, &result, &call));
     assert(!result);
-    char *after = behavior_asset_save_json(asset);
+    char *after = behavior_asset_save(asset);
     assert(strcmp(before, after) == 0);
     assert(asset->graph->id_counter == counter);
     free(before);
@@ -298,10 +298,10 @@ static void function_counter_roundtrip()
     assert(graph_add_pin(function, result, 0, &argument) == 0);
     assert(graph_connect_data(function, entry, 0, result, 0) == 0);
     assert(behavior_asset_add_function_call_node(asset, function));
-    char *before = behavior_asset_save_json(asset);
-    behavior_asset *loaded = behavior_asset_load_json(before);
+    char *before = behavior_asset_save(asset);
+    behavior_asset *loaded = behavior_asset_load(before);
     assert(loaded);
-    char *after = behavior_asset_save_json(loaded);
+    char *after = behavior_asset_save(loaded);
     assert(strcmp(before, after) == 0);
     free(before);
     free(after);
@@ -324,8 +324,8 @@ static void function_counter_roundtrip()
     result->input_pins[0].id = 7000;
     function->edges[0].to_pin_id = 7000;
     asset->graph->id_counter = 1;
-    before = behavior_asset_save_json(asset);
-    loaded = behavior_asset_load_json(before);
+    before = behavior_asset_save(asset);
+    loaded = behavior_asset_load(before);
     assert(loaded && loaded->graph->id_counter == 7001);
     node *next = add(loaded->graph, "Integer");
     assert(next->id == 7001 && next->input_pins[0].id > 7001);

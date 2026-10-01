@@ -176,17 +176,7 @@ static void parameters_and_errors()
     assert(!field_program_compile(a, error, sizeof error));
     assert(!material_field_compile(catalog, a, error, sizeof error));
     assert(
-        material_field_bake(
-            catalog,
-            "parameters",
-            "{\"Radius\":7}",
-            0,
-            (field_grid){ 1, 1, 1 },
-            &out,
-            NULL,
-            error,
-            sizeof error
-        ) &&
+        material_field_bake(catalog, "parameters", "Radius 7\n", 0, (field_grid){ 1, 1, 1 }, &out, NULL, error, sizeof error) &&
         out == 7
     );
     {
@@ -213,7 +203,7 @@ static void parameters_and_errors()
     assert(!material_field_bake(
         catalog,
         "parameters",
-        "{\"Unknown\":7}",
+        "Unknown 7\n",
         0,
         (field_grid){ 1, 1, 1 },
         &out,
@@ -327,13 +317,13 @@ static void noise_and_composition()
     assert(hash(values, 256) != hash(again, 256));
     field_program_free(p);
     behavior_asset_free(a);
-    char *json = text_file_read("projects/arena2d/content/fields/MaterialIslands.yaml");
+    char *json = text_file_read("projects/arena2d/content/fields/MaterialIslands.kdl");
     assert(json);
-    a = behavior_asset_load_json(json);
+    a = behavior_asset_load(json);
     free(json);
-    json = text_file_read("projects/arena2d/content/libraries/FieldShapes.yaml");
+    json = text_file_read("projects/arena2d/content/libraries/FieldShapes.kdl");
     assert(json);
-    behavior_asset *library = behavior_asset_load_json(json);
+    behavior_asset *library = behavior_asset_load(json);
     free(json);
     const behavior_asset *catalog[] = { library };
     behavior_asset *linked = behavior_asset_link_libraries(a, catalog, 1, error, sizeof error);
@@ -531,8 +521,8 @@ static void functions()
     behavior_asset *library = behavior_asset_new("ScalarFields");
     library->domain = BEHAVIOR_DOMAIN_LIBRARY;
     /* Move a copied pure function into the existing library contract. */
-    char *json = graph_save_json(fn);
-    graph *copy = graph_load_json(json);
+    char *json = graph_save(fn);
+    graph *copy = graph_load(json);
     free(json);
     assert(copy);
     copy->kind = GRAPH_FUNCTION;
@@ -620,13 +610,13 @@ static void library_hot_apply()
     }
     game_live_world *live = game_live_world_new(world);
     const char *paths[] = {
-        "projects/arena2d/content/libraries/FieldShapes.yaml",
-        "projects/arena2d/content/fields/MaterialIslands.yaml"
+        "projects/arena2d/content/libraries/FieldShapes.kdl",
+        "projects/arena2d/content/fields/MaterialIslands.kdl"
     };
     for (int i = 0; i < 2; i++) {
         char *json = text_file_read(paths[i]);
         assert(json);
-        behavior_asset *asset = behavior_asset_load_json(json);
+        behavior_asset *asset = behavior_asset_load(json);
         free(json);
         assert(asset);
         assert(!game_live_add_definition(live, game_live_definition_new(asset->name, asset)));
@@ -1009,9 +999,9 @@ void test_fields()
 }
 int bench_fields()
 {
-    char *json = text_file_read("projects/arena2d/content/fields/CaveField.yaml");
+    char *json = text_file_read("projects/arena2d/content/fields/CaveField.kdl");
     assert(json);
-    behavior_asset *a = behavior_asset_load_json(json);
+    behavior_asset *a = behavior_asset_load(json);
     free(json);
     field_program *p = compile(a);
     field_grid grid = { 2048, 768, 2 };
@@ -1064,10 +1054,10 @@ int bench_fields()
 
 int bench_field_slices()
 {
-    const char *parameters = "{\"Radius\":225.0,\"Roughness\":100.0}";
-    char *json = text_file_read("projects/arena2d/content/fields/CaveField.yaml");
+    const char *parameters = "Radius 225.0\nRoughness 100.0\n";
+    char *json = text_file_read("projects/arena2d/content/fields/CaveField.kdl");
     assert(json);
-    behavior_asset *asset = behavior_asset_load_json(json);
+    behavior_asset *asset = behavior_asset_load(json);
     free(json);
     material_fields *fields = material_fields_new();
     char error[256] = { 0 };

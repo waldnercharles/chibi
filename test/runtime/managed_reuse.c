@@ -71,8 +71,8 @@ static void aliases(int kind)
     }
     assert(allocations == arena_block_allocations());
     /* Reordering variables must move both arenas with their stable identity. */
-    char *json = behavior_asset_save_json(a);
-    behavior_asset *next = behavior_asset_load_json(json);
+    char *json = behavior_asset_save(a);
+    behavior_asset *next = behavior_asset_load(json);
     free(json);
     assert(next);
     behavior_variable swap = next->variables[0];

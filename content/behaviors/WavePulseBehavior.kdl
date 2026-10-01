@@ -1,0 +1,208 @@
+version 3
+name "WavePulseBehavior"
+id_counter 391
+description "An authored wave announcement expands a thin red band through floor cells and expires after 0.8 seconds."
+owner_type "ecs.entity"
+(array)variables {
+    - id=1 name="Age" type="float" type_name="float" category="State"
+}
+(array)graphs {
+    - {
+        kind "event"
+        name ""
+        (array)nodes {
+            - {
+                id 3
+                type "Event"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_name "Tick"
+                outputs {
+                    Then id=2
+                }
+            }
+            - {
+                id 33
+                type "Destroy Entity"
+                x 0.0
+                y 0.0
+                placed #false
+                inputs {
+                    Exec id=30
+                }
+            }
+            - {
+                id 35
+                type "Self"
+                x 0.0
+                y 0.0
+                placed #false
+                (array)outputs {
+                    - id=34 name="Entity" type_name="ecs.entity"
+                }
+            }
+            - {
+                id 91
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 79
+                reference_name "Age += dt"
+                inputs {
+                    Exec id=95 kind="exec"
+                    Age {
+                        id 92
+                        type "float"
+                        binding kind="variable" variable_id=1 source_asset="WavePulseBehavior"
+                    }
+                    dt {
+                        id 93
+                        type "double"
+                        binding kind="delta_time"
+                    }
+                }
+                outputs {
+                    Then id=96 kind="exec"
+                    Result id=94 type="float"
+                }
+            }
+            - {
+                id 145
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 131
+                reference_name "Age / 0.8"
+                inputs {
+                    Age {
+                        id 146
+                        type "double"
+                        binding kind="variable" variable_id=1 source_asset="WavePulseBehavior"
+                    }
+                }
+                outputs {
+                    Result id=147 type="double"
+                }
+            }
+            - {
+                id 176
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 162
+                reference_name "progress >= 1"
+                inputs {
+                    Exec id=179 kind="exec"
+                    progress {
+                        id 177
+                        type "double"
+                        flags 0
+                        binding kind="local" local_id=390
+                    }
+                }
+                outputs {
+                    True id=180 kind="exec"
+                    False id=181 kind="exec"
+                    Result id=178 type="bool"
+                }
+            }
+            - {
+                id 217
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 196
+                reference_name "24 + 336 * progress"
+                inputs {
+                    progress {
+                        id 218
+                        type "double"
+                        binding kind="local" local_id=390
+                    }
+                }
+                outputs {
+                    Result id=219 type="double"
+                }
+            }
+            - {
+                id 255
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 234
+                reference_name "max(0, radius - 28)"
+                inputs {
+                    radius id=256 type="double"
+                }
+                outputs {
+                    Result id=257 type="double"
+                }
+            }
+            - {
+                id 300
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 279
+                reference_name "0.65 * (1 - progress)"
+                inputs {
+                    progress {
+                        id 301
+                        type "double"
+                        binding kind="local" local_id=390
+                    }
+                }
+                outputs {
+                    Result id=302 type="double"
+                }
+            }
+            - {
+                id 317
+                type "Set Component"
+                x 0.0
+                y 0.0
+                placed #false
+                inputs {
+                    Component "GAME.GameSurfaceInfluence"
+                    strength id=368
+                    radius id=324
+                    inner_radius id=346
+                }
+                outputs {
+                    Then id=322
+                    Value id=323
+                }
+            }
+        }
+        (array)edges {
+            - from="3.Then" to="91.Exec"
+            - from="35.Entity" to="33.Entity"
+            - from="91.Then" to="176.Exec"
+            - from="145.Result" to="176.progress"
+            - from="145.Result" to="217.progress"
+            - from="145.Result" to="300.progress"
+            - from="176.True" to="33.Exec"
+            - from="176.False" to="317.Exec"
+            - from="217.Result" to="255.radius"
+            - from="217.Result" to="317.radius"
+            - from="255.Result" to="317.inner_radius"
+            - from="300.Result" to="317.strength"
+        }
+        (array)locals {
+            - id=390 name="Progress" from="145.Result"
+        }
+    }
+    - id=79 kind="function" math_expression="Age += dt" entry_id=115
+    - id=131 kind="function" math_expression="Age / 0.8" entry_id=304
+    - id=162 kind="function" math_expression="progress >= 1" entry_id=163
+    - id=196 kind="function" math_expression="24 + 336 * progress" entry_id=326
+    - id=234 kind="function" math_expression="max(0, radius - 28)" entry_id=348
+    - id=279 kind="function" math_expression="0.65 * (1 - progress)" entry_id=370
+}

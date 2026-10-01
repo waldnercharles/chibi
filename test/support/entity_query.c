@@ -142,8 +142,8 @@ static void failure_lifetime(behavior_backend backend)
     assert(run && flow_run_status(run) == FLOW_COMPLETED);
     flow_run_free(run);
     assert(behavior_instance_last_failure(bi) == f);
-    char *json = behavior_asset_save_json(asset);
-    behavior_asset *next = behavior_asset_load_json(json);
+    char *json = behavior_asset_save(asset);
+    behavior_asset *next = behavior_asset_load(json);
     free(json);
     assert(next && behavior_instance_can_update(bi, next) == INSTANCE_UPDATE_READY);
     behavior_instance_update(bi, next);

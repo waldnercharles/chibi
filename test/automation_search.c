@@ -299,10 +299,10 @@ static void inspected_pins()
     snprintf(manifest, sizeof manifest, "%s/" CHIBI_PROJECT_MANIFEST, root);
     snprintf(content, sizeof content, "%s/content", root);
     snprintf(behaviors, sizeof behaviors, "%s/content/behaviors", root);
-    snprintf(asset, sizeof asset, "%s/Pins.yaml", behaviors);
+    snprintf(asset, sizeof asset, "%s/Pins.kdl", behaviors);
     FILE *file = fopen(manifest, "w");
     assert(file);
-    fprintf(file, "version: %d\ncontent: content\n", CHIBI_PROJECT_VERSION);
+    fprintf(file, "version %d\ncontent \"content\"\n", CHIBI_PROJECT_VERSION);
     fclose(file);
     assert(!mkdir(content, 0755) && !mkdir(behaviors, 0755));
     char request[1024];
@@ -369,7 +369,7 @@ static void ui_events()
     snprintf(pause, sizeof pause, "%s/PauseMenu.rml", ui);
     assert(!mkdir(content, 0755) && !mkdir(ui, 0755));
     char version[64];
-    snprintf(version, sizeof version, "version: %d\ncontent: content\n", CHIBI_PROJECT_VERSION);
+    snprintf(version, sizeof version, "version %d\ncontent \"content\"\n", CHIBI_PROJECT_VERSION);
     write_text(manifest, version);
     write_text(
         hud,
@@ -438,12 +438,26 @@ static void behavior_ui_events()
     static const char *const FILES[][2] = {
         { "content/ui/Hud.rml", "<div data-event-click=\"emit('Go')\">Go</div>\n" },
         { "content/ui/Shop.rml", "<div data-event-click=\"emit('Buy')\">Buy</div>\n" },
-        { "content/prototypes/Hero.yaml", "name: Hero\ncomponents:\n  GAME.GameUi: {document: Hud}\nbehaviors: [Player]\n" },
-        { "content/behaviors/Player.yaml", "version: 3\nname: Player\nid_counter: 1\nowner_type: ecs.entity\ngraphs: []\n" },
+        { "content/prototypes/Hero.kdl",
+          "name \"Hero\"\n"
+          "components {\n"
+          "    GAME.GameUi {\n"
+          "        document \"Hud\"\n"
+          "    }\n"
+          "}\n"
+          "(array)behaviors {\n"
+          "    - \"Player\"\n"
+          "}\n" },
+        { "content/behaviors/Player.kdl",
+          "version 3\n"
+          "name \"Player\"\n"
+          "id_counter 1\n"
+          "owner_type \"ecs.entity\"\n"
+          "(array)graphs\n" },
     };
     char path[256], version[64];
     snprintf(path, sizeof path, "%s/" CHIBI_PROJECT_MANIFEST, root);
-    snprintf(version, sizeof version, "version: %d\ncontent: content\n", CHIBI_PROJECT_VERSION);
+    snprintf(version, sizeof version, "version %d\ncontent \"content\"\n", CHIBI_PROJECT_VERSION);
     write_text(path, version);
     for (size_t i = 0; i < sizeof FOLDERS / sizeof *FOLDERS; i++) {
         snprintf(path, sizeof path, "%s/%s", root, FOLDERS[i]);
@@ -505,6 +519,39 @@ static void response_budgets()
  * prefers whole names, then prefixes, then words inside names. */
 static void text_search_scores()
 {
+    bool hits[32];
+    assert(text_search_match("game", "GameTransform", hits, sizeof hits / sizeof *hits) >= 0);
+    for (int i = 0; i < 32; i++) {
+        assert(hits[i] == (i < 4));
+    }
+    assert(text_search_match("gt", "GameTransform", hits, sizeof hits / sizeof *hits) >= 0);
+    for (int i = 0; i < 32; i++) {
+        assert(hits[i] == (i == 0 || i == 4));
+    }
+    assert(text_search_match("gmtr", "GameTransform", hits, sizeof hits / sizeof *hits) >= 0);
+    for (int i = 0; i < 32; i++) {
+        assert(hits[i] == (i == 0 || i == 2 || i == 4 || i == 5));
+    }
+    assert(text_search_match("playr", "Player", hits, sizeof hits / sizeof *hits) >= 0);
+    for (int i = 0; i < 32; i++) {
+        assert(hits[i] == (i < 6 && i != 4));
+    }
+    assert(text_search_match("playar", "Player", hits, sizeof hits / sizeof *hits) >= 0);
+    assert(!hits[4] && hits[5]);
+    assert(text_search_match("playre", "Player", hits, sizeof hits / sizeof *hits) >= 0);
+    assert(hits[4] && hits[5]);
+    assert(text_search_match("playerq", "Player", hits, sizeof hits / sizeof *hits) >= 0);
+    assert(hits[5] && !hits[6]);
+    assert(text_search_match("zz", "GameTransform", hits, sizeof hits / sizeof *hits) < 0);
+    for (int i = 0; i < 32; i++) {
+        assert(!hits[i]);
+    }
+    assert(text_search_match("  ", "Player", hits, sizeof hits / sizeof *hits) == 0);
+    for (int i = 0; i < 32; i++) {
+        assert(!hits[i]);
+    }
+    assert(text_search_match("gt", "GameTransform", hits, 2) >= 0);
+    assert(hits[0] && !hits[1]);
     assert(text_search_score("  ", "Player", NULL) == 0);
     assert(text_search_score("hit", "Switch on Int", NULL) >= 0);
     assert(text_search_word_score("hit", "Switch on Int", NULL) < 0);
@@ -543,7 +590,7 @@ static void text_search_scores()
     assert(text_search_score("playar", "Player", NULL) >= 0);
     assert(text_search_score("plsyr", "Player", NULL) < 0);
     assert(
-        text_search_score("player arena", "PlayerContactBehavior", "content/behaviors/PlayerContactBehavior.yaml") <
+        text_search_score("player arena", "PlayerContactBehavior", "content/behaviors/PlayerContactBehavior.kdl") <
         0
     );
     assert(text_search_score("cat", "Cast", NULL) >= 0);
@@ -574,8 +621,57 @@ static void assets_rank()
     free(response);
 }
 
+/* Source assistance remains available during an incomplete edit, with usable
+ * insertion text and byte ranges shared with Studio. */
+static void asset_source_assistance()
+{
+    char root[] = "/tmp/chibi-source-assistance-XXXXXX";
+    assert(mkdtemp(root));
+    char content[160], behaviors[160], source[192];
+    snprintf(content, sizeof content, "%s/content", root);
+    snprintf(behaviors, sizeof behaviors, "%s/content/behaviors", root);
+    snprintf(source, sizeof source, "%s/Draft.kdl", behaviors);
+    assert(!mkdir(content, 0755) && !mkdir(behaviors, 0755));
+    write_text(source, "na {\n");
+    int exit_code = 0;
+    char *response = chibi_automation_handle(
+        "{\"contract\":1,\"operation\":\"read_asset\",\"kind\":\"behavior\","
+        "\"name\":"
+        "\"Draft\","
+        "\"complete\":{\"line\":1,\"column\":3}}",
+        root,
+        &exit_code
+    );
+    yyjson_doc *doc = yyjson_read(response, strlen(response), 0);
+    yyjson_val *result = yyjson_obj_get(yyjson_doc_get_root(doc), "result");
+    yyjson_val *items = yyjson_obj_get(result, "completions");
+    bool offered = false;
+    size_t i, count;
+    yyjson_val *item;
+    yyjson_arr_foreach(items, i, count, item)
+    {
+        const char *insert = yyjson_get_str(yyjson_obj_get(item, "insert"));
+        offered |= insert && !strcmp(insert, "name") &&
+                   yyjson_get_int(yyjson_obj_get(item, "start")) == 0 &&
+                   yyjson_get_int(yyjson_obj_get(item, "end")) == 2;
+    }
+    test_check(
+        exit_code == 0 && offered &&
+            yyjson_is_null(yyjson_obj_get(result, "document")) &&
+            yyjson_arr_size(yyjson_obj_get(result, "diagnostics")) > 0,
+        "readAsset completes incomplete KDL and reports source diagnostics"
+    );
+    yyjson_doc_free(doc);
+    free(response);
+    unlink(source);
+    rmdir(behaviors);
+    rmdir(content);
+    rmdir(root);
+}
+
 void test_automation_search()
 {
+    asset_source_assistance();
     text_search_scores();
     assets_rank();
     intents_rank();

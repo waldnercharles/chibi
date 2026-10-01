@@ -18,7 +18,7 @@ static behavior_asset **catalog(const char *pattern)
     for (size_t i = 0; i < paths.gl_pathc; i++) {
         char *text = text_file_read(paths.gl_pathv[i]);
         assert(text);
-        behavior_asset *a = behavior_asset_load_json(text);
+        behavior_asset *a = behavior_asset_load(text);
         if (!a) {
             fprintf(stderr, "%s: %s\n", paths.gl_pathv[i], graph_last_error());
         }
@@ -62,9 +62,9 @@ static bool audit_entry(const behavior_asset *a, graph *g, node *entry, const ch
  * Shader libraries and event declarations are supporting systems. */
 int whole_function_audit()
 {
-    behavior_asset **assets = catalog("content/behaviors/*.yaml");
-    behavior_asset **libraries = catalog("content/libraries/*.yaml");
-    behavior_asset **events = catalog("content/events/*.yaml");
+    behavior_asset **assets = catalog("content/behaviors/*.kdl");
+    behavior_asset **libraries = catalog("content/libraries/*.kdl");
+    behavior_asset **events = catalog("content/events/*.kdl");
     for (int i = 0; i < acount(events); i++) {
         apush(libraries, events[i]);
     }

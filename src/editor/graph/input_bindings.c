@@ -175,7 +175,7 @@ int ed_optimize_graph(editor *e)
         e->active_graph->flow_pause_count) {
         return 0;
     }
-    char *before = ed_snapshot(e);
+    behavior_asset *before = ed_snapshot(e);
     if (!before) {
         return -1;
     }
@@ -209,11 +209,11 @@ int ed_optimize_graph(editor *e)
         }
         asetlen(e->selected_links, 0);
         graph_layout(e->active_graph);
-        ed_push_string(&e->undo, before);
-        ed_free_string_stack(&e->redo);
+        ed_push_asset(&e->undo, before);
+        ed_free_asset_stack(&e->redo);
         e->edit_pending = 1;
     } else {
-        free(before);
+        behavior_asset_free(before);
     }
     graph_optimize_report_free(&report);
     afree(original);

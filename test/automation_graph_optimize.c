@@ -47,7 +47,7 @@ void test_automation_graph_optimize(void)
     node *target = graph_add_node(asset->graph, registry_node_by_name("Set_GameMovement"));
     bool connected = getter && target &&
                      graph_connect_data(asset->graph, getter, 0, target, 1) == 0;
-    char *source = connected ? behavior_asset_save_json(asset) : NULL;
+    char *source = connected ? behavior_asset_save(asset) : NULL;
     behavior_asset_free(asset);
 
     char *edited = NULL;
@@ -61,7 +61,7 @@ void test_automation_graph_optimize(void)
                   yyjson_mut_get_int(yyjson_mut_obj_get(root, "removed_nodes")) == 1;
     /* The helper is deliberately IO-free; the native controller adds publish
      * and dry-run state around its transformation report. */
-    behavior_asset *optimized = edited ? behavior_asset_load_json(edited) : NULL;
+    behavior_asset *optimized = edited ? behavior_asset_load(edited) : NULL;
     node *optimized_target = optimized
                                ? node_named(optimized->graph, "Set_GameMovement")
                                : NULL;

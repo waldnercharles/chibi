@@ -147,7 +147,7 @@ static int publish_child(const char *root, const char *text, const char *expecte
     int status = automation_asset_publish(
         root,
         "behaviors",
-        "Concurrent.yaml",
+        "Concurrent.kdl",
         text,
         expected_hash,
         false,
@@ -192,7 +192,7 @@ static void test_concurrent_replacements(const char *root, const char *initial)
     char content[PATH_MAX], behaviors[PATH_MAX], asset[PATH_MAX];
     join_path(content, sizeof content, root, "content");
     join_path(behaviors, sizeof behaviors, content, "behaviors");
-    join_path(asset, sizeof asset, behaviors, "Concurrent.yaml");
+    join_path(asset, sizeof asset, behaviors, "Concurrent.kdl");
     write_file(asset, initial, strlen(initial));
 
     char expected_hash[32];
@@ -255,7 +255,7 @@ static void test_replacement_and_create(const char *root, const char *initial)
     join_path(content, sizeof content, root, "content");
     join_path(behaviors, sizeof behaviors, content, "behaviors");
 
-    join_path(asset, sizeof asset, behaviors, "Replacement.yaml");
+    join_path(asset, sizeof asset, behaviors, "Replacement.kdl");
     write_file(asset, initial, strlen(initial));
     char stale_hash[32], valid_hash[32];
     hash_text(stale_hash, sizeof stale_hash, "different content");
@@ -264,23 +264,23 @@ static void test_replacement_and_create(const char *root, const char *initial)
     snprintf(replacement, sizeof replacement, "replacement:%s\n", initial);
     char error[160] = { 0 };
     assert(
-        automation_asset_publish(root, "behaviors", "Replacement.yaml", replacement, stale_hash, false, error, sizeof error) ==
+        automation_asset_publish(root, "behaviors", "Replacement.kdl", replacement, stale_hash, false, error, sizeof error) ==
         CHIBI_AUTOMATION_CONFLICT
     );
     assert_file_equals(asset, initial, strlen(initial));
     assert(
-        automation_asset_publish(root, "behaviors", "Replacement.yaml", replacement, valid_hash, false, error, sizeof error) ==
+        automation_asset_publish(root, "behaviors", "Replacement.kdl", replacement, valid_hash, false, error, sizeof error) ==
         CHIBI_AUTOMATION_OK
     );
     assert_file_equals(asset, replacement, strlen(replacement));
     assert(unlink(asset) == 0);
 
-    join_path(asset, sizeof asset, behaviors, "CreateCollision.yaml");
+    join_path(asset, sizeof asset, behaviors, "CreateCollision.kdl");
     const char *existing = "existing-create\n";
     const char *attempt = "should-not-replace\n";
     write_file(asset, existing, strlen(existing));
     assert(
-        automation_asset_publish(root, "behaviors", "CreateCollision.yaml", attempt, NULL, true, error, sizeof error) ==
+        automation_asset_publish(root, "behaviors", "CreateCollision.kdl", attempt, NULL, true, error, sizeof error) ==
         CHIBI_AUTOMATION_CONFLICT
     );
     assert_file_equals(asset, existing, strlen(existing));
@@ -288,10 +288,10 @@ static void test_replacement_and_create(const char *root, const char *initial)
 
     const char *created = "created-asset-complete\n";
     assert(
-        automation_asset_publish(root, "behaviors", "Created.yaml", created, NULL, true, error, sizeof error) ==
+        automation_asset_publish(root, "behaviors", "Created.kdl", created, NULL, true, error, sizeof error) ==
         CHIBI_AUTOMATION_OK
     );
-    join_path(asset, sizeof asset, behaviors, "Created.yaml");
+    join_path(asset, sizeof asset, behaviors, "Created.kdl");
     assert_file_equals(asset, created, strlen(created));
     assert(unlink(asset) == 0);
 }
@@ -307,7 +307,7 @@ static void test_invalid_names(const char *root)
         );
     }
     assert(
-        automation_asset_publish(root, "bad\\folder", "Safe.yaml", "invalid-folder\n", NULL, true, error, sizeof error) ==
+        automation_asset_publish(root, "bad\\folder", "Safe.kdl", "invalid-folder\n", NULL, true, error, sizeof error) ==
         CHIBI_AUTOMATION_INVALID_REQUEST
     );
 }
@@ -325,7 +325,7 @@ static void test_content_symlink(void)
 
     char error[160] = { 0 };
     assert(
-        automation_asset_publish(root, "behaviors", "Linked.yaml", "must-not-write\n", NULL, true, error, sizeof error) ==
+        automation_asset_publish(root, "behaviors", "Linked.kdl", "must-not-write\n", NULL, true, error, sizeof error) ==
         CHIBI_AUTOMATION_IO_ERROR
     );
     assert_symlink(content);
@@ -350,12 +350,12 @@ static void test_folder_symlink(void)
 
     char error[160] = { 0 };
     assert(
-        automation_asset_publish(root, "behaviors", "Linked.yaml", "must-not-write\n", NULL, true, error, sizeof error) ==
+        automation_asset_publish(root, "behaviors", "Linked.kdl", "must-not-write\n", NULL, true, error, sizeof error) ==
         CHIBI_AUTOMATION_IO_ERROR
     );
     assert_symlink(folder);
     char target[PATH_MAX];
-    join_path(target, sizeof target, real_folder, "Linked.yaml");
+    join_path(target, sizeof target, real_folder, "Linked.kdl");
     assert_path_missing(target);
     assert(unlink(folder) == 0);
     assert(rmdir(real_folder) == 0);
@@ -370,11 +370,11 @@ static void test_target_symlink(void)
     char content[PATH_MAX], folder[PATH_MAX], target[PATH_MAX], other[PATH_MAX];
     join_path(content, sizeof content, root, "content");
     join_path(folder, sizeof folder, content, "behaviors");
-    join_path(target, sizeof target, folder, "Linked.yaml");
-    join_path(other, sizeof other, folder, "Other.yaml");
+    join_path(target, sizeof target, folder, "Linked.kdl");
+    join_path(other, sizeof other, folder, "Other.kdl");
     const char *original = "target-through-link\n";
     write_file(other, original, strlen(original));
-    assert(symlink("Other.yaml", target) == 0);
+    assert(symlink("Other.kdl", target) == 0);
 
     char expected_hash[32], error[160] = { 0 };
     hash_text(expected_hash, sizeof expected_hash, original);
@@ -382,7 +382,7 @@ static void test_target_symlink(void)
         automation_asset_publish(
             root,
             "behaviors",
-            "Linked.yaml",
+            "Linked.kdl",
             "must-not-follow\n",
             expected_hash,
             false,
@@ -415,10 +415,10 @@ static void test_batches(const char *root)
 {
     char behaviors[PATH_MAX], a[PATH_MAX], b[PATH_MAX], c[PATH_MAX], moved[PATH_MAX];
     snprintf(behaviors, sizeof behaviors, "%s/content/behaviors", root);
-    join_path(a, sizeof a, behaviors, "A.yaml");
-    join_path(b, sizeof b, behaviors, "B.yaml");
-    join_path(c, sizeof c, behaviors, "C.yaml");
-    join_path(moved, sizeof moved, behaviors, "Moved.yaml");
+    join_path(a, sizeof a, behaviors, "A.kdl");
+    join_path(b, sizeof b, behaviors, "B.kdl");
+    join_path(c, sizeof c, behaviors, "C.kdl");
+    join_path(moved, sizeof moved, behaviors, "Moved.kdl");
     write_file(a, "a\n", 2);
     write_file(b, "b\n", 2);
     write_file(c, "c\n", 2);
@@ -427,9 +427,9 @@ static void test_batches(const char *root)
     hash_text(hb, sizeof hb, "b\n");
     hash_text(hc, sizeof hc, "c\n");
     automation_asset_change changes[] = {
-        { "behaviors", "A.yaml", NULL, "a2\n", ha },
-        { "behaviors", "B.yaml", "Moved.yaml", "b2\n", hb },
-        { "behaviors", "C.yaml", NULL, NULL, hc },
+        { "behaviors", "A.kdl", NULL, "a2\n", ha },
+        { "behaviors", "B.kdl", "Moved.kdl", "b2\n", hb },
+        { "behaviors", "C.kdl", NULL, NULL, hc },
     };
     char error[160];
     automation_asset_batch *batch = NULL;
@@ -440,11 +440,11 @@ static void test_batches(const char *root)
         automation_assets_publish(root, changes, 3, &batch, error, sizeof error) == CHIBI_AUTOMATION_CONFLICT
     );
     changes[2].expected_hash = hc;
-    changes[1].rename_to = "C.yaml";
+    changes[1].rename_to = "C.kdl";
     assert(
         automation_assets_publish(root, changes, 3, &batch, error, sizeof error) == CHIBI_AUTOMATION_CONFLICT
     );
-    changes[1].rename_to = "Moved.yaml";
+    changes[1].rename_to = "Moved.kdl";
     assert(!batch && folder_entries(behaviors) == 3);
     assert_file_equals(a, "a\n", 2);
 
@@ -485,16 +485,16 @@ static void test_batch_failure(const char *root)
     snprintf(behaviors, sizeof behaviors, "%s/content/behaviors", root);
     snprintf(events, sizeof events, "%s/content/events", root);
     assert(mkdir(events, 0755) == 0);
-    join_path(a, sizeof a, behaviors, "A.yaml");
-    join_path(e, sizeof e, events, "E.yaml");
+    join_path(a, sizeof a, behaviors, "A.kdl");
+    join_path(e, sizeof e, events, "E.kdl");
     write_file(a, "a\n", 2);
     write_file(e, "e\n", 2);
     char ha[32], he[32];
     hash_text(ha, sizeof ha, "a\n");
     hash_text(he, sizeof he, "e\n");
     automation_asset_change changes[] = {
-        { "behaviors", "A.yaml", "Moved.yaml", "a2\n", ha },
-        { "events", "E.yaml", NULL, NULL, he },
+        { "behaviors", "A.kdl", "Moved.kdl", "a2\n", ha },
+        { "events", "E.kdl", NULL, NULL, he },
     };
     assert(chmod(events, 0555) == 0);
     char error[160];

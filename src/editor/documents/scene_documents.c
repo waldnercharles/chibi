@@ -145,7 +145,7 @@ static int save_behavior_definition(
         snprintf(scene->message, sizeof scene->message, "Behavior path is already open.");
         return -1;
     }
-    char *json = behavior_asset_save_json(definition->working);
+    char *json = behavior_asset_save(definition->working);
     if (!json) {
         return -1;
     }
@@ -223,7 +223,7 @@ int reload_behavior_from_disk(app_scene_authoring *scene, const char *asset_name
         return -1;
     }
     char *json = read_scene_file(path);
-    behavior_asset *loaded = json ? behavior_asset_load_json(json) : NULL;
+    behavior_asset *loaded = json ? behavior_asset_load(json) : NULL;
     free(json);
     if (!loaded) {
         snprintf(scene->message, sizeof scene->message, "Could not reload %s: %s", path, graph_last_error());
@@ -399,11 +399,11 @@ static int reload_active_document(app_scene_authoring *scene)
     return app_scene_authoring_load(scene, scene->scene_path);
 }
 
-int load_system_document_json(app_scene_authoring *scene, const char *json, const char *path, bool reload)
+int load_system_document_value(app_scene_authoring *scene, av_value *value, const char *path, bool reload)
 {
     char error[256] = { 0 };
-    game_system_document *document = game_system_document_load(
-        json,
+    game_system_document *document = game_system_document_from_value(
+        value,
         resolve_system_component,
         NULL,
         error,
@@ -453,7 +453,7 @@ int load_system_document_json(app_scene_authoring *scene, const char *json, cons
     scene_document_tab *tab = scene->active_tab >= 0 ? &scene->tabs[scene->active_tab]
                                                      : NULL;
     if (tab && !tab->system_saved) {
-        tab->system_saved = tab->system_json ? xstrdup(tab->system_json) : NULL;
+        tab->system_saved = tab->system_value ? av_value_copy(tab->system_value) : NULL;
     }
     snprintf(
         scene->message,
@@ -465,13 +465,23 @@ int load_system_document_json(app_scene_authoring *scene, const char *json, cons
     return 0;
 }
 
+int load_system_document_text(app_scene_authoring *scene, const char *text, const char *path, bool reload)
+{
+    char error[256];
+    av_doc *doc = text ? asset_text_read(text, error, sizeof error) : NULL;
+    int result = doc ? load_system_document_value(scene, av_doc_root(doc), path, reload)
+                     : -1;
+    av_doc_free(doc);
+    return result;
+}
+
 int load_system_asset(app_scene_authoring *scene, const char *path, bool reload)
 {
     char *json = read_scene_file(path);
     if (!json) {
         return -1;
     }
-    int result = load_system_document_json(scene, json, path, reload);
+    int result = load_system_document_text(scene, json, path, reload);
     free(json);
     return result;
 }
@@ -508,9 +518,7 @@ static int save_system_document(app_scene_authoring *scene, const char *path)
         snprintf(scene->message, sizeof scene->message, "System path is already open.");
         return -1;
     }
-    char *graph_json = behavior_asset_save_json(editor_behavior_asset(scene->graph_editor));
-    behavior_asset *graph = graph_json ? behavior_asset_load_json(graph_json) : NULL;
-    free(graph_json);
+    behavior_asset *graph = behavior_asset_clone(editor_behavior_asset(scene->graph_editor));
     if (!graph ||
         game_system_document_replace_behavior_asset(scene->system_document, graph) != 0) {
         behavior_asset_free(graph);

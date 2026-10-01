@@ -452,7 +452,7 @@ static tabs_fixture fixture_new(bool with_studio)
     );
     assert(app_scene_authoring_set_content_root(f.scene, PROJECT "/content") == 0);
     assert(app_scene_authoring_load_content(f.scene) == 0);
-    assert(app_scene_authoring_load(f.scene, PROJECT "/content/scenes/Main.yaml") == 0);
+    assert(app_scene_authoring_load(f.scene, PROJECT "/content/scenes/Main.kdl") == 0);
     f.studio = with_studio ? studio_new(f.scene, f.viewport, PROJECT) : NULL;
     return f;
 }

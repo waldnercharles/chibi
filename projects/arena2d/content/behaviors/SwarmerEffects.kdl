@@ -1,0 +1,41 @@
+version 3
+name "SwarmerEffects"
+id_counter 20
+owner_type "ecs.entity"
+(array)graphs {
+    - {
+        kind "event"
+        name ""
+        (array)nodes {
+            - id=1 type="Event" x=0.0 y=0.0 placed=#false reference_name="Begin"
+            - {
+                id 14
+                type "Call Function"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 256
+                reference_name "Spawn Prototype At"
+                reference_asset "WeaponActions"
+                inputs {
+                    Prototype id=17 declaration_id=261 type="name" kind="data" default="SpawnEmitter"
+                    Transform {
+                        id 18
+                        declaration_id 262
+                        type "struct"
+                        type_name "GameTransform"
+                        kind "data"
+                        binding kind="component" component="GAME.GameTransform"
+                    }
+                }
+                outputs {
+                    Then id=16
+                    Entity id=19 declaration_id=263 type="handle" type_name="ecs.entity" kind="data"
+                }
+            }
+        }
+        (array)edges {
+            - from="1.Then" to="14.Exec"
+        }
+    }
+}

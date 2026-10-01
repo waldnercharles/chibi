@@ -2,6 +2,7 @@
 
 #include "assets/scene_document.h"
 #include "support/array.h"
+#include "support/asset_json.h"
 #include "third_party/yyjson/yyjson.h"
 
 #include <stdarg.h>
@@ -79,15 +80,17 @@ static int entity_index(edit_context *context, yyjson_val *operation)
     return index;
 }
 
-static int object_json(edit_context *context, yyjson_val *value, char **json, const char *key)
+static int object_value(edit_context *context, yyjson_val *value, av_value **native, const char *key)
 {
     if (!yyjson_is_obj(value)) {
         fail(context, CHIBI_AUTOMATION_INVALID_REQUEST, "%s must be an object", key);
         return -1;
     }
-    *json = yyjson_val_write(value, YYJSON_WRITE_PRETTY_TWO_SPACES, NULL);
-    if (!*json) {
-        fail(context, CHIBI_AUTOMATION_VALIDATION_ERROR, "%s could not be serialized", key);
+    av_doc *doc = av_doc_new();
+    *native = av_value_copy(av_from_json(doc, value));
+    av_doc_free(doc);
+    if (!*native) {
+        fail(context, CHIBI_AUTOMATION_VALIDATION_ERROR, "%s could not be converted", key);
         return -1;
     }
     return 0;
@@ -147,14 +150,14 @@ static int set_entity_components(edit_context *context, yyjson_val *operation, b
     }
     const char *key = retained ? "retained_components" : "components";
     yyjson_val *value = yyjson_obj_get(operation, key);
-    char *json = NULL;
-    if (object_json(context, value, &json, key) != 0) {
+    av_value *native = NULL;
+    if (object_value(context, value, &native, key) != 0) {
         return CHIBI_AUTOMATION_INVALID_REQUEST;
     }
     int result = retained
-                   ? game_scene_document_set_entity_retained(context->scene, index, json)
-                   : game_scene_document_set_entity_components(context->scene, index, json);
-    free(json);
+                   ? game_scene_document_set_entity_retained(context->scene, index, native)
+                   : game_scene_document_set_entity_components(context->scene, index, native);
+    av_value_free(native);
     if (result != 0) {
         return fail(context, CHIBI_AUTOMATION_VALIDATION_ERROR, "%s could not be applied", key);
     }
@@ -194,24 +197,24 @@ static int add_entity(edit_context *context, yyjson_val *operation)
     int index = acount(context->scene->entities) - 1;
     yyjson_val *components = yyjson_obj_get(operation, "components");
     if (components) {
-        char *json = NULL;
-        if (object_json(context, components, &json, "components") != 0) {
+        av_value *native = NULL;
+        if (object_value(context, components, &native, "components") != 0) {
             return CHIBI_AUTOMATION_INVALID_REQUEST;
         }
-        result = game_scene_document_set_entity_components(context->scene, index, json);
-        free(json);
+        result = game_scene_document_set_entity_components(context->scene, index, native);
+        av_value_free(native);
         if (result != 0) {
             return fail(context, CHIBI_AUTOMATION_VALIDATION_ERROR, "components could not be applied");
         }
     }
     yyjson_val *retained = yyjson_obj_get(operation, "retained_components");
     if (retained) {
-        char *json = NULL;
-        if (object_json(context, retained, &json, "retained_components") != 0) {
+        av_value *native = NULL;
+        if (object_value(context, retained, &native, "retained_components") != 0) {
             return CHIBI_AUTOMATION_INVALID_REQUEST;
         }
-        result = game_scene_document_set_entity_retained(context->scene, index, json);
-        free(json);
+        result = game_scene_document_set_entity_retained(context->scene, index, native);
+        av_value_free(native);
         if (result != 0) {
             return fail(context, CHIBI_AUTOMATION_VALIDATION_ERROR, "retained_components could not be applied");
         }
@@ -372,19 +375,19 @@ static int apply_operation(edit_context *context, yyjson_val *operation)
 }
 
 int automation_scene_edit(
-    const char *source_json,
+    const char *source_text,
     yyjson_val *request,
     yyjson_mut_doc *doc,
     yyjson_mut_val *result,
-    char **edited_json,
+    char **edited_text,
     char *error,
     size_t error_size
 )
 {
-    if (edited_json) {
-        *edited_json = NULL;
+    if (edited_text) {
+        *edited_text = NULL;
     }
-    if (!source_json || !request || !doc || !result || !edited_json) {
+    if (!source_text || !request || !doc || !result || !edited_text) {
         if (error && error_size) {
             snprintf(error, error_size, "scene edit arguments are required");
         }
@@ -399,7 +402,7 @@ int automation_scene_edit(
         return CHIBI_AUTOMATION_INVALID_REQUEST;
     }
     char load_error[256] = { 0 };
-    game_scene_document *scene = game_scene_document_load(source_json, load_error, sizeof load_error);
+    game_scene_document *scene = game_scene_document_load(source_text, load_error, sizeof load_error);
     if (!scene) {
         if (error && error_size) {
             snprintf(error, error_size, "%s", load_error);
@@ -427,7 +430,7 @@ int automation_scene_edit(
     if (!saved) {
         game_scene_document_free(scene);
         if (error && error_size) {
-            snprintf(error, error_size, "scene could not be serialized");
+            snprintf(error, error_size, "scene could not be converted");
         }
         return CHIBI_AUTOMATION_VALIDATION_ERROR;
     }
@@ -445,6 +448,6 @@ int automation_scene_edit(
     yyjson_mut_obj_add_strcpy(doc, result, "presentation", scene->perspective ? "3d" : "2d");
     game_scene_document_free(roundtrip);
     game_scene_document_free(scene);
-    *edited_json = saved;
+    *edited_text = saved;
     return CHIBI_AUTOMATION_OK;
 }

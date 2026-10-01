@@ -1,8 +1,8 @@
 #include "runtime/material_field.h"
 
 #include "support/array.h"
+#include "support/asset_text.h"
 #include "support/xalloc.h"
-#include "third_party/yyjson/yyjson.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -87,23 +87,23 @@ unsigned material_field_revision(const material_fields *fields, const char *name
 
 static bool parse_parameters(
     const field_entry *entry,
-    const char *json,
+    const char *text,
     field_parameter **parameters,
     char *error,
     size_t size
 )
 {
     *parameters = NULL;
-    yyjson_doc *doc = NULL;
+    av_doc *doc = NULL;
     bool valid = true;
-    if (json && json[0]) {
-        doc = yyjson_read(json, strlen(json), 0);
-        valid = doc && yyjson_is_obj(yyjson_doc_get_root(doc));
+    if (text && text[0]) {
+        doc = av_value_read(text, NULL, 0);
+        valid = doc && av_is_obj(av_doc_root(doc));
         if (valid) {
-            yyjson_obj_iter iter = yyjson_obj_iter_with(yyjson_doc_get_root(doc));
-            yyjson_val *key;
-            while ((key = yyjson_obj_iter_next(&iter))) {
-                const char *parameter_name = yyjson_get_str(key);
+            av_obj_iter iter = av_obj_iter_with(av_doc_root(doc));
+            av_value *key;
+            while ((key = av_obj_iter_next(&iter))) {
+                const char *parameter_name = av_get_str(key);
                 int parameter_index = -1;
                 for (int j = 0; j < acount(entry->parameters); j++) {
                     if (!strcmp(entry->parameters[j].name, parameter_name)) {
@@ -111,9 +111,9 @@ static bool parse_parameters(
                         break;
                     }
                 }
-                yyjson_val *value = yyjson_obj_iter_get_val(key);
-                double number = yyjson_get_num(value);
-                if (parameter_index < 0 || !yyjson_is_num(value) || !isfinite(number)) {
+                av_value *value = av_obj_iter_get_val(key);
+                double number = av_get_num(value);
+                if (parameter_index < 0 || !av_is_num(value) || !isfinite(number)) {
                     valid = false;
                     break;
                 }
@@ -140,7 +140,7 @@ static bool parse_parameters(
             }
         }
     }
-    yyjson_doc_free(doc);
+    av_doc_free(doc);
     if (!valid) {
         afree(*parameters);
         snprintf(error, size, "Invalid field parameter object");
@@ -150,7 +150,7 @@ static bool parse_parameters(
 bool material_field_bake(
     const material_fields *fields,
     const char *name,
-    const char *json,
+    const char *text,
     unsigned seed,
     field_grid grid,
     float *out,
@@ -159,13 +159,13 @@ bool material_field_bake(
     size_t size
 )
 {
-    return material_field_bake_rows(fields, name, json, seed, grid, 0, grid.height, out, tasks, error, size);
+    return material_field_bake_rows(fields, name, text, seed, grid, 0, grid.height, out, tasks, error, size);
 }
 
 bool material_field_bake_rows(
     const material_fields *fields,
     const char *name,
-    const char *json,
+    const char *text,
     unsigned seed,
     field_grid grid,
     int first,
@@ -183,7 +183,7 @@ bool material_field_bake_rows(
     }
     const field_entry *entry = &fields->entries[index];
     field_parameter *parameters = NULL;
-    bool valid = parse_parameters(entry, json, &parameters, error, size);
+    bool valid = parse_parameters(entry, text, &parameters, error, size);
     if (valid) {
         valid = field_program_bake_rows(
             entry->program,
@@ -204,7 +204,7 @@ bool material_field_bake_rows(
 material_field_session *material_field_session_new(
     const material_fields *fields,
     const char *name,
-    const char *json,
+    const char *text,
     unsigned seed,
     const game_task_system *tasks,
     char *error,
@@ -218,7 +218,7 @@ material_field_session *material_field_session_new(
     }
     const field_entry *entry = &fields->entries[index];
     field_parameter *parameters = NULL;
-    if (!parse_parameters(entry, json, &parameters, error, size)) {
+    if (!parse_parameters(entry, text, &parameters, error, size)) {
         return NULL;
     }
     field_program_baker *baker = field_program_baker_new(

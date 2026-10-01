@@ -4,6 +4,7 @@
 #include "editor/workspace/scene_internal.h"
 #include "graph/document/serialize.h"
 #include "runtime/generated.h"
+#include "support/asset_text.h"
 
 #include <assert.h>
 #include <errno.h>
@@ -13,7 +14,7 @@
 #include <string.h>
 #include <sys/stat.h>
 
-char *scene_authoring_scene_json(app_scene_authoring *scene)
+av_value *scene_authoring_scene_value(app_scene_authoring *scene)
 {
     finish_transform_edit(scene, false);
     /* The document is named after its file, so saving never renames it. */
@@ -66,20 +67,20 @@ char *scene_authoring_scene_json(app_scene_authoring *scene)
             acount(names)
         );
         if (result == 0) {
-            char *components = snapshot
-                                 ? game_prototype_overrides_json(actor->base, snapshot)
-                                 : game_prototype_capture_overrides_json(
-                                       actor->base,
-                                       scene->world,
-                                       actor->entity
-                                   );
+            av_value *components = snapshot
+                                     ? game_prototype_overrides_value(actor->base, snapshot)
+                                     : game_prototype_capture_overrides_value(
+                                           actor->base,
+                                           scene->world,
+                                           actor->entity
+                                       );
             result = game_scene_document_set_entity_components(document, i, components);
-            free(components);
+            av_value_free(components);
         }
         if (result == 0) {
-            char *retained = scene_retention_save(actor->retained);
+            av_value *retained = scene_retention_save(actor->retained);
             result = game_scene_document_set_entity_retained(document, i, retained);
-            free(retained);
+            av_value_free(retained);
         }
         afree(names);
         if (result != 0) {
@@ -87,12 +88,17 @@ char *scene_authoring_scene_json(app_scene_authoring *scene)
             return NULL;
         }
     }
-    char *json = game_scene_document_save(document);
+    av_value *value = game_scene_document_to_value(document);
     game_scene_document_free(document);
-    if (!json) {
-        return NULL;
-    }
-    return json;
+    return value;
+}
+
+char *scene_authoring_scene_text(app_scene_authoring *scene)
+{
+    av_value *value = scene_authoring_scene_value(scene);
+    char *text = value ? av_value_write(value) : NULL;
+    av_value_free(value);
+    return text;
 }
 
 int app_scene_authoring_save(app_scene_authoring *scene, const char *path)
@@ -104,7 +110,7 @@ int app_scene_authoring_save(app_scene_authoring *scene, const char *path)
         snprintf(scene->message, sizeof scene->message, "Scene path is already open.");
         return -1;
     }
-    char *json = scene_authoring_scene_json(scene);
+    char *json = scene_authoring_scene_text(scene);
     if (!json) {
         return -1;
     }
@@ -213,14 +219,14 @@ static scene_prototype_asset *ensure_prototype(app_scene_authoring *scene, const
     return find_prototype(scene, name);
 }
 
-int apply_components_json(app_scene_authoring *scene, ecs_entity entity, const char *components_json)
+int apply_components_value(app_scene_authoring *scene, ecs_entity entity, av_value *components)
 {
-    if (!components_json || !components_json[0]) {
+    if (!components) {
         return 0;
     }
     char error[256];
     game_prototype_registry registry = app_component_registry();
-    if (game_prototype_apply_components_json(scene->world, entity, components_json, &registry, error, sizeof error) !=
+    if (game_prototype_apply_components_value(scene->world, entity, components, &registry, error, sizeof error) !=
         0) {
         snprintf(scene->message, sizeof scene->message, "Could not apply overrides: %s", error);
         return -1;
@@ -260,7 +266,7 @@ static int validate_scene_behaviors(app_scene_authoring *scene, char **names)
 static int validate_scene_entity(app_scene_authoring *scene, const game_scene_entity *entity)
 {
     scene_retained_component *retained = NULL;
-    bool valid = scene_retention_load(entity->retained_json, &retained) == 0 &&
+    bool valid = scene_retention_load(entity->retained, &retained) == 0 &&
                  scene_retention_validate(retained, &scene->registry);
     scene_retention_free(retained);
     if (!valid) {
@@ -302,11 +308,11 @@ static int validate_scene_entity(app_scene_authoring *scene, const game_scene_en
     if (result == 0) {
         result = game_prototype_spawn_components(asset->prototype, world, &actor, error, sizeof error);
     }
-    if (result == 0 && entity->components_json && entity->components_json[0]) {
-        result = game_prototype_apply_components_json(
+    if (result == 0 && entity->components) {
+        result = game_prototype_apply_components_value(
             world,
             actor,
-            entity->components_json,
+            entity->components,
             &scene->registry,
             error,
             sizeof error
@@ -325,10 +331,10 @@ static int validate_scene_entity(app_scene_authoring *scene, const game_scene_en
     return result;
 }
 
-int scene_authoring_load_json(app_scene_authoring *scene, const char *json, const char *path)
+int scene_authoring_load_value(app_scene_authoring *scene, av_value *value, const char *path)
 {
     char error[256];
-    game_scene_document *document = game_scene_document_load(json, error, sizeof error);
+    game_scene_document *document = game_scene_document_load_value(value, error, sizeof error);
     if (!document) {
         snprintf(scene->message, sizeof scene->message, "Could not load scene: %s", error);
         return -1;
@@ -365,11 +371,11 @@ int scene_authoring_load_json(app_scene_authoring *scene, const char *json, cons
             return -1;
         }
         scene_actor *actor = selected_actor(scene);
-        if (scene_retention_load(entity->retained_json, &actor->retained) != 0) {
+        if (scene_retention_load(entity->retained, &actor->retained) != 0) {
             game_scene_document_free(document);
             return -1;
         }
-        if (apply_components_json(scene, actor->entity, entity->components_json) != 0) {
+        if (apply_components_value(scene, actor->entity, entity->components) != 0) {
             game_scene_document_free(document);
             return -1;
         }
@@ -409,6 +415,19 @@ int scene_authoring_load_json(app_scene_authoring *scene, const char *json, cons
     return 0;
 }
 
+int scene_authoring_load_text(app_scene_authoring *scene, const char *text, const char *path)
+{
+    char error[256];
+    av_doc *doc = text ? asset_text_read(text, error, sizeof error) : NULL;
+    if (!doc) {
+        snprintf(scene->message, sizeof scene->message, "Could not load scene: %s", text ? error : "missing document");
+        return -1;
+    }
+    int result = scene_authoring_load_value(scene, av_doc_root(doc), path);
+    av_doc_free(doc);
+    return result;
+}
+
 int app_scene_authoring_load(app_scene_authoring *scene, const char *path)
 {
     if (!scene || !path) {
@@ -419,7 +438,7 @@ int app_scene_authoring_load(app_scene_authoring *scene, const char *path)
         snprintf(scene->message, sizeof scene->message, "Could not read %s.", path);
         return -1;
     }
-    int result = scene_authoring_load_json(scene, json, path);
+    int result = scene_authoring_load_text(scene, json, path);
     free(json);
     if (result == 0) {
         scene->camera.saved = false;

@@ -28,8 +28,8 @@ static void evaluation_lifetime_checks()
     runtime_store *borrowed = runtime_store_create(&g);
     runtime_store_node(borrowed, value);
     graph_set_pin_default(&g, value, 0, 0, &(pin_value){ .type = PIN_I32, .i = 7 });
-    char *json = graph_save_json(&g);
-    graph *copy = graph_load_json(json);
+    char *json = graph_save(&g);
+    graph *copy = graph_load(json);
     test_check(
         g.lifetime_id == lifetime && runtime_store_matches_graph(borrowed, &g) &&
             copy && copy->lifetime_id != lifetime &&
@@ -77,8 +77,8 @@ static void vector_binding_checks()
         );
         assert(graph_connect_data_conversion(&g, number, 0, target, 0, conversion) == 0);
         assert(graph_set_node_presentation(&g, number, NODE_PRESENTATION_INLINE) == 0);
-        char *json = graph_save_json(&g);
-        graph *copy = graph_load_json(json);
+        char *json = graph_save(&g);
+        graph *copy = graph_load(json);
         assert(copy);
         eval_context context;
         eval_context_init(&context);
@@ -108,8 +108,8 @@ static void vector_binding_checks()
                 graph_inline_owner(&g, number) == target,
             "vector owns independently bound component sources"
         );
-        json = graph_save_json(&g);
-        copy = graph_load_json(json);
+        json = graph_save(&g);
+        copy = graph_load(json);
         assert(copy && graph_node_is_inline(copy, graph_node_by_id(copy, number->id)));
         eval_context_init(&context);
         for (int axis = 0; axis < count; axis++) {
@@ -604,8 +604,8 @@ void run_graph_conversion_checks()
                            .kind = PIN_DATA,
                            .flags = PIN_FLAG_WILDCARD };
         graph_add_pin(&gp, fmt, 0, &spare);
-        char *gp_json = graph_save_json(&gp);
-        graph *gp2 = gp_json ? graph_load_json(gp_json) : NULL;
+        char *gp_json = graph_save(&gp);
+        graph *gp2 = gp_json ? graph_load(gp_json) : NULL;
         test_check(
             gp2 && gp2->nodes[0]->input_pins[1].type == PIN_F64 &&
                 (gp2->nodes[0]->input_pins[1].flags & PIN_FLAG_WILDCARD) &&

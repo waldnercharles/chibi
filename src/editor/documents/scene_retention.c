@@ -1,8 +1,8 @@
 #include "editor/documents/scene_retention.h"
 
-#include "../third_party/yyjson/yyjson.h"
 #include "assets/prototype.h"
 #include "support/array.h"
+#include "support/asset_value.h"
 #include "support/xalloc.h"
 
 #include <assert.h>
@@ -26,8 +26,8 @@ static scene_retained_component *scene_retention_find(
 static void free_component(scene_retained_component *component)
 {
     free(component->name);
-    free(component->values_json);
-    free(component->defaults_json);
+    av_value_free(component->values);
+    av_value_free(component->defaults);
 }
 
 void scene_retention_remove(scene_retained_component **components, const char *name)
@@ -49,98 +49,81 @@ void scene_retention_free(scene_retained_component *components)
     afree(components);
 }
 
-char *scene_retention_save(const scene_retained_component *components)
+av_value *scene_retention_save(const scene_retained_component *components)
 {
-    yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
-    yyjson_mut_val *root = yyjson_mut_obj(doc);
-    yyjson_mut_doc_set_root(doc, root);
+    av_doc *doc = av_doc_new();
+    av_value *root = av_obj(doc);
+    av_doc_set_root(doc, root);
     for (int i = 0; i < acount(components); i++) {
         const scene_retained_component *component = &components[i];
-        yyjson_doc *
-            values = yyjson_read(component->values_json, strlen(component->values_json), 0);
-        yyjson_doc *defaults = yyjson_read(
-            component->defaults_json,
-            strlen(component->defaults_json),
-            0
-        );
-        assert(values && defaults);
-        yyjson_mut_val *entry = yyjson_mut_obj(doc);
-        yyjson_mut_obj_add_val(doc, entry, "values", yyjson_val_mut_copy(doc, yyjson_doc_get_root(values)));
-        yyjson_mut_obj_add_val(doc, entry, "defaults", yyjson_val_mut_copy(doc, yyjson_doc_get_root(defaults)));
-        yyjson_mut_obj_add_bool(doc, entry, "automatic", component->automatic);
-        yyjson_mut_obj_add_val(doc, root, component->name, entry);
-        yyjson_doc_free(values);
-        yyjson_doc_free(defaults);
+        av_value *entry = av_obj(doc);
+        av_obj_add_val(doc, entry, "values", av_clone(doc, component->values));
+        av_obj_add_val(doc, entry, "defaults", av_clone(doc, component->defaults));
+        av_obj_add_bool(doc, entry, "automatic", component->automatic);
+        av_obj_add_val(doc, root, component->name, entry);
     }
-    char *json = yyjson_mut_write(doc, YYJSON_WRITE_PRETTY_TWO_SPACES, NULL);
-    yyjson_mut_doc_free(doc);
-    return json;
+    av_value *value = av_value_copy(root);
+    av_doc_free(doc);
+    return value;
 }
 
-int scene_retention_load(const char *json, scene_retained_component **components)
+int scene_retention_load(av_value *root, scene_retained_component **components)
 {
-    if (!json) {
-        json = "{}";
-    }
-    yyjson_doc *doc = yyjson_read(json, strlen(json), 0);
-    yyjson_val *root = doc ? yyjson_doc_get_root(doc) : NULL;
     scene_retained_component *loaded = NULL;
-    int result = -1;
-    if (!yyjson_is_obj(root)) {
-        goto cleanup;
+    if (root && !av_is_obj(root)) {
+        return -1;
     }
-    yyjson_obj_iter iterator = yyjson_obj_iter_with(root);
-    yyjson_val *key;
-    while ((key = yyjson_obj_iter_next(&iterator))) {
-        const char *name = yyjson_get_str(key);
-        yyjson_val *entry = yyjson_obj_iter_get_val(key);
-        yyjson_val *values = yyjson_obj_get(entry, "values");
-        yyjson_val *defaults = yyjson_obj_get(entry, "defaults");
-        yyjson_val *automatic = yyjson_obj_get(entry, "automatic");
-        if (!name[0] || scene_retention_find(loaded, name) || !yyjson_is_obj(values) ||
-            !yyjson_is_obj(defaults) || !yyjson_is_bool(automatic)) {
-            goto cleanup;
+    av_obj_iter iterator = av_obj_iter_with(root);
+    av_value *key;
+    while ((key = av_obj_iter_next(&iterator))) {
+        const char *name = av_get_str(key);
+        av_value *entry = av_obj_iter_get_val(key);
+        av_value *values = av_obj_get(entry, "values");
+        av_value *defaults = av_obj_get(entry, "defaults");
+        av_value *automatic = av_obj_get(entry, "automatic");
+        if (!name[0] || scene_retention_find(loaded, name) || !av_is_obj(values) ||
+            !av_is_obj(defaults) || !av_is_bool(automatic)) {
+            scene_retention_free(loaded);
+            return -1;
         }
         scene_retained_component component = {
             .name = xstrdup(name),
-            .values_json = yyjson_val_write(values, 0, NULL),
-            .defaults_json = yyjson_val_write(defaults, 0, NULL),
-            .automatic = yyjson_get_bool(automatic),
+            .values = av_value_copy(values),
+            .defaults = av_value_copy(defaults),
+            .automatic = av_get_bool(automatic),
         };
-        char *check = game_prototype_rebase_component_json(
-            component.values_json,
-            component.defaults_json,
-            "{}"
+        av_doc *empty = av_doc_new();
+        av_value *check = game_prototype_rebase_component_value(
+            component.values,
+            component.defaults,
+            av_obj(empty)
         );
+        av_doc_free(empty);
         if (!check) {
             free_component(&component);
-            goto cleanup;
+            scene_retention_free(loaded);
+            return -1;
         }
-        free(check);
+        av_value_free(check);
         apush(loaded, component);
     }
     scene_retention_free(*components);
     *components = loaded;
-    loaded = NULL;
-    result = 0;
-cleanup:
-    scene_retention_free(loaded);
-    yyjson_doc_free(doc);
-    return result;
+    return 0;
 }
 
 bool scene_retention_validate(const scene_retained_component *components, const game_prototype_registry *registry)
 {
     for (int i = 0; i < acount(components); i++) {
-        const char *snapshots[] = { components[i].values_json,
-                                    components[i].defaults_json };
+        av_value *snapshots[] = { components[i].values, components[i].defaults };
         for (int j = 0; j < 2; j++) {
-            size_t size = strlen(snapshots[j]) + 64;
-            char *json = xmalloc(size);
-            snprintf(json, size, "{\"name\":\"Retained\",\"components\":%s}", snapshots[j]);
+            av_doc *doc = av_doc_new();
+            av_value *root = av_obj(doc);
+            av_obj_add_str(doc, root, "name", "Retained");
+            av_obj_add_val(doc, root, "components", av_clone(doc, snapshots[j]));
             char error[256];
-            game_prototype *parsed = game_prototype_load(json, registry, error, sizeof error);
-            free(json);
+            game_prototype *parsed = game_prototype_load_value(root, registry, error, sizeof error);
+            av_doc_free(doc);
             bool valid = parsed && ((j == 1 && !acount(parsed->components)) ||
                                     (acount(parsed->components) == 1 &&
                                      !strcmp(

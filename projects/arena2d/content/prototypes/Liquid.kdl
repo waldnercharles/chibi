@@ -1,0 +1,5 @@
+name "Liquid"
+components {
+    GAME.GameFluidVolume absorption=0.035000000149011612 color=951492269 height=100.0 kind=1 mass=0.0040000001899898052 refraction=8.0 spacing=4.0 visibility=0.012000000104308128 width=100.0
+    (object)GAME.GameTransform
+}

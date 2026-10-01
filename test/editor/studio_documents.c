@@ -102,7 +102,7 @@ static studio_fixture fixture_open(const char *project, const char *scene, const
 
 static studio_fixture fixture_new()
 {
-    studio_fixture f = fixture_open(PROJECT, PROJECT "/content/scenes/Main.yaml", "Weapons");
+    studio_fixture f = fixture_open(PROJECT, PROJECT "/content/scenes/Main.kdl", "Weapons");
     assert(editor_open_graph(f.graph, FUNCTION_GRAPH) == 0);
     f.studio = studio_new(f.scene, f.viewport, PROJECT);
     studio_maximize_graph(f.studio);
@@ -277,8 +277,8 @@ static void graph_color_session_saves_undoes_and_replays()
     }
     frames(&f, 3);
 
-    char *saved_json = behavior_asset_save_json(editor_behavior_asset(f.graph));
-    behavior_asset *saved = saved_json ? behavior_asset_load_json(saved_json) : NULL;
+    char *saved_json = behavior_asset_save(editor_behavior_asset(f.graph));
+    behavior_asset *saved = saved_json ? behavior_asset_load(saved_json) : NULL;
     free(saved_json);
     graph *saved_graph = saved ? behavior_asset_find_graph(saved, active->graph_id)
                                : NULL;
@@ -360,7 +360,7 @@ void test_code_intelligence_studio();
 
 /* ---------- UI wiring (workstream K) ---------- */
 
-#define VAULT PROJECT "/content/scenes/Vault.yaml"
+#define VAULT PROJECT "/content/scenes/Vault.kdl"
 #define BANK PROJECT "/content/ui/Bank.rml"
 #define BANK_STYLES PROJECT "/content/ui/Bank.rcss"
 
@@ -585,7 +585,7 @@ static studio_fixture studio_project_open()
     static char root[PATH_MAX];
     char scene[PATH_MAX + 32];
     assert(realpath("projects/studio", root));
-    snprintf(scene, sizeof scene, "%s/content/scenes/Studio.yaml", root);
+    snprintf(scene, sizeof scene, "%s/content/scenes/Studio.kdl", root);
     studio_fixture f = scene_open(root, scene, "Dismiss");
     app_scene_authoring_set_default_ui(f.scene, "StudioShell");
     return f;
@@ -2009,7 +2009,7 @@ static void prototype_properties_follow_document()
     s->tab = STUDIO_TAB_SCENE;
     char error[256];
     assert(component_presentation_read(
-        "components:\n  GAME.GameUi: {tab: Gameplay}\n",
+        "components { GAME.GameUi { tab \"Gameplay\"; }; }\n",
         &f.scene->registry,
         &s->presentation.hints,
         error,
@@ -2296,7 +2296,7 @@ static void authored_modals_and_collaboration()
    changed from the control. GameControl's Aim Stick is past the old cap. */
 static void large_enum_property()
 {
-    studio_fixture f = fixture_open(PROJECT, PROJECT "/content/scenes/Binding.yaml", "Weapons");
+    studio_fixture f = fixture_open(PROJECT, PROJECT "/content/scenes/Binding.kdl", "Weapons");
     f.studio = studio_new(f.scene, f.viewport, "projects/studio");
     studio *s = f.studio;
     select_instance(f.scene, 0);
@@ -2449,7 +2449,7 @@ static void large_enum_property()
    rest of the vector intact through Undo and Redo. */
 static void component_vector_property()
 {
-    studio_fixture f = fixture_open(PROJECT, PROJECT "/content/scenes/Binding.yaml", "Weapons");
+    studio_fixture f = fixture_open(PROJECT, PROJECT "/content/scenes/Binding.kdl", "Weapons");
     f.studio = studio_new(f.scene, f.viewport, "projects/studio");
     studio *s = f.studio;
     select_instance(f.scene, 0);

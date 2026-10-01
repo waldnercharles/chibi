@@ -75,47 +75,47 @@ behavior_asset *new_asset_graph(behavior_domain domain, const char *name)
     return asset;
 }
 
-static char *graph_json(behavior_domain domain, const char *name)
+static char *graph_text(behavior_domain domain, const char *name)
 {
     behavior_asset *asset = new_asset_graph(domain, name);
-    char *json = behavior_asset_save_json(asset);
+    char *text = behavior_asset_save(asset);
     behavior_asset_free(asset);
-    return json;
+    return text;
 }
 
-char *new_asset_json(new_asset_kind kind, const char *name)
+char *new_asset_text(new_asset_kind kind, const char *name)
 {
     switch (kind) {
         case NEW_ASSET_SCENE: {
             game_scene_document *scene = game_scene_document_new(name);
-            char *json = game_scene_document_save(scene);
+            char *text = game_scene_document_save(scene);
             game_scene_document_free(scene);
-            return json;
+            return text;
         }
         case NEW_ASSET_PROTOTYPE: {
             game_prototype *prototype = game_prototype_new(name);
-            char *json = game_prototype_save(prototype);
+            char *text = game_prototype_save(prototype);
             game_prototype_free(prototype);
-            return json;
+            return text;
         }
         case NEW_ASSET_SYSTEM: {
             /* No query: the system runs on what its graph reads. */
             game_system_document *system = game_system_document_new(name);
-            char *json = game_system_document_save(system, NULL, NULL, NULL);
+            char *text = game_system_document_save(system, NULL, NULL, NULL);
             game_system_document_free(system);
-            return json;
+            return text;
         }
-        case NEW_ASSET_BEHAVIOR: return graph_json(BEHAVIOR_DOMAIN_EVENT, name);
+        case NEW_ASSET_BEHAVIOR: return graph_text(BEHAVIOR_DOMAIN_EVENT, name);
         case NEW_ASSET_EVENT:
-            return graph_json(BEHAVIOR_DOMAIN_EVENT_DEFINITION, name);
+            return graph_text(BEHAVIOR_DOMAIN_EVENT_DEFINITION, name);
         case NEW_ASSET_LIBRARY:
-            return graph_json(BEHAVIOR_DOMAIN_LIBRARY, name);
+            return graph_text(BEHAVIOR_DOMAIN_LIBRARY, name);
         case NEW_ASSET_MATERIAL:
-            return graph_json(BEHAVIOR_DOMAIN_MATERIAL, name);
-        case NEW_ASSET_SHAPE: return graph_json(BEHAVIOR_DOMAIN_SHAPE, name);
-        case NEW_ASSET_FIELD: return graph_json(BEHAVIOR_DOMAIN_FIELD, name);
+            return graph_text(BEHAVIOR_DOMAIN_MATERIAL, name);
+        case NEW_ASSET_SHAPE: return graph_text(BEHAVIOR_DOMAIN_SHAPE, name);
+        case NEW_ASSET_FIELD: return graph_text(BEHAVIOR_DOMAIN_FIELD, name);
         case NEW_ASSET_SHADER_LIBRARY:
-            return graph_json(BEHAVIOR_DOMAIN_SHADER_LIBRARY, name);
+            return graph_text(BEHAVIOR_DOMAIN_SHADER_LIBRARY, name);
         case NEW_ASSET_KIND_COUNT: break;
     }
     assert(!"a new asset kind");

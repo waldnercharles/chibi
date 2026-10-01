@@ -329,9 +329,9 @@ static game_prototype *read_prototype(const char *path, const game_prototype_reg
 static behavior_asset *read_behavior(const char *name)
 {
     char path[256];
-    snprintf(path, sizeof path, "content/behaviors/%s.yaml", name);
+    snprintf(path, sizeof path, "content/behaviors/%s.kdl", name);
     char *text = read_content(path);
-    behavior_asset *asset = behavior_asset_load_json(text);
+    behavior_asset *asset = behavior_asset_load(text);
     if (asset) {
         asset = link_test_libraries(asset);
     }
@@ -374,8 +374,8 @@ static void authored_combat(bool isolated)
 {
     game_prototype_registry registry = { GAME_REGISTRY_COMPONENTS,
                                          GAME_REGISTRY_COMPONENT_COUNT };
-    game_prototype *enemy = read_prototype("test/fixtures/content/prototypes/Enemy.yaml", &registry);
-    game_prototype *projectile = read_prototype("test/fixtures/content/prototypes/Projectile.yaml", &registry);
+    game_prototype *enemy = read_prototype("test/fixtures/content/prototypes/Enemy.kdl", &registry);
+    game_prototype *projectile = read_prototype("test/fixtures/content/prototypes/Projectile.kdl", &registry);
     game_prototype_preview *preview = isolated ? game_prototype_preview_new(&registry)
                                                : NULL;
     register_test_preview_catalog(preview);

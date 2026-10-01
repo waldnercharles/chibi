@@ -84,9 +84,9 @@ static void set_elapsed(behavior_instance *instance, float elapsed)
 static behavior_asset *read_behavior(const char *name)
 {
     char path[256];
-    snprintf(path, sizeof path, "%s/%s.yaml", behavior_root(name), name);
+    snprintf(path, sizeof path, "%s/%s.kdl", behavior_root(name), name);
     char *text = read_content(path);
-    behavior_asset *asset = behavior_asset_load_json(text);
+    behavior_asset *asset = behavior_asset_load(text);
     if (asset) {
         asset = link_test_libraries(asset);
     }
@@ -156,7 +156,7 @@ static int shots(ecs_world *world, ecs_entity *latest)
 static game_prototype *read_prototype(const char *name, const game_prototype_registry *registry)
 {
     char path[256], error[256];
-    snprintf(path, sizeof path, "test/fixtures/content/prototypes/%s.yaml", name);
+    snprintf(path, sizeof path, "test/fixtures/content/prototypes/%s.kdl", name);
     char *text = read_content(path);
     game_prototype *prototype = game_prototype_load(text, registry, error, sizeof error);
     free(text);

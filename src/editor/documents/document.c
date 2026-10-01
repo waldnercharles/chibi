@@ -1,6 +1,7 @@
-#include "../third_party/yyjson/yyjson.h"
 #include "editor/workspace/editor_internal.h"
 #include "graph/document/serialize.h"
+#include "support/asset_json.h"
+#include "support/asset_value.h"
 #include "support/xalloc.h"
 
 #include <assert.h>
@@ -19,7 +20,7 @@ static void ed_keep_document(editor *e)
     ed_commit_snapshot(e);
     ed_document_history history = {
         .key = e->document_key,
-        .json = behavior_asset_save_json(e->asset),
+        .asset = behavior_asset_clone(e->asset),
         .saved = e->saved_snapshot,
         .owner_identity = e->asset ? e->asset->identity : 0,
         .undo = e->undo,
@@ -50,8 +51,7 @@ int editor_visit_behavior_asset(editor *e, const behavior_asset *source, uint64_
             break;
         }
     }
-    behavior_asset *cached = history.json ? behavior_asset_load_json(history.json)
-                                          : NULL;
+    behavior_asset *cached = history.asset ? behavior_asset_clone(history.asset) : NULL;
     const behavior_asset *target = cached ? cached : source;
     if (!target || !behavior_asset_find_graph(target, graph_id)) {
         behavior_asset_free(cached);
@@ -68,13 +68,13 @@ int editor_visit_behavior_asset(editor *e, const behavior_asset *source, uint64_
     behavior_asset_free(cached);
     assert(result == 0);
     if (history.key) {
-        ed_free_string_stack(&e->undo);
-        ed_free_string_stack(&e->redo);
-        free(e->saved_snapshot);
+        ed_free_asset_stack(&e->undo);
+        ed_free_asset_stack(&e->redo);
+        av_value_free(e->saved_snapshot);
         e->undo = history.undo;
         e->redo = history.redo;
         e->saved_snapshot = history.saved;
-        free(history.json);
+        behavior_asset_free(history.asset);
         e->document_key = history.key;
         if (history.location.graph_id == graph_id) {
             restore_location(e, &history.location);
@@ -103,10 +103,10 @@ int editor_reload_behavior_asset(editor *e, const behavior_asset *source, uint64
             continue;
         }
         free(history->key);
-        free(history->json);
-        free(history->saved);
-        ed_free_string_stack(&history->undo);
-        ed_free_string_stack(&history->redo);
+        behavior_asset_free(history->asset);
+        av_value_free(history->saved);
+        ed_free_asset_stack(&history->undo);
+        ed_free_asset_stack(&history->redo);
         afree(history->links);
         free(history->location.nodes);
         adel(e->documents, i);
@@ -132,16 +132,16 @@ int editor_reload_behavior_asset_document(editor *e, const behavior_asset *sourc
         if (strcmp(history->key, key) != 0) {
             continue;
         }
-        char *json = behavior_asset_save_json(source);
-        if (!json) {
+        behavior_asset *copy = behavior_asset_clone(source);
+        if (!copy) {
             return -1;
         }
-        free(history->json);
-        history->json = json;
-        free(history->saved);
-        history->saved = xstrdup(json);
-        ed_free_string_stack(&history->undo);
-        ed_free_string_stack(&history->redo);
+        behavior_asset_free(history->asset);
+        history->asset = copy;
+        av_value_free(history->saved);
+        history->saved = ed_value_snapshot(source);
+        ed_free_asset_stack(&history->undo);
+        ed_free_asset_stack(&history->redo);
         free(history->location.nodes);
         history->location = (ed_location){ 0 };
         afree(history->links);
@@ -159,10 +159,10 @@ void editor_forget_behavior_asset(editor *e, const char *key)
             continue;
         }
         free(history->key);
-        free(history->json);
-        free(history->saved);
-        ed_free_string_stack(&history->undo);
-        ed_free_string_stack(&history->redo);
+        behavior_asset_free(history->asset);
+        av_value_free(history->saved);
+        ed_free_asset_stack(&history->undo);
+        ed_free_asset_stack(&history->redo);
         afree(history->links);
         free(history->location.nodes);
         adel(e->documents, i);
@@ -251,114 +251,100 @@ static int restore_location(editor *e, const ed_location *location)
     return 0;
 }
 
-static yyjson_mut_val *checkpoint_strings(yyjson_mut_doc *doc, char **strings)
+static av_value *checkpoint_assets(av_doc *doc, behavior_asset **assets)
 {
-    yyjson_mut_val *array = yyjson_mut_arr(doc);
-    for (int i = 0; i < acount(strings); i++) {
-        yyjson_mut_arr_add_strcpy(doc, array, strings[i]);
+    av_value *array = av_arr(doc);
+    for (int i = 0; i < acount(assets); i++) {
+        av_arr_append(array, behavior_asset_to_value(doc, assets[i]));
     }
     return array;
 }
 
-static yyjson_mut_val *checkpoint_location(yyjson_mut_doc *doc, const ed_location *location)
+static av_value *checkpoint_location(av_doc *doc, const ed_location *location)
 {
-    yyjson_mut_val *value = yyjson_mut_obj(doc);
-    yyjson_mut_obj_add_uint(doc, value, "graph", location->graph_id);
-    yyjson_mut_val *selection = yyjson_mut_obj_add_arr(doc, value, "selection");
+    av_value *value = av_obj(doc);
+    av_obj_add_uint(doc, value, "graph", location->graph_id);
+    av_value *selection = av_obj_add_arr(doc, value, "selection");
     for (int i = 0; i < location->node_count; i++) {
-        yyjson_mut_arr_add_uint(doc, selection, location->nodes[i]);
+        av_arr_add_uint(doc, selection, location->nodes[i]);
     }
-    yyjson_mut_val *callers = yyjson_mut_obj_add_arr(doc, value, "callers");
+    av_value *callers = av_obj_add_arr(doc, value, "callers");
     for (int i = 0; i < location->caller_count; i++) {
-        yyjson_mut_val *item = yyjson_mut_arr_add_obj(doc, callers);
-        yyjson_mut_obj_add_uint(doc, item, "graph", location->callers[i].graph_id);
-        yyjson_mut_obj_add_uint(doc, item, "node", location->callers[i].node_id);
+        av_value *item = av_arr_add_obj(doc, callers);
+        av_obj_add_uint(doc, item, "graph", location->callers[i].graph_id);
+        av_obj_add_uint(doc, item, "node", location->callers[i].node_id);
     }
     return value;
 }
 
-static yyjson_mut_val *checkpoint_document(yyjson_mut_doc *doc, const ed_document_history *history)
+static av_value *checkpoint_document(av_doc *doc, const ed_document_history *history)
 {
-    yyjson_mut_val *value = yyjson_mut_obj(doc);
-    yyjson_mut_obj_add_strcpy(doc, value, "key", history->key ? history->key : "");
-    yyjson_mut_obj_add_strcpy(doc, value, "json", history->json);
-    yyjson_mut_obj_add_strcpy(
+    av_value *value = av_obj(doc);
+    av_obj_add_strcpy(doc, value, "key", history->key ? history->key : "");
+    av_obj_add_val(doc, value, "asset", behavior_asset_to_value(doc, history->asset));
+    av_obj_add_val(
         doc,
         value,
         "saved",
-        history->saved ? history->saved : history->json
+        history->saved ? av_clone(doc, history->saved)
+                       : behavior_asset_to_value(doc, history->asset)
     );
-    yyjson_mut_obj_add_uint(doc, value, "owner_identity", history->owner_identity);
-    yyjson_mut_obj_add_val(doc, value, "undo", checkpoint_strings(doc, history->undo));
-    yyjson_mut_obj_add_val(doc, value, "redo", checkpoint_strings(doc, history->redo));
-    yyjson_mut_val *links = yyjson_mut_obj_add_arr(doc, value, "links");
+    av_obj_add_uint(doc, value, "owner_identity", history->owner_identity);
+    av_obj_add_val(doc, value, "undo", checkpoint_assets(doc, history->undo));
+    av_obj_add_val(doc, value, "redo", checkpoint_assets(doc, history->redo));
+    av_value *links = av_obj_add_arr(doc, value, "links");
     for (int i = 0; i < acount(history->links); i++) {
         const ed_link_ref *link = &history->links[i];
-        yyjson_mut_val *item = yyjson_mut_arr_add_obj(doc, links);
-        yyjson_mut_obj_add_uint(doc, item, "from", link->from_id);
-        yyjson_mut_obj_add_uint(doc, item, "output", link->from_pin_id);
-        yyjson_mut_obj_add_uint(doc, item, "to", link->to_id);
-        yyjson_mut_obj_add_uint(doc, item, "input", link->to_pin_id);
+        av_value *item = av_arr_add_obj(doc, links);
+        av_obj_add_uint(doc, item, "from", link->from_id);
+        av_obj_add_uint(doc, item, "output", link->from_pin_id);
+        av_obj_add_uint(doc, item, "to", link->to_id);
+        av_obj_add_uint(doc, item, "input", link->to_pin_id);
     }
-    yyjson_mut_obj_add_val(
-        doc,
-        value,
-        "location",
-        checkpoint_location(doc, &history->location)
-    );
+    av_obj_add_val(doc, value, "location", checkpoint_location(doc, &history->location));
     return value;
 }
 
 char *editor_checkpoint(editor *e)
 {
     ed_commit_snapshot(e);
-    yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
-    yyjson_mut_val *root = yyjson_mut_obj(doc);
-    yyjson_mut_doc_set_root(doc, root);
-    yyjson_mut_obj_add_int(doc, root, "version", 1);
-    char *json = behavior_asset_save_json(e->asset);
+    av_doc *doc = av_doc_new();
+    av_value *root = av_obj(doc);
+    av_doc_set_root(doc, root);
+    av_obj_add_int(doc, root, "version", 2);
     ed_document_history current = { .key = e->document_key,
-                                    .json = json,
+                                    .asset = e->asset,
                                     .saved = e->saved_snapshot,
                                     .owner_identity = e->asset->identity,
                                     .undo = e->undo,
                                     .redo = e->redo,
                                     .location = capture_location(e) };
     current.links = e->selected_links;
-    yyjson_mut_obj_add_val(doc, root, "active", checkpoint_document(doc, &current));
-    free(json);
+    av_obj_add_val(doc, root, "active", checkpoint_document(doc, &current));
     free(current.location.nodes);
-    yyjson_mut_val *documents = yyjson_mut_obj_add_arr(doc, root, "documents");
+    av_value *documents = av_obj_add_arr(doc, root, "documents");
     for (int i = 0; i < acount(e->documents); i++) {
-        yyjson_mut_arr_append(documents, checkpoint_document(doc, &e->documents[i]));
+        av_arr_append(documents, checkpoint_document(doc, &e->documents[i]));
     }
-    char *result = yyjson_mut_write(doc, 0, NULL);
-    yyjson_mut_doc_free(doc);
+    char *result = av_json_write(av_doc_root(doc));
+    av_doc_free(doc);
     return result;
 }
 
-static bool checkpoint_asset_valid(const char *json)
+static bool checkpoint_read_assets(av_value *value, behavior_asset ***assets)
 {
-    behavior_asset *asset = json ? behavior_asset_load_json(json) : NULL;
-    bool valid = asset != NULL;
-    behavior_asset_free(asset);
-    return valid;
-}
-
-static bool checkpoint_read_strings(yyjson_val *value, char ***strings)
-{
-    if (!yyjson_is_arr(value) || yyjson_arr_size(value) > ED_HIST_MAX) {
+    if (!av_is_arr(value) || av_arr_size(value) > ED_HIST_MAX) {
         return false;
     }
     size_t i, count;
-    yyjson_val *item;
-    yyjson_arr_foreach(value, i, count, item)
+    av_value *item;
+    av_arr_foreach(value, i, count, item)
     {
-        const char *text = yyjson_get_str(item);
-        if (!checkpoint_asset_valid(text)) {
+        behavior_asset *asset = behavior_asset_from_value(item);
+        if (!asset) {
             return false;
         }
-        apush(*strings, xstrdup(text));
+        apush(*assets, asset);
     }
     return true;
 }
@@ -366,45 +352,45 @@ static bool checkpoint_read_strings(yyjson_val *value, char ***strings)
 static void checkpoint_free_document(ed_document_history *history)
 {
     free(history->key);
-    free(history->json);
-    free(history->saved);
-    ed_free_string_stack(&history->undo);
-    ed_free_string_stack(&history->redo);
+    behavior_asset_free(history->asset);
+    av_value_free(history->saved);
+    ed_free_asset_stack(&history->undo);
+    ed_free_asset_stack(&history->redo);
     afree(history->links);
     free(history->location.nodes);
 }
 
-static bool checkpoint_read_location(yyjson_val *value, ed_location *location)
+static bool checkpoint_read_location(av_value *value, ed_location *location)
 {
-    yyjson_val *graph = yyjson_obj_get(value, "graph");
-    yyjson_val *selection = yyjson_obj_get(value, "selection");
-    yyjson_val *callers = yyjson_obj_get(value, "callers");
-    if (!yyjson_is_uint(graph) || !yyjson_is_arr(selection) ||
-        !yyjson_is_arr(callers) || yyjson_arr_size(callers) > ED_CALLER_LIMIT) {
+    av_value *graph = av_obj_get(value, "graph");
+    av_value *selection = av_obj_get(value, "selection");
+    av_value *callers = av_obj_get(value, "callers");
+    if (!av_is_uint(graph) || !av_is_arr(selection) || !av_is_arr(callers) ||
+        av_arr_size(callers) > ED_CALLER_LIMIT) {
         return false;
     }
-    location->graph_id = yyjson_get_uint(graph);
-    location->node_count = (int)yyjson_arr_size(selection);
-    location->nodes = xmalloc(yyjson_arr_size(selection) * sizeof(uint64_t));
+    location->graph_id = av_get_uint(graph);
+    location->node_count = (int)av_arr_size(selection);
+    location->nodes = xmalloc(av_arr_size(selection) * sizeof(uint64_t));
     size_t i, count;
-    yyjson_val *item;
-    yyjson_arr_foreach(selection, i, count, item)
+    av_value *item;
+    av_arr_foreach(selection, i, count, item)
     {
-        if (!yyjson_is_uint(item)) {
+        if (!av_is_uint(item)) {
             return false;
         }
-        location->nodes[i] = yyjson_get_uint(item);
+        location->nodes[i] = av_get_uint(item);
     }
-    yyjson_arr_foreach(callers, i, count, item)
+    av_arr_foreach(callers, i, count, item)
     {
-        yyjson_val *caller_graph = yyjson_obj_get(item, "graph");
-        yyjson_val *node = yyjson_obj_get(item, "node");
-        if (!yyjson_is_uint(caller_graph) || !yyjson_is_uint(node)) {
+        av_value *caller_graph = av_obj_get(item, "graph");
+        av_value *node = av_obj_get(item, "node");
+        if (!av_is_uint(caller_graph) || !av_is_uint(node)) {
             return false;
         }
         location->callers[location->caller_count++] = (ed_graph_caller){
-            yyjson_get_uint(caller_graph),
-            yyjson_get_uint(node),
+            av_get_uint(caller_graph),
+            av_get_uint(node),
         };
     }
     return true;
@@ -412,7 +398,7 @@ static bool checkpoint_read_location(yyjson_val *value, ed_location *location)
 
 static bool checkpoint_selection_valid(const ed_document_history *history)
 {
-    behavior_asset *asset = behavior_asset_load_json(history->json);
+    const behavior_asset *asset = history->asset;
     graph *g = behavior_asset_find_graph(asset, history->location.graph_id);
     bool valid = g != NULL;
     for (int i = 0; valid && i < history->location.node_count; i++) {
@@ -429,56 +415,56 @@ static bool checkpoint_selection_valid(const ed_document_history *history)
         }
         valid = found;
     }
-    behavior_asset_free(asset);
     return valid;
 }
 
-static bool checkpoint_read_document(yyjson_val *value, ed_document_history *history)
+static bool checkpoint_read_document(av_value *value, ed_document_history *history)
 {
-    const char *key = yyjson_get_str(yyjson_obj_get(value, "key"));
-    const char *json = yyjson_get_str(yyjson_obj_get(value, "json"));
-    const char *saved = yyjson_get_str(yyjson_obj_get(value, "saved"));
-    if (!key || !checkpoint_asset_valid(json) || !checkpoint_asset_valid(saved)) {
+    const char *key = av_get_str(av_obj_get(value, "key"));
+    history->asset = behavior_asset_from_value(av_obj_get(value, "asset"));
+    av_value *saved = av_obj_get(value, "saved");
+    behavior_asset *saved_asset = behavior_asset_from_value(saved);
+    history->saved = saved_asset ? av_value_copy(saved) : NULL;
+    behavior_asset_free(saved_asset);
+    if (!key || !history->asset || !history->saved) {
         return false;
     }
     history->key = xstrdup(key);
-    history->json = xstrdup(json);
-    history->saved = xstrdup(saved);
-    yyjson_val *owner_identity = yyjson_obj_get(value, "owner_identity");
+    av_value *owner_identity = av_obj_get(value, "owner_identity");
     if (owner_identity &&
-        (!yyjson_is_uint(owner_identity) || !yyjson_get_uint(owner_identity))) {
+        (!av_is_uint(owner_identity) || !av_get_uint(owner_identity))) {
         return false;
     }
-    history->owner_identity = owner_identity ? yyjson_get_uint(owner_identity) : 0;
-    if (!checkpoint_read_strings(yyjson_obj_get(value, "undo"), &history->undo) ||
-        !checkpoint_read_strings(yyjson_obj_get(value, "redo"), &history->redo)) {
+    history->owner_identity = owner_identity ? av_get_uint(owner_identity) : 0;
+    if (!checkpoint_read_assets(av_obj_get(value, "undo"), &history->undo) ||
+        !checkpoint_read_assets(av_obj_get(value, "redo"), &history->redo)) {
         return false;
     }
-    yyjson_val *links = yyjson_obj_get(value, "links");
-    if (!yyjson_is_arr(links)) {
+    av_value *links = av_obj_get(value, "links");
+    if (!av_is_arr(links)) {
         return false;
     }
     size_t link_index, link_count;
-    yyjson_val *link;
-    yyjson_arr_foreach(links, link_index, link_count, link)
+    av_value *link;
+    av_arr_foreach(links, link_index, link_count, link)
     {
-        yyjson_val *from = yyjson_obj_get(link, "from");
-        yyjson_val *output = yyjson_obj_get(link, "output");
-        yyjson_val *to = yyjson_obj_get(link, "to");
-        yyjson_val *input = yyjson_obj_get(link, "input");
-        if (!yyjson_is_uint(from) || !yyjson_is_uint(output) ||
-            !yyjson_is_uint(to) || !yyjson_is_uint(input)) {
+        av_value *from = av_obj_get(link, "from");
+        av_value *output = av_obj_get(link, "output");
+        av_value *to = av_obj_get(link, "to");
+        av_value *input = av_obj_get(link, "input");
+        if (!av_is_uint(from) || !av_is_uint(output) || !av_is_uint(to) ||
+            !av_is_uint(input)) {
             return false;
         }
         apush(
             history->links,
-            ((ed_link_ref){ yyjson_get_uint(from),
-                            yyjson_get_uint(output),
-                            yyjson_get_uint(to),
-                            yyjson_get_uint(input) })
+            ((ed_link_ref){ av_get_uint(from),
+                            av_get_uint(output),
+                            av_get_uint(to),
+                            av_get_uint(input) })
         );
     }
-    if (!checkpoint_read_location(yyjson_obj_get(value, "location"), &history->location)) {
+    if (!checkpoint_read_location(av_obj_get(value, "location"), &history->location)) {
         return false;
     }
     return checkpoint_selection_valid(history);
@@ -486,23 +472,23 @@ static bool checkpoint_read_document(yyjson_val *value, ed_document_history *his
 
 bool editor_restore_checkpoint(editor *e, const char *json)
 {
-    yyjson_doc *doc = yyjson_read(json, strlen(json), 0);
-    yyjson_val *root = yyjson_doc_get_root(doc);
+    av_doc *doc = av_json_read(json);
+    av_value *root = av_doc_root(doc);
     ed_document_history current = { 0 }, *documents = NULL;
     behavior_asset *asset = NULL;
     bool ok = false;
-    yyjson_val *stored = yyjson_obj_get(root, "documents");
-    if (yyjson_get_int(yyjson_obj_get(root, "version")) != 1 || !yyjson_is_arr(stored) ||
-        !checkpoint_read_document(yyjson_obj_get(root, "active"), &current)) {
+    av_value *stored = av_obj_get(root, "documents");
+    if (av_get_int(av_obj_get(root, "version")) != 2 || !av_is_arr(stored) ||
+        !checkpoint_read_document(av_obj_get(root, "active"), &current)) {
         goto done;
     }
-    asset = behavior_asset_load_json(current.json);
+    asset = behavior_asset_clone(current.asset);
     if (current.owner_identity) {
         asset->identity = current.owner_identity;
     }
     size_t i, count;
-    yyjson_val *item;
-    yyjson_arr_foreach(stored, i, count, item)
+    av_value *item;
+    av_arr_foreach(stored, i, count, item)
     {
         ed_document_history history = { 0 };
         bool valid = checkpoint_read_document(item, &history);
@@ -526,14 +512,15 @@ bool editor_restore_checkpoint(editor *e, const char *json)
     e->documents = documents;
     documents = NULL;
     free(e->document_key);
-    free(e->saved_snapshot);
-    ed_free_string_stack(&e->undo);
-    ed_free_string_stack(&e->redo);
+    av_value_free(e->saved_snapshot);
+    ed_free_asset_stack(&e->undo);
+    ed_free_asset_stack(&e->redo);
     e->document_key = current.key;
     e->saved_snapshot = current.saved;
     e->undo = current.undo;
     e->redo = current.redo;
-    current.key = current.saved = NULL;
+    current.key = NULL;
+    current.saved = NULL;
     current.undo = current.redo = NULL;
     ok = restore_location(e, &current.location) == 0;
     for (int j = 0; j < acount(current.links); j++) {
@@ -546,6 +533,6 @@ done:
     }
     afree(documents);
     behavior_asset_free(asset);
-    yyjson_doc_free(doc);
+    av_doc_free(doc);
     return ok;
 }

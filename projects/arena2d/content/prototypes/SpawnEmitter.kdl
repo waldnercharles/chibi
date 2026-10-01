@@ -1,0 +1,32 @@
+name "SpawnEmitter"
+components {
+    (object)GAME.GameOrientation
+    GAME.GameParticleEmitter {
+        active #true
+        burst_count 24
+        color 4283190527
+        direction x=1.0
+        drag {
+            start x=4.0 y=8.0
+        }
+        emission {
+            exponent 1.0
+            start x=0.30000001192092896 y=0.5
+        }
+        fluid_mass 0.00019999999494757503
+        heading_only #true
+        lifetime x=0.30000001192092896 y=0.60000002384185791
+        planar #true
+        size {
+            exponent 1.5
+            start x=0.5 y=1.5
+        }
+        speed x=100.0 y=250.0
+        spread 6.2831854820251465
+        velocity_inherit 1.0
+    }
+    GAME.GameProjectile lifetime=1.5
+    (object)GAME.GameTransform
+    (object)GAME.GameVelocity
+}
+(array)behaviors "ProjectileLifecycle"

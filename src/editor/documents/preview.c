@@ -59,9 +59,7 @@ void editor_preview_create(editor *e)
     if (!e || e->instance || e->inspection_instance) {
         return;
     }
-    char *json = behavior_asset_save_json(e->asset);
-    e->preview_behavior_asset = json ? behavior_asset_load_json(json) : NULL;
-    free(json);
+    e->preview_behavior_asset = behavior_asset_clone(e->asset);
     if (e->preview_behavior_asset &&
         behavior_asset_lower_component_nodes(e->preview_behavior_asset, NULL, 0)) {
         behavior_asset_free(e->preview_behavior_asset);
@@ -92,17 +90,17 @@ static void ed_refresh_edit_revision(editor *e)
     if (e->edit_revision_initialized && !e->edit_pending) {
         return;
     }
-    char *json = behavior_asset_save_json(e->asset);
-    if (!json) {
+    av_value *snapshot = ed_value_snapshot(e->asset);
+    if (!snapshot) {
         return;
     }
     int changed = e->edit_revision_initialized
                     ? e->edit_revision_asset != e->asset ||
                           !e->edit_revision_snapshot ||
-                          strcmp(e->edit_revision_snapshot, json) != 0
+                          !av_equals_ordered(e->edit_revision_snapshot, snapshot)
                     : e->edit_pending;
-    free(e->edit_revision_snapshot);
-    e->edit_revision_snapshot = json;
+    av_value_free(e->edit_revision_snapshot);
+    e->edit_revision_snapshot = snapshot;
     e->edit_revision_asset = e->asset;
     e->edit_revision_initialized = 1;
     e->edit_pending = 0;

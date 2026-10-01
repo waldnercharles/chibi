@@ -22,8 +22,8 @@ static const reference *only_use(const reference_index *index, int asset)
 void test_ui_pages()
 {
     reference_index *index = reference_index_new();
-    int dock = reference_index_add_asset(index, REFERENCE_ASSET_SCENE, "Dock", "content/scenes/Dock.yaml", NULL);
-    int bay = reference_index_add_asset(index, REFERENCE_ASSET_SCENE, "Bay", "content/scenes/Bay.yaml", NULL);
+    int dock = reference_index_add_asset(index, REFERENCE_ASSET_SCENE, "Dock", "content/scenes/Dock.kdl", NULL);
+    int bay = reference_index_add_asset(index, REFERENCE_ASSET_SCENE, "Bay", "content/scenes/Bay.kdl", NULL);
     int shell = reference_index_add_asset(index, REFERENCE_ASSET_UI, "Shell", "content/ui/Shell.rml", NULL);
     int page = reference_index_add_asset(index, REFERENCE_ASSET_UI, "Page", "content/ui/Page.rml", NULL);
     reference_index_add_page(index, dock, "Shell", "Page");
@@ -38,8 +38,13 @@ void test_ui_pages()
     test_check(edges, "a scene binds its page: its own ui:, else the project's");
 
     const char *texts[] = {
-        "version: 1\nname: Dock\nui: Shell\nentities: []\n",
-        "version: 1\nname: Bay\nentities: []\n",
+        "version 1\n"
+        "name \"Dock\"\n"
+        "ui \"Shell\"\n"
+        "(array)entities\n",
+        "version 1\n"
+        "name \"Bay\"\n"
+        "(array)entities\n",
         "<slot/>\n",
         "<slot/>\n",
     };
@@ -54,7 +59,7 @@ void test_ui_pages()
     bool followed = false;
     for (int i = 0; renamed && i < acount(plan.edits); i++) {
         followed |= plan.edits[i].asset == dock &&
-                    strstr(plan.edits[i].text, "ui: Frame");
+                    strstr(plan.edits[i].text, "ui \"Frame\"");
     }
     if (!renamed) {
         printf("  %s\n", error);
@@ -63,7 +68,7 @@ void test_ui_pages()
     symbol.asset = page;
     bool refused = refactor_rename(&project, symbol, "Frame", &plan, error, sizeof error) !=
                        0 &&
-                   strstr(error, "project.yaml");
+                   strstr(error, "project.kdl");
     test_check(followed && refused, "renaming a page rewrites the scenes naming it and refuses the project's default");
     refactor_plan_free(&plan);
     reference_index_free(index);

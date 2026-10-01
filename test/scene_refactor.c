@@ -23,20 +23,54 @@ typedef struct
     char root[64];
 } refactor_fixture;
 
-static const char PULSE[] = "version: 3\nname: Pulse\nid_counter: "
-                            "10\nowner_type: ecs.entity\n"
-                            "graphs:\n- kind: event\n  name: \"\"\n  nodes:\n"
-                            "  - {id: 1, type: Event, reference_name: Tick}\n";
-static const char DOT[] = "name: Dot\ncomponents:\n  GAME.GameTransform: {x: "
-                          "1.0}\nbehaviors: [Pulse]\n";
-static const char
-    MAIN[] = "version: 1\nname: Main\nentities:\n"
-             "- {name: Dot_1, prototype: Dot, behaviors: [Pulse]}\n"
-             "- {name: Dot_2, prototype: Dot, behaviors: [Pulse]}\n";
+static const char PULSE[] = "version 3\n"
+                            "name \"Pulse\"\n"
+                            "id_counter 10\n"
+                            "owner_type \"ecs.entity\"\n"
+                            "(array)graphs {\n"
+                            "    - {\n"
+                            "        kind \"event\"\n"
+                            "        name \"\"\n"
+                            "        (array)nodes {\n"
+                            "            - {\n"
+                            "                id 1\n"
+                            "                type \"Event\"\n"
+                            "                reference_name \"Tick\"\n"
+                            "            }\n"
+                            "        }\n"
+                            "    }\n"
+                            "}\n";
+static const char DOT[] = "name \"Dot\"\n"
+                          "components {\n"
+                          "    GAME.GameTransform {\n"
+                          "        x 1.0\n"
+                          "    }\n"
+                          "}\n"
+                          "(array)behaviors {\n"
+                          "    - \"Pulse\"\n"
+                          "}\n";
+static const char MAIN[] = "version 1\n"
+                           "name \"Main\"\n"
+                           "(array)entities {\n"
+                           "    - {\n"
+                           "        name \"Dot_1\"\n"
+                           "        prototype \"Dot\"\n"
+                           "        (array)behaviors {\n"
+                           "            - \"Pulse\"\n"
+                           "        }\n"
+                           "    }\n"
+                           "    - {\n"
+                           "        name \"Dot_2\"\n"
+                           "        prototype \"Dot\"\n"
+                           "        (array)behaviors {\n"
+                           "            - \"Pulse\"\n"
+                           "        }\n"
+                           "    }\n"
+                           "}\n";
 
 static const char *const FOLDERS[] = { "behaviors", "libraries", "prototypes", "scenes" };
 #define FOLDER_COUNT ((int)(sizeof FOLDERS / sizeof *FOLDERS))
-#define WEAPONS "projects/arena2d/content/libraries/WeaponActions.yaml"
+#define WEAPONS "projects/arena2d/content/libraries/WeaponActions.kdl"
 
 static void path_to(const refactor_fixture *f, const char *name, char *out, size_t size)
 {
@@ -84,11 +118,11 @@ static refactor_fixture fixture_new()
     }
     char *library = text_file_read(WEAPONS);
     assert(library);
-    write_asset(&f, "libraries/WeaponActions.yaml", library);
+    write_asset(&f, "libraries/WeaponActions.kdl", library);
     free(library);
-    write_asset(&f, "behaviors/Pulse.yaml", PULSE);
-    write_asset(&f, "prototypes/Dot.yaml", DOT);
-    write_asset(&f, "scenes/Main.yaml", MAIN);
+    write_asset(&f, "behaviors/Pulse.kdl", PULSE);
+    write_asset(&f, "prototypes/Dot.kdl", DOT);
+    write_asset(&f, "scenes/Main.kdl", MAIN);
     f.live = game_live_world_new(f.world);
     game_live_definition *definition = game_live_definition_new("Editing", behavior_asset_new("Editing"));
     assert(definition && game_live_add_definition(f.live, definition) == 0);
@@ -105,7 +139,7 @@ static refactor_fixture fixture_new()
         f.runtime
     );
     char scene[128];
-    path_to(&f, "scenes/Main.yaml", scene, sizeof scene);
+    path_to(&f, "scenes/Main.kdl", scene, sizeof scene);
     assert(app_scene_authoring_set_content_root(f.scene, f.root) == 0);
     assert(app_scene_authoring_load_content(f.scene) == 0);
     assert(app_scene_authoring_load(f.scene, scene) == 0);
@@ -185,10 +219,10 @@ static void behaviors()
     bool applied = plan &&
                    app_scene_authoring_apply_refactor(f.scene, plan, &undo, error, sizeof error) ==
                        0;
-    bool moved = applied && exists(&f, "behaviors/Beat.yaml") &&
-                 !exists(&f, "behaviors/Pulse.yaml") &&
-                 holds(&f, "prototypes/Dot.yaml", "Beat") &&
-                 holds(&f, "scenes/Main.yaml", "Beat");
+    bool moved = applied && exists(&f, "behaviors/Beat.kdl") &&
+                 !exists(&f, "behaviors/Pulse.kdl") &&
+                 holds(&f, "prototypes/Dot.kdl", "Beat") &&
+                 holds(&f, "scenes/Main.kdl", "Beat");
     bool loaded = game_live_find_definition(f.live, "Beat") &&
                   !game_live_find_definition(f.live, "Pulse") &&
                   game_prototype_has_graph(find_prototype(f.scene, "Dot")->prototype, "Beat");
@@ -202,8 +236,8 @@ static void behaviors()
     bool undone = undo &&
                   app_scene_authoring_apply_refactor(f.scene, undo, &redo, error, sizeof error) ==
                       0 &&
-                  exists(&f, "behaviors/Pulse.yaml") &&
-                  !exists(&f, "behaviors/Beat.yaml") &&
+                  exists(&f, "behaviors/Pulse.kdl") &&
+                  !exists(&f, "behaviors/Beat.kdl") &&
                   game_live_find_definition(f.live, "Pulse") &&
                   !game_live_find_definition(f.live, "Beat");
     if (!(listed && moved && loaded && undone)) {
@@ -273,7 +307,7 @@ static void prototypes()
     bool renamed = applied && find_prototype(f.scene, "Point") &&
                    !find_prototype(f.scene, "Dot") && acount(f.scene->actors) == 2 &&
                    !strcmp(f.scene->actors[0].prototype_name, "Point") &&
-                   holds(&f, "scenes/Main.yaml", "prototype: Point");
+                   holds(&f, "scenes/Main.kdl", "prototype \"Point\"");
     if (!renamed) {
         printf("  prototype rename: %s\n", error);
     }
@@ -298,16 +332,23 @@ static void refusals()
     assert(!plan && strstr(error, "only in case"));
     plan = rename_to(&f, pulse, "Beat", error, sizeof error);
     assert(plan);
-    write_asset(&f, "prototypes/Dot.yaml", "name: Dot\nbehaviors: [Pulse]\n");
+    write_asset(
+        &f,
+        "prototypes/Dot.kdl",
+        "name \"Dot\"\n"
+        "(array)behaviors {\n"
+        "    - \"Pulse\"\n"
+        "}\n"
+    );
     app_refactor *undo = NULL;
     assert(app_scene_authoring_apply_refactor(f.scene, plan, &undo, error, sizeof error) != 0);
-    assert(!undo && exists(&f, "behaviors/Pulse.yaml") && !exists(&f, "behaviors/Beat.yaml"));
+    assert(!undo && exists(&f, "behaviors/Pulse.kdl") && !exists(&f, "behaviors/Beat.kdl"));
     app_refactor_free(plan);
 
     /* Edits made after a rename keep its Undo from reloading over them. */
-    write_asset(&f, "prototypes/Dot.yaml", DOT);
+    write_asset(&f, "prototypes/Dot.kdl", DOT);
     char dot[128];
-    path_to(&f, "prototypes/Dot.yaml", dot, sizeof dot);
+    path_to(&f, "prototypes/Dot.kdl", dot, sizeof dot);
     app_scene_authoring_reload_path(f.scene, dot);
     plan = rename_to(&f, asset_named(&f, REFERENCE_ASSET_BEHAVIOR, "Pulse"), "Beat", error, sizeof error);
     assert(
@@ -318,7 +359,7 @@ static void refusals()
     app_refactor *redo = NULL;
     bool kept = app_scene_authoring_apply_refactor(f.scene, undo, &redo, error, sizeof error) !=
                     0 &&
-                strstr(error, "Save Dot") && exists(&f, "behaviors/Beat.yaml") &&
+                strstr(error, "Save Dot") && exists(&f, "behaviors/Beat.kdl") &&
                 find_prototype(f.scene, "Dot")->dirty;
     if (!kept) {
         printf("  undo over unsaved edits: %s\n", error);
@@ -341,10 +382,10 @@ static void deletes()
     assert(app_refactor_count(plan) == 1);
     app_refactor *undo = NULL;
     assert(app_scene_authoring_apply_refactor(f.scene, plan, &undo, error, sizeof error) == 0);
-    assert(!exists(&f, "behaviors/Pulse.yaml"));
+    assert(!exists(&f, "behaviors/Pulse.kdl"));
     app_refactor *redo = NULL;
     assert(app_scene_authoring_apply_refactor(f.scene, undo, &redo, error, sizeof error) == 0);
-    assert(exists(&f, "behaviors/Pulse.yaml") && game_live_find_definition(f.live, "Pulse"));
+    assert(exists(&f, "behaviors/Pulse.kdl") && game_live_find_definition(f.live, "Pulse"));
     app_refactor_free(plan);
     app_refactor_free(undo);
     app_refactor_free(redo);
@@ -363,7 +404,7 @@ static void deletes()
     }
     kept = find_prototype(f.scene, "Dot");
     bool adopted = copies == 1 && kept->path && !kept->dirty &&
-                   exists(&f, "prototypes/Dot.yaml");
+                   exists(&f, "prototypes/Dot.kdl");
     if (!adopted) {
         printf(
             "  undo of a placed prototype's delete: %d copies, path %s, dirty "

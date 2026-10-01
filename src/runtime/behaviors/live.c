@@ -43,9 +43,7 @@ game_live_definition *game_live_definition_new(const char *asset_name, behavior_
     if (!asset_name || !asset_name[0] || !working) {
         return NULL;
     }
-    char *json = behavior_asset_save_json(working);
-    behavior_asset *applied = json ? behavior_asset_load_json(json) : NULL;
-    free(json);
+    behavior_asset *applied = behavior_asset_clone(working);
     if (!applied) {
         return NULL;
     }
@@ -104,17 +102,36 @@ game_live_definition *game_live_definition_at(game_live_world *world, int index)
     return world->definitions[index];
 }
 
-/* Files omit the positions of automatic nodes (asset_text.h), so arranging
-   them changes neither the document nor what runs. */
-static bool same_document(const char *a, const char *b)
+/* Automatic node arrangement does not change authored behavior. */
+static void omit_automatic_positions(av_value *value)
 {
-    char error[128];
-    char *left = asset_text_to_disk(a, error, sizeof error);
-    char *right = asset_text_to_disk(b, error, sizeof error);
-    assert(left && right);
-    bool same = strcmp(left, right) == 0;
-    free(left);
-    free(right);
+    if (av_is_obj(value)) {
+        av_value *placed = av_obj_get(value, "placed");
+        if (av_is_bool(placed) && !av_get_bool(placed)) {
+            av_obj_remove_key(value, "x");
+            av_obj_remove_key(value, "y");
+            av_obj_remove_key(value, "placed");
+        }
+        for (size_t i = 0; i < av_obj_size(value); i++) {
+            omit_automatic_positions(av_obj_value_at(value, i));
+        }
+    }
+    if (av_is_arr(value)) {
+        for (size_t i = 0; i < av_arr_size(value); i++) {
+            omit_automatic_positions(av_arr_get(value, i));
+        }
+    }
+}
+
+static bool same_document(const behavior_asset *a, const behavior_asset *b)
+{
+    av_doc *doc = av_doc_new();
+    av_value *left = behavior_asset_to_value(doc, a);
+    av_value *right = behavior_asset_to_value(doc, b);
+    omit_automatic_positions(left);
+    omit_automatic_positions(right);
+    bool same = av_equals(left, right);
+    av_doc_free(doc);
     return same;
 }
 
@@ -123,17 +140,12 @@ int game_live_sync_working(game_live_definition *definition, const behavior_asse
     if (!definition || !source) {
         return -1;
     }
-    char *json = behavior_asset_save_json(source);
-    char *previous = behavior_asset_save_json(definition->working);
-    bool unchanged = json && previous && strcmp(json, previous) == 0;
-    bool edited = !unchanged && !(json && previous && same_document(json, previous));
-    free(previous);
+    bool unchanged = behavior_asset_equal(source, definition->working);
+    bool edited = !unchanged && !same_document(source, definition->working);
     if (unchanged) {
-        free(json);
         return 0;
     }
-    behavior_asset *copy = json ? behavior_asset_load_json(json) : NULL;
-    free(json);
+    behavior_asset *copy = behavior_asset_clone(source);
     if (!copy) {
         return -1;
     }
@@ -479,9 +491,7 @@ static int update_library(
         dependents[i]->dirty = 0;
         behavior_asset_free(old);
     }
-    char *json = behavior_asset_save_json(definition->working);
-    library = behavior_asset_load_json(json);
-    free(json);
+    library = behavior_asset_clone(definition->working);
     assert(library);
     behavior_asset_free(definition->applied);
     definition->applied = library;

@@ -1634,9 +1634,12 @@ void sg_emit_graph_input(studio *s, kit *k, node *n, int p)
         graph_input_display(e, spec, &parts, source, source_pin, expression_source, binding, displayed, sizeof displayed);
         const char *query = kit_autocomplete_query(k, "source-edit");
         source_choice *choices = NULL;
-        add_sources(s, n, p, query, &choices, source, source_pin, binding);
-        add_typed_choices(e, n, p, query, source || binding, &choices);
-        kit_command_item *items = autocomplete_items(choices);
+        kit_command_item *items = NULL;
+        if (query) {
+            add_sources(s, n, p, query, &choices, source, source_pin, binding);
+            add_typed_choices(e, n, p, query, source || binding, &choices);
+            items = autocomplete_items(choices);
+        }
         kit_autocomplete_result result = kit_autocomplete(
             k,
             "source-edit",

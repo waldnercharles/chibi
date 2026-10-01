@@ -1308,6 +1308,11 @@ bool test_rmlui_kit()
     kit_blur(f.k);
     settle(&f);
 
+    snprintf(f.autocomplete_value, sizeof f.autocomplete_value, "External.path");
+    settle(&f);
+    rml_element_value(autocomplete, shown_value, sizeof shown_value);
+    ok &= check(strcmp(shown_value, "External.path") == 0, "an unfocused autocomplete refreshes its display after an external value change");
+
     ok &= check(click(&f, "app/bar/dropdown-trigger"), "button opens its dropdown");
     settle(&f);
     ok &= check(

@@ -1113,7 +1113,7 @@ static void terrain_preparation_scratch()
         assert(!game_materials_prepare(live->materials));
         game_materials *materials = live->materials;
         assert(materials->terrain_views && !acount(materials->terrain_views));
-        uint64_t cells = game_materials_inspect(materials).cells;
+        int cells = game_materials_inspect(materials).cells;
         for (int origin = 0; origin < 2; origin++) {
             material_stream
                 *stream = materials->records[sources[owner][origin].slot].stream;

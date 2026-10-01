@@ -85,7 +85,10 @@ void material_destruction_free(material_destruction *destruction);
 void material_destruction_reset(material_destruction *destruction);
 void material_destruction_queue_damage(material_destruction *destruction, material_damage damage);
 void material_destruction_queue_release(material_destruction *destruction, uint64_t target);
-/* Called outside physics integration and ECS queries. */
+/* Called outside physics integration and ECS queries. Host callbacks may enqueue
+ * damage/releases. Releases queued during release callbacks run next step;
+ * damage-phase releases still run this step. Recursive step, reset or free on
+ * the same destruction owner during a callback is unsupported. */
 void material_destruction_step(
     material_destruction *destruction,
     const material_host *host,

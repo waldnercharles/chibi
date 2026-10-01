@@ -33,6 +33,10 @@ typedef struct
     game_physics_box2d_profile box2d;
     material_fluid_profile material_fluid;
     int bodies, pairs;
+    /* Per-step work while profiling is enabled. Mask-only edits retain bodies;
+     * mass_updates includes implicit shape creation and explicit batch updates. */
+    uint64_t body_creations, shape_creations, shape_updates, shape_removals,
+        mass_updates;
 } game_physics_profile;
 
 typedef struct
@@ -68,6 +72,17 @@ const game_physics_profile *game_physics_last_profile(const game_physics *physic
 game_physics_hashes game_physics_hash(const game_physics *physics);
 /* Borrow solved poses for presentation without modifying authoritative ECS. */
 bool game_physics_interpolate(const game_physics *physics, ecs_entity entity, float alpha, GameTransform *out);
+
+typedef struct
+{
+    float mass, inertia;
+    CF_V2 local_center;
+    bool awake;
+    int shape_count;
+} game_physics_body_state;
+/* Current solved body state; local center uses game units. Fixed rotation has
+ * zero rotational inertia. Returns false before synchronization or after removal. */
+bool game_physics_inspect_body(const game_physics *physics, ecs_entity entity, game_physics_body_state *out);
 
 /* Snapshot current collider contacts into a caller-owned core array. Honors
  * bilateral filters and pending destruction, including before the first step.

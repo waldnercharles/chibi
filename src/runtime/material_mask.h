@@ -29,6 +29,24 @@ typedef struct
     material_polygon *surface;
 } material_mask;
 
+/* Processing-owned temporary geometry/connectivity storage, shared across masks.
+ * No borrowed work storage survives these calls or a host callback. */
+typedef struct material_mask_work material_mask_work;
+material_mask_work *material_mask_work_new();
+void material_mask_work_free(material_mask_work *work);
+void material_mask_rebuild_work(material_mask *mask, material_mask_work *work);
+/* Copies occupancy and distances only; rebuild before exposing geometry. */
+material_mask material_mask_copy_cells(int width, int height, float cell_size, const unsigned char *cells);
+/* Connectivity edits source occupancy without rebuilding its geometry. Returned
+ * owned fragment masks have ready geometry; rebuild source before callbacks. */
+material_mask *material_mask_detach_fragments(
+    material_mask *mask,
+    int minimum,
+    bool anchored,
+    int *dust,
+    material_mask_work *work
+);
+
 /* Borrowed immutable views. Damage/rebuild or free invalidates their storage. */
 typedef struct
 {

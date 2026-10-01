@@ -39,6 +39,8 @@ void game_materials_reset(game_materials *materials);
 const char *game_materials_prepare(game_materials *materials);
 /* Borrowed mask; NULL for ordinary colliders and uninitialized materials. */
 const material_mask *game_materials_mask(const game_materials *materials, ecs_entity entity);
+/* Mask incarnation survives revision reuse after reset/reinitialization. */
+uint64_t game_materials_mask_generation(const game_materials *materials, ecs_entity entity);
 bool game_materials_is_fragment(const game_materials *materials, ecs_entity entity);
 bool game_materials_is_pierceable_fragment(const game_materials *materials, ecs_entity entity);
 /* Queue a world-space circular cut for the next physics boundary. */

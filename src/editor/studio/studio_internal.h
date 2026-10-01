@@ -4,7 +4,6 @@
 #include "assets/new_asset.h"
 #include "assets/project.h"
 #include "assets/ui_source.h"
-#include "support/resources.h"
 #include "editor/documents/component_presentation.h"
 #include "editor/documents/ui_code.h"
 #include "editor/studio/studio.h"
@@ -17,6 +16,7 @@
 #include "render/ui.h"
 #include "runtime/save.h"
 #include "support/file_watch.h"
+#include "support/resources.h"
 #include "ui/rml_backend.h"
 
 #include <SDL3/SDL_events.h>

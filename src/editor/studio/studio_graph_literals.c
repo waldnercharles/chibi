@@ -573,7 +573,7 @@ static bool edit_struct_control(
     if (kit_button(k, "edit", &button) && !(flags & KIT_READONLY)) {
         kit_popup_open(k, popup);
     }
-    if (!kit_popup_begin(k, popup, "menu struct-editor")) {
+    if (!kit_popup_begin(k, popup, "popover menu struct-editor")) {
         return false;
     }
     kit_label(k, "title", "muted", label);
@@ -721,7 +721,7 @@ static bool edit_array_control(
     if (kit_button(k, "edit", &button) && !(flags & KIT_READONLY)) {
         kit_popup_open(k, popup);
     }
-    if (!kit_popup_begin(k, popup, "menu")) {
+    if (!kit_popup_begin(k, popup, "popover menu")) {
         return false;
     }
     if (!array) {

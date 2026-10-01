@@ -7,6 +7,8 @@
 #include "graph/document/events.h"
 #include "graph/document/library.h"
 #include "graph/nodes/component_nodes.h"
+#include "graph/runtime/value_array.h"
+#include "graph/shader/shader_graph.h"
 #include "support/xalloc.h"
 #include "test/suite_internal.h"
 
@@ -1134,9 +1136,95 @@ static void check_signature_drag()
     editor_free(e);
 }
 
+static void check_compound_graph_collab_replay()
+{
+    behavior_asset *asset = behavior_asset_new("Compound graph replay");
+    asset->domain = BEHAVIOR_DOMAIN_MATERIAL;
+    node *surface = shader_graph_add_output(asset->graph, false);
+    node *ramp = graph_add_node(asset->graph, registry_node_by_name("Shader Color Ramp"));
+    assert(surface && ramp && shader_graph_init_node(asset->graph, ramp));
+    uint64_t surface_id = surface->id, ramp_id = ramp->id;
+    editor *e = editor_new(asset);
+    float rgb[] = { 0.2f, 0.4f, 0.6f };
+    pin_value color = { .type = PIN_STRUCT, .type_name = "ShaderVec3", .ptr = rgb };
+    editor_command color_command = {
+        .kind = EDITOR_COMMAND_SET_PIN_DEFAULT,
+        .data.set_pin_default = { surface_id, 0, 0, &color, false }
+    };
+    char *color_action = graph_collab_action_for_command(e, color_command);
+    assert(color_action);
+    char error[256] = { 0 };
+    bool color_replayed = graph_collab_apply_action(e, color_action, error, sizeof error);
+    rgb[0] = 0.9f;
+    surface = graph_node_by_id(e->active_graph, surface_id);
+    const float *stored_rgb = surface->input_pins[0].default_value.ptr;
+    bool color_owned = stored_rgb && fabsf(stored_rgb[0] - 0.2f) < 0.00001f &&
+                       fabsf(stored_rgb[2] - 0.6f) < 0.00001f;
+    shader_ramp_stop stops[] = {
+        { .position = 0, .color = { 0.2f, 0.4f, 0.6f, 0.375f } },
+        { .position = 0.5f, .color = { 0.3f, 0.5f, 0.7f, 0.625f } },
+        { .position = 1, .color = { 0.4f, 0.6f, 0.8f, 0.875f } },
+    };
+    pin_value items[3];
+    for (int i = 0; i < 3; i++) {
+        items[i] = (pin_value){ .type = PIN_STRUCT,
+                                .type_name = "ShaderRampStop",
+                                .ptr = &stops[i] };
+    }
+    pin_array array = { .element_type = PIN_STRUCT,
+                        .type_name = "ShaderRampStop",
+                        .count = 3,
+                        .capacity = 3,
+                        .items = items };
+    pin_value collection = { .type = PIN_STRUCT,
+                             .type_name = "ShaderRampStop",
+                             .container = PIN_CONTAINER_ARRAY,
+                             .ptr = &array };
+    editor_command collection_command = {
+        .kind = EDITOR_COMMAND_SET_PIN_DEFAULT,
+        .data.set_pin_default = { ramp_id, 0, 1, &collection, false }
+    };
+    char *collection_action = graph_collab_action_for_command(e, collection_command);
+    assert(collection_action);
+    bool collection_replayed = graph_collab_apply_action(e, collection_action, error, sizeof error);
+    stops[1].color[3] = 0.1f;
+    shader_ramp_stop stored[SHADER_RAMP_MAX];
+    ramp = graph_node_by_id(e->active_graph, ramp_id);
+    bool collection_owned = shader_node_ramp_get(ramp, stored) == 3 &&
+                            fabsf(stored[1].color[3] - 0.625f) < 0.00001f;
+    editor_undo(e);
+    ramp = graph_node_by_id(e->active_graph, ramp_id);
+    bool undo = shader_node_ramp_get(ramp, stored) == 2;
+    editor_redo(e);
+    ramp = graph_node_by_id(e->active_graph, ramp_id);
+    bool redo = shader_node_ramp_get(ramp, stored) == 3 &&
+                fabsf(stored[0].color[3] - 0.375f) < 0.00001f;
+    float invalid_rgb[] = { INFINITY, 0, 0 };
+    color.ptr = invalid_rgb;
+    bool invalid_rejected = !graph_collab_action_for_command(e, color_command);
+    color.ptr = rgb;
+    color.type_name = "ShaderVec2";
+    bool wrong_builder_rejected = !graph_collab_action_for_command(e, color_command);
+    char *wrong_shape = xstrdup(color_action);
+    char *nominal = strstr(wrong_shape, "ShaderVec3");
+    assert(nominal);
+    nominal[strlen("ShaderVec")] = '2';
+    int undo_count = acount(e->undo);
+    bool mismatch_rejected = !graph_collab_apply_action(e, wrong_shape, error, sizeof error) &&
+                             acount(e->undo) == undo_count;
+    test_check(color_replayed && color_owned, "collaboration replays vector/color defaults with independent owned storage");
+    test_check(collection_replayed && collection_owned && undo && redo, "collaboration replays nested ramp arrays with precise alpha and Undo/Redo after temporary decode storage is freed");
+    test_check(invalid_rejected && wrong_builder_rejected && mismatch_rejected, "collaboration rejects nonfinite compound values and wrong nominal pin shapes before history mutation");
+    free(wrong_shape);
+    free(color_action);
+    free(collection_action);
+    editor_free(e);
+}
+
 void run_editor_command_checks(void)
 {
     check_streamed_literal_undo();
+    check_compound_graph_collab_replay();
     check_signature_drag();
     check_linked_preview();
     check_library_problem_source();

@@ -1440,7 +1440,7 @@ static void emit_inline_values_popup(studio *s, kit *k, node *target, int pin)
         target->input_pins[pin].id
     );
     if (!kit_popup_is_open(k, popup_key) ||
-        !kit_popup_begin(k, popup_key, "graph-inline-values")) {
+        !kit_popup_begin(k, popup_key, "popover graph-inline-values")) {
         return;
     }
 

@@ -16,7 +16,7 @@ import sys
 import tempfile
 
 SCHEMA = 3
-FIELDS = ("GIT_REPOSITORY", "GIT_TAG", "URL", "URL_HASH")
+FIELDS = ("GIT_REPOSITORY", "GIT_TAG", "GIT_SUBMODULES", "URL", "URL_HASH")
 
 
 def cache_root_from_env() -> Path:
@@ -79,6 +79,8 @@ def fingerprint(source_dir: Path) -> str:
 def dependency_key(identity: dict[str, str]) -> str:
     if "GIT_REPOSITORY" in identity and "GIT_TAG" in identity:
         fields = {key: identity[key] for key in ("GIT_REPOSITORY", "GIT_TAG")}
+        if "GIT_SUBMODULES" in identity:
+            fields["GIT_SUBMODULES"] = identity["GIT_SUBMODULES"]
     elif "URL" in identity and "URL_HASH" in identity:
         fields = {key: identity[key] for key in ("URL", "URL_HASH")}
     else:
@@ -159,7 +161,7 @@ def all_pins(source_dir: Path, cute: Path | None) -> dict[str, dict[str, str]]:
     return pins
 
 
-def clone_pristine(source: Path, destination: Path, commit: str) -> None:
+def clone_pristine(source: Path, destination: Path, commit: str, include_submodules: bool = True) -> None:
     # Local transport honors depth, keeping only the pinned commit rather than
     # cloning every dependency's history. Object storage never refers to donor paths.
     result = subprocess.run(["git", "clone", "--no-local", "--depth", "1", "--no-checkout",
@@ -171,6 +173,8 @@ def clone_pristine(source: Path, destination: Path, commit: str) -> None:
     for tag in git(source, "tag", "--points-at", commit).splitlines():
         git(destination, "update-ref", f"refs/tags/{tag}", commit)
     git(destination, "remote", "set-url", "origin", git(source, "config", "--get", "remote.origin.url"))
+    if not include_submodules:
+        return
     # Clone each gitlink as an independent checkout. No .git file points back to
     # the donor's .git/modules, and dirty donor files are never copied.
     for line in git(source, "ls-tree", "-r", commit).splitlines():
@@ -200,7 +204,8 @@ def publish_one(cache_root: Path, name: str, identity: dict[str, str], source: P
             return False
         temporary = Path(tempfile.mkdtemp(prefix=f".{entry.name}.", dir=entry.parent))
         try:
-            clone_pristine(source, temporary / f"{name}-src", commit)
+            clone_pristine(source, temporary / f"{name}-src", commit,
+                           identity.get("GIT_SUBMODULES") != "")
             (temporary / "complete.json").write_text(json.dumps({"schema": SCHEMA,
                 "identity": identity, "commit": commit}, sort_keys=True) + "\n")
             if entry.exists():

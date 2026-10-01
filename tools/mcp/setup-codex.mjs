@@ -10,8 +10,8 @@ export function registerChibi(config, registration) {
   const retained = [];
   let chibiSection = false;
   for (const line of lines) {
-    const header = line.match(/^\s*\[([^\]]+)\]\s*(?:#.*)?$/);
-    if (header) chibiSection = /^mcp_servers\.(?:chibi|"chibi"|'chibi')(?:\.|$)/.test(header[1].trim());
+    const header = line.match(/^\s*(?:\[\[([^\]]+)\]\]|\[([^\]]+)\])\s*(?:#.*)?$/);
+    if (header) chibiSection = /^mcp_servers\.(?:chibi|"chibi"|'chibi')(?:\.|$)/.test((header[1] ?? header[2]).trim());
     if (!chibiSection) retained.push(line);
   }
   return `${retained.join("\n").trimEnd()}\n\n${registration}\n`.trimStart();

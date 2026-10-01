@@ -1,6 +1,7 @@
 """Standalone release checks. Run integration with --package /path/to/package."""
 import argparse
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -9,6 +10,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 PACKAGE = None
@@ -20,6 +22,127 @@ def run(command, cwd, env=None, input=None):
 
 
 class PackagingFailureTests(unittest.TestCase):
+    def fake_build(self, root, overrides=None):
+        build = root / 'distribution build'
+        build.mkdir()
+        profile = {'CHIBI_DISTRIBUTION': 'ON', 'CHIBI_DEVELOPMENT_RELOAD': 'OFF',
+                   'CHIBI_ENABLE_SANITIZERS': 'OFF'}
+        profile.update(overrides or {})
+        (build / 'CMakeCache.txt').write_text(''.join(
+            f'{key}:BOOL={value}\n' for key, value in profile.items()) +
+            'CHIBI_SJLIT_SOURCE_DIR:PATH=\n')
+        for name in ('chibi', 'chibi_ctl'):
+            executable = build / name
+            executable.write_text('#!/bin/sh\nexit 0\n')
+            executable.chmod(0o755)
+        return build
+
+    def test_successful_packaging_is_complete_and_reproducible(self):
+        with tempfile.TemporaryDirectory(prefix='chibi-package-test-') as directory:
+            root = Path(directory)
+            build, output = self.fake_build(root), root / 'native release'
+            with (build / 'CMakeCache.txt').open('a') as cache:
+                cache.write(f'ANCESTOR_SOURCE_DIR:PATH={root}\n')
+                cache.write(f'REPOSITORY_SOURCE_DIR:PATH={ROOT}\n')
+            command = [sys.executable, ROOT / 'tools/package_native.py',
+                       '--build', build, '--output', output]
+            packaged = run(command, root)
+            self.assertEqual(packaged.returncode, 0, packaged.stderr)
+            manifest = json.loads((output / 'share/chibi/engine.json').read_text())
+            actual = {path.relative_to(output).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest()
+                      for path in output.rglob('*')
+                      if path.is_file() and path != output / 'share/chibi/engine.json'}
+            self.assertEqual(manifest['files'], actual)
+            for name in ('chibi', 'chibi_ctl', 'chibi-mcp'):
+                self.assertTrue(os.access(output / 'bin' / name, os.X_OK))
+            self.assertTrue((output / 'share/chibi/studio/project.yaml').is_file())
+            self.assertTrue((output / 'share/chibi/mcp/server.mjs').is_file())
+            self.assertFalse((output / 'share/chibi/licenses/ANCESTOR').exists())
+            self.assertFalse((output / 'share/chibi/licenses/REPOSITORY').exists())
+            repeated = run(command, root)
+            self.assertEqual(repeated.returncode, 0, repeated.stderr)
+            second = json.loads((output / 'share/chibi/engine.json').read_text())
+            self.assertEqual(manifest['build_id'], second['build_id'])
+            changed = build / 'chibi_ctl'
+            changed.write_text('#!/bin/sh\nexit 1\n')
+            third = run(command, root)
+            self.assertEqual(third.returncode, 0, third.stderr)
+            updated = json.loads((output / 'share/chibi/engine.json').read_text())
+            self.assertNotEqual(updated['build_id'], second['build_id'])
+
+    def test_existing_unrelated_directory_is_preserved(self):
+        with tempfile.TemporaryDirectory(prefix='chibi-package-test-') as directory:
+            root = Path(directory)
+            build, output = self.fake_build(root), root / 'unrelated data'
+            output.mkdir()
+            marker = output / 'important.txt'
+            marker.write_text('preserve me\n')
+            result = run([sys.executable, ROOT / 'tools/package_native.py',
+                          '--build', build, '--output', output], root)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn('not an engine package', result.stderr)
+            self.assertEqual(marker.read_text(), 'preserve me\n')
+            self.assertEqual(list(output.iterdir()), [marker])
+
+    def test_late_resource_copy_failure_preserves_previous_release(self):
+        spec = importlib.util.spec_from_file_location('package_native', ROOT / 'tools/package_native.py')
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        with tempfile.TemporaryDirectory(prefix='chibi-package-test-') as directory:
+            root = Path(directory)
+            build, output = self.fake_build(root), root / 'native release'
+            module.assemble(build, output)
+            previous = {path.relative_to(output): path.read_bytes()
+                        for path in output.rglob('*') if path.is_file()}
+            original_copy = module.copy_file
+
+            def failed_copy(source, destination):
+                if source.name == 'authoring-navigation.md':
+                    raise OSError('simulated resource copy failure')
+                original_copy(source, destination)
+
+            with patch.object(module, 'copy_file', side_effect=failed_copy):
+                with self.assertRaisesRegex(OSError, 'simulated resource copy failure'):
+                    module.assemble(build, output)
+            current = {path.relative_to(output): path.read_bytes()
+                       for path in output.rglob('*') if path.is_file()}
+            self.assertEqual(previous, current)
+            self.assertEqual(sorted(path.name for path in root.iterdir()),
+                             ['distribution build', 'native release'])
+
+    def test_fetched_dependency_notices_are_shipped_without_sources(self):
+        with tempfile.TemporaryDirectory(prefix='chibi-package-test-') as directory:
+            root = Path(directory)
+            build, output = self.fake_build(root), root / 'native release'
+            dependency = build / '_deps/example-src'
+            nested = dependency / 'vendor/nested'
+            nested.mkdir(parents=True)
+            (dependency / 'LICENSE').write_text('Example dependency legal notice\n')
+            (nested / 'COPYING').write_text('Nested dependency legal notice\n')
+            (nested / 'implementation.h').write_text('private source\n')
+            result = run([sys.executable, ROOT / 'tools/package_native.py',
+                          '--build', build, '--output', output], root)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            notices = output / 'share/chibi/licenses'
+            texts = [path.read_text() for path in notices.rglob('*') if path.is_file()]
+            self.assertIn('Example dependency legal notice\n', texts)
+            self.assertIn('Nested dependency legal notice\n', texts)
+            self.assertFalse(any(path.name == 'implementation.h' for path in output.rglob('*')))
+
+    def test_development_profiles_are_rejected(self):
+        for key, invalid in (('CHIBI_DISTRIBUTION', 'OFF'),
+                             ('CHIBI_DEVELOPMENT_RELOAD', 'ON'),
+                             ('CHIBI_ENABLE_SANITIZERS', 'ON')):
+            with self.subTest(key=key), tempfile.TemporaryDirectory(prefix='chibi-package-test-') as directory:
+                root = Path(directory)
+                build = self.fake_build(root, {key: invalid})
+                output = root / 'rejected package'
+                result = run([sys.executable, ROOT / 'tools/package_native.py',
+                              '--build', build, '--output', output], root)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn(key, result.stderr)
+                self.assertFalse(output.exists())
+
     def test_incomplete_build_does_not_replace_existing_output(self):
         with tempfile.TemporaryDirectory(prefix='chibi-package-test-') as directory:
             root = Path(directory)

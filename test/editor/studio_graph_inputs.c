@@ -613,6 +613,40 @@ static void folded_inputs_are_editable_in_place()
     if (popup_open) {
         capture_stage(&f, "inline-inputs");
     }
+    rml_context *context = rml_backend_context(f.studio->graph.backend);
+    /* Placement clears data-unplaced before the following layout updates
+       inherited visibility and gives the form its initial focus. */
+    frames(&f, 2);
+    rml_element *inline_popup = popup_open ? graph_query(&f, ".graph-inline-values")
+                                           : NULL;
+    rml_element *fields[2] = { 0 };
+    int field_count = inline_popup
+                        ? rml_element_query_selector_all(inline_popup, ".field.autocomplete input", fields, 2)
+                        : 0;
+    bool initial_focus = field_count >= 2 &&
+                         rml_context_focus_element(context) == fields[0];
+    if (initial_focus) {
+        /* Escape the first input's completion list, then Tab between the
+           inline form controls without dismissing their parent popover. */
+        key_event(SDL_SCANCODE_ESCAPE, true);
+        key_event(SDL_SCANCODE_ESCAPE, false);
+        frames(&f, 1);
+        key_event(SDL_SCANCODE_TAB, true);
+        key_event(SDL_SCANCODE_TAB, false);
+        frames(&f, 2);
+    }
+    bool tab_forward = initial_focus &&
+                       kit_popup_is_open(f.studio->graph.kit, popup_key) &&
+                       rml_context_focus_element(context) == fields[1];
+    if (tab_forward) {
+        key_event_mod(SDL_SCANCODE_TAB, true, SDL_KMOD_SHIFT);
+        key_event_mod(SDL_SCANCODE_TAB, false, SDL_KMOD_SHIFT);
+        frames(&f, 2);
+    }
+    bool tab_back = tab_forward &&
+                    kit_popup_is_open(f.studio->graph.kit, popup_key) &&
+                    rml_context_focus_element(context) == fields[0];
+    test_check(initial_focus && tab_forward && tab_back, "inline input forms initially focus their first control and keep Tab/Shift+Tab inside the open form");
     kit_rect field_rect;
     bool field_visible = popup_open &&
                          kit_find(f.studio->graph.kit, control, &field_rect);

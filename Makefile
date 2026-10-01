@@ -208,6 +208,7 @@ test:
 	python3 test/fetchcontent_cache_test.py
 	python3 test/configure_cache_test.py
 	python3 test/package_web_test.py
+	python3 test/publish_web_test.py
 	python3 test/package_native_test.py
 	node --test test/mcp_package_test.mjs
 	python3 test/web_serve_test.py

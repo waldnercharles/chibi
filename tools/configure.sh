@@ -98,7 +98,8 @@ else
 		$tracy_option $platform_option $sdl_option >/dev/null
 fi
 
-if [ ! -f "$cache" ] && [ -z "${CMAKE_GENERATOR:-}" ] && command -v ninja >/dev/null 2>&1; then
+if [ "$profile" = native ] && [ ! -f "$cache" ] &&
+    [ -z "${CMAKE_GENERATOR:-}" ] && command -v ninja >/dev/null 2>&1; then
 	configure -S "$source_dir" -B "$build_dir" -G Ninja \
 		-C "$build_dir/.chibi-fetchcontent-cache.cmake" \
 		"-DCHIBI_SDL3_PACKAGE_PREFIX=$package_prefix" "$@"

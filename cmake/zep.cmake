@@ -6,6 +6,7 @@
 FetchContent_Declare(zep
     GIT_REPOSITORY https://github.com/Rezonality/zep.git
     GIT_TAG 7aa7ed940d5c889dc6b27a2529a740c0bb2ad6af # 2026-05-22
+    GIT_SUBMODULES "" # The core-only target does not use vcpkg.
     UPDATE_DISCONNECTED TRUE)
 FetchContent_GetProperties(zep)
 if(NOT zep_POPULATED)

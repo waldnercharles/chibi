@@ -118,10 +118,11 @@ void material_ecs_tick_debris(
     int obstacle_count
 )
 {
+    aclear(materials->debris_tiles);
+    aclear(materials->debris_blasts);
     if (!materials->debris) {
         return;
     }
-    aclear(materials->debris_tiles);
     for (int i = 0; i < acount(materials->records); i++) {
         material_record *record = &materials->records[i];
         if (record->fragment || !ecs_entity_to_u64(record->terrain_source) ||
@@ -133,14 +134,13 @@ void material_ecs_tick_debris(
             *p = GAME_GameTransform_get_const(materials->world, record->entity);
         apush(materials->debris_tiles, ((struct material_debris_tile){ record->mask, p->x, p->y }));
     }
-    material_debris_blast *blasts = NULL;
     if (materials->fluid) {
         int count;
         const fluid_blast *events = material_fluid_blasts(materials->fluid, &count);
         for (int i = 0; i < count; i++) {
             float density = fminf(1, events[i].ignitions / 8.f);
             apush(
-                blasts,
+                materials->debris_blasts,
                 ((material_debris_blast){
                     events[i].position,
                     materials->combustion.blast_radius * (.35f + .65f * density),
@@ -157,10 +157,11 @@ void material_ecs_tick_debris(
         body_count,
         obstacles,
         obstacle_count,
-        blasts,
-        acount(blasts)
+        materials->debris_blasts,
+        acount(materials->debris_blasts)
     );
-    afree(blasts);
+    aclear(materials->debris_blasts);
+    aclear(materials->debris_tiles);
     /* A spent chunk leaves a small puff of its material's dust. */
     int count;
     const material_chunk *expired = material_debris_expired(materials->debris, &count);

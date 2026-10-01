@@ -1053,6 +1053,116 @@ static void terrain_stream_restore()
     ecs_world_free(world);
 }
 
+/* Two terrain origins share preparation capacity but keep separate streams. */
+static void terrain_preparation_scratch()
+{
+    ecs_world *worlds[2];
+    game_live_world *lives[2];
+    ecs_entity sources[2][2];
+    ecs_entity cameras[2][2];
+    for (int owner = 0; owner < 2; owner++) {
+        ecs_world *world = worlds[owner] = ecs_world_new();
+        for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
+            assert(
+                ecs_world_register_component(world, GAME_REGISTRY_COMPONENTS[i], NULL) == ECS_OK
+            );
+        }
+        game_live_world *live = lives[owner] = game_live_world_new(world);
+        behavior_asset *field = cave_asset();
+        char error[256];
+        assert(
+            material_field_compile(game_materials_fields(live->materials), field, error, sizeof error)
+        );
+        behavior_asset_free(field);
+        for (int origin = 0; origin < 2; origin++) {
+            float x = (origin + 1) * 1024.f;
+            ecs_entity camera = cameras[owner][origin] = ecs_world_create_entity(world);
+            component(
+                world,
+                camera,
+                &GAME_COMPONENT_GameCamera,
+                &(GameCamera){ .width = 128, .height = 128 }
+            );
+            component(world, camera, &GAME_COMPONENT_GameTransform, &(GameTransform){ x, 0 });
+            ecs_entity source = sources[owner][origin] = ecs_world_create_entity(world);
+            component(world, source, &GAME_COMPONENT_GameTransform, &(GameTransform){ x, 0 });
+            component(
+                world,
+                source,
+                &GAME_COMPONENT_MaterialTerrain,
+                &(MaterialTerrain){
+                    .seed = 1729,
+                    .width = 512,
+                    .height = 512,
+                    .cell_size = 2,
+                    .field = "CaveField",
+                    .parameters = "{\"Radius\":72,\"Roughness\":30}",
+                    .category = 8,
+                    .mask = 1,
+                    .min_fragment_cells = 4,
+                    .stream_radius = 128,
+                    .stream_budget = 64 }
+            );
+        }
+        ecs_entity moving = ecs_world_create_entity(world);
+        component(world, moving, &GAME_COMPONENT_GameBody, &(GameBody){ .type = GAME_BODY_DYNAMIC });
+        component(world, moving, &GAME_COMPONENT_GameTransform, &(GameTransform){ 2048, 0 });
+        component(world, moving, &GAME_COMPONENT_GameVelocity, &(GameVelocity){ 2, 0 });
+        assert(ecs_world_apply_commands(world) == ECS_OK);
+        assert(!game_materials_prepare(live->materials));
+        assert(!game_materials_prepare(live->materials));
+        game_materials *materials = live->materials;
+        assert(materials->terrain_views && !acount(materials->terrain_views));
+        uint64_t cells = game_materials_inspect(materials).cells;
+        for (int origin = 0; origin < 2; origin++) {
+            material_stream
+                *stream = materials->records[sources[owner][origin].slot].stream;
+            int count;
+            const material_stream_tile *tiles = material_stream_tiles(stream, &count);
+            assert(count > 0);
+            for (int i = 0; i < count; i++) {
+                assert(fabsf(tiles[i].grid.center_x) <= 256);
+            }
+        }
+        material_stream_view *storage = materials->terrain_views;
+        int capacity = acap(storage);
+        xalloc_stats before, after;
+        xalloc_stats_get(&before);
+        for (int i = 0; i < 3; i++) {
+            assert(!material_ecs_generate_terrains(materials));
+        }
+        xalloc_stats_get(&after);
+        /* Existing source-list storage and two query-ref arrays per terrain;
+         * warmed view preparation contributes no further allocations. */
+        assert(after.calls - before.calls == 3 * (1 + 2 * 2));
+        assert(materials->terrain_views == storage && acap(storage) == capacity);
+        assert(game_materials_inspect(materials).cells == cells);
+        /* Empty interest after populated preparation must not retain views. */
+        for (int origin = 0; origin < 2; origin++) {
+            GAME_GameCamera_get(world, cameras[owner][origin])->disabled = true;
+        }
+        *GAME_GameVelocity_get(world, moving) = (GameVelocity){ 0 };
+        assert(!material_ecs_generate_terrains(materials));
+        assert(!game_materials_inspect(materials).streaming.resident);
+        assert(materials->terrain_views == storage && !acount(materials->terrain_views));
+        for (int origin = 0; origin < 2; origin++) {
+            GAME_GameCamera_get(world, cameras[owner][origin])->disabled = false;
+        }
+        GAME_GameVelocity_get(world, moving)->x = 2;
+        game_materials_reset(materials);
+        assert(materials->terrain_views == storage && acap(storage) == capacity);
+        assert(!acount(materials->terrain_views) && !acount(materials->debris_tiles));
+        assert(!game_materials_prepare(materials));
+        assert(game_materials_inspect(materials).cells == cells);
+    }
+    assert(lives[0]->materials->terrain_views != lives[1]->materials->terrain_views);
+    game_live_world_free(lives[0]);
+    ecs_world_free(worlds[0]);
+    assert(!game_materials_prepare(lives[1]->materials));
+    game_live_world_free(lives[1]);
+    ecs_world_free(worlds[1]);
+}
+
 static void finite_drive()
 {
     ecs_world *world = ecs_world_new();
@@ -2075,6 +2185,78 @@ static material_chunk debris_chunk(fluid_vec position, fluid_vec velocity, float
     return chunk;
 }
 
+static void debris_preparation_scratch()
+{
+    ecs_world *world = ecs_world_new();
+    game_materials *owners[2] = { game_materials_new(world, NULL, NULL),
+                                  game_materials_new(world, NULL, NULL) };
+    material_debris *reference = material_debris_new(4);
+    material_chunk initial = debris_chunk((fluid_vec){ 0, 8 }, (fluid_vec){ 0 }, 0);
+    for (int owner = 0; owner < 2; owner++) {
+        game_materials *materials = owners[owner];
+        materials->debris = material_debris_new(4);
+        materials->fluid = material_fluid_new(10, 2);
+        material_fluid_set_reaction(materials->fluid, (fluid_reaction){ .ignition = 1, .burn_rate = 2 });
+        fluid_particle hot = particle(-8, 0, FLUID_GAS),
+                       fuel = particle(0, 0, FLUID_GAS);
+        hot.heat = 2;
+        fuel.fuel = 1;
+        assert(material_fluid_add(materials->fluid, hot));
+        assert(material_fluid_add(materials->fluid, fuel));
+        tick(materials->fluid);
+        int count;
+        const fluid_blast *events = material_fluid_blasts(materials->fluid, &count);
+        assert(count == 1);
+        materials->combustion.blast_radius = 30;
+        materials->combustion.blast_speed = 20;
+        material_debris_blast blast = {
+            events[0].position,
+            30 * (.35f + .65f * fminf(1, events[0].ignitions / 8.f)),
+            20 * fminf(1, events[0].ignitions / 8.f)
+        };
+        material_debris_add(materials->debris, initial);
+        material_ecs_tick_debris(materials, 1.f / 60, NULL, 0, NULL, 0);
+        assert(materials->debris_blasts && !acount(materials->debris_blasts));
+        material_debris_blast *storage = materials->debris_blasts;
+        int capacity = acap(storage);
+        /* Repeat a real populated event while measuring only adapter/tick work. */
+        material_debris_clear(materials->debris);
+        material_debris_add(materials->debris, initial);
+        material_debris_clear(reference);
+        material_debris_add(reference, initial);
+        xalloc_stats before, after;
+        xalloc_stats_get(&before);
+        material_ecs_tick_debris(materials, 1.f / 60, NULL, 0, NULL, 0);
+        xalloc_stats_get(&after);
+        assert(before.calls == after.calls && before.requested_bytes == after.requested_bytes);
+        material_debris_tick(reference, 1.f / 60, NULL, NULL, NULL, 0, NULL, 0, &blast, 1);
+        const material_chunk *actual = material_debris_chunks(materials->debris, &count);
+        assert(count == 1 && actual[0].velocity.y > 0);
+        const material_chunk *expected = material_debris_chunks(reference, &count);
+        assert(actual[0].velocity.y == expected[0].velocity.y);
+        material_fluid_clear(materials->fluid);
+        material_ecs_tick_debris(materials, 1.f / 60, NULL, 0, NULL, 0);
+        material_debris_tick(reference, 1.f / 60, NULL, NULL, NULL, 0, NULL, 0, NULL, 0);
+        actual = material_debris_chunks(materials->debris, &count);
+        expected = material_debris_chunks(reference, &count);
+        assert(actual[0].velocity.y == expected[0].velocity.y);
+        assert(actual[0].position.y == expected[0].position.y);
+        game_materials_reset(materials);
+        assert(materials->debris_blasts == storage && acap(storage) == capacity);
+        assert(!acount(materials->debris_blasts) && !acount(materials->debris_tiles));
+        material_debris_add(materials->debris, initial);
+        material_ecs_tick_debris(materials, 1.f / 60, NULL, 0, NULL, 0);
+        actual = material_debris_chunks(materials->debris, &count);
+        assert(count == 1 && actual[0].velocity.y == 0);
+    }
+    assert(owners[0]->debris_blasts != owners[1]->debris_blasts);
+    game_materials_free(owners[0]);
+    material_ecs_tick_debris(owners[1], 1.f / 60, NULL, 0, NULL, 0);
+    game_materials_free(owners[1]);
+    material_debris_free(reference);
+    ecs_world_free(world);
+}
+
 static void debris()
 {
     material_debris *debris = material_debris_new(4);
@@ -2181,6 +2363,7 @@ void test_materials()
     rotated_occlusion();
     fragment_penetration();
     fragment_material_frame();
+    debris_preparation_scratch();
     debris();
     swept_ignition();
     reactions();
@@ -2205,6 +2388,7 @@ void test_materials()
     physical_destruction();
     finite_drive();
     terrain_boundary_cut();
+    terrain_preparation_scratch();
     terrain_stream_restore();
     puts("PASS: material destruction, cohesion, sleeping, momentum and parallel parity");
 }

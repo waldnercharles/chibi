@@ -193,15 +193,18 @@ checks ran outside the filesystem sandbox to permit the required macOS APIs.
 1. Reuse fluid neighbor indices and distances between density and relaxation
    when occupancy permits. Preserve visit order and measure memory growth;
    dense neighborhoods can make an unbounded pair cache worse than recomputing.
-2. Bind field parameters once per terrain tile rather than once per 16-row
-   slice, then reuse worker scratch and compact constant/Y-only values.
+2. Binding and worker scratch reuse are implemented in the
+   [next field batch](field-optimization-implementation.md). Compact storage for
+   constant/Y-only values remains an experiment.
 3. Warm required terrain and resources around scene startup and resets.
    Correlate allocation and required-tile work with browser catch-up events.
-4. Revisit SIMD for the contiguous field row loop. The earlier app-wide SIMD
-   experiment predates this layout and does not answer that narrower question.
+4. Scoped field SIMD is implemented in the
+   [next field batch](field-optimization-implementation.md). Compiler
+   vectorization had the same benefit as handwritten intrinsics, which were removed.
 5. Prewarm or batch eligible behavior modules, then measure module handoff to
    pthread workers. Compilation and dispatch costs need enough arithmetic to
    pay for the boundary crossing. Tune the minimum region size from repeated
    warm measurements; the four-operation sample was slower than bytecode here.
-6. Remeasure contact-heavy 20k scenes separately. Firefight's fluid profile
-   does not predict Arena contact cost or GPU completion time.
+6. A fresh native 20k contact-heavy measurement is recorded in the
+   [Box2D assessment](box2d-performance-and-simple-solver.md). Equivalent web
+   scale and GPU-completion measurements remain separate evidence requirements.

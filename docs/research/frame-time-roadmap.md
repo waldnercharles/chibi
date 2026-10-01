@@ -194,6 +194,14 @@ implementation checklist.
   and GitHub reports failed payments or a spending limit. An account owner must
   resolve hosted execution; no Actions or billing setting was changed.
 
+The [next field optimization batch](field-optimization-implementation.md) reuses
+parameter bindings and worker scratch across streamed slices and enables
+compiler SIMD only for the web field evaluator. It also records the
+[Box2D and simple-solver assessment](box2d-performance-and-simple-solver.md).
+Fresh 20,000-enemy Arena runs identify Box2D and contact collection as substantial
+costs, unlike Firefight's material-heavy workload. A uniform-circle crowd solver
+remains an optional experiment with an explicit simulation contract.
+
 ## Recommended order
 
 The September 19 [slow-frame attribution and swept-target experiment](swept-targets.md)

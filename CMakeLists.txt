@@ -57,6 +57,13 @@ if(CMAKE_C_COMPILER_ID MATCHES "Clang|GNU")
         PROPERTIES COMPILE_OPTIONS -ffp-contract=off)
 endif()
 
+option(CHIBI_FIELD_SIMD "Enable compiler SIMD in worker Web field evaluation" ON)
+if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND
+   (NOT CHIBI_WEB_THREADS OR NOT CHIBI_FIELD_SIMD))
+    set_property(SOURCE src/graph/compiler/field_program.c APPEND PROPERTY
+        COMPILE_OPTIONS -mno-simd128)
+endif()
+
 option(CHIBI_ENABLE_SANITIZERS
        "Enable the selected sanitizer for native targets" ON)
 option(CHIBI_ENABLE_CCACHE "Use ccache when it is available" ON)

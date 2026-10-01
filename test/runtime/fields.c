@@ -6,12 +6,14 @@
 #include "runtime/material_field.h"
 #include "runtime/material_stream.h"
 #include "runtime/material_terrain.h"
+#include "runtime/task_pool.h"
 #include "runtime/tasks.h"
 #include "support/cos_sin.h"
 #include "support/exponential.h"
 #include "support/text_file.h"
 
 #include <assert.h>
+#include <float.h>
 #include <math.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -168,7 +170,6 @@ static void parameters_and_errors()
     assert(
         !field_program_bake(p, (field_context){ 0 }, (field_grid){ 0, 1, 1 }, &out, NULL, error, sizeof error)
     );
-    field_program_free(p);
     material_fields *catalog = material_fields_new();
     assert(material_field_compile(catalog, a, error, sizeof error));
     add(a, "Print String");
@@ -188,6 +189,26 @@ static void parameters_and_errors()
         ) &&
         out == 7
     );
+    {
+        field_grid grid = { 7, 41, .25f, -1.5f, 2.5f };
+        float repeated[7 * 41];
+        v = (field_parameter){ "Radius", { .type = PIN_F32, .f = 7 } };
+        field_program_baker *baker;
+        baker = field_program_baker_new(p, (field_context){ 19, &v, 1 }, 1, error, sizeof error);
+        assert(baker);
+        v.value.f = 15;
+        for (int first = 0; first < grid.height; first += 16) {
+            int count = grid.height - first < 16 ? grid.height - first : 16;
+            assert(
+                field_program_baker_bake_rows(baker, grid, first, count, repeated, NULL, error, sizeof error)
+            );
+        }
+        for (int i = 0; i < 7 * 41; i++) {
+            assert(repeated[i] == 7);
+        }
+        field_program_baker_free(baker);
+    }
+    field_program_free(p);
     assert(material_field_revision(catalog, "parameters") == 1);
     assert(!material_field_bake(
         catalog,
@@ -265,6 +286,33 @@ static void noise_and_composition()
     );
     assert(executor.enqueues == 1 && executor.finishes == 0);
     assert(!memcmp(serial, submitted, sizeof serial));
+    {
+        field_grid tiled = { 16, 41, .125f, -2, 3 };
+        float expected[16 * 41], repeated[16 * 41];
+        assert(field_program_bake(p, ctx, tiled, expected, NULL, error, sizeof error));
+        game_task_pool *pool = game_task_pool_acquire_workers(4);
+        const game_task_system *pool_tasks = game_task_pool_tasks(pool);
+        field_program_baker *baker;
+        baker = field_program_baker_new(p, ctx, pool_tasks->workers, error, sizeof error);
+        assert(baker);
+        game_task_pool_begin(pool, true);
+        assert(
+            field_program_baker_bake_rows(baker, tiled, 0, tiled.height, repeated, pool_tasks, error, sizeof error)
+        );
+        game_task_pool_end(pool);
+        assert(!memcmp(expected, repeated, sizeof expected));
+        game_task_pool_begin(pool, true);
+        for (int first = 0; first < tiled.height; first += 16) {
+            int count = tiled.height - first < 16 ? tiled.height - first : 16;
+            assert(
+                field_program_baker_bake_rows(baker, tiled, first, count, repeated, pool_tasks, error, sizeof error)
+            );
+        }
+        game_task_pool_end(pool);
+        assert(!memcmp(expected, repeated, sizeof expected));
+        field_program_baker_free(baker);
+        game_task_pool_release(pool);
+    }
     for (int y = 0; y < 16; y++) {
         for (int x = 0; x < 16; x++) {
             float scalar_value;
@@ -304,6 +352,123 @@ static void noise_and_composition()
     field_program_free(p);
     behavior_asset_free(a);
 }
+static void compare_field_samples(field_program *program, field_context context, field_grid grid, float *baked)
+{
+    char error[256];
+    for (int y = 0; y < grid.height; y++) {
+        float py = grid.center_y + (y + .5f - grid.height * .5f) * grid.cell_size;
+        for (int x = 0; x < grid.width; x++) {
+            float px = grid.center_x + (x + .5f - grid.width * .5f) * grid.cell_size;
+            float scalar;
+            assert(field_program_sample(program, context, px, py, &scalar, error, sizeof error));
+            assert(!memcmp(&baked[y * grid.width + x], &scalar, sizeof scalar));
+        }
+    }
+}
+
+static void row_simd_parity()
+{
+    char error[256];
+    behavior_asset *asset = field("row-arithmetic");
+    assert(behavior_asset_add_variable(
+        asset,
+        "Offset",
+        PIN_F32,
+        NULL,
+        PIN_CONTAINER_SINGLE,
+        &(pin_value){ .type = PIN_F32, .f = .25f },
+        NULL
+    ));
+    node *x = add(asset, "Field X"), *parameter = add(asset, "Field Parameter");
+    assert(
+        !graph_set_pin_default(asset->graph, parameter, 0, 0, &(pin_value){ .type = PIN_STR, .str = "Offset" })
+    );
+    node *sum = add(asset, "Field Add"), *subtract = add(asset, "Field Subtract");
+    node *output = add(asset, "Field Output");
+    wire(asset, x, sum, 0);
+    wire(asset, x, sum, 1);
+    wire(asset, sum, subtract, 0);
+    wire(asset, parameter, subtract, 1);
+    wire(asset, subtract, output, 0);
+    field_program *program = compile(asset);
+    field_parameter offset = { "Offset", { .type = PIN_F32, .f = .25f } };
+    field_parameter original_offset = offset;
+    field_context context = { 37, &offset, 1 };
+    field_context original_context = { 37, &original_offset, 1 };
+    field_program_baker *baker = field_program_baker_new(program, context, 1, error, sizeof error);
+    assert(baker);
+    const int widths[] = { 1, 2, 3, 4, 5, 6, 7, 3, 9 };
+    for (int i = 0; i < (int)(sizeof widths / sizeof widths[0]); i++) {
+        field_grid grid = { widths[i], 5, .5f, -.125f, .25f };
+        float baked[9 * 5];
+        assert(field_program_baker_bake_rows(baker, grid, 0, 2, baked, NULL, error, sizeof error));
+        assert(field_program_baker_bake_rows(baker, grid, 2, 3, baked, NULL, error, sizeof error));
+        compare_field_samples(program, original_context, grid, baked);
+    }
+    offset.value.f = -2;
+    field_grid resized = { 9, 5, .5f, -.125f, .25f };
+    float snapshotted[9 * 5], rebound[9 * 5];
+    assert(
+        field_program_baker_bake_rows(baker, resized, 0, resized.height, snapshotted, NULL, error, sizeof error)
+    );
+    compare_field_samples(program, original_context, resized, snapshotted);
+    field_program_baker_free(baker);
+    baker = field_program_baker_new(program, context, 1, error, sizeof error);
+    assert(baker);
+    assert(
+        field_program_baker_bake_rows(baker, resized, 0, resized.height, rebound, NULL, error, sizeof error)
+    );
+    compare_field_samples(program, context, resized, rebound);
+    assert(memcmp(snapshotted, rebound, sizeof snapshotted) != 0);
+    field_program_baker_free(baker);
+    field_program_free(program);
+    behavior_asset_free(asset);
+
+    asset = field("row-signed-zero");
+    x = add(asset, "Field X");
+    node *multiply = add(asset, "Field Multiply");
+    output = add(asset, "Field Output");
+    wire(asset, x, multiply, 0);
+    value(asset, multiply, 1, -0.0f);
+    wire(asset, multiply, output, 0);
+    program = compile(asset);
+    for (int width = 1; width <= 9; width++) {
+        field_grid grid = { width, 3, 1, 0, 0 };
+        float baked[9 * 3];
+        assert(
+            field_program_bake(program, (field_context){ 0 }, grid, baked, NULL, error, sizeof error)
+        );
+        compare_field_samples(program, (field_context){ 0 }, grid, baked);
+        bool negative_zero = false;
+        for (int i = 0; i < width * grid.height; i++) {
+            uint32_t bits;
+            memcpy(&bits, &baked[i], sizeof bits);
+            negative_zero |= bits == UINT32_C(0x80000000);
+        }
+        assert(negative_zero);
+    }
+    field_program_free(program);
+    behavior_asset_free(asset);
+
+    asset = field("row-overflow");
+    x = add(asset, "Field X");
+    multiply = add(asset, "Field Multiply");
+    output = add(asset, "Field Output");
+    wire(asset, x, multiply, 0);
+    value(asset, multiply, 1, FLT_MAX);
+    wire(asset, multiply, output, 0);
+    program = compile(asset);
+    field_grid grid = { 5, 1, 1, 2, 0 };
+    float baked[5];
+    assert(
+        !field_program_bake(program, (field_context){ 0 }, grid, baked, NULL, error, sizeof error)
+    );
+    float scalar;
+    assert(!field_program_sample(program, (field_context){ 0 }, 2, 0, &scalar, error, sizeof error));
+    field_program_free(program);
+    behavior_asset_free(asset);
+}
+
 static void repeated_inputs()
 {
     behavior_asset *a = field("repeated inputs");
@@ -527,8 +692,31 @@ static void streaming_restore()
     material_stream_desc desc = { .grid = { 4099, 513, 1 },
                                   .field = "stream-fixture",
                                   .seed = 71 };
-    material_stream *stream = material_stream_new(desc);
     material_stream_view view = { -1500, 0, 80 };
+    material_fields *hot_fields = material_fields_new();
+    assert(material_field_compile(hot_fields, a, error, sizeof error));
+    material_stream *stale_stream = material_stream_new(desc);
+    assert(material_stream_update(stale_stream, hot_fields, &view, 1, 1, error, sizeof error));
+    assert(material_stream_inspect(stale_stream).resident == 0);
+    behavior_asset *replacement = field("stream-fixture");
+    node *rx = add(replacement, "Field X"), *ry = add(replacement, "Field Y");
+    node *rcircle = add(replacement, "Field Circle"),
+         *rout = add(replacement, "Field Output");
+    wire(replacement, rx, rcircle, 0);
+    wire(replacement, ry, rcircle, 1);
+    value(replacement, rcircle, 2, 4000);
+    wire(replacement, rcircle, rout, 0);
+    assert(material_field_compile(hot_fields, replacement, error, sizeof error));
+    assert(!material_stream_update(stale_stream, hot_fields, &view, 1, 1, error, sizeof error));
+    assert(
+        strstr(error, "field changed") &&
+        material_stream_inspect(stale_stream).resident == 0
+    );
+    material_stream_free(stale_stream);
+    material_fields_free(hot_fields);
+    behavior_asset_free(replacement);
+
+    material_stream *stream = material_stream_new(desc);
     /* Prefetch bakes a tile a slice per update, publishing it once complete. */
     int count;
     const material_stream_tile *tiles;
@@ -672,6 +860,34 @@ static void streaming_restore()
     free(damage);
 }
 
+static void streaming_failed_slice_retries()
+{
+    behavior_asset *asset = field("stream-failing-row");
+    node *y = add(asset, "Field Y"), *subtract = add(asset, "Field Subtract");
+    node *divide = add(asset, "Field Divide"), *output = add(asset, "Field Output");
+    wire(asset, y, subtract, 0);
+    value(asset, subtract, 1, 20.5f);
+    value(asset, divide, 0, 1);
+    wire(asset, subtract, divide, 1);
+    wire(asset, divide, output, 0);
+    material_fields *fields = material_fields_new();
+    char error[256] = { 0 };
+    assert(material_field_compile(fields, asset, error, sizeof error));
+    material_stream *stream = material_stream_new((material_stream_desc){
+        .grid = { 0, 0, 1 },
+        .field = "stream-failing-row",
+    });
+    material_stream_view view = { 64, 64, 0 };
+    assert(material_stream_update(stream, fields, &view, 1, 1, error, sizeof error));
+    assert(!material_stream_update(stream, fields, &view, 1, 1, error, sizeof error));
+    assert(!material_stream_update(stream, fields, &view, 1, 1, error, sizeof error));
+    assert(strstr(error, "invalid scalar"));
+    assert(material_stream_inspect(stream).resident == 0);
+    material_stream_free(stream);
+    material_fields_free(fields);
+    behavior_asset_free(asset);
+}
+
 /* Fields use Box2D's cosine and sine, identical on every platform: within
  * 0.002 of libm across many turns, and exact at zero. */
 static void cos_sin_accuracy()
@@ -779,9 +995,11 @@ void test_fields()
     atan2_accuracy();
     exponential_accuracy();
     streaming_restore();
+    streaming_failed_slice_retries();
     primitives();
     parameters_and_errors();
     noise_and_composition();
+    row_simd_parity();
     repeated_inputs();
     functions();
     multiple_results();
@@ -841,5 +1059,71 @@ int bench_fields()
     free(values);
     field_program_free(p);
     behavior_asset_free(a);
+    return 0;
+}
+
+int bench_field_slices()
+{
+    const char *parameters = "{\"Radius\":225.0,\"Roughness\":100.0}";
+    char *json = text_file_read("projects/arena2d/content/fields/CaveField.yaml");
+    assert(json);
+    behavior_asset *asset = behavior_asset_load_json(json);
+    free(json);
+    material_fields *fields = material_fields_new();
+    char error[256] = { 0 };
+    assert(material_field_compile(fields, asset, error, sizeof error));
+    material_stream *stream = material_stream_new((material_stream_desc){
+        .grid = { 0, 0, 2 },
+        .field = asset->name,
+        .parameters = parameters,
+        .seed = 1729,
+    });
+    enum
+    {
+        TILE_SPAN = 128 * 2,
+        CENTER_COUNT = 256,
+        SLICE_COUNT = TILE_SLICES - 1,
+        SAMPLE_COUNT = 5,
+    };
+    field_grid expected_grid = { 128, 128, 2, TILE_SPAN * .5f, TILE_SPAN * .5f };
+    float *expected = malloc(
+        (size_t)expected_grid.width * expected_grid.height * sizeof(float)
+    );
+    assert(expected);
+    assert(
+        material_field_bake(fields, asset->name, parameters, 1729, expected_grid, expected, NULL, error, sizeof error)
+    );
+    uint64_t expected_hash = hash(expected, expected_grid.width * expected_grid.height);
+    free(expected);
+    for (int run = -1; run < SAMPLE_COUNT; run++) {
+        struct timespec start, end;
+        if (run >= 0) {
+            clock_gettime(CLOCK_MONOTONIC, &start);
+        }
+        for (int center = 0; center < CENTER_COUNT; center++) {
+            material_stream_view view = { center * TILE_SPAN * 4.0f, 0, 0, 0 };
+            for (int slice = 0; slice < SLICE_COUNT; slice++) {
+                assert(material_stream_update(stream, fields, &view, 1, 1, error, sizeof error));
+            }
+        }
+        assert(material_stream_inspect(stream).resident == 0);
+        if (run >= 0) {
+            clock_gettime(CLOCK_MONOTONIC, &end);
+            double elapsed_ms = 1000. * (end.tv_sec - start.tv_sec) +
+                                (end.tv_nsec - start.tv_nsec) / 1e6;
+            printf(
+                "field slices %d: %.3f ms, %d centers, %d slices per center, "
+                "hash %016llx\n",
+                run,
+                elapsed_ms,
+                CENTER_COUNT,
+                SLICE_COUNT,
+                (unsigned long long)expected_hash
+            );
+        }
+    }
+    material_stream_free(stream);
+    material_fields_free(fields);
+    behavior_asset_free(asset);
     return 0;
 }

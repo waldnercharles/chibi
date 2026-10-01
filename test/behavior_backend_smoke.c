@@ -87,22 +87,34 @@ const int REGISTRY_PACK_COUNT = sizeof REGISTRY_PACKS / sizeof REGISTRY_PACKS[0]
 #ifdef __EMSCRIPTEN__
 enum
 {
-    WASM_SMOKE_REGIONS = 4,
+    WASM_SMOKE_REGIONS = 8,
+    WASM_SMOKE_ELIGIBLE_REGIONS = 6,
+    WASM_SMOKE_MAX_INPUTS = 8,
     WASM_SMOKE_LOOP_ITERATIONS = 2,
     WASM_SMOKE_BENCH_ITERATIONS = 4000,
+    WASM_SMOKE_WORKER_TRIALS = 5,
+    WASM_SMOKE_WORKER_HANDOFFS = 128,
     WASM_SMOKE_MAX_POLLS = 5000,
     WASM_SMOKE_MAX_OPERATIONS = 64,
 };
-static const int wasm_smoke_operations[WASM_SMOKE_REGIONS] = { 16, 24, 32, 64 };
+static const int wasm_smoke_operations[WASM_SMOKE_REGIONS] = { 12, 16, 16, 24,
+                                                               32, 16, 64, 16 };
+static const int wasm_smoke_inputs[WASM_SMOKE_REGIONS] = { 1, 1, 4, 6,
+                                                           8, 8, 1, 1 };
+static const bool wasm_smoke_rounding[WASM_SMOKE_REGIONS] = {
+    false, false, false, false, false, false, false, true
+};
 
 static behavior_asset *wasm_smoke_asset;
 static behavior_instance *wasm_smoke_instance;
-static uint64_t wasm_smoke_input_id;
+static uint64_t wasm_smoke_input_ids[WASM_SMOKE_MAX_INPUTS];
 static uint64_t wasm_smoke_output_ids[WASM_SMOKE_REGIONS];
 static uint64_t wasm_smoke_loop_output_id;
 static node *wasm_smoke_sets[WASM_SMOKE_REGIONS];
-static uint32_t wasm_smoke_execution_before;
+static node *wasm_smoke_loop_set;
+static node *wasm_smoke_input_gets[WASM_SMOKE_MAX_INPUTS];
 static int wasm_smoke_polls;
+static const float wasm_smoke_rounding_input_value = 16777216.0f;
 
 static void wasm_smoke_poll(void *);
 static void wasm_smoke_retirement_poll(void *);
@@ -111,8 +123,44 @@ static void wasm_smoke_retirement_poll(void *unused)
 {
     (void)unused;
     assert(behavior_expression_wasm_registry_size() == 0);
-    puts("browser behavior Wasm: async readiness, bytecode fallback, reuse, NaN/F32 parity, retirement");
+    puts("browser behavior Wasm: async readiness, bytecode fallback, reuse, NaN/F32 rounding parity, retirement");
     emscripten_force_exit(0);
+}
+
+static float wasm_smoke_input_value(int input)
+{
+    return input == 0 ? wasm_smoke_rounding_input_value : (float)input;
+}
+
+static float wasm_smoke_expected(int region)
+{
+    if (wasm_smoke_rounding[region]) {
+        return 0.0f;
+    }
+    float result = wasm_smoke_input_value(0);
+    int input_count = wasm_smoke_inputs[region];
+    for (int i = 0; i < wasm_smoke_operations[region]; i++) {
+        result = (float)(result + wasm_smoke_input_value(i % input_count));
+    }
+    return result;
+}
+
+static void wasm_smoke_restore_inputs(void)
+{
+    for (int i = 0; i < WASM_SMOKE_MAX_INPUTS; i++) {
+        int status = behavior_instance_set_variable(
+            wasm_smoke_instance,
+            wasm_smoke_input_ids[i],
+            &(pin_value){ .type = PIN_F32, .f = wasm_smoke_input_value(i) }
+        );
+        assert(!status);
+    }
+}
+
+static bool wasm_smoke_region_eligible(int region)
+{
+    return wasm_smoke_operations[region] >= 16 &&
+           wasm_smoke_operations[region] >= wasm_smoke_inputs[region] * 4;
 }
 
 static void wasm_smoke_dispatch()
@@ -133,12 +181,62 @@ static void wasm_smoke_dispatch()
     assert(!behavior_instance_release_activation(wasm_smoke_instance, run));
 }
 
+static bool wasm_smoke_probe_graph_regions(
+    const behavior_graph_program *program,
+    bool expect_nan,
+    unsigned *out_executed
+)
+{
+    runtime_store *runtime = runtime_store_create(wasm_smoke_asset->graph);
+    arena storage = { 0 };
+    eval_context context = { .instance = wasm_smoke_instance, .runtime = runtime };
+    bool ready = true;
+    unsigned executed = 0;
+    for (int region = 0; region < WASM_SMOKE_REGIONS; region++) {
+        behavior_expression_wasm_stats before, after;
+        behavior_expression_wasm_get_stats(&before);
+        runtime_store_reset_memo(runtime);
+        pin_value result = { 0 };
+        int status = behavior_program_input(
+            program,
+            wasm_smoke_sets[region],
+            1,
+            &storage,
+            &result,
+            &context,
+            BEHAVIOR_BYTECODE
+        );
+        assert(!status);
+        behavior_expression_wasm_get_stats(&after);
+        unsigned delta = after.expressions_executed - before.expressions_executed;
+        if (expect_nan) {
+            assert(isnan(result.f));
+        } else {
+            assert(result.f == wasm_smoke_expected(region));
+        }
+        if (wasm_smoke_region_eligible(region)) {
+            assert(delta <= 1);
+            if (delta != 1) {
+                ready = false;
+            }
+            executed += delta;
+        } else {
+            assert(delta == 0);
+        }
+    }
+    runtime_store_free(runtime);
+    arena_free(&storage);
+    *out_executed = executed;
+    return ready;
+}
+
 static int wasm_smoke_reference_input(
     const behavior_graph_program *program,
     node *n,
     arena *storage,
     runtime_store *runtime,
-    eval_context *context
+    eval_context *context,
+    pin_value *out
 )
 {
     const graph_ir *ir = behavior_graph_ir(program);
@@ -165,12 +263,14 @@ static int wasm_smoke_reference_input(
         }
         pc++;
     }
+    *out = runtime_node_inputs(runtime_store_node(runtime, n))[1];
     return 0;
 }
 
 static double wasm_smoke_bench(int region, bool wasm)
 {
     behavior_instance_set_trace_enabled(wasm_smoke_instance, 0);
+    wasm_smoke_restore_inputs();
     const behavior_graph_program *program = behavior_program_graph(
         wasm_smoke_asset->program,
         wasm_smoke_asset->graph
@@ -182,16 +282,18 @@ static double wasm_smoke_bench(int region, bool wasm)
     for (int i = 0; i < 100; i++) {
         runtime_store_reset_memo(runtime);
         assert(
-            wasm ? !behavior_program_input(program, wasm_smoke_sets[region], 1, &storage, &result, &context, BEHAVIOR_BYTECODE)
-                 : !wasm_smoke_reference_input(program, wasm_smoke_sets[region], &storage, runtime, &context)
+            wasm
+                ? !behavior_program_input(program, wasm_smoke_sets[region], 1, &storage, &result, &context, BEHAVIOR_BYTECODE)
+                : !wasm_smoke_reference_input(program, wasm_smoke_sets[region], &storage, runtime, &context, &result)
         );
     }
     double start = emscripten_get_now();
     for (int i = 0; i < WASM_SMOKE_BENCH_ITERATIONS; i++) {
         runtime_store_reset_memo(runtime);
         assert(
-            wasm ? !behavior_program_input(program, wasm_smoke_sets[region], 1, &storage, &result, &context, BEHAVIOR_BYTECODE)
-                 : !wasm_smoke_reference_input(program, wasm_smoke_sets[region], &storage, runtime, &context)
+            wasm
+                ? !behavior_program_input(program, wasm_smoke_sets[region], 1, &storage, &result, &context, BEHAVIOR_BYTECODE)
+                : !wasm_smoke_reference_input(program, wasm_smoke_sets[region], &storage, runtime, &context, &result)
         );
     }
     double elapsed = emscripten_get_now() - start;
@@ -212,9 +314,21 @@ static node *wasm_smoke_binary(graph *g, const node_desc *desc, node *left, node
     return operation;
 }
 
-static node *wasm_smoke_expression(graph *g, node *input, int operations)
+static node *wasm_smoke_expression(graph *g, node *const *inputs, int operations, int input_count)
 {
-    assert(operations >= 4 && operations <= WASM_SMOKE_MAX_OPERATIONS);
+    assert(operations >= 1 && operations <= WASM_SMOKE_MAX_OPERATIONS);
+    assert(input_count >= 1 && input_count <= WASM_SMOKE_MAX_INPUTS);
+    node *result = inputs[0];
+    for (int i = 0; i < operations; i++) {
+        result = wasm_smoke_binary(g, &NODE_Add, result, inputs[i % input_count]);
+    }
+    return result;
+}
+
+static node *wasm_smoke_rounding_expression(graph *g, node *input, int operations)
+{
+    assert(operations >= 2 && operations <= WASM_SMOKE_MAX_OPERATIONS);
+    /* At 2^24, F32 rounds input + 1 back to input; a wider intermediate yields 1. */
     node *round = graph_add_node(g, &NODE_Add);
     for (int pin = 0; pin < 2; pin++) {
         assert(!graph_set_pin_type(g, round, false, pin, PIN_F32, "float"));
@@ -224,11 +338,19 @@ static node *wasm_smoke_expression(graph *g, node *input, int operations)
         !graph_set_pin_default(g, round, false, 1, &(pin_value){ .type = PIN_F32, .f = 1.0f })
     );
     assert(!graph_connect_data(g, input, 0, round, 0));
+
     node *result = wasm_smoke_binary(g, &NODE_Subtract, round, input);
-    node *zero = wasm_smoke_binary(g, &NODE_Subtract, input, input);
-    result = wasm_smoke_binary(g, &NODE_Add, result, zero);
-    for (int i = 4; i < operations; i++) {
-        result = wasm_smoke_binary(g, &NODE_Add, result, zero);
+    for (int i = 2; i < operations; i++) {
+        node *add_zero = graph_add_node(g, &NODE_Add);
+        for (int pin = 0; pin < 2; pin++) {
+            assert(!graph_set_pin_type(g, add_zero, false, pin, PIN_F32, "float"));
+        }
+        assert(!graph_set_pin_type(g, add_zero, true, 0, PIN_F32, "float"));
+        assert(
+            !graph_set_pin_default(g, add_zero, false, 1, &(pin_value){ .type = PIN_F32, .f = 0.0f })
+        );
+        assert(!graph_connect_data(g, result, 0, add_zero, 0));
+        result = add_zero;
     }
     return result;
 }
@@ -303,39 +425,86 @@ static void wasm_smoke_region_selection()
 static void wasm_smoke_poll(void *unused)
 {
     (void)unused;
-    wasm_smoke_dispatch();
     behavior_expression_wasm_stats stats;
     behavior_expression_wasm_get_stats(&stats);
-    if (stats.expressions_executed == wasm_smoke_execution_before) {
-        assert(++wasm_smoke_polls < WASM_SMOKE_MAX_POLLS);
-        emscripten_async_call(wasm_smoke_poll, NULL, 1);
-        return;
-    }
+    uint32_t before_dispatch = stats.expressions_executed;
+    wasm_smoke_dispatch();
+    behavior_expression_wasm_get_stats(&stats);
+    uint32_t dispatch_executions = stats.expressions_executed - before_dispatch;
     for (int i = 0; i < WASM_SMOKE_REGIONS; i++) {
         pin_value result;
         assert(
             behavior_instance_get_variable(wasm_smoke_instance, wasm_smoke_output_ids[i], &result) == 0
         );
-        assert(result.f == 0.0f);
+        assert(result.f == wasm_smoke_expected(i));
     }
     pin_value loop_result;
     assert(
         behavior_instance_get_variable(wasm_smoke_instance, wasm_smoke_loop_output_id, &loop_result) == 0
     );
-    assert(loop_result.f == 0.0f);
+    assert(loop_result.f == wasm_smoke_expected(1));
 
-    uint32_t executions = stats.expressions_executed;
+    const behavior_graph_program *program = behavior_program_graph(
+        wasm_smoke_asset->program,
+        wasm_smoke_asset->graph
+    );
+    unsigned graph_executions = 0;
+    bool graph_ready = wasm_smoke_probe_graph_regions(program, false, &graph_executions);
+    if (!graph_ready || !dispatch_executions) {
+        assert(++wasm_smoke_polls < WASM_SMOKE_MAX_POLLS);
+        emscripten_async_call(wasm_smoke_poll, NULL, 1);
+        return;
+    }
+    assert(graph_executions == WASM_SMOKE_ELIGIBLE_REGIONS);
+    printf("browser behavior Wasm flow calls=%u; direct graph input calls=%u\n", dispatch_executions, graph_executions);
+
     wasm_smoke_dispatch();
+    for (int i = 0; i < WASM_SMOKE_REGIONS; i++) {
+        pin_value result;
+        assert(
+            behavior_instance_get_variable(wasm_smoke_instance, wasm_smoke_output_ids[i], &result) == 0
+        );
+        assert(result.f == wasm_smoke_expected(i));
+    }
     behavior_expression_wasm_get_stats(&stats);
-    assert(stats.expressions_executed == executions + WASM_SMOKE_REGIONS + WASM_SMOKE_LOOP_ITERATIONS);
+    uint32_t executions = stats.expressions_executed;
+    unsigned warm_graph_executions = 0;
+    bool warm_graph_ready = wasm_smoke_probe_graph_regions(program, false, &warm_graph_executions);
+    assert(warm_graph_ready);
+    assert(warm_graph_executions == WASM_SMOKE_ELIGIBLE_REGIONS);
+    behavior_expression_wasm_get_stats(&stats);
+    assert(stats.expressions_executed == executions + WASM_SMOKE_ELIGIBLE_REGIONS);
 
-    assert(!behavior_instance_set_variable(
-        wasm_smoke_instance,
-        wasm_smoke_input_id,
-        &(pin_value){ .type = PIN_F32, .f = NAN }
-    ));
+    runtime_store *runtime = runtime_store_create(wasm_smoke_asset->graph);
+    arena storage = { 0 };
+    eval_context context = { .instance = wasm_smoke_instance, .runtime = runtime };
+    executions = stats.expressions_executed;
+    for (int i = 0; i < WASM_SMOKE_LOOP_ITERATIONS; i++) {
+        runtime_store_reset_memo(runtime);
+        pin_value result;
+        assert(
+            !behavior_program_input(program, wasm_smoke_loop_set, 1, &storage, &result, &context, BEHAVIOR_BYTECODE)
+        );
+        assert(result.f == wasm_smoke_expected(1));
+    }
+    behavior_expression_wasm_get_stats(&stats);
+    assert(stats.expressions_executed == executions + WASM_SMOKE_LOOP_ITERATIONS);
+    runtime_store_free(runtime);
+    arena_free(&storage);
+
+    behavior_expression_wasm_get_stats(&stats);
+    uint32_t traced_executions = stats.expressions_executed;
+    for (int i = 0; i < WASM_SMOKE_MAX_INPUTS; i++) {
+        assert(!behavior_instance_set_variable(
+            wasm_smoke_instance,
+            wasm_smoke_input_ids[i],
+            &(pin_value){ .type = PIN_F32, .f = NAN }
+        ));
+    }
     behavior_instance_set_trace_enabled(wasm_smoke_instance, 1);
     wasm_smoke_dispatch();
+    behavior_expression_wasm_get_stats(&stats);
+    assert(stats.expressions_executed == traced_executions);
     int trace_count = 0;
     behavior_instance_trace(wasm_smoke_instance, &trace_count);
     assert(trace_count > 0);
@@ -351,16 +520,37 @@ static void wasm_smoke_poll(void *unused)
     );
     assert(isnan(loop_result.f));
     behavior_instance_set_trace_enabled(wasm_smoke_instance, 0);
-    executions = stats.expressions_executed;
+    uint32_t before_nan_flow = stats.expressions_executed;
     wasm_smoke_dispatch();
     behavior_expression_wasm_get_stats(&stats);
-    assert(stats.expressions_executed == executions + WASM_SMOKE_REGIONS + WASM_SMOKE_LOOP_ITERATIONS);
+    assert(stats.expressions_executed > before_nan_flow);
+    for (int i = 0; i < WASM_SMOKE_REGIONS; i++) {
+        pin_value result;
+        assert(
+            behavior_instance_get_variable(wasm_smoke_instance, wasm_smoke_output_ids[i], &result) == 0
+        );
+        assert(isnan(result.f));
+    }
+    executions = stats.expressions_executed;
+    unsigned nan_graph_executions = 0;
+    bool nan_graph_ready = wasm_smoke_probe_graph_regions(program, true, &nan_graph_executions);
+    assert(nan_graph_ready);
+    assert(nan_graph_executions == WASM_SMOKE_ELIGIBLE_REGIONS);
+    behavior_expression_wasm_get_stats(&stats);
+    assert(stats.expressions_executed == executions + WASM_SMOKE_ELIGIBLE_REGIONS);
 
     printf("browser behavior expression timings (ns/input):");
     for (int i = 0; i < WASM_SMOKE_REGIONS; i++) {
         double bytecode_ns = wasm_smoke_bench(i, false);
         double wasm_ns = wasm_smoke_bench(i, true);
-        printf(" %d ops %.1f/%.1f", wasm_smoke_operations[i], bytecode_ns, wasm_ns);
+        printf(
+            " %d ops/%d inputs%s %.1f/%.1f",
+            wasm_smoke_operations[i],
+            wasm_smoke_inputs[i],
+            wasm_smoke_rounding[i] ? " rounding" : "",
+            bytecode_ns,
+            wasm_ns
+        );
     }
     puts(" (bytecode/Wasm)");
 
@@ -461,6 +651,9 @@ typedef struct
     bool ran;
     pin_value result;
     int cache_size;
+    double worker_ms;
+    double caller_ms;
+    uint32_t wasm_executions;
 } wasm_worker_result;
 
 static pthread_mutex_t wasm_worker_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -468,6 +661,14 @@ static pthread_cond_t wasm_worker_condition = PTHREAD_COND_INITIALIZER;
 static int wasm_worker_state;
 static behavior_expression_wasm *wasm_worker_job_module;
 static pin_value wasm_worker_job_slots[WASM_WORKER_SLOT_COUNT];
+static bool wasm_worker_job_graph;
+static bool wasm_worker_job_graph_wasm;
+static int wasm_worker_job_region;
+static int wasm_worker_job_iterations;
+static const behavior_graph_program *wasm_worker_job_program;
+static arena *wasm_worker_job_storage;
+static runtime_store *wasm_worker_job_runtime;
+static eval_context *wasm_worker_job_context;
 static wasm_worker_result wasm_worker_job_result;
 
 static behavior_expression_wasm *wasm_smoke_worker_module(
@@ -524,19 +725,65 @@ static void *wasm_smoke_worker(void *unused)
             return NULL;
         }
         behavior_expression_wasm *module = wasm_worker_job_module;
+        bool graph_job = wasm_worker_job_graph;
+        bool graph_wasm = wasm_worker_job_graph_wasm;
+        int region = wasm_worker_job_region;
+        int iterations = wasm_worker_job_iterations;
+        const behavior_graph_program *program = wasm_worker_job_program;
+        arena *storage = wasm_worker_job_storage;
+        runtime_store *runtime = wasm_worker_job_runtime;
+        eval_context *context = wasm_worker_job_context;
         pin_value slots[WASM_WORKER_SLOT_COUNT];
         memcpy(slots, wasm_worker_job_slots, sizeof slots);
         pthread_mutex_unlock(&wasm_worker_mutex);
 
         wasm_worker_result result = { 0 };
-        result
-            .ran = behavior_expression_wasm_run_slots(module, 0, slots, &result.result);
+        if (graph_job) {
+            double start = emscripten_get_now();
+            result.ran = true;
+            for (int i = 0; i < iterations; i++) {
+                runtime_store_reset_memo(runtime);
+                int status = graph_wasm ? behavior_program_input(
+                                              program,
+                                              wasm_smoke_sets[region],
+                                              1,
+                                              storage,
+                                              &result.result,
+                                              context,
+                                              BEHAVIOR_BYTECODE
+                                          )
+                                        : wasm_smoke_reference_input(
+                                              program,
+                                              wasm_smoke_sets[region],
+                                              storage,
+                                              runtime,
+                                              context,
+                                              &result.result
+                                          );
+                if (status) {
+                    result.ran = false;
+                    break;
+                }
+            }
+            result.worker_ms = emscripten_get_now() - start;
+        } else {
+            result.ran = behavior_expression_wasm_run_slots(
+                module,
+                0,
+                slots,
+                &result.result
+            );
+        }
         result.cache_size = behavior_expression_wasm_registry_size();
         module = NULL;
         memset(slots, 0, sizeof slots);
 
         pthread_mutex_lock(&wasm_worker_mutex);
         wasm_worker_job_module = NULL;
+        wasm_worker_job_program = NULL;
+        wasm_worker_job_storage = NULL;
+        wasm_worker_job_runtime = NULL;
+        wasm_worker_job_context = NULL;
         wasm_worker_job_result = result;
         wasm_worker_state = 2;
         pthread_cond_broadcast(&wasm_worker_condition);
@@ -546,9 +793,11 @@ static void *wasm_smoke_worker(void *unused)
 
 static wasm_worker_result wasm_smoke_worker_run(behavior_expression_wasm *module, const pin_value *slots)
 {
+    double start = emscripten_get_now();
     pthread_mutex_lock(&wasm_worker_mutex);
     assert(wasm_worker_state == 0);
     wasm_worker_job_module = module;
+    wasm_worker_job_graph = false;
     memcpy(wasm_worker_job_slots, slots, sizeof wasm_worker_job_slots);
     wasm_worker_state = 1;
     pthread_cond_broadcast(&wasm_worker_condition);
@@ -559,10 +808,207 @@ static wasm_worker_result wasm_smoke_worker_run(behavior_expression_wasm *module
     wasm_worker_state = 0;
     pthread_cond_broadcast(&wasm_worker_condition);
     pthread_mutex_unlock(&wasm_worker_mutex);
+    result.caller_ms = emscripten_get_now() - start;
     return result;
 }
 
-static void wasm_smoke_pthread_workers(void)
+static wasm_worker_result wasm_smoke_worker_run_graph(
+    bool wasm,
+    int region,
+    int iterations,
+    const behavior_graph_program *program,
+    arena *storage,
+    runtime_store *runtime,
+    eval_context *context
+)
+{
+    behavior_expression_wasm_stats before, after;
+    behavior_expression_wasm_get_stats(&before);
+    double start = emscripten_get_now();
+    pthread_mutex_lock(&wasm_worker_mutex);
+    assert(wasm_worker_state == 0);
+    wasm_worker_job_graph = true;
+    wasm_worker_job_graph_wasm = wasm;
+    wasm_worker_job_region = region;
+    wasm_worker_job_iterations = iterations;
+    wasm_worker_job_program = program;
+    wasm_worker_job_storage = storage;
+    wasm_worker_job_runtime = runtime;
+    wasm_worker_job_context = context;
+    wasm_worker_state = 1;
+    pthread_cond_broadcast(&wasm_worker_condition);
+    while (wasm_worker_state != 2) {
+        pthread_cond_wait(&wasm_worker_condition, &wasm_worker_mutex);
+    }
+    wasm_worker_result result = wasm_worker_job_result;
+    wasm_worker_state = 0;
+    pthread_cond_broadcast(&wasm_worker_condition);
+    pthread_mutex_unlock(&wasm_worker_mutex);
+    result.caller_ms = emscripten_get_now() - start;
+    behavior_expression_wasm_get_stats(&after);
+    result.wasm_executions = after.expressions_executed - before.expressions_executed;
+    return result;
+}
+
+static double wasm_smoke_median(double *values, int count)
+{
+    double sorted[WASM_SMOKE_WORKER_TRIALS];
+    assert(count <= WASM_SMOKE_WORKER_TRIALS);
+    memcpy(sorted, values, (size_t)count * sizeof *sorted);
+    for (int i = 1; i < count; i++) {
+        double value = sorted[i];
+        int at = i;
+        while (at && sorted[at - 1] > value) {
+            sorted[at] = sorted[at - 1];
+            at--;
+        }
+        sorted[at] = value;
+    }
+    return sorted[count / 2];
+}
+
+static void wasm_smoke_worker_benchmark(const behavior_graph_program *program)
+{
+    behavior_instance_set_trace_enabled(wasm_smoke_instance, 0);
+    wasm_smoke_restore_inputs();
+    arena storage = { 0 };
+    runtime_store *runtime = runtime_store_create(wasm_smoke_asset->graph);
+    eval_context context = { .instance = wasm_smoke_instance, .runtime = runtime };
+
+    /* Synthetic module retirement above advances the worker epoch. This first
+     * graph call therefore measures a worker's first module copy/compile. */
+    int cold_region = 1;
+    wasm_worker_result
+        cold = wasm_smoke_worker_run_graph(true, cold_region, 1, program, &storage, runtime, &context);
+    assert(cold.ran && cold.result.f == wasm_smoke_expected(cold_region));
+    assert(cold.wasm_executions == 1);
+    printf(
+        "browser worker Wasm first miss ops=%d inputs=%d wasm_calls=%u "
+        "worker_ns=%.1f roundtrip_ns=%.1f\n",
+        wasm_smoke_operations[cold_region],
+        wasm_smoke_inputs[cold_region],
+        cold.wasm_executions,
+        cold.worker_ms * 1000000.0,
+        cold.caller_ms * 1000000.0
+    );
+
+    for (int region = 0; region < WASM_SMOKE_REGIONS; region++) {
+        double wasm_worker[WASM_SMOKE_WORKER_TRIALS];
+        double bytecode_worker[WASM_SMOKE_WORKER_TRIALS];
+        double wasm_roundtrip[WASM_SMOKE_WORKER_TRIALS];
+        double bytecode_roundtrip[WASM_SMOKE_WORKER_TRIALS];
+        for (int trial = 0; trial < WASM_SMOKE_WORKER_TRIALS; trial++) {
+            for (int pass = 0; pass < 2; pass++) {
+                bool wasm = (trial + pass) % 2 == 0;
+                wasm_worker_result result = wasm_smoke_worker_run_graph(
+                    wasm,
+                    region,
+                    WASM_SMOKE_BENCH_ITERATIONS,
+                    program,
+                    &storage,
+                    runtime,
+                    &context
+                );
+                assert(result.ran && result.result.f == wasm_smoke_expected(region));
+                assert(
+                    result.wasm_executions ==
+                    (wasm && wasm_smoke_region_eligible(region) ? WASM_SMOKE_BENCH_ITERATIONS
+                                                                : 0)
+                );
+                double worker_ns = result.worker_ms * 1000000.0 /
+                                   WASM_SMOKE_BENCH_ITERATIONS;
+                double roundtrip_ns = result.caller_ms * 1000000.0 /
+                                      WASM_SMOKE_BENCH_ITERATIONS;
+                if (wasm) {
+                    wasm_worker[trial] = worker_ns;
+                    wasm_roundtrip[trial] = roundtrip_ns;
+                } else {
+                    bytecode_worker[trial] = worker_ns;
+                    bytecode_roundtrip[trial] = roundtrip_ns;
+                }
+            }
+            assert(
+                wasm_worker[trial] > 0.0 && bytecode_worker[trial] > 0.0 &&
+                wasm_roundtrip[trial] > 0.0 && bytecode_roundtrip[trial] > 0.0
+            );
+            printf(
+                "browser worker sample region=%d trial=%d ops=%d inputs=%d "
+                "worker_ns wasm/bytecode=%.1f/%.1f "
+                "batch_roundtrip_ns=%.1f/%.1f\n",
+                region,
+                trial,
+                wasm_smoke_operations[region],
+                wasm_smoke_inputs[region],
+                wasm_worker[trial],
+                bytecode_worker[trial],
+                wasm_roundtrip[trial],
+                bytecode_roundtrip[trial]
+            );
+        }
+        printf(
+            "browser worker region ops=%d inputs=%d case=%s path=%s worker_ns "
+            "wasm/bytecode=%.1f/%.1f batch_roundtrip_ns=%.1f/%.1f\n",
+            wasm_smoke_operations[region],
+            wasm_smoke_inputs[region],
+            wasm_smoke_rounding[region] ? "f32-rounding" : "sum",
+            wasm_smoke_region_eligible(region) ? "wasm" : "fallback",
+            wasm_smoke_median(wasm_worker, WASM_SMOKE_WORKER_TRIALS),
+            wasm_smoke_median(bytecode_worker, WASM_SMOKE_WORKER_TRIALS),
+            wasm_smoke_median(wasm_roundtrip, WASM_SMOKE_WORKER_TRIALS),
+            wasm_smoke_median(bytecode_roundtrip, WASM_SMOKE_WORKER_TRIALS)
+        );
+    }
+
+    double wasm_handoff[WASM_SMOKE_WORKER_TRIALS];
+    double bytecode_handoff[WASM_SMOKE_WORKER_TRIALS];
+    double wasm_direct[WASM_SMOKE_WORKER_TRIALS];
+    double bytecode_direct[WASM_SMOKE_WORKER_TRIALS];
+    for (int trial = 0; trial < WASM_SMOKE_WORKER_TRIALS; trial++) {
+        for (int pass = 0; pass < 2; pass++) {
+            bool wasm = (trial + pass) % 2 == 0;
+            double caller_ms = 0.0;
+            double worker_ms = 0.0;
+            for (int i = 0; i < WASM_SMOKE_WORKER_HANDOFFS; i++) {
+                wasm_worker_result
+                    result = wasm_smoke_worker_run_graph(wasm, 1, 1, program, &storage, runtime, &context);
+                assert(result.ran && result.result.f == wasm_smoke_expected(1));
+                assert(result.wasm_executions == (wasm ? 1u : 0u));
+                caller_ms += result.caller_ms;
+                worker_ms += result.worker_ms;
+            }
+            double roundtrip_ns = caller_ms * 1000000.0 / WASM_SMOKE_WORKER_HANDOFFS;
+            double direct_ns = worker_ms * 1000000.0 / WASM_SMOKE_WORKER_HANDOFFS;
+            if (wasm) {
+                wasm_handoff[trial] = roundtrip_ns;
+                wasm_direct[trial] = direct_ns;
+            } else {
+                bytecode_handoff[trial] = roundtrip_ns;
+                bytecode_direct[trial] = direct_ns;
+            }
+        }
+        printf(
+            "browser worker one-job sample trial=%d ops=16 inputs=1 "
+            "roundtrip_ns wasm/bytecode=%.1f/%.1f worker_ns=%.1f/%.1f\n",
+            trial,
+            wasm_handoff[trial],
+            bytecode_handoff[trial],
+            wasm_direct[trial],
+            bytecode_direct[trial]
+        );
+    }
+    printf(
+        "browser worker one-job handoff ops=16 inputs=1 roundtrip_ns "
+        "wasm/bytecode=%.1f/%.1f worker_ns=%.1f/%.1f\n",
+        wasm_smoke_median(wasm_handoff, WASM_SMOKE_WORKER_TRIALS),
+        wasm_smoke_median(bytecode_handoff, WASM_SMOKE_WORKER_TRIALS),
+        wasm_smoke_median(wasm_direct, WASM_SMOKE_WORKER_TRIALS),
+        wasm_smoke_median(bytecode_direct, WASM_SMOKE_WORKER_TRIALS)
+    );
+    runtime_store_free(runtime);
+    arena_free(&storage);
+}
+
+static void wasm_smoke_pthread_workers(const behavior_graph_program *program)
 {
     pthread_t worker;
     assert(!pthread_create(&worker, NULL, wasm_smoke_worker, NULL));
@@ -615,6 +1061,8 @@ static void wasm_smoke_pthread_workers(void)
     assert(result.ran && result.result.f == 16.0f && result.cache_size == 1);
     behavior_expression_wasm_free(last);
 
+    wasm_smoke_worker_benchmark(program);
+
     pthread_mutex_lock(&wasm_worker_mutex);
     assert(wasm_worker_state == 0);
     wasm_worker_state = 3;
@@ -626,27 +1074,28 @@ static void wasm_smoke_pthread_workers(void)
 
 static void wasm_smoke_start()
 {
-#ifdef __EMSCRIPTEN_PTHREADS__
-    wasm_smoke_pthread_workers();
-#endif
     wasm_smoke_region_selection();
     wasm_smoke_linear_regression();
     behavior_expression_wasm_stats before;
     behavior_expression_wasm_get_stats(&before);
     wasm_smoke_asset = behavior_asset_new("Browser expression Wasm");
-    behavior_variable *input = behavior_asset_add_variable(
-        wasm_smoke_asset,
-        "Input",
-        PIN_F32,
-        "float",
-        PIN_CONTAINER_SINGLE,
-        &(pin_value){ .type = PIN_F32, .f = 16777216.0f },
-        ""
-    );
-    wasm_smoke_input_id = input->id;
     graph *g = wasm_smoke_asset->graph;
     node *event = graph_add_node(g, &NODE_Event);
-    node *get = behavior_asset_add_get_node(wasm_smoke_asset, wasm_smoke_input_id);
+    for (int i = 0; i < WASM_SMOKE_MAX_INPUTS; i++) {
+        char input_name[16];
+        snprintf(input_name, sizeof input_name, "Input%d", i);
+        behavior_variable *input = behavior_asset_add_variable(
+            wasm_smoke_asset,
+            input_name,
+            PIN_F32,
+            "float",
+            PIN_CONTAINER_SINGLE,
+            &(pin_value){ .type = PIN_F32, .f = wasm_smoke_input_value(i) },
+            ""
+        );
+        wasm_smoke_input_ids[i] = input->id;
+        wasm_smoke_input_gets[i] = behavior_asset_add_get_node(wasm_smoke_asset, wasm_smoke_input_ids[i]);
+    }
     assert(!graph_set_event_name(g, event, "Run"));
     behavior_variable *loop_output = behavior_asset_add_variable(
         wasm_smoke_asset,
@@ -663,12 +1112,17 @@ static void wasm_smoke_start()
     assert(
         !graph_set_pin_default(g, loop, false, 2, &(pin_value){ .type = PIN_I32, .i = WASM_SMOKE_LOOP_ITERATIONS - 1 })
     );
-    node *loop_set = behavior_asset_add_set_node(wasm_smoke_asset, wasm_smoke_loop_output_id);
-    node *loop_value = wasm_smoke_expression(g, get, wasm_smoke_operations[1]);
-    assert(!graph_connect_data(g, loop_value, 0, loop_set, 1));
+    wasm_smoke_loop_set = behavior_asset_add_set_node(wasm_smoke_asset, wasm_smoke_loop_output_id);
+    node *loop_value = wasm_smoke_expression(g, wasm_smoke_input_gets, wasm_smoke_operations[1], 1);
+    assert(!graph_connect_data(g, loop_value, 0, wasm_smoke_loop_set, 1));
     assert(!graph_connect_exec(g, event, 0, loop, 0, 0));
-    assert(!graph_connect_exec(g, loop, 0, loop_set, 0, 0));
-    for (int i = 0; i < WASM_SMOKE_REGIONS; i++) {
+    assert(!graph_connect_exec(g, loop, 0, wasm_smoke_loop_set, 0, 0));
+
+    /* Put the F32 regression early so later large matrix candidates cannot
+     * consume the graph-wide compile candidate budget before it is reached. */
+    static const int output_order[WASM_SMOKE_REGIONS] = { 7, 0, 1, 2, 3, 4, 5, 6 };
+    for (int order = 0; order < WASM_SMOKE_REGIONS; order++) {
+        int i = output_order[order];
         char output_name[16];
         snprintf(output_name, sizeof output_name, "Output%d", i);
         behavior_variable *output = behavior_asset_add_variable(
@@ -682,8 +1136,25 @@ static void wasm_smoke_start()
         );
         wasm_smoke_output_ids[i] = output->id;
         wasm_smoke_sets[i] = behavior_asset_add_set_node(wasm_smoke_asset, wasm_smoke_output_ids[i]);
-        node *value = wasm_smoke_expression(g, get, wasm_smoke_operations[i]);
+        if (i == 7) {
+            node *value = wasm_smoke_rounding_expression(
+                g,
+                wasm_smoke_input_gets[0],
+                wasm_smoke_operations[i]
+            );
+            assert(!graph_connect_data(g, value, 0, wasm_smoke_sets[i], 1));
+        }
+    }
+    for (int i = 0; i < WASM_SMOKE_REGIONS - 1; i++) {
+        node *value = wasm_smoke_expression(
+            g,
+            wasm_smoke_input_gets,
+            wasm_smoke_operations[i],
+            wasm_smoke_inputs[i]
+        );
         assert(!graph_connect_data(g, value, 0, wasm_smoke_sets[i], 1));
+    }
+    for (int i = 0; i < WASM_SMOKE_REGIONS; i++) {
         assert(
             !graph_connect_exec(g, i ? wasm_smoke_sets[i - 1] : loop, i ? 0 : 2, wasm_smoke_sets[i], 0, 0)
         );
@@ -692,23 +1163,32 @@ static void wasm_smoke_start()
     behavior_instance_set_trace_enabled(wasm_smoke_instance, 0);
     const behavior_graph_program
         *program = behavior_program_graph(wasm_smoke_asset->program, g);
-    assert(behavior_graph_program_wasm_expression_count(program) >= WASM_SMOKE_REGIONS);
+    assert(behavior_graph_program_wasm_expression_count(program) >= WASM_SMOKE_ELIGIBLE_REGIONS);
     behavior_expression_wasm_stats compiled;
     behavior_expression_wasm_get_stats(&compiled);
     assert(compiled.modules_requested == before.modules_requested + 2);
-    assert(compiled.expressions_eligible >= before.expressions_eligible + 2 * WASM_SMOKE_REGIONS);
+    /* The linear module contributes an implementation-dependent count. The
+     * graph accessor supplies the contract for the graph module itself. */
+    assert(
+        compiled.expressions_eligible >=
+        before.expressions_eligible +
+            (unsigned)behavior_graph_program_wasm_expression_count(program)
+    );
     wasm_smoke_dispatch();
     for (int i = 0; i < WASM_SMOKE_REGIONS; i++) {
         pin_value result;
         assert(
             behavior_instance_get_variable(wasm_smoke_instance, wasm_smoke_output_ids[i], &result) == 0
         );
-        assert(result.f == 0.0f);
+        assert(result.f == wasm_smoke_expected(i));
     }
     behavior_expression_wasm_get_stats(&compiled);
     assert(compiled.bytecode_fallbacks > before.bytecode_fallbacks);
     assert(compiled.expressions_executed == before.expressions_executed);
-    wasm_smoke_execution_before = compiled.expressions_executed;
+#ifdef __EMSCRIPTEN_PTHREADS__
+    wasm_smoke_pthread_workers(program);
+    behavior_expression_wasm_get_stats(&compiled);
+#endif
     emscripten_async_call(wasm_smoke_poll, NULL, 1);
 }
 #endif

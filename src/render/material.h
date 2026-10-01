@@ -5,6 +5,7 @@
 #include "runtime/material_mask.h"
 
 #include <stdbool.h>
+#include <stddef.h>
 
 typedef struct
 {
@@ -38,5 +39,38 @@ typedef struct
 
 void render_material_border_build(render_material_border *border, material_occupancy_view mask, int reach);
 void render_material_border_free(render_material_border *border);
+
+typedef struct render_material_border_cache render_material_border_cache;
+typedef struct
+{
+    const render_material_border_rect *rects;
+    int count;
+} render_material_border_view;
+typedef struct
+{
+    int entries;
+    size_t bytes;
+    uint64_t hits, builds;
+} render_material_border_cache_stats;
+
+/* Renderer-local, single-owner cache of cell-space geometry only. Limits bound
+ * retained entry/bucket arrays and rectangles, excluding the build scratch.
+ * Zero limits or an unowned view (incarnation == 0) use the scratch path.
+ * Returned geometry is borrowed until the next get/clear/free; no mask storage
+ * is retained. Rebuild a mutated mask before requesting its geometry. */
+render_material_border_cache *render_material_border_cache_new(int entries, size_t bytes);
+/* Begin one collection. Entries used in this collection stay resident: a larger
+ * working set uses build scratch instead of cycling cached allocations. */
+void render_material_border_cache_begin(render_material_border_cache *cache);
+render_material_border_view render_material_border_cache_get(
+    render_material_border_cache *cache,
+    material_occupancy_view mask,
+    int reach
+);
+render_material_border_cache_stats render_material_border_cache_get_stats(
+    const render_material_border_cache *cache
+);
+void render_material_border_cache_clear(render_material_border_cache *cache);
+void render_material_border_cache_free(render_material_border_cache *cache);
 
 #endif

@@ -2,12 +2,14 @@
  * command. */
 #include "editor/ui/highlight.h"
 #include "editor/ui/kit.h"
+#include "support/xalloc.h"
 #include "test/suite_internal.h"
 #include "ui/rml.h"
 #include "ui/rml_backend.h"
 
 #include <math.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 typedef struct
@@ -32,6 +34,8 @@ typedef struct
     char control_text[32];
     bool editing;
     int menu_b;
+    int menu_count, menu_action;
+    bool menu_submenu;
     int chosen;
     const char *order[3];
     int order_count;
@@ -91,18 +95,42 @@ static const char
     TIP_ABOUT[] = "Fires True when Condition is true, otherwise False, "
                   "and continues from whichever output fired.";
 
+static void action_menu(kit_fixture *f)
+{
+    for (int i = 0; i < f->menu_count; i++) {
+        char key[16], label[32];
+        snprintf(key, sizeof key, "action%d", i);
+        snprintf(label, sizeof label, "Action %02d", i + 1);
+        kit_menu_item_desc item = { .label = label, .checked = -1 };
+        if (kit_menu_item(f->k, key, &item)) {
+            f->menu_action = i + 1;
+        }
+    }
+}
+
 static void emit(kit_fixture *f)
 {
     kit *k = f->k;
     kit_root(k, "app");
     kit_push(k, "bar", NULL, "topbar");
     if (kit_menubar_trigger(k, "file", "File")) {
-        kit_menu_item_desc a = { .label = "A", .checked = -1 };
-        kit_menu_item(k, "a", &a);
-        kit_menu_item_desc b = { .label = "B", .checked = -1 };
-        if (kit_menu_item(k, "b", &b)) {
-            f->menu_b++;
-            f->open_rename = f->focus_rename = f->b_renames;
+        kit_attr(k, "id", "test-file-menu");
+        if (f->menu_count && f->menu_submenu) {
+            if (kit_submenu_begin(k, "actions", "Actions", 0)) {
+                kit_attr(k, "id", "test-action-submenu");
+                action_menu(f);
+                kit_submenu_end(k);
+            }
+        } else if (f->menu_count) {
+            action_menu(f);
+        } else {
+            kit_menu_item_desc a = { .label = "A", .checked = -1 };
+            kit_menu_item(k, "a", &a);
+            kit_menu_item_desc b = { .label = "B", .checked = -1 };
+            if (kit_menu_item(k, "b", &b)) {
+                f->menu_b++;
+                f->open_rename = f->focus_rename = f->b_renames;
+            }
         }
         kit_popup_end(k);
     }
@@ -456,8 +484,350 @@ static bool check(bool ok, const char *what)
     return ok;
 }
 
+/* RmlUi draws its caret at the content origin with the computed line-height.
+   Check its text box stays shorter and centered inside the unchanged hit box. */
+static bool centered_input_line(rml_element *input)
+{
+    if (!input) {
+        return false;
+    }
+    char line[32];
+    rml_element_property(input, "line-height", line, sizeof line);
+    float height = (float)atof(line);
+    rml_vec2 hit = rml_element_box_size(input, RML_BOX_BORDER);
+    rml_vec2 text = rml_element_box_size(input, RML_BOX_CONTENT);
+    rml_vec2 hit_at = rml_element_absolute_offset(input, RML_BOX_BORDER);
+    rml_vec2 text_at = rml_element_absolute_offset(input, RML_BOX_CONTENT);
+    float top = text_at.y - hit_at.y;
+    float bottom = hit.y - top - text.y;
+    return height > 0 && height < hit.y && fabsf(text.y - height) <= 1 &&
+           top >= 1 && fabsf(top - bottom) <= 1;
+}
+
+/* Capture actual font meshes without a GPU. Comparing only DOM text or
+ * element identity would miss displaced baselines and stale glyph lines. */
+typedef struct
+{
+    bool seen;
+    float left, top, right, bottom;
+} chart_bounds;
+
+typedef struct
+{
+    chart_bounds glyphs[3]; /* badge, ticks, hover */
+} chart_mesh;
+
+static void chart_bound(chart_bounds *b, float x, float y)
+{
+    if (!b->seen) {
+        *b = (chart_bounds){ true, x, y, x, y };
+        return;
+    }
+    b->left = fminf(b->left, x);
+    b->top = fminf(b->top, y);
+    b->right = fmaxf(b->right, x);
+    b->bottom = fmaxf(b->bottom, y);
+}
+
+static uintptr_t chart_compile(void *, rml_mesh mesh)
+{
+    chart_mesh *saved = xcalloc(1, sizeof *saved);
+    for (size_t v = 0; v < mesh.vertex_count; v++) {
+        rml_vertex vertex = mesh.vertices[v];
+        rml_color c = vertex.color;
+        int group = c.r == 255 && c.g == 0 && c.b == 0 ? 0
+                  : c.r == 0 && c.g == 255 && c.b == 0 ? 1
+                  : c.r == 0 && c.g == 0 && c.b == 255 ? 2
+                                                       : -1;
+        if (group >= 0) {
+            chart_bound(
+                &saved->glyphs[group],
+                vertex.position.x,
+                vertex.position.y
+            );
+        }
+    }
+    return (uintptr_t)saved;
+}
+
+static void chart_render_mesh(void *user, uintptr_t geometry, rml_vec2 at, uintptr_t texture)
+{
+    if (!texture) {
+        return;
+    }
+    chart_mesh *output = user, *mesh = (chart_mesh *)geometry;
+    for (int g = 0; g < 3; g++) {
+        chart_bounds b = mesh->glyphs[g];
+        if (b.seen) {
+            chart_bound(&output->glyphs[g], b.left + at.x, b.top + at.y);
+            chart_bound(&output->glyphs[g], b.right + at.x, b.bottom + at.y);
+        }
+    }
+}
+
+static void chart_release_mesh(void *, uintptr_t geometry)
+{
+    free((void *)geometry);
+}
+static uintptr_t chart_load_texture(void *, const char *, int *width, int *height)
+{
+    *width = *height = 1;
+    return 1;
+}
+static uintptr_t chart_generate_texture(void *, const uint8_t *, int, int)
+{
+    return 1;
+}
+static void chart_release_texture(void *, uintptr_t) {}
+static void chart_scissor_enable(void *, bool) {}
+static void chart_scissor(void *, rml_rect) {}
+static void chart_transform(void *, const float *) {}
+
+static const rml_render_interface CHART_RENDERER = {
+    chart_compile,        chart_render_mesh,      chart_release_mesh,
+    chart_load_texture,   chart_generate_texture, chart_release_texture,
+    chart_scissor_enable, chart_scissor,          chart_transform,
+};
+
+typedef struct
+{
+    rml_context *context;
+    kit *k;
+    kit_frame_input in;
+    chart_mesh drawn;
+    float value, max;
+    const char *unit, *typography;
+} chart_fixture;
+
+static void chart_styles(kit *k, const char *typography)
+{
+    char style[512];
+    snprintf(
+        style,
+        sizeof style,
+        ".chart-badge { color: #ff0000; %s } "
+        ".chart-tick { color: #00ff00; %s } "
+        "body .chart .chart-hover { color: #0000ff; %s }",
+        typography,
+        typography,
+        typography
+    );
+    kit_style_sheet(k, "chart-test", style);
+}
+
+static rml_element *chart_plot(chart_fixture *f)
+{
+    return rml_element_query_selector(rml_context_document(f->context, 0), ".chart");
+}
+
+static void chart_frame_test(chart_fixture *f)
+{
+    float times[] = { 0, 30 }, values[] = { f->value, f->value };
+    kit_chart_series series = { .times = times, .values = values, .count = 2 };
+    kit_begin(f->k, &f->in);
+    kit_root(f->k, "app");
+    chart_styles(f->k, f->typography);
+    kit_chart(
+        f->k,
+        "plot",
+        NULL,
+        &(kit_chart_desc){
+            .series = &series,
+            .series_count = 1,
+            .now = 30,
+            .min = 0,
+            .max = f->max,
+            .unit = f->unit,
+            .precision = 1,
+        }
+    );
+    kit_style(f->k, "width", "320dp");
+    kit_style(f->k, "height", "120dp");
+    kit_end(f->k);
+    rml_context_update(f->context);
+    f->drawn = (chart_mesh){ 0 };
+    rml_context_render(f->context);
+    f->in.time += 1.0 / 60;
+}
+
+static bool chart_same_bounds(chart_bounds a, chart_bounds b)
+{
+    return a.seen && b.seen && fabsf(a.left - b.left) <= 1 &&
+           fabsf(a.top - b.top) <= 1 && fabsf(a.right - b.right) <= 1 &&
+           fabsf(a.bottom - b.bottom) <= 1;
+}
+
+/* A new ordinary label gets its glyph baseline and intrinsic width from normal
+ * RmlUi layout, independently of the chart's local update path. */
+static bool chart_fresh_labels(chart_fixture *f, rml_renderer *renderer)
+{
+    chart_mesh reference = { 0 };
+    rml_context *context = rml_create_context("chart-label-reference", 640, 400, renderer);
+    rml_context_set_dp_ratio(context, f->in.dp_ratio);
+    kit *k = test_kit_create(context, "studio.rml");
+    rml_element *plot = chart_plot(f);
+    rml_vec2 origin = rml_element_absolute_offset(plot, RML_BOX_CONTENT);
+    kit_begin(k, &f->in);
+    kit_root(k, "app");
+    chart_styles(k, f->typography);
+    kit_push(k, "plot", NULL, "chart");
+    kit_style(k, "position", "relative");
+    kit_style(k, "width", "320dp");
+    kit_style(k, "height", "120dp");
+    for (int i = 0; i < rml_element_child_count(plot); i++) {
+        rml_element *label = rml_element_child(plot, i);
+        rml_element *text = rml_element_first_child(label);
+        if (!text || !rml_element_is_visible(label, true)) {
+            continue;
+        }
+        char cls[64], content[128], key[24], position[32];
+        rml_element_class_names(label, cls, sizeof cls);
+        rml_element_text(text, content, sizeof content);
+        snprintf(key, sizeof key, "label-%d", i);
+        kit_label(k, key, cls, content);
+        rml_vec2 at = rml_element_absolute_offset(label, RML_BOX_BORDER);
+        snprintf(position, sizeof position, "%gpx", at.y - origin.y);
+        kit_style(k, "top", position);
+        if (strstr(cls, "chart-hover")) {
+            snprintf(position, sizeof position, "%gpx", at.x - origin.x);
+            kit_style(k, "left", position);
+        }
+    }
+    kit_pop(k);
+    kit_end(k);
+    rml_context_update(context);
+    /* Both contexts share this renderer; its capture belongs to f. */
+    f->drawn = (chart_mesh){ 0 };
+    rml_context_render(context);
+    reference = f->drawn;
+    f->drawn = (chart_mesh){ 0 };
+    rml_context_render(f->context);
+    rml_element *badge = rml_element_query_selector(plot, ".chart-badge");
+    rml_element *ref_badge = rml_element_query_selector(rml_context_document(context, 0), ".chart-badge");
+    rml_vec2 size = rml_element_box_size(badge, RML_BOX_BORDER);
+    rml_vec2 ref_size = rml_element_box_size(ref_badge, RML_BOX_BORDER);
+    rml_vec2 at = rml_element_absolute_offset(badge, RML_BOX_BORDER);
+    float right = origin.x + rml_element_box_size(plot, RML_BOX_CONTENT).x -
+                  4 * f->in.dp_ratio;
+    bool same = fabsf(size.x - ref_size.x) <= 1 && fabsf(at.x + size.x - right) <= 1;
+    for (int g = 0; g < 3; g++) {
+        chart_bounds actual = f->drawn.glyphs[g], fresh = reference.glyphs[g];
+        bool glyphs_match = chart_same_bounds(actual, fresh);
+        if (!glyphs_match) {
+            fprintf(
+                stderr,
+                "  kit: chart glyph group %d actual=%d [%g,%g,%g,%g] fresh=%d "
+                "[%g,%g,%g,%g]\n",
+                g,
+                actual.seen,
+                actual.left,
+                actual.top,
+                actual.right,
+                actual.bottom,
+                fresh.seen,
+                fresh.left,
+                fresh.top,
+                fresh.right,
+                fresh.bottom
+            );
+        }
+        same &= glyphs_match;
+    }
+    if (!same) {
+        fprintf(
+            stderr,
+            "  kit: chart badge width=%g fresh=%g right=%g expected=%g "
+            "ratio=%g\n",
+            size.x,
+            ref_size.x,
+            at.x + size.x,
+            right,
+            f->in.dp_ratio
+        );
+    }
+    kit_destroy(k);
+    rml_remove_context("chart-label-reference");
+    return same;
+}
+
+static bool chart_label_updates()
+{
+    rml_backend *fonts = rml_backend_create(64, 64, 1);
+    chart_fixture f = { .value = 9, .max = 10000, .unit = "ms", .typography = "" };
+    rml_renderer *renderer = rml_renderer_create(&CHART_RENDERER, &f.drawn);
+    f.context = rml_create_context("chart-label-updates", 640, 400, renderer);
+    f.k = test_kit_create(f.context, "studio.rml");
+    f.in = (kit_frame_input){ .width = 640, .height = 400, .dp_ratio = 1 };
+    for (int i = 0; i < 3; i++) {
+        chart_frame_test(&f);
+    }
+    rml_element *plot = chart_plot(&f);
+    rml_vec2 at = rml_element_absolute_offset(plot, RML_BOX_CONTENT);
+    f.in.mouse_x = at.x + 100;
+    f.in.mouse_y = at.y + 50;
+    rml_context_process_mouse_move(f.context, (int)f.in.mouse_x, (int)f.in.mouse_y, 0);
+    chart_frame_test(&f);
+    bool ok = check(chart_fresh_labels(&f, renderer), "initial chart labels match ordinary laid-out glyphs");
+    float narrow = rml_element_box_size(rml_element_query_selector(plot, ".chart-badge"), RML_BOX_BORDER)
+                       .x;
+    f.value = 1234;
+    f.unit = "µs <ms>&";
+    chart_frame_test(&f);
+    char text[128];
+    rml_element *badge = rml_element_query_selector(plot, ".chart-badge");
+    rml_element_text(rml_element_first_child(badge), text, sizeof text);
+    float wide = rml_element_box_size(badge, RML_BOX_BORDER).x;
+    ok &= check(
+        !strcmp(text, "1234.0 µs <ms>&") && wide > narrow &&
+            chart_fresh_labels(&f, renderer),
+        "chart glyph updates show Unicode and literal markup units and grow "
+        "the right-anchored badge"
+    );
+    f.value = 2;
+    f.unit = "";
+    chart_frame_test(&f);
+    rml_element_text(rml_element_first_child(badge), text, sizeof text);
+    ok &= check(
+        !strcmp(text, "2.0") && rml_element_box_size(badge, RML_BOX_BORDER).x < wide &&
+            chart_fresh_labels(&f, renderer),
+        "chart glyph updates shrink digit counts and remove units without "
+        "retaining stale glyphs"
+    );
+    f.max = 100000;
+    for (int i = 0; i < 3; i++) {
+        chart_frame_test(&f);
+    }
+    bool larger_ticks = false;
+    for (int i = 0; i < rml_element_child_count(plot); i++) {
+        rml_element *label = rml_element_child(plot, i);
+        if (rml_element_is_class_set(label, "chart-tick") &&
+            rml_element_first_child(label)) {
+            rml_element_text(rml_element_first_child(label), text, sizeof text);
+            larger_ticks |= atof(text) >= 10000;
+        }
+    }
+    ok &= check(larger_ticks && chart_fresh_labels(&f, renderer), "changing the chart range updates tick text and glyph widths to match fresh layout");
+    f.typography = "font-family: inconsolata; font-size: 15dp; font-weight: "
+                   "700; line-height: 24dp;";
+    chart_frame_test(&f);
+    chart_frame_test(&f);
+    ok &= check(chart_fresh_labels(&f, renderer), "chart labels match fresh font size, face, weight and line-height layout");
+    f.in.dp_ratio = 1.5f;
+    rml_context_set_dp_ratio(f.context, f.in.dp_ratio);
+    chart_frame_test(&f);
+    chart_frame_test(&f);
+    ok &= check(chart_fresh_labels(&f, renderer), "chart labels match fresh layout after a dp-ratio change");
+    kit_destroy(f.k);
+    rml_remove_context("chart-label-updates");
+    rml_release_render_managers();
+    rml_renderer_destroy(renderer);
+    rml_backend_destroy(fonts);
+    return ok;
+}
+
 bool test_rmlui_kit()
 {
+    bool ok = chart_label_updates();
     kit_fixture f = { .value = 10,
                       .second = 3,
                       .color = 0x33669900,
@@ -473,7 +843,6 @@ bool test_rmlui_kit()
     f.k = test_kit_create(rml_backend_context(f.backend), "studio.rml");
     f.in = (kit_frame_input){ .dp_ratio = 1, .width = 1024, .height = 640 };
     settle(&f);
-    bool ok = true;
     ok &= check(rml_font_face("noto sans", RML_FONT_NORMAL, 400, 12) != 0, "Noto Sans regular face");
     ok &= check(rml_font_face("noto sans", RML_FONT_NORMAL, 600, 12) != 0, "Noto Sans semibold face");
     ok &= check(rml_font_face("noto sans", RML_FONT_NORMAL, 700, 12) != 0, "Noto Sans bold face");
@@ -568,6 +937,15 @@ bool test_rmlui_kit()
         click_element(&f, number_label);
         type(&f, "7");
         ok &= check(kit_wants_text(f.k, NULL), "number property label starts editing its field");
+        rml_element *number_input = rml_context_focus_element(
+            rml_backend_context(f.backend)
+        );
+        ok &= check(centered_input_line(number_input), "numeric caret line is centered within its full input hit box");
+        kit_set_body_class(f.k, "comfortable", true);
+        settle(&f);
+        ok &= check(centered_input_line(number_input), "comfortable numeric input grows without stretching its caret");
+        kit_set_body_class(f.k, "comfortable", false);
+        settle(&f);
         key(&f, RML_INPUT_KEY_ESCAPE, 0);
         frame(&f);
         ok &= check(f.value == label_before, "number label edit cancels without changing its value");
@@ -690,6 +1068,17 @@ bool test_rmlui_kit()
         frame(&f);
     }
     ok &= check(!strcmp(f.control_text, "Enabled"), "text becomes editable when reenabled");
+    ok &= check(centered_input_line(control_text), "text caret line is shorter and centered in its input");
+    if (control_text) {
+        rml_vec2 hit_at = rml_element_absolute_offset(control_text, RML_BOX_BORDER);
+        rml_vec2 hit = rml_element_box_size(control_text, RML_BOX_BORDER);
+        kit_blur(f.k);
+        pointer(&f, RML_INPUT_POINTER_MOVE, hit_at.x + hit.x / 2, hit_at.y + hit.y - 1);
+        pointer(&f, RML_INPUT_POINTER_DOWN, hit_at.x + hit.x / 2, hit_at.y + hit.y - 1);
+        pointer(&f, RML_INPUT_POINTER_UP, hit_at.x + hit.x / 2, hit_at.y + hit.y - 1);
+        frame(&f);
+        ok &= check(rml_context_focus_element(rml_backend_context(f.backend)) == control_text, "clicking input padding still focuses its full-height text hit target");
+    }
     if (text_label) {
         click_element(&f, text_label);
         ok &= check(
@@ -1059,21 +1448,32 @@ bool test_rmlui_kit()
     rml_element *results = rml_element_query_selector(autocomplete_popup, ".autocomplete-results");
     settle(&f);
     float compact_row = rml_element_box_size(matches[0], RML_BOX_BORDER).y;
+    float
+        compact_pitch = rml_element_absolute_offset(matches[1], RML_BOX_BORDER).y -
+                        rml_element_absolute_offset(matches[0], RML_BOX_BORDER).y;
     float list_height = rml_element_box_size(results, RML_BOX_CONTENT).y;
     ok &= check(
-        results && list_height <= compact_row * 7 + 1 &&
+        results && fabsf(compact_pitch - compact_row) <= 1 &&
+            fabsf(list_height - compact_pitch * 7) <= 1 &&
             rml_element_scroll_height(results) > list_height,
-        "autocomplete keeps twelve choices behind a seven-row scrolling "
-        "viewport"
+        "autocomplete keeps twelve choices behind exactly seven compact rows "
+        "with scrolling"
     );
     kit_set_body_class(f.k, "comfortable", true);
     settle(&f);
     float comfortable_row = rml_element_box_size(matches[0], RML_BOX_BORDER).y;
+    float comfortable_pitch = rml_element_absolute_offset(matches[1], RML_BOX_BORDER)
+                                  .y -
+                              rml_element_absolute_offset(matches[0], RML_BOX_BORDER)
+                                  .y;
     list_height = rml_element_box_size(results, RML_BOX_CONTENT).y;
     ok &= check(
-        comfortable_row > compact_row && list_height <= comfortable_row * 7 + 1 &&
+        fabsf(comfortable_row - compact_row) <= 1 &&
+            fabsf(comfortable_pitch - compact_pitch) <= 1 &&
+            fabsf(list_height - comfortable_pitch * 7) <= 1 &&
             rml_element_scroll_height(results) > list_height,
-        "comfortable density keeps the seven-row dropdown cap"
+        "comfortable density retains the same compact autocomplete row pitch "
+        "and seven-row viewport"
     );
     kit_set_body_class(f.k, "comfortable", false);
     settle(&f);
@@ -1230,6 +1630,11 @@ bool test_rmlui_kit()
     kit_blur(f.k);
     settle(&f);
 
+    snprintf(f.autocomplete_value, sizeof f.autocomplete_value, "External.path");
+    settle(&f);
+    rml_element_value(autocomplete, shown_value, sizeof shown_value);
+    ok &= check(strcmp(shown_value, "External.path") == 0, "an unfocused autocomplete refreshes its display after an external value change");
+
     ok &= check(click(&f, "app/bar/dropdown-trigger"), "button opens its dropdown");
     settle(&f);
     ok &= check(
@@ -1278,6 +1683,119 @@ bool test_rmlui_kit()
     key(&f, RML_INPUT_KEY_TAB, 0);
     frame(&f);
     ok &= check(!kit_popup_is_open(f.k, "menu:app/bar/file"), "Tab still dismisses a menu");
+
+    /* Actions use all available space; only field suggestions keep seven rows. */
+    f.menu_count = 12;
+    click(&f, "app/bar/file");
+    settle(&f);
+    rml_element *action_popup = rml_element_query_selector(doc, "#test-file-menu:not([data-ending-style])");
+    rml_element *actions[12];
+    int action_count = rml_element_query_selector_all(action_popup, ".menu-item", actions, 12);
+    rml_vec2 action_at = rml_element_absolute_offset(action_popup, RML_BOX_CONTENT);
+    float action_height = rml_element_box_size(action_popup, RML_BOX_CONTENT).y;
+    bool all_actions_visible = action_count == 12;
+    for (int i = 0; i < action_count; i++) {
+        rml_vec2 at = rml_element_absolute_offset(actions[i], RML_BOX_BORDER);
+        float height = rml_element_box_size(actions[i], RML_BOX_BORDER).y;
+        all_actions_visible &= at.y >= action_at.y - 1 &&
+                               at.y + height <= action_at.y + action_height + 1;
+    }
+    kit_rect field_rect;
+    bool field_found = kit_find(f.k, "app/fields/first/@control/value", &field_rect);
+    ok &= check(
+        all_actions_visible &&
+            rml_element_scroll_height(action_popup) <=
+                rml_element_box_size(action_popup, RML_BOX_PADDING).y + 1 &&
+            field_found && action_count &&
+            rml_element_box_size(actions[0], RML_BOX_BORDER).y < field_rect.h,
+        "a tall viewport shows all twelve actions without scrolling, in rows "
+        "slimmer than editable fields"
+    );
+    kit_popup_close(f.k, "menu:app/bar/file");
+    frame(&f);
+    f.in.height = 180;
+    rml_backend_resize(f.backend, f.in.width, f.in.height, 1);
+    click(&f, "app/bar/file");
+    settle(&f);
+    action_popup = rml_element_query_selector(doc, "#test-file-menu:not([data-ending-style])");
+    rml_vec2 action_border_at = rml_element_absolute_offset(action_popup, RML_BOX_BORDER);
+    float action_border_height = rml_element_box_size(action_popup, RML_BOX_BORDER)
+                                     .y;
+    action_height = rml_element_box_size(action_popup, RML_BOX_CONTENT).y;
+    ok &= check(
+        action_border_at.y >= 4 - 1 &&
+            action_border_at.y + action_border_height <= f.in.height - 4 + 1 &&
+            rml_element_scroll_height(action_popup) >
+                rml_element_box_size(action_popup, RML_BOX_PADDING).y + 1,
+        "a short viewport fits the action menu's border and scrolls its "
+        "overflow"
+    );
+    key(&f, RML_INPUT_KEY_END, 0);
+    settle(&f);
+    action_popup = rml_element_query_selector(doc, "#test-file-menu:not([data-ending-style])");
+    action_count = rml_element_query_selector_all(action_popup, ".menu-item", actions, 12);
+    action_at = rml_element_absolute_offset(action_popup, RML_BOX_PADDING);
+    action_height = rml_element_box_size(action_popup, RML_BOX_PADDING).y;
+    rml_vec2 final_action_at = { 0 };
+    float final_action_height = 0;
+    if (action_count == 12) {
+        final_action_at = rml_element_absolute_offset(actions[11], RML_BOX_BORDER);
+        final_action_height = rml_element_box_size(actions[11], RML_BOX_BORDER).y;
+    }
+    ok &= check(
+        action_count == 12 && rml_element_scroll_top(action_popup) > 0 &&
+            final_action_at.y >= action_at.y - 1 &&
+            final_action_at.y + final_action_height <= action_at.y + action_height + 1,
+        "End reveals the final action in a viewport-limited menu"
+    );
+    key(&f, RML_INPUT_KEY_ENTER, 0);
+    frame(&f);
+    ok &= check(
+        f.menu_action == 12 && !kit_popup_is_open(f.k, "menu:app/bar/file"),
+        "Enter activates the final action and closes the scrolling menu"
+    );
+    f.menu_action = 0;
+    f.menu_submenu = true;
+    click(&f, "app/bar/file");
+    settle(&f);
+    key(&f, RML_INPUT_KEY_END, 0);
+    key(&f, RML_INPUT_KEY_RIGHT, 0);
+    settle(&f);
+    rml_element *action_submenu = rml_element_query_selector(doc, "#test-action-submenu:not([data-ending-style])");
+    ok &= check(
+        action_submenu && kit_popup_is_open(f.k, "sub:layer/@menu:app/bar/file/actions"),
+        "Right opens the action submenu from its keyboard-selected parent row"
+    );
+    key(&f, RML_INPUT_KEY_END, 0);
+    settle(&f);
+    action_submenu = rml_element_query_selector(doc, "#test-action-submenu:not([data-ending-style])");
+    bool submenu_final_visible = false;
+    if (action_submenu) {
+        action_count = rml_element_query_selector_all(action_submenu, ".menu-item", actions, 12);
+        action_at = rml_element_absolute_offset(action_submenu, RML_BOX_PADDING);
+        action_height = rml_element_box_size(action_submenu, RML_BOX_PADDING).y;
+        if (action_count == 12) {
+            final_action_at = rml_element_absolute_offset(actions[11], RML_BOX_BORDER);
+            submenu_final_visible = rml_element_scroll_top(action_submenu) > 0 &&
+                                    final_action_at.y >= action_at.y - 1 &&
+                                    final_action_at.y + final_action_height <=
+                                        action_at.y + action_height + 1;
+        }
+    }
+    key(&f, RML_INPUT_KEY_ENTER, 0);
+    frame(&f);
+    ok &= check(
+        submenu_final_visible && f.menu_action == 12 &&
+            !kit_popup_is_open(f.k, "menu:app/bar/file") &&
+            !kit_popup_is_open(f.k, "sub:layer/@menu:app/bar/file/actions"),
+        "End reveals the submenu's last action; Enter activates it and closes "
+        "both menu levels"
+    );
+    f.menu_count = 0;
+    f.menu_submenu = false;
+    f.in.height = 640;
+    rml_backend_resize(f.backend, f.in.width, f.in.height, 1);
+    settle(&f);
 
     /* A field in a popup takes typing and Enter; the popup keeps Escape. */
     click(&f, "app/bar/rename-trigger");

@@ -527,10 +527,12 @@ typedef struct
     studio_prefs prefs;
     studio_command_info commands[4];
     studio_settings_view view;
+    studio_settings_cache cache;
 } page_fixture;
 
 static void page_open(page_fixture *f)
 {
+    f->cache = (studio_settings_cache){ 0 };
     f->doc = yyjson_mut_doc_new(NULL);
     yyjson_mut_doc_set_root(f->doc, yyjson_mut_obj(f->doc));
     studio_settings_add(f->doc);
@@ -555,6 +557,7 @@ static void page_open(page_fixture *f)
         .shortcut = studio_command_default_chord(STUDIO_COMMAND_FRAME)
     };
     f->view = (studio_settings_view){ .prefs = &f->prefs,
+                                      .cache = &f->cache,
                                       .commands = f->commands,
                                       .command_count = 4,
                                       .mac = false,
@@ -734,6 +737,68 @@ static void page_rows()
             !strcmp(yyjson_mut_get_str(member(font, "position")), "0.25"),
         "a slider moves from 0 to 1 and sets its number on a step"
     );
+    page_close(&f);
+}
+
+/* Stable bindings may reuse parsed presentation, while live command state
+ * and edits from either the model or shortcut recorder still reach the page. */
+static void page_shortcut_refresh()
+{
+    page_fixture f;
+    page_open(&f);
+    set_text(&f, f.page, "category", "keyboard");
+    studio_settings_sync(&f.view, f.doc, true);
+    yyjson_mut_val *save = row_named(&f, "command.save");
+    yyjson_mut_val *search = row_named(&f, "command.search");
+    static const char *const CTRL_S[] = { "Ctrl", "S" };
+    static const char *const CMD_P[] = { "⌘", "P" };
+    static const char *const CMD_S[] = { "⌘", "S" };
+    test_check(!studio_settings_sync(&f.view, f.doc, false) && keys_are(save, CTRL_S, 2), "unchanged Settings sync retains shortcut keys without dirtying the page");
+
+    set_text(&f, save, "value", "Mod+P");
+    studio_settings_sync(&f.view, f.doc, true);
+    bool alias = !strcmp(yyjson_mut_get_str(member(save, "conflict")), "Also assigned to Search");
+    f.commands[1].label = "Find Commands";
+    f.view.recording = STUDIO_COMMAND_SAVE + 1;
+    studio_settings_sync(&f.view, f.doc, false);
+    bool live = !strcmp(yyjson_mut_get_str(member(search, "label")), "Find Commands") &&
+                !strcmp(yyjson_mut_get_str(member(save, "conflict")), "Also assigned to Find Commands") &&
+                yyjson_mut_get_bool(member(save, "recording"));
+    f.view.recording = 0;
+    set_text(&f, search, "value", "Mod+Shift+P");
+    studio_settings_sync(&f.view, f.doc, true);
+    bool replacement = !yyjson_mut_get_str(member(save, "conflict"))[0];
+    set_text(&f, search, "value", "Mod+K");
+    studio_settings_sync(&f.view, f.doc, true);
+    bool reset = !f.prefs.shortcuts[STUDIO_COMMAND_SEARCH][0] &&
+                 !strcmp(yyjson_mut_get_str(member(save, "conflict")), "Also assigned to Find Commands");
+    test_check(alias && live && replacement && reset, "Settings refreshes dynamic labels and recording, replacement removes a default alias conflict, and reset restores it");
+
+    f.view.mac = true;
+    studio_settings_sync(&f.view, f.doc, false);
+    bool platform = keys_are(save, CMD_P, 2);
+    /* A captured preference changes outside the row-write path. */
+    f.prefs.shortcuts[STUDIO_COMMAND_SAVE][0] = '\0';
+    studio_settings_sync(&f.view, f.doc, false);
+    test_check(
+        platform && keys_are(save, CMD_S, 2) &&
+            !yyjson_mut_get_str(member(save, "conflict"))[0] &&
+            !studio_settings_sync(&f.view, f.doc, false),
+        "platform and external binding changes refresh keys and conflicts, "
+        "then settle"
+    );
+
+    yyjson_mut_arr_clear(member(f.page, "rows"));
+    studio_settings_sync(&f.view, f.doc, false);
+    bool rebuilt = keys_are(row_named(&f, "command.save"), CMD_S, 2);
+    yyjson_mut_doc *old = f.doc;
+    f.doc = yyjson_mut_doc_new(NULL);
+    yyjson_mut_doc_set_root(f.doc, yyjson_mut_obj(f.doc));
+    studio_settings_add(f.doc);
+    f.page = member(yyjson_mut_doc_get_root(f.doc), "settings");
+    studio_settings_sync(&f.view, f.doc, false);
+    test_check(rebuilt && keys_are(row_named(&f, "command.save"), CMD_S, 2), "rebuilt and replacement Settings models receive keys even with unchanged bindings");
+    yyjson_mut_doc_free(old);
     page_close(&f);
 }
 
@@ -929,6 +994,24 @@ static void click(mount_fixture *f, rml_element *el)
     }
 }
 
+static bool centered_caret(rml_element *input)
+{
+    if (!input) {
+        return false;
+    }
+    char line[32];
+    rml_element_property(input, "line-height", line, sizeof line);
+    float height = (float)atof(line);
+    rml_vec2 hit = rml_element_box_size(input, RML_BOX_BORDER);
+    rml_vec2 content = rml_element_box_size(input, RML_BOX_CONTENT);
+    rml_vec2 hit_at = rml_element_absolute_offset(input, RML_BOX_BORDER);
+    rml_vec2 content_at = rml_element_absolute_offset(input, RML_BOX_CONTENT);
+    float top = content_at.y - hit_at.y;
+    float bottom = hit.y - top - content.y;
+    return height > 0 && height < hit.y && fabsf(content.y - height) <= 1 &&
+           top >= 1 && fabsf(top - bottom) <= 1;
+}
+
 static void page_mount()
 {
     mount_fixture f = { .in = { .dp_ratio = 1, .width = 1280, .height = 800 },
@@ -949,6 +1032,7 @@ static void page_mount()
                   f.page.prefs.code_font_size == 13;
     studio_apply_font_settings(f.k, &f.page.prefs);
     mount_frame(&f);
+    test_check(centered_caret(rml_element_query_selector(f.host, ".search-input")), "the authored Settings search centers its caret inside the full hit area");
     rml_element *default_body = rml_context_document(rml_backend_context(f.backend), 0);
     char default_family[64], default_size[32], default_line[32];
     rml_element_property(default_body, "font-family", default_family, sizeof default_family);
@@ -1043,6 +1127,7 @@ static void page_mount()
                              ? rml_element_box_size(font_control, RML_BOX_BORDER)
                                    .y
                              : 0;
+    test_check(centered_caret(font_control), "applied larger font settings keep the search caret shorter and centered");
     bool applied = body && !strcmp(family, "noto sans") &&
                    !strcmp(size, "18dp") && !strcmp(line, "25dp") &&
                    compact_height == 36 && !strcmp(numeric_family, "noto sans") &&
@@ -1061,6 +1146,7 @@ static void page_mount()
                                        .y
                                  : 0;
     bool comfortable_room = body && comfortable_height == 42;
+    test_check(centered_caret(font_control), "comfortable density preserves caret geometry with the larger font");
     studio_apply_graph_font_settings(f.k, &font_prefs);
     mount_frame(&f);
     font_control = rml_element_query_selector(f.host, ".search-input");
@@ -1076,6 +1162,7 @@ static void page_mount()
     bool graph_geometry = body && !strcmp(family, "noto sans") &&
                           !strcmp(size, "12dp") && !strcmp(line, "16dp") &&
                           graph_control_height == 22;
+    test_check(centered_caret(font_control), "graph font settings retain a centered caret at their fixed control pitch");
     if (!applied || !comfortable_room || !graph_geometry) {
         fprintf(
             stderr,
@@ -1275,5 +1362,6 @@ void test_studio_settings()
     save_mirror();
     page_rows();
     page_keyboard_and_project();
+    page_shortcut_refresh();
     page_mount();
 }

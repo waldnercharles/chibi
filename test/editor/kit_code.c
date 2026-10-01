@@ -478,6 +478,49 @@ static bool completions(fixture *f)
     f->desc.completions = NULL;
     f->desc.completion_count = 0;
     frame(f);
+
+    const kit_code_completion edge_items[] = {
+        { "first", "property", NULL },    { "second", "property", NULL },
+        { "third", "property", NULL },    { "fourth", "property", NULL },
+        { "fifth", "property", NULL },    { "sixth", "property", NULL },
+        { "seventh", "property", NULL },  { "eighth", "property", NULL },
+        { "ninth", "property", NULL },    { "tenth", "property", NULL },
+        { "eleventh", "property", NULL }, { "last", "property", NULL },
+    };
+    const char *lines = "one\ntwo\nthree\nfour\nfive\nsix\nseven\neight\nnine\n"
+                        "ten\neleven\ntwelve\n";
+    kit_code_set_text(f->e, lines);
+    kit_code_set_cursor(f->e, strlen(lines));
+    f->desc.completions = edge_items;
+    f->desc.completion_count = 12;
+    f->desc.completion_start = strlen(lines);
+    f->in.height = 260;
+    rml_context_set_dimensions(f->context, 800, 260);
+    settle(f);
+    kit_rect caret = { 0 }, last;
+    kit_wants_text(f->k, &caret);
+    ok &= check(
+        kit_find(f->k, "layer/@code:app/code", &list) && list.y >= 4 &&
+            list.y + list.h <= 256 && list.y + list.h <= caret.y + 0.5f,
+        "completion near the window bottom opens above the caret within the "
+        "viewport"
+    );
+    ok &= check(list.h <= 148.5f, "code completion contains at most seven compact rows");
+    press(f, RML_KEY_UP, 0);
+    settle(f);
+    ok &= check(
+        kit_find(f->k, "layer/@code:app/code/i11", &last) && last.y >= list.y &&
+            last.y + last.h <= list.y + list.h,
+        "keyboard wrap makes the final selected completion visible"
+    );
+    press(f, RML_KEY_RETURN, 0);
+    frame(f);
+    ok &= check(f->completion == 11 && strstr(text(f), "twelve\nlast"), "Enter accepts the revealed final completion");
+    f->desc.completions = NULL;
+    f->desc.completion_count = 0;
+    f->in.height = 600;
+    rml_context_set_dimensions(f->context, 800, 600);
+    settle(f);
     return ok;
 }
 

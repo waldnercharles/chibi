@@ -18,6 +18,7 @@
 
 /* A menu is as wide as its widest row and the popup's padding, in bounds. */
 static const float popup_chrome = 10, menu_min = 180, menu_max = 480;
+static const float autocomplete_chrome = 8;
 /* Tooltip text in dp on screen, and its distance from the target. */
 static const float tip_size = 11, tip_gap = 6;
 
@@ -49,6 +50,11 @@ void close_popup(kit *k, const char *key)
     p->open = false;
     p->placed = false;
     p->highlight = -1;
+    /* Activation closes after emission; stop hit testing before the next frame
+       retires the popup so another click can reach the control beneath it. */
+    if (p->node) {
+        rml_element_set_property(p->node->el, "pointer-events", "none");
+    }
     unstack(k, p);
 }
 
@@ -229,21 +235,24 @@ static rml_vec2 popup_origin(const kit *k, const popup *p, kit_rect size)
     return (rml_vec2){ a.x, y };
 }
 
-/* Keep authored row limits while allowing a smaller window to clip the list. */
+/* Field choices retain their row limit; action menus only stop at the window. */
 static void limit_popup_height(kit *k, popup *p)
 {
     rml_element *list = NULL;
     float cap = 0;
     if (p->dropdown || p->autocomplete) {
         list = rml_element_query_selector(p->node->el, ".dropdown-results, .autocomplete-results");
-        float chrome = popup_chrome + (p->dropdown ? kit_metric(k, "--h") + 8 : 0);
-        cap = math_min(kit_metric(k, "--dropdown-list-h"), math_max(1.0f, k->in.height - 8 - chrome));
+        float chrome = p->autocomplete ? autocomplete_chrome
+                                       : popup_chrome + kit_metric(k, "--h") + 8;
+        float rows = p->autocomplete ? 7 * kit_metric(k, "--autocomplete-row-h")
+                                     : kit_metric(k, "--dropdown-list-h");
+        cap = math_min(rows, math_max(1.0f, k->in.height - 8 - chrome));
     } else if (
         rml_element_is_class_set(p->node->el, "menu") &&
         !rml_element_is_class_set(p->node->el, "struct-editor")
     ) {
         list = p->node->el;
-        cap = math_min(kit_metric(k, "--dropdown-box-h"), math_max(1.0f, k->in.height - 8));
+        cap = math_max(1.0f, k->in.height - 8);
     }
     if (list) {
         char value[32];
@@ -832,6 +841,7 @@ bool kit_popup_begin(kit *k, const char *key, const char *cls)
     }
     const char *c = frame_format(k, "popup %s", cls ? cls : "");
     node *n = emit_in(k, k->layer, frame_format(k, "@%s", key), KIND_POPUP, "div", c);
+    rml_element_remove_property(n->el, "pointer-events");
     presence(k, n);
     flag_element(n->el, "data-unplaced", !p->placed);
     p->node = n;

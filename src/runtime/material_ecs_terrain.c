@@ -126,7 +126,7 @@ static const char *stream_terrain(
         record->terrain_hash = hash;
     }
     material_stream *stream = record->stream;
-    material_stream_view *views = NULL;
+    aclear(materials->terrain_views);
     ecs_world *world = materials->world;
     ecs_component_id ids[] = { GAME_COMPONENT_GameCamera.id,
                                GAME_COMPONENT_GameTransform.id };
@@ -142,7 +142,7 @@ static const char *stream_terrain(
             }
             const GameTransform *p = GAME_GameTransform_get_const(world, e);
             apush(
-                views,
+                materials->terrain_views,
                 ((material_stream_view){
                     p->x + camera->offset.x - origin.x,
                     p->y + camera->offset.y - origin.y,
@@ -168,7 +168,10 @@ static const char *stream_terrain(
                 continue;
             }
             const GameTransform *p = GAME_GameTransform_get_const(world, e);
-            apush(views, ((material_stream_view){ p->x - origin.x, p->y - origin.y, 128, 64 }));
+            apush(
+                materials->terrain_views,
+                ((material_stream_view){ p->x - origin.x, p->y - origin.y, 128, 64 })
+            );
         }
         ecs_query_end(&query);
     }
@@ -176,14 +179,14 @@ static const char *stream_terrain(
     bool ok = material_stream_update(
         stream,
         materials->fields,
-        views,
-        acount(views),
+        materials->terrain_views,
+        acount(materials->terrain_views),
         terrain.stream_budget,
         materials->error,
         sizeof materials->error
     );
     game_task_pool_end(materials->pool);
-    afree(views);
+    aclear(materials->terrain_views);
     int count;
     const material_stream_tile *tiles = material_stream_tiles(stream, &count);
     for (int i = 0; i < acount(materials->records); i++) {

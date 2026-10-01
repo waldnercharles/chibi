@@ -958,6 +958,20 @@ typedef struct studio_token
     bool color;
 } studio_token;
 
+/* Shortcut presentation belongs to one Settings model. Command defaults,
+ * aliases and contexts are fixed by the command table; overrides and the
+ * platform determine its keys and conflicts. */
+typedef struct studio_settings_cache
+{
+    yyjson_mut_doc *doc;
+    yyjson_mut_val *rows;
+    char shortcuts[STUDIO_COMMAND_COUNT][STUDIO_CHORD_SIZE];
+    int commands[STUDIO_COMMAND_COUNT];
+    int conflicts[STUDIO_COMMAND_COUNT];
+    int command_count;
+    bool valid, mac;
+} studio_settings_cache;
+
 /* What authored panels bind beyond their world's `save` (studio_sources.c):
  * `world`, the Scene world's saved keys, and `theme`, the custom properties
  * of the stylesheets the open scene's root document imports. */
@@ -970,6 +984,7 @@ typedef struct studio_sources
     studio_token *tokens;    /* in the order `theme` lists its rows */
     uint64_t writes_seen;
     int inspected; /* the Inspector model's revision `inspector` shows */
+    studio_settings_cache settings_cache;
 } studio_sources;
 
 /* A data model's JSON with the variables authored panels bind. */
@@ -1707,7 +1722,8 @@ typedef enum
  * they show. Rows edit through the table; Keyboard rows list the commands. */
 typedef struct studio_settings_view
 {
-    studio_prefs *prefs;                 /* edited in place */
+    studio_prefs *prefs;          /* edited in place */
+    studio_settings_cache *cache; /* retained by the model owner, optional */
     const studio_command_info *commands; /* the Keyboard category's */
     int command_count;
     int recording; /* command + 1, zero when idle */

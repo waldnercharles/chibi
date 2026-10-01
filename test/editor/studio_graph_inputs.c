@@ -9,6 +9,7 @@
 #include "render/scene_renderer.h"
 #include "render/screenshot.h"
 #include "runtime/generated.h"
+#include "support/array.h"
 #include "test/suite_internal.h"
 #include "ui/rml.h"
 
@@ -318,8 +319,23 @@ static void bound_input_can_be_changed_and_edited()
     snprintf(autocomplete_path, sizeof autocomplete_path, "layer/@autocomplete:%s", input_path);
     snprintf(results_path, sizeof results_path, "%s/results", autocomplete_path);
     rml_element *field = graph_query(&f, ".field.autocomplete input.value");
+    char binding_draft[128] = { 0 };
+    bool dotted_binding = field &&
+                          rml_element_value(field, binding_draft, sizeof binding_draft) >
+                              0 &&
+                          !strcmp(binding_draft, "Aim.direction.x");
     bool field_visible = field && click_path(&f, input_path) &&
                          kit_wants_text(f.studio->graph.kit, NULL);
+    int unchanged_history = acount(f.graph->undo);
+    if (field_visible) {
+        key_event(SDL_SCANCODE_TAB, true);
+        key_event(SDL_SCANCODE_TAB, false);
+        frames(&f, 2);
+    }
+    const pin_binding *after_tab = input_binding(&f, vector_id, 0);
+    bool unchanged_tab = after_tab && !strcmp(after_tab->field_name, "direction.x") &&
+                         acount(f.graph->undo) == unchanged_history;
+    field_visible = field_visible && click_path(&f, input_path);
     if (field_visible) {
         replace_focused_text(&f, "Aim.");
     }
@@ -526,6 +542,7 @@ static void bound_input_can_be_changed_and_edited()
                            INT64_C(9007199254740993);
     }
 
+    test_check(dotted_binding && unchanged_tab, "the editable binding shows a dotted path and untouched Tab preserves its binding without Undo history");
     test_check(field_visible && aim_count > 0 && aim_suggested && aim_query && escape_preserved, "the inline source field autocompletes Aim fields and Escape preserves the existing binding");
     if (!(reopened && query_matches && scoped_xy && selected_y && undo && redo)) {
         printf(
@@ -570,6 +587,239 @@ static void bound_input_can_be_changed_and_edited()
         test_check(wheel_stays_in_popup, "scrolling source suggestions does not zoom the graph canvas");
     }
     test_check(integer_exact && integer_undo && integer_redo, "an Integer64 node preserves values beyond floating-point precision with Undo/Redo");
+    fixture_free(&f);
+}
+
+static void expressions_are_directly_editable()
+{
+    graph_input_fixture f = fixture_open();
+    frames(&f, 3);
+    behavior_expression_error error = { 0 };
+    node *expression = editor_add_behavior_expression(f.graph, "a + 2", 100, 100, &error);
+    assert(expression);
+    uint64_t id = expression->id;
+    frames(&f, 3);
+    char code_path[128], edit_path[160], node_path[100];
+    snprintf(node_path, sizeof node_path, "world/stage/n%llu", (unsigned long long)id);
+    snprintf(code_path, sizeof code_path, "%s/b/code/l0", node_path);
+    snprintf(edit_path, sizeof edit_path, "%s/b/expression-editor/expression", node_path);
+    kit_rect before = { 0 }, editing = { 0 }, field = { 0 };
+    bool visible = kit_find(f.studio->graph.kit, node_path, &before);
+    bool direct = visible && click_path(&f, code_path);
+    frames(&f, 2);
+    direct = direct && kit_wants_text(f.studio->graph.kit, NULL);
+    bool compact = kit_find(f.studio->graph.kit, edit_path, &field) &&
+                   kit_find(f.studio->graph.kit, node_path, &editing) &&
+                   fabsf(before.w - editing.w) < 0.5f && field.x >= editing.x &&
+                   field.x + field.w <= editing.x + editing.w &&
+                   field.w < editing.w - 8;
+    if (direct) {
+        replace_focused_text(&f, "a * 3");
+        enter(&f);
+    }
+    expression = graph_node_by_id(editor_active_graph(f.graph), id);
+    bool changed = expression &&
+                   !strcmp(behavior_expression_source(f.graph->asset, expression), "a * 3");
+    bool undo = false, redo = false;
+    if (changed) {
+        editor_undo(f.graph);
+        frames(&f, 1);
+        expression = graph_node_by_id(editor_active_graph(f.graph), id);
+        undo = expression &&
+               !strcmp(behavior_expression_source(f.graph->asset, expression), "a + 2");
+        editor_redo(f.graph);
+        frames(&f, 1);
+        expression = graph_node_by_id(editor_active_graph(f.graph), id);
+        redo = expression &&
+               !strcmp(behavior_expression_source(f.graph->asset, expression), "a * 3");
+    }
+    test_check(direct && compact && changed && undo && redo, "clicking expression source edits within its existing node width and supports Undo/Redo");
+
+    node *consumer = editor_spawn(f.graph, registry_node_by_name("Atan2"), 400, 100);
+    node *upstream = editor_spawn(f.graph, registry_node_by_name("Add"), 50, 250);
+    expression = graph_node_by_id(editor_active_graph(f.graph), id);
+    graph *gr = f.graph->active_graph;
+    assert(consumer && upstream && expression);
+    uint64_t consumer_id = consumer->id, upstream_id = upstream->id;
+    assert(graph_connect_data(gr, upstream, 0, expression, 0) == 0);
+    assert(graph_connect_data(gr, expression, 0, consumer, 0) == 0);
+    frames(&f, 3);
+    char input_path[128];
+    snprintf(input_path, sizeof input_path, "world/stage/n%llu/b/i0/source-edit", (unsigned long long)consumer_id);
+    bool connected_focused = click_path(&f, input_path) &&
+                             kit_wants_text(f.studio->graph.kit, NULL);
+    char connected_draft[128] = { 0 };
+    rml_element *focused = rml_context_focus_element(
+        rml_backend_context(f.studio->graph.backend)
+    );
+    bool actual_source = connected_focused && focused &&
+                         rml_element_value(focused, connected_draft, sizeof connected_draft) >
+                             0 &&
+                         !strcmp(connected_draft, "a * 3");
+    int invalid_history = acount(f.graph->undo);
+    if (connected_focused) {
+        replace_focused_text(&f, "a +");
+        enter(&f);
+    }
+    expression = graph_node_by_id(editor_active_graph(f.graph), id);
+    bool invalid_preserved = expression &&
+                             !strcmp(behavior_expression_source(f.graph->asset, expression), "a * 3") &&
+                             acount(f.graph->undo) == invalid_history;
+    key_event(SDL_SCANCODE_ESCAPE, true);
+    key_event(SDL_SCANCODE_ESCAPE, false);
+    frames(&f, 2);
+    connected_focused = connected_focused && click_path(&f, input_path);
+    if (connected_focused) {
+        replace_focused_text(&f, "a + 4");
+        enter(&f);
+    }
+    expression = graph_node_by_id(editor_active_graph(f.graph), id);
+    node *fed = NULL, *result = NULL;
+    int fed_pin = -1, result_pin = -1;
+    consumer = graph_node_by_id(editor_active_graph(f.graph), consumer_id);
+    gr = f.graph->active_graph;
+    bool connected_changed = expression &&
+                             !strcmp(behavior_expression_source(f.graph->asset, expression), "a + 4");
+    bool wires_kept = expression && consumer &&
+                      graph_input_source(gr, expression, 0, &fed, &fed_pin) &&
+                      fed->id == upstream_id &&
+                      graph_input_source(gr, consumer, 0, &result, &result_pin) &&
+                      result->id == id;
+    bool connected_undo = false;
+    if (connected_changed) {
+        editor_undo(f.graph);
+        frames(&f, 1);
+        expression = graph_node_by_id(editor_active_graph(f.graph), id);
+        connected_undo = expression &&
+                         !strcmp(behavior_expression_source(f.graph->asset, expression), "a * 3");
+    }
+    if (!(connected_focused && actual_source && invalid_preserved &&
+          connected_changed && wires_kept && connected_undo)) {
+        printf(
+            "  expression consumer: focus %d draft '%s' actual %d invalid %d "
+            "changed %d wires %d undo %d source '%s'\n",
+            connected_focused,
+            connected_draft,
+            actual_source,
+            invalid_preserved,
+            connected_changed,
+            wires_kept,
+            connected_undo,
+            expression ? behavior_expression_source(f.graph->asset, expression) : "missing"
+        );
+    }
+    test_check(
+        connected_focused && actual_source && invalid_preserved &&
+            connected_changed && wires_kept && connected_undo,
+        "editing a connected expression directly preserves its input/output "
+        "wires "
+        "and supports Undo"
+    );
+    node *other = editor_spawn(f.graph, registry_node_by_name("Atan2"), 650, 100);
+    expression = graph_node_by_id(editor_active_graph(f.graph), id);
+    gr = f.graph->active_graph;
+    assert(other && expression);
+    uint64_t other_id = other->id;
+    assert(graph_connect_data(gr, expression, 0, other, 0) == 0);
+    frames(&f, 3);
+    bool shared_focused = click_path(&f, input_path) &&
+                          kit_wants_text(f.studio->graph.kit, NULL);
+    focused = rml_context_focus_element(rml_backend_context(f.studio->graph.backend));
+    char shared_draft[128] = { 0 };
+    bool source_label = shared_focused && focused &&
+                        rml_element_value(focused, shared_draft, sizeof shared_draft) > 0 &&
+                        strstr(shared_draft, ".Result");
+    int shared_history = acount(f.graph->undo);
+    if (shared_focused) {
+        replace_focused_text(&f, "a + 9");
+        enter(&f);
+    }
+    gr = f.graph->active_graph;
+    expression = graph_node_by_id(gr, id);
+    consumer = graph_node_by_id(gr, consumer_id);
+    other = graph_node_by_id(gr, other_id);
+    node *other_result = NULL;
+    int other_pin = -1;
+    bool shared_preserved = expression && consumer && other &&
+                            !strcmp(behavior_expression_source(f.graph->asset, expression), "a * 3") &&
+                            acount(f.graph->undo) == shared_history &&
+                            graph_input_source(gr, consumer, 0, &result, &result_pin) &&
+                            result->id == id &&
+                            graph_input_source(gr, other, 0, &other_result, &other_pin) &&
+                            other_result->id == id;
+    if (!(source_label && shared_preserved)) {
+        printf(
+            "  shared expression: focus %d draft '%s' label %d preserved %d "
+            "history %d/%d source '%s' consumer %llu other %llu\n",
+            shared_focused,
+            shared_draft,
+            source_label,
+            shared_preserved,
+            acount(f.graph->undo),
+            shared_history,
+            expression ? behavior_expression_source(f.graph->asset, expression) : "missing",
+            (unsigned long long)(result ? result->id : 0),
+            (unsigned long long)(other_result ? other_result->id : 0)
+        );
+    }
+    test_check(source_label && shared_preserved, "a shared expression stays a source choice and a consumer formula draft cannot change either wire or expression history");
+    /* Duplicate is a shared-definition call, even with one consumer per call. */
+    ed_clear_selection(f.graph);
+    ed_add_selected(f.graph, expression);
+    ed_duplicate_selected(f.graph);
+    assert(acount(f.graph->selected) == 1);
+    node *duplicate = f.graph->selected[0];
+    uint64_t duplicate_id = duplicate->id;
+    expression = graph_node_by_id(f.graph->active_graph, id);
+    consumer = graph_node_by_id(f.graph->active_graph, consumer_id);
+    other = graph_node_by_id(f.graph->active_graph, other_id);
+    gr = f.graph->active_graph;
+    assert(duplicate_id != id && duplicate->reference_id == expression->reference_id);
+    assert(graph_remove_edge(gr, expression, 0, other, 0) == 0);
+    assert(graph_connect_data(gr, duplicate, 0, other, 0) == 0);
+    frames(&f, 3);
+    key_event(SDL_SCANCODE_ESCAPE, true);
+    key_event(SDL_SCANCODE_ESCAPE, false);
+    frames(&f, 1);
+    bool duplicate_focused = click_path(&f, input_path) &&
+                             kit_wants_text(f.studio->graph.kit, NULL);
+    focused = rml_context_focus_element(rml_backend_context(f.studio->graph.backend));
+    char duplicate_draft[128] = { 0 };
+    bool duplicate_label = duplicate_focused && focused &&
+                           rml_element_value(focused, duplicate_draft, sizeof duplicate_draft) >
+                               0 &&
+                           strstr(duplicate_draft, ".Result");
+    int duplicate_history = acount(f.graph->undo);
+    if (duplicate_focused) {
+        replace_focused_text(&f, "a + 10");
+        enter(&f);
+    }
+    gr = f.graph->active_graph;
+    expression = graph_node_by_id(gr, id);
+    duplicate = graph_node_by_id(gr, duplicate_id);
+    consumer = graph_node_by_id(gr, consumer_id);
+    other = graph_node_by_id(gr, other_id);
+    bool duplicate_preserved = expression && duplicate && consumer && other &&
+                               !strcmp(behavior_expression_source(f.graph->asset, expression), "a * 3") &&
+                               !strcmp(behavior_expression_source(f.graph->asset, duplicate), "a * 3") &&
+                               acount(f.graph->undo) == duplicate_history &&
+                               graph_input_source(gr, consumer, 0, &result, &result_pin) &&
+                               result->id == id &&
+                               graph_input_source(gr, other, 0, &other_result, &other_pin) &&
+                               other_result->id == duplicate_id;
+    if (!(duplicate_label && duplicate_preserved)) {
+        printf(
+            "  duplicate expression: focus %d draft '%s' label %d preserved %d "
+            "history %d/%d\n",
+            duplicate_focused,
+            duplicate_draft,
+            duplicate_label,
+            duplicate_preserved,
+            acount(f.graph->undo),
+            duplicate_history
+        );
+    }
+    test_check(duplicate_label && duplicate_preserved, "duplicated expression calls with separate consumers keep their shared formula and wires unchanged when a consumer submits a formula draft");
     fixture_free(&f);
 }
 
@@ -982,6 +1232,7 @@ int studio_graph_inputs_run(const char *program)
     app_scene_renderer_initialize();
     app_input_initialize();
     bound_input_can_be_changed_and_edited();
+    expressions_are_directly_editable();
     folded_inputs_are_editable_in_place();
     shader_values_and_collections_are_editable();
     app_input_shutdown();

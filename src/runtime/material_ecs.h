@@ -43,6 +43,9 @@ struct game_materials
     material_debris *debris;
     /* Scratch: resident terrain masks and their offsets, rebuilt each tick. */
     struct material_debris_tile *debris_tiles;
+    /* Preparation scratch; synchronous consumers borrow only during the call. */
+    material_stream_view *terrain_views;
+    material_debris_blast *debris_blasts;
 };
 
 material_record *material_ecs_record(game_materials *materials, ecs_entity entity);

@@ -304,6 +304,37 @@ void set_element_text(rml_element *el, const char *text)
     free(rml);
 }
 
+/* Numeric labels are one line. Keep their normal baseline and update the
+ * glyphs locally; replacing a text child makes the whole document
+ * format again. Only a changed shaped width needs normal box layout. */
+void set_line_text(rml_element *label, const char *text)
+{
+    rml_element *child = rml_element_first_child(label);
+    if (!child) {
+        set_element_text(label, text);
+        return;
+    }
+    int width = rml_element_string_width(child, text);
+    if (width <= 0) {
+        /* The first normal layout resolves the font and baseline. */
+        rml_element_set_text(child, text);
+        return;
+    }
+    rml_element_suppress_text_layout(child);
+    float edges = rml_element_box_size(label, RML_BOX_BORDER).x -
+                  rml_element_box_size(label, RML_BOX_CONTENT).x;
+    char size[32];
+    snprintf(size, sizeof size, "%gpx", width + edges);
+    rml_element_set_property(label, "width", size);
+    char current[128];
+    if (rml_element_text(child, current, sizeof current) >= sizeof current ||
+        strcmp(current, text) != 0) {
+        rml_element_set_text(child, text);
+        rml_element_clear_text_lines(child);
+        rml_element_add_text_line(child, (rml_vec2){ 0, 0 }, text);
+    }
+}
+
 rml_element *raw(rml_element *parent, const char *tag, const char *cls, const char *text)
 {
     rml_element *el = rml_element_create_child(parent, tag, NULL);
@@ -867,15 +898,6 @@ static void blur(kit *k, const rml_event *e, node *n)
     control_blur(n, e->target);
 }
 
-static void mouseover(kit *k, node *n)
-{
-    /* A palette row follows the pointer only as it moves (mousemove). */
-    if (!n || n->kind == KIND_COMMAND_ITEM) {
-        return;
-    }
-    menu_hover(k, n);
-}
-
 static void on_event(void *user, const rml_event *e)
 {
     kit *k = user;
@@ -914,13 +936,14 @@ static void on_event(void *user, const rml_event *e)
             }
             break;
         case RML_EVENT_BLUR: blur(k, e, n); break;
-        case RML_EVENT_MOUSEOVER: mouseover(k, n); break;
         /* Rows the results bring under a still pointer fire mouseover but
            no mousemove, so they leave the selection on the best match, as
            cmdk's do. */
         case RML_EVENT_MOUSEMOVE:
             if (n && n->kind == KIND_COMMAND_ITEM) {
                 command_hover(k, n);
+            } else if (n) {
+                menu_hover(k, n);
             }
             break;
         default: break;
@@ -1252,6 +1275,13 @@ void kit_label(kit *k, const char *key, const char *cls, const char *text)
 {
     node *n = emit(k, key, KIND_BOX, "span", cls);
     set_text(n, text);
+}
+
+void kit_live_label(kit *k, const char *key, const char *cls, const char *text)
+{
+    node *n = emit(k, key, KIND_BOX, "span", cls);
+    rml_element_set_property(n->el, "white-space", "nowrap");
+    set_line_text(n->el, text);
 }
 
 void kit_icon(kit *k, const char *key, const char *cls, uint32_t codepoint)

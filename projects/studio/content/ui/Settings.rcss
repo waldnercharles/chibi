@@ -20,8 +20,8 @@
   color: var(--faint-foreground); pointer-events: none;
 }
 .search-input {
-  display: block; flex: 1 1 auto; height: var(--h); padding: 0dp 24dp 0dp 27dp;
-  line-height: var(--text-line); color: var(--foreground); cursor: text; nav: vertical;
+  display: block; flex: 1 1 auto; height: var(--h); padding: var(--input-pad) 24dp var(--input-pad) 27dp;
+  line-height: var(--input-line); color: var(--foreground); cursor: text; nav: vertical;
   background-color: var(--field-edit); border: 1dp var(--border); border-radius: var(--r);
 }
 .search-input:hover { background-color: var(--input-hover); }

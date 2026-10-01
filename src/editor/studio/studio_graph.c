@@ -5,6 +5,7 @@
  * Behavior area; window input is replayed into it in graph units. Interaction
  * follows docs/editor-graph-references.md; edits go through the graph editor's
  * mutation helpers and history. */
+#include "diagnostics/tracy.h"
 #include "editor/studio/studio_graph_internal.h"
 #include "graph/authoring/expand.h"
 #include "graph/authoring/pin_edit.h"
@@ -534,12 +535,20 @@ void studio_graph_frame(studio *s, double delta_seconds)
     }
     kit_set_theme(g->kit, "reduced-motion", s->prefs.reduced_motion);
     sg_find_unused(s);
+    CHIBI_TRACE_ZONE_BEGIN(values_zone, "Studio graph values");
     ed_refresh_values(e);
+    CHIBI_TRACE_ZONE_END(values_zone);
+    CHIBI_TRACE_ZONE_BEGIN(emit_zone, "Studio graph emit");
     kit_begin(g->kit, &g->in);
     sg_emit_canvas(s);
     kit_end(g->kit);
+    CHIBI_TRACE_ZONE_END(emit_zone);
+    CHIBI_TRACE_ZONE_BEGIN(update_zone, "Studio graph update");
     rml_backend_update(g->backend, delta_seconds);
+    CHIBI_TRACE_ZONE_END(update_zone);
+    CHIBI_TRACE_ZONE_BEGIN(render_zone, "Studio graph render");
     rml_backend_render(g->backend);
+    CHIBI_TRACE_ZONE_END(render_zone);
     rml_backend_set_texture(s->backend, "graph", rml_backend_texture(g->backend));
 }
 

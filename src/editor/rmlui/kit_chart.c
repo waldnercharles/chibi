@@ -510,7 +510,7 @@ static void label_ticks(node *n, const chart_frame *f, kit_rect r, double step)
         }
         char text[VALUE_TEXT];
         format_value(text, f->ticks[i], step < 1 ? 1 : 0, NULL);
-        set_element_text(label, text);
+        set_line_text(label, text);
         set_dp(label, "top", r.h - (f->ticks[i] - f->lo) / (f->hi - f->lo) * r.h - 7);
     }
 }
@@ -532,7 +532,7 @@ static void place_badge(chart_state *c, const chart_frame *f, kit_rect r, const 
     double v = alast(first->values);
     char text[VALUE_TEXT];
     format_value(text, v, d->precision, d->unit);
-    set_element_text(c->badge, text);
+    set_line_text(c->badge, text);
     set_dp(
         c->badge,
         "top",
@@ -564,7 +564,7 @@ static float scrub(kit *k, node *n, chart_frame *f, kit_rect r, const kit_chart_
     }
     char text[VALUE_TEXT];
     format_value(text, f->hover_value, d->precision, d->unit);
-    set_element_text(hover, text);
+    set_line_text(hover, text);
     set_dp(hover, "left", math_clamp(f->hover_x + 8, 0.0f, math_max(r.w - 64, 0.0f)));
     return hover_time;
 }

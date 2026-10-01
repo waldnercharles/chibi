@@ -1,5 +1,14 @@
 # Whole compiled loops
 
+## Current measurement note, 2026-10-01
+
+The [current native sweep](compiler-measurements-20261001.md) meets the
+SLJIT/generated-C target at base lengths 64, 256 and 1,024, with ratios
+0.8743, 0.7984 and 0.6600. The accepted results combine the initial 64/256 runs
+with a separately qualified 1,024 retry. The earlier failed gate, coverage
+counts and implementation measurements below describe their historical
+checkpoint. Raw historical records remain unchanged.
+
 This pass extends the whole-function compiler from `8f0cc573` with `ForLoop`,
 `ForLoopWithBreak`, explicit While continuations and `Break`. Both SLJIT and
 portable bytecode execute the same lowered control flow. No loop instruction

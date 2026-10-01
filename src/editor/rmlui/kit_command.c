@@ -660,8 +660,9 @@ kit_autocomplete_result kit_autocomplete(
     if (w->autocomplete_sync || !w->focused || !str_eq(w->applied, shown)) {
         str_set(&w->applied, shown);
         if (!w->focused || !w->autocomplete_query_active) {
-            str_set(&w->draft, shown);
-            rml_element_set_value(w->input_el, shown);
+            if (str_set(&w->draft, shown)) {
+                rml_element_set_value(w->input_el, shown);
+            }
             w->autocomplete_query_active = false;
         }
         w->autocomplete_sync = false;

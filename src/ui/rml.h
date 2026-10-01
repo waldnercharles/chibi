@@ -715,6 +715,14 @@ extern "C"
     bool rml_context_theme_active(const rml_context *context, const char *name);
     /* Sets a text node's text; the element's tag must be "#text". */
     void rml_element_set_text(rml_element *element, const char *text);
+    /* Single-line text managed locally after its initial normal layout.
+     * Suppression keeps text changes from relaying out the owner document;
+     * normal layout still positions the node when its box or style changes. */
+    void rml_element_suppress_text_layout(rml_element *element);
+    void rml_element_clear_text_lines(rml_element *element);
+    void rml_element_add_text_line(rml_element *element, rml_vec2 offset, const char *text);
+    /* Shaped width in pixels, using the element's computed font and spacing. */
+    int rml_element_string_width(rml_element *element, const char *text);
 
     /* An element that may be destroyed while held: the ref reads NULL once
      * it is. */

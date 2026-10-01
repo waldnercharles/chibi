@@ -769,9 +769,61 @@ static bool show_project_choices(
     return !same;
 }
 
+/* Reparse shortcuts only when their inputs change. A rebuilt model must
+ * receive its keys even if its allocator reuses the previous addresses. */
+static bool refresh_shortcuts(
+    const studio_settings_view *view,
+    yyjson_mut_doc *doc,
+    yyjson_mut_val *rows,
+    bool built
+)
+{
+    studio_settings_cache *cache = view->cache;
+    if (!cache) {
+        return true;
+    }
+    assert(view->command_count <= STUDIO_COMMAND_COUNT);
+    bool refresh = built || !cache->valid || cache->doc != doc ||
+                   cache->rows != rows ||
+                   cache->command_count != view->command_count ||
+                   cache->mac != view->mac ||
+                   memcmp(cache->shortcuts, view->prefs->shortcuts, sizeof cache->shortcuts);
+    for (int c = 0; !refresh && c < view->command_count; c++) {
+        refresh = cache->commands[c] < 0 ||
+                  strcmp(view->commands[c].id, studio_command_id(cache->commands[c]));
+    }
+    if (!refresh) {
+        return false;
+    }
+    for (int c = 0; c < view->command_count; c++) {
+        int command = studio_command_named(view->commands[c].id);
+        cache->commands[c] = command;
+        cache->conflicts[c] = command >= 0
+                                ? studio_command_conflict(
+                                      view->prefs,
+                                      command,
+                                      studio_command_chord(view->prefs, command),
+                                      view->mac
+                                  )
+                                : -1;
+    }
+    memcpy(cache->shortcuts, view->prefs->shortcuts, sizeof cache->shortcuts);
+    cache->doc = doc;
+    cache->rows = rows;
+    cache->command_count = view->command_count;
+    cache->mac = view->mac;
+    cache->valid = true;
+    return true;
+}
+
 /* Shows each row's value, whether it differs from its default, and a
  * command's label and keys. */
-static bool show_values(const studio_settings_view *view, yyjson_mut_doc *doc, yyjson_mut_val *rows)
+static bool show_values(
+    const studio_settings_view *view,
+    yyjson_mut_doc *doc,
+    yyjson_mut_val *rows,
+    bool shortcuts_changed
+)
 {
     bool changed = false;
     for (int i = 0; i < studio_setting_count; i++) {
@@ -789,18 +841,22 @@ static bool show_values(const studio_settings_view *view, yyjson_mut_doc *doc, y
     }
     for (int c = 0; c < view->command_count; c++) {
         yyjson_mut_val *row = yyjson_mut_arr_get(rows, (size_t)(studio_setting_count + c));
-        int command = studio_command_named(view->commands[c].id);
+        int command = view->cache ? view->cache->commands[c]
+                                  : studio_command_named(view->commands[c].id);
         const char *chord = command >= 0 ? studio_command_chord(view->prefs, command)
                                          : "";
-        char shortcut[STUDIO_CHORD_SIZE];
-        studio_chord_format(shortcut, sizeof shortcut, chord, view->mac);
         changed |= put_text(doc, row, "label", view->commands[c].label);
         changed |= put_text(doc, row, "value", chord);
         changed |= put_text(doc, row, "bound", chord);
-        changed |= show_keys(doc, yyjson_mut_obj_get(row, "keys"), shortcut);
+        if (shortcuts_changed) {
+            char shortcut[STUDIO_CHORD_SIZE];
+            studio_chord_format(shortcut, sizeof shortcut, chord, view->mac);
+            changed |= show_keys(doc, yyjson_mut_obj_get(row, "keys"), shortcut);
+        }
         changed |= put_bool(row, "modified", command >= 0 && view->prefs->shortcuts[command][0]);
         changed |= put_bool(row, "recording", command >= 0 && view->recording == command + 1);
-        int conflict = command >= 0
+        int conflict = view->cache ? view->cache->conflicts[c]
+                     : command >= 0
                          ? studio_command_conflict(view->prefs, command, chord, view->mac)
                          : -1;
         const char *label = conflict >= 0 ? studio_command_id(conflict) : "";
@@ -965,7 +1021,8 @@ bool studio_settings_sync(studio_settings_view *view, yyjson_mut_doc *doc, bool 
             recording = row;
         }
     }
-    bool changed = show_values(view, doc, rows);
+    bool shortcuts_changed = refresh_shortcuts(view, doc, rows, built);
+    bool changed = show_values(view, doc, rows, shortcuts_changed);
     changed |= put_text(doc, page, "project", view->project);
     changed |= show_visible(view, doc, page);
     if (recording && !yyjson_mut_get_bool(yyjson_mut_obj_get(recording, "shown"))) {
@@ -1093,13 +1150,14 @@ static void set_project_field(studio *s, studio_project_field field, const char 
     apply_project_field(s, field, value);
 }
 
-static void sync_settings(studio *s, ui_data *data, bool wrote)
+static void sync_settings(studio *s, studio_sources *src, ui_data *data, bool wrote)
 {
     studio_command_info commands[STUDIO_COMMAND_COUNT];
     for (int c = 0; c < STUDIO_COMMAND_COUNT; c++) {
         commands[c] = studio_command_describe(s, (studio_command)c);
     }
     studio_settings_view view = { .prefs = &s->prefs,
+                                  .cache = &src->settings_cache,
                                   .commands = commands,
                                   .command_count = STUDIO_COMMAND_COUNT,
                                   .recording = s->shortcut_recording,
@@ -1140,7 +1198,7 @@ static void sync_values(studio *s, studio_sources *src, ui_data *data, bool wrot
 {
     sync_world(s, src, data, wrote);
     sync_theme(s, src, data, wrote);
-    sync_settings(s, data, wrote);
+    sync_settings(s, src, data, wrote);
     sync_editor(s, data);
     sync_commands(s, data);
     sync_collaboration(s, data);

@@ -281,6 +281,9 @@ static void emit_code(studio *s, node *n, const node_layout *l)
         sg_begin_expression_edit(s, k, n, 0);
     }
     kit_pop(k);
+    if (!sg_graph_readonly(s) && kit_item_clicked(k)) {
+        sg_begin_expression_edit(s, k, n, 0);
+    }
 }
 
 static void emit_rows(studio *s, node *n, const node_layout *l)

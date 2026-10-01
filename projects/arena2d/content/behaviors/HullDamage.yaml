@@ -26,7 +26,7 @@ graphs:
       amount: {}
     outputs:
       Then: {id: 22, kind: exec}
-      Result: {id: 20, type: int}
+      Result: {id: 20, type: double}
   - id: 106
     type: Behavior Expression
     reference_id: 92

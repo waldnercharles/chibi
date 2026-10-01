@@ -7,6 +7,7 @@
 float *reference_cave_generate(unsigned, int, int, float, float, float);
 #include "runtime/material_debris.h"
 #include "runtime/material_destruction.h"
+#include "runtime/material_ecs.h"
 #include "runtime/material_fluid.h"
 #include "runtime/material_mask.h"
 #include "runtime/task_pool.h"
@@ -14,6 +15,7 @@ float *reference_cave_generate(unsigned, int, int, float, float, float);
 
 #include <assert.h>
 #include <math.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -1129,9 +1131,43 @@ enum
 typedef struct
 {
     material_mask mask;
+    material_point position;
+    float angle;
     int created, created_cells, destroyed, damage_dust, damage_removed;
     bool retain_chips, available;
 } material_capacity_probe;
+
+static float material_float_from_bits(uint32_t bits)
+{
+    float value;
+    memcpy(&value, &bits, sizeof value);
+    return value;
+}
+
+static uint32_t material_float_bits(float value)
+{
+    uint32_t bits;
+    memcpy(&bits, &value, sizeof bits);
+    return bits;
+}
+
+static void material_damage_boundary_rounding()
+{
+    material_mask mask = material_mask_new(1, 1, 1, false);
+    /* Separate squares include this boundary cell; either FMA ordering excludes it. */
+    assert(
+        material_mask_apply_damage(
+            &mask,
+            -material_float_from_bits(0x40ed0aca),
+            -material_float_from_bits(0x40a46390),
+            material_float_from_bits(0x41103ba9),
+            1,
+            1
+        ) == 1
+    );
+    assert(mask.count == 0 && !mask.cells[0]);
+    material_mask_free(&mask);
+}
 
 static bool capacity_read_source(void *user, uint64_t target, material_source *source)
 {
@@ -1140,6 +1176,8 @@ static bool capacity_read_source(void *user, uint64_t target, material_source *s
         return false;
     }
     *source = (material_source){ .mask = &probe->mask,
+                                 .position = probe->position,
+                                 .angle = probe->angle,
                                  .hardness = 1,
                                  .minimum = 1,
                                  .initial_cells = probe->mask.count,
@@ -1279,6 +1317,69 @@ static void material_capacity_fallback()
     assert(probe.destroyed == 1 && probe.created == 1);
     material_mask_free(&probe.mask);
     material_destruction_free(destruction);
+}
+
+static void rotated_material_damage_rounding()
+{
+    material_capacity_probe probe = {
+        .mask = material_mask_new(128, 128, 2, false),
+        .position = { 0, material_float_from_bits(0xc3160000) },
+        .angle = material_float_from_bits(0x3df5c28f),
+        .available = true
+    };
+    material_host host = capacity_host(&probe);
+    material_destruction *destruction = material_destruction_new();
+    material_destruction_queue_damage(
+        destruction,
+        (material_damage){ .target = CAPACITY_TEST_SOURCE,
+                           .point = { material_float_from_bits(0xc2aa2660),
+                                      material_float_from_bits(0xc2fcd739) },
+                           .radius = 4,
+                           .energy = 1 }
+    );
+    material_destruction_step(destruction, &host, 1);
+    int index = 80 * probe.mask.width + 22;
+    assert(probe.damage_removed > 0 && !probe.mask.cells[index]);
+    /* Pin the recorded rotated hit's distance on the native/WASM toolchains. */
+    assert(material_float_bits(probe.mask.distance[index]) == 0x40210707);
+    material_destruction_free(destruction);
+    material_mask_free(&probe.mask);
+}
+
+static void fragment_glow_rounding()
+{
+    ecs_world *world = ecs_world_new();
+    for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
+        assert(ecs_world_register_component(world, GAME_REGISTRY_COMPONENTS[i], NULL) == ECS_OK);
+    }
+    ecs_entity fragment = { 0 };
+    for (int slot = 1; slot <= 179; slot++) {
+        fragment = ecs_world_create_entity(world);
+        assert(fragment.slot == (uint32_t)slot);
+    }
+    component(
+        world,
+        fragment,
+        &GAME_COMPONENT_GameFragmentGlow,
+        &(GameFragmentGlow){ .duration = 3.5f, .flicker = .35f }
+    );
+    component(world, fragment, &GAME_COMPONENT_GameMaterial, &(GameMaterial){ .emission_multiplier = .5f });
+    assert(ecs_world_apply_commands(world) == ECS_OK);
+
+    game_materials materials = { .world = world };
+    asetlen(materials.records, (int)fragment.slot + 1);
+    memset(materials.records, 0, acount(materials.records) * sizeof *materials.records);
+    materials.records[fragment.slot] = (material_record){ .entity = fragment,
+                                                          .fragment = true,
+                                                          .glow_multiplier = .5f };
+    for (int i = 0; i < 17; i++) {
+        material_ecs_fade_fragments(&materials, 1.f / 60);
+    }
+    assert(
+        material_float_bits(GAME_GameMaterial_get_const(world, fragment)->emission_multiplier) == 0x3e953602
+    );
+    afree(materials.records);
+    ecs_world_free(world);
 }
 
 static void small_hull_release()
@@ -1791,6 +1892,9 @@ void test_materials()
     reactions();
     resistance_and_chips();
     material_capacity_fallback();
+    rotated_material_damage_rounding();
+    material_damage_boundary_rounding();
+    fragment_glow_rounding();
     small_hull_release();
     destruction();
     contours();

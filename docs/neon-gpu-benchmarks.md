@@ -13,7 +13,7 @@ both scale and directly traced levels are recorded.
 ```sh
 make build-release
 python3 tools/benchmark_neon_materials.py --scenario all --output /tmp/neon-1080
-python3 tools/benchmark_neon_materials.py --scenario all --mode live --scale .5 \
+python3 tools/benchmark_neon_materials.py --scenario all --mode live --resolution .5 \
   --width 1280 --height 800 --output /tmp/neon-800
 ```
 
@@ -31,6 +31,13 @@ one-level tracing configuration.
 | `ignition` | Three finite fuel clouds and fixed ignition sources; at least 20 burning parcels required at both endpoints. |
 | `destruction` | Thin destructible pillars cut by normal shots; at least eight detached fragments required at the endpoint. |
 | `camera-turns` | Flight and firing with direction changes every half second, including changes during measured rendering. |
+
+`--scenario physics-all --render-frames 240` renders the four
+[physics/material scenarios](research/physics-material-benchmarks.md): projectile
+barrages into terrain and enemies, a destructible crowd, and interacting fog/liquid.
+These use fixture-specific preparation frames: 60 normally and 120 for the
+default 20,000-enemy crowd. They share the CPU runner's 240-frame input window.
+`all` continues to select the five scenarios above.
 
 These are controlled stress fixtures. Fuel amount and obstacle layout differ
 from normal play. In particular, the ignition sources deliberately maintain a
@@ -86,9 +93,9 @@ See [the timestamp method](neon-hrc-optimization.md#per-pass-gpu-time).
 
 ```sh
 python3 tools/benchmark_neon_materials.py --scenario ignition --mode frozen \
-  --scale .5 --metal-capture --output /tmp/neon-metal-ignition
+  --resolution .5 --metal-capture --output /tmp/neon-metal-ignition
 python3 tools/benchmark_neon_materials.py --scenario travel --mode frozen \
-  --scale 1 --metal-capture --output /tmp/neon-metal-full
+  --resolution 1 --metal-capture --output /tmp/neon-metal-full
 ```
 
 The tool enables `MTL_CAPTURE_ENABLED=1` only in the capture process. It records

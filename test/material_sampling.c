@@ -1,5 +1,7 @@
 #include "platform/cute.h"
+#include "render/material.h"
 #include "render/material_raster.h"
+#include "support/array.h"
 #include "support/xalloc.h"
 
 #include <math.h>
@@ -7,6 +9,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 enum
 {
@@ -229,6 +232,266 @@ static bool tiled_ring(render_material_raster *raster)
     return ok && range[1] < .01f && range[2] < .01f;
 }
 
+/* Independent oracle: a border cell has an empty cell or the exterior within
+ * reach along one of its cardinal rays. Scan all candidates, not renderer runs. */
+static bool expected_border(const unsigned char *cells, int width, int height, int reach, int x, int y)
+{
+    if (!cells[y * width + x]) {
+        return false;
+    }
+    if (x < reach || y < reach || width - 1 - x < reach || height - 1 - y < reach) {
+        return true;
+    }
+    for (int other = 0; other < width; other++) {
+        if (!cells[y * width + other] && abs(other - x) <= reach) {
+            return true;
+        }
+    }
+    for (int other = 0; other < height; other++) {
+        if (!cells[other * width + x] && abs(other - y) <= reach) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool border_partition(render_material_border *border, material_occupancy_view mask, int reach)
+{
+    render_material_border_build(border, mask, reach);
+    unsigned char covered[100] = { 0 };
+    for (int i = 0; i < acount(border->rects); i++) {
+        render_material_border_rect r = border->rects[i];
+        if (r.width <= 0 || r.height <= 0 || r.x < 0 || r.y < 0 ||
+            r.x + r.width > mask.width || r.y + r.height > mask.height) {
+            return false;
+        }
+        for (int y = r.y; y < r.y + r.height; y++) {
+            for (int x = r.x; x < r.x + r.width; x++) {
+                if (++covered[y * mask.width + x] != 1) {
+                    return false;
+                }
+            }
+        }
+    }
+    for (int y = 0; y < mask.height; y++) {
+        for (int x = 0; x < mask.width; x++) {
+            if (covered[y * mask.width + x] !=
+                expected_border(mask.cells, mask.width, mask.height, reach, x, y)) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+/* Visible actors reuse one scratch object despite differing masks. Warm the
+ * whole workload, then require both correct geometry and no allocation calls. */
+static bool border_reuse(render_material_border *border)
+{
+    const int widths[] = { 32, 1, 100, 8, 10 };
+    const int heights[] = { 3, 100, 1, 12, 10 };
+    xalloc_stats before = { 0 }, after;
+    bool ok = true;
+    for (int round = 0; round < 4 && ok; round++) {
+        if (round == 1) {
+            xalloc_stats_get(&before);
+        }
+        for (int size = 0; size < 5 && ok; size++) {
+            unsigned char cells[100];
+            for (int pattern = 0; pattern < 4 && ok; pattern++) {
+                for (int y = 0; y < heights[size]; y++) {
+                    for (int x = 0; x < widths[size]; x++) {
+                        cells[y * widths[size] + x] = pattern == 1 ||
+                                                      (pattern == 2 &&
+                                                       (x + y) % 2 == 0) ||
+                                                      (pattern == 3 &&
+                                                       (x * 3 + y) % 5 != 0);
+                    }
+                }
+                material_occupancy_view mask = { .cells = cells,
+                                                 .width = widths[size],
+                                                 .height = heights[size],
+                                                 .cell_size = 1 };
+                ok = border_partition(border, mask, 1) &&
+                     border_partition(border, mask, 3);
+                if (pattern == 0) {
+                    ok &= acount(border->rects) == 0;
+                }
+            }
+        }
+    }
+    xalloc_stats_get(&after);
+    ok &= after.calls == before.calls && after.requested_bytes == before.requested_bytes;
+    printf(
+        "merged border scratch reuse %s: width changes, empty/thin masks, "
+        "warmed allocations %llu\n",
+        ok ? "PASS" : "FAIL",
+        (unsigned long long)(after.calls - before.calls)
+    );
+    return ok;
+}
+
+static render_material_entity border_box(render_material_border_rect r, float angle, float phase)
+{
+    float x = r.x + r.width * .5f - 5, y = r.y + r.height * .5f - 5;
+    float c = cosf(angle), s = sinf(angle);
+    return (render_material_entity){
+        .inv_rot = { c, s, -s, c },
+        .pos = { c * x - s * y + phase, s * x + c * y + phase * .5f },
+        .extent = { r.width * .5f + 2, r.height * .5f + 2 },
+        .shape_type = RENDER_SHAPE_BOX,
+        .points = { r.width * .5f, r.height * .5f },
+        .aa = .1f,
+        .scene = { .2f, .5f, .8f, .7f },
+        .emission = { .8f, .4f, .2f, .7f },
+        .absorption = { .2f, .3f, .4f, 1 },
+        .albedo = { .3f, .6f, .9f, .8f },
+        .reserved = { 0, 0, .4f },
+        .tile_group = 1,
+    };
+}
+
+static bool border_targets(
+    render_material_raster *raster,
+    material_occupancy_view mask,
+    int reach,
+    const render_material_border *border,
+    float angle,
+    float phase,
+    float *largest_error
+)
+{
+    uint16_t original[5][BASE_W * BASE_H * 4];
+    render_material_entity entities[100];
+    for (int merged = 0; merged < 2; merged++) {
+        int count = 0;
+        if (merged) {
+            for (int i = 0; i < acount(border->rects); i++) {
+                entities[count++] = border_box(border->rects[i], angle, phase);
+            }
+        } else {
+            for (int y = 0; y < mask.height; y++) {
+                for (int x = 0; x < mask.width; x++) {
+                    if (!expected_border(mask.cells, mask.width, mask.height, reach, x, y)) {
+                        continue;
+                    }
+                    int width = 1;
+                    while (x + width < mask.width &&
+                           expected_border(mask.cells, mask.width, mask.height, reach, x + width, y)) {
+                        width++;
+                    }
+                    entities[count++] = border_box(
+                        (render_material_border_rect){ x, y, width, 1 },
+                        angle,
+                        phase
+                    );
+                    x += width - 1;
+                }
+            }
+        }
+        if (!draw_material_view(raster, entities, count, (render_material_view){ -32, 24, BASE_W, BASE_H })) {
+            return false;
+        }
+        render_material_textures textures = render_material_raster_textures(raster);
+        CF_Texture targets[] = { textures.scene,
+                                 textures.source,
+                                 textures.albedo,
+                                 textures.normal,
+                                 textures.cover };
+        for (int target = 0; target < 5; target++) {
+            int values = BASE_W * BASE_H * (target == 4 ? 1 : 4);
+            uint16_t pixels[BASE_W * BASE_H * 4];
+            if (!read_texture(targets[target], pixels, values * (int)sizeof *pixels)) {
+                return false;
+            }
+            if (!merged) {
+                memcpy(original[target], pixels, (size_t)values * sizeof *pixels);
+                continue;
+            }
+            for (int i = 0; i < values; i++) {
+                float error = fabsf(
+                    half_value(original[target][i]) - half_value(pixels[i])
+                );
+                *largest_error = fmaxf(*largest_error, error);
+                /* Two half-precision steps at unit magnitude; only decomposition
+                 * and floating accumulation order differ between the draws. */
+                if (!isfinite(error) || error > .002f) {
+                    fprintf(
+                        stderr,
+                        "Merged border target %d value %d differs by %.6f "
+                        "(angle %.3f phase %.3f)\n",
+                        target,
+                        i,
+                        error,
+                        angle,
+                        phase
+                    );
+                    return false;
+                }
+            }
+        }
+    }
+    return true;
+}
+
+static bool merged_borders(render_material_raster *raster)
+{
+    render_material_border border = { 0 };
+    bool ok = border_reuse(&border);
+    float largest_error = 0;
+    for (int fixture = 0; fixture < 7 && ok; fixture++) {
+        unsigned char cells[100];
+        for (int y = 0; y < 10; y++) {
+            for (int x = 0; x < 10; x++) {
+                bool filled = true;
+                if (fixture == 1) {
+                    filled = x + y < 14 && !(x == 3 && y >= 3);
+                }
+                if (fixture == 2) {
+                    filled = !(x >= 3 && x <= 6 && y >= 3 && y <= 6);
+                }
+                if (fixture == 3) {
+                    filled = (x < 3 && y < 4) || (x >= 6 && y >= 5) ||
+                             (x == 4 && y == 2);
+                }
+                int dx = 2 * x - 9, dy = 2 * y - 9;
+                if (fixture == 4) {
+                    filled = dx * dx + dy * dy <= 100;
+                }
+                if (fixture == 5) {
+                    filled = dx * dx + 4 * dy * dy <= 100;
+                }
+                if (fixture == 6) {
+                    filled = abs(dx) + abs(dy) <= 10;
+                }
+                cells[y * 10 + x] = filled;
+            }
+        }
+        material_occupancy_view mask = { .cells = cells,
+                                         .width = 10,
+                                         .height = 10,
+                                         .cell_size = 1 };
+        const int reaches[] = { 1, 2, 4, 12 };
+        for (int i = 0; i < 4 && ok; i++) {
+            ok = border_partition(&border, mask, reaches[i]);
+            if (fixture == 0 && reaches[i] == 2) {
+                ok &= acount(border.rects) == 4;
+            }
+        }
+        for (int reach = 1; reach <= 2 && ok; reach++) {
+            render_material_border_build(&border, mask, reach);
+            for (int rotation = 0; rotation < 2 && ok; rotation++) {
+                for (int phase = 0; phase < 3 && ok; phase++) {
+                    ok = border_targets(raster, mask, reach, &border, rotation * .3f, phase / 3.0f, &largest_error);
+                }
+            }
+        }
+    }
+    render_material_border_free(&border);
+    printf("merged material borders %s: exact partition and five targets, maximum error %.6f\n", ok ? "PASS" : "FAIL", largest_error);
+    return ok;
+}
+
 bool test_material_sampling()
 {
     const int widths[] = { BASE_W, BASE_W * 2 };
@@ -290,7 +553,8 @@ bool test_material_sampling()
     }
     if (ok) {
         ok = render_material_raster_resize(raster, BASE_W, BASE_H) &&
-             stable_tile_order(raster) && tiled_ring(raster);
+             stable_tile_order(raster) && tiled_ring(raster) &&
+             merged_borders(raster);
     }
     if (raster) {
         render_material_raster_free(raster);

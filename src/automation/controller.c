@@ -287,7 +287,7 @@ static const contract_field CONTRACT_RUN_SCENARIO[] = {
     { "frames", "uint64", false, "Number of deterministic fixed steps; maximum 108000." },
     { "fixed_dt", "number", false, "Fixed timestep in seconds; currently limited to 1/60." },
     { "inputs", "array", false, "Per-frame movement, aim, controls, actions, UI interactions and typed entity-targeted events." },
-    { "input_timeline", "array", false, "At most 1800 sparse {frame,input} samples in increasing frame order; alternative to inputs." },
+    { "input_timeline", "array", false, "At most 1800 sparse {frame,input} samples in increasing zero-based frame order; each frame is below frames; alternative to inputs." },
     { "saved_state", "object", false, "Isolated initial committed text values; never accesses player save files." },
 };
 static const contract_field CONTRACT_RUNTIME_SNAPSHOT[] = {
@@ -378,11 +378,14 @@ static const contract_field CONTRACT_EDIT_SCENE[] = {
 };
 static const contract_field CONTRACT_PROFILE_SCENARIO[] = {
     { "project_root", "string", false, "Project directory; defaults to the controller root." },
-    { "kind", "string", false, "Target family; defaults to prototype." },
-    { "name", "string", true, "Prototype or scene asset name." },
-    { "frames", "uint64", false, "Number of deterministic fixed steps; maximum 1800." },
+    { "scenario", "string", false, "Named scenario asset; supplies the target and replay input. Omit kind, name, inputs and input_timeline." },
+    { "kind", "string", false, "Target family for a direct target; defaults to prototype." },
+    { "name", "string", false, "Prototype or scene asset name; required unless scenario is supplied." },
+    { "frames", "uint64", false, "Measured deterministic fixed steps; warmup_frames plus frames may total at most 108000." },
     { "fixed_dt", "number", false, "Fixed timestep in seconds; currently limited to 1/60." },
-    { "warmup_frames", "uint64", false, "Frames to run before collecting samples; maximum 1800." },
+    { "warmup_frames", "uint64", false, "Frames to run before collecting samples; warmup_frames plus frames may total at most 108000." },
+    { "inputs", "array", false, "For a direct target, per-frame movement, aim, controls, actions, UI interactions and typed entity-targeted events across warmup and measured frames; at most 1800 entries." },
+    { "input_timeline", "array", false, "For a direct target, at most 1800 sparse {frame,input} samples in increasing zero-based frame order across the combined warmup and measured interval; alternative to inputs." },
 };
 static const contract_field CONTRACT_EXECUTION_STATUS[] = {
     { "project_root", "string", false, "Project directory; defaults to the controller root." },
@@ -5890,6 +5893,54 @@ static void add_profile_rows(
     yyjson_mut_obj_add_bool(doc, object, "behaviors_truncated", truncated);
 }
 
+typedef struct
+{
+    const char *name;
+    bool pressed;
+} scenario_action;
+
+typedef struct
+{
+    double movement_x;
+    double movement_y;
+    double aim_x;
+    double aim_y;
+    bool aim_firing;
+    bool aim_point;
+    bool has_aim, has_movement;
+    yyjson_val *events;
+    scenario_action actions[SCENARIO_MAX_ACTIONS];
+    int action_count;
+    bool has_controls;
+    uint64_t controls;
+    yyjson_val *ui;
+} scenario_input;
+
+typedef struct
+{
+    scenario_input *inputs;
+    uint64_t *at;
+    size_t count, next;
+    uint64_t frame;
+    bool sampled;
+} scenario_sequence;
+
+static void free_sequence(scenario_sequence *sequence);
+static int prepare_sequence(
+    yyjson_val *request,
+    uint64_t frames,
+    scenario_sequence *sequence,
+    char *error,
+    size_t error_size
+);
+static int step_sequence(
+    scenario_context *context,
+    scenario_sequence *sequence,
+    double fixed_dt,
+    char *error,
+    size_t error_size
+);
+
 static int profile_scenario(
     const char *root,
     yyjson_val *request,
@@ -5917,10 +5968,15 @@ static int profile_scenario(
     if ((yyjson_obj_get(request, "frames") && !request_uint(request, "frames", &frames)) ||
         (yyjson_obj_get(request, "warmup_frames") &&
          !request_uint(request, "warmup_frames", &warmup)) ||
-        warmup + frames > SCENARIO_PROFILE_MAX_TOTAL) {
+        warmup > SCENARIO_PROFILE_MAX_TOTAL ||
+        frames > SCENARIO_PROFILE_MAX_TOTAL - warmup) {
         response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "frames and warmup_frames must be non-negative integers totaling at most 108000");
         return -1;
     }
+    const uint64_t total_frames = warmup + frames;
+    const bool sampled_inputs = yyjson_obj_get(request, "inputs") ||
+                                yyjson_obj_get(request, "input_timeline");
+    scenario_sequence sequence = { 0 };
     double fixed_dt = SCENARIO_FIXED_DT;
     yyjson_val *fixed_dt_value = yyjson_obj_get(request, "fixed_dt");
     if (fixed_dt_value) {
@@ -5931,6 +5987,15 @@ static int profile_scenario(
             return -1;
         }
         fixed_dt = yyjson_get_num(fixed_dt_value);
+    }
+    if (sampled_inputs) {
+        char input_error[256] = { 0 };
+        int input_status = prepare_sequence(request, total_frames, &sequence, input_error, sizeof input_error);
+        if (input_status != CHIBI_AUTOMATION_OK) {
+            free_sequence(&sequence);
+            response_error(result, exit_code, input_status, input_error);
+            return -1;
+        }
     }
     scenario_context context = { 0 };
     char error[256] = { 0 };
@@ -5988,11 +6053,16 @@ static int profile_scenario(
         previous_commands = initial->command_apply_count;
         previous_dropped = initial->dropped_seconds;
         xalloc_stats_get(&previous_allocations);
-        for (uint64_t frame = 0; frame < warmup + frames; frame++) {
-            if (game_prototype_preview_tick(context.preview, (double)(frame + 1) * fixed_dt) !=
-                0) {
+        for (uint64_t frame = 0; frame < total_frames; frame++) {
+            int step_status = CHIBI_AUTOMATION_OK;
+            if (sampled_inputs) {
+                step_status = step_sequence(&context, &sequence, fixed_dt, error, sizeof error);
+            } else if (game_prototype_preview_tick(context.preview, (double)(frame + 1) * fixed_dt) != 0) {
                 snprintf(error, sizeof error, "scenario profiling failed");
-                status = CHIBI_AUTOMATION_EXECUTION_ERROR;
+                step_status = CHIBI_AUTOMATION_EXECUTION_ERROR;
+            }
+            if (step_status != CHIBI_AUTOMATION_OK) {
+                status = step_status;
                 break;
             }
             if (frame < warmup) {
@@ -6036,6 +6106,7 @@ static int profile_scenario(
     if (status != CHIBI_AUTOMATION_OK) {
         afree(rows);
         afree(samples);
+        free_sequence(&sequence);
         scenario_context_free(&context);
         response_error(result, exit_code, status, error);
         return -1;
@@ -6079,6 +6150,7 @@ static int profile_scenario(
     add_profile_rows(result->doc, value, rows, acount(rows), rows_truncated);
     afree(rows);
     afree(samples);
+    free_sequence(&sequence);
     scenario_context_free(&context);
     return 0;
 }
@@ -6096,29 +6168,6 @@ static int handle_profile_scenario(const char *root, yyjson_val *request, respon
     scenario_document_free(scenario);
     return reply;
 }
-
-typedef struct
-{
-    const char *name;
-    bool pressed;
-} scenario_action;
-
-typedef struct
-{
-    double movement_x;
-    double movement_y;
-    double aim_x;
-    double aim_y;
-    bool aim_firing;
-    bool aim_point;
-    bool has_aim, has_movement;
-    yyjson_val *events;
-    scenario_action actions[SCENARIO_MAX_ACTIONS];
-    int action_count;
-    bool has_controls;
-    uint64_t controls;
-    yyjson_val *ui;
-} scenario_input;
 
 typedef struct
 {
@@ -6607,15 +6656,6 @@ static int run_scenario_inputs(
     observations->has_live_entities = true;
     return CHIBI_AUTOMATION_OK;
 }
-
-typedef struct
-{
-    scenario_input *inputs;
-    uint64_t *at;
-    size_t count, next;
-    uint64_t frame;
-    bool sampled;
-} scenario_sequence;
 
 static void free_sequence(scenario_sequence *sequence)
 {

@@ -28,6 +28,7 @@ void test_automation_scene_edit();
 void test_automation_asset_write();
 void test_automation_refactor();
 void test_automation_preview_registration();
+void test_automation_profile_scenario_inputs();
 
 int arena_play_run(const char *program);
 int compiled_arena_run(const char *program);
@@ -133,6 +134,7 @@ TEST_CASE(all_checks)
     test_automation_asset_write();
     test_automation_refactor();
     test_automation_preview_registration();
+    test_automation_profile_scenario_inputs();
     run_content_catalog_checks();
     test_reference_index();
     test_refactor();
@@ -923,6 +925,7 @@ int main(int argc, char **argv)
         test_automation_asset_write();
         test_automation_refactor();
         test_automation_preview_registration();
+        test_automation_profile_scenario_inputs();
         return fails ? 1 : 0;
     }
     if (argc > 1 && strcmp(argv[1], "--game-capabilities") == 0) {

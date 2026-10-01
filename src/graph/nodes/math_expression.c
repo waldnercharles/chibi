@@ -1156,6 +1156,8 @@ static const node_desc *expression_component_set(const char *key, const char *fi
     return NULL;
 }
 
+static int connect_number(graph *g, value_source from, node *to, int pin);
+
 static int expression_replace_struct_field(
     graph *target,
     value_source base,
@@ -1231,7 +1233,7 @@ static int expression_replace_struct_field(
                 value = replacement;
             }
         }
-        if (graph_connect_data(target, value.node, value.pin, make, i) != 0) {
+        if (connect_number(target, value, make, i) != 0) {
             snprintf(error->message, sizeof error->message, "Could not connect member assignment");
             return -1;
         }

@@ -8,6 +8,7 @@
 #include "runtime/material_terrain.h"
 #include "runtime/task_pool.h"
 #include "support/array.h"
+#include "support/cos_sin.h"
 #include "support/xalloc.h"
 
 #include <assert.h>
@@ -695,11 +696,12 @@ static void detach(game_materials *materials, ecs_entity source, material_mask m
     /* Throw chips out of the source hull, rather than driving an edge chip
      * back into its parent from the projectile's surface contact. */
     float dx = c * cx - s * cy, dy = s * cx + c * cy;
-    float distance = hypotf(dx, dy);
+    /* Float products fit in double; sqrt shares the mask's rounded norm. */
+    float distance = (float)sqrt((double)dx * dx + (double)dy * dy);
     if (distance < .001f) {
         dx = transform.x - hit.x;
         dy = transform.y - hit.y;
-        distance = hypotf(dx, dy);
+        distance = (float)sqrt((double)dx * dx + (double)dy * dy);
     }
     if (distance < .001f) {
         dx = 1;
@@ -926,7 +928,10 @@ void material_ecs_fade_fragments(game_materials *materials, float delta)
         record->glow_age = fminf(glow->duration, record->glow_age + delta);
         float remaining = 1 - record->glow_age / glow->duration;
         float phase = record->glow_age * 29 + record->entity.slot * 2.399963f;
-        float pulse = fmaxf(0, sinf(phase) * sinf(phase * .37f));
+        float pulse = fmaxf(
+            0,
+            cos_sin_compute(phase).s * cos_sin_compute(phase * .37f).s
+        );
         float power = remaining * remaining * (1 - glow->flicker * pulse);
         surface->emission_multiplier = record->glow_multiplier * power;
     }

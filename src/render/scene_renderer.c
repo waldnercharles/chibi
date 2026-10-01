@@ -61,7 +61,7 @@ struct app_scene_renderer
     /* Tile groups numbered so far this frame. */
     int tile_groups;
     render_material_entity *entities;
-    render_material_border border;
+    render_material_border_cache *border;
     draw_actor *actors;
     ecs_world *world;
     engine_viewport_camera camera;
@@ -135,7 +135,7 @@ void app_scene_renderer_free(app_scene_renderer *renderer)
     render_programs_free(renderer->fragment);
     afree(renderer->fragment_programs);
     afree(renderer->entities);
-    render_material_border_free(&renderer->border);
+    render_material_border_cache_free(renderer->border);
     afree(renderer->actors);
     free(renderer);
 }
@@ -290,6 +290,9 @@ bool app_scene_renderer_draw3d(
 
 void app_scene_renderer_reset(app_scene_renderer *renderer)
 {
+    if (renderer && renderer->border) {
+        render_material_border_cache_clear(renderer->border);
+    }
     if (renderer && renderer->arena) {
         render_arena_reset(renderer->arena);
     }
@@ -519,11 +522,17 @@ static void mask_edges(
     edge.albedo = material->border_albedo;
     edge.filter = material->border_filter;
     edge.emission_color = material->border_emission_color;
-    int reach = (int)ceilf(look->border_width / mask->cell_size);
-    render_material_border_build(&renderer->border, material_mask_occupancy(mask), reach);
+    float cells = ceilf(look->border_width / mask->cell_size);
+    int maximum = mask->width > mask->height ? mask->width : mask->height;
+    int reach = cells >= maximum ? maximum : (int)cells;
+    render_material_border_view border = render_material_border_cache_get(
+        renderer->border,
+        material_mask_occupancy(mask),
+        reach
+    );
     float c = cosf(heading), s = sinf(heading);
-    for (int i = 0; i < acount(renderer->border.rects); i++) {
-        render_material_border_rect rect = renderer->border.rects[i];
+    for (int i = 0; i < border.count; i++) {
+        render_material_border_rect rect = border.rects[i];
         float px = (rect.x + rect.width * .5f - mask->width * .5f) * mask->cell_size;
         float py = (rect.y + rect.height * .5f - mask->height * .5f) * mask->cell_size;
         GameTransform p = { position.x + c * px - s * py, position.y + s * px + c * py };
@@ -715,6 +724,10 @@ static void collect(
     render_material_view view
 )
 {
+    if (!renderer->border) {
+        renderer->border = render_material_border_cache_new(65536, 16u * 1024 * 1024);
+    }
+    render_material_border_cache_begin(renderer->border);
     asetlen(renderer->entities, 0);
     renderer->tile_groups = 0;
     aclear(renderer->reflectors);

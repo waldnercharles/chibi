@@ -4,6 +4,7 @@
 #include "support/array.h"
 #include "support/xalloc.h"
 
+#include <limits.h>
 #include <math.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -255,12 +256,12 @@ static bool expected_border(const unsigned char *cells, int width, int height, i
     return false;
 }
 
-static bool border_partition(render_material_border *border, material_occupancy_view mask, int reach)
+static bool border_coverage(render_material_border_view border, material_occupancy_view mask, int reach)
 {
-    render_material_border_build(border, mask, reach);
-    unsigned char covered[100] = { 0 };
-    for (int i = 0; i < acount(border->rects); i++) {
-        render_material_border_rect r = border->rects[i];
+    unsigned char covered[256 * 256];
+    memset(covered, 0, (size_t)mask.width * mask.height);
+    for (int i = 0; i < border.count; i++) {
+        render_material_border_rect r = border.rects[i];
         if (r.width <= 0 || r.height <= 0 || r.x < 0 || r.y < 0 ||
             r.x + r.width > mask.width || r.y + r.height > mask.height) {
             return false;
@@ -282,6 +283,16 @@ static bool border_partition(render_material_border *border, material_occupancy_
         }
     }
     return true;
+}
+
+static bool border_partition(render_material_border *border, material_occupancy_view mask, int reach)
+{
+    render_material_border_build(border, mask, reach);
+    return border_coverage(
+        (render_material_border_view){ border->rects, acount(border->rects) },
+        mask,
+        reach
+    );
 }
 
 /* Visible actors reuse one scratch object despite differing masks. Warm the
@@ -342,8 +353,8 @@ static render_material_entity border_box(render_material_border_rect r, float an
         .shape_type = RENDER_SHAPE_BOX,
         .points = { r.width * .5f, r.height * .5f },
         .aa = .1f,
-        .scene = { .2f, .5f, .8f, .7f },
-        .emission = { .8f, .4f, .2f, .7f },
+        .scene = { .2f + phase * .1f, .5f, .8f - phase * .1f, .7f },
+        .emission = { .8f, .4f + phase * .1f, .2f, .7f },
         .absorption = { .2f, .3f, .4f, 1 },
         .albedo = { .3f, .6f, .9f, .8f },
         .reserved = { 0, 0, .4f },
@@ -355,7 +366,7 @@ static bool border_targets(
     render_material_raster *raster,
     material_occupancy_view mask,
     int reach,
-    const render_material_border *border,
+    render_material_border_view border,
     float angle,
     float phase,
     float *largest_error
@@ -366,8 +377,8 @@ static bool border_targets(
     for (int merged = 0; merged < 2; merged++) {
         int count = 0;
         if (merged) {
-            for (int i = 0; i < acount(border->rects); i++) {
-                entities[count++] = border_box(border->rects[i], angle, phase);
+            for (int i = 0; i < border.count; i++) {
+                entities[count++] = border_box(border.rects[i], angle, phase);
             }
         } else {
             for (int y = 0; y < mask.height; y++) {
@@ -434,10 +445,241 @@ static bool border_targets(
     return true;
 }
 
+static bool cached_border(render_material_border_cache *cache, const material_mask *mask, int reach)
+{
+    material_occupancy_view view = material_mask_occupancy(mask);
+    render_material_border_view cached = render_material_border_cache_get(cache, view, reach);
+    render_material_border fresh = { 0 };
+    render_material_border_build(&fresh, view, reach);
+    bool ok = border_coverage(cached, view, reach) &&
+              cached.count == acount(fresh.rects) &&
+              (!cached.count || memcmp(
+                                    cached.rects,
+                                    fresh.rects,
+                                    (size_t)cached.count * sizeof *cached.rects
+                                ) == 0);
+    render_material_border_free(&fresh);
+    return ok;
+}
+
+static bool border_cache_crowd()
+{
+    const int count = 20000;
+    const size_t limit = 16u * 1024 * 1024;
+    render_material_border_cache *cache = render_material_border_cache_new(65536, limit);
+    material_mask *masks = xcalloc((size_t)count, sizeof *masks);
+    bool ok = true;
+    render_material_border_cache_begin(cache);
+    for (int i = 0; i < count; i++) {
+        masks[i] = material_mask_new(10, 10, 1, false);
+        render_material_border_view view = render_material_border_cache_get(
+            cache,
+            material_mask_occupancy(&masks[i]),
+            1
+        );
+        ok &= view.count == 4 &&
+              border_coverage(view, material_mask_occupancy(&masks[i]), 1);
+    }
+    render_material_border_cache_stats before = render_material_border_cache_get_stats(cache);
+    xalloc_stats allocations_before, allocations_after;
+    xalloc_stats_get(&allocations_before);
+    for (int frame = 0; frame < 2; frame++) {
+        render_material_border_cache_begin(cache);
+        for (int i = 0; i < count; i++) {
+            render_material_border_view view = render_material_border_cache_get(
+                cache,
+                material_mask_occupancy(&masks[i]),
+                1
+            );
+            ok &= view.count == 4;
+        }
+    }
+    xalloc_stats_get(&allocations_after);
+    render_material_border_cache_stats after = render_material_border_cache_get_stats(cache);
+    ok &= before.entries == count && before.builds == count &&
+          before.bytes <= limit && after.entries == count &&
+          after.bytes == before.bytes && after.builds == before.builds &&
+          after.hits == before.hits + 2 * count &&
+          allocations_after.calls == allocations_before.calls &&
+          allocations_after.requested_bytes == allocations_before.requested_bytes;
+    printf(
+        "material border cache crowd %s: %d independent masks, %zu retained "
+        "bytes <= %zu, warmed builds %llu, allocation calls %llu\n",
+        ok ? "PASS" : "FAIL",
+        count,
+        after.bytes,
+        limit,
+        (unsigned long long)(after.builds - before.builds),
+        (unsigned long long)(allocations_after.calls - allocations_before.calls)
+    );
+    for (int i = 0; i < count; i++) {
+        material_mask_free(&masks[i]);
+    }
+    free(masks);
+    render_material_border_cache_free(cache);
+    return ok;
+}
+
+static bool border_cache_contracts()
+{
+    render_material_border_cache *cache = render_material_border_cache_new(2, 4096);
+    render_material_border_cache *other = render_material_border_cache_new(2, 4096);
+    material_mask mask = material_mask_new(10, 10, 1, false);
+    uint64_t original = mask.incarnation;
+    bool ok = original && cached_border(cache, &mask, 1);
+    render_material_border_cache_stats before = render_material_border_cache_get_stats(cache);
+    xalloc_stats allocations_before, allocations_after;
+    xalloc_stats_get(&allocations_before);
+    for (int i = 0; i < 100; i++) {
+        render_material_border_view view = render_material_border_cache_get(
+            cache,
+            material_mask_occupancy(&mask),
+            1
+        );
+        ok &= view.count == 4;
+    }
+    xalloc_stats_get(&allocations_after);
+    render_material_border_cache_stats after = render_material_border_cache_get_stats(cache);
+    ok &= after.builds == before.builds && after.hits == before.hits + 100 &&
+          allocations_after.calls == allocations_before.calls &&
+          allocations_after.requested_bytes == allocations_before.requested_bytes;
+
+    render_material_border_view
+        one = render_material_border_cache_get(cache, material_mask_occupancy(&mask), 1);
+    render_material_border_view
+        two = render_material_border_cache_get(other, material_mask_occupancy(&mask), 1);
+    ok &= one.rects != two.rects && one.count == two.count &&
+          memcmp(one.rects, two.rects, (size_t)one.count * sizeof *one.rects) == 0;
+    ok &= cached_border(cache, &mask, 3);
+    ok &= material_mask_carve(&mask, 0, 0, 2) > 0 &&
+          mask.incarnation == original && cached_border(cache, &mask, 3);
+
+    /* Replacement reuses the same material_mask address, dimensions and initial
+     * revision. Its different occupancy must never reuse the old geometry. */
+    material_mask_free(&mask);
+    mask = material_mask_new(10, 10, 1, true);
+    ok &= mask.incarnation && mask.incarnation != original &&
+          cached_border(cache, &mask, 3);
+    uint64_t replacement = mask.incarnation;
+    mask.revision = UINT_MAX;
+    material_mask_rebuild(&mask);
+    ok &= mask.revision == 1 && mask.incarnation != replacement &&
+          cached_border(cache, &mask, 3);
+
+    /* LRU eviction preserves geometry and both entry/byte limits. */
+    material_mask b = material_mask_new(10, 10, 1, false);
+    material_mask c = material_mask_new(10, 10, 1, true);
+    ok &= cached_border(cache, &b, 1) && cached_border(cache, &mask, 3) &&
+          cached_border(cache, &c, 1);
+    before = render_material_border_cache_get_stats(cache);
+    ok &= before.entries == 2 && before.bytes <= 4096;
+    ok &= cached_border(cache, &b, 1);
+    after = render_material_border_cache_get_stats(cache);
+    ok &= after.builds == before.builds + 1 && after.entries == 2 && after.bytes <= 4096;
+    render_material_border_cache_clear(cache);
+    after = render_material_border_cache_get_stats(cache);
+    ok &= after.entries == 0 && after.bytes == 0 && cached_border(cache, &b, 1);
+
+    /* A working set beyond the limit keeps its hot prefix, while uncached
+     * masks reuse the original build scratch without allocation churn. */
+    render_material_border_cache *pressure = render_material_border_cache_new(1, 1024);
+    render_material_border_cache_begin(pressure);
+    ok &= cached_border(pressure, &b, 1) && cached_border(pressure, &c, 1);
+    before = render_material_border_cache_get_stats(pressure);
+    xalloc_stats_get(&allocations_before);
+    for (int i = 0; i < 20; i++) {
+        render_material_border_cache_begin(pressure);
+        render_material_border_view hit = render_material_border_cache_get(
+            pressure,
+            material_mask_occupancy(&b),
+            1
+        );
+        ok &= border_coverage(hit, material_mask_occupancy(&b), 1);
+        render_material_border_view fallback = render_material_border_cache_get(
+            pressure,
+            material_mask_occupancy(&c),
+            1
+        );
+        ok &= border_coverage(fallback, material_mask_occupancy(&c), 1);
+    }
+    xalloc_stats_get(&allocations_after);
+    after = render_material_border_cache_get_stats(pressure);
+    ok &= after.entries == 1 && after.bytes == before.bytes &&
+          after.hits == before.hits + 20 && after.builds == before.builds + 20 &&
+          allocations_after.calls == allocations_before.calls &&
+          allocations_after.requested_bytes == allocations_before.requested_bytes;
+    render_material_border_cache_begin(pressure);
+    ok &= cached_border(pressure, &c, 1);
+    before = render_material_border_cache_get_stats(pressure);
+    ok &= cached_border(pressure, &c, 1) &&
+          render_material_border_cache_get_stats(pressure).builds == before.builds;
+    render_material_border_cache_free(pressure);
+
+    render_material_border_cache *bounded = render_material_border_cache_new(8, 1024);
+    unsigned char cells[400];
+    for (int i = 0; i < 400; i++) {
+        cells[i] = (i / 20 + i % 20) % 2;
+    }
+    material_mask large = material_mask_from_cells(20, 20, 1, cells);
+    ok &= cached_border(bounded, &b, 1);
+    before = render_material_border_cache_get_stats(bounded);
+    ok &= cached_border(bounded, &large, 1);
+    after = render_material_border_cache_get_stats(bounded);
+    ok &= after.entries == before.entries && after.bytes == before.bytes &&
+          after.bytes <= 1024;
+    material_occupancy_view borrowed = material_mask_occupancy(&b);
+    borrowed.incarnation = 0;
+    cells[0] = 1;
+    borrowed.cells = cells;
+    borrowed.width = borrowed.height = 20;
+    render_material_border_view uncached = render_material_border_cache_get(bounded, borrowed, 1);
+    ok &= border_coverage(uncached, borrowed, 1) &&
+          render_material_border_cache_get_stats(bounded).entries == before.entries;
+
+    /* Every independent owned-mask constructor, including fragments, receives a
+     * new identity; ownership transfers retain it. */
+    material_mask copy = material_mask_copy_cells(20, 20, 1, cells);
+    float distance[4] = { -1, 1, 1, -1 };
+    material_mask field = material_mask_from_field(2, 2, 1, distance);
+    ok &= copy.incarnation && copy.incarnation != large.incarnation &&
+          field.incarnation && field.incarnation != copy.incarnation;
+    unsigned char split_cells[4] = { 1, 0, 0, 1 };
+    material_mask split = material_mask_from_cells(2, 2, 1, split_cells);
+    int dust = 0;
+    material_mask *pieces = material_mask_extract_fragments(&split, 1, false, &dust);
+    ok &= acount(pieces) == 1 && pieces[0].incarnation &&
+          pieces[0].incarnation != split.incarnation;
+    for (int i = 0; i < acount(pieces); i++) {
+        material_mask_free(&pieces[i]);
+    }
+    afree(pieces);
+    material_mask moved = copy;
+    copy = (material_mask){ 0 };
+    ok &= moved.incarnation != 0 && copy.incarnation == 0;
+    material_mask_free(&moved);
+    material_mask_free(&field);
+    material_mask_free(&split);
+    material_mask_free(&large);
+    material_mask_free(&c);
+    material_mask_free(&b);
+    material_mask_free(&mask);
+    render_material_border_cache_free(bounded);
+    render_material_border_cache_free(other);
+    render_material_border_cache_free(cache);
+    printf(
+        "material border cache %s: exact order/coverage, allocation-free hits, "
+        "replacement, wrap, isolation, eviction and bounded retention\n",
+        ok ? "PASS" : "FAIL"
+    );
+    return ok;
+}
+
 static bool merged_borders(render_material_raster *raster)
 {
     render_material_border border = { 0 };
-    bool ok = border_reuse(&border);
+    bool ok = border_reuse(&border) && border_cache_contracts() &&
+              border_cache_crowd();
+    render_material_border_cache *cache = render_material_border_cache_new(16, 8192);
     float largest_error = 0;
     for (int fixture = 0; fixture < 7 && ok; fixture++) {
         unsigned char cells[100];
@@ -471,9 +713,12 @@ static bool merged_borders(render_material_raster *raster)
                                          .width = 10,
                                          .height = 10,
                                          .cell_size = 1 };
+        material_mask owned = material_mask_from_cells(10, 10, 1, cells);
+        mask = material_mask_occupancy(&owned);
         const int reaches[] = { 1, 2, 4, 12 };
         for (int i = 0; i < 4 && ok; i++) {
-            ok = border_partition(&border, mask, reaches[i]);
+            ok = border_partition(&border, mask, reaches[i]) &&
+                 cached_border(cache, &owned, reaches[i]);
             if (fixture == 0 && reaches[i] == 2) {
                 ok &= acount(border.rects) == 4;
             }
@@ -482,11 +727,15 @@ static bool merged_borders(render_material_raster *raster)
             render_material_border_build(&border, mask, reach);
             for (int rotation = 0; rotation < 2 && ok; rotation++) {
                 for (int phase = 0; phase < 3 && ok; phase++) {
-                    ok = border_targets(raster, mask, reach, &border, rotation * .3f, phase / 3.0f, &largest_error);
+                    render_material_border_view
+                        cached = render_material_border_cache_get(cache, mask, reach);
+                    ok = border_targets(raster, mask, reach, cached, rotation * .3f, phase / 3.0f, &largest_error);
                 }
             }
         }
+        material_mask_free(&owned);
     }
+    render_material_border_cache_free(cache);
     render_material_border_free(&border);
     printf("merged material borders %s: exact partition and five targets, maximum error %.6f\n", ok ? "PASS" : "FAIL", largest_error);
     return ok;

@@ -2,6 +2,7 @@
 #define CHIBI_MATERIAL_MASK_H
 
 #include <stdbool.h>
+#include <stdint.h>
 
 /* Local-space rectangles exactly cover the surviving cells, without overlap. */
 typedef struct
@@ -21,6 +22,8 @@ typedef struct
     int width, height, count;
     float cell_size;
     unsigned revision;
+    /* Identifies this owned mask across replacement and allocator address reuse. */
+    uint64_t incarnation;
     unsigned char *cells;
     float *damage;
     /* Signed samples at cell centers: negative inside. */
@@ -55,6 +58,7 @@ typedef struct
     int width, height, count;
     float cell_size;
     unsigned revision;
+    uint64_t incarnation;
 } material_occupancy_view;
 typedef struct
 {

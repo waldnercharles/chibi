@@ -157,6 +157,105 @@ class CacheTest(unittest.TestCase):
         self.assertEqual(git(checkout, "rev-parse", "v2^{commit}"), git(checkout, "rev-parse", "HEAD"))
         self.assertFalse((child / ".git/objects/info/alternates").exists())
 
+    @unittest.skipUnless(shutil.which("cmake"), "CMake is required for patch integration")
+    def test_real_cmake_patching_preserves_clean_clone_files_and_restores_old_patch(self):
+        repo = self.repository("patched-dependency")
+        for name, contents in [("sentinel.c", "unchanged sentinel\n"),
+                               ("removed.c", "restore me\n"),
+                               ("resetme.c", "unpatched tracked file\n")]:
+            (repo / name).write_text(contents)
+        git(repo, "add", ".")
+        git(repo, "commit", "-qm", "patch fixture")
+        git(repo, "tag", "v2")
+        self.declare("dependency", repo, "v2")
+        self.clone_donor("dependency", repo)
+        cache.publish_build(self.source, self.donor, self.storage)
+        private = self.root / "private-build"
+        cache.prepare(self.source, private, self.storage)
+        checkout = private / "_deps/dependency-src"
+        shared = cache.entry_path(self.storage, "dependency", cache.source_pins(self.source)["dependency"]) / "dependency-src"
+        sentinel_inode = (checkout / "sentinel.c").stat().st_ino
+        patch = self.root / "local.patch"
+        patch.write_text("""diff --git a/source.c b/source.c
+--- a/source.c
++++ b/source.c
+@@ -1 +1 @@
+-original
++first patch
+diff --git a/removed.c b/removed.c
+deleted file mode 100644
+--- a/removed.c
++++ /dev/null
+@@ -1 +0,0 @@
+-restore me
+diff --git a/resetme.c b/resetme.c
+--- a/resetme.c
++++ b/resetme.c
+@@ -1 +1 @@
+-unpatched tracked file
++modified by old patch
+""")
+        project = self.root / "cmake-patch-project"
+        project.mkdir()
+        implementation = Path(__file__).resolve().parents[1] / "cmake/apply_patch.cmake"
+        (project / "CMakeLists.txt").write_text(
+            "cmake_minimum_required(VERSION 3.20)\nproject(PatchFixture LANGUAGES NONE)\n"
+            f"include({cache.cmake_bracket(str(implementation))})\n"
+            f"chibi_apply_patches({cache.cmake_bracket(str(checkout))} {cache.cmake_bracket(str(patch))})\n")
+
+        def configure():
+            result = subprocess.run([shutil.which("cmake"), "-S", str(project), "-B", str(self.root / "configure")],
+                                    capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+        configure()
+        self.assertEqual((checkout / "sentinel.c").stat().st_ino, sentinel_inode)
+        self.assertEqual((checkout / "source.c").read_text(), "first patch\n")
+        self.assertFalse((checkout / "removed.c").exists())
+        self.assertEqual((checkout / "resetme.c").read_text(), "modified by old patch\n")
+        patch.write_text("""diff --git a/source.c b/source.c
+--- a/source.c
++++ b/source.c
+@@ -1 +1 @@
+-original
++replacement patch
+""")
+        configure()
+        self.assertEqual((checkout / "sentinel.c").stat().st_ino, sentinel_inode)
+        self.assertEqual((checkout / "source.c").read_text(), "replacement patch\n")
+        self.assertEqual((checkout / "removed.c").read_text(), "restore me\n")
+        self.assertEqual((checkout / "resetme.c").read_text(), "unpatched tracked file\n")
+        for pristine in (repo, shared):
+            self.assertEqual((pristine / "source.c").read_text(), "original\n")
+            self.assertEqual((pristine / "sentinel.c").read_text(), "unchanged sentinel\n")
+            self.assertEqual((pristine / "removed.c").read_text(), "restore me\n")
+            self.assertEqual((pristine / "resetme.c").read_text(), "unpatched tracked file\n")
+            self.assertEqual(git(pristine, "status", "--porcelain"), "")
+
+    def test_explicit_submodule_exclusion_changes_key_and_needs_no_donor_submodule(self):
+        sub = self.repository("unused-submodule")
+        parent = self.repository("zep")
+        git(parent, "submodule", "add", "-q", str(sub), "vcpkg")
+        git(parent, "commit", "-qam", "pin unused vcpkg")
+        git(parent, "tag", "v2")
+        self.declare("zep", parent, "v2", module="zep")
+        module = self.source / "cmake/zep.cmake"
+        default = cache.source_pins(self.source)["zep"]
+        module.write_text(module.read_text().replace("\n)", '\n GIT_SUBMODULES ""\n)'))
+        excluded = cache.source_pins(self.source)["zep"]
+        self.assertEqual(excluded["GIT_SUBMODULES"], "")
+        self.assertNotEqual(cache.dependency_key(default), cache.dependency_key(excluded))
+        # FetchContent with an empty submodule list leaves this donor uninitialized.
+        donor = self.clone_donor("zep", parent)
+        self.assertFalse((donor / "vcpkg/.git").exists())
+        self.assertEqual(cache.publish_build(self.source, self.donor, self.storage), 1)
+        build = self.root / "without-unused-submodule"
+        cache.prepare(self.source, build, self.storage)
+        target = build / "_deps/zep-src"
+        self.assertFalse((target / "vcpkg/source.c").exists())
+        self.assertFalse((target / "vcpkg/.git").exists())
+        self.assertEqual(git(target, "rev-parse", "v2^{commit}"), git(target, "rev-parse", "HEAD"))
+
     def test_parallel_publication_and_unknown_or_wrong_pin_rejection(self):
         repo = self.repository("zep")
         self.declare("zep", repo)

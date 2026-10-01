@@ -43,7 +43,9 @@ def copy_notices(stage, build, cache):
         if value and key.endswith('_SOURCE_DIR') and key != 'chibi_SOURCE_DIR':
             sources[key.removesuffix('_SOURCE_DIR')] = Path(value)
     for name, source in sources.items():
-        if not source.is_dir():
+        resolved = source.resolve()
+        if (not source.is_dir() or resolved == ROOT or resolved == stage.resolve()
+                or resolved in stage.resolve().parents):
             continue
         for path in source.rglob('*'):
             if (path.is_file() and '.git' not in path.relative_to(source).parts
@@ -94,7 +96,8 @@ def assemble(build, output):
             shutil.copytree(ROOT / source, share / name)
         copy_file(ROOT / 'projects/studio/project.yaml', share / 'studio/project.yaml')
         shutil.copytree(ROOT / 'projects/studio/content', share / 'studio/content')
-        for name in ('native-package.md', 'mcp.md', 'authoring-navigation.md'):
+        for name in ('native-package.md', 'mcp.md', 'authoring-navigation.md',
+                     'component-nodes.md', 'graph-optimizer.md', 'neon-gpu-benchmarks.md'):
             copy_file(ROOT / 'docs' / name, share / 'docs' / name)
         copy_notices(stage, build, cache)
         version_source = (ROOT / 'src/assets/project.h').read_text()

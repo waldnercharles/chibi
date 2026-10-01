@@ -86,6 +86,7 @@ os.execvp(sys.argv[1], sys.argv[1:])
         native, web = [call for call in calls if call[0] == "cmake"]
         self.assertIn("-DCHIBI_SDL3_PACKAGE_PREFIX=/shared SDL/install", native)
         self.assertIn("-DCHIBI_SDL3_PACKAGE_PREFIX=", web)
+        self.assertNotIn("-G", web)
         self.assertIn("-DCHIBI_COLLAB_URL=wss://example.test/room", web)
         self.assertEqual(len([call for call in calls if call[0] == "emcmake"]), 1)
 

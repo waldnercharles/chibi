@@ -3,9 +3,12 @@
 #include "editor/graph/search.h"
 #include "editor/workspace/editor_internal.h"
 #include "graph/document/events.h"
+#include "graph/document/serialize_internal.h"
 #include "graph/model/local.h"
 #include "graph/model/pin_conv.h"
 #include "graph/model/registry.h"
+#include "graph/model/type.h"
+#include "graph/runtime/value_array.h"
 #include "yyjson.h"
 
 #include <assert.h>
@@ -50,15 +53,82 @@ static yyjson_mut_val *action_root(yyjson_mut_doc *doc)
     return yyjson_mut_doc_get_root(doc);
 }
 
+/* Authored plain values cross the wire by value. Runtime handles never do. */
+static bool action_value_valid(const pin_value *value, int depth)
+{
+    if (!value || depth > 16 || value->type <= PIN_FLOW || value->type > PIN_ENUM) {
+        return false;
+    }
+    if (value->container != PIN_CONTAINER_SINGLE) {
+        if (value->container != PIN_CONTAINER_ARRAY &&
+            value->container != PIN_CONTAINER_SET) {
+            return false;
+        }
+        const pin_array *array = value->ptr;
+        if (!array) {
+            return true;
+        }
+        if (array->count < 0 || (array->count && !array->items) ||
+            array->element_type != value->type ||
+            ((value->type_name || array->type_name) &&
+             (!value->type_name || !array->type_name ||
+              strcmp(value->type_name, array->type_name)))) {
+            return false;
+        }
+        for (int i = 0; i < array->count; i++) {
+            const pin_value *item = &array->items[i];
+            if (item->container != PIN_CONTAINER_SINGLE || item->type != value->type ||
+                (value->type == PIN_STRUCT &&
+                 (!item->type_name || strcmp(item->type_name, value->type_name))) ||
+                !action_value_valid(item, depth + 1)) {
+                return false;
+            }
+        }
+        return true;
+    }
+    if (value->type == PIN_STRUCT) {
+        const type_desc *type = registry_type_by_name(value->type_name);
+        if (!type || !type_is_plain(type)) {
+            return false;
+        }
+        if (!value->ptr) {
+            return true; /* Authored null structs represent their typed zero default. */
+        }
+        for (int i = 0; i < type->field_count; i++) {
+            pin_value field;
+            pin_read_field(value->ptr, &type->fields[i], &field);
+            if (!action_value_valid(&field, depth + 1)) {
+                return false;
+            }
+        }
+        return true;
+    }
+    if (value->type == PIN_F32) {
+        return isfinite(value->f);
+    }
+    if (value->type == PIN_F64) {
+        return isfinite(value->d);
+    }
+    if (value->type == PIN_HANDLE) {
+        return !value->u64;
+    }
+    return (value->type != PIN_STR && value->type != PIN_NAME) || value->str;
+}
+
 static bool write_pin_value(yyjson_mut_doc *doc, yyjson_mut_val *root, const char *key, const pin_value *value)
 {
-    if (!value) {
+    if (!action_value_valid(value, 0)) {
         return false;
     }
     yyjson_mut_val *item = yyjson_mut_obj_add_obj(doc, root, key);
     yyjson_mut_obj_add_int(doc, item, "type", value->type);
     if (value->type_name) {
         yyjson_mut_obj_add_strcpy(doc, item, "type_name", value->type_name);
+    }
+    if (value->container != PIN_CONTAINER_SINGLE || value->type == PIN_STRUCT) {
+        yyjson_mut_obj_add_int(doc, item, "container", value->container);
+        serialize_write_value(doc, item, "data", value->type, value->type_name, value);
+        return true;
     }
     switch (value->type) {
         case PIN_BOOL:
@@ -122,7 +192,7 @@ static bool write_pin_value(yyjson_mut_doc *doc, yyjson_mut_val *root, const cha
     return true;
 }
 
-static bool read_pin_value(yyjson_val *item, pin_value *out)
+static bool read_pin_value(yyjson_val *item, pin_value *out, graph *storage)
 {
     yyjson_val *type = yyjson_obj_get(item, "type");
     yyjson_val *data = yyjson_obj_get(item, "data");
@@ -130,7 +200,35 @@ static bool read_pin_value(yyjson_val *item, pin_value *out)
     if (!yyjson_is_obj(item) || !yyjson_is_int(type) || !data) {
         return false;
     }
-    pin_value value = { .type = yyjson_get_int(type), .type_name = type_name };
+    yyjson_val *container_json = yyjson_obj_get(item, "container");
+    if (container_json && (!yyjson_is_int(container_json) ||
+                           yyjson_get_sint(container_json) < PIN_CONTAINER_SINGLE ||
+                           yyjson_get_sint(container_json) > PIN_CONTAINER_SET)) {
+        return false;
+    }
+    pin_value value = { .type = yyjson_get_int(type),
+                        .type_name = type_name,
+                        .container = container_json ? yyjson_get_int(container_json)
+                                                    : PIN_CONTAINER_SINGLE };
+    if (value.type <= PIN_FLOW || value.type > PIN_ENUM) {
+        return false;
+    }
+    if (value.container != PIN_CONTAINER_SINGLE || value.type == PIN_STRUCT) {
+        if (value.type == PIN_STRUCT &&
+            !type_is_plain(registry_type_by_name(type_name))) {
+            return false;
+        }
+        int result = value.container == PIN_CONTAINER_SINGLE
+                       ? serialize_read_value(value.type, type_name, data, &value, storage)
+                       : serialize_read_array(value.type, type_name, data, &value, storage);
+        value.container = container_json ? yyjson_get_int(container_json)
+                                         : PIN_CONTAINER_SINGLE;
+        if (result || !action_value_valid(&value, 0)) {
+            return false;
+        }
+        *out = value;
+        return true;
+    }
     switch (value.type) {
         case PIN_BOOL:
             if (!yyjson_is_bool(data)) {
@@ -231,6 +329,14 @@ static bool read_pin_value(yyjson_val *item, pin_value *out)
     return true;
 }
 
+static bool action_value_matches(const pin_spec *spec, const pin_value *value)
+{
+    return spec && value && spec->type == value->type &&
+           spec->container == value->container &&
+           (value->type != PIN_STRUCT || (spec->type_name && value->type_name &&
+                                          !strcmp(spec->type_name, value->type_name)));
+}
+
 char *graph_collab_action_for_command(const editor *e, editor_command command)
 {
     if (!e || !e->asset || !e->active_graph) {
@@ -265,6 +371,21 @@ char *graph_collab_action_for_command(const editor *e, editor_command command)
             }
             break;
         case EDITOR_COMMAND_SET_PIN_DEFAULT: {
+            node *target = graph_node_by_id(
+                e->active_graph,
+                command.data.set_pin_default.node_id
+            );
+            int side = command.data.set_pin_default.output,
+                index = command.data.set_pin_default.pin_index;
+            const pin_spec *spec = target && (side == 0 || side == 1) && index >= 0 &&
+                                           index < (side ? target->output_count
+                                                         : target->input_count)
+                                     ? &(side ? target->output_pins
+                                              : target->input_pins)[index]
+                                     : NULL;
+            if (!action_value_matches(spec, command.data.set_pin_default.value)) {
+                return NULL;
+            }
             doc = action_start(e, "set_default", e->active_graph->graph_id);
             root = action_root(doc);
             yyjson_mut_obj_add_uint(
@@ -544,7 +665,8 @@ static bool input_default_matches(const pin_spec *spec, const pin_value *value)
 {
     if (!spec || !value || spec->kind != PIN_DATA ||
         (spec->flags & PIN_FLAG_SETTING) || spec->container != PIN_CONTAINER_SINGLE ||
-        value->container != PIN_CONTAINER_SINGLE || value->type != spec->type) {
+        value->container != PIN_CONTAINER_SINGLE ||
+        !action_value_matches(spec, value)) {
         return false;
     }
     return value->type != PIN_ENUM || registry_enum_label(spec->type_name, value->e);
@@ -1006,6 +1128,8 @@ bool graph_collab_apply_action(editor *e, const char *json, char *error, size_t 
         return false;
     }
     uint64_t graph_id = yyjson_get_uint(graph_value);
+    graph storage;
+    graph_init(&storage);
     int result = -1;
     if (!strcmp(op, "open")) {
         result = editor_open_graph(e, graph_id);
@@ -1056,7 +1180,24 @@ bool graph_collab_apply_action(editor *e, const char *json, char *error, size_t 
         pin_value value = { 0 };
         if (e->active_graph->graph_id == graph_id && yyjson_is_uint(node_id) &&
             yyjson_is_int(output) && yyjson_is_int(pin) &&
-            read_pin_value(yyjson_obj_get(root, "value"), &value)) {
+            read_pin_value(yyjson_obj_get(root, "value"), &value, &storage)) {
+            node *target = graph_node_by_id(e->active_graph, yyjson_get_uint(node_id));
+            int side = yyjson_get_int(output), index = yyjson_get_int(pin);
+            const pin_spec *spec = target && (side == 0 || side == 1) && index >= 0 &&
+                                           index < (side ? target->output_count
+                                                         : target->input_count)
+                                     ? &(side ? target->output_pins
+                                              : target->input_pins)[index]
+                                     : NULL;
+            bool same_shape = action_value_matches(spec, &value);
+            if (!same_shape) {
+                graph_free(&storage);
+                yyjson_doc_free(doc);
+                if (error && error_size) {
+                    snprintf(error, error_size, "Graph default does not match the target pin shape");
+                }
+                return false;
+            }
             result = editor_command_apply(
                 e,
                 (editor_command){ .kind = EDITOR_COMMAND_SET_PIN_DEFAULT,
@@ -1075,8 +1216,9 @@ bool graph_collab_apply_action(editor *e, const char *json, char *error, size_t 
                     ? graph_node_by_id(e->active_graph, yyjson_get_uint(node_id))
                     : NULL;
         if (e->active_graph->graph_id == graph_id && n && yyjson_is_int(pin) &&
-            read_pin_value(yyjson_obj_get(root, "value"), &value) &&
-            yyjson_get_int(pin) >= 0 && yyjson_get_int(pin) < n->input_count) {
+            read_pin_value(yyjson_obj_get(root, "value"), &value, &storage) &&
+            yyjson_get_int(pin) >= 0 && yyjson_get_int(pin) < n->input_count &&
+            action_value_matches(&n->input_pins[yyjson_get_int(pin)], &value)) {
             ed_snapshot_before(e);
             result = graph_set_pin_binding(e->active_graph, n, 0, yyjson_get_int(pin), NULL);
             if (result == 0) {
@@ -1102,7 +1244,7 @@ bool graph_collab_apply_action(editor *e, const char *json, char *error, size_t 
         bool valid_binding = clear || read_pin_binding(value, &binding);
         bool binding_allowed = clear || graph_binding_allowed(e, &binding);
         bool valid_default = !has_default ||
-                             read_pin_value(default_json, &default_value);
+                             read_pin_value(default_json, &default_value, &storage);
         bool default_allowed = !has_default ||
                                (clear && input_default_matches(spec, &default_value));
         if (e->active_graph->graph_id == graph_id && spec && !output &&
@@ -1150,6 +1292,7 @@ bool graph_collab_apply_action(editor *e, const char *json, char *error, size_t 
             );
         }
     }
+    graph_free(&storage);
     yyjson_doc_free(doc);
     if (result != 0) {
         if (error && error_size && !error[0]) {

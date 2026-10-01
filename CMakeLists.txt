@@ -4,6 +4,8 @@ project(chibi LANGUAGES C CXX)
 option(CHIBI_WEB_THREADS "Build a separate web application with pthread workers" OFF)
 set(CHIBI_WEB_WORKERS 4 CACHE STRING "Total worker budget for the threaded web build")
 if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+    # The C++ shims and dependencies use no modules or dependency scanner.
+    set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
     # Recursive graph publication exceeds Emscripten's 64 KiB default with a
     # supported 64-operation data chain. Keep it within an explicit stack budget.
     add_link_options(-sSTACK_SIZE=1048576)
@@ -775,12 +777,12 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     set_target_properties(chibi PROPERTIES SUFFIX ".html")
     file(GLOB_RECURSE WEB_ASSETS CONFIGURE_DEPENDS
         "${CMAKE_CURRENT_SOURCE_DIR}/content/*"
-        "${CMAKE_CURRENT_SOURCE_DIR}/project.yaml"
         "${CMAKE_CURRENT_SOURCE_DIR}/projects/arena2d/*"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/editor/rmlui/resources/*"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/render/shaders/*")
     set_property(TARGET chibi APPEND PROPERTY LINK_DEPENDS
         ${WEB_ASSETS}
+        "${CMAKE_CURRENT_SOURCE_DIR}/project.yaml"
         "${CMAKE_CURRENT_SOURCE_DIR}/tools/web_storage.js"
         "${CMAKE_CURRENT_SOURCE_DIR}/tools/collab/storage.js"
         "${CMAKE_CURRENT_SOURCE_DIR}/tools/web_launch.js"

@@ -123,12 +123,13 @@ snapshots to `CHIBI_FETCHCONTENT_CACHE_DIR` (by default,
 `${XDG_CACHE_HOME:-$HOME/.cache}/chibi-fetchcontent`). Later build directories
 copy these snapshots using APFS cloning or Linux reflinks when available. The
 cache stores each dependency separately by repository and pin, including
-RmlUi, FreeType, Zep, tree-sitter, and their Git submodules. Changing a local
-patch reconfigures the build without duplicating unchanged cached sources.
+RmlUi, FreeType, Zep, tree-sitter, and required Git submodules. Zep’s unused
+vcpkg subtree is excluded. Changing a local patch reconfigures the build
+without duplicating unchanged cached sources.
 Each build can apply its own patches and generate files without changing the
 shared snapshot. Dependency build directories and linked libraries remain
-private, except for an installed
-SDL package. Run `ccache --show-stats` to check hits and evictions; increase its
+private, except for an installed SDL package. Run `ccache --show-stats` to check
+hits and evictions; increase its
 size limit if it is continually full.
 
 On macOS, `make sdl-package` builds the pinned SDL 3.4.0 archive once and

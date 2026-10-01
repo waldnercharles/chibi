@@ -14,6 +14,7 @@ try {
   process.env.CHIBI_RESOURCE_DIR = resolve(engine.root, "share/chibi");
   process.env.CHIBI_RENDER_SHADER_DIR = resolve(engine.root, "share/chibi/shaders");
   process.env.CHIBI_ENGINE_PACKAGE = "1";
+  process.env.CHIBI_ENGINE_BUILD_ID = engine.manifest.build_id;
   process.chdir(root);
   await import("./server.mjs");
 } catch (error) {

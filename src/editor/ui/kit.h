@@ -89,6 +89,9 @@ extern "C"
     void kit_pop(kit *k);
     void kit_leaf(kit *k, const char *key, const char *tag, const char *cls);
     void kit_label(kit *k, const char *key, const char *cls, const char *text);
+    /* A changing, single-line readout. Equal-width values update glyphs
+     * locally; size and typography changes still use normal layout. */
+    void kit_live_label(kit *k, const char *key, const char *cls, const char *text);
     void kit_icon(kit *k, const char *key, const char *cls, uint32_t codepoint);
     /* A span whose content is markup the caller built and escaped, e.g. by
      * highlight_markup; reapplied only when it changes. */

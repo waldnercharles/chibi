@@ -1,3 +1,4 @@
+#include "diagnostics/tracy.h"
 #include "editor/studio/studio_internal.h"
 #include "editor/workspace/editor.h"
 #include "platform/cute.h"
@@ -878,13 +879,17 @@ static void run(studio *s, double delta_seconds, float width, float height)
         app_scene_authoring_update(s->scene, s->in.down[0] || kit_wants_keyboard(s->kit));
     }
     sync_theme(s);
+    CHIBI_TRACE_ZONE_BEGIN(sync_zone, "Studio model sync");
     studio_ui_frame(s);
+    CHIBI_TRACE_ZONE_END(sync_zone);
     share_project_prefs(s);
     studio_debug_frame(s);
+    CHIBI_TRACE_ZONE_BEGIN(emit_zone, "Studio host emit");
     kit_begin(s->kit, &s->in);
     studio_emit(s);
     studio_inspect_emit(s);
     kit_end(s->kit);
+    CHIBI_TRACE_ZONE_END(emit_zone);
     s->typing = kit_wants_keyboard(s->kit) || studio_graph_wants_keyboard(s);
     bool toolbar_shortcuts = !studio_graph_wants_keyboard(s) &&
                              !s->shortcut_recording && studio_ui_shortcut_focus(s);
@@ -892,7 +897,9 @@ static void run(studio *s, double delta_seconds, float width, float height)
         studio_shortcuts(s);
     }
     apply_prefs(s, false);
+    CHIBI_TRACE_ZONE_BEGIN(viewport_zone, "Studio viewport");
     draw_viewport(s);
+    CHIBI_TRACE_ZONE_END(viewport_zone);
     if (s->guest) {
         kit_rect window = guest_window(s);
         run(s->guest, delta_seconds, fmaxf(window.w, 1), fmaxf(window.h, 1));
@@ -903,8 +910,12 @@ static void run(studio *s, double delta_seconds, float width, float height)
         );
     }
     studio_graph_frame(s, delta_seconds);
+    CHIBI_TRACE_ZONE_BEGIN(update_zone, "Studio host update");
     rml_backend_update(s->backend, delta_seconds);
+    CHIBI_TRACE_ZONE_END(update_zone);
+    CHIBI_TRACE_ZONE_BEGIN(render_zone, "Studio host render");
     rml_backend_render(s->backend);
+    CHIBI_TRACE_ZONE_END(render_zone);
     if (!s->hosted) {
         rml_backend_clear_pending_paste_text();
     }

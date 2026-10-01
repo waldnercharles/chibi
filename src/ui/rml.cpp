@@ -1577,6 +1577,32 @@ void rml_element_set_text(rml_element *e, const char *text)
     node->SetText(text);
 }
 
+void rml_element_suppress_text_layout(rml_element *e)
+{
+    auto *node = dynamic_cast<Rml::ElementText *>(element(e));
+    assert(node);
+    node->SuppressAutoLayout();
+}
+
+void rml_element_clear_text_lines(rml_element *e)
+{
+    auto *node = dynamic_cast<Rml::ElementText *>(element(e));
+    assert(node);
+    node->ClearLines();
+}
+
+void rml_element_add_text_line(rml_element *e, rml_vec2 offset, const char *text)
+{
+    auto *node = dynamic_cast<Rml::ElementText *>(element(e));
+    assert(node);
+    node->AddLine({ offset.x, offset.y }, text);
+}
+
+int rml_element_string_width(rml_element *e, const char *text)
+{
+    return Rml::ElementUtilities::GetStringWidth(element(e), Rml::StringView(text, text + std::strlen(text)));
+}
+
 struct rml_element_ref
 {
     Rml::ObserverPtr<Rml::Element> element;

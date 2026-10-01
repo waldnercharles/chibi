@@ -112,7 +112,7 @@ void studio_performance_header(studio *s, int area)
     refresh_readout(s);
     kit_label(k, "title", "perf-title", "Performance");
     kit_leaf(k, "spacer", NULL, "spacer");
-    kit_label(k, "readout", "perf-readout", s->perf_readout);
+    kit_live_label(k, "readout", "perf-readout", s->perf_readout);
 }
 
 static const char *const COLOR_DETAIL[] = { "Full", "Half", "Quarter", "Eighth" };

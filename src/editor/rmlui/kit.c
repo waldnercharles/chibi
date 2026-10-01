@@ -304,6 +304,37 @@ void set_element_text(rml_element *el, const char *text)
     free(rml);
 }
 
+/* Numeric labels are one line. Keep their normal baseline and update the
+ * glyphs locally; replacing a text child makes the whole document
+ * format again. Only a changed shaped width needs normal box layout. */
+void set_line_text(rml_element *label, const char *text)
+{
+    rml_element *child = rml_element_first_child(label);
+    if (!child) {
+        set_element_text(label, text);
+        return;
+    }
+    int width = rml_element_string_width(child, text);
+    if (width <= 0) {
+        /* The first normal layout resolves the font and baseline. */
+        rml_element_set_text(child, text);
+        return;
+    }
+    rml_element_suppress_text_layout(child);
+    float edges = rml_element_box_size(label, RML_BOX_BORDER).x -
+                  rml_element_box_size(label, RML_BOX_CONTENT).x;
+    char size[32];
+    snprintf(size, sizeof size, "%gpx", width + edges);
+    rml_element_set_property(label, "width", size);
+    char current[128];
+    if (rml_element_text(child, current, sizeof current) >= sizeof current ||
+        strcmp(current, text) != 0) {
+        rml_element_set_text(child, text);
+        rml_element_clear_text_lines(child);
+        rml_element_add_text_line(child, (rml_vec2){ 0, 0 }, text);
+    }
+}
+
 rml_element *raw(rml_element *parent, const char *tag, const char *cls, const char *text)
 {
     rml_element *el = rml_element_create_child(parent, tag, NULL);
@@ -1244,6 +1275,13 @@ void kit_label(kit *k, const char *key, const char *cls, const char *text)
 {
     node *n = emit(k, key, KIND_BOX, "span", cls);
     set_text(n, text);
+}
+
+void kit_live_label(kit *k, const char *key, const char *cls, const char *text)
+{
+    node *n = emit(k, key, KIND_BOX, "span", cls);
+    rml_element_set_property(n->el, "white-space", "nowrap");
+    set_line_text(n->el, text);
 }
 
 void kit_icon(kit *k, const char *key, const char *cls, uint32_t codepoint)

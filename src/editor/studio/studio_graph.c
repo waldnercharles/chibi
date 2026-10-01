@@ -1,9 +1,10 @@
 /* The behavior graph canvas: nodes are RmlUi elements in a context of their own
- * whose dp ratio is the zoom, so text is rasterized at its displayed size and
- * clipping keeps working (a transformed element would not clip). The canvas is
- * a texture shown by a surface in the Behavior area; window input is replayed
- * into it in graph units. Interaction follows docs/editor-graph-references.md;
- * edits go through the graph editor's mutation helpers and history. */
+ * whose dp ratio includes graph zoom and standard-font scale, so text is
+ * rasterized at its displayed size and clipping keeps working (a transformed
+ * element would not clip). The canvas is a texture shown by a surface in the
+ * Behavior area; window input is replayed into it in graph units. Interaction
+ * follows docs/editor-graph-references.md; edits go through the graph editor's
+ * mutation helpers and history. */
 #include "editor/studio/studio_graph_internal.h"
 #include "graph/authoring/expand.h"
 #include "graph/authoring/pin_edit.h"
@@ -435,14 +436,14 @@ static void studio_graph_menus(studio *s)
 
 /* ---------- Host ---------- */
 
-static float canvas_w(const studio_graph *g)
+static float canvas_w(const studio *s)
 {
-    return g->surface.rect.w / g->zoom;
+    return s->graph.surface.rect.w / sg_zoom(s);
 }
 
-static float canvas_h(const studio_graph *g)
+static float canvas_h(const studio *s)
 {
-    return g->surface.rect.h / g->zoom;
+    return s->graph.surface.rect.h / sg_zoom(s);
 }
 
 static bool ensure_canvas(studio *s)
@@ -462,6 +463,7 @@ static bool ensure_canvas(studio *s)
     }
     g->kit = kit_create(rml_backend_context(g->backend), "graph.rml");
     kit_theme(g->kit, s->page.document.rcss ? s->page.document.rcss : "");
+    studio_apply_graph_font_settings(g->kit, &s->prefs);
     g->in.mouse_x = g->in.mouse_y = -1e9f;
     if (g->zoom <= 0) {
         g->zoom = 1;
@@ -489,12 +491,8 @@ void studio_graph_frame(studio *s, double delta_seconds)
     e->arrange_pending |= forms != g->forms;
     g->forms = forms;
     float scale = studio_pixel_ratio(s);
-    rml_backend_resize_pixels(
-        g->backend,
-        (int)lroundf(r.w * scale),
-        (int)lroundf(r.h * scale),
-        g->zoom * scale
-    );
+    float graph_ratio = studio_graph_pixel_ratio(s);
+    rml_backend_resize_pixels(g->backend, (int)lroundf(r.w * scale), (int)lroundf(r.h * scale), graph_ratio);
     asetlen(g->layouts, 0);
     sg_replay(s);
     sg_pointer(s);
@@ -515,17 +513,13 @@ void studio_graph_frame(studio *s, double delta_seconds)
         sg_show_node(s, reveal, g->reveal_frame);
     }
     g->reveal = 0;
-    rml_backend_resize_pixels(
-        g->backend,
-        (int)lroundf(r.w * scale),
-        (int)lroundf(r.h * scale),
-        g->zoom * scale
-    );
+    graph_ratio = studio_graph_pixel_ratio(s);
+    rml_backend_resize_pixels(g->backend, (int)lroundf(r.w * scale), (int)lroundf(r.h * scale), graph_ratio);
     g->in.time = s->time;
-    g->in.dp_ratio = g->zoom * scale;
-    g->in.zoom = g->zoom;
-    g->in.width = canvas_w(g);
-    g->in.height = canvas_h(g);
+    g->in.dp_ratio = graph_ratio;
+    g->in.zoom = sg_zoom(s);
+    g->in.width = canvas_w(s);
+    g->in.height = canvas_h(s);
     kit_set_body_class(g->kit, "far", sg_far(s));
     kit_set_body_class(g->kit, "comfortable", s->prefs.comfortable);
     kit_set_body_class(g->kit, "dark", !s->light);
@@ -755,7 +749,7 @@ void studio_behavior_header(studio *s, int area)
             k,
             "zoom",
             "readout",
-            roundf(s->graph.zoom * 100),
+            roundf(sg_zoom(s) * 100),
             &(kit_number_flow_desc){ .suffix = "%" }
         );
     }

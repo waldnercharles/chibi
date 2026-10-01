@@ -20,42 +20,11 @@
       margin-left: 12px; padding: 2px 10px; border: 1px solid #303746; border-radius: 6px;
       background: #1b2330; color: inherit; font: inherit; cursor: pointer; pointer-events: auto;
     }
-    #collab-controls {
-      position: fixed; z-index: 2; top: 12px; right: 12px; display: grid; grid-template-columns: 1fr auto auto;
-      gap: 8px; width: min(560px, calc(100% - 24px)); box-sizing: border-box; padding: 10px;
-      border: 1px solid #303746; border-radius: 8px; background: #101620eF;
-      color: #d9e1ed; font: 13px/1.4 system-ui, sans-serif; box-shadow: 0 8px 28px #0008;
-    }
-    #collab-status { grid-column: 1 / -1; overflow-wrap: anywhere; }
-    #collab-status[data-error] { color: #ffd9dd; }
-    #collab-controls input, #collab-controls button {
-      min-width: 0; box-sizing: border-box; padding: 7px 9px; border: 1px solid #303746; border-radius: 6px;
-      background: #0b1018; color: inherit; font: inherit;
-    }
-    #collab-controls button { background: #1b2330; cursor: pointer; }
-    #collab-controls .invite { grid-column: 1 / 2; }
-    #collab-controls .admin { grid-column: 1 / 2; }
-    #collab-controls .wide { grid-column: 1 / -1; }
-    @media (max-width: 560px) {
-      #collab-controls { grid-template-columns: 1fr 1fr; }
-      #collab-controls .invite { grid-column: 1 / -1; }
-      #collab-controls .admin { grid-column: 1 / -1; }
-    }
   </style>
 </head>
 <body>
   <canvas id="canvas" tabindex="0" aria-label="Chibi"></canvas>
   <p id="status" role="status" aria-live="polite">Loading Chibi...</p>
-  <section id="collab-controls" aria-label="Collaboration room">
-    <span id="collab-status" role="status" aria-live="polite">Collaboration is disconnected.</span>
-    <input id="collab-invite" class="invite" type="text" autocomplete="off" placeholder="Paste a room invite link or code" aria-label="Room invite">
-    <button id="collab-join" type="button">Join</button>
-    <button id="collab-leave" type="button">Leave</button>
-    <input id="collab-admin" class="admin" type="password" autocomplete="off" placeholder="Admin token for production room creation" aria-label="Room creation token">
-    <button id="collab-host" type="button">Host room</button>
-    <button id="collab-viewer" type="button">Copy viewer invite</button>
-    <button id="collab-editor" type="button">Copy editor invite</button>
-  </section>
   <noscript>JavaScript is required to run Chibi.</noscript>
   <script>
     var Module = (() => {
@@ -100,22 +69,6 @@
       }
       canvas.addEventListener('contextmenu', event => event.preventDefault());
       canvas.addEventListener('pointerdown', () => canvas.focus());
-      const collabStatus = document.getElementById('collab-status');
-      window.addEventListener('chibi-collab-status', event => {
-        collabStatus.textContent = event.detail.text;
-        if (event.detail.error) collabStatus.dataset.error = '';
-        else delete collabStatus.dataset.error;
-      });
-      document.getElementById('collab-host').onclick = () => {
-        const token = document.getElementById('collab-admin').value;
-        document.getElementById('collab-admin').value = '';
-        Module['chibiCollab']?.control('host', token);
-      };
-      document.getElementById('collab-join').onclick = () =>
-        Module['chibiCollab']?.control('join', document.getElementById('collab-invite').value.trim());
-      document.getElementById('collab-leave').onclick = () => Module['chibiCollab']?.control('leave');
-      document.getElementById('collab-viewer').onclick = () => Module['chibiCollab']?.control('invite_viewer');
-      document.getElementById('collab-editor').onclick = () => Module['chibiCollab']?.control('invite_editor');
       canvas.addEventListener('webglcontextlost', event => {
         event.preventDefault();
         showError('Graphics context lost. Reload this page to continue.');

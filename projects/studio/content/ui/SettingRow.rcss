@@ -15,7 +15,7 @@
   background-color: var(--override); visibility: hidden;
 }
 .setting.modified .setting-dot { visibility: visible; }
-.setting-description { color: var(--muted-foreground); font-size: 11dp; line-height: 15dp; }
+.setting-description { color: var(--muted-foreground); font-size: var(--studio-font-11, 11dp); line-height: var(--studio-line-15, 15dp); }
 .setting-control { flex: 0 0 auto; display: flex; align-items: center; justify-content: flex-end; gap: 8dp; }
 .setting-reset { visibility: hidden; nav: auto; }
 .setting.modified .setting-reset { visibility: visible; }

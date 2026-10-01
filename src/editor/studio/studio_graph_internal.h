@@ -105,8 +105,10 @@ bool sg_node_box(const studio *s, node *n, float box[4]);
 void sg_socket_at(const studio *s, node *n, int kind, int pin, float *x, float *y);
 
 /* Camera and arrangement (studio_graph_view.c). */
-void sg_to_world(const studio_graph *g, float wx, float wy, float *x, float *y);
-void sg_zoom_at(studio_graph *g, float zoom, float wx, float wy);
+float sg_zoom(const studio *s);
+float studio_graph_pixel_ratio(const studio *s);
+void sg_to_world(const studio *s, float wx, float wy, float *x, float *y);
+void sg_zoom_at(studio *s, float zoom, float wx, float wy);
 /* Zoomed out past FAR_PIXELS: nodes show titles only. */
 bool sg_far(const studio *s);
 void sg_camera_step(studio *s);

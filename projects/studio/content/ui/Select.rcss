@@ -17,7 +17,7 @@ select selectvalue { height: var(--text-line); line-height: var(--text-line); wh
 select selectarrow { width: 0dp; height: 0dp; }
 .caret {
   position: absolute; right: 6dp; top: 0dp; height: var(--h); line-height: var(--h);
-  font-size: 12dp; color: var(--faint-foreground); pointer-events: none;
+  font-size: var(--studio-font-12, 12dp); color: var(--faint-foreground); pointer-events: none;
 }
 select selectbox {
   margin-top: 4dp; padding: 4dp; max-height: 280dp;

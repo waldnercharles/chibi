@@ -43,6 +43,8 @@ static struct
     collab_role role;
     char room[COLLAB_MAX_ID + 1], client[COLLAB_MAX_ID + 1];
     char status[256];
+    char feedback[256];
+    bool feedback_error;
     uint64_t revision, seq, pending_seq, checkpoint_revision, presence_seq;
     uint64_t recovery_revision;
     char pending_client[COLLAB_MAX_ID + 1];
@@ -225,9 +227,23 @@ COLLAB_EXPORT void collab_control(const char *command, const char *argument)
 #endif
 }
 
+COLLAB_EXPORT void collab_feedback(const char *message, int error)
+{
+    snprintf(session.feedback, sizeof session.feedback, "%s", message ? message : "");
+    session.feedback_error = error != 0;
+}
+
 bool collab_active()
 {
     return session.role != COLLAB_ROLE_NONE;
+}
+bool collab_rooms_available()
+{
+#ifdef __EMSCRIPTEN__
+    return true;
+#else
+    return false;
+#endif
 }
 bool collab_is_host()
 {
@@ -250,6 +266,14 @@ collab_state collab_state_current()
 const char *collab_status()
 {
     return *session.status ? session.status : "Offline";
+}
+const char *collab_feedback_text()
+{
+    return session.feedback;
+}
+bool collab_feedback_error()
+{
+    return session.feedback_error;
 }
 const char *collab_client()
 {

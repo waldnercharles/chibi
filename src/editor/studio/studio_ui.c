@@ -431,6 +431,15 @@ rml_element *studio_ui_area_header(studio *s, int area, const char *name)
     return host;
 }
 
+void studio_ui_area_detach(studio *s, int area)
+{
+    if (!s->ui) {
+        return;
+    }
+    ui_mount_detach(s->ui->headers[area]);
+    ui_mount_detach(s->ui->areas[area]);
+}
+
 const char *studio_ui_page(const studio_ui *ui)
 {
     return ui->page ? ui->page : "";
@@ -462,7 +471,12 @@ void studio_ui_modal(studio *s, const char *name)
     if (component && !component->hidden && component->document &&
         component->document[0]) {
         show_panel(s, p, &p->mount, kit_modal_host(s->kit, name), component->document);
-    } else if (!strcmp(name, "Settings")) {
+        return;
+    }
+    if (p) {
+        ui_mount_detach(p->mount);
+    }
+    if (!strcmp(name, "Settings")) {
         s->shortcut_recording = 0;
     }
 }

@@ -685,6 +685,7 @@ static void popup_free(popup *p)
     free(p->parent);
     free(p->sub_hover);
     free(p->typed);
+    free(p->trigger);
     afree(p->items);
     free(p);
 }
@@ -776,12 +777,35 @@ static bool tabbable(rml_element *el)
     rml_element_property(el, "tab-index", tab, sizeof tab);
     rml_element_property(el, "focus", focus, sizeof focus);
     return !strcmp(tab, "auto") && strcmp(focus, "none") != 0 &&
+           !rml_element_has_attribute(el, "data-disabled") &&
            rml_element_is_visible(el, true);
 }
 
-/* Tab and Shift+Tab move the focus through the open modal's tabbable
- * elements in document order, wrapping at either end, so it never reaches
- * the editor behind the modal, as Base UI's Dialog traps focus. */
+/* Move among enabled, visible tab stops in document order. A modal wraps;
+   a nonmodal popover excludes its own contents when leaving for the document. */
+bool focus_step(rml_element *root, rml_element *from, int step, bool wrap, rml_element *skip)
+{
+    int count = rml_element_query_selector_all(root, "*", NULL, 0), kept = 0, at = -1;
+    rml_element **stops = xmalloc((size_t)(count + 1) * sizeof *stops);
+    rml_element_query_selector_all(root, "*", stops, count);
+    for (int i = 0; i < count; i++) {
+        if (tabbable(stops[i]) && (!skip || !within(stops[i], skip))) {
+            at = stops[i] == from ? kept : at;
+            stops[kept++] = stops[i];
+        }
+    }
+    int next = at < 0 ? (step > 0 ? 0 : kept - 1) : at + step;
+    if (wrap && kept) {
+        next = (next % kept + kept) % kept;
+    }
+    bool moved = next >= 0 && next < kept && rml_element_focus(stops[next], true);
+    if (moved) {
+        rml_element_scroll_into_view(stops[next], RML_SCROLL_NEAREST, RML_SCROLL_NEAREST);
+    }
+    free(stops);
+    return moved;
+}
+
 static bool trap_focus(kit *k, const rml_event *e)
 {
     rml_element *modal = e->key == RML_KEY_TAB && !k->command.open ? top_modal(k)
@@ -789,23 +813,7 @@ static bool trap_focus(kit *k, const rml_event *e)
     if (!modal) {
         return false;
     }
-    int count = rml_element_query_selector_all(modal, "*", NULL, 0), kept = 0,
-        at = -1;
-    rml_element **stops = xmalloc((size_t)(count + 1) * sizeof *stops);
-    rml_element_query_selector_all(modal, "*", stops, count);
-    for (int i = 0; i < count; i++) {
-        if (tabbable(stops[i])) {
-            at = stops[i] == e->target ? kept : at;
-            stops[kept++] = stops[i];
-        }
-    }
-    int step = e->modifiers & RML_KM_SHIFT ? -1 : 1;
-    int next = at < 0 ? (step > 0 ? 0 : kept - 1) : ((at + step) % kept + kept) % kept;
-    if (kept) {
-        rml_element_focus(stops[next], true);
-        rml_element_scroll_into_view(stops[next], RML_SCROLL_NEAREST, RML_SCROLL_NEAREST);
-    }
-    free(stops);
+    focus_step(modal, e->target, e->modifiers & RML_KM_SHIFT ? -1 : 1, true, NULL);
     rml_event_stop_propagation(e);
     return true;
 }
@@ -893,6 +901,7 @@ static void on_event(void *user, const rml_event *e)
             }
             break;
         case RML_EVENT_FOCUS:
+            popup_focus(k, e->target);
             if (n) {
                 control_focus(n, e->target);
             }
@@ -988,6 +997,12 @@ void kit_style_sheet(kit *k, const char *key, const char *rcss)
     k->restyle = true;
 }
 
+void kit_set_standard_font_family(kit *k, const char *family)
+{
+    assert(family && family[0]);
+    str_set(&k->standard_font_family, family);
+}
+
 /* ---------- API ---------- */
 
 kit *kit_create(void *context, const char *document_path)
@@ -1072,6 +1087,7 @@ static void kit_free(kit *k)
     afree(k->layout_nodes);
     free(k->document);
     free(k->theme);
+    free(k->standard_font_family);
     pairs_free(k->extra_styles);
     free(k);
 }
@@ -1376,15 +1392,19 @@ bool kit_wants_pointer(const kit *k)
 
 /* Measured with the face RmlUi draws at this ratio: it truncates font sizes to
    whole pixels (ElementStyle) and hints glyph advances. */
-float kit_text_width(const kit *, const char *text, float size, int weight, float ratio)
+float kit_text_width(const kit *k, const char *text, float size, int weight, float ratio)
 {
     assert(ratio > 0);
     int pixels = (int)(size * ratio);
     if (!text || !text[0] || pixels < 1) {
         return 0;
     }
-    /* The font provider keys families in lower case. */
-    uintptr_t face = rml_font_face("inter", RML_FONT_NORMAL, weight > 0 ? weight : 400, pixels);
+    uintptr_t face = rml_font_face(
+        k->standard_font_family ? k->standard_font_family : "inter",
+        RML_FONT_NORMAL,
+        weight > 0 ? weight : 400,
+        pixels
+    );
     if (!face) {
         return 0;
     }

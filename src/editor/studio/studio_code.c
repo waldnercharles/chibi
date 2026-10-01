@@ -290,8 +290,7 @@ static void check_shown(studio *s)
     c->markers_stale = true;
 }
 
-/* The Text Editor shows the active UI document; the workspace that shows
-   the Text Editor follows the tab (studio_follow_document). */
+/* The Text Editor shows the active UI document when it is assigned to an area. */
 static void follow_active(studio *s, const scene_document_tab *active)
 {
     if (active) {
@@ -339,8 +338,6 @@ bool studio_open_ui_part(studio *s, const char *path, ui_part part, int line)
     s->code.reveal = line;
     s->code.reveal_offset = -1;
     s->code.reveal_wait = REVEAL_FRAMES;
-    /* The UI workspace, when it follows, has the Text Editor in place. */
-    studio_follow_document(s);
     studio_show_editor(s, STUDIO_EDITOR_CODE);
     return true;
 }
@@ -1363,6 +1360,7 @@ void studio_code_body(studio *s, int)
     kit_code_desc desc = {
         .vim = s->prefs.code_vim,
         .font_size = s->prefs.code_font_size,
+        .font_family = studio_code_font(&s->prefs),
         .mac = s->mac,
         .spans = c->spans,
         .span_count = acount(c->spans),

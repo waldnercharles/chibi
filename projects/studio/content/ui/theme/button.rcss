@@ -20,7 +20,7 @@
 .btn.outline { border-color: var(--border); color: var(--foreground); }
 .btn.danger { color: var(--destructive); }
 .btn.icon-only { width: var(--h); padding: 0dp; }
-.btn.sm { height: var(--h-sm); font-size: 11dp; padding: 0dp 6dp; }
+.btn.sm { height: var(--h-sm); font-size: var(--studio-font-11, 11dp); padding: 0dp 6dp; }
 .btn.sm.icon-only { width: var(--h-sm); padding: 0dp; }
 .btn[data-state=on] { background-color: var(--primary-soft); color: var(--foreground); }
 .btn[data-state=on] .icon { color: var(--primary-text); }

@@ -97,6 +97,7 @@ enum
     KIT_ICON_REFERENCES = 0xeb36,   /* nf-cod-references */
     KIT_ICON_CALLERS = 0xeb92,      /* nf-cod-call_incoming */
     KIT_ICON_CALLEES = 0xeb93,      /* nf-cod-call_outgoing */
+    KIT_ICON_PEOPLE = 0xf0009,      /* nf-md-account_multiple */
     KIT_ICON_SYSTEM = 0xeba2,       /* nf-cod-server_process */
     KIT_ICON_TERMINAL = 0xea85,     /* nf-cod-terminal */
     KIT_ICON_SIDE_PANE = 0xebf4,    /* nf-cod-layout_sidebar_right */

@@ -9,6 +9,7 @@
 #include "support/xalloc.h"
 #include "ui/motion.h"
 #include "ui/rml.h"
+#include "ui/rml_shadow.h"
 
 #include <assert.h>
 #include <limits.h>
@@ -24,12 +25,20 @@ extern const unsigned char editor_ui_semibold_font[];
 extern const unsigned char editor_ui_numeric_font[];
 extern const unsigned char editor_ui_bold_font[];
 extern const unsigned char editor_nerd_symbols_font[];
+extern const unsigned char editor_noto_sans_font[];
+extern const unsigned char editor_noto_sans_semibold_font[];
+extern const unsigned char editor_noto_sans_bold_font[];
+extern const unsigned char editor_inconsolata_font[];
 extern const size_t editor_ui_font_size;
 extern const size_t editor_ui_medium_font_size;
 extern const size_t editor_ui_semibold_font_size;
 extern const size_t editor_ui_numeric_font_size;
 extern const size_t editor_ui_bold_font_size;
 extern const size_t editor_nerd_symbols_font_size;
+extern const size_t editor_noto_sans_font_size;
+extern const size_t editor_noto_sans_semibold_font_size;
+extern const size_t editor_noto_sans_bold_font_size;
+extern const size_t editor_inconsolata_font_size;
 /* Workstream C: the code editor's face. */
 extern const unsigned char editor_code_font[];
 extern const size_t editor_code_font_size;
@@ -107,6 +116,14 @@ typedef struct held_texture
     int external;
 } held_texture;
 
+typedef struct compiled_geometry
+{
+    CF_Mesh mesh;
+    rml_mesh cpu;
+} compiled_geometry;
+
+typedef rml_shadow_layer shadow_layer;
+
 /* A host-owned texture named by "kit:<name>" sources. Handles to it stay valid
  * as the host rebinds it. */
 typedef struct external_texture
@@ -135,9 +152,15 @@ struct rml_backend
     CF_M4x4 transform;
     uint64_t next_geometry;
     uint64_t next_texture;
-    CF_MAP(CF_Mesh) geometries;
+    CF_MAP(compiled_geometry) geometries;
     CF_MAP(held_texture) textures;
+    CF_MAP(float) shadow_filters;
     CF_Texture *released; /* destroyed once the frame that drew them renders */
+    CF_Mesh *released_meshes; /* same lifetime as released textures */
+    shadow_layer *shadow_layers;
+    uintptr_t next_layer;
+    uintptr_t next_filter;
+    bool clip_mask_enabled;
     external_texture *externals;
     CF_Texture white_texture;
     CF_Shader ui_shader;
@@ -309,6 +332,7 @@ static void ensure_gpu(rml_backend *backend)
         if (width == backend->physical_width && height == backend->physical_height) {
             return;
         }
+        assert(acount(backend->shadow_layers) == 0);
         cf_destroy_mesh(backend->resolve_mesh);
         cf_destroy_canvas(backend->premultiplied_canvas);
         cf_destroy_canvas(backend->straight_canvas);
@@ -329,7 +353,9 @@ static void destroy_gpu(rml_backend *backend)
         return;
     }
     for (int i = 0; i < cf_map_size(backend->geometries); i++) {
-        cf_destroy_mesh(backend->geometries[i]);
+        cf_destroy_mesh(backend->geometries[i].mesh);
+        free((void *)backend->geometries[i].cpu.vertices);
+        free((void *)backend->geometries[i].cpu.indices);
     }
     for (int i = 0; i < cf_map_size(backend->textures); i++) {
         if (backend->textures[i].external < 0) {
@@ -339,7 +365,17 @@ static void destroy_gpu(rml_backend *backend)
     for (int i = 0; i < acount(backend->released); i++) {
         cf_destroy_texture(backend->released[i]);
     }
+    for (int i = 0; i < acount(backend->released_meshes); i++) {
+        cf_destroy_mesh(backend->released_meshes[i]);
+    }
     afree(backend->released);
+    afree(backend->released_meshes);
+    for (int i = 0; i < acount(backend->shadow_layers); i++) {
+        free(backend->shadow_layers[i].pixels);
+        free(backend->shadow_layers[i].mask);
+    }
+    afree(backend->shadow_layers);
+    cf_map_free(backend->shadow_filters);
     cf_destroy_texture(backend->white_texture);
     cf_destroy_mesh(backend->resolve_mesh);
     cf_destroy_shader(backend->ui_shader);
@@ -358,6 +394,20 @@ static void hash_bytes(uint64_t *hash, const void *data, size_t size)
     for (size_t i = 0; i < size; i++) {
         *hash = (*hash ^ bytes[i]) * 0x100000001b3ull;
     }
+}
+
+static rml_shadow_target shadow_target(const rml_backend *backend)
+{
+    return (rml_shadow_target){
+        backend->physical_width, backend->physical_height,
+        backend->transform,      backend->scissor_enabled,
+        backend->scissor,        backend->clip_mask_enabled
+    };
+}
+
+static void raster_shadow_geometry(rml_backend *backend, shadow_layer *layer, rml_mesh mesh, rml_vec2 translation)
+{
+    rml_shadow_geometry(shadow_target(backend), layer, mesh, translation);
 }
 
 static uintptr_t compile_geometry(void *user, rml_mesh mesh)
@@ -379,7 +429,27 @@ static uintptr_t compile_geometry(void *user, rml_mesh mesh)
     cf_mesh_update_vertex_data(gpu_mesh, (void *)mesh.vertices, (int)mesh.vertex_count);
     cf_mesh_update_index_data(gpu_mesh, (void *)mesh.indices, (int)mesh.index_count);
     uintptr_t handle = (uintptr_t)backend->next_geometry++;
-    cf_map_set(backend->geometries, handle, gpu_mesh);
+    rml_mesh cpu = mesh;
+    cpu.vertices = mesh.vertex_count
+                     ? xmalloc(mesh.vertex_count * sizeof *mesh.vertices)
+                     : NULL;
+    cpu.indices = mesh.index_count ? xmalloc(mesh.index_count * sizeof *mesh.indices)
+                                   : NULL;
+    if (mesh.vertex_count) {
+        memcpy(
+            (void *)cpu.vertices,
+            mesh.vertices,
+            mesh.vertex_count * sizeof *mesh.vertices
+        );
+    }
+    if (mesh.index_count) {
+        memcpy(
+            (void *)cpu.indices,
+            mesh.indices,
+            mesh.index_count * sizeof *mesh.indices
+        );
+    }
+    cf_map_set(backend->geometries, handle, ((compiled_geometry){ .mesh = gpu_mesh, .cpu = cpu }));
     return handle;
 }
 
@@ -393,8 +463,18 @@ static void render_geometry(void *user, uintptr_t geometry, rml_vec2 translation
     hash_bytes(&backend->frame_hash, &backend->transform, sizeof backend->transform);
     hash_bytes(&backend->frame_hash, &backend->scissor_enabled, sizeof backend->scissor_enabled);
     hash_bytes(&backend->frame_hash, &backend->scissor, sizeof backend->scissor);
-    const CF_Mesh *mesh = cf_map_get_ptr(backend->geometries, geometry);
-    assert(mesh);
+    const compiled_geometry *compiled = cf_map_get_ptr(backend->geometries, geometry);
+    assert(compiled);
+    if (acount(backend->shadow_layers)) {
+        assert(texture == 0 && "shadow callback layers currently render untextured geometry");
+        raster_shadow_geometry(
+            backend,
+            &backend->shadow_layers[acount(backend->shadow_layers) - 1],
+            compiled->cpu,
+            translation
+        );
+        return;
+    }
     CF_Texture gpu_texture = backend->white_texture;
     if (texture) {
         const held_texture *held = cf_map_get_ptr(backend->textures, texture);
@@ -411,7 +491,7 @@ static void render_geometry(void *user, uintptr_t geometry, rml_vec2 translation
     cf_draw3d_push();
     cf_draw3d_transform(backend->transform);
     cf_draw3d_translate(cf_v3(translation.x, translation.y, 0));
-    cf_draw3d_mesh(*mesh);
+    cf_draw3d_mesh(compiled->mesh);
     cf_draw3d_pop();
     cf_draw_pop_layer();
 }
@@ -419,11 +499,14 @@ static void render_geometry(void *user, uintptr_t geometry, rml_vec2 translation
 static void release_geometry(void *user, uintptr_t geometry)
 {
     rml_backend *backend = user;
-    const CF_Mesh *mesh = cf_map_get_ptr(backend->geometries, geometry);
+    const compiled_geometry *mesh = cf_map_get_ptr(backend->geometries, geometry);
     if (!mesh) {
         return;
     }
-    cf_destroy_mesh(*mesh);
+    /* Cute's draw queue still refers to compiled meshes until its layer flush. */
+    apush(backend->released_meshes, mesh->mesh);
+    free((void *)mesh->cpu.vertices);
+    free((void *)mesh->cpu.indices);
     cf_map_del(backend->geometries, geometry);
 }
 
@@ -518,6 +601,188 @@ static void destroy_released(rml_backend *backend)
         cf_destroy_texture(backend->released[i]);
     }
     asetlen(backend->released, 0);
+    for (int i = 0; i < acount(backend->released_meshes); i++) {
+        cf_destroy_mesh(backend->released_meshes[i]);
+    }
+    asetlen(backend->released_meshes, 0);
+}
+
+static shadow_layer *shadow_layer_by_handle(rml_backend *backend, uintptr_t handle)
+{
+    for (int i = 0; i < acount(backend->shadow_layers); i++) {
+        if (backend->shadow_layers[i].handle == handle) {
+            return &backend->shadow_layers[i];
+        }
+    }
+    return NULL;
+}
+
+static uintptr_t push_shadow_layer(void *user)
+{
+    rml_backend *backend = user;
+    const size_t pixels = (size_t)backend->physical_width * backend->physical_height;
+    shadow_layer layer = {
+        .handle = backend->next_layer++,
+        .pixels = xcalloc(pixels * 4, 1),
+        .mask = xmalloc(pixels),
+    };
+    memset(layer.mask, 255, pixels);
+    apush(backend->shadow_layers, layer);
+    return layer.handle;
+}
+
+static void composite_shadow_layers(
+    void *user,
+    uintptr_t source_handle,
+    uintptr_t destination_handle,
+    rml_blend_mode blend_mode,
+    const uintptr_t *filters,
+    size_t filter_count
+)
+{
+    rml_backend *backend = user;
+    shadow_layer *source = shadow_layer_by_handle(backend, source_handle);
+    shadow_layer *destination = shadow_layer_by_handle(backend, destination_handle);
+    assert(source && destination && "shadow callbacks composite only live layers");
+    assert(destination_handle != 0 && "the shadow callback composites into its parent layer");
+    assert(blend_mode == RML_BLEND_MODE_BLEND || blend_mode == RML_BLEND_MODE_REPLACE);
+    assert(filter_count <= 1 && "box-shadow callbacks use at most one blur filter");
+
+    uint8_t *blurred = NULL;
+    const uint8_t *source_pixels = source->pixels;
+    if (filter_count) {
+        const float *sigma = cf_map_get_ptr(backend->shadow_filters, filters[0]);
+        assert(sigma && isfinite(*sigma) && *sigma > 0);
+        blurred = rml_shadow_blur(shadow_target(backend), source->pixels, *sigma);
+        source_pixels = blurred;
+    }
+
+    int left = backend->scissor_enabled ? backend->scissor.x : 0;
+    int top = backend->scissor_enabled ? backend->scissor.y : 0;
+    int right = backend->scissor_enabled ? backend->scissor.x + backend->scissor.w
+                                         : backend->physical_width;
+    int bottom = backend->scissor_enabled
+                   ? backend->scissor.y + backend->scissor.h
+                   : backend->physical_height;
+    left = math_max(left, 0);
+    top = math_max(top, 0);
+    right = math_min(right, backend->physical_width);
+    bottom = math_min(bottom, backend->physical_height);
+    for (int y = top; y < bottom; y++) {
+        for (int x = left; x < right; x++) {
+            size_t pixel = (size_t)y * backend->physical_width + x;
+            const uint8_t *src = source_pixels + pixel * 4;
+            uint8_t *dst = destination->pixels + pixel * 4;
+            float mask = backend->clip_mask_enabled && destination->mask_set
+                           ? (float)destination->mask[pixel] / 255.0f
+                           : 1.0f;
+            if (blend_mode == RML_BLEND_MODE_REPLACE) {
+                for (int channel = 0; channel < 4; channel++) {
+                    dst[channel] = (uint8_t)lroundf(
+                        dst[channel] * (1 - mask) + src[channel] * mask
+                    );
+                }
+                continue;
+            }
+            float alpha = src[3] / 255.0f * mask;
+            float inverse_alpha = 1.0f - alpha;
+            for (int channel = 0; channel < 3; channel++) {
+                dst[channel] = (uint8_t)lroundf(
+                    fminf(255, src[channel] * mask + dst[channel] * inverse_alpha)
+                );
+            }
+            dst[3] = (uint8_t)lroundf(fminf(255, alpha * 255 + dst[3] * inverse_alpha));
+        }
+    }
+    free(blurred);
+}
+
+static void pop_shadow_layer(void *user)
+{
+    rml_backend *backend = user;
+    assert(acount(backend->shadow_layers));
+    shadow_layer layer = backend->shadow_layers[acount(backend->shadow_layers) - 1];
+    free(layer.pixels);
+    free(layer.mask);
+    asetlen(backend->shadow_layers, acount(backend->shadow_layers) - 1);
+}
+
+static uintptr_t save_shadow_layer_as_texture(void *user)
+{
+    rml_backend *backend = user;
+    assert(acount(backend->shadow_layers));
+    int x = backend->scissor_enabled ? backend->scissor.x : 0;
+    int y = backend->scissor_enabled ? backend->scissor.y : 0;
+    int width = backend->scissor_enabled ? backend->scissor.w : backend->physical_width;
+    int height = backend->scissor_enabled ? backend->scissor.h : backend->physical_height;
+    x = math_max(x, 0);
+    y = math_max(y, 0);
+    width = math_min(width, backend->physical_width - x);
+    height = math_min(height, backend->physical_height - y);
+    if (width <= 0 || height <= 0) {
+        return 0;
+    }
+    shadow_layer *layer = &backend->shadow_layers[acount(backend->shadow_layers) - 1];
+    uint8_t *crop = xmalloc((size_t)width * height * 4);
+    for (int row = 0; row < height; row++) {
+        memcpy(
+            crop + (size_t)row * width * 4,
+            layer->pixels + ((size_t)(y + row) * backend->physical_width + x) * 4,
+            (size_t)width * 4
+        );
+    }
+    CF_Texture texture = texture_from_pixels(width, height, crop);
+    free(crop);
+    return hold_texture(backend, (held_texture){ .texture = texture, .external = -1 });
+}
+
+static uintptr_t compile_shadow_filter(void *user, const char *name, float sigma)
+{
+    rml_backend *backend = user;
+    /* Rml's box-shadow generator requests only a Gaussian blur. Zero is the
+       documented unsupported-filter handle; no substitute effect is applied. */
+    if (strcmp(name, "blur") != 0 || !isfinite(sigma) || sigma <= 0) {
+        fprintf(stderr, "RmlUi: unsupported box-shadow filter '%s'\n", name);
+        return 0;
+    }
+    uintptr_t handle = backend->next_filter++;
+    cf_map_set(backend->shadow_filters, handle, sigma);
+    return handle;
+}
+
+static void release_shadow_filter(void *user, uintptr_t filter)
+{
+    rml_backend *backend = user;
+    cf_map_del(backend->shadow_filters, filter);
+}
+
+static void enable_shadow_clip_mask(void *user, bool enable)
+{
+    rml_backend *backend = user;
+    backend->clip_mask_enabled = enable;
+}
+
+static void render_shadow_clip_mask(
+    void *user,
+    rml_clip_mask_operation operation,
+    uintptr_t geometry,
+    rml_vec2 translation
+)
+{
+    rml_backend *backend = user;
+    /* Basic GPU rendering keeps rectangular scissor clipping. Offscreen
+       shadow generation also consumes the shape's rounded clip mask. */
+    if (!acount(backend->shadow_layers)) {
+        return;
+    }
+    assert(
+        operation == RML_CLIP_MASK_SET || operation == RML_CLIP_MASK_SET_INVERSE ||
+        operation == RML_CLIP_MASK_INTERSECT
+    );
+    shadow_layer *layer = &backend->shadow_layers[acount(backend->shadow_layers) - 1];
+    const compiled_geometry *compiled = cf_map_get_ptr(backend->geometries, geometry);
+    assert(compiled);
+    rml_shadow_mask(shadow_target(backend), layer, compiled->cpu, translation, operation);
 }
 
 static void enable_scissor_region(void *user, bool enable)
@@ -565,6 +830,14 @@ static const rml_render_interface render_interface = {
     .enable_scissor_region = enable_scissor_region,
     .set_scissor_region = set_scissor_region,
     .set_transform = set_transform,
+    .enable_clip_mask = enable_shadow_clip_mask,
+    .render_to_clip_mask = render_shadow_clip_mask,
+    .push_layer = push_shadow_layer,
+    .composite_layers = composite_shadow_layers,
+    .pop_layer = pop_shadow_layer,
+    .save_layer_as_texture = save_shadow_layer_as_texture,
+    .compile_filter = compile_shadow_filter,
+    .release_filter = release_shadow_filter,
 };
 
 /* ---------- Backend ---------- */
@@ -617,8 +890,12 @@ static bool initialize_rml()
         { editor_ui_medium_font, editor_ui_medium_font_size, "Inter", 500 },
         { editor_ui_semibold_font, editor_ui_semibold_font_size, "Inter", 600 },
         { editor_ui_bold_font, editor_ui_bold_font_size, "Inter", 700 },
+        { editor_noto_sans_font, editor_noto_sans_font_size, "Noto Sans", 400 },
+        { editor_noto_sans_semibold_font, editor_noto_sans_semibold_font_size, "Noto Sans", 600 },
+        { editor_noto_sans_bold_font, editor_noto_sans_bold_font_size, "Noto Sans", 700 },
         { editor_ui_numeric_font, editor_ui_numeric_font_size, "InterNumeric", 400 },
         { editor_nerd_symbols_font, editor_nerd_symbols_font_size, "Symbols", 400 },
+        { editor_inconsolata_font, editor_inconsolata_font_size, "Inconsolata", 400 },
         /* Workstream C: kit_code's face. */
         { editor_code_font, editor_code_font_size, "JetBrains Mono", 400 },
     };
@@ -668,6 +945,8 @@ rml_backend *rml_backend_create(int logical_width, int logical_height, float fra
     backend->transform = cf_m4_identity();
     backend->next_geometry = 1;
     backend->next_texture = 1;
+    backend->next_layer = 1;
+    backend->next_filter = 1;
     backend->logical_width = logical_width;
     backend->logical_height = logical_height;
     backend->scale = framebuffer_scale;

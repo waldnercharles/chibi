@@ -31,7 +31,7 @@ body {
    its roles the color set here, and the tok-* classes above color the tokens. */
 kit-code {
     display: block; position: relative; overflow: hidden; cursor: text;
-    tab-index: auto; drag: drag; font-family: "JetBrains Mono";
+    tab-index: auto; drag: drag; font-family: var(--studio-code-font-family, jetbrains mono);
 }
 kit-code > span { visibility: hidden; position: absolute; width: 0dp; height: 0dp; }
 kit-code .zep-text { color: var(--foreground); }
@@ -58,13 +58,13 @@ kit-code .zep-info { color: var(--primary); }
 .code-completions {
     position: absolute; pointer-events: auto; background-color: var(--popover); border: 1dp var(--popover-edge);
     border-radius: var(--r-lg); padding: 4dp; min-width: 160dp; max-width: 420dp; display: block; z-index: 20;
-    font-family: "JetBrains Mono"; font-size: 12dp; max-height: 272dp; overflow-y: auto;
+    font-family: var(--studio-code-font-family, jetbrains mono); font-size: var(--studio-mono-font-12, 12dp); max-height: 272dp; overflow-y: auto;
 }
 .code-completion {
     display: flex; align-items: center; gap: 12dp; height: var(--h); padding: 0dp 6dp; border-radius: var(--r);
     white-space: nowrap; color: var(--foreground);
 }
-.code-completion .detail { margin-left: auto; font-family: Inter; color: var(--muted-foreground); }
+.code-completion .detail { margin-left: auto; font-family: var(--studio-standard-font-family, inter); color: var(--muted-foreground); }
 .code-completion[data-highlighted] { background-color: var(--primary); color: var(--primary-foreground); }
 .code-completion[data-highlighted] .detail { color: #ffffffcc; }
 
@@ -74,26 +74,25 @@ kit-code .zep-info { color: var(--primary); }
 .code-hover {
     position: absolute; pointer-events: none; display: block; z-index: 30; max-width: 520dp;
     background-color: var(--popover); border: 1dp var(--popover-edge); border-radius: var(--r-lg);
-    padding: 6dp 8dp; color: var(--foreground); font-size: 12dp; line-height: 17dp;
+    padding: 6dp 8dp; color: var(--foreground); font-size: var(--studio-mono-font-12, 12dp); line-height: var(--studio-mono-line-17, 17dp);
 }
 .code-hover { opacity: 1; transition: opacity 0.1s cubic-out; }
 .code-hover[data-starting-style], .code-hover[data-ending-style] { opacity: 0; }
 .code-hover-problem { display: flex; align-items: flex-start; gap: 6dp; }
 .code-hover-problem + .code-hover-problem { margin-top: 4dp; }
-.code-hover-problem .icon { flex: 0 0 auto; line-height: 17dp; color: var(--primary); }
+.code-hover-problem .icon { flex: 0 0 auto; line-height: var(--studio-mono-line-17, 17dp); color: var(--primary); }
 .code-hover-problem[data-severity="error"] .icon { color: var(--destructive); }
 .code-hover-problem[data-severity="warning"] .icon { color: var(--warning); }
 .code-hover-problem .message { flex: 1 1 auto; white-space: normal; }
-.code-hover-title { display: block; font-family: "JetBrains Mono"; white-space: nowrap; }
+.code-hover-title { display: block; font-family: var(--studio-code-font-family, jetbrains mono); white-space: nowrap; }
 .code-hover-problem + .code-hover-title { margin-top: 6dp; padding-top: 6dp; border-top: 1dp var(--line); }
-.code-hover-line { display: block; font-family: "JetBrains Mono"; font-size: 11dp; color: var(--muted-foreground); white-space: nowrap; }
+.code-hover-line { display: block; font-family: var(--studio-code-font-family, jetbrains mono); font-size: var(--studio-mono-font-11, 11dp); color: var(--muted-foreground); white-space: nowrap; }
 
 /* The Text Editor's header: Vim's mode, and the count of problems, which
    steps to the next. */
 .code-mode {
     flex: 0 0 auto; margin-right: 4dp; padding: 0dp 5dp; border: 1dp var(--line); border-radius: var(--r);
-    font-family: "JetBrains Mono"; font-size: 10dp; line-height: 16dp; color: var(--muted-foreground);
+    font-family: var(--studio-code-font-family, jetbrains mono); font-size: var(--studio-mono-font-10, 10dp); line-height: var(--studio-mono-line-16, 16dp); color: var(--muted-foreground);
 }
 .code-problems .icon { color: var(--warning); }
 .code-problems.errors .icon { color: var(--destructive); }
-

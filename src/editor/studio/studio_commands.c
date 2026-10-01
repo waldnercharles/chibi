@@ -283,22 +283,27 @@ static const command_entry COMMANDS[STUDIO_COMMAND_COUNT] = {
                                        .keywords = "prototype attach",
                                        .icon = KIT_ICON_ADD,
                                        .phase = SHORTCUT_EDITOR },
-    [STUDIO_COMMAND_WORKSPACE_LAYOUT] = { .id = "workspaceLayout",
-                                          .label = "Layout Workspace",
-                                          .menu = "Layout",
-                                          .context = "Global",
-                                          .keywords = "preset scene behavior "
-                                                      "areas",
-                                          .icon = KIT_ICON_LAYOUT,
-                                          .phase = SHORTCUT_EARLY },
-    [STUDIO_COMMAND_WORKSPACE_UI] = { .id = "workspaceUi",
-                                      .label = "UI Workspace",
-                                      .menu = "UI",
-                                      .context = "Global",
-                                      .keywords = "preset canvas text editor "
-                                                  "source",
-                                      .icon = KIT_ICON_LAYOUT,
-                                      .phase = SHORTCUT_EARLY },
+    [STUDIO_COMMAND_WORKSPACE_VERTICAL_SPLIT] = { .id = "workspaceVerticalSpli"
+                                                        "t",
+                                                  .label = "Vertical Split",
+                                                  .menu = "Vertical Split",
+                                                  .context = "Global",
+                                                  .keywords = "vertical split "
+                                                              "stacked scene "
+                                                              "behavior",
+                                                  .icon = KIT_ICON_LAYOUT,
+                                                  .phase = SHORTCUT_EARLY },
+    [STUDIO_COMMAND_WORKSPACE_HORIZONTAL_SPLIT] = { .id = "workspaceHorizontalS"
+                                                          "plit",
+                                                    .label = "Horizontal Split",
+                                                    .menu = "Horizontal Split",
+                                                    .context = "Global",
+                                                    .keywords = "horizontal "
+                                                                "split side by "
+                                                                "side canvas "
+                                                                "text editor",
+                                                    .icon = KIT_ICON_LAYOUT,
+                                                    .phase = SHORTCUT_EARLY },
     [STUDIO_COMMAND_TOGGLE_SIDE_PANE] = { .id = "toggleSidePane",
                                           .label = "Hide Side Pane",
                                           .context = "Global",
@@ -605,10 +610,10 @@ int studio_command_checked(studio *s, studio_command command)
             return drawer_showing(s, STUDIO_EDITOR_PERFORMANCE);
         case STUDIO_COMMAND_MAXIMIZE: return s->maximized >= 0;
         case STUDIO_COMMAND_INSPECT: return studio_inspect_picking(s);
-        case STUDIO_COMMAND_WORKSPACE_LAYOUT:
-            return s->prefs.workspace == STUDIO_WORKSPACE_LAYOUT;
-        case STUDIO_COMMAND_WORKSPACE_UI:
-            return s->prefs.workspace == STUDIO_WORKSPACE_UI;
+        case STUDIO_COMMAND_WORKSPACE_VERTICAL_SPLIT:
+            return s->prefs.workspace == STUDIO_WORKSPACE_VERTICAL_SPLIT;
+        case STUDIO_COMMAND_WORKSPACE_HORIZONTAL_SPLIT:
+            return s->prefs.workspace == STUDIO_WORKSPACE_HORIZONTAL_SPLIT;
         case STUDIO_COMMAND_TOGGLE_SIDE_PANE:
             return studio_active_layout(s)->side_open;
         default: return -1;
@@ -736,11 +741,11 @@ void studio_command_run_with(studio *s, studio_command command, int argument)
             studio_toggle_maximized(s, argument >= 0 ? argument : s->focus_area);
             break;
         case STUDIO_COMMAND_RESET_LAYOUT: studio_reset_layout(s); break;
-        case STUDIO_COMMAND_WORKSPACE_LAYOUT:
-            studio_set_workspace(s, STUDIO_WORKSPACE_LAYOUT);
+        case STUDIO_COMMAND_WORKSPACE_VERTICAL_SPLIT:
+            studio_set_workspace(s, STUDIO_WORKSPACE_VERTICAL_SPLIT);
             break;
-        case STUDIO_COMMAND_WORKSPACE_UI:
-            studio_set_workspace(s, STUDIO_WORKSPACE_UI);
+        case STUDIO_COMMAND_WORKSPACE_HORIZONTAL_SPLIT:
+            studio_set_workspace(s, STUDIO_WORKSPACE_HORIZONTAL_SPLIT);
             break;
         case STUDIO_COMMAND_TOGGLE_SIDE_PANE: studio_toggle_side_pane(s); break;
         case STUDIO_COMMAND_ZOOM_IN: studio_zoom(s, 1); break;

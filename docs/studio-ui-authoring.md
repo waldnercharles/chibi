@@ -30,12 +30,12 @@ Unity's UI Toolkit is the closest analog: UXML/USS map to RML/RCSS.
   - Properties is its Details;
   - Assets is its Library;
   - the Text Editor area (`STUDIO_EDITOR_CODE`) shows its source.
-- **A UI document's tab selects the UI workspace**: Canvas beside the Text
-  Editor, Hierarchy and Details on the right. Any other tab selects Layout.
-  Each workspace remembers its sizes, editors, drawer and side pane; View ▸
-  Workspace or the top bar's tabs switch by hand until the tab changes, and
-  Settings ▸ Workspace Follows Tab turns following off. Switching changes only
-  the areas: documents, selection, history and playback stay.
+- **Layout mode changes explicitly**: Vertical Split stacks Scene over
+  Behavior; Horizontal Split puts Canvas beside the Text Editor, with
+  Hierarchy and Details on the right. Each mode remembers its sizes, editors,
+  drawer and side pane. Opening a source file or changing tabs keeps the mode;
+  switching changes only the areas, so documents, selection, history and
+  playback stay.
 - **Behaviors feed documents data as `self`.** Set UI Data (Entity, Name,
   Value) gives an entity's documents a value to bind as `self.<Name>`, the way
   a component's props reach it. Value takes any type and arrives as JSON:

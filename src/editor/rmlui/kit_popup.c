@@ -1,5 +1,5 @@
 /* Popups, menus and tooltips after Base UI. Popups stack in open order, close
- * on an outside press, Escape or Tab, and sit below their anchor or beside
+ * on an outside press or Escape, and sit below their anchor or beside
  * their parent menu. Menus highlight with the arrow keys, Home, End and
  * typeahead; submenus open after a 100 ms hover; an open menubar moves between
  * its triggers. A tooltip shows after a 500 ms hover, switches instantly within
@@ -72,7 +72,10 @@ void open_popup(kit *k, const char *key, kit_rect anchor, bool at_point, float x
     free(p->parent);
     free(p->sub_hover);
     free(p->typed);
+    free(p->trigger);
     afree(p->items);
+    rml_element *focus = rml_context_focus_element(k->context);
+    node *trigger = node_for(k, focus);
     *p = (popup){
         .key = p->key,
         .open = true,
@@ -82,7 +85,9 @@ void open_popup(kit *k, const char *key, kit_rect anchor, bool at_point, float x
         .y = y,
         .anchor = anchor,
         .highlight = -1,
+        .focus_pending = true,
     };
+    str_set(&p->trigger, trigger ? trigger->path : "");
     str_set(&p->parent, parent);
     apush(k->popup_stack, p);
 }
@@ -105,6 +110,7 @@ static popup *open_menu(kit *k, node *trigger)
     open_popup(k, key, element_rect(k, trigger->el), false, 0, 0, "");
     popup *p = popup_at(k, key);
     p->menubar = true;
+    str_set(&p->trigger, trigger->path);
     return p;
 }
 
@@ -156,10 +162,16 @@ void place_popups(kit *k)
         rml_vec2 at = popup_origin(k, p, size);
         at.x = math_clamp(at.x, 4.0f, math_max(4.0f, width - size.w - 4));
         at.y = math_clamp(at.y, 4.0f, math_max(4.0f, height - size.h - 4));
+        bool ready = p->placed;
         set_position(p->node->el, at.x, at.y);
         if (!p->placed) {
             p->placed = true;
             rml_element_remove_attribute(p->node->el, "data-unplaced");
+        }
+        if (ready && p->popover && p->focus_pending &&
+            (focus_step(p->node->el, NULL, 1, false, NULL) ||
+             rml_element_focus(p->node->el, true))) {
+            p->focus_pending = false;
         }
     }
 }
@@ -288,6 +300,10 @@ void popup_press(kit *k, node *n, rml_element *target)
     for (int i = 0; i < acount(k->popup_stack); i++) {
         popup *p = k->popup_stack[i];
         if (p->node && within(target, p->node->el)) {
+            return;
+        }
+        node *trigger = path_node(k, p->trigger);
+        if (trigger && within(target, trigger->el)) {
             return;
         }
     }
@@ -449,10 +465,55 @@ bool popup_key(kit *k, const rml_event *e)
     if (!top) {
         return false;
     }
+    if (top->popover) {
+        node *trigger = path_node(k, top->trigger);
+        if (e->key == RML_KEY_ESCAPE) {
+            close_popup(k, top->key);
+            if (trigger) {
+                rml_element_focus(trigger->el, true);
+            }
+            rml_event_stop_propagation(e);
+            return true;
+        }
+        if (e->key != RML_KEY_TAB || !top->node || !within(e->target, top->node->el)) {
+            return false;
+        }
+        int step = e->modifiers & RML_KM_SHIFT ? -1 : 1;
+        if (!focus_step(top->node->el, e->target, step, false, NULL)) {
+            close_popup(k, top->key);
+            if (trigger && step < 0) {
+                rml_element_focus(trigger->el, true);
+            }
+            if (trigger && step > 0) {
+                focus_step(k->doc, trigger->el, 1, false, top->node->el);
+            }
+        }
+        rml_event_stop_propagation(e);
+        return true;
+    }
     if (apply_menu_key(k, top, e->key)) {
         rml_event_stop_propagation(e);
     }
     return true;
+}
+
+void popup_focus(kit *k, rml_element *target)
+{
+    popup *top = top_popup(k);
+    if (!top || !top->popover || top->focus_pending || !top->node ||
+        within(target, top->node->el)) {
+        return;
+    }
+    node *trigger = path_node(k, top->trigger);
+    if (!trigger || !within(target, trigger->el)) {
+        /* RmlUi briefly focuses a non-tabbable root when a field blurs.
+           Only a focus move to an outside control is a focus-out dismissal. */
+        char tab[16];
+        rml_element_property(target, "tab-index", tab, sizeof tab);
+        if (!strcmp(tab, "auto")) {
+            close_popup(k, top->key);
+        }
+    }
 }
 
 /* ---------- Popups and menus ---------- */
@@ -462,6 +523,7 @@ void kit_popup_open(kit *k, const char *key)
     close_all_popups(k);
     kit_rect anchor = k->last ? element_rect(k, k->last->el) : (kit_rect){ 0 };
     open_popup(k, key, anchor, false, 0, 0, "");
+    str_set(&popup_at(k, key)->trigger, k->last ? k->last->path : "");
 }
 
 void kit_popup_open_at(kit *k, const char *key, float x, float y)
@@ -492,6 +554,7 @@ bool kit_popup_begin(kit *k, const char *key, const char *cls)
     presence(k, n);
     flag_element(n->el, "data-unplaced", !p->placed);
     p->node = n;
+    p->popover = rml_element_is_class_set(n->el, "popover");
     aclear(p->items);
     p->content = 0;
     apush(k->emitting, p);

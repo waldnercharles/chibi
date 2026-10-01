@@ -27,7 +27,7 @@
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-family: InterNumeric;
 }
 .field .unit { padding-right: 7dp; color: var(--faint-foreground); flex: 0 0 auto; margin-left: -4dp; }
-.field input.value { cursor: text; height: 16dp; line-height: 16dp; margin-top: 2dp; font-family: Inter; color: var(--foreground); }
+.field input.value { cursor: text; font-family: var(--studio-standard-font-family, inter); color: var(--foreground); }
 .field input.value selection { background-color: var(--primary); color: var(--primary-foreground); }
 .field .step {
     position: absolute; top: 0dp; bottom: 0dp; width: 14dp; display: flex; align-items: center; justify-content: center;
@@ -41,15 +41,15 @@
 .field .step:hover { background-color: var(--press); }
 .field.text, .field.search { background-color: var(--field-edit); cursor: text; }
 .field.text:hover, .field.search:hover { background-color: var(--input-hover); }
-.field.text .value, .field.search .value { text-align: left; font-family: Inter; }
+.field.text .value, .field.search .value { text-align: left; font-family: var(--studio-standard-font-family, inter); }
 .field.text input.value, .field.search input.value { width: 100%; padding: 0dp 7dp; }
 .field.search .addon { padding-left: 6dp; }
 .field.search .addon .icon { color: var(--faint-foreground); }
 .field.search input.value { padding-left: 5dp; }
 .field.area { display: block; height: auto; }
 .field.area textarea.value {
-    display: block; width: 100%; height: auto; padding: 2dp 7dp; line-height: 16dp; cursor: text;
-    font-family: Inter; color: var(--foreground); text-align: left; white-space: pre-wrap; overflow-y: auto;
+    display: block; width: 100%; height: auto; padding: 2dp 7dp; line-height: var(--studio-line-16, 16dp); cursor: text;
+    font-family: var(--studio-standard-font-family, inter); color: var(--foreground); text-align: left; white-space: pre-wrap; overflow-y: auto;
 }
 .field.area textarea.value selection { background-color: var(--primary); color: var(--primary-foreground); }
 
@@ -61,7 +61,7 @@
 
 /* Select trigger. */
 .field.select { justify-content: flex-start; padding: 0dp 4dp 0dp 8dp; gap: 6dp; cursor: arrow; }
-.field.select .value { padding: 0dp; text-align: left; font-family: Inter; }
+.field.select .value { padding: 0dp; text-align: left; font-family: var(--studio-standard-font-family, inter); }
 .field.select .caret { color: var(--faint-foreground); width: 14dp; }
 .field.select[data-open] { background-color: var(--field-edit); }
 
@@ -85,5 +85,35 @@
 
 /* Asset field (kit_picker): a select trigger that opens a search over assets. */
 .field.select.picker { tab-index: auto; }
-.field.select.picker .lead { color: var(--muted-foreground); width: 14dp; font-size: 12dp; }
+.field.select.picker .lead { color: var(--muted-foreground); width: 14dp; font-size: var(--studio-font-12, 12dp); }
 .field.select.picker[data-placeholder] .value { color: var(--faint-foreground); }
+
+/* The shadcn Input anatomy applies to editable fields in the reusable popover. */
+.popover .field.text, .popover .field.search {
+    height: var(--studio-height-36, 36dp); flex: 0 0 auto; background-color: transparent; border-color: var(--input);
+    border-radius: var(--r, 4dp);
+}
+body.comfortable .popover .field.text, body.comfortable .popover .field.search {
+    height: var(--studio-height-40, 40dp);
+}
+.dark .popover .field.text, .dark .popover .field.search {
+    background-color: color-mix(in srgb, var(--input) 30%, transparent);
+}
+.popover .field.text:hover, .popover .field.search:hover { background-color: var(--input-hover); }
+.dark .popover .field.text:hover, .dark .popover .field.search:hover {
+    background-color: color-mix(in srgb, var(--input) 42%, transparent);
+}
+.popover .field.text input.value, .popover .field.search input.value {
+    width: 100%; height: var(--studio-line-20, 20dp); padding: 0dp var(--studio-height-12, 12dp);
+    background-color: transparent; color: var(--foreground); font-size: var(--studio-font-14, 14dp);
+    line-height: var(--studio-line-20, 20dp); border-radius: var(--r, 4dp);
+}
+.popover .field.text[data-editing], .popover .field.text:focus-within,
+.popover .field.search[data-editing], .popover .field.search:focus-within {
+    background-color: var(--popover); border-color: var(--ring);
+    box-shadow: 0dp 0dp 0dp 3dp color-mix(in srgb, var(--ring) 50%, transparent);
+}
+.dark .popover .field.text[data-editing], .dark .popover .field.text:focus-within,
+.dark .popover .field.search[data-editing], .dark .popover .field.search:focus-within {
+    background-color: color-mix(in srgb, var(--input) 30%, transparent);
+}

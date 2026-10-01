@@ -33,6 +33,7 @@ typedef struct
     bool focus_note;
     bool open_rename;             /* a popover with a name field and one item */
     bool focus_rename, b_renames; /* item B opens the popover focused */
+    bool rename_empty;
     char rename[32];
     int rename_commits, rename_applied;
     int panel_menus; /* the panel's menu asked for */
@@ -66,6 +67,14 @@ static void emit(kit_fixture *f)
     kit_button_desc button = { .label = "Press" };
     if (kit_button(k, "button", &button)) {
         f->clicks++;
+    }
+    kit_button_desc rename = { .label = "Rename" };
+    if (kit_button(k, "rename-trigger", &rename)) {
+        if (kit_popup_is_open(k, "rename")) {
+            kit_popup_close(k, "rename");
+        } else {
+            kit_popup_open(k, "rename");
+        }
     }
     kit_leaf(k, "about", NULL, NULL);
     kit_style(k, "width", "40dp");
@@ -145,14 +154,18 @@ static void emit(kit_fixture *f)
         f->open_rename = false;
         kit_popup_open_at(k, "rename", 100, 100);
     }
-    if (kit_popup_begin(k, "rename", "menu")) {
-        f->rename_commits += kit_text_field(k, "name", f->rename, sizeof f->rename, NULL, 0);
-        if (f->focus_rename) {
-            kit_focus(k);
-            f->focus_rename = false;
+    if (kit_popup_begin(k, "rename", "popover")) {
+        if (f->rename_empty) {
+            kit_label(k, "message", NULL, "No controls");
+        } else {
+            f->rename_commits += kit_text_field(k, "name", f->rename, sizeof f->rename, NULL, 0);
+            if (f->focus_rename) {
+                kit_focus(k);
+                f->focus_rename = false;
+            }
+            kit_button_desc apply = { .label = "Apply" };
+            f->rename_applied += kit_button(k, "apply", &apply);
         }
-        kit_menu_item_desc apply = { .label = "Apply", .checked = -1 };
-        f->rename_applied += kit_menu_item(k, "apply", &apply);
         kit_popup_end(k);
     }
     if (f->open_command) {
@@ -300,6 +313,10 @@ bool test_rmlui_kit()
     f.in = (kit_frame_input){ .dp_ratio = 1, .width = 1024, .height = 640 };
     settle(&f);
     bool ok = true;
+    ok &= check(rml_font_face("noto sans", RML_FONT_NORMAL, 400, 12) != 0, "Noto Sans regular face");
+    ok &= check(rml_font_face("noto sans", RML_FONT_NORMAL, 600, 12) != 0, "Noto Sans semibold face");
+    ok &= check(rml_font_face("noto sans", RML_FONT_NORMAL, 700, 12) != 0, "Noto Sans bold face");
+    ok &= check(rml_font_face("inconsolata", RML_FONT_NORMAL, 400, 12) != 0, "Inconsolata regular face");
 
     /* Highlighting: JSON keys are names, values keep their token; markup is escaped. */
     char markup[512];
@@ -442,6 +459,11 @@ bool test_rmlui_kit()
     frame(&f);
     ok &= check(strcmp(f.note, "a\nb") == 0 && f.note_commits == 1, "Enter commits the lines once");
     ok &= check(!kit_wants_text(f.k, NULL), "Enter leaves the text area");
+    f.focus_note = true;
+    settle(&f);
+    key(&f, RML_INPUT_KEY_ENTER, 0);
+    frame(&f);
+    ok &= check(f.note_commits == 2, "Enter commits an unchanged optional text value");
     snprintf(f.note, sizeof f.note, "a");
     settle(&f);
     ok &= check(
@@ -456,9 +478,20 @@ bool test_rmlui_kit()
     ok &= check(click(&f, "layer/@menu:app/bar/file/b"), "menu item is laid out");
     frame(&f);
     ok &= check(f.menu_b == 1 && !kit_popup_is_open(f.k, "menu:app/bar/file"), "item activates and closes the menu");
+    click(&f, "app/bar/file");
+    settle(&f);
+    key(&f, RML_INPUT_KEY_TAB, 0);
+    frame(&f);
+    ok &= check(!kit_popup_is_open(f.k, "menu:app/bar/file"), "Tab still dismisses a menu");
 
     /* A field in a popup takes typing and Enter; the popup keeps Escape. */
-    f.open_rename = true;
+    click(&f, "app/bar/rename-trigger");
+    settle(&f);
+    ok &= check(kit_wants_text(f.k, NULL), "opening a popover focuses its first tabbable control");
+    click(&f, "app/bar/rename-trigger");
+    frame(&f);
+    ok &= check(!kit_popup_is_open(f.k, "rename"), "pressing a popover's ordinary button trigger again closes it");
+    click(&f, "app/bar/rename-trigger");
     settle(&f);
     ok &= check(click(&f, "layer/@rename/name"), "popover field is laid out");
     key(&f, RML_INPUT_KEY_A, 0);
@@ -472,9 +505,62 @@ bool test_rmlui_kit()
         "typeahead"
     );
     ok &= check(click(&f, "layer/@rename/name"), "popover field refocuses");
+    key(&f, RML_INPUT_KEY_TAB, 0);
+    frame(&f);
+    rml_element *popover_button = rml_context_focus_element(rml_backend_context(f.backend));
+    ok &= check(
+        popover_button && !strcmp(rml_element_tag_name(popover_button), "button") &&
+            kit_popup_is_open(f.k, "rename"),
+        "Tab moves from a popover field to its button without closing"
+    );
+    key(&f, RML_INPUT_KEY_ENTER, 0);
+    frame(&f);
+    ok &= check(f.rename_applied == 1 && kit_popup_is_open(f.k, "rename"), "Enter activates a focused popover button");
+    key(&f, RML_INPUT_KEY_TAB, RML_KM_SHIFT);
+    frame(&f);
+    ok &= check(
+        kit_wants_text(f.k, NULL) && kit_popup_is_open(f.k, "rename"),
+        "Shift+Tab moves from a popover button back to its field"
+    );
     key(&f, RML_INPUT_KEY_ESCAPE, 0);
     frame(&f);
     ok &= check(!kit_popup_is_open(f.k, "rename"), "Escape in a popover's field closes the popover");
+    rml_element *restored = rml_context_focus_element(rml_backend_context(f.backend));
+    char restored_label[32] = "";
+    if (restored) {
+        rml_element *label = rml_element_query_selector(restored, ".label");
+        if (label) {
+            rml_element_inner_rml(label, restored_label, sizeof restored_label);
+        }
+    }
+    ok &= check(!strcmp(restored_label, "Rename"), "Escape restores focus to the popover's trigger");
+    click(&f, "app/bar/rename-trigger");
+    settle(&f);
+    key(&f, RML_INPUT_KEY_TAB, RML_KM_SHIFT);
+    frame(&f);
+    ok &= check(!kit_popup_is_open(f.k, "rename") && !kit_wants_text(f.k, NULL), "Shift+Tab from the first popover control exits to the trigger and closes");
+    click(&f, "app/bar/rename-trigger");
+    settle(&f);
+    key(&f, RML_INPUT_KEY_TAB, 0);
+    key(&f, RML_INPUT_KEY_TAB, 0);
+    frame(&f);
+    ok &= check(!kit_popup_is_open(f.k, "rename"), "Tab from the last popover control exits to the document and closes");
+    click(&f, "app/bar/rename-trigger");
+    settle(&f);
+    rml_element *document = rml_context_document(rml_backend_context(f.backend), 0);
+    rml_element *outside = rml_element_query_selector(document, ".topbar > button");
+    ok &= check(outside && rml_element_focus(outside, true), "outside document controls remain focusable while a popover is open");
+    frame(&f);
+    ok &= check(!kit_popup_is_open(f.k, "rename"), "moving focus to an outside control dismisses a nonmodal popover");
+    f.rename_empty = true;
+    click(&f, "app/bar/rename-trigger");
+    settle(&f);
+    rml_element *empty_focus = rml_context_focus_element(rml_backend_context(f.backend));
+    ok &= check(empty_focus && rml_element_is_class_set(empty_focus, "popover"), "an informational popover focuses itself when it has no tabbable controls");
+    rml_element_focus(outside, true);
+    frame(&f);
+    ok &= check(!kit_popup_is_open(f.k, "rename"), "an informational popover also closes on outside focus");
+    f.rename_empty = false;
     f.b_renames = true;
     ok &= check(click(&f, "app/bar/file"), "menu trigger reopens");
     settle(&f);

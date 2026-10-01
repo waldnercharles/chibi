@@ -482,22 +482,6 @@ void studio_set_workspace(studio *s, studio_workspace workspace)
     forget_areas(s);
 }
 
-void studio_follow_document(studio *s)
-{
-    const app_scene_authoring *scene = s->scene;
-    int tab = scene->active_tab;
-    int kind = tab >= 0 && tab < acount(scene->tabs) ? (int)scene->tabs[tab].kind
-                                                     : -1;
-    if (tab == s->followed_tab && kind == s->followed_kind) {
-        return;
-    }
-    s->followed_tab = tab;
-    s->followed_kind = kind;
-    if (s->prefs.follow_documents && kind >= 0) {
-        studio_set_workspace(s, kind == APP_EDITOR_DOCUMENT_UI ? STUDIO_WORKSPACE_UI : STUDIO_WORKSPACE_LAYOUT);
-    }
-}
-
 void studio_toggle_side_pane(studio *s)
 {
     studio_layout *layout = studio_active_layout(s);
@@ -793,6 +777,42 @@ static void runtime_target(studio *s)
     }
 }
 
+static void layout_control(studio *s)
+{
+    kit *k = s->kit;
+    kit_button_desc button = {
+        .icon = KIT_ICON_LAYOUT,
+        .tip = "Layout",
+    };
+    if (kit_button(k, "trigger", &button)) {
+        if (kit_popup_is_open(k, "layouts")) {
+            kit_popup_close(k, "layouts");
+        } else {
+            kit_popup_open(k, "layouts");
+        }
+    }
+    if (!kit_popup_begin(k, "layouts", "menu")) {
+        return;
+    }
+    kit_menu_group(k, "title", "Layout");
+    const studio_command commands[] = {
+        STUDIO_COMMAND_WORKSPACE_HORIZONTAL_SPLIT,
+        STUDIO_COMMAND_WORKSPACE_VERTICAL_SPLIT,
+    };
+    for (int i = 0; i < 2; i++) {
+        studio_command_info command = studio_command_describe(s, commands[i]);
+        kit_menu_item_desc choice = {
+            .label = command.menu,
+            .icon = command.icon,
+            .checked = studio_command_checked(s, commands[i]),
+        };
+        if (kit_menu_item(k, command.id, &choice)) {
+            studio_command_run(s, commands[i]);
+        }
+    }
+    kit_popup_end(k);
+}
+
 /* The top bar is authored: projects/studio's TopBar binds `editor` and
    `commands` (studio_sources.c) for its document tabs, transport, gear and
    search, which run commands. The menubar, the play target's menu and a
@@ -813,12 +833,20 @@ static void topbar(studio *s)
         menus(s, host);
         kit_slot_end(k);
     }
+    if (kit_slot_begin(k, "layout", host, "#layout")) {
+        layout_control(s);
+        kit_slot_end(k);
+    }
     if (kit_slot_begin(k, "target", host, "#play-target")) {
         runtime_target(s);
         kit_slot_end(k);
     }
     if (s->pause.active && kit_slot_begin(k, "steps", host, "#debug-steps")) {
         studio_debug_steps(s);
+        kit_slot_end(k);
+    }
+    if (kit_slot_begin(k, "collaboration", host, "#collaboration")) {
+        studio_collab_ui(s);
         kit_slot_end(k);
     }
 }
@@ -994,12 +1022,12 @@ static void area(studio *s, int index, const char *key, int axis, float size, bo
     s->areas[index].rect = kit_item_rect(k);
 }
 
-/* The top and bottom areas: stacked in Layout, side by side in UI. */
+/* The top and bottom areas: stacked vertically or arranged side by side. */
 static void main_areas(studio *s, float size)
 {
     kit *k = s->kit;
     studio_layout *layout = studio_active_layout(s);
-    int axis = s->prefs.workspace == STUDIO_WORKSPACE_UI ? 0 : 1;
+    int axis = s->prefs.workspace == STUDIO_WORKSPACE_HORIZONTAL_SPLIT ? 0 : 1;
     float minimum = axis ? 80 : 160;
     kit_push(k, "editors", NULL, KIT_CX(k, "main-editors", { "across", !axis }));
     float first = floorf((size - 4) * layout->main_split);
@@ -1020,6 +1048,8 @@ static void side_areas(studio *s)
     float target = layout->side_open ? layout->side_width : 0;
     float width = kit_spring(k, "side-width", target, s->side_dragging ? 0 : 0.2f);
     if (width <= 0.5f) {
+        studio_ui_area_detach(s, STUDIO_AREA_OUTLINER);
+        studio_ui_area_detach(s, STUDIO_AREA_PROPERTIES);
         s->side_rect = s->areas[STUDIO_AREA_OUTLINER]
                            .rect = s->areas[STUDIO_AREA_PROPERTIES].rect = (kit_rect){ 0 };
         s->side_dragging = false;
@@ -1055,6 +1085,11 @@ static void workspace(studio *s)
     kit_push(k, "main", NULL, "column main");
     if (s->maximized >= 0) {
         memset(s->areas, 0, sizeof s->areas);
+        for (int i = 0; i < STUDIO_AREA_COUNT; i++) {
+            if (i != s->maximized) {
+                studio_ui_area_detach(s, i);
+            }
+        }
         area(s, s->maximized, AREA_KEYS[s->maximized], 1, 0, true);
         kit_pop(k);
         s->main_rect = kit_item_rect(k);
@@ -1079,7 +1114,7 @@ static void workspace(studio *s)
     float main_width = s->main_rect.w > 0 ? s->main_rect.w : s->in.width;
     main_areas(
         s,
-        s->prefs.workspace == STUDIO_WORKSPACE_UI
+        s->prefs.workspace == STUDIO_WORKSPACE_HORIZONTAL_SPLIT
             ? main_width
             : column_height - (drawer_shown ? drawer + 4 : 0)
     );
@@ -1091,6 +1126,7 @@ static void workspace(studio *s)
         s->drawer_dragging = kit_item_active(k);
         area(s, STUDIO_AREA_DRAWER, "drawer", 1, drawer, false);
     } else {
+        studio_ui_area_detach(s, STUDIO_AREA_DRAWER);
         s->areas[STUDIO_AREA_DRAWER].rect = (kit_rect){ 0 };
         s->drawer_dragging = false;
     }
@@ -1206,7 +1242,6 @@ void studio_emit(studio *s)
 {
     sync_presentation(s);
     studio_disk_frame(s);
-    studio_follow_document(s);
     studio_code_frame(s);
     studio_canvas_follow(s);
     track_pointer(s);

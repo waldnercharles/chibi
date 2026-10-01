@@ -21,7 +21,7 @@
 
 #define FRAME_SECONDS (1.0 / 60.0)
 #define MANIFEST                                                               \
-    "version: 2\nname: Fresh\ncontent: content\nstart_scene: "                 \
+    "version: 3\nname: Fresh\ncontent: content\nstart_scene: "                 \
     "scenes/Main.yaml\n"
 
 typedef struct
@@ -372,15 +372,26 @@ static void project_settings_write()
     frames(&f, 3);
     join(path, sizeof path, f.root, CHIBI_PROJECT_MANIFEST);
     char *manifest = text_file_read(path);
-    const char *expected = "version: 2\nname: Renamed\ncontent: content\n"
+    const char *expected = "version: 3\nname: Renamed\ncontent: content\n"
                            "start_scene: scenes/Boss.yaml\n";
     bool written = manifest && !strcmp(manifest, expected);
-    if (!written) {
-        printf("  shown '%s', manifest:\n%s\n", shown, manifest ? manifest : "(none)");
+    bool applied = s->project.start_scene &&
+                   !strcmp(s->project.start_scene, "scenes/Boss.yaml");
+    if (!(scope && !strcmp(shown, "Fresh") && written && applied)) {
+        printf(
+            "  project settings: scope=%p name=%p start=%p shown='%s' "
+            "in_memory_start='%s' written=%d current_manifest:\n%s\n",
+            (void *)scope,
+            (void *)name,
+            (void *)start,
+            shown,
+            s->project.start_scene ? s->project.start_scene : "(none)",
+            written,
+            manifest ? manifest : "(none)"
+        );
     }
     test_check(
-        scope && !strcmp(shown, "Fresh") && written &&
-            !strcmp(s->project.start_scene, "scenes/Boss.yaml"),
+        scope && !strcmp(shown, "Fresh") && written && applied,
         "Settings ▸ Project renames the project and sets its start scene in "
         "project.yaml"
     );

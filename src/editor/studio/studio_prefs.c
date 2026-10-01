@@ -46,7 +46,7 @@ catch(_)
 })
 #endif
 
-#define PREFS_VERSION 1
+#define PREFS_VERSION 2
 
 /* An area showing a panel saves as {"panel": "<name>"}. */
 static const char *const EDITORS[STUDIO_EDITOR_COUNT] = {
@@ -54,22 +54,26 @@ static const char *const EDITORS[STUDIO_EDITOR_COUNT] = {
     "assets", "performance", "members",  "code",       "panel"
 };
 
-static const char *const WORKSPACES[STUDIO_WORKSPACE_COUNT] = { "layout", "ui" };
+static const char *const WORKSPACES[STUDIO_WORKSPACE_COUNT] = { "verticalSplit", "horizontalSplit" };
+static const char *const PREVIOUS_WORKSPACES[STUDIO_WORKSPACE_COUNT] = {
+    "layout",
+    "ui"
+};
 
-/* Layout stacks Scene over Behavior; UI sets the Canvas (the Scene area on a
-   ui document) beside the Text Editor, half and half. */
+/* Vertical Split stacks Scene over Behavior; Horizontal Split sets the Canvas
+   beside the Text Editor, half and half. */
 studio_layout studio_layout_default(studio_workspace workspace)
 {
     assert(workspace >= 0 && workspace < STUDIO_WORKSPACE_COUNT);
-    bool ui = workspace == STUDIO_WORKSPACE_UI;
+    bool horizontal = workspace == STUDIO_WORKSPACE_HORIZONTAL_SPLIT;
     return (studio_layout){
         .side_open = true,
-        .side_width = ui ? 320 : 372,
-        .main_split = ui ? 0.5f : 0.62f,
+        .side_width = horizontal ? 320 : 372,
+        .main_split = horizontal ? 0.5f : 0.62f,
         .side_split = 0.38f,
         .drawer_height = 240,
         .editors = { STUDIO_EDITOR_SCENE,
-                     ui ? STUDIO_EDITOR_CODE : STUDIO_EDITOR_BEHAVIOR,
+                     horizontal ? STUDIO_EDITOR_CODE : STUDIO_EDITOR_BEHAVIOR,
                      STUDIO_EDITOR_OUTLINER,
                      STUDIO_EDITOR_PROPERTIES,
                      STUDIO_EDITOR_OUTPUT },
@@ -84,6 +88,7 @@ studio_layout *studio_active_layout(studio *s)
 studio_prefs studio_prefs_default()
 {
     studio_prefs p = { 0 };
+    p.workspace = STUDIO_WORKSPACE_VERTICAL_SPLIT;
     for (int w = 0; w < STUDIO_WORKSPACE_COUNT; w++) {
         p.layouts[w] = studio_layout_default(w);
     }
@@ -136,6 +141,17 @@ static int name_index(const char *const *names, int count, yyjson_val *value, in
     const char *name = yyjson_get_str(value);
     for (int i = 0; name && i < count; i++) {
         if (strcmp(names[i], name) == 0) {
+            return i;
+        }
+    }
+    return fallback;
+}
+
+static int workspace_index(yyjson_val *value, int fallback)
+{
+    const char *name = yyjson_get_str(value);
+    for (int i = 0; name && i < STUDIO_WORKSPACE_COUNT; i++) {
+        if (!strcmp(name, WORKSPACES[i]) || !strcmp(name, PREVIOUS_WORKSPACES[i])) {
             return i;
         }
     }
@@ -242,9 +258,13 @@ studio_prefs studio_prefs_read(const char *json)
     }
     yyjson_val *shortcuts = yyjson_obj_get(root, "shortcuts");
     for (int c = 0; c < STUDIO_COMMAND_COUNT; c++) {
-        const char *chord = yyjson_get_str(
-            yyjson_obj_get(shortcuts, studio_command_id(c))
-        );
+        yyjson_val *saved = yyjson_obj_get(shortcuts, studio_command_id(c));
+        if (!saved && c == STUDIO_COMMAND_WORKSPACE_VERTICAL_SPLIT) {
+            saved = yyjson_obj_get(shortcuts, "workspaceLayout");
+        } else if (!saved && c == STUDIO_COMMAND_WORKSPACE_HORIZONTAL_SPLIT) {
+            saved = yyjson_obj_get(shortcuts, "workspaceUi");
+        }
+        const char *chord = yyjson_get_str(saved);
         if (studio_chord_valid(chord) &&
             strcmp(chord, studio_command_default_chord(c))) {
             snprintf(p.shortcuts[c], sizeof p.shortcuts[c], "%s", chord);
@@ -263,19 +283,18 @@ studio_prefs studio_prefs_read(const char *json)
         }
     }
     yyjson_val *layout = yyjson_obj_get(root, "layout");
-    p.workspace = name_index(
-        WORKSPACES,
-        STUDIO_WORKSPACE_COUNT,
-        yyjson_obj_get(layout, "workspace"),
-        STUDIO_WORKSPACE_LAYOUT
-    );
+    p.workspace = workspace_index(yyjson_obj_get(layout, "workspace"), STUDIO_WORKSPACE_VERTICAL_SPLIT);
     yyjson_val *presets = yyjson_obj_get(layout, "presets");
     for (int w = 0; w < STUDIO_WORKSPACE_COUNT; w++) {
-        read_layout(&p.layouts[w], yyjson_obj_get(presets, WORKSPACES[w]));
+        yyjson_val *preset = yyjson_obj_get(presets, WORKSPACES[w]);
+        if (!preset) {
+            preset = yyjson_obj_get(presets, PREVIOUS_WORKSPACES[w]);
+        }
+        read_layout(&p.layouts[w], preset);
     }
-    /* A file from before presets holds one arrangement: Layout's. */
+    /* A file from before presets holds one arrangement: Vertical Split's. */
     if (!presets) {
-        read_layout(&p.layouts[STUDIO_WORKSPACE_LAYOUT], layout);
+        read_layout(&p.layouts[STUDIO_WORKSPACE_VERTICAL_SPLIT], layout);
     }
     yyjson_doc_free(doc);
     return p;
@@ -328,22 +347,34 @@ static void write_setting(
     }
 }
 
-/* Adds the members of `saved` this build does not know, in objects both
-   hold too, as VS Code's settings.json keeps settings it does not know. In
-   `shortcuts`, a command this build knows without an override has its
-   default chord, so its old override goes. */
-static void keep_unknown(yyjson_mut_doc *doc, yyjson_mut_val *into, yyjson_val *saved, bool shortcuts)
+/* Keeps unknown saved preferences, except the retired tab-follow setting and
+   workspace aliases. In `shortcuts`, a command this build knows without an
+   override has its default chord, so its old override goes. */
+static void keep_unknown(
+    yyjson_mut_doc *doc,
+    yyjson_mut_val *into,
+    yyjson_val *saved,
+    bool shortcuts,
+    bool workspace_presets,
+    bool root
+)
 {
     size_t i, max;
     yyjson_val *key, *value;
     yyjson_obj_foreach(saved, i, max, key, value)
     {
         const char *name = yyjson_get_str(key);
+        if ((root && !strcmp(name, "followDocuments")) ||
+            (shortcuts &&
+             (!strcmp(name, "workspaceLayout") || !strcmp(name, "workspaceUi"))) ||
+            (workspace_presets && (!strcmp(name, "layout") || !strcmp(name, "ui")))) {
+            continue;
+        }
         yyjson_mut_val *known = yyjson_mut_obj_get(into, name);
         if (!known && !(shortcuts && studio_command_named(name) >= 0)) {
             yyjson_mut_obj_add(into, yyjson_val_mut_copy(doc, key), yyjson_val_mut_copy(doc, value));
         } else if (yyjson_mut_is_obj(known) && yyjson_is_obj(value)) {
-            keep_unknown(doc, known, value, !strcmp(name, "shortcuts"));
+            keep_unknown(doc, known, value, !strcmp(name, "shortcuts"), !strcmp(name, "presets"), false);
         }
     }
 }
@@ -397,7 +428,7 @@ char *studio_prefs_write(const studio_prefs *p, const char *saved)
     }
     yyjson_doc *previous = saved ? yyjson_read(saved, strlen(saved), 0) : NULL;
     if (yyjson_is_obj(yyjson_doc_get_root(previous))) {
-        keep_unknown(doc, root, yyjson_doc_get_root(previous), false);
+        keep_unknown(doc, root, yyjson_doc_get_root(previous), false, false, true);
     }
     char *json = yyjson_mut_write(doc, YYJSON_WRITE_PRETTY, NULL);
     yyjson_doc_free(previous);

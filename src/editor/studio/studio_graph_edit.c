@@ -214,8 +214,9 @@ static void paste_point(const studio *s, float *x, float *y)
         *y = g->world_y;
         return;
     }
-    *x = g->x + g->surface.rect.w / 2 / g->zoom;
-    *y = g->y + g->surface.rect.h / 2 / g->zoom;
+    float zoom = sg_zoom(s);
+    *x = g->x + g->surface.rect.w / 2 / zoom;
+    *y = g->y + g->surface.rect.h / 2 / zoom;
 }
 
 /* Pasted nodes center on the pointer (Unreal) and are selected. */

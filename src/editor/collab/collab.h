@@ -50,13 +50,17 @@ void collab_receive(const char *envelope);
 void collab_disconnect(const char *reason);
 void collab_leave();
 void collab_control(const char *command, const char *argument);
+void collab_feedback(const char *message, int error);
 
 bool collab_active();
+bool collab_rooms_available();
 bool collab_is_host();
 bool collab_can_edit();
 collab_role collab_role_current();
 collab_state collab_state_current();
 const char *collab_status();
+const char *collab_feedback_text();
+bool collab_feedback_error();
 const char *collab_client();
 const char *collab_apply_client();
 uint64_t collab_revision();

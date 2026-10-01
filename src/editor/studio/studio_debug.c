@@ -22,14 +22,10 @@ static int behavior_area(const studio_layout *layout)
     return area;
 }
 
-/* A Behavior area shows the graph: Layout's, when the workspace has none, a
-   maximized area gives way to it, and without one the bottom area becomes
-   one. */
+/* A Behavior area shows the graph. If the active split has none, the bottom
+   area becomes one; a different maximized area gives way to it. */
 static void show_behavior_area(studio *s)
 {
-    if (behavior_area(studio_active_layout(s)) < 0) {
-        studio_set_workspace(s, STUDIO_WORKSPACE_LAYOUT);
-    }
     int area = behavior_area(studio_active_layout(s));
     if (area < 0) {
         area = STUDIO_AREA_BOTTOM;

@@ -48,6 +48,7 @@ extern "C"
         KIT_ON = 1 << 3,     /* pressed toggle, checked item, selected row */
         KIT_ACTIVE = 1 << 4, /* active tree row */
         KIT_INVALID = 1 << 5,
+        KIT_SECRET = 1 << 6, /* text fields mask their value (passwords, tokens) */
     };
 
     /* Borrowed Rml::Context*; the document stays loaded until kit_destroy. */
@@ -205,7 +206,8 @@ extern "C"
     /* Base UI ToggleGroup: one pressed segment among any count, for switching
      * views where every choice should stay visible. */
     bool kit_toggle_group(kit *k, const char *key, int *value, const char *const *labels, int count, unsigned flags);
-    /* Commits on Enter or blur; Escape restores. Returns true on commit. */
+    /* Commits on Enter or blur; Escape restores. Returns true on commit.
+     * KIT_SECRET masks the value for passwords and tokens. */
     bool kit_text_field(kit *k, const char *key, char *buffer, size_t size, const char *placeholder, unsigned flags);
     /* A text field over several lines (shadcn Textarea): Shift+Enter starts a
      * line and the field grows with its lines up to a scrolling height;
@@ -275,6 +277,9 @@ extern "C"
     void kit_popup_open(kit *k, const char *key);
     void kit_popup_open_at(kit *k, const char *key, float x, float y);
     bool kit_popup_is_open(const kit *k, const char *key);
+    /* The "popover" class selects nonmodal form behavior: first tabbable
+     * focus, normal control keys, Tab navigation and dismissal on focus out.
+     * Other popups use menu keys and close on Tab. */
     bool kit_popup_begin(kit *k, const char *key, const char *cls);
     void kit_popup_end(kit *k);
     void kit_popup_close(kit *k, const char *key);
@@ -354,6 +359,8 @@ extern "C"
     /* Adds `rcss` after the kit's stylesheets under `key`, replacing what the key
      * held; NULL removes it. Hosted content installs its scoped RCSS here. */
     void kit_style_sheet(kit *k, const char *key, const char *rcss);
+    /* Sets the lowercase registered family used by kit_text_width. */
+    void kit_set_standard_font_family(kit *k, const char *family);
 
     /* Toasts (Sonner): a bottom-right stack, three visible, four seconds each, paused
      * while hovered, dismissed by a drag to the right. Passing the id of a live toast
@@ -495,7 +502,8 @@ extern "C"
     /* True while focus can receive typed characters, including a focused number field. */
     bool kit_accepts_text(const kit *k);
     bool kit_wants_pointer(const kit *k);
-    /* Width in dp of one line of Inter at `size` dp and `weight` (400 regular),
+    /* Width in dp of one line of the configured standard face at `size` dp
+     * and `weight` (400 regular),
      * as drawn at `ratio` pixels per dp: text renders at whole pixel sizes with
      * hinting, so small sizes run wider than a scaled measurement. */
     float kit_text_width(const kit *k, const char *text, float size, int weight, float ratio);
@@ -660,6 +668,7 @@ extern "C"
         const char *cls;
         bool vim;        /* studio_prefs.code_vim */
         float font_size; /* dp; studio_prefs.code_font_size, 0 means 13 */
+        const char *font_family; /* a registered RmlUi family, NULL means JetBrains Mono */
         /* The host trades Control and Command in RmlUi's key events on a
          * Mac (studio_host.c), so primary chords read as Control; the
          * editor trades them back so Vim sees the physical Control key. */

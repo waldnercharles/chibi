@@ -113,6 +113,7 @@ typedef struct widget
     bool suppress_click;
     bool focused;
     bool area; /* a text field over several lines */
+    bool secret;
     double value;
     double start;
     double pending_value;
@@ -239,6 +240,9 @@ typedef struct popup
     bool keyboard;
     bool activated;
     bool menubar;
+    bool popover;
+    bool focus_pending;
+    char *trigger;
     float x, y;
     kit_rect anchor;
     char *parent; /* a submenu's parent popup key */
@@ -271,8 +275,9 @@ struct kit
     rml_context *context;
     rml_element *doc;
     rml_listener *listener;
-    char *document;     /* the markup's file name, which names its sheets */
-    char *theme;        /* kit_theme's RCSS, the document's stylesheet */
+    char *document; /* the markup's file name, which names its sheets */
+    char *theme;    /* kit_theme's RCSS, the document's stylesheet */
+    char *standard_font_family; /* lowercase RmlUi family used for text measurements */
     pair *extra_styles; /* kit_style's RCSS, added after the stylesheets */
     bool restyle;       /* the theme or the extra styles changed */
     node **roots;       /* owned: the layer, then kit_root elements */
@@ -445,8 +450,10 @@ void popup_press(kit *k, node *n, rml_element *target);
 void trigger_press(kit *k, node *n, const rml_event *e);
 void menu_click(kit *k, node *n);
 void menu_hover(kit *k, node *n);
-/* False when no popup is open. */
+/* False when no popup is open or a popover leaves a key to its control. */
 bool popup_key(kit *k, const rml_event *e);
+void popup_focus(kit *k, rml_element *target);
+bool focus_step(rml_element *root, rml_element *from, int step, bool wrap, rml_element *skip);
 void set_tip(node *n, const char *label, const char *shortcut, const char *description);
 void update_tooltip(kit *k);
 

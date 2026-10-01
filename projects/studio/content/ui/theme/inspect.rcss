@@ -13,6 +13,6 @@
 /* The selection keeps an outline while the Inspector shows it. */
 .inspect-highlight.selected .band.content { background-color: transparent; border: 1dp var(--primary); }
 .inspect-highlight .label {
-    position: absolute; height: 18dp; line-height: 16dp; padding: 0dp 6dp; border-radius: 3dp; white-space: nowrap;
-    font-size: 11dp; color: var(--popover-foreground); background-color: var(--popover); border: 1dp var(--popover-edge);
+    position: absolute; height: var(--studio-height-18, 18dp); line-height: var(--studio-line-16, 16dp); padding: 0dp 6dp; border-radius: 3dp; white-space: nowrap;
+    font-size: var(--studio-font-11, 11dp); color: var(--popover-foreground); background-color: var(--popover); border: 1dp var(--popover-edge);
 }

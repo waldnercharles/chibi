@@ -6,9 +6,9 @@
    <morph-text>; the counts roll with <number-flow>. */
 body { flex: 0 0 auto; }
 .statusbar {
-  height: 24dp; display: flex; align-items: center; gap: 14dp; padding: 0dp 10dp;
+  height: var(--studio-height-24, 24dp); display: flex; align-items: center; gap: 14dp; padding: 0dp 10dp;
   background-color: var(--muted); border-top: 1dp var(--edge); color: var(--muted-foreground);
-  font-size: 11dp; white-space: nowrap;
+  font-size: var(--studio-font-11, 11dp); white-space: nowrap;
 }
 .statusbar.live { border-top-color: var(--primary-edge); }
 // Hints give way first when the window narrows.
@@ -31,6 +31,6 @@ body { flex: 0 0 auto; }
 }
 .stats { display: flex; gap: 10dp; flex-shrink: 0; color: var(--faint-foreground); font-family: InterNumeric; }
 .stats .strong { color: var(--muted-foreground); }
-.count { display: block; white-space: nowrap; line-height: 16dp; }
+.count { display: block; white-space: nowrap; line-height: var(--studio-line-16, 16dp); }
 #ui-scale { display: flex; flex-shrink: 0; }
 .ui-scale { color: var(--faint-foreground); font-family: InterNumeric; }

@@ -3,6 +3,7 @@
  * the saved keys authored panels bind, and how the Settings page shows it.
  * The area layout is not a setting; studio_prefs.c keeps it by hand. */
 #include "editor/studio/studio_internal.h"
+#include "ui/rml.h"
 
 #include <assert.h>
 #include <ctype.h>
@@ -36,6 +37,16 @@ static const studio_setting_choice WIRES[KIT_WIRE_STYLE_COUNT] = {
     { "straight", "Straight" },
     { "subway", "Subway" },
 };
+static const studio_setting_choice STANDARD_FONTS[] = {
+    { "Inter", "Inter" },
+    { "Noto Sans", "Noto Sans" },
+};
+static const studio_setting_choice MONOSPACE_FONTS[] = {
+    { "JetBrains Mono", "JetBrains Mono" },
+    { "Inconsolata", "Inconsolata" },
+};
+static const char *const STANDARD_FONT_FACES[] = { "inter", "noto sans" };
+static const char *const MONOSPACE_FONT_FACES[] = { "jetbrains mono", "inconsolata" };
 /* View › UI Scale's steps (studio_zoom), as browsers step a page's zoom. */
 static const studio_setting_choice UI_SCALES[] = {
     { "0.5", "50%" },   { "0.67", "67%" },  { "0.75", "75%" },
@@ -91,16 +102,28 @@ const studio_setting studio_settings[] = {
       .keywords = "animation transition motion accessibility",
       .type = STUDIO_SETTING_BOOL,
       FIELD(reduced_motion) },
-    { .key = "followDocuments",
-      .save = "followDocuments",
+    { .key = "font.standardFamily",
+      .save = "standardFontFamily",
       .category = STUDIO_SETTINGS_APPEARANCE,
-      .label = "Workspace Follows Tab",
-      .description = "A UI document's tab switches to the UI workspace, and "
-                     "any other tab to Layout.",
-      .keywords = "workspace preset automatic switch layout ui follow document",
-      .type = STUDIO_SETTING_BOOL,
-      FIELD(follow_documents),
-      .fallback = 1 },
+      .label = "Standard Font",
+      .description = "The interface's standard text face.",
+      .keywords = "font family typeface sans inter noto",
+      .type = STUDIO_SETTING_CHOICE,
+      FIELD(standard_font_family),
+      CHOICES(STANDARD_FONTS) },
+    { .key = "font.standardSize",
+      .save = "standardFontSize",
+      .category = STUDIO_SETTINGS_APPEARANCE,
+      .label = "Standard Font Size",
+      .description = "The size of interface text. UI Scale resizes the whole "
+                     "editor.",
+      .keywords = "font size text interface standard readable larger smaller",
+      .type = STUDIO_SETTING_NUMBER,
+      FIELD(standard_font_size),
+      .min = 10,
+      .max = 18,
+      .step = 1,
+      .fallback = 12 },
     { .key = "wires",
       .save = "wires",
       .category = STUDIO_SETTINGS_GRAPH,
@@ -149,12 +172,22 @@ const studio_setting studio_settings[] = {
       .keywords = "vi modal keybindings normal insert",
       .type = STUDIO_SETTING_BOOL,
       FIELD(code_vim) },
+    { .key = "code.fontFamily",
+      .save = "codeFontFamily",
+      .category = STUDIO_SETTINGS_TEXT,
+      .label = "Monospace Font",
+      .description = "The face used by code and monospace text.",
+      .keywords = "font family typeface mono code jetbrains inconsolata",
+      .type = STUDIO_SETTING_CHOICE,
+      FIELD(code_font_family),
+      CHOICES(MONOSPACE_FONTS) },
     { .key = "code.fontSize",
       .save = "codeFontSize",
       .category = STUDIO_SETTINGS_TEXT,
-      .label = "Font Size",
-      .description = "Text size in the Text Editor. UI Scale enlarges it too.",
-      .keywords = "text code size zoom points",
+      .label = "Monospace Font Size",
+      .description = "The size of code and monospace text. UI Scale enlarges "
+                     "it too.",
+      .keywords = "text code size zoom points mono",
       .type = STUDIO_SETTING_NUMBER,
       FIELD(code_font_size),
       .min = 8,
@@ -184,6 +217,124 @@ const studio_setting studio_settings[] = {
       .fallback = 1 },
 };
 const int studio_setting_count = sizeof studio_settings / sizeof *studio_settings;
+
+const char *studio_standard_font(const studio_prefs *prefs)
+{
+    return STANDARD_FONT_FACES[prefs->standard_font_family];
+}
+
+const char *studio_code_font(const studio_prefs *prefs)
+{
+    return MONOSPACE_FONT_FACES[prefs->code_font_family];
+}
+
+void studio_apply_font_settings(kit *k, const studio_prefs *prefs)
+{
+    kit_set_standard_font_family(k, studio_standard_font(prefs));
+    char css[24576];
+    float scale = prefs->standard_font_size / 12.0f;
+    int h = (int)lroundf(22 * scale);
+    int text_line = (int)lroundf(20 * scale);
+    int h_sm = (int)lroundf(18 * scale);
+    int row = (int)lroundf(22 * scale);
+    int gap = (int)lroundf(2 * scale);
+    int header_h = (int)lroundf(28 * scale);
+    int topbar_h = h + 8;
+    int line_extra = 0;
+    if (prefs->standard_font_size > 12) {
+        uintptr_t face = rml_font_face(
+            studio_standard_font(prefs),
+            RML_FONT_NORMAL,
+            400,
+            prefs->standard_font_size
+        );
+        assert(face);
+        int scaled_line = (int)lroundf(16 * scale);
+        line_extra = (int)ceilf(rml_font_face_metrics(face).line_spacing) - scaled_line;
+        if (line_extra < 0) {
+            line_extra = 0;
+        }
+    }
+    int written = snprintf(
+        css,
+        sizeof css,
+        "body, body.dark { --studio-standard-font-family: %s; "
+        "--studio-code-font-family: %s; "
+        "--h: %ddp; --text-line: %ddp; --h-sm: %ddp; "
+        "--row: %ddp; --gap: %ddp; --header-h: %ddp; "
+        "--topbar-h: %ddp; }\n"
+        "body.comfortable, body.dark.comfortable { --h: %ddp; "
+        "--text-line: %ddp; --h-sm: %ddp; "
+        "--row: %ddp; --gap: %ddp; --header-h: %ddp; "
+        "--topbar-h: %ddp; }\n"
+        ".code-completions, .code-hover, .code-hover-title, .code-hover-line, "
+        ".code-mode, kit-code { font-family: var(--studio-code-font-family, "
+        "jetbrains mono); }\n"
+        ".code-completions { font-size: var(--studio-mono-font-12, 12dp); }\n"
+        ".code-hover { font-size: var(--studio-mono-font-12, 12dp); }\n"
+        ".code-hover-line { font-size: var(--studio-mono-font-11, 11dp); }\n"
+        ".code-mode { font-size: var(--studio-mono-font-10, 10dp); }\n"
+        ".code-completion .detail { font-family: "
+        "var(--studio-standard-font-family, inter); }\n"
+        ".designer-bindings .field .value { font-family: "
+        "var(--studio-code-font-family, jetbrains mono); }\n"
+        ".field input.value, .field.text .value, .field.search .value, "
+        ".field.area textarea.value, .field.select .value { "
+        "font-family: var(--studio-standard-font-family, inter); }\n",
+        studio_standard_font(prefs),
+        studio_code_font(prefs),
+        h,
+        text_line,
+        h_sm,
+        row,
+        gap,
+        header_h,
+        topbar_h,
+        (int)lroundf(26 * scale),
+        (int)lroundf(24 * scale),
+        (int)lroundf(20 * scale),
+        (int)lroundf(26 * scale),
+        (int)lroundf(3 * scale),
+        (int)lroundf(32 * scale),
+        (int)lroundf(26 * scale) + 8
+    );
+    assert(written > 0 && (size_t)written < sizeof css);
+    size_t used = (size_t)written;
+    for (int size = 8; size <= 64; size++) {
+        int standard = (int)lroundf((float)size * prefs->standard_font_size / 12.0f);
+        int mono = (int)lroundf((float)size * prefs->code_font_size / 13.0f);
+        int added = snprintf(
+            css + used,
+            sizeof css - used,
+            "body { --studio-font-%d: %ddp; --studio-mono-font-%d: %ddp; "
+            "--studio-line-%d: %ddp; --studio-mono-line-%d: %ddp; "
+            "--studio-height-%d: %ddp; --studio-mono-height-%d: %ddp; }\n",
+            size,
+            standard,
+            size,
+            mono,
+            size,
+            (int)lroundf((float)size * prefs->standard_font_size / 12.0f) + line_extra,
+            size,
+            (int)lroundf((float)size * prefs->code_font_size / 13.0f),
+            size,
+            (int)lroundf((float)size * prefs->standard_font_size / 12.0f),
+            size,
+            (int)lroundf((float)size * prefs->code_font_size / 13.0f)
+        );
+        assert(added > 0 && (size_t)added < sizeof css - used);
+        used += (size_t)added;
+    }
+    kit_style_sheet(k, "studio-font-settings", css);
+}
+
+void studio_apply_graph_font_settings(kit *k, const studio_prefs *prefs)
+{
+    studio_prefs graph_prefs = *prefs;
+    graph_prefs.standard_font_size = 12;
+    graph_prefs.code_font_size = 13;
+    studio_apply_font_settings(k, &graph_prefs);
+}
 
 static const void *field_at(const studio_prefs *prefs, const studio_setting *s)
 {

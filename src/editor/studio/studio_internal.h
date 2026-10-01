@@ -128,8 +128,8 @@ typedef enum
     STUDIO_COMMAND_NEW_STYLESHEET,
     STUDIO_COMMAND_RENAME,
     STUDIO_COMMAND_ADD_COMPONENT,
-    STUDIO_COMMAND_WORKSPACE_LAYOUT,
-    STUDIO_COMMAND_WORKSPACE_UI,
+    STUDIO_COMMAND_WORKSPACE_VERTICAL_SPLIT,
+    STUDIO_COMMAND_WORKSPACE_HORIZONTAL_SPLIT,
     STUDIO_COMMAND_TOGGLE_SIDE_PANE,
     STUDIO_COMMAND_COUNT,
 } studio_command;
@@ -140,8 +140,8 @@ typedef enum
  * task, and switching one never touches documents, selection or playback. */
 typedef enum
 {
-    STUDIO_WORKSPACE_LAYOUT, /* Scene over Behavior */
-    STUDIO_WORKSPACE_UI,     /* Canvas beside the Text Editor */
+    STUDIO_WORKSPACE_VERTICAL_SPLIT,   /* Scene over Behavior */
+    STUDIO_WORKSPACE_HORIZONTAL_SPLIT, /* Canvas beside the Text Editor */
     STUDIO_WORKSPACE_COUNT,
 } studio_workspace;
 
@@ -179,11 +179,13 @@ typedef struct
     float ui_scale; /* the editor's size, as Blender's Resolution Scale; games' UI keeps its own */
     studio_workspace workspace;
     studio_layout layouts[STUDIO_WORKSPACE_COUNT];
-    bool follow_documents; /* the active tab's kind picks the workspace */
-    kit_wire_style wires;  /* graph wire routing */
+    kit_wire_style wires; /* graph wire routing */
     bool short_bindings; /* graph chips name "Aim › Manual", not "Self.GameAim.manual" */
-    bool title_flow;      /* unlabeled execution pins sit in node titles */
-    bool compact_nodes;   /* operators as symbols, one-output reads as pills */
+    bool title_flow;    /* unlabeled execution pins sit in node titles */
+    bool compact_nodes; /* operators as symbols, one-output reads as pills */
+    int standard_font_family; /* registered RmlUi family used by editor UI text */
+    float standard_font_size; /* base UI text size, in dp */
+    int code_font_family; /* registered RmlUi family used by code and monospace text */
     bool code_vim;        /* the Text Editor edits with Vim's keys */
     float code_font_size; /* the Text Editor's font size, in dp */
     bool code_apply_live; /* UI edits apply as typed, not when saved */
@@ -334,9 +336,9 @@ enum
 };
 
 /* The behavior graph canvas (studio_graph*.c): its own RmlUi context whose dp
- * ratio is the zoom, so text stays crisp and clipping works at every scale. The
- * canvas logical space is graph units; `x, y` is the graph point at the canvas
- * top-left. */
+ * ratio includes graph zoom and standard-font scale, so text stays crisp and
+ * clipping works at every scale. The canvas logical space is graph units;
+ * `x, y` is the graph point at the canvas top-left. */
 typedef struct
 {
     rml_backend *backend;
@@ -658,8 +660,9 @@ typedef struct
 {
     studio_collab_peer *peers;
     char follow_client[64];
+    char invite[2048], admin_token[512];
     studio_prefs local_prefs;
-    bool following, saved_prefs, restoring_prefs;
+    bool following, saved_prefs, restoring_prefs, admin_token_expanded;
     double presence_sent;
 } studio_collaboration;
 
@@ -926,7 +929,7 @@ void studio_sources_free(studio_sources *sources);
 void studio_collab_free(studio *s);
 void studio_collab_emit(studio *s);
 void studio_collab_after_frame(studio *s);
-void studio_collab_status(studio *s);
+void studio_collab_ui(studio *s);
 bool studio_collab_follow(studio *s, int peer);
 void studio_collab_unfollow(studio *s);
 
@@ -1257,10 +1260,6 @@ void studio_toggle_maximized(studio *s, int area);
 void studio_reset_layout(studio *s);
 /* Shows `workspace`'s arrangement as it was left. */
 void studio_set_workspace(studio *s, studio_workspace workspace);
-/* With Follow Documents, the workspace for the active tab's kind: UI for a
- * ui document, Layout for any other. Runs when the active tab changes, so a
- * workspace chosen by hand holds until then. */
-void studio_follow_document(studio *s);
 /* Hides or shows the right column, at its last width. */
 void studio_toggle_side_pane(studio *s);
 void studio_toggle_drawer(studio *s, studio_editor editor);
@@ -1607,6 +1606,10 @@ bool studio_setting_parse(studio_prefs *prefs, const studio_setting *setting, co
 bool studio_setting_matches(const studio_setting *setting, const char *query);
 /* The same for any text: each word of `query` is somewhere in `text`. */
 bool studio_settings_match(const char *query, const char *text);
+const char *studio_standard_font(const studio_prefs *prefs);
+const char *studio_code_font(const studio_prefs *prefs);
+void studio_apply_font_settings(kit *k, const studio_prefs *prefs);
+void studio_apply_graph_font_settings(kit *k, const studio_prefs *prefs);
 
 /* The preferences in a preferences file's JSON, NULL for none: defaults
  * where a value is missing or invalid (studio_prefs.c). */
@@ -1794,6 +1797,7 @@ studio_tab_view *studio_document_tabs(studio *s);
  * (data-alias-area), as a prop. Returns the host, or NULL when the panel
  * has no document. */
 rml_element *studio_ui_area_header(studio *s, int area, const char *name);
+void studio_ui_area_detach(studio *s, int area);
 
 /* ---------- Rename objects and prototype components ---------- */
 

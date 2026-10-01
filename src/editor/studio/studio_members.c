@@ -1235,7 +1235,7 @@ void studio_members_drop(studio *s)
     if (!sm_record(e, before, n != NULL)) {
         return;
     }
-    sg_to_world(&s->graph, s->in.mouse_x, s->in.mouse_y, &n->x, &n->y);
+    sg_to_world(s, s->in.mouse_x, s->in.mouse_y, &n->x, &n->y);
     n->placed = true;
     sg_select_only(e, n);
     s->focus_area = s->graph.area;

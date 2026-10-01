@@ -104,6 +104,8 @@ const char *ui_mount_name(const ui_mount *mount);
  * reloads it when it or a widget changed. `listener` hears the root's keys
  * for ui_mount_listen. Returns true when the RCSS changed. */
 bool ui_mount_sync(ui_mount *mount, rml_element *root, rml_listener *listener, double time);
+/* Forget a conditional host before its element is removed from the tree. */
+void ui_mount_detach(ui_mount *mount);
 /* The scoped RCSS of the last valid asset, "" before one loads. */
 const char *ui_mount_style(const ui_mount *mount);
 /* The last read error, or what RmlUi rejected in the markup it installed,

@@ -8,7 +8,7 @@ body { flex: 0 0 auto; }
   height: var(--header-h); display: flex; align-items: center; gap: 2dp; padding: 0dp 4dp;
   background-color: var(--muted); border-bottom: 1dp var(--edge);
 }
-.btn { height: 22dp; }
+.btn { height: var(--studio-height-22, 22dp); }
 #editor-type { display: flex; flex: 0 0 auto; }
 .editor-type { gap: 2dp; padding: 0dp 3dp 0dp 5dp; }
 #controls { display: flex; align-items: center; gap: 2dp; flex: 1 1 0dp; min-width: 0dp; height: 100%; }

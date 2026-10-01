@@ -67,6 +67,19 @@ extern "C"
         size_t index_count;
     } rml_mesh;
 
+    typedef enum rml_clip_mask_operation
+    {
+        RML_CLIP_MASK_SET,
+        RML_CLIP_MASK_SET_INVERSE,
+        RML_CLIP_MASK_INTERSECT,
+    } rml_clip_mask_operation;
+
+    typedef enum rml_blend_mode
+    {
+        RML_BLEND_MODE_BLEND,
+        RML_BLEND_MODE_REPLACE,
+    } rml_blend_mode;
+
     typedef struct rml_transition
     {
         float duration;
@@ -285,6 +298,26 @@ extern "C"
         void (*enable_scissor_region)(void *user, bool enable);
         void (*set_scissor_region)(void *user, rml_rect region);
         void (*set_transform)(void *user, const float *transform);
+        void (*enable_clip_mask)(void *user, bool enable);
+        void (*render_to_clip_mask)(
+            void *user,
+            rml_clip_mask_operation operation,
+            uintptr_t geometry,
+            rml_vec2 translation
+        );
+        uintptr_t (*push_layer)(void *user);
+        void (*composite_layers)(
+            void *user,
+            uintptr_t source,
+            uintptr_t destination,
+            rml_blend_mode blend_mode,
+            const uintptr_t *filters,
+            size_t filter_count
+        );
+        void (*pop_layer)(void *user);
+        uintptr_t (*save_layer_as_texture)(void *user);
+        uintptr_t (*compile_filter)(void *user, const char *name, float sigma);
+        void (*release_filter)(void *user, uintptr_t filter);
     } rml_render_interface;
 
     /* A custom element's Element overrides; any may be NULL. release runs

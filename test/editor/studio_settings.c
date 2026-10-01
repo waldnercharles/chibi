@@ -17,8 +17,8 @@ static const char *text_at(yyjson_val *root, const char *pointer)
     return yyjson_get_str(yyjson_ptr_get(root, pointer));
 }
 
-/* A file the previous build saved still loads, every setting round-trips
- * under its old key, and its one arrangement becomes Layout's. */
+/* A file the previous build saved still loads, every setting round-trips,
+ * and its one arrangement becomes Vertical Split's. */
 static void prefs_round_trip()
 {
     const char
@@ -29,12 +29,14 @@ static void prefs_round_trip()
                     "\"titleFlow\":false,\"compact\":false},\"code\":{"
                     "\"vim\":true,\"applyLive\":false,"
                     "\"fontSize\":20},\"shortcuts\":{"
-                    "\"save\":\"Ctrl+Shift+S\"},\"layout\":{\"sideWidth\":400,"
+                    "\"save\":\"Ctrl+Shift+S\","
+                    "\"workspaceLayout\":\"Alt+1\","
+                    "\"workspaceUi\":\"Alt+2\"},\"layout\":{\"sideWidth\":400,"
                     "\"drawer\":{\"open\":true},"
                     "\"areas\":[\"scene\",\"behavior\",\"outliner\","
                     "\"properties\",{\"panel\":\"Data\"}]}}";
     studio_prefs p = studio_prefs_read(old_file);
-    const studio_layout *layout = &p.layouts[STUDIO_WORKSPACE_LAYOUT];
+    const studio_layout *layout = &p.layouts[STUDIO_WORKSPACE_VERTICAL_SPLIT];
     studio_prefs defaults = studio_prefs_default();
     studio_prefs with_override = defaults;
     snprintf(with_override.shortcuts[STUDIO_COMMAND_SAVE], STUDIO_CHORD_SIZE, "Ctrl+Shift+S");
@@ -43,13 +45,17 @@ static void prefs_round_trip()
                   p.wires == KIT_WIRE_ORTHOGONAL && !p.short_bindings &&
                   !p.title_flow && !p.compact_nodes && p.code_vim &&
                   !p.code_apply_live && p.code_font_size == 20 &&
+                  p.standard_font_family == 0 && p.standard_font_size == 12 &&
+                  p.code_font_family == 0 &&
                   !strcmp(p.shortcuts[STUDIO_COMMAND_SAVE], "Ctrl+Shift+S") &&
-                  p.workspace == STUDIO_WORKSPACE_LAYOUT && layout->side_open &&
-                  layout->side_width == 400 && layout->drawer_open &&
+                  !strcmp(p.shortcuts[STUDIO_COMMAND_WORKSPACE_VERTICAL_SPLIT], "Alt+1") &&
+                  !strcmp(p.shortcuts[STUDIO_COMMAND_WORKSPACE_HORIZONTAL_SPLIT], "Alt+2") &&
+                  p.workspace == STUDIO_WORKSPACE_VERTICAL_SPLIT &&
+                  layout->side_open && layout->side_width == 400 &&
+                  layout->drawer_open &&
                   layout->editors[STUDIO_AREA_DRAWER] == STUDIO_EDITOR_PANEL &&
-                  !strcmp(layout->panels[STUDIO_AREA_DRAWER], "Data") &&
-                  p.follow_documents;
-    char *json = studio_prefs_write(&p, NULL);
+                  !strcmp(layout->panels[STUDIO_AREA_DRAWER], "Data");
+    char *json = studio_prefs_write(&p, old_file);
     studio_prefs back = studio_prefs_read(json);
     yyjson_doc *doc = yyjson_read(json, strlen(json), 0);
     yyjson_val *root = yyjson_doc_get_root(doc);
@@ -58,6 +64,10 @@ static void prefs_round_trip()
                 yyjson_is_false(yyjson_ptr_get(root, "/nodes/compact")) &&
                 yyjson_is_false(yyjson_ptr_get(root, "/code/applyLive")) &&
                 !strcmp(text_at(root, "/shortcuts/save"), "Ctrl+Shift+S") &&
+                !strcmp(text_at(root, "/shortcuts/workspaceVerticalSplit"), "Alt+1") &&
+                !strcmp(text_at(root, "/shortcuts/workspaceHorizontalSplit"), "Alt+2") &&
+                !yyjson_ptr_get(root, "/shortcuts/workspaceLayout") &&
+                !yyjson_ptr_get(root, "/shortcuts/workspaceUi") &&
                 yyjson_get_num(yyjson_ptr_get(root, "/code/fontSize")) == 20 &&
                 yyjson_get_num(yyjson_ptr_get(root, "/uiScale")) == 1.5;
     test_check(
@@ -86,11 +96,58 @@ static void prefs_round_trip()
     free(json);
 }
 
+static const studio_setting *setting_named(const char *key)
+{
+    for (int i = 0; i < studio_setting_count; i++) {
+        if (!strcmp(studio_settings[i].key, key)) {
+            return &studio_settings[i];
+        }
+    }
+    return NULL;
+}
+
+static void font_preferences()
+{
+    studio_prefs p = studio_prefs_default();
+    const studio_setting *standard_family = setting_named("font.standardFamily");
+    const studio_setting *standard_size = setting_named("font.standardSize");
+    const studio_setting *code_family = setting_named("code.fontFamily");
+    const studio_setting *code_size = setting_named("code.fontSize");
+    bool choices = standard_family && standard_family->choice_count == 2 &&
+                   !strcmp(standard_family->choices[1].value, "Noto Sans") &&
+                   code_family && code_family->choice_count == 2 &&
+                   !strcmp(code_family->choices[1].value, "Inconsolata");
+    bool changed = choices &&
+                   studio_setting_parse(&p, standard_family, "Noto Sans") &&
+                   studio_setting_parse(&p, standard_size, "18") &&
+                   studio_setting_parse(&p, code_family, "Inconsolata") &&
+                   studio_setting_parse(&p, code_size, "16");
+    char *json = studio_prefs_write(&p, NULL);
+    studio_prefs back = studio_prefs_read(json);
+    yyjson_doc *doc = yyjson_read(json, strlen(json), 0);
+    yyjson_val *root = yyjson_doc_get_root(doc);
+    bool serialized = !strcmp(text_at(root, "/font/standardFamily"), "Noto Sans") &&
+                      yyjson_get_num(yyjson_ptr_get(root, "/font/standardSize")) == 18 &&
+                      !strcmp(text_at(root, "/code/fontFamily"), "Inconsolata") &&
+                      yyjson_get_num(yyjson_ptr_get(root, "/code/fontSize")) == 16;
+    test_check(
+        changed && serialized && studio_prefs_equal(&p, &back) &&
+            !strcmp(studio_standard_font(&back), "noto sans") &&
+            !strcmp(studio_code_font(&back), "inconsolata"),
+        "standard and monospace font family and size settings persist and "
+        "resolve to registered faces"
+    );
+    yyjson_doc_free(doc);
+    free(json);
+}
+
 static void invalid_values()
 {
     studio_prefs defaults = studio_prefs_default();
     const char *invalid = "{\"theme\":\"purple\",\"density\":7,\"uiScale\":1.3,"
-                          "\"reduceMotion\":\"yes\","
+                          "\"reduceMotion\":\"yes\",\"font\":{"
+                          "\"standardFamily\":\"missing\","
+                          "\"standardSize\":99},"
                           "\"wires\":\"zigzag\",\"nodes\":{\"shortBindings\":1,"
                           "\"titleFlow\":null},"
                           "\"code\":{\"vim\":\"true\",\"fontSize\":2,"
@@ -108,13 +165,17 @@ static void invalid_values()
         "\"areas\":[\"unknown\"]}}}}"
     );
     studio_prefs on_ui = defaults;
-    on_ui.workspace = STUDIO_WORKSPACE_UI;
+    on_ui.workspace = STUDIO_WORKSPACE_HORIZONTAL_SPLIT;
+    studio_prefs legacy_ui = studio_prefs_read("{\"layout\":{\"workspace\":\"ui\"}}");
+    studio_prefs legacy_layout = studio_prefs_read("{\"layout\":{\"workspace\":\"layout\"}}");
     test_check(
         studio_prefs_equal(&p, &defaults) &&
             studio_prefs_equal(&out_of_range, &defaults) &&
             studio_prefs_equal(&garbage, &defaults) &&
             studio_prefs_equal(&none, &defaults) &&
             studio_prefs_equal(&unknown_workspace, &defaults) &&
+            studio_prefs_equal(&legacy_ui, &on_ui) &&
+            studio_prefs_equal(&legacy_layout, &defaults) &&
             !p.shortcuts[STUDIO_COMMAND_SAVE][0] &&
             !p.shortcuts[STUDIO_COMMAND_SEARCH][0] &&
             studio_prefs_equal(&invalid_layout, &on_ui),
@@ -128,30 +189,33 @@ static void invalid_values()
 static void workspace_presets_round_trip()
 {
     studio_prefs p = studio_prefs_default();
-    p.workspace = STUDIO_WORKSPACE_UI;
-    p.follow_documents = false;
-    studio_layout *layout = &p.layouts[STUDIO_WORKSPACE_LAYOUT];
+    p.workspace = STUDIO_WORKSPACE_HORIZONTAL_SPLIT;
+    studio_layout *layout = &p.layouts[STUDIO_WORKSPACE_VERTICAL_SPLIT];
     layout->side_open = false;
     layout->side_width = 448;
     layout->main_split = 0.67f;
     layout->drawer_open = true;
     layout->editors[STUDIO_AREA_DRAWER] = STUDIO_EDITOR_PANEL;
     snprintf(layout->panels[STUDIO_AREA_DRAWER], sizeof layout->panels[0], "%s", "Data");
-    studio_layout *ui = &p.layouts[STUDIO_WORKSPACE_UI];
+    studio_layout *ui = &p.layouts[STUDIO_WORKSPACE_HORIZONTAL_SPLIT];
     ui->side_width = 336;
     ui->main_split = 0.56f;
     ui->drawer_height = 190;
-    char *json = studio_prefs_write(&p, NULL);
+    char *json = studio_prefs_write(&p, "{\"followDocuments\":true,\"layout\":{\"presets\":{\"ui\":{},\"layout\":{}}}}");
     yyjson_doc *doc = yyjson_read(json, strlen(json), 0);
     yyjson_val *root = yyjson_doc_get_root(doc);
     studio_prefs back = studio_prefs_read(json);
-    bool encoded = !strcmp(text_at(root, "/layout/workspace"), "ui") &&
-                   yyjson_is_false(yyjson_ptr_get(root, "/layout/presets/layout/sideOpen")) &&
-                   !strcmp(text_at(root, "/layout/presets/layout/areas/4/panel"), "Data") &&
-                   !strcmp(text_at(root, "/layout/presets/ui/areas/1"), "code") &&
-                   yyjson_is_false(yyjson_ptr_get(root, "/followDocuments"));
+    bool encoded = !strcmp(text_at(root, "/layout/workspace"), "horizontalSplit") &&
+                   yyjson_is_false(
+                       yyjson_ptr_get(root, "/layout/presets/verticalSplit/sideOpen")
+                   ) &&
+                   !strcmp(text_at(root, "/layout/presets/verticalSplit/areas/4/panel"), "Data") &&
+                   !strcmp(text_at(root, "/layout/presets/horizontalSplit/areas/1"), "code") &&
+                   !yyjson_ptr_get(root, "/followDocuments") &&
+                   !yyjson_ptr_get(root, "/layout/presets/ui") &&
+                   !yyjson_ptr_get(root, "/layout/presets/layout");
     studio_prefs other = back;
-    other.layouts[STUDIO_WORKSPACE_LAYOUT].side_open = true;
+    other.layouts[STUDIO_WORKSPACE_VERTICAL_SPLIT].side_open = true;
     test_check(
         encoded && studio_prefs_equal(&p, &back) && !studio_prefs_equal(&back, &other),
         "each workspace keeps its own arrangement through the preferences "
@@ -490,7 +554,7 @@ static void page_rows()
     int rows = (int)yyjson_mut_arr_size(member(f.page, "rows"));
     test_check(
         rows == studio_setting_count + f.view.command_count + STUDIO_PROJECT_FIELD_COUNT &&
-            !strcmp(keys, "theme density uiScale reduceMotion followDocuments") &&
+            !strcmp(keys, "theme density uiScale reduceMotion font.standardFamily font.standardSize") &&
             !strcmp(yyjson_mut_get_str(member(f.page, "title")), "Appearance") &&
             category_flag(&f, STUDIO_SETTINGS_PROJECT, "hidden"),
         "the Settings page shows the first category's settings under the "
@@ -758,8 +822,112 @@ static void page_mount()
     }
     rml_element *first = NULL;
     int rows = visible(&f, ".setting", &first);
-    bool loaded = !ui_mount_error(f.mount)[0] && rows == 5 &&
+    bool loaded = !ui_mount_error(f.mount)[0] && rows == 6 &&
                   f.page.prefs.code_font_size == 13;
+    studio_prefs font_prefs = f.page.prefs;
+    studio_setting_parse(&font_prefs, setting_named("font.standardFamily"), "Noto Sans");
+    studio_setting_parse(&font_prefs, setting_named("font.standardSize"), "18");
+    studio_setting_parse(&font_prefs, setting_named("code.fontFamily"), "Inconsolata");
+    studio_setting_parse(&font_prefs, setting_named("code.fontSize"), "16");
+    studio_apply_font_settings(f.k, &font_prefs);
+    mount_frame(&f);
+    rml_element *doc = rml_context_document(rml_backend_context(f.backend), 0);
+    rml_element *body = doc;
+    rml_element *font_control = rml_element_query_selector(f.host, ".search-input");
+    rml_element *mono_probe = rml_element_create_child(f.host, "span", NULL);
+    rml_element_set_attribute(mono_probe, "class", "code-completions");
+    rml_element_set_inner_rml(mono_probe, "Glyphs");
+    if (body) {
+        rml_element_set_class(body, "dark", true);
+    }
+    rml_backend_update(f.backend, 1.0 / 60.0);
+    char family[64] = { 0 }, size[32] = { 0 }, line[32] = { 0 };
+    char mono_family[64] = { 0 }, mono_size[32] = { 0 };
+    if (body) {
+        rml_element_property(body, "font-family", family, sizeof family);
+        rml_element_property(body, "font-size", size, sizeof size);
+        rml_element_property(body, "line-height", line, sizeof line);
+    }
+    rml_element_property(mono_probe, "font-family", mono_family, sizeof mono_family);
+    rml_element_property(mono_probe, "font-size", mono_size, sizeof mono_size);
+    uintptr_t standard_face = rml_font_face("noto sans", RML_FONT_NORMAL, 400, 18);
+    uintptr_t mono_face = rml_font_face("inconsolata", RML_FONT_NORMAL, 400, 16);
+    rml_font_metrics standard_metrics = { 0 }, mono_metrics = { 0 };
+    if (standard_face) {
+        standard_metrics = rml_font_face_metrics(standard_face);
+    }
+    if (mono_face) {
+        mono_metrics = rml_font_face_metrics(mono_face);
+    }
+    float compact_height = font_control
+                             ? rml_element_box_size(font_control, RML_BOX_BORDER)
+                                   .y
+                             : 0;
+    bool applied = body && !strcmp(family, "noto sans") &&
+                   !strcmp(size, "18dp") && !strcmp(line, "25dp") &&
+                   compact_height == 33 && !strcmp(mono_family, "inconsolata") &&
+                   !strcmp(mono_size, "15dp") && standard_face && mono_face &&
+                   rml_font_string_width(standard_face, "Glyphs") > 0 &&
+                   rml_font_string_width(mono_face, "Glyphs") > 0 &&
+                   standard_metrics.line_spacing <= 25 &&
+                   mono_metrics.line_spacing <= 20;
+    if (body) {
+        rml_element_set_class(body, "comfortable", true);
+    }
+    rml_backend_update(f.backend, 1.0 / 60.0);
+    float comfortable_height = font_control
+                                 ? rml_element_box_size(font_control, RML_BOX_BORDER)
+                                       .y
+                                 : 0;
+    bool comfortable_room = body && comfortable_height == 39;
+    studio_apply_graph_font_settings(f.k, &font_prefs);
+    mount_frame(&f);
+    font_control = rml_element_query_selector(f.host, ".search-input");
+    if (body) {
+        rml_element_property(body, "font-family", family, sizeof family);
+        rml_element_property(body, "font-size", size, sizeof size);
+        rml_element_property(body, "line-height", line, sizeof line);
+    }
+    float graph_control_height = font_control
+                                   ? rml_element_box_size(font_control, RML_BOX_BORDER)
+                                         .y
+                                   : 0;
+    bool graph_geometry = body && !strcmp(family, "noto sans") &&
+                          !strcmp(size, "12dp") && !strcmp(line, "16dp") &&
+                          graph_control_height == 26;
+    if (!applied || !comfortable_room || !graph_geometry) {
+        fprintf(
+            stderr,
+            "font diagnostics: body=%p family='%s' size='%s' line='%s' "
+            "control=%.2f/%.2f/%.2f mono-family='%s' mono-size='%s' "
+            "standard-face=%lu mono-face=%lu "
+            "standard-metrics=%.2f mono-metrics=%.2f "
+            "standard-width=%d mono-width=%d comfortable=%d graph=%d\n",
+            (void *)body,
+            family,
+            size,
+            line,
+            compact_height,
+            comfortable_height,
+            graph_control_height,
+            mono_family,
+            mono_size,
+            (unsigned long)standard_face,
+            (unsigned long)mono_face,
+            standard_metrics.line_spacing,
+            mono_metrics.line_spacing,
+            standard_face ? rml_font_string_width(standard_face, "Glyphs") : 0,
+            mono_face ? rml_font_string_width(mono_face, "Glyphs") : 0,
+            comfortable_room,
+            graph_geometry
+        );
+    }
+    test_check(
+        loaded && applied && comfortable_room && graph_geometry &&
+            !strcmp(studio_code_font(&font_prefs), "inconsolata"),
+        "font changes apply to registered faces, scale line and control "
+        "geometry, and keep graph metrics at their native size"
+    );
     set_text(&f.page, f.page.page, "query", "vim");
     rml_data_model_dirty(f.data.model, "settings");
     for (int i = 0; i < 3; i++) {
@@ -910,6 +1078,7 @@ static void page_mount()
 void test_studio_settings()
 {
     prefs_round_trip();
+    font_preferences();
     invalid_values();
     workspace_presets_round_trip();
     shortcut_chords();

@@ -53,9 +53,9 @@
       <hr/>
       <li command="inspectElement"/>
       <hr/>
-      <li label="Workspace"/>
-      <li command="workspaceLayout"/>
-      <li command="workspaceUi"/>
+      <li label="Layout"/>
+      <li command="workspaceHorizontalSplit"/>
+      <li command="workspaceVerticalSplit"/>
       <li command="toggleSidePane"/>
       <li command="maximize"/>
       <li command="resetLayout"/>
@@ -79,11 +79,7 @@
       <li list="debugger"/>
     </menu>
   </div>
-  <!-- Workspaces, as Blender's tabs: each arranges the areas for a task. -->
-  <div class="workspaces">
-    <button class="btn workspace-tab" data-attr-data-state="commands.workspaceLayout.checked ? 'on' : 'off'" data-attr-data-tip="commands.workspaceLayout.label" data-event-click="emit('studio.workspaceLayout')"><span class="label">{{ commands.workspaceLayout.menu }}</span></button>
-    <button class="btn workspace-tab" data-attr-data-state="commands.workspaceUi.checked ? 'on' : 'off'" data-attr-data-tip="commands.workspaceUi.label" data-event-click="emit('studio.workspaceUi')"><span class="label">{{ commands.workspaceUi.menu }}</span></button>
-  </div>
+  <div id="layout"/>
   <div class="sep"/>
   <nav class="doc-tabs">
     <div class="btn doc-tab" data-for="tab, i : editor.tabs" data-attr-data-state="tab.active ? 'on' : 'off'">
@@ -102,6 +98,8 @@
     </div>
   </div>
   <div class="spacer"/>
+  <div id="collaboration"/>
+  <div class="sep"/>
   <button class="btn icon-only side-pane" data-attr-data-tip="commands.toggleSidePane.label" data-attr-data-state="commands.toggleSidePane.checked ? 'on' : 'off'" data-event-click="emit('studio.toggleSidePane')"><span class="icon">{{ commands.toggleSidePane.icon }}</span></button>
   <button class="btn icon-only" data-attr-data-tip="commands.settings.label" data-attr-data-kbd="commands.settings.shortcut" data-event-click="emit('studio.settings')"><span class="icon">{{ commands.settings.icon }}</span></button>
   <button class="btn search-trigger" data-event-click="emit('studio.search')"><span class="icon">{{ commands.search.icon }}</span><span class="label">{{ commands.search.label }}</span><span class="kbd">{{ commands.search.shortcut }}</span></button>

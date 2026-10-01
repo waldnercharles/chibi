@@ -2,6 +2,7 @@
  * asset saves, so reloading a viewed asset leaves it saved. */
 #include "assets/ui_events.h"
 #include "editor/studio/studio_designer_internal.h"
+#include "editor/studio/studio_graph_internal.h"
 #include "editor/studio/studio_internal.h"
 #include "editor/workspace/editor.h"
 #include "editor/workspace/input.h"
@@ -143,8 +144,8 @@ void test_code_intelligence_studio();
 
 /* Studio over `project`'s scene `scene` with `behavior` open and the Scene
    filling the workspace. Preferences stay as saved but for the layout: UI
-   Scale 1 and the default workspaces, following the active tab, so the
-   areas the checks click are the same whatever the user's. */
+   Scale 1 and default split modes, so the areas the checks click are the same
+   whatever the user's. */
 static studio_fixture scene_open(const char *project, const char *scene, const char *behavior)
 {
     studio_fixture f = fixture_open(project, scene, behavior);
@@ -154,7 +155,6 @@ static studio_fixture scene_open(const char *project, const char *scene, const c
     p->ui_scale = 1;
     p->workspace = defaults.workspace;
     memcpy(p->layouts, defaults.layouts, sizeof defaults.layouts);
-    p->follow_documents = true;
     f.studio->applied = *p;
     f.studio->maximized = STUDIO_AREA_TOP;
     return f;
@@ -940,6 +940,38 @@ static int tab_named(const app_scene_authoring *scene, const char *label)
     return -1;
 }
 
+static void settings_reopens_after_font_change()
+{
+    studio_fixture f = vault_open();
+    studio *s = f.studio;
+    char path[PATH_MAX];
+    assert(realpath(BANK, path) && studio_open_ui_source(s, path, 1));
+    studio_set_workspace(s, STUDIO_WORKSPACE_HORIZONTAL_SPLIT);
+    s->prefs.code_font_family = 0;
+    s->prefs.code_font_size = 13;
+    frames(&f, 3);
+    bool reopened = true;
+    for (int i = 0; i < 3 && reopened; i++) {
+        rml_element *gear = studio_element(s, "[data-ui=TopBar] [data-tip=Settings]");
+        assert(gear);
+        press(s, gear);
+        frames(&f, 3);
+        rml_element *close = studio_element(s, "[data-ui=Settings] .close");
+        reopened = close && rml_element_is_visible(close, true) &&
+                   studio_element(s, "[data-ui=Settings] .search-input");
+        if (!reopened) {
+            break;
+        }
+        s->prefs.code_font_family = (i + 1) % 2;
+        frames(&f, 2);
+        press(s, close);
+        frames(&f, 3);
+        reopened = !studio_element(s, ".modal-host");
+    }
+    test_check(reopened, "Settings closes and reopens through the top bar after changing the monospace font with a code document open");
+    fixture_free(&f);
+}
+
 /* Studio shows its authored top bar and area headers over its own state:
    the menubar, the play target and each area's editor type menu and
    controls in their native slots, the document tabs, whose faces and close
@@ -1029,19 +1061,17 @@ static void select_tab(studio_fixture *f, int tab)
     frames(f, 3);
 }
 
-/* The workspace follows the active tab: a UI document's shows Canvas beside
-   the Text Editor, any other tab's Layout, each as it was left, and neither
-   touches documents, selections, history or playback. A workspace chosen by
-   hand holds until the tab changes. */
-static void workspaces_follow_tabs()
+/* Opening documents and changing tabs keep the selected split mode. Each mode
+   remembers its arrangement, and switching preserves authoring state. */
+static void layout_modes_are_explicit()
 {
     studio_fixture f = vault_open();
     studio *s = f.studio;
     s->maximized = -1;
-    studio_layout *layout = &s->prefs.layouts[STUDIO_WORKSPACE_LAYOUT];
-    studio_layout *ui = &s->prefs.layouts[STUDIO_WORKSPACE_UI];
-    layout->side_width = 416;
-    layout->main_split = 0.66f;
+    studio_layout *vertical = &s->prefs.layouts[STUDIO_WORKSPACE_VERTICAL_SPLIT];
+    studio_layout *horizontal = &s->prefs.layouts[STUDIO_WORKSPACE_HORIZONTAL_SPLIT];
+    vertical->side_width = 416;
+    vertical->main_split = 0.66f;
     s->prefs.code_apply_live = false;
     s->applied = s->prefs;
     frames(&f, 2);
@@ -1051,12 +1081,16 @@ static void workspaces_follow_tabs()
     char path[PATH_MAX];
     assert(realpath(BANK, path) && studio_open_ui_source(s, path, 1));
     frames(&f, 4);
+    bool opened_kept_mode = s->prefs.workspace == STUDIO_WORKSPACE_VERTICAL_SPLIT;
     int bank = tab_named(f.scene, "Bank"), scene = bank == 0 ? 1 : 0;
     kit_rect r;
-    bool ui_shown = s->prefs.workspace == STUDIO_WORKSPACE_UI && beside(s) &&
-                    kit_find(s->kit, "app/workspace/main/editors/bottom/body/code/text", &r) &&
-                    !ui->drawer_open && !layout->drawer_open &&
-                    layout->editors[STUDIO_AREA_DRAWER] == STUDIO_EDITOR_OUTPUT;
+    studio_command_run(s, STUDIO_COMMAND_WORKSPACE_HORIZONTAL_SPLIT);
+    frames(&f, 3);
+    bool horizontal_shown = s->prefs.workspace == STUDIO_WORKSPACE_HORIZONTAL_SPLIT &&
+                            beside(s) &&
+                            kit_find(s->kit, "app/workspace/main/editors/bottom/body/code/text", &r) &&
+                            !horizontal->drawer_open && vertical->drawer_open &&
+                            vertical->editors[STUDIO_AREA_DRAWER] == STUDIO_EDITOR_CODE;
     ui_buffer *buffer = studio_ui_buffer(s);
     studio_designer *designer = designer_state(s, &buffer);
     assert(buffer && designer && acount(designer->rml->elements) > 0);
@@ -1071,16 +1105,21 @@ static void workspaces_follow_tabs()
     frames(&f, 2);
 
     select_tab(&f, scene);
-    bool layout_shown = s->prefs.workspace == STUDIO_WORKSPACE_LAYOUT &&
-                        stacked(s) && layout->side_width == 416 &&
-                        layout->main_split == 0.66f && !layout->drawer_open;
-    studio_command_run(s, STUDIO_COMMAND_WORKSPACE_UI);
+    bool tab_kept_horizontal = s->prefs.workspace == STUDIO_WORKSPACE_HORIZONTAL_SPLIT &&
+                               beside(s);
+    studio_command_run(s, STUDIO_COMMAND_WORKSPACE_VERTICAL_SPLIT);
     frames(&f, 3);
-    bool chosen_holds = s->prefs.workspace == STUDIO_WORKSPACE_UI;
+    bool vertical_shown = s->prefs.workspace == STUDIO_WORKSPACE_VERTICAL_SPLIT &&
+                          stacked(s) && vertical->side_width == 416 &&
+                          vertical->main_split == 0.66f && vertical->drawer_open;
     select_tab(&f, bank);
-    bool returned = s->prefs.workspace == STUDIO_WORKSPACE_UI && beside(s) &&
-                    studio_ui_buffer(s) == buffer && s->code.editor == code &&
-                    kit_code_cursor(code) == cursor &&
+    bool tab_kept_vertical = s->prefs.workspace == STUDIO_WORKSPACE_VERTICAL_SPLIT &&
+                             stacked(s);
+    studio_command_run(s, STUDIO_COMMAND_WORKSPACE_HORIZONTAL_SPLIT);
+    frames(&f, 3);
+    bool returned = s->prefs.workspace == STUDIO_WORKSPACE_HORIZONTAL_SPLIT &&
+                    beside(s) && studio_ui_buffer(s) == buffer &&
+                    s->code.editor == code && kit_code_cursor(code) == cursor &&
                     designer->selected == 0 && f.scene->selected == actor &&
                     app_scene_authoring_runtime_state(f.scene).playing;
 
@@ -1088,22 +1127,40 @@ static void workspaces_follow_tabs()
     assert(panel_elements(s, "TopBar", ".side-pane", toggles) == 1);
     press(s, rml_element_query_selector(toggles[0], ".icon"));
     frames(&f, 30);
-    bool side_hidden = !ui->side_open && !side_shown(s) && layout->side_open;
-    select_tab(&f, scene);
+    bool side_hidden = !horizontal->side_open && !side_shown(s) && vertical->side_open;
+    rml_element *area_heads[8];
+    bool side_headers_hidden = panel_elements(s, "AreaHeader", ".area-head", area_heads) ==
+                               2;
+    studio_command_run(s, STUDIO_COMMAND_WORKSPACE_VERTICAL_SPLIT);
     frames(&f, 30);
-    bool side_kept = layout->side_open && side_shown(s);
-    select_tab(&f, bank);
+    bool side_kept = vertical->side_open && side_shown(s);
+    studio_command_run(s, STUDIO_COMMAND_WORKSPACE_HORIZONTAL_SPLIT);
     frames(&f, 30);
-    bool side_remembered = !ui->side_open && !side_shown(s);
+    bool side_remembered = !horizontal->side_open && !side_shown(s);
     studio_show_editor(s, STUDIO_EDITOR_OUTLINER);
     frames(&f, 30);
-    bool side_reopened = ui->side_open && side_shown(s);
+    bool side_reopened = horizontal->side_open && side_shown(s);
+    int headers = panel_elements(s, "AreaHeader", ".area-head", area_heads);
+    char area_name[32], alias[32];
+    snprintf(area_name, sizeof area_name, "editor.areas[%d]", STUDIO_AREA_OUTLINER);
+    bool top_header_restored = false;
+    for (int i = 0; i < headers; i++) {
+        rml_element *host = rml_element_parent(area_heads[i]);
+        if (rml_element_attribute(host, "data-alias-area", alias, sizeof alias) > 0 &&
+            !strcmp(alias, area_name)) {
+            rml_vec2 size = rml_element_box_size(area_heads[i], RML_BOX_BORDER);
+            top_header_restored = rml_element_is_visible(area_heads[i], true) &&
+                                  size.y > 0;
+            break;
+        }
+    }
+    bool side_header_restored = headers == 4 && top_header_restored;
 
-    ui->main_split = 0.75f;
+    horizontal->main_split = 0.75f;
     studio_command_run(s, STUDIO_COMMAND_RESET_LAYOUT);
     frames(&f, 2);
-    bool reset_one = ui->main_split == 0.5f && layout->main_split == 0.66f &&
-                     layout->side_width == 416;
+    bool reset_one = horizontal->main_split == 0.5f &&
+                     vertical->main_split == 0.66f && vertical->side_width == 416;
     studio_history(s, false);
     bool undone = !strstr(ui_buffer_text(buffer, UI_PART_RML), "<!-- workspace -->");
     studio_history(s, true);
@@ -1111,34 +1168,157 @@ static void workspaces_follow_tabs()
                   NULL;
     bool playing = app_scene_authoring_runtime_state(f.scene).playing;
 
-    s->prefs.follow_documents = false;
     select_tab(&f, scene);
-    bool unfollowed = s->prefs.workspace == STUDIO_WORKSPACE_UI;
+    bool tab_kept_mode = s->prefs.workspace == STUDIO_WORKSPACE_HORIZONTAL_SPLIT;
     studio_runtime(s, APP_RUNTIME_STOP);
     frames(&f, 1);
-    if (!(ui_shown && layout_shown && chosen_holds && returned && side_hidden &&
-          side_kept && side_remembered && side_reopened && reset_one &&
-          undone && redone && playing && unfollowed)) {
+    if (!(opened_kept_mode && horizontal_shown && tab_kept_horizontal && vertical_shown &&
+          tab_kept_vertical && returned && side_hidden && side_headers_hidden &&
+          side_kept && side_remembered && side_reopened && side_header_restored &&
+          reset_one && undone && redone && playing && tab_kept_mode)) {
         printf(
-            "  %d %d %d %d | %d %d %d %d | %d %d %d %d %d\n",
-            ui_shown,
-            layout_shown,
-            chosen_holds,
+            "  %d %d %d %d %d %d | %d %d %d %d %d %d | %d %d %d %d %d\n",
+            opened_kept_mode,
+            horizontal_shown,
+            tab_kept_horizontal,
+            vertical_shown,
+            tab_kept_vertical,
             returned,
             side_hidden,
+            side_headers_hidden,
             side_kept,
             side_remembered,
             side_reopened,
+            side_header_restored,
             reset_one,
             undone,
             redone,
             playing,
-            unfollowed
+            tab_kept_mode
         );
     }
-    test_check(ui_shown && layout_shown && chosen_holds && returned, "the workspace follows the active tab, each as it was left, and a workspace chosen by hand holds until the tab changes");
-    test_check(side_hidden && side_kept && side_remembered && side_reopened, "the top bar hides the side pane per workspace, and showing one of its editors reopens it");
-    test_check(reset_one && undone && redone && playing && unfollowed, "Reset Layout resets the active workspace only; switching keeps history and playback; with Workspace Follows Tab off the workspace stays");
+    test_check(
+        opened_kept_mode && horizontal_shown && tab_kept_horizontal &&
+            vertical_shown && tab_kept_vertical && returned,
+        "opening documents and changing tabs keep the selected split mode"
+    );
+    test_check(
+        side_hidden && side_headers_hidden && side_kept && side_remembered &&
+            side_reopened && side_header_restored,
+        "the top bar hides the side pane per mode and restores its editor "
+        "headers"
+    );
+    test_check(reset_one && undone && redone && playing && tab_kept_mode, "Reset Layout resets the active mode only; switching keeps history and playback");
+    fixture_free(&f);
+}
+
+/* A font-size preference scales the graph as a whole. The DOM hit boxes,
+   native socket positions and pointer conversion must still describe one
+   coordinate system, while the saved canvas zoom stays user-controlled. */
+static bool graph_hit_geometry(studio *s)
+{
+    studio_graph *canvas = &s->graph;
+    graph *gr = sg_active_graph(s);
+    bool found_socket = false;
+    if (!canvas->kit || !gr || fabsf(canvas->in.zoom - sg_zoom(s)) > 0.001f ||
+        fabsf(canvas->in.dp_ratio - studio_graph_pixel_ratio(s)) > 0.001f) {
+        return false;
+    }
+    for (int i = 0; i < acount(gr->nodes); i++) {
+        node *n = gr->nodes[i];
+        if (!sg_node_visible(gr, n)) {
+            continue;
+        }
+        float box[4];
+        sg_node_box(s, n, box);
+        char path[64];
+        snprintf(path, sizeof path, "world/stage/n%llu", (unsigned long long)n->id);
+        kit_rect rendered;
+        bool found = kit_find(canvas->kit, path, &rendered);
+        if (!found || fabsf(rendered.x - (box[0] - canvas->x)) > 0.5f ||
+            fabsf(rendered.y - (box[1] - canvas->y)) > 0.5f ||
+            fabsf(rendered.w - box[2]) > 0.5f || fabsf(rendered.h - box[3]) > 0.5f) {
+            return false;
+        }
+        const node_layout *layout = sg_layout_of(s, n);
+        for (int kind = ED_PIN_INPUT; kind <= ED_PIN_OUTPUT; kind++) {
+            int count = kind == ED_PIN_INPUT ? n->input_count : n->output_count;
+            char side = kind == ED_PIN_INPUT ? 'i' : 'o';
+            for (int pin = 0; pin < count; pin++) {
+                bool in_head = sg_in_head(layout, kind, pin);
+                if (!in_head && !sg_pin_in_rows(gr, n, layout, kind, pin)) {
+                    continue;
+                }
+                if (in_head) {
+                    snprintf(
+                        path,
+                        sizeof path,
+                        "world/stage/n%llu/h/%c%d/s",
+                        (unsigned long long)n->id,
+                        side,
+                        pin
+                    );
+                } else if (sg_pin_exec(n, kind, pin)) {
+                    snprintf(
+                        path,
+                        sizeof path,
+                        "world/stage/n%llu/b/e%d/%c%d/s",
+                        (unsigned long long)n->id,
+                        sg_pin_order(gr, n, layout, kind, pin),
+                        side,
+                        pin
+                    );
+                } else {
+                    snprintf(
+                        path,
+                        sizeof path,
+                        "world/stage/n%llu/b/%c%d/s",
+                        (unsigned long long)n->id,
+                        side,
+                        pin
+                    );
+                }
+                kit_rect socket;
+                float x, y, world_x, world_y;
+                sg_socket_at(s, n, kind, pin, &x, &y);
+                found = kit_find(canvas->kit, path, &socket);
+                if (!found || fabsf(socket.x + socket.w / 2 - (x - canvas->x)) > 0.5f ||
+                    fabsf(socket.y + socket.h / 2 - (y - canvas->y)) > 0.5f) {
+                    return false;
+                }
+                found_socket = true;
+                float screen_x = canvas->surface.rect.x +
+                                 (x - canvas->x) * sg_zoom(s);
+                float screen_y = canvas->surface.rect.y +
+                                 (y - canvas->y) * sg_zoom(s);
+                sg_to_world(s, screen_x, screen_y, &world_x, &world_y);
+                if (fabsf(world_x - x) >= 0.01f || fabsf(world_y - y) >= 0.01f) {
+                    return false;
+                }
+            }
+        }
+    }
+    return found_socket;
+}
+
+static void graph_font_size_preserves_hit_geometry()
+{
+    studio_fixture f = fixture_new();
+    studio *s = f.studio;
+    frames(&f, 3);
+    studio_graph *g = &s->graph;
+    g->camera.active = false;
+    g->zoom = 0.8f;
+    g->x = -40;
+    g->y = -40;
+    g->framed = true;
+    frames(&f, 2);
+    bool standard = fabsf(g->zoom - 0.8f) < 0.001f && graph_hit_geometry(s);
+    s->prefs.standard_font_size = 18;
+    frames(&f, 2);
+    bool enlarged = fabsf(g->zoom - 0.8f) < 0.001f &&
+                    fabsf(g->in.zoom - 1.2f) < 0.001f && graph_hit_geometry(s);
+    test_check(standard && enlarged, "graph font scaling keeps rendered node and socket hit geometry aligned without changing the stored zoom");
     fixture_free(&f);
 }
 
@@ -1452,7 +1632,9 @@ int studio_documents_run(const char *program)
     readout_follows_camera();
     /* Authored top bar and area headers (workstream T) */
     chrome_follows_studio();
-    workspaces_follow_tabs();
+    settings_reopens_after_font_change();
+    layout_modes_are_explicit();
+    graph_font_size_preserves_hit_geometry();
     /* arena2d end to end (wave 3, workstream X) */
     scene_text_field();
     /* Rename objects and prototype components */

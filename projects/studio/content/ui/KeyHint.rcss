@@ -3,4 +3,4 @@
    and a label: <use ui="KeyHint" data-for="hint : hints"/>. */
 body { display: flex; align-items: center; gap: 4dp; }
 .icon { font-size: 13dp; width: 14dp; color: var(--faint-foreground); }
-.kbd-key { height: 16dp; min-width: 16dp; }
+.kbd-key { height: var(--studio-height-16, 16dp); min-width: 16dp; }

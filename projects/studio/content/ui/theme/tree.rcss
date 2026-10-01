@@ -9,9 +9,9 @@
 .tree-row[data-active] .name { color: var(--strong); }
 .tree-row .twisty { width: 14dp; font-size: 11dp; color: var(--faint-foreground); }
 .tree-row .name { flex: 1 1 0dp; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.tree-row .meta { color: var(--faint-foreground); font-size: 11dp; }
+.tree-row .meta { color: var(--faint-foreground); font-size: var(--studio-font-11, 11dp); }
 .tree-row .trail { display: flex; align-items: center; gap: 1dp; }
-.tree-row .toggle { width: 20dp; height: 18dp; padding: 0dp; }
+.tree-row .toggle { width: 20dp; height: var(--studio-height-18, 18dp); padding: 0dp; }
 .tree-row .toggle .icon { color: var(--faint-foreground); font-size: 13dp; }
 .tree-row .toggle[data-state=off] .icon { color: var(--disabled-foreground); }
 .tree-row .toggle[data-state=on] { background-color: transparent; }

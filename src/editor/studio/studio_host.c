@@ -597,6 +597,15 @@ static void apply_prefs(studio *s, bool initial)
     if (initial || p->reduced_motion != s->applied.reduced_motion) {
         kit_set_theme(s->kit, "reduced-motion", p->reduced_motion);
     }
+    if (initial || p->standard_font_family != s->applied.standard_font_family ||
+        p->standard_font_size != s->applied.standard_font_size ||
+        p->code_font_family != s->applied.code_font_family ||
+        p->code_font_size != s->applied.code_font_size) {
+        studio_apply_font_settings(s->kit, p);
+        if (s->graph.kit) {
+            studio_apply_graph_font_settings(s->graph.kit, p);
+        }
+    }
     if (initial) {
         s->applied = *p;
         return;

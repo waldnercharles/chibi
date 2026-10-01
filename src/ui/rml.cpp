@@ -2,6 +2,7 @@
 #include "ui/rml.h"
 
 #include <RmlUi/Core.h>
+#include <RmlUi/Core/Dictionary.h>
 #include <RmlUi/Core/Elements/ElementFormControlInput.h>
 #include <RmlUi/Core/Elements/ElementFormControlTextArea.h>
 #include <RmlUi/Core/FontEngineInterface.h>
@@ -351,6 +352,82 @@ public:
     void SetTransform(const Rml::Matrix4f *transform) override
     {
         fn->set_transform(user, transform ? transform->data() : nullptr);
+    }
+
+    static_assert((int)Rml::ClipMaskOperation::Set == RML_CLIP_MASK_SET);
+    static_assert((int)Rml::ClipMaskOperation::SetInverse == RML_CLIP_MASK_SET_INVERSE);
+    static_assert((int)Rml::ClipMaskOperation::Intersect == RML_CLIP_MASK_INTERSECT);
+    static_assert((int)Rml::BlendMode::Blend == RML_BLEND_MODE_BLEND);
+    static_assert((int)Rml::BlendMode::Replace == RML_BLEND_MODE_REPLACE);
+
+    void EnableClipMask(bool enable) override
+    {
+        if (fn->enable_clip_mask) {
+            fn->enable_clip_mask(user, enable);
+        }
+    }
+
+    void RenderToClipMask(
+        Rml::ClipMaskOperation operation,
+        Rml::CompiledGeometryHandle geometry,
+        Rml::Vector2f translation
+    ) override
+    {
+        if (fn->render_to_clip_mask) {
+            fn->render_to_clip_mask(user, (rml_clip_mask_operation)operation, geometry, vec2(translation));
+        }
+    }
+
+    Rml::LayerHandle PushLayer() override
+    {
+        return fn->push_layer ? fn->push_layer(user) : RenderInterface::PushLayer();
+    }
+
+    void CompositeLayers(
+        Rml::LayerHandle source,
+        Rml::LayerHandle destination,
+        Rml::BlendMode blend_mode,
+        Rml::Span<const Rml::CompiledFilterHandle> filters
+    ) override
+    {
+        if (!fn->composite_layers) {
+            return;
+        }
+        fn->composite_layers(
+            user,
+            source,
+            destination,
+            (rml_blend_mode)blend_mode,
+            filters.data(),
+            filters.size()
+        );
+    }
+
+    void PopLayer() override
+    {
+        if (fn->pop_layer) {
+            fn->pop_layer(user);
+        }
+    }
+
+    Rml::TextureHandle SaveLayerAsTexture() override
+    {
+        return fn->save_layer_as_texture ? fn->save_layer_as_texture(user) : 0;
+    }
+
+    Rml::CompiledFilterHandle CompileFilter(const Rml::String &name, const Rml::Dictionary &parameters) override
+    {
+        const Rml::Variant *sigma = Rml::GetIf(parameters, "sigma");
+        return fn->compile_filter
+                 ? fn->compile_filter(user, name.c_str(), sigma ? sigma->Get<float>() : 0.0f)
+                 : 0;
+    }
+
+    void ReleaseFilter(Rml::CompiledFilterHandle filter) override
+    {
+        if (fn->release_filter) {
+            fn->release_filter(user, filter);
+        }
     }
 
 private:

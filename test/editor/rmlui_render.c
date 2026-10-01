@@ -100,6 +100,75 @@ static void check_scissor_left_behind()
     rml_backend_destroy(ui);
 }
 
+/* Verify the public CSS effect on real rendered pixels, including its hole
+   around an opaque control and the soft outer tail. Two frames also exercise
+   cached callback textures and release of temporary shadow geometry. */
+static void check_box_shadows()
+{
+    enum
+    {
+        WIDTH = 128,
+        HEIGHT = 96
+    };
+    rml_backend *ui = rml_backend_create(WIDTH, HEIGHT, 1);
+    assert(ui);
+    rml_element *doc = rml_context_load_document_from_memory(
+        rml_backend_context(ui),
+        "<rml><body style=\"width:100%;height:100%;\">"
+        "<div "
+        "style=\"position:absolute;left:24px;top:24px;width:24px;height:24px;"
+        "background-color:#ffffff;box-shadow:0px 0px 0px 3px "
+        "#ff000080;\"></div>"
+        "<div "
+        "style=\"position:absolute;left:80px;top:24px;width:24px;height:24px;"
+        "background-color:#ffffff;box-shadow:0px 4px 8px 0px "
+        "#0000ff80,0px 2px 4px 0px #0000ff40;\"></div>"
+        "</body></rml>",
+        "shadows"
+    );
+    assert(doc);
+    rml_document_show(doc, RML_MODAL_NONE, RML_FOCUS_NONE, RML_SCROLL_FLAG_AUTO);
+    CF_Canvas target = cf_make_canvas(cf_canvas_defaults(WIDTH, HEIGHT));
+    for (int frame = 0; frame < 2; frame++) {
+        cf_app_update(NULL);
+        rml_backend_update(ui, 1.0 / 60.0);
+        rml_backend_render(ui);
+        cf_draw_push();
+        rml_backend_present(ui);
+        cf_render_to(target, true);
+        cf_draw_pop();
+        cf_app_draw_onto_screen(true);
+        CF_Readback readback = cf_canvas_readback(target);
+        CF_Pixel pixels[WIDTH * HEIGHT];
+        uint64_t start = cf_get_ticks();
+        while (!cf_readback_ready(readback)) {
+            assert(cf_get_ticks() - start < cf_get_tick_frequency() * 10);
+            cf_sleep(1);
+        }
+        assert(cf_readback_data(readback, pixels, sizeof pixels) == sizeof pixels);
+        cf_destroy_readback(readback);
+        CF_Pixel ring = pixels[36 * WIDTH + 22];
+        CF_Pixel center = pixels[36 * WIDTH + 36];
+        CF_Pixel outside = pixels[36 * WIDTH + 19];
+        CF_Pixel near = pixels[54 * WIDTH + 92];
+        CF_Pixel far = pixels[60 * WIDTH + 92];
+        assert(
+            ring.colors.r > 220 && ring.colors.g < 20 && ring.colors.a > 100 &&
+            ring.colors.a < 150
+        );
+        assert(
+            center.colors.r > 240 && center.colors.g > 240 &&
+            center.colors.b > 240 && center.colors.a > 240
+        );
+        assert(outside.colors.a < 5);
+        assert(near.colors.b > 200 && near.colors.a > 15 && near.colors.a < 100);
+        assert(far.colors.a < near.colors.a && far.colors.a < 15);
+    }
+    cf_destroy_canvas(target);
+    rml_document_close(doc);
+    rml_backend_destroy(ui);
+}
+
 int rmlui_render_run(const char *program, bool gles)
 {
     CF_Result result = cf_make_app(
@@ -151,12 +220,14 @@ int rmlui_render_run(const char *program, bool gles)
     }
     cf_destroy_canvas(witness);
     check_scissor_left_behind();
+    check_box_shadows();
     kit_destroy(k);
     rml_backend_destroy(backend);
     cf_destroy_app();
     printf(
         "RmlUi render PASS%s: retained UI renders beside queued layer-0 draws "
-        "and under a scissor another pass left\n",
+        "under a scissor another pass left, and renders focus rings and "
+        "blurred shadows\n",
         gles ? " on GLES" : ""
     );
     return 0;

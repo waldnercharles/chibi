@@ -562,6 +562,11 @@ static node *emit_input(kit *k, const char *key, node_kind kind, const char *cls
 static bool edit_text(node *n, char *buffer, size_t size, unsigned flags)
 {
     widget *w = &n->w;
+    bool secret = flags & KIT_SECRET;
+    if (w->secret != secret) {
+        rml_element_set_attribute(w->input_el, "type", secret ? "password" : "text");
+        w->secret = secret;
+    }
     set_flag(n, "data-readonly", flags & KIT_READONLY);
     if (flags & KIT_READONLY) {
         rml_element_set_attribute(w->input_el, "readonly", "");
@@ -571,10 +576,10 @@ static bool edit_text(node *n, char *buffer, size_t size, unsigned flags)
     bool committed = false;
     if (w->pending) {
         w->pending = false;
+        committed = true;
+        w->committed = true;
         if (!str_eq(w->draft, buffer)) {
             snprintf(buffer, size, "%s", w->draft ? w->draft : "");
-            committed = true;
-            w->committed = true;
         }
     }
     if (!w->focused && !str_eq(w->applied, buffer)) {

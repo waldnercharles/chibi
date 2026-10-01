@@ -11,7 +11,7 @@ body { display: block; }
 .inspect-row .ident { color: var(--tok-number); }
 .inspect-row .cls { color: var(--tok-name); }
 .inspect-row .widget {
-  flex: 0 0 auto; height: 14dp; line-height: 14dp; margin-left: 6dp; padding: 0dp 4dp; border-radius: 3dp;
-  font-size: 10dp; color: var(--primary-text); background-color: var(--primary-soft);
+  flex: 0 0 auto; height: var(--studio-height-14, 14dp); line-height: var(--studio-line-14, 14dp); margin-left: 6dp; padding: 0dp 4dp; border-radius: 3dp;
+  font-size: var(--studio-font-10, 10dp); color: var(--primary-text); background-color: var(--primary-soft);
 }
 .inspect-row .text { margin-left: 6dp; color: var(--muted-foreground); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

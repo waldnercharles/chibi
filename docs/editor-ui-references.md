@@ -14,6 +14,28 @@ the docs and source disagree, the source value is recorded. All are MIT licensed
 except cva (Apache-2.0); no source is copied. This supersedes the "skip" verdicts in
 the earlier library catalog from the Codex RmlUi branch.
 
+## Porting React and Tailwind references
+
+Use the library's primary docs and source as the contract for component anatomy,
+size and style variants, state attributes, motion, and keyboard behavior. Recreate
+that contract as a reusable native kit primitive with RML and RCSS; React components
+cannot run in this C/RmlUi runtime. Tailwind's [CLI](https://tailwindcss.com/docs/installation/tailwind-cli)
+can scan templates and emit static CSS, and its [Preflight can be omitted](https://tailwindcss.com/docs/preflight#disabling-preflight)
+by importing only theme and utilities. This helps inspect utility output, but the
+generated stylesheet is not RCSS: a Tailwind v4.1.13 fixture produced `@layer`,
+`@property`, `@supports`, CSS nesting, logical padding, custom-property `calc()`, and
+`:root, :host`; RmlUi logged parse/property errors, and the fixture stayed at its
+default color even though adding the stylesheet returned success. The RCSS expander
+handles the documented subset in `src/support/rcss.h`, not general CSS. Keep authored
+RML/RCSS as the runtime assets; do not treat stylesheet-load success as proof that a
+ported style applied.
+
+For each port, record the source's sizes, variants, state and keyboard contract,
+then implement those states in the reusable kit primitive and its authored markup.
+Check the RCSS through the native RmlUi parser and verify the actual rendered states,
+keyboard interactions, and cropped screenshots in `make web`; compare against the
+reference for spacing, alignment, and motion as well as appearance.
+
 ## Map
 
 | Library | Problem | Kit equivalent | State |
@@ -32,7 +54,7 @@ the earlier library catalog from the Codex RmlUi branch.
 | [Liveline](https://github.com/benjitaylor/liveline) | Streaming line chart that feels alive | `kit_chart` (`kit_chart.c`, element `kit-chart`) | Done |
 | [Recharts](https://github.com/recharts/recharts) | Axes, ticks, tooltips for static charts | `kit_chart` ticks, scrub value, Performance legend | Partial; bars open |
 | [zustand](https://github.com/pmndrs/zustand) | One store, selective updates, persistence | `studio_prefs`, whose preferences are rows of `studio_settings[]` | Done |
-| [Blender Workspaces](https://docs.blender.org/manual/en/latest/interface/window_system/workspaces.html), [Godot main screens](https://docs.godotengine.org/en/stable/getting_started/introduction/first_look_at_the_editor.html) | Named arrangements of areas for a task, switched without touching documents; Godot follows the selection | `studio_prefs.layouts` per `studio_workspace`, the top bar's workspace tabs, and `studio_follow_document` (Workspace Follows Tab) | Done; two fixed presets |
+| [Blender Workspaces](https://docs.blender.org/manual/en/latest/interface/window_system/workspaces.html), [Godot main screens](https://docs.godotengine.org/en/stable/getting_started/introduction/first_look_at_the_editor.html) | Named arrangements of areas for a task, switched without touching documents | `studio_prefs.layouts` per `studio_workspace`; explicit Horizontal Split and Vertical Split commands in the top bar | Done; two fixed split modes |
 | [next-themes](https://github.com/pacocoursey/next-themes) | Theme preference: system, no flash, no mixed transitions | Theme in `studio_prefs` | Done |
 | [clsx](https://github.com/lukeed/clsx) | Conditional class lists | `KIT_CX` | Done |
 | [cva](https://github.com/joe-bell/cva) | Variants mapped to classes in one table | `kit_variant`, `kit_size` | Done |
@@ -51,8 +73,12 @@ switch on hover within a menubar and open submenus after 100 ms. Tooltips show
 after 500 ms and stay warm for 400 ms within a group. A tooltip holds a label, a
 shortcut and an optional description that wraps; in a zoomed canvas it keeps
 its size on screen. Number fields repeat held
-steps after 400 ms, then every 60 ms. Popups close on Escape or an outside press
-and return focus to their trigger. A modal host (`kit_modal_host`) traps the
+steps after 400 ms, then every 60 ms. Popups close on Escape or an outside press.
+A `popover` class on `kit_popup_begin` uses Base UI's nonmodal Popover focus model:
+opening focuses its first control, Tab and Shift+Tab move through its controls,
+and leaving its boundaries closes it and continues at the trigger's position in
+document order. Escape returns focus to the trigger. Menus keep arrow-key
+navigation and close on Tab. A modal host (`kit_modal_host`) traps the
 focus as Base UI's Dialog does: Tab and Shift+Tab cycle through its tabbable
 elements and never reach the editor behind it. `docs/prototypes/studio/kit.html` lists every
 control's contract.

@@ -212,6 +212,17 @@ bool ui_mount_sync(ui_mount *m, rml_element *root, rml_listener *listener, doubl
     return restyled;
 }
 
+/* A conditional host can disappear and a new element can reuse its address.
+   Forget it before its owner removes it so a later mount installs fresh markup. */
+void ui_mount_detach(ui_mount *m)
+{
+    if (!m) {
+        return;
+    }
+    m->root = NULL;
+    m->installed = false;
+}
+
 bool ui_mount_holds(const ui_mount *m, rml_element *element)
 {
     for (; element; element = rml_element_parent(element)) {

@@ -78,11 +78,13 @@ static graph_hit parse_hit(const char *path)
     return hit;
 }
 
-static float drag_distance(const studio_graph *g)
+static float drag_distance(const studio *s)
 {
+    const studio_graph *g = &s->graph;
+    float zoom = sg_zoom(s);
     return hypotf(
-        g->in.mouse_x * g->zoom + g->surface.rect.x - g->press_x,
-        g->in.mouse_y * g->zoom + g->surface.rect.y - g->press_y
+        g->in.mouse_x * zoom + g->surface.rect.x - g->press_x,
+        g->in.mouse_y * zoom + g->surface.rect.y - g->press_y
     );
 }
 
@@ -98,7 +100,7 @@ static int hit_wire(const studio *s)
 {
     const studio_graph *g = &s->graph;
     graph *gr = sg_active_graph(s);
-    float best = WIRE_HIT / g->zoom;
+    float best = WIRE_HIT / sg_zoom(s);
     int found = -1;
     float points[CURVE_POINTS * 2];
     for (int w = 0; w < acount(g->wire_edges); w++) {
@@ -381,10 +383,11 @@ static bool spawn_held(studio *s)
 /* Scrolling zooms at the pointer, from a wheel or a trackpad alike (Blender,
    Unreal); panning is a middle, right or Space drag. A notch is about 15%, and
    one event never more than doubles or halves the zoom. */
-static void wheel(studio_graph *g, const rml_input *ev)
+static void wheel(studio *s, const rml_input *ev)
 {
+    studio_graph *g = &s->graph;
     float factor = fminf(fmaxf(powf(2, -ev->wheel_y * 0.2f), 0.5f), 2.0f);
-    sg_zoom_at(g, g->zoom * factor, ev->x, ev->y);
+    sg_zoom_at(s, g->zoom * factor, ev->x, ev->y);
 }
 
 /* A frame's grip resizes it and a double-click on its title renames it
@@ -564,7 +567,7 @@ static void drag(studio *s)
     editor *e = sg_graph_editor(s);
     switch (g->gesture) {
         case STUDIO_GRAPH_PRESS:
-            if (drag_distance(g) < THRESHOLD || sg_graph_readonly(s)) {
+            if (drag_distance(s) < THRESHOLD || sg_graph_readonly(s)) {
                 break;
             }
             g->gesture = STUDIO_GRAPH_MOVE;
@@ -606,14 +609,14 @@ static void drag(studio *s)
             finish_box(s);
             break;
         case STUDIO_GRAPH_RIGHT:
-            if (drag_distance(g) >= THRESHOLD) {
+            if (drag_distance(s) >= THRESHOLD) {
                 g->gesture = STUDIO_GRAPH_PAN;
             }
             break;
         case STUDIO_GRAPH_RESIZE: sg_resize(s); break;
         case STUDIO_GRAPH_REROUTE: {
             /* A drag moves the point by the pointer's travel; a click leaves it. */
-            if (drag_distance(g) < THRESHOLD) {
+            if (drag_distance(s) < THRESHOLD) {
                 break;
             }
             edge *ed = &sg_active_graph(s)->edges[g->reroute_edge];
@@ -769,8 +772,9 @@ void sg_replay(studio *s)
         rml_input ev = g->events[i];
         bool pointer = ev.type <= RML_INPUT_POINTER_WHEEL;
         if (pointer) {
-            float cx = (ev.x - g->surface.rect.x) / g->zoom;
-            float cy = (ev.y - g->surface.rect.y) / g->zoom;
+            float zoom = sg_zoom(s);
+            float cx = (ev.x - g->surface.rect.x) / zoom;
+            float cy = (ev.y - g->surface.rect.y) / zoom;
             bool inside = ev.x >= g->surface.rect.x && ev.y >= g->surface.rect.y &&
                           ev.x < g->surface.rect.x + g->surface.rect.w &&
                           ev.y < g->surface.rect.y + g->surface.rect.h;
@@ -796,7 +800,7 @@ void sg_replay(studio *s)
                             ((ev.modifiers & RML_INPUT_MOD_ALT) ? KIT_MOD_ALT : 0u) |
                             ((ev.modifiers & RML_INPUT_MOD_META) ? KIT_MOD_META : 0u);
             if (ev.type == RML_INPUT_POINTER_WHEEL) {
-                wheel(g, &g->events[i]);
+                wheel(s, &g->events[i]);
                 continue;
             }
             if (ev.type == RML_INPUT_POINTER_DOWN && ev.button >= 0 && ev.button < 3) {
@@ -819,7 +823,7 @@ void sg_replay(studio *s)
                 g->press_button = ev.button;
                 g->press_x = g->events[i].x;
                 g->press_y = g->events[i].y;
-                sg_to_world(g, g->press_x, g->press_y, &g->press_wx, &g->press_wy);
+                sg_to_world(s, g->press_x, g->press_y, &g->press_wx, &g->press_wy);
             }
             if (ev.type == RML_INPUT_POINTER_UP && ev.button >= 0 && ev.button < 3) {
                 in->down[ev.button] = false;
@@ -834,7 +838,7 @@ void sg_replay(studio *s)
     asetlen(g->events, 0);
     /* A pinch zooms at the pointer, as scrolling does. */
     if (s->pinch != 0 && g->surface.hovered && !blocked) {
-        sg_zoom_at(g, g->zoom * expf(s->pinch), s->in.mouse_x, s->in.mouse_y);
+        sg_zoom_at(s, g->zoom * expf(s->pinch), s->in.mouse_x, s->in.mouse_y);
     }
 }
 
@@ -844,7 +848,7 @@ static void snap_link(studio *s, graph_hit *hit)
     graph *gr = sg_active_graph(s);
     node *from = sg_node_by_id(s, g->link_node);
     int want = g->link_kind == ED_PIN_OUTPUT ? ED_PIN_INPUT : ED_PIN_OUTPUT;
-    float best = 20 / g->zoom;
+    float best = 20 / sg_zoom(s);
     for (int i = 0; from && i < acount(gr->nodes); i++) {
         node *n = gr->nodes[i];
         int count = want == ED_PIN_INPUT ? n->input_count : n->output_count;
@@ -882,7 +886,8 @@ static void auto_pan(studio *s)
         return;
     }
     const float edge = 40, speed = 900;
-    float px = g->in.mouse_x * g->zoom, py = g->in.mouse_y * g->zoom;
+    float zoom = sg_zoom(s);
+    float px = g->in.mouse_x * zoom, py = g->in.mouse_y * zoom;
     float w = g->surface.rect.w, h = g->surface.rect.h;
     float vx = px < edge     ? -(edge - px) / edge
              : px > w - edge ? (px - (w - edge)) / edge
@@ -895,10 +900,10 @@ static void auto_pan(studio *s)
     if (vx == 0 && vy == 0) {
         return;
     }
-    g->x += vx * speed * (float)dt / g->zoom;
-    g->y += vy * speed * (float)dt / g->zoom;
-    g->world_x += vx * speed * (float)dt / g->zoom;
-    g->world_y += vy * speed * (float)dt / g->zoom;
+    g->x += vx * speed * (float)dt / zoom;
+    g->y += vy * speed * (float)dt / zoom;
+    g->world_x += vx * speed * (float)dt / zoom;
+    g->world_y += vy * speed * (float)dt / zoom;
     g->camera.active = false;
 }
 
@@ -906,10 +911,11 @@ void sg_pointer(studio *s)
 {
     studio_graph *g = &s->graph;
     graph *gr = sg_active_graph(s);
+    float zoom = sg_zoom(s);
     sg_to_world(
-        g,
-        g->in.mouse_x * g->zoom + g->surface.rect.x,
-        g->in.mouse_y * g->zoom + g->surface.rect.y,
+        s,
+        g->in.mouse_x * zoom + g->surface.rect.x,
+        g->in.mouse_y * zoom + g->surface.rect.y,
         &g->world_x,
         &g->world_y
     );

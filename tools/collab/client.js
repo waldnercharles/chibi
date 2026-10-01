@@ -6,7 +6,12 @@
     const key = 'chibi.collab.invite';
     const config = Module['collabConfig'] || {};
     const status = (text, error = false) => {
-        window.dispatchEvent(new CustomEvent('chibi-collab-status', {detail: {text, error}}));
+        const fn = Module['_collab_feedback'];
+        const toString = Module['stringToNewUTF8'];
+        const free = Module['_free'];
+        if (!fn || !toString || !free) return;
+        const pointer = toString(String(text));
+        try { fn(pointer, error ? 1 : 0); } finally { free(pointer); }
     };
     const callC = (name, ...values) => {
         const fn = Module[`_${name}`];
@@ -308,15 +313,18 @@
             if (command === 'host') {
                 // Production creation may require an operator credential. It is used
                 // only for this request and is never retained by the browser bridge.
+                status('Creating room...');
                 const created = await request('/v1/rooms', argument || null, {});
                 return await bootstrap(created);
             }
             if (command === 'join') {
+                status('Joining room...');
                 const session = readInvite(argument) || readInvite(location.hash) || storedInvite();
                 if (!session) throw new Error('Paste a room invite link to join. A room code alone has no access token.');
                 return await bootstrap(session);
             }
             if (command === 'leave') {
+                status('Leaving room...');
                 manualClose = true;
                 clearTimeout(reconnectTimer);
                 if (!callC('collab_leave')) close();
@@ -325,6 +333,7 @@
                 return;
             }
             if (command === 'reconnect') {
+                status('Reconnecting...');
                 const session = storedInvite() || invite;
                 if (!session) throw new Error('There is no active room invite to reconnect with');
                 if (socket) socket.close();

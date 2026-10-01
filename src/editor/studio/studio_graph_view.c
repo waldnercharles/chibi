@@ -11,26 +11,40 @@ static const double FIT_SECONDS = 0.3;
 /* ---------- Camera ---------- */
 
 /* Window px to graph units. */
-void sg_to_world(const studio_graph *g, float wx, float wy, float *x, float *y)
+float sg_zoom(const studio *s)
 {
-    *x = g->x + (wx - g->surface.rect.x) / g->zoom;
-    *y = g->y + (wy - g->surface.rect.y) / g->zoom;
+    return s->graph.zoom * s->prefs.standard_font_size / 12.0f;
 }
 
-void sg_zoom_at(studio_graph *g, float zoom, float wx, float wy)
+float studio_graph_pixel_ratio(const studio *s)
 {
+    return sg_zoom(s) * studio_pixel_ratio(s);
+}
+
+void sg_to_world(const studio *s, float wx, float wy, float *x, float *y)
+{
+    const studio_graph *g = &s->graph;
+    float zoom = sg_zoom(s);
+    *x = g->x + (wx - g->surface.rect.x) / zoom;
+    *y = g->y + (wy - g->surface.rect.y) / zoom;
+}
+
+void sg_zoom_at(studio *s, float zoom, float wx, float wy)
+{
+    studio_graph *g = &s->graph;
     zoom = fminf(fmaxf(zoom, ZOOM_MIN), ZOOM_MAX);
     float fx, fy;
-    sg_to_world(g, wx, wy, &fx, &fy);
+    sg_to_world(s, wx, wy, &fx, &fy);
     g->zoom = zoom;
-    g->x = fx - (wx - g->surface.rect.x) / zoom;
-    g->y = fy - (wy - g->surface.rect.y) / zoom;
+    float effective_zoom = sg_zoom(s);
+    g->x = fx - (wx - g->surface.rect.x) / effective_zoom;
+    g->y = fy - (wy - g->surface.rect.y) / effective_zoom;
     g->camera.active = false;
 }
 
 bool sg_far(const studio *s)
 {
-    return s->graph.zoom * studio_pixel_ratio(s) < FAR_PIXELS;
+    return studio_graph_pixel_ratio(s) < FAR_PIXELS;
 }
 
 static void camera_to(studio *s, float zoom, float x, float y, bool animate)
@@ -64,13 +78,17 @@ void sg_camera_step(studio *s)
     double t = fmin((s->time - g->camera.start) / FIT_SECONDS, 1);
     float u = (float)(t < 0.5 ? 4 * t * t * t : 1 - pow(-2 * t + 2, 3) / 2);
     float w = g->surface.rect.w, h = g->surface.rect.h;
-    float from_cx = g->camera.from_x + w / 2 / g->camera.from_zoom;
-    float from_cy = g->camera.from_y + h / 2 / g->camera.from_zoom;
-    float to_cx = g->camera.x + w / 2 / g->camera.zoom;
-    float to_cy = g->camera.y + h / 2 / g->camera.zoom;
+    float font_scale = s->prefs.standard_font_size / 12.0f;
+    float from_zoom = g->camera.from_zoom * font_scale;
+    float to_zoom = g->camera.zoom * font_scale;
+    float from_cx = g->camera.from_x + w / 2 / from_zoom;
+    float from_cy = g->camera.from_y + h / 2 / from_zoom;
+    float to_cx = g->camera.x + w / 2 / to_zoom;
+    float to_cy = g->camera.y + h / 2 / to_zoom;
     g->zoom = g->camera.from_zoom + (g->camera.zoom - g->camera.from_zoom) * u;
-    g->x = from_cx + (to_cx - from_cx) * u - w / 2 / g->zoom;
-    g->y = from_cy + (to_cy - from_cy) * u - h / 2 / g->zoom;
+    float zoom = sg_zoom(s);
+    g->x = from_cx + (to_cx - from_cx) * u - w / 2 / zoom;
+    g->y = from_cy + (to_cy - from_cy) * u - h / 2 / zoom;
     g->camera.active = t < 1;
 }
 
@@ -98,11 +116,12 @@ static bool nodes_bounds(studio *s, bool selection, float lo[2], float hi[2])
 }
 
 /* The zoom fitting the bounds with 10% padding, never past 1:1. */
-static float fit_zoom(const studio_graph *g, const float lo[2], const float hi[2])
+static float fit_zoom(const studio *s, const float lo[2], const float hi[2])
 {
+    const studio_graph *g = &s->graph;
     float w = g->surface.rect.w, h = g->surface.rect.h;
     float zoom = fminf(fminf(w / ((hi[0] - lo[0]) * 1.2f), h / ((hi[1] - lo[1]) * 1.2f)), 1);
-    return fminf(fmaxf(zoom, ZOOM_MIN), ZOOM_MAX);
+    return fminf(fmaxf(zoom * 12.0f / s->prefs.standard_font_size, ZOOM_MIN), ZOOM_MAX);
 }
 
 /* Fits the selection, or everything, with 10% padding and never past 1:1. */
@@ -119,9 +138,10 @@ void sg_frame_nodes(studio *s, bool selection, bool animate)
         }
         return;
     }
-    float w = g->surface.rect.w, h = g->surface.rect.h, zoom = fit_zoom(g, lo, hi);
+    float w = g->surface.rect.w, h = g->surface.rect.h, zoom = fit_zoom(s, lo, hi);
     float cx = (lo[0] + hi[0]) / 2, cy = (lo[1] + hi[1]) / 2;
-    camera_to(s, zoom, cx - w / 2 / zoom, cy - h / 2 / zoom, animate);
+    float effective_zoom = zoom * s->prefs.standard_font_size / 12.0f;
+    camera_to(s, zoom, cx - w / 2 / effective_zoom, cy - h / 2 / effective_zoom, animate);
 }
 
 /* Below this, a graph opening in a small area shows its start legibly
@@ -136,11 +156,13 @@ void sg_frame_open(studio *s)
     studio_graph *g = &s->graph;
     float lo[2], hi[2];
     if (!sg_active_graph(s) || g->surface.rect.w <= 0 ||
-        !nodes_bounds(s, false, lo, hi) || fit_zoom(g, lo, hi) >= OPEN_ZOOM_MIN) {
+        !nodes_bounds(s, false, lo, hi) ||
+        fit_zoom(s, lo, hi) * s->prefs.standard_font_size / 12.0f >= OPEN_ZOOM_MIN) {
         sg_frame_nodes(s, false, false);
         return;
     }
-    camera_to(s, OPEN_ZOOM_MIN, lo[0] - OPEN_MARGIN, lo[1] - OPEN_MARGIN, false);
+    float zoom = OPEN_ZOOM_MIN * 12.0f / s->prefs.standard_font_size;
+    camera_to(s, zoom, lo[0] - OPEN_MARGIN, lo[1] - OPEN_MARGIN, false);
 }
 
 /* A node near the edges, where overlays sit, is not in view (VS Code's reveal
@@ -153,7 +175,8 @@ void sg_show_node(studio *s, node *n, bool frame)
         sg_frame_nodes(s, true, true);
         return;
     }
-    float box[4], w = g->surface.rect.w / g->zoom, h = g->surface.rect.h / g->zoom;
+    float zoom = sg_zoom(s);
+    float box[4], w = g->surface.rect.w / zoom, h = g->surface.rect.h / zoom;
     sg_node_box(s, n, box);
     if (box[0] >= g->x + w * INSET && box[1] >= g->y + h * INSET &&
         box[0] + box[2] <= g->x + w * (1 - INSET) &&

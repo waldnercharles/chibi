@@ -5,9 +5,11 @@ import vm from 'node:vm';
 const source = readFileSync(new URL('../tools/collab/client.js', import.meta.url), 'utf8');
 
 const client = href => {
-    const events = [];
+    const feedback = [];
+    const allocated = new Map();
     const sockets = [];
     const values = new Map();
+    let nextPointer = 1;
     const location = { href };
     const updateLocation = value => {
         const url = new URL(value, location.href);
@@ -30,14 +32,19 @@ const client = href => {
     const Module = {
         collabConfig: { roomUrl: 'https://rooms.example.test' },
         chibiCollabStorage: { root: '/room/' },
+        stringToNewUTF8: text => {
+            const pointer = nextPointer++;
+            allocated.set(pointer, text);
+            return pointer;
+        },
+        _collab_feedback: (pointer, error) => feedback.push({ text: allocated.get(pointer), error: !!error }),
+        _free: pointer => allocated.delete(pointer),
     };
-    const window = { dispatchEvent: event => events.push(event) };
     vm.runInNewContext(source, {
         Module,
         URL,
         URLSearchParams,
         WebSocket: FakeWebSocket,
-        CustomEvent: class { constructor(type, options) { this.type = type; this.detail = options.detail; } },
         clearTimeout() {},
         fetch() { throw new Error('unexpected fetch'); },
         history: { replaceState: (_state, _title, value) => updateLocation(value) },
@@ -50,9 +57,9 @@ const client = href => {
             setItem: (key, value) => values.set(key, value),
         },
         setTimeout() { return 1; },
-        window,
+        window: {},
     });
-    return { Module, events, sockets, values };
+    return { Module, allocated, feedback, sockets, values };
 };
 
 const invite = ws_url => ({
@@ -69,7 +76,9 @@ const invite = ws_url => ({
     await app.Module.chibiCollab.control('join', JSON.stringify(invite('wss://attacker.example.test/steal')));
     assert.equal(app.sockets.length, 0);
     assert.equal(app.values.size, 0);
-    assert.equal(app.events.at(-1).detail.error, true);
+    assert.equal(app.feedback.at(-1).error, true);
+    assert.match(app.feedback[0].text, /^Joining room/);
+    assert.equal(app.allocated.size, 0, 'feedback strings are freed after crossing the Wasm bridge');
 }
 
 {
@@ -77,6 +86,7 @@ const invite = ws_url => ({
     await app.Module.chibiCollab.control('join', JSON.stringify(invite('wss://rooms.example.test/v1/rooms/room-1/ws')));
     assert.equal(app.sockets.length, 1);
     assert.equal(app.sockets[0].url, 'wss://rooms.example.test/v1/rooms/room-1/ws');
+    assert.ok(app.feedback.some(({ text }) => text.startsWith('Joining room')));
 }
 
 console.log('Collaboration client invite checks passed.');

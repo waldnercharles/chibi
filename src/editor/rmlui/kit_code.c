@@ -186,6 +186,7 @@ struct kit_code_editor
        generation it is from (rml_font_generation). */
     int font_pixels;
     unsigned font_generation;
+    char font_family[64];
     uintptr_t face;
     float ascent, line, advance;
     code_span *spans;   /* array */
@@ -416,11 +417,14 @@ static void on_draw_text(void *user, float x, float y, zep_rgba color, const cha
 }
 
 /* The face at `pixels`, and its metrics. */
-static void load_face(kit_code_editor *e, int pixels)
+static void load_face(kit_code_editor *e, int pixels, const char *family)
 {
     e->font_pixels = pixels;
     e->font_generation = rml_font_generation();
-    e->face = rml_font_face(CODE_FAMILY, RML_FONT_NORMAL, 400, pixels);
+    if (family != e->font_family) {
+        snprintf(e->font_family, sizeof e->font_family, "%s", family);
+    }
+    e->face = rml_font_face(e->font_family, RML_FONT_NORMAL, 400, pixels);
     assert(e->face);
     rml_font_metrics metrics = rml_font_face_metrics(e->face);
     e->ascent = roundf(metrics.ascent);
@@ -433,7 +437,7 @@ static void load_face(kit_code_editor *e, int pixels)
 static uintptr_t face_of(kit_code_editor *e)
 {
     if (e->face && e->font_generation != rml_font_generation()) {
-        load_face(e, e->font_pixels);
+        load_face(e, e->font_pixels, e->font_family);
     }
     return e->face;
 }
@@ -1659,13 +1663,15 @@ static void configure(kit *k, kit_code_editor *e, const kit_code_desc *d)
     set_wrap(e, d->no_wrap);
     float ratio = dp(k);
     float size = d->font_size > 0 ? d->font_size : CODE_FONT_SIZE;
+    const char *family = d->font_family && d->font_family[0] ? d->font_family
+                                                             : CODE_FAMILY;
     /* RmlUi draws faces at whole pixel sizes. */
     int pixels = math_max(1, (int)(size * ratio));
-    if (pixels == e->font_pixels) {
+    if (pixels == e->font_pixels && !strcmp(family, e->font_family)) {
         face_of(e);
         return;
     }
-    load_face(e, pixels);
+    load_face(e, pixels, family);
     zep_set_pixel_scale(e->zep, ratio);
     zep_set_font_height(e->zep, (int)e->line);
 }

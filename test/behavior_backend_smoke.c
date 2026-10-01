@@ -111,8 +111,8 @@ static uint64_t wasm_smoke_input_ids[WASM_SMOKE_MAX_INPUTS];
 static uint64_t wasm_smoke_output_ids[WASM_SMOKE_REGIONS];
 static uint64_t wasm_smoke_loop_output_id;
 static node *wasm_smoke_sets[WASM_SMOKE_REGIONS];
+static node *wasm_smoke_loop_set;
 static node *wasm_smoke_input_gets[WASM_SMOKE_MAX_INPUTS];
-static uint32_t wasm_smoke_execution_before;
 static int wasm_smoke_polls;
 static const float wasm_smoke_input_value = 16777216.0f;
 
@@ -248,7 +248,7 @@ static node *wasm_smoke_expression(graph *g, node *const *inputs, int operations
 
 static node *wasm_smoke_rounding_expression(graph *g, node *input, int operations)
 {
-    assert(operations >= 3 && operations <= WASM_SMOKE_MAX_OPERATIONS);
+    assert(operations >= 2 && operations <= WASM_SMOKE_MAX_OPERATIONS);
     /* At 2^24, F32 rounds input + 1 back to input; a wider intermediate yields 1. */
     node *round = graph_add_node(g, &NODE_Add);
     for (int pin = 0; pin < 2; pin++) {
@@ -261,9 +261,17 @@ static node *wasm_smoke_rounding_expression(graph *g, node *input, int operation
     assert(!graph_connect_data(g, input, 0, round, 0));
 
     node *result = wasm_smoke_binary(g, &NODE_Subtract, round, input);
-    node *zero = wasm_smoke_binary(g, &NODE_Subtract, input, input);
-    for (int i = 3; i < operations; i++) {
-        result = wasm_smoke_binary(g, &NODE_Add, result, zero);
+    for (int i = 2; i < operations; i++) {
+        node *add_zero = graph_add_node(g, &NODE_Add);
+        for (int pin = 0; pin < 2; pin++) {
+            assert(!graph_set_pin_type(g, add_zero, false, pin, PIN_F32, "float"));
+        }
+        assert(!graph_set_pin_type(g, add_zero, true, 0, PIN_F32, "float"));
+        assert(
+            !graph_set_pin_default(g, add_zero, false, 1, &(pin_value){ .type = PIN_F32, .f = 0.0f })
+        );
+        assert(!graph_connect_data(g, result, 0, add_zero, 0));
+        result = add_zero;
     }
     return result;
 }
@@ -338,14 +346,18 @@ static void wasm_smoke_region_selection()
 static void wasm_smoke_poll(void *unused)
 {
     (void)unused;
-    wasm_smoke_dispatch();
     behavior_expression_wasm_stats stats;
     behavior_expression_wasm_get_stats(&stats);
-    if (stats.expressions_executed == wasm_smoke_execution_before) {
+    uint32_t before_dispatch = stats.expressions_executed;
+    wasm_smoke_dispatch();
+    behavior_expression_wasm_get_stats(&stats);
+    uint32_t dispatch_executions = stats.expressions_executed - before_dispatch;
+    if (dispatch_executions < WASM_SMOKE_ELIGIBLE_REGIONS) {
         assert(++wasm_smoke_polls < WASM_SMOKE_MAX_POLLS);
         emscripten_async_call(wasm_smoke_poll, NULL, 1);
         return;
     }
+    assert(dispatch_executions == WASM_SMOKE_ELIGIBLE_REGIONS);
     for (int i = 0; i < WASM_SMOKE_REGIONS; i++) {
         pin_value result;
         assert(
@@ -362,9 +374,28 @@ static void wasm_smoke_poll(void *unused)
     uint32_t executions = stats.expressions_executed;
     wasm_smoke_dispatch();
     behavior_expression_wasm_get_stats(&stats);
-    assert(
-        stats.expressions_executed == executions + WASM_SMOKE_ELIGIBLE_REGIONS + WASM_SMOKE_LOOP_ITERATIONS
+    assert(stats.expressions_executed == executions + WASM_SMOKE_ELIGIBLE_REGIONS);
+
+    const behavior_graph_program *program = behavior_program_graph(
+        wasm_smoke_asset->program,
+        wasm_smoke_asset->graph
     );
+    runtime_store *runtime = runtime_store_create(wasm_smoke_asset->graph);
+    arena storage = { 0 };
+    eval_context context = { .instance = wasm_smoke_instance, .runtime = runtime };
+    executions = stats.expressions_executed;
+    for (int i = 0; i < WASM_SMOKE_LOOP_ITERATIONS; i++) {
+        runtime_store_reset_memo(runtime);
+        pin_value result;
+        assert(
+            !behavior_program_input(program, wasm_smoke_loop_set, 1, &storage, &result, &context, BEHAVIOR_BYTECODE)
+        );
+        assert(result.f == wasm_smoke_expected(1));
+    }
+    behavior_expression_wasm_get_stats(&stats);
+    assert(stats.expressions_executed == executions + WASM_SMOKE_LOOP_ITERATIONS);
+    runtime_store_free(runtime);
+    arena_free(&storage);
 
     for (int i = 0; i < WASM_SMOKE_MAX_INPUTS; i++) {
         assert(!behavior_instance_set_variable(
@@ -393,9 +424,7 @@ static void wasm_smoke_poll(void *unused)
     executions = stats.expressions_executed;
     wasm_smoke_dispatch();
     behavior_expression_wasm_get_stats(&stats);
-    assert(
-        stats.expressions_executed == executions + WASM_SMOKE_ELIGIBLE_REGIONS + WASM_SMOKE_LOOP_ITERATIONS
-    );
+    assert(stats.expressions_executed == executions + WASM_SMOKE_ELIGIBLE_REGIONS);
 
     printf("browser behavior expression timings (ns/input):");
     for (int i = 0; i < WASM_SMOKE_REGIONS; i++) {
@@ -953,12 +982,17 @@ static void wasm_smoke_start()
     assert(
         !graph_set_pin_default(g, loop, false, 2, &(pin_value){ .type = PIN_I32, .i = WASM_SMOKE_LOOP_ITERATIONS - 1 })
     );
-    node *loop_set = behavior_asset_add_set_node(wasm_smoke_asset, wasm_smoke_loop_output_id);
+    wasm_smoke_loop_set = behavior_asset_add_set_node(wasm_smoke_asset, wasm_smoke_loop_output_id);
     node *loop_value = wasm_smoke_expression(g, wasm_smoke_input_gets, wasm_smoke_operations[1], 1);
-    assert(!graph_connect_data(g, loop_value, 0, loop_set, 1));
+    assert(!graph_connect_data(g, loop_value, 0, wasm_smoke_loop_set, 1));
     assert(!graph_connect_exec(g, event, 0, loop, 0, 0));
-    assert(!graph_connect_exec(g, loop, 0, loop_set, 0, 0));
-    for (int i = 0; i < WASM_SMOKE_REGIONS; i++) {
+    assert(!graph_connect_exec(g, loop, 0, wasm_smoke_loop_set, 0, 0));
+
+    /* Put the F32 regression early so later large matrix candidates cannot
+     * consume the graph-wide compile candidate budget before it is reached. */
+    static const int output_order[WASM_SMOKE_REGIONS] = { 7, 0, 1, 2, 3, 4, 5, 6 };
+    for (int order = 0; order < WASM_SMOKE_REGIONS; order++) {
+        int i = output_order[order];
         char output_name[16];
         snprintf(output_name, sizeof output_name, "Output%d", i);
         behavior_variable *output = behavior_asset_add_variable(
@@ -972,15 +1006,25 @@ static void wasm_smoke_start()
         );
         wasm_smoke_output_ids[i] = output->id;
         wasm_smoke_sets[i] = behavior_asset_add_set_node(wasm_smoke_asset, wasm_smoke_output_ids[i]);
-        node *value = wasm_smoke_rounding[i]
-                        ? wasm_smoke_rounding_expression(g, wasm_smoke_input_gets[0], wasm_smoke_operations[i])
-                        : wasm_smoke_expression(
-                              g,
-                              wasm_smoke_input_gets,
-                              wasm_smoke_operations[i],
-                              wasm_smoke_inputs[i]
-                          );
+        if (i == 7) {
+            node *value = wasm_smoke_rounding_expression(
+                g,
+                wasm_smoke_input_gets[0],
+                wasm_smoke_operations[i]
+            );
+            assert(!graph_connect_data(g, value, 0, wasm_smoke_sets[i], 1));
+        }
+    }
+    for (int i = 0; i < WASM_SMOKE_REGIONS - 1; i++) {
+        node *value = wasm_smoke_expression(
+            g,
+            wasm_smoke_input_gets,
+            wasm_smoke_operations[i],
+            wasm_smoke_inputs[i]
+        );
         assert(!graph_connect_data(g, value, 0, wasm_smoke_sets[i], 1));
+    }
+    for (int i = 0; i < WASM_SMOKE_REGIONS; i++) {
         assert(
             !graph_connect_exec(g, i ? wasm_smoke_sets[i - 1] : loop, i ? 0 : 2, wasm_smoke_sets[i], 0, 0)
         );
@@ -1009,7 +1053,6 @@ static void wasm_smoke_start()
     wasm_smoke_pthread_workers(program);
     behavior_expression_wasm_get_stats(&compiled);
 #endif
-    wasm_smoke_execution_before = compiled.expressions_executed;
     emscripten_async_call(wasm_smoke_poll, NULL, 1);
 }
 #endif

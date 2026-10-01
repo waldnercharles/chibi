@@ -425,6 +425,13 @@ static void wasm_smoke_poll(void *unused)
     wasm_smoke_dispatch();
     behavior_expression_wasm_get_stats(&stats);
     assert(stats.expressions_executed == executions + WASM_SMOKE_ELIGIBLE_REGIONS);
+    for (int i = 0; i < WASM_SMOKE_REGIONS; i++) {
+        pin_value result;
+        assert(
+            behavior_instance_get_variable(wasm_smoke_instance, wasm_smoke_output_ids[i], &result) == 0
+        );
+        assert(isnan(result.f));
+    }
 
     printf("browser behavior expression timings (ns/input):");
     for (int i = 0; i < WASM_SMOKE_REGIONS; i++) {

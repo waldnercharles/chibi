@@ -337,6 +337,58 @@ static rml_element *settings_element(studio *s, const char *selector)
     return NULL;
 }
 
+/* The authored modal keeps validation and discard decisions inside its trap. */
+static void project_creation_modal()
+{
+    new_fixture f = fixture_new();
+    studio *s = f.studio;
+    frames(&f, 3);
+    studio_new_project_open(s);
+    frames(&f, 3);
+    rml_context *context = rml_backend_context(s->backend);
+    rml_element *name = settings_element(s, "#new-project-name");
+    bool focused = name && rml_context_focus_element(context) == name;
+    press(SDL_SCANCODE_RETURN);
+    frames(&f, 4);
+    bool invalid = s->new_project.open &&
+                   !strcmp(s->new_project.error, "Enter a project name") &&
+                   settings_element(s, ".project-error") && !s->open_project;
+    if (name) {
+        rml_element_focus(name, true);
+        rml_backend_process_input(
+            s->backend,
+            &(rml_input){ .type = RML_INPUT_TEXT_INPUT, .text = "Fresh Project", .text_size = 13 }
+        );
+    }
+    frames(&f, 2);
+    f.scene->scene_dirty = true;
+    press(SDL_SCANCODE_RETURN);
+    frames(&f, 4);
+    rml_element *cancel = settings_element(s, "#new-project-cancel");
+    rml_element *discard = settings_element(s, ".project-actions .discard");
+    bool confirmation = s->new_project.open && s->new_project.confirm_discard &&
+                        settings_element(s, ".project-confirmation") && cancel &&
+                        discard && !s->discard_toast && !s->open_project;
+    bool safe_focus = cancel && rml_context_focus_element(context) == cancel;
+    press(SDL_SCANCODE_TAB);
+    frames(&f, 2);
+    bool reachable = discard && rml_context_focus_element(context) == discard;
+    press(SDL_SCANCODE_TAB);
+    frames(&f, 2);
+    bool wrapped = cancel && rml_context_focus_element(context) == cancel;
+    press(SDL_SCANCODE_RETURN);
+    frames(&f, 3);
+    bool canceled = !s->new_project.open && !s->new_project.confirm_discard &&
+                    !s->open_project && f.scene->scene_dirty;
+    test_check(
+        focused && invalid && confirmation && safe_focus && reachable && wrapped && canceled,
+        "New Project autofocuses its labeled input, validates an empty name, "
+        "and keeps discard confirmation keyboard reachable and cancelable "
+        "without losing edits"
+    );
+    fixture_free(&f);
+}
+
 /* Settings ▸ Project renames the project and picks its start scene, each
    written to project.yaml in its place. */
 static void project_settings_write()
@@ -413,4 +465,5 @@ void test_studio_new_assets()
     creates_every_kind();
     menu_puts_filter_first();
     project_settings_write();
+    project_creation_modal();
 }

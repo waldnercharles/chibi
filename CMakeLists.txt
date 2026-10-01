@@ -30,7 +30,9 @@ set(CHIBI_COLLAB_URL "" CACHE STRING "Public collaboration room service HTTP(S) 
 option(CHIBI_ENABLE_PERFORMANCE_TESTS
        "Run timing-sensitive performance checks in the test suite" OFF)
 
-if(CMAKE_HOST_APPLE)
+if(CMAKE_HOST_APPLE AND CMAKE_OSX_SYSROOT)
+    set(CHIBI_SDKROOT "${CMAKE_OSX_SYSROOT}")
+elseif(CMAKE_HOST_APPLE)
     execute_process(
         COMMAND xcrun --show-sdk-path
         OUTPUT_VARIABLE CHIBI_SDKROOT

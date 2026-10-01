@@ -29,7 +29,7 @@
 .segmented { display: flex; height: var(--h); background-color: var(--secondary); border-radius: var(--r); flex: 1 1 0dp; }
 .segmented .seg {
     display: block; text-align: center; line-height: var(--h); flex: 1 1 0dp;
-    padding: 0dp 8dp; color: var(--muted-foreground); border-left: 1dp var(--edge); white-space: nowrap;
+    padding: 0dp 8dp; color: var(--muted-foreground); border: 1dp transparent; border-left-color: var(--edge); white-space: nowrap;
     transition: background-color 0.11s cubic-out;
 }
 .segmented .seg:first-child { border-left: 0dp; border-radius: 4dp 0dp 0dp 4dp; }
@@ -38,3 +38,6 @@
 .segmented .seg[data-pressed] { background-color: var(--primary); color: var(--primary-foreground); }
 .segmented .seg[data-state=on] { background-color: var(--primary); color: var(--primary-foreground); }
 .segmented[data-readonly] { opacity: 0.6; }
+.segmented[data-disabled] { opacity: 0.45; }
+.segmented .seg:focus-visible { border-color: var(--ring); background-color: var(--field-hover); color: var(--foreground); }
+.segmented .seg[data-pressed]:focus-visible { background-color: var(--primary); color: var(--primary-foreground); }

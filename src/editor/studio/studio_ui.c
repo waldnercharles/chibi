@@ -308,11 +308,36 @@ static panel *find_panel(studio_ui *ui, const char *name)
 /* Sends a panel's events to its entity's behaviors, an input's value first;
  * emit('studio.<id>') runs Studio's command `id` instead, and
  * emit('studio.<id>', index) runs it on the tab or area `index` names. */
+static void sync_new_project(studio *s, bool read_input);
+
 static void send_activations(studio *s, ui_mount *mount, ecs_entity entity)
 {
     studio_ui *ui = s->ui;
     ui_activation a;
     while (ui_mount_take(mount, &a)) {
+        if (!strcmp(ui_mount_name(mount), "NewProject") &&
+            (!strncmp(a.event, "newProject.", 11) || !strcmp(a.event, "Close"))) {
+            sync_new_project(s, true);
+            bool confirmation = s->new_project.confirm_discard;
+            studio_new_project_action(s, !strcmp(a.event, "Close") ? "cancel" : a.event + 11);
+            sync_new_project(s, false);
+            if (!confirmation && s->new_project.confirm_discard) {
+                game_entities_request_event(
+                    game_prototype_preview_entities(ui->world),
+                    entity,
+                    "ConfirmDiscard",
+                    (flow_inputs){ 0 }
+                );
+            } else if (s->new_project.error[0]) {
+                game_entities_request_event(
+                    game_prototype_preview_entities(ui->world),
+                    entity,
+                    "InvalidName",
+                    (flow_inputs){ 0 }
+                );
+            }
+            continue;
+        }
         int command = strncmp(a.event, "studio.", 7)
                         ? -1
                         : studio_command_named(a.event + 7);
@@ -371,8 +396,9 @@ static const GameUi *panel_ui(studio_ui *ui, const panel *p)
 
 bool studio_ui_shortcut_focus(studio *s)
 {
-    if (!s || !s->ui || !s->backend || !s->kit || kit_has_popup(s->kit) ||
-        kit_command_is_open(s->kit) || kit_accepts_text(s->kit)) {
+    if (!s || !s->ui || !s->backend || !s->kit || s->new_project.open ||
+        kit_has_popup(s->kit) || kit_command_is_open(s->kit) ||
+        kit_accepts_text(s->kit)) {
         return false;
     }
     studio_ui *ui = s->ui;
@@ -537,6 +563,53 @@ void studio_ui_show(studio *s, const char *name)
         ecs_entity entity = game_prototype_preview_entity_at(s->ui->world, p->index);
         GAME_GameUi_get(game_prototype_preview_world(s->ui->world), entity)->hidden = false;
     }
+}
+
+/* Project operations own their state; the authored panel owns its controls. */
+static void sync_new_project(studio *s, bool read_input)
+{
+    ui_data *data = &s->ui->data;
+    yyjson_mut_val *root = yyjson_mut_doc_get_root(data->doc);
+    yyjson_mut_val *page = yyjson_mut_obj_get(root, "new_project");
+    yyjson_mut_val *name = yyjson_mut_obj_get(page, "name");
+    const char *text = yyjson_mut_get_str(name);
+    studio_new_project *dialog = &s->new_project;
+    if (read_input && !dialog->focus && !dialog->waiting &&
+        !dialog->confirm_discard && strcmp(dialog->name, text)) {
+        snprintf(dialog->name, sizeof dialog->name, "%s", text);
+        dialog->error[0] = '\0';
+        dialog->created_root[0] = '\0';
+    }
+    yyjson_mut_val *error = yyjson_mut_obj_get(page, "error");
+    yyjson_mut_val *waiting = yyjson_mut_obj_get(page, "waiting");
+    yyjson_mut_val *confirmation = yyjson_mut_obj_get(page, "confirm_discard");
+    bool changed = strcmp(text, dialog->name) ||
+                   strcmp(yyjson_mut_get_str(error), dialog->error) ||
+                   yyjson_mut_get_bool(waiting) != dialog->waiting ||
+                   yyjson_mut_get_bool(confirmation) != dialog->confirm_discard;
+    if (changed) {
+        ui_data_set_text(data->doc, name, dialog->name);
+        ui_data_set_text(data->doc, error, dialog->error);
+        yyjson_mut_set_bool(waiting, dialog->waiting);
+        yyjson_mut_set_bool(confirmation, dialog->confirm_discard);
+        rml_data_model_dirty(data->model, "new_project");
+    }
+}
+
+void studio_ui_new_project(studio *s)
+{
+    panel *p;
+    const char *document = panel_document(s, "NewProject", &p);
+    if (!document) {
+        return;
+    }
+    if (!s->new_project.open) {
+        ui_mount_detach(p->mount);
+        return;
+    }
+    sync_new_project(s, true);
+    show_panel(s, p, &p->mount, kit_modal_host(s->kit, "new-project"), document);
+    s->new_project.focus = false;
 }
 
 void studio_ui_collaboration_action(studio *s, studio_command command)

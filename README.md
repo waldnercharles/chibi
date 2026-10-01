@@ -2,6 +2,9 @@
 
 A C23 visual programming editor for authored game behaviors, prototypes, and scenes.
 
+[Native engine packages](docs/native-package.md) let a separate game workspace
+author assets through Studio and MCP using prebuilt executables.
+
 ## Development
 
 ```sh
@@ -10,6 +13,8 @@ make play         # optimized standalone game
 make debug        # plain Debug editor
 make debug-san    # Debug editor with ASan and UBSan
 make build        # build the sanitizer-enabled Debug profile
+make package-native # package native engine, Studio, and MCP for external games
+make test-package # verify the package without rebuilding during authoring
 make build-tracy  # build native RelWithDebInfo with Tracy enabled
 make run-tracy    # run the native Tracy profile
 make test         # model, runtime, native UI, generation, and loader checks
@@ -114,16 +119,15 @@ When ccache is installed, native builds and Release web builds under the source
 tree can reuse matching objects across worktrees. Native Debug and development
 builds normalize compilation paths so their debug information still resolves
 local sources. Native and web build directories save pinned dependency source
-snapshots to
-`CHIBI_FETCHCONTENT_CACHE_DIR` (by default,
+snapshots to `CHIBI_FETCHCONTENT_CACHE_DIR` (by default,
 `${XDG_CACHE_HOME:-$HOME/.cache}/chibi-fetchcontent`). Later build directories
 copy these snapshots using APFS cloning or Linux reflinks when available. The
 cache stores each dependency separately by repository and pin, including
 RmlUi, FreeType, Zep, tree-sitter, and their Git submodules. Changing a local
 patch reconfigures the build without duplicating unchanged cached sources.
 Each build can apply its own patches and generate files without changing the
-shared snapshot. Dependency
-build directories and linked libraries remain private, except for an installed
+shared snapshot. Dependency build directories and linked libraries remain
+private, except for an installed
 SDL package. Run `ccache --show-stats` to check hits and evictions; increase its
 size limit if it is continually full.
 

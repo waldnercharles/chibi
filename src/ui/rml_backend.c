@@ -770,7 +770,7 @@ static uintptr_t save_shadow_layer_as_texture(void *user)
             (size_t)width * 4
         );
     }
-    CF_Texture texture = texture_from_pixels(width, height, crop);
+    CF_Texture texture = texture_from_pixels(width, height, crop, CF_FILTER_LINEAR);
     free(crop);
     return hold_texture(backend, (held_texture){ .texture = texture, .external = -1 });
 }

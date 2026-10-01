@@ -301,10 +301,12 @@ static void apply_font_settings(kit *k, const studio_prefs *prefs, bool graph)
         "font-size: %ddp; line-height: %ddp; "
         "--h: %ddp; --text-line: %ddp; --h-sm: %ddp; "
         "--row: %ddp; --gap: %ddp; --header-h: %ddp; "
+        "--dropdown-list-h: %ddp; --dropdown-box-h: %ddp; "
         "--topbar-h: %ddp; --status-h: %ddp; --panel-h: %ddp; }\n"
         "body.comfortable, body.dark.comfortable { --h: %ddp; "
         "--text-line: %ddp; --h-sm: %ddp; "
         "--row: %ddp; --gap: %ddp; --header-h: %ddp; "
+        "--dropdown-list-h: %ddp; --dropdown-box-h: %ddp; "
         "--topbar-h: %ddp; --status-h: %ddp; --panel-h: %ddp; }\n"
         ".code-completions, .code-hover, .code-hover-title, .code-hover-line, "
         ".code-mode, kit-code { font-family: var(--studio-code-font-family, "
@@ -331,6 +333,8 @@ static void apply_font_settings(kit *k, const studio_prefs *prefs, bool graph)
         row,
         gap,
         header_h,
+        7 * h,
+        7 * h + 10,
         topbar_h,
         (int)lroundf(28 * scale),
         (int)lroundf(30 * scale),
@@ -340,6 +344,8 @@ static void apply_font_settings(kit *k, const studio_prefs *prefs, bool graph)
         graph ? 22 : (int)lroundf(30 * scale),
         (int)lroundf(3 * scale),
         (int)lroundf(36 * scale),
+        7 * (graph ? 22 : (int)lroundf(30 * scale)),
+        7 * (graph ? 22 : (int)lroundf(30 * scale)) + 10,
         (int)lroundf(44 * scale),
         (int)lroundf(30 * scale),
         (int)lroundf(34 * scale)

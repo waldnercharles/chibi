@@ -1,20 +1,6 @@
 /* Overlay layer: popups, tooltips and the command palette. */
 #layer { position: absolute; left: 0dp; top: 0dp; right: 0dp; bottom: 0dp; pointer-events: none; z-index: 10; }
 .modal-host { position: absolute; left: 0dp; top: 0dp; right: 0dp; bottom: 0dp; pointer-events: auto; z-index: 15; }
-.new-project-backdrop { position: absolute; left: 0dp; top: 0dp; right: 0dp; bottom: 0dp; background-color: #00000066; }
-.new-project-dialog {
-    position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
-    display: flex; flex-direction: column; gap: 12dp; width: 420dp; max-width: 90%;
-    padding: 22dp; background-color: var(--popover); color: var(--foreground);
-    border: 1dp var(--border); border-radius: var(--r-lg);
-}
-.new-project-title { color: var(--foreground); font-size: 20dp; font-weight: 650; line-height: 24dp; }
-.new-project-description { color: var(--muted-foreground); line-height: 18dp; white-space: normal; }
-.new-project-field { display: flex; flex-direction: column; gap: 6dp; color: var(--foreground); }
-.new-project-field .field { width: 100%; height: 34dp; flex: 0 0 34dp; }
-.new-project-field .field input.value { height: 26dp; line-height: 26dp; }
-.new-project-error { color: var(--destructive); font-size: 11dp; line-height: 16dp; white-space: normal; }
-.new-project-actions { display: flex; justify-content: flex-end; gap: 8dp; margin-top: 8dp; }
 .popup {
     position: absolute; pointer-events: auto; background-color: var(--popover); border: 1dp var(--popover-edge);
         border-radius: var(--r-lg); padding: 4dp; min-width: 180dp; max-width: 480dp; color: var(--foreground);
@@ -68,7 +54,13 @@ body.comfortable .popover .btn.sm { height: var(--studio-height-36, 36dp); }
 .menu-sep { height: 1dp; margin: 4dp 2dp; background-color: var(--border); }
 .menu-group { height: var(--studio-height-22, 22dp); line-height: var(--studio-line-22, 22dp); display: block; padding: 0dp 6dp; font-size: var(--studio-font-11, 11dp); color: var(--faint-foreground); }
 .dropdown .field.search { margin: 2dp 2dp 6dp; }
-.dropdown-results, .autocomplete-results { max-height: 260dp; overflow-y: auto; }
+/* Seven option rows by default; density and font settings update both tokens. */
+body { --dropdown-list-h: 182dp; --dropdown-box-h: 192dp; }
+body.comfortable { --dropdown-list-h: 210dp; --dropdown-box-h: 220dp; }
+body.graph-canvas, body.graph-canvas.comfortable { --dropdown-list-h: 154dp; --dropdown-box-h: 164dp; }
+.dropdown-results, .autocomplete-results { max-height: var(--dropdown-list-h); overflow-y: auto; }
+.popup.menu { max-height: var(--dropdown-box-h); overflow-y: auto; }
+.popup.menu.struct-editor { max-height: none; }
 .dropdown-empty { display: block; padding: 8dp; color: var(--muted-foreground); }
 
 /* The label and shortcut stay on one line; a description wraps beneath them.

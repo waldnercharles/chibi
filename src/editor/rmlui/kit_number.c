@@ -220,10 +220,22 @@ static void number_begin_edit(node *n, const char *initial)
     w->input_el = rml_element_create_child(n->el, "input", w->value_el);
     rml_element_set_attribute(w->input_el, "type", "text");
     rml_element_set_class_names(w->input_el, "part value edit");
+    char label[256];
+    if (rml_element_attribute(n->el, "aria-label", label, sizeof label)) {
+        rml_element_set_attribute(w->input_el, "aria-label", label);
+    }
     char text[NUMBER_TEXT];
     if (!initial) {
-        int precision = math_max(w->desc.precision, 3);
-        format_number(text, w->value, precision, w->desc.integer);
+        if (w->desc.integer) {
+            snprintf(text, sizeof text, "%.0f", w->value);
+        } else {
+            for (int precision = 1; precision <= 17; precision++) {
+                snprintf(text, sizeof text, "%.*g", precision, w->value);
+                if (strtod(text, NULL) == w->value) {
+                    break;
+                }
+            }
+        }
     }
     rml_element_set_value(w->input_el, initial ? initial : text);
     rml_element_focus(w->input_el, true);
@@ -274,44 +286,13 @@ static void number_end_edit(node *n, bool accept, bool refocus)
     number_display(n);
 }
 
-static void collect_numbers(node *n, node ***fields)
-{
-    if (n->kind == KIND_NUMBER && !number_locked(n)) {
-        apush(*fields, n);
-    }
-    for (int i = 0; i < acount(n->children); i++) {
-        collect_numbers(n->children[i], fields);
-    }
-}
-
-/* The editable field dir steps from `from`, wrapping, in document order
- * across roots; NULL when there is no other. */
-static node *next_number(const kit *k, const node *from, int dir)
-{
-    node **fields = NULL;
-    for (int i = 0; i < acount(k->roots); i++) {
-        collect_numbers(k->roots[i], &fields);
-    }
-    int count = acount(fields);
-    int at = nodes_index(fields, from);
-    node *next = NULL;
-    if (at >= 0 && count >= 2) {
-        next = fields[((at + dir) % count + count) % count];
-    }
-    afree(fields);
-    return next;
-}
-
 static void number_tab(kit *k, node *n, unsigned modifiers)
 {
-    number_end_edit(n, true, false);
+    number_end_edit(n, true, true);
     if (n->w.editing) {
         return;
     }
-    node *next = next_number(k, n, modifiers & KIT_MOD_SHIFT ? -1 : 1);
-    if (next) {
-        number_begin_edit(next, NULL);
-    }
+    focus_step(k->doc, n->el, modifiers & KIT_MOD_SHIFT ? -1 : 1, false, NULL);
 }
 
 static void edit_key(kit *k, node *n, const rml_event *e)

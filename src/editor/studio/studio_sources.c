@@ -54,6 +54,11 @@ yyjson_mut_doc *studio_sources_new()
     yyjson_mut_obj_add_bool(doc, collaboration, "busy", false);
     yyjson_mut_obj_add_bool(doc, collaboration, "has_peers", false);
     yyjson_mut_obj_add_arr(doc, collaboration, "peers");
+    yyjson_mut_val *new_project = yyjson_mut_obj_add_obj(doc, root, "new_project");
+    yyjson_mut_obj_add_str(doc, new_project, "name", "");
+    yyjson_mut_obj_add_str(doc, new_project, "error", "");
+    yyjson_mut_obj_add_bool(doc, new_project, "waiting", false);
+    yyjson_mut_obj_add_bool(doc, new_project, "confirm_discard", false);
     add_inspector(doc, root);
     studio_settings_add(doc);
     studio_status_add(doc);

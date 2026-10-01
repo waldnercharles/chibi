@@ -229,6 +229,29 @@ static rml_vec2 popup_origin(const kit *k, const popup *p, kit_rect size)
     return (rml_vec2){ a.x, y };
 }
 
+/* Keep authored row limits while allowing a smaller window to clip the list. */
+static void limit_popup_height(kit *k, popup *p)
+{
+    rml_element *list = NULL;
+    float cap = 0;
+    if (p->dropdown || p->autocomplete) {
+        list = rml_element_query_selector(p->node->el, ".dropdown-results, .autocomplete-results");
+        float chrome = popup_chrome + (p->dropdown ? kit_metric(k, "--h") + 8 : 0);
+        cap = math_min(kit_metric(k, "--dropdown-list-h"), math_max(1.0f, k->in.height - 8 - chrome));
+    } else if (
+        rml_element_is_class_set(p->node->el, "menu") &&
+        !rml_element_is_class_set(p->node->el, "struct-editor")
+    ) {
+        list = p->node->el;
+        cap = math_min(kit_metric(k, "--dropdown-box-h"), math_max(1.0f, k->in.height - 8));
+    }
+    if (list) {
+        char value[32];
+        snprintf(value, sizeof value, "%.0fdp", cap);
+        rml_element_set_property(list, "max-height", value);
+    }
+}
+
 void place_popups(kit *k)
 {
     float width = k->in.width, height = k->in.height;
@@ -237,6 +260,7 @@ void place_popups(kit *k)
         if (!p->open || !p->node) {
             continue;
         }
+        limit_popup_height(k, p);
         kit_rect size = element_rect(k, p->node->el);
         if (size.w <= 0 || size.h <= 0) {
             continue;

@@ -181,13 +181,6 @@ void studio_projects_frame(studio *s)
 {
     if (s->discard_toast && kit_toast_action(s->kit, s->discard_toast)) {
         s->discard_toast = 0;
-        if (s->new_project.confirm_discard) {
-            s->new_project.confirm_discard = false;
-            if (create_project(s)) {
-                s->new_project.open = false;
-            }
-            return;
-        }
         request(s, s->discard_project);
     }
 }
@@ -245,17 +238,50 @@ static void project_slug(const char *name, char *out, size_t size)
     out[at] = '\0';
 }
 
-static char *native_project_root(const char *name)
+static char *native_project_root(const studio *s, const char *name)
 {
     char base[128];
     project_slug(name, base, sizeof base);
-    char path[1024];
+    char folder[4096];
+    const char *workspace = resource_workspace();
+    if (workspace) {
+        int length = snprintf(folder, sizeof folder, "%s/projects", workspace);
+        if (length < 0 || (size_t)length >= sizeof folder) {
+            errno = ENAMETOOLONG;
+            return NULL;
+        }
+    } else {
+        /* An installed editor creates beside the external project it opened. */
+        size_t length = strlen(s->project_root);
+        while (length > 1 && s->project_root[length - 1] == '/') {
+            length--;
+        }
+        while (length && s->project_root[length - 1] != '/') {
+            length--;
+        }
+        if (length >= sizeof folder) {
+            errno = ENAMETOOLONG;
+            return NULL;
+        }
+        if (!length) {
+            snprintf(folder, sizeof folder, ".");
+        } else {
+            if (length > 1) {
+                length--;
+            }
+            memcpy(folder, s->project_root, length);
+            folder[length] = '\0';
+        }
+    }
+    char path[4096];
     struct stat info;
     for (int index = 1;; index++) {
-        if (index == 1) {
-            snprintf(path, sizeof path, CHIBI_WORKSPACE_DIR "/projects/%s", base);
-        } else {
-            snprintf(path, sizeof path, CHIBI_WORKSPACE_DIR "/projects/%s-%d", base, index);
+        int length = index == 1
+                       ? snprintf(path, sizeof path, "%s/%s", folder, base)
+                       : snprintf(path, sizeof path, "%s/%s-%d", folder, base, index);
+        if (length < 0 || (size_t)length >= sizeof path) {
+            errno = ENAMETOOLONG;
+            return NULL;
         }
         if (stat(path, &info) == 0) {
             continue;
@@ -293,12 +319,8 @@ static char *browser_project_root(const char *name, char *error, size_t error_si
 }
 #endif
 
-static void start_new_project(studio *s)
+void studio_new_project_open(studio *s)
 {
-    if (s->new_project.confirm_discard) {
-        kit_toast_dismiss(s->kit, s->discard_toast);
-        s->discard_toast = 0;
-    }
     s->new_project = (studio_new_project){ .open = true, .focus = true };
 }
 
@@ -308,29 +330,8 @@ void studio_new_project_menu(studio *s)
                                 .icon = KIT_ICON_FOLDER,
                                 .checked = -1 };
     if (kit_menu_item(s->kit, "project", &item)) {
-        start_new_project(s);
+        studio_new_project_open(s);
     }
-}
-
-static bool enter_pressed(const studio *s)
-{
-    for (int i = 0; i < acount(s->keys); i++) {
-        if ((s->keys[i].key == SDLK_RETURN || s->keys[i].key == SDLK_KP_ENTER) &&
-            !s->keys[i].repeat) {
-            return true;
-        }
-    }
-    return false;
-}
-
-static bool escape_pressed(const studio *s)
-{
-    for (int i = 0; i < acount(s->keys); i++) {
-        if (s->keys[i].key == SDLK_ESCAPE && !s->keys[i].repeat) {
-            return true;
-        }
-    }
-    return false;
 }
 
 static void created_project(studio *s, const char *root)
@@ -380,7 +381,7 @@ static bool create_project(studio *s)
         return false;
     }
 #else
-    root = native_project_root(dialog->name);
+    root = native_project_root(s, dialog->name);
     if (!root) {
         snprintf(error, sizeof error, "Cannot inspect project folder: %s", strerror(errno));
         snprintf(dialog->error, sizeof dialog->error, "%s", error);
@@ -397,96 +398,35 @@ static bool create_project(studio *s)
     return true;
 }
 
-static void request_new_project(studio *s)
+void studio_new_project_action(studio *s, const char *action)
 {
     studio_new_project *dialog = &s->new_project;
-    if (studio_unsaved(s)) {
-        kit_toast_dismiss(s->kit, s->discard_toast);
-        dialog->confirm_discard = true;
-        s->discard_toast = kit_toast(
-            s->kit,
-            0,
-            &(kit_toast_desc){ .type = KIT_TOAST_WARNING,
-                               .title = "Unsaved changes",
-                               .action = "Discard",
-                               .duration = -1 }
-        );
+    if (!dialog->open || dialog->waiting) {
         return;
     }
+    if (!strcmp(action, "cancel")) {
+        dialog->confirm_discard = false;
+        dialog->open = false;
+        return;
+    }
+    if (strcmp(action, "create") && strcmp(action, "discard")) {
+        return;
+    }
+    trim(dialog->name);
+    if (!named(dialog->name)) {
+        snprintf(dialog->error, sizeof dialog->error, "Enter a project name");
+        return;
+    }
+    if (!strcmp(action, "create") && studio_unsaved(s)) {
+        dialog->confirm_discard = true;
+        return;
+    }
+    if (!strcmp(action, "discard") && !dialog->confirm_discard) {
+        return;
+    }
+    dialog->confirm_discard = false;
     if (create_project(s)) {
         dialog->open = false;
-    }
-}
-
-static void new_project_dialog(studio *s)
-{
-    studio_new_project *dialog = &s->new_project;
-    if (!dialog->open) {
-        return;
-    }
-    kit *k = s->kit;
-    unsigned flags = dialog->waiting ? KIT_READONLY : 0;
-    kit_modal_begin(k, "new-project");
-    kit_leaf(k, "backdrop", "div", "new-project-backdrop");
-    kit_push(k, "dialog", "section", "new-project-dialog");
-    kit_attr(k, "role", "dialog");
-    kit_attr(k, "aria-modal", "true");
-    kit_attr(k, "aria-labelledby", "new-project-title");
-    kit_label(k, "title", "new-project-title", "Create a project");
-    kit_attr(k, "id", "new-project-title");
-    kit_label(k, "description", "new-project-description", "Creates an empty project with a Start scene.");
-    kit_push(k, "name-label", "label", "new-project-field");
-    kit_label(k, "label", NULL, "Project name");
-    bool edited = kit_text_field(
-        k,
-        "name",
-        dialog->name,
-        sizeof dialog->name,
-        "e.g. Sample Project",
-        flags | (dialog->error[0] ? KIT_INVALID : 0)
-    );
-    if (dialog->focus && !dialog->waiting) {
-        kit_focus(k);
-        dialog->focus = false;
-    }
-    kit_pop(k);
-    if (edited) {
-        dialog->error[0] = '\0';
-        dialog->created_root[0] = '\0';
-    }
-    if (dialog->error[0]) {
-        kit_label(k, "error", "new-project-error", dialog->error);
-    }
-    if (dialog->waiting) {
-        kit_label(k, "saving", "new-project-description", "Saving project…");
-    }
-    kit_push(k, "actions", NULL, "new-project-actions");
-    kit_button_desc cancel = { .label = "Cancel",
-                               .size = KIT_MD,
-                               .flags = dialog->waiting ? KIT_DISABLED : 0 };
-    kit_button_desc create = { .label = "Create project",
-                               .variant = KIT_PRIMARY,
-                               .size = KIT_MD,
-                               .flags = dialog->waiting ? KIT_DISABLED : 0 };
-    bool canceled = kit_button(k, "cancel", &cancel);
-    bool create_clicked = kit_button(k, "create", &create);
-    kit_pop(k);
-    kit_pop(k);
-    kit_modal_end(k);
-    bool entered = !dialog->waiting && dialog->shown && enter_pressed(s);
-    bool escaped = !dialog->waiting && dialog->shown && escape_pressed(s);
-    dialog->shown = true;
-    if (canceled || escaped) {
-        if (dialog->confirm_discard) {
-            kit_toast_dismiss(k, s->discard_toast);
-            s->discard_toast = 0;
-            dialog->confirm_discard = false;
-        }
-        dialog->open = false;
-        return;
-    }
-    if (!dialog->confirm_discard && (create_clicked || entered)) {
-        request_new_project(s);
     }
 }
 
@@ -506,7 +446,7 @@ void studio_new_project_frame(studio *s)
         free(status);
     }
 #endif
-    new_project_dialog(s);
+    studio_ui_new_project(s);
 }
 
 void studio_projects_menu(studio *s)

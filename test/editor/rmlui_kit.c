@@ -557,6 +557,19 @@ bool test_rmlui_kit()
         "color picker Escape restores trigger focus"
     );
 
+    rml_element *number_label = rml_element_query_selector(doc, ".prop-scroll label");
+    double label_before = f.value;
+    if (number_label) {
+        click_element(&f, number_label);
+        type(&f, "7");
+        ok &= check(kit_wants_text(f.k, NULL), "number property label starts editing its field");
+        key(&f, RML_INPUT_KEY_ESCAPE, 0);
+        frame(&f);
+        ok &= check(f.value == label_before, "number label edit cancels without changing its value");
+    } else {
+        ok &= check(false, "number property has an interactive label");
+    }
+
     f.controls = true;
     snprintf(f.control_text, sizeof f.control_text, "Original");
     settle(&f);
@@ -590,6 +603,22 @@ bool test_rmlui_kit()
     }
     f.control_flags = KIT_READONLY;
     frame(&f);
+    rml_element *text_label = control_text
+                                ? rml_element_query_selector(
+                                      rml_element_parent(rml_element_parent(
+                                          rml_element_parent(control_text)
+                                      )),
+                                      "label"
+                                  )
+                                : NULL;
+    if (text_label) {
+        kit_blur(f.k);
+        click_element(&f, text_label);
+        ok &= check(
+            rml_context_focus_element(rml_backend_context(f.backend)) != control_text,
+            "readonly property label does not activate its input"
+        );
+    }
     if (control_text) {
         rml_element_focus(control_text, true);
         rml_element_select(control_text);
@@ -621,6 +650,14 @@ bool test_rmlui_kit()
     );
     f.control_flags = KIT_DISABLED;
     frame(&f);
+    if (text_label) {
+        kit_blur(f.k);
+        click_element(&f, text_label);
+        ok &= check(
+            rml_context_focus_element(rml_backend_context(f.backend)) != control_text,
+            "disabled property label does not activate its input"
+        );
+    }
     if (control_text) {
         click_element(&f, control_text);
         type(&f, "Changed");
@@ -648,6 +685,20 @@ bool test_rmlui_kit()
         frame(&f);
     }
     ok &= check(!strcmp(f.control_text, "Enabled"), "text becomes editable when reenabled");
+    if (text_label) {
+        click_element(&f, text_label);
+        ok &= check(
+            rml_context_focus_element(rml_backend_context(f.backend)) == control_text,
+            "text property label focuses its editable input"
+        );
+        rml_element_select(control_text);
+        type(&f, "Labeled");
+        key(&f, RML_INPUT_KEY_ENTER, 0);
+        frame(&f);
+        ok &= check(!strcmp(f.control_text, "Labeled"), "editing from a property label commits to its value");
+    } else {
+        ok &= check(false, "text property has an interactive label");
+    }
     f.controls = false;
     settle(&f);
 
@@ -739,6 +790,57 @@ bool test_rmlui_kit()
     key(&f, RML_INPUT_KEY_ENTER, 0);
     frame(&f);
     ok &= check(kit_wants_text(f.k, NULL) && f.value == before, "invalid input stays in editing");
+    key(&f, RML_INPUT_KEY_ESCAPE, 0);
+    frame(&f);
+
+    /* Editing preserves the complete value even when display rounds it. */
+    f.value = 1.2345678901234567;
+    frame(&f);
+    before = f.value;
+    ok &= check(click(&f, "app/fields/first/@control/value"), "precise value edit");
+    key(&f, RML_INPUT_KEY_ENTER, 0);
+    frame(&f);
+    ok &= check(f.value == before, "accepting an untouched number preserves precision");
+
+    f.value = 0.1;
+    settle(&f);
+    ok &= check(click(&f, "app/fields/first/@control/value"), "decimal value edit");
+    rml_element *decimal = rml_context_focus_element(rml_backend_context(f.backend));
+    char decimal_text[32] = "";
+    if (decimal) {
+        rml_element_value(decimal, decimal_text, sizeof decimal_text);
+    }
+    key(&f, RML_INPUT_KEY_ENTER, 0);
+    frame(&f);
+    ok &= check(!strcmp(decimal_text, "0.1") && f.value == 0.1, "decimal editing shows the short value and preserves it on accept");
+
+    /* Tab follows mixed form order and commits the numeric draft once. */
+    f.commits = 0;
+    ok &= check(click(&f, "app/fields/first/@control/value"), "number edit before Tab");
+    type(&f, "7.5");
+    key(&f, RML_INPUT_KEY_TAB, 0);
+    frame(&f);
+    rml_element *second_field = rml_element_query_selector(doc, ".prop:nth-child(2) .field.number");
+    ok &= check(
+        f.value == 7.5 && f.commits == 1 &&
+            rml_context_focus_element(rml_backend_context(f.backend)) == second_field,
+        "Tab commits once and focuses the next field"
+    );
+    key(&f, RML_INPUT_KEY_ENTER, 0);
+    key(&f, RML_INPUT_KEY_TAB, 0);
+    frame(&f);
+    rml_element *color_field = rml_element_query_selector(doc, ".field.color");
+    ok &= check(
+        rml_context_focus_element(rml_backend_context(f.backend)) == color_field,
+        "Tab from a number reaches the color control in document order"
+    );
+    key(&f, RML_INPUT_KEY_TAB, RML_INPUT_MOD_SHIFT);
+    frame(&f);
+    ok &= check(
+        rml_context_focus_element(rml_backend_context(f.backend)) == second_field,
+        "Shift+Tab returns to the preceding numeric control"
+    );
+    ok &= check(click(&f, "app/fields/first/@control/value"), "number edit after Tab");
     key(&f, RML_INPUT_KEY_ESCAPE, 0);
     frame(&f);
 
@@ -907,6 +1009,27 @@ bool test_rmlui_kit()
         "typing filters without mutating the model or capping same-group "
         "matches"
     );
+    rml_element *results = rml_element_query_selector(autocomplete_popup, ".autocomplete-results");
+    settle(&f);
+    float compact_row = rml_element_box_size(matches[0], RML_BOX_BORDER).y;
+    float list_height = rml_element_box_size(results, RML_BOX_CONTENT).y;
+    ok &= check(
+        results && list_height <= compact_row * 7 + 1 &&
+            rml_element_scroll_height(results) > list_height,
+        "autocomplete keeps twelve choices behind a seven-row scrolling "
+        "viewport"
+    );
+    kit_set_body_class(f.k, "comfortable", true);
+    settle(&f);
+    float comfortable_row = rml_element_box_size(matches[0], RML_BOX_BORDER).y;
+    list_height = rml_element_box_size(results, RML_BOX_CONTENT).y;
+    ok &= check(
+        comfortable_row > compact_row && list_height <= comfortable_row * 7 + 1 &&
+            rml_element_scroll_height(results) > list_height,
+        "comfortable density keeps the seven-row dropdown cap"
+    );
+    kit_set_body_class(f.k, "comfortable", false);
+    settle(&f);
     rml_element *name = match_count ? rml_element_query_selector(matches[0], ".label")
                                     : NULL;
     rml_element *detail = match_count
@@ -933,9 +1056,28 @@ bool test_rmlui_kit()
         "completion highlights the match and places its type on the same line "
         "without overlap"
     );
-    for (int i = 0; i < 11; i++) {
+    for (int i = 0; i < 7; i++) {
         key(&f, RML_INPUT_KEY_DOWN, 0);
     }
+    settle(&f);
+    rml_vec2 list_at = rml_element_absolute_offset(results, RML_BOX_CONTENT);
+    rml_vec2 row_at = rml_element_absolute_offset(matches[7], RML_BOX_BORDER);
+    list_height = rml_element_box_size(results, RML_BOX_CONTENT).y;
+    ok &= check(
+        rml_element_scroll_top(results) > 0 && row_at.y >= list_at.y - 1 &&
+            row_at.y + compact_row <= list_at.y + list_height + 1,
+        "arrow navigation scrolls the eighth dropdown option into view"
+    );
+    for (int i = 0; i < 4; i++) {
+        key(&f, RML_INPUT_KEY_DOWN, 0);
+    }
+    settle(&f);
+    row_at = rml_element_absolute_offset(matches[11], RML_BOX_BORDER);
+    ok &= check(
+        row_at.y >= list_at.y - 1 &&
+            row_at.y + compact_row <= list_at.y + list_height + 1,
+        "arrow navigation reveals the final dropdown option"
+    );
     key(&f, RML_INPUT_KEY_ENTER, 0);
     frame(&f);
     ok &= check(

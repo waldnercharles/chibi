@@ -144,8 +144,8 @@ static void graph_text(studio *s, const char *text)
 static void graph_press_rect(studio *s, kit_rect rect)
 {
     studio_graph *g = &s->graph;
-    float x = g->surface.rect.x + (rect.x + rect.w * 0.5f) * g->zoom;
-    float y = g->surface.rect.y + (rect.y + rect.h * 0.5f) * g->zoom;
+    float x = g->surface.rect.x + (rect.x + rect.w * 0.5f) * g->in.zoom;
+    float y = g->surface.rect.y + (rect.y + rect.h * 0.5f) * g->in.zoom;
     mouse_move(s, x, y);
     for (int down = 1; down >= 0; down--) {
         SDL_Event event = { .type = down ? SDL_EVENT_MOUSE_BUTTON_DOWN
@@ -160,16 +160,24 @@ static void graph_press_rect(studio *s, kit_rect rect)
     }
 }
 
-static bool graph_value_control_shown(studio_fixture *f, const node *n, int pin)
+static bool graph_value_control_shown(studio_fixture *f, node *n, int pin)
 {
     char path[128];
     kit_rect rect;
+    const pin_spec *spec = &n->input_pins[pin];
+    char control[32];
+    if (sg_value_kind_of(f->studio, n, 0, pin) == VALUE_COLOR) {
+        snprintf(control, sizeof control, "pin-%llu", (unsigned long long)spec->id);
+    } else {
+        snprintf(control, sizeof control, "%s", spec->flags & PIN_FLAG_SETTING ? "v" : "source-edit");
+    }
     snprintf(
         path,
         sizeof path,
-        "world/stage/n%llu/b/i%d/v",
+        "world/stage/n%llu/b/i%d/%s",
         (unsigned long long)n->id,
-        pin
+        pin,
+        control
     );
     return kit_find(f->studio->graph.kit, path, &rect) && rect.w > 0 && rect.h > 0;
 }
@@ -235,7 +243,14 @@ static void graph_color_session_saves_undoes_and_replays()
     uint32_t initial = set->input_pins[color_pin].default_value.u;
     bool can_undo_before = editor_can_undo(f.graph);
     char path[128];
-    snprintf(path, sizeof path, "world/stage/n%llu/b/i%d/v", (unsigned long long)set_id, color_pin);
+    snprintf(
+        path,
+        sizeof path,
+        "world/stage/n%llu/b/i%d/pin-%llu",
+        (unsigned long long)set_id,
+        color_pin,
+        (unsigned long long)set->input_pins[color_pin].id
+    );
     frames(&f, 3);
     kit_rect control;
     assert(kit_find(f.studio->graph.kit, path, &control));

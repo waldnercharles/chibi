@@ -591,11 +591,12 @@ bool kit_checkbox(kit *k, const char *key, bool *value, const char *label, unsig
         rml_element_set_property(w->label_el, "display", w->label[0] ? "inline" : "none");
     }
     bool changed = false;
-    if (w->pending) {
+    if (w->pending && !locked(n)) {
         w->pending = false;
         *value = !*value;
         changed = true;
     }
+    w->pending = false;
     set_flag(n, "data-checked", *value);
     set_flag(n, "data-disabled", flags & KIT_DISABLED);
     set_flag(n, "data-readonly", flags & KIT_READONLY);
@@ -952,7 +953,12 @@ bool kit_color(kit *k, const char *key, uint32_t *rgba, unsigned flags)
     set_flag(n, "data-readonly", flags & KIT_READONLY);
     set_flag(n, "data-disabled", flags & KIT_DISABLED);
     set_attr(n, "role", "button");
-    set_attr(n, "aria-label", "Color picker");
+    const node *property = n->parent;
+    while (property && property->kind != KIND_PROP) {
+        property = property->parent;
+    }
+    const char *name = property ? property->w.label : "Color picker";
+    set_attr(n, "aria-label", name);
     set_attr(n, "aria-haspopup", "dialog");
     set_attr(n, "aria-expanded", open ? "true" : "false");
     set_attr(n, "aria-disabled", locked(n) ? "true" : "false");
@@ -960,7 +966,7 @@ bool kit_color(kit *k, const char *key, uint32_t *rgba, unsigned flags)
     if (kit_popup_begin(k, picker, "picker popover")) {
         node *p = popup_find(k, picker)->node;
         rml_element_set_attribute(p->el, "role", "dialog");
-        rml_element_set_attribute(p->el, "aria-label", "Color picker");
+        rml_element_set_attribute(p->el, "aria-label", name);
         update_picker(k, w, p, flags);
         double opacity = (double)(w->color & 255) * 100 / 255;
         const kit_number_desc alpha = {
@@ -1047,7 +1053,7 @@ void kit_prop_begin(kit *k, const char *key, const char *label)
 {
     node *n = emit(k, key, KIND_PROP, "div", "prop");
     if (!n->w.label_el) {
-        rml_element *l = raw(n->el, "span", "label", NULL);
+        rml_element *l = raw(n->el, "label", "label", NULL);
         n->w.label_el = raw(l, "span", "", NULL);
     }
     if (str_set(&n->w.label, label)) {
@@ -1057,9 +1063,68 @@ void kit_prop_begin(kit *k, const char *key, const char *label)
     push_node(k, emit(k, "@control", KIND_BODY, "div", "control"));
 }
 
+static rml_element *label_controls(kit *k, node *n, const char *label)
+{
+    if (n->kind == KIND_PROP) {
+        label = n->w.label;
+    }
+    switch (n->kind) {
+        case KIND_NUMBER:
+        case KIND_CHECK:
+        case KIND_TOGGLE:
+        case KIND_SELECT:
+        case KIND_TEXT:
+        case KIND_SEARCH:
+        case KIND_AUTOCOMPLETE:
+        case KIND_COLOR: {
+            const char *name = n->w.addon && n->w.addon[0]
+                                 ? frame_format(k, "%s %s", label, n->w.addon)
+                                 : label;
+            rml_element_set_attribute(n->el, "aria-label", name);
+            rml_element *target = n->w.input_el ? n->w.input_el : n->el;
+            if (n->kind == KIND_TOGGLE && rml_element_child_count(n->el)) {
+                target = rml_element_child(n->el, 0);
+            }
+            if (n->kind != KIND_TOGGLE) {
+                rml_element_set_attribute(target, "aria-label", name);
+            }
+            if (locked(n)) {
+                return NULL;
+            }
+            if (!rml_element_has_attribute(target, "id")) {
+                rml_element_set_attribute(
+                    target,
+                    "id",
+                    frame_format(k, "%s:%s", target == n->el ? "kit-field" : "kit-input", n->path)
+                );
+            }
+            return target;
+        }
+        default: break;
+    }
+    rml_element *first = NULL;
+    for (int i = 0; i < acount(n->children); i++) {
+        rml_element *target = label_controls(k, n->children[i], label);
+        if (!first) {
+            first = target;
+        }
+    }
+    return first;
+}
+
 void kit_prop_end(kit *k)
 {
     pop_node(k);
+    node *n = alast(k->stack);
+    rml_element *label = rml_element_parent(n->w.label_el);
+    rml_element *target = label_controls(k, n, n->w.label);
+    if (target) {
+        char *id = element_attribute(target, "id");
+        rml_element_set_attribute(label, "for", id);
+        free(id);
+    } else {
+        rml_element_remove_attribute(label, "for");
+    }
     pop_node(k);
 }
 

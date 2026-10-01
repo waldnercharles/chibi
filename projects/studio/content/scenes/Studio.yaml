@@ -15,6 +15,9 @@ entities:
 - name: Collaboration
   prototype: Collaboration
   behaviors: [NavKeys, Dismiss]
+- name: NewProject
+  prototype: NewProject
+  behaviors: [NewProjectKeys]
 - {name: AreaHeader, prototype: AreaHeader}
 - {name: Properties, prototype: Properties}
 - name: Widgets

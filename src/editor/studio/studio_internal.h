@@ -616,7 +616,7 @@ typedef struct
 
 typedef struct
 {
-    bool open, focus, shown, waiting, confirm_discard;
+    bool open, focus, waiting, confirm_discard;
     char name[128];
     char error[192];
     char created_root[1024];
@@ -1050,6 +1050,9 @@ void studio_projects_menu(studio *s);
 /* File > New > Project. */
 void studio_new_project_menu(studio *s);
 void studio_new_project_frame(studio *s);
+void studio_new_project_open(studio *s);
+void studio_new_project_action(studio *s, const char *action);
+void studio_ui_new_project(studio *s);
 
 /* Shell. */
 void studio_emit(studio *s);

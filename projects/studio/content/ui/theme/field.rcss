@@ -14,6 +14,8 @@
 .field[data-scrubbing] { background-color: var(--field-press); }
 .field:focus-visible { border-color: var(--ring); }
 .field.number { tab-index: auto; drag: drag; cursor: ew-resize; }
+.field.number[data-readonly], .field.number[data-disabled] { cursor: arrow; }
+.field.number[data-disabled] { tab-index: none; }
 .field .fill { position: absolute; left: 0dp; top: 0dp; bottom: 0dp; background-color: var(--fill); pointer-events: none; }
 .field:hover .fill, .field[data-scrubbing] .fill { background-color: var(--fill-hover); }
 .field .mark { position: absolute; left: 0dp; top: 3dp; bottom: 3dp; width: 2dp; border-radius: 1dp; background-color: transparent; }
@@ -89,6 +91,7 @@
 .check[data-checked] .box { background-color: var(--primary); border-color: var(--primary); }
 .check[data-checked] .box .icon { opacity: 1; }
 .check[data-disabled], .check[data-readonly] { opacity: 0.5; }
+.check[data-disabled] { tab-index: none; }
 
 /* Asset field (kit_picker): a select trigger that opens a search over assets. */
 .field.select.picker { tab-index: auto; }

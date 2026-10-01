@@ -20,6 +20,10 @@ const protocolVersion = "2025-11-25";
 const supportedProtocolVersions = [protocolVersion, "2025-06-18"];
 const serverVersion = "0.2.0";
 const serverInstructions = [
+  ...(process.env.CHIBI_ENGINE_PACKAGE ? [
+    `This game uses pinned engine build ${process.env.CHIBI_ENGINE_BUILD_ID}. Author game changes in assets against this engine.`,
+    "For missing capabilities, prepare a small reproducing project or scenario with expected and actual behavior, validation or capture evidence, and the engine build ID for work in the engine repository.",
+  ] : []),
   "Use Chibi MCP as the default authoring interface for shaders, behaviors, prototypes, scenes, and authored assets.",
   "1. Search or inspect assets, nodes, pins, fields, and content hashes with searchAssets, searchNodes, inspectGraph, inspectUi, describeComponents, or getProjectStatus.",
   "2. Build with buildGraph, buildPrototype, or buildScene. Write UI documents directly as files: content/ui/<Name>.rml, its markup, and content/ui/<Name>.rcss, its styles. Graph edits are typed, atomic, hash-checked for existing assets, and auto-arranged.",

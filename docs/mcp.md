@@ -4,6 +4,13 @@ The project exposes a local MCP server backed by the native `chibi_ctl`
 controller. The controller uses the generated reflection registry and the
 same asset loaders and compiler used by the editor.
 
+For an installed native package, register an external game with
+`/path/to/chibi/bin/chibi-mcp --setup /path/to/game`, or start its stdio server
+with `/path/to/chibi/bin/chibi-mcp /path/to/game`. This uses the packaged
+controller without an engine checkout or build tools. See
+[native packages](native-package.md) for engine pins and capability requests.
+The build commands below apply to engine development in this repository.
+
 ## Start the server in a terminal
 
 Run this from the project root:

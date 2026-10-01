@@ -353,7 +353,7 @@ static void status_checks()
             state_is(toggles[1], "off") && !strcmp(kbd, ASSETS_KEY "A") &&
             text_is(rml_element_query_selector(toggles[1], ".label"), "toggleOutput") &&
             counts_are(&f, "1", "12") && count(&f, "#ui-scale .ui-scale") == 1 &&
-            rml_element_box_size(bar, RML_BOX_BORDER).y == 24,
+            rml_element_box_size(bar, RML_BOX_BORDER).y == 28,
         "the authored status bar shows the editor and commands variables, "
         "with UI Scale in its native slot"
     );

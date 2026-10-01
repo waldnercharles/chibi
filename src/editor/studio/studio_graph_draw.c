@@ -1,11 +1,9 @@
 /* Graph canvas rendering: nodes, pins, wires and comments as kit elements. */
-#include "editor/collab/collab.h"
 #include "editor/studio/studio_graph_internal.h"
 #include "editor/ui/highlight.h"
 #include "editor/ui/labels.h"
 #include "graph/authoring/describe.h"
 #include "graph/model/local.h"
-#include "graph/model/pin_conv.h"
 #include "graph/nodes/behavior_expression.h"
 #include "support/array.h"
 
@@ -110,157 +108,6 @@ static void socket_path(char *out, size_t size, const studio *s, node *n, int ki
     snprintf(out, size, "world/stage/n%llu/b/%c%d/s", id, side, pin);
 }
 
-/* Streaming edits must reach the preview on the next tick. */
-static void touched(editor *e)
-{
-    e->edit_pending = 1;
-}
-
-/* A pin's value editor, in the canvas or in Properties. */
-void sg_emit_value_in(studio *s, kit *k, node *n, int output, int p)
-{
-    studio_graph *g = &s->graph;
-    editor *e = sg_graph_editor(s);
-    graph *gr = sg_active_graph(s);
-    const pin_spec *spec = output ? &n->output_pins[p] : &n->input_pins[p];
-    if (spec->container != PIN_CONTAINER_SINGLE) {
-        return;
-    }
-    pin_value value = spec->default_value;
-    bool changed = false, streaming = false, committed = false;
-    unsigned flags = sg_graph_readonly(s) ? KIT_READONLY : 0;
-    const editor_choices *choices = ed_pin_choices(e, n, output, p);
-    int width = pin_vector_width(spec);
-    double number = 0;
-    float vector[4] = { 0 };
-    char text[256];
-    int count = choices ? editor_choices_count(choices) : 0;
-    if (count > 0) {
-        /* Name catalogs, such as a component setting, match by name. */
-        const char **labels = NULL;
-        int index = -1;
-        for (int i = 0; i < count; i++) {
-            editor_choice choice = editor_choice_at(choices, i);
-            apush(labels, choice.label);
-            bool selected = spec->type == PIN_NAME
-                              ? value.str && choice.name &&
-                                    !strcmp(value.str, choice.name)
-                              : choice.value ==
-                                    (spec->type == PIN_ENUM ? value.e : value.i);
-            index = selected ? i : index;
-        }
-        if (kit_choice(k, "v", &index, labels, count, flags)) {
-            editor_choice choice = editor_choice_at(choices, index);
-            if (spec->type == PIN_NAME) {
-                value.str = choice.name;
-            } else if (spec->type == PIN_ENUM) {
-                value.e = choice.value;
-            } else {
-                value.i = choice.value;
-            }
-            changed = true;
-        }
-        afree(labels);
-    } else if (spec->type == PIN_BOOL) {
-        bool b = value.b;
-        if (kit_checkbox(k, "v", &b, NULL, flags)) {
-            value.b = b;
-            changed = true;
-        }
-    } else if (width > 0 && !(spec->flags & PIN_FLAG_COLOR)) {
-        if (spec->default_value.ptr) {
-            memcpy(vector, spec->default_value.ptr, (size_t)width * sizeof(float));
-        }
-        static const char *const axes[] = { "X", "Y", "Z", "W" };
-        for (int a = 0; a < width; a++) {
-            char key[8];
-            snprintf(key, sizeof key, "v%d", a);
-            double axis = vector[a];
-            kit_number_desc desc = { .precision = 2,
-                                     .step = 0.1,
-                                     .addon = axes[a],
-                                     .addon_cls = a == 0 ? "x"
-                                                : a == 1 ? "y"
-                                                         : NULL,
-                                     .flags = flags };
-            if (kit_number(k, key, &axis, &desc)) {
-                vector[a] = (float)axis;
-                changed = streaming = true;
-            }
-            committed |= kit_item_committed(k);
-        }
-        if (changed) {
-            value.ptr = vector;
-        }
-    } else if (spec->type == PIN_STR || spec->type == PIN_NAME) {
-        snprintf(text, sizeof text, "%s", value.str ? value.str : "");
-        if (kit_text_field(k, "v", text, sizeof text, NULL, flags)) {
-            value.str = text;
-            changed = true;
-        }
-    } else if (spec->type >= PIN_I8 && spec->type <= PIN_F64) {
-        bool integer = spec->type < PIN_F32;
-        switch (spec->type) {
-            case PIN_I8: number = value.i8; break;
-            case PIN_U8: number = value.u8; break;
-            case PIN_I16: number = value.i16; break;
-            case PIN_U16: number = value.u16; break;
-            case PIN_I32: number = value.i; break;
-            case PIN_U32: number = value.u; break;
-            case PIN_I64: number = (double)value.i64; break;
-            case PIN_U64: number = (double)value.u64; break;
-            case PIN_F32: number = value.f; break;
-            default: number = value.d; break;
-        }
-        kit_number_desc desc = { .integer = integer,
-                                 .precision = integer ? 0 : 2,
-                                 .step = integer ? 1 : 0.1,
-                                 .flags = flags };
-        if (kit_number(k, "v", &number, &desc)) {
-            switch (spec->type) {
-                case PIN_I8: value.i8 = (int8_t)number; break;
-                case PIN_U8: value.u8 = (uint8_t)number; break;
-                case PIN_I16: value.i16 = (int16_t)number; break;
-                case PIN_U16: value.u16 = (uint16_t)number; break;
-                case PIN_I32: value.i = (int32_t)number; break;
-                case PIN_U32: value.u = (uint32_t)number; break;
-                case PIN_I64: value.i64 = (int64_t)number; break;
-                case PIN_U64: value.u64 = (uint64_t)number; break;
-                case PIN_F32: value.f = (float)number; break;
-                default: value.d = number; break;
-            }
-            changed = streaming = true;
-        }
-        committed = kit_item_committed(k);
-    }
-    if (!changed || sg_graph_readonly(s)) {
-        if (committed) {
-            g->value_editing = false;
-        }
-        return;
-    }
-    int edited;
-    if (collab_active() && !collab_replaying()) {
-        edited = editor_command_apply(
-            e,
-            (editor_command){ .kind = EDITOR_COMMAND_SET_PIN_DEFAULT,
-                              .data.set_pin_default = { n->id, output, p, &value } }
-        );
-        g->value_editing = edited == 0 && streaming && !committed;
-    } else {
-        /* A scrub is one undo step; discrete edits, and a step or typed value
-           that commits as it changes, are one each. */
-        if (!streaming || !g->value_editing) {
-            ed_snapshot_before(e);
-        }
-        g->value_editing = streaming && !committed;
-        edited = graph_set_pin_default(gr, n, output, p, &value);
-    }
-    if (edited == 0) {
-        touched(e);
-    }
-}
-
 static void emit_value(studio *s, node *n, int output, int p)
 {
     sg_emit_value_in(s, s->graph.kit, n, output, p);
@@ -317,10 +164,12 @@ static void emit_pin(studio *s, node *n, int kind, int p, const char *cls, float
                                                         : 1;
     kit_push(k, key, NULL, cls);
     kit_flag(k, "data-hover", hovered);
-    kit_push(k, "s", "span", "socket");
-    kit_dot_desc dot = socket_dot(s, parts.spec, parts.connected || parts.inline_source, hovered, alpha);
-    kit_dot(k, "d", NULL, &dot);
-    kit_pop(k);
+    if (!input || !(parts.spec->flags & PIN_FLAG_SETTING)) {
+        kit_push(k, "s", "span", "socket");
+        kit_dot_desc dot = socket_dot(s, parts.spec, parts.connected || parts.inline_source, hovered, alpha);
+        kit_dot(k, "d", NULL, &dot);
+        kit_pop(k);
+    }
     if (!input && parts.value != VALUE_NONE) {
         emit_value(s, n, 1, p);
     }
@@ -347,15 +196,9 @@ static void emit_pin(studio *s, node *n, int kind, int p, const char *cls, float
             kit_label(k, "w", "gwatch", value);
         }
     }
-    if (input && parts.value == VALUE_CHIP) {
-        kit_push(k, "c", NULL, parts.inline_source ? "chip source" : "chip");
-        if (parts.chip_icon) {
-            kit_icon(k, "i", NULL, parts.chip_icon);
-        }
-        kit_label(k, "t", "chip-text", parts.chip);
-        kit_pop(k);
-    } else if (input && parts.value != VALUE_NONE) {
-        emit_value(s, n, 0, p);
+    if (input && parts.spec->kind == PIN_DATA &&
+        (parts.source_select || parts.value != VALUE_NONE || parts.connected)) {
+        sg_emit_graph_input(s, k, n, p);
     }
     kit_pop(k);
 }
@@ -409,6 +252,10 @@ static void emit_head(studio *s, node *n, const node_layout *l)
 static void emit_code(studio *s, node *n, const node_layout *l)
 {
     kit *k = s->graph.kit;
+    if (sg_expression_editing(s, k, n, 0)) {
+        sg_emit_expression_editor(s, k, n, 0);
+        return;
+    }
     const char *code = behavior_expression_source(sg_graph_editor(s)->asset, n);
     int starts[CODE_LINES], length = (int)strlen(code);
     int count = sg_code_lines(s, code, sg_code_room(l), starts);
@@ -423,6 +270,15 @@ static void emit_code(studio *s, node *n, const node_layout *l)
         snprintf(line, sizeof line, "%.*s", end - starts[i], code + starts[i]);
         highlight_markup(HIGHLIGHT_EXPRESSION, line, markup, sizeof markup);
         kit_markup(k, key, "gcode-line", markup);
+    }
+    kit_button_desc edit = { .icon = KIT_ICON_EDIT,
+                             .variant = KIT_GHOST,
+                             .size = KIT_SM,
+                             .cls = "gcode-edit",
+                             .tip = "Edit expression",
+                             .flags = sg_graph_readonly(s) ? KIT_DISABLED : 0 };
+    if (kit_button(k, "edit", &edit)) {
+        sg_begin_expression_edit(s, k, n, 0);
     }
     kit_pop(k);
 }

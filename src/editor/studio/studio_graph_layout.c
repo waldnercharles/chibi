@@ -138,13 +138,20 @@ static const float CODE_SIZE = 11, CODE_LINE = 16, CODE_PAD = 12, CODE_INSET = 2
 value_kind sg_value_kind_of(const studio *s, node *n, int output, int p)
 {
     const pin_spec *spec = output ? &n->output_pins[p] : &n->input_pins[p];
+    if (output && !ed_pin_editable(sg_active_graph(s), n, ED_PIN_OUTPUT, p)) {
+        return VALUE_NONE;
+    }
     int width = pin_vector_width(spec);
     const editor_choices *choices = ed_pin_choices(sg_graph_editor(s), n, output, p);
     if (spec->container != PIN_CONTAINER_SINGLE) {
-        return VALUE_NONE;
+        return VALUE_COMPOUND;
     }
     if (choices && editor_choices_count(choices) > 0) {
         return VALUE_CHOICE;
+    }
+    if ((spec->flags & PIN_FLAG_COLOR) &&
+        (width > 0 || spec->type == PIN_U32 || spec->type == PIN_I32)) {
+        return VALUE_COLOR;
     }
     if (spec->type == PIN_BOOL) {
         return VALUE_BOOL;
@@ -154,6 +161,9 @@ value_kind sg_value_kind_of(const studio *s, node *n, int output, int p)
     }
     if (spec->type == PIN_STR || spec->type == PIN_NAME) {
         return VALUE_TEXT;
+    }
+    if (spec->type == PIN_STRUCT) {
+        return VALUE_COMPOUND;
     }
     return spec->type >= PIN_I8 && spec->type <= PIN_F64 ? VALUE_NUMBER : VALUE_NONE;
 }
@@ -313,6 +323,9 @@ void sg_pin_parts_of(const studio *s, node *n, int kind, int p, pin_parts *out)
         editor_identifier_label(local->name, out->label, sizeof out->label);
     }
     out->show_label = !exec_label(spec, out->label);
+    out->source_select = input && !sg_graph_readonly(s) && spec->kind == PIN_DATA &&
+                         !(spec->flags & PIN_FLAG_SETTING) &&
+                         (out->connected || ed_pin_editable(gr, n, kind, p));
     /* An unwired shader input that samples its surface says what it reads
        (Fresnel's Normal reads the Surface Normal), not a zero vector. */
     const char *context = NULL;
@@ -325,6 +338,16 @@ void sg_pin_parts_of(const studio *s, node *n, int kind, int p, pin_parts *out)
     if (out->inline_source) {
         out->chip_icon = folded_chip(s, n, p, out->chip, sizeof out->chip);
         out->value = VALUE_CHIP;
+    } else if (
+        input && out->connected && src && src_pin >= 0 &&
+        (!spec->binding || spec->binding->kind != PIN_BINDING_LOCAL)
+    ) {
+        char title[128], pin_label[96];
+        ed_node_title(sg_graph_editor(s), src, title, sizeof title);
+        ed_pin_label(src, &src->output_pins[src_pin], pin_label, sizeof pin_label);
+        snprintf(out->chip, sizeof out->chip, "%s \xe2\x80\xba %s", title, pin_label);
+        out->chip_icon = sg_node_icon(s, src);
+        out->value = VALUE_CHIP;
     } else if (input && spec->binding) {
         out->chip_icon = binding_chip(s, spec->binding, out->chip, sizeof out->chip);
         out->value = VALUE_CHIP;
@@ -333,11 +356,13 @@ void sg_pin_parts_of(const studio *s, node *n, int kind, int p, pin_parts *out)
     }
 }
 
-/* Measured as the canvas draws it at this zoom, so text never clips; far out,
-   where rows hide, at the least zoom that shows them. */
+/* Layout uses the same text metrics at every camera zoom. Measuring at the
+   live zoom makes hinted glyph advances change node widths and socket
+   positions as the camera moves. The canvas still rasterizes text at its
+   displayed zoom. */
 float sg_text_width(const studio *s, const char *text, float size, int weight)
 {
-    float ratio = fmaxf(studio_graph_pixel_ratio(s), FAR_PIXELS);
+    float ratio = fmaxf(studio_pixel_ratio(s) * s->prefs.standard_font_size / 12.0f, FAR_PIXELS);
     return s->graph.kit ? kit_text_width(s->graph.kit, text, size, weight, ratio)
                         : strlen(text) * size * 0.55f;
 }
@@ -345,16 +370,28 @@ float sg_text_width(const studio *s, const char *text, float size, int weight)
 /* The least width of a pin's editor or chip; editors then fill the row. */
 static float value_width(const studio *s, const pin_parts *parts)
 {
+    float width = 0;
     switch (parts->value) {
-        case VALUE_CHOICE: return 96;
-        case VALUE_BOOL: return 16;
-        case VALUE_VECTOR: return 58.0f * (float)pin_vector_width(parts->spec);
-        case VALUE_TEXT: return 96;
-        case VALUE_NUMBER: return 64;
+        case VALUE_CHOICE: width = 96; break;
+        case VALUE_BOOL: width = 16; break;
+        case VALUE_VECTOR:
+            width = 58.0f * (float)pin_vector_width(parts->spec);
+            break;
+        case VALUE_COLOR: width = 58; break;
+        case VALUE_TEXT: width = 96; break;
+        case VALUE_NUMBER: width = 64; break;
+        case VALUE_COMPOUND: width = 96; break;
         case VALUE_CHIP:
-            return fminf(sg_text_width(s, parts->chip, 11, 400) + 12 + (parts->chip_icon ? 16 : 0), 200);
-        default: return 0;
+            width = sg_text_width(s, parts->chip, 11, 400) + 12 +
+                    (parts->chip_icon ? 16 : 0) +
+                    (parts->connected || parts->spec->binding ? 2 : 0);
+            if (parts->inline_source || (!parts->connected && !parts->spec->binding)) {
+                width = fminf(width, 200);
+            }
+            break;
+        default: break;
     }
+    return width;
 }
 
 /* Operators and one-output reads compact (Unreal); anything with execution

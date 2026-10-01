@@ -812,6 +812,7 @@ function failedRender(operation, code, message) {
 
 function controllerPath(root) {
   const configured = process.env.CHIBI_CTL;
+  if (process.env.CHIBI_ENGINE_PACKAGE) return configured;
   const candidates = [
     configured,
     resolve(root, "build", "chibi_ctl"),

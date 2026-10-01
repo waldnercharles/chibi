@@ -2,6 +2,8 @@
 
 #include "editor/collab/collab.h"
 #include "graph/document/serialize_internal.h"
+#include "graph/model/registry.h"
+#include "graph/model/type.h"
 #include "runtime/generated.h"
 #include "support/array.h"
 #include "support/xalloc.h"
@@ -208,6 +210,55 @@ static const ecs_component_desc *component_named(app_scene_authoring *scene, con
     return NULL;
 }
 
+static bool read_plain_value(pin_type type, const char *type_name, yyjson_val *json, pin_value *out)
+{
+    *out = (pin_value){ 0 };
+    if (type != PIN_STRUCT) {
+        if (type == PIN_STR || type == PIN_NAME) {
+            if (!yyjson_is_str(json)) {
+                return false;
+            }
+            *out = (pin_value){ .type = type,
+                                .type_name = type_name,
+                                .str = xstrdup(yyjson_get_str(json)) };
+            return true;
+        }
+        return serialize_read_value(type, type_name, json, out, NULL) == 0;
+    }
+    const type_desc *shape = registry_type_by_name(type_name);
+    if (!shape || !type_is_plain(shape) || !yyjson_is_obj(json)) {
+        return false;
+    }
+    void *data = xcalloc(1, shape->size);
+    for (int i = 0; i < shape->field_count; i++) {
+        const type_field *field = &shape->fields[i];
+        yyjson_val *member_json = yyjson_obj_get(json, field->name);
+        pin_value member = { 0 };
+        if (!member_json ||
+            !read_plain_value(field->type, field->type_name, member_json, &member)) {
+            free(data);
+            return false;
+        }
+        pin_write_field(data, field, member);
+        if (member.type == PIN_STRUCT) {
+            free(member.ptr);
+        }
+    }
+    *out = (pin_value){ .type = PIN_STRUCT, .type_name = type_name, .ptr = data };
+    return true;
+}
+
+static void free_action_value(pin_value *value)
+{
+    if (value->type == PIN_STR || value->type == PIN_NAME) {
+        free((void *)value->str);
+    }
+    if (value->type == PIN_STRUCT) {
+        free(value->ptr);
+    }
+    *value = (pin_value){ 0 };
+}
+
 static bool read_field_value(
     const ecs_component_desc *component,
     const char *field_name,
@@ -216,6 +267,10 @@ static bool read_field_value(
     pin_value *out
 )
 {
+    if (!out) {
+        return false;
+    }
+    *out = (pin_value){ 0 };
     if (!component || !component->type || !field_name || !json) {
         return false;
     }
@@ -228,8 +283,10 @@ static bool read_field_value(
         return false;
     }
     const type_field *schema = &component->type->fields[field];
-    if (serialize_read_value(schema->type, schema->type_name, json, out, NULL) != 0 ||
+    *out = (pin_value){ 0 };
+    if (!read_plain_value(schema->type, schema->type_name, json, out) ||
         !editable_scalar(out)) {
+        free_action_value(out);
         return false;
     }
     *index = field;
@@ -244,11 +301,19 @@ static bool apply_property(app_scene_authoring *scene, yyjson_val *root, char *e
     const ecs_component_desc *component = component_named(scene, component_name);
     pin_value value = { 0 };
     int field = -1;
-    if (!actor ||
-        !read_field_value(component, field_name, yyjson_obj_get(root, "value"), &field, &value) ||
-        !ecs_component_has(scene->world, actor->entity, component->id) ||
-        ecs_component_write_field(scene->world, actor->entity, component->id, field, value) !=
-            ECS_OK) {
+    bool read = actor &&
+                read_field_value(component, field_name, yyjson_obj_get(root, "value"), &field, &value);
+    bool applied = read &&
+                   ecs_component_has(scene->world, actor->entity, component->id) &&
+                   ecs_component_write_field(
+                       scene->world,
+                       actor->entity,
+                       component->id,
+                       field,
+                       value
+                   ) == ECS_OK;
+    free_action_value(&value);
+    if (!applied) {
         return fail(error, size, "Scene property action failed validation or application");
     }
     scene->scene_dirty = true;
@@ -273,10 +338,13 @@ static bool apply_prototype_field(app_scene_authoring *scene, yyjson_val *root, 
     }
     int field = -1;
     pin_value value = { 0 };
-    if (!component ||
-        !read_field_value(component->desc, field_name, yyjson_obj_get(root, "value"), &field, &value) ||
-        app_scene_authoring_set_prototype_field(scene, prototype, component_name, field_name, value) !=
-            0) {
+    bool read = component &&
+                read_field_value(component->desc, field_name, yyjson_obj_get(root, "value"), &field, &value);
+    bool applied = read &&
+                   app_scene_authoring_set_prototype_field(scene, prototype, component_name, field_name, value) ==
+                       0;
+    free_action_value(&value);
+    if (!applied) {
         return fail(error, size, "Prototype field action failed validation or application");
     }
     return true;

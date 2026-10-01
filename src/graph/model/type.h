@@ -42,6 +42,7 @@ typedef struct
 uint64_t type_layout_hash(const type_desc *type);
 /* Every field is inline and contains no managed string or container. */
 bool type_is_plain(const type_desc *type);
+bool type_value_is_finite(const type_desc *type, const void *value);
 
 /* Read and write reflected fields. */
 void pin_write_field(void *base, const type_field *f, pin_value v);

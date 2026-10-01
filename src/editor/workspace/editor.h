@@ -68,6 +68,8 @@ typedef struct
             int output;
             int pin_index;
             const pin_value *value;
+            /* The caller already captured this gesture's initial undo state. */
+            bool coalesce_history;
         } set_pin_default;
         struct
         {

@@ -127,6 +127,17 @@ static double evaluate(const char *text, double current)
     return v;
 }
 
+bool kit_number_parse(const char *text, double current, double *out)
+{
+    assert(out);
+    double value = evaluate(text ? text : "", current);
+    if (!isfinite(value)) {
+        return false;
+    }
+    *out = value;
+    return true;
+}
+
 /* ---------- Values ---------- */
 
 static bool number_bounded(const widget *w)

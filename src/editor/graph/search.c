@@ -806,8 +806,11 @@ static int ed_autowire_spawn(editor *e, node *n)
     return ed_autowire_spawn_input(e, n);
 }
 
-static node *ed_spawn_match_at_direct(editor *e, const ed_search_match *match, float x, float y)
+static node *ed_spawn_match_at_direct(editor *e, const ed_search_match *match, float x, float y, uint64_t *created_id)
 {
+    if (created_id) {
+        *created_id = 0;
+    }
     if (match->desc == &ed_comment_box_desc) {
         ed_snapshot_before(e);
         graph_add_comment_box(e->active_graph, "Comment", x, y, 320.0f, 160.0f);
@@ -834,13 +837,16 @@ static node *ed_spawn_match_at_direct(editor *e, const ed_search_match *match, f
     if (!n) {
         return NULL;
     }
+    uint64_t id = n->id;
+    if (created_id) {
+        *created_id = id;
+    }
     n->x = x;
     n->y = y;
     if (match->desc == &ed_math_desc) {
         ed_select_node(e, n, 0);
     }
     if (e->spawn_link_pending) {
-        uint64_t id = n->id;
         ed_autowire_spawn(e, n);
         ed_commit_snapshot(e);
         e->spawn_link_pending = 0;
@@ -850,8 +856,11 @@ static node *ed_spawn_match_at_direct(editor *e, const ed_search_match *match, f
     return n;
 }
 
-node *ed_spawn_match_at(editor *e, const ed_search_match *match, float x, float y)
+node *ed_spawn_match_at_with_id(editor *e, const ed_search_match *match, float x, float y, uint64_t *created_id)
 {
+    if (created_id) {
+        *created_id = 0;
+    }
     /* Comment boxes do not have node IDs and ed_spawn_match_at deliberately
        returns NULL for them, so they cannot use this node action envelope. */
     if (collab_active() && !collab_replaying() && match && match->desc &&
@@ -860,9 +869,10 @@ node *ed_spawn_match_at(editor *e, const ed_search_match *match, float x, float 
     }
     char *action = graph_collab_action_spawn_match(e, match, x, y);
     if (!action) {
-        return collab_active() && !collab_replaying()
-                 ? NULL
-                 : ed_spawn_match_at_direct(e, match, x, y);
+        if (collab_active() && !collab_replaying()) {
+            return NULL;
+        }
+        return ed_spawn_match_at_direct(e, match, x, y, created_id);
     }
     collab_action_gate gate = collab_actions_begin(action);
     if (gate != COLLAB_ACTION_APPLY) {
@@ -873,12 +883,23 @@ node *ed_spawn_match_at(editor *e, const ed_search_match *match, float x, float 
     if (!expected_id) {
         expected_id = 1;
     }
-    node *made = ed_spawn_match_at_direct(e, match, x, y);
-    assert(!made || made->id == expected_id);
-    /* A spawn folded into its destination changed the graph all the same. */
-    collab_actions_finish(action, made || e->asset->graph->id_counter > expected_id);
+    uint64_t made_id = 0;
+    node *made = ed_spawn_match_at_direct(e, match, x, y, &made_id);
+    if (made_id) {
+        assert(made_id == expected_id);
+    }
+    /* A spawn folded into its destination still changed the graph. */
+    collab_actions_finish(action, made_id == expected_id);
     free(action);
+    if (created_id) {
+        *created_id = made_id;
+    }
     return made;
+}
+
+node *ed_spawn_match_at(editor *e, const ed_search_match *match, float x, float y)
+{
+    return ed_spawn_match_at_with_id(e, match, x, y, NULL);
 }
 
 const char *ed_extract_selection(editor *e)

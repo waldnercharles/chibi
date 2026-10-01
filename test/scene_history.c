@@ -547,9 +547,49 @@ static void string_history()
     puts("scene string history PASS: owned component values, checkpoint and Undo/Redo lifetimes");
 }
 
+static void plain_struct_history()
+{
+    ecs_world *world = ecs_world_new();
+    assert(ecs_world_register_component(world, &GAME_COMPONENT_GameAim, NULL) == ECS_OK);
+    ecs_entity entity = ecs_world_create_entity(world);
+    assert(GAME_GameAim_add(world, entity, 0) == ECS_OK);
+    assert(ecs_world_apply_commands(world) == ECS_OK);
+    CF_V2 before = { 1.5f, -2.25f }, after = { 10.5f, 20.25f };
+    GAME_GameAim_get(world, entity)->direction = after;
+    scene_field_edit edit = {
+        .component = GAME_COMPONENT_GameAim.id,
+        .field = 0,
+        .before = { .type = PIN_STRUCT, .type_name = "CF_V2", .ptr = &before },
+        .after = { .type = PIN_STRUCT, .type_name = "CF_V2", .ptr = &after },
+    };
+    scene_history *source = scene_history_new(), *restored = scene_history_new();
+    CF_V2 invalid = { NAN, 1 };
+    edit.after.ptr = &invalid;
+    assert(!scene_history_push_fields(source, entity, &edit, 1));
+    edit.after.ptr = &after;
+    assert(scene_history_push_fields(source, entity, &edit, 1));
+    before = (CF_V2){ 90, 91 };
+    after = (CF_V2){ 92, 93 };
+    char *json = scene_history_checkpoint(source);
+    uint64_t handle = ecs_entity_to_u64(entity);
+    assert(scene_history_restore_checkpoint(restored, json, &handle, &handle, 1));
+    free(json);
+    scene_history_free(source);
+    assert(scene_history_undo(restored, world, NULL) == 1);
+    assert(GAME_GameAim_get(world, entity)->direction.x == 1.5f);
+    assert(GAME_GameAim_get(world, entity)->direction.y == -2.25f);
+    assert(scene_history_redo(restored, world, NULL) == 1);
+    assert(GAME_GameAim_get(world, entity)->direction.x == 10.5f);
+    assert(GAME_GameAim_get(world, entity)->direction.y == 20.25f);
+    scene_history_free(restored);
+    ecs_world_free(world);
+    puts("scene struct history PASS: copied vector values, checkpoint and Undo/Redo");
+}
+
 void test_scene_history()
 {
     string_history();
+    plain_struct_history();
     checkpoint_history();
     grouped_history();
     component_override_roundtrip();

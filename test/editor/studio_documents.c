@@ -9,6 +9,7 @@
 #include "editor/workspace/input.h"
 #include "platform/cute.h"
 #include "render/scene_renderer.h"
+#include "render/screenshot.h"
 #include "runtime/generated.h"
 #include "support/array.h"
 #include "support/text_overlay.h"
@@ -112,6 +113,8 @@ static void frame(studio_fixture *f, bool reload)
     cf_app_draw_onto_screen(true);
 }
 
+void test_studio_graph_zoom(studio *s, node *n);
+
 static void reload_keeps_viewed_graph_saved()
 {
     studio_fixture f = fixture_new();
@@ -126,6 +129,16 @@ static void reload_keeps_viewed_graph_saved()
     test_check(setter && setter->x != 0, "Studio arranges the reloaded graph it shows");
     const game_live_definition *weapons = game_live_find_definition(f.live, "Weapons");
     test_check(!weapons->unsaved, "reloading a library Studio drew leaves it saved");
+    fixture_free(&f);
+}
+
+static void graph_layout_does_not_wiggle()
+{
+    studio_fixture f = fixture_new();
+    for (int i = 0; i < 3; i++) {
+        frame(&f, false);
+    }
+    test_studio_graph_zoom(f.studio, graph_node_by_id(editor_active_graph(f.graph), SETTER));
     fixture_free(&f);
 }
 
@@ -145,8 +158,8 @@ void test_code_intelligence_studio();
 
 /* Studio over `project`'s scene `scene` with `behavior` open and the Scene
    filling the workspace. Preferences stay as saved but for the layout: UI
-   Scale 1 and default split modes, so the areas the checks click are the same
-   whatever the user's. */
+   Scale 1 and the default split modes, so the areas the checks click are the
+   same whatever the user's. */
 static studio_fixture scene_open(const char *project, const char *scene, const char *behavior)
 {
     studio_fixture f = fixture_open(project, scene, behavior);
@@ -209,7 +222,11 @@ static void ui_errors_recorded()
     if (!(clean && shown && once && changed && fixed)) {
         printf("  %d %d %d %d %d: %s\n", clean, shown, once, changed, fixed, s->ui_error);
     }
-    test_check(clean && shown && once && changed && fixed, "a game UI error shows in the Scene and Output records it once per change");
+    test_check(
+        clean && shown && once && changed && fixed,
+        "a game UI error shows in the Scene and Output records it once "
+        "per change"
+    );
     fixture_free(&f);
 }
 
@@ -222,7 +239,11 @@ static void ui_events_offered()
     bool ok = acount(events) == 2 && !strcmp(events[0].name, "Extract") &&
               !strcmp(events[0].description, "Sent when the player clicks #extract in Bank") &&
               !strcmp(events[1].name, "Close");
-    test_check(ok, "the Add menu offers the events of the GameUi documents that reach the open behavior");
+    test_check(
+        ok,
+        "the Add menu offers the events of the GameUi documents that "
+        "reach the open behavior"
+    );
     ui_events_free(events);
     fixture_free(&f);
 }
@@ -290,7 +311,11 @@ static void preview_logs_actions()
     if (!(picking && alone && dark && logged && light && counted && closed)) {
         printf("  %d %d %d %d %d %d %d\n", picking, alone, dark, logged, light, counted, closed);
     }
-    test_check(picking && alone && dark && logged && light && counted && closed, "the Canvas preview shows a ui asset alone, themed, and logs the events it emits");
+    test_check(
+        picking && alone && dark && logged && light && counted && closed,
+        "the Canvas preview shows a ui asset alone, themed, and logs the "
+        "events it emits"
+    );
     fixture_free(&f);
 }
 
@@ -314,7 +339,11 @@ static void preview_follows_document()
     assert(scene >= 0 && scene_tabs_activate(f.scene, scene) == 0);
     frames(&f, 2);
     bool back = !studio_previewed_ui(s);
-    test_check(shown && back, "the Scene area previews the active UI document's asset and returns to the scene with its document");
+    test_check(
+        shown && back,
+        "the Scene area previews the active UI document's "
+        "asset and returns to the scene with its document"
+    );
     fixture_free(&f);
 }
 
@@ -395,7 +424,11 @@ static void preview_binds_studio_data()
     if (!(listed && labeled && logged && game)) {
         printf("  %d %d %d %d: %d tabs, '%s'\n", listed, labeled, logged, game, tabs, label);
     }
-    test_check(listed && labeled && logged && game, "a Studio-project Canvas preview binds Studio's data and only logs its commands; a game's binds save, system and entities' self data");
+    test_check(
+        listed && labeled && logged && game,
+        "a Studio-project Canvas preview binds Studio's data and only logs its "
+        "commands; a game's binds save, system and entities' self data"
+    );
     fixture_free(&f);
 }
 
@@ -481,7 +514,12 @@ static void status_bar_follows_studio()
     if (!(hints && reported && toggled && native)) {
         printf("  %d %d %d %d: %s / %s\n", hints, reported, toggled, native, scene, elsewhere);
     }
-    test_check(hints && reported && toggled && native, "Studio's authored status bar follows the hovered area and reports, runs its drawer toggles' commands and hosts UI Scale natively");
+    test_check(
+        hints && reported && toggled && native,
+        "Studio's authored status bar follows the hovered area and reports, "
+        "runs "
+        "its drawer toggles' commands and hosts UI Scale natively"
+    );
     fixture_free(&f);
 }
 
@@ -532,7 +570,11 @@ static void preview_hears_keys()
     frames(&f, 2);
     bool shortcut = app_scene_authoring_runtime_state(f.scene).playing;
     studio_runtime(s, APP_RUNTIME_STOP);
-    test_check(elsewhere && heard && shortcut, "the focused Canvas preview takes keys, so data-keys bindings fire, and Studio keeps its shortcuts");
+    test_check(
+        elsewhere && heard && shortcut,
+        "the focused Canvas preview takes keys, so data-keys bindings "
+        "fire, and Studio keeps its shortcuts"
+    );
     studio_preview_ui(s, NULL);
     frames(&f, 3);
     game_entities *entities = f.scene->live->entities;
@@ -666,7 +708,11 @@ static void palette_finds_settings()
     if (!(flipped && searched)) {
         printf("  %d %d '%s'\n", flipped, searched, query);
     }
-    test_check(flipped && searched, "the palette flips a switch setting where it finds it and opens Settings at any other");
+    test_check(
+        flipped && searched,
+        "the palette flips a switch setting where it "
+        "finds it and opens Settings at any other"
+    );
     fixture_free(&f);
 }
 
@@ -772,8 +818,16 @@ static void palette_recent_and_prefixes()
             group
         );
     }
-    test_check(unranked && remembered && boosted && recent_first, "the palette ranks what was chosen lately first, and leads with it while nothing is typed");
-    test_check(commands_only && symbols && prefix, "'>' keeps commands and settings, '@' the open behavior's symbols, and '?' types a prefix");
+    test_check(
+        unranked && remembered && boosted && recent_first,
+        "the palette ranks what was chosen lately first, and leads with "
+        "it while nothing is typed"
+    );
+    test_check(
+        commands_only && symbols && prefix,
+        "'>' keeps commands and settings, '@' the open behavior's "
+        "symbols, and '?' types a prefix"
+    );
     s->prefs = saved;
     s->applied = saved;
     fixture_free(&f);
@@ -825,7 +879,11 @@ static void virtual_list_rows()
     if (!(windowed && scrolled)) {
         printf("  %d %d rows %d then %d, first '%s'\n", windowed, scrolled, rows, scrolled_rows, first);
     }
-    test_check(windowed && scrolled, "a VirtualList of ten thousand rows makes only those in view, and scrolling shows the rows there");
+    test_check(
+        windowed && scrolled,
+        "a VirtualList of ten thousand rows makes only those in view, and "
+        "scrolling shows the rows there"
+    );
     fixture_free(&f);
 }
 
@@ -857,7 +915,11 @@ static void shortcut_repeat_policy()
     apush(s->keys, ((studio_key){ SDLK_K, primary, false }));
     studio_shortcuts(s);
     bool toggle_press_runs = kit_command_is_open(s->kit);
-    test_check(zoom_repeat_runs && zoom_press_runs && toggle_repeat_ignored && toggle_press_runs, "repeatable zoom runs on a held shortcut while the Search toggle waits for a fresh press");
+    test_check(
+        zoom_repeat_runs && zoom_press_runs && toggle_repeat_ignored && toggle_press_runs,
+        "repeatable zoom runs on a held shortcut while the Search toggle "
+        "waits for a fresh press"
+    );
     fixture_free(&search);
 }
 
@@ -898,7 +960,11 @@ static void readout_follows_camera()
         current &= !strcmp(value, expected);
         shown = true;
     }
-    test_check(shown && current && drawn, "the Scene draws the camera it fits from its first frame, and its zoom readout shows that camera");
+    test_check(
+        shown && current && drawn,
+        "the Scene draws the camera it fits from its first frame, and its "
+        "zoom readout shows that camera"
+    );
     fixture_free(&f);
 }
 
@@ -911,6 +977,68 @@ static int panel_elements(studio *s, const char *panel, const char *selector, rm
     snprintf(query, sizeof query, "[data-ui=%s] %s", panel, selector);
     rml_element *doc = rml_context_document(rml_backend_context(s->backend), 0);
     return rml_element_query_selector_all(doc, query, found, 8);
+}
+
+/* Find a Properties row by its visible label so the test follows the authored
+   pane's slots instead of depending on a generated kit path. */
+static rml_element *property_row(studio *s, const char *label)
+{
+    rml_context *context = rml_backend_context(s->backend);
+    for (int d = 0; d < rml_context_document_count(context); d++) {
+        rml_element *rows[128];
+        int count = rml_element_query_selector_all(
+            rml_context_document(context, d),
+            "[data-ui=Properties] .prop",
+            rows,
+            128
+        );
+        for (int i = 0; i < count; i++) {
+            rml_element *text = rml_element_query_selector(rows[i], ".label span");
+            char shown[128] = "";
+            if (text && rml_element_inner_rml(text, shown, sizeof shown) &&
+                !strcmp(shown, label)) {
+                return rows[i];
+            }
+        }
+    }
+    return NULL;
+}
+
+/* Keep the selected actor's Object fields visible when this fixture also has
+   an active graph node, which normally drives the inspector to Node. */
+static void show_object_properties(studio *s)
+{
+    s->shown_node = studio_graph_node(s) ? studio_graph_node(s)
+                                         : studio_graph_comment(s);
+    s->shown_member = studio_member_shown(s);
+    s->shown_actor = s->scene->selected;
+    s->tab = STUDIO_TAB_OBJECT;
+}
+
+/* Optional visual evidence for the focused Properties run. */
+static void capture_properties_screenshot(studio_fixture *f, const char *name)
+{
+    const char *directory = getenv("CHIBI_PROPERTIES_CAPTURE_DIR");
+    if (!directory || !directory[0]) {
+        return;
+    }
+    frames(f, 12);
+    char path[PATH_MAX];
+    int length = snprintf(path, sizeof path, "%s/%s.png", directory, name);
+    assert(length > 0 && (size_t)length < sizeof path);
+    assert(app_save_screenshot(path) == 0);
+}
+
+/* Compute a line's baseline from the same face metrics RmlUi uses to draw it.
+   Comparing a property row's outer boxes misses differences in line-height. */
+static float text_baseline(rml_element *line)
+{
+    rml_vec2 at = rml_element_absolute_offset(line, RML_BOX_CONTENT);
+    rml_vec2 size = rml_element_box_size(line, RML_BOX_CONTENT);
+    uintptr_t face = rml_font_face("inter", RML_FONT_NORMAL, 400, 12);
+    assert(face);
+    rml_font_metrics metrics = rml_font_face_metrics(face);
+    return at.y + (size.y - metrics.line_spacing) * 0.5f + metrics.ascent;
 }
 
 /* A press and release on `el`, which focuses it as a click does. Input is
@@ -969,7 +1097,11 @@ static void settings_reopens_after_font_change()
         frames(&f, 3);
         reopened = !studio_element(s, ".modal-host");
     }
-    test_check(reopened, "Settings closes and reopens through the top bar after changing the monospace font with a code document open");
+    test_check(
+        reopened,
+        "Settings closes and reopens through the top bar after "
+        "changing the monospace font with a code document open"
+    );
     fixture_free(&f);
 }
 
@@ -1033,7 +1165,11 @@ static void chrome_follows_studio()
     if (!(slots && listed && selected && closed && playing && restored)) {
         printf("  %d %d %d %d %d %d\n", slots, listed, selected, closed, playing, restored);
     }
-    test_check(slots && listed && selected && closed && playing && restored, "Studio's authored top bar and area headers host their native slots and run tab, transport and area commands");
+    test_check(
+        slots && listed && selected && closed && playing && restored,
+        "Studio's authored top bar and area headers host their native "
+        "slots and run tab, transport and area commands"
+    );
     fixture_free(&f);
 }
 
@@ -1163,7 +1299,7 @@ static void select_tab(studio_fixture *f, int tab)
 }
 
 /* Opening documents and changing tabs keep the selected split mode. Each mode
-   remembers its arrangement, and switching preserves authoring state. */
+   remembers its arrangement, and switching modes preserves authoring state. */
 static void layout_modes_are_explicit()
 {
     studio_fixture f = vault_open();
@@ -1184,9 +1320,9 @@ static void layout_modes_are_explicit()
     frames(&f, 4);
     bool opened_kept_mode = s->prefs.workspace == STUDIO_WORKSPACE_VERTICAL_SPLIT;
     int bank = tab_named(f.scene, "Bank"), scene = bank == 0 ? 1 : 0;
-    kit_rect r;
     studio_command_run(s, STUDIO_COMMAND_WORKSPACE_HORIZONTAL_SPLIT);
     frames(&f, 3);
+    kit_rect r;
     bool horizontal_shown = s->prefs.workspace == STUDIO_WORKSPACE_HORIZONTAL_SPLIT &&
                             beside(s) &&
                             kit_find(s->kit, "app/workspace/main/editors/bottom/body/code/text", &r) &&
@@ -1309,7 +1445,11 @@ static void layout_modes_are_explicit()
         "the top bar hides the side pane per mode and restores its editor "
         "headers"
     );
-    test_check(reset_one && undone && redone && playing && tab_kept_mode, "Reset Layout resets the active mode only; switching keeps history and playback");
+    test_check(
+        reset_one && undone && redone && playing && tab_kept_mode,
+        "Reset Layout resets the active mode only; switching keeps "
+        "history and playback"
+    );
     fixture_free(&f);
 }
 
@@ -1419,7 +1559,11 @@ static void graph_font_size_preserves_hit_geometry()
     frames(&f, 2);
     bool enlarged = fabsf(g->zoom - 0.8f) < 0.001f &&
                     fabsf(g->in.zoom - 1.2f) < 0.001f && graph_hit_geometry(s);
-    test_check(standard && enlarged, "graph font scaling keeps rendered node and socket hit geometry aligned without changing the stored zoom");
+    test_check(
+        standard && enlarged,
+        "graph font scaling keeps rendered node and socket hit geometry "
+        "aligned without changing the stored zoom"
+    );
     fixture_free(&f);
 }
 
@@ -1485,7 +1629,11 @@ static void scene_text_field()
     if (!(editing && started && typed && kept && stopped)) {
         printf("  %d %d %d '%s' %d %d\n", editing, started, typed, value, kept, stopped);
     }
-    test_check(editing && started && typed && kept && stopped, "a focused text field in the playing Scene's game UI takes typed text, and Studio keeps its chords");
+    test_check(
+        editing && started && typed && kept && stopped,
+        "a focused text field in the playing Scene's game UI takes typed "
+        "text, and Studio keeps its chords"
+    );
     text_overlay_set(BANK, NULL);
     fixture_free(&f);
 }
@@ -1619,8 +1767,16 @@ static void rename_objects()
           properties && inspector)) {
         printf("  %d %d %d %d %d %d %d %d\n", field, renamed, undone, redone, kept, refused, properties, inspector);
     }
-    test_check(field && renamed && undone && redone && kept, "F2 over the Outliner renames its row in place as one Undo step, and Escape keeps the name");
-    test_check(refused && properties && inspector, "a name in use is refused, and F2 edits Properties' name field while no area shows the Outliner");
+    test_check(
+        field && renamed && undone && redone && kept,
+        "F2 over the Outliner renames its row in place as one Undo step, "
+        "and Escape keeps the name"
+    );
+    test_check(
+        refused && properties && inspector,
+        "a name in use is refused, and F2 edits Properties' name field "
+        "while no area shows the Outliner"
+    );
     fixture_free(&f);
 }
 
@@ -1695,8 +1851,16 @@ static void prototype_components()
             redone
         );
     }
-    test_check(button && palette && gained, "Add Component searches the components a prototype lacks and adds the one chosen");
-    test_check(shown && menu && removed && undo && restored && undone && redone, "a component panel's menu removes it with Undo in a toast, and Undo and Redo step both");
+    test_check(
+        button && palette && gained,
+        "Add Component searches the components a prototype lacks and adds "
+        "the one chosen"
+    );
+    test_check(
+        shown && menu && removed && undo && restored && undone && redone,
+        "a component panel's menu removes it with Undo in a toast, and "
+        "Undo and Redo step both"
+    );
     fixture_free(&f);
 }
 
@@ -1890,7 +2054,221 @@ static void authored_modals_and_collaboration()
     fixture_free(&f);
 }
 
-int studio_documents_run(const char *program)
+/* A large reflected enum keeps its name in Properties and can still be
+   changed from the control. GameControl's Aim Stick is past the old cap. */
+static void large_enum_property()
+{
+    studio_fixture f = fixture_open(PROJECT, PROJECT "/content/scenes/Binding.yaml", "Weapons");
+    f.studio = studio_new(f.scene, f.viewport, "projects/studio");
+    studio *s = f.studio;
+    select_instance(f.scene, 0);
+    show_object_properties(s);
+    snprintf(s->property_search, sizeof s->property_search, "Source");
+    frames(&f, 4);
+
+    rml_element *tabs = studio_element(s, "[data-ui=Properties] #tabs");
+    rml_element *scroll = studio_element(s, "[data-ui=Properties] #scroll");
+    rml_element *row = property_row(s, "Source");
+    if (row) {
+        rml_element_scroll_into_view(row, RML_SCROLL_NEAREST, RML_SCROLL_NEAREST);
+        frames(&f, 2);
+        row = property_row(s, "Source");
+    }
+    rml_element *label = row ? rml_element_query_selector(row, ".label span") : NULL;
+    rml_element *field = row ? rml_element_query_selector(row, ".field.select") : NULL;
+    rml_element *value = row ? rml_element_query_selector(row, ".field.select .value")
+                             : NULL;
+    char shown[64] = "";
+    if (value) {
+        rml_element_inner_rml(value, shown, sizeof shown);
+    }
+    bool mounted = tabs && scroll;
+    bool readable = row && field && !strcmp(shown, "Aim Stick");
+    float label_baseline = label ? text_baseline(label) : 0;
+    float value_baseline = value ? text_baseline(value) : 0;
+    bool aligned = label && value && fabsf(label_baseline - value_baseline) <= 1.5f;
+
+    if (field) {
+        press(s, field);
+        frames(&f, 2);
+    }
+    rml_element *dropdown = studio_element(s, ".popup.dropdown");
+    bool opened = dropdown != NULL;
+    rml_element *groups[4], *icons[64];
+    int group_count = dropdown
+                        ? rml_element_query_selector_all(dropdown, ".menu-group", groups, 4)
+                        : 0;
+    int icon_count = dropdown
+                       ? rml_element_query_selector_all(dropdown, ".menu-item .lead", icons, 64)
+                       : 0;
+    bool grouped = group_count == 3 && icon_count > 32;
+    if (grouped) {
+        const char *expected[] = { "Mouse", "Keyboard", "Controller" };
+        for (int i = 0; i < group_count; i++) {
+            char group[32] = "";
+            rml_element_inner_rml(groups[i], group, sizeof group);
+            grouped &= !strcmp(group, expected[i]);
+        }
+        for (int i = 0; i < icon_count; i++) {
+            char icon[16] = "";
+            rml_element_inner_rml(icons[i], icon, sizeof icon);
+            grouped &= icon[0] != '\0';
+        }
+    }
+    capture_properties_screenshot(&f, "properties-enum-dropdown");
+    text_event("L");
+    frames(&f, 2);
+    int search_group_count = dropdown
+                               ? rml_element_query_selector_all(dropdown, ".menu-group", groups, 4)
+                               : 0;
+    int search_icon_count = dropdown
+                              ? rml_element_query_selector_all(dropdown, ".menu-item .lead", icons, 64)
+                              : 0;
+    bool all_search_groups = search_group_count == 3 && search_icon_count > 2;
+    if (all_search_groups) {
+        const char *expected[] = { "Mouse", "Keyboard", "Controller" };
+        for (int i = 0; i < search_group_count; i++) {
+            char group[32] = "";
+            rml_element_inner_rml(groups[i], group, sizeof group);
+            bool known = false;
+            for (int j = 0; j < 3; j++) {
+                known |= !strcmp(group, expected[j]);
+            }
+            all_search_groups &= known;
+        }
+        for (int i = 0; i < search_icon_count; i++) {
+            char icon[16] = "";
+            rml_element_inner_rml(icons[i], icon, sizeof icon);
+            all_search_groups &= icon[0] != '\0';
+        }
+    }
+    rml_element *search = dropdown
+                            ? rml_element_query_selector(dropdown, ".field.search .value")
+                            : NULL;
+    char query[16] = "";
+    if (search) {
+        rml_element_value(search, query, sizeof query);
+    }
+    all_search_groups &= !strcmp(query, "L");
+    capture_properties_screenshot(&f, "properties-grouped-search");
+    tap(SDL_SCANCODE_BACKSPACE);
+    frames(&f, 1);
+    text_event("Mouse Left");
+    frames(&f, 2);
+    rml_element *mouse_left = dropdown
+                                ? rml_element_query_selector(dropdown, ".dropdown-results .menu-item .label")
+                                : NULL;
+    char option[64] = "";
+    if (mouse_left) {
+        rml_element_inner_rml(mouse_left, option, sizeof option);
+    }
+    bool filtered = mouse_left && !strcmp(option, "Mouse Left");
+    tap(SDL_SCANCODE_RETURN);
+    frames(&f, 3);
+    pin_value source = { 0 };
+    bool editable = filtered &&
+                    ecs_component_read_field(
+                        f.scene->world,
+                        f.scene->actors[0].entity,
+                        GAME_COMPONENT_GameActionBinding.id,
+                        0,
+                        &source
+                    ) == ECS_OK &&
+                    source.type == PIN_ENUM && source.e == GAME_CONTROL_MOUSE_LEFT;
+    if (!(mounted && readable && aligned && opened && filtered && editable &&
+          grouped && all_search_groups)) {
+        printf(
+            "  %d %d %d %d %d %d %d %d (baselines %g / %g, groups %d, icons "
+            "%d, search groups %d, icons %d, query '%s')\n",
+            mounted,
+            readable,
+            aligned,
+            opened,
+            filtered,
+            editable,
+            grouped,
+            all_search_groups,
+            label_baseline,
+            value_baseline,
+            group_count,
+            icon_count,
+            search_group_count,
+            search_icon_count,
+            query
+        );
+    }
+    test_check(mounted, "Properties uses its authored tab and scroll slots");
+    test_check(aligned, "Properties label and value text baselines align");
+    test_check(
+        readable && opened && filtered && editable && grouped && all_search_groups,
+        "a reflected enum beyond 32 options stays named, grouped, iconed "
+        "and editable in Properties"
+    );
+    fixture_free(&f);
+}
+
+/* A reflected vector component uses one joined number control and keeps the
+   rest of the vector intact through Undo and Redo. */
+static void component_vector_property()
+{
+    studio_fixture f = fixture_open(PROJECT, PROJECT "/content/scenes/Binding.yaml", "Weapons");
+    f.studio = studio_new(f.scene, f.viewport, "projects/studio");
+    studio *s = f.studio;
+    select_instance(f.scene, 0);
+    show_object_properties(s);
+    snprintf(s->property_search, sizeof s->property_search, "Target");
+    frames(&f, 4);
+
+    rml_element *row = property_row(s, "Target");
+    if (row) {
+        rml_element_scroll_into_view(row, RML_SCROLL_NEAREST, RML_SCROLL_NEAREST);
+        frames(&f, 2);
+        row = property_row(s, "Target");
+    }
+    rml_element *axes[4];
+    int axis_count = row ? rml_element_query_selector_all(row, ".field.number", axes, 4)
+                         : 0;
+    bool controls = axis_count == 2;
+    bool clicked = false;
+    if (controls) {
+        press(s, axes[0]);
+        clicked = rml_element_has_attribute(axes[0], "data-editing");
+    }
+    text_event("9");
+    tap(SDL_SCANCODE_RETURN);
+    frames(&f, 3);
+    const GameDrive
+        *drive = GAME_GameDrive_get_const(f.scene->world, f.scene->actors[0].entity);
+    bool edited = drive && drive->target.x == 9.0f && drive->target.y == 4.0f;
+    capture_properties_screenshot(&f, "properties-vector-edited");
+    studio_history(s, false);
+    drive = GAME_GameDrive_get_const(f.scene->world, f.scene->actors[0].entity);
+    bool undone = drive && drive->target.x == 3.0f && drive->target.y == 4.0f;
+    studio_history(s, true);
+    drive = GAME_GameDrive_get_const(f.scene->world, f.scene->actors[0].entity);
+    bool redone = drive && drive->target.x == 9.0f && drive->target.y == 4.0f;
+    if (!(controls && clicked && edited && undone && redone)) {
+        printf(
+            "  %d %d %d %d %d (%g, %g)\n",
+            controls,
+            clicked,
+            edited,
+            undone,
+            redone,
+            drive ? drive->target.x : -1.0f,
+            drive ? drive->target.y : -1.0f
+        );
+    }
+    test_check(controls && clicked && edited, "a reflected component vector is editable by axis in Properties");
+    test_check(
+        undone && redone,
+        "component vector edits retain owned before and "
+        "after values for Undo and Redo"
+    );
+    fixture_free(&f);
+}
+
+static int studio_documents_app(const char *program, bool run_properties_only)
 {
     CF_Result result = cf_make_app(
         "Studio documents",
@@ -1908,37 +2286,55 @@ int studio_documents_run(const char *program)
     }
     app_scene_renderer_initialize();
     app_input_initialize();
-    reload_keeps_viewed_graph_saved();
-    test_ui_document_tabs();
-    test_studio_new_assets();
-    /* UI wiring (workstream K) */
-    ui_wiring_checks();
-    /* Authored status bar (workstream J) */
-    status_bar_follows_studio();
-    /* Workstream I: code intelligence in the Text Editor. */
-    test_code_intelligence_studio();
-    /* Wave 2 follow-ups (workstream P) */
-    preview_hears_keys();
-    settings_records_shortcut();
-    palette_finds_settings();
-    palette_recent_and_prefixes();
-    virtual_list_rows();
-    shortcut_repeat_policy();
-    readout_follows_camera();
-    /* Authored top bar and area headers (workstream T) */
-    chrome_follows_studio();
-    toolbar_shortcuts_keep_text_focus();
-    authored_modals_and_collaboration();
-    authored_fields_keep_editing_keys();
-    settings_reopens_after_font_change();
-    layout_modes_are_explicit();
-    graph_font_size_preserves_hit_geometry();
-    /* arena2d end to end (wave 3, workstream X) */
-    scene_text_field();
-    /* Rename objects and prototype components */
-    rename_objects();
-    prototype_components();
+    if (run_properties_only) {
+        large_enum_property();
+        component_vector_property();
+    } else {
+        graph_layout_does_not_wiggle();
+        reload_keeps_viewed_graph_saved();
+        test_ui_document_tabs();
+        test_studio_new_assets();
+        /* UI wiring (workstream K) */
+        ui_wiring_checks();
+        /* Authored status bar (workstream J) */
+        status_bar_follows_studio();
+        /* Workstream I: code intelligence in the Text Editor. */
+        test_code_intelligence_studio();
+        /* Wave 2 follow-ups (workstream P) */
+        preview_hears_keys();
+        settings_records_shortcut();
+        palette_finds_settings();
+        palette_recent_and_prefixes();
+        virtual_list_rows();
+        shortcut_repeat_policy();
+        readout_follows_camera();
+        /* Authored top bar and area headers (workstream T) */
+        chrome_follows_studio();
+        settings_reopens_after_font_change();
+        layout_modes_are_explicit();
+        graph_font_size_preserves_hit_geometry();
+        /* arena2d end to end (wave 3, workstream X) */
+        scene_text_field();
+        /* Rename objects and prototype components */
+        rename_objects();
+        prototype_components();
+        large_enum_property();
+        component_vector_property();
+        toolbar_shortcuts_keep_text_focus();
+        authored_modals_and_collaboration();
+        authored_fields_keep_editing_keys();
+    }
     app_input_shutdown();
     cf_destroy_app();
     return 0;
+}
+
+int studio_documents_run(const char *program)
+{
+    return studio_documents_app(program, false);
+}
+
+int studio_properties_run(const char *program)
+{
+    return studio_documents_app(program, true);
 }

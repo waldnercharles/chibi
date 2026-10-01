@@ -2,6 +2,9 @@
 
 A C23 visual programming editor for authored game behaviors, prototypes, and scenes.
 
+[Native engine packages](docs/native-package.md) let a separate game workspace
+author assets through Studio and MCP using prebuilt executables.
+
 ## Development
 
 ```sh
@@ -10,6 +13,8 @@ make play         # optimized standalone game
 make debug        # plain Debug editor
 make debug-san    # Debug editor with ASan and UBSan
 make build        # build the sanitizer-enabled Debug profile
+make package-native # package native engine, Studio, and MCP for external games
+make test-package # verify the package without rebuilding during authoring
 make build-tracy  # build native RelWithDebInfo with Tracy enabled
 make run-tracy    # run the native Tracy profile
 make test         # model, runtime, native UI, generation, and loader checks
@@ -21,7 +26,16 @@ make dev          # watch sources, rebuild, and reload the running editor
 make format       # format project C sources with clang-format 22, as CI does
 make check-format
 make web          # static browser application; requires Emscripten
+make publish-web  # publish the latest origin/main commit to GitHub Pages
 ```
+
+`make publish-web` fetches and builds the latest `origin/main` commit in a
+temporary checkout, publishes the compiled files to `gh-pages`, and waits for
+the live deployment marker and matching asset hashes. It requires Emscripten,
+the native build tools, and an authenticated `gh` session with repository push and Pages access. Local
+edits are excluded, and `main` is never pushed. Set `JOBS` to control build
+parallelism and `CHIBI_COLLAB_URL` to configure the collaboration server.
+If `main` advances during the build, rerun the command.
 
 `make run` and `make play` use the fully optimized `Release` profile. Their
 launch targets build only the application; `make build-release` still builds
@@ -101,17 +115,21 @@ LLVM when installed: Apple's Clang 17 ASan runtime does not correctly unregister
 dynamic-library globals during unload. Set `NATIVE_TOOLCHAIN_FLAGS` for Make or
 `CC` and `CXX` for CMake to select another compiler.
 
-When ccache is installed, native builds under the source tree can reuse matching
-objects across worktrees. Debug and development builds normalize compilation
-paths so their debug information still resolves local sources. New native build
-directories save pinned dependency source snapshots to
-`CHIBI_FETCHCONTENT_CACHE_DIR` (by default,
+When ccache is installed, native builds and Release web builds under the source
+tree can reuse matching objects across worktrees. Native Debug and development
+builds normalize compilation paths so their debug information still resolves
+local sources. Native and web build directories save pinned dependency source
+snapshots to `CHIBI_FETCHCONTENT_CACHE_DIR` (by default,
 `${XDG_CACHE_HOME:-$HOME/.cache}/chibi-fetchcontent`). Later build directories
-copy these snapshots using filesystem cloning when available. Each worktree can
-patch Cute and generate files without changing the shared snapshot. Dependency
-build directories and linked libraries remain private, except for an installed
-SDL package. Run `ccache --show-stats` to check hits and evictions; increase its
-size limit if it is continually full.
+copy these snapshots using APFS cloning or Linux reflinks when available. The
+cache stores each dependency separately by repository and pin, including
+RmlUi, FreeType, Zep, tree-sitter, and required Git submodules. Zep’s unused
+vcpkg subtree is excluded. Changing a local patch reconfigures the build
+without duplicating unchanged cached sources.
+Each build can apply its own patches and generate files without changing the
+shared snapshot. Dependency build directories and linked libraries remain
+private, except for an installed SDL package. Run `ccache --show-stats` to
+check hits and evictions; increase its size limit if it is continually full.
 
 On macOS, `make sdl-package` builds the pinned SDL 3.4.0 archive once and
 installs its static and shared libraries under

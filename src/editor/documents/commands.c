@@ -102,7 +102,10 @@ static int editor_command_apply_direct(editor *e, editor_command command)
                 value->type != pins[pin_index].type) {
                 return -1;
             }
-            ed_snapshot_before(e);
+            if (!command.data.set_pin_default.coalesce_history ||
+                !collab_active() || collab_replaying() || !collab_is_host()) {
+                ed_snapshot_before(e);
+            }
             return graph_set_pin_default(
                 e->active_graph,
                 n,

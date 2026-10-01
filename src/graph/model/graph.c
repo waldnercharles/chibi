@@ -394,6 +394,14 @@ int graph_connect_data_conversion(graph *g, node *from, int from_pin, node *to, 
     if (!conversion && !pin_compatible(out, in)) {
         return -1;
     }
+    /* Reject a conflicting edge before changing the input's binding. */
+    for (int i = 0; i < acount(g->edges); i++) {
+        const edge *old = &g->edges[i];
+        if (old->to_id == to->id && old->to_pin_id == in->id &&
+            old->kind != GRAPH_EDGE_DATA) {
+            return -1;
+        }
+    }
     const graph_local *local = graph_input_local(g, to, to_pin);
     node *previous = NULL;
     int previous_pin = -1;
@@ -402,22 +410,16 @@ int graph_connect_data_conversion(graph *g, node *from, int from_pin, node *to, 
         to->input_pins[to_pin].binding = NULL;
         graph_prune_locals(g);
     }
+    if (in->flags & PIN_FLAG_REFERENCE) {
+        to->input_pins[to_pin].binding = NULL;
+    }
     for (int i = 0; i < acount(g->edges); i++) {
         edge *old = &g->edges[i];
         if (old->to_id == to->id && old->to_pin_id == in->id) {
-            if (old->kind != GRAPH_EDGE_DATA) {
-                return -1;
-            }
             *old = make_edge(from, from_pin, to, to_pin, GRAPH_EDGE_DATA, 0, conversion);
-            if (in->flags & PIN_FLAG_REFERENCE) {
-                to->input_pins[to_pin].binding = NULL;
-            }
             graph_changed(g);
             return 0;
         }
-    }
-    if (in->flags & PIN_FLAG_REFERENCE) {
-        to->input_pins[to_pin].binding = NULL;
     }
     apush(g->edges, make_edge(from, from_pin, to, to_pin, GRAPH_EDGE_DATA, 0, conversion));
     graph_changed(g);

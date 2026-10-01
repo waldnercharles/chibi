@@ -40,7 +40,7 @@ struct app_scene_renderer
     render_arena *arena;
     render_arena_post *post;
     render_fog *fog;
-    bool arena_attempted, parallel_disabled;
+    bool arena_attempted, parallel_disabled, resources_attempted;
     render_material_raster *raster;
     render_fluid_raster *fluid;
     render_radiance *radiance;
@@ -87,18 +87,21 @@ void app_scene_renderer_initialize()
 
 app_scene_renderer *app_scene_renderer_new()
 {
-    app_scene_renderer *renderer = xcalloc(1, sizeof *renderer);
+    return xcalloc(1, sizeof(app_scene_renderer));
+}
+
+static void initialize_resources(app_scene_renderer *renderer)
+{
+    if (renderer->resources_attempted) {
+        return;
+    }
+    renderer->resources_attempted = true;
     renderer->fog = render_fog_new();
     renderer->raster = render_material_raster_new();
     renderer->radiance = render_radiance_new();
     /* Adaptive lighting resolution times lighting with GPU timestamps. */
     renderer->gpu_clock = cf_query_backend() == CF_BACKEND_TYPE_METAL &&
                           render_gpu_clock_install();
-    if (!renderer->raster || !renderer->radiance) {
-        app_scene_renderer_free(renderer);
-        return NULL;
-    }
-    return renderer;
 }
 
 void app_scene_renderer_free(app_scene_renderer *renderer)
@@ -111,7 +114,9 @@ void app_scene_renderer_free(app_scene_renderer *renderer)
     render_arena_free(renderer->arena);
     render_arena_post_free(renderer->post);
     render_post_2d_free(renderer->hdr);
-    render_fog_free(renderer->fog);
+    if (renderer->fog) {
+        render_fog_free(renderer->fog);
+    }
     render_radiance_free(renderer->radiance);
     if (renderer->gpu_clock) {
         render_gpu_clock_release();
@@ -250,6 +255,10 @@ bool app_scene_renderer_draw3d(
     const engine *runtime
 )
 {
+    if (!renderer) {
+        return false;
+    }
+    initialize_resources(renderer);
     if (!arena_ready(renderer)) {
         return false;
     }
@@ -1118,6 +1127,7 @@ bool app_scene_renderer_draw(
     if (!renderer) {
         return false;
     }
+    initialize_resources(renderer);
     double gpu_ms;
     while (renderer->radiance && render_gpu_span_take(&renderer->span, &gpu_ms)) {
         render_radiance_frame_time(renderer->radiance, gpu_ms);
@@ -1153,7 +1163,7 @@ bool app_scene_renderer_draw(
     if (!scene_lighting(renderer, world, &flat)) {
         return false;
     }
-    if (!renderer->raster) {
+    if (!renderer->raster || !renderer->radiance) {
         /* This is a supported rendering path, not a scene error. Its status is
          * available in the renderer diagnostics without covering the game. */
         renderer->error[0] = '\0';

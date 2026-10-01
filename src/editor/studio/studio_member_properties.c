@@ -4,9 +4,10 @@
  * and outputs, with their containers and the inputs' defaults, reordered by
  * dragging their grips, and a function its purity; a named value its name and
  * source. Types are chosen from a search over basic types, structures and
- * enums, and Exec for a macro (Unreal's pin type picker), on the command
- * surface. */
+ * enums, and Exec for a macro (Unreal's pin type picker), in an anchored
+ * dropdown. */
 #include "editor/studio/studio_members_internal.h"
+#include "editor/ui/choices.h"
 #include "graph/model/pin_conv.h"
 #include "graph/model/registry.h"
 #include "support/array.h"
@@ -108,7 +109,7 @@ static void type_button(studio *s, const pin_spec *pin, uint64_t id, uint64_t pi
         s->members.pick.open = true;
         s->members.pick.id = id;
         s->members.pick.pin_id = pin_id;
-        kit_command_open(k, "Search types");
+        kit_dropdown_open(k, "member-type", "Search types");
     }
     kit_pop(k);
 }
@@ -156,6 +157,38 @@ static void set_number(pin_value *v, double number)
 
 static bool enum_control(kit *k, const enum_desc *enumeration, pin_value *value, unsigned flags)
 {
+    const editor_choices *choices = editor_choices_for_enum(enumeration->name);
+    int count = choices ? editor_choices_count(choices) : 0;
+    bool described = false;
+    int current = -1;
+    for (int i = 0; i < count; i++) {
+        editor_choice choice = editor_choice_at(choices, i);
+        described |= choice.group || choice.icon;
+        if (choice.value == value->e) {
+            current = i;
+        }
+    }
+    if (described) {
+        kit_command_item *items = NULL;
+        for (int i = 0; i < count; i++) {
+            editor_choice choice = editor_choice_at(choices, i);
+            apush(
+                items,
+                ((kit_command_item){ .label = choice.label ? choice.label
+                                                           : choice.name,
+                                     .group = choice.group,
+                                     .keywords = choice.name,
+                                     .icon = choice.icon,
+                                     .current = i == current })
+            );
+        }
+        bool changed = kit_choice_items(k, "v", &current, items, count, flags);
+        if (changed && current >= 0) {
+            value->e = editor_choice_at(choices, current).value;
+        }
+        afree(items);
+        return changed;
+    }
     const char **labels = NULL;
     int index = -1;
     for (int i = 0; i < enumeration->value_count; i++) {
@@ -701,7 +734,7 @@ bool studio_member_palette(studio *s)
     if (!m->pick.open) {
         return false;
     }
-    if (!kit_command_is_open(s->kit) || !studio_graph_active(s)) {
+    if (!kit_dropdown_is_open(s->kit, "member-type") || !studio_graph_active(s)) {
         m->pick.open = false;
         return false;
     }
@@ -709,12 +742,26 @@ bool studio_member_palette(studio *s)
                  ? behavior_asset_find_graph(member_editor(s)->asset, m->pick.id)
                  : NULL;
     bool exec = g && g->kind == GRAPH_MACRO;
+    bool result = false;
+    int index = -1;
+    const pin_spec *pin = g ? picked_pin(m, g, &result, &index) : NULL;
+    const behavior_variable *variable = !m->pick.pin_id
+                                          ? behavior_asset_find_variable_by_id(
+                                                member_editor(s)->asset,
+                                                m->pick.id
+                                            )
+                                          : NULL;
     type_choice *choices = type_choices(exec);
     kit_command_item *items = NULL;
     for (int i = 0; i < acount(choices); i++) {
-        apush(items, type_item(&choices[i], i, TYPE_COUNT + exec));
+        kit_command_item item = type_item(&choices[i], i, TYPE_COUNT + exec);
+        item.current = pin
+                         ? same_type(pin->type, pin->type_name, &choices[i])
+                         : variable &&
+                               same_type(variable->type, variable->type_name, &choices[i]);
+        apush(items, item);
     }
-    int chosen = kit_command(s->kit, items, acount(items));
+    int chosen = kit_dropdown(s->kit, "member-type", items, acount(items));
     if (chosen >= 0) {
         apply_type(s, &choices[chosen]);
         m->pick.open = false;

@@ -40,7 +40,7 @@ reference for spacing, alignment, and motion as well as appearance.
 
 | Library | Problem | Kit equivalent | State |
 | --- | --- | --- | --- |
-| [Base UI](https://base-ui.com) | Behavior contracts for fields, menus, popovers, dialogs, tooltips | Controls in `kit_controls.c` (toggle groups: `kit_toggle_group`; a Combobox trigger over the command surface for asset fields: `kit_picker`) and `kit_number.c`; popups, menus (color swatches: `kit_menu_item_desc.swatch`; a panel header's menu: `kit_panel_menu`) and tooltips in `kit_popup.c`. Authored UI, the editor's and games', uses the widgets in `projects/studio/content/ui`: Switch, Select, Slider, Segmented, SidebarNav, SettingRow, Dialog and KeyHint | Done |
+| [Base UI](https://base-ui.com) | Behavior contracts for fields, menus, popovers, dialogs, tooltips | Controls in `kit_controls.c` (toggle groups: `kit_toggle_group`; anchored searchable choices: `kit_dropdown`, with `kit_picker` as the asset-field trigger) and `kit_number.c`; popups, menus (color swatches: `kit_menu_item_desc.swatch`; a panel header's menu: `kit_panel_menu`) and tooltips in `kit_popup.c`. Authored UI, the editor's and games', uses the widgets in `projects/studio/content/ui`: Switch, Select, Slider, Segmented, SidebarNav, SettingRow, Dialog and KeyHint | Done |
 | [shadcn/ui](https://ui.shadcn.com) | Semantic tokens, variant discipline, control anatomy | Tokens in the Studio theme (`projects/studio/content/ui/theme/tokens.rcss`, imported by the `StudioShell` root document); Textarea as `kit_text_area` | Done |
 | [cmdk](https://github.com/dip/cmdk), [VS Code Quick Open](https://code.visualstudio.com/docs/getstarted/userinterface#_quick-open) | Command palette: ranking, groups, keyboard; prefixes and recent items | `kit_command` (`kit_command.c`), Studio's palette (`studio_palette.c`) | Done; pages and group jumps open |
 | [DialKit](https://github.com/joshpuckett/dialkit) | Live tuning of values, scrub feel, spring and easing controls | `kit_number` (`kit_number.c`; scrub, fine/coarse/snap) | Partial; rubber-band and spring controls open |
@@ -82,6 +82,18 @@ navigation and close on Tab. A modal host (`kit_modal_host`) traps the
 focus as Base UI's Dialog does: Tab and Shift+Tab cycle through its tabbable
 elements and never reach the editor behind it. `docs/prototypes/studio/kit.html` lists every
 control's contract.
+
+Editable references use `kit_autocomplete`: one inline text input with an
+anchored suggestion list. The caller supplies type-compatible suggestions and
+validates typed literals before committing. Up/Down select suggestions, Enter or Tab
+accepts, and Escape restores the committed value. Text editing keeps focus in
+the input; the popup does not add another search field or an adjacent trigger.
+Rows share the text editor's compact completion styling: a symbol icon, a
+monospace name with matched characters highlighted, and a type aligned right.
+Tab accepts an active suggestion; otherwise Tab and Shift+Tab move focus normally.
+This follows the [editable combobox keyboard model](https://www.w3.org/WAI/ARIA/apg/patterns/combobox/).
+Discrete choices use `kit_choice_items` when their rows need shared groups,
+icons, or descriptions, and `kit_choice` for simple named options.
 
 ### cmdk
 

@@ -7,6 +7,7 @@
 #include "platform/cute.h"
 #include "render/shader_dir.h"
 #include "state_file.h"
+#include "support/resources.h"
 
 #include <imgui/dcimgui.h>
 #include <signal.h>
@@ -221,6 +222,15 @@ static void web_frame()
 
 int main(int argc, char **argv)
 {
+    if (flag(argc, argv, "--engine-info")) {
+        char *info = resource_info();
+        if (!info) {
+            return 1;
+        }
+        puts(info);
+        free(info);
+        return 0;
+    }
     if (flag(argc, argv, "--help")) {
         puts(
             "chibi [--headless] [--frames N] [--fps N] [--screenshot "
@@ -231,6 +241,7 @@ int main(int argc, char **argv)
             "[--fixed-dt SECONDS]\n"
             "             [--open ASSET [--graph NAME]]\n"
             "             [--checkpoint PATH]\n"
+            "             [--engine-info]\n"
             "Play: Escape pauses, Enter resumes, R restarts, Q quits while "
             "paused.\n"
             "Development: --bootstrap RESULT, or --module MANIFEST."

@@ -1,6 +1,7 @@
 # Explicit compilation ownership, independent of conceptual folder boundaries.
 
 set(CORE_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/support/resources.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/diagnostics/web_trace.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/authoring/align.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/authoring/arrange.c
@@ -184,8 +185,10 @@ set(EDITOR_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_graph_edit.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_graph_input.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_graph_layout.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_graph_literals.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_graph_pins.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_graph_properties.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_graph_values.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_graph_view.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_host.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_keys.c

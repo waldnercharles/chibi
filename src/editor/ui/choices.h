@@ -5,12 +5,15 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
 
 typedef struct editor_choice
 {
     int value;
     const char *label;
     const char *name; /* Stable value for PIN_NAME catalogs; NULL for integers. */
+    const char *group;
+    uint32_t icon;
 } editor_choice;
 
 typedef struct editor_choices

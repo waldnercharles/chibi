@@ -32,9 +32,10 @@ typedef struct
     pin_value after;
 } scene_field_edit;
 
-/* Records already-applied scalar edits as one undo step. Owns copied values and
- * nominal type names. Unsupported values or duplicate fields reject the batch;
- * empty/no-op batches preserve redo. Replay validates every field before writing. */
+/* Records already-applied scalar or plain reflected-struct edits as one undo
+ * step. Owns copied strings, struct bytes and nominal type names. Unsupported
+ * values or duplicate fields reject the batch; empty/no-op batches preserve
+ * redo. Replay validates every field before writing. */
 bool scene_history_push_fields(
     scene_history *history,
     ecs_entity entity,
@@ -112,7 +113,7 @@ void scene_history_complete_rename(scene_history *history, bool redo);
 bool scene_history_can_undo(const scene_history *history);
 bool scene_history_can_redo(const scene_history *history);
 /* Returns 1 after applying, 0 when empty, or -1 if the entity/component/field
- * is missing, its scalar schema no longer matches, or the head requires app-owned actor/behavior/rename replay. Failure preserves both
+ * is missing, its reflected schema no longer matches, or the head requires app-owned actor/behavior/rename replay. Failure preserves both
  * stacks and all component values. out_entity is
  * optional and is assigned only after applying. Entities are never recreated. */
 int scene_history_undo(scene_history *history, ecs_world *world, ecs_entity *out_entity);

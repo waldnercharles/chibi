@@ -106,8 +106,6 @@ add_library(chibi_rmlui STATIC
     src/editor/ui/kit_wire_shape.c)
 target_include_directories(chibi_rmlui PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_include_directories(chibi_rmlui SYSTEM PRIVATE ${cute_framework_SOURCE_DIR}/include)
-target_compile_definitions(chibi_rmlui PRIVATE
-    CHIBI_RMLUI_RESOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/src/editor/rmlui/resources")
 # core supplies arrange_path to kit_wire_shape.c; listing it here keeps it
 # after this library on single-pass link lines.
 target_link_libraries(chibi_rmlui PUBLIC chibi_ui PRIVATE cute core)

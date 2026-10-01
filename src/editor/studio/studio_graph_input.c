@@ -778,7 +778,11 @@ void sg_replay(studio *s)
             bool inside = ev.x >= g->surface.rect.x && ev.y >= g->surface.rect.y &&
                           ev.x < g->surface.rect.x + g->surface.rect.w &&
                           ev.y < g->surface.rect.y + g->surface.rect.h;
-            bool take = g->captured || (inside && !blocked && g->surface.hovered);
+            bool popup_open = kit_has_popup(g->kit);
+            bool popup_wheel = ev.type == RML_INPUT_POINTER_WHEEL &&
+                               popup_open && !blocked;
+            bool take = g->captured || popup_wheel ||
+                        (inside && !blocked && g->surface.hovered);
             if (ev.type == RML_INPUT_POINTER_DOWN && !take) {
                 kit_blur(g->kit);
                 continue;
@@ -800,7 +804,11 @@ void sg_replay(studio *s)
                             ((ev.modifiers & RML_INPUT_MOD_ALT) ? KIT_MOD_ALT : 0u) |
                             ((ev.modifiers & RML_INPUT_MOD_META) ? KIT_MOD_META : 0u);
             if (ev.type == RML_INPUT_POINTER_WHEEL) {
-                wheel(s, &g->events[i]);
+                if (popup_open && !blocked) {
+                    rml_backend_process_input(g->backend, &ev);
+                } else if (!popup_open) {
+                    wheel(s, &g->events[i]);
+                }
                 continue;
             }
             if (ev.type == RML_INPUT_POINTER_DOWN && ev.button >= 0 && ev.button < 3) {
@@ -837,7 +845,7 @@ void sg_replay(studio *s)
     }
     asetlen(g->events, 0);
     /* A pinch zooms at the pointer, as scrolling does. */
-    if (s->pinch != 0 && g->surface.hovered && !blocked) {
+    if (s->pinch != 0 && !kit_has_popup(g->kit) && g->surface.hovered && !blocked) {
         sg_zoom_at(s, g->zoom * expf(s->pinch), s->in.mouse_x, s->in.mouse_y);
     }
 }

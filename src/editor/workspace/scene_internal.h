@@ -230,6 +230,8 @@ bool content_path_in_folder(const app_scene_authoring *scene, const char *path, 
 void content_refresh(app_scene_authoring *scene);
 void asset_index_invalidate(app_scene_authoring *scene);
 bool editable_scalar(const pin_value *value);
+bool scene_property_value_copy(pin_value *out, pin_value value);
+void scene_property_value_free(pin_value *value);
 
 void finish_property_edit(app_scene_authoring *scene);
 void finish_transform_edit(app_scene_authoring *scene, bool cancel);

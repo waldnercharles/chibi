@@ -85,7 +85,7 @@ These are our decisions, drawing on the references above. Distances are screen d
 - Inputs therefore always sit below outputs, wires never cross inside a node, and each input row has the full node width.
 - Input labels share one width per node, so their editors line up in a column.
 - Unreal, Unity and ComfyUI instead set inputs and outputs side by side. That is shorter, but it pairs unrelated pins and leaves editors half a node wide.
-- Nodes are measured in C with text measured as the canvas draws it at the current zoom, since hinted text at small pixel sizes runs wider than a scaled measurement. Arrange takes each pin's offset from the same measurement.
+- Nodes are measured in C with zoom-neutral text metrics, so node bounds and socket positions stay fixed in graph units while the camera moves. The canvas still rasterizes text at its displayed size. Arrange takes each pin's offset from the same measurement.
 
 Settings under Graph Nodes (all on by default):
 

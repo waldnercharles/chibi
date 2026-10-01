@@ -3,6 +3,8 @@ BUILD_DIR ?= build
 DEBUG_BUILD_DIR ?= build-debug
 BENCHMARK_BUILD_DIR ?= build-benchmark
 RELEASE_BUILD_DIR ?= build-release
+PACKAGE_BUILD_DIR ?= build-package
+PACKAGE_OUTPUT ?= dist/chibi-$(shell uname -s | tr '[:upper:]' '[:lower:]')-$(shell uname -m)
 TRACY_BUILD_DIR ?= build-tracy
 TRACY_MCP_BUILD_DIR ?= build-tracy-mcp
 WEB_BUILD_DIR ?= build-web
@@ -31,9 +33,11 @@ LOCAL_CMAKE_FLAGS ?= $(SANITIZER_CMAKE_FLAGS)
 # allocator does not report a failed nano-zone reservation.
 NATIVE_RUNTIME_ENV ?= MallocNanoZone=0
 
-.PHONY: all help build build-debug build-tracy build-tracy-mcp mcp mcp-controller mcp-setup tracy-mcp run debug debug-san play build-release run-tracy benchmark web web-serial web-configure web-serve web-profile web-threads web-threads-serve profile-compare format check-format test test-fast test-render sdl-package clean
+.PHONY: all help build build-debug build-tracy build-tracy-mcp mcp mcp-controller mcp-setup tracy-mcp run debug debug-san play build-release run-tracy benchmark web publish-web web-serial web-configure web-serve web-profile web-threads web-threads-serve profile-compare format check-format test test-fast test-render sdl-package clean
 
 all: build
+
+.PHONY: package-native test-package
 
 help:
 	@printf '%s\n' \
@@ -46,6 +50,8 @@ help:
 		'make debug-san      Run Debug with ASan+UBSan; use SANITIZERS=thread for TSan' \
 		'make play           Run the optimized Arena2D game' \
 		'make build-release  Build the fully optimized native profile' \
+		'make package-native Build a relocatable engine, Studio, and MCP package' \
+		'make test-package   Verify the native package against an external game' \
 		'make sdl-package    Build pinned SDL once for reuse across macOS worktrees' \
 		'make build-tracy    Build native RelWithDebInfo with Tracy enabled' \
 		'make run-tracy      Run the native Tracy profile' \
@@ -59,6 +65,7 @@ help:
 		'make mcp-controller Build only the chibi_ctl MCP controller' \
 		'make mcp-setup      Generate local Codex MCP configuration' \
 		'make web            Build paired serial and worker browser applications' \
+		'make publish-web    Publish the latest origin/main commit to GitHub Pages' \
 		'make web-serve      Serve the browser application for PROJECT on WEB_PORT' \
 		'make web-profile    Serve a web build named for the browser profiler' \
 		'make web-serial     Build only the serial browser application' \
@@ -122,6 +129,14 @@ play:
 build-release:
 	$(MAKE) build BUILD_DIR="$(RELEASE_BUILD_DIR)" LOCAL_CMAKE_FLAGS="$(RELEASE_CMAKE_FLAGS)" BUILD_TARGET="$(BUILD_TARGET)"
 
+package-native:
+	$(MAKE) build BUILD_DIR="$(PACKAGE_BUILD_DIR)" LOCAL_CMAKE_FLAGS="$(RELEASE_CMAKE_FLAGS) -DCHIBI_DEVELOPMENT_RELOAD=OFF -DCHIBI_DISTRIBUTION=ON" BUILD_TARGET="chibi chibi_ctl"
+	python3 tools/package_native.py --build "$(PACKAGE_BUILD_DIR)" --output "$(PACKAGE_OUTPUT)"
+
+test-package: package-native
+	python3 test/package_native_test.py --package "$(PACKAGE_OUTPUT)"
+	node --test test/mcp_package_test.mjs
+
 sdl-package:
 	CHIBI_SDL3_PACKAGE_JOBS=$(JOBS) sh tools/sdl_package.sh build $(NATIVE_TOOLCHAIN_FLAGS)
 
@@ -150,7 +165,7 @@ benchmark:
 # Web builds generate reflection with the native tool.
 web-configure:
 	sh tools/configure_native.sh "$(BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) && cmake --build "$(BUILD_DIR)" --target reflect --parallel $(JOBS)
-	emcmake cmake -S . -B "$(WEB_BUILD_DIR)" -DCMAKE_BUILD_TYPE=Release -DCHIBI_COLLAB_URL="$(CHIBI_COLLAB_URL)" -DCHIBI_REFLECT_EXECUTABLE=$(CURDIR)/$(BUILD_DIR)/reflect $(WEB_CMAKE_FLAGS)
+	sh tools/configure_web.sh "$(WEB_BUILD_DIR)" -DCMAKE_BUILD_TYPE=Release -DCHIBI_COLLAB_URL="$(CHIBI_COLLAB_URL)" -DCHIBI_REFLECT_EXECUTABLE=$(CURDIR)/$(BUILD_DIR)/reflect $(WEB_CMAKE_FLAGS)
 
 web: web-serial
 	$(MAKE) web-threads
@@ -165,6 +180,9 @@ profile-compare: web-configure
 	$(MAKE) build-release BUILD_TARGET=chibi_ctl
 	cmake --build "$(WEB_BUILD_DIR)" --target chibi_ctl --parallel $(JOBS)
 	python3 tools/profile_compare.py --project-root "$(PROJECT)" --native "$(RELEASE_BUILD_DIR)/chibi_ctl" --wasm "$(WEB_BUILD_DIR)/chibi_ctl.js" $(if $(PROFILE_SCENE),--scene "$(PROFILE_SCENE)") $(if $(PROFILE_SCENARIO),--scenario "$(PROFILE_SCENARIO)") $(PROFILE_ARGS)
+
+publish-web:
+	python3 tools/publish_web.py --jobs "$(JOBS)" --collab-url "$(CHIBI_COLLAB_URL)"
 
 web-serve: web
 	python3 tools/web_serve.py --build "$(WEB_BUILD_DIR)" --project "$(PROJECT)" --port $(WEB_PORT)
@@ -187,7 +205,12 @@ check-format:
 	sh tools/clang-format.sh --check
 
 test:
+	python3 test/fetchcontent_cache_test.py
+	python3 test/configure_cache_test.py
 	python3 test/package_web_test.py
+	python3 test/publish_web_test.py
+	python3 test/package_native_test.py
+	node --test test/mcp_package_test.mjs
 	python3 test/web_serve_test.py
 	node test/web_workspace_test.mjs
 	node test/web_storage_test.mjs

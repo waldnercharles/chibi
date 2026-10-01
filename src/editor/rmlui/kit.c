@@ -1129,6 +1129,8 @@ void kit_begin(kit *k, const kit_frame_input *input)
     check_slots(k);
     if (k->restyle) {
         restyle(k);
+        /* Resolve authored metrics before native lists read them this frame. */
+        rml_context_update(k->context);
     }
     aclear(k->triggers);
     place_popups(k);
@@ -1390,6 +1392,15 @@ bool kit_wants_pointer(const kit *k)
     return !n || n->kind != KIND_SURFACE;
 }
 
+float kit_metric(const kit *k, const char *name)
+{
+    char value[64];
+    rml_element_property(k->doc, name, value, sizeof value);
+    float metric = strtof(value, NULL);
+    assert(isfinite(metric) && metric > 0);
+    return metric;
+}
+
 /* Measured with the face RmlUi draws at this ratio: it truncates font sizes to
    whole pixels (ElementStyle) and hints glyph advances. */
 float kit_text_width(const kit *k, const char *text, float size, int weight, float ratio)
@@ -1399,12 +1410,16 @@ float kit_text_width(const kit *k, const char *text, float size, int weight, flo
     if (!text || !text[0] || pixels < 1) {
         return 0;
     }
-    uintptr_t face = rml_font_face(
-        k->standard_font_family ? k->standard_font_family : "inter",
-        RML_FONT_NORMAL,
-        weight > 0 ? weight : 400,
-        pixels
-    );
+    char family[128];
+    const char *authored = k->standard_font_family;
+    if (!authored) {
+        rml_element_property(k->doc, "font-family", family, sizeof family);
+        for (char *c = family; *c; c++) {
+            *c = (char)tolower((unsigned char)*c);
+        }
+        authored = family;
+    }
+    uintptr_t face = rml_font_face(authored, RML_FONT_NORMAL, weight > 0 ? weight : 400, pixels);
     if (!face) {
         return 0;
     }

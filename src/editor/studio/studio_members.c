@@ -1159,7 +1159,7 @@ void studio_members_body(studio *s, int area)
     }
     s->members.reveal = false;
     kit_list_desc list = { .count = acount(rows),
-                           .row_height = s->prefs.comfortable ? 26 : 22,
+                           .row_height = kit_metric(s->kit, "--row"),
                            .reveal = reveal };
     int first, last;
     kit_list_begin(k, "members", "members-list", &list, &first, &last);

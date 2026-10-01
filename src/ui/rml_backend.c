@@ -35,6 +35,16 @@ extern const size_t editor_ui_semibold_font_size;
 extern const size_t editor_ui_numeric_font_size;
 extern const size_t editor_ui_bold_font_size;
 extern const size_t editor_nerd_symbols_font_size;
+extern const unsigned char studio_regular_font[];
+extern const size_t studio_regular_font_size;
+extern const unsigned char studio_medium_font[];
+extern const size_t studio_medium_font_size;
+extern const unsigned char studio_semibold_font[];
+extern const size_t studio_semibold_font_size;
+extern const unsigned char studio_bold_font[];
+extern const size_t studio_bold_font_size;
+extern const unsigned char studio_numeric_font[];
+extern const size_t studio_numeric_font_size;
 extern const size_t editor_noto_sans_font_size;
 extern const size_t editor_noto_sans_semibold_font_size;
 extern const size_t editor_noto_sans_bold_font_size;
@@ -894,6 +904,11 @@ static bool initialize_rml()
         { editor_noto_sans_semibold_font, editor_noto_sans_semibold_font_size, "Noto Sans", 600 },
         { editor_noto_sans_bold_font, editor_noto_sans_bold_font_size, "Noto Sans", 700 },
         { editor_ui_numeric_font, editor_ui_numeric_font_size, "InterNumeric", 400 },
+        { studio_regular_font, studio_regular_font_size, "Geist", 400 },
+        { studio_medium_font, studio_medium_font_size, "Geist", 500 },
+        { studio_semibold_font, studio_semibold_font_size, "Geist", 600 },
+        { studio_bold_font, studio_bold_font_size, "Geist", 700 },
+        { studio_numeric_font, studio_numeric_font_size, "GeistNumeric", 400 },
         { editor_nerd_symbols_font, editor_nerd_symbols_font_size, "Symbols", 400 },
         { editor_inconsolata_font, editor_inconsolata_font_size, "Inconsolata", 400 },
         /* Workstream C: kit_code's face. */
@@ -1085,7 +1100,8 @@ void rml_backend_render(rml_backend *backend)
     cf_draw3d_set_texture("u_texture", cf_canvas_get_target(backend->premultiplied_canvas));
     cf_draw3d_push_render_state(replace_state());
     cf_draw3d_mesh(backend->resolve_mesh);
-    /* Later meshes would otherwise keep the canvas bound past its resize or destroy. */
+    /* Later meshes would otherwise keep the canvas bound past its resize or
+     * destroy. */
     cf_draw3d_set_texture("u_texture", (CF_Texture){ 0 });
     cf_render_layers_to(backend->straight_canvas, RML_DRAW_LAYER, RML_DRAW_LAYER, true);
     cf_draw_pop_layer();

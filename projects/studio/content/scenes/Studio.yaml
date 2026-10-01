@@ -12,7 +12,11 @@ entities:
 - {name: Inspector, prototype: Inspector}
 - {name: StatusBar, prototype: StatusBar}
 - {name: TopBar, prototype: TopBar}
+- name: Collaboration
+  prototype: Collaboration
+  behaviors: [NavKeys, Dismiss]
 - {name: AreaHeader, prototype: AreaHeader}
+- {name: Properties, prototype: Properties}
 - name: Widgets
   prototype: Widgets
   behaviors: [VirtualList, WidgetGallery]

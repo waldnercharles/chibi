@@ -2,12 +2,15 @@
    theme carries through. Mixes that differ in the dark palette repeat under
    .dark; status, override and code colors are the editor's own. */
 body, .dark {
-    /* Surfaces, darkest to lightest. */
-    --app: color-mix(in srgb, var(--background) 83%, #000);
-    --edge: color-mix(in srgb, var(--background) 80%, #000);
-    --rail: color-mix(in srgb, var(--background) 94%, #000);
-    --panel-head: color-mix(in srgb, var(--foreground) 4%, var(--card));
-    --panel-head-hover: color-mix(in srgb, var(--foreground) 8%, var(--card));
+    /* Surfaces: quiet chrome, clear content, opaque fields and overlays. */
+    --font-ui: var(--studio-standard-font-family, geist);
+    --font-numeric: var(--studio-numeric-font-family, GeistNumeric);
+    --font-code: var(--studio-code-font-family, jetbrains mono);
+    --app: var(--muted);
+    --edge: var(--border);
+    --rail: var(--muted);
+    --panel-head: var(--card);
+    --panel-head-hover: var(--muted);
     --field-hover: color-mix(in srgb, var(--foreground) 5%, var(--secondary));
     --field-press: color-mix(in srgb, var(--secondary) 92%, #000);
     --field-edit: var(--popover);
@@ -19,33 +22,33 @@ body, .dark {
     --tooltip-edge: var(--foreground);
     --backdrop: #00000033;
     /* Lines. */
-    --line: color-mix(in srgb, var(--border) 52%, transparent);
+    --line: color-mix(in srgb, var(--border) 72%, transparent);
     --popover-edge: var(--border);
     /* Text. */
-    --faint-foreground: color-mix(in srgb, var(--muted-foreground) 80%, var(--background));
+    --faint-foreground: var(--muted-foreground);
     --disabled-foreground: color-mix(in srgb, var(--muted-foreground) 50%, var(--background));
-    --strong: #000000;
-    --primary-text: color-mix(in oklab, #000 11%, var(--primary));
-    --link: color-mix(in oklab, #000 11%, var(--primary));
+    --strong: var(--foreground);
+    --primary-text: var(--primary);
+    --link: var(--primary);
     /* Primary-tinted states. */
-    --primary-hover: color-mix(in srgb, var(--foreground) 12%, var(--primary));
+    --primary-hover: color-mix(in srgb, #000 12%, var(--primary));
     --primary-soft: color-mix(in srgb, var(--primary) 15%, transparent);
     --primary-edge: color-mix(in srgb, var(--primary) 67%, transparent);
     --primary-wash: color-mix(in srgb, var(--primary) 27%, transparent);
     --fill: color-mix(in srgb, var(--primary) 55%, transparent);
     --fill-hover: color-mix(in srgb, var(--primary) 69%, transparent);
     --selected: color-mix(in oklab, var(--primary) 19%, var(--popover));
-    --active-row: color-mix(in oklab, var(--primary) 33%, var(--popover));
+    --active-row: var(--selected);
     /* Foreground-tinted states. */
     --press: color-mix(in srgb, var(--foreground) 9%, transparent);
     --item-selected: color-mix(in srgb, var(--foreground) 5%, transparent);
     --scrollbar: color-mix(in srgb, var(--foreground) 15%, transparent);
     --scrollbar-hover: color-mix(in srgb, var(--foreground) 25%, transparent);
     /* Status, overrides and search. */
-    --warning: #b7791f;
-    --success: #2f8f3a;
+    --warning: #915b0c;
+    --success: #28733b;
     --override: #0e9494;
-    --override-fg: #0b7d73;
+    --override-fg: #086e68;
     --override-soft: #0e94941f;
     --highlight: #e8b64a66;
     --notice: #fff4e5f0;
@@ -53,47 +56,49 @@ body, .dark {
     --axis-x: #c2413b;
     --axis-y: #3f8f2f;
     /* Code tokens (highlight.c). */
-    --tok-number: #098658;
+    --tok-number: #08754d;
     --tok-string: #a31515;
-    --tok-keyword: #af00db;
+    --tok-keyword: #9900bd;
     --tok-name: #0451a5;
     --tok-path: #2f5fa8;
-    --tok-punct: #6e6e76;
+    --tok-punct: #606673;
     /* Metrics; body.comfortable scales controls, not text. */
-    --h: 22dp;
-    --topbar-h: 30dp;
-    --text-line: 20dp; /* text line inside a bordered control */
-    --h-sm: 18dp;
-    --row: 22dp;
+    --h: 26dp;
+    --topbar-h: 40dp;
+    --text-line: 24dp; /* text line inside a bordered control */
+    --h-sm: 22dp;
+    --row: 26dp;
     --gap: 2dp;
-    --header-h: 28dp;
+    --header-h: 32dp;
+    --status-h: var(--studio-height-28, 28dp);
+    --panel-h: var(--studio-height-30, 30dp);
     --r: 4dp;
     --r-lg: var(--radius);
 }
 .dark {
-    --app: color-mix(in srgb, var(--background) 55%, #000);
-    --edge: color-mix(in srgb, var(--background) 34%, #000);
+    --app: #1b1e23;
+    --edge: var(--border);
     --floating: color-mix(in srgb, var(--card) 90%, transparent);
     --tooltip: color-mix(in srgb, var(--popover) 60%, #000);
     --tooltip-edge: #333338;
     --backdrop: #0000004d;
-    --faint-foreground: color-mix(in srgb, var(--muted-foreground) 62%, var(--background));
+    --faint-foreground: var(--muted-foreground);
     --disabled-foreground: color-mix(in srgb, var(--muted-foreground) 37%, var(--background));
-    --strong: #ffffff;
-    --primary-text: color-mix(in oklab, #fff 58%, var(--primary));
-    --link: color-mix(in oklab, #fff 50%, var(--primary));
+    --strong: var(--foreground);
+    --primary-text: #a8c6f5;
+    --link: #a8c6f5;
     --primary-soft: color-mix(in srgb, var(--primary) 23%, transparent);
     --primary-wash: color-mix(in srgb, var(--primary) 33%, transparent);
     --fill: color-mix(in srgb, var(--primary) 72%, transparent);
     --fill-hover: color-mix(in srgb, var(--primary) 85%, transparent);
     --selected: color-mix(in oklab, var(--primary) 27%, var(--popover));
-    --active-row: color-mix(in oklab, var(--primary) 65%, var(--popover));
+    --active-row: var(--selected);
     --press: color-mix(in srgb, var(--foreground) 10%, transparent);
     --item-selected: color-mix(in srgb, var(--foreground) 7%, transparent);
     --scrollbar: color-mix(in srgb, var(--foreground) 12%, transparent);
     --scrollbar-hover: color-mix(in srgb, var(--foreground) 20%, transparent);
     --warning: #d9a53d;
-    --success: #57ab5a;
+    --success: #75bd78;
     --override: #19b6b6;
     --override-fg: #7fe0d4;
     --override-soft: #3db4a61f;
@@ -103,13 +108,13 @@ body, .dark {
     --axis-x: #e0727a;
     --axis-y: #82c46b;
     --tok-number: #b5cea8;
-    --tok-string: #ce9178;
-    --tok-keyword: #c586c0;
+    --tok-string: #dfaa91;
+    --tok-keyword: #daa3d5;
     --tok-name: #9cdcfe;
     --tok-path: #8fb4ee;
-    --tok-punct: #8b8b94;
+    --tok-punct: var(--muted-foreground);
 }
-body.comfortable { --h: 26dp; --topbar-h: 34dp; --text-line: 24dp; --h-sm: 20dp; --row: 26dp; --gap: 3dp; --header-h: 32dp; }
+body.comfortable { --h: 30dp; --topbar-h: 44dp; --text-line: 28dp; --h-sm: 26dp; --row: 30dp; --gap: 3dp; --header-h: 36dp; --status-h: var(--studio-height-30, 30dp); --panel-h: var(--studio-height-34, 34dp); }
 body:not(.dark) .tooltip { color: #fafafa; }
 body:not(.dark) .tooltip .kbd { color: #a1a1aa; }
 body:not(.dark) .tooltip .tip-about { color: #d4d4d8; }

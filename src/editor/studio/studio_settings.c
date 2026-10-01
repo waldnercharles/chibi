@@ -28,7 +28,46 @@ static const studio_setting_choice THEMES[STUDIO_THEME_COUNT] = {
     [STUDIO_THEME_SYSTEM] = { "system", "System" },
     [STUDIO_THEME_DARK] = { "dark", "Dark" },
     [STUDIO_THEME_LIGHT] = { "light", "Light" },
+    [STUDIO_THEME_DRACULA] = { "dracula", "Dracula" },
+    [STUDIO_THEME_SOLARIZED_LIGHT] = { "solarized-light", "Solarized Light" },
+    [STUDIO_THEME_SOLARIZED_DARK] = { "solarized-dark", "Solarized Dark" },
+    [STUDIO_THEME_TOKYO_NIGHT] = { "tokyo-night", "Tokyo Night" },
+    [STUDIO_THEME_TOKYO_STORM] = { "tokyo-storm", "Tokyo Night Storm" },
+    [STUDIO_THEME_TOKYO_DAY] = { "tokyo-day", "Tokyo Night Day" },
+    [STUDIO_THEME_CATPPUCCIN_LATTE] = { "catppuccin-latte", "Catppuccin Latte" },
+    [STUDIO_THEME_CATPPUCCIN_FRAPPE] = { "catppuccin-frappe", "Catppuccin Frappé" },
+    [STUDIO_THEME_CATPPUCCIN_MACCHIATO] = { "catppuccin-macchiato", "Catppuccin Macchiato" },
+    [STUDIO_THEME_CATPPUCCIN_MOCHA] = { "catppuccin-mocha", "Catppuccin Mocha" },
+    [STUDIO_THEME_ROSE_PINE] = { "rose-pine", "Rosé Pine" },
+    [STUDIO_THEME_ROSE_PINE_MOON] = { "rose-pine-moon", "Rosé Pine Moon" },
+    [STUDIO_THEME_ROSE_PINE_DAWN] = { "rose-pine-dawn", "Rosé Pine Dawn" },
+    [STUDIO_THEME_GRUVBOX_LIGHT] = { "gruvbox-light", "Gruvbox Light" },
+    [STUDIO_THEME_GRUVBOX_DARK] = { "gruvbox-dark", "Gruvbox Dark" },
 };
+
+bool studio_theme_is_light(studio_theme theme, bool system_light)
+{
+    switch (theme) {
+        case STUDIO_THEME_SYSTEM: return system_light;
+        case STUDIO_THEME_LIGHT:
+        case STUDIO_THEME_SOLARIZED_LIGHT:
+        case STUDIO_THEME_TOKYO_DAY:
+        case STUDIO_THEME_CATPPUCCIN_LATTE:
+        case STUDIO_THEME_ROSE_PINE_DAWN:
+        case STUDIO_THEME_GRUVBOX_LIGHT: return true;
+        default: return false;
+    }
+}
+
+void studio_theme_apply(kit *k, studio_theme theme, bool system_light)
+{
+    kit_set_body_class(k, "dark", !studio_theme_is_light(theme, system_light));
+    for (int i = STUDIO_THEME_DRACULA; i < STUDIO_THEME_COUNT; i++) {
+        char name[64];
+        snprintf(name, sizeof name, "theme-%s", THEMES[i].value);
+        kit_set_body_class(k, name, theme == (studio_theme)i);
+    }
+}
 static const studio_setting_choice DENSITIES[] = { { "compact", "Compact" },
                                                    { "comfortable", "Comfortable" } };
 static const studio_setting_choice WIRES[KIT_WIRE_STYLE_COUNT] = {
@@ -40,12 +79,13 @@ static const studio_setting_choice WIRES[KIT_WIRE_STYLE_COUNT] = {
 static const studio_setting_choice STANDARD_FONTS[] = {
     { "Inter", "Inter" },
     { "Noto Sans", "Noto Sans" },
+    { "Geist", "Geist" },
 };
 static const studio_setting_choice MONOSPACE_FONTS[] = {
     { "JetBrains Mono", "JetBrains Mono" },
     { "Inconsolata", "Inconsolata" },
 };
-static const char *const STANDARD_FONT_FACES[] = { "inter", "noto sans" };
+static const char *const STANDARD_FONT_FACES[] = { "inter", "noto sans", "geist" };
 static const char *const MONOSPACE_FONT_FACES[] = { "jetbrains mono", "inconsolata" };
 /* View › UI Scale's steps (studio_zoom), as browsers step a page's zoom. */
 static const studio_setting_choice UI_SCALES[] = {
@@ -64,9 +104,11 @@ const studio_setting studio_settings[] = {
       .save = "theme",
       .category = STUDIO_SETTINGS_APPEARANCE,
       .label = "Theme",
-      .description = "System follows the operating system's light or dark "
-                     "appearance.",
-      .keywords = "color colour mode dark light appearance palette",
+      .description = "Choose a palette. System follows the operating system's "
+                     "light or dark appearance.",
+      .keywords = "color colour mode dark light appearance palette dracula "
+                  "solarized "
+                  "tokyo catppuccin rose pine gruvbox",
       .type = STUDIO_SETTING_CHOICE,
       FIELD(theme),
       CHOICES(THEMES),
@@ -107,10 +149,11 @@ const studio_setting studio_settings[] = {
       .category = STUDIO_SETTINGS_APPEARANCE,
       .label = "Standard Font",
       .description = "The interface's standard text face.",
-      .keywords = "font family typeface sans inter noto",
+      .keywords = "font family typeface sans inter noto geist",
       .type = STUDIO_SETTING_CHOICE,
       FIELD(standard_font_family),
-      CHOICES(STANDARD_FONTS) },
+      CHOICES(STANDARD_FONTS),
+      .fallback = 2 },
     { .key = "font.standardSize",
       .save = "standardFontSize",
       .category = STUDIO_SETTINGS_APPEARANCE,
@@ -123,7 +166,7 @@ const studio_setting studio_settings[] = {
       .min = 10,
       .max = 18,
       .step = 1,
-      .fallback = 12 },
+      .fallback = 13 },
     { .key = "wires",
       .save = "wires",
       .category = STUDIO_SETTINGS_GRAPH,
@@ -228,45 +271,41 @@ const char *studio_code_font(const studio_prefs *prefs)
     return MONOSPACE_FONT_FACES[prefs->code_font_family];
 }
 
-void studio_apply_font_settings(kit *k, const studio_prefs *prefs)
+static void apply_font_settings(kit *k, const studio_prefs *prefs, bool graph)
 {
     kit_set_standard_font_family(k, studio_standard_font(prefs));
     char css[24576];
-    float scale = prefs->standard_font_size / 12.0f;
-    int h = (int)lroundf(22 * scale);
-    int text_line = (int)lroundf(20 * scale);
-    int h_sm = (int)lroundf(18 * scale);
-    int row = (int)lroundf(22 * scale);
+    float scale = graph ? 1 : prefs->standard_font_size / 13.0f;
+    int h = graph ? 22 : (int)lroundf(26 * scale);
+    int text_line = graph ? 20 : (int)lroundf(24 * scale);
+    int h_sm = graph ? 18 : (int)lroundf(22 * scale);
+    int row = h;
     int gap = (int)lroundf(2 * scale);
-    int header_h = (int)lroundf(28 * scale);
-    int topbar_h = h + 8;
+    int header_h = (int)lroundf(32 * scale);
+    int topbar_h = (int)lroundf(40 * scale);
     int line_extra = 0;
-    if (prefs->standard_font_size > 12) {
-        uintptr_t face = rml_font_face(
-            studio_standard_font(prefs),
-            RML_FONT_NORMAL,
-            400,
-            prefs->standard_font_size
-        );
-        assert(face);
-        int scaled_line = (int)lroundf(16 * scale);
-        line_extra = (int)ceilf(rml_font_face_metrics(face).line_spacing) - scaled_line;
-        if (line_extra < 0) {
-            line_extra = 0;
-        }
+    int font_size = graph ? 12 : (int)lroundf(prefs->standard_font_size);
+    uintptr_t face = rml_font_face(studio_standard_font(prefs), RML_FONT_NORMAL, 400, font_size);
+    assert(face);
+    int body_line = graph ? 16 : (int)lroundf(18 * scale);
+    line_extra = (int)ceilf(rml_font_face_metrics(face).line_spacing) - body_line;
+    if (line_extra < 0 || graph) {
+        line_extra = 0;
     }
+    const char *numeric_fonts[] = { "InterNumeric", "noto sans", "GeistNumeric" };
     int written = snprintf(
         css,
         sizeof css,
         "body, body.dark { --studio-standard-font-family: %s; "
-        "--studio-code-font-family: %s; "
+        "--studio-code-font-family: %s; --studio-numeric-font-family: %s; "
+        "font-size: %ddp; line-height: %ddp; "
         "--h: %ddp; --text-line: %ddp; --h-sm: %ddp; "
         "--row: %ddp; --gap: %ddp; --header-h: %ddp; "
-        "--topbar-h: %ddp; }\n"
+        "--topbar-h: %ddp; --status-h: %ddp; --panel-h: %ddp; }\n"
         "body.comfortable, body.dark.comfortable { --h: %ddp; "
         "--text-line: %ddp; --h-sm: %ddp; "
         "--row: %ddp; --gap: %ddp; --header-h: %ddp; "
-        "--topbar-h: %ddp; }\n"
+        "--topbar-h: %ddp; --status-h: %ddp; --panel-h: %ddp; }\n"
         ".code-completions, .code-hover, .code-hover-title, .code-hover-line, "
         ".code-mode, kit-code { font-family: var(--studio-code-font-family, "
         "jetbrains mono); }\n"
@@ -283,6 +322,9 @@ void studio_apply_font_settings(kit *k, const studio_prefs *prefs)
         "font-family: var(--studio-standard-font-family, inter); }\n",
         studio_standard_font(prefs),
         studio_code_font(prefs),
+        numeric_fonts[prefs->standard_font_family],
+        font_size,
+        body_line + line_extra,
         h,
         text_line,
         h_sm,
@@ -290,18 +332,22 @@ void studio_apply_font_settings(kit *k, const studio_prefs *prefs)
         gap,
         header_h,
         topbar_h,
-        (int)lroundf(26 * scale),
-        (int)lroundf(24 * scale),
-        (int)lroundf(20 * scale),
-        (int)lroundf(26 * scale),
+        (int)lroundf(28 * scale),
+        (int)lroundf(30 * scale),
+        graph ? 22 : (int)lroundf(30 * scale),
+        graph ? 20 : (int)lroundf(28 * scale),
+        graph ? 18 : (int)lroundf(26 * scale),
+        graph ? 22 : (int)lroundf(30 * scale),
         (int)lroundf(3 * scale),
-        (int)lroundf(32 * scale),
-        (int)lroundf(26 * scale) + 8
+        (int)lroundf(36 * scale),
+        (int)lroundf(44 * scale),
+        (int)lroundf(30 * scale),
+        (int)lroundf(34 * scale)
     );
     assert(written > 0 && (size_t)written < sizeof css);
     size_t used = (size_t)written;
     for (int size = 8; size <= 64; size++) {
-        int standard = (int)lroundf((float)size * prefs->standard_font_size / 12.0f);
+        int standard = (int)lroundf((float)size * scale);
         int mono = (int)lroundf((float)size * prefs->code_font_size / 13.0f);
         int added = snprintf(
             css + used,
@@ -314,11 +360,11 @@ void studio_apply_font_settings(kit *k, const studio_prefs *prefs)
             size,
             mono,
             size,
-            (int)lroundf((float)size * prefs->standard_font_size / 12.0f) + line_extra,
+            (int)lroundf((float)size * scale) + line_extra,
             size,
             (int)lroundf((float)size * prefs->code_font_size / 13.0f),
             size,
-            (int)lroundf((float)size * prefs->standard_font_size / 12.0f),
+            (int)lroundf((float)size * scale),
             size,
             (int)lroundf((float)size * prefs->code_font_size / 13.0f)
         );
@@ -328,12 +374,17 @@ void studio_apply_font_settings(kit *k, const studio_prefs *prefs)
     kit_style_sheet(k, "studio-font-settings", css);
 }
 
+void studio_apply_font_settings(kit *k, const studio_prefs *prefs)
+{
+    apply_font_settings(k, prefs, false);
+}
+
 void studio_apply_graph_font_settings(kit *k, const studio_prefs *prefs)
 {
     studio_prefs graph_prefs = *prefs;
     graph_prefs.standard_font_size = 12;
     graph_prefs.code_font_size = 13;
-    studio_apply_font_settings(k, &graph_prefs);
+    apply_font_settings(k, &graph_prefs, true);
 }
 
 static const void *field_at(const studio_prefs *prefs, const studio_setting *s)

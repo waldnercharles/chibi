@@ -578,18 +578,17 @@ static void draw_viewport(studio *s)
 static void apply_prefs(studio *s, bool initial)
 {
     const studio_prefs *p = &s->prefs;
-    bool light = p->theme == STUDIO_THEME_LIGHT ||
-                 (p->theme == STUDIO_THEME_SYSTEM && s->system_light);
+    bool light = studio_theme_is_light(p->theme, s->system_light);
     if (s->theme_switching && !--s->theme_switching) {
         kit_set_body_class(s->kit, "theme-switching", false);
     }
-    if (initial || light != s->light) {
+    if (initial || p->theme != s->applied.theme || light != s->light) {
         /* next-themes: no transitions while the palette changes, and no flash
            of the wrong theme because this runs before the first frame. */
         s->light = light;
         kit_set_body_class(s->kit, "theme-switching", !initial);
         s->theme_switching = initial ? 0 : 1;
-        kit_set_body_class(s->kit, "dark", !light);
+        studio_theme_apply(s->kit, p->theme, s->system_light);
     }
     if (initial || p->comfortable != s->applied.comfortable) {
         kit_set_body_class(s->kit, "comfortable", p->comfortable);
@@ -833,7 +832,9 @@ static void run(studio *s, double delta_seconds, float width, float height)
     studio_inspect_emit(s);
     kit_end(s->kit);
     s->typing = kit_wants_keyboard(s->kit) || studio_graph_wants_keyboard(s);
-    if (!s->typing) {
+    bool toolbar_shortcuts = !studio_graph_wants_keyboard(s) &&
+                             !s->shortcut_recording && studio_ui_shortcut_focus(s);
+    if (!s->typing || toolbar_shortcuts) {
         studio_shortcuts(s);
     }
     apply_prefs(s, false);

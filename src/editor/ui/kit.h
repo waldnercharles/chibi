@@ -57,6 +57,8 @@ extern "C"
     /* RCSS that precedes the document's own stylesheet: the tokens and control
        styles of a scene's root document (render/ui.h ui_page). */
     void kit_theme(kit *k, const char *rcss);
+    /* Positive dp metric from the authored theme, e.g. --row. */
+    float kit_metric(const kit *k, const char *name);
 
     /* Host pointer state for the frame, in logical pixels. */
     typedef struct kit_frame_input
@@ -277,6 +279,7 @@ extern "C"
     void kit_popup_open(kit *k, const char *key);
     void kit_popup_open_at(kit *k, const char *key, float x, float y);
     bool kit_popup_is_open(const kit *k, const char *key);
+    bool kit_has_popup(const kit *k);
     /* The "popover" class selects nonmodal form behavior: first tabbable
      * focus, normal control keys, Tab navigation and dismissal on focus out.
      * Other popups use menu keys and close on Tab. */

@@ -556,7 +556,7 @@ static void info_view(studio *s, float row)
 void studio_output_body(studio *s, int area)
 {
     (void)area;
-    float row = s->prefs.comfortable ? 24 : 20;
+    float row = kit_metric(s->kit, "--row");
     switch (s->output_view) {
         case OUTPUT_PROBLEMS: problems_view(s, row); break;
         case OUTPUT_RUNTIME: runtime_view(s, row); break;

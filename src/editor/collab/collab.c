@@ -43,8 +43,10 @@ static struct
     collab_role role;
     char room[COLLAB_MAX_ID + 1], client[COLLAB_MAX_ID + 1];
     char status[256];
+    bool status_error;
     char feedback[256];
     bool feedback_error;
+    uint64_t feedback_revision;
     uint64_t revision, seq, pending_seq, checkpoint_revision, presence_seq;
     uint64_t recovery_revision;
     char pending_client[COLLAB_MAX_ID + 1];
@@ -58,10 +60,21 @@ static struct
     size_t inbound_bytes;
 } session;
 
+/* Monotonic across session resets so browser feedback can compare freshness. */
+static uint64_t status_revision;
+
 static void status(collab_state state, const char *text)
 {
     session.state = state;
+    session.status_error = false;
+    status_revision++;
     snprintf(session.status, sizeof session.status, "%s", text);
+}
+
+static void status_error(collab_state state, const char *text)
+{
+    status(state, text);
+    session.status_error = true;
 }
 
 static void send_at(const char *kind, const char *client, uint64_t seq, uint64_t revision, const char *payload)
@@ -98,7 +111,7 @@ static void clear_pending()
 static void request_resync(const char *reason)
 {
     bool first = session.state != COLLAB_RESYNCING;
-    status(COLLAB_RESYNCING, reason);
+    status_error(COLLAB_RESYNCING, reason);
     if (first) {
         char payload[96];
         snprintf(
@@ -133,12 +146,13 @@ void collab_shutdown()
     }
     afree(session.inbound);
     memset(&session, 0, sizeof session);
+    status(COLLAB_OFFLINE, "Offline");
 }
 
 COLLAB_EXPORT void collab_start(const char *room, const char *client, const char *role)
 {
     if (!collab_identifier(room) || !collab_identifier(client) || !role) {
-        status(COLLAB_OFFLINE, "Invalid room identity");
+        status_error(COLLAB_OFFLINE, "Invalid room identity");
         return;
     }
     collab_role next_role = !strcmp(role, "host")   ? COLLAB_ROLE_HOST
@@ -146,7 +160,7 @@ COLLAB_EXPORT void collab_start(const char *room, const char *client, const char
                           : !strcmp(role, "viewer") ? COLLAB_ROLE_VIEWER
                                                     : COLLAB_ROLE_NONE;
     if (next_role == COLLAB_ROLE_NONE) {
-        status(COLLAB_OFFLINE, "Invalid room role");
+        status_error(COLLAB_OFFLINE, "Invalid room role");
         return;
     }
     bool same = !strcmp(session.room, room) && !strcmp(session.client, client);
@@ -197,7 +211,7 @@ COLLAB_EXPORT void collab_receive(const char *envelope)
 COLLAB_EXPORT void collab_disconnect(const char *reason)
 {
     if (collab_active()) {
-        status(COLLAB_CONNECTING, reason ? reason : "Room connection lost; reconnecting");
+        status_error(COLLAB_CONNECTING, reason ? reason : "Room connection lost; reconnecting");
     }
 }
 
@@ -231,12 +245,24 @@ COLLAB_EXPORT void collab_feedback(const char *message, int error)
 {
     snprintf(session.feedback, sizeof session.feedback, "%s", message ? message : "");
     session.feedback_error = error != 0;
+    session.feedback_revision = status_revision;
 }
 
-bool collab_active()
+static bool feedback_current()
 {
-    return session.role != COLLAB_ROLE_NONE;
+    return session.feedback[0] && session.feedback_revision == status_revision;
 }
+
+const char *collab_feedback_text()
+{
+    return feedback_current() ? session.feedback : "";
+}
+
+bool collab_feedback_error()
+{
+    return feedback_current() ? session.feedback_error : collab_status_error();
+}
+
 bool collab_rooms_available()
 {
 #ifdef __EMSCRIPTEN__
@@ -244,6 +270,11 @@ bool collab_rooms_available()
 #else
     return false;
 #endif
+}
+
+bool collab_active()
+{
+    return session.role != COLLAB_ROLE_NONE;
 }
 bool collab_is_host()
 {
@@ -267,13 +298,13 @@ const char *collab_status()
 {
     return *session.status ? session.status : "Offline";
 }
-const char *collab_feedback_text()
+uint64_t collab_status_revision()
 {
-    return session.feedback;
+    return status_revision;
 }
-bool collab_feedback_error()
+bool collab_status_error()
 {
-    return session.feedback_error;
+    return session.status_error;
 }
 const char *collab_client()
 {
@@ -476,7 +507,7 @@ static void retry_snapshot(const char *reason)
 {
     if (++session.recovery_failures >= 3) {
         collab_leave();
-        status(COLLAB_CLOSED, "Could not restore room after three attempts; left room");
+        status_error(COLLAB_CLOSED, "Could not restore room after three attempts; left room");
         return;
     }
     session.state = COLLAB_LOADING;
@@ -534,7 +565,7 @@ static void joined(const collab_message *message)
                          : !strcmp(role, "editor") ? COLLAB_ROLE_EDITOR
                                                    : COLLAB_ROLE_VIEWER;
     if (assigned != session.role || strcmp(message->client, session.client)) {
-        status(COLLAB_CLOSED, "Room membership does not match the invitation");
+        status_error(COLLAB_CLOSED, "Room membership does not match the invitation");
         web_close();
         session.closing = true;
         return;
@@ -589,7 +620,7 @@ static void dispatch(const collab_message *message)
             if (applied) {
                 request_resync(reason ? reason : "Host action rejected; recovering");
             } else {
-                status(session.state, reason ? reason : "Edit rejected");
+                status_error(session.state, reason ? reason : "Edit rejected");
             }
         }
     } else if (!strcmp(kind, "presence") && session.config.presence) {
@@ -608,14 +639,14 @@ static void dispatch(const collab_message *message)
     } else if (!strcmp(kind, "leave") && session.config.presence) {
         session.config.presence(session.config.context, message->client, message->client, 0, NULL);
     } else if (!strcmp(kind, "room_closed")) {
-        status(COLLAB_CLOSED, "Room closed: host departed");
+        status_error(COLLAB_CLOSED, "Room closed: host departed");
         web_close();
         session.closing = true;
     } else if (!strcmp(kind, "host_changed")) {
         request_resync("Room authority changed; recovering");
     } else if (!strcmp(kind, "error")) {
         const char *reason = yyjson_get_str(yyjson_obj_get(message->payload, "reason"));
-        status(session.state, reason ? reason : "Room service error");
+        status_error(session.state, reason ? reason : "Room service error");
     }
 }
 
@@ -628,7 +659,7 @@ static void checkpoint()
     }
     char *workspace = session.config.checkpoint(session.config.context);
     if (!workspace) {
-        status(session.state, "Could not capture room checkpoint");
+        status_error(session.state, "Could not capture room checkpoint");
         return;
     }
     yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
@@ -656,7 +687,11 @@ void collab_tick()
                              session.config.restore(session.config.context, payload, error, sizeof error);
         collab_end_replay();
         free(payload);
-        status(COLLAB_CONNECTING, session.seed_ready ? "Room workspace prepared" : error);
+        if (session.seed_ready) {
+            status(COLLAB_CONNECTING, "Room workspace prepared");
+        } else {
+            status_error(COLLAB_CONNECTING, error);
+        }
     }
     char **messages = session.inbound;
     session.inbound = NULL;

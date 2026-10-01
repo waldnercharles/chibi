@@ -10,6 +10,7 @@
  * preferences. A preview of Studio's own ui assets shows the same data and
  * applies nothing. */
 #include "assets/project.h"
+#include "editor/collab/collab.h"
 #include "editor/studio/studio_internal.h"
 #include "runtime/behaviors/live.h"
 #include "runtime/scenes/prototype_preview.h"
@@ -30,6 +31,7 @@ static void sync_inspector(studio *s, studio_sources *src, ui_data *data);
 static void show_inspector_model(studio_sources *src, ui_data *data, const studio_inspect_model *m);
 static void sync_editor(studio *s, ui_data *data);
 static void sync_commands(studio *s, ui_data *data);
+static void sync_collaboration(studio *s, ui_data *data);
 
 yyjson_mut_doc *studio_sources_new()
 {
@@ -40,6 +42,18 @@ yyjson_mut_doc *studio_sources_new()
     yyjson_mut_obj_add_str(doc, world, "title", "");
     yyjson_mut_obj_add_arr(doc, world, "saved");
     yyjson_mut_obj_add_arr(doc, yyjson_mut_obj_add_obj(doc, root, "theme"), "sections");
+    yyjson_mut_val *collaboration = yyjson_mut_obj_add_obj(doc, root, "collaboration");
+    yyjson_mut_obj_add_bool(doc, collaboration, "available", false);
+    yyjson_mut_obj_add_bool(doc, collaboration, "connected", false);
+    yyjson_mut_obj_add_bool(doc, collaboration, "host", false);
+    yyjson_mut_obj_add_bool(doc, collaboration, "error", false);
+    yyjson_mut_obj_add_str(doc, collaboration, "status", "");
+    yyjson_mut_obj_add_str(doc, collaboration, "token", "");
+    yyjson_mut_obj_add_str(doc, collaboration, "invite", "");
+    yyjson_mut_obj_add_bool(doc, collaboration, "token_expanded", false);
+    yyjson_mut_obj_add_bool(doc, collaboration, "busy", false);
+    yyjson_mut_obj_add_bool(doc, collaboration, "has_peers", false);
+    yyjson_mut_obj_add_arr(doc, collaboration, "peers");
     add_inspector(doc, root);
     studio_settings_add(doc);
     studio_status_add(doc);
@@ -1124,6 +1138,51 @@ static void sync_values(studio *s, studio_sources *src, ui_data *data, bool wrot
     sync_settings(s, data, wrote);
     sync_editor(s, data);
     sync_commands(s, data);
+    sync_collaboration(s, data);
+}
+
+static void sync_collaboration(studio *s, ui_data *data)
+{
+    yyjson_mut_val *collaboration = variable(data, "collaboration");
+    bool changed = false;
+    changed |= put_bool(collaboration, "token_expanded", s->collaboration.admin_token_expanded);
+    changed |= put_bool(collaboration, "busy", studio_collab_busy(s));
+    changed |= put_bool(collaboration, "available", studio_collab_available());
+    changed |= put_bool(collaboration, "connected", collab_active());
+    changed |= put_bool(collaboration, "host", collab_active() && collab_is_host());
+    changed |= put_bool(collaboration, "error", studio_collab_status_error());
+    changed |= put_text(data->doc, collaboration, "status", studio_collab_display_status());
+    yyjson_mut_val *peers = yyjson_mut_obj_get(collaboration, "peers");
+    int count = acount(s->collaboration.peers);
+    changed |= put_bool(collaboration, "has_peers", count > 0);
+    if ((int)yyjson_mut_arr_size(peers) != count) {
+        yyjson_mut_arr_clear(peers);
+        for (int i = 0; i < count; i++) {
+            yyjson_mut_val *peer = yyjson_mut_obj(data->doc);
+            yyjson_mut_obj_add_str(data->doc, peer, "name", "");
+            yyjson_mut_obj_add_str(data->doc, peer, "color", "");
+            yyjson_mut_obj_add_bool(data->doc, peer, "following", false);
+            yyjson_mut_arr_append(peers, peer);
+        }
+        changed = true;
+    }
+    for (int i = 0; i < count; i++) {
+        studio_collab_peer *peer = &s->collaboration.peers[i];
+        yyjson_mut_val *row = yyjson_mut_arr_get(peers, (size_t)i);
+        char color[16];
+        snprintf(color, sizeof color, "#%08x", peer->color ? peer->color : 0x6ea8feffu);
+        changed |= put_text(data->doc, row, "name", peer->name);
+        changed |= put_text(data->doc, row, "color", color);
+        changed |= put_bool(
+            row,
+            "following",
+            s->collaboration.following &&
+                !strcmp(s->collaboration.follow_client, peer->client)
+        );
+    }
+    if (changed) {
+        rml_data_model_dirty(data->model, "collaboration");
+    }
 }
 
 void studio_sources_sync(studio *s, studio_sources *src, ui_data *data)

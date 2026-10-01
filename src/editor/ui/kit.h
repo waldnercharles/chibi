@@ -21,8 +21,8 @@ extern "C"
      *
      * Keys are unique among siblings. Paths join ancestor keys with '/' and name
      * items for tests and inspection. Styling lives in the Studio scene's root
-     * document (projects/studio/content/ui/StudioShell.rml, its .rcss and the theme files
-     * it imports); behavior follows the Base UI contracts in
+     * document (projects/studio/content/ui/StudioShell.rml, its .rcss and the theme
+     * files it imports); behavior follows the Base UI contracts in
      * docs/prototypes/studio/kit.html. */
 
     typedef struct kit kit;
@@ -137,9 +137,10 @@ extern "C"
     kit_rect kit_item_rect(kit *k);  /* logical pixels, latest layout */
     bool kit_item_hovered(kit *k); /* under the pointer and not clipped away */
 
-    /* Conditional class lists (clsx): KIT_CX(k, "area", { "fill", fill }, { "live", live })
-     * joins the base with each class whose condition holds. The string lives until
-     * kit_end. State belongs in data-* attributes (kit_flag), not classes. */
+    /* Conditional class lists (clsx): KIT_CX(k, "area", { "fill", fill }, {
+     * "live", live }) joins the base with each class whose condition holds. The
+     * string lives until kit_end. State belongs in data-* attributes
+     * (kit_flag), not classes. */
     typedef struct kit_class
     {
         const char *name;
@@ -202,6 +203,9 @@ extern "C"
     /* Scrub, click-to-type, expressions and keyboard steps; see the kit contract.
      * kit_item_committed() is true once per gesture; record Undo there. */
     bool kit_number(kit *k, const char *key, double *value, const kit_number_desc *desc);
+    /* Parse the arithmetic syntax used by kit_number, including relative
+     * operators; returns false for invalid or non-finite results. */
+    bool kit_number_parse(const char *text, double current, double *out);
     bool kit_checkbox(kit *k, const char *key, bool *value, const char *label, unsigned flags);
     /* Up to three options render as a toggle group, more as a select. */
     bool kit_choice(kit *k, const char *key, int *value, const char *const *labels, int count, unsigned flags);
@@ -247,7 +251,8 @@ extern "C"
         KIT_ROW_CONTEXT = 1 << 2,
         KIT_ROW_TWISTY = 1 << 3,
     };
-    /* Begins a row; emit trailing toggles inside, then kit_row_end. Returns KIT_ROW_* flags. */
+    /* Begins a row; emit trailing toggles inside, then kit_row_end. Returns
+     * KIT_ROW_* flags. */
     unsigned kit_row_begin(kit *k, const char *key, const kit_row_desc *desc);
     void kit_row_end(kit *k);
 
@@ -296,6 +301,7 @@ extern "C"
         bool disabled;
         bool current; /* the active choice among items that keep their icons */
         uint32_t swatch; /* 0xRRGGBBAA: a color dot in the icon's place; 0 none */
+        const char *description; /* optional second line, used by searchable choices */
     } kit_menu_item_desc;
     bool kit_menu_item(kit *k, const char *key, const kit_menu_item_desc *desc);
     void kit_menu_separator(kit *k, const char *key);
@@ -322,7 +328,14 @@ extern "C"
         uint32_t icon;
         const char *description;
         int boost;
+        bool current;
     } kit_command_item;
+    typedef struct kit_autocomplete_result
+    {
+        int selected; /* original catalog index, or -1 */
+        bool submitted; /* Enter without an active suggestion; caller validates text */
+        bool canceled; /* Escape restored the displayed value */
+    } kit_autocomplete_result;
     void kit_command_open(kit *k, const char *placeholder);
     bool kit_command_is_open(const kit *k);
     int kit_command(kit *k, const kit_command_item *items, int count);
@@ -336,10 +349,53 @@ extern "C"
     /* Replaces the typed text, as choosing a prefix does. */
     void kit_command_set_query(kit *k, const char *query);
 
-    /* Splitter: drag along axis 0 (x) or 1 (y). Returns true while value changes. */
+    /* A searchable choice list anchored to its trigger. Search ranks labels
+     * and keywords, keeps groups together, and returns the selected item's
+     * original index. Call kit_dropdown each frame while open. Calling open
+     * again from its same trigger closes it. open_at takes an anchor rect in
+     * overlay coordinates and uses the last emitted item as the trigger for
+     * popup ownership and focus restoration. */
+    void kit_dropdown_open(kit *k, const char *key, const char *placeholder);
+    void kit_dropdown_open_at(kit *k, const char *key, kit_rect anchor, const char *placeholder);
+    bool kit_dropdown_is_open(const kit *k, const char *key);
+    const char *kit_dropdown_query(const kit *k, const char *key);
+    int kit_dropdown(kit *k, const char *key, const kit_command_item *items, int count);
+    /* Inline text input with an anchored, list-only suggestion popup. `key` is
+     * the local child key in the current kit container. `value` remains caller-
+     * owned and is never changed; query is NULL while closed and empty before
+     * typing, even though the field displays `value`. Escape restores `value`.
+     * Enter or Tab accepts a suggestion; Shift+Tab moves focus normally.
+     * Item `meta` is the trailing type; `description` is hover help.
+     * Submit a validated free-text value with kit_autocomplete_close. */
+    const char *kit_autocomplete_query(const kit *k, const char *key);
+    kit_autocomplete_result kit_autocomplete(
+        kit *k,
+        const char *key,
+        const char *value,
+        const kit_command_item *items,
+        int count,
+        const char *placeholder,
+        unsigned flags
+    );
+    /* Close after accepting a submitted free-text value. */
+    void kit_autocomplete_close(kit *k, const char *key);
+    /* A select field backed by searchable, grouped/icon choices. `value` is
+     * the selected item index, as for kit_choice. */
+    bool kit_choice_items(
+        kit *k,
+        const char *key,
+        int *value,
+        const kit_command_item *items,
+        int count,
+        unsigned flags
+    );
+
+    /* Splitter: drag along axis 0 (x) or 1 (y). Returns true while value changes.
+     */
     bool kit_splitter(kit *k, const char *key, int axis, float *value, float minimum, float maximum, bool invert);
 
-    /* A surface shows a host texture ("kit:<name>") and receives raw pointer input. */
+    /* A surface shows a host texture ("kit:<name>") and receives raw pointer input.
+     */
     typedef struct kit_surface_input
     {
         kit_rect rect;
@@ -369,9 +425,10 @@ extern "C"
     /* Sets the lowercase registered family used by kit_text_width. */
     void kit_set_standard_font_family(kit *k, const char *family);
 
-    /* Toasts (Sonner): a bottom-right stack, three visible, four seconds each, paused
-     * while hovered, dismissed by a drag to the right. Passing the id of a live toast
-     * updates it in place (a loading toast becoming success); 0 creates one. */
+    /* Toasts (Sonner): a bottom-right stack, three visible, four seconds each,
+     * paused while hovered, dismissed by a drag to the right. Passing the id of
+     * a live toast updates it in place (a loading toast becoming success); 0
+     * creates one. */
     typedef enum
     {
         KIT_TOAST_DEFAULT,
@@ -506,7 +563,8 @@ extern "C"
     /* Host queries. */
     bool kit_wants_keyboard(const kit *k);
     bool kit_wants_text(const kit *k, kit_rect *caret);
-    /* True while focus can receive typed characters, including a focused number field. */
+    /* True while focus can receive typed characters, including a focused number
+     * field. */
     bool kit_accepts_text(const kit *k);
     bool kit_wants_pointer(const kit *k);
     /* Width in dp of one line of the configured standard face at `size` dp
@@ -514,13 +572,15 @@ extern "C"
      * as drawn at `ratio` pixels per dp: text renders at whole pixel sizes with
      * hinting, so small sizes run wider than a scaled measurement. */
     float kit_text_width(const kit *k, const char *text, float size, int weight, float ratio);
-    /* Focuses the item emitted last, selecting a field's text (Base UI autoFocus). */
+    /* Focuses the item emitted last, selecting a field's text (Base UI autoFocus).
+     */
     void kit_focus(kit *k);
     /* Drops keyboard focus, as a press elsewhere in the window does. */
     void kit_blur(kit *k);
     /* The path of the innermost emitted item under the pointer, or NULL. */
     const char *kit_hovered_path(const kit *k);
-    /* True over a control that takes the pointer itself: fields, buttons, choices. */
+    /* True over a control that takes the pointer itself: fields, buttons, choices.
+     */
     bool kit_pointer_on_control(const kit *k);
     bool kit_find(const kit *k, const char *path, kit_rect *out);
     void kit_set_theme(kit *k, const char *name, bool active);
@@ -723,10 +783,7 @@ extern "C"
      * does; its own children stay, before the kit's. */
     bool kit_slot_begin(kit *k, const char *key, rml_element *host, const char *selector);
     void kit_slot_end(kit *k);
-    /* Moves keyboard focus out of `host` when its authored content holds
-     * it: RmlUi focuses what is clicked, and chrome such as the status bar
-     * leaves the keyboard to the editor's shortcuts. Kit content in the
-     * host's slots keeps focus, as a field there takes typing. */
+    /* Moves focus out of authored chrome while fields in native slots keep it. */
     void kit_release_focus(kit *k, rml_element *host);
 
 #ifdef __cplusplus

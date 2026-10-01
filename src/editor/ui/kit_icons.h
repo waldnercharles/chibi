@@ -80,7 +80,8 @@ enum
     KIT_ICON_BRANCH = 0xf062c,      /* nf-md-source_branch */
     KIT_ICON_EXPRESSION = 0xf0169,  /* nf-md-code_braces */
     KIT_ICON_FIELD = 0xeb5f,        /* nf-cod-symbol_field */
-    KIT_ICON_COMPONENT = 0xf0a67,   /* nf-md-puzzle_outline */
+    KIT_ICON_CONSTANT = 0xeb5d,     /* nf-cod-symbol_constant */
+    KIT_ICON_COMPONENT = 0xf0a66,   /* nf-md-puzzle_outline */
     KIT_ICON_VARIABLE = 0xea88,     /* nf-cod-symbol_variable */
     KIT_ICON_LOCAL = 0xea92,        /* nf-cod-symbol_parameter */
     KIT_ICON_TIMER = 0xf051b,       /* nf-md-timer_outline */

@@ -743,6 +743,9 @@ void app_scene_authoring_render(void *user)
                 visible.border_color = material->border_scene;
                 visible.glow_radius = 0;
             }
+            if (!scene->shapes.id) {
+                scene->shapes = app_sdf_shapes_init();
+            }
             draw_appearance(scene->shapes, &visible, transform, radians, motion);
         }
     }

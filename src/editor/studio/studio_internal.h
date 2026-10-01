@@ -16,6 +16,7 @@
 #include "render/ui.h"
 #include "runtime/save.h"
 #include "support/file_watch.h"
+#include "support/resources.h"
 #include "ui/rml_backend.h"
 
 #include <SDL3/SDL_events.h>
@@ -404,6 +405,19 @@ typedef struct
     bool comment_focus;    /* focus the comment field on its first frame */
     uint64_t pin_edit;     /* the expression input being renamed, or 0 */
     bool pin_focus;        /* focus its field on the first frame */
+    uint64_t input_edit_pin; /* the input whose folded expression is being edited */
+    uint64_t input_edit_node; /* its inline Behavior Expression node */
+    kit *input_edit_kit; /* the canvas or Properties kit that opened the editor */
+    bool input_edit_focus;
+    char input_edit[512];
+    char input_edit_source[512];
+    uint64_t inline_edit_pin; /* consumer input whose folded source is being edited */
+    uint64_t inline_edit_node;
+    kit *inline_edit_kit;
+    bool inline_popup_pending;
+    kit_rect inline_anchor;
+    uint64_t inline_anchor_node, inline_anchor_pin;
+    kit *inline_anchor_kit;
     uint64_t menu_comment;
     uint64_t comment; /* the selected comment frame, shown while no node is */
     bool press_toggle;
@@ -424,6 +438,10 @@ typedef struct
     bool space;
     double value_edit_frame; /* a value gesture has an open undo snapshot */
     bool value_editing;
+    uint64_t value_edit_node_id;
+    uint64_t value_edit_pin_id;
+    int value_edit_output;
+    kit *value_edit_kit;
     uint64_t measured_key;
     arrange_routes routes;
     int *edge_route; /* per edge: its link in routes, or -1 */
@@ -577,7 +595,7 @@ typedef struct
 } studio_presentation;
 
 /* The editor's own UI project: its panels, widgets and theme. */
-#define STUDIO_PROJECT CHIBI_WORKSPACE_DIR "/projects/studio"
+#define STUDIO_PROJECT resource_studio()
 
 /* The editor's authored UI world (studio_ui.c). */
 typedef struct studio_ui studio_ui;
@@ -750,7 +768,6 @@ struct studio
     int theme_switching; /* frames left with transitions suspended */
     bool drawer_dragging;
     bool side_dragging;
-    int followed_tab, followed_kind; /* the active tab the workspace last followed */
     SDL_Cursor *cursors[SDL_SYSTEM_CURSOR_COUNT];
     int cursor_shown; /* SDL_SystemCursor applied, -1 before the first frame */
     kit_rect main_rect;

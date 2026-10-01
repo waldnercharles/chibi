@@ -1,7 +1,11 @@
 """Local workspace saves must survive reload without escaping project content."""
 import base64
+import contextlib
+import errno
+import io
 import importlib.util
 from pathlib import Path
+import sys
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -179,6 +183,36 @@ class WorkspaceSaves(unittest.TestCase):
             with self.subTest(path=path), self.assertRaises(ValueError):
                 self.save(path)
         self.assertFalse((self.project / 'outside.yaml').exists())
+
+
+class WebServeLaunch(unittest.TestCase):
+    def test_port_conflict_reports_alternative_before_ready_url(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            workspace = root / 'workspace'
+            project = workspace / 'projects/bloom'
+            (project / 'content').mkdir(parents=True)
+            (project / 'project.yaml').write_text('content: content\n')
+            build = root / 'build'
+            build.mkdir()
+            for suffix in ('html', 'js', 'wasm', 'data'):
+                (build / f'chibi.{suffix}').write_text('')
+
+            stdout, stderr = io.StringIO(), io.StringIO()
+            argv = ['web_serve.py', '--workspace', str(workspace), '--project',
+                    str(project), '--build', str(build), '--port', '8099']
+            with patch.object(sys, 'argv', argv), \
+                    patch.object(server, 'ThreadingHTTPServer',
+                                 side_effect=OSError(errno.EADDRINUSE, 'Address already in use')), \
+                    contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+                with self.assertRaises(SystemExit) as error:
+                    server.main()
+
+            self.assertEqual(error.exception.code, 2)
+            self.assertEqual(stdout.getvalue(), '')
+            self.assertIn('port 8099 is already in use', stderr.getvalue())
+            self.assertIn('make web-serve WEB_PORT=8100', stderr.getvalue())
+            self.assertNotIn('Traceback', stderr.getvalue())
 
 
 if __name__ == '__main__':

@@ -71,18 +71,23 @@ option(CHIBI_ENABLE_SANITIZERS
        "Enable the selected sanitizer for native targets" ON)
 option(CHIBI_ENABLE_CCACHE "Use ccache when it is available" ON)
 option(CHIBI_DEVELOPMENT_RELOAD "Build the native reload host and application DLL" OFF)
-set_source_files_properties(
-    src/render/scene_renderer.c
-    src/automation/render_preview.c
-    src/host/main.c
-    PROPERTIES COMPILE_DEFINITIONS
-        "CHIBI_RENDER_SHADER_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/src/render/shaders\"")
+option(CHIBI_DISTRIBUTION "Load native resources only from the installed package" OFF)
+if(CHIBI_DISTRIBUTION AND (CHIBI_DEVELOPMENT_RELOAD OR CMAKE_SYSTEM_NAME STREQUAL "Emscripten"))
+    message(FATAL_ERROR "CHIBI_DISTRIBUTION requires the static native application")
+endif()
+if(CHIBI_DISTRIBUTION)
+    set_source_files_properties(src/support/resources.c PROPERTIES
+        COMPILE_DEFINITIONS CHIBI_DISTRIBUTION=1)
+else()
+    set_source_files_properties(src/support/resources.c PROPERTIES
+        COMPILE_DEFINITIONS "CHIBI_SOURCE_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}\"")
+endif()
 if(CHIBI_ENABLE_CCACHE)
     find_program(CCACHE_PROGRAM ccache)
     if(CCACHE_PROGRAM)
         cmake_path(IS_PREFIX CMAKE_SOURCE_DIR "${CMAKE_BINARY_DIR}" NORMALIZE CHIBI_IN_TREE_BUILD)
-        if(NOT CMAKE_CONFIGURATION_TYPES AND
-           NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND CHIBI_IN_TREE_BUILD)
+        if(NOT CMAKE_CONFIGURATION_TYPES AND CHIBI_IN_TREE_BUILD AND
+           (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" OR CMAKE_BUILD_TYPE STREQUAL "Release"))
             cmake_path(RELATIVE_PATH CMAKE_BINARY_DIR BASE_DIRECTORY "${CMAKE_SOURCE_DIR}"
                 OUTPUT_VARIABLE CHIBI_CCACHE_RELATIVE_BINARY_DIR)
         endif()
@@ -91,8 +96,8 @@ if(CHIBI_ENABLE_CCACHE)
                 set(CMAKE_${language}_COMPILER_LAUNCHER "${CCACHE_PROGRAM}" CACHE STRING
                     "${language} compiler launcher")
             endif()
-            if(NOT CMAKE_CONFIGURATION_TYPES AND
-               NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND CHIBI_IN_TREE_BUILD AND
+            if(NOT CMAKE_CONFIGURATION_TYPES AND CHIBI_IN_TREE_BUILD AND
+               (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" OR CMAKE_BUILD_TYPE STREQUAL "Release") AND
                CMAKE_${language}_COMPILER_LAUNCHER STREQUAL CCACHE_PROGRAM)
                 # Normalize in-tree paths so matching builds share objects across worktrees.
                 set(CMAKE_${language}_COMPILER_LAUNCHER
@@ -596,13 +601,6 @@ include(cmake/rmlui.cmake)
 add_library(editor STATIC ${EDITOR_SOURCES})
 target_include_directories(editor PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(editor PRIVATE runtime_support core cute authoring_graph chibi_rmlui)
-# Studio opens this tree's projects (project.yaml and projects/*) and runs
-# projects/studio as its own UI. The browser mirrors the tree at its root.
-if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
-    target_compile_definitions(editor PRIVATE CHIBI_WORKSPACE_DIR="")
-else()
-    target_compile_definitions(editor PRIVATE CHIBI_WORKSPACE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
-endif()
 
 # --- app: the minimal ECS movement editor -------------------------------
 set(APP_REGISTRY ${CMAKE_CURRENT_BINARY_DIR}/generated/app_registry.c)

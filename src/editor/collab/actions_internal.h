@@ -47,5 +47,18 @@ char *graph_collab_action_reset_pin(
     int pin_index,
     const pin_value *value
 );
+char *graph_collab_action_set_binding(
+    const editor *graph_editor,
+    const node *target,
+    int input_index,
+    const pin_binding *binding
+);
+char *graph_collab_action_set_input_default(
+    const editor *graph_editor,
+    const node *target,
+    int input_index,
+    const pin_value *value
+);
+char *graph_collab_action_expand_inline(const editor *graph_editor, const node *target, int input_index);
 
 #endif

@@ -57,6 +57,7 @@ typedef enum node_kind
     KIND_SELECT,
     KIND_TEXT,
     KIND_SEARCH,
+    KIND_AUTOCOMPLETE,
     KIND_COLOR,
     KIND_PANEL,
     KIND_PROP,
@@ -113,6 +114,10 @@ typedef struct widget
     bool suppress_click;
     bool focused;
     bool area; /* a text field over several lines */
+    bool autocomplete_query_active;
+    bool autocomplete_submitted;
+    bool autocomplete_canceled;
+    bool autocomplete_sync;
     bool secret;
     bool focus_picker; /* color trigger opened with the keyboard */
     double value;
@@ -241,12 +246,21 @@ typedef struct popup
     bool keyboard;
     bool activated;
     bool menubar;
+    bool dropdown;
+    bool dropdown_focus;
+    bool dropdown_reveal;
+    bool autocomplete;
+    bool autocomplete_opening;
     bool popover;
     bool focus_pending;
     char *trigger;
     float x, y;
     kit_rect anchor;
-    char *parent; /* a submenu's parent popup key */
+    char *parent; /* parent popup key for a submenu or nested dropdown */
+    char *dropdown_placeholder;
+    char *dropdown_trigger_path;
+    char dropdown_query[256];
+    rml_element *dropdown_search;
     int highlight;
     char *sub_hover;
     double sub_hover_since;
@@ -278,7 +292,8 @@ struct kit
     rml_listener *listener;
     char *document; /* the markup's file name, which names its sheets */
     char *theme;    /* kit_theme's RCSS, the document's stylesheet */
-    char *standard_font_family; /* lowercase RmlUi family used for text measurements */
+    char *standard_font_family; /* lowercase RmlUi family used for text
+                                   measurements */
     pair *extra_styles; /* kit_style's RCSS, added after the stylesheets */
     bool restyle;       /* the theme or the extra styles changed */
     node **roots;       /* owned: the layer, then kit_root elements */
@@ -431,10 +446,11 @@ void number_blur(kit *k, node *n, rml_element *target);
 /* Handlers ignore kinds they do not own. */
 void control_press(kit *k, node *n, const rml_event *e);
 void control_click(kit *k, node *n, rml_element *target);
+node *emit_input(kit *k, const char *key, node_kind kind, const char *cls, const char *placeholder);
 void control_drag(kit *k, node *n, const rml_event *e);
 void control_key(kit *k, node *n, const rml_event *e);
-void control_change(node *n, rml_element *target);
-void control_focus(node *n, rml_element *target);
+void control_change(kit *k, node *n, rml_element *target);
+void control_focus(kit *k, node *n, rml_element *target);
 void control_blur(node *n, rml_element *target);
 
 /* ---------- Popups, menus and tooltips (kit_popup.c) ---------- */
@@ -443,6 +459,7 @@ void close_popup(kit *k, const char *key);
 void close_all_popups(kit *k);
 /* parent is NULL or "" for a top-level popup. */
 void open_popup(kit *k, const char *key, kit_rect anchor, bool at_point, float x, float y, const char *parent);
+void popup_open_on(kit *k, const char *key, kit_rect anchor, const node *trigger);
 void place_popups(kit *k);
 void open_hovered_submenus(kit *k);
 void close_activated_menus(kit *k);
@@ -453,6 +470,10 @@ void menu_click(kit *k, node *n);
 void menu_hover(kit *k, node *n);
 /* False when no popup is open or a popover leaves a key to its control. */
 bool popup_key(kit *k, const rml_event *e);
+bool dropdown_key(kit *k, const rml_event *e, node *n);
+bool autocomplete_key(kit *k, const rml_event *e, node *n);
+void dropdown_open_on(kit *k, const char *key, kit_rect anchor, const char *placeholder, const node *trigger);
+void autocomplete_open_on(kit *k, const char *key, kit_rect anchor, node *trigger);
 void popup_focus(kit *k, rml_element *target);
 bool focus_step(rml_element *root, rml_element *from, int step, bool wrap, rml_element *skip);
 void set_tip(node *n, const char *label, const char *shortcut, const char *description);

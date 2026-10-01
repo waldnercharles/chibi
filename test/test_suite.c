@@ -70,6 +70,8 @@ void test_input_bindings();
 void test_graph_optimizer();
 int scene_documents_run(const char *program);
 int studio_documents_run(const char *program);
+int studio_properties_run(const char *program);
+int studio_graph_inputs_run(const char *program);
 bool test_rmlui_kit();
 bool test_rmlui_binding();
 int rmlui_render_run(const char *program, bool gles);
@@ -918,7 +920,17 @@ int main(int argc, char **argv)
     }
     if (argc > 1 && strcmp(argv[1], "--studio-documents") == 0) {
         registry_validate();
-        return studio_documents_run(program_name) || fails ? 1 : 0;
+        int documents = studio_documents_run(program_name);
+        int graph_inputs = studio_graph_inputs_run(program_name);
+        return documents || graph_inputs || fails ? 1 : 0;
+    }
+    if (argc > 1 && strcmp(argv[1], "--studio-graph-inputs") == 0) {
+        registry_validate();
+        return studio_graph_inputs_run(program_name) || fails ? 1 : 0;
+    }
+    if (argc > 1 && strcmp(argv[1], "--studio-properties") == 0) {
+        registry_validate();
+        return studio_properties_run(program_name) || fails ? 1 : 0;
     }
     /* UI documents (workstream D). */
     if (argc > 1 && strcmp(argv[1], "--ui-documents") == 0) {

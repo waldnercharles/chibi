@@ -58,8 +58,10 @@ typedef enum
     VALUE_BOOL,
     VALUE_COLOR,
     VALUE_VECTOR,
+    VALUE_COLOR,
     VALUE_TEXT,
     VALUE_NUMBER,
+    VALUE_COMPOUND,
     VALUE_CHIP,
 } value_kind;
 
@@ -69,6 +71,7 @@ typedef struct
     bool connected;
     bool inline_source;
     bool show_label;
+    bool source_select;
     char label[128];
     char chip[160];
     uint32_t chip_icon;
@@ -214,6 +217,12 @@ void sg_nav_keys(studio *s);
 /* A pin's socket color as 0xRRGGBBAA. */
 uint32_t sg_pin_color(const studio *s, const pin_spec *spec);
 void sg_emit_value_in(studio *s, kit *k, node *n, int output, int p);
+/* One editable graph input: its typed constant, binding, inline source, or wire. */
+void sg_emit_graph_input(studio *s, kit *k, node *n, int p);
+void sg_begin_expression_edit(studio *s, kit *k, node *expression, uint64_t owner_pin);
+bool sg_expression_editing(const studio *s, const kit *k, const node *expression, uint64_t owner_pin);
+void sg_emit_expression_editor(studio *s, kit *k, node *expression, uint64_t owner_pin);
+int sg_set_expression_source(studio *s, node *expression, const char *source);
 void sg_emit_canvas(studio *s);
 
 #endif

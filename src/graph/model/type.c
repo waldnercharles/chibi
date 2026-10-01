@@ -2,6 +2,7 @@
 
 #include "graph/model/registry.h"
 
+#include <math.h>
 #include <string.h>
 
 enum
@@ -205,4 +206,33 @@ static bool plain(const type_desc *type, int depth)
 bool type_is_plain(const type_desc *type)
 {
     return plain(type, 0);
+}
+
+static bool value_finite(const type_desc *type, const unsigned char *value, int depth)
+{
+    if (!type || !value || depth > 16) {
+        return false;
+    }
+    for (int i = 0; i < type->field_count; i++) {
+        const type_field *field = &type->fields[i];
+        const unsigned char *member = value + field->offset;
+        if (field->type == PIN_F32 && !isfinite(*(const float *)member)) {
+            return false;
+        }
+        if (field->type == PIN_F64 && !isfinite(*(const double *)member)) {
+            return false;
+        }
+        if (field->type == PIN_STRUCT) {
+            const type_desc *nested = registry_type_by_name(field->type_name);
+            if (!nested || !value_finite(nested, member, depth + 1)) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+bool type_value_is_finite(const type_desc *type, const void *value)
+{
+    return type_is_plain(type) && value_finite(type, value, 0);
 }

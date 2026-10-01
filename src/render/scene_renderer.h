@@ -7,7 +7,7 @@
 
 #include <stdbool.h>
 typedef struct app_scene_renderer app_scene_renderer;
-/* Call once after creating the Cute app, before creating scene renderers. */
+/* Call once after creating the Cute app, before drawing scenes. */
 void app_scene_renderer_initialize();
 app_scene_renderer *app_scene_renderer_new();
 void app_scene_renderer_free(app_scene_renderer *renderer);

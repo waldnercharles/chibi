@@ -1,5 +1,6 @@
 #include "automation/controller.h"
 #include "automation/render_preview.h"
+#include "support/resources.h"
 
 #include <stdbool.h>
 #include <stdio.h>
@@ -14,11 +15,13 @@ static void usage(const char *program)
         "Usage: %s [--project-root PATH] [--render]\n"
         "       %s --project-root PATH --render-request FILE\n"
         "       %s --project-root PATH --format [--check]\n"
+        "       %s --engine-info\n"
         "Read newline-delimited JSON automation requests from stdin.\n"
         "Each non-empty line produces exactly one JSON response on stdout.\n"
         "With --render, read one preview request and produce one response.\n"
         "With --format, rewrite authored assets in canonical form; --check\n"
         "only lists assets that differ and fails when any do.\n",
+        program,
         program,
         program,
         program
@@ -73,6 +76,15 @@ int main(int argc, char **argv)
     int render = 0;
     bool format = false, check = false;
     for (int i = 1; i < argc; i++) {
+        if (!strcmp(argv[i], "--engine-info")) {
+            char *info = resource_info();
+            if (!info) {
+                return 1;
+            }
+            puts(info);
+            free(info);
+            return 0;
+        }
         if (!strcmp(argv[i], "--help")) {
             usage(argv[0]);
             return 0;

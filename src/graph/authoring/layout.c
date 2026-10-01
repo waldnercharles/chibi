@@ -68,9 +68,6 @@ int graph_layout_band(const node *n)
 bool graph_pin_visible(const graph *g, const node *n, bool output, int pin)
 {
     const pin_spec *spec = output ? &n->output_pins[pin] : &n->input_pins[pin];
-    if (spec->flags & PIN_FLAG_SETTING) {
-        return false;
-    }
     node *src = NULL;
     int src_pin = 0;
     return output || n->show_advanced || !(spec->flags & PIN_FLAG_ADVANCED) ||

@@ -1,4 +1,5 @@
-/* Studio kit contracts without a GPU: reconciliation, number fields, menus, command. */
+/* Studio kit contracts without a GPU: reconciliation, number fields, menus,
+ * command. */
 #include "editor/ui/highlight.h"
 #include "editor/ui/kit.h"
 #include "test/suite_internal.h"
@@ -16,6 +17,8 @@ typedef struct
     kit_frame_input in;
     int clicks;
     double value, second;
+    int choice_value, choice_changes;
+    int nested_choice, nested_choice_changes;
     int changes, commits;
     uint32_t color;
     int color_changes, color_commits;
@@ -39,6 +42,11 @@ typedef struct
     char note[64];
     int note_commits;
     bool focus_note;
+    char autocomplete_value[64];
+    char autocomplete_query[64];
+    bool autocomplete_open;
+    unsigned autocomplete_flags;
+    int autocomplete_selected, autocomplete_submits, autocomplete_cancels;
     bool open_rename;             /* a popover with a name field and one item */
     bool focus_rename, b_renames; /* item B opens the popover focused */
     bool rename_empty;
@@ -51,6 +59,30 @@ static const kit_command_item COMMANDS[] = {
     { "Alpha", "Commands", NULL, NULL, NULL, 0 },
     { "Beta", "Commands", NULL, NULL, "second", 0 },
     { "Frame Selected", "Commands", NULL, "F", "focus", 0, "Centers the view on the selection." },
+};
+
+static const char *const CHOICES[] = { "Alpha", "Beta", "Frame Selected", "Gamma" };
+
+static const kit_command_item BUTTON_DROPDOWN_OPTIONS[] = {
+    { .label = "Alpha" },
+    { .label = "Beta", .current = true },
+    { .label = "Frame Selected" },
+    { .label = "Gamma" },
+};
+
+static const kit_command_item AUTOCOMPLETE_OPTIONS[] = {
+    { .label = "Path 00", .group = "Paths", .keywords = "common", .meta = "float" },
+    { .label = "Path 01", .group = "Paths", .keywords = "common" },
+    { .label = "Path 02", .group = "Paths", .keywords = "common" },
+    { .label = "Path 03", .group = "Paths", .keywords = "common" },
+    { .label = "Path 04", .group = "Paths", .keywords = "common", .current = true },
+    { .label = "Path 05", .group = "Paths", .keywords = "common" },
+    { .label = "Path 06", .group = "Paths", .keywords = "common" },
+    { .label = "Path 07", .group = "Paths", .keywords = "common" },
+    { .label = "Path 08", .group = "Paths", .keywords = "common" },
+    { .label = "Path 09", .group = "Paths", .keywords = "common" },
+    { .label = "Path 10", .group = "Paths", .keywords = "common" },
+    { .label = "Path 11", .group = "Paths", .keywords = "common" },
 };
 
 static const char
@@ -75,6 +107,30 @@ static void emit(kit_fixture *f)
     kit_button_desc button = { .label = "Press" };
     if (kit_button(k, "button", &button)) {
         f->clicks++;
+    }
+    kit_button_desc dropdown_button = { .label = "Choose" };
+    if (kit_button(k, "dropdown-trigger", &dropdown_button)) {
+        kit_dropdown_open(k, "button-dropdown", "Search choices");
+    }
+    if (kit_dropdown_is_open(k, "button-dropdown")) {
+        kit_dropdown(
+            k,
+            "button-dropdown",
+            BUTTON_DROPDOWN_OPTIONS,
+            (int)(sizeof BUTTON_DROPDOWN_OPTIONS / sizeof *BUTTON_DROPDOWN_OPTIONS)
+        );
+    }
+    kit_picker_desc picker = { .value = "Alpha", .placeholder = "Choose asset" };
+    if (kit_picker(k, "asset-trigger", &picker)) {
+        kit_dropdown_open(k, "asset-dropdown", "Search assets");
+    }
+    if (kit_dropdown_is_open(k, "asset-dropdown")) {
+        kit_dropdown(
+            k,
+            "asset-dropdown",
+            BUTTON_DROPDOWN_OPTIONS,
+            (int)(sizeof BUTTON_DROPDOWN_OPTIONS / sizeof *BUTTON_DROPDOWN_OPTIONS)
+        );
     }
     kit_button_desc rename = { .label = "Rename" };
     if (kit_button(k, "rename-trigger", &rename)) {
@@ -137,6 +193,46 @@ static void emit(kit_fixture *f)
         kit_checkbox(k, "check", &f->control_check, "Check", f->control_flags);
         kit_attr(k, "id", "test-check");
     }
+    kit_prop_begin(k, "choice", "Choice");
+    f->choice_changes += kit_choice(
+        k,
+        "value",
+        &f->choice_value,
+        CHOICES,
+        (int)(sizeof CHOICES / sizeof *CHOICES),
+        0
+    );
+    kit_prop_end(k);
+    kit_prop_begin(k, "source", "Source");
+    kit_autocomplete_result result = kit_autocomplete(
+        k,
+        "value",
+        f->autocomplete_value,
+        AUTOCOMPLETE_OPTIONS,
+        (int)(sizeof AUTOCOMPLETE_OPTIONS / sizeof *AUTOCOMPLETE_OPTIONS),
+        "Type a path or value",
+        f->autocomplete_flags
+    );
+    const char *query = kit_autocomplete_query(k, "value");
+    f->autocomplete_open = query != NULL;
+    snprintf(f->autocomplete_query, sizeof f->autocomplete_query, "%s", query ? query : "");
+    if (result.selected >= 0) {
+        snprintf(
+            f->autocomplete_value,
+            sizeof f->autocomplete_value,
+            "%s",
+            AUTOCOMPLETE_OPTIONS[result.selected].label
+        );
+        f->autocomplete_selected = result.selected;
+    }
+    if (result.submitted && query) {
+        snprintf(f->autocomplete_value, sizeof f->autocomplete_value, "%s", query);
+        f->autocomplete_submits++;
+        kit_autocomplete_close(k, "value");
+    }
+    f->autocomplete_cancels += result.canceled;
+    f->autocomplete_open = kit_autocomplete_query(k, "value") != NULL;
+    kit_prop_end(k);
     kit_panel_begin(k, "panel", "Panel", NULL, true);
     kit_panel_end(k);
     f->panel_menus += kit_panel_menu(k);
@@ -200,6 +296,16 @@ static void emit(kit_fixture *f)
             }
             kit_button_desc apply = { .label = "Apply" };
             f->rename_applied += kit_button(k, "apply", &apply);
+        }
+        if (!f->rename_empty) {
+            f->nested_choice_changes += kit_choice(
+                k,
+                "mode",
+                &f->nested_choice,
+                CHOICES,
+                (int)(sizeof CHOICES / sizeof *CHOICES),
+                0
+            );
         }
         kit_popup_end(k);
     }
@@ -350,6 +456,8 @@ bool test_rmlui_kit()
     kit_fixture f = { .value = 10,
                       .second = 3,
                       .color = 0x33669900,
+                      .autocomplete_value = "Path 04",
+                      .autocomplete_selected = -1,
                       .chosen = -1,
                       .order = { "a", "b", "c" },
                       .order_count = 3,
@@ -508,7 +616,7 @@ bool test_rmlui_kit()
     ok &= check(
         !strcmp(f.control_text, "Original") && f.toggle == 1 &&
             !f.control_check && f.select == 1 &&
-            !kit_popup_is_open(f.k, "select:app/fields/select/@control/value"),
+            !kit_dropdown_is_open(f.k, "select:app/fields/select/@control/value"),
         "readonly controls reject typing and keyboard activation"
     );
     f.control_flags = KIT_DISABLED;
@@ -527,7 +635,7 @@ bool test_rmlui_kit()
     settle(&f);
     ok &= check(
         !strcmp(f.control_text, "Original") && f.toggle == 1 && f.select == 1 &&
-            !kit_popup_is_open(f.k, "select:app/fields/select/@control/value"),
+            !kit_dropdown_is_open(f.k, "select:app/fields/select/@control/value"),
         "disabled controls reject pointer activation and typing"
     );
     f.control_flags = 0;
@@ -569,12 +677,22 @@ bool test_rmlui_kit()
     ok &= check(strcmp(markup, partial) == 0, "markup keeps the characters of a run that fit");
     highlight_markup(HIGHLIGHT_LOG, "<<", markup, 36);
     ok &= check(strcmp(markup, "<span class=\"tok-punct\">&lt;</span>") == 0, "markup never cuts an entity");
+    double parsed;
+    ok &= check(
+        kit_number_parse("=2*pi", 0, &parsed) &&
+            fabs(parsed - 6.283185307179586) < 1e-9 &&
+            kit_number_parse("*2", 3, &parsed) && parsed == 6 &&
+            !kit_number_parse("2 *", 3, &parsed),
+        "shared number parsing keeps expressions, relative operators, and "
+        "rejects incomplete input"
+    );
 
     ok &= check(click(&f, "app/bar/button") && f.clicks == 1, "button click reports once");
     frame(&f);
     ok &= check(f.clicks == 1, "button click does not repeat");
 
-    /* Scrub: press, move beyond the threshold, release. One commit, no text edit. */
+    /* Scrub: press, move beyond the threshold, release. One commit, no text edit.
+     */
     float x, y;
     ok &= check(center(&f, "app/fields/first/@control/value", &x, &y), "number field is laid out");
     pointer(&f, RML_INPUT_POINTER_MOVE, x, y);
@@ -591,7 +709,8 @@ bool test_rmlui_kit()
     ok &= check(f.commits == 1, "scrub commits once");
     ok &= check(!kit_wants_text(f.k, NULL), "releasing a scrub does not start editing");
 
-    /* Click without movement edits; arithmetic relative to the value commits once. */
+    /* Click without movement edits; arithmetic relative to the value commits
+     * once. */
     double before = f.value;
     f.commits = 0;
     ok &= check(click(&f, "app/fields/first/@control/value"), "number field click");
@@ -696,6 +815,268 @@ bool test_rmlui_kit()
         "the text area grows with its lines"
     );
 
+    /* A choice opens an anchored searchable dropdown. Filtering keeps the
+       ranked result keyboard-selectable and commits its original index. */
+    kit_rect trigger;
+    ok &= check(kit_find(f.k, "app/fields/choice/@control/value", &trigger), "searchable choice trigger is laid out");
+    ok &= check(click(&f, "app/fields/choice/@control/value"), "searchable choice opens");
+    settle(&f);
+    rml_element *dropdown = rml_element_query_selector(doc, ".popup.dropdown");
+    rml_vec2 dropdown_at = dropdown
+                             ? rml_element_absolute_offset(dropdown, RML_BOX_BORDER)
+                             : (rml_vec2){ 0 };
+    rml_vec2 dropdown_size = dropdown ? rml_element_box_size(dropdown, RML_BOX_BORDER)
+                                      : (rml_vec2){ 0 };
+    ok &= check(
+        kit_dropdown_is_open(f.k, "select:app/fields/choice/@control/value") &&
+            dropdown && dropdown_size.x >= trigger.w &&
+            fabsf(dropdown_at.x - trigger.x) < 1.0f && dropdown_at.y >= trigger.y,
+        "choice dropdown is sized and positioned from its trigger"
+    );
+    ok &= check(kit_wants_text(f.k, NULL), "dropdown search takes focus");
+    type(&f, "fs");
+    frame(&f);
+    rml_element *shown[8];
+    int shown_count = dropdown
+                        ? rml_element_query_selector_all(dropdown, ".dropdown-results .menu-item", shown, 8)
+                        : 0;
+    ok &= check(shown_count == 1, "search narrows the dropdown to its matching choice");
+    key(&f, RML_INPUT_KEY_ENTER, 0);
+    frame(&f);
+    ok &= check(
+        f.choice_value == 2 && f.choice_changes == 1 &&
+            !kit_dropdown_is_open(f.k, "select:app/fields/choice/@control/value"),
+        "Enter selects the matching choice and closes its dropdown"
+    );
+    key(&f, RML_INPUT_KEY_SPACE, 0);
+    frame(&f);
+    dropdown = rml_element_query_selector(doc, ".popup.dropdown");
+    rml_element *current = dropdown
+                             ? rml_element_query_selector(dropdown, ".menu-item[data-highlighted] .label")
+                             : NULL;
+    char current_text[64] = "";
+    if (current) {
+        rml_element_inner_rml(current, current_text, sizeof current_text);
+    }
+    ok &= check(
+        kit_dropdown_is_open(f.k, "select:app/fields/choice/@control/value") &&
+            strcmp(current_text, "Frame Selected") == 0,
+        "keyboard opens the choice and highlights the current value"
+    );
+    key(&f, RML_INPUT_KEY_ESCAPE, 0);
+    frame(&f);
+    ok &= check(
+        !kit_dropdown_is_open(f.k, "select:app/fields/choice/@control/value") &&
+            rml_context_focus_element(rml_backend_context(f.backend)) ==
+                rml_element_query_selector(doc, ".prop-scroll .field.select"),
+        "Escape closes the dropdown and restores focus to its field"
+    );
+
+    /* Inline autocomplete keeps the typed query in one field, returns source
+       indices only on commit, and retains every match in a long group. */
+    const char *source_path = "app/fields/source/@control/value";
+    ok &= check(click(&f, source_path), "autocomplete opens from its input");
+    settle(&f);
+    rml_element *autocomplete = rml_element_query_selector(doc, ".field.autocomplete input.value");
+    char shown_value[64] = "";
+    if (autocomplete) {
+        rml_element_value(autocomplete, shown_value, sizeof shown_value);
+    }
+    ok &= check(
+        f.autocomplete_open && f.autocomplete_query[0] == 0 &&
+            strcmp(shown_value, "Path 04") == 0,
+        "autocomplete displays the committed value and opens with an empty "
+        "query"
+    );
+    key(&f, RML_INPUT_KEY_A, RML_INPUT_MOD_CONTROL);
+    type(&f, "Path");
+    frame(&f);
+    rml_element *autocomplete_popup = rml_element_query_selector(doc, ".popup.autocomplete");
+    rml_element *matches[16];
+    int match_count = autocomplete_popup
+                        ? rml_element_query_selector_all(
+                              autocomplete_popup,
+                              ".autocomplete-results .menu-item",
+                              matches,
+                              16
+                          )
+                        : 0;
+    ok &= check(
+        f.autocomplete_open && strcmp(f.autocomplete_query, "Path") == 0 &&
+            strcmp(f.autocomplete_value, "Path 04") == 0 && match_count == 12,
+        "typing filters without mutating the model or capping same-group "
+        "matches"
+    );
+    rml_element *name = match_count ? rml_element_query_selector(matches[0], ".label")
+                                    : NULL;
+    rml_element *detail = match_count
+                            ? rml_element_query_selector(matches[0], ".detail")
+                            : NULL;
+    char name_rml[64] = "", detail_text[32] = "";
+    if (name) {
+        rml_element_inner_rml(name, name_rml, sizeof name_rml);
+    }
+    if (detail) {
+        rml_element_inner_rml(detail, detail_text, sizeof detail_text);
+    }
+    rml_vec2 name_at = name ? rml_element_absolute_offset(name, RML_BOX_BORDER)
+                            : (rml_vec2){ 0 };
+    rml_vec2 name_size = name ? rml_element_box_size(name, RML_BOX_BORDER)
+                              : (rml_vec2){ 0 };
+    rml_vec2 detail_at = detail ? rml_element_absolute_offset(detail, RML_BOX_BORDER)
+                                : (rml_vec2){ 0 };
+    ok &= check(
+        name && detail && strstr(name_rml, "<b>Path</b>") &&
+            !strcmp(detail_text, "float") && fabsf(name_at.y - detail_at.y) <= 1 &&
+            detail_at.x >= name_at.x + name_size.x &&
+            rml_element_has_attribute(autocomplete, "aria-activedescendant"),
+        "completion highlights the match and places its type on the same line "
+        "without overlap"
+    );
+    for (int i = 0; i < 11; i++) {
+        key(&f, RML_INPUT_KEY_DOWN, 0);
+    }
+    key(&f, RML_INPUT_KEY_ENTER, 0);
+    frame(&f);
+    ok &= check(
+        f.autocomplete_selected == 11 &&
+            strcmp(f.autocomplete_value, "Path 11") == 0 && !f.autocomplete_open,
+        "keyboard can select a matching autocomplete option beyond the first "
+        "eight"
+    );
+
+    ok &= check(click(&f, source_path), "autocomplete reopens at the committed value");
+    key(&f, RML_INPUT_KEY_A, RML_INPUT_MOD_CONTROL);
+    type(&f, "unfinished.path.");
+    key(&f, RML_INPUT_KEY_ESCAPE, 0);
+    frame(&f);
+    autocomplete = rml_element_query_selector(doc, ".field.autocomplete input.value");
+    shown_value[0] = 0;
+    if (autocomplete) {
+        rml_element_value(autocomplete, shown_value, sizeof shown_value);
+    }
+    ok &= check(
+        f.autocomplete_cancels == 1 && !f.autocomplete_open &&
+            strcmp(f.autocomplete_value, "Path 11") == 0 &&
+            strcmp(shown_value, "Path 11") == 0,
+        "Escape cancels the draft and restores the committed display"
+    );
+    key(&f, RML_INPUT_KEY_A, RML_INPUT_MOD_CONTROL);
+    type(&f, "Path 02");
+    frame(&f);
+    ok &= check(
+        f.autocomplete_open && strcmp(f.autocomplete_query, "Path 02") == 0,
+        "typing after Escape reopens and filters autocomplete"
+    );
+    key(&f, RML_INPUT_KEY_ENTER, 0);
+    frame(&f);
+    ok &= check(
+        f.autocomplete_selected == 2 && strcmp(f.autocomplete_value, "Path 02") == 0,
+        "Enter commits the active completion"
+    );
+
+    key(&f, RML_INPUT_KEY_A, RML_INPUT_MOD_CONTROL);
+    type(&f, "Path 03");
+    frame(&f);
+    key(&f, RML_INPUT_KEY_TAB, 0);
+    frame(&f);
+    ok &= check(
+        f.autocomplete_selected == 3 &&
+            !strcmp(f.autocomplete_value, "Path 03") && !f.autocomplete_open &&
+            rml_context_focus_element(rml_backend_context(f.backend)) == autocomplete,
+        "Tab accepts the completion and keeps the caret in its input"
+    );
+    key(&f, RML_INPUT_KEY_A, RML_INPUT_MOD_CONTROL);
+    type(&f, "Path 04");
+    frame(&f);
+    key(&f, RML_INPUT_KEY_TAB, RML_INPUT_MOD_SHIFT);
+    frame(&f);
+    ok &= check(
+        f.autocomplete_selected == 3 &&
+            !strcmp(f.autocomplete_value, "Path 03") && !f.autocomplete_open &&
+            rml_context_focus_element(rml_backend_context(f.backend)) != autocomplete,
+        "Shift+Tab moves focus back without accepting the highlighted "
+        "suggestion"
+    );
+    ok &= check(click(&f, source_path), "autocomplete returns to its input after backward navigation");
+
+    key(&f, RML_INPUT_KEY_A, RML_INPUT_MOD_CONTROL);
+    type(&f, "0.5");
+    frame(&f);
+    ok &= check(
+        !rml_element_has_attribute(autocomplete, "aria-activedescendant"),
+        "an empty completion list clears its active option for assistive "
+        "technology"
+    );
+    key(&f, RML_INPUT_KEY_ENTER, 0);
+    frame(&f);
+    ok &= check(
+        f.autocomplete_submits == 1 &&
+            strcmp(f.autocomplete_value, "0.5") == 0 && !f.autocomplete_open,
+        "Enter submits valid free text when the catalog has no match"
+    );
+
+    ok &= check(click(&f, source_path), "autocomplete reopens before outside click");
+    key(&f, RML_INPUT_KEY_A, RML_INPUT_MOD_CONTROL);
+    type(&f, "draft text");
+    frame(&f);
+    ok &= check(click(&f, "app/bar/button"), "outside click dismisses autocomplete");
+    autocomplete = rml_element_query_selector(doc, ".field.autocomplete input.value");
+    shown_value[0] = 0;
+    if (autocomplete) {
+        rml_element_value(autocomplete, shown_value, sizeof shown_value);
+    }
+    ok &= check(
+        !f.autocomplete_open && strcmp(f.autocomplete_value, "0.5") == 0 &&
+            strcmp(shown_value, "0.5") == 0,
+        "outside click restores the committed display"
+    );
+
+    f.autocomplete_flags = KIT_READONLY;
+    settle(&f);
+    ok &= check(click(&f, source_path), "read-only autocomplete can receive focus");
+    settle(&f);
+    ok &= check(!f.autocomplete_open, "read-only autocomplete focus does not open selectable suggestions");
+    f.autocomplete_flags = 0;
+    kit_blur(f.k);
+    settle(&f);
+
+    ok &= check(click(&f, "app/bar/dropdown-trigger"), "button opens its dropdown");
+    settle(&f);
+    ok &= check(
+        kit_dropdown_is_open(f.k, "button-dropdown") && kit_wants_text(f.k, NULL),
+        "button dropdown focuses its search field"
+    );
+    type(&f, "Bet");
+    frame(&f);
+    ok &= check(
+        strcmp(kit_dropdown_query(f.k, "button-dropdown"), "Bet") == 0,
+        "button dropdown retains its search query while open"
+    );
+    ok &= check(click(&f, "app/bar/dropdown-trigger"), "button closes its open dropdown");
+    settle(&f);
+    ok &= check(
+        !kit_dropdown_is_open(f.k, "button-dropdown") &&
+            strcmp(kit_dropdown_query(f.k, "button-dropdown"), "Bet") == 0,
+        "re-clicking the same dropdown trigger closes it instead of reopening"
+    );
+    ok &= check(click(&f, "app/bar/dropdown-trigger"), "button reopens its dropdown");
+    settle(&f);
+    ok &= check(
+        kit_dropdown_is_open(f.k, "button-dropdown") &&
+            kit_dropdown_query(f.k, "button-dropdown")[0] == 0,
+        "reopening a closed dropdown starts with a clean search"
+    );
+    kit_popup_close(f.k, "button-dropdown");
+    frame(&f);
+
+    ok &= check(click(&f, "app/bar/asset-trigger"), "asset picker opens its dropdown");
+    settle(&f);
+    ok &= check(kit_dropdown_is_open(f.k, "asset-dropdown"), "asset picker search is open");
+    ok &= check(click(&f, "app/bar/asset-trigger"), "asset picker closes its dropdown");
+    settle(&f);
+    ok &= check(!kit_dropdown_is_open(f.k, "asset-dropdown"), "re-clicking an asset picker closes without reopening its search");
+
     /* Menubar: press opens, item activation reports once and closes. */
     ok &= check(click(&f, "app/bar/file"), "menu trigger");
     settle(&f);
@@ -718,6 +1099,36 @@ bool test_rmlui_kit()
     ok &= check(!kit_popup_is_open(f.k, "rename"), "pressing a popover's ordinary button trigger again closes it");
     click(&f, "app/bar/rename-trigger");
     settle(&f);
+    ok &= check(click(&f, "layer/@rename/mode"), "nested choice is laid out in its parent popup");
+    settle(&f);
+    ok &= check(
+        kit_popup_is_open(f.k, "rename") &&
+            kit_dropdown_is_open(f.k, "select:layer/@rename/mode"),
+        "opening a choice keeps its parent popup open"
+    );
+    key(&f, RML_INPUT_KEY_DOWN, 0);
+    key(&f, RML_INPUT_KEY_ENTER, 0);
+    frame(&f);
+    ok &= check(
+        f.nested_choice == 1 && f.nested_choice_changes == 1 &&
+            kit_popup_is_open(f.k, "rename") &&
+            !kit_dropdown_is_open(f.k, "select:layer/@rename/mode") &&
+            rml_context_focus_element(rml_backend_context(f.backend)) ==
+                rml_element_query_selector(doc, ".popup .field.select"),
+        "choosing a nested option updates its value and returns focus to the "
+        "parent field"
+    );
+    ok &= check(click(&f, "layer/@rename/mode"), "nested choice reopens");
+    key(&f, RML_INPUT_KEY_ESCAPE, 0);
+    frame(&f);
+    ok &= check(
+        kit_popup_is_open(f.k, "rename") &&
+            !kit_dropdown_is_open(f.k, "select:layer/@rename/mode") &&
+            rml_context_focus_element(rml_backend_context(f.backend)) ==
+                rml_element_query_selector(doc, ".popup .field.select"),
+        "Escape closes only the nested dropdown and restores focus within its "
+        "parent"
+    );
     ok &= check(click(&f, "layer/@rename/name"), "popover field is laid out");
     key(&f, RML_INPUT_KEY_A, 0);
     type(&f, "ab");
@@ -763,9 +1174,14 @@ bool test_rmlui_kit()
     settle(&f);
     key(&f, RML_INPUT_KEY_TAB, RML_KM_SHIFT);
     frame(&f);
-    ok &= check(!kit_popup_is_open(f.k, "rename") && !kit_wants_text(f.k, NULL), "Shift+Tab from the first popover control exits to the trigger and closes");
+    ok &= check(
+        !kit_popup_is_open(f.k, "rename") && !kit_wants_text(f.k, NULL),
+        "Shift+Tab from the first popover control exits to the trigger "
+        "and closes"
+    );
     click(&f, "app/bar/rename-trigger");
     settle(&f);
+    key(&f, RML_INPUT_KEY_TAB, 0);
     key(&f, RML_INPUT_KEY_TAB, 0);
     key(&f, RML_INPUT_KEY_TAB, 0);
     frame(&f);
@@ -781,7 +1197,11 @@ bool test_rmlui_kit()
     click(&f, "app/bar/rename-trigger");
     settle(&f);
     rml_element *empty_focus = rml_context_focus_element(rml_backend_context(f.backend));
-    ok &= check(empty_focus && rml_element_is_class_set(empty_focus, "popover"), "an informational popover focuses itself when it has no tabbable controls");
+    ok &= check(
+        empty_focus && rml_element_is_class_set(empty_focus, "popover"),
+        "an informational popover focuses itself when it has no tabbable "
+        "controls"
+    );
     rml_element_focus(outside, true);
     frame(&f);
     ok &= check(!kit_popup_is_open(f.k, "rename"), "an informational popover also closes on outside focus");
@@ -892,7 +1312,8 @@ bool test_rmlui_kit()
     ok &= check(center(&f, "app/list/a", &x, &ay) && center(&f, "app/list/c", &x, &cy) && cy < ay, "reordered");
     ok &= check(!kit_find(f.k, "app/list/b", &removed), "unemitted child is removed");
 
-    /* Virtualized list: a window of rows, and reveal scrolls a far row into existence. */
+    /* Virtualized list: a window of rows, and reveal scrolls a far row into
+     * existence. */
     ok &= check(f.rows_emitted > 0 && f.rows_emitted < 40, "list emits only the visible window");
     ok &= check(!kit_find(f.k, "app/big/r999", &removed), "far rows are not emitted");
     f.reveal = 999;
@@ -910,7 +1331,8 @@ bool test_rmlui_kit()
     settle(&f);
     ok &= check(f.hovered_row < 0, "an overscan row outside the list is not hovered");
 
-    /* Drag and drop: picked up after 5 dp, dropped on the target under the pointer. */
+    /* Drag and drop: picked up after 5 dp, dropped on the target under the
+     * pointer. */
     float sx = 0, sy = 0, tx = 0, ty = 0;
     ok &= check(
         center(&f, "app/dnd/source", &sx, &sy) &&
@@ -932,7 +1354,8 @@ bool test_rmlui_kit()
     frame(&f);
     ok &= check(strcmp(f.dropped, "apple") == 0 && !kit_dragging(f.k, NULL), "drop lands on the target");
 
-    /* NumberFlow and Torph settle to exactly what a fresh render of the new value lays out. */
+    /* NumberFlow and Torph settle to exactly what a fresh render of the new
+     * value lays out. */
     f.flow = 10;
     f.morph = "Pause";
     frame(&f);
@@ -954,7 +1377,8 @@ bool test_rmlui_kit()
         "morph settles to the new text"
     );
 
-    /* Toasts: an action reports once and dismisses; an untouched toast expires after four seconds. */
+    /* Toasts: an action reports once and dismisses; an untouched toast expires
+     * after four seconds. */
     int undo = kit_toast(f.k, 0, &(kit_toast_desc){ .title = "Deleted", .action = "Undo" });
     for (int i = 0; i < 60; i++) {
         frame(&f);

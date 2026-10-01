@@ -2,6 +2,7 @@
 """Serve a consistent browser build with the workspace's projects and saves routed back to them."""
 import argparse
 import base64
+import errno
 import json
 import re
 import secrets
@@ -219,7 +220,6 @@ def main():
             watch.poll()
             threading.Event().wait(1)
 
-    threading.Thread(target=follow, daemon=True).start()
     # A served generation never changes under the browser's JS/WASM/data requests.
     with tempfile.TemporaryDirectory(prefix='chibi-web-') as directory:
         snapshot = Path(directory)
@@ -328,9 +328,19 @@ def main():
                 self.send_response(204)
                 self.end_headers()
 
+        try:
+            http = ThreadingHTTPServer(('127.0.0.1', args.port), Handler)
+        except OSError as error:
+            if error.errno != errno.EADDRINUSE:
+                raise
+            parser.error(
+                f'port {args.port} is already in use; retry with another port, '
+                f'for example: make web-serve WEB_PORT={args.port + 1}'
+            )
+        threading.Thread(target=follow, daemon=True).start()
         print(f'Editor: http://127.0.0.1:{args.port}/chibi.html', flush=True)
         print(f'Project: {project}', flush=True)
-        ThreadingHTTPServer(('127.0.0.1', args.port), Handler).serve_forever()
+        http.serve_forever()
 
 
 if __name__ == '__main__':

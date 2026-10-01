@@ -16,6 +16,8 @@
 
 /* Rows kept per group while filtering. */
 #define GROUP_LIMIT 8
+/* Matches the shared vertical scrollbar so long rows keep their full label. */
+#define LIST_SCROLLBAR_WIDTH 8
 
 /* ---------- Ranking ---------- */
 
@@ -89,11 +91,16 @@ static void limit_groups(command_row *rows)
     asetlen(rows, kept);
 }
 
-/* The rows to show in order. A query filters unranked items, orders groups
- * by their best match and keeps each group's best GROUP_LIMIT. Otherwise
- * scores fall with item order, so groups keep their first appearance and
- * rows their order. */
-static command_row *rank_rows(const kit_command_item *items, int count, bool ranked, const char *query)
+/* The rows to show in order. A query filters unranked items and orders groups
+ * by their best match. Only command palettes cap long groups; dropdowns and
+ * autocompletes retain every match. */
+static command_row *rank_rows(
+    const kit_command_item *items,
+    int count,
+    bool ranked,
+    const char *query,
+    bool limit_matches
+)
 {
     bool filter = !ranked && query[strspn(query, " ")];
     command_row *rows = NULL;
@@ -112,7 +119,7 @@ static command_row *rank_rows(const kit_command_item *items, int count, bool ran
     }
     group_rows(rows, items);
     qsort(rows, (size_t)acount(rows), sizeof *rows, compare_rows);
-    if (filter) {
+    if (filter && limit_matches) {
         limit_groups(rows);
     }
     return rows;
@@ -455,7 +462,7 @@ static int command(kit *k, const kit_command_item *items, int count, bool ranked
         return -1;
     }
     node *n = emit_palette(k);
-    command_row *rows = rank_rows(items, count, ranked, query);
+    command_row *rows = rank_rows(items, count, ranked, query, true);
     aclear(c->shown);
     for (int r = 0; r < acount(rows); r++) {
         apush(c->shown, rows[r].index);
@@ -487,4 +494,290 @@ int kit_command_filtered(kit *k, const kit_command_item *items, int count, const
 int kit_command_ranked(kit *k, const kit_command_item *items, int count)
 {
     return command(k, items, count, true, kit_command_query(k));
+}
+
+int kit_dropdown(kit *k, const char *key, const kit_command_item *items, int count)
+{
+    popup *p = popup_find(k, key);
+    if (!p || !p->open || !p->dropdown || !kit_popup_begin(k, key, "dropdown")) {
+        return -1;
+    }
+
+    bool changed = kit_search(k, "search", p->dropdown_query, sizeof p->dropdown_query, p->dropdown_placeholder);
+    p->dropdown_search = k->last->w.input_el;
+    bool opening = p->dropdown_focus;
+    if (p->dropdown_focus) {
+        p->dropdown_focus = false;
+        p->keyboard = true;
+        kit_focus(k);
+    }
+    if (changed) {
+        p->highlight = -1;
+    }
+
+    command_row *rows = rank_rows(items, count, false, p->dropdown_query, false);
+    if (changed) {
+        p->highlight = acount(rows) ? 0 : -1;
+    } else if (p->keyboard && p->highlight < 0 && acount(rows)) {
+        p->highlight = 0;
+        for (int i = 0; i < acount(rows); i++) {
+            if (items[rows[i].index].current) {
+                p->highlight = i;
+                break;
+            }
+        }
+    }
+    p->dropdown_reveal |= opening || changed;
+    kit_push(k, "results", NULL, "dropdown-results");
+    if (changed) {
+        rml_element_set_scroll_top(k->last->el, 0);
+    }
+    const char *group = NULL;
+    int chosen = -1;
+    if (!acount(rows)) {
+        kit_label(k, "empty", "dropdown-empty", "No matching options");
+    }
+    for (int i = 0; i < acount(rows); i++) {
+        int index = rows[i].index;
+        const kit_command_item *item = &items[index];
+        if (item->group && item->group[0] && !str_eq(group, item->group)) {
+            char group_key[32];
+            snprintf(group_key, sizeof group_key, "group-%d", i);
+            kit_menu_group(k, group_key, item->group);
+            group = item->group;
+        }
+        char row_key[32];
+        snprintf(row_key, sizeof row_key, "option-%d", index);
+        kit_menu_item_desc d = {
+            .label = item->label,
+            .icon = item->icon,
+            .checked = -1,
+            .current = item->current,
+            .description = item->description,
+        };
+        if (kit_menu_item(k, row_key, &d)) {
+            chosen = index;
+        }
+    }
+    p->content = math_max(p->content + LIST_SCROLLBAR_WIDTH, p->anchor.w - 10);
+    kit_pop(k);
+    kit_popup_end(k);
+    afree(rows);
+    return chosen;
+}
+
+static node *autocomplete_field(const kit *k, const char *key)
+{
+    if (!acount(k->stack)) {
+        return NULL;
+    }
+    node *parent = alast(k->stack);
+    for (int i = 0; i < acount(parent->children); i++) {
+        if (str_eq(parent->children[i]->key, key)) {
+            return parent->children[i];
+        }
+    }
+    return NULL;
+}
+
+static char *autocomplete_popup_key(const node *field)
+{
+    char *key = NULL;
+    str_catf(&key, "autocomplete:%s", field->path);
+    return key;
+}
+
+/* Completion uses the text editor's compact name/type row while retaining the
+   menu primitive's focus, hover, scrolling and activation behavior. */
+static void completion_row(kit *k, popup *p, const kit_command_item *item, const char *query)
+{
+    widget *w = &k->last->w;
+    const char *member = strrchr(query, '.');
+    const char *label = item->label ? item->label : "";
+    const char *match = member && text_search_score(query, label, NULL) < 0
+                          ? member + 1
+                          : query;
+    char *rml = match_rml(label, match);
+    if (str_set(&w->applied, rml)) {
+        rml_element_set_inner_rml(w->label_el, w->applied);
+    }
+    free(rml);
+    if (!w->meta_el) {
+        w->meta_el = raw(k->last->el, "span", "detail", NULL);
+    }
+    set_element_text(w->meta_el, item->meta);
+    flag_element(w->meta_el, "data-empty", !item->meta || !item->meta[0]);
+    rml_element_set_attribute(w->icon_el, "aria-hidden", "true");
+    kit_tip(k, item->label, NULL, item->description);
+
+    float ratio = rml_context_dp_ratio(k->context);
+    uintptr_t face = rml_font_face("jetbrains mono", RML_FONT_NORMAL, 400, (int)(12 * ratio));
+    float label_width = face ? rml_font_string_width(face, label) / ratio : 0;
+    float detail_width = item->meta && item->meta[0]
+                           ? 16 + kit_text_width(k, item->meta, 12, 400, ratio)
+                           : 0;
+    p->content = math_max(p->content, 6 + 16 + 8 + label_width + detail_width + 6);
+}
+
+const char *kit_autocomplete_query(const kit *k, const char *key)
+{
+    node *field = autocomplete_field(k, key);
+    if (!field || field->kind != KIND_AUTOCOMPLETE) {
+        return NULL;
+    }
+    char *popup_key = autocomplete_popup_key(field);
+    popup *p = popup_find(k, popup_key);
+    free(popup_key);
+    if (!p || !p->open) {
+        return NULL;
+    }
+    return field->w.autocomplete_query_active ? field->w.draft : "";
+}
+
+kit_autocomplete_result kit_autocomplete(
+    kit *k,
+    const char *key,
+    const char *value,
+    const kit_command_item *items,
+    int count,
+    const char *placeholder,
+    unsigned flags
+)
+{
+    node *field = emit_input(k, key, KIND_AUTOCOMPLETE, "field autocomplete", placeholder);
+    widget *w = &field->w;
+    w->desc.flags = flags;
+    set_flag(field, "data-readonly", flags & KIT_READONLY);
+    set_flag(field, "data-disabled", flags & KIT_DISABLED);
+    if (flags & (KIT_READONLY | KIT_DISABLED)) {
+        rml_element_set_attribute(w->input_el, "readonly", "");
+        w->autocomplete_query_active = false;
+        w->autocomplete_sync = true;
+    } else {
+        rml_element_remove_attribute(w->input_el, "readonly");
+    }
+    const char *shown = value ? value : "";
+    if (w->autocomplete_sync || !w->focused || !str_eq(w->applied, shown)) {
+        str_set(&w->applied, shown);
+        if (!w->focused || !w->autocomplete_query_active) {
+            str_set(&w->draft, shown);
+            rml_element_set_value(w->input_el, shown);
+            w->autocomplete_query_active = false;
+        }
+        w->autocomplete_sync = false;
+    }
+    rml_element_set_attribute(w->input_el, "role", "combobox");
+    rml_element_set_attribute(w->input_el, "aria-autocomplete", "list");
+
+    char *popup_key = autocomplete_popup_key(field);
+    popup *p = popup_find(k, popup_key);
+    if ((flags & (KIT_READONLY | KIT_DISABLED)) && p && p->open) {
+        close_popup(k, popup_key);
+    }
+    p = popup_find(k, popup_key);
+    bool open = p && p->open && p->autocomplete;
+    set_flag(field, "data-open", open);
+    rml_element_set_attribute(w->input_el, "aria-expanded", open ? "true" : "false");
+    if (!open) {
+        rml_element_remove_attribute(w->input_el, "aria-controls");
+        rml_element_remove_attribute(w->input_el, "aria-activedescendant");
+    }
+
+    kit_autocomplete_result result = { .selected = -1 };
+    result.canceled = w->autocomplete_canceled;
+    w->autocomplete_canceled = false;
+    result.submitted = w->autocomplete_submitted;
+    w->autocomplete_submitted = false;
+    if (open && kit_popup_begin(k, popup_key, "autocomplete")) {
+        kit_attr(k, "id", k->last->path);
+        const char *query = w->autocomplete_query_active ? w->draft : "";
+        bool changed = !str_eq(p->dropdown_query, query);
+        bool opening = p->autocomplete_opening;
+        p->autocomplete_opening = false;
+        if (changed) {
+            snprintf(p->dropdown_query, sizeof p->dropdown_query, "%s", query);
+            p->highlight = -1;
+        }
+        command_row *rows = rank_rows(items, count, false, query, false);
+        if (changed) {
+            p->highlight = acount(rows) ? 0 : -1;
+        } else if ((opening || p->highlight < 0) && acount(rows)) {
+            p->highlight = 0;
+            for (int i = 0; i < acount(rows); i++) {
+                if (items[rows[i].index].current) {
+                    p->highlight = i;
+                    break;
+                }
+            }
+        }
+        p->dropdown_reveal |= opening || changed;
+        kit_push(k, "results", NULL, "autocomplete-results");
+        if (changed) {
+            rml_element_set_scroll_top(k->last->el, 0);
+        }
+        kit_attr(k, "id", k->last->path);
+        kit_attr(k, "role", "listbox");
+        rml_element_set_attribute(w->input_el, "aria-controls", k->last->path);
+        rml_element_remove_attribute(w->input_el, "aria-activedescendant");
+        const char *group = NULL;
+        for (int i = 0; i < acount(rows); i++) {
+            int index = rows[i].index;
+            const kit_command_item *item = &items[index];
+            if (item->group && item->group[0] && !str_eq(group, item->group)) {
+                char group_key[32];
+                snprintf(group_key, sizeof group_key, "group-%d", i);
+                kit_menu_group(k, group_key, item->group);
+                group = item->group;
+            }
+            char row_key[32];
+            snprintf(row_key, sizeof row_key, "option-%d", index);
+            kit_menu_item_desc desc = { .label = item->label,
+                                        .icon = item->icon,
+                                        .checked = -1,
+                                        .current = item->current };
+            if (kit_menu_item(k, row_key, &desc)) {
+                result.selected = index;
+            }
+            completion_row(k, p, item, query);
+            kit_attr(k, "id", k->last->path);
+            kit_attr(k, "role", "option");
+            kit_attr(k, "aria-selected", p->highlight == i ? "true" : "false");
+            if (p->highlight == i) {
+                rml_element_set_attribute(
+                    w->input_el,
+                    "aria-activedescendant",
+                    k->last->path
+                );
+            }
+        }
+        if (!acount(rows)) {
+            kit_label(k, "empty", "dropdown-empty", "No matching options");
+        }
+        kit_pop(k);
+        p->content = math_max(p->content + LIST_SCROLLBAR_WIDTH, p->anchor.w - 10);
+        kit_popup_end(k);
+        afree(rows);
+    }
+    if (result.selected >= 0) {
+        close_popup(k, popup_key);
+        w->autocomplete_sync = true;
+        w->autocomplete_query_active = false;
+    }
+    k->last = field;
+    free(popup_key);
+    return result;
+}
+
+void kit_autocomplete_close(kit *k, const char *key)
+{
+    node *field = autocomplete_field(k, key);
+    if (!field || field->kind != KIND_AUTOCOMPLETE) {
+        return;
+    }
+    char *popup_key = autocomplete_popup_key(field);
+    close_popup(k, popup_key);
+    free(popup_key);
+    field->w.autocomplete_sync = true;
+    field->w.autocomplete_query_active = false;
+    rml_element_focus(field->w.input_el, true);
 }

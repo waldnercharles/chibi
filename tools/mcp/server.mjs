@@ -81,6 +81,7 @@ function resourceTemplates() {
 }
 
 function controllerPath() {
+  if (process.env.CHIBI_ENGINE_PACKAGE) return process.env.CHIBI_CTL;
   const candidates = [
     process.env.CHIBI_CTL,
     resolve(root, "build", "chibi_ctl"),
@@ -102,6 +103,9 @@ function ensureController() {
     return Promise.resolve();
   }
   const controller = process.env.CHIBI_CTL;
+  if (process.env.CHIBI_ENGINE_PACKAGE) {
+    return Promise.reject(protocolError(-32603, `Packaged controller is missing: ${controller}. Reinstall the engine package.`));
+  }
   controllerBuild ??= new Promise((resolveBuild, rejectBuild) => {
     process.stderr.write("chibi MCP building native controllers\n");
     const child = spawn("make", ["-C", serverRoot, "build", `BUILD_DIR=${dirname(controller)}`, "BUILD_TARGET=chibi_ctl"], {

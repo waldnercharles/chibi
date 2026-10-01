@@ -22,7 +22,8 @@ static const char *text_at(yyjson_val *root, const char *pointer)
 static void prefs_round_trip()
 {
     const char
-        *old_file = "{\"version\":1,\"theme\":\"dark\",\"density\":"
+        *old_file = "{\"version\":1,\"followDocuments\":true,\"theme\":"
+                    "\"dark\",\"density\":"
                     "\"comfortable\",\"uiScale\":1.5,"
                     "\"reduceMotion\":true,\"wires\":\"orthogonal\","
                     "\"nodes\":{\"shortBindings\":false,"
@@ -69,7 +70,8 @@ static void prefs_round_trip()
                 !yyjson_ptr_get(root, "/shortcuts/workspaceLayout") &&
                 !yyjson_ptr_get(root, "/shortcuts/workspaceUi") &&
                 yyjson_get_num(yyjson_ptr_get(root, "/code/fontSize")) == 20 &&
-                yyjson_get_num(yyjson_ptr_get(root, "/uiScale")) == 1.5;
+                yyjson_get_num(yyjson_ptr_get(root, "/uiScale")) == 1.5 &&
+                !yyjson_ptr_get(root, "/followDocuments");
     test_check(
         loaded && keys && !studio_prefs_equal(&with_override, &defaults) &&
             studio_prefs_equal(&p, &back),
@@ -91,7 +93,11 @@ static void prefs_round_trip()
                 yyjson_get_int(yyjson_ptr_get(root, "/future")) == 1 &&
                 !strcmp(text_at(root, "/shortcuts/later"), "F9") &&
                 !yyjson_ptr_get(root, "/shortcuts/save");
-    test_check(kept, "saving keeps the settings a newer build wrote and drops a reset shortcut");
+    test_check(
+        kept,
+        "saving keeps the settings a newer build wrote and drops a "
+        "reset shortcut"
+    );
     yyjson_doc_free(doc);
     free(json);
 }
@@ -106,6 +112,16 @@ static const studio_setting *setting_named(const char *key)
     return NULL;
 }
 
+static int choice_named(const studio_setting *setting, const char *name)
+{
+    for (int i = 0; setting && i < setting->choice_count; i++) {
+        if (!strcmp(setting->choices[i].value, name)) {
+            return i;
+        }
+    }
+    return -1;
+}
+
 static void font_preferences()
 {
     studio_prefs p = studio_prefs_default();
@@ -113,12 +129,15 @@ static void font_preferences()
     const studio_setting *standard_size = setting_named("font.standardSize");
     const studio_setting *code_family = setting_named("code.fontFamily");
     const studio_setting *code_size = setting_named("code.fontSize");
-    bool defaults = p.standard_font_size == 13 &&
-                    !strcmp(studio_standard_font(&p), "geist");
     bool choices = standard_family && standard_family->choice_count == 3 &&
-                   !strcmp(standard_family->choices[1].value, "Noto Sans") &&
-                   code_family && code_family->choice_count == 2 &&
-                   !strcmp(code_family->choices[1].value, "Inconsolata");
+                   choice_named(standard_family, "Inter") >= 0 &&
+                   choice_named(standard_family, "Noto Sans") >= 0 &&
+                   choice_named(standard_family, "Geist") >= 0 &&
+                   choice_named(code_family, "JetBrains Mono") >= 0 &&
+                   choice_named(code_family, "Inconsolata") >= 0;
+    bool defaults = p.standard_font_size == 13 && p.code_font_size == 13 &&
+                    !strcmp(studio_standard_font(&p), "geist") &&
+                    !strcmp(studio_code_font(&p), "jetbrains mono");
     bool changed = choices &&
                    studio_setting_parse(&p, standard_family, "Noto Sans") &&
                    studio_setting_parse(&p, standard_size, "18") &&
@@ -166,8 +185,8 @@ static void invalid_values()
         "\"sideSplit\":1.5,\"drawer\":{\"open\":\"yes\",\"height\":20},"
         "\"areas\":[\"unknown\"]}}}}"
     );
-    studio_prefs on_ui = defaults;
-    on_ui.workspace = STUDIO_WORKSPACE_HORIZONTAL_SPLIT;
+    studio_prefs on_horizontal = defaults;
+    on_horizontal.workspace = STUDIO_WORKSPACE_HORIZONTAL_SPLIT;
     studio_prefs legacy_ui = studio_prefs_read("{\"layout\":{\"workspace\":\"ui\"}}");
     studio_prefs legacy_layout = studio_prefs_read("{\"layout\":{\"workspace\":\"layout\"}}");
     test_check(
@@ -176,35 +195,76 @@ static void invalid_values()
             studio_prefs_equal(&garbage, &defaults) &&
             studio_prefs_equal(&none, &defaults) &&
             studio_prefs_equal(&unknown_workspace, &defaults) &&
-            studio_prefs_equal(&legacy_ui, &on_ui) &&
+            studio_prefs_equal(&legacy_ui, &on_horizontal) &&
             studio_prefs_equal(&legacy_layout, &defaults) &&
             !p.shortcuts[STUDIO_COMMAND_SAVE][0] &&
             !p.shortcuts[STUDIO_COMMAND_SEARCH][0] &&
-            studio_prefs_equal(&invalid_layout, &on_ui),
+            studio_prefs_equal(&invalid_layout, &on_horizontal),
         "a preference of the wrong type, out of range or not a choice keeps "
         "its default, a workspace's arrangement included"
     );
 }
 
-/* Each workspace keeps its own arrangement through the file, and which
-   one is active. */
+static void theme_presets()
+{
+    studio_prefs prefs = studio_prefs_default();
+    bool persisted = true;
+    for (int theme = 0; theme < STUDIO_THEME_COUNT; theme++) {
+        prefs.theme = (studio_theme)theme;
+        char *json = studio_prefs_write(&prefs, NULL);
+        studio_prefs restored = studio_prefs_read(json);
+        persisted &= restored.theme == prefs.theme;
+        free(json);
+    }
+    test_check(persisted, "every Appearance palette persists through the preferences file");
+
+    rml_backend *backend = rml_backend_create(800, 600, 1);
+    rml_context *context = rml_backend_context(backend);
+    kit *k = test_kit_create(context, "graph.rml");
+    rml_element *body = rml_context_document(context, 0);
+    studio_theme_apply(k, STUDIO_THEME_CATPPUCCIN_MOCHA, true);
+    bool dark = rml_element_is_class_set(body, "dark") &&
+                rml_element_is_class_set(body, "theme-catppuccin-mocha");
+    studio_theme_apply(k, STUDIO_THEME_SOLARIZED_LIGHT, false);
+    bool light = !rml_element_is_class_set(body, "dark") &&
+                 !rml_element_is_class_set(body, "theme-catppuccin-mocha") &&
+                 rml_element_is_class_set(body, "theme-solarized-light");
+    studio_theme_apply(k, STUDIO_THEME_SYSTEM, false);
+    bool system_dark = rml_element_is_class_set(body, "dark") &&
+                       !rml_element_is_class_set(body, "theme-solarized-light");
+    studio_theme_apply(k, STUDIO_THEME_SYSTEM, true);
+    test_check(
+        dark && light && system_dark && !rml_element_is_class_set(body, "dark"),
+        "the graph switches named dark and light palettes without "
+        "retaining an old class, then follows System"
+    );
+    kit_destroy(k);
+    rml_backend_destroy(backend);
+}
+
+/* Each split mode keeps its own arrangement through the file, and which one
+   is active. */
 static void workspace_presets_round_trip()
 {
     studio_prefs p = studio_prefs_default();
     p.workspace = STUDIO_WORKSPACE_HORIZONTAL_SPLIT;
-    studio_layout *layout = &p.layouts[STUDIO_WORKSPACE_VERTICAL_SPLIT];
-    layout->side_open = false;
-    layout->side_width = 448;
-    layout->main_split = 0.67f;
-    layout->drawer_open = true;
-    layout->editors[STUDIO_AREA_DRAWER] = STUDIO_EDITOR_PANEL;
-    snprintf(layout->panels[STUDIO_AREA_DRAWER], sizeof layout->panels[0], "%s", "Data");
-    studio_layout *ui = &p.layouts[STUDIO_WORKSPACE_HORIZONTAL_SPLIT];
-    ui->side_width = 336;
-    ui->main_split = 0.56f;
-    ui->drawer_height = 190;
-    ui->canvas_actions_open = true;
-    char *json = studio_prefs_write(&p, "{\"followDocuments\":true,\"layout\":{\"presets\":{\"ui\":{},\"layout\":{}}}}");
+    studio_layout *vertical = &p.layouts[STUDIO_WORKSPACE_VERTICAL_SPLIT];
+    vertical->side_open = false;
+    vertical->side_width = 448;
+    vertical->main_split = 0.67f;
+    vertical->drawer_open = true;
+    vertical->editors[STUDIO_AREA_DRAWER] = STUDIO_EDITOR_PANEL;
+    snprintf(vertical->panels[STUDIO_AREA_DRAWER], sizeof vertical->panels[0], "%s", "Data");
+    studio_layout *horizontal = &p.layouts[STUDIO_WORKSPACE_HORIZONTAL_SPLIT];
+    horizontal->side_width = 336;
+    horizontal->main_split = 0.56f;
+    horizontal->drawer_height = 190;
+    horizontal->canvas_actions_open = true;
+    char *json = studio_prefs_write(
+        &p,
+        "{\"followDocuments\":true,\"layout\":{"
+        "\"presets\":{\"ui\":{},\"layout\":{}}}}"
+    );
     yyjson_doc *doc = yyjson_read(json, strlen(json), 0);
     yyjson_val *root = yyjson_doc_get_root(doc);
     studio_prefs back = studio_prefs_read(json);
@@ -233,6 +293,29 @@ static void workspace_presets_round_trip()
         "each workspace keeps its own arrangement through the preferences "
         "file, and the active one stays active"
     );
+    yyjson_doc_free(doc);
+    free(json);
+
+    const char *
+        previous = "{\"followDocuments\":true,\"layout\":{\"workspace\":\"ui\","
+                   "\"presets\":{\"layout\":{\"sideWidth\":460},"
+                   "\"ui\":{\"sideWidth\":340}}}}";
+    studio_prefs migrated = studio_prefs_read(previous);
+    bool migrated_values = migrated.workspace == STUDIO_WORKSPACE_HORIZONTAL_SPLIT &&
+                           migrated.layouts[STUDIO_WORKSPACE_VERTICAL_SPLIT].side_width ==
+                               460 &&
+                           migrated.layouts[STUDIO_WORKSPACE_HORIZONTAL_SPLIT].side_width ==
+                               340;
+    json = studio_prefs_write(&migrated, previous);
+    doc = yyjson_read(json, strlen(json), 0);
+    root = yyjson_doc_get_root(doc);
+    bool migrated_keys = !strcmp(text_at(root, "/layout/workspace"), "horizontalSplit") &&
+                         yyjson_ptr_get(root, "/layout/presets/verticalSplit") &&
+                         yyjson_ptr_get(root, "/layout/presets/horizontalSplit") &&
+                         !yyjson_ptr_get(root, "/layout/presets/layout") &&
+                         !yyjson_ptr_get(root, "/layout/presets/ui") &&
+                         !yyjson_ptr_get(root, "/followDocuments");
+    test_check(migrated_values && migrated_keys, "previous mode names migrate while keeping their saved arrangements");
     yyjson_doc_free(doc);
     free(json);
 }
@@ -269,7 +352,11 @@ static void shortcut_chords()
                            studio_command_conflict(&prefs, STUDIO_COMMAND_SAVE, "Mod+S", false) <
                                0;
 
-    test_check(parsed && mac && matching && windows_format && mac_format && valid && defaults_valid, "shortcut chords and every command default parse, match and format on each platform");
+    test_check(
+        parsed && mac && matching && windows_format && mac_format && valid && defaults_valid,
+        "shortcut chords and every command default parse, match and "
+        "format on each platform"
+    );
     test_check(global_conflict, "a global shortcut conflict names the other command and ignores itself");
 }
 
@@ -313,8 +400,16 @@ static void shortcut_dispatch()
                                    studio_command_conflict(&prefs, STUDIO_COMMAND_SAVE, "Mod+P", false) <
                                        0;
 
-    test_check(contexts, "shortcut dispatch respects area contexts and keeps Search's unmodified platform alias");
-    test_check(symmetric && override_disables_alias, "shortcut conflicts include aliases symmetrically, and an override replaces its defaults");
+    test_check(
+        contexts,
+        "shortcut dispatch respects area contexts and keeps "
+        "Search's unmodified platform alias"
+    );
+    test_check(
+        symmetric && override_disables_alias,
+        "shortcut conflicts include aliases symmetrically, and an "
+        "override replaces its defaults"
+    );
 }
 
 static void shortcut_recording()
@@ -415,7 +510,11 @@ static void save_mirror()
                    !strcmp(game_save_get(save, "uiScale"), "1");
     p.comfortable = true;
     studio_prefs_share(&p, save, &seen);
-    test_check(mirrored && applied && !strcmp(game_save_get(save, "density"), "comfortable"), "preferences mirror to saved keys, and a panel's valid change applies back");
+    test_check(
+        mirrored && applied && !strcmp(game_save_get(save, "density"), "comfortable"),
+        "preferences mirror to saved keys, and a panel's valid change "
+        "applies back"
+    );
     game_save_free(save);
 }
 
@@ -566,7 +665,11 @@ static void page_rows()
     int rows = (int)yyjson_mut_arr_size(member(f.page, "rows"));
     test_check(
         rows == studio_setting_count + f.view.command_count + STUDIO_PROJECT_FIELD_COUNT &&
-            !strcmp(keys, "theme density uiScale reduceMotion font.standardFamily font.standardSize") &&
+            !strcmp(
+                keys,
+                "theme density uiScale reduceMotion "
+                "font.standardFamily font.standardSize"
+            ) &&
             !strcmp(yyjson_mut_get_str(member(f.page, "title")), "Appearance") &&
             category_flag(&f, STUDIO_SETTINGS_PROJECT, "hidden"),
         "the Settings page shows the first category's settings under the "
@@ -657,7 +760,11 @@ static void page_keyboard_and_project()
     set_text(&f, f.page, "query", "revert");
     studio_settings_sync(&f.view, f.doc, true);
     shown(&f, keys, sizeof keys);
-    test_check(listed && !strcmp(keys, "command.reload"), "Keyboard lists each command's shortcut as keys, and search finds commands");
+    test_check(
+        listed && !strcmp(keys, "command.reload"),
+        "Keyboard lists each command's shortcut as keys, and search finds "
+        "commands"
+    );
 
     set_text(&f, f.page, "query", "");
     set_text(&f, search, "value", "Mod+S");
@@ -687,7 +794,11 @@ static void page_keyboard_and_project()
     studio_settings_sync(&f.view, f.doc, true);
     bool reset = !f.prefs.shortcuts[STUDIO_COMMAND_SEARCH][0] &&
                  !strcmp(yyjson_mut_get_str(member(search, "value")), "Mod+K");
-    test_check(override && recording && captured && reset, "Keyboard edits a chord, reports a conflict, records a replacement and stores defaults without an override");
+    test_check(
+        override && recording && captured && reset,
+        "Keyboard edits a chord, reports a conflict, records a "
+        "replacement and stores defaults without an override"
+    );
 
     yyjson_mut_set_bool(member(search, "record"), true);
     studio_settings_sync(&f.view, f.doc, true);
@@ -858,6 +969,38 @@ static void page_mount()
         "default font, numeric face and authored chrome metrics agree with the "
         "compact design"
     );
+    rml_element *theme_select = NULL;
+    int dracula = choice_named(setting_named("theme"), "dracula");
+    bool themes = visible(&f, "select", &theme_select) == 2 && dracula >= 0;
+    if (themes) {
+        click(&f, theme_select);
+        for (int i = 0; i < dracula; i++) {
+            rml_backend_process_input(
+                f.backend,
+                &(rml_input){ .type = RML_INPUT_KEY_PRESS, .key = RML_INPUT_KEY_DOWN }
+            );
+            rml_backend_process_input(
+                f.backend,
+                &(rml_input){ .type = RML_INPUT_KEY_RELEASE, .key = RML_INPUT_KEY_DOWN }
+            );
+        }
+        rml_backend_process_input(
+            f.backend,
+            &(rml_input){ .type = RML_INPUT_KEY_PRESS, .key = RML_INPUT_KEY_ENTER }
+        );
+        rml_backend_process_input(
+            f.backend,
+            &(rml_input){ .type = RML_INPUT_KEY_RELEASE, .key = RML_INPUT_KEY_ENTER }
+        );
+    }
+    for (int i = 0; i < 3; i++) {
+        mount_frame(&f);
+    }
+    test_check(
+        themes && f.page.prefs.theme == STUDIO_THEME_DRACULA,
+        "the authored Appearance select applies a palette chosen with the "
+        "keyboard"
+    );
     studio_prefs font_prefs = f.page.prefs;
     studio_setting_parse(&font_prefs, setting_named("font.standardFamily"), "Noto Sans");
     studio_setting_parse(&font_prefs, setting_named("font.standardSize"), "18");
@@ -979,7 +1122,9 @@ static void page_mount()
     for (int i = 0; i < 3; i++) {
         mount_frame(&f);
     }
-    test_check(loaded && one && f.page.prefs.code_vim, "the Settings page loads its widgets, filters by search and a switch sets its preference");
+    test_check(loaded, "the Settings page loads its six Appearance controls");
+    test_check(one, "searching the Settings page for vim shows one switch");
+    test_check(f.page.prefs.code_vim, "the filtered switch sets its preference");
 
     rml_element *reset = NULL;
     bool offered = visible(&f, ".setting-reset", &reset) == 1;
@@ -1019,7 +1164,11 @@ static void page_mount()
     for (int i = 0; i < 3; i++) {
         mount_frame(&f);
     }
-    test_check(graph_shown && rml_data_model_writes(f.data.model) == settled, "choosing a category leaves search and shows its controls, which write nothing until used");
+    test_check(
+        graph_shown && rml_data_model_writes(f.data.model) == settled,
+        "choosing a category leaves search and shows its controls, which "
+        "write nothing until used"
+    );
 
     count = rml_element_query_selector_all(f.host, ".nav-item input", items, 8);
     rml_element *keyboard = NULL;
@@ -1118,6 +1267,7 @@ void test_studio_settings()
     prefs_round_trip();
     font_preferences();
     invalid_values();
+    theme_presets();
     workspace_presets_round_trip();
     shortcut_chords();
     shortcut_dispatch();

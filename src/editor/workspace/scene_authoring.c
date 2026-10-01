@@ -15,14 +15,13 @@
 #include "graph/document/serialize_internal.h"
 #include "graph/model/pin_fmt.h"
 #include "graph/model/registry.h"
+#include "graph/model/type.h"
 #include "graph/nodes/component_nodes.h"
 #include "graph/runtime/value_array.h"
 #include "graph/shader/shader_graph.h"
-#include "platform/cute.h"
 #include "render/appearance_geometry.h"
 #include "render/scene_renderer.h"
 #include "render/sdf_motion.h"
-#include "render/shader_images.h"
 #include "runtime/behaviors/entities.h"
 #include "runtime/generated.h"
 #include "runtime/scenes/gameplay.h"
@@ -735,6 +734,9 @@ void write_position(app_scene_authoring *scene, ecs_entity entity, GameTransform
 
 bool editable_scalar(const pin_value *value)
 {
+    if (value->container != PIN_CONTAINER_SINGLE) {
+        return false;
+    }
     switch (value->type) {
         case PIN_BOOL:
         case PIN_I8:
@@ -750,8 +752,51 @@ bool editable_scalar(const pin_value *value)
         case PIN_ENUM: return true;
         case PIN_F32: return isfinite(value->f);
         case PIN_F64: return isfinite(value->d);
+        case PIN_STRUCT: {
+            const type_desc *type = registry_type_by_name(value->type_name);
+            return value->ptr && type && type_value_is_finite(type, value->ptr);
+        }
         default: return false;
     }
+}
+
+bool scene_property_value_copy(pin_value *out, pin_value value)
+{
+    assert(out);
+    *out = (pin_value){ 0 };
+    if (value.container != PIN_CONTAINER_SINGLE) {
+        return false;
+    }
+    *out = value;
+    out->type_name = value.type_name ? xstrdup(value.type_name) : NULL;
+    if (value.type == PIN_STR || value.type == PIN_NAME) {
+        out->str = xstrdup(value.str ? value.str : "");
+        return true;
+    }
+    if (value.type == PIN_STRUCT) {
+        const type_desc *type = registry_type_by_name(value.type_name);
+        if (!value.ptr || !type || !type_value_is_finite(type, value.ptr)) {
+            free((void *)out->type_name);
+            *out = (pin_value){ 0 };
+            return false;
+        }
+        out->ptr = xmalloc(type->size);
+        memcpy(out->ptr, value.ptr, type->size);
+    }
+    return true;
+}
+
+void scene_property_value_free(pin_value *value)
+{
+    assert(value);
+    free((void *)value->type_name);
+    if (value->type == PIN_STR || value->type == PIN_NAME) {
+        free((void *)value->str);
+    }
+    if (value->type == PIN_STRUCT) {
+        free(value->ptr);
+    }
+    *value = (pin_value){ 0 };
 }
 
 void finish_property_edit(app_scene_authoring *scene)
@@ -826,6 +871,9 @@ void finish_property_edit(app_scene_authoring *scene)
         scene_action_finish(scene, action, success);
     }
     free(action);
+    scene_property_value_free(&edit->before);
+    scene_property_value_free(&edit->after);
+    *edit = (scene_field_edit){ 0 };
     scene->property_actor = (ecs_entity){ 0 };
 }
 
@@ -1052,11 +1100,9 @@ app_scene_authoring *app_scene_authoring_new_with_content_root(
         return NULL;
     }
     app_scene_authoring *scene = (app_scene_authoring *)xcalloc(1, sizeof *scene);
-    bool app_running = cf_app_exists() && cf_app_is_running();
     scene->debug_sessions[APP_RUNTIME_PREVIEW] = 1;
     scene->debug_sessions[APP_RUNTIME_SCENE] = 1;
-    scene->shapes = app_running ? app_sdf_shapes_init() : (app_sdf_shapes){ 0 };
-    scene->renderer = app_running ? app_scene_renderer_new() : NULL;
+    scene->renderer = app_scene_renderer_new();
     scene->history = scene_history_new();
     scene->world = world;
     scene->live = live;
@@ -1074,6 +1120,7 @@ app_scene_authoring *app_scene_authoring_new_with_content_root(
     scene->runtime = runtime;
     scene->prototype_preview = game_prototype_preview_new(&scene->registry);
     if (!scene->prototype_preview) {
+        app_scene_renderer_free(scene->renderer);
         scene_history_free(scene->history);
         free(scene);
         return NULL;
@@ -1126,15 +1173,6 @@ app_scene_authoring *app_scene_authoring_new_with_content_root(
     scene->scene_dirty = false;
     snprintf(scene->message, sizeof scene->message, "No scene entities yet.");
     snprintf(scene->prototype_message, sizeof scene->prototype_message, "No Selection");
-    if (app_running && !render_image_mount_content(
-                           scene->content_root,
-                           scene->message,
-                           sizeof scene->message
-                       )) {
-        fprintf(stderr, "%s\n", scene->message);
-        app_scene_authoring_free(scene);
-        return NULL;
-    }
     return scene;
 }
 
@@ -1320,10 +1358,6 @@ int app_scene_authoring_apply_pending(app_scene_authoring *scene)
 int app_scene_authoring_set_content_root(app_scene_authoring *scene, const char *path)
 {
     if (!scene || !path || !path[0]) {
-        return -1;
-    }
-    if (cf_app_exists() && cf_app_is_running() &&
-        !render_image_mount_content(path, scene->message, sizeof scene->message)) {
         return -1;
     }
     char *copy = xstrdup(path);

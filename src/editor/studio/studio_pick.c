@@ -1,5 +1,5 @@
 /* Asset pickers: a field naming an asset shows it as a select and chooses
- * another of its kind on the command surface (cmdk), as Unity's object field
+ * another of its kind in an anchored search dropdown, as Unity's object field
  * and Unreal's asset picker search a project's assets. A choice waits for the
  * field that opened the pick, as the kit returns a control's input to its
  * next call. */
@@ -53,7 +53,11 @@ void studio_pick_open(studio *s, const char *key, const char *current, const stu
     snprintf(s->pick.current, sizeof s->pick.current, "%s", current ? current : "");
     char placeholder[96];
     snprintf(placeholder, sizeof placeholder, "Search %s", studio_asset_kind_label(desc->kind));
-    kit_command_open(s->kit, placeholder);
+    if (!strcmp(key, STUDIO_PICK_PREVIEW)) {
+        kit_command_open(s->kit, placeholder);
+        return;
+    }
+    kit_dropdown_open(s->kit, "asset-picker", placeholder);
 }
 
 static bool any_matches(const char *const *names, const char *query)
@@ -82,7 +86,10 @@ bool studio_pick_palette(studio *s)
     if (!s->pick.open) {
         return false;
     }
-    if (!kit_command_is_open(s->kit)) {
+    bool field = strcmp(s->pick.key, STUDIO_PICK_PREVIEW) != 0;
+    bool open = field ? kit_dropdown_is_open(s->kit, "asset-picker")
+                      : kit_command_is_open(s->kit);
+    if (!open) {
         s->pick.open = false;
         return false;
     }
@@ -102,12 +109,14 @@ bool studio_pick_palette(studio *s)
             ((kit_command_item){ .label = names[i],
                                  .group = group,
                                  .meta = current ? "Current" : NULL,
-                                 .icon = icon })
+                                 .icon = icon,
+                                 .current = current })
         );
     }
     /* A name no asset has yet, as typed, once no asset matches it: an exact
        match would otherwise rank it above the assets. */
-    const char *query = kit_command_query(s->kit);
+    const char *query = field ? kit_dropdown_query(s->kit, "asset-picker")
+                              : kit_command_query(s->kit);
     bool typed = s->pick.text && query[0] && !any_matches(names, query);
     if (typed) {
         apush(
@@ -118,7 +127,8 @@ bool studio_pick_palette(studio *s)
                                  .description = "No asset has this name yet" })
         );
     }
-    int chosen = kit_command(s->kit, items, acount(items));
+    int chosen = field ? kit_dropdown(s->kit, "asset-picker", items, acount(items))
+                       : kit_command(s->kit, items, acount(items));
     if (chosen >= 0) {
         choose(s, chosen < first ? "" : items[chosen].label);
     }

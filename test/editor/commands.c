@@ -1,9 +1,13 @@
+#include "editor/collab/actions_internal.h"
+#include "editor/collab/collab.h"
+#include "editor/collab/protocol.h"
 #include "editor/graph/search.h"
 #include "editor/studio/studio_members_internal.h"
 #include "editor/workspace/editor_internal.h"
 #include "graph/document/events.h"
 #include "graph/document/library.h"
 #include "graph/nodes/component_nodes.h"
+#include "support/xalloc.h"
 #include "test/suite_internal.h"
 
 static pin_spec g_editor_float_outputs[] = {
@@ -48,6 +52,154 @@ static node_desc g_editor_int_desc = {
     .input_count = 2,
     .inputs = g_editor_int_inputs,
 };
+
+typedef struct
+{
+    int published;
+} streamed_literal_fixture;
+
+static void streamed_literal_send(void *context, const char *json)
+{
+    streamed_literal_fixture *f = context;
+    collab_message message = { 0 };
+    assert(collab_message_read(json, &message));
+    if (!strcmp(message.kind, "accepted")) {
+        f->published++;
+    }
+    collab_message_free(&message);
+}
+
+static bool streamed_literal_apply(void *, const char *, char *, size_t)
+{
+    return true;
+}
+
+static char *streamed_literal_checkpoint(void *)
+{
+    return xstrdup("{}");
+}
+
+static bool streamed_literal_restore(void *, const char *, char *, size_t)
+{
+    return true;
+}
+
+static void streamed_literal_receive(
+    const char *kind,
+    const char *client,
+    uint64_t seq,
+    uint64_t revision,
+    const char *payload
+)
+{
+    char *json = collab_message_write("streamed-literal", client, seq, revision, kind, payload);
+    assert(json);
+    collab_receive(json);
+    free(json);
+    collab_tick();
+}
+
+/* Every host preview is published, while a streamed value's undo state is
+   captured only once for the gesture. */
+static void check_streamed_literal_undo()
+{
+    collab_shutdown();
+    streamed_literal_fixture f = { 0 };
+    collab_init((collab_config){ .context = &f,
+                                 .send = streamed_literal_send,
+                                 .apply = streamed_literal_apply,
+                                 .checkpoint = streamed_literal_checkpoint,
+                                 .restore = streamed_literal_restore });
+    collab_start("streamed-literal", "self", "host");
+    collab_seed("{\"checkpoint_version\":1,\"workspace\":\"{}\",\"project_root\":\"/tmp\"}");
+    collab_tick();
+    streamed_literal_receive("joined", "self", 0, 0, "{\"role\":\"host\",\"next_seq\":1,\"snapshot_revision\":null}");
+    streamed_literal_receive("snapshot_ack", "server", 0, 0, "{}");
+    assert(collab_can_edit());
+
+    behavior_asset *asset = behavior_asset_new("Streamed literal undo");
+    node *source = graph_add_node(asset->graph, registry_node_by_name("Real"));
+    assert(source && source->output_count == 1);
+    uint64_t source_id = source->id;
+    pin_value initial = { .type = PIN_F64, .d = 0.25 };
+    assert(graph_set_pin_default(asset->graph, source, 1, 0, &initial) == 0);
+    editor *e = editor_new(asset);
+    pin_value preview = { .type = PIN_F64, .d = 1.0 };
+    assert(
+        editor_command_apply(
+            e,
+            (editor_command){ .kind = EDITOR_COMMAND_SET_PIN_DEFAULT,
+                              .data.set_pin_default = { source->id, 1, 0, &preview, false } }
+        ) == 0
+    );
+    assert(acount(e->undo) == 1 && f.published == 1);
+    streamed_literal_receive("accepted", "self", 1, 1, "{}");
+
+    preview.d = 2.0;
+    assert(
+        editor_command_apply(
+            e,
+            (editor_command){ .kind = EDITOR_COMMAND_SET_PIN_DEFAULT,
+                              .data.set_pin_default = { .node_id = source->id,
+                                                        .output = 1,
+                                                        .pin_index = 0,
+                                                        .value = &preview,
+                                                        .coalesce_history = true } }
+        ) == 0
+    );
+    assert(acount(e->undo) == 1 && f.published == 2);
+    streamed_literal_receive("accepted", "self", 2, 2, "{}");
+
+    ed_undo(e);
+    const graph *restored = editor_active_graph(e);
+    node *restored_source = graph_node_by_id(restored, source_id);
+    test_check(
+        restored_source &&
+            restored_source->output_pins[0].default_value.d == initial.d,
+        "one Undo restores the pre-gesture literal after all previews were "
+        "published"
+    );
+    ed_redo(e);
+    const graph *redone = editor_active_graph(e);
+    node *redone_source = graph_node_by_id(redone, source_id);
+    test_check(
+        redone_source &&
+            redone_source->output_pins[0].default_value.d == preview.d,
+        "Redo restores the final streamed literal value"
+    );
+
+    preview.d = 3.0;
+    assert(
+        editor_command_apply(
+            e,
+            (editor_command){ .kind = EDITOR_COMMAND_SET_PIN_DEFAULT,
+                              .data.set_pin_default = { .node_id = source_id,
+                                                        .output = 1,
+                                                        .pin_index = 0,
+                                                        .value = &preview } }
+        ) == 0
+    );
+    assert(acount(e->undo) == 2 && f.published == 3);
+    streamed_literal_receive("accepted", "self", 3, 3, "{}");
+    ed_undo(e);
+    const graph *after_separate_undo = editor_active_graph(e);
+    node *after_separate_undo_source = graph_node_by_id(after_separate_undo, source_id);
+    test_check(
+        after_separate_undo_source &&
+            after_separate_undo_source->output_pins[0].default_value.d == 2.0,
+        "a later gesture keeps its own undo step"
+    );
+    ed_undo(e);
+    const graph *after_group_undo = editor_active_graph(e);
+    node *after_group_undo_source = graph_node_by_id(after_group_undo, source_id);
+    test_check(
+        after_group_undo_source &&
+            after_group_undo_source->output_pins[0].default_value.d == initial.d,
+        "Undo then crosses the earlier streamed gesture as one step"
+    );
+    editor_free(e);
+    collab_shutdown();
+}
 
 /* Inserts the top search result, as choosing the first command result does. */
 static void search_insert(editor *e, const char *query)
@@ -473,9 +625,11 @@ static void check_typed_wire_search()
         asset->graph->dataflow = false;
         e->spawn_link_pending = true;
         e->spawn_link_pin = (ed_pin_view){ target, ED_PIN_INPUT, 0 };
+        uint64_t expected_id = asset->graph->id_counter;
         search_insert(e, "Get Dash");
         const pin_binding *binding = graph_pin_binding(asset->graph, target, 0, 0);
         connected = binding && binding->kind == PIN_BINDING_COMPONENT_FIELD &&
+                    !graph_node_by_id(asset->graph, expected_id) &&
                     binding->component_key &&
                     !strcmp(binding->component_key, "GAME.GameDash") &&
                     binding->field_name && !strcmp(binding->field_name, "speed");
@@ -530,6 +684,254 @@ static void check_typed_wire_search()
     test_check(system_connected, "system popup autowires a compatible Get Dash field output");
     editor_free(system_editor);
     editor_free(e);
+}
+
+static void check_graph_binding_collab_replay()
+{
+    behavior_asset *asset = behavior_asset_new("Graph typed binding replay");
+    editor *e = editor_new(asset);
+    node *target = graph_add_node(asset->graph, registry_node_by_name("Atan2"));
+    assert(e && target && target->input_count == 2);
+    pin_binding x = { .kind = PIN_BINDING_COMPONENT_FIELD,
+                      .component_key = "GAME.GameAim",
+                      .field_name = "direction.x" };
+    pin_binding y = { .kind = PIN_BINDING_COMPONENT_FIELD,
+                      .component_key = "GAME.GameAim",
+                      .field_name = "direction.y" };
+    uint64_t x_pin_id = target->input_pins[0].id;
+    uint64_t y_pin_id = target->input_pins[1].id;
+    char *set_x = graph_collab_action_set_binding(e, target, 0, &x);
+    char *set_y = graph_collab_action_set_binding(e, target, 1, &y);
+    assert(set_x && set_y);
+    assert(graph_move_pin(asset->graph, target, 0, 1, 0) == 0);
+
+    char error[256] = { 0 };
+    bool replayed_y = graph_collab_apply_action(e, set_y, error, sizeof error);
+    error[0] = '\0';
+    bool replayed_x = graph_collab_apply_action(e, set_x, error, sizeof error);
+    int x_index = -1, y_index = -1;
+    int x_is_output = 1, y_is_output = 1;
+    graph_pin_by_id(target, x_pin_id, &x_is_output, &x_index);
+    graph_pin_by_id(target, y_pin_id, &y_is_output, &y_index);
+    const pin_binding *bound_x = graph_pin_binding(asset->graph, target, 0, x_index);
+    const pin_binding *bound_y = graph_pin_binding(asset->graph, target, 0, y_index);
+    bool stable_pins = !x_is_output && !y_is_output && x_index == 1 && y_index == 0;
+    bool xy_bindings = bound_x && bound_x->kind == PIN_BINDING_COMPONENT_FIELD &&
+                       bound_x->field_name &&
+                       !strcmp(bound_x->field_name, "direction.x") && bound_y &&
+                       bound_y->kind == PIN_BINDING_COMPONENT_FIELD &&
+                       bound_y->field_name &&
+                       !strcmp(bound_y->field_name, "direction.y");
+    test_check(replayed_x && replayed_y && stable_pins && xy_bindings, "binding actions replay X and Y against stable pin IDs after input order changes");
+    free(set_x);
+    free(set_y);
+    editor_free(e);
+
+    behavior_asset *mismatch_asset = behavior_asset_new("Graph mismatched pin replay");
+    editor *mismatch_editor = editor_new(mismatch_asset);
+    node *mismatch_target = graph_add_node(mismatch_asset->graph, registry_node_by_name("Atan2"));
+    assert(mismatch_editor && mismatch_target);
+    char invalid[512];
+    snprintf(
+        invalid,
+        sizeof invalid,
+        "{\"version\":1,\"family\":\"graph\",\"op\":\"set_binding\","
+        "\"document\":\"Graph mismatched pin replay\",\"graph\":%llu,"
+        "\"node\":%llu,\"pin_id\":%llu,\"binding\":null}",
+        (unsigned long long)mismatch_asset->graph->graph_id,
+        (unsigned long long)mismatch_target->id,
+        (unsigned long long)mismatch_target->output_pins[0].id
+    );
+    error[0] = '\0';
+    bool rejected_mismatch = !graph_collab_apply_action(mismatch_editor, invalid, error, sizeof error);
+    test_check(
+        rejected_mismatch &&
+            !graph_pin_binding(mismatch_asset->graph, mismatch_target, 0, 0),
+        "binding replay rejects an output pin ID used as an input"
+    );
+    editor_free(mismatch_editor);
+
+    behavior_asset *folded_asset = behavior_asset_new("Clear folded binding replay");
+    editor *folded_editor = editor_new(folded_asset);
+    node *source = graph_add_node(folded_asset->graph, registry_node_by_name("Add"));
+    node *consumer = graph_add_node(folded_asset->graph, registry_node_by_name("Atan2"));
+    assert(folded_editor && source && consumer);
+    assert(graph_connect_data(folded_asset->graph, source, 0, consumer, 0) == 0);
+    uint64_t source_id = source->id;
+    assert(graph_node_is_inline(folded_asset->graph, source));
+    char *clear = graph_collab_action_set_binding(folded_editor, consumer, 0, NULL);
+    assert(clear);
+    error[0] = '\0';
+    bool cleared = graph_collab_apply_action(folded_editor, clear, error, sizeof error);
+    node *remaining = graph_node_by_id(folded_asset->graph, consumer->id);
+    node *remaining_source = NULL;
+    int remaining_source_pin = -1;
+    test_check(
+        cleared && remaining && !graph_node_by_id(folded_asset->graph, source_id) &&
+            !graph_input_source(folded_asset->graph, remaining, 0, &remaining_source, &remaining_source_pin) &&
+            !graph_pin_binding(folded_asset->graph, remaining, 0, 0) &&
+            remaining->input_pins[0].default_value.type == PIN_F64,
+        "clearing a folded input source through replay leaves its typed "
+        "constant input"
+    );
+    free(clear);
+    editor_free(folded_editor);
+
+    behavior_asset *literal_asset = behavior_asset_new("Folded source to constant");
+    node *literal_source = graph_add_node(literal_asset->graph, registry_node_by_name("Byte"));
+    node *literal_target = graph_add_node(literal_asset->graph, registry_node_by_name("Reroute Data"));
+    assert(literal_source && literal_target);
+    assert(graph_connect_data(literal_asset->graph, literal_source, 0, literal_target, 0) == 0);
+    pin_value original = { .type = PIN_U8, .u = 41 };
+    assert(graph_set_pin_default(literal_asset->graph, literal_target, 0, 0, &original) == 0);
+    assert(graph_node_is_inline(literal_asset->graph, literal_source));
+    uint64_t literal_source_id = literal_source->id;
+    uint64_t literal_target_id = literal_target->id;
+    uint64_t literal_pin_id = literal_target->input_pins[0].id;
+    editor *literal_editor = editor_new(literal_asset);
+    assert(literal_editor);
+    char invalid_default[512];
+    snprintf(
+        invalid_default,
+        sizeof invalid_default,
+        "{\"version\":1,\"family\":\"graph\",\"op\":\"set_binding\","
+        "\"document\":\"Folded source to constant\",\"graph\":%llu,"
+        "\"node\":%llu,\"pin_id\":%llu,\"binding\":null,"
+        "\"default\":{\"type\":%d,\"data\":256}}",
+        (unsigned long long)literal_asset->graph->graph_id,
+        (unsigned long long)literal_target_id,
+        (unsigned long long)literal_pin_id,
+        PIN_U8
+    );
+    error[0] = '\0';
+    bool rejected_range = !graph_collab_apply_action(literal_editor, invalid_default, error, sizeof error);
+    node *unchanged_source = graph_node_by_id(literal_editor->active_graph, literal_source_id);
+    node *unchanged_target = graph_node_by_id(literal_editor->active_graph, literal_target_id);
+    node *unchanged_input_source = NULL;
+    int unchanged_source_pin = -1;
+    test_check(
+        rejected_range && !acount(literal_editor->undo) && unchanged_source &&
+            unchanged_target &&
+            graph_node_is_inline(literal_editor->active_graph, unchanged_source) &&
+            graph_input_source(literal_editor->active_graph, unchanged_target, 0, &unchanged_input_source, &unchanged_source_pin) &&
+            unchanged_input_source == unchanged_source &&
+            unchanged_target->input_pins[0].default_value.u == original.u,
+        "an out-of-range typed constant is rejected without removing its "
+        "inline source"
+    );
+
+    pin_value constant = { .type = PIN_U8, .u = 7 };
+    char *set_constant = graph_collab_action_set_input_default(literal_editor, unchanged_target, 0, &constant);
+    assert(set_constant);
+    error[0] = '\0';
+    bool constant_applied = graph_collab_apply_action(literal_editor, set_constant, error, sizeof error);
+    node *constant_target = graph_node_by_id(literal_editor->active_graph, literal_target_id);
+    test_check(
+        constant_applied &&
+            !graph_node_by_id(literal_editor->active_graph, literal_source_id) &&
+            constant_target &&
+            !graph_input_source(literal_editor->active_graph, constant_target, 0, &unchanged_input_source, &unchanged_source_pin) &&
+            !graph_pin_binding(literal_editor->active_graph, constant_target, 0, 0) &&
+            constant_target->input_pins[0].default_value.u == constant.u &&
+            acount(literal_editor->undo) == 1,
+        "one typed constant action removes a folded source and sets the "
+        "default in one Undo step"
+    );
+    free(set_constant);
+    ed_undo(literal_editor);
+    const graph *restored_graph = editor_active_graph(literal_editor);
+    node *restored_source = graph_node_by_id(restored_graph, literal_source_id);
+    node *restored_target = graph_node_by_id(restored_graph, literal_target_id);
+    node *restored_input_source = NULL;
+    int restored_source_pin = -1;
+    test_check(
+        restored_source && restored_target &&
+            graph_node_is_inline(restored_graph, restored_source) &&
+            graph_input_source(restored_graph, restored_target, 0, &restored_input_source, &restored_source_pin) &&
+            restored_input_source == restored_source &&
+            restored_target->input_pins[0].default_value.u == original.u,
+        "Undo restores the folded source and its previous typed default"
+    );
+    editor_free(literal_editor);
+
+    const enum_desc *enumeration = registry_enum(0);
+    assert(enumeration && enumeration->value_count > 0);
+    int invalid_enum = 0;
+    while (registry_enum_label(enumeration->name, invalid_enum)) {
+        invalid_enum++;
+    }
+    pin_spec enum_input = {
+        .name = "Selection",
+        .type = PIN_ENUM,
+        .type_name = enumeration->name,
+        .kind = PIN_DATA,
+        .default_value = { .type = PIN_ENUM, .e = enumeration->values[0].value },
+    };
+    node_desc enum_target_desc = {
+        .name = "Enum typed default target",
+        .input_count = 1,
+        .inputs = &enum_input,
+    };
+    behavior_asset *enum_asset = behavior_asset_new("Enum typed default");
+    node *enum_target = graph_add_node(enum_asset->graph, &enum_target_desc);
+    editor *enum_editor = editor_new(enum_asset);
+    assert(enum_target && enum_editor && invalid_enum <= enumeration->value_count);
+    pin_value unlisted = {
+        .type = PIN_ENUM,
+        .type_name = enumeration->name,
+        .e = invalid_enum,
+    };
+    bool builder_rejected_enum = !graph_collab_action_set_input_default(enum_editor, enum_target, 0, &unlisted);
+    char invalid_enum_action[512];
+    snprintf(
+        invalid_enum_action,
+        sizeof invalid_enum_action,
+        "{\"version\":1,\"family\":\"graph\",\"op\":\"set_binding\","
+        "\"document\":\"Enum typed default\",\"graph\":%llu,"
+        "\"node\":%llu,\"pin_id\":%llu,\"binding\":null,"
+        "\"default\":{\"type\":%d,\"type_name\":\"%s\",\"data\":%d}}",
+        (unsigned long long)enum_asset->graph->graph_id,
+        (unsigned long long)enum_target->id,
+        (unsigned long long)enum_target->input_pins[0].id,
+        PIN_ENUM,
+        enumeration->name,
+        invalid_enum
+    );
+    int enum_default = enum_target->input_pins[0].default_value.e;
+    error[0] = '\0';
+    bool replay_rejected_enum = !graph_collab_apply_action(enum_editor, invalid_enum_action, error, sizeof error);
+    test_check(
+        builder_rejected_enum && replay_rejected_enum && !acount(enum_editor->undo) &&
+            enum_target->input_pins[0].default_value.e == enum_default,
+        "typed enum constants reject values outside the reflected enum"
+    );
+    editor_free(enum_editor);
+
+    behavior_asset *expand_asset = behavior_asset_new("Expand inline replay");
+    editor *expand_editor = editor_new(expand_asset);
+    node *inner = graph_add_node(expand_asset->graph, registry_node_by_name("Add"));
+    node *outer = graph_add_node(expand_asset->graph, registry_node_by_name("Add"));
+    node *expand_target = graph_add_node(expand_asset->graph, registry_node_by_name("Atan2"));
+    assert(expand_editor && inner && outer && expand_target);
+    assert(graph_connect_data(expand_asset->graph, inner, 0, outer, 0) == 0);
+    assert(graph_connect_data(expand_asset->graph, outer, 0, expand_target, 0) == 0);
+    assert(
+        graph_node_is_inline(expand_asset->graph, inner) &&
+        graph_node_is_inline(expand_asset->graph, outer)
+    );
+    char *expand = graph_collab_action_expand_inline(expand_editor, expand_target, 0);
+    assert(expand);
+    error[0] = '\0';
+    bool expanded = graph_collab_apply_action(expand_editor, expand, error, sizeof error);
+    test_check(
+        expanded && inner->presentation == NODE_PRESENTATION_EXPANDED &&
+            outer->presentation == NODE_PRESENTATION_EXPANDED &&
+            !inner->placed && !outer->placed && expand_editor->arrange_pending,
+        "inline expansion replay expands the full source tree and schedules "
+        "arrangement"
+    );
+    free(expand);
+    editor_free(expand_editor);
 }
 
 static void check_event_catalog_search()
@@ -734,6 +1136,7 @@ static void check_signature_drag()
 
 void run_editor_command_checks(void)
 {
+    check_streamed_literal_undo();
     check_signature_drag();
     check_linked_preview();
     check_library_problem_source();
@@ -741,6 +1144,7 @@ void run_editor_command_checks(void)
     check_component_search();
     check_library_search_snapshot();
     check_typed_wire_search();
+    check_graph_binding_collab_replay();
     check_event_catalog_search();
     check_search_descriptions();
     check_insert_on_wire();
@@ -795,7 +1199,7 @@ void run_editor_command_checks(void)
             e,
             (editor_command){
                 .kind = EDITOR_COMMAND_SET_PIN_DEFAULT,
-                .data.set_pin_default = { source->id, 2, 0, &float_value },
+                .data.set_pin_default = { source->id, 2, 0, &float_value, false },
             }
         ) == -1,
         "a pin default command rejects a non-boolean output selector"
@@ -805,7 +1209,7 @@ void run_editor_command_checks(void)
             e,
             (editor_command){
                 .kind = EDITOR_COMMAND_SET_PIN_DEFAULT,
-                .data.set_pin_default = { source->id, 0, 1, &float_value },
+                .data.set_pin_default = { source->id, 0, 1, &float_value, false },
             }
         ) == -1,
         "a pin default command rejects an out-of-range pin"
@@ -815,7 +1219,7 @@ void run_editor_command_checks(void)
             e,
             (editor_command){
                 .kind = EDITOR_COMMAND_SET_PIN_DEFAULT,
-                .data.set_pin_default = { sink->id, 0, 0, &float_value },
+                .data.set_pin_default = { sink->id, 0, 0, &float_value, false },
             }
         ) == -1,
         "a pin default command rejects a mismatched value type"

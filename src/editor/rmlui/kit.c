@@ -4,6 +4,7 @@
  * They implement the Base UI contracts recorded in
  * docs/prototypes/studio/kit.html; the C editor owns every model value. */
 #include "editor/rmlui/kit_internal.h"
+#include "support/resources.h"
 #include "support/ui_style.h"
 #include "support/xalloc.h"
 
@@ -14,10 +15,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-#ifndef CHIBI_RMLUI_RESOURCE_DIR
-#define CHIBI_RMLUI_RESOURCE_DIR "src/editor/rmlui/resources"
-#endif
 
 /* ---------- Strings ---------- */
 
@@ -615,7 +612,8 @@ node *path_node(const kit *k, const char *path)
     return n && str_eq(n->path, path) ? n : NULL;
 }
 
-/* Picker content lives in a layer popup; route its events to the owning field. */
+/* Picker content lives in a layer popup; route its events to the owning field.
+ */
 static node *owner(const kit *k, node *n)
 {
     if (!n || n->kind != KIND_POPUP || strncmp(n->key, "@color:", 7) != 0) {
@@ -683,6 +681,8 @@ static void popup_free(popup *p)
 {
     free(p->key);
     free(p->parent);
+    free(p->dropdown_placeholder);
+    free(p->dropdown_trigger_path);
     free(p->sub_hover);
     free(p->typed);
     free(p->trigger);
@@ -782,7 +782,8 @@ static bool tabbable(rml_element *el)
 }
 
 /* Move among enabled, visible tab stops in document order. A modal wraps;
-   a nonmodal popover excludes its own contents when leaving for the document. */
+   a nonmodal popover excludes its own contents when leaving for the document.
+ */
 bool focus_step(rml_element *root, rml_element *from, int step, bool wrap, rml_element *skip)
 {
     int count = rml_element_query_selector_all(root, "*", NULL, 0), kept = 0, at = -1;
@@ -835,12 +836,16 @@ static void keydown(kit *k, const rml_event *e, node *n)
     }
     /* A field in a popup takes its own keys, as in a Base UI Popover; the
        popup keeps Escape and Tab, so typing never runs a menu's typeahead. */
+    if (autocomplete_key(k, e, n)) {
+        return;
+    }
     bool entry = n && (n->kind == KIND_TEXT || n->kind == KIND_SEARCH ||
-                       n->kind == KIND_NUMBER ||
-                       (n->kind == KIND_COLOR &&
-                        (e->target == n->el || is_input(e->target))));
+                       n->kind == KIND_AUTOCOMPLETE || n->kind == KIND_NUMBER ||
+                       (n->kind == KIND_COLOR && e->target == n->el) ||
+                       is_input(e->target));
     bool popup_keys = !entry || e->key == RML_KEY_ESCAPE || e->key == RML_KEY_TAB;
-    if (command_key(k, e) || (popup_keys && popup_key(k, e)) || !n) {
+    if (dropdown_key(k, e, n) || command_key(k, e) ||
+        (popup_keys && popup_key(k, e)) || !n) {
         return;
     }
     if (n->kind == KIND_NUMBER) {
@@ -899,13 +904,13 @@ static void on_event(void *user, const rml_event *e)
         case RML_EVENT_KEYDOWN: keydown(k, e, n); break;
         case RML_EVENT_CHANGE:
             if (!command_change(k, e->target) && n) {
-                control_change(n, e->target);
+                control_change(k, n, e->target);
             }
             break;
         case RML_EVENT_FOCUS:
             popup_focus(k, e->target);
             if (n) {
-                control_focus(n, e->target);
+                control_focus(k, n, e->target);
             }
             break;
         case RML_EVENT_BLUR: blur(k, e, n); break;
@@ -1015,7 +1020,7 @@ kit *kit_create(void *context, const char *document_path)
     k->surface_button = -1;
     k->command.chosen = -1;
     char *path = NULL;
-    str_catf(&path, "%s/%s", CHIBI_RMLUI_RESOURCE_DIR, document_path);
+    str_catf(&path, "%s/%s", resource_ui(), document_path);
     k->doc = rml_context_load_document(k->context, path);
     free(path);
     assert(k->doc);
@@ -1476,6 +1481,7 @@ bool kit_pointer_on_control(const kit *k)
             case KIND_SELECT:
             case KIND_TEXT:
             case KIND_SEARCH:
+            case KIND_AUTOCOMPLETE:
             case KIND_COLOR: return true;
             default: break;
         }

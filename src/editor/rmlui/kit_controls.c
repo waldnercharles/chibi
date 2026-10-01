@@ -204,7 +204,7 @@ static void toggle_click(node *n, rml_element *target)
     }
 }
 
-/* Closes the field's popup, or opens it alone below the field. */
+/* Closes the field's popup, or opens it below the field. */
 static void toggle_popup(kit *k, node *n, const char *prefix)
 {
     const char *key = frame_format(k, "%s:%s", prefix, n->path);
@@ -212,12 +212,10 @@ static void toggle_popup(kit *k, node *n, const char *prefix)
         close_popup(k, key);
         return;
     }
-    close_all_popups(k);
     if (n->kind == KIND_COLOR) {
         rgb_to_hsv(n->w.color, n->w.hsv);
     }
-    open_popup(k, key, element_rect(k, n->el), false, 0, 0, "");
-    str_set(&popup_at(k, key)->trigger, n->path);
+    popup_open_on(k, key, element_rect(k, n->el), n);
 }
 
 void control_click(kit *k, node *n, rml_element *target)
@@ -236,7 +234,22 @@ void control_click(kit *k, node *n, rml_element *target)
         case KIND_TOGGLE: toggle_click(n, target); return;
         case KIND_SELECT:
             if (!locked(n)) {
-                toggle_popup(k, n, "select");
+                const char *key = frame_format(k, "select:%s", n->path);
+                if (kit_dropdown_is_open(k, key)) {
+                    kit_popup_close(k, key);
+                } else {
+                    dropdown_open_on(k, key, element_rect(k, n->el), "Search options", n);
+                }
+            }
+            return;
+        case KIND_AUTOCOMPLETE:
+            if (!locked(n)) {
+                autocomplete_open_on(
+                    k,
+                    frame_format(k, "autocomplete:%s", n->path),
+                    element_rect(k, n->el),
+                    n
+                );
             }
             return;
         case KIND_COLOR:
@@ -384,7 +397,7 @@ static void select_key(kit *k, node *n, const rml_event *e)
         case RML_KEY_NUMPADENTER:
         case RML_KEY_DOWN:
         case RML_KEY_UP:
-            toggle_popup(k, n, "select");
+            control_click(k, n, n->el);
             rml_event_stop_propagation(e);
             return;
         default: return;
@@ -427,6 +440,7 @@ void control_key(kit *k, node *n, const rml_event *e)
         case KIND_COLOR: color_key(k, n, e); return;
         case KIND_SELECT: select_key(k, n, e); return;
         case KIND_TOGGLE: toggle_key(n, e); return;
+        case KIND_AUTOCOMPLETE: return;
         case KIND_CHECK:
         case KIND_BUTTON: press_key(n, e); return;
         default: return;
@@ -454,15 +468,28 @@ static void hex_change(node *n, rml_element *target)
 
 static bool field_input(const node *n, const rml_element *target)
 {
-    return (n->kind == KIND_TEXT || n->kind == KIND_SEARCH) && target == n->w.input_el;
+    return (n->kind == KIND_TEXT || n->kind == KIND_SEARCH ||
+            n->kind == KIND_AUTOCOMPLETE) &&
+           target == n->w.input_el;
 }
 
-void control_change(node *n, rml_element *target)
+void control_change(kit *k, node *n, rml_element *target)
 {
     if (field_input(n, target)) {
         take_value(&n->w.draft, target);
         if (n->kind == KIND_SEARCH) {
             n->w.pending = true;
+        }
+        if (n->kind == KIND_AUTOCOMPLETE) {
+            n->w.autocomplete_query_active = true;
+            n->w.autocomplete_submitted = false;
+            n->w.autocomplete_canceled = false;
+            autocomplete_open_on(
+                k,
+                frame_format(k, "autocomplete:%s", n->path),
+                element_rect(k, n->el),
+                n
+            );
         }
         return;
     }
@@ -471,13 +498,21 @@ void control_change(node *n, rml_element *target)
     }
 }
 
-void control_focus(node *n, rml_element *target)
+void control_focus(kit *k, node *n, rml_element *target)
 {
     if (!field_input(n, target)) {
         return;
     }
     n->w.focused = true;
     set_flag(n, "data-editing", true);
+    if (n->kind == KIND_AUTOCOMPLETE && !locked(n)) {
+        autocomplete_open_on(
+            k,
+            frame_format(k, "autocomplete:%s", n->path),
+            element_rect(k, n->el),
+            n
+        );
+    }
 }
 
 void control_blur(node *n, rml_element *target)
@@ -623,28 +658,18 @@ static bool choice_toggle(kit *k, const char *key, int *value, const char *const
     }
     set_flag(n, "data-readonly", flags & KIT_READONLY);
     set_flag(n, "data-disabled", flags & KIT_DISABLED);
-    rml_element_set_property(n->el, "opacity", flags & KIT_DISABLED ? "0.45" : "1");
     return changed;
 }
 
-static void select_options(kit *k, node *n, const char *menu, const char *const *labels, int count, int value)
-{
-    kit_rect trigger = element_rect(k, n->el);
-    char width[32];
-    snprintf(width, sizeof width, "%.1fdp", trigger.w);
-    rml_element_set_property(popup_find(k, menu)->node->el, "min-width", width);
-    for (int i = 0; i < count; i++) {
-        char item_key[16];
-        snprintf(item_key, sizeof item_key, "o%d", i);
-        kit_menu_item_desc item = { .label = labels[i], .checked = i == value ? 1 : 0 };
-        if (kit_menu_item(k, item_key, &item)) {
-            n->w.pending = true;
-            n->w.pending_index = i;
-        }
-    }
-}
-
-static bool choice_select(kit *k, const char *key, int *value, const char *const *labels, int count, unsigned flags)
+static bool choice_select_items(
+    kit *k,
+    const char *key,
+    int *value,
+    const kit_command_item *items,
+    int count,
+    unsigned flags,
+    const char *closed_label
+)
 {
     node *n = emit(k, key, KIND_SELECT, "div", "field select");
     widget *w = &n->w;
@@ -653,28 +678,50 @@ static bool choice_select(kit *k, const char *key, int *value, const char *const
         w->value_el = raw(n->el, "span", "part value", NULL);
         raw_icon(n->el, "caret", KIT_ICON_DOWN);
     }
-    set_element_text(w->value_el, *value >= 0 && *value < count ? labels[*value] : "-");
+    set_element_text(
+        w->value_el,
+        closed_label                    ? closed_label
+        : *value >= 0 && *value < count ? items[*value].label
+                                        : "-"
+    );
     set_flag(n, "data-readonly", flags & KIT_READONLY);
     set_flag(n, "data-disabled", flags & KIT_DISABLED);
     rml_element_set_property(n->el, "tab-index", flags & KIT_DISABLED ? "none" : "auto");
     const char *menu = frame_format(k, "select:%s", n->path);
     if (locked(n)) {
-        close_popup(k, menu);
+        kit_popup_close(k, menu);
     }
-    set_flag(n, "data-open", kit_popup_is_open(k, menu));
+    bool open = kit_dropdown_is_open(k, menu);
+    set_flag(n, "data-open", open);
     bool changed = false;
-    if (w->pending) {
-        w->pending = false;
-        if (!locked(n) && w->pending_index >= 0 && w->pending_index < count) {
-            changed = *value != w->pending_index;
-            *value = w->pending_index;
-        }
+    int selected = -1;
+    if (open) {
+        selected = kit_dropdown(k, menu, items, count);
     }
-    if (kit_popup_begin(k, menu, "menu")) {
-        select_options(k, n, menu, labels, count, *value);
-        kit_popup_end(k);
+    if (!locked(n) && selected >= 0 && selected < count) {
+        changed = *value != selected;
+        *value = selected;
     }
     k->last = n;
+    return changed;
+}
+
+static bool choice_select(kit *k, const char *key, int *value, const char *const *labels, int count, unsigned flags)
+{
+    node *parent = alast(k->stack);
+    const char *path = str_eq(parent->path, "")
+                         ? key
+                         : frame_format(k, "%s/%s", parent->path, key);
+    bool open = kit_dropdown_is_open(k, frame_format(k, "select:%s", path));
+    kit_command_item *items = NULL;
+    if (open) {
+        for (int i = 0; i < count; i++) {
+            apush(items, ((kit_command_item){ .label = labels[i], .current = i == *value }));
+        }
+    }
+    const char *current = *value >= 0 && *value < count ? labels[*value] : "-";
+    bool changed = choice_select_items(k, key, value, items, open ? count : 0, flags, current);
+    afree(items);
     return changed;
 }
 
@@ -691,7 +738,12 @@ bool kit_choice(kit *k, const char *key, int *value, const char *const *labels, 
     return choice_select(k, key, value, labels, count, flags);
 }
 
-static node *emit_input(kit *k, const char *key, node_kind kind, const char *cls, const char *placeholder)
+bool kit_choice_items(kit *k, const char *key, int *value, const kit_command_item *items, int count, unsigned flags)
+{
+    return choice_select_items(k, key, value, items, count, flags, NULL);
+}
+
+node *emit_input(kit *k, const char *key, node_kind kind, const char *cls, const char *placeholder)
 {
     node *n = emit(k, key, kind, "div", cls);
     widget *w = &n->w;

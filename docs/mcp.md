@@ -743,6 +743,16 @@ reports the p50, p95, p99 and max sampled frame cost, and `timing.worst_frames`
 lists the costliest frames with their phase breakdown, so hitches that the
 averages hide remain visible. Timing is
 diagnostic data from the isolated runtime; it does not alter authored assets.
+Set `behavior_details: false` to retain frame, physics, allocation and endpoint
+diagnostics while leaving ordinary prepared behavior execution enabled. This
+mode returns an empty `behaviors` array. The default is `true`, and the result
+echoes the effective `behavior_details` value. Detailed behavior profiling can
+change which execution paths run; compare timings within the same mode.
+`behavior_work` sums the existing prepared/native/system/parallel dispatch
+counters from the last fixed-step update of each sampled frame that advances
+simulation. `sampled_updates` counts those observations; `workers_max` reports
+the largest observed worker count. These are executed work, whereas `execution`
+reports compiled backend coverage.
 Each behavior row exposes `inclusive_cpu_ms` (including nested root events) and
 `cpu_ms` (exclusive time), plus an average for each.
 The result also includes `allocations`, which reports calls and requested bytes

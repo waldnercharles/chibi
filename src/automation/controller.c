@@ -393,6 +393,7 @@ static const contract_field CONTRACT_PROFILE_SCENARIO[] = {
     { "frames", "uint64", false, "Measured deterministic fixed steps; warmup_frames plus frames may total at most 108000." },
     { "fixed_dt", "number", false, "Fixed timestep in seconds; currently limited to 1/60." },
     { "warmup_frames", "uint64", false, "Frames to run before collecting samples; warmup_frames plus frames may total at most 108000." },
+    { "behavior_details", "boolean", false, "Collect per-instance behavior timing; defaults to true. False preserves ordinary prepared behavior execution while retaining frame and physics diagnostics." },
     { "inputs", "array", false, "For a direct target, per-frame movement, aim, controls, actions, UI interactions and typed entity-targeted events across warmup and measured frames; at most 1800 entries." },
     { "input_timeline", "array", false, "For a direct target, at most 1800 sparse {frame,input} samples in increasing zero-based frame order across the combined warmup and measured interval; alternative to inputs." },
 };
@@ -6171,6 +6172,11 @@ static int step_sequence(
     size_t error_size
 );
 
+static const char *const PROFILE_BEHAVIOR_WORK[] = {
+    "entries",   "prepared", "native_loop",   "system_loop",
+    "scheduled", "parallel", "parallel_tasks"
+};
+
 static int profile_scenario(
     const char *root,
     yyjson_val *request,
@@ -6179,6 +6185,12 @@ static int profile_scenario(
     int *exit_code
 )
 {
+    yyjson_val *details_value = yyjson_obj_get(request, "behavior_details");
+    if (details_value && !yyjson_is_bool(details_value)) {
+        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "behavior_details must be a boolean");
+        return -1;
+    }
+    bool behavior_details = !details_value || yyjson_get_bool(details_value);
     const char *kind = scenario ? "scene" : request_string(request, "kind");
     if (!kind) {
         kind = "prototype";
@@ -6241,6 +6253,9 @@ static int profile_scenario(
     scenario_profile_timing timing = { 0 };
     scenario_profile_frame *samples = NULL;
     scenario_profile_allocations allocations = { 0 };
+    uint64_t behavior_work[sizeof PROFILE_BEHAVIOR_WORK / sizeof *PROFILE_BEHAVIOR_WORK] = { 0 };
+    uint64_t sampled_updates = 0;
+    int workers_max = 0;
     bool rows_truncated = false;
     if (status == CHIBI_AUTOMATION_OK) {
         char launch_error[256] = { 0 };
@@ -6263,7 +6278,7 @@ static int profile_scenario(
         }
     }
     if (status == CHIBI_AUTOMATION_OK) {
-        engine_set_behavior_profiling(game_prototype_preview_runtime(context.preview), true);
+        engine_set_behavior_profiling(game_prototype_preview_runtime(context.preview), behavior_details);
         game_physics_set_profiling(game_prototype_preview_live(context.preview)->physics, true);
     }
     if (status == CHIBI_AUTOMATION_OK &&
@@ -6320,11 +6335,29 @@ static int profile_scenario(
                 previous_allocations,
                 &allocations
             );
+            if (sample->simulation_steps > previous_steps) {
+                game_behavior_update_stats work = game_behavior_last_update(
+                    game_prototype_preview_behaviors(context.preview)
+                );
+                int counts[] = { work.entries,       work.prepared,
+                                 work.native_loop,   work.system_loop,
+                                 work.scheduled,     work.parallel,
+                                 work.parallel_tasks };
+                for (int i = 0; i < (int)(sizeof counts / sizeof *counts); i++) {
+                    behavior_work[i] += (uint64_t)counts[i];
+                }
+                sampled_updates++;
+                if (work.workers > workers_max) {
+                    workers_max = work.workers;
+                }
+            }
             previous_steps = sample->simulation_steps;
             previous_commands = sample->command_apply_count;
             previous_dropped = sample->dropped_seconds;
             xalloc_stats_get(&previous_allocations);
-            const game_behavior_profile_frame *profile = engine_behavior_profile(runtime);
+            const game_behavior_profile_frame *profile = behavior_details
+                                                           ? engine_behavior_profile(runtime)
+                                                           : NULL;
             if (profile) {
                 for (int row = 0; row < profile->count; row++) {
                     profile_add_row(&rows, &profile->rows[row], &rows_truncated);
@@ -6350,6 +6383,7 @@ static int profile_scenario(
         context.prototype_hash
     );
     yyjson_mut_obj_add_uint(result->doc, value, "frames", frames);
+    yyjson_mut_obj_add_bool(result->doc, value, "behavior_details", behavior_details);
     yyjson_mut_obj_add_uint(result->doc, value, "warmup_frames", warmup);
     yyjson_mut_obj_add_real(result->doc, value, "fixed_dt", fixed_dt);
     add_hash_named(result->doc, value, "world_hash", scenario_state_hash(&context));
@@ -6392,6 +6426,15 @@ static int profile_scenario(
     add_behavior_execution_status(result->doc, value, &execution, custom_systems);
     add_profile_timing(result->doc, value, &timing, samples);
     add_profile_allocations(result->doc, value, &allocations, timing.frames);
+    yyjson_mut_val *work = yyjson_mut_obj_add_obj(result->doc, value, "behavior_work");
+    yyjson_mut_obj_add_str(result->doc, work, "scope", "last fixed-step update per sampled frame");
+    yyjson_mut_obj_add_uint(result->doc, work, "sampled_updates", sampled_updates);
+    yyjson_mut_obj_add_int(result->doc, work, "workers_max", workers_max);
+    for (int i = 0;
+         i < (int)(sizeof PROFILE_BEHAVIOR_WORK / sizeof *PROFILE_BEHAVIOR_WORK);
+         i++) {
+        yyjson_mut_obj_add_uint(result->doc, work, PROFILE_BEHAVIOR_WORK[i], behavior_work[i]);
+    }
     add_profile_rows(result->doc, value, rows, acount(rows), rows_truncated);
     afree(rows);
     afree(samples);

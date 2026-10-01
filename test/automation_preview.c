@@ -5,6 +5,7 @@
 #include "graph/runtime/instance.h"
 #include "suite_internal.h"
 #include "support/text_file.h"
+#include "test/whole_batch_fixture.h"
 #include "third_party/yyjson/yyjson.h"
 
 #include <assert.h>
@@ -21,6 +22,17 @@ static void preview_test_write(const char *path, const char *text)
     assert(file);
     assert(fputs(text, file) >= 0);
     assert(fclose(file) == 0);
+}
+
+static yyjson_doc *preview_test_request(const char *root, const char *request)
+{
+    int exit_code = 0;
+    char *response = chibi_automation_handle(request, root, &exit_code);
+    assert(response);
+    yyjson_doc *doc = yyjson_read(response, strlen(response), 0);
+    assert(doc);
+    free(response);
+    return doc;
 }
 
 static void execution_status_backend(const char *root, behavior_backend backend, const char *name)
@@ -125,6 +137,76 @@ void test_automation_preview_registration()
         execution_status_backend(root, BEHAVIOR_SLJIT, "sljit");
         execution_status_backend(root, BEHAVIOR_BYTECODE, "bytecode");
     }
+    assert(!unlink(path));
+    behavior = whole_batch_fixture(false);
+    json = behavior_asset_save(behavior);
+    assert(json);
+    snprintf(path, sizeof path, "%s/Counter Tick batch.kdl", behaviors);
+    preview_test_write(path, json);
+    free(json);
+    behavior_asset_free(behavior);
+    snprintf(path, sizeof path, "%s/PreviewPrototype.kdl", prototypes);
+    preview_test_write(path, "name \"PreviewPrototype\"\n(object)components\n(array)behaviors {\n    - \"Counter Tick batch\"\n}\n");
+    behavior_backend previous = behavior_debug_backend(
+        graph_sljit_available() ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE
+    );
+    yyjson_doc *detailed = preview_test_request(root, "{\"contract\":1,\"operation\":\"profile_scenario\",\"name\":\"PreviewPrototype\",\"warmup_frames\":2,\"frames\":4}");
+    yyjson_doc *empty = preview_test_request(root, "{\"contract\":1,\"operation\":\"profile_scenario\",\"name\":\"PreviewPrototype\",\"warmup_frames\":2,\"frames\":0,\"behavior_details\":true}");
+    yyjson_doc *empty_ordinary = preview_test_request(root, "{\"contract\":1,\"operation\":\"profile_scenario\",\"name\":\"PreviewPrototype\",\"warmup_frames\":2,\"frames\":0,\"behavior_details\":false}");
+    yyjson_doc *ordinary = preview_test_request(root, "{\"contract\":1,\"operation\":\"profile_scenario\",\"name\":\"PreviewPrototype\",\"warmup_frames\":2,\"frames\":4,\"behavior_details\":false}");
+    yyjson_doc *replay = preview_test_request(root, "{\"contract\":1,\"operation\":\"run_scenario\",\"name\":\"PreviewPrototype\",\"frames\":6}");
+    behavior_debug_backend(previous);
+    yyjson_doc *profiles[] = { detailed, ordinary };
+    yyjson_val *replay_result = yyjson_obj_get(yyjson_doc_get_root(replay), "result");
+    const char *replay_hash = yyjson_get_str(yyjson_obj_get(replay_result, "world_hash"));
+    for (int i = 0; i < 2; i++) {
+        yyjson_val *reply = yyjson_doc_get_root(profiles[i]);
+        yyjson_val *value = yyjson_obj_get(reply, "result");
+        yyjson_val *timing = yyjson_obj_get(value, "timing");
+        yyjson_val *work = yyjson_obj_get(value, "behavior_work");
+        const char *hash = yyjson_get_str(yyjson_obj_get(value, "world_hash"));
+        assert(yyjson_get_bool(yyjson_obj_get(reply, "ok")));
+        assert(replay_hash && hash && !strcmp(replay_hash, hash));
+        assert(yyjson_is_bool(yyjson_obj_get(value, "behavior_details")));
+        assert(yyjson_get_bool(yyjson_obj_get(value, "behavior_details")) == (i == 0));
+        assert(
+            i == 0 ? yyjson_arr_size(yyjson_obj_get(value, "behaviors")) > 0
+                   : yyjson_arr_size(yyjson_obj_get(value, "behaviors")) == 0
+        );
+        assert(yyjson_get_uint(yyjson_obj_get(timing, "sampled_frames")) == 4);
+        assert(yyjson_get_uint(yyjson_obj_get(work, "sampled_updates")) == 4);
+        assert(yyjson_get_uint(yyjson_obj_get(work, "entries")) == 4);
+        assert(yyjson_get_uint(yyjson_obj_get(work, "parallel")) == 0);
+        assert(yyjson_is_obj(yyjson_obj_get(value, "allocations")));
+        assert(yyjson_is_obj(yyjson_obj_get(timing, "physics_work")));
+        if (graph_sljit_available()) {
+            assert(yyjson_get_uint(yyjson_obj_get(work, "native_loop")) == (i == 0 ? 0 : 4));
+            assert(yyjson_get_uint(yyjson_obj_get(work, "system_loop")) == (i == 0 ? 0 : 4));
+        }
+    }
+    yyjson_doc *empty_profiles[] = { empty, empty_ordinary };
+    const char *work_fields[] = { "sampled_updates", "workers_max",
+                                  "entries",         "prepared",
+                                  "native_loop",     "system_loop",
+                                  "scheduled",       "parallel",
+                                  "parallel_tasks" };
+    for (int i = 0; i < 2; i++) {
+        yyjson_val *reply = yyjson_doc_get_root(empty_profiles[i]);
+        yyjson_val *empty_result = yyjson_obj_get(reply, "result");
+        yyjson_val *empty_work = yyjson_obj_get(empty_result, "behavior_work");
+        assert(yyjson_get_bool(yyjson_obj_get(reply, "ok")));
+        assert(yyjson_get_bool(yyjson_obj_get(empty_result, "behavior_details")) == (i == 0));
+        for (int j = 0; j < (int)(sizeof work_fields / sizeof *work_fields); j++) {
+            yyjson_val *value = yyjson_obj_get(empty_work, work_fields[j]);
+            assert(yyjson_is_int(value) && yyjson_get_int(value) == 0);
+        }
+        assert(yyjson_arr_size(yyjson_obj_get(empty_result, "behaviors")) == 0);
+        yyjson_doc_free(empty_profiles[i]);
+    }
+    yyjson_doc_free(detailed);
+    yyjson_doc_free(ordinary);
+    yyjson_doc_free(replay);
+    snprintf(path, sizeof path, "%s/Counter Tick batch.kdl", behaviors);
     assert(!unlink(path) && !rmdir(behaviors));
 
     const char *files[] = {
@@ -146,13 +228,7 @@ void test_automation_preview_registration()
 
 static yyjson_doc *profile_scenario_request(const char *request)
 {
-    int exit_code = 0;
-    char *response = chibi_automation_handle(request, "projects/arena2d", &exit_code);
-    assert(response);
-    yyjson_doc *doc = yyjson_read(response, strlen(response), 0);
-    assert(doc);
-    free(response);
-    return doc;
+    return preview_test_request("projects/arena2d", request);
 }
 
 static bool response_ok(const yyjson_doc *doc)
@@ -202,11 +278,73 @@ static void profile_fluid_work()
         collision_index_ms += yyjson_get_num(index);
     }
     test_check(valid, "fluid profile keeps work counters outside timing objects and sums index builds");
+    yyjson_doc *ordinary = profile_scenario_request("{\"contract\":1,\"operation\":\"profile_scenario\",\"kind\":\"scene\",\"name\":\"HRCVolume\",\"warmup_frames\":2,\"frames\":3,\"behavior_details\":false}");
+    yyjson_doc *replay = profile_scenario_request("{\"contract\":1,\"operation\":\"run_scenario\",\"kind\":\"scene\",\"name\":\"HRCVolume\",\"frames\":5}");
+    yyjson_val *ordinary_result = yyjson_obj_get(yyjson_doc_get_root(ordinary), "result");
+    yyjson_val *ordinary_timing = yyjson_obj_get(ordinary_result, "timing");
+    test_check(
+        response_ok(ordinary) && response_ok(replay) &&
+            !strcmp(response_world_hash(doc), response_world_hash(ordinary)) &&
+            !strcmp(response_world_hash(doc), response_world_hash(replay)) &&
+            yyjson_get_uint(
+                yyjson_obj_get(yyjson_obj_get(ordinary_timing, "material_fluid_work"), "index_builds")
+            ) == builds &&
+            yyjson_arr_size(yyjson_obj_get(ordinary_result, "behaviors")) == 0 &&
+            yyjson_get_uint(yyjson_obj_get(ordinary_timing, "sampled_frames")) == 3 &&
+            yyjson_is_obj(yyjson_obj_get(ordinary_result, "allocations")),
+        "frame-only fluid profiling retains work counters and replay endpoint "
+        "parity"
+    );
+    yyjson_doc_free(ordinary);
+    yyjson_doc_free(replay);
     yyjson_doc_free(doc);
 }
 
 void test_automation_profile_scenario_inputs()
 {
+    yyjson_doc *contract = profile_scenario_request(
+        "{\"contract\":1,\"operation\":\"describe_contract\"}"
+    );
+    yyjson_val *operations = yyjson_obj_get(
+        yyjson_obj_get(yyjson_doc_get_root(contract), "result"),
+        "operations"
+    );
+    bool discovered = false;
+    for (size_t i = 0; i < yyjson_arr_size(operations); i++) {
+        yyjson_val *operation = yyjson_arr_get(operations, i);
+        if (strcmp(yyjson_get_str(yyjson_obj_get(operation, "name")), "profile_scenario")) {
+            continue;
+        }
+        yyjson_val *fields = yyjson_obj_get(operation, "request_fields");
+        for (size_t j = 0; j < yyjson_arr_size(fields); j++) {
+            yyjson_val *field = yyjson_arr_get(fields, j);
+            if (!strcmp(yyjson_get_str(yyjson_obj_get(field, "name")), "behavior_details")) {
+                discovered = !strcmp(yyjson_get_str(yyjson_obj_get(field, "type")), "boolean") &&
+                             !yyjson_get_bool(yyjson_obj_get(field, "required"));
+            }
+        }
+    }
+    test_check(discovered, "controller contract discovers optional behavior detail profiling");
+    yyjson_doc_free(contract);
+    const char *invalid_modes[] = { "null", "0", "1", "\"false\"", "[]", "{}" };
+    for (int i = 0; i < (int)(sizeof invalid_modes / sizeof *invalid_modes); i++) {
+        char request[256];
+        snprintf(
+            request,
+            sizeof request,
+            "{\"contract\":1,\"operation\":\"profile_scenario\",\"name\":"
+            "\"Player\",\"frames\":0,\"behavior_details\":%s}",
+            invalid_modes[i]
+        );
+        yyjson_doc *invalid = profile_scenario_request(request);
+        yyjson_val *error = yyjson_obj_get(yyjson_doc_get_root(invalid), "error");
+        const char *code = yyjson_get_str(yyjson_obj_get(error, "code"));
+        test_check(
+            !response_ok(invalid) && code && !strcmp(code, "invalid_request"),
+            "non-boolean behavior detail modes fail as invalid requests"
+        );
+        yyjson_doc_free(invalid);
+    }
     profile_fluid_work();
     static const char *const
         timeline = "\"input_timeline\":["

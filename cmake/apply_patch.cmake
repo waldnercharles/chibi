@@ -19,13 +19,29 @@ function(chibi_apply_patches checkout)
         endif()
     endif()
     find_package(Git REQUIRED)
+    # Reset only changed files. Checking out the entire tree rewrites even
+    # unchanged APFS/reflink copies and breaks their shared storage.
     execute_process(
-        COMMAND "${GIT_EXECUTABLE}" -C "${checkout}" checkout -- .
+        COMMAND "${GIT_EXECUTABLE}" -C "${checkout}" -c core.quotepath=false
+            diff --name-only --diff-filter=MD --ignore-submodules=all
+        OUTPUT_VARIABLE modified
+        OUTPUT_STRIP_TRAILING_WHITESPACE
         RESULT_VARIABLE reset_result
         ERROR_VARIABLE reset_error
     )
     if(NOT reset_result EQUAL 0)
-        message(FATAL_ERROR "Could not reset ${checkout}: ${reset_error}")
+        message(FATAL_ERROR "Could not inspect ${checkout}: ${reset_error}")
+    endif()
+    if(NOT modified STREQUAL "")
+        string(REPLACE "\n" ";" modified "${modified}")
+        execute_process(
+            COMMAND "${GIT_EXECUTABLE}" -C "${checkout}" checkout -- ${modified}
+            RESULT_VARIABLE reset_result
+            ERROR_VARIABLE reset_error
+        )
+        if(NOT reset_result EQUAL 0)
+            message(FATAL_ERROR "Could not reset ${checkout}: ${reset_error}")
+        endif()
     endif()
     foreach(patch IN LISTS ARGN)
         execute_process(

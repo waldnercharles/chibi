@@ -620,6 +620,7 @@ static void text_editor(const char *folder)
     studio *s = f.studio;
     /* Keep a graph beside Code explicitly; opening a document preserves mode. */
     studio_set_workspace(s, STUDIO_WORKSPACE_HORIZONTAL_SPLIT);
+    studio_reset_layout(s);
     studio_active_layout(s)->editors[STUDIO_AREA_TOP] = STUDIO_EDITOR_BEHAVIOR;
     char path[PATH_MAX], styles[PATH_MAX];
     write_asset(folder, "Edited", path, styles);
@@ -659,7 +660,7 @@ static void text_editor(const char *folder)
     /* A document-tab click can leave focus on the last graph area. Save must
        still follow the selected UI tab when its text source is active. */
     test_check(app_scene_authoring_open_behavior(f.scene, "Teller") == 0, "opening a behavior creates a second document tab");
-    frames(&f, 1);
+    frames(&f, 3);
     test_check(
         studio_graph_active(s) && s->graph.area >= 0 &&
             s->prefs.workspace == STUDIO_WORKSPACE_HORIZONTAL_SPLIT,

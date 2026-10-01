@@ -3,6 +3,7 @@
 #include "graph/model/registry.h"
 #include "runtime/behaviors/live.h"
 #include "runtime/generated.h"
+#include "runtime/material_ecs.h"
 #include "runtime/task_pool.h"
 #include "support/array.h"
 #include "test/physics_executor.h"
@@ -350,6 +351,335 @@ static void compound_contacts()
     assert(other(&f, bar) == ecs_entity_to_u64(slab));
     assert(fabsf(GAME_GameTransform_get_const(f.world, bar)->x) < 1);
     assert(GAME_GameTransform_get_const(f.world, bar)->y < 10);
+    dispose(&f);
+}
+
+static ecs_entity mask_body(fixture *f, int type, bool sensor_shape)
+{
+    assert(ecs_world_register_component(f->world, &GAME_COMPONENT_GameDestructible, NULL) == ECS_OK);
+    ecs_entity slab = body(f, 0, 0, type, 8, 1 | 4);
+    *GAME_GameCollider_get(f->world, slab) = (GameCollider){ .shape = GAME_COLLIDER_BOX,
+                                                             .width = 32,
+                                                             .height = 16,
+                                                             .category = 8,
+                                                             .mask = 1 | 4,
+                                                             .sensor = sensor_shape };
+    GameDestructible material = { .cell_size = 1, .min_fragment_cells = 1 };
+    assert(
+        ecs_world_record_add(f->world, slab, GAME_COMPONENT_GameDestructible.id, &material, 0) == ECS_OK
+    );
+    assert(ecs_world_apply_commands(f->world) == ECS_OK);
+    return slab;
+}
+
+static void retained_mask_contacts()
+{
+    fixture f = create();
+    ecs_entity slab = mask_body(&f, GAME_BODY_STATIC, false);
+    assert(!game_materials_prepare(f.live->materials));
+    game_materials_damage(f.live->materials, slab, (fluid_vec){ 0, 7 }, 7, 1, 0, (material_impact){ 0 });
+    assert(!game_materials_prepare(f.live->materials));
+    ecs_entity probe = body(&f, 10, 5, GAME_BODY_KINEMATIC, 1, 8);
+    GAME_GameCollider_get(f.world, probe)->radius = 1;
+    GAME_GameCollider_get(f.world, probe)->sensor = true;
+    game_physics_set_profiling(f.live->physics, true);
+    assert(step(&f, 0) == 2);
+    material_collision_view before = material_mask_collision(
+        game_materials_mask(f.live->materials, slab)
+    );
+    material_rect *old = NULL;
+    for (int i = 0; i < before.count; i++) {
+        apush(old, before.rects[i]);
+    }
+    assert(acount(old) >= 3);
+    /* Change one shoulder while the other shoulder's contact stays live. */
+    game_materials_damage(f.live->materials, slab, (fluid_vec){ -10, 7 }, 3, 1, 0, (material_impact){ 0 });
+    assert(!game_materials_prepare(f.live->materials));
+    material_collision_view after = material_mask_collision(
+        game_materials_mask(f.live->materials, slab)
+    );
+    int matched = 0, updated = 0;
+    for (int i = 0; i < acount(old); i++) {
+        for (int j = 0; j < after.count; j++) {
+            material_rect a = old[i], b = after.rects[j];
+            if (a.x == b.x && a.y == b.y) {
+                matched++;
+                updated += a.width != b.width || a.height != b.height;
+            }
+        }
+    }
+    assert(matched > 0 && matched < acount(old));
+    assert(step(&f, 0) == 0);
+    const game_physics_profile *work = game_physics_last_profile(f.live->physics);
+    assert(!work->body_creations);
+    assert(work->shape_creations == (uint64_t)(after.count - matched));
+    assert(work->shape_removals == (uint64_t)(acount(old) - matched));
+    assert(work->shape_updates == (uint64_t)updated);
+    assert(work->mass_updates == 1);
+    afree(old);
+    GAME_GameTransform_get(f.world, probe)->x = -10;
+    GAME_GameTransform_get(f.world, probe)->y = 7;
+    assert(step(&f, 0) == 0);
+    GAME_GameTransform_get(f.world, probe)->x = 10;
+    GAME_GameTransform_get(f.world, probe)->y = 5;
+    assert(step(&f, 0) == 2);
+    /* A continuous sensor enters the carved opening. Stale shape geometry or
+     * old swept-target bounds must not stop it at the slab's original top. */
+    ecs_entity shot = sensor(&f, 0, 20);
+    GAME_GameCollider_get(f.world, shot)->radius = .25f;
+    *GAME_GameVelocity_get(f.world, shot) = (GameVelocity){ 0, -960 };
+    assert(step(&f, 1.0f / 60) == 0);
+    assert(fabsf(GAME_GameTransform_get_const(f.world, shot)->y - 4) < .01f);
+    dispose(&f);
+}
+
+static void empty_mask_shapes()
+{
+    for (int initially_empty = 0; initially_empty < 2; initially_empty++) {
+        fixture f = create();
+        ecs_entity slab = mask_body(&f, GAME_BODY_STATIC, false);
+        assert(!game_materials_prepare(f.live->materials));
+        /* Seed the adapter edge case directly: normal gameplay retires empty
+         * sources, but a borrowed empty mask must never regain analytic geometry. */
+        material_mask *mask = material_ecs_record(f.live->materials, slab)->mask;
+        if (initially_empty) {
+            assert(material_mask_carve(mask, 0, 0, 100) == 512);
+        }
+        ecs_entity probe = body(&f, 0, 0, GAME_BODY_KINEMATIC, 1, 8);
+        GAME_GameCollider_get(f.world, probe)->sensor = true;
+        game_physics_set_profiling(f.live->physics, true);
+        assert(step(&f, 0) == (initially_empty ? 0 : 2));
+        if (!initially_empty) {
+            assert(material_mask_carve(mask, 0, 0, 100) == 512);
+            assert(step(&f, 0) == 0);
+            const game_physics_profile *work = game_physics_last_profile(f.live->physics);
+            assert(!work->body_creations && !work->shape_creations && !work->shape_updates);
+            assert(work->shape_removals == 1 && work->mass_updates == 1);
+        }
+        assert(!mask->count && !material_mask_collision(mask).count);
+        ecs_entity shot = sensor(&f, -100, 0);
+        *GAME_GameVelocity_get(f.world, shot) = (GameVelocity){ 12000, 0 };
+        assert(step(&f, 1.0f / 60) == 0);
+        assert(fabsf(GAME_GameTransform_get_const(f.world, shot)->x - 100) < .01f);
+        assert(!game_physics_last_profile(f.live->physics)->pairs);
+        dispose(&f);
+    }
+}
+
+static void retained_mask_motion()
+{
+    for (int type = GAME_BODY_STATIC; type <= GAME_BODY_KINEMATIC; type++) {
+        fixture f = create();
+        ecs_entity slab = mask_body(&f, type, type == GAME_BODY_KINEMATIC);
+        GameBody *settings = GAME_GameBody_get(f.world, slab);
+        settings->continuous = true;
+        settings->angular_velocity = type == GAME_BODY_KINEMATIC ? 1.2f : 0;
+        *GAME_GameVelocity_get(f.world, slab) = (GameVelocity){ 10, -4 };
+        game_physics_set_profiling(f.live->physics, true);
+        assert(step(&f, 0) == 0);
+        const game_physics_profile *work = game_physics_last_profile(f.live->physics);
+        assert(work->body_creations == (uint64_t)(1 + (large_world ? PARALLEL_PADDING : 0)));
+        /* Symmetric edge removal keeps the actual polygon centroid at zero,
+         * permitting an in-place width change without stale CCD centroid data. */
+        game_materials_damage(f.live->materials, slab, (fluid_vec){ -100, 0 }, 85, 1, 0, (material_impact){ 0 });
+        game_materials_damage(f.live->materials, slab, (fluid_vec){ 100, 0 }, 85, 1, 0, (material_impact){ 0 });
+        assert(!game_materials_prepare(f.live->materials));
+        material_collision_view collision = material_mask_collision(
+            game_materials_mask(f.live->materials, slab)
+        );
+        assert(collision.count == 1);
+        assert(collision.rects[0].x == 0 && collision.rects[0].y == 0);
+        assert(collision.rects[0].width == 30 && collision.rects[0].height == 16);
+        GAME_GameOrientation_get(f.world, slab)->radians = type == GAME_BODY_KINEMATIC
+                                                             ? 0
+                                                             : .3f;
+        assert(step(&f, 0) == 0);
+        work = game_physics_last_profile(f.live->physics);
+        assert(!work->body_creations && !work->shape_creations && !work->shape_removals);
+        assert(work->shape_updates == 1 && work->mass_updates == 1);
+        assert(
+            GAME_GameVelocity_get_const(f.world, slab)->x ==
+            (type == GAME_BODY_STATIC ? 0 : 10)
+        );
+        assert(
+            GAME_GameVelocity_get_const(f.world, slab)->y ==
+            (type == GAME_BODY_STATIC ? 0 : -4)
+        );
+        assert(step(&f, 0) == 0);
+        work = game_physics_last_profile(f.live->physics);
+        assert(
+            !work->body_creations && !work->shape_creations &&
+            !work->shape_updates && !work->shape_removals && !work->mass_updates
+        );
+        assert(step(&f, 1.0f / 60) == 0);
+        if (type != GAME_BODY_STATIC) {
+            assert(GAME_GameTransform_get_const(f.world, slab)->x > .1f);
+            assert(GAME_GameTransform_get_const(f.world, slab)->y < -.04f);
+        }
+        if (type == GAME_BODY_KINEMATIC) {
+            assert(fabsf(GAME_GameOrientation_get_const(f.world, slab)->radians - .02f) < .001f);
+        }
+        /* Authoring changes retain their old rebuild contract, unlike cuts. */
+        GAME_GameCollider_get(f.world, slab)->friction = .5f;
+        assert(step(&f, 0) == 0);
+        work = game_physics_last_profile(f.live->physics);
+        assert(
+            work->body_creations == 1 && work->shape_creations == 1 &&
+            work->shape_removals == 1
+        );
+        assert(work->mass_updates == 1);
+        unsigned slot = slab.slot;
+        assert(ecs_world_record_destroy(f.world, slab, 0) == ECS_OK);
+        assert(ecs_world_apply_commands(f.world) == ECS_OK);
+        ecs_entity replacement = body(&f, 0, 0, GAME_BODY_STATIC, 8, 1);
+        assert(
+            replacement.slot == slot &&
+            ecs_entity_to_u64(replacement) != ecs_entity_to_u64(slab)
+        );
+        assert(step(&f, 0) == 0);
+        work = game_physics_last_profile(f.live->physics);
+        assert(
+            work->body_creations == 1 && work->shape_creations == 1 &&
+            work->shape_removals == 1
+        );
+        game_physics_reset(f.live->physics);
+        assert(step(&f, 0) == 0);
+        assert(
+            game_physics_last_profile(f.live->physics)->body_creations ==
+            (uint64_t)(1 + (large_world ? PARALLEL_PADDING : 0))
+        );
+        dispose(&f);
+    }
+}
+
+static game_physics_body_state inspect_body(fixture *f, ecs_entity entity)
+{
+    game_physics_body_state state;
+    assert(game_physics_inspect_body(f->live->physics, entity, &state));
+    return state;
+}
+
+static void reset_mask_incarnation()
+{
+    fixture f = create();
+    ecs_entity slab = mask_body(&f, GAME_BODY_STATIC, false);
+    game_materials_damage(f.live->materials, slab, (fluid_vec){ -100, 0 }, 85, 1, 0, (material_impact){ 0 });
+    assert(step(&f, 0) == 0);
+    unsigned revision = game_materials_mask(f.live->materials, slab)->revision;
+    uint64_t generation = game_materials_mask_generation(f.live->materials, slab);
+    game_materials_reset(f.live->materials);
+    game_materials_damage(f.live->materials, slab, (fluid_vec){ 100, 0 }, 85, 1, 0, (material_impact){ 0 });
+    assert(!game_materials_prepare(f.live->materials));
+    assert(game_materials_mask(f.live->materials, slab)->revision == revision);
+    assert(game_materials_mask_generation(f.live->materials, slab) != generation);
+    game_physics_set_profiling(f.live->physics, true);
+    assert(step(&f, 0) == 0);
+    const game_physics_profile *work = game_physics_last_profile(f.live->physics);
+    assert(!work->body_creations && work->shape_creations == 1 && work->shape_removals == 1);
+    assert(work->mass_updates == 1);
+    ecs_entity probe = sensor(&f, 15.6f, 0);
+    GAME_GameCollider_get(f.world, probe)->radius = .1f;
+    assert(step(&f, 0) == 0);
+    GAME_GameTransform_get(f.world, probe)->x = -15.6f;
+    assert(step(&f, 0) == 2);
+    dispose(&f);
+}
+
+typedef struct
+{
+    GameTransform target, projectile;
+    GameVelocity target_velocity, projectile_velocity;
+    game_physics_body_state mass;
+} impact_result;
+
+static impact_result mask_impact(bool cut, bool fresh)
+{
+    fixture f = create();
+    ecs_entity slab = mask_body(&f, GAME_BODY_DYNAMIC, false);
+    GAME_GameCollider_get(f.world, slab)->restitution = 1;
+    ecs_entity projectile = body(&f, 60, 0, GAME_BODY_DYNAMIC, 1, 8);
+    GAME_GameCollider_get(f.world, projectile)->restitution = 1;
+    assert(step(&f, 0) == 0);
+    game_physics_body_state original = inspect_body(&f, slab);
+    if (cut) {
+        game_materials_damage(f.live->materials, slab, (fluid_vec){ -100, 0 }, 100, 1, 0, (material_impact){ 0 });
+        assert(!game_materials_prepare(f.live->materials));
+        if (fresh) {
+            game_physics_reset(f.live->physics);
+        }
+        assert(step(&f, 0) == 0);
+    }
+    game_physics_body_state mass = inspect_body(&f, slab);
+    assert(mass.inertia == 0); /* Dynamic bodies deliberately have fixed rotation. */
+    if (cut) {
+        assert(mass.mass < original.mass * .6f);
+        assert(mass.local_center.x > 7 && fabsf(mass.local_center.y) < .001f);
+    }
+    *GAME_GameVelocity_get(f.world, projectile) = (GameVelocity){ -240, 0 };
+    for (int i = 0; i < 24; i++) {
+        step(&f, 1.0f / 60);
+    }
+    impact_result result = { *GAME_GameTransform_get(f.world, slab),
+                             *GAME_GameTransform_get(f.world, projectile),
+                             *GAME_GameVelocity_get(f.world, slab),
+                             *GAME_GameVelocity_get(f.world, projectile),
+                             mass };
+    assert(result.target_velocity.x < -10);
+    dispose(&f);
+    return result;
+}
+
+static void retained_mask_mass()
+{
+    impact_result retained = mask_impact(true, false);
+    impact_result fresh = mask_impact(true, true);
+    impact_result uncut = mask_impact(false, false);
+    assert(fabsf(retained.mass.mass - fresh.mass.mass) < .000001f);
+    assert(fabsf(retained.mass.local_center.x - fresh.mass.local_center.x) < .00001f);
+    assert(fabsf(retained.target.x - fresh.target.x) < .001f);
+    assert(fabsf(retained.projectile.x - fresh.projectile.x) < .001f);
+    assert(fabsf(retained.target_velocity.x - fresh.target_velocity.x) < .001f);
+    assert(fabsf(retained.projectile_velocity.x - fresh.projectile_velocity.x) < .001f);
+    assert(retained.target_velocity.x < uncut.target_velocity.x * 1.2f);
+}
+
+static void retained_mask_solid_ccd()
+{
+    fixture f = create();
+    ecs_entity slab = mask_body(&f, GAME_BODY_STATIC, false);
+    assert(step(&f, 0) == 0);
+    game_materials_damage(f.live->materials, slab, (fluid_vec){ -100, 0 }, 100, 1, 0, (material_impact){ 0 });
+    assert(step(&f, 0) == 0);
+    ecs_entity projectile = body(&f, 60, 0, GAME_BODY_DYNAMIC, 1, 8);
+    GAME_GameCollider_get(f.world, projectile)->radius = 1;
+    GAME_GameBody_get(f.world, projectile)->continuous = true;
+    *GAME_GameVelocity_get(f.world, projectile) = (GameVelocity){ -6000, 0 };
+    assert(step(&f, 1.0f / 60) == 2);
+    float x = GAME_GameTransform_get(f.world, projectile)->x;
+    assert(x > 16 && x < 20);
+    dispose(&f);
+}
+
+static void retained_mask_wakes_support()
+{
+    fixture f = create();
+    ecs_entity slab = mask_body(&f, GAME_BODY_STATIC, false);
+    ecs_entity actor = body(&f, 0, -10, GAME_BODY_DYNAMIC, 1, 8);
+    GAME_GameCollider_get(f.world, actor)->radius = 2;
+    for (int i = 0; i < 120; i++) {
+        step(&f, 1.0f / 60);
+    }
+    assert(!inspect_body(&f, actor).awake);
+    game_materials_damage(f.live->materials, slab, (fluid_vec){ 0, 0 }, 12, 1, 0, (material_impact){ 0 });
+    step(&f, 0);
+    assert(inspect_body(&f, actor).awake);
+    /* Gravity is authored motion in this runtime. Check wake before supplying
+     * downward velocity so the velocity setter cannot hide a failed wake. */
+    *GAME_GameVelocity_get(f.world, actor) = (GameVelocity){ 0, 120 };
+    for (int i = 0; i < 12; i++) {
+        step(&f, 1.0f / 60);
+    }
+    assert(GAME_GameTransform_get(f.world, actor)->y > 10);
     dispose(&f);
 }
 
@@ -796,6 +1126,13 @@ static void physics_cases()
     sustained_dynamic_contact();
     contact_set_changes();
     compound_contacts();
+    retained_mask_contacts();
+    retained_mask_motion();
+    reset_mask_incarnation();
+    retained_mask_mass();
+    retained_mask_solid_ccd();
+    retained_mask_wakes_support();
+    empty_mask_shapes();
     separated_solved_contacts();
     nearest_and_filters();
     moving_target_and_box();

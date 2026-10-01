@@ -42,6 +42,62 @@ static void check_cover(const material_mask *mask)
     assert(total == mask->count);
 }
 
+static void material_mask_workspace()
+{
+    unsigned char cells[9 * 7] = { 0 };
+    for (int y = 0; y < 5; y++) {
+        for (int x = 0; x < 3; x++) {
+            cells[y * 9 + x] = 1;
+        }
+    }
+    cells[2 * 9 + 1] = 0; /* Hole in the largest, edge-connected component. */
+    cells[2 * 9 + 5] = cells[2 * 9 + 6] = cells[3 * 9 + 5] = 1;
+    cells[5 * 9 + 4] = cells[6 * 9 + 8] = 1;
+    material_mask_work *work = material_mask_work_new();
+    for (int anchored = 0; anchored < 2; anchored++) {
+        material_mask mask = material_mask_copy_cells(9, 7, 1, cells);
+        assert(mask.count == 19 && !mask.revision && !mask.rects && !mask.surface);
+        int dust;
+        material_mask *pieces = material_mask_detach_fragments(&mask, 2, anchored, &dust, work);
+        assert(acount(pieces) == 1 && pieces[0].count == 3);
+        assert(
+            pieces[0].cells[2 * 9 + 5] && pieces[0].cells[2 * 9 + 6] &&
+            pieces[0].cells[3 * 9 + 5]
+        );
+        assert(dust == (anchored ? 1 : 2));
+        assert(mask.count == (anchored ? 15 : 14) && !mask.revision);
+        for (int i = 0; i < 9 * 7; i++) {
+            bool kept = cells[i] && (i % 9 < 3 || (anchored && i == 6 * 9 + 8));
+            assert(mask.cells[i] == kept);
+            assert(mask.distance[i] == (kept ? -.5f : .5f));
+        }
+        material_mask_rebuild_work(&mask, work);
+        assert(mask.revision == 1);
+        check_cover(&mask);
+        check_cover(&pieces[0]);
+        assert(acount(mask.surface) > 0 && acount(pieces[0].surface) > 0);
+        material_mask_free(&pieces[0]);
+        afree(pieces);
+        /* Retained components need no fragment allocation. Both geometry and
+         * connectivity scratch have already handled a larger component set. */
+        xalloc_stats before, after;
+        xalloc_stats_get(&before);
+        pieces = material_mask_detach_fragments(&mask, 2, anchored, &dust, work);
+        material_mask_rebuild_work(&mask, work);
+        xalloc_stats_get(&after);
+        assert(!pieces && !dust);
+        assert(before.calls == after.calls && before.requested_bytes == after.requested_bytes);
+        check_cover(&mask);
+        material_mask_free(&mask);
+    }
+    /* A differently sized curved mask shares work without sharing its storage. */
+    material_mask ellipse = material_mask_new(17, 13, 2, true);
+    material_mask_rebuild_work(&ellipse, work);
+    check_cover(&ellipse);
+    material_mask_free(&ellipse);
+    material_mask_work_free(work);
+}
+
 static void destruction()
 {
     material_mask mask = material_mask_new(24, 12, 2, false);
@@ -1215,7 +1271,7 @@ typedef struct
     material_point position;
     float angle;
     int created, created_cells, destroyed, damage_dust, damage_removed;
-    bool retain_chips, available;
+    bool retain_chips, available, reenter;
 } material_capacity_probe;
 
 static float material_float_from_bits(uint32_t bits)
@@ -1272,6 +1328,18 @@ static void capacity_create_fragment(void *user, uint64_t source, material_fragm
     assert(source == CAPACITY_TEST_SOURCE);
     probe->created++;
     probe->created_cells += fragment.mask.count;
+    check_cover(&probe->mask);
+    check_cover(&fragment.mask);
+    if (probe->reenter) {
+        /* A host can run independent mask processing during a fragment callback.
+         * It must neither borrow the owner's workspace nor disturb its masks. */
+        material_mask nested = material_mask_new(17, 13, 2, true);
+        material_mask_carve(&nested, 0, 0, 4);
+        check_cover(&nested);
+        material_mask_free(&nested);
+        check_cover(&probe->mask);
+        check_cover(&fragment.mask);
+    }
     material_mask_free(&fragment.mask);
 }
 
@@ -1284,8 +1352,9 @@ static void capacity_destroy_source(void *user, uint64_t target)
 
 static void capacity_invalidate(void *user, uint64_t target)
 {
-    (void)user;
+    material_capacity_probe *probe = user;
     assert(target == CAPACITY_TEST_SOURCE);
+    check_cover(&probe->mask);
 }
 
 static void capacity_result(void *user, const material_event *event)
@@ -1319,6 +1388,114 @@ static material_host capacity_host(material_capacity_probe *probe)
                             .result = capacity_result };
 }
 
+typedef struct
+{
+    material_destruction *destruction;
+    material_mask masks[3];
+    bool live[3], enqueue, release_on_damage;
+    uint64_t released[3];
+    int releases;
+} release_callback_probe;
+
+static bool release_callback_read(void *user, uint64_t target, material_source *source)
+{
+    release_callback_probe *probe = user;
+    if (target < CAPACITY_TEST_SOURCE || target >= CAPACITY_TEST_SOURCE + 3) {
+        return false;
+    }
+    int index = (int)(target - CAPACITY_TEST_SOURCE);
+    if (!probe->live[index]) {
+        return false;
+    }
+    *source = (material_source){ .mask = &probe->masks[index],
+                                 .minimum = 1,
+                                 .hardness = 1 };
+    return true;
+}
+
+static void release_callback_fragment(void *user, uint64_t target, material_fragment fragment)
+{
+    release_callback_probe *probe = user;
+    check_cover(&fragment.mask);
+    material_mask_free(&fragment.mask);
+    if (probe->enqueue && target == CAPACITY_TEST_SOURCE) {
+        material_destruction_queue_release(probe->destruction, CAPACITY_TEST_SOURCE + 1);
+        material_destruction_queue_release(probe->destruction, CAPACITY_TEST_SOURCE + 1);
+        /* Already queued original must not be duplicated by a callback. */
+        material_destruction_queue_release(probe->destruction, CAPACITY_TEST_SOURCE + 2);
+    }
+}
+
+static void release_callback_destroy(void *user, uint64_t target)
+{
+    release_callback_probe *probe = user;
+    probe->live[target - CAPACITY_TEST_SOURCE] = false;
+}
+
+static void release_callback_result(void *user, const material_event *event)
+{
+    release_callback_probe *probe = user;
+    if (event->kind == MATERIAL_EVENT_DAMAGE && probe->release_on_damage) {
+        material_destruction_queue_release(probe->destruction, event->target);
+    }
+    if (event->kind == MATERIAL_EVENT_RELEASE) {
+        assert(probe->releases < 3);
+        probe->released[probe->releases++] = event->target;
+    }
+}
+
+static void release_callback_invalidate(void *user, uint64_t target)
+{
+    release_callback_probe *probe = user;
+    check_cover(&probe->masks[target - CAPACITY_TEST_SOURCE]);
+}
+
+static void material_callback_queues()
+{
+    for (int damage = 0; damage < 2; damage++) {
+        release_callback_probe probe = { .destruction = material_destruction_new(),
+                                         .enqueue = !damage,
+                                         .release_on_damage = damage };
+        for (int i = 0; i < 3; i++) {
+            probe.masks[i] = material_mask_new(3, 3, 1, false);
+            probe.live[i] = true;
+        }
+        material_host host = { .user = &probe,
+                               .read_source = release_callback_read,
+                               .create_fragment = release_callback_fragment,
+                               .destroy_source = release_callback_destroy,
+                               .invalidate_geometry = release_callback_invalidate,
+                               .result = release_callback_result };
+        if (damage) {
+            material_destruction_queue_damage(
+                probe.destruction,
+                (material_damage){ .target = CAPACITY_TEST_SOURCE, .radius = .1f, .energy = 1 }
+            );
+            material_destruction_step(probe.destruction, &host, 1);
+            assert(probe.releases == 1 && probe.released[0] == CAPACITY_TEST_SOURCE);
+            assert(!probe.live[0] && probe.live[1] && probe.live[2]);
+        } else {
+            material_destruction_queue_release(probe.destruction, CAPACITY_TEST_SOURCE);
+            material_destruction_queue_release(probe.destruction, CAPACITY_TEST_SOURCE + 2);
+            material_destruction_step(probe.destruction, &host, 1);
+            assert(probe.releases == 1 && probe.released[0] == CAPACITY_TEST_SOURCE);
+            assert(probe.live[1] && probe.live[2]);
+            material_destruction_step(probe.destruction, &host, 1);
+            assert(probe.releases == 2 && probe.released[1] == CAPACITY_TEST_SOURCE + 2);
+            assert(probe.live[1] && !probe.live[2]);
+            material_destruction_step(probe.destruction, &host, 1);
+            assert(probe.releases == 3 && probe.released[2] == CAPACITY_TEST_SOURCE + 1);
+            assert(!probe.live[1]);
+            material_destruction_step(probe.destruction, &host, 1);
+            assert(probe.releases == 3);
+        }
+        for (int i = 0; i < 3; i++) {
+            material_mask_free(&probe.masks[i]);
+        }
+        material_destruction_free(probe.destruction);
+    }
+}
+
 static void material_capacity_fallback()
 {
     material_destruction *destruction = material_destruction_new();
@@ -1331,12 +1508,25 @@ static void material_capacity_fallback()
                            .radius = .1f,
                            .energy = 1 }
     );
+    unsigned revision = probe.mask.revision;
     material_destruction_step(destruction, &host, 0);
+    assert(probe.mask.revision == revision + 2); /* Detached, then overflow restored. */
     assert(probe.mask.count == 20 && probe.created == 0);
     assert(probe.damage_removed == 1 && probe.damage_dust == 1);
+    revision = probe.mask.revision;
     material_destruction_step(destruction, &host, 0);
+    assert(probe.mask.revision == revision);
     assert(probe.mask.count == 20 && probe.created == 0);
+    /* Both retry queue buffers are warm; repeated blocked retries retain storage. */
+    xalloc_stats before, after;
+    xalloc_stats_get(&before);
+    material_destruction_step(destruction, &host, 0);
+    material_destruction_step(destruction, &host, 0);
+    xalloc_stats_get(&after);
+    assert(before.calls == after.calls && before.requested_bytes == after.requested_bytes);
+    assert(probe.mask.revision == revision && !probe.created);
     material_destruction_step(destruction, &host, 1);
+    assert(probe.mask.revision == revision + 1);
     assert(probe.mask.count == 10 && probe.created == 1 && probe.created_cells == 10);
     assert(probe.mask.count + probe.created_cells == 20);
     material_mask_free(&probe.mask);
@@ -1365,7 +1555,8 @@ static void material_capacity_fallback()
     destruction = material_destruction_new();
     probe = (material_capacity_probe){ .mask = capacity_split_shape(),
                                        .retain_chips = true,
-                                       .available = true };
+                                       .available = true,
+                                       .reenter = true };
     host = capacity_host(&probe);
     material_destruction_queue_damage(
         destruction,
@@ -1983,6 +2174,8 @@ static void fluid_profile_index_builds()
 
 void test_materials()
 {
+    material_callback_queues();
+    material_mask_workspace();
     fluid_profile_index_builds();
     blast_policy();
     rotated_occlusion();

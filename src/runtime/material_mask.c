@@ -8,6 +8,34 @@
 #include <stdlib.h>
 #include <string.h>
 
+struct material_mask_work
+{
+    unsigned char *tiles, *used;
+    int *labels, *queue, *counts;
+    bool *edges;
+};
+
+material_mask_work *material_mask_work_new()
+{
+    return xcalloc(1, sizeof(material_mask_work));
+}
+
+static void free_work(material_mask_work *work)
+{
+    afree(work->tiles);
+    afree(work->used);
+    afree(work->labels);
+    afree(work->queue);
+    afree(work->counts);
+    afree(work->edges);
+}
+
+void material_mask_work_free(material_mask_work *work)
+{
+    free_work(work);
+    free(work);
+}
+
 static float grid_position(int index, int size, float cell)
 {
     return (fmaxf(0, fminf(size, index - .5f)) - size * .5f) * cell;
@@ -47,11 +75,12 @@ static void surface_polygon(material_mask *mask, int bits, int x, int y, int w, 
     apush(mask->surface, polygon);
 }
 
-static void surface(material_mask *mask)
+static void surface(material_mask *mask, material_mask_work *work)
 {
     aclear(mask->surface);
     int width = mask->width + 1, height = mask->height + 1;
-    unsigned char *tiles = xcalloc((size_t)width * height, 1);
+    asetlen(work->tiles, width * height);
+    unsigned char *tiles = work->tiles;
     for (int y = 0; y < height; y++) {
         int top = y > 0 ? y - 1 : 0, bottom = y < mask->height ? y : y - 1;
         for (int x = 0; x < width; x++) {
@@ -96,14 +125,15 @@ static void surface(material_mask *mask)
             surface_polygon(mask, bits, x, y, w, h);
         }
     }
-    free(tiles);
 }
 
-static void rectangles(material_mask *mask)
+void material_mask_rebuild_work(material_mask *mask, material_mask_work *work)
 {
     aclear(mask->rects);
     int length = mask->width * mask->height;
-    unsigned char *used = xcalloc((size_t)length, 1);
+    asetlen(work->used, length);
+    unsigned char *used = work->used;
+    memset(used, 0, (size_t)length);
     for (int y = 0; y < mask->height; y++) {
         for (int x = 0; x < mask->width; x++) {
             int i = y * mask->width + x;
@@ -141,8 +171,7 @@ static void rectangles(material_mask *mask)
             );
         }
     }
-    free(used);
-    surface(mask);
+    surface(mask, work);
     mask->revision++;
 }
 
@@ -167,7 +196,7 @@ material_mask material_mask_new(int width, int height, float cell_size, bool ell
             mask.count += filled;
         }
     }
-    rectangles(&mask);
+    material_mask_rebuild(&mask);
     return mask;
 }
 
@@ -181,7 +210,7 @@ void material_mask_free(material_mask *mask)
     *mask = (material_mask){ 0 };
 }
 
-material_mask material_mask_from_cells(int width, int height, float cell_size, const unsigned char *cells)
+material_mask material_mask_copy_cells(int width, int height, float cell_size, const unsigned char *cells)
 {
     assert(width > 0 && height > 0 && width <= 256 && height <= 256 && cells);
     assert(isfinite(cell_size) && cell_size > 0);
@@ -193,7 +222,13 @@ material_mask material_mask_from_cells(int width, int height, float cell_size, c
         mask.distance[i] = mask.cells[i] ? -cell_size * .5f : cell_size * .5f;
         mask.count += mask.cells[i];
     }
-    rectangles(&mask);
+    return mask;
+}
+
+material_mask material_mask_from_cells(int width, int height, float cell_size, const unsigned char *cells)
+{
+    material_mask mask = material_mask_copy_cells(width, height, cell_size, cells);
+    material_mask_rebuild(&mask);
     return mask;
 }
 
@@ -210,7 +245,7 @@ material_mask material_mask_from_field(int width, int height, float cell_size, c
         mask.cells[i] = distance[i] <= 0;
         mask.count += mask.cells[i];
     }
-    rectangles(&mask);
+    material_mask_rebuild(&mask);
     return mask;
 }
 
@@ -226,7 +261,9 @@ bool material_mask_contains(const material_mask *mask, float x, float y)
 
 void material_mask_rebuild(material_mask *mask)
 {
-    rectangles(mask);
+    material_mask_work work = { 0 };
+    material_mask_rebuild_work(mask, &work);
+    free_work(&work);
 }
 
 int material_mask_apply_damage(material_mask *mask, float x, float y, float radius, float energy, float hardness)
@@ -301,28 +338,36 @@ int material_mask_carve(material_mask *mask, float x, float y, float radius)
 {
     int removed = material_mask_apply_damage(mask, x, y, radius, 1, 1);
     if (removed) {
-        rectangles(mask);
+        material_mask_rebuild(mask);
     }
     return removed;
 }
 
-static material_mask *split(material_mask *mask, int min_cells, int *dust, bool anchored)
+material_mask *material_mask_detach_fragments(
+    material_mask *mask,
+    int min_cells,
+    bool anchored,
+    int *dust,
+    material_mask_work *work
+)
 {
     assert(min_cells > 0 && dust);
     *dust = 0;
     int length = mask->width * mask->height;
-    int *labels = xcalloc((size_t)length, sizeof *labels);
-    int *queue = xmalloc((size_t)length * sizeof *queue);
-    int *counts = NULL;
-    bool *edges = NULL;
-    apush(counts, 0);
-    apush(edges, false);
+    asetlen(work->labels, length);
+    asetlen(work->queue, length);
+    memset(work->labels, 0, (size_t)length * sizeof *work->labels);
+    int *labels = work->labels, *queue = work->queue;
+    aclear(work->counts);
+    aclear(work->edges);
+    apush(work->counts, 0);
+    apush(work->edges, false);
     int largest = 0;
     for (int i = 0; i < length; i++) {
         if (!mask->cells[i] || labels[i]) {
             continue;
         }
-        int label = acount(counts), end = 1;
+        int label = acount(work->counts), end = 1;
         queue[0] = i;
         labels[i] = label;
         bool edge = false;
@@ -342,25 +387,25 @@ static material_mask *split(material_mask *mask, int min_cells, int *dust, bool 
                 queue[end++] = next;
             }
         }
-        apush(counts, end);
-        apush(edges, edge);
-        if (end > counts[largest]) {
+        apush(work->counts, end);
+        apush(work->edges, edge);
+        if (end > work->counts[largest]) {
             largest = label;
         }
     }
     material_mask *pieces = NULL;
-    for (int label = 1; label < acount(counts); label++) {
-        if (anchored ? edges[label] : label == largest) {
+    for (int label = 1; label < acount(work->counts); label++) {
+        if (anchored ? work->edges[label] : label == largest) {
             continue;
         }
-        if (counts[label] < min_cells) {
-            *dust += counts[label];
+        if (work->counts[label] < min_cells) {
+            *dust += work->counts[label];
             continue;
         }
         material_mask piece = { .width = mask->width,
                                 .height = mask->height,
                                 .cell_size = mask->cell_size,
-                                .count = counts[label] };
+                                .count = work->counts[label] };
         piece.cells = xcalloc((size_t)length, 1);
         piece.distance = xmalloc((size_t)length * sizeof *piece.distance);
         if (mask->damage) {
@@ -375,31 +420,33 @@ static material_mask *split(material_mask *mask, int min_cells, int *dust, bool 
                 piece.damage[i] = mask->damage[i];
             }
         }
-        rectangles(&piece);
+        material_mask_rebuild_work(&piece, work);
         apush(pieces, piece);
     }
-    if (acount(counts) > 2 || anchored) {
+    if (acount(work->counts) > 2 || anchored) {
         mask->count = 0;
         for (int i = 0; i < length; i++) {
-            mask->cells[i] = labels[i] &&
-                             (anchored ? edges[labels[i]] : labels[i] == largest);
+            mask->cells[i] = labels[i] && (anchored ? work->edges[labels[i]]
+                                                    : labels[i] == largest);
             mask->count += mask->cells[i];
             if (!mask->cells[i]) {
                 mask->distance[i] = fmaxf(.0001f, fabsf(mask->distance[i]));
             }
         }
-        rectangles(mask);
     }
-    afree(counts);
-    afree(edges);
-    free(queue);
-    free(labels);
     return pieces;
 }
 
 material_mask *material_mask_extract_fragments(material_mask *mask, int minimum, bool anchored, int *dust)
 {
-    return split(mask, minimum, dust, anchored);
+    material_mask_work work = { 0 };
+    int before = mask->count;
+    material_mask *pieces = material_mask_detach_fragments(mask, minimum, anchored, dust, &work);
+    if (before != mask->count) {
+        material_mask_rebuild_work(mask, &work);
+    }
+    free_work(&work);
+    return pieces;
 }
 
 material_occupancy_view material_mask_occupancy(const material_mask *mask)

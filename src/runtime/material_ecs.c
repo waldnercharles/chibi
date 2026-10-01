@@ -321,6 +321,13 @@ const material_mask *game_materials_mask(const game_materials *materials, ecs_en
              : NULL;
 }
 
+uint64_t game_materials_mask_generation(const game_materials *materials, ecs_entity entity)
+{
+    return game_materials_mask(materials, entity)
+             ? materials->records[entity.slot].mask_generation
+             : 0;
+}
+
 bool game_materials_is_fragment(const game_materials *materials, ecs_entity entity)
 {
     return game_materials_mask(materials, entity) &&
@@ -351,6 +358,8 @@ material_record *material_ecs_record(game_materials *materials, ecs_entity entit
         materials->fragments -= record->fragment;
         material_ecs_release_record(record);
         record->entity = entity;
+        record->mask_generation = ++materials->next_mask_generation;
+        assert(record->mask_generation);
     }
     return record;
 }

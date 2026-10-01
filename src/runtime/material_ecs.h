@@ -11,6 +11,7 @@ typedef struct
 {
     ecs_entity entity;
     material_mask *mask;
+    uint64_t mask_generation;
     bool fragment, volume, terrain;
     uint64_t terrain_hash;
     float glow_age, glow_multiplier;
@@ -33,6 +34,7 @@ struct game_materials
     MaterialFluidWorld settings;
     GameCombustion combustion;
     material_record *records;
+    uint64_t next_mask_generation;
     material_destruction *destruction;
     material_damage *damage_requests;
     int fragment_limit;

@@ -11,21 +11,28 @@
 struct material_destruction
 {
     material_damage *damage;
-    material_damage *retry;
+    material_damage *retry, *retry_work;
     uint64_t *release;
     material_event *events;
     int event_cursor;
+    material_mask_work *work;
+    unsigned char *before;
+    bool stepping;
 };
 
 material_destruction *material_destruction_new()
 {
-    return xcalloc(1, sizeof(material_destruction));
+    material_destruction *d = xcalloc(1, sizeof *d);
+    d->work = material_mask_work_new();
+    return d;
 }
 
 void material_destruction_reset(material_destruction *d)
 {
+    assert(!d->stepping);
     aclear(d->damage);
     aclear(d->retry);
+    aclear(d->retry_work);
     aclear(d->release);
     aclear(d->events);
     d->event_cursor = 0;
@@ -33,10 +40,14 @@ void material_destruction_reset(material_destruction *d)
 
 void material_destruction_free(material_destruction *d)
 {
+    assert(!d->stepping);
     afree(d->damage);
     afree(d->retry);
+    afree(d->retry_work);
     afree(d->release);
     afree(d->events);
+    material_mask_work_free(d->work);
+    afree(d->before);
     free(d);
 }
 
@@ -189,14 +200,18 @@ static void retry_fragments(
         queue_retry(d, damage);
         return;
     }
-    int discarded;
-    material_mask *pieces = material_mask_extract_fragments(
+    int discarded, previous = source.mask->count;
+    material_mask *pieces = material_mask_detach_fragments(
         source.mask,
         source.minimum,
         source.anchored,
-        &discarded
+        &discarded,
+        d->work
     );
-    (void)discarded;
+    bool changed = previous != source.mask->count;
+    if (changed) {
+        material_mask_rebuild_work(source.mask, d->work);
+    }
     fragment_result result = fragments(
         d,
         host,
@@ -208,8 +223,10 @@ static void retry_fragments(
         source.minimum,
         capacity
     );
-    if (result.emitted || result.restored) {
-        material_mask_rebuild(source.mask);
+    if (result.restored) {
+        material_mask_rebuild_work(source.mask, d->work);
+    }
+    if (changed || result.emitted || result.restored) {
         host->invalidate_geometry(host->user, damage.target);
     }
 }
@@ -224,7 +241,8 @@ static void apply_damage(material_destruction *d, const material_host *host, int
     material_mask *mask = source.mask;
     unsigned char *before = NULL;
     if (source.retain_chips) {
-        before = xmalloc((size_t)mask->width * mask->height);
+        asetlen(d->before, mask->width * mask->height);
+        before = d->before;
         memcpy(before, mask->cells, (size_t)mask->width * mask->height);
     }
     int removed = 0;
@@ -250,10 +268,8 @@ static void apply_damage(material_destruction *d, const material_host *host, int
         next->energy = 0;
     }
     if (!removed) {
-        free(before);
         return;
     }
-    material_mask_rebuild(mask);
     int dust = removed;
     bool blast = damage.cause == MATERIAL_DAMAGE_BLAST;
     material_mask *chip_pieces = NULL;
@@ -261,20 +277,24 @@ static void apply_damage(material_destruction *d, const material_host *host, int
         for (int i = 0; i < mask->width * mask->height; i++) {
             before[i] &= !mask->cells[i];
         }
-        material_mask chip = material_mask_from_cells(mask->width, mask->height, mask->cell_size, before);
-        free(before);
+        material_mask chip = material_mask_copy_cells(mask->width, mask->height, mask->cell_size, before);
         int discarded;
-        chip_pieces = material_mask_extract_fragments(&chip, source.minimum, false, &discarded);
+        chip_pieces = material_mask_detach_fragments(&chip, source.minimum, false, &discarded, d->work);
+        material_mask_rebuild_work(&chip, d->work);
         apush(chip_pieces, chip);
     }
     int discarded, previous = mask->count;
-    material_mask *pieces = material_mask_extract_fragments(
+    material_mask *pieces = material_mask_detach_fragments(
         mask,
         source.minimum,
         source.anchored,
-        &discarded
+        &discarded,
+        d->work
     );
     dust += previous - mask->count;
+    /* Host fragment callbacks may inspect source geometry. Publish the detached
+     * source before callbacks; rebuild again only if capacity restores cells. */
+    material_mask_rebuild_work(mask, d->work);
     fragment_result detached = fragments(
         d,
         host,
@@ -301,7 +321,9 @@ static void apply_damage(material_destruction *d, const material_host *host, int
         );
         dust -= chip_result.emitted + chip_result.restored;
     }
-    material_mask_rebuild(mask);
+    if (detached.restored) {
+        material_mask_rebuild_work(mask, d->work);
+    }
     host->invalidate_geometry(host->user, damage.target);
     publish(
         d,
@@ -327,13 +349,16 @@ static void apply_damage(material_destruction *d, const material_host *host, int
 
 void material_destruction_step(material_destruction *d, const material_host *host, int capacity)
 {
-    assert(capacity >= 0);
+    assert(capacity >= 0 && !d->stepping);
+    d->stepping = true;
     material_damage *retry = d->retry;
-    d->retry = NULL;
+    d->retry = d->retry_work;
+    aclear(d->retry);
     for (int i = 0; i < acount(retry); i++) {
         retry_fragments(d, host, retry[i], &capacity);
     }
-    afree(retry);
+    aclear(retry);
+    d->retry_work = retry;
     for (int i = 0; i < acount(d->damage); i++) {
         apply_damage(d, host, i, &capacity);
     }
@@ -368,7 +393,18 @@ void material_destruction_step(material_destruction *d, const material_host *hos
         );
         host->destroy_source(host->user, target);
     }
-    asetlen(d->release, deferred);
+    /* Callbacks may append releases. Keep their untouched tail after the
+     * deferred originals, preserving both groups' order for the next step. */
+    int appended = acount(d->release) - releases;
+    if (appended) {
+        memmove(
+            d->release + deferred,
+            d->release + releases,
+            (size_t)appended * sizeof *d->release
+        );
+    }
+    asetlen(d->release, deferred + appended);
+    d->stepping = false;
 }
 
 static uint64_t hash_bytes(uint64_t hash, const void *data, size_t size)

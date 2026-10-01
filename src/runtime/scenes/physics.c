@@ -26,20 +26,28 @@ enum
 
 typedef struct
 {
+    material_rect rect;
+    b2ShapeId shape;
+    int index;
+} mask_shape;
+
+typedef struct
+{
     ecs_entity entity;
     b2BodyId body;
-    b2ShapeId shape;
+    mask_shape *shapes;
     b2ShapeProxy geometry;
     b2ShapeProxy *parts;
     const material_mask *mask; /* Borrowed only by immediate authored queries. */
     unsigned mask_revision;
+    uint64_t mask_generation;
     b2Transform start, end;
     b2AABB tree_bounds;
     GameCollider collider;
     GameBody settings;
     int proxy;
     float angle, stop_fraction;
-    bool seen, pierceable_fragment;
+    bool seen, pierceable_fragment, masked;
 } physics_body;
 
 typedef struct
@@ -70,6 +78,7 @@ struct game_physics
     b2DynamicTree sweeps;
     game_physics_settings configuration;
     physics_body *bodies;
+    mask_shape *shape_scratch;
     contact_pair *previous, *current, *sort_scratch, *begun;
     b2ContactData *contacts;
     unsigned *visited;
@@ -280,8 +289,10 @@ void game_physics_free(game_physics *physics)
     b2DynamicTree_Destroy(&physics->sweeps);
     for (int i = 0; i < acount(physics->bodies); i++) {
         afree(physics->bodies[i].parts);
+        afree(physics->bodies[i].shapes);
     }
     afree(physics->bodies);
+    afree(physics->shape_scratch);
     afree(physics->previous);
     afree(physics->current);
     afree(physics->sort_scratch);
@@ -306,6 +317,7 @@ void game_physics_reset(game_physics *physics)
     b2DynamicTree_Destroy(&physics->sweeps);
     for (int i = 0; i < acount(physics->bodies); i++) {
         afree(physics->bodies[i].parts);
+        afree(physics->bodies[i].shapes);
     }
     aclear(physics->bodies);
     physics->body_count = 0;
@@ -400,6 +412,28 @@ bool game_physics_interpolate(const game_physics *physics, ecs_entity entity, fl
     return true;
 }
 
+bool game_physics_inspect_body(const game_physics *physics, ecs_entity entity, game_physics_body_state *out)
+{
+    assert(out);
+    if (!ecs_entity_is_alive(physics->world, entity) ||
+        entity.slot >= (unsigned)acount(physics->bodies)) {
+        return false;
+    }
+    const physics_body *body = &physics->bodies[entity.slot];
+    if (!body->body.index1 || !same_entity(body->entity, entity)) {
+        return false;
+    }
+    b2MassData mass = b2Body_GetMassData(body->body);
+    *out = (game_physics_body_state){
+        .mass = mass.mass,
+        .local_center = { mass.center.x, mass.center.y },
+        .inertia = mass.rotationalInertia,
+        .awake = b2Body_IsAwake(body->body),
+        .shape_count = b2Body_GetShapeCount(body->body)
+    };
+    return true;
+}
+
 static bool valid(
     const GameTransform *position,
     float angle,
@@ -443,11 +477,15 @@ static bool same_configuration(const physics_body *body, const GameCollider *sha
 
 static void remove_body(game_physics *physics, physics_body *body)
 {
+    if (physics->profiling) {
+        physics->profile.shape_removals += b2Body_GetShapeCount(body->body);
+    }
     b2DestroyBody(body->body);
     if (body->proxy >= 0) {
         b2DynamicTree_DestroyProxy(&physics->sweeps, body->proxy);
     }
     afree(body->parts);
+    afree(body->shapes);
     *body = (physics_body){ 0 };
 }
 
@@ -458,7 +496,7 @@ static b2Polygon rect_polygon(material_rect r)
 
 static int geometry_count(const physics_body *body)
 {
-    if (body->parts) {
+    if (body->masked) {
         return acount(body->parts);
     }
     return body->mask ? material_mask_collision(body->mask).count : 1;
@@ -501,6 +539,133 @@ static b2AABB swept_bounds(const physics_body *body)
                      b2Max(start.upperBound, end.upperBound) };
 }
 
+static b2ShapeDef shape_definition(const physics_body *body)
+{
+    b2ShapeDef shape = b2DefaultShapeDef();
+    shape.userData = (void *)(uintptr_t)body->entity.slot;
+    shape.material.friction = body->collider.friction;
+    shape.material.restitution = body->collider.restitution;
+    shape.density = 1.0f / (GAME_UNITS_PER_METER * GAME_UNITS_PER_METER);
+    shape.filter.categoryBits = body->collider.category;
+    shape.filter.maskBits = body->collider.mask;
+    shape.isSensor = body->collider.sensor;
+    /* Gameplay contacts are collected below with current-pose and swept-sensor
+     * semantics. No consumer reads Box2D's separate buffered event streams. */
+    shape.enableSensorEvents = false;
+    shape.enableContactEvents = false;
+    return shape;
+}
+
+/* Centers are unique in the nonoverlapping rectangle decomposition. Matching
+ * them leaves unchanged shapes/contact caches intact and needs only one merge. */
+static int compare_shape_center(const void *left, const void *right)
+{
+    const material_rect *a = &((const mask_shape *)left)->rect;
+    const material_rect *b = &((const mask_shape *)right)->rect;
+    if (a->y != b->y) {
+        return a->y < b->y ? -1 : 1;
+    }
+    return a->x != b->x ? (a->x < b->x ? -1 : 1) : 0;
+}
+
+static void update_mask_shapes(game_physics *physics, physics_body *body, const material_mask *mask)
+{
+    material_collision_view collision = material_mask_collision(mask);
+    asetlen(physics->shape_scratch, collision.count);
+    for (int i = 0; i < collision.count; i++) {
+        physics->shape_scratch[i] = (mask_shape){ .rect = collision.rects[i],
+                                                  .index = i };
+    }
+    int old_count = acount(body->shapes);
+    if (old_count > 1) {
+        qsort(body->shapes, (size_t)old_count, sizeof *body->shapes, compare_shape_center);
+    }
+    if (collision.count > 1) {
+        qsort(physics->shape_scratch, (size_t)collision.count, sizeof *physics->shape_scratch, compare_shape_center);
+    }
+    b2ShapeDef definition = shape_definition(body);
+    definition.updateBodyMass = false;
+    definition.invokeContactCreation = true;
+    bool changed = false;
+    int old = 0, next = 0;
+    while (old < old_count || next < collision.count) {
+        mask_shape *before = old < old_count ? &body->shapes[old] : NULL;
+        mask_shape *after = next < collision.count ? &physics->shape_scratch[next]
+                                                   : NULL;
+        int order = !before ? 1
+                  : !after  ? -1
+                            : compare_shape_center(before, after);
+        if (!order) {
+            after->shape = before->shape;
+            if (before->rect.width != after->rect.width ||
+                before->rect.height != after->rect.height) {
+                b2Polygon polygon = rect_polygon(after->rect);
+                /* This Box2D version keeps a cached CCD centroid in SetPolygon.
+                 * Equal centers make that cache valid; moved parts are recreated. */
+                b2Polygon previous = b2Shape_GetPolygon(before->shape);
+                if (previous.centroid.x == polygon.centroid.x &&
+                    previous.centroid.y == polygon.centroid.y) {
+                    b2Shape_SetPolygon(after->shape, &polygon);
+                    if (physics->profiling) {
+                        physics->profile.shape_updates++;
+                    }
+                } else {
+                    b2DestroyShape(before->shape, false);
+                    after->shape = b2CreatePolygonShape(body->body, &definition, &polygon);
+                    if (physics->profiling) {
+                        physics->profile.shape_removals++;
+                        physics->profile.shape_creations++;
+                    }
+                }
+                changed = true;
+            }
+            old++;
+            next++;
+        } else if (order < 0) {
+            b2DestroyShape(before->shape, false);
+            if (physics->profiling) {
+                physics->profile.shape_removals++;
+            }
+            changed = true;
+            old++;
+        } else {
+            b2Polygon polygon = rect_polygon(after->rect);
+            after->shape = b2CreatePolygonShape(body->body, &definition, &polygon);
+            if (physics->profiling) {
+                physics->profile.shape_creations++;
+            }
+            changed = true;
+            next++;
+        }
+    }
+    asetlen(body->shapes, collision.count);
+    asetlen(body->parts, collision.count);
+    for (int i = 0; i < collision.count; i++) {
+        mask_shape part = physics->shape_scratch[i];
+        body->shapes[part.index] = part;
+        b2Polygon polygon = rect_polygon(part.rect);
+        body->parts[part.index] = b2MakeProxy(
+            polygon.vertices,
+            polygon.count,
+            polygon.radius
+        );
+    }
+    body->mask_revision = mask->revision;
+    if (!changed) {
+        return;
+    }
+    b2Body_SetAwake(body->body, true);
+    b2Body_ApplyMassFromShapes(body->body);
+    if (physics->profiling) {
+        physics->profile.mass_updates++;
+    }
+    /* The auxiliary swept-target tree must also lose old bounds after a cut. */
+    if (body->proxy >= 0) {
+        b2DynamicTree_DestroyProxy(&physics->sweeps, body->proxy);
+        body->proxy = -1;
+    }
+}
+
 static void create_body(game_physics *physics, physics_body *body, b2Vec2 position, float angle)
 {
     b2BodyDef def = b2DefaultBodyDef();
@@ -517,37 +682,46 @@ static void create_body(game_physics *physics, physics_body *body, b2Vec2 positi
     def.isBullet = body->settings.type == GAME_BODY_DYNAMIC &&
                    body->settings.continuous && !body->collider.sensor;
     body->body = b2CreateBody(physics->simulation, &def);
-    b2ShapeDef shape = b2DefaultShapeDef();
-    shape.userData = (void *)(uintptr_t)body->entity.slot;
-    shape.material.friction = body->collider.friction;
-    shape.material.restitution = body->collider.restitution;
-    shape.density = 1.0f / (GAME_UNITS_PER_METER * GAME_UNITS_PER_METER);
-    shape.filter.categoryBits = body->collider.category;
-    shape.filter.maskBits = body->collider.mask;
-    shape.isSensor = body->collider.sensor;
-    /* Gameplay contacts are collected below with current-pose and swept-sensor
-     * semantics. No consumer reads Box2D's separate buffered event streams. */
-    shape.enableSensorEvents = false;
-    shape.enableContactEvents = false;
+    if (physics->profiling) {
+        physics->profile.body_creations++;
+    }
+    b2ShapeDef shape = shape_definition(body);
     const material_mask *mask = game_materials_mask(
         game_entities_materials(physics->entities),
         body->entity
     );
+    body->mask_generation = game_materials_mask_generation(
+        game_entities_materials(physics->entities),
+        body->entity
+    );
+    body->masked = mask != NULL;
     body->mask_revision = mask ? mask->revision : 0;
     if (mask) {
+        shape.updateBodyMass = false;
         for (int i = 0; i < material_mask_collision(mask).count; i++) {
             b2Polygon box = rect_polygon(material_mask_collision(mask).rects[i]);
-            body->shape = b2CreatePolygonShape(body->body, &shape, &box);
+            b2ShapeId id = b2CreatePolygonShape(body->body, &shape, &box);
+            apush(
+                body->shapes,
+                ((mask_shape){ .rect = material_mask_collision(mask).rects[i],
+                               .shape = id,
+                               .index = i })
+            );
             apush(body->parts, b2MakeProxy(box.vertices, box.count, box.radius));
         }
+        b2Body_ApplyMassFromShapes(body->body);
     } else if (body->collider.shape == GAME_COLLIDER_CIRCLE) {
         b2Circle circle = { .radius = body->collider.radius };
-        body->shape = b2CreateCircleShape(body->body, &shape, &circle);
+        b2CreateCircleShape(body->body, &shape, &circle);
         body->geometry = b2MakeProxy(&circle.center, 1, circle.radius);
     } else {
         b2Polygon box = b2MakeBox(body->collider.width * .5f, body->collider.height * .5f);
-        body->shape = b2CreatePolygonShape(body->body, &shape, &box);
+        b2CreatePolygonShape(body->body, &shape, &box);
         body->geometry = b2MakeProxy(box.vertices, box.count, box.radius);
+    }
+    if (physics->profiling) {
+        physics->profile.shape_creations += b2Body_GetShapeCount(body->body);
+        physics->profile.mass_updates++;
     }
     body->start = body->end = b2Body_GetTransform(body->body);
     body->proxy = -1;
@@ -598,10 +772,19 @@ static int sync_entity(game_physics *physics, ecs_entity entity, float delta)
     const material_mask
         *mask = game_materials_mask(game_entities_materials(physics->entities), entity);
     unsigned revision = mask ? mask->revision : 0;
+    uint64_t generation = game_materials_mask_generation(
+        game_entities_materials(physics->entities),
+        entity
+    );
     if (body->body.index1 &&
-        (!same_entity(body->entity, entity) || body->mask_revision != revision ||
+        (!same_entity(body->entity, entity) || body->masked != (mask != NULL) ||
          !same_configuration(body, &collider, &settings))) {
         remove_body(physics, body);
+    }
+    if (body->body.index1 &&
+        (body->mask_revision != revision || body->mask_generation != generation)) {
+        update_mask_shapes(physics, body, mask);
+        body->mask_generation = generation;
     }
     body->entity = entity;
     body->collider = collider;

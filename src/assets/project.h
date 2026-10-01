@@ -20,6 +20,9 @@ typedef struct
 
 /* Resolve a project directory, its project.yaml, or a legacy content directory. */
 int chibi_project_open(chibi_project *project, const char *path, char *error, size_t error_size);
+/* Creates an empty project with content/scenes/Start.yaml as its start scene.
+ * `root` must not already exist; its parent directory must exist. */
+int chibi_project_create(const char *root, const char *name, char *error, size_t error_size);
 void chibi_project_free(chibi_project *project);
 
 /* Returns an owned scene path inside the selected project. */

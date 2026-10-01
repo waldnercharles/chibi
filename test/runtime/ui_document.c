@@ -413,6 +413,18 @@ static void expanded_sources()
     );
     free(marked);
     ui_document_free(&d);
+
+    static const char TERNARY[] = "<div>\n"
+                                  "  <b>{{ save.ekX > 0 ? save.ekX : 0 }}</b>\n"
+                                  "</div>\n";
+    marked = ui_document_sources(TERNARY, "Hearth", 1);
+    test_check(
+        strstr(marked, "{{ save.ekX > 0 ? save.ekX : 0 }}") != NULL &&
+            strstr(marked, "<b data-src=\"Hearth:2\">") != NULL,
+        "source markers preserve comparison operators inside text bindings"
+    );
+    free(marked);
+
     static const char *const files[] = { "Meter", "Row" };
     remove_widgets(root, files, sizeof files / sizeof *files);
 }

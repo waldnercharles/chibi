@@ -10,7 +10,7 @@ const DIRECTORY = 1;
 const manifest = 'version: 1\nname: Neon Swarm\ncontent: content\nstart_scene: scenes/Sandbox.yaml\n';
 const text = data => typeof data === 'string' ? data : new TextDecoder().decode(data);
 
-const makeFS = entries => {
+const makeFS = (entries, failWritePath = '') => {
   const nodes = new Map([['/', DIRECTORY]]);
   const fs = {
     nodes, mounts: [], syncs: [],
@@ -21,6 +21,8 @@ const makeFS = entries => {
     },
     writeFile(path, data) {
       fs.mkdirTree(path.slice(0, path.lastIndexOf('/')));
+      if (data === undefined) throw new Error(`Cannot write missing file data to ${path}`);
+      if (path === failWritePath) throw new Error(`Cannot write ${path}`);
       nodes.set(path, typeof data === 'string' ? new TextEncoder().encode(data) : Uint8Array.from(data));
     },
     readFile(path, options) { return options?.encoding ? text(nodes.get(path)) : nodes.get(path); },
@@ -119,7 +121,10 @@ assert.deepEqual(JSON.parse(first.Module.chibiProjects()), [
 ]);
 
 // Without a project to reopen, the page opens Neon Swarm.
-const empty = makeFS({ '/projects/arena2d/project.yaml': manifest });
+const empty = makeFS({
+  '/projects/arena2d/project.yaml': manifest,
+  '/projects/arena2d/content/scenes/Sandbox.yaml': 'name: Sandbox\n',
+});
 const byDefault = launch('', empty);
 byDefault.start();
 assert.equal(byDefault.Module.arguments[1], '/workspace/arena2d/');
@@ -128,16 +133,19 @@ assert.equal(byDefault.Module.arguments[1], '/workspace/arena2d/');
 // mutates the user's persistent project as its working directory.
 const room = launch('?room=room-123&role=host', fs);
 room.start();
-const roomPath = '/collab/room-123/project';
+const roomPath = room.Module.chibiCollabStorage.enterRoom('room-123', true).replace(/\/$/, '');
+room.Module.arguments[1] = `${roomPath}/`;
 assert.equal(room.Module.arguments[1], `${roomPath}/`);
 assert.equal(fs.file(`${roomPath}/content/scenes/Sandbox.yaml`), 'name: Sandbox\n');
 assert.equal(fs.file('/workspace/.last'), 'arena2d');
-room.Module.chibiCollabStorage.installFiles([
+const stagedRoom = room.Module.chibiCollabStorage.stageFiles([
   {path: 'project.yaml', data: new TextEncoder().encode(manifest)},
   {path: 'content/scenes/Shared.yaml', data: new TextEncoder().encode('name: Shared\n')},
 ]);
-assert.equal(fs.file(`${roomPath}/content/scenes/Sandbox.yaml`), undefined);
-assert.equal(fs.file(`${roomPath}/content/scenes/Shared.yaml`), 'name: Shared\n');
+room.Module.chibiCollabStorage.activateRoot(stagedRoom);
+assert.equal(fs.file(`${roomPath}/content/scenes/Sandbox.yaml`), 'name: Sandbox\n');
+assert.equal(fs.file(`${stagedRoom}content/scenes/Sandbox.yaml`), undefined);
+assert.equal(fs.file(`${stagedRoom}content/scenes/Shared.yaml`), 'name: Shared\n');
 assert.equal(fs.file('/workspace/arena2d/content/scenes/Sandbox.yaml'), 'name: Sandbox\n');
 
 // Saves flush once after a burst, ask to keep storage, and report failures.
@@ -248,4 +256,34 @@ const packaged = launch('?project-root=projects/arena3d', root);
 packaged.start();
 assert.equal(packaged.Module.arguments[1], '/workspace/arena3d/');
 assert.equal(root.file('/workspace/arena3d/content/scenes/Arena3D.yaml'), 'name: Root\n');
+
+const failedFS = makeFS({
+  '/projects/arena2d/project.yaml': manifest,
+  '/projects/arena2d/content/scenes/Sandbox.yaml': 'name: Sandbox\n',
+}, '/workspace/sample-project/content/scenes/Start.yaml');
+const failed = launch('?project-root=projects/arena2d', failedFS);
+failed.start();
+assert.match(JSON.parse(failed.Module.chibiCreateProject('Sample Project', 3)).error, /Cannot write/);
+assert.equal(failedFS.analyzePath('/workspace/sample-project').exists, false);
+
+// New projects use the typed name, have a valid start scene, and finish syncing before navigation.
+const created = JSON.parse(third.Module.chibiCreateProject('Sample Project', 3));
+assert.equal(created.root, '/workspace/sample-project/');
+assert.equal(fs.file('/workspace/sample-project/project.yaml'),
+  'version: 3\nname: "Sample Project"\ncontent: content\nstart_scene: scenes/Start.yaml\n');
+assert.equal(fs.file('/workspace/sample-project/content/scenes/Start.yaml'),
+  'version: 1\nname: Start\nentities: []\n');
+assert.ok(JSON.parse(third.Module.chibiProjects()).some(project =>
+  project.name === 'Sample Project' && project.root === created.root));
+third.Module.chibiOpenProject(created.root, false);
+assert.equal(third.Module.chibiProjectOpenStatus(), 'pending');
+fs.syncs.shift().callback(null);
+await settle();
+assert.equal(third.Module.chibiProjectOpenStatus(), 'done');
+assert.equal(third.location.search, '?project=sample-project');
+const reopened = launch(third.location.search, fs);
+reopened.start();
+assert.equal(reopened.Module.arguments[1], '/workspace/sample-project/');
+assert.equal(fs.file('/workspace/sample-project/content/scenes/Start.yaml'),
+  'version: 1\nname: Start\nentities: []\n');
 console.log('PASS: browser projects persist, reopen, export, import and recover without the server bridge');

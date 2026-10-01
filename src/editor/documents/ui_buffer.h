@@ -121,6 +121,11 @@ bool ui_buffer_poll_disk(ui_buffer *b, double now);
 bool ui_buffer_saves(const ui_buffer *b, ui_part part);
 /* Records the parts as written to their files. */
 void ui_buffer_saved(ui_buffer *b);
+/* Applies the fixed RML or RCSS formatter as one undo step. Invalid text and
+ * already formatted text are left untouched; true means a change was made. */
+bool ui_buffer_format(ui_buffer *b, ui_part part);
+/* Formats the parts this document will save as a single undo step. */
+bool ui_buffer_format_for_save(ui_buffer *b);
 /* Replaces the text with the files', discarding edits and history; false
  * with why in `error`, keeping the text. */
 bool ui_buffer_reload(ui_buffer *b, char *error, size_t size);

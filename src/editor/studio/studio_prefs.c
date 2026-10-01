@@ -72,6 +72,7 @@ studio_layout studio_layout_default(studio_workspace workspace)
         .main_split = horizontal ? 0.5f : 0.62f,
         .side_split = 0.38f,
         .drawer_height = 240,
+        .canvas_actions_open = false,
         .editors = { STUDIO_EDITOR_SCENE,
                      horizontal ? STUDIO_EDITOR_CODE : STUDIO_EDITOR_BEHAVIOR,
                      STUDIO_EDITOR_OUTLINER,
@@ -129,7 +130,8 @@ bool studio_prefs_equal(const studio_prefs *a, const studio_prefs *b)
         }
         if (x->side_open != y->side_open || x->side_width != y->side_width ||
             x->main_split != y->main_split || x->side_split != y->side_split ||
-            x->drawer_open != y->drawer_open || x->drawer_height != y->drawer_height) {
+            x->drawer_open != y->drawer_open || x->drawer_height != y->drawer_height ||
+            x->canvas_actions_open != y->canvas_actions_open) {
             return false;
         }
     }
@@ -229,6 +231,10 @@ static void read_layout(studio_layout *l, yyjson_val *layout)
         l->drawer_open = yyjson_get_bool(open);
     }
     l->drawer_height = number(yyjson_obj_get(drawer, "height"), l->drawer_height, 80, 2000);
+    yyjson_val *canvas_actions = yyjson_obj_get(layout, "canvasActionsOpen");
+    if (yyjson_is_bool(canvas_actions)) {
+        l->canvas_actions_open = yyjson_get_bool(canvas_actions);
+    }
     yyjson_val *areas = yyjson_obj_get(layout, "areas");
     for (int i = 0; i < STUDIO_AREA_COUNT && i < (int)yyjson_arr_size(areas); i++) {
         yyjson_val *area = yyjson_arr_get(areas, (size_t)i);
@@ -388,6 +394,7 @@ static void write_layout(const studio_layout *l, yyjson_mut_doc *doc, yyjson_mut
     yyjson_mut_val *drawer = yyjson_mut_obj_add_obj(doc, layout, "drawer");
     yyjson_mut_obj_add_bool(doc, drawer, "open", l->drawer_open);
     yyjson_mut_obj_add_real(doc, drawer, "height", l->drawer_height);
+    yyjson_mut_obj_add_bool(doc, layout, "canvasActionsOpen", l->canvas_actions_open);
     yyjson_mut_val *areas = yyjson_mut_obj_add_arr(doc, layout, "areas");
     for (int i = 0; i < STUDIO_AREA_COUNT; i++) {
         if (l->editors[i] == STUDIO_EDITOR_PANEL) {

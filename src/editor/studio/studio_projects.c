@@ -6,10 +6,13 @@
 #include "support/array.h"
 #include "support/xalloc.h"
 
+#include <ctype.h>
 #include <dirent.h>
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <yyjson.h>
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
@@ -21,6 +24,29 @@ EM_JS(char *, web_project_list, (), {
 })
 EM_JS(void, web_open_project, (const char *root), {
     Module['chibiOpenProject'](UTF8ToString(root));
+})
+
+EM_JS(void, web_open_created_project, (const char *root), {
+    Module['chibiOpenProject'](UTF8ToString(root), false);
+})
+
+EM_JS(char *, web_project_open_status, (), {
+    return stringToNewUTF8(Module['chibiProjectOpenStatus']());
+})
+
+EM_JS(bool, web_project_create_available, (), {
+    return typeof Module['chibiCreateProject'] == 'function';
+})
+
+EM_JS(char *, web_create_project, (const char *name, int version), {
+    const result = Module['chibiCreateProject'](UTF8ToString(name), version);
+    return stringToNewUTF8(typeof result == 'string' ? result : JSON.stringify(result));
+})
+
+EM_JS(void, web_remember_project, (const char *root), {
+    if (typeof Module['chibiRememberProject'] == 'function') {
+        Module['chibiRememberProject'](UTF8ToString(root));
+    }
 })
 
 static void add_web_projects(studio *s)
@@ -42,6 +68,8 @@ static void add_web_projects(studio *s)
     yyjson_doc_free(doc);
 }
 #endif
+
+static bool create_project(studio *s);
 
 static void add_project(studio *s, const char *manifest)
 {
@@ -142,8 +170,332 @@ void studio_projects_frame(studio *s)
 {
     if (s->discard_toast && kit_toast_action(s->kit, s->discard_toast)) {
         s->discard_toast = 0;
+        if (s->new_project.confirm_discard) {
+            s->new_project.confirm_discard = false;
+            if (create_project(s)) {
+                s->new_project.open = false;
+            }
+            return;
+        }
         request(s, s->discard_project);
     }
+}
+
+static bool named(const char *name)
+{
+    for (const unsigned char *c = (const unsigned char *)name; *c; c++) {
+        if (*c > ' ') {
+            return true;
+        }
+    }
+    return false;
+}
+
+static void trim(char *text)
+{
+    char *first = text;
+    while (isspace((unsigned char)*first)) {
+        first++;
+    }
+    if (first != text) {
+        memmove(text, first, strlen(first) + 1);
+    }
+    size_t length = strlen(text);
+    while (length && isspace((unsigned char)text[length - 1])) {
+        text[--length] = '\0';
+    }
+}
+
+#ifndef __EMSCRIPTEN__
+static void project_slug(const char *name, char *out, size_t size)
+{
+    size_t at = 0;
+    bool separator = false;
+    for (const unsigned char *c = (const unsigned char *)name; *c; c++) {
+        bool alphanumeric = (*c >= 'a' && *c <= 'z') ||
+                            (*c >= 'A' && *c <= 'Z') || (*c >= '0' && *c <= '9');
+        if (alphanumeric) {
+            if (separator && at && at + 1 < size) {
+                out[at++] = '-';
+            }
+            if (at + 1 >= size) {
+                break;
+            }
+            out[at++] = (char)tolower(*c);
+            separator = false;
+        } else {
+            separator = true;
+        }
+    }
+    if (!at) {
+        snprintf(out, size, "project");
+        return;
+    }
+    out[at] = '\0';
+}
+
+static char *native_project_root(const char *name)
+{
+    char base[128];
+    project_slug(name, base, sizeof base);
+    char path[1024];
+    struct stat info;
+    for (int index = 1;; index++) {
+        if (index == 1) {
+            snprintf(path, sizeof path, CHIBI_WORKSPACE_DIR "/projects/%s", base);
+        } else {
+            snprintf(path, sizeof path, CHIBI_WORKSPACE_DIR "/projects/%s-%d", base, index);
+        }
+        if (stat(path, &info) == 0) {
+            continue;
+        }
+        if (errno == ENOENT) {
+            return xstrdup(path);
+        }
+        return NULL;
+    }
+}
+#endif
+
+#ifdef __EMSCRIPTEN__
+static char *browser_project_root(const char *name, char *error, size_t error_size)
+{
+    if (!web_project_create_available()) {
+        snprintf(error, error_size, "Project creation is unavailable in this browser");
+        return NULL;
+    }
+    char *json = web_create_project(name, CHIBI_PROJECT_VERSION);
+    yyjson_doc *doc = json ? yyjson_read(json, strlen(json), 0) : NULL;
+    free(json);
+    yyjson_val *result = doc ? yyjson_doc_get_root(doc) : NULL;
+    const char *root = result ? yyjson_get_str(yyjson_obj_get(result, "root")) : NULL;
+    const char *message = result ? yyjson_get_str(yyjson_obj_get(result, "error"))
+                                 : NULL;
+    char *copy = root ? xstrdup(root) : NULL;
+    if (!copy) {
+        snprintf(error, error_size, "%s", message ? message : "Could not create project");
+    }
+    if (doc) {
+        yyjson_doc_free(doc);
+    }
+    return copy;
+}
+#endif
+
+static void start_new_project(studio *s)
+{
+    if (s->new_project.confirm_discard) {
+        kit_toast_dismiss(s->kit, s->discard_toast);
+        s->discard_toast = 0;
+    }
+    s->new_project = (studio_new_project){ .open = true, .focus = true };
+}
+
+void studio_new_project_menu(studio *s)
+{
+    kit_menu_item_desc item = { .label = "Project",
+                                .icon = KIT_ICON_FOLDER,
+                                .checked = -1 };
+    if (kit_menu_item(s->kit, "project", &item)) {
+        start_new_project(s);
+    }
+}
+
+static bool enter_pressed(const studio *s)
+{
+    for (int i = 0; i < acount(s->keys); i++) {
+        if ((s->keys[i].key == SDLK_RETURN || s->keys[i].key == SDLK_KP_ENTER) &&
+            !s->keys[i].repeat) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool escape_pressed(const studio *s)
+{
+    for (int i = 0; i < acount(s->keys); i++) {
+        if (s->keys[i].key == SDLK_ESCAPE && !s->keys[i].repeat) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static void created_project(studio *s, const char *root)
+{
+#ifdef __EMSCRIPTEN__
+    if (web_projects_available()) {
+        web_open_project(root);
+        return;
+    }
+    web_remember_project(root);
+#endif
+    free(s->open_project);
+    s->open_project = xstrdup(root);
+}
+
+static bool create_project(studio *s)
+{
+    studio_new_project *dialog = &s->new_project;
+    if (dialog->created_root[0]) {
+#ifdef __EMSCRIPTEN__
+        if (web_projects_available()) {
+            web_open_created_project(dialog->created_root);
+            dialog->waiting = true;
+            dialog->error[0] = '\0';
+            return false;
+        }
+#endif
+    }
+    trim(dialog->name);
+    if (!named(dialog->name)) {
+        snprintf(dialog->error, sizeof dialog->error, "Enter a project name");
+        return false;
+    }
+    char error[192] = "";
+    char *root;
+#ifdef __EMSCRIPTEN__
+    root = browser_project_root(dialog->name, error, sizeof error);
+    if (!root) {
+        snprintf(dialog->error, sizeof dialog->error, "%s", error);
+        return false;
+    }
+    snprintf(dialog->created_root, sizeof dialog->created_root, "%s", root);
+    if (web_projects_available()) {
+        web_open_created_project(root);
+        dialog->waiting = true;
+        free(root);
+        return false;
+    }
+#else
+    root = native_project_root(dialog->name);
+    if (!root) {
+        snprintf(error, sizeof error, "Cannot inspect project folder: %s", strerror(errno));
+        snprintf(dialog->error, sizeof dialog->error, "%s", error);
+        return false;
+    }
+    if (chibi_project_create(root, dialog->name, error, sizeof error) != 0) {
+        snprintf(dialog->error, sizeof dialog->error, "%s", error);
+        free(root);
+        return false;
+    }
+#endif
+    created_project(s, root);
+    free(root);
+    return true;
+}
+
+static void request_new_project(studio *s)
+{
+    studio_new_project *dialog = &s->new_project;
+    if (studio_unsaved(s)) {
+        kit_toast_dismiss(s->kit, s->discard_toast);
+        dialog->confirm_discard = true;
+        s->discard_toast = kit_toast(
+            s->kit,
+            0,
+            &(kit_toast_desc){ .type = KIT_TOAST_WARNING,
+                               .title = "Unsaved changes",
+                               .action = "Discard",
+                               .duration = -1 }
+        );
+        return;
+    }
+    if (create_project(s)) {
+        dialog->open = false;
+    }
+}
+
+static void new_project_dialog(studio *s)
+{
+    studio_new_project *dialog = &s->new_project;
+    if (!dialog->open) {
+        return;
+    }
+    kit *k = s->kit;
+    unsigned flags = dialog->waiting ? KIT_READONLY : 0;
+    kit_modal_begin(k, "new-project");
+    kit_leaf(k, "backdrop", "div", "new-project-backdrop");
+    kit_push(k, "dialog", "section", "new-project-dialog");
+    kit_attr(k, "role", "dialog");
+    kit_attr(k, "aria-modal", "true");
+    kit_attr(k, "aria-labelledby", "new-project-title");
+    kit_label(k, "title", "new-project-title", "Create a project");
+    kit_attr(k, "id", "new-project-title");
+    kit_label(k, "description", "new-project-description", "Creates an empty project with a Start scene.");
+    kit_push(k, "name-label", "label", "new-project-field");
+    kit_label(k, "label", NULL, "Project name");
+    bool edited = kit_text_field(
+        k,
+        "name",
+        dialog->name,
+        sizeof dialog->name,
+        "e.g. Sample Project",
+        flags | (dialog->error[0] ? KIT_INVALID : 0)
+    );
+    if (dialog->focus && !dialog->waiting) {
+        kit_focus(k);
+        dialog->focus = false;
+    }
+    kit_pop(k);
+    if (edited) {
+        dialog->error[0] = '\0';
+        dialog->created_root[0] = '\0';
+    }
+    if (dialog->error[0]) {
+        kit_label(k, "error", "new-project-error", dialog->error);
+    }
+    if (dialog->waiting) {
+        kit_label(k, "saving", "new-project-description", "Saving project…");
+    }
+    kit_push(k, "actions", NULL, "new-project-actions");
+    kit_button_desc cancel = { .label = "Cancel",
+                               .size = KIT_MD,
+                               .flags = dialog->waiting ? KIT_DISABLED : 0 };
+    kit_button_desc create = { .label = "Create project",
+                               .variant = KIT_PRIMARY,
+                               .size = KIT_MD,
+                               .flags = dialog->waiting ? KIT_DISABLED : 0 };
+    bool canceled = kit_button(k, "cancel", &cancel);
+    bool create_clicked = kit_button(k, "create", &create);
+    kit_pop(k);
+    kit_pop(k);
+    kit_modal_end(k);
+    bool entered = !dialog->waiting && dialog->shown && enter_pressed(s);
+    bool escaped = !dialog->waiting && dialog->shown && escape_pressed(s);
+    dialog->shown = true;
+    if (canceled || escaped) {
+        if (dialog->confirm_discard) {
+            kit_toast_dismiss(k, s->discard_toast);
+            s->discard_toast = 0;
+            dialog->confirm_discard = false;
+        }
+        dialog->open = false;
+        return;
+    }
+    if (!dialog->confirm_discard && (create_clicked || entered)) {
+        request_new_project(s);
+    }
+}
+
+void studio_new_project_frame(studio *s)
+{
+    studio_new_project *dialog = &s->new_project;
+#ifdef __EMSCRIPTEN__
+    if (dialog->waiting) {
+        char *status = web_project_open_status();
+        if (!strcmp(status, "done")) {
+            dialog->waiting = false;
+            dialog->open = false;
+        } else if (!strncmp(status, "error:", 6)) {
+            dialog->waiting = false;
+            snprintf(dialog->error, sizeof dialog->error, "%s", status + 6);
+        }
+        free(status);
+    }
+#endif
+    new_project_dialog(s);
 }
 
 void studio_projects_menu(studio *s)

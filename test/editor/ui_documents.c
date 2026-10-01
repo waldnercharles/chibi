@@ -647,8 +647,59 @@ static void text_editor(const char *folder)
     studio_save(s);
     frames(&f, 1);
     char *saved = read_text(styles);
-    test_check(!ui_buffer_dirty(b) && !strcmp(saved, ".panel { color: #123; }\n"), "Save writes each part's file as written");
+    test_check(
+        !ui_buffer_dirty(b) && !strcmp(saved, ".panel {\n  color: #123;\n}\n"),
+        "Save formats RCSS before writing the UI document"
+    );
     free(saved);
+
+    /* A document-tab click can leave focus on the last graph area. Save must
+       still follow the selected UI tab when its text source is active. */
+    test_check(app_scene_authoring_open_behavior(f.scene, "Teller") == 0, "opening a behavior creates a second document tab");
+    test_check(studio_graph_active(s) && s->graph.area >= 0, "the behavior graph remains open beside the ui document");
+    int ui_tab = (int)(scene_tabs_ui(f.scene, path) - f.scene->tabs);
+    test_check(
+        scene_tabs_activate(f.scene, ui_tab) == 0 &&
+            f.scene->document.kind == APP_EDITOR_DOCUMENT_UI,
+        "the UI document returns after editing a behavior"
+    );
+    s->focus_area = s->graph.area;
+    static const char UNFORMATTED_RML
+        [] = "<button data-event-click=\"emit('Cook', save.recipe)\" "
+             "data-tip=\"Serve the simmering moon mushrooms with the last of "
+             "the lamp oil\">A <b>{{ save.dish }}</b> C</button>\n";
+    static const char FORMATTED_RML
+        [] = "<button\n    data-event-click=\"emit('Cook', save.recipe)\"\n    "
+             "data-tip=\"Serve the simmering moon mushrooms with the last of "
+             "the lamp oil\">A <b>{{ save.dish }}</b> C</button>\n";
+    static const char UNFORMATTED_RCSS[] = ".panel { color: #fac; }\n";
+    static const char FORMATTED_RCSS[] = ".panel {\n  color: #fac;\n}\n";
+    ui_buffer_type(b, UI_PART_RML, UNFORMATTED_RML, s->time + 2);
+    ui_buffer_type(b, UI_PART_RCSS, UNFORMATTED_RCSS, s->time + 2);
+    studio_save(s);
+    saved = read_text(styles);
+    char *saved_rml = read_text(path);
+    test_check(
+        !ui_buffer_dirty(b) && !strcmp(saved, FORMATTED_RCSS) &&
+            !strcmp(saved_rml, FORMATTED_RML),
+        "Save formats RML and RCSS when graph focus is stale"
+    );
+    free(saved);
+    free(saved_rml);
+    s->focus_area = -1;
+    studio_history(s, false);
+    frames(&f, 1);
+    bool undo_format = ui_buffer_dirty(b) &&
+                       !strcmp(ui_buffer_text(b, UI_PART_RML), UNFORMATTED_RML) &&
+                       !strcmp(ui_buffer_text(b, UI_PART_RCSS), UNFORMATTED_RCSS);
+    studio_history(s, true);
+    frames(&f, 1);
+    bool redo_format = !ui_buffer_dirty(b) &&
+                       !strcmp(ui_buffer_text(b, UI_PART_RML), FORMATTED_RML) &&
+                       !strcmp(ui_buffer_text(b, UI_PART_RCSS), FORMATTED_RCSS);
+    test_check(undo_format && redo_format, "one Undo and Redo restores formatting across both saved source parts");
+    s->focus_area = s->graph.area;
+
     test_check(
         studio_open_ui_part(s, styles, UI_PART_RCSS, 2) && studio_ui_buffer(s) == b &&
             b->part == UI_PART_RCSS && s->code.reveal == 2,

@@ -249,6 +249,10 @@ body.comfortable .output-list .vlist-content > .output-line, body.comfortable .o
 .viewport.canvas.light .canvas-label { color: #3f3f46; }
 .viewport.canvas.light .canvas-label .dim { color: #71717a; }
 .canvas-actions { flex: 0 0 240dp; display: flex; flex-direction: column; border-left: 1dp var(--line); background-color: var(--floating); }
+.canvas-actions-toggle { display: flex; align-items: center; gap: 4dp; flex: 0 0 auto; padding: 0dp 6dp 0dp 2dp; }
+.canvas-actions-toggle .btn { gap: 4dp; padding: 0dp 6dp; }
+.canvas-actions-toggle .btn .icon { font-size: 13dp; width: 14dp; }
+.canvas-actions-toggle .count { color: var(--faint-foreground); font-size: 11dp; }
 .canvas-actions-head { display: flex; align-items: center; gap: 6dp; height: var(--header-h); flex: 0 0 auto; padding: 0dp 4dp 0dp 10dp; font-size: var(--studio-font-11, 11dp); border-bottom: 1dp var(--line); }
 .canvas-actions-head .icon { color: var(--faint-foreground); font-size: 12dp; width: 14dp; }
 .canvas-actions-head .title { font-weight: 600; color: var(--foreground); }

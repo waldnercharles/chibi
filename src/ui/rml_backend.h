@@ -159,6 +159,10 @@ extern "C"
     uint64_t rml_backend_texture(const rml_backend *backend);
     /* Returns input consumed by RmlUi, as RML_INPUT_CAPTURE_* flags. */
     unsigned rml_backend_process_input(rml_backend *backend, const rml_input *input);
+    /* Uses browser paste data for the next RmlUi clipboard read. The Studio
+     * web bridge clears it at the end of the input frame if no field took it. */
+    void rml_backend_set_pending_paste_text(const char *text);
+    void rml_backend_clear_pending_paste_text();
     /* Opaque Rml::Context pointer for the C++ menu controller. Valid until backend_destroy. */
     void *rml_backend_context(rml_backend *backend);
     /* Bind a host texture to "kit:<name>" sources, e.g. the Scene render target. */

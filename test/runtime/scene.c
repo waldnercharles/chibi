@@ -287,6 +287,15 @@ void run_scene_document_checks(void)
             strstr(document->entities[0].components_json, "GameHealth"),
         "a scene entity stores generic component overrides"
     );
+    test_check(
+        game_scene_document_set_entity_components(
+            document,
+            0,
+            "{\"GameHealth\":{\"current\":7,\"maximum\":9},"
+            "\"GameAppearance\":{\"shape\":4294967296}}"
+        ) == 0,
+        "scene overrides accept numeric component data for serialization"
+    );
     document->physics = (game_physics_settings){ .workers = 8,
                                                  .substeps = 2,
                                                  .sleep = false,
@@ -297,6 +306,7 @@ void run_scene_document_checks(void)
     char *saved = game_scene_document_save(document);
     char error[256];
     game_scene_document *loaded = game_scene_document_load(saved, error, sizeof error);
+    test_check(saved && strstr(saved, "4294967296"), "scene save does not truncate an out-of-range enum while labeling it");
     test_check(
         loaded && game_physics_settings_equal(document->physics, loaded->physics),
         "scene physics settings round-trip"

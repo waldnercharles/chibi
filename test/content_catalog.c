@@ -1,5 +1,6 @@
 #include "assets/project.h"
 #include "suite_internal.h"
+#include "support/text_file.h"
 
 #include <assert.h>
 #include <dirent.h>
@@ -89,9 +90,43 @@ static void check_project_versions()
     test_check(valid, "project manifests open only at this build's project version");
 }
 
+static void check_project_creation()
+{
+    char parent[] = "/tmp/chibi-project-create-XXXXXX", root[256], error[256];
+    assert(mkdtemp(parent));
+    snprintf(root, sizeof root, "%s/sample-project", parent);
+    bool created = chibi_project_create(root, "Sample: Project", error, sizeof error) == 0;
+    chibi_project project = { 0 };
+    bool opened = created &&
+                  chibi_project_open(&project, root, error, sizeof error) == 0;
+    char *scene = opened ? chibi_project_scene_path(&project, NULL) : NULL;
+    char *text = scene ? text_file_read(scene) : NULL;
+    bool valid = opened && !strcmp(project.name, "Sample: Project") &&
+                 !strcmp(project.start_scene, "scenes/Start.yaml") && text &&
+                 strstr(text, "entities: []");
+    test_check(valid, "new projects serialize their name and open with an empty start scene");
+    bool duplicate = chibi_project_create(root, "Other", error, sizeof error) != 0;
+    test_check(duplicate, "project creation never overwrites an existing folder");
+    free(text);
+    free(scene);
+    chibi_project_free(&project);
+    char path[512];
+    snprintf(path, sizeof path, "%s/content/scenes/Start.yaml", root);
+    unlink(path);
+    snprintf(path, sizeof path, "%s/project.yaml", root);
+    unlink(path);
+    snprintf(path, sizeof path, "%s/content/scenes", root);
+    rmdir(path);
+    snprintf(path, sizeof path, "%s/content", root);
+    rmdir(path);
+    rmdir(root);
+    rmdir(parent);
+}
+
 void run_content_catalog_checks()
 {
     check_project_versions();
+    check_project_creation();
     static const char *const behaviors[] = {
         "ArenaDropBehavior.yaml",
         "ArenaEnemyVisualBehavior.yaml",

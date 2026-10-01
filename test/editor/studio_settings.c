@@ -203,6 +203,7 @@ static void workspace_presets_round_trip()
     ui->side_width = 336;
     ui->main_split = 0.56f;
     ui->drawer_height = 190;
+    ui->canvas_actions_open = true;
     char *json = studio_prefs_write(&p, "{\"followDocuments\":true,\"layout\":{\"presets\":{\"ui\":{},\"layout\":{}}}}");
     yyjson_doc *doc = yyjson_read(json, strlen(json), 0);
     yyjson_val *root = yyjson_doc_get_root(doc);
@@ -216,10 +217,19 @@ static void workspace_presets_round_trip()
                    !yyjson_ptr_get(root, "/followDocuments") &&
                    !yyjson_ptr_get(root, "/layout/presets/ui") &&
                    !yyjson_ptr_get(root, "/layout/presets/layout");
+    studio_prefs closed_actions = back;
+    closed_actions.layouts[STUDIO_WORKSPACE_HORIZONTAL_SPLIT].canvas_actions_open = false;
+    bool hidden_by_default = !studio_layout_default(STUDIO_WORKSPACE_HORIZONTAL_SPLIT)
+                                  .canvas_actions_open;
+    encoded &= yyjson_is_true(
+        yyjson_ptr_get(root, "/layout/presets/horizontalSplit/canvasActionsOpen")
+    );
     studio_prefs other = back;
     other.layouts[STUDIO_WORKSPACE_VERTICAL_SPLIT].side_open = true;
     test_check(
-        encoded && studio_prefs_equal(&p, &back) && !studio_prefs_equal(&back, &other),
+        hidden_by_default && encoded && studio_prefs_equal(&p, &back) &&
+            !studio_prefs_equal(&back, &other) &&
+            !studio_prefs_equal(&back, &closed_actions),
         "each workspace keeps its own arrangement through the preferences "
         "file, and the active one stays active"
     );

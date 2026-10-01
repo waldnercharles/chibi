@@ -17,6 +17,9 @@ typedef struct
     int clicks;
     double value, second;
     int changes, commits;
+    uint32_t color;
+    int color_changes, color_commits;
+    bool focus_color;
     bool editing;
     int menu_b;
     int chosen;
@@ -94,6 +97,16 @@ static void emit(kit_fixture *f)
     kit_prop_end(k);
     kit_prop_begin(k, "second", "Second");
     kit_number(k, "value", &f->second, &d);
+    kit_prop_end(k);
+    kit_prop_begin(k, "tint", "Tint");
+    if (kit_color(k, "value", &f->color, 0)) {
+        f->color_changes++;
+    }
+    f->color_commits += kit_item_committed(k);
+    if (f->focus_color) {
+        kit_focus(k);
+        f->focus_color = false;
+    }
     kit_prop_end(k);
     kit_prop_begin(k, "note", "Note");
     f->note_commits += kit_text_area(k, "value", f->note, sizeof f->note, NULL, 0);
@@ -229,6 +242,18 @@ static bool click(kit_fixture *f, const char *path)
     return true;
 }
 
+static void click_element(kit_fixture *f, rml_element *el)
+{
+    rml_vec2 at = rml_element_absolute_offset(el, RML_BOX_BORDER);
+    rml_vec2 size = rml_element_box_size(el, RML_BOX_BORDER);
+    float x = at.x + size.x * 0.5f;
+    float y = at.y + size.y * 0.5f;
+    pointer(f, RML_INPUT_POINTER_MOVE, x, y);
+    pointer(f, RML_INPUT_POINTER_DOWN, x, y);
+    pointer(f, RML_INPUT_POINTER_UP, x, y);
+    frame(f);
+}
+
 static void key(kit_fixture *f, rml_input_key k, unsigned modifiers)
 {
     rml_input down = { .type = RML_INPUT_KEY_PRESS, .key = k, .modifiers = modifiers };
@@ -302,6 +327,7 @@ bool test_rmlui_kit()
 {
     kit_fixture f = { .value = 10,
                       .second = 3,
+                      .color = 0x33669900,
                       .chosen = -1,
                       .order = { "a", "b", "c" },
                       .order_count = 3,
@@ -317,6 +343,75 @@ bool test_rmlui_kit()
     ok &= check(rml_font_face("noto sans", RML_FONT_NORMAL, 600, 12) != 0, "Noto Sans semibold face");
     ok &= check(rml_font_face("noto sans", RML_FONT_NORMAL, 700, 12) != 0, "Noto Sans bold face");
     ok &= check(rml_font_face("inconsolata", RML_FONT_NORMAL, 400, 12) != 0, "Inconsolata regular face");
+
+    /* A color field is keyboard reachable, opens from Enter, and routes focus
+       to its RGBA editor. Six-digit edits retain alpha; invalid tails do not. */
+    f.focus_color = true;
+    frame(&f);
+    rml_element *doc = rml_context_document(rml_backend_context(f.backend), 0);
+    rml_element *color_trigger = rml_element_query_selector(doc, ".field.color");
+    bool color_focus = rml_context_focus_element(rml_backend_context(f.backend)) ==
+                       color_trigger;
+    key(&f, RML_INPUT_KEY_ENTER, 0);
+    settle(&f);
+    doc = rml_context_document(rml_backend_context(f.backend), 0);
+    rml_element *hex = rml_element_query_selector(doc, ".popup.picker .hex");
+    bool picker_focus = hex &&
+                        rml_context_focus_element(rml_backend_context(f.backend)) == hex;
+    char shown_hex[16] = "";
+    if (hex) {
+        rml_element_value(hex, shown_hex, sizeof shown_hex);
+    }
+    ok &= check(color_focus && picker_focus && !strcmp(shown_hex, "33669900"), "color trigger takes focus and Enter opens an RGBA picker focused on its value");
+
+    if (hex) {
+        rml_element_focus(hex, true);
+        rml_element_select(hex);
+        type(&f, "11223344");
+        key(&f, RML_INPUT_KEY_ENTER, 0);
+        frame(&f);
+        ok &= check(f.color == 0x11223344, "eight-digit hex changes RGBA");
+
+        rml_element_focus(hex, true);
+        rml_element_select(hex);
+        type(&f, "aabbcc");
+        key(&f, RML_INPUT_KEY_ENTER, 0);
+        frame(&f);
+        ok &= check(f.color == 0xaabbcc44, "six-digit hex retains current alpha");
+
+        rml_element_focus(hex, true);
+        rml_element_select(hex);
+        type(&f, "12345x");
+        key(&f, RML_INPUT_KEY_ENTER, 0);
+        frame(&f);
+        rml_element *hexrow = rml_element_query_selector(doc, ".popup.picker .hexrow");
+        ok &= check(
+            f.color == 0xaabbcc44 && rml_element_has_attribute(hexrow, "data-invalid"),
+            "partial hexadecimal input is rejected and marked invalid"
+        );
+    }
+
+    rml_element *opacity = rml_element_query_selector(doc, ".popup.picker .prop .field.number");
+    rml_element *percent = rml_element_query_selector(doc, ".popup.picker .prop .field.number .unit");
+    char percent_text[8] = "";
+    if (percent) {
+        rml_element_inner_rml(percent, percent_text, sizeof percent_text);
+    }
+    if (opacity) {
+        click_element(&f, opacity);
+        type(&f, "50");
+        key(&f, RML_INPUT_KEY_ENTER, 0);
+        frame(&f);
+    }
+    ok &= check(
+        opacity && !strcmp(percent_text, "%") && f.color == 0xaabbcc80,
+        "opacity uses the bounded percent number field and updates alpha"
+    );
+    if (color_trigger) {
+        click_element(&f, color_trigger);
+    }
+    settle(&f);
+    ok &= check(f.color_commits == 1, "all picker edits commit as one color session");
 
     /* Highlighting: JSON keys are names, values keep their token; markup is escaped. */
     char markup[512];
@@ -418,7 +513,7 @@ bool test_rmlui_kit()
 
     /* A panel's menu button asks for its menu without folding the panel, as a
        right press on its header does. */
-    rml_element *doc = rml_context_document(rml_backend_context(f.backend), 0);
+    doc = rml_context_document(rml_backend_context(f.backend), 0);
     rml_element *more = rml_element_query_selector(doc, ".panel[data-menu] .panel-head .menu");
     ok &= check(more != NULL, "the panel's header holds its menu button");
     if (more) {

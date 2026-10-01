@@ -116,6 +116,28 @@ static void touched(editor *e)
     e->edit_pending = 1;
 }
 
+static uint32_t color_channel(float value)
+{
+    return (uint32_t)lroundf(fminf(fmaxf(value, 0), 1) * 255);
+}
+
+static uint32_t color_from_vector(const float *value, int width)
+{
+    uint32_t alpha = width > 3 ? color_channel(value[3]) : 255;
+    return (color_channel(value[0]) << 24) | (color_channel(value[1]) << 16) |
+           (color_channel(value[2]) << 8) | alpha;
+}
+
+static void color_to_vector(uint32_t color, float *value, int width)
+{
+    value[0] = ((color >> 24) & 255) / 255.0f;
+    value[1] = ((color >> 16) & 255) / 255.0f;
+    value[2] = ((color >> 8) & 255) / 255.0f;
+    if (width > 3) {
+        value[3] = (color & 255) / 255.0f;
+    }
+}
+
 /* A pin's value editor, in the canvas or in Properties. */
 void sg_emit_value_in(studio *s, kit *k, node *n, int output, int p)
 {
@@ -161,6 +183,25 @@ void sg_emit_value_in(studio *s, kit *k, node *n, int output, int p)
             changed = true;
         }
         afree(labels);
+    } else if (sg_value_kind_of(s, n, output, p) == VALUE_COLOR) {
+        uint32_t color = 0;
+        if (spec->type == PIN_U32) {
+            color = value.u;
+        } else {
+            if (value.ptr) {
+                memcpy(vector, value.ptr, (size_t)width * sizeof(float));
+            }
+            color = color_from_vector(vector, width);
+        }
+        changed = kit_color(k, "v", &color, flags);
+        committed = kit_item_committed(k);
+        if (spec->type == PIN_U32) {
+            value.u = color;
+        } else {
+            color_to_vector(color, vector, width);
+            value.ptr = vector;
+        }
+        streaming = true;
     } else if (spec->type == PIN_BOOL) {
         bool b = value.b;
         if (kit_checkbox(k, "v", &b, NULL, flags)) {

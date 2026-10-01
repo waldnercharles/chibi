@@ -13,6 +13,7 @@
 
 #include <assert.h>
 #include <glob.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -180,6 +181,16 @@ static node *component(fixture *f, const node_desc *desc, const char *name)
 static void set_default(fixture *f, node *n, int pin, pin_value value)
 {
     assert(graph_set_pin_default(f->g, n, 0, pin, &value) == 0);
+}
+
+static int input_named(const node *n, const char *name)
+{
+    for (int i = 0; i < n->input_count; i++) {
+        if (!strcmp(n->input_pins[i].name, name)) {
+            return i;
+        }
+    }
+    return -1;
 }
 
 static void exec(fixture *f, node *from, int from_pin, node *to)
@@ -553,6 +564,13 @@ static void authoring()
         "bogus: 1}}\n"
     ));
     assert(strstr(graph_last_error(), "has no pin bogus"));
+    assert(!behavior_asset_load_json(
+        "version: 3\nname: Enum overflow\nid_counter: 10\ngraphs:\n- kind: "
+        "event\n  "
+        "name: \"\"\n  nodes:\n"
+        "  - {id: 1, type: Set Component, inputs: {Component: GameAppearance, "
+        "shape: 2147483648}}\n"
+    ));
     /* A document may name the component and write only field inputs. */
     behavior_asset *named = behavior_asset_load_json(
         "version: 3\nname: Named\nid_counter: 10\ngraphs:\n- kind: event\n  "
@@ -591,6 +609,51 @@ static void authoring()
     assert(!behavior_asset_validate_library(library));
     behavior_asset_free(library);
     puts("component node authoring: retargeting, splitting, unfinished nodes, bindings and libraries");
+}
+
+/* Split component fields, named enums, packed colors, and explicit entity
+ * defaults must survive the save path used by behavior authors. */
+static void authored_value_roundtrip()
+{
+    fixture f = fixture_new();
+    node *set = component(&f, &NODE_SetComponent, "GameAppearance");
+    assert(component_node_split_value(f.g, set, true) == 0);
+    int shape_pin = input_named(set, "shape");
+    int color_pin = input_named(set, "color");
+    assert(shape_pin >= 3 && color_pin >= 3);
+    pin_value shape = { .type = PIN_ENUM,
+                        .type_name = set->input_pins[shape_pin].type_name,
+                        .e = GAME_SHAPE_STROKED_CHEVRON };
+    pin_value color = { .type = PIN_U32,
+                        .type_name = set->input_pins[color_pin].type_name,
+                        .u = 0xfedcba98u };
+    set_default(&f, set, shape_pin, shape);
+    set_default(&f, set, color_pin, color);
+
+    node *get = component(&f, &NODE_GetComponent, "GameAppearance");
+    pin_binding binding = { .kind = PIN_BINDING_VARIABLE, .variable_id = 42 };
+    pin_value entity = { .type = PIN_HANDLE,
+                         .type_name = get->input_pins[1].type_name,
+                         .u64 = UINT64_C(0xfedcba9876543210) };
+    assert(graph_set_pin_binding(f.g, get, 0, 1, &binding) == 0);
+    assert(graph_set_pin_default(f.g, get, 0, 1, &entity) == 0);
+    uint64_t set_id = set->id, get_id = get->id;
+
+    behavior_asset *loaded = reload(f.asset);
+    set = graph_node_by_id(loaded->graph, set_id);
+    get = graph_node_by_id(loaded->graph, get_id);
+    shape_pin = input_named(set, "shape");
+    color_pin = input_named(set, "color");
+    assert(shape_pin >= 0 && set->input_pins[shape_pin].default_value.e == GAME_SHAPE_STROKED_CHEVRON);
+    assert(color_pin >= 0 && set->input_pins[color_pin].default_value.u == 0xfedcba98u);
+    assert(get->input_pins[1].default_value.u64 == UINT64_C(0xfedcba9876543210));
+    assert(
+        get->input_pins[1].binding &&
+        get->input_pins[1].binding->kind == PIN_BINDING_VARIABLE &&
+        get->input_pins[1].binding->variable_id == 42
+    );
+    behavior_asset_free(loaded);
+    behavior_asset_free(f.asset);
 }
 
 /* Choosing a type reshapes Make and Break Struct; retargeting Add or Remove
@@ -706,6 +769,7 @@ void test_component_nodes()
     runtime_equivalence();
     lowered_watches();
     optimizer_folds();
+    authored_value_roundtrip();
     authoring();
     struct_authoring();
 }

@@ -17,12 +17,17 @@
         xhr.setRequestHeader('X-Chibi-Token', token);
         if (body) xhr.setRequestHeader('Content-Type', 'application/json');
         xhr.send(body ? JSON.stringify(body) : null);
-        if (xhr.status < 200 || xhr.status >= 300) throw new Error(xhr.responseText || 'Local save failed');
+        if (xhr.status < 200 || xhr.status >= 300) {
+            let message = xhr.responseText || 'Local save failed';
+            try { message = JSON.parse(xhr.responseText).error || message; } catch {}
+            throw new Error(message);
+        }
         return xhr;
     };
     const isRoomAsset = path => {
-        const root = Module['chibiCollabStorage']?.root;
-        if (!root) return false;
+        const storage = Module['chibiCollabStorage'];
+        const root = storage?.root;
+        if (!root || root === storage.localRoot) return false;
         const absolute = path.startsWith('/') ? path : `/${path}`;
         return absolute.startsWith(root.endsWith('/') ? root : `${root}/`);
     };
@@ -40,18 +45,61 @@
     };
     // A save without text deletes the file, as a rename or delete does.
     Module['chibiDeleteAsset'] = path => Module['chibiSaveAsset'](path, null);
+    const sameBytes = (left, right) => {
+        if (!left || left.length !== right.length) return false;
+        for (let i = 0; i < right.length; i++) if (left[i] !== right[i]) return false;
+        return true;
+    };
     // An unchanged file keeps its time, so the page's own saves do not read as edits.
-    const mirror = (path, text) => {
+    const mirror = (path, value) => {
         const fs = Module['FS'];
         const destination = '/' + path;
         const exists = fs.analyzePath(destination).exists;
-        if (text === null) {
+        if (value === null) {
             if (exists) fs.unlink(destination);
             return;
         }
-        if (exists && fs.readFile(destination, {encoding: 'utf8'}) === text) return;
+        if (typeof value === 'string') {
+            if (exists && fs.readFile(destination, {encoding: 'utf8'}) === value) return;
+        } else {
+            if (value?.encoding !== 'base64' || typeof value.data !== 'string') {
+                throw new Error(`Unsupported asset payload for ${path}`);
+            }
+            const decoded = atob(value.data);
+            value = Uint8Array.from(decoded, character => character.charCodeAt(0));
+            if (exists && sameBytes(fs.readFile(destination), value)) return;
+        }
         fs.mkdirTree(destination.slice(0, destination.lastIndexOf('/')));
-        fs.writeFile(destination, text);
+        fs.writeFile(destination, value);
+    };
+    const mirrorProject = project => {
+        for (const [path, value] of Object.entries(project.assets)) mirror(path, value);
+    };
+    let pendingProject = null;
+    Module['chibiCreateProject'] = (name, version) => {
+        try {
+            if (pendingProject && (pendingProject.name !== name || pendingProject.version !== version)) {
+                mirrorProject(pendingProject);
+                pendingProject = null;
+            }
+            if (!pendingProject || pendingProject.name !== name || pendingProject.version !== version) {
+                const project = JSON.parse(request('POST', '/__chibi/project', {name, version}).responseText);
+                if (typeof project.root !== 'string' || !project.assets || typeof project.assets !== 'object') {
+                    throw new Error('Invalid local project response');
+                }
+                pendingProject = {name, version, root: project.root, assets: project.assets};
+            }
+            const project = pendingProject;
+            mirrorProject(project);
+            pendingProject = null;
+            return JSON.stringify({root: project.root});
+        } catch (error) {
+            return JSON.stringify({error: error.message});
+        }
+    };
+    Module['chibiRememberProject'] = root => {
+        const match = root.match(/^\/projects\/([a-z0-9-]+)\/$/);
+        if (match) history.replaceState(null, '', `?project-root=projects/${match[1]}`);
     };
     // Edits made on disk reach the editor, which reloads them as it does natively.
     const follow = async version => {

@@ -478,6 +478,45 @@ static void same_frame(editing *f, ui_buffer *b)
     );
 }
 
+static void formatting_keeps_editor_positions()
+{
+    static const char
+        SOURCE[] = "<button data-event-click=\"emit('Cook', save.recipe)\" "
+                   "data-tip=\"Serve the simmering moon mushrooms with the "
+                   "last of the lamp oil\">"
+                   "A <b>{{ save.dish }}</b> C</button>";
+    char *formatted = ui_source_format(SOURCE, UI_SOURCE_RML);
+    const char *token = strstr(SOURCE, "save.recipe");
+    const char *formatted_token = strstr(formatted, "save.recipe");
+
+    kit_code_editor *caret = kit_code_editor_create(SOURCE);
+    int caret_offset = (int)(token - SOURCE) + 4;
+    kit_code_set_cursor(caret, caret_offset);
+    ui_code_follow(caret, formatted, false);
+    bool caret_kept = kit_code_cursor(caret) == (int)(formatted_token - formatted) + 4;
+    kit_code_editor_destroy(caret);
+
+    kit_code_editor *selection = kit_code_editor_create(SOURCE);
+    int selection_start = (int)(token - SOURCE) + 2;
+    int selection_end = (int)(token - SOURCE) + 7;
+    kit_code_select(selection, selection_start, selection_end);
+    ui_code_follow(selection, formatted, false);
+    int selected_start = -1, selected_end = -1;
+    bool selection_kept = kit_code_selection(selection, &selected_start, &selected_end) &&
+                          selected_start == (int)(formatted_token - formatted) + 2 &&
+                          selected_end == (int)(formatted_token - formatted) + 7 &&
+                          kit_code_cursor(selection) == selected_end;
+    kit_code_editor_destroy(selection);
+    test_check(caret_kept && selection_kept, "formatting maps the caret and selected bytes inside a quoted binding value");
+
+    kit_code_editor *changed = kit_code_editor_create("<p>old</p>");
+    ui_code_follow(changed, "<p>new</p>", false);
+    bool token_change = !strcmp(kit_code_text(changed, NULL), "<p>new</p>");
+    kit_code_editor_destroy(changed);
+    test_check(token_change, "following a source token edit replaces the changed text");
+    free(formatted);
+}
+
 static void one_history(scratch *s)
 {
     ui_buffer *b = s->b;
@@ -566,6 +605,7 @@ void test_code_intelligence()
     stylesheet_problems(&s);
     definitions(&s);
     hovers(&s);
+    formatting_keeps_editor_positions();
     one_history(&s);
     scratch_free(&s);
     rml_backend_destroy(backend);

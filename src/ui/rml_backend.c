@@ -186,6 +186,7 @@ struct rml_backend
 static double elapsed_seconds;
 static rml_backend *driven;
 static int backend_count;
+static char *pending_paste_text;
 
 /* ---------- System interface ---------- */
 
@@ -208,6 +209,13 @@ static void set_clipboard_text(const char *text)
 
 static void get_clipboard_text(rml_string *text)
 {
+    if (pending_paste_text) {
+        char *paste = pending_paste_text;
+        pending_paste_text = NULL;
+        rml_string_set(text, paste);
+        free(paste);
+        return;
+    }
     char *clipboard = cf_clipboard_get();
     if (!clipboard) {
         rml_string_set(text, "");
@@ -252,12 +260,12 @@ static const rml_system_interface system_interface = {
 
 /* ---------- GPU resources ---------- */
 
-static CF_Texture texture_from_pixels(int width, int height, const void *pixels)
+static CF_Texture texture_from_pixels(int width, int height, const void *pixels, CF_Filter filter)
 {
     CF_TextureParams params = cf_texture_defaults(width, height);
     params.pixel_format = CF_PIXEL_FORMAT_R8G8B8A8_UNORM;
     params.usage |= CF_TEXTURE_USAGE_SAMPLER_BIT;
-    params.filter = CF_FILTER_LINEAR;
+    params.filter = filter;
     params.wrap_u = CF_WRAP_MODE_CLAMP_TO_EDGE;
     params.wrap_v = CF_WRAP_MODE_CLAMP_TO_EDGE;
     CF_Texture texture = cf_make_texture(params);
@@ -352,7 +360,7 @@ static void ensure_gpu(rml_backend *backend)
     backend->ui_shader = cf_make_shader_from_source(vertex_shader, fragment_shader);
     backend->resolve_shader = cf_make_shader_from_source(resolve_vertex_shader, resolve_fragment_shader);
     const uint8_t white[4] = { 255, 255, 255, 255 };
-    backend->white_texture = texture_from_pixels(1, 1, white);
+    backend->white_texture = texture_from_pixels(1, 1, white, CF_FILTER_LINEAR);
     backend->gpu_ready = true;
     create_canvas_resources(backend);
 }
@@ -562,6 +570,22 @@ static bool load_image(const char *source, CF_Image *image)
     return true;
 }
 
+/* Use content/art/sprite.png#nearest in RML to keep authored pixel art crisp. */
+static char *image_path(const char *source, CF_Filter *filter)
+{
+    static const char nearest_suffix[] = "#nearest";
+    size_t length = strlen(source);
+    size_t suffix_length = sizeof(nearest_suffix) - 1;
+    bool nearest = length >= suffix_length &&
+                   strcmp(source + length - suffix_length, nearest_suffix) == 0;
+    size_t path_length = length - (nearest ? suffix_length : 0);
+    char *path = xmalloc(path_length + 1);
+    memcpy(path, source, path_length);
+    path[path_length] = '\0';
+    *filter = nearest ? CF_FILTER_NEAREST : CF_FILTER_LINEAR;
+    return path;
+}
+
 static uintptr_t load_texture(void *user, const char *source, int *width, int *height)
 {
     rml_backend *backend = user;
@@ -571,14 +595,18 @@ static uintptr_t load_texture(void *user, const char *source, int *width, int *h
         held_texture held = { .external = external_index(backend, source + 4) };
         return hold_texture(backend, held);
     }
+    CF_Filter filter;
+    char *path = image_path(source, &filter);
     CF_Image image = { 0 };
-    if (!load_image(source, &image)) {
+    if (!load_image(path, &image)) {
+        free(path);
         return 0;
     }
+    free(path);
     cf_image_premultiply(&image);
     *width = image.w;
     *height = image.h;
-    held_texture held = { texture_from_pixels(image.w, image.h, image.pix), -1 };
+    held_texture held = { texture_from_pixels(image.w, image.h, image.pix, filter), -1 };
     cf_image_free(&image);
     return hold_texture(backend, held);
 }
@@ -587,7 +615,8 @@ static uintptr_t generate_texture(void *user, const uint8_t *pixels, int width, 
 {
     rml_backend *backend = user;
     ensure_gpu(backend);
-    held_texture held = { texture_from_pixels(width, height, pixels), -1 };
+    held_texture held = { texture_from_pixels(width, height, pixels, CF_FILTER_LINEAR),
+                          -1 };
     return hold_texture(backend, held);
 }
 
@@ -1209,6 +1238,18 @@ unsigned rml_backend_process_input(rml_backend *backend, const rml_input *input)
         capture |= RML_INPUT_CAPTURE_POINTER;
     }
     return capture;
+}
+
+void rml_backend_set_pending_paste_text(const char *text)
+{
+    free(pending_paste_text);
+    pending_paste_text = xstrdup(text);
+}
+
+void rml_backend_clear_pending_paste_text()
+{
+    free(pending_paste_text);
+    pending_paste_text = NULL;
 }
 
 void rml_backend_set_texture(rml_backend *backend, const char *name, uint64_t texture)

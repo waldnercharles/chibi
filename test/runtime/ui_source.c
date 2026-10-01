@@ -2,6 +2,7 @@
  * references and edits of ui markup and styles. */
 #include "assets/ui_source.h"
 
+#include "editor/documents/ui_buffer.h"
 #include "support/array.h"
 #include "test/suite_internal.h"
 
@@ -59,6 +60,152 @@ static bool slice_is(const ui_source *s, int start, int end, const char *expecte
 {
     return (size_t)(end - start) == strlen(expected) &&
            !strncmp(s->text + start, expected, (size_t)(end - start));
+}
+
+static char *slice_copy(const ui_source *source, int start, int end)
+{
+    char *text = calloc((size_t)(end - start) + 1, 1);
+    memcpy(text, source->text + start, (size_t)(end - start));
+    return text;
+}
+
+static bool same_rml_meaning(const ui_source *before, const ui_source *after)
+{
+    if (acount(before->elements) != acount(after->elements)) {
+        return false;
+    }
+    for (int i = 0; i < acount(before->elements); i++) {
+        const ui_source_element *a = &before->elements[i], *b = &after->elements[i];
+        if (strcmp(a->tag, b->tag) || a->parent != b->parent ||
+            a->self_closing != b->self_closing ||
+            acount(a->attributes) != acount(b->attributes)) {
+            return false;
+        }
+        for (int j = 0; j < acount(a->attributes); j++) {
+            const ui_source_attribute *x = &a->attributes[j], *y = &b->attributes[j];
+            char *xname = slice_copy(before, x->name_start, x->name_end);
+            char *yname = slice_copy(after, y->name_start, y->name_end);
+            char *xvalue = ui_source_attribute_value(before, i, xname);
+            char *yvalue = ui_source_attribute_value(after, i, yname);
+            bool same = !strcmp(xname, yname) && xvalue && yvalue &&
+                        !strcmp(xvalue, yvalue);
+            free(xname);
+            free(yname);
+            free(xvalue);
+            free(yvalue);
+            if (!same) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+static bool same_rcss_meaning(const ui_source *before, const ui_source *after)
+{
+    if (acount(before->rules) != acount(after->rules)) {
+        return false;
+    }
+    for (int i = 0; i < acount(before->rules); i++) {
+        const ui_source_rule *a = &before->rules[i], *b = &after->rules[i];
+        if (strcmp(a->selector, b->selector) || a->parent != b->parent ||
+            acount(a->declarations) != acount(b->declarations)) {
+            return false;
+        }
+        for (int j = 0; j < acount(a->declarations); j++) {
+            const ui_source_declaration *x = &a->declarations[j],
+                                        *y = &b->declarations[j];
+            char *xp = slice_copy(before, x->property_start, x->property_end);
+            char *yp = slice_copy(after, y->property_start, y->property_end);
+            char *xv = slice_copy(before, x->value_start, x->value_end);
+            char *yv = slice_copy(after, y->value_start, y->value_end);
+            bool same = !strcmp(xp, yp) && !strcmp(xv, yv);
+            free(xp);
+            free(yp);
+            free(xv);
+            free(yv);
+            if (!same) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+static void formatting()
+{
+    static const char RML[] = "<!-- keep this note -->\n"
+                              "<button data-event-click=\"emit('Cook', "
+                              "save.recipe)\" data-tip=\"Serve the simmering "
+                              "moon mushrooms with the last of the lamp oil\">"
+                              "A <b>{{ save.dish }}</b> C</button>\n";
+    static const char RCSS
+        [] = "/* recipe tokens */.panel{color:var(--cream);padding:calc(1dp + "
+             "2dp);--recipe:  \"A,  B\"  ;&:hover{opacity:.5}}";
+    char *rml = ui_source_format(RML, UI_SOURCE_RML);
+    char *rcss = ui_source_format(RCSS, UI_SOURCE_RCSS);
+    ui_source *before_rml = ui_source_parse(RML, UI_SOURCE_RML);
+    ui_source *after_rml = ui_source_parse(rml, UI_SOURCE_RML);
+    ui_source *before_rcss = ui_source_parse(RCSS, UI_SOURCE_RCSS);
+    ui_source *after_rcss = ui_source_parse(rcss, UI_SOURCE_RCSS);
+    char *again = ui_source_format(rcss, UI_SOURCE_RCSS);
+    bool rml_ok = !acount(before_rml->diagnostics) &&
+                  !acount(after_rml->diagnostics) &&
+                  same_rml_meaning(before_rml, after_rml) &&
+                  strstr(rml, "button\n    data-event-click=") &&
+                  strstr(rml, "<!-- keep this note -->") &&
+                  strstr(rml, "A <b>{{ save.dish }}</b> C");
+    bool rcss_ok = !acount(before_rcss->diagnostics) &&
+                   !acount(after_rcss->diagnostics) &&
+                   same_rcss_meaning(before_rcss, after_rcss) &&
+                   strstr(rcss, "/* recipe tokens */") &&
+                   strstr(rcss, "--recipe:  \"A,  B\"  ;") && !strcmp(rcss, again);
+    test_check(rml_ok && rcss_ok, "formatting preserves parsed RML and RCSS, comments, bindings and mixed text, and is idempotent");
+
+    static const char BAD_RML[] = "<div><span>unfinished";
+    static const char BAD_RCSS[] = ".panel { color: red";
+    char *bad_rml = ui_source_format(BAD_RML, UI_SOURCE_RML);
+    char *bad_rcss = ui_source_format(BAD_RCSS, UI_SOURCE_RCSS);
+    bool invalid_ok = !strcmp(BAD_RML, bad_rml) && !strcmp(BAD_RCSS, bad_rcss);
+    ui_buffer *buffer = calloc(1, sizeof *buffer);
+    buffer->parts[UI_PART_RML] = strdup(BAD_RML);
+    buffer->parts[UI_PART_RCSS] = strdup(BAD_RCSS);
+    bool no_edit = !ui_buffer_format(buffer, UI_PART_RML) && !acount(buffer->undo) &&
+                   !strcmp(BAD_RML, buffer->parts[UI_PART_RML]);
+    ui_buffer_free(buffer);
+
+    buffer = calloc(1, sizeof *buffer);
+    buffer->parts[UI_PART_RML] = strdup(RML);
+    buffer->parts[UI_PART_RCSS] = strdup(RCSS);
+    bool one_undo = ui_buffer_format(buffer, UI_PART_RCSS) &&
+                    acount(buffer->undo) == 1;
+    ui_buffer_undo(buffer);
+    one_undo = one_undo && !strcmp(RCSS, buffer->parts[UI_PART_RCSS]);
+    ui_buffer_free(buffer);
+    buffer = calloc(1, sizeof *buffer);
+    buffer->files[UI_PART_RML] = strdup("test.rml");
+    buffer->files[UI_PART_RCSS] = strdup("test.rcss");
+    buffer->parts[UI_PART_RML] = strdup(RML);
+    buffer->parts[UI_PART_RCSS] = strdup(RCSS);
+    bool save_step = ui_buffer_format_for_save(buffer) &&
+                     acount(buffer->undo) == 1 && buffer->part == UI_PART_RML;
+    ui_buffer_undo(buffer);
+    save_step = save_step && !strcmp(RML, buffer->parts[UI_PART_RML]) &&
+                !strcmp(RCSS, buffer->parts[UI_PART_RCSS]);
+    ui_buffer_free(buffer);
+    test_check(invalid_ok && no_edit, "invalid source remains byte-identical and never adds an undo step");
+    test_check(one_undo, "formatting a source part is one undoable buffer edit");
+    test_check(save_step, "formatting both saved source parts joins one undoable save step");
+
+    free(rml);
+    free(rcss);
+    free(again);
+    free(bad_rml);
+    free(bad_rcss);
+    ui_source_free(before_rml);
+    ui_source_free(after_rml);
+    ui_source_free(before_rcss);
+    ui_source_free(after_rcss);
 }
 
 /* The spans of `text` parsed as `language` match `expected`. */
@@ -226,6 +373,23 @@ static void diagnostics()
               ) &&
               diagnoses(".a { color: red; }\n.b { color: ; \n", UI_SOURCE_RCSS, "2:1 unexpected \".b { color: ;\"");
     test_check(ok, "ui source reports markup and style syntax errors at their lines");
+
+    static const char
+        TERNARIES[] = "<div>\n"
+                      "  <b>{{ save.ekX > 0 ? save.ekX : 0 }}</b>\n"
+                      "  <b>{{ save.ekH > 0 ? save.ekH : 0 }}</b>\n"
+                      "</div>\n";
+    ui_source *source = ui_source_parse(TERNARIES, UI_SOURCE_RML);
+    test_check(!acount(source->diagnostics) && acount(source->elements) == 3, "RML text bindings can contain comparison operators without hiding source diagnostics");
+    ui_source_free(source);
+
+    source = ui_source_parse("{{ save.count > 0 ? save.count : 0 }}", UI_SOURCE_RML);
+    char *tokens = spans_text(source);
+    bool binding = !acount(source->diagnostics) &&
+                   strstr(tokens, "binding:save") && strstr(tokens, "punct:>");
+    test_check(binding, "a pure text binding remains a highlighted RML text node");
+    free(tokens);
+    ui_source_free(source);
 }
 
 static ui_source_project sample_project()
@@ -645,6 +809,7 @@ static void shipped()
 void test_ui_source()
 {
     highlighting();
+    formatting();
     outline();
     diagnostics();
     completion();

@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Serve a consistent browser build with the workspace's projects and saves routed back to them."""
 import argparse
+import base64
 import json
+import re
 import secrets
 import shutil
 import tempfile
@@ -11,6 +13,9 @@ from pathlib import Path, PurePosixPath
 from urllib.parse import parse_qs, urlsplit
 
 import yaml
+
+TEXT_EXTENSIONS = {'.yaml', '.rml', '.rcss'}
+IMAGE_EXTENSIONS = {'.png', '.jpg', '.jpeg'}
 
 
 def content_directory(project):
@@ -28,19 +33,70 @@ def projects(workspace):
 
 
 def workspace_files(workspace):
-    """Each project's manifest, content assets and ui markup and styles, by path relative to the workspace."""
+    """Each project's manifest and supported content assets, relative to the workspace."""
     files = {}
     for project in projects(workspace):
         files[str((project / 'project.yaml').relative_to(workspace))] = project / 'project.yaml'
         content = content_directory(project)
-        for path in [*content.rglob('*.yaml'), *content.rglob('*.rml'), *content.rglob('*.rcss')]:
-            if path.resolve().is_relative_to(content):
+        for path in content.rglob('*'):
+            if path.is_file() and path.suffix.lower() in TEXT_EXTENSIONS | IMAGE_EXTENSIONS and path.resolve().is_relative_to(content):
                 files[str(path.relative_to(workspace))] = path
     return files
 
 
+def workspace_asset(path):
+    if path.suffix.lower() in IMAGE_EXTENSIONS:
+        return {'encoding': 'base64', 'data': base64.b64encode(path.read_bytes()).decode('ascii')}
+    return path.read_text()
+
+
 def workspace_assets(workspace):
-    return {name: path.read_text() for name, path in workspace_files(workspace).items()}
+    return {name: workspace_asset(path) for name, path in workspace_files(workspace).items()}
+
+
+def create_project(workspace, request):
+    """Create a project beside the bundled samples and return its initial files."""
+    name = request['name']
+    version = request['version']
+    if not isinstance(name, str) or not name.strip() or len(name.strip()) > 128:
+        raise ValueError('Enter a project name of 1 to 128 characters')
+    if not isinstance(version, int) or version < 1:
+        raise ValueError('Invalid project version')
+    name = name.strip()
+    base = re.sub(r'[^a-z0-9]+', '-', name.lower()).strip('-') or 'project'
+    parent = workspace / 'projects'
+    parent.mkdir(parents=True, exist_ok=True)
+    project_id = base
+    index = 2
+    while (parent / project_id).exists():
+        project_id = f'{base}-{index}'
+        index += 1
+    root = parent / project_id
+    root.mkdir()
+    files = {
+        'project.yaml': yaml.safe_dump({
+            'version': version,
+            'name': name,
+            'content': 'content',
+            'start_scene': 'scenes/Start.yaml',
+        }, sort_keys=False, allow_unicode=True),
+        'content/scenes/Start.yaml': yaml.safe_dump({
+            'version': 1,
+            'name': 'Start',
+            'entities': [],
+        }, sort_keys=False),
+    }
+    try:
+        for path, text in files.items():
+            (root / path).parent.mkdir(parents=True, exist_ok=True)
+            (root / path).write_text(text)
+    except OSError:
+        shutil.rmtree(root, ignore_errors=True)
+        raise
+    return {
+        'root': f'/projects/{project_id}/',
+        'assets': {f'projects/{project_id}/{path}': text for path, text in files.items()},
+    }
 
 
 class WorkspaceWatch:
@@ -76,16 +132,33 @@ class WorkspaceWatch:
             self.condition.notify_all()
 
     def changes(self, since, timeout):
-        """The version and each file changed after `since`, as text or None when removed."""
+        """Changed files after `since`, as text, a base64 image payload, or None when removed."""
         with self.condition:
             self.condition.wait_for(lambda: self.version > since, timeout)
             version = self.version
             names = [name for name, changed in self.changed.items() if changed > since]
         files = {}
+        current = workspace_files(self.workspace)
+        roots = [(project.resolve(), content_directory(project)) for project in projects(self.workspace)]
         for name in names:
+            path = current.get(name)
+            if path is None:
+                files[name] = None
+                continue
             try:
-                files[name] = (self.workspace / name).read_text()
-            except OSError:
+                # The file may have been replaced after poll() noticed it.
+                # Revalidate the resolved target against its project content
+                # root immediately before reading, so a swapped symlink is
+                # reported as removed instead of mirroring external bytes.
+                resolved = path.resolve()
+                if not any(
+                    resolved == root / 'project.yaml' or resolved.is_relative_to(content)
+                    for root, content in roots
+                ):
+                    files[name] = None
+                    continue
+                files[name] = workspace_asset(path)
+            except (OSError, RuntimeError):
                 files[name] = None
         return version, files
 
@@ -96,7 +169,9 @@ def save_asset(workspace, request):
     contents = [content_directory(project) for project in projects(workspace)]
     # Settings rewrites a project's manifest, which is never removed.
     manifest = text is not None and path in [(project / 'project.yaml').resolve() for project in projects(workspace)]
-    if not manifest and (path.suffix not in ('.yaml', '.rml', '.rcss') or not any(path.is_relative_to(content) for content in contents)):
+    image_delete = text is None and path.suffix.lower() in IMAGE_EXTENSIONS
+    if not manifest and ((path.suffix.lower() not in TEXT_EXTENSIONS and not image_delete) or
+                         not any(path.is_relative_to(content) for content in contents)):
         raise ValueError('Saves must be project manifests, or YAML assets, RML or RCSS inside a project content directory')
     if text is None:
         path.unlink(missing_ok=True)
@@ -190,9 +265,9 @@ def main():
                     self.send_header('Cross-Origin-Embedder-Policy', 'require-corp')
                 super().end_headers()
 
-            def send_json(self, value, version):
+            def send_json(self, value, version, status=200):
                 body = json.dumps(value).encode()
-                self.send_response(200)
+                self.send_response(status)
                 self.send_header('Content-Type', 'application/json')
                 self.send_header('Content-Length', str(len(body)))
                 self.send_header('X-Chibi-Version', str(version))
@@ -224,7 +299,7 @@ def main():
                 super().do_GET()
 
             def do_POST(self):
-                if self.path != '/__chibi/save' or self.headers.get('X-Chibi-Token') != token:
+                if self.path not in ('/__chibi/save', '/__chibi/project') or self.headers.get('X-Chibi-Token') != token:
                     self.send_error(403)
                     return
                 try:
@@ -235,8 +310,18 @@ def main():
                 if not 0 < length <= 16 * 1024 * 1024:
                     self.send_error(413)
                     return
+                body = self.rfile.read(length)
+                if self.path == '/__chibi/project':
+                    try:
+                        created = create_project(workspace, json.loads(body))
+                        watch.poll()
+                    except (ValueError, KeyError, TypeError, OSError) as error:
+                        self.send_json({'error': str(error)}, watch.version, 400)
+                        return
+                    self.send_json(created, watch.version)
+                    return
                 try:
-                    save_asset(workspace, json.loads(self.rfile.read(length)))
+                    save_asset(workspace, json.loads(body))
                 except (ValueError, KeyError, TypeError, OSError) as error:
                     self.send_error(400, str(error))
                     return

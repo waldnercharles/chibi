@@ -21,8 +21,8 @@
  * - Hover: once the pointer rests on a glyph, the host describes it; a card
  *   in the overlay layer shows that with the diagnostics of its line, so it
  *   never clips at the editor's edge.
- * - Clipboard: Cute's (SDL's). A browser hands pasted text only to a paste
- *   event, so the web build keeps the latest for a paste right after it. */
+ * - Clipboard: Cute's (SDL's) for native copy and paste. Browsers only expose
+ *   pasted text during the DOM paste event, which the web build routes here. */
 #include "editor/rmlui/kit_internal.h"
 #include "editor/text/zep_bridge.h"
 #include "editor/ui/kit_icons.h"
@@ -32,6 +32,7 @@
 
 #include <assert.h>
 #include <ctype.h>
+#include <limits.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -209,6 +210,8 @@ struct kit_code_editor
     int hover; /* the byte under the resting pointer, or -1 */
 };
 
+static kit_code_editor *focused_code_editor;
+
 static const rml_event_id VIEW_EVENTS[] = {
     RML_EVENT_KEYDOWN,   RML_EVENT_KEYUP,   RML_EVENT_TEXTINPUT,
     RML_EVENT_MOUSEDOWN, RML_EVENT_MOUSEUP, RML_EVENT_MOUSEMOVE,
@@ -225,18 +228,39 @@ static const rml_event_id VIEW_EVENTS[] = {
 /* clang-format would space out the arrow functions. */
 // clang-format off
 EM_JS(void, web_listen_paste, (), {
-    if (Module.chibiPaste !== undefined) return;
-    Module.chibiPaste = null;
+    if (Module.chibiPasteListener) return;
+    Module.chibiPasteListener = true;
+    document.addEventListener('keydown', (event) => {
+        if (document.activeElement !== Module.canvas || !Module._studio_web_wants_text()) return;
+        const primary = event.metaKey || event.ctrlKey;
+        if (!primary || event.key.toLowerCase() !== 'v') {
+            Module.chibiPasteMeta = false;
+            return;
+        }
+        Module.chibiPasteMeta = event.metaKey;
+        event.stopPropagation();
+    }, true);
     document.addEventListener('paste', (event) => {
-        Module.chibiPaste = { text: event.clipboardData.getData('text/plain'), time: performance.now() };
-    });
-})
-/* The text of a paste in the last second, which the key that raised it asks
-   for a frame later. */
-EM_JS(char *, web_take_paste, (), {
-    const paste = Module.chibiPaste;
-    Module.chibiPaste = null;
-    return paste && performance.now() - paste.time < 1000 ? stringToNewUTF8(paste.text) : 0;
+        if (document.activeElement !== Module.canvas) return;
+        const text = event.clipboardData?.getData('text/plain');
+        if (typeof text !== 'string' || !text.length) return;
+        const pointer = stringToNewUTF8(text);
+        try {
+            if (Module._kit_code_web_paste(pointer)) {
+                Module.chibiPasteMeta = false;
+                event.preventDefault();
+                return;
+            }
+            if (!Module._studio_web_wants_text()) return;
+            const meta = Module.chibiPasteMeta || /Mac|iPhone|iPad/.test(navigator.platform);
+            if (Module._studio_web_paste(pointer, meta ? 1 : 0)) {
+                Module.chibiPasteMeta = false;
+                event.preventDefault();
+            }
+        } finally {
+            Module._free(pointer);
+        }
+    }, true);
 })
 EM_JS(void, web_copy, (const char *text), {
     if (navigator.clipboard) navigator.clipboard.writeText(UTF8ToString(text)).catch(() => {});
@@ -531,13 +555,6 @@ static void on_set_clipboard(void *, const char *text)
 
 static char *on_get_clipboard(void *)
 {
-#ifdef __EMSCRIPTEN__
-    char *pasted = web_take_paste();
-    if (pasted) {
-        cf_clipboard_set(pasted);
-        return pasted;
-    }
-#endif
     /* An empty clipboard leaves Zep its own registers, as without a system
        clipboard. */
     char *text = cf_clipboard_get();
@@ -634,6 +651,9 @@ void kit_code_editor_destroy(kit_code_editor *e)
 {
     if (!e) {
         return;
+    }
+    if (focused_code_editor == e) {
+        focused_code_editor = NULL;
     }
     if (e->view) {
         e->view->editor = NULL;
@@ -765,12 +785,33 @@ void kit_code_set_cursor(kit_code_editor *e, int byte)
     e->cursor = zep_cursor(e->zep);
 }
 
+void kit_code_set_selection(kit_code_editor *e, int anchor, int cursor)
+{
+    if (e->vim) {
+        if (cursor > anchor) {
+            cursor--;
+        } else if (cursor < anchor) {
+            anchor--;
+        }
+    }
+    zep_select(e->zep, anchor, cursor);
+    e->cursor = zep_cursor(e->zep);
+}
+
 void kit_code_select(kit_code_editor *e, int start, int end)
 {
-    /* Vim's selection holds the glyph under its cursor; the standard keys'
-       ends before it. */
-    zep_select(e->zep, start, e->vim ? end - 1 : end);
-    e->cursor = zep_cursor(e->zep);
+    kit_code_set_selection(e, start, end);
+}
+
+bool kit_code_selection(const kit_code_editor *e, int *start, int *end)
+{
+    long low, high;
+    if (!zep_selection(e->zep, &low, &high)) {
+        return false;
+    }
+    *start = (int)low;
+    *end = (int)high;
+    return true;
 }
 
 int kit_code_hover(const kit_code_editor *e)
@@ -928,15 +969,62 @@ static void report_chord(kit_code_editor *e, rml_key key, keys m)
     e->result.events |= KIT_CODE_CHORD;
 }
 
+void kit_code_paste(kit_code_editor *e, const char *text)
+{
+    if (!text || !text[0]) {
+        return;
+    }
+    size_t size = strlen(text);
+    assert(size <= INT_MAX);
+    char *normalized = xmalloc(size + 1);
+    size_t length = 0;
+    for (size_t i = 0; i < size; i++) {
+        if (text[i] == '\r') {
+            if (text[i + 1] == '\n') {
+                i++;
+            }
+            normalized[length++] = '\n';
+            continue;
+        }
+        normalized[length++] = text[i];
+    }
+    normalized[length] = '\0';
+    if (!length) {
+        free(normalized);
+        return;
+    }
+    long start = zep_cursor(e->zep), end = start;
+    bool selected = zep_selection(e->zep, &start, &end);
+    if (selected && e->vim) {
+        zep_press_key(e->zep, ZEP_KEY_ESCAPE, 0);
+    }
+    assert(start <= INT_MAX && end <= INT_MAX);
+    text_edit edit = { (int)start, (int)end, normalized };
+    apply(e, &edit, 1, start + (long)length);
+    if (selected && !e->vim) {
+        zep_select(e->zep, start + (long)length, start + (long)length);
+    }
+    free(normalized);
+}
+
+#ifdef __EMSCRIPTEN__
+EMSCRIPTEN_KEEPALIVE int kit_code_web_paste(const char *text)
+{
+    if (!focused_code_editor || !focused_code_editor->focused) {
+        return 0;
+    }
+    kit_code_paste(focused_code_editor, text);
+    return 1;
+}
+#endif
+
 static void paste(kit_code_editor *e)
 {
     char *text = on_get_clipboard(e);
     if (!text) {
         return;
     }
-    long at = zep_cursor(e->zep);
-    text_edit edit = { (int)at, (int)at, text };
-    apply(e, &edit, 1, at + (long)strlen(text));
+    kit_code_paste(e, text);
     free(text);
 }
 
@@ -1068,6 +1156,13 @@ static void key_down(kit_code_editor *e, const rml_event *event)
     if (completion_key(e, key) || host_request(e, key, m)) {
         return;
     }
+#ifdef __EMSCRIPTEN__
+    /* Browser clipboard reads are only available in the paste event. The
+       listener routes that text into this editor after the shortcut. */
+    if (m.primary && key == RML_KEY_V) {
+        return;
+    }
+#endif
     /* Vim takes Control+[ for Escape, as terminals send it. */
     if (e->vim && m.ctrl && (int)key == RML_KEY_OEM_4) {
         zep_press_key(e->zep, ZEP_KEY_ESCAPE, 0);
@@ -1313,6 +1408,11 @@ static void on_view_event(void *user, const rml_event *event)
         case RML_EVENT_FOCUS:
         case RML_EVENT_BLUR:
             e->focused = event->id == RML_EVENT_FOCUS;
+            if (e->focused) {
+                focused_code_editor = e;
+            } else if (focused_code_editor == e) {
+                focused_code_editor = NULL;
+            }
             zep_set_focused(e->zep, e->focused);
             break;
         default: break;
@@ -1354,6 +1454,11 @@ static void view_release(void *user)
 {
     code_view *v = user;
     if (v->editor) {
+        if (focused_code_editor == v->editor) {
+            focused_code_editor = NULL;
+        }
+        v->editor->focused = false;
+        zep_set_focused(v->editor->zep, false);
         v->editor->view = NULL;
     }
     for (size_t i = 0; i < VIEW_EVENT_COUNT; i++) {
@@ -1598,9 +1703,19 @@ static void attach(code_view *v, kit_code_editor *e)
         return;
     }
     if (v->editor) {
+        if (focused_code_editor == v->editor) {
+            focused_code_editor = NULL;
+        }
+        v->editor->focused = false;
+        zep_set_focused(v->editor->zep, false);
         v->editor->view = NULL;
     }
     if (e->view) {
+        if (focused_code_editor == e) {
+            focused_code_editor = NULL;
+        }
+        e->focused = false;
+        zep_set_focused(e->zep, false);
         e->view->editor = NULL;
     }
     v->editor = e;
@@ -1610,6 +1725,9 @@ static void attach(code_view *v, kit_code_editor *e)
     v->rendered = false;
     e->span_hash = 0;
     e->focused = rml_context_focus_element(rml_element_context(v->el)) == v->el;
+    if (e->focused) {
+        focused_code_editor = e;
+    }
     zep_set_focused(e->zep, e->focused);
 }
 

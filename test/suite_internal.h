@@ -106,6 +106,7 @@ void test_compiled_aggregates();
 void test_compiled_integers();
 void test_behavior_unavailable();
 void test_editor_checkpoint();
+void test_editor_checkpoint_with_app(const char *program);
 void test_check(int ok, const char *message);
 extern void test_host_wait();
 extern void test_combat();

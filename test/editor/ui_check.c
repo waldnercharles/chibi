@@ -136,6 +136,22 @@ void test_ui_check()
     test_check(ok && messages_are(messages, NULL, 0), "ui_check checks a page with its body attributes and imports");
     ui_check_messages_free(messages);
 
+    messages = NULL;
+    ok = ui_check(
+        root,
+        "Counters",
+        "<div>\n"
+        "  <b>{{ save.ekX > 0 ? save.ekX : 0 }}</b>\n"
+        "  <b>{{ save.ekH > 0 ? save.ekH : 0 }}</b>\n"
+        "</div>\n",
+        NULL,
+        &messages,
+        error,
+        sizeof error
+    );
+    test_check(ok && messages_are(messages, NULL, 0), "ui_check accepts valid ternary text bindings over dynamic save fields");
+    ui_check_messages_free(messages);
+
     char command[96];
     snprintf(command, sizeof command, "rm -rf %s", root);
     assert(system(command) == 0);

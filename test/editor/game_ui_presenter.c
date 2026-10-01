@@ -26,6 +26,17 @@ static void click(render_ui *ui, float x, float y)
     }
 }
 
+static void key(render_ui *ui, rml_input_type type, rml_input_key key)
+{
+    render_ui_input(ui, &(rml_input){ .type = type, .key = key });
+}
+
+static bool focused(rml_context *context, const char *id)
+{
+    rml_element *element = rml_context_focus_element(context);
+    return element && !strcmp(rml_element_id(element), id);
+}
+
 /* Shows each ui asset under `content` in turn; false with a message when one
  * does not load cleanly, bindings included. */
 static bool shipped_documents_load(
@@ -180,6 +191,325 @@ static void texts(render_ui *ui, const char *selector, char *out, size_t size)
     }
 }
 
+static void numeric_saves(const char *folder, render_ui *ui, ui_world *world, ecs_world *ecs, ecs_entity entity)
+{
+    test_write_ui(
+        folder,
+        "Counter",
+        "<button id=\"advance\" "
+        "data-event-click=\"save.room=save.room+1;save.fraction=save.fraction+"
+        "0;emit('Advance')\">{{ "
+        "save.room }}</button>"
+        "<div id=\"probe\">{{ save.leading+1 }}|{{ save.incomplete+1 }}|{{ "
+        "save.special+1 }}|{{ save.exponent+1==101?'number':'text' }}</div>\n",
+        "#advance { display: block; width: 200dp; height: 60dp; }\n"
+    );
+    game_save *save = world->save;
+    assert(save);
+    assert(game_save_set(save, "room", "1"));
+    assert(game_save_set(save, "leading", "01"));
+    assert(game_save_set(save, "incomplete", "1e"));
+    assert(game_save_set(save, "special", "NaN"));
+    assert(game_save_set(save, "exponent", "1e2"));
+    assert(game_save_set(save, "fraction", "0.12345678901234566"));
+    assert(game_save_commit(save));
+    char *snapshot = game_save_export(save);
+    assert(game_save_import(save, snapshot));
+    free(snapshot);
+
+    *GAME_GameUi_get(ecs, entity) = (GameUi){ .document = "Counter" };
+    render_ui_update(ui, world, 1280, 720, 1.0 / 60);
+    render_ui_update(ui, world, 1280, 720, 1.0 / 60);
+    char room[64], probe[128];
+    texts(ui, "#advance", room, sizeof room);
+    texts(ui, "#probe", probe, sizeof probe);
+    bool shown = !render_ui_error(ui)[0] && !strcmp(room, "1") &&
+                 !strcmp(probe, "011|1e1|NaN1|number");
+
+    click(ui, 40, 20);
+    render_ui_update(ui, world, 1280, 720, 1.0 / 60);
+    bool first = game_save_get(save, "room") &&
+                 !strcmp(game_save_get(save, "room"), "2") && game_save_commit(save);
+    bool fraction = game_save_get(save, "fraction") &&
+                    !strcmp(game_save_get(save, "fraction"), "0.12345678901234566");
+    snapshot = game_save_export(save);
+    bool text_contract = strstr(snapshot, "\"room\":\"2\"") != NULL &&
+                         strstr(snapshot, "\"fraction\":\"0.12345678901234566\"") != NULL;
+    bool reloaded = game_save_import(save, snapshot);
+    free(snapshot);
+    render_ui_update(ui, world, 1280, 720, 1.0 / 60);
+
+    click(ui, 40, 20);
+    render_ui_update(ui, world, 1280, 720, 1.0 / 60);
+    bool second = game_save_get(save, "room") &&
+                  !strcmp(game_save_get(save, "room"), "3") &&
+                  game_save_commit(save);
+    fraction &= game_save_get(save, "fraction") &&
+                !strcmp(game_save_get(save, "fraction"), "0.12345678901234566");
+    snapshot = game_save_export(save);
+    text_contract &= strstr(snapshot, "\"room\":\"3\"") != NULL &&
+                     strstr(snapshot, "\"fraction\":\"0.12345678901234566\"") != NULL;
+    free(snapshot);
+    if (!(shown && first && reloaded && second && fraction && text_contract)) {
+        printf(
+            "  shown=%d first=%d reloaded=%d second=%d fraction=%d text=%d "
+            "room='%s' "
+            "saved-fraction='%s' probe='%s' error='%s'\n",
+            shown,
+            first,
+            reloaded,
+            second,
+            fraction,
+            text_contract,
+            game_save_get(save, "room"),
+            game_save_get(save, "fraction"),
+            probe,
+            render_ui_error(ui)
+        );
+    }
+    test_check(
+        shown && first && reloaded && second && fraction && text_contract,
+        "RML save numbers stay numeric through two clicks and save reload with "
+        "full double precision, while strict JSON parsing preserves text"
+    );
+    test_remove_ui(folder, "Counter");
+}
+
+/* The page source marker pass must preserve ternary expressions as RmlUi
+ * text bindings, and the runtime preview must evaluate them from save data. */
+static void page_text_binding(render_ui *ui, ui_world *world, const char *folder)
+{
+    test_write_ui(
+        folder,
+        "TernaryPage",
+        "<body><div id=\"score\">{{ save.ekX > 0 ? save.ekX : 0 }}</div>"
+        "<input id=\"paste\" type=\"text\"/></body>\n",
+        "#score, input { display: block; }\n"
+    );
+    assert(world->save && game_save_set(world->save, "ekX", "3"));
+    assert(game_save_commit(world->save));
+    world->page = "TernaryPage";
+    render_ui_update(ui, world, 1280, 720, 1.0 / 60);
+    render_ui_update(ui, world, 1280, 720, 1.0 / 60);
+    char score[32];
+    texts(ui, "#score", score, sizeof score);
+    bool loaded = !strcmp(score, "3");
+    if (!loaded) {
+        printf(
+            "  score='%s' error='%s' documents=%d\n",
+            score,
+            render_ui_error(ui),
+            rml_context_document_count(render_ui_context(ui))
+        );
+    }
+    test_check(loaded, "a ternary text binding survives page source markers and evaluates in the runtime preview");
+    rml_element *paste = rml_element_query_selector(
+        rml_context_document(render_ui_context(ui), 0),
+        "#paste"
+    );
+    rml_element_set_value(paste, "discard this selection");
+    rml_element_focus(paste, true);
+    render_ui_input(
+        ui,
+        &(rml_input){ .type = RML_INPUT_KEY_PRESS,
+                      .key = RML_INPUT_KEY_A,
+                      .modifiers = RML_INPUT_MOD_CONTROL }
+    );
+    rml_backend_set_pending_paste_text("spiced mushrooms");
+    render_ui_input(
+        ui,
+        &(rml_input){ .type = RML_INPUT_KEY_PRESS,
+                      .key = RML_INPUT_KEY_V,
+                      .modifiers = RML_INPUT_MOD_CONTROL }
+    );
+    char value[64];
+    rml_element_value(paste, value, sizeof value);
+    bool pasted = !strcmp(value, "spiced mushrooms");
+    rml_backend_clear_pending_paste_text();
+    test_check(pasted, "a clipboard paste replaces the selection in a native RmlUi text field");
+    world->page = NULL;
+    render_ui_update(ui, world, 1280, 720, 1.0 / 60);
+    test_remove_ui(folder, "TernaryPage");
+}
+
+/* data-if may remove an inline display override again when it shows an
+ * element. Its CSS layout and unaffected siblings must still fill the page. */
+static void visibility_layout(render_ui *ui, ui_world *world, ecs_world *ecs, ecs_entity entity, const char *folder)
+{
+    test_write_ui(
+        folder,
+        "Layout",
+        "<div class=\"surface\">"
+        "<div id=\"masthead\">THE LAST WARM LIGHT</div>"
+        "<div id=\"welcome\" class=\"layout\" data-if=\"!save.live\">"
+        "<div class=\"column\">Welcome</div><div class=\"column\">Cook</div>"
+        "</div>"
+        "<div id=\"workbench\" class=\"layout\" data-if=\"save.live\">"
+        "<div class=\"column\">Hearth</div><div class=\"column\">Pantry</div>"
+        "</div><div id=\"footer\">Last shelf</div></div>\n",
+        "div { display: block; }\n"
+        ".surface { width: 100%; height: 100%; overflow-y: auto; "
+        "pointer-events: auto; }\n"
+        "#masthead { display: flex; width: 100%; height: 40dp; }\n"
+        ".layout { display: flex; width: 100%; height: 300dp; gap: 16dp; }\n"
+        "#workbench { height: 600dp; }\n"
+        ".column { display: block; width: 45%; }\n"
+        "#footer { display: block; width: 100%; height: 200dp; }\n"
+        "@media (max-width: 780dp) { .layout { flex-direction: column; } }\n"
+    );
+    assert(world->save && game_save_set(world->save, "live", "false"));
+    assert(game_save_commit(world->save));
+    *GAME_GameUi_get(ecs, entity) = (GameUi){ .document = "Layout" };
+    for (int i = 0; i < 3; i++) {
+        render_ui_update(ui, world, 1280, 720, 1.0 / 60);
+    }
+    rml_element *body = rml_context_document(render_ui_context(ui), 0);
+    rml_element *mounted = body ? rml_element_query_selector(body, "[data-ui=Layout]")
+                                : NULL;
+    rml_element *masthead = rml_element_query_selector(body, "#masthead");
+    rml_element *welcome = rml_element_query_selector(body, "#welcome");
+    rml_element *workbench = rml_element_query_selector(body, "#workbench");
+    rml_element *surface = rml_element_query_selector(body, ".surface");
+    rml_element *footer = rml_element_query_selector(body, "#footer");
+    bool opening = !render_ui_error(ui)[0] && masthead && welcome && workbench &&
+                   rml_element_box_size(masthead, RML_BOX_BORDER).x >= 1279 &&
+                   rml_element_box_size(welcome, RML_BOX_BORDER).x >= 1279 &&
+                   !rml_element_is_visible(workbench, false) && surface && footer &&
+                   rml_element_scroll_height(surface) <=
+                       rml_element_client_height(surface) + 1;
+
+    assert(game_save_set(world->save, "live", "true"));
+    assert(game_save_commit(world->save));
+    for (int i = 0; i < 3; i++) {
+        render_ui_update(ui, world, 1280, 720, 1.0 / 60);
+    }
+    body = rml_context_document(render_ui_context(ui), 0);
+    masthead = rml_element_query_selector(body, "#masthead");
+    welcome = rml_element_query_selector(body, "#welcome");
+    workbench = rml_element_query_selector(body, "#workbench");
+    surface = rml_element_query_selector(body, ".surface");
+    footer = rml_element_query_selector(body, "#footer");
+    bool playing = !render_ui_error(ui)[0] && masthead && welcome && workbench &&
+                   rml_element_box_size(masthead, RML_BOX_BORDER).x >= 1200 &&
+                   !rml_element_is_visible(welcome, false) &&
+                   rml_element_is_visible(workbench, false) &&
+                   rml_element_box_size(workbench, RML_BOX_BORDER).x >= 1200 &&
+                   surface && footer &&
+                   rml_element_scroll_height(surface) >
+                       rml_element_client_height(surface) + 1;
+    rml_vec2 surface_at = surface
+                            ? rml_element_absolute_offset(surface, RML_BOX_BORDER)
+                            : (rml_vec2){ 0 };
+    rml_vec2 surface_size = surface ? rml_element_box_size(surface, RML_BOX_BORDER)
+                                    : (rml_vec2){ 0 };
+    float scrollbar_x = surface_at.x + surface_size.x - 4;
+    float scrollbar_top = surface_at.y + 24;
+    float scrollbar_bottom = surface_at.y + rml_element_client_height(surface) - 24;
+    if (surface) {
+        render_ui_input(
+            ui,
+            &(rml_input){ .type = RML_INPUT_POINTER_MOVE, .x = scrollbar_x, .y = scrollbar_top }
+        );
+        render_ui_input(
+            ui,
+            &(rml_input){ .type = RML_INPUT_POINTER_DOWN, .x = scrollbar_x, .y = scrollbar_top }
+        );
+        render_ui_input(
+            ui,
+            &(rml_input){ .type = RML_INPUT_POINTER_MOVE, .x = scrollbar_x, .y = scrollbar_bottom }
+        );
+        render_ui_input(ui, &(rml_input){ .type = RML_INPUT_POINTER_UP, .x = scrollbar_x, .y = scrollbar_bottom });
+        render_ui_update(ui, world, 1280, 720, 1.0 / 60);
+    }
+    bool dragged = surface && rml_element_scroll_top(surface) > 0;
+    if (surface) {
+        rml_element_set_scroll_top(surface, 0);
+    }
+    float wheel_x = surface_at.x + surface_size.x / 2;
+    float wheel_y = surface_at.y + surface_size.y / 2;
+    if (surface) {
+        render_ui_input(ui, &(rml_input){ .type = RML_INPUT_POINTER_MOVE, .x = wheel_x, .y = wheel_y });
+        render_ui_input(
+            ui,
+            &(rml_input){ .type = RML_INPUT_POINTER_WHEEL, .x = wheel_x, .y = wheel_y, .wheel_y = 3 }
+        );
+        render_ui_update(ui, world, 1280, 720, 1.0 / 60);
+    }
+    bool wheeled = surface && rml_element_scroll_top(surface) > 0;
+    if (footer) {
+        rml_element_scroll_into_view(footer, RML_SCROLL_NEAREST, RML_SCROLL_NEAREST);
+        render_ui_update(ui, world, 1280, 720, 1.0 / 60);
+    }
+    surface_at = surface ? rml_element_absolute_offset(surface, RML_BOX_BORDER)
+                         : (rml_vec2){ 0 };
+    rml_vec2 footer_at = footer ? rml_element_absolute_offset(footer, RML_BOX_BORDER)
+                                : (rml_vec2){ 0 };
+    rml_vec2 footer_size = footer ? rml_element_box_size(footer, RML_BOX_BORDER)
+                                  : (rml_vec2){ 0 };
+    bool bottom_reached = surface && footer && rml_element_scroll_top(surface) > 0 &&
+                          footer_at.y + footer_size.y <=
+                              surface_at.y + rml_element_client_height(surface) + 1;
+
+    assert(game_save_set(world->save, "live", "false"));
+    assert(game_save_commit(world->save));
+    for (int i = 0; i < 3; i++) {
+        render_ui_update(ui, world, 1280, 720, 1.0 / 60);
+    }
+    body = rml_context_document(render_ui_context(ui), 0);
+    welcome = rml_element_query_selector(body, "#welcome");
+    workbench = rml_element_query_selector(body, "#workbench");
+    bool returned = welcome && workbench && rml_element_is_visible(welcome, false) &&
+                    rml_element_box_size(welcome, RML_BOX_BORDER).x >= 1279 &&
+                    !rml_element_is_visible(workbench, false);
+
+    const int tall_width = 1280, tall_height = 1080;
+    assert(game_save_set(world->save, "live", "true"));
+    assert(game_save_commit(world->save));
+    for (int i = 0; i < 3; i++) {
+        render_ui_update(ui, world, tall_width, tall_height, 1.0 / 60);
+    }
+    body = rml_context_document(render_ui_context(ui), 0);
+    mounted = rml_element_query_selector(body, "[data-ui=Layout]");
+    masthead = rml_element_query_selector(body, "#masthead");
+    workbench = rml_element_query_selector(body, "#workbench");
+    surface = rml_element_query_selector(body, ".surface");
+    bool tall = mounted && masthead && workbench &&
+                rml_element_box_size(mounted, RML_BOX_BORDER).x >= tall_width - 1 &&
+                rml_element_box_size(masthead, RML_BOX_BORDER).x >= tall_width * 0.9f &&
+                rml_element_is_visible(workbench, false) &&
+                rml_element_box_size(workbench, RML_BOX_BORDER).x >= tall_width * 0.9f &&
+                surface &&
+                rml_element_scroll_height(surface) >
+                    rml_element_client_height(surface) + 1;
+
+    const int narrow_width = 1050;
+    assert(game_save_set(world->save, "live", "false"));
+    assert(game_save_commit(world->save));
+    for (int i = 0; i < 3; i++) {
+        render_ui_update(ui, world, narrow_width, tall_height, 1.0 / 60);
+    }
+    body = rml_context_document(render_ui_context(ui), 0);
+    welcome = rml_element_query_selector(body, "#welcome");
+    masthead = rml_element_query_selector(body, "#masthead");
+    mounted = rml_element_query_selector(body, "[data-ui=Layout]");
+    bool narrow = welcome && masthead &&
+                  rml_element_box_size(welcome, RML_BOX_BORDER).x >=
+                      narrow_width * 0.9f &&
+                  rml_element_box_size(masthead, RML_BOX_BORDER).x >=
+                      narrow_width * 0.9f &&
+                  mounted &&
+                  rml_element_box_size(mounted, RML_BOX_BORDER).x >= narrow_width - 1;
+    test_check(
+        opening && playing && dragged && wheeled && bottom_reached &&
+            returned && tall && narrow,
+        "switching tall scroll layouts preserves panel width and pointer "
+        "scrolls through the footer across density and resize"
+    );
+    *GAME_GameUi_get(ecs, entity) = (GameUi){ .document = "Menu" };
+    render_ui_update(ui, world, 1280, 720, 1.0 / 60);
+    test_remove_ui(folder, "Layout");
+}
+
 /* Set UI Data's values reach the entity's document as self: a number, and
    a list of records data-for repeats, both changed in place; another
    entity's document keeps its own; and a closed document drops its data. */
@@ -275,6 +605,19 @@ void test_game_ui_presenter()
     render_ui *ui = render_ui_new(root, NULL);
     render_ui_update(ui, &w, 1280, 720, 1.0 / 60);
     test_check(!render_ui_error(ui)[0], "a GameUi document loads from content/ui");
+
+    rml_context *context = render_ui_context(ui);
+    rml_element *body = rml_context_document(context, 0);
+    rml_element *mounted = rml_element_query_selector(body, "[data-ui=Menu]");
+    char display[32] = "";
+    bool full_width = body && mounted &&
+                      rml_element_property(body, "display", display, sizeof display) &&
+                      !strcmp(display, "block") &&
+                      rml_element_box_size(body, RML_BOX_BORDER).x >= 1279 &&
+                      rml_element_box_size(mounted, RML_BOX_BORDER).x >= 1279;
+    test_check(full_width, "the default page body displays as a block and lets GameUi mounts fill the viewport");
+    visibility_layout(ui, &w, world, menu, folder);
+    page_text_binding(ui, &w, folder);
 
     int before = game_entities_pending_events(live->entities);
     click(ui, 40, 20);
@@ -430,6 +773,8 @@ void test_game_ui_presenter()
     );
     test_remove_ui(folder, "Options");
 
+    numeric_saves(folder, ui, &w, world, strip);
+
     test_write_ui(
         folder,
         "Keys",
@@ -448,6 +793,86 @@ void test_game_ui_presenter()
     render_ui_update(ui, &w, 1280, 720, 1.0 / 60);
     test_check(keyed && game_entities_pending_events(live->entities) == before + 2, "data-keys sends an event from the autofocused element, and Click UI Element clicks");
     test_remove_ui(folder, "Keys");
+
+    test_write_ui(
+        folder,
+        "Buttons",
+        "<div id=\"start\" autofocus>Start</div>"
+        "<button id=\"first\" data-event-click=\"emit('First')\">"
+        "First <span id=\"inside\">inside</span></button>"
+        "<button id=\"locked\" data-attrif-disabled=\"!save.enabled\" "
+        "data-event-click=\"emit('Locked')\">Locked</button>"
+        "<button id=\"last\" data-event-click=\"emit('Last')\">Last</button>"
+        "<input id=\"field\" type=\"text\" "
+        "data-event-click=\"emit('Field')\"/>\n",
+        "#start, #inside { display: block; tab-index: auto; }\n"
+    );
+    assert(game_save_set(w.save, "enabled", "false"));
+    assert(game_save_commit(w.save));
+    *GAME_GameUi_get(world, strip) = (GameUi){ .document = "Buttons" };
+    for (int i = 0; i < 3; i++) {
+        render_ui_update(ui, &w, 1280, 720, 1.0 / 60);
+    }
+    rml_context *button_context = render_ui_context(ui);
+    rml_element *button_doc = rml_context_document(button_context, 0);
+    rml_element *start = rml_element_query_selector(button_doc, "#start");
+    rml_element *first = rml_element_query_selector(button_doc, "#first");
+    rml_element *inside = rml_element_query_selector(button_doc, "#inside");
+    rml_element *locked = rml_element_query_selector(button_doc, "#locked");
+    rml_element *last = rml_element_query_selector(button_doc, "#last");
+    rml_element *field = rml_element_query_selector(button_doc, "#field");
+    bool authored_disabled = start && first && inside && locked && last && field &&
+                             rml_element_has_attribute(locked, "disabled") &&
+                             !render_ui_error(ui)[0];
+    assert(authored_disabled);
+    key(ui, RML_INPUT_KEY_PRESS, RML_INPUT_KEY_TAB);
+    key(ui, RML_INPUT_KEY_RELEASE, RML_INPUT_KEY_TAB);
+    bool enabled_button_tabbable = focused(button_context, "first");
+    key(ui, RML_INPUT_KEY_PRESS, RML_INPUT_KEY_TAB);
+    key(ui, RML_INPUT_KEY_RELEASE, RML_INPUT_KEY_TAB);
+    bool nested_tabbable = focused(button_context, "inside");
+    key(ui, RML_INPUT_KEY_PRESS, RML_INPUT_KEY_TAB);
+    key(ui, RML_INPUT_KEY_RELEASE, RML_INPUT_KEY_TAB);
+    bool disabled_skipped = focused(button_context, "last");
+
+    before = game_entities_pending_events(live->entities);
+    key(ui, RML_INPUT_KEY_PRESS, RML_INPUT_KEY_ENTER);
+    key(ui, RML_INPUT_KEY_RELEASE, RML_INPUT_KEY_ENTER);
+    render_ui_update(ui, &w, 1280, 720, 1.0 / 60);
+    bool enter_once = game_entities_pending_events(live->entities) == before + 1;
+    rml_element_focus(inside, true);
+    before = game_entities_pending_events(live->entities);
+    key(ui, RML_INPUT_KEY_PRESS, RML_INPUT_KEY_SPACE);
+    key(ui, RML_INPUT_KEY_RELEASE, RML_INPUT_KEY_SPACE);
+    render_ui_update(ui, &w, 1280, 720, 1.0 / 60);
+    render_ui_update(ui, &w, 1280, 720, 1.0 / 60);
+    bool space_once = game_entities_pending_events(live->entities) == before + 1;
+
+    assert(game_save_set(w.save, "enabled", "true"));
+    assert(game_save_commit(w.save));
+    render_ui_update(ui, &w, 1280, 720, 1.0 / 60);
+    bool enabled_again = !rml_element_has_attribute(locked, "disabled");
+    rml_element_focus(inside, true);
+    key(ui, RML_INPUT_KEY_PRESS, RML_INPUT_KEY_TAB);
+    key(ui, RML_INPUT_KEY_RELEASE, RML_INPUT_KEY_TAB);
+    bool enabled_after_binding = focused(button_context, "locked");
+
+    rml_element_focus(field, true);
+    before = game_entities_pending_events(live->entities);
+    key(ui, RML_INPUT_KEY_PRESS, RML_INPUT_KEY_ENTER);
+    render_ui_update(ui, &w, 1280, 720, 1.0 / 60);
+    render_ui_update(ui, &w, 1280, 720, 1.0 / 60);
+    bool input_keeps_native_keys = game_entities_pending_events(live->entities) == before;
+    key(ui, RML_INPUT_KEY_RELEASE, RML_INPUT_KEY_ENTER);
+    test_check(
+        authored_disabled && enabled_button_tabbable && nested_tabbable &&
+            disabled_skipped && enter_once && space_once && enabled_again &&
+            enabled_after_binding && input_keeps_native_keys,
+        "enabled authored buttons join Tab order, disabled buttons leave it, "
+        "and nested keyboard activation fires once while native inputs keep "
+        "their own keys"
+    );
+    test_remove_ui(folder, "Buttons");
 
     /* A page's RCSS styles the documents in its slot, unscoped. */
     test_write_ui(

@@ -836,7 +836,9 @@ static void keydown(kit *k, const rml_event *e, node *n)
     /* A field in a popup takes its own keys, as in a Base UI Popover; the
        popup keeps Escape and Tab, so typing never runs a menu's typeahead. */
     bool entry = n && (n->kind == KIND_TEXT || n->kind == KIND_SEARCH ||
-                       n->kind == KIND_NUMBER);
+                       n->kind == KIND_NUMBER ||
+                       (n->kind == KIND_COLOR &&
+                        (e->target == n->el || is_input(e->target))));
     bool popup_keys = !entry || e->key == RML_KEY_ESCAPE || e->key == RML_KEY_TAB;
     if (command_key(k, e) || (popup_keys && popup_key(k, e)) || !n) {
         return;
@@ -1227,6 +1229,18 @@ rml_element *kit_modal_host(kit *k, const char *key)
     node *n = emit_in(k, k->layer, key, KIND_BOX, "div", "modal-host");
     n->hosted = true;
     return n->el;
+}
+
+void kit_modal_begin(kit *k, const char *key)
+{
+    node *n = emit_in(k, k->layer, key, KIND_BOX, "div", "modal-host");
+    n->hosted = true;
+    push_node(k, n);
+}
+
+void kit_modal_end(kit *k)
+{
+    pop_node(k);
 }
 
 void kit_label(kit *k, const char *key, const char *cls, const char *text)

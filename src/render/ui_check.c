@@ -17,10 +17,27 @@
 /* The markup's document opens with a line of its own, so its lines are the
  * .rml file's plus one, and closes on another. It has a face, as a page's
  * body has, so text lays out. */
-static const char
-    DOCUMENT[] = "<rml><head><style>body { font-family: Inter; }</style></head>"
-                 "<body data-model=\"" UI_DATA_MODEL
-                 "\"%s%s>\n%s%s</body></rml>";
+static const char DOCUMENT[] =
+    "<rml><head><style>body { display: block; width: 100%%; height: 100%%; "
+    "font-family: Inter; }"
+    "scrollbarvertical { width: 8dp; margin-left: 0dp; }"
+    "button:not([disabled]) { tab-index: auto; }"
+    "scrollbarvertical, scrollbarhorizontal, scrollbarcorner, "
+    "scrollbarvertical slidertrack, scrollbarhorizontal slidertrack, "
+    "scrollbarvertical sliderbar, scrollbarhorizontal sliderbar { "
+    "pointer-events: auto; }"
+    "scrollbarvertical slidertrack { background-color: transparent; }"
+    "scrollbarvertical sliderbar { margin: 2dp; border-radius: 3dp; "
+    "background-color: var(--scrollbar, #777); }"
+    "scrollbarvertical sliderbar:hover { "
+    "background-color: var(--scrollbar-hover, #aaa); }"
+    "scrollbarhorizontal { height: 8dp; }"
+    "scrollbarhorizontal sliderbar { margin: 2dp; border-radius: 3dp; "
+    "background-color: var(--scrollbar, #777); }"
+    "scrollbarhorizontal sliderbar:hover { "
+    "background-color: var(--scrollbar-hover, #aaa); }"
+    "scrollbarcorner { background-color: transparent; }</style></head>"
+    "<body data-model=\"" UI_DATA_MODEL "\"%s%s>\n%s%s</body></rml>";
 /* What RmlUi calls the markup's document in its messages. */
 #define MARKUP_URL "markup"
 

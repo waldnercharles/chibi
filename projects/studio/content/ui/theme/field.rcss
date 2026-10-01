@@ -68,7 +68,9 @@
 .field.select[data-open] { background-color: var(--field-edit); }
 
 /* Color field. */
-.field.color { cursor: arrow; }
+.field.color { cursor: arrow; tab-index: auto; }
+.field.color:focus-visible { border-color: var(--ring); }
+.field.color[data-disabled] { tab-index: none; }
 .field.color .swatch { position: absolute; left: 3dp; right: 3dp; top: 3dp; bottom: 3dp; border-radius: 2dp; }
 .field.color .swatch.none { border: 1dp var(--border); }
 .color-alpha-row { display: flex; align-items: center; gap: 4dp; width: 100%; }

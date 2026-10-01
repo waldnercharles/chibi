@@ -1,10 +1,12 @@
 /* Node sizes, rows and socket positions for the graph canvas. */
+#include "editor/documents/component_properties.h"
 #include "editor/studio/studio_graph_internal.h"
 #include "editor/ui/labels.h"
 #include "graph/authoring/pin_edit.h"
 #include "graph/model/local.h"
 #include "graph/model/pin_conv.h"
 #include "graph/nodes/behavior_expression.h"
+#include "graph/nodes/component_nodes.h"
 #include "graph/nodes/fmt_nodes.h"
 #include "graph/shader/shader_graph.h"
 #include "platform/cute.h"
@@ -135,6 +137,33 @@ static const float OPERATOR_MIN = 56, OPERATOR_PAD = 4, SYMBOL_SIZE = 18;
 /* graph.rcss .gcode: 16 dp lines, 8 dp of padding and 4 below; 28 dp across. */
 static const float CODE_SIZE = 11, CODE_LINE = 16, CODE_PAD = 12, CODE_INSET = 28;
 
+/* Color presentation belongs to the explicit pin flag or the reflected field
+   catalog, not to a guess based on names like "Color" or the C type `unsigned`. */
+static bool color_pin(const node *n, const pin_spec *spec)
+{
+    int width = pin_vector_width(spec);
+    if ((spec->flags & PIN_FLAG_COLOR) &&
+        (spec->type == PIN_U32 || width == 3 || width == 4)) {
+        return true;
+    }
+    if (spec->type != PIN_U32) {
+        return false;
+    }
+    const ecs_component_desc *component = component_node_component(n);
+    const node_desc *structure = component_node_struct(n);
+    const type_desc *type = component ? component->type
+                          : structure ? structure->type
+                                      : NULL;
+    for (int i = 0; type && i < type->field_count; i++) {
+        const type_field *field = &type->fields[i];
+        if (field->name && spec->name && !strcmp(field->name, spec->name) &&
+            appearance_color_field(type, field)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 value_kind sg_value_kind_of(const studio *s, node *n, int output, int p)
 {
     const pin_spec *spec = output ? &n->output_pins[p] : &n->input_pins[p];
@@ -145,6 +174,9 @@ value_kind sg_value_kind_of(const studio *s, node *n, int output, int p)
     }
     if (choices && editor_choices_count(choices) > 0) {
         return VALUE_CHOICE;
+    }
+    if (color_pin(n, spec)) {
+        return VALUE_COLOR;
     }
     if (spec->type == PIN_BOOL) {
         return VALUE_BOOL;
@@ -348,6 +380,7 @@ static float value_width(const studio *s, const pin_parts *parts)
     switch (parts->value) {
         case VALUE_CHOICE: return 96;
         case VALUE_BOOL: return 16;
+        case VALUE_COLOR: return 48;
         case VALUE_VECTOR: return 58.0f * (float)pin_vector_width(parts->spec);
         case VALUE_TEXT: return 96;
         case VALUE_NUMBER: return 64;

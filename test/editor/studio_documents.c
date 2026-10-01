@@ -6,7 +6,10 @@
 #include "editor/studio/studio_graph_internal.h"
 #include "editor/studio/studio_internal.h"
 #include "editor/workspace/editor.h"
+#include "editor/workspace/editor_internal.h"
 #include "editor/workspace/input.h"
+#include "graph/document/serialize.h"
+#include "graph/nodes/component_nodes.h"
 #include "platform/cute.h"
 #include "render/scene_renderer.h"
 #include "runtime/generated.h"
@@ -30,6 +33,26 @@
    stays one line wherever the canvas arranges it. */
 #define FUNCTION_GRAPH 1
 #define SETTER 10247
+
+static pin_spec VALUE_CONTROL_INPUTS[] = {
+    { .name = "Packed Color",
+      .type = PIN_U32,
+      .type_name = "unsigned int",
+      .flags = PIN_FLAG_COLOR,
+      .default_value = { .type = PIN_U32, .u = 0xf0cd69ff } },
+    { .name = "Vector Color",
+      .type = PIN_STRUCT,
+      .type_name = "CF_V3",
+      .flags = PIN_FLAG_COLOR,
+      .default_value = { .type = PIN_STRUCT, .type_name = "CF_V3" } },
+    { .name = "Shape",
+      .type = PIN_ENUM,
+      .type_name = "GameShape",
+      .default_value = { .type = PIN_ENUM, .type_name = "GameShape", .e = 1 } },
+};
+static node_desc VALUE_CONTROL_NODE = { .name = "Value Control Fixture",
+                                        .input_count = 3,
+                                        .inputs = VALUE_CONTROL_INPUTS };
 
 typedef struct
 {
@@ -94,6 +117,176 @@ static void fixture_free(studio_fixture *f)
     editor_free(f->graph);
     ecs_world_free(f->world);
     engine_viewport_free(f->viewport);
+}
+
+static void frames(studio_fixture *f, int count);
+static rml_element *studio_element(studio *s, const char *selector);
+static void press(studio *s, rml_element *el);
+static void key_event(SDL_Scancode key, bool down);
+static void text_event(const char *text);
+static void mouse_move(const studio *s, float x, float y);
+
+static void graph_key(studio *s, rml_input_key key)
+{
+    (void)s;
+    assert(key == RML_INPUT_KEY_ENTER);
+    key_event(SDL_SCANCODE_RETURN, true);
+    key_event(SDL_SCANCODE_RETURN, false);
+}
+
+static void graph_text(studio *s, const char *text)
+{
+    (void)s;
+    text_event(text);
+}
+
+static void graph_press_rect(studio *s, kit_rect rect)
+{
+    studio_graph *g = &s->graph;
+    float x = g->surface.rect.x + (rect.x + rect.w * 0.5f) * g->zoom;
+    float y = g->surface.rect.y + (rect.y + rect.h * 0.5f) * g->zoom;
+    mouse_move(s, x, y);
+    for (int down = 1; down >= 0; down--) {
+        SDL_Event event = { .type = down ? SDL_EVENT_MOUSE_BUTTON_DOWN
+                                         : SDL_EVENT_MOUSE_BUTTON_UP };
+        event.button.windowID = SDL_GetWindowID(cf_app_get_window());
+        event.button.button = SDL_BUTTON_LEFT;
+        event.button.down = down;
+        event.button.clicks = 1;
+        event.button.x = x * s->prefs.ui_scale;
+        event.button.y = y * s->prefs.ui_scale;
+        assert(SDL_PushEvent(&event));
+    }
+}
+
+static bool graph_value_control_shown(studio_fixture *f, const node *n, int pin)
+{
+    char path[128];
+    kit_rect rect;
+    snprintf(
+        path,
+        sizeof path,
+        "world/stage/n%llu/b/i%d/v",
+        (unsigned long long)n->id,
+        pin
+    );
+    return kit_find(f->studio->graph.kit, path, &rect) && rect.w > 0 && rect.h > 0;
+}
+
+/* Color presentation reaches the graph canvas for declared pins and reflected
+   component fields; enum metadata continues to select its catalog control. */
+static void graph_value_controls_use_metadata()
+{
+    studio_fixture f = fixture_new();
+    graph *gr = f.graph->active_graph;
+    node *values = graph_add_node(gr, &VALUE_CONTROL_NODE);
+    assert(values);
+    values->x = 420;
+    values->y = 90;
+    values->placed = true;
+    node *set = graph_add_node(gr, registry_node_by_name("Set Component"));
+    assert(set && component_node_retarget(gr, set, "GameAppearance") == 0);
+    assert(component_node_split_value(gr, set, true) == 0);
+    set->x = 120;
+    set->y = 90;
+    set->placed = true;
+    int color_pin = -1;
+    for (int i = 0; i < set->input_count; i++) {
+        if (set->input_pins[i].name && !strcmp(set->input_pins[i].name, "color")) {
+            color_pin = i;
+            break;
+        }
+    }
+    assert(color_pin >= 0);
+    bool kinds = sg_value_kind_of(f.studio, values, 0, 0) == VALUE_COLOR &&
+                 sg_value_kind_of(f.studio, values, 0, 1) == VALUE_COLOR &&
+                 sg_value_kind_of(f.studio, values, 0, 2) == VALUE_CHOICE &&
+                 sg_value_kind_of(f.studio, set, 0, color_pin) == VALUE_COLOR;
+    frames(&f, 3);
+    bool controls = graph_value_control_shown(&f, values, 0) &&
+                    graph_value_control_shown(&f, values, 1) &&
+                    graph_value_control_shown(&f, values, 2) &&
+                    graph_value_control_shown(&f, set, color_pin);
+    test_check(kinds && controls, "graph pins draw color pickers from pin and reflected metadata and enums use choices");
+
+    fixture_free(&f);
+}
+
+static void graph_color_session_saves_undoes_and_replays()
+{
+    studio_fixture f = fixture_new();
+    graph *gr = f.graph->active_graph;
+    node *set = graph_add_node(gr, registry_node_by_name("Set Component"));
+    assert(set && component_node_retarget(gr, set, "GameAppearance") == 0);
+    assert(component_node_split_value(gr, set, true) == 0);
+    set->x = 120;
+    set->y = 90;
+    set->placed = true;
+    int color_pin = -1;
+    for (int i = 0; i < set->input_count; i++) {
+        if (set->input_pins[i].name && !strcmp(set->input_pins[i].name, "color")) {
+            color_pin = i;
+            break;
+        }
+    }
+    assert(color_pin >= 0);
+    uint64_t set_id = set->id;
+    uint32_t initial = set->input_pins[color_pin].default_value.u;
+    bool can_undo_before = editor_can_undo(f.graph);
+    char path[128];
+    snprintf(path, sizeof path, "world/stage/n%llu/b/i%d/v", (unsigned long long)set_id, color_pin);
+    frames(&f, 3);
+    kit_rect control;
+    assert(kit_find(f.studio->graph.kit, path, &control));
+    graph_press_rect(f.studio, control);
+    frames(&f, 3);
+    rml_element *graph_doc = rml_context_document(
+        rml_backend_context(f.studio->graph.backend),
+        0
+    );
+    rml_element *hex = rml_element_query_selector(graph_doc, ".popup.picker .hex");
+    if (hex) {
+        rml_element_focus(hex, true);
+        rml_element_select(hex);
+        graph_text(f.studio, "482b86ff");
+        graph_key(f.studio, RML_INPUT_KEY_ENTER);
+        frames(&f, 2);
+    }
+    const graph *active = editor_active_graph(f.graph);
+    node *edited = graph_node_by_id(active, set_id);
+    bool changed = hex && edited &&
+                   edited->input_pins[color_pin].default_value.u == 0x482b86ff;
+    if (kit_find(f.studio->graph.kit, path, &control)) {
+        graph_press_rect(f.studio, control);
+    }
+    frames(&f, 3);
+
+    char *saved_json = behavior_asset_save_json(editor_behavior_asset(f.graph));
+    behavior_asset *saved = saved_json ? behavior_asset_load_json(saved_json) : NULL;
+    free(saved_json);
+    graph *saved_graph = saved ? behavior_asset_find_graph(saved, active->graph_id)
+                               : NULL;
+    node *saved_set = saved_graph ? graph_node_by_id(saved_graph, set_id) : NULL;
+    bool persisted = saved_set &&
+                     saved_set->input_pins[color_pin].default_value.u == 0x482b86ff;
+    if (saved) {
+        behavior_asset_free(saved);
+    }
+
+    editor_undo(f.graph);
+    active = editor_active_graph(f.graph);
+    node *undone_set = graph_node_by_id(active, set_id);
+    bool undone = undone_set &&
+                  undone_set->input_pins[color_pin].default_value.u == initial &&
+                  editor_can_undo(f.graph) == can_undo_before &&
+                  editor_can_redo(f.graph);
+    editor_redo(f.graph);
+    active = editor_active_graph(f.graph);
+    node *redone_set = graph_node_by_id(active, set_id);
+    bool redone = redone_set &&
+                  redone_set->input_pins[color_pin].default_value.u == 0x482b86ff;
+    test_check(changed && persisted && undone && redone, "a graph color picker saves its RGBA value and streams one undoable session that replays");
+    fixture_free(&f);
 }
 
 /* One application frame. File > Reload runs inside Studio's frame, before the
@@ -1635,6 +1828,36 @@ static bool prototype_has(app_scene_authoring *scene, const char *component)
     return false;
 }
 
+/* Prototype Properties opens on its own context and keeps a valid component
+   tab selected while that document remains active. */
+static void prototype_properties_follow_document()
+{
+    studio_fixture f = side_open();
+    studio *s = f.studio;
+    s->maximized = s->focus_area = STUDIO_AREA_PROPERTIES;
+    s->tab = STUDIO_TAB_SCENE;
+    char error[256];
+    assert(component_presentation_read(
+        "components:\n  GAME.GameUi: {tab: Gameplay}\n",
+        &f.scene->registry,
+        &s->presentation.hints,
+        error,
+        sizeof error
+    ));
+    assert(app_scene_authoring_open_prototype(f.scene, "Vault") == 0);
+    frames(&f, 3);
+    kit_rect rect;
+    bool object = s->tab == STUDIO_TAB_OBJECT &&
+                  !kit_find(s->kit, "app/workspace/main/properties/body/properties/tabs/tab0", &rect);
+    s->tab = STUDIO_TAB_GAMEPLAY;
+    frames(&f, 2);
+    bool retained = s->tab == STUDIO_TAB_GAMEPLAY &&
+                    kit_find(s->kit, "app/workspace/main/properties/body/properties/tabs/tab4", &rect);
+    test_check(object, "opening a prototype leaves the unrelated Scene tab and selects Object");
+    test_check(retained, "Properties keeps a valid component tab selected for the active prototype");
+    fixture_free(&f);
+}
+
 /* Add Component searches the components the prototype lacks and adds the
    chosen one; its panel's menu removes it, and the toast's Undo returns it. */
 static void prototype_components()
@@ -1908,6 +2131,8 @@ int studio_documents_run(const char *program)
     }
     app_scene_renderer_initialize();
     app_input_initialize();
+    graph_value_controls_use_metadata();
+    graph_color_session_saves_undoes_and_replays();
     reload_keeps_viewed_graph_saved();
     test_ui_document_tabs();
     test_studio_new_assets();
@@ -1937,6 +2162,7 @@ int studio_documents_run(const char *program)
     scene_text_field();
     /* Rename objects and prototype components */
     rename_objects();
+    prototype_properties_follow_document();
     prototype_components();
     app_input_shutdown();
     cf_destroy_app();

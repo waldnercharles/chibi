@@ -432,6 +432,24 @@ static void ui_pointer(
     viewport->ui_capture = (captured & RML_INPUT_CAPTURE_POINTER) != 0;
 }
 
+static bool ui_wheel(engine_viewport *viewport, CF_V2 at, CF_V2 size, bool hovered, float wheel, bool active)
+{
+    if (!viewport->ui || !active || !hovered || size.x <= 0 || size.y <= 0 ||
+        wheel == 0) {
+        return false;
+    }
+    unsigned captured = render_ui_input(
+        viewport->ui,
+        &(rml_input){ .type = RML_INPUT_POINTER_WHEEL,
+                      .x = at.x * (float)viewport->width / size.x,
+                      .y = at.y * (float)viewport->height / size.y,
+                      .wheel_y = -wheel }
+    );
+    bool scrolled = (captured & RML_INPUT_CAPTURE_POINTER) != 0;
+    viewport->ui_capture |= scrolled;
+    return scrolled;
+}
+
 /* Sends the host's keys and text to the game documents while the host's
    keyboard is the image's and `active`. */
 static void ui_keys(engine_viewport *viewport, const engine_viewport_host_input *in, bool active)
@@ -586,6 +604,7 @@ void engine_viewport_ui_input(engine_viewport *viewport, bool active)
     CF_V2 size = viewport->image_size;
     bool inside = at.x >= 0 && at.y >= 0 && at.x < size.x && at.y < size.y;
     ui_pointer(viewport, at, size, inside, io->MouseClicked[0], io->MouseReleased[0], active);
+    ui_wheel(viewport, at, size, inside, io->MouseWheel, active);
 }
 
 /* The keys game documents bind with data-keys or edit text with, besides
@@ -674,13 +693,21 @@ void engine_viewport_ui_keys(engine_viewport *viewport, bool active)
     ImGuiIO *io = ImGui_GetIO();
     char *text = typed_text();
     unsigned modifiers = ui_modifiers(io);
-    for (ImGuiKey key = ImGuiKey_NamedKey_BEGIN; active && key < ImGuiKey_NamedKey_END;
-         key++) {
+    for (ImGuiKey key = ImGuiKey_NamedKey_BEGIN; key < ImGuiKey_NamedKey_END; key++) {
         rml_input_key rml = ui_key(key);
-        if (rml != RML_INPUT_KEY_UNKNOWN && ImGui_IsKeyPressedEx(key, true)) {
+        if (rml == RML_INPUT_KEY_UNKNOWN) {
+            continue;
+        }
+        if (active && ImGui_IsKeyPressedEx(key, false)) {
             render_ui_input(
                 viewport->ui,
                 &(rml_input){ .type = RML_INPUT_KEY_PRESS, .key = rml, .modifiers = modifiers }
+            );
+        }
+        if (ImGui_IsKeyReleased(key)) {
+            render_ui_input(
+                viewport->ui,
+                &(rml_input){ .type = RML_INPUT_KEY_RELEASE, .key = rml, .modifiers = modifiers }
             );
         }
     }
@@ -723,8 +750,19 @@ int engine_viewport_draw(engine_viewport *viewport, const engine_viewport_contro
         in->released[0],
         controls->playing
     );
+    bool scrolled = ui_wheel(
+        viewport,
+        (CF_V2){ in->x, in->y },
+        viewport->image_size,
+        in->hovered,
+        in->wheel,
+        controls->playing
+    );
     ui_keys(viewport, in, controls->playing);
     viewport_io io = host_io(viewport);
+    if (scrolled) {
+        io.wheel = 0;
+    }
     bool navigating = navigate_viewport(viewport, &io, controls->playing);
     capture_viewport_pointer(viewport, &io, navigating || viewport->ui_capture);
     if (viewport->runtime && controls->session) {

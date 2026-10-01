@@ -359,6 +359,10 @@ extern "C"
      * hosted modal content such as a dialog. While it shows, Tab and Shift+Tab
      * move the focus through its content only (Base UI's Dialog). */
     rml_element *kit_modal_host(kit *k, const char *key);
+    /* A modal whose children are emitted by the kit. It has the same focus
+     * trap and layer behavior as kit_modal_host, with kit_modal_end closing it. */
+    void kit_modal_begin(kit *k, const char *key);
+    void kit_modal_end(kit *k);
     /* Adds `rcss` after the kit's stylesheets under `key`, replacing what the key
      * held; NULL removes it. Hosted content installs its scoped RCSS here. */
     void kit_style_sheet(kit *k, const char *key, const char *rcss);
@@ -587,6 +591,9 @@ extern "C"
      * the text around them. */
     typedef struct text_edit text_edit;
     void kit_code_apply(kit_code_editor *e, const text_edit *edits, int count);
+    /* Inserts pasted text at the cursor or replaces the active selection.
+     * CRLF and CR line endings become LF; the paste is one undo step. */
+    void kit_code_paste(kit_code_editor *e, const char *text);
     /* The editor's own history. */
     void kit_code_undo(kit_code_editor *e);
     void kit_code_redo(kit_code_editor *e);
@@ -594,6 +601,11 @@ extern "C"
     void kit_code_set_cursor(kit_code_editor *e, int byte);
     /* Selects [start, end), the cursor at its end, as Find shows a match. */
     void kit_code_select(kit_code_editor *e, int start, int end);
+    /* The active visual selection's ordered byte range; false without one. */
+    bool kit_code_selection(const kit_code_editor *e, int *start, int *end);
+    /* Selects from the active editor's anchor to its cursor, including reverse
+     * selections; offsets are byte boundaries in the document. */
+    void kit_code_set_selection(kit_code_editor *e, int anchor, int cursor);
     /* The byte whose glyph the pointer has rested on, or -1: what the next
      * frame's desc.hover describes. */
     int kit_code_hover(const kit_code_editor *e);

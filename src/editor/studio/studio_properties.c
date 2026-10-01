@@ -268,12 +268,12 @@ static bool value_control(
             const editor_choices *choices = property_choices(desc->type, field);
             int *slot = value->type == PIN_ENUM ? &value->e : &value->i;
             int count = choices ? editor_choices_count(choices) : 0;
-            if (count > 0 && count <= 32) {
-                const char *labels[32];
+            if (count > 0) {
+                const char **labels = NULL;
                 int current = -1;
                 for (int i = 0; i < count; i++) {
                     editor_choice choice = editor_choice_at(choices, i);
-                    labels[i] = choice.label;
+                    apush(labels, choice.label);
                     if (choice.value == *slot) {
                         current = i;
                     }
@@ -284,6 +284,7 @@ static bool value_control(
                     *slot = editor_choice_at(choices, selected).value;
                     changed = true;
                 }
+                afree(labels);
                 break;
             }
             double v = *slot;
@@ -1145,6 +1146,18 @@ static void prototype_properties(studio *s, scene_prototype_asset *asset, bool l
     component_menu(s, asset, locked);
 }
 
+static studio_tab prototype_default_tab(const studio *s, const scene_prototype_asset *asset)
+{
+    const game_prototype *prototype = asset->prototype;
+    for (int i = 0; i < acount(prototype->components); i++) {
+        if (tab_of(s, prototype->components[i].desc) == STUDIO_TAB_OBJECT) {
+            return STUDIO_TAB_OBJECT;
+        }
+    }
+    return acount(prototype->components) ? tab_of(s, prototype->components[0].desc)
+                                         : STUDIO_TAB_OBJECT;
+}
+
 void studio_properties_body(studio *s, int area)
 {
     /* Visual designer (workstream H): a UI document's Details. */
@@ -1154,13 +1167,13 @@ void studio_properties_body(studio *s, int area)
     }
     kit *k = s->kit;
     app_scene_authoring *scene = s->scene;
-    bool prototype_document = app_scene_authoring_document(scene).kind ==
-                              APP_EDITOR_DOCUMENT_PROTOTYPE;
+    app_editor_document_context document = app_scene_authoring_document(scene);
+    bool prototype_document = document.kind == APP_EDITOR_DOCUMENT_PROTOTYPE;
     scene_prototype_asset *asset = prototype_document ? selected_prototype(scene)
                                                       : NULL;
     scene_actor *actor = prototype_document ? NULL : selected_actor(scene);
     bool locked = !studio_editable(s);
-    bool available[STUDIO_TAB_COUNT] = { [STUDIO_TAB_SCENE] = true };
+    bool available[STUDIO_TAB_COUNT] = { [STUDIO_TAB_SCENE] = asset == NULL };
     if (asset && asset->prototype) {
         available[STUDIO_TAB_OBJECT] = true;
         for (int i = 0; i < acount(asset->prototype->components); i++) {
@@ -1180,7 +1193,9 @@ void studio_properties_body(studio *s, int area)
    object its components. */
     uint64_t node = studio_graph_node(s) ? studio_graph_node(s)
                                          : studio_graph_comment(s);
-    available[STUDIO_TAB_NODE] = node != 0;
+    bool graph_document = document.kind == APP_EDITOR_DOCUMENT_BEHAVIOR ||
+                          document.kind == APP_EDITOR_DOCUMENT_SYSTEM;
+    available[STUDIO_TAB_NODE] = graph_document && node != 0;
     if (node && node != s->shown_node) {
         s->tab = STUDIO_TAB_NODE;
     } else if (s->tab == STUDIO_TAB_NODE && scene->selected != s->shown_actor && actor) {
@@ -1188,7 +1203,7 @@ void studio_properties_body(studio *s, int area)
     }
     /* Member follows the Members selection the same way. */
     uint64_t member = studio_member_shown(s);
-    available[STUDIO_TAB_MEMBER] = member != 0;
+    available[STUDIO_TAB_MEMBER] = graph_document && member != 0;
     if (member && member != s->shown_member) {
         s->tab = STUDIO_TAB_MEMBER;
     }
@@ -1196,7 +1211,9 @@ void studio_properties_body(studio *s, int area)
     s->shown_node = node;
     s->shown_actor = scene->selected;
     if (!available[s->tab]) {
-        s->tab = actor || asset ? STUDIO_TAB_OBJECT : STUDIO_TAB_SCENE;
+        s->tab = asset ? prototype_default_tab(s, asset)
+               : actor ? STUDIO_TAB_OBJECT
+                       : STUDIO_TAB_SCENE;
     }
     rml_element *host = studio_ui_panel(s, "properties", "Properties");
     if (host) {

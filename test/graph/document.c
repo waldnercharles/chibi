@@ -1,3 +1,4 @@
+#include "graph/shader/shader_graph.h"
 #include "test/suite_internal.h"
 
 void run_graph_document_checks()
@@ -274,6 +275,32 @@ void run_graph_document_checks()
             free(json);
         }
         graph_free(&g4);
+    }
+
+    /* 10. typed struct arrays, including nested vector color values. */
+    {
+        graph ramp_graph;
+        graph_init(&ramp_graph);
+        node *ramp = graph_add_node(&ramp_graph, registry_node_by_name("Shader Color Ramp"));
+        shader_ramp_stop stops[] = { { 0.0f, { 0.12f, 0.34f, 0.56f, 0.78f } },
+                                     { 1.0f, { 0.91f, 0.73f, 0.55f, 0.37f } } };
+        test_check(ramp && shader_node_ramp_set(&ramp_graph, ramp, stops, 2), "typed struct array default is authored");
+        char *json = graph_save_json(&ramp_graph);
+        graph *loaded = json ? graph_load_json(json) : NULL;
+        shader_ramp_stop actual[SHADER_RAMP_MAX];
+        int actual_count = loaded ? shader_node_ramp_get(loaded->nodes[0], actual) : 0;
+        test_check(loaded && actual_count == 2, "typed struct array default reloads");
+        test_check(
+            loaded && actual_count == 2 && actual[0].position == stops[0].position &&
+                actual[0].color[2] == stops[0].color[2] &&
+                actual[1].position == stops[1].position &&
+                actual[1].color[3] == stops[1].color[3],
+            "nested vector values survive array serialization"
+        );
+        graph_free(loaded);
+        free(loaded);
+        free(json);
+        graph_free(&ramp_graph);
     }
 
     /* 10. load error handling: malformed JSON, missing fields, unknown type,

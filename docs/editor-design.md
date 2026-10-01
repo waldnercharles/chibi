@@ -23,9 +23,19 @@ areas, a command palette, the Outliner, Properties, the scene viewport, the
 behavior graph, Assets and Output. It edits the C authoring model with one undo
 step per gesture.
 
+Saving a UI document formats RCSS with two-space indentation and one declaration
+per line. RML only splits long attribute lists, preserving quoted values,
+bindings, comments and every byte between tags. Invalid parts stay byte-for-byte
+unchanged, and formatting the saved parts is one Undo step.
+
 ImGui remains only as the `--play` window host, showing the game image and
 supplying input. In-game UI, including the pause and outcome menu, is GameUi
 documents drawn over the game image (`src/render/ui.c`).
+
+RML image paths use linear filtering by default for smooth general UI imagery.
+Append `#nearest` to an authored pixel-art path, for example
+`<img src="content/art/sprite.png#nearest"/>`, to keep its pixels crisp. Generated
+and other UI textures remain linear.
 
 `src/ui` owns the RmlUi binding, FreeType font rendering and the Cute geometry
 backend, shared by the editor and game UI; `src/editor/rmlui` owns the kit and

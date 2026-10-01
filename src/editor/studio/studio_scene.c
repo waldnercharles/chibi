@@ -748,6 +748,19 @@ static bool canvas_header(studio *s, int area)
     if (kit_button(k, "backdrop", &backdrop)) {
         c->light = !c->light;
     }
+    studio_layout *layout = studio_active_layout(s);
+    kit_push(k, "actions-toggle", NULL, "canvas-actions-toggle");
+    kit_button_desc actions = { .label = "Actions",
+                                .icon = KIT_ICON_EVENT,
+                                .size = KIT_SM,
+                                .cls = "canvas-actions-button",
+                                .tip = "Show or hide UI events",
+                                .flags = layout->canvas_actions_open ? KIT_ON : 0 };
+    if (kit_button(k, "actions", &actions)) {
+        layout->canvas_actions_open = !layout->canvas_actions_open;
+    }
+    kit_number_flow(k, "count", "count", acount(c->actions), &(kit_number_flow_desc){ 0 });
+    kit_pop(k);
     kit_leaf(k, "spacer", NULL, "spacer");
     view_zoom_menu(s, area);
     return true;
@@ -807,7 +820,6 @@ static void actions_panel(studio *s)
     kit_push(k, "head", NULL, "canvas-actions-head");
     kit_icon(k, "icon", NULL, KIT_ICON_EVENT);
     kit_label(k, "title", "title", "Actions");
-    kit_number_flow(k, "count", "count", total, &(kit_number_flow_desc){ 0 });
     kit_leaf(k, "spacer", NULL, "spacer");
     kit_button_desc clear = { .icon = KIT_ICON_TRASH,
                               .size = KIT_SM,
@@ -893,7 +905,9 @@ static bool canvas_body(studio *s)
         kit_label(k, "error", "notice", s->ui_error);
     }
     kit_pop(k);
-    actions_panel(s);
+    if (studio_active_layout(s)->canvas_actions_open) {
+        actions_panel(s);
+    }
     kit_pop(k);
     return true;
 }

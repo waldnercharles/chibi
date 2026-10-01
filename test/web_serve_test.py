@@ -1,8 +1,10 @@
 """Local workspace saves must survive reload without escaping project content."""
+import base64
 import importlib.util
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 spec = importlib.util.spec_from_file_location(
     'web_serve', Path(__file__).resolve().parents[1] / 'tools/web_serve.py')
@@ -46,12 +48,66 @@ class WorkspaceSaves(unittest.TestCase):
         watch.poll()
         self.assertEqual(watch.changes(1, 0), (2, {'projects/bloom/content/A.yaml': None}))
 
+    def test_watch_rechecks_paths_before_reading_and_keeps_manifest_updates(self):
+        asset = self.content / 'A.yaml'
+        asset.write_text('a: 1\n')
+        manifest = self.project / 'project.yaml'
+        watch = server.WorkspaceWatch(self.workspace)
+        manifest.write_text('version: 2\ncontent: content\n')
+        watch.poll()
+        self.assertEqual(watch.changes(0, 0), (1, {
+            'projects/bloom/project.yaml': 'version: 2\ncontent: content\n',
+        }))
+
+        outside = Path(self.directory.name).parent / f'{Path(self.directory.name).name}-private.yaml'
+        outside.write_text('private: true\n')
+        self.addCleanup(outside.unlink, missing_ok=True)
+        asset.unlink()
+        asset.symlink_to(outside)
+        self.assertNotIn('projects/bloom/content/A.yaml', server.workspace_assets(self.workspace))
+        watch.poll()
+        self.assertEqual(watch.changes(1, 0), (2, {'projects/bloom/content/A.yaml': None}))
+
     def test_save_without_text_deletes(self):
         self.save('projects/bloom/content/Bloom.yaml')
         self.save('projects/bloom/content/Bloom.yaml', None)
         self.assertFalse((self.content / 'Bloom.yaml').exists())
+        image = self.content / 'art/portrait.png'
+        image.parent.mkdir(parents=True)
+        image.write_bytes(b'png data')
+        self.save('projects/bloom/content/art/portrait.png', None)
+        self.assertFalse(image.exists())
         with self.assertRaises(ValueError):
             self.save('projects/bloom/project.yaml', None)
+
+    def test_image_assets_are_encoded_and_watched_for_edits_and_removal(self):
+        art = self.content / 'art'
+        art.mkdir()
+        png = art / 'Portrait.PNG'
+        jpeg = art / 'Backdrop.jpeg'
+        jpg = art / 'Badge.jpg'
+        png.write_bytes(b'\x89PNG\r\n\x1a\nfirst')
+        jpeg.write_bytes(b'jpeg bytes')
+        jpg.write_bytes(b'jpg bytes')
+
+        assets = server.workspace_assets(self.workspace)
+        self.assertEqual(assets['projects/bloom/content/art/Portrait.PNG'], {
+            'encoding': 'base64', 'data': base64.b64encode(png.read_bytes()).decode('ascii')
+        })
+        self.assertEqual(assets['projects/bloom/content/art/Backdrop.jpeg']['encoding'], 'base64')
+        self.assertEqual(assets['projects/bloom/content/art/Badge.jpg']['encoding'], 'base64')
+
+        watch = server.WorkspaceWatch(self.workspace)
+        png.write_bytes(b'\x89PNG\r\n\x1a\nupdated image bytes')
+        watch.poll()
+        self.assertEqual(watch.changes(0, 0), (1, {
+            'projects/bloom/content/art/Portrait.PNG': {
+                'encoding': 'base64', 'data': base64.b64encode(png.read_bytes()).decode('ascii')
+            }
+        }))
+        png.unlink()
+        watch.poll()
+        self.assertEqual(watch.changes(1, 0), (2, {'projects/bloom/content/art/Portrait.PNG': None}))
 
     def test_manifest_saves(self):
         self.save('projects/bloom/project.yaml', 'version: 1\ncontent: content\nui: Shell\n')
@@ -68,6 +124,48 @@ class WorkspaceSaves(unittest.TestCase):
     def test_theme_saves_as_written(self):
         self.save('projects/bloom/content/ui/theme/tokens.rcss', ':root { --primary: #c2453b; }\n')
         self.assertEqual((self.content / 'ui/theme/tokens.rcss').read_text(), ':root { --primary: #c2453b; }\n')
+
+    def test_create_project_writes_manifest_and_start_scene(self):
+        result = server.create_project(self.workspace, {'name': 'Sample Project', 'version': 3})
+        project = self.workspace / 'projects/sample-project'
+        manifest = server.yaml.safe_load((project / 'project.yaml').read_text())
+        scene_path = project / 'content/scenes/Start.yaml'
+        scene = server.yaml.safe_load(scene_path.read_text())
+        self.assertEqual(result['root'], '/projects/sample-project/')
+        self.assertEqual(manifest, {
+            'version': 3, 'name': 'Sample Project', 'content': 'content',
+            'start_scene': 'scenes/Start.yaml',
+        })
+        self.assertEqual(scene, {'version': 1, 'name': 'Start', 'entities': []})
+        self.assertEqual(server.workspace_assets(self.workspace)[
+            'projects/sample-project/content/scenes/Start.yaml'], scene_path.read_text())
+
+    def test_create_project_uses_a_unique_folder(self):
+        server.create_project(self.workspace, {'name': 'Sample Project', 'version': 3})
+        result = server.create_project(self.workspace, {'name': 'Sample Project', 'version': 3})
+        self.assertEqual(result['root'], '/projects/sample-project-2/')
+
+    def test_create_project_removes_partial_files_after_a_write_error(self):
+        write_text = Path.write_text
+
+        def fail_scene(path, *args, **kwargs):
+            if path.name == 'Start.yaml':
+                raise OSError('disk full')
+            return write_text(path, *args, **kwargs)
+
+        with patch.object(Path, 'write_text', fail_scene), self.assertRaises(OSError):
+            server.create_project(self.workspace, {'name': 'Sample Project', 'version': 3})
+        self.assertFalse((self.workspace / 'projects/sample-project').exists())
+
+    def test_create_project_rejects_invalid_names_and_versions(self):
+        for request in (
+            {'name': '  ', 'version': 3},
+            {'name': 'x' * 129, 'version': 3},
+            {'name': 'Name', 'version': 0},
+        ):
+            with self.subTest(request=request), self.assertRaises(ValueError):
+                server.create_project(self.workspace, request)
+        self.assertFalse((self.workspace / 'projects/name').exists())
 
     def test_markup_saves_as_written(self):
         self.save('projects/bloom/content/ui/Hud.rml', '<div class="hud">{{ save.score }}</div>\n')

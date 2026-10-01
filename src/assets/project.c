@@ -10,6 +10,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <unistd.h>
 #include <yyjson.h>
 
 static void set_error(char *error, size_t error_size, const char *message)
@@ -36,6 +37,128 @@ static bool is_file(const char *path)
 {
     struct stat info;
     return stat(path, &info) == 0 && S_ISREG(info.st_mode);
+}
+
+static char *join_path(const char *base, const char *name);
+static char *parent_path(const char *path);
+
+static int write_asset_file(const char *path, const char *json, char *error, size_t error_size)
+{
+    char *yaml = asset_text_to_disk(json, error, error_size);
+    if (!yaml) {
+        return -1;
+    }
+    FILE *file = fopen(path, "wb");
+    if (!file) {
+        if (error_size) {
+            snprintf(error, error_size, "Cannot create %s: %s", path, strerror(errno));
+        }
+        free(yaml);
+        return -1;
+    }
+    size_t size = strlen(yaml);
+    bool written = fwrite(yaml, 1, size, file) == size;
+    written = fclose(file) == 0 && written;
+    if (!written) {
+        if (error_size) {
+            snprintf(error, error_size, "Cannot finish writing %s", path);
+        }
+        unlink(path);
+    }
+    free(yaml);
+    return written ? 0 : -1;
+}
+
+static char *manifest_text(const char *name)
+{
+    yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
+    yyjson_mut_val *root = yyjson_mut_obj(doc);
+    yyjson_mut_doc_set_root(doc, root);
+    yyjson_mut_obj_add_int(doc, root, "version", CHIBI_PROJECT_VERSION);
+    yyjson_mut_obj_add_strcpy(doc, root, "name", name);
+    yyjson_mut_obj_add_str(doc, root, "content", "content");
+    yyjson_mut_obj_add_str(doc, root, "start_scene", "scenes/Start.yaml");
+    char *json = yyjson_mut_write(doc, 0, NULL);
+    yyjson_mut_doc_free(doc);
+    return json;
+}
+
+static char *start_scene_text()
+{
+    yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
+    yyjson_mut_val *root = yyjson_mut_obj(doc);
+    yyjson_mut_doc_set_root(doc, root);
+    yyjson_mut_obj_add_int(doc, root, "version", 1);
+    yyjson_mut_obj_add_str(doc, root, "name", "Start");
+    yyjson_mut_obj_add_arr(doc, root, "entities");
+    char *json = yyjson_mut_write(doc, 0, NULL);
+    yyjson_mut_doc_free(doc);
+    return json;
+}
+
+int chibi_project_create(const char *root, const char *name, char *error, size_t error_size)
+{
+    if (error_size) {
+        error[0] = '\0';
+    }
+    if (!root || !root[0] || !name || !name[0]) {
+        set_error(error, error_size, "Project path and name are required");
+        return -1;
+    }
+    bool named = false;
+    for (const unsigned char *c = (const unsigned char *)name; *c; c++) {
+        named |= *c > ' ';
+    }
+    if (!named) {
+        set_error(error, error_size, "Enter a project name");
+        return -1;
+    }
+    if (is_directory(root) || is_file(root)) {
+        set_errorf(error, error_size, "Project already exists: %s", root);
+        return -1;
+    }
+    char *parent = parent_path(root);
+    if (!is_directory(parent)) {
+        set_errorf(error, error_size, "Project parent directory does not exist: %s", parent);
+        free(parent);
+        return -1;
+    }
+    free(parent);
+    if (mkdir(root, 0755) != 0) {
+        if (error_size) {
+            snprintf(error, error_size, "Cannot create project: %s", strerror(errno));
+        }
+        return -1;
+    }
+    char *content = join_path(root, "content");
+    char *scenes = join_path(content, "scenes");
+    bool folders = mkdir(content, 0755) == 0 && mkdir(scenes, 0755) == 0;
+    char *manifest_path = join_path(root, CHIBI_PROJECT_MANIFEST);
+    char *scene_path = join_path(scenes, "Start" ASSET_EXTENSION);
+    char *manifest = manifest_text(name);
+    char *scene = start_scene_text();
+    bool written = folders && manifest && scene &&
+                   write_asset_file(manifest_path, manifest, error, error_size) == 0 &&
+                   write_asset_file(scene_path, scene, error, error_size) == 0;
+    if (!written) {
+        unlink(scene_path);
+        unlink(manifest_path);
+        rmdir(scenes);
+        rmdir(content);
+        rmdir(root);
+        if (!error_size || !error[0]) {
+            set_error(error, error_size, "Could not create project files");
+        }
+    } else if (error_size) {
+        error[0] = '\0';
+    }
+    free(manifest);
+    free(scene);
+    free(scene_path);
+    free(manifest_path);
+    free(scenes);
+    free(content);
+    return written ? 0 : -1;
 }
 
 static char *join_path(const char *base, const char *name)

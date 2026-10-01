@@ -104,6 +104,14 @@ static bool written_at(rml_element *element, const char *source)
            !strcmp(value, source);
 }
 
+static bool text_is(rml_element *element, const char *expected)
+{
+    char text[128] = "";
+    return element && rml_element_child_count(element) == 1 &&
+           rml_element_text(rml_element_child(element, 0), text, sizeof text) &&
+           !strcmp(text, expected);
+}
+
 /* The element under the pointer at (x, y). */
 static rml_element *pick(render_ui *ui, float x, float y)
 {
@@ -114,6 +122,15 @@ static rml_element *pick(render_ui *ui, float x, float y)
 static void update(render_ui *ui, const ui_world *w)
 {
     render_ui_update(ui, w, 1280, 720, 1.0 / 60);
+}
+
+/* Disk changes are polled once a second; advance the test clock past that
+   interval before checking a newly written asset that reuses a mount. */
+static void update_after_disk_poll(render_ui *ui, const ui_world *w)
+{
+    for (int frame = 0; frame < 61; frame++) {
+        update(ui, w);
+    }
 }
 
 /* A game UI host names its sheet, and each element and rule traces back to
@@ -173,6 +190,87 @@ static void overlay_remount(render_ui *ui, const ui_world *w, const char *root)
     test_check(written_at(pick(ui, 10, 10), "Chip:1"), "removing the edit shows the saved asset again");
 }
 
+/* An edit to a shown overlay's own stylesheet replaces its rules live. */
+static void overlay_stylesheet_edit(render_ui *ui, const ui_world *w, const char *root)
+{
+    char folder[256], styles[256];
+    snprintf(folder, sizeof folder, "%s/ui", root);
+    snprintf(styles, sizeof styles, "%s/ui/Overlay.rcss", root);
+    text_overlay_set(styles, NULL);
+    test_write_ui(folder, "Overlay", "<div id=\"panel\"/>\n", "#panel { width: 120dp; }\n");
+    render_ui_set_overlay(ui, "Overlay", "dark");
+    update(ui, w);
+    rml_element *panel = rml_element_query_selector(
+        rml_context_document(render_ui_context(ui), 0),
+        "[data-ui=Overlay] #panel"
+    );
+    char width[32] = "";
+    bool initial = panel &&
+                   rml_element_property(panel, "width", width, sizeof width) &&
+                   !strcmp(width, "120dp");
+
+    static const char EDITED[] = "#panel { width: 180dp; }\n";
+    text_overlay_set(styles, EDITED);
+    update(ui, w);
+    panel = rml_element_query_selector(rml_context_document(render_ui_context(ui), 0), "[data-ui=Overlay] #panel");
+    bool updated = panel &&
+                   rml_element_property(panel, "width", width, sizeof width) &&
+                   !strcmp(width, "180dp");
+
+    write_file(root, "Overlay.rcss", EDITED);
+    text_overlay_set(styles, NULL);
+    update(ui, w);
+    panel = rml_element_query_selector(rml_context_document(render_ui_context(ui), 0), "[data-ui=Overlay] #panel");
+    bool saved = panel && rml_element_property(panel, "width", width, sizeof width) &&
+                 !strcmp(width, "180dp");
+    test_check(initial && updated && saved, "live and saved stylesheet edits restyle an already mounted preview");
+
+    render_ui_set_overlay(ui, "Overlay", NULL);
+    update(ui, w);
+    remove_file(root, "Overlay.rml");
+    remove_file(root, "Overlay.rcss");
+}
+
+/* An edited text node replaces what an already mounted preview shows. */
+static void overlay_text_edit(render_ui *ui, const ui_world *w, const char *root)
+{
+    char folder[256], path[256];
+    static const char EDITED[] = "<h1 id=\"title\">Sample Project</h1>\n"
+                                 "<p id=\"copy\">A warmer preview</p>\n";
+    snprintf(folder, sizeof folder, "%s/ui", root);
+    snprintf(path, sizeof path, "%s/ui/Overlay.rml", root);
+    text_overlay_set(path, NULL);
+    test_write_ui(folder, "Overlay", "<h1 id=\"title\">Title</h1>\n", "");
+    render_ui_set_overlay(ui, "Overlay", "dark");
+    update_after_disk_poll(ui, w);
+    rml_element *doc = rml_context_document(render_ui_context(ui), 0);
+    rml_element *title = rml_element_query_selector(doc, "[data-ui=Overlay] #title");
+    bool initial = text_is(title, "Title");
+
+    text_overlay_set(path, EDITED);
+    update(ui, w);
+    doc = rml_context_document(render_ui_context(ui), 0);
+    title = rml_element_query_selector(doc, "[data-ui=Overlay] #title");
+    rml_element *copy = rml_element_query_selector(doc, "[data-ui=Overlay] #copy");
+    bool updated = text_is(title, "Sample Project") &&
+                   text_is(copy, "A warmer preview");
+
+    write_file(root, "Overlay.rml", EDITED);
+    text_overlay_set(path, NULL);
+    update(ui, w);
+    doc = rml_context_document(render_ui_context(ui), 0);
+    title = rml_element_query_selector(doc, "[data-ui=Overlay] #title");
+    copy = rml_element_query_selector(doc, "[data-ui=Overlay] #copy");
+    bool saved = text_is(title, "Sample Project") && text_is(copy, "A warmer preview");
+    test_check(initial, "a saved RML asset loads before a live edit replaces its mounted preview");
+    test_check(updated, "a live RML text edit replaces the mounted preview");
+    test_check(saved, "a saved RML text edit remains in the mounted preview");
+
+    render_ui_set_overlay(ui, "Overlay", NULL);
+    update(ui, w);
+    remove_file(root, "Overlay.rml");
+}
+
 static void on_event(void *user, const rml_event *event)
 {
     (void)user;
@@ -210,6 +308,19 @@ static void kit_sources(const char *root)
             styled_from(rml_element_query_selector(host, "#panel"), "width", "/ui/Menu.rcss", 3),
         "a kit's theme and panel sheets trace to their files"
     );
+    rml_element_remove_event_listener(host, RML_EVENT_KEYDOWN, listener, false);
+    rml_element_remove_attribute(host, "data-ui");
+    rml_element_set_inner_rml(host, "<div id=\"stale\">Stale preview</div>");
+    ui_mount_sync(mount, host, listener, in.time);
+    rml_backend_update(backend, 1.0 / 60);
+    char mounted[32] = "";
+    test_check(
+        rml_element_attribute(host, "data-ui", mounted, sizeof mounted) &&
+            !strcmp(mounted, "Menu") &&
+            rml_element_query_selector(host, "#panel") != NULL &&
+            rml_element_query_selector(host, "#stale") == NULL,
+        "a recycled kit host reinstalls its mounted document"
+    );
     kit_destroy(k);
     rml_backend_destroy(backend);
     ui_mount_free(mount);
@@ -239,6 +350,8 @@ void test_ui_sources()
     render_ui *ui = render_ui_new(root, NULL);
     game_ui_sources(ui, &w);
     overlay_remount(ui, &w, root);
+    overlay_stylesheet_edit(ui, &w, root);
+    overlay_text_edit(ui, &w, root);
     render_ui_free(ui);
     ecs_world_free(world);
     kit_sources(root);

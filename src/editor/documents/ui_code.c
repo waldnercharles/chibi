@@ -7,6 +7,7 @@
 #include "support/xalloc.h"
 #include "ui/rml.h"
 
+#include <ctype.h>
 #include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -136,6 +137,21 @@ static bool unchanged(ui_code_change d)
     return d.start == d.end && !d.inserted;
 }
 
+static int map_offset(int offset, const text_edit *edits, int count)
+{
+    long shift = 0, inside = -1;
+    for (int i = 0; i < count; i++) {
+        const text_edit *edit = &edits[i];
+        long added = (long)strlen(edit->text);
+        if (edit->end <= offset && edit->start < offset) {
+            shift += added - (edit->end - edit->start);
+        } else if (edit->start < offset) {
+            inside = edit->start + added;
+        }
+    }
+    return (int)((inside >= 0 ? inside : offset) + shift);
+}
+
 bool ui_code_text_diff(const char *from, const char *to, text_edit *edit)
 {
     ui_code_change change = difference(from, (int)strlen(from), to, (int)strlen(to));
@@ -222,9 +238,83 @@ bool ui_code_follow(kit_code_editor *e, const char *text, bool land)
     if (unchanged(d)) {
         return false;
     }
-    text_edit edit = edit_of(d, text);
-    kit_code_apply(e, &edit, 1);
-    free((char *)edit.text);
+
+    /* The formatter changes trivia only. Splitting its edit at every
+       unchanged token keeps the caret and selection anchored in attribute
+       values, binding expressions and prose while whitespace is reflowed. */
+    int target_length = (int)strlen(text), from = 0, to = 0;
+    text_edit *edits = NULL;
+    bool whitespace_only = true;
+    for (;;) {
+        int from_space = from, to_space = to;
+        while (from < (int)length && isspace((unsigned char)shown[from])) {
+            from++;
+        }
+        while (to < target_length && isspace((unsigned char)text[to])) {
+            to++;
+        }
+        if (from - from_space != to - to_space ||
+            memcmp(shown + from_space, text + to_space, (size_t)(from - from_space))) {
+            int inserted = to - to_space;
+            char *replacement = xmalloc((size_t)inserted + 1);
+            memcpy(replacement, text + to_space, (size_t)inserted);
+            replacement[inserted] = '\0';
+            apush(edits, ((text_edit){ from_space, from, replacement }));
+        }
+        while (from < (int)length && to < target_length &&
+               !isspace((unsigned char)shown[from]) &&
+               !isspace((unsigned char)text[to])) {
+            if (shown[from] != text[to]) {
+                whitespace_only = false;
+                break;
+            }
+            from++;
+            to++;
+        }
+        if (!whitespace_only) {
+            break;
+        }
+        if (from == (int)length && to == target_length) {
+            break;
+        }
+        if ((from == (int)length && to < target_length &&
+             !isspace((unsigned char)text[to])) ||
+            (to == target_length && from < (int)length &&
+             !isspace((unsigned char)shown[from]))) {
+            whitespace_only = false;
+            break;
+        }
+    }
+
+    if (!whitespace_only) {
+        for (int i = 0; i < acount(edits); i++) {
+            free((char *)edits[i].text);
+        }
+        afree(edits);
+        text_edit edit = edit_of(d, text);
+        kit_code_apply(e, &edit, 1);
+        free((char *)edit.text);
+        if (land) {
+            kit_code_set_cursor(e, d.start + d.inserted);
+        }
+        return true;
+    }
+
+    int cursor = kit_code_cursor(e), selection_start = 0, selection_end = 0;
+    bool selected = kit_code_selection(e, &selection_start, &selection_end);
+    int anchor = selected && cursor <= selection_start ? selection_end : selection_start;
+    kit_code_apply(e, edits, acount(edits));
+    if (selected) {
+        int mapped_anchor = map_offset(anchor, edits, acount(edits));
+        int mapped_cursor = map_offset(cursor, edits, acount(edits));
+        if (!land) {
+            kit_code_set_selection(e, mapped_anchor, mapped_cursor);
+        }
+    }
+    for (int i = 0; i < acount(edits); i++) {
+        free((char *)edits[i].text);
+    }
+    afree(edits);
     if (land) {
         kit_code_set_cursor(e, d.start + d.inserted);
     }

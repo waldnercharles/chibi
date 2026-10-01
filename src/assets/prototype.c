@@ -9,6 +9,7 @@
 #include "support/xalloc.h"
 
 #include <assert.h>
+#include <limits.h>
 #include <math.h>
 #include <stdarg.h>
 #include <stdbool.h>
@@ -152,6 +153,26 @@ static int read_unsigned(yyjson_val *value, uint64_t *out)
     return -1;
 }
 
+static int read_signed_range(yyjson_val *value, int64_t minimum, int64_t maximum, int64_t *out)
+{
+    int64_t number;
+    if (read_signed(value, &number) || number < minimum || number > maximum) {
+        return -1;
+    }
+    *out = number;
+    return 0;
+}
+
+static int read_unsigned_range(yyjson_val *value, uint64_t maximum, uint64_t *out)
+{
+    uint64_t number;
+    if (read_unsigned(value, &number) || number > maximum) {
+        return -1;
+    }
+    *out = number;
+    return 0;
+}
+
 static int parse_fields(
     game_prototype *prototype,
     const game_prototype_registry *registry,
@@ -182,16 +203,22 @@ static int parse_field(
             value.b = result ? false : yyjson_get_bool(json);
             break;
         case PIN_I8:
-            result = read_signed(json, &signed_value);
-            value.i8 = (int8_t)signed_value;
+            result = read_signed_range(json, INT8_MIN, INT8_MAX, &signed_value);
+            if (!result) {
+                value.i8 = (int8_t)signed_value;
+            }
             break;
         case PIN_I16:
-            result = read_signed(json, &signed_value);
-            value.i16 = (int16_t)signed_value;
+            result = read_signed_range(json, INT16_MIN, INT16_MAX, &signed_value);
+            if (!result) {
+                value.i16 = (int16_t)signed_value;
+            }
             break;
         case PIN_I32:
-            result = read_signed(json, &signed_value);
-            value.i = (int32_t)signed_value;
+            result = read_signed_range(json, INT32_MIN, INT32_MAX, &signed_value);
+            if (!result) {
+                value.i = (int32_t)signed_value;
+            }
             break;
         case PIN_I64:
             result = read_signed(json, &signed_value);
@@ -201,21 +228,29 @@ static int parse_field(
             int label_value = 0;
             bool label = yyjson_is_str(json) &&
                          registry_enum_value(field->type_name, yyjson_get_str(json), &label_value);
-            result = label ? 0 : read_signed(json, &signed_value);
-            value.e = label ? label_value : (int32_t)signed_value;
+            result = label ? 0 : read_signed_range(json, INT32_MIN, INT32_MAX, &signed_value);
+            if (!result) {
+                value.e = label ? label_value : (int32_t)signed_value;
+            }
             break;
         }
         case PIN_U8:
-            result = read_unsigned(json, &unsigned_value);
-            value.u8 = (uint8_t)unsigned_value;
+            result = read_unsigned_range(json, UINT8_MAX, &unsigned_value);
+            if (!result) {
+                value.u8 = (uint8_t)unsigned_value;
+            }
             break;
         case PIN_U16:
-            result = read_unsigned(json, &unsigned_value);
-            value.u16 = (uint16_t)unsigned_value;
+            result = read_unsigned_range(json, UINT16_MAX, &unsigned_value);
+            if (!result) {
+                value.u16 = (uint16_t)unsigned_value;
+            }
             break;
         case PIN_U32:
-            result = read_unsigned(json, &unsigned_value);
-            value.u = (uint32_t)unsigned_value;
+            result = read_unsigned_range(json, UINT32_MAX, &unsigned_value);
+            if (!result) {
+                value.u = (uint32_t)unsigned_value;
+            }
             break;
         case PIN_U64:
             result = read_unsigned(json, &unsigned_value);
@@ -1467,6 +1502,35 @@ int game_prototype_add_component(game_prototype *prototype, const ecs_component_
         .data = xcalloc(1, desc->element_size),
     };
     apush(prototype->components, component);
+    if (!strcmp(desc->name, "GameAppearance")) {
+        const char *fields[] = { "width", "height", "color", "shape", "antialias" };
+        pin_value values[] = {
+            { .type = PIN_F32, .f = 32 },
+            { .type = PIN_F32, .f = 32 },
+            { .type = PIN_U32, .u = 0xFFFFFFFFu },
+            { .type = PIN_ENUM, .e = GAME_SHAPE_BOX },
+            { .type = PIN_F32, .f = 1 },
+        };
+        for (int i = 0; i < (int)(sizeof fields / sizeof *fields); i++) {
+            if (game_prototype_write_field(prototype, desc->name, fields[i], values[i])) {
+                return -1;
+            }
+        }
+        return 0;
+    }
+    if (!strcmp(desc->name, "GameCamera")) {
+        const char *fields[] = { "width", "height" };
+        pin_value values[] = {
+            { .type = PIN_F32, .f = 960 },
+            { .type = PIN_F32, .f = 540 },
+        };
+        for (int i = 0; i < (int)(sizeof fields / sizeof *fields); i++) {
+            if (game_prototype_write_field(prototype, desc->name, fields[i], values[i])) {
+                return -1;
+            }
+        }
+        return 0;
+    }
     if (!strcmp(desc->name, "GameVisualTransform")) {
         return game_prototype_write_field(
             prototype,

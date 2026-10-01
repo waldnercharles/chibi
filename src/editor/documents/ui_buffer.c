@@ -2,6 +2,7 @@
 
 #include "assets/new_asset.h"
 #include "assets/ui_document.h"
+#include "assets/ui_source.h"
 #include "support/array.h"
 #include "support/rcss.h"
 #include "support/text_file.h"
@@ -508,6 +509,44 @@ void ui_buffer_saved(ui_buffer *b)
     unpublish(b);
 }
 
+static bool format_part(ui_buffer *b, ui_part part, bool join)
+{
+    assert(b && part >= 0 && part < UI_PART_COUNT && b->parts[part]);
+    char *formatted = ui_source_format(b->parts[part], part == UI_PART_RML ? UI_SOURCE_RML : UI_SOURCE_RCSS);
+    if (!strcmp(formatted, b->parts[part])) {
+        free(formatted);
+        return false;
+    }
+    text_edit edit = { 0, (int)strlen(b->parts[part]), formatted };
+    if (join) {
+        ui_buffer_join_edit(b, part, &edit, 1);
+    } else {
+        ui_buffer_edit(b, part, &edit, 1);
+    }
+    free(formatted);
+    return true;
+}
+
+bool ui_buffer_format(ui_buffer *b, ui_part part)
+{
+    return format_part(b, part, false);
+}
+
+bool ui_buffer_format_for_save(ui_buffer *b)
+{
+    ui_part active = b->part;
+    bool changed = false;
+    for (int offset = 0; offset < UI_PART_COUNT; offset++) {
+        int p = (active + offset) % UI_PART_COUNT;
+        if (ui_buffer_saves(b, (ui_part)p)) {
+            bool joined = format_part(b, (ui_part)p, changed);
+            changed |= joined;
+        }
+    }
+    b->part = active;
+    return changed;
+}
+
 bool ui_buffer_reload(ui_buffer *b, char *error, size_t size)
 {
     char *parts[UI_PART_COUNT] = { 0 };
@@ -668,7 +707,9 @@ const char *ui_buffer_template(ui_new_kind kind, ui_part part)
         [UI_NEW_WIDGET] = "body { display: block; }\n"
                           ".content { display: flex; align-items: center; gap: "
                           "6dp; }\n",
-        [UI_NEW_DOCUMENT] = ".panel { display: block; padding: 12dp; }\n"
+        [UI_NEW_DOCUMENT] = "body { font-family: Inter; font-size: 16dp; "
+                            "line-height: 24dp; color: #fff; }\n"
+                            ".panel { display: block; padding: 12dp; }\n"
                             ".title { font-size: 16dp; font-weight: 600; }\n",
         [UI_NEW_STYLESHEET] = "/* Rules ui assets share with @import. */\n",
     };

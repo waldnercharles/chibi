@@ -17,6 +17,8 @@
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
 
+static studio *web_studio;
+
 /* SDL's browser backend reports no pinch: the page shell turns a browser's
  * pinch, a wheel with Ctrl held or Safari's gesture events, into the pinch
  * SDL's macOS backend reports. */
@@ -24,6 +26,49 @@ EMSCRIPTEN_KEEPALIVE void studio_web_pinch(float scale)
 {
     SDL_Event event = { .pinch = { .type = SDL_EVENT_PINCH_UPDATE, .scale = scale } };
     SDL_PushEvent(&event);
+}
+
+static bool web_wants_text(const studio *s)
+{
+    if (kit_wants_text(s->kit, NULL) ||
+        (s->graph.kit && kit_wants_text(s->graph.kit, NULL))) {
+        return true;
+    }
+    render_ui *ui = s->viewport ? engine_viewport_ui(s->viewport) : NULL;
+    return ui && render_ui_wants_text(ui);
+}
+
+EMSCRIPTEN_KEEPALIVE int studio_web_wants_text()
+{
+    if (!web_studio) {
+        return 0;
+    }
+    return web_wants_text(web_studio) ||
+           (web_studio->guest && web_wants_text(web_studio->guest));
+}
+
+/* A trusted DOM paste provides text only during its event. Give RmlUi's
+ * normal Control+V handler that text through its clipboard interface. */
+EMSCRIPTEN_KEEPALIVE int studio_web_paste(const char *text, int meta)
+{
+    if (!text || !text[0]) {
+        return 0;
+    }
+    rml_backend_set_pending_paste_text(text);
+    SDL_Event event = { .type = SDL_EVENT_KEY_DOWN };
+    event.key.windowID = SDL_GetWindowID(cf_app_get_window());
+    event.key.key = SDLK_V;
+    event.key.scancode = SDL_SCANCODE_V;
+    event.key.mod = meta ? SDL_KMOD_GUI : SDL_KMOD_CTRL;
+    event.key.down = true;
+    if (!SDL_PushEvent(&event)) {
+        rml_backend_clear_pending_paste_text();
+        return 0;
+    }
+    event.type = SDL_EVENT_KEY_UP;
+    event.key.down = false;
+    SDL_PushEvent(&event);
+    return 1;
 }
 #endif
 
@@ -114,7 +159,11 @@ static int kit_button_index(Uint8 button)
 static void game_input(studio *s, const rml_input *input, const SDL_Event *e)
 {
     bool key = input->type == RML_INPUT_KEY_PRESS && !studio_primary(s, e->key.mod);
-    if (key || input->type == RML_INPUT_TEXT_INPUT) {
+    render_ui *ui = s->viewport ? engine_viewport_ui(s->viewport) : NULL;
+    bool paste = input->type == RML_INPUT_KEY_PRESS &&
+                 e->type == SDL_EVENT_KEY_DOWN && e->key.key == SDLK_V &&
+                 studio_primary(s, e->key.mod) && ui && render_ui_wants_text(ui);
+    if (key || paste || input->type == RML_INPUT_TEXT_INPUT) {
         apush(s->game_input, *input);
     }
 }
@@ -700,6 +749,9 @@ static studio *create(
 studio *studio_new(app_scene_authoring *scene, engine_viewport *viewport, const char *project_root)
 {
     studio *s = create(scene, viewport, project_root, NULL);
+#ifdef __EMSCRIPTEN__
+    web_studio = s;
+#endif
     /* A guest opens no project: the window's Studio owns the workspace. */
     studio_projects_load(s);
     s->in.mouse_x = cf_mouse_x();
@@ -763,6 +815,11 @@ void studio_free(studio *s)
     if (!s) {
         return;
     }
+#ifdef __EMSCRIPTEN__
+    if (web_studio == s) {
+        web_studio = NULL;
+    }
+#endif
     studio_free(s->guest);
     if (!s->hosted) {
         release_window(s);
@@ -841,6 +898,9 @@ static void run(studio *s, double delta_seconds, float width, float height)
     studio_graph_frame(s, delta_seconds);
     rml_backend_update(s->backend, delta_seconds);
     rml_backend_render(s->backend);
+    if (!s->hosted) {
+        rml_backend_clear_pending_paste_text();
+    }
 }
 
 void studio_frame(studio *s, double delta_seconds)

@@ -12,8 +12,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-/* "#rrggbb" and its NUL. */
-#define HEX_TEXT 8
+/* "#rrggbbaa" and its NUL. */
+#define HEX_TEXT 10
 
 static bool locked(const node *n)
 {
@@ -83,7 +83,64 @@ static uint32_t hsv_to_rgb(const float hsv[3], uint32_t alpha)
 
 static void hex_color(char out[static HEX_TEXT], uint32_t c)
 {
-    snprintf(out, HEX_TEXT, "#%02x%02x%02x", (c >> 24) & 255, (c >> 16) & 255, (c >> 8) & 255);
+    snprintf(out, HEX_TEXT, "#%02x%02x%02x%02x", (c >> 24) & 255, (c >> 16) & 255, (c >> 8) & 255, c & 255);
+}
+
+static int hex_digit(char c)
+{
+    if (c >= '0' && c <= '9') {
+        return c - '0';
+    }
+    if (c >= 'a' && c <= 'f') {
+        return c - 'a' + 10;
+    }
+    if (c >= 'A' && c <= 'F') {
+        return c - 'A' + 10;
+    }
+    return -1;
+}
+
+static bool parse_hex(const char *text, uint32_t *rgba)
+{
+    const char *hex = text[0] == '#' ? text + 1 : text;
+    size_t length = strlen(hex);
+    if (length != 6 && length != 8) {
+        return false;
+    }
+    uint32_t value = 0;
+    for (size_t i = 0; i < length; i++) {
+        int digit = hex_digit(hex[i]);
+        if (digit < 0) {
+            return false;
+        }
+        value = (value << 4) | (uint32_t)digit;
+    }
+    *rgba = length == 6 ? (value << 8) : value;
+    return true;
+}
+
+static rml_element *color_input_row(rml_element *target)
+{
+    const char *cls = rml_element_is_class_set(target, "hex") ? "hexrow" : "opacity";
+    for (rml_element *el = target; el; el = rml_element_parent(el)) {
+        if (rml_element_is_class_set(el, cls)) {
+            return el;
+        }
+    }
+    return NULL;
+}
+
+static void input_invalid(rml_element *target, bool invalid)
+{
+    rml_element *row = color_input_row(target);
+    if (!row) {
+        return;
+    }
+    if (invalid) {
+        rml_element_set_attribute(row, "data-invalid", "");
+    } else {
+        rml_element_remove_attribute(row, "data-invalid");
+    }
 }
 
 static void color_drag(kit *k, node *n, float mx, float my)
@@ -288,11 +345,35 @@ static void press_key(node *n, const rml_event *e)
     rml_event_stop_propagation(e);
 }
 
+static void hex_change(node *n, rml_element *target);
+
+static void color_key(kit *k, node *n, const rml_event *e)
+{
+    bool enter = e->key == RML_KEY_RETURN || e->key == RML_KEY_NUMPADENTER;
+    if (e->target == n->el) {
+        if (locked(n) || (e->key != RML_KEY_SPACE && !enter)) {
+            return;
+        }
+        bool was_open = kit_popup_is_open(k, frame_format(k, "color:%s", n->path));
+        toggle_popup(k, n, "color");
+        n->w.focus_picker = !was_open;
+        rml_event_stop_propagation(e);
+        return;
+    }
+    if (!enter || locked(n) || !rml_element_is_class_set(e->target, "hex")) {
+        return;
+    }
+    hex_change(n, e->target);
+    rml_element_blur(e->target);
+    rml_event_stop_propagation(e);
+}
+
 void control_key(kit *k, node *n, const rml_event *e)
 {
     switch (n->kind) {
         case KIND_TEXT:
         case KIND_SEARCH: field_key(k, n, e); return;
+        case KIND_COLOR: color_key(k, n, e); return;
         case KIND_CHECK:
         case KIND_BUTTON: press_key(n, e); return;
         default: return;
@@ -303,9 +384,15 @@ static void hex_change(node *n, rml_element *target)
 {
     char *value = element_value(target);
     const char *hex = value[0] == '#' ? value + 1 : value;
-    unsigned rgb = 0;
-    if (strlen(hex) == 6 && sscanf(hex, "%6x", &rgb) == 1) {
-        n->w.color = (rgb << 8) | (n->w.color & 255);
+    size_t length = strlen(hex);
+    uint32_t rgba = 0;
+    bool valid = !locked(n) && parse_hex(value, &rgba);
+    input_invalid(target, !valid);
+    if (valid) {
+        if (length == 6) {
+            rgba = (rgba & 0xffffff00) | (n->w.color & 255);
+        }
+        n->w.color = rgba;
         rgb_to_hsv(n->w.color, n->w.hsv);
         n->w.pending = true;
     }
@@ -638,7 +725,7 @@ static const char *const HUE_STOPS[7] = {
     "#ff0000", "#ffff00", "#00ff00", "#00ffff", "#0000ff", "#ff00ff", "#ff0000",
 };
 
-/* The picker's plane, hue strip and hex row; returns the plane. */
+/* The picker's plane, hue strip and RGBA input; opacity uses kit_number. */
 static rml_element *build_picker(rml_element *el)
 {
     rml_element *sv = raw(el, "div", "sv", NULL);
@@ -662,8 +749,11 @@ static rml_element *build_picker(rml_element *el)
     }
     raw(hue, "div", "puck", NULL);
     rml_element *row = raw(el, "div", "field text left hexrow", NULL);
-    raw(row, "span", "part addon", "Hex");
-    text_input(row, "part value hex");
+    raw(row, "span", "part addon", "RGBA");
+    rml_element *hex = text_input(row, "part value hex");
+    rml_element_set_attribute(hex, "aria-label", "RGBA hex color");
+    rml_element_set_attribute(hex, "maxlength", "9");
+    rml_element_set_attribute(hex, "placeholder", "RRGGBBAA");
     return sv;
 }
 
@@ -674,7 +764,7 @@ static void set_percent(rml_element *el, const char *property, float percent)
     rml_element_set_property(el, property, text);
 }
 
-static void update_picker(kit *k, const widget *w, node *p)
+static void update_picker(kit *k, const widget *w, node *p, unsigned flags)
 {
     if (!p->w.head_el) {
         p->w.head_el = build_picker(p->el);
@@ -690,6 +780,12 @@ static void update_picker(kit *k, const widget *w, node *p)
     rml_element *hue_puck = rml_element_query_selector(p->el, ".hue .puck");
     set_percent(hue_puck, "left", w->hsv[0] / 360 * 100);
     rml_element *input = rml_element_query_selector(p->el, ".hex");
+    bool readonly = flags & (KIT_READONLY | KIT_DISABLED);
+    if (readonly) {
+        rml_element_set_attribute(input, "readonly", "");
+    } else {
+        rml_element_remove_attribute(input, "readonly");
+    }
     if (input != rml_context_focus_element(k->context)) {
         hex_color(hex, w->color);
         rml_element_set_value(input, hex + 1);
@@ -708,7 +804,7 @@ bool kit_color(kit *k, const char *key, uint32_t *rgba, unsigned flags)
     const char *picker = frame_format(k, "color:%s", n->path);
     bool open = kit_popup_is_open(k, picker);
     bool changed = false;
-    if (w->pending && open) {
+    if (w->pending) {
         w->pending = false;
         changed = w->color != *rgba;
         *rgba = w->color;
@@ -717,6 +813,7 @@ bool kit_color(kit *k, const char *key, uint32_t *rgba, unsigned flags)
         w->color = *rgba;
         if (w->open) {
             w->committed = true;
+            w->focus_picker = false;
         }
     }
     w->open = open;
@@ -727,8 +824,42 @@ bool kit_color(kit *k, const char *key, uint32_t *rgba, unsigned flags)
     rml_element_set_property(w->swatch_el, "background-color", none ? "transparent" : hex);
     set_flag(n, "data-overridden", flags & KIT_OVERRIDDEN);
     set_flag(n, "data-readonly", flags & KIT_READONLY);
+    set_flag(n, "data-disabled", flags & KIT_DISABLED);
+    set_attr(n, "role", "button");
+    set_attr(n, "aria-label", "Color picker");
+    set_attr(n, "aria-haspopup", "dialog");
+    set_attr(n, "aria-expanded", open ? "true" : "false");
+    set_attr(n, "aria-disabled", locked(n) ? "true" : "false");
+    rml_element_set_property(n->el, "tab-index", flags & KIT_DISABLED ? "none" : "auto");
     if (kit_popup_begin(k, picker, "picker")) {
-        update_picker(k, w, popup_find(k, picker)->node);
+        node *p = popup_find(k, picker)->node;
+        rml_element_set_attribute(p->el, "role", "dialog");
+        rml_element_set_attribute(p->el, "aria-label", "Color picker");
+        update_picker(k, w, p, flags);
+        double opacity = (double)(w->color & 255) * 100 / 255;
+        const kit_number_desc alpha = {
+            .min = 0,
+            .max = 100,
+            .step = 1,
+            .precision = 0,
+            .integer = true,
+            .unit = "%",
+            .flags = flags,
+        };
+        kit_prop_begin(k, "opacity", "Opacity");
+        if (kit_number(k, "value", &opacity, &alpha)) {
+            uint32_t channel = (uint32_t)lround(opacity * 255 / 100);
+            w->color = (w->color & 0xffffff00) | channel;
+            changed |= *rgba != w->color;
+            *rgba = w->color;
+        }
+        kit_prop_end(k);
+        if (w->focus_picker) {
+            rml_element *input = rml_element_query_selector(p->el, ".hex");
+            rml_element_focus(input, true);
+            rml_element_select(input);
+            w->focus_picker = false;
+        }
         kit_popup_end(k);
     }
     k->last = n;

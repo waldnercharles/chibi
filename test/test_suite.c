@@ -238,7 +238,7 @@ TEST_CASE(all_checks)
     test_game_ui();
     test_game_ui_presenter();
     test_kit_host();
-    test_editor_checkpoint();
+    test_editor_checkpoint_with_app(program_name);
     /* Trackpad pinch (G). */
     test_studio_pinch();
     test_check(test_rmlui_kit(), "Studio kit reconciliation, number fields, menus, and command");
@@ -296,6 +296,16 @@ int main(int argc, char **argv)
         test_math_expression();
         return fails ? 1 : 0;
     }
+    if (argc == 2 && !strcmp(argv[1], "--editor-checkpoint")) {
+        registry_validate();
+        test_editor_checkpoint_with_app(program_name);
+        return fails ? 1 : 0;
+    }
+    if (argc == 2 && !strcmp(argv[1], "--game-ui-presenter")) {
+        registry_validate();
+        test_game_ui_presenter();
+        return fails ? 1 : 0;
+    }
     /* UI Inspector */
     if (argc == 2 && !strcmp(argv[1], "--ui-inspector")) {
         test_ui_inspector();
@@ -335,6 +345,7 @@ int main(int argc, char **argv)
     }
     /* UI language service (workstream B) */
     if (argc > 1 && !strcmp(argv[1], "--ui-source")) {
+        test_ui_sources();
         test_ui_source();
         test_ui_check();
         test_ui_pages();

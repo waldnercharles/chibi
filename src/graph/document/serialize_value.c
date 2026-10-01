@@ -120,8 +120,8 @@ void serialize_write_value(
                 value = yyjson_mut_null(doc);
             }
             break;
-        case PIN_FLOW:
-        case PIN_HANDLE: value = yyjson_mut_null(doc); break;
+        case PIN_FLOW: value = yyjson_mut_null(doc); break;
+        case PIN_HANDLE: value = yyjson_mut_uint(doc, v->u64); break;
     }
     if (value) {
         yyjson_mut_obj_add(obj, yyjson_mut_strcpy(doc, key), value);
@@ -147,6 +147,19 @@ static int read_signed(yyjson_val *v, int64_t *out)
     }
     if (yyjson_is_uint(v) && yyjson_get_uint(v) <= INT64_MAX) {
         *out = (int64_t)yyjson_get_uint(v);
+        return 0;
+    }
+    return -1;
+}
+
+static int read_unsigned(yyjson_val *v, uint64_t *out)
+{
+    if (yyjson_is_uint(v)) {
+        *out = yyjson_get_uint(v);
+        return 0;
+    }
+    if (yyjson_is_sint(v) && yyjson_get_sint(v) >= 0) {
+        *out = (uint64_t)yyjson_get_sint(v);
         return 0;
     }
     return -1;
@@ -312,12 +325,12 @@ int serialize_read_value(pin_type t, const char *type_name, yyjson_val *v, pin_v
             if (yyjson_is_str(v) &&
                 registry_enum_value(type_name, yyjson_get_str(v), &label_value)) {
                 out->e = label_value;
-            } else if (yyjson_is_sint(v)) {
-                out->e = (int32_t)yyjson_get_sint(v);
-            } else if (yyjson_is_uint(v) && yyjson_get_uint(v) <= INT32_MAX) {
-                out->e = (int32_t)yyjson_get_uint(v);
             } else {
-                return -1;
+                int64_t value;
+                if (read_signed(v, &value) || value < INT32_MIN || value > INT32_MAX) {
+                    return -1;
+                }
+                out->e = (int32_t)value;
             }
             break;
         }
@@ -334,8 +347,15 @@ int serialize_read_value(pin_type t, const char *type_name, yyjson_val *v, pin_v
         case PIN_STRUCT:
             return yyjson_is_null(v) ? 0 : read_struct(type_name, v, out, g);
         case PIN_FLOW:
-        case PIN_HANDLE:
             if (!yyjson_is_null(v)) {
+                return -1;
+            }
+            break;
+        case PIN_HANDLE:
+            if (yyjson_is_null(v)) {
+                break;
+            }
+            if (read_unsigned(v, &out->u64)) {
                 return -1;
             }
             break;

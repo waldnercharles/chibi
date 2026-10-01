@@ -1,4 +1,5 @@
 #include "runtime/behaviors/live.h"
+#include "runtime/camera.h"
 #include "runtime/engine.h"
 #include "runtime/generated.h"
 #include "runtime/scenes/prototype_preview.h"
@@ -69,6 +70,15 @@ static game_prototype *read_prototype(const char *name, const game_prototype_reg
     return prototype;
 }
 
+static void reject_component_values(const game_prototype_registry *registry, const char *components)
+{
+    char json[512], error[256];
+    snprintf(json, sizeof json, "{\"name\":\"Invalid values\",\"components\":{%s}}", components);
+    game_prototype *invalid = game_prototype_load(json, registry, error, sizeof error);
+    assert(!invalid);
+    game_prototype_free(invalid);
+}
+
 static void expect_entity(ecs_world *world, ecs_entity entity, float width, float height, unsigned color)
 {
     const GameAppearance *appearance = GAME_GameAppearance_get_const(world, entity);
@@ -103,6 +113,68 @@ static ecs_entity spawn(const game_prototype *prototype, ecs_world *world)
     ecs_entity entity;
     assert(game_prototype_spawn_components(prototype, world, &entity, error, sizeof error) == 0);
     return entity;
+}
+
+static void added_component_defaults(const game_prototype_registry *registry, ecs_world *world)
+{
+    char error[256];
+    game_prototype *appearance = game_prototype_new("AddedAppearance");
+    assert(game_prototype_add_component(appearance, &GAME_COMPONENT_GameAppearance) == 0);
+    pin_value value;
+    assert(
+        game_prototype_read_field(appearance, "GameAppearance", "width", &value) == 0 &&
+        value.f == 32
+    );
+    assert(
+        game_prototype_read_field(appearance, "GameAppearance", "height", &value) == 0 &&
+        value.f == 32
+    );
+    assert(
+        game_prototype_read_field(appearance, "GameAppearance", "color", &value) == 0 &&
+        value.u == 0xFFFFFFFFu
+    );
+    assert(
+        game_prototype_read_field(appearance, "GameAppearance", "shape", &value) == 0 &&
+        value.e == GAME_SHAPE_BOX
+    );
+    assert(
+        game_prototype_read_field(appearance, "GameAppearance", "antialias", &value) == 0 &&
+        value.f == 1
+    );
+    ecs_entity entity = spawn(appearance, world);
+    const GameAppearance *spawned = GAME_GameAppearance_get_const(world, entity);
+    assert(
+        spawned && spawned->width == 32 && spawned->height == 32 &&
+        spawned->color == 0xFFFFFFFFu && spawned->shape == GAME_SHAPE_BOX &&
+        spawned->antialias == 1
+    );
+    char *saved = game_prototype_save(appearance);
+    game_prototype *loaded = game_prototype_load(saved, registry, error, sizeof error);
+    free(saved);
+    assert(loaded);
+    assert(
+        game_prototype_read_field(loaded, "GameAppearance", "width", &value) == 0 &&
+        value.f == 32
+    );
+    game_prototype_free(loaded);
+    game_prototype_free(appearance);
+
+    game_prototype *camera = game_prototype_new("AddedCamera");
+    assert(game_prototype_add_component(camera, &GAME_COMPONENT_GameCamera) == 0);
+    assert(
+        game_prototype_read_field(camera, "GameCamera", "width", &value) == 0 &&
+        value.f == 960
+    );
+    assert(
+        game_prototype_read_field(camera, "GameCamera", "height", &value) == 0 &&
+        value.f == 540
+    );
+    assert(game_prototype_read_field(camera, "GameTransform", "x", &value) == -1);
+    assert(game_prototype_add_component(camera, &GAME_COMPONENT_GameTransform) == 0);
+    (void)spawn(camera, world);
+    engine_viewport_view view;
+    assert(game_camera_view(world, NULL, &view) == 1 && view.width == 960 && view.height == 540);
+    game_prototype_free(camera);
 }
 
 static void authored_roundtrip(
@@ -258,6 +330,10 @@ void test_appearance()
     for (int i = 0; i < registry.component_count; i++) {
         assert(ecs_world_register_component(world, registry.components[i], NULL) == ECS_OK);
     }
+    reject_component_values(&registry, "\"GameAppearance\":{\"shape\":2147483648}");
+    reject_component_values(&registry, "\"GameAppearance\":{\"color\":4294967296}");
+    reject_component_values(&registry, "\"GameHealth\":{\"current\":2147483648}");
+    added_component_defaults(&registry, world);
     legacy_appearance(&registry, world);
     game_live_world *live = game_live_world_new(world);
     engine *runtime = engine_new(world, live);

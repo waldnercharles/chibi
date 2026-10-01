@@ -20,9 +20,13 @@
 #include <unistd.h>
 
 #define FRAME_SECONDS (1.0 / 60.0)
+#define STRINGIFY_INNER(value) #value
+#define STRINGIFY(value) STRINGIFY_INNER(value)
 #define MANIFEST                                                               \
-    "version: 2\nname: Fresh\ncontent: content\nstart_scene: "                 \
-    "scenes/Main.yaml\n"
+    "version: " STRINGIFY(                                                     \
+        CHIBI_PROJECT_VERSION                                                  \
+    ) "\nname: Fresh\ncontent: content\nstart_scene: "                         \
+      "scenes/Main.yaml\n"
 
 typedef struct
 {
@@ -372,8 +376,8 @@ static void project_settings_write()
     frames(&f, 3);
     join(path, sizeof path, f.root, CHIBI_PROJECT_MANIFEST);
     char *manifest = text_file_read(path);
-    const char *expected = "version: 2\nname: Renamed\ncontent: content\n"
-                           "start_scene: scenes/Boss.yaml\n";
+    char expected[160];
+    snprintf(expected, sizeof expected, "version: %d\nname: Renamed\ncontent: content\nstart_scene: scenes/Boss.yaml\n", CHIBI_PROJECT_VERSION);
     bool written = manifest && !strcmp(manifest, expected);
     if (!written) {
         printf("  shown '%s', manifest:\n%s\n", shown, manifest ? manifest : "(none)");

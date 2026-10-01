@@ -285,6 +285,33 @@ static bool standard_keys(fixture *f)
     return ok;
 }
 
+static bool clipboard_paste(fixture *f)
+{
+    bool ok = true;
+    const char *before = "before target after";
+    const char *pasted = "soup\r\nstew\rfinish";
+    const char *expected = "before soup\nstew\nfinish after";
+    f->desc.vim = false;
+    f->desc.history = false;
+    kit_code_set_text(f->e, before);
+    frame(f);
+    int start = (int)(strstr(before, "target") - before);
+    kit_code_select(f->e, start, start + (int)strlen("target"));
+    clear_events(f);
+    kit_code_paste(f->e, pasted);
+    frame(f);
+    ok &= check(!strcmp(text(f), expected), "paste replaces the selection and normalizes line endings");
+    ok &= check(
+        (f->events & KIT_CODE_CHANGED) &&
+            kit_code_cursor(f->e) == start + (int)strlen("soup\nstew\nfinish"),
+        "paste reports the edit and leaves the cursor after inserted text"
+    );
+    kit_code_undo(f->e);
+    frame(f);
+    ok &= check(!strcmp(text(f), before), "one undo restores the text replaced by a paste");
+    return ok;
+}
+
 static bool mac_keys(fixture *f)
 {
     bool ok = true;
@@ -633,6 +660,7 @@ bool test_kit_code()
     settle(&f);
     ok &= check(kit_wants_keyboard(f.k), "a focused editor takes the keyboard");
     ok &= standard_keys(&f);
+    ok &= clipboard_paste(&f);
     ok &= vim_cases(&f);
     ok &= mac_keys(&f);
     ok &= edits(&f);

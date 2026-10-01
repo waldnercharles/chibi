@@ -121,6 +121,9 @@ typedef struct ui_source
 /* Parses a file's text as markup or styles. */
 ui_source *ui_source_parse(const char *text, ui_source_language language);
 void ui_source_free(ui_source *source);
+/* Formats valid markup or styles with the editor's fixed style. The returned
+ * string is owned; invalid source is returned byte-for-byte unchanged. */
+char *ui_source_format(const char *text, ui_source_language language);
 
 /* The 1-based line and column of a byte offset, and back; an offset past
  * the line's end stops at its end. */

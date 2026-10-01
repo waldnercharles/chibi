@@ -56,6 +56,7 @@ typedef enum
     VALUE_NONE,
     VALUE_CHOICE,
     VALUE_BOOL,
+    VALUE_COLOR,
     VALUE_VECTOR,
     VALUE_TEXT,
     VALUE_NUMBER,

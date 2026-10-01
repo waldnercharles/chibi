@@ -46,6 +46,37 @@ if (typeof window !== 'undefined' && !Module['chibiSaveAsset']) {
         fs().mkdirTree(path.slice(0, path.lastIndexOf('/')));
         fs().writeFile(path, data);
     };
+    Module['chibiCreateProject'] = (name, version) => {
+        const title = String(name).trim();
+        if (!title || title.length > 128) return JSON.stringify({error: 'Enter a project name of 1 to 128 characters'});
+        if (!Number.isInteger(version) || version < 1) return JSON.stringify({error: 'Invalid project version'});
+        let root;
+        try {
+            const id = unique(title);
+            root = `${workspace}/${id}`;
+            const manifestPath = `${root}/${manifest}`;
+            const scenePath = `${root}/content/scenes/Start.yaml`;
+            write(manifestPath, `version: ${version}\nname: ${JSON.stringify(title)}\ncontent: content\nstart_scene: scenes/Start.yaml\n`);
+            write(scenePath, 'version: 1\nname: Start\nentities: []\n');
+            keep();
+            persist();
+            return JSON.stringify({root: `${root}/`});
+        } catch (error) {
+            if (root) {
+                try {
+                    for (const path of [`${root}/content/scenes/Start.yaml`, `${root}/${manifest}`]) {
+                        if (exists(path)) fs().unlink(path);
+                    }
+                    for (const path of [`${root}/content/scenes`, `${root}/content`, root]) {
+                        if (exists(path)) fs().rmdir(path);
+                    }
+                } catch {
+                    // Keep reporting the error that caused project creation to fail.
+                }
+            }
+            return JSON.stringify({error: error.message || String(error)});
+        }
+    };
     // Samples are bundled as project folders under /projects; Neon Swarm opens by default.
     const samples = '/projects';
     const bundled = `/${launch.get('project-root') || 'projects/arena2d'}`.replace(/\/+/g, '/').replace(/\/$/, '');
@@ -174,7 +205,15 @@ if (typeof window !== 'undefined' && !Module['chibiSaveAsset']) {
     };
     // Studio's Open Project list: the user's projects, then each sample not yet
     // copied into one. Opening one reloads the page onto it, as Import does.
-    const projectName = path => fs().readFile(path, {encoding: 'utf8'}).match(/^name:\s*(.+)$/m)?.[1].trim();
+    const projectName = path => {
+        const value = fs().readFile(path, {encoding: 'utf8'}).match(/^name:\s*(.+)$/m)?.[1].trim();
+        if (!value) return undefined;
+        if (value.startsWith('"')) {
+            try { return JSON.parse(value); } catch {}
+        }
+        if (value.startsWith("'")) return value.slice(1, -1).replace(/''/g, "'");
+        return value;
+    };
     const folders = path => (exists(path) ? fs().readdir(path).filter(name => !name.startsWith('.')) : []);
     Module['chibiProjects'] = () => JSON.stringify([
         ...folders(workspace).filter(found).map(id => ({
@@ -186,11 +225,20 @@ if (typeof window !== 'undefined' && !Module['chibiSaveAsset']) {
             root: `${samples}/${sample}/`,
         })),
     ]);
-    Module['chibiOpenProject'] = root => {
+    let projectOpenStatus = '';
+    Module['chibiProjectOpenStatus'] = () => projectOpenStatus;
+    Module['chibiOpenProject'] = (root, reportFailure = true) => {
         const [, folder, name] = root.match(/^\/([^/]+)\/([^/]+)\/$/);
         const search = folder === 'projects' ? `?project-root=projects/${name}` : `?project=${name}`;
         clearTimeout(timer);
-        sync().catch(report).finally(() => { location.search = search; });
+        projectOpenStatus = 'pending';
+        sync().then(() => {
+            projectOpenStatus = 'done';
+            location.search = search;
+        }).catch(error => {
+            projectOpenStatus = `error:${error.message || error}`;
+            if (reportFailure) report(error);
+        });
     };
     // The shell offers these once Chibi stops, so a project that cannot load never traps the user.
     Module['recovery'] = [['New Project', newProject]];

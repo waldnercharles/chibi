@@ -112,7 +112,8 @@ typedef struct widget
     bool pressing;
     bool suppress_click;
     bool focused;
-    bool area; /* a text field over several lines */
+    bool area;         /* a text field over several lines */
+    bool focus_picker; /* color trigger opened with the keyboard */
     double value;
     double start;
     double pending_value;

@@ -154,6 +154,7 @@ typedef struct
     float side_split;
     bool drawer_open;
     float drawer_height;
+    bool canvas_actions_open;
     studio_editor editors[STUDIO_AREA_COUNT];
     char panels[STUDIO_AREA_COUNT][64]; /* the panel each STUDIO_EDITOR_PANEL area shows */
 } studio_layout;
@@ -566,6 +567,14 @@ typedef struct
     char *name;
 } studio_project;
 
+typedef struct
+{
+    bool open, focus, shown, waiting, confirm_discard;
+    char name[128];
+    char error[192];
+    char created_root[1024];
+} studio_new_project;
+
 /* Workstream I: the code editor of one open document part, which keeps its
  * cursor, scroll and Vim state while another part shows. */
 typedef struct
@@ -687,6 +696,7 @@ struct studio
     bool own_project; /* the open project is the Studio project, whose settings are these preferences */
     uint64_t scene_prefs_seen, preview_prefs_seen;
     studio_project *projects;
+    studio_new_project new_project;
     char *open_project; /* root chosen to open, until the application takes it */
     studio_disk_toast *disk_toasts; /* files that changed on disk under unsaved edits */
     int discard_toast;   /* toast confirming unsaved changes are discarded */
@@ -979,6 +989,9 @@ void studio_open_project(studio *s, int index);
 void studio_projects_frame(studio *s);
 /* File > Open Project. */
 void studio_projects_menu(studio *s);
+/* File > New > Project. */
+void studio_new_project_menu(studio *s);
+void studio_new_project_frame(studio *s);
 
 /* Shell. */
 void studio_emit(studio *s);

@@ -20,19 +20,32 @@
       margin-left: 12px; padding: 2px 10px; border: 1px solid #303746; border-radius: 6px;
       background: #1b2330; color: inherit; font: inherit; cursor: pointer; pointer-events: auto;
     }
+    #collab-panel {
+      position: fixed; z-index: 2; bottom: max(2px, env(safe-area-inset-bottom));
+      left: 50%; transform: translateX(-50%); max-width: calc(100% - 24px);
+      color: #e5e5e8; font: 13px/1.4 system-ui, sans-serif;
+    }
+    #collab-panel summary {
+      width: fit-content; padding: 1px 8px;
+      border: 1px solid #ffffff1c; border-radius: 6px; background: #303034;
+      cursor: pointer;
+    }
+    #collab-panel[open] { bottom: max(30px, env(safe-area-inset-bottom)); }
+    #collab-panel summary:focus-visible, #collab-controls input:focus-visible,
+    #collab-controls button:focus-visible { outline: 2px solid #73abff; outline-offset: 2px; }
     #collab-controls {
-      position: fixed; z-index: 2; top: 12px; right: 12px; display: grid; grid-template-columns: 1fr auto auto;
-      gap: 8px; width: min(560px, calc(100% - 24px)); box-sizing: border-box; padding: 10px;
-      border: 1px solid #303746; border-radius: 8px; background: #101620eF;
-      color: #d9e1ed; font: 13px/1.4 system-ui, sans-serif; box-shadow: 0 8px 28px #0008;
+      display: grid; grid-template-columns: 1fr auto auto;
+      gap: 8px; width: 560px; max-width: 100%; box-sizing: border-box; padding: 10px; margin-top: 6px;
+      border: 1px solid #ffffff1c; border-radius: 8px; background: #1c1c1e;
     }
     #collab-status { grid-column: 1 / -1; overflow-wrap: anywhere; }
     #collab-status[data-error] { color: #ffd9dd; }
     #collab-controls input, #collab-controls button {
-      min-width: 0; box-sizing: border-box; padding: 7px 9px; border: 1px solid #303746; border-radius: 6px;
-      background: #0b1018; color: inherit; font: inherit;
+      min-width: 0; box-sizing: border-box; padding: 7px 9px; border: 1px solid #ffffff1c; border-radius: 6px;
+      background: #28282b; color: inherit; font: inherit;
     }
-    #collab-controls button { background: #1b2330; cursor: pointer; }
+    #collab-controls button { background: #303034; cursor: pointer; }
+    #collab-controls button:hover { background: #424247; }
     #collab-controls .invite { grid-column: 1 / 2; }
     #collab-controls .admin { grid-column: 1 / 2; }
     #collab-controls .wide { grid-column: 1 / -1; }
@@ -46,6 +59,8 @@
 <body>
   <canvas id="canvas" tabindex="0" aria-label="Chibi"></canvas>
   <p id="status" role="status" aria-live="polite">Loading Chibi...</p>
+  <details id="collab-panel">
+  <summary>Collaborate</summary>
   <section id="collab-controls" aria-label="Collaboration room">
     <span id="collab-status" role="status" aria-live="polite">Collaboration is disconnected.</span>
     <input id="collab-invite" class="invite" type="text" autocomplete="off" placeholder="Paste a room invite link or code" aria-label="Room invite">
@@ -56,6 +71,7 @@
     <button id="collab-viewer" type="button">Copy viewer invite</button>
     <button id="collab-editor" type="button">Copy editor invite</button>
   </section>
+  </details>
   <noscript>JavaScript is required to run Chibi.</noscript>
   <script>
     var Module = (() => {

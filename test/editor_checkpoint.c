@@ -1,7 +1,10 @@
 #include "editor/collab/workspace.h"
 #include "editor/workspace/editor.h"
 #include "editor/workspace/editor_internal.h"
+#include "editor/workspace/input.h"
 #include "graph/model/registry.h"
+#include "platform/cute.h"
+#include "render/scene_renderer.h"
 #include "runtime/generated.h"
 
 #include <assert.h>
@@ -194,4 +197,27 @@ void test_editor_checkpoint()
     editor_free(source);
     behavior_asset_free(other);
     printf("PASS: editor checkpoints preserve active and cached documents, baselines, Undo/Redo and node/link selection\n");
+}
+
+void test_editor_checkpoint_with_app(const char *program)
+{
+    CF_Result result = cf_make_app(
+        "Editor checkpoint",
+        0,
+        0,
+        0,
+        256,
+        256,
+        CF_APP_OPTIONS_NO_AUDIO_BIT | CF_APP_OPTIONS_HIDDEN_BIT,
+        program
+    );
+    if (cf_is_error(result)) {
+        fprintf(stderr, "editor checkpoint app: %s\n", result.details ? result.details : "unknown error");
+        assert(false);
+    }
+    app_scene_renderer_initialize();
+    app_input_initialize();
+    test_editor_checkpoint();
+    app_input_shutdown();
+    cf_destroy_app();
 }

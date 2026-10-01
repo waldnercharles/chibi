@@ -442,6 +442,77 @@ static void paint_source(ui_source *source)
     }
 }
 
+/* Tree-sitter's HTML grammar reads `>` inside an RML text binding as markup.
+ * Parse same-length placeholder text in place of complete bindings so text
+ * nodes and offsets still address the original source, whose expressions
+ * RmlUi validates. */
+static char *rml_parse_text(const char *text)
+{
+    char *parsed = xstrdup(text);
+    int length = (int)strlen(text);
+    bool in_tag = false;
+    char tag_quote = 0;
+    for (int i = 0; i < length; i++) {
+        if (!in_tag && i + 3 < length && !strncmp(text + i, "<!--", 4)) {
+            const char *end = strstr(text + i + 4, "-->");
+            if (end) {
+                i = (int)(end - text) + 2;
+                continue;
+            }
+        }
+        if (!in_tag && text[i] == '<' && i + 1 < length &&
+            (isalpha((unsigned char)text[i + 1]) || text[i + 1] == '/' ||
+             text[i + 1] == '!')) {
+            in_tag = true;
+            continue;
+        }
+        if (in_tag) {
+            if (tag_quote) {
+                if (text[i] == tag_quote) {
+                    tag_quote = 0;
+                }
+            } else if (text[i] == '\'' || text[i] == '"') {
+                tag_quote = text[i];
+            } else if (text[i] == '>') {
+                in_tag = false;
+            }
+            continue;
+        }
+        if (i + 1 >= length || text[i] != '{' || text[i + 1] != '{') {
+            continue;
+        }
+        char quote = 0;
+        bool escape = false;
+        int close = i + 2;
+        for (; close + 1 < length; close++) {
+            char c = text[close];
+            if (quote) {
+                if (escape) {
+                    escape = false;
+                } else if (c == '\\') {
+                    escape = true;
+                } else if (c == quote) {
+                    quote = 0;
+                }
+            } else if (c == '\'' || c == '"') {
+                quote = c;
+            } else if (c == '}' && text[close + 1] == '}') {
+                break;
+            }
+        }
+        if (close + 1 >= length || text[close] != '}' || text[close + 1] != '}') {
+            continue;
+        }
+        for (int at = i; at <= close + 1; at++) {
+            if (parsed[at] != '\n' && parsed[at] != '\r') {
+                parsed[at] = 'x';
+            }
+        }
+        i = close + 1;
+    }
+    return parsed;
+}
+
 /* ---------- Outline ---------- */
 
 static ui_source_attribute read_attribute(TSNode node)
@@ -736,12 +807,10 @@ ui_source *ui_source_parse(const char *text, ui_source_language language)
     source->trees->lines = line_starts(source->text);
     TSParser *parser = ts_parser_new();
     ts_parser_set_language(parser, language == UI_SOURCE_RML ? tree_sitter_html() : tree_sitter_css());
-    source->trees->tree = ts_parser_parse_string(
-        parser,
-        NULL,
-        source->text,
-        (uint32_t)strlen(source->text)
-    );
+    char *rml = language == UI_SOURCE_RML ? rml_parse_text(source->text) : NULL;
+    const char *parse_text = rml ? rml : source->text;
+    source->trees->tree = ts_parser_parse_string(parser, NULL, parse_text, (uint32_t)strlen(parse_text));
+    free(rml);
     ts_parser_delete(parser);
     TSNode root = ts_tree_root_node(source->trees->tree);
     if (language == UI_SOURCE_RML) {

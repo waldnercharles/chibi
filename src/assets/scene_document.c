@@ -9,6 +9,7 @@
 #include "support/xalloc.h"
 
 #include <assert.h>
+#include <limits.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -307,6 +308,27 @@ static const type_desc *component_type(const char *key)
     return NULL;
 }
 
+static bool enum_integer(yyjson_mut_val *value, int *out)
+{
+    if (yyjson_mut_is_sint(value)) {
+        int64_t number = yyjson_mut_get_sint(value);
+        if (number < INT32_MIN || number > INT32_MAX) {
+            return false;
+        }
+        *out = (int)number;
+        return true;
+    }
+    if (yyjson_mut_is_uint(value)) {
+        uint64_t number = yyjson_mut_get_uint(value);
+        if (number > INT32_MAX) {
+            return false;
+        }
+        *out = (int)number;
+        return true;
+    }
+    return false;
+}
+
 static void label_enum_fields(yyjson_mut_val *object, const type_desc *type)
 {
     for (int i = 0; type && i < type->field_count; i++) {
@@ -316,8 +338,9 @@ static void label_enum_fields(yyjson_mut_val *object, const type_desc *type)
             label_enum_fields(value, registry_type_by_name(field->type_name));
             continue;
         }
-        const char *label = field->type == PIN_ENUM && yyjson_mut_is_int(value)
-                              ? registry_enum_label(field->type_name, (int)yyjson_mut_get_sint(value))
+        int enum_value;
+        const char *label = field->type == PIN_ENUM && enum_integer(value, &enum_value)
+                              ? registry_enum_label(field->type_name, enum_value)
                               : NULL;
         if (label) {
             yyjson_mut_set_str(value, label);

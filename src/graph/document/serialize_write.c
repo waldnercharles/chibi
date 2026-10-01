@@ -62,8 +62,7 @@ bool serialize_same_value(const pin_value *a, const pin_value *b)
     if (a->container >= PIN_CONTAINER_ARRAY && (!a->ptr || !b->ptr)) {
         return a->ptr == b->ptr;
     }
-    if (a->container == PIN_CONTAINER_SINGLE &&
-        (a->type == PIN_FLOW || a->type == PIN_HANDLE)) {
+    if (a->container == PIN_CONTAINER_SINGLE && a->type == PIN_FLOW) {
         return true;
     }
     return pin_value_equal(a, b);

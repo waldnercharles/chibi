@@ -8,10 +8,12 @@
 #include "support/text_file.h"
 #include "support/ui_style.h"
 #include "support/xalloc.h"
+#include "third_party/yyjson/yyjson.h"
 
 #include <SDL3/SDL_video.h>
 #include <assert.h>
 #include <ctype.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -185,7 +187,10 @@ bool ui_mount_sync(ui_mount *m, rml_element *root, rml_listener *listener, doubl
 {
     assert(root && listener);
     bool restyled = read_asset(m, time);
-    if (root != m->root) {
+    char mounted[256] = "";
+    bool same_mount = rml_element_attribute(root, "data-ui", mounted, sizeof mounted) &&
+                      !strcmp(mounted, m->name);
+    if (root != m->root || !same_mount) {
         m->root = root;
         m->installed = false;
         rml_element_set_attribute(root, "data-ui", m->name);
@@ -468,7 +473,7 @@ static const char *saved_text(yyjson_mut_val *v, char *buffer, size_t size)
         case YYJSON_TYPE_STR: return yyjson_mut_get_str(v);
         case YYJSON_TYPE_BOOL: return yyjson_mut_get_bool(v) ? "true" : "false";
         case YYJSON_TYPE_NUM:
-            snprintf(buffer, size, "%g", yyjson_mut_get_num(v));
+            snprintf(buffer, size, "%.17g", yyjson_mut_get_num(v));
             return buffer;
         default: return NULL;
     }
@@ -481,6 +486,22 @@ void ui_data_set_text(yyjson_mut_doc *doc, yyjson_mut_val *value, const char *te
     }
     yyjson_mut_val *copy = yyjson_mut_strcpy(doc, text);
     yyjson_mut_set_strn(value, yyjson_mut_get_str(copy), yyjson_mut_get_len(copy));
+}
+
+static bool saved_number(const char *text, double *number)
+{
+    yyjson_doc *doc = yyjson_read(text, strlen(text), 0);
+    if (!doc) {
+        return false;
+    }
+    const yyjson_val *value = yyjson_doc_get_root(doc);
+    bool valid = yyjson_is_num(value);
+    if (valid) {
+        *number = yyjson_get_num(value);
+        valid = isfinite(*number);
+    }
+    yyjson_doc_free(doc);
+    return valid;
 }
 
 /* Shows `save`'s keys in `shown`, changing only the values that differ, so
@@ -504,6 +525,11 @@ static void show_save(yyjson_mut_doc *doc, yyjson_mut_val *shown, const game_sav
         bool flag = !strcmp(text, "true");
         if (flag || !strcmp(text, "false")) {
             yyjson_mut_set_bool(value, flag);
+            continue;
+        }
+        double number;
+        if (saved_number(text, &number)) {
+            yyjson_mut_set_real(value, number);
             continue;
         }
         ui_data_set_text(doc, value, text);
@@ -802,13 +828,30 @@ void ui_page_free(ui_page *p)
 /* The game document's own style: the editor's face, a pointer that passes
  * through to the game except over what a player activates, and a slot that
  * fills what holds it. */
-static const char
-    BASE_RCSS[] = "body { width: 100%; height: 100%; font-family: Inter; "
-                  "font-size: 16dp; color: #ffffff; pointer-events: none; }\n"
-                  "slot { display: block; position: relative; width: 100%; "
-                  "height: 100%; }\n"
-                  "[data-event-click], input, select, textarea { "
-                  "pointer-events: auto; }\n";
+static const char BASE_RCSS[] =
+    "body { display: block; width: 100%; height: 100%; font-family: Inter; "
+    "font-size: 16dp; color: #ffffff; pointer-events: none; }\n"
+    "slot { display: block; position: relative; width: 100%; "
+    "height: 100%; }\n"
+    "scrollbarvertical { width: 8dp; margin-left: 0dp; }\n"
+    "button:not([disabled]) { tab-index: auto; }\n"
+    "scrollbarvertical, scrollbarhorizontal, scrollbarcorner, "
+    "scrollbarvertical slidertrack, scrollbarhorizontal slidertrack, "
+    "scrollbarvertical sliderbar, scrollbarhorizontal sliderbar { "
+    "pointer-events: auto; }\n"
+    "scrollbarvertical slidertrack { background-color: transparent; }\n"
+    "scrollbarvertical sliderbar { margin: 2dp; border-radius: 3dp; "
+    "background-color: var(--scrollbar, #777); }\n"
+    "scrollbarvertical sliderbar:hover { "
+    "background-color: var(--scrollbar-hover, #aaa); }\n"
+    "scrollbarhorizontal { height: 8dp; }\n"
+    "scrollbarhorizontal sliderbar { margin: 2dp; border-radius: 3dp; "
+    "background-color: var(--scrollbar, #777); }\n"
+    "scrollbarhorizontal sliderbar:hover { "
+    "background-color: var(--scrollbar-hover, #aaa); }\n"
+    "scrollbarcorner { background-color: transparent; }\n"
+    "[data-event-click], input, select, textarea { "
+    "pointer-events: auto; }\n";
 
 /* One GameUi entity's mount, or the host's overlay. */
 typedef struct ui_view

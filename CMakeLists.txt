@@ -969,7 +969,8 @@ target_sources(test_suite PRIVATE
 # validates one in a scratch RmlUi document; ui_edit serves the MCP's ui tools.
 include(cmake/tree_sitter.cmake)
 add_library(ui_source STATIC
-    src/assets/ui_source.c src/assets/ui_source_complete.c src/assets/ui_source_edit.c)
+    src/assets/ui_source.c src/assets/ui_source_complete.c src/assets/ui_source_edit.c
+    src/assets/ui_source_format.c)
 target_include_directories(ui_source PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(ui_source PUBLIC runtime_support core chibi_tree_sitter)
 target_link_libraries(editor PRIVATE ui_source chibi_render)

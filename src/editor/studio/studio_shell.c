@@ -129,7 +129,12 @@ void studio_save(studio *s)
 {
     app_scene_authoring *scene = s->scene;
     /* Text saves while the scene runs, as it applies live. */
-    if (!graph_focused(s) && studio_ui_buffer(s)) {
+    /* Selecting a document tab changes the active document but does not
+       necessarily move focus away from the last editor area. The selected UI
+       document owns Save in that state; graph focus owns Save only while a
+       different document is active. */
+    if (studio_ui_buffer(s) &&
+        (!graph_focused(s) || scene->document.kind == APP_EDITOR_DOCUMENT_UI)) {
         studio_code_save(s);
         return;
     }
@@ -601,6 +606,8 @@ static void menu_list(studio *s, const char *key, const char *name)
     kit *k = s->kit;
     if (!strcmp(name, "projects")) {
         studio_projects_menu(s);
+    } else if (!strcmp(name, "newProject")) {
+        studio_new_project_menu(s);
     } else if (!strcmp(name, "webProjects")) {
         web_project_items(s);
     } else if (!strcmp(name, "add")) {
@@ -1224,4 +1231,5 @@ void studio_emit(studio *s)
     studio_members_toast(s);
     studio_refactor_frame(s);
     studio_component_toast(s);
+    studio_new_project_frame(s);
 }

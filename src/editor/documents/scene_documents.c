@@ -633,10 +633,11 @@ int save_ui_document(app_scene_authoring *scene, scene_document_tab *tab)
 {
     ui_buffer *b = tab->ui;
     int result = 0;
+    ui_buffer_format_for_save(b);
     for (int p = 0; p < UI_PART_COUNT && !result; p++) {
-        result = ui_buffer_saves(b, (ui_part)p)
-                   ? write_file_atomic(b->files[p], b->parts[p])
-                   : 0;
+        if (ui_buffer_saves(b, (ui_part)p)) {
+            result = write_file_atomic(b->files[p], b->parts[p]);
+        }
     }
     if (result == 0) {
         ui_buffer_saved(b);

@@ -1165,6 +1165,16 @@ typedef struct
     b2Vec2 point;
 } pair_query;
 
+static bool pair_seen(const pair_query *query, unsigned slot)
+{
+    for (int i = 0; i < acount(*query->visited); i++) {
+        if ((*query->visited)[i] == slot) {
+            return true;
+        }
+    }
+    return false;
+}
+
 static bool overlap_candidate(b2ShapeId shape, void *user)
 {
     pair_query *query = user;
@@ -1174,10 +1184,8 @@ static bool overlap_candidate(b2ShapeId shape, void *user)
     }
     /* A compound collider appears once per shape. Once any piece touches,
      * skip its remaining callbacks; misses must still allow later pieces. */
-    for (int i = 0; i < acount(*query->visited); i++) {
-        if ((*query->visited)[i] == b->entity.slot) {
-            return true;
-        }
+    if (pair_seen(query, b->entity.slot)) {
+        return true;
     }
     physics_body part = { 0 };
     const physics_body *candidate = b;
@@ -1257,6 +1265,34 @@ typedef struct
     bool solved;
 } collect_context;
 
+static void collect_solved_contacts(pair_query *query, pair_buffer *buffer)
+{
+    game_physics *physics = query->physics;
+    physics_body *body = query->body;
+    /* Solved solids may have a small separation within Box2D's tolerance.
+     * These pairs already use the same midpoint and fraction as overlaps. */
+    int capacity = b2Body_GetContactCapacity(body->body);
+    asetlen(buffer->contacts, capacity);
+    int count = b2Body_GetContactData(body->body, buffer->contacts, capacity);
+    for (int j = 0; j < count; j++) {
+        b2ContactData contact = buffer->contacts[j];
+        physics_body *a = shape_body(physics, contact.shapeIdA),
+                     *b = shape_body(physics, contact.shapeIdB);
+        /* Both bodies expose the contact. Only the lower slot owns the pair. */
+        if (body->entity.slot !=
+            (a->entity.slot < b->entity.slot ? a->entity.slot : b->entity.slot)) {
+            continue;
+        }
+        physics_body *other = a == body ? b : a;
+        if (!eligible(a, b) || continuous_sensor(a) || continuous_sensor(b) ||
+            pair_seen(query, other->entity.slot)) {
+            continue;
+        }
+        apush(*query->visited, other->entity.slot);
+        add_pair(query->pairs, a, b);
+    }
+}
+
 static void collect_body(const collect_context *context, int index, pair_buffer *buffer)
 {
     game_physics *physics = context->physics;
@@ -1271,6 +1307,11 @@ static void collect_body(const collect_context *context, int index, pair_buffer 
                          .fraction = 1 };
     aclear(buffer->visited);
     bool swept = continuous_sensor(body);
+    if (context->solved && !swept && !body->collider.sensor) {
+        /* Seed compound dedup before querying the spatial index, avoiding
+         * repeated distance tests and sort entries for accepted contacts. */
+        collect_solved_contacts(&query, buffer);
+    }
     if (swept) {
         int first = acount(buffer->pairs);
         b2DynamicTree_Query(&physics->sweeps, swept_bounds(body), body->collider.mask, sweep_candidate, &query);
@@ -1295,28 +1336,6 @@ static void collect_body(const collect_context *context, int index, pair_buffer 
         pair->point = query.point;
         pair->fraction = query.fraction;
         body->stop_fraction = query.fraction;
-    }
-    if (!context->solved || swept || body->collider.sensor) {
-        return;
-    }
-    /* Solved solid contacts can have a small separation within Box2D's
-     * contact tolerance. Keep those pairs active instead of retriggering. */
-    int capacity = b2Body_GetContactCapacity(body->body);
-    asetlen(buffer->contacts, capacity);
-    int count = b2Body_GetContactData(body->body, buffer->contacts, capacity);
-    for (int j = 0; j < count; j++) {
-        b2ContactData contact = buffer->contacts[j];
-        physics_body *a = shape_body(physics, contact.shapeIdA),
-                     *b = shape_body(physics, contact.shapeIdB);
-        /* Box2D exposes this contact through both shapes. Collect it once;
-         * the canonical event order is still established below. */
-        if (body->entity.slot !=
-            (a->entity.slot < b->entity.slot ? a->entity.slot : b->entity.slot)) {
-            continue;
-        }
-        if (eligible(a, b) && !continuous_sensor(a) && !continuous_sensor(b)) {
-            add_pair(&buffer->pairs, a, b);
-        }
     }
 }
 

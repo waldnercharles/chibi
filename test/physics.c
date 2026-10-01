@@ -270,6 +270,115 @@ static void contact_set_changes()
     dispose(&f);
 }
 
+static void compound_contacts()
+{
+    /* A noncombat fixture: a notched slab, a round probe and a wide bar. */
+    fixture f = create();
+    assert(ecs_world_register_component(f.world, &GAME_COMPONENT_GameDestructible, NULL) == ECS_OK);
+    ecs_entity slab = body(&f, 0, 0, GAME_BODY_STATIC, 8, 1);
+    *GAME_GameCollider_get(f.world, slab) = (GameCollider){ .shape = GAME_COLLIDER_BOX,
+                                                            .width = 32,
+                                                            .height = 16,
+                                                            .category = 8,
+                                                            .mask = 1 };
+    GameDestructible material = { .cell_size = 1, .min_fragment_cells = 1 };
+    assert(
+        ecs_world_record_add(f.world, slab, GAME_COMPONENT_GameDestructible.id, &material, 0) == ECS_OK
+    );
+    assert(ecs_world_apply_commands(f.world) == ECS_OK);
+    assert(!game_materials_prepare(f.live->materials));
+    /* This cut leaves the bottom bridge intact; both shoulders belong to the
+     * same entity but occupy different Box2D polygons. */
+    game_materials_damage(f.live->materials, slab, (fluid_vec){ 0, 7 }, 7, 1, 0, (material_impact){ 0 });
+    assert(!game_materials_prepare(f.live->materials));
+    const material_mask *mask = game_materials_mask(f.live->materials, slab);
+    assert(mask && material_mask_collision(mask).count >= 3);
+    assert(!material_mask_contains(mask, 0, 5));
+    assert(material_mask_contains(mask, 10, 5));
+    assert(game_materials_inspect(f.live->materials).solids == 1);
+
+    ecs_entity probe = body(&f, 0, 5, GAME_BODY_KINEMATIC, 1, 8);
+    GAME_GameCollider_get(f.world, probe)->radius = 1;
+    GAME_GameCollider_get(f.world, probe)->sensor = true;
+    ecs_entity bar = body(&f, 0, 5, GAME_BODY_KINEMATIC, 1, 8);
+    *GAME_GameCollider_get(f.world, bar) = (GameCollider){ .shape = GAME_COLLIDER_BOX,
+                                                           .width = 28,
+                                                           .height = 2,
+                                                           .category = 1,
+                                                           .mask = 8,
+                                                           .sensor = true };
+    game_physics_set_profiling(f.live->physics, true);
+    assert(step(&f, 0) == 2); /* Two shoulders generate one entity pair. */
+    assert(game_physics_last_profile(f.live->physics)->pairs >= 1);
+    assert(other(&f, probe) == 0);
+    assert(other(&f, bar) == ecs_entity_to_u64(slab));
+
+    GAME_GameTransform_get(f.world, probe)->x = 10;
+    assert(step(&f, 1.0f / 60) == 2); /* Earlier polygon misses must not hide this hit. */
+    assert(game_physics_last_profile(f.live->physics)->pairs >= 2);
+    assert(other(&f, probe) == ecs_entity_to_u64(slab));
+    assert(step(&f, 1.0f / 60) == 0);
+    GAME_GameTransform_get(f.world, probe)->x = 0;
+    GAME_GameTransform_get(f.world, bar)->y = 30;
+    assert(step(&f, 0) == 0);
+    assert(game_physics_last_profile(f.live->physics)->pairs == 0);
+    GAME_GameTransform_get(f.world, probe)->x = 10;
+    GAME_GameTransform_get(f.world, bar)->y = 5;
+    assert(step(&f, 0) == 4);
+    assert(game_physics_last_profile(f.live->physics)->pairs >= 2);
+    /* Polygon traversal and worker collection must not change event order. */
+    ecs_entity order[] = { slab, probe, slab, bar };
+    for (int i = 0; i < 4; i++) {
+        game_behavior_log_info info;
+        assert(game_behavior_log_info_at(f.live->behaviors, i, &info) == 0);
+        assert(ecs_entity_to_u64(info.entity) == ecs_entity_to_u64(order[i]));
+    }
+    /* Reuse solved contacts for a solid dynamic bar spanning both shoulders.
+     * Repeated drive into the slab must preserve one begin event per entity,
+     * even when several polygon manifolds report the same body pair. */
+    game_physics_reset(f.live->physics);
+    GAME_GameTransform_get(f.world, probe)->x = 0;
+    GAME_GameCollider_get(f.world, bar)->sensor = false;
+    GAME_GameBody_get(f.world, bar)->type = GAME_BODY_DYNAMIC;
+    int contacts = 0;
+    for (int i = 0; i < 30; i++) {
+        *GAME_GameVelocity_get(f.world, bar) = (GameVelocity){ 0, -20 };
+        contacts += step(&f, 1.0f / 60);
+        assert(game_physics_last_profile(f.live->physics)->pairs >= 1);
+    }
+    assert(contacts == 2);
+    assert(other(&f, bar) == ecs_entity_to_u64(slab));
+    assert(fabsf(GAME_GameTransform_get_const(f.world, bar)->x) < 1);
+    assert(GAME_GameTransform_get_const(f.world, bar)->y < 10);
+    dispose(&f);
+}
+
+static void separated_solved_contacts()
+{
+    fixture f = create();
+    ecs_entity actor = body(&f, 0, 0, GAME_BODY_DYNAMIC, 1, 2);
+    ecs_entity target = body(&f, 8.1f, 0, GAME_BODY_STATIC, 2, 1);
+    game_physics_set_profiling(f.live->physics, true);
+    assert(step(&f, 0) == 0); /* Zero delta requires actual overlap. */
+    assert(game_physics_last_profile(f.live->physics)->pairs == 0);
+    assert(step(&f, 1.0f / 60) == 2);
+    assert(game_physics_last_profile(f.live->physics)->pairs >= 1);
+    float separation = GAME_GameTransform_get_const(f.world, target)->x -
+                       GAME_GameTransform_get_const(f.world, actor)->x;
+    assert(separation > 8); /* The event comes from a solved positive-gap manifold. */
+    assert(other(&f, actor) == ecs_entity_to_u64(target));
+    for (int i = 0; i < 10; i++) {
+        assert(step(&f, 1.0f / 60) == 0);
+        assert(game_physics_last_profile(f.live->physics)->pairs >= 1);
+    }
+    assert(step(&f, 0) == 0); /* Do not reuse the solver manifold on a resync. */
+    assert(game_physics_last_profile(f.live->physics)->pairs == 0);
+    GAME_GameTransform_get(f.world, actor)->x = .2f;
+    assert(step(&f, 0) == 2);
+    assert(game_physics_last_profile(f.live->physics)->pairs >= 1);
+    dispose(&f);
+}
+
 static void nearest_and_filters()
 {
     fixture f = create();
@@ -686,6 +795,8 @@ static void physics_cases()
     solid_walls();
     sustained_dynamic_contact();
     contact_set_changes();
+    compound_contacts();
+    separated_solved_contacts();
     nearest_and_filters();
     moving_target_and_box();
     sweep_tree_lifetime();

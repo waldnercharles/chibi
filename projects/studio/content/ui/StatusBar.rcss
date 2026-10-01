@@ -34,3 +34,7 @@ body { flex: 0 0 auto; }
 .count { display: block; white-space: nowrap; line-height: var(--studio-line-16, 16dp); }
 #ui-scale { display: flex; flex-shrink: 0; }
 .ui-scale { color: var(--faint-foreground); font-family: var(--font-numeric); }
+
+@media (max-width: 900dp) {
+  .toggle-drawer .label { display: none; }
+}

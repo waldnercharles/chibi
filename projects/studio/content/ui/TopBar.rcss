@@ -78,5 +78,6 @@ body { flex: 0 0 auto; }
 }
 
 @media (max-width: 900dp) {
+  #layout, #layout + .sep { display: none; }
   .target { width: 120dp; }
 }

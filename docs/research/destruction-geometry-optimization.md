@@ -75,10 +75,11 @@ The full ASan/UBSan native `make test`, paired `make web`, and scalar/four-worke
 WebAssembly `check-material-engine` pass. The Web builds also execute the physics
 regressions in both serial and padded four-worker modes.
 
-The historical source checkpoint `51c9cc64`, which included the shared spatial
-candidate, has exact complete returned `run_scenario` results
+The isolated source checkpoint `392abaabe`, with the original fluid index and
+latest main as its common base, has exact complete returned `run_scenario` results
 and `hash_parts` across native Release, scalar Wasm and four-worker Wasm for all
-eight cases below. These are final endpoint checks, not complete trajectory
+eight cases below. The older combined checkpoint `51c9cc64` remains separately
+recorded in [historical results](destruction-geometry-results.json). These are final endpoint checks, not complete trajectory
 traces. Fixtures and requests are copied unchanged from the frozen spatial
 validation. The 20,000-enemy crowd remains intact at 20,008 live entities.
 Controller profiles do not report active worker counts; four workers describes
@@ -106,9 +107,36 @@ and mass updates beside timing objects, with per-frame samples and totals. The
 previous frozen candidate did not include these counters, so it cannot establish
 comparative work-reduction percentages.
 
-No timing improvement is accepted for this batch. Profiles during correctness
-validation are diagnostic only. The earlier fluid timing reservation expired
-without starting and is not reused for this work.
+The isolated native comparison uses baseline `47ee7f93` and candidate
+`392abaabe`, with the original fluid index and matched Release/compiler flags on
+both sides. Six scenes each run three alternating pairs, with 60 warmup and 240
+measured steps (120 warmup for the 20k collision control). All 36 profiles and
+36 quiet, unexpired boundary checks pass independent audit. The fixed readiness
+deadline was retained through three diagnostic harness/readiness attempts; the
+fourth qualified at 10:14:12 and 10:15:14 Denver and completed its own run window.
+
+| Matched terrain barrage | Baseline | Retained geometry |
+| --- | ---: | ---: |
+| Frame p50 | 0.440 ms | 0.431 ms |
+| Frame p95 | 0.724 ms | 0.622 ms |
+| Average synchronization per frame | 0.10565 ms | 0.08129 ms |
+| Average requested allocation bytes per frame | 955,832 | 754,961 |
+
+Terrain synchronization improves 23.06%, frame p95 improves 14.09%, and requested
+allocation bytes fall 21.02%. All three terrain pairs improve p50, p95 and average
+frame time. Five scenes have matched sampled workload and endpoints. Enemy
+barrage remains an outcome/workload diagnostic because retained contact history
+changes its final state. Controls vary: liquid p95 rises 2.24%, average frame rises
+0.64%, and one pair's p50 rises 8.26%; its median p50 falls 0.64%. These runs support
+the terrain improvement and do not establish a general whole-engine speedup.
+
+[Current audit and runs](destruction-geometry-ready-results.json) retain executable,
+source, raw input/output and readiness hashes. The independent short-profile audit
+also reconstructs 24 three-frame counter sums; long-profile worst-frame samples
+cannot reconstruct every frame's counter sum. Baseline has no `physics_work`, so
+those counters establish candidate work rather than comparative work savings.
+Native and Web builds reused dependency caches. Timing covers headless CPU work;
+rendered frames, GPU execution and display pacing were not measured.
 
 ## Further options
 

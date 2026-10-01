@@ -170,18 +170,34 @@ int app_scene_authoring_load_content(app_scene_authoring *scene)
     if (loaded < 0) {
         loaded = 0;
     }
-    bool has_assets = false;
+    const char *runtime_folders[] = {
+        "libraries", "shader-libraries", "events",    "systems",   "fields",
+        "materials", "shapes",           "behaviors", "prototypes"
+    };
+    const char *first_runtime_asset = NULL;
     for (int i = 0; i < acount(scene->content); i++) {
-        if (scene->content[i].directory ||
-            content_path_in_folder(scene, scene->content[i].path, "scenes")) {
+        scene_content_entry *entry = &scene->content[i];
+        if (entry->directory) {
             continue;
         }
-        has_assets = true;
-        if (content_path_in_folder(scene, scene->content[i].path, "prototypes")) {
-            loaded += load_content_prototype(scene, scene->content[i].path);
+        for (int j = 0; j < (int)(sizeof runtime_folders / sizeof *runtime_folders);
+             j++) {
+            if (content_path_in_folder(scene, entry->path, runtime_folders[j])) {
+                if (!first_runtime_asset) {
+                    first_runtime_asset = entry->path;
+                }
+                break;
+            }
+        }
+        if (content_path_in_folder(scene, entry->path, "prototypes")) {
+            loaded += load_content_prototype(scene, entry->path);
         }
     }
-    return loaded || !has_assets ? 0 : -1;
+    if (loaded || !first_runtime_asset) {
+        return 0;
+    }
+    snprintf(scene->message, sizeof scene->message, "Could not load runtime content: %s", first_runtime_asset);
+    return -1;
 }
 
 static scene_prototype_asset *ensure_prototype(app_scene_authoring *scene, const char *name)

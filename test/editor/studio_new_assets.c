@@ -1,10 +1,13 @@
 /* Assets ▸ New and Settings ▸ Project over a project on disk: every kind New
  * makes is written as its model saves it, joins the asset index at once and
  * opens as Assets opens it; the Project rows rewrite project.yaml. */
+#include "assets/behavior_loader.h"
 #include "assets/new_asset.h"
+#include "assets/scene_document.h"
 #include "assets/system_document.h"
 #include "editor/studio/studio_internal.h"
 #include "editor/workspace/input.h"
+#include "editor/workspace/scene_internal.h"
 #include "support/array.h"
 #include "support/asset_text.h"
 #include "support/text_file.h"
@@ -478,10 +481,74 @@ static void project_settings_write()
     fixture_free(&f);
 }
 
+/* Replay startup's content/scene/preview chain after adding the first UI asset. */
+static void project_creation_reload()
+{
+    new_fixture f = fixture_new();
+    char root[256], path[512], error[256];
+    join(root, sizeof root, f.root, "empty-project");
+    assert(chibi_project_create(root, "Empty Reload", error, sizeof error) == 0);
+    chibi_project project = { 0 };
+    assert(chibi_project_open(&project, root, error, sizeof error) == 0);
+    char *start = chibi_project_scene_path(&project, NULL);
+    assert(app_scene_authoring_set_content_root(f.scene, project.content) == 0);
+    bool empty = app_scene_authoring_load_content(f.scene) == 0 &&
+                 app_scene_authoring_load(f.scene, start) == 0 &&
+                 app_scene_authoring_apply_pending(f.scene) == 0;
+    join(path, sizeof path, project.content, "ui");
+    assert(mkdir(path, 0755) == 0);
+    join(path, sizeof path, project.content, "ui/NewDocument.rml");
+    write_text(path, "<div class=\"panel\">\n  <div class=\"title\">Title</div>\n</div>\n");
+    join(path, sizeof path, project.content, "ui/NewDocument.rcss");
+    write_text(path, "body { font-family: Inter; font-size: 16dp; line-height: 24dp; color: white; }\n.panel { display: block; padding: 12dp; }\n.title { font-size: 16dp; font-weight: 600; }\n");
+    bool reloaded = app_scene_authoring_load_content(f.scene) == 0 &&
+                    app_scene_authoring_load(f.scene, start) == 0 &&
+                    app_scene_authoring_apply_pending(f.scene) == 0;
+    char *json = scene_authoring_scene_json(f.scene);
+    game_scene_document *scene = json ? game_scene_document_load(json, error, sizeof error)
+                                      : NULL;
+    free(json);
+    test_check(empty && reloaded && scene && !acount(scene->entities), "a created empty project reloads after its first authored UI document without adding entities");
+    game_scene_document_free(scene);
+    join(path, sizeof path, project.content, "behaviors");
+    assert(mkdir(path, 0755) == 0);
+    join(path, sizeof path, project.content, "behaviors/Broken.yaml");
+    write_text(path, "invalid: [\n");
+    bool rejected_behavior = app_scene_authoring_load_content(f.scene) != 0;
+    assert(unlink(path) == 0);
+    join(path, sizeof path, project.content, "prototypes");
+    assert(mkdir(path, 0755) == 0);
+    join(path, sizeof path, project.content, "prototypes/Broken.yaml");
+    write_text(path, "invalid: [\n");
+    bool rejected_prototype = app_scene_authoring_load_content(f.scene) != 0;
+    test_check(rejected_behavior && rejected_prototype, "UI-only content does not hide invalid required behavior or prototype assets");
+    assert(unlink(path) == 0);
+    join(path, sizeof path, project.content, "systems");
+    assert(mkdir(path, 0755) == 0);
+    join(path, sizeof path, project.content, "systems/OnlySystem.yaml");
+    char *system = new_asset_json(NEW_ASSET_SYSTEM, "OnlySystem");
+    assert(system);
+    write_text(path, system);
+    free(system);
+    int loaded = app_behavior_fixtures_load(
+        f.live,
+        f.scene->prototype_preview,
+        project.content
+    );
+    bool system_reload = app_scene_authoring_load_content(f.scene) == 0 &&
+                         app_scene_authoring_load(f.scene, start) == 0 &&
+                         app_scene_authoring_apply_pending(f.scene) == 0;
+    test_check(loaded == 1 && game_live_find_system(f.live, "OnlySystem") && system_reload, "a system-only project counts its registered system and reloads successfully");
+    free(start);
+    chibi_project_free(&project);
+    fixture_free(&f);
+}
+
 void test_studio_new_assets()
 {
     creates_every_kind();
     menu_puts_filter_first();
     project_settings_write();
     project_creation_modal();
+    project_creation_reload();
 }

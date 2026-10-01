@@ -89,6 +89,7 @@ int app_behavior_fixtures_load(game_live_world *world, game_prototype_preview *p
     }
     qsort(paths, (size_t)acount(paths), sizeof *paths, path_compare);
     game_live_definition **pending = NULL;
+    int loaded = 0;
     for (int i = 0; i < acount(paths); i++) {
         char *json = read_file(paths[i]);
         if (json && strstr(paths[i], "/systems/")) {
@@ -101,6 +102,8 @@ int app_behavior_fixtures_load(game_live_world *world, game_prototype_preview *p
                  game_prototype_preview_register_system(preview, definition->name, json, error, sizeof error) !=
                      0)) {
                 load_error(paths[i], "register system", definition ? error : graph_last_error());
+            } else {
+                loaded++;
             }
             behavior_asset_free(definition);
             free(json);
@@ -127,7 +130,6 @@ int app_behavior_fixtures_load(game_live_world *world, game_prototype_preview *p
         free(paths[i]);
     }
     afree(paths);
-    int loaded = 0;
     for (int pass = 0; pass < 3; pass++) {
         for (int i = 0; i < acount(pending); i++) {
             game_live_definition *definition = pending[i];

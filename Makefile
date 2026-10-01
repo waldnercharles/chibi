@@ -54,13 +54,13 @@ help:
 		'make clean          Remove the default build directories'
 
 build:
-	cmake -S . -B $(BUILD_DIR) $(NATIVE_TOOLCHAIN_FLAGS) $(LOCAL_CMAKE_FLAGS) $(if $(strip $(LIBCLANG_ROOT)),-DLIBCLANG_ROOT="$(LIBCLANG_ROOT)",) && cmake --build $(BUILD_DIR)
+	sh tools/configure_native.sh $(BUILD_DIR) $(NATIVE_TOOLCHAIN_FLAGS) $(LOCAL_CMAKE_FLAGS) $(if $(strip $(LIBCLANG_ROOT)),-DLIBCLANG_ROOT="$(LIBCLANG_ROOT)",) && cmake --build $(BUILD_DIR)
 
 build-debug:
 	$(MAKE) build BUILD_DIR="$(DEBUG_BUILD_DIR)" LOCAL_CMAKE_FLAGS="$(DEBUG_CMAKE_FLAGS)"
 
 mcp:
-	@cmake -S . -B "$(BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(LOCAL_CMAKE_FLAGS) $(if $(strip $(LIBCLANG_ROOT)),-DLIBCLANG_ROOT="$(LIBCLANG_ROOT)",) >&2
+	@sh tools/configure_native.sh "$(BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(LOCAL_CMAKE_FLAGS) $(if $(strip $(LIBCLANG_ROOT)),-DLIBCLANG_ROOT="$(LIBCLANG_ROOT)",) >&2
 	@cmake --build "$(BUILD_DIR)" --target chibi_ctl >&2
 	@printf '%s\n' 'MCP server running on stdio. Paste one JSON-RPC request per line, or press Ctrl-D to stop.' >&2
 	@sh tools/mcp/launch.sh
@@ -88,21 +88,21 @@ build-release:
 	$(MAKE) build BUILD_DIR="$(RELEASE_BUILD_DIR)" LOCAL_CMAKE_FLAGS="$(RELEASE_CMAKE_FLAGS)"
 
 build-tracy:
-	cmake -S . -B "$(TRACY_BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(TRACY_CMAKE_FLAGS) $(if $(strip $(LIBCLANG_ROOT)),-DLIBCLANG_ROOT="$(LIBCLANG_ROOT)",)
+	sh tools/configure_native.sh "$(TRACY_BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(TRACY_CMAKE_FLAGS) $(if $(strip $(LIBCLANG_ROOT)),-DLIBCLANG_ROOT="$(LIBCLANG_ROOT)",)
 	cmake --build "$(TRACY_BUILD_DIR)" --target chibi chibi_ctl
 
 run-tracy: build-tracy
 	env $(NATIVE_RUNTIME_ENV) "$(TRACY_BUILD_DIR)/chibi" --project-root "$(PROJECT)" --scene "$(SCENE)" $(ARGS)
 
 build-tracy-mcp:
-	cmake -S . -B "$(TRACY_MCP_BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(TRACY_MCP_CMAKE_FLAGS) -DPython_EXECUTABLE="$(TRACY_MCP_PYTHON)" $(if $(strip $(LIBCLANG_ROOT)),-DLIBCLANG_ROOT="$(LIBCLANG_ROOT)",)
+	sh tools/configure_native.sh "$(TRACY_MCP_BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(TRACY_MCP_CMAKE_FLAGS) -DPython_EXECUTABLE="$(TRACY_MCP_PYTHON)" $(if $(strip $(LIBCLANG_ROOT)),-DLIBCLANG_ROOT="$(LIBCLANG_ROOT)",)
 	cmake --build "$(TRACY_MCP_BUILD_DIR)" --target TracyServerBindings
 
 tracy-mcp: build-tracy-mcp
 	TRACY_MCP_BUILD_DIR="$(TRACY_MCP_BUILD_DIR)" TRACY_MCP_PYTHON="$(TRACY_MCP_PYTHON)" sh tools/tracy/launch_mcp.sh
 
 benchmark:
-	cmake -S . -B "$(BENCHMARK_BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(BENCHMARK_CMAKE_FLAGS)
+	sh tools/configure_native.sh "$(BENCHMARK_BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(BENCHMARK_CMAKE_FLAGS)
 	cmake --build "$(BENCHMARK_BUILD_DIR)" --target bench_activation scene_benchmark system_benchmark query_benchmark contact_benchmark
 	env $(NATIVE_RUNTIME_ENV) "$(BENCHMARK_BUILD_DIR)/bench_activation" $(ARGS)
 	env $(NATIVE_RUNTIME_ENV) "$(BENCHMARK_BUILD_DIR)/scene_benchmark"
@@ -111,23 +111,25 @@ benchmark:
 	env $(NATIVE_RUNTIME_ENV) "$(BENCHMARK_BUILD_DIR)/contact_benchmark"
 
 web:
-	cmake -S . -B $(BUILD_DIR) $(NATIVE_TOOLCHAIN_FLAGS) && cmake --build $(BUILD_DIR) --target reflect
-	emcmake cmake -S . -B "$(WEB_BUILD_DIR)" -DCMAKE_BUILD_TYPE=Release -DCHIBI_REFLECT_EXECUTABLE=$(CURDIR)/$(BUILD_DIR)/reflect
+	sh tools/configure_native.sh $(BUILD_DIR) $(NATIVE_TOOLCHAIN_FLAGS) && cmake --build $(BUILD_DIR) --target reflect
+	sh tools/configure_web.sh "$(WEB_BUILD_DIR)" -DCMAKE_BUILD_TYPE=Release -DCHIBI_REFLECT_EXECUTABLE=$(CURDIR)/$(BUILD_DIR)/reflect
 	cmake --build "$(WEB_BUILD_DIR)" --target chibi check-behavior-backend
 
 web-serve: web
 	python3 tools/web_serve.py --build "$(WEB_BUILD_DIR)" --project . --port 8099
 
 format:
-	cmake -S . -B $(BUILD_DIR) $(NATIVE_TOOLCHAIN_FLAGS) && cmake --build $(BUILD_DIR) --target format
+	sh tools/configure_native.sh $(BUILD_DIR) $(NATIVE_TOOLCHAIN_FLAGS) && cmake --build $(BUILD_DIR) --target format
 
 check-format:
-	cmake -S . -B $(BUILD_DIR) $(NATIVE_TOOLCHAIN_FLAGS) && cmake --build $(BUILD_DIR) --target check-format
+	sh tools/configure_native.sh $(BUILD_DIR) $(NATIVE_TOOLCHAIN_FLAGS) && cmake --build $(BUILD_DIR) --target check-format
 
 test:
+	python3 test/fetchcontent_cache_test.py
+	python3 test/configure_cache_test.py
 	python3 test/web_serve_test.py
 	node test/web_workspace_test.mjs
-	cmake -S . -B $(BUILD_DIR) $(NATIVE_TOOLCHAIN_FLAGS) $(LOCAL_CMAKE_FLAGS)
+	sh tools/configure_native.sh $(BUILD_DIR) $(NATIVE_TOOLCHAIN_FLAGS) $(LOCAL_CMAKE_FLAGS)
 	cmake --build $(BUILD_DIR) --target check-generation check-reflect check-reload check-dev check-mcp check-behavior-backend
 	cmake --build $(BUILD_DIR) --target test_suite
 	env $(NATIVE_RUNTIME_ENV) $(BUILD_DIR)/test_suite
@@ -138,7 +140,7 @@ test-render:
 		printf '%s\n' 'Render tests can briefly show a window on macOS. Run them under Xvfb on Linux, or set CHIBI_ALLOW_DESKTOP_RENDER_TESTS=1 for a local run.'; \
 		exit 1; \
 	fi
-	cmake -S . -B $(BUILD_DIR) $(NATIVE_TOOLCHAIN_FLAGS) $(LOCAL_CMAKE_FLAGS)
+	sh tools/configure_native.sh $(BUILD_DIR) $(NATIVE_TOOLCHAIN_FLAGS) $(LOCAL_CMAKE_FLAGS)
 	cmake --build $(BUILD_DIR) --target check-mcp-gpu test_suite chibi
 	env $(NATIVE_RUNTIME_ENV) ASAN_OPTIONS=detect_leaks=0 $(BUILD_DIR)/test_suite --scene-documents
 	env $(NATIVE_RUNTIME_ENV) CHIBI_EVENT_BATCH_STATUS_ONLY=1 ASAN_OPTIONS=detect_leaks=0 $(BUILD_DIR)/test_suite --arena-ui
@@ -162,7 +164,7 @@ DEV_CMAKE_FLAGS ?= -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCHIBI_ENABLE_SANITIZERS=O
 DEV_GENERATOR_FLAGS ?= $(if $(wildcard $(DEV_BUILD_DIR)/CMakeCache.txt),,$(if $(shell command -v ninja 2>/dev/null),-G Ninja,))
 
 dev:
-	cmake -S . -B "$(DEV_BUILD_DIR)" $(DEV_GENERATOR_FLAGS) $(NATIVE_TOOLCHAIN_FLAGS) $(DEV_CMAKE_FLAGS) -DCHIBI_DEVELOPMENT_RELOAD=ON
+	sh tools/configure_native.sh "$(DEV_BUILD_DIR)" $(DEV_GENERATOR_FLAGS) $(NATIVE_TOOLCHAIN_FLAGS) $(DEV_CMAKE_FLAGS) -DCHIBI_DEVELOPMENT_RELOAD=ON
 	cmake --build "$(DEV_BUILD_DIR)" --target chibi chibi_dll --parallel $(JOBS)
 	cmake -DDEV_CONFIG="$(abspath $(DEV_BUILD_DIR))/dev.json" -DRESULT="$(abspath $(DEV_BUILD_DIR))/dev-result.json" -DSKIP_BUILD=ON -DJOBS=$(JOBS) -P cmake/dev_build.cmake
 	env $(NATIVE_RUNTIME_ENV) "$(DEV_BUILD_DIR)/chibi" --bootstrap "$(abspath $(DEV_BUILD_DIR))/dev-result.json" --project-root "$(PROJECT)" --scene "$(SCENE)" $(ARGS)

@@ -18,32 +18,46 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 option(CHIBI_ENABLE_SANITIZERS
        "Enable the selected sanitizer for native targets" ON)
-option(CHIBI_ENABLE_CCACHE "Use ccache when it is available" ON)
 option(CHIBI_DEVELOPMENT_RELOAD "Build the native reload host and application DLL" OFF)
+
+
+# --- cute_framework (window host + dcimgui), pinned commit ---
+option(CHIBI_ENABLE_CCACHE "Use ccache when it is available" ON)
 if(CHIBI_ENABLE_CCACHE)
     find_program(CCACHE_PROGRAM ccache)
     if(CCACHE_PROGRAM)
         cmake_path(IS_PREFIX CMAKE_SOURCE_DIR "${CMAKE_BINARY_DIR}" NORMALIZE CHIBI_IN_TREE_BUILD)
+        if(NOT CMAKE_CONFIGURATION_TYPES AND CHIBI_IN_TREE_BUILD AND
+           (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" OR CMAKE_BUILD_TYPE STREQUAL "Release"))
+            cmake_path(RELATIVE_PATH CMAKE_BINARY_DIR BASE_DIRECTORY "${CMAKE_SOURCE_DIR}"
+                OUTPUT_VARIABLE CHIBI_CCACHE_RELATIVE_BINARY_DIR)
+        endif()
         foreach(language C CXX OBJC)
             if(NOT DEFINED CMAKE_${language}_COMPILER_LAUNCHER)
                 set(CMAKE_${language}_COMPILER_LAUNCHER "${CCACHE_PROGRAM}" CACHE STRING
                     "${language} compiler launcher")
             endif()
-            if(CMAKE_BUILD_TYPE STREQUAL "Release" AND NOT CMAKE_CONFIGURATION_TYPES AND
-               NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND
-               NOT CHIBI_ENABLE_SANITIZERS AND NOT CHIBI_DEVELOPMENT_RELOAD AND
-               NOT CHIBI_ENABLE_TRACY AND CHIBI_IN_TREE_BUILD AND
+            if(NOT CMAKE_CONFIGURATION_TYPES AND CHIBI_IN_TREE_BUILD AND
+               (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" OR CMAKE_BUILD_TYPE STREQUAL "Release") AND
                CMAKE_${language}_COMPILER_LAUNCHER STREQUAL CCACHE_PROGRAM)
-                # Keep fetched sources and build outputs private to each worktree.
-                # ccache reuses matching Release objects across those paths.
+                # Normalize in-tree paths so matching builds share objects across worktrees.
                 set(CMAKE_${language}_COMPILER_LAUNCHER
                     "${CMAKE_COMMAND};-E;env;CCACHE_BASEDIR=${CMAKE_SOURCE_DIR};${CCACHE_PROGRAM}")
+                if(CMAKE_BUILD_TYPE MATCHES "^(Debug|RelWithDebInfo)$")
+                    if(CMAKE_${language}_COMPILER_ID MATCHES "^(AppleClang|Clang)$")
+                        # Keep DWARF paths relative to the worktree root for debugger lookup.
+                        string(APPEND CMAKE_${language}_FLAGS
+                            " -fdebug-compilation-dir=${CHIBI_CCACHE_RELATIVE_BINARY_DIR}")
+                    elseif(CMAKE_${language}_COMPILER_ID STREQUAL "GNU")
+                        string(APPEND CMAKE_${language}_FLAGS
+                            " -fdebug-prefix-map=${CMAKE_BINARY_DIR}=${CHIBI_CCACHE_RELATIVE_BINARY_DIR}")
+                    endif()
+                endif()
             endif()
         endforeach()
     endif()
 endif()
 
-# --- cute_framework (window host + dcimgui), pinned commit ---
 include(FetchContent)
 if(CHIBI_DEVELOPMENT_RELOAD AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     set(CF_FRAMEWORK_STATIC OFF CACHE BOOL "" FORCE)

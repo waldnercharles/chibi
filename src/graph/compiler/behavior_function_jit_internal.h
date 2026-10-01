@@ -84,7 +84,7 @@ void behavior_jit_alias_variables(const behavior_function *f, int *registers, co
 void behavior_jit_load_variables(const behavior_machine *m);
 void behavior_jit_flush_variables(const behavior_machine *m);
 void behavior_jit_coalesce_saves(const behavior_function *f, int *registers, const int *locals);
-bool behavior_jit_fused_branch(const behavior_machine *m, int pc, struct sljit_jump **jump);
+int behavior_jit_fused_branch(const behavior_machine *m, int pc, struct sljit_jump **jump);
 int behavior_jit_field_branch(const behavior_machine *m, int pc, struct sljit_jump **jump);
 void behavior_jit_failure(
     const behavior_machine *m,

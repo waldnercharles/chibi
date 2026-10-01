@@ -422,30 +422,88 @@ void behavior_jit_alias_variables(const behavior_function *f, int *registers, co
         }
     }
 }
-bool behavior_jit_fused_branch(const behavior_machine *m, int pc, struct sljit_jump **jump)
+/* Comparisons may feed a Boolean zero test before the branch. Consume only
+ * private values with no control entry into the skipped instructions. */
+static int predicate_branch(const behavior_function *f, int pc, bool *invert)
+{
+    const behavior_function_instruction *compare = &f->instructions[pc];
+    if (compare->op < BF_LT || compare->op > BF_NE) {
+        return -1;
+    }
+    int next = pc + 1, constant = -1;
+    *invert = false;
+    if (next < acount(f->instructions) && f->instructions[next].op == BF_CONSTANT &&
+        f->instructions[next].type == PIN_BOOL) {
+        constant = next++;
+    }
+    int consumer = next, result = compare->output;
+    if (next < acount(f->instructions) &&
+        (f->instructions[next].op == BF_EQ || f->instructions[next].op == BF_NE) &&
+        f->slots[f->instructions[next].left] == PIN_BOOL) {
+        const behavior_function_instruction *test = &f->instructions[next];
+        int literal = test->left == compare->output  ? test->right
+                    : test->right == compare->output ? test->left
+                                                     : -1;
+        /* Restrict inversion literals to this straight instruction span.
+         * A constant defined earlier may not dominate an external entry into
+         * the comparison, even when its textual definition precedes it. */
+        if (constant < 0 || f->instructions[constant].output != literal ||
+            !single_use(f, test->output, next + 1) || !single_use(f, literal, next)) {
+            return -1;
+        }
+        *invert = (test->op == BF_EQ) != f->instructions[constant].value.b;
+        result = test->output;
+        next++;
+    } else if (constant >= 0) {
+        return -1;
+    }
+    if (next >= acount(f->instructions) ||
+        (f->instructions[next].op != BF_BRANCH && f->instructions[next].op != BF_ASSERT) ||
+        f->instructions[next].left != result ||
+        !single_use(f, compare->output, consumer)) {
+        return -1;
+    }
+    for (int at = 0; at < acount(f->instructions); at++) {
+        const behavior_function_instruction *i = &f->instructions[at];
+        if ((i->op == BF_BRANCH || i->op == BF_JUMP) && i->target > pc &&
+            i->target <= next) {
+            return -1;
+        }
+    }
+    return next;
+}
+
+static int comparison_condition(behavior_function_op op, pin_type type)
+{
+    if (type == PIN_F32 || type == PIN_F64) {
+        return (int[]){ SLJIT_ORDERED_LESS,    SLJIT_ORDERED_LESS_EQUAL,
+                        SLJIT_ORDERED_GREATER, SLJIT_ORDERED_GREATER_EQUAL,
+                        SLJIT_ORDERED_EQUAL,   SLJIT_UNORDERED_OR_NOT_EQUAL }[op - BF_LT];
+    }
+    return (int[]){ SLJIT_SIG_LESS,    SLJIT_SIG_LESS_EQUAL,
+                    SLJIT_SIG_GREATER, SLJIT_SIG_GREATER_EQUAL,
+                    SLJIT_EQUAL,       SLJIT_NOT_EQUAL }[op - BF_LT];
+}
+
+int behavior_jit_fused_branch(const behavior_machine *m, int pc, struct sljit_jump **jump)
 {
     const behavior_function *f = m->function;
     const behavior_function_instruction *i = &f->instructions[pc];
-    if (i->op < BF_LT || i->op > BF_NE || pc + 1 >= acount(f->instructions)) {
-        return false;
+    bool invert;
+    int last = predicate_branch(f, pc, &invert);
+    if (last < 0) {
+        return 0;
     }
-    const behavior_function_instruction *next = i + 1;
     pin_type type = f->slots[i->left];
     bool real = type == PIN_F32 || type == PIN_F64;
-    if ((!real && type != PIN_I32 && type != PIN_I64) ||
-        (next->op != BF_BRANCH && next->op != BF_ASSERT) ||
-        next->left != i->output || !single_use(f, i->output, pc + 1)) {
-        return false;
+    bool equality = i->op == BF_EQ || i->op == BF_NE;
+    if ((!real && type != PIN_I32 && type != PIN_I64 &&
+         !(equality && (type == PIN_BOOL || type == PIN_U32 ||
+                        type == PIN_U64 || type == PIN_HANDLE))) ||
+        f->slots[i->right] != type) {
+        return 0;
     }
-    int condition = real ? (int[]){ SLJIT_ORDERED_LESS,
-                                    SLJIT_ORDERED_LESS_EQUAL,
-                                    SLJIT_ORDERED_GREATER,
-                                    SLJIT_ORDERED_GREATER_EQUAL,
-                                    SLJIT_ORDERED_EQUAL,
-                                    SLJIT_UNORDERED_OR_NOT_EQUAL }[i->op - BF_LT]
-                         : (int[]){ SLJIT_SIG_LESS,    SLJIT_SIG_LESS_EQUAL,
-                                    SLJIT_SIG_GREATER, SLJIT_SIG_GREATER_EQUAL,
-                                    SLJIT_EQUAL,       SLJIT_NOT_EQUAL }[i->op - BF_LT];
+    int condition = comparison_condition(i->op, type) ^ invert;
     int left = m->registers[i->left], right = m->registers[i->right];
     if (real) {
         *jump = sljit_emit_fcmp(
@@ -456,17 +514,39 @@ bool behavior_jit_fused_branch(const behavior_machine *m, int pc, struct sljit_j
             right ? right : SLJIT_MEM1(SLJIT_SP),
             right ? 0 : i->right * sizeof(double)
         );
-        return true;
+        return last - pc + 1;
+    }
+    /* Boolean stack slots contain one byte; a word-sized memory compare would
+     * observe unrelated upper bytes retained from a previous loop iteration. */
+    if (type == PIN_BOOL) {
+        sljit_emit_op1(
+            m->compiler,
+            SLJIT_MOV_U8,
+            SLJIT_R0,
+            0,
+            left ? left : SLJIT_MEM1(SLJIT_SP),
+            left ? 0 : i->left * sizeof(double)
+        );
+        sljit_emit_op1(
+            m->compiler,
+            SLJIT_MOV_U8,
+            SLJIT_R1,
+            0,
+            right ? right : SLJIT_MEM1(SLJIT_SP),
+            right ? 0 : i->right * sizeof(double)
+        );
+        left = SLJIT_R0;
+        right = SLJIT_R1;
     }
     *jump = sljit_emit_cmp(
         m->compiler,
-        condition | (type == PIN_I32 ? SLJIT_32 : 0),
+        condition | (behavior_scalar_size(type) <= 4 ? SLJIT_32 : 0),
         left ? left : SLJIT_MEM1(SLJIT_SP),
         left ? 0 : i->left * sizeof(double),
         right ? right : SLJIT_MEM1(SLJIT_SP),
         right ? 0 : i->right * sizeof(double)
     );
-    return true;
+    return last - pc + 1;
 }
 /* A field used only by a branch can be compared directly in memory. Keep
  * literals immediate instead of materializing and reloading stack slots. */
@@ -483,16 +563,17 @@ int behavior_jit_field_branch(const behavior_machine *m, int pc, struct sljit_ju
     }
     const behavior_function_instruction *literal = &f->instructions[pc + 1];
     bool immediate = literal->op == BF_CONSTANT && literal->type == type;
-    int comparison = pc + 1 + immediate, last = comparison + 1;
-    if (last >= acount(f->instructions)) {
+    int comparison = pc + 1 + immediate;
+    bool invert;
+    int last = predicate_branch(f, comparison, &invert);
+    if (last < 0 || last >= acount(f->instructions)) {
         return 0;
     }
     const behavior_function_instruction *compare = &f->instructions[comparison],
                                         *branch = &f->instructions[last];
     if (compare->op < BF_LT || compare->op > BF_NE || compare->left != load->output ||
-        branch->op != BF_BRANCH || branch->left != compare->output ||
-        !single_use(f, load->output, comparison) ||
-        !single_use(f, compare->output, last) || f->slots[compare->right] != type ||
+        branch->op != BF_BRANCH || !single_use(f, load->output, comparison) ||
+        f->slots[compare->right] != type ||
         (immediate && (compare->right != literal->output ||
                        !single_use(f, literal->output, comparison)))) {
         return 0;
@@ -505,19 +586,19 @@ int behavior_jit_field_branch(const behavior_machine *m, int pc, struct sljit_ju
         }
     }
     bool sign = type == PIN_I32 || type == PIN_I64;
-    int condition =
-        (sign ? (int[]){ SLJIT_SIG_LESS,
-                         SLJIT_SIG_LESS_EQUAL,
-                         SLJIT_SIG_GREATER,
-                         SLJIT_SIG_GREATER_EQUAL,
-                         SLJIT_EQUAL,
-                         SLJIT_NOT_EQUAL }
-              : (int[]){ SLJIT_LESS,
-                         SLJIT_LESS_EQUAL,
-                         SLJIT_GREATER,
-                         SLJIT_GREATER_EQUAL,
-                         SLJIT_EQUAL,
-                         SLJIT_NOT_EQUAL })[compare->op - BF_LT];
+    int condition = (sign ? (int[]){ SLJIT_SIG_LESS,
+                                     SLJIT_SIG_LESS_EQUAL,
+                                     SLJIT_SIG_GREATER,
+                                     SLJIT_SIG_GREATER_EQUAL,
+                                     SLJIT_EQUAL,
+                                     SLJIT_NOT_EQUAL }
+                          : (int[]){ SLJIT_LESS,
+                                     SLJIT_LESS_EQUAL,
+                                     SLJIT_GREATER,
+                                     SLJIT_GREATER_EQUAL,
+                                     SLJIT_EQUAL,
+                                     SLJIT_NOT_EQUAL })[compare->op - BF_LT] ^
+                    invert;
     int pointer = m->registers[load->left];
     if (!pointer) {
         sljit_emit_op1(m->compiler, SLJIT_MOV_P, SLJIT_R3, 0, SLJIT_MEM1(SLJIT_SP), load->left * sizeof(double));

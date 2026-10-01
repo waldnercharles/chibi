@@ -530,12 +530,18 @@ void test_entity_query(behavior_backend backend)
           { GAME_COMPONENT_GameMovement.key, "speed", ">=", 2 } },
         { { 0 } },
         { { GAME_COMPONENT_GameCollider.key, "category", ">", INT_MAX } },
-        { { GAME_COMPONENT_GameCollider.key, "sensor", "==", 1 } }
+        { { GAME_COMPONENT_GameCollider.key, "sensor", "==", 1 } },
+        { { GAME_COMPONENT_GameMovement.key, "speed", "<", 2 } },
+        { { GAME_COMPONENT_GameMovement.key, "speed", "<=", 2 } },
+        { { GAME_COMPONENT_GameMovement.key, "speed", ">", 2 } },
+        { { GAME_COMPONENT_GameMovement.key, "speed", ">=", 2 } },
+        { { GAME_COMPONENT_GameMovement.key, "speed", "==", 2 } },
+        { { GAME_COMPONENT_GameMovement.key, "speed", "!=", 2 } }
     };
-    int expected[] = { 4, 6, 1, 1, 3, 5, 1, 3, 7, 2, 2 };
+    int expected[] = { 4, 6, 1, 1, 3, 5, 1, 3, 7, 2, 2, 2, 2, 3, 3, 0, 6 };
     for (int variant = 0; variant < 4; variant++) {
         int dynamic = variant % 2;
-        for (int test = 0; test < 11; test++) {
+        for (int test = 0; test < (int)(sizeof expected / sizeof *expected); test++) {
             behavior_asset *a = fixture(
                 conditions[test],
                 test == 8   ? 0

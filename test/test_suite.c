@@ -663,6 +663,24 @@ int main(int argc, char **argv)
         test_compiled_commands();
         return 0;
     }
+    if (argc > 1 && !strcmp(argv[1], "--predicate-branches")) {
+        extern void test_predicate_branches();
+        registry_validate();
+        test_predicate_branches();
+        return 0;
+    }
+    if (argc == 3 && !strcmp(argv[1], "--emit-predicate-c")) {
+        extern void emit_predicate_c(const char *path);
+        registry_validate();
+        emit_predicate_c(argv[2]);
+        return 0;
+    }
+    if (argc == 3 && !strcmp(argv[1], "--check-predicate-c")) {
+        extern void test_predicate_c(const char *path);
+        registry_validate();
+        test_predicate_c(argv[2]);
+        return 0;
+    }
     if (argc == 3 && strcmp(argv[1], "--emit-query-c") == 0) {
         registry_validate();
         emit_query_c(argv[2]);

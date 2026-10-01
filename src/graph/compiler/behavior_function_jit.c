@@ -294,7 +294,7 @@ static behavior_layout layout(
     bool integers = acount(f->suspensions) > 0;
     for (int i = 0; i < acount(f->slots); i++) {
         integers |= behavior_scalar_integer(f->slots[i]) ||
-                    f->slots[i] == PIN_HANDLE ||
+                    f->slots[i] == PIN_BOOL || f->slots[i] == PIN_HANDLE ||
                     behavior_scalar_string(f->slots[i]);
     }
     int saved_float = 0;
@@ -504,9 +504,12 @@ static behavior_emission emit_body(behavior_layout *layout, struct sljit_compile
             jumps[pc] = branch;
             continue;
         }
-        if (behavior_jit_fused_branch(&m, pc, &branch)) {
-            labels[pc + 1] = labels[pc];
-            pc++;
+        int predicate = behavior_jit_fused_branch(&m, pc, &branch);
+        if (predicate) {
+            for (int k = 1; k < predicate; k++) {
+                labels[pc + k] = labels[pc];
+            }
+            pc += predicate - 1;
             if (f->instructions[pc].op == BF_ASSERT) {
                 behavior_jit_failure(
                     &m,

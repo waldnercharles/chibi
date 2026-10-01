@@ -522,7 +522,16 @@ void studio_graph_frame(studio *s, double delta_seconds)
     g->in.height = canvas_h(s);
     kit_set_body_class(g->kit, "far", sg_far(s));
     kit_set_body_class(g->kit, "comfortable", s->prefs.comfortable);
-    kit_set_body_class(g->kit, "dark", !s->light);
+    bool light = studio_theme_is_light(s->prefs.theme, s->system_light);
+    bool theme_changed = g->theme_initialized &&
+                         (g->theme != s->prefs.theme || g->theme_light != light);
+    kit_set_body_class(g->kit, "theme-switching", theme_changed);
+    if (!g->theme_initialized || theme_changed) {
+        studio_theme_apply(g->kit, s->prefs.theme, s->system_light);
+        g->theme = s->prefs.theme;
+        g->theme_light = light;
+        g->theme_initialized = true;
+    }
     kit_set_theme(g->kit, "reduced-motion", s->prefs.reduced_motion);
     sg_find_unused(s);
     ed_refresh_values(e);

@@ -117,7 +117,9 @@ bool ui_mount_holds(const ui_mount *mount, rml_element *element);
  * bound by data-keys="Key:Event ..." on the focused element or an ancestor
  * (keys are A-Z, 0-9, Space, Enter, Escape, Tab, Backspace, Delete, arrows as
  * Up/Down/Left/Right, Home, End, PageUp and PageDown). An installed asset
- * focuses its first autofocus element. */
+ * focuses its first autofocus element. Text/select controls retain editing
+ * keys unless bound on that control. Text inputs and textareas permit an
+ * ancestor Escape binding. */
 void ui_mount_listen(ui_mount *mount, const rml_event *event);
 /* Records `event` as emitted by the binding on `element`, which the mount
  * holds, with `value`, emit's second argument, as its value, or else an

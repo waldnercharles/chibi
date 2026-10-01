@@ -7,6 +7,7 @@
 .tree-row[data-selected] { background-color: var(--selected); }
 .tree-row[data-active] { background-color: var(--active-row); }
 .tree-row[data-active] .name { color: var(--strong); }
+.tree-row:focus-visible { border-color: var(--ring); }
 .tree-row .twisty { width: 14dp; font-size: 11dp; color: var(--faint-foreground); }
 .tree-row .name { flex: 1 1 0dp; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tree-row .meta { color: var(--faint-foreground); font-size: var(--studio-font-11, 11dp); }

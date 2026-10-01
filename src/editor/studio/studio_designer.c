@@ -767,7 +767,7 @@ void studio_designer_hierarchy(studio *s, int area)
         reveal = rows[r].element == shown ? r : reveal;
     }
     kit_list_desc list = { .count = acount(rows),
-                           .row_height = s->prefs.comfortable ? 26 : 22,
+                           .row_height = kit_metric(s->kit, "--row"),
                            .reveal = d->reveal_row ? reveal : -1 };
     d->reveal_row = false;
     int first, last;

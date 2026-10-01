@@ -45,7 +45,7 @@ static void prefs_round_trip()
                   p.wires == KIT_WIRE_ORTHOGONAL && !p.short_bindings &&
                   !p.title_flow && !p.compact_nodes && p.code_vim &&
                   !p.code_apply_live && p.code_font_size == 20 &&
-                  p.standard_font_family == 0 && p.standard_font_size == 12 &&
+                  p.standard_font_family == 2 && p.standard_font_size == 13 &&
                   p.code_font_family == 0 &&
                   !strcmp(p.shortcuts[STUDIO_COMMAND_SAVE], "Ctrl+Shift+S") &&
                   !strcmp(p.shortcuts[STUDIO_COMMAND_WORKSPACE_VERTICAL_SPLIT], "Alt+1") &&
@@ -113,7 +113,9 @@ static void font_preferences()
     const studio_setting *standard_size = setting_named("font.standardSize");
     const studio_setting *code_family = setting_named("code.fontFamily");
     const studio_setting *code_size = setting_named("code.fontSize");
-    bool choices = standard_family && standard_family->choice_count == 2 &&
+    bool defaults = p.standard_font_size == 13 &&
+                    !strcmp(studio_standard_font(&p), "geist");
+    bool choices = standard_family && standard_family->choice_count == 3 &&
                    !strcmp(standard_family->choices[1].value, "Noto Sans") &&
                    code_family && code_family->choice_count == 2 &&
                    !strcmp(code_family->choices[1].value, "Inconsolata");
@@ -131,7 +133,7 @@ static void font_preferences()
                       !strcmp(text_at(root, "/code/fontFamily"), "Inconsolata") &&
                       yyjson_get_num(yyjson_ptr_get(root, "/code/fontSize")) == 16;
     test_check(
-        changed && serialized && studio_prefs_equal(&p, &back) &&
+        defaults && changed && serialized && studio_prefs_equal(&p, &back) &&
             !strcmp(studio_standard_font(&back), "noto sans") &&
             !strcmp(studio_code_font(&back), "inconsolata"),
         "standard and monospace font family and size settings persist and "
@@ -824,6 +826,28 @@ static void page_mount()
     int rows = visible(&f, ".setting", &first);
     bool loaded = !ui_mount_error(f.mount)[0] && rows == 6 &&
                   f.page.prefs.code_font_size == 13;
+    studio_apply_font_settings(f.k, &f.page.prefs);
+    mount_frame(&f);
+    rml_element *default_body = rml_context_document(rml_backend_context(f.backend), 0);
+    char default_family[64], default_size[32], default_line[32];
+    rml_element_property(default_body, "font-family", default_family, sizeof default_family);
+    rml_element_property(default_body, "font-size", default_size, sizeof default_size);
+    rml_element_property(default_body, "line-height", default_line, sizeof default_line);
+    rml_element *numeric = rml_element_query_selector(f.host, ".readout");
+    char numeric_family[64] = { 0 };
+    if (numeric) {
+        rml_element_property(numeric, "font-family", numeric_family, sizeof numeric_family);
+    }
+    test_check(
+        !strcmp(default_family, "geist") && !strcmp(default_size, "13dp") &&
+            !strcmp(default_line, "18dp") && kit_metric(f.k, "--h") == 26 &&
+            kit_metric(f.k, "--row") == 26 && kit_metric(f.k, "--header-h") == 32 &&
+            kit_metric(f.k, "--topbar-h") == 40 &&
+            kit_metric(f.k, "--status-h") == 28 && kit_metric(f.k, "--panel-h") == 30 &&
+            numeric && !strcmp(numeric_family, "GeistNumeric"),
+        "default font, numeric face and authored chrome metrics agree with the "
+        "compact design"
+    );
     studio_prefs font_prefs = f.page.prefs;
     studio_setting_parse(&font_prefs, setting_named("font.standardFamily"), "Noto Sans");
     studio_setting_parse(&font_prefs, setting_named("font.standardSize"), "18");
@@ -848,6 +872,9 @@ static void page_mount()
         rml_element_property(body, "font-size", size, sizeof size);
         rml_element_property(body, "line-height", line, sizeof line);
     }
+    if (numeric) {
+        rml_element_property(numeric, "font-family", numeric_family, sizeof numeric_family);
+    }
     rml_element_property(mono_probe, "font-family", mono_family, sizeof mono_family);
     rml_element_property(mono_probe, "font-size", mono_size, sizeof mono_size);
     uintptr_t standard_face = rml_font_face("noto sans", RML_FONT_NORMAL, 400, 18);
@@ -865,7 +892,8 @@ static void page_mount()
                              : 0;
     bool applied = body && !strcmp(family, "noto sans") &&
                    !strcmp(size, "18dp") && !strcmp(line, "25dp") &&
-                   compact_height == 33 && !strcmp(mono_family, "inconsolata") &&
+                   compact_height == 36 && !strcmp(numeric_family, "noto sans") &&
+                   !strcmp(mono_family, "inconsolata") &&
                    !strcmp(mono_size, "15dp") && standard_face && mono_face &&
                    rml_font_string_width(standard_face, "Glyphs") > 0 &&
                    rml_font_string_width(mono_face, "Glyphs") > 0 &&
@@ -879,7 +907,7 @@ static void page_mount()
                                  ? rml_element_box_size(font_control, RML_BOX_BORDER)
                                        .y
                                  : 0;
-    bool comfortable_room = body && comfortable_height == 39;
+    bool comfortable_room = body && comfortable_height == 42;
     studio_apply_graph_font_settings(f.k, &font_prefs);
     mount_frame(&f);
     font_control = rml_element_query_selector(f.host, ".search-input");
@@ -894,7 +922,7 @@ static void page_mount()
                                    : 0;
     bool graph_geometry = body && !strcmp(family, "noto sans") &&
                           !strcmp(size, "12dp") && !strcmp(line, "16dp") &&
-                          graph_control_height == 26;
+                          graph_control_height == 22;
     if (!applied || !comfortable_room || !graph_geometry) {
         fprintf(
             stderr,

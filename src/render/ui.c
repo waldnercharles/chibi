@@ -190,7 +190,9 @@ bool ui_mount_sync(ui_mount *m, rml_element *root, rml_listener *listener, doubl
         m->installed = false;
         rml_element_set_attribute(root, "data-ui", m->name);
         rml_element_set_data_model(root, UI_DATA_MODEL);
-        rml_element_add_event_listener(root, RML_EVENT_KEYDOWN, listener, false);
+        /* Authored key bindings precede text fields, whose default handler
+           consumes Escape and Enter before they can bubble to the host. */
+        rml_element_add_event_listener(root, RML_EVENT_KEYDOWN, listener, true);
     }
     if (!m->installed && m->markup) {
         rml_backend_take_warning();
@@ -272,6 +274,25 @@ static bool bound_event(const char *bindings, const char *key, char *event, size
     return false;
 }
 
+/* Text and select controls keep editing/navigation keys unless the control
+ * explicitly binds them. Radio/checkbox/range controls still use authored
+ * ancestor navigation, such as Studio's SidebarNav. */
+static bool owns_field_keys(rml_element *element)
+{
+    const char *tag = rml_element_tag_name(element);
+    if (!strcmp(tag, "textarea") || !strcmp(tag, "select")) {
+        return true;
+    }
+    if (strcmp(tag, "input")) {
+        return false;
+    }
+    char type[32] = "";
+    rml_element_attribute(element, "type", type, sizeof type);
+    return strcmp(type, "radio") && strcmp(type, "checkbox") &&
+           strcmp(type, "range") && strcmp(type, "button") &&
+           strcmp(type, "submit") && strcmp(type, "reset");
+}
+
 /* A key pressed inside a data-keys element sends the event bound to it from
  * the nearest such element, and goes no further. */
 static void listen_key(ui_mount *m, const rml_event *event)
@@ -288,6 +309,10 @@ static void listen_key(ui_mount *m, const rml_event *event)
             snprintf(a.id, sizeof a.id, "%s", rml_element_id(el));
             apush(m->pending, a);
             rml_event_stop_propagation(event);
+            return;
+        }
+        if (owns_field_keys(el) && (event->key != RML_KEY_ESCAPE ||
+                                    !strcmp(rml_element_tag_name(el), "select"))) {
             return;
         }
     }

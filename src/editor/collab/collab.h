@@ -59,6 +59,10 @@ bool collab_can_edit();
 collab_role collab_role_current();
 collab_state collab_state_current();
 const char *collab_status();
+/* Status updates have their own monotonic revision, independent of edits. */
+uint64_t collab_status_revision();
+bool collab_status_error();
+/* Browser feedback expires when a later model status arrives. */
 const char *collab_feedback_text();
 bool collab_feedback_error();
 const char *collab_client();

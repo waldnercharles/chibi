@@ -68,11 +68,11 @@ add_library(chibi_ui STATIC
     src/ui/text_motion.c
     # The embedded faces, loaded by the editor kit and game UI alike.
     ${GEN_NERD_FONT} ${GEN_UI_FONT} ${GEN_UI_BOLD_FONT}
-    ${GEN_UI_MEDIUM_FONT} ${GEN_UI_SEMIBOLD_FONT} ${GEN_UI_NUMERIC_FONT}
+    ${GEN_UI_MEDIUM_FONT} ${GEN_UI_SEMIBOLD_FONT} ${GEN_UI_NUMERIC_FONT} ${GEN_STUDIO_FONTS}
     ${GEN_NOTO_SANS_FONT} ${GEN_NOTO_SANS_SEMIBOLD_FONT} ${GEN_NOTO_SANS_BOLD_FONT}
     ${GEN_INCONSOLATA_FONT})
 add_dependencies(chibi_ui generate_editor_nerd_symbols_font generate_editor_ui_font generate_editor_ui_bold_font
-    generate_editor_ui_medium_font generate_editor_ui_semibold_font generate_editor_ui_numeric_font
+    generate_editor_ui_medium_font generate_editor_ui_semibold_font generate_editor_ui_numeric_font ${STUDIO_FONT_TARGETS}
     generate_editor_noto_sans_font generate_editor_noto_sans_semibold_font
     generate_editor_noto_sans_bold_font generate_editor_inconsolata_font)
 target_compile_features(chibi_ui PRIVATE cxx_std_17)

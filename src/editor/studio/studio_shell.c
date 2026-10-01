@@ -817,8 +817,8 @@ static void layout_control(studio *s)
    `commands` (studio_sources.c) for its document tabs, transport, gear and
    search, which run commands. The menubar, the play target's menu and a
    paused run's steps stay native in its slots; a run paused at a breakpoint
-   trades the frame step for the debugger's steps (Unreal). A click leaves
-   the keyboard to the areas. */
+   trades the frame step for the debugger's steps (Unreal). Chrome controls
+   retain focus while the host routes global shortcuts. */
 static void topbar(studio *s)
 {
     kit *k = s->kit;
@@ -828,7 +828,6 @@ static void topbar(studio *s)
     if (!host) {
         return;
     }
-    kit_release_focus(k, host);
     if (kit_slot_begin(k, "menus", host, "#menubar")) {
         menus(s, host);
         kit_slot_end(k);
@@ -843,10 +842,6 @@ static void topbar(studio *s)
     }
     if (s->pause.active && kit_slot_begin(k, "steps", host, "#debug-steps")) {
         studio_debug_steps(s);
-        kit_slot_end(k);
-    }
-    if (kit_slot_begin(k, "collaboration", host, "#collaboration")) {
-        studio_collab_ui(s);
         kit_slot_end(k);
     }
 }
@@ -964,8 +959,8 @@ static void editor_header(studio *s, int index)
 /* The area header is authored: projects/studio's AreaHeader, one per area,
    binds its `area` (studio_sources.c) to maximize it and to close the
    drawer. The editor type menu and the editor's own controls stay native in
-   its slots, where a field keeps the keyboard; a click elsewhere leaves it
-   to the areas. */
+   its slots. Fields keep their keys while chrome controls allow global
+   shortcuts through the host. */
 static void area_header(studio *s, int index)
 {
     kit *k = s->kit;
@@ -973,7 +968,6 @@ static void area_header(studio *s, int index)
     if (!host) {
         return;
     }
-    kit_release_focus(k, host);
     if (kit_slot_begin(k, "type", host, "#editor-type")) {
         editor_type_menu(s, index);
         kit_slot_end(k);
@@ -1182,8 +1176,8 @@ static void follow_messages(studio *s)
 
 /* The status bar is authored: projects/studio's StatusBar binds `editor`
    (studio_sources.c) and runs commands. UI Scale stays native, with its
-   menu, in the bar's #ui-scale slot. A click leaves the keyboard to the
-   areas. */
+   menu, in the bar's #ui-scale slot. Controls retain focus while the host
+   routes global shortcuts. */
 static void statusbar(studio *s)
 {
     follow_messages(s);
@@ -1191,7 +1185,6 @@ static void statusbar(studio *s)
     if (!host) {
         return;
     }
-    kit_release_focus(s->kit, host);
     if (kit_slot_begin(s->kit, "scale", host, "#ui-scale")) {
         scale_control(s);
         kit_slot_end(s->kit);

@@ -11,6 +11,51 @@
 #include <string.h>
 #include <yyjson.h>
 
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#define STUDIO_COLLAB_EXPORT EMSCRIPTEN_KEEPALIVE
+EM_JS(void, studio_web_collab_control, (const char *command, const char *argument), {
+    if (Module.chibiCollab) {
+        Module.chibiCollab.control(UTF8ToString(command), UTF8ToString(argument));
+    }
+})
+#else
+#define STUDIO_COLLAB_EXPORT
+#endif
+
+bool studio_collab_available(void)
+{
+    return collab_rooms_available();
+}
+
+const char *studio_collab_display_status(void)
+{
+    const char *feedback = collab_feedback_text();
+    return feedback[0] ? feedback : collab_status();
+}
+
+bool studio_collab_status_error(void)
+{
+    return collab_feedback_error();
+}
+
+STUDIO_COLLAB_EXPORT void studio_collab_web_status(const char *text, int error)
+{
+    collab_feedback(text, error);
+}
+
+void studio_collab_control(const char *command, const char *argument)
+{
+#ifdef __EMSCRIPTEN__
+    if (!strcmp(command, "leave")) {
+        /* Clear this tab's session invite before its next reload. */
+        studio_web_collab_control(command, argument ? argument : "");
+        return;
+    }
+#endif
+    collab_control(command, argument);
+}
+
 static yyjson_mut_val *number(yyjson_mut_doc *doc, double value)
 {
     return yyjson_mut_real(doc, isfinite(value) ? value : 0);
@@ -386,271 +431,12 @@ void studio_collab_emit(studio *s)
     }
 }
 
-static bool enter_pressed(const studio *s)
+bool studio_collab_busy(studio *s)
 {
-    for (int i = 0; i < acount(s->keys); i++) {
-        if ((s->keys[i].key == SDLK_RETURN || s->keys[i].key == SDLK_KP_ENTER) &&
-            !s->keys[i].repeat) {
-            return true;
-        }
+    if (collab_active() || collab_feedback_error()) {
+        s->collaboration.busy = false;
     }
-    return false;
-}
-
-static const char *role_name(collab_role role)
-{
-    switch (role) {
-        case COLLAB_ROLE_HOST: return "Host";
-        case COLLAB_ROLE_EDITOR: return "Editor";
-        case COLLAB_ROLE_VIEWER: return "Viewer";
-        case COLLAB_ROLE_NONE: break;
-    }
-    return "Offline";
-}
-
-static bool collab_busy()
-{
-    const char *feedback = collab_feedback_text();
-    return !strncmp(feedback, "Creating room", 13) ||
-           !strncmp(feedback, "Joining room", 12) ||
-           !strncmp(feedback, "Connecting to room", 18);
-}
-
-static void collab_stack_begin(kit *k, const char *key)
-{
-    kit_push(k, key, NULL, NULL);
-    kit_style(k, "display", "flex");
-    kit_style(k, "flex-direction", "column");
-    kit_style(k, "gap", "6dp");
-    kit_style(k, "width", "100%");
-}
-
-static void collab_status_line(kit *k, const char *key, const char *message, bool error)
-{
-    kit_label(k, key, "collab-status", message);
-    kit_style(k, "display", "block");
-    kit_style(k, "color", error ? "var(--destructive)" : "var(--muted-foreground)");
-    kit_style(k, "white-space", "normal");
-    kit_style(k, "word-break", "break-word");
-    kit_attr(k, "role", "status");
-    kit_attr(k, "aria-live", "polite");
-}
-
-static void collab_control_secret(const char *command, char *argument, size_t size)
-{
-    collab_control(command, argument);
-    memset(argument, 0, size);
-}
-
-static void collab_join(studio *s)
-{
-    collab_control_secret(
-        "join",
-        s->collaboration.invite,
-        sizeof s->collaboration.invite
-    );
-}
-
-static void collab_host(studio *s)
-{
-    collab_control_secret(
-        "host",
-        s->collaboration.admin_token,
-        sizeof s->collaboration.admin_token
-    );
-}
-
-static void collab_button_row(kit *k, const char *key)
-{
-    kit_push(k, key, NULL, "row");
-    kit_style(k, "width", "100%");
-}
-
-static bool collab_button(
-    kit *k,
-    const char *key,
-    const char *label,
-    uint32_t icon,
-    kit_variant variant,
-    kit_size size,
-    unsigned flags
-)
-{
-    kit_button_desc d = { .label = label,
-                          .icon = icon,
-                          .variant = variant,
-                          .size = size,
-                          .flags = flags };
-    return kit_button(k, key, &d);
-}
-
-static void collab_participants(studio *s, bool *close_popup)
-{
-    kit *k = s->kit;
-    int count = acount(s->collaboration.peers);
-    kit_label(k, "participants-title", "collab-section-title", count ? "Participants" : "Just you");
-    if (!count) {
-        return;
-    }
-    kit_push(k, "participants-list", NULL, "collab-participants");
-    kit_style(k, "max-height", "180dp");
-    kit_style(k, "overflow-y", "auto");
-    for (int i = 0; i < count; i++) {
-        studio_collab_peer *peer = &s->collaboration.peers[i];
-        char key[32], color[16];
-        snprintf(key, sizeof key, "peer-%d", i);
-        color_text(color, sizeof color, peer->color);
-        kit_push(k, key, NULL, "row collab-peer");
-        kit_push(k, "avatar", NULL, "collab-avatar");
-        kit_style(k, "width", "var(--studio-height-18, 18dp)");
-        kit_style(k, "height", "var(--studio-height-18, 18dp)");
-        kit_style(k, "border-radius", "9dp");
-        kit_style(k, "background-color", color);
-        kit_pop(k);
-        kit_label(k, "name", "collab-peer-name", peer->name);
-        kit_style(k, "flex", "1 1 0dp");
-        kit_style(k, "overflow", "hidden");
-        kit_style(k, "text-overflow", "ellipsis");
-        kit_style(k, "white-space", "nowrap");
-        bool following = s->collaboration.following &&
-                         !strcmp(s->collaboration.follow_client, peer->client);
-        if (collab_button(k, "follow", following ? "Following" : "Follow", KIT_ICON_EYE, KIT_GHOST, KIT_SM, 0)) {
-            if (following) {
-                studio_collab_unfollow(s);
-            } else {
-                studio_collab_follow(s, i);
-            }
-            *close_popup = true;
-        }
-        kit_pop(k);
-    }
-    kit_pop(k);
-}
-
-void studio_collab_ui(studio *s)
-{
-    kit *k = s->kit;
-    const bool active = collab_active();
-    bool open = kit_popup_is_open(k, "collaboration");
-    kit_button_desc trigger = { .label = "Collab",
-                                .icon = KIT_ICON_PEOPLE,
-                                .variant = KIT_GHOST,
-                                .size = KIT_MD,
-                                .flags = (active || open) ? KIT_ON : 0,
-                                .tip = "Collaboration" };
-    if (kit_button(k, "collaboration-trigger", &trigger)) {
-        if (open) {
-            kit_popup_close(k, "collaboration");
-        } else {
-            kit_popup_open(k, "collaboration");
-        }
-    }
-    if (!kit_popup_begin(k, "collaboration", "popover collab-popup")) {
-        return;
-    }
-    bool close_popup = false;
-    collab_stack_begin(k, "content");
-    kit_label(k, "title", "collab-title", "Collaboration");
-    kit_style(k, "font-weight", "600");
-    char state[320];
-    const char *feedback = collab_feedback_text();
-    snprintf(state, sizeof state, "%s · %s", role_name(collab_role_current()), collab_status());
-    collab_status_line(k, "state", active ? state : collab_status(), false);
-    if (feedback && feedback[0] && strcmp(feedback, collab_status())) {
-        collab_status_line(k, "feedback", feedback, collab_feedback_error());
-    }
-    if (!active && !collab_rooms_available()) {
-        collab_status_line(k, "unavailable", "Open the web editor to join or create a room.", false);
-        kit_pop(k);
-        kit_popup_end(k);
-        return;
-    }
-    kit_menu_separator(k, "status-separator");
-    if (!active) {
-        kit_label(k, "invite-label", "collab-section-title", "Join a room");
-        collab_button_row(k, "join-row");
-        bool invite_committed = kit_text_field(
-            k,
-            "invite",
-            s->collaboration.invite,
-            sizeof s->collaboration.invite,
-            "Paste an invite link",
-            0
-        );
-        kit_attr(k, "aria-label", "Invite link");
-        kit_style(k, "flex", "1 1 0dp");
-        kit_style(k, "min-width", "0");
-        unsigned busy = collab_busy() ? KIT_DISABLED : 0;
-        bool submitted = !busy && invite_committed && enter_pressed(s) &&
-                         s->collaboration.invite[0];
-        if (collab_button(k, "join", "Join room", 0, KIT_PRIMARY, KIT_MD, busy)) {
-            submitted = s->collaboration.invite[0] != '\0';
-        }
-        kit_pop(k);
-        if (submitted) {
-            collab_join(s);
-        }
-        kit_menu_separator(k, "host-separator");
-        kit_label(k, "host-label", "collab-section-title", "Create a room");
-        collab_button_row(k, "host-row");
-        bool host = collab_button(k, "host", "Create room", 0, KIT_PRIMARY, KIT_MD, busy);
-        kit_pop(k);
-        if (s->collaboration.admin_token_expanded) {
-            kit_label(k, "token-label", "collab-field-label", "Admin token · optional");
-            bool token_committed = kit_text_field(
-                k,
-                "admin-token",
-                s->collaboration.admin_token,
-                sizeof s->collaboration.admin_token,
-                "Enter token if required",
-                KIT_SECRET
-            );
-            kit_attr(k, "aria-label", "Admin token");
-            kit_style(k, "width", "100%");
-            host = host || (!busy && token_committed && enter_pressed(s));
-        }
-        if (collab_button(
-                k,
-                "admin-token-toggle",
-                s->collaboration.admin_token_expanded ? "Hide admin token" : "Use admin token",
-                0,
-                KIT_GHOST,
-                KIT_SM,
-                0
-            )) {
-            s->collaboration.admin_token_expanded = !s->collaboration.admin_token_expanded;
-        }
-        if (host) {
-            collab_host(s);
-            s->collaboration.admin_token_expanded = false;
-        }
-    } else {
-        collab_participants(s, &close_popup);
-        if (collab_is_host()) {
-            kit_menu_separator(k, "invite-separator");
-            kit_label(k, "invite-title", "collab-section-title", "Invite people");
-            collab_button_row(k, "invite-row");
-            if (collab_button(k, "editor-invite", "Editor link", KIT_ICON_EDIT, KIT_GHOST, KIT_SM, 0)) {
-                collab_control("invite_editor", "");
-            }
-            if (collab_button(k, "viewer-invite", "Viewer link", KIT_ICON_EYE, KIT_GHOST, KIT_SM, 0)) {
-                collab_control("invite_viewer", "");
-            }
-            kit_pop(k);
-        }
-        kit_menu_separator(k, "leave-separator");
-        collab_button_row(k, "leave-row");
-        if (collab_button(k, "leave", "Leave room", KIT_ICON_CLOSE, KIT_DANGER, KIT_MD, 0)) {
-            collab_control("leave", "");
-            studio_collab_unfollow(s);
-        }
-        kit_pop(k);
-    }
-    kit_pop(k);
-    kit_popup_end(k);
-    if (close_popup) {
-        kit_popup_close(k, "collaboration");
-    }
+    return s->collaboration.busy;
 }
 
 bool studio_collab_follow(studio *s, int peer_index)
@@ -691,8 +477,6 @@ void studio_collab_free(studio *s)
         free(s->collaboration.peers[i].presentation);
     }
     afree(s->collaboration.peers);
-    memset(s->collaboration.invite, 0, sizeof s->collaboration.invite);
-    memset(s->collaboration.admin_token, 0, sizeof s->collaboration.admin_token);
 }
 
 void studio_collab_after_frame(studio *s)

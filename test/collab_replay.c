@@ -1,5 +1,6 @@
 #include "editor/collab/collab.h"
 #include "editor/collab/protocol.h"
+#include "editor/studio/studio_internal.h"
 #include "support/xalloc.h"
 
 #include <assert.h>
@@ -10,7 +11,7 @@
 typedef struct
 {
     int applies, restores, closes, sends, value;
-    bool fail_apply, fail_restore;
+    bool fail_apply, fail_restore, fail_checkpoint;
     char *last;
 } fixture;
 
@@ -39,8 +40,11 @@ static bool apply(void *context, const char *, char *, size_t)
     return true;
 }
 
-static char *checkpoint(void *)
+static char *checkpoint(void *context)
 {
+    if (((fixture *)context)->fail_checkpoint) {
+        return NULL;
+    }
     return xstrdup("{\"version\":1}");
 }
 
@@ -95,9 +99,64 @@ static void viewer_ready(fixture *f, const char *role)
     assert(collab_state_current() == COLLAB_READY && f->restores == 1);
 }
 
+static void displayed_status_follows_session(fixture *f)
+{
+    begin(f, "editor");
+    collab_feedback("Invite validation failed", 1);
+    assert(!strcmp(collab_feedback_text(), "Invite validation failed"));
+    assert(collab_feedback_error());
+    assert(!strcmp(studio_collab_display_status(), "Invite validation failed"));
+    assert(studio_collab_status_error());
+    receive("joined", "self", 0, 0, "{\"role\":\"editor\",\"next_seq\":1,\"snapshot_revision\":0}");
+    assert(!strcmp(studio_collab_display_status(), "Loading room checkpoint"));
+    assert(!collab_feedback_text()[0]);
+    assert(!collab_feedback_error());
+    assert(!studio_collab_status_error());
+    studio_collab_web_status("Room room · editor", 0);
+    receive("snapshot", "host", 0, 0, "{\"checkpoint_version\":1,\"workspace\":\"{}\"}");
+    assert(!strcmp(studio_collab_display_status(), "Room connected"));
+    assert(collab_propose("{}"));
+    receive("rejected", "self", 1, 0, "{\"reason\":\"Stale base\"}");
+    assert(!strcmp(studio_collab_display_status(), "Stale base"));
+    assert(!collab_feedback_text()[0]);
+    assert(collab_feedback_error());
+    assert(studio_collab_status_error());
+    studio_collab_web_status("editor invite copied to clipboard.", 0);
+    assert(!strcmp(studio_collab_display_status(), "editor invite copied to clipboard."));
+    assert(!studio_collab_status_error());
+    receive("resync_required", "server", 0, 0, "{}");
+    assert(!strcmp(studio_collab_display_status(), "Room requires a fresh checkpoint"));
+    assert(studio_collab_status_error());
+    f->fail_restore = true;
+    for (int i = 0; i < 3; i++) {
+        receive("snapshot", "host", 0, 0, "{\"checkpoint_version\":1,\"workspace\":\"{}\"}");
+    }
+    assert(!collab_active());
+    assert(
+        !strcmp(studio_collab_display_status(), "Could not restore room after three attempts; left room")
+    );
+    assert(studio_collab_status_error());
+    studio_collab_web_status("The room invite has expired", 1);
+    assert(!strcmp(studio_collab_display_status(), "The room invite has expired"));
+    assert(studio_collab_status_error());
+    begin(f, "host");
+    f->fail_checkpoint = true;
+    studio_collab_web_status("Connected to room room; synchronizing...", 0);
+    receive("joined", "self", 0, 0, "{\"role\":\"host\",\"next_seq\":1,\"snapshot_revision\":null}");
+    assert(!strcmp(studio_collab_display_status(), "Could not capture room checkpoint"));
+    assert(studio_collab_status_error());
+    f->fail_checkpoint = false;
+    collab_tick();
+    receive("snapshot_ack", "server", 0, 0, "{}");
+    assert(!strcmp(studio_collab_display_status(), "Room connected"));
+    assert(!studio_collab_status_error());
+    studio_collab_web_status("", 0);
+}
+
 void test_collab_replay()
 {
     fixture f = { 0 };
+    displayed_status_follows_session(&f);
     viewer_ready(&f, "viewer");
     assert(!collab_can_edit() && !collab_propose("{}"));
     receive("accepted", "host", 1, 1, "{\"family\":\"test\"}");

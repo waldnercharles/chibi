@@ -1966,8 +1966,18 @@ static void show_completions(kit *k, node *n, kit_code_editor *e, const kit_code
     }
     kit_rect caret = code_caret(k, n);
     node *list = emit_in(k, k->layer, key, KIND_BOX, "div", "code-completions");
+    float height = fminf(7, acount(e->completions)) *
+                       kit_metric(k, "--autocomplete-row-h") +
+                   8;
+    float below = k->in.height - 4 - caret.y - caret.h;
+    float above = caret.y - 4;
+    bool up = below < height && above > below;
+    height = fminf(height, fmaxf(1, up ? above : below));
+    float top = up ? caret.y - height : caret.y + caret.h;
+    top = math_clamp(top, 4.0f, math_max(4.0f, k->in.height - 4 - height));
     kit_style(k, "left", frame_format(k, "%.1fdp", caret.x));
-    kit_style(k, "top", frame_format(k, "%.1fdp", caret.y + caret.h));
+    kit_style(k, "top", frame_format(k, "%.1fdp", top));
+    kit_style(k, "max-height", frame_format(k, "%.1fdp", height));
     push_node(k, list);
     int accepted = -1;
     for (int i = 0; i < acount(e->completions); i++) {

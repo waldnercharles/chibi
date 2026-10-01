@@ -54,40 +54,44 @@ kit-code .zep-tip-border { color: var(--tooltip-edge); }
 kit-code .zep-flash { color: var(--highlight); }
 kit-code .zep-info { color: var(--primary); }
 
-/* Completions under the cursor; choosing one returns focus to the editor. */
+/* Completion surfaces share compact rows and keep names, types and matches distinct. */
+body { --autocomplete-row-h: var(--studio-mono-line-20, 20dp); }
 .code-completions {
     position: absolute; pointer-events: auto; background-color: var(--popover); border: 1dp var(--popover-edge);
-    border-radius: var(--r); padding: 4dp; min-width: 160dp; max-width: 420dp; display: block; z-index: 20;
-    font-family: var(--studio-code-font-family, jetbrains mono); font-size: var(--studio-mono-font-12, 12dp); max-height: 272dp; overflow-y: auto;
+    min-width: 160dp; max-width: 420dp; display: block; z-index: 20;
+    overflow-y: auto;
 }
-.code-completion, .popup.autocomplete .menu-item {
-    display: flex; align-items: center; gap: 8dp; height: var(--h); padding: 0dp 6dp; border-radius: 2dp;
-    white-space: nowrap; color: var(--foreground);
-}
-.code-completion .detail, .popup.autocomplete .detail { margin-left: auto; padding-left: 8dp; flex: 0 0 auto; font-family: var(--studio-standard-font-family, inter); color: var(--muted-foreground); }
-.code-completion[data-highlighted] { background-color: var(--primary); color: var(--primary-foreground); }
-.code-completion[data-highlighted] .detail, .popup.autocomplete .menu-item[data-highlighted] .detail { color: var(--primary-foreground); }
-/* Compact code completion: quiet selection keeps names, types and matches distinct. */
-body { --autocomplete-row-h: var(--studio-mono-line-20, 20dp); }
-.popup.autocomplete {
+.code-completions, .popup.autocomplete {
     padding: 3dp; border-radius: 4dp;
     border-color: color-mix(in srgb, var(--foreground) 16%, var(--popover));
     font-family: var(--studio-code-font-family, jetbrains mono);
     font-size: var(--studio-mono-font-12, 12dp);
 }
-.popup.autocomplete .menu-item { height: var(--autocomplete-row-h); gap: 6dp; padding: 0dp 5dp; border-radius: 2dp; }
+.code-completion, .popup.autocomplete .menu-item {
+    display: flex; align-items: center; height: var(--autocomplete-row-h);
+    gap: 6dp; padding: 0dp 5dp; border-radius: 2dp;
+    white-space: nowrap; color: var(--foreground);
+}
+.code-completion .detail, .popup.autocomplete .detail {
+    margin-left: auto; padding-left: 8dp; flex: 0 0 auto;
+    font-family: var(--studio-standard-font-family, inter); color: var(--tok-keyword);
+}
 .popup.autocomplete .menu-group { height: var(--autocomplete-row-h); line-height: var(--autocomplete-row-h); font-family: var(--studio-standard-font-family, inter); }
+.code-completion[data-highlighted],
 .popup.autocomplete .menu-item[data-highlighted] { background-color: var(--accent); color: var(--foreground); }
 .popup.autocomplete .menu-item .lead,
 .popup.autocomplete .menu-item[data-highlighted] .lead { color: var(--primary-text); }
-.popup.autocomplete .detail,
+.code-completion[data-highlighted] .detail,
 .popup.autocomplete .menu-item[data-highlighted] .detail { color: var(--tok-keyword); }
 .popup.autocomplete .detail[data-empty] { display: none; }
+.code-completion b, .code-completion[data-highlighted] b,
 .popup.autocomplete .label b,
 .popup.autocomplete .menu-item[data-highlighted] .label b { color: var(--primary-text); }
 /* Keep wheel and keyboard scrolling; completion does not show scrollbar chrome. */
-.popup.autocomplete scrollbarvertical { width: 0dp; margin-left: 0dp; }
-.popup.autocomplete scrollbarhorizontal { height: 0dp; }
+.code-completions scrollbarvertical,
+.popup.autocomplete scrollbarvertical { width: 0dp; margin-left: 0dp; visibility: hidden; }
+.code-completions scrollbarhorizontal,
+.popup.autocomplete scrollbarhorizontal { height: 0dp; visibility: hidden; }
 .field.autocomplete[data-open] .value { font-family: var(--studio-code-font-family, jetbrains mono); }
 
 /* The hover card: the diagnostics of the line under the resting pointer, then

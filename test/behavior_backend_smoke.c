@@ -114,7 +114,7 @@ static node *wasm_smoke_sets[WASM_SMOKE_REGIONS];
 static node *wasm_smoke_loop_set;
 static node *wasm_smoke_input_gets[WASM_SMOKE_MAX_INPUTS];
 static int wasm_smoke_polls;
-static const float wasm_smoke_input_value = 16777216.0f;
+static const float wasm_smoke_rounding_input_value = 16777216.0f;
 
 static void wasm_smoke_poll(void *);
 static void wasm_smoke_retirement_poll(void *);
@@ -127,11 +127,33 @@ static void wasm_smoke_retirement_poll(void *unused)
     emscripten_force_exit(0);
 }
 
+static float wasm_smoke_input_value(int input)
+{
+    return input == 0 ? wasm_smoke_rounding_input_value : (float)input;
+}
+
 static float wasm_smoke_expected(int region)
 {
-    return wasm_smoke_rounding[region]
-             ? 0.0f
-             : wasm_smoke_input_value * (float)(wasm_smoke_operations[region] + 1);
+    if (wasm_smoke_rounding[region]) {
+        return 0.0f;
+    }
+    float result = wasm_smoke_input_value(0);
+    int input_count = wasm_smoke_inputs[region];
+    for (int i = 0; i < wasm_smoke_operations[region]; i++) {
+        result = (float)(result + wasm_smoke_input_value(i % input_count));
+    }
+    return result;
+}
+
+static void wasm_smoke_restore_inputs(void)
+{
+    for (int i = 0; i < WASM_SMOKE_MAX_INPUTS; i++) {
+        assert(!behavior_instance_set_variable(
+            wasm_smoke_instance,
+            wasm_smoke_input_ids[i],
+            &(pin_value){ .type = PIN_F32, .f = wasm_smoke_input_value(i) }
+        ));
+    }
 }
 
 static void wasm_smoke_dispatch()
@@ -192,6 +214,7 @@ static int wasm_smoke_reference_input(
 static double wasm_smoke_bench(int region, bool wasm)
 {
     behavior_instance_set_trace_enabled(wasm_smoke_instance, 0);
+    wasm_smoke_restore_inputs();
     const behavior_graph_program *program = behavior_program_graph(
         wasm_smoke_asset->program,
         wasm_smoke_asset->graph
@@ -770,6 +793,7 @@ static bool wasm_smoke_region_eligible(int region)
 static void wasm_smoke_worker_benchmark(const behavior_graph_program *program)
 {
     behavior_instance_set_trace_enabled(wasm_smoke_instance, 0);
+    wasm_smoke_restore_inputs();
     arena storage = { 0 };
     runtime_store *runtime = runtime_store_create(wasm_smoke_asset->graph);
     eval_context context = { .instance = wasm_smoke_instance, .runtime = runtime };
@@ -989,7 +1013,7 @@ static void wasm_smoke_start()
             PIN_F32,
             "float",
             PIN_CONTAINER_SINGLE,
-            &(pin_value){ .type = PIN_F32, .f = wasm_smoke_input_value },
+            &(pin_value){ .type = PIN_F32, .f = wasm_smoke_input_value(i) },
             ""
         );
         wasm_smoke_input_ids[i] = input->id;

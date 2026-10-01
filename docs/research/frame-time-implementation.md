@@ -153,14 +153,18 @@ startup and successful RmlUi font-loading information at error severity.
 [serial CSV](frame-time-browser-serial.csv) and
 [threaded CSV](frame-time-browser-threaded.csv) preserve the evidence.
 
-Behavior numeric regions can asynchronously compile to Wasm. Eligible regions
-contain 4 to 256 F32/F64 arithmetic operations, at most eight scalar inputs,
-and no helpers or side effects. Bytecode handles compilation latency, failures,
-tracing and unsupported regions. Pthread behavior jobs currently use bytecode;
-their task loop does not yield to compilation microtasks. Pending compilation
-retirement, registry cleanup, F32 intermediate rounding, loop re-entry and
-branch targets have smoke coverage. This does not establish a Firefight
-whole-frame gain from behavior compilation.
+Eligible behavior numeric regions contain 16 to 256 F32/F64 arithmetic
+operations, at most eight scalar inputs, and at least four operations per input.
+Main-thread compilation stays asynchronous; bytecode handles pending
+compilation, failures, tracing and unsupported regions. Pthread workers
+synchronously compile a bounded module copy on first use and retain exports in
+a bounded cache. The threaded smoke verifies that eligible samples actually
+execute Wasm, measures the first miss separately from warmed worker execution,
+compares the bytecode interpreter on the same graph, and reports inner worker
+time separately from the condition-variable roundtrip.
+Its operation/input matrix covers the 16-operation and four-operations-per-input
+gates. These measurements have not yet been run in the current validation slot,
+and no Firefight whole-frame gain is established.
 
 ## Checks and external blocker
 
@@ -201,10 +205,10 @@ checks ran outside the filesystem sandbox to permit the required macOS APIs.
 4. Scoped field SIMD is implemented in the
    [next field batch](field-optimization-implementation.md). Compiler
    vectorization had the same benefit as handwritten intrinsics, which were removed.
-5. Prewarm or batch eligible behavior modules, then measure module handoff to
-   pthread workers. Compilation and dispatch costs need enough arithmetic to
-   pay for the boundary crossing. Tune the minimum region size from repeated
-   warm measurements; the four-operation sample was slower than bytecode here.
+5. The worker cache and numeric Wasm path are implemented. Measure the first
+   worker module miss, warmed calls, and one-job handoff before considering
+   prewarming, batching, or a threshold change. Existing main-thread timings are
+   input-kernel measurements, not worker-dispatch evidence.
 6. A fresh native 20k contact-heavy measurement is recorded in the
    [Box2D assessment](box2d-performance-and-simple-solver.md). Equivalent web
    scale and GPU-completion measurements remain separate evidence requirements.

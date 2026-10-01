@@ -29,7 +29,12 @@
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-family: var(--font-numeric);
 }
 .field .unit { padding-right: 7dp; color: var(--faint-foreground); flex: 0 0 auto; margin-left: -4dp; }
-.field input.value { cursor: text; font-family: var(--studio-standard-font-family, inter); color: var(--foreground); }
+/* RmlUi sizes the insertion caret from line-height. Keep the input hit box
+   full-height and center the shorter text line inside it with padding. */
+.field input.value {
+    height: var(--text-line); line-height: var(--input-line); padding-top: var(--input-pad); padding-bottom: var(--input-pad);
+    cursor: text; font-family: var(--studio-standard-font-family, inter); color: var(--foreground);
+}
 .field.number input.value { font-family: var(--font-numeric); }
 .field input.value selection { background-color: var(--primary); color: var(--primary-foreground); }
 .field .step {
@@ -46,7 +51,7 @@
 .field.text, .field.search, .field.autocomplete { background-color: var(--field-edit); cursor: text; }
 .field.text:hover, .field.search:hover, .field.autocomplete:hover { background-color: var(--input-hover); }
 .field.text .value, .field.search .value, .field.autocomplete .value { text-align: left; font-family: var(--studio-standard-font-family, inter); }
-.field.text input.value, .field.search input.value, .field.autocomplete input.value { width: 100%; padding: 0dp 7dp; }
+.field.text input.value, .field.search input.value, .field.autocomplete input.value { width: 100%; padding: var(--input-pad) 7dp; }
 .field.search .addon { padding-left: 6dp; }
 .field.search .addon .icon { color: var(--faint-foreground); }
 .field.search input.value { padding-left: 5dp; }

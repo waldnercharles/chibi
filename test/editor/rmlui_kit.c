@@ -8,6 +8,7 @@
 
 #include <math.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 typedef struct
@@ -32,6 +33,8 @@ typedef struct
     char control_text[32];
     bool editing;
     int menu_b;
+    int menu_count, menu_action;
+    bool menu_submenu;
     int chosen;
     const char *order[3];
     int order_count;
@@ -91,18 +94,42 @@ static const char
     TIP_ABOUT[] = "Fires True when Condition is true, otherwise False, "
                   "and continues from whichever output fired.";
 
+static void action_menu(kit_fixture *f)
+{
+    for (int i = 0; i < f->menu_count; i++) {
+        char key[16], label[32];
+        snprintf(key, sizeof key, "action%d", i);
+        snprintf(label, sizeof label, "Action %02d", i + 1);
+        kit_menu_item_desc item = { .label = label, .checked = -1 };
+        if (kit_menu_item(f->k, key, &item)) {
+            f->menu_action = i + 1;
+        }
+    }
+}
+
 static void emit(kit_fixture *f)
 {
     kit *k = f->k;
     kit_root(k, "app");
     kit_push(k, "bar", NULL, "topbar");
     if (kit_menubar_trigger(k, "file", "File")) {
-        kit_menu_item_desc a = { .label = "A", .checked = -1 };
-        kit_menu_item(k, "a", &a);
-        kit_menu_item_desc b = { .label = "B", .checked = -1 };
-        if (kit_menu_item(k, "b", &b)) {
-            f->menu_b++;
-            f->open_rename = f->focus_rename = f->b_renames;
+        kit_attr(k, "id", "test-file-menu");
+        if (f->menu_count && f->menu_submenu) {
+            if (kit_submenu_begin(k, "actions", "Actions", 0)) {
+                kit_attr(k, "id", "test-action-submenu");
+                action_menu(f);
+                kit_submenu_end(k);
+            }
+        } else if (f->menu_count) {
+            action_menu(f);
+        } else {
+            kit_menu_item_desc a = { .label = "A", .checked = -1 };
+            kit_menu_item(k, "a", &a);
+            kit_menu_item_desc b = { .label = "B", .checked = -1 };
+            if (kit_menu_item(k, "b", &b)) {
+                f->menu_b++;
+                f->open_rename = f->focus_rename = f->b_renames;
+            }
         }
         kit_popup_end(k);
     }
@@ -456,6 +483,26 @@ static bool check(bool ok, const char *what)
     return ok;
 }
 
+/* RmlUi draws its caret at the content origin with the computed line-height.
+   Check its text box stays shorter and centered inside the unchanged hit box. */
+static bool centered_input_line(rml_element *input)
+{
+    if (!input) {
+        return false;
+    }
+    char line[32];
+    rml_element_property(input, "line-height", line, sizeof line);
+    float height = (float)atof(line);
+    rml_vec2 hit = rml_element_box_size(input, RML_BOX_BORDER);
+    rml_vec2 text = rml_element_box_size(input, RML_BOX_CONTENT);
+    rml_vec2 hit_at = rml_element_absolute_offset(input, RML_BOX_BORDER);
+    rml_vec2 text_at = rml_element_absolute_offset(input, RML_BOX_CONTENT);
+    float top = text_at.y - hit_at.y;
+    float bottom = hit.y - top - text.y;
+    return height > 0 && height < hit.y && fabsf(text.y - height) <= 1 &&
+           top >= 1 && fabsf(top - bottom) <= 1;
+}
+
 bool test_rmlui_kit()
 {
     kit_fixture f = { .value = 10,
@@ -568,6 +615,15 @@ bool test_rmlui_kit()
         click_element(&f, number_label);
         type(&f, "7");
         ok &= check(kit_wants_text(f.k, NULL), "number property label starts editing its field");
+        rml_element *number_input = rml_context_focus_element(
+            rml_backend_context(f.backend)
+        );
+        ok &= check(centered_input_line(number_input), "numeric caret line is centered within its full input hit box");
+        kit_set_body_class(f.k, "comfortable", true);
+        settle(&f);
+        ok &= check(centered_input_line(number_input), "comfortable numeric input grows without stretching its caret");
+        kit_set_body_class(f.k, "comfortable", false);
+        settle(&f);
         key(&f, RML_INPUT_KEY_ESCAPE, 0);
         frame(&f);
         ok &= check(f.value == label_before, "number label edit cancels without changing its value");
@@ -690,6 +746,17 @@ bool test_rmlui_kit()
         frame(&f);
     }
     ok &= check(!strcmp(f.control_text, "Enabled"), "text becomes editable when reenabled");
+    ok &= check(centered_input_line(control_text), "text caret line is shorter and centered in its input");
+    if (control_text) {
+        rml_vec2 hit_at = rml_element_absolute_offset(control_text, RML_BOX_BORDER);
+        rml_vec2 hit = rml_element_box_size(control_text, RML_BOX_BORDER);
+        kit_blur(f.k);
+        pointer(&f, RML_INPUT_POINTER_MOVE, hit_at.x + hit.x / 2, hit_at.y + hit.y - 1);
+        pointer(&f, RML_INPUT_POINTER_DOWN, hit_at.x + hit.x / 2, hit_at.y + hit.y - 1);
+        pointer(&f, RML_INPUT_POINTER_UP, hit_at.x + hit.x / 2, hit_at.y + hit.y - 1);
+        frame(&f);
+        ok &= check(rml_context_focus_element(rml_backend_context(f.backend)) == control_text, "clicking input padding still focuses its full-height text hit target");
+    }
     if (text_label) {
         click_element(&f, text_label);
         ok &= check(
@@ -1059,21 +1126,32 @@ bool test_rmlui_kit()
     rml_element *results = rml_element_query_selector(autocomplete_popup, ".autocomplete-results");
     settle(&f);
     float compact_row = rml_element_box_size(matches[0], RML_BOX_BORDER).y;
+    float
+        compact_pitch = rml_element_absolute_offset(matches[1], RML_BOX_BORDER).y -
+                        rml_element_absolute_offset(matches[0], RML_BOX_BORDER).y;
     float list_height = rml_element_box_size(results, RML_BOX_CONTENT).y;
     ok &= check(
-        results && list_height <= compact_row * 7 + 1 &&
+        results && fabsf(compact_pitch - compact_row) <= 1 &&
+            fabsf(list_height - compact_pitch * 7) <= 1 &&
             rml_element_scroll_height(results) > list_height,
-        "autocomplete keeps twelve choices behind a seven-row scrolling "
-        "viewport"
+        "autocomplete keeps twelve choices behind exactly seven compact rows "
+        "with scrolling"
     );
     kit_set_body_class(f.k, "comfortable", true);
     settle(&f);
     float comfortable_row = rml_element_box_size(matches[0], RML_BOX_BORDER).y;
+    float comfortable_pitch = rml_element_absolute_offset(matches[1], RML_BOX_BORDER)
+                                  .y -
+                              rml_element_absolute_offset(matches[0], RML_BOX_BORDER)
+                                  .y;
     list_height = rml_element_box_size(results, RML_BOX_CONTENT).y;
     ok &= check(
-        comfortable_row > compact_row && list_height <= comfortable_row * 7 + 1 &&
+        fabsf(comfortable_row - compact_row) <= 1 &&
+            fabsf(comfortable_pitch - compact_pitch) <= 1 &&
+            fabsf(list_height - comfortable_pitch * 7) <= 1 &&
             rml_element_scroll_height(results) > list_height,
-        "comfortable density keeps the seven-row dropdown cap"
+        "comfortable density retains the same compact autocomplete row pitch "
+        "and seven-row viewport"
     );
     kit_set_body_class(f.k, "comfortable", false);
     settle(&f);
@@ -1230,6 +1308,11 @@ bool test_rmlui_kit()
     kit_blur(f.k);
     settle(&f);
 
+    snprintf(f.autocomplete_value, sizeof f.autocomplete_value, "External.path");
+    settle(&f);
+    rml_element_value(autocomplete, shown_value, sizeof shown_value);
+    ok &= check(strcmp(shown_value, "External.path") == 0, "an unfocused autocomplete refreshes its display after an external value change");
+
     ok &= check(click(&f, "app/bar/dropdown-trigger"), "button opens its dropdown");
     settle(&f);
     ok &= check(
@@ -1278,6 +1361,119 @@ bool test_rmlui_kit()
     key(&f, RML_INPUT_KEY_TAB, 0);
     frame(&f);
     ok &= check(!kit_popup_is_open(f.k, "menu:app/bar/file"), "Tab still dismisses a menu");
+
+    /* Actions use all available space; only field suggestions keep seven rows. */
+    f.menu_count = 12;
+    click(&f, "app/bar/file");
+    settle(&f);
+    rml_element *action_popup = rml_element_query_selector(doc, "#test-file-menu:not([data-ending-style])");
+    rml_element *actions[12];
+    int action_count = rml_element_query_selector_all(action_popup, ".menu-item", actions, 12);
+    rml_vec2 action_at = rml_element_absolute_offset(action_popup, RML_BOX_CONTENT);
+    float action_height = rml_element_box_size(action_popup, RML_BOX_CONTENT).y;
+    bool all_actions_visible = action_count == 12;
+    for (int i = 0; i < action_count; i++) {
+        rml_vec2 at = rml_element_absolute_offset(actions[i], RML_BOX_BORDER);
+        float height = rml_element_box_size(actions[i], RML_BOX_BORDER).y;
+        all_actions_visible &= at.y >= action_at.y - 1 &&
+                               at.y + height <= action_at.y + action_height + 1;
+    }
+    kit_rect field_rect;
+    bool field_found = kit_find(f.k, "app/fields/first/@control/value", &field_rect);
+    ok &= check(
+        all_actions_visible &&
+            rml_element_scroll_height(action_popup) <=
+                rml_element_box_size(action_popup, RML_BOX_PADDING).y + 1 &&
+            field_found && action_count &&
+            rml_element_box_size(actions[0], RML_BOX_BORDER).y < field_rect.h,
+        "a tall viewport shows all twelve actions without scrolling, in rows "
+        "slimmer than editable fields"
+    );
+    kit_popup_close(f.k, "menu:app/bar/file");
+    frame(&f);
+    f.in.height = 180;
+    rml_backend_resize(f.backend, f.in.width, f.in.height, 1);
+    click(&f, "app/bar/file");
+    settle(&f);
+    action_popup = rml_element_query_selector(doc, "#test-file-menu:not([data-ending-style])");
+    rml_vec2 action_border_at = rml_element_absolute_offset(action_popup, RML_BOX_BORDER);
+    float action_border_height = rml_element_box_size(action_popup, RML_BOX_BORDER)
+                                     .y;
+    action_height = rml_element_box_size(action_popup, RML_BOX_CONTENT).y;
+    ok &= check(
+        action_border_at.y >= 4 - 1 &&
+            action_border_at.y + action_border_height <= f.in.height - 4 + 1 &&
+            rml_element_scroll_height(action_popup) >
+                rml_element_box_size(action_popup, RML_BOX_PADDING).y + 1,
+        "a short viewport fits the action menu's border and scrolls its "
+        "overflow"
+    );
+    key(&f, RML_INPUT_KEY_END, 0);
+    settle(&f);
+    action_popup = rml_element_query_selector(doc, "#test-file-menu:not([data-ending-style])");
+    action_count = rml_element_query_selector_all(action_popup, ".menu-item", actions, 12);
+    action_at = rml_element_absolute_offset(action_popup, RML_BOX_PADDING);
+    action_height = rml_element_box_size(action_popup, RML_BOX_PADDING).y;
+    rml_vec2 final_action_at = { 0 };
+    float final_action_height = 0;
+    if (action_count == 12) {
+        final_action_at = rml_element_absolute_offset(actions[11], RML_BOX_BORDER);
+        final_action_height = rml_element_box_size(actions[11], RML_BOX_BORDER).y;
+    }
+    ok &= check(
+        action_count == 12 && rml_element_scroll_top(action_popup) > 0 &&
+            final_action_at.y >= action_at.y - 1 &&
+            final_action_at.y + final_action_height <= action_at.y + action_height + 1,
+        "End reveals the final action in a viewport-limited menu"
+    );
+    key(&f, RML_INPUT_KEY_ENTER, 0);
+    frame(&f);
+    ok &= check(
+        f.menu_action == 12 && !kit_popup_is_open(f.k, "menu:app/bar/file"),
+        "Enter activates the final action and closes the scrolling menu"
+    );
+    f.menu_action = 0;
+    f.menu_submenu = true;
+    click(&f, "app/bar/file");
+    settle(&f);
+    key(&f, RML_INPUT_KEY_END, 0);
+    key(&f, RML_INPUT_KEY_RIGHT, 0);
+    settle(&f);
+    rml_element *action_submenu = rml_element_query_selector(doc, "#test-action-submenu:not([data-ending-style])");
+    ok &= check(
+        action_submenu && kit_popup_is_open(f.k, "sub:layer/@menu:app/bar/file/actions"),
+        "Right opens the action submenu from its keyboard-selected parent row"
+    );
+    key(&f, RML_INPUT_KEY_END, 0);
+    settle(&f);
+    action_submenu = rml_element_query_selector(doc, "#test-action-submenu:not([data-ending-style])");
+    bool submenu_final_visible = false;
+    if (action_submenu) {
+        action_count = rml_element_query_selector_all(action_submenu, ".menu-item", actions, 12);
+        action_at = rml_element_absolute_offset(action_submenu, RML_BOX_PADDING);
+        action_height = rml_element_box_size(action_submenu, RML_BOX_PADDING).y;
+        if (action_count == 12) {
+            final_action_at = rml_element_absolute_offset(actions[11], RML_BOX_BORDER);
+            submenu_final_visible = rml_element_scroll_top(action_submenu) > 0 &&
+                                    final_action_at.y >= action_at.y - 1 &&
+                                    final_action_at.y + final_action_height <=
+                                        action_at.y + action_height + 1;
+        }
+    }
+    key(&f, RML_INPUT_KEY_ENTER, 0);
+    frame(&f);
+    ok &= check(
+        submenu_final_visible && f.menu_action == 12 &&
+            !kit_popup_is_open(f.k, "menu:app/bar/file") &&
+            !kit_popup_is_open(f.k, "sub:layer/@menu:app/bar/file/actions"),
+        "End reveals the submenu's last action; Enter activates it and closes "
+        "both menu levels"
+    );
+    f.menu_count = 0;
+    f.menu_submenu = false;
+    f.in.height = 640;
+    rml_backend_resize(f.backend, f.in.width, f.in.height, 1);
+    settle(&f);
 
     /* A field in a popup takes typing and Enter; the popup keeps Escape. */
     click(&f, "app/bar/rename-trigger");

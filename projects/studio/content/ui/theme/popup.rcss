@@ -34,6 +34,7 @@ body.comfortable .popover .btn.sm { height: var(--studio-height-36, 36dp); }
     display: flex; align-items: center; gap: 8dp; height: var(--h); padding: 0dp 8dp 0dp 6dp; border-radius: var(--r);
     white-space: nowrap; color: var(--foreground);
 }
+.popup.menu > .menu-item, .menu-option, .menu-check { height: var(--menu-row-h); }
 .menu-item .lead { color: var(--muted-foreground); }
 .menu-item .text { display: block; flex: 1 1 auto; overflow: hidden; }
 .menu-item .label { display: block; overflow: hidden; }
@@ -54,13 +55,13 @@ body.comfortable .popover .btn.sm { height: var(--studio-height-36, 36dp); }
 .menu-sep { height: 1dp; margin: 4dp 2dp; background-color: var(--border); }
 .menu-group { height: var(--studio-height-22, 22dp); line-height: var(--studio-line-22, 22dp); display: block; padding: 0dp 6dp; font-size: var(--studio-font-11, 11dp); color: var(--faint-foreground); }
 .dropdown .field.search { margin: 2dp 2dp 6dp; }
-/* Seven option rows by default; density and font settings update both tokens. */
-body { --dropdown-list-h: 182dp; --dropdown-box-h: 192dp; }
+/* Field choices show seven rows. Action menus use compact, font-scaled rows
+   and grow to their content until the viewport requires scrolling. */
+body { --menu-row-h: var(--studio-line-22, 22dp); --dropdown-list-h: 182dp; --dropdown-box-h: 192dp; }
 body.comfortable { --dropdown-list-h: 210dp; --dropdown-box-h: 220dp; }
 body.graph-canvas, body.graph-canvas.comfortable { --dropdown-list-h: 154dp; --dropdown-box-h: 164dp; }
 .dropdown-results, .autocomplete-results { max-height: var(--dropdown-list-h); overflow-y: auto; }
-.popup.menu { max-height: var(--dropdown-box-h); overflow-y: auto; }
-.popup.menu.struct-editor { max-height: none; }
+.popup.menu { overflow-y: auto; }
 .dropdown-empty { display: block; padding: 8dp; color: var(--muted-foreground); }
 
 /* The label and shortcut stay on one line; a description wraps beneath them.

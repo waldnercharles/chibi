@@ -867,15 +867,6 @@ static void blur(kit *k, const rml_event *e, node *n)
     control_blur(n, e->target);
 }
 
-static void mouseover(kit *k, node *n)
-{
-    /* A palette row follows the pointer only as it moves (mousemove). */
-    if (!n || n->kind == KIND_COMMAND_ITEM) {
-        return;
-    }
-    menu_hover(k, n);
-}
-
 static void on_event(void *user, const rml_event *e)
 {
     kit *k = user;
@@ -914,13 +905,14 @@ static void on_event(void *user, const rml_event *e)
             }
             break;
         case RML_EVENT_BLUR: blur(k, e, n); break;
-        case RML_EVENT_MOUSEOVER: mouseover(k, n); break;
         /* Rows the results bring under a still pointer fire mouseover but
            no mousemove, so they leave the selection on the best match, as
            cmdk's do. */
         case RML_EVENT_MOUSEMOVE:
             if (n && n->kind == KIND_COMMAND_ITEM) {
                 command_hover(k, n);
+            } else if (n) {
+                menu_hover(k, n);
             }
             break;
         default: break;

@@ -929,6 +929,24 @@ static void click(mount_fixture *f, rml_element *el)
     }
 }
 
+static bool centered_caret(rml_element *input)
+{
+    if (!input) {
+        return false;
+    }
+    char line[32];
+    rml_element_property(input, "line-height", line, sizeof line);
+    float height = (float)atof(line);
+    rml_vec2 hit = rml_element_box_size(input, RML_BOX_BORDER);
+    rml_vec2 content = rml_element_box_size(input, RML_BOX_CONTENT);
+    rml_vec2 hit_at = rml_element_absolute_offset(input, RML_BOX_BORDER);
+    rml_vec2 content_at = rml_element_absolute_offset(input, RML_BOX_CONTENT);
+    float top = content_at.y - hit_at.y;
+    float bottom = hit.y - top - content.y;
+    return height > 0 && height < hit.y && fabsf(content.y - height) <= 1 &&
+           top >= 1 && fabsf(top - bottom) <= 1;
+}
+
 static void page_mount()
 {
     mount_fixture f = { .in = { .dp_ratio = 1, .width = 1280, .height = 800 },
@@ -949,6 +967,7 @@ static void page_mount()
                   f.page.prefs.code_font_size == 13;
     studio_apply_font_settings(f.k, &f.page.prefs);
     mount_frame(&f);
+    test_check(centered_caret(rml_element_query_selector(f.host, ".search-input")), "the authored Settings search centers its caret inside the full hit area");
     rml_element *default_body = rml_context_document(rml_backend_context(f.backend), 0);
     char default_family[64], default_size[32], default_line[32];
     rml_element_property(default_body, "font-family", default_family, sizeof default_family);
@@ -1043,6 +1062,7 @@ static void page_mount()
                              ? rml_element_box_size(font_control, RML_BOX_BORDER)
                                    .y
                              : 0;
+    test_check(centered_caret(font_control), "applied larger font settings keep the search caret shorter and centered");
     bool applied = body && !strcmp(family, "noto sans") &&
                    !strcmp(size, "18dp") && !strcmp(line, "25dp") &&
                    compact_height == 36 && !strcmp(numeric_family, "noto sans") &&
@@ -1061,6 +1081,7 @@ static void page_mount()
                                        .y
                                  : 0;
     bool comfortable_room = body && comfortable_height == 42;
+    test_check(centered_caret(font_control), "comfortable density preserves caret geometry with the larger font");
     studio_apply_graph_font_settings(f.k, &font_prefs);
     mount_frame(&f);
     font_control = rml_element_query_selector(f.host, ".search-input");
@@ -1076,6 +1097,7 @@ static void page_mount()
     bool graph_geometry = body && !strcmp(family, "noto sans") &&
                           !strcmp(size, "12dp") && !strcmp(line, "16dp") &&
                           graph_control_height == 22;
+    test_check(centered_caret(font_control), "graph font settings retain a centered caret at their fixed control pitch");
     if (!applied || !comfortable_room || !graph_geometry) {
         fprintf(
             stderr,

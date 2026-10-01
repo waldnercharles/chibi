@@ -292,6 +292,7 @@ static void apply_font_settings(kit *k, const studio_prefs *prefs, bool graph)
     if (line_extra < 0 || graph) {
         line_extra = 0;
     }
+    int input_line = (graph ? 16 : (int)lroundf(16 * scale)) + line_extra;
     const char *numeric_fonts[] = { "InterNumeric", "noto sans", "GeistNumeric" };
     int written = snprintf(
         css,
@@ -300,11 +301,13 @@ static void apply_font_settings(kit *k, const studio_prefs *prefs, bool graph)
         "--studio-code-font-family: %s; --studio-numeric-font-family: %s; "
         "font-size: %ddp; line-height: %ddp; "
         "--h: %ddp; --text-line: %ddp; --h-sm: %ddp; "
+        "--input-line: %ddp; --input-pad: %.1fdp; "
         "--row: %ddp; --gap: %ddp; --header-h: %ddp; "
         "--dropdown-list-h: %ddp; --dropdown-box-h: %ddp; "
         "--topbar-h: %ddp; --status-h: %ddp; --panel-h: %ddp; }\n"
         "body.comfortable, body.dark.comfortable { --h: %ddp; "
         "--text-line: %ddp; --h-sm: %ddp; "
+        "--input-line: %ddp; --input-pad: %.1fdp; "
         "--row: %ddp; --gap: %ddp; --header-h: %ddp; "
         "--dropdown-list-h: %ddp; --dropdown-box-h: %ddp; "
         "--topbar-h: %ddp; --status-h: %ddp; --panel-h: %ddp; }\n"
@@ -330,6 +333,8 @@ static void apply_font_settings(kit *k, const studio_prefs *prefs, bool graph)
         h,
         text_line,
         h_sm,
+        input_line,
+        fmaxf(0, (text_line - input_line) * 0.5f),
         row,
         gap,
         header_h,
@@ -341,6 +346,8 @@ static void apply_font_settings(kit *k, const studio_prefs *prefs, bool graph)
         graph ? 22 : (int)lroundf(30 * scale),
         graph ? 20 : (int)lroundf(28 * scale),
         graph ? 18 : (int)lroundf(26 * scale),
+        input_line,
+        fmaxf(0, ((graph ? 20 : (int)lroundf(28 * scale)) - input_line) * 0.5f),
         graph ? 22 : (int)lroundf(30 * scale),
         (int)lroundf(3 * scale),
         (int)lroundf(36 * scale),

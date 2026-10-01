@@ -234,6 +234,11 @@
                 if (envelope.kind === 'joined') status(`Room ${invite.room} · ${envelope.payload.role || invite.role}`);
                 if (envelope.kind === 'room_closed') status('The room has closed. You can rejoin with an active invite.', true);
                 notifyC(envelope);
+                if (envelope.kind === 'error') {
+                    const reason = typeof envelope.payload.reason === 'string'
+                        ? envelope.payload.reason : 'Room service error';
+                    status(reason, true);
+                }
             } catch (error) {
                 status(`Could not verify the room snapshot: ${error.message}`, true);
                 callC('collab_request_snapshot');

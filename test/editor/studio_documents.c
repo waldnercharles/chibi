@@ -1,6 +1,7 @@
 /* Studio frames over a project on disk: drawing a graph never changes what its
  * asset saves, so reloading a viewed asset leaves it saved. */
 #include "assets/ui_events.h"
+#include "editor/collab/collab.h"
 #include "editor/studio/studio_designer_internal.h"
 #include "editor/studio/studio_graph_internal.h"
 #include "editor/studio/studio_internal.h"
@@ -1005,7 +1006,8 @@ static void chrome_follows_studio()
        would make its document active again. */
     press(s, rml_element_query_selector(tabs[scene], ".face"));
     frames(&f, 2);
-    bool selected = f.scene->active_tab == scene && !kit_wants_keyboard(s->kit);
+    bool selected = f.scene->active_tab == scene &&
+                    kit_wants_keyboard(s->kit) && studio_ui_shortcut_focus(s);
     /* This narrow window clips the last tab, so the click goes to it. */
     rml_element_click(close);
     frames(&f, 2);
@@ -1032,6 +1034,105 @@ static void chrome_follows_studio()
         printf("  %d %d %d %d %d %d\n", slots, listed, selected, closed, playing, restored);
     }
     test_check(slots && listed && selected && closed && playing && restored, "Studio's authored top bar and area headers host their native slots and run tab, transport and area commands");
+    fixture_free(&f);
+}
+
+/* Global shortcuts remain available after authored toolbar controls take Rml
+   focus, while an authored text input keeps its keys. */
+static void toolbar_shortcuts_keep_text_focus()
+{
+    studio_fixture f = vault_open();
+    studio *s = f.studio;
+    char path[PATH_MAX];
+    assert(realpath(BANK, path) && studio_open_ui_source(s, path, 1));
+    frames(&f, 4);
+    rml_context *context = rml_backend_context(s->backend);
+    rml_element *button = studio_element(s, ".side-pane");
+    assert(context && button);
+    press(s, button);
+    frames(&f, 1);
+    studio_command_run(s, STUDIO_COMMAND_TOGGLE_SIDE_PANE);
+    frames(&f, 1);
+    /* Toolbar actions can remount the authored header; focus the button
+       from the reconciled document before sending the shortcut. */
+    button = studio_element(s, ".side-pane");
+    assert(button);
+    rml_element_focus(button, true);
+    frames(&f, 1);
+    bool button_allowed = studio_ui_shortcut_focus(s);
+    bool button_keyboard = kit_wants_keyboard(s->kit);
+    bool button_focus = button_allowed && button_keyboard;
+
+    SDL_Keymod primary = s->mac ? SDL_KMOD_GUI : SDL_KMOD_CTRL;
+    key_event_mod(SDL_SCANCODE_K, true, primary, false);
+    key_event_mod(SDL_SCANCODE_K, false, primary, false);
+    frames(&f, 2);
+    bool button_shortcut = kit_command_is_open(s->kit);
+    key_event(SDL_SCANCODE_ESCAPE, true);
+    key_event(SDL_SCANCODE_ESCAPE, false);
+    frames(&f, 2);
+    bool dismissed = !kit_command_is_open(s->kit);
+
+    rml_element *tab = studio_element(s, ".doc-tab .face");
+    assert(tab);
+    press(s, tab);
+    frames(&f, 1);
+    tab = studio_element(s, ".doc-tab");
+    assert(tab && rml_element_focus(tab, true));
+    frames(&f, 1);
+    bool tab_focus = rml_context_focus_element(context) == tab &&
+                     studio_ui_shortcut_focus(s) && kit_wants_keyboard(s->kit);
+    key_event_mod(SDL_SCANCODE_K, true, primary, false);
+    key_event_mod(SDL_SCANCODE_K, false, primary, false);
+    frames(&f, 2);
+    bool tab_shortcut = kit_command_is_open(s->kit);
+    key_event(SDL_SCANCODE_ESCAPE, true);
+    key_event(SDL_SCANCODE_ESCAPE, false);
+    frames(&f, 2);
+
+    rml_element *input = studio_element(s, "input[placeholder=Filter]");
+    assert(input);
+    bool focused_input = rml_element_focus(input, true);
+    frames(&f, 1);
+    bool input_keyboard = kit_wants_keyboard(s->kit);
+    bool input_allowed = studio_ui_shortcut_focus(s);
+    bool input_focus = focused_input && rml_context_focus_element(context) == input &&
+                       input_keyboard && !input_allowed;
+    key_event_mod(SDL_SCANCODE_K, true, primary, false);
+    key_event_mod(SDL_SCANCODE_K, false, primary, false);
+    frames(&f, 2);
+    bool input_palette = kit_command_is_open(s->kit);
+    rml_element *input_focus_after = rml_context_focus_element(context);
+    bool input_protected = !input_palette && input_focus_after == input &&
+                           kit_wants_keyboard(s->kit);
+
+    if (!(button_focus && button_shortcut && dismissed && tab_focus &&
+          tab_shortcut && input_focus && input_protected)) {
+        printf("  button allowed %d, keyboard %d\n", button_allowed, button_keyboard);
+        printf("  tab focus %d, shortcut %d\n", tab_focus, tab_shortcut);
+        printf(
+            "  %d %d %d %d %d (open %d, focus %s, input %d, allowed %d, "
+            "keyboard %d, attempted %d, typing %d)\n",
+            button_focus,
+            button_shortcut,
+            dismissed,
+            input_focus,
+            input_protected,
+            input_palette,
+            input_focus_after ? rml_element_tag_name(input_focus_after) : "none",
+            input_focus_after == input,
+            input_allowed,
+            input_keyboard,
+            focused_input,
+            s->typing
+        );
+    }
+    test_check(
+        button_focus && button_shortcut && dismissed && tab_focus &&
+            tab_shortcut && input_focus && input_protected,
+        "focused authored toolbar buttons and document tabs allow global "
+        "shortcuts while text inputs retain their keys"
+    );
     fixture_free(&f);
 }
 
@@ -1540,13 +1641,17 @@ static void prototype_components()
 {
     studio_fixture f = side_open();
     studio *s = f.studio;
-    /* Properties fills the workspace, so its last panels are in view. */
+    /* Properties fills the workspace. Scroll its final action into view. */
     s->maximized = s->focus_area = STUDIO_AREA_PROPERTIES;
     assert(app_scene_authoring_open_prototype(f.scene, "Vault") == 0);
     frames(&f, 3);
     const char *scroll = "app/workspace/main/properties/body/properties/scroll";
     char path[256];
     snprintf(path, sizeof path, "%s/add/component", scroll);
+    rml_element *add_button = studio_element(s, ".prop-scroll .add-row .btn");
+    assert(add_button);
+    rml_element_scroll_into_view(add_button, RML_SCROLL_NEAREST, RML_SCROLL_NEAREST);
+    frames(&f, 2);
     bool button = click_path(&f, path, SDL_BUTTON_LEFT);
     bool palette = kit_command_is_open(s->kit) && s->components.open;
     text_event("Health");
@@ -1595,6 +1700,196 @@ static void prototype_components()
     fixture_free(&f);
 }
 
+/* Authored modal events travel through the mount and Dismiss behavior. */
+static void authored_fields_keep_editing_keys()
+{
+    studio_fixture f = vault_open();
+    studio *s = f.studio;
+    text_overlay_set(
+        BANK,
+        "<div data-keys=\"C:Parent Space:Parent Enter:Parent Up:Parent "
+        "Down:Parent Escape:Close\">"
+        "<input id=\"field\" type=\"text\" autofocus "
+        "data-keys=\"Enter:Submit\"/>"
+        "<textarea id=\"area\"/>"
+        "<select id=\"pick\"><option value=\"a\">A</option><option "
+        "value=\"b\">B</option></select>"
+        "<input id=\"radio\" type=\"radio\"/>"
+        "</div>\n"
+    );
+    frames(&f, 3);
+    studio_preview_ui(s, "Bank");
+    frames(&f, 8);
+    rml_context *context = render_ui_context(engine_viewport_ui(s->canvas->viewport));
+    rml_element *field[8] = { 0 };
+    assert(canvas_elements(s, "#field", field) == 1);
+    assert(rml_element_focus(field[0], true));
+    int before = acount(s->canvas->actions);
+    rml_context_process_key_down(context, RML_KEY_C, 0);
+    rml_context_process_text_input(context, "c", 1);
+    rml_context_process_key_down(context, RML_KEY_SPACE, 0);
+    rml_context_process_text_input(context, " ", 1);
+    frames(&f, 2);
+    char value[32];
+    rml_element_value(field[0], value, sizeof value);
+    bool typed = !strcmp(value, "c ") && acount(s->canvas->actions) == before;
+    rml_context_process_key_down(context, RML_KEY_RETURN, 0);
+    frames(&f, 2);
+    bool submitted = logged_last(s, "Submit") &&
+                     acount(s->canvas->actions) == before + 1;
+    assert(canvas_elements(s, "#area", field) == 1);
+    assert(rml_element_focus(field[0], true));
+    before = acount(s->canvas->actions);
+    rml_context_process_text_input(context, "a", 1);
+    rml_context_process_key_down(context, RML_KEY_RETURN, 0);
+    rml_context_process_text_input(context, "\n", 1);
+    frames(&f, 2);
+    rml_element_value(field[0], value, sizeof value);
+    bool newline = strchr(value, '\n') && acount(s->canvas->actions) == before;
+    rml_context_process_key_down(context, RML_KEY_ESCAPE, 0);
+    frames(&f, 2);
+    bool escaped = logged_last(s, "Close");
+    assert(canvas_elements(s, "#pick", field) == 1);
+    assert(rml_element_focus(field[0], true));
+    rml_element_click(field[0]);
+    before = acount(s->canvas->actions);
+    rml_context_process_key_down(context, RML_KEY_DOWN, 0);
+    rml_context_process_key_down(context, RML_KEY_RETURN, 0);
+    rml_context_process_key_down(context, RML_KEY_ESCAPE, 0);
+    frames(&f, 2);
+    rml_element_value(field[0], value, sizeof value);
+    bool selected = !strcmp(value, "b") && acount(s->canvas->actions) == before;
+    assert(canvas_elements(s, "#radio", field) == 1);
+    assert(rml_element_focus(field[0], true));
+    rml_context_process_key_down(context, RML_KEY_UP, 0);
+    frames(&f, 2);
+    bool radio = logged_last(s, "Parent");
+    if (!(typed && submitted && newline && escaped && selected && radio)) {
+        printf(
+            "  field keys: typed %d, submitted %d, newline %d, Escape %d, "
+            "select %d, radio %d\n",
+            typed,
+            submitted,
+            newline,
+            escaped,
+            selected,
+            radio
+        );
+    }
+    test_check(typed && submitted && newline && escaped && selected && radio, "authored input bindings submit explicitly and inherit Escape while text, textarea and select keep editing keys; radios retain ancestor navigation");
+    studio_preview_ui(s, NULL);
+    fixture_free(&f);
+    text_overlay_set(BANK, NULL);
+}
+
+static void authored_modals_and_collaboration()
+{
+    studio_fixture f = fixture_new();
+    studio *s = f.studio;
+    frames(&f, 3);
+    rml_element *found[8] = { 0 };
+    bool toolbar = panel_elements(s, "TopBar", ".collaboration-trigger", found) == 1;
+    assert(toolbar);
+    press(s, found[0]);
+    frames(&f, 4);
+    bool opened = panel_elements(s, "Collaboration", ".collab-title", found) == 1 &&
+                  !kit_popup_is_open(s->kit, "collaboration");
+    bool focused = studio_element(s, "[data-ui=Collaboration] .close:focus") != NULL;
+    tap(SDL_SCANCODE_ESCAPE);
+    frames(&f, 4);
+    bool escape_closed = panel_elements(s, "Collaboration", ".collab-title", found) == 0;
+    studio_command_run(s, STUDIO_COMMAND_COLLABORATION);
+    frames(&f, 3);
+    rml_element *close = studio_element(s, "[data-ui=Collaboration] .close");
+    assert(close);
+    press(s, close);
+    frames(&f, 4);
+    bool close_closed = panel_elements(s, "Collaboration", ".collab-title", found) == 0;
+    studio_command_run(s, STUDIO_COMMAND_SETTINGS);
+    frames(&f, 3);
+    tap(SDL_SCANCODE_ESCAPE);
+    frames(&f, 4);
+    bool settings_escape = studio_element(s, "[data-ui=Settings] .head-title") == NULL;
+    studio_command_run(s, STUDIO_COMMAND_SETTINGS);
+    frames(&f, 3);
+    close = studio_element(s, "[data-ui=Settings] .close");
+    assert(close);
+    press(s, close);
+    frames(&f, 4);
+    bool settings_close = studio_element(s, "[data-ui=Settings] .head-title") == NULL;
+    if (!(toolbar && opened && focused && escape_closed && close_closed &&
+          settings_escape && settings_close)) {
+        printf(
+            "  authored modal checks: toolbar %d, opened %d, focused %d, "
+            "Escape "
+            "%d, X %d, Settings Escape %d, Settings X %d\n",
+            toolbar,
+            opened,
+            focused,
+            escape_closed,
+            close_closed,
+            settings_escape,
+            settings_close
+        );
+    }
+    test_check(
+        toolbar && opened && focused && escape_closed && close_closed &&
+            settings_escape && settings_close,
+        "toolbar and command open one authored Collaboration dialog; both "
+        "dialogs dismiss with Escape and X"
+    );
+
+    collab_start("room", "self", "editor");
+    apush(
+        s->collaboration.peers,
+        ((studio_collab_peer){ .client = strdup("peer"),
+                               .name = strdup("Ada"),
+                               .presentation = studio_collab_capture(s),
+                               .color = 0x7aa2f7ffu })
+    );
+    studio_command_run(s, STUDIO_COMMAND_COLLABORATION);
+    frames(&f, 3);
+    bool participant = panel_elements(s, "Collaboration", ".participant-name", found) == 1;
+    rml_element *follow = studio_element(s, "[data-ui=Collaboration] .follow");
+    assert(follow);
+    press(s, follow);
+    frames(&f, 3);
+    bool following = s->collaboration.following &&
+                     !strcmp(s->collaboration.follow_client, "peer");
+    rml_element *unfollow = studio_element(s, "[data-ui=Collaboration] .unfollow");
+    assert(unfollow);
+    press(s, unfollow);
+    frames(&f, 3);
+    bool stopped = !s->collaboration.following;
+    studio_command_run_with(s, STUDIO_COMMAND_COLLABORATION_FOLLOW, 0);
+    studio_ui_collaboration_action(s, STUDIO_COMMAND_COLLABORATION_LEAVE);
+    collab_tick();
+    bool left = !s->collaboration.following && !s->collaboration.saved_prefs &&
+                !collab_active();
+    s->collaboration.busy = true;
+    collab_feedback("Creating room...", 0);
+    studio_ui_collaboration_action(s, STUDIO_COMMAND_COLLABORATION_JOIN);
+    bool gated = !strcmp(collab_feedback_text(), "Creating room...") &&
+                 studio_collab_busy(s);
+    collab_feedback("Room service unavailable", 1);
+    bool retry = !studio_collab_busy(s);
+    if (!(participant && following && stopped && left && gated && retry)) {
+        printf(
+            "  authored room checks: participant %d, following %d, stopped %d, "
+            "left %d, gated %d, retry %d\n",
+            participant,
+            following,
+            stopped,
+            left,
+            gated,
+            retry
+        );
+    }
+    test_check(participant && following && stopped && left && gated && retry, "authored participants follow and stop following; Leave restores local preferences; pending room requests gate retries until failure");
+    collab_shutdown();
+    fixture_free(&f);
+}
+
 int studio_documents_run(const char *program)
 {
     CF_Result result = cf_make_app(
@@ -1632,6 +1927,9 @@ int studio_documents_run(const char *program)
     readout_follows_camera();
     /* Authored top bar and area headers (workstream T) */
     chrome_follows_studio();
+    toolbar_shortcuts_keep_text_focus();
+    authored_modals_and_collaboration();
+    authored_fields_keep_editing_keys();
     settings_reopens_after_font_change();
     layout_modes_are_explicit();
     graph_font_size_preserves_hit_geometry();

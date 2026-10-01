@@ -1,0 +1,4 @@
+name: Collaboration
+components:
+  GAME.GameUi: {document: Collaboration, hidden: true}
+behaviors: [Dismiss, NavKeys]

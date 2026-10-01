@@ -543,6 +543,11 @@ bool kit_popup_is_open(const kit *k, const char *key)
     return p && p->open;
 }
 
+bool kit_has_popup(const kit *k)
+{
+    return acount(k->popup_stack) > 0;
+}
+
 bool kit_popup_begin(kit *k, const char *key, const char *cls)
 {
     popup *p = popup_find(k, key);

@@ -446,7 +446,7 @@ void studio_outliner_body(studio *s, int area)
     }
     kit_list_desc list = {
         .count = 1 + (s->outliner_collapsed ? 0 : shown),
-        .row_height = s->prefs.comfortable ? 26 : 22,
+        .row_height = kit_metric(s->kit, "--row"),
         .reveal = s->outliner_reveal ? reveal : -1,
     };
     int first, last;
@@ -824,7 +824,7 @@ static void actions_panel(studio *s)
         return;
     }
     kit_list_desc list = { .count = total,
-                           .row_height = s->prefs.comfortable ? 24 : 20,
+                           .row_height = kit_metric(s->kit, "--row"),
                            .follow = true,
                            .reveal = -1 };
     int first, last;

@@ -191,7 +191,7 @@ static void emit_results(studio *s)
     if (!count) {
         return;
     }
-    float row = s->prefs.comfortable ? 26 : 22;
+    float row = kit_metric(s->kit, "--row");
     kit_list_desc list = { .count = count, .row_height = row, .reveal = g->find.current };
     int first, last;
     kit_list_begin(k, "results", "graph-find-list", &list, &first, &last);

@@ -1198,8 +1198,16 @@ void studio_properties_body(studio *s, int area)
     if (!available[s->tab]) {
         s->tab = actor || asset ? STUDIO_TAB_OBJECT : STUDIO_TAB_SCENE;
     }
-    kit_push(k, "properties", NULL, "properties");
-    kit_push(k, "tabs", "nav", "prop-tabs");
+    rml_element *host = studio_ui_panel(s, "properties", "Properties");
+    if (host) {
+        if (!kit_slot_begin(k, "tabs", host, "#tabs")) {
+            assert(0 && "Properties.rml needs its #tabs slot");
+            return;
+        }
+    } else {
+        kit_push(k, "properties", NULL, "properties");
+        kit_push(k, "tabs", "nav", "prop-tabs");
+    }
     for (int t = 0; t < STUDIO_TAB_COUNT; t++) {
         if (!available[t]) {
             continue;
@@ -1222,8 +1230,16 @@ void studio_properties_body(studio *s, int area)
         }
         kit_attr(k, "data-tip-side", "right");
     }
-    kit_pop(k);
-    kit_push(k, "scroll", NULL, "prop-scroll");
+    if (host) {
+        kit_slot_end(k);
+        if (!kit_slot_begin(k, "scroll", host, "#scroll")) {
+            assert(0 && "Properties.rml needs its #scroll slot");
+            return;
+        }
+    } else {
+        kit_pop(k);
+        kit_push(k, "scroll", NULL, "prop-scroll");
+    }
     if (s->tab == STUDIO_TAB_SCENE) {
         scene_panels(s, locked);
     } else if (s->tab == STUDIO_TAB_NODE) {
@@ -1233,7 +1249,7 @@ void studio_properties_body(studio *s, int area)
     } else if (asset && asset->prototype) {
         prototype_properties(s, asset, locked);
     } else if (!actor) {
-        kit_label(k, "empty", "prop-empty", "No selection");
+        kit_label(k, "empty", "prop-empty", "Select an object to edit its properties");
     } else {
         if (s->tab == STUDIO_TAB_OBJECT) {
             identity(s, actor, locked);
@@ -1250,7 +1266,11 @@ void studio_properties_body(studio *s, int area)
             }
         }
     }
-    kit_pop(k);
-    kit_pop(k);
+    if (host) {
+        kit_slot_end(k);
+    } else {
+        kit_pop(k);
+        kit_pop(k);
+    }
     field_menu(s, actor, locked);
 }

@@ -748,6 +748,31 @@ bool test_rmlui_kit()
     }
     ok &= check(!kit_find(f.k, "layer/@toaster/t2", &removed), "toast expires");
 
+    kit_toast(f.k, 0, &(kit_toast_desc){ .title = "Swipe" });
+    for (int i = 0; i < 60; i++) {
+        frame(&f);
+    }
+    float toast_x = 0, toast_y = 0;
+    ok &= check(center(&f, "layer/@toaster/t3", &toast_x, &toast_y), "swipe toast is laid out");
+    pointer(&f, RML_INPUT_POINTER_MOVE, toast_x, toast_y);
+    pointer(&f, RML_INPUT_POINTER_DOWN, toast_x, toast_y);
+    f.in.down[0] = true;
+    frame(&f);
+    pointer(&f, RML_INPUT_POINTER_MOVE, toast_x + 20, toast_y);
+    frame(&f);
+    pointer(&f, RML_INPUT_POINTER_UP, toast_x + 20, toast_y);
+    f.in.down[0] = false;
+    frame(&f);
+    char toast_transform[96] = "";
+    float swipe_x = 0;
+    rml_element *swipe_toast = rml_element_query_selector(doc, ".toast");
+    bool has_swipe_velocity = swipe_toast &&
+                              rml_element_property(swipe_toast, "transform", toast_transform, sizeof toast_transform) <
+                                  sizeof toast_transform &&
+                              sscanf(toast_transform, "translate(%fdp, %*fdp) scale(%*f)", &swipe_x) ==
+                                  1;
+    ok &= check(has_swipe_velocity && swipe_x > 35, "toast dismissal carries a quick swipe's velocity into its spring");
+
     /* Highlighting fills at most the runs it is given, none included. */
     ok &= check(highlight_runs(HIGHLIGHT_EXPRESSION, "a + 1", 5, NULL, 0) == 0, "highlighting without capacity writes nothing");
 

@@ -180,13 +180,16 @@ static void toast_swipe(kit *k, node *n, toast *t, double dt)
     }
     float d = k->in.mouse_x - t->press_x;
     float offset = d >= 0 ? d : d / (1.5f + fabsf(d) / 20);
-    if (dt > 0) {
+    if (dt > 0 && (k->in.down[0] || offset != t->x.x)) {
         t->swipe_velocity = (float)((offset - t->x.x) / dt);
     }
     t->x = (spring){ offset, 0 };
     if (k->in.down[0]) {
         return;
     }
+    /* A stationary pointer-up is not a zero-velocity sample. Hand the last
+       measured drag velocity to the spring that takes over from the pointer. */
+    t->x.v = t->swipe_velocity;
     t->swiping = false;
     if (offset >= SWIPE_DISTANCE || t->swipe_velocity >= SWIPE_VELOCITY) {
         t->removing = true;

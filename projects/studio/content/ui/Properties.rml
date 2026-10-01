@@ -1,0 +1,4 @@
+<div class="properties">
+  <nav class="prop-tabs" id="tabs"/>
+  <div class="prop-scroll" id="scroll"/>
+</div>

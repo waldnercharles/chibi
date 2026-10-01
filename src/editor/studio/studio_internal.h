@@ -69,6 +69,21 @@ typedef enum
     STUDIO_THEME_SYSTEM,
     STUDIO_THEME_DARK,
     STUDIO_THEME_LIGHT,
+    STUDIO_THEME_DRACULA,
+    STUDIO_THEME_SOLARIZED_LIGHT,
+    STUDIO_THEME_SOLARIZED_DARK,
+    STUDIO_THEME_TOKYO_NIGHT,
+    STUDIO_THEME_TOKYO_STORM,
+    STUDIO_THEME_TOKYO_DAY,
+    STUDIO_THEME_CATPPUCCIN_LATTE,
+    STUDIO_THEME_CATPPUCCIN_FRAPPE,
+    STUDIO_THEME_CATPPUCCIN_MACCHIATO,
+    STUDIO_THEME_CATPPUCCIN_MOCHA,
+    STUDIO_THEME_ROSE_PINE,
+    STUDIO_THEME_ROSE_PINE_MOON,
+    STUDIO_THEME_ROSE_PINE_DAWN,
+    STUDIO_THEME_GRUVBOX_LIGHT,
+    STUDIO_THEME_GRUVBOX_DARK,
     STUDIO_THEME_COUNT,
 } studio_theme;
 
@@ -131,6 +146,16 @@ typedef enum
     STUDIO_COMMAND_WORKSPACE_VERTICAL_SPLIT,
     STUDIO_COMMAND_WORKSPACE_HORIZONTAL_SPLIT,
     STUDIO_COMMAND_TOGGLE_SIDE_PANE,
+    /* Appended so existing shortcut preference ids stay stable. */
+    STUDIO_COMMAND_COLLABORATION,
+    STUDIO_COMMAND_COLLABORATION_HOST,
+    STUDIO_COMMAND_COLLABORATION_JOIN,
+    STUDIO_COMMAND_COLLABORATION_LEAVE,
+    STUDIO_COMMAND_COLLABORATION_INVITE_VIEWER,
+    STUDIO_COMMAND_COLLABORATION_INVITE_EDITOR,
+    STUDIO_COMMAND_COLLABORATION_TOKEN,
+    STUDIO_COMMAND_COLLABORATION_FOLLOW,
+    STUDIO_COMMAND_COLLABORATION_UNFOLLOW,
     STUDIO_COMMAND_COUNT,
 } studio_command;
 
@@ -343,6 +368,8 @@ typedef struct
 {
     rml_backend *backend;
     kit *kit;
+    studio_theme theme;
+    bool theme_light, theme_initialized;
     kit_frame_input in;
     rml_input *events; /* window events replayed into the canvas */
     kit_surface_input surface;
@@ -660,9 +687,8 @@ typedef struct
 {
     studio_collab_peer *peers;
     char follow_client[64];
-    char invite[2048], admin_token[512];
     studio_prefs local_prefs;
-    bool following, saved_prefs, restoring_prefs, admin_token_expanded;
+    bool following, saved_prefs, restoring_prefs, admin_token_expanded, busy;
     double presence_sent;
 } studio_collaboration;
 
@@ -879,6 +905,9 @@ bool studio_primary(const studio *s, SDL_Keymod mod);
 const char *studio_chord(const studio *s, const char *chord);
 
 /* Preferences. */
+bool studio_theme_is_light(studio_theme theme, bool system_light);
+/* Applies one palette to either the editor or its graph context. */
+void studio_theme_apply(kit *k, studio_theme theme, bool system_light);
 studio_prefs studio_prefs_default();
 studio_layout studio_layout_default(studio_workspace workspace);
 /* The arrangement the areas show: the active workspace's. */
@@ -929,7 +958,12 @@ void studio_sources_free(studio_sources *sources);
 void studio_collab_free(studio *s);
 void studio_collab_emit(studio *s);
 void studio_collab_after_frame(studio *s);
-void studio_collab_ui(studio *s);
+bool studio_collab_available(void);
+const char *studio_collab_display_status(void);
+bool studio_collab_status_error(void);
+void studio_collab_web_status(const char *text, int error);
+void studio_collab_control(const char *command, const char *argument);
+bool studio_collab_busy(studio *s);
 bool studio_collab_follow(studio *s, int peer);
 void studio_collab_unfollow(studio *s);
 
@@ -954,8 +988,12 @@ void studio_ui_area(studio *s, int area, const char *name);
 /* Shows it over the editor while its GameUi is not hidden, as for a dialog
  * whose behaviors hide it again. */
 void studio_ui_modal(studio *s, const char *name);
+/* True when a focused authored chrome button can pass global shortcuts. */
+bool studio_ui_shortcut_focus(studio *s);
 /* Clears its GameUi.hidden. */
 void studio_ui_show(studio *s, const char *name);
+/* Runs a collaboration action with transient values from the authored panel. */
+void studio_ui_collaboration_action(studio *s, studio_command command);
 /* Shows Settings searching for `query`. */
 void studio_ui_show_settings(studio *s, const char *query);
 

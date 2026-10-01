@@ -57,16 +57,22 @@ kit-code .zep-info { color: var(--primary); }
 /* Completions under the cursor; choosing one returns focus to the editor. */
 .code-completions {
     position: absolute; pointer-events: auto; background-color: var(--popover); border: 1dp var(--popover-edge);
-    border-radius: var(--r-lg); padding: 4dp; min-width: 160dp; max-width: 420dp; display: block; z-index: 20;
+    border-radius: var(--r); padding: 4dp; min-width: 160dp; max-width: 420dp; display: block; z-index: 20;
     font-family: var(--studio-code-font-family, jetbrains mono); font-size: var(--studio-mono-font-12, 12dp); max-height: 272dp; overflow-y: auto;
 }
-.code-completion {
-    display: flex; align-items: center; gap: 12dp; height: var(--h); padding: 0dp 6dp; border-radius: var(--r);
+.code-completion, .popup.autocomplete .menu-item {
+    display: flex; align-items: center; gap: 8dp; height: var(--h); padding: 0dp 6dp; border-radius: 2dp;
     white-space: nowrap; color: var(--foreground);
 }
-.code-completion .detail { margin-left: auto; font-family: var(--studio-standard-font-family, inter); color: var(--muted-foreground); }
+.code-completion .detail, .popup.autocomplete .detail { margin-left: auto; padding-left: 8dp; flex: 0 0 auto; font-family: var(--studio-standard-font-family, inter); color: var(--muted-foreground); }
 .code-completion[data-highlighted] { background-color: var(--primary); color: var(--primary-foreground); }
-.code-completion[data-highlighted] .detail { color: #ffffffcc; }
+.code-completion[data-highlighted] .detail, .popup.autocomplete .menu-item[data-highlighted] .detail { color: var(--primary-foreground); }
+.popup.autocomplete { border-radius: var(--r); font-family: var(--studio-code-font-family, jetbrains mono); font-size: var(--studio-mono-font-12, 12dp); }
+.popup.autocomplete .menu-group { font-family: var(--font-ui); }
+.popup.autocomplete .detail[data-empty] { display: none; }
+.popup.autocomplete .label b { color: var(--primary-text); }
+.popup.autocomplete .menu-item[data-highlighted] .label b { color: var(--primary-foreground); }
+.field.autocomplete[data-open] .value { font-family: var(--studio-code-font-family, jetbrains mono); }
 
 /* The hover card: the diagnostics of the line under the resting pointer, then
    what the pointer rests on. It lives in the overlay layer, so it never clips

@@ -5,6 +5,8 @@ import vm from 'node:vm';
 const source = readFileSync(new URL('../tools/collab/client.js', import.meta.url), 'utf8');
 
 const client = href => {
+    const order = [];
+    const received = [];
     const feedback = [];
     const allocated = new Map();
     const sockets = [];
@@ -25,10 +27,13 @@ const client = href => {
         constructor(url) {
             this.url = url;
             this.readyState = 0;
+            this.sent = [];
             sockets.push(this);
         }
+        send(value) { this.sent.push(value); }
         close() {}
     }
+    FakeWebSocket.OPEN = 1;
     const Module = {
         collabConfig: { roomUrl: 'https://rooms.example.test' },
         chibiCollabStorage: { root: '/room/' },
@@ -37,7 +42,16 @@ const client = href => {
             allocated.set(pointer, text);
             return pointer;
         },
-        _collab_feedback: (pointer, error) => feedback.push({ text: allocated.get(pointer), error: !!error }),
+        UTF8ToString: pointer => allocated.get(pointer),
+        _collab_start() {},
+        _collab_receive: pointer => {
+            received.push(JSON.parse(allocated.get(pointer)));
+            order.push('c');
+        },
+        _collab_feedback: (pointer, error) => {
+            feedback.push({ text: allocated.get(pointer), error: !!error });
+            order.push('status');
+        },
         _free: pointer => allocated.delete(pointer),
     };
     vm.runInNewContext(source, {
@@ -59,7 +73,7 @@ const client = href => {
         setTimeout() { return 1; },
         window: {},
     });
-    return { Module, allocated, feedback, sockets, values };
+    return { Module, allocated, feedback, order, received, sockets, values };
 };
 
 const invite = ws_url => ({
@@ -86,6 +100,26 @@ const invite = ws_url => ({
     await app.Module.chibiCollab.control('join', JSON.stringify(invite('wss://rooms.example.test/v1/rooms/room-1/ws')));
     assert.equal(app.sockets.length, 1);
     assert.equal(app.sockets[0].url, 'wss://rooms.example.test/v1/rooms/room-1/ws');
+
+    const socket = app.sockets[0];
+    socket.readyState = 1;
+    socket.onopen();
+    await socket.onmessage({data: JSON.stringify({
+        protocol: 1,
+        room: 'room-1',
+        client: 'service',
+        seq: 0,
+        revision: 0,
+        kind: 'error',
+        payload: {reason: 'Room is full'},
+    })});
+
+    assert.equal(app.received.length, 1);
+    assert.equal(app.received[0].kind, 'error');
+    assert.equal(app.received[0].payload.reason, 'Room is full');
+    assert.deepEqual(app.order.slice(-2), ['c', 'status']);
+    assert.equal(app.feedback.at(-1).text, 'Room is full');
+    assert.equal(app.feedback.at(-1).error, true);
     assert.ok(app.feedback.some(({ text }) => text.startsWith('Joining room')));
 }
 

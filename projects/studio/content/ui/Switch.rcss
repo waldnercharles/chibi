@@ -9,11 +9,11 @@
 }
 .thumb {
   position: absolute; left: 1dp; top: 1dp; width: 12dp; height: 12dp; border-radius: 6dp;
-  background-color: #ffffff; transition: left 0.14s cubic-out;
+  background-color: #ffffff; transition: transform 0.14s cubic-out;
 }
 .switch:hover .track { background-color: color-mix(in srgb, var(--foreground) 28%, transparent); }
 .switch input:checked ~ .track { background-color: var(--primary); }
 .switch:hover input:checked ~ .track { background-color: var(--primary-hover); }
-.switch input:checked ~ .track .thumb { left: 13dp; }
+.switch input:checked ~ .track .thumb { transform: translateX(12dp); }
 .switch input:focus-visible ~ .track { border-color: var(--ring); }
 .switch input:disabled ~ .track { opacity: 0.45; }

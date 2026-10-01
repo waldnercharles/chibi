@@ -3,6 +3,7 @@
  * Authored UI runs one with emit('studio.<id>'), or on a tab or an area with
  * emit('studio.<id>', index), as VS Code's commands take arguments. Ids are
  * camelCase, so `commands.<id>` binds the same name. */
+#include "editor/collab/collab.h"
 #include "editor/studio/studio_internal.h"
 
 #include <string.h>
@@ -312,6 +313,52 @@ static const command_entry COMMANDS[STUDIO_COMMAND_COUNT] = {
                                                       "details column",
                                           .icon = KIT_ICON_SIDE_PANE,
                                           .phase = SHORTCUT_EARLY },
+    [STUDIO_COMMAND_COLLABORATION] = { .id = "collaboration",
+                                       .label = "Collaboration",
+                                       .context = "Global",
+                                       .keywords = "share room invite host "
+                                                   "join",
+                                       .icon = KIT_ICON_BRANCH,
+                                       .phase = SHORTCUT_EARLY },
+    [STUDIO_COMMAND_COLLABORATION_TOKEN] = { .id = "collaborationToken",
+                                             .label = "Use admin token",
+                                             .context = "Global" },
+    [STUDIO_COMMAND_COLLABORATION_FOLLOW] = { .id = "collaborationFollow",
+                                              .label = "Follow participant",
+                                              .context = "Global" },
+    [STUDIO_COMMAND_COLLABORATION_UNFOLLOW] = { .id = "collaborationUnfollow",
+                                                .label = "Stop following",
+                                                .context = "Global" },
+    [STUDIO_COMMAND_COLLABORATION_HOST] = { .id = "collaborationHost",
+                                            .label = "Host Collaboration Room",
+                                            .context = "Collaboration",
+                                            .icon = KIT_ICON_BRANCH,
+                                            .phase = SHORTCUT_EARLY },
+    [STUDIO_COMMAND_COLLABORATION_JOIN] = { .id = "collaborationJoin",
+                                            .label = "Join Collaboration Room",
+                                            .context = "Collaboration",
+                                            .icon = KIT_ICON_EXTERNAL,
+                                            .phase = SHORTCUT_EARLY },
+    [STUDIO_COMMAND_COLLABORATION_LEAVE] = { .id = "collaborationLeave",
+                                             .label = "Leave Collaboration "
+                                                      "Room",
+                                             .context = "Collaboration",
+                                             .icon = KIT_ICON_CLOSE,
+                                             .phase = SHORTCUT_EARLY },
+    [STUDIO_COMMAND_COLLABORATION_INVITE_VIEWER] = { .id = "collaborationInvite"
+                                                           "Viewer",
+                                                     .label = "Copy Viewer "
+                                                              "Invite",
+                                                     .context = "Collaboration",
+                                                     .icon = KIT_ICON_EYE,
+                                                     .phase = SHORTCUT_EARLY },
+    [STUDIO_COMMAND_COLLABORATION_INVITE_EDITOR] = { .id = "collaborationInvite"
+                                                           "Editor",
+                                                     .label = "Copy Editor "
+                                                              "Invite",
+                                                     .context = "Collaboration",
+                                                     .icon = KIT_ICON_EDIT,
+                                                     .phase = SHORTCUT_EARLY },
     /* Authored top bar and area headers (workstream T): the document tabs'
        commands take the tab's index, emit('studio.selectTab', i). */
     [STUDIO_COMMAND_SELECT_TAB] = { .id = "selectTab",
@@ -676,6 +723,20 @@ static bool enabled_with(studio *s, studio_command command, int argument)
         case STUDIO_COMMAND_STOP: return !s->hosted && studio_session(s);
         case STUDIO_COMMAND_STEP:
             return !s->hosted && !s->guest && !s->pause.active;
+        case STUDIO_COMMAND_COLLABORATION_HOST:
+        case STUDIO_COMMAND_COLLABORATION_JOIN:
+            return studio_collab_available() && !collab_active() &&
+                   !studio_collab_busy(s);
+        case STUDIO_COMMAND_COLLABORATION_TOKEN: return !studio_collab_busy(s);
+        case STUDIO_COMMAND_COLLABORATION_FOLLOW:
+            return argument >= 0 && argument < acount(s->collaboration.peers);
+        case STUDIO_COMMAND_COLLABORATION_UNFOLLOW:
+            return s->collaboration.following;
+        case STUDIO_COMMAND_COLLABORATION_LEAVE:
+            return studio_collab_available() && collab_active();
+        case STUDIO_COMMAND_COLLABORATION_INVITE_VIEWER:
+        case STUDIO_COMMAND_COLLABORATION_INVITE_EDITOR:
+            return studio_collab_available() && collab_active() && collab_is_host();
         case STUDIO_COMMAND_RECORD_GAMEPLAY:
             return !s->hosted && !s->guest && s->scene->scene_path;
         case STUDIO_COMMAND_RENAME:
@@ -712,6 +773,25 @@ void studio_command_run_with(studio *s, studio_command command, int argument)
             kit_command_open(s->kit, STUDIO_PALETTE_PLACEHOLDER);
             break;
         case STUDIO_COMMAND_SETTINGS: studio_ui_show(s, "Settings"); break;
+        case STUDIO_COMMAND_COLLABORATION:
+            studio_ui_show(s, "Collaboration");
+            break;
+        case STUDIO_COMMAND_COLLABORATION_TOKEN:
+            s->collaboration.admin_token_expanded = !s->collaboration.admin_token_expanded;
+            break;
+        case STUDIO_COMMAND_COLLABORATION_FOLLOW:
+            studio_collab_follow(s, argument);
+            break;
+        case STUDIO_COMMAND_COLLABORATION_UNFOLLOW:
+            studio_collab_unfollow(s);
+            break;
+        case STUDIO_COMMAND_COLLABORATION_HOST:
+        case STUDIO_COMMAND_COLLABORATION_JOIN:
+        case STUDIO_COMMAND_COLLABORATION_LEAVE:
+        case STUDIO_COMMAND_COLLABORATION_INVITE_VIEWER:
+        case STUDIO_COMMAND_COLLABORATION_INVITE_EDITOR:
+            studio_ui_collaboration_action(s, command);
+            break;
         case STUDIO_COMMAND_SAVE: studio_save(s); break;
         case STUDIO_COMMAND_RELOAD: app_scene_authoring_reload(s->scene); break;
         case STUDIO_COMMAND_UNDO: studio_history(s, false); break;

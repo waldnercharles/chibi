@@ -6,6 +6,7 @@
 #include "assets/behavior_loader.h"
 #include "assets/project.h"
 #include "assets/scene_document.h"
+#include "editor/collab/collab.h"
 #include "editor/studio/studio_internal.h"
 #include "graph/document/serialize.h"
 #include "render/ui.h"
@@ -19,6 +20,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <yyjson.h>
 
 /* A scene entity with a GameUi document. */
 typedef struct panel
@@ -367,6 +369,41 @@ static const GameUi *panel_ui(studio_ui *ui, const panel *p)
     return GAME_GameUi_has(world, entity) ? GAME_GameUi_get_const(world, entity) : NULL;
 }
 
+bool studio_ui_shortcut_focus(studio *s)
+{
+    if (!s || !s->ui || !s->backend || !s->kit || kit_has_popup(s->kit) ||
+        kit_command_is_open(s->kit) || kit_accepts_text(s->kit)) {
+        return false;
+    }
+    studio_ui *ui = s->ui;
+    const char *modal_names[] = { "Settings", "Collaboration" };
+    for (size_t i = 0; i < sizeof modal_names / sizeof *modal_names; i++) {
+        panel *p = find_panel(ui, modal_names[i]);
+        const GameUi *component = p ? panel_ui(ui, p) : NULL;
+        if (component && !component->hidden) {
+            return false;
+        }
+    }
+
+    rml_context *context = rml_backend_context(s->backend);
+    rml_element *focus = context ? rml_context_focus_element(context) : NULL;
+    rml_element *button = focus;
+    while (button && strcmp(rml_element_tag_name(button), "button") &&
+           !rml_element_is_class_set(button, "btn")) {
+        button = rml_element_parent(button);
+    }
+    if (!button) {
+        return false;
+    }
+    ui_mount *mount = mount_holding(ui, focus);
+    if (!mount) {
+        return false;
+    }
+    const char *name = ui_mount_name(mount);
+    return !strcmp(name, "TopBar") || !strcmp(name, "AreaHeader") ||
+           !strcmp(name, "StatusBar");
+}
+
 /* Mounts the panel's document in `host` and runs its events. */
 static void show_panel(studio *s, panel *p, ui_mount **mount, rml_element *host, const char *document)
 {
@@ -464,7 +501,7 @@ void studio_ui_area(studio *s, int area, const char *name)
     }
 }
 
-void studio_ui_modal(studio *s, const char *name)
+static void show_modal(studio *s, const char *name)
 {
     panel *p = s->ui ? find_panel(s->ui, name) : NULL;
     const GameUi *component = p ? panel_ui(s->ui, p) : NULL;
@@ -481,12 +518,107 @@ void studio_ui_modal(studio *s, const char *name)
     }
 }
 
+void studio_ui_modal(studio *s, const char *name)
+{
+    if (!s->ui) {
+        return;
+    }
+    show_modal(s, name);
+    /* The top bar's modal pass also hosts the on-demand Collaboration panel. */
+    if (!strcmp(name, "Settings")) {
+        show_modal(s, "Collaboration");
+    }
+}
+
 void studio_ui_show(studio *s, const char *name)
 {
     panel *p = s->ui ? find_panel(s->ui, name) : NULL;
     if (p && panel_ui(s->ui, p)) {
         ecs_entity entity = game_prototype_preview_entity_at(s->ui->world, p->index);
         GAME_GameUi_get(game_prototype_preview_world(s->ui->world), entity)->hidden = false;
+    }
+}
+
+void studio_ui_collaboration_action(studio *s, studio_command command)
+{
+    if (!s->ui) {
+        return;
+    }
+    if ((command == STUDIO_COMMAND_COLLABORATION_HOST ||
+         command == STUDIO_COMMAND_COLLABORATION_JOIN) &&
+        studio_collab_busy(s)) {
+        return;
+    }
+    const char *action = NULL;
+    const char *field = NULL;
+    const char *progress = NULL;
+    switch (command) {
+        case STUDIO_COMMAND_COLLABORATION_HOST:
+            action = "host";
+            field = "token";
+            progress = "Creating room...";
+            break;
+        case STUDIO_COMMAND_COLLABORATION_JOIN:
+            action = "join";
+            field = "invite";
+            progress = "Joining room...";
+            break;
+        case STUDIO_COMMAND_COLLABORATION_LEAVE:
+            action = "leave";
+            progress = "Leaving room...";
+            break;
+        case STUDIO_COMMAND_COLLABORATION_INVITE_VIEWER:
+            action = "invite_viewer";
+            progress = "Creating viewer invite...";
+            break;
+        case STUDIO_COMMAND_COLLABORATION_INVITE_EDITOR:
+            action = "invite_editor";
+            progress = "Creating editor invite...";
+            break;
+        default: return;
+    }
+
+    ui_data *data = &s->ui->data;
+    yyjson_mut_val *root = yyjson_mut_doc_get_root(data->doc);
+    yyjson_mut_val *collaboration = yyjson_mut_obj_get(root, "collaboration");
+    yyjson_mut_val *value = field ? yyjson_mut_obj_get(collaboration, field) : NULL;
+    const char *argument = value && yyjson_mut_is_str(value)
+                             ? yyjson_mut_get_str(value)
+                             : "";
+    char invite[4096];
+    if (command == STUDIO_COMMAND_COLLABORATION_JOIN) {
+        while (*argument == ' ' || *argument == '\t' || *argument == '\r' ||
+               *argument == '\n') {
+            argument++;
+        }
+        size_t length = strlen(argument);
+        while (length &&
+               (argument[length - 1] == ' ' || argument[length - 1] == '\t' ||
+                argument[length - 1] == '\r' || argument[length - 1] == '\n')) {
+            length--;
+        }
+        if (length >= sizeof invite) {
+            length = sizeof invite - 1;
+        }
+        memcpy(invite, argument, length);
+        invite[length] = '\0';
+        argument = invite;
+    }
+    if (command == STUDIO_COMMAND_COLLABORATION_HOST ||
+        command == STUDIO_COMMAND_COLLABORATION_JOIN) {
+        s->collaboration.busy = true;
+    }
+    if (command == STUDIO_COMMAND_COLLABORATION_HOST) {
+        s->collaboration.admin_token_expanded = false;
+    }
+    if (command == STUDIO_COMMAND_COLLABORATION_LEAVE) {
+        studio_collab_unfollow(s);
+    }
+    studio_collab_web_status(progress, 0);
+    studio_collab_control(action, argument);
+    if (value) {
+        ui_data_set_text(data->doc, value, "");
+        rml_data_model_dirty(data->model, "collaboration");
     }
 }
 

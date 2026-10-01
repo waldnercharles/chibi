@@ -197,7 +197,7 @@ void studio_assets_body(studio *s, int area)
     }
     s->assets_hover = -1;
     kit_list_desc list = { .count = acount(rows),
-                           .row_height = s->prefs.comfortable ? 26 : 22,
+                           .row_height = kit_metric(s->kit, "--row"),
                            .reveal = -1 };
     int first, last;
     kit_list_begin(k, "assets", "assets-list", &list, &first, &last);

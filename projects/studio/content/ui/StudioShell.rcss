@@ -7,6 +7,7 @@
 @import "theme/base.rcss";
 @import "theme/tokens.rcss";
 @import "theme/roles.rcss";
+@import "theme/presets.rcss";
 @import "theme/button.rcss";
 @import "theme/field.rcss";
 @import "theme/panel.rcss";
@@ -21,4 +22,5 @@
 @import "theme/chart.rcss";
 @import "theme/inspect.rcss";
 @import "theme/workspace.rcss";
+@import "Properties.rcss";
 @import "theme/graph.rcss";

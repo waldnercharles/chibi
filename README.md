@@ -128,8 +128,8 @@ vcpkg subtree is excluded. Changing a local patch reconfigures the build
 without duplicating unchanged cached sources.
 Each build can apply its own patches and generate files without changing the
 shared snapshot. Dependency build directories and linked libraries remain
-private, except for an installed SDL package. Run `ccache --show-stats` to check hits and evictions; increase its
-size limit if it is continually full.
+private, except for an installed SDL package. Run `ccache --show-stats` to
+check hits and evictions; increase its size limit if it is continually full.
 
 On macOS, `make sdl-package` builds the pinned SDL 3.4.0 archive once and
 installs its static and shared libraries under

@@ -778,6 +778,7 @@ static void shader_values_and_collections_are_editable()
     bool struct_open = collection_open && click_path(&f, struct_trigger) &&
                        kit_popup_is_open(f.studio->graph.kit, struct_popup);
     if (struct_open) {
+        frames(&f, 2);
         capture_stage(&f, "collection-nested");
     }
     rml_element *position = struct_open ? graph_query(&f, ".popup.menu .field.number")

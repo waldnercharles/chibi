@@ -34,9 +34,9 @@
 .section-hint { color: var(--muted-foreground); white-space: normal; }
 .input-row { display: flex; align-items: center; gap: 8dp; }
 .collab-input {
-    flex: 1 1 0dp; min-width: 0dp; height: var(--h); padding: 0dp 9dp; border: 1dp var(--input);
+    flex: 1 1 0dp; min-width: 0dp; height: var(--h); padding: var(--input-pad) 9dp; border: 1dp var(--input);
     border-radius: var(--r); background-color: var(--field-edit); color: var(--foreground);
-    font-family: var(--font-ui); font-size: var(--studio-font-13, 13dp); line-height: var(--text-line); white-space: normal;
+    font-family: var(--font-ui); font-size: var(--studio-font-13, 13dp); line-height: var(--input-line); white-space: normal;
 }
 .collab-input:focus-visible { border-color: var(--ring); }
 .collab-input:placeholder-shown { color: var(--faint-foreground); }

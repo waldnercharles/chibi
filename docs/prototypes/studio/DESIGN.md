@@ -170,6 +170,8 @@ Behavior changed from the ImGui editor:
 
    Kit chrome reads Native (C), with its kit path.
 
-Dropdowns show at most seven option rows by default and scroll through the remaining choices. Their cap follows density and font metrics; a smaller viewport may reduce it. Command palettes retain their larger browsing layout.
+Field dropdowns and autocomplete show at most seven option rows by default and scroll through the remaining choices. Their cap follows density and font metrics; a smaller viewport may reduce it. Action menus use slimmer rows, display all actions when space permits, and scroll only when their content exceeds the viewport. Command palettes retain their larger browsing layout.
+
+Autocomplete uses compact code-sized rows, a subtle border and neutral selection that preserves name, match and type colors. Wheel and keyboard scrolling remain available without a visible scrollbar. Editable source fields show dotted property paths; folded expressions show their source and can be edited in place. Expanded expression source also enters editing when clicked, within the node's existing width. Expressions remain an optional calculation tool alongside typed constants and bindings.
 
 Form controls keep familiar keyboard, commit and cancel behavior ([Jakob's Law](https://lawsofux.com/jakobs-law/)). Named choices support search and useful groups ([Hick's Law](https://lawsofux.com/hicks-law/)); labels stay close to their inputs ([Law of Proximity](https://lawsofux.com/law-of-proximity/)). The full control and its label act as targets, and related actions stay near their field ([Fitts's Law](https://lawsofux.com/fittss-law/)). Search and keyboard changes show immediate feedback, while pending work reports its actual state ([Doherty Threshold](https://lawsofux.com/doherty-threshold/)).

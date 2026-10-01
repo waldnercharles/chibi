@@ -1361,6 +1361,16 @@ void sg_emit_expression_editor(studio *s, kit *k, node *expression, uint64_t own
         snprintf(state->input_edit_source, sizeof state->input_edit_source, "%s", source ? source : "");
         snprintf(state->input_edit, sizeof state->input_edit, "%s", source ? source : "");
     }
+    kit_push(k, "expression-editor", NULL, KIT_CX(k, "graph-expression-editor", { "standalone", !owner_pin }));
+    char width[32];
+    float room = owner_pin ? 260 : sg_layout_of(s, expression)->w - 16;
+    snprintf(
+        width,
+        sizeof width,
+        "%.0fdp",
+        fminf(room, fminf(260, fmaxf(128, sg_text_width(s, state->input_edit, 11, 400) + 24)))
+    );
+    kit_style(k, "width", width);
     if (kit_text_field(
             k,
             "expression",
@@ -1381,6 +1391,7 @@ void sg_emit_expression_editor(studio *s, kit *k, node *expression, uint64_t own
         kit_focus(k);
         state->input_edit_focus = false;
     }
+    kit_pop(k);
 }
 
 static void inline_popup_key(char *out, size_t size, const node *target, uint64_t input_pin)
@@ -1494,17 +1505,84 @@ static void emit_inline_values_popup(studio *s, kit *k, node *target, int pin)
     kit_popup_end(k);
 }
 
+static bool private_expression_source(
+    const behavior_asset *asset,
+    const graph *gr,
+    const node *source,
+    const node *target,
+    int pin
+)
+{
+    if (!source || source->desc != &NODE_BehaviorExpression) {
+        return false;
+    }
+    for (int i = 0; i < acount(asset->graphs); i++) {
+        const graph *caller = asset->graphs[i];
+        for (int j = 0; j < acount(caller->nodes); j++) {
+            const node *call = caller->nodes[j];
+            if (call != source && !call->reference_asset &&
+                call->reference_id == source->reference_id) {
+                return false;
+            }
+        }
+    }
+    const edge *only = NULL;
+    for (int i = 0; i < acount(gr->edges); i++) {
+        const edge *wire = &gr->edges[i];
+        if (wire->kind != GRAPH_EDGE_DATA || wire->from_id != source->id) {
+            continue;
+        }
+        if (only) {
+            return false;
+        }
+        only = wire;
+    }
+    return only && only->to_id == target->id &&
+           only->to_pin_id == target->input_pins[pin].id;
+}
+
 static void graph_input_display(
     editor *e,
     const pin_spec *spec,
     const pin_parts *parts,
     node *source,
     int source_pin,
+    bool expression_source,
+    const pin_binding *binding,
     char *out,
     size_t size
 )
 {
-    if (parts->value == VALUE_CHIP && parts->chip[0]) {
+    if (binding && (binding->kind == PIN_BINDING_COMPONENT ||
+                    binding->kind == PIN_BINDING_COMPONENT_FIELD)) {
+        const ecs_component_desc *component = ed_component_by_key(binding->component_key);
+        char name[96];
+        if (component) {
+            component_label(component, name, sizeof name);
+        } else {
+            snprintf(name, sizeof name, "%s", binding->component_key);
+        }
+        snprintf(
+            out,
+            size,
+            "%s%s%s",
+            name,
+            binding->field_name ? "." : "",
+            binding->field_name ? binding->field_name : ""
+        );
+        return;
+    }
+    if (binding) {
+        char label[256];
+        snprintf(out, size, "%s", ed_binding_label(e, binding, label, sizeof label));
+        return;
+    }
+    if (expression_source) {
+        snprintf(out, size, "%s", behavior_expression_source(e->asset, source));
+        return;
+    }
+    if (parts->value == VALUE_CHIP && parts->chip[0] &&
+        (!source || graph_node_is_inline(e->active_graph, source))) {
         snprintf(out, size, "%s", parts->chip);
         return;
     }
@@ -1512,7 +1590,7 @@ static void graph_input_display(
         char title[128], pin_label[96];
         ed_node_title(e, source, title, sizeof title);
         ed_pin_label(source, &source->output_pins[source_pin], pin_label, sizeof pin_label);
-        snprintf(out, size, "%s \xE2\x80\xBA %s", title, pin_label);
+        snprintf(out, size, "%s.%s", title, pin_label);
         return;
     }
     if (spec->type == PIN_HANDLE && !spec->default_value.u64) {
@@ -1542,6 +1620,7 @@ void sg_emit_graph_input(studio *s, kit *k, node *n, int p)
     node *source = input_source(gr, n, p, &source_pin);
     pin_binding resolved_binding = { 0 };
     const pin_binding *binding = current_binding(gr, n, p, source, source_pin, &resolved_binding);
+    bool expression_source = private_expression_source(e->asset, gr, source, n, p);
     bool compound_literal = !source && !binding &&
                             (parts.value == VALUE_VECTOR || parts.value == VALUE_COLOR ||
                              parts.value == VALUE_COMPOUND);
@@ -1552,7 +1631,7 @@ void sg_emit_graph_input(studio *s, kit *k, node *n, int p)
         sg_emit_expression_editor(s, k, expression, spec->id);
     } else if (autocomplete) {
         char displayed[256];
-        graph_input_display(e, spec, &parts, source, source_pin, displayed, sizeof displayed);
+        graph_input_display(e, spec, &parts, source, source_pin, expression_source, binding, displayed, sizeof displayed);
         const char *query = kit_autocomplete_query(k, "source-edit");
         source_choice *choices = NULL;
         add_sources(s, n, p, query, &choices, source, source_pin, binding);
@@ -1575,6 +1654,12 @@ void sg_emit_graph_input(studio *s, kit *k, node *n, int p)
             if (parse_input_literal(spec, query, &literal)) {
                 apply_input_constant(s, n, p, &literal);
                 kit_autocomplete_close(k, "source-edit");
+            } else if (expression_source) {
+                if (sg_set_expression_source(s, source, query) == 0) {
+                    kit_autocomplete_close(k, "source-edit");
+                } else if (s->graph.expression_error[0]) {
+                    sg_show_error(s, s->graph.expression_error);
+                }
             }
         }
         afree(items);
@@ -1585,7 +1670,7 @@ void sg_emit_graph_input(studio *s, kit *k, node *n, int p)
         sg_emit_value_in(s, k, n, 0, p);
     } else if (source) {
         char label[256];
-        graph_input_display(e, spec, &parts, source, source_pin, label, sizeof label);
+        graph_input_display(e, spec, &parts, source, source_pin, expression_source, binding, label, sizeof label);
         kit_label(k, "source-context", "chip graph-source-context", label);
     } else if (ed_pin_editable(gr, n, ED_PIN_INPUT, p) && !(spec->flags & PIN_FLAG_SETTING)) {
         sg_emit_value_in(s, k, n, 0, p);

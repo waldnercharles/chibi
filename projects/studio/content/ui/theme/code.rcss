@@ -67,11 +67,27 @@ kit-code .zep-info { color: var(--primary); }
 .code-completion .detail, .popup.autocomplete .detail { margin-left: auto; padding-left: 8dp; flex: 0 0 auto; font-family: var(--studio-standard-font-family, inter); color: var(--muted-foreground); }
 .code-completion[data-highlighted] { background-color: var(--primary); color: var(--primary-foreground); }
 .code-completion[data-highlighted] .detail, .popup.autocomplete .menu-item[data-highlighted] .detail { color: var(--primary-foreground); }
-.popup.autocomplete { border-radius: var(--r); font-family: var(--studio-code-font-family, jetbrains mono); font-size: var(--studio-mono-font-12, 12dp); }
-.popup.autocomplete .menu-group { font-family: var(--font-ui); }
+/* Compact code completion: quiet selection keeps names, types and matches distinct. */
+body { --autocomplete-row-h: var(--studio-mono-line-20, 20dp); }
+.popup.autocomplete {
+    padding: 3dp; border-radius: 4dp;
+    border-color: color-mix(in srgb, var(--foreground) 16%, var(--popover));
+    font-family: var(--studio-code-font-family, jetbrains mono);
+    font-size: var(--studio-mono-font-12, 12dp);
+}
+.popup.autocomplete .menu-item { height: var(--autocomplete-row-h); gap: 6dp; padding: 0dp 5dp; border-radius: 2dp; }
+.popup.autocomplete .menu-group { height: var(--autocomplete-row-h); line-height: var(--autocomplete-row-h); font-family: var(--studio-standard-font-family, inter); }
+.popup.autocomplete .menu-item[data-highlighted] { background-color: var(--accent); color: var(--foreground); }
+.popup.autocomplete .menu-item .lead,
+.popup.autocomplete .menu-item[data-highlighted] .lead { color: var(--primary-text); }
+.popup.autocomplete .detail,
+.popup.autocomplete .menu-item[data-highlighted] .detail { color: var(--tok-keyword); }
 .popup.autocomplete .detail[data-empty] { display: none; }
-.popup.autocomplete .label b { color: var(--primary-text); }
-.popup.autocomplete .menu-item[data-highlighted] .label b { color: var(--primary-foreground); }
+.popup.autocomplete .label b,
+.popup.autocomplete .menu-item[data-highlighted] .label b { color: var(--primary-text); }
+/* Keep wheel and keyboard scrolling; completion does not show scrollbar chrome. */
+.popup.autocomplete scrollbarvertical { width: 0dp; margin-left: 0dp; }
+.popup.autocomplete scrollbarhorizontal { height: 0dp; }
 .field.autocomplete[data-open] .value { font-family: var(--studio-code-font-family, jetbrains mono); }
 
 /* The hover card: the diagnostics of the line under the resting pointer, then

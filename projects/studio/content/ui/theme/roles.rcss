@@ -65,7 +65,8 @@ body, .dark {
     /* Metrics; body.comfortable scales controls, not text. */
     --h: 26dp;
     --topbar-h: 40dp;
-    --text-line: 24dp; /* text line inside a bordered control */
+    --text-line: 24dp; /* inner hit height of a bordered control */
+    --input-line: 16dp; --input-pad: 4dp;
     --h-sm: 22dp;
     --row: 26dp;
     --gap: 2dp;
@@ -114,7 +115,7 @@ body, .dark {
     --tok-path: #8fb4ee;
     --tok-punct: var(--muted-foreground);
 }
-body.comfortable { --h: 30dp; --topbar-h: 44dp; --text-line: 28dp; --h-sm: 26dp; --row: 30dp; --gap: 3dp; --header-h: 36dp; --status-h: var(--studio-height-30, 30dp); --panel-h: var(--studio-height-34, 34dp); }
+body.comfortable { --h: 30dp; --topbar-h: 44dp; --text-line: 28dp; --input-line: 16dp; --input-pad: 6dp; --h-sm: 26dp; --row: 30dp; --gap: 3dp; --header-h: 36dp; --status-h: var(--studio-height-30, 30dp); --panel-h: var(--studio-height-34, 34dp); }
 body:not(.dark) .tooltip { color: #fafafa; }
 body:not(.dark) .tooltip .kbd { color: #a1a1aa; }
 body:not(.dark) .tooltip .tip-about { color: #d4d4d8; }

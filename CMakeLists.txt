@@ -1,6 +1,11 @@
 cmake_minimum_required(VERSION 3.20)
 project(chibi LANGUAGES C CXX)
 
+if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+    # The C++ shims and dependencies use no modules or dependency scanner.
+    set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
+endif()
+
 option(CHIBI_ENABLE_PERFORMANCE_TESTS
        "Run timing-sensitive performance checks in the test suite" OFF)
 
@@ -30,8 +35,8 @@ if(CHIBI_ENABLE_CCACHE)
     find_program(CCACHE_PROGRAM ccache)
     if(CCACHE_PROGRAM)
         cmake_path(IS_PREFIX CMAKE_SOURCE_DIR "${CMAKE_BINARY_DIR}" NORMALIZE CHIBI_IN_TREE_BUILD)
-        if(NOT CMAKE_CONFIGURATION_TYPES AND
-           NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND CHIBI_IN_TREE_BUILD)
+        if(NOT CMAKE_CONFIGURATION_TYPES AND CHIBI_IN_TREE_BUILD AND
+           (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" OR CMAKE_BUILD_TYPE STREQUAL "Release"))
             cmake_path(RELATIVE_PATH CMAKE_BINARY_DIR BASE_DIRECTORY "${CMAKE_SOURCE_DIR}"
                 OUTPUT_VARIABLE CHIBI_CCACHE_RELATIVE_BINARY_DIR)
         endif()
@@ -40,8 +45,8 @@ if(CHIBI_ENABLE_CCACHE)
                 set(CMAKE_${language}_COMPILER_LAUNCHER "${CCACHE_PROGRAM}" CACHE STRING
                     "${language} compiler launcher")
             endif()
-            if(NOT CMAKE_CONFIGURATION_TYPES AND
-               NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND CHIBI_IN_TREE_BUILD AND
+            if(NOT CMAKE_CONFIGURATION_TYPES AND CHIBI_IN_TREE_BUILD AND
+               (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" OR CMAKE_BUILD_TYPE STREQUAL "Release") AND
                CMAKE_${language}_COMPILER_LAUNCHER STREQUAL CCACHE_PROGRAM)
                 # Normalize in-tree paths so matching builds share objects across worktrees.
                 set(CMAKE_${language}_COMPILER_LAUNCHER

@@ -830,6 +830,19 @@ static void wasm_smoke_worker_benchmark(const behavior_graph_program *program)
                 wasm_worker[trial] > 0.0 && bytecode_worker[trial] > 0.0 &&
                 wasm_roundtrip[trial] > 0.0 && bytecode_roundtrip[trial] > 0.0
             );
+            printf(
+                "browser worker sample region=%d trial=%d ops=%d inputs=%d "
+                "worker_ns wasm/bytecode=%.1f/%.1f "
+                "batch_roundtrip_ns=%.1f/%.1f\n",
+                region,
+                trial,
+                wasm_smoke_operations[region],
+                wasm_smoke_inputs[region],
+                wasm_worker[trial],
+                bytecode_worker[trial],
+                wasm_roundtrip[trial],
+                bytecode_roundtrip[trial]
+            );
         }
         printf(
             "browser worker region ops=%d inputs=%d case=%s path=%s worker_ns "
@@ -872,6 +885,15 @@ static void wasm_smoke_worker_benchmark(const behavior_graph_program *program)
                 bytecode_direct[trial] = direct_ns;
             }
         }
+        printf(
+            "browser worker one-job sample trial=%d ops=16 inputs=1 "
+            "roundtrip_ns wasm/bytecode=%.1f/%.1f worker_ns=%.1f/%.1f\n",
+            trial,
+            wasm_handoff[trial],
+            bytecode_handoff[trial],
+            wasm_direct[trial],
+            bytecode_direct[trial]
+        );
     }
     printf(
         "browser worker one-job handoff ops=16 inputs=1 roundtrip_ns "
@@ -1044,7 +1066,13 @@ static void wasm_smoke_start()
     behavior_expression_wasm_stats compiled;
     behavior_expression_wasm_get_stats(&compiled);
     assert(compiled.modules_requested == before.modules_requested + 2);
-    assert(compiled.expressions_eligible >= before.expressions_eligible + 2 * WASM_SMOKE_ELIGIBLE_REGIONS);
+    /* The linear module contributes an implementation-dependent count. The
+     * graph accessor supplies the contract for the graph module itself. */
+    assert(
+        compiled.expressions_eligible >=
+        before.expressions_eligible +
+            (unsigned)behavior_graph_program_wasm_expression_count(program)
+    );
     wasm_smoke_dispatch();
     for (int i = 0; i < WASM_SMOKE_REGIONS; i++) {
         pin_value result;

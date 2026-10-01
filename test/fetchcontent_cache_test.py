@@ -95,6 +95,22 @@ class CacheTest(unittest.TestCase):
         self.assertEqual(cache.prepare(self.source, web, self.storage, web=True), 6)
         self.assertFalse((web / "_deps/sdl3-src").exists())
 
+    def test_legacy_unverifiable_archives_fall_back_without_blocking_git_cache(self):
+        cute = self.repository("cute", "FetchContent_Declare(s2n\n URL https://example.invalid/s2n.zip\n)\n")
+        self.declare("cute_framework", cute)
+        self.clone_donor("cute_framework", cute)
+        # Even a Git-shaped donor cannot prove an upstream archive without a hash.
+        self.clone_donor("s2n", self.repository("unverifiable-s2n"))
+        archive = self.donor / "_deps/sdl3-src"
+        archive.mkdir()
+        (archive / "CMakeLists.txt").write_text("project(SDL3 VERSION 3.4.0)\n")
+        self.assertEqual(cache.publish_build(self.source, self.donor, self.storage), 1)
+        build = self.root / "legacy-build"
+        self.assertEqual(cache.prepare(self.source, build, self.storage), 1)
+        self.assertFalse((build / "_deps/s2n-src").exists())
+        self.assertTrue((archive / "CMakeLists.txt").is_file())
+        self.assertTrue(cache.fingerprint(self.source))
+
     def test_per_dependency_keys_and_configuration_fingerprint(self):
         first = self.repository("first")
         second = self.repository("second")

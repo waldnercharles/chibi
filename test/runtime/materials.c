@@ -615,6 +615,79 @@ static void flow_finish(void *task, void *user)
     executor->tasks.finish(task, executor->tasks.user);
 }
 
+static void gas_deposit_equivalence()
+{
+    enum
+    {
+        POINTS = 64
+    };
+    fluid_particle split[POINTS * 3], merged[POINTS];
+    int split_active[POINTS * 3], merged_active[POINTS];
+    /* Cell size eight makes these offsets exactly representable just below,
+     * on and above integer/half-cell boundaries. */
+    const float offsets[] = { -.5f, 0, .5f, 3.5f, 4, 4.5f, 2, 6 };
+    game_task_system tasks = { .workers = 1 };
+    fluid_flow_settings settings = { .cell_size = 8 };
+    material_flow *retained = material_flow_new(), *reference = material_flow_new();
+    for (int round = 0; round < 2; round++) {
+        if (round) {
+            material_flow_clear(retained);
+            material_flow_free(reference);
+            reference = material_flow_new();
+        }
+        /* Prime both owned grids before clearing. Reset the dyadic deposition
+         * inputs each step; previous flow fields still evolve identically. */
+        for (int step = 0; step < (round ? 1 : 2); step++) {
+            for (int i = 0; i < POINTS; i++) {
+                int index = (i * 17) % POINTS;
+                float x = (i % 8 - 4) * 16 + offsets[i % 8] + round * 128;
+                float y = (i / 8 - 4) * 16 + offsets[i / 8] - round * 192;
+                split[index * 3 + 2] = particle(x, y, FLUID_GAS);
+                split[index * 3 + 2].mass = 1;
+                split[index * 3 + 2].velocity = (fluid_vec){ 2, -4 };
+                split[index * 3] = particle(x, y, FLUID_GAS);
+                split[index * 3].mass = 1;
+                split[index * 3].velocity = (fluid_vec){ 6, 8 };
+                split[index * 3 + 1] = particle(10000 + x, -10000 + y, FLUID_LIQUID);
+                split[index * 3 + 1].velocity = (fluid_vec){ 101, -103 };
+                merged[index] = particle(x, y, FLUID_GAS);
+                merged[index].mass = 2;
+                merged[index].velocity = (fluid_vec){ 4, 2 };
+                split_active[i * 3] = index * 3 + 1;
+                split_active[i * 3 + 1] = index * 3 + 2;
+                split_active[i * 3 + 2] = index * 3;
+                merged_active[i] = index;
+            }
+            /* Coincident parcels have equal combined mass/momentum and activate
+             * the same overlapping halos in the same first-insertion order. */
+            material_flow_step(
+                retained,
+                settings,
+                1.f / 60,
+                split,
+                split_active,
+                POINTS * 3,
+                NULL,
+                NULL,
+                0,
+                &tasks
+            );
+            material_flow_step(reference, settings, 1.f / 60, merged, merged_active, POINTS, NULL, NULL, 0, &tasks);
+            assert(material_flow_hash(retained) == material_flow_hash(reference));
+            for (int i = 0; i < POINTS; i++) {
+                assert(!memcmp(&split[i * 3].velocity, &merged[i].velocity, sizeof(fluid_vec)));
+                assert(!memcmp(&split[i * 3 + 2].velocity, &merged[i].velocity, sizeof(fluid_vec)));
+                assert(
+                    split[i * 3 + 1].velocity.x == 101 &&
+                    split[i * 3 + 1].velocity.y == -103
+                );
+            }
+        }
+    }
+    material_flow_free(retained);
+    material_flow_free(reference);
+}
+
 static void parallel_flow()
 {
     enum
@@ -2383,6 +2456,7 @@ void test_materials()
     gas_flow();
     parallel_parity(false);
     parallel_parity(true);
+    gas_deposit_equivalence();
     parallel_flow();
     physical_destruction();
     finite_drive();

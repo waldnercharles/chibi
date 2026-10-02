@@ -5,6 +5,13 @@ A C23 visual programming editor for authored game behaviors, prototypes, and sce
 [Native engine packages](docs/native-package.md) let a separate game workspace
 author assets through Studio and MCP using prebuilt executables.
 
+The tracked `projects/arena2d` sample is the default project. External games can
+use copied prebuilt executables in their ignored `.chibi/runtime` directory,
+and can optionally be mounted at the ignored `projects/local-game` path for
+Studio and browser authoring. Registered native builds and web publishes
+deliver runtime updates from the engine side.
+See [external game setup](docs/native-package.md#local-external-projects).
+
 ## Development
 
 ```sh
@@ -33,7 +40,10 @@ make publish-web  # publish the latest origin/main commit to GitHub Pages
 temporary checkout, publishes the compiled files to `gh-pages`, and waits for
 the live deployment marker and matching asset hashes. It requires Emscripten,
 the native build tools, and an authenticated `gh` session with repository push and Pages access. Local
-edits are excluded, and `main` is never pushed. Set `JOBS` to control build
+engine edits are excluded, and `main` is never pushed. Project links tracked in the published engine commit are snapshotted from
+their game repository’s committed `HEAD`; local game edits and ignored mounts
+are excluded.
+`BUILD_SOURCES.json` records the engine and game commits. Set `JOBS` to control build
 parallelism and `CHIBI_COLLAB_URL` to configure the collaboration server.
 If `main` advances during the build, rerun the command.
 

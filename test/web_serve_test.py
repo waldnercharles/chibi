@@ -5,6 +5,7 @@ import errno
 import io
 import importlib.util
 from pathlib import Path
+import shutil
 import sys
 import tempfile
 import unittest
@@ -270,6 +271,79 @@ class WebServeLaunch(unittest.TestCase):
             self.assertIn('port 8099 is already in use', stderr.getvalue())
             self.assertIn('make web-serve WEB_PORT=8100', stderr.getvalue())
             self.assertNotIn('Traceback', stderr.getvalue())
+
+    def test_bridge_precedes_quoted_and_minified_bootstraps(self):
+        for bootstrap in ('<script src="chibi-default.js"></script>',
+                          '<script src=chibi-default.js></script>',
+                          "<script src='chibi-isolation.js'></script>",
+                          '<script src=chibi-isolation.js></script>',
+                          '<script async src="chibi.js"></script>'):
+            with self.subTest(bootstrap=bootstrap):
+                shell = '<script>var Module = {};</script>' + bootstrap
+                bridged = server.inject_workspace_bridge(shell, 'installWorkspace(Module)')
+                self.assertEqual(bridged, '<script>var Module = {};</script>'
+                                 '<script>installWorkspace(Module)</script>' + bootstrap)
+
+
+class LinkedWorkspaceSaves(WorkspaceSaves):
+    def setUp(self):
+        super().setUp()
+        # The registered workspace path stays stable while the game owns its files.
+        self.sibling = self.workspace.parent / (self.workspace.name + '-game')
+        self.project.rename(self.sibling)
+        self.addCleanup(shutil.rmtree, self.sibling)
+        self.project.symlink_to(self.sibling, target_is_directory=True)
+        self.content = self.sibling / 'content'
+
+    def test_external_editor_edits_keep_workspace_paths(self):
+        asset = self.content / 'A.kdl'
+        asset.write_text('a 1\n')
+        watch = server.WorkspaceWatch(self.workspace)
+        self.save('/projects/bloom/content/A.kdl', 'a 22\n')
+        self.assertEqual(asset.read_text(), 'a 22\n')
+        watch.poll()
+        self.assertEqual(watch.changes(0, 0), (1, {'projects/bloom/content/A.kdl': 'a 22\n'}))
+
+    def test_repo_files_are_excluded(self):
+        (self.sibling / 'private.kdl').write_text('secret "local"\n')
+        self.assertEqual(list(server.workspace_assets(self.workspace)), ['projects/bloom/project.kdl'])
+        with self.assertRaises(ValueError):
+            self.save('projects/bloom/private.kdl')
+
+    def test_launch_uses_the_workspace_alias(self):
+        build = self.workspace / 'build'
+        build.mkdir()
+        for suffix in ('html', 'js', 'wasm', 'data'):
+            (build / f'chibi.{suffix}').write_text('<script async></script>')
+        snapshot = self.workspace / 'snapshot'
+        snapshot.mkdir()
+
+        def bind(address, handler):
+            # Even an absolute sibling --project must start at the browser alias.
+            html = (snapshot / 'chibi.html').read_text()
+            self.assertIn('"/projects/bloom"', html)
+            raise OSError(errno.EADDRINUSE, 'Address already in use')
+
+        argv = ['web_serve.py', '--workspace', str(self.workspace), '--project',
+                str(self.sibling), '--build', str(build)]
+        with patch.object(sys, 'argv', argv), \
+                patch.object(server, 'ThreadingHTTPServer', side_effect=bind), \
+                patch.object(server.tempfile, 'TemporaryDirectory',
+                             return_value=contextlib.nullcontext(snapshot)), \
+                contextlib.redirect_stderr(io.StringIO()):
+            with self.assertRaises(SystemExit) as error:
+                server.main()
+        self.assertEqual(error.exception.code, 2)
+
+    def test_unregistered_project_is_rejected(self):
+        self.project.unlink()
+        argv = ['web_serve.py', '--workspace', str(self.workspace), '--project', str(self.sibling)]
+        stderr = io.StringIO()
+        with patch.object(sys, 'argv', argv), contextlib.redirect_stderr(stderr):
+            with self.assertRaises(SystemExit) as error:
+                server.main()
+        self.assertEqual(error.exception.code, 2)
+        self.assertIn('linked projects need their target checkout', stderr.getvalue())
 
 
 if __name__ == '__main__':

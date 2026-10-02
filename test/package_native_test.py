@@ -57,6 +57,13 @@ class PackagingFailureTests(unittest.TestCase):
                 self.assertTrue(os.access(output / 'bin' / name, os.X_OK))
             self.assertTrue((output / 'share/chibi/studio/project.kdl').is_file())
             self.assertTrue((output / 'share/chibi/mcp/server.mjs').is_file())
+            docs = output / 'share/chibi/docs'
+            self.assertEqual(sorted(path.name for path in docs.iterdir()), ['authoring.md'])
+            guide = (docs / 'authoring.md').read_text()
+            self.assertIn('.chibi/runtime/bin/chibi-mcp', guide)
+            self.assertIn('runScenario', guide)
+            self.assertNotIn('c-blueprints', guide)
+            self.assertNotIn('src/editor', guide)
             self.assertFalse((output / 'share/chibi/licenses/ANCESTOR').exists())
             self.assertFalse((output / 'share/chibi/licenses/REPOSITORY').exists())
             repeated = run(command, root)
@@ -97,7 +104,7 @@ class PackagingFailureTests(unittest.TestCase):
             original_copy = module.copy_file
 
             def failed_copy(source, destination):
-                if source.name == 'authoring-navigation.md':
+                if source.name == 'runtime-authoring.md':
                     raise OSError('simulated resource copy failure')
                 original_copy(source, destination)
 
@@ -234,6 +241,11 @@ class StandalonePackageTests(unittest.TestCase):
         for path in self.package.rglob('*'):
             self.assertNotIn(path.name, ('CMakeLists.txt', 'Makefile', '.git', 'CMakeCache.txt'))
             self.assertNotIn(path.suffix, ('.c', '.cpp', '.h', '.o', '.a'), str(path))
+        docs = resources / 'docs'
+        self.assertEqual(sorted(path.name for path in docs.iterdir()), ['authoring.md'])
+        guide = (docs / 'authoring.md').read_text()
+        self.assertNotIn('c-blueprints', guide)
+        self.assertNotIn('src/editor', guide)
 
     def test_relocation_resource_paths_and_system_dependencies(self):
         resource_root = self.package / 'share/chibi'

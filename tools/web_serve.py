@@ -58,8 +58,8 @@ def inject_workspace_bridge(text, bridge):
 
 def content_directory(project):
     manifest = kdl_asset.loads((project / 'project.kdl').read_text())
-    content = (project / manifest['content']).resolve()
-    if not content.is_relative_to(project):
+    content = project / manifest['content']
+    if not content.resolve().is_relative_to(project.resolve()):
         raise ValueError('Project content must be inside the project directory')
     return content
 
@@ -77,7 +77,7 @@ def workspace_files(workspace):
         files[str((project / 'project.kdl').relative_to(workspace))] = project / 'project.kdl'
         content = content_directory(project)
         for path in content.rglob('*'):
-            if path.is_file() and path.suffix.lower() in TEXT_EXTENSIONS | IMAGE_EXTENSIONS and path.resolve().is_relative_to(content):
+            if path.is_file() and path.suffix.lower() in TEXT_EXTENSIONS | IMAGE_EXTENSIONS and path.resolve().is_relative_to(content.resolve()):
                 files[str(path.relative_to(workspace))] = path
     return files
 
@@ -177,7 +177,7 @@ class WorkspaceWatch:
             names = [name for name, changed in self.changed.items() if changed > since]
         files = {}
         current = workspace_files(self.workspace)
-        roots = [(project.resolve(), content_directory(project)) for project in projects(self.workspace)]
+        roots = [(project.resolve(), content_directory(project).resolve()) for project in projects(self.workspace)]
         for name in names:
             path = current.get(name)
             if path is None:
@@ -204,7 +204,7 @@ class WorkspaceWatch:
 def save_asset(workspace, request):
     path = (workspace / request['path'].lstrip('/')).resolve()
     text = request['text']
-    contents = [content_directory(project) for project in projects(workspace)]
+    contents = [content_directory(project).resolve() for project in projects(workspace)]
     # Settings rewrites a project's manifest, which is never removed.
     manifest = text is not None and path in [(project / 'project.kdl').resolve() for project in projects(workspace)]
     image_delete = text is None and path.suffix.lower() in IMAGE_EXTENSIONS
@@ -243,9 +243,10 @@ def main():
                         help='send the isolation headers required by the threaded build')
     args = parser.parse_args()
     workspace = args.workspace.resolve()
-    project = args.project.resolve()
-    if not project.is_relative_to(workspace):
-        parser.error(f'{project} is outside {workspace}')
+    project = next((mount for mount in projects(workspace) if mount.resolve() == args.project.resolve()), None)
+    if project is None:
+        parser.error(f'{args.project} must have a project.kdl in {workspace} or its projects directory; '
+                     'linked projects need their target checkout')
     # The browser mirrors the workspace at its file system root.
     start = str(PurePosixPath('/') / project.relative_to(workspace).as_posix())
     token = secrets.token_urlsafe(32)

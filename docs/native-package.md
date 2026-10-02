@@ -85,6 +85,58 @@ reproductions can live in the game repository; engine implementation remains
 in the engine repository. Neither requires a repository split of the existing
 samples before this workflow can be used.
 
+## Local external projects
+
+The tracked `projects/arena2d` sample keeps clean engine checkouts and CI
+self-contained. To author an external game in the engine's Studio or local
+browser editor, optionally mount it at the ignored `projects/local-game` path:
+
+```sh
+ln -s /absolute/path/to/game projects/local-game
+make run PROJECT=projects/local-game
+make web-serve PROJECT=projects/local-game
+```
+
+The external game owns its `project.kdl` and `content/`. Studio's project list
+and the local browser editor follow the mount; editor saves update the game's
+files. Select it explicitly for source MCP with `CHIBI_ROOT`, or use the
+copied runtime and MCP launcher directly from the game workspace.
+
+Ignored mounts are local authoring conveniences and are excluded from clean
+CI and static web publishing. If a project link is tracked in a future engine
+commit, `make publish-web` requires its target Git checkout and archives only
+its committed `HEAD`; CI must also provide that project. `BUILD_SOURCES.json`
+records the selected engine and external project commits.
+
+## Deliver runtime updates to local games
+
+Register game workspaces in the editor checkout's ignored
+`.chibi/game-runtime.json`:
+
+```json
+{
+  "games": ["/path/to/neon-swarm"]
+}
+```
+
+Native application builds through Make also build a distribution package and
+deliver it to registered games. `make package-native` delivers its package as
+well. Set `UPDATE_GAME_RUNTIME=0` on a native build to skip its extra package
+build. Controller-only builds leave game runtimes alone.
+
+Delivery verifies the complete package and each game's project version, then
+stages a full copy inside each game's `.chibi` directory. It replaces
+`.chibi/runtime` with regular files, points MCP at the copied launcher, and
+refreshes `.chibi-engine.json`. A failed copy leaves the active runtime alone;
+a failed activation restores the previous runtimes and metadata. Runtime
+delivery creates no symlinks or hardlinks to external packages. New game and
+MCP launches use the update; restart existing sessions after delivery.
+
+For registered games, `make publish-web` also builds a native package from the
+same isolated `origin/main` checkout. It delivers that package after the live
+web bundle passes verification. Game workspaces need only their local binary
+interface and MCP catalog.
+
 ## Build and verify
 
 ```sh

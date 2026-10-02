@@ -45,3 +45,7 @@ content/*/.authoring-*.tmp
 
 # Machine-local Codex MCP configuration.
 .codex/
+
+# Local external game mount and browser capture outputs.
+projects/local-game
+.playwright-mcp/

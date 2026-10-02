@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { chmodSync, cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, cpSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -45,6 +45,23 @@ test("packaged MCP pins an external workspace, preserves config, and runs withou
     assert.ok(!config.includes("OLD"));
     assert.equal((config.match(/\[mcp_servers.chibi\]/g) || []).length, 1);
     assert.ok(config.includes(resolve(pkg, "bin/chibi-mcp")));
+    const copied = resolve(game, ".chibi/runtime");
+    cpSync(pkg, copied, { recursive: true });
+    const unavailable = `${pkg} unavailable`;
+    renameSync(pkg, unavailable);
+    try {
+      const copiedRun = (args, input = "") => spawnSync("sh", [resolve(copied, "bin/chibi-mcp"), ...args], { cwd: game, input, encoding: "utf8", timeout: 10000 });
+      result = copiedRun(["--setup", game]);
+      assert.equal(result.status, 0, result.stderr);
+      const copiedConfig = readFileSync(configPath, "utf8");
+      assert.ok(copiedConfig.includes(resolve(copied, "bin/chibi-mcp")));
+      assert.ok(!copiedConfig.includes(pkg));
+      result = copiedRun([], JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-11-25", capabilities: {}, clientInfo: { name: "copied-runtime-test", version: "1" } } }) + "\n");
+      assert.equal(result.status, 0, result.stderr);
+      assert.equal(JSON.parse(result.stdout.trim()).result.serverInfo.name, "chibi");
+    } finally {
+      renameSync(unavailable, pkg);
+    }
     result = run([], JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-11-25", capabilities: {}, clientInfo: { name: "package-test", version: "1" } } }) + "\n");
     assert.equal(result.status, 0, result.stderr);
     const handshake = JSON.parse(result.stdout.trim()).result;

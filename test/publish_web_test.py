@@ -66,12 +66,30 @@ class PublicationTests(unittest.TestCase):
         self.original_local = git(self.root, 'rev-parse', 'HEAD')
         self.calls = []
         self.requests = []
+        self.external_project = None
+        self.runtime_installs = []
+
+    def add_project_link(self, target='../../neon-swarm'):
+        checkout = Path(self.temporary.name) / 'engine-main'
+        subprocess.run(['git', 'clone', '-b', 'main', str(self.remote), str(checkout)],
+                       check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        (checkout / 'projects').mkdir()
+        (checkout / 'projects/arena2d').symlink_to(target, target_is_directory=True)
+        git(checkout, 'add', 'projects/arena2d')
+        git(checkout, 'commit', '-m', 'Link game repository')
+        git(checkout, 'push', 'origin', 'main')
+        self.source_commit = git(checkout, 'rev-parse', 'HEAD')
 
     def publish(self, mode='ok', paired=True):
         real_run = publisher.run
 
         def run(*args, **kwargs):
             self.calls.append(args)
+            if args[0] == 'python3' and args[1].endswith('/install_game_runtime.py'):
+                self.assertIn('DEPLOYMENT_COMMIT', self.requests)
+                self.assertIn('BUILD_SOURCES.json', self.requests)
+                self.runtime_installs.append(args)
+                return None
             if args[0] == 'gh':
                 if args[1] == 'repo':
                     return 'test/repo'
@@ -85,6 +103,16 @@ class PublicationTests(unittest.TestCase):
             source = kwargs['cwd']
             self.assertEqual((source / 'input').read_text(), 'remote main')
             self.assertEqual(git(source, 'rev-parse', 'HEAD'), self.source_commit)
+            if args[1] == 'package-native':
+                self.assertIn('UPDATE_GAME_RUNTIME=0', args)
+                return None
+            if self.external_project:
+                project = source / 'projects/arena2d'
+                self.assertFalse(project.is_symlink())
+                self.assertEqual((project / 'content/Game.yaml').read_text(), 'name: Committed game\n')
+                self.assertFalse((project / '.git').exists())
+                self.assertFalse((project / '.codex').exists())
+                self.assertFalse((project / 'content/Untracked.yaml').exists())
             for key in ('MAKEFLAGS', 'MFLAGS', 'MAKEOVERRIDES'):
                 self.assertNotIn(key, kwargs['env'])
             if mode == 'fail':
@@ -136,12 +164,85 @@ class PublicationTests(unittest.TestCase):
         self.assertTrue(any('--method' in args for args in self.calls))
         self.assert_local_unchanged()
 
+    def test_sibling_project_publishes_committed_assets_and_source_marker(self):
+        game = Path(self.temporary.name) / 'neon-swarm'
+        (game / 'content').mkdir(parents=True)
+        git(game, 'init', '-b', 'main')
+        (game / 'project.yaml').write_text('name: Neon Swarm\ncontent: content\n')
+        (game / 'content/Game.yaml').write_text('name: Committed game\n')
+        (game / '.gitignore').write_text('.codex/\n')
+        git(game, 'add', '.')
+        git(game, 'commit', '-m', 'Game content')
+        game_commit = git(game, 'rev-parse', 'HEAD')
+        (game / 'content/Game.yaml').write_text('name: Dirty game\n')
+        (game / 'content/Untracked.yaml').write_text('name: Untracked\n')
+        (game / '.codex').mkdir()
+        (game / '.codex/config.toml').write_text('local = true\n')
+        self.external_project = game
+        self.add_project_link()
+        self.publish()
+        marker = json.loads(git(self.remote, 'show', 'gh-pages:BUILD_SOURCES.json'))
+        self.assertEqual(marker, {'engine': self.source_commit,
+                                 'projects': {'projects/arena2d': game_commit}})
+        self.assertIn('BUILD_SOURCES.json', self.requests)
+        self.assertEqual((game / 'content/Game.yaml').read_text(), 'name: Dirty game\n')
+        self.assertEqual(git(game, 'rev-parse', 'HEAD'), game_commit)
+        self.assert_local_unchanged()
+
+    def test_missing_project_stops_before_build_or_publication(self):
+        self.add_project_link()
+        with self.assertRaisesRegex(RuntimeError, 'Missing external project'):
+            self.publish()
+        self.assertFalse(any(args[0] == 'make' for args in self.calls))
+        self.assertEqual(git(self.remote, 'rev-parse', 'gh-pages'), self.original_site)
+        self.assertFalse(any('--method' in args for args in self.calls))
+        self.assert_local_unchanged()
+
+    def test_non_git_project_stops_before_build_or_publication(self):
+        (Path(self.temporary.name) / 'neon-swarm').mkdir()
+        self.add_project_link()
+        with self.assertRaisesRegex(RuntimeError, 'committed Git HEAD'):
+            self.publish()
+        self.assertFalse(any(args[0] == 'make' for args in self.calls))
+        self.assertEqual(git(self.remote, 'rev-parse', 'gh-pages'), self.original_site)
+        self.assertFalse(any('--method' in args for args in self.calls))
+        self.assert_local_unchanged()
+
     def test_build_failure_leaves_site_and_local_work_unchanged(self):
         with self.assertRaises(subprocess.CalledProcessError):
             self.publish(mode='fail')
         self.assertEqual(git(self.remote, 'rev-parse', 'gh-pages'), self.original_site)
         self.assertFalse(any('--method' in args for args in self.calls))
         self.assertFalse(self.requests)
+        self.assert_local_unchanged()
+
+    def test_registered_runtime_updates_from_published_source_after_live_verification(self):
+        (self.root / '.chibi').mkdir()
+        config = self.root / '.chibi/game-runtime.json'
+        config.write_text('{}')
+        self.publish()
+        builds = [args for args in self.calls if args[:2] == ('make', 'package-native')]
+        self.assertEqual(len(builds), 1)
+        self.assertEqual(len(self.runtime_installs), 1)
+        install = self.runtime_installs[0]
+        self.assertEqual(install[-2:], ('--config', str(config)))
+        self.assertTrue(install[install.index('--package') + 1].endswith('/source/dist/game-runtime'))
+
+    def test_failed_build_does_not_update_registered_runtime(self):
+        (self.root / '.chibi').mkdir()
+        (self.root / '.chibi/game-runtime.json').write_text('{}')
+        with self.assertRaises(subprocess.CalledProcessError):
+            self.publish(mode='fail')
+        self.assertEqual(self.runtime_installs, [])
+
+    def test_failed_live_verification_does_not_update_registered_runtime(self):
+        (self.root / '.chibi').mkdir()
+        (self.root / '.chibi/game-runtime.json').write_text('{}')
+        with patch.object(publisher, 'wait_for_deployment',
+                          side_effect=RuntimeError('deployment did not verify')):
+            with self.assertRaisesRegex(RuntimeError, 'deployment did not verify'):
+                self.publish()
+        self.assertEqual(self.runtime_installs, [])
         self.assert_local_unchanged()
 
     def test_remote_advance_rejects_publication(self):

@@ -692,12 +692,13 @@ printf '%s\n' '{"contract":1,"operation":"status"}' |
   build/chibi_ctl --project-root .
 ```
 
-The repository contains two project roots: Arena3D at the repository root and
-Arena2D at `projects/arena2d`, with its own manifest and `content` tree. The
-MCP launcher defaults to Arena2D when that project is present, matching the
-default Make and editor workflows. Set `CHIBI_ROOT` to select a different
-project explicitly. Point the controller or renderer at the project root when
-searching, authoring, running, or previewing assets; names are resolved only
+Arena3D is at the repository root and the tracked Arena2D sample is at
+`projects/arena2d`. The MCP launcher defaults to Arena2D when that project is
+present, matching the default Make and editor workflows. External games can
+be mounted locally at the ignored `projects/local-game` path. Set
+`CHIBI_ROOT=projects/local-game` to author that game, or set `CHIBI_ROOT` to
+select another project explicitly. Point the controller or renderer at the
+project root when searching, authoring, running, or previewing assets; names are resolved only
 within that project.
 
 ```sh

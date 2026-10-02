@@ -6,6 +6,7 @@ import json
 import os
 import shutil
 import subprocess
+import tarfile
 import tempfile
 import time
 from pathlib import Path
@@ -17,6 +18,38 @@ def run(*args, cwd=None, capture=False, env=None):
     result = subprocess.run(args, cwd=cwd, env=env, check=True,
                             text=True, stdout=subprocess.PIPE if capture else None)
     return result.stdout.strip() if capture else None
+
+
+def materialize_projects(source, root):
+    commits = {}
+    for alias in sorted((source / 'projects').glob('*')):
+        if not alias.is_symlink():
+            continue
+        target = Path(os.readlink(alias))
+        if target.is_absolute():
+            raise RuntimeError(f'Project link must be relative: {alias.relative_to(source)}')
+        project = (root / alias.relative_to(source).parent / target).resolve()
+        if not project.is_dir():
+            raise RuntimeError(f'Missing external project: {project}')
+        try:
+            repository = Path(run('git', 'rev-parse', '--show-toplevel', cwd=project, capture=True)).resolve()
+            commit = run('git', 'rev-parse', 'HEAD', cwd=project, capture=True)
+        except subprocess.CalledProcessError as error:
+            raise RuntimeError(f'External project must have a committed Git HEAD: {project}') from error
+        if repository != project:
+            raise RuntimeError(f'External project must be a Git repository root: {project}')
+        # Archive committed assets instead of copying the working tree. This
+        # deliberately leaves dirty edits and local configuration on disk.
+        with tempfile.TemporaryFile() as archive:
+            subprocess.run(['git', 'archive', '--format=tar', commit], cwd=project,
+                           stdout=archive, check=True)
+            archive.seek(0)
+            alias.unlink()
+            alias.mkdir()
+            with tarfile.open(fileobj=archive) as files:
+                files.extractall(alias, filter='data')
+        commits[alias.relative_to(source).as_posix()] = commit
+    return commits
 
 
 def publish(root, jobs, collab_url):
@@ -38,6 +71,7 @@ def publish(root, jobs, collab_url):
             '+refs/heads/main:refs/remotes/origin/main', cwd=source)
         commit = run('git', 'rev-parse', 'origin/main', cwd=source, capture=True)
         run('git', 'checkout', '--detach', commit, cwd=source)
+        project_commits = materialize_projects(source, root)
         print(f'Building origin/main at {commit}', flush=True)
         env = os.environ.copy()
         # Parent make variables must not leak into the isolated build.
@@ -49,6 +83,11 @@ def publish(root, jobs, collab_url):
             'BUILD_DIR=build', 'WEB_BUILD_DIR=build-web',
             'WEB_THREADS_BUILD_DIR=build-web-threads', 'WEB_CMAKE_FLAGS=',
             cwd=source, env=env)
+        runtime_config = root / '.chibi/game-runtime.json'
+        runtime_package = source / 'dist/game-runtime'
+        if runtime_config.is_file():
+            run('make', 'package-native', f'JOBS={jobs}', 'PACKAGE_OUTPUT=dist/game-runtime',
+                'UPDATE_GAME_RUNTIME=0', cwd=source, env=env)
         build = source / 'build-web'
         for name in ('chibi.html', 'chibi.js', 'chibi.wasm', 'chibi.data'):
             if not (build / name).is_file() or (build / name).stat().st_size == 0:
@@ -61,6 +100,8 @@ def publish(root, jobs, collab_url):
         if (source / 'build-web-threads').is_dir():
             arguments.extend(('--threads', str(source / 'build-web-threads')))
         run(*arguments)
+        (bundle / 'BUILD_SOURCES.json').write_text(json.dumps(
+            {'engine': commit, 'projects': project_commits}, indent=2, sort_keys=True) + '\n')
         assets = sorted(path.relative_to(bundle).as_posix()
                         for path in bundle.rglob('*') if path.is_file())
 
@@ -95,7 +136,14 @@ def publish(root, jobs, collab_url):
             print('The same bundle is already on gh-pages', flush=True)
         run('gh', 'api', '--method', 'POST', f'repos/{repo}/pages/builds', capture=True)
 
-    url = pages['html_url'].rstrip('/') + '/'
+        wait_for_deployment(pages['html_url'], commit, hashes)
+        if runtime_config.is_file():
+            run('python3', str(root / 'tools/install_game_runtime.py'),
+                '--package', str(runtime_package), '--config', str(runtime_config))
+
+
+def wait_for_deployment(page_url, commit, hashes):
+    url = page_url.rstrip('/') + '/'
     print(f'Waiting for {url} to serve {commit}', flush=True)
     for attempt in range(60):
         try:

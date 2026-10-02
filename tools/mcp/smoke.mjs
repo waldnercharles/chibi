@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { fixtureKdl } from "./fixture-kdl.mjs";
 import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
@@ -388,7 +388,7 @@ if (cwdResponses[0]?.result?.isError ||
 }
 
 const launcher = resolve(root, "tools/mcp/launch.sh");
-const defaultProjectRoot = resolve(root, "projects/arena2d");
+const defaultProjectRoot = realpathSync(resolve(root, "projects/arena2d"));
 const launcherRequests = [
   {
     jsonrpc: "2.0",

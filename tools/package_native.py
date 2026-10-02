@@ -96,9 +96,7 @@ def assemble(build, output):
             shutil.copytree(ROOT / source, share / name)
         copy_file(ROOT / 'projects/studio/project.kdl', share / 'studio/project.kdl')
         shutil.copytree(ROOT / 'projects/studio/content', share / 'studio/content')
-        for name in ('native-package.md', 'mcp.md', 'authoring-navigation.md',
-                     'component-nodes.md', 'graph-optimizer.md', 'neon-gpu-benchmarks.md'):
-            copy_file(ROOT / 'docs' / name, share / 'docs' / name)
+        copy_file(ROOT / 'docs/runtime-authoring.md', share / 'docs/authoring.md')
         copy_notices(stage, build, cache)
         version_source = (ROOT / 'src/assets/project.h').read_text()
         project_version = int(re.search(r'#define CHIBI_PROJECT_VERSION (\d+)', version_source)[1])

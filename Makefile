@@ -5,6 +5,7 @@ BENCHMARK_BUILD_DIR ?= build-benchmark
 RELEASE_BUILD_DIR ?= build-release
 PACKAGE_BUILD_DIR ?= build-package
 PACKAGE_OUTPUT ?= dist/chibi-$(shell uname -s | tr '[:upper:]' '[:lower:]')-$(shell uname -m)
+UPDATE_GAME_RUNTIME ?= 1
 TRACY_BUILD_DIR ?= build-tracy
 TRACY_MCP_BUILD_DIR ?= build-tracy-mcp
 WEB_BUILD_DIR ?= build-web
@@ -86,6 +87,14 @@ ifeq ($(filter-out chibi_ctl,$(BUILD_TARGET)),)
 	@sh tools/mcp/controller-cache.sh publish "$(BUILD_DIR)/chibi_ctl" || true
 endif
 endif
+# Registered games consume a fresh distribution after native application builds.
+ifneq ($(wildcard .chibi/game-runtime.json),)
+ifeq ($(UPDATE_GAME_RUNTIME),1)
+ifneq ($(filter chibi,$(BUILD_TARGET))$(if $(strip $(BUILD_TARGET)),,all),)
+	$(MAKE) package-native UPDATE_GAME_RUNTIME=0
+endif
+endif
+endif
 
 build-debug:
 	$(MAKE) build BUILD_DIR="$(DEBUG_BUILD_DIR)" LOCAL_CMAKE_FLAGS="$(DEBUG_CMAKE_FLAGS)" BUILD_TARGET="$(BUILD_TARGET)"
@@ -130,8 +139,9 @@ build-release:
 	$(MAKE) build BUILD_DIR="$(RELEASE_BUILD_DIR)" LOCAL_CMAKE_FLAGS="$(RELEASE_CMAKE_FLAGS)" BUILD_TARGET="$(BUILD_TARGET)"
 
 package-native:
-	$(MAKE) build BUILD_DIR="$(PACKAGE_BUILD_DIR)" LOCAL_CMAKE_FLAGS="$(RELEASE_CMAKE_FLAGS) -DCHIBI_DEVELOPMENT_RELOAD=OFF -DCHIBI_DISTRIBUTION=ON" BUILD_TARGET="chibi chibi_ctl"
+	$(MAKE) build BUILD_DIR="$(PACKAGE_BUILD_DIR)" LOCAL_CMAKE_FLAGS="$(RELEASE_CMAKE_FLAGS) -DCHIBI_DEVELOPMENT_RELOAD=OFF -DCHIBI_DISTRIBUTION=ON" BUILD_TARGET="chibi chibi_ctl" UPDATE_GAME_RUNTIME=0
 	python3 tools/package_native.py --build "$(PACKAGE_BUILD_DIR)" --output "$(PACKAGE_OUTPUT)"
+	python3 tools/install_game_runtime.py --package "$(PACKAGE_OUTPUT)"
 
 test-package: package-native
 	python3 test/package_native_test.py --package "$(PACKAGE_OUTPUT)"
@@ -141,8 +151,7 @@ sdl-package:
 	CHIBI_SDL3_PACKAGE_JOBS=$(JOBS) sh tools/sdl_package.sh build $(NATIVE_TOOLCHAIN_FLAGS)
 
 build-tracy:
-	sh tools/configure_native.sh "$(TRACY_BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(TRACY_CMAKE_FLAGS) $(if $(strip $(LIBCLANG_ROOT)),-DLIBCLANG_ROOT="$(LIBCLANG_ROOT)",)
-	cmake --build "$(TRACY_BUILD_DIR)" --target chibi chibi_ctl --parallel $(JOBS)
+	$(MAKE) build BUILD_DIR="$(TRACY_BUILD_DIR)" LOCAL_CMAKE_FLAGS="$(TRACY_CMAKE_FLAGS)" BUILD_TARGET="chibi chibi_ctl"
 
 run-tracy: build-tracy
 	env $(NATIVE_RUNTIME_ENV) "$(TRACY_BUILD_DIR)/chibi" --project-root "$(PROJECT)" $(SCENE_ARG) $(ARGS)
@@ -211,6 +220,8 @@ test:
 	python3 test/package_web_test.py
 	python3 test/publish_web_test.py
 	python3 test/package_native_test.py
+	python3 test/install_game_runtime_test.py
+	python3 test/runtime_update_build_test.py
 	node --test test/mcp_package_test.mjs
 	python3 test/web_serve_test.py
 	node test/web_workspace_test.mjs
@@ -258,7 +269,6 @@ DEV_BUILD_DIR ?= build-dev
 DEV_CMAKE_FLAGS ?= -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCHIBI_ENABLE_SANITIZERS=OFF -DCHIBI_ENABLE_WARNINGS=ON -DCHIBI_ENABLE_CCACHE=ON
 
 dev:
-	sh tools/configure_native.sh "$(DEV_BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(DEV_CMAKE_FLAGS) -DCHIBI_DEVELOPMENT_RELOAD=ON
-	cmake --build "$(DEV_BUILD_DIR)" --target chibi chibi_dll --parallel $(JOBS)
+	$(MAKE) build BUILD_DIR="$(DEV_BUILD_DIR)" LOCAL_CMAKE_FLAGS="$(DEV_CMAKE_FLAGS) -DCHIBI_DEVELOPMENT_RELOAD=ON" BUILD_TARGET="chibi chibi_dll"
 	cmake -DDEV_CONFIG="$(abspath $(DEV_BUILD_DIR))/dev.json" -DRESULT="$(abspath $(DEV_BUILD_DIR))/dev-result.json" -DSKIP_BUILD=ON -DJOBS=$(JOBS) -P cmake/dev_build.cmake
 	env $(NATIVE_RUNTIME_ENV) "$(DEV_BUILD_DIR)/chibi" --bootstrap "$(abspath $(DEV_BUILD_DIR))/dev-result.json" --project-root "$(PROJECT)" $(SCENE_ARG) $(ARGS)

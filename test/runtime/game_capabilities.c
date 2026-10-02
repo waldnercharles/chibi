@@ -173,6 +173,12 @@ void test_game_capabilities()
     engine_viewport_view view;
     assert(game_camera_view(world, NULL, &view) == 1);
     assert(view.center_x == 7 && view.center_y == -8 && view.width == 320);
+    assert(view.focal_distance == 0);
+    GAME_GameCamera_get(world, player)->focal_distance = 900;
+    assert(game_camera_view(world, NULL, &view) == 1 && view.focal_distance == 900);
+    GAME_GameCamera_get(world, player)->focal_distance = 1;
+    assert(game_camera_view(world, NULL, &view) == -1);
+    GAME_GameCamera_get(world, player)->focal_distance = 0;
     assert(!game_visibility_update(live->visibility, 0));
     assert(game_visibility_at(live->visibility, (CF_V2){ 15, 5 }).visible);
     assert(!game_visibility_at(live->visibility, (CF_V2){ 65, 5 }).visible);

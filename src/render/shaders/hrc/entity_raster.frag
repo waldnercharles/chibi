@@ -14,6 +14,13 @@
 // Later batches start from the previous batch's targets.
 
 #include "entity.shd"
+#ifdef SG_MESH_LAYER
+layout(set = 2, binding = 5) uniform sampler2D u_mesh_scene;
+layout(set = 2, binding = 6) uniform sampler2D u_mesh_emission;
+layout(set = 2, binding = 7) uniform sampler2D u_mesh_absorption;
+layout(set = 2, binding = 8) uniform sampler2D u_mesh_albedo;
+layout(set = 2, binding = 9) uniform sampler2D u_mesh_normal;
+#endif
 #ifndef SG_ENTITY_BINDING
 #define SG_PREVIOUS_SCENE_BINDING 0
 #define SG_PREVIOUS_SOURCE_BINDING 1
@@ -316,6 +323,8 @@ vec4 normal_acc;
 float tau_acc;
 float absorption_cover;
 float relief_acc;
+float relief_cover;
+float mesh_cover;
 
 void emission_over(vec4 em, bool absorbs)
 {
@@ -329,6 +338,8 @@ void layer_over(vec4 sc, vec4 em, vec4 tr, vec4 al, vec4 surface, float height)
     scene_acc = alpha_over(sc, scene_acc);
     normal_acc = mix(normal_acc, surface, sc.a);
     relief_acc = mix(relief_acc, height, sc.a);
+    relief_cover = sc.a + relief_cover * (1.0 - sc.a);
+    mesh_cover *= 1.0 - sc.a;
     emission_over(em, tr.a > 0.0);
     tau_acc += dot(tr.rgb, vec3(1.0 / 3.0)) * (1.0 - absorption_cover);
     absorption_cover += tr.a * (1.0 - absorption_cover);
@@ -436,22 +447,73 @@ void main()
     albedo_acc = vec4(0, 0, 0, 1);
     normal_acc = vec4(0);
     relief_acc = 0.0;
+    relief_cover = 0.0;
+    mesh_cover = 0.0;
     group_id = 0.0;
     border_cover = 0.0;
     group_layer = layer_empty();
 #ifdef SG_ACCUMULATE
     // Earlier batches continue as displayed emission, absorbing wherever they
     // absorbed, over the whole pixel.
-    scene_acc = texelFetch(u_prev_scene, pixel, 0);
-    vec4 prev_source = texelFetch(u_prev_source, pixel, 0);
-    emission_acc.rgb = prev_source.rgb * texelFetch(u_prev_cover, pixel, 0).r;
-    absorber_emission = prev_source.a > 0.0 ? emission_acc.rgb : vec3(0.0);
-    absorption_cover = prev_source.a > 0.0 ? 1.0 : 0.0;
-    tau_acc = prev_source.a;
-    vec4 prev_albedo = texelFetch(u_prev_albedo, pixel, 0);
-    albedo_acc.rgb = prev_albedo.rgb;
-    relief_acc = prev_albedo.a;
-    normal_acc = texelFetch(u_prev_normal, pixel, 0);
+    // A leading mesh batch has no previous material layer.
+    if (u_first_entity > 0) {
+        scene_acc = texelFetch(u_prev_scene, pixel, 0);
+        vec4 prev_source = texelFetch(u_prev_source, pixel, 0);
+        emission_acc.rgb = prev_source.rgb * texelFetch(u_prev_cover, pixel, 0).r;
+        absorber_emission = prev_source.a > 0.0 ? emission_acc.rgb : vec3(0.0);
+        absorption_cover = prev_source.a > 0.0 ? 1.0 : 0.0;
+        tau_acc = prev_source.a;
+        vec4 prev_albedo = texelFetch(u_prev_albedo, pixel, 0);
+        albedo_acc.rgb = prev_albedo.rgb;
+        relief_acc = prev_albedo.a;
+        normal_acc = texelFetch(u_prev_normal, pixel, 0);
+        vec4 previous_cover = texelFetch(u_prev_cover, pixel, 0);
+        relief_cover = previous_cover.g;
+        mesh_cover = previous_cover.b;
+    }
+#endif
+
+#ifdef SG_MESH_LAYER
+    // Color and coverage resolve all four subpixels; geometry retains one
+    // visible face. Averaging unrelated heights invents a sloping surface.
+    vec2 mesh_uv = (gl_FragCoord.xy - u_mesh_rect.xy) / u_mesh_rect.zw;
+    if (all(greaterThanEqual(mesh_uv, vec2(0))) && all(lessThan(mesh_uv, vec2(1)))) {
+        ivec2 size = textureSize(u_mesh_scene, 0);
+        ivec2 first = ivec2(floor(mesh_uv * vec2(size) - 0.5));
+        vec4 sc = vec4(0), em = vec4(0), tr = vec4(0), al = vec4(0);
+        vec4 selected_normal = vec4(0);
+        float selected_height = 0.0;
+        bool selected = false;
+        for (int y = 0; y < 2; y++) {
+            for (int x = 0; x < 2; x++) {
+                ivec2 p = clamp(first + ivec2(x, y), ivec2(0), size - 1);
+                vec4 scene = texelFetch(u_mesh_scene, p, 0);
+                vec4 sample_albedo = texelFetch(u_mesh_albedo, p, 0);
+                sc += scene * 0.25;
+                em += texelFetch(u_mesh_emission, p, 0) * 0.25;
+                tr += texelFetch(u_mesh_absorption, p, 0) * 0.25;
+                al += sample_albedo * 0.25;
+                if (scene.a <= 0.0) continue;
+                vec4 normal = texelFetch(u_mesh_normal, p, 0);
+                float height = sample_albedo.a;
+                float ny = sqrt(max(1.0 - dot(normal.xy, normal.xy), 0.0));
+                // Evaluate this face at the output pixel's center, so a tilted
+                // plane does not acquire a quarter-pixel height offset.
+                vec2 offset = (vec2(p) + 0.5 - mesh_uv * vec2(size)) * 0.5 * u_unit_per_px;
+                if (ny > 0.01) height += dot(normal.xy, vec2(offset.x, -offset.y)) / ny;
+                // Strict comparison keeps ties deterministic in scan order.
+                if (!selected || height > selected_height) {
+                    selected = true;
+                    selected_height = height;
+                    selected_normal = normal;
+                }
+            }
+        }
+        if (sc.a > 0.0) {
+            layer_over(sc, em, tr, vec4(al.rgb, sc.a), selected_normal, selected_height);
+            mesh_cover += sc.a;
+        }
+    }
 #endif
 
     // Metaball group accumulators.
@@ -756,7 +818,7 @@ void main()
     float display = dense > 1e-8 ? min(dot(emission_acc.rgb, luma) / dense, 60000.0) : 1.0;
     out_scene = scene_acc;
     out_source = vec4(density, depth);
-    out_cover = vec4(display, 0.0, 0.0, 0.0);
+    out_cover = vec4(display, relief_cover, mesh_cover, 0.0);
     out_albedo = vec4(albedo_acc.rgb, relief_acc);
     out_normal = normal_acc;
     out_visibility = vec4(0);

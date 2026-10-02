@@ -1,0 +1,9 @@
+name "ImportedFoldedCard"
+components {
+    GAME.GameGeometry3D depth=60.0 height=40.0 width=80.0
+    GAME.GameMeshAsset source="content/meshes/ImportedFoldedCard.mesh.json"
+    GAME.GameMeshSurface2D enabled=#true
+    GAME.GameShader material="ImportedFoldedCard"
+    (object)GAME.GameTransform
+    GAME.GameVisualTransform pitch=-0.25 roll=0.2 scale=1.0
+}

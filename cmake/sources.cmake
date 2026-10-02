@@ -284,6 +284,7 @@ set(RUNTIME_SUPPORT_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/render/material.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/render/shader_catalog.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/render/shader_images.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/render/mesh_asset.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/render/shader_program.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/render/particles.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/render/sdf_motion.c

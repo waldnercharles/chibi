@@ -10,10 +10,10 @@
 // comes from a coarser RGB transport on the color grid. Each quadrant keeps
 // its color's proportions at the luminance's brightness.
 //
-// A fragment pass into three render targets, which the GPU compresses: the
-// received light, the far light that bounce reflects, and each quadrant's
-// luminance. When the work grid is coarser than the canvas, near-field steps
-// come from u_near, which holds each canvas pixel's step once; see near.frag.
+// A fragment pass stores total light, far light for bounce, and the four RGB
+// quadrant contributions. When the work grid is coarser than the canvas,
+// near-field steps come from u_near, which holds each canvas pixel's step once;
+// see near.frag.
 
 // RGB emission, A optical depth per canvas pixel, mipmapped; see
 // render_material_textures.
@@ -33,9 +33,12 @@ layout(set = 2, binding = 8) uniform sampler2D u_near;
 
 layout(location = 0) out vec4 out_light;
 layout(location = 1) out vec4 out_far;
-// Luminance of the light arriving from each quadrant: from +x, +y (down the
-// texture), -x and -y. Surface lighting shades relief from these directions.
-layout(location = 2) out vec4 out_dirs;
+// RGB contributions from +x, +y (down the texture), -x and -y. Each already
+// includes its quarter weight; surface shading preserves their colors.
+layout(location = 2) out vec4 out_q0;
+layout(location = 3) out vec4 out_q1;
+layout(location = 4) out vec4 out_q2;
+layout(location = 5) out vec4 out_q3;
 
 layout(set = 3, binding = 0) uniform uniform_block
 {
@@ -59,14 +62,13 @@ layout(set = 3, binding = 0) uniform uniform_block
 #include "hrc_common.shd"
 #include "hrc/near_step.shd"
 
-vec4 add_direction(vec4 dirs, int rot, vec3 light)
+void output_quadrant(int rot, vec3 light)
 {
-	float l = dot(light, HRC_LUMA);
-	if (rot == 0) dirs.x += l;
-	else if (rot == 1) dirs.y += l;
-	else if (rot == 2) dirs.z += l;
-	else dirs.w += l;
-	return dirs;
+	vec4 value = vec4(light * 0.25, 1.0);
+	if (rot == 0) out_q0 = value;
+	else if (rot == 1) out_q1 = value;
+	else if (rot == 2) out_q2 = value;
+	else out_q3 = value;
 }
 
 // Quadrant fluence at a color pixel; nothing arrives from outside the domain.
@@ -198,7 +200,6 @@ void main()
 		float trn = near.a;
 		vec3 near_rad = near.rgb + (1.0 - trn) * bounce;
 		vec3 total = vec3(0.0), raw = vec3(0.0);
-		vec4 dirs = vec4(0.0);
 		vec4 luminance = u_split != 0 ? texelFetch(u_luminance, canvas_pos, 0) : vec4(0.0);
 		for (int rot = 0; rot < 4; rot++) {
 			vec3 far_rad = u_split != 0
@@ -210,12 +211,11 @@ void main()
 				far_rad = with_luminance(far_rad, luminance[rot]);
 			}
 			total += quadrant;
-			dirs = add_direction(dirs, rot, quadrant);
+			output_quadrant(rot, quadrant);
 			raw += far_rad;
 		}
 		out_light = vec4(total * 0.25, 1.0);
 		out_far = vec4(raw * 0.25, 1.0);
-		out_dirs = dirs * 0.25;
 		return;
 	}
 
@@ -282,7 +282,6 @@ void main()
 
 	vec3 total = vec3(0.0);
 	vec3 total_raw = vec3(0.0);
-	vec4 dirs = vec4(0.0);
 	for (int rot = 0; rot < 4; rot++) {
 		ivec2 s0 = g0;
 		vec3 r0;
@@ -344,11 +343,10 @@ void main()
 			r0 = with_luminance(r0, luminance[rot]);
 		}
 		total += quadrant;
-		dirs = add_direction(dirs, rot, quadrant);
+		output_quadrant(rot, quadrant);
 		total_raw += r0;
 	}
 
 	out_light = vec4(total * 0.25, 1.0);
 	out_far = vec4(total_raw * 0.25, 1.0);
-	out_dirs = dirs * 0.25;
 }

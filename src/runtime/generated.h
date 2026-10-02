@@ -285,7 +285,11 @@ extern int GAME_GameVisualMotion_has(const ecs_world *, ecs_entity);
 extern int GAME_GameVisualMotion_add(ecs_world *, ecs_entity, uint64_t);
 extern int GAME_GameVisualMotion_remove(ecs_world *, ecs_entity, uint64_t);
 
+extern const ecs_component_desc GAME_COMPONENT_GameMeshAsset;
+extern const GameMeshAsset *GAME_GameMeshAsset_get_const(const ecs_world *, ecs_entity);
 extern const ecs_component_desc GAME_COMPONENT_GameMeshParts;
+extern const ecs_component_desc GAME_COMPONENT_GameMeshSurface2D;
+extern const GameMeshSurface2D *GAME_GameMeshSurface2D_get_const(const ecs_world *, ecs_entity);
 extern GameMeshParts *GAME_GameMeshParts_get(ecs_world *, ecs_entity);
 extern const GameMeshParts *GAME_GameMeshParts_get_const(const ecs_world *, ecs_entity);
 extern int GAME_GameMeshParts_has(const ecs_world *, ecs_entity);

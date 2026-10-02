@@ -410,7 +410,7 @@ static bool border_targets(
                                  textures.normal,
                                  textures.cover };
         for (int target = 0; target < 5; target++) {
-            int values = BASE_W * BASE_H * (target == 4 ? 1 : 4);
+            int values = BASE_W * BASE_H * 4;
             uint16_t pixels[BASE_W * BASE_H * 4];
             if (!read_texture(targets[target], pixels, values * (int)sizeof *pixels)) {
                 return false;

@@ -588,12 +588,27 @@ static void arrange_score_add(arrange_score *total, arrange_score s)
     total->ink_length += s.ink_length;
 }
 
-/* Scores every arena2d behavior graph arranged and drawn in `style`. */
-static arrange_score arrange_arena_score(arrange_route_style style, int *graphs)
+/* Freeze the corpus that established the original budgets. New content gets
+ * its own budget instead of silently weakening those regression ceilings. */
+static arrange_score arrange_arena_score(arrange_route_style style, int *graphs, bool sweep)
 {
+    static const char *const canonical[] = {
+        "BoostEmitter",      "CameraFollow",    "CutMaterial",
+        "HudDisplay",        "HullDamage",      "MaterialImpactHealth",
+        "Movement",          "MovementEmitter", "PlayerEffects",
+        "ProjectileEffects", "ProjectileHit",   "ProjectileLifecycle",
+        "Pursuit",           "SwarmerEffects",  "Weapon"
+    };
     char **paths = NULL;
-    arrange_collect("projects/arena2d/content/behaviors", &paths);
-    arrange_sort_paths(paths);
+    if (sweep) {
+        apush(paths, strdup("test/fixtures/graph/MeshSurfaceSweep01.kdl"));
+    } else {
+        for (int i = 0; i < (int)(sizeof canonical / sizeof *canonical); i++) {
+            char path[256];
+            snprintf(path, sizeof path, "projects/arena2d/content/behaviors/%s.kdl", canonical[i]);
+            apush(paths, strdup(path));
+        }
+    }
     arrange_score total = { 0 };
     *graphs = 0;
     for (int p = 0; p < acount(paths); p++) {
@@ -631,9 +646,22 @@ static void arrange_content_checks()
         [ARRANGE_ROUTE_STRAIGHT] = { 36, 394, 74, 84500.0f },
         [ARRANGE_ROUTE_SUBWAY] = { 26, 394, 74, 86000.0f },
     };
+    /* MeshSurfaceSweep01 adds exactly five graphs. Measured ink by style is
+     * 10661, 11430, 10744 and 11044; budgets retain small rounding headroom.
+     * Its 48 bends and six flow bends are separate from the old corpus. */
+    static const struct
+    {
+        int crossings;
+        float ink;
+    } sweep_ceiling[ARRANGE_ROUTE_STYLE_COUNT] = {
+        [ARRANGE_ROUTE_CURVED] = { 2, 10750 },
+        [ARRANGE_ROUTE_ORTHOGONAL] = { 2, 11550 },
+        [ARRANGE_ROUTE_STRAIGHT] = { 2, 10850 },
+        [ARRANGE_ROUTE_SUBWAY] = { 1, 11150 },
+    };
     for (int style = 0; style < ARRANGE_ROUTE_STYLE_COUNT; style++) {
         int graphs = 0;
-        arrange_score s = arrange_arena_score(style, &graphs);
+        arrange_score s = arrange_arena_score(style, &graphs, false);
         printf(
             "arrange arena2d %-10s graphs=%d crossings=%d hits=%d overlaps=%d "
             "wire_overlaps=%d bends=%d flow_bends=%d length=%.0f ink=%.0f\n",
@@ -648,13 +676,42 @@ static void arrange_content_checks()
             s.wire_length,
             s.ink_length
         );
-        test_check(graphs > 0, "arrange scores the arena2d behaviors");
+        test_check(graphs == 42, "arrange scores the canonical 42 arena2d graphs");
         test_check(s.node_overlaps == 0 && s.wire_node_hits == 0, arrange_style_names[style]);
         test_check(s.wire_overlaps == 0, "arrange keeps arena2d wires off each other");
         test_check(s.wire_crossings <= ceiling[style].crossings, "arrange keeps arena2d crossings in budget");
         test_check(s.wire_bends <= ceiling[style].bends, "arrange keeps arena2d turns in budget");
         test_check(s.flow_bends <= ceiling[style].flow_bends, "arrange keeps arena2d execution chains straight");
         test_check(s.ink_length <= ceiling[style].ink, "arrange keeps arena2d ink in budget");
+        arrange_score motion = arrange_arena_score(style, &graphs, true);
+        printf(
+            "arrange mesh sweep %-10s graphs=%d crossings=%d hits=%d "
+            "overlaps=%d wire_overlaps=%d bends=%d flow_bends=%d length=%.0f "
+            "ink=%.0f\n",
+            arrange_style_names[style],
+            graphs,
+            motion.wire_crossings,
+            motion.wire_node_hits,
+            motion.node_overlaps,
+            motion.wire_overlaps,
+            motion.wire_bends,
+            motion.flow_bends,
+            motion.wire_length,
+            motion.ink_length
+        );
+        test_check(graphs == 5, "arrange scores the five mesh sweep fixture graphs");
+        test_check(
+            motion.node_overlaps == 0 && motion.wire_node_hits == 0 &&
+                motion.wire_overlaps == 0,
+            "arrange keeps mesh sweep nodes and wires apart"
+        );
+        test_check(
+            motion.wire_crossings <= sweep_ceiling[style].crossings &&
+                motion.wire_bends <= 48 && motion.flow_bends <= 6,
+            "arrange keeps mesh sweep crossings and turns in its separate "
+            "budget"
+        );
+        test_check(motion.ink_length <= sweep_ceiling[style].ink, "arrange keeps mesh sweep ink in its separate budget");
     }
 }
 

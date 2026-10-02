@@ -38,6 +38,7 @@
 #include "graph/nodes/conv_nodes.h"
 #include "graph/runtime/instance.h"
 #include "render/shader_catalog.h"
+#include "render/shader_images.h"
 #include "runtime/generated.h"
 #include "runtime/scenes/prototype_preview.h"
 #include "runtime/systems/system.h"
@@ -4795,6 +4796,7 @@ static char *scenario_prototype_text(const char *text, uint64_t hash)
 typedef struct
 {
     bool scene_target;
+    bool owns_file_system;
     asset_ref prototype_ref;
     size_t prototype_bytes;
     uint64_t prototype_hash;
@@ -5039,7 +5041,32 @@ static void scenario_context_free(scenario_context *context)
     afree(context->scene_prototypes);
     afree(context->scene_entities);
     game_scene_document_free(context->scene);
+    if (context->owns_file_system) {
+        render_shader_catalog_clear();
+        cf_fs_destroy();
+    }
     *context = (scenario_context){ 0 };
+}
+
+static int scenario_mount_content(const char *root, scenario_context *context, char *error, size_t error_size)
+{
+    /* Headless scenarios sample image-backed materials too. GPU previews
+       already own the virtual filesystem; only release one created here. */
+    if (!cf_fs_get_base_directory()) {
+        CF_Result initialized = cf_fs_init(NULL);
+        if (cf_is_error(initialized)) {
+            set_error(error, error_size, initialized.details);
+            return CHIBI_AUTOMATION_EXECUTION_ERROR;
+        }
+        context->owns_file_system = true;
+        render_shader_catalog_clear();
+    }
+    size_t content_size = strlen(root) + sizeof "/content";
+    char *content = xmalloc(content_size);
+    snprintf(content, content_size, "%s/content", root);
+    bool mounted = render_image_mount_content(content, error, error_size);
+    free(content);
+    return mounted ? CHIBI_AUTOMATION_OK : CHIBI_AUTOMATION_EXECUTION_ERROR;
 }
 
 static int register_preview_behavior_name(
@@ -5232,7 +5259,10 @@ static int prepare_scenario(
         return CHIBI_AUTOMATION_EXECUTION_ERROR;
     }
 
-    int result = register_shared_assets(root, context->preview, error, error_size);
+    int result = scenario_mount_content(root, context, error, error_size);
+    if (result == CHIBI_AUTOMATION_OK) {
+        result = register_shared_assets(root, context->preview, error, error_size);
+    }
     if (result != CHIBI_AUTOMATION_OK) {
         scenario_context_free(context);
         return result;
@@ -5329,7 +5359,10 @@ static int prepare_scene_scenario(
         set_error(error, error_size, "could not create scene preview");
         return CHIBI_AUTOMATION_EXECUTION_ERROR;
     }
-    status = register_shared_assets(root, context->preview, error, error_size);
+    status = scenario_mount_content(root, context, error, error_size);
+    if (status == CHIBI_AUTOMATION_OK) {
+        status = register_shared_assets(root, context->preview, error, error_size);
+    }
     if (status != CHIBI_AUTOMATION_OK) {
         scenario_context_free(context);
         return status;

@@ -11,7 +11,9 @@ typedef enum
     RENDER_PROGRAM_ARENA,
     RENDER_PROGRAM_FRAGMENT,
     RENDER_PROGRAM_RASTER,
-    RENDER_PROGRAM_RASTER_ACCUMULATE
+    RENDER_PROGRAM_RASTER_ACCUMULATE,
+    RENDER_PROGRAM_RASTER_MESH,
+    RENDER_PROGRAM_MESH_MATERIAL
 } render_program_kind;
 typedef struct render_programs render_programs;
 render_programs *render_programs_new(render_program_kind kind);

@@ -1,6 +1,8 @@
 #include "render/material_raster.h"
 
 #include "render/fullscreen.h"
+#include "render/gpu_timing.h"
+#include "render/mesh_material.h"
 #include "render/shader_catalog.h"
 #include "render/shader_program.h"
 #include "support/array.h"
@@ -28,6 +30,7 @@ _Static_assert(GPU_ENTITY_BYTES == 336, "entity GPU size");
 typedef struct
 {
     int first, last, group, program;
+    bool mesh;
     render_shader_set set;
 } material_batch;
 
@@ -35,7 +38,9 @@ struct render_material_raster
 {
     /* The first batch's programs, and later batches', which continue from
      * the previous batch's targets. */
-    render_programs *programs, *accumulate;
+    render_programs *programs, *accumulate, *mesh_composite;
+    render_mesh_material *mesh_pass;
+    render_mesh_material_actor *group_meshes;
     material_batch *batches;
     char error[256];
     CF_Material material;
@@ -98,6 +103,8 @@ void render_material_raster_free(render_material_raster *r)
     free_targets(r);
     render_programs_free(r->programs);
     render_programs_free(r->accumulate);
+    render_programs_free(r->mesh_composite);
+    render_mesh_material_free(r->mesh_pass);
     if (r->mesh.id) {
         cf_destroy_mesh(r->mesh);
     }
@@ -106,6 +113,7 @@ void render_material_raster_free(render_material_raster *r)
         cf_destroy_material(r->material);
     }
     afree(r->sorted);
+    afree(r->group_meshes);
     afree(r->tile_offsets);
     afree(r->tile_cursor);
     afree(r->tile_indices);
@@ -293,6 +301,9 @@ static bool bin_entities(
     for (int i = 0; i < acount(r->sorted); i++) {
         tile_rect rect;
         const render_material_entity *entity = &r->sorted[i];
+        if (entity->shape_type == RENDER_SHAPE_MESH) {
+            continue;
+        }
         float pad = circle_emission_filterable(entity)
                       ? circle_filter_half_width(entity->aa, view.width / r->width, view.height / r->height)
                       : 0;
@@ -322,6 +333,9 @@ static bool bin_entities(
     for (int i = 0; i < acount(r->sorted); i++) {
         tile_rect rect;
         const render_material_entity *entity = &r->sorted[i];
+        if (entity->shape_type == RENDER_SHAPE_MESH) {
+            continue;
+        }
         float pad = circle_emission_filterable(entity)
                       ? circle_filter_half_width(entity->aa, view.width / r->width, view.height / r->height)
                       : 0;
@@ -396,8 +410,7 @@ CF_Canvas render_material_canvas(int width, int height)
     CF_CanvasParams params = cf_canvas_defaults(width, height);
     params.target_count = 6;
     for (int i = 0; i < 6; i++) {
-        params.targets[i].pixel_format = i < 5 ? CF_PIXEL_FORMAT_R16G16B16A16_FLOAT
-                                               : CF_PIXEL_FORMAT_R16_FLOAT;
+        params.targets[i].pixel_format = CF_PIXEL_FORMAT_R16G16B16A16_FLOAT;
         params.targets[i].filter = CF_FILTER_LINEAR;
         params.targets[i].wrap_u = params.targets[i].wrap_v = CF_WRAP_MODE_CLAMP_TO_EDGE;
     }
@@ -434,6 +447,20 @@ static bool prepare_batches(render_material_raster *r)
     shader_error error = { 0 };
     for (int i = 0; i < acount(r->sorted); i++) {
         const render_material_entity *entity = &r->sorted[i];
+        if (entity->shape_type == RENDER_SHAPE_MESH) {
+            if (ordinary.last > ordinary.first || (!acount(r->batches) && i > 0)) {
+                apush(r->batches, ordinary);
+            }
+            int first = i;
+            while (i + 1 < acount(r->sorted) &&
+                   r->sorted[i + 1].shape_type == RENDER_SHAPE_MESH &&
+                   r->sorted[i + 1].wobble[3] == entity->wobble[3]) {
+                i++;
+            }
+            apush(r->batches, ((material_batch){ .first = first, .last = i + 1, .mesh = true }));
+            ordinary = (material_batch){ .first = i + 1 };
+            continue;
+        }
         if (entity->metaball_group) {
             continue;
         }
@@ -484,7 +511,12 @@ static bool prepare_batches(render_material_raster *r)
     }
     for (int i = 0; i < acount(r->batches); i++) {
         material_batch *batch = &r->batches[i];
-        render_programs *programs = i ? r->accumulate : r->programs;
+        if (batch->mesh && !r->mesh_composite) {
+            r->mesh_composite = render_programs_new(RENDER_PROGRAM_RASTER_MESH);
+        }
+        render_programs *programs = batch->mesh ? r->mesh_composite
+                                  : i           ? r->accumulate
+                                                : r->programs;
         batch->program = render_programs_prepare(programs, &batch->set);
         if (render_programs_error(programs)[0]) {
             snprintf(r->error, sizeof r->error, "%s", render_programs_error(programs));
@@ -496,11 +528,15 @@ static bool prepare_batches(render_material_raster *r)
     return true;
 }
 
-bool render_material_raster_draw(
+bool render_material_raster_draw_mixed(
     render_material_raster *r,
     const render_material_entity *entities,
     int count,
-    render_material_view view
+    render_material_view view,
+    ecs_world *world,
+    const render_mesh_material_actor *meshes,
+    int mesh_count,
+    float time
 )
 {
     assert(r && count >= 0 && (entities || !count));
@@ -511,8 +547,15 @@ bool render_material_raster_draw(
     }
     for (int i = 0; i < count; i++) {
         if (!isfinite(entities[i].wobble[3]) ||
-            entities[i].shape_type > RENDER_SHAPE_POLY_FILL ||
+            entities[i].shape_type > RENDER_SHAPE_MESH ||
             entities[i].point_count > 8 || entities[i].metaball_group > 4) {
+            return false;
+        }
+        if (entities[i].shape_type == RENDER_SHAPE_MESH &&
+            (!world || !meshes || !isfinite(entities[i].points[0]) ||
+             entities[i].points[0] < 0 || entities[i].points[0] >= mesh_count ||
+             entities[i].points[0] != floorf(entities[i].points[0]))) {
+            snprintf(r->error, sizeof r->error, "Invalid mesh material actor index");
             return false;
         }
     }
@@ -556,7 +599,8 @@ bool render_material_raster_draw(
             acount(r->tile_indices) * (int)sizeof(uint32_t)
         );
     }
-    if (acount(r->batches) > 1 && !r->canvases[1].id) {
+    bool needs_previous = acount(r->batches) > 1 || r->batches[0].mesh;
+    if (needs_previous && !r->canvases[1].id) {
         r->canvases[1] = render_material_canvas(r->width, r->height);
         if (!r->canvases[1].id) {
             snprintf(r->error, sizeof r->error, "Material raster could not allocate its second canvas");
@@ -578,10 +622,59 @@ bool render_material_raster_draw(
     cf_push_gpu_label("Material raster batches");
     for (int i = 0; i < acount(r->batches); i++) {
         const material_batch *batch = &r->batches[i];
+        int last = batch->mesh ? batch->first : batch->last;
         uniform(r, "u_first_entity", (void *)&batch->first, CF_UNIFORM_TYPE_INT, 1);
-        uniform(r, "u_last_entity", (void *)&batch->last, CF_UNIFORM_TYPE_INT, 1);
+        uniform(r, "u_last_entity", &last, CF_UNIFORM_TYPE_INT, 1);
         uniform(r, "u_metaball_group", (void *)&batch->group, CF_UNIFORM_TYPE_INT, 1);
-        for (int t = 0; i && t < 5; t++) {
+        if (batch->mesh) {
+            render_gpu_timing_mark("Material shapes");
+            if (!r->mesh_pass) {
+                r->mesh_pass = render_mesh_material_new();
+            }
+            aclear(r->group_meshes);
+            for (int actor = batch->first; actor < batch->last; actor++) {
+                apush(r->group_meshes, meshes[(int)r->sorted[actor].points[0]]);
+            }
+            if (!r->mesh_pass ||
+                !render_mesh_material_resize(r->mesh_pass, r->width, r->height) ||
+                !render_mesh_material_draw(
+                    r->mesh_pass,
+                    world,
+                    r->group_meshes,
+                    acount(r->group_meshes),
+                    view,
+                    time
+                )) {
+                snprintf(
+                    r->error,
+                    sizeof r->error,
+                    "Mesh material: %s",
+                    r->mesh_pass ? render_mesh_material_error(r->mesh_pass) : "resource allocation failed"
+                );
+                cf_pop_gpu_label();
+                return false;
+            }
+            render_gpu_timing_mark("Mesh material");
+            render_mesh_material_textures textures = render_mesh_material_get_textures(
+                r->mesh_pass
+            );
+            cf_material_set_texture_fs(r->material, "u_mesh_scene", textures.scene);
+            cf_material_set_texture_fs(r->material, "u_mesh_emission", textures.emission);
+            cf_material_set_texture_fs(
+                r->material,
+                "u_mesh_absorption",
+                textures.absorption
+            );
+            cf_material_set_texture_fs(r->material, "u_mesh_albedo", textures.albedo);
+            cf_material_set_texture_fs(r->material, "u_mesh_normal", textures.normal);
+            float rect[4];
+            render_mesh_material_rect(r->mesh_pass, rect);
+            uniform(r, "u_mesh_rect", rect, CF_UNIFORM_TYPE_FLOAT4, 1);
+        }
+        // WebGL validates every active sampler even when the leading mesh
+        // skips previous-layer reads. Bind the other canvas rather than
+        // retaining last frame's bindings, which may alias this draw target.
+        for (int t = 0; (i || batch->mesh) && t < 5; t++) {
             cf_material_set_texture_fs(
                 r->material,
                 previous[t],
@@ -589,7 +682,9 @@ bool render_material_raster_draw(
             );
         }
         CF_Shader shader = render_programs_bind_raster(
-            i ? r->accumulate : r->programs,
+            batch->mesh ? r->mesh_composite
+            : i         ? r->accumulate
+                        : r->programs,
             batch->program,
             r->material
         );
@@ -600,10 +695,23 @@ bool render_material_raster_draw(
         cf_apply_viewport(0, 0, r->width, r->height);
         cf_apply_scissor(0, 0, r->width, r->height);
         cf_draw_elements();
+        if (batch->mesh) {
+            render_gpu_timing_mark("Mesh composition");
+        }
     }
     cf_pop_gpu_label();
     r->result = (acount(r->batches) - 1) & 1;
     return true;
+}
+
+bool render_material_raster_draw(
+    render_material_raster *r,
+    const render_material_entity *entities,
+    int count,
+    render_material_view view
+)
+{
+    return render_material_raster_draw_mixed(r, entities, count, view, NULL, NULL, 0, 0);
 }
 
 render_material_textures render_material_raster_textures(const render_material_raster *r)

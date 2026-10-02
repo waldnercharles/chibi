@@ -1,0 +1,141 @@
+version 3
+name "MeshSurfaceSweep01"
+id_counter 239
+description "Deterministic stationary specimen: 12-second heading rotation, independent +/-30-degree pitch and roll sweeps; no gameplay input."
+owner_type "ecs.entity"
+(array)variables {
+    - id=1 name="elapsed" type="float"
+}
+(array)graphs {
+    - {
+        kind "event"
+        name ""
+        (array)nodes {
+            - {
+                id 2
+                type "Event"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_name "Tick"
+                outputs {
+                    DeltaSeconds id=4 type="float" kind="data"
+                }
+            }
+            - {
+                id 17
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 5
+                reference_name "elapsed += dt"
+                inputs {
+                    Exec id=21 kind="exec"
+                    elapsed {
+                        id 18
+                        type "float"
+                        binding kind="variable" variable_id=1 source_asset="MeshSurfaceSweep01"
+                    }
+                    dt {
+                        id 19
+                        type "double"
+                        binding kind="delta_time"
+                    }
+                }
+                outputs {
+                    Then id=22 kind="exec"
+                    Result id=20 type="float"
+                }
+            }
+            - {
+                id 55
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 40
+                reference_name "heading = elapsed * 0.5235987756"
+                inputs {
+                    Exec id=59 kind="exec"
+                    heading {
+                        id 56
+                        type "float"
+                        binding kind="component_field" component="GAME.GameOrientation" field="radians"
+                    }
+                    elapsed {
+                        id 57
+                        type "double"
+                        binding kind="variable" variable_id=1 source_asset="MeshSurfaceSweep01"
+                    }
+                }
+                outputs {
+                    Then id=60 kind="exec"
+                    Result id=58 type="float"
+                }
+            }
+            - {
+                id 114
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 89
+                reference_name "pitch = 0.5235987756 * sin(elapsed * 0.7853981634)"
+                inputs {
+                    Exec id=118 kind="exec"
+                    pitch {
+                        id 115
+                        type "float"
+                        binding kind="component_field" component="GAME.GameVisualTransform" field="pitch"
+                    }
+                    elapsed {
+                        id 116
+                        type "double"
+                        binding kind="variable" variable_id=1 source_asset="MeshSurfaceSweep01"
+                    }
+                }
+                outputs {
+                    Then id=119 kind="exec"
+                    Result id=117 type="float"
+                }
+            }
+            - {
+                id 189
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 164
+                reference_name "roll = 0.5235987756 * sin(elapsed * 1.0471975512)"
+                inputs {
+                    Exec id=193 kind="exec"
+                    roll {
+                        id 190
+                        type "float"
+                        binding kind="component_field" component="GAME.GameVisualTransform" field="roll"
+                    }
+                    elapsed {
+                        id 191
+                        type "double"
+                        binding kind="variable" variable_id=1 source_asset="MeshSurfaceSweep01"
+                    }
+                }
+                outputs {
+                    Then id=194 kind="exec"
+                    Result id=192 type="float"
+                }
+            }
+        }
+        (array)edges {
+            - from="2.Then" to="17.Exec"
+            - from="17.Then" to="55.Exec"
+            - from="55.Then" to="114.Exec"
+            - from="114.Then" to="189.Exec"
+        }
+    }
+    - id=5 kind="function" math_expression="elapsed += dt" entry_id=24
+    - id=40 kind="function" math_expression="heading = elapsed * 0.5235987756" entry_id=62
+    - id=89 kind="function" math_expression="pitch = 0.5235987756 * sin(elapsed * 0.7853981634)" entry_id=121
+    - id=164 kind="function" math_expression="roll = 0.5235987756 * sin(elapsed * 1.0471975512)" entry_id=196
+}

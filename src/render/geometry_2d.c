@@ -1,5 +1,8 @@
 #include "render/geometry_2d.h"
 
+#include "render/mesh_surface.h"
+#include "runtime/generated.h"
+
 #include <assert.h>
 #include <math.h>
 
@@ -7,6 +10,21 @@ static bool finite_geometry(const GameGeometry3D *geometry)
 {
     return geometry && isfinite(geometry->width) && isfinite(geometry->depth) &&
            geometry->width > 0 && geometry->depth > 0;
+}
+
+bool render_geometry_2d_mesh_bounds(
+    const ecs_world *world,
+    ecs_entity entity,
+    const GameTransform *position,
+    CF_V2 *min,
+    CF_V2 *max,
+    char *error,
+    size_t size
+)
+{
+    const GameMeshSurface2D *mesh = GAME_GameMeshSurface2D_get_const(world, entity);
+    return mesh && mesh->enabled &&
+           render_mesh_surface_bounds(world, entity, position, min, max, error, size);
 }
 
 bool render_geometry_2d_project(

@@ -76,8 +76,7 @@ struct render_radiance
     double window_sum, rung_ratio[HRC_MAX_RUNGS], over_cost, cost_above;
     /* Borrowed material targets; see render_material_textures. */
     CF_Texture scene, source, albedo, black;
-    /* Gather's targets: received light, the far light bounce reflects, and
-     * per-quadrant arriving luminance; see gather.frag. */
+    /* Gather: received light, far light for bounce, and four RGB quadrants. */
     CF_Canvas gather_canvas;
     /* Each canvas pixel's near-field step, which gather reads when its work
      * grid is coarser than the canvas; see near.frag. */
@@ -101,19 +100,20 @@ struct render_radiance
     CF_Texture merge_weights;
     /* Each quadrant's cascade-0 fluence in world orientation, for gather. */
     CF_Canvas quadrant_image[4];
-    CF_Shader surface_seed_shd, surface_reduce_shd, surface_blur_shd, trace_shd,
-        extend_shd, merge_shd, resolve_shd, prefilter_shd, downsample_shd,
-        near_shd, gather_shd, filter_shd, bounce_shd, composite_shd;
+    CF_Shader surface_seed_shd, surface_reduce_shd, surface_blur_shd,
+        surface_filter_shd, trace_shd, extend_shd, merge_shd, resolve_shd,
+        prefilter_shd, downsample_shd, near_shd, gather_shd, filter_shd,
+        bounce_shd, composite_shd;
     /* Bounce blends into its image; every other pass overwrites. */
     CF_Material pass_material, bounce_material;
     CF_Mesh pass_mesh;
-    /* Received light around solids at block resolution: [0] holds the result,
-     * [1] the intermediate blur. RGB is light times openness, A openness; the
-     * direction textures hold per-quadrant luminance times openness. */
+    /* Four RGB quadrants around solids at block resolution, each with
+     * openness in alpha. [0] holds the result, [1] the intermediate blur. */
     CF_Canvas surface_canvas[2];
     /* Blocks of 4 pixels or more first seed 2-pixel blocks here. */
-    CF_Canvas surface_half;
-    int surface_w, surface_h, surface_block;
+    CF_Canvas surface_half, surface_history[2];
+    int surface_w, surface_h, surface_block, surface_ping;
+    bool surface_has_history;
 };
 typedef render_radiance HRC;
 #define HRC_LEVEL_NAMES(phase)                                                 \
@@ -638,6 +638,10 @@ static void s_destroy_surface(HRC *hrc)
     s_destroy_canvas(&hrc->surface_canvas[0]);
     s_destroy_canvas(&hrc->surface_canvas[1]);
     s_destroy_canvas(&hrc->surface_half);
+    s_destroy_canvas(&hrc->surface_history[0]);
+    s_destroy_canvas(&hrc->surface_history[1]);
+    hrc->surface_ping = 0;
+    hrc->surface_has_history = false;
     hrc->surface_w = hrc->surface_h = hrc->surface_block = 0;
 }
 
@@ -649,15 +653,16 @@ static bool s_surface_resources(HRC *hrc, int width, int height, int block)
     }
     s_destroy_surface(hrc);
     for (int i = 0; i < 2; i++) {
-        hrc->surface_canvas[i] = s_make_targets(width, height, 2, CF_FILTER_LINEAR);
-        if (!hrc->surface_canvas[i].id) {
+        hrc->surface_canvas[i] = s_make_targets(width, height, 4, CF_FILTER_LINEAR);
+        hrc->surface_history[i] = s_make_targets(width, height, 4, CF_FILTER_LINEAR);
+        if (!hrc->surface_canvas[i].id || !hrc->surface_history[i].id) {
             s_destroy_surface(hrc);
             return false;
         }
     }
     if (block >= 4) {
         int half = block / 2;
-        hrc->surface_half = s_make_targets(width * half, height * half, 2, CF_FILTER_LINEAR);
+        hrc->surface_half = s_make_targets(width * half, height * half, 4, CF_FILTER_LINEAR);
         if (!hrc->surface_half.id) {
             s_destroy_surface(hrc);
             return false;
@@ -669,17 +674,53 @@ static bool s_surface_resources(HRC *hrc, int width, int height, int block)
     return true;
 }
 
+static void s_surface_inputs(HRC *hrc, CF_Canvas canvas, int first)
+{
+    static const char *const names[] = { "u_q0", "u_q1", "u_q2", "u_q3" };
+    for (int i = 0; i < 4; i++) {
+        cf_material_set_texture_fs(
+            hrc->pass_material,
+            names[i],
+            cf_canvas_get_target2(canvas, first + i)
+        );
+    }
+}
+
 /* Blurs surface_canvas[from] along one axis into the other canvas. */
 static void s_dispatch_surface_blur(HRC *hrc, int from, bool vertical, float sigma)
 {
     CF_Material mat = hrc->pass_material;
-    cf_material_set_texture_fs(mat, "u_light", cf_canvas_get_target2(hrc->surface_canvas[from], 0));
-    cf_material_set_texture_fs(mat, "u_dirs", cf_canvas_get_target2(hrc->surface_canvas[from], 1));
+    s_surface_inputs(hrc, hrc->surface_canvas[from], 0);
     int params[3] = { hrc->surface_w, hrc->surface_h, vertical };
     const char *names[3] = { "u_width", "u_height", "u_vertical" };
     s_set_ints(mat, names, params, 3);
     cf_material_set_uniform_fs(mat, "u_sigma", &sigma, CF_UNIFORM_TYPE_FLOAT, 1);
     s_draw_region(hrc, hrc->surface_blur_shd, hrc->surface_canvas[1 - from], hrc->surface_w, hrc->surface_h);
+}
+
+/* Stabilize the four directions on the small surface grid, retaining current
+ * openness so history never replaces current geometry coverage. */
+static void s_dispatch_surface_filter(HRC *hrc, int block)
+{
+    CF_Material mat = hrc->pass_material;
+    int prev = hrc->surface_ping, curr = 1 - prev;
+    s_surface_inputs(hrc, hrc->surface_canvas[0], 0);
+    static const char *const names[] = { "u_prev0", "u_prev1", "u_prev2", "u_prev3" };
+    for (int i = 0; i < 4; i++) {
+        cf_material_set_texture_fs(mat, names[i], cf_canvas_get_target2(hrc->surface_history[prev], i));
+    }
+    float texel[2] = { 1.0f / hrc->surface_w, 1.0f / hrc->surface_h };
+    CF_V2 offset = { hrc->history_offset.x * hrc->canvas_w / (hrc->surface_w * block),
+                     hrc->history_offset.y * hrc->canvas_h / (hrc->surface_h * block) };
+    float hysteresis = fminf(fmaxf(hrc->radiance_hysteresis, 0.01f), 1.0f);
+    int valid = hrc->history_valid && hrc->surface_has_history;
+    cf_material_set_uniform_fs(mat, "u_texel_size", texel, CF_UNIFORM_TYPE_FLOAT2, 1);
+    cf_material_set_uniform_fs(mat, "u_history_offset", &offset, CF_UNIFORM_TYPE_FLOAT2, 1);
+    cf_material_set_uniform_fs(mat, "u_hysteresis", &hysteresis, CF_UNIFORM_TYPE_FLOAT, 1);
+    cf_material_set_uniform_fs(mat, "u_history_valid", &valid, CF_UNIFORM_TYPE_INT, 1);
+    s_draw_region(hrc, hrc->surface_filter_shd, hrc->surface_history[curr], hrc->surface_w, hrc->surface_h);
+    hrc->surface_ping = curr;
+    hrc->surface_has_history = true;
 }
 
 /* Blurs received light over open space at the coarsest block size, up to 8
@@ -690,6 +731,7 @@ static float s_dispatch_surface(HRC *hrc, render_view_2d view, int *block)
 {
     float radius = hrc->authored_lighting ? hrc->lighting.surface_radius : 0;
     if (radius <= 0 || !hrc->surface_seed_shd.id || view.width <= 0) {
+        hrc->surface_has_history = false;
         return 0;
     }
     float sigma = .5f * radius * (float)hrc->canvas_w / view.width;
@@ -708,16 +750,14 @@ static float s_dispatch_surface(HRC *hrc, render_view_2d view, int *block)
     int seed = *block >= 4 ? 2 : *block;
     CF_Canvas seeded = seed < *block ? hrc->surface_half : hrc->surface_canvas[0];
     CF_Material mat = hrc->pass_material;
-    cf_material_set_texture_fs(mat, "u_fluence", s_radiance(hrc));
+    s_surface_inputs(hrc, hrc->gather_canvas, 2);
     cf_material_set_texture_fs(mat, "u_scene", hrc->scene);
-    cf_material_set_texture_fs(mat, "u_dirs", cf_canvas_get_target2(hrc->gather_canvas, 2));
     int params[3] = { hrc->canvas_w, hrc->canvas_h, seed };
     const char *names[3] = { "u_canvas_w", "u_canvas_h", "u_block" };
     s_set_ints(mat, names, params, 3);
     s_draw_region(hrc, hrc->surface_seed_shd, seeded, width * (*block / seed), height * (*block / seed));
     if (seed < *block) {
-        cf_material_set_texture_fs(mat, "u_light", cf_canvas_get_target2(hrc->surface_half, 0));
-        cf_material_set_texture_fs(mat, "u_dirs", cf_canvas_get_target2(hrc->surface_half, 1));
+        s_surface_inputs(hrc, hrc->surface_half, 0);
         int reduce = *block / seed;
         cf_material_set_uniform_fs(mat, "u_block", &reduce, CF_UNIFORM_TYPE_INT, 1);
         s_draw_region(hrc, hrc->surface_reduce_shd, hrc->surface_canvas[0], width, height);
@@ -726,6 +766,7 @@ static float s_dispatch_surface(HRC *hrc, render_view_2d view, int *block)
     float level_sigma = sigma / (float)*block;
     s_dispatch_surface_blur(hrc, 0, false, level_sigma);
     s_dispatch_surface_blur(hrc, 1, true, level_sigma);
+    s_dispatch_surface_filter(hrc, *block);
     return level_sigma;
 }
 
@@ -838,6 +879,7 @@ static render_radiance *s_new(hrc_role role)
         hrc->surface_seed_shd = s_make_pass_shader("hrc/surface_seed.frag");
         hrc->surface_reduce_shd = s_make_pass_shader("hrc/surface_reduce.frag");
         hrc->surface_blur_shd = s_make_pass_shader("hrc/surface_blur.frag");
+        hrc->surface_filter_shd = s_make_pass_shader("hrc/surface_filter.frag");
         hrc->bounce_shd = s_make_pass_shader("hrc/bounce.frag");
         hrc->bounce_material = cf_make_material();
         CF_RenderState blend = cf_render_state_defaults();
@@ -851,9 +893,9 @@ static render_radiance *s_new(hrc_role role)
             cf_texture_update(hrc->black, &black, sizeof black);
         }
         ok = ok && hrc->prefilter_shd.id && hrc->near_shd.id &&
-             hrc->gather_shd.id && hrc->filter_shd.id &&
-             hrc->surface_seed_shd.id && hrc->surface_reduce_shd.id &&
-             hrc->surface_blur_shd.id && hrc->bounce_shd.id &&
+             hrc->gather_shd.id && hrc->filter_shd.id && hrc->surface_seed_shd.id &&
+             hrc->surface_reduce_shd.id && hrc->surface_blur_shd.id &&
+             hrc->surface_filter_shd.id && hrc->bounce_shd.id &&
              hrc->bounce_material.id && hrc->composite_shd.id && hrc->black.id;
     }
     hrc->scale = .5f;
@@ -887,13 +929,13 @@ void render_radiance_free(render_radiance *hrc)
     s_destroy_work_resources(hrc);
     destroy_images(hrc);
     s_destroy_surface(hrc);
-    CF_Shader passes[] = { hrc->trace_shd,        hrc->extend_shd,
-                           hrc->merge_shd,        hrc->resolve_shd,
-                           hrc->prefilter_shd,    hrc->downsample_shd,
-                           hrc->near_shd,         hrc->gather_shd,
-                           hrc->filter_shd,       hrc->bounce_shd,
-                           hrc->surface_seed_shd, hrc->surface_reduce_shd,
-                           hrc->surface_blur_shd, hrc->composite_shd };
+    CF_Shader passes[] = {
+        hrc->trace_shd,        hrc->extend_shd,         hrc->merge_shd,
+        hrc->resolve_shd,      hrc->prefilter_shd,      hrc->downsample_shd,
+        hrc->near_shd,         hrc->gather_shd,         hrc->filter_shd,
+        hrc->bounce_shd,       hrc->surface_seed_shd,   hrc->surface_reduce_shd,
+        hrc->surface_blur_shd, hrc->surface_filter_shd, hrc->composite_shd
+    };
     for (int i = 0; i < (int)(sizeof passes / sizeof *passes); i++) {
         if (passes[i].id) {
             cf_destroy_shader(passes[i]);
@@ -920,6 +962,7 @@ void render_radiance_reset(render_radiance *hrc)
     hrc->frame_count = 0;
     hrc->radiance_ping = 0;
     hrc->has_history = hrc->history_valid = false;
+    hrc->surface_has_history = false;
     if (!hrc->canvas_w) {
         return;
     }
@@ -998,7 +1041,7 @@ bool render_radiance_resize(render_radiance *hrc, int width, int height)
         hrc->radiance_canvas[0] = s_make_image(radiance_w, radiance_h);
         hrc->radiance_canvas[1] = s_make_image(radiance_w, radiance_h);
         /* Surface lighting filters gather's per-quadrant luminance. */
-        hrc->gather_canvas = s_make_targets(radiance_w, radiance_h, 3, CF_FILTER_LINEAR);
+        hrc->gather_canvas = s_make_targets(radiance_w, radiance_h, 6, CF_FILTER_LINEAR);
         hrc->near_canvas = s_make_level(width, height, CF_PIXEL_FORMAT_R16G16B16A16_FLOAT);
         ok = hrc->bounce_canvas.id && hrc->radiance_canvas[0].id &&
              hrc->radiance_canvas[1].id && hrc->gather_canvas.id &&
@@ -1476,14 +1519,18 @@ bool render_radiance_draw(HRC *hrc, render_radiance_inputs inputs, render_view_2
     cf_draw_set_texture("background_tex", inputs.background.id ? inputs.background : hrc->black);
     cf_draw_set_texture("visibility_tex", inputs.material.visibility);
     cf_draw_set_texture("cover_tex", inputs.material.cover);
-    cf_draw_set_texture(
-        "surface_tex",
-        surface_sigma > 0 ? cf_canvas_get_target2(hrc->surface_canvas[0], 0) : hrc->black
-    );
-    cf_draw_set_texture(
-        "surface_dir_tex",
-        surface_sigma > 0 ? cf_canvas_get_target2(hrc->surface_canvas[0], 1) : hrc->black
-    );
+    static const char *const surface_names[] = { "surface_q0",
+                                                 "surface_q1",
+                                                 "surface_q2",
+                                                 "surface_q3" };
+    for (int i = 0; i < 4; i++) {
+        cf_draw_set_texture(
+            surface_names[i],
+            surface_sigma > 0
+                ? cf_canvas_get_target2(hrc->surface_history[hrc->surface_ping], i)
+                : hrc->black
+        );
+    }
     float world_per_px = view.width / (float)hrc->canvas_w;
     cf_draw_set_uniform("world_per_px", &world_per_px, CF_UNIFORM_TYPE_FLOAT, 1);
     float reconstruction_threshold = lighting.upscale_threshold;
@@ -1527,8 +1574,10 @@ bool render_radiance_draw(HRC *hrc, render_radiance_inputs inputs, render_view_2
         "background_tex",
         "visibility_tex",
         "cover_tex",
-        "surface_tex",
-        "surface_dir_tex"
+        "surface_q0",
+        "surface_q1",
+        "surface_q2",
+        "surface_q3"
     );
     cf_pop_gpu_label();
     render_gpu_timing_mark("Composite");

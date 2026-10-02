@@ -145,6 +145,8 @@ typedef struct kit kit;
 kit *test_kit_create(void *context, const char *document);
 extern void test_scene_debug();
 extern void test_appearance_geometry();
+extern void test_mesh_surface();
+extern void test_mesh_asset();
 extern void test_orientation();
 extern void test_movement_input();
 extern void test_movement_trail();

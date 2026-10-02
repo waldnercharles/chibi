@@ -16,6 +16,8 @@ typedef struct
     float crop_min_v;
     float crop_max_u;
     float crop_max_v;
+    /* Mesh projection around the unpadded camera center. Zero is orthographic. */
+    float focal_distance, center_x, center_y;
 } render_view_2d;
 
 typedef struct

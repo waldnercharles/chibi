@@ -3,6 +3,7 @@
 
 #include "platform/cute.h"
 #include "render/view_2d.h"
+#include "runtime/generated.h"
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -17,7 +18,9 @@ enum
     RENDER_SHAPE_TRI,
     RENDER_SHAPE_POLY,
     RENDER_SHAPE_DIAMOND,
-    RENDER_SHAPE_POLY_FILL
+    RENDER_SHAPE_POLY_FILL,
+    /* Ordered mesh actor; points[0] indexes the draw call's mesh actors. */
+    RENDER_SHAPE_MESH
 };
 
 /* Matches shaders/entity.shd std430 layout. Colors are straight linear RGBA,
@@ -68,7 +71,7 @@ typedef struct
      * sources; see hrc/source_average.shd. Mipmapped. */
     CF_Texture source;
     /* RGB albedo; A material height (world units) times coverage, whose
-     * coverage is scene's alpha where no fluid covers the solid. */
+     * coverage is cover's G channel, preserved under fluid. */
     CF_Texture albedo;
     /* Solids: xy bump tilt in world axes (Y up), z edge-light gain, w gloss
      * (one minus roughness). Liquids: xy surface normal, negative z refraction
@@ -79,13 +82,21 @@ typedef struct
     CF_Texture visibility;
     /* R: display's scale from source's emission density to emission
      * premultiplied by coverage. Absorbers emit their radiance times their
-     * optical depth (hrc/source_average.shd); clear emitters' scale is one. */
+     * optical depth (hrc/source_average.shd); clear emitters' scale is one.
+     * G: geometry coverage for relief height. B: mesh geometry coverage;
+     * imported normals need no procedural silhouette bevel. A: reserved. */
     CF_Texture cover;
 } render_material_textures;
 
 typedef render_view_2d render_material_view;
 
 typedef struct render_material_raster render_material_raster;
+
+typedef struct
+{
+    ecs_entity entity;
+    GameTransform position;
+} render_mesh_material_actor;
 
 /* Requires Cute app and shader directory set to render/shaders. NULL/false
  * reports unavailable GPU resources. The renderer owns all returned textures.
@@ -99,6 +110,16 @@ bool render_material_raster_draw(
     const render_material_entity *entities,
     int count,
     render_material_view view
+);
+bool render_material_raster_draw_mixed(
+    render_material_raster *raster,
+    const render_material_entity *entities,
+    int count,
+    render_material_view view,
+    ecs_world *world,
+    const render_mesh_material_actor *meshes,
+    int mesh_count,
+    float time
 );
 render_material_textures render_material_raster_textures(const render_material_raster *raster);
 /* The canvas holding those targets, for passes that add to them. */

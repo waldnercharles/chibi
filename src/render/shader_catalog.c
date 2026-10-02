@@ -2,6 +2,7 @@
 
 #include "graph/document/serialize.h"
 #include "graph/runtime/flow.h"
+#include "render/mesh_asset.h"
 #include "render/shader_images.h"
 #include "runtime/generated.h"
 #include "support/array.h"
@@ -723,6 +724,7 @@ void render_shader_catalog_clear()
     }
     afree(assets);
     render_images_clear();
+    render_mesh_assets_clear();
     for (int i = 0; i < acount(overrides); i++) {
         free(overrides[i].name);
     }

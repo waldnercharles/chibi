@@ -589,6 +589,20 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameVisualMotion)
 }
 GameVisualMotion;
 
+/* Opts a 3D visual into the planar material renderer; collision remains 2D. */
+typedef NODE_COMPONENT_TYPE_DENSE(GameMeshSurface2D)
+{
+    bool enabled;
+}
+GameMeshSurface2D;
+
+/* Optional imported triangle geometry; Surface graphs read its exported UVs. */
+typedef NODE_COMPONENT_TYPE_DENSE(GameMeshAsset)
+{
+    const char *source;
+}
+GameMeshAsset;
+
 typedef NODE_COMPONENT_TYPE_DENSE(GameMeshParts)
 {
     const char *parts;
@@ -700,6 +714,8 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameCamera)
     float height;
     CF_V2 offset;
     bool disabled;
+    /* Zero is orthographic; positive distance places the mesh camera on +Y. */
+    float focal_distance;
 }
 GameCamera;
 

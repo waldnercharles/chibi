@@ -3,6 +3,8 @@
 #include "platform/cute.h"
 #include "render/appearance_geometry.h"
 #include "render/arena3d.h"
+#include "render/geometry_2d.h"
+#include "render/mesh_surface.h"
 #include "render/sdf_motion.h"
 #include "render/shader_catalog.h"
 #include "render/ui.h"
@@ -11,6 +13,7 @@
 
 #include <assert.h>
 #include <errno.h>
+#include <limits.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -70,6 +73,30 @@ static bool appearance_bounds(
            isfinite(out->max.x) && isfinite(out->max.y);
 }
 
+static bool visual_bounds(const ecs_world *world, ecs_entity entity, bool effects, CF_Aabb *bounds)
+{
+    const GameMeshSurface2D *mesh = GAME_GameMeshSurface2D_get_const(world, entity);
+    if (mesh && mesh->enabled) {
+        CF_V2 min, max;
+        char error[128];
+        if (!render_geometry_2d_mesh_bounds(world, entity, NULL, &min, &max, error, sizeof error)) {
+            return false;
+        }
+        *bounds = (CF_Aabb){ { min.x, -max.y }, { max.x, -min.y } };
+        return true;
+    }
+    const GameAppearance *appearance = GAME_GameAppearance_get_const(world, entity);
+    return appearance && appearance_bounds(
+                             GAME_GameTransform_get_const(world, entity),
+                             appearance,
+                             GAME_GameShader_get_const(world, entity),
+                             actor_orientation(world, entity),
+                             GAME_GameSdfMotion_get_const(world, entity),
+                             effects,
+                             bounds
+                         );
+}
+
 static void fit_arena_view(engine_viewport *viewport, ecs_world *world, ecs_entity only)
 {
     ecs_component_id required[] = { GAME_COMPONENT_GameTransform.id,
@@ -114,10 +141,9 @@ void fit_scene_view(engine_viewport *viewport, ecs_world *world, ecs_entity only
         fit_arena_view(viewport, world, only);
         return;
     }
-    ecs_component_id required[] = { GAME_COMPONENT_GameTransform.id,
-                                    GAME_COMPONENT_GameAppearance.id };
+    ecs_component_id required[] = { GAME_COMPONENT_GameTransform.id };
     ecs_query query;
-    if (ecs_query_begin(world, &query, required, 2) != ECS_OK) {
+    if (ecs_query_begin(world, &query, required, 1) != ECS_OK) {
         return;
     }
     CF_Aabb total = { 0 };
@@ -133,15 +159,7 @@ void fit_scene_view(engine_viewport *viewport, ecs_world *world, ecs_entity only
             continue;
         }
         CF_Aabb bounds;
-        if (!appearance_bounds(
-                GAME_GameTransform_get_const(world, entity),
-                GAME_GameAppearance_get_const(world, entity),
-                GAME_GameShader_get_const(world, entity),
-                actor_orientation(world, entity),
-                GAME_GameSdfMotion_get_const(world, entity),
-                true,
-                &bounds
-            )) {
+        if (!visual_bounds(world, entity, true, &bounds)) {
             continue;
         }
         if (!found) {
@@ -167,58 +185,82 @@ void fit_scene_view(engine_viewport *viewport, ecs_world *world, ecs_entity only
 
 static ecs_entity pick_scene_entity(app_scene_authoring *scene, float x, float y)
 {
-    ecs_component_id required[] = { GAME_COMPONENT_GameTransform.id,
-                                    GAME_COMPONENT_GameAppearance.id };
+    ecs_component_id required[] = { GAME_COMPONENT_GameTransform.id };
     ecs_query query;
-    if (ecs_query_begin(scene->world, &query, required, 2) != ECS_OK) {
+    if (ecs_query_begin(scene->world, &query, required, 1) != ECS_OK) {
         return (ecs_entity){ 0 };
     }
     ecs_entity picked = { 0 };
+    int picked_layer = INT_MIN;
     ecs_entity entity;
     while (ecs_query_next(&query, &entity)) {
+        const GameRenderState *state = GAME_GameRenderState_get_const(scene->world, entity);
+        if (state && state->hidden) {
+            continue;
+        }
+        const GameMeshSurface2D *mesh = GAME_GameMeshSurface2D_get_const(scene->world, entity);
         const GameAppearance *appearance = GAME_GameAppearance_get_const(scene->world, entity);
-        const GameTransform *transform = GAME_GameTransform_get_const(scene->world, entity);
-        CF_Aabb bounds;
-        float radians = actor_orientation(scene->world, entity);
-        const GameSdfMotion *motion = GAME_GameSdfMotion_get_const(scene->world, entity);
-        CF_V2 local;
-        const GameShader *shader = GAME_GameShader_get_const(scene->world, entity);
-        bool custom_shape = shader &&
-                            render_shader_is_shape(render_shader_find(shader->shape));
-        GameAppearance selectable = *appearance;
-        if (selectable.shape == GAME_SHAPE_STROKED_CHEVRON) {
-            selectable.shape = GAME_SHAPE_CHEVRON;
-        }
-        if (!appearance_bounds(transform, appearance, shader, radians, motion, false, &bounds) ||
-            !game_appearance_rotate_point(
-                (CF_V2){ x - transform->x, y + transform->y },
-                -radians,
-                &local
-            ) ||
-            (motion && !game_sdf_motion_warp(motion, local, &local)) ||
-            !(custom_shape ? render_shader_contains(
-                                 shader,
-                                 scene->world,
-                                 entity,
-                                 (float[2]){ local.x, local.y },
-                                 (float[2]){ x, y },
-                                 app_scene_renderer_time(scene->renderer)
-                             )
-                           : game_appearance_contains(&selectable, local))) {
-            continue;
-        }
-        /* The renderer uses this same ECS query order; the last drawn hit
-         * wins, regardless of whether it was authored or spawned at runtime. */
-        if (game_entities_owns(scene->live->entities, entity)) {
-            picked = entity;
-            continue;
-        }
-        for (int i = 0; i < acount(scene->actors); i++) {
-            if (ecs_entity_to_u64(scene->actors[i].entity) == ecs_entity_to_u64(entity)) {
-                picked = entity;
-                break;
+        if (mesh && mesh->enabled) {
+            render_mesh_surface surface = { 0 };
+            char error[128];
+            float height;
+            bool hit = render_mesh_surface_build(scene->world, entity, NULL, &surface, error, sizeof error) &&
+                       render_mesh_surface_pick(&surface, (CF_V2){ x, -y }, &height);
+            render_mesh_surface_free(&surface);
+            if (!hit) {
+                continue;
+            }
+        } else {
+            if (!appearance) {
+                continue;
+            }
+            const GameTransform *transform = GAME_GameTransform_get_const(scene->world, entity);
+            CF_Aabb bounds;
+            float radians = actor_orientation(scene->world, entity);
+            const GameSdfMotion *motion = GAME_GameSdfMotion_get_const(scene->world, entity);
+            CF_V2 local;
+            const GameShader *shader = GAME_GameShader_get_const(scene->world, entity);
+            bool custom_shape = shader &&
+                                render_shader_is_shape(render_shader_find(shader->shape));
+            GameAppearance selectable = *appearance;
+            if (selectable.shape == GAME_SHAPE_STROKED_CHEVRON) {
+                selectable.shape = GAME_SHAPE_CHEVRON;
+            }
+            if (!appearance_bounds(transform, appearance, shader, radians, motion, false, &bounds) ||
+                !game_appearance_rotate_point(
+                    (CF_V2){ x - transform->x, y + transform->y },
+                    -radians,
+                    &local
+                ) ||
+                (motion && !game_sdf_motion_warp(motion, local, &local)) ||
+                !(custom_shape ? render_shader_contains(
+                                     shader,
+                                     scene->world,
+                                     entity,
+                                     (float[2]){ local.x, local.y },
+                                     (float[2]){ x, y },
+                                     app_scene_renderer_time(scene->renderer)
+                                 )
+                               : game_appearance_contains(&selectable, local))) {
+                continue;
             }
         }
+        bool editable = game_entities_owns(scene->live->entities, entity);
+        for (int i = 0; !editable && i < acount(scene->actors); i++) {
+            editable = ecs_entity_to_u64(scene->actors[i].entity) ==
+                       ecs_entity_to_u64(entity);
+        }
+        if (!editable) {
+            continue;
+        }
+        int layer = appearance ? appearance->layer : 0;
+        /* Match the renderer's authored layer, then stable entity-slot order. */
+        if (picked.slot && (layer < picked_layer ||
+                            (layer == picked_layer && entity.slot <= picked.slot))) {
+            continue;
+        }
+        picked = entity;
+        picked_layer = layer;
     }
     ecs_query_end(&query);
     return picked;
@@ -237,18 +279,7 @@ static bool selection_bounds(
         return render_arena_entity_bounds(scene->world, entity, corners) &&
                render_arena_screen_bounds(&camera, corners, bounds);
     }
-    const GameTransform *position = GAME_GameTransform_get_const(scene->world, entity);
-    const GameAppearance *appearance = GAME_GameAppearance_get_const(scene->world, entity);
-    if (!position || !appearance ||
-        !appearance_bounds(
-            position,
-            appearance,
-            GAME_GameShader_get_const(scene->world, entity),
-            actor_orientation(scene->world, entity),
-            GAME_GameSdfMotion_get_const(scene->world, entity),
-            false,
-            bounds
-        )) {
+    if (!visual_bounds(scene->world, entity, false, bounds)) {
         return false;
     }
     engine_viewport_camera camera;

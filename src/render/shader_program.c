@@ -52,6 +52,9 @@ render_programs *render_programs_new(render_program_kind kind)
         programs->vertex = render_shader_source("arena3d.vert");
         programs->body = render_shader_source("arena3d.frag");
         programs->scene = render_shader_source("arena3d_scene.glsl");
+    } else if (kind == RENDER_PROGRAM_MESH_MATERIAL) {
+        programs->vertex = render_shader_source("mesh_material.vert");
+        programs->body = render_shader_source("mesh_material.frag");
     } else if (kind == RENDER_PROGRAM_FRAGMENT) {
         programs->body = render_shader_fragment_source();
     } else {
@@ -65,10 +68,13 @@ static bool compile(render_programs *programs, program *entry)
 {
     shader_compile_count++;
     bool raster = programs->kind == RENDER_PROGRAM_RASTER ||
-                  programs->kind == RENDER_PROGRAM_RASTER_ACCUMULATE;
+                  programs->kind == RENDER_PROGRAM_RASTER_ACCUMULATE ||
+                  programs->kind == RENDER_PROGRAM_RASTER_MESH;
     /* The raster's samplers are the images, then the previous batch's five
      * targets; its storage buffers follow them in the same set. */
-    int previous = programs->kind == RENDER_PROGRAM_RASTER_ACCUMULATE ? 5 : 0;
+    int previous = programs->kind == RENDER_PROGRAM_RASTER_MESH       ? 10
+                 : programs->kind == RENDER_PROGRAM_RASTER_ACCUMULATE ? 5
+                                                                      : 0;
     int ramp_vec4_count = render_shader_ramp_vec4_count(&entry->set);
     float (*ramp_data)[4] = ramp_vec4_count
                               ? xcalloc(RENDER_SHADER_RAMP_VEC4_MAX, sizeof *ramp_data)
@@ -76,19 +82,29 @@ static bool compile(render_programs *programs, program *entry)
     if (ramp_data) {
         render_shader_ramp_payload(&entry->set, ramp_data);
     }
-    char *graphs = render_shader_glsl(&entry->set, 2, raster ? 0 : 1);
+    char *graphs = render_shader_glsl(
+        &entry->set,
+        2,
+        raster || programs->kind == RENDER_PROGRAM_MESH_MATERIAL ? 0 : 1
+    );
     const char *scene = programs->scene ? programs->scene : "";
     const char
         *uniforms = programs->kind == RENDER_PROGRAM_FRAGMENT
                       ? "layout(set=3,binding=1) uniform shd_uniforms { "
                         "vec2 sg_lighting; vec4 sg_entity[85]; vec4 "
                         "sg_ramp_data[SG_RAMP_COUNT]; };\n"
+                  : programs->kind == RENDER_PROGRAM_MESH_MATERIAL
+                      ? "layout(set=3,binding=0) uniform uniform_block { "
+                        "vec4 u_fallback[4]; vec4 u_surface; vec4 "
+                        "u_dimensions; vec4 u_eye; "
+                        "vec4 u_parameters[32]; vec4 "
+                        "sg_ramp_data[SG_RAMP_COUNT]; };\n"
                   : raster ? "layout(set=3,binding=0) uniform uniform_block { "
                              "float u_world_min_x; "
                              "float u_world_max_y; vec2 u_unit_per_px; "
                              "int u_tiles_x; "
                              "int u_first_entity; int u_last_entity; "
-                             "int u_metaball_group; "
+                             "int u_metaball_group; vec4 u_mesh_rect; "
                              "vec4 sg_ramp_data[SG_RAMP_COUNT]; };\n"
                            : "";
     /* Room for the defines ahead of the sources. */
@@ -108,7 +124,10 @@ static bool compile(render_programs *programs, program *entry)
         "#define SG_COUNTS_BINDING %d\n#define SG_INDICES_BINDING %d\n"
         "#define SG_PARAMETERS_BINDING %d\n%s%s%s\n%s",
         RENDER_SHADER_RAMP_VEC4_MAX,
-        previous ? "#define SG_ACCUMULATE 1\n" : "",
+        programs->kind == RENDER_PROGRAM_RASTER_MESH
+            ? "#define SG_ACCUMULATE 1\n#define SG_MESH_LAYER 1\n"
+        : previous ? "#define SG_ACCUMULATE 1\n"
+                   : "",
         entry->set.count,
         entry->set.count + 1,
         entry->set.count + 2,

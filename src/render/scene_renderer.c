@@ -11,6 +11,8 @@
 #include "render/gpu_timing.h"
 #include "render/material.h"
 #include "render/material_raster.h"
+#include "render/mesh_projection.h"
+#include "render/mesh_surface.h"
 #include "render/post_2d.h"
 #include "render/radiance.h"
 #include "render/reflections.h"
@@ -61,6 +63,7 @@ struct app_scene_renderer
     /* Tile groups numbered so far this frame. */
     int tile_groups;
     render_material_entity *entities;
+    render_mesh_material_actor *meshes;
     render_material_border_cache *border;
     draw_actor *actors;
     ecs_world *world;
@@ -110,6 +113,7 @@ void app_scene_renderer_free(app_scene_renderer *renderer)
         return;
     }
     render_material_raster_free(renderer->raster);
+    afree(renderer->meshes);
     render_fluid_raster_free(renderer->fluid);
     render_arena_free(renderer->arena);
     render_arena_post_free(renderer->post);
@@ -393,6 +397,7 @@ static bool append_entity(
                     fmaxf(fabsf(min.y), fabsf(max.y)) + padding },
         .inv_rot = { cosf(angle), sinf(angle), -sinf(angle), cosf(angle) },
         .aa = aa,
+        .wobble = { 0, 0, 0, appearance->layer },
         .reserved = { 0, 0, material ? material->edge_light : 0 },
         .border_thickness = fmaxf(0, appearance->border_width)
     };
@@ -716,7 +721,7 @@ static void collect_chunks(
     }
 }
 
-static void collect(
+static bool collect(
     app_scene_renderer *renderer,
     ecs_world *world,
     const game_particles *particles,
@@ -729,6 +734,7 @@ static void collect(
     }
     render_material_border_cache_begin(renderer->border);
     asetlen(renderer->entities, 0);
+    aclear(renderer->meshes);
     renderer->tile_groups = 0;
     aclear(renderer->reflectors);
     collect_order(renderer, world);
@@ -739,6 +745,42 @@ static void collect(
         }
         const GameOrientation *orientation = GAME_GameOrientation_get_const(world, entity);
         const GameShader *binding = GAME_GameShader_get_const(world, entity);
+        const GameMeshSurface2D *mesh = GAME_GameMeshSurface2D_get_const(world, entity);
+        if (mesh && mesh->enabled) {
+            const GameVisualTransform *pose = GAME_GameVisualTransform_get_const(world, entity);
+            if (pose && pose->scale == 0) {
+                continue;
+            }
+            GameTransform position = *GAME_GameTransform_get_const(world, entity);
+            engine_render_position(runtime, entity, &position);
+            render_mesh_surface surface = { 0 };
+            if (!render_mesh_surface_build(
+                    world,
+                    entity,
+                    &position,
+                    &surface,
+                    renderer->error,
+                    sizeof renderer->error
+                )) {
+                render_mesh_surface_free(&surface);
+                return false;
+            }
+            CF_V2 min, max;
+            bool visible = render_mesh_project_bounds(view, surface.min, surface.max, &min, &max);
+            render_mesh_surface_free(&surface);
+            if (!visible || max.x < view.min_x || min.x > view.min_x + view.width ||
+                -min.y < view.max_y - view.height || -max.y > view.max_y) {
+                continue;
+            }
+            render_material_entity draw = {
+                .shape_type = RENDER_SHAPE_MESH,
+                .wobble = { 0, 0, 0, renderer->actors[actor].layer },
+                .points = { (float)acount(renderer->meshes) }
+            };
+            apush(renderer->meshes, ((render_mesh_material_actor){ entity, position }));
+            apush(renderer->entities, draw);
+            continue;
+        }
         const GameAppearance *authored = GAME_GameAppearance_get_const(world, entity);
         const GameGeometry3D *geometry = GAME_GameGeometry3D_get_const(world, entity);
         if (!authored && !geometry) {
@@ -989,6 +1031,7 @@ static void collect(
         GameTransform position = { particle->position.x, particle->position.y };
         append_entity(renderer, &position, &appearance, 0, NULL, NULL);
     }
+    return true;
 }
 
 static render_view_2d padded_view(
@@ -1002,16 +1045,19 @@ static render_view_2d padded_view(
     float pixels_y = output_height / camera->span_height;
     float width = (output_width + 2 * pad_pixels) / pixels_x;
     float height = (output_height + 2 * pad_pixels) / pixels_y;
-    return (render_view_2d){
-        .min_x = camera->center_x - width * 0.5f,
-        .max_y = camera->center_y + height * 0.5f,
-        .width = width,
-        .height = height,
-        .crop_min_u = pad_pixels / (float)(output_width + 2 * pad_pixels),
-        .crop_min_v = pad_pixels / (float)(output_height + 2 * pad_pixels),
-        .crop_max_u = (output_width + pad_pixels) / (float)(output_width + 2 * pad_pixels),
-        .crop_max_v = (output_height + pad_pixels) / (float)(output_height + 2 * pad_pixels)
-    };
+    return (
+        render_view_2d
+    ){ .min_x = camera->center_x - width * 0.5f,
+       .max_y = camera->center_y + height * 0.5f,
+       .width = width,
+       .height = height,
+       .crop_min_u = pad_pixels / (float)(output_width + 2 * pad_pixels),
+       .crop_min_v = pad_pixels / (float)(output_height + 2 * pad_pixels),
+       .crop_max_u = (output_width + pad_pixels) / (float)(output_width + 2 * pad_pixels),
+       .crop_max_v = (output_height + pad_pixels) / (float)(output_height + 2 * pad_pixels),
+       .focal_distance = camera->focal_distance,
+       .center_x = camera->center_x,
+       .center_y = camera->center_y };
 }
 
 static bool scene_lighting(app_scene_renderer *renderer, ecs_world *world, CF_V2 *flat)
@@ -1182,7 +1228,13 @@ bool app_scene_renderer_draw(
         renderer->error[0] = '\0';
         renderer->pixel_aa = fmaxf(camera.span_width / width, camera.span_height / height) *
                              0.5f;
-        collect(renderer, world, particles, runtime, padded_view(&camera, width, height, 0));
+        if (!collect(renderer, world, particles, runtime, padded_view(&camera, width, height, 0))) {
+            return false;
+        }
+        if (acount(renderer->meshes)) {
+            snprintf(renderer->error, sizeof renderer->error, "GameMeshSurface2D requires the HRC material renderer");
+            return false;
+        }
         if (!prepare_fragments(renderer)) {
             return false;
         }
@@ -1251,17 +1303,27 @@ bool app_scene_renderer_draw(
     renderer->pixel_aa = fmaxf(camera.span_width / width, camera.span_height / height) *
                          0.5f;
     render_material_view view = frame.view;
+    view.focal_distance = camera.focal_distance;
+    view.center_x = camera.center_x;
+    view.center_y = camera.center_y;
     CHIBI_TRACE_ZONE_BEGIN(collect_zone, "Material collect");
-    collect(renderer, world, particles, runtime, view);
+    bool collected = collect(renderer, world, particles, runtime, view);
     CHIBI_TRACE_ZONE_END(collect_zone);
+    if (!collected) {
+        return false;
+    }
     CHIBI_TRACE_ZONE_BEGIN(raster_zone, "Material raster submission");
     render_gpu_span_begin(&renderer->span);
     render_gpu_timing_start();
-    bool drawn = render_material_raster_draw(
+    bool drawn = render_material_raster_draw_mixed(
         renderer->raster,
         renderer->entities,
         acount(renderer->entities),
-        view
+        view,
+        world,
+        renderer->meshes,
+        acount(renderer->meshes),
+        renderer->time
     );
     CHIBI_TRACE_ZONE_END(raster_zone);
     snprintf(

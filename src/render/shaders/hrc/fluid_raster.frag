@@ -75,7 +75,7 @@ void main()
     vec3 luma = vec3(.2126, .7152, .0722);
     float shown = dot(old_source.rgb * texelFetch(u_cover, pixel, 0).r * (1.0 - cover * .6) + f.emission + f.grain_emission * visible, luma);
     float dense = dot(out_source.rgb, luma);
-    out_cover = vec4(dense > 1e-8 ? min(shown / dense, 60000.0) : 1.0, 0.0, 0.0, 0.0);
+    out_cover = vec4(dense > 1e-8 ? min(shown / dense, 60000.0) : 1.0, out_cover.gba);
     // Albedo alpha is material relief, which fluid leaves.
     out_albedo = vec4(old_albedo.rgb * (1.0 - cover) + surface.rgb * max(visible, cover), old_albedo.a);
     vec3 readability = f.liquid_alpha * f.liquid_visibility / max(f.liquid, .00001);

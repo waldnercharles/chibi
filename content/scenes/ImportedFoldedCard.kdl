@@ -1,0 +1,13 @@
+version 1
+name "ImportedFoldedCard"
+(array)entities {
+    - name="Textured folded card" prototype="ImportedFoldedCard"
+    - {
+        name "Camera"
+        prototype "ImportedFoldedCardCamera"
+        components {
+            (object)GAME.GameTransform
+            GAME.GameCamera width=160.0 height=100.0
+        }
+    }
+}

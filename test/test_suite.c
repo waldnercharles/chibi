@@ -243,6 +243,8 @@ TEST_CASE(all_checks)
     test_rcss();
     test_scene_debug();
     test_appearance_geometry();
+    test_mesh_surface();
+    test_mesh_asset();
     test_orientation();
     test_movement_input();
     test_movement_trail();
@@ -315,6 +317,13 @@ int main(int argc, char **argv)
     }
     setvbuf(stdout, NULL, _IOLBF, 0);
     program_name = argc ? argv[0] : "test_suite";
+    if (argc == 2 && !strcmp(argv[1], "--mesh-material")) {
+        extern int mesh_material_run(const char *program);
+        registry_validate();
+        test_mesh_surface();
+        test_mesh_asset();
+        return mesh_material_run(program_name);
+    }
     if (argc == 2 &&
         (!strcmp(argv[1], "--radiance") || !strcmp(argv[1], "--radiance-gles"))) {
         extern int radiance_run(const char *program, bool gles);

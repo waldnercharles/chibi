@@ -145,7 +145,7 @@ static render_material_entity wall_with(float absorption, float albedo)
 }
 
 /* Renders size x size pixels covering world x world units around the origin. */
-static bool solve_scaled(
+static bool draw_frames_scaled(
     render_material_raster *raster,
     render_radiance *radiance,
     CF_Canvas canvas,
@@ -154,11 +154,13 @@ static bool solve_scaled(
     int size,
     float world,
     int frames,
-    CF_Pixel *pixels
+    bool reset
 )
 {
     assert(frames > 0);
-    render_radiance_reset(radiance);
+    if (reset) {
+        render_radiance_reset(radiance);
+    }
     for (int frame = 0; frame < frames; frame++) {
         cf_app_update(NULL);
         if (!render_material_raster_draw(
@@ -202,7 +204,37 @@ static bool solve_scaled(
             return false;
         }
     }
-    return read_pixels(canvas, pixels, size * size);
+    return true;
+}
+
+static bool draw_scaled(
+    render_material_raster *raster,
+    render_radiance *radiance,
+    CF_Canvas canvas,
+    const render_material_entity *entities,
+    int count,
+    int size,
+    float world,
+    int frames
+)
+{
+    return draw_frames_scaled(raster, radiance, canvas, entities, count, size, world, frames, true);
+}
+
+static bool solve_scaled(
+    render_material_raster *raster,
+    render_radiance *radiance,
+    CF_Canvas canvas,
+    const render_material_entity *entities,
+    int count,
+    int size,
+    float world,
+    int frames,
+    CF_Pixel *pixels
+)
+{
+    return draw_scaled(raster, radiance, canvas, entities, count, size, world, frames) &&
+           read_pixels(canvas, pixels, size * size);
 }
 
 static bool solve(
@@ -975,6 +1007,231 @@ static bool surface_lighting(render_material_raster *raster, render_radiance *ra
     }
     printf("surface relief below a ceiling: facing down %d facing up %d\n", vertical[0], vertical[1]);
     ok &= vertical[0] > vertical[1] + 8;
+    return ok;
+}
+
+static bool surface_rgb(const uint16_t *pixels, float result[2])
+{
+    result[0] = result[1] = 0;
+    for (int y = 62; y <= 65; y++) {
+        for (int x = 62; x <= 65; x++) {
+            int p = (y * SIDE + x) * 4;
+            float red = half_value(pixels[p]), blue = half_value(pixels[p + 2]);
+            if (!isfinite(red + blue)) {
+                return false;
+            }
+            result[0] += red / 16;
+            result[1] += blue / 16;
+        }
+    }
+    return true;
+}
+
+/* Keep RGB attached to its incident direction: opposing colors must respond
+ * independently to a banked normal, including when one path is occluded. */
+static bool directional_surface_colors(render_material_raster *raster)
+{
+    render_radiance *radiance = render_radiance_new();
+    CF_CanvasParams params = cf_canvas_defaults(SIDE, SIDE);
+    params.target.pixel_format = CF_PIXEL_FORMAT_R16G16B16A16_FLOAT;
+    CF_Canvas canvas = cf_make_canvas(params);
+    GameHRC2D lighting = game_hrc2d_defaults();
+    lighting.adaptive = lighting.feedback = false;
+    lighting.ambient = lighting.fog = lighting.shadow_floor = 0;
+    lighting.surface_radius = 12;
+    lighting.surface_relief = 1.5f;
+    lighting.surface_bevel = lighting.specular = 0;
+    lighting.tone_mapping = 1;
+    bool ok = canvas.id && radiance && render_radiance_resize(radiance, SIDE, SIDE) &&
+              render_radiance_set_lighting(radiance, lighting);
+    float responses[3][2] = { 0 };
+    const float tilts[] = { -.75f, .75f, 0 };
+    behavior_asset *materials[3] = { 0 };
+    render_material_entity scene[4] = { emitter(), emitter(), lit_wall(6, 1.5f), wall() };
+    for (int i = 0; i < 2; i++) {
+        scene[i].pos[0] = i ? 28 : -28;
+        scene[i].radius = 4;
+        scene[i].extent[0] = scene[i].extent[1] = 6;
+        scene[i].border_thickness = 0;
+        memset(scene[i].scene, 0, sizeof scene[i].scene);
+        memset(scene[i].border_emission, 0, sizeof scene[i].border_emission);
+        memset(scene[i].emission, 0, sizeof scene[i].emission);
+        scene[i].emission[i ? 2 : 0] = .2f;
+        scene[i].emission[3] = 1;
+    }
+    scene[2].points[1] = 18;
+    scene[2].extent[1] = 20;
+    scene[3].pos[0] = -16;
+    scene[3].points[0] = 2;
+    scene[3].extent[0] = 4;
+    uint16_t pixels[PIXELS * 4];
+    const char *names[] = { "Directional red-facing",
+                            "Directional blue-facing",
+                            "Directional flat" };
+    for (int bank = 0; bank < 3 && ok; bank++) {
+        materials[bank] = tilted_material(names[bank], tilts[bank], 1);
+        ok = materials[bank] != NULL;
+        if (!ok) {
+            break;
+        }
+        scene[2].reserved[0] = (float)render_shader_find(names[bank]);
+        ok = draw_scaled(raster, radiance, canvas, scene, 3, SIDE, SIDE, 12) &&
+             read_hdr_texture(cf_canvas_get_target(canvas), pixels, PIXELS);
+        if (ok) {
+            ok = surface_rgb(pixels, responses[bank]);
+        }
+    }
+    float red_ratio = responses[0][0] / fmaxf(responses[0][1], 1e-6f);
+    float blue_ratio = responses[1][0] / fmaxf(responses[1][1], 1e-6f);
+    ok &= isfinite(red_ratio + blue_ratio) && responses[0][0] > .001f &&
+          responses[1][1] > .001f && red_ratio > 1.25f && blue_ratio < .8f &&
+          red_ratio > blue_ratio * 1.8f;
+    float blocked[2] = { 0 };
+    if (ok) {
+        ok = draw_scaled(raster, radiance, canvas, scene, 4, SIDE, SIDE, 12) &&
+             read_hdr_texture(cf_canvas_get_target(canvas), pixels, PIXELS);
+        if (ok) {
+            ok = surface_rgb(pixels, blocked);
+        }
+        ok &= blocked[0] < responses[2][0] * .65f &&
+              blocked[1] > responses[2][1] * .8f &&
+              blocked[1] < responses[2][1] * 1.2f;
+    }
+    /* This ridge overlays an already opaque receiver with identical base,
+       opacity and normal. Only its height changes; transport stays identical.
+       Its leftward relief shadow must not darken rightward blue light. */
+    behavior_asset *ridge = NULL;
+    float relief_blocked[2] = { 0 };
+    if (ok) {
+        ridge = tilted_material("Directional raised ridge", 0, 1);
+        shader_error error;
+        pin_value height = { .type = PIN_F32, .f = 12 };
+        ok = ridge &&
+             graph_set_pin_default(ridge->graph, ridge->graph->nodes[0], 0, 7, &height) ==
+                 0 &&
+             render_shader_upsert(ridge, &error);
+        scene[3] = scene[2];
+        scene[3].pos[0] = -4;
+        scene[3].points[0] = 1;
+        scene[3].extent[0] = 3;
+        scene[3].reserved[0] = (float)render_shader_find("Directional raised ridge");
+        if (ok) {
+            ok = draw_scaled(raster, radiance, canvas, scene, 4, SIDE, SIDE, 12) &&
+                 read_hdr_texture(cf_canvas_get_target(canvas), pixels, PIXELS) &&
+                 surface_rgb(pixels, relief_blocked);
+        }
+        ok &= relief_blocked[0] < responses[2][0] * .65f &&
+              relief_blocked[1] > responses[2][1] * .9f &&
+              relief_blocked[1] < responses[2][1] * 1.1f;
+    }
+    behavior_asset_free(ridge);
+    printf(
+        "directional relief visibility: raised/open red %.4f/%.4f blue "
+        "%.4f/%.4f\n",
+        relief_blocked[0],
+        responses[2][0],
+        relief_blocked[1],
+        responses[2][1]
+    );
+    printf(
+        "directional surface colors: banks R/B %.3f %.3f; blocked/open red "
+        "%.4f/%.4f blue %.4f/%.4f %s\n",
+        red_ratio,
+        blue_ratio,
+        blocked[0],
+        responses[2][0],
+        blocked[1],
+        responses[2][1],
+        ok ? "PASS" : "FAIL"
+    );
+    for (int i = 0; i < 3; i++) {
+        behavior_asset_free(materials[i]);
+    }
+    if (canvas.id) {
+        cf_destroy_canvas(canvas);
+    }
+    render_radiance_free(radiance);
+    return ok;
+}
+
+static float surface_history_difference(const uint16_t *a, const uint16_t *b)
+{
+    float error = 0;
+    for (int y = 54; y < 74; y++) {
+        for (int x = 58; x < 63; x++) {
+            int p = (y * SIDE + x) * 4;
+            for (int channel = 0; channel < 3; channel++) {
+                float va = half_value(a[p + channel]),
+                      vb = half_value(b[p + channel]);
+                if (!isfinite(va + vb)) {
+                    return INFINITY;
+                }
+                error += fabsf(va - vb) / 300;
+            }
+        }
+    }
+    return error;
+}
+
+/* Received surface light obeys the same temporal setting as open-space GI.
+ * A small source translation retains useful clamped history in its gradient;
+ * a reset must discard it, and continued rendering must converge. */
+static bool surface_history(render_material_raster *raster)
+{
+    render_radiance *radiance = render_radiance_new();
+    CF_CanvasParams params = cf_canvas_defaults(SIDE, SIDE);
+    params.target.pixel_format = CF_PIXEL_FORMAT_R16G16B16A16_FLOAT;
+    CF_Canvas canvas = cf_make_canvas(params);
+    GameHRC2D lighting = game_hrc2d_defaults();
+    lighting.adaptive = lighting.feedback = false;
+    lighting.fog = 0;
+    lighting.surface_radius = 12;
+    lighting.surface_bevel = lighting.specular = 0;
+    lighting.tone_mapping = 1;
+    lighting.debug_view = 7;
+    lighting.radiance_hysteresis = 1;
+    render_material_entity scene[] = { emitter(), lit_wall(6, 1.5f) };
+    uint16_t instant[PIXELS * 4], changed[PIXELS * 4], settled[PIXELS * 4],
+        reset[PIXELS * 4];
+    scene[0].pos[0] = -26;
+    bool ok = canvas.id && radiance && render_radiance_resize(radiance, SIDE, SIDE) &&
+              render_radiance_set_lighting(radiance, lighting) &&
+              draw_scaled(raster, radiance, canvas, scene, 2, SIDE, SIDE, 12) &&
+              read_hdr_texture(cf_canvas_get_target(canvas), instant, PIXELS);
+    lighting.radiance_hysteresis = .2f;
+    scene[0].pos[0] = -28;
+    if (ok) {
+        ok = render_radiance_set_lighting(radiance, lighting) &&
+             draw_scaled(raster, radiance, canvas, scene, 2, SIDE, SIDE, 20);
+    }
+    scene[0].pos[0] = -26;
+    if (ok) {
+        ok = draw_frames_scaled(raster, radiance, canvas, scene, 2, SIDE, SIDE, 1, false) &&
+             read_hdr_texture(cf_canvas_get_target(canvas), changed, PIXELS) &&
+             draw_frames_scaled(raster, radiance, canvas, scene, 2, SIDE, SIDE, 20, false) &&
+             read_hdr_texture(cf_canvas_get_target(canvas), settled, PIXELS) &&
+             draw_scaled(raster, radiance, canvas, scene, 2, SIDE, SIDE, 1) &&
+             read_hdr_texture(cf_canvas_get_target(canvas), reset, PIXELS);
+    }
+    float first_error = INFINITY, settled_error = INFINITY, reset_error = INFINITY;
+    if (ok) {
+        first_error = surface_history_difference(changed, instant);
+        settled_error = surface_history_difference(settled, instant);
+        reset_error = surface_history_difference(reset, instant);
+        ok &= first_error > .0001f && settled_error < first_error * .3f &&
+              reset_error < .0001f;
+    }
+    printf(
+        "surface history: first %.6f settled %.6f reset %.6f %s\n",
+        first_error,
+        settled_error,
+        reset_error,
+        ok ? "PASS" : "FAIL"
+    );
+    if (canvas.id) {
+        cf_destroy_canvas(canvas);
+    }
+    render_radiance_free(radiance);
     return ok;
 }
 
@@ -1795,6 +2052,7 @@ int test_radiance()
     extern bool test_radiance_intervals();
     extern bool test_radiance_history();
     extern bool test_material_sampling();
+    extern bool test_mesh_material();
     render_material_raster *raster = render_material_raster_new();
     render_radiance *radiance = render_radiance_new();
     CF_Canvas canvas = cf_make_canvas(cf_canvas_defaults(SIDE, SIDE));
@@ -1979,6 +2237,8 @@ int test_radiance()
         ok &= fluid_lighting(raster, radiance, canvas, levels);
     }
     ok &= surface_lighting(raster, radiance, canvas);
+    ok &= directional_surface_colors(raster);
+    ok &= surface_history(raster);
     ok &= split_luminance_transport(raster, canvas);
     ok &= fractional_cells(raster, canvas);
     ok &= liquid_refraction(raster, radiance, canvas);
@@ -1987,6 +2247,7 @@ int test_radiance()
     ok &= test_radiance_intervals();
     ok &= test_radiance_history();
     ok &= test_material_sampling();
+    ok &= test_mesh_material();
     if (canvas.id) {
         cf_destroy_canvas(canvas);
     }

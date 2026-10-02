@@ -151,7 +151,7 @@ if(NOT cute_framework_POPULATED)
 endif()
 include(cmake/apply_patch.cmake)
 set(CUTE_PATCHES "")
-foreach(name cute-app-exists cute-installed-sdl cute-interior-border cute-custom-coverage cute-custom-shape-cache cute-imgui-render-target cute-draw-samplers cute-gles-ring-reuse cute-gles-buffer-streaming cute-zero-size-window cute-png-zlib-window cute-gles-scissor-cache cute-gpu-submit cute-eight-targets cute-gles-float-readback cute-web-no-asyncify)
+foreach(name cute-app-exists cute-installed-sdl cute-interior-border cute-custom-coverage cute-custom-shape-cache cute-imgui-render-target cute-draw-samplers cute-gles-ring-reuse cute-gles-buffer-streaming cute-zero-size-window cute-png-zlib-window cute-gles-scissor-cache cute-gpu-submit cute-eight-targets cute-gles-float-readback cute-web-no-asyncify cute-gles-storage-samplers)
     list(APPEND CUTE_PATCHES "${CMAKE_CURRENT_SOURCE_DIR}/cmake/patches/${name}.patch")
 endforeach()
 chibi_apply_patches("${cute_framework_SOURCE_DIR}" ${CUTE_PATCHES})
@@ -575,6 +575,7 @@ target_link_libraries(automation PUBLIC runtime_support core authoring_graph edi
 # --- material rasterization and radiance transport --------------------------
 add_library(chibi_render STATIC src/render/fog.c src/render/material_raster.c src/render/fluid_raster.c src/render/reflections.c src/render/radiance.c src/render/post_2d.c src/render/gpu_timing.c
     src/render/geometry_2d.c
+    src/render/mesh_surface.c src/render/mesh_material.c
     src/render/arena3d.c src/render/arena_geometry.c src/render/arena_influence.c
     src/render/arena_parts.c src/render/arena_visual.c src/render/arena_trail.c
     src/render/arena_camera.c src/render/arena_pick.c src/render/arena_post.c
@@ -778,12 +779,13 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     set_target_properties(chibi PROPERTIES SUFFIX ".html")
     file(GLOB_RECURSE WEB_ASSETS CONFIGURE_DEPENDS
         "${CMAKE_CURRENT_SOURCE_DIR}/content/*"
-        "${CMAKE_CURRENT_SOURCE_DIR}/projects/arena2d/*"
+        "${CMAKE_CURRENT_SOURCE_DIR}/projects/arena2d/content/*"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/editor/rmlui/resources/*"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/render/shaders/*")
     set_property(TARGET chibi APPEND PROPERTY LINK_DEPENDS
         ${WEB_ASSETS}
         "${CMAKE_CURRENT_SOURCE_DIR}/project.kdl"
+        "${CMAKE_CURRENT_SOURCE_DIR}/projects/arena2d/project.kdl"
         "${CMAKE_CURRENT_SOURCE_DIR}/tools/web_storage.js"
         "${CMAKE_CURRENT_SOURCE_DIR}/tools/collab/storage.js"
         "${CMAKE_CURRENT_SOURCE_DIR}/tools/web_launch.js"
@@ -806,7 +808,8 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
         # Each sample is a self-contained project folder.
         "--preload-file=${CMAKE_CURRENT_SOURCE_DIR}/project.kdl@projects/arena3d/project.kdl"
         "--preload-file=${CMAKE_CURRENT_SOURCE_DIR}/content@projects/arena3d/content"
-        "--preload-file=${CMAKE_CURRENT_SOURCE_DIR}/projects/arena2d@projects/arena2d"
+        "--preload-file=${CMAKE_CURRENT_SOURCE_DIR}/projects/arena2d/project.kdl@projects/arena2d/project.kdl"
+        "--preload-file=${CMAKE_CURRENT_SOURCE_DIR}/projects/arena2d/content@projects/arena2d/content"
         "--preload-file=${CMAKE_CURRENT_SOURCE_DIR}/src/editor/rmlui/resources@${CMAKE_CURRENT_SOURCE_DIR}/src/editor/rmlui/resources"
         "--preload-file=${CMAKE_CURRENT_SOURCE_DIR}/projects/studio@projects/studio"
         "--preload-file=${CMAKE_CURRENT_SOURCE_DIR}/src/render/shaders@${CMAKE_CURRENT_SOURCE_DIR}/src/render/shaders"
@@ -895,6 +898,9 @@ add_executable(test_suite
     test/wave.c
     test/radiance.c
     test/material_sampling.c
+    test/mesh_material.c
+    test/mesh_surface.c
+    test/mesh_asset.c
     test/radiance_history.c
     test/radiance_intervals.c
     test/interior_border.c

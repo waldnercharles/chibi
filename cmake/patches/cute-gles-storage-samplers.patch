@@ -1,0 +1,77 @@
+diff --git a/src/cute_graphics_gles.cpp b/src/cute_graphics_gles.cpp
+--- a/src/cute_graphics_gles.cpp
++++ b/src/cute_graphics_gles.cpp
+@@ -395,6 +395,8 @@
+ 	GLuint scratch_read_fbo;
+ 	CF_MaterialInternal* material;
+ 	CF_GL_Shader* shader; // Last applied; range draws rebind attributes against it.
++	GLuint next_texture_unit;
++	GLint max_texture_units;
+ 	CF_GL_Mesh* mesh;
+ 	CF_GL_Canvas* canvas;
+ 	uint64_t enabled_vertex_attrib_mask;
+@@ -841,6 +843,8 @@
+ 	g_ctx.gl_ctx = SDL_GL_CreateContext(window);
+ 	SDL_GL_MakeCurrent(window, g_ctx.gl_ctx);
+ 	cf_load_gles();
++	glGetIntegerv(GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS, &g_ctx.max_texture_units);
++	g_ctx.next_texture_unit = 0;
+ 	g_ctx.window = window;
+ 	// A fresh context recycles GL object ids, so cached bindings from a previous
+ 	// app/context lifetime would wrongly elide binds. Reset all cached GL state.
+@@ -2360,6 +2364,7 @@
+ 		for (int image_index = 0; image_index < shader->num_texture_bindings; ++image_index) {
+ 			const CF_GL_TextureBinding* binding = &shader->texture_bindings[image_index];
+ 			if (binding->name == material_tex.name) {
++				CF_ASSERT(texture_unit < (GLuint)g_ctx.max_texture_units);
+ 				glActiveTexture(GL_TEXTURE0 + texture_unit);
+ 				glBindTexture(texture->target, texture->id);
+ 				glBindSampler((GLuint)texture_unit, s_draw_sampler(material_tex, texture));
+@@ -2377,6 +2382,7 @@
+ 		for (int image_index = 0; image_index < shader->num_vs_texture_bindings; ++image_index) {
+ 			const CF_GL_TextureBinding* binding = &shader->vs_texture_bindings[image_index];
+ 			if (binding->name == material_tex.name) {
++				CF_ASSERT(texture_unit < (GLuint)g_ctx.max_texture_units);
+ 				glActiveTexture(GL_TEXTURE0 + texture_unit);
+ 				glBindTexture(texture->target, texture->id);
+ 				glBindSampler((GLuint)texture_unit, s_draw_sampler(material_tex, texture));
+@@ -2387,6 +2393,7 @@
+ 		}
+ 	}
+ 
++	g_ctx.next_texture_unit = texture_unit;
+ 	g_ctx.has_filter_override = false;
+ 	CF_POLL_OPENGL_ERROR();
+ 
+@@ -2687,8 +2694,8 @@
+ 	}
+ }
+ 
+-// Binds the pending emulated storage textures on units above the material's textures
+-// (the draw shader binds at most a couple of samplers; units 8+ are safely clear).
++// Emulated storage starts after the samplers bound by the current material.
++// Material passes can consume more than eight samplers (mesh composition does).
+ static void s_apply_storage_textures()
+ {
+ 	GLint program_i = 0;
+@@ -2697,10 +2704,11 @@
+ 	if (!program) return;
+ 	static const char* vs_names[4] = { "u_vs_storage_0", "u_vs_storage_1", "u_vs_storage_2", "u_vs_storage_3" };
+ 	static const char* fs_names[4] = { "u_fs_storage_0", "u_fs_storage_1", "u_fs_storage_2", "u_fs_storage_3" };
+-	GLuint unit = 8;
++	GLuint unit = g_ctx.next_texture_unit;
+ 	for (int i = 0; i < s_vs_storage_count; ++i) {
+ 		GLint loc = glGetUniformLocation(program, vs_names[i]);
+ 		if (loc < 0 || !s_vs_storage[i]) continue;
++		CF_ASSERT(unit < (GLuint)g_ctx.max_texture_units);
+ 		glActiveTexture(GL_TEXTURE0 + unit);
+ 		glBindTexture(GL_TEXTURE_2D, s_vs_storage[i]->tex);
+ 		glBindSampler(unit, 0); // Stale sampler objects (e.g. compare mode) break texelFetch on some drivers.
+@@ -2710,6 +2718,7 @@
+ 	for (int i = 0; i < s_fs_storage_count; ++i) {
+ 		GLint loc = glGetUniformLocation(program, fs_names[i]);
+ 		if (loc < 0 || !s_fs_storage[i]) continue;
++		CF_ASSERT(unit < (GLuint)g_ctx.max_texture_units);
+ 		glActiveTexture(GL_TEXTURE0 + unit);
+ 		glBindTexture(GL_TEXTURE_2D, s_fs_storage[i]->tex);
+ 		glBindSampler(unit, 0); // Stale sampler objects (e.g. compare mode) break texelFetch on some drivers.

@@ -194,25 +194,33 @@ void run_content_catalog_checks()
         "WeaponActions.kdl",
     };
     static const char *const materials[] = {
-        "ArenaEnemy.kdl",       "ArenaExperience.kdl",     "ArenaFloor.kdl",
-        "ArenaPlayer.kdl",      "ArenaProjectile.kdl",     "ArenaRim.kdl",
-        "ArenaSpawnMarker.kdl", "PhaseWardenMaterial.kdl",
+        "ImportedFoldedCard.kdl",
+        "ArenaEnemy.kdl",
+        "ArenaExperience.kdl",
+        "ArenaFloor.kdl",
+        "ArenaPlayer.kdl",
+        "ArenaProjectile.kdl",
+        "ArenaRim.kdl",
+        "ArenaSpawnMarker.kdl",
+        "PhaseWardenMaterial.kdl",
     };
     static const char *const prototypes[] = {
-        "ActionBinding.kdl",    "ArenaDeathPulse.kdl",
-        "ArenaEncounter.kdl",   "ArenaEnemy.kdl",
-        "ArenaEnemyShard.kdl",  "ArenaEnvironment.kdl",
-        "ArenaExperience.kdl",  "ArenaFloor.kdl",
-        "ArenaHitPulse.kdl",    "ArenaPlayer.kdl",
-        "ArenaProjectile.kdl",  "PhaseWarden.kdl",
-        "ArenaSpawnMarker.kdl", "ArenaWallHorizontal.kdl",
-        "ArenaWavePulse.kdl",   "BloomCircuitGuide.kdl",
-        "OrbitBall.kdl",        "OrbitBumper.kdl",
-        "OrbitCabinet.kdl",     "OrbitFlipper.kdl",
-        "OrbitRail.kdl",        "OrbitRing.kdl",
+        "ImportedFoldedCard.kdl", "ImportedFoldedCardCamera.kdl",
+        "ActionBinding.kdl",      "ArenaDeathPulse.kdl",
+        "ArenaEncounter.kdl",     "ArenaEnemy.kdl",
+        "ArenaEnemyShard.kdl",    "ArenaEnvironment.kdl",
+        "ArenaExperience.kdl",    "ArenaFloor.kdl",
+        "ArenaHitPulse.kdl",      "ArenaPlayer.kdl",
+        "ArenaProjectile.kdl",    "PhaseWarden.kdl",
+        "ArenaSpawnMarker.kdl",   "ArenaWallHorizontal.kdl",
+        "ArenaWavePulse.kdl",     "BloomCircuitGuide.kdl",
+        "OrbitBall.kdl",          "OrbitBumper.kdl",
+        "OrbitCabinet.kdl",       "OrbitFlipper.kdl",
+        "OrbitRail.kdl",          "OrbitRing.kdl",
         "RotatingGate.kdl",
     };
-    static const char *const scenes[] = { "Arena3D.kdl",
+    static const char *const scenes[] = { "ImportedFoldedCard.kdl",
+                                          "Arena3D.kdl",
                                           "BloomCircuit.kdl",
                                           "OrbitPinball.kdl" };
     static const char *const shader_libraries[] = { "ShaderMath.kdl" };
@@ -230,7 +238,10 @@ void run_content_catalog_checks()
     );
     static const char *const shapes[] = { "PhaseWardenShape.kdl" };
     valid &= folder_matches("content", "shapes", shapes, (int)(sizeof shapes / sizeof *shapes));
-    valid &= folder_matches("content", "textures", NULL, 0);
+    static const char *const textures[] = { "ImportedFoldedCard.png" };
+    valid &= folder_matches("content", "textures", textures, 1);
+    static const char *const meshes[] = { "ImportedFoldedCard.mesh.json" };
+    valid &= folder_matches("content", "meshes", meshes, 1);
     static const char *const ui[] = { "BloomCircuit.rml", "BloomCircuit.rcss",
                                       "OrbitPinball.rml", "OrbitPinball.rcss",
                                       "PauseMenu.rml",    "PauseMenu.rcss" };
@@ -238,14 +249,27 @@ void run_content_catalog_checks()
     test_check(valid, "Arena3D project catalog contains only its shipped assets");
 
     static const char *const arena2d_behaviors[] = {
-        "BoostEmitter.kdl",   "CameraFollow.kdl",
-        "CutMaterial.kdl",    "HudDisplay.kdl",
-        "HullDamage.kdl",     "MaterialImpactHealth.kdl",
-        "Movement.kdl",       "MovementEmitter.kdl",
-        "PlayerEffects.kdl",  "ProjectileEffects.kdl",
-        "ProjectileHit.kdl",  "Pursuit.kdl",
-        "SwarmerEffects.kdl", "ThermalStudyBreach.kdl",
-        "Weapon.kdl",         "ProjectileLifecycle.kdl",
+        "MaterialShowcaseBreach.kdl",
+        "MaterialShowcaseExplosionIgnition.kdl",
+        "MaterialShowcaseFracture.kdl",
+        "MaterialShowcaseRelease.kdl",
+
+        "BoostEmitter.kdl",
+        "CameraFollow.kdl",
+        "CutMaterial.kdl",
+        "HudDisplay.kdl",
+        "HullDamage.kdl",
+        "MaterialImpactHealth.kdl",
+        "Movement.kdl",
+        "MovementEmitter.kdl",
+        "PlayerEffects.kdl",
+        "ProjectileEffects.kdl",
+        "ProjectileHit.kdl",
+        "Pursuit.kdl",
+        "SwarmerEffects.kdl",
+        "ThermalStudyBreach.kdl",
+        "Weapon.kdl",
+        "ProjectileLifecycle.kdl",
     };
     static const char *const arena2d_materials[] = {
         "Basalt.kdl",
@@ -257,6 +281,18 @@ void run_content_catalog_checks()
         "RefreshEncounter.kdl",
     };
     static const char *const arena2d_prototypes[] = {
+        "MaterialShowcaseDestructionWorld.kdl",
+        "MaterialShowcaseEntity.kdl",
+        "MaterialShowcaseExplosionWorld.kdl",
+        "MaterialShowcaseGasSpeedWorld.kdl",
+        "MaterialShowcaseGasWorld.kdl",
+        "MaterialShowcaseLiquidDDRWorld.kdl",
+        "MaterialShowcaseLiquidWorld.kdl",
+        "MaterialShowcaseOrganicStrainWorld.kdl",
+        "MaterialShowcaseOrganicWorld.kdl",
+        "MaterialShowcaseThermalClosedWorld.kdl",
+        "MaterialShowcaseThermalWorld.kdl",
+
         "BoostEmitter.kdl",
         "Camera.kdl",
         "Cave.kdl",
@@ -287,6 +323,17 @@ void run_content_catalog_checks()
         "TrailEmitter.kdl",
     };
     static const char *const arena2d_scenes[] = {
+        "MaterialShowcaseDestruction.kdl",
+        "MaterialShowcaseExplosion.kdl",
+        "MaterialShowcaseGas.kdl",
+        "MaterialShowcaseGasSpeed.kdl",
+        "MaterialShowcaseLiquid.kdl",
+        "MaterialShowcaseLiquidDDR.kdl",
+        "MaterialShowcaseOrganic.kdl",
+        "MaterialShowcaseOrganicStrain.kdl",
+        "MaterialShowcaseThermal.kdl",
+        "MaterialShowcaseThermalClosed.kdl",
+
         "HRCBounce.kdl",
         "HRCPinhole.kdl",
         "HRCShadow.kdl",
@@ -406,7 +453,7 @@ void run_content_catalog_checks()
         arena2d_scene = chibi_project_scene_path(&arena2d, NULL);
         arena2d_content_scene = chibi_project_scene_path(&arena2d_content, NULL);
         projects_valid = arena3d.name && !strcmp(arena3d.name, "Arena3D") &&
-                         arena2d.name && !strcmp(arena2d.name, "Neon Swarm") &&
+                         arena2d.name && !strcmp(arena2d.name, "Voidweaver") &&
                          !strcmp(default_project.root, arena2d.root) &&
                          !strcmp(default_project.start_scene, arena2d.start_scene) &&
                          arena2d_content.name &&

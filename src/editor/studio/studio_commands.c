@@ -306,7 +306,7 @@ static const command_entry COMMANDS[STUDIO_COMMAND_COUNT] = {
                                                     .icon = KIT_ICON_LAYOUT,
                                                     .phase = SHORTCUT_EARLY },
     [STUDIO_COMMAND_TOGGLE_SIDE_PANE] = { .id = "toggleSidePane",
-                                          .label = "Hide Side Pane",
+                                          .label = "Side Pane",
                                           .context = "Global",
                                           .keywords = "sidebar outliner "
                                                       "properties hierarchy "
@@ -618,11 +618,6 @@ studio_command_info studio_command_describe(studio *s, studio_command command)
                 info.label = info.menu = "Stop Recording";
                 info.icon = KIT_ICON_STOP;
             }
-            break;
-        case STUDIO_COMMAND_TOGGLE_SIDE_PANE:
-            info.label = info.menu = studio_active_layout(s)->side_open
-                                       ? e->label
-                                       : "Show Side Pane";
             break;
         case STUDIO_COMMAND_DENSITY:
             info.label = info.menu = s->prefs.comfortable ? "Compact Density"

@@ -76,8 +76,8 @@ body:not(.dark) .viewport {
 .identity .who .title { font-size: var(--studio-font-13, 13dp); font-weight: 600; }
 /* The name, a field that reads as the title until hovered or edited (Unity's Inspector). */
 .identity .name-field { display: flex; margin-left: -8dp; }
-.identity .name-field .field.text { height: var(--studio-height-20, 20dp); background-color: transparent; }
-.identity .name-field .field.text:hover { background-color: var(--input-hover); }
+.identity .name-field .field.text { height: var(--studio-height-20, 20dp); background-color: transparent; border-color: transparent; }
+.identity .name-field .field.text:hover { background-color: var(--input-hover); border-color: var(--input); }
 .identity .name-field .field.text[data-editing] { background-color: var(--field-edit); border-color: var(--ring); }
 .identity .name-field .field[data-readonly] { border-color: transparent; }
 .identity .name-field input.value { font-size: var(--studio-font-13, 13dp); font-weight: 600; }

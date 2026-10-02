@@ -58,7 +58,7 @@ Palette sources are [Dracula](https://draculatheme.com/contribute), [Solarized](
 
 The workspace is a split tree of areas. A leaf holds an editor type and that editor's view state; a split holds an axis and a ratio. Drawers are a collapsible leaf at the bottom of the main column. Presets swap the tree without touching documents, selection, history or playback. The hovered area receives editor shortcuts; <kbd>Ctrl Space</kbd> maximizes it. This replaces the `DockBuilder` layout and the `[Chibi][Workspace]` dock IDs. Persisted state becomes the serialized tree.
 
-Two layout modes ship, selected from the top bar or View ▸ Layout Mode. Vertical Split stacks Scene over Behavior. Horizontal Split sets the Canvas beside the Text Editor, with Hierarchy over Details on the right. Each remembers its editors, splits, drawer and side pane. Opening a source file or changing tabs keeps the selected mode. Reset Layout resets the active mode only. The top bar's side-pane toggle and View ▸ Hide Side Pane collapse the right column at its last width, and showing one of its editors opens it again. The modes are fixed; there is no layout editor.
+Two layout modes ship, selected from the top bar or View ▸ Layout Mode. Vertical Split stacks Scene over Behavior. Horizontal Split sets the Canvas beside the Text Editor, with Hierarchy over Details on the right. Each remembers its editors, splits, drawer and side pane. Opening a source file or changing tabs keeps the selected mode. Reset Layout resets the active mode only. The top bar's side-pane toggle and View ▸ Side Pane collapse the right column at its last width, and showing one of its editors opens it again. The modes are fixed; there is no layout editor.
 
 ## Interaction rules
 

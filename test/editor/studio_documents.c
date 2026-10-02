@@ -856,6 +856,92 @@ static void performance_snapshot_retains_intermediate_frames()
     fixture_free(&f);
 }
 
+/* Physical Tab commits the semantic row marked as selected after filtering,
+   rather than relying on the visual resemblance of adjacent completion rows. */
+static void graph_completion_tab_matches_highlight()
+{
+    studio_fixture f = fixture_open("projects/arena2d", "projects/arena2d/content/scenes/Sandbox.kdl", "Weapon");
+    f.studio = studio_new(f.scene, f.viewport, "projects/arena2d");
+    studio *s = f.studio;
+    studio_maximize_graph(s);
+    frames(&f, 3);
+    node *expression = graph_node_by_id(sg_active_graph(s), 48);
+    assert(expression);
+    int pin = -1;
+    for (int i = 0; i < expression->input_count; i++) {
+        if (!strcmp(expression->input_pins[i].name, "elapsed")) {
+            pin = i;
+        }
+    }
+    assert(pin >= 0);
+    char path[128];
+    snprintf(path, sizeof path, "world/stage/n48/b/i%d/source-edit", pin);
+    kit_rect rect;
+    assert(kit_find(s->graph.kit, path, &rect));
+    graph_press_rect(s, rect);
+    frames(&f, 3);
+    rml_context *context = rml_backend_context(s->graph.backend);
+    rml_element *input = rml_context_focus_element(context);
+    assert(input && !strcmp(rml_element_tag_name(input), "input"));
+    rml_element_select(input);
+    text_event("Tr");
+    frames(&f, 3);
+    mouse_move(
+        s,
+        s->graph.surface.rect.x + 20,
+        s->graph.surface.rect.y + s->graph.surface.rect.h - 20
+    );
+    frames(&f, 24);
+    rml_element *doc = rml_context_document(context, 0);
+    rml_element *selected = rml_element_query_selector(doc, ".popup.autocomplete .menu-item[data-highlighted] .label");
+    char label[256] = "";
+    if (selected) {
+        rml_element_inner_rml(selected, label, sizeof label);
+    }
+    char plain[256] = "";
+    size_t length = 0;
+    bool tag = false;
+    for (const char *at = label; *at; at++) {
+        if (*at == '<') {
+            tag = true;
+        } else if (*at == '>') {
+            tag = false;
+        } else if (!tag) {
+            plain[length++] = *at;
+        }
+    }
+    char expected[2] = { 0 };
+    if (!strcmp(plain, "Transform \xE2\x80\xBA X")) {
+        expected[0] = 'x';
+    } else if (!strcmp(plain, "Transform \xE2\x80\xBA Y")) {
+        expected[0] = 'y';
+    }
+    key_event(SDL_SCANCODE_TAB, true);
+    frames(&f, 8);
+    key_event(SDL_SCANCODE_TAB, false);
+    frames(&f, 8);
+    expression = graph_node_by_id(sg_active_graph(s), 48);
+    const pin_binding *binding = graph_pin_binding(sg_active_graph(s), expression, 0, pin);
+    bool same = selected && expected[0] && binding &&
+                binding->kind == PIN_BINDING_COMPONENT_FIELD &&
+                binding->component_key &&
+                !strcmp(binding->component_key, "GAME.GameTransform") &&
+                binding->field_name && !strcmp(binding->field_name, expected);
+    if (!same) {
+        fprintf(
+            stderr,
+            "completion Tab: highlighted=%s expected_field=%s "
+            "accepted_component=%s accepted_field=%s\n",
+            label,
+            expected,
+            binding && binding->component_key ? binding->component_key : "none",
+            binding && binding->field_name ? binding->field_name : "none"
+        );
+    }
+    test_check(same, "settled graph completion Tab accepts the displayed highlighted semantic field");
+    fixture_free(&f);
+}
+
 static void replay_close_stop_reopen_keeps_graph_layout()
 {
     studio_fixture f = fixture_open("projects/arena2d", "projects/arena2d/content/scenes/Sandbox.kdl", "Weapon");
@@ -3158,6 +3244,7 @@ static int studio_documents_app(const char *program, bool run_properties_only)
         graph_drag_retains_calculations_and_undo();
         host_ui_refresh_keeps_input_immediate();
         performance_snapshot_retains_intermediate_frames();
+        graph_completion_tab_matches_highlight();
         replay_close_stop_reopen_keeps_graph_layout();
         graph_value_controls_use_metadata();
         graph_color_session_saves_undoes_and_replays();

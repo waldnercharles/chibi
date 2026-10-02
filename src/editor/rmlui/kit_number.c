@@ -174,11 +174,13 @@ static void number_display(node *n)
         format_number(text, w->value, w->desc.precision, w->desc.integer);
         set_right_line_text(w->value_el, text);
     }
-    double range = w->desc.max - w->desc.min;
-    double t = w->desc.max > w->desc.min ? (w->value - w->desc.min) / range : 0;
-    char width[32];
-    snprintf(width, sizeof width, "%.2f%%", math_clamp(t, 0.0, 1.0) * 100);
-    rml_element_set_property(w->fill_el, "width", width);
+    if (number_slider(w)) {
+        double range = w->desc.max - w->desc.min;
+        double t = w->desc.max > w->desc.min ? (w->value - w->desc.min) / range : 0;
+        char width[32];
+        snprintf(width, sizeof width, "%.2f%%", math_clamp(t, 0.0, 1.0) * 100);
+        rml_element_set_property(w->fill_el, "width", width);
+    }
 }
 
 static void number_change(node *n, double v)

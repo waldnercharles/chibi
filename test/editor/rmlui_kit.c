@@ -1191,8 +1191,9 @@ typedef struct
     kit_frame_input in;
     chart_mesh drawn;
     int unrelated_compiles;
-    double value;
+    double value, max;
     int width;
+    bool slider, changed;
     const char *typography, *unit;
 } number_label_fixture;
 
@@ -1219,11 +1220,15 @@ static void number_label_emit(number_label_fixture *f, kit *k, const char *refer
         kit_label(k, "unit", "part unit", f->unit);
         kit_pop(k);
     } else {
-        kit_number(
+        f->changed = kit_number(
             k,
             "number",
             &f->value,
-            &(kit_number_desc){ .precision = 6, .addon = "X", .unit = f->unit }
+            &(kit_number_desc){ .precision = 6,
+                                .addon = "X",
+                                .unit = f->unit,
+                                .max = f->max,
+                                .slider = f->slider }
         );
     }
     snprintf(width, sizeof width, "%ddp", f->width);
@@ -1443,12 +1448,112 @@ static bool variable_font_quiescence()
     return ok;
 }
 
+/* An invisible slider fill must not turn local numeric text changes into
+ * document layout. The wrapping sibling detects layouts that retain meshes. */
+static bool number_hidden_fill_quiescence()
+{
+    rml_backend *fonts = rml_backend_create(64, 64, 1);
+    number_label_fixture f = { .value = 10,
+                               .max = 100,
+                               .width = 180,
+                               .typography = "",
+                               .unit = "m" };
+    rml_renderer *renderer = rml_renderer_create(&CHART_RENDERER, &f.drawn);
+    f.context = rml_create_context("number-hidden-fill", 640, 400, renderer);
+    f.k = test_kit_create(f.context, "studio.rml");
+    f.in = (kit_frame_input){ .width = 640, .height = 400, .dp_ratio = 1 };
+    number_label_frame(&f);
+    static const rml_element_hooks hooks = { .resize = variable_font_resize };
+    static rml_instancer *instancer;
+    if (!instancer) {
+        instancer = rml_instancer_create(&hooks);
+        rml_register_element_instancer("number-layout-probe", instancer);
+    }
+    variable_font_fragment_resizes = 0;
+    rml_element *document = rml_context_document(f.context, 0);
+    rml_element *sibling = rml_element_query_selector(document, ".number-unrelated");
+    rml_element_set_property(sibling, "width", "96dp");
+    rml_element_set_inner_rml(
+        sibling,
+        "<number-layout-probe style='display: inline; white-space: normal'>"
+        "Workspace content wraps into several fragments and stays still"
+        "</number-layout-probe>"
+    );
+    for (int frame = 0; frame < 3; frame++) {
+        number_label_frame(&f);
+    }
+    int layouts = variable_font_fragment_resizes, compiles = f.unrelated_compiles;
+    double deadline = rml_context_next_update_delay(f.context);
+    bool ok = check(compiles > 0 && layouts > 0, "bounded numeric layout probe renders wrapping workspace content");
+    const double values[] = { 35, 65, 80 };
+    for (size_t i = 0; i < sizeof values / sizeof *values; i++) {
+        f.value = values[i];
+        number_label_emit(&f, f.k, NULL);
+        ok &= check(
+            rml_context_next_update_delay(f.context) == deadline,
+            "bounded non-slider live values preserve the idle context deadline"
+        );
+        rml_context_update(f.context);
+        f.drawn = (chart_mesh){ .unrelated_compiles = &f.unrelated_compiles };
+        rml_context_render(f.context);
+        rml_element *label = rml_element_query_selector(document, ".number .value");
+        char text[32];
+        rml_element_text(rml_element_first_child(label), text, sizeof text);
+        ok &= check(
+            strtod(text, NULL) == f.value && f.drawn.glyphs[0].seen,
+            "bounded non-slider live values still update visible numeric text"
+        );
+        ok &= check(variable_font_fragment_resizes == layouts && f.unrelated_compiles == compiles, "bounded non-slider live values retain sibling layouts and glyph meshes");
+    }
+    f.slider = true;
+    number_label_frame(&f);
+    rml_element *fill = rml_element_query_selector(document, ".number .fill");
+    char width[32];
+    rml_element_property(fill, "width", width, sizeof width);
+    ok &= check(
+        fabs(strtod(width, NULL) - 80) < 0.001 &&
+            rml_element_box_size(fill, RML_BOX_BORDER).x > 0,
+        "enabling the slider draws the latest live value percentage"
+    );
+    kit_rect field;
+    bool found = kit_find(f.k, "app/number", &field);
+    ok &= check(found, "enabled numeric slider has an interactive field");
+    if (found) {
+        rml_element *value = rml_element_query_selector(document, ".number .value");
+        rml_vec2 at = rml_element_absolute_offset(value, RML_BOX_BORDER);
+        rml_vec2 size = rml_element_box_size(value, RML_BOX_BORDER);
+        float x = at.x + size.x * 0.5f, y = at.y + size.y * 0.5f;
+        f.in.mouse_x = x;
+        f.in.mouse_y = y;
+        rml_context_process_mouse_move(f.context, (int)x, (int)y, 0);
+        rml_context_process_mouse_button_down(f.context, 0, 0);
+        f.in.down[0] = true;
+        number_label_frame(&f);
+        f.in.mouse_x = x + field.w * 0.1f;
+        rml_context_process_mouse_move(f.context, (int)f.in.mouse_x, (int)y, 0);
+        number_label_frame(&f);
+        ok &= check(f.changed && fabs(f.value - 90) < 1, "newly enabled slider scrubs the current value across its bounded range");
+        rml_context_process_mouse_button_up(f.context, 0, 0);
+        f.in.down[0] = false;
+        number_label_frame(&f);
+        number_label_frame(&f);
+        ok &= check(!kit_wants_text(f.k, NULL) && fabs(f.value - 90) < 1, "slider release retains the scrubbed value without opening text editing");
+    }
+    kit_destroy(f.k);
+    rml_remove_context("number-hidden-fill");
+    rml_release_render_managers();
+    rml_renderer_destroy(renderer);
+    rml_backend_destroy(fonts);
+    return ok;
+}
+
 bool test_rmlui_kit()
 {
     bool ok = retained_geometry();
     ok &= chart_label_updates();
     ok &= number_label_updates();
     ok &= variable_font_quiescence();
+    ok &= number_hidden_fill_quiescence();
     kit_fixture f = { .value = 10,
                       .second = 3,
                       .color = 0x33669900,

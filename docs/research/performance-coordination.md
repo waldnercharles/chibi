@@ -19,6 +19,16 @@ gas-flow kernel gains do not establish frame-tail improvement. The separate
 unused-index skips remain unmerged after a targeted liquid case regressed in
 every pair. The historical results and source scopes below remain unchanged.
 
+The [next-wave delivery report](performance-next-wave-20261001.md) records pushed
+profiling source `4e7a09bb`: ordinary behavior execution can be preserved while
+collecting frame diagnostics, with audited native batch and worker participation.
+The compact-fluid and empty-proxy candidates pass correctness checks but remain
+unmerged without complete accepted timing. Preserved attempts and the repaired
+timing setup are identified in its [evidence JSON](performance-next-wave-20261001.json).
+Those candidates are independent of beginning liquid PIC/FLIP or calibrated SPH;
+the report identifies the first solver deliverable and physical checks. No new
+solver or GPU simulation backend is implemented.
+
 The first coordinated batch reconciles performance defaults, field evaluation,
 material rendering, replay parity, and current main before implementing two
 further optimizations. Its combined source is

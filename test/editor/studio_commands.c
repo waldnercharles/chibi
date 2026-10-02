@@ -1,6 +1,7 @@
 #include "editor/studio/studio_graph_internal.h"
 #include "editor/studio/studio_internal.h"
 #include "editor/workspace/input.h"
+#include "graph/document/serialize.h"
 #include "platform/cute.h"
 #include "support/xalloc.h"
 #include "test/suite_internal.h"
@@ -192,7 +193,7 @@ void test_studio_menu_context(studio *s)
     int area = s->graph.area;
     assert(area >= 0);
     s->focus_area = area;
-    char *before = ed_snapshot(e);
+    behavior_asset *before = ed_snapshot(e);
     bool opened = menu_click(s, menu_element(s, "#menubar .trigger", "edit"));
     rml_element *undo = menu_element(s, ".popup.menu .menu-item", "undo");
     bool enabled = opened && undo &&
@@ -200,8 +201,9 @@ void test_studio_menu_context(studio *s)
                    s->focus_area == area &&
                    studio_command_enabled(s, STUDIO_COMMAND_UNDO);
     bool undo_clicked = enabled && menu_click(s, undo);
-    char *undone = ed_snapshot(e);
-    bool changed = undo_clicked && strcmp(before, undone) && editor_can_redo(e);
+    behavior_asset *undone = ed_snapshot(e);
+    bool changed = undo_clicked && !behavior_asset_equal(before, undone) &&
+                   editor_can_redo(e);
     opened = menu_click(s, menu_element(s, "#menubar .trigger", "edit"));
     rml_element *redo = menu_element(s, ".popup.menu .menu-item", "redo");
     bool redo_enabled = opened && redo &&
@@ -209,9 +211,14 @@ void test_studio_menu_context(studio *s)
                         s->focus_area == area &&
                         studio_command_enabled(s, STUDIO_COMMAND_REDO);
     bool redo_clicked = redo_enabled && menu_click(s, redo);
-    char *restored = ed_snapshot(e);
-    test_check(enabled && changed && redo_enabled && redo_clicked && !strcmp(before, restored), "Edit menu preserves graph command context and applies Undo/Redo over the Scene pane");
-    free(before);
-    free(undone);
-    free(restored);
+    behavior_asset *restored = ed_snapshot(e);
+    test_check(
+        enabled && changed && redo_enabled && redo_clicked &&
+            behavior_asset_equal(before, restored),
+        "Edit menu preserves graph command context and applies Undo/Redo over "
+        "the Scene pane"
+    );
+    behavior_asset_free(before);
+    behavior_asset_free(undone);
+    behavior_asset_free(restored);
 }

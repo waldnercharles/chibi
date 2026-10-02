@@ -1,6 +1,7 @@
 #include "automation/prototype_edit.h"
 
 #include "support/array.h"
+#include "support/asset_json.h"
 #include "third_party/yyjson/yyjson.h"
 
 #include <stdarg.h>
@@ -78,6 +79,28 @@ static bool valid_behavior_name(const char *name)
            !strstr(name, "..") && strlen(name) <= 512;
 }
 
+static int request_write_field(
+    game_prototype *prototype,
+    const char *component,
+    const char *field,
+    yyjson_val *value,
+    char *error,
+    size_t size
+)
+{
+    av_doc *doc = av_doc_new();
+    int result = game_prototype_write_field_value(
+        prototype,
+        component,
+        field,
+        av_from_json(doc, value),
+        error,
+        size
+    );
+    av_doc_free(doc);
+    return result;
+}
+
 static int add_component(edit_context *context, yyjson_val *operation)
 {
     const char *name = required_string(context, operation, "component");
@@ -108,7 +131,7 @@ static int add_component(edit_context *context, yyjson_val *operation)
     while ((key = yyjson_obj_iter_next(&iterator))) {
         const char *field = yyjson_get_str(key);
         char field_error[256] = { 0 };
-        if (game_prototype_write_field_json(
+        if (request_write_field(
                 context->prototype,
                 name,
                 field,
@@ -148,7 +171,7 @@ static int set_field(edit_context *context, yyjson_val *operation)
         return fail(context, CHIBI_AUTOMATION_INVALID_REQUEST, "value is required");
     }
     char field_error[256] = { 0 };
-    if (game_prototype_write_field_json(context->prototype, component, field, value, field_error, sizeof field_error)) {
+    if (request_write_field(context->prototype, component, field, value, field_error, sizeof field_error)) {
         return fail(context, CHIBI_AUTOMATION_VALIDATION_ERROR, "%s", field_error);
     }
     return CHIBI_AUTOMATION_OK;
@@ -210,20 +233,20 @@ static int apply_operation(edit_context *context, yyjson_val *operation)
 }
 
 int automation_prototype_edit(
-    const char *source_json,
+    const char *source_text,
     const game_prototype_registry *registry,
     yyjson_val *request,
     yyjson_mut_doc *doc,
     yyjson_mut_val *result,
-    char **edited_json,
+    char **edited_text,
     char *error,
     size_t error_size
 )
 {
-    if (edited_json) {
-        *edited_json = NULL;
+    if (edited_text) {
+        *edited_text = NULL;
     }
-    if (!source_json || !registry || !request || !doc || !result || !edited_json) {
+    if (!source_text || !registry || !request || !doc || !result || !edited_text) {
         if (error && error_size) {
             snprintf(error, error_size, "prototype edit arguments are required");
         }
@@ -237,7 +260,7 @@ int automation_prototype_edit(
         }
         return CHIBI_AUTOMATION_INVALID_REQUEST;
     }
-    game_prototype *prototype = game_prototype_load(source_json, registry, error, error_size);
+    game_prototype *prototype = game_prototype_load(source_text, registry, error, error_size);
     if (!prototype) {
         return CHIBI_AUTOMATION_VALIDATION_ERROR;
     }
@@ -291,6 +314,6 @@ int automation_prototype_edit(
     );
     game_prototype_free(roundtrip);
     game_prototype_free(prototype);
-    *edited_json = saved;
+    *edited_text = saved;
     return CHIBI_AUTOMATION_OK;
 }

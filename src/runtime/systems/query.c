@@ -1,6 +1,6 @@
 #include "runtime/systems/query.h"
 
-#include "../third_party/yyjson/yyjson.h"
+#include "support/asset_text.h"
 
 #include <stdarg.h>
 #include <stdio.h>
@@ -43,20 +43,23 @@ static ecs_query_expr_kind parse_kind(const char *name)
     return ECS_QUERY_HAS;
 }
 
-static yyjson_mut_val *save_value(
-    yyjson_mut_doc *doc,
+av_value *game_query_save_value(
+    av_doc *doc,
     const ecs_query_expr *expression,
     game_query_component_resolver resolve,
     game_query_component_name_resolver name_resolver,
     void *user
 )
 {
+    if (!expression || !resolve || !name_resolver) {
+        return NULL;
+    }
     const char *kind = kind_name(ecs_query_expr_get_kind(expression));
     if (!kind) {
         return NULL;
     }
-    yyjson_mut_val *value = yyjson_mut_obj(doc);
-    yyjson_mut_obj_add_str(doc, value, "op", kind);
+    av_value *value = av_obj(doc);
+    av_obj_add_str(doc, value, "op", kind);
     if (ecs_query_expr_get_kind(expression) == ECS_QUERY_HAS) {
         const char *component = name_resolver(ecs_query_expr_get_component(expression), user);
         const ecs_component_desc *resolved = component ? resolve(component, user)
@@ -65,18 +68,24 @@ static yyjson_mut_val *save_value(
             resolved->id != ecs_query_expr_get_component(expression)) {
             return NULL;
         }
-        yyjson_mut_obj_add_str(doc, value, "component", component);
+        av_obj_add_str(doc, value, "component", component);
         return value;
     }
-    yyjson_mut_val *terms = yyjson_mut_arr(doc);
+    av_value *terms = av_arr(doc);
     for (int i = 0; i < ecs_query_expr_child_count(expression); i++) {
-        yyjson_mut_val *child = save_value(doc, ecs_query_expr_child(expression, i), resolve, name_resolver, user);
+        av_value *child = game_query_save_value(
+            doc,
+            ecs_query_expr_child(expression, i),
+            resolve,
+            name_resolver,
+            user
+        );
         if (!child) {
             return NULL;
         }
-        yyjson_mut_arr_add_val(terms, child);
+        av_arr_add_val(terms, child);
     }
-    yyjson_mut_obj_add_val(doc, value, "terms", terms);
+    av_obj_add_val(doc, value, "terms", terms);
     return value;
 }
 
@@ -90,17 +99,16 @@ char *game_query_save(
     if (!expression || !resolve || !name) {
         return NULL;
     }
-    yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
-    yyjson_mut_val *root = save_value(doc, expression, resolve, name, user);
+    av_doc *doc = av_doc_new();
+    av_value *root = game_query_save_value(doc, expression, resolve, name, user);
     if (!root) {
-        yyjson_mut_doc_free(doc);
+        av_doc_free(doc);
         return NULL;
     }
-    yyjson_mut_doc_set_root(doc, root);
-    size_t size = 0;
-    char *json = yyjson_mut_write(doc, 0, &size);
-    yyjson_mut_doc_free(doc);
-    return json;
+    av_doc_set_root(doc, root);
+    char *text = av_doc_write(doc);
+    av_doc_free(doc);
+    return text;
 }
 
 typedef struct
@@ -111,43 +119,41 @@ typedef struct
     size_t error_size;
 } load_context;
 
-static ecs_query_expr *load_value(load_context *context, yyjson_val *value)
+static ecs_query_expr *load_value(load_context *context, av_value *value)
 {
-    if (!yyjson_is_obj(value)) {
+    if (!av_is_obj(value)) {
         set_error(context->error, context->error_size, "query term must be an object");
         return NULL;
     }
-    yyjson_val *op_value = yyjson_obj_get(value, "op");
-    if (!yyjson_is_str(op_value)) {
+    av_value *op_value = av_obj_get(value, "op");
+    if (!av_is_str(op_value)) {
         set_error(context->error, context->error_size, "query term is missing op");
         return NULL;
     }
-    const char *op = yyjson_get_str(op_value);
+    const char *op = av_get_str(op_value);
     if (!strcmp(op, "has")) {
-        yyjson_obj_iter keys = yyjson_obj_iter_with(value);
-        yyjson_val *key;
-        while ((key = yyjson_obj_iter_next(&keys))) {
-            const char *name = yyjson_get_str(key);
+        av_obj_iter keys = av_obj_iter_with(value);
+        av_value *key;
+        while ((key = av_obj_iter_next(&keys))) {
+            const char *name = av_get_str(key);
             if (strcmp(name, "op") != 0 && strcmp(name, "component") != 0) {
                 set_error(context->error, context->error_size, "unknown has query key %s", name);
                 return NULL;
             }
         }
-        yyjson_val *component_value = yyjson_obj_get(value, "component");
-        if (!yyjson_is_str(component_value)) {
+        av_value *component_value = av_obj_get(value, "component");
+        if (!av_is_str(component_value)) {
             set_error(context->error, context->error_size, "has term is missing component");
             return NULL;
         }
-        const ecs_component_desc *component = context->resolve(
-            yyjson_get_str(component_value),
-            context->user
-        );
+        const ecs_component_desc
+            *component = context->resolve(av_get_str(component_value), context->user);
         if (!component) {
             set_error(
                 context->error,
                 context->error_size,
                 "unknown query component %s",
-                yyjson_get_str(component_value)
+                av_get_str(component_value)
             );
             return NULL;
         }
@@ -158,25 +164,25 @@ static ecs_query_expr *load_value(load_context *context, yyjson_val *value)
         set_error(context->error, context->error_size, "unknown query operator %s", op);
         return NULL;
     }
-    yyjson_obj_iter keys = yyjson_obj_iter_with(value);
-    yyjson_val *key;
-    while ((key = yyjson_obj_iter_next(&keys))) {
-        const char *name = yyjson_get_str(key);
+    av_obj_iter keys = av_obj_iter_with(value);
+    av_value *key;
+    while ((key = av_obj_iter_next(&keys))) {
+        const char *name = av_get_str(key);
         if (strcmp(name, "op") != 0 && strcmp(name, "terms") != 0) {
             set_error(context->error, context->error_size, "unknown %s query key %s", op, name);
             return NULL;
         }
     }
-    yyjson_val *terms = yyjson_obj_get(value, "terms");
-    if (!yyjson_is_arr(terms)) {
+    av_value *terms = av_obj_get(value, "terms");
+    if (!av_is_arr(terms)) {
         set_error(context->error, context->error_size, "%s query is missing terms", op);
         return NULL;
     }
     ecs_query_expr *expression = ecs_query_expr_new(kind);
-    yyjson_val *term;
-    yyjson_arr_iter iter;
-    yyjson_arr_iter_init(terms, &iter);
-    while ((term = yyjson_arr_iter_next(&iter))) {
+    av_value *term;
+    av_arr_iter iter;
+    av_arr_iter_init(terms, &iter);
+    while ((term = av_arr_iter_next(&iter))) {
         ecs_query_expr *child = load_value(context, term);
         if (!child || ecs_query_expr_add(expression, child) != ECS_OK) {
             ecs_query_expr_free(child);
@@ -192,25 +198,35 @@ static ecs_query_expr *load_value(load_context *context, yyjson_val *value)
     return expression;
 }
 
-ecs_query_expr *game_query_load(
-    const char *json,
+ecs_query_expr *game_query_load_value(
+    av_value *value,
     game_query_component_resolver resolve,
     void *user,
     char *error,
     size_t error_size
 )
 {
-    if (!json || !resolve) {
-        set_error(error, error_size, "query JSON or resolver is missing");
-        return NULL;
-    }
-    yyjson_doc *doc = yyjson_read(json, strlen(json), 0);
-    if (!doc) {
-        set_error(error, error_size, "malformed query JSON");
+    if (!value || !resolve) {
+        set_error(error, error_size, "query value or resolver is missing");
         return NULL;
     }
     load_context context = { resolve, user, error, error_size };
-    ecs_query_expr *expression = load_value(&context, yyjson_doc_get_root(doc));
-    yyjson_doc_free(doc);
+    return load_value(&context, value);
+}
+
+ecs_query_expr *game_query_load(
+    const char *text,
+    game_query_component_resolver resolve,
+    void *user,
+    char *error,
+    size_t error_size
+)
+{
+    av_doc *doc = av_doc_read(text, error, error_size);
+    if (!doc) {
+        return NULL;
+    }
+    ecs_query_expr *expression = game_query_load_value(av_doc_root(doc), resolve, user, error, error_size);
+    av_doc_free(doc);
     return expression;
 }

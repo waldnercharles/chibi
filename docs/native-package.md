@@ -15,22 +15,22 @@ Keep the whole package together when moving or distributing it.
 
 ## Use a separate game workspace
 
-A game repository contains `project.yaml` and its `content` directory. For
-example, `project.yaml` can select an empty starting scene:
+A game repository contains `project.kdl` and its `content` directory. For
+example, `project.kdl` can select an empty starting scene:
 
-```yaml
-version: 3
-name: My Game
-content: content
-start_scene: scenes/Main.yaml
+```kdl
+version 4
+name "My Game"
+content "content"
+start_scene "scenes/Main.kdl"
 ```
 
-Create `content/scenes/Main.yaml`:
+Create `content/scenes/Main.kdl`:
 
-```yaml
-version: 1
-name: Main
-entities: []
+```kdl
+version 1
+name "Main"
+(array)entities
 ```
 
 Then register the installed engine with that workspace:
@@ -51,7 +51,7 @@ until it is explicitly selected with:
 ```
 
 An engine pin does not migrate assets between project format versions. The
-game's `project.yaml` must use the version accepted by the selected engine.
+game's `project.kdl` must use the version accepted by the selected engine.
 
 Use MCP discovery and search before authoring. Change assets with the matching
 `build*` tool, validate, then preview or run a deterministic scenario. The

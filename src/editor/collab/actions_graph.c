@@ -9,6 +9,7 @@
 #include "graph/model/registry.h"
 #include "graph/model/type.h"
 #include "graph/runtime/value_array.h"
+#include "support/asset_json.h"
 #include "yyjson.h"
 
 #include <assert.h>
@@ -127,7 +128,11 @@ static bool write_pin_value(yyjson_mut_doc *doc, yyjson_mut_val *root, const cha
     }
     if (value->container != PIN_CONTAINER_SINGLE || value->type == PIN_STRUCT) {
         yyjson_mut_obj_add_int(doc, item, "container", value->container);
-        serialize_write_value(doc, item, "data", value->type, value->type_name, value);
+        av_doc *native = av_doc_new();
+        av_value *data = av_obj(native);
+        serialize_write_value(native, data, "data", value->type, value->type_name, value);
+        yyjson_mut_obj_add_val(doc, item, "data", av_to_json(doc, av_obj_get(data, "data")));
+        av_doc_free(native);
         return true;
     }
     switch (value->type) {
@@ -218,9 +223,12 @@ static bool read_pin_value(yyjson_val *item, pin_value *out, graph *storage)
             !type_is_plain(registry_type_by_name(type_name))) {
             return false;
         }
+        av_doc *native = av_doc_new();
+        av_value *native_data = av_from_json(native, data);
         int result = value.container == PIN_CONTAINER_SINGLE
-                       ? serialize_read_value(value.type, type_name, data, &value, storage)
-                       : serialize_read_array(value.type, type_name, data, &value, storage);
+                       ? serialize_read_value(value.type, type_name, native_data, &value, storage)
+                       : serialize_read_array(value.type, type_name, native_data, &value, storage);
+        av_doc_free(native);
         value.container = container_json ? yyjson_get_int(container_json)
                                          : PIN_CONTAINER_SINGLE;
         if (result || !action_value_valid(&value, 0)) {
@@ -1054,7 +1062,7 @@ static bool apply_input_binding(
          (binding || !input_default_matches(&target->input_pins[pin], default_value)))) {
         return false;
     }
-    char *before = ed_snapshot(e);
+    behavior_asset *before = ed_snapshot(e);
     if (!before) {
         return false;
     }

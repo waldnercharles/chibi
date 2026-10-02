@@ -7,6 +7,7 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
+import { fixtureKdl } from "./fixture-kdl.mjs";
 import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
 import { join, resolve } from "node:path";
@@ -154,8 +155,10 @@ mkdirSync(join(projectRoot, "content", "scenes"), { recursive: true });
 mkdirSync(join(projectRoot, "content", "scenarios"), { recursive: true });
 // A scenario replays keyed input on the scene the batch below creates.
 writeFileSync(
-  join(projectRoot, "content", "scenarios", "McpAuthoringScenario.yaml"),
-  `scene: ${sceneName}\nframes: 3\nsaved_state: {best: "7"}\nkeys:\n- {frame: 0, movement: {x: 1, y: 0}}\n- {frame: 2, controls: [Space]}\n`,
+  join(projectRoot, "content", "scenarios", "McpAuthoringScenario.kdl"),
+  fixtureKdl({scene: sceneName, frames: 3, saved_state: {best: "7"}, keys: [
+    {frame: 0, movement: {x: 1, y: 0}}, {frame: 2, controls: ["Space"]},
+  ]}),
 );
 
 try {
@@ -281,6 +284,7 @@ try {
     request(29, "runScenario", { scenario: "McpAuthoringScenario", kind: "scene" }),
     request(30, "validateAsset", { kind: "scenario", name: "McpAuthoringScenario" }),
     request(31, "runScenario", { scenario: "McpAuthoringScenario" }),
+    request(32, "profileScenario", { kind: "prototype", name: prototypeName, frames: 2, warmup_frames: 1, behavior_details: false }),
   ]);
 
   const tools = first.get(2)?.result?.tools || [];
@@ -314,6 +318,7 @@ try {
   const executionStatus = structured(first.get(22));
   const optimize = structured(first.get(23));
   const profile = structured(first.get(24));
+  const ordinaryProfile = structured(first.get(32));
   const sceneRun = structured(first.get(25));
   const sceneSnapshot = structured(first.get(26));
   const scenarioProfile = structured(first.get(28));
@@ -344,6 +349,7 @@ try {
   assert(sceneOperationProperties.op?.enum?.includes("add_entity") && sceneOperationProperties.op.enum.includes("rename_entity") && sceneOperationProperties.components && sceneOperationProperties.behaviors && !sceneOperationProperties.x && !sceneOperationProperties.y, "scene authoring operations are missing semantic fields or expose placement controls");
   assert(optimizeTool?.inputSchema?.properties?.fanout_threshold?.maximum === 64 && optimizeTool?.annotations?.readOnlyHint === false, "graph optimizer schema or mutation annotations are missing");
   assert(profileTool?.inputSchema?.properties?.warmup_frames && executionTool?.inputSchema?.properties?.kind?.enum?.includes("system"), "profiling or execution status tools are missing");
+  assert(profileTool?.inputSchema?.properties?.behavior_details?.type === "boolean" && profileTool.inputSchema.properties.behavior_details.default === true, "behavior profiling granularity schema is missing");
   assert(editPrototypeTool?.annotations?.readOnlyHint === false && editPrototypeTool?.annotations?.destructiveHint === true, "buildPrototype mutation annotations are missing");
   assert(prototypeOperationProperties.op?.enum?.includes("add_component") && prototypeOperationProperties.op?.enum?.includes("set_field") && prototypeOperationProperties.fields && prototypeOperationProperties.value, "prototype authoring operations are missing from the MCP operation schema");
   const movementDescription = componentDescription.result?.components?.[0];
@@ -380,6 +386,7 @@ try {
   assert(execution.scope === "behavior_events" && execution.fully_jit === (execution.ready && execution.event_entries > 0 && execution.native_event_entries === execution.event_entries), "execution status omitted verified whole-event coverage");
   assert(optimize.ok === true && optimize.result?.dry_run === true && optimize.result?.changed === false, `graph optimization dry run failed: ${JSON.stringify(optimize)}`);
   assert(profile.ok === true && profile.result?.timing?.sampled_frames === 2 && profile.result?.warmup_frames === 1 && profile.result?.allocations?.scope === "xalloc wrappers" && profile.result?.timing?.frame_ms?.max >= profile.result?.timing?.frame_ms?.p50 && profile.result?.timing?.worst_frames?.length === 2, `scenario profiling failed: ${JSON.stringify(profile)}`);
+  assert(profile.result.behavior_details === true && ordinaryProfile.ok === true && ordinaryProfile.result?.behavior_details === false && ordinaryProfile.result?.behaviors?.length === 0 && ordinaryProfile.result?.world_hash === profile.result.world_hash && ordinaryProfile.result?.timing?.sampled_frames === 2 && ordinaryProfile.result?.allocations?.scope === "xalloc wrappers" && ordinaryProfile.result?.behavior_work?.sampled_updates === 2, "ordinary profile mode lost frame or endpoint evidence");
   assert(profile.result.execution?.scope === "behavior_events" && profile.result.execution.backend === execution.backend && profile.result.execution.instances === 1, `profile reported the wrong live behavior backend: ${JSON.stringify(profile.result.execution)}`);
   assert(sceneRun.ok === true && sceneRun.result?.authored_entities === 1, `scene scenario failed: ${JSON.stringify(sceneRun)}`);
   assert(scenarioProfile.ok === true && scenarioProfile.result?.frames === 3 && scenarioProfile.result?.timing?.worst_frames?.length === 3, `scenario profile failed: ${JSON.stringify(scenarioProfile)}`);
@@ -460,7 +467,7 @@ try {
   ]).get(2));
   assert(sceneAfterFailedRenames.ok === true && sceneAfterFailedRenames.result?.hash === sceneRename.result.after_hash && sceneAfterFailedRenames.result.document.entities?.length === 1, "invalid scene rename batches changed the published scene");
 
-  writeFileSync(join(projectRoot, "project.yaml"), "version: 2\nname: Studio\ncontent: content\nstart_scene: scenes/Studio.yaml\n");
+  writeFileSync(join(projectRoot, "project.kdl"), "version 4\nname \"Studio\"\ncontent \"content\"\nstart_scene \"scenes/Studio.kdl\"\n");
   const studioSceneCreateRun = runMcp(projectRoot, [
     initialize(),
     request(2, "buildScene", {
@@ -492,7 +499,7 @@ try {
   const studioRename = structured(studioRenameRun.get(3));
   assert(studioRenameDryRun.ok === true && Array.isArray(studioRenameDryRun.result?.warnings) && studioRenameDryRun.result.warnings.length > 0, `Studio scene rename dry run omitted its warning: ${JSON.stringify(studioRenameDryRun)}`);
   assert(studioRename.ok === true && Array.isArray(studioRename.result?.warnings) && studioRename.result.warnings.length > 0, `Studio scene rename omitted its warning: ${JSON.stringify(studioRename)}`);
-  rmSync(join(projectRoot, "project.yaml"), { force: true });
+  rmSync(join(projectRoot, "project.kdl"), { force: true });
 
   const missingBehaviorRun = runMcp(projectRoot, [
     initialize(),
@@ -577,7 +584,7 @@ try {
   const invalidMaterialName = "McpAuthoringInvalidMaterial";
   const invalidMaterial = JSON.parse(JSON.stringify(materialRead.result.document));
   invalidMaterial.graphs[0].nodes[0].type = "Shader Node That Does Not Exist";
-  writeFileSync(join(projectRoot, "content", "materials", invalidMaterialName + ".yaml"), JSON.stringify(invalidMaterial));
+  writeFileSync(join(projectRoot, "content", "materials", invalidMaterialName + ".kdl"), fixtureKdl(invalidMaterial));
   const publicValidationRun = runMcp(projectRoot, [
     initialize(),
     request(2, "validateAsset", { kind: "material", name: invalidMaterialName }),

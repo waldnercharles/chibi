@@ -78,7 +78,6 @@ set(CORE_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/document/serialize_refs.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/document/serialize_implied.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/document/serialize_clipboard.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/document/serialize_migrate.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/document/serialize_value.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/document/serialize_write.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/document/problems.c
@@ -127,6 +126,9 @@ set(CORE_SOURCES
     src/graph/runtime/value_index.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/support/arena.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/support/asset_text.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/support/asset_value.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/assets/asset_source.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/support/asset_json.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/support/file_watch.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/support/rcss.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/support/text_edit.c
@@ -148,6 +150,7 @@ set(ENGINE_SOURCES
 )
 
 set(EDITOR_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/documents/asset_code.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/collab/collab.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/collab/protocol.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/collab/actions_gate.c

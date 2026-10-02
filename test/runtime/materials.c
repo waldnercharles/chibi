@@ -189,9 +189,9 @@ static void contours()
 
 static behavior_asset *cave_asset()
 {
-    char *json = text_file_read("projects/arena2d/content/fields/CaveField.yaml");
+    char *json = text_file_read("projects/arena2d/content/fields/CaveField.kdl");
     assert(json);
-    behavior_asset *asset = behavior_asset_load_json(json);
+    behavior_asset *asset = behavior_asset_load(json);
     free(json);
     assert(asset);
     return asset;
@@ -615,6 +615,79 @@ static void flow_finish(void *task, void *user)
     executor->tasks.finish(task, executor->tasks.user);
 }
 
+static void gas_deposit_equivalence()
+{
+    enum
+    {
+        POINTS = 64
+    };
+    fluid_particle split[POINTS * 3], merged[POINTS];
+    int split_active[POINTS * 3], merged_active[POINTS];
+    /* Cell size eight makes these offsets exactly representable just below,
+     * on and above integer/half-cell boundaries. */
+    const float offsets[] = { -.5f, 0, .5f, 3.5f, 4, 4.5f, 2, 6 };
+    game_task_system tasks = { .workers = 1 };
+    fluid_flow_settings settings = { .cell_size = 8 };
+    material_flow *retained = material_flow_new(), *reference = material_flow_new();
+    for (int round = 0; round < 2; round++) {
+        if (round) {
+            material_flow_clear(retained);
+            material_flow_free(reference);
+            reference = material_flow_new();
+        }
+        /* Prime both owned grids before clearing. Reset the dyadic deposition
+         * inputs each step; previous flow fields still evolve identically. */
+        for (int step = 0; step < (round ? 1 : 2); step++) {
+            for (int i = 0; i < POINTS; i++) {
+                int index = (i * 17) % POINTS;
+                float x = (i % 8 - 4) * 16 + offsets[i % 8] + round * 128;
+                float y = (i / 8 - 4) * 16 + offsets[i / 8] - round * 192;
+                split[index * 3 + 2] = particle(x, y, FLUID_GAS);
+                split[index * 3 + 2].mass = 1;
+                split[index * 3 + 2].velocity = (fluid_vec){ 2, -4 };
+                split[index * 3] = particle(x, y, FLUID_GAS);
+                split[index * 3].mass = 1;
+                split[index * 3].velocity = (fluid_vec){ 6, 8 };
+                split[index * 3 + 1] = particle(10000 + x, -10000 + y, FLUID_LIQUID);
+                split[index * 3 + 1].velocity = (fluid_vec){ 101, -103 };
+                merged[index] = particle(x, y, FLUID_GAS);
+                merged[index].mass = 2;
+                merged[index].velocity = (fluid_vec){ 4, 2 };
+                split_active[i * 3] = index * 3 + 1;
+                split_active[i * 3 + 1] = index * 3 + 2;
+                split_active[i * 3 + 2] = index * 3;
+                merged_active[i] = index;
+            }
+            /* Coincident parcels have equal combined mass/momentum and activate
+             * the same overlapping halos in the same first-insertion order. */
+            material_flow_step(
+                retained,
+                settings,
+                1.f / 60,
+                split,
+                split_active,
+                POINTS * 3,
+                NULL,
+                NULL,
+                0,
+                &tasks
+            );
+            material_flow_step(reference, settings, 1.f / 60, merged, merged_active, POINTS, NULL, NULL, 0, &tasks);
+            assert(material_flow_hash(retained) == material_flow_hash(reference));
+            for (int i = 0; i < POINTS; i++) {
+                assert(!memcmp(&split[i * 3].velocity, &merged[i].velocity, sizeof(fluid_vec)));
+                assert(!memcmp(&split[i * 3 + 2].velocity, &merged[i].velocity, sizeof(fluid_vec)));
+                assert(
+                    split[i * 3 + 1].velocity.x == 101 &&
+                    split[i * 3 + 1].velocity.y == -103
+                );
+            }
+        }
+    }
+    material_flow_free(retained);
+    material_flow_free(reference);
+}
+
 static void parallel_flow()
 {
     enum
@@ -861,7 +934,7 @@ static void terrain_boundary_cut()
                             .height = 512,
                             .cell_size = 2,
                             .field = "CaveField",
-                            .parameters = "{\"Radius\":72,\"Roughness\":30}",
+                            .parameters = "Radius 72\nRoughness 30\n",
                             .connectivity = MATERIAL_CONNECTIVITY_FIRST_AIR,
                             .border_cells = 8,
                             .category = 8,
@@ -917,7 +990,7 @@ static void terrain_boundary_cut()
     assert(!ecs_entity_is_alive(world, target));
     MaterialTerrain *terrain = GAME_MaterialTerrain_get(world, source);
     const char *original_parameters = terrain->parameters;
-    terrain->parameters = "{\"Radius\":96,\"Roughness\":30}";
+    terrain->parameters = "Radius 96\nRoughness 30\n";
     assert(!game_materials_prepare(live->materials));
     assert(game_materials_inspect(live->materials).cells < initial.cells);
     terrain = GAME_MaterialTerrain_get(world, source);
@@ -964,7 +1037,7 @@ static void terrain_stream_restore()
                             .height = 512,
                             .cell_size = 2,
                             .field = "CaveField",
-                            .parameters = "{\"Radius\":72,\"Roughness\":30}",
+                            .parameters = "Radius 72\nRoughness 30\n",
                             .category = 8,
                             .mask = 1,
                             .min_fragment_cells = 4,
@@ -1090,18 +1163,17 @@ static void terrain_preparation_scratch()
                 world,
                 source,
                 &GAME_COMPONENT_MaterialTerrain,
-                &(MaterialTerrain){
-                    .seed = 1729,
-                    .width = 512,
-                    .height = 512,
-                    .cell_size = 2,
-                    .field = "CaveField",
-                    .parameters = "{\"Radius\":72,\"Roughness\":30}",
-                    .category = 8,
-                    .mask = 1,
-                    .min_fragment_cells = 4,
-                    .stream_radius = 128,
-                    .stream_budget = 64 }
+                &(MaterialTerrain){ .seed = 1729,
+                                    .width = 512,
+                                    .height = 512,
+                                    .cell_size = 2,
+                                    .field = "CaveField",
+                                    .parameters = "Radius 72\nRoughness 30\n",
+                                    .category = 8,
+                                    .mask = 1,
+                                    .min_fragment_cells = 4,
+                                    .stream_radius = 128,
+                                    .stream_budget = 64 }
             );
         }
         ecs_entity moving = ecs_world_create_entity(world);
@@ -2092,13 +2164,13 @@ static void blast_policy()
     }
     game_live_world *live = game_live_world_new(world);
     const char *paths[] = {
-        "projects/arena2d/content/events/Material Impact.yaml",
-        "projects/arena2d/content/behaviors/MaterialImpactHealth.yaml"
+        "projects/arena2d/content/events/Material Impact.kdl",
+        "projects/arena2d/content/behaviors/MaterialImpactHealth.kdl"
     };
     for (int i = 0; i < 2; i++) {
         char *json = text_file_read(paths[i]);
         assert(json);
-        behavior_asset *asset = behavior_asset_load_json(json);
+        behavior_asset *asset = behavior_asset_load(json);
         free(json);
         assert(asset);
         assert(!game_live_add_definition(live, game_live_definition_new(asset->name, asset)));
@@ -2384,6 +2456,7 @@ void test_materials()
     gas_flow();
     parallel_parity(false);
     parallel_parity(true);
+    gas_deposit_equivalence();
     parallel_flow();
     physical_destruction();
     finite_drive();

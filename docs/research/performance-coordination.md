@@ -11,9 +11,23 @@ profiling checkpoints and this ready batch are pushed. The
 default after its complete matched matrix; gas p50 regresses 29.23%. The
 [current compiler measurements](compiler-measurements-20261001.md) record
 accepted internal Wasm and native-loop checks. External LuaJIT, V8 and
-JavaScriptCore comparisons remain deferred. Existing-grid activation IDs and
-unused-index skips are a separate candidate under validation. The historical
-results and source scopes below remain unchanged.
+JavaScriptCore comparisons remain deferred. The
+[gas activation report](gas-activation-20261001.md) accepts existing-grid cell-ID
+reuse at `4490156b`, tested against current KDL main `897dd6de`. All six native
+timing cases and eight native/scalar/four-worker parity cases pass their audits;
+gas-flow kernel gains do not establish frame-tail improvement. The separate
+unused-index skips remain unmerged after a targeted liquid case regressed in
+every pair. The historical results and source scopes below remain unchanged.
+
+The [next-wave delivery report](performance-next-wave-20261001.md) records pushed
+profiling source `4e7a09bb`: ordinary behavior execution can be preserved while
+collecting frame diagnostics, with audited native batch and worker participation.
+The compact-fluid and empty-proxy candidates pass correctness checks but remain
+unmerged without complete accepted timing. Preserved attempts and the repaired
+timing setup are identified in its [evidence JSON](performance-next-wave-20261001.json).
+Those candidates are independent of beginning liquid PIC/FLIP or calibrated SPH;
+the report identifies the first solver deliverable and physical checks. No new
+solver or GPU simulation backend is implemented.
 
 The first coordinated batch reconciles performance defaults, field evaluation,
 material rendering, replay parity, and current main before implementing two

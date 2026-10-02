@@ -55,16 +55,16 @@ plain Debug and runs that selector. Use another `test_suite` selector for the
 area you changed. `make test` remains the full ASan and UBSan gate.
 
 Neon Swarm is the default project for native launches, editor profiles, MCP,
-and `make web-serve`. Its manifest selects `scenes/Sandbox.yaml`.
+and `make web-serve`. Its manifest selects `scenes/Sandbox.kdl`.
 Use `make debug PROJECT=.` for the Arena3D reference, or
-`make debug PROJECT=. SCENE=scenes/OrbitPinball.yaml` for pinball.
+`make debug PROJECT=. SCENE=scenes/OrbitPinball.kdl` for pinball.
 Add `ARGS=--play` to launch into Play. `PROJECT` works the same for
 `make web-serve`, and `SCENE` is optional everywhere: without it a project
 opens at its manifest's start scene. In the browser, add
-`?scene=scenes/<file>.yaml` to the editor URL to open another scene.
+`?scene=scenes/<file>.kdl` to the editor URL to open another scene.
 
 File > Open Project and the command palette switch between the repository's
-projects (`project.yaml` and `projects/*`) without relaunching. `make web-serve`
+projects (`project.kdl` and `projects/*`) without relaunching. `make web-serve`
 mirrors all of them into the browser, so `?project-root=projects/<name>` also
 opens one there.
 
@@ -80,7 +80,7 @@ local project instead.
 
 Gameplay can be recorded and replayed as a `scenarios` asset. In Studio, Record
 Gameplay restarts the scene and records until Stop or Stop Recording, then
-saves `scenarios/<Scene> Recording.yaml`; the command palette lists each
+saves `scenarios/<Scene> Recording.kdl`; the command palette lists each
 scenario to replay on a loop until Stop. Scenarios can also be written by hand
 (see [the MCP workflow](docs/mcp.md#scenario-assets)). `ARGS='--play --scenario
 Firefight'`, or `?play&scenario=Firefight` in the browser, replays one on a loop
@@ -98,6 +98,13 @@ profile and its MCP analysis server.
 When available, Chibi MCP is the default interface for authoring shaders,
 behaviors, prototypes, and scenes. See [the MCP workflow](docs/mcp.md) for
 the public tools and validation sequence.
+
+To edit an asset directly in Studio, open it from Assets and switch the
+area to Text Editor. The KDL editor highlights syntax and offers reflected
+component, field, enum and asset completions as you type or with Control+Space.
+Diagnostics mark invalid source. Live preview keeps the last valid asset while
+you finish an edit. Saving writes the valid source exactly as typed, preserving
+comments and spacing.
 
 ### Zed
 

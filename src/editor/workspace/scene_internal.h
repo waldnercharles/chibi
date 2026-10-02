@@ -37,8 +37,8 @@ typedef struct
     game_prototype *prototype;
     int dirty;
     scene_camera camera;
-    char **undo;
-    char **redo;
+    av_value **undo;
+    av_value **redo;
 } scene_prototype_asset;
 
 typedef struct
@@ -54,8 +54,8 @@ typedef struct
     char *key;
     char *label;
     char *path;
-    char *scene_json;
-    char *scene_history;
+    av_value *scene_value;
+    av_value *scene_history;
     uint64_t *scene_entities;
     uint64_t *scene_actor_ids;
     int scene_entity_count;
@@ -66,12 +66,14 @@ typedef struct
     int selected;
     int selected_prototype;
     char *selected_prototype_name;
-    char *asset_saved;
-    char *system_json;
-    char *system_saved;
+    av_value *asset_saved;
+    av_value *system_value;
+    av_value *system_saved;
     unsigned system_editor_revision;
     unsigned system_query_revision;
-    ui_buffer *ui; /* a UI document's text, owned; NULL for other kinds */
+    ui_buffer *ui;     /* a UI document's text, owned; NULL for other kinds */
+    bool source_dirty; /* exact KDL text differs from disk */
+    av_value *source_state; /* source draft, history and selection; owned native checkpoint */
 } scene_document_tab;
 
 /* Private authoring state. Module replacement transfers versioned document
@@ -173,15 +175,17 @@ struct app_scene_authoring
     bool scene_tab_restoring;
     scenario_document *scenario; /* replayed on the scene runtime, or NULL */
     bool scenario_recording;
-    unsigned scenario_seed;     /* of the recording */
-    char *scenario_saved_state; /* progress the recording started from, owned */
+    unsigned scenario_seed;         /* of the recording */
+    av_value *scenario_saved_state; /* progress the recording started from, owned */
     char message[256];
     char prototype_message[256];
 };
 
 /* Document I/O is shared by disk commands and module checkpoints. */
-char *scene_authoring_scene_json(app_scene_authoring *scene);
-int scene_authoring_load_json(app_scene_authoring *scene, const char *json, const char *path);
+av_value *scene_authoring_scene_value(app_scene_authoring *scene);
+char *scene_authoring_scene_text(app_scene_authoring *scene);
+int scene_authoring_load_value(app_scene_authoring *scene, av_value *value, const char *path);
+int scene_authoring_load_text(app_scene_authoring *scene, const char *json, const char *path);
 int scene_authoring_sync_document(app_scene_authoring *scene);
 void scene_authoring_select_document(
     app_scene_authoring *scene,
@@ -220,7 +224,8 @@ void scene_tabs_close(app_scene_authoring *scene, app_editor_document_kind kind,
 int scene_tabs_discard(app_scene_authoring *scene, int index);
 bool scene_tabs_dirty(app_scene_authoring *scene, const scene_document_tab *tab);
 const char *scene_tabs_current_scene_key(const app_scene_authoring *scene);
-int load_system_document_json(app_scene_authoring *scene, const char *json, const char *path, bool reload);
+int load_system_document_value(app_scene_authoring *scene, av_value *value, const char *path, bool reload);
+int load_system_document_text(app_scene_authoring *scene, const char *json, const char *path, bool reload);
 /* Scene model operations shared by the authoring modules and Studio. */
 
 void begin_transform_edit(app_scene_authoring *scene, ecs_entity entity);
@@ -263,7 +268,7 @@ int actor_has_behavior(game_behavior_world *behaviors, const scene_actor *actor,
 int add_actor(app_scene_authoring *scene, const char *name, const char *prototype_name);
 int add_instance_at(app_scene_authoring *scene, const char *prototype_name, const GameTransform *position);
 game_prototype_registry app_component_registry(void);
-int apply_components_json(app_scene_authoring *scene, ecs_entity entity, const char *components_json);
+int apply_components_value(app_scene_authoring *scene, ecs_entity entity, av_value *components);
 int attach_prototype_behavior(ecs_world *world, ecs_entity entity, const char *asset_name, void *user);
 void clear_prototype_history(scene_prototype_asset *asset);
 char *content_path_join(const char *base, const char *name);
@@ -303,7 +308,7 @@ void write_position(app_scene_authoring *scene, ecs_entity entity, GameTransform
 /* Replaces the file with `text` at once; on the web the workspace server
  * keeps it too. */
 int write_file_atomic(const char *path, const char *text);
-/* Writes an asset's in-memory JSON as its YAML file, as write_file_atomic. */
+/* Reconciles authored KDL with existing source before writing atomically. */
 int write_text_file_atomic(const char *path, const char *text);
 /* Removes a content file, from browser storage too. */
 int remove_content_file(const char *path);

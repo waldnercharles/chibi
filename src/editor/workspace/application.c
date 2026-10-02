@@ -297,13 +297,9 @@ static bool open_workspace(
     engine_viewport *viewport = engine_viewport_new(640, 360);
     editor *graph_editor = editor_definition ? editor_new(editor_definition) : NULL;
     game_live_world *live = world ? game_live_world_new(world) : NULL;
-    char *definition_json = editor_definition
-                              ? behavior_asset_save_json(editor_definition)
-                              : NULL;
-    behavior_asset *definition_behavior_asset = definition_json
-                                                  ? behavior_asset_load_json(definition_json)
+    behavior_asset *definition_behavior_asset = editor_definition
+                                                  ? behavior_asset_clone(editor_definition)
                                                   : NULL;
-    free(definition_json);
     game_live_definition *definition = definition_behavior_asset
                                          ? game_live_definition_new("AppBehavior", definition_behavior_asset)
                                          : NULL;
@@ -706,7 +702,7 @@ static void *application_create(const chibi_host *host, const char *checkpoint, 
             scene_path = argv[++i];
         } else if ((strcmp(argv[i], "--project") == 0 || strcmp(argv[i], "--project-root") == 0)) {
             if (i + 1 == argc || argv[i + 1][0] == '-') {
-                snprintf(error, error_size, "%s requires a project directory or project.yaml", argv[i]);
+                snprintf(error, error_size, "%s requires a project directory or project.kdl", argv[i]);
                 return NULL;
             }
             project_path = argv[++i];

@@ -30,7 +30,7 @@ static char *read_file(const char *path)
 static game_prototype *prototype(const char *name, const game_prototype_registry *registry)
 {
     char path[256], error[256];
-    snprintf(path, sizeof path, "test/fixtures/content/prototypes/%s.yaml", name);
+    snprintf(path, sizeof path, "test/fixtures/content/prototypes/%s.kdl", name);
     char *text = read_file(path);
     game_prototype *result = game_prototype_load(text, registry, error, sizeof error);
     free(text);
@@ -44,9 +44,9 @@ static behavior_asset *behavior(const char *name)
     const char *root = !strcmp(name, "WaveBehavior")
                          ? "test/fixtures/content/behaviors"
                          : "content/behaviors";
-    snprintf(path, sizeof path, "%s/%s.yaml", root, name);
+    snprintf(path, sizeof path, "%s/%s.kdl", root, name);
     char *text = read_file(path);
-    behavior_asset *asset = behavior_asset_load_json(text);
+    behavior_asset *asset = behavior_asset_load(text);
     free(text);
     assert(asset);
     asset = link_test_libraries(asset);

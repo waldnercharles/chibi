@@ -1,0 +1,789 @@
+version 3
+name "ArenaShipMotionBehavior"
+id_counter 1350
+description "Sustained aim-relative strafe slowly rolls between the pyramid's 90-degree faces. Roll angle and angular velocity stay continuous through reversals. Release settles onto the nearest face captured while moving. Reverse movement adds a subtle nose lift. Tune speed, rocking and settling under Motion in the Variables Inspector."
+owner_type "ecs.entity"
+(array)variables {
+    - id=1 name="Roll Speed (Degrees/Second)" type="float" type_name="float" category="Motion" default=36.0
+    - id=2 name="Reverse Nose Lift (Degrees)" type="float" type_name="float" category="Motion" default=3.0
+    - id=3 name="Settle Response (Hz)" type="float" type_name="float" category="Motion" default=1.0
+    - id=4 name="Settle Damping" type="float" type_name="float" category="Motion" default=1.0
+    - id=5 name="Roll Angle" type="float" type_name="float" category="State"
+    - id=6 name="Roll Velocity" type="float" type_name="float" category="State"
+    - id=7 name="Nose Position" type="float" type_name="float" category="State"
+    - id=8 name="Nose Velocity" type="float" type_name="float" category="State"
+    - id=252 name="Face Rocking" type="float" type_name="float" category="Motion" default=0.5
+    - id=253 name="Roll Acceleration (Per Second)" type="float" type_name="float" category="Motion" default=3.0
+    - id=254 name="Strafe Dead Zone" type="float" type_name="float" category="Motion" default=0.11999999731779099
+    - id=255 name="Resting Face" type="float" type_name="float" category="State"
+}
+(array)graphs {
+    - {
+        kind "event"
+        name ""
+        (array)nodes {
+            - {
+                id 10
+                type "Event"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_name "Tick"
+                outputs {
+                    Then id=9
+                }
+            }
+            - {
+                id 204
+                type "Call Function"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 79
+                reference_name "Advance Damped Spring"
+                inputs {
+                    Exec id=194
+                    Position {
+                        id 195
+                        type "float"
+                        kind "data"
+                        binding kind="variable" variable_id=5 source_asset="ArenaShipMotionBehavior"
+                    }
+                    Velocity {
+                        id 196
+                        type "float"
+                        kind "data"
+                        binding kind="variable" variable_id=6 source_asset="ArenaShipMotionBehavior"
+                    }
+                    Target {
+                        id 197
+                        type "float"
+                        kind "data"
+                        binding kind="variable" variable_id=255 source_asset="ArenaShipMotionBehavior"
+                    }
+                    Frequency {
+                        id 198
+                        type "float"
+                        kind "data"
+                        binding kind="variable" variable_id=3 source_asset="ArenaShipMotionBehavior"
+                    }
+                    Damping {
+                        id 199
+                        type "float"
+                        kind "data"
+                        binding kind="variable" variable_id=4 source_asset="ArenaShipMotionBehavior"
+                    }
+                    Delta {
+                        id 200
+                        type "float"
+                        kind "data"
+                        binding kind="delta_time"
+                    }
+                }
+                outputs {
+                    Then id=201
+                    Position id=202 type="float" kind="data"
+                    Velocity id=203 type="float" kind="data"
+                }
+            }
+            - {
+                id 209
+                type "Set Variable"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 5
+                inputs {
+                    Exec id=205
+                    Value type="float"
+                }
+                outputs {
+                    Value type="float"
+                }
+            }
+            - {
+                id 214
+                type "Set Variable"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 6
+                inputs {
+                    Exec id=210
+                    Value type="float"
+                }
+                outputs {
+                    Value type="float"
+                }
+            }
+            - {
+                id 636
+                type "Call Pure Function"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 579
+                reference_name "Compute Aim Basis"
+                inputs {
+                    Move {
+                        id 637
+                        type "struct"
+                        type_name "CF_V2"
+                        binding kind="component_field" component="GAME.GameInput" field="move"
+                    }
+                    Aim {
+                        id 638
+                        type "struct"
+                        type_name "CF_V2"
+                        binding kind="component_field" component="GAME.GameAim" field="direction"
+                    }
+                }
+                outputs {
+                    Strafe id=639 type="double"
+                    Forward id=640 type="double"
+                }
+            }
+            - {
+                id 772
+                type "Call Function"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 729
+                reference_name "Advance Rolling Motion"
+                inputs {
+                    Delta {
+                        id 775
+                        type "float"
+                        kind "data"
+                        binding kind="delta_time"
+                    }
+                    Position {
+                        id 776
+                        type "float"
+                        kind "data"
+                        binding kind="variable" variable_id=5 source_asset="ArenaShipMotionBehavior"
+                    }
+                    Velocity {
+                        id 777
+                        type "float"
+                        kind "data"
+                        binding kind="variable" variable_id=6 source_asset="ArenaShipMotionBehavior"
+                    }
+                    Strafe id=778 type="double" kind="data"
+                }
+                outputs {
+                    Then id=774
+                }
+            }
+            - {
+                id 836
+                type "Call Function"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 783
+                reference_name "Apply Ship Pose"
+                inputs {
+                    reverseNoseLift {
+                        id 839
+                        type "float"
+                        kind "data"
+                        binding kind="variable" variable_id=2 source_asset="ArenaShipMotionBehavior"
+                    }
+                    Delta {
+                        id 840
+                        type "float"
+                        kind "data"
+                        binding kind="delta_time"
+                    }
+                    Frequency {
+                        id 841
+                        type "float"
+                        kind "data"
+                        binding kind="variable" variable_id=3 source_asset="ArenaShipMotionBehavior"
+                    }
+                    Damping {
+                        id 842
+                        type "float"
+                        kind "data"
+                        binding kind="variable" variable_id=4 source_asset="ArenaShipMotionBehavior"
+                    }
+                    forward id=843 type="double" kind="data"
+                }
+                outputs {
+                    Then id=838
+                }
+            }
+            - {
+                id 1095
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 1080
+                reference_name "abs(Strafe) > DeadZone"
+                inputs {
+                    Exec id=1099 kind="exec"
+                    Strafe id=1096
+                    DeadZone {
+                        id 1097
+                        type "double"
+                        flags 0
+                        binding kind="variable" variable_id=254 source_asset="ArenaShipMotionBehavior"
+                    }
+                }
+                outputs {
+                    True id=1100 kind="exec"
+                    False id=1101 kind="exec"
+                    Result id=1098 type="bool"
+                }
+            }
+        }
+        (array)edges {
+            - from="10.Then" to="1095.Exec"
+            - from="204.Then" to="209.Exec"
+            - from="204.Position" to="209.Value"
+            - from="204.Velocity" to="214.Value"
+            - from="209.Then" to="214.Exec"
+            - from="214.Then" to="836.Exec"
+            - from="636.Strafe" to="772.Strafe"
+            - from="636.Strafe" to="1095.Strafe"
+            - from="636.Forward" to="836.forward"
+            - from="772.Then" to="836.Exec"
+            - from="1095.True" to="772.Exec"
+            - from="1095.False" to="204.Exec"
+        }
+    }
+    - {
+        id 79
+        kind "function"
+        name "Advance Damped Spring"
+        entry_id 87
+        return_id 91
+        call_depth_limit 64
+        (array)nodes {
+            - {
+                id 87
+                type "Function Entry"
+                x 0.0
+                y 0.0
+                placed #false
+                (array)outputs {
+                    - id=80 name="Then"
+                    - id=81 name="Position" type="float" kind="data"
+                    - id=82 name="Velocity" type="float" kind="data"
+                    - id=83 name="Target" type="float" kind="data"
+                    - id=84 name="Frequency" type="float" kind="data"
+                    - id=85 name="Damping" type="float" kind="data"
+                    - id=86 name="Delta" type="float" kind="data"
+                }
+            }
+            - {
+                id 91
+                type "Return"
+                x 0.0
+                y 0.0
+                placed #false
+                inputs {
+                    Exec id=88
+                    Position id=89 type="float" kind="data"
+                    Velocity id=90 type="float" kind="data"
+                }
+            }
+            - {
+                id 95
+                type "Advance Damped Spring"
+                x 0.0
+                y 0.0
+                placed #false
+                inputs Frequency=0.0 Damping=0.0
+            }
+        }
+        (array)edges {
+            - from="87.Then" to="91.Exec"
+            - from="87.Position" to="95.Position"
+            - from="87.Velocity" to="95.Velocity"
+            - from="87.Target" to="95.Target"
+            - from="87.Frequency" to="95.Frequency"
+            - from="87.Damping" to="95.Damping"
+            - from="87.Delta" to="95.Delta"
+            - from="95.Position" to="91.Position"
+            - from="95.Velocity" to="91.Velocity"
+        }
+    }
+    - {
+        id 256
+        kind "function"
+        name "Advance Face Roll"
+        entry_id 265
+        return_id 270
+        call_depth_limit 64
+        (array)nodes {
+            - {
+                id 265
+                type "Function Entry"
+                x 0.0
+                y 0.0
+                placed #false
+                (array)outputs {
+                    - id=257 name="Then"
+                    - id=258 name="Position" type="float" kind="data"
+                    - id=259 name="Velocity" type="float" kind="data"
+                    - id=260 name="Strafe" type="float" kind="data"
+                    - id=261 name="Speed" type="float" kind="data"
+                    - id=262 name="Rocking" type="float" kind="data"
+                    - id=263 name="Acceleration" type="float" kind="data"
+                    - id=264 name="Delta" type="float" kind="data"
+                }
+            }
+            - {
+                id 270
+                type "Return"
+                x 0.0
+                y 0.0
+                placed #false
+                inputs {
+                    Exec id=266
+                    Position id=267 type="float" kind="data"
+                    Velocity id=268 type="float" kind="data"
+                    Face id=269 type="float" kind="data"
+                }
+            }
+            - {
+                id 349
+                type "Quantize Angle"
+                x 0.0
+                y 0.0
+                placed #false
+                inputs {
+                    Angle id=346
+                }
+            }
+            - {
+                id 433
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 407
+                reference_name "Roll Gain"
+                inputs {
+                    Acceleration id=434 type="float"
+                    Delta id=435 type="float"
+                }
+                outputs {
+                    Result id=436 type="float"
+                }
+            }
+            - {
+                id 511
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 437
+                reference_name "Desired Roll"
+                inputs {
+                    Strafe id=512 type="float"
+                    Speed id=513 type="float"
+                    Rocking id=514 type="float"
+                    Position id=515 type="float"
+                }
+                outputs {
+                    Result id=516 type="float"
+                }
+            }
+            - {
+                id 545
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 517
+                reference_name "Roll Velocity"
+                inputs {
+                    Velocity id=546 type="float"
+                    Gain id=547 type="float"
+                    Desired id=548 type="float"
+                }
+                outputs {
+                    Result id=549 type="float"
+                }
+            }
+            - {
+                id 574
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 550
+                reference_name "Roll Position"
+                inputs {
+                    Position id=575 type="float"
+                    NewVelocity id=576 type="float"
+                    Delta id=577 type="float"
+                }
+                outputs {
+                    Result id=578 type="float"
+                }
+            }
+        }
+        (array)edges {
+            - from="265.Then" to="270.Exec"
+            - from="265.Position" to="511.Position"
+            - from="265.Position" to="574.Position"
+            - from="265.Velocity" to="545.Velocity"
+            - from="265.Strafe" to="511.Strafe"
+            - from="265.Speed" to="511.Speed"
+            - from="265.Rocking" to="511.Rocking"
+            - from="265.Acceleration" to="433.Acceleration"
+            - from="265.Delta" to="433.Delta"
+            - from="265.Delta" to="574.Delta"
+            - from="349.Result" to="270.Face"
+            - from="433.Result" to="545.Gain"
+            - from="511.Result" to="545.Desired"
+            - from="545.Result" to="270.Velocity"
+            - from="545.Result" to="574.NewVelocity"
+            - from="574.Result" to="270.Position"
+            - from="574.Result" to="349.Angle"
+        }
+    }
+    - id=407 kind="function" name="Roll Gain" math_expression="max(Acceleration, 0) * max(Delta, 0)" entry_id=1127
+    - id=437 kind="function" name="Desired Roll" math_expression="Strafe * max(Speed, 0) * (pi / 180) * (1 - min(max(Rocking, 0), 0.85) * cos(Position * 4))" entry_id=1153
+    - id=517 kind="function" name="Roll Velocity" math_expression="(Velocity + Gain * Desired) / (1 + Gain)" entry_id=1227
+    - id=550 kind="function" name="Roll Position" math_expression="Position + NewVelocity * max(Delta, 0)" entry_id=1255
+    - {
+        id 579
+        kind "function"
+        name "Compute Aim Basis"
+        entry_id 580
+        return_id 582
+        call_depth_limit 64
+        (array)nodes {
+            - {
+                id 580
+                type "Function Entry"
+                x 0.0
+                y 0.0
+                placed #false
+                (array)outputs {
+                    - id=584 name="Move" type="struct" type_name="CF_V2" kind="data"
+                    - id=585 name="Aim" type="struct" type_name="CF_V2" kind="data"
+                }
+            }
+            - {
+                id 582
+                type "Return"
+                x 0.0
+                y 0.0
+                placed #false
+                (array)inputs {
+                    - id=586 name="Strafe" type="double" kind="data"
+                    - id=587 name="Forward" type="double" kind="data"
+                }
+            }
+            - {
+                id 608
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 588
+                reference_name "Aim Strafe"
+                inputs {
+                    move id=609 type="struct" type_name="CF_V2"
+                    aim id=610 type="struct" type_name="CF_V2"
+                }
+                outputs {
+                    Result id=611 type="float"
+                }
+            }
+            - {
+                id 632
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 612
+                reference_name "Aim Forward"
+                inputs {
+                    move id=633 type="struct" type_name="CF_V2"
+                    aim id=634 type="struct" type_name="CF_V2"
+                }
+                outputs {
+                    Result id=635 type="double"
+                }
+            }
+        }
+        (array)edges {
+            - from="580.Move" to="608.move"
+            - from="580.Move" to="632.move"
+            - from="580.Aim" to="608.aim"
+            - from="580.Aim" to="632.aim"
+            - from="608.Result" to="582.Strafe"
+            - from="632.Result" to="582.Forward"
+        }
+    }
+    - id=588 kind="function" name="Aim Strafe" math_expression="move.y * aim.x - move.x * aim.y" entry_id=1279
+    - id=612 kind="function" name="Aim Forward" math_expression="dot(move, aim)" entry_id=1303
+    - id=641 kind="function" name="Nose Lift Target" math_expression="max(-forward, 0) * reverseNoseLift * (pi / 180)" entry_id=1315
+    - {
+        id 729
+        kind "function"
+        name "Advance Rolling Motion"
+        entry_id 730
+        return_id 732
+        call_depth_limit 64
+        (array)nodes {
+            - {
+                id 730
+                type "Function Entry"
+                x 0.0
+                y 0.0
+                placed #false
+                outputs {
+                    Delta id=768 type="float" kind="data"
+                    Position id=769 type="float" kind="data"
+                    Velocity id=770 type="float" kind="data"
+                    Strafe id=771 declaration_id=586 type="double" kind="data"
+                }
+            }
+            - id=732 type="Return" x=0.0 y=0.0 placed=#false
+            - {
+                id 736
+                type "Call Function"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 256
+                reference_name "Advance Face Roll"
+                inputs {
+                    Position id=738 type="float" kind="data"
+                    Velocity id=739 type="float" kind="data"
+                    Strafe id=740 type="float" kind="data"
+                    Speed {
+                        id 741
+                        type "float"
+                        kind "data"
+                        binding kind="variable" variable_id=1 source_asset="ArenaShipMotionBehavior"
+                    }
+                    Rocking {
+                        id 742
+                        type "float"
+                        kind "data"
+                        binding kind="variable" variable_id=252 source_asset="ArenaShipMotionBehavior"
+                    }
+                    Acceleration {
+                        id 743
+                        type "float"
+                        kind "data"
+                        binding kind="variable" variable_id=253 source_asset="ArenaShipMotionBehavior"
+                    }
+                    Delta id=744 type="float" kind="data"
+                }
+                outputs {
+                    Then id=745
+                    Position id=746 type="float" kind="data"
+                    Velocity id=747 type="float" kind="data"
+                    Face id=748 type="float" kind="data"
+                }
+            }
+            - {
+                id 753
+                type "Set Variable"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 5
+                inputs {
+                    Value type="float"
+                }
+                outputs {
+                    Value type="float"
+                }
+            }
+            - {
+                id 758
+                type "Set Variable"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 6
+                inputs {
+                    Value type="float"
+                }
+                outputs {
+                    Value type="float"
+                }
+            }
+            - {
+                id 763
+                type "Set Variable"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 255
+                inputs {
+                    Value type="float"
+                }
+                outputs {
+                    Value type="float"
+                }
+            }
+        }
+        (array)edges {
+            - from="730.Exec" to="736.Exec"
+            - from="730.Delta" to="736.Delta"
+            - from="730.Position" to="736.Position"
+            - from="730.Velocity" to="736.Velocity"
+            - from="730.Strafe" to="736.Strafe"
+            - from="736.Then" to="753.Exec"
+            - from="736.Position" to="753.Value"
+            - from="736.Velocity" to="758.Value"
+            - from="736.Face" to="763.Value"
+            - from="753.Then" to="758.Exec"
+            - from="758.Then" to="763.Exec"
+            - from="763.Then" to="732.Exec"
+        }
+    }
+    - {
+        id 783
+        kind "function"
+        name "Apply Ship Pose"
+        entry_id 784
+        return_id 786
+        call_depth_limit 64
+        (array)nodes {
+            - {
+                id 784
+                type "Function Entry"
+                x 0.0
+                y 0.0
+                placed #false
+                outputs {
+                    reverseNoseLift id=831 type="float" kind="data"
+                    Delta id=832 type="float" kind="data"
+                    Frequency id=833 type="float" kind="data"
+                    Damping id=834 type="float" kind="data"
+                    forward id=835 declaration_id=587 type="double" kind="data"
+                }
+            }
+            - id=786 type="Return" x=0.0 y=0.0 placed=#false
+            - {
+                id 792
+                type "Call Function"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 79
+                reference_name "Advance Damped Spring"
+                inputs {
+                    Position {
+                        id 794
+                        type "float"
+                        kind "data"
+                        binding kind="variable" variable_id=7 source_asset="ArenaShipMotionBehavior"
+                    }
+                    Velocity {
+                        id 795
+                        type "float"
+                        kind "data"
+                        binding kind="variable" variable_id=8 source_asset="ArenaShipMotionBehavior"
+                    }
+                    Target id=796 type="float" kind="data"
+                    Frequency id=797 type="float" kind="data"
+                    Damping id=798 type="float" kind="data"
+                    Delta id=799 type="float" kind="data"
+                }
+                outputs {
+                    Then id=800
+                    Position id=801 type="float" kind="data"
+                    Velocity id=802 type="float" kind="data"
+                }
+            }
+            - {
+                id 803
+                type "Set Variable"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 7
+                inputs {
+                    Value type="float"
+                }
+                outputs {
+                    Value type="float"
+                }
+            }
+            - {
+                id 808
+                type "Set Variable"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 8
+                inputs {
+                    Value type="float"
+                }
+                outputs {
+                    Value type="float"
+                }
+            }
+            - {
+                id 827
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 641
+                reference_name "Nose Lift Target"
+                inputs {
+                    forward id=828 type="double"
+                    reverseNoseLift id=829 type="float"
+                }
+                outputs {
+                    Result id=830 type="double"
+                }
+            }
+            - {
+                id 1117
+                type "Set Component"
+                x 0.0
+                y 0.0
+                placed #false
+                inputs {
+                    Component "GAME.GameVisualTransform"
+                    pitch {
+                        id 1125
+                        binding kind="variable" variable_id=7 source_asset="ArenaShipMotionBehavior"
+                    }
+                    roll {
+                        id 1124
+                        binding kind="variable" variable_id=5 source_asset="ArenaShipMotionBehavior"
+                    }
+                }
+                outputs {
+                    Then id=1122
+                    Value id=1123
+                }
+            }
+        }
+        (array)edges {
+            - from="784.Exec" to="792.Exec"
+            - from="784.reverseNoseLift" to="827.reverseNoseLift"
+            - from="784.Delta" to="792.Delta"
+            - from="784.Frequency" to="792.Frequency"
+            - from="784.Damping" to="792.Damping"
+            - from="784.forward" to="827.forward"
+            - from="792.Then" to="803.Exec"
+            - from="792.Position" to="803.Value"
+            - from="792.Velocity" to="808.Value"
+            - from="803.Then" to="808.Exec"
+            - from="808.Then" to="1117.Exec"
+            - from="827.Result" to="792.Target"
+            - from="1117.Then" to="786.Exec"
+        }
+    }
+    - id=1080 kind="function" math_expression="abs(Strafe) > DeadZone" entry_id=1103
+}

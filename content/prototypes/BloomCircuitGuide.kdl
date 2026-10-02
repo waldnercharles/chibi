@@ -1,0 +1,6 @@
+name "BloomCircuitGuide"
+components {
+    (object)GAME.GameTransform
+    GAME.GameUi document="BloomCircuit"
+}
+(array)behaviors "BloomCircuitGoal"

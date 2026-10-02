@@ -19,13 +19,13 @@ static void check_node_comments()
         "comments: an empty comment removes it and its hidden flag"
     );
 
-    char *json = graph_save_json(&g);
+    char *json = graph_save(&g);
     test_check(
-        json && strstr(json, "\"comment\": \"Tuned by hand\"") &&
-            strstr(json, "\"comment_hidden\": true"),
+        json && strstr(json, "comment=\"Tuned by hand\"") &&
+            strstr(json, "comment_hidden=#true"),
         "comments: documents keep a comment and its hidden flag"
     );
-    graph *loaded = json ? graph_load_json(json) : NULL;
+    graph *loaded = json ? graph_load(json) : NULL;
     node *loaded_real = loaded ? graph_node_by_id(loaded, real->id) : NULL;
     node *loaded_add = loaded ? graph_node_by_id(loaded, add->id) : NULL;
     test_check(
@@ -34,7 +34,7 @@ static void check_node_comments()
             loaded_real->comment_hidden && loaded_add && !loaded_add->comment,
         "comments: loading restores node comments"
     );
-    char *again = loaded ? graph_save_json(loaded) : NULL;
+    char *again = loaded ? graph_save(loaded) : NULL;
     test_check(json && again && !strcmp(json, again), "comments: node comments round-trip byte for byte");
     free(again);
     free(json);
@@ -48,25 +48,25 @@ static void check_node_comments()
     behavior_asset *asset = behavior_asset_new("Lines");
     node *noted = graph_add_node(asset->graph, registry_node_by_name("Add"));
     graph_set_node_comment(asset->graph, noted, "First line\nSecond: line", false);
-    char *text = behavior_asset_save_json(asset), error[256];
-    char *yaml = text ? asset_text_to_disk(text, error, sizeof error) : NULL;
-    behavior_asset *reread = yaml ? behavior_asset_load_json(yaml) : NULL;
-    char *resaved = reread ? behavior_asset_save_json(reread) : NULL;
+    char *text = behavior_asset_save(asset), error[256];
+    char *kdl = text ? asset_text_to_disk(text, error, sizeof error) : NULL;
+    behavior_asset *reread = kdl ? behavior_asset_load(kdl) : NULL;
+    char *resaved = reread ? behavior_asset_save(reread) : NULL;
     char *reyaml = resaved ? asset_text_to_disk(resaved, error, sizeof error) : NULL;
     node *renoted = reread ? graph_node_by_id(reread->graph, noted->id) : NULL;
     test_check(
         renoted && !strcmp(renoted->comment, "First line\nSecond: line") &&
-            reyaml && !strcmp(yaml, reyaml),
+            reyaml && !strcmp(kdl, reyaml),
         "comments: comment lines round-trip through the asset file"
     );
     free(text);
-    free(yaml);
+    free(kdl);
     free(resaved);
     free(reyaml);
     behavior_asset_free(reread);
     behavior_asset_free(asset);
 
-    graph *bad = graph_load_json("{\"version\":1,\"id_counter\":3,\"nodes\":[{\"id\":1,\"type\":\"Real\",\"comment\":7}]}");
+    graph *bad = graph_load("\"version\" 1; \"id_counter\" 3; (array)\"nodes\" { \"-\" { \"id\" 1; \"type\" \"Real\"; \"comment\" 7; }; }; ");
     test_check(!bad, "comments: a comment that is not a string is rejected");
 }
 
@@ -76,11 +76,11 @@ static void check_comment_frames()
     graph_init(&g);
     graph_comment_box *box = graph_add_comment_box(&g, "Movement", 10, 20, 300, 200);
     test_check(box && box->color == 0, "frames: a new frame takes the canvas's comment color");
-    char *plain = graph_save_json(&g);
-    test_check(plain && !strstr(plain, "\"color\""), "frames: documents omit the default color");
+    char *plain = graph_save(&g);
+    test_check(plain && !strstr(plain, "color "), "frames: documents omit the default color");
     test_check(graph_set_comment_box(&g, box, "Dash", 0x4a8fe0ffu) == 0, "frames: a frame takes a title and color");
-    char *colored = graph_save_json(&g);
-    graph *loaded = colored ? graph_load_json(colored) : NULL;
+    char *colored = graph_save(&g);
+    graph *loaded = colored ? graph_load(colored) : NULL;
     const graph_comment_box *copy = loaded && acount(loaded->comment_boxes) == 1
                                       ? &loaded->comment_boxes[0]
                                       : NULL;

@@ -9,11 +9,13 @@
 #include "render/scene_renderer.h"
 #include "runtime/generated.h"
 #include "support/xalloc.h"
+#include "test/asset_fixture.h"
 
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <yyjson.h>
 
 /* Runs after Cute initialization; no rendering or input injection is required
  * to prove that a native generation can reconstruct authoring state. */
@@ -70,6 +72,9 @@ static checkpoint_fixture roundtrip(checkpoint_fixture *source)
     char *scene = app_scene_authoring_checkpoint(source->scene);
     char *graph = editor_checkpoint(source->graph);
     assert(scene && graph);
+    yyjson_doc *wire = yyjson_read(scene, strlen(scene), 0);
+    assert(wire && yyjson_is_obj(yyjson_obj_get(yyjson_doc_get_root(wire), "scene")));
+    yyjson_doc_free(wire);
     bool full_catalog = game_live_definition_count(source->live) > 1;
     fixture_free(source);
     checkpoint_fixture candidate = fixture_new();
@@ -93,12 +98,12 @@ static void shader_scene_load()
     checkpoint_fixture f = fixture_new();
     assert(app_scene_authoring_set_content_root(f.scene, "test/fixtures/content") == 0);
     assert(app_scene_authoring_load_content(f.scene) == 0);
-    const char *shared[] = { "content/behaviors/HealthBehavior.yaml",
-                             "content/behaviors/PlayerContactBehavior.yaml" };
+    const char *shared[] = { "content/behaviors/HealthBehavior.kdl",
+                             "content/behaviors/PlayerContactBehavior.kdl" };
     for (int i = 0; i < 2; i++) {
         char *json = read_scene_file(shared[i]);
         assert(json);
-        behavior_asset *asset = behavior_asset_load_json(json);
+        behavior_asset *asset = behavior_asset_load(json);
         free(json);
         assert(asset);
         game_live_definition *definition = game_live_definition_new(asset->name, asset);
@@ -112,7 +117,7 @@ static void shader_scene_load()
             ) == 0
         );
     }
-    int loaded = app_scene_authoring_load(f.scene, "test/fixtures/content/scenes/ShaderDemo.yaml");
+    int loaded = app_scene_authoring_load(f.scene, "test/fixtures/content/scenes/ShaderDemo.kdl");
     if (loaded) {
         fprintf(stderr, "shader scene load: %s\n", app_scene_authoring_message(f.scene));
     }
@@ -131,10 +136,10 @@ static void shader_scene_load()
     assert(app_scene_authoring_runtime_command(f.scene, APP_RUNTIME_SCENE, APP_RUNTIME_PLAY) == 0);
     assert(app_scene_authoring_runtime_command(f.scene, APP_RUNTIME_SCENE, APP_RUNTIME_STOP) == 0);
     game_live_definition *input_before_open = game_live_find_definition(f.live, "InputBehavior");
-    char *input_before_json = behavior_asset_save_json(input_before_open->working);
+    char *input_before_json = behavior_asset_save(input_before_open->working);
     free(input_before_json);
     assert(app_scene_authoring_open_behavior(f.scene, "InputBehavior") == 0);
-    char *input_after_open_json = behavior_asset_save_json(editor_behavior_asset(f.graph));
+    char *input_after_open_json = behavior_asset_save(editor_behavior_asset(f.graph));
     free(input_after_open_json);
     assert(app_scene_authoring_preview_prototype(f.scene, "Player") == 0);
     behavior_instance *movement = game_prototype_preview_instance(f.scene->prototype_preview, "InputBehavior");
@@ -183,8 +188,8 @@ static void shader_scene_load()
     behavior_instance *before = game_prototype_preview_instance(f.scene->prototype_preview, "InputBehavior");
     assert(before);
     assert(scene_debug_matches(editor_behavior_asset(f.graph), before->asset));
-    char *linked_json = behavior_asset_save_json(before->asset);
-    behavior_asset *linked_copy = behavior_asset_load_json(linked_json);
+    char *linked_json = behavior_asset_save(before->asset);
+    behavior_asset *linked_copy = behavior_asset_load(linked_json);
     free(linked_json);
     assert(linked_copy && scene_debug_matches(editor_behavior_asset(f.graph), linked_copy));
     behavior_asset_free(linked_copy);
@@ -202,13 +207,22 @@ static void scene_tabs_retain_authored_state()
 {
     checkpoint_fixture f = fixture_new();
     assert(
-        app_scene_authoring_register_prototype(f.scene, "{\"name\":\"ReloadPrototype\",\"components\":{\"GameTransform\":{\"x\":1,\"y\":2}}}", NULL) ==
-        0
+        app_scene_authoring_register_prototype(
+            f.scene,
+            "name \"ReloadPrototype\"\n"
+            "components {\n"
+            "    GameTransform {\n"
+            "        x 1\n"
+            "        y 2\n"
+            "    }\n"
+            "}\n",
+            NULL
+        ) == 0
     );
     assert(app_scene_authoring_add_instance(f.scene, "ReloadPrototype") == 0);
-    const char *first_path = "/tmp/chibi-39-scene-a.yaml";
-    const char *second_path = "/tmp/chibi-39-scene-b.yaml";
-    char *first_json = scene_authoring_scene_json(f.scene);
+    const char *first_path = "/tmp/chibi-39-scene-a.kdl";
+    const char *second_path = "/tmp/chibi-39-scene-b.kdl";
+    char *first_json = scene_authoring_scene_text(f.scene);
     assert(first_json && write_text_file_atomic(first_path, first_json) == 0);
     free(first_json);
     assert(app_scene_authoring_load(f.scene, first_path) == 0);
@@ -218,7 +232,7 @@ static void scene_tabs_retain_authored_state()
     assert(!strcmp(f.scene->tabs[first].label, "chibi-39-scene-a"));
     f.scene->camera = (scene_camera){ .view = { 1, 2, 300, 200 }, .saved = true };
     assert(f.scene->selected == 0);
-    char *second_json = scene_authoring_scene_json(f.scene);
+    char *second_json = scene_authoring_scene_text(f.scene);
     assert(second_json && write_text_file_atomic(second_path, second_json) == 0);
     free(second_json);
     assert(scene_tabs_open_scene(f.scene, second_path) == 0);
@@ -251,13 +265,22 @@ static void scene_tabs_save_as_keeps_identity()
 {
     checkpoint_fixture f = fixture_new();
     assert(
-        app_scene_authoring_register_prototype(f.scene, "{\"name\":\"SaveAsPrototype\",\"components\":{\"GameTransform\":{\"x\":1,\"y\":2}}}", NULL) ==
-        0
+        app_scene_authoring_register_prototype(
+            f.scene,
+            "name \"SaveAsPrototype\"\n"
+            "components {\n"
+            "    GameTransform {\n"
+            "        x 1\n"
+            "        y 2\n"
+            "    }\n"
+            "}\n",
+            NULL
+        ) == 0
     );
     assert(app_scene_authoring_add_instance(f.scene, "SaveAsPrototype") == 0);
-    const char *first_path = "/tmp/chibi-39-save-as-a.yaml";
-    const char *second_path = "/tmp/chibi-39-save-as-b.yaml";
-    char *json = scene_authoring_scene_json(f.scene);
+    const char *first_path = "/tmp/chibi-39-save-as-a.kdl";
+    const char *second_path = "/tmp/chibi-39-save-as-b.kdl";
+    char *json = scene_authoring_scene_text(f.scene);
     assert(json && write_text_file_atomic(first_path, json) == 0);
     free(json);
     assert(app_scene_authoring_load(f.scene, first_path) == 0);
@@ -288,17 +311,26 @@ static void scene_tabs_failed_restore_rolls_back()
 {
     checkpoint_fixture f = fixture_new();
     assert(
-        app_scene_authoring_register_prototype(f.scene, "{\"name\":\"RollbackPrototype\",\"components\":{\"GameTransform\":{\"x\":1,\"y\":2}}}", NULL) ==
-        0
+        app_scene_authoring_register_prototype(
+            f.scene,
+            "name \"RollbackPrototype\"\n"
+            "components {\n"
+            "    GameTransform {\n"
+            "        x 1\n"
+            "        y 2\n"
+            "    }\n"
+            "}\n",
+            NULL
+        ) == 0
     );
     assert(app_scene_authoring_add_instance(f.scene, "RollbackPrototype") == 0);
-    const char *first_path = "/tmp/chibi-39-rollback-a.yaml";
-    const char *second_path = "/tmp/chibi-39-rollback-b.yaml";
-    char *json = scene_authoring_scene_json(f.scene);
+    const char *first_path = "/tmp/chibi-39-rollback-a.kdl";
+    const char *second_path = "/tmp/chibi-39-rollback-b.kdl";
+    char *json = scene_authoring_scene_text(f.scene);
     assert(json && write_text_file_atomic(first_path, json) == 0);
     free(json);
     assert(app_scene_authoring_load(f.scene, first_path) == 0);
-    json = scene_authoring_scene_json(f.scene);
+    json = scene_authoring_scene_text(f.scene);
     assert(json && write_text_file_atomic(second_path, json) == 0);
     free(json);
     assert(scene_tabs_open_scene(f.scene, second_path) == 0);
@@ -313,8 +345,8 @@ static void scene_tabs_failed_restore_rolls_back()
     write_position(f.scene, f.scene->actors[0].entity, (GameTransform){ 11, 12 });
     f.scene->scene_dirty = true;
     scene_tabs_sync_current(f.scene);
-    free(f.scene->tabs[second].scene_history);
-    f.scene->tabs[second].scene_history = xstrdup("{}");
+    av_value_free(f.scene->tabs[second].scene_history);
+    f.scene->tabs[second].scene_history = test_read_asset_value("");
     assert(scene_tabs_activate(f.scene, second) != 0);
     assert(f.scene->active_tab == first && f.scene->scene_dirty);
     assert(GAME_GameTransform_get_const(f.world, f.scene->actors[0].entity)->x == 11);
@@ -327,8 +359,17 @@ static void scene_tabs_discard_reverts_shared_assets()
 {
     checkpoint_fixture f = fixture_new();
     assert(
-        app_scene_authoring_register_prototype(f.scene, "{\"name\":\"DiscardPrototype\",\"components\":{\"GameTransform\":{\"x\":1,\"y\":2}}}", NULL) ==
-        0
+        app_scene_authoring_register_prototype(
+            f.scene,
+            "name \"DiscardPrototype\"\n"
+            "components {\n"
+            "    GameTransform {\n"
+            "        x 1\n"
+            "        y 2\n"
+            "    }\n"
+            "}\n",
+            NULL
+        ) == 0
     );
     assert(app_scene_authoring_open_prototype(f.scene, "DiscardPrototype") == 0);
     assert(
@@ -414,13 +455,13 @@ static void opening_behaviors_refreshes_asset_catalog()
 static void scene_tabs_close_underlying_scene_keeps_context()
 {
     checkpoint_fixture f = fixture_new();
-    const char *first_path = "/tmp/chibi-39-close-scene-a.yaml";
-    const char *second_path = "/tmp/chibi-39-close-scene-c.yaml";
-    char *json = scene_authoring_scene_json(f.scene);
+    const char *first_path = "/tmp/chibi-39-close-scene-a.kdl";
+    const char *second_path = "/tmp/chibi-39-close-scene-c.kdl";
+    char *json = scene_authoring_scene_text(f.scene);
     assert(json && write_text_file_atomic(first_path, json) == 0);
     free(json);
     assert(app_scene_authoring_load(f.scene, first_path) == 0);
-    json = scene_authoring_scene_json(f.scene);
+    json = scene_authoring_scene_text(f.scene);
     assert(json && write_text_file_atomic(second_path, json) == 0);
     free(json);
     assert(scene_tabs_open_scene(f.scene, second_path) == 0);
@@ -466,8 +507,8 @@ static void scene_tabs_failed_behavior_discard_is_atomic()
     behavior_asset *working = f.scene->definition->working;
     const behavior_asset *editor_asset = editor_behavior_asset(f.graph);
     scene_document_tab *tab = &f.scene->tabs[f.scene->active_tab];
-    free(tab->asset_saved);
-    tab->asset_saved = xstrdup("{}");
+    av_value_free(tab->asset_saved);
+    tab->asset_saved = test_read_asset_value("");
     assert(scene_tabs_discard(f.scene, f.scene->active_tab) == -1);
     assert(f.scene->document.kind == APP_EDITOR_DOCUMENT_BEHAVIOR);
     assert(f.scene->definition->working == working);
@@ -513,8 +554,8 @@ static void write_system_fixture(const char *path, const char *name)
 static void scene_tabs_retain_system_state()
 {
     checkpoint_fixture f = fixture_new();
-    const char *first_path = "/tmp/chibi-39-system-a.yaml";
-    const char *second_path = "/tmp/chibi-39-system-b.yaml";
+    const char *first_path = "/tmp/chibi-39-system-a.kdl";
+    const char *second_path = "/tmp/chibi-39-system-b.kdl";
     write_system_fixture(first_path, "SystemA");
     write_system_fixture(second_path, "SystemB");
     assert(app_scene_authoring_open_system(f.scene, first_path) == 0);
@@ -554,8 +595,8 @@ static void scene_tabs_retain_system_state()
     assert(acount(editor_active_graph(f.graph)->nodes) == first_nodes);
     assert(scene_tabs_dirty(f.scene, &f.scene->tabs[first]));
     assert(
-        f.scene->tabs[first].system_saved && f.scene->tabs[first].system_json &&
-        strcmp(f.scene->tabs[first].system_saved, f.scene->tabs[first].system_json) != 0
+        f.scene->tabs[first].system_saved && f.scene->tabs[first].system_value &&
+        !av_equals(f.scene->tabs[first].system_saved, f.scene->tabs[first].system_value)
     );
     editor_undo(f.graph);
     assert(acount(editor_active_graph(f.graph)->nodes) == first_nodes - 1);
@@ -581,13 +622,13 @@ static void scene_tabs_retain_system_state()
 static void checkpoint_restores_next_scene_key()
 {
     checkpoint_fixture f = fixture_new();
-    const char *first_path = "/tmp/chibi-39-key-a.yaml";
-    const char *second_path = "/tmp/chibi-39-key-b.yaml";
-    char *json = scene_authoring_scene_json(f.scene);
+    const char *first_path = "/tmp/chibi-39-key-a.kdl";
+    const char *second_path = "/tmp/chibi-39-key-b.kdl";
+    char *json = scene_authoring_scene_text(f.scene);
     assert(json && write_text_file_atomic(first_path, json) == 0);
     free(json);
     assert(app_scene_authoring_load(f.scene, first_path) == 0);
-    json = scene_authoring_scene_json(f.scene);
+    json = scene_authoring_scene_text(f.scene);
     assert(json && write_text_file_atomic(second_path, json) == 0);
     free(json);
     assert(scene_tabs_open_scene(f.scene, second_path) == 0);
@@ -672,9 +713,9 @@ static void asset_references_follow_authored_edits()
     assert(app_scene_authoring_load_content(f.scene) == 0);
     assert(app_scene_authoring_refresh_asset_index(f.scene) == 0);
     const reference_index *index = app_scene_authoring_asset_index(f.scene);
-    int arena = reference_index_find_asset(index, REFERENCE_ASSET_SCENE, "content/scenes/Arena3D.yaml", NULL);
+    int arena = reference_index_find_asset(index, REFERENCE_ASSET_SCENE, "content/scenes/Arena3D.kdl", NULL);
     assert(arena >= 0);
-    char *arena_path = realpath("content/scenes/Arena3D.yaml", NULL);
+    char *arena_path = realpath("content/scenes/Arena3D.kdl", NULL);
     assert(
         arena_path &&
         reference_index_find_asset(index, REFERENCE_ASSET_SCENE, arena_path, NULL) == arena
@@ -764,19 +805,23 @@ static void asset_references_follow_authored_edits()
     assert(
         app_scene_authoring_register_prototype(
             f.scene,
-            "{\"name\":\"ReferencePrototype\",\"components\":{"
-            "\"GameTransform\":{},"
-            "\"GameShader\":{\"material\":\"ArenaPlayer\"}}}",
+            "name \"ReferencePrototype\"\n"
+            "components {\n"
+            "    (object)GameTransform\n"
+            "    GameShader {\n"
+            "        material \"ArenaPlayer\"\n"
+            "    }\n"
+            "}\n",
             NULL
         ) == 0
     );
     scene_authoring_select_document(f.scene, APP_EDITOR_DOCUMENT_SCENE, APP_SCENE_DOCUMENT_ID);
     assert(app_scene_authoring_add_instance(f.scene, "ReferencePrototype") == 0);
-    const char *first_path = "/tmp/chibi-40-references-a.yaml";
-    const char *second_path = "/tmp/chibi-40-references-b.yaml";
+    const char *first_path = "/tmp/chibi-40-references-a.kdl";
+    const char *second_path = "/tmp/chibi-40-references-b.kdl";
     assert(app_scene_authoring_save(f.scene, first_path) == 0);
     int first_tab = f.scene->active_tab;
-    char *json = scene_authoring_scene_json(f.scene);
+    char *json = scene_authoring_scene_text(f.scene);
     assert(json && write_text_file_atomic(second_path, json) == 0);
     free(json);
     assert(scene_tabs_open_scene(f.scene, second_path) == 0);
@@ -910,8 +955,17 @@ static int test_scene_checkpoint()
     checkpoint_restores_next_scene_key();
     checkpoint_fixture fixture = fixture_new();
     assert(
-        app_scene_authoring_register_prototype(fixture.scene, "{\"name\":\"ReloadPrototype\",\"components\":{\"GameTransform\":{\"x\":1,\"y\":2}}}", NULL) ==
-        0
+        app_scene_authoring_register_prototype(
+            fixture.scene,
+            "name \"ReloadPrototype\"\n"
+            "components {\n"
+            "    GameTransform {\n"
+            "        x 1\n"
+            "        y 2\n"
+            "    }\n"
+            "}\n",
+            NULL
+        ) == 0
     );
     assert(
         app_scene_authoring_set_prototype_field(

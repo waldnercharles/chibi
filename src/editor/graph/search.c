@@ -924,14 +924,9 @@ const char *ed_extract_selection(editor *e)
     if (error) {
         return error;
     }
-    char *json = behavior_asset_save_json(result);
-    behavior_asset_free(result);
-    if (!json) {
-        return "Could not save the extracted function.";
-    }
     ed_snapshot_before(e);
-    int adopted = ed_adopt_behavior_asset(e, json);
-    free(json);
+    int adopted = ed_adopt_behavior_asset(e, result);
+    behavior_asset_free(result);
     assert(adopted == 0);
     node *call = graph_node_by_id(e->active_graph, call_id);
     assert(call);

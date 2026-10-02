@@ -34,7 +34,7 @@ static behavior_asset *load(const char *path)
     assert(fread(json, 1, (size_t)size, file) == (size_t)size);
     json[size] = 0;
     fclose(file);
-    behavior_asset *asset = behavior_asset_load_json(json);
+    behavior_asset *asset = behavior_asset_load(json);
     if (asset) {
         asset = link_test_libraries(asset);
     }
@@ -92,7 +92,7 @@ static float evaluate(const char *source, float x, float y)
 
 static void health_damage()
 {
-    behavior_asset *asset = load("content/behaviors/HealthBehavior.yaml");
+    behavior_asset *asset = load("content/behaviors/HealthBehavior.kdl");
     node *setter = NULL;
     graph *setter_graph = NULL;
     node *expression = NULL;
@@ -392,8 +392,8 @@ void test_behavior_math()
     angle_helpers();
     easing_helpers();
     health_damage();
-    behavior_asset *projectile = load("test/fixtures/content/behaviors/ProjectileBehavior.yaml");
-    behavior_asset *trail = load("test/fixtures/content/behaviors/MovementTrailBehavior.yaml");
+    behavior_asset *projectile = load("test/fixtures/content/behaviors/ProjectileBehavior.kdl");
+    behavior_asset *trail = load("test/fixtures/content/behaviors/MovementTrailBehavior.kdl");
     graph *direction = projectile->graphs[1];
     graph *emission = trail->graphs[1];
     node *magnitude = graph_node_by_id(direction, 150);

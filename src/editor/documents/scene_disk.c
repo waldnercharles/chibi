@@ -54,7 +54,7 @@ static scene_document_tab *tab_at(
 static app_disk_result add_definition(app_scene_authoring *scene, const char *path)
 {
     char *json = read_scene_file(path);
-    behavior_asset *asset = json ? behavior_asset_load_json(json) : NULL;
+    behavior_asset *asset = json ? behavior_asset_load(json) : NULL;
     free(json);
     game_live_definition *definition = asset
                                          ? game_live_definition_new(asset->name, asset)
@@ -118,7 +118,7 @@ static app_disk_result sync_system(app_scene_authoring *scene, const char *path,
         return APP_DISK_UNSAVED;
     }
     char *json = read_scene_file(path);
-    behavior_asset *asset = json ? behavior_asset_load_json(json) : NULL;
+    behavior_asset *asset = json ? behavior_asset_load(json) : NULL;
     char error[256] = "not a system";
     bool registered = asset &&
                       game_live_register_system(scene->live, asset->name, json, error, sizeof error) ==
@@ -142,11 +142,13 @@ static app_disk_result sync_system(app_scene_authoring *scene, const char *path,
                                                          : APP_DISK_FAILED;
     }
     if (tab) {
-        free(tab->system_saved);
-        tab->system_saved = xstrdup(json);
-        free(tab->system_json);
-        tab->system_json = json;
-        json = NULL;
+        av_doc *native = asset_text_read(json, error, sizeof error);
+        assert(native);
+        av_value_free(tab->system_saved);
+        tab->system_saved = av_value_copy(av_doc_root(native));
+        av_value_free(tab->system_value);
+        tab->system_value = av_value_copy(av_doc_root(native));
+        av_doc_free(native);
     }
     free(json);
     snprintf(scene->message, sizeof scene->message, "Reloaded %s.", content_basename(path));
@@ -225,9 +227,17 @@ static app_disk_result sync_scene(app_scene_authoring *scene, const char *path, 
         snprintf(scene->message, sizeof scene->message, "Could not read %s.", content_basename(path));
         return APP_DISK_FAILED;
     }
-    free(tab->scene_json);
-    tab->scene_json = json;
-    free(tab->scene_history);
+    char error[256];
+    av_doc *native = asset_text_read(json, error, sizeof error);
+    free(json);
+    if (!native) {
+        snprintf(scene->message, sizeof scene->message, "Could not reload %s: %s", content_basename(path), error);
+        return APP_DISK_FAILED;
+    }
+    av_value_free(tab->scene_value);
+    tab->scene_value = av_value_copy(av_doc_root(native));
+    av_doc_free(native);
+    av_value_free(tab->scene_history);
     tab->scene_history = NULL;
     snprintf(scene->message, sizeof scene->message, "Reloaded %s.", content_basename(path));
     return APP_DISK_RELOADED;
@@ -437,7 +447,7 @@ static void move_prototype(app_scene_authoring *scene, scene_prototype_asset *as
 static void move_definition(app_scene_authoring *scene, game_live_definition *definition, const char *to)
 {
     char *json = read_scene_file(to);
-    behavior_asset *loaded = json ? behavior_asset_load_json(json) : NULL;
+    behavior_asset *loaded = json ? behavior_asset_load(json) : NULL;
     free(json);
     char *from = xstrdup(definition->name);
     char *name = loaded ? xstrdup(loaded->name) : NULL;

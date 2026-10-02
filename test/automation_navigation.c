@@ -108,7 +108,7 @@ static project project_new()
     char path[160];
     snprintf(path, sizeof path, "%s/" CHIBI_PROJECT_MANIFEST, p.root);
     char manifest[64];
-    snprintf(manifest, sizeof manifest, "version: %d\ncontent: content\n", CHIBI_PROJECT_VERSION);
+    snprintf(manifest, sizeof manifest, "version %d\ncontent \"content\"\n", CHIBI_PROJECT_VERSION);
     write_file(path, manifest);
     static const char *const FOLDERS[] = { "content",
                                            "content/events",
@@ -199,7 +199,7 @@ static void references(project *p)
         send = named(use, "role", "send") && named(asset, "name", "Target") ? use : send;
     }
     test_check(
-        named(yyjson_obj_get(yyjson_obj_get(r, "definition"), "asset"), "path", "content/events/Hit.yaml") &&
+        named(yyjson_obj_get(yyjson_obj_get(r, "definition"), "asset"), "path", "content/events/Hit.kdl") &&
             count(r, "send") == 2 && count(r, "handle") == 1 && panel &&
             !yyjson_obj_get(panel, "node") && send && yyjson_obj_get(send, "node") &&
             yyjson_get_uint(yyjson_obj_get(send, "graph_id")) == 0,
@@ -375,9 +375,9 @@ static void wide_hierarchy()
         assert(behavior_asset_add_function_call_node_to_graph(asset, caller, target));
     }
     reference_index *index = reference_index_new();
-    int wide = reference_index_add_asset(index, REFERENCE_ASSET_BEHAVIOR, "Wide", "content/behaviors/Wide.yaml", NULL);
+    int wide = reference_index_add_asset(index, REFERENCE_ASSET_BEHAVIOR, "Wide", "content/behaviors/Wide.kdl", NULL);
     reference_index_add_graphs(index, wide, asset);
-    navigation_asset names[] = { { "behavior", "Wide", "content/behaviors/Wide.yaml" } };
+    navigation_asset names[] = { { "behavior", "Wide", "content/behaviors/Wide.kdl" } };
     assert(reference_index_asset_count(index) == 1);
     navigation nav = { index, names };
     const char

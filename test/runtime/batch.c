@@ -399,8 +399,8 @@ static void unread_event_output(behavior_backend backend)
 /* Pursuit's Tick declares DeltaSeconds, which only its debugger watches read. */
 static void watched_event_output()
 {
-    char *text = text_file_read("projects/arena2d/content/behaviors/Pursuit.yaml");
-    behavior_asset *asset = behavior_asset_load_json(text);
+    char *text = text_file_read("projects/arena2d/content/behaviors/Pursuit.kdl");
+    behavior_asset *asset = behavior_asset_load(text);
     free(text);
     node *entry = tick_entry(asset);
     assert(entry->output_count == 2);

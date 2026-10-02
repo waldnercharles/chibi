@@ -9,10 +9,10 @@
 
 /* Rename and safe delete across a project's assets, as a language server's
  * do. The caller indexes the project (reference_index.h) and gives each
- * indexed asset's text, parallel to the index's assets: its file YAML or
- * in-memory JSON, or NULL when it has none, as for an unresolved or unsaved
- * asset. A plan holds the new file text of every asset it changes, in the
- * canonical form `chibi_ctl --format` writes. The caller publishes every edit
+ * indexed asset's KDL source, parallel to the index's assets, or NULL when
+ * it has none, as for an unresolved or unsaved asset. A plan holds the new
+ * file text of every asset it changes, preserving unchanged source.
+ * The caller publishes every edit
  * of a plan or none; planning never changes the texts. */
 typedef struct
 {

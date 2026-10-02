@@ -76,26 +76,40 @@ Old graphs keep their generated nodes, and the editor presents them in the new v
 
 The setting implies each pin's type, so documents write only the key or type, the field inputs a Set shows, and defaults:
 
-```yaml
-- id: 4
-  type: Get Component
-  inputs: {Component: GAME.GameVelocity}
-  outputs:
-    Value.x: {}
-- id: 10
-  type: Set Component
-  inputs:
-    Component: GAME.GameTransform
-    x: {id: 18}
-- id: 19
-  type: Set Component
-  inputs:
-    Component: GAME.GameHealth
-    Value:
-      default: {current: 5, maximum: 9}
-- id: 24
-  type: Make Struct
-  inputs: {current: 5, maximum: 9, Type: GameHealth}
+```kdl
+(array)nodes {
+    - {
+        id 4
+        type "Get Component"
+        inputs Component="GAME.GameVelocity"
+        outputs {
+            (object)Value.x
+        }
+    }
+    - {
+        id 10
+        type "Set Component"
+        inputs {
+            Component "GAME.GameTransform"
+            x id=18
+        }
+    }
+    - {
+        id 19
+        type "Set Component"
+        inputs {
+            Component "GAME.GameHealth"
+            Value {
+                default current=5 maximum=9
+            }
+        }
+    }
+    - {
+        id 24
+        type "Make Struct"
+        inputs current=5 maximum=9 Type="GameHealth"
+    }
+}
 ```
 
 Loading prepares a component node from its key and field names before it applies pin entries, and writing compares pins with the same shapes. An unknown key fails to load, like an unknown node type.

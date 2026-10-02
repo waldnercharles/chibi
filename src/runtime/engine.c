@@ -235,9 +235,10 @@ static int sync_authored_systems(engine *engine)
             afree(bindings);
             return FLOW_ERR_COMPILE;
         }
-        char *json = behavior_asset_save_json(game_system_document_behavior_asset(doc));
-        game_system *graph = game_system_new(engine->world, behavior_asset_load_json(json));
-        free(json);
+        game_system *graph = game_system_new(
+            engine->world,
+            behavior_asset_clone(game_system_document_behavior_asset(doc))
+        );
         int result = graph
                        ? game_system_set_query(graph, game_system_document_query(doc))
                        : -1;

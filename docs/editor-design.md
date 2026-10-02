@@ -1068,11 +1068,11 @@ wait while editor and gameplay workflows improve.
 
 ## Authored encounter and restart
 
-The shipped `content/scenes/NeonSwarm.yaml` contains Player and a nonvisual
+The shipped `content/scenes/NeonSwarm.kdl` contains Player and a nonvisual
 Encounter controller. Scene files can be opened from Files. Other prototypes are
 available as assets rather than being instantiated automatically. Startup reports
 scene load errors instead of silently opening an empty scene. Native interaction
-tests use `test/fixtures/editor_scene.json` to retain their multi-actor coverage.
+tests use `test/fixtures/editor_scene.kdl` to retain their multi-actor coverage.
 
 WaveBehavior uses existing nodes and local functions. It waits for a player,
 accumulates simulation delta, and spawns eight enemies at 1.5-second intervals,

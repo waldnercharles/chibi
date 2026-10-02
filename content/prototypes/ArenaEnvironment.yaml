@@ -1,4 +1,0 @@
-name: ArenaEnvironment
-components:
-  GAME.GameEnvironment: {bloom_radius: 0.012, bloom_strength: 0.18, bloom_threshold: 1.0}
-  GAME.GameRhythm: {bpm: 120.0, pulse_width: 0.18}

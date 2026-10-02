@@ -418,7 +418,8 @@ int automation_assets_publish(
             "%s",
             !restored ? UNRESTORED
             : status == CHIBI_AUTOMATION_CONFLICT
-                ? "an asset changed or a new name is taken; inspect current "
+                ? "an asset changed or a new name is taken; inspect "
+                  "current "
                   "hashes and retry"
                 : "could not publish every asset"
         );

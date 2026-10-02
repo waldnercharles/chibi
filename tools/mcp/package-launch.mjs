@@ -7,7 +7,7 @@ try {
   if (process.argv.length > 3) throw new Error("Usage: chibi-mcp [PROJECT_ROOT]");
   const engine = enginePackage(resolve(dirname(fileURLToPath(import.meta.url)), "../../.."));
   const root = realpathSync(resolve(process.argv[2] || process.env.CHIBI_ROOT || process.cwd()));
-  if (!existsSync(resolve(root, "project.yaml"))) throw new Error(`No project.yaml in ${root}`);
+  if (!existsSync(resolve(root, "project.kdl"))) throw new Error(`No project.kdl in ${root}`);
   checkEngineLock(root, engine);
   process.env.CHIBI_ROOT = root;
   process.env.CHIBI_CTL = resolve(engine.root, "bin/chibi_ctl");

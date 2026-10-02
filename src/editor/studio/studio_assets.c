@@ -347,7 +347,7 @@ static bool named(studio *s, const char *name)
     return false;
 }
 
-static char *yaml_path(const char *folder, const char *name, char *error, size_t size)
+static char *kdl_path(const char *folder, const char *name, char *error, size_t size)
 {
     size_t length = strlen(folder) + strlen(name) + sizeof "/" ASSET_EXTENSION;
     char *path = xmalloc(length);
@@ -361,7 +361,7 @@ static char *yaml_path(const char *folder, const char *name, char *error, size_t
     return NULL;
 }
 
-/* The new asset's file: a .yaml in its kind's folder, a ui asset's .rml or a
+/* The new asset's file: a .kdl in its kind's folder, a ui asset's .rml or a
    stylesheet's .rcss; NULL with why in `error` when the name is invalid or
    taken. */
 static char *new_path(studio *s, int kind, const char *name, char *error, size_t size)
@@ -378,7 +378,7 @@ static char *new_path(studio *s, int kind, const char *name, char *error, size_t
     char *folder = content_path_join(s->scene->content_root, folder_name);
     char *path = is_ui(kind)
                    ? ui_buffer_new_path(folder, (ui_new_kind)(kind - NEW_ASSET_KIND_COUNT), name, error, size)
-                   : yaml_path(folder, name, error, size);
+                   : kdl_path(folder, name, error, size);
     free(folder);
     return path;
 }
@@ -422,9 +422,9 @@ static bool write_ui(ui_new_kind kind, const char *path)
 
 /* The asset as its model writes it (assets/new_asset.h), which loads back
    unchanged and is what --format writes. */
-static bool write_yaml(new_asset_kind kind, const char *name, const char *path)
+static bool write_kdl(new_asset_kind kind, const char *name, const char *path)
 {
-    char *json = new_asset_json(kind, name);
+    char *json = new_asset_text(kind, name);
     bool written = write_text_file_atomic(path, json) == 0;
     free(json);
     return written;
@@ -466,7 +466,7 @@ static bool create(studio *s)
     free(folder);
     bool written = is_ui(n->kind)
                      ? write_ui((ui_new_kind)(n->kind - NEW_ASSET_KIND_COUNT), path)
-                     : write_yaml((new_asset_kind)n->kind, n->name, path);
+                     : write_kdl((new_asset_kind)n->kind, n->name, path);
     if (written) {
         open_new(s, n->kind, path);
     } else {

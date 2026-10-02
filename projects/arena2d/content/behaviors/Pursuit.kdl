@@ -1,0 +1,140 @@
+version 3
+name "Pursuit"
+id_counter 539
+description "Approach a player within 600 units, limiting acceleration to 120 units per second squared."
+owner_type "ecs.entity"
+(array)graphs {
+    - {
+        kind "event"
+        name ""
+        (array)nodes {
+            - {
+                id 1
+                type "Event"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_name "Tick"
+                outputs {
+                    DeltaSeconds id=3 type="float" kind="data"
+                }
+            }
+            - {
+                id 4
+                type "Find Nearest Entity"
+                x 0.0
+                y 0.0
+                placed #false
+                inputs {
+                    Position {
+                        binding kind="component" component="GAME.GameTransform"
+                    }
+                    Radius 600.0
+                    Categories 1
+                }
+            }
+            - id=13 type="Branch" x=0.0 y=0.0 placed=#false
+            - {
+                id 18
+                type "Direction To"
+                x 0.0
+                y 0.0
+                placed #false
+                inputs {
+                    Origin {
+                        binding kind="component" component="GAME.GameTransform"
+                    }
+                }
+            }
+            - {
+                id 44
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 22
+                reference_name "direction * speed - velocity"
+                inputs {
+                    direction id=45
+                    speed {
+                        id 46
+                        type "double"
+                        binding kind="component_field" component="GAME.GameMovement" field="speed"
+                    }
+                    velocity {
+                        id 521
+                        type "struct"
+                        type_name "GameVelocity"
+                        binding kind="component" component="GAME.GameVelocity"
+                    }
+                }
+                outputs {
+                    Result id=49 type="struct" type_name="CF_V2"
+                }
+            }
+            - {
+                id 160
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 138
+                reference_name "velocity += delta * min(1, acceleration * dt / max(length(delta), 0.0001))"
+                inputs {
+                    Exec id=166 kind="exec"
+                    velocity {
+                        id 161
+                        type "struct"
+                        type_name "GameVelocity"
+                        binding kind="component" component="GAME.GameVelocity"
+                    }
+                    delta id=162 type="struct" type_name="CF_V2"
+                    acceleration id=163 type="double" default=120.0
+                    dt {
+                        id 164
+                        type "double"
+                        binding kind="delta_time"
+                    }
+                }
+                outputs {
+                    Then id=167 kind="exec"
+                    Result id=165 type="struct" type_name="GameVelocity"
+                }
+            }
+            - {
+                id 323
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 306
+                reference_name "velocity = vec2(0, 0)"
+                inputs {
+                    Exec id=326 kind="exec"
+                    velocity {
+                        id 324
+                        type "struct"
+                        type_name "GameVelocity"
+                        binding kind="component" component="GAME.GameVelocity"
+                    }
+                }
+                outputs {
+                    Then id=327 kind="exec"
+                    Result id=325 type="struct" type_name="GameVelocity"
+                }
+            }
+        }
+        (array)edges {
+            - from="1.Then" to="13.Exec"
+            - from="4.Found" to="13.Condition"
+            - from="4.Position" to="18.Target" conversion="game_transform_to_cf"
+            - from="13.True" to="160.Exec"
+            - from="13.False" to="323.Exec"
+            - from="18.Direction" to="44.direction"
+            - from="44.Result" to="160.delta"
+        }
+    }
+    - id=22 kind="function" math_expression="direction * speed - velocity" entry_id=523
+    - id=138 kind="function" math_expression="velocity += delta * min(1, acceleration * dt / max(length(delta), 0.0001))" entry_id=457
+    - id=306 kind="function" math_expression="velocity = vec2(0, 0)" entry_id=435
+}

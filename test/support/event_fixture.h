@@ -10,15 +10,15 @@
 #include <stdlib.h>
 static inline void register_damage_event(game_live_world *world)
 {
-    const char *paths[] = { "content/events/Damage.yaml",
-                            "content/events/Damaged.yaml",
-                            "content/events/Died.yaml",
-                            "content/events/RefreshEncounter.yaml",
-                            "content/events/CollectExperience.yaml" };
+    const char *paths[] = { "content/events/Damage.kdl",
+                            "content/events/Damaged.kdl",
+                            "content/events/Died.kdl",
+                            "content/events/RefreshEncounter.kdl",
+                            "content/events/CollectExperience.kdl" };
     for (int i = 0; i < (int)(sizeof paths / sizeof *paths); i++) {
         char *json = text_file_read(paths[i]);
         assert(json);
-        behavior_asset *asset = behavior_asset_load_json(json);
+        behavior_asset *asset = behavior_asset_load(json);
         free(json);
         assert(asset);
         assert(game_live_add_definition(world, game_live_definition_new(asset->name, asset)) == 0);
@@ -26,15 +26,15 @@ static inline void register_damage_event(game_live_world *world)
 }
 static inline behavior_asset *link_test_libraries(behavior_asset *asset)
 {
-    const char *paths[] = { "content/libraries/DirectionMath.yaml",
-                            "content/libraries/MovementActions.yaml",
-                            "content/libraries/WeaponActions.yaml",
-                            "content/shader-libraries/ShaderMath.yaml",
-                            "content/events/Damage.yaml",
-                            "content/events/Damaged.yaml",
-                            "content/events/Died.yaml",
-                            "content/events/RefreshEncounter.yaml",
-                            "content/events/CollectExperience.yaml" };
+    const char *paths[] = { "content/libraries/DirectionMath.kdl",
+                            "content/libraries/MovementActions.kdl",
+                            "content/libraries/WeaponActions.kdl",
+                            "content/shader-libraries/ShaderMath.kdl",
+                            "content/events/Damage.kdl",
+                            "content/events/Damaged.kdl",
+                            "content/events/Died.kdl",
+                            "content/events/RefreshEncounter.kdl",
+                            "content/events/CollectExperience.kdl" };
     enum
     {
         count = sizeof paths / sizeof *paths
@@ -43,7 +43,7 @@ static inline behavior_asset *link_test_libraries(behavior_asset *asset)
     for (int i = 0; i < count; i++) {
         char *json = text_file_read(paths[i]);
         assert(json);
-        catalog[i] = behavior_asset_load_json(json);
+        catalog[i] = behavior_asset_load(json);
         free(json);
         assert(catalog[i]);
     }
@@ -67,18 +67,18 @@ static inline void register_test_preview_catalog(game_prototype_preview *preview
     if (!preview) {
         return;
     }
-    const char *paths[] = { "content/libraries/DirectionMath.yaml",
-                            "content/libraries/MovementActions.yaml",
-                            "content/libraries/WeaponActions.yaml",
-                            "content/events/Damage.yaml",
-                            "content/events/Damaged.yaml",
-                            "content/events/Died.yaml",
-                            "content/events/RefreshEncounter.yaml",
-                            "content/events/CollectExperience.yaml" };
+    const char *paths[] = { "content/libraries/DirectionMath.kdl",
+                            "content/libraries/MovementActions.kdl",
+                            "content/libraries/WeaponActions.kdl",
+                            "content/events/Damage.kdl",
+                            "content/events/Damaged.kdl",
+                            "content/events/Died.kdl",
+                            "content/events/RefreshEncounter.kdl",
+                            "content/events/CollectExperience.kdl" };
     for (int i = 0; i < (int)(sizeof paths / sizeof *paths); i++) {
         char *json = text_file_read(paths[i]);
         assert(json);
-        behavior_asset *asset = behavior_asset_load_json(json);
+        behavior_asset *asset = behavior_asset_load(json);
         free(json);
         assert(asset);
         assert(game_prototype_preview_register_behavior(preview, asset->name, asset) == 0);

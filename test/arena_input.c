@@ -45,10 +45,10 @@ static arena_fixture arena_new()
     assert(app_scene_authoring_set_content_root(f.scene, "content") == 0);
     assert(app_scene_authoring_load_content(f.scene) == 0);
     const char
-        *weapon_path = "test/fixtures/content/behaviors/WeaponBehavior.yaml";
+        *weapon_path = "test/fixtures/content/behaviors/WeaponBehavior.kdl";
     char *weapon_json = text_file_read(weapon_path);
     assert(weapon_json);
-    behavior_asset *weapon_asset = behavior_asset_load_json(weapon_json);
+    behavior_asset *weapon_asset = behavior_asset_load(weapon_json);
     free(weapon_json);
     assert(weapon_asset);
     game_live_definition
@@ -63,12 +63,12 @@ static arena_fixture arena_new()
         ) == 0
     );
     const char
-        *projectile_path = "test/fixtures/content/prototypes/Projectile.yaml";
+        *projectile_path = "test/fixtures/content/prototypes/Projectile.kdl";
     char *projectile_json = text_file_read(projectile_path);
     assert(projectile_json);
     assert(app_scene_authoring_register_prototype(f.scene, projectile_json, projectile_path) == 0);
     free(projectile_json);
-    int loaded = app_scene_authoring_load(f.scene, "content/scenes/Arena3D.yaml");
+    int loaded = app_scene_authoring_load(f.scene, "content/scenes/Arena3D.kdl");
     if (loaded) {
         fprintf(stderr, "Arena load: %s\n", app_scene_authoring_message(f.scene));
     }

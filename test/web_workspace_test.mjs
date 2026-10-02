@@ -3,15 +3,15 @@ import { Buffer } from 'node:buffer';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 
-const files = new Map([['/content/scenes/Arena3D.yaml', 'packaged reference']]);
+const files = new Map([['/content/scenes/Arena3D.kdl', 'packaged reference']]);
 const requests = [];
 const errors = [];
 const portrait = 'projects/arena2d/content/art/portrait.png';
 const backdrop = 'projects/arena2d/content/art/backdrop.jpeg';
 const badge = 'projects/arena2d/content/art/badge.png';
 const assets = {
-  'projects/arena2d/project.yaml': 'version: 1\nname: Neon Swarm\ncontent: content\nstart_scene: scenes/Sandbox.yaml\n',
-  'projects/arena2d/content/scenes/Sandbox.yaml': 'name: Sandbox\n',
+  'projects/arena2d/project.kdl': "version 1\nname \"Neon Swarm\"\ncontent \"content\"\nstart_scene \"scenes/Sandbox.kdl\"\n",
+  'projects/arena2d/content/scenes/Sandbox.kdl': "name \"Sandbox\"\n",
   [portrait]: {encoding: 'base64', data: 'AP8BgA=='},
   [backdrop]: {encoding: 'base64', data: 'Cgs='},
   [badge]: {encoding: 'base64', data: 'Aw=='},
@@ -46,8 +46,8 @@ class Request {
       ? JSON.stringify({
         root: '/projects/sample-project/',
         assets: {
-          'projects/sample-project/project.yaml': 'version: 3\nname: Sample Project\ncontent: content\nstart_scene: scenes/Start.yaml\n',
-          'projects/sample-project/content/scenes/Start.yaml': 'version: 1\nname: Start\nentities: []\n',
+          'projects/sample-project/project.kdl': "version 4\nname \"Sample Project\"\ncontent \"content\"\nstart_scene \"scenes/Start.kdl\"\n",
+          'projects/sample-project/content/scenes/Start.kdl': "version 1\nname \"Start\"\n(array)entities\n",
         },
       })
       : JSON.stringify(assets);
@@ -64,9 +64,9 @@ const fetch = async url => {
     ok: true,
     headers: { get: name => (name === 'X-Chibi-Version' ? '5' : null) },
     json: async () => ({
-      'projects/arena2d/content/scenes/Sandbox.yaml': 'name: Edited on disk\n',
-      'projects/arena2d/project.yaml': assets['projects/arena2d/project.yaml'],
-      'content/scenes/Arena3D.yaml': null,
+      'projects/arena2d/content/scenes/Sandbox.kdl': "name \"Edited on disk\"\n",
+      'projects/arena2d/project.kdl': assets['projects/arena2d/project.kdl'],
+      'content/scenes/Arena3D.kdl': null,
       [portrait]: {encoding: 'base64', data: 'AQIDBAU='},
       [backdrop]: assets[backdrop],
       [badge]: null,
@@ -83,34 +83,34 @@ vm.runInNewContext(source, {
 Module.onRuntimeInitialized();
 assert.equal(writes.length, 5);
 assert.equal(Module.arguments.join(' '), '--project-root /projects/arena2d');
-assert.equal(files.get('/projects/arena2d/project.yaml'), assets['projects/arena2d/project.yaml']);
-assert.equal(files.get('/projects/arena2d/content/scenes/Sandbox.yaml'), assets['projects/arena2d/content/scenes/Sandbox.yaml']);
-assert.equal(files.get('/content/scenes/Arena3D.yaml'), 'packaged reference');
+assert.equal(files.get('/projects/arena2d/project.kdl'), assets['projects/arena2d/project.kdl']);
+assert.equal(files.get('/projects/arena2d/content/scenes/Sandbox.kdl'), assets['projects/arena2d/content/scenes/Sandbox.kdl']);
+assert.equal(files.get('/content/scenes/Arena3D.kdl'), 'packaged reference');
 assert.deepEqual([...files.get('/' + portrait)], [0, 255, 1, 128]);
 assert.deepEqual([...files.get('/' + backdrop)], [10, 11]);
 assert.deepEqual([...files.get('/' + badge)], [3]);
 for (let turn = 0; turn < 10; turn++) await new Promise(setImmediate);
 assert.deepEqual(followed, ['/__chibi/changes?since=4', '/__chibi/changes?since=5']);
-assert.equal(files.get('/projects/arena2d/content/scenes/Sandbox.yaml'), 'name: Edited on disk\n');
+assert.equal(files.get('/projects/arena2d/content/scenes/Sandbox.kdl'), "name \"Edited on disk\"\n");
 assert.deepEqual([...files.get('/' + portrait)], [1, 2, 3, 4, 5]);
 assert.deepEqual([...files.get('/' + backdrop)], [10, 11], 'unchanged bytes stay mirrored');
 assert(!files.has('/' + badge), 'a removed image leaves MEMFS');
 assert.equal(writes.length, 7, 'unchanged text and image files are not rewritten');
-assert(!files.has('/content/scenes/Arena3D.yaml'));
-assert.deepEqual(JSON.parse(Module.chibiCreateProject('Sample Project', 3)), {root: '/projects/sample-project/'});
-assert.deepEqual(JSON.parse(requests.at(-1).body), {name: 'Sample Project', version: 3});
-assert.equal(files.get('/projects/sample-project/project.yaml'),
-  'version: 3\nname: Sample Project\ncontent: content\nstart_scene: scenes/Start.yaml\n');
-assert.equal(files.get('/projects/sample-project/content/scenes/Start.yaml'),
-  'version: 1\nname: Start\nentities: []\n');
+assert(!files.has('/content/scenes/Arena3D.kdl'));
+assert.deepEqual(JSON.parse(Module.chibiCreateProject('Sample Project', 4)), {root: '/projects/sample-project/'});
+assert.deepEqual(JSON.parse(requests.at(-1).body), {name: 'Sample Project', version: 4});
+assert.equal(files.get('/projects/sample-project/project.kdl'),
+  "version 4\nname \"Sample Project\"\ncontent \"content\"\nstart_scene \"scenes/Start.kdl\"\n");
+assert.equal(files.get('/projects/sample-project/content/scenes/Start.kdl'),
+  "version 1\nname \"Start\"\n(array)entities\n");
 
 const originalWriteFile = Module.FS.writeFile;
 const simmers = {
-  'projects/simmer/project.yaml': 'version: 3\nname: Simmer\ncontent: content\nstart_scene: scenes/Start.yaml\n',
-  'projects/simmer/content/scenes/Start.yaml': 'version: 1\nname: Start\nentities: []\n',
+  'projects/simmer/project.kdl': "version 4\nname \"Simmer\"\ncontent \"content\"\nstart_scene \"scenes/Start.kdl\"\n",
+  'projects/simmer/content/scenes/Start.kdl': "version 1\nname \"Start\"\n(array)entities\n",
 };
 const projectRequestCount = requests.filter(request => request.path === '/__chibi/project').length;
-const failedPath = '/projects/simmer/content/scenes/Start.yaml';
+const failedPath = '/projects/simmer/content/scenes/Start.kdl';
 let failOnce = true;
 const originalSend = Request.prototype.send;
 Request.prototype.send = function (body) {
@@ -130,35 +130,35 @@ Module.FS.writeFile = (path, value) => {
   }
   originalWriteFile(path, value);
 };
-const firstAttempt = JSON.parse(Module.chibiCreateProject('Simmer', 3));
+const firstAttempt = JSON.parse(Module.chibiCreateProject('Simmer', 4));
 assert.match(firstAttempt.error, /Cannot write/);
-assert.equal(files.get('/projects/simmer/project.yaml'), simmers['projects/simmer/project.yaml']);
+assert.equal(files.get('/projects/simmer/project.kdl'), simmers['projects/simmer/project.kdl']);
 assert.equal(files.has(failedPath), false, 'a failed first sync leaves the start scene missing');
-assert.deepEqual(JSON.parse(Module.chibiCreateProject('Simmer', 3)), {root: '/projects/simmer/'});
-assert.equal(files.get(failedPath), simmers['projects/simmer/content/scenes/Start.yaml']);
+assert.deepEqual(JSON.parse(Module.chibiCreateProject('Simmer', 4)), {root: '/projects/simmer/'});
+assert.equal(files.get(failedPath), simmers['projects/simmer/content/scenes/Start.kdl']);
 assert.equal(requests.filter(request => request.path === '/__chibi/project').length,
   projectRequestCount + 1, 'retry mirrors the already-created project instead of creating a duplicate');
 Module.FS.writeFile = originalWriteFile;
 Request.prototype.send = originalSend;
 
-location.search = '?project-root=projects/arena2d&scene=scenes/Sandbox.yaml';
+location.search = '?project-root=projects/arena2d&scene=scenes/Sandbox.kdl';
 Module.chibiRememberProject('/projects/sample-project/');
 assert.equal(location.search, '?project-root=projects/sample-project');
-const path = '/projects/arena2d/content/scenes/Sandbox.yaml';
+const path = '/projects/arena2d/content/scenes/Sandbox.kdl';
 Module.chibiCollabStorage = {root: '/projects/arena2d/', localRoot: '/projects/arena2d/'};
-assert.equal(Module.chibiSaveAsset(path, 'name: Edited\n'), 0);
-assert.deepEqual(JSON.parse(requests.at(-1).body), { path, text: 'name: Edited\n' });
+assert.equal(Module.chibiSaveAsset(path, "name \"Edited\"\n"), 0);
+assert.deepEqual(JSON.parse(requests.at(-1).body), { path, text: "name \"Edited\"\n" });
 assert.equal(Module.chibiDeleteAsset(path), 0);
 assert.deepEqual(JSON.parse(requests.at(-1).body), { path, text: null });
 Module.chibiCollabStorage.root = '/collab/test/project/';
 const beforeRoomSave = requests.length;
-assert.equal(Module.chibiSaveAsset('/collab/test/project/content/scenes/Start.yaml', 'name: Room\n'), 0);
-assert.equal(Module.chibiDeleteAsset('/collab/test/project/content/scenes/Start.yaml'), 0);
+assert.equal(Module.chibiSaveAsset('/collab/test/project/content/scenes/Start.kdl', "name \"Room\"\n"), 0);
+assert.equal(Module.chibiDeleteAsset('/collab/test/project/content/scenes/Start.kdl'), 0);
 assert.equal(requests.length, beforeRoomSave, 'room edits never reach the local project mirror');
-assert.equal(Module.chibiSaveAsset(path, 'name: Local\n'), 0);
-assert.deepEqual(JSON.parse(requests.at(-1).body), { path, text: 'name: Local\n' });
+assert.equal(Module.chibiSaveAsset(path, "name \"Local\"\n"), 0);
+assert.deepEqual(JSON.parse(requests.at(-1).body), { path, text: "name \"Local\"\n" });
 Request.prototype.send = function () { this.status = 400; this.responseText = 'Outside project content'; };
-assert.equal(Module.chibiSaveAsset('/outside.yaml', '{}'), -1);
+assert.equal(Module.chibiSaveAsset('/outside.kdl', '{}'), -1);
 assert.deepEqual(errors, ['Outside project content']);
 const launchSource = readFileSync(new URL('../tools/web_launch.js', import.meta.url), 'utf8');
 for (const search of ['', '?scene=scenes/Sandbox.json']) {

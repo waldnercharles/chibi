@@ -210,18 +210,18 @@ static behavior_asset *presentation_asset(node **modes)
     return asset;
 }
 
-static bool yaml_has(const char *yaml, const char *text)
+static bool kdl_has(const char *kdl, const char *text)
 {
-    return yaml && strstr(yaml, text);
+    return kdl && strstr(kdl, text);
 }
 
-static char *yaml_replace(const char *yaml, const char *from, const char *to)
+static char *kdl_replace(const char *kdl, const char *from, const char *to)
 {
-    const char *at = strstr(yaml, from);
+    const char *at = strstr(kdl, from);
     assert(at);
-    size_t head = (size_t)(at - yaml);
-    char *out = xmalloc(strlen(yaml) - strlen(from) + strlen(to) + 1);
-    memcpy(out, yaml, head);
+    size_t head = (size_t)(at - kdl);
+    char *out = xmalloc(strlen(kdl) - strlen(from) + strlen(to) + 1);
+    memcpy(out, kdl, head);
     strcpy(out + head, to);
     strcat(out, at + strlen(from));
     return out;
@@ -232,16 +232,18 @@ static void serialization()
     node *modes[3];
     behavior_asset *asset = presentation_asset(modes);
     uint64_t ids[3] = { modes[0]->id, modes[1]->id, modes[2]->id };
-    char *json = behavior_asset_save_json(asset);
+    char *json = behavior_asset_save(asset);
     char error[256] = { 0 };
-    char *yaml = json ? asset_text_to_disk(json, error, sizeof error) : NULL;
+    char *kdl = json ? asset_text_to_disk(json, error, sizeof error) : NULL;
     test_check(
-        yaml_has(yaml, "presentation: inline") &&
-            yaml_has(yaml, "presentation: expanded") &&
-            !yaml_has(yaml, "presentation: auto") && !yaml_has(yaml, "inline_source"),
-        "YAML spells explicit presentations and omits auto"
+        kdl_has(kdl, "presentation=\"inline\"") &&
+            (kdl_has(kdl, "presentation=\"expanded\"") ||
+             kdl_has(kdl, "presentation \"expanded\"")) &&
+            !kdl_has(kdl, "presentation=\"auto\"") &&
+            !kdl_has(kdl, "presentation \"auto\"") && !kdl_has(kdl, "inline_source"),
+        "KDL spells explicit presentations and omits auto"
     );
-    behavior_asset *copy = yaml ? behavior_asset_load_json(yaml) : NULL;
+    behavior_asset *copy = kdl ? behavior_asset_load(kdl) : NULL;
     bool preserved = copy != NULL;
     for (int i = 0; preserved && i < 3; i++) {
         node *n = graph_node_by_id(copy->graph, ids[i]);
@@ -249,7 +251,7 @@ static void serialization()
                     graph_node_is_inline(copy->graph, n) ==
                         graph_node_is_inline(asset->graph, modes[i]);
     }
-    test_check(preserved, "presentations round-trip through YAML");
+    test_check(preserved, "presentations round-trip through KDL");
     test_check(
         copy && !graph_node_by_id(copy->graph, ids[0])->placed &&
             graph_node_by_id(copy->graph, ids[1])->placed,
@@ -257,13 +259,13 @@ static void serialization()
     );
     behavior_asset_free(copy);
 
-    char *invalid = yaml_replace(yaml, "presentation: inline", "presentation: sideways");
+    char *invalid = kdl_replace(kdl, "presentation=\"inline\"", "presentation=\"sideways\"");
     test_check(
-        !behavior_asset_load_json(invalid) && strstr(graph_last_error(), "presentation"),
+        !behavior_asset_load(invalid) && strstr(graph_last_error(), "presentation"),
         "unknown presentations are rejected"
     );
     free(invalid);
-    free(yaml);
+    free(kdl);
     free(json);
     behavior_asset_free(asset);
 }

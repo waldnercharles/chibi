@@ -1,0 +1,114 @@
+version 3
+name "MovementSystem"
+id_counter 45
+description "Moves entities from GameInput using GameMovement speed."
+owner_type "ecs.entity"
+(array)graphs {
+    - {
+        kind "event"
+        name ""
+        breakpoints_enabled #false
+        dataflow #true
+        (array)nodes {
+            - {
+                id 1
+                type "Event"
+                x 0.0
+                y 108.625
+                reference_name "Tick"
+                outputs {
+                    DeltaSeconds type="float" kind="data"
+                }
+            }
+            - {
+                id 4
+                type "Get_GameInput"
+                x 320.0
+                y 76.25
+                placed #false
+                (array)outputs {
+                    - id=7 name="move" type_name="CF_V2" flags=0 default=#null
+                }
+            }
+            - {
+                id 11
+                type "Get_GameMovement"
+                x 619.0
+                y 60.0
+                placed #false
+                (array)outputs {
+                    - id=14 name="speed" type="float" flags=0
+                }
+            }
+            - {
+                id 18
+                type "Multiply"
+                x 1171.0
+                y 145.0
+                placed #false
+                (array)inputs {
+                    - id=19 name="value" type="struct" type_name="CF_V2" flags=0 group=0
+                    - id=20 name="scale" flags=0 group=0
+                }
+                (array)outputs {
+                    - id=21 name="return" type="struct" type_name="CF_V2" flags=0 group=0
+                }
+            }
+            - {
+                id 22
+                type "Multiply"
+                x 1470.0
+                y 169.5
+                (array)inputs {
+                    - id=23 name="value" type="struct" type_name="CF_V2" flags=0 group=0
+                    - id=24 name="scale" flags=0 group=0
+                }
+                (array)outputs {
+                    - id=25 name="return" type="struct" type_name="CF_V2" flags=0 group=0
+                }
+            }
+            - {
+                id 26
+                type "Get_GameTransform"
+                x 1171.0
+                y 6.0
+                placed #false
+                outputs {
+                    Value id=29 type_name="CF_V2" flags=0 default=#null
+                }
+            }
+            - {
+                id 33
+                type "Add"
+                x 1716.0
+                y 73.5
+                (array)inputs {
+                    - id=34 name="a" type="struct" type_name="CF_V2" flags=0 group=0
+                    - id=35 name="b" type="struct" type_name="CF_V2" flags=0 group=0
+                }
+                (array)outputs {
+                    - id=36 name="return" type="struct" type_name="CF_V2" flags=0 group=0
+                }
+            }
+            - {
+                id 40
+                type "Set_GameTransform"
+                x 2159.0
+                y 0.0
+                inputs {
+                    Value type_name="CF_V2" default=#null
+                }
+            }
+        }
+        (array)edges {
+            - from="1.Then" to="40.Exec"
+            - from="1.DeltaSeconds" to="22.scale"
+            - from="4.move" to="18.value"
+            - from="11.speed" to="18.scale"
+            - from="18.return" to="22.value"
+            - from="22.return" to="33.b"
+            - from="26.Value" to="33.a"
+            - from="33.return" to="40.Value"
+        }
+    }
+}

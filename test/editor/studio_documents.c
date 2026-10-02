@@ -102,7 +102,7 @@ static studio_fixture fixture_open(const char *project, const char *scene, const
 
 static studio_fixture fixture_new()
 {
-    studio_fixture f = fixture_open(PROJECT, PROJECT "/content/scenes/Main.yaml", "Weapons");
+    studio_fixture f = fixture_open(PROJECT, PROJECT "/content/scenes/Main.kdl", "Weapons");
     assert(editor_open_graph(f.graph, FUNCTION_GRAPH) == 0);
     f.studio = studio_new(f.scene, f.viewport, PROJECT);
     studio_maximize_graph(f.studio);
@@ -278,9 +278,9 @@ static void graph_color_session_saves_undoes_and_replays()
     }
     frames(&f, 3);
 
-    char *saved_json = behavior_asset_save_json(editor_behavior_asset(f.graph));
-    behavior_asset *saved = saved_json ? behavior_asset_load_json(saved_json) : NULL;
-    free(saved_json);
+    char *saved_document = behavior_asset_save(editor_behavior_asset(f.graph));
+    behavior_asset *saved = saved_document ? behavior_asset_load(saved_document) : NULL;
+    free(saved_document);
     graph *saved_graph = saved ? behavior_asset_find_graph(saved, active->graph_id)
                                : NULL;
     node *saved_set = saved_graph ? graph_node_by_id(saved_graph, set_id) : NULL;
@@ -857,7 +857,7 @@ static void performance_snapshot_retains_intermediate_frames()
 
 static void replay_close_stop_reopen_keeps_graph_layout()
 {
-    studio_fixture f = fixture_open("projects/arena2d", "projects/arena2d/content/scenes/Sandbox.yaml", "Weapon");
+    studio_fixture f = fixture_open("projects/arena2d", "projects/arena2d/content/scenes/Sandbox.kdl", "Weapon");
     f.studio = studio_new(f.scene, f.viewport, "projects/arena2d");
     studio *s = f.studio;
     studio_maximize_graph(s);
@@ -882,7 +882,7 @@ static void replay_close_stop_reopen_keeps_graph_layout()
         hi[1] = fmaxf(hi[1], box[1] + box[3]);
     }
     assert(acount(ids) > 1 && hi[0] - lo[0] > 360);
-    char *before = behavior_asset_save_json(editor_behavior_asset(f.graph));
+    behavior_asset *before = behavior_asset_clone(editor_behavior_asset(f.graph));
     assert(before);
     assert(app_scene_authoring_open_behavior(f.scene, "Movement") == 0);
     frames(&f, 3);
@@ -910,10 +910,12 @@ static void replay_close_stop_reopen_keeps_graph_layout()
         restored &= n && fabsf(n->x - positions[i * 2]) < 0.5f &&
                     fabsf(n->y - positions[i * 2 + 1]) < 0.5f;
     }
-    char *after = behavior_asset_save_json(editor_behavior_asset(f.graph));
-    test_check(restored && after && !strcmp(before, after), "Firefight replay, closing both graph tabs, Stop and reopening Weapon restore its automatic positions without authoring or saving an edit");
-    free(before);
-    free(after);
+    test_check(
+        restored && behavior_asset_equal(before, editor_behavior_asset(f.graph)),
+        "Firefight replay, closing both graph tabs, Stop and reopening Weapon "
+        "restore its automatic positions without authoring or saving an edit"
+    );
+    behavior_asset_free(before);
 
     sg_frame_nodes(s, false, false);
     frame(&f, false);
@@ -960,7 +962,7 @@ void test_code_intelligence_studio();
 
 /* ---------- UI wiring (workstream K) ---------- */
 
-#define VAULT PROJECT "/content/scenes/Vault.yaml"
+#define VAULT PROJECT "/content/scenes/Vault.kdl"
 #define BANK PROJECT "/content/ui/Bank.rml"
 #define BANK_STYLES PROJECT "/content/ui/Bank.rcss"
 
@@ -1185,7 +1187,7 @@ static studio_fixture studio_project_open()
     static char root[PATH_MAX];
     char scene[PATH_MAX + 32];
     assert(realpath("projects/studio", root));
-    snprintf(scene, sizeof scene, "%s/content/scenes/Studio.yaml", root);
+    snprintf(scene, sizeof scene, "%s/content/scenes/Studio.kdl", root);
     studio_fixture f = scene_open(root, scene, "Dismiss");
     app_scene_authoring_set_default_ui(f.scene, "StudioShell");
     return f;
@@ -2609,7 +2611,7 @@ static void prototype_properties_follow_document()
     s->tab = STUDIO_TAB_SCENE;
     char error[256];
     assert(component_presentation_read(
-        "components:\n  GAME.GameUi: {tab: Gameplay}\n",
+        "components { GAME.GameUi { tab \"Gameplay\"; }; }\n",
         &f.scene->registry,
         &s->presentation.hints,
         error,
@@ -2896,7 +2898,7 @@ static void authored_modals_and_collaboration()
    changed from the control. GameControl's Aim Stick is past the old cap. */
 static void large_enum_property()
 {
-    studio_fixture f = fixture_open(PROJECT, PROJECT "/content/scenes/Binding.yaml", "Weapons");
+    studio_fixture f = fixture_open(PROJECT, PROJECT "/content/scenes/Binding.kdl", "Weapons");
     f.studio = studio_new(f.scene, f.viewport, "projects/studio");
     studio *s = f.studio;
     select_instance(f.scene, 0);
@@ -3049,7 +3051,7 @@ static void large_enum_property()
    rest of the vector intact through Undo and Redo. */
 static void component_vector_property()
 {
-    studio_fixture f = fixture_open(PROJECT, PROJECT "/content/scenes/Binding.yaml", "Weapons");
+    studio_fixture f = fixture_open(PROJECT, PROJECT "/content/scenes/Binding.kdl", "Weapons");
     f.studio = studio_new(f.scene, f.viewport, "projects/studio");
     studio *s = f.studio;
     select_instance(f.scene, 0);

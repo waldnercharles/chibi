@@ -1,3 +1,4 @@
+#include "assets/asset_source.h"
 #include "assets/behavior_loader.h"
 #include "assets/prototype.h"
 #include "assets/scene_document.h"
@@ -27,7 +28,9 @@
 #include "runtime/scenes/gameplay.h"
 #include "runtime/scenes/prototype_preview.h"
 #include "support/array.h"
+#include "support/asset_json.h"
 #include "support/asset_text.h"
+#include "support/text_file.h"
 #include "support/xalloc.h"
 
 #include <assert.h>
@@ -90,7 +93,16 @@ int write_file_atomic(const char *path, const char *text)
 int write_text_file_atomic(const char *path, const char *json)
 {
     char error[128];
-    char *text = asset_text_to_disk(json, error, sizeof error);
+    av_doc *document = asset_text_read(json, error, sizeof error);
+    if (!document) {
+        return -1;
+    }
+    char *previous = text_file_read(path);
+    char *text = previous
+                   ? asset_source_reconcile(previous, av_doc_root(document), error, sizeof error)
+                   : av_doc_write(document);
+    free(previous);
+    av_doc_free(document);
     if (!text) {
         return -1;
     }
@@ -515,10 +527,10 @@ scene_prototype_asset *previewed_prototype(app_scene_authoring *scene)
 void clear_prototype_history(scene_prototype_asset *asset)
 {
     for (int i = 0; i < acount(asset->undo); i++) {
-        free(asset->undo[i]);
+        av_value_free(asset->undo[i]);
     }
     for (int i = 0; i < acount(asset->redo); i++) {
-        free(asset->redo[i]);
+        av_value_free(asset->redo[i]);
     }
     afree(asset->undo);
     afree(asset->redo);
@@ -531,12 +543,12 @@ void prototype_history_before(app_scene_authoring *scene, game_prototype *protot
     }
     scene_prototype_asset *asset = find_prototype(scene, prototype->name);
     assert(asset && asset->prototype == prototype);
-    char *json = game_prototype_save(prototype);
-    if (json) {
-        apush(asset->undo, json);
+    av_value *value = game_prototype_to_value(prototype);
+    if (value) {
+        apush(asset->undo, value);
     }
     for (int i = 0; i < acount(asset->redo); i++) {
-        free(asset->redo[i]);
+        av_value_free(asset->redo[i]);
     }
     afree(asset->redo);
 }
@@ -834,14 +846,18 @@ void finish_property_edit(app_scene_authoring *scene)
                 "field",
                 component->type->fields[edit->field].name
             );
+            av_doc *native = av_doc_new();
+            av_value *native_root = av_obj(native);
             serialize_write_value(
-                doc,
-                root,
+                native,
+                native_root,
                 "value",
                 edit->after.type,
                 edit->after.type_name,
                 &edit->after
             );
+            yyjson_mut_obj_add_val(doc, root, "value", av_to_json(doc, av_obj_get(native_root, "value")));
+            av_doc_free(native);
             action = scene_action_write(doc);
             gate = action ? scene_action_begin(scene, action) : COLLAB_ACTION_REJECT;
         }
@@ -1386,7 +1402,7 @@ void app_scene_authoring_free(app_scene_authoring *scene)
     }
     scene_debug_clear(&scene->debug);
     scenario_document_free(scene->scenario);
-    free(scene->scenario_saved_state);
+    av_value_free(scene->scenario_saved_state);
     free(scene->ui);
     free(scene->default_ui);
     editor_set_inspection_blocked(scene->graph_editor, false);
@@ -1550,9 +1566,7 @@ int scene_authoring_sync_document(app_scene_authoring *scene)
         !scene->graph_document_id) {
         return scene->definition ? sync_behavior_working(scene) : 0;
     }
-    char *json = behavior_asset_save_json(editor_behavior_asset(scene->graph_editor));
-    behavior_asset *copy = json ? behavior_asset_load_json(json) : NULL;
-    free(json);
+    behavior_asset *copy = behavior_asset_clone(editor_behavior_asset(scene->graph_editor));
     if (!copy) {
         return -1;
     }

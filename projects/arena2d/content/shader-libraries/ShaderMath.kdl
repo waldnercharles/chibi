@@ -1,0 +1,136 @@
+version 3
+name "ShaderMath"
+domain "shader-library"
+id_counter 399
+description "Shared pulse and ring masking functions with explicit inputs."
+(array)graphs {
+    - kind="event" name="Functions"
+    - {
+        id 56
+        kind "function"
+        name "Pulse"
+        entry_id 57
+        return_id 59
+        call_depth_limit 64
+        (array)nodes {
+            - {
+                id 57
+                type "Function Entry"
+                x 0.0
+                y 0.0
+                placed #false
+                (array)outputs {
+                    - id=61 name="Time" type="float" kind="data"
+                    - id=62 name="Speed" type="float" kind="data"
+                }
+            }
+            - {
+                id 59
+                type "Return"
+                x 0.0
+                y 0.0
+                placed #false
+                (array)inputs {
+                    - id=63 name="Brightness" type="float" kind="data"
+                }
+            }
+            - {
+                id 190
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 163
+                reference_name "(sin(time * speed) + 1) * 0.5"
+                inputs {
+                    time id=191 type="float"
+                    speed id=192 type="float"
+                }
+                outputs {
+                    Result id=193 type="float"
+                }
+            }
+        }
+        (array)edges {
+            - from="57.Time" to="190.time"
+            - from="57.Speed" to="190.speed"
+            - from="190.Result" to="59.Brightness"
+        }
+    }
+    - {
+        id 102
+        kind "function"
+        name "Ring Mask"
+        entry_id 103
+        return_id 107
+        call_depth_limit 64
+        (array)nodes {
+            - {
+                id 103
+                type "Function Entry"
+                x 0.0
+                y 0.0
+                placed #false
+                (array)outputs {
+                    - {
+                        id 104
+                        name "Position"
+                        type "struct"
+                        type_name "ShaderVec2"
+                        kind "data"
+                        default x=0.0 y=0.0
+                    }
+                    - id=105 name="Radius" type="float" kind="data" default=35.0
+                    - id=106 name="Width" type="float" kind="data" default=3.0
+                }
+            }
+            - {
+                id 107
+                type "Return"
+                x 0.0
+                y 0.0
+                placed #false
+                (array)inputs {
+                    - id=108 name="Mask" type="float" kind="data"
+                }
+            }
+            - {
+                id 110
+                type "Shader Circle"
+                x 0.0
+                y 0.0
+                placed #false
+                inputs {
+                    Position {
+                        default x=0.0 y=0.0
+                    }
+                }
+            }
+            - {
+                id 305
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 275
+                reference_name "saturate(1 - abs(distance) / max(width, 0.001))"
+                inputs {
+                    distance id=306 type="float"
+                    width id=307 type="float"
+                }
+                outputs {
+                    Result id=308 type="float"
+                }
+            }
+        }
+        (array)edges {
+            - from="103.Position" to="110.Position"
+            - from="103.Radius" to="110.Radius"
+            - from="103.Width" to="305.width"
+            - from="110.Value" to="305.distance"
+            - from="305.Result" to="107.Mask"
+        }
+    }
+    - id=163 kind="function" math_expression="(sin(time * speed) + 1) * 0.5" entry_id=249
+    - id=275 kind="function" math_expression="saturate(1 - abs(distance) / max(width, 0.001))" entry_id=370
+}

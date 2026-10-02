@@ -115,8 +115,13 @@ static void preview_clocks()
                                          GAME_REGISTRY_COMPONENT_COUNT };
     char error[256];
     game_prototype *prototype = game_prototype_load(
-        "{\"name\":\"Motion\",\"components\":{\"GameSdfMotion\":{\"time\":2,"
-        "\"pluck_age\":3}}}",
+        "name \"Motion\"\n"
+        "components {\n"
+        "    GameSdfMotion {\n"
+        "        time 2\n"
+        "        pluck_age 3\n"
+        "    }\n"
+        "}\n",
         &registry,
         error,
         sizeof error

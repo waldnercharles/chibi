@@ -45,7 +45,7 @@ static const char *short_name(const char *name)
     return dot ? dot + 1 : name;
 }
 
-/* editor/Components.yaml names a component's tab; the rest belong to Object. */
+/* editor/Components.kdl names a component's tab; the rest belong to Object. */
 static studio_tab tab_of(const studio *s, const ecs_component_desc *desc)
 {
     return (studio_tab)(STUDIO_TAB_OBJECT +

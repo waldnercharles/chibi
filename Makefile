@@ -205,6 +205,7 @@ check-format:
 	sh tools/clang-format.sh --check
 
 test:
+	python3 test/kdl_asset_test.py
 	python3 test/fetchcontent_cache_test.py
 	python3 test/configure_cache_test.py
 	python3 test/package_web_test.py

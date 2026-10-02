@@ -7,7 +7,7 @@ const storage = readFileSync(new URL('../tools/web_storage.js', import.meta.url)
 const collabStorage = readFileSync(new URL('../tools/collab/storage.js', import.meta.url), 'utf8');
 const launchSource = readFileSync(new URL('../tools/web_launch.js', import.meta.url), 'utf8');
 const DIRECTORY = 1;
-const manifest = 'version: 1\nname: Neon Swarm\ncontent: content\nstart_scene: scenes/Sandbox.yaml\n';
+const manifest = "version 1\nname \"Neon Swarm\"\ncontent \"content\"\nstart_scene \"scenes/Sandbox.kdl\"\n";
 const text = data => typeof data === 'string' ? data : new TextDecoder().decode(data);
 
 const makeFS = (entries, failWritePath = '') => {
@@ -91,12 +91,12 @@ const settle = () => new Promise(resolve => setTimeout(resolve, 10));
 
 // Opening a sample the first time copies its folder into a project of the user's own.
 const fs = makeFS({
-  '/projects/arena2d/project.yaml': manifest,
-  '/projects/arena2d/content/scenes/Sandbox.yaml': 'name: Sandbox\n',
-  '/projects/arena3d/content/scenes/Arena3D.yaml': 'packaged reference',
+  '/projects/arena2d/project.kdl': manifest,
+  '/projects/arena2d/content/scenes/Sandbox.kdl': "name \"Sandbox\"\n",
+  '/projects/arena3d/content/scenes/Arena3D.kdl': 'packaged reference',
 });
-const first = launch('?project-root=projects/arena2d&scene=scenes/Sandbox.yaml', fs);
-assert.deepEqual([...first.Module.arguments], ['--project-root', '', '--scene', 'scenes/Sandbox.yaml']);
+const first = launch('?project-root=projects/arena2d&scene=scenes/Sandbox.kdl', fs);
+assert.deepEqual([...first.Module.arguments], ['--project-root', '', '--scene', 'scenes/Sandbox.kdl']);
 first.Module.preRun.forEach(run => run());
 assert.deepEqual(fs.mounts, [{ type: 'IDBFS', path: '/workspace' }]);
 assert.deepEqual(first.dependencies, ['chibi-storage']);
@@ -105,16 +105,16 @@ fs.syncs.shift().callback(null);
 assert.deepEqual(first.dependencies, []);
 first.Module.onRuntimeInitialized();
 assert.equal(first.Module.arguments[1], '/workspace/arena2d/');
-assert.equal(fs.file('/workspace/arena2d/project.yaml'), manifest);
-assert.equal(fs.file('/workspace/arena2d/content/scenes/Sandbox.yaml'), 'name: Sandbox\n');
-assert.equal(fs.file('/workspace/arena2d/content/scenes/Arena3D.yaml'), undefined);
+assert.equal(fs.file('/workspace/arena2d/project.kdl'), manifest);
+assert.equal(fs.file('/workspace/arena2d/content/scenes/Sandbox.kdl'), "name \"Sandbox\"\n");
+assert.equal(fs.file('/workspace/arena2d/content/scenes/Arena3D.kdl'), undefined);
 assert.equal(fs.file('/workspace/.last'), 'arena2d');
 first.flush();
 assert.equal(fs.syncs.shift().populate, false);
 assert.equal(first.persisted, 0);
 
 // Studio lists the user's projects, then each sample not yet copied into one.
-fs.writeFile('/projects/studio/project.yaml', 'version: 1\nname: Studio\ncontent: content\n');
+fs.writeFile('/projects/studio/project.kdl', "version 1\nname \"Studio\"\ncontent \"content\"\n");
 assert.deepEqual(JSON.parse(first.Module.chibiProjects()), [
   { name: 'Neon Swarm', root: '/workspace/arena2d/' },
   { name: 'Studio', root: '/projects/studio/' },
@@ -122,12 +122,44 @@ assert.deepEqual(JSON.parse(first.Module.chibiProjects()), [
 
 // Without a project to reopen, the page opens Neon Swarm.
 const empty = makeFS({
-  '/projects/arena2d/project.yaml': manifest,
-  '/projects/arena2d/content/scenes/Sandbox.yaml': 'name: Sandbox\n',
+  '/projects/arena2d/project.kdl': manifest,
+  '/projects/arena2d/content/scenes/Sandbox.kdl': "name \"Sandbox\"\n",
 });
 const byDefault = launch('', empty);
 byDefault.start();
 assert.equal(byDefault.Module.arguments[1], '/workspace/arena2d/');
+
+// Unrecognized occupied folders, including pre-KDL projects, keep every authored byte.
+{
+  const authored = '<div class="hud">My edited HUD</div>\n';
+  const occupied = {
+    '/workspace/arena2d/project.yaml': 'version: 3\nname: My Neon Swarm\n',
+    '/workspace/arena2d/content/ui/Hud.rml': authored,
+    '/workspace/arena2d/content/scenes/Sandbox.yaml': 'name: My authored scene\n',
+    '/workspace/arena2d-2/notes.txt': 'A different occupied folder without a manifest',
+  };
+  const legacy = makeFS({
+    ...occupied,
+    '/workspace/.last': 'arena2d',
+    '/projects/arena2d/project.kdl': manifest,
+    '/projects/arena2d/content/scenes/Sandbox.kdl': 'name "Sandbox"\n',
+    '/projects/arena2d/content/ui/Hud.rml': '<div>Bundled HUD</div>\n',
+  });
+  const upgraded = launch('', legacy);
+  upgraded.start();
+  assert.equal(upgraded.Module.arguments[1], '/workspace/arena2d-3/');
+  for (const [path, bytes] of Object.entries(occupied)) assert.equal(legacy.file(path), bytes);
+  assert.equal(legacy.file('/workspace/arena2d/project.kdl'), undefined);
+  assert.equal(legacy.file('/workspace/arena2d-2/project.kdl'), undefined);
+  assert.equal(legacy.file('/workspace/arena2d-3/project.kdl'), manifest);
+  assert.equal(legacy.file('/workspace/arena2d-3/content/scenes/Sandbox.kdl'), 'name "Sandbox"\n');
+  assert.equal(legacy.file('/workspace/arena2d-3/content/ui/Hud.rml'), '<div>Bundled HUD</div>\n');
+  assert.equal(legacy.file('/workspace/.last'), 'arena2d-3');
+  const reopened = launch('', legacy);
+  reopened.start();
+  assert.equal(reopened.Module.arguments[1], '/workspace/arena2d-3/');
+  assert.equal(legacy.file('/workspace/arena2d-4/project.kdl'), undefined);
+}
 
 // Collaboration snapshots stage in an isolated memory tree and never mutate
 // the user's persistent project.
@@ -135,22 +167,22 @@ const room = launch('?project=arena2d', fs);
 room.start();
 const collab = room.Module.chibiCollabStorage;
 const roomPath = collab.enterRoom('room-123', true);
-assert.equal(fs.file(`${roomPath}content/scenes/Sandbox.yaml`), 'name: Sandbox\n');
+assert.equal(fs.file(`${roomPath}content/scenes/Sandbox.kdl`), "name \"Sandbox\"\n");
 assert.equal(fs.file('/workspace/.last'), 'arena2d');
 const snapshotRoot = collab.stageFiles([
-  {path: 'project.yaml', data: new TextEncoder().encode(manifest)},
-  {path: 'content/scenes/Shared.yaml', data: new TextEncoder().encode('name: Shared\n')},
+  {path: 'project.kdl', data: new TextEncoder().encode(manifest)},
+  {path: 'content/scenes/Shared.kdl', data: new TextEncoder().encode("name \"Shared\"\n")},
 ]);
 collab.activateRoot(snapshotRoot);
 assert.equal(collab.root, snapshotRoot);
-assert.equal(fs.file(`${roomPath}content/scenes/Sandbox.yaml`), 'name: Sandbox\n');
-assert.equal(fs.file(`${snapshotRoot}content/scenes/Sandbox.yaml`), undefined);
-assert.equal(fs.file(`${snapshotRoot}content/scenes/Shared.yaml`), 'name: Shared\n');
-assert.equal(fs.file('/workspace/arena2d/content/scenes/Sandbox.yaml'), 'name: Sandbox\n');
+assert.equal(fs.file(`${roomPath}content/scenes/Sandbox.kdl`), "name \"Sandbox\"\n");
+assert.equal(fs.file(`${snapshotRoot}content/scenes/Sandbox.kdl`), undefined);
+assert.equal(fs.file(`${snapshotRoot}content/scenes/Shared.kdl`), "name \"Shared\"\n");
+assert.equal(fs.file('/workspace/arena2d/content/scenes/Sandbox.kdl'), "name \"Sandbox\"\n");
 
 // Saves flush once after a burst, ask to keep storage, and report failures.
-assert.equal(first.Module.chibiSaveAsset('/workspace/arena2d/content/scenes/Sandbox.yaml', 'a'), 0);
-assert.equal(first.Module.chibiSaveAsset('/workspace/arena2d/content/scenes/Sandbox.yaml', 'b'), 0);
+assert.equal(first.Module.chibiSaveAsset('/workspace/arena2d/content/scenes/Sandbox.kdl', 'a'), 0);
+assert.equal(first.Module.chibiSaveAsset('/workspace/arena2d/content/scenes/Sandbox.kdl', 'b'), 0);
 assert.equal(first.persisted, 1);
 assert.equal(first.timers.length, 1);
 first.flush();
@@ -160,11 +192,11 @@ await settle();
 assert.deepEqual(first.errors, ['Browser storage failed: quota exceeded']);
 
 // A later visit reopens the last project with its edits.
-fs.writeFile('/workspace/arena2d/content/scenes/Sandbox.yaml', 'name: Edited\n');
+fs.writeFile('/workspace/arena2d/content/scenes/Sandbox.kdl', "name \"Edited\"\n");
 const second = launch('', fs);
 second.start();
 assert.equal(second.Module.arguments[1], '/workspace/arena2d/');
-assert.equal(fs.file('/workspace/arena2d/content/scenes/Sandbox.yaml'), 'name: Edited\n');
+assert.equal(fs.file('/workspace/arena2d/content/scenes/Sandbox.kdl'), "name \"Edited\"\n");
 assert.equal(second.timers.length, 0);
 
 // Export downloads the project as a zip; importing it creates a separate project and opens it.
@@ -173,8 +205,8 @@ const download = second.links[0];
 assert.equal(download.download, 'arena2d.zip');
 const exported = await download.href.arrayBuffer();
 const archive = new TextDecoder('latin1').decode(exported);
-assert.ok(archive.includes('arena2d/content/scenes/Sandbox.yaml'));
-assert.ok(archive.includes('name: Edited\n'));
+assert.ok(archive.includes('arena2d/content/scenes/Sandbox.kdl'));
+assert.ok(archive.includes("name \"Edited\"\n"));
 const importFile = async (page, bytes, name) => {
   page.Module.chibiImportProject();
   const input = page.inputs.at(-1);
@@ -188,8 +220,8 @@ const importFile = async (page, bytes, name) => {
 };
 await importFile(second, exported, 'arena2d.zip');
 assert.equal(second.location.search, '?project=arena2d-2');
-assert.equal(fs.file('/workspace/arena2d-2/content/scenes/Sandbox.yaml'), 'name: Edited\n');
-assert.equal(fs.file('/workspace/arena2d/content/scenes/Sandbox.yaml'), 'name: Edited\n');
+assert.equal(fs.file('/workspace/arena2d-2/content/scenes/Sandbox.kdl'), "name \"Edited\"\n");
+assert.equal(fs.file('/workspace/arena2d/content/scenes/Sandbox.kdl'), "name \"Edited\"\n");
 assert.equal(fs.file('/workspace/.last'), 'arena2d-2');
 assert.equal(second.persisted, 1);
 
@@ -218,20 +250,20 @@ const deflated = entries => {
 const third = launch('?project=arena2d', fs);
 third.start();
 await importFile(third, deflated([
-  ['My Game/project.yaml', 'version: 1\nname: My Game\n'],
-  ['My Game/content/scenes/Level.yaml', 'name: Level\n'],
+  ['My Game/project.kdl', "version 1\nname \"My Game\"\n"],
+  ['My Game/content/scenes/Level.kdl', "name \"Level\"\n"],
   ['My Game/notes.txt', 'part of the project folder'],
-  ['__MACOSX/My Game/._project.yaml', 'resource fork'],
+  ['__MACOSX/My Game/._project.kdl', 'resource fork'],
 ]), 'My Game.zip');
 assert.equal(third.location.search, '?project=my-game');
-assert.equal(fs.file('/workspace/my-game/content/scenes/Level.yaml'), 'name: Level\n');
+assert.equal(fs.file('/workspace/my-game/content/scenes/Level.kdl'), "name \"Level\"\n");
 assert.equal(fs.file('/workspace/my-game/notes.txt'), 'part of the project folder');
 assert.equal([...fs.nodes.keys()].some(path => path.includes('MACOSX')), false);
 
 // Archives that are not projects leave storage untouched.
 const before = fs.nodes.size;
 await importFile(third, deflated([['readme.txt', 'hello']]), 'readme.zip');
-assert.deepEqual(third.errors, ['Could not import project: The archive has no project.yaml']);
+assert.deepEqual(third.errors, ['Could not import project: The archive has no project.kdl']);
 assert.equal(fs.nodes.size, before);
 
 // Once Chibi stops, the shell offers export of the open project and a new project.
@@ -248,31 +280,31 @@ const fresh = launch('?new=&project-root=projects/arena2d', fs);
 fresh.start();
 assert.equal(fresh.Module.arguments[1], '/workspace/arena2d-3/');
 assert.equal(fresh.location.search, '?project=arena2d-3');
-assert.equal(fs.file('/workspace/arena2d-3/content/scenes/Sandbox.yaml'), 'name: Sandbox\n');
+assert.equal(fs.file('/workspace/arena2d-3/content/scenes/Sandbox.kdl'), "name \"Sandbox\"\n");
 
 // An explicit project-root opens the Arena3D sample.
-const root = makeFS({ '/projects/arena3d/project.yaml': 'version: 1\nname: Arena3D\n', '/projects/arena3d/content/scenes/Arena3D.yaml': 'name: Root\n' });
+const root = makeFS({ '/projects/arena3d/project.kdl': "version 1\nname \"Arena3D\"\n", '/projects/arena3d/content/scenes/Arena3D.kdl': "name \"Root\"\n" });
 const packaged = launch('?project-root=projects/arena3d', root);
 packaged.start();
 assert.equal(packaged.Module.arguments[1], '/workspace/arena3d/');
-assert.equal(root.file('/workspace/arena3d/content/scenes/Arena3D.yaml'), 'name: Root\n');
+assert.equal(root.file('/workspace/arena3d/content/scenes/Arena3D.kdl'), "name \"Root\"\n");
 
 const failedFS = makeFS({
-  '/projects/arena2d/project.yaml': manifest,
-  '/projects/arena2d/content/scenes/Sandbox.yaml': 'name: Sandbox\n',
-}, '/workspace/sample-project/content/scenes/Start.yaml');
+  '/projects/arena2d/project.kdl': manifest,
+  '/projects/arena2d/content/scenes/Sandbox.kdl': "name \"Sandbox\"\n",
+}, '/workspace/sample-project/content/scenes/Start.kdl');
 const failed = launch('?project-root=projects/arena2d', failedFS);
 failed.start();
-assert.match(JSON.parse(failed.Module.chibiCreateProject('Sample Project', 3)).error, /Cannot write/);
+assert.match(JSON.parse(failed.Module.chibiCreateProject('Sample Project', 4)).error, /Cannot write/);
 assert.equal(failedFS.analyzePath('/workspace/sample-project').exists, false);
 
 // New projects use the typed name, have a valid start scene, and finish syncing before navigation.
-const created = JSON.parse(third.Module.chibiCreateProject('Sample Project', 3));
+const created = JSON.parse(third.Module.chibiCreateProject('Sample Project', 4));
 assert.equal(created.root, '/workspace/sample-project/');
-assert.equal(fs.file('/workspace/sample-project/project.yaml'),
-  'version: 3\nname: "Sample Project"\ncontent: content\nstart_scene: scenes/Start.yaml\n');
-assert.equal(fs.file('/workspace/sample-project/content/scenes/Start.yaml'),
-  'version: 1\nname: Start\nentities: []\n');
+assert.equal(fs.file('/workspace/sample-project/project.kdl'),
+  "version 4\nname \"Sample Project\"\ncontent \"content\"\nstart_scene \"scenes/Start.kdl\"\n");
+assert.equal(fs.file('/workspace/sample-project/content/scenes/Start.kdl'),
+  "version 1\nname \"Start\"\n(array)entities\n");
 assert.ok(JSON.parse(third.Module.chibiProjects()).some(project =>
   project.name === 'Sample Project' && project.root === created.root));
 third.Module.chibiOpenProject(created.root, false);
@@ -284,6 +316,6 @@ assert.equal(third.location.search, '?project=sample-project');
 const reopened = launch(third.location.search, fs);
 reopened.start();
 assert.equal(reopened.Module.arguments[1], '/workspace/sample-project/');
-assert.equal(fs.file('/workspace/sample-project/content/scenes/Start.yaml'),
-  'version: 1\nname: Start\nentities: []\n');
+assert.equal(fs.file('/workspace/sample-project/content/scenes/Start.kdl'),
+  "version 1\nname \"Start\"\n(array)entities\n");
 console.log('PASS: browser projects persist, reopen, export, import and recover without the server bridge');

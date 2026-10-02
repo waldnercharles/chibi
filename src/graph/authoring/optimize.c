@@ -547,9 +547,9 @@ int graph_optimize(graph *g, const graph_optimize_options *requested, graph_opti
         return 0;
     }
     if (options.dry_run) {
-        char *json = graph_save_json(g);
-        graph *copy = json ? graph_load_json(json) : NULL;
-        free(json);
+        av_doc *doc = av_doc_new();
+        graph *copy = graph_from_value(graph_to_value(doc, g));
+        av_doc_free(doc);
         if (!copy) {
             return -1;
         }

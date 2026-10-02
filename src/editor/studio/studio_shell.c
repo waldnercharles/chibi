@@ -50,7 +50,7 @@ const char *studio_scene_title(const app_scene_authoring *scene, char *out, size
     const char *path = scene->scene_path;
     const char *base = path && path[0] ? content_basename(path) : NULL;
     snprintf(out, size, "%s", base ? base : "Scene");
-    /* The document name without its storage format (.json, .yaml). */
+    /* The document name without its storage format (.json, .kdl). */
     char *extension = strrchr(out, '.');
     if (extension && extension != out) {
         *extension = '\0';
@@ -66,7 +66,7 @@ static const uint32_t PROTOTYPE_ICONS[COMPONENT_ICON_COUNT] = {
 };
 
 /* A prototype's icon follows from what it is made of, never from its name: of
-   the icons its components name in editor/Components.yaml, the first in
+   the icons its components name in editor/Components.kdl, the first in
    component_icon order decides. */
 uint32_t studio_prototype_icon(const studio *s, const char *prototype)
 {
@@ -128,6 +128,11 @@ void studio_error(studio *s, const char *title, const char *message)
 void studio_save(studio *s)
 {
     app_scene_authoring *scene = s->scene;
+    if (scene->active_tab >= 0 && scene->active_tab < acount(scene->tabs) &&
+        scene->tabs[scene->active_tab].source_dirty) {
+        studio_code_save(s);
+        return;
+    }
     /* Text saves while the scene runs, as it applies live. */
     /* Selecting a document tab changes the active document but does not
        necessarily move focus away from the last editor area. The selected UI
@@ -1218,7 +1223,7 @@ static void track_pointer(studio *s)
     }
 }
 
-/* editor/Components.yaml applies without a restart. An invalid edit keeps the
+/* editor/Components.kdl applies without a restart. An invalid edit keeps the
    last valid file; components present generically while it is missing. */
 static void sync_presentation(studio *s)
 {

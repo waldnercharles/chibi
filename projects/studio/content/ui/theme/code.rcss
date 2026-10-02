@@ -59,7 +59,7 @@ body { --autocomplete-row-h: var(--studio-mono-line-20, 20dp); }
 .code-completions {
     position: absolute; pointer-events: auto; background-color: var(--popover); border: 1dp var(--popover-edge);
     min-width: 160dp; max-width: 420dp; display: block; z-index: 20;
-    overflow-y: auto;
+    overflow-x: hidden; overflow-y: auto;
 }
 .code-completions, .popup.autocomplete {
     padding: 3dp; border-radius: 4dp;
@@ -83,14 +83,15 @@ body { --autocomplete-row-h: var(--studio-mono-line-20, 20dp); }
 .popup.autocomplete .menu-item[data-highlighted] .lead { color: var(--primary-text); }
 .code-completion[data-highlighted] .detail,
 .popup.autocomplete .menu-item[data-highlighted] .detail { color: var(--tok-keyword); }
-.popup.autocomplete .detail[data-empty] { display: none; }
+.code-completion .lead { color: var(--primary-text); flex: 0 0 auto; }
+.code-completion .label { display: block; flex: 1 1 auto; overflow: hidden; }
+.code-completion .detail[data-empty], .popup.autocomplete .detail[data-empty] { display: none; }
+.popup.autocomplete { transition: none; overflow-y: auto; }
 .code-completion b, .code-completion[data-highlighted] b,
 .popup.autocomplete .label b,
 .popup.autocomplete .menu-item[data-highlighted] .label b { color: var(--primary-text); }
-/* Keep wheel and keyboard scrolling; completion does not show scrollbar chrome. */
-.code-completions scrollbarvertical,
+/* Graph field completion keeps wheel and keyboard scrolling without scrollbar chrome. */
 .popup.autocomplete scrollbarvertical { width: 0dp; margin-left: 0dp; visibility: hidden; }
-.code-completions scrollbarhorizontal,
 .popup.autocomplete scrollbarhorizontal { height: 0dp; visibility: hidden; }
 .field.autocomplete[data-open] .value { font-family: var(--studio-code-font-family, jetbrains mono); }
 

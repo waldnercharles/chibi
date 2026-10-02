@@ -189,6 +189,10 @@ TEST_CASE(all_checks)
     test_pursuit();
     test_vector();
     test_arena();
+    test_asset_value();
+    test_asset_source();
+    test_asset_code_checkpoint();
+    run_kdl_text_checks();
     test_number_serialization();
     test_auto_weapon();
     test_graph_navigation();
@@ -334,6 +338,15 @@ int main(int argc, char **argv)
     if (argc > 1 && !strcmp(argv[1], "--graph-inline")) {
         registry_validate();
         run_graph_inline_checks();
+        return fails ? 1 : 0;
+    }
+    if (argc == 2 && !strcmp(argv[1], "--asset-documents")) {
+        registry_validate();
+        test_asset_value();
+        run_kdl_text_checks();
+        test_asset_source();
+        test_asset_code_checkpoint();
+        run_graph_document_checks();
         return fails ? 1 : 0;
     }
     if (argc > 1 && !strcmp(argv[1], "--arrange-bench")) {

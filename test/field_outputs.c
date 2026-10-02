@@ -170,9 +170,9 @@ static void exposed_reads(ecs_world *world, ecs_entity entity)
         aggregate->id,
         check->id
     );
-    char *json = behavior_asset_save_json(asset);
+    char *json = behavior_asset_save(asset);
     assert(json);
-    behavior_asset *loaded = behavior_asset_load_json(json);
+    behavior_asset *loaded = behavior_asset_load(json);
     if (!loaded) {
         fprintf(stderr, "field output reload: %s\n", graph_last_error());
     }
@@ -367,10 +367,10 @@ static void copied_fields()
     assert(graph_connect_data(graph, make, x, check, 0) == 0);
     assert(graph_connect_data(graph, make, 0, aggregate, 0) == 0);
     node *selection[] = { make, check, aggregate };
-    char *json = graph_save_nodes_json(graph, selection, 3);
+    char *json = graph_save_nodes(graph, selection, 3);
     assert(json);
     int first = acount(graph->nodes);
-    assert(graph_append_json(graph, json, 400, 200) == 0);
+    assert(graph_append(graph, json, 400, 200) == 0);
     free(json);
     assert(acount(graph->nodes) == first + 3);
     node *copy = NULL, *copied_check = NULL, *copied_aggregate = NULL;
@@ -455,9 +455,9 @@ static void break_fields()
     assert(split->output_count == 3 && split->output_pins[0].id == whole_id);
     compile(asset);
     verify_break_fields(asset, split->id);
-    char *json = behavior_asset_save_json(asset);
+    char *json = behavior_asset_save(asset);
     assert(json);
-    behavior_asset *loaded = behavior_asset_load_json(json);
+    behavior_asset *loaded = behavior_asset_load(json);
     assert(loaded);
     free(json);
     compile(loaded);

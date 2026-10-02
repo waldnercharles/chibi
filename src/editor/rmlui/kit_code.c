@@ -28,6 +28,7 @@
 #include "editor/ui/kit_icons.h"
 #include "support/math.h"
 #include "support/text_edit.h"
+#include "support/text_search.h"
 #include "support/xalloc.h"
 
 #include <assert.h>
@@ -160,7 +161,8 @@ typedef struct code_view
 
 typedef struct completion
 {
-    char *label, *insert;
+    char *label, *insert, *detail;
+    code_completion_kind kind;
 } completion;
 
 /* A diagnostic kept for the hover card. */
@@ -635,6 +637,7 @@ static void completions_free(kit_code_editor *e)
     for (int i = 0; i < acount(e->completions); i++) {
         free(e->completions[i].label);
         free(e->completions[i].insert);
+        free(e->completions[i].detail);
     }
     afree(e->completions);
 }
@@ -1923,6 +1926,8 @@ static uint64_t completions_hash(const kit_code_desc *d)
         assert(c->label);
         h = h * 31 + str_hash(c->label);
         h = h * 31 + (c->insert ? str_hash(c->insert) : 0);
+        h = h * 31 + (c->detail ? str_hash(c->detail) : 0);
+        h = h * 31 + c->kind;
     }
     return h;
 }
@@ -1942,7 +1947,12 @@ static void take_completions(kit_code_editor *e, const kit_code_desc *d)
         const kit_code_completion *c = &d->completions[i];
         apush(
             e->completions,
-            ((completion){ xstrdup(c->label), xstrdup(c->insert ? c->insert : c->label) })
+            ((completion){
+                .label = xstrdup(c->label),
+                .insert = xstrdup(c->insert ? c->insert : c->label),
+                .detail = xstrdup(c->detail ? c->detail : ""),
+                .kind = c->kind,
+            })
         );
     }
     e->selected = 0;
@@ -1957,8 +1967,61 @@ static bool list_focused(kit *k, const char *key)
     return list && focus && within(focus, list->el);
 }
 
+static uint32_t completion_icon(code_completion_kind kind)
+{
+    switch (kind) {
+        case CODE_COMPLETE_FIELD: return KIT_ICON_FIELD;
+        case CODE_COMPLETE_VALUE: return KIT_ICON_CONSTANT;
+        case CODE_COMPLETE_TYPE: return KIT_ICON_COMPONENT;
+        case CODE_COMPLETE_FUNCTION: return KIT_ICON_FUNCTION;
+        case CODE_COMPLETE_KEYWORD: return KIT_ICON_EXPRESSION;
+        case CODE_COMPLETE_ASSET: return KIT_ICON_FILE;
+        case CODE_COMPLETE_UNKNOWN: return KIT_ICON_VARIABLE;
+    }
+    assert(false);
+    return 0;
+}
+
+static char *completion_query(kit_code_editor *e)
+{
+    size_t length;
+    const char *text = kit_code_text(e, &length);
+    int end = math_clamp((int)zep_cursor(e->zep), 0, (int)length);
+    int start = math_clamp(e->completion_start, 0, end);
+    char *query = xmalloc((size_t)(end - start) + 1);
+    memcpy(query, text + start, (size_t)(end - start));
+    query[end - start] = 0;
+    return query;
+}
+
+/* The shared matcher supplies byte positions for prefix and fuzzy matches. */
+static char *completion_markup(const char *label, const char *query)
+{
+    size_t length = strlen(label);
+    bool *hits = xcalloc(length + 1, sizeof *hits);
+    text_search_match(query, label, hits, length);
+    char *markup = NULL;
+    bool marked = false;
+    for (size_t i = 0; i < length; i++) {
+        if (hits[i] != marked) {
+            str_cat(&markup, hits[i] ? "<b>" : "</b>");
+            marked = hits[i];
+        }
+        if (label[i] == ' ') {
+            str_cat(&markup, "\xc2\xa0");
+        } else {
+            escape(&markup, (char[]){ label[i], 0 });
+        }
+    }
+    if (marked) {
+        str_cat(&markup, "</b>");
+    }
+    free(hits);
+    return markup ? markup : xstrdup("");
+}
+
 /* The list under the cursor, in the overlay layer. */
-static void show_completions(kit *k, node *n, kit_code_editor *e, const kit_code_desc *d)
+static void show_completions(kit *k, node *n, kit_code_editor *e)
 {
     const char *key = frame_format(k, "@code:%s", n->path);
     if (!acount(e->completions) || !(e->focused || list_focused(k, key))) {
@@ -1978,19 +2041,26 @@ static void show_completions(kit *k, node *n, kit_code_editor *e, const kit_code
     kit_style(k, "left", frame_format(k, "%.1fdp", caret.x));
     kit_style(k, "top", frame_format(k, "%.1fdp", top));
     kit_style(k, "max-height", frame_format(k, "%.1fdp", height));
+    kit_attr(k, "role", "listbox");
     push_node(k, list);
+    char *query = completion_query(e);
     int accepted = -1;
     for (int i = 0; i < acount(e->completions); i++) {
         kit_push(k, frame_format(k, "i%d", i), NULL, "code-completion");
         kit_flag(k, "data-highlighted", i == e->selected);
-        kit_label(k, "label", NULL, e->completions[i].label);
-        const char *detail = i < d->completion_count ? d->completions[i].detail : NULL;
-        if (detail) {
-            kit_label(k, "detail", "detail", detail);
-        }
+        const completion *item = &e->completions[i];
+        kit_attr(k, "role", "option");
+        kit_attr(k, "aria-selected", i == e->selected ? "true" : "false");
+        kit_icon(k, "icon", "lead", completion_icon(item->kind));
+        char *markup = completion_markup(item->label, query);
+        kit_markup(k, "label", "label", markup);
+        free(markup);
+        kit_label(k, "detail", "detail", item->detail);
+        kit_flag(k, "data-empty", !item->detail[0]);
         kit_pop(k);
         accepted = kit_item_clicked(k) ? i : accepted;
     }
+    free(query);
     pop_node(k);
     if (e->selected != e->shown_selected) {
         node *chosen = path_node(k, frame_format(k, "layer/%s/i%d", key, e->selected));
@@ -2127,7 +2197,7 @@ kit_code_result kit_code(kit *k, const char *key, kit_code_editor *e, const kit_
     sync_colors(v);
     diagnose(e, d);
     take_completions(e, d);
-    show_completions(k, n, e, d);
+    show_completions(k, n, e);
     show_hover(k, n, e, d);
     update_hover(k, e);
     k->last = n;

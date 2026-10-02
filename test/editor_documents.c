@@ -56,8 +56,8 @@ static void nested_callers_survive_document_visits()
     uint64_t root_call_id = root_call->id;
     uint64_t inner_call_id = inner_call->id;
     uint64_t value_id = value->id;
-    char *json = behavior_asset_save_json(asset);
-    behavior_asset *source = behavior_asset_load_json(json);
+    char *json = behavior_asset_save(asset);
+    behavior_asset *source = behavior_asset_load(json);
     free(json);
     editor *e = editor_new(asset);
     assert(editor_open_graph_call(e, root_call_id) == 0);
@@ -111,11 +111,11 @@ static void compile_keeps_unedited_document()
                             .source_asset = authored->name };
     assert(graph_set_pin_binding(authored->graph, call, 0, target, &binding) == 0);
     assert(behavior_expression_refresh(authored, call, NULL) == 0);
-    char *saved = behavior_asset_save_json(authored);
+    char *saved = behavior_asset_save(authored);
     behavior_asset_free(authored);
-    editor *e = editor_new(behavior_asset_load_json(saved));
+    editor *e = editor_new(behavior_asset_load(saved));
     assert(editor_command_apply(e, (editor_command){ .kind = EDITOR_COMMAND_COMPILE }) == 0);
-    char *compiled = behavior_asset_save_json(editor_behavior_asset(e));
+    char *compiled = behavior_asset_save(editor_behavior_asset(e));
     assert(!strcmp(compiled, saved));
     free(compiled);
     free(saved);

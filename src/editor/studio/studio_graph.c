@@ -41,12 +41,6 @@ void sg_calculations_sync(const studio *s)
     struct studio_graph_calculations *c = g->calculations;
     graph *gr = sg_active_graph(s);
     editor *e = sg_graph_editor(s);
-    /* Automatic positions are view geometry and are omitted by document
-       snapshots. Restoring the same logical tab can replace its model while
-       retaining its camera; prepare the new model before framing or drawing. */
-    if (c->lifetime != gr->lifetime_id) {
-        e->arrange_pending = true;
-    }
     int forms = s->prefs.short_bindings | s->prefs.title_flow << 1 |
                 s->prefs.compact_nodes << 2;
     unsigned edit = editor_edit_revision(e), assets = s->scene->asset_index_generation;

@@ -1,5 +1,6 @@
 #include "assets/refactor.h"
 
+#include "assets/asset_source.h"
 #include "assets/scene_document.h"
 #include "assets/system_document.h"
 #include "assets/ui_document.h"
@@ -10,6 +11,7 @@
 #include "graph/model/registry.h"
 #include "support/array.h"
 #include "support/asset_text.h"
+#include "support/asset_value.h"
 #include "support/xalloc.h"
 
 #include <assert.h>
@@ -19,11 +21,10 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
-#include <yyjson.h>
 
 #define NAME_MAX_LENGTH 120
 
-/* GameMeshParts.parts holds JSON parts, each naming its material. */
+/* GameMeshParts.parts holds KDL parts, each naming its material. */
 #define MESH_PARTS "GameMeshParts.parts"
 
 /* An asset the plan edits: parsed on first use, unless only deleted. */
@@ -133,7 +134,7 @@ static bool read_asset(
     switch (kind) {
         case REFERENCE_ASSET_SYSTEM:
             l->system = game_system_document_load(text, component_named, registry, why, size);
-            l->graphs = l->system ? behavior_asset_load_json(text) : NULL;
+            l->graphs = l->system ? behavior_asset_load(text) : NULL;
             return l->graphs != NULL;
         case REFERENCE_ASSET_PROTOTYPE:
             l->prototype = game_prototype_load(text, project->registry, why, size);
@@ -144,7 +145,7 @@ static bool read_asset(
         case REFERENCE_ASSET_UI: return read_markup(text, l, why, size);
         case REFERENCE_ASSET_KIND_COUNT: break;
         default:
-            l->graphs = behavior_asset_load_json(text);
+            l->graphs = behavior_asset_load(text);
             snprintf(why, size, "%s", l->graphs ? "" : graph_last_error());
             return l->graphs != NULL;
     }
@@ -198,7 +199,7 @@ static void note(loaded *l, const reference *r)
     }
 }
 
-static char *saved_json(const refactor_project *project, reference_asset_kind kind, loaded *l)
+static char *saved_source(const refactor_project *project, reference_asset_kind kind, loaded *l)
 {
     switch (kind) {
         case REFERENCE_ASSET_SYSTEM:
@@ -214,12 +215,12 @@ static char *saved_json(const refactor_project *project, reference_asset_kind ki
             return game_prototype_save(l->prototype);
         case REFERENCE_ASSET_SCENE: return game_scene_document_save(l->scene);
         case REFERENCE_ASSET_KIND_COUNT: break;
-        default: return behavior_asset_save_json(l->graphs);
+        default: return behavior_asset_save(l->graphs);
     }
     return NULL;
 }
 
-/* The asset's file text: YAML, or a ui asset's markup as it stands. */
+/* Reconcile native edits with the original KDL source. */
 static char *saved_text(
     const refactor_project *project,
     reference_asset_kind kind,
@@ -231,9 +232,13 @@ static char *saved_text(
     if (kind == REFERENCE_ASSET_UI) {
         return xstrdup(l->rml);
     }
-    char *json = saved_json(project, kind, l);
-    char *text = json ? asset_text_to_disk(json, why, size) : NULL;
-    free(json);
+    char *emitted = saved_source(project, kind, l);
+    av_doc *doc = emitted ? av_doc_read(emitted, why, size) : NULL;
+    char *text = doc
+                   ? asset_source_reconcile(project->texts[l->asset], av_doc_root(doc), why, size)
+                   : NULL;
+    av_doc_free(doc);
+    free(emitted);
     return text;
 }
 
@@ -285,26 +290,26 @@ static bool mesh_parts(const reference *r)
     return r->component && !strcmp(r->component, MESH_PARTS);
 }
 
-/* Parts JSON with each part's material `from` renamed; NULL without one. */
+/* Parts KDL with each part's material `from` renamed; NULL without one. */
 static char *parts_renamed(const char *parts, const char *from, const char *to, int *count)
 {
-    yyjson_doc *read = parts ? yyjson_read(parts, strlen(parts), 0) : NULL;
-    yyjson_mut_doc *doc = read ? yyjson_doc_mut_copy(read, NULL) : NULL;
-    yyjson_doc_free(read);
+    av_doc *read = parts ? av_value_read(parts, NULL, 0) : NULL;
+    av_doc *doc = read ? av_doc_clone_value(av_doc_root(read)) : NULL;
+    av_doc_free(read);
     size_t i, max;
-    yyjson_mut_val *part;
+    av_value *part;
     *count = 0;
-    yyjson_mut_arr_foreach(yyjson_mut_doc_get_root(doc), i, max, part)
+    av_arr_foreach(av_doc_root(doc), i, max, part)
     {
-        yyjson_mut_val *material = yyjson_mut_obj_get(part, "material");
-        if (yyjson_mut_is_str(material) && !strcmp(yyjson_mut_get_str(material), from)) {
-            yyjson_mut_set_str(material, to);
+        av_value *material = av_obj_get(part, "material");
+        if (av_is_str(material) && !strcmp(av_get_str(material), from)) {
+            av_set_str(material, to);
             ++*count;
         }
     }
-    char *json = *count ? yyjson_mut_write(doc, 0, NULL) : NULL;
-    yyjson_mut_doc_free(doc);
-    return json;
+    char *text = *count ? av_value_write(av_doc_root(doc)) : NULL;
+    av_doc_free(doc);
+    return text;
 }
 
 /* A text value at a place, renamed: the value itself, or a mesh's parts. */
@@ -502,20 +507,19 @@ static bool rename_prototype(work *w, loaded *l, const reference *r, const char 
 }
 
 /* An override's components: the object itself, or its components. */
-static yyjson_mut_val *override_components(yyjson_mut_doc *doc)
+static av_value *override_components(av_value *root)
 {
-    yyjson_mut_val *root = yyjson_mut_doc_get_root(doc);
-    yyjson_mut_val *components = yyjson_mut_obj_get(root, "components");
+    av_value *components = av_obj_get(root, "components");
     return components ? components : root;
 }
 
 /* An override names a component by name, or by its GAME. key. */
-static yyjson_mut_val *override_component(yyjson_mut_val *components, const char *name)
+static av_value *override_component(av_value *components, const char *name)
 {
     char key[160];
     snprintf(key, sizeof key, "GAME.%s", name);
-    yyjson_mut_val *value = yyjson_mut_obj_get(components, name);
-    return value ? value : yyjson_mut_obj_get(components, key);
+    av_value *value = av_obj_get(components, name);
+    return value ? value : av_obj_get(components, key);
 }
 
 /* An object's overrides with the field renamed. An object whose overrides
@@ -530,38 +534,33 @@ static bool rename_override(
     int expected
 )
 {
-    const char *json = scene->entities[entity].components_json;
-    yyjson_doc *read = json ? yyjson_read(json, strlen(json), 0) : NULL;
-    yyjson_mut_doc *doc = read ? yyjson_doc_mut_copy(read, NULL) : NULL;
-    yyjson_doc_free(read);
+    av_value *components = scene->entities[entity].components;
+    av_value *copy = components ? av_value_copy(components) : NULL;
     char component[128];
-    yyjson_mut_val *value = yyjson_mut_obj_get(
-        override_component(override_components(doc), component_of(r, component, sizeof component)),
+    av_value *value = av_obj_get(
+        override_component(override_components(copy), component_of(r, component, sizeof component)),
         component_field(r)
     );
     int count = 0;
-    char *renamed = value
-                      ? value_renamed(r, yyjson_mut_get_str(value), from, to, &count)
-                      : NULL;
+    char *renamed = value ? value_renamed(r, av_get_str(value), from, to, &count)
+                          : NULL;
     bool ok = !value || renamed_count(w, r, count, expected);
     if (ok && renamed) {
-        yyjson_mut_set_str(value, renamed);
-        char *written = yyjson_mut_write(doc, 0, NULL);
-        ok = game_scene_document_set_entity_components(scene, entity, written) == 0 ||
+        av_set_str(value, renamed);
+        ok = game_scene_document_set_entity_components(scene, entity, copy) == 0 ||
              fail(w, "could not set %s on %s", r->component, r->object);
-        free(written);
     }
     free(renamed);
-    yyjson_mut_doc_free(doc);
+    av_value_free(copy);
     return ok;
 }
 
 /* A scene's page: its own ui: follows; the project's default is
- * project.yaml's, which the plan does not reach. */
+ * project.kdl's, which the plan does not reach. */
 static bool rename_page(work *w, loaded *l, const reference *r, const char *from, const char *to, int expected)
 {
     if (strcmp(r->component, REFERENCE_SCENE_PAGE)) {
-        return fail(w, "project.yaml names %s as its scenes' page; point it at another first", from);
+        return fail(w, "project.kdl names %s as its scenes' page; point it at another first", from);
     }
     bool named = same_text(l->scene->ui, from);
     game_scene_document_set_ui(l->scene, to);
@@ -1061,27 +1060,27 @@ static bool identifying_key(const char *key)
 
 #define MENTION_PATH 512
 
-static void scan(yyjson_val *value, const char *name, char *path, size_t length, int asset, refactor_plan *plan)
+static void scan(av_value *value, const char *name, char *path, size_t length, int asset, refactor_plan *plan)
 {
     size_t i, max;
-    if (yyjson_is_str(value) && !strcmp(yyjson_get_str(value), name)) {
+    if (av_is_str(value) && !strcmp(av_get_str(value), name)) {
         apush(plan->mentions, ((refactor_mention){ asset, xstrdup(path[0] ? path + 1 : path) }));
     }
     if (length > MENTION_PATH - 64) {
         return;
     }
-    yyjson_val *key, *item;
-    if (yyjson_is_obj(value)) {
-        yyjson_obj_foreach(value, i, max, key, item)
+    av_value *key, *item;
+    if (av_is_obj(value)) {
+        av_obj_foreach(value, i, max, key, item)
         {
-            if (!identifying_key(yyjson_get_str(key))) {
-                snprintf(path + length, MENTION_PATH - length, "/%s", yyjson_get_str(key));
+            if (!identifying_key(av_get_str(key))) {
+                snprintf(path + length, MENTION_PATH - length, "/%s", av_get_str(key));
                 scan(item, name, path, strlen(path), asset, plan);
             }
         }
     }
-    if (yyjson_is_arr(value)) {
-        yyjson_arr_foreach(value, i, max, item)
+    if (av_is_arr(value)) {
+        av_arr_foreach(value, i, max, item)
         {
             snprintf(path + length, MENTION_PATH - length, "/%zu", i);
             scan(item, name, path, strlen(path), asset, plan);
@@ -1099,10 +1098,10 @@ static void scan_mentions(const refactor_project *project, const char *name, ref
             text = plan->edits[i].asset == asset ? plan->edits[i].text : text;
         }
         char why[160];
-        yyjson_doc *doc = text ? asset_text_read(text, why, sizeof why) : NULL;
+        av_doc *doc = text ? asset_text_read(text, why, sizeof why) : NULL;
         char path[MENTION_PATH] = "";
-        scan(yyjson_doc_get_root(doc), name, path, 0, asset, plan);
-        yyjson_doc_free(doc);
+        scan(av_doc_root(doc), name, path, 0, asset, plan);
+        av_doc_free(doc);
     }
 }
 

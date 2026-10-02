@@ -116,7 +116,7 @@ static void type_button(studio *s, const pin_spec *pin, uint64_t id, uint64_t pi
 
 /* ---------- Variables ---------- */
 
-static void variable_edit(studio *s, char *before, bool ok, const char *refusal)
+static void variable_edit(studio *s, behavior_asset *before, bool ok, const char *refusal)
 {
     if (!sm_record(member_editor(s), before, ok) && refusal) {
         sm_refused(s, refusal);
@@ -334,7 +334,7 @@ static void variable_properties(studio *s, const behavior_variable *v)
         kit_prop_begin(k, "name", "Name");
         if (kit_text_field(k, "v", name, sizeof name, NULL, flags) && name[0] &&
             !studio_members_rename_across(s, STUDIO_MEMBER_VARIABLE, id, v->name, name)) {
-            char *before = ed_snapshot(e);
+            behavior_asset *before = ed_snapshot(e);
             variable_edit(s, before, behavior_asset_rename_variable(e->asset, id, name) == 0, "A variable has that name");
         }
         kit_prop_end(k);
@@ -344,7 +344,7 @@ static void variable_properties(studio *s, const behavior_variable *v)
         kit_prop_begin(k, "container", "Container");
         int container = pin.container;
         if (kit_choice(k, "v", &container, CONTAINERS, 4, locked(s) ? KIT_DISABLED : 0)) {
-            char *before = ed_snapshot(e);
+            behavior_asset *before = ed_snapshot(e);
             variable_edit(
                 s,
                 before,
@@ -356,7 +356,7 @@ static void variable_properties(studio *s, const behavior_variable *v)
         kit_prop_end(k);
         kit_prop_begin(k, "category", "Category");
         if (kit_text_field(k, "v", category, sizeof category, "Default", flags)) {
-            char *before = ed_snapshot(e);
+            behavior_asset *before = ed_snapshot(e);
             variable_edit(
                 s,
                 before,
@@ -407,7 +407,7 @@ bool sm_move_signature_pin(editor *e, graph *g, bool result, uint64_t dragged, i
     if (from == to) {
         return false;
     }
-    char *before = ed_snapshot(e);
+    behavior_asset *before = ed_snapshot(e);
     return sm_record(e, before, graph_signature_move(e->asset, g, result, from, to) == 0);
 }
 
@@ -475,7 +475,7 @@ static bool signature_row(studio *s, graph *g, bool result, int index)
                       .type = pin->type,
                       .type_name = pin->type_name,
                       .container = (pin_container)container };
-    char *before = ed_snapshot(e);
+    behavior_asset *before = ed_snapshot(e);
     int status = renamed ? graph_signature_rename(e->asset, g, result, index, name)
                : contained
                    ? graph_signature_retype(e->asset, g, result, index, &type)
@@ -510,7 +510,7 @@ static void add_signature_pin(studio *s, graph *g, bool result)
         snprintf(name, sizeof name, "%s %d", base, i);
     }
     pin_spec pin = { .name = name, .kind = PIN_DATA, .type = PIN_F32, .type_name = "float" };
-    char *before = ed_snapshot(e);
+    behavior_asset *before = ed_snapshot(e);
     sm_record(e, before, graph_signature_add(e->asset, g, result, &pin) == 0);
 }
 
@@ -573,7 +573,7 @@ static void graph_properties(studio *s, graph *g)
             bool fixed = locked(s) || behavior_domain_pure(e->asset->domain);
             kit_prop_begin(k, "pure", "Pure");
             if (kit_checkbox(k, "v", &pure, NULL, fixed ? KIT_DISABLED : 0)) {
-                char *before = ed_snapshot(e);
+                behavior_asset *before = ed_snapshot(e);
                 if (!sm_record(e, before, graph_signature_set_pure(e->asset, g, pure) == 0)) {
                     sm_refused(s, "The function runs nodes in order");
                 }
@@ -615,7 +615,7 @@ static void local_properties(studio *s, const graph_local *local)
         kit_prop_begin(k, "name", "Name");
         if (kit_text_field(k, "v", name, sizeof name, NULL, sg_graph_readonly(s) ? KIT_READONLY : 0) &&
             name[0] && strcmp(name, local->name)) {
-            char *before = ed_snapshot(e);
+            behavior_asset *before = ed_snapshot(e);
             if (!sm_record(e, before, graph_rename_local(gr, local->id, name) == 0)) {
                 sm_refused(s, "A value has that name");
             }
@@ -708,7 +708,7 @@ static void apply_type(studio *s, const type_choice *choice)
 {
     editor *e = member_editor(s);
     studio_members *m = &s->members;
-    char *before = ed_snapshot(e);
+    behavior_asset *before = ed_snapshot(e);
     if (!m->pick.pin_id) {
         sm_record(
             e,

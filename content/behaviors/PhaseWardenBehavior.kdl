@@ -1,0 +1,134 @@
+version 3
+name "PhaseWardenBehavior"
+id_counter 84
+(array)variables {
+    - id=1 name="Orbit Radius" type="float" category="Tuning" default=72.0
+    - id=2 name="Move Speed" type="float" category="Tuning" default=55.0
+}
+(array)graphs {
+    - {
+        kind "event"
+        name ""
+        (array)nodes {
+            - id=3 type="Event" x=0.0 y=0.0 placed=#false reference_name="Tick"
+            - {
+                id 7
+                type "Find Nearest Entity"
+                x 0.0
+                y 0.0
+                placed #false
+                inputs {
+                    Position {
+                        binding kind="component" component="GAME.GameTransform"
+                    }
+                    Radius 2000.0
+                    Categories 1
+                }
+            }
+            - id=16 type="Branch" x=0.0 y=0.0 placed=#false
+            - id=21 type="Scene Rhythm" x=0.0 y=0.0 placed=#false
+            - id=26 type="Cosine" x=0.0 y=0.0 placed=#false
+            - id=29 type="Sine" x=0.0 y=0.0 placed=#false
+            - {
+                id 32
+                type "Multiply"
+                x 0.0
+                y 0.0
+                placed #false
+                inputs {
+                    B {
+                        binding kind="variable" variable_id=1 source_asset="PhaseWardenBehavior"
+                    }
+                }
+            }
+            - {
+                id 36
+                type "Multiply"
+                x 0.0
+                y 0.0
+                placed #false
+                inputs {
+                    B {
+                        binding kind="variable" variable_id=1 source_asset="PhaseWardenBehavior"
+                    }
+                }
+            }
+            - id=40 type="Make_CF_V2" x=0.0 y=0.0 placed=#false
+            - id=44 type="Add" x=0.0 y=0.0 placed=#false
+            - {
+                id 48
+                type "Direction To"
+                x 0.0
+                y 0.0
+                placed #false
+                inputs {
+                    Origin {
+                        binding kind="component" component="GAME.GameTransform"
+                    }
+                }
+                outputs {
+                    Direction.x id=82
+                    Direction.y id=83
+                }
+            }
+            - {
+                id 56
+                type "Multiply"
+                x 0.0
+                y 0.0
+                placed #false
+                inputs {
+                    B {
+                        binding kind="variable" variable_id=2 source_asset="PhaseWardenBehavior"
+                    }
+                }
+            }
+            - {
+                id 60
+                type "Multiply"
+                x 0.0
+                y 0.0
+                placed #false
+                inputs {
+                    B {
+                        binding kind="variable" variable_id=2 source_asset="PhaseWardenBehavior"
+                    }
+                }
+            }
+            - id=64 type="Make_GameVelocity" x=0.0 y=0.0 placed=#false
+            - id=68 type="Set_GameVelocity" x=0.0 y=0.0 placed=#false
+            - {
+                id 73
+                type "Set_GameVelocity"
+                x 0.0
+                y 0.0
+                placed #false
+                inputs {
+                    Value {
+                        default x=0.0 y=0.0
+                    }
+                }
+            }
+        }
+        (array)edges {
+            - from="3.Then" to="16.Exec"
+            - from="7.Found" to="16.Condition"
+            - from="7.Position" to="44.A"
+            - from="16.True" to="68.Exec"
+            - from="16.False" to="73.Exec"
+            - from="21.Phase" to="26.Value"
+            - from="21.Phase" to="29.Value"
+            - from="26.Result" to="32.A"
+            - from="29.Result" to="36.A"
+            - from="32.Result" to="40.x"
+            - from="36.Result" to="40.y"
+            - from="40.CF_V2" to="44.B"
+            - from="44.Result" to="48.Target"
+            - from="48.Direction.x" to="56.A"
+            - from="48.Direction.y" to="60.A"
+            - from="56.Result" to="64.x"
+            - from="60.Result" to="64.y"
+            - from="64.GameVelocity" to="68.Value"
+        }
+    }
+}

@@ -1,3 +1,4 @@
+#include "test/asset_fixture.h"
 /* Wiring a UI widget end to end: the assets an asset picker offers, the
  * events GameUi documents send the behaviors they reach, and the Add menu's
  * Event nodes for them. */
@@ -30,7 +31,7 @@ static void picker_choices()
 {
     reference_index *index = reference_index_new();
     reference_index_add_asset(index, REFERENCE_ASSET_UI, "Settings", "content/ui/Settings.rml", NULL);
-    reference_index_add_asset(index, REFERENCE_ASSET_PROTOTYPE, "Vault", "content/prototypes/Vault.yaml", NULL);
+    reference_index_add_asset(index, REFERENCE_ASSET_PROTOTYPE, "Vault", "content/prototypes/Vault.kdl", NULL);
     reference_index_add_asset(index, REFERENCE_ASSET_UI, "bank", "content/ui/bank.rml", NULL);
     int widgets = reference_index_add_asset(index, REFERENCE_ASSET_UI, "Widgets", "content/ui/Widgets.rml", NULL);
     reference_index_add_ui(index, widgets, "<use ui=\"Missing\"/>");
@@ -111,15 +112,26 @@ static void attached_documents()
     };
     char error[256];
     game_prototype *vault = game_prototype_load(
-        "{\"name\":\"Vault\",\"behaviors\":[\"Teller\"],\"components\":{"
-        "\"GameUi\":{\"document\":\"Bank\"}}}",
+        "name \"Vault\"\n"
+        "(array)behaviors {\n"
+        "    - \"Teller\"\n"
+        "}\n"
+        "components {\n"
+        "    GameUi {\n"
+        "        document \"Bank\"\n"
+        "    }\n"
+        "}\n",
         &registry,
         error,
         sizeof error
     );
     game_prototype *sign = game_prototype_load(
-        "{\"name\":\"Sign\",\"components\":{\"GameUi\":{\"document\":"
-        "\"Notice\"}}}",
+        "name \"Sign\"\n"
+        "components {\n"
+        "    GameUi {\n"
+        "        document \"Notice\"\n"
+        "    }\n"
+        "}\n",
         &registry,
         error,
         sizeof error
@@ -129,29 +141,29 @@ static void attached_documents()
     int bank = reference_index_add_asset(index, REFERENCE_ASSET_UI, "Bank", "content/ui/Bank.rml", NULL);
     int desk = reference_index_add_asset(index, REFERENCE_ASSET_UI, "Desk", "content/ui/Desk.rml", NULL);
     reference_index_add_asset(index, REFERENCE_ASSET_UI, "Notice", "content/ui/Notice.rml", NULL);
-    int teller = reference_index_add_asset(index, REFERENCE_ASSET_BEHAVIOR, "Teller", "content/behaviors/Teller.yaml", NULL);
+    int teller = reference_index_add_asset(index, REFERENCE_ASSET_BEHAVIOR, "Teller", "content/behaviors/Teller.kdl", NULL);
     int prototype = reference_index_add_asset(
         index,
         REFERENCE_ASSET_PROTOTYPE,
         "Vault",
-        "content/prototypes/Vault.yaml",
+        "content/prototypes/Vault.kdl",
         NULL
     );
-    int other = reference_index_add_asset(index, REFERENCE_ASSET_PROTOTYPE, "Sign", "content/prototypes/Sign.yaml", NULL);
-    int scene = reference_index_add_asset(index, REFERENCE_ASSET_SCENE, "Hall", "content/scenes/Hall.yaml", NULL);
+    int other = reference_index_add_asset(index, REFERENCE_ASSET_PROTOTYPE, "Sign", "content/prototypes/Sign.kdl", NULL);
+    int scene = reference_index_add_asset(index, REFERENCE_ASSET_SCENE, "Hall", "content/scenes/Hall.kdl", NULL);
     reference_index_add_prototype(index, prototype, vault);
     reference_index_add_prototype(index, other, sign);
     const char *behaviors[] = { "Teller" };
-    reference_object clerk = {
-        .name = "clerk",
-        .prototype = "Sign",
-        .base = sign,
-        .overrides = "{\"GAME.GameUi\":{\"document\":\"Desk\"}}",
-        .behaviors = behaviors,
-        .behavior_count = 1
-    };
+    av_value *overrides = test_read_asset_value("GAME.GameUi document=\"Desk\"; ");
+    reference_object clerk = { .name = "clerk",
+                               .prototype = "Sign",
+                               .base = sign,
+                               .overrides = overrides,
+                               .behaviors = behaviors,
+                               .behavior_count = 1 };
     reference_object post = { .name = "post", .prototype = "Sign", .base = sign };
     reference_index_add_object(index, scene, &clerk);
+    av_value_free(overrides);
     reference_index_add_object(index, scene, &post);
     int *documents = NULL;
     reference_index_attached_documents(index, teller, &documents);

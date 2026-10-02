@@ -1,3 +1,4 @@
+#include "test/asset_fixture.h"
 /* GameUi documents without a GPU: loading, model application and events. */
 #include "assets/project.h"
 #include "render/ui.h"
@@ -544,19 +545,27 @@ static void self_data(const char *root)
     render_ui_update(ui, &w, 1280, 720, 1.0 / 60);
     uint64_t first = ecs_entity_to_u64(boards[0]),
              second = ecs_entity_to_u64(boards[1]);
-    bool set = game_ui_set_data(model, first, "score", "42") &&
-               game_ui_set_data(model, first, "items", "[{\"name\":\"Gem\",\"count\":3},{\"name\":\"Key\",\"count\":1}]") &&
-               game_ui_set_data(model, second, "score", "\"none\"") &&
-               !game_ui_set_data(model, first, "bad name", "1") &&
-               !game_ui_set_data(model, first, "score", "{");
+    av_doc *data = av_doc_new();
+    av_value *rows = test_read_asset_value(
+        "(array)items { - name=\"Gem\" count=3; - name=\"Key\" count=1; }; "
+    );
+    bool set = game_ui_set_data(model, first, "score", av_sint(data, 42)) &&
+               game_ui_set_data(model, first, "items", av_obj_get(rows, "items")) &&
+               game_ui_set_data(model, second, "score", av_str(data, "none")) &&
+               !game_ui_set_data(model, first, "bad name", av_sint(data, 1)) &&
+               !game_ui_set_data(model, first, "score", NULL);
+    av_value_free(rows);
     render_ui_update(ui, &w, 1280, 720, 1.0 / 60);
     render_ui_update(ui, &w, 1280, 720, 1.0 / 60);
     char scores[64], items[128];
     texts(ui, ".score", scores, sizeof scores);
     texts(ui, ".item", items, sizeof items);
     bool shown = !strcmp(scores, "42|none") && !strcmp(items, "Gem 3|Key 1");
-    game_ui_set_data(model, first, "items", "[{\"name\":\"Gem\",\"count\":3}]");
-    game_ui_set_data(model, first, "items.0.count", "4");
+    rows = test_read_asset_value("(array)items { - name=\"Gem\" count=3; }; ");
+    game_ui_set_data(model, first, "items", av_obj_get(rows, "items"));
+    game_ui_set_data(model, first, "items.0.count", av_sint(data, 4));
+    av_value_free(rows);
+    av_doc_free(data);
     render_ui_update(ui, &w, 1280, 720, 1.0 / 60);
     render_ui_update(ui, &w, 1280, 720, 1.0 / 60);
     texts(ui, ".item", items, sizeof items);

@@ -1,3 +1,0 @@
-name: InputBinding
-components:
-  GAME.GameActionBinding: {action: Restart, source: R}

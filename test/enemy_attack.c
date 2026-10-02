@@ -42,9 +42,9 @@ static char *read_file(const char *path)
 static behavior_asset *behavior(const char *name)
 {
     char path[256];
-    snprintf(path, sizeof path, "content/behaviors/%s.yaml", name);
+    snprintf(path, sizeof path, "content/behaviors/%s.kdl", name);
     char *text = read_file(path);
-    behavior_asset *asset = behavior_asset_load_json(text);
+    behavior_asset *asset = behavior_asset_load(text);
     if (asset) {
         asset = link_test_libraries(asset);
     }
@@ -245,7 +245,7 @@ void test_enemy_attack()
 {
     game_prototype_registry registry = { GAME_REGISTRY_COMPONENTS,
                                          GAME_REGISTRY_COMPONENT_COUNT };
-    char *text = read_file("test/fixtures/content/prototypes/Player.yaml");
+    char *text = read_file("test/fixtures/content/prototypes/Player.kdl");
     char error[256];
     game_prototype *player = game_prototype_load(text, &registry, error, sizeof error);
     free(text);

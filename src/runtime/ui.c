@@ -6,7 +6,6 @@
 #include "support/arena.h"
 #include "support/array.h"
 #include "support/xalloc.h"
-#include "third_party/yyjson/yyjson.h"
 
 #include <assert.h>
 #include <ctype.h>
@@ -44,7 +43,7 @@ static void element_free(game_ui_element *e)
 static void datum_free(game_ui_datum *d)
 {
     free(d->name);
-    free(d->json);
+    av_value_free(d->value);
 }
 
 void game_ui_reset(game_ui *ui)
@@ -237,29 +236,26 @@ static bool data_path(const char *path)
     return true;
 }
 
-bool game_ui_set_data(game_ui *ui, uint64_t entity, const char *name, const char *json)
+bool game_ui_set_data(game_ui *ui, uint64_t entity, const char *name, const av_value *value)
 {
-    yyjson_doc *doc = data_path(name) && json ? yyjson_read(json, strlen(json), 0)
-                                              : NULL;
-    if (!doc) {
+    if (!data_path(name) || !value) {
         return false;
     }
-    yyjson_doc_free(doc);
     game_ui_datum *d = NULL;
     for (int i = 0; !d && i < acount(ui->data); i++) {
         d = ui->data[i].entity == entity && !strcmp(ui->data[i].name, name)
               ? &ui->data[i]
               : NULL;
     }
-    if (d && !strcmp(d->json, json)) {
+    if (d && av_equals(d->value, value)) {
         return true;
     }
     if (!d) {
         apush(ui->data, ((game_ui_datum){ .entity = entity, .name = xstrdup(name) }));
         d = &alast(ui->data);
     }
-    free(d->json);
-    d->json = xstrdup(json);
+    av_value_free(d->value);
+    d->value = av_value_copy(value);
     d->revision = ++ui->revision;
     return true;
 }
@@ -602,8 +598,8 @@ EFFECT_NODE(
     move_focus_call
 );
 
-/* Any value converts to JSON, so the node takes a wildcard; an array does
-   not fit a host call's signature, so it runs as its own flow. */
+/* Any value has a native representation, so the node takes a wildcard; an array
+   does not fit a host call's signature, so it runs as its own flow. */
 static int set_data_flow(node *, flow_context *ctx)
 {
     game_ui *ui = flow_context_service(ctx, "game.ui");
@@ -617,9 +613,10 @@ static int set_data_flow(node *, flow_context *ctx)
             return result;
         }
     }
-    char *json = serialize_value_json(&values[2]);
-    bool set = game_ui_set_data(ui, values[0].u64, values[1].str, json);
-    free(json);
+    av_doc *doc = av_doc_new();
+    av_value *value = serialize_value(doc, &values[2]);
+    bool set = game_ui_set_data(ui, values[0].u64, values[1].str, value);
+    av_doc_free(doc);
     return set ? flow_context_continue(ctx, 0)
                : flow_context_fail(ctx, FLOW_ERR_ARGUMENT, "Name must be a word, or a path such as items.2.name");
 }
@@ -634,7 +631,7 @@ static node_desc SET_DATA = {
     .name = "Set UI Data",
     .category = "UI",
     .keywords = "bind binding self list rows table inventory leaderboard "
-                "data-for record json hud widget",
+                "data-for record hud widget",
     .description = "Gives the entity's UI documents Value to bind as "
                    "self.<Name>: text, a number, a struct's fields, or a list "
                    "data-for repeats; a path such as items.2.name sets one "

@@ -186,10 +186,11 @@ typedef struct ui_source_completion
 {
     ui_source_completion_kind kind;
     char *label; /* what a choice inserts */
+    int score;
 } ui_source_completion;
 
 /* The choices at `offset`, which each replace [start, end), the word typed
- * so far; they start with it, ignoring case. */
+ * so far; fuzzy matches rank exact names and prefixes first. */
 typedef struct ui_source_completions
 {
     int start, end;

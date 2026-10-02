@@ -43,8 +43,8 @@ static void automatic_layout_checks()
              placed = source->graph->nodes[1]->id;
     source->graph->nodes[0]->placed = false;
     game_live_definition *definition = game_live_definition_new("layout", source);
-    char *json = behavior_asset_save_json(definition->working);
-    behavior_asset *open = behavior_asset_load_json(json);
+    char *json = behavior_asset_save(definition->working);
+    behavior_asset *open = behavior_asset_load(json);
     free(json);
     graph_node_by_id(open->graph, automatic)->x += 240;
     test_check(
@@ -91,8 +91,8 @@ static void arranged_entries_checks()
     game_live_definition *definition = game_live_definition_new("arranged", source);
     bool saved = true;
     for (size_t s = 0; s < sizeof spots / sizeof *spots; s++) {
-        char *json = behavior_asset_save_json(definition->working);
-        behavior_asset *open = behavior_asset_load_json(json);
+        char *json = behavior_asset_save(definition->working);
+        behavior_asset *open = behavior_asset_load(json);
         free(json);
         for (int i = 0; i < acount(open->graph->nodes); i++) {
             open->graph->nodes[i]->x = spots[s][0];
@@ -213,7 +213,10 @@ void run_prototype_live_checks()
     behavior_asset *working = make_live_behavior_asset();
     char message[256];
     game_prototype *prototype = game_prototype_load(
-        "{\"name\":\"LivePreview\",\"behaviors\":[\"live\"]}",
+        "name \"LivePreview\"\n"
+        "(array)behaviors {\n"
+        "    - \"live\"\n"
+        "}\n",
         &registry,
         message,
         sizeof message

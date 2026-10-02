@@ -7,6 +7,7 @@
 
 #include <assert.h>
 #include <sys/stat.h>
+#include <yyjson.h>
 
 static bool problem_at(const catalog_problem *p, const behavior_asset *asset, uint64_t graph_id, uint64_t node_id)
 {
@@ -14,22 +15,22 @@ static bool problem_at(const catalog_problem *p, const behavior_asset *asset, ui
            p->node_id == node_id && p->severity == CMPL_WARNING;
 }
 
-/* Writes an asset's YAML to content/<folder>/<name>.yaml. */
+/* Writes an asset's KDL to content/<folder>/<name>.kdl. */
 static void write_asset(const char *root, const char *folder, const behavior_asset *asset)
 {
     char path[256];
     snprintf(path, sizeof path, "%s/content/%s", root, folder);
     mkdir(path, 0755);
-    snprintf(path, sizeof path, "%s/content/%s/%s.yaml", root, folder, asset->name);
-    char *json = behavior_asset_save_json(asset);
+    snprintf(path, sizeof path, "%s/content/%s/%s.kdl", root, folder, asset->name);
+    char *json = behavior_asset_save(asset);
     char error[256];
-    char *yaml = asset_text_to_disk(json, error, sizeof error);
-    assert(yaml);
+    char *kdl = asset_text_to_disk(json, error, sizeof error);
+    assert(kdl);
     FILE *file = fopen(path, "w");
     assert(file);
-    fputs(yaml, file);
+    fputs(kdl, file);
     fclose(file);
-    free(yaml);
+    free(kdl);
     free(json);
 }
 
@@ -66,7 +67,7 @@ static void catalog_links_libraries(const behavior_asset *library, const behavio
     snprintf(path, sizeof path, "%s/" CHIBI_PROJECT_MANIFEST, root);
     FILE *file = fopen(path, "w");
     assert(file);
-    fprintf(file, "version: %d\ncontent: content\n", CHIBI_PROJECT_VERSION);
+    fprintf(file, "version %d\ncontent \"content\"\n", CHIBI_PROJECT_VERSION);
     fclose(file);
     snprintf(path, sizeof path, "%s/content", root);
     assert(mkdir(path, 0755) == 0);
@@ -78,8 +79,8 @@ static void catalog_links_libraries(const behavior_asset *library, const behavio
     write_asset(root, "libraries", emptied);
     behavior_asset_free(emptied);
     test_check(linked == 0 && catalog_errors(root, "CheckedCaller") == 1, "problems: the asset catalog links libraries and rechecks callers when one changes");
-    const char *const files[] = { "content/libraries/CheckedMath.yaml",
-                                  "content/behaviors/CheckedCaller.yaml",
+    const char *const files[] = { "content/libraries/CheckedMath.kdl",
+                                  "content/behaviors/CheckedCaller.kdl",
                                   "content/libraries",
                                   "content/behaviors",
                                   "content",

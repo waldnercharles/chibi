@@ -25,15 +25,16 @@ static void free_tab(scene_document_tab *tab)
     free(tab->key);
     free(tab->label);
     free(tab->path);
-    free(tab->scene_json);
-    free(tab->scene_history);
+    av_value_free(tab->scene_value);
+    av_value_free(tab->scene_history);
     afree(tab->scene_entities);
     afree(tab->scene_actor_ids);
     free(tab->selected_prototype_name);
-    free(tab->asset_saved);
-    free(tab->system_json);
-    free(tab->system_saved);
+    av_value_free(tab->asset_saved);
+    av_value_free(tab->system_value);
+    av_value_free(tab->system_saved);
     ui_buffer_free(tab->ui);
+    av_value_free(tab->source_state);
     *tab = (scene_document_tab){ 0 };
 }
 
@@ -168,16 +169,16 @@ static void capture_scene_tab(app_scene_authoring *scene, scene_document_tab *ta
     if (scene_authoring_sync_document(scene) != 0) {
         return;
     }
-    char *json = scene_authoring_scene_json(scene);
-    char *history = scene_history_checkpoint(scene->history);
+    av_value *json = scene_authoring_scene_value(scene);
+    av_value *history = scene_history_capture(scene->history);
     if (!json || !history) {
-        free(json);
-        free(history);
+        av_value_free(json);
+        av_value_free(history);
         return;
     }
-    free(tab->scene_json);
-    tab->scene_json = json;
-    free(tab->scene_history);
+    av_value_free(tab->scene_value);
+    tab->scene_value = json;
+    av_value_free(tab->scene_history);
     tab->scene_history = history;
     afree(tab->scene_entities);
     afree(tab->scene_actor_ids);
@@ -226,17 +227,21 @@ static void capture_system_tab(app_scene_authoring *scene, scene_document_tab *t
     if (scene_authoring_sync_document(scene) != 0 || !scene->system_document) {
         return;
     }
-    char *json = game_system_document_save(
+    av_doc *doc = av_doc_new();
+    av_value *root = game_system_document_to_value(
+        doc,
         scene->system_document,
         resolve_system_component,
         system_component_name,
         NULL
     );
-    if (!json) {
+    if (!root) {
+        av_doc_free(doc);
         return;
     }
-    free(tab->system_json);
-    tab->system_json = json;
+    av_value_free(tab->system_value);
+    tab->system_value = av_value_copy(root);
+    av_doc_free(doc);
     tab->system_editor_revision = editor_edit_revision(scene->graph_editor);
     tab->system_query_revision = game_system_document_revision(scene->system_document);
     tab_set_path(tab, scene->system_path);
@@ -273,9 +278,9 @@ static void capture_asset_baseline(app_scene_authoring *scene, scene_document_ta
     if (tab->kind == APP_EDITOR_DOCUMENT_PROTOTYPE && !tab->asset_saved) {
         scene_prototype_asset *asset = find_prototype(scene, tab->key + strlen("prototype:"));
         if (asset && asset->prototype) {
-            char *json = game_prototype_save(asset->prototype);
+            av_value *json = game_prototype_to_value(asset->prototype);
             if (json) {
-                free(tab->asset_saved);
+                av_value_free(tab->asset_saved);
                 tab->asset_saved = json;
             }
         }
@@ -287,9 +292,13 @@ static void capture_asset_baseline(app_scene_authoring *scene, scene_document_ta
             tab->key + strlen("behavior:")
         );
         if (definition && definition->working) {
-            char *json = behavior_asset_save_json(definition->working);
+            av_doc *native = av_doc_new();
+            av_value *json = av_value_copy(
+                behavior_asset_to_value(native, definition->working)
+            );
+            av_doc_free(native);
             if (json) {
-                free(tab->asset_saved);
+                av_value_free(tab->asset_saved);
                 tab->asset_saved = json;
             }
         }
@@ -340,11 +349,11 @@ void scene_tabs_mark_document_saved(
     tab_set_path(tab, path);
     free(tab->label);
     tab->label = tab_label(kind, id, path);
-    free(tab->asset_saved);
+    av_value_free(tab->asset_saved);
     tab->asset_saved = NULL;
     if (kind == APP_EDITOR_DOCUMENT_SYSTEM) {
-        free(tab->system_saved);
-        tab->system_saved = tab->system_json ? xstrdup(tab->system_json) : NULL;
+        av_value_free(tab->system_saved);
+        tab->system_saved = tab->system_value ? av_value_copy(tab->system_value) : NULL;
     } else {
         capture_asset_baseline(scene, tab);
     }
@@ -484,7 +493,8 @@ void scene_tabs_document_selected(
         return;
     }
     if (index < 0 && kind == APP_EDITOR_DOCUMENT_SCENE && acount(scene->tabs) == 1 &&
-        scene->tabs[0].kind == APP_EDITOR_DOCUMENT_SCENE && !scene->tabs[0].scene_json) {
+        scene->tabs[0].kind == APP_EDITOR_DOCUMENT_SCENE &&
+        !scene->tabs[0].scene_value) {
         index = 0;
         scene_document_tab *tab = &scene->tabs[0];
         free(tab->key);
@@ -507,10 +517,10 @@ void scene_tabs_document_selected(
             set_current_scene_tab(scene, &scene->tabs[index]);
         }
         if (index != previous && kind == APP_EDITOR_DOCUMENT_SCENE &&
-            scene->tabs[index].scene_json) {
+            scene->tabs[index].scene_value) {
             restore_scene_tab_view(scene, &scene->tabs[index]);
         }
-        if (kind != APP_EDITOR_DOCUMENT_SCENE || path || scene->tabs[index].scene_json) {
+        if (kind != APP_EDITOR_DOCUMENT_SCENE || path || scene->tabs[index].scene_value) {
             capture_asset_baseline(scene, &scene->tabs[index]);
         }
     }
@@ -518,12 +528,12 @@ void scene_tabs_document_selected(
 
 static int restore_scene_tab_contents(app_scene_authoring *scene, scene_document_tab *tab)
 {
-    assert(tab->kind == APP_EDITOR_DOCUMENT_SCENE && tab->scene_json);
+    assert(tab->kind == APP_EDITOR_DOCUMENT_SCENE && tab->scene_value);
     uint64_t *old = tab->scene_entities;
     int count = tab->scene_entity_count;
     assert(!scene->scene_tab_restoring);
     scene->scene_tab_restoring = true;
-    int loaded = scene_authoring_load_json(scene, tab->scene_json, tab->path);
+    int loaded = scene_authoring_load_value(scene, tab->scene_value, tab->path);
     scene->scene_tab_restoring = false;
     if (loaded != 0) {
         return -1;
@@ -557,7 +567,7 @@ static int restore_scene_tab_contents(app_scene_authoring *scene, scene_document
     }
     int mapped = count < replacement_count ? count : replacement_count;
     if (tab->scene_history &&
-        !scene_history_restore_checkpoint(scene->history, tab->scene_history, old, replacement, mapped)) {
+        !scene_history_restore_value(scene->history, tab->scene_history, old, replacement, mapped)) {
         afree(replacement);
         return -1;
     }
@@ -596,7 +606,7 @@ int scene_tabs_activate(app_scene_authoring *scene, int index)
     bool rollback_ready = previous_scene >= 0;
     if (rollback_ready) {
         capture_scene_tab(scene, &rollback);
-        rollback_ready = rollback.scene_json != NULL;
+        rollback_ready = rollback.scene_value != NULL;
     }
     scene->tabs_transitioning = true;
     scene->active_tab = index;
@@ -605,7 +615,7 @@ int scene_tabs_activate(app_scene_authoring *scene, int index)
     if (target->kind == APP_EDITOR_DOCUMENT_SCENE) {
         /* Returning from an asset tab keeps the current scene session. */
         if (index != previous_scene) {
-            if (target->scene_json) {
+            if (target->scene_value) {
                 result = restore_scene_tab_contents(scene, target);
             } else {
                 capture_scene_tab(scene, target);
@@ -619,13 +629,13 @@ int scene_tabs_activate(app_scene_authoring *scene, int index)
     } else if (target->kind == APP_EDITOR_DOCUMENT_BEHAVIOR) {
         result = open_behavior_asset(scene, target->key + strlen("behavior:"));
     } else if (target->kind == APP_EDITOR_DOCUMENT_SYSTEM) {
-        result = target->system_json ? load_system_document_json(
-                                           scene,
-                                           target->system_json,
-                                           target->path,
-                                           false
-                                       )
-                                     : open_system_asset(scene, target->path);
+        result = target->system_value ? load_system_document_value(
+                                            scene,
+                                            target->system_value,
+                                            target->path,
+                                            false
+                                        )
+                                      : open_system_asset(scene, target->path);
     } else if (target->kind == APP_EDITOR_DOCUMENT_UI) {
         scene_authoring_select_document(scene, APP_EDITOR_DOCUMENT_UI, target->path);
     }
@@ -654,7 +664,7 @@ int scene_tabs_activate(app_scene_authoring *scene, int index)
             } else if (prior->kind == APP_EDITOR_DOCUMENT_BEHAVIOR) {
                 open_behavior_asset(scene, prior->key + strlen("behavior:"));
             } else if (prior->kind == APP_EDITOR_DOCUMENT_SYSTEM) {
-                load_system_document_json(scene, prior->system_json, prior->path, false);
+                load_system_document_value(scene, prior->system_value, prior->path, false);
             } else if (prior->kind == APP_EDITOR_DOCUMENT_UI) {
                 scene_authoring_select_document(
                     scene,
@@ -708,7 +718,18 @@ int scene_tabs_open_scene(app_scene_authoring *scene, const char *path)
             free(action);
             return -1;
         }
-        tab->scene_json = json;
+        char error[256];
+        av_doc *native = asset_text_read(json, error, sizeof error);
+        free(json);
+        if (!native) {
+            free_tab(tab);
+            adel(scene->tabs, acount(scene->tabs) - 1);
+            scene_action_finish(scene, action, false);
+            free(action);
+            return -1;
+        }
+        tab->scene_value = av_value_copy(av_doc_root(native));
+        av_doc_free(native);
         tab->scene_dirty = false;
         index = (int)(tab - scene->tabs);
         created = true;
@@ -750,8 +771,43 @@ bool scene_tabs_path_in_use(
     return false;
 }
 
+static void omit_automatic_positions(av_value *value)
+{
+    if (av_is_obj(value)) {
+        av_value *placed = av_obj_get(value, "placed");
+        if (av_is_bool(placed) && !av_get_bool(placed)) {
+            av_obj_remove_key(value, "x");
+            av_obj_remove_key(value, "y");
+            av_obj_remove_key(value, "placed");
+        }
+        for (size_t i = 0; i < av_obj_size(value); i++) {
+            omit_automatic_positions(av_obj_value_at(value, i));
+        }
+    }
+    if (av_is_arr(value)) {
+        for (size_t i = 0; i < av_arr_size(value); i++) {
+            omit_automatic_positions(av_arr_get(value, i));
+        }
+    }
+}
+
+static bool authored_values_equal(av_value *a, av_value *b)
+{
+    av_doc *doc = av_doc_new();
+    av_value *left = av_clone(doc, a);
+    av_value *right = av_clone(doc, b);
+    omit_automatic_positions(left);
+    omit_automatic_positions(right);
+    bool equal = av_equals(left, right);
+    av_doc_free(doc);
+    return equal;
+}
+
 bool scene_tabs_dirty(app_scene_authoring *scene, const scene_document_tab *tab)
 {
+    if (tab->source_dirty) {
+        return true;
+    }
     if (tab->kind == APP_EDITOR_DOCUMENT_SCENE) {
         int current = scene_tab_for_current_document(scene);
         return current >= 0 && tab == &scene->tabs[current] ? scene->scene_dirty
@@ -774,8 +830,8 @@ bool scene_tabs_dirty(app_scene_authoring *scene, const scene_document_tab *tab)
                  tab->system_query_revision)) {
             return true;
         }
-        return !tab->system_saved || !tab->system_json ||
-               strcmp(tab->system_saved, tab->system_json) != 0;
+        return !tab->system_saved || !tab->system_value ||
+               !authored_values_equal(tab->system_saved, tab->system_value);
     }
     if (tab->kind == APP_EDITOR_DOCUMENT_UI) {
         return ui_buffer_dirty(tab->ui);
@@ -794,7 +850,12 @@ static int discard_prototype(app_scene_authoring *scene, scene_document_tab *tab
         return -1;
     }
     char error[256];
-    game_prototype *prototype = game_prototype_load(tab->asset_saved, &scene->registry, error, sizeof error);
+    game_prototype *prototype = game_prototype_load_value(
+        tab->asset_saved,
+        &scene->registry,
+        error,
+        sizeof error
+    );
     if (!prototype) {
         return -1;
     }
@@ -818,7 +879,7 @@ static int discard_behavior(app_scene_authoring *scene, scene_document_tab *tab)
     }
     const char *name = tab->key + strlen("behavior:");
     game_live_definition *definition = game_live_find_definition(scene->live, name);
-    behavior_asset *working = behavior_asset_load_json(tab->asset_saved);
+    behavior_asset *working = behavior_asset_from_value(tab->asset_saved);
     graph *graph = working ? behavior_asset_find_graph(working, 0) : NULL;
     if (!definition || !working || !graph) {
         behavior_asset_free(working);
@@ -860,7 +921,7 @@ static int discard_behavior(app_scene_authoring *scene, scene_document_tab *tab)
 static int discard_system(app_scene_authoring *scene, scene_document_tab *tab)
 {
     return tab->system_saved && tab->path
-             ? load_system_document_json(scene, tab->system_saved, tab->path, true)
+             ? load_system_document_value(scene, tab->system_saved, tab->path, true)
              : -1;
 }
 

@@ -1,0 +1,197 @@
+version 3
+name "VirtualList"
+id_counter 157
+description "Keeps a VirtualList widget (#list) showing only the rows in view: it reads where the list is scrolled, sets self.first and self.row, and sends ShowRows when the rows in view change; the entity's own behavior answers with self.rows and self.total."
+owner_type "ecs.entity"
+(array)variables {
+    - id=1 name="RowHeight" type="float" category="List" default=24.0
+    - id=2 name="Overscan" type="int" category="List" default=6
+    - id=3 name="ShownFirst" type="int" category="State" default=-1
+    - id=4 name="ShownCount" type="int" category="State" default=-1
+}
+(array)graphs {
+    - {
+        kind "event"
+        name ""
+        (array)nodes {
+            - {
+                id 5
+                type "Event"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_name "Tick"
+                outputs {
+                    DeltaSeconds id=7 type="float" kind="data"
+                }
+            }
+            - {
+                id 8
+                type "Get UI Scroll"
+                x 0.0
+                y 0.0
+                placed #false
+                inputs Element="#list"
+            }
+            - {
+                id 42
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 15
+                reference_name "max(0, floor(Top / RowHeight) - Overscan)"
+                inputs {
+                    Top id=43 type="float"
+                    RowHeight id=44 type="float"
+                    Overscan id=45 type="int"
+                }
+                outputs {
+                    Result id=46 type="double"
+                }
+            }
+            - {
+                id 81
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 47
+                reference_name "ceil(max(View, 400) / RowHeight) + 2 * Overscan"
+                inputs {
+                    View id=82 type="float"
+                    RowHeight id=83 type="float"
+                    Overscan id=84 type="int"
+                }
+                outputs {
+                    Result id=85 type="double"
+                }
+            }
+            - {
+                id 108
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 86
+                reference_name "First != ShownFirst || Count != ShownCount"
+                inputs {
+                    Exec id=114 kind="exec"
+                    First id=109 type="double" flags=0
+                    ShownFirst id=110 type="double" flags=0
+                    Count id=111 type="double" flags=0
+                    ShownCount id=112 type="double" flags=0
+                }
+                outputs {
+                    True id=115 kind="exec"
+                    False id=116 kind="exec"
+                    Result id=113 type="bool"
+                }
+            }
+            - id=117 type="Set Variable" x=0.0 y=0.0 placed=#false reference_id=3 reference_name="ShownFirst"
+            - id=122 type="Set Variable" x=0.0 y=0.0 placed=#false reference_id=4 reference_name="ShownCount"
+            - {
+                id 127
+                type "Set UI Data"
+                x 0.0
+                y 0.0
+                placed #false
+                inputs {
+                    Name "first"
+                    Value type="double"
+                }
+            }
+            - {
+                id 133
+                type "Set UI Data"
+                x 0.0
+                y 0.0
+                placed #false
+                inputs {
+                    Name "row"
+                    Value type="float"
+                }
+            }
+            - {
+                id 139
+                type "Get Variable"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 1
+                reference_name "RowHeight"
+                outputs {
+                    Value type="float"
+                }
+            }
+            - {
+                id 141
+                type "Get Variable"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 1
+                reference_name "RowHeight"
+                outputs {
+                    Value type="float"
+                }
+            }
+            - id=143 type="Get Variable" x=0.0 y=0.0 placed=#false reference_id=2 reference_name="Overscan"
+            - id=145 type="Get Variable" x=0.0 y=0.0 placed=#false reference_id=3 reference_name="ShownFirst"
+            - id=147 type="Get Variable" x=0.0 y=0.0 placed=#false reference_id=4 reference_name="ShownCount"
+            - {
+                id 149
+                type "Self"
+                x 0.0
+                y 0.0
+                placed #false
+                outputs {
+                    Self type_name="ecs.entity"
+                }
+            }
+            - {
+                id 151
+                type "Send Event"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_name "ShowRows"
+                inputs {
+                    First id=155 declaration_id=1 type="int"
+                    Count id=156 declaration_id=2 type="int"
+                }
+                outputs {
+                    Then id=154
+                }
+            }
+        }
+        (array)edges {
+            - from="5.Then" to="108.Exec"
+            - from="8.Scroll Top" to="42.Top"
+            - from="8.View Height" to="81.View"
+            - from="42.Result" to="108.First"
+            - from="42.Result" to="117.Value" conversion="To Integer"
+            - from="42.Result" to="127.Value"
+            - from="42.Result" to="151.First" conversion="To Integer"
+            - from="81.Result" to="108.Count"
+            - from="81.Result" to="122.Value" conversion="To Integer"
+            - from="81.Result" to="151.Count" conversion="To Integer"
+            - from="108.True" to="117.Exec"
+            - from="117.Then" to="122.Exec"
+            - from="122.Then" to="127.Exec"
+            - from="127.Then" to="133.Exec"
+            - from="133.Then" to="151.Exec"
+            - from="139.Value" to="133.Value"
+            - from="141.Value" to="42.RowHeight"
+            - from="141.Value" to="81.RowHeight"
+            - from="143.Value" to="42.Overscan"
+            - from="143.Value" to="81.Overscan"
+            - from="145.Value" to="108.ShownFirst" conversion="To Real"
+            - from="147.Value" to="108.ShownCount" conversion="To Real"
+            - from="149.Self" to="151.Entity"
+        }
+    }
+    - id=15 kind="function" math_expression="max(0, floor(Top / RowHeight) - Overscan)" entry_id=16
+    - id=47 kind="function" math_expression="ceil(max(View, 400) / RowHeight) + 2 * Overscan" entry_id=48
+    - id=86 kind="function" math_expression="First != ShownFirst || Count != ShownCount" entry_id=87
+}

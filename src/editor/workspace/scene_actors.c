@@ -159,7 +159,7 @@ void remove_selected(app_scene_authoring *scene)
     remove_actor_at(scene, scene->selected);
 }
 
-static char *capture_actor_state(app_scene_authoring *scene, const scene_actor *actor)
+static av_value *capture_actor_state(app_scene_authoring *scene, const scene_actor *actor)
 {
     game_prototype *state = game_prototype_capture_entity(
         actor->name,
@@ -185,9 +185,9 @@ static char *capture_actor_state(app_scene_authoring *scene, const scene_actor *
             return NULL;
         }
     }
-    char *json = game_prototype_save(state);
+    av_value *value = game_prototype_to_value(state);
     game_prototype_free(state);
-    return json;
+    return value;
 }
 
 static bool actor_name_used(const app_scene_authoring *scene, const char *name)
@@ -261,20 +261,20 @@ int add_instance_at(app_scene_authoring *scene, const char *prototype_name, cons
     if (position && GAME_GameTransform_has(scene->world, actor->entity)) {
         write_position(scene, actor->entity, *position);
     }
-    char *state = capture_actor_state(scene, actor);
-    char *base = game_prototype_save(actor->base);
+    av_value *state = capture_actor_state(scene, actor);
+    av_value *base = game_prototype_to_value(actor->base);
     scene_actor_edit edit = { .index = acount(scene->actors) - 1,
                               .name = actor->name,
                               .prototype_name = actor->prototype_name,
-                              .base_json = base,
-                              .state_json = state,
+                              .base = base,
+                              .state = state,
                               .created = true };
     edit.identity = actor->identity;
     bool recorded = state && base &&
                     (!collab_record_history() ||
                      scene_history_push_actor(scene->history, actor->entity, &edit));
-    free(state);
-    free(base);
+    av_value_free(state);
+    av_value_free(base);
     if (!recorded) {
         remove_actor_at(scene, acount(scene->actors) - 1);
         scene->scene_dirty = was_dirty;
@@ -411,23 +411,23 @@ int app_scene_authoring_delete_instance(app_scene_authoring *scene)
         return -1;
     }
     actor = selected_actor(scene);
-    char *state = capture_actor_state(scene, actor);
-    char *base = game_prototype_save(actor->base);
+    av_value *state = capture_actor_state(scene, actor);
+    av_value *base = game_prototype_to_value(actor->base);
     if (!state || !base) {
-        free(state);
-        free(base);
+        av_value_free(state);
+        av_value_free(base);
         return -1;
     }
     char *name = xstrdup(actor->name), *prototype = xstrdup(actor->prototype_name);
-    char *retained = scene_retention_save(actor->retained);
+    av_value *retained = scene_retention_save(actor->retained);
     ecs_entity entity = actor->entity;
     scene_actor_edit edit = { .index = scene->selected,
                               .identity = actor->identity,
                               .name = name,
                               .prototype_name = prototype,
-                              .base_json = base,
-                              .state_json = state,
-                              .retained_json = retained };
+                              .base = base,
+                              .state = state,
+                              .retained = retained };
     int result = remove_actor_at(scene, scene->selected);
     if (!result) {
         bool recorded = !collab_record_history() ||
@@ -436,10 +436,10 @@ int app_scene_authoring_delete_instance(app_scene_authoring *scene)
         scene_authoring_select_document(scene, APP_EDITOR_DOCUMENT_SCENE, APP_SCENE_DOCUMENT_ID);
     }
     free(name);
-    free(retained);
+    av_value_free(retained);
     free(prototype);
-    free(state);
-    free(base);
+    av_value_free(state);
+    av_value_free(base);
     scene_action_finish(scene, action, result == 0);
     free(action);
     return result;
@@ -452,8 +452,8 @@ static int restore_actor(app_scene_authoring *scene, const scene_actor_edit *edi
         return -1;
     }
     char error[256];
-    game_prototype *base = game_prototype_load(edit->base_json, &scene->registry, error, sizeof error);
-    game_prototype *state = game_prototype_load(edit->state_json, &scene->registry, error, sizeof error);
+    game_prototype *base = game_prototype_load_value(edit->base, &scene->registry, error, sizeof error);
+    game_prototype *state = game_prototype_load_value(edit->state, &scene->registry, error, sizeof error);
     if (!base || !state) {
         game_prototype_free(base);
         game_prototype_free(state);
@@ -481,7 +481,7 @@ static int restore_actor(app_scene_authoring *scene, const scene_actor_edit *edi
                           .prototype_name = xstrdup(edit->prototype_name),
                           .base = base,
                           .restored_state = state };
-    if (scene_retention_load(edit->retained_json, &actor.retained) != 0) {
+    if (scene_retention_load(edit->retained, &actor.retained) != 0) {
         game_behavior_destroy_entity(scene->live->behaviors, *entity);
         free_actor(&actor);
         return -1;
@@ -533,16 +533,16 @@ int app_scene_authoring_duplicate_instance(app_scene_authoring *scene)
     }
     actor = selected_actor(scene);
     char *prototype = xstrdup(actor->prototype_name);
-    char *state = capture_actor_state(scene, actor);
-    char *base = game_prototype_save(actor->base);
-    char *retained = scene_retention_save(actor->retained);
+    av_value *state = capture_actor_state(scene, actor);
+    av_value *base = game_prototype_to_value(actor->base);
+    av_value *retained = scene_retention_save(actor->retained);
     scene_actor_edit edit = { .index = acount(scene->actors),
                               .identity = created_identity,
                               .name = name,
                               .prototype_name = prototype,
-                              .base_json = base,
-                              .state_json = state,
-                              .retained_json = retained,
+                              .base = base,
+                              .state = state,
+                              .retained = retained,
                               .created = true };
     ecs_entity entity;
     int result = state && base ? restore_actor(scene, &edit, &entity) : -1;
@@ -555,9 +555,9 @@ int app_scene_authoring_duplicate_instance(app_scene_authoring *scene)
         scene_authoring_select_document(scene, APP_EDITOR_DOCUMENT_SCENE, APP_SCENE_DOCUMENT_ID);
     }
     free(prototype);
-    free(state);
-    free(base);
-    free(retained);
+    av_value_free(state);
+    av_value_free(base);
+    av_value_free(retained);
     scene_action_finish(scene, action, result == 0);
     free(action);
     return result;

@@ -61,26 +61,34 @@ int ed_name_spawned_event(editor *e, node *n)
     return -1;
 }
 
-void ed_free_string_stack(char ***stack)
+void ed_free_asset_stack(behavior_asset ***stack)
 {
     for (int i = 0; i < acount(*stack); i++) {
-        free((*stack)[i]);
+        behavior_asset_free((*stack)[i]);
     }
     afree(*stack);
 }
 
-void ed_push_string(char ***stack, char *value)
+void ed_push_asset(behavior_asset ***stack, behavior_asset *value)
 {
     if (!value) {
         return;
     }
     if (acount(*stack) == ED_HIST_MAX) {
-        free((*stack)[0]);
+        behavior_asset_free((*stack)[0]);
         memmove(*stack, *stack + 1, (size_t)(ED_HIST_MAX - 1) * sizeof **stack);
         (*stack)[ED_HIST_MAX - 1] = value;
         return;
     }
     apush(*stack, value);
+}
+
+av_value *ed_value_snapshot(const behavior_asset *asset)
+{
+    av_doc *doc = av_doc_new();
+    av_value *snapshot = av_value_copy(behavior_asset_to_value(doc, asset));
+    av_doc_free(doc);
+    return snapshot;
 }
 
 editor *editor_new(behavior_asset *asset)
@@ -93,7 +101,7 @@ editor *editor_new(behavior_asset *asset)
     e->active_graph = asset->graph;
     e->arrange_pending = true;
     e->edit_revision_asset = asset;
-    e->saved_snapshot = behavior_asset_save_json(asset);
+    e->saved_snapshot = ed_value_snapshot(asset);
     compile_report_init(&e->compile);
     e->ev = eval_view_new();
     return e;
@@ -134,24 +142,24 @@ void editor_free(editor *e)
     afree(e->asset_catalog);
     afree(e->prototype_catalog);
     free_ui_data_choices(e);
-    ed_free_string_stack(&e->undo);
-    ed_free_string_stack(&e->redo);
+    ed_free_asset_stack(&e->undo);
+    ed_free_asset_stack(&e->redo);
     free(e->document_key);
     for (int i = 0; i < acount(e->documents); i++) {
         ed_document_history *history = &e->documents[i];
         free(history->key);
-        free(history->json);
-        free(history->saved);
-        ed_free_string_stack(&history->undo);
-        ed_free_string_stack(&history->redo);
+        behavior_asset_free(history->asset);
+        av_value_free(history->saved);
+        ed_free_asset_stack(&history->undo);
+        ed_free_asset_stack(&history->redo);
         afree(history->links);
         free(history->location.nodes);
     }
     afree(e->documents);
-    free(e->pending_snapshot);
+    behavior_asset_free(e->pending_snapshot);
     free(e->clipboard);
-    free(e->edit_revision_snapshot);
-    free(e->saved_snapshot);
+    av_value_free(e->edit_revision_snapshot);
+    av_value_free(e->saved_snapshot);
     ed_flow_activity_free(e);
     ed_destroy_preview(e);
     compile_report_free(&e->compile);

@@ -2,6 +2,8 @@
 
 #include "platform/cute.h"
 #include "runtime/material_field.h"
+#include "support/asset_json.h"
+#include "support/asset_text.h"
 #include "support/xalloc.h"
 
 #include <math.h>
@@ -31,7 +33,11 @@ bool automation_field_preview(
         return false;
     }
     yyjson_val *overrides = yyjson_obj_get(request, "parameters");
-    char *parameters = overrides ? yyjson_val_write(overrides, 0, NULL) : NULL;
+    av_doc *parameter_doc = av_doc_new();
+    char *parameters = overrides
+                         ? av_value_write(av_from_json(parameter_doc, overrides))
+                         : NULL;
+    av_doc_free(parameter_doc);
     material_fields *fields = material_fields_new();
     float *values = xmalloc((size_t)width * height * sizeof(float));
     bool valid = material_field_compile(fields, asset, error, size) &&

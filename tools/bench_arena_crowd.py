@@ -78,7 +78,7 @@ def main():
            if not k.startswith(("CHIBI_ARENA_", "CBLUEPRINT_BENCH_"))}
     env["MallocNanoZone"] = "0"
     content = hashlib.sha256()
-    for path in sorted((root / "content").rglob("*.yaml")):
+    for path in sorted((root / "content").rglob("*.kdl")):
         content.update(str(path.relative_to(root)).encode())
         content.update(path.read_bytes())
     samples, expected = [], None

@@ -18,40 +18,38 @@
 #include <stdlib.h>
 #include <string.h>
 
-/* The asset file text: YAML without the positions of unplaced nodes. */
+/* The asset file text: KDL without the positions of unplaced nodes. */
 static char *disk_text(const behavior_asset *asset)
 {
-    char *json = behavior_asset_save_json(asset);
+    char *json = behavior_asset_save(asset);
     char error[256];
-    char *yaml = asset_text_to_disk(json, error, sizeof error);
-    assert(yaml);
+    char *kdl = asset_text_to_disk(json, error, sizeof error);
+    assert(kdl);
     free(json);
-    return yaml;
+    return kdl;
 }
 
 static behavior_asset *reload(const behavior_asset *asset)
 {
-    char *yaml = disk_text(asset);
-    behavior_asset *copy = behavior_asset_load_json(yaml);
+    char *kdl = disk_text(asset);
+    behavior_asset *copy = behavior_asset_load(kdl);
     if (!copy) {
-        fprintf(stderr, "%s\n%s\n", graph_last_error(), yaml);
+        fprintf(stderr, "%s\n%s\n", graph_last_error(), kdl);
     }
     assert(copy);
-    free(yaml);
+    free(kdl);
     return copy;
 }
 
 /* The saved document without the ID counter, which raising advances. */
 static char *document(const behavior_asset *asset)
 {
-    char *json = behavior_asset_save_json(asset);
-    yyjson_doc *doc = yyjson_read(json, strlen(json), 0);
-    yyjson_mut_doc *copy = yyjson_doc_mut_copy(doc, NULL);
-    yyjson_mut_obj_remove_key(yyjson_mut_doc_get_root(copy), "id_counter");
-    char *text = yyjson_mut_write(copy, 0, NULL);
-    yyjson_mut_doc_free(copy);
-    yyjson_doc_free(doc);
-    free(json);
+    av_doc *doc = av_doc_new();
+    av_value *root = behavior_asset_to_value(doc, asset);
+    av_doc_set_root(doc, root);
+    av_obj_remove_key(root, "id_counter");
+    char *text = av_doc_write(doc);
+    av_doc_free(doc);
     return text;
 }
 
@@ -82,11 +80,11 @@ static int compile_errors(const behavior_asset *asset)
 static void project_equivalence()
 {
     static const char *const patterns[] = {
-        "projects/*/content/behaviors/*.yaml",
-        "projects/*/content/libraries/*.yaml",
-        "content/behaviors/*.yaml",
-        "content/libraries/*.yaml",
-        "test/fixtures/content/behaviors/*.yaml",
+        "projects/*/content/behaviors/*.kdl",
+        "projects/*/content/libraries/*.kdl",
+        "content/behaviors/*.kdl",
+        "content/libraries/*.kdl",
+        "test/fixtures/content/behaviors/*.kdl",
     };
     int files = 0, raised = 0;
     for (size_t p = 0; p < sizeof patterns / sizeof *patterns; p++) {
@@ -96,8 +94,8 @@ static void project_equivalence()
         }
         for (size_t i = 0; i < paths.gl_pathc; i++) {
             char *text = text_file_read(paths.gl_pathv[i]);
-            behavior_asset *original = behavior_asset_load_json(text);
-            behavior_asset *authored = behavior_asset_load_json(text);
+            behavior_asset *original = behavior_asset_load(text);
+            behavior_asset *authored = behavior_asset_load(text);
             free(text);
             if (!original) {
                 fprintf(stderr, "%s: %s\n", paths.gl_pathv[i], graph_last_error());
@@ -551,32 +549,80 @@ static void authoring()
     assert(graph_node_by_id(f.g, get_id)->desc == registry_node_by_name("GetEntity_GameTransform"));
     behavior_asset_free(f.asset);
 
-    assert(!behavior_asset_load_json(
-        "version: 3\nname: Unknown\nid_counter: 10\ngraphs:\n- kind: event\n  "
-        "name: \"\"\n  nodes:\n"
-        "  - {id: 1, type: Get Component, inputs: {Component: GameNothing}}\n"
+    assert(!behavior_asset_load(
+        "version 3\n"
+        "name \"Unknown\"\n"
+        "id_counter 10\n"
+        "(array)graphs {\n"
+        "    - {\n"
+        "        kind \"event\"\n"
+        "        name \"\"\n"
+        "        (array)nodes {\n"
+        "            - {\n"
+        "                id 1\n"
+        "                type \"Get Component\"\n"
+        "                inputs Component=\"GameNothing\"\n"
+        "            }\n"
+        "        }\n"
+        "    }\n"
+        "}\n"
     ));
     assert(strstr(graph_last_error(), "unknown Component"));
-    assert(!behavior_asset_load_json(
-        "version: 3\nname: Unknown field\nid_counter: 10\ngraphs:\n- kind: "
-        "event\n  name: \"\"\n  nodes:\n"
-        "  - {id: 1, type: Set Component, inputs: {Component: GameHealth, "
-        "bogus: 1}}\n"
+    assert(!behavior_asset_load(
+        "version 3\n"
+        "name \"Unknown field\"\n"
+        "id_counter 10\n"
+        "(array)graphs {\n"
+        "    - {\n"
+        "        kind \"event\"\n"
+        "        name \"\"\n"
+        "        (array)nodes {\n"
+        "            - {\n"
+        "                id 1\n"
+        "                type \"Set Component\"\n"
+        "                inputs Component=\"GameHealth\" bogus=1\n"
+        "            }\n"
+        "        }\n"
+        "    }\n"
+        "}\n"
     ));
     assert(strstr(graph_last_error(), "has no pin bogus"));
-    assert(!behavior_asset_load_json(
-        "version: 3\nname: Enum overflow\nid_counter: 10\ngraphs:\n- kind: "
-        "event\n  "
-        "name: \"\"\n  nodes:\n"
-        "  - {id: 1, type: Set Component, inputs: {Component: GameAppearance, "
-        "shape: 2147483648}}\n"
+    assert(!behavior_asset_load(
+        "version 3\n"
+        "name \"Enum overflow\"\n"
+        "id_counter 10\n"
+        "(array)graphs {\n"
+        "    - {\n"
+        "        kind \"event\"\n"
+        "        name \"\"\n"
+        "        (array)nodes {\n"
+        "            - {\n"
+        "                id 1\n"
+        "                type \"Set Component\"\n"
+        "                inputs Component=\"GameAppearance\" shape=2147483648\n"
+        "            }\n"
+        "        }\n"
+        "    }\n"
+        "}\n"
     ));
     /* A document may name the component and write only field inputs. */
-    behavior_asset *named = behavior_asset_load_json(
-        "version: 3\nname: Named\nid_counter: 10\ngraphs:\n- kind: event\n  "
-        "name: \"\"\n  nodes:\n"
-        "  - {id: 1, type: Set Component, inputs: {Component: GameHealth, "
-        "current: 4}}\n"
+    behavior_asset *named = behavior_asset_load(
+        "version 3\n"
+        "name \"Named\"\n"
+        "id_counter 10\n"
+        "(array)graphs {\n"
+        "    - {\n"
+        "        kind \"event\"\n"
+        "        name \"\"\n"
+        "        (array)nodes {\n"
+        "            - {\n"
+        "                id 1\n"
+        "                type \"Set Component\"\n"
+        "                inputs Component=\"GameHealth\" current=4\n"
+        "            }\n"
+        "        }\n"
+        "    }\n"
+        "}\n"
     );
     assert(named);
     node *written = named->graph->nodes[0];
@@ -703,17 +749,43 @@ static void struct_authoring()
     behavior_asset_free(loaded);
     behavior_asset_free(f.asset);
 
-    behavior_asset *named = behavior_asset_load_json(
-        "version: 3\nname: Named\nid_counter: 10\ngraphs:\n- kind: event\n  "
-        "name: \"\"\n  nodes:\n"
-        "  - {id: 1, type: Break Struct, inputs: {Type: CF_V2}}\n"
+    behavior_asset *named = behavior_asset_load(
+        "version 3\n"
+        "name \"Named\"\n"
+        "id_counter 10\n"
+        "(array)graphs {\n"
+        "    - {\n"
+        "        kind \"event\"\n"
+        "        name \"\"\n"
+        "        (array)nodes {\n"
+        "            - {\n"
+        "                id 1\n"
+        "                type \"Break Struct\"\n"
+        "                inputs Type=\"CF_V2\"\n"
+        "            }\n"
+        "        }\n"
+        "    }\n"
+        "}\n"
     );
     assert(named && named->graph->nodes[0]->output_count == 2);
     behavior_asset_free(named);
-    assert(!behavior_asset_load_json(
-        "version: 3\nname: Unknown\nid_counter: 10\ngraphs:\n- kind: event\n  "
-        "name: \"\"\n  nodes:\n"
-        "  - {id: 1, type: Make Struct, inputs: {Type: GameNothing}}\n"
+    assert(!behavior_asset_load(
+        "version 3\n"
+        "name \"Unknown\"\n"
+        "id_counter 10\n"
+        "(array)graphs {\n"
+        "    - {\n"
+        "        kind \"event\"\n"
+        "        name \"\"\n"
+        "        (array)nodes {\n"
+        "            - {\n"
+        "                id 1\n"
+        "                type \"Make Struct\"\n"
+        "                inputs Type=\"GameNothing\"\n"
+        "            }\n"
+        "        }\n"
+        "    }\n"
+        "}\n"
     ));
     assert(strstr(graph_last_error(), "unknown Type"));
     puts("component node structs: Make and Break reshape by type; Add and Remove keep their wires");

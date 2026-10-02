@@ -2,6 +2,7 @@
 #define CHIBI_REFERENCE_INDEX_H
 
 #include "graph/model/behavior_asset.h"
+#include "support/asset_value.h"
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -158,7 +159,7 @@ typedef struct
     const char *name;
     const char *prototype;
     const struct game_prototype *base; /* may be NULL */
-    const char *overrides;             /* components JSON; may be NULL */
+    av_value *overrides; /* borrowed component overrides; may be NULL */
     const char *const *behaviors;
     int behavior_count;
 } reference_object;

@@ -34,9 +34,9 @@ static behavior_asset *read_behavior(const char *name)
     const char *root = !strcmp(name, "InputBehavior")
                          ? "test/fixtures/content/behaviors"
                          : "content/behaviors";
-    snprintf(path, sizeof path, "%s/%s.yaml", root, name);
+    snprintf(path, sizeof path, "%s/%s.kdl", root, name);
     char *text = read_content(path);
-    behavior_asset *asset = behavior_asset_load_json(text);
+    behavior_asset *asset = behavior_asset_load(text);
     if (asset) {
         asset = link_test_libraries(asset);
     }
@@ -71,8 +71,8 @@ static void headings(bool isolated, bool projectile)
                                          GAME_REGISTRY_COMPONENT_COUNT };
     const char *name = projectile ? "ProjectileBehavior" : "InputBehavior";
     char *text = read_content(
-        projectile ? "test/fixtures/content/prototypes/Projectile.yaml"
-                   : "test/fixtures/content/prototypes/Player.yaml"
+        projectile ? "test/fixtures/content/prototypes/Projectile.kdl"
+                   : "test/fixtures/content/prototypes/Player.kdl"
     );
     char error[256];
     game_prototype *prototype = game_prototype_load(text, &registry, error, sizeof error);

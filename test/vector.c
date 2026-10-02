@@ -47,8 +47,8 @@ static void direction_to()
                          .ptr = (void *)&targets[0] };
     assert(graph_set_pin_default(&g, n, 0, 0, &origin) == 0);
     assert(graph_set_pin_default(&g, n, 0, 1, &target) == 0);
-    char *json = graph_save_json(&g);
-    graph *loaded = graph_load_json(json);
+    char *json = graph_save(&g);
+    graph *loaded = graph_load(json);
     free(json);
     assert(loaded);
     eval_context context;

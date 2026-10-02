@@ -553,8 +553,8 @@ static void check_library_search_snapshot()
     catalog->domain = BEHAVIOR_DOMAIN_LIBRARY;
     behavior_asset_add_function(catalog, "CurrentFunction", 1);
     behavior_asset_add_function(catalog, "SiblingFunction", 1);
-    char *json = behavior_asset_save_json(catalog);
-    behavior_asset *snapshot = behavior_asset_load_json(json);
+    char *json = behavior_asset_save(catalog);
+    behavior_asset *snapshot = behavior_asset_load(json);
     free(json);
     test_check(snapshot != NULL, "library search fixture loads an independent working snapshot");
     if (!snapshot) {
@@ -1110,7 +1110,7 @@ static void check_component_search()
 static void check_signature_drag()
 {
     behavior_asset *asset = behavior_asset_new("Signature drag");
-    graph *fn = behavior_asset_add_function(asset, "Mix", 1);
+    graph *fn = behavior_asset_add_function(asset, "Mix", 0);
     const char *const names[] = { "A", "B", "C" };
     for (int i = 0; i < 3; i++) {
         pin_spec pin = { .name = names[i], .type = PIN_F32, .type_name = "float" };
@@ -1119,20 +1119,29 @@ static void check_signature_drag()
     behavior_asset_add_function_call_node(asset, fn);
     editor *e = editor_new(asset);
     node *entry = graph_node_by_id(fn, fn->entry_id);
-    uint64_t dragged = entry->output_pins[2].id;
+    editor_tick(e, 0.0);
+    unsigned revision = editor_edit_revision(e);
+    uint64_t dragged = entry->output_pins[3].id;
     test_check(
-        !sm_move_signature_pin(e, fn, false, dragged, 2) && acount(e->undo) == 0,
+        !sm_move_signature_pin(e, fn, false, dragged, 3) && acount(e->undo) == 0,
         "an input dropped on its own row changes nothing"
     );
     test_check(
-        sm_move_signature_pin(e, fn, false, dragged, 0) &&
-            acount(e->undo) == 1 && !strcmp(entry->output_pins[0].name, "C"),
+        sm_move_signature_pin(e, fn, false, dragged, 1) &&
+            acount(e->undo) == 1 && !strcmp(entry->output_pins[1].name, "C"),
         "an input dropped on another row moves there as one undo step"
     );
+    editor_query state;
+    editor_query_state(e, &state);
+    test_check(state.dirty, "reordering keyed function parameters marks the document dirty");
+    editor_tick(e, 1.0);
+    test_check(editor_edit_revision(e) == revision + 1, "reordering keyed function parameters advances the edit revision");
     ed_undo(e);
     fn = behavior_asset_find_graph_by_name(e->asset, "Mix");
     entry = graph_node_by_id(fn, fn->entry_id);
-    test_check(!strcmp(entry->output_pins[2].name, "C"), "Undo puts a moved input back");
+    test_check(!strcmp(entry->output_pins[3].name, "C"), "Undo puts a moved input back");
+    editor_query_state(e, &state);
+    test_check(!state.dirty, "undoing keyed parameter order restores the clean baseline");
     editor_free(e);
 }
 
@@ -1221,8 +1230,61 @@ static void check_compound_graph_collab_replay()
     editor_free(e);
 }
 
+static void check_duplicate_selection()
+{
+    behavior_asset *asset = behavior_asset_new("Native duplicate");
+    graph *g = asset->graph;
+    node *source = graph_add_node(g, registry_node_by_name("Real"));
+    node *target = graph_add_node(g, registry_node_by_name("Add"));
+    assert(source && target && graph_connect(g, source, 0, target, 0) == 0);
+    pin_value value = { .type = PIN_F64, .type_name = "double", .d = 7.0 };
+    assert(graph_set_pin_default(g, source, 0, 0, &value) == 0);
+    graph_set_node_presentation(g, source, NODE_PRESENTATION_EXPANDED);
+    source->x = 10;
+    source->y = 20;
+    target->x = 60;
+    target->y = 80;
+    editor *e = editor_new(asset);
+    ed_add_selected(e, source);
+    ed_add_selected(e, target);
+    ed_duplicate_selected(e);
+    graph *duplicated = e->active_graph;
+    node *source_copy = acount(duplicated->nodes) == 4 ? duplicated->nodes[2] : NULL;
+    node *target_copy = acount(duplicated->nodes) == 4 ? duplicated->nodes[3] : NULL;
+    test_check(
+        source_copy && target_copy && acount(duplicated->edges) == 2 &&
+            source_copy->id != source->id && target_copy->id != target->id &&
+            source_copy->x == 34 && source_copy->y == 44 && target_copy->x == 84 &&
+            target_copy->y == 104 && source_copy->input_pins[0].default_value.d == 7.0,
+        "Duplicate copies connected nodes with fresh IDs, typed defaults and "
+        "offset positions"
+    );
+    uint64_t copied_id = source_copy ? source_copy->id : 0;
+    value.d = 9.0;
+    if (source_copy) {
+        graph_set_pin_default(duplicated, source_copy, 0, 0, &value);
+    }
+    test_check(source->input_pins[0].default_value.d == 7.0, "Duplicated nodes own their default values independently");
+    ed_undo(e);
+    test_check(
+        acount(editor_active_graph(e)->nodes) == 2 &&
+            acount(editor_active_graph(e)->edges) == 1,
+        "One Undo removes a duplicated connected selection"
+    );
+    ed_redo(e);
+    node *restored = graph_node_by_id(editor_active_graph(e), copied_id);
+    test_check(
+        acount(editor_active_graph(e)->nodes) == 4 &&
+            acount(editor_active_graph(e)->edges) == 2 && restored &&
+            restored->input_pins[0].default_value.d == 9.0,
+        "Redo restores duplicated nodes and their independently edited values"
+    );
+    editor_free(e);
+}
+
 void run_editor_command_checks(void)
 {
+    check_duplicate_selection();
     check_streamed_literal_undo();
     check_compound_graph_collab_replay();
     check_signature_drag();

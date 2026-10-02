@@ -25,9 +25,9 @@ static void ed_select_appended_visible(editor *e, int first)
     }
 }
 
-char *ed_snapshot(const editor *e)
+behavior_asset *ed_snapshot(const editor *e)
 {
-    return behavior_asset_save_json(e->asset);
+    return behavior_asset_clone(e->asset);
 }
 
 void ed_commit_snapshot(editor *e)
@@ -37,13 +37,13 @@ void ed_commit_snapshot(editor *e)
     }
     e->edit_pending = 1;
     if (!collab_record_history()) {
-        free(e->pending_snapshot);
+        behavior_asset_free(e->pending_snapshot);
         e->pending_snapshot = NULL;
         return;
     }
-    ed_push_string(&e->undo, e->pending_snapshot);
+    ed_push_asset(&e->undo, e->pending_snapshot);
     e->pending_snapshot = NULL;
-    ed_free_string_stack(&e->redo);
+    ed_free_asset_stack(&e->redo);
 }
 
 void ed_snapshot_before(editor *e)
@@ -52,17 +52,17 @@ void ed_snapshot_before(editor *e)
     if (!collab_record_history()) {
         return;
     }
-    char *snapshot = ed_snapshot(e);
+    behavior_asset *snapshot = ed_snapshot(e);
     if (!snapshot) {
         return;
     }
-    ed_push_string(&e->undo, snapshot);
-    ed_free_string_stack(&e->redo);
+    ed_push_asset(&e->undo, snapshot);
+    ed_free_asset_stack(&e->redo);
 }
 
 void ed_cancel_snapshot(editor *e)
 {
-    free(e->pending_snapshot);
+    behavior_asset_free(e->pending_snapshot);
     e->pending_snapshot = NULL;
 }
 
@@ -88,11 +88,11 @@ void ed_destroy_preview(editor *e)
 }
 
 /* Every behavior_asset swap must release the preview copy and its activations. */
-int ed_adopt_behavior_asset_with_identity(editor *e, const char *json, uint64_t owner_identity)
+int ed_adopt_behavior_asset_with_identity(editor *e, const behavior_asset *source, uint64_t owner_identity)
 {
     ed_destroy_preview(e);
     uint64_t active_graph_id = e->active_graph ? e->active_graph->graph_id : 0;
-    behavior_asset *fresh = behavior_asset_load_json(json);
+    behavior_asset *fresh = behavior_asset_clone(source);
     if (!fresh) {
         return -1;
     }
@@ -122,11 +122,11 @@ int ed_adopt_behavior_asset_with_identity(editor *e, const char *json, uint64_t 
     return 0;
 }
 
-int ed_adopt_behavior_asset(editor *e, const char *json)
+int ed_adopt_behavior_asset(editor *e, const behavior_asset *source)
 {
     return ed_adopt_behavior_asset_with_identity(
         e,
-        json,
+        source,
         e && e->asset ? e->asset->identity : 0
     );
 }
@@ -136,13 +136,13 @@ void ed_undo(editor *e)
     if (acount(e->undo) == 0) {
         return;
     }
-    char *target = apop(e->undo);
-    char *current = behavior_asset_save_json(e->asset);
+    behavior_asset *target = apop(e->undo);
+    behavior_asset *current = behavior_asset_clone(e->asset);
     if (current) {
-        ed_push_string(&e->redo, current);
+        ed_push_asset(&e->redo, current);
     }
     ed_adopt_behavior_asset(e, target);
-    free(target);
+    behavior_asset_free(target);
 }
 
 void ed_redo(editor *e)
@@ -150,13 +150,13 @@ void ed_redo(editor *e)
     if (acount(e->redo) == 0) {
         return;
     }
-    char *target = apop(e->redo);
-    char *current = behavior_asset_save_json(e->asset);
+    behavior_asset *target = apop(e->redo);
+    behavior_asset *current = behavior_asset_clone(e->asset);
     if (current) {
-        ed_push_string(&e->undo, current);
+        ed_push_asset(&e->undo, current);
     }
     ed_adopt_behavior_asset(e, target);
-    free(target);
+    behavior_asset_free(target);
 }
 
 bool editor_can_undo(const editor *e)
@@ -214,17 +214,19 @@ void ed_duplicate_selected(editor *e)
     if (acount(e->selected) == 0) {
         return;
     }
-    char *json = graph_save_nodes_json(e->active_graph, e->selected, acount(e->selected));
-    if (!json) {
+    av_doc *doc = av_doc_new();
+    av_value *selection = graph_nodes_to_value(doc, e->active_graph, e->selected, acount(e->selected));
+    if (!selection) {
+        av_doc_free(doc);
         return;
     }
     ed_snapshot_before(e);
     int first = acount(e->active_graph->nodes);
-    if (graph_append_json(e->active_graph, json, 24.0f, 24.0f) == 0) {
+    if (graph_append_value(e->active_graph, selection, 24.0f, 24.0f) == 0) {
         ed_clear_selection(e);
         ed_select_appended_visible(e, first);
     }
-    free(json);
+    av_doc_free(doc);
 }
 
 /* CAT-38: a Format Text node always carries one trailing Generic argument
@@ -396,7 +398,7 @@ int ed_connect(editor *e, const ed_pin_view *a, const ed_pin_view *b)
     pin_binding old_binding_copy = { 0 };
     const node_desc *old_conversion = NULL;
     bool reference_input = in_spec->flags & PIN_FLAG_REFERENCE;
-    char *reference_before = reference_input ? ed_snapshot(e) : NULL;
+    behavior_asset *reference_before = reference_input ? ed_snapshot(e) : NULL;
     if (reference_input) {
         old_binding = graph_pin_binding(e->active_graph, input->n, 0, input->index);
         if (old_binding) {
@@ -420,7 +422,7 @@ int ed_connect(editor *e, const ed_pin_view *a, const ed_pin_view *b)
     if (!ok) {
         if (reference_before) {
             (void)ed_adopt_behavior_asset(e, reference_before);
-            free(reference_before);
+            behavior_asset_free(reference_before);
         }
         return 0;
     }
@@ -474,7 +476,7 @@ int ed_connect(editor *e, const ed_pin_view *a, const ed_pin_view *b)
                     }
                 }
                 ed_show_error(e, error.message);
-                free(reference_before);
+                behavior_asset_free(reference_before);
                 return 0;
             }
         }
@@ -499,7 +501,7 @@ int ed_connect(editor *e, const ed_pin_view *a, const ed_pin_view *b)
             );
         }
     }
-    free(reference_before);
+    behavior_asset_free(reference_before);
     return ok;
 }
 
@@ -526,7 +528,7 @@ bool ed_insert_on_wire(editor *e, int edge_index, node *n, int in, int out)
         !ed_connection_specs_valid(&n->output_pins[out], &to->input_pins[to_pin], kind)) {
         return false;
     }
-    char *before = ed_snapshot(e);
+    behavior_asset *before = ed_snapshot(e);
     uint64_t id = n->id;
     graph_remove_edge(g, from, from_pin, to, to_pin);
     ed_pin_view a = { from, ED_PIN_OUTPUT, from_pin };
@@ -542,7 +544,7 @@ bool ed_insert_on_wire(editor *e, int edge_index, node *n, int in, int out)
         (void)restored;
         ed_select_node(e, graph_node_by_id(e->active_graph, id), false);
     }
-    free(before);
+    behavior_asset_free(before);
     return inserted;
 }
 

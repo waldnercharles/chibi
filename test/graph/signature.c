@@ -89,8 +89,8 @@ static void check_signature_edits()
             find_pin(call, 0, "Amount") < 0 && find_pin(call, 1, "Scaled") == 1,
         "removing a parameter removes it from every call"
     );
-    char *json = behavior_asset_save_json(asset);
-    behavior_asset *loaded = json ? behavior_asset_load_json(json) : NULL;
+    char *json = behavior_asset_save(asset);
+    behavior_asset *loaded = json ? behavior_asset_load(json) : NULL;
     test_check(loaded != NULL, "an edited signature saves and loads");
     behavior_asset_free(loaded);
     free(json);
@@ -271,8 +271,8 @@ static void check_macro_signature()
             find_pin(entry, 1, "Alternate") < 0 && find_pin(call, 0, "Alternate") < 0,
         "removing a macro input removes it from every call"
     );
-    char *json = behavior_asset_save_json(asset);
-    behavior_asset *loaded = json ? behavior_asset_load_json(json) : NULL;
+    char *json = behavior_asset_save(asset);
+    behavior_asset *loaded = json ? behavior_asset_load(json) : NULL;
     const graph *reloaded = loaded ? behavior_asset_find_graph(loaded, macro->graph_id)
                                    : NULL;
     compile_report report;
@@ -495,14 +495,14 @@ static void check_function_moves()
                         ->id;
     node *set = behavior_asset_add_set_node(asset, kept);
     graph_connect_data(asset->graph, call, find_pin(call, 1, "High"), set, 1);
-    char *before = behavior_asset_save_json(asset);
+    char *before = behavior_asset_save(asset);
     test_check(
         graph_signature_move(asset, fn, false, 1, 0) != 0 &&
             graph_signature_move(asset, fn, false, 1, 3) != 0 &&
             graph_signature_move(asset, fn, true, 0, 1) != 0,
         "a signature pin moves only onto another pin its side declares"
     );
-    char *after = behavior_asset_save_json(asset);
+    char *after = behavior_asset_save(asset);
     test_check(before && after && !strcmp(before, after), "a refused move changes nothing");
     free(before);
     free(after);

@@ -404,24 +404,15 @@ void run_component_read_checks()
     );
     behavior_instance_destroy(instance);
 
-    /* Version-3 component readers used to carry Exec/Then pins. */
-    pin_spec exec = { .name = "Exec", .type = PIN_FLOW, .kind = PIN_EXEC };
-    graph_add_pin(g, get, 0, &exec);
-    exec.name = "Then";
-    graph_add_pin(g, get, 1, &exec);
-    graph_move_pin(g, get, 1, 1, 0);
-    graph_remove_edge(g, event, 0, before, 0);
-    graph_connect_exec(g, event, 0, get, 0, 0);
-    graph_connect_exec(g, get, 0, before, 0, 0);
-    char *json = behavior_asset_save_json(asset);
-    behavior_asset *loaded = behavior_asset_load_json(json);
+    char *text = behavior_asset_save(asset);
+    behavior_asset *loaded = behavior_asset_load(text);
     node *read = loaded ? graph_node_by_id(loaded->graph, get->id) : NULL;
     test_check(
         read && read->input_count == 0 && read->output_count == 1 &&
             read->output_pins[0].kind == PIN_DATA,
-        "opening a legacy asset removes Exec/Then pins from component readers"
+        "KDL roundtrips component readers as pure data nodes"
     );
-    if (loaded && read && read->input_count == 0) {
+    if (loaded) {
         GAME_GameHealth_get(world, entity)->current = 12;
         instance = behavior_instance_create(loaded, &owner, NULL, NULL);
         behavior_instance_bind_service(instance, "ecs.world", world);
@@ -429,20 +420,12 @@ void run_component_read_checks()
         test_check(
             run && flow_run_status(run) == FLOW_COMPLETED &&
                 GAME_GameHealth_get_const(world, entity)->current == 42,
-            "legacy execution wires bypass the read without losing later writes"
+            "roundtripped component reads observe ordered component writes"
         );
         behavior_instance_destroy(instance);
     }
     behavior_asset_free(loaded);
-    free(json);
-
-    graph_remove_edge(g, get, 0, before, 0);
-    graph_connect_exec(g, get, 0, get, 0, 0);
-    json = behavior_asset_save_json(asset);
-    loaded = behavior_asset_load_json(json);
-    free(json);
-    test_check(loaded == NULL, "legacy readers with execution self-loops are rejected, not silently erased");
-    behavior_asset_free(loaded);
+    free(text);
 
     node *has = graph_add_node(g, &GAME_NODE_Has_GameHealth);
     node *check_event = graph_add_node(g, &NODE_Event);
@@ -456,10 +439,6 @@ void run_component_read_checks()
     graph_connect_data(g, has, 0, branch, 1);
     graph_connect_exec(g, branch, 0, present, 0, 0);
     graph_connect_exec(g, branch, 1, absent, 0, 0);
-    /* Remove the synthetic legacy wiring before running this fresh graph. */
-    graph_remove_pin(g, get, 0, 0);
-    graph_remove_pin(g, get, 1, 0);
-    graph_connect_exec(g, event, 0, before, 0, 0);
     instance = behavior_instance_create(asset, &owner, NULL, NULL);
     behavior_instance_bind_service(instance, "ecs.world", world);
     g_captured_int = -1;

@@ -150,8 +150,16 @@ static void run_spawn_case(bool cancel_before, int pause, bool destroy)
                                          GAME_REGISTRY_COMPONENT_COUNT };
     char error[256];
     game_prototype *prototype = game_prototype_load(
-        "{\"name\":\"ChildPrototype\",\"components\":{\"GameTransform\":{\"x\":"
-        "1,\"y\":2}},\"behaviors\":[\"child\"]}",
+        "name \"ChildPrototype\"\n"
+        "components {\n"
+        "    GameTransform {\n"
+        "        x 1\n"
+        "        y 2\n"
+        "    }\n"
+        "}\n"
+        "(array)behaviors {\n"
+        "    - \"child\"\n"
+        "}\n",
         &registry,
         error,
         sizeof error
@@ -565,15 +573,26 @@ static void delayed_spawn_case(bool isolated, int mode)
                                          GAME_REGISTRY_COMPONENT_COUNT };
     char error[256];
     game_prototype *child = game_prototype_load(
-        "{\"name\":\"ChildPrototype\",\"components\":{\"GameTransform\":{\"x\":"
-        "1,\"y\":2}},\"behaviors\":[\"child\"]}",
+        "name \"ChildPrototype\"\n"
+        "components {\n"
+        "    GameTransform {\n"
+        "        x 1\n"
+        "        y 2\n"
+        "    }\n"
+        "}\n"
+        "(array)behaviors {\n"
+        "    - \"child\"\n"
+        "}\n",
         &registry,
         error,
         sizeof error
     );
     game_prototype *prototype = game_prototype_load(
-        "{\"name\":\"ParentPrototype\",\"components\":{},\"behaviors\":["
-        "\"parent\"]}",
+        "name \"ParentPrototype\"\n"
+        "(object)components\n"
+        "(array)behaviors {\n"
+        "    - \"parent\"\n"
+        "}\n",
         &registry,
         error,
         sizeof error
@@ -940,9 +959,16 @@ static void children_survive_source(bool descendants)
                                          GAME_REGISTRY_COMPONENT_COUNT };
     char error[256];
     game_prototype *prototype = game_prototype_load(
-        "{\"name\":\"ChildPrototype\",\"components\":{\"GameTransform\":{\"x\":"
-        "1,\"y\":2}},"
-        "\"behaviors\":[\"child\"]}",
+        "name \"ChildPrototype\"\n"
+        "components {\n"
+        "    GameTransform {\n"
+        "        x 1\n"
+        "        y 2\n"
+        "    }\n"
+        "}\n"
+        "(array)behaviors {\n"
+        "    - \"child\"\n"
+        "}\n",
         &registry,
         error,
         sizeof error
@@ -952,7 +978,10 @@ static void children_survive_source(bool descendants)
     game_prototype *leaf = NULL;
     if (descendants) {
         leaf = game_prototype_load(
-            "{\"name\":\"Leaf\",\"components\":{\"GameTransform\":{}}}",
+            "name \"Leaf\"\n"
+            "components {\n"
+            "    (object)GameTransform\n"
+            "}\n",
             &registry,
             error,
             sizeof error
@@ -1076,16 +1105,43 @@ void bench_spawn(int count)
                                          GAME_REGISTRY_COMPONENT_COUNT };
     char error[256];
     game_prototype *shot = game_prototype_load(
-        "{\"name\":\"Shot\",\"components\":{"
-        "\"GameAppearance\":{\"color\":16777215,\"height\":4,\"width\":16},"
-        "\"GameBody\":{\"continuous\":true},"
-        "\"GameCollider\":{\"category\":4,\"mask\":10,\"radius\":2,\"sensor\":"
-        "true},"
-        "\"GameIgniter\":{\"heat\":2.5},\"GameMaterial\":{\"absorption\":0.1},"
-        "\"GameOrientation\":{},\"GameProjectile\":{\"damage\":1,\"speed\":400}"
-        ","
-        "\"GameTransform\":{\"x\":1},\"GameVelocity\":{}},"
-        "\"behaviors\":[\"ShotEffects\",\"ShotHit\",\"ShotLifecycle\"]}",
+        "name \"Shot\"\n"
+        "components {\n"
+        "    GameAppearance {\n"
+        "        color 16777215\n"
+        "        height 4\n"
+        "        width 16\n"
+        "    }\n"
+        "    GameBody {\n"
+        "        continuous #true\n"
+        "    }\n"
+        "    GameCollider {\n"
+        "        category 4\n"
+        "        mask 10\n"
+        "        radius 2\n"
+        "        sensor #true\n"
+        "    }\n"
+        "    GameIgniter {\n"
+        "        heat 2.5\n"
+        "    }\n"
+        "    GameMaterial {\n"
+        "        absorption 0.1\n"
+        "    }\n"
+        "    (object)GameOrientation\n"
+        "    GameProjectile {\n"
+        "        damage 1\n"
+        "        speed 400\n"
+        "    }\n"
+        "    GameTransform {\n"
+        "        x 1\n"
+        "    }\n"
+        "    (object)GameVelocity\n"
+        "}\n"
+        "(array)behaviors {\n"
+        "    - \"ShotEffects\"\n"
+        "    - \"ShotHit\"\n"
+        "    - \"ShotLifecycle\"\n"
+        "}\n",
         &registry,
         error,
         sizeof error
@@ -1178,8 +1234,13 @@ static void prototype_registry_lifetime()
                                          GAME_REGISTRY_COMPONENT_COUNT };
     char error[256];
     game_prototype *source = game_prototype_load(
-        "{\"name\":\"Lifetime\",\"components\":{\"GameTransform\":{\"x\":12,"
-        "\"y\":34}}}",
+        "name \"Lifetime\"\n"
+        "components {\n"
+        "    GameTransform {\n"
+        "        x 12\n"
+        "        y 34\n"
+        "    }\n"
+        "}\n",
         &registry,
         error,
         sizeof error

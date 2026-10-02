@@ -1,0 +1,78 @@
+version 3
+name "WeaponBehavior"
+id_counter 36
+description "Spawns a projectile beside the owning entity when Fire is dispatched."
+owner_type "ecs.entity"
+(array)graphs {
+    - {
+        kind "event"
+        name ""
+        (array)nodes {
+            - id=1 type="Event" x=0.0 y=0.0 placed=#false reference_name="Fire"
+            - {
+                id 8
+                type "Get_GameTransform"
+                x 0.0
+                y 0.0
+                placed #false
+                outputs {
+                    Value flags=0
+                }
+            }
+            - {
+                id 21
+                type "Get_GameWeapon"
+                x 0.0
+                y 0.0
+                placed #false
+                outputs {
+                    Value flags=0
+                    Value.damage id=23
+                }
+            }
+            - {
+                id 24
+                type "Call Function"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 173
+                reference_name "Fire Projectile"
+                reference_asset "WeaponActions"
+                inputs {
+                    Origin id=26 type="struct" type_name="CF_V2" kind="data"
+                    Direction {
+                        id 27
+                        type "struct"
+                        type_name "CF_V2"
+                        kind "data"
+                        default x=1.0 y=0.0
+                    }
+                    Damage id=28 type="int" kind="data"
+                    Prototype id=29 declaration_id=220 type="name" kind="data" default="Projectile"
+                    Shooter id=33 declaration_id=255 type="handle" type_name="ecs.entity" kind="data"
+                }
+                outputs {
+                    Then id=30
+                    Entity id=31 type="handle" type_name="ecs.entity" kind="data"
+                }
+            }
+            - {
+                id 34
+                type "Self"
+                x 0.0
+                y 0.0
+                placed #false
+                (array)outputs {
+                    - id=35 name="Entity" type_name="ecs.entity"
+                }
+            }
+        }
+        (array)edges {
+            - from="1.Then" to="24.Exec"
+            - from="8.Value" to="24.Origin"
+            - from="21.Value.damage" to="24.Damage"
+            - from="34.Entity" to="24.Shooter"
+        }
+    }
+}

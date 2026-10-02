@@ -116,9 +116,9 @@ static void query_guard_parity(
 void bench_encounter_query(int count, unsigned budget, int repeats)
 {
     assert(count >= 0 && count <= 20000 && repeats > 0);
-    char *json = text_file_read("content/behaviors/ArenaWaveBehavior.yaml");
+    char *json = text_file_read("content/behaviors/ArenaWaveBehavior.kdl");
     assert(json);
-    behavior_asset *asset = link_test_libraries(behavior_asset_load_json(json));
+    behavior_asset *asset = link_test_libraries(behavior_asset_load(json));
     free(json);
     assert(asset);
     ecs_world *world = ecs_world_new();
@@ -197,8 +197,8 @@ void bench_encounter_query(int count, unsigned budget, int repeats)
 void encounter_query_code(const char *path, int count, int repeats)
 {
     assert(count >= 0 && count <= 20000 && repeats >= 0);
-    char *json = text_file_read("content/behaviors/ArenaWaveBehavior.yaml");
-    behavior_asset *asset = link_test_libraries(behavior_asset_load_json(json));
+    char *json = text_file_read("content/behaviors/ArenaWaveBehavior.kdl");
+    behavior_asset *asset = link_test_libraries(behavior_asset_load(json));
     free(json);
     assert(asset);
     behavior_program_publish(asset);

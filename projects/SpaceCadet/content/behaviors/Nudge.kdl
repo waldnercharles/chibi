@@ -1,0 +1,62 @@
+version 3
+name "Nudge"
+id_counter 496
+owner_type "ecs.entity"
+(array)graphs {
+    - {
+        kind "event"
+        name ""
+        (array)nodes {
+            - id=1 type="Event" x=0.0 y=0.0 placed=#false reference_name="Nudge"
+            - {
+                id 44
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 3
+                reference_name "clamp(vx + (rand() - 0.5) * 170, -900, 900)"
+                inputs {
+                    vx {
+                        id 45
+                        type "double"
+                        binding kind="component_field" component="GAME.GameVelocity" field="x"
+                    }
+                }
+                outputs {
+                    Result id=46 type="double"
+                }
+            }
+            - id=88 type="Set_GameVelocity_x" x=0.0 y=0.0 placed=#false
+            - {
+                id 339
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 325
+                reference_name "velocity.y -= 100"
+                inputs {
+                    Exec id=342 kind="exec"
+                    velocity {
+                        id 340
+                        type "struct"
+                        type_name "GameVelocity"
+                        binding kind="component" component="GAME.GameVelocity"
+                    }
+                }
+                outputs {
+                    Then id=343 kind="exec"
+                    Result id=341 type="float"
+                }
+            }
+        }
+        (array)edges {
+            - from="1.Then" to="88.Exec"
+            - from="44.Result" to="88.Value"
+            - from="88.Then" to="339.Exec"
+        }
+    }
+    - id=3 kind="function" math_expression="clamp(vx + (rand() - 0.5) * 170, -900, 900)" entry_id=456
+    - id=325 kind="function" math_expression="velocity.y -= 100" entry_id=345
+}

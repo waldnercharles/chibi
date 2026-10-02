@@ -315,7 +315,7 @@ static bool current(const app_refactor *plan, char *error, size_t size)
 
 static int write_file(const refactor_file *file)
 {
-    if (file->to && write_text_file_atomic(file->to, file->text)) {
+    if (file->to && write_file_atomic(file->to, file->text)) {
         return -1;
     }
     return moved(file) ? remove_content_file(file->from) : 0;
@@ -327,7 +327,7 @@ static void restore_file(const refactor_file *file)
         remove_content_file(file->to);
     }
     if (file->from) {
-        write_text_file_atomic(file->from, file->before);
+        write_file_atomic(file->from, file->before);
     }
 }
 

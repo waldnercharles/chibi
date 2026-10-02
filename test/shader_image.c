@@ -130,8 +130,8 @@ static void authoring()
                              .i = p == SHADER_IMAGE_INPUT_FILTER ? 0 : 1 };
         assert(graph_set_pin_default(g, image, 0, p, &value) == 0);
     }
-    char *json = behavior_asset_save_json(asset);
-    behavior_asset *loaded = behavior_asset_load_json(json);
+    char *json = behavior_asset_save(asset);
+    behavior_asset *loaded = behavior_asset_load(json);
     assert(loaded);
     free(json);
     node *copy = graph_node_by_id(loaded->graph, image->id);
@@ -139,10 +139,10 @@ static void authoring()
         copy->input_pins[SHADER_IMAGE_INPUT_IMAGE].default_value.str,
         ir.images[0].key
     ));
-    char *clipboard = graph_save_nodes_json(g, &image, 1);
+    char *clipboard = graph_save_nodes(g, &image, 1);
     graph pasted;
     graph_init(&pasted);
-    assert(graph_append_json(&pasted, clipboard, 0, 0) == 0);
+    assert(graph_append(&pasted, clipboard, 0, 0) == 0);
     free(clipboard);
     behavior_asset_free(asset);
     assert(!strcmp(
@@ -177,7 +177,7 @@ void test_shader_image_cpu()
 {
     sampling();
     authoring();
-    puts("shader image CPU PASS: color space, straight alpha, pixel centers, wrap/filter edges, missing image diagnostics and owned JSON/clipboard keys");
+    puts("shader image CPU PASS: color space, straight alpha, pixel centers, wrap/filter edges, missing image diagnostics and owned KDL/clipboard keys");
 }
 
 static void gpu_variant(shader_image_color_space color_space, shader_image_filter filter, shader_image_wrap wrap)

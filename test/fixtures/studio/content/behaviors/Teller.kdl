@@ -1,0 +1,7 @@
+version 3
+name "Teller"
+id_counter 1
+owner_type "ecs.entity"
+(array)graphs {
+    - kind="event" name=""
+}

@@ -1155,14 +1155,14 @@ static bool apply_binding_choice(studio *s, node *target, int pin, const pin_bin
         return false;
     }
 
-    char *before = ed_snapshot(e);
+    behavior_asset *before = ed_snapshot(e);
     bool success = replace_input_binding(e, target, pin, binding);
     if (success) {
         e->pending_snapshot = before;
         ed_commit_snapshot(e);
     } else {
         (void)ed_adopt_behavior_asset(e, before);
-        free(before);
+        behavior_asset_free(before);
     }
     if (action) {
         success = collab_actions_finish(action, success) && success;
@@ -1184,7 +1184,7 @@ static bool apply_input_constant(studio *s, node *target, int pin, const pin_val
         free(action);
         return false;
     }
-    char *before = ed_snapshot(e);
+    behavior_asset *before = ed_snapshot(e);
     bool success = replace_input_binding(e, target, pin, NULL) &&
                    graph_set_pin_default(gr, target, 0, pin, value) == 0;
     if (success) {
@@ -1193,7 +1193,7 @@ static bool apply_input_constant(studio *s, node *target, int pin, const pin_val
         e->edit_pending = 1;
     } else {
         (void)ed_adopt_behavior_asset(e, before);
-        free(before);
+        behavior_asset_free(before);
     }
     if (action) {
         success = collab_actions_finish(action, success) && success;

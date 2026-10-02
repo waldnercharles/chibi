@@ -186,8 +186,8 @@ static void ownership()
     /* Interned names must not borrow a mutable selection mask. */
     const char *name = ctx.own_type_name(bi, "10");
     assert(name != bi->node_states[0].str && name != bi->node_states[1].str);
-    char *json = behavior_asset_save_json(a);
-    behavior_asset *next = behavior_asset_load_json(json);
+    char *json = behavior_asset_save(a);
+    behavior_asset *next = behavior_asset_load(json);
     free(json);
     assert(next);
     graph *g = next->graphs[1];
@@ -206,8 +206,8 @@ static void ownership()
     assert(run && run->whole_function_executed && flow_run_status(run) == FLOW_COMPLETED);
     assert(bi->variables[0].i == 1 && !strcmp(bi->node_states[1].str, "11"));
     flow_run_free(run);
-    json = behavior_asset_save_json(next);
-    behavior_asset *changed = behavior_asset_load_json(json);
+    json = behavior_asset_save(next);
+    behavior_asset *changed = behavior_asset_load(json);
     free(json);
     pin_spec extra = { .name = "Out2", .type = PIN_FLOW, .kind = PIN_EXEC };
     assert(graph_add_pin(changed->graphs[1], changed->graphs[1]->nodes[2], true, &extra) == 2);

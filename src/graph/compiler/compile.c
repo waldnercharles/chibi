@@ -1123,9 +1123,7 @@ static int compile_asset(const behavior_asset *asset, compile_report *out, bool 
 /* Component nodes run as the generated descriptors they lower to. */
 static int compile_lowered(const behavior_asset *asset, compile_report *out)
 {
-    char *json = behavior_asset_save_json(asset);
-    behavior_asset *lowered = json ? behavior_asset_load_json(json) : NULL;
-    free(json);
+    behavior_asset *lowered = behavior_asset_clone(asset);
     char error[256] = "";
     if (!lowered) {
         snprintf(error, sizeof error, "%s", graph_last_error());

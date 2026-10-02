@@ -119,7 +119,7 @@ make build-tracy
 Run the editor or another authored project:
 
 ```sh
-make run-tracy PROJECT=. SCENE=scenes/Arena3D.yaml
+make run-tracy PROJECT=. SCENE=scenes/Arena3D.kdl
 ```
 
 Use the [Tracy profiler](https://github.com/wolfpld/tracy/releases) and

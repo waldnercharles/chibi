@@ -1,0 +1,1829 @@
+version 3
+name "Basalt"
+domain "material"
+id_counter 17237
+description "Physically based basalt on the BasaltCave column grid: prisms with cross-joints, streaks, phenocrysts and relief."
+(array)graphs {
+    - {
+        kind "event"
+        name ""
+        (array)nodes {
+            - {
+                id 1
+                type "Shader Surface Output"
+                x 0.0
+                y 0.0
+                placed #false
+                inputs {
+                    "Base Color" {
+                        default x=1.0 y=1.0 z=1.0
+                    }
+                    Emission {
+                        default x=0.0 y=0.0 z=0.0
+                    }
+                    Normal {
+                        default x=0.0 y=0.0 z=0.0
+                    }
+                }
+            }
+            - id=10 type="Shader WorldPosition" x=0.0 y=0.0 placed=#false
+            - {
+                id 12
+                type "Shader X"
+                x 0.0
+                y 0.0
+                placed #false
+                inputs {
+                    Value {
+                        type "struct"
+                        type_name "ShaderVec3"
+                        binding kind="local" local_id=17234
+                    }
+                }
+            }
+            - {
+                id 15
+                type "Shader Z"
+                x 0.0
+                y 0.0
+                placed #false
+                inputs {
+                    Value {
+                        type "struct"
+                        type_name "ShaderVec3"
+                        binding kind="local" local_id=17234
+                    }
+                }
+            }
+            - {
+                id 16026
+                type "Call Pure Function"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 12137
+                reference_name "Column Grid"
+                inputs {
+                    X id=16027 type="float"
+                    Z id=16028 type="float"
+                }
+                outputs {
+                    Column id=16029 type="float"
+                    Offset id=16030 type="float"
+                    "Half Width" id=16031 type="float"
+                    Across id=16032 type="float"
+                    Along id=16033 type="float"
+                }
+            }
+            - {
+                id 16034
+                type "Call Pure Function"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 14027
+                reference_name "Prism Facet"
+                inputs {
+                    Column {
+                        id 16035
+                        type "float"
+                        binding kind="local" local_id=17230
+                    }
+                    Across {
+                        id 16036
+                        type "float"
+                        binding kind="local" local_id=17231
+                    }
+                    "Half Width" {
+                        id 16037
+                        type "float"
+                        binding kind="local" local_id=17235
+                    }
+                }
+                outputs {
+                    Angle id=16038 type="float"
+                }
+            }
+            - {
+                id 16039
+                type "Call Pure Function"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 14488
+                reference_name "Cross Joints"
+                inputs {
+                    Column {
+                        id 16040
+                        type "float"
+                        binding kind="local" local_id=17230
+                    }
+                    Along id=16041 type="float"
+                    Offset id=16042 type="float"
+                    Across {
+                        id 16043
+                        type "float"
+                        binding kind="local" local_id=17231
+                    }
+                }
+                outputs {
+                    Joint id=16044 type="float"
+                    Block id=16045 type="float"
+                    "Block T" id=16046 type="float"
+                }
+            }
+            - {
+                id 16047
+                type "Call Pure Function"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 11473
+                reference_name "Phenocrysts"
+                inputs {
+                    Position {
+                        id 16048
+                        type "struct"
+                        type_name "ShaderVec3"
+                        binding kind="local" local_id=17234
+                    }
+                    Joint {
+                        id 16049
+                        type "float"
+                        binding kind="local" local_id=17232
+                    }
+                }
+                outputs {
+                    Mask id=16050 type="float"
+                    Tilt id=16051 type="struct" type_name="ShaderVec3"
+                }
+            }
+            - {
+                id 16052
+                type "Call Pure Function"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 11006
+                reference_name "Relief"
+                inputs {
+                    Position {
+                        id 16053
+                        type "struct"
+                        type_name "ShaderVec3"
+                        binding kind="local" local_id=17234
+                    }
+                }
+                outputs {
+                    Height id=16054 type="float"
+                    Slope id=16055 type="struct" type_name="ShaderVec3"
+                }
+            }
+            - {
+                id 16127
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 16056
+                reference_name "smoothstep(0.25, 0.55, noise(vec3(x * 0.16, z * 0.012, 3), 1) * noise(vec3(x * 0.02, z * 0.004, 4), 1))"
+                inputs {
+                    x id=16128 type="float"
+                    z id=16129 type="float"
+                }
+                outputs {
+                    Result id=16130 type="float"
+                }
+            }
+            - {
+                id 16337
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 16273
+                reference_name "(0.85 + 0.3 * noise(vec3(column, 0, 7), 1)) * (0.9 + 0.2 * noise(vec3(column, block, 8), 1))"
+                inputs {
+                    column {
+                        id 16338
+                        type "float"
+                        binding kind="local" local_id=17230
+                    }
+                    block id=16339 type="float"
+                }
+                outputs {
+                    Result id=16340 type="float"
+                }
+            }
+            - {
+                id 16360
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 16341
+                reference_name "smoothstep(0.8, 1, abs(across))"
+                inputs {
+                    across {
+                        id 16361
+                        type "float"
+                        binding kind="local" local_id=17231
+                    }
+                }
+                outputs {
+                    Result id=16362 type="float"
+                }
+            }
+            - {
+                id 16399
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 16363
+                reference_name "(1 - 0.7 * joint) * (1 - 0.45 * groove)"
+                inputs {
+                    joint {
+                        id 16400
+                        type "float"
+                        binding kind="local" local_id=17232
+                    }
+                    groove {
+                        id 16401
+                        type "float"
+                        binding kind="local" local_id=17236
+                    }
+                }
+                outputs {
+                    Result id=16402 type="float"
+                }
+            }
+            - {
+                id 16486
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 16422
+                reference_name "mix((vec3(0.068, 0.073, 0.08) + streaks * vec3(0.037, 0.007, -0.016)) * tint, vec3(0.12, 0.12, 0.115), crystal) * shade"
+                inputs {
+                    streaks id=16487 type="float"
+                    tint id=16488 type="float"
+                    crystal {
+                        id 16489
+                        type "float"
+                        binding kind="local" local_id=17233
+                    }
+                    shade id=16490 type="float"
+                }
+                outputs {
+                    Result id=16491 type="struct" type_name="ShaderVec3"
+                }
+            }
+            - {
+                id 16754
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 16663
+                reference_name "vec3(mix(mix(cos(facet), -0.85, smoothstep(0.86, 1, -across)), 0.85, smoothstep(0.86, 1, across)), sin(facet), mix((blockT - 0.5) * 0.2, mix(-0.7, 0.7, step(0.5, blockT)), joint))"
+                inputs {
+                    facet id=16755 type="float"
+                    across {
+                        id 16756
+                        type "float"
+                        binding kind="local" local_id=17231
+                    }
+                    blockT id=16757 type="float"
+                    joint {
+                        id 16758
+                        type "float"
+                        binding kind="local" local_id=17232
+                    }
+                }
+                outputs {
+                    Result id=16759 type="struct" type_name="ShaderVec3"
+                }
+            }
+            - {
+                id 16777
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 16760
+                reference_name "prism + reliefSlope + crystalTilt"
+                inputs {
+                    prism id=16778 type="struct" type_name="ShaderVec3"
+                    reliefSlope id=16779 type="struct" type_name="ShaderVec3"
+                    crystalTilt id=16780 type="struct" type_name="ShaderVec3"
+                }
+                outputs {
+                    Result id=16781 type="struct" type_name="ShaderVec3"
+                }
+            }
+            - {
+                id 16923
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 16873
+                reference_name "mix(mix(0.68 + 0.12 * noise(vec3(column, 0, 12), 1), 0.95, joint), 0.1, crystal)"
+                inputs {
+                    column {
+                        id 16924
+                        type "float"
+                        binding kind="local" local_id=17230
+                    }
+                    joint {
+                        id 16925
+                        type "float"
+                        binding kind="local" local_id=17232
+                    }
+                    crystal {
+                        id 16926
+                        type "float"
+                        binding kind="local" local_id=17233
+                    }
+                }
+                outputs {
+                    Result id=16927 type="float"
+                }
+            }
+            - {
+                id 17000
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 16928
+                reference_name "0.22 * halfWidth * (1 - across * across) - 2.5 * groove - 1.8 * joint + 0.35 * relief + 0.15 * crystal"
+                inputs {
+                    halfWidth {
+                        id 17001
+                        type "float"
+                        binding kind="local" local_id=17235
+                    }
+                    across {
+                        id 17002
+                        type "float"
+                        binding kind="local" local_id=17231
+                    }
+                    groove {
+                        id 17003
+                        type "float"
+                        binding kind="local" local_id=17236
+                    }
+                    joint {
+                        id 17004
+                        type "float"
+                        binding kind="local" local_id=17232
+                    }
+                    relief id=17005 type="float"
+                    crystal {
+                        id 17006
+                        type "float"
+                        binding kind="local" local_id=17233
+                    }
+                }
+                outputs {
+                    Result id=17007 type="float"
+                }
+            }
+        }
+        (array)edges {
+            - from="10.Value" to="12.Value"
+            - from="10.Value" to="15.Value"
+            - from="10.Value" to="16047.Position"
+            - from="10.Value" to="16052.Position"
+            - from="12.Value" to="16026.X"
+            - from="12.Value" to="16127.x"
+            - from="15.Value" to="16026.Z"
+            - from="15.Value" to="16127.z"
+            - from="16026.Column" to="16034.Column"
+            - from="16026.Column" to="16039.Column"
+            - from="16026.Column" to="16337.column"
+            - from="16026.Column" to="16923.column"
+            - from="16026.Offset" to="16039.Offset"
+            - from="16026.Half Width" to="16034.Half Width"
+            - from="16026.Half Width" to="17000.halfWidth"
+            - from="16026.Across" to="16034.Across"
+            - from="16026.Across" to="16039.Across"
+            - from="16026.Across" to="16360.across"
+            - from="16026.Across" to="16754.across"
+            - from="16026.Across" to="17000.across"
+            - from="16026.Along" to="16039.Along"
+            - from="16034.Angle" to="16754.facet"
+            - from="16039.Joint" to="16047.Joint"
+            - from="16039.Joint" to="16399.joint"
+            - from="16039.Joint" to="16754.joint"
+            - from="16039.Joint" to="16923.joint"
+            - from="16039.Joint" to="17000.joint"
+            - from="16039.Block" to="16337.block"
+            - from="16039.Block T" to="16754.blockT"
+            - from="16047.Mask" to="16486.crystal"
+            - from="16047.Mask" to="16923.crystal"
+            - from="16047.Mask" to="17000.crystal"
+            - from="16047.Tilt" to="16777.crystalTilt"
+            - from="16052.Height" to="17000.relief"
+            - from="16052.Slope" to="16777.reliefSlope"
+            - from="16127.Result" to="16486.streaks"
+            - from="16337.Result" to="16486.tint"
+            - from="16360.Result" to="16399.groove"
+            - from="16360.Result" to="17000.groove"
+            - from="16399.Result" to="16486.shade"
+            - from="16486.Result" to="1.Base Color"
+            - from="16754.Result" to="16777.prism"
+            - from="16777.Result" to="1.Normal"
+            - from="16923.Result" to="1.Roughness"
+            - from="17000.Result" to="1.Height"
+        }
+        (array)locals {
+            - id=17230 name="column" from="16026.Column"
+            - id=17231 name="across" from="16026.Across"
+            - id=17232 name="joint" from="16039.Joint"
+            - id=17233 name="crystal" from="16047.Mask"
+            - id=17234 name="world" from="10.Value"
+            - id=17235 name="halfWidth" from="16026.Half Width"
+            - id=17236 name="groove" from="16360.Result"
+        }
+    }
+    - id=16928 kind="function" math_expression="0.22 * halfWidth * (1 - across * across) - 2.5 * groove - 1.8 * joint + 0.35 * relief + 0.15 * crystal" entry_id=17159
+    - id=16873 kind="function" math_expression="mix(mix(0.68 + 0.12 * noise(vec3(column, 0, 12), 1), 0.95, joint), 0.1, crystal)" entry_id=17109
+    - id=16760 kind="function" math_expression="prism + reliefSlope + crystalTilt" entry_id=17092
+    - id=16663 kind="function" math_expression="vec3(mix(mix(cos(facet), -0.85, smoothstep(0.86, 1, -across)), 0.85, smoothstep(0.86, 1, across)), sin(facet), mix((blockT - 0.5) * 0.2, mix(-0.7, 0.7, step(0.5, blockT)), joint))" entry_id=16783
+    - id=16422 kind="function" math_expression="mix((vec3(0.068, 0.073, 0.08) + streaks * vec3(0.037, 0.007, -0.016)) * tint, vec3(0.12, 0.12, 0.115), crystal) * shade" entry_id=17028
+    - id=16363 kind="function" math_expression="(1 - 0.7 * joint) * (1 - 0.45 * groove)" entry_id=16628
+    - id=16341 kind="function" math_expression="smoothstep(0.8, 1, abs(across))" entry_id=17009
+    - id=16273 kind="function" math_expression="(0.85 + 0.3 * noise(vec3(column, 0, 7), 1)) * (0.9 + 0.2 * noise(vec3(column, block, 8), 1))" entry_id=16564
+    - id=16056 kind="function" math_expression="smoothstep(0.25, 0.55, noise(vec3(x * 0.16, z * 0.012, 3), 1) * noise(vec3(x * 0.02, z * 0.004, 4), 1))" entry_id=16493
+    - id=15734 kind="function" math_expression="saturate(max(below, above))" entry_id=15988
+    - id=15620 kind="function" math_expression="(1 - blockT) * spacing" entry_id=15717
+    - id=15590 kind="function" math_expression="block + 1" entry_id=15704
+    - id=15487 kind="function" math_expression="blockT * spacing" entry_id=15579
+    - id=15376 kind="function" math_expression="blockCoord - fract(blockCoord)" entry_id=16003
+    - id=15269 kind="function" math_expression="fract(blockCoord)" entry_id=16017
+    - id=14760 kind="function" math_expression="(along + 0.45 * spacing * sin(along / (0.9 * spacing) + 7 * phase) - spacing * phase - 0.2 * tilt * offset - 3 * bow * across * across) / spacing" entry_id=15394
+    - id=14713 kind="function" math_expression="sin(column * 0.83261 + 4.4)" entry_id=15154
+    - id=14666 kind="function" math_expression="sin(column * 3.30119 + 2.2)" entry_id=15038
+    - id=14595 kind="function" math_expression="0.5 + 0.5 * sin(column * 1.93716 + 1.1)" entry_id=15004
+    - id=14500 kind="function" math_expression="26 + 36 * (0.5 + 0.5 * sin(column * 2.3999631 + 0.3))" entry_id=15653
+    - {
+        id 14488
+        kind "function"
+        name "Cross Joints"
+        entry_id 14489
+        return_id 14491
+        call_depth_limit 64
+        (array)nodes {
+            - {
+                id 14489
+                type "Function Entry"
+                x 0.0
+                y 0.0
+                placed #false
+                (array)outputs {
+                    - id=14493 name="Column" type="float" kind="data"
+                    - id=14494 name="Along" type="float" kind="data"
+                    - id=14495 name="Offset" type="float" kind="data"
+                    - id=14496 name="Across" type="float" kind="data"
+                }
+            }
+            - {
+                id 14491
+                type "Return"
+                x 0.0
+                y 0.0
+                placed #false
+                (array)inputs {
+                    - id=14497 name="Joint" type="float" kind="data"
+                    - id=14498 name="Block" type="float" kind="data"
+                    - id=14499 name="Block T" type="float" kind="data"
+                }
+            }
+            - {
+                id 14546
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 14500
+                reference_name "26 + 36 * (0.5 + 0.5 * sin(column * 2.3999631 + 0.3))"
+                inputs {
+                    column {
+                        id 14547
+                        type "float"
+                        binding kind="local" local_id=15762
+                    }
+                }
+                outputs {
+                    Result id=14548 type="float"
+                }
+            }
+            - {
+                id 14629
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 14595
+                reference_name "0.5 + 0.5 * sin(column * 1.93716 + 1.1)"
+                inputs {
+                    column {
+                        id 14630
+                        type "float"
+                        binding kind="local" local_id=15762
+                    }
+                }
+                outputs {
+                    Result id=14631 type="float"
+                }
+            }
+            - {
+                id 14688
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 14666
+                reference_name "sin(column * 3.30119 + 2.2)"
+                inputs {
+                    column {
+                        id 14689
+                        type "float"
+                        binding kind="local" local_id=15762
+                    }
+                }
+                outputs {
+                    Result id=14690 type="float"
+                }
+            }
+            - {
+                id 14735
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 14713
+                reference_name "sin(column * 0.83261 + 4.4)"
+                inputs {
+                    column {
+                        id 14736
+                        type "float"
+                        binding kind="local" local_id=15762
+                    }
+                }
+                outputs {
+                    Result id=14737 type="float"
+                }
+            }
+            - {
+                id 14854
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 14760
+                reference_name "(along + 0.45 * spacing * sin(along / (0.9 * spacing) + 7 * phase) - spacing * phase - 0.2 * tilt * offset - 3 * bow * across * across) / spacing"
+                inputs {
+                    along id=14855 type="float"
+                    spacing {
+                        id 14856
+                        type "float"
+                        binding kind="local" local_id=15763
+                    }
+                    phase id=14857 type="float"
+                    tilt id=14858 type="float"
+                    offset id=14859 type="float"
+                    bow id=14860 type="float"
+                    across id=14861 type="float"
+                }
+                outputs {
+                    Result id=14862 type="float"
+                }
+            }
+            - {
+                id 15279
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 15269
+                reference_name "fract(blockCoord)"
+                inputs {
+                    blockCoord id=15280 type="float"
+                }
+                outputs {
+                    Result id=15281 type="float"
+                }
+            }
+            - {
+                id 15390
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 15376
+                reference_name "blockCoord - fract(blockCoord)"
+                inputs {
+                    blockCoord id=15391 type="float"
+                }
+                outputs {
+                    Result id=15392 type="float"
+                }
+            }
+            - {
+                id 15499
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 15487
+                reference_name "blockT * spacing"
+                inputs {
+                    blockT {
+                        id 15500
+                        type "float"
+                        binding kind="local" local_id=15764
+                    }
+                    spacing {
+                        id 15501
+                        type "float"
+                        binding kind="local" local_id=15763
+                    }
+                }
+                outputs {
+                    Result id=15502 type="float"
+                }
+            }
+            - {
+                id 15559
+                type "Call Pure Function"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 11249
+                reference_name "Joint Crack"
+                inputs {
+                    Column {
+                        id 15560
+                        type "float"
+                        binding kind="local" local_id=15762
+                    }
+                    Block {
+                        id 15561
+                        type "float"
+                        binding kind="local" local_id=15765
+                    }
+                    Distance id=15562 type="float"
+                }
+                outputs {
+                    Depth id=15563 type="float"
+                }
+            }
+            - {
+                id 15603
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 15590
+                reference_name "block + 1"
+                inputs {
+                    block {
+                        id 15604
+                        type "float"
+                        binding kind="local" local_id=15765
+                    }
+                }
+                outputs {
+                    Result id=15605 type="float"
+                }
+            }
+            - {
+                id 15638
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 15620
+                reference_name "(1 - blockT) * spacing"
+                inputs {
+                    blockT {
+                        id 15639
+                        type "float"
+                        binding kind="local" local_id=15764
+                    }
+                    spacing {
+                        id 15640
+                        type "float"
+                        binding kind="local" local_id=15763
+                    }
+                }
+                outputs {
+                    Result id=15641 type="float"
+                }
+            }
+            - {
+                id 15698
+                type "Call Pure Function"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 11249
+                reference_name "Joint Crack"
+                inputs {
+                    Column {
+                        id 15699
+                        type "float"
+                        binding kind="local" local_id=15762
+                    }
+                    Block id=15700 type="float"
+                    Distance id=15701 type="float"
+                }
+                outputs {
+                    Depth id=15702 type="float"
+                }
+            }
+            - {
+                id 15749
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 15734
+                reference_name "saturate(max(below, above))"
+                inputs {
+                    below id=15750 type="float"
+                    above id=15751 type="float"
+                }
+                outputs {
+                    Result id=15752 type="float"
+                }
+            }
+        }
+        (array)edges {
+            - from="14489.Column" to="14546.column"
+            - from="14489.Column" to="14629.column"
+            - from="14489.Column" to="14688.column"
+            - from="14489.Column" to="14735.column"
+            - from="14489.Column" to="15559.Column"
+            - from="14489.Column" to="15698.Column"
+            - from="14489.Along" to="14854.along"
+            - from="14489.Offset" to="14854.offset"
+            - from="14489.Across" to="14854.across"
+            - from="14546.Result" to="14854.spacing"
+            - from="14546.Result" to="15499.spacing"
+            - from="14546.Result" to="15638.spacing"
+            - from="14629.Result" to="14854.phase"
+            - from="14688.Result" to="14854.tilt"
+            - from="14735.Result" to="14854.bow"
+            - from="14854.Result" to="15279.blockCoord"
+            - from="14854.Result" to="15390.blockCoord"
+            - from="15279.Result" to="14491.Block T"
+            - from="15279.Result" to="15499.blockT"
+            - from="15279.Result" to="15638.blockT"
+            - from="15390.Result" to="14491.Block"
+            - from="15390.Result" to="15559.Block"
+            - from="15390.Result" to="15603.block"
+            - from="15499.Result" to="15559.Distance"
+            - from="15559.Depth" to="15749.below"
+            - from="15603.Result" to="15698.Block"
+            - from="15638.Result" to="15698.Distance"
+            - from="15698.Depth" to="15749.above"
+            - from="15749.Result" to="14491.Joint"
+        }
+        (array)locals {
+            - id=15762 name="column" from="14489.Column"
+            - id=15763 name="spacing" from="14546.Result"
+            - id=15764 name="blockT" from="15279.Result"
+            - id=15765 name="block" from="15390.Result"
+        }
+    }
+    - id=14290 kind="function" math_expression="twist - pi / 6 + pi / 3 * (smoothstep(-softness, softness, cos(twist) - hexX) + smoothstep(-softness, softness, cos(twist + pi / 3) - hexX) + smoothstep(-softness, softness, cos(twist + 2 * pi / 3) - hexX))" entry_id=15859
+    - id=14236 kind="function" math_expression="across * reach" entry_id=14477
+    - id=14170 kind="function" math_expression="1.2 * reach / halfWidth" entry_id=14459
+    - id=14107 kind="function" math_expression="cos(min(twist, pi / 3 - twist))" entry_id=14265
+    - id=14036 kind="function" math_expression="pi / 3 * noise(vec3(column, 0, 1), 1)" entry_id=14425
+    - {
+        id 14027
+        kind "function"
+        name "Prism Facet"
+        entry_id 14028
+        return_id 14030
+        call_depth_limit 64
+        (array)nodes {
+            - {
+                id 14028
+                type "Function Entry"
+                x 0.0
+                y 0.0
+                placed #false
+                (array)outputs {
+                    - id=14032 name="Column" type="float" kind="data"
+                    - id=14033 name="Across" type="float" kind="data"
+                    - id=14034 name="Half Width" type="float" kind="data"
+                }
+            }
+            - {
+                id 14030
+                type "Return"
+                x 0.0
+                y 0.0
+                placed #false
+                (array)inputs {
+                    - id=14035 name="Angle" type="float" kind="data"
+                }
+            }
+            - {
+                id 14070
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 14036
+                reference_name "pi / 3 * noise(vec3(column, 0, 1), 1)"
+                inputs {
+                    column id=14071 type="float"
+                }
+                outputs {
+                    Result id=14072 type="float"
+                }
+            }
+            - {
+                id 14133
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 14107
+                reference_name "cos(min(twist, pi / 3 - twist))"
+                inputs {
+                    twist id=14134 type="float"
+                }
+                outputs {
+                    Result id=14135 type="float"
+                }
+            }
+            - {
+                id 14188
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 14170
+                reference_name "1.2 * reach / halfWidth"
+                inputs {
+                    reach id=14189 type="float"
+                    halfWidth id=14190 type="float"
+                }
+                outputs {
+                    Result id=14191 type="float"
+                }
+            }
+            - {
+                id 14248
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 14236
+                reference_name "across * reach"
+                inputs {
+                    across id=14249 type="float"
+                    reach id=14250 type="float"
+                }
+                outputs {
+                    Result id=14251 type="float"
+                }
+            }
+            - {
+                id 14419
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 14290
+                reference_name "twist - pi / 6 + pi / 3 * (smoothstep(-softness, softness, cos(twist) - hexX) + smoothstep(-softness, softness, cos(twist + pi / 3) - hexX) + smoothstep(-softness, softness, cos(twist + 2 * pi / 3) - hexX))"
+                inputs {
+                    twist id=14420 type="float"
+                    softness id=14421 type="float"
+                    hexX id=14422 type="float"
+                }
+                outputs {
+                    Result id=14423 type="float"
+                }
+            }
+        }
+        (array)edges {
+            - from="14028.Column" to="14070.column"
+            - from="14028.Across" to="14248.across"
+            - from="14028.Half Width" to="14188.halfWidth"
+            - from="14070.Result" to="14133.twist"
+            - from="14070.Result" to="14419.twist"
+            - from="14133.Result" to="14188.reach"
+            - from="14133.Result" to="14248.reach"
+            - from="14188.Result" to="14419.softness"
+            - from="14248.Result" to="14419.hexX"
+            - from="14419.Result" to="14030.Angle"
+        }
+    }
+    - id=13756 kind="function" math_expression="z - columnsPerZ / columnsPerX * offset" entry_id=15837
+    - id=13671 kind="function" math_expression="2 * fract(columnCoord) - 1" entry_id=15815
+    - id=13549 kind="function" math_expression="0.5 / columnsPerX" entry_id=15802
+    - id=13358 kind="function" math_expression="(fract(columnCoord) - 0.5) / columnsPerX" entry_id=15781
+    - id=13281 kind="function" math_expression="columnCoord - fract(columnCoord)" entry_id=15767
+    - id=13044 kind="function" math_expression="0.9 * cos(wobbleA) / 420 - 0.5 * cos(wobbleB) / 300 + 4.6 * (0.5 * cos(drift) / 2100 * sin(sway) + swayAmount * cos(sway) / 260)" entry_id=13807
+    - id=12795 kind="function" math_expression="1 / 26 + 0.9 * cos(wobbleA) / 180 + 0.5 * cos(wobbleB) / 95 + 4.6 * (0.5 * cos(drift) / 1300 * sin(sway) + swayAmount * cos(sway) / 900)" entry_id=13901
+    - id=12556 kind="function" math_expression="x / 26 + 0.9 * sin(wobbleA) + 0.5 * sin(wobbleB) + 4.6 * swayAmount * sin(sway)" entry_id=13697
+    - id=12507 kind="function" math_expression="0.5 + 0.5 * sin(drift)" entry_id=13260
+    - {
+        id 10926
+        kind "function"
+        name "Rock Noise"
+        entry_id 10927
+        return_id 10929
+        call_depth_limit 64
+        (array)nodes {
+            - {
+                id 10927
+                type "Function Entry"
+                x 0.0
+                y 0.0
+                placed #false
+                (array)outputs {
+                    - id=10931 name="Position" type="struct" type_name="ShaderVec3" kind="data"
+                }
+            }
+            - {
+                id 10929
+                type "Return"
+                x 0.0
+                y 0.0
+                placed #false
+                (array)inputs {
+                    - id=10932 name="Value" type="float" kind="data"
+                }
+            }
+            - {
+                id 10968
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 10933
+                reference_name "0.7 * noise(position, 0.08) + 0.3 * noise(position, 0.45)"
+                inputs {
+                    position id=10969 type="struct" type_name="ShaderVec3"
+                }
+                outputs {
+                    Result id=10970 type="float"
+                }
+            }
+        }
+        (array)edges {
+            - from="10927.Position" to="10968.position"
+            - from="10968.Result" to="10929.Value"
+        }
+    }
+    - id=10933 kind="function" math_expression="0.7 * noise(position, 0.08) + 0.3 * noise(position, 0.45)" entry_id=11909
+    - {
+        id 11006
+        kind "function"
+        name "Relief"
+        entry_id 11007
+        return_id 11009
+        call_depth_limit 64
+        (array)nodes {
+            - {
+                id 11007
+                type "Function Entry"
+                x 0.0
+                y 0.0
+                placed #false
+                (array)outputs {
+                    - id=11011 name="Position" type="struct" type_name="ShaderVec3" kind="data"
+                }
+            }
+            - {
+                id 11009
+                type "Return"
+                x 0.0
+                y 0.0
+                placed #false
+                (array)inputs {
+                    - id=11012 name="Height" type="float" kind="data"
+                    - id=11013 name="Slope" type="struct" type_name="ShaderVec3" kind="data"
+                }
+            }
+            - {
+                id 11028
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 11014
+                reference_name "vec3(position.x, 0, position.z)"
+                inputs {
+                    position id=11029 type="struct" type_name="ShaderVec3"
+                }
+                outputs {
+                    Result id=11030 type="struct" type_name="ShaderVec3"
+                }
+            }
+            - {
+                id 11051
+                type "Call Pure Function"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 10926
+                reference_name "Rock Noise"
+                inputs {
+                    Position {
+                        id 11052
+                        type "struct"
+                        type_name "ShaderVec3"
+                        binding kind="local" local_id=11905
+                    }
+                }
+                outputs {
+                    Value id=11053 type="float"
+                }
+            }
+            - {
+                id 11096
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 11074
+                reference_name "ground + vec3(0.8, 0, 0)"
+                inputs {
+                    ground {
+                        id 11097
+                        type "struct"
+                        type_name "ShaderVec3"
+                        binding kind="local" local_id=11905
+                    }
+                }
+                outputs {
+                    Result id=11098 type="struct" type_name="ShaderVec3"
+                }
+            }
+            - {
+                id 11119
+                type "Call Pure Function"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 10926
+                reference_name "Rock Noise"
+                inputs {
+                    Position id=11120 type="struct" type_name="ShaderVec3"
+                }
+                outputs {
+                    Value id=11121 type="float"
+                }
+            }
+            - {
+                id 11166
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 11144
+                reference_name "ground + vec3(0, 0, 0.8)"
+                inputs {
+                    ground {
+                        id 11167
+                        type "struct"
+                        type_name "ShaderVec3"
+                        binding kind="local" local_id=11905
+                    }
+                }
+                outputs {
+                    Result id=11168 type="struct" type_name="ShaderVec3"
+                }
+            }
+            - {
+                id 11189
+                type "Call Pure Function"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 10926
+                reference_name "Rock Noise"
+                inputs {
+                    Position id=11190 type="struct" type_name="ShaderVec3"
+                }
+                outputs {
+                    Value id=11191 type="float"
+                }
+            }
+            - {
+                id 11244
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 11214
+                reference_name "vec3(east - height, 0, north - height) * 0.45"
+                inputs {
+                    east id=11245 type="float"
+                    height id=11246 type="float"
+                    north id=11247 type="float"
+                }
+                outputs {
+                    Result id=11248 type="struct" type_name="ShaderVec3"
+                }
+            }
+        }
+        (array)edges {
+            - from="11007.Position" to="11028.position"
+            - from="11028.Result" to="11051.Position"
+            - from="11028.Result" to="11096.ground"
+            - from="11028.Result" to="11166.ground"
+            - from="11051.Value" to="11009.Height"
+            - from="11051.Value" to="11244.height"
+            - from="11096.Result" to="11119.Position"
+            - from="11119.Value" to="11244.east"
+            - from="11166.Result" to="11189.Position"
+            - from="11189.Value" to="11244.north"
+            - from="11244.Result" to="11009.Slope"
+        }
+        (array)locals {
+            - id=11905 name="ground" from="11028.Result"
+        }
+    }
+    - id=11014 kind="function" math_expression="vec3(position.x, 0, position.z)" entry_id=11170
+    - id=11074 kind="function" math_expression="ground + vec3(0.8, 0, 0)" entry_id=11123
+    - id=11144 kind="function" math_expression="ground + vec3(0, 0, 0.8)" entry_id=11193
+    - id=11214 kind="function" math_expression="vec3(east - height, 0, north - height) * 0.45" entry_id=11944
+    - {
+        id 11249
+        kind "function"
+        name "Joint Crack"
+        entry_id 11250
+        return_id 11252
+        call_depth_limit 64
+        (array)nodes {
+            - {
+                id 11250
+                type "Function Entry"
+                x 0.0
+                y 0.0
+                placed #false
+                (array)outputs {
+                    - id=11254 name="Column" type="float" kind="data"
+                    - id=11255 name="Block" type="float" kind="data"
+                    - id=11256 name="Distance" type="float" kind="data"
+                }
+            }
+            - {
+                id 11252
+                type "Return"
+                x 0.0
+                y 0.0
+                placed #false
+                (array)inputs {
+                    - id=11257 name="Depth" type="float" kind="data"
+                }
+            }
+            - {
+                id 11279
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 11258
+                reference_name "noise(vec3(column, block, 11), 1)"
+                inputs {
+                    column id=11280 type="float"
+                    block id=11281 type="float"
+                }
+                outputs {
+                    Result id=11282 type="float"
+                }
+            }
+            - {
+                id 11354
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 11325
+                reference_name "step(0.64, open) * (0.6 + 1.4 * open)"
+                inputs {
+                    open id=11355 type="float"
+                }
+                outputs {
+                    Result id=11356 type="float"
+                }
+            }
+            - {
+                id 11409
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 11378
+                reference_name "width * (1 - smoothstep(0, width + 0.01, distance))"
+                inputs {
+                    width id=11410 type="float"
+                    distance id=11411 type="float"
+                }
+                outputs {
+                    Result id=11412 type="float"
+                }
+            }
+        }
+        (array)edges {
+            - from="11250.Column" to="11279.column"
+            - from="11250.Block" to="11279.block"
+            - from="11250.Distance" to="11409.distance"
+            - from="11279.Result" to="11354.open"
+            - from="11354.Result" to="11409.width"
+            - from="11409.Result" to="11252.Depth"
+        }
+    }
+    - id=11258 kind="function" math_expression="noise(vec3(column, block, 11), 1)" entry_id=11358
+    - id=11325 kind="function" math_expression="step(0.64, open) * (0.6 + 1.4 * open)" entry_id=11414
+    - id=11378 kind="function" math_expression="width * (1 - smoothstep(0, width + 0.01, distance))" entry_id=11974
+    - {
+        id 11473
+        kind "function"
+        name "Phenocrysts"
+        entry_id 11474
+        return_id 11476
+        call_depth_limit 64
+        (array)nodes {
+            - {
+                id 11474
+                type "Function Entry"
+                x 0.0
+                y 0.0
+                placed #false
+                (array)outputs {
+                    - id=11478 name="Position" type="struct" type_name="ShaderVec3" kind="data"
+                    - id=11479 name="Joint" type="float" kind="data"
+                }
+            }
+            - {
+                id 11476
+                type "Return"
+                x 0.0
+                y 0.0
+                placed #false
+                (array)inputs {
+                    - id=11480 name="Mask" type="float" kind="data"
+                    - id=11481 name="Tilt" type="struct" type_name="ShaderVec3" kind="data"
+                }
+            }
+            - {
+                id 11495
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 11482
+                reference_name "position.xz / 0.9"
+                inputs {
+                    position id=11496 type="struct" type_name="ShaderVec3"
+                }
+                outputs {
+                    Result id=11497 type="struct" type_name="ShaderVec2"
+                }
+            }
+            - {
+                id 11535
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 11521
+                reference_name "grain - fract(grain)"
+                inputs {
+                    grain id=11536 type="struct" type_name="ShaderVec2"
+                }
+                outputs {
+                    Result id=11537 type="struct" type_name="ShaderVec2"
+                }
+            }
+            - {
+                id 11577
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 11561
+                reference_name "fract(grain) - 0.5"
+                inputs {
+                    grain id=11578 type="struct" type_name="ShaderVec2"
+                }
+                outputs {
+                    Result id=11579 type="struct" type_name="ShaderVec2"
+                }
+            }
+            - {
+                id 11655
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 11603
+                reference_name "step(0.975, noise(vec3(cell.x, cell.y, 21), 1)) * step(dot(spot, spot), 0.1) * (1 - joint)"
+                inputs {
+                    cell {
+                        id 11656
+                        type "struct"
+                        type_name "ShaderVec2"
+                        binding kind="local" local_id=11906
+                    }
+                    spot id=11657 type="struct" type_name="ShaderVec2"
+                    joint id=11658 type="float"
+                }
+                outputs {
+                    Result id=11659 type="float"
+                }
+            }
+            - {
+                id 11805
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 11742
+                reference_name "vec3(noise(vec3(cell.x, cell.y, 22), 1) - 0.5, 0, noise(vec3(cell.x, cell.y, 23), 1) - 0.5) * 0.6 * mask"
+                inputs {
+                    cell {
+                        id 11806
+                        type "struct"
+                        type_name "ShaderVec2"
+                        binding kind="local" local_id=11906
+                    }
+                    mask {
+                        id 11807
+                        type "float"
+                        binding kind="local" local_id=11907
+                    }
+                }
+                outputs {
+                    Result id=11808 type="struct" type_name="ShaderVec3"
+                }
+            }
+        }
+        (array)edges {
+            - from="11474.Position" to="11495.position"
+            - from="11474.Joint" to="11655.joint"
+            - from="11495.Result" to="11535.grain"
+            - from="11495.Result" to="11577.grain"
+            - from="11535.Result" to="11655.cell"
+            - from="11535.Result" to="11805.cell"
+            - from="11577.Result" to="11655.spot"
+            - from="11655.Result" to="11476.Mask"
+            - from="11655.Result" to="11805.mask"
+            - from="11805.Result" to="11476.Tilt"
+        }
+        (array)locals {
+            - id=11906 name="cell" from="11535.Result"
+            - id=11907 name="mask" from="11655.Result"
+        }
+    }
+    - id=11482 kind="function" math_expression="position.xz / 0.9" entry_id=11581
+    - id=11521 kind="function" math_expression="grain - fract(grain)" entry_id=11876
+    - id=11561 kind="function" math_expression="fract(grain) - 0.5" entry_id=11890
+    - id=11603 kind="function" math_expression="step(0.975, noise(vec3(cell.x, cell.y, 21), 1)) * step(dot(spot, spot), 0.1) * (1 - joint)" entry_id=12005
+    - id=11742 kind="function" math_expression="vec3(noise(vec3(cell.x, cell.y, 22), 1) - 0.5, 0, noise(vec3(cell.x, cell.y, 23), 1) - 0.5) * 0.6 * mask" entry_id=12063
+    - {
+        id 12137
+        kind "function"
+        name "Column Grid"
+        entry_id 12138
+        return_id 12140
+        call_depth_limit 64
+        (array)nodes {
+            - {
+                id 12138
+                type "Function Entry"
+                x 0.0
+                y 0.0
+                placed #false
+                (array)outputs {
+                    - id=12142 name="X" type="float" kind="data"
+                    - id=12143 name="Z" type="float" kind="data"
+                }
+            }
+            - {
+                id 12140
+                type "Return"
+                x 0.0
+                y 0.0
+                placed #false
+                (array)inputs {
+                    - id=12144 name="Column" type="float" kind="data"
+                    - id=12145 name="Offset" type="float" kind="data"
+                    - id=12146 name="Half Width" type="float" kind="data"
+                    - id=12147 name="Across" type="float" kind="data"
+                    - id=12148 name="Along" type="float" kind="data"
+                }
+            }
+            - {
+                id 12179
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 12149
+                reference_name "x / 180 + z / 420 + 1.3"
+                inputs {
+                    x {
+                        id 12180
+                        type "float"
+                        binding kind="local" local_id=15753
+                    }
+                    z {
+                        id 12181
+                        type "float"
+                        binding kind="local" local_id=15754
+                    }
+                }
+                outputs {
+                    Result id=12182 type="float"
+                }
+            }
+            - {
+                id 12273
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 12243
+                reference_name "x / 95 - z / 300 + 0.4"
+                inputs {
+                    x {
+                        id 12274
+                        type "float"
+                        binding kind="local" local_id=15753
+                    }
+                    z {
+                        id 12275
+                        type "float"
+                        binding kind="local" local_id=15754
+                    }
+                }
+                outputs {
+                    Result id=12276 type="float"
+                }
+            }
+            - {
+                id 12361
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 12337
+                reference_name "x / 1300 + z / 2100"
+                inputs {
+                    x {
+                        id 12362
+                        type "float"
+                        binding kind="local" local_id=15753
+                    }
+                    z {
+                        id 12363
+                        type "float"
+                        binding kind="local" local_id=15754
+                    }
+                }
+                outputs {
+                    Result id=12364 type="float"
+                }
+            }
+            - {
+                id 12443
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 12413
+                reference_name "x / 900 + z / 260 + 2.2"
+                inputs {
+                    x {
+                        id 12444
+                        type "float"
+                        binding kind="local" local_id=15753
+                    }
+                    z {
+                        id 12445
+                        type "float"
+                        binding kind="local" local_id=15754
+                    }
+                }
+                outputs {
+                    Result id=12446 type="float"
+                }
+            }
+            - {
+                id 12529
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 12507
+                reference_name "0.5 + 0.5 * sin(drift)"
+                inputs {
+                    drift {
+                        id 12530
+                        type "float"
+                        binding kind="local" local_id=15757
+                    }
+                }
+                outputs {
+                    Result id=12531 type="float"
+                }
+            }
+            - {
+                id 12616
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 12556
+                reference_name "x / 26 + 0.9 * sin(wobbleA) + 0.5 * sin(wobbleB) + 4.6 * swayAmount * sin(sway)"
+                inputs {
+                    x {
+                        id 12617
+                        type "float"
+                        binding kind="local" local_id=15753
+                    }
+                    wobbleA {
+                        id 12618
+                        type "float"
+                        binding kind="local" local_id=15755
+                    }
+                    wobbleB {
+                        id 12619
+                        type "float"
+                        binding kind="local" local_id=15756
+                    }
+                    swayAmount {
+                        id 12620
+                        type "float"
+                        binding kind="local" local_id=15759
+                    }
+                    sway {
+                        id 12621
+                        type "float"
+                        binding kind="local" local_id=15758
+                    }
+                }
+                outputs {
+                    Result id=12622 type="float"
+                }
+            }
+            - {
+                id 12901
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 12795
+                reference_name "1 / 26 + 0.9 * cos(wobbleA) / 180 + 0.5 * cos(wobbleB) / 95 + 4.6 * (0.5 * cos(drift) / 1300 * sin(sway) + swayAmount * cos(sway) / 900)"
+                inputs {
+                    wobbleA {
+                        id 12902
+                        type "float"
+                        binding kind="local" local_id=15755
+                    }
+                    wobbleB {
+                        id 12903
+                        type "float"
+                        binding kind="local" local_id=15756
+                    }
+                    drift {
+                        id 12904
+                        type "float"
+                        binding kind="local" local_id=15757
+                    }
+                    sway {
+                        id 12905
+                        type "float"
+                        binding kind="local" local_id=15758
+                    }
+                    swayAmount {
+                        id 12906
+                        type "float"
+                        binding kind="local" local_id=15759
+                    }
+                }
+                outputs {
+                    Result id=12907 type="float"
+                }
+            }
+            - {
+                id 13138
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 13044
+                reference_name "0.9 * cos(wobbleA) / 420 - 0.5 * cos(wobbleB) / 300 + 4.6 * (0.5 * cos(drift) / 2100 * sin(sway) + swayAmount * cos(sway) / 260)"
+                inputs {
+                    wobbleA {
+                        id 13139
+                        type "float"
+                        binding kind="local" local_id=15755
+                    }
+                    wobbleB {
+                        id 13140
+                        type "float"
+                        binding kind="local" local_id=15756
+                    }
+                    drift {
+                        id 13141
+                        type "float"
+                        binding kind="local" local_id=15757
+                    }
+                    sway {
+                        id 13142
+                        type "float"
+                        binding kind="local" local_id=15758
+                    }
+                    swayAmount {
+                        id 13143
+                        type "float"
+                        binding kind="local" local_id=15759
+                    }
+                }
+                outputs {
+                    Result id=13144 type="float"
+                }
+            }
+            - {
+                id 13295
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 13281
+                reference_name "columnCoord - fract(columnCoord)"
+                inputs {
+                    columnCoord {
+                        id 13296
+                        type "float"
+                        binding kind="local" local_id=15760
+                    }
+                }
+                outputs {
+                    Result id=13297 type="float"
+                }
+            }
+            - {
+                id 13379
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 13358
+                reference_name "(fract(columnCoord) - 0.5) / columnsPerX"
+                inputs {
+                    columnCoord {
+                        id 13380
+                        type "float"
+                        binding kind="local" local_id=15760
+                    }
+                    columnsPerX {
+                        id 13381
+                        type "float"
+                        binding kind="local" local_id=15761
+                    }
+                }
+                outputs {
+                    Result id=13382 type="float"
+                }
+            }
+            - {
+                id 13562
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 13549
+                reference_name "0.5 / columnsPerX"
+                inputs {
+                    columnsPerX {
+                        id 13563
+                        type "float"
+                        binding kind="local" local_id=15761
+                    }
+                }
+                outputs {
+                    Result id=13564 type="float"
+                }
+            }
+            - {
+                id 13693
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 13671
+                reference_name "2 * fract(columnCoord) - 1"
+                inputs {
+                    columnCoord {
+                        id 13694
+                        type "float"
+                        binding kind="local" local_id=15760
+                    }
+                }
+                outputs {
+                    Result id=13695 type="float"
+                }
+            }
+            - {
+                id 13778
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 13756
+                reference_name "z - columnsPerZ / columnsPerX * offset"
+                inputs {
+                    z {
+                        id 13779
+                        type "float"
+                        binding kind="local" local_id=15754
+                    }
+                    columnsPerZ id=13780 type="float"
+                    columnsPerX {
+                        id 13781
+                        type "float"
+                        binding kind="local" local_id=15761
+                    }
+                    offset id=13782 type="float"
+                }
+                outputs {
+                    Result id=13783 type="float"
+                }
+            }
+        }
+        (array)edges {
+            - from="12138.X" to="12179.x"
+            - from="12138.X" to="12273.x"
+            - from="12138.X" to="12361.x"
+            - from="12138.X" to="12443.x"
+            - from="12138.X" to="12616.x"
+            - from="12138.Z" to="12179.z"
+            - from="12138.Z" to="12273.z"
+            - from="12138.Z" to="12361.z"
+            - from="12138.Z" to="12443.z"
+            - from="12138.Z" to="13778.z"
+            - from="12179.Result" to="12616.wobbleA"
+            - from="12179.Result" to="12901.wobbleA"
+            - from="12179.Result" to="13138.wobbleA"
+            - from="12273.Result" to="12616.wobbleB"
+            - from="12273.Result" to="12901.wobbleB"
+            - from="12273.Result" to="13138.wobbleB"
+            - from="12361.Result" to="12529.drift"
+            - from="12361.Result" to="12901.drift"
+            - from="12361.Result" to="13138.drift"
+            - from="12443.Result" to="12616.sway"
+            - from="12443.Result" to="12901.sway"
+            - from="12443.Result" to="13138.sway"
+            - from="12529.Result" to="12616.swayAmount"
+            - from="12529.Result" to="12901.swayAmount"
+            - from="12529.Result" to="13138.swayAmount"
+            - from="12616.Result" to="13295.columnCoord"
+            - from="12616.Result" to="13379.columnCoord"
+            - from="12616.Result" to="13693.columnCoord"
+            - from="12901.Result" to="13379.columnsPerX"
+            - from="12901.Result" to="13562.columnsPerX"
+            - from="12901.Result" to="13778.columnsPerX"
+            - from="13138.Result" to="13778.columnsPerZ"
+            - from="13295.Result" to="12140.Column"
+            - from="13379.Result" to="12140.Offset"
+            - from="13379.Result" to="13778.offset"
+            - from="13562.Result" to="12140.Half Width"
+            - from="13693.Result" to="12140.Across"
+            - from="13778.Result" to="12140.Along"
+        }
+        (array)locals {
+            - id=15753 name="x" from="12138.X"
+            - id=15754 name="z" from="12138.Z"
+            - id=15755 name="wobbleA" from="12179.Result"
+            - id=15756 name="wobbleB" from="12273.Result"
+            - id=15757 name="drift" from="12361.Result"
+            - id=15758 name="sway" from="12443.Result"
+            - id=15759 name="swayAmount" from="12529.Result"
+            - id=15760 name="columnCoord" from="12616.Result"
+            - id=15761 name="columnsPerX" from="12901.Result"
+        }
+    }
+    - id=12149 kind="function" math_expression="x / 180 + z / 420 + 1.3" entry_id=13146
+    - id=12243 kind="function" math_expression="x / 95 - z / 300 + 0.4" entry_id=13176
+    - id=12337 kind="function" math_expression="x / 1300 + z / 2100" entry_id=13206
+    - id=12413 kind="function" math_expression="x / 900 + z / 260 + 2.2" entry_id=13230
+}

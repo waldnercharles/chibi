@@ -218,26 +218,26 @@ static int add_report(
 }
 
 int automation_graph_optimize(
-    const char *source_json,
+    const char *source_text,
     yyjson_val *request,
     yyjson_mut_doc *doc,
     yyjson_mut_val *result,
-    char **edited_json,
+    char **edited_text,
     char *error,
     size_t error_size
 )
 {
-    if (edited_json) {
-        *edited_json = NULL;
+    if (edited_text) {
+        *edited_text = NULL;
     }
-    if (!source_json || !request || !yyjson_is_obj(request) || !doc ||
-        !result || !edited_json) {
+    if (!source_text || !request || !yyjson_is_obj(request) || !doc ||
+        !result || !edited_text) {
         if (error && error_size) {
             snprintf(error, error_size, "graph optimization requires a source and request object");
         }
         return CHIBI_AUTOMATION_INVALID_REQUEST;
     }
-    behavior_asset *asset = behavior_asset_load_json(source_json);
+    behavior_asset *asset = behavior_asset_load(source_text);
     if (!asset) {
         if (error && error_size) {
             snprintf(error, error_size, "could not load asset: %s", graph_last_error());
@@ -339,17 +339,15 @@ int automation_graph_optimize(
     bool changed = add_report(&context, &report, before_nodes, before_edges);
     /* Use the source bytes for a no-op, keeping a dry run side-effect free and
      * avoiding a formatting-only publish. */
-    char *serialized = changed ? behavior_asset_save_json(asset)
-                               : xstrdup(source_json);
+    char *serialized = changed ? behavior_asset_save(asset) : xstrdup(source_text);
     graph_optimize_report_free(&report);
     behavior_asset_free(asset);
     /* A published change takes the form --format writes. */
-    behavior_asset *reloaded = changed && serialized
-                                 ? behavior_asset_load_json(serialized)
-                                 : NULL;
+    behavior_asset *reloaded = changed && serialized ? behavior_asset_load(serialized)
+                                                     : NULL;
     if (reloaded) {
         free(serialized);
-        serialized = behavior_asset_save_json(reloaded);
+        serialized = behavior_asset_save(reloaded);
         behavior_asset_free(reloaded);
     }
     if (!serialized) {
@@ -358,6 +356,6 @@ int automation_graph_optimize(
         }
         return CHIBI_AUTOMATION_VALIDATION_ERROR;
     }
-    *edited_json = serialized;
+    *edited_text = serialized;
     return CHIBI_AUTOMATION_OK;
 }

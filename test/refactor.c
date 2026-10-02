@@ -12,6 +12,7 @@
 #include "support/asset_text.h"
 #include "support/text_file.h"
 #include "support/xalloc.h"
+#include "test/asset_fixture.h"
 
 #include <assert.h>
 #include <dirent.h>
@@ -78,7 +79,7 @@ static void add_content(test_project *p, int position, const test_asset *asset)
                 reference_object object = {
                     .name = entity->name,
                     .prototype = entity->prototype,
-                    .overrides = entity->components_json,
+                    .overrides = entity->components,
                     .behaviors = (const char *const *)entity->behaviors,
                     .behavior_count = acount(entity->behaviors),
                 };
@@ -91,7 +92,7 @@ static void add_content(test_project *p, int position, const test_asset *asset)
             reference_index_add_ui(p->index, position, asset->text);
             return;
         default: {
-            behavior_asset *graphs = behavior_asset_load_json(asset->text);
+            behavior_asset *graphs = behavior_asset_load(asset->text);
             assert(graphs);
             reference_index_add_graphs(p->index, position, graphs);
             behavior_asset_free(graphs);
@@ -147,7 +148,7 @@ static test_project project_load(const char *content)
         struct dirent *item;
         /* A ui asset is its markup. */
         const char *extension = FOLDERS[f].kind == REFERENCE_ASSET_UI ? UI_MARKUP_EXTENSION
-                                                                      : ".yaml";
+                                                                      : ".kdl";
         size_t suffix = strlen(extension);
         while (directory && (item = readdir(directory))) {
             size_t length = strlen(item->d_name);
@@ -211,14 +212,14 @@ static test_asset *asset_of(test_project *p, int position)
    events as validation links it. */
 static int errors(const test_project *p, const char *text)
 {
-    behavior_asset *asset = behavior_asset_load_json(text);
+    behavior_asset *asset = behavior_asset_load(text);
     assert(asset);
     behavior_asset **catalog = NULL;
     for (int i = 0; i < acount(p->assets); i++) {
         const test_asset *other = &p->assets[i];
         if (other->text && (other->kind == REFERENCE_ASSET_EVENT ||
                             other->kind == REFERENCE_ASSET_LIBRARY)) {
-            apush(catalog, behavior_asset_load_json(other->text));
+            apush(catalog, behavior_asset_load(other->text));
         }
     }
     char error[256];
@@ -349,7 +350,7 @@ static void events()
     );
 
     int harm = asset_named(&p, REFERENCE_ASSET_EVENT, "Harm");
-    behavior_asset *definition = behavior_asset_load_json(p.texts[harm]);
+    behavior_asset *definition = behavior_asset_load(p.texts[harm]);
     behavior_variable *amount = behavior_asset_find_variable_by_name(definition, "Amount");
     reference_symbol variable = { .kind = REFERENCE_SYMBOL_VARIABLE,
                                   .asset = harm,
@@ -366,7 +367,7 @@ static void events()
     /* Send Event has Exec and Entity inputs, and Event a Then output. */
     char error[256];
     refactor_project project = view(&p);
-    definition = behavior_asset_load_json(p.texts[harm]);
+    definition = behavior_asset_load(p.texts[harm]);
     variable.id = behavior_asset_find_variable_by_name(definition, "Points")->id;
     reference_symbol source = {
         .kind = REFERENCE_SYMBOL_VARIABLE,
@@ -586,21 +587,18 @@ static void values()
     p = project_load(ARENA);
     apush(
         p.assets,
-        ((test_asset){ REFERENCE_ASSET_PROTOTYPE,
-                       xstrdup("Tile"),
-                       xstrdup(
-                           "{\"name\":\"Tile\",\"components\":{\"GAME."
-                           "GameMeshParts\":{\"parts\":"
-                           "\"[{\\\"material\\\":\\\"Basalt\\\"},{"
-                           "\\\"material\\\":\\\"Basalt\\\"}]\"}}}"
-                       ) })
+        (
+            (test_asset){ REFERENCE_ASSET_PROTOTYPE,
+                          xstrdup("Tile"),
+                          xstrdup("name \"Tile\"\ncomponents {\n    GAME.GameMeshParts {\n        parts \"(array)- { - { material \\\"Basalt\\\"; }; - { material \\\"Basalt\\\"; }; }\\n\"\n    }\n}\n") }
+        )
     );
     test_asset *sandbox = asset_of(&p, asset_named(&p, REFERENCE_ASSET_SCENE, "Sandbox"));
     char error[256];
     game_scene_document *scene = game_scene_document_load(sandbox->text, error, sizeof error);
-    assert(
-        game_scene_document_set_entity_components(scene, 0, "{\"GameShader\":{\"material\":\"Basalt\"}}") == 0
-    );
+    av_value *overrides = test_read_asset_value("GameShader { material \"Basalt\"; }; ");
+    assert(game_scene_document_set_entity_components(scene, 0, overrides) == 0);
+    av_value_free(overrides);
     free(sandbox->text);
     char *json = game_scene_document_save(scene);
     sandbox->text = asset_text_to_disk(json, error, sizeof error);
@@ -628,7 +626,7 @@ static void values()
 
 static uint64_t graph_named(const test_project *p, int asset, const char *name)
 {
-    behavior_asset *graphs = behavior_asset_load_json(p->texts[asset]);
+    behavior_asset *graphs = behavior_asset_load(p->texts[asset]);
     graph *g = behavior_asset_find_graph_by_name(graphs, name);
     uint64_t id = g ? g->graph_id : 0;
     behavior_asset_free(graphs);
@@ -656,12 +654,12 @@ static void library_functions()
     test_check(
         listed && applied && calls >= 3 &&
             reference_index_count_uses(p.index, spawn, REFERENCE_USES) == calls &&
-            strstr(hull, "reference_name: Spawn At") &&
+            strstr(hull, "reference_name \"Spawn At\"") &&
             !strstr(hull, "Spawn Prototype At"),
         "renaming a library function renames its calls in other assets"
     );
 
-    behavior_asset *graphs = behavior_asset_load_json(p.texts[library]);
+    behavior_asset *graphs = behavior_asset_load(p.texts[library]);
     graph *g = behavior_asset_find_graph(graphs, spawn.id);
     node *entry = graph_node_by_id(g, g->entry_id);
     uint64_t prototype = 0;
@@ -680,7 +678,7 @@ static void library_functions()
              edits(&p, &plan, "WeaponActions");
     applied = planned && apply(&p, &plan);
     hull = p.texts[asset_named(&p, REFERENCE_ASSET_BEHAVIOR, "HullDamage")];
-    test_check(listed && applied && strstr(hull, "Template:") && !strstr(hull, "Prototype: {"), "renaming a library function's parameter renames the pins of its calls in other assets");
+    test_check(listed && applied && strstr(hull, "Template ") && !strstr(hull, "Prototype "), "renaming a library function's parameter renames the pins of its calls in other assets");
     project_free(&p);
 }
 
@@ -689,7 +687,7 @@ static void asset_members()
 {
     test_project p = project_load(ARENA);
     int weapon = asset_named(&p, REFERENCE_ASSET_BEHAVIOR, "Weapon");
-    behavior_asset *graphs = behavior_asset_load_json(p.texts[weapon]);
+    behavior_asset *graphs = behavior_asset_load(p.texts[weapon]);
     assert(acount(graphs->variables));
     behavior_variable *variable = &graphs->variables[0];
     reference_symbol symbol = { .kind = REFERENCE_SYMBOL_VARIABLE,
@@ -702,7 +700,7 @@ static void asset_members()
     bool planned = rename_to(&p, symbol, "Charge", &plan);
     bool listed = planned && acount(plan.edits) == 1 && edits(&p, &plan, "Weapon");
     bool applied = planned && apply(&p, &plan);
-    graphs = behavior_asset_load_json(
+    graphs = behavior_asset_load(
         p.texts[asset_named(&p, REFERENCE_ASSET_BEHAVIOR, "Weapon")]
     );
     bool named = behavior_asset_find_variable_by_name(graphs, "Charge") &&
@@ -767,7 +765,7 @@ static void deletes()
     test_check(blocked && forced, "deleting an asset refuses while it is used, and force lists what it leaves dangling");
 
     int weapon = asset_named(&p, REFERENCE_ASSET_BEHAVIOR, "Weapon");
-    behavior_asset *graphs = behavior_asset_load_json(p.texts[weapon]);
+    behavior_asset *graphs = behavior_asset_load(p.texts[weapon]);
     reference_symbol variable = { .kind = REFERENCE_SYMBOL_VARIABLE,
                                   .asset = weapon,
                                   .id = graphs->variables[0].id };

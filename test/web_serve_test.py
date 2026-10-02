@@ -10,6 +10,8 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'tools'))
+
 spec = importlib.util.spec_from_file_location(
     'web_serve', Path(__file__).resolve().parents[1] / 'tools/web_serve.py')
 server = importlib.util.module_from_spec(spec)
@@ -24,65 +26,65 @@ class WorkspaceSaves(unittest.TestCase):
         self.project = self.workspace / 'projects/bloom'
         self.content = self.project / 'content'
         self.content.mkdir(parents=True)
-        (self.project / 'project.yaml').write_text('version: 1\ncontent: content\n')
+        (self.project / 'project.kdl').write_text('version 1\ncontent "content"\n')
 
-    def save(self, path, text='name: Bloom\n'):
+    def save(self, path, text='name "Bloom"\n'):
         server.save_asset(self.workspace, {'path': path, 'text': text})
 
     def test_save_and_reopen(self):
-        self.save('/projects/bloom/content/scenes/Bloom.yaml')
-        path = self.content / 'scenes/Bloom.yaml'
-        self.assertEqual(path.read_text(), 'name: Bloom\n')
-        self.save('projects/bloom/content/scenes/Bloom.yaml', 'name: Revised\n')
-        self.assertEqual(path.read_text(), 'name: Revised\n')
+        self.save('/projects/bloom/content/scenes/Bloom.kdl')
+        path = self.content / 'scenes/Bloom.kdl'
+        self.assertEqual(path.read_text(), 'name "Bloom"\n')
+        self.save('projects/bloom/content/scenes/Bloom.kdl', 'name "Revised"\n')
+        self.assertEqual(path.read_text(), 'name "Revised"\n')
         self.assertEqual(server.workspace_assets(self.workspace), {
-            'projects/bloom/project.yaml': (self.project / 'project.yaml').read_text(),
-            'projects/bloom/content/scenes/Bloom.yaml': 'name: Revised\n',
+            'projects/bloom/project.kdl': (self.project / 'project.kdl').read_text(),
+            'projects/bloom/content/scenes/Bloom.kdl': 'name "Revised"\n',
         })
 
     def test_watch_follows_edits_and_removals(self):
-        asset = self.content / 'A.yaml'
-        asset.write_text('a: 1\n')
+        asset = self.content / 'A.kdl'
+        asset.write_text('a 1\n')
         watch = server.WorkspaceWatch(self.workspace)
         self.assertEqual(watch.changes(0, 0), (0, {}))
-        asset.write_text('a: 22\n')
+        asset.write_text('a 22\n')
         watch.poll()
-        self.assertEqual(watch.changes(0, 0), (1, {'projects/bloom/content/A.yaml': 'a: 22\n'}))
+        self.assertEqual(watch.changes(0, 0), (1, {'projects/bloom/content/A.kdl': 'a 22\n'}))
         asset.unlink()
         watch.poll()
-        self.assertEqual(watch.changes(1, 0), (2, {'projects/bloom/content/A.yaml': None}))
+        self.assertEqual(watch.changes(1, 0), (2, {'projects/bloom/content/A.kdl': None}))
 
     def test_watch_rechecks_paths_before_reading_and_keeps_manifest_updates(self):
-        asset = self.content / 'A.yaml'
-        asset.write_text('a: 1\n')
-        manifest = self.project / 'project.yaml'
+        asset = self.content / 'A.kdl'
+        asset.write_text('a 1\n')
+        manifest = self.project / 'project.kdl'
         watch = server.WorkspaceWatch(self.workspace)
-        manifest.write_text('version: 2\ncontent: content\n')
+        manifest.write_text('version 2\ncontent "content"\n')
         watch.poll()
         self.assertEqual(watch.changes(0, 0), (1, {
-            'projects/bloom/project.yaml': 'version: 2\ncontent: content\n',
+            'projects/bloom/project.kdl': 'version 2\ncontent "content"\n',
         }))
 
-        outside = Path(self.directory.name).parent / f'{Path(self.directory.name).name}-private.yaml'
-        outside.write_text('private: true\n')
+        outside = Path(self.directory.name).parent / f'{Path(self.directory.name).name}-private.kdl'
+        outside.write_text('private #true\n')
         self.addCleanup(outside.unlink, missing_ok=True)
         asset.unlink()
         asset.symlink_to(outside)
-        self.assertNotIn('projects/bloom/content/A.yaml', server.workspace_assets(self.workspace))
+        self.assertNotIn('projects/bloom/content/A.kdl', server.workspace_assets(self.workspace))
         watch.poll()
-        self.assertEqual(watch.changes(1, 0), (2, {'projects/bloom/content/A.yaml': None}))
+        self.assertEqual(watch.changes(1, 0), (2, {'projects/bloom/content/A.kdl': None}))
 
     def test_save_without_text_deletes(self):
-        self.save('projects/bloom/content/Bloom.yaml')
-        self.save('projects/bloom/content/Bloom.yaml', None)
-        self.assertFalse((self.content / 'Bloom.yaml').exists())
+        self.save('projects/bloom/content/Bloom.kdl')
+        self.save('projects/bloom/content/Bloom.kdl', None)
+        self.assertFalse((self.content / 'Bloom.kdl').exists())
         image = self.content / 'art/portrait.png'
         image.parent.mkdir(parents=True)
         image.write_bytes(b'png data')
         self.save('projects/bloom/content/art/portrait.png', None)
         self.assertFalse(image.exists())
         with self.assertRaises(ValueError):
-            self.save('projects/bloom/project.yaml', None)
+            self.save('projects/bloom/project.kdl', None)
 
     def test_image_assets_are_encoded_and_watched_for_edits_and_removal(self):
         art = self.content / 'art'
@@ -114,57 +116,57 @@ class WorkspaceSaves(unittest.TestCase):
         self.assertEqual(watch.changes(1, 0), (2, {'projects/bloom/content/art/Portrait.PNG': None}))
 
     def test_manifest_saves(self):
-        self.save('projects/bloom/project.yaml', 'version: 1\ncontent: content\nui: Shell\n')
-        self.assertEqual((self.project / 'project.yaml').read_text(), 'version: 1\ncontent: content\nui: Shell\n')
+        self.save('projects/bloom/project.kdl', 'version 1\ncontent "content"\nui "Shell"\n')
+        self.assertEqual((self.project / 'project.kdl').read_text(), 'version 1\ncontent "content"\nui "Shell"\n')
         with self.assertRaises(ValueError):
-            self.save('projects/bloom/project.yaml', '[]')
+            self.save('projects/bloom/project.kdl', '[]')
 
     def test_invalid_document_preserves_previous_asset(self):
-        self.save('projects/bloom/content/Bloom.yaml')
+        self.save('projects/bloom/content/Bloom.kdl')
         with self.assertRaises(ValueError):
-            self.save('projects/bloom/content/Bloom.yaml', '{')
-        self.assertEqual((self.content / 'Bloom.yaml').read_text(), 'name: Bloom\n')
+            self.save('projects/bloom/content/Bloom.kdl', '{')
+        self.assertEqual((self.content / 'Bloom.kdl').read_text(), 'name "Bloom"\n')
 
     def test_theme_saves_as_written(self):
         self.save('projects/bloom/content/ui/theme/tokens.rcss', ':root { --primary: #c2453b; }\n')
         self.assertEqual((self.content / 'ui/theme/tokens.rcss').read_text(), ':root { --primary: #c2453b; }\n')
 
     def test_create_project_writes_manifest_and_start_scene(self):
-        result = server.create_project(self.workspace, {'name': 'Sample Project', 'version': 3})
+        result = server.create_project(self.workspace, {'name': 'Sample Project', 'version': 4})
         project = self.workspace / 'projects/sample-project'
-        manifest = server.yaml.safe_load((project / 'project.yaml').read_text())
-        scene_path = project / 'content/scenes/Start.yaml'
-        scene = server.yaml.safe_load(scene_path.read_text())
+        manifest = server.kdl_asset.loads((project / 'project.kdl').read_text())
+        scene_path = project / 'content/scenes/Start.kdl'
+        scene = server.kdl_asset.loads(scene_path.read_text())
         self.assertEqual(result['root'], '/projects/sample-project/')
         self.assertEqual(manifest, {
-            'version': 3, 'name': 'Sample Project', 'content': 'content',
-            'start_scene': 'scenes/Start.yaml',
+            'version': 4, 'name': 'Sample Project', 'content': 'content',
+            'start_scene': 'scenes/Start.kdl',
         })
         self.assertEqual(scene, {'version': 1, 'name': 'Start', 'entities': []})
         self.assertEqual(server.workspace_assets(self.workspace)[
-            'projects/sample-project/content/scenes/Start.yaml'], scene_path.read_text())
+            'projects/sample-project/content/scenes/Start.kdl'], scene_path.read_text())
 
     def test_create_project_uses_a_unique_folder(self):
-        server.create_project(self.workspace, {'name': 'Sample Project', 'version': 3})
-        result = server.create_project(self.workspace, {'name': 'Sample Project', 'version': 3})
+        server.create_project(self.workspace, {'name': 'Sample Project', 'version': 4})
+        result = server.create_project(self.workspace, {'name': 'Sample Project', 'version': 4})
         self.assertEqual(result['root'], '/projects/sample-project-2/')
 
     def test_create_project_removes_partial_files_after_a_write_error(self):
         write_text = Path.write_text
 
         def fail_scene(path, *args, **kwargs):
-            if path.name == 'Start.yaml':
+            if path.name == 'Start.kdl':
                 raise OSError('disk full')
             return write_text(path, *args, **kwargs)
 
         with patch.object(Path, 'write_text', fail_scene), self.assertRaises(OSError):
-            server.create_project(self.workspace, {'name': 'Sample Project', 'version': 3})
+            server.create_project(self.workspace, {'name': 'Sample Project', 'version': 4})
         self.assertFalse((self.workspace / 'projects/sample-project').exists())
 
     def test_create_project_rejects_invalid_names_and_versions(self):
         for request in (
-            {'name': '  ', 'version': 3},
-            {'name': 'x' * 129, 'version': 3},
+            {'name': '  ', 'version': 4},
+            {'name': 'x' * 129, 'version': 4},
             {'name': 'Name', 'version': 0},
         ):
             with self.subTest(request=request), self.assertRaises(ValueError):
@@ -177,12 +179,12 @@ class WorkspaceSaves(unittest.TestCase):
 
     def test_paths_stay_inside_content(self):
         (self.content / 'escape').symlink_to(self.project, target_is_directory=True)
-        for path in ('projects/bloom/content/../outside.yaml', 'projects/bloom/outside.yaml',
-                     '../outside.yaml', 'projects/bloom/content/escape/outside.yaml',
+        for path in ('projects/bloom/content/../outside.kdl', 'projects/bloom/outside.kdl',
+                     '../outside.kdl', 'projects/bloom/content/escape/outside.kdl',
                      'projects/bloom/content/script.js'):
             with self.subTest(path=path), self.assertRaises(ValueError):
                 self.save(path)
-        self.assertFalse((self.project / 'outside.yaml').exists())
+        self.assertFalse((self.project / 'outside.kdl').exists())
 
 
 class WebServeLaunch(unittest.TestCase):
@@ -192,7 +194,7 @@ class WebServeLaunch(unittest.TestCase):
             workspace = root / 'workspace'
             project = workspace / 'projects/bloom'
             (project / 'content').mkdir(parents=True)
-            (project / 'project.yaml').write_text('content: content\n')
+            (project / 'project.kdl').write_text('content "content"\n')
             build = root / 'build'
             build.mkdir()
             for suffix in ('html', 'js', 'wasm', 'data'):

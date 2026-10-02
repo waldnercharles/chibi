@@ -94,7 +94,7 @@ def assemble(build, output):
         for source, name in (('src/render/shaders', 'shaders'),
                              ('src/editor/rmlui/resources', 'ui')):
             shutil.copytree(ROOT / source, share / name)
-        copy_file(ROOT / 'projects/studio/project.yaml', share / 'studio/project.yaml')
+        copy_file(ROOT / 'projects/studio/project.kdl', share / 'studio/project.kdl')
         shutil.copytree(ROOT / 'projects/studio/content', share / 'studio/content')
         for name in ('native-package.md', 'mcp.md', 'authoring-navigation.md',
                      'component-nodes.md', 'graph-optimizer.md', 'neon-gpu-benchmarks.md'):

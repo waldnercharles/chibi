@@ -1,4 +1,0 @@
-name: NewProject
-components:
-  GAME.GameUi: {document: NewProject, hidden: true}
-behaviors: [NewProjectKeys]

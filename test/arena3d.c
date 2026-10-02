@@ -343,9 +343,9 @@ static bool prism_checks(CF_Pixel *pixels)
     );
     assert(ecs_world_apply_commands(world) == ECS_OK);
     game_live_world *live = game_live_world_new(world);
-    char *json = text_file_read("content/behaviors/TwinStickInputBehavior.yaml");
+    char *json = text_file_read("content/behaviors/TwinStickInputBehavior.kdl");
     assert(json);
-    behavior_asset *asset = behavior_asset_load_json(json);
+    behavior_asset *asset = behavior_asset_load(json);
     free(json);
     assert(asset);
     asset = link_test_libraries(asset);
@@ -739,8 +739,8 @@ static bool parallel_geometry(CF_Pixel *first, CF_Pixel *second)
         shape->width = shape->height = shape->depth = .1f;
         if (i % 200 == 0) {
             GameMeshParts parts = {
-                .parts = "[{\"primitive\":0,\"size\":[0.1,0.1,0.1],"
-                         "\"rotation\":[0,0.3,0]}]"
+                .parts = "(array)- { - { primitive 0; (array)size 0.1 0.1 0.1; "
+                         "(array)rotation 0 0.3 0; }; }\n"
             };
             assert(!ecs_world_record_add(
                 world,

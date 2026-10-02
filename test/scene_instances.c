@@ -6,6 +6,7 @@
 #include "graph/model/registry.h"
 #include "runtime/generated.h"
 #include "support/array.h"
+#include "support/asset_json.h"
 #include "support/asset_text.h"
 #include "support/text_file.h"
 
@@ -29,8 +30,15 @@ static void prototype_component_gain(app_scene_authoring *scene, ecs_world *worl
     assert(
         app_scene_authoring_register_prototype(
             scene,
-            "{\"version\":1,\"name\":\"ComponentGain\",\"components\":{"
-            "\"GameTransform\":{\"x\":0,\"y\":0}},\"behaviors\":[]}",
+            "version 1\n"
+            "name \"ComponentGain\"\n"
+            "components {\n"
+            "    GameTransform {\n"
+            "        x 0\n"
+            "        y 0\n"
+            "    }\n"
+            "}\n"
+            "(array)behaviors\n",
             NULL
         ) == 0
     );
@@ -87,12 +95,28 @@ static void prototype_spawn_refresh(app_scene_authoring *scene, game_live_world 
         game_live_add_definition(live, game_live_definition_new("RefreshedChild", child_behavior)) == 0
     );
     assert(
-        app_scene_authoring_register_prototype(scene, "{\"name\":\"RuntimeRefreshChild\",\"components\":{\"GameHealth\":{\"current\":73,\"maximum\":100}}}", NULL) ==
-        0
+        app_scene_authoring_register_prototype(
+            scene,
+            "name \"RuntimeRefreshChild\"\n"
+            "components {\n"
+            "    GameHealth {\n"
+            "        current 73\n"
+            "        maximum 100\n"
+            "    }\n"
+            "}\n",
+            NULL
+        ) == 0
     );
     assert(
-        app_scene_authoring_register_prototype(scene, "{\"name\":\"RuntimeRefreshSpawner\",\"components\":{},\"behaviors\":[\"PrototypeRefreshSpawner\"]}", NULL) ==
-        0
+        app_scene_authoring_register_prototype(
+            scene,
+            "name \"RuntimeRefreshSpawner\"\n"
+            "(object)components\n"
+            "(array)behaviors {\n"
+            "    - \"PrototypeRefreshSpawner\"\n"
+            "}\n",
+            NULL
+        ) == 0
     );
     ecs_entity owner = ecs_world_create_entity(world);
     assert(game_behavior_attach(live->behaviors, owner, "PrototypeRefreshSpawner") == 0);
@@ -179,9 +203,13 @@ static void duplicate_instance_preserves_edits(app_scene_authoring *scene, ecs_w
 
 static void prototype_vectors_and_text(app_scene_authoring *scene, ecs_world *world)
 {
-    const char
-        *json = "{\"name\":\"GuideTest\",\"components\":{\"GameTransform\":{},"
-                "\"GameAim\":{},\"GameUi\":{}},\"behaviors\":[]}";
+    const char *json = "name \"GuideTest\"\n"
+                       "components {\n"
+                       "    (object)GameTransform\n"
+                       "    (object)GameAim\n"
+                       "    (object)GameUi\n"
+                       "}\n"
+                       "(array)behaviors\n";
     assert(app_scene_authoring_register_prototype(scene, json, NULL) == 0);
     assert(app_scene_authoring_add_instance(scene, "GuideTest") == 0);
     ecs_entity entity = app_scene_authoring_runtime_state(scene).selected_entity;
@@ -229,14 +257,13 @@ static void prototype_vectors_and_text(app_scene_authoring *scene, ecs_world *wo
     yyjson_mut_obj_add_uint(doc, root, "actor", actor->identity);
     yyjson_mut_obj_add_strcpy(doc, root, "component", "GameAim");
     yyjson_mut_obj_add_strcpy(doc, root, "field", "direction");
-    serialize_write_value(
-        doc,
-        root,
-        "value",
-        PIN_STRUCT,
-        "CF_V2",
+    av_doc *value_doc = av_doc_new();
+    av_value *value = serialize_value(
+        value_doc,
         &(pin_value){ .type = PIN_STRUCT, .type_name = "CF_V2", .ptr = &replayed }
     );
+    yyjson_mut_obj_add_val(doc, root, "value", av_to_json(doc, value));
+    av_doc_free(value_doc);
     char *action = scene_action_write(doc);
     char error[256] = { 0 };
     assert(action && scene_collab_apply_action(scene, action, error, sizeof error));
@@ -336,10 +363,10 @@ static void rename_instance(app_scene_authoring *scene, const char *folder)
     assert(history(scene, true) == 0);
     assert(!strcmp(actor_name(scene, entity), "Hero"));
     char path[1024];
-    snprintf(path, sizeof path, "%s/Renamed.yaml", folder);
+    snprintf(path, sizeof path, "%s/Renamed.kdl", folder);
     assert(app_scene_authoring_save(scene, path) == 0);
     char *text = saved_canonically(path, canonical_scene);
-    assert(strstr(text, "name: Hero"));
+    assert(strstr(text, "name \"Hero\"\n"));
     free(text);
     free(before);
     puts("rename instance PASS: a rename is one Undo step, refuses names in use, survives checkpoints and saves");
@@ -374,9 +401,19 @@ static void prototype_component_removal(app_scene_authoring *scene, ecs_world *w
     assert(
         app_scene_authoring_register_prototype(
             scene,
-            "{\"version\":1,\"name\":\"Removable\",\"components\":{"
-            "\"GameTransform\":{\"x\":0,\"y\":0},\"GameHealth\":{"
-            "\"current\":73,\"maximum\":100}},\"behaviors\":[]}",
+            "version 1\n"
+            "name \"Removable\"\n"
+            "components {\n"
+            "    GameTransform {\n"
+            "        x 0\n"
+            "        y 0\n"
+            "    }\n"
+            "    GameHealth {\n"
+            "        current 73\n"
+            "        maximum 100\n"
+            "    }\n"
+            "}\n"
+            "(array)behaviors\n",
             NULL
         ) == 0
     );
@@ -405,7 +442,7 @@ static void prototype_component_removal(app_scene_authoring *scene, ecs_world *w
     assert(history(scene, true) == 0);
     assert(!GAME_GameHealth_has(world, entity));
     char path[1024];
-    snprintf(path, sizeof path, "%s/Removable.yaml", folder);
+    snprintf(path, sizeof path, "%s/Removable.kdl", folder);
     assert(app_scene_authoring_save_prototype(scene, "Removable", path) == 0);
     char *text = saved_canonically(path, canonical_prototype);
     assert(!strstr(text, "GameHealth") && strstr(text, "GameTransform"));
@@ -437,9 +474,19 @@ void test_scene_instances()
     app_scene_authoring *
         scene = app_scene_authoring_new(world, live, definition, asset, e, NULL, NULL, runtime);
     assert(scene);
-    const char *first = "{\"version\":1,\"name\":\"First\",\"components\":{"
-                        "\"GameTransform\":{\"x\":0,\"y\":0},\"GameHealth\":{"
-                        "\"current\":73,\"maximum\":100}},\"behaviors\":[]}";
+    const char *first = "version 1\n"
+                        "name \"First\"\n"
+                        "components {\n"
+                        "    GameTransform {\n"
+                        "        x 0\n"
+                        "        y 0\n"
+                        "    }\n"
+                        "    GameHealth {\n"
+                        "        current 73\n"
+                        "        maximum 100\n"
+                        "    }\n"
+                        "}\n"
+                        "(array)behaviors\n";
     assert(app_scene_authoring_register_prototype(scene, first, NULL) == 0);
     prototype_component_gain(scene, world);
     prototype_spawn_refresh(scene, live, world);
@@ -450,9 +497,9 @@ void test_scene_instances()
     rename_instance(scene, folder);
     prototype_component_removal(scene, world, folder);
     char path[1024];
-    snprintf(path, sizeof path, "%s/Renamed.yaml", folder);
+    snprintf(path, sizeof path, "%s/Renamed.kdl", folder);
     unlink(path);
-    snprintf(path, sizeof path, "%s/Removable.yaml", folder);
+    snprintf(path, sizeof path, "%s/Removable.kdl", folder);
     unlink(path);
     rmdir(folder);
     app_scene_authoring_free(scene);

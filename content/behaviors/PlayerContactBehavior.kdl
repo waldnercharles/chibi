@@ -1,0 +1,434 @@
+version 3
+name "PlayerContactBehavior"
+id_counter 314
+description "Enemy body contact deals 10 damage at most once per half second. Only new contacts can hit; continuing overlap never repeats."
+owner_type "ecs.entity"
+(array)variables {
+    - id=1 name="Remaining" type="float" type_name="float" category="Contact"
+}
+(array)graphs {
+    - {
+        kind "event"
+        name ""
+        (array)nodes {
+            - {
+                id 5
+                type "Event"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_name "Tick"
+                outputs {
+                    Then id=4
+                }
+            }
+            - {
+                id 22
+                type "Set Variable"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 1
+                inputs {
+                    Exec id=18
+                    Value type="float"
+                }
+                outputs {
+                    Value type="float"
+                }
+            }
+            - {
+                id 25
+                type "Event"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_name "Contact Begin"
+                outputs {
+                    Then id=23
+                    Other id=24 type="handle" type_name="ecs.entity" kind="data"
+                    Point id=129 type="struct" type_name="CF_V2" kind="data"
+                }
+            }
+            - {
+                id 40
+                type "Call Function"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 2
+                reference_name "Check Enemy Contact"
+                inputs {
+                    Exec id=37
+                    Other id=38 type="handle" type_name="ecs.entity" kind="data"
+                }
+                outputs {
+                    Then id=39
+                }
+            }
+            - id=110 type="Has_GameDash" x=0.0 y=0.0 placed=#false
+            - id=112 type="Branch" x=0.0 y=0.0 placed=#false
+            - {
+                id 151
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 132
+                reference_name "max(Remaining - dt, 0)"
+                inputs {
+                    Remaining {
+                        id 152
+                        type "double"
+                        binding kind="variable" variable_id=1 source_asset="PlayerContactBehavior"
+                    }
+                    dt {
+                        id 153
+                        type "double"
+                        binding kind="delta_time"
+                    }
+                }
+                outputs {
+                    Result id=154 type="double"
+                }
+            }
+            - {
+                id 226
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 212
+                reference_name "DashRemaining > 0"
+                inputs {
+                    Exec id=229 kind="exec"
+                    DashRemaining {
+                        id 227
+                        type "double"
+                        flags 0
+                        binding kind="component_field" component="GAME.GameDash" field="remaining"
+                    }
+                }
+                outputs {
+                    True id=230 kind="exec"
+                    False id=231 kind="exec"
+                    Result id=228 type="bool"
+                }
+            }
+            - {
+                id 260
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 246
+                reference_name "Remaining <= 0"
+                inputs {
+                    Exec id=263 kind="exec"
+                    Remaining {
+                        id 261
+                        type "double"
+                        flags 0
+                        binding kind="variable" variable_id=1 source_asset="PlayerContactBehavior"
+                    }
+                }
+                outputs {
+                    True id=264 kind="exec"
+                    False id=265 kind="exec"
+                    Result id=262 type="bool"
+                }
+            }
+        }
+        (array)edges {
+            - from="5.Then" to="22.Exec"
+            - from="25.Then" to="112.Exec"
+            - from="25.Other" to="40.Other"
+            - from="110.Value" to="112.Condition"
+            - from="112.True" to="226.Exec"
+            - from="112.False" to="260.Exec"
+            - from="151.Result" to="22.Value"
+            - from="226.False" to="260.Exec"
+            - from="260.True" to="40.Exec"
+        }
+    }
+    - {
+        id 2
+        kind "function"
+        name "Check Enemy Contact"
+        entry_id 43
+        return_id 45
+        call_depth_limit 64
+        (array)nodes {
+            - {
+                id 43
+                type "Function Entry"
+                x 0.0
+                y 0.0
+                placed #false
+                (array)outputs {
+                    - id=41 name="Then"
+                    - id=42 name="Other" type="handle" type_name="ecs.entity" kind="data"
+                }
+            }
+            - {
+                id 45
+                type "Return"
+                x 0.0
+                y 0.0
+                placed #false
+                inputs {
+                    Exec id=44
+                }
+            }
+            - {
+                id 48
+                type "HasEntity_GameCollider"
+                x 0.0
+                y 0.0
+                placed #false
+                inputs {
+                    Entity {
+                        id 46
+                        binding kind="local" local_id=131
+                    }
+                }
+            }
+            - {
+                id 53
+                type "Branch"
+                x 0.0
+                y 0.0
+                placed #false
+                inputs {
+                    Exec id=49
+                }
+            }
+            - {
+                id 57
+                type "GetEntity_GameCollider"
+                x 0.0
+                y 0.0
+                placed #false
+                inputs {
+                    Entity {
+                        id 56
+                        binding kind="local" local_id=131
+                    }
+                }
+                outputs {
+                    Value id=54
+                    Value.category id=55
+                }
+            }
+            - {
+                id 61
+                type "Has Any Flags"
+                x 0.0
+                y 0.0
+                placed #false
+                inputs {
+                    Value id=58
+                    Flags 2
+                }
+            }
+            - {
+                id 66
+                type "Branch"
+                x 0.0
+                y 0.0
+                placed #false
+                inputs {
+                    Exec id=62
+                }
+            }
+            - {
+                id 69
+                type "HasEntity_GameHealth"
+                x 0.0
+                y 0.0
+                placed #false
+                inputs {
+                    Entity {
+                        id 67
+                        binding kind="local" local_id=131
+                    }
+                }
+            }
+            - {
+                id 74
+                type "Branch"
+                x 0.0
+                y 0.0
+                placed #false
+                inputs {
+                    Exec id=70
+                }
+            }
+            - {
+                id 78
+                type "GetEntity_GameHealth"
+                x 0.0
+                y 0.0
+                placed #false
+                inputs {
+                    Entity {
+                        id 77
+                        binding kind="local" local_id=131
+                    }
+                }
+                outputs {
+                    Value id=75
+                    Value.current id=76
+                }
+            }
+            - {
+                id 91
+                type "Call Function"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 3
+                reference_name "Apply Contact Damage"
+                inputs {
+                    Exec id=88
+                    Other {
+                        id 89
+                        type "handle"
+                        type_name "ecs.entity"
+                        kind "data"
+                        binding kind="local" local_id=131
+                    }
+                }
+                outputs {
+                    Then id=90
+                }
+            }
+            - {
+                id 294
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 280
+                reference_name "Health >= 1"
+                inputs {
+                    Exec id=297 kind="exec"
+                    Health id=295 type="double" flags=0
+                }
+                outputs {
+                    True id=298 kind="exec"
+                    False id=299 kind="exec"
+                    Result id=296 type="bool"
+                }
+            }
+        }
+        (array)edges {
+            - from="43.Then" to="53.Exec"
+            - from="43.Other" to="48.Entity"
+            - from="43.Other" to="57.Entity"
+            - from="43.Other" to="69.Entity"
+            - from="43.Other" to="78.Entity"
+            - from="43.Other" to="91.Other"
+            - from="48.Value" to="53.Condition"
+            - from="53.True" to="66.Exec"
+            - from="53.False" to="45.Exec"
+            - from="57.Value.category" to="61.Value"
+            - from="61.Result" to="66.Condition"
+            - from="66.True" to="74.Exec"
+            - from="66.False" to="45.Exec"
+            - from="69.Value" to="74.Condition"
+            - from="74.True" to="294.Exec"
+            - from="74.False" to="45.Exec"
+            - from="78.Value.current" to="294.Health" conversion="To Real"
+            - from="91.Then" to="45.Exec"
+            - from="294.True" to="91.Exec"
+            - from="294.False" to="45.Exec"
+        }
+        (array)locals {
+            - id=131 name="Other" from="43.Other"
+        }
+    }
+    - {
+        id 3
+        kind "function"
+        name "Apply Contact Damage"
+        entry_id 94
+        return_id 109
+        call_depth_limit 64
+        (array)nodes {
+            - {
+                id 94
+                type "Function Entry"
+                x 0.0
+                y 0.0
+                placed #false
+                (array)outputs {
+                    - id=92 name="Then"
+                    - id=93 name="Other" type="handle" type_name="ecs.entity" kind="data"
+                }
+            }
+            - {
+                id 99
+                type "Set Variable"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 1
+                inputs {
+                    Exec id=95
+                    Value type="float" default=0.5
+                }
+                outputs {
+                    Value type="float"
+                }
+            }
+            - {
+                id 101
+                type "Self"
+                x 0.0
+                y 0.0
+                placed #false
+                outputs {
+                    Self id=100 type_name="ecs.entity"
+                }
+            }
+            - {
+                id 107
+                type "Send Event"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_name "Damage"
+                inputs {
+                    Exec id=102
+                    Amount id=104 declaration_id=2 type="int" default=10
+                    Source id=105 declaration_id=3
+                }
+                outputs {
+                    Then id=106
+                }
+            }
+            - {
+                id 109
+                type "Return"
+                x 0.0
+                y 0.0
+                placed #false
+                inputs {
+                    Exec id=108
+                }
+            }
+        }
+        (array)edges {
+            - from="94.Then" to="99.Exec"
+            - from="94.Other" to="107.Source"
+            - from="99.Then" to="107.Exec"
+            - from="101.Self" to="107.Entity"
+            - from="107.Then" to="109.Exec"
+        }
+    }
+    - id=132 kind="function" math_expression="max(Remaining - dt, 0)" entry_id=194
+    - id=212 kind="function" math_expression="DashRemaining > 0" entry_id=233
+    - id=246 kind="function" math_expression="Remaining <= 0" entry_id=267
+    - id=280 kind="function" math_expression="Health >= 1" entry_id=301
+}

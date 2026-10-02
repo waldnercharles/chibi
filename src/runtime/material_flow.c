@@ -5,6 +5,7 @@
 #include "support/exponential.h"
 #include "support/xalloc.h"
 
+#include <assert.h>
 #include <math.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -16,6 +17,8 @@ enum
     RIGHT,
     DOWN,
     UP,
+    HALO_RADIUS = 2,
+    HALO_SIDE = 2 * HALO_RADIUS + 1,
     PRESSURE_ITERATIONS = 32
 };
 typedef struct
@@ -97,18 +100,21 @@ static int find(const flow_grid *grid, int x, int y)
     return 0;
 }
 
-static void insert(flow_grid *grid, int x, int y)
+static int insert(flow_grid *grid, int x, int y)
 {
     unsigned slot = bucket(grid, x, y);
     while (grid->slots[slot]) {
-        flow_cell *cell = &grid->cells[grid->slots[slot]];
+        int id = grid->slots[slot];
+        flow_cell *cell = &grid->cells[id];
         if (cell->x == x && cell->y == y) {
-            return;
+            return id;
         }
         slot = (slot + 1) & (grid->capacity - 1);
     }
-    grid->slots[slot] = acount(grid->cells);
+    int id = acount(grid->cells);
+    grid->slots[slot] = id;
     apush(grid->cells, ((flow_cell){ .x = x, .y = y }));
+    return id;
 }
 
 static float component(fluid_vec v, int axis)
@@ -135,15 +141,18 @@ static float sample(const flow_grid *grid, float x, float y, int axis)
     return value;
 }
 
-static void deposit(flow_grid *grid, fluid_particle p, float size, int axis)
+static void deposit(flow_grid *grid, fluid_particle p, float size, int axis, const int *halo)
 {
     float x = p.position.x / size - (axis ? .5f : 0);
     float y = p.position.y / size - (axis ? 0 : .5f);
     int ix = (int)floorf(x), iy = (int)floorf(y);
     float fx = x - ix, fy = y - iy;
+    const flow_cell *center = &grid->cells[halo[HALO_RADIUS * HALO_SIDE + HALO_RADIUS]];
+    int column = ix - center->x + HALO_RADIUS, row = iy - center->y + HALO_RADIUS;
+    assert(column >= 0 && column + 1 < HALO_SIDE && row >= 0 && row + 1 < HALO_SIDE);
     for (int dy = 0; dy < 2; dy++) {
         for (int dx = 0; dx < 2; dx++) {
-            int i = find(grid, ix + dx, iy + dy);
+            int i = halo[(row + dy) * HALO_SIDE + column + dx];
             float weight = p.mass * (dx ? fx : 1 - fx) * (dy ? fy : 1 - fy);
             flow_cell *cell = &grid->cells[i];
             if (axis) {
@@ -181,13 +190,15 @@ static void seed(material_flow *flow, const fluid_particle *particles, const int
             continue;
         }
         int x = (int)floorf(p.position.x / size), y = (int)floorf(p.position.y / size);
-        for (int dy = -2; dy <= 2; dy++) {
-            for (int dx = -2; dx <= 2; dx++) {
-                insert(grid, x + dx, y + dy);
+        /* Integer IDs survive growth of the flow-cell storage. */
+        int halo[HALO_SIDE * HALO_SIDE];
+        for (int dy = -HALO_RADIUS; dy <= HALO_RADIUS; dy++) {
+            for (int dx = -HALO_RADIUS; dx <= HALO_RADIUS; dx++) {
+                halo[(dy + HALO_RADIUS) * HALO_SIDE + dx + HALO_RADIUS] = insert(grid, x + dx, y + dy);
             }
         }
-        deposit(grid, p, size, 0);
-        deposit(grid, p, size, 1);
+        deposit(grid, p, size, 0, halo);
+        deposit(grid, p, size, 1, halo);
     }
     for (int i = 1; i < acount(grid->cells); i++) {
         flow_cell *c = &grid->cells[i];

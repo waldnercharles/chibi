@@ -28,10 +28,10 @@ static void load_behavior(game_live_world *live, const char *name)
     const char *root = !strcmp(name, "DashBehavior")
                          ? "test/fixtures/content/behaviors"
                          : "content/behaviors";
-    snprintf(path, sizeof path, "%s/%s.yaml", root, name);
+    snprintf(path, sizeof path, "%s/%s.kdl", root, name);
     char *text = text_file_read(path);
     assert(text);
-    behavior_asset *asset = behavior_asset_load_json(text);
+    behavior_asset *asset = behavior_asset_load(text);
     free(text);
     if (!asset) {
         fprintf(stderr, "Could not load dash fixture behavior %s: %s\n", name, graph_last_error());
@@ -347,7 +347,7 @@ static void preview_restart()
             ) == 0
         );
     }
-    char *text = text_file_read("content/prototypes/ArenaPlayer.yaml");
+    char *text = text_file_read("content/prototypes/ArenaPlayer.kdl");
     char error[256];
     game_prototype *prototype = game_prototype_load(text, &registry, error, sizeof error);
     free(text);

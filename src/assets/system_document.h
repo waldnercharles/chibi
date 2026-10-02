@@ -10,11 +10,25 @@
 typedef struct game_system_document game_system_document;
 
 game_system_document *game_system_document_load(
-    const char *json,
+    const char *text,
     game_query_component_resolver resolve,
     void *user,
     char *error,
     size_t error_size
+);
+game_system_document *game_system_document_from_value(
+    av_value *value,
+    game_query_component_resolver resolve,
+    void *user,
+    char *error,
+    size_t error_size
+);
+av_value *game_system_document_to_value(
+    av_doc *doc,
+    const game_system_document *document,
+    game_query_component_resolver resolve,
+    game_query_component_name_resolver name,
+    void *user
 );
 game_system_document *game_system_document_new(const char *name);
 void game_system_document_free(game_system_document *document);

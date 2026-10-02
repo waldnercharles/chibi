@@ -1,0 +1,80 @@
+version 3
+name "BloomCircuitGoal"
+id_counter 69
+owner_type "ecs.entity"
+(array)graphs {
+    - {
+        kind "event"
+        name ""
+        (array)nodes {
+            - {
+                id 1
+                type "Event"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_name "Tick"
+                outputs {
+                    DeltaSeconds id=3 type="float" kind="data"
+                }
+            }
+            - {
+                id 4
+                type "Find Nearest Entity"
+                x 0.0
+                y 0.0
+                placed #false
+                inputs {
+                    Position {
+                        default x=0.0 y=2.5099999904632568
+                    }
+                    Radius 10000.0
+                    Categories 1
+                }
+            }
+            - {
+                id 13
+                type "GetEntity_GameExperience"
+                x 0.0
+                y 0.0
+                placed #false
+                outputs {
+                    Value.current id=34
+                }
+            }
+            - {
+                id 28
+                type "Set UI Text"
+                x 0.0
+                y 0.0
+                placed #false
+                inputs Element="#goal" Text="CIRCUIT COMPLETE!  All 8 blooms collected."
+            }
+            - {
+                id 49
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 35
+                reference_name "Collected >= 8"
+                inputs {
+                    Exec id=52 kind="exec"
+                    Collected id=50 type="double" flags=0
+                }
+                outputs {
+                    True id=53 kind="exec"
+                    False id=54 kind="exec"
+                    Result id=51 type="bool"
+                }
+            }
+        }
+        (array)edges {
+            - from="1.Then" to="49.Exec"
+            - from="4.Entity" to="13.Entity"
+            - from="13.Value.current" to="49.Collected" conversion="To Real"
+            - from="49.True" to="28.Exec"
+        }
+    }
+    - id=35 kind="function" math_expression="Collected >= 8" entry_id=56
+}

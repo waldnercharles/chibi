@@ -160,7 +160,7 @@ class Runner:
         with tempfile.TemporaryDirectory(prefix='neon-combat-') as directory:
             project = Path(directory)
             shutil.copytree(self.project/'content',project/'content')
-            shutil.copyfile(self.project/'project.yaml',project/'project.yaml')
+            shutil.copyfile(self.project/'project.kdl',project/'project.kdl')
             probe = Runner(self.build,self.output,project)
             asset = probe.author('readAsset',dict(kind='scene',name='Sandbox'))
             scene = asset['document']

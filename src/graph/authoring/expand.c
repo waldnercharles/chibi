@@ -175,11 +175,12 @@ static const char *copy_body(expansion *x)
         top = fminf(top, x->body[i]->y);
     }
     int base = acount(x->caller->nodes);
-    char *json = graph_save_nodes_json(x->target, x->body, count);
-    int appended = json
-                     ? graph_append_json(x->caller, json, x->call->x - left, x->call->y - top)
+    av_doc *doc = av_doc_new();
+    av_value *body = graph_nodes_to_value(doc, x->target, x->body, count);
+    int appended = body
+                     ? graph_append_value(x->caller, body, x->call->x - left, x->call->y - top)
                      : -1;
-    free(json);
+    av_doc_free(doc);
     if (appended != 0 || acount(x->caller->nodes) != base + count) {
         return "Could not copy the called graph.";
     }
@@ -456,9 +457,7 @@ const char *behavior_asset_expand_call(
     if (error) {
         return error;
     }
-    char *json = behavior_asset_save_json(asset);
-    behavior_asset *copy = json ? behavior_asset_load_json(json) : NULL;
-    free(json);
+    behavior_asset *copy = behavior_asset_clone(asset);
     if (!copy) {
         return "Could not copy the behavior asset.";
     }

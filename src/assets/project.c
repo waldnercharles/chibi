@@ -1,6 +1,7 @@
 #include "assets/project.h"
 
 #include "support/asset_text.h"
+#include "support/asset_value.h"
 #include "support/xalloc.h"
 
 #include <errno.h>
@@ -11,7 +12,6 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <unistd.h>
-#include <yyjson.h>
 
 static void set_error(char *error, size_t error_size, const char *message)
 {
@@ -42,10 +42,10 @@ static bool is_file(const char *path)
 static char *join_path(const char *base, const char *name);
 static char *parent_path(const char *path);
 
-static int write_asset_file(const char *path, const char *json, char *error, size_t error_size)
+static int write_asset_file(const char *path, const char *text, char *error, size_t error_size)
 {
-    char *yaml = asset_text_to_disk(json, error, error_size);
-    if (!yaml) {
+    char *canonical = asset_text_to_disk(text, error, error_size);
+    if (!canonical) {
         return -1;
     }
     FILE *file = fopen(path, "wb");
@@ -53,11 +53,11 @@ static int write_asset_file(const char *path, const char *json, char *error, siz
         if (error_size) {
             snprintf(error, error_size, "Cannot create %s: %s", path, strerror(errno));
         }
-        free(yaml);
+        free(canonical);
         return -1;
     }
-    size_t size = strlen(yaml);
-    bool written = fwrite(yaml, 1, size, file) == size;
+    size_t size = strlen(canonical);
+    bool written = fwrite(canonical, 1, size, file) == size;
     written = fclose(file) == 0 && written;
     if (!written) {
         if (error_size) {
@@ -65,35 +65,35 @@ static int write_asset_file(const char *path, const char *json, char *error, siz
         }
         unlink(path);
     }
-    free(yaml);
+    free(canonical);
     return written ? 0 : -1;
 }
 
 static char *manifest_text(const char *name)
 {
-    yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
-    yyjson_mut_val *root = yyjson_mut_obj(doc);
-    yyjson_mut_doc_set_root(doc, root);
-    yyjson_mut_obj_add_int(doc, root, "version", CHIBI_PROJECT_VERSION);
-    yyjson_mut_obj_add_strcpy(doc, root, "name", name);
-    yyjson_mut_obj_add_str(doc, root, "content", "content");
-    yyjson_mut_obj_add_str(doc, root, "start_scene", "scenes/Start.yaml");
-    char *json = yyjson_mut_write(doc, 0, NULL);
-    yyjson_mut_doc_free(doc);
-    return json;
+    av_doc *doc = av_doc_new();
+    av_value *root = av_obj(doc);
+    av_doc_set_root(doc, root);
+    av_obj_add_int(doc, root, "version", CHIBI_PROJECT_VERSION);
+    av_obj_add_strcpy(doc, root, "name", name);
+    av_obj_add_str(doc, root, "content", "content");
+    av_obj_add_str(doc, root, "start_scene", "scenes/Start.kdl");
+    char *text = av_doc_write(doc);
+    av_doc_free(doc);
+    return text;
 }
 
 static char *start_scene_text()
 {
-    yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
-    yyjson_mut_val *root = yyjson_mut_obj(doc);
-    yyjson_mut_doc_set_root(doc, root);
-    yyjson_mut_obj_add_int(doc, root, "version", 1);
-    yyjson_mut_obj_add_str(doc, root, "name", "Start");
-    yyjson_mut_obj_add_arr(doc, root, "entities");
-    char *json = yyjson_mut_write(doc, 0, NULL);
-    yyjson_mut_doc_free(doc);
-    return json;
+    av_doc *doc = av_doc_new();
+    av_value *root = av_obj(doc);
+    av_doc_set_root(doc, root);
+    av_obj_add_int(doc, root, "version", 1);
+    av_obj_add_str(doc, root, "name", "Start");
+    av_obj_add_arr(doc, root, "entities");
+    char *text = av_doc_write(doc);
+    av_doc_free(doc);
+    return text;
 }
 
 int chibi_project_create(const char *root, const char *name, char *error, size_t error_size)
@@ -223,16 +223,16 @@ static char *read_file(const char *path, char *error, size_t error_size)
         set_errorf(error, error_size, "Cannot seek project manifest %s", path);
         return NULL;
     }
-    char *json = xmalloc((size_t)length + 1);
-    size_t read = fread(json, 1, (size_t)length, file);
+    char *text = xmalloc((size_t)length + 1);
+    size_t read = fread(text, 1, (size_t)length, file);
     fclose(file);
     if (read != (size_t)length) {
-        free(json);
+        free(text);
         set_errorf(error, error_size, "Cannot read project manifest %s", path);
         return NULL;
     }
-    json[read] = '\0';
-    return json;
+    text[read] = '\0';
+    return text;
 }
 
 static int read_manifest(const char *path, chibi_project *project, char *error, size_t error_size)
@@ -242,27 +242,27 @@ static int read_manifest(const char *path, chibi_project *project, char *error, 
         return -1;
     }
     char parse_error[128];
-    yyjson_doc *document = asset_text_read(text, parse_error, sizeof parse_error);
+    av_doc *document = asset_text_read(text, parse_error, sizeof parse_error);
     free(text);
     if (!document) {
         snprintf(error, error_size, "Invalid project manifest %s: %s", path, parse_error);
         return -1;
     }
-    yyjson_val *root = yyjson_doc_get_root(document);
-    if (!yyjson_is_obj(root)) {
-        yyjson_doc_free(document);
-        set_errorf(error, error_size, "Project manifest is not a YAML mapping: %s", path);
+    av_value *root = av_doc_root(document);
+    if (!av_is_obj(root)) {
+        av_doc_free(document);
+        set_errorf(error, error_size, "Project manifest must contain named KDL nodes: %s", path);
         return -1;
     }
-    yyjson_val *version = yyjson_obj_get(root, "version");
-    if (!yyjson_is_int(version)) {
-        yyjson_doc_free(document);
+    av_value *version = av_obj_get(root, "version");
+    if (!av_is_int(version)) {
+        av_doc_free(document);
         set_errorf(error, error_size, "Project manifest needs an integer version: %s", path);
         return -1;
     }
-    int found = (int)yyjson_get_int(version);
+    int found = (int)av_get_int(version);
     if (found != CHIBI_PROJECT_VERSION) {
-        yyjson_doc_free(document);
+        av_doc_free(document);
         snprintf(
             error,
             error_size,
@@ -275,26 +275,26 @@ static int read_manifest(const char *path, chibi_project *project, char *error, 
         );
         return -1;
     }
-    yyjson_val *name_value = yyjson_obj_get(root, "name");
-    yyjson_val *content_value = yyjson_obj_get(root, "content");
-    yyjson_val *scene_value = yyjson_obj_get(root, "start_scene");
-    yyjson_val *ui_value = yyjson_obj_get(root, "ui");
-    if ((name_value && !yyjson_is_str(name_value)) ||
-        (content_value && !yyjson_is_str(content_value)) ||
-        (scene_value && !yyjson_is_str(scene_value)) ||
-        (ui_value && !yyjson_is_str(ui_value))) {
-        yyjson_doc_free(document);
+    av_value *name_value = av_obj_get(root, "name");
+    av_value *content_value = av_obj_get(root, "content");
+    av_value *scene_value = av_obj_get(root, "start_scene");
+    av_value *ui_value = av_obj_get(root, "ui");
+    if ((name_value && !av_is_str(name_value)) ||
+        (content_value && !av_is_str(content_value)) ||
+        (scene_value && !av_is_str(scene_value)) ||
+        (ui_value && !av_is_str(ui_value))) {
+        av_doc_free(document);
         set_errorf(error, error_size, "Project manifest fields must be strings: %s", path);
         return -1;
     }
-    const char *manifest_name = yyjson_get_str(name_value);
-    const char *manifest_content = yyjson_get_str(content_value);
-    const char *manifest_scene = yyjson_get_str(scene_value);
-    const char *manifest_ui = yyjson_get_str(ui_value);
+    const char *manifest_name = av_get_str(name_value);
+    const char *manifest_content = av_get_str(content_value);
+    const char *manifest_scene = av_get_str(scene_value);
+    const char *manifest_ui = av_get_str(ui_value);
     if ((manifest_name && !manifest_name[0]) ||
         (manifest_content && !manifest_content[0]) ||
         (manifest_scene && !manifest_scene[0]) || (manifest_ui && !manifest_ui[0])) {
-        yyjson_doc_free(document);
+        av_doc_free(document);
         set_errorf(error, error_size, "Project manifest contains an empty field: %s", path);
         return -1;
     }
@@ -302,7 +302,7 @@ static int read_manifest(const char *path, chibi_project *project, char *error, 
     project->content = manifest_content ? xstrdup(manifest_content) : NULL;
     project->start_scene = manifest_scene ? xstrdup(manifest_scene) : NULL;
     project->ui = manifest_ui ? xstrdup(manifest_ui) : NULL;
-    yyjson_doc_free(document);
+    av_doc_free(document);
     return 0;
 }
 

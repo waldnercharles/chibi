@@ -1,4 +1,4 @@
-- When contracts change, migrate our assets directly and remove obsolete implementations; backward compatibility and legacy aliases are not required. When the change stops projects saved by earlier builds from loading, bump `CHIBI_PROJECT_VERSION` in `src/assets/project.h` and the `version` in every `project.yaml`.
+- When contracts change, migrate our assets directly and remove obsolete implementations; backward compatibility and legacy aliases are not required. When the change stops projects saved by earlier builds from loading, bump `CHIBI_PROJECT_VERSION` in `src/assets/project.h` and the `version` in every `project.kdl`.
 - Follow YAGNI principles, and boring solutions.
 - Shared source implements components, nodes, functions, and systems reusable across games. Authored assets own scene composition, game rules, visual choices, and tuning.
 - Name shared modules for their capability. Turn game-specific geometry, camera choreography, and outcome handling into authored data and behaviors; add native capabilities when authoring exposes a concrete gap.
@@ -7,7 +7,7 @@
 - MCP graph edits express nodes, values, and connections; automatically arrange affected graphs so agents never need to choose node positions.
 - When Chibi MCP is available, use it as the default authoring interface for shaders, behavior and event graphs, prototypes, scenes, and authored assets. Search or inspect first, then use the matching `build*` tool, validate, and preview or run as needed. See `docs/mcp.md` for the public catalog and workflow.
 - Graph legibility: when authoring, reviewing, or cleaning up a behavior, shader, or field graph, follow `.claude/skills/chibi-graph-legibility/SKILL.md`.
-- After hand-editing asset YAML, run `build/chibi_ctl --project-root <root> --format`; `make test` fails on non-canonical assets.
+- After hand-editing asset KDL, run `build/chibi_ctl --project-root <root> --format`; `make test` fails on non-canonical assets.
 - Navigation and refactoring (find references, rename, go to definition, call hierarchy, hover): build each once outside `src/editor/` and ship it in both Studio and the MCP. `docs/authoring-navigation.md` tracks each feature's status.
 - Validate engine generalizations with another scene or prototype that uses different content and omits the motivating game's mechanics.
 - Prefer `make build` when building, and `make test` to test.

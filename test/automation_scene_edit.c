@@ -32,13 +32,31 @@ static int edit_request(const char *source, const char *request_json, char **edi
 
 static void rename_entities()
 {
-    const char
-        *source = "{\"version\":1,\"name\":\"Rename\",\"entities\":["
-                  "{\"name\":\"First\",\"prototype\":\"Point\","
-                  "\"components\":{\"GAME.GameTransform\":{\"x\":3}},"
-                  "\"retained_components\":{\"GAME.GameTransform\":{\"x\":5}},"
-                  "\"behaviors\":[\"Pulse\"]},"
-                  "{\"name\":\"Second\",\"prototype\":\"Point\"}]}";
+    const char *source = "version 1\n"
+                         "name \"Rename\"\n"
+                         "(array)entities {\n"
+                         "    - {\n"
+                         "        name \"First\"\n"
+                         "        prototype \"Point\"\n"
+                         "        components {\n"
+                         "            GAME.GameTransform {\n"
+                         "                x 3\n"
+                         "            }\n"
+                         "        }\n"
+                         "        retained_components {\n"
+                         "            GAME.GameTransform {\n"
+                         "                x 5\n"
+                         "            }\n"
+                         "        }\n"
+                         "        (array)behaviors {\n"
+                         "            - \"Pulse\"\n"
+                         "        }\n"
+                         "    }\n"
+                         "    - {\n"
+                         "        name \"Second\"\n"
+                         "        prototype \"Point\"\n"
+                         "    }\n"
+                         "}\n";
     char *edited = NULL;
     yyjson_mut_doc *response = NULL;
     int status = edit_request(
@@ -60,8 +78,9 @@ static void rename_entities()
             game_scene_document_entity_index(scene, "Hero") == 0 &&
             game_scene_document_entity_index(scene, "Second") == 1 &&
             !strcmp(scene->entities[0].prototype, "Point") &&
-            strstr(scene->entities[0].components_json, "\"x\": 3") &&
-            strstr(scene->entities[0].retained_json, "\"x\": 5") &&
+            av_get_num(av_obj_get(av_obj_value_at(scene->entities[0].components, 0), "x")) ==
+                3 &&
+            av_get_num(av_obj_get(av_obj_value_at(scene->entities[0].retained, 0), "x")) == 5 &&
             acount(scene->entities[0].behaviors) == 2 &&
             !strcmp(scene->entities[0].behaviors[0], "Pulse") &&
             !strcmp(scene->entities[0].behaviors[1], "Move"),
@@ -126,9 +145,10 @@ static void rename_entities()
 void test_automation_scene_edit(void)
 {
     rename_entities();
-    const char *source = "{\"version\":1,\"name\":\"SceneEdit\","
-                         "\"presentation\":\"2d\","
-                         "\"entities\":[]}";
+    const char *source = "version 1\n"
+                         "name \"SceneEdit\"\n"
+                         "presentation \"2d\"\n"
+                         "(array)entities\n";
     char *edited = NULL;
     yyjson_mut_doc *response = NULL;
     int status = edit_request(
@@ -161,8 +181,12 @@ void test_automation_scene_edit(void)
                          !strcmp(entity->prototype, "PhaseWarden") &&
                          acount(entity->behaviors) == 1 &&
                          !strcmp(entity->behaviors[0], "CombatFeedback") &&
-                         strstr(entity->components_json, "\"x\": 9") &&
-                         strstr(entity->retained_json, "\"x\": 5") &&
+                         av_get_num(
+                             av_obj_get(av_obj_value_at(entity->components, 0), "x")
+                         ) == 9 &&
+                         av_get_num(
+                             av_obj_get(av_obj_value_at(entity->retained, 0), "x")
+                         ) == 5 &&
                          yyjson_mut_get_uint(
                              yyjson_mut_obj_get(yyjson_mut_doc_get_root(response), "operation_count")
                          ) == 5;

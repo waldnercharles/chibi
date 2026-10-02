@@ -34,17 +34,16 @@ static void valid_document()
     component_presentation p = { 0 };
     char error[256] = { 0 };
     bool ok = component_presentation_read(
-        "components:\n"
-        "  GAME.GameCollider:\n"
-        "    tab: Physics\n"
-        "    fields:\n"
-        "      friction: {range: [0, 1]}\n"
-        "      radius: {unit: u}\n"
-        "  GameHealth: {tab: Gameplay, icon: health}\n"
-        "  GAME.GameInput: {icon: gamepad}\n"
-        "  GAME.GameWeapon:\n"
-        "    fields:\n"
-        "      damage: {range: [1, 9], unit: hp}\n",
+        "components {\n    GAME.GameCollider {\n        tab \"Physics\"\n      "
+        "  fields {\n            friction {\n                (array)range {\n  "
+        "                  - 0\n                    - 1\n                }\n   "
+        "         }\n            radius {\n                unit \"u\"\n        "
+        "    }\n        }\n    }\n    GameHealth {\n        tab \"Gameplay\"\n "
+        "       icon \"health\"\n    }\n    GAME.GameInput {\n        icon "
+        "\"gamepad\"\n    }\n    GAME.GameWeapon {\n        fields {\n         "
+        "   damage {\n                (array)range {\n                    - "
+        "1\n                    - 9\n                }\n                unit "
+        "\"hp\"\n            }\n        }\n    }\n}\n",
         &registry,
         &p,
         error,
@@ -75,7 +74,7 @@ static void valid_document()
     component_presentation_free(&p);
     component_presentation empty = { 0 };
     test_check(
-        component_presentation_read("{}", &registry, &empty, error, sizeof error) &&
+        component_presentation_read("", &registry, &empty, error, sizeof error) &&
             component_presentation_tab(&empty, &GAME_COMPONENT_GameBody) ==
                 COMPONENT_TAB_OBJECT &&
             component_presentation_icon(&empty, &GAME_COMPONENT_GameCamera) ==
@@ -90,44 +89,151 @@ static void rejected_documents()
 {
     static const struct
     {
-        const char *yaml;
+        const char *kdl;
         const char *error;
     } cases[] = {
-        { "components: {GAME.GameMissing: {tab: Physics}}",
+        { "components {\n"
+          "    GAME.GameMissing {\n"
+          "        tab \"Physics\"\n"
+          "    }\n"
+          "}\n",
           "unknown component GAME.GameMissing" },
-        { "components: {GAME.GameCollider: {fields: {grip: {unit: u}}}}",
+        { "components {\n"
+          "    GAME.GameCollider {\n"
+          "        fields {\n"
+          "            grip {\n"
+          "                unit \"u\"\n"
+          "            }\n"
+          "        }\n"
+          "    }\n"
+          "}\n",
           "unknown field grip" },
-        { "components: {}\nstyle: dark", "unknown key style" },
-        { "components: {GAME.GameBody: {group: Physics}}", "unknown key group" },
-        { "components: {GAME.GameCollider: {fields: {radius: {step: 1}}}}",
+        { "(object)components\n"
+          "style \"dark\"\n",
+          "unknown key style" },
+        { "components {\n"
+          "    GAME.GameBody {\n"
+          "        group \"Physics\"\n"
+          "    }\n"
+          "}\n",
+          "unknown key group" },
+        { "components {\n"
+          "    GAME.GameCollider {\n"
+          "        fields {\n"
+          "            radius {\n"
+          "                step 1\n"
+          "            }\n"
+          "        }\n"
+          "    }\n"
+          "}\n",
           "unknown key step" },
-        { "components: {GAME.GameBody: {fields: {continuous: {range: [0, "
-          "1]}}}}",
+        { "components {\n"
+          "    GAME.GameBody {\n"
+          "        fields {\n"
+          "            continuous {\n"
+          "                (array)range {\n"
+          "                    - 0\n"
+          "                    - 1\n"
+          "                }\n"
+          "            }\n"
+          "        }\n"
+          "    }\n"
+          "}\n",
           "numeric field" },
-        { "components: {GAME.GameAppearance: {fields: {shape: {unit: u}}}}",
+        { "components {\n"
+          "    GAME.GameAppearance {\n"
+          "        fields {\n"
+          "            shape {\n"
+          "                unit \"u\"\n"
+          "            }\n"
+          "        }\n"
+          "    }\n"
+          "}\n",
           "numeric field" },
-        { "components: {GAME.GameCollider: {fields: {friction: {range: [1, "
-          "0]}}}}",
+        { "components {\n"
+          "    GAME.GameCollider {\n"
+          "        fields {\n"
+          "            friction {\n"
+          "                (array)range {\n"
+          "                    - 1\n"
+          "                    - 0\n"
+          "                }\n"
+          "            }\n"
+          "        }\n"
+          "    }\n"
+          "}\n",
           "minimum below" },
-        { "components: {GAME.GameCollider: {fields: {friction: {range: [1, "
-          "1]}}}}",
+        { "components {\n"
+          "    GAME.GameCollider {\n"
+          "        fields {\n"
+          "            friction {\n"
+          "                (array)range {\n"
+          "                    - 1\n"
+          "                    - 1\n"
+          "                }\n"
+          "            }\n"
+          "        }\n"
+          "    }\n"
+          "}\n",
           "minimum below" },
-        { "components: {GAME.GameCollider: {fields: {friction: {range: [0]}}}}",
+        { "components {\n"
+          "    GAME.GameCollider {\n"
+          "        fields {\n"
+          "            friction {\n"
+          "                (array)range {\n"
+          "                    - 0\n"
+          "                }\n"
+          "            }\n"
+          "        }\n"
+          "    }\n"
+          "}\n",
           "minimum below" },
-        { "components: {GAME.GameCollider: {fields: {radius: {unit: ''}}}}",
+        { "components {\n"
+          "    GAME.GameCollider {\n"
+          "        fields {\n"
+          "            radius {\n"
+          "                unit \"\"\n"
+          "            }\n"
+          "        }\n"
+          "    }\n"
+          "}\n",
           "unit must not be empty" },
-        { "components: {GAME.GameBody: {tab: Object}}", "unknown tab Object" },
-        { "components: {GAME.GameBody: {tab: Rendering}}", "unknown tab Rendering" },
-        { "components: {GAME.GameCamera: {icon: eye}}", "unknown icon eye" },
-        { "components: {GAME.GameBody: {tab: Physics}, GameBody: {tab: "
-          "Gameplay}}",
+        { "components {\n"
+          "    GAME.GameBody {\n"
+          "        tab \"Object\"\n"
+          "    }\n"
+          "}\n",
+          "unknown tab Object" },
+        { "components {\n"
+          "    GAME.GameBody {\n"
+          "        tab \"Rendering\"\n"
+          "    }\n"
+          "}\n",
+          "unknown tab Rendering" },
+        { "components {\n"
+          "    GAME.GameCamera {\n"
+          "        icon \"eye\"\n"
+          "    }\n"
+          "}\n",
+          "unknown icon eye" },
+        { "components {\n"
+          "    GAME.GameBody {\n"
+          "        tab \"Physics\"\n"
+          "    }\n"
+          "    GameBody {\n"
+          "        tab \"Gameplay\"\n"
+          "    }\n"
+          "}\n",
           "listed twice" },
-        { "components: [GAME.GameBody]", "components must be a mapping" },
+        { "(array)components {\n"
+          "    - \"GAME.GameBody\"\n"
+          "}\n",
+          "components must be a mapping" },
     };
     for (size_t i = 0; i < sizeof cases / sizeof *cases; i++) {
         component_presentation p = { 0 };
         char error[256] = { 0 };
-        bool ok = component_presentation_read(cases[i].yaml, &registry, &p, error, sizeof error);
+        bool ok = component_presentation_read(cases[i].kdl, &registry, &p, error, sizeof error);
         char message[320];
         snprintf(
             message,
@@ -143,7 +249,7 @@ static void rejected_documents()
 static void shipped_document()
 {
     char *text = text_file_read("projects/arena2d/content/" COMPONENT_PRESENTATION_PATH);
-    char *player_text = text_file_read("projects/arena2d/content/prototypes/Player.yaml");
+    char *player_text = text_file_read("projects/arena2d/content/prototypes/Player.kdl");
     component_presentation p = { 0 };
     char error[256] = { 0 };
     bool ok = text &&
@@ -174,7 +280,7 @@ static void shipped_document()
                 COMPONENT_TAB_GAMEPLAY &&
             component_presentation_tab(&p, &GAME_COMPONENT_GameAppearance) ==
                 COMPONENT_TAB_OBJECT,
-        "Arena2D's editor/Components.yaml keeps Player's icon and component "
+        "Arena2D's editor/Components.kdl keeps Player's icon and component "
         "tabs"
     );
     game_prototype_free(player);
@@ -189,14 +295,22 @@ static void last_valid_document()
     component_presentation p = { 0 };
     char error[256] = { 0 };
     bool first = component_presentation_read(
-        "components: {GAME.GameCollider: {tab: Physics}}",
+        "components {\n"
+        "    GAME.GameCollider {\n"
+        "        tab \"Physics\"\n"
+        "    }\n"
+        "}\n",
         &registry,
         &p,
         error,
         sizeof error
     );
     bool rejected = !component_presentation_read(
-        "components: {GAME.GameCollider: {tab: Nowhere}}",
+        "components {\n"
+        "    GAME.GameCollider {\n"
+        "        tab \"Nowhere\"\n"
+        "    }\n"
+        "}\n",
         &registry,
         &p,
         error,
@@ -204,7 +318,11 @@ static void last_valid_document()
     );
     component_tab kept = component_presentation_tab(&p, &GAME_COMPONENT_GameCollider);
     bool replaced = component_presentation_read(
-        "components: {GAME.GameBody: {tab: Physics}}",
+        "components {\n"
+        "    GAME.GameBody {\n"
+        "        tab \"Physics\"\n"
+        "    }\n"
+        "}\n",
         &registry,
         &p,
         error,

@@ -45,13 +45,13 @@ static int name_index(const char *name, const char *const *names, int count)
 }
 
 /* The first key of `object` outside `keys`, or NULL. */
-static const char *unknown_key(yyjson_val *object, const char *const *keys, int count)
+static const char *unknown_key(av_value *object, const char *const *keys, int count)
 {
-    yyjson_obj_iter iterator = yyjson_obj_iter_with(object);
-    yyjson_val *key;
-    while ((key = yyjson_obj_iter_next(&iterator))) {
-        if (name_index(yyjson_get_str(key), keys, count) < 0) {
-            return yyjson_get_str(key);
+    av_obj_iter iterator = av_obj_iter_with(object);
+    av_value *key;
+    while ((key = av_obj_iter_next(&iterator))) {
+        if (name_index(av_get_str(key), keys, count) < 0) {
+            return av_get_str(key);
         }
     }
     return NULL;
@@ -96,13 +96,13 @@ static bool read_field(
     component_presentation *out,
     const ecs_component_desc *desc,
     const char *component,
-    yyjson_val *key,
+    av_value *key,
     char *error,
     size_t size
 )
 {
-    const char *name = yyjson_get_str(key);
-    yyjson_val *value = yyjson_obj_iter_get_val(key);
+    const char *name = av_get_str(key);
+    av_value *value = av_obj_iter_get_val(key);
     int index = field_index(desc->type, name);
     if (index < 0) {
         return fail(error, size, "%s: unknown field %s", component, name);
@@ -110,7 +110,7 @@ static bool read_field(
     if (find_field(out, desc->id, index)) {
         return fail(error, size, "%s.%s is listed twice", component, name);
     }
-    if (!yyjson_is_obj(value)) {
+    if (!av_is_obj(value)) {
         return fail(error, size, "%s.%s must be a mapping", component, name);
     }
     const char *extra = unknown_key(value, FIELD_KEYS, (int)(sizeof FIELD_KEYS / sizeof *FIELD_KEYS));
@@ -121,21 +121,21 @@ static bool read_field(
         return fail(error, size, "%s.%s: range and unit need a numeric field", component, name);
     }
     presented_field field = { .component = desc->id, .field = index };
-    yyjson_val *range = yyjson_obj_get(value, "range");
+    av_value *range = av_obj_get(value, "range");
     if (range) {
-        yyjson_val *min = yyjson_arr_get(range, 0), *max = yyjson_arr_get(range, 1);
-        if (yyjson_arr_size(range) != 2 || !yyjson_is_num(min) ||
-            !yyjson_is_num(max) || !(yyjson_get_num(min) < yyjson_get_num(max))) {
+        av_value *min = av_arr_get(range, 0), *max = av_arr_get(range, 1);
+        if (av_arr_size(range) != 2 || !av_is_num(min) || !av_is_num(max) ||
+            !(av_get_num(min) < av_get_num(max))) {
             return fail(error, size, "%s.%s: range needs a minimum below its maximum", component, name);
         }
-        field.min = yyjson_get_num(min);
-        field.max = yyjson_get_num(max);
+        field.min = av_get_num(min);
+        field.max = av_get_num(max);
     }
-    yyjson_val *unit = yyjson_obj_get(value, "unit");
-    if (unit && (!yyjson_is_str(unit) || !yyjson_get_len(unit))) {
+    av_value *unit = av_obj_get(value, "unit");
+    if (unit && (!av_is_str(unit) || !av_get_len(unit))) {
         return fail(error, size, "%s.%s: unit must not be empty", component, name);
     }
-    field.unit = unit ? xstrdup(yyjson_get_str(unit)) : NULL;
+    field.unit = unit ? xstrdup(av_get_str(unit)) : NULL;
     apush(out->fields, field);
     return true;
 }
@@ -143,13 +143,13 @@ static bool read_field(
 static bool read_component(
     component_presentation *out,
     const game_prototype_registry *registry,
-    yyjson_val *key,
+    av_value *key,
     char *error,
     size_t size
 )
 {
-    const char *name = yyjson_get_str(key);
-    yyjson_val *value = yyjson_obj_iter_get_val(key);
+    const char *name = av_get_str(key);
+    av_value *value = av_obj_iter_get_val(key);
     const ecs_component_desc *desc = game_prototype_registry_find(registry, name);
     if (!desc) {
         return fail(error, size, "unknown component %s", name);
@@ -157,7 +157,7 @@ static bool read_component(
     if (find_component(out, desc->id)) {
         return fail(error, size, "component %s is listed twice", name);
     }
-    if (!yyjson_is_obj(value)) {
+    if (!av_is_obj(value)) {
         return fail(error, size, "%s must be a mapping", name);
     }
     const char *extra = unknown_key(
@@ -169,43 +169,31 @@ static bool read_component(
         return fail(error, size, "%s: unknown key %s", name, extra);
     }
     presented_component component = { .id = desc->id, .icon = COMPONENT_ICON_NONE };
-    yyjson_val *tab = yyjson_obj_get(value, "tab");
+    av_value *tab = av_obj_get(value, "tab");
     if (tab) {
         /* Object is where untabbed components go, not a tab to name. */
-        int index = name_index(yyjson_get_str(tab), COMPONENT_TAB_NAMES + 1, COMPONENT_TAB_COUNT - 1);
+        int index = name_index(av_get_str(tab), COMPONENT_TAB_NAMES + 1, COMPONENT_TAB_COUNT - 1);
         if (index < 0) {
-            return fail(
-                error,
-                size,
-                "%s: unknown tab %s",
-                name,
-                yyjson_is_str(tab) ? yyjson_get_str(tab) : ""
-            );
+            return fail(error, size, "%s: unknown tab %s", name, av_is_str(tab) ? av_get_str(tab) : "");
         }
         component.tab = (component_tab)(index + 1);
     }
-    yyjson_val *icon = yyjson_obj_get(value, "icon");
+    av_value *icon = av_obj_get(value, "icon");
     if (icon) {
-        int index = name_index(yyjson_get_str(icon), ICON_NAMES, COMPONENT_ICON_COUNT);
+        int index = name_index(av_get_str(icon), ICON_NAMES, COMPONENT_ICON_COUNT);
         if (index < 0) {
-            return fail(
-                error,
-                size,
-                "%s: unknown icon %s",
-                name,
-                yyjson_is_str(icon) ? yyjson_get_str(icon) : ""
-            );
+            return fail(error, size, "%s: unknown icon %s", name, av_is_str(icon) ? av_get_str(icon) : "");
         }
         component.icon = (component_icon)index;
     }
     apush(out->components, component);
-    yyjson_val *fields = yyjson_obj_get(value, "fields");
-    if (fields && !yyjson_is_obj(fields)) {
+    av_value *fields = av_obj_get(value, "fields");
+    if (fields && !av_is_obj(fields)) {
         return fail(error, size, "%s: fields must be a mapping", name);
     }
-    yyjson_obj_iter iterator = yyjson_obj_iter_with(fields);
-    yyjson_val *field;
-    while ((field = yyjson_obj_iter_next(&iterator))) {
+    av_obj_iter iterator = av_obj_iter_with(fields);
+    av_value *field;
+    while ((field = av_obj_iter_next(&iterator))) {
         if (!read_field(out, desc, name, field, error, size)) {
             return false;
         }
@@ -216,25 +204,25 @@ static bool read_component(
 static bool read_document(
     component_presentation *out,
     const game_prototype_registry *registry,
-    yyjson_val *root,
+    av_value *root,
     char *error,
     size_t size
 )
 {
-    if (!yyjson_is_obj(root)) {
+    if (!av_is_obj(root)) {
         return fail(error, size, "the document must be a mapping");
     }
     const char *extra = unknown_key(root, DOCUMENT_KEYS, (int)(sizeof DOCUMENT_KEYS / sizeof *DOCUMENT_KEYS));
     if (extra) {
         return fail(error, size, "unknown key %s", extra);
     }
-    yyjson_val *components = yyjson_obj_get(root, "components");
-    if (components && !yyjson_is_obj(components)) {
+    av_value *components = av_obj_get(root, "components");
+    if (components && !av_is_obj(components)) {
         return fail(error, size, "components must be a mapping");
     }
-    yyjson_obj_iter iterator = yyjson_obj_iter_with(components);
-    yyjson_val *key;
-    while ((key = yyjson_obj_iter_next(&iterator))) {
+    av_obj_iter iterator = av_obj_iter_with(components);
+    av_value *key;
+    while ((key = av_obj_iter_next(&iterator))) {
         if (!read_component(out, registry, key, error, size)) {
             return false;
         }
@@ -251,13 +239,13 @@ bool component_presentation_read(
 )
 {
     assert(text && registry && out);
-    yyjson_doc *doc = asset_text_read(text, error, error_size);
+    av_doc *doc = asset_text_read(text, error, error_size);
     if (!doc) {
         return false;
     }
     component_presentation next = { 0 };
-    bool ok = read_document(&next, registry, yyjson_doc_get_root(doc), error, error_size);
-    yyjson_doc_free(doc);
+    bool ok = read_document(&next, registry, av_doc_root(doc), error, error_size);
+    av_doc_free(doc);
     if (!ok) {
         component_presentation_free(&next);
         return false;

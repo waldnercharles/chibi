@@ -197,7 +197,7 @@ void sg_copy_selection(studio *s)
     if (!acount(e->selected)) {
         return;
     }
-    char *json = graph_save_nodes_json(e->active_graph, e->selected, acount(e->selected));
+    char *json = graph_save_nodes(e->active_graph, e->selected, acount(e->selected));
     if (json) {
         cf_clipboard_set(json);
         free(e->clipboard);
@@ -261,7 +261,7 @@ void sg_paste(studio *s)
     if (text) {
         ed_snapshot_before(e);
         int first = acount(e->active_graph->nodes);
-        if (graph_append_json(e->active_graph, text, 0, 0) == 0) {
+        if (graph_append(e->active_graph, text, 0, 0) == 0) {
             place_pasted(s, first);
         }
     }
@@ -273,10 +273,10 @@ void sg_paste(studio *s)
 /* ---------- Selection layout ---------- */
 
 /* Applies moved positions as one undo step; `before` is the asset as it was. */
-static void commit_moves(editor *e, char *before, bool moved)
+static void commit_moves(editor *e, behavior_asset *before, bool moved)
 {
     if (!moved) {
-        free(before);
+        behavior_asset_free(before);
         return;
     }
     e->pending_snapshot = before;
@@ -311,7 +311,7 @@ static align_box *selected_boxes(studio *s, node ***nodes)
 static void apply_boxes(studio *s, node **nodes, align_box *boxes)
 {
     editor *e = sg_graph_editor(s);
-    char *before = sg_graph_readonly(s) ? NULL : ed_snapshot(e);
+    behavior_asset *before = sg_graph_readonly(s) ? NULL : ed_snapshot(e);
     bool moved = false;
     for (int i = 0; before && i < acount(nodes); i++) {
         move_node(nodes[i], roundf(boxes[i].x), roundf(boxes[i].y), &moved);
@@ -389,7 +389,7 @@ void sg_straighten(studio *s)
     if (sg_graph_readonly(s)) {
         return;
     }
-    char *before = ed_snapshot(e);
+    behavior_asset *before = ed_snapshot(e);
     bool moved = false;
     for (int i = 0; i < acount(e->selected_links); i++) {
         int w = ed_edge_index(e, &e->selected_links[i]);
@@ -422,7 +422,7 @@ void sg_straighten_wire(studio *s, int index)
     if (sg_graph_readonly(s) || index < 0 || index >= acount(gr->edges)) {
         return;
     }
-    char *before = ed_snapshot(e);
+    behavior_asset *before = ed_snapshot(e);
     bool moved = false;
     level_wire(s, &gr->edges[index], false, &moved);
     commit_moves(e, before, moved);
@@ -541,12 +541,9 @@ void sg_select_linked(studio *s, bool upstream, bool all)
 /* Takes a refactored copy of the behavior as one undo step. */
 static void adopt(editor *e, behavior_asset *result)
 {
-    char *json = behavior_asset_save_json(result);
-    behavior_asset_free(result);
-    assert(json);
     ed_snapshot_before(e);
-    int adopted = ed_adopt_behavior_asset(e, json);
-    free(json);
+    int adopted = ed_adopt_behavior_asset(e, result);
+    behavior_asset_free(result);
     assert(adopted == 0);
     (void)adopted;
 }

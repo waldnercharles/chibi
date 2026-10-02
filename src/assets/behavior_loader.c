@@ -32,16 +32,16 @@ static char *read_file(const char *path)
         fclose(file);
         return NULL;
     }
-    char *json = (char *)xmalloc((size_t)size + 1);
-    size_t read = fread(json, 1, (size_t)size, file);
+    char *text = (char *)xmalloc((size_t)size + 1);
+    size_t read = fread(text, 1, (size_t)size, file);
     fclose(file);
     if (read != (size_t)size) {
         load_error(path, "read", "incomplete file read");
-        free(json);
+        free(text);
         return NULL;
     }
-    json[read] = '\0';
-    return json;
+    text[read] = '\0';
+    return text;
 }
 
 static int path_compare(const void *left, const void *right)
@@ -91,30 +91,30 @@ int app_behavior_fixtures_load(game_live_world *world, game_prototype_preview *p
     game_live_definition **pending = NULL;
     int loaded = 0;
     for (int i = 0; i < acount(paths); i++) {
-        char *json = read_file(paths[i]);
-        if (json && strstr(paths[i], "/systems/")) {
+        char *text = read_file(paths[i]);
+        if (text && strstr(paths[i], "/systems/")) {
             char error[256];
-            behavior_asset *definition = behavior_asset_load_json(json);
+            behavior_asset *definition = behavior_asset_load(text);
             if (!definition ||
-                game_live_register_system(world, definition->name, json, error, sizeof error) !=
+                game_live_register_system(world, definition->name, text, error, sizeof error) !=
                     0 ||
                 (preview &&
-                 game_prototype_preview_register_system(preview, definition->name, json, error, sizeof error) !=
+                 game_prototype_preview_register_system(preview, definition->name, text, error, sizeof error) !=
                      0)) {
                 load_error(paths[i], "register system", definition ? error : graph_last_error());
             } else {
                 loaded++;
             }
             behavior_asset_free(definition);
-            free(json);
+            free(text);
             free(paths[i]);
             continue;
         }
-        behavior_asset *asset = json ? behavior_asset_load_json(json) : NULL;
-        if (json && !asset) {
+        behavior_asset *asset = text ? behavior_asset_load(text) : NULL;
+        if (text && !asset) {
             load_error(paths[i], "deserialize", graph_last_error());
         }
-        free(json);
+        free(text);
         game_live_definition *definition = asset
                                              ? game_live_definition_new(asset->name, asset)
                                              : NULL;

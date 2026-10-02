@@ -125,8 +125,8 @@ static void manual_integer64_conversion()
     assert(graph_set_pin_default(asset->graph, source, 0, 0, &input) == 0);
     assert(graph_connect_data(asset->graph, source, 0, cast, 0) == 0);
     uint64_t id = cast->id;
-    char *json = behavior_asset_save_json(asset);
-    behavior_asset *loaded = behavior_asset_load_json(json);
+    char *json = behavior_asset_save(asset);
+    behavior_asset *loaded = behavior_asset_load(json);
     assert(loaded);
     free(json);
     behavior_asset_free(asset);
@@ -180,9 +180,9 @@ static void real_integer_conversions()
             assert(conversion && registry_node_by_name(conversion->name) == conversion);
             assert(graph_connect_data_conversion(g, source, 0, sink, 0, conversion) == 0);
             uint64_t source_id = source->id, sink_id = sink->id;
-            char *json = behavior_asset_save_json(asset);
+            char *json = behavior_asset_save(asset);
             assert(json);
-            behavior_asset *loaded = behavior_asset_load_json(json);
+            behavior_asset *loaded = behavior_asset_load(json);
             assert(loaded);
             free(json);
             behavior_asset_free(asset);
@@ -266,9 +266,9 @@ void test_component_conversion()
     uint64_t comparison_id = comparison->id, normalized_id = normalized->id,
              product_id = product->id;
     verify(asset, comparison_id, normalized_id, product_id);
-    char *json = behavior_asset_save_json(asset);
+    char *json = behavior_asset_save(asset);
     assert(json);
-    behavior_asset *loaded = behavior_asset_load_json(json);
+    behavior_asset *loaded = behavior_asset_load(json);
     if (!loaded) {
         fprintf(stderr, "component conversion reload: %s\n", graph_last_error());
     }

@@ -1,11 +1,11 @@
 #include "assets/prototype.h"
 
-#include "../third_party/yyjson/yyjson.h"
 #include "graph/model/registry.h"
 #include "graph/runtime/value_array.h"
 #include "runtime/components.h"
 #include "support/array.h"
 #include "support/asset_text.h"
+#include "support/asset_value.h"
 #include "support/xalloc.h"
 
 #include <assert.h>
@@ -127,33 +127,33 @@ static const type_field *find_field(const type_desc *type, const char *name)
     return NULL;
 }
 
-static int read_signed(yyjson_val *value, int64_t *out)
+static int read_signed(av_value *value, int64_t *out)
 {
-    if (yyjson_is_sint(value)) {
-        *out = yyjson_get_sint(value);
+    if (av_is_sint(value)) {
+        *out = av_get_sint(value);
         return 0;
     }
-    if (yyjson_is_uint(value) && yyjson_get_uint(value) <= INT64_MAX) {
-        *out = (int64_t)yyjson_get_uint(value);
+    if (av_is_uint(value) && av_get_uint(value) <= INT64_MAX) {
+        *out = (int64_t)av_get_uint(value);
         return 0;
     }
     return -1;
 }
 
-static int read_unsigned(yyjson_val *value, uint64_t *out)
+static int read_unsigned(av_value *value, uint64_t *out)
 {
-    if (yyjson_is_uint(value)) {
-        *out = yyjson_get_uint(value);
+    if (av_is_uint(value)) {
+        *out = av_get_uint(value);
         return 0;
     }
-    if (yyjson_is_sint(value) && yyjson_get_sint(value) >= 0) {
-        *out = (uint64_t)yyjson_get_sint(value);
+    if (av_is_sint(value) && av_get_sint(value) >= 0) {
+        *out = (uint64_t)av_get_sint(value);
         return 0;
     }
     return -1;
 }
 
-static int read_signed_range(yyjson_val *value, int64_t minimum, int64_t maximum, int64_t *out)
+static int read_signed_range(av_value *value, int64_t minimum, int64_t maximum, int64_t *out)
 {
     int64_t number;
     if (read_signed(value, &number) || number < minimum || number > maximum) {
@@ -163,7 +163,7 @@ static int read_signed_range(yyjson_val *value, int64_t minimum, int64_t maximum
     return 0;
 }
 
-static int read_unsigned_range(yyjson_val *value, uint64_t maximum, uint64_t *out)
+static int read_unsigned_range(av_value *value, uint64_t maximum, uint64_t *out)
 {
     uint64_t number;
     if (read_unsigned(value, &number) || number > maximum) {
@@ -178,7 +178,7 @@ static int parse_fields(
     const game_prototype_registry *registry,
     void *base,
     const type_desc *type,
-    yyjson_val *object,
+    av_value *object,
     char *error,
     size_t error_size
 );
@@ -188,7 +188,7 @@ static int parse_field(
     const game_prototype_registry *registry,
     void *base,
     const type_field *field,
-    yyjson_val *json,
+    av_value *json,
     char *error,
     size_t error_size
 )
@@ -199,8 +199,8 @@ static int parse_field(
     uint64_t unsigned_value = 0;
     switch (field->type) {
         case PIN_BOOL:
-            result = !yyjson_is_bool(json);
-            value.b = result ? false : yyjson_get_bool(json);
+            result = !av_is_bool(json);
+            value.b = result ? false : av_get_bool(json);
             break;
         case PIN_I8:
             result = read_signed_range(json, INT8_MIN, INT8_MAX, &signed_value);
@@ -226,8 +226,8 @@ static int parse_field(
             break;
         case PIN_ENUM: {
             int label_value = 0;
-            bool label = yyjson_is_str(json) &&
-                         registry_enum_value(field->type_name, yyjson_get_str(json), &label_value);
+            bool label = av_is_str(json) &&
+                         registry_enum_value(field->type_name, av_get_str(json), &label_value);
             result = label ? 0 : read_signed_range(json, INT32_MIN, INT32_MAX, &signed_value);
             if (!result) {
                 value.e = label ? label_value : (int32_t)signed_value;
@@ -257,17 +257,17 @@ static int parse_field(
             value.u64 = unsigned_value;
             break;
         case PIN_F32:
-            result = !yyjson_is_num(json);
-            value.f = result ? 0.0f : (float)yyjson_get_num(json);
+            result = !av_is_num(json);
+            value.f = result ? 0.0f : (float)av_get_num(json);
             break;
         case PIN_F64:
-            result = !yyjson_is_num(json);
-            value.d = result ? 0.0 : yyjson_get_num(json);
+            result = !av_is_num(json);
+            value.d = result ? 0.0 : av_get_num(json);
             break;
         case PIN_NAME:
         case PIN_STR:
-            result = !yyjson_is_str(json);
-            value.str = result ? NULL : own_string(prototype, yyjson_get_str(json));
+            result = !av_is_str(json);
+            value.str = result ? NULL : own_string(prototype, av_get_str(json));
             break;
         case PIN_STRUCT: {
             const type_desc *nested = find_type(registry, field->type_name);
@@ -283,7 +283,7 @@ static int parse_field(
         }
         /* Runtime handles have no authored identity. A saved component clears
          * them; graph events supply live handles after instantiation. */
-        case PIN_HANDLE: result = !yyjson_is_null(json); break;
+        case PIN_HANDLE: result = !av_is_null(json); break;
         case PIN_FLOW: result = 1; break;
     }
     if (result) {
@@ -299,25 +299,25 @@ static int parse_fields(
     const game_prototype_registry *registry,
     void *base,
     const type_desc *type,
-    yyjson_val *object,
+    av_value *object,
     char *error,
     size_t error_size
 )
 {
-    if (!yyjson_is_obj(object)) {
+    if (!av_is_obj(object)) {
         set_error(error, error_size, "value for %s must be an object", type->name);
         return -1;
     }
-    yyjson_obj_iter iterator = yyjson_obj_iter_with(object);
-    yyjson_val *key;
-    while ((key = yyjson_obj_iter_next(&iterator))) {
-        const char *name = yyjson_get_str(key);
+    av_obj_iter iterator = av_obj_iter_with(object);
+    av_value *key;
+    while ((key = av_obj_iter_next(&iterator))) {
+        const char *name = av_get_str(key);
         const type_field *field = find_field(type, name);
         if (!field) {
             set_error(error, error_size, "component %s has unknown field %s", type->name, name);
             return -1;
         }
-        if (parse_field(prototype, registry, base, field, yyjson_obj_iter_get_val(key), error, error_size)) {
+        if (parse_field(prototype, registry, base, field, av_obj_iter_get_val(key), error, error_size)) {
             return -1;
         }
     }
@@ -327,7 +327,7 @@ static int parse_fields(
 static int parse_components(
     game_prototype *prototype,
     game_prototype_component **components,
-    yyjson_val *object,
+    av_value *object,
     char *error,
     size_t error_size
 )
@@ -335,16 +335,16 @@ static int parse_components(
     if (!object) {
         return 0;
     }
-    if (!yyjson_is_obj(object)) {
+    if (!av_is_obj(object)) {
         set_error(error, error_size, "components must be an object");
         return -1;
     }
-    yyjson_obj_iter iterator = yyjson_obj_iter_with(object);
-    yyjson_val *key;
-    while ((key = yyjson_obj_iter_next(&iterator))) {
-        const char *name = yyjson_get_str(key);
+    av_obj_iter iterator = av_obj_iter_with(object);
+    av_value *key;
+    while ((key = av_obj_iter_next(&iterator))) {
+        const char *name = av_get_str(key);
         const ecs_component_desc *desc = game_prototype_registry_find(prototype->registry, name);
-        yyjson_val *value = yyjson_obj_iter_get_val(key);
+        av_value *value = av_obj_iter_get_val(key);
         if (!desc) {
             set_error(error, error_size, "component %s is unavailable", name);
             return -1;
@@ -404,7 +404,16 @@ static void merge_prototype(game_prototype *dst, game_prototype *src)
 }
 
 static game_prototype *load_document(
-    const char *json,
+    const char *text,
+    const game_prototype_registry *registry,
+    char *const *stack,
+    int stack_count,
+    char *error,
+    size_t error_size
+);
+
+static game_prototype *load_value_document(
+    av_value *root,
     const game_prototype_registry *registry,
     char *const *stack,
     int stack_count,
@@ -412,21 +421,14 @@ static game_prototype *load_document(
     size_t error_size
 )
 {
-    yyjson_doc *doc = asset_text_read(json, error, error_size);
-    if (!doc) {
-        return NULL;
-    }
-    yyjson_val *root = yyjson_doc_get_root(doc);
-    yyjson_val *name_value = yyjson_is_obj(root) ? yyjson_obj_get(root, "name") : NULL;
-    if (!yyjson_is_str(name_value) || !yyjson_get_len(name_value)) {
+    av_value *name_value = av_is_obj(root) ? av_obj_get(root, "name") : NULL;
+    if (!av_is_str(name_value) || !av_get_len(name_value)) {
         set_error(error, error_size, "prototype name is required");
-        yyjson_doc_free(doc);
         return NULL;
     }
-    const char *name = yyjson_get_str(name_value);
+    const char *name = av_get_str(name_value);
     if (contains_name(stack, stack_count, name)) {
         set_error(error, error_size, "prototype include cycle at %s", name);
-        yyjson_doc_free(doc);
         return NULL;
     }
     game_prototype *prototype = (game_prototype *)xcalloc(1, sizeof *prototype);
@@ -434,23 +436,21 @@ static game_prototype *load_document(
     prototype->identity = name_identity(name);
     prototype->registry_storage = *registry;
     prototype->registry = &prototype->registry_storage;
-    yyjson_val *identity = yyjson_obj_get(root, "identity");
+    av_value *identity = av_obj_get(root, "identity");
     if (identity) {
-        if (!yyjson_is_str(identity) || !yyjson_get_len(identity)) {
+        if (!av_is_str(identity) || !av_get_len(identity)) {
             set_error(error, error_size, "prototype identity must be a non-empty string");
             game_prototype_free(prototype);
-            yyjson_doc_free(doc);
             return NULL;
         }
         free(prototype->identity);
-        prototype->identity = xstrdup(yyjson_get_str(identity));
+        prototype->identity = xstrdup(av_get_str(identity));
     }
     setup_tag(prototype);
     char *next_stack[64];
     if (stack_count >= (int)(sizeof next_stack / sizeof next_stack[0])) {
         set_error(error, error_size, "prototype include depth exceeded");
         game_prototype_free(prototype);
-        yyjson_doc_free(doc);
         return NULL;
     }
     for (int i = 0; i < stack_count; i++) {
@@ -458,51 +458,45 @@ static game_prototype *load_document(
     }
     next_stack[stack_count] = prototype->name;
 
-    yyjson_val *includes = yyjson_obj_get(root, "includes");
+    av_value *includes = av_obj_get(root, "includes");
     if (includes) {
-        if (!yyjson_is_arr(includes) || !registry->include) {
+        if (!av_is_arr(includes) || !registry->include) {
             set_error(error, error_size, "prototype includes need a resolver");
             game_prototype_free(prototype);
-            yyjson_doc_free(doc);
             return NULL;
         }
-        yyjson_arr_iter iterator = yyjson_arr_iter_with(includes);
-        yyjson_val *include;
-        while ((include = yyjson_arr_iter_next(&iterator))) {
-            if (!yyjson_is_str(include)) {
+        av_arr_iter iterator = av_arr_iter_with(includes);
+        av_value *include;
+        while ((include = av_arr_iter_next(&iterator))) {
+            if (!av_is_str(include)) {
                 set_error(error, error_size, "prototype include name is not a string");
                 game_prototype_free(prototype);
-                yyjson_doc_free(doc);
                 return NULL;
             }
-            const char *source = registry
-                                     ->include(yyjson_get_str(include), registry->include_user);
+            const char *source = registry->include(av_get_str(include), registry->include_user);
             if (!source) {
-                set_error(error, error_size, "prototype include %s is unavailable", yyjson_get_str(include));
+                set_error(error, error_size, "prototype include %s is unavailable", av_get_str(include));
                 game_prototype_free(prototype);
-                yyjson_doc_free(doc);
                 return NULL;
             }
             game_prototype *base = load_document(source, registry, next_stack, stack_count + 1, error, error_size);
             if (!base) {
                 game_prototype_free(prototype);
-                yyjson_doc_free(doc);
                 return NULL;
             }
             merge_prototype(prototype, base);
             game_prototype_free(base);
         }
     }
-    if (parse_components(prototype, &prototype->components, yyjson_obj_get(root, "components"), error, error_size) ||
+    if (parse_components(prototype, &prototype->components, av_obj_get(root, "components"), error, error_size) ||
         parse_components(
             prototype,
             &prototype->detached_components,
-            yyjson_obj_get(root, "detached_components"),
+            av_obj_get(root, "detached_components"),
             error,
             error_size
         )) {
         game_prototype_free(prototype);
-        yyjson_doc_free(doc);
         return NULL;
     }
     for (int i = 0; i < acount(prototype->detached_components); i++) {
@@ -510,32 +504,55 @@ static game_prototype *load_document(
         if (find_component(prototype, name)) {
             set_error(error, error_size, "component %s is both attached and detached", name);
             game_prototype_free(prototype);
-            yyjson_doc_free(doc);
             return NULL;
         }
     }
-    yyjson_val *graphs = yyjson_obj_get(root, "behaviors");
+    av_value *graphs = av_obj_get(root, "behaviors");
     if (graphs) {
-        if (!yyjson_is_arr(graphs)) {
+        if (!av_is_arr(graphs)) {
             set_error(error, error_size, "behaviors must be an array");
             game_prototype_free(prototype);
-            yyjson_doc_free(doc);
             return NULL;
         }
-        yyjson_arr_iter iterator = yyjson_arr_iter_with(graphs);
-        yyjson_val *graph;
-        while ((graph = yyjson_arr_iter_next(&iterator))) {
-            if (!yyjson_is_str(graph)) {
+        av_arr_iter iterator = av_arr_iter_with(graphs);
+        av_value *graph;
+        while ((graph = av_arr_iter_next(&iterator))) {
+            if (!av_is_str(graph)) {
                 set_error(error, error_size, "behavior graph name is not a string");
                 game_prototype_free(prototype);
-                yyjson_doc_free(doc);
                 return NULL;
             }
-            apush(prototype->graphs, own_string(prototype, yyjson_get_str(graph)));
+            apush(prototype->graphs, own_string(prototype, av_get_str(graph)));
         }
     }
-    yyjson_doc_free(doc);
     return prototype;
+}
+
+static game_prototype *load_document(
+    const char *text,
+    const game_prototype_registry *registry,
+    char *const *stack,
+    int stack_count,
+    char *error,
+    size_t error_size
+)
+{
+    av_doc *doc = asset_text_read(text, error, error_size);
+    game_prototype *result = doc
+                               ? load_value_document(av_doc_root(doc), registry, stack, stack_count, error, error_size)
+                               : NULL;
+    av_doc_free(doc);
+    return result;
+}
+
+game_prototype *game_prototype_load_value(
+    av_value *value,
+    const game_prototype_registry *registry,
+    char *error,
+    size_t error_size
+)
+{
+    return load_value_document(value, registry, NULL, 0, error, error_size);
 }
 
 game_prototype *game_prototype_load(
@@ -562,11 +579,11 @@ game_prototype *game_prototype_clone(const game_prototype *prototype, char *erro
         set_error(error, error_size, "invalid prototype clone arguments");
         return NULL;
     }
-    char *json = game_prototype_save(prototype);
-    game_prototype *copy = json
-                             ? game_prototype_load(json, prototype->registry, error, error_size)
+    av_value *value = game_prototype_to_value(prototype);
+    game_prototype *copy = value
+                             ? game_prototype_load_value(value, prototype->registry, error, error_size)
                              : NULL;
-    free(json);
+    av_value_free(value);
     return copy;
 }
 
@@ -668,8 +685,8 @@ static int compare_strings(const void *left_ptr, const void *right_ptr)
 }
 
 static void write_struct_fields(
-    yyjson_mut_doc *doc,
-    yyjson_mut_val *object,
+    av_doc *doc,
+    av_value *object,
     const game_prototype *prototype,
     const void *base,
     const type_desc *type,
@@ -703,8 +720,8 @@ static bool zero_field(const void *base, const type_field *field)
     return false;
 }
 
-static yyjson_mut_val *write_value(
-    yyjson_mut_doc *doc,
+static av_value *write_value(
+    av_doc *doc,
     const game_prototype *prototype,
     const void *base,
     const type_field *field
@@ -713,26 +730,25 @@ static yyjson_mut_val *write_value(
     pin_value value;
     pin_read_field(base, field, &value);
     switch (field->type) {
-        case PIN_BOOL: return yyjson_mut_bool(doc, value.b);
-        case PIN_I8: return yyjson_mut_sint(doc, value.i8);
-        case PIN_I16: return yyjson_mut_sint(doc, value.i16);
-        case PIN_I32: return yyjson_mut_sint(doc, value.i);
-        case PIN_I64: return yyjson_mut_sint(doc, value.i64);
+        case PIN_BOOL: return av_bool(doc, value.b);
+        case PIN_I8: return av_sint(doc, value.i8);
+        case PIN_I16: return av_sint(doc, value.i16);
+        case PIN_I32: return av_sint(doc, value.i);
+        case PIN_I64: return av_sint(doc, value.i64);
         case PIN_ENUM: {
             const char *label = registry_enum_label(field->type_name, value.e);
-            return label ? yyjson_mut_strcpy(doc, label)
-                         : yyjson_mut_sint(doc, value.e);
+            return label ? av_str(doc, label) : av_sint(doc, value.e);
         }
-        case PIN_U8: return yyjson_mut_uint(doc, value.u8);
-        case PIN_U16: return yyjson_mut_uint(doc, value.u16);
-        case PIN_U32: return yyjson_mut_uint(doc, value.u);
-        case PIN_U64: return yyjson_mut_uint(doc, value.u64);
-        case PIN_F32: return yyjson_mut_float(doc, value.f);
-        case PIN_F64: return yyjson_mut_real(doc, value.d);
+        case PIN_U8: return av_uint(doc, value.u8);
+        case PIN_U16: return av_uint(doc, value.u16);
+        case PIN_U32: return av_uint(doc, value.u);
+        case PIN_U64: return av_uint(doc, value.u64);
+        case PIN_F32: return av_float(doc, value.f);
+        case PIN_F64: return av_real(doc, value.d);
         case PIN_NAME:
-        case PIN_STR: return yyjson_mut_strcpy(doc, value.str ? value.str : "");
+        case PIN_STR: return av_str(doc, value.str ? value.str : "");
         case PIN_STRUCT: {
-            yyjson_mut_val *object = yyjson_mut_obj(doc);
+            av_value *object = av_obj(doc);
             const type_desc *nested = find_type(prototype->registry, field->type_name);
             if (nested && value.ptr) {
                 write_struct_fields(doc, object, prototype, value.ptr, nested, false);
@@ -740,14 +756,14 @@ static yyjson_mut_val *write_value(
             return object;
         }
         case PIN_HANDLE:
-        case PIN_FLOW: return yyjson_mut_null(doc);
+        case PIN_FLOW: return av_null(doc);
     }
-    return yyjson_mut_null(doc);
+    return av_null(doc);
 }
 
 static void write_struct_fields(
-    yyjson_mut_doc *doc,
-    yyjson_mut_val *object,
+    av_doc *doc,
+    av_value *object,
     const game_prototype *prototype,
     const void *base,
     const type_desc *type,
@@ -775,9 +791,9 @@ static void write_struct_fields(
         }
         pin_value value;
         pin_read_field(base, field, &value);
-        yyjson_mut_val *json = NULL;
+        av_value *json = NULL;
         if (field->type == PIN_STRUCT && value.ptr) {
-            json = yyjson_mut_obj(doc);
+            json = av_obj(doc);
             write_struct_fields(
                 doc,
                 json,
@@ -786,25 +802,25 @@ static void write_struct_fields(
                 find_type(prototype->registry, field->type_name),
                 sparse
             );
-            if (sparse && !yyjson_mut_obj_size(json)) {
+            if (sparse && !av_obj_size(json)) {
                 continue;
             }
         } else {
             json = write_value(doc, prototype, base, field);
         }
-        yyjson_mut_obj_add_val(doc, object, field->name, json);
+        av_obj_add_val(doc, object, field->name, json);
     }
     afree(order);
 }
 
-static yyjson_mut_val *write_components(
-    yyjson_mut_doc *doc,
+static av_value *write_components(
+    av_doc *doc,
     const game_prototype *prototype,
     game_prototype_component *values,
     bool sparse
 )
 {
-    yyjson_mut_val *components = yyjson_mut_obj(doc);
+    av_value *components = av_obj(doc);
     int *order = NULL;
     for (int i = 0; i < acount(values); i++) {
         apush(order, i);
@@ -821,7 +837,7 @@ static yyjson_mut_val *write_components(
     }
     for (int i = 0; i < acount(order); i++) {
         game_prototype_component *component = &values[order[i]];
-        yyjson_mut_val *object = yyjson_mut_obj(doc);
+        av_value *object = av_obj(doc);
         write_struct_fields(
             doc,
             object,
@@ -830,7 +846,7 @@ static yyjson_mut_val *write_components(
             component->desc->type,
             sparse
         );
-        yyjson_mut_obj_add_val(
+        av_obj_add_val(
             doc,
             components,
             component->desc->key ? component->desc->key : component->desc->name,
@@ -841,28 +857,28 @@ static yyjson_mut_val *write_components(
     return components;
 }
 
-char *game_prototype_save(const game_prototype *prototype)
+av_value *game_prototype_to_value(const game_prototype *prototype)
 {
     if (!prototype) {
         return NULL;
     }
-    yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
-    yyjson_mut_val *root = yyjson_mut_obj(doc);
-    yyjson_mut_doc_set_root(doc, root);
-    yyjson_mut_obj_add_strcpy(doc, root, "name", prototype->name);
+    av_doc *doc = av_doc_new();
+    av_value *root = av_obj(doc);
+    av_doc_set_root(doc, root);
+    av_obj_add_strcpy(doc, root, "name", prototype->name);
     char *identity = name_identity(prototype->name);
     if (strcmp(identity, prototype->identity) != 0) {
-        yyjson_mut_obj_add_strcpy(doc, root, "identity", prototype->identity);
+        av_obj_add_strcpy(doc, root, "identity", prototype->identity);
     }
     free(identity);
-    yyjson_mut_obj_add_val(
+    av_obj_add_val(
         doc,
         root,
         "components",
         write_components(doc, prototype, prototype->components, true)
     );
     if (acount(prototype->detached_components)) {
-        yyjson_mut_obj_add_val(
+        av_obj_add_val(
             doc,
             root,
             "detached_components",
@@ -875,46 +891,54 @@ char *game_prototype_save(const game_prototype *prototype)
             apush(graphs, prototype->graphs[i]);
         }
         qsort(graphs, (size_t)acount(graphs), sizeof *graphs, compare_strings);
-        yyjson_mut_val *array = yyjson_mut_arr(doc);
+        av_value *array = av_arr(doc);
         for (int i = 0; i < acount(graphs); i++) {
-            yyjson_mut_arr_add_strcpy(doc, array, graphs[i]);
+            av_arr_add_strcpy(doc, array, graphs[i]);
         }
-        yyjson_mut_obj_add_val(doc, root, "behaviors", array);
+        av_obj_add_val(doc, root, "behaviors", array);
         afree(graphs);
     }
-    char *result = yyjson_mut_write(doc, YYJSON_WRITE_PRETTY_TWO_SPACES, NULL);
-    yyjson_mut_doc_free(doc);
+    av_value *result = av_value_copy(av_doc_root(doc));
+    av_doc_free(doc);
     return result;
 }
 
-char *game_prototype_components_json(const game_prototype *prototype)
+char *game_prototype_save(const game_prototype *prototype)
+{
+    av_value *value = game_prototype_to_value(prototype);
+    char *text = value ? av_value_write(value) : NULL;
+    av_value_free(value);
+    return text;
+}
+
+av_value *game_prototype_components_value(const game_prototype *prototype)
 {
     if (!prototype) {
         return NULL;
     }
-    yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
-    yyjson_mut_doc_set_root(doc, write_components(doc, prototype, prototype->components, false));
-    char *result = yyjson_mut_write(doc, YYJSON_WRITE_PRETTY_TWO_SPACES, NULL);
-    yyjson_mut_doc_free(doc);
+    av_doc *doc = av_doc_new();
+    av_doc_set_root(doc, write_components(doc, prototype, prototype->components, false));
+    av_value *result = av_value_copy(av_doc_root(doc));
+    av_doc_free(doc);
     return result;
 }
 
-char *game_prototype_component_json(const game_prototype *prototype, const char *name)
+av_value *game_prototype_component_value(const game_prototype *prototype, const char *name)
 {
     const game_prototype_component *component = find_component((game_prototype *)prototype, name);
     game_prototype_component *values = NULL;
     if (component) {
         apush(values, *component);
     }
-    yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
-    yyjson_mut_doc_set_root(doc, write_components(doc, prototype, values, false));
-    char *json = yyjson_mut_write(doc, YYJSON_WRITE_PRETTY_TWO_SPACES, NULL);
-    yyjson_mut_doc_free(doc);
+    av_doc *doc = av_doc_new();
+    av_doc_set_root(doc, write_components(doc, prototype, values, false));
+    av_value *json = av_value_copy(av_doc_root(doc));
+    av_doc_free(doc);
     afree(values);
     return json;
 }
 
-char *game_prototype_entity_component_json(
+av_value *game_prototype_entity_component_value(
     const ecs_world *world,
     ecs_entity entity,
     const ecs_component_desc *desc,
@@ -929,14 +953,14 @@ char *game_prototype_entity_component_json(
         return NULL;
     }
     game_prototype schema = { .registry = registry };
-    yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
-    yyjson_mut_val *root = yyjson_mut_obj(doc);
-    yyjson_mut_val *fields = yyjson_mut_obj(doc);
-    yyjson_mut_doc_set_root(doc, root);
+    av_doc *doc = av_doc_new();
+    av_value *root = av_obj(doc);
+    av_value *fields = av_obj(doc);
+    av_doc_set_root(doc, root);
     write_struct_fields(doc, fields, &schema, data, desc->type, false);
-    yyjson_mut_obj_add_val(doc, root, desc->key ? desc->key : desc->name, fields);
-    char *json = yyjson_mut_write(doc, YYJSON_WRITE_PRETTY_TWO_SPACES, NULL);
-    yyjson_mut_doc_free(doc);
+    av_obj_add_val(doc, root, desc->key ? desc->key : desc->name, fields);
+    av_value *json = av_value_copy(av_doc_root(doc));
+    av_doc_free(doc);
     return json;
 }
 
@@ -968,13 +992,13 @@ static int field_equal(
     return pin_value_equal(&left_value, &right_value);
 }
 
-static char *component_overrides_json(const game_prototype *base, const game_prototype_component *current_components)
+static av_value *component_overrides_value(const game_prototype *base, const game_prototype_component *current_components)
 {
-    yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
-    yyjson_mut_val *root = yyjson_mut_obj(doc);
-    yyjson_mut_val *components = yyjson_mut_obj(doc);
-    yyjson_mut_doc_set_root(doc, root);
-    yyjson_mut_obj_add_val(doc, root, "components", components);
+    av_doc *doc = av_doc_new();
+    av_value *root = av_obj(doc);
+    av_value *components = av_obj(doc);
+    av_doc_set_root(doc, root);
+    av_obj_add_val(doc, root, "components", components);
     int *order = NULL;
     for (int i = 0; i < acount(base->components); i++) {
         apush(order, i);
@@ -1001,15 +1025,15 @@ static char *component_overrides_json(const game_prototype *base, const game_pro
             }
         }
         if (!current) {
-            yyjson_mut_obj_add_val(
+            av_obj_add_val(
                 doc,
                 components,
                 component->desc->key ? component->desc->key : component->desc->name,
-                yyjson_mut_null(doc)
+                av_null(doc)
             );
             continue;
         }
-        yyjson_mut_val *fields = NULL;
+        av_value *fields = NULL;
         for (int field_index = 0; field_index < component->desc->type->field_count;
              field_index++) {
             const type_field *field = &component->desc->type->fields[field_index];
@@ -1017,12 +1041,12 @@ static char *component_overrides_json(const game_prototype *base, const game_pro
                 continue;
             }
             if (!fields) {
-                fields = yyjson_mut_obj(doc);
+                fields = av_obj(doc);
             }
-            yyjson_mut_obj_add_val(doc, fields, field->name, write_value(doc, base, current, field));
+            av_obj_add_val(doc, fields, field->name, write_value(doc, base, current, field));
         }
         if (fields) {
-            yyjson_mut_obj_add_val(
+            av_obj_add_val(
                 doc,
                 components,
                 component->desc->key ? component->desc->key : component->desc->name,
@@ -1040,29 +1064,33 @@ static char *component_overrides_json(const game_prototype *base, const game_pro
         if (existed) {
             continue;
         }
-        yyjson_mut_val *fields = yyjson_mut_obj(doc);
+        av_value *fields = av_obj(doc);
         write_struct_fields(doc, fields, base, component->data, component->desc->type, false);
-        yyjson_mut_obj_add_val(
+        av_obj_add_val(
             doc,
             components,
             component->desc->key ? component->desc->key : component->desc->name,
             fields
         );
     }
-    char *result = yyjson_mut_val_write(components, YYJSON_WRITE_PRETTY_TWO_SPACES, NULL);
-    yyjson_mut_doc_free(doc);
+    av_value *result = av_value_copy(components);
+    av_doc_free(doc);
     return result;
 }
 
-char *game_prototype_overrides_json(const game_prototype *base, const game_prototype *current)
+av_value *game_prototype_overrides_value(const game_prototype *base, const game_prototype *current)
 {
     if (!base || !current) {
         return NULL;
     }
-    return component_overrides_json(base, current->components);
+    return component_overrides_value(base, current->components);
 }
 
-char *game_prototype_capture_overrides_json(const game_prototype *base, const ecs_world *world, ecs_entity entity)
+av_value *game_prototype_capture_overrides_value(
+    const game_prototype *base,
+    const ecs_world *world,
+    ecs_entity entity
+)
 {
     if (!base || !world || !ecs_entity_is_alive(world, entity)) {
         return NULL;
@@ -1079,7 +1107,7 @@ char *game_prototype_capture_overrides_json(const game_prototype *base, const ec
         };
         apush(components, component);
     }
-    char *json = component_overrides_json(base, components);
+    av_value *json = component_overrides_value(base, components);
     afree(components);
     return json;
 }
@@ -1089,30 +1117,24 @@ static int apply_override_fields(
     const game_prototype_registry *registry,
     void *base,
     const type_desc *type,
-    yyjson_val *fields,
+    av_value *fields,
     char *error,
     size_t error_size
 )
 {
-    if (!yyjson_is_obj(fields)) {
+    if (!av_is_obj(fields)) {
         set_error(error, error_size, "value for %s override must be an object", type->name);
         return -1;
     }
-    yyjson_obj_iter iterator = yyjson_obj_iter_with(fields);
-    yyjson_val *key;
-    while ((key = yyjson_obj_iter_next(&iterator))) {
-        const type_field *field = find_field(type, yyjson_get_str(key));
+    av_obj_iter iterator = av_obj_iter_with(fields);
+    av_value *key;
+    while ((key = av_obj_iter_next(&iterator))) {
+        const type_field *field = find_field(type, av_get_str(key));
         if (!field) {
-            set_error(
-                error,
-                error_size,
-                "type %s has unknown override field %s",
-                type->name,
-                yyjson_get_str(key)
-            );
+            set_error(error, error_size, "type %s has unknown override field %s", type->name, av_get_str(key));
             return -1;
         }
-        yyjson_val *value = yyjson_obj_iter_get_val(key);
+        av_value *value = av_obj_iter_get_val(key);
         if (field->type == PIN_STRUCT) {
             const type_desc *nested = find_type(registry, field->type_name);
             if (!nested || apply_override_fields(
@@ -1147,55 +1169,51 @@ static int apply_component_override(
     ecs_entity entity,
     const game_prototype_registry *registry,
     const ecs_component_desc *desc,
-    yyjson_val *fields,
+    av_value *fields,
     char *error,
     size_t error_size
 )
 {
     void *base = ecs_component_data(world, entity, desc->id);
-    if (!base || !yyjson_is_obj(fields)) {
+    if (!base || !av_is_obj(fields)) {
         set_error(error, error_size, "component %s override is invalid", desc->name);
         return -1;
     }
     return apply_override_fields(parser, registry, base, desc->type, fields, error, error_size);
 }
 
-int game_prototype_apply_components_json(
+int game_prototype_apply_components_value(
     ecs_world *world,
     ecs_entity entity,
-    const char *components_json,
+    av_value *components,
     const game_prototype_registry *registry,
     char *error,
     size_t error_size
 )
 {
-    if (!world || !registry || !components_json || !ecs_entity_is_alive(world, entity)) {
+    if (!world || !registry || !components || !ecs_entity_is_alive(world, entity)) {
         set_error(error, error_size, "invalid component override arguments");
         return -1;
     }
-    yyjson_doc *doc = yyjson_read(components_json, strlen(components_json), 0);
-    yyjson_val *root = doc ? yyjson_doc_get_root(doc) : NULL;
-    if (!root || !yyjson_is_obj(root)) {
+    av_value *root = components;
+    if (!root || !av_is_obj(root)) {
         set_error(error, error_size, "component overrides must be an object");
-        yyjson_doc_free(doc);
         return -1;
     }
     game_prototype parser = { .registry = registry };
-    yyjson_obj_iter iterator = yyjson_obj_iter_with(root);
-    yyjson_val *key;
-    while ((key = yyjson_obj_iter_next(&iterator))) {
-        const ecs_component_desc *desc = game_prototype_registry_find(registry, yyjson_get_str(key));
+    av_obj_iter iterator = av_obj_iter_with(root);
+    av_value *key;
+    while ((key = av_obj_iter_next(&iterator))) {
+        const ecs_component_desc *desc = game_prototype_registry_find(registry, av_get_str(key));
         if (!desc) {
-            set_error(error, error_size, "unknown override component %s", yyjson_get_str(key));
-            yyjson_doc_free(doc);
+            set_error(error, error_size, "unknown override component %s", av_get_str(key));
             afree(parser.strings);
             return -1;
         }
-        if (yyjson_is_null(yyjson_obj_iter_get_val(key))) {
+        if (av_is_null(av_obj_iter_get_val(key))) {
             if (ecs_component_has(world, entity, desc->id) &&
                 ecs_world_record_remove(world, entity, desc->id, 0) != ECS_OK) {
                 set_error(error, error_size, "override component %s could not be removed", desc->name);
-                yyjson_doc_free(doc);
                 afree(parser.strings);
                 return -1;
             }
@@ -1204,31 +1222,27 @@ int game_prototype_apply_components_json(
         if (!ecs_component_has(world, entity, desc->id) &&
             ecs_world_record_add(world, entity, desc->id, NULL, 0) != ECS_OK) {
             set_error(error, error_size, "override component %s could not be added", desc->name);
-            yyjson_doc_free(doc);
             afree(parser.strings);
             return -1;
         }
     }
     if (ecs_world_apply_commands(world) != ECS_OK) {
         set_error(error, error_size, "component override application failed");
-        yyjson_doc_free(doc);
         afree(parser.strings);
         return -1;
     }
-    iterator = yyjson_obj_iter_with(root);
-    while ((key = yyjson_obj_iter_next(&iterator))) {
-        const ecs_component_desc *desc = game_prototype_registry_find(registry, yyjson_get_str(key));
-        if (yyjson_is_null(yyjson_obj_iter_get_val(key))) {
+    iterator = av_obj_iter_with(root);
+    while ((key = av_obj_iter_next(&iterator))) {
+        const ecs_component_desc *desc = game_prototype_registry_find(registry, av_get_str(key));
+        if (av_is_null(av_obj_iter_get_val(key))) {
             continue;
         }
-        if (apply_component_override(&parser, world, entity, registry, desc, yyjson_obj_iter_get_val(key), error, error_size) !=
+        if (apply_component_override(&parser, world, entity, registry, desc, av_obj_iter_get_val(key), error, error_size) !=
             0) {
-            yyjson_doc_free(doc);
             afree(parser.strings);
             return -1;
         }
     }
-    yyjson_doc_free(doc);
     afree(parser.strings);
     return 0;
 }
@@ -1376,11 +1390,11 @@ int game_prototype_write_field(
     return 0;
 }
 
-int game_prototype_write_field_json(
+int game_prototype_write_field_value(
     game_prototype *prototype,
     const char *component_name,
     const char *field_name,
-    yyjson_val *json,
+    av_value *json,
     char *error,
     size_t error_size
 )
@@ -1404,83 +1418,68 @@ int game_prototype_write_field_json(
     return parse_field(prototype, prototype->registry, component->data, field, json, error, error_size);
 }
 
-static yyjson_mut_val *rebase_fields(
-    yyjson_mut_doc *doc,
-    yyjson_val *values,
-    yyjson_val *previous,
-    yyjson_val *current
-)
+static av_value *rebase_fields(av_doc *doc, av_value *values, av_value *previous, av_value *current)
 {
-    if (!yyjson_is_obj(current)) {
-        return yyjson_val_mut_copy(doc, values);
+    if (!av_is_obj(current)) {
+        return av_clone(doc, values);
     }
-    yyjson_mut_val *result = yyjson_val_mut_copy(doc, current);
-    yyjson_obj_iter iterator = yyjson_obj_iter_with(values);
-    yyjson_val *key;
-    while ((key = yyjson_obj_iter_next(&iterator))) {
-        const char *name = yyjson_get_str(key);
-        yyjson_val *value = yyjson_obj_iter_get_val(key);
-        yyjson_val *old = yyjson_obj_get(previous, name);
-        yyjson_val *next = yyjson_obj_get(current, name);
-        if (old && next && yyjson_equals(old, value)) {
+    av_value *result = av_clone(doc, current);
+    av_obj_iter iterator = av_obj_iter_with(values);
+    av_value *key;
+    while ((key = av_obj_iter_next(&iterator))) {
+        const char *name = av_get_str(key);
+        av_value *value = av_obj_iter_get_val(key);
+        av_value *old = av_obj_get(previous, name);
+        av_value *next = av_obj_get(current, name);
+        if (old && next && av_equals(old, value)) {
             continue;
         }
-        yyjson_mut_val *merged = yyjson_is_obj(value) && yyjson_is_obj(old) &&
-                                         yyjson_is_obj(next)
-                                   ? rebase_fields(doc, value, old, next)
-                                   : yyjson_val_mut_copy(doc, value);
-        yyjson_mut_obj_remove_str(result, name);
-        yyjson_mut_obj_add_val(doc, result, name, merged);
+        av_value *merged = av_is_obj(value) && av_is_obj(old) && av_is_obj(next)
+                             ? rebase_fields(doc, value, old, next)
+                             : av_clone(doc, value);
+        av_obj_remove_str(result, name);
+        av_obj_add_val(doc, result, name, merged);
     }
     return result;
 }
 
-char *game_prototype_rebase_component_json(
-    const char *values,
-    const char *previous_defaults,
-    const char *current_defaults
+av_value *game_prototype_rebase_component_value(
+    av_value *values,
+    av_value *previous_defaults,
+    av_value *current_defaults
 )
 {
     assert(values && previous_defaults && current_defaults);
-    const char *input[] = { values, previous_defaults, current_defaults };
-    yyjson_doc *parsed[3] = { 0 };
-    yyjson_val *root[3] = { 0 };
-    char *result = NULL;
+    av_value *root[] = { values, previous_defaults, current_defaults };
     for (int i = 0; i < 3; i++) {
-        parsed[i] = yyjson_read(input[i], strlen(input[i]), 0);
-        root[i] = parsed[i] ? yyjson_doc_get_root(parsed[i]) : NULL;
-        if (!yyjson_is_obj(root[i]) || yyjson_obj_size(root[i]) > 1) {
-            goto cleanup;
+        if (!av_is_obj(root[i]) || av_obj_size(root[i]) > 1) {
+            return NULL;
         }
     }
-    yyjson_obj_iter iterator = yyjson_obj_iter_with(root[0]);
-    yyjson_val *key = yyjson_obj_iter_next(&iterator);
-    if (!key || !yyjson_is_obj(yyjson_obj_iter_get_val(key))) {
-        goto cleanup;
+    av_obj_iter iterator = av_obj_iter_with(values);
+    av_value *key = av_obj_iter_next(&iterator);
+    if (!key || !av_is_obj(av_obj_iter_get_val(key))) {
+        return NULL;
     }
-    const char *name = yyjson_get_str(key);
-    yyjson_val *defaults[2];
+    const char *name = av_get_str(key);
+    av_value *defaults[2];
     for (int i = 0; i < 2; i++) {
-        defaults[i] = yyjson_obj_get(root[i + 1], name);
-        if (yyjson_obj_size(root[i + 1]) && !yyjson_is_obj(defaults[i])) {
-            goto cleanup;
+        defaults[i] = av_obj_get(root[i + 1], name);
+        if (av_obj_size(root[i + 1]) && !av_is_obj(defaults[i])) {
+            return NULL;
         }
     }
-    yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
-    yyjson_mut_val *object = yyjson_mut_obj(doc);
-    yyjson_mut_doc_set_root(doc, object);
-    yyjson_mut_obj_add_val(
+    av_doc *doc = av_doc_new();
+    av_value *object = av_obj(doc);
+    av_doc_set_root(doc, object);
+    av_obj_add_val(
         doc,
         object,
         name,
-        rebase_fields(doc, yyjson_obj_iter_get_val(key), defaults[0], defaults[1])
+        rebase_fields(doc, av_obj_iter_get_val(key), defaults[0], defaults[1])
     );
-    result = yyjson_mut_write(doc, YYJSON_WRITE_PRETTY_TWO_SPACES, NULL);
-    yyjson_mut_doc_free(doc);
-cleanup:
-    for (int i = 0; i < 3; i++) {
-        yyjson_doc_free(parsed[i]);
-    }
+    av_value *result = av_value_copy(object);
+    av_doc_free(doc);
     return result;
 }
 
@@ -1599,7 +1598,7 @@ int game_prototype_add_component(game_prototype *prototype, const ecs_component_
             prototype,
             desc->name,
             "parts",
-            (pin_value){ .type = PIN_STR, .str = "[]" }
+            (pin_value){ .type = PIN_STR, .str = "(array)-\n" }
         );
     }
     if (!strcmp(desc->name, "GameHRC2D")) {
@@ -1646,16 +1645,16 @@ int game_prototype_detach_component(game_prototype *prototype, const char *compo
     return 0;
 }
 
-char *game_prototype_component_defaults_json(
+av_value *game_prototype_component_defaults_value(
     const game_prototype_registry *registry,
     const ecs_component_desc *desc
 )
 {
     game_prototype *defaults = xcalloc(1, sizeof *defaults);
     defaults->registry = registry;
-    char *json = game_prototype_add_component(defaults, desc) == 0
-                   ? game_prototype_component_json(defaults, desc->name)
-                   : NULL;
+    av_value *json = game_prototype_add_component(defaults, desc) == 0
+                       ? game_prototype_component_value(defaults, desc->name)
+                       : NULL;
     game_prototype_free(defaults);
     return json;
 }

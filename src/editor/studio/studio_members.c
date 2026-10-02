@@ -124,9 +124,9 @@ static void select_local(studio *s, const graph_local *local)
 
 /* ---------- Edits ---------- */
 
-bool sm_record(editor *e, char *before, bool ok)
+bool sm_record(editor *e, behavior_asset *before, bool ok)
 {
-    char *pending = e->pending_snapshot;
+    behavior_asset *pending = e->pending_snapshot;
     e->pending_snapshot = before;
     if (ok) {
         ed_commit_snapshot(e);
@@ -203,7 +203,7 @@ static void add_variable(studio *s)
                          : (pin_spec){ .type = PIN_BOOL, .type_name = "bool" };
     char name[128];
     unique_variable_name(e->asset, "New Variable", name, sizeof name);
-    char *before = ed_snapshot(e);
+    behavior_asset *before = ed_snapshot(e);
     behavior_variable *v = behavior_asset_add_variable(
         e->asset,
         name,
@@ -228,7 +228,7 @@ static void duplicate_variable(studio *s)
     }
     char name[128];
     unique_variable_name(e->asset, v->name, name, sizeof name);
-    char *before = ed_snapshot(e);
+    behavior_asset *before = ed_snapshot(e);
     behavior_variable *copy = behavior_asset_duplicate_variable(e->asset, v->id, name);
     if (sm_record(e, before, copy != NULL)) {
         select_member(s, STUDIO_MEMBER_VARIABLE, copy->id);
@@ -252,7 +252,7 @@ static const char *member_name(const studio *s)
 }
 
 /* The graph editor's latest undo step, which a delete's toast undoes. */
-static const char *latest_step(const editor *e)
+static const behavior_asset *latest_step(const editor *e)
 {
     return e && acount(e->undo) ? alast(e->undo) : NULL;
 }
@@ -315,7 +315,7 @@ static void delete_member_now(studio *s)
     }
     char name[128];
     snprintf(name, sizeof name, "%s", member_name(s));
-    char *before = NULL;
+    behavior_asset *before = NULL;
     bool deleted = false;
     switch (m->kind) {
         case STUDIO_MEMBER_GRAPH:
@@ -390,7 +390,7 @@ static void rename_member(studio *s, const char *name)
     graph *g = behavior_asset_find_graph(e->asset, m->rename_id);
     const behavior_variable *v = behavior_asset_find_variable_by_id(e->asset, m->rename_id);
     const graph_local *local = graph_local_by_id(sg_active_graph(s), m->rename_id);
-    char *before = NULL;
+    behavior_asset *before = NULL;
     /* A library's functions and an event's payload are named elsewhere too. */
     const char *old = m->rename_kind == STUDIO_MEMBER_GRAPH ? (g ? g->name : NULL)
                     : m->rename_kind == STUDIO_MEMBER_VARIABLE ? (v ? v->name : NULL)
@@ -1230,7 +1230,7 @@ void studio_members_drop(studio *s)
         return;
     }
     editor *e = sg_graph_editor(s);
-    char *before = ed_snapshot(e);
+    behavior_asset *before = ed_snapshot(e);
     node *n = drop_node(s, payload[0], strtoull(payload + 1, NULL, 10));
     if (!sm_record(e, before, n != NULL)) {
         return;

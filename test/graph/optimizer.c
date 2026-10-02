@@ -51,9 +51,9 @@ static double evaluate(graph *g, node *n, behavior_instance *instance, double de
 
 static behavior_asset *copy_asset(const behavior_asset *asset)
 {
-    char *json = behavior_asset_save_json(asset);
+    char *json = behavior_asset_save(asset);
     assert(json);
-    behavior_asset *copy = behavior_asset_load_json(json);
+    behavior_asset *copy = behavior_asset_load(json);
     if (!copy) {
         fprintf(stderr, "optimizer copy: %s\n", graph_last_error());
     }
@@ -168,7 +168,7 @@ static void locals_and_documents()
         uses[i] = add(g, "Add");
         assert(graph_connect_data_conversion(g, source, 0, uses[i], 0, &NODE_To_Real) == 0);
     }
-    char *before = behavior_asset_save_json(asset);
+    char *before = behavior_asset_save(asset);
     graph_optimize_report dry = { 0 }, report = { 0 };
     graph_optimize_options options = graph_optimize_defaults();
     options.fanout_threshold = 4;
@@ -180,7 +180,7 @@ static void locals_and_documents()
     options.fanout_threshold = 3;
     options.dry_run = true;
     assert(graph_optimize(g, &options, &dry) == 1);
-    char *untouched = behavior_asset_save_json(asset);
+    char *untouched = behavior_asset_save(asset);
     test_check(
         !strcmp(before, untouched) && dry.created_aliases == 1,
         "dry run leaves IDs, serialized asset, and topology unchanged"
@@ -203,11 +203,11 @@ static void locals_and_documents()
             "each local use retains and evaluates its original conversion"
         );
     }
-    behavior_asset *repeat = behavior_asset_load_json(before);
+    behavior_asset *repeat = behavior_asset_load(before);
     graph_optimize_report repeated = { 0 };
     assert(graph_optimize(repeat->graph, NULL, &repeated) == 1);
-    char *repeat_json = behavior_asset_save_json(repeat);
-    char *optimized_json = behavior_asset_save_json(asset);
+    char *repeat_json = behavior_asset_save(repeat);
+    char *optimized_json = behavior_asset_save(asset);
     test_check(!strcmp(repeat_json, optimized_json), "identical graphs produce identical local IDs, names, and serialized output");
     free(repeat_json);
     free(optimized_json);
@@ -218,18 +218,18 @@ static void locals_and_documents()
         acount(clone->graph->locals) == 1 && !graph_validate_locals(clone->graph),
         "asset clone preserves local identities and dependencies"
     );
-    char *clipboard = graph_save_nodes_json(g, g->nodes, acount(g->nodes));
-    assert(graph_append_json(g, clipboard, 50, 50) == 0);
+    char *clipboard = graph_save_nodes(g, g->nodes, acount(g->nodes));
+    assert(graph_append(g, clipboard, 50, 50) == 0);
     test_check(
         acount(g->locals) == 2 && g->locals[0].id != g->locals[1].id &&
             strcmp(g->locals[0].name, g->locals[1].name) && !graph_validate_locals(g),
         "clipboard remaps source, pin, local IDs, and conflicting names"
     );
     free(clipboard);
-    clipboard = graph_save_nodes_json(g, uses, 1);
+    clipboard = graph_save_nodes(g, uses, 1);
     graph partial;
     graph_init(&partial);
-    assert(graph_append_json(&partial, clipboard, 0, 0) == 0);
+    assert(graph_append(&partial, clipboard, 0, 0) == 0);
     test_check(
         !partial.nodes[0]->input_pins[0].binding && !acount(partial.locals),
         "partial clipboard does not retain a dangling external local"
@@ -290,10 +290,10 @@ static void skip_groups()
         if (mode == 6) {
             g->edges[1].conversion = &NODE_To_Real;
         }
-        char *before = behavior_asset_save_json(asset);
+        char *before = behavior_asset_save(asset);
         graph_optimize_report report = { 0 };
         assert(graph_optimize(g, NULL, &report) == 0);
-        char *after = behavior_asset_save_json(asset);
+        char *after = behavior_asset_save(asset);
         test_check(
             !strcmp(before, after) && acount(report.skipped) > 0 &&
                 acount(g->nodes) == 3,
@@ -313,14 +313,14 @@ static void local_validation()
     node *a = add(g, "Add"), *b = add(g, "Add");
     assert(graph_connect_data(g, a, 0, b, 0) == 0);
     assert(graph_create_local(g, a, 0, "Sum"));
-    char *valid = behavior_asset_save_json(asset);
+    char *valid = behavior_asset_save(asset);
     g->locals[0].source_id = 999999;
-    char *invalid = behavior_asset_save_json(asset);
-    behavior_asset *loaded = behavior_asset_load_json(invalid);
+    char *invalid = behavior_asset_save(asset);
+    behavior_asset *loaded = behavior_asset_load(invalid);
     test_check(!loaded && strstr(graph_last_error(), "local"), "missing local sources fail loading with a local diagnostic");
     free(invalid);
     behavior_asset_free(asset);
-    asset = behavior_asset_load_json(valid);
+    asset = behavior_asset_load(valid);
     g = asset->graph;
     a = g->nodes[0];
     b = g->nodes[1];
@@ -347,7 +347,7 @@ static void history_and_cleanup()
         assert(graph_connect_data(asset->graph, delta, 0, consumer, 0) == 0);
         consumer->x = (float)(3000 + i * 1000);
     }
-    char *before = ed_snapshot(&e);
+    behavior_asset *before = ed_snapshot(&e);
     test_check(ed_optimize_graph(&e) == 1 && acount(e.undo) == 1, "optimization and arrangement create one undo entry");
     float left = e.active_graph->nodes[0]->x, right = left;
     for (int i = 1; i < acount(e.active_graph->nodes); i++) {
@@ -355,24 +355,24 @@ static void history_and_cleanup()
         right = fmaxf(right, e.active_graph->nodes[i]->x);
     }
     test_check(right - left < 2000, "optimizer arrangement compacts the original fanout spread");
-    char *after = ed_snapshot(&e);
+    behavior_asset *after = ed_snapshot(&e);
     ed_undo(&e);
-    char *undone = ed_snapshot(&e);
-    test_check(!strcmp(before, undone), "one Undo restores exact topology and layout");
+    behavior_asset *undone = ed_snapshot(&e);
+    test_check(behavior_asset_equal(before, undone), "one Undo restores exact topology and layout");
     ed_redo(&e);
-    char *redone = ed_snapshot(&e);
-    test_check(!strcmp(after, redone), "one Redo restores all optimizer changes");
+    behavior_asset *redone = ed_snapshot(&e);
+    test_check(behavior_asset_equal(after, redone), "one Redo restores all optimizer changes");
     int history = acount(e.undo);
     test_check(ed_optimize_graph(&e) == 0 && acount(e.undo) == history, "a no-op optimizer preserves history");
-    char *noop = ed_snapshot(&e);
-    test_check(!strcmp(noop, after), "a no-op optimizer preserves serialized bytes");
-    free(noop);
-    free(before);
-    free(after);
-    free(undone);
-    free(redone);
-    ed_free_string_stack(&e.undo);
-    ed_free_string_stack(&e.redo);
+    behavior_asset *noop = ed_snapshot(&e);
+    test_check(behavior_asset_equal(noop, after), "a no-op optimizer preserves authored values");
+    behavior_asset_free(noop);
+    behavior_asset_free(before);
+    behavior_asset_free(after);
+    behavior_asset_free(undone);
+    behavior_asset_free(redone);
+    ed_free_asset_stack(&e.undo);
+    ed_free_asset_stack(&e.redo);
     eval_view_free(e.ev);
     behavior_asset_free(e.asset);
 

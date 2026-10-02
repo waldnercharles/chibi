@@ -22,11 +22,11 @@ typedef struct
 } disk_fixture;
 
 static const char
-    DOT[] = "name: Dot\ncomponents:\n  GAME.GameTransform: {x: %s}\n";
+    DOT[] = "name \"Dot\"\ncomponents { GAME.GameTransform { x %s; }; }\n";
 static const char PULSE
-    [] = "version: 3\nname: Pulse\nid_counter: 10\nowner_type: ecs.entity\n"
-         "graphs:\n- kind: event\n  name: \"\"\n  nodes:\n"
-         "  - {id: 1, type: Event, reference_name: Tick}\n%s";
+    [] = "version 3\nname \"Pulse\"\nid_counter 10\nowner_type \"ecs.entity\"\n"
+         "(array)graphs { - { kind \"event\"; name \"\"; (array)nodes {\n"
+         "- { id 1; type \"Event\"; reference_name \"Tick\"; }\n%s}; }; }\n";
 
 static void path_to(const disk_fixture *f, const char *name, char *out, size_t size)
 {
@@ -57,13 +57,8 @@ static disk_fixture fixture_new()
         path_to(&f, folders[i], folder, sizeof folder);
         assert(mkdir(folder, 0755) == 0);
     }
-    write_asset(&f, "prototypes/Dot.yaml", DOT, "1.0");
-    write_asset(
-        &f,
-        "scenes/Main.yaml",
-        "version: 1\nname: Main\nentities:\n%s",
-        "- {name: Dot_1, prototype: Dot}\n- {name: Dot_2, prototype: Dot}\n"
-    );
+    write_asset(&f, "prototypes/Dot.kdl", DOT, "1.0");
+    write_asset(&f, "scenes/Main.kdl", "version 1\nname \"Main\"\n(array)entities {\n%s}\n", "- { name \"Dot_1\"; prototype \"Dot\"; }\n- { name \"Dot_2\"; prototype \"Dot\"; }\n");
     f.live = game_live_world_new(f.world);
     game_live_definition *definition = game_live_definition_new("Editing", behavior_asset_new("Editing"));
     assert(definition && game_live_add_definition(f.live, definition) == 0);
@@ -80,7 +75,7 @@ static disk_fixture fixture_new()
         f.runtime
     );
     char scene_path[128];
-    path_to(&f, "scenes/Main.yaml", scene_path, sizeof scene_path);
+    path_to(&f, "scenes/Main.kdl", scene_path, sizeof scene_path);
     assert(app_scene_authoring_set_content_root(f.scene, f.root) == 0);
     assert(app_scene_authoring_load_content(f.scene) == 0);
     assert(app_scene_authoring_load(f.scene, scene_path) == 0);
@@ -95,9 +90,9 @@ static void fixture_free(disk_fixture *f)
     game_live_world_free(f->live);
     editor_free(f->graph);
     ecs_world_free(f->world);
-    const char *files[] = { "prototypes/Dot.yaml", "behaviors/Pulse.yaml",
-                            "scenes/Main.yaml",    "prototypes",
-                            "behaviors",           "scenes" };
+    const char *files[] = { "prototypes/Dot.kdl", "behaviors/Pulse.kdl",
+                            "scenes/Main.kdl",    "prototypes",
+                            "behaviors",          "scenes" };
     for (int i = 0; i < 6; i++) {
         char path[128];
         path_to(f, files[i], path, sizeof path);
@@ -135,39 +130,39 @@ static void prototypes_follow_disk_unless_edited()
 {
     disk_fixture f = fixture_new();
     char path[128];
-    path_to(&f, "prototypes/Dot.yaml", path, sizeof path);
-    write_asset(&f, "prototypes/Dot.yaml", DOT, "5.0");
+    path_to(&f, "prototypes/Dot.kdl", path, sizeof path);
+    write_asset(&f, "prototypes/Dot.kdl", DOT, "5.0");
     assert(
-        poll_disk(&f, "Dot.yaml") == APP_DISK_RELOADED && dot_x(&f, 0) == 5 &&
+        poll_disk(&f, "Dot.kdl") == APP_DISK_RELOADED && dot_x(&f, 0) == 5 &&
         dot_x(&f, 1) == 5
     );
 
     set_dot_x(&f, 7);
     assert(app_scene_authoring_save_prototype(f.scene, "Dot", path) == 0);
-    assert(poll_disk(&f, "Dot.yaml") == APP_DISK_NONE && dot_x(&f, 0) == 7);
+    assert(poll_disk(&f, "Dot.kdl") == APP_DISK_NONE && dot_x(&f, 0) == 7);
 
     set_dot_x(&f, 9);
-    write_asset(&f, "prototypes/Dot.yaml", DOT, "3.0");
-    assert(poll_disk(&f, "Dot.yaml") == APP_DISK_UNSAVED && dot_x(&f, 0) == 9);
+    write_asset(&f, "prototypes/Dot.kdl", DOT, "3.0");
+    assert(poll_disk(&f, "Dot.kdl") == APP_DISK_UNSAVED && dot_x(&f, 0) == 9);
     assert(
         app_scene_authoring_reload_path(f.scene, path) == APP_DISK_RELOADED &&
         dot_x(&f, 0) == 3
     );
 
-    write_asset(&f, "prototypes/Dot.yaml", "%s", "{");
-    assert(poll_disk(&f, "Dot.yaml") == APP_DISK_FAILED && dot_x(&f, 0) == 3);
+    write_asset(&f, "prototypes/Dot.kdl", "%s", "{");
+    assert(poll_disk(&f, "Dot.kdl") == APP_DISK_FAILED && dot_x(&f, 0) == 3);
     fixture_free(&f);
 }
 
 static void behaviors_appear_and_reload()
 {
     disk_fixture f = fixture_new();
-    write_asset(&f, "behaviors/Pulse.yaml", PULSE, "");
-    assert(poll_disk(&f, "Pulse.yaml") == APP_DISK_RELOADED);
+    write_asset(&f, "behaviors/Pulse.kdl", PULSE, "");
+    assert(poll_disk(&f, "Pulse.kdl") == APP_DISK_RELOADED);
     game_live_definition *pulse = game_live_find_definition(f.live, "Pulse");
     assert(pulse && acount(pulse->working->graph->nodes) == 1);
-    write_asset(&f, "behaviors/Pulse.yaml", PULSE, "  - {id: 9, type: Integer}\n");
-    assert(poll_disk(&f, "Pulse.yaml") == APP_DISK_RELOADED);
+    write_asset(&f, "behaviors/Pulse.kdl", PULSE, "- { id 9; type \"Integer\"; }\n");
+    assert(poll_disk(&f, "Pulse.kdl") == APP_DISK_RELOADED);
     assert(acount(game_live_find_definition(f.live, "Pulse")->working->graph->nodes) == 2);
     fixture_free(&f);
 }
@@ -178,15 +173,10 @@ static void the_scene_reloads_after_the_runtime_stops()
     select_instance(f.scene, 1);
     f.scene->camera = (scene_camera){ .view = { 10, 20, 300, 200 }, .saved = true };
     f.scene->runtime_snapshot_valid = true;
-    write_asset(
-        &f,
-        "scenes/Main.yaml",
-        "version: 1\nname: Main\nentities:\n%s",
-        "- {name: Dot_2, prototype: Dot}\n- {name: Dot_3, prototype: Dot}\n"
-    );
-    assert(poll_disk(&f, "Main.yaml") == APP_DISK_NONE && acount(f.scene->actors) == 2);
+    write_asset(&f, "scenes/Main.kdl", "version 1\nname \"Main\"\n(array)entities {\n%s}\n", "- { name \"Dot_2\"; prototype \"Dot\"; }\n- { name \"Dot_3\"; prototype \"Dot\"; }\n");
+    assert(poll_disk(&f, "Main.kdl") == APP_DISK_NONE && acount(f.scene->actors) == 2);
     f.scene->runtime_snapshot_valid = false;
-    assert(poll_disk(&f, "Main.yaml") == APP_DISK_RELOADED);
+    assert(poll_disk(&f, "Main.kdl") == APP_DISK_RELOADED);
     assert(!strcmp(f.scene->actors[1].name, "Dot_3"));
     assert(!strcmp(selected_actor(f.scene)->name, "Dot_2"));
     assert(f.scene->camera.saved && f.scene->camera.view.center_x == 10);

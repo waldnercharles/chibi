@@ -140,8 +140,8 @@ int main(int argc, char **argv)
         return 1;
     }
     registry_validate();
-    char *json = text_file_read("test/fixtures/systems/MovementSystem.json");
-    behavior_asset *definition = json ? behavior_asset_load_json(json) : NULL;
+    char *json = text_file_read("test/fixtures/systems/MovementSystem.kdl");
+    behavior_asset *definition = json ? behavior_asset_load(json) : NULL;
     free(json);
     ecs_world *world = ecs_world_new();
     if (!definition || !world ||

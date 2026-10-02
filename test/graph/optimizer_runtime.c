@@ -82,8 +82,8 @@ static void activation_differential()
     data_edge(g, sum, 0, second_set, 1);
     data_edge(g, sum, 0, third_set, 1);
     uint64_t sum_id = sum->id;
-    char *json = behavior_asset_save_json(asset);
-    behavior_asset *original = behavior_asset_load_json(json);
+    char *json = behavior_asset_save(asset);
+    behavior_asset *original = behavior_asset_load(json);
     free(json);
     assert(original);
     graph_optimize_report report = { 0 };
@@ -176,9 +176,9 @@ static void extraction()
         fprintf(stderr, "extraction: %s\n", error);
     }
     test_check(!error && !graph_validate_locals(g), "extracting a local consumer turns its boundary dependency into a function input");
-    char *json = behavior_asset_save_json(extracted ? extracted : asset);
+    char *json = behavior_asset_save(extracted ? extracted : asset);
     behavior_asset_free(extracted);
-    behavior_asset *roundtrip = behavior_asset_load_json(json);
+    behavior_asset *roundtrip = behavior_asset_load(json);
     test_check(roundtrip != NULL, "extraction with locals survives serialization");
     behavior_asset_free(roundtrip);
     free(json);
@@ -257,8 +257,8 @@ static void system_locals()
     data_edge(g, total, 0, make, 0);
     data_edge(g, make, 0, set, 1);
     exec_edge(g, event, 0, set);
-    char *json = behavior_asset_save_json(asset);
-    behavior_asset *optimized = behavior_asset_load_json(json);
+    char *json = behavior_asset_save(asset);
+    behavior_asset *optimized = behavior_asset_load(json);
     free(json);
     graph_optimize_report report = { 0 };
     assert(graph_optimize(optimized->graph, NULL, &report) == 1);

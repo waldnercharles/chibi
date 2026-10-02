@@ -1,0 +1,5 @@
+name "HUD"
+components {
+    GAME.GameUi document="HUD" order=10
+}
+(array)behaviors "HudDisplay"

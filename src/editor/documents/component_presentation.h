@@ -10,7 +10,7 @@
 /* How editors present reflected components, authored per content root. A
  * component the document omits shows under Object without an icon, and its
  * numbers are unbounded and unitless. */
-#define COMPONENT_PRESENTATION_PATH "editor/Components.yaml"
+#define COMPONENT_PRESENTATION_PATH "editor/Components.kdl"
 
 typedef enum
 {
@@ -65,7 +65,7 @@ typedef struct
     presented_field *fields;
 } component_presentation;
 
-/* Parses editor/Components.yaml, naming components as prototype documents do,
+/* Parses editor/Components.kdl, naming components as prototype documents do,
  * into `out`, which is empty or holds an earlier read. Returns false with a
  * message in `error` and leaves `out` unchanged when the document is invalid,
  * so a caller keeps the last valid presentation. */

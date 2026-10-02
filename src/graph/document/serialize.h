@@ -3,18 +3,19 @@
 
 #include "graph/model/behavior_asset.h"
 #include "graph/model/graph.h"
+#include "support/asset_value.h"
 
-char *graph_save_json(const graph *g);
-graph *graph_load_json(const char *json);
+char *graph_save(const graph *g);
+graph *graph_load(const char *document);
 const char *graph_last_error(void);
-char *graph_save_nodes_json(const graph *g, node *const *subset, int count);
-int graph_append_json(graph *g, const char *json, float dx, float dy);
+char *graph_save_nodes(const graph *g, node *const *subset, int count);
+int graph_append(graph *g, const char *document, float dx, float dy);
 
 /* FMT-1/FMT-2/FMT-16: the version-3 Behavior Asset document (metadata, ID
  * counter, optional owner type, variable list, graph list). Runtime state is
  * never serialized. */
-char *behavior_asset_save_json(const behavior_asset *asset);
-behavior_asset *behavior_asset_load_json(const char *json);
+char *behavior_asset_save(const behavior_asset *asset);
+behavior_asset *behavior_asset_load(const char *document);
 /* The pin a loaded node starts from before serialized fields apply. Documents
  * omit pin fields that match it. */
 const pin_spec *serialize_pin_template(const node_desc *desc, int output, int index);
@@ -31,9 +32,15 @@ bool serialize_resolve_ref(const graph *g, const char *ref, int output, node **n
  * record a declaration only when it differs. */
 uint64_t serialize_call_declaration(const behavior_asset *asset, const node *call, int output, int index);
 
-/* Owned JSON text of a runtime value: flags, numbers, text, enum labels,
- * structs as objects of their fields, and arrays and sets as lists; flow and
- * handles are null. */
-char *serialize_value_json(const pin_value *value);
+/* Native asset tree values are owned by the caller's document. */
+av_value *graph_to_value(av_doc *doc, const graph *g);
+graph *graph_from_value(av_value *value);
+av_value *graph_nodes_to_value(av_doc *doc, const graph *g, node *const *subset, int count);
+int graph_append_value(graph *g, av_value *value, float dx, float dy);
+av_value *behavior_asset_to_value(av_doc *doc, const behavior_asset *asset);
+behavior_asset *behavior_asset_from_value(av_value *value);
+behavior_asset *behavior_asset_clone(const behavior_asset *asset);
+bool behavior_asset_equal(const behavior_asset *a, const behavior_asset *b);
+av_value *serialize_value(av_doc *doc, const pin_value *value);
 
 #endif

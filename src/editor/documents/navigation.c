@@ -21,20 +21,15 @@ int editor_open_behavior_asset(editor *e, const behavior_asset *source, uint64_t
     }
     free(e->document_key);
     e->document_key = NULL;
-    char *json = behavior_asset_save_json(source);
-    if (!json) {
-        return -1;
-    }
-    int result = ed_adopt_behavior_asset_with_identity(e, json, source->identity);
-    free(json);
+    int result = ed_adopt_behavior_asset_with_identity(e, source, source->identity);
     if (result != 0) {
         return -1;
     }
     aclear(e->graph_callers);
-    free(e->saved_snapshot);
-    e->saved_snapshot = behavior_asset_save_json(e->asset);
-    ed_free_string_stack(&e->undo);
-    ed_free_string_stack(&e->redo);
+    av_value_free(e->saved_snapshot);
+    e->saved_snapshot = ed_value_snapshot(e->asset);
+    ed_free_asset_stack(&e->undo);
+    ed_free_asset_stack(&e->redo);
     e->inspection_instance = NULL;
     e->inspection_run = NULL;
     e->arrange_pending = true;

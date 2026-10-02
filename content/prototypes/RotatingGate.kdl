@@ -1,0 +1,8 @@
+name "RotatingGate"
+components {
+    GAME.GameAppearance color=1440137215 height=12.0 width=160.0
+    GAME.GameBody angular_velocity=1.0 type="Kinematic"
+    GAME.GameCollider category=8 height=12.0 mask=1 shape="Box" width=160.0
+    (object)GAME.GameOrientation
+    (object)GAME.GameTransform
+}

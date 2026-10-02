@@ -1,0 +1,152 @@
+version 3
+name "ProjectileLifecycle"
+id_counter 517
+description "Age and expire projectiles; face velocity while moving."
+owner_type "ecs.entity"
+(array)graphs {
+    - {
+        kind "event"
+        name ""
+        (array)nodes {
+            - {
+                id 1
+                type "Event"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_name "Tick"
+                outputs {
+                    DeltaSeconds id=3 type="float" kind="data"
+                }
+            }
+            - {
+                id 16
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 4
+                reference_name "age += dt"
+                inputs {
+                    Exec id=20 kind="exec"
+                    age {
+                        id 17
+                        type "float"
+                        binding kind="component_field" component="GAME.GameProjectile" field="age"
+                    }
+                    dt {
+                        id 18
+                        type "double"
+                        binding kind="delta_time"
+                    }
+                }
+                outputs {
+                    Then id=21 kind="exec"
+                    Result id=19 type="float"
+                }
+            }
+            - {
+                id 96
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 84
+                reference_name "age >= lifetime"
+                inputs {
+                    Exec id=100 kind="exec"
+                    age {
+                        id 97
+                        type "double"
+                        flags 0
+                        binding kind="component_field" component="GAME.GameProjectile" field="age"
+                    }
+                    lifetime {
+                        id 98
+                        type "double"
+                        flags 0
+                        binding kind="component_field" component="GAME.GameProjectile" field="lifetime"
+                    }
+                }
+                outputs {
+                    True id=101 kind="exec"
+                    False id=102 kind="exec"
+                    Result id=99 type="bool"
+                }
+            }
+            - {
+                id 127
+                type "Self"
+                x 0.0
+                y 0.0
+                placed #false
+                outputs {
+                    Self type_name="ecs.entity"
+                }
+            }
+            - id=129 type="Destroy Entity" x=0.0 y=0.0 placed=#false
+            - {
+                id 424
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 407
+                reference_name "length(velocity) > 0.0001"
+                inputs {
+                    Exec id=427 kind="exec"
+                    velocity {
+                        id 425
+                        type "struct"
+                        type_name "GameVelocity"
+                        binding kind="component" component="GAME.GameVelocity"
+                    }
+                }
+                outputs {
+                    True id=428 kind="exec"
+                    False id=429 kind="exec"
+                    Result id=426 type="bool"
+                }
+            }
+            - {
+                id 459
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 447
+                reference_name "heading = atan2(velocity.y, velocity.x)"
+                inputs {
+                    Exec id=463 kind="exec"
+                    heading {
+                        id 460
+                        type "float"
+                        binding kind="component_field" component="GAME.GameOrientation" field="radians"
+                    }
+                    velocity {
+                        id 461
+                        type "struct"
+                        type_name "GameVelocity"
+                        binding kind="component" component="GAME.GameVelocity"
+                    }
+                }
+                outputs {
+                    Then id=464 kind="exec"
+                    Result id=462 type="double"
+                }
+            }
+        }
+        (array)edges {
+            - from="1.Then" to="16.Exec"
+            - from="16.Then" to="96.Exec"
+            - from="96.True" to="129.Exec"
+            - from="96.False" to="424.Exec"
+            - from="127.Self" to="129.Entity"
+            - from="424.True" to="459.Exec"
+        }
+    }
+    - id=4 kind="function" math_expression="age += dt" entry_id=314
+    - id=84 kind="function" math_expression="age >= lifetime" entry_id=345
+    - id=407 kind="function" math_expression="length(velocity) > 0.0001" entry_id=431
+    - id=447 kind="function" math_expression="heading = atan2(velocity.y, velocity.x)" entry_id=491
+}

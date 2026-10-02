@@ -93,8 +93,8 @@ void instance_bank_smoke(behavior_backend backend)
         assert(!behavior_instance_release_activation(bi, bi->activations[0]));
     }
     for (int a = 0; a < 2; a++) {
-        char *json = behavior_asset_save_json(assets[a]);
-        behavior_asset *next = behavior_asset_load_json(json);
+        char *json = behavior_asset_save(assets[a]);
+        behavior_asset *next = behavior_asset_load(json);
         free(json);
         assert(next);
         int last = acount(next->variables) - 1;

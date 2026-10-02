@@ -402,8 +402,8 @@ static bool completions(fixture *f)
     type(f, "wo");
     frame(f);
     const kit_code_completion items[] = {
-        { "word", "noun", NULL },
-        { "world", "noun", "world()" },
+        { "word", "noun", NULL, CODE_COMPLETE_FIELD },
+        { "world", "noun", "world()", CODE_COMPLETE_FUNCTION },
     };
     f->desc.completions = items;
     f->desc.completion_count = 2;
@@ -411,6 +411,16 @@ static bool completions(fixture *f)
     clear_events(f);
     kit_rect list;
     ok &= check(kit_find(f->k, "layer/@code:app/code", &list), "completions show under the cursor");
+    rml_element *document = rml_context_document(f->context, 0);
+    rml_element *popup = rml_element_query_selector(document, ".code-completions");
+    ok &= check(
+        popup && rml_element_scroll_height(popup) <= rml_element_client_height(popup),
+        "a short completion list fits without scrolling"
+    );
+    rml_element *label = rml_element_query_selector(popup, ".label");
+    char markup[128];
+    rml_element_inner_rml(label, markup, sizeof markup);
+    ok &= check(strstr(markup, "<b>wo</b>") != NULL, "completion labels highlight the matching prefix");
     press(f, RML_KEY_DOWN, 0);
     press(f, RML_KEY_RETURN, 0);
     frame(f);
@@ -420,8 +430,56 @@ static bool completions(fixture *f)
     f->desc.completion_count = 0;
     frame(f);
     ok &= check(!kit_find(f->k, "layer/@code:app/code", &list), "no items, no list");
+    kit_code_set_text(f->e, "wl");
+    kit_code_set_cursor(f->e, 2);
+    f->desc.completions = &items[1];
+    f->desc.completion_count = 1;
+    settle(f);
+    popup = rml_element_query_selector(document, ".code-completions");
+    label = rml_element_query_selector(popup, ".label");
+    rml_element_inner_rml(label, markup, sizeof markup);
+    ok &= check(strstr(markup, "<b>w</b>") && strstr(markup, "<b>l</b>"), "completion labels highlight fuzzy match positions");
+    press(f, RML_KEY_TAB, 0);
+    frame(f);
+    ok &= check(!strcmp(text(f), "world()"), "Tab accepts a fuzzy completion immediately");
+    kit_code_completion many[24] = { 0 };
+    char names[24][16];
+    for (int i = 0; i < 24; i++) {
+        snprintf(names[i], sizeof names[i], "entry%d", i);
+        many[i] = (kit_code_completion){ .label = names[i],
+                                         .detail = "number",
+                                         .kind = CODE_COMPLETE_FIELD };
+    }
+    f->desc.completions = many;
+    f->desc.completion_count = 24;
+    settle(f);
+    popup = rml_element_query_selector(document, ".code-completions");
+    ok &= check(
+        rml_element_scroll_height(popup) > rml_element_client_height(popup),
+        "a long completion list scrolls only when rows overflow"
+    );
+    for (int i = 0; i < 20; i++) {
+        press(f, RML_KEY_DOWN, 0);
+        frame(f);
+    }
+    settle(f);
+    kit_rect selected;
+    kit_find(f->k, "layer/@code:app/code", &list);
+    bool visible = kit_find(f->k, "layer/@code:app/code/i20", &selected) &&
+                   selected.y >= list.y &&
+                   selected.y + selected.h <= list.y + list.h;
+    ok &= check(
+        rml_element_scroll_top(popup) > 0 && visible,
+        "keyboard navigation keeps a selected overflowing completion visible"
+    );
+    press(f, RML_KEY_ESCAPE, 0);
+    settle(f);
+    ok &= check(!kit_find(f->k, "layer/@code:app/code", &list), "Escape dismisses completion without changing the buffer");
+    f->desc.completions = NULL;
+    f->desc.completion_count = 0;
+    frame(f);
 
-    const kit_code_completion many[] = {
+    const kit_code_completion edge_items[] = {
         { "first", "property", NULL },    { "second", "property", NULL },
         { "third", "property", NULL },    { "fourth", "property", NULL },
         { "fifth", "property", NULL },    { "sixth", "property", NULL },
@@ -433,7 +491,7 @@ static bool completions(fixture *f)
                         "ten\neleven\ntwelve\n";
     kit_code_set_text(f->e, lines);
     kit_code_set_cursor(f->e, strlen(lines));
-    f->desc.completions = many;
+    f->desc.completions = edge_items;
     f->desc.completion_count = 12;
     f->desc.completion_start = strlen(lines);
     f->in.height = 260;
@@ -453,8 +511,7 @@ static bool completions(fixture *f)
     ok &= check(
         kit_find(f->k, "layer/@code:app/code/i11", &last) && last.y >= list.y &&
             last.y + last.h <= list.y + list.h,
-        "keyboard wrap reveals the final code completion without a visible "
-        "scrollbar"
+        "keyboard wrap makes the final selected completion visible"
     );
     press(f, RML_KEY_RETURN, 0);
     frame(f);

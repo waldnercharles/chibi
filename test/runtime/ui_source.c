@@ -449,21 +449,25 @@ static void completion()
         const char *expected;
     } cases[] = {
         { "<sp^", UI_SOURCE_RML, "[sp] span" },
-        { "<div data-i^", UI_SOURCE_RML, "[data-i] data-if" },
+        { "<div data-i^", UI_SOURCE_RML, "[data-i] data-if data-alias- data-event-click data-event-dblclick data-event-submit data-visible" },
         { "<div data-ev^", UI_SOURCE_RML, "[data-ev] data-event-blur data-event-change data-event-click data-event-dblclick data-event-focus data-event-keydown data-event-keyup data-event-mousedown data-event-mouseout data-event-mouseover data-event-mouseup data-event-submit" },
-        { "<use u^", UI_SOURCE_RML, "[u] ui" },
+        { "<use u^", UI_SOURCE_RML, "[u] ui autofocus data-event-blur data-event-focus data-event-keyup data-event-mousedown data-event-mouseout data-event-mouseover data-event-mouseup data-event-submit data-value data-value-lazy grouping suffix value" },
         { "<use ui=\"Menu^\"/>", UI_SOURCE_RML, "[Menu] MenuButton MenuCheck" },
         { "<div class=\"card w^\">", UI_SOURCE_RML, "[w] wide" },
         { "<div data-class-t^", UI_SOURCE_RML, "[t] title" },
         { "<div data-if=\"save.th^\">", UI_SOURCE_RML, "[th] theme" },
         { "<p>{{ save.^", UI_SOURCE_RML, "[] name sound theme" },
         { "<div style=\"wi^\">", UI_SOURCE_RML, "[wi] width" },
-        { "<div style=\"color: var(--m^\">", UI_SOURCE_RML, "[--m] --muted" },
+        { "<div style=\"color: var(--m^\">", UI_SOURCE_RML, "[--m] --muted --primary" },
         { ".ca^ { }", UI_SOURCE_RCSS, "[ca] card" },
         { ".a {\n  op^\n}", UI_SOURCE_RCSS, "[op] opacity" },
         { ".a { color: var(--p^) }", UI_SOURCE_RCSS, "[--p] --primary" },
         { ".a { &:hover { he^ } }", UI_SOURCE_RCSS, "[he] height" },
         { "sp^ { }", UI_SOURCE_RCSS, "[sp] span" },
+        { "<nbrflw^", UI_SOURCE_RML, "[nbrflw] number-flow" },
+        { ".a {\n  wdth^\n}", UI_SOURCE_RCSS, "[wdth] width" },
+        { "<div class=\"cd^\">", UI_SOURCE_RML, "[cd] card" },
+        { "<div style=\"color: red; ^\">", UI_SOURCE_RML, "[] color height opacity width" },
     };
     bool ok = true;
     for (size_t i = 0; i < sizeof cases / sizeof *cases; i++) {

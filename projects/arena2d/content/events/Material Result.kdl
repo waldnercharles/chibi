@@ -1,0 +1,16 @@
+version 3
+name "Material Result"
+domain "event"
+id_counter 8
+(array)variables {
+    - id=1 name="Energy" type="float"
+    - id=2 name="Cause" type="int"
+    - id=3 name="Point" type="struct" type_name="CF_V2"
+    - id=4 name="Kind" type="int"
+    - id=5 name="Removed" type="int"
+    - id=6 name="Dust" type="int"
+    - id=7 name="Target" type="handle" type_name="ecs.entity"
+}
+(array)graphs {
+    - kind="event" name=""
+}

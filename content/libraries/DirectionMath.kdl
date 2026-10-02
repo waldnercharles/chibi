@@ -1,0 +1,56 @@
+version 3
+name "DirectionMath"
+domain "library"
+id_counter 104
+description "Shared direction calculations."
+(array)graphs {
+    - kind="event" name="Events"
+    - {
+        id 1
+        kind "function"
+        name "Direction Orientation"
+        entry_id 2
+        return_id 3
+        call_depth_limit 64
+        (array)nodes {
+            - {
+                id 2
+                type "Function Entry"
+                x 0.0
+                y 0.0
+                placed #false
+                (array)outputs {
+                    - id=4 name="X" type="float" kind="data"
+                    - id=5 name="Y" type="float" kind="data"
+                }
+            }
+            - {
+                id 3
+                type "Return"
+                x 0.0
+                y 0.0
+                placed #false
+                (array)inputs {
+                    - id=6 name="Orientation" type="struct" type_name="GameOrientation" kind="data"
+                }
+            }
+            - {
+                id 78
+                type "Make_GameOrientation"
+                x 0.0
+                y 0.0
+                placed #false
+                inputs {
+                    radians id=76
+                }
+            }
+            - id=100 type="Atan2" x=0.0 y=0.0 placed=#false
+        }
+        (array)edges {
+            - from="2.X" to="100.X"
+            - from="2.Y" to="100.Y"
+            - from="78.GameOrientation" to="3.Orientation"
+            - from="100.Result" to="78.radians"
+        }
+    }
+}

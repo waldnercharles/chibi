@@ -1,0 +1,186 @@
+version 3
+name "Movement"
+id_counter 994
+description "Face aim; drive from movement input or boost along the ship heading."
+owner_type "ecs.entity"
+(array)graphs {
+    - {
+        kind "event"
+        name ""
+        (array)nodes {
+            - {
+                id 1
+                type "Event"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_name "Tick"
+                outputs {
+                    DeltaSeconds id=3 type="float" kind="data"
+                }
+            }
+            - {
+                id 102
+                type "Branch"
+                x 0.0
+                y 0.0
+                placed #false
+                inputs {
+                    Condition {
+                        binding kind="component_field" component="GAME.GameActionBinding" field="pressed"
+                    }
+                }
+            }
+            - {
+                id 137
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 107
+                reference_name "target = direction(heading) * speed * 2"
+                inputs {
+                    Exec id=142 kind="exec"
+                    target {
+                        id 138
+                        type "struct"
+                        type_name "CF_V2"
+                        binding kind="component_field" component="GAME.GameDrive" field="target"
+                    }
+                    heading {
+                        id 139
+                        type "double"
+                        binding kind="component_field" component="GAME.GameOrientation" field="radians"
+                    }
+                    speed {
+                        id 140
+                        type "double"
+                        binding kind="component_field" component="GAME.GameMovement" field="speed"
+                    }
+                }
+                outputs {
+                    Then id=143 kind="exec"
+                    Result id=141 type="struct" type_name="CF_V2"
+                }
+            }
+            - {
+                id 542
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 525
+                reference_name "target = vec2(0, 0)"
+                inputs {
+                    Exec id=545 kind="exec"
+                    target {
+                        id 543
+                        type "struct"
+                        type_name "CF_V2"
+                        binding kind="component_field" component="GAME.GameDrive" field="target"
+                    }
+                }
+                outputs {
+                    Then id=546 kind="exec"
+                    Result id=544 type="struct" type_name="CF_V2"
+                }
+            }
+            - {
+                id 754
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 742
+                reference_name "heading = atan2(aim.y, aim.x)"
+                inputs {
+                    Exec id=758 kind="exec"
+                    heading {
+                        id 755
+                        type "float"
+                        binding kind="component_field" component="GAME.GameOrientation" field="radians"
+                    }
+                    aim {
+                        id 756
+                        type "struct"
+                        type_name "CF_V2"
+                        binding kind="component_field" component="GAME.GameAim" field="direction"
+                    }
+                }
+                outputs {
+                    Then id=759 kind="exec"
+                    Result id=757 type="double"
+                }
+            }
+            - {
+                id 829
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 812
+                reference_name "length(move) > 0.1"
+                inputs {
+                    Exec id=832 kind="exec"
+                    move {
+                        id 830
+                        type "struct"
+                        type_name "CF_V2"
+                        binding kind="component_field" component="GAME.GameInput" field="move"
+                    }
+                }
+                outputs {
+                    True id=833 kind="exec"
+                    False id=834 kind="exec"
+                    Result id=831 type="bool"
+                }
+            }
+            - {
+                id 865
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 852
+                reference_name "target = move * speed"
+                inputs {
+                    Exec id=870 kind="exec"
+                    target {
+                        id 866
+                        type "struct"
+                        type_name "CF_V2"
+                        binding kind="component_field" component="GAME.GameDrive" field="target"
+                    }
+                    move {
+                        id 867
+                        type "struct"
+                        type_name "CF_V2"
+                        binding kind="component_field" component="GAME.GameInput" field="move"
+                    }
+                    speed {
+                        id 868
+                        type "double"
+                        binding kind="component_field" component="GAME.GameMovement" field="speed"
+                    }
+                }
+                outputs {
+                    Then id=871 kind="exec"
+                    Result id=869 type="struct" type_name="CF_V2"
+                }
+            }
+        }
+        (array)edges {
+            - from="1.Then" to="754.Exec"
+            - from="102.True" to="137.Exec"
+            - from="102.False" to="829.Exec"
+            - from="754.Then" to="102.Exec"
+            - from="829.True" to="865.Exec"
+            - from="829.False" to="542.Exec"
+        }
+    }
+    - id=525 kind="function" math_expression="target = vec2(0, 0)" entry_id=711
+    - id=107 kind="function" math_expression="target = direction(heading) * speed * 2" entry_id=957
+    - id=742 kind="function" math_expression="heading = atan2(aim.y, aim.x)" entry_id=786
+    - id=812 kind="function" math_expression="length(move) > 0.1" entry_id=836
+    - id=852 kind="function" math_expression="target = move * speed" entry_id=929
+}

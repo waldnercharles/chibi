@@ -145,8 +145,8 @@ static void lifecycle(behavior_backend backend)
     assert(bi->variable_storage[0].data == backing);
     same(retained, v);
     assert(!behavior_instance_set_variable(bi, id, &v) && bi->variables[0].ptr == backing);
-    char *json = behavior_asset_save_json(a);
-    behavior_asset *next = behavior_asset_load_json(json);
+    char *json = behavior_asset_save(a);
+    behavior_asset *next = behavior_asset_load(json);
     free(json);
     assert(next);
     /* Stable IDs remap backing storage together with values. */
@@ -200,8 +200,8 @@ static void managed_storage()
     arena storage = { 0 };
     pin_value retained;
     assert(!behavior_instance_copy_variable(bi, id, &storage, &retained));
-    char *json = behavior_asset_save_json(a);
-    behavior_asset *next = behavior_asset_load_json(json);
+    char *json = behavior_asset_save(a);
+    behavior_asset *next = behavior_asset_load(json);
     free(json);
     assert(next && behavior_instance_can_update(bi, next) == INSTANCE_UPDATE_READY);
     behavior_instance_update(bi, next);

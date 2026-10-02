@@ -44,7 +44,7 @@ const assetSelectorProperties = {
   },
   name: {
     type: "string",
-    description: "Asset name without the .yaml suffix.",
+    description: "Asset name without the .kdl suffix.",
   },
 };
 

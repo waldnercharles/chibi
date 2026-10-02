@@ -32,11 +32,11 @@ void test_number_serialization()
     pin_value d = { .type = PIN_F64, .d = -456 };
     assert(graph_set_pin_default(&original, single, 0, 0, &f) == 0);
     assert(graph_set_pin_default(&original, real, 0, 0, &d) == 0);
-    char *json = graph_save_json(&original);
+    char *json = graph_save(&original);
     assert(json);
     integer_spelling(json, "123.0");
     integer_spelling(json, "-456.0");
-    graph *loaded = graph_load_json(json);
+    graph *loaded = graph_load(json);
     assert(loaded && acount(loaded->nodes) == 2);
     assert(loaded->nodes[0]->x == 123 && loaded->nodes[0]->y == -456);
     arena memory;
@@ -54,5 +54,5 @@ void test_number_serialization()
     free(loaded);
     graph_free(&original);
     free(json);
-    puts("PASS: integer JSON numbers retain float defaults and graph coordinates");
+    puts("PASS: integer KDL numbers retain float defaults and graph coordinates");
 }

@@ -1,0 +1,4 @@
+version 4
+name "SpaceCadet"
+content "content"
+start_scene "scenes/SpaceCadet.kdl"

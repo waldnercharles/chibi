@@ -7,6 +7,7 @@
 #include "graph/runtime/value_array.h"
 #include "runtime/generated.h"
 #include "support/array.h"
+#include "support/asset_json.h"
 #include "support/xalloc.h"
 
 #include <assert.h>
@@ -69,9 +70,9 @@ static void clear_edits(scene_edit **edits)
         if (actor) {
             free((void *)actor->name);
             free((void *)actor->prototype_name);
-            free((void *)actor->base_json);
-            free((void *)actor->state_json);
-            free((void *)actor->retained_json);
+            av_value_free(actor->base);
+            av_value_free(actor->state);
+            av_value_free(actor->retained);
             free(actor);
         }
         scene_behavior_edit *behaviors = (*edits)[i].behaviors;
@@ -292,14 +293,14 @@ static bool valid_fields(ecs_world *world, const scene_edit *edit)
 bool scene_history_push_actor(scene_history *history, ecs_entity entity, const scene_actor_edit *actor)
 {
     assert(history && entity.slot && actor && actor->index >= 0);
-    assert(actor->name && actor->prototype_name && actor->base_json && actor->state_json);
+    assert(actor->name && actor->prototype_name && actor->base && actor->state);
     scene_actor_edit *copy = xmalloc(sizeof *copy);
     *copy = *actor;
     copy->name = xstrdup(actor->name);
     copy->prototype_name = xstrdup(actor->prototype_name);
-    copy->base_json = xstrdup(actor->base_json);
-    copy->state_json = xstrdup(actor->state_json);
-    copy->retained_json = xstrdup(actor->retained_json ? actor->retained_json : "{}");
+    copy->base = av_value_copy(actor->base);
+    copy->state = av_value_copy(actor->state);
+    copy->retained = actor->retained ? av_value_copy(actor->retained) : NULL;
     apush(history->undo, ((scene_edit){ .entity = entity, .group = history->group, .actor = copy }));
     clear_edits(&history->redo);
     return true;
@@ -577,7 +578,68 @@ int scene_history_redo(scene_history *history, ecs_world *world, ecs_entity *out
 
 /* History is translated through reflected names so a reordered component or
  * field cannot silently retarget an Undo after native code reload. */
-#include "editor/workspace/checkpoint.h"
+
+static void history_text(av_doc *doc, av_value *object, const char *key, const char *text)
+{
+    if (text) {
+        av_obj_add_str(doc, object, key, text);
+    }
+}
+
+static char *history_copy_text(av_value *object, const char *key)
+{
+    const char *text = av_get_str(av_obj_get(object, key));
+    return text ? xstrdup(text) : NULL;
+}
+
+static void history_free_strings(char **strings)
+{
+    for (int i = 0; i < acount(strings); i++) {
+        free(strings[i]);
+    }
+    afree(strings);
+}
+
+static bool history_read_strings(av_value *array, char ***out)
+{
+    if (!av_is_arr(array)) {
+        return false;
+    }
+    size_t i, count;
+    av_value *value;
+    av_arr_foreach(array, i, count, value)
+    {
+        if (!av_is_str(value)) {
+            return false;
+        }
+        apush(*out, xstrdup(av_get_str(value)));
+    }
+    return true;
+}
+
+static av_value *history_position(av_doc *doc, const double *positions)
+{
+    av_value *array = av_arr(doc);
+    for (int i = 0; i < 4; i++) {
+        av_arr_append(array, av_real(doc, positions[i]));
+    }
+    return array;
+}
+
+static bool history_read_position(av_value *array, double *values)
+{
+    if (!av_is_arr(array) || av_arr_size(array) != 4) {
+        return false;
+    }
+    for (int i = 0; i < 4; i++) {
+        av_value *value = av_arr_get(array, i);
+        if (!av_is_num(value) || !isfinite(av_get_num(value))) {
+            return false;
+        }
+        values[i] = av_get_num(value);
+    }
+    return true;
+}
 
 static const ecs_component_desc *history_component(const char *name)
 {
@@ -589,74 +651,57 @@ static const ecs_component_desc *history_component(const char *name)
     return NULL;
 }
 
-static yyjson_mut_val *history_value(yyjson_mut_doc *doc, pin_value value)
+static av_value *history_value(av_doc *doc, pin_value value)
 {
-    yyjson_mut_val *object = yyjson_mut_obj(doc);
-    yyjson_mut_obj_add_int(doc, object, "type", value.type);
-    checkpoint_text(doc, object, "name", value.type_name);
+    av_value *object = av_obj(doc);
+    av_obj_add_int(doc, object, "type", value.type);
+    history_text(doc, object, "name", value.type_name);
     switch (value.type) {
-        case PIN_BOOL:
-            yyjson_mut_obj_add_bool(doc, object, "value", value.b);
-            break;
+        case PIN_BOOL: av_obj_add_bool(doc, object, "value", value.b); break;
         case PIN_STR:
         case PIN_NAME:
-            checkpoint_text(doc, object, "value", value.str ? value.str : "");
+            history_text(doc, object, "value", value.str ? value.str : "");
             break;
-        case PIN_I8:
-            yyjson_mut_obj_add_int(doc, object, "value", value.i8);
-            break;
-        case PIN_I16:
-            yyjson_mut_obj_add_int(doc, object, "value", value.i16);
-            break;
-        case PIN_I32:
-            yyjson_mut_obj_add_int(doc, object, "value", value.i);
-            break;
-        case PIN_I64:
-            yyjson_mut_obj_add_int(doc, object, "value", value.i64);
-            break;
-        case PIN_ENUM:
-            yyjson_mut_obj_add_int(doc, object, "value", value.e);
-            break;
-        case PIN_U8:
-            yyjson_mut_obj_add_uint(doc, object, "value", value.u8);
-            break;
-        case PIN_U16:
-            yyjson_mut_obj_add_uint(doc, object, "value", value.u16);
-            break;
-        case PIN_U32:
-            yyjson_mut_obj_add_uint(doc, object, "value", value.u);
-            break;
+        case PIN_I8: av_obj_add_int(doc, object, "value", value.i8); break;
+        case PIN_I16: av_obj_add_int(doc, object, "value", value.i16); break;
+        case PIN_I32: av_obj_add_int(doc, object, "value", value.i); break;
+        case PIN_I64: av_obj_add_int(doc, object, "value", value.i64); break;
+        case PIN_ENUM: av_obj_add_int(doc, object, "value", value.e); break;
+        case PIN_U8: av_obj_add_uint(doc, object, "value", value.u8); break;
+        case PIN_U16: av_obj_add_uint(doc, object, "value", value.u16); break;
+        case PIN_U32: av_obj_add_uint(doc, object, "value", value.u); break;
         case PIN_U64:
         case PIN_HANDLE:
-            yyjson_mut_obj_add_uint(doc, object, "value", value.u64);
+            av_obj_add_uint(doc, object, "value", value.u64);
             break;
         case PIN_F32:
-            yyjson_mut_obj_add_real(doc, object, "value", value.f);
+            av_obj_add_val(doc, object, "value", av_real(doc, value.f));
             break;
         case PIN_F64:
-            yyjson_mut_obj_add_real(doc, object, "value", value.d);
+            av_obj_add_val(doc, object, "value", av_real(doc, value.d));
             break;
-        case PIN_STRUCT:
+        case PIN_STRUCT: {
             serialize_write_value(doc, object, "value", value.type, value.type_name, &value);
             break;
+        }
         default: assert(false);
     }
     return object;
 }
 
-static bool history_read_typed_value(pin_type type, const char *type_name, yyjson_val *json, pin_value *out)
+static bool history_read_typed_value(pin_type type, const char *type_name, av_value *json, pin_value *out)
 {
     if (type != PIN_STRUCT) {
         return serialize_read_value(type, type_name, json, out, NULL) == 0;
     }
     const type_desc *shape = registry_type_by_name(type_name);
-    if (!shape || !type_is_plain(shape) || !yyjson_is_obj(json)) {
+    if (!shape || !type_is_plain(shape) || !av_is_obj(json)) {
         return false;
     }
     void *data = xcalloc(1, shape->size);
     for (int i = 0; i < shape->field_count; i++) {
         const type_field *field = &shape->fields[i];
-        yyjson_val *member_json = yyjson_obj_get(json, field->name);
+        av_value *member_json = av_obj_get(json, field->name);
         pin_value member = { 0 };
         if (!member_json ||
             !history_read_typed_value(field->type, field->type_name, member_json, &member)) {
@@ -672,17 +717,16 @@ static bool history_read_typed_value(pin_type type, const char *type_name, yyjso
     return true;
 }
 
-static bool history_read_value(yyjson_val *object, pin_value *out)
+static bool history_read_value(av_value *object, pin_value *out)
 {
-    yyjson_val *type = yyjson_obj_get(object, "type"),
-               *value = yyjson_obj_get(object, "value");
-    if (!yyjson_is_int(type)) {
+    av_value *type = av_obj_get(object, "type"), *value = av_obj_get(object, "value");
+    if (!av_is_int(type)) {
         return false;
     }
-    out->type = yyjson_get_int(type);
-    out->type_name = checkpoint_copy_text(object, "name");
+    out->type = av_get_int(type);
+    out->type_name = history_copy_text(object, "name");
     if (out->type == PIN_STRUCT) {
-        yyjson_val *value_object = yyjson_obj_get(object, "value");
+        av_value *value_object = av_obj_get(object, "value");
         pin_value value = { 0 };
         if (!history_read_typed_value(PIN_STRUCT, out->type_name, value_object, &value)) {
             return false;
@@ -691,27 +735,27 @@ static bool history_read_value(yyjson_val *object, pin_value *out)
         return scalar(*out);
     }
     if (out->type == PIN_STR || out->type == PIN_NAME) {
-        if (!yyjson_is_str(value)) {
+        if (!av_is_str(value)) {
             return false;
         }
-        out->str = xstrdup(yyjson_get_str(value));
+        out->str = xstrdup(av_get_str(value));
         return true;
     }
     if (out->type == PIN_BOOL) {
-        if (!yyjson_is_bool(value)) {
+        if (!av_is_bool(value)) {
             return false;
         }
-        out->b = yyjson_get_bool(value);
+        out->b = av_get_bool(value);
         return true;
     }
-    if (!yyjson_is_num(value)) {
+    if (!av_is_num(value)) {
         return false;
     }
-    bool signed_number = yyjson_is_int(value) &&
-                         (!yyjson_is_uint(value) || yyjson_get_uint(value) <= INT64_MAX);
-    bool unsigned_number = yyjson_is_uint(value);
-    int64_t signed_value = yyjson_get_sint(value);
-    uint64_t unsigned_value = yyjson_get_uint(value);
+    bool signed_number = av_is_int(value) &&
+                         (!av_is_uint(value) || av_get_uint(value) <= INT64_MAX);
+    bool unsigned_number = av_is_uint(value);
+    int64_t signed_value = av_get_sint(value);
+    uint64_t unsigned_value = av_get_uint(value);
     switch (out->type) {
         case PIN_I8:
             if (!signed_number || signed_value < INT8_MIN || signed_value > INT8_MAX) {
@@ -768,42 +812,32 @@ static bool history_read_value(yyjson_val *object, pin_value *out)
             }
             out->u64 = unsigned_value;
             break;
-        case PIN_F32: out->f = yyjson_get_num(value); break;
-        case PIN_F64: out->d = yyjson_get_num(value); break;
+        case PIN_F32: out->f = av_get_num(value); break;
+        case PIN_F64: out->d = av_get_num(value); break;
         default: return false;
     }
     return scalar(*out);
 }
 
-static yyjson_mut_val *history_edits(yyjson_mut_doc *doc, const scene_edit *edits)
+static av_value *history_edits(av_doc *doc, const scene_edit *edits)
 {
-    yyjson_mut_val *array = yyjson_mut_arr(doc);
+    av_value *array = av_arr(doc);
     for (int i = 0; i < acount(edits); i++) {
         const scene_edit *edit = &edits[i];
-        yyjson_mut_val *object = yyjson_mut_obj(doc);
-        yyjson_mut_arr_append(array, object);
-        yyjson_mut_obj_add_uint(doc, object, "entity", ecs_entity_to_u64(edit->entity));
-        yyjson_mut_obj_add_uint(doc, object, "group", edit->group);
+        av_value *object = av_obj(doc);
+        av_arr_append(array, object);
+        av_obj_add_uint(doc, object, "entity", ecs_entity_to_u64(edit->entity));
+        av_obj_add_uint(doc, object, "group", edit->group);
         if (edit->physics) {
-            yyjson_mut_obj_add_val(
-                doc,
-                object,
-                "physics_before",
-                game_physics_settings_write(doc, edit->physics_before)
-            );
-            yyjson_mut_obj_add_val(
-                doc,
-                object,
-                "physics_after",
-                game_physics_settings_write(doc, edit->physics_after)
-            );
+            av_obj_add_val(doc, object, "physics_before", game_physics_settings_write(doc, edit->physics_before));
+            av_obj_add_val(doc, object, "physics_after", game_physics_settings_write(doc, edit->physics_after));
         }
         double positions[] = { edit->before.x,
                                edit->before.y,
                                edit->after.x,
                                edit->after.y };
-        yyjson_mut_obj_add_val(doc, object, "position", yyjson_mut_arr_with_real(doc, positions, 4));
-        yyjson_mut_val *fields = yyjson_mut_obj_add_arr(doc, object, "fields");
+        av_obj_add_val(doc, object, "position", history_position(doc, positions));
+        av_value *fields = av_obj_add_arr(doc, object, "fields");
         for (int j = 0; j < acount(edit->fields); j++) {
             const scene_field_edit *field = &edit->fields[j];
             const ecs_component_desc *component = NULL;
@@ -815,83 +849,84 @@ static yyjson_mut_val *history_edits(yyjson_mut_doc *doc, const scene_edit *edit
             assert(
                 component && component->type && field->field < component->type->field_count
             );
-            yyjson_mut_val *item = yyjson_mut_arr_add_obj(doc, fields);
-            checkpoint_text(doc, item, "component", component->name);
-            checkpoint_text(
+            av_value *item = av_arr_add_obj(doc, fields);
+            history_text(doc, item, "component", component->name);
+            history_text(
                 doc,
                 item,
                 "field",
                 component->type->fields[field->field].name
             );
-            yyjson_mut_obj_add_val(doc, item, "before", history_value(doc, field->before));
-            yyjson_mut_obj_add_val(doc, item, "after", history_value(doc, field->after));
+            av_obj_add_val(doc, item, "before", history_value(doc, field->before));
+            av_obj_add_val(doc, item, "after", history_value(doc, field->after));
         }
         if (edit->actor) {
             const scene_actor_edit *actor = edit->actor;
-            yyjson_mut_val *item = yyjson_mut_obj_add_obj(doc, object, "actor");
+            av_value *item = av_obj_add_obj(doc, object, "actor");
             if (actor->identity) {
-                yyjson_mut_obj_add_uint(doc, item, "identity", actor->identity);
+                av_obj_add_uint(doc, item, "identity", actor->identity);
             }
-            yyjson_mut_obj_add_int(doc, item, "index", actor->index);
-            yyjson_mut_obj_add_bool(doc, item, "created", actor->created);
-            checkpoint_text(doc, item, "name", actor->name);
-            checkpoint_text(doc, item, "prototype", actor->prototype_name);
-            checkpoint_text(doc, item, "base", actor->base_json);
-            checkpoint_text(doc, item, "state", actor->state_json);
-            checkpoint_text(doc, item, "retained", actor->retained_json);
+            av_obj_add_int(doc, item, "index", actor->index);
+            av_obj_add_bool(doc, item, "created", actor->created);
+            history_text(doc, item, "name", actor->name);
+            history_text(doc, item, "prototype", actor->prototype_name);
+            av_obj_add_val(doc, item, "base", av_clone(doc, actor->base));
+            av_obj_add_val(doc, item, "state", av_clone(doc, actor->state));
+            if (actor->retained) {
+                av_obj_add_val(doc, item, "retained", av_clone(doc, actor->retained));
+            }
         }
         if (edit->behaviors) {
-            yyjson_mut_val *item = yyjson_mut_obj_add_obj(doc, object, "behaviors");
-            yyjson_mut_val *before = yyjson_mut_obj_add_arr(doc, item, "before");
-            yyjson_mut_val *after = yyjson_mut_obj_add_arr(doc, item, "after");
+            av_value *item = av_obj_add_obj(doc, object, "behaviors");
+            av_value *before = av_obj_add_arr(doc, item, "before");
+            av_value *after = av_obj_add_arr(doc, item, "after");
             for (int j = 0; j < edit->behaviors->before_count; j++) {
-                yyjson_mut_arr_add_strcpy(doc, before, edit->behaviors->before[j]);
+                av_arr_add_strcpy(doc, before, edit->behaviors->before[j]);
             }
             for (int j = 0; j < edit->behaviors->after_count; j++) {
-                yyjson_mut_arr_add_strcpy(doc, after, edit->behaviors->after[j]);
+                av_arr_add_strcpy(doc, after, edit->behaviors->after[j]);
             }
         }
         if (edit->name_after) {
-            yyjson_mut_val *item = yyjson_mut_obj_add_obj(doc, object, "rename");
-            checkpoint_text(doc, item, "before", edit->name_before);
-            checkpoint_text(doc, item, "after", edit->name_after);
+            av_value *item = av_obj_add_obj(doc, object, "rename");
+            history_text(doc, item, "before", edit->name_before);
+            history_text(doc, item, "after", edit->name_after);
         }
     }
     return array;
 }
 
-char *scene_history_checkpoint(const scene_history *history)
+av_value *scene_history_capture(const scene_history *history)
 {
     assert(!history->group);
-    yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
-    yyjson_mut_val *root = yyjson_mut_obj(doc);
-    yyjson_mut_doc_set_root(doc, root);
-    yyjson_mut_obj_add_int(doc, root, "version", 1);
-    yyjson_mut_obj_add_uint(doc, root, "next_group", history->next_group);
-    yyjson_mut_obj_add_val(doc, root, "undo", history_edits(doc, history->undo));
-    yyjson_mut_obj_add_val(doc, root, "redo", history_edits(doc, history->redo));
-    char *json = yyjson_mut_write(doc, 0, NULL);
-    yyjson_mut_doc_free(doc);
-    return json;
+    av_doc *doc = av_doc_new();
+    av_value *root = av_obj(doc);
+    av_doc_set_root(doc, root);
+    av_obj_add_int(doc, root, "version", 1);
+    av_obj_add_uint(doc, root, "next_group", history->next_group);
+    av_obj_add_val(doc, root, "undo", history_edits(doc, history->undo));
+    av_obj_add_val(doc, root, "redo", history_edits(doc, history->redo));
+    av_value *value = av_value_copy(root);
+    av_doc_free(doc);
+    return value;
 }
 
-static bool history_read_edits(yyjson_val *array, scene_edit **edits, uint64_t **before, uint64_t **after)
+static bool history_read_edits(av_value *array, scene_edit **edits, uint64_t **before, uint64_t **after)
 {
-    if (!yyjson_is_arr(array)) {
+    if (!av_is_arr(array)) {
         return false;
     }
     size_t i, count;
-    yyjson_val *object;
-    yyjson_arr_foreach(array, i, count, object)
+    av_value *object;
+    av_arr_foreach(array, i, count, object)
     {
-        if (!yyjson_is_obj(object) ||
-            !yyjson_is_uint(yyjson_obj_get(object, "entity"))) {
+        if (!av_is_obj(object) || !av_is_uint(av_obj_get(object, "entity"))) {
             return false;
         }
         scene_edit edit = { 0 };
         apush(*edits, edit);
         scene_edit *out = &alast(*edits);
-        uint64_t old = yyjson_get_uint(yyjson_obj_get(object, "entity"));
+        uint64_t old = av_get_uint(av_obj_get(object, "entity"));
         int mapping = 0;
         while (mapping < acount(*before) && (*before)[mapping] != old) {
             mapping++;
@@ -901,10 +936,10 @@ static bool history_read_edits(yyjson_val *array, scene_edit **edits, uint64_t *
             apush(*after, ecs_entity_to_u64((ecs_entity){ .slot = mapping + 1, .generation = UINT32_MAX }));
         }
         out->entity = ecs_entity_from_u64((*after)[mapping]);
-        out->group = yyjson_get_uint(yyjson_obj_get(object, "group"));
-        yyjson_val *physics = yyjson_obj_get(object, "physics_before");
+        out->group = av_get_uint(av_obj_get(object, "group"));
+        av_value *physics = av_obj_get(object, "physics_before");
         if (physics) {
-            yyjson_val *next = yyjson_obj_get(object, "physics_after");
+            av_value *next = av_obj_get(object, "physics_after");
             if (!next || !game_physics_settings_read(physics, &out->physics_before) ||
                 !game_physics_settings_read(next, &out->physics_after)) {
                 return false;
@@ -912,24 +947,24 @@ static bool history_read_edits(yyjson_val *array, scene_edit **edits, uint64_t *
             out->entity = (ecs_entity){ 0 };
             out->physics = true;
         }
-        engine_viewport_view position;
-        if (!checkpoint_read_camera(yyjson_obj_get(object, "position"), &position)) {
+        double position[4];
+        if (!history_read_position(av_obj_get(object, "position"), position)) {
             return false;
         }
-        out->before = (GameTransform){ position.center_x, position.center_y };
-        out->after = (GameTransform){ position.width, position.height };
-        yyjson_val *fields = yyjson_obj_get(object, "fields");
-        if (!yyjson_is_arr(fields)) {
+        out->before = (GameTransform){ position[0], position[1] };
+        out->after = (GameTransform){ position[2], position[3] };
+        av_value *fields = av_obj_get(object, "fields");
+        if (!av_is_arr(fields)) {
             return false;
         }
         size_t j, field_count;
-        yyjson_val *item;
-        yyjson_arr_foreach(fields, j, field_count, item)
+        av_value *item;
+        av_arr_foreach(fields, j, field_count, item)
         {
             const ecs_component_desc *component = history_component(
-                yyjson_get_str(yyjson_obj_get(item, "component"))
+                av_get_str(av_obj_get(item, "component"))
             );
-            const char *name = yyjson_get_str(yyjson_obj_get(item, "field"));
+            const char *name = av_get_str(av_obj_get(item, "field"));
             if (!component || !component->type || !name) {
                 return false;
             }
@@ -944,8 +979,8 @@ static bool history_read_edits(yyjson_val *array, scene_edit **edits, uint64_t *
             scene_field_edit field = { .component = component->id, .field = index };
             apush(out->fields, field);
             scene_field_edit *stored = &alast(out->fields);
-            if (!history_read_value(yyjson_obj_get(item, "before"), &stored->before) ||
-                !history_read_value(yyjson_obj_get(item, "after"), &stored->after)) {
+            if (!history_read_value(av_obj_get(item, "before"), &stored->before) ||
+                !history_read_value(av_obj_get(item, "after"), &stored->after)) {
                 return false;
             }
             const type_field *type = &component->type->fields[index];
@@ -955,32 +990,39 @@ static bool history_read_edits(yyjson_val *array, scene_edit **edits, uint64_t *
                 return false;
             }
         }
-        item = yyjson_obj_get(object, "actor");
+        item = av_obj_get(object, "actor");
         if (item) {
             out->actor = xcalloc(1, sizeof *out->actor);
             scene_actor_edit *actor = out->actor;
-            yyjson_val *identity = yyjson_obj_get(item, "identity");
-            if (identity && !yyjson_is_uint(identity)) {
+            av_value *identity = av_obj_get(item, "identity");
+            if (identity && !av_is_uint(identity)) {
                 return false;
             }
-            actor->identity = yyjson_get_uint(identity);
-            actor->index = yyjson_get_int(yyjson_obj_get(item, "index"));
-            actor->created = yyjson_get_bool(yyjson_obj_get(item, "created"));
-            actor->name = checkpoint_copy_text(item, "name");
-            actor->prototype_name = checkpoint_copy_text(item, "prototype");
-            actor->base_json = checkpoint_copy_text(item, "base");
-            actor->state_json = checkpoint_copy_text(item, "state");
-            actor->retained_json = checkpoint_copy_text(item, "retained");
+            actor->identity = av_get_uint(identity);
+            actor->index = av_get_int(av_obj_get(item, "index"));
+            actor->created = av_get_bool(av_obj_get(item, "created"));
+            actor->name = history_copy_text(item, "name");
+            actor->prototype_name = history_copy_text(item, "prototype");
+            av_value *base = av_obj_get(item, "base");
+            av_value *state = av_obj_get(item, "state");
+            av_value *retained = av_obj_get(item, "retained");
+            if (!av_is_obj(base) || !av_is_obj(state) ||
+                (retained && !av_is_obj(retained))) {
+                return false;
+            }
+            actor->base = av_value_copy(base);
+            actor->state = av_value_copy(state);
+            actor->retained = retained ? av_value_copy(retained) : NULL;
             if (actor->index < 0 || !actor->name || !actor->prototype_name ||
-                !actor->base_json || !actor->state_json) {
+                !actor->base || !actor->state) {
                 return false;
             }
         }
-        item = yyjson_obj_get(object, "behaviors");
+        item = av_obj_get(object, "behaviors");
         if (item) {
             char **previous = NULL, **next = NULL;
-            bool valid = checkpoint_read_strings(yyjson_obj_get(item, "before"), &previous) &&
-                         checkpoint_read_strings(yyjson_obj_get(item, "after"), &next);
+            bool valid = history_read_strings(av_obj_get(item, "before"), &previous) &&
+                         history_read_strings(av_obj_get(item, "after"), &next);
             out->behaviors = xcalloc(1, sizeof *out->behaviors);
             *out->behaviors = (scene_behavior_edit){
                 copy_names((const char *const *)previous, acount(previous)),
@@ -988,22 +1030,65 @@ static bool history_read_edits(yyjson_val *array, scene_edit **edits, uint64_t *
                 copy_names((const char *const *)next, acount(next)),
                 acount(next)
             };
-            checkpoint_free_strings(previous);
-            checkpoint_free_strings(next);
+            history_free_strings(previous);
+            history_free_strings(next);
             if (!valid) {
                 return false;
             }
         }
-        item = yyjson_obj_get(object, "rename");
+        item = av_obj_get(object, "rename");
         if (item) {
-            out->name_before = checkpoint_copy_text(item, "before");
-            out->name_after = checkpoint_copy_text(item, "after");
+            out->name_before = history_copy_text(item, "before");
+            out->name_after = history_copy_text(item, "after");
             if (!out->name_before || !out->name_after) {
                 return false;
             }
         }
     }
     return true;
+}
+
+bool scene_history_restore_value(
+    scene_history *history,
+    av_value *root,
+    const uint64_t *old_entities,
+    const uint64_t *new_entities,
+    int count
+)
+{
+
+    if (av_get_int(av_obj_get(root, "version")) != 1) {
+        return false;
+    }
+    scene_history candidate = { .next_group = av_get_uint(av_obj_get(root, "next_group")) };
+    uint64_t *before = NULL, *after = NULL;
+    for (int i = 0; i < count; i++) {
+        apush(before, old_entities[i]);
+        apush(after, new_entities[i]);
+    }
+    bool valid = history_read_edits(av_obj_get(root, "undo"), &candidate.undo, &before, &after) &&
+                 history_read_edits(av_obj_get(root, "redo"), &candidate.redo, &before, &after);
+    afree(before);
+    afree(after);
+    if (valid) {
+        scene_history previous = *history;
+        *history = candidate;
+        candidate = previous;
+    }
+    clear_edits(&candidate.undo);
+    clear_edits(&candidate.redo);
+    afree(candidate.undo);
+    afree(candidate.redo);
+    return valid;
+}
+
+/* JSON is the collaboration checkpoint boundary, never the native history store. */
+char *scene_history_checkpoint(const scene_history *history)
+{
+    av_value *value = scene_history_capture(history);
+    char *json = av_json_write(value);
+    av_value_free(value);
+    return json;
 }
 
 bool scene_history_restore_checkpoint(
@@ -1014,33 +1099,9 @@ bool scene_history_restore_checkpoint(
     int count
 )
 {
-    yyjson_doc *doc = json ? yyjson_read(json, strlen(json), 0) : NULL;
-    yyjson_val *root = yyjson_doc_get_root(doc);
-    if (yyjson_get_int(yyjson_obj_get(root, "version")) != 1) {
-        yyjson_doc_free(doc);
-        return false;
-    }
-    scene_history candidate = {
-        .next_group = yyjson_get_uint(yyjson_obj_get(root, "next_group"))
-    };
-    uint64_t *before = NULL, *after = NULL;
-    for (int i = 0; i < count; i++) {
-        apush(before, old_entities[i]);
-        apush(after, new_entities[i]);
-    }
-    bool valid = history_read_edits(yyjson_obj_get(root, "undo"), &candidate.undo, &before, &after) &&
-                 history_read_edits(yyjson_obj_get(root, "redo"), &candidate.redo, &before, &after);
-    afree(before);
-    afree(after);
-    yyjson_doc_free(doc);
-    if (valid) {
-        scene_history previous = *history;
-        *history = candidate;
-        candidate = previous;
-    }
-    clear_edits(&candidate.undo);
-    clear_edits(&candidate.redo);
-    afree(candidate.undo);
-    afree(candidate.redo);
+    av_doc *doc = json ? av_json_read(json) : NULL;
+    bool valid = doc &&
+                 scene_history_restore_value(history, av_doc_root(doc), old_entities, new_entities, count);
+    av_doc_free(doc);
     return valid;
 }

@@ -13,14 +13,14 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path, PurePosixPath
 from urllib.parse import parse_qs, urlsplit
 
-import yaml
+import kdl_asset
 
-TEXT_EXTENSIONS = {'.yaml', '.rml', '.rcss'}
+TEXT_EXTENSIONS = {'.kdl', '.rml', '.rcss'}
 IMAGE_EXTENSIONS = {'.png', '.jpg', '.jpeg'}
 
 
 def content_directory(project):
-    manifest = yaml.safe_load((project / 'project.yaml').read_text())
+    manifest = kdl_asset.loads((project / 'project.kdl').read_text())
     content = (project / manifest['content']).resolve()
     if not content.is_relative_to(project):
         raise ValueError('Project content must be inside the project directory')
@@ -29,7 +29,7 @@ def content_directory(project):
 
 def projects(workspace):
     """The workspace's own project and those in its projects directory, as Studio lists them."""
-    manifests = [workspace / 'project.yaml', *sorted(workspace.glob('projects/*/project.yaml'))]
+    manifests = [workspace / 'project.kdl', *sorted(workspace.glob('projects/*/project.kdl'))]
     return [manifest.parent for manifest in manifests if manifest.is_file()]
 
 
@@ -37,7 +37,7 @@ def workspace_files(workspace):
     """Each project's manifest and supported content assets, relative to the workspace."""
     files = {}
     for project in projects(workspace):
-        files[str((project / 'project.yaml').relative_to(workspace))] = project / 'project.yaml'
+        files[str((project / 'project.kdl').relative_to(workspace))] = project / 'project.kdl'
         content = content_directory(project)
         for path in content.rglob('*'):
             if path.is_file() and path.suffix.lower() in TEXT_EXTENSIONS | IMAGE_EXTENSIONS and path.resolve().is_relative_to(content):
@@ -75,17 +75,17 @@ def create_project(workspace, request):
     root = parent / project_id
     root.mkdir()
     files = {
-        'project.yaml': yaml.safe_dump({
+        'project.kdl': kdl_asset.dumps({
             'version': version,
             'name': name,
             'content': 'content',
-            'start_scene': 'scenes/Start.yaml',
-        }, sort_keys=False, allow_unicode=True),
-        'content/scenes/Start.yaml': yaml.safe_dump({
+            'start_scene': 'scenes/Start.kdl',
+        }),
+        'content/scenes/Start.kdl': kdl_asset.dumps({
             'version': 1,
             'name': 'Start',
             'entities': [],
-        }, sort_keys=False),
+        }),
     }
     try:
         for path, text in files.items():
@@ -153,7 +153,7 @@ class WorkspaceWatch:
                 # reported as removed instead of mirroring external bytes.
                 resolved = path.resolve()
                 if not any(
-                    resolved == root / 'project.yaml' or resolved.is_relative_to(content)
+                    resolved == root / 'project.kdl' or resolved.is_relative_to(content)
                     for root, content in roots
                 ):
                     files[name] = None
@@ -169,22 +169,22 @@ def save_asset(workspace, request):
     text = request['text']
     contents = [content_directory(project) for project in projects(workspace)]
     # Settings rewrites a project's manifest, which is never removed.
-    manifest = text is not None and path in [(project / 'project.yaml').resolve() for project in projects(workspace)]
+    manifest = text is not None and path in [(project / 'project.kdl').resolve() for project in projects(workspace)]
     image_delete = text is None and path.suffix.lower() in IMAGE_EXTENSIONS
     if not manifest and ((path.suffix.lower() not in TEXT_EXTENSIONS and not image_delete) or
                          not any(path.is_relative_to(content) for content in contents)):
-        raise ValueError('Saves must be project manifests, or YAML assets, RML or RCSS inside a project content directory')
+        raise ValueError('Saves must be project manifests, or KDL assets, RML or RCSS inside a project content directory')
     if text is None:
         path.unlink(missing_ok=True)
         return
-    # The engine writes asset documents as YAML mappings; a save must reload.
-    if path.suffix == '.yaml':
+    # The engine writes asset documents as KDL mappings; a save must reload.
+    if path.suffix == '.kdl':
         try:
-            document = yaml.safe_load(text)
-        except yaml.YAMLError as error:
-            raise ValueError(f'Saves must be YAML asset documents: {error}') from error
+            document = kdl_asset.loads(text)
+        except kdl_asset.Error as error:
+            raise ValueError(f'Saves must be KDL asset documents: {error}') from error
         if not isinstance(document, dict):
-            raise ValueError('Saves must be YAML asset documents')
+            raise ValueError('Saves must be KDL asset documents')
     path.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.NamedTemporaryFile(mode='w', dir=path.parent, delete=False) as file:
         temporary = Path(file.name)
@@ -199,7 +199,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--build', type=Path, default=Path('build-web'))
     parser.add_argument('--workspace', type=Path, default=Path(__file__).resolve().parents[1],
-                        help='directory whose project.yaml and projects/* the browser can open')
+                        help='directory whose project.kdl and projects/* the browser can open')
     parser.add_argument('--project', type=Path, default=Path('projects/arena2d'))
     parser.add_argument('--port', type=int, default=8099)
     parser.add_argument('--isolated', action='store_true',

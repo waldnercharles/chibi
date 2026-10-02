@@ -47,7 +47,7 @@
                     !(file.data instanceof Uint8Array)) throw new Error('Snapshot contains an unsafe project path');
                 seen.add(file.path);
             }
-            if (!seen.has('project.yaml')) throw new Error('Snapshot is missing project.yaml');
+            if (!seen.has('project.kdl')) throw new Error('Snapshot is missing project.kdl');
         };
         return {
             localRoot,

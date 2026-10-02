@@ -8,13 +8,14 @@
 #include "graph/model/registry.h"
 #include "graph/nodes/component_nodes.h"
 #include "support/array.h"
+#include "support/asset_text.h"
+#include "support/asset_value.h"
 #include "support/xalloc.h"
 
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <yyjson.h>
 
 typedef struct
 {
@@ -57,7 +58,7 @@ static const struct
 
 #define NAMED_FIELD_COUNT ((int)(sizeof NAMED_FIELDS / sizeof *NAMED_FIELDS))
 
-/* GameMeshParts.parts holds JSON parts, each naming its material. */
+/* GameMeshParts.parts holds KDL parts, each naming its material. */
 #define MESH_PARTS "GameMeshParts"
 
 static char *copy(const char *text)
@@ -314,21 +315,21 @@ static void add_named(reference_index *index, reference at, int field, const cha
 
 static void add_mesh_parts(reference_index *index, reference at, const char *parts)
 {
-    yyjson_doc *doc = yyjson_read(parts, strlen(parts), 0);
-    yyjson_val *root = yyjson_doc_get_root(doc);
+    av_doc *doc = av_value_read(parts, NULL, 0);
+    av_value *root = av_doc_root(doc);
     at.role = REFERENCE_BIND;
     at.component = MESH_PARTS ".parts";
     size_t i, count;
-    yyjson_val *part;
-    yyjson_arr_foreach(root, i, count, part)
+    av_value *part;
+    av_arr_foreach(root, i, count, part)
     {
-        const char *material = yyjson_get_str(yyjson_obj_get(part, "material"));
+        const char *material = av_get_str(av_obj_get(part, "material"));
         if (material && material[0]) {
             at.symbol = asset_symbol(named_asset(index, REFERENCE_ASSET_MATERIAL, material));
             add(index, at);
         }
     }
-    yyjson_doc_free(doc);
+    av_doc_free(doc);
 }
 
 static int named_field(const char *component, const char *field)
@@ -831,34 +832,33 @@ void reference_index_add_graphs(reference_index *index, int source, const behavi
 /* ---------- Prototypes and scene objects ---------- */
 
 /* An override's components: the object itself, or its components. */
-static yyjson_val *override_components(yyjson_doc *doc)
+static av_value *override_components(av_value *root)
 {
-    yyjson_val *root = yyjson_doc_get_root(doc);
-    yyjson_val *components = yyjson_obj_get(root, "components");
+    av_value *components = av_obj_get(root, "components");
     return components ? components : root;
 }
 
 /* An override names a component by name, or by its GAME. key. */
-static yyjson_val *override_component(yyjson_val *components, const char *name)
+static av_value *override_component(av_value *components, const char *name)
 {
     char key[128];
     snprintf(key, sizeof key, "GAME.%s", name);
-    yyjson_val *value = yyjson_obj_get(components, name);
-    return value ? value : yyjson_obj_get(components, key);
+    av_value *value = av_obj_get(components, name);
+    return value ? value : av_obj_get(components, key);
 }
 
 /* An override that sets the field, or removes its component. */
-static bool overridden(yyjson_val *components, const char *component, const char *field)
+static bool overridden(av_value *components, const char *component, const char *field)
 {
-    yyjson_val *value = override_component(components, component);
-    return yyjson_is_null(value) || yyjson_obj_get(value, field);
+    av_value *value = override_component(components, component);
+    return av_is_null(value) || av_obj_get(value, field);
 }
 
 static void add_prototype_fields(
     reference_index *index,
     reference at,
     const game_prototype *prototype,
-    yyjson_val *overrides
+    av_value *overrides
 )
 {
     pin_value value;
@@ -881,19 +881,17 @@ static void add_prototype_fields(
     }
 }
 
-static void add_override_fields(reference_index *index, reference at, yyjson_val *components)
+static void add_override_fields(reference_index *index, reference at, av_value *components)
 {
     for (int i = 0; i < NAMED_FIELD_COUNT; i++) {
-        yyjson_val *component = override_component(components, NAMED_FIELDS[i].component);
-        const char *value = yyjson_get_str(
-            yyjson_obj_get(component, NAMED_FIELDS[i].field)
-        );
+        av_value *component = override_component(components, NAMED_FIELDS[i].component);
+        const char *value = av_get_str(av_obj_get(component, NAMED_FIELDS[i].field));
         if (value && value[0]) {
             add_named(index, at, i, value);
         }
     }
-    const char *parts = yyjson_get_str(
-        yyjson_obj_get(override_component(components, MESH_PARTS), "parts")
+    const char *parts = av_get_str(
+        av_obj_get(override_component(components, MESH_PARTS), "parts")
     );
     if (parts && parts[0]) {
         add_mesh_parts(index, at, parts);
@@ -928,14 +926,11 @@ void reference_index_add_object(reference_index *index, int source, const refere
     for (int i = 0; i < object->behavior_count; i++) {
         add_behavior(index, at, object->behaviors[i]);
     }
-    const char *json = object->overrides;
-    yyjson_doc *doc = json ? yyjson_read(json, strlen(json), 0) : NULL;
-    yyjson_val *components = override_components(doc);
+    av_value *components = override_components(object->overrides);
     if (object->base) {
         add_prototype_fields(index, at, object->base, components);
     }
     add_override_fields(index, at, components);
-    yyjson_doc_free(doc);
 }
 
 void reference_index_add_ui(reference_index *index, int source, const char *rml)

@@ -4,6 +4,7 @@
 #include "ecs/ecs.h"
 #include "runtime/components.h"
 #include "runtime/scenes/physics_settings.h"
+#include "support/asset_value.h"
 
 #include <stdbool.h>
 
@@ -56,13 +57,13 @@ typedef struct
     int index;
     const char *name;
     const char *prototype_name;
-    const char *base_json;
-    const char *state_json;
+    av_value *base;
+    av_value *state;
     bool created;
-    const char *retained_json;
+    av_value *retained;
 } scene_actor_edit;
 
-/* The app owns actor replay. History owns copies of all strings. Peek returns
+/* The app owns actor replay. History owns cloned values and copied strings. Peek returns
  * NULL unless the selected stack's head is an actor edit; outputs then remain
  * unchanged. present says whether replay must restore or remove the actor. */
 bool scene_history_push_actor(scene_history *history, ecs_entity entity, const scene_actor_edit *edit);
@@ -118,6 +119,15 @@ bool scene_history_can_redo(const scene_history *history);
  * optional and is assigned only after applying. Entities are never recreated. */
 int scene_history_undo(scene_history *history, ecs_world *world, ecs_entity *out_entity);
 int scene_history_redo(scene_history *history, ecs_world *world, ecs_entity *out_entity);
+
+av_value *scene_history_capture(const scene_history *history);
+bool scene_history_restore_value(
+    scene_history *history,
+    av_value *value,
+    const uint64_t *old_entities,
+    const uint64_t *new_entities,
+    int count
+);
 
 char *scene_history_checkpoint(const scene_history *history);
 bool scene_history_restore_checkpoint(

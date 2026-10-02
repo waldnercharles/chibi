@@ -14,6 +14,7 @@
 #include "render/shader_images.h"
 #include "render/shader_preview.h"
 #include "support/array.h"
+#include "support/asset_json.h"
 #include "support/asset_text.h"
 #include "support/xalloc.h"
 #include "third_party/yyjson/yyjson.h"
@@ -529,7 +530,7 @@ static behavior_asset **load_libraries(const char *root)
             continue;
         }
         char *json = load_library_file(resolved);
-        behavior_asset *asset = json ? behavior_asset_load_json(json) : NULL;
+        behavior_asset *asset = json ? behavior_asset_load(json) : NULL;
         free(json);
         if (asset && asset->domain == BEHAVIOR_DOMAIN_SHADER_LIBRARY) {
             apush(libraries, asset);
@@ -1071,7 +1072,7 @@ char *chibi_render_preview_handle(const char *request, const char *default_root,
         return response_finish(&response);
     }
     response_identity(&response, &ref);
-    behavior_asset *asset = behavior_asset_load_json(json);
+    behavior_asset *asset = behavior_asset_load(json);
     free(json);
     if (!asset) {
         response_diagnostic(&response, "error", 0, graph_last_error());
@@ -1179,7 +1180,11 @@ char *chibi_render_preview_handle(const char *request, const char *default_root,
     compile_report_free(&report);
     char render_error[PREVIEW_MAX_ERROR] = { 0 };
     char *png = NULL;
-    char *parameters_json = parameters ? yyjson_val_write(parameters, 0, NULL) : NULL;
+    av_doc *parameter_doc = av_doc_new();
+    char *parameters_json = parameters
+                              ? av_value_write(av_from_json(parameter_doc, parameters))
+                              : NULL;
+    av_doc_free(parameter_doc);
     if (parameters && !parameters_json) {
         response_diagnostic(&response, "error", 0, "parameters could not be serialized");
         yyjson_mut_obj_add_bool(response.doc, response.result, "valid", false);

@@ -1,0 +1,39 @@
+name "MovementEmitter"
+components {
+    GAME.GameIgniter heat=2.5
+    GAME.GameParticleEmitter {
+        absorption 0.0099999997764825821
+        active #true
+        antialias {
+            start x=1.5 y=1.5
+        }
+        color 4288223999
+        direction x=-1.0
+        drag {
+            start x=4.0 y=8.0
+        }
+        emission {
+            exponent 0.80000001192092896
+            start x=0.18000000715255737 y=0.30000001192092896
+        }
+        end_color 1275133824
+        fluid #true
+        fluid_mass 0.00039999998989515007
+        heading_only #true
+        lifetime x=0.34999999403953552 y=0.60000002384185791
+        metaball_blend 2.0
+        metaball_group 1
+        offset x=-10.0
+        planar #true
+        rate 120.0
+        size {
+            exponent 1.2000000476837158
+            start x=3.0 y=5.0
+        }
+        speed x=55.0 y=85.0
+        spread 0.64999997615814209
+        velocity_inherit 1.0
+    }
+    (object)GAME.GameTransform
+}
+(array)behaviors "MovementEmitter"

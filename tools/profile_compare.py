@@ -17,14 +17,14 @@ import subprocess
 import sys
 from pathlib import Path
 
-import yaml
+import kdl_asset
 
 PHASES = ('behavior_ms', 'physics_ms', 'systems_ms', 'rendering_ms')
 DISTRIBUTION = ('p50', 'p95', 'p99', 'max')
 
 
 def start_scene(project_root):
-    manifest = yaml.safe_load((Path(project_root) / 'project.yaml').read_text())
+    manifest = kdl_asset.loads((Path(project_root) / 'project.kdl').read_text())
     return Path(manifest['start_scene']).stem
 
 

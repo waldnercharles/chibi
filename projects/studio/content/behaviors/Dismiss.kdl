@@ -1,0 +1,24 @@
+version 3
+name "Dismiss"
+id_counter 9
+owner_type "ecs.entity"
+(array)graphs {
+    - {
+        kind "event"
+        name ""
+        (array)nodes {
+            - id=1 type="Event" x=0.0 y=0.0 placed=#false reference_name="Close"
+            - {
+                id 3
+                type "Set_GameUi_hidden"
+                x 0.0
+                y 0.0
+                placed #false
+                inputs Value=#true
+            }
+        }
+        (array)edges {
+            - from="1.Then" to="3.Exec"
+        }
+    }
+}

@@ -65,13 +65,47 @@ typedef enum
     MATCH_WORDS,
 } match_mode;
 
-static int token_score(const char *text, const char *query, int count, match_mode mode)
+static void mark_hit(bool *hits, size_t size, int at)
+{
+    if (hits && (size_t)at < size) {
+        hits[at] = true;
+    }
+}
+
+/* Highlight the letters retained by a one-edit match, omitting an inserted
+ * or substituted name letter; a transposition retains both letters. */
+static void mark_edit(const char *text, int length, const char *query, int count, bool *hits, size_t size, int at)
+{
+    int i = 0;
+    while (i < length && i < count && lower(text[i]) == lower(query[i])) {
+        mark_hit(hits, size, at + i++);
+    }
+    bool transpose = length == count && i + 1 < count &&
+                     lower(text[i]) == lower(query[i + 1]) &&
+                     lower(text[i + 1]) == lower(query[i]);
+    if ((transpose || length < count) && i < length) {
+        mark_hit(hits, size, at + i);
+    }
+    for (i++; i < length; i++) {
+        mark_hit(hits, size, at + i);
+    }
+}
+
+static int token_score(const char *text, const char *query, int count, match_mode mode, bool *hits, size_t hit_count)
 {
     if (!text || !text[0]) {
         return -1;
     }
     int best = -1;
     int initials = 0, starts = 0, sequence = 0;
+    enum
+    {
+        CONTIGUOUS,
+        EDIT,
+        INITIALS,
+        SEQUENCE
+    } matched = CONTIGUOUS;
+    int offset = 0, length = count;
     bool typos = count >= (mode == MATCH_WORDS ? 5 : 4);
     for (int i = 0; text[i]; i++) {
         bool start = boundary(text, i);
@@ -82,6 +116,9 @@ static int token_score(const char *text, const char *query, int count, match_mod
             score += i == 0 ? 140 : 0;
             if (score > best) {
                 best = score;
+                matched = CONTIGUOUS;
+                offset = i;
+                length = count;
             }
         }
         starts += start && isalnum((unsigned char)text[i]);
@@ -100,23 +137,62 @@ static int token_score(const char *text, const char *query, int count, match_mod
         }
         if (typos && one_edit(text + i, end - i, query, count)) {
             best = 180;
+            matched = EDIT;
+            offset = i;
+            length = end - i;
         }
     }
     int abbreviation = starts == count ? 340 : 280;
     if (mode != MATCH_WORDS && initials == count && best < abbreviation) {
         best = abbreviation;
+        matched = INITIALS;
     }
     if (mode == MATCH_NAME && sequence == count && best < 100) {
         best = 100;
+        matched = SEQUENCE;
     }
     if (typos && best < 180 && one_edit(text, (int)strlen(text), query, count)) {
         best = 180;
+        matched = EDIT;
+        offset = 0;
+        length = (int)strlen(text);
+    }
+    if (!hits || best < 0) {
+        return best;
+    }
+    if (matched == EDIT) {
+        mark_edit(text + offset, length, query, count, hits, hit_count, offset);
+        return best;
+    }
+    if (matched == CONTIGUOUS) {
+        for (int i = offset; i < offset + length; i++) {
+            mark_hit(hits, hit_count, i);
+        }
+        return best;
+    }
+    int part = 0;
+    for (int i = 0; text[i] && part < count; i++) {
+        if (lower(text[i]) == lower(query[part]) &&
+            (matched == SEQUENCE || boundary(text, i))) {
+            mark_hit(hits, hit_count, i);
+            part++;
+        }
     }
     return best;
 }
 
-static int search_score(const char *query, const char *name, const char *secondary, match_mode mode)
+static int search_score(
+    const char *query,
+    const char *name,
+    const char *secondary,
+    match_mode mode,
+    bool *hits,
+    size_t hit_count
+)
 {
+    if (hits) {
+        memset(hits, 0, hit_count * sizeof *hits);
+    }
     if (!query) {
         return 0;
     }
@@ -130,13 +206,16 @@ static int search_score(const char *query, const char *name, const char *seconda
         while (word[count] && !isspace((unsigned char)word[count])) {
             count++;
         }
-        int primary = token_score(name, word, count, mode);
-        int extra = token_score(secondary, word, count, mode == MATCH_WORDS ? MATCH_WORDS : MATCH_TEXT);
+        int primary = token_score(name, word, count, mode, hits, hit_count);
+        int extra = token_score(secondary, word, count, mode == MATCH_WORDS ? MATCH_WORDS : MATCH_TEXT, NULL, 0);
         if (extra >= 0) {
             extra = extra / 2;
         }
         int best = primary > extra ? primary : extra;
         if (best < 0) {
+            if (hits) {
+                memset(hits, 0, hit_count * sizeof *hits);
+            }
             return -1;
         }
         score += best;
@@ -159,10 +238,15 @@ static int search_score(const char *query, const char *name, const char *seconda
 
 int text_search_score(const char *query, const char *name, const char *secondary)
 {
-    return search_score(query, name, secondary, MATCH_NAME);
+    return search_score(query, name, secondary, MATCH_NAME, NULL, 0);
 }
 
 int text_search_word_score(const char *query, const char *name, const char *secondary)
 {
-    return search_score(query, name, secondary, MATCH_WORDS);
+    return search_score(query, name, secondary, MATCH_WORDS, NULL, 0);
+}
+
+int text_search_match(const char *query, const char *name, bool *hits, size_t hit_count)
+{
+    return search_score(query, name, NULL, MATCH_NAME, hits, hit_count);
 }

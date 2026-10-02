@@ -1,0 +1,270 @@
+version 3
+name "WavePulseBehavior"
+id_counter 78
+description "An authored wave announcement expands a thin red band through floor cells and expires after 0.8 seconds."
+owner_type "ecs.entity"
+(array)variables {
+    - id=1 name="Age" type="float" type_name="float" category="State"
+}
+(array)graphs {
+    - {
+        kind "event"
+        name ""
+        (array)nodes {
+            - {
+                id 3
+                type "Event"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_name "Tick"
+                outputs {
+                    Then id=2
+                }
+            }
+            - {
+                id 5
+                type "Get Variable"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 1
+                outputs {
+                    Value id=4 type="float" flags=0
+                }
+            }
+            - {
+                id 7
+                type "Delta Time"
+                x 0.0
+                y 0.0
+                placed #false
+                outputs {
+                    Seconds id=6
+                }
+            }
+            - {
+                id 12
+                type "Set Variable"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 1
+                inputs {
+                    Exec id=8
+                    Value type="float"
+                }
+                outputs {
+                    Value type="float"
+                }
+            }
+            - {
+                id 16
+                type "Add"
+                x 0.0
+                y 0.0
+                placed #false
+                inputs {
+                    A id=13 type="double" flags=0 group=0
+                    B type="double" flags=0 group=0
+                }
+                outputs {
+                    Result type="double" flags=0 group=0
+                }
+            }
+            - {
+                id 20
+                type "Divide"
+                x 0.0
+                y 0.0
+                placed #false
+                inputs {
+                    A id=17 type="double" flags=0 group=0
+                    B type="double" flags=0 group=0 default=0.80000000000000004
+                }
+                outputs {
+                    Result type="double" flags=0 group=0
+                }
+            }
+            - {
+                id 24
+                type "Greater Or Equal"
+                x 0.0
+                y 0.0
+                placed #false
+                inputs {
+                    A id=21
+                    B 1.0
+                }
+            }
+            - {
+                id 29
+                type "Branch"
+                x 0.0
+                y 0.0
+                placed #false
+                inputs {
+                    Exec id=25
+                }
+            }
+            - {
+                id 33
+                type "Destroy Entity"
+                x 0.0
+                y 0.0
+                placed #false
+                inputs {
+                    Exec id=30
+                }
+            }
+            - {
+                id 35
+                type "Self"
+                x 0.0
+                y 0.0
+                placed #false
+                (array)outputs {
+                    - id=34 name="Entity" type_name="ecs.entity"
+                }
+            }
+            - {
+                id 39
+                type "Multiply"
+                x 0.0
+                y 0.0
+                placed #false
+                inputs {
+                    A id=36 type="double" flags=0 group=0 default=336.0
+                    B type="double" flags=0 group=0
+                }
+                outputs {
+                    Result type="double" flags=0 group=0
+                }
+            }
+            - {
+                id 43
+                type "Add"
+                x 0.0
+                y 0.0
+                placed #false
+                inputs {
+                    A id=40 type="double" flags=0 group=0 default=24.0
+                    B type="double" flags=0 group=0
+                }
+                outputs {
+                    Result type="double" flags=0 group=0
+                }
+            }
+            - {
+                id 49
+                type "Set_GameSurfaceInfluence_radius"
+                x 0.0
+                y 0.0
+                placed #false
+                inputs {
+                    Exec id=44
+                }
+            }
+            - {
+                id 53
+                type "Subtract"
+                x 0.0
+                y 0.0
+                placed #false
+                inputs {
+                    A id=50 type="double" flags=0 group=0
+                    B type="double" flags=0 group=0 default=28.0
+                }
+                outputs {
+                    Result type="double" flags=0 group=0
+                }
+            }
+            - {
+                id 57
+                type "Max"
+                x 0.0
+                y 0.0
+                placed #false
+                inputs {
+                    A id=54 type="double" flags=0 group=0
+                    B type="double" flags=0 group=0
+                }
+                outputs {
+                    Result type="double" flags=0 group=0
+                }
+            }
+            - {
+                id 63
+                type "Set_GameSurfaceInfluence_inner_radius"
+                x 0.0
+                y 0.0
+                placed #false
+                inputs {
+                    Exec id=58
+                }
+            }
+            - {
+                id 67
+                type "Subtract"
+                x 0.0
+                y 0.0
+                placed #false
+                inputs {
+                    A id=64 type="double" flags=0 group=0 default=1.0
+                    B type="double" flags=0 group=0
+                }
+                outputs {
+                    Result type="double" flags=0 group=0
+                }
+            }
+            - {
+                id 71
+                type "Multiply"
+                x 0.0
+                y 0.0
+                placed #false
+                inputs {
+                    A id=68 type="double" flags=0 group=0 default=0.65000000000000002
+                    B type="double" flags=0 group=0
+                }
+                outputs {
+                    Result type="double" flags=0 group=0
+                }
+            }
+            - {
+                id 77
+                type "Set_GameSurfaceInfluence_strength"
+                x 0.0
+                y 0.0
+                placed #false
+                inputs {
+                    Exec id=72
+                }
+            }
+        }
+        (array)edges {
+            - from="3.Then" to="12.Exec"
+            - from="5.Value" to="16.A"
+            - from="7.Seconds" to="16.B"
+            - from="12.Then" to="29.Exec"
+            - from="12.Value" to="20.A"
+            - from="16.Result" to="12.Value"
+            - from="20.Result" to="24.A"
+            - from="20.Result" to="39.B"
+            - from="20.Result" to="67.B"
+            - from="24.Result" to="29.Condition"
+            - from="29.True" to="33.Exec"
+            - from="29.False" to="49.Exec"
+            - from="35.Entity" to="33.Entity"
+            - from="39.Result" to="43.B"
+            - from="43.Result" to="49.Value"
+            - from="43.Result" to="53.A"
+            - from="49.Then" to="63.Exec"
+            - from="53.Result" to="57.B"
+            - from="57.Result" to="63.Value"
+            - from="63.Then" to="77.Exec"
+            - from="67.Result" to="71.B"
+            - from="71.Result" to="77.Value"
+        }
+    }
+}

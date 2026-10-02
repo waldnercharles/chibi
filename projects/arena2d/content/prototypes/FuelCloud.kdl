@@ -1,0 +1,6 @@
+name "FuelCloud"
+components {
+    GAME.GameFluidVolume absorption=0.012000000104308128 color=4290328256 height=120.0 mass=0.00050000002374872565 spacing=5.0 visibility=0.064999997615814209 width=120.0
+    GAME.GameFuel amount=1.0
+    (object)GAME.GameTransform
+}

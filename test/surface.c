@@ -144,13 +144,19 @@ static void parts_and_trails()
     assert(render_arena_parts_parse(json, &copy, error, sizeof error));
     assert(copy.count == 2 && !memcmp(&parts.parts, &copy.parts, sizeof parts.parts));
     free(json);
-    assert(
-        !render_arena_parts_parse("[{\"primitive\":0,\"size\":[1,0,1]}]", &copy, error, sizeof error)
-    );
+    assert(!render_arena_parts_parse(
+        "(array)- { - { primitive 0; (array)size 1 0 1; }; }\n",
+        &copy,
+        error,
+        sizeof error
+    ));
     assert(strstr(error, "part 1"));
-    assert(
-        !render_arena_parts_parse("[{\"primitive\":4294967296,\"size\":[1,1,1]}]", &copy, error, sizeof error)
-    );
+    assert(!render_arena_parts_parse(
+        "(array)- { - { primitive 4294967296; (array)size 1 1 1; }; }\n",
+        &copy,
+        error,
+        sizeof error
+    ));
     assert(!render_arena_parts_parse("{broken", &copy, error, sizeof error));
     assert(render_arena_parts_parse("", &copy, error, sizeof error) && copy.count == 0);
 
@@ -695,11 +701,22 @@ static void visual_motion_defaults()
                                          GAME_REGISTRY_COMPONENT_COUNT };
     char error[128];
     game_prototype *prototype = game_prototype_load(
-        "{\"name\":\"Motion defaults\",\"components\":{"
-        "\"GameVisualTransform\":{\"pitch\":0.3,\"yaw\":-0.2,\"roll\":0.7,"
-        "\"scale\":0.8},"
-        "\"GameGeometry3D\":{\"primitive\":0,\"width\":11,\"height\":11,"
-        "\"depth\":11,\"elevation\":12}}}",
+        "name \"Motion defaults\"\n"
+        "components {\n"
+        "    GameVisualTransform {\n"
+        "        pitch 0.3\n"
+        "        yaw -0.2\n"
+        "        roll 0.7\n"
+        "        scale 0.8\n"
+        "    }\n"
+        "    GameGeometry3D {\n"
+        "        primitive 0\n"
+        "        width 11\n"
+        "        height 11\n"
+        "        depth 11\n"
+        "        elevation 12\n"
+        "    }\n"
+        "}\n",
         &registry,
         error,
         sizeof error
@@ -817,7 +834,8 @@ static void rhythm_and_defaults()
                                          .component_count = GAME_REGISTRY_COMPONENT_COUNT };
     char error[128];
     game_prototype *prototype = game_prototype_load(
-        "{\"name\":\"Defaults\",\"components\":{}}",
+        "name \"Defaults\"\n"
+        "(object)components\n",
         &registry,
         error,
         sizeof error
@@ -836,7 +854,7 @@ static void rhythm_and_defaults()
     assert(game_prototype_add_component(prototype, &GAME_COMPONENT_GameMeshParts) == 0);
     assert(
         game_prototype_read_field(prototype, "GameMeshParts", "parts", &value) == 0 &&
-        !strcmp(value.str, "[]")
+        !strcmp(value.str, "(array)-\n")
     );
     assert(game_prototype_add_component(prototype, &GAME_COMPONENT_GameParticleEmitter) == 0);
     assert(
@@ -887,7 +905,7 @@ static void annular_influence()
 
 static void authored_floor()
 {
-    FILE *file = fopen("content/materials/ArenaFloor.yaml", "rb");
+    FILE *file = fopen("content/materials/ArenaFloor.kdl", "rb");
     assert(file && fseek(file, 0, SEEK_END) == 0);
     long size = ftell(file);
     assert(size >= 0);
@@ -896,7 +914,7 @@ static void authored_floor()
     assert(json && fread(json, 1, (size_t)size, file) == (size_t)size);
     json[size] = 0;
     fclose(file);
-    behavior_asset *asset = behavior_asset_load_json(json);
+    behavior_asset *asset = behavior_asset_load(json);
     free(json);
     assert(asset);
     float tile = 0;
@@ -1101,8 +1119,8 @@ static void visual_errors()
     vector(a->graph, surface(a), 0, 0, (CF_V3){ .5f, .3f, .2f });
     publish(a);
     for (int i = 0; i < 3; i++) {
-        ecs_entity e = actor(&f, a->name, (CF_V3){ (i - 1) * 70.0f }, GAME_PRIMITIVE_BOX, 50, "{}");
-        GameMeshParts parts = { "[]" };
+        ecs_entity e = actor(&f, a->name, (CF_V3){ (i - 1) * 70.0f }, GAME_PRIMITIVE_BOX, 50, "");
+        GameMeshParts parts = { "(array)-\n" };
         GameVisualTransform transform = { .scale = 1 };
         assert(
             ecs_world_record_add(f.world, e, GAME_COMPONENT_GameMeshParts.id, &parts, 0) == ECS_OK
@@ -1131,10 +1149,10 @@ static void visual_errors()
     for (int failure = 0; failure < 3; failure++) {
         GAME_GameMeshParts_get(f.world, entities[0])->parts = failure == 0
                                                                 ? "{broken"
-                                                                : "[]";
+                                                                : "(array)-\n";
         GAME_GameMeshParts_get(f.world, entities[1])->parts = failure == 2
                                                                 ? "{also broken"
-                                                                : "[]";
+                                                                : "(array)-\n";
         GAME_GameVisualTransform_get(f.world, entities[0])->scale = failure == 2
                                                                       ? -1
                                                                       : 1;
@@ -1149,7 +1167,7 @@ static void visual_errors()
         read_canvas(&f, after);
         assert(!memcmp(baseline, after, sizeof baseline));
     }
-    GAME_GameMeshParts_get(f.world, entities[1])->parts = "[]";
+    GAME_GameMeshParts_get(f.world, entities[1])->parts = "(array)-\n";
     GAME_GameVisualTransform_get(f.world, entities[0])->scale = 1;
     GAME_GameShader_get(f.world, entities[1])->material = a->name;
     draw(&f, NULL, 0, after);
@@ -1219,8 +1237,8 @@ static void instance_checks()
     assert(graph_connect_data(a->graph, tint, 0, surface(a), 0) == 0);
     publish(a);
     fixture f = fixture_new();
-    ecs_entity left = actor(&f, a->name, (CF_V3){ -60, 0, 0 }, GAME_PRIMITIVE_BOX, 70, "{\"Tint\":[1,0,0]}");
-    actor(&f, a->name, (CF_V3){ 60, 0, 0 }, GAME_PRIMITIVE_BOX, 70, "{\"Tint\":[0,0,1]}");
+    ecs_entity left = actor(&f, a->name, (CF_V3){ -60, 0, 0 }, GAME_PRIMITIVE_BOX, 70, "(array)Tint 1 0 0; \n");
+    actor(&f, a->name, (CF_V3){ 60, 0, 0 }, GAME_PRIMITIVE_BOX, 70, "(array)Tint 0 0 1; \n");
     CF_Pixel before[PIXELS], after[PIXELS];
     draw(&f, NULL, 0, before);
     assert(f.stats.instances == 2 && f.stats.commands == 1);
@@ -1255,12 +1273,12 @@ static void boolean_checks()
     shader_sample_context sample = { 0 };
     shader_error error = { 0 };
     for (int unlit = 0; unlit < 2; unlit++) {
-        render_shader_parameters(id, NULL, (ecs_entity){ 0 }, unlit ? "{\"Unlit\":true}" : "{\"Unlit\":false}", values);
+        render_shader_parameters(id, NULL, (ecs_entity){ 0 }, unlit ? "Unlit #true; \n" : "Unlit #false; \n", values);
         assert(render_shader_sample(id, &sample, values, result, &error));
         assert(result[6][0] == unlit);
     }
     fixture f = fixture_new();
-    ecs_entity entity = actor(&f, a->name, (CF_V3){ 0 }, GAME_PRIMITIVE_SPHERE, 100, "{\"Unlit\":true}");
+    ecs_entity entity = actor(&f, a->name, (CF_V3){ 0 }, GAME_PRIMITIVE_SPHERE, 100, "Unlit #true; \n");
     CF_Pixel unlit[PIXELS], lit[PIXELS], direct[PIXELS];
     draw(&f, NULL, 0, unlit);
     write_parameter(f.world, entity, "Unlit", (pin_value){ .type = PIN_BOOL, .b = false });
@@ -1287,7 +1305,7 @@ static void material_checks()
     scalar(a->graph, out, 0, 2, .05f);
     publish(a);
     fixture f = fixture_new();
-    actor(&f, a->name, (CF_V3){ 0 }, GAME_PRIMITIVE_SPHERE, 100, "{}");
+    actor(&f, a->name, (CF_V3){ 0 }, GAME_PRIMITIVE_SPHERE, 100, "");
     CF_Pixel base[PIXELS], changed[PIXELS], preview[PIXELS];
     draw(&f, NULL, 0, base);
     scalar(a->graph, out, 0, 2, .85f);
@@ -1359,7 +1377,7 @@ static void opacity_checks()
         const char *names[] = { blue->name, green->name, red->name };
         for (int i = 0; i < 3; i++) {
             int index = order ? 2 - i : i;
-            actor(&f, names[index], (CF_V3){ 0, 0, -100 + 100 * index }, GAME_PRIMITIVE_BOX, 80, "{}");
+            actor(&f, names[index], (CF_V3){ 0, 0, -100 + 100 * index }, GAME_PRIMITIVE_BOX, 80, "");
         }
         draw(&f, NULL, 0, order ? second : first);
         fixture_free(&f);
@@ -1371,15 +1389,15 @@ static void opacity_checks()
      * Mapping each surface before blending produces different displayed values. */
     assert(abs(p.r - 156) <= 2 && abs(p.g - 124) <= 2 && abs(p.b - 124) <= 2);
     fixture f = fixture_new();
-    actor(&f, blue->name, (CF_V3){ 0 }, GAME_PRIMITIVE_BOX, 80, "{}");
-    actor(&f, red->name, (CF_V3){ 0, 0, -100 }, GAME_PRIMITIVE_BOX, 80, "{}");
+    actor(&f, blue->name, (CF_V3){ 0 }, GAME_PRIMITIVE_BOX, 80, "");
+    actor(&f, red->name, (CF_V3){ 0, 0, -100 }, GAME_PRIMITIVE_BOX, 80, "");
     draw(&f, NULL, 0, first);
     p = first[SIDE / 2 * SIDE + SIDE / 2];
     assert(p.colors.b > 150 && p.colors.r < 3);
     fixture_free(&f);
     f = fixture_new();
-    actor(&f, blue->name, (CF_V3){ 0 }, GAME_PRIMITIVE_BOX, 80, "{}");
-    actor(&f, red->name, (CF_V3){ 0, 0, 100 }, GAME_PRIMITIVE_BOX, 80, "{}");
+    actor(&f, blue->name, (CF_V3){ 0 }, GAME_PRIMITIVE_BOX, 80, "");
+    actor(&f, red->name, (CF_V3){ 0, 0, 100 }, GAME_PRIMITIVE_BOX, 80, "");
     scalar(red->graph, surface(red), 0, 5, 0);
     publish(red);
     draw(&f, NULL, 0, first);
@@ -1400,8 +1418,8 @@ static void opacity_checks()
     publish(blue);
     publish(green);
     f = fixture_new();
-    actor(&f, blue->name, (CF_V3){ 0 }, GAME_PRIMITIVE_BOX, 80, "{}");
-    actor(&f, green->name, (CF_V3){ 0, 0, 100 }, GAME_PRIMITIVE_BOX, 80, "{\"Opacity\":1}");
+    actor(&f, blue->name, (CF_V3){ 0 }, GAME_PRIMITIVE_BOX, 80, "");
+    actor(&f, green->name, (CF_V3){ 0, 0, 100 }, GAME_PRIMITIVE_BOX, 80, "Opacity 1; \n");
     draw(&f, NULL, 0, first);
     p = first[SIDE / 2 * SIDE + SIDE / 2];
     assert(p.r < 2 && abs(p.g - 188) <= 2 && p.b < 2);
@@ -1466,10 +1484,10 @@ static void mixed_mesh_instances()
         CF_V3 position;
         const char *parameters;
     } instances[] = {
-        { GAME_PRIMITIVE_BOX, 0, { -65, 60, 0 }, "{\"Tint\":[1,0,0]}" },
-        { GAME_PRIMITIVE_TRIANGLE_PRISM, 1, { 65, 60, 0 }, "{\"Accent\":[0,1,0]}" },
-        { GAME_PRIMITIVE_BOX, 1, { -65, -60, 0 }, "{\"Accent\":[0,0,1]}" },
-        { GAME_PRIMITIVE_TRIANGLE_PRISM, 0, { 65, -60, 0 }, "{\"Tint\":[1,1,0]}" },
+        { GAME_PRIMITIVE_BOX, 0, { -65, 60, 0 }, "(array)Tint 1 0 0; \n" },
+        { GAME_PRIMITIVE_TRIANGLE_PRISM, 1, { 65, 60, 0 }, "(array)Accent 0 1 0; \n" },
+        { GAME_PRIMITIVE_BOX, 1, { -65, -60, 0 }, "(array)Accent 0 0 1; \n" },
+        { GAME_PRIMITIVE_TRIANGLE_PRISM, 0, { 65, -60, 0 }, "(array)Tint 1 1 0; \n" },
     };
     ecs_entity entities[4];
     for (int i = 0; i < 4; i++) {
@@ -1533,7 +1551,7 @@ static void mixed_mesh_instances()
 static void context_pixels()
 {
     fixture f = fixture_new();
-    actor(&f, "Surface sample context", (CF_V3){ 20, 10, 0 }, GAME_PRIMITIVE_BOX, 100, "{}");
+    actor(&f, "Surface sample context", (CF_V3){ 20, 10, 0 }, GAME_PRIMITIVE_BOX, 100, "");
     f.camera.view = cf_look_at((CF_V3){ 20, 10, 400 }, (CF_V3){ 20, 10, 0 }, (CF_V3){ 0, 1, 0 });
     int x = 70, y = 59;
     CF_V2 ndc = { 2 * (x + .5f) / SIDE - 1, 1 - 2 * (y + .5f) / SIDE };
@@ -1672,7 +1690,7 @@ static void image_batches(const char *directory)
                 position,
                 j < 3 ? GAME_PRIMITIVE_BOX : GAME_PRIMITIVE_TRIANGLE_PRISM,
                 16,
-                j == 0 ? "{\"Tint\":[1,0.5,0.25]}" : "{}"
+                j == 0 ? "(array)Tint 1 0.5 0.25; \n" : ""
             );
             if (!i && !j) {
                 first = entity;
@@ -1720,8 +1738,8 @@ static void image_faces_and_reload(const char *directory)
     image_png(file, pattern);
     behavior_asset *a = image_material("Surface image coordinates", key, false);
     fixture f = fixture_new();
-    actor(&f, a->name, (CF_V3){ -65, 0, 0 }, GAME_PRIMITIVE_BOX, 100, "{}");
-    actor(&f, a->name, (CF_V3){ 65, 0, 0 }, GAME_PRIMITIVE_TRIANGLE_PRISM, 100, "{}");
+    actor(&f, a->name, (CF_V3){ -65, 0, 0 }, GAME_PRIMITIVE_BOX, 100, "");
+    actor(&f, a->name, (CF_V3){ 65, 0, 0 }, GAME_PRIMITIVE_TRIANGLE_PRISM, 100, "");
     CF_Pixel before[PIXELS], after[PIXELS];
     draw(&f, NULL, 0, before);
     for (int primitive = 0; primitive < 2; primitive++) {
@@ -1770,7 +1788,7 @@ static void image_faces_and_reload(const char *directory)
                 (CF_V3){ 0, 0, front ? 100 : 0 },
                 GAME_PRIMITIVE_BOX,
                 80,
-                "{}"
+                ""
             );
         }
         draw(&f, NULL, 0, order ? after : before);
@@ -1825,7 +1843,7 @@ static void point_lighting()
     vector(a->graph, surface(a), 0, 0, (CF_V3){ .2f, .2f, .2f });
     scalar(a->graph, surface(a), 0, 2, .8f);
     publish(a);
-    actor(&f, a->name, (CF_V3){ 0 }, GAME_PRIMITIVE_BOX, 100, "{}");
+    actor(&f, a->name, (CF_V3){ 0 }, GAME_PRIMITIVE_BOX, 100, "");
     CF_Pixel baseline[PIXELS], lit[PIXELS], moved[PIXELS];
     draw(&f, NULL, 0, baseline);
     ecs_entity entity = point_light(&f, (CF_V3){ 0, 0, 100 }, 0xff0000ffu, 6, 90);
@@ -1875,7 +1893,7 @@ static void point_lighting()
     vector(a->graph, surface(a), 0, 0, (CF_V3){ .2f, .2f, .2f });
     scalar(a->graph, surface(a), 0, 2, .8f);
     publish(a);
-    actor(&f, a->name, (CF_V3){ 0 }, GAME_PRIMITIVE_BOX, 100, "{}");
+    actor(&f, a->name, (CF_V3){ 0 }, GAME_PRIMITIVE_BOX, 100, "");
     for (int i = 0; i < 32; i++) {
         point_light(&f, (CF_V3){ 0, 0, 100 }, 0x0000ffffu, .01f, 90);
     }
@@ -1901,7 +1919,7 @@ static void surface_activity()
     vector(a->graph, influence, 0, 0, (CF_V3){ 0 });
     assert(graph_connect_data(a->graph, influence, 0, surface(a), 1) == 0);
     publish(a);
-    actor(&f, a->name, (CF_V3){ 0 }, GAME_PRIMITIVE_BOX, 100, "{}");
+    actor(&f, a->name, (CF_V3){ 0 }, GAME_PRIMITIVE_BOX, 100, "");
     ecs_entity source = influence_source(f.world, 0, 0xff0000ffu, 2, .2f);
     CF_Pixel active[PIXELS], faded[PIXELS], repeated[PIXELS];
     draw(&f, NULL, 0, active);
@@ -1939,11 +1957,11 @@ static void rendered_trail()
     f.camera = render_arena_camera_make(0, 0, 160, 160);
     behavior_asset *a = material("Trail source", true);
     publish(a);
-    ecs_entity entity = actor(&f, a->name, (CF_V3){ -30, 10, -20 }, GAME_PRIMITIVE_TRIANGLE_PRISM, 5, "{}");
+    ecs_entity entity = actor(&f, a->name, (CF_V3){ -30, 10, -20 }, GAME_PRIMITIVE_TRIANGLE_PRISM, 5, "");
     GameTrail trail = { .color = 0x40ffffffu, .width = 5, .lifetime = .4f, .emission = 2 };
     assert(ecs_world_record_add(f.world, entity, GAME_COMPONENT_GameTrail.id, &trail, 0) == ECS_OK);
     assert(ecs_world_apply_commands(f.world) == ECS_OK);
-    ecs_entity second = actor(&f, a->name, (CF_V3){ -60, 10, -30 }, GAME_PRIMITIVE_TRIANGLE_PRISM, 5, "{}");
+    ecs_entity second = actor(&f, a->name, (CF_V3){ -60, 10, -30 }, GAME_PRIMITIVE_TRIANGLE_PRISM, 5, "");
     GameTrail red = trail;
     red.color = 0xff0000ffu;
     assert(ecs_world_record_add(f.world, second, GAME_COMPONENT_GameTrail.id, &red, 0) == ECS_OK);
@@ -1974,7 +1992,7 @@ static void rendered_trail()
     CF_V3 eye = { inverse.elements[12], inverse.elements[13], inverse.elements[14] };
     CF_V3 point = { 0, 10, 20 };
     CF_V3 front = cf_add_v3(point, cf_mul_v3_f(cf_norm_v3(cf_sub_v3(eye, point)), 25));
-    ecs_entity blocker = actor(&f, blocker_material->name, front, GAME_PRIMITIVE_BOX, 18, "{}");
+    ecs_entity blocker = actor(&f, blocker_material->name, front, GAME_PRIMITIVE_BOX, 18, "");
     draw(&f, NULL, .25f, pixels);
     CF_Pixel occluded = at(&f, pixels, point);
     assert(occluded.r > 150 && occluded.g < 2 && occluded.b < 2);
@@ -2021,7 +2039,7 @@ static void trail_particle_crossing()
     publish(a);
     ecs_entity sources[2];
     for (int i = 0; i < 2; i++) {
-        sources[i] = actor(&f, a->name, (CF_V3){ -20, 5, i * 160 }, GAME_PRIMITIVE_TRIANGLE, 2, "{}");
+        sources[i] = actor(&f, a->name, (CF_V3){ -20, 5, i * 160 }, GAME_PRIMITIVE_TRIANGLE, 2, "");
         GameTrail trail = { .color = 0x00ffffffu, .width = 10, .lifetime = 1, .emission = .5f };
         assert(
             ecs_world_record_add(f.world, sources[i], GAME_COMPONENT_GameTrail.id, &trail, 0) == ECS_OK

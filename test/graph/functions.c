@@ -21,7 +21,7 @@ void run_graph_functions_checks()
         /* Defaults are omitted, so author non-default graph state. */
         graph_add_comment_box(asset->graph, "Notes", 0.0f, 0.0f, 200.0f, 100.0f);
         asset->graph->breakpoints_enabled = 0;
-        char *json = behavior_asset_save_json(asset);
+        char *json = behavior_asset_save(asset);
         asset->graph->breakpoints_enabled = 1;
         test_check(
             json && strstr(json, "variables") && strstr(json, "graphs"),
@@ -171,9 +171,9 @@ void run_graph_functions_checks()
         behavior_instance_destroy(bi);
         eval_context_free(&function_eval);
         arena_free(&function_arena);
-        char *function_json = behavior_asset_save_json(asset);
+        char *function_json = behavior_asset_save(asset);
         behavior_asset *function_loaded = function_json
-                                            ? behavior_asset_load_json(function_json)
+                                            ? behavior_asset_load(function_json)
                                             : NULL;
         test_check(
             function_loaded && acount(function_loaded->graphs) == 3 &&

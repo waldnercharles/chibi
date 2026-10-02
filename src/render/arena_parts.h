@@ -27,10 +27,10 @@ typedef struct
     int count;
 } arena_parts;
 
-/* JSON array of {primitive,size:[x,y,z],position:[x,y,z],rotation:[pitch,yaw,roll],material}.
+/* KDL array payload of parts with primitive, size, position, rotation and material.
  * Empty text means no override. Dimensions are required and positive; transforms default zero. */
-bool render_arena_parts_parse(const char *json, arena_parts *parts, char *error, size_t size);
-/* malloc-owned canonical JSON, or NULL for invalid parts. */
+bool render_arena_parts_parse(const char *text, arena_parts *parts, char *error, size_t size);
+/* malloc-owned canonical KDL payload, or NULL for invalid parts. */
 char *render_arena_parts_write(const arena_parts *parts);
 
 #endif

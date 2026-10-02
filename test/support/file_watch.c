@@ -28,8 +28,8 @@ void test_file_watch()
     char root[] = "/tmp/chibi-file-watch-XXXXXX";
     assert(mkdtemp(root));
     char path[256], other[256];
-    snprintf(path, sizeof path, "%s/watched.yaml", root);
-    snprintf(other, sizeof other, "%s/other.yaml", root);
+    snprintf(path, sizeof path, "%s/watched.kdl", root);
+    snprintf(other, sizeof other, "%s/other.kdl", root);
     write_file(path, "a: 1\n");
 
     time_file(path, 10, 1000);
@@ -42,7 +42,7 @@ void test_file_watch()
     test_check(file_watch_changed(&w, path, 1), "file watch sees same-size edits within one second");
 
     char replacement[256];
-    snprintf(replacement, sizeof replacement, "%s/replacement.yaml", root);
+    snprintf(replacement, sizeof replacement, "%s/replacement.kdl", root);
     write_file(replacement, "c: 3\n");
     time_file(replacement, 10, 2000);
     assert(rename(replacement, path) == 0);

@@ -45,7 +45,7 @@ static void expect_edited_style(const GameAppearance *appearance)
 static game_prototype *read_prototype(const char *name, const game_prototype_registry *registry)
 {
     char path[256], error[256];
-    snprintf(path, sizeof path, "test/fixtures/content/prototypes/%s.yaml", name);
+    snprintf(path, sizeof path, "test/fixtures/content/prototypes/%s.kdl", name);
     FILE *file = fopen(path, "rb");
     assert(file);
     fseek(file, 0, SEEK_END);
@@ -73,7 +73,7 @@ static game_prototype *read_prototype(const char *name, const game_prototype_reg
 static void reject_component_values(const game_prototype_registry *registry, const char *components)
 {
     char json[512], error[256];
-    snprintf(json, sizeof json, "{\"name\":\"Invalid values\",\"components\":{%s}}", components);
+    snprintf(json, sizeof json, "name \"Invalid values\"\ncomponents { %s; }\n", components);
     game_prototype *invalid = game_prototype_load(json, registry, error, sizeof error);
     assert(!invalid);
     game_prototype_free(invalid);
@@ -260,14 +260,15 @@ static void instance_overrides(
     appearance->width = 45.5f;
     appearance->color = 0x11223344u;
     edit_style(appearance);
-    char *overrides = game_prototype_capture_overrides_json(prototype, world, original);
-    assert(overrides && strstr(overrides, "GameAppearance") && !strstr(overrides, "height"));
+    av_value *overrides = game_prototype_capture_overrides_value(prototype, world, original);
+    av_value *changed = av_obj_value_at(overrides, 0);
+    assert(av_is_obj(changed) && !av_obj_get(changed, "height"));
     ecs_entity copied = spawn(prototype, world);
     char error[256];
     assert(
-        game_prototype_apply_components_json(world, copied, overrides, registry, error, sizeof error) == 0
+        game_prototype_apply_components_value(world, copied, overrides, registry, error, sizeof error) == 0
     );
-    free(overrides);
+    av_value_free(overrides);
     const GameAppearance *copy = GAME_GameAppearance_get_const(world, copied);
     assert(copy && copy->width == 45.5f && copy->height == height && copy->color == 0x11223344u);
     expect_edited_style(copy);
@@ -304,9 +305,14 @@ static void preview_reset(
 
 static void legacy_appearance(const game_prototype_registry *registry, ecs_world *world)
 {
-    const char *json = "{\"name\":\"Legacy "
-                       "appearance\",\"components\":{\"GameAppearance\":{"
-                       "\"width\":24,\"height\":16,\"color\":287454020}}}";
+    const char *json = "name \"Legacy appearance\"\n"
+                       "components {\n"
+                       "    GameAppearance {\n"
+                       "        width 24\n"
+                       "        height 16\n"
+                       "        color 287454020\n"
+                       "    }\n"
+                       "}\n";
     char error[256];
     game_prototype *prototype = game_prototype_load(json, registry, error, sizeof error);
     assert(prototype);
@@ -330,9 +336,9 @@ void test_appearance()
     for (int i = 0; i < registry.component_count; i++) {
         assert(ecs_world_register_component(world, registry.components[i], NULL) == ECS_OK);
     }
-    reject_component_values(&registry, "\"GameAppearance\":{\"shape\":2147483648}");
-    reject_component_values(&registry, "\"GameAppearance\":{\"color\":4294967296}");
-    reject_component_values(&registry, "\"GameHealth\":{\"current\":2147483648}");
+    reject_component_values(&registry, "GameAppearance { shape 2147483648; }");
+    reject_component_values(&registry, "GameAppearance { color 4294967296; }");
+    reject_component_values(&registry, "GameHealth { current 2147483648; }");
     added_component_defaults(&registry, world);
     legacy_appearance(&registry, world);
     game_live_world *live = game_live_world_new(world);

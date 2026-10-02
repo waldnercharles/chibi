@@ -1,4 +1,3 @@
-#include "../third_party/yyjson/yyjson.h"
 #include "graph/document/serialize_internal.h"
 #include "graph/model/behavior_asset.h"
 #include "graph/model/registry.h"
@@ -6,6 +5,7 @@
 #include "graph/nodes/component_nodes.h"
 #include "graph/runtime/value_array.h"
 #include "support/asset_text.h"
+#include "support/asset_value.h"
 #include "support/xalloc.h"
 
 #include <assert.h>
@@ -28,13 +28,13 @@ const char *graph_last_error(void)
     return serialize_error;
 }
 
-static int json_uint(yyjson_val *v, uint64_t *out, const char *path)
+static int read_id(av_value *v, uint64_t *out, const char *path)
 {
-    if (!v || !yyjson_is_uint(v) || yyjson_get_uint(v) == 0) {
+    if (!v || !av_is_uint(v) || av_get_uint(v) == 0) {
         serialize_error_set("%s must be a non-zero unsigned integer", path);
         return -1;
     }
-    *out = yyjson_get_uint(v);
+    *out = av_get_uint(v);
     return 0;
 }
 
@@ -47,20 +47,20 @@ static int compact_component_node(const graph *g, const node *n)
 }
 
 /* Absent keeps the template string; null clears it. */
-static int read_pin_str(graph *g, yyjson_val *pin, const char *key, const char **out)
+static int read_pin_str(graph *g, av_value *pin, const char *key, const char **out)
 {
-    yyjson_val *value = yyjson_obj_get(pin, key);
+    av_value *value = av_obj_get(pin, key);
     if (!value) {
         return 0;
     }
-    if (yyjson_is_null(value)) {
+    if (av_is_null(value)) {
         *out = NULL;
         return 0;
     }
-    if (!yyjson_is_str(value)) {
+    if (!av_is_str(value)) {
         return -1;
     }
-    *out = graph_own_str(g, yyjson_get_str(value), yyjson_get_len(value));
+    *out = graph_own_str(g, av_get_str(value), av_get_len(value));
     return 0;
 }
 
@@ -78,7 +78,7 @@ typedef struct load_refs
     pin_ref_binding *bindings;
 } load_refs;
 
-static int read_pin_default(graph *g, node *n, int output, int i, yyjson_val *def)
+static int read_pin_default(graph *g, node *n, int output, int i, av_value *def)
 {
     pin_spec *p = output ? &n->output_pins[i] : &n->input_pins[i];
     pin_value pv;
@@ -111,19 +111,19 @@ static void mark_derived_declaration(const graph *g, const node *n, pin_spec *p)
     }
 }
 
-static int apply_pin(graph *g, node *n, int output, int i, yyjson_val *v, load_refs *refs)
+static int apply_pin(graph *g, node *n, int output, int i, av_value *v, load_refs *refs)
 {
     pin_spec *p = output ? &n->output_pins[i] : &n->input_pins[i];
-    yyjson_val *name = yyjson_obj_get(v, "name");
-    yyjson_val *type = yyjson_obj_get(v, "type");
-    yyjson_val *kind = yyjson_obj_get(v, "kind");
+    av_value *name = av_obj_get(v, "name");
+    av_value *type = av_obj_get(v, "type");
+    av_value *kind = av_obj_get(v, "kind");
     pin_type type_value = p->type;
     bool retyped = type && serialize_read_pin_type(type, &type_value) &&
                    type_value != p->type;
     if (retyped) {
         p->type_name = serialize_implied_type_name(type_value, p->type_name);
     }
-    if ((name && !yyjson_is_str(name)) || (kind && !yyjson_is_str(kind)) ||
+    if ((name && !av_is_str(name)) || (kind && !av_is_str(kind)) ||
         (type && !serialize_read_pin_type(type, &type_value)) ||
         read_pin_str(g, v, "type_name", &p->type_name) ||
         read_pin_str(g, v, "split_type_name", &p->split_type_name)) {
@@ -135,122 +135,119 @@ static int apply_pin(graph *g, node *n, int output, int i, yyjson_val *v, load_r
         return -1;
     }
     if (name) {
-        p->name = graph_own_str(g, yyjson_get_str(name), yyjson_get_len(name));
+        p->name = graph_own_str(g, av_get_str(name), av_get_len(name));
     }
     p->type = type_value;
     if (kind) {
-        p->kind = strcmp(yyjson_get_str(kind), "exec") == 0 ? PIN_EXEC : PIN_DATA;
+        p->kind = strcmp(av_get_str(kind), "exec") == 0 ? PIN_EXEC : PIN_DATA;
     }
-    yyjson_val *container = yyjson_obj_get(v, "container");
-    if (container && yyjson_is_int(container) &&
-        (pin_container)yyjson_get_sint(container) != p->container) {
-        p->container = (pin_container)yyjson_get_sint(container);
+    av_value *container = av_obj_get(v, "container");
+    if (container && av_is_int(container) &&
+        (pin_container)av_get_sint(container) != p->container) {
+        p->container = (pin_container)av_get_sint(container);
         retyped = true;
     }
-    yyjson_val *split = yyjson_obj_get(v, "split_parent");
-    if (split && yyjson_is_uint(split)) {
-        p->split_parent = yyjson_get_uint(split);
+    av_value *split = av_obj_get(v, "split_parent");
+    if (split && av_is_uint(split)) {
+        p->split_parent = av_get_uint(split);
     }
-    yyjson_val *field_source = yyjson_obj_get(v, "field_source");
-    yyjson_val *field_name = yyjson_obj_get(v, "field_name");
+    av_value *field_source = av_obj_get(v, "field_source");
+    av_value *field_name = av_obj_get(v, "field_name");
     if ((field_source || field_name) &&
-        (!output || !yyjson_is_uint(field_source) || !yyjson_get_uint(field_source) ||
-         !yyjson_is_str(field_name) || !yyjson_get_len(field_name))) {
+        (!output || !av_is_uint(field_source) || !av_get_uint(field_source) ||
+         !av_is_str(field_name) || !av_get_len(field_name))) {
         serialize_error_set("invalid exposed field metadata");
         return -1;
     }
     if (field_source) {
-        p->field_source = yyjson_get_uint(field_source);
-        p->field_name = graph_own_str(g, yyjson_get_str(field_name), yyjson_get_len(field_name));
+        p->field_source = av_get_uint(field_source);
+        p->field_name = graph_own_str(g, av_get_str(field_name), av_get_len(field_name));
     }
-    yyjson_val *flags = yyjson_obj_get(v, "flags");
-    yyjson_val *declaration = yyjson_obj_get(v, "declaration_id");
+    av_value *flags = av_obj_get(v, "flags");
+    av_value *declaration = av_obj_get(v, "declaration_id");
     if (declaration) {
-        p->declaration_id = yyjson_get_uint(declaration);
+        p->declaration_id = av_get_uint(declaration);
     } else {
         mark_derived_declaration(g, n, p);
     }
-    if (flags && yyjson_is_uint(flags)) {
-        p->flags = (unsigned)yyjson_get_uint(flags);
+    if (flags && av_is_uint(flags)) {
+        p->flags = (unsigned)av_get_uint(flags);
     } else if (n->desc == &NODE_BehaviorExpression && p->kind == PIN_EXEC) {
         /* An expression call's template is a wildcard data pin. */
         p->flags &= ~PIN_FLAG_WILDCARD;
     }
-    yyjson_val *group = yyjson_obj_get(v, "group");
-    if (group && yyjson_is_int(group)) {
-        p->group = (int)yyjson_get_sint(group);
+    av_value *group = av_obj_get(v, "group");
+    if (group && av_is_int(group)) {
+        p->group = (int)av_get_sint(group);
     }
-    yyjson_val *def = yyjson_obj_get(v, "default");
+    av_value *def = av_obj_get(v, "default");
     if (retyped && !def) {
         p->default_value = serialize_zero_value(p->type, p->container, p->type_name);
     }
     if (def && read_pin_default(g, n, output, i, def)) {
         return -1;
     }
-    yyjson_val *binding_json = yyjson_obj_get(v, "binding");
+    av_value *binding_value = av_obj_get(v, "binding");
     pin_ref_binding pending = { 0 };
-    if (binding_json) {
-        yyjson_val *binding_kind = yyjson_obj_get(binding_json, "kind");
-        if (output || !yyjson_is_obj(binding_json) || !yyjson_is_str(binding_kind)) {
+    if (binding_value) {
+        av_value *binding_kind = av_obj_get(binding_value, "kind");
+        if (output || !av_is_obj(binding_value) || !av_is_str(binding_kind)) {
             serialize_error_set("invalid pin binding on %s pin %d", output ? "output" : "input", i);
             return -1;
         }
-        const char *kind_name = yyjson_get_str(binding_kind);
+        const char *kind_name = av_get_str(binding_kind);
         pin_binding binding = { 0 };
         if (!strcmp(kind_name, "variable")) {
             binding.kind = PIN_BINDING_VARIABLE;
-            yyjson_val *id = yyjson_obj_get(binding_json, "variable_id");
-            if (!id || !yyjson_is_uint(id) || !yyjson_get_uint(id)) {
+            av_value *id = av_obj_get(binding_value, "variable_id");
+            if (!id || !av_is_uint(id) || !av_get_uint(id)) {
                 serialize_error_set("variable pin binding %d has no variable_id", i);
                 return -1;
             }
-            binding.variable_id = yyjson_get_uint(id);
+            binding.variable_id = av_get_uint(id);
         } else if (!strcmp(kind_name, "component_field")) {
             binding.kind = PIN_BINDING_COMPONENT_FIELD;
-            yyjson_val *component = yyjson_obj_get(binding_json, "component");
-            yyjson_val *field = yyjson_obj_get(binding_json, "field");
-            if (!yyjson_is_str(component) || !yyjson_get_len(component) ||
-                !yyjson_is_str(field) || !yyjson_get_len(field)) {
+            av_value *component = av_obj_get(binding_value, "component");
+            av_value *field = av_obj_get(binding_value, "field");
+            if (!av_is_str(component) || !av_get_len(component) ||
+                !av_is_str(field) || !av_get_len(field)) {
                 serialize_error_set("component pin binding %d is incomplete", i);
                 return -1;
             }
-            binding.component_key = yyjson_get_str(component);
-            binding.field_name = yyjson_get_str(field);
+            binding.component_key = av_get_str(component);
+            binding.field_name = av_get_str(field);
         } else if (!strcmp(kind_name, "component")) {
             binding.kind = PIN_BINDING_COMPONENT;
-            yyjson_val *component = yyjson_obj_get(binding_json, "component");
-            if (!yyjson_is_str(component) || !yyjson_get_len(component)) {
+            av_value *component = av_obj_get(binding_value, "component");
+            if (!av_is_str(component) || !av_get_len(component)) {
                 serialize_error_set("component pin binding %d has no component key", i);
                 return -1;
             }
-            binding.component_key = yyjson_get_str(component);
+            binding.component_key = av_get_str(component);
         } else if (!strcmp(kind_name, "local")) {
             binding.kind = PIN_BINDING_LOCAL;
-            yyjson_val *local_id = yyjson_obj_get(binding_json, "local_id");
-            if (!yyjson_is_uint(local_id) || !yyjson_get_uint(local_id)) {
+            av_value *local_id = av_obj_get(binding_value, "local_id");
+            if (!av_is_uint(local_id) || !av_get_uint(local_id)) {
                 serialize_error_set("local binding has no local_id");
                 return -1;
             }
-            binding.local_id = yyjson_get_uint(local_id);
+            binding.local_id = av_get_uint(local_id);
         } else if (!strcmp(kind_name, "event_output")) {
             binding.kind = PIN_BINDING_EVENT_OUTPUT;
-            yyjson_val *from = yyjson_obj_get(binding_json, "from");
-            yyjson_val *event_node_id = yyjson_is_uint(from)
-                                          ? from
-                                          : yyjson_obj_get(binding_json, "event_node_id");
-            yyjson_val *event_pin_id = yyjson_obj_get(binding_json, "event_pin_id");
-            if (yyjson_is_str(from)) {
+            av_value *from = av_obj_get(binding_value, "from");
+            av_value *event_node_id = av_is_uint(from)
+                                        ? from
+                                        : av_obj_get(binding_value, "event_node_id");
+            av_value *event_pin_id = av_obj_get(binding_value, "event_pin_id");
+            if (av_is_str(from)) {
                 /* The event node may follow this one; resolve after loading nodes. */
-                pending = (pin_ref_binding){ n, i, yyjson_get_str(from) };
-            } else if (
-                !yyjson_is_uint(event_node_id) || !yyjson_get_uint(event_node_id) ||
-                !yyjson_is_uint(event_pin_id) || !yyjson_get_uint(event_pin_id)
-            ) {
+                pending = (pin_ref_binding){ n, i, av_get_str(from) };
+            } else if (!av_is_uint(event_node_id) || !av_get_uint(event_node_id) || !av_is_uint(event_pin_id) || !av_get_uint(event_pin_id)) {
                 serialize_error_set("event output binding is incomplete");
                 return -1;
             } else {
-                binding.event_node_id = yyjson_get_uint(event_node_id);
-                binding.event_pin_id = yyjson_get_uint(event_pin_id);
+                binding.event_node_id = av_get_uint(event_node_id);
+                binding.event_pin_id = av_get_uint(event_pin_id);
             }
         } else if (!strcmp(kind_name, "delta_time")) {
             binding.kind = PIN_BINDING_DELTA_TIME;
@@ -258,12 +255,12 @@ static int apply_pin(graph *g, node *n, int output, int i, yyjson_val *v, load_r
             serialize_error_set("unknown pin binding kind '%s'", kind_name);
             return -1;
         }
-        yyjson_val *source_asset = yyjson_obj_get(binding_json, "source_asset");
-        if (source_asset && !yyjson_is_str(source_asset)) {
+        av_value *source_asset = av_obj_get(binding_value, "source_asset");
+        if (source_asset && !av_is_str(source_asset)) {
             serialize_error_set("invalid pin binding source asset");
             return -1;
         }
-        binding.source_asset = source_asset ? yyjson_get_str(source_asset) : NULL;
+        binding.source_asset = source_asset ? av_get_str(source_asset) : NULL;
         if (pending.ref) {
             pending.binding = binding;
             apush(refs->bindings, pending);
@@ -285,14 +282,14 @@ static void set_explicit_id(uint64_t **ids, int index, uint64_t id)
 
 /* A listed side is positional: each entry is a pin ID or an object with its
  * ID and the fields that differ from the node descriptor's template pin. */
-static int load_pin_list(graph *g, node *n, yyjson_val *arr, int output, uint64_t **ids, load_refs *refs)
+static int load_pin_list(graph *g, node *n, av_value *arr, int output, uint64_t **ids, load_refs *refs)
 {
-    yyjson_arr_iter it;
-    yyjson_arr_iter_init(arr, &it);
-    yyjson_val *v;
+    av_arr_iter it;
+    av_arr_iter_init(arr, &it);
+    av_value *v;
     int i = 0;
     int count = output ? n->output_count : n->input_count;
-    int serialized_count = (int)yyjson_arr_size(arr);
+    int serialized_count = (int)av_arr_size(arr);
     if (serialized_count < count &&
         (n->desc == &NODE_FunctionEntry || n->desc == &NODE_Return ||
          compact_component_node(g, n))) {
@@ -308,8 +305,8 @@ static int load_pin_list(graph *g, node *n, yyjson_val *arr, int output, uint64_
             count--;
         }
     }
-    while ((v = yyjson_arr_iter_next(&it))) {
-        if (!yyjson_is_obj(v) && !yyjson_is_uint(v)) {
+    while ((v = av_arr_iter_next(&it))) {
+        if (!av_is_obj(v) && !av_is_uint(v)) {
             serialize_error_set(
                 "node %llu has invalid %s pin list",
                 (unsigned long long)n->id,
@@ -330,14 +327,14 @@ static int load_pin_list(graph *g, node *n, yyjson_val *arr, int output, uint64_
             count++;
         }
         uint64_t id = 0;
-        if (json_uint(yyjson_is_uint(v) ? v : yyjson_obj_get(v, "id"), &id, "pin.id")) {
+        if (read_id(av_is_uint(v) ? v : av_obj_get(v, "id"), &id, "pin.id")) {
             return -1;
         }
         set_explicit_id(ids, i, id);
-        if (!yyjson_is_obj(v)) {
+        if (!av_is_obj(v)) {
             mark_derived_declaration(g, n, output ? &n->output_pins[i] : &n->input_pins[i]);
         }
-        if (yyjson_is_obj(v) && apply_pin(g, n, output, i, v, refs)) {
+        if (av_is_obj(v) && apply_pin(g, n, output, i, v, refs)) {
             return -1;
         }
         i++;
@@ -381,7 +378,7 @@ static int keyed_template(node *n, int output, const char *key, pin_spec *out)
 
 /* A keyed side maps pin keys to the fields that differ. Template pins keep
  * their positions; other keys add pins in order. */
-static int load_pin_map(graph *g, node *n, yyjson_val *map, int output, uint64_t **ids, load_refs *refs)
+static int load_pin_map(graph *g, node *n, av_value *map, int output, uint64_t **ids, load_refs *refs)
 {
     /* A component node's template is its prepared pins. */
     bool component = component_node_kind_of(n->desc);
@@ -389,14 +386,14 @@ static int load_pin_map(graph *g, node *n, yyjson_val *map, int output, uint64_t
                        : output    ? n->desc->output_count
                                    : n->desc->input_count;
     size_t at, max;
-    yyjson_val *key, *v;
-    yyjson_obj_foreach(map, at, max, key, v)
+    av_value *key, *v;
+    av_obj_foreach(map, at, max, key, v)
     {
         const pin_spec *template_pins = component
                                           ? (output ? n->output_pins : n->input_pins)
                                       : output ? n->desc->outputs
                                                : n->desc->inputs;
-        const char *name = yyjson_get_str(key);
+        const char *name = av_get_str(key);
         int i = -1;
         for (int t = 0; t < template_count && i < 0; t++) {
             i = template_pins[t].name && !strcmp(template_pins[t].name, name) ? t : -1;
@@ -407,18 +404,18 @@ static int load_pin_map(graph *g, node *n, yyjson_val *map, int output, uint64_t
             serialize_error_set("node %llu has no pin %s", (unsigned long long)n->id, name);
             return -1;
         }
-        yyjson_val *id = yyjson_is_obj(v) ? yyjson_obj_get(v, "id") : NULL;
+        av_value *id = av_is_obj(v) ? av_obj_get(v, "id") : NULL;
         uint64_t explicit_id = 0;
-        if (id && json_uint(id, &explicit_id, "pin.id")) {
+        if (id && read_id(id, &explicit_id, "pin.id")) {
             return -1;
         }
         set_explicit_id(ids, i, explicit_id);
-        int failed = yyjson_is_obj(v) ? apply_pin(g, n, output, i, v, refs)
-                                      : read_pin_default(g, n, output, i, v);
+        int failed = av_is_obj(v) ? apply_pin(g, n, output, i, v, refs)
+                                  : read_pin_default(g, n, output, i, v);
         if (failed) {
             return -1;
         }
-        if (!yyjson_is_obj(v)) {
+        if (!av_is_obj(v)) {
             mark_derived_declaration(g, n, output ? &n->output_pins[i] : &n->input_pins[i]);
         }
     }
@@ -465,15 +462,15 @@ static void assign_pin_ids(node *n, uint64_t **ids)
     afree(new_ids);
 }
 
-static int load_node_pins(graph *g, node *n, yyjson_val *v, load_refs *refs)
+static int load_node_pins(graph *g, node *n, av_value *v, load_refs *refs)
 {
     uint64_t *ids[2] = { NULL, NULL };
     int failed = 0;
     for (int output = 0; output < 2 && !failed; output++) {
-        yyjson_val *pins = yyjson_obj_get(v, output ? "outputs" : "inputs");
-        if (yyjson_is_arr(pins)) {
+        av_value *pins = av_obj_get(v, output ? "outputs" : "inputs");
+        if (av_is_arr(pins)) {
             failed = load_pin_list(g, n, pins, output, &ids[output], refs);
-        } else if (yyjson_is_obj(pins)) {
+        } else if (av_is_obj(pins)) {
             failed = load_pin_map(g, n, pins, output, &ids[output], refs);
         } else if (pins) {
             serialize_error_set(
@@ -513,35 +510,35 @@ static int resolve_pin_refs(graph *g, load_refs *refs)
     return 0;
 }
 
-static int load_comment_boxes(graph *g, yyjson_val *json)
+static int load_comment_boxes(graph *g, av_value *document)
 {
-    if (!json) {
+    if (!document) {
         return 0;
     }
-    if (!yyjson_is_arr(json)) {
+    if (!av_is_arr(document)) {
         serialize_error_set("comment_boxes must be an array");
         return -1;
     }
-    yyjson_arr_iter it;
-    yyjson_arr_iter_init(json, &it);
-    yyjson_val *value;
-    while ((value = yyjson_arr_iter_next(&it))) {
+    av_arr_iter it;
+    av_arr_iter_init(document, &it);
+    av_value *value;
+    while ((value = av_arr_iter_next(&it))) {
         uint64_t id = 0;
-        yyjson_val *title = yyjson_obj_get(value, "title");
-        if (!yyjson_is_obj(value) ||
-            json_uint(yyjson_obj_get(value, "id"), &id, "comment_box.id") ||
-            !yyjson_is_str(title)) {
+        av_value *title = av_obj_get(value, "title");
+        if (!av_is_obj(value) ||
+            read_id(av_obj_get(value, "id"), &id, "comment_box.id") ||
+            !av_is_str(title)) {
             serialize_error_set("malformed comment box");
             return -1;
         }
         graph_comment_box box = {
             .id = id,
-            .x = (float)yyjson_get_num(yyjson_obj_get(value, "x")),
-            .y = (float)yyjson_get_num(yyjson_obj_get(value, "y")),
-            .width = (float)yyjson_get_num(yyjson_obj_get(value, "width")),
-            .height = (float)yyjson_get_num(yyjson_obj_get(value, "height")),
-            .title = graph_own_str(g, yyjson_get_str(title), yyjson_get_len(title)),
-            .color = (uint32_t)yyjson_get_uint(yyjson_obj_get(value, "color")),
+            .x = (float)av_get_num(av_obj_get(value, "x")),
+            .y = (float)av_get_num(av_obj_get(value, "y")),
+            .width = (float)av_get_num(av_obj_get(value, "width")),
+            .height = (float)av_get_num(av_obj_get(value, "height")),
+            .title = graph_own_str(g, av_get_str(title), av_get_len(title)),
+            .color = (uint32_t)av_get_uint(av_obj_get(value, "color")),
         };
         apush(g->comment_boxes, box);
         if (id >= g->id_counter) {
@@ -552,32 +549,32 @@ static int load_comment_boxes(graph *g, yyjson_val *json)
 }
 
 /* Documents omit an empty comment, and a hidden flag only a comment has. */
-static int load_node_comment(graph *g, node *n, yyjson_val *v)
+static int load_node_comment(graph *g, node *n, av_value *v)
 {
-    yyjson_val *comment = yyjson_obj_get(v, "comment");
-    yyjson_val *hidden = yyjson_obj_get(v, "comment_hidden");
-    if ((comment && !yyjson_is_str(comment)) || (hidden && !yyjson_is_bool(hidden))) {
+    av_value *comment = av_obj_get(v, "comment");
+    av_value *hidden = av_obj_get(v, "comment_hidden");
+    if ((comment && !av_is_str(comment)) || (hidden && !av_is_bool(hidden))) {
         serialize_error_set(
             "node %llu has an invalid comment",
             (unsigned long long)n->id
         );
         return -1;
     }
-    if (yyjson_get_len(comment)) {
-        n->comment = graph_own_str(g, yyjson_get_str(comment), yyjson_get_len(comment));
-        n->comment_hidden = yyjson_get_bool(hidden);
+    if (av_get_len(comment)) {
+        n->comment = graph_own_str(g, av_get_str(comment), av_get_len(comment));
+        n->comment_hidden = av_get_bool(hidden);
     }
     return 0;
 }
 
 /* Documents omit `auto`, which new nodes already hold. */
-static int load_node_presentation(node *n, yyjson_val *v)
+static int load_node_presentation(node *n, av_value *v)
 {
-    yyjson_val *presentation = yyjson_obj_get(v, "presentation");
+    av_value *presentation = av_obj_get(v, "presentation");
     if (!presentation) {
         return 0;
     }
-    int mode = graph_presentation_by_name(yyjson_get_str(presentation));
+    int mode = graph_presentation_by_name(av_get_str(presentation));
     if (mode < 0) {
         serialize_error_set("node presentation must be auto, inline or expanded");
         return -1;
@@ -589,14 +586,14 @@ static int load_node_presentation(node *n, yyjson_val *v)
 /* A component node's pins follow its Component or Type setting, and a Set
  * that names field inputs writes those fields instead of Value. Documents may
  * name the component; the setting stores its key. */
-static int load_component_pins(graph *g, node *n, yyjson_val *v, load_refs *refs)
+static int load_component_pins(graph *g, node *n, av_value *v, load_refs *refs)
 {
     component_node_kind kind = component_node_kind_of(n->desc);
     if (!kind) {
         return load_node_pins(g, n, v, refs);
     }
-    yyjson_val *inputs = yyjson_obj_get(v, "inputs");
-    if (inputs && !yyjson_is_obj(inputs)) {
+    av_value *inputs = av_obj_get(v, "inputs");
+    if (inputs && !av_is_obj(inputs)) {
         serialize_error_set(
             "component node %llu must key its inputs",
             (unsigned long long)n->id
@@ -604,18 +601,17 @@ static int load_component_pins(graph *g, node *n, yyjson_val *v, load_refs *refs
         return -1;
     }
     const char *setting_name = n->input_pins[component_node_setting(n)].name;
-    yyjson_val *setting = yyjson_obj_get(inputs, setting_name);
-    yyjson_val *key = yyjson_is_obj(setting) ? yyjson_obj_get(setting, "default")
-                                             : setting;
-    const char *component = yyjson_get_str(key);
+    av_value *setting = av_obj_get(inputs, setting_name);
+    av_value *key = av_is_obj(setting) ? av_obj_get(setting, "default") : setting;
+    const char *component = av_get_str(key);
     bool split = false;
     size_t at, max;
-    yyjson_val *name, *entry;
+    av_value *name, *entry;
     if (inputs) {
-        yyjson_obj_foreach(inputs, at, max, name, entry)
+        av_obj_foreach(inputs, at, max, name, entry)
         {
             split |= kind == COMPONENT_NODE_SET &&
-                     component_field_settable(component_by_key(component), yyjson_get_str(name));
+                     component_field_settable(component_by_key(component), av_get_str(name));
         }
     }
     if (component_node_prepare(g, n, component, split)) {
@@ -631,24 +627,24 @@ static int load_component_pins(graph *g, node *n, yyjson_val *v, load_refs *refs
     return 0;
 }
 
-static int load_node_list(graph *g, yyjson_val *nodes, uint64_t requested_counter, load_refs *refs)
+static int load_node_list(graph *g, av_value *nodes, uint64_t requested_counter, load_refs *refs)
 {
-    yyjson_arr_iter it;
-    yyjson_arr_iter_init(nodes, &it);
-    yyjson_val *v;
-    while ((v = yyjson_arr_iter_next(&it))) {
-        if (!yyjson_is_obj(v)) {
+    av_arr_iter it;
+    av_arr_iter_init(nodes, &it);
+    av_value *v;
+    while ((v = av_arr_iter_next(&it))) {
+        if (!av_is_obj(v)) {
             serialize_error_set("node is not an object");
             return -1;
         }
-        yyjson_val *type = yyjson_obj_get(v, "type");
-        if (!yyjson_is_str(type)) {
+        av_value *type = av_obj_get(v, "type");
+        if (!av_is_str(type)) {
             serialize_error_set("node is missing type");
             return -1;
         }
-        const node_desc *desc = registry_node_by_name(yyjson_get_str(type));
+        const node_desc *desc = registry_node_by_name(av_get_str(type));
         if (!desc) {
-            serialize_error_set("unknown node type \"%s\"", yyjson_get_str(type));
+            serialize_error_set("unknown node type \"%s\"", av_get_str(type));
             return -1;
         }
         node *n = graph_add_node(g, desc);
@@ -657,47 +653,46 @@ static int load_node_list(graph *g, yyjson_val *nodes, uint64_t requested_counte
             return -1;
         }
         uint64_t id = 0;
-        if (json_uint(yyjson_obj_get(v, "id"), &id, "node.id")) {
+        if (read_id(av_obj_get(v, "id"), &id, "node.id")) {
             return -1;
         }
         n->id = id;
-        yyjson_val *x = yyjson_obj_get(v, "x"), *y = yyjson_obj_get(v, "y");
-        yyjson_val *placed = yyjson_obj_get(v, "placed");
-        if ((x && !yyjson_is_num(x)) || (y && !yyjson_is_num(y)) || !x != !y ||
-            (placed && !yyjson_is_bool(placed))) {
+        av_value *x = av_obj_get(v, "x"), *y = av_obj_get(v, "y");
+        av_value *placed = av_obj_get(v, "placed");
+        if ((x && !av_is_num(x)) || (y && !av_is_num(y)) || !x != !y ||
+            (placed && !av_is_bool(placed))) {
             serialize_error_set("node %llu has an invalid position", (unsigned long long)id);
             return -1;
         }
         /* Nodes without a position wait for the editor to arrange them. */
-        n->x = x ? (float)yyjson_get_num(x) : 0.0f;
-        n->y = y ? (float)yyjson_get_num(y) : 0.0f;
-        n->placed = x && (!placed || yyjson_get_bool(placed));
-        yyjson_val *refasset = yyjson_obj_get(v, "reference_asset");
-        if (yyjson_is_str(refasset)) {
-            n->reference_asset = graph_own_str(g, yyjson_get_str(refasset), yyjson_get_len(refasset));
+        n->x = x ? (float)av_get_num(x) : 0.0f;
+        n->y = y ? (float)av_get_num(y) : 0.0f;
+        n->placed = x && (!placed || av_get_bool(placed));
+        av_value *refasset = av_obj_get(v, "reference_asset");
+        if (av_is_str(refasset)) {
+            n->reference_asset = graph_own_str(g, av_get_str(refasset), av_get_len(refasset));
         }
-        yyjson_val *refname = yyjson_obj_get(v, "reference_name");
-        yyjson_val *refid = yyjson_obj_get(v, "reference_id");
-        if (refid && yyjson_is_uint(refid)) {
-            n->reference_id = yyjson_get_uint(refid);
+        av_value *refname = av_obj_get(v, "reference_name");
+        av_value *refid = av_obj_get(v, "reference_id");
+        if (refid && av_is_uint(refid)) {
+            n->reference_id = av_get_uint(refid);
         }
-        if (refname && yyjson_is_str(refname)) {
-            n->reference_name = graph_own_str(g, yyjson_get_str(refname), yyjson_get_len(refname));
+        if (refname && av_is_str(refname)) {
+            n->reference_name = graph_own_str(g, av_get_str(refname), av_get_len(refname));
         }
-        yyjson_val *disabled = yyjson_obj_get(v, "disabled");
-        n->disabled = disabled && yyjson_is_bool(disabled) &&
-                      yyjson_get_bool(disabled);
+        av_value *disabled = av_obj_get(v, "disabled");
+        n->disabled = disabled && av_is_bool(disabled) && av_get_bool(disabled);
         if (load_node_presentation(n, v) || load_node_comment(g, n, v)) {
             return -1;
         }
-        yyjson_val *breakpoint = yyjson_obj_get(v, "breakpoint");
-        yyjson_val *breakpoint_enabled = yyjson_obj_get(v, "breakpoint_enabled");
-        n->show_advanced = yyjson_get_bool(yyjson_obj_get(v, "show_advanced"));
-        n->breakpoint = breakpoint && yyjson_is_bool(breakpoint) &&
-                        yyjson_get_bool(breakpoint);
+        av_value *breakpoint = av_obj_get(v, "breakpoint");
+        av_value *breakpoint_enabled = av_obj_get(v, "breakpoint_enabled");
+        n->show_advanced = av_get_bool(av_obj_get(v, "show_advanced"));
+        n->breakpoint = breakpoint && av_is_bool(breakpoint) &&
+                        av_get_bool(breakpoint);
         n->breakpoint_enabled = breakpoint_enabled &&
-                                yyjson_is_bool(breakpoint_enabled) &&
-                                yyjson_get_bool(breakpoint_enabled);
+                                av_is_bool(breakpoint_enabled) &&
+                                av_get_bool(breakpoint_enabled);
         if (load_component_pins(g, n, v, refs)) {
             return -1;
         }
@@ -818,7 +813,7 @@ static int load_node_list(graph *g, yyjson_val *nodes, uint64_t requested_counte
     return resolve_pin_refs(g, refs);
 }
 
-static int load_nodes(graph *g, yyjson_val *nodes, uint64_t requested_counter)
+static int load_nodes(graph *g, av_value *nodes, uint64_t requested_counter)
 {
     load_refs refs = { 0 };
     int failed = load_node_list(g, nodes, requested_counter, &refs);
@@ -829,7 +824,7 @@ static int load_nodes(graph *g, yyjson_val *nodes, uint64_t requested_counter)
 /* An endpoint is "<node>.<pin key>", or a node ID with a pin ID field. */
 static int read_endpoint(
     graph *g,
-    yyjson_val *v,
+    av_value *v,
     const char *key,
     const char *pin_key,
     int output,
@@ -838,32 +833,31 @@ static int read_endpoint(
     uint64_t *pin_id
 )
 {
-    yyjson_val *ref = yyjson_obj_get(v, key);
+    av_value *ref = av_obj_get(v, key);
     int index = -1;
-    if (yyjson_is_str(ref)) {
-        if (!serialize_resolve_ref(g, yyjson_get_str(ref), output, n, &index)) {
-            serialize_error_set("edge names no pin: %s", yyjson_get_str(ref));
+    if (av_is_str(ref)) {
+        if (!serialize_resolve_ref(g, av_get_str(ref), output, n, &index)) {
+            serialize_error_set("edge names no pin: %s", av_get_str(ref));
             return -1;
         }
         *node_id = (*n)->id;
         *pin_id = output ? (*n)->output_pins[index].id : (*n)->input_pins[index].id;
         return 0;
     }
-    if (json_uint(ref, node_id, key) ||
-        json_uint(yyjson_obj_get(v, pin_key), pin_id, pin_key)) {
+    if (read_id(ref, node_id, key) || read_id(av_obj_get(v, pin_key), pin_id, pin_key)) {
         return -1;
     }
     *n = graph_node_by_id(g, *node_id);
     return 0;
 }
 
-static int load_edges(graph *g, yyjson_val *edges)
+static int load_edges(graph *g, av_value *edges)
 {
-    yyjson_arr_iter eit;
-    yyjson_arr_iter_init(edges, &eit);
-    yyjson_val *v;
-    while ((v = yyjson_arr_iter_next(&eit))) {
-        if (!yyjson_is_obj(v)) {
+    av_arr_iter eit;
+    av_arr_iter_init(edges, &eit);
+    av_value *v;
+    while ((v = av_arr_iter_next(&eit))) {
+        if (!av_is_obj(v)) {
             serialize_error_set("edge is not an object");
             return -1;
         }
@@ -876,31 +870,31 @@ static int load_edges(graph *g, yyjson_val *edges)
         int fp = -1, tp = -1, fo = 0, to_out = 0;
         const pin_spec *fps = graph_pin_by_id(from, from_pin, &fo, &fp),
                        *tps = graph_pin_by_id(to, to_pin, &to_out, &tp);
-        yyjson_val *kind = yyjson_obj_get(v, "kind");
+        av_value *kind = av_obj_get(v, "kind");
         if (!from || !to || !fps || !tps || fo != 1 || to_out != 0 ||
-            (kind && !yyjson_is_str(kind))) {
+            (kind && !av_is_str(kind))) {
             serialize_error_set("edge references missing node or pin ID");
             return -1;
         }
-        const char *kind_name = kind                  ? yyjson_get_str(kind)
+        const char *kind_name = kind                  ? av_get_str(kind)
                               : fps->kind == PIN_EXEC ? "exec"
                                                       : "data";
-        yyjson_val *conversion_value = yyjson_obj_get(v, "conversion");
+        av_value *conversion_value = av_obj_get(v, "conversion");
         const node_desc *conversion = NULL;
         if (conversion_value) {
-            if (!yyjson_is_str(conversion_value)) {
+            if (!av_is_str(conversion_value)) {
                 serialize_error_set("edge conversion is not a node name");
                 return -1;
             }
-            conversion = registry_node_by_name(yyjson_get_str(conversion_value));
+            conversion = registry_node_by_name(av_get_str(conversion_value));
             if (!conversion) {
-                serialize_error_set("unknown edge conversion \"%s\"", yyjson_get_str(conversion_value));
+                serialize_error_set("unknown edge conversion \"%s\"", av_get_str(conversion_value));
                 return -1;
             }
         }
         int r;
         if (strcmp(kind_name, "data") == 0) {
-            if (yyjson_obj_get(v, "order")) {
+            if (av_obj_get(v, "order")) {
                 serialize_error_set("data edge has an exec order");
                 return -1;
             }
@@ -910,13 +904,13 @@ static int load_edges(graph *g, yyjson_val *edges)
                 serialize_error_set("exec edge cannot have a conversion");
                 return -1;
             }
-            yyjson_val *order = yyjson_obj_get(v, "order");
-            if (order && (!yyjson_is_int(order) || yyjson_get_sint(order) < 0 ||
-                          yyjson_get_sint(order) > INT_MAX)) {
+            av_value *order = av_obj_get(v, "order");
+            if (order && (!av_is_int(order) || av_get_sint(order) < 0 ||
+                          av_get_sint(order) > INT_MAX)) {
                 serialize_error_set("exec edge has an invalid order");
                 return -1;
             }
-            r = graph_connect_exec(g, from, fp, to, tp, order ? (int)yyjson_get_sint(order) : 0);
+            r = graph_connect_exec(g, from, fp, to, tp, order ? (int)av_get_sint(order) : 0);
         } else {
             serialize_error_set("unsupported edge kind");
             return -1;
@@ -925,14 +919,14 @@ static int load_edges(graph *g, yyjson_val *edges)
             serialize_error_set("invalid edge endpoints or incompatible types");
             return -1;
         }
-        yyjson_val *handle = yyjson_obj_get(v, "from_handle_x");
-        yyjson_val *handle_y = yyjson_obj_get(v, "from_handle_y");
-        yyjson_val *to_handle = yyjson_obj_get(v, "to_handle_x");
-        yyjson_val *to_handle_y = yyjson_obj_get(v, "to_handle_y");
+        av_value *handle = av_obj_get(v, "from_handle_x");
+        av_value *handle_y = av_obj_get(v, "from_handle_y");
+        av_value *to_handle = av_obj_get(v, "to_handle_x");
+        av_value *to_handle_y = av_obj_get(v, "to_handle_y");
         if (handle || handle_y || to_handle || to_handle_y) {
             if (!handle || !handle_y || !to_handle || !to_handle_y ||
-                !yyjson_is_num(handle) || !yyjson_is_num(handle_y) ||
-                !yyjson_is_num(to_handle) || !yyjson_is_num(to_handle_y)) {
+                !av_is_num(handle) || !av_is_num(handle_y) ||
+                !av_is_num(to_handle) || !av_is_num(to_handle_y)) {
                 serialize_error_set("edge has invalid bezier handles");
                 return -1;
             }
@@ -945,16 +939,15 @@ static int load_edges(graph *g, yyjson_val *edges)
                 }
             }
             assert(loaded);
-            loaded->from_handle_x = (float)yyjson_get_num(handle);
-            loaded->from_handle_y = (float)yyjson_get_num(handle_y);
-            loaded->to_handle_x = (float)yyjson_get_num(to_handle);
-            loaded->to_handle_y = (float)yyjson_get_num(to_handle_y);
+            loaded->from_handle_x = (float)av_get_num(handle);
+            loaded->from_handle_y = (float)av_get_num(handle_y);
+            loaded->to_handle_x = (float)av_get_num(to_handle);
+            loaded->to_handle_y = (float)av_get_num(to_handle_y);
             loaded->custom_handles = true;
         }
-        yyjson_val *points = yyjson_obj_get(v, "reroutes");
+        av_value *points = av_obj_get(v, "reroutes");
         if (points) {
-            if (!yyjson_is_arr(points) ||
-                yyjson_arr_size(points) > GRAPH_EDGE_MAX_REROUTES) {
+            if (!av_is_arr(points) || av_arr_size(points) > GRAPH_EDGE_MAX_REROUTES) {
                 serialize_error_set("edge has invalid reroute points");
                 return -1;
             }
@@ -968,96 +961,93 @@ static int load_edges(graph *g, yyjson_val *edges)
             }
             assert(loaded);
             loaded->reroute_count = 0;
-            yyjson_arr_iter pit;
-            yyjson_arr_iter_init(points, &pit);
-            yyjson_val *point;
-            while ((point = yyjson_arr_iter_next(&pit))) {
-                yyjson_val *x = yyjson_obj_get(point, "x"),
-                           *y = yyjson_obj_get(point, "y");
-                if (!yyjson_is_obj(point) || !yyjson_is_num(x) || !yyjson_is_num(y)) {
+            av_arr_iter pit;
+            av_arr_iter_init(points, &pit);
+            av_value *point;
+            while ((point = av_arr_iter_next(&pit))) {
+                av_value *x = av_obj_get(point, "x"), *y = av_obj_get(point, "y");
+                if (!av_is_obj(point) || !av_is_num(x) || !av_is_num(y)) {
                     serialize_error_set("edge has invalid reroute point");
                     return -1;
                 }
-                loaded->reroutes[loaded->reroute_count].x = (float)yyjson_get_num(x);
-                loaded->reroutes[loaded->reroute_count].y = (float)yyjson_get_num(y);
+                loaded->reroutes[loaded->reroute_count].x = (float)av_get_num(x);
+                loaded->reroutes[loaded->reroute_count].y = (float)av_get_num(y);
                 loaded->reroute_count++;
             }
         }
     }
-    return serialize_migrate_component_reads(g);
+    return 0;
 }
 
-graph *graph_load_json(const char *json)
+graph *graph_load(const char *text)
 {
-    if (!json) {
-        serialize_error_set("null JSON input");
-        return NULL;
-    }
     char error[160];
-    yyjson_doc *doc = asset_text_read(json, error, sizeof error);
+    av_doc *doc = text ? av_doc_read(text, error, sizeof error) : NULL;
     if (!doc) {
-        serialize_error_set("%s", error);
+        serialize_error_set("%s", text ? error : "null KDL input");
         return NULL;
     }
-    yyjson_val *root = yyjson_doc_get_root(doc);
-    yyjson_val *version = yyjson_is_obj(root) ? yyjson_obj_get(root, "version") : NULL;
-    if (!yyjson_is_uint(version) || yyjson_get_uint(version) != GRAPH_SCHEMA_VERSION) {
+    graph *result = graph_from_value(av_doc_root(doc));
+    av_doc_free(doc);
+    return result;
+}
+
+graph *graph_from_value(av_value *root)
+{
+    av_value *version = av_is_obj(root) ? av_obj_get(root, "version") : NULL;
+    if (!av_is_uint(version) || av_get_uint(version) != GRAPH_SCHEMA_VERSION) {
         serialize_error_set("unsupported graph schema version (expected 3)");
-        yyjson_doc_free(doc);
         return NULL;
     }
-    yyjson_val *nodes = yyjson_obj_get(root, "nodes"),
-               *edges = yyjson_obj_get(root, "edges");
-    if ((nodes && !yyjson_is_arr(nodes)) || (edges && !yyjson_is_arr(edges))) {
+    av_value *nodes = av_obj_get(root, "nodes"), *edges = av_obj_get(root, "edges");
+    if ((nodes && !av_is_arr(nodes)) || (edges && !av_is_arr(edges))) {
         serialize_error_set("invalid nodes or edges array");
-        yyjson_doc_free(doc);
         return NULL;
     }
     graph *g = (graph *)calloc(1, sizeof *g);
     if (!g) {
         serialize_error_set("out of memory");
-        yyjson_doc_free(doc);
         return NULL;
     }
     graph_init(g);
     uint64_t requested_counter = 1;
-    yyjson_val *counter = yyjson_obj_get(root, "id_counter");
-    if (!counter || !yyjson_is_uint(counter) || yyjson_get_uint(counter) == 0) {
+    av_value *counter = av_obj_get(root, "id_counter");
+    if (!counter || !av_is_uint(counter) || av_get_uint(counter) == 0) {
         serialize_error_set("missing or invalid id_counter");
         goto fail;
     }
-    requested_counter = yyjson_get_uint(counter);
+    requested_counter = av_get_uint(counter);
     g->id_counter = requested_counter;
-    yyjson_val *metadata_name = yyjson_obj_get(root, "name");
-    yyjson_val *metadata_description = yyjson_obj_get(root, "description");
-    if (yyjson_is_str(metadata_name)) {
-        g->name = graph_own_str(g, yyjson_get_str(metadata_name), yyjson_get_len(metadata_name));
+    av_value *metadata_name = av_obj_get(root, "name");
+    av_value *metadata_description = av_obj_get(root, "description");
+    if (av_is_str(metadata_name)) {
+        g->name = graph_own_str(g, av_get_str(metadata_name), av_get_len(metadata_name));
     }
-    const char *description = yyjson_is_str(metadata_description)
-                                ? yyjson_get_str(metadata_description)
+    const char *description = av_is_str(metadata_description)
+                                ? av_get_str(metadata_description)
                                 : "";
     g->description = graph_own_str(g, description, strlen(description));
-    if (!g->name || (metadata_description && !yyjson_is_str(metadata_description))) {
+    if (!g->name || (metadata_description && !av_is_str(metadata_description))) {
         serialize_error_set("missing behavior_asset metadata");
         goto fail;
     }
-    yyjson_val *binding_owner = yyjson_obj_get(root, "binding_owner_id");
+    av_value *binding_owner = av_obj_get(root, "binding_owner_id");
     if (binding_owner) {
-        if (!yyjson_is_uint(binding_owner) || !yyjson_get_uint(binding_owner)) {
+        if (!av_is_uint(binding_owner) || !av_get_uint(binding_owner)) {
             serialize_error_set("invalid binding clipboard owner");
             goto fail;
         }
-        g->clipboard_owner_id = yyjson_get_uint(binding_owner);
+        g->clipboard_owner_id = av_get_uint(binding_owner);
     }
-    yyjson_val *breakpoints = yyjson_obj_get(root, "breakpoints_enabled");
-    if (breakpoints && yyjson_is_bool(breakpoints)) {
-        g->breakpoints_enabled = yyjson_get_bool(breakpoints);
+    av_value *breakpoints = av_obj_get(root, "breakpoints_enabled");
+    if (breakpoints && av_is_bool(breakpoints)) {
+        g->breakpoints_enabled = av_get_bool(breakpoints);
     }
-    yyjson_val *dataflow = yyjson_obj_get(root, "dataflow");
-    if (dataflow && yyjson_is_bool(dataflow)) {
-        g->dataflow = yyjson_get_bool(dataflow);
+    av_value *dataflow = av_obj_get(root, "dataflow");
+    if (dataflow && av_is_bool(dataflow)) {
+        g->dataflow = av_get_bool(dataflow);
     }
-    if (load_comment_boxes(g, yyjson_obj_get(root, "comment_boxes"))) {
+    if (load_comment_boxes(g, av_obj_get(root, "comment_boxes"))) {
         goto fail;
     }
     if (serialize_read_locals(g, root) || load_nodes(g, nodes, requested_counter) ||
@@ -1065,22 +1055,19 @@ graph *graph_load_json(const char *json)
         serialize_validate_locals(g)) {
         goto fail;
     }
-    yyjson_doc_free(doc);
     return g;
 fail:
-    yyjson_doc_free(doc);
     graph_free(g);
     free(g);
     return NULL;
 }
 
-graph *serialize_load_graph_body(yyjson_val *obj, uint64_t id_counter)
+graph *serialize_load_graph_body(av_value *obj, uint64_t id_counter)
 {
     graph *g = xcalloc(1, sizeof *g);
     graph_init(g);
     g->id_counter = id_counter;
-    yyjson_val *nodes = yyjson_obj_get(obj, "nodes"),
-               *edges = yyjson_obj_get(obj, "edges");
+    av_value *nodes = av_obj_get(obj, "nodes"), *edges = av_obj_get(obj, "edges");
     if (serialize_read_locals(g, obj) || load_nodes(g, nodes, id_counter) ||
         serialize_resolve_locals(g, obj) || load_edges(g, edges) ||
         serialize_validate_locals(g)) {
@@ -1091,32 +1078,31 @@ graph *serialize_load_graph_body(yyjson_val *obj, uint64_t id_counter)
     return g;
 }
 
-static int load_variable(behavior_asset *asset, yyjson_val *v)
+static int load_variable(behavior_asset *asset, av_value *v)
 {
-    if (!yyjson_is_obj(v)) {
+    if (!av_is_obj(v)) {
         serialize_error_set("variable is not an object");
         return -1;
     }
     uint64_t id = 0;
-    if (json_uint(yyjson_obj_get(v, "id"), &id, "variable.id")) {
+    if (read_id(av_obj_get(v, "id"), &id, "variable.id")) {
         return -1;
     }
-    yyjson_val *name = yyjson_obj_get(v, "name");
+    av_value *name = av_obj_get(v, "name");
     pin_type pt;
-    if (!yyjson_is_str(name) ||
-        !serialize_read_pin_type(yyjson_obj_get(v, "type"), &pt)) {
+    if (!av_is_str(name) || !serialize_read_pin_type(av_obj_get(v, "type"), &pt)) {
         serialize_error_set("variable has malformed name or type");
         return -1;
     }
-    yyjson_val *tn = yyjson_obj_get(v, "type_name");
-    const char *type_name = yyjson_is_str(tn) ? yyjson_get_str(tn) : NULL;
-    yyjson_val *container = yyjson_obj_get(v, "container");
-    pin_container pc = container && yyjson_is_int(container)
-                         ? (pin_container)yyjson_get_sint(container)
+    av_value *tn = av_obj_get(v, "type_name");
+    const char *type_name = av_is_str(tn) ? av_get_str(tn) : NULL;
+    av_value *container = av_obj_get(v, "container");
+    pin_container pc = container && av_is_int(container)
+                         ? (pin_container)av_get_sint(container)
                          : PIN_CONTAINER_SINGLE;
-    yyjson_val *category = yyjson_obj_get(v, "category");
-    const char *cat = yyjson_is_str(category) ? yyjson_get_str(category) : NULL;
-    yyjson_val *def = yyjson_obj_get(v, "default");
+    av_value *category = av_obj_get(v, "category");
+    const char *cat = av_is_str(category) ? av_get_str(category) : NULL;
+    av_value *def = av_obj_get(v, "default");
     pin_value pv = { 0 };
     if (def) {
         if (pc >= PIN_CONTAINER_ARRAY) {
@@ -1132,7 +1118,7 @@ static int load_variable(behavior_asset *asset, yyjson_val *v)
     }
     behavior_variable *var = behavior_asset_add_variable(
         asset,
-        yyjson_get_str(name),
+        av_get_str(name),
         pt,
         type_name,
         pc,
@@ -1140,34 +1126,33 @@ static int load_variable(behavior_asset *asset, yyjson_val *v)
         cat
     );
     if (!var) {
-        serialize_error_set("cannot create variable %s", yyjson_get_str(name));
+        serialize_error_set("cannot create variable %s", av_get_str(name));
         return -1;
     }
     var->id = id;
     return 0;
 }
 
-static int load_behavior_asset_graph(behavior_asset *asset, yyjson_val *obj, uint64_t requested_counter, int is_default)
+static int load_behavior_asset_graph(behavior_asset *asset, av_value *obj, uint64_t requested_counter, int is_default)
 {
-    if (!yyjson_is_obj(obj)) {
+    if (!av_is_obj(obj)) {
         serialize_error_set("graph is not an object");
         return -1;
     }
-    yyjson_val *kind_json = yyjson_obj_get(obj, "kind");
-    yyjson_val *name_json = yyjson_obj_get(obj, "name");
-    yyjson_val *description_json = yyjson_obj_get(obj, "description");
-    yyjson_val *nodes = yyjson_obj_get(obj, "nodes");
-    yyjson_val *edges = yyjson_obj_get(obj, "edges");
+    av_value *kind_value = av_obj_get(obj, "kind");
+    av_value *name_value = av_obj_get(obj, "name");
+    av_value *description_value = av_obj_get(obj, "description");
+    av_value *nodes = av_obj_get(obj, "nodes");
+    av_value *edges = av_obj_get(obj, "edges");
     graph_kind kind;
     /* An expression's name defaults to its source. */
-    if (!name_json) {
-        name_json = yyjson_obj_get(obj, "math_expression");
+    if (!name_value) {
+        name_value = av_obj_get(obj, "math_expression");
     }
-    if (!yyjson_is_str(kind_json) ||
-        graph_kind_from_name(yyjson_get_str(kind_json), &kind) ||
-        !yyjson_is_str(name_json) ||
-        (description_json && !yyjson_is_str(description_json)) ||
-        (nodes && !yyjson_is_arr(nodes)) || (edges && !yyjson_is_arr(edges))) {
+    if (!av_is_str(kind_value) ||
+        graph_kind_from_name(av_get_str(kind_value), &kind) || !av_is_str(name_value) ||
+        (description_value && !av_is_str(description_value)) ||
+        (nodes && !av_is_arr(nodes)) || (edges && !av_is_arr(edges))) {
         serialize_error_set("graph is missing kind or name, or has invalid nodes or edges");
         return -1;
     }
@@ -1176,7 +1161,7 @@ static int load_behavior_asset_graph(behavior_asset *asset, yyjson_val *obj, uin
         return -1;
     }
     uint64_t graph_id = 0;
-    if (!is_default && json_uint(yyjson_obj_get(obj, "id"), &graph_id, "graph.id")) {
+    if (!is_default && read_id(av_obj_get(obj, "id"), &graph_id, "graph.id")) {
         return -1;
     }
     graph *g = is_default ? asset->graph : NULL;
@@ -1187,74 +1172,74 @@ static int load_behavior_asset_graph(behavior_asset *asset, yyjson_val *obj, uin
         g->shared_id_counter = &asset->graph->id_counter;
         g->graph_id = graph_id;
         g->kind = kind;
-        g->name = graph_own_str(g, yyjson_get_str(name_json), yyjson_get_len(name_json));
+        g->name = graph_own_str(g, av_get_str(name_value), av_get_len(name_value));
         apush(asset->graphs, g);
     } else {
         g->kind = kind;
         g->graph_id = graph_id;
-        g->name = graph_own_str(g, yyjson_get_str(name_json), yyjson_get_len(name_json));
+        g->name = graph_own_str(g, av_get_str(name_value), av_get_len(name_value));
     }
     if (!g->name) {
         serialize_error_set("graph name allocation failed");
         return -1;
     }
-    const char *description = description_json ? yyjson_get_str(description_json) : "";
+    const char *description = description_value ? av_get_str(description_value) : "";
     g->description = graph_own_str(g, description, strlen(description));
     if (!g->description) {
         serialize_error_set("graph description allocation failed");
         return -1;
     }
-    yyjson_val *source_asset = yyjson_obj_get(obj, "source_asset");
+    av_value *source_asset = av_obj_get(obj, "source_asset");
     if (source_asset) {
-        if (!yyjson_is_str(source_asset) ||
-            json_uint(yyjson_obj_get(obj, "source_graph_id"), &g->source_graph_id, "graph.source_graph_id")) {
+        if (!av_is_str(source_asset) ||
+            read_id(av_obj_get(obj, "source_graph_id"), &g->source_graph_id, "graph.source_graph_id")) {
             serialize_error_set("linked graph source requires an asset name and graph ID");
             return -1;
         }
-        g->source_asset = graph_own_str(g, yyjson_get_str(source_asset), yyjson_get_len(source_asset));
+        g->source_asset = graph_own_str(g, av_get_str(source_asset), av_get_len(source_asset));
     }
-    yyjson_val *expression = yyjson_obj_get(obj, "math_expression");
+    av_value *expression = av_obj_get(obj, "math_expression");
     if (expression) {
-        if (!yyjson_is_str(expression) || kind != GRAPH_FUNCTION) {
+        if (!av_is_str(expression) || kind != GRAPH_FUNCTION) {
             serialize_error_set("math_expression must be source text on a function graph");
             return -1;
         }
-        g->math_expression = graph_own_str(g, yyjson_get_str(expression), yyjson_get_len(expression));
+        g->math_expression = graph_own_str(g, av_get_str(expression), av_get_len(expression));
     }
-    yyjson_val *expression_mode = yyjson_obj_get(obj, "expression_mode");
+    av_value *expression_mode = av_obj_get(obj, "expression_mode");
     if (expression_mode) {
-        if (!yyjson_is_int(expression_mode) ||
-            yyjson_get_sint(expression_mode) < GRAPH_EXPRESSION_NONE ||
-            yyjson_get_sint(expression_mode) > GRAPH_EXPRESSION_BRANCH) {
+        if (!av_is_int(expression_mode) ||
+            av_get_sint(expression_mode) < GRAPH_EXPRESSION_NONE ||
+            av_get_sint(expression_mode) > GRAPH_EXPRESSION_BRANCH) {
             serialize_error_set("expression_mode must be a valid expression mode");
             return -1;
         }
-        g->expression_mode = (graph_expression_mode)yyjson_get_sint(expression_mode);
+        g->expression_mode = (graph_expression_mode)av_get_sint(expression_mode);
     } else if (g->math_expression) {
         /* Documents written before mode metadata are pure value expressions. */
         g->expression_mode = GRAPH_EXPRESSION_VALUE;
     }
-    yyjson_val *breakpoints = yyjson_obj_get(obj, "breakpoints_enabled");
-    if (breakpoints && yyjson_is_bool(breakpoints)) {
-        g->breakpoints_enabled = yyjson_get_bool(breakpoints);
+    av_value *breakpoints = av_obj_get(obj, "breakpoints_enabled");
+    if (breakpoints && av_is_bool(breakpoints)) {
+        g->breakpoints_enabled = av_get_bool(breakpoints);
     }
-    yyjson_val *dataflow = yyjson_obj_get(obj, "dataflow");
-    if (dataflow && yyjson_is_bool(dataflow)) {
-        g->dataflow = yyjson_get_bool(dataflow);
+    av_value *dataflow = av_obj_get(obj, "dataflow");
+    if (dataflow && av_is_bool(dataflow)) {
+        g->dataflow = av_get_bool(dataflow);
     }
-    yyjson_val *entry_json = yyjson_obj_get(obj, "entry_id");
-    yyjson_val *return_json = yyjson_obj_get(obj, "return_id");
-    yyjson_val *depth_json = yyjson_obj_get(obj, "call_depth_limit");
-    if (entry_json && yyjson_is_uint(entry_json)) {
-        g->entry_id = yyjson_get_uint(entry_json);
+    av_value *entry_value = av_obj_get(obj, "entry_id");
+    av_value *return_value = av_obj_get(obj, "return_id");
+    av_value *depth_value = av_obj_get(obj, "call_depth_limit");
+    if (entry_value && av_is_uint(entry_value)) {
+        g->entry_id = av_get_uint(entry_value);
     }
-    if (return_json && yyjson_is_uint(return_json)) {
-        g->return_id = yyjson_get_uint(return_json);
+    if (return_value && av_is_uint(return_value)) {
+        g->return_id = av_get_uint(return_value);
     }
-    if (depth_json && yyjson_is_int(depth_json)) {
-        g->call_depth_limit = (int)yyjson_get_sint(depth_json);
+    if (depth_value && av_is_int(depth_value)) {
+        g->call_depth_limit = (int)av_get_sint(depth_value);
     }
-    if (load_comment_boxes(g, yyjson_obj_get(obj, "comment_boxes"))) {
+    if (load_comment_boxes(g, av_obj_get(obj, "comment_boxes"))) {
         return -1;
     }
     if (serialize_read_locals(g, obj) || load_nodes(g, nodes, requested_counter) ||
@@ -1318,51 +1303,78 @@ static int loaded_asset_counter(behavior_asset *asset, uint64_t requested)
     return 0;
 }
 
-behavior_asset *behavior_asset_load_json(const char *json)
+static int serialize_repair_math_calls(behavior_asset *asset)
+{
+    for (int i = 0; i < acount(asset->graphs); i++) {
+        graph *caller = asset->graphs[i];
+        for (int j = 0; j < acount(caller->nodes); j++) {
+            node *call = caller->nodes[j];
+            if ((call->desc != &NODE_CallPureFunction &&
+                 call->desc != &NODE_BehaviorExpression &&
+                 call->desc != &NODE_CallFunction) ||
+                call->reference_asset) {
+                continue;
+            }
+            graph *generated = behavior_asset_find_graph(asset, call->reference_id);
+            if (!generated || !generated->math_expression || generated->source_asset) {
+                continue;
+            }
+            if (behavior_expression_repair(asset, call) != 0) {
+                serialize_error_set("could not repair Behavior Expression call");
+                return -1;
+            }
+        }
+    }
+    return 0;
+}
+
+behavior_asset *behavior_asset_load(const char *text)
+{
+    char error[160];
+    av_doc *doc = text ? av_doc_read(text, error, sizeof error) : NULL;
+    if (!doc) {
+        serialize_error_set("%s", text ? error : "null KDL input");
+        return NULL;
+    }
+    behavior_asset *result = behavior_asset_from_value(av_doc_root(doc));
+    av_doc_free(doc);
+    return result;
+}
+
+behavior_asset *behavior_asset_from_value(av_value *root)
 {
     behavior_asset *asset = NULL;
-    if (!json) {
-        serialize_error_set("null JSON input");
-        return NULL;
-    }
-    char error[160];
-    yyjson_doc *doc = asset_text_read(json, error, sizeof error);
-    if (!doc) {
-        serialize_error_set("%s", error);
-        return NULL;
-    }
-    yyjson_val *root = yyjson_doc_get_root(doc);
-    yyjson_val *version = yyjson_is_obj(root) ? yyjson_obj_get(root, "version") : NULL;
-    if (!yyjson_is_uint(version) || yyjson_get_uint(version) != GRAPH_SCHEMA_VERSION) {
+    av_value *version = av_is_obj(root) ? av_obj_get(root, "version") : NULL;
+    if (!av_is_uint(version) || av_get_uint(version) != GRAPH_SCHEMA_VERSION) {
         serialize_error_set("unsupported behavior_asset schema version (expected 3)");
         goto fail;
     }
-    yyjson_val *graphs = yyjson_obj_get(root, "graphs");
-    if (!yyjson_is_arr(graphs) || yyjson_arr_size(graphs) < 1) {
+    av_value *graphs = av_obj_get(root, "graphs");
+    if (!av_is_arr(graphs) || av_arr_size(graphs) < 1) {
         serialize_error_set("behavior_asset requires at least one graph");
         goto fail;
     }
-    yyjson_val *metadata_name = yyjson_obj_get(root, "name");
-    yyjson_val *metadata_description = yyjson_obj_get(root, "description");
-    if (!yyjson_is_str(metadata_name) ||
-        (metadata_description && !yyjson_is_str(metadata_description))) {
+    av_value *metadata_name = av_obj_get(root, "name");
+    av_value *metadata_description = av_obj_get(root, "description");
+    if (!av_is_str(metadata_name) ||
+        (metadata_description && !av_is_str(metadata_description))) {
         serialize_error_set("behavior_asset requires a name");
         goto fail;
     }
     uint64_t requested_counter = 1;
-    yyjson_val *counter = yyjson_obj_get(root, "id_counter");
-    if (!counter || !yyjson_is_uint(counter) || yyjson_get_uint(counter) == 0) {
+    av_value *counter = av_obj_get(root, "id_counter");
+    if (!counter || !av_is_uint(counter) || av_get_uint(counter) == 0) {
         serialize_error_set("missing or invalid id_counter");
         goto fail;
     }
-    requested_counter = yyjson_get_uint(counter);
-    asset = behavior_asset_new(yyjson_get_str(metadata_name));
+    requested_counter = av_get_uint(counter);
+    asset = behavior_asset_new(av_get_str(metadata_name));
     if (!asset) {
         serialize_error_set("out of memory");
         goto fail;
     }
     asset->graph->id_counter = requested_counter;
-    const char *domain = yyjson_get_str(yyjson_obj_get(root, "domain"));
+    const char *domain = av_get_str(av_obj_get(root, "domain"));
     if (domain) {
         int found = 0;
         for (int i = BEHAVIOR_DOMAIN_EVENT; i <= BEHAVIOR_DOMAIN_FIELD; i++) {
@@ -1377,36 +1389,35 @@ behavior_asset *behavior_asset_load_json(const char *json)
             goto fail;
         }
     }
-    asset->bounds[0] = (float)yyjson_get_num(yyjson_obj_get(root, "bounds_x"));
-    asset->bounds[1] = (float)yyjson_get_num(yyjson_obj_get(root, "bounds_y"));
-    behavior_asset_set_description(asset, yyjson_get_str(metadata_description));
-    yyjson_val *owner = yyjson_obj_get(root, "owner_type");
-    if (yyjson_is_str(owner) &&
-        behavior_asset_set_owner_type(asset, yyjson_get_str(owner))) {
+    asset->bounds[0] = (float)av_get_num(av_obj_get(root, "bounds_x"));
+    asset->bounds[1] = (float)av_get_num(av_obj_get(root, "bounds_y"));
+    behavior_asset_set_description(asset, av_get_str(metadata_description));
+    av_value *owner = av_obj_get(root, "owner_type");
+    if (av_is_str(owner) && behavior_asset_set_owner_type(asset, av_get_str(owner))) {
         serialize_error_set("cannot set owner type");
         goto fail;
     }
-    yyjson_val *vars = yyjson_obj_get(root, "variables");
-    if (vars && !yyjson_is_arr(vars)) {
+    av_value *vars = av_obj_get(root, "variables");
+    if (vars && !av_is_arr(vars)) {
         serialize_error_set("variables must be an array");
         goto fail;
     }
     if (vars) {
-        yyjson_arr_iter vit;
-        yyjson_arr_iter_init(vars, &vit);
-        yyjson_val *vv;
-        while ((vv = yyjson_arr_iter_next(&vit))) {
+        av_arr_iter vit;
+        av_arr_iter_init(vars, &vit);
+        av_value *vv;
+        while ((vv = av_arr_iter_next(&vit))) {
             if (load_variable(asset, vv)) {
                 goto fail;
             }
         }
     }
-    yyjson_arr_iter git;
-    yyjson_arr_iter_init(graphs, &git);
-    yyjson_val *graph_json;
+    av_arr_iter git;
+    av_arr_iter_init(graphs, &git);
+    av_value *graph_value;
     int graph_index = 0;
-    while ((graph_json = yyjson_arr_iter_next(&git))) {
-        if (load_behavior_asset_graph(asset, graph_json, requested_counter, graph_index == 0)) {
+    while ((graph_value = av_arr_iter_next(&git))) {
+        if (load_behavior_asset_graph(asset, graph_value, requested_counter, graph_index == 0)) {
             goto fail;
         }
         graph_index++;
@@ -1430,10 +1441,8 @@ behavior_asset *behavior_asset_load_json(const char *json)
     if (loaded_asset_counter(asset, requested_counter)) {
         goto fail;
     }
-    yyjson_doc_free(doc);
     return asset;
 fail:
-    yyjson_doc_free(doc);
     if (asset) {
         behavior_asset_free(asset);
     }

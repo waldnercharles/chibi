@@ -1,0 +1,120 @@
+version 3
+name "ArenaRim"
+domain "material"
+id_counter 217
+description "A metallic cyan boundary with a slow, restrained pulse in its emission."
+(array)graphs {
+    - {
+        kind "event"
+        name ""
+        (array)nodes {
+            - {
+                id 1
+                type "Shader Surface Output"
+                x 0.0
+                y 0.0
+                placed #false
+                inputs {
+                    "Base Color" {
+                        default x=1.0 y=1.0 z=1.0
+                    }
+                    Emission {
+                        default x=0.0 y=0.0 z=0.0
+                    }
+                    Roughness 0.30000001192092896
+                    Metallic 0.55000001192092896
+                    Normal {
+                        default x=0.0 y=0.0 z=0.0
+                    }
+                    Height id=37
+                }
+            }
+            - {
+                id 9
+                type "Shader Parameter"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_name "Base Color"
+                outputs {
+                    Value {
+                        type "struct"
+                        type_name "ShaderVec3"
+                        flags 64
+                        group 0
+                        default x=0.012000000104308128 y=0.14000000059604645 z=0.23999999463558197
+                    }
+                }
+            }
+            - id=11 type="Shader Time" x=0.0 y=0.0 placed=#false
+            - {
+                id 13
+                type "Shader Parameter"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 1
+                reference_name "Pulse Speed"
+                outputs {
+                    Value flags=0 group=0 default=0.44999998807907104
+                }
+            }
+            - {
+                id 15
+                type "Call Pure Function"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 56
+                reference_name "Pulse"
+                reference_asset "ShaderMath"
+                inputs {
+                    Time id=16 declaration_id=61 type="float"
+                    Speed id=17 declaration_id=62 type="float"
+                }
+                outputs {
+                    Brightness id=18 declaration_id=63 type="float"
+                }
+            }
+            - {
+                id 27
+                type "Shader Parameter"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 2
+                reference_name "Glow"
+                outputs {
+                    Value flags=0 group=0 default=1.2000000476837158
+                }
+            }
+            - {
+                id 67
+                type "Behavior Expression"
+                x 0.0
+                y 0.0
+                placed #false
+                reference_id 38
+                reference_name "base_color * ((pulse * 0.12 + 0.88) * glow)"
+                inputs {
+                    base_color id=68 type="struct" type_name="ShaderVec3"
+                    pulse id=69 type="float"
+                    glow id=70 type="float"
+                }
+                outputs {
+                    Result id=71 type="struct" type_name="ShaderVec3"
+                }
+            }
+        }
+        (array)edges {
+            - from="9.Value" to="1.Base Color"
+            - from="9.Value" to="67.base_color"
+            - from="11.Value" to="15.Time"
+            - from="13.Value" to="15.Speed"
+            - from="15.Brightness" to="67.pulse"
+            - from="27.Value" to="67.glow"
+            - from="67.Result" to="1.Emission"
+        }
+    }
+    - id=38 kind="function" math_expression="base_color * ((pulse * 0.12 + 0.88) * glow)" entry_id=189
+}

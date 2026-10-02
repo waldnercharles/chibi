@@ -12,7 +12,7 @@ typedef struct game_prototype_preview game_prototype_preview;
 typedef struct
 {
     const game_prototype *prototype;
-    const char *components_json;
+    av_value *components;
     const char *const *behaviors;
     int behavior_count;
 } game_prototype_preview_scene_entity;

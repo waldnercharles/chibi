@@ -24,6 +24,9 @@
 
 ## Editor UI
 
+For UI/UX design, interaction reviews, or editor usability work, follow the
+[UX laws skill](.agents/skills/ux-laws/SKILL.md).
+
 The editor UI is RmlUi, driven from C through the Studio kit (`src/editor/ui/kit.h`).
 Its design is in `docs/prototypes/studio/DESIGN.md`. Before building any UI mechanism
 in a panel, read `docs/editor-ui-references.md`. It maps each reference library to the

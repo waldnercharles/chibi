@@ -93,7 +93,9 @@ body.graph-canvas:not(.dark) .gnode-head, body.graph-canvas:not(.dark) .gnode-he
 .ghalf { position: relative; display: flex; align-items: center; gap: 6dp; height: var(--studio-height-22, 22dp); }
 .ghalf.in { padding-left: 10dp; }
 .ghalf.out { padding-right: 10dp; margin-left: auto; justify-content: flex-end; }
-.gpin-label { display: block; flex: 0 0 auto; color: var(--muted-foreground); white-space: nowrap; overflow: hidden; line-height: var(--studio-line-22, 22dp); }
+/* Labels keep their measured column; small zooms hint glyphs wider than
+   measured, so a label may run into the gap after it rather than clip. */
+.gpin-label { display: block; flex: 0 0 auto; color: var(--muted-foreground); white-space: nowrap; line-height: var(--studio-line-22, 22dp); }
 [data-hover] > .gpin-label { color: var(--foreground); }
 .grow .field { flex: 1 1 auto; min-width: 0dp; height: var(--studio-height-18, 18dp); }
 .grow.out .field { flex: 0 0 64dp; }
@@ -123,15 +125,17 @@ body.graph-canvas:not(.dark) .gnode-head, body.graph-canvas:not(.dark) .gnode-he
 .gadd .btn { color: var(--faint-foreground); }
 
 /* An expression's source, lines wrapped by measure_node: 16 dp lines, 12 dp of
-   padding and margin below, 28 dp across. */
+   padding and margin below, 48 dp across, which keeps its edit button clear. */
 .gcode {
-    position: relative; display: block; margin: 0dp 8dp 4dp; padding: 4dp 6dp; border-radius: 4dp; cursor: text;
+    position: relative; display: block; margin: 0dp 8dp 4dp; padding: 4dp 26dp 4dp 6dp; border-radius: 4dp; cursor: text;
     background-color: var(--chip); font-size: var(--studio-font-11, 11dp); line-height: var(--studio-line-16, 16dp);
 }
 .graph-expression-editor { flex: 0 1 auto; max-width: 100%; min-width: 0dp; }
 .graph-expression-editor.standalone { margin: 4dp 8dp; }
 .graph-expression-editor .field { width: 100%; min-width: 0dp; }
-.gcode-line { display: block; height: var(--studio-height-16, 16dp); white-space: pre; overflow: hidden; }
+/* Lines may run 6 dp past their measured room, as glyphs hint wider at small
+   zooms, and stop short of the edit button. */
+.gcode-line { display: block; height: var(--studio-height-16, 16dp); margin-right: -6dp; white-space: pre; overflow: hidden; }
 .gcode-edit { position: absolute; top: 2dp; right: 2dp; z-index: 1; width: 18dp; height: 18dp; padding: 0dp; opacity: 0.55; }
 .gcode:hover .gcode-edit { opacity: 1; }
 

@@ -135,7 +135,7 @@ static const float NODE_MIN = 120, NODE_MAX = 360, BOTTOM = 6;
 static const float OPERATOR_MIN = 56, OPERATOR_PAD = 4, SYMBOL_SIZE = 18;
 
 /* graph.rcss .gcode: 16 dp lines, 8 dp of padding and 4 below; 28 dp across. */
-static const float CODE_SIZE = 11, CODE_LINE = 16, CODE_PAD = 12, CODE_INSET = 28;
+static const float CODE_SIZE = 11, CODE_LINE = 16, CODE_PAD = 12, CODE_INSET = 48;
 
 /* Color presentation belongs to the explicit pin flag or the reflected field
    catalog, not to a guess based on names like "Color" or the C type `unsigned`. */

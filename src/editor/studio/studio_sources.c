@@ -1733,6 +1733,9 @@ static hint_list editor_hints(studio *s)
                                              : HINT_LIST(OUTLINER);
         case STUDIO_EDITOR_MEMBERS: return HINT_LIST(MEMBERS);
         case STUDIO_EDITOR_BEHAVIOR:
+            if (!studio_graph_active(s)) {
+                return HINT_LIST(OTHER);
+            }
             return s->graph.gesture == STUDIO_GRAPH_MOVE ? HINT_LIST(MOVING)
                                                          : HINT_LIST(BEHAVIOR);
         default: return HINT_LIST(OTHER);

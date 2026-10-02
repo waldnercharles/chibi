@@ -879,16 +879,35 @@ static bool drawer_editor(studio_editor editor)
 
 /* The Studio project's panels that are tools in any project; the rest are
    pieces of Studio's own chrome, kept in a submenu. */
-static const char *const TOOL_PANELS[] = { "Inspector", "Data", "Theme" };
+static const struct
+{
+    const char *name;
+    uint32_t icon;
+} TOOL_PANELS[] = {
+    { "Inspector", KIT_ICON_TARGET },
+    { "Data", KIT_ICON_LIBRARY },
+    { "Theme", KIT_ICON_MATERIAL },
+};
 
 static bool tool_panel(const char *name)
 {
     for (size_t i = 0; i < sizeof TOOL_PANELS / sizeof *TOOL_PANELS; i++) {
-        if (!strcmp(TOOL_PANELS[i], name)) {
+        if (!strcmp(TOOL_PANELS[i].name, name)) {
             return true;
         }
     }
     return false;
+}
+
+/* A panel's icon: a tool's own, else the panel glyph. */
+static uint32_t panel_icon(const char *name)
+{
+    for (size_t i = 0; i < sizeof TOOL_PANELS / sizeof *TOOL_PANELS; i++) {
+        if (!strcmp(TOOL_PANELS[i].name, name)) {
+            return TOOL_PANELS[i].icon;
+        }
+    }
+    return EDITOR_ICONS[STUDIO_EDITOR_PANEL];
 }
 
 static void panel_item(studio *s, int area, int index)
@@ -899,7 +918,7 @@ static void panel_item(studio *s, int area, int index)
     snprintf(item_key, sizeof item_key, "p%d", index);
     kit_menu_item_desc item = {
         .label = name,
-        .icon = EDITOR_ICONS[STUDIO_EDITOR_PANEL],
+        .icon = panel_icon(name),
         .checked = -1,
         .current = layout->editors[area] == STUDIO_EDITOR_PANEL &&
                    !strcmp(layout->panels[area], name),
@@ -1000,7 +1019,9 @@ static void editor_type_menu(studio *s, int area)
     kit *k = s->kit;
     studio_layout *layout = studio_active_layout(s);
     studio_editor *editor = &layout->editors[area];
-    kit_button_desc d = { .icon = EDITOR_ICONS[*editor],
+    kit_button_desc d = { .icon = *editor == STUDIO_EDITOR_PANEL
+                                    ? panel_icon(layout->panels[area])
+                                    : EDITOR_ICONS[*editor],
                           .cls = "editor-type",
                           .tip = *editor == STUDIO_EDITOR_PANEL
                                    ? layout->panels[area]

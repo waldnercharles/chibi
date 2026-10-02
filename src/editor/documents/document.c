@@ -10,7 +10,7 @@
 #include <string.h>
 
 static ed_location capture_location(const editor *e);
-static int restore_location(editor *e, const ed_location *location);
+static int restore_location(editor *e, const ed_location *location, bool positioned);
 
 static void ed_keep_document(editor *e)
 {
@@ -52,6 +52,7 @@ int editor_visit_behavior_asset(editor *e, const behavior_asset *source, uint64_
         }
     }
     behavior_asset *cached = history.asset ? behavior_asset_clone(history.asset) : NULL;
+    bool positioned = cached != NULL;
     const behavior_asset *target = cached ? cached : source;
     if (!target || !behavior_asset_find_graph(target, graph_id)) {
         behavior_asset_free(cached);
@@ -77,7 +78,7 @@ int editor_visit_behavior_asset(editor *e, const behavior_asset *source, uint64_
         behavior_asset_free(history.asset);
         e->document_key = history.key;
         if (history.location.graph_id == graph_id) {
-            restore_location(e, &history.location);
+            restore_location(e, &history.location, positioned);
             for (int i = 0; i < acount(history.links); i++) {
                 apush(e->selected_links, history.links[i]);
             }
@@ -227,7 +228,7 @@ void ed_restore_callers(editor *e, const ed_graph_caller *callers, int count)
     }
 }
 
-static int restore_location(editor *e, const ed_location *location)
+static int restore_location(editor *e, const ed_location *location, bool positioned)
 {
     graph *target = behavior_asset_find_graph(e->asset, location->graph_id);
     if (!target) {
@@ -247,7 +248,11 @@ static int restore_location(editor *e, const ed_location *location)
     for (int i = 0; i < location->node_count; i++) {
         ed_add_selected(e, graph_node_by_id(target, location->nodes[i]));
     }
-    e->arrange_pending = false;
+    /* Native snapshots retain automatic positions; a fresh source still
+       needs the arrangement requested by editor_open_behavior_asset. */
+    if (positioned) {
+        e->arrange_pending = false;
+    }
     return 0;
 }
 
@@ -522,7 +527,7 @@ bool editor_restore_checkpoint(editor *e, const char *json)
     current.key = NULL;
     current.saved = NULL;
     current.undo = current.redo = NULL;
-    ok = restore_location(e, &current.location) == 0;
+    ok = restore_location(e, &current.location, true) == 0;
     for (int j = 0; j < acount(current.links); j++) {
         apush(e->selected_links, current.links[j]);
     }

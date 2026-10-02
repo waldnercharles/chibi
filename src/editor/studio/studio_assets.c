@@ -424,9 +424,12 @@ static bool write_ui(ui_new_kind kind, const char *path)
    unchanged and is what --format writes. */
 static bool write_kdl(new_asset_kind kind, const char *name, const char *path)
 {
-    char *json = new_asset_text(kind, name);
-    bool written = write_text_file_atomic(path, json) == 0;
-    free(json);
+    char error[128];
+    char *text = new_asset_text(kind, name);
+    char *disk = asset_text_to_disk(text, error, sizeof error);
+    bool written = disk && write_file_atomic(path, disk) == 0;
+    free(disk);
+    free(text);
     return written;
 }
 

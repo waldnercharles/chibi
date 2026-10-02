@@ -270,21 +270,25 @@ static void creates_every_kind()
         char *again = text && kind < NEW_ASSET_KIND_COUNT
                         ? canonical((new_asset_kind)kind, text)
                         : NULL;
-        bool canonical_text = kind >= NEW_ASSET_KIND_COUNT ||
-                              (again && !strcmp(again, text) &&
-                               automatic((new_asset_kind)kind, text));
+        bool canonical_bytes = kind >= NEW_ASSET_KIND_COUNT ||
+                               (again && !strcmp(again, text));
+        bool automatic_positions = kind >= NEW_ASSET_KIND_COUNT ||
+                                   (text && automatic((new_asset_kind)kind, text));
+        bool canonical_text = canonical_bytes && automatic_positions;
         const reference_index *index = app_scene_authoring_asset_index(f.scene);
         bool indexed = reference_index_find_asset(index, INDEXED[kind], file, NULL) >= 0;
         bool open = opened(f.scene, kind, name, file);
         bool closed = !kit_popup_is_open(s->kit, "new-asset-name");
         if (!(asked && text && canonical_text && indexed && open && closed)) {
             printf(
-                "  %s: asked %d, written %d, canonical %d, indexed %d, open "
+                "  %s: asked %d, written %d, canonical %d, automatic %d, "
+                "indexed %d, open "
                 "%d, closed %d: %s\n",
                 name,
                 asked,
                 text != NULL,
-                canonical_text,
+                canonical_bytes,
+                automatic_positions,
                 indexed,
                 open,
                 closed,

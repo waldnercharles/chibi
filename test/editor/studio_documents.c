@@ -15,6 +15,7 @@
 #include "render/screenshot.h"
 #include "runtime/generated.h"
 #include "support/array.h"
+#include "support/asset_text.h"
 #include "support/text_overlay.h"
 #include "test/suite_internal.h"
 
@@ -904,14 +905,30 @@ static void replay_close_stop_reopen_keeps_graph_layout()
     studio_maximize_graph(s);
     frames(&f, 3);
     gr = sg_active_graph(s);
-    bool restored = hidden && gr && gr->lifetime_id != lifetime;
+    bool positions_equal = gr != NULL;
     for (int i = 0; i < acount(ids); i++) {
-        node *n = graph_node_by_id(gr, ids[i]);
-        restored &= n && fabsf(n->x - positions[i * 2]) < 0.5f &&
-                    fabsf(n->y - positions[i * 2 + 1]) < 0.5f;
+        node *n = gr ? graph_node_by_id(gr, ids[i]) : NULL;
+        positions_equal &= n && fabsf(n->x - positions[i * 2]) < 0.5f &&
+                           fabsf(n->y - positions[i * 2 + 1]) < 0.5f;
     }
+    bool restored = hidden && gr && gr->lifetime_id != lifetime && positions_equal;
+    char *before_text = behavior_asset_save(before);
+    char *after_text = behavior_asset_save(editor_behavior_asset(f.graph));
+    char error[256];
+    char *before_disk = before_text
+                          ? asset_text_to_disk(before_text, error, sizeof error)
+                          : NULL;
+    char *after_disk = after_text
+                         ? asset_text_to_disk(after_text, error, sizeof error)
+                         : NULL;
+    bool authored_equal = before_disk && after_disk &&
+                          !strcmp(before_disk, after_disk);
+    free(before_text);
+    free(after_text);
+    free(before_disk);
+    free(after_disk);
     test_check(
-        restored && behavior_asset_equal(before, editor_behavior_asset(f.graph)),
+        restored && authored_equal,
         "Firefight replay, closing both graph tabs, Stop and reopening Weapon "
         "restore its automatic positions without authoring or saving an edit"
     );

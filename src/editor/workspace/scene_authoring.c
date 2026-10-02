@@ -1047,7 +1047,12 @@ void sync_editor_inspection(app_scene_authoring *scene)
     }
     editor_set_inspection_instance(scene->graph_editor, available ? info.instance : NULL);
     editor_set_inspection_run(scene->graph_editor, run);
-    editor_set_inspection_trace(scene->graph_editor, trace, trace_count);
+    editor_set_inspection_trace_revision(
+        scene->graph_editor,
+        trace,
+        trace_count,
+        available ? behavior_instance_trace_revision(info.instance) : 0
+    );
 }
 
 int app_scene_authoring_set_debug_target(

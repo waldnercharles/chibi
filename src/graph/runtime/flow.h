@@ -167,6 +167,8 @@ extern "C"
      * after Stop until the run is reset or freed. The returned storage is
      * borrowed from the run. */
     const flow_traversal *flow_run_traversals(const flow_run *run, int *count);
+    /* Changes on append, bounded overwrite, reset and recycle, not on reads. */
+    uint64_t flow_run_traversal_revision(const flow_run *run);
     const node *flow_run_current_node(const flow_run *run);
     const char *flow_run_event_name(const flow_run *run);
     const flow_call_frame *flow_run_call_stack(const flow_run *run, int *count);

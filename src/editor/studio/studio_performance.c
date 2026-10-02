@@ -34,12 +34,15 @@ static const uint32_t SERIES_COLORS[SERIES_COUNT] = { 0x6f9fe8ff,
                                                       0xd9a53dff,
                                                       0xc586c0ff };
 
+static void publish_telemetry(studio *s);
+
 /* Samples only frames the editor runs for input or a playing scene: an idle
  * editor's frames are not worth charting, and charting them would keep it
  * drawing. */
 void studio_performance_sample(studio *s, double delta_seconds)
 {
     if (!studio_active(s)) {
+        publish_telemetry(s);
         return;
     }
     const engine_frame_timing *timing = app_scene_authoring_runtime_timing(s->scene);
@@ -70,6 +73,50 @@ void studio_performance_sample(studio *s, double delta_seconds)
             (size_t)(acount(s->perf) - old) * sizeof *s->perf
         );
         asetlen(s->perf, acount(s->perf) - old);
+    }
+    publish_telemetry(s);
+}
+
+/* Input continues to emit the chart for scrubbing and range easing. Its data
+ * advances independently, retaining every recorded frame between publications. */
+static void publish_telemetry(studio *s)
+{
+    bool playing = app_scene_authoring_runtime_state(s->scene).playing;
+    if (s->perf_publications && playing == s->perf_publish_playing &&
+        s->time < s->perf_publish_next) {
+        return;
+    }
+    int count = acount(s->perf);
+    asetlen(s->perf_published, count);
+    if (count) {
+        memcpy(s->perf_published, s->perf, (size_t)count * sizeof *s->perf);
+    }
+    s->perf_publications++;
+    s->perf_publish_playing = playing;
+    s->perf_publish_next = s->time + (playing ? 1.0 / 20.0 : 0.25);
+    render_radiance_status lighting;
+    s->perf_lighting.available = app_scene_renderer_lighting_status(s->scene->renderer, &lighting);
+    if (!s->perf_lighting.available) {
+        return;
+    }
+    s->perf_lighting.budget_ms = (float)lighting.budget_ms;
+    static const char *const detail[] = { "Full", "Half", "Quarter", "Eighth" };
+    int used = snprintf(
+        s->perf_lighting.text,
+        sizeof s->perf_lighting.text,
+        "Resolution %g \xc2\xb7 color %s \xc2\xb7 gather %s",
+        lighting.resolution,
+        detail[lighting.color],
+        lighting.gather_half ? "Half" : "Full"
+    );
+    if (lighting.adaptive && lighting.rungs > 1) {
+        snprintf(
+            s->perf_lighting.text + used,
+            sizeof s->perf_lighting.text - used,
+            " \xc2\xb7 step %d of %d",
+            lighting.rung + 1,
+            lighting.rungs
+        );
     }
 }
 
@@ -115,45 +162,24 @@ void studio_performance_header(studio *s, int area)
     kit_live_label(k, "readout", "perf-readout", s->perf_readout);
 }
 
-static const char *const COLOR_DETAIL[] = { "Full", "Half", "Quarter", "Eighth" };
-
 /* The scene's GPU time against a frame at target_fps, and the lighting grids
  * adaptive resolution chose. */
 static void lighting_section(studio *s)
 {
     kit *k = s->kit;
-    int count = acount(s->perf);
-    render_radiance_status lighting;
-    if (!app_scene_renderer_lighting_status(s->scene->renderer, &lighting)) {
+    int count = acount(s->perf_published);
+    if (!s->perf_lighting.available) {
         return;
     }
     kit_label(k, "lighting-title", "perf-heading", "Scene GPU and lighting");
-    char text[128];
-    int used = snprintf(
-        text,
-        sizeof text,
-        "Resolution %g \xc2\xb7 color %s \xc2\xb7 gather %s",
-        lighting.resolution,
-        COLOR_DETAIL[lighting.color],
-        lighting.gather_half ? "Half" : "Full"
-    );
-    if (lighting.adaptive && lighting.rungs > 1) {
-        snprintf(
-            text + used,
-            sizeof text - used,
-            " \xc2\xb7 step %d of %d",
-            lighting.rung + 1,
-            lighting.rungs
-        );
-    }
-    kit_label(k, "lighting-state", "perf-status", text);
+    kit_label(k, "lighting-state", "perf-status", s->perf_lighting.text);
     float *times = xmalloc((size_t)(count ? count : 1) * sizeof *times);
     float *ms = xmalloc((size_t)(count ? count : 1) * sizeof *ms);
     int measured = 0;
     for (int i = 0; i < count; i++) {
-        if (s->perf[i].scene_gpu_ms >= 0) {
-            times[measured] = s->perf[i].time;
-            ms[measured++] = s->perf[i].scene_gpu_ms;
+        if (s->perf_published[i].scene_gpu_ms >= 0) {
+            times[measured] = s->perf_published[i].time;
+            ms[measured++] = s->perf_published[i].scene_gpu_ms;
         }
     }
     if (measured) {
@@ -161,9 +187,9 @@ static void lighting_section(studio *s)
         kit_chart_desc chart = {
             .series = &series,
             .series_count = 1,
-            .now = s->perf[count - 1].time,
+            .now = s->perf_published[count - 1].time,
             .window = (float)WINDOW,
-            .reference = (float)lighting.budget_ms,
+            .reference = s->perf_lighting.budget_ms,
             .unit = "ms",
             .precision = 2,
             .live = studio_active(s),
@@ -180,25 +206,25 @@ void studio_performance_body(studio *s, int area)
 {
     (void)area;
     kit *k = s->kit;
-    int count = acount(s->perf);
+    int count = acount(s->perf_published);
     float *times = xmalloc((size_t)(count ? count : 1) * sizeof *times);
     float *frame = xmalloc((size_t)(count ? count : 1) * sizeof *frame);
     float *ms[SERIES_COUNT];
     int running = 0;
     for (int i = 0; i < count; i++) {
-        running += s->perf[i].running;
+        running += s->perf_published[i].running;
     }
     for (int c = 0; c < SERIES_COUNT; c++) {
         ms[c] = xmalloc((size_t)(running ? running : 1) * sizeof *ms[c]);
     }
     float *run_times = xmalloc((size_t)(running ? running : 1) * sizeof *run_times);
     for (int i = 0, r = 0; i < count; i++) {
-        times[i] = s->perf[i].time;
-        frame[i] = s->perf[i].frame_ms;
-        if (s->perf[i].running) {
-            run_times[r] = s->perf[i].time;
+        times[i] = s->perf_published[i].time;
+        frame[i] = s->perf_published[i].frame_ms;
+        if (s->perf_published[i].running) {
+            run_times[r] = s->perf_published[i].time;
             for (int c = 0; c < SERIES_COUNT; c++) {
-                ms[c][r] = s->perf[i].ms[c];
+                ms[c][r] = s->perf_published[i].ms[c];
             }
             r++;
         }
@@ -209,7 +235,7 @@ void studio_performance_body(studio *s, int area)
     kit_chart_desc frame_chart = {
         .series = &frame_series,
         .series_count = 1,
-        .now = count ? s->perf[count - 1].time : 0,
+        .now = count ? s->perf_published[count - 1].time : 0,
         .window = (float)WINDOW,
         .reference = BUDGET_MS,
         .unit = "ms",
@@ -227,7 +253,7 @@ void studio_performance_body(studio *s, int area)
         kit_chart_desc simulation = {
             .series = series,
             .series_count = SERIES_COUNT,
-            .now = count ? s->perf[count - 1].time : 0,
+            .now = count ? s->perf_published[count - 1].time : 0,
             .window = (float)WINDOW,
             .unit = "ms",
             .precision = 2,

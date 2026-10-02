@@ -1,6 +1,7 @@
 #ifndef CHIBI_UI_RML_BACKEND_H
 #define CHIBI_UI_RML_BACKEND_H
 
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -10,6 +11,22 @@ extern "C"
 #endif
 
     typedef struct rml_backend rml_backend;
+
+    typedef struct rml_backend_stats
+    {
+        uint64_t geometry_compiles;
+        uint64_t uploaded_bytes;
+        uint64_t render_passes;
+        uint64_t static_layer_updates;
+        uint64_t static_partial_updates;
+        uint64_t static_commands_replayed; /* Rml paint commands queued into static targets. */
+        uint64_t output_updates;
+        uint64_t texture_composites;
+        uint64_t cached_texture_bytes; /* Current static layer storage. */
+        uint64_t context_updates;
+        uint64_t render_captures;
+        uint64_t retained_frames; /* Frames skipping both context update and capture. */
+    } rml_backend_stats;
 
     typedef enum rml_input_type
     {
@@ -152,11 +169,24 @@ extern "C"
     void rml_backend_update(rml_backend *backend, double delta_seconds);
     /* Called only from the live app's final draw phase, after a Cute GPU context exists. */
     void rml_backend_render(rml_backend *backend);
+    /* Studio opt-in replacement for update + render, in the final draw phase.
+     * Advances the shared clock even when retaining the previous draw commands.
+     * dirty must cover DOM/model/kit/custom-renderer mutations and direct context
+     * updates made through rml_backend_context(). Input, backend resource changes,
+     * actual resize/DP changes and Rml deadlines wake automatically. Visible
+     * kit-code elements keep full traversal until Zep supplies wake deadlines.
+     * External handle/revision changes recompose retained commands in paint order;
+     * otherwise the output and its revision stay unchanged. Borrowed host textures
+     * must remain live through this call. Do not also call update for its delta. */
+    void rml_backend_frame_retained(rml_backend *backend, double delta_seconds, bool dirty);
     /* Whether a render since the last call drew anything the render before it
      * did not, as an animation does each frame; then clears it. */
     bool rml_backend_take_changed(rml_backend *backend);
     /* CF texture handle for the transparent output canvas; zero until the first render. */
     uint64_t rml_backend_texture(const rml_backend *backend);
+    /* Increases when the output pixels are redrawn, including a resized target. */
+    uint64_t rml_backend_texture_revision(const rml_backend *backend);
+    rml_backend_stats rml_backend_get_stats(const rml_backend *backend);
     /* Returns input consumed by RmlUi, as RML_INPUT_CAPTURE_* flags. */
     unsigned rml_backend_process_input(rml_backend *backend, const rml_input *input);
     /* Uses browser paste data for the next RmlUi clipboard read. The Studio
@@ -167,6 +197,14 @@ extern "C"
     void *rml_backend_context(rml_backend *backend);
     /* Bind a host texture to "kit:<name>" sources, e.g. the Scene render target. */
     void rml_backend_set_texture(rml_backend *backend, const char *name, uint64_t texture);
+    /* A retained producer supplies its content revision even when the GPU handle
+     * stays the same. The ordinary setter treats each call as new content. */
+    void rml_backend_set_texture_revision(
+        rml_backend *backend,
+        const char *name,
+        uint64_t texture,
+        uint64_t revision
+    );
     /* Cursor requested by the hovered element's RCSS `cursor` property. */
     const char *rml_backend_cursor(const rml_backend *backend);
     /* Queue the rendered UI over the app canvas; drawn by cf_app_draw_onto_screen. */

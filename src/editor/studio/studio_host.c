@@ -1,6 +1,10 @@
 #include "diagnostics/tracy.h"
 #include "editor/studio/studio_internal.h"
 #include "editor/workspace/editor.h"
+#include "editor/workspace/editor_internal.h"
+#ifdef CHIBI_ENABLE_WEB_TRACE
+#include "editor/studio/studio_graph_internal.h"
+#endif
 #include "platform/cute.h"
 #include "support/array.h"
 #include "support/xalloc.h"
@@ -69,6 +73,85 @@ EMSCRIPTEN_KEEPALIVE int studio_web_paste(const char *text, int meta)
     event.key.down = false;
     SDL_PushEvent(&event);
     return 1;
+}
+#endif
+
+#if defined(__EMSCRIPTEN__) && defined(CHIBI_ENABLE_WEB_TRACE)
+/* Profiling reads counters on demand; it installs no timer or frame callback. */
+EM_JS(void, install_editor_counters, (), {
+    if (Module.chibiEditorCounters) {
+        return;
+    }
+    Object.defineProperty(Module, 'chibiEditorCounters', {
+        value: function() {
+            return JSON.parse(UTF8ToString(_studio_web_counters()));
+        },
+        writable: false,
+        configurable: false
+});
+})
+
+EMSCRIPTEN_KEEPALIVE const char *studio_web_counters()
+{
+    static char json[2048];
+    if (!web_studio) {
+        return "null";
+    }
+    const studio *s = web_studio;
+    rml_backend_stats host = rml_backend_get_stats(s->backend);
+    rml_backend_stats graph = s->graph.backend
+                                ? rml_backend_get_stats(s->graph.backend)
+                                : (rml_backend_stats){ 0 };
+    const struct studio_graph_calculations *cache = s->graph.calculations;
+    snprintf(
+        json,
+        sizeof json,
+        "{\"host\":{\"geometry_compiles\":%llu,\"uploaded_bytes\":%llu,"
+        "\"render_passes\":%llu,\"static_layer_updates\":%llu,"
+        "\"static_partial_updates\":%llu,\"static_commands_replayed\":%llu,"
+        "\"output_updates\":%llu,\"texture_composites\":%llu,\"cached_texture_"
+        "bytes\":%llu,\"context_updates\":%llu,\"render_captures\":%llu,"
+        "\"retained_frames\":%llu},"
+        "\"graph\":{\"geometry_compiles\":%llu,\"uploaded_bytes\":%llu,"
+        "\"render_passes\":%llu,\"static_layer_updates\":%llu,"
+        "\"static_partial_updates\":%llu,\"static_commands_replayed\":%llu,"
+        "\"output_updates\":%llu,\"texture_composites\":%llu,\"cached_texture_"
+        "bytes\":%llu,\"context_updates\":%llu,\"render_captures\":%llu,"
+        "\"retained_frames\":%llu},"
+        "\"ui_emissions\":%llu,\"telemetry_publications\":%llu,"
+        "\"graph_cache\":{\"measurements\":%u,"
+        "\"route_preparations\":%u,\"reachability_builds\":%u}}",
+        (unsigned long long)host.geometry_compiles,
+        (unsigned long long)host.uploaded_bytes,
+        (unsigned long long)host.render_passes,
+        (unsigned long long)host.static_layer_updates,
+        (unsigned long long)host.static_partial_updates,
+        (unsigned long long)host.static_commands_replayed,
+        (unsigned long long)host.output_updates,
+        (unsigned long long)host.texture_composites,
+        (unsigned long long)host.cached_texture_bytes,
+        (unsigned long long)host.context_updates,
+        (unsigned long long)host.render_captures,
+        (unsigned long long)host.retained_frames,
+        (unsigned long long)graph.geometry_compiles,
+        (unsigned long long)graph.uploaded_bytes,
+        (unsigned long long)graph.render_passes,
+        (unsigned long long)graph.static_layer_updates,
+        (unsigned long long)graph.static_partial_updates,
+        (unsigned long long)graph.static_commands_replayed,
+        (unsigned long long)graph.output_updates,
+        (unsigned long long)graph.texture_composites,
+        (unsigned long long)graph.cached_texture_bytes,
+        (unsigned long long)graph.context_updates,
+        (unsigned long long)graph.render_captures,
+        (unsigned long long)graph.retained_frames,
+        (unsigned long long)s->ui_schedule.frames,
+        (unsigned long long)s->perf_publications,
+        cache ? cache->measurements : 0,
+        cache ? cache->route_preparations : 0,
+        cache ? cache->reachability_builds : 0
+    );
+    return json;
 }
 #endif
 
@@ -183,6 +266,7 @@ static bool SDLCALL queue_event(void *user, SDL_Event *event)
         case SDL_EVENT_WINDOW_MOUSE_LEAVE:
         case SDL_EVENT_WINDOW_FOCUS_LOST: apush(s->events, *event); break;
         case SDL_EVENT_SYSTEM_THEME_CHANGED:
+            s->ui_schedule.wake = true;
             s->system_light = SDL_GetSystemTheme() == SDL_SYSTEM_THEME_LIGHT;
             break;
         default: break;
@@ -235,7 +319,7 @@ double studio_idle_time(studio *s)
     if (changed || studio_active(s)) {
         return 0;
     }
-    double idle = kit_idle_time(s->kit);
+    double idle = fmin(kit_idle_time(s->kit), fmax(0, s->ui_schedule.next - s->time));
     return s->graph.kit ? fmin(idle, kit_idle_time(s->graph.kit)) : idle;
 }
 
@@ -334,7 +418,33 @@ static bool to_guest(studio *s, const SDL_Event *e)
     }
 }
 
-static void forward_input(studio *s)
+/* Once the graph owns a pan, interior motion changes only its camera. Keep
+ * the host surface's hover/focus intact; boundaries and every other event
+ * still reach the host so capture, overlays and controls retain their lifecycle. */
+static bool graph_pan_owns_motion(const studio *s, float x, float y)
+{
+    const studio_graph *g = &s->graph;
+    kit_rect r = g->surface.rect;
+    if (g->area < 0 || !studio_graph_active(s) || !g->captured ||
+        g->gesture != STUDIO_GRAPH_PAN || !g->surface.hovered ||
+        !(s->in.down[0] || s->in.down[1] || s->in.down[2]) || s->guest ||
+        kit_wants_pointer(s->kit) || kit_wants_keyboard(s->kit) ||
+        kit_has_popup(s->kit) || (g->kit && kit_has_popup(g->kit)) ||
+        kit_dragging(s->kit, NULL) || studio_inspect_picking(s) || x < r.x ||
+        y < r.y || x >= r.x + r.w || y >= r.y + r.h) {
+        return false;
+    }
+    rml_context *context = rml_backend_context(s->backend);
+    rml_element *hover = rml_context_hover_element(context);
+    /* An authored overlay can appear without changing the native kit stack. */
+    return hover && hover == rml_context_element_at_point(
+                                 context,
+                                 (rml_vec2){ x * s->in.dp_ratio, y * s->in.dp_ratio },
+                                 NULL
+                             );
+}
+
+static bool forward_input(studio *s)
 {
     kit_frame_input *in = &s->in;
     if (acount(s->events)) {
@@ -347,9 +457,17 @@ static void forward_input(studio *s)
     asetlen(s->keys, 0);
     asetlen(s->game_input, 0);
     s->nav_button = 0;
+    bool host_input = false;
     bool recording = s->shortcut_recording != 0;
     for (int i = 0; i < acount(s->events); i++) {
         const SDL_Event *e = &s->events[i];
+        bool graph_motion = e->type == SDL_EVENT_MOUSE_MOTION &&
+                            graph_pan_owns_motion(
+                                s,
+                                to_dp(s, e->motion.x),
+                                to_dp(s, e->motion.y)
+                            );
+        host_input |= !graph_motion;
         if (e->type == SDL_EVENT_WINDOW_FOCUS_LOST) {
             s->shortcut_recording = 0;
             recording = false;
@@ -456,7 +574,9 @@ static void forward_input(studio *s)
                 break;
             default: continue;
         }
-        rml_backend_process_input(s->backend, &input);
+        if (!graph_motion) {
+            rml_backend_process_input(s->backend, &input);
+        }
         apush(s->graph.events, input);
         game_input(s, &input, e);
     }
@@ -468,6 +588,7 @@ static void forward_input(studio *s)
                     ((mod & SDL_KMOD_GUI) ? KIT_MOD_META : 0u);
     /* Text input consumed by the watch must not reach Cute's gameplay buffer twice. */
     cf_input_text_clear();
+    return host_input;
 }
 
 /* The cursor the element under the pointer asks for, the guest's over it. */
@@ -694,6 +815,7 @@ static void sync_theme(studio *s)
         !s->page.error[0]) {
         return;
     }
+    s->ui_schedule.wake = true;
     const char *rcss = s->page.document.rcss ? s->page.document.rcss : "";
     kit_theme(s->kit, rcss);
     if (s->graph.kit) {
@@ -757,6 +879,9 @@ studio *studio_new(app_scene_authoring *scene, engine_viewport *viewport, const 
     studio *s = create(scene, viewport, project_root, NULL);
 #ifdef __EMSCRIPTEN__
     web_studio = s;
+#ifdef CHIBI_ENABLE_WEB_TRACE
+    install_editor_counters();
+#endif
 #endif
     /* A guest opens no project: the window's Studio owns the workspace. */
     studio_projects_load(s);
@@ -839,6 +964,7 @@ void studio_free(studio *s)
     afree(s->calls.rows);
     afree(s->members.uses.items);
     afree(s->perf);
+    afree(s->perf_published);
     afree(s->keys);
     afree(s->game_input);
     studio_projects_free(s);
@@ -862,6 +988,119 @@ void studio_free(studio *s)
     free(s);
 }
 
+/* Runtime inspection is passive; simulation and authored behavior clocks are
+ * independent. Input, edits and kit deadlines bypass this refresh interval. */
+#define STUDIO_INSPECTION_INTERVAL (1.0 / 20.0)
+#define STUDIO_IDLE_INSPECTION_INTERVAL 0.25
+
+static uint64_t ui_state(studio *s)
+{
+    const app_scene_authoring *scene = s->scene;
+    const editor *e = scene->graph_editor;
+    const graph *g = e ? e->active_graph : NULL;
+    const uint64_t values[] = {
+        (uintptr_t)e,
+        e ? editor_edit_revision(e) : 0,
+        e && editor_has_pending_edits(e),
+        (uintptr_t)g,
+        g ? graph_topology_revision(g) : 0,
+        e ? (uint64_t)acount(e->selected) : 0,
+        e ? (uint64_t)acount(e->selected_links) : 0,
+        scene->asset_index_generation,
+        (uintptr_t)scene->history,
+        (uint64_t)scene->selected,
+        (uint64_t)scene->selected_prototype,
+        (uint64_t)scene->active_tab,
+        scene->runtime_playing,
+        scene->preview_playing,
+        scene->property_dirty,
+        scene->edit_dirty,
+        scene->scene_dirty,
+        kit_command_is_open(s->kit),
+        (uint64_t)s->hover_area,
+        (uint64_t)s->focus_area,
+        (uint64_t)acount(s->records),
+        (uint64_t)acount(s->runtime_errors),
+        (uint64_t)acount(scene->actors),
+        (uint64_t)s->tab,
+        (uint64_t)s->maximized,
+        s->pause.active,
+        s->system_light,
+        s->shortcut_recording,
+        s->rename.entity,
+        s->rename.outliner,
+        s->rename.focus,
+        s->graph.graph_id,
+        (uint64_t)s->members.kind,
+        s->members.id,
+        s->graph.comment,
+    };
+    uint64_t key = 1469598103934665603ull;
+    for (int i = 0; i < (int)(sizeof values / sizeof *values); i++) {
+        key = (key ^ values[i]) * 1099511628211ull;
+    }
+    const studio_record_entry *last = acount(s->records) ? &alast(s->records) : NULL;
+    bool graph_motion = graph_pan_owns_motion(s, s->in.mouse_x, s->in.mouse_y);
+    const double transient[] = { graph_motion ? -1e9 : s->in.mouse_x,
+                                 graph_motion ? -1e9 : s->in.mouse_y,
+                                 s->status_time,
+                                 last ? last->time : 0 };
+    const unsigned char *bytes = (const unsigned char *)transient;
+    for (size_t i = 0; i < sizeof transient; i++) {
+        key = (key ^ bytes[i]) * 1099511628211ull;
+    }
+    key = (key ^ (last ? last->kind : 0)) * 1099511628211ull;
+    const char *texts[] = { s->status,
+                            s->ui_error,
+                            last ? last->text : "",
+                            kit_command_query(s->kit) };
+    for (int i = 0; i < (int)(sizeof texts / sizeof *texts); i++) {
+        const unsigned char *p = (const unsigned char *)texts[i];
+        do {
+            key = (key ^ *p) * 1099511628211ull;
+        } while (*p++);
+    }
+    if (!e) {
+        return key;
+    }
+    for (int i = 0; i < acount(e->selected); i++) {
+        key = (key ^ e->selected[i]->id) * 1099511628211ull;
+    }
+    for (int i = 0; i < acount(e->selected_links); i++) {
+        const ed_link_ref *link = &e->selected_links[i];
+        key = (key ^ link->from_id) * 1099511628211ull;
+        key = (key ^ link->from_pin_id) * 1099511628211ull;
+        key = (key ^ link->to_id) * 1099511628211ull;
+        key = (key ^ link->to_pin_id) * 1099511628211ull;
+    }
+    return key;
+}
+
+static bool host_ui_due(studio *s, bool input, bool authored)
+{
+    uint64_t state = ui_state(s);
+    /* A producer can enqueue a toast or restyle between emissions. Observe
+     * immediate work now, but keep positive deadlines at their original time. */
+    bool immediate = kit_idle_time(s->kit) <= 0;
+    bool due = !s->ui_schedule.frames || input || authored || immediate ||
+               s->ui_schedule.wake || s->theme_switching > 0 ||
+               state != s->ui_schedule.state || s->time >= s->ui_schedule.next ||
+               ((s->in.down[0] || s->in.down[1] || s->in.down[2]) &&
+                !graph_pan_owns_motion(s, s->in.mouse_x, s->in.mouse_y)) ||
+               s->in.width != s->ui_schedule.width ||
+               s->in.height != s->ui_schedule.height ||
+               s->in.dp_ratio != s->ui_schedule.ratio ||
+               !studio_prefs_equal(&s->prefs, &s->applied);
+    s->ui_schedule.state = state;
+    if (due) {
+        s->ui_schedule.wake = false;
+        s->ui_schedule.width = s->in.width;
+        s->ui_schedule.height = s->in.height;
+        s->ui_schedule.ratio = s->in.dp_ratio;
+    }
+    return due;
+}
+
 /* One frame of a Studio in a window of `width` by `height` points: the
  * window's, or a guest's in its host's Scene area. */
 static void run(studio *s, double delta_seconds, float width, float height)
@@ -873,29 +1112,36 @@ static void run(studio *s, double delta_seconds, float width, float height)
     s->in.dp_ratio = ratio;
     s->in.width = to_dp(s, width);
     s->in.height = to_dp(s, height);
-    forward_input(s);
+    bool input = forward_input(s);
     studio_performance_sample(s, delta_seconds);
     if (!s->hosted) {
         app_scene_authoring_update(s->scene, s->in.down[0] || kit_wants_keyboard(s->kit));
     }
     sync_theme(s);
-    CHIBI_TRACE_ZONE_BEGIN(sync_zone, "Studio model sync");
-    studio_ui_frame(s);
-    CHIBI_TRACE_ZONE_END(sync_zone);
+    bool authored = studio_ui_tick(s);
     share_project_prefs(s);
     studio_debug_frame(s);
-    CHIBI_TRACE_ZONE_BEGIN(emit_zone, "Studio host emit");
-    kit_begin(s->kit, &s->in);
-    studio_emit(s);
-    studio_inspect_emit(s);
-    kit_end(s->kit);
-    CHIBI_TRACE_ZONE_END(emit_zone);
+    bool update_ui = host_ui_due(s, input, authored);
+    if (update_ui) {
+        CHIBI_TRACE_ZONE_BEGIN(sync_zone, "Studio model sync");
+        studio_ui_frame(s);
+        CHIBI_TRACE_ZONE_END(sync_zone);
+        CHIBI_TRACE_ZONE_BEGIN(emit_zone, "Studio host emit");
+        kit_begin(s->kit, &s->in);
+        studio_emit(s);
+        studio_inspect_emit(s);
+        kit_end(s->kit);
+        s->ui_schedule.frames++;
+        CHIBI_TRACE_ZONE_END(emit_zone);
+    }
     s->typing = kit_wants_keyboard(s->kit) || studio_graph_wants_keyboard(s);
     bool toolbar_shortcuts = !studio_graph_wants_keyboard(s) &&
                              !s->shortcut_recording && studio_ui_shortcut_focus(s);
     if (!s->typing || toolbar_shortcuts) {
         studio_shortcuts(s);
     }
+    bool prefs_dirty = s->theme_switching > 0 ||
+                       !studio_prefs_equal(&s->prefs, &s->applied);
     apply_prefs(s, false);
     CHIBI_TRACE_ZONE_BEGIN(viewport_zone, "Studio viewport");
     draw_viewport(s);
@@ -903,19 +1149,24 @@ static void run(studio *s, double delta_seconds, float width, float height)
     if (s->guest) {
         kit_rect window = guest_window(s);
         run(s->guest, delta_seconds, fmaxf(window.w, 1), fmaxf(window.h, 1));
-        rml_backend_set_texture(
+        rml_backend_set_texture_revision(
             s->backend,
             "guest",
-            rml_backend_texture(s->guest->backend)
+            rml_backend_texture(s->guest->backend),
+            rml_backend_texture_revision(s->guest->backend)
         );
     }
     studio_graph_frame(s, delta_seconds);
-    CHIBI_TRACE_ZONE_BEGIN(update_zone, "Studio host update");
-    rml_backend_update(s->backend, delta_seconds);
-    CHIBI_TRACE_ZONE_END(update_zone);
-    CHIBI_TRACE_ZONE_BEGIN(render_zone, "Studio host render");
-    rml_backend_render(s->backend);
-    CHIBI_TRACE_ZONE_END(render_zone);
+    CHIBI_TRACE_ZONE_BEGIN(frame_zone, "Studio host retained frame");
+    rml_backend_frame_retained(s->backend, delta_seconds, update_ui || prefs_dirty);
+    CHIBI_TRACE_ZONE_END(frame_zone);
+    if (update_ui) {
+        bool playing = app_scene_authoring_runtime_state(s->scene).playing;
+        double refresh = playing ? STUDIO_INSPECTION_INTERVAL
+                                 : STUDIO_IDLE_INSPECTION_INTERVAL;
+        double delay = fmin(refresh, kit_idle_time(s->kit));
+        s->ui_schedule.next = s->time + fmax(0, delay);
+    }
     if (!s->hosted) {
         rml_backend_clear_pending_paste_text();
     }

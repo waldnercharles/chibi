@@ -46,6 +46,8 @@ struct studio_ui
     studio_sources sources;
     ui_mount *areas[STUDIO_AREA_COUNT]; /* each area's panel, when it shows one */
     ui_mount *headers[STUDIO_AREA_COUNT]; /* each area's header */
+    bool wake; /* authored activations waiting for a host emission */
+    uint64_t ui_seen, save_seen, panels_seen;
     uint64_t prefs_seen; /* the settings revision Studio's preferences match */
 };
 
@@ -70,7 +72,9 @@ static ui_mount *mount_holding(studio_ui *ui, rml_element *element)
 
 static void on_event(void *user, const rml_event *event)
 {
-    ui_mount *m = mount_holding(user, event->target);
+    studio_ui *ui = user;
+    ui->wake = true;
+    ui_mount *m = mount_holding(ui, event->target);
     if (m) {
         ui_mount_listen(m, event);
     }
@@ -78,7 +82,9 @@ static void on_event(void *user, const rml_event *event)
 
 static void on_emit(void *user, const rml_event *event, const char *name, const char *value)
 {
-    ui_mount *m = mount_holding(user, event->current);
+    studio_ui *ui = user;
+    ui->wake = true;
+    ui_mount *m = mount_holding(ui, event->current);
     if (m) {
         ui_mount_emit(m, event->current, name, value);
     }
@@ -213,6 +219,7 @@ static void follow_disk(studio *s)
     studio_ui *ui = s->ui;
     char **changed = tree_watch_poll(&ui->files, ui->content_root, ".yaml", s->time);
     bool relaunch = false;
+    ui->wake |= acount(changed) != 0;
     for (int i = 0; i < acount(changed); i++) {
         if (in_folder(ui, changed[i], "/behaviors")) {
             reload_behavior(s, changed[i]);
@@ -279,13 +286,55 @@ static game_save *settings(studio_ui *ui)
     return game_behavior_save(game_prototype_preview_behaviors(ui->world));
 }
 
+static const GameUi *panel_ui(studio_ui *ui, const panel *p);
+
+/* GameUi component setters drive visibility and the document to mount; those
+ * changes are distinct from the runtime UI selector/data revision. */
+static uint64_t panel_state(studio_ui *ui)
+{
+    uint64_t key = 1469598103934665603ull;
+    for (int i = 0; i < acount(ui->panels); i++) {
+        const GameUi *value = panel_ui(ui, &ui->panels[i]);
+        key = (key ^ (value != NULL)) * 1099511628211ull;
+        if (!value) {
+            continue;
+        }
+        key = (key ^ value->hidden) * 1099511628211ull;
+        key = (key ^ (uint64_t)value->order) * 1099511628211ull;
+        for (const char *p = value->document; p && *p; p++) {
+            key = (key ^ (unsigned char)*p) * 1099511628211ull;
+        }
+    }
+    return key;
+}
+
+/* Authored behaviors keep their host clock even when unchanged native panels
+ * have no work. Actual UI/save revisions wake the next model emission. */
+bool studio_ui_tick(studio *s)
+{
+    if (!s->ui) {
+        return false;
+    }
+    studio_ui *ui = s->ui;
+    follow_disk(s);
+    game_prototype_preview_tick(ui->world, s->time);
+    uint64_t model = game_ui_revision(engine_ui(game_prototype_preview_runtime(ui->world)));
+    uint64_t save = game_save_revision(settings(ui));
+    uint64_t panels = panel_state(ui);
+    bool changed = ui->wake || model != ui->ui_seen || save != ui->save_seen ||
+                   panels != ui->panels_seen;
+    ui->wake = false;
+    ui->ui_seen = model;
+    ui->save_seen = save;
+    ui->panels_seen = panels;
+    return changed;
+}
+
 void studio_ui_frame(studio *s)
 {
     if (!s->ui) {
         return;
     }
-    follow_disk(s);
-    game_prototype_preview_tick(s->ui->world, s->time);
     ui_data_sync(&s->ui->data, settings(s->ui));
     ui_data_show_entities(
         &s->ui->data,
@@ -315,6 +364,7 @@ static void send_activations(studio *s, ui_mount *mount, ecs_entity entity)
     studio_ui *ui = s->ui;
     ui_activation a;
     while (ui_mount_take(mount, &a)) {
+        ui->wake = true;
         if (!strcmp(ui_mount_name(mount), "NewProject") &&
             (!strncmp(a.event, "newProject.", 11) || !strcmp(a.event, "Close"))) {
             sync_new_project(s, true);
@@ -558,6 +608,7 @@ void studio_ui_modal(studio *s, const char *name)
 
 void studio_ui_show(studio *s, const char *name)
 {
+    s->ui_schedule.wake = true;
     panel *p = s->ui ? find_panel(s->ui, name) : NULL;
     if (p && panel_ui(s->ui, p)) {
         ecs_entity entity = game_prototype_preview_entity_at(s->ui->world, p->index);

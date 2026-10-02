@@ -3,6 +3,7 @@
  * straight-alpha canvas the host samples or presents. */
 #include "ui/rml_backend.h"
 
+#include "diagnostics/tracy.h"
 #include "platform/cute.h"
 #include "support/array.h"
 #include "support/math.h"
@@ -12,6 +13,7 @@
 #include "ui/rml_shadow.h"
 
 #include <assert.h>
+#include <float.h>
 #include <limits.h>
 #include <math.h>
 #include <stdio.h>
@@ -130,6 +132,7 @@ typedef struct compiled_geometry
 {
     CF_Mesh mesh;
     rml_mesh cpu;
+    CF_Aabb bounds;
 } compiled_geometry;
 
 typedef rml_shadow_layer shadow_layer;
@@ -140,7 +143,32 @@ typedef struct external_texture
 {
     char *name;
     CF_Texture texture;
+    uint64_t revision;
 } external_texture;
+
+typedef struct draw_command
+{
+    uintptr_t geometry, texture;
+    CF_Mesh mesh;
+    CF_Texture gpu_texture;
+    int external;
+    uint64_t revision;
+    rml_vec2 translation;
+    CF_M4x4 transform;
+    CF_Rect scissor;
+    CF_Aabb bounds;
+    bool has_geometry;
+} draw_command;
+
+/* Static paint runs stay on either side of each live host surface. Keeping
+ * their original order also preserves translucent surfaces and foreground UI. */
+typedef struct static_layer
+{
+    CF_Canvas canvas;
+    CF_Mesh mesh;
+    CF_Rect bounds;
+    int first, count;
+} static_layer;
 
 struct rml_backend
 {
@@ -156,7 +184,17 @@ struct rml_backend
     int physical_height;
     bool gpu_ready;
     bool changed; /* the last render drew what the one before it did not */
-    uint64_t frame_hash, drawn_hash; /* of the draw calls in a render */
+    bool output_invalid;
+    bool frame_dirty;
+    bool captured;
+    bool retained_started;
+    bool continuous_render;
+    double next_update_at;
+    int captured_documents;
+    uint64_t output_revision;
+    rml_backend_stats stats;
+    draw_command *commands, *previous;
+    static_layer *layers;
     bool scissor_enabled;
     CF_Rect scissor;
     CF_M4x4 transform;
@@ -173,6 +211,7 @@ struct rml_backend
     bool clip_mask_enabled;
     external_texture *externals;
     CF_Texture white_texture;
+    CF_Texture transparent_texture;
     CF_Shader ui_shader;
     CF_Shader resolve_shader;
     CF_Mesh resolve_mesh;
@@ -338,6 +377,30 @@ static void create_canvas_resources(rml_backend *backend)
     cf_mesh_set_index_buffer(backend->resolve_mesh, sizeof(indices), 32);
     cf_mesh_update_vertex_data(backend->resolve_mesh, (void *)vertices, 4);
     cf_mesh_update_index_data(backend->resolve_mesh, (void *)indices, 6);
+
+    backend->output_invalid = true;
+}
+
+static void release_static_layer(rml_backend *backend, static_layer *layer)
+{
+    if (layer->canvas.id) {
+        backend->stats.cached_texture_bytes -= (uint64_t)layer->bounds.w *
+                                               layer->bounds.h * 4;
+        cf_destroy_canvas(layer->canvas);
+    }
+    if (layer->mesh.id) {
+        cf_destroy_mesh(layer->mesh);
+    }
+    layer->canvas = (CF_Canvas){ 0 };
+    layer->mesh = (CF_Mesh){ 0 };
+}
+
+static void release_static_layers(rml_backend *backend)
+{
+    for (int i = 0; i < acount(backend->layers); i++) {
+        release_static_layer(backend, &backend->layers[i]);
+    }
+    asetlen(backend->layers, 0);
 }
 
 /* Layout can load textures before the first render, as a headless run does,
@@ -351,6 +414,7 @@ static void ensure_gpu(rml_backend *backend)
             return;
         }
         assert(acount(backend->shadow_layers) == 0);
+        release_static_layers(backend);
         cf_destroy_mesh(backend->resolve_mesh);
         cf_destroy_canvas(backend->premultiplied_canvas);
         cf_destroy_canvas(backend->straight_canvas);
@@ -361,6 +425,8 @@ static void ensure_gpu(rml_backend *backend)
     backend->resolve_shader = cf_make_shader_from_source(resolve_vertex_shader, resolve_fragment_shader);
     const uint8_t white[4] = { 255, 255, 255, 255 };
     backend->white_texture = texture_from_pixels(1, 1, white, CF_FILTER_LINEAR);
+    const uint8_t transparent[4] = { 0 };
+    backend->transparent_texture = texture_from_pixels(1, 1, transparent, CF_FILTER_LINEAR);
     backend->gpu_ready = true;
     create_canvas_resources(backend);
 }
@@ -395,7 +461,9 @@ static void destroy_gpu(rml_backend *backend)
     afree(backend->shadow_layers);
     cf_map_free(backend->shadow_filters);
     cf_destroy_texture(backend->white_texture);
+    cf_destroy_texture(backend->transparent_texture);
     cf_destroy_mesh(backend->resolve_mesh);
+    release_static_layers(backend);
     cf_destroy_shader(backend->ui_shader);
     cf_destroy_shader(backend->resolve_shader);
     cf_destroy_canvas(backend->premultiplied_canvas);
@@ -404,15 +472,6 @@ static void destroy_gpu(rml_backend *backend)
 }
 
 /* ---------- Render interface ---------- */
-
-/* Folds `size` bytes into an FNV-1a hash. */
-static void hash_bytes(uint64_t *hash, const void *data, size_t size)
-{
-    const unsigned char *bytes = data;
-    for (size_t i = 0; i < size; i++) {
-        *hash = (*hash ^ bytes[i]) * 0x100000001b3ull;
-    }
-}
 
 static rml_shadow_target shadow_target(const rml_backend *backend)
 {
@@ -446,6 +505,10 @@ static uintptr_t compile_geometry(void *user, rml_mesh mesh)
     cf_mesh_set_index_buffer(gpu_mesh, (int)(mesh.index_count * sizeof(int)), 32);
     cf_mesh_update_vertex_data(gpu_mesh, (void *)mesh.vertices, (int)mesh.vertex_count);
     cf_mesh_update_index_data(gpu_mesh, (void *)mesh.indices, (int)mesh.index_count);
+    backend->frame_dirty = true;
+    backend->stats.geometry_compiles++;
+    backend->stats.uploaded_bytes += mesh.vertex_count * sizeof *mesh.vertices +
+                                     mesh.index_count * sizeof *mesh.indices;
     uintptr_t handle = (uintptr_t)backend->next_geometry++;
     rml_mesh cpu = mesh;
     cpu.vertices = mesh.vertex_count
@@ -467,20 +530,90 @@ static uintptr_t compile_geometry(void *user, rml_mesh mesh)
             mesh.index_count * sizeof *mesh.indices
         );
     }
-    cf_map_set(backend->geometries, handle, ((compiled_geometry){ .mesh = gpu_mesh, .cpu = cpu }));
+    CF_Aabb bounds = { 0 };
+    if (mesh.vertex_count) {
+        bounds.min = bounds.max = cf_v2(
+            mesh.vertices[0].position.x,
+            mesh.vertices[0].position.y
+        );
+        for (size_t i = 1; i < mesh.vertex_count; i++) {
+            bounds.min.x = fminf(bounds.min.x, mesh.vertices[i].position.x);
+            bounds.min.y = fminf(bounds.min.y, mesh.vertices[i].position.y);
+            bounds.max.x = fmaxf(bounds.max.x, mesh.vertices[i].position.x);
+            bounds.max.y = fmaxf(bounds.max.y, mesh.vertices[i].position.y);
+        }
+    }
+    cf_map_set(
+        backend->geometries,
+        handle,
+        ((compiled_geometry){ .mesh = gpu_mesh, .cpu = cpu, .bounds = bounds })
+    );
     return handle;
+}
+
+/* Rectangles are intersected before converting transformed coordinates back
+ * to integers. A distant/large authored transform must not overflow a crop. */
+static CF_Rect intersect_rect(CF_Rect a, CF_Rect b)
+{
+    int64_t left = math_max(a.x, b.x), top = math_max(a.y, b.y);
+    int64_t right = math_min((int64_t)a.x + a.w, (int64_t)b.x + b.w);
+    int64_t bottom = math_min((int64_t)a.y + a.h, (int64_t)b.y + b.h);
+    if (a.w <= 0 || a.h <= 0 || b.w <= 0 || b.h <= 0 || right <= left || bottom <= top) {
+        return (CF_Rect){ 0 };
+    }
+    return (CF_Rect){ (int)left, (int)top, (int)(right - left), (int)(bottom - top) };
+}
+
+static CF_Rect command_bounds(const rml_backend *backend, const draw_command *command)
+{
+    CF_Rect clip = intersect_rect(
+        command->scissor,
+        (CF_Rect){ 0, 0, backend->physical_width, backend->physical_height }
+    );
+    if (!clip.w || !clip.h || !command->has_geometry) {
+        return (CF_Rect){ 0 };
+    }
+    CF_M4x4 model = cf_mul_m4(
+        command->transform,
+        cf_m4_translate(cf_v3(command->translation.x, command->translation.y, 0))
+    );
+    const float *m = model.elements;
+    double left = INFINITY, top = INFINITY, right = -INFINITY, bottom = -INFINITY;
+    for (int i = 0; i < 4; i++) {
+        double x = i & 1 ? command->bounds.max.x : command->bounds.min.x;
+        double y = i & 2 ? command->bounds.max.y : command->bounds.min.y;
+        /* Cute multiplies transform * translation, and the UI shader uses the
+         * first two model rows without a perspective divide. */
+        double tx = m[0] * x + m[4] * y + m[12];
+        double ty = m[1] * x + m[5] * y + m[13];
+        if (!isfinite(tx) || !isfinite(ty)) {
+            return clip;
+        }
+        /* Bound float dot-product rounding as well as raster edges. This
+         * remains conservative when large translated terms cancel on screen. */
+        double error_x = 8 * FLT_EPSILON *
+                         (fabs(m[0] * x) + fabs(m[4] * y) + fabs(m[12]) + 1);
+        double error_y = 8 * FLT_EPSILON *
+                         (fabs(m[1] * x) + fabs(m[5] * y) + fabs(m[13]) + 1);
+        left = fmin(left, tx - error_x);
+        top = fmin(top, ty - error_y);
+        right = fmax(right, tx + error_x);
+        bottom = fmax(bottom, ty + error_y);
+    }
+    /* One pixel protects subpixel edges and model/projection rounding. */
+    left = floor(fmax(left - 1, clip.x));
+    top = floor(fmax(top - 1, clip.y));
+    right = ceil(fmin(right + 1, (double)clip.x + clip.w));
+    bottom = ceil(fmin(bottom + 1, (double)clip.y + clip.h));
+    if (right <= left || bottom <= top) {
+        return (CF_Rect){ 0 };
+    }
+    return (CF_Rect){ (int)left, (int)top, (int)(right - left), (int)(bottom - top) };
 }
 
 static void render_geometry(void *user, uintptr_t geometry, rml_vec2 translation, uintptr_t texture)
 {
     rml_backend *backend = user;
-    /* What a draw shows, so a render that differs from the last one is seen. */
-    hash_bytes(&backend->frame_hash, &geometry, sizeof geometry);
-    hash_bytes(&backend->frame_hash, &translation, sizeof translation);
-    hash_bytes(&backend->frame_hash, &texture, sizeof texture);
-    hash_bytes(&backend->frame_hash, &backend->transform, sizeof backend->transform);
-    hash_bytes(&backend->frame_hash, &backend->scissor_enabled, sizeof backend->scissor_enabled);
-    hash_bytes(&backend->frame_hash, &backend->scissor, sizeof backend->scissor);
     const compiled_geometry *compiled = cf_map_get_ptr(backend->geometries, geometry);
     assert(compiled);
     if (acount(backend->shadow_layers)) {
@@ -493,30 +626,38 @@ static void render_geometry(void *user, uintptr_t geometry, rml_vec2 translation
         );
         return;
     }
-    CF_Texture gpu_texture = backend->white_texture;
+    draw_command command = {
+        .geometry = geometry,
+        .texture = texture,
+        .mesh = compiled->mesh,
+        .bounds = compiled->bounds,
+        .has_geometry = compiled->cpu.vertex_count && compiled->cpu.index_count,
+        .gpu_texture = backend->white_texture,
+        .external = -1,
+        .translation = translation,
+        .transform = backend->transform,
+        .scissor = backend->scissor_enabled
+                     ? backend->scissor
+                     : (CF_Rect){ 0, 0, backend->physical_width, backend->physical_height },
+    };
     if (texture) {
         const held_texture *held = cf_map_get_ptr(backend->textures, texture);
         assert(held);
-        bool external = held->external >= 0;
-        gpu_texture = external ? backend->externals[held->external].texture
-                               : held->texture;
-        if (external && !gpu_texture.id) {
-            return;
+        command.external = held->external;
+        command.gpu_texture = held->external >= 0
+                                ? backend->externals[held->external].texture
+                                : held->texture;
+        if (held->external >= 0) {
+            command.revision = backend->externals[held->external].revision;
         }
     }
-    cf_draw_push_layer(RML_DRAW_LAYER);
-    cf_draw3d_set_texture("u_texture", gpu_texture);
-    cf_draw3d_push();
-    cf_draw3d_transform(backend->transform);
-    cf_draw3d_translate(cf_v3(translation.x, translation.y, 0));
-    cf_draw3d_mesh(compiled->mesh);
-    cf_draw3d_pop();
-    cf_draw_pop_layer();
+    apush(backend->commands, command);
 }
 
 static void release_geometry(void *user, uintptr_t geometry)
 {
     rml_backend *backend = user;
+    backend->frame_dirty = true;
     const compiled_geometry *mesh = cf_map_get_ptr(backend->geometries, geometry);
     if (!mesh) {
         return;
@@ -530,6 +671,7 @@ static void release_geometry(void *user, uintptr_t geometry)
 
 static uintptr_t hold_texture(rml_backend *backend, held_texture held)
 {
+    backend->frame_dirty = true;
     uintptr_t handle = (uintptr_t)backend->next_texture++;
     cf_map_set(backend->textures, handle, held);
     return handle;
@@ -623,6 +765,7 @@ static uintptr_t generate_texture(void *user, const uint8_t *pixels, int width, 
 static void release_texture(void *user, uintptr_t texture)
 {
     rml_backend *backend = user;
+    backend->frame_dirty = true;
     const held_texture *held = cf_map_get_ptr(backend->textures, texture);
     if (!held) {
         return;
@@ -792,6 +935,7 @@ static uintptr_t compile_shadow_filter(void *user, const char *name, float sigma
 static void release_shadow_filter(void *user, uintptr_t filter)
 {
     rml_backend *backend = user;
+    backend->frame_dirty = true;
     cf_map_del(backend->shadow_filters, filter);
 }
 
@@ -827,26 +971,13 @@ static void render_shadow_clip_mask(
 static void enable_scissor_region(void *user, bool enable)
 {
     rml_backend *backend = user;
-    if (enable == backend->scissor_enabled) {
-        return;
-    }
     backend->scissor_enabled = enable;
-    if (enable) {
-        cf_draw_push_scissor(backend->scissor);
-        return;
-    }
-    cf_draw_pop_scissor();
 }
 
 static void set_scissor_region(void *user, rml_rect region)
 {
     rml_backend *backend = user;
     backend->scissor = (CF_Rect){ region.x, region.y, region.width, region.height };
-    if (!backend->scissor_enabled) {
-        return;
-    }
-    cf_draw_pop_scissor();
-    cf_draw_push_scissor(backend->scissor);
 }
 
 static void set_transform(void *user, const float *transform)
@@ -961,6 +1092,9 @@ static bool initialize_rml()
 static void free_backend(rml_backend *backend)
 {
     destroy_gpu(backend);
+    afree(backend->commands);
+    afree(backend->previous);
+    afree(backend->layers);
     for (int i = 0; i < acount(backend->externals); i++) {
         free(backend->externals[i].name);
     }
@@ -1043,6 +1177,18 @@ void rml_backend_destroy(rml_backend *backend)
 void rml_backend_resize(rml_backend *backend, int logical_width, int logical_height, float framebuffer_scale)
 {
     assert(backend);
+    logical_width = math_max(logical_width, 1);
+    logical_height = math_max(logical_height, 1);
+    framebuffer_scale = math_max(framebuffer_scale, 0.01f);
+    if (backend->logical_width == logical_width &&
+        backend->logical_height == logical_height && backend->scale == framebuffer_scale &&
+        backend->physical_width ==
+            math_max(1, (int)lroundf(logical_width * framebuffer_scale)) &&
+        backend->physical_height ==
+            math_max(1, (int)lroundf(logical_height * framebuffer_scale))) {
+        return;
+    }
+    backend->frame_dirty = true;
     backend->logical_width = logical_width;
     backend->logical_height = logical_height;
     backend->scale = framebuffer_scale;
@@ -1052,27 +1198,36 @@ void rml_backend_resize(rml_backend *backend, int logical_width, int logical_hei
 void rml_backend_resize_pixels(rml_backend *backend, int physical_width, int physical_height, float dp_ratio)
 {
     assert(backend);
-    backend->scale = math_max(dp_ratio, 0.01f);
-    backend->physical_width = math_max(physical_width, 1);
-    backend->physical_height = math_max(physical_height, 1);
-    backend->logical_width = math_max(
-        1,
-        (int)lroundf(backend->physical_width / backend->scale)
-    );
-    backend->logical_height = math_max(
-        1,
-        (int)lroundf(backend->physical_height / backend->scale)
-    );
+    dp_ratio = math_max(dp_ratio, 0.01f);
+    physical_width = math_max(physical_width, 1);
+    physical_height = math_max(physical_height, 1);
+    if (backend->physical_width == physical_width &&
+        backend->physical_height == physical_height && backend->scale == dp_ratio) {
+        return;
+    }
+    backend->frame_dirty = true;
+    backend->scale = dp_ratio;
+    backend->physical_width = physical_width;
+    backend->physical_height = physical_height;
+    backend->logical_width = math_max(1, (int)lroundf(physical_width / dp_ratio));
+    backend->logical_height = math_max(1, (int)lroundf(physical_height / dp_ratio));
     apply_dimensions(backend);
+}
+
+static void advance_time(rml_backend *backend, double delta_seconds)
+{
+    backend->elapsed += delta_seconds > 0.0 ? delta_seconds : 0.0;
+    if (elapsed_seconds < backend->elapsed) {
+        elapsed_seconds = backend->elapsed;
+    }
 }
 
 void rml_backend_update(rml_backend *backend, double delta_seconds)
 {
     assert(backend && backend->context);
-    backend->elapsed += delta_seconds > 0.0 ? delta_seconds : 0.0;
-    if (elapsed_seconds < backend->elapsed) {
-        elapsed_seconds = backend->elapsed;
-    }
+    advance_time(backend, delta_seconds);
+    backend->frame_dirty = true;
+    backend->stats.context_updates++;
     driven = backend;
     rml_context_update(backend->context);
     presence_settle(backend->context);
@@ -1098,30 +1253,297 @@ static void pop_target_view()
     cf_draw_pop_viewport();
 }
 
-void rml_backend_render(rml_backend *backend)
+static bool same_command(const draw_command *a, const draw_command *b)
 {
-    assert(backend && backend->context);
-    ensure_gpu(backend);
+    return a->geometry == b->geometry && a->texture == b->texture &&
+           a->gpu_texture.id == b->gpu_texture.id && a->external == b->external &&
+           a->revision == b->revision && a->translation.x == b->translation.x &&
+           a->translation.y == b->translation.y &&
+           memcmp(&a->transform, &b->transform, sizeof a->transform) == 0 &&
+           memcmp(&a->scissor, &b->scissor, sizeof a->scissor) == 0;
+}
 
-    const CF_Rect viewport = { 0, 0, backend->physical_width, backend->physical_height };
-    push_target_view(backend, viewport);
-    cf_draw3d_push_shader(backend->ui_shader);
-    cf_draw3d_push_render_state(premultiplied_blend_state());
-    /* SDL_GPU keeps a pass's last scissor for the draws after it, so geometry
-       RmlUi leaves unclipped is drawn under a scissor of the whole target. */
-    cf_draw_push_scissor(viewport);
-    enable_scissor_region(backend, false);
-    backend->frame_hash = 0xcbf29ce484222325ull;
-    rml_context_render(backend->context);
-    backend->changed |= backend->frame_hash != backend->drawn_hash;
-    backend->drawn_hash = backend->frame_hash;
-    enable_scissor_region(backend, false);
-    cf_render_layers_to(backend->premultiplied_canvas, RML_DRAW_LAYER, RML_DRAW_LAYER, true);
-    destroy_released(backend);
+static bool same_commands(const draw_command *a, int first_a, const draw_command *b, int first_b, int count)
+{
+    for (int i = 0; i < count; i++) {
+        if (!same_command(&a[first_a + i], &b[first_b + i])) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool queue_clipped_command(const draw_command *command, CF_Rect target, CF_Rect clip)
+{
+    if (command->external >= 0 && !command->gpu_texture.id) {
+        return false;
+    }
+    CF_Rect scissor = intersect_rect(command->scissor, intersect_rect(target, clip));
+    if (!scissor.w || !scissor.h) {
+        return false;
+    }
+    scissor.x -= target.x;
+    scissor.y -= target.y;
+    cf_draw_push_scissor(scissor);
+    cf_draw3d_set_texture("u_texture", command->gpu_texture);
+    cf_draw3d_push();
+    cf_draw3d_transform(command->transform);
+    cf_draw3d_translate(cf_v3(command->translation.x, command->translation.y, 0));
+    cf_draw3d_mesh(command->mesh);
+    cf_draw3d_pop();
     cf_draw_pop_scissor();
+    return true;
+}
+
+static void queue_command(const draw_command *command, CF_Rect target)
+{
+    queue_clipped_command(command, target, target);
+}
+
+static void queue_commands(rml_backend *backend, const draw_command *commands, int first, int count, CF_Rect target)
+{
+    for (int i = first; i < first + count; i++) {
+        backend->stats.static_commands_replayed += queue_clipped_command(&commands[i], target, target);
+    }
+}
+
+static void render_pass(rml_backend *backend, CF_Canvas canvas, bool clear)
+{
+    cf_render_layers_to(canvas, RML_DRAW_LAYER, RML_DRAW_LAYER, clear);
+    backend->stats.render_passes++;
+}
+
+static CF_Rect union_rect(CF_Rect a, CF_Rect b)
+{
+    if (!a.w || !a.h) {
+        return b;
+    }
+    if (!b.w || !b.h) {
+        return a;
+    }
+    int left = math_min(a.x, b.x), top = math_min(a.y, b.y);
+    int right = math_max(a.x + a.w, b.x + b.w);
+    int bottom = math_max(a.y + a.h, b.y + b.h);
+    return (CF_Rect){ left, top, right - left, bottom - top };
+}
+
+static CF_Rect static_bounds(const rml_backend *backend, int first, int count)
+{
+    CF_Rect bounds = { 0 };
+    for (int i = first; i < first + count; i++) {
+        bounds = union_rect(bounds, command_bounds(backend, &backend->commands[i]));
+    }
+    return bounds;
+}
+
+static void push_layer_view(CF_Rect bounds)
+{
+    cf_draw_push_viewport((CF_Rect){ 0, 0, bounds.w, bounds.h });
+    cf_draw3d_push_projection(cf_ortho(
+        (float)bounds.x,
+        (float)(bounds.x + bounds.w),
+        (float)(bounds.y + bounds.h),
+        (float)bounds.y,
+        -1,
+        1
+    ));
+}
+
+static void pop_layer_view()
+{
+    cf_draw3d_pop_projection();
+    cf_draw_pop_viewport();
+}
+
+/* Keep the previous run when its structure and crop are unchanged. Old
+ * commands contribute copied bounds only; their resources may already retire
+ * during Rml's capture. Merging all changes into one rectangle avoids drawing
+ * translucent commands twice where dirty regions overlap. */
+static bool update_static_region(rml_backend *backend, static_layer *layer, int first, int count, CF_Rect bounds)
+{
+    if (backend->output_invalid || !layer->canvas.id || layer->first != first ||
+        layer->count != count ||
+        acount(backend->commands) != acount(backend->previous) ||
+        memcmp(&layer->bounds, &bounds, sizeof bounds) != 0) {
+        return false;
+    }
+    /* A changed live-surface partition can move commands between paint runs. */
+    for (int i = 0; i < acount(backend->commands); i++) {
+        if (backend->commands[i].external != backend->previous[i].external) {
+            return false;
+        }
+    }
+    CF_Rect dirty = { 0 };
+    for (int i = first; i < first + count; i++) {
+        const draw_command *command = &backend->commands[i];
+        const draw_command *old = &backend->previous[i];
+        if (same_command(command, old)) {
+            continue;
+        }
+        /* A changed handle whose old resource is still held can mean commands
+         * were reordered or rebound. Keep the full-refresh fallback for it. */
+        if (!cf_map_get_ptr(backend->geometries, command->geometry) ||
+            (command->geometry != old->geometry &&
+             cf_map_get_ptr(backend->geometries, old->geometry)) ||
+            (command->texture && !cf_map_get_ptr(backend->textures, command->texture)) ||
+            (command->texture != old->texture && old->texture &&
+             cf_map_get_ptr(backend->textures, old->texture))) {
+            return false;
+        }
+        dirty = union_rect(dirty, command_bounds(backend, old));
+        dirty = union_rect(dirty, command_bounds(backend, command));
+    }
+    dirty = intersect_rect(dirty, bounds);
+    if (!dirty.w || !dirty.h) {
+        return true;
+    }
+    /* A full dirty crop has no useful incremental work to retain. */
+    if (memcmp(&dirty, &bounds, sizeof bounds) == 0) {
+        return false;
+    }
+    push_layer_view(bounds);
+    CF_Rect scissor = { dirty.x - bounds.x, dirty.y - bounds.y, dirty.w, dirty.h };
+    cf_draw_push_scissor(scissor);
+    cf_draw3d_push_render_state(replace_state());
+    cf_draw3d_set_texture("u_texture", backend->transparent_texture);
+    cf_draw3d_mesh(layer->mesh);
     cf_draw3d_pop_render_state();
-    cf_draw3d_pop_shader();
-    pop_target_view();
+    cf_draw_pop_scissor();
+    for (int i = first; i < first + count; i++) {
+        if (intersect_rect(command_bounds(backend, &backend->commands[i]), dirty)
+                .w) {
+            backend->stats.static_commands_replayed += queue_clipped_command(
+                &backend->commands[i],
+                bounds,
+                dirty
+            );
+        }
+    }
+    /* The replace quad clears only the dirty scissor. Preserve the rest. */
+    render_pass(backend, layer->canvas, false);
+    pop_layer_view();
+    backend->stats.static_layer_updates++;
+    backend->stats.static_partial_updates++;
+    return true;
+}
+
+static void update_layer_mesh(rml_backend *backend, static_layer *layer, CF_Rect bounds)
+{
+    const CF_VertexAttribute attributes[3] = {
+        { "in_position", CF_VERTEX_FORMAT_FLOAT2, (int)offsetof(rml_vertex, position), false },
+        { "in_color", CF_VERTEX_FORMAT_UBYTE4_NORM, (int)offsetof(rml_vertex, color), false },
+        { "in_uv", CF_VERTEX_FORMAT_FLOAT2, (int)offsetof(rml_vertex, tex_coord), false },
+    };
+    const rml_color white = { 255, 255, 255, 255 };
+    float left = (float)bounds.x, top = (float)bounds.y;
+    float right = (float)(bounds.x + bounds.w),
+          bottom = (float)(bounds.y + bounds.h);
+    const rml_vertex vertices[4] = {
+        { { left, top }, white, { 0, 0 } },
+        { { right, top }, white, { 1, 0 } },
+        { { right, bottom }, white, { 1, 1 } },
+        { { left, bottom }, white, { 0, 1 } },
+    };
+    if (!layer->mesh.id) {
+        const uint32_t indices[6] = { 0, 1, 2, 0, 2, 3 };
+        layer->mesh = cf_make_mesh(sizeof vertices, attributes, 3, sizeof(rml_vertex));
+        cf_mesh_set_index_buffer(layer->mesh, sizeof indices, 32);
+        cf_mesh_update_index_data(layer->mesh, (void *)indices, 6);
+        backend->stats.uploaded_bytes += sizeof indices;
+    }
+    cf_mesh_update_vertex_data(layer->mesh, (void *)vertices, 4);
+    backend->stats.uploaded_bytes += sizeof vertices;
+}
+
+static void update_static_layer(rml_backend *backend, int index, int first, int count)
+{
+    if (index == acount(backend->layers)) {
+        apush(backend->layers, ((static_layer){ 0 }));
+    }
+    static_layer *layer = &backend->layers[index];
+    bool same = layer->count == count &&
+                same_commands(backend->commands, first, backend->previous, layer->first, count);
+    if (same && !backend->output_invalid) {
+        layer->first = first;
+        layer->count = count;
+        return;
+    }
+    CF_Rect bounds = static_bounds(backend, first, count);
+    bool partial = update_static_region(backend, layer, first, count, bounds);
+    layer->first = first;
+    layer->count = count;
+    if (partial) {
+        return;
+    }
+    if (!bounds.w || !bounds.h) {
+        release_static_layer(backend, layer);
+        layer->bounds = bounds;
+        return;
+    }
+    if (layer->canvas.id &&
+        (bounds.w != layer->bounds.w || bounds.h != layer->bounds.h)) {
+        backend->stats.cached_texture_bytes -= (uint64_t)layer->bounds.w *
+                                               layer->bounds.h * 4;
+        cf_destroy_canvas(layer->canvas);
+        layer->canvas = (CF_Canvas){ 0 };
+    }
+    if (!layer->mesh.id || memcmp(&bounds, &layer->bounds, sizeof bounds) != 0) {
+        update_layer_mesh(backend, layer, bounds);
+    }
+    layer->bounds = bounds;
+    if (!layer->canvas.id) {
+        layer->canvas = create_canvas(bounds.w, bounds.h, "RmlUi static layer");
+        backend->stats.cached_texture_bytes += (uint64_t)bounds.w * bounds.h * 4;
+    }
+    /* UI commands keep global coordinates. Only the target projection and
+     * integer scissors move into the cropped canvas's coordinate space. */
+    push_layer_view(bounds);
+    queue_commands(backend, backend->commands, first, count, bounds);
+    render_pass(backend, layer->canvas, true);
+    pop_layer_view();
+    backend->stats.static_layer_updates++;
+}
+
+static void update_static_layers(rml_backend *backend)
+{
+    int first = 0, index = 0;
+    for (int i = 0; i <= acount(backend->commands); i++) {
+        if (i < acount(backend->commands) && backend->commands[i].external < 0) {
+            continue;
+        }
+        update_static_layer(backend, index++, first, i - first);
+        first = i + 1;
+    }
+    for (int i = index; i < acount(backend->layers); i++) {
+        release_static_layer(backend, &backend->layers[i]);
+    }
+    asetlen(backend->layers, index);
+}
+
+static void compose_layers(rml_backend *backend, const draw_command *commands)
+{
+    /* All static refresh passes finish before queuing the composite, because
+     * every pass consumes the same dedicated Cute layer. */
+    for (int i = 0; i < acount(backend->layers); i++) {
+        static_layer *layer = &backend->layers[i];
+        if (layer->canvas.id) {
+            cf_draw3d_set_texture("u_texture", cf_canvas_get_target(layer->canvas));
+            cf_draw3d_mesh(layer->mesh);
+        }
+        int next = layer->first + layer->count;
+        if (next < acount(commands)) {
+            queue_command(
+                &commands[next],
+                (CF_Rect){ 0, 0, backend->physical_width, backend->physical_height }
+            );
+            backend->stats.texture_composites++;
+        }
+    }
+    render_pass(backend, backend->premultiplied_canvas, true);
+}
+
+static void resolve_output(rml_backend *backend, CF_Rect viewport)
+{
 
     push_target_view(backend, viewport);
     cf_draw3d_push_shader(backend->resolve_shader);
@@ -1132,11 +1554,170 @@ void rml_backend_render(rml_backend *backend)
     /* Later meshes would otherwise keep the canvas bound past its resize or
      * destroy. */
     cf_draw3d_set_texture("u_texture", (CF_Texture){ 0 });
-    cf_render_layers_to(backend->straight_canvas, RML_DRAW_LAYER, RML_DRAW_LAYER, true);
+    render_pass(backend, backend->straight_canvas, true);
     cf_draw_pop_layer();
     cf_draw3d_pop_render_state();
     cf_draw3d_pop_shader();
     pop_target_view();
+}
+
+static void draw_output(rml_backend *backend, const draw_command *commands, bool capture)
+{
+    const CF_Rect viewport = { 0, 0, backend->physical_width, backend->physical_height };
+    push_target_view(backend, viewport);
+    cf_draw3d_push_shader(backend->ui_shader);
+    cf_draw3d_push_render_state(premultiplied_blend_state());
+    cf_draw_push_layer(RML_DRAW_LAYER);
+    /* Explicit scissor also resets the last SDL_GPU pass's clipping. */
+    cf_draw_push_scissor(viewport);
+    bool external = false;
+    for (int i = 0; i < acount(commands); i++) {
+        external |= commands[i].external >= 0;
+    }
+    if (external) {
+        if (capture) {
+            update_static_layers(backend);
+        }
+        compose_layers(backend, commands);
+    } else {
+        release_static_layers(backend);
+        queue_commands(backend, commands, 0, acount(commands), viewport);
+        render_pass(backend, backend->premultiplied_canvas, true);
+        backend->stats.static_layer_updates += acount(commands) > 0;
+    }
+    cf_draw3d_set_texture("u_texture", (CF_Texture){ 0 });
+    cf_draw_pop_scissor();
+    cf_draw_pop_layer();
+    cf_draw3d_pop_render_state();
+    cf_draw3d_pop_shader();
+    pop_target_view();
+    resolve_output(backend, viewport);
+    backend->output_invalid = false;
+    backend->output_revision++;
+    backend->stats.output_updates++;
+    backend->changed = true;
+}
+
+/* Zep's custom render hook owns timers which do not request Rml updates yet. */
+static bool visible_code(rml_element *element)
+{
+    if (!rml_element_is_visible(element, true)) {
+        return false;
+    }
+    if (strcmp(rml_element_tag_name(element), "kit-code") == 0) {
+        return true;
+    }
+    for (int i = 0; i < rml_element_child_count(element); i++) {
+        if (visible_code(rml_element_child(element, i))) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void rml_backend_render(rml_backend *backend)
+{
+    assert(backend && backend->context);
+    ensure_gpu(backend);
+    asetlen(backend->commands, 0);
+    backend->scissor_enabled = false;
+    backend->transform = cf_m4_identity();
+    backend->stats.render_captures++;
+    if (backend->retained_started) {
+        CHIBI_TRACE_ZONE_BEGIN(capture_zone, "Rml retained capture");
+        rml_context_render(backend->context);
+        CHIBI_TRACE_ZONE_END(capture_zone);
+    } else {
+        rml_context_render(backend->context);
+    }
+
+    int count = acount(backend->commands);
+    bool changed = backend->output_invalid || count != acount(backend->previous) ||
+                   !same_commands(backend->commands, 0, backend->previous, 0, count);
+    if (changed) {
+        if (backend->retained_started) {
+            CHIBI_TRACE_ZONE_BEGIN(output_zone, "Rml retained output");
+            draw_output(backend, backend->commands, true);
+            CHIBI_TRACE_ZONE_END(output_zone);
+        } else {
+            draw_output(backend, backend->commands, true);
+        }
+    }
+    destroy_released(backend);
+    draw_command *old = backend->previous;
+    backend->previous = backend->commands;
+    backend->commands = old;
+    backend->captured = true;
+    backend->frame_dirty = false;
+    /* A custom hook may release a resource after queuing its draw. That draw
+     * completed above, but its command must not be replayed next frame. */
+    for (int i = 0; i < count; i++) {
+        const draw_command *command = &backend->previous[i];
+        if (!cf_map_get_ptr(backend->geometries, command->geometry) ||
+            (command->texture && !cf_map_get_ptr(backend->textures, command->texture))) {
+            backend->frame_dirty = true;
+        }
+    }
+    backend->captured_documents = rml_context_document_count(backend->context);
+    backend->next_update_at = elapsed_seconds +
+                              fmax(0.0, rml_context_next_update_delay(backend->context));
+    if (backend->retained_started) {
+        backend->continuous_render = false;
+        for (int i = 0; i < backend->captured_documents; i++) {
+            backend->continuous_render |= visible_code(
+                rml_context_document(backend->context, i)
+            );
+        }
+    }
+}
+
+static bool refresh_external_commands(rml_backend *backend)
+{
+    bool changed = false;
+    for (int i = 0; i < acount(backend->previous); i++) {
+        draw_command *command = &backend->previous[i];
+        if (command->external < 0) {
+            continue;
+        }
+        const external_texture *external = &backend->externals[command->external];
+        changed |= command->gpu_texture.id != external->texture.id ||
+                   command->revision != external->revision;
+        command->gpu_texture = external->texture;
+        command->revision = external->revision;
+    }
+    return changed;
+}
+
+void rml_backend_frame_retained(rml_backend *backend, double delta_seconds, bool dirty)
+{
+    assert(backend && backend->context);
+    dirty |= !backend->retained_started;
+    backend->retained_started = true;
+    advance_time(backend, delta_seconds);
+    ensure_gpu(backend);
+    /* GetNextUpdateDelay is relative to the last update, not a countdown.
+     * Live requests may shorten the deadline, but must never postpone it. */
+    backend->next_update_at = fmin(
+        backend->next_update_at,
+        elapsed_seconds + fmax(0.0, rml_context_next_update_delay(backend->context))
+    );
+    if (dirty || backend->frame_dirty || !backend->captured || backend->output_invalid ||
+        backend->continuous_render || elapsed_seconds >= backend->next_update_at ||
+        backend->captured_documents != rml_context_document_count(backend->context)) {
+        /* The clock already advanced. Ordinary update semantics remain intact. */
+        CHIBI_TRACE_ZONE_BEGIN(update_zone, "Rml retained update");
+        rml_backend_update(backend, 0.0);
+        CHIBI_TRACE_ZONE_END(update_zone);
+        rml_backend_render(backend);
+        return;
+    }
+    backend->stats.retained_frames++;
+    CHIBI_TRACE_ZONE_BEGIN(composite_zone, "Rml retained composite");
+    if (refresh_external_commands(backend)) {
+        /* Static runs and draw order were fixed by the last capture. */
+        draw_output(backend, backend->previous, false);
+    }
+    CHIBI_TRACE_ZONE_END(composite_zone);
 }
 
 bool rml_backend_take_changed(rml_backend *backend)
@@ -1153,6 +1734,16 @@ uint64_t rml_backend_texture(const rml_backend *backend)
         return 0;
     }
     return cf_canvas_get_target(backend->straight_canvas).id;
+}
+
+uint64_t rml_backend_texture_revision(const rml_backend *backend)
+{
+    return backend->output_revision;
+}
+
+rml_backend_stats rml_backend_get_stats(const rml_backend *backend)
+{
+    return backend->stats;
 }
 
 void *rml_backend_context(rml_backend *backend)
@@ -1231,6 +1822,7 @@ static unsigned capture_of(rml_input_type type)
 unsigned rml_backend_process_input(rml_backend *backend, const rml_input *input)
 {
     assert(backend && backend->context && input);
+    backend->frame_dirty = true;
     driven = backend;
     unsigned capture = consumed(backend, input) ? capture_of(input->type) : 0;
     driven = NULL;
@@ -1257,7 +1849,18 @@ void rml_backend_set_texture(rml_backend *backend, const char *name, uint64_t te
     assert(backend && name);
     /* The lookup may grow externals, so it runs before the array is read. */
     int i = external_index(backend, name);
+    if (texture || backend->externals[i].texture.id != texture) {
+        backend->externals[i].revision++;
+    }
     backend->externals[i].texture = (CF_Texture){ texture };
+}
+
+void rml_backend_set_texture_revision(rml_backend *backend, const char *name, uint64_t texture, uint64_t revision)
+{
+    assert(backend && name);
+    int i = external_index(backend, name);
+    backend->externals[i].texture = (CF_Texture){ texture };
+    backend->externals[i].revision = revision;
 }
 
 const char *rml_backend_cursor(const rml_backend *backend)

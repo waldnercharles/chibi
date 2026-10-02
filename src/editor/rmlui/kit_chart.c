@@ -29,6 +29,7 @@ typedef struct chart_element
     chart_frame frame;
     rml_geometry *geometry;
     bool built;
+    uint32_t line_color, grid_color;
 } chart_element;
 
 typedef struct mesh
@@ -332,8 +333,13 @@ static void chart_render(rml_element *el, void *user)
     if (!manager) {
         return;
     }
+    uint32_t line = pack(rml_element_color(el));
+    uint32_t grid = pack(rml_element_border_top_color(el));
+    chart->built &= chart->line_color == line && chart->grid_color == grid;
     if (!chart->built) {
         chart->built = true;
+        chart->line_color = line;
+        chart->grid_color = grid;
         mesh m = { 0 };
         draw_chart(&m, el, &chart->frame);
         upload(&chart->geometry, manager, &m);
@@ -387,11 +393,13 @@ static void format_value(char out[static VALUE_TEXT], double v, int precision, c
     snprintf(out, VALUE_TEXT, "%.*f%s%s", precision, v, unit && unit[0] ? " " : "", unit ? unit : "");
 }
 
-static void set_dp(rml_element *el, const char *property, double v)
+/* Positioning a live readout is paint work. Absolute top/left changes would
+ * format every unrelated panel in the shared document. */
+static void translate_label(rml_element *el, const char *axis, double v)
 {
     char value[48];
-    snprintf(value, sizeof value, "%.1fdp", v);
-    rml_element_set_property(el, property, value);
+    snprintf(value, sizeof value, "translate%s(%.1fdp)", axis, v);
+    rml_element_set_property(el, "transform", value);
 }
 
 /* The first index whose time is not below t, bisecting as std::lower_bound
@@ -511,7 +519,8 @@ static void label_ticks(node *n, const chart_frame *f, kit_rect r, double step)
         char text[VALUE_TEXT];
         format_value(text, f->ticks[i], step < 1 ? 1 : 0, NULL);
         set_line_text(label, text);
-        set_dp(label, "top", r.h - (f->ticks[i] - f->lo) / (f->hi - f->lo) * r.h - 7);
+        rml_element_set_property(label, "top", "0dp");
+        translate_label(label, "Y", r.h - (f->ticks[i] - f->lo) / (f->hi - f->lo) * r.h - 7);
     }
 }
 
@@ -533,9 +542,10 @@ static void place_badge(chart_state *c, const chart_frame *f, kit_rect r, const 
     char text[VALUE_TEXT];
     format_value(text, v, d->precision, d->unit);
     set_line_text(c->badge, text);
-    set_dp(
+    rml_element_set_property(c->badge, "top", "0dp");
+    translate_label(
         c->badge,
-        "top",
+        "Y",
         math_clamp((float)(r.h - (v - f->lo) / (f->hi - f->lo) * r.h) - 9, 0.0f, math_max(r.h - 18, 0.0f))
     );
 }
@@ -565,7 +575,8 @@ static float scrub(kit *k, node *n, chart_frame *f, kit_rect r, const kit_chart_
     char text[VALUE_TEXT];
     format_value(text, f->hover_value, d->precision, d->unit);
     set_line_text(hover, text);
-    set_dp(hover, "left", math_clamp(f->hover_x + 8, 0.0f, math_max(r.w - 64, 0.0f)));
+    rml_element_set_property(hover, "left", "0dp");
+    translate_label(hover, "X", math_clamp(f->hover_x + 8, 0.0f, math_max(r.w - 64, 0.0f)));
     return hover_time;
 }
 
@@ -593,12 +604,34 @@ static chart_state *chart_state_of(node *n)
     return n->chart;
 }
 
+static bool same_series(const chart_frame *f, const kit_chart_desc *d)
+{
+    if (acount(f->series) != d->series_count) {
+        return false;
+    }
+    for (int i = 0; i < d->series_count; i++) {
+        const chart_series *a = &f->series[i];
+        const kit_chart_series *b = &d->series[i];
+        if (a->color != b->color || acount(a->times) != b->count) {
+            return false;
+        }
+        for (int j = 0; j < b->count; j++) {
+            if (a->times[j] != b->times[j] || a->values[j] != b->values[j]) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
 float kit_chart(kit *k, const char *key, const char *cls, const kit_chart_desc *d)
 {
     node *n = emit(k, key, KIND_BOX, "kit-chart", KIT_CX(k, "chart", { cls, cls != NULL }));
     chart_state *c = chart_state_of(n);
     chart_element *chart = chart_element_of(n->el);
     chart_frame *f = &chart->frame;
+    chart_frame previous = *f;
+    bool samples_same = same_series(f, d);
     double dt = math_clamp(k->in.time - c->time, 0.0, 0.05);
     c->time = k->in.time;
     f->now = d->now;
@@ -623,6 +656,14 @@ float kit_chart(kit *k, const char *key, const char *cls, const kit_chart_desc *
     label_ticks(n, f, r, step);
     place_badge(c, f, r, d);
     float hover_time = scrub(k, n, f, r, d);
-    chart->built = false;
+    bool hover_same = previous.hover_value == f->hover_value ||
+                      (isnan(previous.hover_value) && isnan(f->hover_value));
+    chart->built &= samples_same && previous.now == f->now &&
+                    previous.window == f->window && previous.dp == f->dp &&
+                    previous.lo == f->lo && previous.hi == f->hi &&
+                    previous.reference == f->reference &&
+                    previous.fill == f->fill && previous.live == f->live &&
+                    previous.reduced_motion == f->reduced_motion &&
+                    previous.hover_x == f->hover_x && hover_same;
     return hover_time;
 }

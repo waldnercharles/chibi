@@ -128,6 +128,9 @@ void editor_set_inspection_instance(editor *e, const behavior_instance *instance
     if (!e) {
         return;
     }
+    if (instance != e->inspection_instance) {
+        e->flow_activity_epoch++;
+    }
     if (!instance && e->inspection_instance) {
         e->inspection_trace = NULL;
         e->inspection_trace_count = 0;
@@ -137,6 +140,9 @@ void editor_set_inspection_instance(editor *e, const behavior_instance *instance
 
 void editor_set_inspection_blocked(editor *e, bool blocked)
 {
+    if (e->inspection_blocked != blocked) {
+        e->flow_activity_epoch++;
+    }
     e->inspection_blocked = blocked;
     if (!blocked) {
         return;
@@ -154,7 +160,25 @@ void editor_set_inspection_run(editor *e, const flow_run *run)
     if (!e) {
         return;
     }
+    if (e->inspection_run != run) {
+        e->flow_activity_epoch++;
+    }
     e->inspection_run = run;
+}
+
+void editor_set_inspection_trace_revision(
+    editor *e,
+    const behavior_instance_trace_entry *trace,
+    int count,
+    uint64_t revision
+)
+{
+    if (!e) {
+        return;
+    }
+    e->inspection_trace = trace;
+    e->inspection_trace_count = count > 0 ? count : 0;
+    e->inspection_trace_revision = revision;
 }
 
 void editor_set_inspection_trace(editor *e, const behavior_instance_trace_entry *trace, int count)
@@ -162,8 +186,8 @@ void editor_set_inspection_trace(editor *e, const behavior_instance_trace_entry 
     if (!e) {
         return;
     }
-    e->inspection_trace = trace;
-    e->inspection_trace_count = count > 0 ? count : 0;
+    e->flow_activity_epoch++;
+    editor_set_inspection_trace_revision(e, trace, count, 0);
 }
 
 int editor_log_count(const editor *e)

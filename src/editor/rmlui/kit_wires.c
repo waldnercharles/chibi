@@ -39,6 +39,10 @@ typedef struct wire_data
     float width;
     unsigned flags;
     float flow;
+    float flow_width;
+    uint32_t flow_color;
+    vec2 resolved_from, resolved_to;
+    bool resolved;
 } wire_data;
 
 /* The wires element's user data. */
@@ -49,9 +53,15 @@ typedef struct wires_element
     kit_wire_style style;
     float grid, grid_x, grid_y;
     uint32_t grid_color, grid_major;
-    /* Sampled curves from the last render, in dp relative to the element. */
+    vec2 camera;
+    float dp;
+    bool dirty, flow_dirty, built, grid_built;
+    float grid_dp, grid_step, grid_phase_x, grid_phase_y;
+    uint32_t grid_cached_color, grid_cached_major;
+    rml_vec2 grid_size;
+    /* Retained sampled curves in world pixels. Picking converts to local dp. */
     vec2 **drawn;
-    rml_geometry *geometry;
+    rml_geometry *geometry, *flow_geometry, *grid_geometry;
 } wires_element;
 
 /* The dot element's user data. */
@@ -92,13 +102,14 @@ static void indices(mesh *m, const int *list, int count)
 static void upload(rml_geometry **geometry, rml_render_manager *manager, mesh *m)
 {
     rml_geometry_destroy(*geometry);
-    *geometry = rml_geometry_create(
-        manager,
-        (rml_mesh){ m->vertices,
-                    (size_t)acount(m->vertices),
-                    m->indices,
-                    (size_t)acount(m->indices) }
-    );
+    *geometry = acount(m->vertices) ? rml_geometry_create(
+                                          manager,
+                                          (rml_mesh){ m->vertices,
+                                                      (size_t)acount(m->vertices),
+                                                      m->indices,
+                                                      (size_t)acount(m->indices) }
+                                      )
+                                    : NULL;
     afree(m->vertices);
     afree(m->indices);
 }
@@ -281,9 +292,6 @@ static void draw_wire(mesh *m, const vec2 *path, const wire_data *w, float dp)
     } else {
         stroke(m, path, acount(path), w->width * dp, color, 1);
     }
-    if (w->flags & KIT_WIRE_FLOW) {
-        flow_markers(m, path, w, dp);
-    }
 }
 
 /* Minor lines fade out before they crowd; major lines every fourth. */
@@ -315,9 +323,8 @@ static void grid_lines(mesh *m, const wires_element *w, int axis, rml_vec2 size,
     }
 }
 
-static void draw_grid(mesh *m, const wires_element *w, rml_element *el, float dp)
+static void draw_grid(mesh *m, const wires_element *w, rml_vec2 size, float dp)
 {
-    rml_vec2 size = rml_element_box_size(el, RML_BOX_BORDER);
     if (w->grid * dp <= 0 || size.x <= 0 || size.y <= 0) {
         return;
     }
@@ -346,14 +353,13 @@ static bool resolve(const kit *k, const char *path, vec2 point, vec2 origin, flo
 
 /* Samples wire i into drawn[i] and draws it; drawn[i] stays empty when an end
  * does not resolve. */
-static void wire_path(mesh *m, wires_element *w, int i, vec2 origin, float dp)
+static void wire_path(mesh *m, wires_element *w, int i, float dp)
 {
     const wire_data *wire = &w->wires[i];
-    vec2 a, b;
-    if (!resolve(w->owner, wire->from, wire->from_point, origin, dp, &a) ||
-        !resolve(w->owner, wire->to, wire->to_point, origin, dp, &b)) {
+    if (!wire->resolved) {
         return;
     }
+    vec2 a = wire->resolved_from, b = wire->resolved_to;
     float *knots = NULL;
     apush(knots, a.x / dp);
     apush(knots, a.y / dp);
@@ -367,9 +373,6 @@ static void wire_path(mesh *m, wires_element *w, int i, vec2 origin, float dp)
     shape(path, w->style, knots, acount(knots) / 2, dp);
     afree(knots);
     draw_wire(m, *path, wire, dp);
-    for (int j = 0; j < acount(*path); j++) {
-        (*path)[j] = (vec2){ (*path)[j].x / dp, (*path)[j].y / dp };
-    }
 }
 
 static void drawn_free(wires_element *w)
@@ -378,6 +381,79 @@ static void drawn_free(wires_element *w)
         afree(w->drawn[i]);
     }
     afree(w->drawn);
+}
+
+/* Integer-pixel grids repeat every four lines. Keep an oversized tile and move
+ * it under the viewport clip. Fractional spacing retains the original per-line
+ * pixel snapping, rebuilding only when that snapped pattern can change. */
+static void render_grid(wires_element *w, rml_element *el, rml_render_manager *manager, rml_vec2 origin, float dp)
+{
+    rml_vec2 size = rml_element_box_size(el, RML_BOX_BORDER);
+    float step = w->grid * dp;
+    bool tiled = step > 0 && step == floorf(step);
+    float period = step * 4;
+    float x = tiled ? fmodf(w->grid_x * dp, period) : w->grid_x;
+    float y = tiled ? fmodf(w->grid_y * dp, period) : w->grid_y;
+    if (tiled) {
+        if (x < 0) {
+            x += period;
+        }
+        if (y < 0) {
+            y += period;
+        }
+    }
+    if (!w->grid_built || w->grid_dp != dp || w->grid_step != w->grid ||
+        w->grid_size.x != size.x || w->grid_size.y != size.y ||
+        w->grid_cached_color != w->grid_color || w->grid_cached_major != w->grid_major ||
+        (!tiled && (w->grid_phase_x != x || w->grid_phase_y != y))) {
+        mesh m = { 0 };
+        wires_element pattern = *w;
+        rml_vec2 extent = size;
+        if (tiled) {
+            pattern.grid_x = pattern.grid_y = 0;
+            extent.x += period;
+            extent.y += period;
+        }
+        draw_grid(&m, &pattern, extent, dp);
+        upload(&w->grid_geometry, manager, &m);
+        w->grid_built = true;
+        w->grid_dp = dp;
+        w->grid_step = w->grid;
+        w->grid_size = size;
+        w->grid_cached_color = w->grid_color;
+        w->grid_cached_major = w->grid_major;
+        w->grid_phase_x = x;
+        w->grid_phase_y = y;
+    }
+    if (!tiled) {
+        if (w->grid_geometry) {
+            rml_geometry_render(w->grid_geometry, origin);
+        }
+        return;
+    }
+    rml_rect previous;
+    bool clipped = rml_render_scissor(manager, &previous);
+    int left = (int)floorf(origin.x), top = (int)floorf(origin.y);
+    int right = (int)ceilf(origin.x + size.x),
+        bottom = (int)ceilf(origin.y + size.y);
+    if (clipped) {
+        left = math_max(left, previous.x);
+        top = math_max(top, previous.y);
+        right = math_min(right, previous.x + previous.width);
+        bottom = math_min(bottom, previous.y + previous.height);
+    }
+    if (right <= left || bottom <= top) {
+        return;
+    }
+    rml_rect clip = { left, top, math_max(0, right - left), math_max(0, bottom - top) };
+    rml_render_set_scissor(manager, &clip);
+    if (w->grid_geometry) {
+        rml_geometry_render(
+            w->grid_geometry,
+            (rml_vec2){ origin.x + floorf(-x), origin.y + floorf(-y) }
+        );
+    }
+    rml_render_set_scissor(manager, clipped ? &previous : NULL);
 }
 
 static void wires_render(rml_element *el, void *user)
@@ -389,17 +465,80 @@ static void wires_render(rml_element *el, void *user)
     }
     float dp = rml_context_dp_ratio(rml_element_context(el));
     rml_vec2 origin = rml_element_absolute_offset(el, RML_BOX_BORDER);
-    mesh m = { 0 };
-    draw_grid(&m, w, el, dp);
-    drawn_free(w);
+    render_grid(w, el, manager, origin, dp);
+    w->dirty |= !w->built || w->dp != dp;
     for (int i = 0; i < acount(w->wires); i++) {
-        apush(w->drawn, NULL);
+        wire_data *wire = &w->wires[i];
+        vec2 a = { 0 }, b = { 0 };
+        bool resolved = resolve(
+                            w->owner,
+                            wire->from,
+                            wire->from_point,
+                            (vec2){ origin.x, origin.y },
+                            dp,
+                            &a
+                        ) &&
+                        resolve(
+                            w->owner,
+                            wire->to,
+                            wire->to_point,
+                            (vec2){ origin.x, origin.y },
+                            dp,
+                            &b
+                        );
+        if (!str_eq(wire->from, "")) {
+            a = vec2_add(a, vec2_scale(w->camera, dp));
+        }
+        if (!str_eq(wire->to, "")) {
+            b = vec2_add(b, vec2_scale(w->camera, dp));
+        }
+        w->dirty |= wire->resolved != resolved || wire->resolved_from.x != a.x ||
+                    wire->resolved_from.y != a.y ||
+                    wire->resolved_to.x != b.x || wire->resolved_to.y != b.y;
+        wire->resolved = resolved;
+        wire->resolved_from = a;
+        wire->resolved_to = b;
     }
-    for (int i = 0; i < acount(w->wires); i++) {
-        wire_path(&m, w, i, (vec2){ origin.x, origin.y }, dp);
+    if (w->dirty) {
+        mesh m = { 0 };
+        drawn_free(w);
+        for (int i = 0; i < acount(w->wires); i++) {
+            apush(w->drawn, NULL);
+        }
+        for (int i = 0; i < acount(w->wires); i++) {
+            wire_path(&m, w, i, dp);
+        }
+        upload(&w->geometry, manager, &m);
+        w->flow_dirty = true;
+        w->built = true;
+        w->dirty = false;
+        w->dp = dp;
     }
-    upload(&w->geometry, manager, &m);
-    rml_geometry_render(w->geometry, origin);
+    if (w->flow_dirty) {
+        mesh m = { 0 };
+        for (int i = 0; i < acount(w->wires); i++) {
+            const wire_data *wire = &w->wires[i];
+            if (!(wire->flags & KIT_WIRE_FLOW)) {
+                continue;
+            }
+            wire_data overlay = *wire;
+            overlay.color = wire->flow_color ? wire->flow_color : wire->color;
+            if (wire->flow_width > 0) {
+                overlay.width = wire->flow_width;
+                draw_wire(&m, w->drawn[i], &overlay, dp);
+            }
+            flow_markers(&m, w->drawn[i], &overlay, dp);
+        }
+        upload(&w->flow_geometry, manager, &m);
+        w->flow_dirty = false;
+    }
+    rml_vec2 at = { origin.x - w->camera.x * dp, origin.y - w->camera.y * dp };
+    if (w->geometry) {
+        rml_geometry_render(w->geometry, at);
+    }
+    if (w->flow_geometry) {
+        rml_geometry_render(w->flow_geometry, at);
+    }
 }
 
 /* Frees the wires past count and zeroes new ones. */
@@ -424,6 +563,8 @@ static void wires_release(void *user)
     afree(w->wires);
     drawn_free(w);
     rml_geometry_destroy(w->geometry);
+    rml_geometry_destroy(w->flow_geometry);
+    rml_geometry_destroy(w->grid_geometry);
     free(w);
 }
 
@@ -449,8 +590,20 @@ static void *element_data(rml_element *el, size_t size)
     return data;
 }
 
-static void copy_wire(wire_data *out, const kit_wire *in)
+static bool copy_wire(wire_data *out, const kit_wire *in)
 {
+    float width = in->width > 0 ? in->width : 1.5f;
+    bool changed = !str_eq(out->from, in->from) || !str_eq(out->to, in->to) ||
+                   out->from_point.x != in->from_x ||
+                   out->from_point.y != in->from_y ||
+                   out->to_point.x != in->to_x || out->to_point.y != in->to_y ||
+                   out->color != in->color || out->width != width ||
+                   (out->flags & KIT_WIRE_DASHED) != (in->flags & KIT_WIRE_DASHED) ||
+                   acount(out->via) != in->via_count;
+    for (int v = 0; v < in->via_count && v < acount(out->via); v++) {
+        changed |= out->via[v].x != in->via[v * 2] ||
+                   out->via[v].y != in->via[v * 2 + 1];
+    }
     str_set(&out->from, in->from);
     str_set(&out->to, in->to);
     out->from_point = (vec2){ in->from_x, in->from_y };
@@ -460,9 +613,12 @@ static void copy_wire(wire_data *out, const kit_wire *in)
         apush(out->via, (vec2){ in->via[v * 2], in->via[v * 2 + 1] });
     }
     out->color = in->color;
-    out->width = in->width > 0 ? in->width : 1.5f;
+    out->width = width;
     out->flags = in->flags;
     out->flow = in->flow;
+    out->flow_width = in->flow_width;
+    out->flow_color = in->flow_color;
+    return changed;
 }
 
 void kit_wires(kit *k, const char *key, const char *cls, const kit_wires_desc *d)
@@ -470,7 +626,9 @@ void kit_wires(kit *k, const char *key, const char *cls, const kit_wires_desc *d
     node *n = emit(k, key, KIND_BOX, "kit-wires", KIT_CX(k, "wires", { cls, cls != NULL }));
     wires_element *w = element_data(n->el, sizeof *w);
     w->owner = k;
+    w->dirty |= w->style != d->style || acount(w->wires) != math_max(d->count, 0);
     w->style = d->style;
+    w->camera = (vec2){ d->camera_x, d->camera_y };
     w->grid = d->grid;
     w->grid_x = d->grid_x;
     w->grid_y = d->grid_y;
@@ -478,7 +636,13 @@ void kit_wires(kit *k, const char *key, const char *cls, const kit_wires_desc *d
     w->grid_major = d->grid_major_color;
     resize_wires(w, math_max(d->count, 0));
     for (int i = 0; i < d->count; i++) {
-        copy_wire(&w->wires[i], &d->wires[i]);
+        w->flow_dirty |= (w->wires[i].flags & KIT_WIRE_FLOW) !=
+                             (d->wires[i].flags & KIT_WIRE_FLOW) ||
+                         ((d->wires[i].flags & KIT_WIRE_FLOW) &&
+                          (w->wires[i].flow != d->wires[i].flow ||
+                           w->wires[i].flow_width != d->wires[i].flow_width ||
+                           w->wires[i].flow_color != d->wires[i].flow_color));
+        w->dirty |= copy_wire(&w->wires[i], &d->wires[i]);
     }
 }
 
@@ -495,8 +659,8 @@ int kit_wire_points(const kit *k, const char *path, int index, float *xy, int ma
     const vec2 *points = w->drawn[index];
     int count = acount(points);
     for (int i = 0; i < count && i < max; i++) {
-        xy[i * 2] = points[i].x;
-        xy[i * 2 + 1] = points[i].y;
+        xy[i * 2] = points[i].x / w->dp - w->camera.x;
+        xy[i * 2 + 1] = points[i].y / w->dp - w->camera.y;
     }
     return count;
 }

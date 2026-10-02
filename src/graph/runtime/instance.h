@@ -108,6 +108,7 @@ struct behavior_instance
     char **trace_names;
     int trace_head;
     bool trace_view_dirty;
+    uint64_t trace_revision;
     bool variable_spares;
     int pool_enabled;
     int breakpoints_override;
@@ -204,6 +205,8 @@ void behavior_instance_set_trace_enabled(behavior_instance *bi, int enabled);
  * another activation is recorded, tracing is cleared, or the instance changes
  * definition, is released, reused, or destroyed. */
 const behavior_instance_trace_entry *behavior_instance_trace(const behavior_instance *bi, int *count);
+/* Changes on append, bounded overwrite and clear, not on inspection reads. */
+uint64_t behavior_instance_trace_revision(const behavior_instance *bi);
 
 /* Dispatch a named event (EVT-9). Creates a distinct activation carrying
  * copied parameter values and runs the scheduler. NULL with a structured

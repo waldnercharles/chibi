@@ -515,6 +515,9 @@ typedef struct
 typedef struct
 {
     chart_bounds glyphs[3]; /* badge, ticks, hover */
+    float transform[16];
+    bool transformed;
+    int *unrelated_compiles;
 } chart_mesh;
 
 static void chart_bound(chart_bounds *b, float x, float y)
@@ -529,12 +532,15 @@ static void chart_bound(chart_bounds *b, float x, float y)
     b->bottom = fmaxf(b->bottom, y);
 }
 
-static uintptr_t chart_compile(void *, rml_mesh mesh)
+static uintptr_t chart_compile(void *user, rml_mesh mesh)
 {
+    chart_mesh *capture = user;
     chart_mesh *saved = xcalloc(1, sizeof *saved);
+    bool unrelated = false;
     for (size_t v = 0; v < mesh.vertex_count; v++) {
         rml_vertex vertex = mesh.vertices[v];
         rml_color c = vertex.color;
+        unrelated |= c.r == 255 && c.g == 255 && c.b == 0;
         int group = c.r == 255 && c.g == 0 && c.b == 0 ? 0
                   : c.r == 0 && c.g == 255 && c.b == 0 ? 1
                   : c.r == 0 && c.g == 0 && c.b == 255 ? 2
@@ -546,6 +552,9 @@ static uintptr_t chart_compile(void *, rml_mesh mesh)
                 vertex.position.y
             );
         }
+    }
+    if (unrelated && capture->unrelated_compiles) {
+        (*capture->unrelated_compiles)++;
     }
     return (uintptr_t)saved;
 }
@@ -559,8 +568,16 @@ static void chart_render_mesh(void *user, uintptr_t geometry, rml_vec2 at, uintp
     for (int g = 0; g < 3; g++) {
         chart_bounds b = mesh->glyphs[g];
         if (b.seen) {
-            chart_bound(&output->glyphs[g], b.left + at.x, b.top + at.y);
-            chart_bound(&output->glyphs[g], b.right + at.x, b.bottom + at.y);
+            for (int corner = 0; corner < 4; corner++) {
+                float x = (corner & 1 ? b.right : b.left) + at.x;
+                float y = (corner & 2 ? b.bottom : b.top) + at.y;
+                const float *m = output->transform;
+                chart_bound(
+                    &output->glyphs[g],
+                    output->transformed ? m[0] * x + m[4] * y + m[12] : x,
+                    output->transformed ? m[1] * x + m[5] * y + m[13] : y
+                );
+            }
         }
     }
 }
@@ -581,7 +598,15 @@ static uintptr_t chart_generate_texture(void *, const uint8_t *, int, int)
 static void chart_release_texture(void *, uintptr_t) {}
 static void chart_scissor_enable(void *, bool) {}
 static void chart_scissor(void *, rml_rect) {}
-static void chart_transform(void *, const float *) {}
+static void chart_transform(void *user, const float *transform)
+{
+    chart_mesh *capture = user;
+    capture->transformed = transform != NULL;
+    if (transform) {
+        memcpy(capture->transform, transform, sizeof capture->transform);
+    }
+}
+static void retained_transform(void *, const float *) {}
 
 static const rml_render_interface CHART_RENDERER = {
     chart_compile,        chart_render_mesh,      chart_release_mesh,
@@ -589,15 +614,319 @@ static const rml_render_interface CHART_RENDERER = {
     chart_scissor_enable, chart_scissor,          chart_transform,
 };
 
+/* The renderer boundary is also the geometry upload boundary. Distinct colors
+ * identify custom meshes without counting document backgrounds or font meshes. */
+typedef struct
+{
+    int compiles[3], releases[3];
+    size_t uploaded[3];
+    chart_bounds drawn[3];
+} geometry_capture;
+
+static uintptr_t retained_compile(void *user, rml_mesh mesh)
+{
+    geometry_capture *capture = user;
+    chart_mesh *saved = xcalloc(1, sizeof *saved);
+    for (size_t i = 0; i < mesh.vertex_count; i++) {
+        rml_vertex v = mesh.vertices[i];
+        int group = v.color.r == 241 && v.color.g == 17 && v.color.b == 203 ? 0
+                  : v.color.r == 19 && v.color.g == 227 && v.color.b == 71  ? 1
+                  : (v.color.r == 83 && v.color.g == 149 && v.color.b == 251) ||
+                            (v.color.r == 42 && v.color.g == 75 && v.color.b == 126)
+                      ? 2
+                      : -1;
+        if (group >= 0) {
+            chart_bound(&saved->glyphs[group], v.position.x, v.position.y);
+        }
+    }
+    for (int g = 0; g < 3; g++) {
+        if (saved->glyphs[g].seen) {
+            capture->compiles[g]++;
+            capture->uploaded[g] += mesh.vertex_count * sizeof *mesh.vertices +
+                                    mesh.index_count * sizeof *mesh.indices;
+        }
+    }
+    return (uintptr_t)saved;
+}
+
+static void retained_render(void *user, uintptr_t geometry, rml_vec2 at, uintptr_t texture)
+{
+    if (texture) {
+        return;
+    }
+    geometry_capture *capture = user;
+    chart_mesh *saved = (chart_mesh *)geometry;
+    for (int g = 0; g < 3; g++) {
+        chart_bounds b = saved->glyphs[g];
+        if (b.seen) {
+            chart_bound(&capture->drawn[g], b.left + at.x, b.top + at.y);
+            chart_bound(&capture->drawn[g], b.right + at.x, b.bottom + at.y);
+        }
+    }
+}
+
+static void retained_release(void *user, uintptr_t geometry)
+{
+    geometry_capture *capture = user;
+    chart_mesh *saved = (chart_mesh *)geometry;
+    for (int g = 0; g < 3; g++) {
+        capture->releases[g] += saved->glyphs[g].seen;
+    }
+    free(saved);
+}
+
+static const rml_render_interface RETAINED_RENDERER = {
+    retained_compile,     retained_render,        retained_release,
+    chart_load_texture,   chart_generate_texture, chart_release_texture,
+    chart_scissor_enable, chart_scissor,          retained_transform,
+};
+
+static void wire_geometry_frame(
+    kit *k,
+    rml_context *context,
+    geometry_capture *capture,
+    const kit_wires_desc *desc,
+    float dp
+)
+{
+    kit_frame_input in = { .width = 640, .height = 400, .dp_ratio = dp };
+    rml_context_set_dp_ratio(context, dp);
+    kit_begin(k, &in);
+    kit_root(k, "app");
+    kit_wires(k, "plot", NULL, desc);
+    kit_style(k, "width", "320dp");
+    kit_style(k, "height", "120dp");
+    kit_end(k);
+    rml_context_update(context);
+    memset(capture->drawn, 0, sizeof capture->drawn);
+    rml_context_render(context);
+}
+
+static void geometry_frame(kit *k, rml_context *context, geometry_capture *capture, bool chart, float value)
+{
+    kit_frame_input in = { .width = 640, .height = 400, .dp_ratio = 1 };
+    kit_begin(k, &in);
+    kit_root(k, "app");
+    if (chart) {
+        float times[] = { 0, 30 }, values[] = { value, value };
+        kit_chart_series series = { times, values, 2, 0xf111cbff };
+        kit_chart(
+            k,
+            "plot",
+            NULL,
+            &(kit_chart_desc){
+                .series = &series,
+                .series_count = 1,
+                .now = 30,
+                .min = 0,
+                .max = 1,
+            }
+        );
+    } else {
+        kit_wire wire = { .from_x = 20,
+                          .from_y = 30,
+                          .to_x = value,
+                          .to_y = 90,
+                          .color = 0xf111cbff,
+                          .width = 2 };
+        kit_wires(
+            k,
+            "plot",
+            NULL,
+            &(kit_wires_desc){
+                .wires = &wire,
+                .count = 1,
+                .style = KIT_WIRE_STRAIGHT,
+                .grid = 16,
+                .grid_color = 0x13e347ff,
+                .grid_major_color = 0x13e347ff,
+            }
+        );
+    }
+    kit_style(k, "width", "320dp");
+    kit_style(k, "height", "120dp");
+    kit_end(k);
+    rml_context_update(context);
+    memset(capture->drawn, 0, sizeof capture->drawn);
+    rml_context_render(context);
+}
+
+static bool chart_same_bounds(chart_bounds a, chart_bounds b);
+
+static bool retained_geometry()
+{
+    rml_backend *fonts = rml_backend_create(64, 64, 1);
+    geometry_capture capture = { 0 };
+    rml_renderer *renderer = rml_renderer_create(&RETAINED_RENDERER, &capture);
+    rml_context *context = rml_create_context("retained-geometry", 640, 400, renderer);
+    kit *k = test_kit_create(context, "studio.rml");
+    for (int i = 0; i < 3; i++) {
+        geometry_frame(k, context, &capture, false, 180);
+    }
+    int wire_uploads = capture.compiles[0], grid_uploads = capture.compiles[1];
+    size_t bytes = capture.uploaded[0] + capture.uploaded[1];
+    chart_bounds wire_bounds = capture.drawn[0];
+    float path[16];
+    int count = kit_wire_points(k, "app/plot", 0, path, 8);
+    bool ok = check(
+        count == 4 && path[0] == 20 && path[1] == 30 && path[2] == 36 &&
+            path[3] == 30 && path[4] == 164 && path[5] == 90 && path[6] == 180 &&
+            path[7] == 90 && wire_bounds.seen && capture.drawn[1].seen && bytes > 0,
+        "wire and grid upload visible geometry with the expected picking path"
+    );
+    geometry_frame(k, context, &capture, false, 180);
+    ok &= check(
+        capture.compiles[0] == wire_uploads && capture.compiles[1] == grid_uploads &&
+            capture.uploaded[0] + capture.uploaded[1] == bytes &&
+            chart_same_bounds(wire_bounds, capture.drawn[0]),
+        "unchanged wires and grid render without compiling or uploading again"
+    );
+    geometry_frame(k, context, &capture, false, 240);
+    count = kit_wire_points(k, "app/plot", 0, path, 8);
+    ok &= check(
+        capture.compiles[0] > wire_uploads && count == 4 && path[6] == 240 &&
+            capture.drawn[0].right > wire_bounds.right + 50,
+        "changed wire endpoints update the rendered mesh and picking path"
+    );
+    kit_wire wire = { .from_x = 20,
+                      .from_y = 30,
+                      .to_x = 240,
+                      .to_y = 90,
+                      .color = 0xf111cbff,
+                      .width = 2 };
+    kit_wires_desc wires = { .wires = &wire,
+                             .count = 1,
+                             .style = KIT_WIRE_STRAIGHT,
+                             .grid = 16,
+                             .grid_color = 0x13e347ff,
+                             .grid_major_color = 0x13e347ff };
+    wire_bounds = capture.drawn[0];
+    wire_uploads = capture.compiles[0];
+    grid_uploads = capture.compiles[1];
+    wires.camera_x = wires.grid_x = 10;
+    wires.camera_y = wires.grid_y = 5;
+    wire_geometry_frame(k, context, &capture, &wires, 1);
+    count = kit_wire_points(k, "app/plot", 0, path, 8);
+    ok &= check(
+        capture.compiles[0] == wire_uploads &&
+            capture.compiles[1] == grid_uploads && count == 4 &&
+            path[0] == 10 && path[1] == 25 && path[6] == 230 && path[7] == 85 &&
+            fabsf(capture.drawn[0].left - (wire_bounds.left - 10)) < 0.01f &&
+            fabsf(capture.drawn[0].top - (wire_bounds.top - 5)) < 0.01f,
+        "panning translates retained world wire and grid meshes while picking "
+        "stays screen-local"
+    );
+    wire.flags = KIT_WIRE_FLOW;
+    wire.flow = 0.1f;
+    wire.flow_color = 0x5395fbff;
+    wire.flow_width = 8;
+    wire_geometry_frame(k, context, &capture, &wires, 1);
+    wire_uploads = capture.compiles[0];
+    int flow_uploads = capture.compiles[2];
+    float previous_path[16];
+    memcpy(previous_path, path, (size_t)count * 2 * sizeof *path);
+    wire.flow = 0.2f;
+    wire_geometry_frame(k, context, &capture, &wires, 1);
+    count = kit_wire_points(k, "app/plot", 0, path, 8);
+    ok &= check(
+        capture.compiles[0] == wire_uploads && capture.compiles[1] == grid_uploads &&
+            capture.compiles[2] == flow_uploads + 1 && capture.drawn[2].seen &&
+            count == 4 &&
+            !memcmp(previous_path, path, (size_t)count * 2 * sizeof *path),
+        "flow animation uploads only its marker layer and retains static wire "
+        "paths and grid"
+    );
+    wire_geometry_frame(k, context, &capture, &wires, 1);
+    ok &= check(
+        capture.compiles[0] == wire_uploads && capture.compiles[2] == flow_uploads + 1,
+        "an unchanged flow phase reuses the animated marker mesh too"
+    );
+    chart_bounds hot_bounds = capture.drawn[2];
+    wire.flow_width = 2;
+    wire.flow_color = 0x5395fb80;
+    wire_geometry_frame(k, context, &capture, &wires, 1);
+    ok &= check(
+        capture.compiles[0] == wire_uploads && capture.compiles[1] == grid_uploads &&
+            capture.compiles[2] == flow_uploads + 2 && capture.drawn[2].seen &&
+            capture.drawn[2].top > hot_bounds.top,
+        "decaying hot stroke width and color update only the overlay mesh"
+    );
+    wire_uploads = capture.compiles[0];
+    wire_geometry_frame(k, context, &capture, &wires, 1.5f);
+    count = kit_wire_points(k, "app/plot", 0, path, 8);
+    ok &= check(
+        capture.compiles[0] > wire_uploads &&
+            capture.compiles[1] > grid_uploads && count == 4 && path[0] == 10 &&
+            path[1] == 25 && path[6] == 230 && path[7] == 85,
+        "dp changes regenerate pixel meshes without changing screen-local dp "
+        "picking"
+    );
+    rml_context_set_dp_ratio(context, 1);
+    float via[] = { 120, 50 };
+    wire.via = via;
+    wire.via_count = 1;
+    wire.flags = KIT_WIRE_DASHED;
+    wire_geometry_frame(k, context, &capture, &wires, 1);
+    count = kit_wire_points(k, "app/plot", 0, path, 8);
+    ok &= check(count == 5 && path[4] == 110 && path[5] == 45, "changing a dashed wire's world reroute preserves its screen-local waypoint");
+    wire_uploads = capture.compiles[0];
+    wires.style = KIT_WIRE_CURVED;
+    wire.width = 3;
+    wire_geometry_frame(k, context, &capture, &wires, 1);
+    count = kit_wire_points(k, "app/plot", 0, path, 8);
+    ok &= check(capture.compiles[0] > wire_uploads && count > 5 && path[0] == 10 && path[1] == 25, "wire style and width changes rebuild the retained mesh and sampled picking curve");
+    wires.count = 0;
+    wire_geometry_frame(k, context, &capture, &wires, 1);
+    ok &= check(kit_wire_points(k, "app/plot", 0, path, 8) == 0, "removing a retained wire removes its picking path");
+    for (int i = 0; i < 3; i++) {
+        geometry_frame(k, context, &capture, true, 0.2f);
+    }
+    int chart_uploads = capture.compiles[0];
+    bytes = capture.uploaded[0];
+    chart_bounds chart_bounds_before = capture.drawn[0];
+    geometry_frame(k, context, &capture, true, 0.2f);
+    ok &= check(
+        chart_bounds_before.seen && capture.compiles[0] == chart_uploads &&
+            capture.uploaded[0] == bytes &&
+            chart_same_bounds(chart_bounds_before, capture.drawn[0]),
+        "unchanged chart samples and range render without compiling or "
+        "uploading again"
+    );
+    geometry_frame(k, context, &capture, true, 0.8f);
+    ok &= check(
+        capture.compiles[0] > chart_uploads && capture.drawn[0].seen &&
+            capture.drawn[0].top < chart_bounds_before.top - 40,
+        "changed chart samples upload and render their new height"
+    );
+    kit_destroy(k);
+    rml_remove_context("retained-geometry");
+    rml_release_render_managers();
+    ok &= check(
+        capture.releases[0] == capture.compiles[0] &&
+            capture.releases[1] == capture.compiles[1] &&
+            capture.releases[2] == capture.compiles[2],
+        "retained custom meshes release their renderer resources on removal"
+    );
+    rml_renderer_destroy(renderer);
+    rml_backend_destroy(fonts);
+    return ok;
+}
+
 typedef struct
 {
     rml_context *context;
     kit *k;
     kit_frame_input in;
     chart_mesh drawn;
+    int unrelated_compiles;
     float value, max;
     const char *unit, *typography;
 } chart_fixture;
+
+static void chart_clear_capture(chart_fixture *f)
+{
+    f->drawn = (chart_mesh){ .unrelated_compiles = &f->unrelated_compiles };
+}
 
 static void chart_styles(kit *k, const char *typography)
 {
@@ -627,6 +956,10 @@ static void chart_frame_test(chart_fixture *f)
     kit_begin(f->k, &f->in);
     kit_root(f->k, "app");
     chart_styles(f->k, f->typography);
+    kit_label(f->k, "unrelated", NULL, "Unrelated workspace label");
+    kit_style(f->k, "color", "#ffff00");
+    kit_style(f->k, "position", "absolute");
+    kit_style(f->k, "top", "160dp");
     kit_chart(
         f->k,
         "plot",
@@ -645,7 +978,7 @@ static void chart_frame_test(chart_fixture *f)
     kit_style(f->k, "height", "120dp");
     kit_end(f->k);
     rml_context_update(f->context);
-    f->drawn = (chart_mesh){ 0 };
+    chart_clear_capture(f);
     rml_context_render(f->context);
     f->in.time += 1.0 / 60;
 }
@@ -680,7 +1013,7 @@ static bool chart_fresh_labels(chart_fixture *f, rml_renderer *renderer)
         if (!text || !rml_element_is_visible(label, true)) {
             continue;
         }
-        char cls[64], content[128], key[24], position[32];
+        char cls[64], content[128], key[24], position[32], transform[96];
         rml_element_class_names(label, cls, sizeof cls);
         rml_element_text(text, content, sizeof content);
         snprintf(key, sizeof key, "label-%d", i);
@@ -688,6 +1021,8 @@ static bool chart_fresh_labels(chart_fixture *f, rml_renderer *renderer)
         rml_vec2 at = rml_element_absolute_offset(label, RML_BOX_BORDER);
         snprintf(position, sizeof position, "%gpx", at.y - origin.y);
         kit_style(k, "top", position);
+        rml_element_property(label, "transform", transform, sizeof transform);
+        kit_style(k, "transform", transform);
         if (strstr(cls, "chart-hover")) {
             snprintf(position, sizeof position, "%gpx", at.x - origin.x);
             kit_style(k, "left", position);
@@ -697,10 +1032,10 @@ static bool chart_fresh_labels(chart_fixture *f, rml_renderer *renderer)
     kit_end(k);
     rml_context_update(context);
     /* Both contexts share this renderer; its capture belongs to f. */
-    f->drawn = (chart_mesh){ 0 };
+    chart_clear_capture(f);
     rml_context_render(context);
     reference = f->drawn;
-    f->drawn = (chart_mesh){ 0 };
+    chart_clear_capture(f);
     rml_context_render(f->context);
     rml_element *badge = rml_element_query_selector(plot, ".chart-badge");
     rml_element *ref_badge = rml_element_query_selector(rml_context_document(context, 0), ".chart-badge");
@@ -768,6 +1103,30 @@ static bool chart_label_updates()
     rml_context_process_mouse_move(f.context, (int)f.in.mouse_x, (int)f.in.mouse_y, 0);
     chart_frame_test(&f);
     bool ok = check(chart_fresh_labels(&f, renderer), "initial chart labels match ordinary laid-out glyphs");
+    f.typography = "font-family: inconsolata;";
+    f.value = 2000;
+    chart_frame_test(&f);
+    chart_frame_test(&f);
+    chart_bounds before_move = f.drawn.glyphs[0];
+    int unrelated_before = f.unrelated_compiles;
+    float before_width = rml_element_box_size(rml_element_query_selector(plot, ".chart-badge"), RML_BOX_BORDER)
+                             .x;
+    f.value = 8000;
+    chart_frame_test(&f);
+    float after_width = rml_element_box_size(rml_element_query_selector(plot, ".chart-badge"), RML_BOX_BORDER)
+                            .x;
+    ok &= check(
+        unrelated_before > 0 && f.unrelated_compiles == unrelated_before &&
+            before_width == after_width && before_move.seen && f.drawn.glyphs[0].seen &&
+            fabsf(before_move.top - f.drawn.glyphs[0].top - 72) <= 1,
+        "moving an equal-width latest-value badge paints its new height "
+        "without rebuilding unrelated workspace glyphs"
+    );
+    ok &= check(chart_fresh_labels(&f, renderer), "translated chart labels retain normal laid-out glyph baselines and right anchoring");
+    f.typography = "";
+    f.value = 9;
+    chart_frame_test(&f);
+    chart_frame_test(&f);
     float narrow = rml_element_box_size(rml_element_query_selector(plot, ".chart-badge"), RML_BOX_BORDER)
                        .x;
     f.value = 1234;
@@ -825,9 +1184,271 @@ static bool chart_label_updates()
     return ok;
 }
 
+typedef struct
+{
+    rml_context *context;
+    kit *k;
+    kit_frame_input in;
+    chart_mesh drawn;
+    int unrelated_compiles;
+    double value;
+    int width;
+    const char *typography, *unit;
+} number_label_fixture;
+
+static void number_label_emit(number_label_fixture *f, kit *k, const char *reference)
+{
+    kit_begin(k, &f->in);
+    kit_root(k, "app");
+    char css[512], width[32];
+    snprintf(
+        css,
+        sizeof css,
+        ".number .value { color: #ff0000; %s } "
+        ".number .addon { color: #00ff00; } "
+        ".number .unit { color: #0000ff; } .number-unrelated { color: #ffff00; "
+        "}",
+        f->typography
+    );
+    kit_style_sheet(k, "number-label-test", css);
+    kit_label(k, "unrelated", "number-unrelated", "Workspace content stays still");
+    if (reference) {
+        kit_push(k, "number", NULL, "field number");
+        kit_label(k, "addon", "part addon", "X");
+        kit_label(k, "value", "part value", reference);
+        kit_label(k, "unit", "part unit", f->unit);
+        kit_pop(k);
+    } else {
+        kit_number(
+            k,
+            "number",
+            &f->value,
+            &(kit_number_desc){ .precision = 6, .addon = "X", .unit = f->unit }
+        );
+    }
+    snprintf(width, sizeof width, "%ddp", f->width);
+    kit_style(k, "width", width);
+    kit_end(k);
+}
+
+static void number_label_frame(number_label_fixture *f)
+{
+    number_label_emit(f, f->k, NULL);
+    rml_context_update(f->context);
+    f->drawn = (chart_mesh){ .unrelated_compiles = &f->unrelated_compiles };
+    rml_context_render(f->context);
+    f->in.time += 1.0 / 60;
+}
+
+static bool number_label_reference(number_label_fixture *f, rml_renderer *renderer)
+{
+    char text[128];
+    rml_element *value = rml_element_query_selector(rml_context_document(f->context, 0), ".number .value");
+    rml_element_text(rml_element_first_child(value), text, sizeof text);
+    chart_mesh actual = f->drawn;
+    rml_context *context = rml_create_context("number-label-reference", 640, 400, renderer);
+    rml_context_set_dp_ratio(context, f->in.dp_ratio);
+    kit *k = test_kit_create(context, "studio.rml");
+    number_label_emit(f, k, text);
+    rml_context_update(context);
+    f->drawn = (chart_mesh){ 0 };
+    rml_context_render(context);
+    bool same = true;
+    for (int group = 0; group < 3; group++) {
+        chart_bounds a = actual.glyphs[group], b = f->drawn.glyphs[group];
+        bool matches = chart_same_bounds(a, b);
+        if (!matches) {
+            fprintf(
+                stderr,
+                "  kit: number '%s' group %d glyphs [%g,%g,%g,%g] fresh "
+                "[%g,%g,%g,%g]\n",
+                text,
+                group,
+                a.left,
+                a.top,
+                a.right,
+                a.bottom,
+                b.left,
+                b.top,
+                b.right,
+                b.bottom
+            );
+        }
+        same &= matches;
+    }
+    kit_destroy(k);
+    rml_remove_context("number-label-reference");
+    f->drawn = actual;
+    return same;
+}
+
+static bool number_label_updates()
+{
+    rml_backend *fonts = rml_backend_create(64, 64, 1);
+    number_label_fixture f = { .value = 9, .width = 180, .typography = "", .unit = "m" };
+    rml_renderer *renderer = rml_renderer_create(&CHART_RENDERER, &f.drawn);
+    f.context = rml_create_context("number-label-updates", 640, 400, renderer);
+    f.k = test_kit_create(f.context, "studio.rml");
+    f.in = (kit_frame_input){ .width = 640, .height = 400, .dp_ratio = 1 };
+    number_label_frame(&f);
+    number_label_frame(&f);
+    bool ok = check(number_label_reference(&f, renderer), "initial numeric glyphs match ordinary right-aligned text");
+    const double values[] = { 20.125, -1234.5, 0.000001, 9 };
+    int compiled = f.unrelated_compiles;
+    for (size_t i = 0; i < sizeof values / sizeof *values; i++) {
+        f.value = values[i];
+        number_label_frame(&f);
+        ok &= check(f.unrelated_compiles == compiled, "live fitting numeric values preserve unrelated workspace glyph meshes");
+        ok &= check(number_label_reference(&f, renderer), "growing, shrinking, small and negative numeric glyphs match ordinary right alignment");
+    }
+    f.width = 80;
+    f.value = 1e100;
+    number_label_frame(&f);
+    ok &= check(number_label_reference(&f, renderer), "overlong numeric values retain ordinary ellipsis layout");
+    f.value = -2;
+    number_label_frame(&f);
+    ok &= check(number_label_reference(&f, renderer), "numeric text recovers normal alignment after overflow");
+    f.width = 220;
+    f.unit = "μm";
+    f.typography = "font-family: inconsolata; font-size: 15dp; font-weight: "
+                   "700; line-height: 24dp;";
+    f.value = -20.125;
+    number_label_frame(&f);
+    number_label_frame(&f);
+    ok &= check(number_label_reference(&f, renderer), "numeric labels match fresh typography, units and resized layout");
+    const char *typographies[] = {
+        "font-family: inter; font-size: 15dp; font-weight: 700; line-height: "
+        "24dp;",
+        "font-family: inter; font-size: 18dp; font-weight: 400; line-height: "
+        "24dp;",
+        "font-family: inter; font-size: 18dp; font-weight: 400; line-height: "
+        "32dp;",
+    };
+    for (size_t i = 0; i < sizeof typographies / sizeof *typographies; i++) {
+        f.typography = typographies[i];
+        number_label_frame(&f);
+        number_label_frame(&f);
+        ok &= check(number_label_reference(&f, renderer), "standalone numeric family, size, weight and line-height changes retain ordinary glyph baselines");
+    }
+    f.in.dp_ratio = 1.5f;
+    rml_context_set_dp_ratio(f.context, f.in.dp_ratio);
+    number_label_frame(&f);
+    number_label_frame(&f);
+    ok &= check(number_label_reference(&f, renderer), "unchanged numeric text matches ordinary layout after a dp-ratio change");
+    f.value = 3.5;
+    number_label_frame(&f);
+    ok &= check(number_label_reference(&f, renderer), "numeric glyphs match ordinary layout after a dp-ratio change");
+    f.value = 234.25;
+    number_label_frame(&f);
+    ok &= check(number_label_reference(&f, renderer), "local numeric updates retain the new font and dp baseline");
+    kit_destroy(f.k);
+    rml_remove_context("number-label-updates");
+    rml_release_render_managers();
+    rml_renderer_destroy(renderer);
+    rml_backend_destroy(fonts);
+    return ok;
+}
+
+/* A wrapping inline element receives resize notifications for its fragment
+ * boxes on every real layout, even when the resulting boxes are unchanged. */
+static int variable_font_fragment_resizes;
+
+static void variable_font_resize(rml_element *, void *)
+{
+    variable_font_fragment_resizes++;
+}
+
+/* Equal glyph meshes retain their uploads even through repeated layout.
+ * Fragment resize notifications expose the layout work that uploads miss. */
+static bool variable_font_quiescence()
+{
+    rml_backend *fonts = rml_backend_create(64, 64, 1);
+    int compiles = 0;
+    /* LoadDocument formats before returning, before per-element user data can
+       be attached. This test-only instancer counts that initial layout too. */
+    variable_font_fragment_resizes = 0;
+    chart_mesh capture = { .unrelated_compiles = &compiles };
+    static const rml_element_hooks hooks = { .resize = variable_font_resize };
+    static rml_instancer *instancer;
+    if (!instancer) {
+        instancer = rml_instancer_create(&hooks);
+        rml_register_element_instancer("font-quiescence-probe", instancer);
+    }
+    rml_renderer *renderer = rml_renderer_create(&CHART_RENDERER, &capture);
+    rml_context *context = rml_create_context("variable-font-quiescence", 640, 400, renderer);
+    rml_element *document = rml_context_load_document_from_memory(
+        context,
+        "<rml><head><style>body { --test-font: 13dp; font-family: Inter; "
+        "font-size: var(--test-font); line-height: 1.4; color: #ffff00; }"
+        "div { width: 96dp; } font-quiescence-probe { display: inline; "
+        "white-space: normal; }"
+        "</style></head><body><div><font-quiescence-probe>Variable document "
+        "font wraps into several inline fragments and stays still after "
+        "layout</font-quiescence-probe></div></body></rml>",
+        "variable-font-quiescence.rml"
+    );
+    rml_element_set_property(document, "font-family", "Inter");
+    rml_element_set_property(document, "font-size", "var(--test-font, 13dp)");
+    rml_document_show(document, RML_MODAL_NONE, RML_FOCUS_NONE, RML_SCROLL_FLAG_NONE);
+    bool ok = true;
+    for (int phase = 0; phase < 3; phase++) {
+        /* Loading and showing can lay out the initial fragments synchronously.
+           The mount phase includes that work; later phases measure changes. */
+        int before = compiles,
+            before_layout = phase == 0 ? 0 : variable_font_fragment_resizes;
+        if (phase == 1) {
+            rml_context_set_dp_ratio(context, 1.5f);
+        } else if (phase == 2) {
+            rml_document_add_named_style_sheet(document, "font-change", "body { --test-font: 18dp; }");
+        }
+        for (int frame = 0; frame < 3; frame++) {
+            rml_context_update(context);
+            rml_context_render(context);
+        }
+        ok &= check(compiles > before, "a variable document font renders its initial, rescaled and changed glyphs");
+        if (variable_font_fragment_resizes <= before_layout) {
+            fprintf(stderr, "  kit: variable document font phase %d fragment layouts before=%d after=%d\n", phase, before_layout, variable_font_fragment_resizes);
+        }
+        ok &= check(variable_font_fragment_resizes > before_layout, "variable document font changes lay out the wrapping inline fragments");
+        int settled = compiles, settled_layout = variable_font_fragment_resizes;
+        for (int frame = 0; frame < 12; frame++) {
+            rml_context_update(context);
+            rml_context_render(context);
+        }
+        if (compiles != settled) {
+            fprintf(
+                stderr,
+                "  kit: variable document font phase %d compiled %d additional "
+                "glyph meshes after settling\n",
+                phase,
+                compiles - settled
+            );
+        }
+        ok &= check(compiles == settled, "variable document font retains unchanged glyph uploads after mount, dp and font changes");
+        if (variable_font_fragment_resizes != settled_layout) {
+            fprintf(
+                stderr,
+                "  kit: variable document font phase %d repeated %d inline "
+                "fragment layouts after settling\n",
+                phase,
+                variable_font_fragment_resizes - settled_layout
+            );
+        }
+        ok &= check(variable_font_fragment_resizes == settled_layout, "a variable-based document font stops relaying out inline fragments after mount, dp and font changes");
+    }
+    rml_remove_context("variable-font-quiescence");
+    rml_release_render_managers();
+    rml_renderer_destroy(renderer);
+    rml_backend_destroy(fonts);
+    return ok;
+}
+
 bool test_rmlui_kit()
 {
-    bool ok = chart_label_updates();
+    bool ok = retained_geometry();
+    ok &= chart_label_updates();
+    ok &= number_label_updates();
+    ok &= variable_font_quiescence();
     kit_fixture f = { .value = 10,
                       .second = 3,
                       .color = 0x33669900,

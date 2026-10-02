@@ -211,6 +211,7 @@ void flow_trace_record(flow_run *run, flow_traversal traversal)
             apush(run->traversals, traversal);
         }
         run->traversal_view_dirty = true;
+        run->traversal_revision++;
     }
 }
 
@@ -928,6 +929,7 @@ int flow_run_recycle(flow_run *run)
     aclear(run->traversals);
     run->traversal_head = 0;
     run->traversal_view_dirty = false;
+    run->traversal_revision++;
     arena_reset(&run->input_arena);
     arena_reset(&run->scratch);
     run->input_count = 0;
@@ -1193,6 +1195,7 @@ int flow_run_reset(flow_run *run)
     afree(run->traversal_view);
     run->traversal_head = 0;
     run->traversal_view_dirty = false;
+    run->traversal_revision++;
     run->steps = 0;
     run->whole_function_executed = false;
     run->whole_function = NULL;
@@ -1297,6 +1300,11 @@ const pin_value *flow_run_input_value(const flow_run *run, const node *n, int pi
     }
     const runtime_node *state = flow_runtime_node((flow_run *)run, n);
     return &runtime_node_inputs_const(state)[pin];
+}
+
+uint64_t flow_run_traversal_revision(const flow_run *run)
+{
+    return run ? run->traversal_revision : 0;
 }
 
 const flow_traversal *flow_run_traversals(const flow_run *run, int *count)

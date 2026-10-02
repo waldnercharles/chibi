@@ -152,6 +152,7 @@ void editor_free(editor *e)
     free(e->clipboard);
     free(e->edit_revision_snapshot);
     free(e->saved_snapshot);
+    ed_flow_activity_free(e);
     ed_destroy_preview(e);
     compile_report_free(&e->compile);
     behavior_asset_free(e->compiled);

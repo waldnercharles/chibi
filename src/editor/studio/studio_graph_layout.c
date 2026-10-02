@@ -641,17 +641,20 @@ static node_layout measure_node(const studio *s, node *n)
     return l;
 }
 
-/* Measured once per frame; mutations clear the cache. */
+/* Intrinsic geometry is independent of the viewport and camera. */
 const node_layout *sg_layout_of(const studio *s, node *n)
 {
+    sg_calculations_sync(s);
     studio_graph *g = (studio_graph *)&s->graph;
-    for (int i = 0; i < acount(g->layouts); i++) {
-        if (g->layouts[i].id == n->id) {
-            return &g->layouts[i];
-        }
+    struct studio_graph_calculations *c = g->calculations;
+    int index = cf_map_get(c->layout_index, n->id);
+    if (index) {
+        return &g->layouts[index - 1];
     }
     node_layout l = measure_node(s, n);
     apush(g->layouts, l);
+    cf_map_set(c->layout_index, n->id, acount(g->layouts));
+    c->measurements++;
     return &alast(g->layouts);
 }
 

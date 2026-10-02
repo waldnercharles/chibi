@@ -16,6 +16,111 @@
 
 #include <math.h>
 #include <stdio.h>
+#include <stdlib.h>
+
+/* Invalidation follows authored model revisions, never the camera. Pending
+ * drafts have not received an edit revision yet, so frame boundaries explicitly
+ * invalidate them before geometry is consumed. */
+void sg_calculations_invalidate(studio *s)
+{
+    studio_graph *g = &s->graph;
+    asetlen(g->layouts, 0);
+    if (g->calculations) {
+        cf_map_clear(g->calculations->layout_index);
+        g->calculations->routes_dirty = true;
+        g->calculations->unused_dirty = true;
+    }
+}
+
+void sg_calculations_sync(const studio *s)
+{
+    studio_graph *g = (studio_graph *)&s->graph;
+    if (!g->calculations) {
+        g->calculations = xcalloc(1, sizeof *g->calculations);
+    }
+    struct studio_graph_calculations *c = g->calculations;
+    graph *gr = sg_active_graph(s);
+    editor *e = sg_graph_editor(s);
+    /* Automatic positions are view geometry and are omitted by document
+       snapshots. Restoring the same logical tab can replace its model while
+       retaining its camera; prepare the new model before framing or drawing. */
+    if (c->lifetime != gr->lifetime_id) {
+        e->arrange_pending = true;
+    }
+    int forms = s->prefs.short_bindings | s->prefs.title_flow << 1 |
+                s->prefs.compact_nodes << 2;
+    unsigned edit = editor_edit_revision(e), assets = s->scene->asset_index_generation;
+    unsigned fonts = rml_font_generation();
+    float ratio = studio_pixel_ratio(s);
+    if (c->lifetime != gr->lifetime_id || c->topology != graph_topology_revision(gr) ||
+        c->edit != edit || c->asset != e->asset || c->assets != assets ||
+        c->fonts != fonts || c->forms != forms ||
+        c->choices != e->choices_resolver || c->choices_user != e->choices_user ||
+        c->standard_family != s->prefs.standard_font_family ||
+        c->code_family != s->prefs.code_font_family ||
+        c->standard_size != s->prefs.standard_font_size ||
+        c->code_size != s->prefs.code_font_size || c->pixel_ratio != ratio ||
+        c->comfortable != s->prefs.comfortable) {
+        sg_calculations_invalidate((studio *)s);
+        c->lifetime = gr->lifetime_id;
+        c->topology = graph_topology_revision(gr);
+        c->edit = edit;
+        c->assets = assets;
+        c->fonts = fonts;
+        c->asset = e->asset;
+        c->choices = e->choices_resolver;
+        c->choices_user = e->choices_user;
+        c->forms = forms;
+        c->standard_family = s->prefs.standard_font_family;
+        c->code_family = s->prefs.code_font_family;
+        c->standard_size = s->prefs.standard_font_size;
+        c->code_size = s->prefs.code_font_size;
+        c->pixel_ratio = ratio;
+        c->comfortable = s->prefs.comfortable;
+    }
+}
+
+/* A referenced local definition can change without changing the caller's
+ * topology. Compare its version, once per frame, rather than its nodes/strings. */
+static void calculations_definitions(studio *s)
+{
+    struct studio_graph_calculations *c = s->graph.calculations;
+    const behavior_asset *asset = sg_graph_editor(s)->asset;
+    bool changed = acount(c->definitions) != acount(asset->graphs) * 2;
+    if (!changed) {
+        for (int i = 0; i < acount(asset->graphs); i++) {
+            const graph *gr = asset->graphs[i];
+            changed |= c->definitions[i * 2] != gr->lifetime_id ||
+                       c->definitions[i * 2 + 1] != graph_topology_revision(gr);
+        }
+    }
+    if (!changed) {
+        return;
+    }
+    sg_calculations_invalidate(s);
+    asetlen(c->definitions, 0);
+    for (int i = 0; i < acount(asset->graphs); i++) {
+        apush(c->definitions, asset->graphs[i]->lifetime_id);
+        apush(c->definitions, graph_topology_revision(asset->graphs[i]));
+    }
+}
+
+void sg_calculations_free(studio *s)
+{
+    struct studio_graph_calculations *c = s->graph.calculations;
+    if (!c) {
+        return;
+    }
+    cf_map_free(c->layout_index);
+    afree(c->definitions);
+    afree(c->routing.nodes);
+    afree(c->routing.boxes);
+    afree(c->routing.pos);
+    afree(c->routing.links);
+    afree(c->routing.edge_link);
+    free(c);
+    s->graph.calculations = NULL;
+}
 
 /* ---------- Model access ---------- */
 
@@ -494,12 +599,20 @@ void studio_graph_frame(studio *s, double delta_seconds)
     float scale = studio_pixel_ratio(s);
     float graph_ratio = studio_graph_pixel_ratio(s);
     rml_backend_resize_pixels(g->backend, (int)lroundf(r.w * scale), (int)lroundf(r.h * scale), graph_ratio);
-    asetlen(g->layouts, 0);
+    sg_calculations_sync(s);
+    calculations_definitions(s);
+    if (editor_has_pending_edits(e)) {
+        sg_calculations_invalidate(s);
+    }
     sg_replay(s);
     sg_pointer(s);
     sg_shortcuts(s);
     sg_nav_keys(s);
-    asetlen(g->layouts, 0); /* gestures may have edited the graph */
+    sg_calculations_sync(s);
+    calculations_definitions(s);
+    if (editor_has_pending_edits(e)) {
+        sg_calculations_invalidate(s);
+    } /* gestures and field drafts may have edited the graph */
     sg_camera_step(s);
     if (e->arrange_pending) {
         sg_arrange(s, true);
@@ -549,7 +662,12 @@ void studio_graph_frame(studio *s, double delta_seconds)
     CHIBI_TRACE_ZONE_BEGIN(render_zone, "Studio graph render");
     rml_backend_render(g->backend);
     CHIBI_TRACE_ZONE_END(render_zone);
-    rml_backend_set_texture(s->backend, "graph", rml_backend_texture(g->backend));
+    rml_backend_set_texture_revision(
+        s->backend,
+        "graph",
+        rml_backend_texture(g->backend),
+        rml_backend_texture_revision(g->backend)
+    );
 }
 
 void studio_graph_free(studio *s)
@@ -564,6 +682,7 @@ void studio_graph_free(studio *s)
     afree(g->views);
     afree(g->drag);
     afree(g->box_base);
+    sg_calculations_free(s);
     afree(g->layouts);
     afree(g->unused);
     afree(g->problems);

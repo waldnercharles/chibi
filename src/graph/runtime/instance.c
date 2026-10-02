@@ -376,6 +376,7 @@ static void instance_trace_clear(behavior_instance *bi)
     aclear(bi->trace_view);
     bi->trace_head = 0;
     bi->trace_view_dirty = false;
+    bi->trace_revision++;
 }
 
 static const char *instance_trace_name(behavior_instance *bi, const char *name)
@@ -396,6 +397,7 @@ static const char *instance_trace_name(behavior_instance *bi, const char *name)
 static void instance_trace_push(behavior_instance *bi, behavior_instance_trace_entry entry)
 {
     bi->trace_view_dirty = true;
+    bi->trace_revision++;
     if (acount(bi->trace) == BEHAVIOR_ASSET_INSTANCE_TRACE_MAX) {
         bi->trace[bi->trace_head] = entry;
         bi->trace_head = (bi->trace_head + 1) % BEHAVIOR_ASSET_INSTANCE_TRACE_MAX;
@@ -656,6 +658,11 @@ int behavior_instance_release_activation(behavior_instance *bi, flow_run *act)
     }
     apush(bi->activation_pool, act);
     return 0;
+}
+
+uint64_t behavior_instance_trace_revision(const behavior_instance *bi)
+{
+    return bi ? bi->trace_revision : 0;
 }
 
 const behavior_instance_trace_entry *behavior_instance_trace(const behavior_instance *bi, int *count)

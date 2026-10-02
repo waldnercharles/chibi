@@ -257,14 +257,7 @@ void sg_follow_graph(studio *s)
 
 /* ---------- Arrange ---------- */
 
-typedef struct
-{
-    node **nodes;
-    arrange_box *boxes;
-    arrange_point *pos;
-    arrange_link *links;
-    int *edge_link; /* per edge: its link, or -1 */
-} arrange_input;
+typedef studio_graph_route_input arrange_input;
 
 static int input_index(node *const *nodes, const node *n)
 {
@@ -330,35 +323,37 @@ static arrange_graph arrange_of(const arrange_input *in)
     return (arrange_graph){ in->boxes, acount(in->boxes), in->links, acount(in->links) };
 }
 
-static uint64_t hash(uint64_t h, const void *data, size_t size)
-{
-    const unsigned char *bytes = data;
-    for (size_t i = 0; i < size; i++) {
-        h = (h ^ bytes[i]) * 1099511628211ull;
-    }
-    return h;
-}
-
-/* Lanes for wires that skip a column, rebuilt only when the layout changes. */
+/* Retain the expensive boxes, socket offsets and edge-to-link mapping. Node
+ * positions may change during a gesture before a committed model revision. */
 void sg_update_routes(studio *s)
 {
+    sg_calculations_sync(s);
     studio_graph *g = &s->graph;
-    arrange_input in = { 0 };
-    arrange_input_build(s, &in);
-    uint64_t
-        key = hash(14695981039346656037ull, &s->prefs.wires, sizeof s->prefs.wires);
-    key = hash(key, in.boxes, sizeof *in.boxes * (size_t)acount(in.boxes));
-    key = hash(key, in.pos, sizeof *in.pos * (size_t)acount(in.pos));
-    key = hash(key, in.links, sizeof *in.links * (size_t)acount(in.links));
-    if (key != g->measured_key || !g->routes.start) {
-        arrange_graph layout = arrange_of(&in);
-        arrange_route(&layout, in.pos, (arrange_route_style)s->prefs.wires, &g->routes);
-        g->measured_key = key;
+    struct studio_graph_calculations *c = g->calculations;
+    arrange_input *in = &c->routing;
+    bool changed = c->routes_dirty;
+    if (changed) {
+        arrange_input_free(in);
+        *in = (arrange_input){ 0 };
+        arrange_input_build(s, in);
+        afree(g->edge_route);
+        for (int i = 0; i < acount(in->edge_link); i++) {
+            apush(g->edge_route, in->edge_link[i]);
+        }
+        c->routes_dirty = false;
+        c->route_preparations++;
     }
-    afree(g->edge_route);
-    g->edge_route = in.edge_link;
-    in.edge_link = NULL;
-    arrange_input_free(&in);
+    for (int i = 0; i < acount(in->nodes); i++) {
+        arrange_point pos = { in->nodes[i]->x, in->nodes[i]->y };
+        changed |= in->pos[i].x != pos.x || in->pos[i].y != pos.y;
+        in->pos[i] = pos;
+    }
+    changed |= g->measured_key != (uint64_t)s->prefs.wires + 1;
+    if (changed) {
+        arrange_graph layout = arrange_of(in);
+        arrange_route(&layout, in->pos, (arrange_route_style)s->prefs.wires, &g->routes);
+        g->measured_key = (uint64_t)s->prefs.wires + 1;
+    }
 }
 
 /* A user's Arrange moves every node as one undo step. Opening a graph lays

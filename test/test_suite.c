@@ -913,6 +913,12 @@ int main(int argc, char **argv)
         run_editor_command_checks();
         return fails ? 1 : 0;
     }
+    if (argc > 1 && strcmp(argv[1], "--editor-flow") == 0) {
+        registry_validate();
+        test_editor_flow();
+        run_runtime_instance_checks();
+        return fails ? 1 : 0;
+    }
     if (argc > 1 && strcmp(argv[1], "--scene-documents") == 0) {
         registry_validate();
         test_editor_documents();

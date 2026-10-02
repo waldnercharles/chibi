@@ -502,8 +502,8 @@ extern "C"
     /* Node-editor wires and the canvas grid, drawn by one element (xyflow
      * edges, Blender noodles). A wire end anchors to the center of the element
      * at a kit path, resolved after layout, or to a point; points and waypoints
-     * are in the element's own dp. Wires take the shape arrange_path gives
-     * their style, so the styles follow arrange_route_style. */
+     * are world dp, offset by camera_x/y into the element. Wires take the shape
+     * arrange_path gives their style, so the styles follow arrange_route_style. */
     typedef enum kit_wire_style
     {
         KIT_WIRE_CURVED,
@@ -526,14 +526,17 @@ extern "C"
         uint32_t color; /* 0xRRGGBBAA */
         float width;    /* dp; 0 means 1.5 */
         unsigned flags;
-        float flow; /* seconds, the marker phase with KIT_WIRE_FLOW */
+        float flow;          /* seconds, the marker phase with KIT_WIRE_FLOW */
+        float flow_width;    /* optional hot stroke width in dp; 0 none */
+        uint32_t flow_color; /* hot stroke/marker color; 0 uses color */
     } kit_wire;
     typedef struct kit_wires_desc
     {
         const kit_wire *wires;
         int count;
         kit_wire_style style;
-        float grid;           /* line spacing in dp; 0 draws no grid */
+        float camera_x, camera_y; /* world dp at the element's top-left */
+        float grid;               /* line spacing in dp; 0 draws no grid */
         float grid_x, grid_y; /* grid coordinate at the element's top-left */
         uint32_t grid_color, grid_major_color;
     } kit_wires_desc;

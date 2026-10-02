@@ -1208,7 +1208,13 @@ static void track_pointer(studio *s)
         }
     }
     if (s->in.pressed[0] || s->in.pressed[1] || s->in.pressed[2]) {
-        s->focus_area = s->hover_area;
+        /* Shell controls act on the last editor. A popup can overlap another
+           pane geometrically without transferring its command context. */
+        const char *path = kit_hovered_path(s->kit);
+        bool overlay = path && !strncmp(path, "layer/", 6);
+        if (s->hover_area >= 0 && !overlay && !kit_command_is_open(s->kit)) {
+            s->focus_area = s->hover_area;
+        }
     }
 }
 

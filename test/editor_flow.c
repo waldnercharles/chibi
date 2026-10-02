@@ -1,11 +1,14 @@
-#include "editor/workspace/editor.h"
+#include "editor/workspace/editor_internal.h"
 #include "graph/model/behavior_asset.h"
 #include "graph/model/registry.h"
+#include "graph/runtime/flow_internal.h"
 #include "graph/runtime/instance.h"
 #include "support/array.h"
+#include "support/xalloc.h"
 
 #include <assert.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 static int finish(node *, struct flow_context *)
 {
@@ -89,7 +92,50 @@ void test_editor_flow()
     result = activity(editor, taken);
     assert(result.timestamp == 12 && result.opacity > 0);
     retained[0].traversal.timestamp = 9;
+    editor_set_inspection_trace(editor, retained, 2);
     assert(activity(editor, taken).timestamp == 10);
+
+    /* Warm queries across many edges must not revisit the execution history.
+     * This counts consumed records rather than testing a cache's internals. */
+    enum
+    {
+        MANY = 2048
+    };
+    behavior_instance_trace_entry *many = xcalloc(MANY, sizeof *many);
+    for (int i = 0; i < MANY; i++) {
+        many[i].traversal = (flow_traversal){
+            .kind = GRAPH_EDGE_EXEC,
+            .from_id = 1000 + i,
+            .from_pin_id = 1,
+            .to_id = 9000 + i,
+            .to_pin_id = 2,
+            .timestamp = 20 + i,
+        };
+    }
+    uint64_t before = ed_flow_activity_records_indexed(editor);
+    editor_set_inspection_trace_revision(editor, many, MANY, 1);
+    for (int pass = 0; pass < 8; pass++) {
+        for (int i = 0; i < MANY; i++) {
+            edge probe = { .kind = GRAPH_EDGE_EXEC,
+                           .from_id = many[i].traversal.from_id,
+                           .from_pin_id = 1,
+                           .to_id = many[i].traversal.to_id,
+                           .to_pin_id = 2 };
+            result = activity(editor, &probe);
+            assert(result.traversed && result.timestamp == 20 + i);
+        }
+        /* Runtime hosts report the same borrowed history every frame. */
+        editor_set_inspection_trace_revision(editor, many, MANY, 1);
+    }
+    assert(ed_flow_activity_records_indexed(editor) - before == (uint64_t)(MANY + count));
+    many[0].traversal = record;
+    many[0].traversal.timestamp = 40;
+    editor_set_inspection_trace_revision(editor, many, MANY, 2);
+    assert(activity(editor, taken).timestamp == 40); /* same allocation and length */
+    editor_set_inspection_trace_revision(editor, many, 0, 3);
+    assert(activity(editor, taken).timestamp == 10); /* truncated retained history */
+    editor_set_inspection_trace(editor, retained, 2);
+    free(many);
 
     editor_set_inspection_run(editor, NULL);
     assert(activity(editor, taken).timestamp == 9);
@@ -106,6 +152,56 @@ void test_editor_flow()
     assert(activity(editor, data).opacity == 0);
     assert(flow_run_watch_output(run, condition, 0, &value) == 0 && value.b);
     editor_set_inspection_blocked(editor, false);
+
+    editor_set_inspection_instance(editor, instance);
+    editor_set_inspection_run(editor, run);
+    editor_set_inspection_trace(editor, NULL, 0);
+    uint64_t revision = flow_run_traversal_revision(run);
+    assert(activity(editor, taken).timestamp == 10);
+    assert(flow_run_reset(run) == FLOW_OK);
+    assert(flow_run_traversal_revision(run) != revision);
+    assert(!activity(editor, taken).traversed);
+    record.timestamp = 50;
+    flow_run child = { .parent = run };
+    flow_trace_record(&child, record);
+    assert(activity(editor, taken).timestamp == 50); /* nested call reached its ancestor */
+    afree(child.traversals);
+    uint64_t indexed = ed_flow_activity_records_indexed(editor);
+    editor_tick(editor, 50);
+    float hot = activity(editor, taken).opacity;
+    editor_tick(editor, 55);
+    result = activity(editor, taken);
+    assert(result.timestamp == 50 && result.opacity < hot);
+    assert(ed_flow_activity_records_indexed(editor) == indexed);
+    /* Recording more edges into a bounded run overwrites without changing its
+     * address or final record count. The previously taken edge must disappear. */
+    for (int i = 0; i < 1024; i++) {
+        flow_trace_record(
+            run,
+            (flow_traversal){
+                .kind = GRAPH_EDGE_EXEC,
+                .from_id = 1000 + i,
+                .from_pin_id = 1,
+                .to_id = 9000 + i,
+                .to_pin_id = 2,
+                .timestamp = 60 + i,
+            }
+        );
+    }
+    assert(!activity(editor, taken).traversed);
+    int bounded_count = 0;
+    flow_run_traversals(run, &bounded_count);
+    revision = flow_run_traversal_revision(run);
+    record.timestamp = 2000;
+    flow_trace_record(run, record);
+    int overwritten_count = 0;
+    flow_run_traversals(run, &overwritten_count);
+    assert(overwritten_count == bounded_count && flow_run_traversal_revision(run) != revision);
+    assert(activity(editor, taken).timestamp == 2000);
+    assert(flow_run_recycle(run) == FLOW_OK);
+    assert(!activity(editor, taken).traversed);
+    editor_set_inspection_run(editor, NULL);
+    editor_set_inspection_instance(editor, NULL);
 
     behavior_instance_destroy(instance);
     editor_free(editor);

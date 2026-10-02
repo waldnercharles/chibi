@@ -11,6 +11,7 @@
 #include "support/math.h"
 
 #include <assert.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -256,7 +257,63 @@ void kit_layout(kit *k)
 
 /* ---------- Idle ---------- */
 
+static bool moving(spring s)
+{
+    return s.x != 0 || s.v != 0;
+}
+
+/* Relative to the last emitted frame. The host carries this deadline forward
+ * while simulation keeps running; UI-only springs must not follow its cadence. */
 double kit_idle_time(const kit *k)
 {
-    return rml_context_next_update_delay(k->context);
+    double delay = rml_context_next_update_delay(k->context);
+    double now = k->in.time;
+    if (k->restyle || acount(k->entering) || k->drag.pending || k->drag.active) {
+        return 0;
+    }
+    for (int i = 0; i < acount(k->exiting); i++) {
+        delay = fmin(delay, fmax(0, k->exiting[i].until - now));
+    }
+    for (int i = 0; i < acount(k->layout_nodes); i++) {
+        node *n = k->layout_nodes[i];
+        if (moving(n->layout_x) || moving(n->layout_y)) {
+            return 0;
+        }
+    }
+    for (int i = 0; i < cf_map_size(k->springs); i++) {
+        if (moving(k->springs[i].s)) {
+            return 0;
+        }
+    }
+    for (int i = 0; i < acount(k->toasts); i++) {
+        const toast *t = &k->toasts[i];
+        if (!t->placed || t->removing || t->swiping || moving(t->x) ||
+            moving(t->y) || moving(t->scale) || moving(t->opacity)) {
+            return 0;
+        }
+        if (!k->toasts_expanded && t->duration >= 0 && t->type != KIT_TOAST_LOADING) {
+            /* Toast dt is capped at .1; keep its elapsed countdown accurate. */
+            delay = fmin(delay, fmax(0, fmin(0.1, t->remaining)));
+        }
+    }
+    if (k->tip_target && !k->tip_visible) {
+        delay = fmin(delay, fmax(0, k->tip_since + TOOLTIP_DELAY - now));
+    }
+    for (int i = 0; i < acount(k->popup_stack); i++) {
+        const popup *p = k->popup_stack[i];
+        if (!str_eq(p->sub_hover, "")) {
+            double remaining = p->sub_hover_since + SUBMENU_DELAY - now;
+            /* Once due, open_hovered_submenus handles it at the next emission. */
+            if (remaining > 0) {
+                delay = fmin(delay, remaining);
+            }
+        }
+    }
+    for (int i = 0; i < cf_map_size(k->by_path); i++) {
+        const node *n = k->by_path[i];
+        if (n->kind == KIND_NUMBER && n->w.step_dir && k->in.down[0]) {
+            delay = fmin(delay, fmax(0, n->w.step_next - now));
+        }
+    }
+    return delay;
 }

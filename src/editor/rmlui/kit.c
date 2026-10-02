@@ -335,6 +335,40 @@ void set_line_text(rml_element *label, const char *text)
     }
 }
 
+/* A fixed-width number's text is right aligned in its content box. The text
+ * node retains the position normal layout gave it; offset its new glyph line
+ * from that origin rather than changing the flex item or document layout.
+ * Overflow uses normal layout so RmlUi keeps its native ellipsis behavior. */
+void set_right_line_text(rml_element *label, const char *text)
+{
+    rml_element *child = rml_element_first_child(label);
+    char current[NUMBER_TEXT];
+    if (!child || rml_element_text(child, current, sizeof current) >= sizeof current) {
+        set_element_text(label, text);
+        return;
+    }
+    if (!strcmp(current, text)) {
+        return;
+    }
+    float available = rml_element_box_size(label, RML_BOX_CONTENT).x;
+    int width = rml_element_string_width(child, text);
+    int old_width = rml_element_string_width(child, current);
+    if (width <= 0 || old_width <= 0 || width > available || old_width > available) {
+        set_element_text(label, text);
+        return;
+    }
+    rml_vec2 origin = rml_element_absolute_offset(child, RML_BOX_CONTENT);
+    rml_vec2 parent = rml_element_absolute_offset(label, RML_BOX_CONTENT);
+    rml_element_suppress_text_layout(child);
+    rml_element_set_text(child, text);
+    rml_element_clear_text_lines(child);
+    rml_element_add_text_line(
+        child,
+        (rml_vec2){ parent.x + available - width - origin.x, 0 },
+        text
+    );
+}
+
 rml_element *raw(rml_element *parent, const char *tag, const char *cls, const char *text)
 {
     rml_element *el = rml_element_create_child(parent, tag, NULL);

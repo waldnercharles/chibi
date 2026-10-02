@@ -312,7 +312,9 @@ void run_runtime_instance_checks()
                         trace[i].state == FLOW_COMPLETED;
         }
         test_check(trace_ok, "every retained entry stays chronological and owns its name across activation recycling");
+        uint64_t trace_revision = behavior_instance_trace_revision(bi);
         test_check(behavior_instance_trace(bi, &trace_count) == trace, "repeated inspection borrows the unchanged ordered view");
+        test_check(behavior_instance_trace_revision(bi) == trace_revision, "inspection reads preserve the trace revision");
         test_check(behavior_instance_tick(bi, releases) == FLOW_OK, "trace advances after inspection");
         flow_run *act = behavior_instance_dispatch(bi, "Tick", (flow_inputs){ 0 }, &error);
         test_check(
@@ -329,6 +331,8 @@ void run_runtime_instance_checks()
             "a write refreshes the ordered view without replacing interned "
             "event names"
         );
+        test_check(behavior_instance_trace_revision(bi) != trace_revision, "bounded trace overwrite changes its revision at the same record count");
+        trace_revision = behavior_instance_trace_revision(bi);
         test_check(
             behavior_instance_pool_release(bi) == 0 &&
                 behavior_instance_trace(bi, &trace_count) && trace_count == 0 &&
@@ -336,6 +340,10 @@ void run_runtime_instance_checks()
                 behavior_instance_pool_reuse(bi, asset, NULL, NULL, NULL) == bi &&
                 behavior_instance_trace(bi, &trace_count) && trace_count == 0,
             "instance release and reuse clear history and its owned event names"
+        );
+        test_check(
+            behavior_instance_trace_revision(bi) != trace_revision,
+            "instance release and reuse invalidate retained trace activity"
         );
         act = behavior_instance_dispatch(bi, "Pulse", (flow_inputs){ 0 }, &error);
         test_check(act && behavior_instance_release_activation(bi, act) == 0, "reused instances record new activations");

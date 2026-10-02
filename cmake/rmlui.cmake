@@ -39,8 +39,10 @@ function(chibi_rmlui_dependencies)
     # for data-if, so presence keeps a leaving element shown while its exit
     # transitions run (src/ui/motion.c), as the web's exit animations do.
     # Resolved var() values keep their authored source for the inspector.
+    # Text with locally managed content still lays out after font changes.
+    # Variables resolving to dp lengths recompute when the pixel ratio changes.
     set(patches "")
-    foreach(name color-mix radio-groups data-bindings flex-text same-style data-if-handler variable-source)
+    foreach(name color-mix radio-groups data-bindings flex-text same-style data-if-handler variable-source suppressed-text-font-layout variable-unit-invalidation)
         list(APPEND patches "${CMAKE_CURRENT_SOURCE_DIR}/cmake/patches/rmlui-${name}.patch")
     endforeach()
     chibi_apply_patches("${rmlui_SOURCE_DIR}" ${patches})

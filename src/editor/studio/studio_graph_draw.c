@@ -6,16 +6,12 @@
 #include "graph/model/local.h"
 #include "graph/nodes/behavior_expression.h"
 #include "support/array.h"
+#include "ui/rml.h"
 
 #include <assert.h>
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
-
-enum
-{
-    PATH = 96,
-};
 
 static const float GRID = 32;
 
@@ -89,23 +85,61 @@ uint32_t sg_pin_color(const studio *s, const pin_spec *spec)
 
 /* ---------- Emission ---------- */
 
-/* Data rows are keyed i<pin> and o<pin> in the body; an execution row e<n>
-   holds the pair of pins that share it, and title pins sit in the head. */
-static void socket_path(char *out, size_t size, const studio *s, node *n, int kind, int pin)
+/* View eligibility is separate from semantic inline-node visibility. Keep an
+   overscan band so panning does not churn elements at the canvas edge. */
+static bool in_view(const studio *s, float x, float y, float w, float h)
 {
-    const node_layout *l = sg_layout_of(s, n);
-    char side = kind == ED_PIN_INPUT ? 'i' : 'o';
-    unsigned long long id = n->id;
-    if (sg_in_head(l, kind, pin)) {
-        snprintf(out, size, "world/stage/n%llu/h/%c%d/s", id, side, pin);
-        return;
+    const studio_graph *g = &s->graph;
+    float pad = 128 / sg_zoom(s);
+    return x + w >= g->x - pad && y + h >= g->y - pad &&
+           x <= g->x + g->in.width + pad && y <= g->y + g->in.height + pad;
+}
+
+static bool keep_node(const studio *s, node *n, uint64_t focused)
+{
+    const studio_graph *g = &s->graph;
+    if ((n->comment && !n->comment_hidden) ||
+        ed_node_selected(sg_graph_editor(s), n) || n->id == focused ||
+        (g->gesture != STUDIO_GRAPH_IDLE && n->id == g->press_node) ||
+        (g->gesture == STUDIO_GRAPH_LINK && n->id == g->link_node) ||
+        n->id == g->hover_node || n->id == g->reveal || n->id == g->bubble_edit ||
+        (g->value_editing && n->id == g->value_edit_node_id) ||
+        ((g->inline_popup_pending || g->input_edit_pin || g->inline_edit_pin) &&
+         n->id == g->inline_anchor_node)) {
+        return true;
     }
-    if (sg_pin_exec(n, kind, pin)) {
-        int row = sg_pin_order(sg_active_graph(s), n, l, kind, pin);
-        snprintf(out, size, "world/stage/n%llu/b/e%d/%c%d/s", id, row, side, pin);
-        return;
+    /* Folded expression/source fields belong to their consumer; keep it while
+       editing even when the source node itself is semantically inline. */
+    for (int p = 0; p < n->input_count; p++) {
+        uint64_t id = n->input_pins[p].id;
+        if (id == g->input_edit_pin || id == g->inline_edit_pin || id == g->pin_edit) {
+            return true;
+        }
     }
-    snprintf(out, size, "world/stage/n%llu/b/%c%d/s", id, side, pin);
+    float box[4];
+    sg_node_box(s, n, box);
+    return in_view(s, box[0], box[1], box[2], box[3]);
+}
+
+static uint64_t focused_node(const studio *s)
+{
+    rml_element *el = rml_context_focus_element(rml_backend_context(s->graph.backend));
+    if (!el) {
+        return 0;
+    }
+    /* RmlUi Blur moves focus to the input's parent. Passive field wrappers
+       should not pin a node forever after its keyboard focus is released. */
+    char tab[16];
+    rml_element_property(el, "tab-index", tab, sizeof tab);
+    if (strcmp(tab, "auto") && !kit_wants_text(s->graph.kit, NULL)) {
+        return 0;
+    }
+    char path[256];
+    unsigned long long id = 0;
+    if (kit_element_path(s->graph.kit, el, path, sizeof path)) {
+        sscanf(path, "world/stage/n%llu", &id);
+    }
+    return id;
 }
 
 static void emit_value(studio *s, node *n, int output, int p)
@@ -505,10 +539,6 @@ static void emit_wires(studio *s)
     editor *e = sg_graph_editor(s);
     graph *gr = sg_active_graph(s);
     kit_wire *wires = NULL;
-    struct
-    {
-        char from[PATH], to[PATH];
-    } *paths = NULL;
     float *via = NULL;
     int *via_first = NULL;
     asetlen(g->wire_edges, 0);
@@ -527,9 +557,6 @@ static void emit_wires(studio *s)
             continue;
         }
         apush(g->wire_edges, i);
-        apush(paths, ((typeof(*paths)){ { 0 } }));
-        socket_path(alast(paths).from, PATH, s, from, ED_PIN_OUTPUT, fp);
-        socket_path(alast(paths).to, PATH, s, to, ED_PIN_INPUT, tp);
         const pin_spec *spec = &from->output_pins[fp];
         bool exec = spec->kind == PIN_EXEC;
         ed_link_ref ref;
@@ -544,35 +571,45 @@ static void emit_wires(studio *s)
         kit_wire wire = { .color = pin_color(s, spec, alpha),
                           .width = (exec ? 2.5f : 1.5f) + (attached && focus ? 0.5f : 0),
                           .flags = ed->conversion ? KIT_WIRE_DASHED : 0 };
+        /* Model anchors remain available when endpoint nodes are culled. */
+        sg_socket_at(s, from, ED_PIN_OUTPUT, fp, &wire.from_x, &wire.from_y);
+        sg_socket_at(s, to, ED_PIN_INPUT, tp, &wire.to_x, &wire.to_y);
         /* Executed wires glow and carry markers while their heat lasts. */
         editor_edge_activity activity;
         editor_query_edge_activity(e, ed, &activity);
         if (activity.opacity > 0) {
-            wire.color = pin_color(s, spec, 1);
-            wire.width += 1.5f * activity.opacity;
+            wire.flow_color = pin_color(s, spec, 1);
+            wire.flow_width = wire.width + 1.5f * activity.opacity;
             wire.flags |= KIT_WIRE_FLOW;
             wire.flow = (float)s->time;
         }
         if (ed_link_selected(e, &ref)) {
             wire.color = 0xffa53aff;
+            if (activity.opacity > 0) {
+                wire.flow_color = wire.color;
+            }
         }
         if (g->gesture == STUDIO_GRAPH_MOVE && g->insert_edge == i) {
             wire.color = palette(s)->hot;
             wire.width += 1;
+            if (activity.opacity > 0) {
+                wire.flow_color = wire.color;
+                wire.flow_width += 1;
+            }
         }
         /* Authored reroutes win; otherwise the lanes arrange routes through. */
         int first = acount(via) / 2, count = 0;
         if (ed->reroute_count) {
             for (int r = 0; r < ed->reroute_count; r++) {
-                apush(via, ed->reroutes[r].x - g->x);
-                apush(via, ed->reroutes[r].y - g->y);
+                apush(via, ed->reroutes[r].x);
+                apush(via, ed->reroutes[r].y);
             }
             count = ed->reroute_count;
         } else if (g->edge_route && i < acount(g->edge_route) && g->edge_route[i] >= 0) {
             int link = g->edge_route[i];
             for (int p = g->routes.start[link]; p < g->routes.start[link + 1]; p++) {
-                apush(via, g->routes.points[p].x - g->x);
-                apush(via, g->routes.points[p].y - g->y);
+                apush(via, g->routes.points[p].x);
+                apush(via, g->routes.points[p].y);
                 count++;
             }
         }
@@ -582,13 +619,13 @@ static void emit_wires(studio *s)
     }
     /* Pointers into the grown arrays are taken once they stop growing. */
     for (int w = 0; w < acount(wires); w++) {
-        wires[w].from = paths[w].from;
-        wires[w].to = paths[w].to;
         wires[w].via = wires[w].via_count ? via + via_first[w] * 2 : NULL;
     }
     kit_wires_desc desc = { .wires = wires,
                             .count = acount(wires),
                             .style = s->prefs.wires,
+                            .camera_x = g->x,
+                            .camera_y = g->y,
                             .grid = GRID,
                             .grid_x = g->x,
                             .grid_y = g->y,
@@ -596,7 +633,6 @@ static void emit_wires(studio *s)
                             .grid_major_color = palette(s)->grid_major };
     kit_wires(k, "wires", NULL, &desc);
     afree(wires);
-    afree(paths);
     afree(via);
     afree(via_first);
 }
@@ -624,37 +660,44 @@ static void emit_front(studio *s)
     if (!from) {
         return;
     }
-    char anchor[PATH], target[PATH];
-    socket_path(anchor, sizeof anchor, s, from, g->link_kind, g->link_pin);
+    float anchor_x, anchor_y;
+    sg_socket_at(s, from, g->link_kind, g->link_pin, &anchor_x, &anchor_y);
     const pin_spec *spec = g->link_kind == ED_PIN_OUTPUT
                              ? &from->output_pins[g->link_pin]
                              : &from->input_pins[g->link_pin];
     node *over = sg_node_by_id(s, g->hover_node);
     bool snap = over && g->hover_kind >= 0 &&
                 sg_pins_compatible(from, g->link_kind, g->link_pin, over, g->hover_kind, g->hover_pin);
-    if (snap) {
-        socket_path(target, sizeof target, s, over, g->hover_kind, g->hover_pin);
-    }
     bool invalid = over && g->hover_kind >= 0 && !snap;
     kit_wire wire = { .color = invalid ? 0xe5534bff : pin_color(s, spec, 1),
                       .width = spec->kind == PIN_EXEC ? 2.5f : 2,
-                      .to_x = g->in.mouse_x,
-                      .to_y = g->in.mouse_y,
-                      .from_x = g->in.mouse_x,
-                      .from_y = g->in.mouse_y };
+                      .to_x = g->world_x,
+                      .to_y = g->world_y,
+                      .from_x = g->world_x,
+                      .from_y = g->world_y };
     /* Wires always run output to input, whichever end is being dragged. */
     if (g->link_kind == ED_PIN_OUTPUT) {
-        wire.from = anchor;
-        wire.to = snap ? target : NULL;
+        wire.from_x = anchor_x;
+        wire.from_y = anchor_y;
+        if (snap) {
+            sg_socket_at(s, over, g->hover_kind, g->hover_pin, &wire.to_x, &wire.to_y);
+        }
     } else {
-        wire.to = anchor;
-        wire.from = snap ? target : NULL;
+        wire.to_x = anchor_x;
+        wire.to_y = anchor_y;
+        if (snap) {
+            sg_socket_at(s, over, g->hover_kind, g->hover_pin, &wire.from_x, &wire.from_y);
+        }
     }
     kit_wires(
         k,
         "link",
         NULL,
-        &(kit_wires_desc){ .wires = &wire, .count = 1, .style = s->prefs.wires }
+        &(kit_wires_desc){ .wires = &wire,
+                           .count = 1,
+                           .style = s->prefs.wires,
+                           .camera_x = g->x,
+                           .camera_y = g->y }
     );
 }
 
@@ -701,9 +744,12 @@ static void emit_conversions(studio *s)
         } else {
             editor_node_label(c, text, sizeof text);
         }
+        float width = ceilf(sg_text_width(s, text, 10, 400)) + 14;
+        if (!in_view(s, mx - width / 2, my, width, ROW)) {
+            continue;
+        }
         snprintf(key, sizeof key, "x%d", i);
         kit_label(k, key, "gconversion", text);
-        float width = ceilf(sg_text_width(s, text, 10, 400)) + 14;
         emit_dp(k, "left", mx);
         emit_dp(k, "top", my);
         emit_dp(k, "width", width);
@@ -733,6 +779,9 @@ static void emit_reroutes(studio *s)
             bool hot = g->hover_reroute == i * GRAPH_EDGE_MAX_REROUTES + r ||
                        (g->gesture == STUDIO_GRAPH_REROUTE &&
                         g->reroute_edge == i && g->reroute_point == r);
+            if (!hot && !in_view(s, ed->reroutes[r].x, ed->reroutes[r].y, 0, 0)) {
+                continue;
+            }
             kit_push(k, key, NULL, "greroute");
             emit_dp(k, "left", ed->reroutes[r].x);
             emit_dp(k, "top", ed->reroutes[r].y);
@@ -762,12 +811,18 @@ void sg_emit_canvas(studio *s)
     snprintf(value, sizeof value, "%.2fdp", -g->y);
     kit_style(k, "top", value);
     for (int i = 0; i < acount(gr->comment_boxes); i++) {
-        sg_emit_comment(s, &gr->comment_boxes[i]);
+        const graph_comment_box *box = &gr->comment_boxes[i];
+        if (box->id == g->press_comment || box->id == g->title_edit ||
+            box->id == g->comment ||
+            in_view(s, box->x, box->y, box->width, box->height)) {
+            sg_emit_comment(s, &gr->comment_boxes[i]);
+        }
     }
     emit_conversions(s);
     emit_reroutes(s);
+    uint64_t focused = focused_node(s);
     for (int i = 0; i < acount(gr->nodes); i++) {
-        if (sg_node_visible(gr, gr->nodes[i])) {
+        if (sg_node_visible(gr, gr->nodes[i]) && keep_node(s, gr->nodes[i], focused)) {
             emit_node(s, gr->nodes[i]);
         }
     }

@@ -5,6 +5,7 @@
 #include "editor/studio/studio_internal.h"
 #include "editor/workspace/editor_internal.h"
 #include "graph/authoring/align.h"
+#include "graph/authoring/layout.h"
 
 enum
 {
@@ -37,6 +38,36 @@ struct studio_node_layout
     int add_pin;           /* a last row adds a pin to this side, or -1 */
 };
 typedef struct studio_node_layout node_layout;
+
+/* World calculations survive camera movement. Their model and presentation
+ * versions are checked before use; routing positions are checked separately. */
+typedef struct
+{
+    node **nodes;
+    arrange_box *boxes;
+    arrange_point *pos;
+    arrange_link *links;
+    int *edge_link;
+} studio_graph_route_input;
+
+struct studio_graph_calculations
+{
+    uint64_t lifetime, topology;
+    unsigned edit, assets, fonts;
+    const behavior_asset *asset;
+    editor_choices_resolver choices;
+    void *choices_user;
+    int forms, standard_family, code_family;
+    float standard_size, code_size, pixel_ratio;
+    bool comfortable, routes_dirty, unused_dirty;
+    int *layout_index;
+    uint64_t *definitions; /* lifetime/revision pairs of the owner's graphs */
+    studio_graph_route_input routing;
+    unsigned measurements, route_preparations, reachability_builds;
+};
+void sg_calculations_sync(const studio *s);
+void sg_calculations_invalidate(studio *s);
+void sg_calculations_free(studio *s);
 
 /* A graph Back and Forward return to (studio_graph_nav.c), or with kind
  * APP_EDITOR_DOCUMENT_UI a place in the Text Editor (workstream Q). */

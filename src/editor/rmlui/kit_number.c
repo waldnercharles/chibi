@@ -172,7 +172,7 @@ static void number_display(node *n)
     if (!w->editing) {
         char text[NUMBER_TEXT];
         format_number(text, w->value, w->desc.precision, w->desc.integer);
-        set_element_text(w->value_el, text);
+        set_right_line_text(w->value_el, text);
     }
     double range = w->desc.max - w->desc.min;
     double t = w->desc.max > w->desc.min ? (w->value - w->desc.min) / range : 0;

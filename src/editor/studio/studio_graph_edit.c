@@ -470,6 +470,12 @@ void sg_find_unused(studio *s)
 {
     studio_graph *g = &s->graph;
     graph *gr = sg_active_graph(s);
+    sg_calculations_sync(s);
+    if (!g->calculations->unused_dirty) {
+        return;
+    }
+    g->calculations->unused_dirty = false;
+    g->calculations->reachability_builds++;
     asetlen(g->unused, 0);
     int count = acount(gr->nodes);
     bool *used = xcalloc((size_t)(count ? count : 1), sizeof *used);
@@ -752,7 +758,7 @@ static void place_on_wire(studio *s, node *n, const ed_pin_view *from)
         if (!wired) {
             continue;
         }
-        asetlen(s->graph.layouts, 0);
+        sg_calculations_invalidate(s);
         n->y -= sg_pin_y(s, n, input ? ED_PIN_INPUT : ED_PIN_OUTPUT, p);
         if (!input) {
             n->x -= sg_layout_of(s, n)->w;

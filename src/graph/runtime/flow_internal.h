@@ -105,6 +105,7 @@ struct flow_run
     flow_traversal *traversal_view;
     int traversal_head;
     bool traversal_view_dirty;
+    uint64_t traversal_revision;
 };
 
 struct flow_context

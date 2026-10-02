@@ -226,7 +226,7 @@ static void promote(studio *s, node *n, int kind, int p)
         return;
     }
     node *access = alast(gr->nodes);
-    asetlen(s->graph.layouts, 0);
+    sg_calculations_invalidate(s);
     if (output) {
         place_set(s, access, n, p);
     } else {

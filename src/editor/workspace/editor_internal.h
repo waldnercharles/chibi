@@ -88,6 +88,8 @@ struct editor
     bool inspection_blocked;
     const behavior_instance_trace_entry *inspection_trace;
     int inspection_trace_count;
+    uint64_t inspection_trace_revision, flow_activity_epoch;
+    struct ed_flow_activity_index *flow_activity;
     unsigned edit_revision;
     const behavior_asset *edit_revision_asset;
     char *edit_revision_snapshot;
@@ -170,6 +172,10 @@ bool ed_simplify_component_getter(
 int ed_optimize_graph(editor *e);
 void ed_show_error(editor *e, const char *message);
 void ed_clear_connect_error(editor *e);
+/* Lazy activity index owns copied timestamps, never runtime storage. */
+void ed_flow_activity_free(editor *e);
+uint64_t ed_flow_activity_records_indexed(const editor *e);
+
 bool ed_inspection_blocked(const editor *e);
 const behavior_instance *ed_display_instance(const editor *e);
 const flow_run *ed_display_run(const editor *e);

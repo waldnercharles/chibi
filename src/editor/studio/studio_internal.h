@@ -446,10 +446,11 @@ typedef struct
     arrange_routes routes;
     int *edge_route; /* per edge: its link in routes, or -1 */
     int *wire_edges; /* per drawn wire: its edge index */
-    struct studio_node_layout *layouts; /* nodes measured this frame */
-    int reroute_edge, reroute_point;    /* the reroute being dragged */
-    float reroute_x, reroute_y;         /* where it was before the drag */
-    bool reroute_added;                 /* the drag began by adding it */
+    struct studio_node_layout *layouts; /* intrinsic node measurements */
+    struct studio_graph_calculations *calculations; /* Persistent world measurement, routing and reachability cache. */
+    int reroute_edge, reroute_point; /* the reroute being dragged */
+    float reroute_x, reroute_y;      /* where it was before the drag */
+    bool reroute_added;              /* the drag began by adding it */
     int hover_reroute;   /* edge * GRAPH_EDGE_MAX_REROUTES + point, or -1 */
     int insert_edge;     /* the wire a dragged node would join, or -1 */
     uint64_t names_node; /* node whose output names the Outputs panel edits */
@@ -753,6 +754,14 @@ struct studio
     studio_ui *ui; /* NULL when the Studio project could not load */
     ui_page page; /* the Studio scene's root document, whose RCSS styles every Studio document */
     kit_frame_input in;
+    struct
+    {
+        double next;
+        uint64_t frames; /* host model/emission passes, independent of simulation frames */
+        uint64_t state;
+        float width, height, ratio;
+        bool wake;
+    } ui_schedule;
     studio_area areas[STUDIO_AREA_COUNT];
     int hover_area;
     int focus_area;
@@ -792,6 +801,16 @@ struct studio
         bool pinned;  /* the debug target's pin before that */
     } pause;
     studio_perf_sample *perf;
+    studio_perf_sample *perf_published;
+    double perf_publish_next;
+    uint64_t perf_publications;
+    bool perf_publish_playing;
+    struct
+    {
+        bool available;
+        float budget_ms;
+        char text[128];
+    } perf_lighting;
     double perf_readout_time;
     char perf_readout[96];
     int assets_kind;           /* reference_asset_kind, or -1 for all */
@@ -1016,7 +1035,9 @@ void studio_collab_unfollow(studio *s);
 const char *studio_ui_page(const studio_ui *ui);
 studio_ui *studio_ui_new(rml_context *context, const char *project_root, char *error, size_t size);
 void studio_ui_free(studio_ui *ui);
-/* Steps the panels' behaviors and shares preferences; call after input. */
+/* Tick authored behaviors every simulation frame after input; sync models only
+ * when the host emission is due. */
+bool studio_ui_tick(studio *s);
 void studio_ui_frame(studio *s);
 /* Shows the Studio scene entity `name`'s GameUi document in a kit host;
  * returns the host, for native slots, or NULL when it shows none. */

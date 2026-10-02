@@ -126,6 +126,7 @@ static void press(studio *s, rml_element *el);
 static void key_event(SDL_Scancode key, bool down);
 static void text_event(const char *text);
 static void mouse_move(const studio *s, float x, float y);
+static int tab_named(const app_scene_authoring *scene, const char *label);
 
 static void graph_key(studio *s, rml_input_key key)
 {
@@ -289,6 +290,8 @@ static void graph_color_session_saves_undoes_and_replays()
         behavior_asset_free(saved);
     }
 
+    sg_update_routes(f.studio);
+    unsigned before_undo = f.studio->graph.calculations->route_preparations;
     editor_undo(f.graph);
     active = editor_active_graph(f.graph);
     node *undone_set = graph_node_by_id(active, set_id);
@@ -296,20 +299,31 @@ static void graph_color_session_saves_undoes_and_replays()
                   undone_set->input_pins[color_pin].default_value.u == initial &&
                   editor_can_undo(f.graph) == can_undo_before &&
                   editor_can_redo(f.graph);
+    sg_update_routes(f.studio);
+    sg_find_unused(f.studio);
+    bool undo_routes = f.studio->graph.calculations->route_preparations > before_undo;
     editor_redo(f.graph);
     active = editor_active_graph(f.graph);
     node *redone_set = graph_node_by_id(active, set_id);
     bool redone = redone_set &&
                   redone_set->input_pins[color_pin].default_value.u == 0x482b86ff;
+    sg_update_routes(f.studio);
+    sg_find_unused(f.studio);
+    bool current_routes = true;
+    for (int i = 0; i < acount(f.studio->graph.calculations->routing.nodes); i++) {
+        node *routed = f.studio->graph.calculations->routing.nodes[i];
+        current_routes &= graph_node_by_id(active, routed->id) == routed;
+    }
+    test_check(undo_routes && current_routes, "undo and redo replace cached routing inputs with the restored graph");
     test_check(changed && persisted && undone && redone, "a graph color picker saves its RGBA value and streams one undoable session that replays");
     fixture_free(&f);
 }
 
 /* One application frame. File > Reload runs inside Studio's frame, before the
    canvas draws, so a reload lands between the scene and Studio frames. */
-static void frame(studio_fixture *f, bool reload)
+static void frame_delta(studio_fixture *f, bool reload, double delta_seconds)
 {
-    f->time += FRAME_SECONDS;
+    f->time += delta_seconds;
     cf_app_update(NULL);
     app_input_frame();
     editor_tick(f->graph, f->time);
@@ -317,8 +331,13 @@ static void frame(studio_fixture *f, bool reload)
     if (reload) {
         assert(app_scene_authoring_reload(f->scene) == 0);
     }
-    studio_frame(f->studio, FRAME_SECONDS);
+    studio_frame(f->studio, delta_seconds);
     cf_app_draw_onto_screen(true);
+}
+
+static void frame(studio_fixture *f, bool reload)
+{
+    frame_delta(f, reload, FRAME_SECONDS);
 }
 
 void test_studio_graph_zoom(studio *s, node *n);
@@ -347,6 +366,587 @@ static void graph_layout_does_not_wiggle()
         frame(&f, false);
     }
     test_studio_graph_zoom(f.studio, graph_node_by_id(editor_active_graph(f.graph), SETTER));
+    fixture_free(&f);
+}
+
+static void graph_calculations_follow_edits()
+{
+    studio_fixture f = fixture_new();
+    frames(&f, 3);
+    studio *s = f.studio;
+    graph *gr = sg_active_graph(s);
+    node *n = graph_add_node(gr, &VALUE_CONTROL_NODE);
+    assert(n);
+    node_layout before = *sg_layout_of(s, n);
+    sg_update_routes(s);
+    sg_find_unused(s);
+    struct studio_graph_calculations *c = s->graph.calculations;
+    unsigned measured = c->measurements, prepared = c->route_preparations;
+    unsigned reachable = c->reachability_builds;
+    s->graph.x += 150;
+    s->graph.y -= 70;
+    s->graph.zoom *= 0.9f;
+    node_layout panned = *sg_layout_of(s, n);
+    sg_update_routes(s);
+    sg_find_unused(s);
+    test_check(
+        c->measurements == measured && c->route_preparations == prepared &&
+            c->reachability_builds == reachable && before.w == panned.w &&
+            before.h == panned.h,
+        "camera movement retains intrinsic measurements, routing input and "
+        "reachability"
+    );
+
+    n->x += 37;
+    n->y -= 19;
+    sg_update_routes(s);
+    bool moved = false;
+    for (int i = 0; i < acount(c->routing.nodes); i++) {
+        if (c->routing.nodes[i] == n) {
+            moved = c->routing.pos[i].x == n->x && c->routing.pos[i].y == n->y;
+        }
+    }
+    test_check(moved && c->route_preparations == prepared, "uncommitted node movement updates routing positions without preparing topology again");
+
+    assert(graph_set_pin_name(gr, n, 0, 0, "An intentionally much longer reflected input label") == 0);
+    node_layout renamed = *sg_layout_of(s, n);
+    sg_update_routes(s);
+    sg_find_unused(s);
+    test_check(renamed.w > before.w && c->route_preparations > prepared && c->reachability_builds > reachable, "pin label edits invalidate measured geometry and dependent calculations");
+    unsigned after_label = c->measurements;
+    s->prefs.standard_font_size = 18;
+    (void)sg_layout_of(s, n);
+    test_check(c->measurements > after_label, "font presentation changes invalidate intrinsic measurements");
+
+    static pin_spec choice_output = { .name = "Shape",
+                                      .type = PIN_ENUM,
+                                      .type_name = "GameShape" };
+    static node_desc choice_source = { .name = "Cache Choice Source",
+                                       .output_count = 1,
+                                       .outputs = &choice_output };
+    node *source = graph_add_node(gr, &choice_source);
+    assert(source && graph_connect_data(gr, source, 0, n, 2) == 0);
+    assert(graph_set_node_presentation(gr, source, NODE_PRESENTATION_EXPANDED) == 0);
+    sg_update_routes(s);
+    int expanded_count = acount(c->routing.nodes);
+    assert(graph_set_node_presentation(gr, source, NODE_PRESENTATION_INLINE) == 0);
+    sg_update_routes(s);
+    sg_find_unused(s);
+    test_check(!sg_node_visible(gr, source) && acount(c->routing.nodes) == expanded_count - 1, "folding removes the source box and its route input while retaining its editable model");
+    assert(graph_remove_node(gr, source) == 0);
+
+    uint64_t id = n->id;
+    assert(graph_remove_node(gr, n) == 0);
+    sg_update_routes(s);
+    sg_find_unused(s);
+    bool removed = !sg_is_unused(&s->graph, id);
+    for (int i = 0; i < acount(c->routing.nodes); i++) {
+        removed &= c->routing.nodes[i]->id != id;
+    }
+    for (int i = 0; i < acount(s->graph.layouts); i++) {
+        removed &= s->graph.layouts[i].id != id;
+    }
+    test_check(removed, "removed nodes leave measurement, route and unused caches together");
+    fixture_free(&f);
+}
+
+static void graph_drag_button(const studio *s, float x, float y, bool down)
+{
+    SDL_Event event = { .type = down ? SDL_EVENT_MOUSE_BUTTON_DOWN
+                                     : SDL_EVENT_MOUSE_BUTTON_UP };
+    event.button.windowID = SDL_GetWindowID(cf_app_get_window());
+    event.button.button = SDL_BUTTON_LEFT;
+    event.button.down = down;
+    event.button.clicks = 1;
+    event.button.x = x * s->prefs.ui_scale;
+    event.button.y = y * s->prefs.ui_scale;
+    assert(SDL_PushEvent(&event));
+}
+
+void test_studio_menu_context(studio *s);
+
+static void graph_drag_retains_calculations_and_undo()
+{
+    studio_fixture f = fixture_new();
+    studio *s = f.studio;
+    frames(&f, 3);
+    studio_graph *g = &s->graph;
+    node *n = graph_node_by_id(sg_active_graph(s), SETTER);
+    assert(n);
+    g->camera.active = false;
+    g->framed = true;
+    g->zoom = 1;
+    g->x = n->x - 80;
+    g->y = n->y - 80;
+    frames(&f, 3);
+    float old_x = n->x, old_y = n->y;
+    int undo_before = acount(f.graph->undo);
+    kit_rect title;
+    assert(kit_find(g->kit, "world/stage/n10247/h/t", &title));
+    float x = g->surface.rect.x + (title.x + title.w / 2) * sg_zoom(s);
+    float y = g->surface.rect.y + (title.y + title.h / 2) * sg_zoom(s);
+    mouse_move(s, x, y);
+    graph_drag_button(s, x, y, true);
+    frame(&f, false);
+    mouse_move(s, x + 20, y + 12);
+    frame(&f, false);
+    bool moving = g->gesture == STUDIO_GRAPH_MOVE && f.graph->pending_snapshot &&
+                  !editor_has_pending_edits(f.graph);
+    struct studio_graph_calculations *c = g->calculations;
+    unsigned measured = c->measurements, prepared = c->route_preparations;
+    unsigned reachable = c->reachability_builds;
+    bool cached = moving, follows = moving, anchored = moving;
+    for (int step = 1; step <= 3; step++) {
+        float dx = 20 + (float)step * 10, dy = 12 + (float)step * 8;
+        mouse_move(s, x + dx, y + dy);
+        frame(&f, false);
+        cached &= g->gesture == STUDIO_GRAPH_MOVE && f.graph->pending_snapshot &&
+                  !editor_has_pending_edits(f.graph) &&
+                  c->measurements == measured && c->route_preparations == prepared &&
+                  c->reachability_builds == reachable;
+        follows &= fabsf(n->x - old_x - dx / sg_zoom(s)) < 0.01f &&
+                   fabsf(n->y - old_y - dy / sg_zoom(s)) < 0.01f &&
+                   g->hover_node == SETTER;
+        bool wire = false;
+        graph *gr = sg_active_graph(s);
+        for (int w = 0; w < acount(g->wire_edges); w++) {
+            const edge *ed = &gr->edges[g->wire_edges[w]];
+            if (ed->from_id != SETTER) {
+                continue;
+            }
+            int output, pin;
+            assert(graph_pin_by_id(n, ed->from_pin_id, &output, &pin) && output);
+            float sx, sy, points[4];
+            sg_socket_at(s, n, ED_PIN_OUTPUT, pin, &sx, &sy);
+            wire |= kit_wire_points(g->kit, "back/wires", w, points, 2) >= 2 &&
+                    fabsf(points[0] - (sx - g->x)) < 0.5f &&
+                    fabsf(points[1] - (sy - g->y)) < 0.5f;
+        }
+        anchored &= wire;
+    }
+    test_check(cached, "real held node dragging retains intrinsic measurements, route preparation and reachability while its undo snapshot is pending");
+    test_check(follows && anchored, "real node dragging updates pointer picking and rendered wire anchors on each movement");
+    graph_drag_button(s, x + 50, y + 36, false);
+    frame(&f, false);
+    bool committed = g->gesture == STUDIO_GRAPH_IDLE && !f.graph->pending_snapshot &&
+                     acount(f.graph->undo) == undo_before + 1;
+    editor_undo(f.graph);
+    frames(&f, 3);
+    n = graph_node_by_id(sg_active_graph(s), SETTER);
+    test_check(
+        committed && n && fabsf(n->x - old_x) < 0.01f &&
+            fabsf(n->y - old_y) < 0.01f && acount(f.graph->undo) == undo_before,
+        "releasing a real drag commits one undo step that restores the "
+        "original node position"
+    );
+    test_studio_menu_context(s);
+    fixture_free(&f);
+}
+
+static void host_ui_refresh_keeps_input_immediate()
+{
+    studio_fixture f = fixture_new();
+    studio *s = f.studio;
+    frames(&f, 90);
+    s->active_until = 0;
+    uint64_t before = s->ui_schedule.frames;
+    double time = f.time;
+    frames(&f, 60);
+    uint64_t idle = s->ui_schedule.frames - before;
+    test_check(idle >= 3 && idle < 10 && f.time > time + 0.99, "settled idle UI refresh is bounded while simulation frames keep advancing");
+
+    s->active_until = 0;
+    s->ui_schedule.next = s->time + 1;
+    before = s->ui_schedule.frames;
+    int toast = kit_toast(
+        s->kit,
+        0,
+        &(kit_toast_desc){
+            .title = "Async host wake",
+            .duration = -1,
+        }
+    );
+    frame(&f, false);
+    char toast_text[128] = "";
+    rml_element *toast_element = studio_element(s, ".toast .title");
+    if (toast_element) {
+        rml_element_inner_rml(toast_element, toast_text, sizeof toast_text);
+    }
+    test_check(
+        s->ui_schedule.frames == before + 1 && strstr(toast_text, "Async host wake"),
+        "a new toast wakes and renders the idle host without SDL input"
+    );
+    kit_toast_dismiss(s->kit, toast);
+    frames(&f, 90);
+    s->active_until = 0;
+    s->ui_schedule.next = s->time + 1;
+    before = s->ui_schedule.frames;
+    kit_style_sheet(s->kit, "host-wake-probe", ".statusbar { opacity: 0.999; }");
+    frame(&f, false);
+    char opacity[32] = "";
+    rml_element *bar = studio_element(s, ".statusbar");
+    if (bar) {
+        rml_element_property(bar, "opacity", opacity, sizeof opacity);
+    }
+    test_check(s->ui_schedule.frames == before + 1 && fabs(atof(opacity) - 0.999) < 0.0001, "an asynchronous restyle wakes and updates the idle host without SDL input");
+    kit_style_sheet(s->kit, "host-wake-probe", "");
+    frames(&f, 3);
+
+    before = s->ui_schedule.frames;
+    s->prefs.short_bindings = !s->prefs.short_bindings;
+    frame(&f, false);
+    bool prefs = s->ui_schedule.frames == before + 1;
+    /* Hold the passive deadline ahead to make each immediate wake observable. */
+    s->ui_schedule.next = s->time + 0.25;
+    before = s->ui_schedule.frames;
+    ed_select_node(f.graph, graph_node_by_id(sg_active_graph(s), 2), false);
+    frame(&f, false);
+    bool selection = s->ui_schedule.frames == before + 1;
+
+    graph *selected_graph = sg_active_graph(s);
+    node *first = graph_node_by_id(selected_graph, 2);
+    node *second = graph_node_by_id(selected_graph, SETTER);
+    node *third = graph_node_by_id(selected_graph, 6);
+    assert(first && second && third);
+    ed_add_selected(f.graph, second);
+    frame(&f, false);
+    s->active_until = 0;
+    s->ui_schedule.next = s->time + 0.25;
+    before = s->ui_schedule.frames;
+    ed_remove_selected(f.graph, second);
+    ed_add_selected(f.graph, third);
+    frame(&f, false);
+    test_check(s->ui_schedule.frames == before + 1, "replacing a secondary selected node wakes host emission with the first node and count unchanged");
+
+    assert(acount(selected_graph->edges) >= 2);
+    ed_link_ref first_link, second_link;
+    sg_link_ref_of(&selected_graph->edges[0], &first_link);
+    sg_link_ref_of(&selected_graph->edges[1], &second_link);
+    ed_add_selected_link(f.graph, &first_link);
+    frame(&f, false);
+    s->active_until = 0;
+    s->ui_schedule.next = s->time + 0.25;
+    before = s->ui_schedule.frames;
+    asetlen(f.graph->selected_links, 0);
+    ed_add_selected_link(f.graph, &second_link);
+    frame(&f, false);
+    test_check(s->ui_schedule.frames == before + 1, "replacing a selected link wakes host emission with its selection count unchanged");
+
+    s->ui_schedule.next = s->time + 0.25;
+    before = s->ui_schedule.frames;
+    graph *gr = sg_active_graph(s);
+    assert(
+        graph_set_node_presentation(gr, graph_node_by_id(gr, SETTER), NODE_PRESENTATION_EXPANDED) == 0
+    );
+    frame(&f, false);
+    bool model = s->ui_schedule.frames == before + 1;
+    s->ui_schedule.next = s->time + 0.25;
+    before = s->ui_schedule.frames;
+    text_event("a");
+    frame(&f, false);
+    bool input = s->ui_schedule.frames == before + 1;
+    test_check(prefs && selection && model && input, "preferences, selection, direct graph edits and SDL text wake the host UI on the next frame");
+
+    s->active_until = 0;
+    s->in.down[0] = true;
+    before = s->ui_schedule.frames;
+    frames(&f, 3);
+    bool held = s->ui_schedule.frames == before + 3;
+    s->in.down[0] = false;
+    test_check(held, "held pointer interaction retains one UI emission per simulation frame");
+
+    studio_runtime(s, APP_RUNTIME_PLAY);
+    frames(&f, 4);
+    s->active_until = 0;
+    before = s->ui_schedule.frames;
+    time = f.time;
+    frames(&f, 60);
+    uint64_t playing = s->ui_schedule.frames - before;
+    app_runtime_state runtime = app_scene_authoring_runtime_state(f.scene);
+    if (!runtime.playing || playing < 15 || playing >= 30 || f.time <= time + 0.99) {
+        printf(
+            "  playing refresh: running=%d target=%d emissions=%llu "
+            "elapsed=%.6f kit_idle=%.6f rml_next=%.6f active_for=%.6f "
+            "next_in=%.6f\n",
+            runtime.playing,
+            runtime.target,
+            (unsigned long long)playing,
+            f.time - time,
+            kit_idle_time(s->kit),
+            rml_context_next_update_delay(rml_backend_context(s->backend)),
+            s->active_until - s->time,
+            s->ui_schedule.next - s->time
+        );
+    }
+    test_check(runtime.playing && playing >= 15 && playing < 30 && f.time > time + 0.99, "playing inspection refreshes at a bounded rate while runtime frames continue");
+    /* A real input burst keeps the application active, while settled model
+       inspection can continue at its passive cadence. Empty canvas does not
+       start tooltip or control motion. */
+    mouse_move(
+        s,
+        s->graph.surface.rect.x + s->graph.surface.rect.w - 12,
+        s->graph.surface.rect.y + s->graph.surface.rect.h - 12
+    );
+    frame(&f, false);
+    bool active = s->active_until > s->time + 0.9;
+    before = s->ui_schedule.frames;
+    time = f.time;
+    frames(&f, 60);
+    uint64_t after_input = s->ui_schedule.frames - before;
+    test_check(
+        active && after_input >= 15 && after_input < 30 &&
+            app_scene_authoring_runtime_state(f.scene).playing && f.time > time + 0.99,
+        "a real input activity window keeps runtime clocks advancing without "
+        "forcing full-rate host model emissions"
+    );
+    studio_runtime(s, APP_RUNTIME_STOP);
+    fixture_free(&f);
+}
+
+static void performance_pointer_button(studio *s, float x, float y, bool down)
+{
+    SDL_Event event = { .type = down ? SDL_EVENT_MOUSE_BUTTON_DOWN
+                                     : SDL_EVENT_MOUSE_BUTTON_UP };
+    event.button.windowID = SDL_GetWindowID(cf_app_get_window());
+    event.button.button = SDL_BUTTON_MIDDLE;
+    event.button.down = down;
+    event.button.clicks = 1;
+    event.button.x = x * s->prefs.ui_scale;
+    event.button.y = y * s->prefs.ui_scale;
+    assert(SDL_PushEvent(&event));
+}
+
+static bool performance_pan_frames(studio_fixture *f, float x, float y)
+{
+    studio *s = f->studio;
+    bool deadline = true;
+    for (int i = 0; i < 60; i++) {
+        double next = s->perf_publish_next;
+        uint64_t publications = s->perf_publications;
+        float camera_x = s->graph.x, camera_y = s->graph.y;
+        rml_element *focus = rml_context_focus_element(rml_backend_context(s->backend));
+        mouse_move(s, x + (float)(i % 20), y + (float)(i % 10));
+        frame(f, false);
+        deadline &= (!i || s->graph.x != camera_x || s->graph.y != camera_y) &&
+                    rml_context_focus_element(rml_backend_context(s->backend)) == focus;
+        if (s->time < next) {
+            deadline &= s->perf_publications == publications &&
+                        s->perf_publish_next == next;
+        }
+        deadline &= s->graph.gesture == STUDIO_GRAPH_PAN;
+    }
+    return deadline;
+}
+
+static void performance_snapshot_retains_intermediate_frames()
+{
+    studio_fixture f = fixture_new();
+    studio *s = f.studio;
+    frames(&f, 90);
+    float x = s->graph.surface.rect.x + s->graph.surface.rect.w / 2;
+    float y = s->graph.surface.rect.y + s->graph.surface.rect.h / 2;
+    mouse_move(s, x, y);
+    performance_pointer_button(s, x, y, true);
+    frame(&f, false);
+    int recorded = acount(s->perf);
+    uint64_t published = s->perf_publications, emitted = s->ui_schedule.frames;
+    bool idle_deadline = performance_pan_frames(&f, x, y);
+    uint64_t idle_publications = s->perf_publications - published;
+    test_check(
+        idle_deadline && acount(s->perf) == recorded + 60 && idle_publications >= 3 &&
+            idle_publications <= 5 && s->ui_schedule.frames >= emitted + 3 &&
+            s->ui_schedule.frames <= emitted + 10,
+        "real idle panning advances the camera and recorder every frame while "
+        "host inspection and telemetry stay bounded without losing focus or "
+        "rebasing deadlines"
+    );
+    emitted = s->ui_schedule.frames;
+    mouse_move(s, s->graph.surface.rect.x - 4, y);
+    frame(&f, false);
+    bool boundary = s->ui_schedule.frames == emitted + 1 &&
+                    !s->graph.surface.hovered && s->graph.gesture == STUDIO_GRAPH_PAN;
+    emitted = s->ui_schedule.frames;
+    mouse_move(s, x, y);
+    frame(&f, false);
+    test_check(
+        boundary && s->ui_schedule.frames == emitted + 1 &&
+            s->graph.surface.hovered && s->graph.gesture == STUDIO_GRAPH_PAN,
+        "a captured pan still routes leaving and reentering the graph surface "
+        "through the host"
+    );
+
+    emitted = s->ui_schedule.frames;
+    studio_inspect_toggle(s);
+    mouse_move(s, x + 1, y + 1);
+    frame(&f, false);
+    test_check(studio_inspect_picking(s) && s->ui_schedule.frames == emitted + 1, "Inspect Element picking keeps host motion delivery during an established graph pan");
+    studio_inspect_toggle(s);
+    frame(&f, false);
+
+    kit_command_open(s->kit, "Search");
+    emitted = s->ui_schedule.frames;
+    mouse_move(s, x + 2, y + 2);
+    frame(&f, false);
+    rml_element *input = studio_element(s, ".cmd-input input");
+    test_check(
+        kit_command_is_open(s->kit) && input &&
+            rml_context_focus_element(rml_backend_context(s->backend)) == input &&
+            s->ui_schedule.frames == emitted + 1,
+        "a command overlay immediately takes host focus and input during graph "
+        "panning"
+    );
+    key_event(SDL_SCANCODE_ESCAPE, true);
+    key_event(SDL_SCANCODE_ESCAPE, false);
+    frame(&f, false);
+    performance_pointer_button(s, x, y, false);
+    emitted = s->ui_schedule.frames;
+    frame(&f, false);
+    test_check(
+        s->ui_schedule.frames == emitted + 1 &&
+            s->graph.gesture == STUDIO_GRAPH_IDLE && !s->graph.captured &&
+            !s->in.down[2] && !s->graph.in.down[2] && !kit_command_is_open(s->kit),
+        "Escape and the captured pan release keep normal host and graph input "
+        "lifecycles"
+    );
+    frames(&f, 90);
+
+    published = s->perf_publications;
+    studio_runtime(s, APP_RUNTIME_PLAY);
+    frame(&f, false);
+    test_check(s->perf_publish_playing && s->perf_publications == published + 1, "entering Play immediately publishes telemetry instead of waiting for the idle deadline");
+    published = s->perf_publications;
+    mouse_move(s, x + 1, y + 1);
+    frame_delta(&f, false, 0.025);
+    float spike_time = alast(s->perf).time;
+    bool intermediate = s->perf_publications == published &&
+                        fabsf(alast(s->perf).frame_ms - 25) < 0.001f;
+    frames(&f, 2);
+    bool retained = false;
+    for (int i = 0; i < acount(s->perf_published); i++) {
+        const studio_perf_sample *sample = &s->perf_published[i];
+        retained |= sample->time == spike_time && fabsf(sample->frame_ms - 25) < 0.001f;
+    }
+    test_check(intermediate && retained && s->perf_publications > published, "a longer real frame between telemetry polls survives in the next complete published history");
+
+    performance_pointer_button(s, x, y, true);
+    frame(&f, false);
+    recorded = acount(s->perf);
+    published = s->perf_publications;
+    emitted = s->ui_schedule.frames;
+    bool playing_deadline = performance_pan_frames(&f, x, y);
+    uint64_t playing_publications = s->perf_publications - published;
+    test_check(
+        playing_deadline && acount(s->perf) == recorded + 60 &&
+            playing_publications >= 15 && playing_publications <= 21 &&
+            s->ui_schedule.frames >= emitted + 15 &&
+            s->ui_schedule.frames <= emitted + 29,
+        "real playing panning retains full-rate camera input and recording "
+        "while host inspection and telemetry publish at bounded rates"
+    );
+    performance_pointer_button(s, x, y, false);
+    frame(&f, false);
+    published = s->perf_publications;
+    studio_runtime(s, APP_RUNTIME_STOP);
+    frame(&f, false);
+    test_check(
+        !s->perf_publish_playing && s->perf_publications == published + 1,
+        "stopping Play immediately publishes the idle telemetry mode"
+    );
+    fixture_free(&f);
+}
+
+static void replay_close_stop_reopen_keeps_graph_layout()
+{
+    studio_fixture f = fixture_open("projects/arena2d", "projects/arena2d/content/scenes/Sandbox.yaml", "Weapon");
+    f.studio = studio_new(f.scene, f.viewport, "projects/arena2d");
+    studio *s = f.studio;
+    studio_maximize_graph(s);
+    frames(&f, 3);
+    graph *gr = sg_active_graph(s);
+    uint64_t lifetime = gr->lifetime_id;
+    uint64_t *ids = NULL;
+    float *positions = NULL;
+    float lo[2] = { INFINITY, INFINITY }, hi[2] = { -INFINITY, -INFINITY };
+    for (int i = 0; i < acount(gr->nodes); i++) {
+        node *n = gr->nodes[i];
+        float box[4];
+        if (!sg_node_visible(gr, n) || !sg_node_box(s, n, box)) {
+            continue;
+        }
+        apush(ids, n->id);
+        apush(positions, n->x);
+        apush(positions, n->y);
+        lo[0] = fminf(lo[0], box[0]);
+        lo[1] = fminf(lo[1], box[1]);
+        hi[0] = fmaxf(hi[0], box[0] + box[2]);
+        hi[1] = fmaxf(hi[1], box[1] + box[3]);
+    }
+    assert(acount(ids) > 1 && hi[0] - lo[0] > 360);
+    char *before = behavior_asset_save_json(editor_behavior_asset(f.graph));
+    assert(before);
+    assert(app_scene_authoring_open_behavior(f.scene, "Movement") == 0);
+    frames(&f, 3);
+    assert(app_scenario_replay(f.scene, "Firefight") == 0);
+    frames(&f, 3);
+    int weapon = tab_named(f.scene, "Weapon");
+    assert(weapon >= 0 && !scene_tabs_dirty(f.scene, &f.scene->tabs[weapon]));
+    studio_close_tab(s, weapon);
+    frames(&f, 2);
+    int movement = tab_named(f.scene, "Movement");
+    assert(movement >= 0 && !scene_tabs_dirty(f.scene, &f.scene->tabs[movement]));
+    studio_close_tab(s, movement);
+    frames(&f, 2);
+    bool hidden = tab_named(f.scene, "Weapon") < 0 &&
+                  tab_named(f.scene, "Movement") < 0 && !studio_graph_active(s);
+    studio_runtime(s, APP_RUNTIME_STOP);
+    frame(&f, false);
+    assert(app_scene_authoring_open_behavior(f.scene, "Weapon") == 0);
+    studio_maximize_graph(s);
+    frames(&f, 3);
+    gr = sg_active_graph(s);
+    bool restored = hidden && gr && gr->lifetime_id != lifetime;
+    for (int i = 0; i < acount(ids); i++) {
+        node *n = graph_node_by_id(gr, ids[i]);
+        restored &= n && fabsf(n->x - positions[i * 2]) < 0.5f &&
+                    fabsf(n->y - positions[i * 2 + 1]) < 0.5f;
+    }
+    char *after = behavior_asset_save_json(editor_behavior_asset(f.graph));
+    test_check(restored && after && !strcmp(before, after), "Firefight replay, closing both graph tabs, Stop and reopening Weapon restore its automatic positions without authoring or saving an edit");
+    free(before);
+    free(after);
+
+    sg_frame_nodes(s, false, false);
+    frame(&f, false);
+    bool fitted = true;
+    for (int i = 0; i < acount(ids); i++) {
+        float box[4];
+        node *n = graph_node_by_id(gr, ids[i]);
+        fitted &= sg_node_box(s, n, box) && box[0] >= s->graph.x - 1 &&
+                  box[1] >= s->graph.y - 1 &&
+                  box[0] + box[2] <= s->graph.x + s->graph.in.width + 1 &&
+                  box[1] + box[3] <= s->graph.y + s->graph.in.height + 1;
+    }
+    bool wires = acount(s->graph.wire_edges) > 0;
+    for (int w = 0; w < acount(s->graph.wire_edges); w++) {
+        const edge *ed = &gr->edges[s->graph.wire_edges[w]];
+        node *from, *to;
+        int from_pin, to_pin;
+        assert(sg_edge_ends(gr, ed, &from, &from_pin, &to, &to_pin));
+        int count = kit_wire_points(s->graph.kit, "back/wires", w, NULL, 0);
+        float *points = xmalloc((size_t)(count ? count : 1) * 2 * sizeof *points);
+        kit_wire_points(s->graph.kit, "back/wires", w, points, count);
+        float ax, ay, bx, by;
+        sg_socket_at(s, from, ED_PIN_OUTPUT, from_pin, &ax, &ay);
+        sg_socket_at(s, to, ED_PIN_INPUT, to_pin, &bx, &by);
+        wires &= count >= 2 && fabsf(points[0] - ax + s->graph.x) < 0.5f &&
+                 fabsf(points[1] - ay + s->graph.y) < 0.5f &&
+                 fabsf(points[(count - 1) * 2] - bx + s->graph.x) < 0.5f &&
+                 fabsf(points[(count - 1) * 2 + 1] - by + s->graph.y) < 0.5f;
+        free(points);
+    }
+    test_check(fitted && wires, "Frame fits the restored graph spread and every rendered wire keeps its restored socket anchors");
+    afree(ids);
+    afree(positions);
     fixture_free(&f);
 }
 
@@ -2529,6 +3129,11 @@ static int studio_documents_app(const char *program, bool run_properties_only)
         component_vector_property();
     } else {
         graph_layout_does_not_wiggle();
+        graph_calculations_follow_edits();
+        graph_drag_retains_calculations_and_undo();
+        host_ui_refresh_keeps_input_immediate();
+        performance_snapshot_retains_intermediate_frames();
+        replay_close_stop_reopen_keeps_graph_layout();
         graph_value_controls_use_metadata();
         graph_color_session_saves_undoes_and_replays();
         reload_keeps_viewed_graph_saved();

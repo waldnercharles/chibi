@@ -239,8 +239,17 @@ int editor_rewire_behavior_expression(
  * the instance and must clear or replace it before the instance is detached or
  * destroyed. */
 void editor_set_inspection_instance(editor *e, const behavior_instance *instance);
+/* Clear or replace this borrow before its run is freed. */
 void editor_set_inspection_run(editor *e, const flow_run *run);
+/* Borrowed custom trace: call again after changing its contents, even in place. */
 void editor_set_inspection_trace(editor *e, const behavior_instance_trace_entry *trace, int count);
+/* Runtime trace: the producer revision also detects bounded overwrites and clear. */
+void editor_set_inspection_trace_revision(
+    editor *e,
+    const behavior_instance_trace_entry *trace,
+    int count,
+    uint64_t revision
+);
 /* Disable live overlays and standalone fallback while a debug target is unavailable or stale. */
 void editor_set_inspection_blocked(editor *e, bool blocked);
 

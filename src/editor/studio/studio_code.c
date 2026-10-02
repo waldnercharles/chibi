@@ -870,6 +870,7 @@ static bool starts_completion(const char *text, ui_code_change d)
 static void go_to_definition(studio *s, const ui_buffer *b, kit_code_editor *e)
 {
     studio_code *c = &s->code;
+    parse_part(c, e, b->part);
     int at = kit_code_cursor(e);
     ui_code_place place;
     if (ui_code_definition(b, c->source, at, project(s, b->path, false), &place)) {
@@ -914,6 +915,7 @@ static studio_reference place_row(const ui_code_place *place)
 static void find_references(studio *s, const ui_buffer *b, kit_code_editor *e)
 {
     studio_code *c = &s->code;
+    parse_part(c, e, b->part);
     ui_code_place *places = NULL;
     ui_source_symbol symbol = ui_code_places(
         b,
@@ -1209,12 +1211,12 @@ static collab_action_gate text_action_begin(
 
 /* The user's text reaches the buffer only after a proposal has been sent.
    An editor participant's buffer catches up from the accepted echo. */
-static ui_code_change take_edits(studio *s, ui_buffer *b, studio_code_editor *shown, ui_part part, unsigned events)
+static bool take_edits(studio *s, ui_buffer *b, studio_code_editor *shown, ui_part part, unsigned events)
 {
     studio_code *c = &s->code;
     c->replayed = false;
     bool completed = events & KIT_CODE_COMPLETED;
-    ui_code_change typed = { 0 };
+    bool typed_completion = false;
     if (events & (KIT_CODE_CHANGED | KIT_CODE_COMPLETED)) {
         text_edit edit;
         ui_code_change change;
@@ -1223,12 +1225,15 @@ static ui_code_change take_edits(studio *s, ui_buffer *b, studio_code_editor *sh
             const char *history_op = completed ? "step" : "type";
             collab_action_gate gate = text_action_begin(s, b, part, &edit, history_op, &action);
             if (gate == COLLAB_ACTION_APPLY) {
-                typed = ui_code_record(b, part, shown->editor, shown->synced, s->time, completed);
+                /* The diff addresses the editor before rebasing onto the buffer.
+                   Following a shorter external edit below moves those bytes. */
+                typed_completion = !completed &&
+                                   starts_completion(kit_code_text(shown->editor, NULL), change);
+                ui_code_record(b, part, shown->editor, shown->synced, s->time, completed);
                 if (action) {
                     (void)collab_actions_finish(action, true);
                 }
             } else {
-                typed = change;
                 follow_text(c, shown, ui_buffer_text(b, part));
             }
             free(action);
@@ -1267,7 +1272,7 @@ static ui_code_change take_edits(studio *s, ui_buffer *b, studio_code_editor *sh
         }
     }
     follow_text(c, shown, ui_buffer_text(b, part));
-    return typed;
+    return typed_completion;
 }
 
 /* Completion starts where typing or Control+Space asks, follows the text
@@ -1279,13 +1284,11 @@ static void follow_completion(
     kit_code_editor *e,
     ui_part part,
     unsigned events,
-    ui_code_change typed
+    bool typed_completion
 )
 {
     studio_code *c = &s->code;
-    bool typing = (events & KIT_CODE_CHANGED) && !(events & KIT_CODE_COMPLETED);
-    bool asked = (events & KIT_CODE_SUGGEST) ||
-                 (typing && starts_completion(kit_code_text(e, NULL), typed));
+    bool asked = (events & KIT_CODE_SUGGEST) || typed_completion;
     if (events &
         (KIT_CODE_COMPLETED | KIT_CODE_DISMISSED | KIT_CODE_UNDO | KIT_CODE_REDO)) {
         c->completing = false;
@@ -1309,8 +1312,8 @@ static void respond(
     if ((r->focused || (events & KIT_CODE_CHANGED)) && tab != active_ui(s)) {
         scene_tabs_activate(s->scene, (int)(tab - s->scene->tabs));
     }
-    ui_code_change typed = take_edits(s, b, shown, part, events);
-    follow_completion(s, b, e, part, events, typed);
+    bool typed_completion = take_edits(s, b, shown, part, events);
+    follow_completion(s, b, e, part, events, typed_completion);
     if (events & KIT_CODE_SAVED) {
         studio_save(s);
     }

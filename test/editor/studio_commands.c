@@ -1,7 +1,12 @@
+#include "editor/studio/studio_graph_internal.h"
 #include "editor/studio/studio_internal.h"
+#include "editor/workspace/input.h"
+#include "platform/cute.h"
 #include "support/xalloc.h"
 #include "test/suite_internal.h"
+#include "ui/rml.h"
 
+#include <assert.h>
 #include <ctype.h>
 #include <stdlib.h>
 #include <string.h>
@@ -110,4 +115,103 @@ void test_studio_zoom()
         "Zoom In and Out step UI Scale through the settings table's presets"
     );
     free(s);
+}
+
+/* A real SDL click runs through Studio's pointer tracking, unlike a direct
+   command call, and catches menubar presses losing their document context. */
+static void menu_frame(studio *s)
+{
+    cf_app_update(NULL);
+    app_input_frame();
+    editor_tick(sg_graph_editor(s), s->time + 1.0 / 60);
+    studio_frame(s, 1.0 / 60);
+    cf_app_draw_onto_screen(true);
+}
+
+static rml_element *menu_element(studio *s, const char *selector, const char *key)
+{
+    rml_context *context = rml_backend_context(s->backend);
+    for (int d = 0; d < rml_context_document_count(context); d++) {
+        rml_element *items[32];
+        int count = rml_element_query_selector_all(rml_context_document(context, d), selector, items, 32);
+        for (int i = 0; i < count && i < 32; i++) {
+            char path[256];
+            if (kit_element_path(s->kit, items[i], path, sizeof path)) {
+                const char *last = strrchr(path, '/');
+                if (last && !strcmp(last + 1, key)) {
+                    return items[i];
+                }
+            }
+        }
+    }
+    return NULL;
+}
+
+static bool menu_click(studio *s, rml_element *el)
+{
+    if (!el) {
+        return false;
+    }
+    rml_vec2 at = rml_element_absolute_offset(el, RML_BOX_BORDER);
+    rml_vec2 size = rml_element_box_size(el, RML_BOX_BORDER);
+    float scale = cf_app_get_pixel_scale();
+    float x = (at.x + size.x / 2) / scale, y = (at.y + size.y / 2) / scale;
+    SDL_Event move = { .type = SDL_EVENT_MOUSE_MOTION };
+    move.motion.windowID = SDL_GetWindowID(cf_app_get_window());
+    move.motion.x = x;
+    move.motion.y = y;
+    assert(SDL_PushEvent(&move));
+    menu_frame(s);
+    for (int down = 1; down >= 0; down--) {
+        SDL_Event click = { .type = down ? SDL_EVENT_MOUSE_BUTTON_DOWN
+                                         : SDL_EVENT_MOUSE_BUTTON_UP };
+        click.button.windowID = SDL_GetWindowID(cf_app_get_window());
+        click.button.button = SDL_BUTTON_LEFT;
+        click.button.down = down;
+        click.button.clicks = 1;
+        click.button.x = x;
+        click.button.y = y;
+        assert(SDL_PushEvent(&click));
+        menu_frame(s);
+    }
+    return true;
+}
+
+void test_studio_menu_context(studio *s)
+{
+    editor *e = sg_graph_editor(s);
+    if (!editor_can_undo(e) && editor_can_redo(e)) {
+        editor_redo(e);
+    }
+    assert(editor_can_undo(e));
+    /* Edit's popup overlaps the Scene pane; it still acts on the graph that
+       was clicked last, rather than the area geometrically beneath its row. */
+    studio_set_workspace(s, STUDIO_WORKSPACE_HORIZONTAL_SPLIT);
+    menu_frame(s);
+    menu_frame(s);
+    int area = s->graph.area;
+    assert(area >= 0);
+    s->focus_area = area;
+    char *before = ed_snapshot(e);
+    bool opened = menu_click(s, menu_element(s, "#menubar .trigger", "edit"));
+    rml_element *undo = menu_element(s, ".popup.menu .menu-item", "undo");
+    bool enabled = opened && undo &&
+                   !rml_element_has_attribute(undo, "data-disabled") &&
+                   s->focus_area == area &&
+                   studio_command_enabled(s, STUDIO_COMMAND_UNDO);
+    bool undo_clicked = enabled && menu_click(s, undo);
+    char *undone = ed_snapshot(e);
+    bool changed = undo_clicked && strcmp(before, undone) && editor_can_redo(e);
+    opened = menu_click(s, menu_element(s, "#menubar .trigger", "edit"));
+    rml_element *redo = menu_element(s, ".popup.menu .menu-item", "redo");
+    bool redo_enabled = opened && redo &&
+                        !rml_element_has_attribute(redo, "data-disabled") &&
+                        s->focus_area == area &&
+                        studio_command_enabled(s, STUDIO_COMMAND_REDO);
+    bool redo_clicked = redo_enabled && menu_click(s, redo);
+    char *restored = ed_snapshot(e);
+    test_check(enabled && changed && redo_enabled && redo_clicked && !strcmp(before, restored), "Edit menu preserves graph command context and applies Undo/Redo over the Scene pane");
+    free(before);
+    free(undone);
+    free(restored);
 }

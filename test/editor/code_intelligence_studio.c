@@ -112,6 +112,9 @@ static void fixture_free(fixture *f)
 
 static void frames(fixture *f, int count)
 {
+    /* This fixture drives the backend and document commands directly, bypassing
+       the SDL queue that normally wakes Studio for their next update. */
+    f->studio->ui_schedule.wake = true;
     for (int i = 0; i < count; i++) {
         f->time += FRAME_SECONDS;
         cf_app_update(NULL);
@@ -268,6 +271,50 @@ static void completion_and_undo(fixture *f)
     free(before);
 }
 
+/* Typing and an external edit can arrive before the host consumes either. */
+static void shorter_external_text(fixture *f)
+{
+    studio *s = f->studio;
+    ui_buffer *b = studio_ui_buffer(s);
+    char *before = xstrdup(ui_buffer_text(b, UI_PART_RML));
+    const char *prefix = "<!-- A long external preface that moves the pending "
+                         "edit beyond the shorter document. -->\n";
+    text_edit prepend = { 0, 0, prefix };
+    ui_buffer_edit(b, UI_PART_RML, &prepend, 1);
+    frames(f, 1);
+    cursor_at(f, "Hi", 2);
+    rml_backend_process_input(
+        s->backend,
+        &(rml_input){ .type = RML_INPUT_TEXT_INPUT, .text = "x", .text_size = 1 }
+    );
+    text_edit remove = { 0, (int)strlen(prefix), "" };
+    ui_buffer_edit(b, UI_PART_RML, &remove, 1);
+    frames(f, 1);
+    const char *text = shown_text(s);
+    const char *typed = strstr(text, "Hix");
+    test_check(
+        typed && !strstr(text, prefix) &&
+            !strcmp(text, ui_buffer_text(b, UI_PART_RML)) &&
+            kit_code_cursor(s->code.editor) == (int)(typed - text) + 3,
+        "pending typing rebases onto shorter external text with its caret at "
+        "the typed bytes"
+    );
+    cursor_at(f, "Dialog", 2);
+    press(f, RML_INPUT_KEY_F12, 0);
+    frames(f, 3);
+    test_check(!strcmp(s->code.path, f->dialog), "navigation after shorter external text opens the widget definition");
+    press(f, RML_INPUT_KEY_OEM_4, RML_INPUT_MOD_CONTROL);
+    frames(f, 3);
+    test_check(!strcmp(s->code.path, f->doc), "Back returns to the shortened document");
+    studio_history(s, false);
+    frames(f, 1);
+    test_check(!strstr(shown_text(s), "Hix") && !strstr(shown_text(s), prefix), "undo removes the pending typing while retaining the external shortening");
+    text_edit restore = { 0, (int)strlen(ui_buffer_text(b, UI_PART_RML)), before };
+    ui_buffer_edit(b, UI_PART_RML, &restore, 1);
+    frames(f, 1);
+    free(before);
+}
+
 static void navigation(fixture *f)
 {
     studio *s = f->studio;
@@ -362,6 +409,7 @@ void test_code_intelligence_studio()
     frames(&f, 4);
     problems(&f);
     completion_and_undo(&f);
+    shorter_external_text(&f);
     navigation(&f);
     keyboard_reorder(&f);
     text_overlay_clear();

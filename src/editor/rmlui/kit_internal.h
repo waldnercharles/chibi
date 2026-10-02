@@ -373,6 +373,7 @@ void flag_element(rml_element *el, const char *name, bool on);
 void set_text(node *n, const char *text);
 void set_element_text(rml_element *el, const char *text);
 void set_line_text(rml_element *el, const char *text);
+void set_right_line_text(rml_element *el, const char *text);
 /* Escapes text into the element's content unconditionally. */
 void set_inner_text(rml_element *el, const char *text);
 

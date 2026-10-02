@@ -780,6 +780,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     file(GLOB_RECURSE WEB_ASSETS CONFIGURE_DEPENDS
         "${CMAKE_CURRENT_SOURCE_DIR}/content/*"
         "${CMAKE_CURRENT_SOURCE_DIR}/projects/arena2d/content/*"
+        "${CMAKE_CURRENT_SOURCE_DIR}/projects/studio/*"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/editor/rmlui/resources/*"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/render/shaders/*")
     set_property(TARGET chibi APPEND PROPERTY LINK_DEPENDS

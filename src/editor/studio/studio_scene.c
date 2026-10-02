@@ -301,27 +301,30 @@ void studio_outliner_header(studio *s, int area)
     kit_button_desc add = { .icon = KIT_ICON_ADD,
                             .tip = "Add object",
                             .flags = studio_editable(s) ? 0 : KIT_DISABLED };
+    /* Prototypes are many, so Add searches them, as Unity's Add Component and
+       Blender's Shift+A search do. */
     if (kit_button(k, "add", &add)) {
-        kit_popup_open(k, key);
+        kit_dropdown_open(k, key, "Add object");
     }
-    if (kit_popup_begin(k, key, "menu")) {
-        kit_menu_group(k, "group", "Add");
-        for (int i = 0; i < acount(s->scene->prototypes); i++) {
-            const game_prototype *prototype = s->scene->prototypes[i].prototype;
-            if (!prototype || !prototype->name) {
-                continue;
-            }
-            char item_key[24];
-            snprintf(item_key, sizeof item_key, "p%d", i);
-            kit_menu_item_desc d = { .label = prototype->name,
-                                     .icon = studio_prototype_icon(s, prototype->name),
-                                     .checked = -1 };
-            if (kit_menu_item(k, item_key, &d)) {
-                studio_add_object(s, prototype->name);
-            }
+    if (!kit_dropdown_is_open(k, key)) {
+        return;
+    }
+    kit_command_item *items = NULL;
+    for (int i = 0; i < acount(s->scene->prototypes); i++) {
+        const game_prototype *prototype = s->scene->prototypes[i].prototype;
+        if (prototype && prototype->name) {
+            apush(
+                items,
+                ((kit_command_item){ .label = prototype->name,
+                                     .icon = studio_prototype_icon(s, prototype->name) })
+            );
         }
-        kit_popup_end(k);
     }
+    int chosen = kit_dropdown(k, key, items, acount(items));
+    if (chosen >= 0) {
+        studio_add_object(s, items[chosen].label);
+    }
+    afree(items);
 }
 
 /* ---------- Rename ---------- */

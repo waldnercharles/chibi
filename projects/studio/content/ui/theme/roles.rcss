@@ -6,7 +6,8 @@ body, .dark {
     --font-ui: var(--studio-standard-font-family, geist);
     --font-numeric: var(--studio-numeric-font-family, GeistNumeric);
     --font-code: var(--studio-code-font-family, jetbrains mono);
-    --app: var(--muted);
+    /* The backdrop the areas float on, a step darker than them. */
+    --app: #e2e5ea;
     --edge: var(--border);
     --rail: var(--muted);
     --panel-head: var(--card);
@@ -35,8 +36,9 @@ body, .dark {
     --primary-soft: color-mix(in srgb, var(--primary) 15%, transparent);
     --primary-edge: color-mix(in srgb, var(--primary) 67%, transparent);
     --primary-wash: color-mix(in srgb, var(--primary) 27%, transparent);
-    --fill: color-mix(in srgb, var(--primary) 55%, transparent);
-    --fill-hover: color-mix(in srgb, var(--primary) 69%, transparent);
+    /* A fill bar tints the field behind its value, not a selection. */
+    --fill: color-mix(in srgb, var(--primary) 16%, var(--secondary));
+    --fill-hover: color-mix(in srgb, var(--primary) 26%, var(--secondary));
     --selected: color-mix(in oklab, var(--primary) 19%, var(--popover));
     --active-row: var(--selected);
     /* Foreground-tinted states. */
@@ -77,7 +79,7 @@ body, .dark {
     --r-lg: var(--radius);
 }
 .dark {
-    --app: #1b1e23;
+    --app: #121316;
     --edge: var(--border);
     --floating: color-mix(in srgb, var(--card) 90%, transparent);
     --tooltip: color-mix(in srgb, var(--popover) 60%, #000);
@@ -90,8 +92,8 @@ body, .dark {
     --link: #a8c6f5;
     --primary-soft: color-mix(in srgb, var(--primary) 23%, transparent);
     --primary-wash: color-mix(in srgb, var(--primary) 33%, transparent);
-    --fill: color-mix(in srgb, var(--primary) 72%, transparent);
-    --fill-hover: color-mix(in srgb, var(--primary) 85%, transparent);
+    --fill: color-mix(in srgb, var(--primary) 26%, var(--secondary));
+    --fill-hover: color-mix(in srgb, var(--primary) 38%, var(--secondary));
     --selected: color-mix(in oklab, var(--primary) 27%, var(--popover));
     --active-row: var(--selected);
     --press: color-mix(in srgb, var(--foreground) 10%, transparent);

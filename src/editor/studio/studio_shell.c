@@ -877,31 +877,59 @@ static bool drawer_editor(studio_editor editor)
            editor == STUDIO_EDITOR_PANEL || editor == STUDIO_EDITOR_CODE;
 }
 
-/* The Studio project's panels, after the built-in editors. */
-static void panel_types(studio *s, int area)
+/* The Studio project's panels that are tools in any project; the rest are
+   pieces of Studio's own chrome, kept in a submenu. */
+static const char *const TOOL_PANELS[] = { "Inspector", "Data", "Theme" };
+
+static bool tool_panel(const char *name)
 {
-    kit *k = s->kit;
-    studio_layout *layout = studio_active_layout(s);
-    int count = studio_ui_panel_count(s);
-    if (count) {
-        kit_menu_separator(k, "panels-sep");
-        kit_menu_group(k, "panels", "Studio");
-    }
-    for (int i = 0; i < count; i++) {
-        const char *name = studio_ui_panel_name(s, i);
-        char item_key[16];
-        snprintf(item_key, sizeof item_key, "p%d", i);
-        kit_menu_item_desc item = {
-            .label = name,
-            .icon = EDITOR_ICONS[STUDIO_EDITOR_PANEL],
-            .checked = -1,
-            .current = layout->editors[area] == STUDIO_EDITOR_PANEL &&
-                       !strcmp(layout->panels[area], name),
-        };
-        if (kit_menu_item(k, item_key, &item)) {
-            layout->editors[area] = STUDIO_EDITOR_PANEL;
-            snprintf(layout->panels[area], sizeof layout->panels[area], "%s", name);
+    for (size_t i = 0; i < sizeof TOOL_PANELS / sizeof *TOOL_PANELS; i++) {
+        if (!strcmp(TOOL_PANELS[i], name)) {
+            return true;
         }
+    }
+    return false;
+}
+
+static void panel_item(studio *s, int area, int index)
+{
+    studio_layout *layout = studio_active_layout(s);
+    const char *name = studio_ui_panel_name(s, index);
+    char item_key[16];
+    snprintf(item_key, sizeof item_key, "p%d", index);
+    kit_menu_item_desc item = {
+        .label = name,
+        .icon = EDITOR_ICONS[STUDIO_EDITOR_PANEL],
+        .checked = -1,
+        .current = layout->editors[area] == STUDIO_EDITOR_PANEL &&
+                   !strcmp(layout->panels[area], name),
+    };
+    if (kit_menu_item(s->kit, item_key, &item)) {
+        layout->editors[area] = STUDIO_EDITOR_PANEL;
+        snprintf(layout->panels[area], sizeof layout->panels[area], "%s", name);
+    }
+}
+
+/* The panels that are tools, then the rest in a submenu. */
+static void panel_types(studio *s, int area, bool tools)
+{
+    int count = studio_ui_panel_count(s);
+    for (int i = 0; tools && i < count; i++) {
+        if (tool_panel(studio_ui_panel_name(s, i))) {
+            panel_item(s, area, i);
+        }
+    }
+    if (tools || count <= (int)(sizeof TOOL_PANELS / sizeof *TOOL_PANELS)) {
+        return;
+    }
+    kit_menu_separator(s->kit, "panels-sep");
+    if (kit_submenu_begin(s->kit, "studio-ui", "Studio UI", EDITOR_ICONS[STUDIO_EDITOR_PANEL])) {
+        for (int i = 0; i < count; i++) {
+            if (!tool_panel(studio_ui_panel_name(s, i))) {
+                panel_item(s, area, i);
+            }
+        }
+        kit_submenu_end(s->kit);
     }
 }
 
@@ -915,6 +943,56 @@ void studio_maximize_graph(studio *s)
     layout->editors[area] = STUDIO_EDITOR_BEHAVIOR;
     s->applied.layouts[s->prefs.workspace].editors[area] = STUDIO_EDITOR_BEHAVIOR;
     s->maximized = area;
+}
+
+/* Editor types by task, as Blender's editor type menu groups them. */
+typedef struct
+{
+    const char *label;
+    studio_editor editors[4];
+    int count;
+    bool tools; /* followed by the Studio panels that are tools */
+} editor_group;
+
+static const editor_group EDITOR_GROUPS[] = {
+    { "General",
+      { STUDIO_EDITOR_SCENE, STUDIO_EDITOR_OUTLINER, STUDIO_EDITOR_PROPERTIES, STUDIO_EDITOR_ASSETS },
+      4,
+      false },
+    { "Scripting",
+      { STUDIO_EDITOR_BEHAVIOR, STUDIO_EDITOR_MEMBERS, STUDIO_EDITOR_CODE },
+      3,
+      false },
+    { "Diagnostics", { STUDIO_EDITOR_OUTPUT, STUDIO_EDITOR_PERFORMANCE }, 2, true },
+};
+
+static void editor_group_items(studio *s, int area, const editor_group *group, int index)
+{
+    kit *k = s->kit;
+    studio_editor *editor = &studio_active_layout(s)->editors[area];
+    char key[16];
+    snprintf(key, sizeof key, "g%d", index);
+    if (index > 0) {
+        kit_menu_separator(k, key);
+    }
+    kit_menu_group(k, group->label, group->label);
+    for (int i = 0; i < group->count; i++) {
+        studio_editor e = group->editors[i];
+        if (area == STUDIO_AREA_DRAWER && !drawer_editor(e)) {
+            continue;
+        }
+        snprintf(key, sizeof key, "e%d", (int)e);
+        kit_menu_item_desc item = { .label = EDITOR_LABELS[e],
+                                    .icon = EDITOR_ICONS[e],
+                                    .checked = -1,
+                                    .current = *editor == e };
+        if (kit_menu_item(k, key, &item)) {
+            *editor = e;
+        }
+    }
+    if (group->tools) {
+        panel_types(s, area, true);
+    }
 }
 
 static void editor_type_menu(studio *s, int area)
@@ -933,22 +1011,10 @@ static void editor_type_menu(studio *s, int area)
         kit_popup_open(k, key);
     }
     if (kit_popup_begin(k, key, "menu")) {
-        kit_menu_group(k, "group", "Editor");
-        for (int e = 0; e < STUDIO_EDITOR_PANEL; e++) {
-            if (area == STUDIO_AREA_DRAWER && !drawer_editor((studio_editor)e)) {
-                continue;
-            }
-            char item_key[16];
-            snprintf(item_key, sizeof item_key, "e%d", e);
-            kit_menu_item_desc item = { .label = EDITOR_LABELS[e],
-                                        .icon = EDITOR_ICONS[e],
-                                        .checked = -1,
-                                        .current = *editor == (studio_editor)e };
-            if (kit_menu_item(k, item_key, &item)) {
-                *editor = (studio_editor)e;
-            }
+        for (size_t g = 0; g < sizeof EDITOR_GROUPS / sizeof *EDITOR_GROUPS; g++) {
+            editor_group_items(s, area, &EDITOR_GROUPS[g], (int)g);
         }
-        panel_types(s, area);
+        panel_types(s, area, false);
         kit_popup_end(k);
     }
 }

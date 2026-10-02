@@ -6,7 +6,7 @@
 body { flex: 0 0 auto; }
 .area-head {
   height: var(--header-h); display: flex; align-items: center; gap: 3dp; padding: 0dp 6dp;
-  background-color: var(--muted); border-bottom: 1dp var(--edge);
+  background-color: var(--background); border-bottom: 1dp var(--line);
 }
 .btn { height: var(--h); }
 #editor-type { display: flex; flex: 0 0 auto; }

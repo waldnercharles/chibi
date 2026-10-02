@@ -7,10 +7,10 @@
 body { flex: 0 0 auto; }
 .statusbar {
   height: var(--status-h); display: flex; align-items: center; gap: 12dp; padding: 0dp 10dp;
-  background-color: var(--muted); border-top: 1dp var(--edge); color: var(--muted-foreground);
+  background-color: var(--app); color: var(--muted-foreground);
   font-size: var(--studio-font-12, 12dp); white-space: nowrap;
 }
-.statusbar.live { border-top-color: var(--primary-edge); }
+.statusbar.live { background-color: color-mix(in srgb, var(--primary) 14%, var(--app)); }
 // Hints give way first when the window narrows.
 .hints { display: flex; align-items: center; gap: 10dp; flex: 0 1 auto; min-width: 0dp; overflow: hidden; }
 // The report's area takes the free space, so a report coming or going moves nothing.

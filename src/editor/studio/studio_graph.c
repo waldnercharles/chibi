@@ -940,15 +940,58 @@ static int visible_nodes(graph *gr)
     return count;
 }
 
+/* With no behavior open, the area offers the selected object's behaviors,
+   then a new one or search: an empty editor says how to fill it. */
+static void behavior_empty(studio *s)
+{
+    kit *k = s->kit;
+    kit_push(k, "empty", NULL, "pending-editor behavior-empty");
+    kit_icon(k, "icon", "glyph", KIT_ICON_GRAPH);
+    kit_label(k, "title", "title", "No behavior open");
+    scene_actor *actor = selected_actor(s->scene);
+    char **names = actor ? instance_behavior_names(s->scene, actor->entity) : NULL;
+    char heading[160] = "Select an object to see its behaviors";
+    if (actor) {
+        snprintf(
+            heading,
+            sizeof heading,
+            acount(names) ? "Behaviors on %s" : "%s has no behaviors",
+            actor->name
+        );
+    }
+    kit_label(k, "on", "dim", heading);
+    kit_push(k, "choices", NULL, "behavior-choices");
+    for (int i = 0; i < acount(names); i++) {
+        kit_button_desc open = { .label = names[i],
+                                 .icon = KIT_ICON_GRAPH,
+                                 .variant = KIT_SUBTLE };
+        if (kit_button(k, names[i], &open)) {
+            app_scene_authoring_open_behavior(s->scene, names[i]);
+        }
+    }
+    kit_pop(k);
+    free_behavior_names(names);
+    kit_push(k, "actions", NULL, "behavior-choices");
+    kit_button_desc create = { .label = "New Behavior", .icon = KIT_ICON_ADD };
+    if (kit_button(k, "new", &create)) {
+        studio_command_run(s, STUDIO_COMMAND_NEW_BEHAVIOR);
+    }
+    kit_button_desc search = { .label = "Search",
+                               .icon = KIT_ICON_SEARCH,
+                               .shortcut = studio_chord(s, "Mod+K") };
+    if (kit_button(k, "search", &search)) {
+        studio_command_run(s, STUDIO_COMMAND_SEARCH);
+    }
+    kit_pop(k);
+    kit_pop(k);
+}
+
 void studio_behavior_body(studio *s, int area)
 {
     kit *k = s->kit;
     studio_graph *g = &s->graph;
     if (!studio_graph_active(s)) {
-        kit_push(k, "empty", NULL, "pending-editor");
-        kit_icon(k, "icon", NULL, KIT_ICON_GRAPH);
-        kit_label(k, "name", NULL, "Open a behavior from Assets");
-        kit_pop(k);
+        behavior_empty(s);
         g->area = -1;
         return;
     }

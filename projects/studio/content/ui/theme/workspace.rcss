@@ -11,7 +11,7 @@ body.studio { width: 100%; height: 100%; margin: 0dp; padding: 0dp; background-c
 .dirty-dot { width: 6dp; height: 6dp; border-radius: 3dp; background-color: var(--muted-foreground); }
 
 /* Workspace and areas. */
-.workspace { flex: 1 1 0dp; display: flex; padding: 2dp; }
+.workspace { flex: 1 1 0dp; display: flex; padding: 0dp 6dp 4dp 6dp; }
 .column { display: flex; flex-direction: column; }
 .column.main { flex: 1 1 0dp; }
 /* The top and bottom areas: stacked vertically or arranged side by side. */
@@ -33,9 +33,9 @@ body.studio { width: 100%; height: 100%; margin: 0dp; padding: 0dp; background-c
 .area-body { flex: 1 1 0dp; position: relative; overflow: hidden; }
 .area-panel { position: absolute; left: 0dp; top: 0dp; right: 0dp; bottom: 0dp; overflow-y: auto; padding: 8dp; }
 
-/* Splitters: 4 dp hit area. */
-.split-v { width: 4dp; flex: 0 0 auto; cursor: ew-resize; drag: drag; }
-.split-h { height: 4dp; flex: 0 0 auto; cursor: ns-resize; drag: drag; }
+/* Splitters: the 6 dp gutters between areas, which tint while they resize. */
+.split-v { width: 6dp; flex: 0 0 auto; cursor: ew-resize; drag: drag; border-radius: 3dp; }
+.split-h { height: 6dp; flex: 0 0 auto; cursor: ns-resize; drag: drag; border-radius: 3dp; }
 .split-v:hover, .split-v[data-dragging], .split-h:hover, .split-h[data-dragging] { background-color: var(--primary-wash); }
 
 /* Drawer: the collapsible bottom area of the main column. */
@@ -118,6 +118,11 @@ body:not(.dark) .viewport {
 /* An empty graph's hint, over the canvas's middle; the canvas keeps the pointer. */
 .graph-empty { position: absolute; left: 0dp; right: 0dp; top: 50%; text-align: center; color: var(--faint-foreground); pointer-events: none; }
 .pending-editor { position: absolute; left: 0dp; top: 0dp; right: 0dp; bottom: 0dp; display: flex; align-items: center; justify-content: center; color: var(--faint-foreground); background-color: var(--canvas); }
+/* The Behavior area with no graph: the selected object's behaviors to open. */
+.behavior-empty { flex-direction: column; gap: 6dp; padding: 16dp; }
+.behavior-empty .glyph { font-size: 22dp; width: 28dp; line-height: 28dp; color: var(--disabled-foreground); }
+.behavior-empty .title { color: var(--foreground); font-weight: 600; }
+.behavior-choices { display: flex; flex-wrap: wrap; justify-content: center; gap: 6dp; max-width: 480dp; margin-top: 4dp; }
 
 /* Output. */
 /* View labels carry counts, so segments fit their labels. */

@@ -10,7 +10,7 @@ body { flex: 0 0 auto; }
 .spacer { min-width: 12dp; }
 .topbar {
   height: var(--topbar-h); display: flex; align-items: center; gap: 3dp; padding: 0dp 8dp;
-  background-color: var(--muted); border-bottom: 1dp var(--edge);
+  background-color: var(--app);
 }
 .brand {
   width: 22dp; height: 22dp; display: flex; align-items: center; justify-content: center;
@@ -31,15 +31,16 @@ body { flex: 0 0 auto; }
 // Documents occupy their own row so the toolbar keeps every action in reach.
 .doc-tabs {
   display: flex; align-items: center; gap: 2dp; height: var(--header-h); flex: 0 0 auto;
-  padding: 3dp 8dp 0dp; overflow-x: auto; overflow-y: hidden;
-  background-color: var(--muted); border-bottom: 1dp var(--edge);
+  padding: 0dp 6dp 4dp; overflow-x: auto; overflow-y: hidden;
+  background-color: var(--app);
 }
-// A tab selects from its face and closes from its button, hover-revealed on the others.
+// A tab selects from its face and closes from its button, hover-revealed on the
+// others. The active document reads as a piece of the panels below it.
 .doc-tab {
   height: 100%; padding: 0dp; gap: 0dp; color: var(--muted-foreground);
-  border-radius: var(--r) var(--r) 0dp 0dp; border-bottom: 2dp transparent;
-  &:hover { color: var(--foreground); }
-  &[data-state=on] { background-color: var(--card); border-bottom-color: var(--primary-text); color: var(--foreground); }
+  border-radius: var(--r-lg);
+  &:hover { color: var(--foreground); background-color: var(--accent); }
+  &[data-state=on] { background-color: var(--background); color: var(--foreground); }
   &[data-state=on] .icon { color: var(--primary-text); }
 }
 .face { display: flex; align-items: center; gap: 6dp; height: 100%; padding: 0dp 6dp 0dp 8dp; }

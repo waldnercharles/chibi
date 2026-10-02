@@ -198,7 +198,7 @@ owner_type "ecs.entity"
                 x 0.0
                 y 0.0
                 placed #false
-                inputs B=9.9999997473787516e-05
+                inputs B=0.0001
             }
             - id=68 type="Branch" x=0.0 y=0.0 placed=#false
             - id=73 type="Normalize Vector 2" x=0.0 y=0.0 placed=#false

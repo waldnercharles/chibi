@@ -8,8 +8,8 @@ frames 1800
     }
     - {
         frame 90
-        movement x=0.5 y=-0.30000001192092896
-        aim x=1.0 y=-0.44999998807907104
+        movement x=0.5 y=-0.3
+        aim x=1.0 y=-0.45
         (array)controls "Mouse Left"
     }
     - {
@@ -19,8 +19,8 @@ frames 1800
     }
     - {
         frame 270
-        movement x=1.0 y=0.20000000298023224
-        aim x=1.0 y=0.40000000596046448
+        movement x=1.0 y=0.2
+        aim x=1.0 y=0.4
         (array)controls "Mouse Left"
     }
     - {
@@ -35,7 +35,7 @@ frames 1800
     }
     - {
         frame 720
-        movement x=1.0 y=-0.20000000298023224
+        movement x=1.0 y=-0.2
         (array)controls "Mouse Left"
     }
     - {
@@ -45,14 +45,14 @@ frames 1800
     }
     - {
         frame 930
-        movement x=0.60000002384185791 y=0.40000000596046448
-        aim x=0.40000000596046448 y=1.0
+        movement x=0.6 y=0.4
+        aim x=0.4 y=1.0
         (array)controls "Mouse Left"
     }
     - {
         frame 1080
         movement x=0.0 y=-1.0
-        aim x=1.0 y=-0.20000000298023224
+        aim x=1.0 y=-0.2
         (array)controls "Mouse Left"
     }
     - {

@@ -4,7 +4,7 @@ id_counter 295
 description "Capture the authored surface influence strength on Begin, fade it over Duration, then destroy the pulse. Color, radius and lingering floor response belong to the prototype."
 owner_type "ecs.entity"
 (array)variables {
-    - id=1 name="Duration" type="float" type_name="float" category="Surface" default=0.2800000011920929
+    - id=1 name="Duration" type="float" type_name="float" category="Surface" default=0.28
     - id=2 name="Remaining" type="float" type_name="float" category="State"
     - id=3 name="Peak Strength" type="float" type_name="float" category="State"
 }

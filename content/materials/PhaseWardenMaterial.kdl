@@ -19,8 +19,8 @@ id_counter 39
                     Emission {
                         default x=0.0 y=0.0 z=0.0
                     }
-                    Roughness 0.2800000011920929
-                    Metallic 0.62000000476837158
+                    Roughness 0.28
+                    Metallic 0.62
                     Normal {
                         default x=0.0 y=0.0 z=0.0
                     }
@@ -33,7 +33,7 @@ id_counter 39
                 x 0.0
                 y 0.0
                 placed #false
-                inputs X=0.019999999552965164 Y=0.05000000074505806 Z=0.18000000715255737
+                inputs X=0.02 Y=0.05 Z=0.18
             }
             - {
                 id 14
@@ -41,7 +41,7 @@ id_counter 39
                 x 0.0
                 y 0.0
                 placed #false
-                inputs X=0.05000000074505806 Y=0.64999997615814209 Z=1.2000000476837158
+                inputs X=0.05 Y=0.65 Z=1.2
             }
         }
         (array)edges {

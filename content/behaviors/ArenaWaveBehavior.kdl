@@ -5,7 +5,7 @@ description "Five telegraphed formations: edge rows, opposing pincers and an arc
 owner_type "ecs.entity"
 (array)variables {
     - id=2001 name="Interval" type="float" type_name="float" category="Formation" default=4.0
-    - id=2002 name="Elapsed" type="float" type_name="float" category="State" default=3.7999999523162842
+    - id=2002 name="Elapsed" type="float" type_name="float" category="State" default=3.8
     - id=2003 name="Enemy Count" type="int" type_name="int" category="State"
     - id=2004 name="Player Alive" type="bool" type_name="bool" category="State"
     - id=2387 name="Pending Deaths" type="bool" type_name="bool" category="State"

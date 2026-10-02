@@ -5,8 +5,8 @@ components {
     GAME.GameDestructible cell_size=2.0 min_fragment_cells=5
     GAME.GameMaterial absorption=1.0 albedo=2732320511 border_scene=2396973823 edge_light=1.0 emission_multiplier=1.0 filter=2246639615 scene=373974464
     (object)GAME.GameOrientation
-    GAME.GameReflection offset=-28.0 roughness=0.11999999731779099 strength=0.80000001192092896
+    GAME.GameReflection offset=-28.0 roughness=0.12 strength=0.8
     GAME.GameSubstance blast_multiplier=4.0 hardness=2.0 retain_chips=#true
     (object)GAME.GameTransform
-    GAME.MaterialBreakProfile blast_speed=70.0 chip_speed=35.0 dust_lifetime_max=0.30000001192092896 dust_lifetime_min=0.15000000596046448 dust_limit=8 dust_size_max=0.5 dust_size_min=0.25 dust_speed_max=12.0 dust_speed_min=4.0 fragment_speed=30.0 release_speed=12.0
+    GAME.MaterialBreakProfile blast_speed=70.0 chip_speed=35.0 dust_lifetime_max=0.3 dust_lifetime_min=0.15 dust_limit=8 dust_size_max=0.5 dust_size_min=0.25 dust_speed_max=12.0 dust_speed_min=4.0 fragment_speed=30.0 release_speed=12.0
 }

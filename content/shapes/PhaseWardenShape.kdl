@@ -17,7 +17,7 @@ id_counter 78
                 x 0.0
                 y 0.0
                 placed #false
-                inputs Radius=0.43999999761581421
+                inputs Radius=0.44
             }
             - {
                 id 9
@@ -25,7 +25,7 @@ id_counter 78
                 x 0.0
                 y 0.0
                 placed #false
-                inputs Radius=0.2800000011920929
+                inputs Radius=0.28
             }
             - id=13 type="Shader Difference" x=0.0 y=0.0 placed=#false
             - {

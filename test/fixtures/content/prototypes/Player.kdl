@@ -5,7 +5,7 @@ components {
     GAME.GameCollider category=1 mask=10 radius=12.0
     GAME.GameHealth current=100 maximum=100
     (object)GAME.GameInput
-    GAME.GameMaterial absorption=1.0 albedo=437918234 emission_color=4294967295 emission_intensity=0.10000000149011612 emission_multiplier=1.0 scene=4294967295
+    GAME.GameMaterial absorption=1.0 albedo=437918234 emission_color=4294967295 emission_intensity=0.1 emission_multiplier=1.0 scene=4294967295
     GAME.GameMovement speed=180.0
     (object)GAME.GameOrientation
     GAME.GameTransform x=320.0 y=-180.0

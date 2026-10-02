@@ -3,9 +3,9 @@ components {
     GAME.GameActionBinding action="LeftFlip" source="A"
     GAME.GameAppearance border_color=4000790783 border_width=3.0 color=4057436671 height=16.0 layer=6 shape="Capsule" width=76.0
     GAME.GameBody type="Kinematic"
-    GAME.GameCollider category=2 friction=0.11999999731779099 height=16.0 mask=1 restitution=0.89999997615814209 shape="Box" width=76.0
+    GAME.GameCollider category=2 friction=0.12 height=16.0 mask=1 restitution=0.9 shape="Box" width=76.0
     (object)GAME.GameInput
-    GAME.GameOrientation radians=0.44999998807907104
+    GAME.GameOrientation radians=0.45
     (object)GAME.GameTransform
     (object)GAME.GameVelocity
 }

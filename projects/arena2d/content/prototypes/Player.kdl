@@ -11,7 +11,7 @@ components {
     GAME.GameGlobalBinding name="Player"
     GAME.GameHealth current=20 maximum=20
     (object)GAME.GameInput
-    GAME.GameMaterial absorption=1.0 albedo=437918234 emission_color=2823094271 emission_intensity=0.10000000149011612 emission_multiplier=1.0 scene=4294967295
+    GAME.GameMaterial absorption=1.0 albedo=437918234 emission_color=2823094271 emission_intensity=0.1 emission_multiplier=1.0 scene=4294967295
     GAME.GameMovement speed=120.0
     (object)GAME.GameOrientation
     (object)GAME.GameTransform

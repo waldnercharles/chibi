@@ -21,8 +21,8 @@ name "Sandbox"
         name "HRC"
         prototype "HRC"
         components {
-            GAME.GameCombustion flame_emission=1.0 blast_radius=400.0 blast_speed=200.0 blast_damage=0.20000000000000001
-            GAME.GameHRC2D resolution=1.0 adaptive=#true min_resolution=0.5 fog=0.66000000000000003 upscale_mode=0 trace_levels=2 bloom=0.20000000000000001
+            GAME.GameCombustion flame_emission=1.0 blast_radius=400.0 blast_speed=200.0 blast_damage=0.2
+            GAME.GameHRC2D resolution=1.0 adaptive=#true min_resolution=0.5 fog=0.66 upscale_mode=0 trace_levels=2 bloom=0.2
         }
     }
     - name="FireMouse" prototype="FireMouse"
@@ -99,7 +99,7 @@ name "Sandbox"
         name "Brittle crystal seam"
         prototype "Crystal"
         components {
-            GAME.GameOrientation radians=0.23999999999999999
+            GAME.GameOrientation radians=0.24
             GAME.GameTransform x=180.0 y=-100.0
         }
     }

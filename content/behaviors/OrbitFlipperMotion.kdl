@@ -41,7 +41,7 @@ owner_type "ecs.entity"
                 reference_id 15
                 reference_name "Stroke"
                 inputs {
-                    Value type="double" default=0.90000000000000002
+                    Value type="double" default=0.9
                 }
                 outputs {
                     Value type="double"

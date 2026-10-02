@@ -1,6 +1,7 @@
 #include "support/asset_value.h"
 
 #include "support/array.h"
+#include "support/float_text.h"
 #include "support/xalloc.h"
 
 #include <assert.h>
@@ -112,7 +113,9 @@ av_value *av_real(av_doc *doc, double value)
 }
 av_value *av_float(av_doc *doc, float value)
 {
-    return av_real(doc, value);
+    char text[64];
+    float_text(text, sizeof text, value, true);
+    return av_real(doc, strtod(text, NULL));
 }
 av_value *av_strn(av_doc *doc, const char *value, size_t len)
 {

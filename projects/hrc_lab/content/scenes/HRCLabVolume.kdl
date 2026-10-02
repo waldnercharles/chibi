@@ -28,7 +28,7 @@ name "HRCLabVolume"
         prototype "HRCLabSmoke"
         components {
             GameTransform x=-60 y=0
-            GameFluidVolume width=220 height=360 absorption=0.0080000000000000002 visibility=0.017999999999999999
+            GameFluidVolume width=220 height=360 absorption=0.008 visibility=0.018
         }
     }
     - {
@@ -36,7 +36,7 @@ name "HRCLabVolume"
         prototype "HRCLabLiquid"
         components {
             GameTransform x=130 y=-40
-            GameFluidVolume width=100 height=220 absorption=0.040000000000000001 visibility=0.02
+            GameFluidVolume width=100 height=220 absorption=0.04 visibility=0.02
         }
     }
     - {

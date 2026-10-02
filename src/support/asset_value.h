@@ -46,6 +46,8 @@ av_value *av_bool(av_doc *doc, bool value);
 av_value *av_sint(av_doc *doc, int64_t value);
 av_value *av_uint(av_doc *doc, uint64_t value);
 av_value *av_real(av_doc *doc, double value);
+/* Canonical decimal promotion preserves the original float on conversion back,
+ * so saving a float does not expose digits introduced by widening to double. */
 av_value *av_float(av_doc *doc, float value);
 av_value *av_str(av_doc *doc, const char *value);
 av_value *av_strn(av_doc *doc, const char *value, size_t len);

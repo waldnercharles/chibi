@@ -6,7 +6,7 @@ name "Editor 2D Fixture"
         prototype "ArenaFloor"
         components {
             GameTransform x=220 y=300
-            GameAppearance width=665.10751010644901 height=352 color=320549119 shape="Box"
+            GameAppearance width=665.107510106449 height=352 color=320549119 shape="Box"
         }
     }
     - {

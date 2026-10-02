@@ -136,7 +136,7 @@ description "Shared pulse and ring masking functions with explicit inputs."
                 placed #false
                 inputs {
                     A flags=0 group=0
-                    B flags=0 group=0 default=0.0010000000474974513
+                    B flags=0 group=0 default=0.001
                 }
                 outputs {
                     Value flags=0 group=0

@@ -40,7 +40,7 @@ description "Warm rose pursuer surface with a dark body and readable emissive ed
                         type_name "ShaderVec3"
                         flags 64
                         group 0
-                        default x=0.62000000476837158 y=0.0099999997764825821 z=0.035000000149011612
+                        default x=0.62 y=0.01 z=0.035
                     }
                 }
             }
@@ -50,7 +50,7 @@ description "Warm rose pursuer surface with a dark body and readable emissive ed
                 x 0.0
                 y 0.0
                 placed #false
-                inputs Power=3.0 Base=0.11999999731779099
+                inputs Power=3.0 Base=0.12
             }
             - {
                 id 45
@@ -61,7 +61,7 @@ description "Warm rose pursuer surface with a dark body and readable emissive ed
                 reference_id 2
                 reference_name "Edge Glow"
                 outputs {
-                    Value flags=0 group=0 default=2.5999999046325684
+                    Value flags=0 group=0 default=2.6
                 }
             }
             - {
@@ -78,7 +78,7 @@ description "Warm rose pursuer surface with a dark body and readable emissive ed
                         type_name "ShaderVec3"
                         flags 64
                         group 0
-                        default x=1.1000000238418579 y=0.017999999225139618 z=0.090000003576278687
+                        default x=1.1 y=0.018 z=0.09
                     }
                 }
             }
@@ -91,7 +91,7 @@ description "Warm rose pursuer surface with a dark body and readable emissive ed
                 reference_id 3
                 reference_name "Roughness"
                 outputs {
-                    Value flags=0 group=0 default=0.60000002384185791
+                    Value flags=0 group=0 default=0.6
                 }
             }
             - {
@@ -103,7 +103,7 @@ description "Warm rose pursuer surface with a dark body and readable emissive ed
                 reference_id 4
                 reference_name "Metallic"
                 outputs {
-                    Value flags=0 group=0 default=0.079999998211860657
+                    Value flags=0 group=0 default=0.08
                 }
             }
             - {

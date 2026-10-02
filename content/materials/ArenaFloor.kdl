@@ -28,7 +28,7 @@ description "Permanent triangular cell outlines surround small breathing inner t
                 reference_id 1
                 reference_name "Idle Size"
                 outputs {
-                    Value flags=0 group=0 default=0.23999999463558197
+                    Value flags=0 group=0 default=0.24
                 }
             }
             - {
@@ -40,7 +40,7 @@ description "Permanent triangular cell outlines surround small breathing inner t
                 reference_id 2
                 reference_name "Active Size"
                 outputs {
-                    Value flags=0 group=0 default=0.8399999737739563
+                    Value flags=0 group=0 default=0.84
                 }
             }
             - {
@@ -52,7 +52,7 @@ description "Permanent triangular cell outlines surround small breathing inner t
                 reference_id 3
                 reference_name "Line Width"
                 outputs {
-                    Value flags=0 group=0 default=0.0099999997764825821
+                    Value flags=0 group=0 default=0.01
                 }
             }
             - {
@@ -64,7 +64,7 @@ description "Permanent triangular cell outlines surround small breathing inner t
                 reference_id 4
                 reference_name "Idle Glow"
                 outputs {
-                    Value flags=0 group=0 default=0.02199999988079071
+                    Value flags=0 group=0 default=0.022
                 }
             }
             - {
@@ -76,7 +76,7 @@ description "Permanent triangular cell outlines surround small breathing inner t
                 reference_id 5
                 reference_name "Reaction Gain"
                 outputs {
-                    Value flags=0 group=0 default=0.40000000596046448
+                    Value flags=0 group=0 default=0.4
                 }
             }
             - {
@@ -88,7 +88,7 @@ description "Permanent triangular cell outlines surround small breathing inner t
                 reference_id 6
                 reference_name "Beat Amount"
                 outputs {
-                    Value flags=0 group=0 default=0.045000001788139343
+                    Value flags=0 group=0 default=0.045
                 }
             }
             - {
@@ -207,7 +207,7 @@ description "Permanent triangular cell outlines surround small breathing inner t
                         id 698
                         type "float"
                         binding kind="local" local_id=2688
-                        default 0.012000000104308128
+                        default 0.012
                     }
                 }
                 outputs {
@@ -242,7 +242,7 @@ description "Permanent triangular cell outlines surround small breathing inner t
                         id 704
                         type "float"
                         binding kind="local" local_id=2688
-                        default 0.012000000104308128
+                        default 0.012
                     }
                 }
                 outputs {
@@ -257,7 +257,7 @@ description "Permanent triangular cell outlines surround small breathing inner t
                 placed #false
                 inputs {
                     "Base Color" {
-                        default x=0.001500000013038516 y=0.0020000000949949026 z=0.0030000000260770321
+                        default x=0.0015 y=0.002 z=0.003
                     }
                     Emission {
                         default x=0.0 y=0.0 z=0.0
@@ -299,7 +299,7 @@ description "Permanent triangular cell outlines surround small breathing inner t
                         id 743
                         type "float"
                         binding kind="local" local_id=2688
-                        default 0.012000000104308128
+                        default 0.012
                     }
                 }
                 outputs {
@@ -423,7 +423,7 @@ description "Permanent triangular cell outlines surround small breathing inner t
                     }
                     - id=504 name="Tile Size" type="float" kind="data" default=16.0
                     - id=505 name="Scale" type="float" kind="data" default=0.25
-                    - id=506 name="Width" type="float" kind="data" default=0.012000000104308128
+                    - id=506 name="Width" type="float" kind="data" default=0.012
                 }
             }
             - {

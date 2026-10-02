@@ -19,7 +19,7 @@ description "Shared weapon cooldown and projectile initialization functions."
                 x 0.0
                 y 0.0
                 placed #false
-                inputs B=0.0099999997764825821
+                inputs B=0.01
             }
             - id=73 type="Greater Or Equal" x=0.0 y=0.0 placed=#false
             - id=82 type="Subtract" x=0.0 y=0.0 placed=#false

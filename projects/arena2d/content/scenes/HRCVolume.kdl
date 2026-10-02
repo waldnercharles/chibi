@@ -21,7 +21,7 @@ name "HRCVolume"
         components {
             GameTransform x=-330 y=0
             GameAppearance width=28 height=28 color=4294967295
-            GameMaterial emission_color=4294967295 emission_intensity=0.10000000000000001 absorption=0 scene=4294967295 edge_light=0
+            GameMaterial emission_color=4294967295 emission_intensity=0.1 absorption=0 scene=4294967295 edge_light=0
         }
     }
     - {
@@ -29,7 +29,7 @@ name "HRCVolume"
         prototype "Cloud"
         components {
             GameTransform x=-130 y=0
-            GameFluidVolume width=180 height=360 absorption=0.017999999999999999 visibility=0.029999999999999999
+            GameFluidVolume width=180 height=360 absorption=0.018 visibility=0.03
         }
     }
     - {
@@ -37,7 +37,7 @@ name "HRCVolume"
         prototype "Liquid"
         components {
             GameTransform x=60 y=0
-            GameFluidVolume width=70 height=260 absorption=0.080000000000000002 visibility=0.02
+            GameFluidVolume width=70 height=260 absorption=0.08 visibility=0.02
         }
     }
     - {
@@ -45,7 +45,7 @@ name "HRCVolume"
         prototype "Cloud"
         components {
             GameTransform x=20 y=145
-            GameFluidVolume width=240 height=80 absorption=0.025000000000000001 visibility=0.050000000000000003
+            GameFluidVolume width=240 height=80 absorption=0.025 visibility=0.05
         }
     }
     - {

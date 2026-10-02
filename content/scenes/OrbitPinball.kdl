@@ -149,7 +149,7 @@ name "Scene"
         components {
             GAME.GameActionBinding source="M" action="FlipRight"
             GAME.GameOrientation radians=2.791593074798584
-            GAME.GameTransform x=72.419998168945312
+            GAME.GameTransform x=72.41999816894531
         }
         (array)behaviors "OrbitFlipperMotion"
     }

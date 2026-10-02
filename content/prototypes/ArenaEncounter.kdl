@@ -1,6 +1,6 @@
 name "ArenaEncounter"
 components {
     GAME.GameEncounter total=40
-    GAME.GameTransform x=323.316162109375 y=-176.0
+    GAME.GameTransform x=323.31616 y=-176.0
 }
 (array)behaviors "ArenaWaveBehavior"

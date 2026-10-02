@@ -21,7 +21,7 @@ name "HRCShadow"
         components {
             GameTransform x=-330 y=-130
             GameAppearance width=30 height=30 color=4294967295
-            GameMaterial emission_color=4294967295 emission_intensity=0.10000000000000001 absorption=0 scene=4294967295 edge_light=0
+            GameMaterial emission_color=4294967295 emission_intensity=0.1 absorption=0 scene=4294967295 edge_light=0
         }
     }
     - {

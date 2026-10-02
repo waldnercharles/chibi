@@ -82,7 +82,7 @@ owner_type "ecs.entity"
                 reference_id 4
                 reference_name "stroke"
                 inputs {
-                    Value type="float" default=0.92000001668930054
+                    Value type="float" default=0.92
                 }
                 outputs {
                     Value type="float"

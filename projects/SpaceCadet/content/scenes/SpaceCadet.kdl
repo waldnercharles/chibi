@@ -298,8 +298,8 @@ physics substeps=8 sleep=#false
         name "Rail 2"
         prototype "Rail"
         components {
-            GAME.GameAppearance width=42.953464508056641 height=10.0 color=2478428415
-            GAME.GameCollider width=42.953464508056641 height=10.0
+            GAME.GameAppearance width=42.95346450805664 height=10.0 color=2478428415
+            GAME.GameCollider width=42.95346450805664 height=10.0
             GAME.GameOrientation radians=-1.1383885145187378
             GAME.GameTransform x=-201.0 y=-259.5
         }
@@ -308,8 +308,8 @@ physics substeps=8 sleep=#false
         name "Rail 3"
         prototype "Rail"
         components {
-            GAME.GameAppearance width=50.803543090820312 height=10.0 color=2478428415
-            GAME.GameCollider width=50.803543090820312 height=10.0
+            GAME.GameAppearance width=50.80354309082031 height=10.0 color=2478428415
+            GAME.GameCollider width=50.80354309082031 height=10.0
             GAME.GameOrientation radians=-0.6316906213760376
             GAME.GameTransform x=-171.5 y=-294.0
         }
@@ -318,8 +318,8 @@ physics substeps=8 sleep=#false
         name "Rail 4"
         prototype "Rail"
         components {
-            GAME.GameAppearance width=61.611686706542969 height=10.0 color=2478428415
-            GAME.GameCollider width=61.611686706542969 height=10.0
+            GAME.GameAppearance width=61.61168670654297 height=10.0 color=2478428415
+            GAME.GameCollider width=61.61168670654297 height=10.0
             GAME.GameOrientation radians=-0.22923193871974945
             GAME.GameTransform x=-121.0 y=-316.0
         }
@@ -337,8 +337,8 @@ physics substeps=8 sleep=#false
         name "Rail 6"
         prototype "Rail"
         components {
-            GAME.GameAppearance width=66.940269470214844 height=10.0 color=2478428415
-            GAME.GameCollider width=66.940269470214844 height=10.0
+            GAME.GameAppearance width=66.94026947021484 height=10.0 color=2478428415
+            GAME.GameCollider width=66.94026947021484 height=10.0
             GAME.GameOrientation radians=0.24135549366474152
             GAME.GameTransform x=123.5 y=-315.0
         }
@@ -347,9 +347,9 @@ physics substeps=8 sleep=#false
         name "Rail 7"
         prototype "Rail"
         components {
-            GAME.GameAppearance width=51.224994659423828 height=10.0 color=2478428415
-            GAME.GameCollider width=51.224994659423828 height=10.0
-            GAME.GameOrientation radians=0.67474097013473511
+            GAME.GameAppearance width=51.22499465942383 height=10.0 color=2478428415
+            GAME.GameCollider width=51.22499465942383 height=10.0
+            GAME.GameOrientation radians=0.6747409701347351
             GAME.GameTransform x=176.0 y=-291.0
         }
     }
@@ -387,8 +387,8 @@ physics substeps=8 sleep=#false
         name "Rail 11"
         prototype "Rail"
         components {
-            GAME.GameAppearance width=34.481880187988281 height=6.0 color=1669963519
-            GAME.GameCollider width=34.481880187988281 height=6.0
+            GAME.GameAppearance width=34.48188018798828 height=6.0 color=1669963519
+            GAME.GameCollider width=34.48188018798828 height=6.0
             GAME.GameOrientation radians=-1.0552473068237305
             GAME.GameTransform x=-171.5 y=145.0
         }
@@ -407,8 +407,8 @@ physics substeps=8 sleep=#false
         name "Rail 13"
         prototype "Rail"
         components {
-            GAME.GameAppearance width=80.622573852539062 height=7.0 color=2680411135
-            GAME.GameCollider width=80.622573852539062 height=7.0
+            GAME.GameAppearance width=80.62257385253906 height=7.0 color=2680411135
+            GAME.GameCollider width=80.62257385253906 height=7.0
             GAME.GameOrientation radians=-1.4464412927627563
             GAME.GameTransform x=172.0 y=50.0
         }
@@ -448,7 +448,7 @@ physics substeps=8 sleep=#false
         components {
             GAME.GameAppearance width=76.48529052734375 height=10.0 color=2478428415
             GAME.GameCollider width=76.48529052734375 height=10.0
-            GAME.GameOrientation radians=0.72989964485168457
+            GAME.GameOrientation radians=0.7298996448516846
             GAME.GameTransform x=-181.5 y=250.5
         }
     }
@@ -458,7 +458,7 @@ physics substeps=8 sleep=#false
         components {
             GAME.GameAppearance width=61.032779693603516 height=10.0 color=2478428415
             GAME.GameCollider width=61.032779693603516 height=10.0
-            GAME.GameOrientation radians=0.61072593927383423
+            GAME.GameOrientation radians=0.6107259392738342
             GAME.GameTransform x=-128.0 y=293.5
         }
     }
@@ -466,8 +466,8 @@ physics substeps=8 sleep=#false
         name "Rail 19"
         prototype "Rail"
         components {
-            GAME.GameAppearance width=68.883956909179688 height=10.0 color=2478428415
-            GAME.GameCollider width=68.883956909179688 height=10.0
+            GAME.GameAppearance width=68.88395690917969 height=10.0 color=2478428415
+            GAME.GameCollider width=68.88395690917969 height=10.0
             GAME.GameOrientation radians=2.2636759281158447
             GAME.GameTransform x=146.0 y=251.5
         }
@@ -478,7 +478,7 @@ physics substeps=8 sleep=#false
         components {
             GAME.GameAppearance width=42.01190185546875 height=10.0 color=2478428415
             GAME.GameCollider width=42.01190185546875 height=10.0
-            GAME.GameOrientation radians=2.2381024360656738
+            GAME.GameOrientation radians=2.238102436065674
             GAME.GameTransform x=111.0 y=294.5
         }
     }
@@ -486,8 +486,8 @@ physics substeps=8 sleep=#false
         name "Rail 21"
         prototype "Rail"
         components {
-            GAME.GameAppearance width=78.262382507324219 height=7.0 color=2478428415
-            GAME.GameCollider width=78.262382507324219 height=7.0
+            GAME.GameAppearance width=78.26238250732422 height=7.0 color=2478428415
+            GAME.GameCollider width=78.26238250732422 height=7.0
             GAME.GameOrientation radians=1.1071487665176392
             GAME.GameTransform x=-162.5 y=174.0
         }
@@ -496,9 +496,9 @@ physics substeps=8 sleep=#false
         name "Rail 22"
         prototype "Rail"
         components {
-            GAME.GameAppearance width=49.244289398193359 height=7.0 color=2478428415
-            GAME.GameCollider width=49.244289398193359 height=7.0
-            GAME.GameOrientation radians=0.41822433471679688
+            GAME.GameAppearance width=49.24428939819336 height=7.0 color=2478428415
+            GAME.GameCollider width=49.24428939819336 height=7.0
+            GAME.GameOrientation radians=0.4182243347167969
             GAME.GameTransform x=-122.5 y=219.0
         }
     }
@@ -506,8 +506,8 @@ physics substeps=8 sleep=#false
         name "Rail 23"
         prototype "Rail"
         components {
-            GAME.GameAppearance width=75.960517883300781 height=7.0 color=2478428415
-            GAME.GameCollider width=75.960517883300781 height=7.0
+            GAME.GameAppearance width=75.96051788330078 height=7.0 color=2478428415
+            GAME.GameCollider width=75.96051788330078 height=7.0
             GAME.GameOrientation radians=1.8509043455123901
             GAME.GameTransform x=135.5 y=171.5
         }
@@ -526,8 +526,8 @@ physics substeps=8 sleep=#false
         name "Rail 25"
         prototype "Rail"
         components {
-            GAME.GameAppearance width=113.65297698974609 height=10.0 color=3935527679
-            GAME.GameCollider width=113.65297698974609 height=10.0
+            GAME.GameAppearance width=113.6529769897461 height=10.0 color=3935527679
+            GAME.GameCollider width=113.6529769897461 height=10.0
             GAME.GameOrientation radians=1.2017273902893066
             GAME.GameTransform x=-152.5 y=126.0
         }
@@ -538,7 +538,7 @@ physics substeps=8 sleep=#false
         components {
             GAME.GameAppearance width=38.832977294921875 height=10.0 color=3935527679
             GAME.GameCollider width=38.832977294921875 height=10.0
-            GAME.GameOrientation radians=0.96850895881652832
+            GAME.GameOrientation radians=0.9685089588165283
             GAME.GameTransform x=-121.0 y=195.0
         }
     }
@@ -546,9 +546,9 @@ physics substeps=8 sleep=#false
         name "Rail 27"
         prototype "Rail"
         components {
-            GAME.GameAppearance width=151.70036315917969 height=6.0 color=4189746431
-            GAME.GameCollider category=4 width=151.70036315917969 height=6.0
-            GAME.GameOrientation radians=1.1425322294235229
+            GAME.GameAppearance width=151.7003631591797 height=6.0 color=4189746431
+            GAME.GameCollider category=4 width=151.7003631591797 height=6.0
+            GAME.GameOrientation radians=1.142532229423523
             GAME.GameTransform x=-141.5 y=142.0
         }
         (array)behaviors "BumperKick"
@@ -586,8 +586,8 @@ physics substeps=8 sleep=#false
         name "Rail 29"
         prototype "Rail"
         components {
-            GAME.GameAppearance width=93.300590515136719 height=5.0 color=3585700095
-            GAME.GameCollider width=93.300590515136719 height=5.0
+            GAME.GameAppearance width=93.30059051513672 height=5.0 color=3585700095
+            GAME.GameCollider width=93.30059051513672 height=5.0
             GAME.GameOrientation radians=-1.2320982217788696
             GAME.GameTransform x=-137.5 y=32.0
         }
@@ -596,8 +596,8 @@ physics substeps=8 sleep=#false
         name "Rail 30"
         prototype "Rail"
         components {
-            GAME.GameAppearance width=93.171882629394531 height=5.0 color=3585700095
-            GAME.GameCollider width=93.171882629394531 height=5.0
+            GAME.GameAppearance width=93.17188262939453 height=5.0 color=3585700095
+            GAME.GameCollider width=93.17188262939453 height=5.0
             GAME.GameOrientation radians=-1.7871370315551758
             GAME.GameTransform x=-132.0 y=-57.5
         }
@@ -626,8 +626,8 @@ physics substeps=8 sleep=#false
         name "Rail 33"
         prototype "Rail"
         components {
-            GAME.GameAppearance width=75.769386291503906 height=5.0 color=2006492159
-            GAME.GameCollider width=75.769386291503906 height=5.0
+            GAME.GameAppearance width=75.7693862915039 height=5.0 color=2006492159
+            GAME.GameCollider width=75.7693862915039 height=5.0
             GAME.GameOrientation radians=-1.1780356168746948
             GAME.GameTransform x=-165.5 y=23.0
         }
@@ -636,8 +636,8 @@ physics substeps=8 sleep=#false
         name "Rail 34"
         prototype "Rail"
         components {
-            GAME.GameAppearance width=94.366310119628906 height=5.0 color=2006492159
-            GAME.GameCollider width=94.366310119628906 height=5.0
+            GAME.GameAppearance width=94.3663101196289 height=5.0 color=2006492159
+            GAME.GameCollider width=94.3663101196289 height=5.0
             GAME.GameOrientation radians=-1.7411714792251587
             GAME.GameTransform x=-159.0 y=-58.5
         }
@@ -656,9 +656,9 @@ physics substeps=8 sleep=#false
         name "Rail 36"
         prototype "Rail"
         components {
-            GAME.GameAppearance width=72.917762756347656 height=5.0 color=2006492159
-            GAME.GameCollider width=72.917762756347656 height=5.0
-            GAME.GameOrientation radians=-0.73689252138137817
+            GAME.GameAppearance width=72.91776275634766 height=5.0 color=2006492159
+            GAME.GameCollider width=72.91776275634766 height=5.0
+            GAME.GameOrientation radians=-0.7368925213813782
             GAME.GameTransform x=-115.0 y=-253.5
         }
     }
@@ -676,8 +676,8 @@ physics substeps=8 sleep=#false
         name "Rail 38"
         prototype "Rail"
         components {
-            GAME.GameAppearance width=99.824844360351562 height=6.0 color=3567610879
-            GAME.GameCollider width=99.824844360351562 height=6.0
+            GAME.GameAppearance width=99.82484436035156 height=6.0 color=3567610879
+            GAME.GameCollider width=99.82484436035156 height=6.0
             GAME.GameOrientation radians=-1.3792946338653564
             GAME.GameTransform x=113.5 y=32.0
         }
@@ -698,7 +698,7 @@ physics substeps=8 sleep=#false
         components {
             GAME.GameAppearance width=78.892333984375 height=6.0 color=3567610879
             GAME.GameCollider width=78.892333984375 height=6.0
-            GAME.GameOrientation radians=-2.1025204658508301
+            GAME.GameOrientation radians=-2.10252046585083
             GAME.GameTransform x=85.0 y=-192.0
         }
     }
@@ -706,8 +706,8 @@ physics substeps=8 sleep=#false
         name "Rail 41"
         prototype "Rail"
         components {
-            GAME.GameAppearance width=93.107467651367188 height=5.0 color=2074589439
-            GAME.GameCollider width=93.107467651367188 height=5.0
+            GAME.GameAppearance width=93.10746765136719 height=5.0 color=2074589439
+            GAME.GameCollider width=93.10746765136719 height=5.0
             GAME.GameOrientation radians=-1.1503909826278687
             GAME.GameTransform x=114.0 y=127.5
         }
@@ -736,9 +736,9 @@ physics substeps=8 sleep=#false
         name "Rail 44"
         prototype "Rail"
         components {
-            GAME.GameAppearance width=83.862983703613281 height=5.0 color=2074589439
-            GAME.GameCollider width=83.862983703613281 height=5.0
-            GAME.GameOrientation radians=-2.1091709136962891
+            GAME.GameAppearance width=83.86298370361328 height=5.0 color=2074589439
+            GAME.GameCollider width=83.86298370361328 height=5.0
+            GAME.GameOrientation radians=-2.109170913696289
             GAME.GameTransform x=109.5 y=-206.0
         }
     }
@@ -1029,7 +1029,7 @@ physics substeps=8 sleep=#false
         name "Left flipper"
         prototype "FlipperPaddle"
         components {
-            GAME.GameTransform x=-65.783012390136719 y=246.5286865234375
+            GAME.GameTransform x=-65.78301239013672 y=246.5286865234375
         }
         (array)behaviors "Flipper"
     }
@@ -1047,7 +1047,7 @@ physics substeps=8 sleep=#false
         components {
             GAME.GameActionBinding source="L" action="RightFlip"
             GAME.GameOrientation radians=2.6915926933288574
-            GAME.GameTransform x=65.783012390136719 y=246.5286865234375
+            GAME.GameTransform x=65.78301239013672 y=246.5286865234375
         }
         (array)behaviors "Flipper"
     }

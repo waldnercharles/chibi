@@ -62,11 +62,11 @@ components {
         icon "light"
         fields {
             resolution {
-                (array)range 0.10000000000000001 1
+                (array)range 0.1 1
             }
             target_fps unit="fps"
             min_resolution {
-                (array)range 0.10000000000000001 1
+                (array)range 0.1 1
             }
             lighting_margin unit="u"
             bounce_hysteresis {

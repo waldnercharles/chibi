@@ -20,7 +20,7 @@ description "Bright icy projectile core with an explicit emission control."
                     Emission {
                         default x=0.0 y=0.0 z=0.0
                     }
-                    Roughness 0.34999999403953552
+                    Roughness 0.35
                     Normal {
                         default x=0.0 y=0.0 z=0.0
                     }
@@ -40,7 +40,7 @@ description "Bright icy projectile core with an explicit emission control."
                         type_name "ShaderVec3"
                         flags 64
                         group 0
-                        default x=0.37999999523162842 y=0.85000002384185791 z=1.0
+                        default x=0.38 y=0.85 z=1.0
                     }
                 }
             }

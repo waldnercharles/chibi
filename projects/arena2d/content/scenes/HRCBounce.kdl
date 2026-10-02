@@ -21,7 +21,7 @@ name "HRCBounce"
         components {
             GameTransform x=-330 y=-150
             GameAppearance width=28 height=28 color=4294967295
-            GameMaterial emission_color=4294967295 emission_intensity=0.10000000000000001 absorption=0 scene=4294967295 edge_light=0
+            GameMaterial emission_color=4294967295 emission_intensity=0.1 absorption=0 scene=4294967295 edge_light=0
         }
     }
     - {
@@ -30,8 +30,8 @@ name "HRCBounce"
         components {
             GameTransform x=-70 y=-25
             GameAppearance width=260 height=22
-            GameOrientation radians=0.32000000000000001
-            GameMaterial absorption=0.14999999999999999 edge_light=0
+            GameOrientation radians=0.32
+            GameMaterial absorption=0.15 edge_light=0
         }
     }
     - {
@@ -41,7 +41,7 @@ name "HRCBounce"
             GameTransform x=100 y=120
             GameAppearance width=220 height=22
             GameOrientation radians=-0.38
-            GameMaterial absorption=0.14999999999999999 edge_light=0
+            GameMaterial absorption=0.15 edge_light=0
         }
     }
     - {

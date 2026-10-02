@@ -20,7 +20,7 @@ description "An emissive ring surface. Flash remains the named DamageFlashBehavi
                     Emission {
                         default x=0.0 y=0.0 z=0.0
                     }
-                    Roughness 0.64999997615814209
+                    Roughness 0.65
                     Normal {
                         default x=0.0 y=0.0 z=0.0
                     }
@@ -99,7 +99,7 @@ description "An emissive ring surface. Flash remains the named DamageFlashBehavi
                         type_name "ShaderVec3"
                         flags 64
                         group 0
-                        default x=0.05000000074505806 y=0.60000002384185791 z=1.0
+                        default x=0.05 y=0.6 z=1.0
                     }
                 }
             }
@@ -117,7 +117,7 @@ description "An emissive ring surface. Flash remains the named DamageFlashBehavi
                         type_name "ShaderVec3"
                         flags 64
                         group 0
-                        default x=1.0 y=0.10000000149011612 z=0.44999998807907104
+                        default x=1.0 y=0.1 z=0.45
                     }
                 }
             }
@@ -209,7 +209,7 @@ description "An emissive ring surface. Flash remains the named DamageFlashBehavi
                 y 830.0
                 inputs {
                     A flags=0 group=0
-                    B flags=0 group=0 default=0.30000001192092896
+                    B flags=0 group=0 default=0.3
                 }
                 outputs {
                     Value flags=0 group=0

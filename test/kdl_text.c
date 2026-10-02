@@ -1,5 +1,7 @@
 #include "support/asset_text.h"
 
+#include <float.h>
+#include <math.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -76,17 +78,86 @@ void run_kdl_text_checks()
         free(array_text);
         av_doc_free(doc);
     }
-    const double real_values[] = { -1.20935707681886e86, 0.1, 1.2345678901234567, 0x1p-1074 };
+    const double real_values[] = { -1.20935707681886e86,
+                                   0.1,
+                                   0.2,
+                                   0.66,
+                                   0.2000000000001,
+                                   nextafter(0.2, 1),
+                                   1.2345678901234567,
+                                   0x1p-1074,
+                                   DBL_MAX,
+                                   -0.0 };
     for (size_t i = 0; i < sizeof real_values / sizeof real_values[0]; i++) {
         av_doc *real_doc = av_doc_new();
         av_value *real = av_real(real_doc, real_values[i]);
         char *literal = av_value_write(real);
         av_doc *loaded = av_value_read(literal, error, sizeof error);
-        test_check(loaded && av_get_num(av_doc_root(loaded)) == real_values[i], "KDL decimal emission roundtrips doubles exactly including subnormal values");
+        test_check(
+            loaded && av_get_num(av_doc_root(loaded)) == real_values[i] &&
+                signbit(av_get_num(av_doc_root(loaded))) == signbit(real_values[i]),
+            "KDL decimal emission roundtrips doubles exactly including "
+            "adjacent, subnormal and signed-zero values"
+        );
         av_doc_free(loaded);
         free(literal);
         av_doc_free(real_doc);
     }
+    const struct
+    {
+        double value;
+        const char *literal;
+    } readable_reals[] = { { 80, "80.0" },
+                           { 320, "320.0" },
+                           { 0.2, "0.2" },
+                           { 0.0001, "0.0001" },
+                           { 1e15, "1000000000000000.0" },
+                           { 1e-5, "1e-05" },
+                           { 1e16, "1e+16" } };
+    for (size_t i = 0; i < sizeof readable_reals / sizeof readable_reals[0]; i++) {
+        av_doc *real_doc = av_doc_new();
+        char *literal = av_value_write(av_real(real_doc, readable_reals[i].value));
+        test_check(!strcmp(literal, readable_reals[i].literal), "KDL keeps ordinary quantities in fixed decimal and extreme magnitudes compact");
+        av_doc *loaded = av_value_read(literal, error, sizeof error);
+        test_check(
+            loaded && av_get_num(av_doc_root(loaded)) == readable_reals[i].value,
+            "KDL notation boundaries preserve exact numeric values"
+        );
+        av_doc_free(loaded);
+        free(literal);
+        av_doc_free(real_doc);
+    }
+    const float float_values[] = {
+        0.2f,    0.66f, nextafterf(0.2f, 1), 1.2345678f, FLT_TRUE_MIN,
+        FLT_MAX, -0.0f
+    };
+    for (size_t i = 0; i < sizeof float_values / sizeof float_values[0]; i++) {
+        av_doc *float_doc = av_doc_new();
+        av_value *value = av_float(float_doc, float_values[i]);
+        av_value *copy = av_value_copy(value);
+        char *literal = av_value_write(copy);
+        av_doc *loaded = av_value_read(literal, error, sizeof error);
+        float parsed = loaded ? (float)av_get_num(av_doc_root(loaded)) : 0;
+        test_check(
+            loaded && parsed == float_values[i] &&
+                signbit(parsed) == signbit(float_values[i]) &&
+                av_equals(value, av_doc_root(loaded)),
+            "KDL float emission preserves native float bits and canonical "
+            "value equality through cloning"
+        );
+        if (i == 0) {
+            test_check(!strcmp(literal, "0.2"), "a native float saves as 0.2 without promotion noise");
+        }
+        av_doc_free(loaded);
+        free(literal);
+        av_value_free(copy);
+        av_doc_free(float_doc);
+    }
+    doc = av_doc_read("bloom 0.20000000000000001\nfog 0.66000000000000003\n", error, sizeof error);
+    char *clean = doc ? av_doc_write(doc) : NULL;
+    test_check(clean && !strcmp(clean, "bloom 0.2\nfog 0.66\n"), "canonical KDL removes redundant digits from existing authored bloom and fog values");
+    free(clean);
+    av_doc_free(doc);
     av_doc *unicode_doc = av_doc_new();
     av_value *unicode = av_str(
         unicode_doc,

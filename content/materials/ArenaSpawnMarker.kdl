@@ -15,12 +15,12 @@ description "Thin rose arrival outline, matching the incoming enemy and pointing
                 y 30.0
                 inputs {
                     "Base Color" {
-                        default x=1.0 y=0.18000000715255737 z=0.36000001430511475
+                        default x=1.0 y=0.18 z=0.36
                     }
                     Emission {
-                        default x=0.47999998927116394 y=0.039999999105930328 z=0.10000000149011612
+                        default x=0.48 y=0.04 z=0.1
                     }
-                    Roughness 0.34999999403953552
+                    Roughness 0.35
                     Normal {
                         default x=0.0 y=0.0 z=0.0
                     }

@@ -150,7 +150,7 @@ owner_type "ecs.entity"
                 x 0.0
                 y 0.0
                 placed #false
-                inputs B=0.0099999997764825821
+                inputs B=0.01
             }
             - {
                 id 68

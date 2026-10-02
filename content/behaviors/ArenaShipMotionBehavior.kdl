@@ -14,7 +14,7 @@ owner_type "ecs.entity"
     - id=8 name="Nose Velocity" type="float" type_name="float" category="State"
     - id=252 name="Face Rocking" type="float" type_name="float" category="Motion" default=0.5
     - id=253 name="Roll Acceleration (Per Second)" type="float" type_name="float" category="Motion" default=3.0
-    - id=254 name="Strafe Dead Zone" type="float" type_name="float" category="Motion" default=0.11999999731779099
+    - id=254 name="Strafe Dead Zone" type="float" type_name="float" category="Motion" default=0.12
     - id=255 name="Resting Face" type="float" type_name="float" category="State"
 }
 (array)graphs {

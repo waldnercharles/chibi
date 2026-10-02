@@ -194,7 +194,7 @@ owner_type "ecs.entity"
                 x 0.0
                 y 0.0
                 placed #false
-                inputs Frequency=190.0 "End Frequency"=55.0 Duration=0.40000000596046448 Volume=0.40000000596046448
+                inputs Frequency=190.0 "End Frequency"=55.0 Duration=0.4 Volume=0.4
             }
         }
         (array)edges {

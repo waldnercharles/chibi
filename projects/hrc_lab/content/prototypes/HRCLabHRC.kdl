@@ -1,7 +1,7 @@
 name "HRCLabHRC"
 components {
-    GAME.GameHRC2D bounce_hysteresis=0.80000001192092896 bounce_intensity=1.0 falloff=1.0 feedback=#true fog=0.20000000298023224 intensity=7.5 min_resolution=0.25 particle_focal_length=300.0 radiance_hysteresis=0.80000001192092896 resolution=1.0 target_fps=60.0 trace_levels=3 upscale_mode=1 upscale_threshold=0.10000000149011612
+    GAME.GameHRC2D bounce_hysteresis=0.8 bounce_intensity=1.0 falloff=1.0 feedback=#true fog=0.2 intensity=7.5 min_resolution=0.25 particle_focal_length=300.0 radiance_hysteresis=0.8 resolution=1.0 target_fps=60.0 trace_levels=3 upscale_mode=1 upscale_threshold=0.1
     (object)GAME.GameTransform
     GAME.MaterialDestructionWorld fragment_limit=96
-    GAME.MaterialFluidWorld buffer=192.0 chunk_size=256.0 gas_cell_size=20.0 gas_drag=0.10000000149011612 gas_vorticity=2.0 kernel=10.0 particle_limit=32768
+    GAME.MaterialFluidWorld buffer=192.0 chunk_size=256.0 gas_cell_size=20.0 gas_drag=0.1 gas_vorticity=2.0 kernel=10.0 particle_limit=32768
 }

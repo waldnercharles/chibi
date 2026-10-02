@@ -21,7 +21,7 @@ name "HRCPinhole"
         components {
             GameTransform x=-310 y=0
             GameAppearance width=24 height=24 color=4294967295
-            GameMaterial emission_color=4294967295 emission_intensity=0.10000000000000001 absorption=0 scene=4294967295 edge_light=0
+            GameMaterial emission_color=4294967295 emission_intensity=0.1 absorption=0 scene=4294967295 edge_light=0
         }
     }
     - {
@@ -48,7 +48,7 @@ name "HRCPinhole"
         components {
             GameTransform x=280 y=0
             GameAppearance width=220 height=420
-            GameMaterial absorption=0.29999999999999999 edge_light=0
+            GameMaterial absorption=0.3 edge_light=0
         }
     }
 }

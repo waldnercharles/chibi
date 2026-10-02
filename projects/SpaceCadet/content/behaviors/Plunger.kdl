@@ -177,7 +177,7 @@ owner_type "ecs.entity"
                 x 0.0
                 y 0.0
                 placed #false
-                inputs Frequency=100.0 "End Frequency"=720.0 Duration=0.15999999642372131 Volume=0.34999999403953552
+                inputs Frequency=100.0 "End Frequency"=720.0 Duration=0.16 Volume=0.35
             }
             - {
                 id 446

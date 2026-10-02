@@ -30,7 +30,7 @@ name "HRCLabColorBoundary"
         components {
             GameTransform x=-390 y=-180
             GameAppearance antialias=0.25 border_color=0 border_width=0 color=4294967295 glow_color=0 glow_radius=0 height=18 layer=0 shape="Circle" stroke_width=0 width=18
-            GameMaterial absorption=0 albedo=4294967295 border_albedo=0 border_emission_color=0 border_filter=0 border_scene=0 edge_light=0 emission_color=4278190335 emission_intensity=0.029999999999999999 emission_multiplier=1 filter=0 scene=4294967295
+            GameMaterial absorption=0 albedo=4294967295 border_albedo=0 border_emission_color=0 border_filter=0 border_scene=0 edge_light=0 emission_color=4278190335 emission_intensity=0.03 emission_multiplier=1 filter=0 scene=4294967295
         }
     }
     - {
@@ -39,7 +39,7 @@ name "HRCLabColorBoundary"
         components {
             GameTransform x=-390 y=0
             GameAppearance antialias=0.25 border_color=0 border_width=0 color=4294967295 glow_color=0 glow_radius=0 height=18 layer=0 shape="Circle" stroke_width=0 width=18
-            GameMaterial absorption=0 albedo=4294967295 border_albedo=0 border_emission_color=0 border_filter=0 border_scene=0 edge_light=0 emission_color=16711935 emission_intensity=0.029999999999999999 emission_multiplier=1 filter=0 scene=4294967295
+            GameMaterial absorption=0 albedo=4294967295 border_albedo=0 border_emission_color=0 border_filter=0 border_scene=0 edge_light=0 emission_color=16711935 emission_intensity=0.03 emission_multiplier=1 filter=0 scene=4294967295
         }
     }
     - {
@@ -48,7 +48,7 @@ name "HRCLabColorBoundary"
         components {
             GameTransform x=-390 y=180
             GameAppearance antialias=0.25 border_color=0 border_width=0 color=4294967295 glow_color=0 glow_radius=0 height=18 layer=0 shape="Circle" stroke_width=0 width=18
-            GameMaterial absorption=0 albedo=4294967295 border_albedo=0 border_emission_color=0 border_filter=0 border_scene=0 edge_light=0 emission_color=65535 emission_intensity=0.029999999999999999 emission_multiplier=1 filter=0 scene=4294967295
+            GameMaterial absorption=0 albedo=4294967295 border_albedo=0 border_emission_color=0 border_filter=0 border_scene=0 edge_light=0 emission_color=65535 emission_intensity=0.03 emission_multiplier=1 filter=0 scene=4294967295
         }
     }
     - {

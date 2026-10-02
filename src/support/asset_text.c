@@ -1,6 +1,7 @@
 #include "support/asset_text.h"
 
 #include "support/array.h"
+#include "support/float_text.h"
 #include "support/xalloc.h"
 
 #include <ctype.h>
@@ -397,7 +398,7 @@ static bool write_scalar(text_buffer *buffer, const av_value *value)
             if (!isfinite(real)) {
                 return false;
             }
-            snprintf(number, sizeof number, "%.17g", real);
+            float_text(number, sizeof number, real, false);
             if (!strchr(number, '.') && !strchr(number, 'e')) {
                 strncat(number, ".0", sizeof number - strlen(number) - 1);
             }

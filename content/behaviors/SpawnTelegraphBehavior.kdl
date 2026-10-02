@@ -52,7 +52,7 @@ owner_type "ecs.entity"
                         group 0
                         binding kind="component_field" component="GAME.GameSpawnRequest" field="delay"
                     }
-                    B type="double" flags=0 group=0 default=0.050000000000000003
+                    B type="double" flags=0 group=0 default=0.05
                 }
                 outputs {
                     Result type="double" flags=0 group=0

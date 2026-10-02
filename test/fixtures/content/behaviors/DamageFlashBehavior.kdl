@@ -45,7 +45,7 @@ owner_type "ecs.entity"
                 x 0.0
                 y 0.0
                 placed #false
-                inputs Duration=0.17999999999999999
+                inputs Duration=0.18
             }
             - {
                 id 19

@@ -80,7 +80,7 @@ owner_type "ecs.entity"
                 placed #false
                 inputs {
                     A id=17 type="double" flags=0 group=0
-                    B type="double" flags=0 group=0 default=0.80000000000000004
+                    B type="double" flags=0 group=0 default=0.8
                 }
                 outputs {
                     Result type="double" flags=0 group=0
@@ -224,7 +224,7 @@ owner_type "ecs.entity"
                 y 0.0
                 placed #false
                 inputs {
-                    A id=68 type="double" flags=0 group=0 default=0.65000000000000002
+                    A id=68 type="double" flags=0 group=0 default=0.65
                     B type="double" flags=0 group=0
                 }
                 outputs {

@@ -33,7 +33,7 @@ description "Scrolling cyan cell lines on a dark surface. Scroll Speed controls 
                         type_name "ShaderVec2"
                         flags 0
                         group 0
-                        default x=0.059999998658895493 y=-0.029999999329447746
+                        default x=0.06 y=-0.03
                     }
                 }
             }
@@ -147,19 +147,19 @@ description "Scrolling cyan cell lines on a dark surface. Scroll Speed controls 
                         (array)default {
                             - {
                                 Position 0.0
-                                Color x=0.0010000000474974513 y=0.0040000001899898052 z=0.0080000003799796104 w=1.0
+                                Color x=0.001 y=0.004 z=0.008 w=1.0
                             }
                             - {
-                                Position 0.2800000011920929
-                                Color x=0.0030000000260770321 y=0.02500000037252903 z=0.039999999105930328 w=1.0
+                                Position 0.28
+                                Color x=0.003 y=0.025 z=0.04 w=1.0
                             }
                             - {
-                                Position 0.72000002861022949
-                                Color x=0.004999999888241291 y=0.37999999523162842 z=0.64999997615814209 w=1.0
+                                Position 0.72
+                                Color x=0.005 y=0.38 z=0.65 w=1.0
                             }
                             - {
                                 Position 1.0
-                                Color x=0.11999999731779099 y=0.85000002384185791 z=1.2000000476837158 w=1.0
+                                Color x=0.12 y=0.85 z=1.2 w=1.0
                             }
                         }
                     }
@@ -180,7 +180,7 @@ description "Scrolling cyan cell lines on a dark surface. Scroll Speed controls 
                 placed #false
                 reference_name "Intensity"
                 outputs {
-                    Value id=34 flags=0 group=0 default=1.6000000238418579
+                    Value id=34 flags=0 group=0 default=1.6
                 }
             }
             - {
@@ -222,7 +222,7 @@ description "Scrolling cyan cell lines on a dark surface. Scroll Speed controls 
                     Emission {
                         default x=0.0 y=0.0 z=0.0
                     }
-                    Roughness 0.69999998807907104
+                    Roughness 0.7
                     Normal {
                         default x=0.0 y=0.0 z=0.0
                     }

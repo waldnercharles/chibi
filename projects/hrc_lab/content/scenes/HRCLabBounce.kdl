@@ -29,7 +29,7 @@ name "HRCLabBounce"
         components {
             GameTransform x=-150 y=-80
             GameAppearance width=180 height=24
-            GameOrientation radians=0.45000000000000001
+            GameOrientation radians=0.45
         }
     }
     - {
@@ -38,7 +38,7 @@ name "HRCLabBounce"
         components {
             GameTransform x=80 y=70
             GameAppearance width=180 height=24
-            GameOrientation radians=-0.45000000000000001
+            GameOrientation radians=-0.45
         }
     }
     - {

@@ -400,8 +400,9 @@ extern "C"
      */
     bool kit_splitter(kit *k, const char *key, int axis, float *value, float minimum, float maximum, bool invert);
 
-    /* A surface shows a host texture ("kit:<name>") and receives raw pointer input.
-     */
+    /* A surface shows a host texture ("kit:<name>") and receives raw pointer
+     * input. Its returned element lasts while this key is emitted. */
+    typedef struct rml_element rml_element;
     typedef struct kit_surface_input
     {
         kit_rect rect;
@@ -410,12 +411,17 @@ extern "C"
         bool pressed[3], released[3], down[3];
         float wheel;
     } kit_surface_input;
-    void kit_surface(kit *k, const char *key, const char *cls, const char *texture, kit_surface_input *input);
+    rml_element *kit_surface(
+        kit *k,
+        const char *key,
+        const char *cls,
+        const char *texture,
+        kit_surface_input *input
+    );
 
     /* A host element whose children the kit leaves alone, for content mounted
      * from a ui asset (render/ui.h). It lasts while its key is emitted. Keys
      * typed inside it are the content's, except Escape and Tab in a popup. */
-    typedef struct rml_element rml_element;
     rml_element *kit_host(kit *k, const char *key, const char *cls);
     /* A host that covers the window above the editor and takes the pointer, for
      * hosted modal content such as a dialog. While it shows, Tab and Shift+Tab
@@ -612,8 +618,12 @@ extern "C"
      * clicked. Returns its element, which picks ignore. */
     rml_element *kit_inspect_begin(kit *k, const char *key, bool picking);
     void kit_inspect_end(kit *k);
+    /* Authoring guides use the same highlights below popups and dialogs.
+     * UI inspection stays above them so it can inspect those controls. */
+    void kit_guides_begin(kit *k, const char *key);
+    void kit_guides_end(kit *k);
     /* DevTools' node highlight: margin, border, padding and content bands in
-     * their colors. Emit between kit_inspect_begin and kit_inspect_end. */
+     * their colors. Emit inside an inspection or authoring-guide overlay. */
     void kit_highlight(kit *k, const char *key, const kit_highlight_desc *desc, const char *cls);
     /* A readable path for `element`: the key path of one the kit emitted,
      * else the nearest emitted ancestor's path and tag#id.class steps below

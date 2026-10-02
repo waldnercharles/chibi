@@ -13,6 +13,8 @@ typedef struct asset_code asset_code;
  * loaders and live preview. Invalid typing never replaces that overlay. */
 asset_code *asset_code_open(const char *path, char *error, size_t size);
 void asset_code_free(asset_code *code);
+/* Follow ownership when the workspace restores this source's preview overlay. */
+void asset_code_adopt_overlay(asset_code *code);
 /* Native checkpoint state; protocol conversion belongs to the workspace boundary. */
 av_value *asset_code_capture(asset_code *code);
 bool asset_code_has_state(const asset_code *code, const av_value *state);

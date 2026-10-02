@@ -41,6 +41,25 @@ char *graph_collab_action_connect(
     int b_kind,
     int b_pin
 );
+/* A picked-up wire is one edit, including its original disconnection. */
+char *graph_collab_action_reconnect(
+    const editor *e,
+    node *from,
+    int from_pin,
+    node *old_to,
+    int old_pin,
+    node *new_to,
+    int new_pin
+);
+bool graph_collab_reconnect_apply(
+    editor *e,
+    node *from,
+    int from_pin,
+    node *old_to,
+    int old_pin,
+    node *new_to,
+    int new_pin
+);
 char *graph_collab_action_reset_pin(
     const editor *graph_editor,
     const node *n,

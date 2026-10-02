@@ -188,6 +188,60 @@ class WorkspaceSaves(unittest.TestCase):
 
 
 class WebServeLaunch(unittest.TestCase):
+    def test_bridge_precedes_quoted_and_minified_loaders(self):
+        for entry in (
+            '<script src="chibi-default.js"></script>',
+            "<script src='chibi-default.js'></script>",
+            '<script src=chibi-default.js></script>',
+            '<script defer src=chibi-isolation.js></script>',
+            '<script async src="chibi.js"></script>',
+            '<script src=chibi.js async></script>',
+        ):
+            with self.subTest(entry=entry):
+                prefix = '<html>\n<script>var Module={};</script>\n'
+                text = prefix + entry + '</html>'
+                result = server.inject_workspace_bridge(text, 'Module.workspace=true;')
+                self.assertEqual(result, prefix + '<script>Module.workspace=true;</script>' + entry + '</html>')
+
+    def test_bridge_skips_template_comments_and_inline_script_text(self):
+        prefix = '''<script>var Module={};const example="<script src=chibi.js>";</script>
+<!-- <script src=chibi.js></script> -->
+<template><template></template><script src=chibi.js async></script></template>'''
+        entry = '<script src=chibi-default.js></script>'
+        result = server.inject_workspace_bridge(prefix + entry, 'bridge();')
+        self.assertEqual(result, prefix + '<script>bridge();</script>' + entry)
+
+    def test_missing_executable_entry_is_an_error(self):
+        for text in ('', '<script src=other.js></script>',
+                     '<template><script src=chibi.js></script></template>'):
+            with self.subTest(text=text), self.assertRaisesRegex(ValueError, 'cannot connect the workspace'):
+                server.inject_workspace_bridge(text, 'bridge();')
+
+    def test_missing_entry_stops_server_before_reporting_ready(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            workspace = root / 'workspace'
+            project = workspace / 'projects/bloom'
+            (project / 'content').mkdir(parents=True)
+            (project / 'project.kdl').write_text('content "content"\n')
+            build = root / 'build'
+            build.mkdir()
+            for suffix in ('html', 'js', 'wasm', 'data'):
+                (build / f'chibi.{suffix}').write_text('')
+            stdout, stderr = io.StringIO(), io.StringIO()
+            argv = ['web_serve.py', '--workspace', str(workspace), '--project',
+                    str(project), '--build', str(build)]
+            with patch.object(sys, 'argv', argv), \
+                    patch.object(server, 'ThreadingHTTPServer') as http, \
+                    contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+                with self.assertRaises(SystemExit) as error:
+                    server.main()
+            self.assertEqual(error.exception.code, 2)
+            http.assert_not_called()
+            self.assertEqual(stdout.getvalue(), '')
+            self.assertIn('chibi.html: No executable Chibi launch script found', stderr.getvalue())
+            self.assertNotIn('Traceback', stderr.getvalue())
+
     def test_port_conflict_reports_alternative_before_ready_url(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -199,6 +253,7 @@ class WebServeLaunch(unittest.TestCase):
             build.mkdir()
             for suffix in ('html', 'js', 'wasm', 'data'):
                 (build / f'chibi.{suffix}').write_text('')
+            (build / 'chibi.html').write_text('<script async src=chibi.js></script>')
 
             stdout, stderr = io.StringIO(), io.StringIO()
             argv = ['web_serve.py', '--workspace', str(workspace), '--project',

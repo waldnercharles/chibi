@@ -224,6 +224,18 @@ bool studio_active_dirty(studio *s)
                                             scene->active_tab < acount(scene->tabs)
                                       ? &scene->tabs[scene->active_tab]
                                       : NULL;
+    if (tab && tab->source_dirty) {
+        return true;
+    }
+    if (studio_ui_buffer(s) &&
+        (!graph_focused(s) || scene->document.kind == APP_EDITOR_DOCUMENT_UI)) {
+        return ui_buffer_dirty(studio_ui_buffer(s));
+    }
+    if (graph_focused(s) && scene->graph_document_kind == APP_EDITOR_DOCUMENT_BEHAVIOR) {
+        game_live_definition
+            *definition = game_live_find_definition(scene->live, scene->graph_document_id);
+        return definition && definition->unsaved;
+    }
     return tab ? scene_tabs_dirty(scene, tab) : scene->scene_dirty;
 }
 
@@ -1246,12 +1258,54 @@ static void sync_presentation(studio *s)
     free(text);
 }
 
+/* Opening a document must reveal it when a different editor fills the window.
+   Consider each tab transition once, so maximizing another pane deliberately
+   does not immediately undo that choice. Normal split arrangements stay put. */
+static void reveal_document(studio *s)
+{
+    int active = s->scene->active_tab;
+    if (active < 0 || active >= acount(s->scene->tabs)) {
+        return;
+    }
+    const scene_document_tab *tab = &s->scene->tabs[active];
+    uint64_t identity = 1469598103934665603ull;
+    for (const unsigned char *at = (const unsigned char *)tab->key; *at; at++) {
+        identity = (identity ^ *at) * 1099511628211ull;
+    }
+    if (identity == s->revealed_document) {
+        return;
+    }
+    bool initial = s->revealed_document == 0;
+    s->revealed_document = identity;
+    if (initial || s->maximized < 0 || s->collaboration.following) {
+        return;
+    }
+    studio_editor target = STUDIO_EDITOR_SCENE;
+    if (tab->kind == APP_EDITOR_DOCUMENT_BEHAVIOR ||
+        tab->kind == APP_EDITOR_DOCUMENT_SYSTEM) {
+        target = STUDIO_EDITOR_BEHAVIOR;
+    }
+    if (tab->kind == APP_EDITOR_DOCUMENT_UI) {
+        char name[sizeof s->followed];
+        if (!studio_ui_document_asset(s, tab->path, name, sizeof name)) {
+            target = STUDIO_EDITOR_CODE;
+        }
+    }
+    studio_editor shown = studio_active_layout(s)->editors[s->maximized];
+    if (shown == target || shown == STUDIO_EDITOR_CODE ||
+        (shown == STUDIO_EDITOR_PROPERTIES && tab->kind == APP_EDITOR_DOCUMENT_PROTOTYPE)) {
+        return;
+    }
+    studio_show_editor(s, target);
+}
+
 void studio_emit(studio *s)
 {
     sync_presentation(s);
     studio_disk_frame(s);
     studio_code_frame(s);
     studio_canvas_follow(s);
+    reveal_document(s);
     track_pointer(s);
     kit_root(s->kit, "app");
     topbar(s);

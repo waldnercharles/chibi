@@ -165,6 +165,162 @@ static void mouse_move(const graph_input_fixture *f, float x, float y)
     assert(SDL_PushEvent(&event));
 }
 
+static void mouse_button(const graph_input_fixture *f, float x, float y, bool down)
+{
+    SDL_Event event = { .type = down ? SDL_EVENT_MOUSE_BUTTON_DOWN
+                                     : SDL_EVENT_MOUSE_BUTTON_UP };
+    event.button.windowID = SDL_GetWindowID(cf_app_get_window());
+    event.button.button = SDL_BUTTON_LEFT;
+    event.button.down = down;
+    event.button.clicks = 1;
+    event.button.x = x * f->studio->prefs.ui_scale;
+    event.button.y = y * f->studio->prefs.ui_scale;
+    assert(SDL_PushEvent(&event));
+}
+
+static bool move_to_socket(graph_input_fixture *f, uint64_t id, int input)
+{
+    char path[128];
+    snprintf(path, sizeof path, "world/stage/n%llu/b/i%d/s", (unsigned long long)id, input);
+    kit_rect rect;
+    if (!kit_find(f->studio->graph.kit, path, &rect)) {
+        snprintf(path, sizeof path, "world/stage/n%llu/h/i%d/s", (unsigned long long)id, input);
+        if (!kit_find(f->studio->graph.kit, path, &rect)) {
+            snprintf(path, sizeof path, "world/stage/n%llu/b/e0/i%d/s", (unsigned long long)id, input);
+            if (!kit_find(f->studio->graph.kit, path, &rect)) {
+                return false;
+            }
+        }
+    }
+    mouse_move(f, screen_x(f, rect.x + rect.w * 0.5f), screen_y(f, rect.y + rect.h * 0.5f));
+    frame(f);
+    return true;
+}
+
+static void socket_press(graph_input_fixture *f, bool down)
+{
+    studio_graph *g = &f->studio->graph;
+    mouse_button(f, screen_x(f, g->in.mouse_x), screen_y(f, g->in.mouse_y), down);
+    frame(f);
+}
+
+static bool fed_by(graph *gr, uint64_t input, uint64_t source)
+{
+    node *from;
+    int pin;
+    return graph_input_source(gr, graph_node_by_id(gr, input), 0, &from, &pin) &&
+           from->id == source;
+}
+
+static void connected_input_drags_commit_on_release()
+{
+    graph_input_fixture f = fixture_open();
+    frames(&f, 3);
+    node *source = editor_spawn(f.graph, registry_node_by_name("Add"), 100, 100);
+    node *old = editor_spawn(f.graph, registry_node_by_name("Atan2"), 400, 100);
+    node *target = editor_spawn(f.graph, registry_node_by_name("Atan2"), 650, 100);
+    node *branch = editor_spawn(f.graph, registry_node_by_name("Branch"), 650, 350);
+    source->presentation = NODE_PRESENTATION_EXPANDED;
+    uint64_t source_id = source->id, old_id = old->id, target_id = target->id;
+    uint64_t branch_id = branch->id;
+    graph *gr = f.graph->active_graph;
+    assert(graph_connect_data(gr, source, 0, old, 0) == 0);
+    frames(&f, 3);
+    int history = acount(f.graph->undo);
+    bool picked = move_to_socket(&f, old_id, 0);
+    if (picked) {
+        socket_press(&f, true);
+    }
+    bool preview = picked && f.studio->graph.gesture == STUDIO_GRAPH_LINK &&
+                   fed_by(gr, old_id, source_id) && acount(f.graph->undo) == history;
+    key_event(SDL_SCANCODE_ESCAPE, true);
+    key_event(SDL_SCANCODE_ESCAPE, false);
+    frame(&f);
+    socket_press(&f, false);
+    bool cancelled = fed_by(gr, old_id, source_id) && acount(f.graph->undo) == history;
+    test_check(preview && cancelled, "picking up a connected input previews its wire and Escape preserves the connection without an Undo step");
+
+    frames(&f, 24);
+    bool same = move_to_socket(&f, old_id, 0);
+    if (same) {
+        socket_press(&f, true);
+        socket_press(&f, false);
+    }
+    test_check(same && fed_by(gr, old_id, source_id) && acount(f.graph->undo) == history, "dropping a picked-up wire back on its original input leaves history unchanged");
+
+    frames(&f, 24);
+    bool refused = move_to_socket(&f, old_id, 0);
+    if (refused) {
+        socket_press(&f, true);
+        refused = move_to_socket(&f, branch_id, 0);
+        socket_press(&f, false);
+    }
+    test_check(refused && fed_by(gr, old_id, source_id) && acount(f.graph->undo) == history, "dropping a data wire on an execution input refuses the connection and preserves the original wire and history");
+
+    frames(&f, 24); /* Start a separate click gesture. */
+    bool rewired = move_to_socket(&f, old_id, 0);
+    if (rewired) {
+        socket_press(&f, true);
+        rewired = move_to_socket(&f, target_id, 0);
+        socket_press(&f, false);
+    }
+    node *from;
+    int pin;
+    rewired &= fed_by(gr, target_id, source_id) &&
+               !graph_input_source(gr, graph_node_by_id(gr, old_id), 0, &from, &pin) &&
+               acount(f.graph->undo) == history + 1;
+    if (rewired) {
+        editor_undo(f.graph);
+        frames(&f, 2);
+        gr = f.graph->active_graph;
+    }
+    bool restored = rewired && fed_by(gr, old_id, source_id) &&
+                    !graph_input_source(gr, graph_node_by_id(gr, target_id), 0, &from, &pin);
+    test_check(rewired && restored, "rewiring a connected input commits one Undo step that restores the original connection");
+
+    frames(&f, 24);
+    history = acount(f.graph->undo);
+    bool disconnected = move_to_socket(&f, old_id, 0);
+    if (disconnected) {
+        socket_press(&f, true);
+        mouse_move(&f, screen_x(&f, 20), screen_y(&f, 20));
+        frame(&f);
+        socket_press(&f, false);
+    }
+    disconnected &= !graph_input_source(gr, graph_node_by_id(gr, old_id), 0, &from, &pin) &&
+                    !kit_command_is_open(f.studio->kit) &&
+                    acount(f.graph->undo) == history + 1;
+    if (disconnected) {
+        editor_undo(f.graph);
+        frames(&f, 2);
+        gr = f.graph->active_graph;
+    }
+    test_check(disconnected && fed_by(gr, old_id, source_id), "dropping a picked-up wire on empty canvas disconnects it without opening Add and Undo restores it");
+
+    node *peer = editor_spawn(f.graph, registry_node_by_name("Add"), 100, 350);
+    peer->presentation = NODE_PRESENTATION_EXPANDED;
+    uint64_t peer_id = peer->id;
+    frames(&f, 24);
+    history = acount(f.graph->undo);
+    bool stale = move_to_socket(&f, old_id, 0);
+    if (stale) {
+        socket_press(&f, true);
+        stale = f.studio->graph.link_node == source_id;
+        assert(graph_connect_data(gr, peer, 0, graph_node_by_id(gr, old_id), 0) == 0);
+        frame(&f);
+        stale &= move_to_socket(&f, target_id, 0);
+        socket_press(&f, false);
+    }
+    test_check(
+        stale && fed_by(gr, old_id, peer_id) &&
+            !graph_input_source(gr, graph_node_by_id(gr, target_id), 0, &from, &pin) &&
+            acount(f.graph->undo) == history,
+        "a source replaced during wire pickup stays connected and the stale "
+        "drop creates no Undo step"
+    );
+    fixture_free(&f);
+}
+
 static void click_graph_position(graph_input_fixture *f, float graph_x, float graph_y)
 {
     float x = screen_x(f, graph_x);
@@ -1235,6 +1391,7 @@ int studio_graph_inputs_run(const char *program)
     expressions_are_directly_editable();
     folded_inputs_are_editable_in_place();
     shader_values_and_collections_are_editable();
+    connected_input_drags_commit_on_release();
     app_input_shutdown();
     cf_destroy_app();
     return 0;

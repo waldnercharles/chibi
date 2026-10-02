@@ -965,6 +965,7 @@ void studio_free(studio *s)
     afree(s->members.uses.items);
     afree(s->perf);
     afree(s->perf_published);
+    studio_assets_free(s);
     afree(s->keys);
     afree(s->game_input);
     studio_projects_free(s);
@@ -1007,6 +1008,7 @@ static uint64_t ui_state(studio *s)
         e ? (uint64_t)acount(e->selected) : 0,
         e ? (uint64_t)acount(e->selected_links) : 0,
         scene->asset_index_generation,
+        scene->asset_index_revision,
         (uintptr_t)scene->history,
         (uint64_t)scene->selected,
         (uint64_t)scene->selected_prototype,
@@ -1101,6 +1103,27 @@ static bool host_ui_due(studio *s, bool input, bool authored)
     return due;
 }
 
+/* The surface is measured during emission, before its new frame styles lay
+   out. Reconcile that measurement on the next frame without waiting for input. */
+static bool canvas_layout_changed(const studio *s)
+{
+    if (!studio_previewed_ui(s) || !s->canvas->frame) {
+        return false;
+    }
+    rml_element *frame = s->canvas->frame;
+    if (!rml_element_is_visible(frame, false)) {
+        return false;
+    }
+    float ratio = studio_pixel_ratio(s);
+    rml_vec2 at = rml_element_absolute_offset(frame, RML_BOX_BORDER);
+    rml_vec2 size = rml_element_box_size(frame, RML_BOX_BORDER);
+    kit_rect before = s->surface.rect;
+    return fabsf(at.x / ratio - before.x) > 0.5f ||
+           fabsf(at.y / ratio - before.y) > 0.5f ||
+           fabsf(size.x / ratio - before.w) > 0.5f ||
+           fabsf(size.y / ratio - before.h) > 0.5f;
+}
+
 /* One frame of a Studio in a window of `width` by `height` points: the
  * window's, or a guest's in its host's Scene area. */
 static void run(studio *s, double delta_seconds, float width, float height)
@@ -1128,6 +1151,9 @@ static void run(studio *s, double delta_seconds, float width, float height)
         CHIBI_TRACE_ZONE_END(sync_zone);
         CHIBI_TRACE_ZONE_BEGIN(emit_zone, "Studio host emit");
         kit_begin(s->kit, &s->in);
+        if (s->canvas) {
+            s->canvas->frame = NULL;
+        }
         studio_emit(s);
         studio_inspect_emit(s);
         kit_end(s->kit);
@@ -1160,6 +1186,9 @@ static void run(studio *s, double delta_seconds, float width, float height)
     CHIBI_TRACE_ZONE_BEGIN(frame_zone, "Studio host retained frame");
     rml_backend_frame_retained(s->backend, delta_seconds, update_ui || prefs_dirty);
     CHIBI_TRACE_ZONE_END(frame_zone);
+    if (update_ui && canvas_layout_changed(s)) {
+        s->ui_schedule.wake = true;
+    }
     if (update_ui) {
         bool playing = app_scene_authoring_runtime_state(s->scene).playing;
         double refresh = playing ? STUDIO_INSPECTION_INTERVAL

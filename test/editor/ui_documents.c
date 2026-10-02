@@ -744,11 +744,56 @@ static void text_editor(const char *folder)
     fixture_free(&f);
 }
 
+static void scene_reload_preserves_document(const char *folder)
+{
+    tabs_fixture f = fixture_new(false);
+    app_scene_authoring *scene = f.scene;
+    char scenes[PATH_MAX], first[PATH_MAX], second[PATH_MAX];
+    snprintf(scenes, sizeof scenes, "%s/scenes", folder);
+    assert(mkdir(scenes, 0700) == 0);
+    snprintf(first, sizeof first, "%s/scenes/First.kdl", folder);
+    snprintf(second, sizeof second, "%s/scenes/Second.kdl", folder);
+    write_text(first, "version 1\nname \"First\"\n(array)entities\n");
+    write_text(second, "version 1\nname \"Second\"\n(array)entities\n");
+    assert(app_scene_authoring_set_content_root(scene, folder) == 0);
+    assert(scene_tabs_open_scene(scene, first) == 0);
+    int first_tab = scene->active_tab;
+    scene->scene_dirty = true;
+    assert(scene_tabs_open_scene(scene, second) == 0);
+    int second_tab = scene->active_tab;
+    bool was_dirty = scene_tabs_dirty(scene, &scene->tabs[first_tab]);
+    app_disk_result background = app_scene_authoring_reload_path(scene, first);
+    bool background_saved = background == APP_DISK_RELOADED &&
+                            scene->active_tab == second_tab &&
+                            !scene_tabs_dirty(scene, &scene->tabs[first_tab]) &&
+                            !scene->tabs[first_tab].scene_history &&
+                            !scene->tabs[first_tab].scene_entity_count &&
+                            !acount(scene->tabs[first_tab].scene_entities) &&
+                            !acount(scene->tabs[first_tab].scene_actor_ids);
+    assert(scene_tabs_activate(scene, first_tab) == 0);
+    bool returned_saved = !scene->scene_dirty;
+    char ui[PATH_MAX], styles[PATH_MAX];
+    write_asset(folder, "ReloadFocus", ui, styles);
+    assert(scene_tabs_open_ui(scene, ui) == 0);
+    int ui_tab = scene->active_tab;
+    app_disk_result current = app_scene_authoring_reload_path(scene, first);
+    test_check(
+        was_dirty && background_saved && returned_saved &&
+            current == APP_DISK_RELOADED && scene->active_tab == ui_tab &&
+            scene->document.kind == APP_EDITOR_DOCUMENT_UI &&
+            !strcmp(scene->document.id, ui),
+        "Reload clears a background scene's cached edits and preserves the "
+        "active UI document when reloading its current scene"
+    );
+    fixture_free(&f);
+}
+
 void test_ui_document_tabs()
 {
     char folder[PATH_MAX];
     temporary_folder(folder, sizeof folder);
     document_tabs(folder);
+    scene_reload_preserves_document(folder);
     opens_from_index(folder);
     checkpoint_roundtrip(folder);
     text_editor(folder);

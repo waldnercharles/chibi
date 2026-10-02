@@ -3,6 +3,7 @@
 #include "editor/workspace/input.h"
 #include "graph/document/serialize.h"
 #include "platform/cute.h"
+#include "support/array.h"
 #include "support/xalloc.h"
 #include "test/suite_internal.h"
 #include "ui/rml.h"
@@ -178,6 +179,172 @@ static bool menu_click(studio *s, rml_element *el)
     return true;
 }
 
+static void save_context(studio *s, int area)
+{
+    int active = s->scene->active_tab, scene_tab = -1;
+    for (int i = 0; i < acount(s->scene->tabs); i++) {
+        if (s->scene->tabs[i].kind == APP_EDITOR_DOCUMENT_SCENE) {
+            scene_tab = i;
+            break;
+        }
+    }
+    assert(scene_tab >= 0);
+    scene_tabs_activate(s->scene, scene_tab);
+    game_live_definition
+        *definition = game_live_find_definition(s->scene->live, s->scene->graph_document_id);
+    assert(definition);
+    bool dirty = definition->unsaved;
+    bool scene_dirty = s->scene->scene_dirty;
+    s->scene->scene_dirty = false;
+    definition->unsaved = true;
+    s->focus_area = area;
+    bool graph_save = studio_command_enabled(s, STUDIO_COMMAND_SAVE);
+    definition->unsaved = false;
+    s->scene->scene_dirty = true;
+    bool graph_clean = !studio_command_enabled(s, STUDIO_COMMAND_SAVE);
+    s->focus_area = STUDIO_AREA_TOP;
+    bool scene_save = studio_command_enabled(s, STUDIO_COMMAND_SAVE);
+    test_check(
+        graph_save && graph_clean && scene_save,
+        "Save follows the focused behavior graph or scene even when their "
+        "dirty states differ"
+    );
+    definition->unsaved = dirty;
+    s->scene->scene_dirty = scene_dirty;
+    scene_tabs_activate(s->scene, active);
+    s->focus_area = area;
+}
+
+static void document_visibility(studio *s, int graph_area)
+{
+    int active = s->scene->active_tab;
+    studio_layout layout = *studio_active_layout(s);
+    studio_workspace workspace = s->prefs.workspace;
+    studio_maximize_graph(s);
+    menu_frame(s);
+    char path[512];
+    snprintf(path, sizeof path, "%s/ui/Bank.rml", s->scene->content_root);
+    assert(scene_tabs_open_ui(s->scene, path) == 0);
+    int ui_tab = s->scene->active_tab;
+    menu_frame(s);
+    menu_frame(s);
+    bool revealed = s->maximized < 0 && studio_editor_shown(s, STUDIO_EDITOR_SCENE) &&
+                    studio_previewed_ui(s) &&
+                    !strcmp(studio_previewed_ui(s), "Bank");
+    bool preserved = s->prefs.workspace == workspace &&
+                     !memcmp(studio_active_layout(s), &layout, sizeof layout);
+    studio_toggle_maximized(s, graph_area);
+    menu_frame(s);
+    bool deliberate = s->maximized == graph_area;
+    assert(scene_tabs_activate(s->scene, active) == 0);
+    menu_frame(s);
+    bool compatible = s->maximized == graph_area;
+    s->collaboration.following = true;
+    assert(scene_tabs_activate(s->scene, ui_tab) == 0);
+    menu_frame(s);
+    bool remote = s->maximized == graph_area;
+    s->collaboration.following = false;
+    assert(scene_tabs_activate(s->scene, active) == 0);
+    menu_frame(s);
+    studio_toggle_maximized(s, graph_area);
+    studio_toggle_maximized(s, STUDIO_AREA_TOP);
+    assert(scene_tabs_activate(s->scene, ui_tab) == 0);
+    menu_frame(s);
+    bool canvas = s->maximized == STUDIO_AREA_TOP;
+    test_check(
+        revealed && preserved && deliberate && compatible && remote && canvas,
+        "opening a UI document reveals its Canvas from a maximized graph, "
+        "preserves split layouts and retains compatible, deliberate or "
+        "followed maximize"
+    );
+    scene_tabs_close(s->scene, APP_EDITOR_DOCUMENT_UI, path);
+    scene_tabs_activate(s->scene, active);
+    *studio_active_layout(s) = layout;
+    s->maximized = graph_area;
+    s->focus_area = graph_area;
+    menu_frame(s);
+}
+
+static void reload_context(studio *s, int area)
+{
+    int active = s->scene->active_tab, scene_tab = -1;
+    for (int i = 0; i < acount(s->scene->tabs); i++) {
+        if (s->scene->tabs[i].kind == APP_EDITOR_DOCUMENT_SCENE) {
+            scene_tab = i;
+            break;
+        }
+    }
+    assert(scene_tab >= 0);
+    char path[512];
+    snprintf(path, sizeof path, "%s/ui/Bank.rml", s->scene->content_root);
+    assert(scene_tabs_open_ui(s->scene, path) == 0);
+    scene_document_tab *tab = &s->scene->tabs[s->scene->active_tab];
+    ui_buffer *buffer = tab->ui;
+    char *saved = xstrdup(ui_buffer_text(buffer, UI_PART_RML));
+    text_edit edit = { 0, 0, "<!-- unsaved reload regression -->" };
+    ui_buffer_edit(buffer, UI_PART_RML, &edit, 1);
+    studio_command_run(s, STUDIO_COMMAND_RELOAD);
+    bool retained = ui_buffer_dirty(buffer) &&
+                    strstr(ui_buffer_text(buffer, UI_PART_RML), "unsaved reload regression") &&
+                    acount(s->disk_toasts) == 1;
+    int toast = retained ? s->disk_toasts[0].toast : 0;
+    scene_tabs_activate(s->scene, scene_tab);
+    for (int i = 0; i < 20; i++) {
+        menu_frame(s);
+    }
+    rml_context *context = rml_backend_context(s->backend);
+    rml_element *action = NULL;
+    char suffix[48];
+    snprintf(suffix, sizeof suffix, "/t%d/action", toast);
+    for (int d = 0; d < rml_context_document_count(context); d++) {
+        rml_element *items[32];
+        int count = rml_element_query_selector_all(
+            rml_context_document(context, d),
+            ".toast-action",
+            items,
+            32
+        );
+        for (int i = 0; i < count && i < 32; i++) {
+            char element_path[256];
+            if (kit_element_path(s->kit, items[i], element_path, sizeof element_path) &&
+                strstr(element_path, suffix)) {
+                action = items[i];
+            }
+        }
+    }
+    bool confirmed = action && menu_click(s, action);
+    /* Toast buttons emit in kit_end, after studio_disk_frame consumed this
+       frame's actions. Let the next editor frame apply the recorded click. */
+    menu_frame(s);
+    if (!(retained && confirmed && !ui_buffer_dirty(buffer) &&
+          !strcmp(ui_buffer_text(buffer, UI_PART_RML), saved) &&
+          s->scene->active_tab == scene_tab && !acount(s->disk_toasts))) {
+        printf(
+            "  Reload checks: retained %d, action %d, confirmed %d, dirty %d, "
+            "restored %d, active %d/%d, pending %d\n",
+            retained,
+            action != NULL,
+            confirmed,
+            ui_buffer_dirty(buffer),
+            !strcmp(ui_buffer_text(buffer, UI_PART_RML), saved),
+            s->scene->active_tab,
+            scene_tab,
+            acount(s->disk_toasts)
+        );
+    }
+    test_check(
+        retained && confirmed && !ui_buffer_dirty(buffer) &&
+            !strcmp(ui_buffer_text(buffer, UI_PART_RML), saved) &&
+            s->scene->active_tab == scene_tab && !acount(s->disk_toasts),
+        "Reload retains unsaved text until confirmation and reloads the "
+        "requested document after switching tabs"
+    );
+    free(saved);
+    scene_tabs_close(s->scene, APP_EDITOR_DOCUMENT_UI, path);
+    scene_tabs_activate(s->scene, active);
+    s->focus_area = area;
+}
+
 void test_studio_menu_context(studio *s)
 {
     editor *e = sg_graph_editor(s);
@@ -221,4 +388,8 @@ void test_studio_menu_context(studio *s)
     behavior_asset_free(before);
     behavior_asset_free(undone);
     behavior_asset_free(restored);
+
+    save_context(s, area);
+    reload_context(s, area);
+    document_visibility(s, area);
 }

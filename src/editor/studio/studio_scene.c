@@ -176,7 +176,8 @@ void studio_scene_header(studio *s, int area)
     kit_button_desc frame = { .icon = KIT_ICON_FRAME,
                               .label = "Frame",
                               .tip = "Frame selected",
-                              .shortcut = "F" };
+                              .shortcut = "F",
+                              .flags = selected_actor(s->scene) ? 0 : KIT_DISABLED };
     if (kit_button(k, "frame", &frame)) {
         studio_frame_selection(s);
     }
@@ -204,7 +205,8 @@ static void view_overlay(studio *s)
     kit_attr(k, "data-tip-side", "right");
     kit_button_desc frame = { .icon = KIT_ICON_FRAME,
                               .tip = "Frame selected",
-                              .shortcut = "F" };
+                              .shortcut = "F",
+                              .flags = selected_actor(s->scene) ? 0 : KIT_DISABLED };
     if (kit_button(k, "frame", &frame)) {
         studio_frame_selection(s);
     }
@@ -540,6 +542,9 @@ void studio_outliner_body(studio *s, int area)
     s->outliner_reveal = false;
     if (!shown && s->outliner_filter[0]) {
         kit_label(k, "empty", "outliner-empty", "No matches");
+    }
+    if (!acount(scene->actors) && !s->outliner_filter[0]) {
+        kit_label(k, "empty", "outliner-empty", "No objects. Add a prototype to start.");
     }
     if (kit_popup_begin(k, menu_key, "menu")) {
         scene_actor *actor = selected_actor(scene);
@@ -897,7 +902,7 @@ static bool canvas_body(studio *s)
     kit_push(k, "stage", NULL, "canvas-stage");
     kit_rect stage = kit_item_rect(k);
     studio_canvas_size_info size = studio_canvas_size_of(c->size);
-    kit_surface(k, "frame", "surface canvas-frame", "canvas", &s->surface);
+    c->frame = kit_surface(k, "frame", "surface canvas-frame", "canvas", &s->surface);
     crop_view(s);
     place_frame(k, size, stage);
     canvas_label(s, size, stage);

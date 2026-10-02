@@ -1,5 +1,6 @@
 #include "assets/ui_events.h"
 #include "editor/collab/actions_internal.h"
+#include "editor/collab/collab.h"
 #include "editor/graph/search.h"
 #include "editor/workspace/editor_internal.h"
 #include "graph/document/events.h"
@@ -552,6 +553,133 @@ char *graph_collab_action_connect(const editor *e, node *a, int a_kind, int a_pi
     yyjson_mut_obj_add_uint(doc, root, "to_node", to->id);
     yyjson_mut_obj_add_int(doc, root, "to_pin", to_pin);
     return action_finish(doc);
+}
+
+static bool reconnect_valid(
+    const editor *e,
+    node *from,
+    int from_pin,
+    node *old_to,
+    int old_pin,
+    node *new_to,
+    int new_pin
+)
+{
+    if (!e || !e->asset || !e->active_graph || !behavior_asset_mutable(e->asset) ||
+        !from || !old_to || graph_node_by_id(e->active_graph, from->id) != from ||
+        graph_node_by_id(e->active_graph, old_to->id) != old_to ||
+        from_pin < 0 || from_pin >= from->output_count || old_pin < 0 ||
+        old_pin >= old_to->input_count) {
+        return false;
+    }
+    bool found = false;
+    for (int i = 0; i < acount(e->active_graph->edges); i++) {
+        const edge *wire = &e->active_graph->edges[i];
+        if (wire->from_id == from->id && wire->to_id == old_to->id &&
+            wire->from_pin_id == from->output_pins[from_pin].id &&
+            wire->to_pin_id == old_to->input_pins[old_pin].id) {
+            found = true;
+            break;
+        }
+    }
+    return found && (!new_to || (graph_node_by_id(e->active_graph, new_to->id) == new_to &&
+                                 new_pin >= 0 && new_pin < new_to->input_count &&
+                                 ed_connection_specs_valid(
+                                     &from->output_pins[from_pin],
+                                     &new_to->input_pins[new_pin],
+                                     from->output_pins[from_pin].kind
+                                 )));
+}
+
+char *graph_collab_action_reconnect(
+    const editor *e,
+    node *from,
+    int from_pin,
+    node *old_to,
+    int old_pin,
+    node *new_to,
+    int new_pin
+)
+{
+    if (!reconnect_valid(e, from, from_pin, old_to, old_pin, new_to, new_pin)) {
+        return NULL;
+    }
+    yyjson_mut_doc *doc = action_start(e, "reconnect", e->active_graph->graph_id);
+    yyjson_mut_val *root = action_root(doc);
+    yyjson_mut_obj_add_uint(doc, root, "from_node", from->id);
+    yyjson_mut_obj_add_int(doc, root, "from_pin", from_pin);
+    yyjson_mut_obj_add_uint(doc, root, "old_node", old_to->id);
+    yyjson_mut_obj_add_int(doc, root, "old_pin", old_pin);
+    if (new_to) {
+        yyjson_mut_obj_add_uint(doc, root, "to_node", new_to->id);
+        yyjson_mut_obj_add_int(doc, root, "to_pin", new_pin);
+    }
+    return action_finish(doc);
+}
+
+bool graph_collab_reconnect_apply(
+    editor *e,
+    node *from,
+    int from_pin,
+    node *old_to,
+    int old_pin,
+    node *new_to,
+    int new_pin
+)
+{
+    if (!reconnect_valid(e, from, from_pin, old_to, old_pin, new_to, new_pin)) {
+        return false;
+    }
+    if (new_to == old_to && new_pin == old_pin) {
+        return true;
+    }
+    behavior_asset *snapshot = ed_snapshot(e);
+    int pending = e->edit_pending;
+    uint64_t from_id = from->id, old_id = old_to->id;
+    bool moved_exec = new_to && from->output_pins[from_pin].kind == PIN_EXEC;
+    /* Exec outputs reject a second destination. Release the validated edge
+       within the snapshot; a refused new connection restores it below. */
+    if (moved_exec &&
+        graph_remove_edge(e->active_graph, from, from_pin, old_to, old_pin) != 0) {
+        behavior_asset_free(snapshot);
+        return false;
+    }
+    bool connected = !new_to || ed_connect(
+                                    e,
+                                    &(ed_pin_view){ from, ED_PIN_OUTPUT, from_pin },
+                                    &(ed_pin_view){ new_to, ED_PIN_INPUT, new_pin }
+                                );
+    if (connected) {
+        from = graph_node_by_id(e->active_graph, from_id);
+        old_to = graph_node_by_id(e->active_graph, old_id);
+        if (!moved_exec && from && old_to) {
+            (void)graph_remove_edge(e->active_graph, from, from_pin, old_to, old_pin);
+        }
+        e->edit_pending = 1;
+        if (collab_record_history()) {
+            if (snapshot) {
+                ed_push_asset(&e->undo, snapshot);
+            }
+            ed_free_asset_stack(&e->redo);
+        } else {
+            behavior_asset_free(snapshot);
+        }
+        return true;
+    }
+    behavior_asset *current = ed_snapshot(e);
+    if (snapshot && current && !behavior_asset_equal(current, snapshot)) {
+        if (ed_adopt_behavior_asset(e, snapshot) != 0) {
+            abort();
+        }
+        av_value_free(e->edit_revision_snapshot);
+        e->edit_revision_snapshot = ed_value_snapshot(e->asset);
+        e->edit_revision_asset = e->asset;
+        e->edit_revision_initialized = 1;
+    }
+    behavior_asset_free(current);
+    behavior_asset_free(snapshot);
+    e->edit_pending = pending;
+    return false;
 }
 
 char *graph_collab_action_reset_pin(const editor *e, const node *n, int pin_index, const pin_value *value)
@@ -1277,6 +1405,36 @@ bool graph_collab_apply_action(editor *e, const char *json, char *error, size_t 
         if (e->active_graph->graph_id == graph_id && spec && !output &&
             spec->kind == PIN_DATA) {
             result = expand_inline_input(e, n, pin) ? 0 : -1;
+        }
+    } else if (!strcmp(op, "reconnect")) {
+        yyjson_val *from_id = yyjson_obj_get(root, "from_node"),
+                   *from_pin = yyjson_obj_get(root, "from_pin"),
+                   *old_id = yyjson_obj_get(root, "old_node"),
+                   *old_pin = yyjson_obj_get(root, "old_pin"),
+                   *to_id = yyjson_obj_get(root, "to_node"),
+                   *to_pin = yyjson_obj_get(root, "to_pin");
+        if (e->active_graph->graph_id == graph_id && yyjson_is_uint(from_id) &&
+            yyjson_is_int(from_pin) && yyjson_is_uint(old_id) &&
+            yyjson_is_int(old_pin) &&
+            ((!to_id && !to_pin) || (yyjson_is_uint(to_id) && yyjson_is_int(to_pin)))) {
+            node *from = graph_node_by_id(e->active_graph, yyjson_get_uint(from_id));
+            node *old_to = graph_node_by_id(e->active_graph, yyjson_get_uint(old_id));
+            node *new_to = to_id
+                             ? graph_node_by_id(e->active_graph, yyjson_get_uint(to_id))
+                             : NULL;
+            if (!to_id || new_to) {
+                result = graph_collab_reconnect_apply(
+                             e,
+                             from,
+                             yyjson_get_int(from_pin),
+                             old_to,
+                             yyjson_get_int(old_pin),
+                             new_to,
+                             yyjson_get_int(to_pin)
+                         )
+                           ? 0
+                           : -1;
+            }
         }
     } else if (!strcmp(op, "connect")) {
         yyjson_val *kind = yyjson_obj_get(root, "kind"),

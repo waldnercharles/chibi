@@ -97,13 +97,15 @@ studio_designer *designer_state(studio *s, ui_buffer **out)
     return d;
 }
 
+static void reveal_selection(studio_designer *d);
+
 void designer_select(studio *s, int element)
 {
     ui_buffer *b;
     studio_designer *d = designer_state(s, &b);
     assert(d && element < acount(d->rml->elements));
     d->selected = element;
-    d->reveal_row = true;
+    reveal_selection(d);
     if (element >= 0) {
         d->reveal_cursor = d->rml->elements[element].start;
         b->part = UI_PART_RML;
@@ -476,6 +478,24 @@ static bool subtree_matches(const studio_designer *d, int element)
     return false;
 }
 
+/* Canvas and source selections must be visible even when the Hierarchy
+   was folded or filtered before selecting them. */
+static void reveal_selection(studio_designer *d)
+{
+    d->reveal_row = true;
+    if (d->selected < 0) {
+        return;
+    }
+    d->closed = false;
+    if (d->filter[0] && !subtree_matches(d, d->selected)) {
+        d->filter[0] = '\0';
+    }
+    for (int parent = d->rml->elements[d->selected].parent; parent >= 0;
+         parent = d->rml->elements[parent].parent) {
+        set_folded(d, parent, false);
+    }
+}
+
 /* The document, then the elements shown: unfolded, or while filtering
  * those that match or hold a match. */
 static tree_row *tree_rows(const studio_designer *d)
@@ -762,7 +782,8 @@ void studio_designer_hierarchy(studio *s, int area)
     studio_designer *d = designer_state(s, &b);
     assert(d);
     tree_row *rows = tree_rows(d);
-    int reveal = -1, shown = revealed_element(d);
+    int shown = revealed_element(d);
+    int reveal = shown < 0 ? 0 : -1;
     for (int r = 1; r < acount(rows); r++) {
         reveal = rows[r].element == shown ? r : reveal;
     }
@@ -938,7 +959,7 @@ static void follow_cursor(studio *s, studio_designer *d, ui_buffer *b)
         int element = ui_design_element_at(d->rml, kit_code_cursor(e));
         if (element >= 0 && element != d->selected) {
             d->selected = element;
-            d->reveal_row = true;
+            reveal_selection(d);
         }
     }
     d->cursor = kit_code_cursor(e);
@@ -1109,6 +1130,40 @@ static bool contains(rml_element *el, rml_vec2 p)
     return p.x >= at.x && p.y >= at.y && p.x < at.x + size.x && p.y < at.y + size.y;
 }
 
+/* Expanded widgets keep a source-marked data-ui wrapper. Its inline box can
+   have no width while its rendered roots carry the widget's actual size. */
+kit_rect studio_designer_element_box(rml_element *el)
+{
+    rml_vec2 at = rml_element_absolute_offset(el, RML_BOX_BORDER);
+    rml_vec2 size = rml_element_box_size(el, RML_BOX_BORDER);
+    kit_rect box = { at.x, at.y, size.x, size.y };
+    char widget[128];
+    if (!rml_element_attribute(el, "data-ui", widget, sizeof widget)) {
+        return box;
+    }
+    bool bounds = box.w > 0 && box.h > 0;
+    for (int i = 0; i < rml_element_child_count(el); i++) {
+        rml_element *child = rml_element_child(el, i);
+        if (!rml_element_is_visible(child, true)) {
+            continue;
+        }
+        kit_rect root = studio_designer_element_box(child);
+        if (root.w <= 0 || root.h <= 0) {
+            continue;
+        }
+        if (!bounds) {
+            box = root;
+            bounds = true;
+            continue;
+        }
+        float x = fminf(box.x, root.x), y = fminf(box.y, root.y);
+        float right = fmaxf(box.x + box.w, root.x + root.w);
+        float bottom = fmaxf(box.y + box.h, root.y + root.h);
+        box = (kit_rect){ x, y, right - x, bottom - y };
+    }
+    return box;
+}
+
 /* The last, innermost shown element at or below `el` holding `p`, text and
  * pointer-events: none included, as the Inspector picks. */
 static rml_element *deepest(rml_element *el, rml_vec2 p)
@@ -1176,9 +1231,11 @@ static void outline(
     if (!el || !rml_element_is_visible(el, true)) {
         return;
     }
-    rml_vec2 at = rml_element_absolute_offset(el, RML_BOX_BORDER);
-    rml_vec2 size = rml_element_box_size(el, RML_BOX_BORDER);
-    kit_rect box = { m.x + at.x * m.sx, m.y + at.y * m.sy, size.x * m.sx, size.y * m.sy };
+    kit_rect bounds = studio_designer_element_box(el);
+    kit_rect box = { m.x + bounds.x * m.sx,
+                     m.y + bounds.y * m.sy,
+                     bounds.w * m.sx,
+                     bounds.h * m.sy };
     char name[96], label[160] = "";
     if (!strcmp(cls, "selected")) {
         float ratio = rml_context_dp_ratio(context);
@@ -1188,8 +1245,8 @@ static void outline(
             sizeof label,
             "%s  %g \xc3\x97 %g",
             name,
-            roundf(size.x / ratio),
-            roundf(size.y / ratio)
+            roundf(bounds.w / ratio),
+            roundf(bounds.h / ratio)
         );
     }
     kit_highlight_desc desc = { .margin = box,
@@ -1245,9 +1302,11 @@ static canvas_target canvas_target_at(
     if (!el) {
         return t;
     }
-    rml_vec2 at = rml_element_absolute_offset(el, RML_BOX_BORDER);
-    rml_vec2 size = rml_element_box_size(el, RML_BOX_BORDER);
-    t.box = (kit_rect){ m.x + at.x * m.sx, m.y + at.y * m.sy, size.x * m.sx, size.y * m.sy };
+    kit_rect bounds = studio_designer_element_box(el);
+    t.box = (kit_rect){ m.x + bounds.x * m.sx,
+                        m.y + bounds.y * m.sy,
+                        bounds.w * m.sx,
+                        bounds.h * m.sy };
     t.across = flows_across(el);
     float u = t.across ? (s->in.mouse_x - t.box.x) / fmaxf(t.box.w, 1)
                        : (s->in.mouse_y - t.box.y) / fmaxf(t.box.h, 1);
@@ -1304,7 +1363,7 @@ static void canvas_frame(studio *s, studio_designer *d, ui_buffer *b)
     if (s->surface.hovered && s->surface.pressed[0]) {
         designer_select(s, t.target);
     }
-    kit_inspect_begin(k, "designer", false);
+    kit_guides_begin(k, "designer");
     kit_leaf(k, "drop", NULL, "designer-drop");
     place(k, m.clip);
     kit_flag(k, "data-active", dragging);
@@ -1321,7 +1380,7 @@ static void canvas_frame(studio *s, studio_designer *d, ui_buffer *b)
     if (d->selected >= 0) {
         outline(s, d, context, m, d->selected, "selected");
     }
-    kit_inspect_end(k);
+    kit_guides_end(k);
     if (dropped) {
         t = canvas_target_at(s, d, context, m);
         drop(s, d, b, payload, t.target, t.place);

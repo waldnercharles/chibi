@@ -432,6 +432,7 @@ typedef struct
     uint64_t link_node;
     int link_kind; /* ED_PIN_INPUT or ED_PIN_OUTPUT */
     int link_pin;
+    uint64_t link_pickup_node, link_pickup_pin; /* original input until drop commits */
     char link_error[160];
     uint64_t hover_node;
     int hover_kind, hover_pin; /* -1 without a socket */
@@ -815,6 +816,7 @@ struct studio
     } perf_lighting;
     double perf_readout_time;
     char perf_readout[96];
+    struct studio_assets_cache *assets_cache;
     int assets_kind;           /* reference_asset_kind, or -1 for all */
     unsigned assets_collapsed; /* bit per reference_asset_kind */
     char assets_filter[128];
@@ -895,6 +897,7 @@ struct studio
     char ui_error[256]; /* the shown game UI's error, as last recorded */
     struct studio_canvas *canvas; /* NULL until a preview opens */
     char followed[128]; /* the ui asset previewed because its document is active */
+    uint64_t revealed_document; /* tab identity last considered for a maximized area */
     struct
     {
         bool read; /* events holds them while the Add menu is open */
@@ -1071,6 +1074,7 @@ void studio_palette(studio *s);
    unsaved conflicts as toasts. */
 void studio_disk_frame(studio *s);
 void studio_disk_free(studio *s);
+void studio_reload(studio *s);
 
 /* Projects (studio_projects.c). */
 #ifdef __EMSCRIPTEN__
@@ -1166,6 +1170,7 @@ uint64_t studio_member_shown(studio *s);
 void studio_member_properties(studio *s);
 /* The type search: items for the command surface while it picks a type. */
 bool studio_member_palette(studio *s);
+void studio_assets_free(studio *s);
 void studio_assets_header(studio *s, int area);
 void studio_assets_body(studio *s, int area);
 /* Keys over the Assets area: F2 renames the row under the pointer, X or
@@ -1398,6 +1403,7 @@ ui_buffer *studio_ui_buffer(studio *s);
 /* Saves the active UI document, offering to save over a file that changed
  * on disk. */
 void studio_code_save(studio *s);
+app_disk_result studio_code_reload_path(studio *s, const char *path);
 /* Closes a document's tab, asking first when it has unsaved edits, which
  * closing discards. */
 void studio_close_tab(studio *s, int tab);
@@ -1626,8 +1632,9 @@ typedef struct studio_canvas
     studio_canvas_size size;
     bool light;
     engine_viewport *viewport; /* its frame and documents */
-    ecs_world *world;          /* empty: only the preview shows */
-    game_save *save;           /* what its bindings set */
+    rml_element *frame; /* latest emitted pane, also the owner of Studio's surface input */
+    ecs_world *world; /* empty: only the preview shows */
+    game_save *save;  /* what its bindings set */
     studio_sources sources; /* Studio's data, which it shows with the Studio project open */
     studio_canvas_action *actions;
 } studio_canvas;
@@ -1638,6 +1645,7 @@ void studio_preview_ui(studio *s, const char *asset);
  * UI document is active, it previews that asset, and when another kind of
  * document becomes active, it shows the scene again. Call every frame. */
 void studio_canvas_follow(studio *s);
+bool studio_ui_document_asset(const studio *s, const char *path, char *name, size_t size);
 /* The previewed ui asset, or NULL while the Scene shows the scene. */
 const char *studio_previewed_ui(const studio *s);
 /* Draws the preview for the Scene's pointer `input` in place of the scene;

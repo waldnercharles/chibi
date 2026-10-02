@@ -161,6 +161,7 @@ void sg_arrange(studio *s, bool automatic_only);
 void sg_comment_contents(studio *s, uint64_t id, bool frame_only);
 void sg_frame_selection(studio *s);
 bool sg_connect_pins(studio *s, node *a, int a_kind, int a_pin, node *b, int b_kind, int b_pin);
+bool sg_reconnect_pins(studio *s, node *to, int pin);
 bool sg_pins_compatible(const node *a, int a_kind, int a_pin, const node *b, int b_kind, int b_pin);
 int sg_body_target(const graph *gr, const node *from, int kind, int pin, const node *to);
 void sg_show_error(studio *s, const char *message);

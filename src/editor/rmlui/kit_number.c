@@ -342,6 +342,8 @@ void number_key(kit *k, node *n, const rml_event *e)
         case RML_KEY_RIGHT: number_step(n, 1, mods); break;
         case RML_KEY_DOWN:
         case RML_KEY_LEFT: number_step(n, -1, mods); break;
+        case RML_KEY_PRIOR: number_step(n, 1, KIT_MOD_SHIFT); break;
+        case RML_KEY_NEXT: number_step(n, -1, KIT_MOD_SHIFT); break;
         case RML_KEY_HOME:
             if (!bounded) {
                 return;
@@ -519,6 +521,9 @@ bool kit_number(kit *k, const char *key, double *value, const kit_number_desc *d
         w->value = d->single_precision ? (double)(float)*value : *value;
     }
     w->desc = *d;
+    if (number_locked(n)) {
+        number_end_edit(n, false, false);
+    }
     bool slider = number_slider(w);
     bool addon = str_set(&w->addon, d->addon);
     bool addon_cls = str_set(&w->addon_cls, d->addon_cls);

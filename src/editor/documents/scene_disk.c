@@ -184,6 +184,9 @@ static app_disk_result sync_prototype(app_scene_authoring *scene, const char *pa
 /* Reloading the open scene keeps the camera and the selection by name. */
 static int reload_scene(app_scene_authoring *scene)
 {
+    char *active = scene->active_tab >= 0 && scene->active_tab < acount(scene->tabs)
+                     ? xstrdup(scene->tabs[scene->active_tab].key)
+                     : NULL;
     scene_camera camera = scene->camera;
     int target = scene->camera_target;
     scene_actor *actor = selected_actor(scene);
@@ -202,6 +205,15 @@ static int reload_scene(app_scene_authoring *scene)
         }
     }
     free(selected);
+    for (int i = 0; active && i < acount(scene->tabs); i++) {
+        if (!strcmp(scene->tabs[i].key, active)) {
+            if (scene_tabs_activate(scene, i) != 0) {
+                result = -1;
+            }
+            break;
+        }
+    }
+    free(active);
     return result;
 }
 
@@ -239,6 +251,12 @@ static app_disk_result sync_scene(app_scene_authoring *scene, const char *path, 
     av_doc_free(native);
     av_value_free(tab->scene_history);
     tab->scene_history = NULL;
+    tab->scene_dirty = false;
+    afree(tab->scene_entities);
+    tab->scene_entity_count = 0;
+    afree(tab->scene_actor_ids);
+    tab->selected_entity = 0;
+    tab->selected = -1;
     snprintf(scene->message, sizeof scene->message, "Reloaded %s.", content_basename(path));
     return APP_DISK_RELOADED;
 }

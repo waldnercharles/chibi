@@ -793,7 +793,7 @@ void studio_command_run_with(studio *s, studio_command command, int argument)
             studio_ui_collaboration_action(s, command);
             break;
         case STUDIO_COMMAND_SAVE: studio_save(s); break;
-        case STUDIO_COMMAND_RELOAD: app_scene_authoring_reload(s->scene); break;
+        case STUDIO_COMMAND_RELOAD: studio_reload(s); break;
         case STUDIO_COMMAND_UNDO: studio_history(s, false); break;
         case STUDIO_COMMAND_REDO: studio_history(s, true); break;
         case STUDIO_COMMAND_DUPLICATE: studio_duplicate(s); break;

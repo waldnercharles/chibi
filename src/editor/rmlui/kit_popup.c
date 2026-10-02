@@ -597,6 +597,7 @@ static bool apply_menu_key(kit *k, popup *p, rml_key key)
         case RML_KEY_HOME: move_highlight(p, 1, true); return true;
         case RML_KEY_END: move_highlight(p, -1, true); return true;
         case RML_KEY_RETURN:
+        case RML_KEY_NUMPADENTER:
         case RML_KEY_SPACE: activate_item(k, p, item); return true;
         default: break;
     }

@@ -258,6 +258,11 @@ asset_code *asset_code_restore(const av_value *state, const game_prototype_regis
     return c;
 }
 
+void asset_code_adopt_overlay(asset_code *c)
+{
+    c->overlay_revision = text_overlay_revision(c->path);
+}
+
 void asset_code_free(asset_code *c)
 {
     if (!c) {

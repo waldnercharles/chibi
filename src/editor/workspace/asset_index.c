@@ -378,6 +378,7 @@ int app_scene_authoring_refresh_asset_index(app_scene_authoring *scene)
     add_active_scene_references(index, scene);
     add_system_references(index, scene);
     scene->asset_index_built_generation = scene->asset_index_generation;
+    scene->asset_index_revision++;
     return 0;
 }
 

@@ -688,6 +688,111 @@ static void check_typed_wire_search()
     editor_free(e);
 }
 
+static void check_graph_reconnect_collab_replay()
+{
+    behavior_asset *asset = behavior_asset_new("Graph reconnect replay");
+    editor *e = editor_new(asset);
+    node *source = graph_add_node(asset->graph, registry_node_by_name("Sine"));
+    node *old_to = graph_add_node(asset->graph, registry_node_by_name("Sine"));
+    node *new_to = graph_add_node(asset->graph, registry_node_by_name("Sine"));
+    assert(graph_connect_data(asset->graph, source, 0, old_to, 0) == 0);
+    /* Undo snapshots round-trip descriptors through the registry. */
+    behavior_asset *snapshot = ed_snapshot(e);
+    assert(snapshot);
+    behavior_asset_free(snapshot);
+    uint64_t source_id = source->id, old_id = old_to->id, new_id = new_to->id;
+    char *action = graph_collab_action_reconnect(e, source, 0, old_to, 0, new_to, 0);
+    char error[256];
+    char *message_json = action
+                           ? collab_message_write("room", "host", 1, 1, "accepted", action)
+                           : NULL;
+    collab_message message = { 0 };
+    bool transported = message_json && collab_message_read(message_json, &message) &&
+                       !strcmp(yyjson_get_str(yyjson_obj_get(message.payload, "op")), "reconnect") &&
+                       yyjson_get_uint(yyjson_obj_get(message.payload, "old_node")) ==
+                           old_id;
+    test_check(transported, "the collaboration protocol transports the original and replacement wire in one accepted message");
+    collab_message_free(&message);
+    free(message_json);
+    int history = acount(e->undo);
+    bool moved = action &&
+                 graph_collab_apply_action(e, action, error, sizeof error) &&
+                 acount(e->active_graph->edges) == 1 &&
+                 e->active_graph->edges[0].to_id == new_id &&
+                 acount(e->undo) == history + 1;
+    bool stale_refused = action &&
+                         !graph_collab_apply_action(e, action, error, sizeof error) &&
+                         acount(e->undo) == history + 1 &&
+                         e->active_graph->edges[0].to_id == new_id;
+    ed_undo(e);
+    bool restored = acount(e->active_graph->edges) == 1 &&
+                    e->active_graph->edges[0].to_id == old_id;
+    ed_redo(e);
+    bool redone = acount(e->active_graph->edges) == 1 &&
+                  e->active_graph->edges[0].to_id == new_id;
+    test_check(moved && restored && redone, "collaboration reconnect replaces the old wire in one Undo/Redo transaction");
+    test_check(stale_refused, "collaboration rejects a stale reconnect without changing the graph or history");
+    free(action);
+    source = graph_node_by_id(e->active_graph, source_id);
+    new_to = graph_node_by_id(e->active_graph, new_id);
+    history = acount(e->undo);
+    action = graph_collab_action_reconnect(e, source, 0, new_to, 0, new_to, 0);
+    bool same = action && graph_collab_apply_action(e, action, error, sizeof error) &&
+                acount(e->undo) == history;
+    free(action);
+    action = graph_collab_action_reconnect(e, source, 0, new_to, 0, NULL, 0);
+    bool disconnected = action &&
+                        graph_collab_apply_action(e, action, error, sizeof error) &&
+                        !acount(e->active_graph->edges) &&
+                        acount(e->undo) == history + 1;
+    ed_undo(e);
+    bool disconnect_undo = acount(e->active_graph->edges) == 1 &&
+                           e->active_graph->edges[0].to_id == new_id;
+    test_check(same, "replaying a wire drop on its original input adds no history");
+    test_check(disconnected && disconnect_undo, "collaboration replays empty-canvas wire disconnection and Undo restores it");
+    free(action);
+    source = graph_node_by_id(e->active_graph, source_id);
+    new_to = graph_node_by_id(e->active_graph, new_id);
+    history = acount(e->undo);
+    const char *invalid = "{\"op\":\"reconnect\",\"document\":\"Graph "
+                          "reconnect replay\",\"graph\":1,"
+                          "\"from_node\":99999,\"from_pin\":0,\"old_node\":"
+                          "99998,\"old_pin\":0}";
+    bool refused = !graph_collab_apply_action(e, invalid, error, sizeof error) &&
+                   !graph_collab_action_reconnect(e, source, -1, new_to, 0, NULL, 0) &&
+                   acount(e->active_graph->edges) == 1 && acount(e->undo) == history;
+    test_check(refused, "malformed reconnect endpoints are refused before authored state or history changes");
+    node *incompatible = graph_add_node(e->active_graph, registry_node_by_name("Branch"));
+    bool mismatch = !graph_collab_action_reconnect(e, source, 0, new_to, 0, incompatible, 0) &&
+                    !graph_collab_reconnect_apply(e, source, 0, new_to, 0, incompatible, 0) &&
+                    acount(e->active_graph->edges) == 1 && acount(e->undo) == history;
+    test_check(mismatch, "incompatible reconnect keeps its original wire and history");
+    editor_free(e);
+
+    asset = behavior_asset_new("Exec reconnect replay");
+    e = editor_new(asset);
+    source = graph_add_node(asset->graph, registry_node_by_name("Branch"));
+    old_to = graph_add_node(asset->graph, registry_node_by_name("Branch"));
+    new_to = graph_add_node(asset->graph, registry_node_by_name("Branch"));
+    old_id = old_to->id;
+    new_id = new_to->id;
+    assert(graph_connect_exec(asset->graph, source, 0, old_to, 0, 0) == 0);
+    snapshot = ed_snapshot(e);
+    assert(snapshot);
+    behavior_asset_free(snapshot);
+    action = graph_collab_action_reconnect(e, source, 0, old_to, 0, new_to, 0);
+    bool exec_moved = action &&
+                      graph_collab_apply_action(e, action, error, sizeof error) &&
+                      acount(e->active_graph->edges) == 1 &&
+                      e->active_graph->edges[0].to_id == new_id;
+    ed_undo(e);
+    bool exec_restored = acount(e->active_graph->edges) == 1 &&
+                         e->active_graph->edges[0].to_id == old_id;
+    test_check(exec_moved && exec_restored, "collaboration reconnect preserves exec output exclusivity and atomic Undo");
+    free(action);
+    editor_free(e);
+}
+
 static void check_graph_binding_collab_replay()
 {
     behavior_asset *asset = behavior_asset_new("Graph typed binding replay");
@@ -1295,6 +1400,7 @@ void run_editor_command_checks(void)
     check_library_search_snapshot();
     check_typed_wire_search();
     check_graph_binding_collab_replay();
+    check_graph_reconnect_collab_replay();
     check_event_catalog_search();
     check_search_descriptions();
     check_insert_on_wire();

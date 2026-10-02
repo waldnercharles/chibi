@@ -27,6 +27,16 @@ void kit_inspect_end(kit *k)
     pop_node(k);
 }
 
+void kit_guides_begin(kit *k, const char *key)
+{
+    push_node(k, emit_in(k, k->layer, key, KIND_BOX, "div", "inspect-overlay guides"));
+}
+
+void kit_guides_end(kit *k)
+{
+    pop_node(k);
+}
+
 static const char *length(kit *k, float value)
 {
     return frame_format(k, "%.2fdp", fmaxf(value, 0));

@@ -118,7 +118,7 @@ void studio_preview_ui(studio *s, const char *asset)
 /* The ui asset a UI document is, in `name`: a .rml file directly in the open
    project's ui folder, as mounts find assets by name; false for a stylesheet
    or another project's asset. */
-static bool document_asset(const studio *s, const char *path, char *name, size_t size)
+bool studio_ui_document_asset(const studio *s, const char *path, char *name, size_t size)
 {
     char ui[PATH_MAX], folder[PATH_MAX];
     snprintf(ui, sizeof ui, "%s/ui", s->scene->content_root);
@@ -137,7 +137,7 @@ void studio_canvas_follow(studio *s)
 {
     ui_buffer *b = studio_ui_buffer(s);
     char name[sizeof s->followed] = "";
-    if ((b && !document_asset(s, b->path, name, sizeof name)) ||
+    if ((b && !studio_ui_document_asset(s, b->path, name, sizeof name)) ||
         !strcmp(name, s->followed)) {
         return;
     }

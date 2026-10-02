@@ -443,17 +443,21 @@ static bool signature_row(studio *s, graph *g, bool result, int index)
     kit_push(k, key, NULL, "param");
     kit_layout(k);
     kit_push(k, "pin", NULL, "param-row");
+    kit_push(k, "name-row", NULL, "param-name");
     grip(s, pin, drag);
     bool renamed = kit_text_field(k, "name", name, sizeof name, NULL, flags) &&
                    name[0] && strcmp(name, pin->name);
-    type_button(s, pin, g->graph_id, pin->id);
-    int container = pin->container;
-    unsigned fixed = locked(s) || exec ? KIT_DISABLED : 0;
-    bool contained = kit_choice(k, "container", &container, CONTAINERS, 4, fixed);
     kit_button_desc remove = { .icon = KIT_ICON_TRASH,
                                .tip = "Remove",
                                .flags = locked(s) ? KIT_DISABLED : 0 };
     bool removed = kit_button(k, "remove", &remove);
+    kit_pop(k);
+    kit_push(k, "settings", NULL, "param-settings");
+    type_button(s, pin, g->graph_id, pin->id);
+    int container = pin->container;
+    unsigned fixed = locked(s) || exec ? KIT_DISABLED : 0;
+    bool contained = kit_choice(k, "container", &container, CONTAINERS, 4, fixed);
+    kit_pop(k);
     kit_pop(k);
     bool defaulted = !result && default_row(s, g, index);
     kit_pop(k);

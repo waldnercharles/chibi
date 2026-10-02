@@ -24,6 +24,7 @@
 #include "editor/studio/studio_internal.h"
 #include "support/array.h"
 #include "support/asset_text.h"
+#include "support/text_overlay.h"
 #include "support/xalloc.h"
 
 #include <assert.h>
@@ -162,6 +163,52 @@ ui_buffer *studio_ui_buffer(studio *s)
 }
 
 /* ---------- Saving and closing ---------- */
+
+/* The workspace must read disk without a source overlay. Keep the draft's
+   checkpoint until the reload succeeds so an unreadable file loses no edits. */
+app_disk_result studio_code_reload_path(studio *s, const char *path)
+{
+    const char *current = text_overlay_text(path);
+    char *overlay = current ? xstrdup(current) : NULL;
+    if (overlay) {
+        text_overlay_set(path, NULL);
+    }
+    app_disk_result result = app_scene_authoring_reload_path(s->scene, path);
+    if (result != APP_DISK_RELOADED) {
+        if (overlay || text_overlay_text(path)) {
+            text_overlay_set(path, overlay);
+        }
+        for (int i = 0; i < acount(s->code.assets); i++) {
+            asset_code *code = s->code.assets[i];
+            if (!strcmp(asset_code_path(code), path)) {
+                asset_code_adopt_overlay(code);
+            }
+        }
+    }
+    free(overlay);
+    if (result != APP_DISK_RELOADED) {
+        return result;
+    }
+    if (text_overlay_text(path)) {
+        text_overlay_set(path, NULL);
+    }
+    for (int i = acount(s->code.assets) - 1; i >= 0; i--) {
+        if (!strcmp(asset_code_path(s->code.assets[i]), path)) {
+            asset_code_free(s->code.assets[i]);
+            adel(s->code.assets, i);
+        }
+    }
+    for (int i = 0; i < acount(s->scene->tabs); i++) {
+        scene_document_tab *tab = &s->scene->tabs[i];
+        if (!tab->path || strcmp(tab->path, path)) {
+            continue;
+        }
+        av_value_free(tab->source_state);
+        tab->source_state = NULL;
+        tab->source_dirty = false;
+    }
+    return result;
+}
 
 static void save(studio *s, scene_document_tab *tab)
 {

@@ -3,6 +3,7 @@
  * undo step; and a selection maps between a shown element's data-src, the
  * outline's indexes and the Text Editor's cursor offsets. */
 #include "editor/documents/ui_design.h"
+#include "editor/studio/studio_designer_internal.h"
 #include "editor/studio/studio_internal.h"
 #include "render/ui.h"
 #include "runtime/generated.h"
@@ -568,6 +569,7 @@ static const char
                  "</div>\n";
 static const char CARD_RCSS
     [] = "#card { display: block; width: 300dp; height: 200dp; }\n"
+         "[data-ui=Chip] { display: inline; }\n"
          "span { display: inline-block; width: 20dp; height: 20dp; }\n";
 
 static const char CHIP_RML[] = "<div class=\"chip\">\n"
@@ -624,6 +626,23 @@ static void shown_maps(const char *folder)
             studio_designer_shown_source(context, rml, "Card", inside) == 4,
         "Selection: elements on one line stay apart, a widget's own element "
         "picks its use, and slot content its own element"
+    );
+    rml_element *use = studio_designer_shown(context, rml, "Card", 3);
+    rml_element *chip = query(context, ".chip");
+    assert(use && chip);
+    kit_rect bounds = studio_designer_element_box(use);
+    rml_vec2 wrapper_size = rml_element_box_size(use, RML_BOX_BORDER);
+    rml_vec2 root_at = rml_element_absolute_offset(chip, RML_BOX_BORDER);
+    rml_vec2 root_size = rml_element_box_size(chip, RML_BOX_BORDER);
+    test_check(
+        wrapper_size.x < root_size.x && bounds.w >= root_size.x &&
+            bounds.h >= root_size.y && bounds.x <= root_at.x &&
+            bounds.y <= root_at.y &&
+            bounds.x + bounds.w >= root_at.x + root_size.x &&
+            bounds.y + bounds.h >= root_at.y + root_size.y && root_size.x > 0 &&
+            root_size.y > 0,
+        "widget selection bounds enclose its rendered root even when the "
+        "source wrapper is inline"
     );
     ui_source_free(rml);
     ui_buffer_free(b);

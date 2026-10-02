@@ -129,6 +129,44 @@ bool sg_connect_pins(studio *s, node *a, int a_kind, int a_pin, node *b, int b_k
     return connected && published;
 }
 
+/* Moving a connected input's wire is one edit, including in shared rooms. */
+bool sg_reconnect_pins(studio *s, node *to, int pin)
+{
+    studio_graph *g = &s->graph;
+    editor *e = sg_graph_editor(s);
+    graph *gr = sg_active_graph(s);
+    node *old = graph_node_by_id(gr, g->link_pickup_node), *from;
+    int output, old_pin, from_pin;
+    if (!old || !graph_pin_by_id(old, g->link_pickup_pin, &output, &old_pin) ||
+        !graph_input_source(gr, old, old_pin, &from, &from_pin)) {
+        return false;
+    }
+    if (g->link_kind != ED_PIN_OUTPUT || from->id != g->link_node ||
+        from_pin != g->link_pin) {
+        sg_show_error(s, "This connection changed while you were dragging");
+        return false;
+    }
+    if (to == old && pin == old_pin) {
+        return true;
+    }
+    char *action = graph_collab_action_reconnect(e, from, from_pin, old, old_pin, to, pin);
+    if (action && collab_actions_begin(action) != COLLAB_ACTION_APPLY) {
+        free(action);
+        return false;
+    }
+    if (!action && collab_active() && !collab_replaying()) {
+        return false;
+    }
+    ed_clear_connect_error(e);
+    bool changed = graph_collab_reconnect_apply(e, from, from_pin, old, old_pin, to, pin);
+    if (!changed) {
+        sg_show_error(s, e->connect_error[0] ? e->connect_error : "These pins cannot be connected");
+    }
+    bool published = action ? collab_actions_finish(action, changed) : true;
+    free(action);
+    return changed && published;
+}
+
 bool sg_pins_compatible(const node *a, int a_kind, int a_pin, const node *b, int b_kind, int b_pin)
 {
     if (a == b || a_kind == b_kind) {

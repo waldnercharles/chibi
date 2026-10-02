@@ -12,6 +12,9 @@ body { flex: 0 0 auto; }
 #editor-type { display: flex; flex: 0 0 auto; }
 .editor-type { gap: 2dp; padding: 0dp 3dp 0dp 5dp; }
 #controls { display: flex; align-items: center; gap: 2dp; flex: 1 1 0dp; min-width: 0dp; height: 100%; }
+/* Actions keep their hit targets; document names consume the remaining width. */
+.area-head > .btn, #controls > .btn, #controls > .readout { flex: 0 0 auto; }
+#controls > .segmented, #controls > .segmented .seg { flex: 0 0 auto; }
 // Maximize stays quiet until it is hovered or its area fills the workspace.
 .maximize .icon { color: var(--faint-foreground); }
 .maximize:hover .icon, .area-head.maximized .maximize .icon { color: var(--foreground); }

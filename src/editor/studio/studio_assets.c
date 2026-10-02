@@ -103,6 +103,102 @@ static int by_name(const void *a, const void *b)
                               : strcasecmp(x->name, y->name);
 }
 
+struct studio_assets_cache
+{
+    const reference_index *index;
+    uint64_t revision;
+    int kind;
+    unsigned collapsed;
+    char filter[128];
+    int *uses;
+    int *sorted;
+    asset_row *rows;
+    int totals[REFERENCE_ASSET_KIND_COUNT];
+};
+
+void studio_assets_free(studio *s)
+{
+    struct studio_assets_cache *cache = s->assets_cache;
+    if (!cache) {
+        return;
+    }
+    afree(cache->uses);
+    afree(cache->sorted);
+    afree(cache->rows);
+    free(cache);
+    s->assets_cache = NULL;
+}
+
+/* Virtualized rows still need a sorted model. Reuse it during scrolling and
+ * unrelated edits; a completed index rebuild invalidates the numeric asset IDs. */
+static struct studio_assets_cache *asset_rows(studio *s, const reference_index *index)
+{
+    struct studio_assets_cache *cache = s->assets_cache;
+    bool rebuild_index = !cache || cache->index != index ||
+                         cache->revision != s->scene->asset_index_revision;
+    if (!cache) {
+        cache = s->assets_cache = xcalloc(1, sizeof *cache);
+    } else if (
+        cache->index == index && cache->revision == s->scene->asset_index_revision &&
+        cache->kind == s->assets_kind && cache->collapsed == s->assets_collapsed &&
+        !strcmp(cache->filter, s->assets_filter)
+    ) {
+        return cache;
+    }
+    cache->index = index;
+    cache->revision = s->scene->asset_index_revision;
+    cache->kind = s->assets_kind;
+    cache->collapsed = s->assets_collapsed;
+    snprintf(cache->filter, sizeof cache->filter, "%s", s->assets_filter);
+    if (rebuild_index) {
+        int count = index ? reference_index_asset_count(index) : 0;
+        asetlen(cache->uses, count);
+        if (count) {
+            memset(cache->uses, 0, (size_t)count * sizeof *cache->uses);
+        }
+        for (int r = 0; index && r < reference_index_count(index); r++) {
+            int used = reference_dependency(reference_index_at(index, r));
+            if (used >= 0) {
+                cache->uses[used]++;
+            }
+        }
+        aclear(cache->sorted);
+        for (int i = 0; i < count; i++) {
+            const reference_asset *asset = reference_index_asset_at(index, i);
+            if (asset->name && asset->kind >= 0 &&
+                asset->kind < REFERENCE_ASSET_KIND_COUNT) {
+                apush(cache->sorted, i);
+            }
+        }
+        sort_index = index;
+        if (acount(cache->sorted)) {
+            qsort(cache->sorted, (size_t)acount(cache->sorted), sizeof *cache->sorted, by_name);
+        }
+    }
+    bool grouped = s->assets_kind < 0;
+    int previous_kind = -1;
+    memset(cache->totals, 0, sizeof cache->totals);
+    aclear(cache->rows);
+    for (int m = 0; m < acount(cache->sorted); m++) {
+        int id = cache->sorted[m];
+        const reference_asset *asset = reference_index_asset_at(index, id);
+        int kind = (int)asset->kind;
+        if ((s->assets_kind >= 0 && kind != s->assets_kind) ||
+            !contains(asset->name, s->assets_filter)) {
+            continue;
+        }
+        cache->totals[kind]++;
+        if (grouped && kind != previous_kind) {
+            apush(cache->rows, ((asset_row){ -1, kind }));
+        }
+        previous_kind = kind;
+        if (!grouped || !(s->assets_collapsed & (1u << kind)) || s->assets_filter[0]) {
+            apush(cache->rows, ((asset_row){ id, kind }));
+        }
+    }
+    return cache;
+}
+
 static bool menu_item(kit *k, const char *key, const char *label, uint32_t icon, const char *shortcut)
 {
     kit_menu_item_desc d = { .label = label,
@@ -162,39 +258,9 @@ void studio_assets_body(studio *s, int area)
     app_scene_authoring *scene = s->scene;
     const reference_index *index = app_scene_authoring_asset_index(scene);
     int count = index ? reference_index_asset_count(index) : 0;
-    int *uses = xcalloc((size_t)(count ? count : 1), sizeof *uses);
-    for (int r = 0; index && r < reference_index_count(index); r++) {
-        int used = reference_dependency(reference_index_at(index, r));
-        if (used >= 0) {
-            uses[used]++;
-        }
-    }
-    int *matches = NULL;
-    for (int i = 0; i < count; i++) {
-        const reference_asset *asset = reference_index_asset_at(index, i);
-        if (asset->name && asset->kind >= 0 && asset->kind < REFERENCE_ASSET_KIND_COUNT &&
-            (s->assets_kind < 0 || (int)asset->kind == s->assets_kind) &&
-            contains(asset->name, s->assets_filter)) {
-            apush(matches, i);
-        }
-    }
-    sort_index = index;
-    if (acount(matches)) {
-        qsort(matches, (size_t)acount(matches), sizeof *matches, by_name);
-    }
+    struct studio_assets_cache *cache = asset_rows(s, index);
+    asset_row *rows = cache->rows;
     bool grouped = s->assets_kind < 0;
-    asset_row *rows = NULL;
-    for (int m = 0; m < acount(matches); m++) {
-        int kind = (int)reference_index_asset_at(index, matches[m])->kind;
-        if (grouped &&
-            (m == 0 ||
-             (int)reference_index_asset_at(index, matches[m - 1])->kind != kind)) {
-            apush(rows, ((asset_row){ -1, kind }));
-        }
-        if (!grouped || !(s->assets_collapsed & (1u << kind)) || s->assets_filter[0]) {
-            apush(rows, ((asset_row){ matches[m], kind }));
-        }
-    }
     s->assets_hover = -1;
     kit_list_desc list = { .count = acount(rows),
                            .row_height = kit_metric(s->kit, "--row"),
@@ -204,10 +270,7 @@ void studio_assets_body(studio *s, int area)
     for (int r = first; r <= last && r < acount(rows); r++) {
         char key[24], meta[24];
         if (rows[r].asset < 0) {
-            int kind = rows[r].kind, total = 0;
-            for (int m = 0; m < acount(matches); m++) {
-                total += (int)reference_index_asset_at(index, matches[m])->kind == kind;
-            }
+            int kind = rows[r].kind, total = cache->totals[kind];
             snprintf(key, sizeof key, "g%d", kind);
             snprintf(meta, sizeof meta, "%d", total);
             bool open = !(s->assets_collapsed & (1u << kind)) || s->assets_filter[0];
@@ -222,7 +285,7 @@ void studio_assets_body(studio *s, int area)
             continue;
         }
         const reference_asset *asset = reference_index_asset_at(index, rows[r].asset);
-        int used = uses[rows[r].asset];
+        int used = cache->uses[rows[r].asset];
         snprintf(key, sizeof key, "a%d", rows[r].asset);
         /* Scenes are entry points: nothing references them, so usage says nothing. */
         bool counted = asset->kind != REFERENCE_ASSET_SCENE;
@@ -272,9 +335,6 @@ void studio_assets_body(studio *s, int area)
     if (!acount(rows)) {
         kit_label(k, "empty", "output-empty", count ? "No matches" : "No assets");
     }
-    afree(rows);
-    afree(matches);
-    free(uses);
 }
 
 bool studio_assets_key(studio *s, SDL_Keycode key, SDL_Keymod mod)

@@ -10,6 +10,7 @@ import shutil
 import tempfile
 import threading
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+from html.parser import HTMLParser
 from pathlib import Path, PurePosixPath
 from urllib.parse import parse_qs, urlsplit
 
@@ -17,6 +18,42 @@ import kdl_asset
 
 TEXT_EXTENSIONS = {'.kdl', '.rml', '.rcss'}
 IMAGE_EXTENSIONS = {'.png', '.jpg', '.jpeg'}
+
+
+class LaunchScripts(HTMLParser):
+    """Find executable launch scripts, excluding inert template fallbacks."""
+
+    def __init__(self):
+        super().__init__()
+        self.templates = 0
+        self.entries = []
+
+    def handle_starttag(self, tag, attrs):
+        if tag == 'template':
+            self.templates += 1
+        if tag == 'script' and not self.templates:
+            source = dict(attrs).get('src')
+            if source:
+                name = PurePosixPath(urlsplit(source).path).name
+                if name in ('chibi-default.js', 'chibi-isolation.js', 'chibi.js'):
+                    self.entries.append((name, self.getpos()))
+
+    def handle_endtag(self, tag):
+        if tag == 'template':
+            self.templates = max(0, self.templates - 1)
+
+
+def inject_workspace_bridge(text, bridge):
+    parser = LaunchScripts()
+    parser.feed(text)
+    if not parser.entries:
+        raise ValueError('No executable Chibi launch script found; cannot connect the workspace')
+    # The serial/thread loader must receive Module before it chooses a build.
+    entry = next((entry for entry in parser.entries if entry[0] != 'chibi.js'),
+                 parser.entries[0])
+    line_number, column = entry[1]
+    offset = sum(len(line) for line in text.splitlines(keepends=True)[:line_number - 1]) + column
+    return text[:offset] + f'<script>{bridge}</script>' + text[offset:]
 
 
 def content_directory(project):
@@ -239,12 +276,10 @@ def main():
             entries.append(snapshot / 'threads/chibi.html')
         for html in entries:
             text = html.read_text()
-            entry = '<script async'
-            for script in ('chibi-isolation.js', 'chibi-default.js'):
-                if (html.parent / script).is_file():
-                    entry = f'<script src="{script}"'
-                    break
-            html.write_text(text.replace(entry, f'<script>{bridge}</script>{entry}'))
+            try:
+                html.write_text(inject_workspace_bridge(text, bridge))
+            except ValueError as error:
+                parser.error(f'{html.relative_to(snapshot)}: {error}')
 
         class Handler(SimpleHTTPRequestHandler):
             def __init__(self, *a, **kw):

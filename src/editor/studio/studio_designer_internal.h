@@ -66,6 +66,8 @@ studio_designer *designer_state(studio *s, ui_buffer **b);
 /* Selects element `element` of the current parse (-1 for the document) and
  * reveals it in the Hierarchy and the Text Editor. */
 void designer_select(studio *s, int element);
+/* Visible bounds of a source element, including expanded widget roots. */
+kit_rect studio_designer_element_box(rml_element *element);
 /* A change's warning toast. */
 void designer_warn(studio *s, const char *title, const char *error);
 /* An element's name as the Hierarchy shows it: its tag, or a <use>'s widget. */

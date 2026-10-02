@@ -106,6 +106,9 @@ static const char *graph_asset_field(
     } else {
         snprintf(popup, sizeof popup, "%s-assets", key);
     }
+    if (!kit_dropdown_is_open(k, popup)) {
+        return NULL;
+    }
     const char **names = studio_asset_names(index, kind);
     kit_command_item *items = NULL;
     int none = 1;

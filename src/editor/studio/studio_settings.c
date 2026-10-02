@@ -299,7 +299,8 @@ static void apply_font_settings(kit *k, const studio_prefs *prefs, bool graph)
         sizeof css,
         "body, body.dark { --studio-standard-font-family: %s; "
         "--studio-code-font-family: %s; --studio-numeric-font-family: %s; "
-        "font-size: %ddp; line-height: %ddp; "
+        "font-size: %ddp; line-height: %ddp; --studio-property-label-max: "
+        "%ddp; "
         "--h: %ddp; --text-line: %ddp; --h-sm: %ddp; "
         "--input-line: %ddp; --input-pad: %.1fdp; "
         "--row: %ddp; --gap: %ddp; --header-h: %ddp; "
@@ -330,6 +331,7 @@ static void apply_font_settings(kit *k, const studio_prefs *prefs, bool graph)
         numeric_fonts[prefs->standard_font_family],
         font_size,
         body_line + line_extra,
+        (int)lroundf(160 * scale),
         h,
         text_line,
         h_sm,

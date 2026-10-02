@@ -98,6 +98,9 @@ body.graph-canvas:not(.dark) .gnode-head, body.graph-canvas:not(.dark) .gnode-he
 .grow .field { flex: 1 1 auto; min-width: 0dp; height: var(--studio-height-18, 18dp); }
 .grow.out .field { flex: 0 0 64dp; }
 .grow .field .part { height: var(--studio-height-16, 16dp); line-height: var(--studio-line-16, 16dp); }
+/* Compact graph fields have a 16 dp inner box. Shell input padding would
+   clip the glyphs and caret inside that box. */
+.grow .field input.value { padding-top: 0dp; padding-bottom: 0dp; }
 .grow .segmented { height: var(--studio-height-18, 18dp); }
 .grow .check { flex: 0 0 auto; }
 /* Editors and chips fill the row to the node's edge, so their right edges align. */

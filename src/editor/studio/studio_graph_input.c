@@ -11,8 +11,8 @@ enum
     CURVE_POINTS = 256,
 };
 
-static const float THRESHOLD = 4; /* window px before a press drags */
-static const float WIRE_HIT = 6;  /* window px */
+static const float THRESHOLD = 3; /* window px before a press drags */
+static const float WIRE_HIT = 10; /* window px: a 20 px wire target */
 static const float SNAP = 16;     /* graph units: half a drawn grid cell */
 
 typedef struct
@@ -250,16 +250,18 @@ static int insert_target(const studio *s)
 static void begin_link(studio *s, node *n, int kind, int pin)
 {
     studio_graph *g = &s->graph;
-    editor *e = sg_graph_editor(s);
     graph *gr = sg_active_graph(s);
     node *src = NULL;
     int src_pin = -1;
+    g->link_pickup_node = g->link_pickup_pin = 0;
     /* Dragging a connected data input picks its wire up (Blender, Rete). */
     if (kind == ED_PIN_INPUT && n->input_pins[pin].kind == PIN_DATA &&
         graph_input_source(gr, n, pin, &src, &src_pin) &&
         !graph_node_is_inline(gr, src)) {
-        ed_snapshot_before(e);
-        graph_remove_edge(gr, src, src_pin, n, pin);
+        /* Keep the authored wire until release, so Escape and a refused
+           connection leave the graph and its undo history unchanged. */
+        g->link_pickup_node = n->id;
+        g->link_pickup_pin = n->input_pins[pin].id;
         n = src;
         kind = ED_PIN_OUTPUT;
         pin = src_pin;
@@ -284,26 +286,38 @@ static void end_link(studio *s, graph_hit hit)
     if (to && hit.kind >= 0 && hit.pin >= 0) {
         if (sg_pins_compatible(from, g->link_kind, g->link_pin, to, hit.kind, hit.pin) ||
             hit.kind != g->link_kind) {
-            sg_connect_pins(s, from, g->link_kind, g->link_pin, to, hit.kind, hit.pin);
+            if (g->link_pickup_node) {
+                sg_reconnect_pins(s, to, hit.pin);
+            } else {
+                sg_connect_pins(s, from, g->link_kind, g->link_pin, to, hit.kind, hit.pin);
+            }
         }
         return;
     }
     if (to && to != from) {
         int target = sg_body_target(gr, from, g->link_kind, g->link_pin, to);
         if (target >= 0) {
-            sg_connect_pins(
-                s,
-                from,
-                g->link_kind,
-                g->link_pin,
-                to,
-                g->link_kind == ED_PIN_OUTPUT ? ED_PIN_INPUT : ED_PIN_OUTPUT,
-                target
-            );
+            if (g->link_pickup_node) {
+                sg_reconnect_pins(s, to, target);
+            } else {
+                sg_connect_pins(
+                    s,
+                    from,
+                    g->link_kind,
+                    g->link_pin,
+                    to,
+                    g->link_kind == ED_PIN_OUTPUT ? ED_PIN_INPUT : ED_PIN_OUTPUT,
+                    target
+                );
+            }
         }
         return;
     }
     if (!to) {
+        if (g->link_pickup_node) {
+            sg_reconnect_pins(s, NULL, -1);
+            return;
+        }
         /* Dropped on empty canvas: search for a node that fits, spawned here
            and wired (Blender, Unreal). */
         e->spawn_link_pending = 1;
@@ -752,6 +766,7 @@ void sg_cancel_gesture(studio *s)
         ed_cancel_snapshot(e);
     }
     g->gesture = STUDIO_GRAPH_IDLE;
+    g->link_pickup_node = g->link_pickup_pin = 0;
 }
 
 /* Replays this frame's window input into the canvas context: pointer input
@@ -821,7 +836,7 @@ void sg_replay(studio *s)
                 snprintf(g->press_path, sizeof g->press_path, "%s", path ? path : "");
                 float wx = g->events[i].x, wy = g->events[i].y;
                 g->double_click = ev.button == 0 &&
-                                  s->time - g->last_press_time < 0.35 &&
+                                  s->time - g->last_press_time < 0.3 &&
                                   hypotf(wx - g->last_press_x, wy - g->last_press_y) <
                                       THRESHOLD;
                 g->last_press_time = g->double_click ? 0 : s->time;

@@ -546,6 +546,10 @@ static void emit_wires(studio *s)
     bool focus = acount(e->selected) > 0 || g->hover_node;
     for (int i = 0; i < acount(gr->edges); i++) {
         const edge *ed = &gr->edges[i];
+        if (g->gesture == STUDIO_GRAPH_LINK && ed->to_id == g->link_pickup_node &&
+            ed->to_pin_id == g->link_pickup_pin) {
+            continue;
+        }
         node *from = graph_node_by_id(gr, ed->from_id),
              *to = graph_node_by_id(gr, ed->to_id);
         int fo = 0, to_out = 0, fp = -1, tp = -1;

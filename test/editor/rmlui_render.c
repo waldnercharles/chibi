@@ -812,6 +812,65 @@ static void retained_pixels(rml_backend *ui, CF_Canvas target, double delta, boo
     read_pixels(target, pixels, size);
 }
 
+/* Authoring highlights must not cover modal controls, even when emitted later.
+   The UI Inspector must still be able to inspect the modal itself. */
+static void check_guide_modal_layers()
+{
+    enum
+    {
+        WIDTH = 128,
+        HEIGHT = 96
+    };
+    rml_backend *ui = rml_backend_create(WIDTH, HEIGHT, 1);
+    assert(ui);
+    kit *k = test_kit_create(rml_backend_context(ui), "studio.rml");
+    assert(k);
+    CF_Canvas target = cf_make_canvas(cf_canvas_defaults(WIDTH, HEIGHT));
+    assert(target.id);
+    CF_Pixel pixels[WIDTH * HEIGHT];
+    kit_frame_input in = { .dp_ratio = 1, .width = WIDTH, .height = HEIGHT };
+    kit_rect box = { 20, 30, 40, 40 };
+    kit_highlight_desc highlight = {
+        .margin = box,
+        .border = box,
+        .padding = box,
+        .content = box,
+        .label = "Selection",
+    };
+    for (int phase = 0; phase < 4; phase++) {
+        kit_begin(k, &in);
+        kit_root(k, "app");
+        if (phase == 1 || phase == 2) {
+            kit_modal_begin(k, "dialog");
+            kit_style(k, "background-color", "#00ff00");
+            kit_modal_end(k);
+        }
+        kit_guides_begin(k, "guides");
+        kit_highlight(k, "selection", &highlight, NULL);
+        kit_guides_end(k);
+        if (phase == 2) {
+            kit_inspect_begin(k, "inspector", false);
+            kit_highlight(k, "inspection", &highlight, NULL);
+            kit_inspect_end(k);
+        }
+        kit_end(k);
+        retained_pixels(ui, target, 1.0 / 60, true, pixels, sizeof pixels);
+        CF_Pixel content = pixels[40 * WIDTH + 32];
+        CF_Pixel label = pixels[18 * WIDTH + 32];
+        if (phase == 1) {
+            assert(
+                content.colors.r < 5 && content.colors.g > 250 && content.colors.b < 5
+            );
+            assert(label.colors.r < 5 && label.colors.g > 250 && label.colors.b < 5);
+        } else {
+            assert(content.colors.b > 100);
+        }
+    }
+    kit_destroy(k);
+    rml_backend_destroy(ui);
+    cf_destroy_canvas(target);
+}
+
 /* Retention skips traversal itself, yet input and an animation deadline still
    produce changed pixels. Caller-owned DOM edits and resize must wake it too. */
 static void check_retained_frame_wakes()
@@ -1192,6 +1251,7 @@ int rmlui_render_run(const char *program, bool gles)
     check_retained_frame_wakes();
     check_retained_caret_deadline();
     check_retained_external_frames();
+    check_guide_modal_layers();
     kit_destroy(k);
     rml_backend_destroy(backend);
     cf_destroy_app();

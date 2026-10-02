@@ -1,7 +1,7 @@
 /* Property rows (Blender property split). */
 .prop { display: flex; align-items: center; gap: 10dp; margin-top: var(--gap); }
 .prop .label {
-    width: 38%; flex: 0 0 auto; height: var(--h); display: flex; align-items: center; justify-content: flex-end;
+    width: 38%; max-width: var(--studio-property-label-max, 160dp); flex: 0 0 auto; height: var(--h); display: flex; align-items: center; justify-content: flex-end;
     color: var(--muted-foreground); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .prop .control { flex: 1 1 0dp; display: flex; align-items: center; gap: 4dp; }

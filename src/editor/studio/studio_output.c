@@ -614,6 +614,10 @@ void studio_show_editor(studio *s, studio_editor editor)
         layout->side_open = true;
         return;
     }
+    if (editor == STUDIO_EDITOR_SCENE || editor == STUDIO_EDITOR_BEHAVIOR) {
+        layout->editors[STUDIO_AREA_TOP] = editor;
+        return;
+    }
     studio_toggle_drawer(s, editor);
 }
 

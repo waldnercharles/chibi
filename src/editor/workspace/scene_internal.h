@@ -116,6 +116,7 @@ struct app_scene_authoring
     reference_index *asset_index;
     unsigned asset_index_generation;
     unsigned asset_index_built_generation;
+    uint64_t asset_index_revision; /* completed rebuilds, including explicit refresh */
     char *content_root;
     char *ui;         /* the scene's root ui document, or NULL for default_ui */
     char *default_ui; /* the project's, or NULL */

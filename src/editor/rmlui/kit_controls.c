@@ -351,7 +351,8 @@ static void field_key(kit *k, node *n, const rml_event *e)
 static void press_key(node *n, const rml_event *e)
 {
     if (locked(n) || rml_element_has_attribute(n->el, "data-disabled") ||
-        (e->key != RML_KEY_SPACE && e->key != RML_KEY_RETURN)) {
+        (e->key != RML_KEY_SPACE && e->key != RML_KEY_RETURN &&
+         e->key != RML_KEY_NUMPADENTER)) {
         return;
     }
     if (n->kind == KIND_CHECK) {
@@ -1207,7 +1208,7 @@ bool kit_splitter(kit *k, const char *key, int axis, float *value, float minimum
     return false;
 }
 
-void kit_surface(kit *k, const char *key, const char *cls, const char *texture, kit_surface_input *input)
+rml_element *kit_surface(kit *k, const char *key, const char *cls, const char *texture, kit_surface_input *input)
 {
     node *n = emit(k, key, KIND_SURFACE, "img", cls);
     set_attr(n, "src", frame_format(k, "kit:%s", texture));
@@ -1236,6 +1237,7 @@ void kit_surface(kit *k, const char *key, const char *cls, const char *texture, 
     }
     out.wheel = out.hovered ? k->in.wheel : 0;
     *input = out;
+    return n->el;
 }
 
 /* ---------- UI wiring (workstream K) ---------- */

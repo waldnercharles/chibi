@@ -20,6 +20,7 @@ typedef struct
     int clicks;
     double value, second;
     bool single_precision;
+    unsigned number_flags;
     double number_max;
     int choice_value, choice_changes;
     int nested_choice, nested_choice_changes;
@@ -138,6 +139,7 @@ static void emit(kit_fixture *f)
     if (kit_button(k, "button", &button)) {
         f->clicks++;
     }
+    kit_attr(k, "id", "test-press-button");
     kit_button_desc dropdown_button = { .label = "Choose" };
     if (kit_button(k, "dropdown-trigger", &dropdown_button)) {
         kit_dropdown_open(k, "button-dropdown", "Search choices");
@@ -180,6 +182,7 @@ static void emit(kit_fixture *f)
     kit_prop_begin(k, "first", "First");
     kit_number_desc d = { .step = 1,
                           .precision = 2,
+                          .flags = f->number_flags,
                           .single_precision = f->single_precision,
                           .max = f->number_max };
     if (kit_number(k, "value", &f->value, &d)) {
@@ -1710,6 +1713,15 @@ bool test_rmlui_kit()
         frame(&f);
         ok &= check(f.toggle == 1, "segmented choice arrow moves and selects");
     }
+    if (control_check) {
+        rml_element_focus(control_check, true);
+        key(&f, RML_INPUT_KEY_NUMPAD_ENTER, 0);
+        frame(&f);
+        ok &= check(f.control_check, "keypad Enter activates a checkbox");
+        key(&f, RML_INPUT_KEY_NUMPAD_ENTER, 0);
+        frame(&f);
+        ok &= check(!f.control_check, "keypad Enter toggles the checkbox back");
+    }
     f.control_flags = KIT_READONLY;
     frame(&f);
     rml_element *text_label = control_text
@@ -1861,6 +1873,14 @@ bool test_rmlui_kit()
     ok &= check(click(&f, "app/bar/button") && f.clicks == 1, "button click reports once");
     frame(&f);
     ok &= check(f.clicks == 1, "button click does not repeat");
+    rml_element *button = rml_element_query_selector(doc, "#test-press-button");
+    ok &= check(button != NULL, "the keyboard button is present");
+    if (button) {
+        rml_element_focus(button, true);
+        key(&f, RML_INPUT_KEY_NUMPAD_ENTER, 0);
+        frame(&f);
+        ok &= check(f.clicks == 2, "keypad Enter activates a focused button once");
+    }
 
     /* Scrub: press, move beyond the threshold, release. One commit, no text edit.
      */
@@ -1902,6 +1922,16 @@ bool test_rmlui_kit()
     key(&f, RML_INPUT_KEY_ESCAPE, 0);
     frame(&f);
     ok &= check(f.value == before, "Escape restores the value");
+
+    ok &= check(click(&f, "app/fields/first/@control/value"), "number edit before becoming readonly");
+    type(&f, "99");
+    f.number_flags = KIT_READONLY;
+    frame(&f);
+    key(&f, RML_INPUT_KEY_ENTER, 0);
+    frame(&f);
+    ok &= check(f.value == before && !kit_wants_text(f.k, NULL), "a number becoming readonly cancels its active draft");
+    f.number_flags = 0;
+    settle(&f);
 
     /* Invalid input keeps editing and does not change the model. */
     ok &= check(click(&f, "app/fields/first/@control/value"), "third edit");
@@ -2013,6 +2043,14 @@ bool test_rmlui_kit()
     key(&f, RML_INPUT_KEY_UP, RML_INPUT_MOD_SHIFT);
     frame(&f);
     ok &= check(fabs(f.value - (before + 11)) < 1e-6, "arrow steps with Shift for coarse");
+
+    before = f.value;
+    key(&f, RML_INPUT_KEY_PAGE_UP, 0);
+    frame(&f);
+    ok &= check(f.value == before + 10, "PageUp advances a number by ten steps");
+    key(&f, RML_INPUT_KEY_PAGE_DOWN, RML_INPUT_MOD_SHIFT);
+    frame(&f);
+    ok &= check(f.value == before, "PageDown retreats ten steps even with Shift held");
 
     /* Right press reports a context click without editing. */
     ok &= check(center(&f, "app/fields/first/@control/value", &x, &y), "field for context");
@@ -2409,6 +2447,12 @@ bool test_rmlui_kit()
     key(&f, RML_INPUT_KEY_TAB, 0);
     frame(&f);
     ok &= check(!kit_popup_is_open(f.k, "menu:app/bar/file"), "Tab still dismisses a menu");
+    click(&f, "app/bar/file");
+    settle(&f);
+    key(&f, RML_INPUT_KEY_END, 0);
+    key(&f, RML_INPUT_KEY_NUMPAD_ENTER, 0);
+    frame(&f);
+    ok &= check(f.menu_b == 2 && !kit_popup_is_open(f.k, "menu:app/bar/file"), "keypad Enter activates the highlighted menu item and dismisses its menu");
 
     /* Actions use all available space; only field suggestions keep seven rows. */
     f.menu_count = 12;

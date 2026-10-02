@@ -15,7 +15,7 @@ static void forget(studio *s, int index)
     asetlen(s->disk_toasts, acount(s->disk_toasts) - 1);
 }
 
-static void offer_reload(studio *s, const char *path)
+static void offer_reload(studio *s, const char *path, const char *title)
 {
     for (int i = 0; i < acount(s->disk_toasts); i++) {
         if (!strcmp(s->disk_toasts[i].path, path)) {
@@ -28,7 +28,7 @@ static void offer_reload(studio *s, const char *path)
         s->kit,
         0,
         &(kit_toast_desc){ .type = KIT_TOAST_WARNING,
-                           .title = "Changed on disk",
+                           .title = title,
                            .description = content_basename(path),
                            .action = "Reload",
                            .duration = -1 }
@@ -42,8 +42,34 @@ static void report(studio *s, app_disk_result result, const char *path, const ch
         studio_error(s, content_basename(path), message);
     }
     if (result == APP_DISK_UNSAVED) {
-        offer_reload(s, path);
+        offer_reload(s, path, "Changed on disk");
     }
+}
+
+static void reload(studio *s, const char *path)
+{
+    report(s, studio_code_reload_path(s, path), path, app_scene_authoring_message(s->scene));
+    s->problems_checked = false;
+}
+
+void studio_reload(studio *s)
+{
+    app_scene_authoring *scene = s->scene;
+    if (scene->active_tab < 0 || scene->active_tab >= acount(scene->tabs)) {
+        return;
+    }
+    scene_document_tab *tab = &scene->tabs[scene->active_tab];
+    if (!tab->path) {
+        studio_error(s, "Could not reload", "Save the document first");
+        return;
+    }
+    if (scene_tabs_dirty(scene, tab)) {
+        offer_reload(s, tab->path, "Reload without saving?");
+        return;
+    }
+    char *path = xstrdup(tab->path);
+    reload(s, path);
+    free(path);
 }
 
 void studio_disk_frame(studio *s)
@@ -62,13 +88,7 @@ void studio_disk_frame(studio *s)
         char *path = s->disk_toasts[i].path;
         s->disk_toasts[i].path = NULL;
         forget(s, i);
-        report(
-            s,
-            app_scene_authoring_reload_path(s->scene, path),
-            path,
-            app_scene_authoring_message(s->scene)
-        );
-        s->problems_checked = false;
+        reload(s, path);
         free(path);
     }
 }

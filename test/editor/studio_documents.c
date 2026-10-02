@@ -16,6 +16,7 @@
 #include "runtime/generated.h"
 #include "support/array.h"
 #include "support/asset_text.h"
+#include "support/text_file.h"
 #include "support/text_overlay.h"
 #include "test/suite_internal.h"
 
@@ -27,6 +28,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 #define FRAME_SECONDS (1.0 / 60.0)
 #define PROJECT "test/fixtures/studio"
@@ -1238,6 +1241,76 @@ static void preview_logs_actions()
     fixture_free(&f);
 }
 
+static bool preview_geometry_matches(studio *s)
+{
+    rml_element *image = s->canvas->frame;
+    assert(image);
+    rml_vec2 size = rml_element_box_size(image, RML_BOX_BORDER);
+    float ratio = studio_pixel_ratio(s);
+    int width, height;
+    engine_viewport_pixel_size(s->canvas->viewport, &width, &height);
+    return fabsf(size.x / ratio - s->surface.rect.w) <= 0.5f &&
+           fabsf(size.y / ratio - s->surface.rect.h) <= 0.5f &&
+           abs(width - (int)(s->surface.rect.w * s->prefs.ui_scale)) <= 1 &&
+           abs(height - (int)(s->surface.rect.h * s->prefs.ui_scale)) <= 1;
+}
+
+/* Preview measurements must converge even when passive refresh is suspended. */
+static void preview_geometry_settles_without_input()
+{
+    studio_fixture f = vault_open();
+    studio *s = f.studio;
+    frames(&f, 60);
+    studio_preview_ui(s, "Bank");
+    bool matched = true;
+    const studio_canvas_size sizes[] = {
+        STUDIO_CANVAS_FIT,
+        STUDIO_CANVAS_PHONE,
+        STUDIO_CANVAS_DESKTOP,
+    };
+    for (int size = 0; size < (int)(sizeof sizes / sizeof *sizes); size++) {
+        s->canvas->size = sizes[size];
+        s->ui_schedule.wake = true;
+        frame(&f, false);
+        /* No input or passive inspection should be needed to finish layout. */
+        for (int i = 0; i < 10; i++) {
+            s->ui_schedule.next = s->time + 10;
+            frame(&f, false);
+        }
+        matched &= preview_geometry_matches(s);
+    }
+    test_check(matched, "Canvas preview texture and measured surface settle to the rendered aspect without input or passive refresh");
+    s->maximized = -1;
+    studio_active_layout(s)->editors[STUDIO_AREA_TOP] = STUDIO_EDITOR_SCENE;
+    studio_active_layout(s)->editors[STUDIO_AREA_BOTTOM] = STUDIO_EDITOR_SCENE;
+    frames(&f, 30);
+    rml_element *panes[2];
+    int count = rml_element_query_selector_all(
+        rml_context_document(rml_backend_context(s->backend), 0),
+        ".canvas-frame",
+        panes,
+        2
+    );
+    bool two = count == 2 && rml_element_is_visible(panes[0], false) &&
+               rml_element_is_visible(panes[1], false) && panes[0] != panes[1];
+    if (two) {
+        rml_vec2 first = rml_element_absolute_offset(panes[0], RML_BOX_BORDER);
+        rml_vec2 second = rml_element_absolute_offset(panes[1], RML_BOX_BORDER);
+        two = fabsf(first.x - second.x) > 0.5f || fabsf(first.y - second.y) > 0.5f;
+    }
+    test_check(two && preview_geometry_matches(s), "two visible Scene panes reconcile the exact pane that supplies the shared Canvas surface");
+    s->active_until = 0;
+    s->ui_schedule.next = s->time;
+    uint64_t before = s->ui_schedule.frames;
+    frames(&f, 60);
+    uint64_t emissions = s->ui_schedule.frames - before;
+    test_check(
+        emissions >= 3 && emissions < 10 && !s->ui_schedule.wake,
+        "settled Canvas geometry keeps the idle emission schedule bounded"
+    );
+    fixture_free(&f);
+}
+
 /* The Scene area follows the active document: a ui asset's UI document
    shows its preview, and the scene's document shows the scene again. */
 static void preview_follows_document()
@@ -1356,6 +1429,7 @@ static void ui_wiring_checks()
     ui_errors_recorded();
     ui_events_offered();
     preview_logs_actions();
+    preview_geometry_settles_without_input();
     preview_follows_document();
     preview_binds_studio_data();
 }
@@ -1775,6 +1849,60 @@ static int list_rows(studio *s, const char *selector, char *first, size_t size)
 /* The widget gallery's VirtualList, driven by the VirtualList and
    WidgetGallery behaviors, makes only the rows in view of ten thousand, and
    scrolling shows the rows there. */
+/* The index is rebuilt in place even when no dirty-generation change preceded
+ * an explicit refresh. Numeric row caches must follow completed rebuilds. */
+static void assets_cache_follows_explicit_refresh()
+{
+    studio_fixture f = studio_project_open();
+    studio *s = f.studio;
+    s->maximized = STUDIO_AREA_TOP;
+    studio_active_layout(s)->editors[STUDIO_AREA_TOP] = STUDIO_EDITOR_ASSETS;
+    frames(&f, 6);
+    reference_index_add_asset(f.scene->asset_index, REFERENCE_ASSET_BEHAVIOR, "QaRefreshCache", NULL, "qa-cache-probe");
+    /* The fixture inserts directly into the index; start its cached model
+     * afresh, as a completed rebuild would. */
+    studio_assets_free(s);
+    snprintf(s->assets_filter, sizeof s->assets_filter, "QaRefreshCache");
+    s->ui_schedule.wake = true;
+    frames(&f, 3);
+    char first[256];
+    int rows = list_rows(s, ".assets-list .vlist-content", first, sizeof first);
+    bool found = rows == 2 && strstr(first, "Behaviors");
+    unsigned generation = f.scene->asset_index_generation;
+    uint64_t revision = f.scene->asset_index_revision;
+    s->ui_schedule.next = s->time + 1;
+    s->active_until = 0;
+    uint64_t emitted = s->ui_schedule.frames;
+    assert(app_scene_authoring_refresh_asset_index(f.scene) == 0);
+    frame(&f, false);
+    rows = list_rows(s, ".assets-list .vlist-content", first, sizeof first);
+    if (!found || rows || generation != f.scene->asset_index_generation ||
+        f.scene->asset_index_revision != revision + 1 ||
+        s->ui_schedule.frames != emitted + 1) {
+        printf(
+            "  Assets cache: found=%d rows=%d generation=%u/%u "
+            "revision=%llu/%llu emissions=%llu/%llu first='%s'\n",
+            found,
+            rows,
+            generation,
+            f.scene->asset_index_generation,
+            (unsigned long long)revision,
+            (unsigned long long)f.scene->asset_index_revision,
+            (unsigned long long)emitted,
+            (unsigned long long)s->ui_schedule.frames,
+            first
+        );
+    }
+    test_check(
+        found && !rows && generation == f.scene->asset_index_generation &&
+            f.scene->asset_index_revision == revision + 1 &&
+            s->ui_schedule.frames == emitted + 1,
+        "Assets discards cached rows after an explicit index rebuild with "
+        "unchanged dirty generation"
+    );
+    fixture_free(&f);
+}
+
 static void virtual_list_rows()
 {
     studio_fixture f = studio_project_open();
@@ -1927,6 +2055,7 @@ static rml_element *property_row(studio *s, const char *label)
    an active graph node, which normally drives the inspector to Node. */
 static void show_object_properties(studio *s)
 {
+    studio_show_editor(s, STUDIO_EDITOR_PROPERTIES);
     s->shown_node = studio_graph_node(s) ? studio_graph_node(s)
                                          : studio_graph_comment(s);
     s->shown_member = studio_member_shown(s);
@@ -2215,6 +2344,195 @@ static void select_tab(studio_fixture *f, int tab)
 {
     studio_command_run_with(f->studio, STUDIO_COMMAND_SELECT_TAB, tab);
     frames(f, 3);
+}
+
+static void source_reload_write(const char *path, const char *text)
+{
+    FILE *file = fopen(path, "w");
+    assert(file && fputs(text, file) >= 0 && fclose(file) == 0);
+}
+
+/* A failed disk reload keeps the actual editor, including its view and modal
+   state; a successful reload removes the draft and its saved checkpoint. */
+static void source_reload_preserves_failed_draft()
+{
+    studio_fixture f = vault_open();
+    studio *s = f.studio;
+    char folder[] = "/tmp/chibi-source-reload-XXXXXX";
+    assert(mkdtemp(folder));
+    char directory[PATH_MAX], path[PATH_MAX];
+    snprintf(directory, sizeof directory, "%s/behaviors", folder);
+    assert(mkdir(directory, 0700) == 0);
+    snprintf(path, sizeof path, "%s/Teller.kdl", directory);
+    char *saved = text_file_read_disk(PROJECT "/content/behaviors/Teller.kdl");
+    assert(saved);
+    source_reload_write(path, saved);
+    assert(app_scene_authoring_set_content_root(f.scene, folder) == 0);
+    game_live_definition *definition = game_live_find_definition(f.live, "Teller");
+    assert(definition);
+    game_live_definition_set_path(definition, path);
+    scene_document_tab *tab = &f.scene->tabs[f.scene->active_tab];
+    assert(tab->kind == APP_EDITOR_DOCUMENT_BEHAVIOR);
+    free(tab->path);
+    tab->path = strdup(path);
+    assert(tab->path);
+    size_t length = strlen(saved) + 32;
+    char *draft = malloc(length);
+    assert(draft);
+    snprintf(draft, length, "// Unsaved source draft\n%s", saved);
+    av_doc *doc = av_doc_new();
+    av_value *state = av_obj(doc);
+    av_doc_set_root(doc, state);
+    av_obj_add_str(doc, state, "path", path);
+    av_obj_add_str(doc, state, "disk", saved);
+    av_obj_add_str(doc, state, "text", draft);
+    av_obj_add_str(doc, state, "valid", draft);
+    av_obj_add_bool(doc, state, "overlay", true);
+    av_obj_add_int(doc, state, "step", 1);
+    av_obj_add_int(doc, state, "cursor", 5);
+    av_obj_add_int(doc, state, "anchor", 5);
+    av_value *history = av_obj_add_arr(doc, state, "history");
+    av_arr_add_str(doc, history, saved);
+    av_arr_add_str(doc, history, draft);
+    asset_code *code = asset_code_restore(state, &f.scene->registry);
+    assert(code);
+    apush(s->code.assets, code);
+    av_value_free(tab->source_state);
+    tab->source_state = asset_code_capture(code);
+    tab->source_dirty = true;
+    av_value *checkpoint = av_value_copy(tab->source_state);
+    kit_code_editor *editor = asset_code_editor(code);
+    source_reload_write(path, "name \"unfinished");
+    app_disk_result failed = studio_code_reload_path(s, path);
+    bool retained = failed == APP_DISK_FAILED && acount(s->code.assets) == 1 &&
+                    s->code.assets[0] == code && asset_code_editor(code) == editor &&
+                    !strcmp(kit_code_text(editor, NULL), draft) &&
+                    kit_code_cursor(editor) == 5 && asset_code_dirty(code) &&
+                    tab->source_dirty && av_equals(checkpoint, tab->source_state) &&
+                    text_overlay_text(path) &&
+                    !strcmp(text_overlay_text(path), draft);
+    test_check(retained, "failed KDL reload preserves the live editor, draft, history, cursor and preview overlay");
+    /* On Save keeps a newer valid draft separate from its last live preview.
+       Checkpoint restoration can also replace the overlay's revision. */
+    text_overlay_set(path, saved);
+    failed = studio_code_reload_path(s, path);
+    test_check(
+        failed == APP_DISK_FAILED && asset_code_editor(code) == editor &&
+            !strcmp(kit_code_text(editor, NULL), draft) &&
+            text_overlay_text(path) && !strcmp(text_overlay_text(path), saved),
+        "failed reload restores the actual preview bytes while keeping a newer "
+        "deferred source draft"
+    );
+    source_reload_write(path, saved);
+    app_disk_result loaded = studio_code_reload_path(s, path);
+    bool cleared = loaded == APP_DISK_RELOADED && !acount(s->code.assets) &&
+                   !tab->source_state && !tab->source_dirty &&
+                   !text_overlay_text(path);
+    s->maximized = STUDIO_AREA_TOP;
+    studio_active_layout(s)->editors[STUDIO_AREA_TOP] = STUDIO_EDITOR_CODE;
+    s->ui_schedule.wake = true;
+    frames(&f, 3);
+    asset_code *fresh = acount(s->code.assets) ? s->code.assets[0] : NULL;
+    test_check(
+        cleared && fresh && !asset_code_dirty(fresh) &&
+            !strcmp(kit_code_text(asset_code_editor(fresh), NULL), saved),
+        "successful KDL reload clears its checkpoint and redraws exact disk "
+        "text without restoring the old draft"
+    );
+    /* A restored checkpoint publishes its preview before the Text Editor
+       opens. Reload must bypass that overlay even with no asset_code object. */
+    assert(fresh && acount(s->code.assets) == 1);
+    asset_code_free(fresh);
+    adel(s->code.assets, 0);
+    av_value_free(tab->source_state);
+    tab->source_state = av_value_copy(checkpoint);
+    tab->source_dirty = true;
+    text_overlay_set(path, draft);
+    source_reload_write(path, "name \"unfinished");
+    failed = studio_code_reload_path(s, path);
+    test_check(
+        failed == APP_DISK_FAILED && !acount(s->code.assets) &&
+            tab->source_dirty && av_equals(checkpoint, tab->source_state) &&
+            text_overlay_text(path) && !strcmp(text_overlay_text(path), draft),
+        "failed checkpoint-only reload keeps the draft and restores preview "
+        "without opening a source editor"
+    );
+    source_reload_write(path, saved);
+    loaded = studio_code_reload_path(s, path);
+    cleared = loaded == APP_DISK_RELOADED && !tab->source_state &&
+              !tab->source_dirty && !text_overlay_text(path);
+    s->ui_schedule.wake = true;
+    frames(&f, 3);
+    fresh = acount(s->code.assets) ? s->code.assets[0] : NULL;
+    test_check(
+        cleared && fresh && !asset_code_dirty(fresh) &&
+            !strcmp(kit_code_text(asset_code_editor(fresh), NULL), saved),
+        "successful checkpoint-only reload reads disk rather than preview and "
+        "cannot restore the discarded draft"
+    );
+    av_value_free(checkpoint);
+    av_doc_free(doc);
+    free(draft);
+    free(saved);
+    fixture_free(&f);
+    assert(unlink(path) == 0 && rmdir(directory) == 0 && rmdir(folder) == 0);
+}
+
+/* Selecting on Canvas keeps the same widget visible in its Hierarchy. */
+static void designer_selection_reveals_hierarchy()
+{
+    studio_fixture f = vault_open();
+    studio *s = f.studio;
+    s->prefs.code_apply_live = false;
+    char path[PATH_MAX];
+    assert(realpath(BANK, path) && studio_open_ui_source(s, path, 1));
+    frames(&f, 3);
+    ui_buffer *buffer = studio_ui_buffer(s);
+    const char *markup = "<div id=\"panel\"><button "
+                         "id=\"target\">Select</button></div>\n";
+    text_edit edit = { 0, (int)strlen(ui_buffer_text(buffer, UI_PART_RML)), markup };
+    ui_buffer_edit(buffer, UI_PART_RML, &edit, 1);
+    frames(&f, 3);
+    studio_designer *d = designer_state(s, &buffer);
+    assert(acount(d->rml->elements) == 2);
+    designer_select(s, 0);
+    assert(studio_designer_key(s, STUDIO_EDITOR_OUTLINER, SDLK_LEFT, 0));
+    snprintf(d->filter, sizeof d->filter, "absent");
+    d->closed = true;
+    s->ui_schedule.wake = true;
+    frames(&f, 2);
+    bool hidden = !studio_element(s, ".designer-tree .tree-row[data-selected] .name");
+    designer_select(s, 1);
+    s->ui_schedule.wake = true;
+    frames(&f, 3);
+    rml_element *name = studio_element(s, ".designer-tree .tree-row[data-selected] .name");
+    char text[32] = "";
+    if (name) {
+        rml_element_inner_rml(name, text, sizeof text);
+    }
+    if (!(hidden && name && !strcmp(text, "button") && !d->closed &&
+          !d->filter[0] && !acount(d->folded))) {
+        printf(
+            "  Hierarchy hidden %d, row %s, selected %d, closed %d, filter "
+            "'%s', folded %d\n",
+            hidden,
+            name ? text : "missing",
+            d->selected,
+            d->closed,
+            d->filter,
+            acount(d->folded)
+        );
+    }
+    test_check(
+        hidden && name && !strcmp(text, "button") && !d->closed &&
+            !d->filter[0] && !acount(d->folded),
+        "Canvas selection reveals its Hierarchy row through collapsed "
+        "ancestors and an excluding filter"
+    );
+    snprintf(d->filter, sizeof d->filter, "target");
+    designer_select(s, 1);
+    test_check(!strcmp(d->filter, "target"), "selection keeps a Hierarchy filter that already includes its row");
+    fixture_free(&f);
 }
 
 /* Opening documents and changing tabs keep the selected split mode. Each mode
@@ -3263,12 +3581,15 @@ static int studio_documents_app(const char *program, bool run_properties_only)
         palette_finds_settings();
         palette_recent_and_prefixes();
         virtual_list_rows();
+        assets_cache_follows_explicit_refresh();
         shortcut_repeat_policy();
         readout_follows_camera();
         /* Authored top bar and area headers (workstream T) */
         chrome_follows_studio();
         settings_reopens_after_font_change();
         layout_modes_are_explicit();
+        designer_selection_reveals_hierarchy();
+        source_reload_preserves_failed_draft();
         graph_font_size_preserves_hit_geometry();
         /* arena2d end to end (wave 3, workstream X) */
         scene_text_field();

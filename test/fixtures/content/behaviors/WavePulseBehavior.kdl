@@ -14,9 +14,6 @@ owner_type "ecs.entity"
             - {
                 id 3
                 type "Event"
-                x 0.0
-                y 0.0
-                placed #false
                 reference_name "Tick"
                 outputs {
                     Then id=2
@@ -25,10 +22,7 @@ owner_type "ecs.entity"
             - {
                 id 5
                 type "Get Variable"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 1
+                reference_name "Age"
                 outputs {
                     Value id=4 type="float" flags=0
                 }
@@ -36,9 +30,6 @@ owner_type "ecs.entity"
             - {
                 id 7
                 type "Delta Time"
-                x 0.0
-                y 0.0
-                placed #false
                 outputs {
                     Seconds id=6
                 }
@@ -46,10 +37,7 @@ owner_type "ecs.entity"
             - {
                 id 12
                 type "Set Variable"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 1
+                reference_name "Age"
                 inputs {
                     Exec id=8
                     Value type="float"
@@ -61,9 +49,6 @@ owner_type "ecs.entity"
             - {
                 id 16
                 type "Add"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     A id=13 type="double" flags=0 group=0
                     B type="double" flags=0 group=0
@@ -75,9 +60,6 @@ owner_type "ecs.entity"
             - {
                 id 20
                 type "Divide"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     A id=17 type="double" flags=0 group=0
                     B type="double" flags=0 group=0 default=0.8
@@ -89,9 +71,6 @@ owner_type "ecs.entity"
             - {
                 id 24
                 type "Greater Or Equal"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     A id=21
                     B 1.0
@@ -100,9 +79,6 @@ owner_type "ecs.entity"
             - {
                 id 29
                 type "Branch"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Exec id=25
                 }
@@ -110,9 +86,6 @@ owner_type "ecs.entity"
             - {
                 id 33
                 type "Destroy Entity"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Exec id=30
                 }
@@ -120,9 +93,6 @@ owner_type "ecs.entity"
             - {
                 id 35
                 type "Self"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)outputs {
                     - id=34 name="Entity" type_name="ecs.entity"
                 }
@@ -130,9 +100,6 @@ owner_type "ecs.entity"
             - {
                 id 39
                 type "Multiply"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     A id=36 type="double" flags=0 group=0 default=336.0
                     B type="double" flags=0 group=0
@@ -144,9 +111,6 @@ owner_type "ecs.entity"
             - {
                 id 43
                 type "Add"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     A id=40 type="double" flags=0 group=0 default=24.0
                     B type="double" flags=0 group=0
@@ -158,9 +122,6 @@ owner_type "ecs.entity"
             - {
                 id 49
                 type "Set_GameSurfaceInfluence_radius"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Exec id=44
                 }
@@ -168,9 +129,6 @@ owner_type "ecs.entity"
             - {
                 id 53
                 type "Subtract"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     A id=50 type="double" flags=0 group=0
                     B type="double" flags=0 group=0 default=28.0
@@ -182,9 +140,6 @@ owner_type "ecs.entity"
             - {
                 id 57
                 type "Max"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     A id=54 type="double" flags=0 group=0
                     B type="double" flags=0 group=0
@@ -196,9 +151,6 @@ owner_type "ecs.entity"
             - {
                 id 63
                 type "Set_GameSurfaceInfluence_inner_radius"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Exec id=58
                 }
@@ -206,9 +158,6 @@ owner_type "ecs.entity"
             - {
                 id 67
                 type "Subtract"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     A id=64 type="double" flags=0 group=0 default=1.0
                     B type="double" flags=0 group=0
@@ -220,9 +169,6 @@ owner_type "ecs.entity"
             - {
                 id 71
                 type "Multiply"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     A id=68 type="double" flags=0 group=0 default=0.65
                     B type="double" flags=0 group=0
@@ -234,9 +180,6 @@ owner_type "ecs.entity"
             - {
                 id 77
                 type "Set_GameSurfaceInfluence_strength"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Exec id=72
                 }

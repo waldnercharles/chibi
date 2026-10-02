@@ -14,9 +14,6 @@ owner_type "ecs.entity"
             - {
                 id 11
                 type "Event"
-                x 0.0
-                y 0.0
-                placed #false
                 reference_name "Input"
                 outputs {
                     Direction id=13 type="struct" type_name="CF_V2" kind="data"
@@ -25,10 +22,6 @@ owner_type "ecs.entity"
             - {
                 id 21
                 type "Call Function"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 2
                 reference_name "Emit Movement Trail"
                 inputs {
                     Direction id=23 type="struct" type_name="CF_V2" kind="data"
@@ -37,14 +30,11 @@ owner_type "ecs.entity"
                     Then id=24
                 }
             }
-            - id=41 type="Branch" x=0.0 y=0.0 placed=#false
+            - id=41 type="Branch"
             - {
                 id 46
                 type "Set Variable"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 1
+                reference_name "Particle Carry"
                 inputs {
                     Value type="float"
                 }
@@ -55,10 +45,6 @@ owner_type "ecs.entity"
             - {
                 id 165
                 type "Call Pure Function"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 158
                 reference_name "Is Stationary"
                 inputs {
                     Direction id=166 type="struct" type_name="CF_V2"
@@ -88,23 +74,17 @@ owner_type "ecs.entity"
             - {
                 id 14
                 type "Function Entry"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)outputs {
                     - id=15 name="Then"
                     - id=16 name="Direction" type="struct" type_name="CF_V2" kind="data"
                 }
             }
-            - id=17 type="Return" x=0.0 y=0.0 placed=#false
-            - id=51 type="Delta Time" x=0.0 y=0.0 placed=#false
+            - id=17 type="Return"
+            - id=51 type="Delta Time"
             - {
                 id 62
                 type "Get Variable"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 1
+                reference_name "Particle Carry"
                 outputs {
                     Value type="float" flags=0
                 }
@@ -112,9 +92,6 @@ owner_type "ecs.entity"
             - {
                 id 64
                 type "Add"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)inputs {
                     - id=65 name="a" flags=0 group=0
                     - id=66 name="b" flags=0 group=0
@@ -126,10 +103,7 @@ owner_type "ecs.entity"
             - {
                 id 68
                 type "Set Variable"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 1
+                reference_name "Particle Carry"
                 inputs {
                     Value type="float"
                 }
@@ -140,19 +114,13 @@ owner_type "ecs.entity"
             - {
                 id 73
                 type "Greater Or Equal"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs B=1.0
             }
-            - id=77 type="WhileLoop" x=0.0 y=0.0 placed=#false
-            - id=82 type="Normalize Vector 2" x=0.0 y=0.0 placed=#false
+            - id=77 type="WhileLoop"
+            - id=82 type="Normalize Vector 2"
             - {
                 id 85
                 type "Multiply"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     A type="struct" type_name="CF_V2" flags=0 group=0
                     B flags=0 group=0 default=-1.0
@@ -164,9 +132,6 @@ owner_type "ecs.entity"
             - {
                 id 89
                 type "Multiply"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     A type="struct" type_name="CF_V2" flags=0 group=0
                     B flags=0 group=0 default=9.0
@@ -178,9 +143,6 @@ owner_type "ecs.entity"
             - {
                 id 93
                 type "Get_GameTransform"
-                x 0.0
-                y 0.0
-                placed #false
                 outputs {
                     Value flags=0
                 }
@@ -188,9 +150,6 @@ owner_type "ecs.entity"
             - {
                 id 95
                 type "Add"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)inputs {
                     - id=96 name="a" type="struct" type_name="CF_V2" flags=0 group=0
                     - id=97 name="b" type="struct" type_name="CF_V2" flags=0 group=0
@@ -202,9 +161,6 @@ owner_type "ecs.entity"
             - {
                 id 99
                 type "Emit Directed Particles"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Elevation id=169
                     Shape flags=0
@@ -216,9 +172,6 @@ owner_type "ecs.entity"
             - {
                 id 119
                 type "Subtract"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     A flags=0 group=0
                     B flags=0 group=0 default=1.0
@@ -230,10 +183,7 @@ owner_type "ecs.entity"
             - {
                 id 123
                 type "Set Variable"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 1
+                reference_name "Particle Carry"
                 inputs {
                     Value type="float"
                 }
@@ -244,10 +194,6 @@ owner_type "ecs.entity"
             - {
                 id 153
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 128
                 reference_name "Emission Budget"
                 inputs {
                     dt id=154 type="float" flags=0
@@ -292,9 +238,6 @@ owner_type "ecs.entity"
             - {
                 id 25
                 type "Multiply"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     A flags=0 group=0
                     B flags=0 group=0
@@ -306,9 +249,6 @@ owner_type "ecs.entity"
             - {
                 id 29
                 type "Multiply"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     A flags=0 group=0
                     B flags=0 group=0
@@ -320,9 +260,6 @@ owner_type "ecs.entity"
             - {
                 id 33
                 type "Add"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)inputs {
                     - id=34 name="a" flags=0 group=0
                     - id=35 name="b" flags=0 group=0
@@ -331,13 +268,10 @@ owner_type "ecs.entity"
                     Result flags=0 group=0
                 }
             }
-            - id=37 type="Greater Or Equal" x=0.0 y=0.0 placed=#false
+            - id=37 type="Greater Or Equal"
             - {
                 id 159
                 type "Function Entry"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)outputs {
                     - id=160 name="Direction" type="struct" type_name="CF_V2" kind="data"
                     - id=161 name="x" type="float" kind="data" field_source=160 field_name="x"
@@ -347,9 +281,6 @@ owner_type "ecs.entity"
             - {
                 id 163
                 type "Return"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)inputs {
                     - id=164 name="Stationary" type="bool" kind="data"
                 }

@@ -10,9 +10,6 @@ owner_type "ecs.entity"
             - {
                 id 1
                 type "Event"
-                x 0.0
-                y 0.0
-                placed #false
                 reference_name "Tick"
                 outputs {
                     DeltaSeconds id=3 type="float" kind="data"
@@ -21,9 +18,6 @@ owner_type "ecs.entity"
             - {
                 id 4
                 type "Get Global Variable"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs Name="Ready"
                 outputs {
                     Value type="double"
@@ -32,10 +26,6 @@ owner_type "ecs.entity"
             - {
                 id 21
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 7
                 reference_name "ready < 0.5"
                 inputs {
                     Exec id=24 kind="exec"
@@ -50,10 +40,6 @@ owner_type "ecs.entity"
             - {
                 id 74
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 41
                 reference_name "clamp(vy + gravity * dt, -1150, 1000)"
                 inputs {
                     vy {
@@ -72,14 +58,10 @@ owner_type "ecs.entity"
                     Result id=77 type="double"
                 }
             }
-            - id=144 type="Set_GameVelocity_y" x=0.0 y=0.0 placed=#false
+            - id=144 type="Set_GameVelocity_y"
             - {
                 id 197
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 183
                 reference_name "y > 345"
                 inputs {
                     Exec id=200 kind="exec"
@@ -99,9 +81,6 @@ owner_type "ecs.entity"
             - {
                 id 217
                 type "Get Global Variable"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs Name="Lives"
                 outputs {
                     Value type="float"
@@ -110,10 +89,6 @@ owner_type "ecs.entity"
             - {
                 id 241
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 220
                 reference_name "max(lives - 1, 0)"
                 inputs {
                     lives id=242 type="float"
@@ -125,9 +100,6 @@ owner_type "ecs.entity"
             - {
                 id 265
                 type "Set Global Variable"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Name "Lives"
                     Value type="float"
@@ -139,9 +111,6 @@ owner_type "ecs.entity"
             - {
                 id 292
                 type "Set Global Variable"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Name "Ready"
                     Value type="float" default=1.0
@@ -153,9 +122,6 @@ owner_type "ecs.entity"
             - {
                 id 298
                 type "Set Global Variable"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Name "Charge"
                     Value type="float"
@@ -167,9 +133,6 @@ owner_type "ecs.entity"
             - {
                 id 304
                 type "Set_GameTransform"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Value {
                         default x=196.0 y=260.0
@@ -179,9 +142,6 @@ owner_type "ecs.entity"
             - {
                 id 309
                 type "Set_GameVelocity"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Value {
                         default x=0.0 y=0.0
@@ -191,9 +151,6 @@ owner_type "ecs.entity"
             - {
                 id 314
                 type "Play Sound"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs Frequency=190.0 "End Frequency"=55.0 Duration=0.4 Volume=0.4
             }
         }

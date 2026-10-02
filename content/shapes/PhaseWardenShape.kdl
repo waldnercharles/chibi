@@ -9,32 +9,22 @@ id_counter 78
         kind "event"
         name ""
         (array)nodes {
-            - id=1 type="Shader Shape Output" x=0.0 y=0.0 placed=#false
-            - id=3 type="Shader UV" x=0.0 y=0.0 placed=#false
+            - id=1 type="Shader Shape Output"
+            - id=3 type="Shader UV"
             - {
                 id 5
                 type "Shader Circle"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs Radius=0.44
             }
             - {
                 id 9
                 type "Shader Circle"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs Radius=0.28
             }
-            - id=13 type="Shader Difference" x=0.0 y=0.0 placed=#false
+            - id=13 type="Shader Difference"
             - {
                 id 36
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 23
                 reference_name "uv - 0.5"
                 inputs {
                     uv id=37 type="struct" type_name="ShaderVec2"

@@ -11,9 +11,6 @@ owner_type "ecs.entity"
             - {
                 id 2
                 type "Event"
-                x 0.0
-                y 0.0
-                placed #false
                 reference_name "Begin"
                 outputs {
                     Then id=1
@@ -22,22 +19,16 @@ owner_type "ecs.entity"
             - {
                 id 4
                 type "Random Range Vector"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Max {
                         default x=6.2831855 y=6.2831855 z=6.2831855
                     }
                 }
             }
-            - id=8 type="Set_GameVisualMotion_rotation" x=0.0 y=0.0 placed=#false
+            - id=8 type="Set_GameVisualMotion_rotation"
             - {
                 id 14
                 type "Random Range Vector"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Min {
                         default x=-10.0 y=-10.0 z=-10.0
@@ -47,7 +38,7 @@ owner_type "ecs.entity"
                     }
                 }
             }
-            - id=18 type="Set_GameVisualMotion_angular_velocity" x=0.0 y=0.0 placed=#false
+            - id=18 type="Set_GameVisualMotion_angular_velocity"
         }
         (array)edges {
             - from="2.Then" to="8.Exec"

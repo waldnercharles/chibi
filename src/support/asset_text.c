@@ -79,8 +79,10 @@ static av_value *read_number(av_doc *doc, const kdl_number *number, const char *
         }
     }
     number_text[used] = 0;
-    if (strchr(number_text, '.') || strchr(number_text, 'e') ||
-        strchr(number_text, 'E')) {
+    const char *prefix = number_text + (number_text[0] == '+' || number_text[0] == '-');
+    bool based = prefix[0] == '0' && prefix[1] && strchr("xob", prefix[1]);
+    if (!based && (strchr(number_text, '.') || strchr(number_text, 'e') ||
+                   strchr(number_text, 'E'))) {
         errno = 0;
         char *end;
         double value = strtod(number_text, &end);
@@ -135,6 +137,20 @@ static av_value *read_value(av_doc *doc, const kdl_event_data *event, const char
                 text + event->start,
                 event->end - event->start
             );
+            if (av_is_uint(value)) {
+                const char *literal = text + event->start;
+                literal += *literal == '+';
+                if (literal[0] == '0' && literal[1] == 'x') {
+                    size_t digits = 0;
+                    for (const char *p = literal + 2; p < text + event->end; p++) {
+                        digits += *p != '_';
+                    }
+                    uint64_t number = av_get_uint(value);
+                    value = digits == 8 && number <= UINT32_MAX
+                              ? av_color(doc, (uint32_t)number)
+                              : av_hex(doc, number);
+                }
+            }
             break;
     }
     if (value) {
@@ -391,7 +407,13 @@ static bool write_scalar(text_buffer *buffer, const av_value *value)
             snprintf(number, sizeof number, "%" PRId64, av_get_sint(value));
             break;
         case AV_UINT:
-            snprintf(number, sizeof number, "%" PRIu64, av_get_uint(value));
+            if (av_is_color(value)) {
+                snprintf(number, sizeof number, "0x%08" PRIx64, av_get_uint(value));
+            } else if (av_is_hex(value)) {
+                snprintf(number, sizeof number, "0x%" PRIx64, av_get_uint(value));
+            } else {
+                snprintf(number, sizeof number, "%" PRIu64, av_get_uint(value));
+            }
             break;
         case AV_REAL: {
             double real = av_get_num(value);

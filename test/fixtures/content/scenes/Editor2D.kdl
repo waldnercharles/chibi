@@ -5,24 +5,24 @@ name "Editor 2D Fixture"
         name "Floor"
         prototype "ArenaFloor"
         components {
-            GameTransform x=220 y=300
-            GameAppearance width=665.107510106449 height=352 color=320549119 shape="Box"
+            GameTransform x=220.0 y=300.0
+            GameAppearance width=665.1075 height=352.0 color=0x131b30ff shape="Box"
         }
     }
     - {
         name "Player"
         prototype "ArenaPlayer"
         components {
-            GameTransform x=400 y=300
-            GameAppearance width=20 height=18 color=4294967295 shape="Stroked Chevron" glow_radius=8 glow_color=4294967120 stroke_width=1 antialias=1
+            GameTransform x=400.0 y=300.0
+            GameAppearance width=20.0 height=18.0 color=0xffffffff shape="Stroked Chevron" glow_radius=8.0 glow_color=0xffffff50 stroke_width=1.0 antialias=1.0
         }
     }
     - {
         name "Enemy"
         prototype "ArenaEnemy"
         components {
-            GameTransform x=580 y=300
-            GameAppearance width=11 height=11 color=336527615 shape="Diamond" border_width=2 border_color=4291559679 glow_radius=3 glow_color=4291559488
+            GameTransform x=580.0 y=300.0
+            GameAppearance width=11.0 height=11.0 color=0x140f00ff shape="Diamond" border_width=2.0 border_color=0xffcc00ff glow_radius=3.0 glow_color=0xffcc0040
         }
     }
 }

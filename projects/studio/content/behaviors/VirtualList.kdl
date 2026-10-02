@@ -17,9 +17,6 @@ owner_type "ecs.entity"
             - {
                 id 5
                 type "Event"
-                x 0.0
-                y 0.0
-                placed #false
                 reference_name "Tick"
                 outputs {
                     DeltaSeconds id=7 type="float" kind="data"
@@ -28,18 +25,11 @@ owner_type "ecs.entity"
             - {
                 id 8
                 type "Get UI Scroll"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs Element="#list"
             }
             - {
                 id 42
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 15
                 reference_name "max(0, floor(Top / RowHeight) - Overscan)"
                 inputs {
                     Top id=43 type="float"
@@ -53,10 +43,6 @@ owner_type "ecs.entity"
             - {
                 id 81
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 47
                 reference_name "ceil(max(View, 400) / RowHeight) + 2 * Overscan"
                 inputs {
                     View id=82 type="float"
@@ -70,10 +56,6 @@ owner_type "ecs.entity"
             - {
                 id 108
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 86
                 reference_name "First != ShownFirst || Count != ShownCount"
                 inputs {
                     Exec id=114 kind="exec"
@@ -88,14 +70,11 @@ owner_type "ecs.entity"
                     Result id=113 type="bool"
                 }
             }
-            - id=117 type="Set Variable" x=0.0 y=0.0 placed=#false reference_id=3 reference_name="ShownFirst"
-            - id=122 type="Set Variable" x=0.0 y=0.0 placed=#false reference_id=4 reference_name="ShownCount"
+            - id=117 type="Set Variable" reference_name="ShownFirst"
+            - id=122 type="Set Variable" reference_name="ShownCount"
             - {
                 id 127
                 type "Set UI Data"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Name "first"
                     Value type="double"
@@ -104,9 +83,6 @@ owner_type "ecs.entity"
             - {
                 id 133
                 type "Set UI Data"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Name "row"
                     Value type="float"
@@ -115,10 +91,6 @@ owner_type "ecs.entity"
             - {
                 id 139
                 type "Get Variable"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 1
                 reference_name "RowHeight"
                 outputs {
                     Value type="float"
@@ -127,24 +99,17 @@ owner_type "ecs.entity"
             - {
                 id 141
                 type "Get Variable"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 1
                 reference_name "RowHeight"
                 outputs {
                     Value type="float"
                 }
             }
-            - id=143 type="Get Variable" x=0.0 y=0.0 placed=#false reference_id=2 reference_name="Overscan"
-            - id=145 type="Get Variable" x=0.0 y=0.0 placed=#false reference_id=3 reference_name="ShownFirst"
-            - id=147 type="Get Variable" x=0.0 y=0.0 placed=#false reference_id=4 reference_name="ShownCount"
+            - id=143 type="Get Variable" reference_name="Overscan"
+            - id=145 type="Get Variable" reference_name="ShownFirst"
+            - id=147 type="Get Variable" reference_name="ShownCount"
             - {
                 id 149
                 type "Self"
-                x 0.0
-                y 0.0
-                placed #false
                 outputs {
                     Self type_name="ecs.entity"
                 }
@@ -152,9 +117,6 @@ owner_type "ecs.entity"
             - {
                 id 151
                 type "Send Event"
-                x 0.0
-                y 0.0
-                placed #false
                 reference_name "ShowRows"
                 inputs {
                     First id=155 declaration_id=1 type="int"

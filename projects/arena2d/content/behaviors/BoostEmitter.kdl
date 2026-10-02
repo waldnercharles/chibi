@@ -11,9 +11,6 @@ owner_type "ecs.entity"
             - {
                 id 1
                 type "Event"
-                x 0.0
-                y 0.0
-                placed #false
                 reference_name "Tick"
                 outputs {
                     DeltaSeconds id=3 type="float" kind="data"
@@ -22,9 +19,6 @@ owner_type "ecs.entity"
             - {
                 id 4
                 type "GetEntity_GameActionBinding"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Entity {
                         binding kind="component_field" component="GAME.GameParticleEmitter" field="parent"
@@ -34,10 +28,6 @@ owner_type "ecs.entity"
             - {
                 id 15
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 7
                 reference_name "active = action.pressed"
                 inputs {
                     Exec id=19 kind="exec"

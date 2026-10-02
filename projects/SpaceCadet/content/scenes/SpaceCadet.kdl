@@ -8,7 +8,7 @@ physics substeps=8 sleep=#false
         name "Playfield"
         prototype "Artwork"
         components {
-            GAME.GameAppearance width=428.0 height=638.0 color=271006975 border_width=4.0 border_color=1366261503 layer=-29
+            GAME.GameAppearance width=428.0 height=638.0 color=0x10273cff border_width=4.0 border_color=0x516f7eff layer=-29
             GAME.GameTransform y=-5.0
         }
     }
@@ -16,7 +16,7 @@ physics substeps=8 sleep=#false
         name "Shooter trough"
         prototype "Artwork"
         components {
-            GAME.GameAppearance width=30.0 height=565.0 color=287059455 layer=-27
+            GAME.GameAppearance width=30.0 height=565.0 color=0x111c2dff layer=-27
             GAME.GameTransform x=196.0 y=35.0
         }
     }
@@ -24,7 +24,7 @@ physics substeps=8 sleep=#false
         name "Star chart"
         prototype "Artwork"
         components {
-            GAME.GameAppearance width=330.0 height=385.0 color=372855295 shape="Circle" border_width=2.0 border_color=627079679 layer=-26
+            GAME.GameAppearance width=330.0 height=385.0 color=0x163951ff shape="Circle" border_width=2.0 border_color=0x256079ff layer=-26
             GAME.GameTransform y=-60.0
         }
     }
@@ -32,7 +32,7 @@ physics substeps=8 sleep=#false
         name "Radar ring 0"
         prototype "Artwork"
         components {
-            GAME.GameAppearance width=100.0 height=100.0 color=389303039 shape="Circle" border_width=1.0 border_color=677276927 layer=-25
+            GAME.GameAppearance width=100.0 height=100.0 color=0x17344aff shape="Circle" border_width=1.0 border_color=0x285e6cff layer=-25
             GAME.GameTransform x=-10.0 y=-52.0
         }
     }
@@ -40,7 +40,7 @@ physics substeps=8 sleep=#false
         name "Radar ring 1"
         prototype "Artwork"
         components {
-            GAME.GameAppearance width=148.0 height=148.0 color=389303039 shape="Circle" border_width=1.0 border_color=677276927 layer=-24
+            GAME.GameAppearance width=148.0 height=148.0 color=0x17344aff shape="Circle" border_width=1.0 border_color=0x285e6cff layer=-24
             GAME.GameTransform x=-10.0 y=-52.0
         }
     }
@@ -48,7 +48,7 @@ physics substeps=8 sleep=#false
         name "Radar ring 2"
         prototype "Artwork"
         components {
-            GAME.GameAppearance width=196.0 height=196.0 color=389303039 shape="Circle" border_width=1.0 border_color=677276927 layer=-23
+            GAME.GameAppearance width=196.0 height=196.0 color=0x17344aff shape="Circle" border_width=1.0 border_color=0x285e6cff layer=-23
             GAME.GameTransform x=-10.0 y=-52.0
         }
     }
@@ -56,7 +56,7 @@ physics substeps=8 sleep=#false
         name "Radar ring 3"
         prototype "Artwork"
         components {
-            GAME.GameAppearance width=244.0 height=244.0 color=389303039 shape="Circle" border_width=1.0 border_color=677276927 layer=-22
+            GAME.GameAppearance width=244.0 height=244.0 color=0x17344aff shape="Circle" border_width=1.0 border_color=0x285e6cff layer=-22
             GAME.GameTransform x=-10.0 y=-52.0
         }
     }
@@ -64,7 +64,7 @@ physics substeps=8 sleep=#false
         name "Star 0"
         prototype "Artwork"
         components {
-            GAME.GameAppearance width=4.0 height=4.0 color=4140860415 shape="Diamond" layer=-19
+            GAME.GameAppearance width=4.0 height=4.0 color=0xf6d083ff shape="Diamond" layer=-19
             GAME.GameTransform x=-143.0 y=-239.0
         }
     }
@@ -72,7 +72,7 @@ physics substeps=8 sleep=#false
         name "Star 1"
         prototype "Artwork"
         components {
-            GAME.GameAppearance width=2.0 height=2.0 color=1569826303 shape="Circle" layer=-19
+            GAME.GameAppearance width=2.0 height=2.0 color=0x5d91a5ff shape="Circle" layer=-19
             GAME.GameTransform x=-30.0 y=-66.0
         }
     }
@@ -80,7 +80,7 @@ physics substeps=8 sleep=#false
         name "Star 2"
         prototype "Artwork"
         components {
-            GAME.GameAppearance width=2.0 height=2.0 color=1569826303 shape="Circle" layer=-19
+            GAME.GameAppearance width=2.0 height=2.0 color=0x5d91a5ff shape="Circle" layer=-19
             GAME.GameTransform x=83.0 y=107.0
         }
     }
@@ -88,7 +88,7 @@ physics substeps=8 sleep=#false
         name "Star 3"
         prototype "Artwork"
         components {
-            GAME.GameAppearance width=2.0 height=2.0 color=4140860415 shape="Circle" layer=-19
+            GAME.GameAppearance width=2.0 height=2.0 color=0xf6d083ff shape="Circle" layer=-19
             GAME.GameTransform x=-164.0 y=-240.0
         }
     }
@@ -96,7 +96,7 @@ physics substeps=8 sleep=#false
         name "Star 4"
         prototype "Artwork"
         components {
-            GAME.GameAppearance width=2.0 height=2.0 color=1569826303 shape="Diamond" layer=-19
+            GAME.GameAppearance width=2.0 height=2.0 color=0x5d91a5ff shape="Diamond" layer=-19
             GAME.GameTransform x=-51.0 y=-67.0
         }
     }
@@ -104,7 +104,7 @@ physics substeps=8 sleep=#false
         name "Star 5"
         prototype "Artwork"
         components {
-            GAME.GameAppearance width=4.0 height=4.0 color=1569826303 shape="Circle" layer=-19
+            GAME.GameAppearance width=4.0 height=4.0 color=0x5d91a5ff shape="Circle" layer=-19
             GAME.GameTransform x=62.0 y=106.0
         }
     }
@@ -112,7 +112,7 @@ physics substeps=8 sleep=#false
         name "Star 6"
         prototype "Artwork"
         components {
-            GAME.GameAppearance width=2.0 height=2.0 color=4140860415 shape="Circle" layer=-19
+            GAME.GameAppearance width=2.0 height=2.0 color=0xf6d083ff shape="Circle" layer=-19
             GAME.GameTransform x=175.0 y=-241.0
         }
     }
@@ -120,7 +120,7 @@ physics substeps=8 sleep=#false
         name "Star 7"
         prototype "Artwork"
         components {
-            GAME.GameAppearance width=2.0 height=2.0 color=1569826303 shape="Circle" layer=-19
+            GAME.GameAppearance width=2.0 height=2.0 color=0x5d91a5ff shape="Circle" layer=-19
             GAME.GameTransform x=-72.0 y=-68.0
         }
     }
@@ -128,7 +128,7 @@ physics substeps=8 sleep=#false
         name "Star 8"
         prototype "Artwork"
         components {
-            GAME.GameAppearance width=2.0 height=2.0 color=1569826303 shape="Diamond" layer=-19
+            GAME.GameAppearance width=2.0 height=2.0 color=0x5d91a5ff shape="Diamond" layer=-19
             GAME.GameTransform x=41.0 y=105.0
         }
     }
@@ -136,7 +136,7 @@ physics substeps=8 sleep=#false
         name "Star 9"
         prototype "Artwork"
         components {
-            GAME.GameAppearance width=2.0 height=2.0 color=4140860415 shape="Circle" layer=-19
+            GAME.GameAppearance width=2.0 height=2.0 color=0xf6d083ff shape="Circle" layer=-19
             GAME.GameTransform x=154.0 y=-242.0
         }
     }
@@ -144,7 +144,7 @@ physics substeps=8 sleep=#false
         name "Star 10"
         prototype "Artwork"
         components {
-            GAME.GameAppearance width=4.0 height=4.0 color=1569826303 shape="Circle" layer=-19
+            GAME.GameAppearance width=4.0 height=4.0 color=0x5d91a5ff shape="Circle" layer=-19
             GAME.GameTransform x=-93.0 y=-69.0
         }
     }
@@ -152,7 +152,7 @@ physics substeps=8 sleep=#false
         name "Star 11"
         prototype "Artwork"
         components {
-            GAME.GameAppearance width=2.0 height=2.0 color=1569826303 shape="Circle" layer=-19
+            GAME.GameAppearance width=2.0 height=2.0 color=0x5d91a5ff shape="Circle" layer=-19
             GAME.GameTransform x=20.0 y=104.0
         }
     }
@@ -160,7 +160,7 @@ physics substeps=8 sleep=#false
         name "Star 12"
         prototype "Artwork"
         components {
-            GAME.GameAppearance width=2.0 height=2.0 color=4140860415 shape="Diamond" layer=-19
+            GAME.GameAppearance width=2.0 height=2.0 color=0xf6d083ff shape="Diamond" layer=-19
             GAME.GameTransform x=133.0 y=-243.0
         }
     }
@@ -168,7 +168,7 @@ physics substeps=8 sleep=#false
         name "Star 13"
         prototype "Artwork"
         components {
-            GAME.GameAppearance width=2.0 height=2.0 color=1569826303 shape="Circle" layer=-19
+            GAME.GameAppearance width=2.0 height=2.0 color=0x5d91a5ff shape="Circle" layer=-19
             GAME.GameTransform x=-114.0 y=-70.0
         }
     }
@@ -176,7 +176,7 @@ physics substeps=8 sleep=#false
         name "Star 14"
         prototype "Artwork"
         components {
-            GAME.GameAppearance width=2.0 height=2.0 color=1569826303 shape="Circle" layer=-19
+            GAME.GameAppearance width=2.0 height=2.0 color=0x5d91a5ff shape="Circle" layer=-19
             GAME.GameTransform x=-1.0 y=103.0
         }
     }
@@ -184,7 +184,7 @@ physics substeps=8 sleep=#false
         name "Star 15"
         prototype "Artwork"
         components {
-            GAME.GameAppearance width=4.0 height=4.0 color=4140860415 shape="Circle" layer=-19
+            GAME.GameAppearance width=4.0 height=4.0 color=0xf6d083ff shape="Circle" layer=-19
             GAME.GameTransform x=112.0 y=-244.0
         }
     }
@@ -192,7 +192,7 @@ physics substeps=8 sleep=#false
         name "Star 16"
         prototype "Artwork"
         components {
-            GAME.GameAppearance width=2.0 height=2.0 color=1569826303 shape="Diamond" layer=-19
+            GAME.GameAppearance width=2.0 height=2.0 color=0x5d91a5ff shape="Diamond" layer=-19
             GAME.GameTransform x=-135.0 y=-71.0
         }
     }
@@ -200,7 +200,7 @@ physics substeps=8 sleep=#false
         name "Star 17"
         prototype "Artwork"
         components {
-            GAME.GameAppearance width=2.0 height=2.0 color=1569826303 shape="Circle" layer=-19
+            GAME.GameAppearance width=2.0 height=2.0 color=0x5d91a5ff shape="Circle" layer=-19
             GAME.GameTransform x=-22.0 y=102.0
         }
     }
@@ -208,7 +208,7 @@ physics substeps=8 sleep=#false
         name "Star 18"
         prototype "Artwork"
         components {
-            GAME.GameAppearance width=2.0 height=2.0 color=4140860415 shape="Circle" layer=-19
+            GAME.GameAppearance width=2.0 height=2.0 color=0xf6d083ff shape="Circle" layer=-19
             GAME.GameTransform x=91.0 y=-245.0
         }
     }
@@ -216,7 +216,7 @@ physics substeps=8 sleep=#false
         name "Star 19"
         prototype "Artwork"
         components {
-            GAME.GameAppearance width=2.0 height=2.0 color=1569826303 shape="Circle" layer=-19
+            GAME.GameAppearance width=2.0 height=2.0 color=0x5d91a5ff shape="Circle" layer=-19
             GAME.GameTransform x=-156.0 y=-72.0
         }
     }
@@ -224,7 +224,7 @@ physics substeps=8 sleep=#false
         name "Star 20"
         prototype "Artwork"
         components {
-            GAME.GameAppearance width=4.0 height=4.0 color=1569826303 shape="Diamond" layer=-19
+            GAME.GameAppearance width=4.0 height=4.0 color=0x5d91a5ff shape="Diamond" layer=-19
             GAME.GameTransform x=-43.0 y=101.0
         }
     }
@@ -232,7 +232,7 @@ physics substeps=8 sleep=#false
         name "Star 21"
         prototype "Artwork"
         components {
-            GAME.GameAppearance width=2.0 height=2.0 color=4140860415 shape="Circle" layer=-19
+            GAME.GameAppearance width=2.0 height=2.0 color=0xf6d083ff shape="Circle" layer=-19
             GAME.GameTransform x=70.0 y=-246.0
         }
     }
@@ -240,7 +240,7 @@ physics substeps=8 sleep=#false
         name "Star 22"
         prototype "Artwork"
         components {
-            GAME.GameAppearance width=2.0 height=2.0 color=1569826303 shape="Circle" layer=-19
+            GAME.GameAppearance width=2.0 height=2.0 color=0x5d91a5ff shape="Circle" layer=-19
             GAME.GameTransform x=-177.0 y=-73.0
         }
     }
@@ -248,7 +248,7 @@ physics substeps=8 sleep=#false
         name "Star 23"
         prototype "Artwork"
         components {
-            GAME.GameAppearance width=2.0 height=2.0 color=1569826303 shape="Circle" layer=-19
+            GAME.GameAppearance width=2.0 height=2.0 color=0x5d91a5ff shape="Circle" layer=-19
             GAME.GameTransform x=-64.0 y=100.0
         }
     }
@@ -256,7 +256,7 @@ physics substeps=8 sleep=#false
         name "Star 24"
         prototype "Artwork"
         components {
-            GAME.GameAppearance width=2.0 height=2.0 color=4140860415 shape="Diamond" layer=-19
+            GAME.GameAppearance width=2.0 height=2.0 color=0xf6d083ff shape="Diamond" layer=-19
             GAME.GameTransform x=49.0 y=-247.0
         }
     }
@@ -264,7 +264,7 @@ physics substeps=8 sleep=#false
         name "Star 25"
         prototype "Artwork"
         components {
-            GAME.GameAppearance width=4.0 height=4.0 color=1569826303 shape="Circle" layer=-19
+            GAME.GameAppearance width=4.0 height=4.0 color=0x5d91a5ff shape="Circle" layer=-19
             GAME.GameTransform x=162.0 y=-74.0
         }
     }
@@ -272,7 +272,7 @@ physics substeps=8 sleep=#false
         name "Star 26"
         prototype "Artwork"
         components {
-            GAME.GameAppearance width=2.0 height=2.0 color=1569826303 shape="Circle" layer=-19
+            GAME.GameAppearance width=2.0 height=2.0 color=0x5d91a5ff shape="Circle" layer=-19
             GAME.GameTransform x=-85.0 y=99.0
         }
     }
@@ -280,7 +280,7 @@ physics substeps=8 sleep=#false
         name "Star 27"
         prototype "Artwork"
         components {
-            GAME.GameAppearance width=2.0 height=2.0 color=4140860415 shape="Circle" layer=-19
+            GAME.GameAppearance width=2.0 height=2.0 color=0xf6d083ff shape="Circle" layer=-19
             GAME.GameTransform x=28.0 y=-248.0
         }
     }
@@ -288,9 +288,9 @@ physics substeps=8 sleep=#false
         name "Rail 1"
         prototype "Rail"
         components {
-            GAME.GameAppearance width=558.0 height=10.0 color=2478428415
+            GAME.GameAppearance width=558.0 height=10.0 color=0x93b9d0ff
             GAME.GameCollider width=558.0 height=10.0
-            GAME.GameOrientation radians=-1.5707963705062866
+            GAME.GameOrientation radians=-1.5707964
             GAME.GameTransform x=-210.0 y=39.0
         }
     }
@@ -298,9 +298,9 @@ physics substeps=8 sleep=#false
         name "Rail 2"
         prototype "Rail"
         components {
-            GAME.GameAppearance width=42.95346450805664 height=10.0 color=2478428415
-            GAME.GameCollider width=42.95346450805664 height=10.0
-            GAME.GameOrientation radians=-1.1383885145187378
+            GAME.GameAppearance width=42.953465 height=10.0 color=0x93b9d0ff
+            GAME.GameCollider width=42.953465 height=10.0
+            GAME.GameOrientation radians=-1.1383885
             GAME.GameTransform x=-201.0 y=-259.5
         }
     }
@@ -308,9 +308,9 @@ physics substeps=8 sleep=#false
         name "Rail 3"
         prototype "Rail"
         components {
-            GAME.GameAppearance width=50.80354309082031 height=10.0 color=2478428415
-            GAME.GameCollider width=50.80354309082031 height=10.0
-            GAME.GameOrientation radians=-0.6316906213760376
+            GAME.GameAppearance width=50.803543 height=10.0 color=0x93b9d0ff
+            GAME.GameCollider width=50.803543 height=10.0
+            GAME.GameOrientation radians=-0.6316906
             GAME.GameTransform x=-171.5 y=-294.0
         }
     }
@@ -318,9 +318,9 @@ physics substeps=8 sleep=#false
         name "Rail 4"
         prototype "Rail"
         components {
-            GAME.GameAppearance width=61.61168670654297 height=10.0 color=2478428415
-            GAME.GameCollider width=61.61168670654297 height=10.0
-            GAME.GameOrientation radians=-0.22923193871974945
+            GAME.GameAppearance width=61.611687 height=10.0 color=0x93b9d0ff
+            GAME.GameCollider width=61.611687 height=10.0
+            GAME.GameOrientation radians=-0.22923194
             GAME.GameTransform x=-121.0 y=-316.0
         }
     }
@@ -328,7 +328,7 @@ physics substeps=8 sleep=#false
         name "Rail 5"
         prototype "Rail"
         components {
-            GAME.GameAppearance width=182.0 height=10.0 color=2478428415
+            GAME.GameAppearance width=182.0 height=10.0 color=0x93b9d0ff
             GAME.GameCollider width=182.0 height=10.0
             GAME.GameTransform y=-323.0
         }
@@ -337,9 +337,9 @@ physics substeps=8 sleep=#false
         name "Rail 6"
         prototype "Rail"
         components {
-            GAME.GameAppearance width=66.94026947021484 height=10.0 color=2478428415
-            GAME.GameCollider width=66.94026947021484 height=10.0
-            GAME.GameOrientation radians=0.24135549366474152
+            GAME.GameAppearance width=66.94027 height=10.0 color=0x93b9d0ff
+            GAME.GameCollider width=66.94027 height=10.0
+            GAME.GameOrientation radians=0.2413555
             GAME.GameTransform x=123.5 y=-315.0
         }
     }
@@ -347,9 +347,9 @@ physics substeps=8 sleep=#false
         name "Rail 7"
         prototype "Rail"
         components {
-            GAME.GameAppearance width=51.22499465942383 height=10.0 color=2478428415
-            GAME.GameCollider width=51.22499465942383 height=10.0
-            GAME.GameOrientation radians=0.6747409701347351
+            GAME.GameAppearance width=51.224995 height=10.0 color=0x93b9d0ff
+            GAME.GameCollider width=51.224995 height=10.0
+            GAME.GameOrientation radians=0.67474097
             GAME.GameTransform x=176.0 y=-291.0
         }
     }
@@ -357,9 +357,9 @@ physics substeps=8 sleep=#false
         name "Rail 8"
         prototype "Rail"
         components {
-            GAME.GameAppearance width=52.801513671875 height=10.0 color=2478428415
-            GAME.GameCollider width=52.801513671875 height=10.0
-            GAME.GameOrientation radians=1.1410340070724487
+            GAME.GameAppearance width=52.801514 height=10.0 color=0x93b9d0ff
+            GAME.GameCollider width=52.801514 height=10.0
+            GAME.GameOrientation radians=1.141034
             GAME.GameTransform x=207.0 y=-251.0
         }
     }
@@ -367,9 +367,9 @@ physics substeps=8 sleep=#false
         name "Rail 9"
         prototype "Rail"
         components {
-            GAME.GameAppearance width=545.0 height=10.0 color=2478428415
+            GAME.GameAppearance width=545.0 height=10.0 color=0x93b9d0ff
             GAME.GameCollider width=545.0 height=10.0
-            GAME.GameOrientation radians=1.5707963705062866
+            GAME.GameOrientation radians=1.5707964
             GAME.GameTransform x=218.0 y=45.5
         }
     }
@@ -377,9 +377,9 @@ physics substeps=8 sleep=#false
         name "Rail 10"
         prototype "Rail"
         components {
-            GAME.GameAppearance width=131.0 height=6.0 color=1669963519
+            GAME.GameAppearance width=131.0 height=6.0 color=0x63899eff
             GAME.GameCollider width=131.0 height=6.0
-            GAME.GameOrientation radians=-1.5707963705062866
+            GAME.GameOrientation radians=-1.5707964
             GAME.GameTransform x=-180.0 y=225.5
         }
     }
@@ -387,9 +387,9 @@ physics substeps=8 sleep=#false
         name "Rail 11"
         prototype "Rail"
         components {
-            GAME.GameAppearance width=34.48188018798828 height=6.0 color=1669963519
-            GAME.GameCollider width=34.48188018798828 height=6.0
-            GAME.GameOrientation radians=-1.0552473068237305
+            GAME.GameAppearance width=34.48188 height=6.0 color=0x63899eff
+            GAME.GameCollider width=34.48188 height=6.0
+            GAME.GameOrientation radians=-1.0552473
             GAME.GameTransform x=-171.5 y=145.0
         }
     }
@@ -397,9 +397,9 @@ physics substeps=8 sleep=#false
         name "Rail 12"
         prototype "Rail"
         components {
-            GAME.GameAppearance width=205.0 height=7.0 color=2680411135
+            GAME.GameAppearance width=205.0 height=7.0 color=0x9fc3d3ff
             GAME.GameCollider width=205.0 height=7.0
-            GAME.GameOrientation radians=-1.5707963705062866
+            GAME.GameOrientation radians=-1.5707964
             GAME.GameTransform x=167.0 y=192.5
         }
     }
@@ -407,9 +407,9 @@ physics substeps=8 sleep=#false
         name "Rail 13"
         prototype "Rail"
         components {
-            GAME.GameAppearance width=80.62257385253906 height=7.0 color=2680411135
-            GAME.GameCollider width=80.62257385253906 height=7.0
-            GAME.GameOrientation radians=-1.4464412927627563
+            GAME.GameAppearance width=80.622574 height=7.0 color=0x9fc3d3ff
+            GAME.GameCollider width=80.622574 height=7.0
+            GAME.GameOrientation radians=-1.4464413
             GAME.GameTransform x=172.0 y=50.0
         }
     }
@@ -417,9 +417,9 @@ physics substeps=8 sleep=#false
         name "Rail 14"
         prototype "Rail"
         components {
-            GAME.GameAppearance width=177.00282287597656 height=7.0 color=2680411135
-            GAME.GameCollider width=177.00282287597656 height=7.0
-            GAME.GameOrientation radians=-1.5651466846466064
+            GAME.GameAppearance width=177.00282 height=7.0 color=0x9fc3d3ff
+            GAME.GameCollider width=177.00282 height=7.0
+            GAME.GameOrientation radians=-1.5651467
             GAME.GameTransform x=177.5 y=-78.5
         }
     }
@@ -427,9 +427,9 @@ physics substeps=8 sleep=#false
         name "Rail 15"
         prototype "Rail"
         components {
-            GAME.GameAppearance width=30.805843353271484 height=7.0 color=2478428415
-            GAME.GameCollider width=30.805843353271484 height=7.0
-            GAME.GameOrientation radians=-2.194819450378418
+            GAME.GameAppearance width=30.805843 height=7.0 color=0x93b9d0ff
+            GAME.GameCollider width=30.805843 height=7.0
+            GAME.GameOrientation radians=-2.1948195
             GAME.GameTransform x=169.0 y=-179.5
         }
     }
@@ -437,7 +437,7 @@ physics substeps=8 sleep=#false
         name "Rail 16"
         prototype "Rail"
         components {
-            GAME.GameAppearance width=33.0 height=8.0 color=3214434559
+            GAME.GameAppearance width=33.0 height=8.0 color=0xbf9860ff
             GAME.GameCollider width=33.0 height=8.0
             GAME.GameTransform x=198.5 y=290.0
         }
@@ -446,9 +446,9 @@ physics substeps=8 sleep=#false
         name "Rail 17"
         prototype "Rail"
         components {
-            GAME.GameAppearance width=76.48529052734375 height=10.0 color=2478428415
-            GAME.GameCollider width=76.48529052734375 height=10.0
-            GAME.GameOrientation radians=0.7298996448516846
+            GAME.GameAppearance width=76.48529 height=10.0 color=0x93b9d0ff
+            GAME.GameCollider width=76.48529 height=10.0
+            GAME.GameOrientation radians=0.72989964
             GAME.GameTransform x=-181.5 y=250.5
         }
     }
@@ -456,9 +456,9 @@ physics substeps=8 sleep=#false
         name "Rail 18"
         prototype "Rail"
         components {
-            GAME.GameAppearance width=61.032779693603516 height=10.0 color=2478428415
-            GAME.GameCollider width=61.032779693603516 height=10.0
-            GAME.GameOrientation radians=0.6107259392738342
+            GAME.GameAppearance width=61.03278 height=10.0 color=0x93b9d0ff
+            GAME.GameCollider width=61.03278 height=10.0
+            GAME.GameOrientation radians=0.61072594
             GAME.GameTransform x=-128.0 y=293.5
         }
     }
@@ -466,9 +466,9 @@ physics substeps=8 sleep=#false
         name "Rail 19"
         prototype "Rail"
         components {
-            GAME.GameAppearance width=68.88395690917969 height=10.0 color=2478428415
-            GAME.GameCollider width=68.88395690917969 height=10.0
-            GAME.GameOrientation radians=2.2636759281158447
+            GAME.GameAppearance width=68.88396 height=10.0 color=0x93b9d0ff
+            GAME.GameCollider width=68.88396 height=10.0
+            GAME.GameOrientation radians=2.263676
             GAME.GameTransform x=146.0 y=251.5
         }
     }
@@ -476,9 +476,9 @@ physics substeps=8 sleep=#false
         name "Rail 20"
         prototype "Rail"
         components {
-            GAME.GameAppearance width=42.01190185546875 height=10.0 color=2478428415
-            GAME.GameCollider width=42.01190185546875 height=10.0
-            GAME.GameOrientation radians=2.238102436065674
+            GAME.GameAppearance width=42.0119 height=10.0 color=0x93b9d0ff
+            GAME.GameCollider width=42.0119 height=10.0
+            GAME.GameOrientation radians=2.2381024
             GAME.GameTransform x=111.0 y=294.5
         }
     }
@@ -486,9 +486,9 @@ physics substeps=8 sleep=#false
         name "Rail 21"
         prototype "Rail"
         components {
-            GAME.GameAppearance width=78.26238250732422 height=7.0 color=2478428415
-            GAME.GameCollider width=78.26238250732422 height=7.0
-            GAME.GameOrientation radians=1.1071487665176392
+            GAME.GameAppearance width=78.26238 height=7.0 color=0x93b9d0ff
+            GAME.GameCollider width=78.26238 height=7.0
+            GAME.GameOrientation radians=1.1071488
             GAME.GameTransform x=-162.5 y=174.0
         }
     }
@@ -496,9 +496,9 @@ physics substeps=8 sleep=#false
         name "Rail 22"
         prototype "Rail"
         components {
-            GAME.GameAppearance width=49.24428939819336 height=7.0 color=2478428415
-            GAME.GameCollider width=49.24428939819336 height=7.0
-            GAME.GameOrientation radians=0.4182243347167969
+            GAME.GameAppearance width=49.24429 height=7.0 color=0x93b9d0ff
+            GAME.GameCollider width=49.24429 height=7.0
+            GAME.GameOrientation radians=0.41822433
             GAME.GameTransform x=-122.5 y=219.0
         }
     }
@@ -506,9 +506,9 @@ physics substeps=8 sleep=#false
         name "Rail 23"
         prototype "Rail"
         components {
-            GAME.GameAppearance width=75.96051788330078 height=7.0 color=2478428415
-            GAME.GameCollider width=75.96051788330078 height=7.0
-            GAME.GameOrientation radians=1.8509043455123901
+            GAME.GameAppearance width=75.96052 height=7.0 color=0x93b9d0ff
+            GAME.GameCollider width=75.96052 height=7.0
+            GAME.GameOrientation radians=1.8509043
             GAME.GameTransform x=135.5 y=171.5
         }
     }
@@ -516,9 +516,9 @@ physics substeps=8 sleep=#false
         name "Rail 24"
         prototype "Rail"
         components {
-            GAME.GameAppearance width=32.649654388427734 height=7.0 color=2478428415
-            GAME.GameCollider width=32.649654388427734 height=7.0
-            GAME.GameOrientation radians=2.4429328441619873
+            GAME.GameAppearance width=32.649654 height=7.0 color=0x93b9d0ff
+            GAME.GameCollider width=32.649654 height=7.0
+            GAME.GameOrientation radians=2.4429328
             GAME.GameTransform x=112.5 y=218.5
         }
     }
@@ -526,9 +526,9 @@ physics substeps=8 sleep=#false
         name "Rail 25"
         prototype "Rail"
         components {
-            GAME.GameAppearance width=113.6529769897461 height=10.0 color=3935527679
-            GAME.GameCollider width=113.6529769897461 height=10.0
-            GAME.GameOrientation radians=1.2017273902893066
+            GAME.GameAppearance width=113.65298 height=10.0 color=0xea9362ff
+            GAME.GameCollider width=113.65298 height=10.0
+            GAME.GameOrientation radians=1.2017274
             GAME.GameTransform x=-152.5 y=126.0
         }
     }
@@ -536,9 +536,9 @@ physics substeps=8 sleep=#false
         name "Rail 26"
         prototype "Rail"
         components {
-            GAME.GameAppearance width=38.832977294921875 height=10.0 color=3935527679
-            GAME.GameCollider width=38.832977294921875 height=10.0
-            GAME.GameOrientation radians=0.9685089588165283
+            GAME.GameAppearance width=38.832977 height=10.0 color=0xea9362ff
+            GAME.GameCollider width=38.832977 height=10.0
+            GAME.GameOrientation radians=0.96850896
             GAME.GameTransform x=-121.0 y=195.0
         }
     }
@@ -546,9 +546,9 @@ physics substeps=8 sleep=#false
         name "Rail 27"
         prototype "Rail"
         components {
-            GAME.GameAppearance width=151.7003631591797 height=6.0 color=4189746431
-            GAME.GameCollider category=4 width=151.7003631591797 height=6.0
-            GAME.GameOrientation radians=1.142532229423523
+            GAME.GameAppearance width=151.70036 height=6.0 color=0xf9ba74ff
+            GAME.GameCollider category=4 width=151.70036 height=6.0
+            GAME.GameOrientation radians=1.1425322
             GAME.GameTransform x=-141.5 y=142.0
         }
         (array)behaviors "BumperKick"
@@ -557,9 +557,9 @@ physics substeps=8 sleep=#false
         name "Rail 28"
         prototype "Rail"
         components {
-            GAME.GameAppearance width=137.52818298339844 height=6.0 color=4189746431
-            GAME.GameCollider category=4 width=137.52818298339844 height=6.0
-            GAME.GameOrientation radians=1.8281199932098389
+            GAME.GameAppearance width=137.52818 height=6.0 color=0xf9ba74ff
+            GAME.GameCollider category=4 width=137.52818 height=6.0
+            GAME.GameOrientation radians=1.82812
             GAME.GameTransform x=127.5 y=144.5
         }
         (array)behaviors "BumperKick"
@@ -568,8 +568,8 @@ physics substeps=8 sleep=#false
         name "Left slingshot"
         prototype "Artwork"
         components {
-            GAME.GameAppearance width=62.0 height=106.0 color=3377350143 shape="Triangle" border_width=3.0 border_color=3988219903 layer=0
-            GAME.GameOrientation radians=-0.41999998688697815
+            GAME.GameAppearance width=62.0 height=106.0 color=0xc94e45ff shape="Triangle" border_width=3.0 border_color=0xedb767ff layer=0
+            GAME.GameOrientation radians=-0.42
             GAME.GameTransform x=-139.0 y=158.0
         }
     }
@@ -577,8 +577,8 @@ physics substeps=8 sleep=#false
         name "Right slingshot"
         prototype "Artwork"
         components {
-            GAME.GameAppearance width=62.0 height=106.0 color=3377350143 shape="Triangle" border_width=3.0 border_color=3988219903 layer=0
-            GAME.GameOrientation radians=0.41999998688697815
+            GAME.GameAppearance width=62.0 height=106.0 color=0xc94e45ff shape="Triangle" border_width=3.0 border_color=0xedb767ff layer=0
+            GAME.GameOrientation radians=0.42
             GAME.GameTransform x=131.0 y=158.0
         }
     }
@@ -586,9 +586,9 @@ physics substeps=8 sleep=#false
         name "Rail 29"
         prototype "Rail"
         components {
-            GAME.GameAppearance width=93.30059051513672 height=5.0 color=3585700095
-            GAME.GameCollider width=93.30059051513672 height=5.0
-            GAME.GameOrientation radians=-1.2320982217788696
+            GAME.GameAppearance width=93.30059 height=5.0 color=0xd5b970ff
+            GAME.GameCollider width=93.30059 height=5.0
+            GAME.GameOrientation radians=-1.2320982
             GAME.GameTransform x=-137.5 y=32.0
         }
     }
@@ -596,9 +596,9 @@ physics substeps=8 sleep=#false
         name "Rail 30"
         prototype "Rail"
         components {
-            GAME.GameAppearance width=93.17188262939453 height=5.0 color=3585700095
-            GAME.GameCollider width=93.17188262939453 height=5.0
-            GAME.GameOrientation radians=-1.7871370315551758
+            GAME.GameAppearance width=93.17188 height=5.0 color=0xd5b970ff
+            GAME.GameCollider width=93.17188 height=5.0
+            GAME.GameOrientation radians=-1.787137
             GAME.GameTransform x=-132.0 y=-57.5
         }
     }
@@ -606,9 +606,9 @@ physics substeps=8 sleep=#false
         name "Rail 31"
         prototype "Rail"
         components {
-            GAME.GameAppearance width=119.64112854003906 height=5.0 color=3585700095
-            GAME.GameCollider width=119.64112854003906 height=5.0
-            GAME.GameOrientation radians=-1.3602867126464844
+            GAME.GameAppearance width=119.64113 height=5.0 color=0xd5b970ff
+            GAME.GameCollider width=119.64113 height=5.0
+            GAME.GameOrientation radians=-1.3602867
             GAME.GameTransform x=-129.5 y=-161.5
         }
     }
@@ -616,9 +616,9 @@ physics substeps=8 sleep=#false
         name "Rail 32"
         prototype "Rail"
         components {
-            GAME.GameAppearance width=51.400390625 height=5.0 color=3585700095
-            GAME.GameCollider width=51.400390625 height=5.0
-            GAME.GameOrientation radians=-0.6473921537399292
+            GAME.GameAppearance width=51.40039 height=5.0 color=0xd5b970ff
+            GAME.GameCollider width=51.40039 height=5.0
+            GAME.GameOrientation radians=-0.64739215
             GAME.GameTransform x=-96.5 y=-235.5
         }
     }
@@ -626,9 +626,9 @@ physics substeps=8 sleep=#false
         name "Rail 33"
         prototype "Rail"
         components {
-            GAME.GameAppearance width=75.7693862915039 height=5.0 color=2006492159
-            GAME.GameCollider width=75.7693862915039 height=5.0
-            GAME.GameOrientation radians=-1.1780356168746948
+            GAME.GameAppearance width=75.76939 height=5.0 color=0x7798a3ff
+            GAME.GameCollider width=75.76939 height=5.0
+            GAME.GameOrientation radians=-1.1780356
             GAME.GameTransform x=-165.5 y=23.0
         }
     }
@@ -636,9 +636,9 @@ physics substeps=8 sleep=#false
         name "Rail 34"
         prototype "Rail"
         components {
-            GAME.GameAppearance width=94.3663101196289 height=5.0 color=2006492159
-            GAME.GameCollider width=94.3663101196289 height=5.0
-            GAME.GameOrientation radians=-1.7411714792251587
+            GAME.GameAppearance width=94.36631 height=5.0 color=0x7798a3ff
+            GAME.GameCollider width=94.36631 height=5.0
+            GAME.GameOrientation radians=-1.7411715
             GAME.GameTransform x=-159.0 y=-58.5
         }
     }
@@ -646,9 +646,9 @@ physics substeps=8 sleep=#false
         name "Rail 35"
         prototype "Rail"
         components {
-            GAME.GameAppearance width=126.49505615234375 height=5.0 color=2006492159
-            GAME.GameCollider width=126.49505615234375 height=5.0
-            GAME.GameOrientation radians=-1.3718503713607788
+            GAME.GameAppearance width=126.495056 height=5.0 color=0x7798a3ff
+            GAME.GameCollider width=126.495056 height=5.0
+            GAME.GameOrientation radians=-1.3718504
             GAME.GameTransform x=-154.5 y=-167.0
         }
     }
@@ -656,9 +656,9 @@ physics substeps=8 sleep=#false
         name "Rail 36"
         prototype "Rail"
         components {
-            GAME.GameAppearance width=72.91776275634766 height=5.0 color=2006492159
-            GAME.GameCollider width=72.91776275634766 height=5.0
-            GAME.GameOrientation radians=-0.7368925213813782
+            GAME.GameAppearance width=72.91776 height=5.0 color=0x7798a3ff
+            GAME.GameCollider width=72.91776 height=5.0
+            GAME.GameOrientation radians=-0.7368925
             GAME.GameTransform x=-115.0 y=-253.5
         }
     }
@@ -666,9 +666,9 @@ physics substeps=8 sleep=#false
         name "Rail 37"
         prototype "Rail"
         components {
-            GAME.GameAppearance width=84.9705810546875 height=6.0 color=3567610879
-            GAME.GameCollider width=84.9705810546875 height=6.0
-            GAME.GameOrientation radians=-1.1071487665176392
+            GAME.GameAppearance width=84.97058 height=6.0 color=0xd4a56bff
+            GAME.GameCollider width=84.97058 height=6.0
+            GAME.GameOrientation radians=-1.1071488
             GAME.GameTransform x=85.0 y=119.0
         }
     }
@@ -676,9 +676,9 @@ physics substeps=8 sleep=#false
         name "Rail 38"
         prototype "Rail"
         components {
-            GAME.GameAppearance width=99.82484436035156 height=6.0 color=3567610879
-            GAME.GameCollider width=99.82484436035156 height=6.0
-            GAME.GameOrientation radians=-1.3792946338653564
+            GAME.GameAppearance width=99.824844 height=6.0 color=0xd4a56bff
+            GAME.GameCollider width=99.824844 height=6.0
+            GAME.GameOrientation radians=-1.3792946
             GAME.GameTransform x=113.5 y=32.0
         }
     }
@@ -686,9 +686,9 @@ physics substeps=8 sleep=#false
         name "Rail 39"
         prototype "Rail"
         components {
-            GAME.GameAppearance width=142.144287109375 height=6.0 color=3567610879
-            GAME.GameCollider width=142.144287109375 height=6.0
-            GAME.GameOrientation radians=-1.6977691650390625
+            GAME.GameAppearance width=142.14429 height=6.0 color=0xd4a56bff
+            GAME.GameCollider width=142.14429 height=6.0
+            GAME.GameOrientation radians=-1.6977692
             GAME.GameTransform x=114.0 y=-87.5
         }
     }
@@ -696,9 +696,9 @@ physics substeps=8 sleep=#false
         name "Rail 40"
         prototype "Rail"
         components {
-            GAME.GameAppearance width=78.892333984375 height=6.0 color=3567610879
-            GAME.GameCollider width=78.892333984375 height=6.0
-            GAME.GameOrientation radians=-2.10252046585083
+            GAME.GameAppearance width=78.892334 height=6.0 color=0xd4a56bff
+            GAME.GameCollider width=78.892334 height=6.0
+            GAME.GameOrientation radians=-2.1025205
             GAME.GameTransform x=85.0 y=-192.0
         }
     }
@@ -706,9 +706,9 @@ physics substeps=8 sleep=#false
         name "Rail 41"
         prototype "Rail"
         components {
-            GAME.GameAppearance width=93.10746765136719 height=5.0 color=2074589439
-            GAME.GameCollider width=93.10746765136719 height=5.0
-            GAME.GameOrientation radians=-1.1503909826278687
+            GAME.GameAppearance width=93.10747 height=5.0 color=0x7ba7b8ff
+            GAME.GameCollider width=93.10747 height=5.0
+            GAME.GameOrientation radians=-1.150391
             GAME.GameTransform x=114.0 y=127.5
         }
     }
@@ -716,9 +716,9 @@ physics substeps=8 sleep=#false
         name "Rail 42"
         prototype "Rail"
         components {
-            GAME.GameAppearance width=106.21205139160156 height=5.0 color=2074589439
-            GAME.GameCollider width=106.21205139160156 height=5.0
-            GAME.GameOrientation radians=-1.4195786714553833
+            GAME.GameAppearance width=106.21205 height=5.0 color=0x7ba7b8ff
+            GAME.GameCollider width=106.21205 height=5.0
+            GAME.GameOrientation radians=-1.4195787
             GAME.GameTransform x=141.0 y=32.5
         }
     }
@@ -726,9 +726,9 @@ physics substeps=8 sleep=#false
         name "Rail 43"
         prototype "Rail"
         components {
-            GAME.GameAppearance width=151.07614135742188 height=5.0 color=2074589439
-            GAME.GameCollider width=151.07614135742188 height=5.0
-            GAME.GameOrientation radians=-1.6902252435684204
+            GAME.GameAppearance width=151.07614 height=5.0 color=0x7ba7b8ff
+            GAME.GameCollider width=151.07614 height=5.0
+            GAME.GameOrientation radians=-1.6902252
             GAME.GameTransform x=140.0 y=-95.0
         }
     }
@@ -736,9 +736,9 @@ physics substeps=8 sleep=#false
         name "Rail 44"
         prototype "Rail"
         components {
-            GAME.GameAppearance width=83.86298370361328 height=5.0 color=2074589439
-            GAME.GameCollider width=83.86298370361328 height=5.0
-            GAME.GameOrientation radians=-2.109170913696289
+            GAME.GameAppearance width=83.86298 height=5.0 color=0x7ba7b8ff
+            GAME.GameCollider width=83.86298 height=5.0
+            GAME.GameOrientation radians=-2.109171
             GAME.GameTransform x=109.5 y=-206.0
         }
     }
@@ -746,7 +746,7 @@ physics substeps=8 sleep=#false
         name "Bumper pedestal 0"
         prototype "Artwork"
         components {
-            GAME.GameAppearance width=60.0 height=60.0 color=693000959 shape="Circle" border_width=4.0 border_color=2326768639 layer=1
+            GAME.GameAppearance width=60.0 height=60.0 color=0x294e5aff shape="Circle" border_width=4.0 border_color=0x8aafabff layer=1
             GAME.GameTransform x=-62.0 y=-151.0
         }
     }
@@ -762,7 +762,7 @@ physics substeps=8 sleep=#false
         name "Bumper cap 0"
         prototype "Artwork"
         components {
-            GAME.GameAppearance width=23.0 height=23.0 color=4023419647 shape="Circle" border_width=3.0 border_color=3175231487 layer=7
+            GAME.GameAppearance width=23.0 height=23.0 color=0xefd082ff shape="Circle" border_width=3.0 border_color=0xbd422fff layer=7
             GAME.GameTransform x=-62.0 y=-151.0
         }
     }
@@ -770,7 +770,7 @@ physics substeps=8 sleep=#false
         name "Bumper inset 0"
         prototype "Artwork"
         components {
-            GAME.GameAppearance width=8.0 height=8.0 color=3075554815 shape="Circle" layer=8
+            GAME.GameAppearance width=8.0 height=8.0 color=0xb7513dff shape="Circle" layer=8
             GAME.GameTransform x=-62.0 y=-151.0
         }
     }
@@ -778,7 +778,7 @@ physics substeps=8 sleep=#false
         name "Bumper pedestal 1"
         prototype "Artwork"
         components {
-            GAME.GameAppearance width=60.0 height=60.0 color=693000959 shape="Circle" border_width=4.0 border_color=2326768639 layer=1
+            GAME.GameAppearance width=60.0 height=60.0 color=0x294e5aff shape="Circle" border_width=4.0 border_color=0x8aafabff layer=1
             GAME.GameTransform x=20.0 y=-166.0
         }
     }
@@ -794,7 +794,7 @@ physics substeps=8 sleep=#false
         name "Bumper cap 1"
         prototype "Artwork"
         components {
-            GAME.GameAppearance width=23.0 height=23.0 color=4023419647 shape="Circle" border_width=3.0 border_color=3175231487 layer=7
+            GAME.GameAppearance width=23.0 height=23.0 color=0xefd082ff shape="Circle" border_width=3.0 border_color=0xbd422fff layer=7
             GAME.GameTransform x=20.0 y=-166.0
         }
     }
@@ -802,7 +802,7 @@ physics substeps=8 sleep=#false
         name "Bumper inset 1"
         prototype "Artwork"
         components {
-            GAME.GameAppearance width=8.0 height=8.0 color=3075554815 shape="Circle" layer=8
+            GAME.GameAppearance width=8.0 height=8.0 color=0xb7513dff shape="Circle" layer=8
             GAME.GameTransform x=20.0 y=-166.0
         }
     }
@@ -810,7 +810,7 @@ physics substeps=8 sleep=#false
         name "Bumper pedestal 2"
         prototype "Artwork"
         components {
-            GAME.GameAppearance width=60.0 height=60.0 color=693000959 shape="Circle" border_width=4.0 border_color=2326768639 layer=1
+            GAME.GameAppearance width=60.0 height=60.0 color=0x294e5aff shape="Circle" border_width=4.0 border_color=0x8aafabff layer=1
             GAME.GameTransform x=-18.0 y=-83.0
         }
     }
@@ -826,7 +826,7 @@ physics substeps=8 sleep=#false
         name "Bumper cap 2"
         prototype "Artwork"
         components {
-            GAME.GameAppearance width=23.0 height=23.0 color=4023419647 shape="Circle" border_width=3.0 border_color=3175231487 layer=7
+            GAME.GameAppearance width=23.0 height=23.0 color=0xefd082ff shape="Circle" border_width=3.0 border_color=0xbd422fff layer=7
             GAME.GameTransform x=-18.0 y=-83.0
         }
     }
@@ -834,7 +834,7 @@ physics substeps=8 sleep=#false
         name "Bumper inset 2"
         prototype "Artwork"
         components {
-            GAME.GameAppearance width=8.0 height=8.0 color=3075554815 shape="Circle" layer=8
+            GAME.GameAppearance width=8.0 height=8.0 color=0xb7513dff shape="Circle" layer=8
             GAME.GameTransform x=-18.0 y=-83.0
         }
     }
@@ -842,7 +842,7 @@ physics substeps=8 sleep=#false
         name "Bumper pedestal 3"
         prototype "Artwork"
         components {
-            GAME.GameAppearance width=60.0 height=60.0 color=693000959 shape="Circle" border_width=4.0 border_color=2326768639 layer=1
+            GAME.GameAppearance width=60.0 height=60.0 color=0x294e5aff shape="Circle" border_width=4.0 border_color=0x8aafabff layer=1
             GAME.GameTransform x=61.0 y=-94.0
         }
     }
@@ -858,7 +858,7 @@ physics substeps=8 sleep=#false
         name "Bumper cap 3"
         prototype "Artwork"
         components {
-            GAME.GameAppearance width=23.0 height=23.0 color=4023419647 shape="Circle" border_width=3.0 border_color=3175231487 layer=7
+            GAME.GameAppearance width=23.0 height=23.0 color=0xefd082ff shape="Circle" border_width=3.0 border_color=0xbd422fff layer=7
             GAME.GameTransform x=61.0 y=-94.0
         }
     }
@@ -866,7 +866,7 @@ physics substeps=8 sleep=#false
         name "Bumper inset 3"
         prototype "Artwork"
         components {
-            GAME.GameAppearance width=8.0 height=8.0 color=3075554815 shape="Circle" layer=8
+            GAME.GameAppearance width=8.0 height=8.0 color=0xb7513dff shape="Circle" layer=8
             GAME.GameTransform x=61.0 y=-94.0
         }
     }
@@ -930,7 +930,7 @@ physics substeps=8 sleep=#false
         name "Rank lamp 1"
         prototype "Artwork"
         components {
-            GAME.GameAppearance width=9.0 height=12.0 color=3937946111 shape="Circle" glow_radius=3.0 glow_color=4207496191 layer=2
+            GAME.GameAppearance width=9.0 height=12.0 color=0xeab849ff shape="Circle" glow_radius=3.0 glow_color=0xfac94bff layer=2
             GAME.GameTransform x=-55.0 y=96.0
         }
     }
@@ -938,7 +938,7 @@ physics substeps=8 sleep=#false
         name "Rank lamp 2"
         prototype "Artwork"
         components {
-            GAME.GameAppearance width=9.0 height=12.0 color=3937946111 shape="Circle" glow_radius=3.0 glow_color=4207496191 layer=2
+            GAME.GameAppearance width=9.0 height=12.0 color=0xeab849ff shape="Circle" glow_radius=3.0 glow_color=0xfac94bff layer=2
             GAME.GameTransform x=-40.0 y=96.0
         }
     }
@@ -946,7 +946,7 @@ physics substeps=8 sleep=#false
         name "Rank lamp 3"
         prototype "Artwork"
         components {
-            GAME.GameAppearance width=9.0 height=12.0 color=3937946111 shape="Circle" glow_radius=3.0 glow_color=4207496191 layer=2
+            GAME.GameAppearance width=9.0 height=12.0 color=0xeab849ff shape="Circle" glow_radius=3.0 glow_color=0xfac94bff layer=2
             GAME.GameTransform x=-25.0 y=96.0
         }
     }
@@ -954,7 +954,7 @@ physics substeps=8 sleep=#false
         name "Rank lamp 4"
         prototype "Artwork"
         components {
-            GAME.GameAppearance width=9.0 height=12.0 color=1113872383 shape="Circle" glow_color=4207496191 layer=2
+            GAME.GameAppearance width=9.0 height=12.0 color=0x426457ff shape="Circle" glow_color=0xfac94bff layer=2
             GAME.GameTransform x=-10.0 y=96.0
         }
     }
@@ -962,7 +962,7 @@ physics substeps=8 sleep=#false
         name "Rank lamp 5"
         prototype "Artwork"
         components {
-            GAME.GameAppearance width=9.0 height=12.0 color=1113872383 shape="Circle" glow_color=4207496191 layer=2
+            GAME.GameAppearance width=9.0 height=12.0 color=0x426457ff shape="Circle" glow_color=0xfac94bff layer=2
             GAME.GameTransform x=5.0 y=96.0
         }
     }
@@ -970,7 +970,7 @@ physics substeps=8 sleep=#false
         name "Rank lamp 6"
         prototype "Artwork"
         components {
-            GAME.GameAppearance width=9.0 height=12.0 color=1113872383 shape="Circle" glow_color=4207496191 layer=2
+            GAME.GameAppearance width=9.0 height=12.0 color=0x426457ff shape="Circle" glow_color=0xfac94bff layer=2
             GAME.GameTransform x=20.0 y=96.0
         }
     }
@@ -978,7 +978,7 @@ physics substeps=8 sleep=#false
         name "Rank lamp 7"
         prototype "Artwork"
         components {
-            GAME.GameAppearance width=9.0 height=12.0 color=1113872383 shape="Circle" glow_color=4207496191 layer=2
+            GAME.GameAppearance width=9.0 height=12.0 color=0x426457ff shape="Circle" glow_color=0xfac94bff layer=2
             GAME.GameTransform x=35.0 y=96.0
         }
     }
@@ -986,7 +986,7 @@ physics substeps=8 sleep=#false
         name "Rank lamp 8"
         prototype "Artwork"
         components {
-            GAME.GameAppearance width=9.0 height=12.0 color=1113872383 shape="Circle" glow_color=4207496191 layer=2
+            GAME.GameAppearance width=9.0 height=12.0 color=0x426457ff shape="Circle" glow_color=0xfac94bff layer=2
             GAME.GameTransform x=50.0 y=96.0
         }
     }
@@ -994,8 +994,8 @@ physics substeps=8 sleep=#false
         name "Center arrow"
         prototype "Artwork"
         components {
-            GAME.GameAppearance width=31.0 height=50.0 color=3752745471 shape="Chevron" layer=0
-            GAME.GameOrientation radians=3.1415927410125732
+            GAME.GameAppearance width=31.0 height=50.0 color=0xdfae59ff shape="Chevron" layer=0
+            GAME.GameOrientation radians=3.1415927
             GAME.GameTransform x=-5.0 y=164.0
         }
     }
@@ -1003,7 +1003,7 @@ physics substeps=8 sleep=#false
         name "Spacecraft body"
         prototype "Artwork"
         components {
-            GAME.GameAppearance width=57.0 height=106.0 color=727941375 shape="Diamond" border_width=2.0 border_color=1939778303 layer=-5
+            GAME.GameAppearance width=57.0 height=106.0 color=0x2b6380ff shape="Diamond" border_width=2.0 border_color=0x739eaaff layer=-5
             GAME.GameTransform x=-20.0 y=15.0
         }
     }
@@ -1011,7 +1011,7 @@ physics substeps=8 sleep=#false
         name "Left wing"
         prototype "Artwork"
         components {
-            GAME.GameAppearance width=53.0 height=42.0 color=1283626751 shape="Triangle" layer=-4
+            GAME.GameAppearance width=53.0 height=42.0 color=0x4c8296ff shape="Triangle" layer=-4
             GAME.GameOrientation radians=-0.5
             GAME.GameTransform x=-52.0 y=30.0
         }
@@ -1020,7 +1020,7 @@ physics substeps=8 sleep=#false
         name "Right wing"
         prototype "Artwork"
         components {
-            GAME.GameAppearance width=53.0 height=42.0 color=1283626751 shape="Triangle" layer=-4
+            GAME.GameAppearance width=53.0 height=42.0 color=0x4c8296ff shape="Triangle" layer=-4
             GAME.GameOrientation radians=0.5
             GAME.GameTransform x=12.0 y=30.0
         }
@@ -1029,7 +1029,7 @@ physics substeps=8 sleep=#false
         name "Left flipper"
         prototype "FlipperPaddle"
         components {
-            GAME.GameTransform x=-65.78301239013672 y=246.5286865234375
+            GAME.GameTransform x=-65.78301 y=246.52869
         }
         (array)behaviors "Flipper"
     }
@@ -1037,7 +1037,7 @@ physics substeps=8 sleep=#false
         name "Left flipper pivot"
         prototype "Artwork"
         components {
-            GAME.GameAppearance width=18.0 height=18.0 color=3973884159 shape="Circle" border_width=3.0 border_color=2775732223 layer=9
+            GAME.GameAppearance width=18.0 height=18.0 color=0xecdca8ff shape="Circle" border_width=3.0 border_color=0xa5724fff layer=9
             GAME.GameTransform x=-100.0 y=230.0
         }
     }
@@ -1046,8 +1046,8 @@ physics substeps=8 sleep=#false
         prototype "FlipperPaddle"
         components {
             GAME.GameActionBinding source="L" action="RightFlip"
-            GAME.GameOrientation radians=2.6915926933288574
-            GAME.GameTransform x=65.78301239013672 y=246.5286865234375
+            GAME.GameOrientation radians=2.6915927
+            GAME.GameTransform x=65.78301 y=246.52869
         }
         (array)behaviors "Flipper"
     }
@@ -1055,7 +1055,7 @@ physics substeps=8 sleep=#false
         name "Right flipper pivot"
         prototype "Artwork"
         components {
-            GAME.GameAppearance width=18.0 height=18.0 color=3973884159 shape="Circle" border_width=3.0 border_color=2775732223 layer=9
+            GAME.GameAppearance width=18.0 height=18.0 color=0xecdca8ff shape="Circle" border_width=3.0 border_color=0xa5724fff layer=9
             GAME.GameTransform x=100.0 y=230.0
         }
     }
@@ -1081,7 +1081,7 @@ physics substeps=8 sleep=#false
         name "Table lighting"
         prototype "TableLighting"
         components {
-            GAME.GameHRC2D debug_view=1 particle_focal_length=300.0
+            GAME.GameHRC2D debug_view="Scene" particle_focal_length=300.0
         }
     }
 }

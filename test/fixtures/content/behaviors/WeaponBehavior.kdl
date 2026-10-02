@@ -8,13 +8,10 @@ owner_type "ecs.entity"
         kind "event"
         name ""
         (array)nodes {
-            - id=1 type="Event" x=0.0 y=0.0 placed=#false reference_name="Fire"
+            - id=1 type="Event" reference_name="Fire"
             - {
                 id 8
                 type "Get_GameTransform"
-                x 0.0
-                y 0.0
-                placed #false
                 outputs {
                     Value flags=0
                 }
@@ -22,9 +19,6 @@ owner_type "ecs.entity"
             - {
                 id 21
                 type "Get_GameWeapon"
-                x 0.0
-                y 0.0
-                placed #false
                 outputs {
                     Value flags=0
                     Value.damage id=23
@@ -33,9 +27,6 @@ owner_type "ecs.entity"
             - {
                 id 24
                 type "Call Function"
-                x 0.0
-                y 0.0
-                placed #false
                 reference_id 173
                 reference_name "Fire Projectile"
                 reference_asset "WeaponActions"
@@ -60,9 +51,6 @@ owner_type "ecs.entity"
             - {
                 id 34
                 type "Self"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)outputs {
                     - id=35 name="Entity" type_name="ecs.entity"
                 }

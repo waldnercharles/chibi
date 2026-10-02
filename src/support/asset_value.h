@@ -45,6 +45,9 @@ av_value *av_null(av_doc *doc);
 av_value *av_bool(av_doc *doc, bool value);
 av_value *av_sint(av_doc *doc, int64_t value);
 av_value *av_uint(av_doc *doc, uint64_t value);
+/* Numeric storage with hexadecimal presentation; colors use eight digits. */
+av_value *av_hex(av_doc *doc, uint64_t value);
+av_value *av_color(av_doc *doc, uint32_t value);
 av_value *av_real(av_doc *doc, double value);
 /* Canonical decimal promotion preserves the original float on conversion back,
  * so saving a float does not expose digits introduced by widening to double. */
@@ -61,6 +64,8 @@ bool av_is_sint(const av_value *value);
 bool av_is_uint(const av_value *value);
 bool av_is_int(const av_value *value);
 bool av_is_num(const av_value *value);
+bool av_is_hex(const av_value *value);
+bool av_is_color(const av_value *value);
 bool av_is_str(const av_value *value);
 bool av_is_obj(const av_value *value);
 bool av_is_arr(const av_value *value);

@@ -16,10 +16,6 @@ owner_type "ecs.entity"
             - {
                 id 2
                 type "Set Variable"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 1
                 reference_name "RestAngle"
                 inputs {
                     Value {
@@ -31,14 +27,10 @@ owner_type "ecs.entity"
                     Value type="double"
                 }
             }
-            - id=13 type="Event" x=0.0 y=0.0 placed=#false reference_name="Begin"
+            - id=13 type="Event" reference_name="Begin"
             - {
                 id 16
                 type "Set Variable"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 15
                 reference_name "Stroke"
                 inputs {
                     Value type="double" default=0.9
@@ -50,10 +42,6 @@ owner_type "ecs.entity"
             - {
                 id 21
                 type "Set Variable"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 15
                 reference_name "Stroke"
                 inputs {
                     Value type="double"
@@ -65,9 +53,6 @@ owner_type "ecs.entity"
             - {
                 id 26
                 type "Event"
-                x 0.0
-                y 0.0
-                placed #false
                 reference_name "Tick"
                 outputs {
                     DeltaSeconds id=28 type="float" kind="data"
@@ -76,34 +61,27 @@ owner_type "ecs.entity"
             - {
                 id 29
                 type "Branch"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Condition {
                         binding kind="component_field" component="GAME.GameActionBinding" field="pressed"
                     }
                 }
             }
-            - id=34 type="Set_GameBody_angular_velocity" x=0.0 y=0.0 placed=#false
+            - id=34 type="Set_GameBody_angular_velocity"
             - {
                 id 52
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 40
                 reference_name "Turn toward stroke"
                 inputs {
                     rest {
                         id 109
                         type "double"
-                        binding kind="variable" variable_id=1 source_asset="OrbitFlipperMotion"
+                        binding kind="variable" source_asset="OrbitFlipperMotion" name="RestAngle"
                     }
                     stroke {
                         id 110
                         type "double"
-                        binding kind="variable" variable_id=15 source_asset="OrbitFlipperMotion"
+                        binding kind="variable" source_asset="OrbitFlipperMotion" name="Stroke"
                     }
                     angle {
                         id 111
@@ -113,7 +91,7 @@ owner_type "ecs.entity"
                     dt {
                         id 112
                         type "float"
-                        binding kind="local" local_id=764
+                        binding kind="local" name="DeltaSeconds"
                     }
                 }
                 outputs {
@@ -123,10 +101,6 @@ owner_type "ecs.entity"
             - {
                 id 243
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 231
                 reference_name "Pivot velocity X"
                 inputs {
                     angle {
@@ -142,17 +116,17 @@ owner_type "ecs.entity"
                     dt {
                         id 287
                         type "float"
-                        binding kind="local" local_id=764
+                        binding kind="local" name="DeltaSeconds"
                     }
                     origin {
                         id 558
                         type "double"
-                        binding kind="variable" variable_id=497 source_asset="OrbitFlipperMotion"
+                        binding kind="variable" source_asset="OrbitFlipperMotion" name="RestX"
                     }
                     rest {
                         id 559
                         type "double"
-                        binding kind="variable" variable_id=1 source_asset="OrbitFlipperMotion"
+                        binding kind="variable" source_asset="OrbitFlipperMotion" name="RestAngle"
                     }
                     position {
                         id 560
@@ -167,10 +141,6 @@ owner_type "ecs.entity"
             - {
                 id 376
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 364
                 reference_name "Pivot velocity Y"
                 inputs {
                     angle {
@@ -186,17 +156,17 @@ owner_type "ecs.entity"
                     dt {
                         id 420
                         type "float"
-                        binding kind="local" local_id=764
+                        binding kind="local" name="DeltaSeconds"
                     }
                     origin {
                         id 610
                         type "double"
-                        binding kind="variable" variable_id=503 source_asset="OrbitFlipperMotion"
+                        binding kind="variable" source_asset="OrbitFlipperMotion" name="RestY"
                     }
                     rest {
                         id 611
                         type "double"
-                        binding kind="variable" variable_id=1 source_asset="OrbitFlipperMotion"
+                        binding kind="variable" source_asset="OrbitFlipperMotion" name="RestAngle"
                     }
                     position {
                         id 612
@@ -211,10 +181,6 @@ owner_type "ecs.entity"
             - {
                 id 498
                 type "Set Variable"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 497
                 reference_name "RestX"
                 inputs {
                     Value {
@@ -229,10 +195,6 @@ owner_type "ecs.entity"
             - {
                 id 504
                 type "Set Variable"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 503
                 reference_name "RestY"
                 inputs {
                     Value {
@@ -247,9 +209,6 @@ owner_type "ecs.entity"
             - {
                 id 765
                 type "Set Component"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Component "GAME.GameVelocity"
                     x id=772

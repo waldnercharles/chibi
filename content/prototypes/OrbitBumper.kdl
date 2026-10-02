@@ -1,6 +1,6 @@
 name "OrbitBumper"
 components {
-    GAME.GameAppearance antialias=1.0 border_color=4293970943 border_width=3.0 color=4004798463 glow_color=3650368170 glow_radius=14.0 height=60.0 shape="Circle" width=60.0
+    GAME.GameAppearance antialias=1.0 border_color=0xfff0cbff border_width=3.0 color=0xeeb45fff glow_color=0xd99432aa glow_radius=14.0 height=60.0 shape="Circle" width=60.0
     GAME.GameCollider category=8 mask=1 radius=29.0 restitution=1.0
     GAME.GameTransform x=-85.0 y=-430.0
 }

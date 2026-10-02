@@ -80,6 +80,7 @@ static void check_comment_frames()
     test_check(plain && !strstr(plain, "color "), "frames: documents omit the default color");
     test_check(graph_set_comment_box(&g, box, "Dash", 0x4a8fe0ffu) == 0, "frames: a frame takes a title and color");
     char *colored = graph_save(&g);
+    test_check(colored && strstr(colored, "0x4a8fe0ff"), "frames: packed colors use readable RGBA hex");
     graph *loaded = colored ? graph_load(colored) : NULL;
     const graph_comment_box *copy = loaded && acount(loaded->comment_boxes) == 1
                                       ? &loaded->comment_boxes[0]

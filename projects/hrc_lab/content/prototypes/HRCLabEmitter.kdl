@@ -1,7 +1,7 @@
 name "HRCLabEmitter"
 components {
-    GAME.GameAppearance antialias=0.25 color=4294967295 height=36.0 shape="Circle" width=36.0
-    GAME.GameMaterial albedo=4294967295 emission_color=4294967295 emission_intensity=0.03 emission_multiplier=1.0 scene=4294967295
+    GAME.GameAppearance antialias=0.25 color=0xffffffff height=36.0 shape="Circle" width=36.0
+    GAME.GameMaterial albedo=0xffffffff emission_color=0xffffffff emission_intensity=0.03 emission_multiplier=1.0 scene=0xffffffff
     (object)GAME.GameOrientation
     (object)GAME.GameTransform
 }

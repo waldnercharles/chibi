@@ -11,9 +11,6 @@ owner_type "ecs.entity"
             - {
                 id 1
                 type "Event"
-                x 0.0
-                y 0.0
-                placed #false
                 reference_name "Tick"
                 outputs {
                     DeltaSeconds id=3 type="float" kind="data"
@@ -22,9 +19,6 @@ owner_type "ecs.entity"
             - {
                 id 4
                 type "Find Nearest Entity"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Position {
                         binding kind="component" component="GAME.GameTransform"
@@ -33,13 +27,10 @@ owner_type "ecs.entity"
                     Categories 1
                 }
             }
-            - id=13 type="Branch" x=0.0 y=0.0 placed=#false
+            - id=13 type="Branch"
             - {
                 id 18
                 type "Direction To"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Origin {
                         binding kind="component" component="GAME.GameTransform"
@@ -49,10 +40,6 @@ owner_type "ecs.entity"
             - {
                 id 44
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 22
                 reference_name "direction * speed - velocity"
                 inputs {
                     direction id=45
@@ -75,10 +62,6 @@ owner_type "ecs.entity"
             - {
                 id 160
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 138
                 reference_name "velocity += delta * min(1, acceleration * dt / max(length(delta), 0.0001))"
                 inputs {
                     Exec id=166 kind="exec"
@@ -104,10 +87,6 @@ owner_type "ecs.entity"
             - {
                 id 323
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 306
                 reference_name "velocity = vec2(0, 0)"
                 inputs {
                     Exec id=326 kind="exec"

@@ -10,9 +10,6 @@ owner_type "ecs.entity"
             - {
                 id 1
                 type "Event"
-                x 0.0
-                y 0.0
-                placed #false
                 reference_name "Tick"
                 outputs {
                     DeltaSeconds id=3 type="float" kind="data"
@@ -21,9 +18,6 @@ owner_type "ecs.entity"
             - {
                 id 4
                 type "Get Global Variable"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs Name="Ready"
                 outputs {
                     Value type="double"
@@ -32,9 +26,6 @@ owner_type "ecs.entity"
             - {
                 id 7
                 type "Get Global Variable"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs Name="Lives"
                 outputs {
                     Value type="double"
@@ -43,10 +34,6 @@ owner_type "ecs.entity"
             - {
                 id 36
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 10
                 reference_name "ready > 0.5 && lives > 0"
                 inputs {
                     Exec id=40 kind="exec"
@@ -62,9 +49,6 @@ owner_type "ecs.entity"
             - {
                 id 95
                 type "Branch"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Condition {
                         binding kind="component_field" component="GAME.GameActionBinding" field="pressed"
@@ -74,9 +58,6 @@ owner_type "ecs.entity"
             - {
                 id 100
                 type "Get Global Variable"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs Name="Charge"
                 outputs {
                     Value type="double"
@@ -85,16 +66,12 @@ owner_type "ecs.entity"
             - {
                 id 122
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 103
                 reference_name "min(charge + dt, 1)"
                 inputs {
                     charge {
                         id 123
                         type "double"
-                        binding kind="local" local_id=526
+                        binding kind="local" name="charge"
                     }
                     dt {
                         id 124
@@ -109,9 +86,6 @@ owner_type "ecs.entity"
             - {
                 id 164
                 type "Set Global Variable"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Name "Charge"
                     Value type="double"
@@ -123,10 +97,6 @@ owner_type "ecs.entity"
             - {
                 id 203
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 189
                 reference_name "charge > 0.01"
                 inputs {
                     Exec id=206 kind="exec"
@@ -134,7 +104,7 @@ owner_type "ecs.entity"
                         id 204
                         type "double"
                         flags 0
-                        binding kind="local" local_id=526
+                        binding kind="local" name="charge"
                     }
                 }
                 outputs {
@@ -146,9 +116,6 @@ owner_type "ecs.entity"
             - {
                 id 310
                 type "Set Global Variable"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Name "Ready"
                     Value type="float"
@@ -160,9 +127,6 @@ owner_type "ecs.entity"
             - {
                 id 316
                 type "Set Global Variable"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Name "Charge"
                     Value type="float"
@@ -174,18 +138,11 @@ owner_type "ecs.entity"
             - {
                 id 322
                 type "Play Sound"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs Frequency=100.0 "End Frequency"=720.0 Duration=0.16 Volume=0.35
             }
             - {
                 id 446
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 414
                 reference_name "velocity = vec2(0, -800 - 230 * charge)"
                 inputs {
                     Exec id=450 kind="exec"
@@ -198,7 +155,7 @@ owner_type "ecs.entity"
                     charge {
                         id 448
                         type "double"
-                        binding kind="local" local_id=526
+                        binding kind="local" name="charge"
                     }
                 }
                 outputs {

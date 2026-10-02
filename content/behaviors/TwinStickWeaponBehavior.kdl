@@ -11,13 +11,10 @@ owner_type "ecs.entity"
         kind "event"
         name ""
         (array)nodes {
-            - id=5 type="Event" x=0.0 y=0.0 placed=#false reference_name="Tick"
+            - id=5 type="Event" reference_name="Tick"
             - {
                 id 20
                 type "Branch"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Condition {
                         binding kind="component_field" component="GAME.GameAim" field="firing"
@@ -27,12 +24,9 @@ owner_type "ecs.entity"
             - {
                 id 58
                 type "Add"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     A {
-                        binding kind="variable" variable_id=1 source_asset="TwinStickWeaponBehavior"
+                        binding kind="variable" source_asset="TwinStickWeaponBehavior" name="Elapsed"
                     }
                     B {
                         binding kind="delta_time"
@@ -42,10 +36,7 @@ owner_type "ecs.entity"
             - {
                 id 62
                 type "Set Variable"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 1
+                reference_name "Elapsed"
                 inputs {
                     Value type="float"
                 }
@@ -56,10 +47,6 @@ owner_type "ecs.entity"
             - {
                 id 197
                 type "Call Function"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 189
                 reference_name "Fire Ready Projectiles"
                 inputs {
                     Origin {
@@ -91,10 +78,7 @@ owner_type "ecs.entity"
             - {
                 id 215
                 type "Set Variable"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 1
+                reference_name "Elapsed"
                 inputs {
                     Value type="float"
                 }
@@ -102,18 +86,15 @@ owner_type "ecs.entity"
                     Value type="float"
                 }
             }
-            - id=223 type="Event" x=0.0 y=0.0 placed=#false reference_name="Begin"
+            - id=223 type="Event" reference_name="Begin"
             - {
                 id 225
                 type "Min"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     A {
                         flags 0
                         group 0
-                        binding kind="variable" variable_id=1 source_asset="TwinStickWeaponBehavior"
+                        binding kind="variable" source_asset="TwinStickWeaponBehavior" name="Elapsed"
                     }
                     B {
                         flags 0
@@ -128,10 +109,7 @@ owner_type "ecs.entity"
             - {
                 id 229
                 type "Set Variable"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 1
+                reference_name "Elapsed"
                 inputs {
                     Value {
                         type "float"
@@ -161,14 +139,11 @@ owner_type "ecs.entity"
         return_id 195
         call_depth_limit 64
         (array)nodes {
-            - id=77 type="WhileLoop" x=0.0 y=0.0 placed=#false
+            - id=77 type="WhileLoop"
             - {
                 id 86
                 type "Set Variable"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 1
+                reference_name "Elapsed"
                 inputs {
                     Value type="float"
                 }
@@ -179,9 +154,6 @@ owner_type "ecs.entity"
             - {
                 id 156
                 type "Call Pure Function"
-                x 0.0
-                y 0.0
-                placed #false
                 reference_id 149
                 reference_name "Check Firing Interval"
                 reference_asset "WeaponActions"
@@ -189,7 +161,7 @@ owner_type "ecs.entity"
                     Elapsed {
                         id 157
                         type "float"
-                        binding kind="variable" variable_id=1 source_asset="TwinStickWeaponBehavior"
+                        binding kind="variable" source_asset="TwinStickWeaponBehavior" name="Elapsed"
                     }
                     Cooldown {
                         id 158
@@ -205,9 +177,6 @@ owner_type "ecs.entity"
             - {
                 id 182
                 type "Call Function"
-                x 0.0
-                y 0.0
-                placed #false
                 reference_id 173
                 reference_name "Fire Projectile"
                 reference_asset "WeaponActions"
@@ -226,9 +195,6 @@ owner_type "ecs.entity"
             - {
                 id 190
                 type "Function Entry"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)outputs {
                     - id=191 name="Then"
                     - id=192 name="Origin" type="struct" type_name="CF_V2" kind="data"
@@ -237,13 +203,10 @@ owner_type "ecs.entity"
                     - id=234 name="Prototype" type="name" kind="data"
                 }
             }
-            - id=195 type="Return" x=0.0 y=0.0 placed=#false
+            - id=195 type="Return"
             - {
                 id 237
                 type "Self"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)outputs {
                     - id=238 name="Entity" type_name="ecs.entity"
                 }

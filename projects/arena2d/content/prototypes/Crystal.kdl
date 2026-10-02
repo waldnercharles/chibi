@@ -1,9 +1,9 @@
 name "Crystal"
 components {
-    GAME.GameAppearance antialias=0.5 border_color=1993796351 border_width=1.0 color=813339135 height=56.0 shape="Circle" width=100.0
+    GAME.GameAppearance antialias=0.5 border_color=0x76d6eaff border_width=1.0 color=0x307a91ff height=56.0 shape="Circle" width=100.0
     GAME.GameCollider category=8 height=56.0 mask=15 shape="Box" width=100.0
     GAME.GameDestructible cell_size=2.0 min_fragment_cells=5
-    GAME.GameMaterial absorption=1.0 albedo=2732320511 border_scene=2396973823 edge_light=1.0 emission_multiplier=1.0 filter=2246639615 scene=373974464
+    GAME.GameMaterial absorption=1.0 albedo=0xa2dbe6ff border_scene=0x8edeeaff edge_light=1.0 emission_multiplier=1.0 filter=0x85e8ffff scene=0x164a65c0
     (object)GAME.GameOrientation
     GAME.GameReflection offset=-28.0 roughness=0.12 strength=0.8
     GAME.GameSubstance blast_multiplier=4.0 hardness=2.0 retain_chips=#true

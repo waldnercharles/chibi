@@ -16,9 +16,6 @@ description "Shared weapon cooldown and projectile initialization functions."
             - {
                 id 257
                 type "Function Entry"
-                x 0.0
-                y 0.0
-                placed #false
                 outputs {
                     Prototype id=261 type="name" kind="data"
                     Transform id=262 type="struct" type_name="GameTransform" kind="data"
@@ -27,15 +24,12 @@ description "Shared weapon cooldown and projectile initialization functions."
             - {
                 id 259
                 type "Return"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Entity id=263 type="handle" type_name="ecs.entity" kind="data"
                 }
             }
-            - id=264 type="Spawn Prototype" x=0.0 y=0.0 placed=#false
-            - id=269 type="SetEntity_GameTransform" x=0.0 y=0.0 placed=#false
+            - id=264 type="Spawn Prototype"
+            - id=269 type="SetEntity_GameTransform"
         }
         (array)edges {
             - from="257.Exec" to="264.Exec"
@@ -58,9 +52,6 @@ description "Shared weapon cooldown and projectile initialization functions."
             - {
                 id 110
                 type "GetEntity_GameProjectile"
-                x 0.0
-                y 0.0
-                placed #false
                 outputs {
                     Value.speed id=115
                 }
@@ -68,9 +59,6 @@ description "Shared weapon cooldown and projectile initialization functions."
             - {
                 id 133
                 type "Set_GameProjectile_damage"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Value id=136
                     Target id=135
@@ -82,9 +70,6 @@ description "Shared weapon cooldown and projectile initialization functions."
             - {
                 id 174
                 type "Function Entry"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)outputs {
                     - id=175 name="Then"
                     - id=176 name="Origin" type="struct" type_name="CF_V2" kind="data"
@@ -97,9 +82,6 @@ description "Shared weapon cooldown and projectile initialization functions."
             - {
                 id 179
                 type "Return"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Entity id=181 type="handle" type_name="ecs.entity" kind="data"
                 }
@@ -107,9 +89,6 @@ description "Shared weapon cooldown and projectile initialization functions."
             - {
                 id 225
                 type "Multiply"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     A type="struct" type_name="CF_V2" flags=0 group=0
                     B flags=0 group=0
@@ -118,13 +97,10 @@ description "Shared weapon cooldown and projectile initialization functions."
                     Result type="struct" type_name="CF_V2" flags=0 group=0
                 }
             }
-            - id=229 type="SetEntity_GameVelocity" x=0.0 y=0.0 placed=#false
+            - id=229 type="SetEntity_GameVelocity"
             - {
                 id 235
                 type "Call Pure Function"
-                x 0.0
-                y 0.0
-                placed #false
                 reference_id 1
                 reference_name "Direction Orientation"
                 reference_asset "DirectionMath"
@@ -136,14 +112,11 @@ description "Shared weapon cooldown and projectile initialization functions."
                     Orientation id=238 declaration_id=6 type="struct" type_name="GameOrientation"
                 }
             }
-            - id=239 type="SetEntity_GameOrientation" x=0.0 y=0.0 placed=#false
-            - id=247 type="Set_GameCollider_ignore_entity" x=0.0 y=0.0 placed=#false
+            - id=239 type="SetEntity_GameOrientation"
+            - id=247 type="Set_GameCollider_ignore_entity"
             - {
                 id 253
                 type "Normalize Vector 2"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Value id=221
                 }
@@ -155,10 +128,6 @@ description "Shared weapon cooldown and projectile initialization functions."
             - {
                 id 292
                 type "Call Function"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 256
                 reference_name "Spawn Prototype At"
                 inputs {
                     Prototype id=295 type="name" kind="data"

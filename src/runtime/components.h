@@ -118,12 +118,12 @@ typedef NODE_COMPONENT_TYPE_DENSE(MaterialBreakProfile)
     float dust_lifetime_min, dust_lifetime_max;
     float dust_size_min, dust_size_max;
     /* Grit color; zero uses the source appearance color. */
-    unsigned dust_color;
+    unsigned dust_color NODE_COLOR;
     /* Hot strikes add spark_density sparks per crumbled cell per unit of the
      * striker's heat. Sparks start in the striker's light color, cool through
      * spark_color and fade. */
     float spark_density;
-    unsigned spark_color;
+    unsigned spark_color NODE_COLOR;
     float spark_emission;
     /* Rock chunks thrown per crater: one per chunk_cells crumbled cells, at
      * most chunk_limit. Sizes are world-unit radii. */
@@ -134,7 +134,7 @@ typedef NODE_COMPONENT_TYPE_DENSE(MaterialBreakProfile)
     float chunk_lifetime;
     /* Gas parcels released into the fluid world per crater; zero disables. */
     int smoke_count;
-    unsigned smoke_color;
+    unsigned smoke_color NODE_COLOR;
     float smoke_lifetime;
     /* Outward drift speed of the released gas in world units per second. */
     float smoke_speed;
@@ -149,9 +149,9 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameCombustion)
     float burn_rate;
     float heat_release;
     float smoke_lifetime;
-    unsigned smoke_color;
+    unsigned smoke_color NODE_COLOR;
     float smoke_absorption;
-    unsigned flame_color;
+    unsigned flame_color NODE_COLOR;
     float flame_emission;
     /* World units a burst of ignitions pushes gas, bodies and debris; at most
      * 1024. */
@@ -256,15 +256,21 @@ typedef NODE_COMPONENT_TYPE_DENSE(MaterialTerrain)
 }
 MaterialTerrain;
 
+typedef enum
+{
+    GAME_FLUID_GAS,
+    GAME_FLUID_LIQUID,
+} GameFluidKind;
+
 /* A one-time, elliptical fill in local space; its matter then lives freely. */
 typedef NODE_COMPONENT_TYPE_DENSE(GameFluidVolume)
 {
-    int kind;
+    GameFluidKind kind;
     float width;
     float height;
     float spacing;
     float mass;
-    unsigned color;
+    unsigned color NODE_COLOR;
     float absorption;
     float emission;
     /* Camera-only minimum visibility; contributes no radiance or bounce. */
@@ -326,12 +332,12 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameAppearance)
 {
     float width;
     float height;
-    unsigned color;
+    unsigned color NODE_COLOR;
     GameShape shape;
     float border_width;
-    unsigned border_color;
+    unsigned border_color NODE_COLOR;
     float glow_radius;
-    unsigned glow_color;
+    unsigned glow_color NODE_COLOR;
     float stroke_width;
     float antialias;
     int layer;
@@ -361,17 +367,17 @@ GameSdfMotion;
 
 typedef NODE_COMPONENT_TYPE_DENSE(GameMaterial)
 {
-    unsigned scene;
-    unsigned albedo;
-    unsigned filter;
-    unsigned emission_color;
+    unsigned scene NODE_COLOR;
+    unsigned albedo NODE_COLOR;
+    unsigned filter NODE_COLOR;
+    unsigned emission_color NODE_COLOR;
     float emission_intensity;
     float emission_multiplier;
     float absorption;
-    unsigned border_scene;
-    unsigned border_emission_color;
-    unsigned border_albedo;
-    unsigned border_filter;
+    unsigned border_scene NODE_COLOR;
+    unsigned border_emission_color NODE_COLOR;
+    unsigned border_albedo NODE_COLOR;
+    unsigned border_filter NODE_COLOR;
     /* Gain of light received near the surface of a solid, reaching
      * GameHRC2D.surface_radius into it. Zero disables; no unlit outline. */
     float edge_light;
@@ -485,7 +491,7 @@ GameEnvironment;
  * color is 0xRRGGBBAA, matching other authored color fields. */
 typedef NODE_COMPONENT_TYPE_DENSE(GamePointLight)
 {
-    unsigned color;
+    unsigned color NODE_COLOR;
     float intensity;
     float radius;
     float elevation;
@@ -495,7 +501,7 @@ GamePointLight;
 /* A colored activity signal for material effects, independent of lighting. */
 typedef NODE_COMPONENT_TYPE_DENSE(GameSurfaceInfluence)
 {
-    unsigned color;
+    unsigned color NODE_COLOR;
     float strength;
     float radius;
     float linger;
@@ -565,8 +571,8 @@ typedef enum
 typedef NODE_COMPONENT_TYPE_DENSE(GameParticleEmitter)
 {
     GameParticleShape shape;
-    unsigned color;
-    unsigned end_color;
+    unsigned color NODE_COLOR;
+    unsigned end_color NODE_COLOR;
     float rate;
     int burst_count;
     CF_V2 lifetime;
@@ -589,7 +595,7 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameParticleEmitter)
     bool planar;
     bool heading_only;
     bool fluid;
-    int fluid_kind;
+    GameFluidKind fluid_kind;
     float fluid_mass;
 }
 GameParticleEmitter;
@@ -614,7 +620,7 @@ static inline GameParticleEmitter game_particle_emitter_defaults()
 
 typedef NODE_COMPONENT_TYPE_DENSE(GameTrail)
 {
-    unsigned color;
+    unsigned color NODE_COLOR;
     float width;
     float lifetime;
     float emission;
@@ -730,7 +736,7 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameFog)
     int rows;
     float cell_size;
     float drift; /* Zero disables ambient fog motion. */
-    unsigned color;
+    unsigned color NODE_COLOR;
     bool disabled;
 }
 GameFog;
@@ -755,7 +761,7 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameSensorContact)
 {
     CF_V2 position;
     float remaining;
-    unsigned color;
+    unsigned color NODE_COLOR;
 }
 GameSensorContact;
 
@@ -772,7 +778,10 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameStarfield2D)
 {
     CF_V4 far_layer, middle_layer, near_layer;
     CF_V3 parallax;
-    unsigned color_a, color_b, color_c, color_d;
+    unsigned color_a NODE_COLOR;
+    unsigned color_b NODE_COLOR;
+    unsigned color_c NODE_COLOR;
+    unsigned color_d NODE_COLOR;
 }
 GameStarfield2D;
 
@@ -792,6 +801,34 @@ typedef enum
     GAME_HRC_GATHER_HALF,
     GAME_HRC_GATHER_AUTO,
 } GameHRCGather;
+
+typedef enum
+{
+    GAME_HRC_UPSCALE_PLAIN_BILINEAR NODE_NAME("Plain bilinear"),
+    GAME_HRC_UPSCALE_EDGE_AWARE NODE_NAME("Edge aware"),
+    GAME_HRC_UPSCALE_JOINT_BILATERAL NODE_NAME("Joint bilateral"),
+    GAME_HRC_UPSCALE_FIVE_TAP_CROSS NODE_NAME("Five tap cross"),
+} GameHRCUpscale;
+
+typedef enum
+{
+    GAME_HRC_DEBUG_NORMAL,
+    GAME_HRC_DEBUG_SCENE,
+    GAME_HRC_DEBUG_EMISSION,
+    GAME_HRC_DEBUG_ABSORPTION,
+    GAME_HRC_DEBUG_ALBEDO,
+    GAME_HRC_DEBUG_FLUENCE,
+    GAME_HRC_DEBUG_NORMALS,
+    GAME_HRC_DEBUG_SURFACE_LIGHT NODE_NAME("Surface light"),
+    GAME_HRC_DEBUG_LIGHT_DIRECTION NODE_NAME("Light direction"),
+    GAME_HRC_DEBUG_SHADING_NORMALS NODE_NAME("Shading normals"),
+} GameHRCDebugView;
+
+typedef enum
+{
+    GAME_HRC_TONE_CLAMP,
+    GAME_HRC_TONE_AGX NODE_NAME("AgX"),
+} GameHRCToneMapping;
 
 typedef NODE_COMPONENT_TYPE_DENSE(GameHRC2D)
 {
@@ -845,13 +882,13 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameHRC2D)
     /* How received light is upsampled from the transport grid: 0 bilinear,
      * 1 bilinear that turns nearest at absorption edges, 2 joint bilateral on
      * absorption, 3 five-tap cross. Ignored with a luminance transport. */
-    int upscale_mode;
+    GameHRCUpscale upscale_mode;
     /* Absorption difference that upscale modes 1 and 2 treat as an edge. */
     float upscale_threshold;
     /* 0 draws the lit frame; 1 scene, 2 emission, 3 transmittance, 4 albedo,
      * 5 received light, 6 normals, 7 surface light, 8 dominant light
      * direction, 9 shading normals. */
-    int debug_view;
+    GameHRCDebugView debug_view;
     /* Perspective distance for particles: raised particles scale by
      * focal / (focal + elevation). */
     float particle_focal_length;
@@ -873,7 +910,7 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameHRC2D)
     float specular;
     /* 0 clamps the composite to the display range. 1 keeps it in HDR and
      * presents it with bloom, exposure and AgX tone mapping. */
-    int tone_mapping;
+    GameHRCToneMapping tone_mapping;
     /* Exposure in EV before tone mapping. */
     float exposure;
     /* Fraction of the blurred image mixed into the frame, in [0, 1]. */
@@ -893,7 +930,7 @@ static inline GameHRC2D game_hrc2d_defaults()
                         .bounce_intensity = 1,
                         .bounce_hysteresis = .8f,
                         .radiance_hysteresis = .8f,
-                        .upscale_mode = 1,
+                        .upscale_mode = GAME_HRC_UPSCALE_EDGE_AWARE,
                         .upscale_threshold = .1f,
                         .particle_focal_length = 300,
                         .trace_levels = 3,

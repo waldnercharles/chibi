@@ -11,9 +11,6 @@ owner_type "ecs.entity"
             - {
                 id 1
                 type "Event"
-                x 0.0
-                y 0.0
-                placed #false
                 reference_name "Input"
                 outputs {
                     Direction id=3 type="struct" type_name="CF_V2" kind="data"
@@ -22,9 +19,6 @@ owner_type "ecs.entity"
             - {
                 id 14
                 type "Set_GameVelocity"
-                x 0.0
-                y 0.0
-                placed #false
                 outputs {
                     Value id=35
                 }
@@ -32,9 +26,6 @@ owner_type "ecs.entity"
             - {
                 id 105
                 type "Call Pure Function"
-                x 0.0
-                y 0.0
-                placed #false
                 reference_id 93
                 reference_name "Movement Velocity"
                 reference_asset "MovementActions"
@@ -51,13 +42,10 @@ owner_type "ecs.entity"
                     Velocity id=108 type="struct" type_name="GameVelocity"
                 }
             }
-            - id=356 type="Event" x=0.0 y=0.0 placed=#false reference_name="Tick"
+            - id=356 type="Event" reference_name="Tick"
             - {
                 id 367
                 type "Call Pure Function"
-                x 0.0
-                y 0.0
-                placed #false
                 reference_id 1
                 reference_name "Direction Orientation"
                 reference_asset "DirectionMath"
@@ -79,18 +67,14 @@ owner_type "ecs.entity"
                     Orientation id=370 declaration_id=6 type="struct" type_name="GameOrientation"
                 }
             }
-            - id=371 type="Set_GameOrientation" x=0.0 y=0.0 placed=#false
-            - id=380 type="Has_GameDash" x=0.0 y=0.0 placed=#false
-            - id=382 type="Branch" x=0.0 y=0.0 placed=#false
-            - id=399 type="Has_GameDash" x=0.0 y=0.0 placed=#false
-            - id=401 type="Branch" x=0.0 y=0.0 placed=#false
+            - id=371 type="Set_GameOrientation"
+            - id=380 type="Has_GameDash"
+            - id=382 type="Branch"
+            - id=399 type="Has_GameDash"
+            - id=401 type="Branch"
             - {
                 id 434
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 420
                 reference_name "Dashing While Moving"
                 inputs {
                     Exec id=437 kind="exec"
@@ -110,10 +94,6 @@ owner_type "ecs.entity"
             - {
                 id 468
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 454
                 reference_name "Dashing While Aiming"
                 inputs {
                     Exec id=471 kind="exec"

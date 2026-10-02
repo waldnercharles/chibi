@@ -1,16 +1,42 @@
+#include "automation/controller.h"
 #include "automation/graph_edit.h"
 #include "graph/document/serialize.h"
 #include "graph/model/behavior_asset.h"
 #include "suite_internal.h"
+#include "support/text_file.h"
 #include "third_party/yyjson/yyjson.h"
 
+#include <assert.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 /* The last request's error. */
 static char edit_error[256];
+
+static void automatic_layout_on_disk(const char *edited)
+{
+    char root[] = "/tmp/chibi-graph-layout-XXXXXX";
+    assert(mkdtemp(root));
+    char content[256], behaviors[256], path[256];
+    snprintf(content, sizeof content, "%s/content", root);
+    snprintf(behaviors, sizeof behaviors, "%s/content/behaviors", root);
+    snprintf(path, sizeof path, "%s/content/behaviors/GraphEditBehavior.kdl", root);
+    assert(!mkdir(content, 0700) && !mkdir(behaviors, 0700));
+    FILE *file = fopen(path, "wb");
+    assert(file && fputs(edited, file) >= 0 && !fclose(file));
+    int formatted = chibi_automation_format_assets(root, false);
+    char *disk = text_file_read_disk(path);
+    bool canonical = formatted == 1 && disk && !strstr(disk, "placed=") &&
+                     !strstr(disk, " x=") && !strstr(disk, " y=") &&
+                     chibi_automation_format_assets(root, true) == 0;
+    test_check(canonical, "MCP automatic graph layout formats to stable disk text without positions");
+    free(disk);
+    assert(!unlink(path) && !rmdir(behaviors) && !rmdir(content) && !rmdir(root));
+}
 
 static int edit_request(
     const char *source,
@@ -493,6 +519,9 @@ void test_automation_graph_edit(void)
                           (arranged_first->x != arranged_second->x ||
                            arranged_first->y != arranged_second->y);
     test_check(layout_enabled, "MCP graph edits arrange authored nodes by default");
+    if (layout_enabled) {
+        automatic_layout_on_disk(edited);
+    }
     behavior_asset_free(arranged_asset);
     yyjson_mut_doc_free(response);
     free(edited);

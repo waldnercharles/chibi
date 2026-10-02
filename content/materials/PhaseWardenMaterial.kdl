@@ -30,17 +30,11 @@ id_counter 39
             - {
                 id 9
                 type "Shader Vector3"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs X=0.02 Y=0.05 Z=0.18
             }
             - {
                 id 14
                 type "Shader Vector3"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs X=0.05 Y=0.65 Z=1.2
             }
         }

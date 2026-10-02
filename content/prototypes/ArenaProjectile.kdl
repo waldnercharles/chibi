@@ -10,7 +10,7 @@ components {
         antialias {
             start x=1.5 y=1.5
         }
-        color 2162421452
+        color 0x80e3eecc
         direction x=-1.0
         drag {
             start x=2.0 y=2.0
@@ -18,7 +18,7 @@ components {
         emission {
             start x=0.45 y=0.45
         }
-        end_color 595435520
+        end_color 0x237da000
         fluid_mass 0.0002
         heading_only #true
         lifetime x=0.18 y=0.18
@@ -32,10 +32,10 @@ components {
         speed x=8.0 y=8.0
         spread 0.5
     }
-    GAME.GamePointLight color=1659240447 elevation=14.0 intensity=0.35 radius=24.0
+    GAME.GamePointLight color=0x62e5ffff elevation=14.0 intensity=0.35 radius=24.0
     GAME.GameProjectile damage=10 lifetime=1.6 speed=480.0
     GAME.GameShader material="ArenaProjectile" parameters="" shape=""
-    GAME.GameSurfaceInfluence color=1659240447 linger=0.22 radius=17.0 strength=0.35
+    GAME.GameSurfaceInfluence color=0x62e5ffff linger=0.22 radius=17.0 strength=0.35
     (object)GAME.GameTransform
     GAME.GameVelocity x=480.0
     GAME.GameVisualMotion reaction_duration=0.32 rest_elevation=12.0 speed=6.2831855

@@ -179,6 +179,13 @@ char *game_system_document_save(
     }
     av_doc *doc = av_doc_new();
     av_value *root = game_system_document_to_value(doc, document, resolve, name, user);
+    if (root) {
+        av_value *query = av_obj_get(root, "query");
+        root = behavior_asset_to_disk_value(doc, document->behavior_asset);
+        if (query) {
+            av_obj_set(doc, root, "query", query);
+        }
+    }
     char *text = root ? av_value_write(root) : NULL;
     av_doc_free(doc);
     return text;

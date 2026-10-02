@@ -890,8 +890,20 @@ static bool collect_edits(
     text_edit **edits
 )
 {
-    if (av_equals(old, value)) {
-        return true;
+    if (!av_is_ctn(old) && av_equals(old, value)) {
+        if (!av_is_num(value)) {
+            return true;
+        }
+        av_source range = av_get_source(old);
+        char *literal = scalar_text(value);
+        bool same = literal && range.start != SIZE_MAX &&
+                    range.end != SIZE_MAX && range.end <= strlen(text) &&
+                    range.end - range.start == strlen(literal) &&
+                    !memcmp(text + range.start, literal, strlen(literal));
+        free(literal);
+        if (same) {
+            return true;
+        }
     }
     if (av_is_obj(old) && av_is_obj(value)) {
         av_source container = av_get_source(old);
@@ -1103,6 +1115,16 @@ char *asset_source_reconcile(const char *text, const av_value *value, char *erro
     if (!old) {
         return NULL;
     }
+    /* Float32 literals are parsed as doubles until a reflected loader reads
+     * them. Compare the desired disk values at that same boundary. */
+    char *canonical = av_value_write(value);
+    av_doc *target = canonical ? av_doc_read(canonical, error, size) : NULL;
+    free(canonical);
+    if (!target) {
+        av_doc_free(old);
+        return NULL;
+    }
+    value = av_doc_root(target);
     text_edit *edits = NULL;
     bool ok = collect_edits(text, av_doc_root(old), value, NULL, &edits);
     char *result = ok ? text_edits_apply(text, edits, acount(edits)) : NULL;
@@ -1121,6 +1143,7 @@ char *asset_source_reconcile(const char *text, const av_value *value, char *erro
         free((char *)edits[i].text);
     }
     afree(edits);
+    av_doc_free(target);
     av_doc_free(old);
     return result;
 }

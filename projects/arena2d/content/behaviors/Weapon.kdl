@@ -14,9 +14,6 @@ owner_type "ecs.entity"
             - {
                 id 2
                 type "Event"
-                x 0.0
-                y 0.0
-                placed #false
                 reference_name "Tick"
                 outputs {
                     DeltaSeconds id=4 type="float" kind="data"
@@ -25,9 +22,6 @@ owner_type "ecs.entity"
             - {
                 id 5
                 type "Branch"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Condition {
                         binding kind="component_field" component="GAME.GameAim" field="manual"
@@ -37,9 +31,6 @@ owner_type "ecs.entity"
             - {
                 id 10
                 type "Self"
-                x 0.0
-                y 0.0
-                placed #false
                 outputs {
                     Self type_name="ecs.entity"
                 }
@@ -47,9 +38,6 @@ owner_type "ecs.entity"
             - {
                 id 12
                 type "Find Nearest Entity"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Position {
                         binding kind="component" component="GAME.GameTransform"
@@ -58,34 +46,27 @@ owner_type "ecs.entity"
                     Categories 2
                 }
             }
-            - id=21 type="Branch" x=0.0 y=0.0 placed=#false
+            - id=21 type="Branch"
             - {
                 id 26
                 type "Direction To"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Origin {
                         binding kind="component" component="GAME.GameTransform"
                     }
                 }
             }
-            - id=30 type="Set_GameAim_direction" x=0.0 y=0.0 placed=#false
+            - id=30 type="Set_GameAim_direction"
             - {
                 id 48
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 36
                 reference_name "elapsed += dt"
                 inputs {
                     Exec id=52 kind="exec"
                     elapsed {
                         id 49
                         type "float"
-                        binding kind="variable" variable_id=1 source_asset="Weapon"
+                        binding kind="variable" source_asset="Weapon" name="elapsed"
                     }
                     dt {
                         id 50
@@ -101,22 +82,16 @@ owner_type "ecs.entity"
             - {
                 id 88
                 type "Branch"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Condition {
                         binding kind="component_field" component="GAME.GameAim" field="firing"
                     }
                 }
             }
-            - id=136 type="WhileLoop" x=0.0 y=0.0 placed=#false
+            - id=136 type="WhileLoop"
             - {
                 id 153
                 type "Transform Visual Offset"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Offset {
                         default x=16.0 y=0.0
@@ -132,9 +107,6 @@ owner_type "ecs.entity"
             - {
                 id 233
                 type "Call Function"
-                x 0.0
-                y 0.0
-                placed #false
                 reference_id 173
                 reference_name "Fire Projectile"
                 reference_asset "WeaponActions"
@@ -166,17 +138,13 @@ owner_type "ecs.entity"
             - {
                 id 271
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 259
                 reference_name "elapsed -= cooldown"
                 inputs {
                     Exec id=275 kind="exec"
                     elapsed {
                         id 272
                         type "float"
-                        binding kind="variable" variable_id=1 source_asset="Weapon"
+                        binding kind="variable" source_asset="Weapon" name="elapsed"
                     }
                     cooldown {
                         id 273
@@ -192,17 +160,13 @@ owner_type "ecs.entity"
             - {
                 id 323
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 311
                 reference_name "elapsed = min(elapsed, cooldown)"
                 inputs {
                     Exec id=327 kind="exec"
                     elapsed {
                         id 324
                         type "float"
-                        binding kind="variable" variable_id=1 source_asset="Weapon"
+                        binding kind="variable" source_asset="Weapon" name="elapsed"
                     }
                     cooldown {
                         id 325
@@ -218,12 +182,9 @@ owner_type "ecs.entity"
             - {
                 id 363
                 type "Greater Or Equal"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     A {
-                        binding kind="variable" variable_id=1 source_asset="Weapon"
+                        binding kind="variable" source_asset="Weapon" name="elapsed"
                     }
                     B {
                         binding kind="component_field" component="GAME.GameWeapon" field="cooldown"
@@ -233,10 +194,6 @@ owner_type "ecs.entity"
             - {
                 id 447
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 435
                 reference_name "position + offset"
                 inputs {
                     position {
@@ -254,9 +211,6 @@ owner_type "ecs.entity"
             - {
                 id 487
                 type "Self"
-                x 0.0
-                y 0.0
-                placed #false
                 outputs {
                     Self type_name="ecs.entity"
                 }

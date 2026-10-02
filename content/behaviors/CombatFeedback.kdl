@@ -17,9 +17,6 @@ owner_type "ecs.entity"
             - {
                 id 133
                 type "Event"
-                x 0.0
-                y 0.0
-                placed #false
                 reference_name "Damaged"
                 outputs {
                     Then id=130
@@ -30,10 +27,6 @@ owner_type "ecs.entity"
             - {
                 id 136
                 type "Call Function"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 11
                 reference_name "Start Hit Flash"
                 inputs {
                     Exec id=134
@@ -42,9 +35,6 @@ owner_type "ecs.entity"
             - {
                 id 138
                 type "Event"
-                x 0.0
-                y 0.0
-                placed #false
                 reference_name "Tick"
                 outputs {
                     Then id=137
@@ -53,10 +43,6 @@ owner_type "ecs.entity"
             - {
                 id 141
                 type "Call Function"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 37
                 reference_name "Update Hit Flash"
                 inputs {
                     Exec id=139
@@ -65,10 +51,6 @@ owner_type "ecs.entity"
             - {
                 id 144
                 type "Call Function"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 92
                 reference_name "Update Dash Glow"
                 inputs {
                     Exec id=142
@@ -77,10 +59,6 @@ owner_type "ecs.entity"
             - {
                 id 177
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 163
                 reference_name "HitRemaining > 0"
                 inputs {
                     Exec id=180 kind="exec"
@@ -88,7 +66,7 @@ owner_type "ecs.entity"
                         id 178
                         type "double"
                         flags 0
-                        binding kind="variable" variable_id=4 source_asset="CombatFeedback"
+                        binding kind="variable" source_asset="CombatFeedback" name="Hit Remaining"
                     }
                 }
                 outputs {
@@ -117,9 +95,6 @@ owner_type "ecs.entity"
             - {
                 id 13
                 type "Function Entry"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)outputs {
                     - id=12 name="Then"
                 }
@@ -127,9 +102,6 @@ owner_type "ecs.entity"
             - {
                 id 15
                 type "Return"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Exec id=14
                 }
@@ -137,15 +109,12 @@ owner_type "ecs.entity"
             - {
                 id 21
                 type "Max"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     A {
                         id 18
                         flags 0
                         group 0
-                        binding kind="variable" variable_id=1 source_asset="CombatFeedback"
+                        binding kind="variable" source_asset="CombatFeedback" name="Hit Duration"
                     }
                     B flags=0 group=0 default=0.001
                 }
@@ -156,10 +125,7 @@ owner_type "ecs.entity"
             - {
                 id 26
                 type "Set Variable"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 4
+                reference_name "Hit Remaining"
                 inputs {
                     Exec id=22
                     Value type="float"
@@ -171,9 +137,6 @@ owner_type "ecs.entity"
             - {
                 id 30
                 type "Self"
-                x 0.0
-                y 0.0
-                placed #false
                 outputs {
                     Self id=29 type_name="ecs.entity"
                 }
@@ -181,9 +144,6 @@ owner_type "ecs.entity"
             - {
                 id 36
                 type "Set Material Parameter"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Exec id=31
                     Name type_name="const char *" default="Hit Flash"
@@ -191,7 +151,7 @@ owner_type "ecs.entity"
                         type_name "float"
                         flags 0
                         group 0
-                        binding kind="variable" variable_id=2 source_asset="CombatFeedback"
+                        binding kind="variable" source_asset="CombatFeedback" name="Hit Strength"
                     }
                 }
             }
@@ -215,9 +175,6 @@ owner_type "ecs.entity"
             - {
                 id 39
                 type "Function Entry"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)outputs {
                     - id=38 name="Then"
                 }
@@ -225,9 +182,6 @@ owner_type "ecs.entity"
             - {
                 id 41
                 type "Return"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Exec id=40
                 }
@@ -235,10 +189,7 @@ owner_type "ecs.entity"
             - {
                 id 67
                 type "Set Variable"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 4
+                reference_name "Hit Remaining"
                 inputs {
                     Exec id=63
                     Value type="float"
@@ -250,9 +201,6 @@ owner_type "ecs.entity"
             - {
                 id 85
                 type "Self"
-                x 0.0
-                y 0.0
-                placed #false
                 outputs {
                     Self id=84 type_name="ecs.entity"
                 }
@@ -260,9 +208,6 @@ owner_type "ecs.entity"
             - {
                 id 91
                 type "Set Material Parameter"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Exec id=86
                     Name type_name="const char *" default="Hit Flash"
@@ -272,10 +217,6 @@ owner_type "ecs.entity"
             - {
                 id 211
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 197
                 reference_name "HitRemaining < 0"
                 inputs {
                     Exec id=214 kind="exec"
@@ -283,7 +224,7 @@ owner_type "ecs.entity"
                         id 212
                         type "double"
                         flags 0
-                        binding kind="variable" variable_id=4 source_asset="CombatFeedback"
+                        binding kind="variable" source_asset="CombatFeedback" name="Hit Remaining"
                     }
                 }
                 outputs {
@@ -295,16 +236,12 @@ owner_type "ecs.entity"
             - {
                 id 250
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 231
                 reference_name "max(HitRemaining - dt, 0)"
                 inputs {
                     HitRemaining {
                         id 251
                         type "double"
-                        binding kind="variable" variable_id=4 source_asset="CombatFeedback"
+                        binding kind="variable" source_asset="CombatFeedback" name="Hit Remaining"
                     }
                     dt {
                         id 252
@@ -319,26 +256,22 @@ owner_type "ecs.entity"
             - {
                 id 335
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 311
                 reference_name "HitRemaining / max(HitDuration, 0.001) * HitStrength"
                 inputs {
                     HitRemaining {
                         id 336
                         type "double"
-                        binding kind="variable" variable_id=4 source_asset="CombatFeedback"
+                        binding kind="variable" source_asset="CombatFeedback" name="Hit Remaining"
                     }
                     HitDuration {
                         id 337
                         type "double"
-                        binding kind="variable" variable_id=1 source_asset="CombatFeedback"
+                        binding kind="variable" source_asset="CombatFeedback" name="Hit Duration"
                     }
                     HitStrength {
                         id 338
                         type "double"
-                        binding kind="variable" variable_id=2 source_asset="CombatFeedback"
+                        binding kind="variable" source_asset="CombatFeedback" name="Hit Strength"
                     }
                 }
                 outputs {
@@ -368,9 +301,6 @@ owner_type "ecs.entity"
             - {
                 id 94
                 type "Function Entry"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)outputs {
                     - id=93 name="Then"
                 }
@@ -378,9 +308,6 @@ owner_type "ecs.entity"
             - {
                 id 96
                 type "Return"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Exec id=95
                 }
@@ -388,9 +315,6 @@ owner_type "ecs.entity"
             - {
                 id 98
                 type "Has_GameDash"
-                x 0.0
-                y 0.0
-                placed #false
                 outputs {
                     Value id=97
                 }
@@ -398,9 +322,6 @@ owner_type "ecs.entity"
             - {
                 id 103
                 type "Branch"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Exec id=99
                 }
@@ -408,9 +329,6 @@ owner_type "ecs.entity"
             - {
                 id 123
                 type "Self"
-                x 0.0
-                y 0.0
-                placed #false
                 outputs {
                     Self id=122 type_name="ecs.entity"
                 }
@@ -418,9 +336,6 @@ owner_type "ecs.entity"
             - {
                 id 129
                 type "Set Material Parameter"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Exec id=124
                     Name type_name="const char *" default="Dash Glow"
@@ -430,10 +345,6 @@ owner_type "ecs.entity"
             - {
                 id 460
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 436
                 reference_name "Remaining / max(Duration, 0.001) * DashStrength"
                 inputs {
                     Remaining {
@@ -449,7 +360,7 @@ owner_type "ecs.entity"
                     DashStrength {
                         id 463
                         type "double"
-                        binding kind="variable" variable_id=3 source_asset="CombatFeedback"
+                        binding kind="variable" source_asset="CombatFeedback" name="Dash Strength"
                     }
                 }
                 outputs {

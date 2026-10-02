@@ -1,7 +1,7 @@
 name "OrbitFlipper"
 components {
     GAME.GameActionBinding action="FlipLeft" source="Z"
-    GAME.GameAppearance antialias=1.0 border_color=4293970943 border_width=2.0 color=4001404927 height=16.0 shape="Capsule" width=92.0
+    GAME.GameAppearance antialias=1.0 border_color=0xfff0cbff border_width=2.0 color=0xee8097ff height=16.0 shape="Capsule" width=92.0
     GAME.GameBody type="Kinematic"
     GAME.GameCollider category=8 height=16.0 mask=1 restitution=0.75 shape="Box" width=92.0
     GAME.GameOrientation radians=0.35

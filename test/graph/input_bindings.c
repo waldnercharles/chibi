@@ -1,6 +1,8 @@
 #include "editor/workspace/editor_internal.h"
 #include "graph/document/extract.h"
+#include "graph/model/local.h"
 #include "graph/runtime/flow_internal.h"
+#include "support/asset_text.h"
 #include "support/cos_sin.h"
 #include "test/suite_internal.h"
 
@@ -1102,6 +1104,160 @@ static void converted_component_field_binding()
     ecs_world_free(world);
 }
 
+static void named_disk_references()
+{
+    behavior_asset *asset = behavior_asset_new("NamedReferences");
+    behavior_variable *variable = behavior_asset_add_variable(
+        asset,
+        "Speed",
+        PIN_F32,
+        "float",
+        PIN_CONTAINER_SINGLE,
+        &(pin_value){ .type = PIN_F32, .f = 4 },
+        NULL
+    );
+    uint64_t variable_id = variable->id;
+    node *bound = typed_reroute(asset->graph, PIN_F32, "float");
+    assert(
+        graph_set_pin_binding(
+            asset->graph,
+            bound,
+            0,
+            0,
+            &(pin_binding){ .kind = PIN_BINDING_VARIABLE, .variable_id = variable_id }
+        ) == 0
+    );
+    node *source = typed_reroute(asset->graph, PIN_F32, "float");
+    node *local_use = typed_reroute(asset->graph, PIN_F32, "float");
+    assert(graph_connect_data(asset->graph, source, 0, local_use, 0) == 0);
+    uint64_t local_id = graph_create_local(asset->graph, source, 0, "CurrentSpeed");
+    assert(local_id);
+    graph *function = behavior_asset_add_graph(asset, GRAPH_FUNCTION, "ApplySpeed");
+    assert(function);
+    uint64_t function_id = function->graph_id;
+    node *call = graph_add_node(asset->graph, &NODE_CallFunction);
+    assert(graph_set_node_reference(asset->graph, call, function_id, function->name) == 0);
+    uint64_t bound_id = bound->id, local_use_id = local_use->id, call_id = call->id;
+    assert(behavior_asset_rename_variable(asset, variable_id, "Velocity") == 0);
+    assert(graph_rename_local(asset->graph, local_id, "CurrentVelocity") == 0);
+    assert(behavior_asset_rename_graph(asset, function_id, "ApplyVelocity") == 0);
+    node *setter = behavior_asset_add_set_node(asset, variable_id);
+    assert(setter && graph_set_node_reference(asset->graph, setter, variable_id, NULL) == 0);
+    assert(
+        graph_set_pin_default(asset->graph, setter, 0, 1, &(pin_value){ .type = PIN_F32, .f = 9 }) == 0
+    );
+    char *text = behavior_asset_save(asset);
+    test_check(
+        text && strstr(text, "name=\"Velocity\"") &&
+            strstr(text, "name=\"CurrentVelocity\"") &&
+            strstr(text, "ApplyVelocity") && !strstr(text, "variable_id") &&
+            !strstr(text, "local_id") && !strstr(text, "reference_id"),
+        "asset files use current unique names for bindings and forward "
+        "function references"
+    );
+    behavior_asset *loaded = behavior_asset_load(text);
+    test_check(
+        loaded &&
+            graph_node_by_id(loaded->graph, bound_id)->input_pins[0].binding->variable_id ==
+                variable_id &&
+            graph_node_by_id(loaded->graph, local_use_id)
+                    ->input_pins[0]
+                    .binding->local_id == local_id &&
+            graph_node_by_id(loaded->graph, call_id)->reference_id == function_id,
+        "named references restore stable IDs after loading all function "
+        "declarations"
+    );
+    if (loaded) {
+        char *again = behavior_asset_save(loaded);
+        test_check(again && !strcmp(text, again), "named reference files keep stable field order when numeric setters originally have no reference name");
+        free(again);
+        behavior_asset_free(loaded);
+    }
+    av_doc *doc = av_doc_new();
+    av_value *root = behavior_asset_to_value(doc, asset);
+    char *internal = av_value_write(root);
+    test_check(
+        strstr(internal, "variable_id") && strstr(internal, "local_id") &&
+            strstr(internal, "reference_id"),
+        "in-memory asset snapshots retain numeric reference identities"
+    );
+    free(internal);
+    av_doc_free(doc);
+    node *selected[] = { bound };
+    char *clipboard = graph_save_nodes(asset->graph, selected, 1);
+    test_check(
+        clipboard && strstr(clipboard, "variable_id") &&
+            graph_append(asset->graph, clipboard, 0, 0) == 0,
+        "clipboard copies retain owner-checked numeric variable references"
+    );
+    free(clipboard);
+    doc = av_doc_new();
+    root = behavior_asset_to_disk_value(doc, asset);
+    av_value *nodes = av_obj_get(av_arr_get(av_obj_get(root, "graphs"), 0), "nodes");
+    av_value *call_value = NULL;
+    for (size_t i = 0; i < av_arr_size(nodes); i++) {
+        av_value *value = av_arr_get(nodes, i);
+        if (av_get_uint(av_obj_get(value, "id")) == call_id) {
+            call_value = value;
+        }
+    }
+    assert(call_value);
+    av_obj_set(doc, call_value, "reference_name", av_str(doc, "MissingFunction"));
+    loaded = behavior_asset_from_value(root);
+    test_check(!loaded && strstr(graph_last_error(), "unknown function"), "missing named function references fail during loading");
+    behavior_asset_free(loaded);
+    av_obj_set(doc, call_value, "reference_name", av_str(doc, "ApplyVelocity"));
+    uint64_t targets[] = { bound_id, local_use_id };
+    const char *names[] = { "Velocity", "CurrentVelocity" };
+    for (int at = 0; at < 2; at++) {
+        av_value *binding = NULL;
+        for (size_t i = 0; i < av_arr_size(nodes); i++) {
+            av_value *value = av_arr_get(nodes, i);
+            if (av_get_uint(av_obj_get(value, "id")) != targets[at]) {
+                continue;
+            }
+            av_value *inputs = av_obj_get(value, "inputs");
+            for (size_t j = 0; j < av_obj_size(inputs); j++) {
+                binding = av_obj_get(av_obj_value_at(inputs, j), "binding");
+                if (binding) {
+                    break;
+                }
+            }
+        }
+        assert(binding);
+        av_obj_set(doc, binding, "name", av_str(doc, "MissingBinding"));
+        loaded = behavior_asset_from_value(root);
+        test_check(
+            !loaded && strstr(graph_last_error(), "unknown name"),
+            "missing named variable and local bindings fail during loading"
+        );
+        behavior_asset_free(loaded);
+        av_obj_set(doc, binding, "name", av_str(doc, names[at]));
+    }
+    av_doc_free(doc);
+    const char *lists[] = { "variables", "graphs", "locals" };
+    for (int at = 0; at < 3; at++) {
+        doc = av_doc_new();
+        root = behavior_asset_to_disk_value(doc, asset);
+        av_value *written_graph = av_arr_get(av_obj_get(root, "graphs"), 0);
+        av_value *list = av_obj_get(at == 2 ? written_graph : root, lists[at]);
+        av_value *duplicate = av_clone(doc, av_arr_get(list, at == 1 ? 1 : 0));
+        av_obj_set(doc, duplicate, "id", av_uint(doc, asset->graph->id_counter + 1));
+        if (at == 2) {
+            char from[SERIALIZE_KEY_SIZE + 32];
+            assert(serialize_pin_ref(bound, 1, 0, from, sizeof from));
+            av_obj_set(doc, duplicate, "from", av_str(doc, from));
+        }
+        av_arr_append(list, duplicate);
+        loaded = behavior_asset_from_value(root);
+        test_check(!loaded, "loaded duplicate variable, graph and local names cannot make symbolic references ambiguous");
+        behavior_asset_free(loaded);
+        av_doc_free(doc);
+    }
+    free(text);
+    behavior_asset_free(asset);
+}
+
 static void serialization_and_clipboard_ownership()
 {
     behavior_asset *asset = behavior_asset_new("SerializedBinding");
@@ -1861,6 +2017,7 @@ void test_input_bindings()
     executable_event_binding_extraction();
     component_and_context_bindings();
     converted_component_field_binding();
+    named_disk_references();
     serialization_and_clipboard_ownership();
     inline_source_graphs();
     component_getter_optimization();

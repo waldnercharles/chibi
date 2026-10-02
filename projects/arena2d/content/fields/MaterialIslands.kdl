@@ -7,14 +7,11 @@ id_counter 56
         kind "event"
         name ""
         (array)nodes {
-            - id=45 type="Field X" x=0.0 y=0.0 placed=#false
-            - id=47 type="Field Y" x=0.0 y=0.0 placed=#false
+            - id=45 type="Field X"
+            - id=47 type="Field Y"
             - {
                 id 49
                 type "Call Pure Function"
-                x 0.0
-                y 0.0
-                placed #false
                 reference_id 1
                 reference_name "Islands"
                 reference_asset "FieldShapes"
@@ -26,7 +23,7 @@ id_counter 56
                     Value id=52 declaration_id=8 type="float"
                 }
             }
-            - id=53 type="Field Output" x=0.0 y=0.0 placed=#false
+            - id=53 type="Field Output"
         }
         (array)edges {
             - from="45.Value" to="49.X"

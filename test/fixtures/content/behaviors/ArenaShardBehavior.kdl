@@ -18,9 +18,6 @@ owner_type "ecs.entity"
             - {
                 id 3
                 type "Event"
-                x 0.0
-                y 0.0
-                placed #false
                 reference_name "Tick"
                 outputs {
                     Then id=2
@@ -29,9 +26,6 @@ owner_type "ecs.entity"
             - {
                 id 5
                 type "Delta Time"
-                x 0.0
-                y 0.0
-                placed #false
                 outputs {
                     Seconds id=4
                 }
@@ -39,10 +33,7 @@ owner_type "ecs.entity"
             - {
                 id 7
                 type "Get Variable"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 1
+                reference_name "Age"
                 outputs {
                     Value id=6 type="float" flags=0
                 }
@@ -50,10 +41,7 @@ owner_type "ecs.entity"
             - {
                 id 12
                 type "Set Variable"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 1
+                reference_name "Age"
                 inputs {
                     Exec id=8
                     Value type="float"
@@ -65,9 +53,6 @@ owner_type "ecs.entity"
             - {
                 id 24
                 type "Greater Or Equal"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     A id=21
                     B 1.0
@@ -76,9 +61,6 @@ owner_type "ecs.entity"
             - {
                 id 29
                 type "Branch"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Exec id=25
                 }
@@ -86,9 +68,6 @@ owner_type "ecs.entity"
             - {
                 id 33
                 type "Destroy Entity"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Exec id=30
                 }
@@ -96,9 +75,6 @@ owner_type "ecs.entity"
             - {
                 id 35
                 type "Self"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)outputs {
                     - id=34 name="Entity" type_name="ecs.entity"
                 }
@@ -106,9 +82,6 @@ owner_type "ecs.entity"
             - {
                 id 123
                 type "Event"
-                x 0.0
-                y 0.0
-                placed #false
                 reference_name "Begin"
                 outputs {
                     Then id=122
@@ -117,9 +90,6 @@ owner_type "ecs.entity"
             - {
                 id 210
                 type "Get_GameVisualTransform"
-                x 0.0
-                y 0.0
-                placed #false
                 outputs {
                     Value flags=0
                     Value.scale id=212
@@ -128,10 +98,6 @@ owner_type "ecs.entity"
             - {
                 id 237
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 225
                 reference_name "Updated Age"
                 inputs {
                     Age id=238 type="float"
@@ -144,10 +110,6 @@ owner_type "ecs.entity"
             - {
                 id 260
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 241
                 reference_name "Age Phase"
                 inputs {
                     Age id=261 type="float"
@@ -160,34 +122,21 @@ owner_type "ecs.entity"
             - {
                 id 380
                 type "Random Range"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs Min=-6.0 Max=6.0
             }
             - {
                 id 384
                 type "Random Range"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs Min=-7.0 Max=7.0
             }
             - {
                 id 388
                 type "Random Range"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs Min=18.0 Max=42.0
             }
             - {
                 id 425
                 type "Call Function"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 396
                 reference_name "Initialize Shard"
                 inputs {
                     scale id=428 type="float" kind="data"
@@ -202,10 +151,6 @@ owner_type "ecs.entity"
             - {
                 id 544
                 type "Call Function"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 436
                 reference_name "Advance Shard Motion"
                 inputs {
                     Seconds id=547 type="float" kind="data"
@@ -256,9 +201,6 @@ owner_type "ecs.entity"
             - {
                 id 397
                 type "Function Entry"
-                x 0.0
-                y 0.0
-                placed #false
                 outputs {
                     scale id=421 type="float" kind="data"
                     "Pitch Rate" id=422 type="double" kind="data"
@@ -266,14 +208,11 @@ owner_type "ecs.entity"
                     Lift id=424 type="double" kind="data"
                 }
             }
-            - id=399 type="Return" x=0.0 y=0.0 placed=#false
+            - id=399 type="Return"
             - {
                 id 401
                 type "Set Variable"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 124
+                reference_name "Pitch Rate"
                 inputs {
                     Value type="float"
                 }
@@ -284,10 +223,7 @@ owner_type "ecs.entity"
             - {
                 id 406
                 type "Set Variable"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 142
+                reference_name "Roll Rate"
                 inputs {
                     Value type="float"
                 }
@@ -298,10 +234,7 @@ owner_type "ecs.entity"
             - {
                 id 411
                 type "Set Variable"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 160
+                reference_name "Lift"
                 inputs {
                     Value type="float"
                 }
@@ -312,10 +245,7 @@ owner_type "ecs.entity"
             - {
                 id 416
                 type "Set Variable"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 209
+                reference_name "Birth Scale"
                 inputs {
                     Value type="float"
                 }
@@ -347,21 +277,15 @@ owner_type "ecs.entity"
             - {
                 id 437
                 type "Function Entry"
-                x 0.0
-                y 0.0
-                placed #false
                 outputs {
                     Seconds id=542 type="float" kind="data"
                     Age id=543 declaration_id=248 type="float" kind="data"
                 }
             }
-            - id=439 type="Return" x=0.0 y=0.0 placed=#false
+            - id=439 type="Return"
             - {
                 id 441
                 type "Get_GameTransform"
-                x 0.0
-                y 0.0
-                placed #false
                 outputs {
                     Value flags=0
                     Value.x id=443
@@ -371,39 +295,30 @@ owner_type "ecs.entity"
             - {
                 id 445
                 type "Get_GameVelocity"
-                x 0.0
-                y 0.0
-                placed #false
                 outputs {
                     Value flags=0
                     Value.x id=447
                     Value.y id=448
                 }
             }
-            - id=449 type="Set_GameTransform_x" x=0.0 y=0.0 placed=#false
-            - id=455 type="Set_GameTransform_y" x=0.0 y=0.0 placed=#false
+            - id=449 type="Set_GameTransform_x"
+            - id=455 type="Set_GameTransform_y"
             - {
                 id 461
                 type "Get_GameVisualTransform"
-                x 0.0
-                y 0.0
-                placed #false
                 outputs {
                     Value flags=0
                     Value.pitch id=463
                     Value.roll id=464
                 }
             }
-            - id=465 type="Set_GameVisualTransform_pitch" x=0.0 y=0.0 placed=#false
-            - id=471 type="Set_GameVisualTransform_roll" x=0.0 y=0.0 placed=#false
-            - id=477 type="Set_GameVisualTransform_scale" x=0.0 y=0.0 placed=#false
+            - id=465 type="Set_GameVisualTransform_pitch"
+            - id=471 type="Set_GameVisualTransform_roll"
+            - id=477 type="Set_GameVisualTransform_scale"
             - {
                 id 483
                 type "Get Variable"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 124
+                reference_name "Pitch Rate"
                 outputs {
                     Value type="float" flags=0
                 }
@@ -411,10 +326,7 @@ owner_type "ecs.entity"
             - {
                 id 485
                 type "Get Variable"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 142
+                reference_name "Roll Rate"
                 outputs {
                     Value type="float" flags=0
                 }
@@ -422,10 +334,7 @@ owner_type "ecs.entity"
             - {
                 id 487
                 type "Get Variable"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 160
+                reference_name "Lift"
                 outputs {
                     Value type="float" flags=0
                 }
@@ -433,9 +342,6 @@ owner_type "ecs.entity"
             - {
                 id 489
                 type "Get_GameGeometry3D"
-                x 0.0
-                y 0.0
-                placed #false
                 outputs {
                     Value flags=0
                     Value.elevation id=491
@@ -444,9 +350,6 @@ owner_type "ecs.entity"
             - {
                 id 492
                 type "Multiply"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     A type="double" flags=0 group=0
                     B type="double" flags=0 group=0
@@ -458,9 +361,6 @@ owner_type "ecs.entity"
             - {
                 id 496
                 type "Add"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     A type="double" flags=0 group=0
                     B type="double" flags=0 group=0
@@ -469,14 +369,11 @@ owner_type "ecs.entity"
                     Result type="double" flags=0 group=0
                 }
             }
-            - id=500 type="Set_GameGeometry3D_elevation" x=0.0 y=0.0 placed=#false
+            - id=500 type="Set_GameGeometry3D_elevation"
             - {
                 id 506
                 type "Set Variable"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 160
+                reference_name "Lift"
                 inputs {
                     Value type="float"
                 }
@@ -487,9 +384,6 @@ owner_type "ecs.entity"
             - {
                 id 511
                 type "Multiply"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     A type="double" flags=0 group=0
                     B type="double" flags=0 group=0 default=90.0
@@ -501,9 +395,6 @@ owner_type "ecs.entity"
             - {
                 id 515
                 type "Subtract"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     A type="double" flags=0 group=0
                     B type="double" flags=0 group=0
@@ -515,10 +406,6 @@ owner_type "ecs.entity"
             - {
                 id 519
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 264
                 reference_name "Fade"
                 inputs {
                     Normalized id=520 type="float"
@@ -530,10 +417,6 @@ owner_type "ecs.entity"
             - {
                 id 522
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 292
                 reference_name "Position X"
                 inputs {
                     PositionX id=523 type="float"
@@ -547,10 +430,6 @@ owner_type "ecs.entity"
             - {
                 id 527
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 314
                 reference_name "Position Y"
                 inputs {
                     PositionY id=528 type="float"
@@ -564,10 +443,6 @@ owner_type "ecs.entity"
             - {
                 id 532
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 336
                 reference_name "Pitch"
                 inputs {
                     Pitch id=533 type="float"
@@ -581,10 +456,6 @@ owner_type "ecs.entity"
             - {
                 id 537
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 358
                 reference_name "Roll"
                 inputs {
                     Roll id=538 type="float"
@@ -598,10 +469,6 @@ owner_type "ecs.entity"
             - {
                 id 549
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 241
                 reference_name "Age Phase"
                 inputs {
                     Age id=550 type="float"
@@ -614,10 +481,6 @@ owner_type "ecs.entity"
             - {
                 id 553
                 type "Get Variable"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 209
                 reference_name "Birth Scale"
                 outputs {
                     Value type="float" flags=0
@@ -626,9 +489,6 @@ owner_type "ecs.entity"
             - {
                 id 555
                 type "Multiply"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     B type="double"
                 }

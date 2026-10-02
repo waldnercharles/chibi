@@ -11,9 +11,6 @@ owner_type "ecs.entity"
             - {
                 id 1
                 type "Event"
-                x 0.0
-                y 0.0
-                placed #false
                 reference_name "Tick"
                 outputs {
                     DeltaSeconds id=3 type="float" kind="data"
@@ -22,9 +19,6 @@ owner_type "ecs.entity"
             - {
                 id 4
                 type "Get Global Variable"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs Name="Player"
                 outputs {
                     Value type="handle" type_name="ecs.entity"
@@ -33,38 +27,29 @@ owner_type "ecs.entity"
             - {
                 id 7
                 type "Has Component"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Component "GAME.GameHealth"
                     Entity {
-                        binding kind="local" local_id=61
+                        binding kind="local" name="player"
                     }
                 }
             }
             - {
                 id 11
                 type "Branch"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Condition {
-                        binding kind="local" local_id=213
+                        binding kind="local" name="alive"
                     }
                 }
             }
             - {
                 id 16
                 type "Get Component"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Component "GAME.GameHealth"
                     Entity {
-                        binding kind="local" local_id=61
+                        binding kind="local" name="player"
                     }
                 }
                 outputs {
@@ -75,21 +60,17 @@ owner_type "ecs.entity"
             - {
                 id 38
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 20
                 reference_name "current / max(maximum, 1)"
                 inputs {
                     current {
                         id 211
                         type "int"
-                        binding kind="local" local_id=190
+                        binding kind="local" name="current"
                     }
                     maximum {
                         id 212
                         type "int"
-                        binding kind="local" local_id=191
+                        binding kind="local" name="maximum"
                     }
                 }
                 outputs {
@@ -99,33 +80,27 @@ owner_type "ecs.entity"
             - {
                 id 62
                 type "Set UI Value"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Element "#hull .bar"
                     Value {
-                        binding kind="local" local_id=68
+                        binding kind="local" name="hull"
                     }
                 }
             }
             - {
                 id 69
                 type "Format Text"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Format "{} / {}"
                     Arg0 {
                         type "int"
-                        binding kind="local" local_id=190
+                        binding kind="local" name="current"
                     }
                     Arg1 {
                         id 75
                         type "int"
                         flags 0
-                        binding kind="local" local_id=191
+                        binding kind="local" name="maximum"
                     }
                 }
                 outputs {
@@ -135,31 +110,21 @@ owner_type "ecs.entity"
             - {
                 id 76
                 type "Set UI Text"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs Element="#hull .readout"
             }
             - {
                 id 82
                 type "Get Component"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Component "GAME.GameVelocity"
                     Entity {
-                        binding kind="local" local_id=61
+                        binding kind="local" name="player"
                     }
                 }
             }
             - {
                 id 100
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 86
                 reference_name "length(vec2(velocity.x, velocity.y))"
                 inputs {
                     velocity id=101 type="struct" type_name="GameVelocity"
@@ -171,10 +136,6 @@ owner_type "ecs.entity"
             - {
                 id 143
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 129
                 reference_name "hull < 0.3"
                 inputs {
                     Exec id=146 kind="exec"
@@ -182,7 +143,7 @@ owner_type "ecs.entity"
                         id 144
                         type "double"
                         flags 0
-                        binding kind="local" local_id=68
+                        binding kind="local" name="hull"
                     }
                 }
                 outputs {
@@ -194,62 +155,44 @@ owner_type "ecs.entity"
             - {
                 id 149
                 type "Set UI Class"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs Element="#hull" Class="critical"
             }
             - {
                 id 156
                 type "Set UI Class"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs Element="#hull" Class="critical" On=#false
             }
             - {
                 id 163
                 type "Set UI Value"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs Element="#hull .bar"
             }
             - {
                 id 169
                 type "Set UI Text"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs Element="#status" Text="Ship lost"
             }
-            - id=175 type="Event" x=0.0 y=0.0 placed=#false reference_name="Repair"
+            - id=175 type="Event" reference_name="Repair"
             - {
                 id 177
                 type "Branch"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Condition {
-                        binding kind="local" local_id=213
+                        binding kind="local" name="alive"
                     }
                 }
             }
             - {
                 id 182
                 type "Set Component"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Component "GAME.GameHealth"
                     Entity {
-                        binding kind="local" local_id=61
+                        binding kind="local" name="player"
                     }
                     current {
                         id 189
-                        binding kind="local" local_id=191
+                        binding kind="local" name="maximum"
                     }
                 }
                 outputs {
@@ -260,9 +203,6 @@ owner_type "ecs.entity"
             - {
                 id 214
                 type "Set UI Value"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs Element="#speed"
             }
         }

@@ -11,9 +11,6 @@ owner_type "ecs.entity"
             - {
                 id 1
                 type "Event"
-                x 0.0
-                y 0.0
-                placed #false
                 reference_name "Tick"
                 outputs {
                     DeltaSeconds id=3 type="float" kind="data"
@@ -22,9 +19,6 @@ owner_type "ecs.entity"
             - {
                 id 4
                 type "Get Global Variable"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs Name="Score"
                 outputs {
                     Value type="float"
@@ -33,9 +27,6 @@ owner_type "ecs.entity"
             - {
                 id 7
                 type "Format Text"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Format "{:08.0f}"
                     Arg0 type="float"
@@ -44,17 +35,11 @@ owner_type "ecs.entity"
             - {
                 id 11
                 type "Set UI Text"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs Element="#score"
             }
             - {
                 id 17
                 type "Get Global Variable"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs Name="Lives"
                 outputs {
                     Value type="double"
@@ -63,9 +48,6 @@ owner_type "ecs.entity"
             - {
                 id 20
                 type "Format Text"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Format "BALLS   {:.0f}"
                     Arg0 type="double"
@@ -74,17 +56,11 @@ owner_type "ecs.entity"
             - {
                 id 24
                 type "Set UI Text"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs Element="#lives"
             }
             - {
                 id 30
                 type "Get Global Variable"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs Name="Rank"
                 outputs {
                     Value type="float"
@@ -93,9 +69,6 @@ owner_type "ecs.entity"
             - {
                 id 33
                 type "Format Text"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Format "RANK   {:.0f}"
                     Arg0 type="float"
@@ -104,34 +77,21 @@ owner_type "ecs.entity"
             - {
                 id 37
                 type "Set UI Text"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs Element="#rank"
             }
             - {
                 id 43
                 type "Get Global Variable"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs Name="Charge"
             }
             - {
                 id 46
                 type "Set UI Value"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs Element="#charge"
             }
             - {
                 id 66
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 52
                 reference_name "lives <= 0"
                 inputs {
                     Exec id=69 kind="exec"
@@ -146,17 +106,11 @@ owner_type "ecs.entity"
             - {
                 id 86
                 type "Set UI Text"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs Element="#mission" Text="GAME OVER"
             }
             - {
                 id 92
                 type "Get Global Variable"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs Name="Hits"
                 outputs {
                     Value type="float"
@@ -165,9 +119,6 @@ owner_type "ecs.entity"
             - {
                 id 95
                 type "Format Text"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Format "TARGET PRACTICE\n{:.0f} / 8 HITS"
                     Arg0 type="float"
@@ -176,9 +127,6 @@ owner_type "ecs.entity"
             - {
                 id 99
                 type "Set UI Text"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs Element="#mission"
             }
         }

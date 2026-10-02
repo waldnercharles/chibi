@@ -1720,7 +1720,8 @@ pin_spec graph_field_pin(const node *n, int source_index, const type_field *fiel
                        .kind = PIN_DATA,
                        .field_source = source->id,
                        .field_name = field->name,
-                       .flags = source->flags & PIN_FLAG_REFERENCE };
+                       .flags = (source->flags & PIN_FLAG_REFERENCE) |
+                                (field->color ? PIN_FLAG_COLOR : 0) };
 }
 
 int graph_expose_output_fields(graph *g, node *n, int index)
@@ -1845,7 +1846,8 @@ int graph_split_pin(graph *g, node *n, int output, int index)
             .field_source = parent.field_source,
             .field_name = parent.field_name,
             .split_type_name = type->name,
-            .flags = parent.flags & PIN_FLAG_REFERENCE,
+            .flags = (parent.flags & PIN_FLAG_REFERENCE) |
+                     (type->fields[i].color ? PIN_FLAG_COLOR : 0),
         };
         int at = graph_add_pin(g, n, output, &child);
         if (at < 0) {

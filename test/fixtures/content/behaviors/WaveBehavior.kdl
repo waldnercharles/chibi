@@ -19,23 +19,17 @@ owner_type "ecs.entity"
             - {
                 id 49
                 type "Get Variable"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 4
+                reference_name "Elapsed"
                 outputs {
                     Value id=48 type="float" flags=0
                 }
             }
-            - id=50 type="Delta Time" x=0.0 y=0.0 placed=#false
-            - id=52 type="Add" x=0.0 y=0.0 placed=#false
+            - id=50 type="Delta Time"
+            - id=52 type="Add"
             - {
                 id 60
                 type "Set Variable"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 4
+                reference_name "Elapsed"
                 inputs {
                     Exec id=56
                     Value type="float"
@@ -44,13 +38,10 @@ owner_type "ecs.entity"
                     Value type="float"
                 }
             }
-            - id=124 type="Event" x=0.0 y=0.0 placed=#false reference_name="Tick"
+            - id=124 type="Event" reference_name="Tick"
             - {
                 id 126
                 type "Get_GameTransform"
-                x 0.0
-                y 0.0
-                placed #false
                 outputs {
                     Value flags=0
                 }
@@ -58,9 +49,6 @@ owner_type "ecs.entity"
             - {
                 id 128
                 type "Self"
-                x 0.0
-                y 0.0
-                placed #false
                 outputs {
                     Self type_name="ecs.entity"
                 }
@@ -68,19 +56,12 @@ owner_type "ecs.entity"
             - {
                 id 130
                 type "Find Nearest Entity"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs Radius=1000000.0 Categories=1
             }
-            - id=139 type="Branch" x=0.0 y=0.0 placed=#false
+            - id=139 type="Branch"
             - {
                 id 147
                 type "Call Function"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 42
                 reference_name "Spawn Within Wave Limit"
                 inputs {
                     Exec id=144
@@ -115,9 +96,6 @@ owner_type "ecs.entity"
             - {
                 id 45
                 type "Function Entry"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)outputs {
                     - id=43 name="Then"
                     - id=44 name="Player Position" type="struct" type_name="CF_V2" kind="data"
@@ -126,9 +104,6 @@ owner_type "ecs.entity"
             - {
                 id 47
                 type "Return"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Exec id=46
                 }
@@ -136,10 +111,7 @@ owner_type "ecs.entity"
             - {
                 id 62
                 type "Get Variable"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 2
+                reference_name "Interval"
                 outputs {
                     Value id=61 type="float" flags=0 default=1.5
                 }
@@ -147,31 +119,22 @@ owner_type "ecs.entity"
             - {
                 id 63
                 type "Max"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs B=0.01
             }
             - {
                 id 68
                 type "Get Variable"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 4
+                reference_name "Elapsed"
                 outputs {
                     Value id=67 type="float" flags=0
                 }
             }
-            - id=69 type="Greater Or Equal" x=0.0 y=0.0 placed=#false
-            - id=73 type="WhileLoop" x=0.0 y=0.0 placed=#false
+            - id=69 type="Greater Or Equal"
+            - id=73 type="WhileLoop"
             - {
                 id 79
                 type "Get Variable"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 5
+                reference_name "Spawned"
                 outputs {
                     Value id=78 flags=0
                 }
@@ -179,24 +142,18 @@ owner_type "ecs.entity"
             - {
                 id 81
                 type "Get Variable"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 1
+                reference_name "CountLimit"
                 outputs {
                     Value id=80 flags=0 default=8
                 }
             }
-            - id=82 type="Integer Greater Or Equal" x=0.0 y=0.0 placed=#false
-            - id=86 type="Branch" x=0.0 y=0.0 placed=#false
-            - id=91 type="Subtract" x=0.0 y=0.0 placed=#false
+            - id=82 type="Integer Greater Or Equal"
+            - id=86 type="Branch"
+            - id=91 type="Subtract"
             - {
                 id 99
                 type "Set Variable"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 4
+                reference_name "Elapsed"
                 inputs {
                     Exec id=95
                     Value type="float"
@@ -208,10 +165,6 @@ owner_type "ecs.entity"
             - {
                 id 103
                 type "Call Function"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 7
                 reference_name "Spawn Enemy"
                 inputs {
                     Exec id=100
@@ -224,9 +177,6 @@ owner_type "ecs.entity"
             - {
                 id 104
                 type "Add"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     B type="int" default=1
                 }
@@ -234,10 +184,7 @@ owner_type "ecs.entity"
             - {
                 id 112
                 type "Set Variable"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 5
+                reference_name "Spawned"
                 inputs {
                     Exec id=108
                 }
@@ -245,10 +192,7 @@ owner_type "ecs.entity"
             - {
                 id 114
                 type "Get Variable"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 6
+                reference_name "Side"
                 outputs {
                     Value id=113 type="float" flags=0 default=-1.0
                 }
@@ -256,18 +200,12 @@ owner_type "ecs.entity"
             - {
                 id 115
                 type "Multiply"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs B=-1.0
             }
             - {
                 id 123
                 type "Set Variable"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 6
+                reference_name "Side"
                 inputs {
                     Exec id=119
                     Value type="float" default=-1.0
@@ -314,9 +252,6 @@ owner_type "ecs.entity"
             - {
                 id 10
                 type "Function Entry"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)outputs {
                     - id=8 name="Then"
                     - id=9 name="Player Position" type="struct" type_name="CF_V2" kind="data"
@@ -327,9 +262,6 @@ owner_type "ecs.entity"
             - {
                 id 12
                 type "Return"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Exec id=11
                 }
@@ -337,10 +269,7 @@ owner_type "ecs.entity"
             - {
                 id 16
                 type "Get Variable"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 6
+                reference_name "Side"
                 outputs {
                     Value id=15 type="float" flags=0 default=-1.0
                 }
@@ -348,22 +277,16 @@ owner_type "ecs.entity"
             - {
                 id 18
                 type "Get Variable"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 3
+                reference_name "SpawnDistance"
                 outputs {
                     Value id=17 type="float" flags=0 default=260.0
                 }
             }
-            - id=19 type="Multiply" x=0.0 y=0.0 placed=#false
-            - id=23 type="Add" x=0.0 y=0.0 placed=#false
+            - id=19 type="Multiply"
+            - id=23 type="Add"
             - {
                 id 30
                 type "Make_GameTransform"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     x id=27
                 }
@@ -374,14 +297,11 @@ owner_type "ecs.entity"
             - {
                 id 31
                 type "Spawn Prototype"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Prototype type_name="name" default="Enemy"
                 }
             }
-            - id=36 type="SetEntity_GameTransform" x=0.0 y=0.0 placed=#false
+            - id=36 type="SetEntity_GameTransform"
         }
         (array)edges {
             - from="10.Then" to="31.Exec"

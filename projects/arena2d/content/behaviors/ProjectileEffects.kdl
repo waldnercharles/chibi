@@ -7,13 +7,10 @@ owner_type "ecs.entity"
         kind "event"
         name ""
         (array)nodes {
-            - id=1 type="Event" x=0.0 y=0.0 placed=#false reference_name="Begin"
+            - id=1 type="Event" reference_name="Begin"
             - {
                 id 3
                 type "Self"
-                x 0.0
-                y 0.0
-                placed #false
                 outputs {
                     Self type_name="ecs.entity"
                 }
@@ -21,12 +18,9 @@ owner_type "ecs.entity"
             - {
                 id 5
                 type "Spawn Prototype"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs Prototype="TrailEmitter"
             }
-            - id=10 type="Set_GameParticleEmitter_parent" x=0.0 y=0.0 placed=#false
+            - id=10 type="Set_GameParticleEmitter_parent"
         }
         (array)edges {
             - from="1.Then" to="5.Exec"

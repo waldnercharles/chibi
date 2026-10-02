@@ -11,9 +11,6 @@ owner_type "ecs.entity"
             - {
                 id 1
                 type "Event"
-                x 0.0
-                y 0.0
-                placed #false
                 reference_name "Damage"
                 outputs {
                     Amount id=3 declaration_id=2 type="int" kind="data"
@@ -23,10 +20,6 @@ owner_type "ecs.entity"
             - {
                 id 17
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 5
                 reference_name "health -= amount"
                 inputs {
                     Exec id=21 kind="exec"
@@ -45,10 +38,6 @@ owner_type "ecs.entity"
             - {
                 id 106
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 92
                 reference_name "health <= 0"
                 inputs {
                     Exec id=109 kind="exec"
@@ -68,20 +57,14 @@ owner_type "ecs.entity"
             - {
                 id 137
                 type "Self"
-                x 0.0
-                y 0.0
-                placed #false
                 outputs {
                     Self type_name="ecs.entity"
                 }
             }
-            - id=139 type="Release Material" x=0.0 y=0.0 placed=#false
+            - id=139 type="Release Material"
             - {
                 id 143
                 type "Call Function"
-                x 0.0
-                y 0.0
-                placed #false
                 reference_id 256
                 reference_name "Spawn Prototype At"
                 reference_asset "WeaponActions"
@@ -104,9 +87,6 @@ owner_type "ecs.entity"
             - {
                 id 149
                 type "Call Function"
-                x 0.0
-                y 0.0
-                placed #false
                 reference_id 256
                 reference_name "Spawn Prototype At"
                 reference_asset "WeaponActions"

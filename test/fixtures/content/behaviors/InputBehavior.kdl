@@ -11,9 +11,6 @@ owner_type "ecs.entity"
             - {
                 id 1
                 type "Event"
-                x 0.0
-                y 0.0
-                placed #false
                 reference_name "Input"
                 outputs {
                     Direction id=3 type="struct" type_name="CF_V2" kind="data"
@@ -22,9 +19,6 @@ owner_type "ecs.entity"
             - {
                 id 14
                 type "Set_GameVelocity"
-                x 0.0
-                y 0.0
-                placed #false
                 outputs {
                     Value id=35
                 }
@@ -32,9 +26,6 @@ owner_type "ecs.entity"
             - {
                 id 18
                 type "Get_GameMovement"
-                x 0.0
-                y 0.0
-                placed #false
                 outputs {
                     Value id=21 flags=0
                 }
@@ -42,10 +33,6 @@ owner_type "ecs.entity"
             - {
                 id 88
                 type "Call Function"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 36
                 reference_name "Face Direction"
                 inputs {
                     Exec id=84
@@ -58,9 +45,6 @@ owner_type "ecs.entity"
             - {
                 id 105
                 type "Call Pure Function"
-                x 0.0
-                y 0.0
-                placed #false
                 reference_id 93
                 reference_name "Movement Velocity"
                 reference_asset "MovementActions"
@@ -72,21 +56,18 @@ owner_type "ecs.entity"
                     Velocity id=108 type="struct" type_name="GameVelocity"
                 }
             }
-            - id=355 type="Has_GameDash" x=0.0 y=0.0 placed=#false
-            - id=357 type="Branch" x=0.0 y=0.0 placed=#false
+            - id=355 type="Has_GameDash"
+            - id=357 type="Branch"
             - {
                 id 362
                 type "Get_GameDash"
-                x 0.0
-                y 0.0
-                placed #false
                 outputs {
                     Value flags=0
                     Value.remaining id=364
                 }
             }
-            - id=365 type="Less" x=0.0 y=0.0 placed=#false
-            - id=369 type="Branch" x=0.0 y=0.0 placed=#false
+            - id=365 type="Less"
+            - id=369 type="Branch"
         }
         (array)edges {
             - from="1.Then" to="357.Exec"
@@ -114,9 +95,6 @@ owner_type "ecs.entity"
             - {
                 id 40
                 type "Function Entry"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)outputs {
                     - id=37 name="Then"
                     - id=91 name="Direction" type="struct" type_name="CF_V2" kind="data"
@@ -127,9 +105,6 @@ owner_type "ecs.entity"
             - {
                 id 42
                 type "Return"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Exec id=41
                 }
@@ -137,9 +112,6 @@ owner_type "ecs.entity"
             - {
                 id 44
                 type "Has_GameOrientation"
-                x 0.0
-                y 0.0
-                placed #false
                 outputs {
                     Value id=43
                 }
@@ -147,9 +119,6 @@ owner_type "ecs.entity"
             - {
                 id 49
                 type "Branch"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Exec id=45
                 }
@@ -157,9 +126,6 @@ owner_type "ecs.entity"
             - {
                 id 52
                 type "Abs"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Value id=50 group=0
                 }
@@ -170,9 +136,6 @@ owner_type "ecs.entity"
             - {
                 id 55
                 type "Abs"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Value id=53 group=0
                 }
@@ -183,9 +146,6 @@ owner_type "ecs.entity"
             - {
                 id 59
                 type "Add"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     A id=56 group=0
                     B group=0
@@ -197,9 +157,6 @@ owner_type "ecs.entity"
             - {
                 id 63
                 type "Greater Or Equal"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     A id=60
                 }
@@ -207,9 +164,6 @@ owner_type "ecs.entity"
             - {
                 id 68
                 type "Branch"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Exec id=64
                 }
@@ -217,9 +171,6 @@ owner_type "ecs.entity"
             - {
                 id 71
                 type "Call Pure Function"
-                x 0.0
-                y 0.0
-                placed #false
                 reference_id 1
                 reference_name "Direction Orientation"
                 reference_asset "DirectionMath"
@@ -234,9 +185,6 @@ owner_type "ecs.entity"
             - {
                 id 83
                 type "Set_GameOrientation"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Exec id=79
                 }

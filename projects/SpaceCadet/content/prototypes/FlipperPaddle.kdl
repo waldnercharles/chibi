@@ -1,7 +1,7 @@
 name "FlipperPaddle"
 components {
     GAME.GameActionBinding action="LeftFlip" source="A"
-    GAME.GameAppearance border_color=4000790783 border_width=3.0 color=4057436671 height=16.0 layer=6 shape="Capsule" width=76.0
+    GAME.GameAppearance border_color=0xee7738ff border_width=3.0 color=0xf1d791ff height=16.0 layer=6 shape="Capsule" width=76.0
     GAME.GameBody type="Kinematic"
     GAME.GameCollider category=2 friction=0.12 height=16.0 mask=1 restitution=0.9 shape="Box" width=76.0
     (object)GAME.GameInput

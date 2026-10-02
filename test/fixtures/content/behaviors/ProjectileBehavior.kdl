@@ -8,27 +8,21 @@ owner_type "ecs.entity"
         kind "event"
         name ""
         (array)nodes {
-            - id=1 type="Event" x=0.0 y=0.0 placed=#false reference_name="Tick"
+            - id=1 type="Event" reference_name="Tick"
             - {
                 id 3
                 type "Get_GameProjectile"
-                x 0.0
-                y 0.0
-                placed #false
                 outputs {
                     Value flags=0
                     Value.lifetime id=8
                     Value.age id=12
                 }
             }
-            - id=13 type="Delta Time" x=0.0 y=0.0 placed=#false
-            - id=39 type="Add" x=0.0 y=0.0 placed=#false
+            - id=13 type="Delta Time"
+            - id=39 type="Add"
             - {
                 id 51
                 type "Set_GameProjectile_age"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Target id=154
                 }
@@ -38,26 +32,19 @@ owner_type "ecs.entity"
                     Value.age id=63
                 }
             }
-            - id=64 type="Greater Or Equal" x=0.0 y=0.0 placed=#false
-            - id=68 type="Branch" x=0.0 y=0.0 placed=#false
+            - id=64 type="Greater Or Equal"
+            - id=68 type="Branch"
             - {
                 id 73
                 type "Self"
-                x 0.0
-                y 0.0
-                placed #false
                 outputs {
                     Self type_name="ecs.entity"
                 }
             }
-            - id=75 type="Destroy Entity" x=0.0 y=0.0 placed=#false
+            - id=75 type="Destroy Entity"
             - {
                 id 131
                 type "Call Function"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 79
                 reference_name "Face Direction"
                 inputs {
                     Exec id=127
@@ -71,9 +58,6 @@ owner_type "ecs.entity"
             - {
                 id 157
                 type "Get_GameVelocity"
-                x 0.0
-                y 0.0
-                placed #false
                 outputs {
                     Value flags=0
                     Value.x id=159
@@ -108,9 +92,6 @@ owner_type "ecs.entity"
             - {
                 id 83
                 type "Function Entry"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)outputs {
                     - id=80 name="Then"
                     - id=81 name="X" type="float" kind="data"
@@ -120,9 +101,6 @@ owner_type "ecs.entity"
             - {
                 id 85
                 type "Return"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Exec id=84
                 }
@@ -130,9 +108,6 @@ owner_type "ecs.entity"
             - {
                 id 87
                 type "Has_GameOrientation"
-                x 0.0
-                y 0.0
-                placed #false
                 outputs {
                     Value id=86
                 }
@@ -140,9 +115,6 @@ owner_type "ecs.entity"
             - {
                 id 92
                 type "Branch"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Exec id=88
                 }
@@ -150,9 +122,6 @@ owner_type "ecs.entity"
             - {
                 id 106
                 type "Greater Or Equal"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     A id=103
                 }
@@ -160,9 +129,6 @@ owner_type "ecs.entity"
             - {
                 id 111
                 type "Branch"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Exec id=107
                 }
@@ -170,9 +136,6 @@ owner_type "ecs.entity"
             - {
                 id 114
                 type "Call Pure Function"
-                x 0.0
-                y 0.0
-                placed #false
                 reference_id 1
                 reference_name "Direction Orientation"
                 reference_asset "DirectionMath"
@@ -187,9 +150,6 @@ owner_type "ecs.entity"
             - {
                 id 126
                 type "Set_GameOrientation"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Exec id=122
                 }
@@ -197,10 +157,6 @@ owner_type "ecs.entity"
             - {
                 id 150
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 132
                 reference_name "Direction Magnitude"
                 inputs {
                     x id=151 type="float" flags=0

@@ -8,7 +8,7 @@ components {
             exponent 1.0
             start x=2.0 y=3.0
         }
-        color 16773375
+        color 0x00fff0ff
         direction x=-1.0
         drag {
             start x=2.0 y=3.0
@@ -16,7 +16,7 @@ components {
         emission {
             start x=0.01 y=0.02
         }
-        end_color 5013504
+        end_color 0x004c8000
         fluid_mass 0.0002
         heading_only #true
         lifetime x=0.15 y=0.3

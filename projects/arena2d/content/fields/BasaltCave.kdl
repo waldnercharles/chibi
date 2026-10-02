@@ -14,55 +14,39 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
         kind "event"
         name ""
         (array)nodes {
-            - id=5 type="Field Output" x=0.0 y=0.0 placed=#false
-            - id=8 type="Field X" x=0.0 y=0.0 placed=#false
-            - id=10 type="Field Y" x=0.0 y=0.0 placed=#false
+            - id=5 type="Field Output"
+            - id=8 type="Field X"
+            - id=10 type="Field Y"
             - {
                 id 12
                 type "Field Parameter"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs Name="Radius"
             }
             - {
                 id 15
                 type "Field Parameter"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs Name="Roughness"
             }
             - {
                 id 18
                 type "Field Parameter"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs Name="ChamberSpacing"
             }
             - {
                 id 21
                 type "Field Parameter"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs Name="OriginX"
             }
             - {
                 id 20451
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 20439
                 reference_name "x + originX"
                 inputs {
                     x {
                         id 20452
                         type "float"
                         flags 0
-                        binding kind="local" local_id=23832
+                        binding kind="local" name="x"
                     }
                     originX id=20453 type="float" flags=0
                 }
@@ -73,10 +57,6 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 20489
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 20479
                 reference_name "-y"
                 inputs {
                     y id=20490 type="float" flags=0
@@ -88,23 +68,19 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 20535
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 20502
                 reference_name "x / 180 + z / 420 + 1.3"
                 inputs {
                     x {
                         id 20536
                         type "float"
                         flags 0
-                        binding kind="local" local_id=23833
+                        binding kind="local" name="worldX"
                     }
                     z {
                         id 20537
                         type "float"
                         flags 0
-                        binding kind="local" local_id=23834
+                        binding kind="local" name="worldZ"
                     }
                 }
                 outputs {
@@ -114,23 +90,19 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 20594
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 20561
                 reference_name "x / 95 - z / 300 + 0.4"
                 inputs {
                     x {
                         id 20595
                         type "float"
                         flags 0
-                        binding kind="local" local_id=23833
+                        binding kind="local" name="worldX"
                     }
                     z {
                         id 20596
                         type "float"
                         flags 0
-                        binding kind="local" local_id=23834
+                        binding kind="local" name="worldZ"
                     }
                 }
                 outputs {
@@ -140,23 +112,19 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 20646
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 20620
                 reference_name "x / 1300 + z / 2100"
                 inputs {
                     x {
                         id 20647
                         type "float"
                         flags 0
-                        binding kind="local" local_id=23833
+                        binding kind="local" name="worldX"
                     }
                     z {
                         id 20648
                         type "float"
                         flags 0
-                        binding kind="local" local_id=23834
+                        binding kind="local" name="worldZ"
                     }
                 }
                 outputs {
@@ -166,23 +134,19 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 20705
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 20672
                 reference_name "x / 900 + z / 260 + 2.2"
                 inputs {
                     x {
                         id 20706
                         type "float"
                         flags 0
-                        binding kind="local" local_id=23833
+                        binding kind="local" name="worldX"
                     }
                     z {
                         id 20707
                         type "float"
                         flags 0
-                        binding kind="local" local_id=23834
+                        binding kind="local" name="worldZ"
                     }
                 }
                 outputs {
@@ -192,17 +156,13 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 20755
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 20731
                 reference_name "0.5 + 0.5 * sin(drift)"
                 inputs {
                     drift {
                         id 20756
                         type "float"
                         flags 0
-                        binding kind="local" local_id=23837
+                        binding kind="local" name="drift"
                     }
                 }
                 outputs {
@@ -212,41 +172,37 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 20848
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 20784
                 reference_name "x / 26 + 0.9 * sin(wobbleA) + 0.5 * sin(wobbleB) + 4.6 * swayAmount * sin(sway)"
                 inputs {
                     x {
                         id 20849
                         type "float"
                         flags 0
-                        binding kind="local" local_id=23833
+                        binding kind="local" name="worldX"
                     }
                     wobbleA {
                         id 20850
                         type "float"
                         flags 0
-                        binding kind="local" local_id=23835
+                        binding kind="local" name="wobbleA"
                     }
                     wobbleB {
                         id 20851
                         type "float"
                         flags 0
-                        binding kind="local" local_id=23836
+                        binding kind="local" name="wobbleB"
                     }
                     swayAmount {
                         id 20852
                         type "float"
                         flags 0
-                        binding kind="local" local_id=23839
+                        binding kind="local" name="swayAmount"
                     }
                     sway {
                         id 20853
                         type "float"
                         flags 0
-                        binding kind="local" local_id=23838
+                        binding kind="local" name="sway"
                     }
                 }
                 outputs {
@@ -256,41 +212,37 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 21099
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 20990
                 reference_name "1 / 26 + 0.9 * cos(wobbleA) / 180 + 0.5 * cos(wobbleB) / 95 + 4.6 * (0.5 * cos(drift) / 1300 * sin(sway) + swayAmount * cos(sway) / 900)"
                 inputs {
                     wobbleA {
                         id 21100
                         type "float"
                         flags 0
-                        binding kind="local" local_id=23835
+                        binding kind="local" name="wobbleA"
                     }
                     wobbleB {
                         id 21101
                         type "float"
                         flags 0
-                        binding kind="local" local_id=23836
+                        binding kind="local" name="wobbleB"
                     }
                     drift {
                         id 21102
                         type "float"
                         flags 0
-                        binding kind="local" local_id=23837
+                        binding kind="local" name="drift"
                     }
                     sway {
                         id 21103
                         type "float"
                         flags 0
-                        binding kind="local" local_id=23838
+                        binding kind="local" name="sway"
                     }
                     swayAmount {
                         id 21104
                         type "float"
                         flags 0
-                        binding kind="local" local_id=23839
+                        binding kind="local" name="swayAmount"
                     }
                 }
                 outputs {
@@ -300,41 +252,37 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 21357
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 21255
                 reference_name "0.9 * cos(wobbleA) / 420 - 0.5 * cos(wobbleB) / 300 + 4.6 * (0.5 * cos(drift) / 2100 * sin(sway) + swayAmount * cos(sway) / 260)"
                 inputs {
                     wobbleA {
                         id 21358
                         type "float"
                         flags 0
-                        binding kind="local" local_id=23835
+                        binding kind="local" name="wobbleA"
                     }
                     wobbleB {
                         id 21359
                         type "float"
                         flags 0
-                        binding kind="local" local_id=23836
+                        binding kind="local" name="wobbleB"
                     }
                     drift {
                         id 21360
                         type "float"
                         flags 0
-                        binding kind="local" local_id=23837
+                        binding kind="local" name="drift"
                     }
                     sway {
                         id 21361
                         type "float"
                         flags 0
-                        binding kind="local" local_id=23838
+                        binding kind="local" name="sway"
                     }
                     swayAmount {
                         id 21362
                         type "float"
                         flags 0
-                        binding kind="local" local_id=23839
+                        binding kind="local" name="swayAmount"
                     }
                 }
                 outputs {
@@ -344,10 +292,6 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 21531
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 21513
                 reference_name "floor(columnCoord)"
                 inputs {
                     columnCoord id=21532 type="float" flags=0
@@ -359,10 +303,6 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 21624
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 21598
                 reference_name "(columnCoord - floor(columnCoord) - 0.5) / columnsPerX"
                 inputs {
                     columnCoord id=21625 type="float" flags=0
@@ -370,7 +310,7 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
                         id 21626
                         type "float"
                         flags 0
-                        binding kind="local" local_id=23840
+                        binding kind="local" name="columnsPerX"
                     }
                 }
                 outputs {
@@ -380,17 +320,13 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 21815
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 21801
                 reference_name "0.5 / columnsPerX"
                 inputs {
                     columnsPerX {
                         id 21816
                         type "float"
                         flags 0
-                        binding kind="local" local_id=23840
+                        binding kind="local" name="columnsPerX"
                     }
                 }
                 outputs {
@@ -400,17 +336,13 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 21939
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 21927
                 reference_name "offset / halfWidth"
                 inputs {
                     offset {
                         id 21940
                         type "float"
                         flags 0
-                        binding kind="local" local_id=23842
+                        binding kind="local" name="offset"
                     }
                     halfWidth id=21941 type="float" flags=0
                 }
@@ -421,10 +353,6 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 21995
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 21983
                 reference_name "columnsPerZ / columnsPerX"
                 inputs {
                     columnsPerZ id=21996 type="float" flags=0
@@ -432,7 +360,7 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
                         id 21997
                         type "float"
                         flags 0
-                        binding kind="local" local_id=23840
+                        binding kind="local" name="columnsPerX"
                     }
                 }
                 outputs {
@@ -442,29 +370,25 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 22227
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 22210
                 reference_name "z - lean * offset"
                 inputs {
                     z {
                         id 22228
                         type "float"
                         flags 0
-                        binding kind="local" local_id=23834
+                        binding kind="local" name="worldZ"
                     }
                     lean {
                         id 22229
                         type "float"
                         flags 0
-                        binding kind="local" local_id=23843
+                        binding kind="local" name="lean"
                     }
                     offset {
                         id 22230
                         type "float"
                         flags 0
-                        binding kind="local" local_id=23842
+                        binding kind="local" name="offset"
                     }
                 }
                 outputs {
@@ -474,17 +398,13 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 22332
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 22280
                 reference_name "26 + 36 * (0.5 + 0.5 * sin(column * 2.3999631 + 0.3))"
                 inputs {
                     column {
                         id 22333
                         type "float"
                         flags 0
-                        binding kind="local" local_id=23841
+                        binding kind="local" name="column"
                     }
                 }
                 outputs {
@@ -494,17 +414,13 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 22391
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 22353
                 reference_name "0.5 + 0.5 * sin(column * 1.93716 + 1.1)"
                 inputs {
                     column {
                         id 22392
                         type "float"
                         flags 0
-                        binding kind="local" local_id=23841
+                        binding kind="local" name="column"
                     }
                 }
                 outputs {
@@ -514,17 +430,13 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 22424
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 22412
                 reference_name "jointSpacing * jointPhase"
                 inputs {
                     jointSpacing {
                         id 22425
                         type "float"
                         flags 0
-                        binding kind="local" local_id=23844
+                        binding kind="local" name="jointSpacing"
                     }
                     jointPhase id=22426 type="float" flags=0
                 }
@@ -535,17 +447,13 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 22570
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 22518
                 reference_name "sin(column * 3.30119 + 2.2)"
                 inputs {
                     column {
                         id 22571
                         type "float"
                         flags 0
-                        binding kind="local" local_id=23841
+                        binding kind="local" name="column"
                     }
                 }
                 outputs {
@@ -555,17 +463,13 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 22643
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 22591
                 reference_name "sin(column * 0.83261 + 4.4)"
                 inputs {
                     column {
                         id 22644
                         type "float"
                         flags 0
-                        binding kind="local" local_id=23841
+                        binding kind="local" name="column"
                     }
                 }
                 outputs {
@@ -575,10 +479,6 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 22760
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 22664
                 reference_name "(along + 0.45 * jointSpacing * sin(along / (0.9 * jointSpacing) + 7 * jointPhase) - start - 0.2 * tilt * offset - 3 * bow * across * across) / jointSpacing"
                 inputs {
                     along id=22761 type="float" flags=0
@@ -586,7 +486,7 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
                         id 22762
                         type "float"
                         flags 0
-                        binding kind="local" local_id=23844
+                        binding kind="local" name="jointSpacing"
                     }
                     jointPhase id=22763 type="float" flags=0
                     start id=22764 type="float" flags=0
@@ -595,7 +495,7 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
                         id 22766
                         type "float"
                         flags 0
-                        binding kind="local" local_id=23842
+                        binding kind="local" name="offset"
                     }
                     bow id=22767 type="float" flags=0
                     across id=22768 type="float" flags=0
@@ -607,10 +507,6 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 23041
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 23031
                 reference_name "floor(blockCoord)"
                 inputs {
                     blockCoord id=23042 type="float" flags=0
@@ -622,10 +518,6 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 23152
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 23140
                 reference_name "blockCoord - block"
                 inputs {
                     blockCoord id=23153 type="float" flags=0
@@ -638,10 +530,6 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 23286
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 23262
                 reference_name "start + (block + 0.5) * jointSpacing"
                 inputs {
                     start id=23287 type="float" flags=0
@@ -650,7 +538,7 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
                         id 23289
                         type "float"
                         flags 0
-                        binding kind="local" local_id=23844
+                        binding kind="local" name="jointSpacing"
                     }
                 }
                 outputs {
@@ -660,10 +548,6 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 23401
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 23365
                 reference_name "min(min(blockT, 1 - blockT) * jointSpacing, halfWidth - abs(offset))"
                 inputs {
                     blockT id=23402 type="float" flags=0
@@ -671,14 +555,14 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
                         id 23403
                         type "float"
                         flags 0
-                        binding kind="local" local_id=23844
+                        binding kind="local" name="jointSpacing"
                     }
                     halfWidth id=23404 type="float" flags=0
                     offset {
                         id 23405
                         type "float"
                         flags 0
-                        binding kind="local" local_id=23842
+                        binding kind="local" name="offset"
                     }
                 }
                 outputs {
@@ -688,41 +572,37 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 23538
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 23511
                 reference_name "x - offset - lean * (center - z)"
                 inputs {
                     x {
                         id 23539
                         type "float"
                         flags 0
-                        binding kind="local" local_id=23832
+                        binding kind="local" name="x"
                     }
                     offset {
                         id 23540
                         type "float"
                         flags 0
-                        binding kind="local" local_id=23842
+                        binding kind="local" name="offset"
                     }
                     lean {
                         id 23541
                         type "float"
                         flags 0
-                        binding kind="local" local_id=23843
+                        binding kind="local" name="lean"
                     }
                     center {
                         id 23542
                         type "float"
                         flags 0
-                        binding kind="local" local_id=23845
+                        binding kind="local" name="center"
                     }
                     z {
                         id 23543
                         type "float"
                         flags 0
-                        binding kind="local" local_id=23834
+                        binding kind="local" name="worldZ"
                     }
                 }
                 outputs {
@@ -732,17 +612,13 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 23654
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 23644
                 reference_name "-center"
                 inputs {
                     center {
                         id 23655
                         type "float"
                         flags 0
-                        binding kind="local" local_id=23845
+                        binding kind="local" name="center"
                     }
                 }
                 outputs {
@@ -752,10 +628,6 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 23681
                 type "Call Pure Function"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 10481
                 reference_name "Cave Clearance"
                 inputs {
                     X id=23682 type="float"
@@ -763,7 +635,7 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
                     Column {
                         id 23684
                         type "float"
-                        binding kind="local" local_id=23841
+                        binding kind="local" name="column"
                     }
                     Radius id=23685 type="float"
                     Spacing id=23686 type="float"
@@ -776,17 +648,13 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 23768
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 23744
                 reference_name "select(clearance, min(clearance, edge), max(clearance, -edge))"
                 inputs {
                     clearance {
                         id 23769
                         type "float"
                         flags 0
-                        binding kind="local" local_id=23846
+                        binding kind="local" name="clearance"
                     }
                     edge id=23770 type="float" flags=0
                 }
@@ -903,9 +771,6 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 7090
                 type "Function Entry"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)outputs {
                     - id=7094 name="X" type="float" kind="data"
                     - id=7095 name="Y" type="float" kind="data"
@@ -918,9 +783,6 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 7092
                 type "Return"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)inputs {
                     - id=7100 name="Distance" type="float" kind="data"
                 }
@@ -928,10 +790,6 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 7117
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 7101
                 reference_name "hash(i, j, 13)"
                 inputs {
                     i id=7118 type="float" flags=0
@@ -944,10 +802,6 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 7220
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 7153
                 reference_name "circle(x - centerX, y - centerY, select(size + 0.5, 170 + 180 * (size * 0.5 + 0.5), 90))"
                 inputs {
                     x id=7221 type="float" flags=0
@@ -985,9 +839,6 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 7512
                 type "Function Entry"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)outputs {
                     - id=7516 name="X" type="float" kind="data"
                     - id=7517 name="Y" type="float" kind="data"
@@ -1002,9 +853,6 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 7514
                 type "Return"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)inputs {
                     - id=7524 name="Distance" type="float" kind="data"
                 }
@@ -1012,10 +860,6 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 7607
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 7525
                 reference_name "select(hash(doorI, doorJ, 22) + 0.5, capsule(x, y, fromX, fromY, doorX, doorY, 65 + 55 * (hash(doorI, doorJ, 23) * 0.5 + 0.5)), 100000)"
                 inputs {
                     doorI id=7608 type="float" flags=0
@@ -1056,9 +900,6 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 8274
                 type "Function Entry"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)outputs {
                     - id=8278 name="X" type="float" kind="data"
                     - id=8279 name="Y" type="float" kind="data"
@@ -1073,9 +914,6 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 8276
                 type "Return"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)inputs {
                     - id=8286 name="Distance" type="float" kind="data"
                 }
@@ -1083,10 +921,6 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 8362
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 8287
                 reference_name "select(hash(doorI, doorJ, 25), capsule(x, y, fromX, fromY, doorX, doorY, 55 + 45 * (hash(doorI, doorJ, 26) * 0.5 + 0.5)), 100000)"
                 inputs {
                     doorI id=8363 type="float" flags=0
@@ -1127,9 +961,6 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 8973
                 type "Function Entry"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)outputs {
                     - id=8977 name="X" type="float" kind="data"
                     - id=8978 name="Y" type="float" kind="data"
@@ -1142,9 +973,6 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 8975
                 type "Return"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)inputs {
                     - id=8983 name="Side" type="float" kind="data"
                 }
@@ -1152,10 +980,6 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 9035
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 8984
                 reference_name "y - (fromY + clamp((x - fromX) / (doorX - fromX), 0, 1) * (doorY - fromY))"
                 inputs {
                     y id=9036 type="float" flags=0
@@ -1192,9 +1016,6 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 9350
                 type "Function Entry"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)outputs {
                     - id=9354 name="Y" type="float" kind="data"
                     - id=9355 name="From Y" type="float" kind="data"
@@ -1204,9 +1025,6 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 9352
                 type "Return"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)inputs {
                     - id=9357 name="Side" type="float" kind="data"
                 }
@@ -1214,10 +1032,6 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 9382
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 9358
                 reference_name "y - (fromY + doorY) * 0.5"
                 inputs {
                     y id=9383 type="float" flags=0
@@ -1248,9 +1062,6 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 9460
                 type "Function Entry"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)outputs {
                     - id=9464 name="Column" type="float" kind="data"
                 }
@@ -1258,9 +1069,6 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 9462
                 type "Return"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)inputs {
                     - id=9465 name="Length" type="float" kind="data"
                 }
@@ -1268,10 +1076,6 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 9484
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 9466
                 reference_name "hash(column, 0, 32)"
                 inputs {
                     column id=9485 type="float" flags=0
@@ -1283,10 +1087,6 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 9597
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 9505
                 reference_name "26 * hash(column, 0, 31) + 14 * noise(column / 2.7, 0, 34) + select(roll - 0.76, 50, select(-0.8 - roll, -40, 0))"
                 inputs {
                     column id=9598 type="float" flags=0
@@ -1317,9 +1117,6 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 9712
                 type "Function Entry"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)outputs {
                     - id=9716 name="Column" type="float" kind="data"
                 }
@@ -1327,9 +1124,6 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 9714
                 type "Return"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)inputs {
                     - id=9717 name="Length" type="float" kind="data"
                 }
@@ -1337,10 +1131,6 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 9841
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 9718
                 reference_name "20 * hash(column, 0, 41) + 10 * noise(column / 2.3, 0, 44) + select(hash(column, 0, 42) - 0.4, 30 + 60 * (hash(column, 0, 43) * 0.5 + 0.5), 0)"
                 inputs {
                     column id=9842 type="float" flags=0
@@ -1367,9 +1157,6 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 10482
                 type "Function Entry"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)outputs {
                     - id=10486 name="X" type="float" kind="data"
                     - id=10487 name="Y" type="float" kind="data"
@@ -1382,9 +1169,6 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 10484
                 type "Return"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)inputs {
                     - id=10492 name="Clearance" type="float" kind="data"
                 }
@@ -1392,23 +1176,19 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 10530
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 10493
                 reference_name "0.55 * radius * noise(x / 700, 0, 3)"
                 inputs {
                     radius {
                         id 10531
                         type "float"
                         flags 0
-                        binding kind="local" local_id=20343
+                        binding kind="local" name="radius"
                     }
                     x {
                         id 10532
                         type "float"
                         flags 0
-                        binding kind="local" local_id=20341
+                        binding kind="local" name="x"
                     }
                 }
                 outputs {
@@ -1418,23 +1198,19 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 10627
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 10608
                 reference_name "x / (5 * radius)"
                 inputs {
                     x {
                         id 10628
                         type "float"
                         flags 0
-                        binding kind="local" local_id=20341
+                        binding kind="local" name="x"
                     }
                     radius {
                         id 10629
                         type "float"
                         flags 0
-                        binding kind="local" local_id=20343
+                        binding kind="local" name="radius"
                     }
                 }
                 outputs {
@@ -1444,29 +1220,25 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 10739
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 10669
                 reference_name "arteryCenter + select(hash(floor(segment), 0, 5), 1, -1) * radius * 2.15 * sin((segment - floor(segment)) * pi)"
                 inputs {
                     arteryCenter {
                         id 10740
                         type "float"
                         flags 0
-                        binding kind="local" local_id=20345
+                        binding kind="local" name="arteryCenter"
                     }
                     segment {
                         id 10741
                         type "float"
                         flags 0
-                        binding kind="local" local_id=20346
+                        binding kind="local" name="segment"
                     }
                     radius {
                         id 10742
                         type "float"
                         flags 0
-                        binding kind="local" local_id=20343
+                        binding kind="local" name="radius"
                     }
                 }
                 outputs {
@@ -1476,23 +1248,19 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 10882
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 10870
                 reference_name "y - arteryCenter"
                 inputs {
                     y {
                         id 10883
                         type "float"
                         flags 0
-                        binding kind="local" local_id=20342
+                        binding kind="local" name="y"
                     }
                     arteryCenter {
                         id 10884
                         type "float"
                         flags 0
-                        binding kind="local" local_id=20345
+                        binding kind="local" name="arteryCenter"
                     }
                 }
                 outputs {
@@ -1502,10 +1270,6 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 10987
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 10935
                 reference_name "abs(tunnelSide) - radius * (1 + 0.4 * noise(x / 420, 0, 4))"
                 inputs {
                     tunnelSide id=10988 type="float" flags=0
@@ -1513,13 +1277,13 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
                         id 10989
                         type "float"
                         flags 0
-                        binding kind="local" local_id=20343
+                        binding kind="local" name="radius"
                     }
                     x {
                         id 10990
                         type "float"
                         flags 0
-                        binding kind="local" local_id=20341
+                        binding kind="local" name="x"
                     }
                 }
                 outputs {
@@ -1529,17 +1293,13 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 11120
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 11108
                 reference_name "y - pocketCenter"
                 inputs {
                     y {
                         id 11121
                         type "float"
                         flags 0
-                        binding kind="local" local_id=20342
+                        binding kind="local" name="y"
                     }
                     pocketCenter id=11122 type="float" flags=0
                 }
@@ -1550,10 +1310,6 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 11228
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 11206
                 reference_name "abs(pocketSide) - 0.43 * radius"
                 inputs {
                     pocketSide id=11229 type="float" flags=0
@@ -1561,7 +1317,7 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
                         id 11230
                         type "float"
                         flags 0
-                        binding kind="local" local_id=20343
+                        binding kind="local" name="radius"
                     }
                 }
                 outputs {
@@ -1571,23 +1327,19 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 11340
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 11266
                 reference_name "x + 220 * noise(x / 900, y / 900, 60) + 70 * noise(x / 260, y / 260, 62)"
                 inputs {
                     x {
                         id 11341
                         type "float"
                         flags 0
-                        binding kind="local" local_id=20341
+                        binding kind="local" name="x"
                     }
                     y {
                         id 11342
                         type "float"
                         flags 0
-                        binding kind="local" local_id=20342
+                        binding kind="local" name="y"
                     }
                 }
                 outputs {
@@ -1597,23 +1349,19 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 11594
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 11492
                 reference_name "y + 220 * noise(x / 900 + 17.3, y / 900 - 5.1, 61) + 70 * noise(x / 260 - 8.9, y / 260 + 3.7, 63)"
                 inputs {
                     y {
                         id 11595
                         type "float"
                         flags 0
-                        binding kind="local" local_id=20342
+                        binding kind="local" name="y"
                     }
                     x {
                         id 11596
                         type "float"
                         flags 0
-                        binding kind="local" local_id=20341
+                        binding kind="local" name="x"
                     }
                 }
                 outputs {
@@ -1623,23 +1371,19 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 11817
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 11802
                 reference_name "floor(warpX / spacing)"
                 inputs {
                     warpX {
                         id 11818
                         type "float"
                         flags 0
-                        binding kind="local" local_id=20349
+                        binding kind="local" name="warpX"
                     }
                     spacing {
                         id 11819
                         type "float"
                         flags 0
-                        binding kind="local" local_id=20344
+                        binding kind="local" name="spacing"
                     }
                 }
                 outputs {
@@ -1649,23 +1393,19 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 11925
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 11910
                 reference_name "floor(warpY / spacing)"
                 inputs {
                     warpY {
                         id 11926
                         type "float"
                         flags 0
-                        binding kind="local" local_id=20350
+                        binding kind="local" name="warpY"
                     }
                     spacing {
                         id 11927
                         type "float"
                         flags 0
-                        binding kind="local" local_id=20344
+                        binding kind="local" name="spacing"
                     }
                 }
                 outputs {
@@ -1675,17 +1415,13 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 12060
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 12046
                 reference_name "i + 1"
                 inputs {
                     i {
                         id 12061
                         type "float"
                         flags 0
-                        binding kind="local" local_id=20351
+                        binding kind="local" name="i"
                     }
                 }
                 outputs {
@@ -1695,17 +1431,13 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 12092
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 12078
                 reference_name "i - 1"
                 inputs {
                     i {
                         id 12093
                         type "float"
                         flags 0
-                        binding kind="local" local_id=20351
+                        binding kind="local" name="i"
                     }
                 }
                 outputs {
@@ -1715,17 +1447,13 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 12124
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 12110
                 reference_name "j + 1"
                 inputs {
                     j {
                         id 12125
                         type "float"
                         flags 0
-                        binding kind="local" local_id=20352
+                        binding kind="local" name="j"
                     }
                 }
                 outputs {
@@ -1735,17 +1463,13 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 12156
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 12142
                 reference_name "j - 1"
                 inputs {
                     j {
                         id 12157
                         type "float"
                         flags 0
-                        binding kind="local" local_id=20352
+                        binding kind="local" name="j"
                     }
                 }
                 outputs {
@@ -1755,29 +1479,25 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 12213
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 12174
                 reference_name "(i + 0.5 + 0.22 * hash(i, j, 11)) * spacing"
                 inputs {
                     i {
                         id 12214
                         type "float"
                         flags 0
-                        binding kind="local" local_id=20351
+                        binding kind="local" name="i"
                     }
                     j {
                         id 12215
                         type "float"
                         flags 0
-                        binding kind="local" local_id=20352
+                        binding kind="local" name="j"
                     }
                     spacing {
                         id 12216
                         type "float"
                         flags 0
-                        binding kind="local" local_id=20344
+                        binding kind="local" name="spacing"
                     }
                 }
                 outputs {
@@ -1787,29 +1507,25 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 12326
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 12287
                 reference_name "(j + 0.5 + 0.22 * hash(i, j, 12)) * spacing"
                 inputs {
                     j {
                         id 12327
                         type "float"
                         flags 0
-                        binding kind="local" local_id=20352
+                        binding kind="local" name="j"
                     }
                     i {
                         id 12328
                         type "float"
                         flags 0
-                        binding kind="local" local_id=20351
+                        binding kind="local" name="i"
                     }
                     spacing {
                         id 12329
                         type "float"
                         flags 0
-                        binding kind="local" local_id=20344
+                        binding kind="local" name="spacing"
                     }
                 }
                 outputs {
@@ -1819,29 +1535,25 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 12439
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 12400
                 reference_name "(east + 0.5 + 0.22 * hash(east, j, 11)) * spacing"
                 inputs {
                     east {
                         id 12440
                         type "float"
                         flags 0
-                        binding kind="local" local_id=20353
+                        binding kind="local" name="east"
                     }
                     j {
                         id 12441
                         type "float"
                         flags 0
-                        binding kind="local" local_id=20352
+                        binding kind="local" name="j"
                     }
                     spacing {
                         id 12442
                         type "float"
                         flags 0
-                        binding kind="local" local_id=20344
+                        binding kind="local" name="spacing"
                     }
                 }
                 outputs {
@@ -1851,29 +1563,25 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 12551
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 12512
                 reference_name "(j + 0.5 + 0.22 * hash(east, j, 12)) * spacing"
                 inputs {
                     j {
                         id 12552
                         type "float"
                         flags 0
-                        binding kind="local" local_id=20352
+                        binding kind="local" name="j"
                     }
                     east {
                         id 12553
                         type "float"
                         flags 0
-                        binding kind="local" local_id=20353
+                        binding kind="local" name="east"
                     }
                     spacing {
                         id 12554
                         type "float"
                         flags 0
-                        binding kind="local" local_id=20344
+                        binding kind="local" name="spacing"
                     }
                 }
                 outputs {
@@ -1883,29 +1591,25 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 12663
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 12624
                 reference_name "(west + 0.5 + 0.22 * hash(west, j, 11)) * spacing"
                 inputs {
                     west {
                         id 12664
                         type "float"
                         flags 0
-                        binding kind="local" local_id=20354
+                        binding kind="local" name="west"
                     }
                     j {
                         id 12665
                         type "float"
                         flags 0
-                        binding kind="local" local_id=20352
+                        binding kind="local" name="j"
                     }
                     spacing {
                         id 12666
                         type "float"
                         flags 0
-                        binding kind="local" local_id=20344
+                        binding kind="local" name="spacing"
                     }
                 }
                 outputs {
@@ -1915,29 +1619,25 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 12775
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 12736
                 reference_name "(j + 0.5 + 0.22 * hash(west, j, 12)) * spacing"
                 inputs {
                     j {
                         id 12776
                         type "float"
                         flags 0
-                        binding kind="local" local_id=20352
+                        binding kind="local" name="j"
                     }
                     west {
                         id 12777
                         type "float"
                         flags 0
-                        binding kind="local" local_id=20354
+                        binding kind="local" name="west"
                     }
                     spacing {
                         id 12778
                         type "float"
                         flags 0
-                        binding kind="local" local_id=20344
+                        binding kind="local" name="spacing"
                     }
                 }
                 outputs {
@@ -1947,29 +1647,25 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 12887
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 12848
                 reference_name "(i + 0.5 + 0.22 * hash(i, north, 11)) * spacing"
                 inputs {
                     i {
                         id 12888
                         type "float"
                         flags 0
-                        binding kind="local" local_id=20351
+                        binding kind="local" name="i"
                     }
                     north {
                         id 12889
                         type "float"
                         flags 0
-                        binding kind="local" local_id=20355
+                        binding kind="local" name="north"
                     }
                     spacing {
                         id 12890
                         type "float"
                         flags 0
-                        binding kind="local" local_id=20344
+                        binding kind="local" name="spacing"
                     }
                 }
                 outputs {
@@ -1979,29 +1675,25 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 12999
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 12960
                 reference_name "(north + 0.5 + 0.22 * hash(i, north, 12)) * spacing"
                 inputs {
                     north {
                         id 13000
                         type "float"
                         flags 0
-                        binding kind="local" local_id=20355
+                        binding kind="local" name="north"
                     }
                     i {
                         id 13001
                         type "float"
                         flags 0
-                        binding kind="local" local_id=20351
+                        binding kind="local" name="i"
                     }
                     spacing {
                         id 13002
                         type "float"
                         flags 0
-                        binding kind="local" local_id=20344
+                        binding kind="local" name="spacing"
                     }
                 }
                 outputs {
@@ -2011,29 +1703,25 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 13111
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 13072
                 reference_name "(i + 0.5 + 0.22 * hash(i, south, 11)) * spacing"
                 inputs {
                     i {
                         id 13112
                         type "float"
                         flags 0
-                        binding kind="local" local_id=20351
+                        binding kind="local" name="i"
                     }
                     south {
                         id 13113
                         type "float"
                         flags 0
-                        binding kind="local" local_id=20356
+                        binding kind="local" name="south"
                     }
                     spacing {
                         id 13114
                         type "float"
                         flags 0
-                        binding kind="local" local_id=20344
+                        binding kind="local" name="spacing"
                     }
                 }
                 outputs {
@@ -2043,29 +1731,25 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 13223
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 13184
                 reference_name "(south + 0.5 + 0.22 * hash(i, south, 12)) * spacing"
                 inputs {
                     south {
                         id 13224
                         type "float"
                         flags 0
-                        binding kind="local" local_id=20356
+                        binding kind="local" name="south"
                     }
                     i {
                         id 13225
                         type "float"
                         flags 0
-                        binding kind="local" local_id=20351
+                        binding kind="local" name="i"
                     }
                     spacing {
                         id 13226
                         type "float"
                         flags 0
-                        binding kind="local" local_id=20344
+                        binding kind="local" name="spacing"
                     }
                 }
                 outputs {
@@ -2075,23 +1759,19 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 13308
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 13296
                 reference_name "east * spacing"
                 inputs {
                     east {
                         id 13309
                         type "float"
                         flags 0
-                        binding kind="local" local_id=20353
+                        binding kind="local" name="east"
                     }
                     spacing {
                         id 13310
                         type "float"
                         flags 0
-                        binding kind="local" local_id=20344
+                        binding kind="local" name="spacing"
                     }
                 }
                 outputs {
@@ -2101,23 +1781,19 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 13357
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 13338
                 reference_name "(west + 1) * spacing"
                 inputs {
                     west {
                         id 13358
                         type "float"
                         flags 0
-                        binding kind="local" local_id=20354
+                        binding kind="local" name="west"
                     }
                     spacing {
                         id 13359
                         type "float"
                         flags 0
-                        binding kind="local" local_id=20344
+                        binding kind="local" name="spacing"
                     }
                 }
                 outputs {
@@ -2127,23 +1803,19 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 13406
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 13394
                 reference_name "north * spacing"
                 inputs {
                     north {
                         id 13407
                         type "float"
                         flags 0
-                        binding kind="local" local_id=20355
+                        binding kind="local" name="north"
                     }
                     spacing {
                         id 13408
                         type "float"
                         flags 0
-                        binding kind="local" local_id=20344
+                        binding kind="local" name="spacing"
                     }
                 }
                 outputs {
@@ -2153,23 +1825,19 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 13455
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 13436
                 reference_name "(south + 1) * spacing"
                 inputs {
                     south {
                         id 13456
                         type "float"
                         flags 0
-                        binding kind="local" local_id=20356
+                        binding kind="local" name="south"
                     }
                     spacing {
                         id 13457
                         type "float"
                         flags 0
-                        binding kind="local" local_id=20344
+                        binding kind="local" name="spacing"
                     }
                 }
                 outputs {
@@ -2179,29 +1847,25 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 13531
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 13492
                 reference_name "(j + 0.5 + 0.2 * hash(i, j, 21)) * spacing"
                 inputs {
                     j {
                         id 13532
                         type "float"
                         flags 0
-                        binding kind="local" local_id=20352
+                        binding kind="local" name="j"
                     }
                     i {
                         id 13533
                         type "float"
                         flags 0
-                        binding kind="local" local_id=20351
+                        binding kind="local" name="i"
                     }
                     spacing {
                         id 13534
                         type "float"
                         flags 0
-                        binding kind="local" local_id=20344
+                        binding kind="local" name="spacing"
                     }
                 }
                 outputs {
@@ -2211,29 +1875,25 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 13644
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 13605
                 reference_name "(j + 0.5 + 0.2 * hash(west, j, 21)) * spacing"
                 inputs {
                     j {
                         id 13645
                         type "float"
                         flags 0
-                        binding kind="local" local_id=20352
+                        binding kind="local" name="j"
                     }
                     west {
                         id 13646
                         type "float"
                         flags 0
-                        binding kind="local" local_id=20354
+                        binding kind="local" name="west"
                     }
                     spacing {
                         id 13647
                         type "float"
                         flags 0
-                        binding kind="local" local_id=20344
+                        binding kind="local" name="spacing"
                     }
                 }
                 outputs {
@@ -2243,29 +1903,25 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 13756
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 13717
                 reference_name "(i + 0.5 + 0.2 * hash(i, j, 24)) * spacing"
                 inputs {
                     i {
                         id 13757
                         type "float"
                         flags 0
-                        binding kind="local" local_id=20351
+                        binding kind="local" name="i"
                     }
                     j {
                         id 13758
                         type "float"
                         flags 0
-                        binding kind="local" local_id=20352
+                        binding kind="local" name="j"
                     }
                     spacing {
                         id 13759
                         type "float"
                         flags 0
-                        binding kind="local" local_id=20344
+                        binding kind="local" name="spacing"
                     }
                 }
                 outputs {
@@ -2275,29 +1931,25 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 13869
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 13830
                 reference_name "(i + 0.5 + 0.2 * hash(i, south, 24)) * spacing"
                 inputs {
                     i {
                         id 13870
                         type "float"
                         flags 0
-                        binding kind="local" local_id=20351
+                        binding kind="local" name="i"
                     }
                     south {
                         id 13871
                         type "float"
                         flags 0
-                        binding kind="local" local_id=20356
+                        binding kind="local" name="south"
                     }
                     spacing {
                         id 13872
                         type "float"
                         flags 0
-                        binding kind="local" local_id=20344
+                        binding kind="local" name="spacing"
                     }
                 }
                 outputs {
@@ -2307,41 +1959,37 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 13942
                 type "Call Pure Function"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 7089
                 reference_name "Chamber"
                 inputs {
                     X {
                         id 13943
                         type "float"
-                        binding kind="local" local_id=20349
+                        binding kind="local" name="warpX"
                     }
                     Y {
                         id 13944
                         type "float"
-                        binding kind="local" local_id=20350
+                        binding kind="local" name="warpY"
                     }
                     "Center X" {
                         id 13945
                         type "float"
-                        binding kind="local" local_id=20357
+                        binding kind="local" name="hereX"
                     }
                     "Center Y" {
                         id 13946
                         type "float"
-                        binding kind="local" local_id=20358
+                        binding kind="local" name="hereY"
                     }
                     I {
                         id 13947
                         type "float"
-                        binding kind="local" local_id=20351
+                        binding kind="local" name="i"
                     }
                     J {
                         id 13948
                         type "float"
-                        binding kind="local" local_id=20352
+                        binding kind="local" name="j"
                     }
                 }
                 outputs {
@@ -2351,23 +1999,19 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 14246
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 14234
                 reference_name "warpY - hereY"
                 inputs {
                     warpY {
                         id 14247
                         type "float"
                         flags 0
-                        binding kind="local" local_id=20350
+                        binding kind="local" name="warpY"
                     }
                     hereY {
                         id 14248
                         type "float"
                         flags 0
-                        binding kind="local" local_id=20358
+                        binding kind="local" name="hereY"
                     }
                 }
                 outputs {
@@ -2377,51 +2021,47 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 14391
                 type "Call Pure Function"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 7511
                 reference_name "Tunnel"
                 inputs {
                     X {
                         id 14392
                         type "float"
-                        binding kind="local" local_id=20349
+                        binding kind="local" name="warpX"
                     }
                     Y {
                         id 14393
                         type "float"
-                        binding kind="local" local_id=20350
+                        binding kind="local" name="warpY"
                     }
                     "From X" {
                         id 14394
                         type "float"
-                        binding kind="local" local_id=20357
+                        binding kind="local" name="hereX"
                     }
                     "From Y" {
                         id 14395
                         type "float"
-                        binding kind="local" local_id=20358
+                        binding kind="local" name="hereY"
                     }
                     "Door X" {
                         id 14396
                         type "float"
-                        binding kind="local" local_id=20359
+                        binding kind="local" name="right"
                     }
                     "Door Y" {
                         id 14397
                         type "float"
-                        binding kind="local" local_id=20363
+                        binding kind="local" name="eastDoorY"
                     }
                     "Door I" {
                         id 14398
                         type "float"
-                        binding kind="local" local_id=20351
+                        binding kind="local" name="i"
                     }
                     "Door J" {
                         id 14399
                         type "float"
-                        binding kind="local" local_id=20352
+                        binding kind="local" name="j"
                     }
                 }
                 outputs {
@@ -2431,41 +2071,37 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 14736
                 type "Call Pure Function"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 8972
                 reference_name "Tunnel Side"
                 inputs {
                     X {
                         id 14737
                         type "float"
-                        binding kind="local" local_id=20349
+                        binding kind="local" name="warpX"
                     }
                     Y {
                         id 14738
                         type "float"
-                        binding kind="local" local_id=20350
+                        binding kind="local" name="warpY"
                     }
                     "From X" {
                         id 14739
                         type "float"
-                        binding kind="local" local_id=20357
+                        binding kind="local" name="hereX"
                     }
                     "From Y" {
                         id 14740
                         type "float"
-                        binding kind="local" local_id=20358
+                        binding kind="local" name="hereY"
                     }
                     "Door X" {
                         id 14741
                         type "float"
-                        binding kind="local" local_id=20359
+                        binding kind="local" name="right"
                     }
                     "Door Y" {
                         id 14742
                         type "float"
-                        binding kind="local" local_id=20363
+                        binding kind="local" name="eastDoorY"
                     }
                 }
                 outputs {
@@ -2475,43 +2111,39 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 15049
                 type "Call Pure Function"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 7511
                 reference_name "Tunnel"
                 inputs {
                     X {
                         id 15050
                         type "float"
-                        binding kind="local" local_id=20349
+                        binding kind="local" name="warpX"
                     }
                     Y {
                         id 15051
                         type "float"
-                        binding kind="local" local_id=20350
+                        binding kind="local" name="warpY"
                     }
                     "From X" id=15052 type="float"
                     "From Y" id=15053 type="float"
                     "Door X" {
                         id 15054
                         type "float"
-                        binding kind="local" local_id=20359
+                        binding kind="local" name="right"
                     }
                     "Door Y" {
                         id 15055
                         type "float"
-                        binding kind="local" local_id=20363
+                        binding kind="local" name="eastDoorY"
                     }
                     "Door I" {
                         id 15056
                         type "float"
-                        binding kind="local" local_id=20351
+                        binding kind="local" name="i"
                     }
                     "Door J" {
                         id 15057
                         type "float"
-                        binding kind="local" local_id=20352
+                        binding kind="local" name="j"
                     }
                 }
                 outputs {
@@ -2521,33 +2153,29 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 15394
                 type "Call Pure Function"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 8972
                 reference_name "Tunnel Side"
                 inputs {
                     X {
                         id 15395
                         type "float"
-                        binding kind="local" local_id=20349
+                        binding kind="local" name="warpX"
                     }
                     Y {
                         id 15396
                         type "float"
-                        binding kind="local" local_id=20350
+                        binding kind="local" name="warpY"
                     }
                     "From X" id=15397 type="float"
                     "From Y" id=15398 type="float"
                     "Door X" {
                         id 15399
                         type "float"
-                        binding kind="local" local_id=20359
+                        binding kind="local" name="right"
                     }
                     "Door Y" {
                         id 15400
                         type "float"
-                        binding kind="local" local_id=20363
+                        binding kind="local" name="eastDoorY"
                     }
                 }
                 outputs {
@@ -2557,51 +2185,47 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 15707
                 type "Call Pure Function"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 7511
                 reference_name "Tunnel"
                 inputs {
                     X {
                         id 15708
                         type "float"
-                        binding kind="local" local_id=20349
+                        binding kind="local" name="warpX"
                     }
                     Y {
                         id 15709
                         type "float"
-                        binding kind="local" local_id=20350
+                        binding kind="local" name="warpY"
                     }
                     "From X" {
                         id 15710
                         type "float"
-                        binding kind="local" local_id=20357
+                        binding kind="local" name="hereX"
                     }
                     "From Y" {
                         id 15711
                         type "float"
-                        binding kind="local" local_id=20358
+                        binding kind="local" name="hereY"
                     }
                     "Door X" {
                         id 15712
                         type "float"
-                        binding kind="local" local_id=20360
+                        binding kind="local" name="left"
                     }
                     "Door Y" {
                         id 15713
                         type "float"
-                        binding kind="local" local_id=20364
+                        binding kind="local" name="westDoorY"
                     }
                     "Door I" {
                         id 15714
                         type "float"
-                        binding kind="local" local_id=20354
+                        binding kind="local" name="west"
                     }
                     "Door J" {
                         id 15715
                         type "float"
-                        binding kind="local" local_id=20352
+                        binding kind="local" name="j"
                     }
                 }
                 outputs {
@@ -2611,41 +2235,37 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 16058
                 type "Call Pure Function"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 8972
                 reference_name "Tunnel Side"
                 inputs {
                     X {
                         id 16059
                         type "float"
-                        binding kind="local" local_id=20349
+                        binding kind="local" name="warpX"
                     }
                     Y {
                         id 16060
                         type "float"
-                        binding kind="local" local_id=20350
+                        binding kind="local" name="warpY"
                     }
                     "From X" {
                         id 16061
                         type "float"
-                        binding kind="local" local_id=20357
+                        binding kind="local" name="hereX"
                     }
                     "From Y" {
                         id 16062
                         type "float"
-                        binding kind="local" local_id=20358
+                        binding kind="local" name="hereY"
                     }
                     "Door X" {
                         id 16063
                         type "float"
-                        binding kind="local" local_id=20360
+                        binding kind="local" name="left"
                     }
                     "Door Y" {
                         id 16064
                         type "float"
-                        binding kind="local" local_id=20364
+                        binding kind="local" name="westDoorY"
                     }
                 }
                 outputs {
@@ -2655,43 +2275,39 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 16378
                 type "Call Pure Function"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 7511
                 reference_name "Tunnel"
                 inputs {
                     X {
                         id 16379
                         type "float"
-                        binding kind="local" local_id=20349
+                        binding kind="local" name="warpX"
                     }
                     Y {
                         id 16380
                         type "float"
-                        binding kind="local" local_id=20350
+                        binding kind="local" name="warpY"
                     }
                     "From X" id=16381 type="float"
                     "From Y" id=16382 type="float"
                     "Door X" {
                         id 16383
                         type "float"
-                        binding kind="local" local_id=20360
+                        binding kind="local" name="left"
                     }
                     "Door Y" {
                         id 16384
                         type "float"
-                        binding kind="local" local_id=20364
+                        binding kind="local" name="westDoorY"
                     }
                     "Door I" {
                         id 16385
                         type "float"
-                        binding kind="local" local_id=20354
+                        binding kind="local" name="west"
                     }
                     "Door J" {
                         id 16386
                         type "float"
-                        binding kind="local" local_id=20352
+                        binding kind="local" name="j"
                     }
                 }
                 outputs {
@@ -2701,33 +2317,29 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 16729
                 type "Call Pure Function"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 8972
                 reference_name "Tunnel Side"
                 inputs {
                     X {
                         id 16730
                         type "float"
-                        binding kind="local" local_id=20349
+                        binding kind="local" name="warpX"
                     }
                     Y {
                         id 16731
                         type "float"
-                        binding kind="local" local_id=20350
+                        binding kind="local" name="warpY"
                     }
                     "From X" id=16732 type="float"
                     "From Y" id=16733 type="float"
                     "Door X" {
                         id 16734
                         type "float"
-                        binding kind="local" local_id=20360
+                        binding kind="local" name="left"
                     }
                     "Door Y" {
                         id 16735
                         type "float"
-                        binding kind="local" local_id=20364
+                        binding kind="local" name="westDoorY"
                     }
                 }
                 outputs {
@@ -2737,51 +2349,47 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 17049
                 type "Call Pure Function"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 8273
                 reference_name "Shaft"
                 inputs {
                     X {
                         id 17050
                         type "float"
-                        binding kind="local" local_id=20349
+                        binding kind="local" name="warpX"
                     }
                     Y {
                         id 17051
                         type "float"
-                        binding kind="local" local_id=20350
+                        binding kind="local" name="warpY"
                     }
                     "From X" {
                         id 17052
                         type "float"
-                        binding kind="local" local_id=20357
+                        binding kind="local" name="hereX"
                     }
                     "From Y" {
                         id 17053
                         type "float"
-                        binding kind="local" local_id=20358
+                        binding kind="local" name="hereY"
                     }
                     "Door X" {
                         id 17054
                         type "float"
-                        binding kind="local" local_id=20365
+                        binding kind="local" name="northDoorX"
                     }
                     "Door Y" {
                         id 17055
                         type "float"
-                        binding kind="local" local_id=20361
+                        binding kind="local" name="top"
                     }
                     "Door I" {
                         id 17056
                         type "float"
-                        binding kind="local" local_id=20351
+                        binding kind="local" name="i"
                     }
                     "Door J" {
                         id 17057
                         type "float"
-                        binding kind="local" local_id=20352
+                        binding kind="local" name="j"
                     }
                 }
                 outputs {
@@ -2791,26 +2399,22 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 17394
                 type "Call Pure Function"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 9349
                 reference_name "Shaft Side"
                 inputs {
                     Y {
                         id 17395
                         type "float"
-                        binding kind="local" local_id=20350
+                        binding kind="local" name="warpY"
                     }
                     "From Y" {
                         id 17396
                         type "float"
-                        binding kind="local" local_id=20358
+                        binding kind="local" name="hereY"
                     }
                     "Door Y" {
                         id 17397
                         type "float"
-                        binding kind="local" local_id=20361
+                        binding kind="local" name="top"
                     }
                 }
                 outputs {
@@ -2820,43 +2424,39 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 17552
                 type "Call Pure Function"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 8273
                 reference_name "Shaft"
                 inputs {
                     X {
                         id 17553
                         type "float"
-                        binding kind="local" local_id=20349
+                        binding kind="local" name="warpX"
                     }
                     Y {
                         id 17554
                         type "float"
-                        binding kind="local" local_id=20350
+                        binding kind="local" name="warpY"
                     }
                     "From X" id=17555 type="float"
                     "From Y" id=17556 type="float"
                     "Door X" {
                         id 17557
                         type "float"
-                        binding kind="local" local_id=20365
+                        binding kind="local" name="northDoorX"
                     }
                     "Door Y" {
                         id 17558
                         type "float"
-                        binding kind="local" local_id=20361
+                        binding kind="local" name="top"
                     }
                     "Door I" {
                         id 17559
                         type "float"
-                        binding kind="local" local_id=20351
+                        binding kind="local" name="i"
                     }
                     "Door J" {
                         id 17560
                         type "float"
-                        binding kind="local" local_id=20352
+                        binding kind="local" name="j"
                     }
                 }
                 outputs {
@@ -2866,22 +2466,18 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 17897
                 type "Call Pure Function"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 9349
                 reference_name "Shaft Side"
                 inputs {
                     Y {
                         id 17898
                         type "float"
-                        binding kind="local" local_id=20350
+                        binding kind="local" name="warpY"
                     }
                     "From Y" id=17899 type="float"
                     "Door Y" {
                         id 17900
                         type "float"
-                        binding kind="local" local_id=20361
+                        binding kind="local" name="top"
                     }
                 }
                 outputs {
@@ -2891,51 +2487,47 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 18055
                 type "Call Pure Function"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 8273
                 reference_name "Shaft"
                 inputs {
                     X {
                         id 18056
                         type "float"
-                        binding kind="local" local_id=20349
+                        binding kind="local" name="warpX"
                     }
                     Y {
                         id 18057
                         type "float"
-                        binding kind="local" local_id=20350
+                        binding kind="local" name="warpY"
                     }
                     "From X" {
                         id 18058
                         type "float"
-                        binding kind="local" local_id=20357
+                        binding kind="local" name="hereX"
                     }
                     "From Y" {
                         id 18059
                         type "float"
-                        binding kind="local" local_id=20358
+                        binding kind="local" name="hereY"
                     }
                     "Door X" {
                         id 18060
                         type "float"
-                        binding kind="local" local_id=20366
+                        binding kind="local" name="southDoorX"
                     }
                     "Door Y" {
                         id 18061
                         type "float"
-                        binding kind="local" local_id=20362
+                        binding kind="local" name="bottom"
                     }
                     "Door I" {
                         id 18062
                         type "float"
-                        binding kind="local" local_id=20351
+                        binding kind="local" name="i"
                     }
                     "Door J" {
                         id 18063
                         type "float"
-                        binding kind="local" local_id=20356
+                        binding kind="local" name="south"
                     }
                 }
                 outputs {
@@ -2945,26 +2537,22 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 18406
                 type "Call Pure Function"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 9349
                 reference_name "Shaft Side"
                 inputs {
                     Y {
                         id 18407
                         type "float"
-                        binding kind="local" local_id=20350
+                        binding kind="local" name="warpY"
                     }
                     "From Y" {
                         id 18408
                         type "float"
-                        binding kind="local" local_id=20358
+                        binding kind="local" name="hereY"
                     }
                     "Door Y" {
                         id 18409
                         type "float"
-                        binding kind="local" local_id=20362
+                        binding kind="local" name="bottom"
                     }
                 }
                 outputs {
@@ -2974,43 +2562,39 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 18571
                 type "Call Pure Function"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 8273
                 reference_name "Shaft"
                 inputs {
                     X {
                         id 18572
                         type "float"
-                        binding kind="local" local_id=20349
+                        binding kind="local" name="warpX"
                     }
                     Y {
                         id 18573
                         type "float"
-                        binding kind="local" local_id=20350
+                        binding kind="local" name="warpY"
                     }
                     "From X" id=18574 type="float"
                     "From Y" id=18575 type="float"
                     "Door X" {
                         id 18576
                         type "float"
-                        binding kind="local" local_id=20366
+                        binding kind="local" name="southDoorX"
                     }
                     "Door Y" {
                         id 18577
                         type "float"
-                        binding kind="local" local_id=20362
+                        binding kind="local" name="bottom"
                     }
                     "Door I" {
                         id 18578
                         type "float"
-                        binding kind="local" local_id=20351
+                        binding kind="local" name="i"
                     }
                     "Door J" {
                         id 18579
                         type "float"
-                        binding kind="local" local_id=20356
+                        binding kind="local" name="south"
                     }
                 }
                 outputs {
@@ -3020,22 +2604,18 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 18922
                 type "Call Pure Function"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 9349
                 reference_name "Shaft Side"
                 inputs {
                     Y {
                         id 18923
                         type "float"
-                        binding kind="local" local_id=20350
+                        binding kind="local" name="warpY"
                     }
                     "From Y" id=18924 type="float"
                     "Door Y" {
                         id 18925
                         type "float"
-                        binding kind="local" local_id=20362
+                        binding kind="local" name="bottom"
                     }
                 }
                 outputs {
@@ -3045,77 +2625,73 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 19144
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 19087
                 reference_name "min(min(min(min(min(min(min(min(min(min(chamber, eastNear), eastFar), westNear), westFar), northNear), northFar), southNear), southFar), tunnel), pocket)"
                 inputs {
                     chamber {
                         id 19145
                         type "float"
                         flags 0
-                        binding kind="local" local_id=20368
+                        binding kind="local" name="chamber"
                     }
                     eastNear {
                         id 19146
                         type "float"
                         flags 0
-                        binding kind="local" local_id=20369
+                        binding kind="local" name="eastNear"
                     }
                     eastFar {
                         id 19147
                         type "float"
                         flags 0
-                        binding kind="local" local_id=20370
+                        binding kind="local" name="eastFar"
                     }
                     westNear {
                         id 19148
                         type "float"
                         flags 0
-                        binding kind="local" local_id=20371
+                        binding kind="local" name="westNear"
                     }
                     westFar {
                         id 19149
                         type "float"
                         flags 0
-                        binding kind="local" local_id=20372
+                        binding kind="local" name="westFar"
                     }
                     northNear {
                         id 19150
                         type "float"
                         flags 0
-                        binding kind="local" local_id=20373
+                        binding kind="local" name="northNear"
                     }
                     northFar {
                         id 19151
                         type "float"
                         flags 0
-                        binding kind="local" local_id=20374
+                        binding kind="local" name="northFar"
                     }
                     southNear {
                         id 19152
                         type "float"
                         flags 0
-                        binding kind="local" local_id=20375
+                        binding kind="local" name="southNear"
                     }
                     southFar {
                         id 19153
                         type "float"
                         flags 0
-                        binding kind="local" local_id=20376
+                        binding kind="local" name="southFar"
                     }
                     tunnel {
                         id 19154
                         type "float"
                         flags 0
-                        binding kind="local" local_id=20347
+                        binding kind="local" name="tunnel"
                     }
                     pocket {
                         id 19155
                         type "float"
                         flags 0
-                        binding kind="local" local_id=20348
+                        binding kind="local" name="pocket"
                     }
                 }
                 outputs {
@@ -3125,23 +2701,19 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 19250
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 19231
                 reference_name "select(tunnel - nearest, pocketSide, tunnelSide)"
                 inputs {
                     tunnel {
                         id 19251
                         type "float"
                         flags 0
-                        binding kind="local" local_id=20347
+                        binding kind="local" name="tunnel"
                     }
                     nearest {
                         id 19252
                         type "float"
                         flags 0
-                        binding kind="local" local_id=20367
+                        binding kind="local" name="nearest"
                     }
                     pocketSide id=19253 type="float" flags=0
                     tunnelSide id=19254 type="float" flags=0
@@ -3153,29 +2725,25 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 19419
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 19389
                 reference_name "select(southNear - nearest, select(southFar - nearest, arterySide, southFarSide), southNearSide)"
                 inputs {
                     southNear {
                         id 19420
                         type "float"
                         flags 0
-                        binding kind="local" local_id=20375
+                        binding kind="local" name="southNear"
                     }
                     nearest {
                         id 19421
                         type "float"
                         flags 0
-                        binding kind="local" local_id=20367
+                        binding kind="local" name="nearest"
                     }
                     southFar {
                         id 19422
                         type "float"
                         flags 0
-                        binding kind="local" local_id=20376
+                        binding kind="local" name="southFar"
                     }
                     arterySide id=19423 type="float" flags=0
                     southFarSide id=19424 type="float" flags=0
@@ -3188,29 +2756,25 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 19533
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 19503
                 reference_name "select(northNear - nearest, select(northFar - nearest, southSide, northFarSide), northNearSide)"
                 inputs {
                     northNear {
                         id 19534
                         type "float"
                         flags 0
-                        binding kind="local" local_id=20373
+                        binding kind="local" name="northNear"
                     }
                     nearest {
                         id 19535
                         type "float"
                         flags 0
-                        binding kind="local" local_id=20367
+                        binding kind="local" name="nearest"
                     }
                     northFar {
                         id 19536
                         type "float"
                         flags 0
-                        binding kind="local" local_id=20374
+                        binding kind="local" name="northFar"
                     }
                     southSide id=19537 type="float" flags=0
                     northFarSide id=19538 type="float" flags=0
@@ -3223,29 +2787,25 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 19658
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 19628
                 reference_name "select(westNear - nearest, select(westFar - nearest, northSide, westFarSide), westNearSide)"
                 inputs {
                     westNear {
                         id 19659
                         type "float"
                         flags 0
-                        binding kind="local" local_id=20371
+                        binding kind="local" name="westNear"
                     }
                     nearest {
                         id 19660
                         type "float"
                         flags 0
-                        binding kind="local" local_id=20367
+                        binding kind="local" name="nearest"
                     }
                     westFar {
                         id 19661
                         type "float"
                         flags 0
-                        binding kind="local" local_id=20372
+                        binding kind="local" name="westFar"
                     }
                     northSide id=19662 type="float" flags=0
                     westFarSide id=19663 type="float" flags=0
@@ -3258,29 +2818,25 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 19783
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 19753
                 reference_name "select(eastNear - nearest, select(eastFar - nearest, westSide, eastFarSide), eastNearSide)"
                 inputs {
                     eastNear {
                         id 19784
                         type "float"
                         flags 0
-                        binding kind="local" local_id=20369
+                        binding kind="local" name="eastNear"
                     }
                     nearest {
                         id 19785
                         type "float"
                         flags 0
-                        binding kind="local" local_id=20367
+                        binding kind="local" name="nearest"
                     }
                     eastFar {
                         id 19786
                         type "float"
                         flags 0
-                        binding kind="local" local_id=20370
+                        binding kind="local" name="eastFar"
                     }
                     westSide id=19787 type="float" flags=0
                     eastFarSide id=19788 type="float" flags=0
@@ -3293,23 +2849,19 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 19897
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 19878
                 reference_name "select(chamber - nearest, eastSide, chamberSide)"
                 inputs {
                     chamber {
                         id 19898
                         type "float"
                         flags 0
-                        binding kind="local" local_id=20368
+                        binding kind="local" name="chamber"
                     }
                     nearest {
                         id 19899
                         type "float"
                         flags 0
-                        binding kind="local" local_id=20367
+                        binding kind="local" name="nearest"
                     }
                     eastSide id=19900 type="float" flags=0
                     chamberSide id=19901 type="float" flags=0
@@ -3321,10 +2873,6 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 20002
                 type "Call Pure Function"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 9459
                 reference_name "Ragged End"
                 inputs {
                     Column id=20003 type="float"
@@ -3336,10 +2884,6 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 20005
                 type "Call Pure Function"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 9711
                 reference_name "Hanging End"
                 inputs {
                     Column id=20006 type="float"
@@ -3351,30 +2895,26 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - {
                 id 20070
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 20008
                 reference_name "-(nearest + roughness * 0.4 * noise(x / 170, y / 170, 0)) - select(side, ragged, hanging)"
                 inputs {
                     nearest {
                         id 20071
                         type "float"
                         flags 0
-                        binding kind="local" local_id=20367
+                        binding kind="local" name="nearest"
                     }
                     roughness id=20072 type="float" flags=0
                     x {
                         id 20073
                         type "float"
                         flags 0
-                        binding kind="local" local_id=20341
+                        binding kind="local" name="x"
                     }
                     y {
                         id 20074
                         type "float"
                         flags 0
-                        binding kind="local" local_id=20342
+                        binding kind="local" name="y"
                     }
                     side id=20075 type="float" flags=0
                     ragged id=20076 type="float" flags=0

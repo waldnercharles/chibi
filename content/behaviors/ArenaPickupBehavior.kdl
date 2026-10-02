@@ -14,9 +14,6 @@ owner_type "ecs.entity"
             - {
                 id 12
                 type "Event"
-                x 0.0
-                y 0.0
-                placed #false
                 reference_name "Tick"
                 outputs {
                     Then id=11
@@ -25,10 +22,6 @@ owner_type "ecs.entity"
             - {
                 id 27
                 type "Call Function"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 1
                 reference_name "Wait and Pulse"
                 inputs {
                     Exec id=25
@@ -37,10 +30,6 @@ owner_type "ecs.entity"
             - {
                 id 39
                 type "Call Function"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 6
                 reference_name "Collect Along Spiral"
                 inputs {
                     Exec id=37
@@ -49,9 +38,6 @@ owner_type "ecs.entity"
             - {
                 id 217
                 type "Event"
-                x 0.0
-                y 0.0
-                placed #false
                 reference_name "CollectExperience"
                 outputs {
                     Then id=216
@@ -60,10 +46,6 @@ owner_type "ecs.entity"
             - {
                 id 221
                 type "Call Function"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 140
                 reference_name "Start Collection"
                 inputs {
                     Exec id=218
@@ -76,9 +58,6 @@ owner_type "ecs.entity"
             - {
                 id 449
                 type "Event"
-                x 0.0
-                y 0.0
-                placed #false
                 reference_name "Begin"
                 outputs {
                     Then id=448
@@ -87,10 +66,7 @@ owner_type "ecs.entity"
             - {
                 id 458
                 type "Set Variable"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 447
+                reference_name "Base Rotation"
                 inputs {
                     Exec id=454
                     Value type="float"
@@ -102,9 +78,6 @@ owner_type "ecs.entity"
             - {
                 id 1539
                 type "Switch on Int"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Selection {
                         binding kind="component_field" component="GAME.GamePickup" field="state"
@@ -114,10 +87,6 @@ owner_type "ecs.entity"
             - {
                 id 1567
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 1545
                 reference_name "2 * pi * rand()"
                 outputs {
                     Result id=1568 type="double"
@@ -144,9 +113,6 @@ owner_type "ecs.entity"
             - {
                 id 3
                 type "Function Entry"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)outputs {
                     - id=2 name="Then"
                 }
@@ -154,9 +120,6 @@ owner_type "ecs.entity"
             - {
                 id 5
                 type "Return"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Exec id=4
                 }
@@ -164,9 +127,6 @@ owner_type "ecs.entity"
             - {
                 id 69
                 type "Destroy Entity"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Exec id=66
                 }
@@ -174,9 +134,6 @@ owner_type "ecs.entity"
             - {
                 id 71
                 type "Self"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)outputs {
                     - id=70 name="Entity" type_name="ecs.entity"
                 }
@@ -184,9 +141,6 @@ owner_type "ecs.entity"
             - {
                 id 76
                 type "Scene Rhythm"
-                x 0.0
-                y 0.0
-                placed #false
                 outputs {
                     Phase id=72
                 }
@@ -194,10 +148,6 @@ owner_type "ecs.entity"
             - {
                 id 149
                 type "Call Function"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 140
                 reference_name "Start Collection"
                 inputs {
                     Exec id=146
@@ -210,9 +160,6 @@ owner_type "ecs.entity"
             - {
                 id 474
                 type "Smooth Step"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Value id=471
                 }
@@ -223,10 +170,6 @@ owner_type "ecs.entity"
             - {
                 id 533
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 512
                 reference_name "Pulse Angle"
                 inputs {
                     Eased id=534 type="double"
@@ -238,10 +181,6 @@ owner_type "ecs.entity"
             - {
                 id 569
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 536
                 reference_name "Pulse Fade"
                 inputs {
                     Lifetime {
@@ -262,17 +201,13 @@ owner_type "ecs.entity"
             - {
                 id 585
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 573
                 reference_name "Pulse Yaw"
                 inputs {
                     Angle id=586 type="double"
                     BaseRotation {
                         id 587
                         type "float"
-                        binding kind="variable" variable_id=447 source_asset="ArenaPickupBehavior"
+                        binding kind="variable" source_asset="ArenaPickupBehavior" name="Base Rotation"
                     }
                 }
                 outputs {
@@ -282,10 +217,6 @@ owner_type "ecs.entity"
             - {
                 id 618
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 589
                 reference_name "Pulse Scale"
                 inputs {
                     Angle id=619 type="double"
@@ -298,10 +229,6 @@ owner_type "ecs.entity"
             - {
                 id 1603
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 1591
                 reference_name "Age += Delta"
                 inputs {
                     Exec id=1607 kind="exec"
@@ -324,10 +251,6 @@ owner_type "ecs.entity"
             - {
                 id 1695
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 1683
                 reference_name "Age >= Lifetime"
                 inputs {
                     Exec id=1699 kind="exec"
@@ -353,9 +276,6 @@ owner_type "ecs.entity"
             - {
                 id 1759
                 type "Set Component"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Component "GAME.GameVisualTransform"
                     yaw id=1766
@@ -395,9 +315,6 @@ owner_type "ecs.entity"
             - {
                 id 8
                 type "Function Entry"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)outputs {
                     - id=7 name="Then"
                 }
@@ -405,9 +322,6 @@ owner_type "ecs.entity"
             - {
                 id 10
                 type "Return"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Exec id=9
                 }
@@ -415,9 +329,6 @@ owner_type "ecs.entity"
             - {
                 id 223
                 type "Get_GamePickup"
-                x 0.0
-                y 0.0
-                placed #false
                 outputs {
                     Value id=222 flags=0
                     Value.collection_age id=224
@@ -429,9 +340,6 @@ owner_type "ecs.entity"
             - {
                 id 237
                 type "Branch"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Exec id=233
                 }
@@ -439,9 +347,6 @@ owner_type "ecs.entity"
             - {
                 id 241
                 type "Destroy Entity"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Exec id=238
                 }
@@ -449,9 +354,6 @@ owner_type "ecs.entity"
             - {
                 id 243
                 type "Self"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)outputs {
                     - id=242 name="Entity" type_name="ecs.entity"
                 }
@@ -459,9 +361,6 @@ owner_type "ecs.entity"
             - {
                 id 255
                 type "Set_GamePickup_collection_age"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Exec id=250
                 }
@@ -472,9 +371,6 @@ owner_type "ecs.entity"
             - {
                 id 271
                 type "Set_GamePickup_state"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Exec id=266
                     Value 2
@@ -483,13 +379,10 @@ owner_type "ecs.entity"
             - {
                 id 274
                 type "GetEntity_GameExperience"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Entity {
                         id 272
-                        binding kind="local" local_id=1301
+                        binding kind="local" name="Target"
                     }
                 }
                 outputs {
@@ -499,9 +392,6 @@ owner_type "ecs.entity"
             - {
                 id 279
                 type "Add"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     A id=276 type="int" flags=0 group=0
                     B type="int" flags=0 group=0
@@ -513,22 +403,16 @@ owner_type "ecs.entity"
             - {
                 id 285
                 type "Set_GameExperience_current"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Exec id=280
                     Target {
-                        binding kind="local" local_id=1301
+                        binding kind="local" name="Target"
                     }
                 }
             }
             - {
                 id 289
                 type "Destroy Entity"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Exec id=286
                 }
@@ -536,9 +420,6 @@ owner_type "ecs.entity"
             - {
                 id 291
                 type "Self"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)outputs {
                     - id=290 name="Entity" type_name="ecs.entity"
                 }
@@ -546,13 +427,10 @@ owner_type "ecs.entity"
             - {
                 id 328
                 type "GetEntity_GameTransform"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Entity {
                         id 326
-                        binding kind="local" local_id=1301
+                        binding kind="local" name="Target"
                     }
                 }
                 outputs {
@@ -563,10 +441,6 @@ owner_type "ecs.entity"
             - {
                 id 636
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 622
                 reference_name "Spiral T"
                 inputs {
                     CollectionAge id=637 type="float"
@@ -578,16 +452,12 @@ owner_type "ecs.entity"
             - {
                 id 660
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 639
                 reference_name "Spiral Angle"
                 inputs {
                     T {
                         id 661
                         type "float"
-                        binding kind="local" local_id=1302
+                        binding kind="local" name="Spiral T"
                     }
                 }
                 outputs {
@@ -597,16 +467,12 @@ owner_type "ecs.entity"
             - {
                 id 706
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 663
                 reference_name "Spiral Weight"
                 inputs {
                     T {
                         id 707
                         type "float"
-                        binding kind="local" local_id=1302
+                        binding kind="local" name="Spiral T"
                     }
                 }
                 outputs {
@@ -616,10 +482,6 @@ owner_type "ecs.entity"
             - {
                 id 784
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 709
                 reference_name "Spiral X"
                 inputs {
                     TargetX id=785 type="float"
@@ -632,7 +494,7 @@ owner_type "ecs.entity"
                     Theta {
                         id 788
                         type "float"
-                        binding kind="local" local_id=1303
+                        binding kind="local" name="Spiral Angle"
                     }
                     OriginY {
                         id 789
@@ -643,7 +505,7 @@ owner_type "ecs.entity"
                     T {
                         id 791
                         type "float"
-                        binding kind="local" local_id=1302
+                        binding kind="local" name="Spiral T"
                     }
                 }
                 outputs {
@@ -653,10 +515,6 @@ owner_type "ecs.entity"
             - {
                 id 868
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 793
                 reference_name "Spiral Y"
                 inputs {
                     TargetY id=869 type="float"
@@ -670,7 +528,7 @@ owner_type "ecs.entity"
                     Theta {
                         id 873
                         type "float"
-                        binding kind="local" local_id=1303
+                        binding kind="local" name="Spiral Angle"
                     }
                     OriginY {
                         id 874
@@ -680,7 +538,7 @@ owner_type "ecs.entity"
                     T {
                         id 875
                         type "float"
-                        binding kind="local" local_id=1302
+                        binding kind="local" name="Spiral T"
                     }
                 }
                 outputs {
@@ -690,21 +548,17 @@ owner_type "ecs.entity"
             - {
                 id 889
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 877
                 reference_name "Spiral Yaw"
                 inputs {
                     BaseRotation {
                         id 890
                         type "float"
-                        binding kind="variable" variable_id=447 source_asset="ArenaPickupBehavior"
+                        binding kind="variable" source_asset="ArenaPickupBehavior" name="Base Rotation"
                     }
                     Theta {
                         id 891
                         type "float"
-                        binding kind="local" local_id=1303
+                        binding kind="local" name="Spiral Angle"
                     }
                 }
                 outputs {
@@ -714,16 +568,12 @@ owner_type "ecs.entity"
             - {
                 id 914
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 893
                 reference_name "Spiral Scale"
                 inputs {
                     T {
                         id 915
                         type "float"
-                        binding kind="local" local_id=1302
+                        binding kind="local" name="Spiral T"
                     }
                 }
                 outputs {
@@ -733,10 +583,6 @@ owner_type "ecs.entity"
             - {
                 id 929
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 917
                 reference_name "Collection Age"
                 inputs {
                     CollectionAge id=930 type="float"
@@ -753,10 +599,6 @@ owner_type "ecs.entity"
             - {
                 id 1318
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 1304
                 reference_name "CollectionAge >= 0.6"
                 inputs {
                     Exec id=1321 kind="exec"
@@ -776,9 +618,6 @@ owner_type "ecs.entity"
             - {
                 id 1338
                 type "Set Component"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Component "GAME.GameTransform"
                     x id=1345
@@ -792,9 +631,6 @@ owner_type "ecs.entity"
             - {
                 id 1497
                 type "Set Component"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Component "GAME.GameVisualTransform"
                     yaw id=1504
@@ -808,13 +644,10 @@ owner_type "ecs.entity"
             - {
                 id 2219
                 type "Has Component"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Component "GAME.GameExperience"
                     Entity {
-                        binding kind="local" local_id=1301
+                        binding kind="local" name="Target"
                     }
                 }
             }
@@ -879,9 +712,6 @@ owner_type "ecs.entity"
             - {
                 id 142
                 type "Function Entry"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)outputs {
                     - id=141 name="Then"
                     - id=145 name="Radius" type="float" kind="data" default=48.0
@@ -890,9 +720,6 @@ owner_type "ecs.entity"
             - {
                 id 144
                 type "Return"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Exec id=143
                 }
@@ -900,9 +727,6 @@ owner_type "ecs.entity"
             - {
                 id 163
                 type "Get_GameTransform"
-                x 0.0
-                y 0.0
-                placed #false
                 outputs {
                     Value id=162 flags=0
                 }
@@ -910,9 +734,6 @@ owner_type "ecs.entity"
             - {
                 id 172
                 type "Find Nearest Entity"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Position id=164
                     Radius 48.0
@@ -922,9 +743,6 @@ owner_type "ecs.entity"
             - {
                 id 177
                 type "Branch"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Exec id=173
                 }
@@ -932,9 +750,6 @@ owner_type "ecs.entity"
             - {
                 id 180
                 type "HasEntity_GameExperience"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Entity id=178
                 }
@@ -945,9 +760,6 @@ owner_type "ecs.entity"
             - {
                 id 185
                 type "Branch"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Exec id=181
                 }
@@ -955,9 +767,6 @@ owner_type "ecs.entity"
             - {
                 id 215
                 type "Set_GameTrail_width"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Exec id=210
                     Value 0.65
@@ -966,10 +775,6 @@ owner_type "ecs.entity"
             - {
                 id 1823
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 1809
                 reference_name "State == 0"
                 inputs {
                     Exec id=1826 kind="exec"
@@ -989,9 +794,6 @@ owner_type "ecs.entity"
             - {
                 id 1843
                 type "Set Component"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Component "GAME.GamePickup"
                     state id=1851 default=1

@@ -1,9 +1,9 @@
 name "HardRock"
 components {
-    GAME.GameAppearance antialias=0.25 color=1262571775 height=48.0 shape="Circle" width=130.0
+    GAME.GameAppearance antialias=0.25 color=0x4b4150ff height=48.0 shape="Circle" width=130.0
     GAME.GameCollider category=8 height=48.0 mask=15 shape="Box" width=130.0
     GAME.GameDestructible cell_size=2.0 min_fragment_cells=12
-    GAME.GameMaterial absorption=0.6 albedo=1548706303 edge_light=1.0 emission_multiplier=1.0 scene=1262571775
+    GAME.GameMaterial absorption=0.6 albedo=0x5c4f61ff edge_light=1.0 emission_multiplier=1.0 scene=0x4b4150ff
     GAME.GameOrientation radians=0.12
     GAME.GameSubstance blast_multiplier=0.6 hardness=4.0
     (object)GAME.GameTransform

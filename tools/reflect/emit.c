@@ -78,7 +78,7 @@ void emit(FILE *out, const collect_ctx *ctx)
                 field_type_name(f)
             );
             emit_string(out, f->description);
-            fputs(" },\n", out);
+            fprintf(out, ", %s },\n", f->color ? "true" : "false");
         }
         fputs("};\n\n", out);
 

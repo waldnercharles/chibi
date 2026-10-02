@@ -4,14 +4,14 @@ components {
     GAME.GameAim {
         direction x=1.0
     }
-    GAME.GameAppearance antialias=1.0 color=4294967295 height=18.0 shape="Stroked Chevron" stroke_width=1.0 width=20.0
+    GAME.GameAppearance antialias=1.0 color=0xffffffff height=18.0 shape="Stroked Chevron" stroke_width=1.0 width=20.0
     GAME.GameBody continuous=#true type="Dynamic"
     GAME.GameCollider category=1 mask=10 radius=10.0
     GAME.GameDrive acceleration=800.0
     GAME.GameGlobalBinding name="Player"
     GAME.GameHealth current=20 maximum=20
     (object)GAME.GameInput
-    GAME.GameMaterial absorption=1.0 albedo=437918234 emission_color=2823094271 emission_intensity=0.1 emission_multiplier=1.0 scene=4294967295
+    GAME.GameMaterial absorption=1.0 albedo=0x1a1a1a1a emission_color=0xa844ffff emission_intensity=0.1 emission_multiplier=1.0 scene=0xffffffff
     GAME.GameMovement speed=120.0
     (object)GAME.GameOrientation
     (object)GAME.GameTransform

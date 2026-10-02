@@ -7,14 +7,10 @@ owner_type "ecs.entity"
         kind "event"
         name ""
         (array)nodes {
-            - id=1 type="Event" x=0.0 y=0.0 placed=#false reference_name="Nudge"
+            - id=1 type="Event" reference_name="Nudge"
             - {
                 id 44
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 3
                 reference_name "clamp(vx + (rand() - 0.5) * 170, -900, 900)"
                 inputs {
                     vx {
@@ -27,14 +23,10 @@ owner_type "ecs.entity"
                     Result id=46 type="double"
                 }
             }
-            - id=88 type="Set_GameVelocity_x" x=0.0 y=0.0 placed=#false
+            - id=88 type="Set_GameVelocity_x"
             - {
                 id 339
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 325
                 reference_name "velocity.y -= 100"
                 inputs {
                     Exec id=342 kind="exec"

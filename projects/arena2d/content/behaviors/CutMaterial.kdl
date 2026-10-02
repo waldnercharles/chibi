@@ -20,14 +20,11 @@ owner_type "ecs.entity"
             - {
                 id 4
                 type "Self"
-                x 0.0
-                y 0.0
-                placed #false
                 outputs {
                     Self type_name="ecs.entity"
                 }
             }
-            - id=6 type="Get_GameTransform" x=0.0 y=0.0 placed=#false
+            - id=6 type="Get_GameTransform"
             - {
                 id 8
                 type "Damage Material"

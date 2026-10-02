@@ -11,9 +11,6 @@ description "Physically based basalt on the BasaltCave column grid: prisms with 
             - {
                 id 1
                 type "Shader Surface Output"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     "Base Color" {
                         default x=1.0 y=1.0 z=1.0
@@ -26,42 +23,32 @@ description "Physically based basalt on the BasaltCave column grid: prisms with 
                     }
                 }
             }
-            - id=10 type="Shader WorldPosition" x=0.0 y=0.0 placed=#false
+            - id=10 type="Shader WorldPosition"
             - {
                 id 12
                 type "Shader X"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Value {
                         type "struct"
                         type_name "ShaderVec3"
-                        binding kind="local" local_id=17234
+                        binding kind="local" name="world"
                     }
                 }
             }
             - {
                 id 15
                 type "Shader Z"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Value {
                         type "struct"
                         type_name "ShaderVec3"
-                        binding kind="local" local_id=17234
+                        binding kind="local" name="world"
                     }
                 }
             }
             - {
                 id 16026
                 type "Call Pure Function"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 12137
                 reference_name "Column Grid"
                 inputs {
                     X id=16027 type="float"
@@ -78,26 +65,22 @@ description "Physically based basalt on the BasaltCave column grid: prisms with 
             - {
                 id 16034
                 type "Call Pure Function"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 14027
                 reference_name "Prism Facet"
                 inputs {
                     Column {
                         id 16035
                         type "float"
-                        binding kind="local" local_id=17230
+                        binding kind="local" name="column"
                     }
                     Across {
                         id 16036
                         type "float"
-                        binding kind="local" local_id=17231
+                        binding kind="local" name="across"
                     }
                     "Half Width" {
                         id 16037
                         type "float"
-                        binding kind="local" local_id=17235
+                        binding kind="local" name="halfWidth"
                     }
                 }
                 outputs {
@@ -107,23 +90,19 @@ description "Physically based basalt on the BasaltCave column grid: prisms with 
             - {
                 id 16039
                 type "Call Pure Function"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 14488
                 reference_name "Cross Joints"
                 inputs {
                     Column {
                         id 16040
                         type "float"
-                        binding kind="local" local_id=17230
+                        binding kind="local" name="column"
                     }
                     Along id=16041 type="float"
                     Offset id=16042 type="float"
                     Across {
                         id 16043
                         type "float"
-                        binding kind="local" local_id=17231
+                        binding kind="local" name="across"
                     }
                 }
                 outputs {
@@ -135,22 +114,18 @@ description "Physically based basalt on the BasaltCave column grid: prisms with 
             - {
                 id 16047
                 type "Call Pure Function"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 11473
                 reference_name "Phenocrysts"
                 inputs {
                     Position {
                         id 16048
                         type "struct"
                         type_name "ShaderVec3"
-                        binding kind="local" local_id=17234
+                        binding kind="local" name="world"
                     }
                     Joint {
                         id 16049
                         type "float"
-                        binding kind="local" local_id=17232
+                        binding kind="local" name="joint"
                     }
                 }
                 outputs {
@@ -161,17 +136,13 @@ description "Physically based basalt on the BasaltCave column grid: prisms with 
             - {
                 id 16052
                 type "Call Pure Function"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 11006
                 reference_name "Relief"
                 inputs {
                     Position {
                         id 16053
                         type "struct"
                         type_name "ShaderVec3"
-                        binding kind="local" local_id=17234
+                        binding kind="local" name="world"
                     }
                 }
                 outputs {
@@ -182,10 +153,6 @@ description "Physically based basalt on the BasaltCave column grid: prisms with 
             - {
                 id 16127
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 16056
                 reference_name "smoothstep(0.25, 0.55, noise(vec3(x * 0.16, z * 0.012, 3), 1) * noise(vec3(x * 0.02, z * 0.004, 4), 1))"
                 inputs {
                     x id=16128 type="float"
@@ -198,16 +165,12 @@ description "Physically based basalt on the BasaltCave column grid: prisms with 
             - {
                 id 16337
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 16273
                 reference_name "(0.85 + 0.3 * noise(vec3(column, 0, 7), 1)) * (0.9 + 0.2 * noise(vec3(column, block, 8), 1))"
                 inputs {
                     column {
                         id 16338
                         type "float"
-                        binding kind="local" local_id=17230
+                        binding kind="local" name="column"
                     }
                     block id=16339 type="float"
                 }
@@ -218,16 +181,12 @@ description "Physically based basalt on the BasaltCave column grid: prisms with 
             - {
                 id 16360
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 16341
                 reference_name "smoothstep(0.8, 1, abs(across))"
                 inputs {
                     across {
                         id 16361
                         type "float"
-                        binding kind="local" local_id=17231
+                        binding kind="local" name="across"
                     }
                 }
                 outputs {
@@ -237,21 +196,17 @@ description "Physically based basalt on the BasaltCave column grid: prisms with 
             - {
                 id 16399
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 16363
                 reference_name "(1 - 0.7 * joint) * (1 - 0.45 * groove)"
                 inputs {
                     joint {
                         id 16400
                         type "float"
-                        binding kind="local" local_id=17232
+                        binding kind="local" name="joint"
                     }
                     groove {
                         id 16401
                         type "float"
-                        binding kind="local" local_id=17236
+                        binding kind="local" name="groove"
                     }
                 }
                 outputs {
@@ -261,10 +216,6 @@ description "Physically based basalt on the BasaltCave column grid: prisms with 
             - {
                 id 16486
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 16422
                 reference_name "mix((vec3(0.068, 0.073, 0.08) + streaks * vec3(0.037, 0.007, -0.016)) * tint, vec3(0.12, 0.12, 0.115), crystal) * shade"
                 inputs {
                     streaks id=16487 type="float"
@@ -272,7 +223,7 @@ description "Physically based basalt on the BasaltCave column grid: prisms with 
                     crystal {
                         id 16489
                         type "float"
-                        binding kind="local" local_id=17233
+                        binding kind="local" name="crystal"
                     }
                     shade id=16490 type="float"
                 }
@@ -283,23 +234,19 @@ description "Physically based basalt on the BasaltCave column grid: prisms with 
             - {
                 id 16754
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 16663
                 reference_name "vec3(mix(mix(cos(facet), -0.85, smoothstep(0.86, 1, -across)), 0.85, smoothstep(0.86, 1, across)), sin(facet), mix((blockT - 0.5) * 0.2, mix(-0.7, 0.7, step(0.5, blockT)), joint))"
                 inputs {
                     facet id=16755 type="float"
                     across {
                         id 16756
                         type "float"
-                        binding kind="local" local_id=17231
+                        binding kind="local" name="across"
                     }
                     blockT id=16757 type="float"
                     joint {
                         id 16758
                         type "float"
-                        binding kind="local" local_id=17232
+                        binding kind="local" name="joint"
                     }
                 }
                 outputs {
@@ -309,10 +256,6 @@ description "Physically based basalt on the BasaltCave column grid: prisms with 
             - {
                 id 16777
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 16760
                 reference_name "prism + reliefSlope + crystalTilt"
                 inputs {
                     prism id=16778 type="struct" type_name="ShaderVec3"
@@ -326,26 +269,22 @@ description "Physically based basalt on the BasaltCave column grid: prisms with 
             - {
                 id 16923
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 16873
                 reference_name "mix(mix(0.68 + 0.12 * noise(vec3(column, 0, 12), 1), 0.95, joint), 0.1, crystal)"
                 inputs {
                     column {
                         id 16924
                         type "float"
-                        binding kind="local" local_id=17230
+                        binding kind="local" name="column"
                     }
                     joint {
                         id 16925
                         type "float"
-                        binding kind="local" local_id=17232
+                        binding kind="local" name="joint"
                     }
                     crystal {
                         id 16926
                         type "float"
-                        binding kind="local" local_id=17233
+                        binding kind="local" name="crystal"
                     }
                 }
                 outputs {
@@ -355,37 +294,33 @@ description "Physically based basalt on the BasaltCave column grid: prisms with 
             - {
                 id 17000
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 16928
                 reference_name "0.22 * halfWidth * (1 - across * across) - 2.5 * groove - 1.8 * joint + 0.35 * relief + 0.15 * crystal"
                 inputs {
                     halfWidth {
                         id 17001
                         type "float"
-                        binding kind="local" local_id=17235
+                        binding kind="local" name="halfWidth"
                     }
                     across {
                         id 17002
                         type "float"
-                        binding kind="local" local_id=17231
+                        binding kind="local" name="across"
                     }
                     groove {
                         id 17003
                         type "float"
-                        binding kind="local" local_id=17236
+                        binding kind="local" name="groove"
                     }
                     joint {
                         id 17004
                         type "float"
-                        binding kind="local" local_id=17232
+                        binding kind="local" name="joint"
                     }
                     relief id=17005 type="float"
                     crystal {
                         id 17006
                         type "float"
-                        binding kind="local" local_id=17233
+                        binding kind="local" name="crystal"
                     }
                 }
                 outputs {
@@ -481,9 +416,6 @@ description "Physically based basalt on the BasaltCave column grid: prisms with 
             - {
                 id 14489
                 type "Function Entry"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)outputs {
                     - id=14493 name="Column" type="float" kind="data"
                     - id=14494 name="Along" type="float" kind="data"
@@ -494,9 +426,6 @@ description "Physically based basalt on the BasaltCave column grid: prisms with 
             - {
                 id 14491
                 type "Return"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)inputs {
                     - id=14497 name="Joint" type="float" kind="data"
                     - id=14498 name="Block" type="float" kind="data"
@@ -506,16 +435,12 @@ description "Physically based basalt on the BasaltCave column grid: prisms with 
             - {
                 id 14546
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 14500
                 reference_name "26 + 36 * (0.5 + 0.5 * sin(column * 2.3999631 + 0.3))"
                 inputs {
                     column {
                         id 14547
                         type "float"
-                        binding kind="local" local_id=15762
+                        binding kind="local" name="column"
                     }
                 }
                 outputs {
@@ -525,16 +450,12 @@ description "Physically based basalt on the BasaltCave column grid: prisms with 
             - {
                 id 14629
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 14595
                 reference_name "0.5 + 0.5 * sin(column * 1.93716 + 1.1)"
                 inputs {
                     column {
                         id 14630
                         type "float"
-                        binding kind="local" local_id=15762
+                        binding kind="local" name="column"
                     }
                 }
                 outputs {
@@ -544,16 +465,12 @@ description "Physically based basalt on the BasaltCave column grid: prisms with 
             - {
                 id 14688
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 14666
                 reference_name "sin(column * 3.30119 + 2.2)"
                 inputs {
                     column {
                         id 14689
                         type "float"
-                        binding kind="local" local_id=15762
+                        binding kind="local" name="column"
                     }
                 }
                 outputs {
@@ -563,16 +480,12 @@ description "Physically based basalt on the BasaltCave column grid: prisms with 
             - {
                 id 14735
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 14713
                 reference_name "sin(column * 0.83261 + 4.4)"
                 inputs {
                     column {
                         id 14736
                         type "float"
-                        binding kind="local" local_id=15762
+                        binding kind="local" name="column"
                     }
                 }
                 outputs {
@@ -582,17 +495,13 @@ description "Physically based basalt on the BasaltCave column grid: prisms with 
             - {
                 id 14854
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 14760
                 reference_name "(along + 0.45 * spacing * sin(along / (0.9 * spacing) + 7 * phase) - spacing * phase - 0.2 * tilt * offset - 3 * bow * across * across) / spacing"
                 inputs {
                     along id=14855 type="float"
                     spacing {
                         id 14856
                         type "float"
-                        binding kind="local" local_id=15763
+                        binding kind="local" name="spacing"
                     }
                     phase id=14857 type="float"
                     tilt id=14858 type="float"
@@ -607,10 +516,6 @@ description "Physically based basalt on the BasaltCave column grid: prisms with 
             - {
                 id 15279
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 15269
                 reference_name "fract(blockCoord)"
                 inputs {
                     blockCoord id=15280 type="float"
@@ -622,10 +527,6 @@ description "Physically based basalt on the BasaltCave column grid: prisms with 
             - {
                 id 15390
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 15376
                 reference_name "blockCoord - fract(blockCoord)"
                 inputs {
                     blockCoord id=15391 type="float"
@@ -637,21 +538,17 @@ description "Physically based basalt on the BasaltCave column grid: prisms with 
             - {
                 id 15499
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 15487
                 reference_name "blockT * spacing"
                 inputs {
                     blockT {
                         id 15500
                         type "float"
-                        binding kind="local" local_id=15764
+                        binding kind="local" name="blockT"
                     }
                     spacing {
                         id 15501
                         type "float"
-                        binding kind="local" local_id=15763
+                        binding kind="local" name="spacing"
                     }
                 }
                 outputs {
@@ -661,21 +558,17 @@ description "Physically based basalt on the BasaltCave column grid: prisms with 
             - {
                 id 15559
                 type "Call Pure Function"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 11249
                 reference_name "Joint Crack"
                 inputs {
                     Column {
                         id 15560
                         type "float"
-                        binding kind="local" local_id=15762
+                        binding kind="local" name="column"
                     }
                     Block {
                         id 15561
                         type "float"
-                        binding kind="local" local_id=15765
+                        binding kind="local" name="block"
                     }
                     Distance id=15562 type="float"
                 }
@@ -686,16 +579,12 @@ description "Physically based basalt on the BasaltCave column grid: prisms with 
             - {
                 id 15603
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 15590
                 reference_name "block + 1"
                 inputs {
                     block {
                         id 15604
                         type "float"
-                        binding kind="local" local_id=15765
+                        binding kind="local" name="block"
                     }
                 }
                 outputs {
@@ -705,21 +594,17 @@ description "Physically based basalt on the BasaltCave column grid: prisms with 
             - {
                 id 15638
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 15620
                 reference_name "(1 - blockT) * spacing"
                 inputs {
                     blockT {
                         id 15639
                         type "float"
-                        binding kind="local" local_id=15764
+                        binding kind="local" name="blockT"
                     }
                     spacing {
                         id 15640
                         type "float"
-                        binding kind="local" local_id=15763
+                        binding kind="local" name="spacing"
                     }
                 }
                 outputs {
@@ -729,16 +614,12 @@ description "Physically based basalt on the BasaltCave column grid: prisms with 
             - {
                 id 15698
                 type "Call Pure Function"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 11249
                 reference_name "Joint Crack"
                 inputs {
                     Column {
                         id 15699
                         type "float"
-                        binding kind="local" local_id=15762
+                        binding kind="local" name="column"
                     }
                     Block id=15700 type="float"
                     Distance id=15701 type="float"
@@ -750,10 +631,6 @@ description "Physically based basalt on the BasaltCave column grid: prisms with 
             - {
                 id 15749
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 15734
                 reference_name "saturate(max(below, above))"
                 inputs {
                     below id=15750 type="float"
@@ -818,9 +695,6 @@ description "Physically based basalt on the BasaltCave column grid: prisms with 
             - {
                 id 14028
                 type "Function Entry"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)outputs {
                     - id=14032 name="Column" type="float" kind="data"
                     - id=14033 name="Across" type="float" kind="data"
@@ -830,9 +704,6 @@ description "Physically based basalt on the BasaltCave column grid: prisms with 
             - {
                 id 14030
                 type "Return"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)inputs {
                     - id=14035 name="Angle" type="float" kind="data"
                 }
@@ -840,10 +711,6 @@ description "Physically based basalt on the BasaltCave column grid: prisms with 
             - {
                 id 14070
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 14036
                 reference_name "pi / 3 * noise(vec3(column, 0, 1), 1)"
                 inputs {
                     column id=14071 type="float"
@@ -855,10 +722,6 @@ description "Physically based basalt on the BasaltCave column grid: prisms with 
             - {
                 id 14133
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 14107
                 reference_name "cos(min(twist, pi / 3 - twist))"
                 inputs {
                     twist id=14134 type="float"
@@ -870,10 +733,6 @@ description "Physically based basalt on the BasaltCave column grid: prisms with 
             - {
                 id 14188
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 14170
                 reference_name "1.2 * reach / halfWidth"
                 inputs {
                     reach id=14189 type="float"
@@ -886,10 +745,6 @@ description "Physically based basalt on the BasaltCave column grid: prisms with 
             - {
                 id 14248
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 14236
                 reference_name "across * reach"
                 inputs {
                     across id=14249 type="float"
@@ -902,10 +757,6 @@ description "Physically based basalt on the BasaltCave column grid: prisms with 
             - {
                 id 14419
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 14290
                 reference_name "twist - pi / 6 + pi / 3 * (smoothstep(-softness, softness, cos(twist) - hexX) + smoothstep(-softness, softness, cos(twist + pi / 3) - hexX) + smoothstep(-softness, softness, cos(twist + 2 * pi / 3) - hexX))"
                 inputs {
                     twist id=14420 type="float"
@@ -950,9 +801,6 @@ description "Physically based basalt on the BasaltCave column grid: prisms with 
             - {
                 id 10927
                 type "Function Entry"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)outputs {
                     - id=10931 name="Position" type="struct" type_name="ShaderVec3" kind="data"
                 }
@@ -960,9 +808,6 @@ description "Physically based basalt on the BasaltCave column grid: prisms with 
             - {
                 id 10929
                 type "Return"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)inputs {
                     - id=10932 name="Value" type="float" kind="data"
                 }
@@ -970,10 +815,6 @@ description "Physically based basalt on the BasaltCave column grid: prisms with 
             - {
                 id 10968
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 10933
                 reference_name "0.7 * noise(position, 0.08) + 0.3 * noise(position, 0.45)"
                 inputs {
                     position id=10969 type="struct" type_name="ShaderVec3"
@@ -1000,9 +841,6 @@ description "Physically based basalt on the BasaltCave column grid: prisms with 
             - {
                 id 11007
                 type "Function Entry"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)outputs {
                     - id=11011 name="Position" type="struct" type_name="ShaderVec3" kind="data"
                 }
@@ -1010,9 +848,6 @@ description "Physically based basalt on the BasaltCave column grid: prisms with 
             - {
                 id 11009
                 type "Return"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)inputs {
                     - id=11012 name="Height" type="float" kind="data"
                     - id=11013 name="Slope" type="struct" type_name="ShaderVec3" kind="data"
@@ -1021,10 +856,6 @@ description "Physically based basalt on the BasaltCave column grid: prisms with 
             - {
                 id 11028
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 11014
                 reference_name "vec3(position.x, 0, position.z)"
                 inputs {
                     position id=11029 type="struct" type_name="ShaderVec3"
@@ -1036,17 +867,13 @@ description "Physically based basalt on the BasaltCave column grid: prisms with 
             - {
                 id 11051
                 type "Call Pure Function"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 10926
                 reference_name "Rock Noise"
                 inputs {
                     Position {
                         id 11052
                         type "struct"
                         type_name "ShaderVec3"
-                        binding kind="local" local_id=11905
+                        binding kind="local" name="ground"
                     }
                 }
                 outputs {
@@ -1056,17 +883,13 @@ description "Physically based basalt on the BasaltCave column grid: prisms with 
             - {
                 id 11096
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 11074
                 reference_name "ground + vec3(0.8, 0, 0)"
                 inputs {
                     ground {
                         id 11097
                         type "struct"
                         type_name "ShaderVec3"
-                        binding kind="local" local_id=11905
+                        binding kind="local" name="ground"
                     }
                 }
                 outputs {
@@ -1076,10 +899,6 @@ description "Physically based basalt on the BasaltCave column grid: prisms with 
             - {
                 id 11119
                 type "Call Pure Function"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 10926
                 reference_name "Rock Noise"
                 inputs {
                     Position id=11120 type="struct" type_name="ShaderVec3"
@@ -1091,17 +910,13 @@ description "Physically based basalt on the BasaltCave column grid: prisms with 
             - {
                 id 11166
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 11144
                 reference_name "ground + vec3(0, 0, 0.8)"
                 inputs {
                     ground {
                         id 11167
                         type "struct"
                         type_name "ShaderVec3"
-                        binding kind="local" local_id=11905
+                        binding kind="local" name="ground"
                     }
                 }
                 outputs {
@@ -1111,10 +926,6 @@ description "Physically based basalt on the BasaltCave column grid: prisms with 
             - {
                 id 11189
                 type "Call Pure Function"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 10926
                 reference_name "Rock Noise"
                 inputs {
                     Position id=11190 type="struct" type_name="ShaderVec3"
@@ -1126,10 +937,6 @@ description "Physically based basalt on the BasaltCave column grid: prisms with 
             - {
                 id 11244
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 11214
                 reference_name "vec3(east - height, 0, north - height) * 0.45"
                 inputs {
                     east id=11245 type="float"
@@ -1173,9 +980,6 @@ description "Physically based basalt on the BasaltCave column grid: prisms with 
             - {
                 id 11250
                 type "Function Entry"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)outputs {
                     - id=11254 name="Column" type="float" kind="data"
                     - id=11255 name="Block" type="float" kind="data"
@@ -1185,9 +989,6 @@ description "Physically based basalt on the BasaltCave column grid: prisms with 
             - {
                 id 11252
                 type "Return"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)inputs {
                     - id=11257 name="Depth" type="float" kind="data"
                 }
@@ -1195,10 +996,6 @@ description "Physically based basalt on the BasaltCave column grid: prisms with 
             - {
                 id 11279
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 11258
                 reference_name "noise(vec3(column, block, 11), 1)"
                 inputs {
                     column id=11280 type="float"
@@ -1211,10 +1008,6 @@ description "Physically based basalt on the BasaltCave column grid: prisms with 
             - {
                 id 11354
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 11325
                 reference_name "step(0.64, open) * (0.6 + 1.4 * open)"
                 inputs {
                     open id=11355 type="float"
@@ -1226,10 +1019,6 @@ description "Physically based basalt on the BasaltCave column grid: prisms with 
             - {
                 id 11409
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 11378
                 reference_name "width * (1 - smoothstep(0, width + 0.01, distance))"
                 inputs {
                     width id=11410 type="float"
@@ -1263,9 +1052,6 @@ description "Physically based basalt on the BasaltCave column grid: prisms with 
             - {
                 id 11474
                 type "Function Entry"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)outputs {
                     - id=11478 name="Position" type="struct" type_name="ShaderVec3" kind="data"
                     - id=11479 name="Joint" type="float" kind="data"
@@ -1274,9 +1060,6 @@ description "Physically based basalt on the BasaltCave column grid: prisms with 
             - {
                 id 11476
                 type "Return"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)inputs {
                     - id=11480 name="Mask" type="float" kind="data"
                     - id=11481 name="Tilt" type="struct" type_name="ShaderVec3" kind="data"
@@ -1285,10 +1068,6 @@ description "Physically based basalt on the BasaltCave column grid: prisms with 
             - {
                 id 11495
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 11482
                 reference_name "position.xz / 0.9"
                 inputs {
                     position id=11496 type="struct" type_name="ShaderVec3"
@@ -1300,10 +1079,6 @@ description "Physically based basalt on the BasaltCave column grid: prisms with 
             - {
                 id 11535
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 11521
                 reference_name "grain - fract(grain)"
                 inputs {
                     grain id=11536 type="struct" type_name="ShaderVec2"
@@ -1315,10 +1090,6 @@ description "Physically based basalt on the BasaltCave column grid: prisms with 
             - {
                 id 11577
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 11561
                 reference_name "fract(grain) - 0.5"
                 inputs {
                     grain id=11578 type="struct" type_name="ShaderVec2"
@@ -1330,17 +1101,13 @@ description "Physically based basalt on the BasaltCave column grid: prisms with 
             - {
                 id 11655
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 11603
                 reference_name "step(0.975, noise(vec3(cell.x, cell.y, 21), 1)) * step(dot(spot, spot), 0.1) * (1 - joint)"
                 inputs {
                     cell {
                         id 11656
                         type "struct"
                         type_name "ShaderVec2"
-                        binding kind="local" local_id=11906
+                        binding kind="local" name="cell"
                     }
                     spot id=11657 type="struct" type_name="ShaderVec2"
                     joint id=11658 type="float"
@@ -1352,22 +1119,18 @@ description "Physically based basalt on the BasaltCave column grid: prisms with 
             - {
                 id 11805
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 11742
                 reference_name "vec3(noise(vec3(cell.x, cell.y, 22), 1) - 0.5, 0, noise(vec3(cell.x, cell.y, 23), 1) - 0.5) * 0.6 * mask"
                 inputs {
                     cell {
                         id 11806
                         type "struct"
                         type_name "ShaderVec2"
-                        binding kind="local" local_id=11906
+                        binding kind="local" name="cell"
                     }
                     mask {
                         id 11807
                         type "float"
-                        binding kind="local" local_id=11907
+                        binding kind="local" name="mask"
                     }
                 }
                 outputs {
@@ -1408,9 +1171,6 @@ description "Physically based basalt on the BasaltCave column grid: prisms with 
             - {
                 id 12138
                 type "Function Entry"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)outputs {
                     - id=12142 name="X" type="float" kind="data"
                     - id=12143 name="Z" type="float" kind="data"
@@ -1419,9 +1179,6 @@ description "Physically based basalt on the BasaltCave column grid: prisms with 
             - {
                 id 12140
                 type "Return"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)inputs {
                     - id=12144 name="Column" type="float" kind="data"
                     - id=12145 name="Offset" type="float" kind="data"
@@ -1433,21 +1190,17 @@ description "Physically based basalt on the BasaltCave column grid: prisms with 
             - {
                 id 12179
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 12149
                 reference_name "x / 180 + z / 420 + 1.3"
                 inputs {
                     x {
                         id 12180
                         type "float"
-                        binding kind="local" local_id=15753
+                        binding kind="local" name="x"
                     }
                     z {
                         id 12181
                         type "float"
-                        binding kind="local" local_id=15754
+                        binding kind="local" name="z"
                     }
                 }
                 outputs {
@@ -1457,21 +1210,17 @@ description "Physically based basalt on the BasaltCave column grid: prisms with 
             - {
                 id 12273
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 12243
                 reference_name "x / 95 - z / 300 + 0.4"
                 inputs {
                     x {
                         id 12274
                         type "float"
-                        binding kind="local" local_id=15753
+                        binding kind="local" name="x"
                     }
                     z {
                         id 12275
                         type "float"
-                        binding kind="local" local_id=15754
+                        binding kind="local" name="z"
                     }
                 }
                 outputs {
@@ -1481,21 +1230,17 @@ description "Physically based basalt on the BasaltCave column grid: prisms with 
             - {
                 id 12361
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 12337
                 reference_name "x / 1300 + z / 2100"
                 inputs {
                     x {
                         id 12362
                         type "float"
-                        binding kind="local" local_id=15753
+                        binding kind="local" name="x"
                     }
                     z {
                         id 12363
                         type "float"
-                        binding kind="local" local_id=15754
+                        binding kind="local" name="z"
                     }
                 }
                 outputs {
@@ -1505,21 +1250,17 @@ description "Physically based basalt on the BasaltCave column grid: prisms with 
             - {
                 id 12443
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 12413
                 reference_name "x / 900 + z / 260 + 2.2"
                 inputs {
                     x {
                         id 12444
                         type "float"
-                        binding kind="local" local_id=15753
+                        binding kind="local" name="x"
                     }
                     z {
                         id 12445
                         type "float"
-                        binding kind="local" local_id=15754
+                        binding kind="local" name="z"
                     }
                 }
                 outputs {
@@ -1529,16 +1270,12 @@ description "Physically based basalt on the BasaltCave column grid: prisms with 
             - {
                 id 12529
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 12507
                 reference_name "0.5 + 0.5 * sin(drift)"
                 inputs {
                     drift {
                         id 12530
                         type "float"
-                        binding kind="local" local_id=15757
+                        binding kind="local" name="drift"
                     }
                 }
                 outputs {
@@ -1548,36 +1285,32 @@ description "Physically based basalt on the BasaltCave column grid: prisms with 
             - {
                 id 12616
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 12556
                 reference_name "x / 26 + 0.9 * sin(wobbleA) + 0.5 * sin(wobbleB) + 4.6 * swayAmount * sin(sway)"
                 inputs {
                     x {
                         id 12617
                         type "float"
-                        binding kind="local" local_id=15753
+                        binding kind="local" name="x"
                     }
                     wobbleA {
                         id 12618
                         type "float"
-                        binding kind="local" local_id=15755
+                        binding kind="local" name="wobbleA"
                     }
                     wobbleB {
                         id 12619
                         type "float"
-                        binding kind="local" local_id=15756
+                        binding kind="local" name="wobbleB"
                     }
                     swayAmount {
                         id 12620
                         type "float"
-                        binding kind="local" local_id=15759
+                        binding kind="local" name="swayAmount"
                     }
                     sway {
                         id 12621
                         type "float"
-                        binding kind="local" local_id=15758
+                        binding kind="local" name="sway"
                     }
                 }
                 outputs {
@@ -1587,36 +1320,32 @@ description "Physically based basalt on the BasaltCave column grid: prisms with 
             - {
                 id 12901
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 12795
                 reference_name "1 / 26 + 0.9 * cos(wobbleA) / 180 + 0.5 * cos(wobbleB) / 95 + 4.6 * (0.5 * cos(drift) / 1300 * sin(sway) + swayAmount * cos(sway) / 900)"
                 inputs {
                     wobbleA {
                         id 12902
                         type "float"
-                        binding kind="local" local_id=15755
+                        binding kind="local" name="wobbleA"
                     }
                     wobbleB {
                         id 12903
                         type "float"
-                        binding kind="local" local_id=15756
+                        binding kind="local" name="wobbleB"
                     }
                     drift {
                         id 12904
                         type "float"
-                        binding kind="local" local_id=15757
+                        binding kind="local" name="drift"
                     }
                     sway {
                         id 12905
                         type "float"
-                        binding kind="local" local_id=15758
+                        binding kind="local" name="sway"
                     }
                     swayAmount {
                         id 12906
                         type "float"
-                        binding kind="local" local_id=15759
+                        binding kind="local" name="swayAmount"
                     }
                 }
                 outputs {
@@ -1626,36 +1355,32 @@ description "Physically based basalt on the BasaltCave column grid: prisms with 
             - {
                 id 13138
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 13044
                 reference_name "0.9 * cos(wobbleA) / 420 - 0.5 * cos(wobbleB) / 300 + 4.6 * (0.5 * cos(drift) / 2100 * sin(sway) + swayAmount * cos(sway) / 260)"
                 inputs {
                     wobbleA {
                         id 13139
                         type "float"
-                        binding kind="local" local_id=15755
+                        binding kind="local" name="wobbleA"
                     }
                     wobbleB {
                         id 13140
                         type "float"
-                        binding kind="local" local_id=15756
+                        binding kind="local" name="wobbleB"
                     }
                     drift {
                         id 13141
                         type "float"
-                        binding kind="local" local_id=15757
+                        binding kind="local" name="drift"
                     }
                     sway {
                         id 13142
                         type "float"
-                        binding kind="local" local_id=15758
+                        binding kind="local" name="sway"
                     }
                     swayAmount {
                         id 13143
                         type "float"
-                        binding kind="local" local_id=15759
+                        binding kind="local" name="swayAmount"
                     }
                 }
                 outputs {
@@ -1665,16 +1390,12 @@ description "Physically based basalt on the BasaltCave column grid: prisms with 
             - {
                 id 13295
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 13281
                 reference_name "columnCoord - fract(columnCoord)"
                 inputs {
                     columnCoord {
                         id 13296
                         type "float"
-                        binding kind="local" local_id=15760
+                        binding kind="local" name="columnCoord"
                     }
                 }
                 outputs {
@@ -1684,21 +1405,17 @@ description "Physically based basalt on the BasaltCave column grid: prisms with 
             - {
                 id 13379
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 13358
                 reference_name "(fract(columnCoord) - 0.5) / columnsPerX"
                 inputs {
                     columnCoord {
                         id 13380
                         type "float"
-                        binding kind="local" local_id=15760
+                        binding kind="local" name="columnCoord"
                     }
                     columnsPerX {
                         id 13381
                         type "float"
-                        binding kind="local" local_id=15761
+                        binding kind="local" name="columnsPerX"
                     }
                 }
                 outputs {
@@ -1708,16 +1425,12 @@ description "Physically based basalt on the BasaltCave column grid: prisms with 
             - {
                 id 13562
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 13549
                 reference_name "0.5 / columnsPerX"
                 inputs {
                     columnsPerX {
                         id 13563
                         type "float"
-                        binding kind="local" local_id=15761
+                        binding kind="local" name="columnsPerX"
                     }
                 }
                 outputs {
@@ -1727,16 +1440,12 @@ description "Physically based basalt on the BasaltCave column grid: prisms with 
             - {
                 id 13693
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 13671
                 reference_name "2 * fract(columnCoord) - 1"
                 inputs {
                     columnCoord {
                         id 13694
                         type "float"
-                        binding kind="local" local_id=15760
+                        binding kind="local" name="columnCoord"
                     }
                 }
                 outputs {
@@ -1746,22 +1455,18 @@ description "Physically based basalt on the BasaltCave column grid: prisms with 
             - {
                 id 13778
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 13756
                 reference_name "z - columnsPerZ / columnsPerX * offset"
                 inputs {
                     z {
                         id 13779
                         type "float"
-                        binding kind="local" local_id=15754
+                        binding kind="local" name="z"
                     }
                     columnsPerZ id=13780 type="float"
                     columnsPerX {
                         id 13781
                         type "float"
-                        binding kind="local" local_id=15761
+                        binding kind="local" name="columnsPerX"
                     }
                     offset id=13782 type="float"
                 }

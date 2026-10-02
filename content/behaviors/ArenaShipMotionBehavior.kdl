@@ -25,9 +25,6 @@ owner_type "ecs.entity"
             - {
                 id 10
                 type "Event"
-                x 0.0
-                y 0.0
-                placed #false
                 reference_name "Tick"
                 outputs {
                     Then id=9
@@ -36,10 +33,6 @@ owner_type "ecs.entity"
             - {
                 id 204
                 type "Call Function"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 79
                 reference_name "Advance Damped Spring"
                 inputs {
                     Exec id=194
@@ -47,31 +40,31 @@ owner_type "ecs.entity"
                         id 195
                         type "float"
                         kind "data"
-                        binding kind="variable" variable_id=5 source_asset="ArenaShipMotionBehavior"
+                        binding kind="variable" source_asset="ArenaShipMotionBehavior" name="Roll Angle"
                     }
                     Velocity {
                         id 196
                         type "float"
                         kind "data"
-                        binding kind="variable" variable_id=6 source_asset="ArenaShipMotionBehavior"
+                        binding kind="variable" source_asset="ArenaShipMotionBehavior" name="Roll Velocity"
                     }
                     Target {
                         id 197
                         type "float"
                         kind "data"
-                        binding kind="variable" variable_id=255 source_asset="ArenaShipMotionBehavior"
+                        binding kind="variable" source_asset="ArenaShipMotionBehavior" name="Resting Face"
                     }
                     Frequency {
                         id 198
                         type "float"
                         kind "data"
-                        binding kind="variable" variable_id=3 source_asset="ArenaShipMotionBehavior"
+                        binding kind="variable" source_asset="ArenaShipMotionBehavior" name="Settle Response (Hz)"
                     }
                     Damping {
                         id 199
                         type "float"
                         kind "data"
-                        binding kind="variable" variable_id=4 source_asset="ArenaShipMotionBehavior"
+                        binding kind="variable" source_asset="ArenaShipMotionBehavior" name="Settle Damping"
                     }
                     Delta {
                         id 200
@@ -89,10 +82,7 @@ owner_type "ecs.entity"
             - {
                 id 209
                 type "Set Variable"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 5
+                reference_name "Roll Angle"
                 inputs {
                     Exec id=205
                     Value type="float"
@@ -104,10 +94,7 @@ owner_type "ecs.entity"
             - {
                 id 214
                 type "Set Variable"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 6
+                reference_name "Roll Velocity"
                 inputs {
                     Exec id=210
                     Value type="float"
@@ -119,10 +106,6 @@ owner_type "ecs.entity"
             - {
                 id 636
                 type "Call Pure Function"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 579
                 reference_name "Compute Aim Basis"
                 inputs {
                     Move {
@@ -146,10 +129,6 @@ owner_type "ecs.entity"
             - {
                 id 772
                 type "Call Function"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 729
                 reference_name "Advance Rolling Motion"
                 inputs {
                     Delta {
@@ -162,13 +141,13 @@ owner_type "ecs.entity"
                         id 776
                         type "float"
                         kind "data"
-                        binding kind="variable" variable_id=5 source_asset="ArenaShipMotionBehavior"
+                        binding kind="variable" source_asset="ArenaShipMotionBehavior" name="Roll Angle"
                     }
                     Velocity {
                         id 777
                         type "float"
                         kind "data"
-                        binding kind="variable" variable_id=6 source_asset="ArenaShipMotionBehavior"
+                        binding kind="variable" source_asset="ArenaShipMotionBehavior" name="Roll Velocity"
                     }
                     Strafe id=778 type="double" kind="data"
                 }
@@ -179,17 +158,13 @@ owner_type "ecs.entity"
             - {
                 id 836
                 type "Call Function"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 783
                 reference_name "Apply Ship Pose"
                 inputs {
                     reverseNoseLift {
                         id 839
                         type "float"
                         kind "data"
-                        binding kind="variable" variable_id=2 source_asset="ArenaShipMotionBehavior"
+                        binding kind="variable" source_asset="ArenaShipMotionBehavior" name="Reverse Nose Lift (Degrees)"
                     }
                     Delta {
                         id 840
@@ -201,13 +176,13 @@ owner_type "ecs.entity"
                         id 841
                         type "float"
                         kind "data"
-                        binding kind="variable" variable_id=3 source_asset="ArenaShipMotionBehavior"
+                        binding kind="variable" source_asset="ArenaShipMotionBehavior" name="Settle Response (Hz)"
                     }
                     Damping {
                         id 842
                         type "float"
                         kind "data"
-                        binding kind="variable" variable_id=4 source_asset="ArenaShipMotionBehavior"
+                        binding kind="variable" source_asset="ArenaShipMotionBehavior" name="Settle Damping"
                     }
                     forward id=843 type="double" kind="data"
                 }
@@ -218,10 +193,6 @@ owner_type "ecs.entity"
             - {
                 id 1095
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 1080
                 reference_name "abs(Strafe) > DeadZone"
                 inputs {
                     Exec id=1099 kind="exec"
@@ -230,7 +201,7 @@ owner_type "ecs.entity"
                         id 1097
                         type "double"
                         flags 0
-                        binding kind="variable" variable_id=254 source_asset="ArenaShipMotionBehavior"
+                        binding kind="variable" source_asset="ArenaShipMotionBehavior" name="Strafe Dead Zone"
                     }
                 }
                 outputs {
@@ -266,9 +237,6 @@ owner_type "ecs.entity"
             - {
                 id 87
                 type "Function Entry"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)outputs {
                     - id=80 name="Then"
                     - id=81 name="Position" type="float" kind="data"
@@ -282,9 +250,6 @@ owner_type "ecs.entity"
             - {
                 id 91
                 type "Return"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Exec id=88
                     Position id=89 type="float" kind="data"
@@ -294,9 +259,6 @@ owner_type "ecs.entity"
             - {
                 id 95
                 type "Advance Damped Spring"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs Frequency=0.0 Damping=0.0
             }
         }
@@ -323,9 +285,6 @@ owner_type "ecs.entity"
             - {
                 id 265
                 type "Function Entry"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)outputs {
                     - id=257 name="Then"
                     - id=258 name="Position" type="float" kind="data"
@@ -340,9 +299,6 @@ owner_type "ecs.entity"
             - {
                 id 270
                 type "Return"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Exec id=266
                     Position id=267 type="float" kind="data"
@@ -353,9 +309,6 @@ owner_type "ecs.entity"
             - {
                 id 349
                 type "Quantize Angle"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Angle id=346
                 }
@@ -363,10 +316,6 @@ owner_type "ecs.entity"
             - {
                 id 433
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 407
                 reference_name "Roll Gain"
                 inputs {
                     Acceleration id=434 type="float"
@@ -379,10 +328,6 @@ owner_type "ecs.entity"
             - {
                 id 511
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 437
                 reference_name "Desired Roll"
                 inputs {
                     Strafe id=512 type="float"
@@ -397,10 +342,6 @@ owner_type "ecs.entity"
             - {
                 id 545
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 517
                 reference_name "Roll Velocity"
                 inputs {
                     Velocity id=546 type="float"
@@ -414,10 +355,6 @@ owner_type "ecs.entity"
             - {
                 id 574
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 550
                 reference_name "Roll Position"
                 inputs {
                     Position id=575 type="float"
@@ -464,9 +401,6 @@ owner_type "ecs.entity"
             - {
                 id 580
                 type "Function Entry"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)outputs {
                     - id=584 name="Move" type="struct" type_name="CF_V2" kind="data"
                     - id=585 name="Aim" type="struct" type_name="CF_V2" kind="data"
@@ -475,9 +409,6 @@ owner_type "ecs.entity"
             - {
                 id 582
                 type "Return"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)inputs {
                     - id=586 name="Strafe" type="double" kind="data"
                     - id=587 name="Forward" type="double" kind="data"
@@ -486,10 +417,6 @@ owner_type "ecs.entity"
             - {
                 id 608
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 588
                 reference_name "Aim Strafe"
                 inputs {
                     move id=609 type="struct" type_name="CF_V2"
@@ -502,10 +429,6 @@ owner_type "ecs.entity"
             - {
                 id 632
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 612
                 reference_name "Aim Forward"
                 inputs {
                     move id=633 type="struct" type_name="CF_V2"
@@ -539,9 +462,6 @@ owner_type "ecs.entity"
             - {
                 id 730
                 type "Function Entry"
-                x 0.0
-                y 0.0
-                placed #false
                 outputs {
                     Delta id=768 type="float" kind="data"
                     Position id=769 type="float" kind="data"
@@ -549,14 +469,10 @@ owner_type "ecs.entity"
                     Strafe id=771 declaration_id=586 type="double" kind="data"
                 }
             }
-            - id=732 type="Return" x=0.0 y=0.0 placed=#false
+            - id=732 type="Return"
             - {
                 id 736
                 type "Call Function"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 256
                 reference_name "Advance Face Roll"
                 inputs {
                     Position id=738 type="float" kind="data"
@@ -566,19 +482,19 @@ owner_type "ecs.entity"
                         id 741
                         type "float"
                         kind "data"
-                        binding kind="variable" variable_id=1 source_asset="ArenaShipMotionBehavior"
+                        binding kind="variable" source_asset="ArenaShipMotionBehavior" name="Roll Speed (Degrees/Second)"
                     }
                     Rocking {
                         id 742
                         type "float"
                         kind "data"
-                        binding kind="variable" variable_id=252 source_asset="ArenaShipMotionBehavior"
+                        binding kind="variable" source_asset="ArenaShipMotionBehavior" name="Face Rocking"
                     }
                     Acceleration {
                         id 743
                         type "float"
                         kind "data"
-                        binding kind="variable" variable_id=253 source_asset="ArenaShipMotionBehavior"
+                        binding kind="variable" source_asset="ArenaShipMotionBehavior" name="Roll Acceleration (Per Second)"
                     }
                     Delta id=744 type="float" kind="data"
                 }
@@ -592,10 +508,7 @@ owner_type "ecs.entity"
             - {
                 id 753
                 type "Set Variable"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 5
+                reference_name "Roll Angle"
                 inputs {
                     Value type="float"
                 }
@@ -606,10 +519,7 @@ owner_type "ecs.entity"
             - {
                 id 758
                 type "Set Variable"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 6
+                reference_name "Roll Velocity"
                 inputs {
                     Value type="float"
                 }
@@ -620,10 +530,7 @@ owner_type "ecs.entity"
             - {
                 id 763
                 type "Set Variable"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 255
+                reference_name "Resting Face"
                 inputs {
                     Value type="float"
                 }
@@ -658,9 +565,6 @@ owner_type "ecs.entity"
             - {
                 id 784
                 type "Function Entry"
-                x 0.0
-                y 0.0
-                placed #false
                 outputs {
                     reverseNoseLift id=831 type="float" kind="data"
                     Delta id=832 type="float" kind="data"
@@ -669,27 +573,23 @@ owner_type "ecs.entity"
                     forward id=835 declaration_id=587 type="double" kind="data"
                 }
             }
-            - id=786 type="Return" x=0.0 y=0.0 placed=#false
+            - id=786 type="Return"
             - {
                 id 792
                 type "Call Function"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 79
                 reference_name "Advance Damped Spring"
                 inputs {
                     Position {
                         id 794
                         type "float"
                         kind "data"
-                        binding kind="variable" variable_id=7 source_asset="ArenaShipMotionBehavior"
+                        binding kind="variable" source_asset="ArenaShipMotionBehavior" name="Nose Position"
                     }
                     Velocity {
                         id 795
                         type "float"
                         kind "data"
-                        binding kind="variable" variable_id=8 source_asset="ArenaShipMotionBehavior"
+                        binding kind="variable" source_asset="ArenaShipMotionBehavior" name="Nose Velocity"
                     }
                     Target id=796 type="float" kind="data"
                     Frequency id=797 type="float" kind="data"
@@ -705,10 +605,7 @@ owner_type "ecs.entity"
             - {
                 id 803
                 type "Set Variable"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 7
+                reference_name "Nose Position"
                 inputs {
                     Value type="float"
                 }
@@ -719,10 +616,7 @@ owner_type "ecs.entity"
             - {
                 id 808
                 type "Set Variable"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 8
+                reference_name "Nose Velocity"
                 inputs {
                     Value type="float"
                 }
@@ -733,10 +627,6 @@ owner_type "ecs.entity"
             - {
                 id 827
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 641
                 reference_name "Nose Lift Target"
                 inputs {
                     forward id=828 type="double"
@@ -749,18 +639,15 @@ owner_type "ecs.entity"
             - {
                 id 1117
                 type "Set Component"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Component "GAME.GameVisualTransform"
                     pitch {
                         id 1125
-                        binding kind="variable" variable_id=7 source_asset="ArenaShipMotionBehavior"
+                        binding kind="variable" source_asset="ArenaShipMotionBehavior" name="Nose Position"
                     }
                     roll {
                         id 1124
-                        binding kind="variable" variable_id=5 source_asset="ArenaShipMotionBehavior"
+                        binding kind="variable" source_asset="ArenaShipMotionBehavior" name="Roll Angle"
                     }
                 }
                 outputs {

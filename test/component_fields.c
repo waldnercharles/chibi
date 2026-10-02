@@ -240,8 +240,49 @@ static void ui_fields(ecs_world *world, ecs_entity owner)
     puts("ui fields PASS: expanded getter compiles; changing order preserves document and visibility");
 }
 
+static void reflected_color_fields()
+{
+    const type_field *color = pin_type_field_path(GAME_COMPONENT_GameAppearance.type, "color");
+    const type_field *category = pin_type_field_path(GAME_COMPONENT_GameCollider.type, "category");
+    assert(color && color->color && category && !category->color);
+    const type_desc *material = GAME_COMPONENT_GameMaterial.type;
+    for (int i = 0; i < material->field_count; i++) {
+        if (material->fields[i].type == PIN_U32) {
+            assert(material->fields[i].color);
+        }
+    }
+    const node_desc *set = registry_node_by_name("Set_GameAppearance_color");
+    assert(set && (set->inputs[1].flags & PIN_FLAG_COLOR));
+    behavior_asset *asset = behavior_asset_new("Color fields");
+    graph *g = asset->graph;
+    node *get = graph_add_node(g, registry_node_by_name("Get_GameAppearance"));
+    assert(graph_expose_output_fields(g, get, 0) == 0);
+    bool exposed = false;
+    for (int i = 0; i < get->output_count; i++) {
+        if (!strcmp(get->output_pins[i].name, "color")) {
+            assert(get->output_pins[i].flags & PIN_FLAG_COLOR);
+            exposed = true;
+        }
+    }
+    assert(exposed);
+    node *make = graph_add_node(g, registry_node_by_name("Make_GameAppearance"));
+    bool constructed = false;
+    for (int i = 0; i < make->input_count; i++) {
+        if (!strcmp(make->input_pins[i].name, "color")) {
+            assert(make->input_pins[i].flags & PIN_FLAG_COLOR);
+            constructed = true;
+        }
+    }
+    assert(constructed);
+    behavior_asset_free(asset);
+    assert(!strcmp(registry_enum_label("GameFluidKind", GAME_FLUID_LIQUID), "Liquid"));
+    assert(!strcmp(registry_enum_label("GameHRCToneMapping", GAME_HRC_TONE_AGX), "AgX"));
+    assert(!strcmp(registry_enum_label("GameHRCUpscale", GAME_HRC_UPSCALE_EDGE_AWARE), "Edge aware"));
+}
+
 void test_component_fields()
 {
+    reflected_color_fields();
     assert(registry_node_by_name("Set_GameHealth"));
     assert(registry_node_by_name("SetEntity_GameHealth"));
     ecs_world *world = ecs_world_new();

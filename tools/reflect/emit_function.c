@@ -71,7 +71,7 @@ static const char *primitive_spelling(const char *pin)
     return NULL;
 }
 
-static void emit_pin_spec_flags(FILE *out, const char *name, const char *pin, const char *spelling, unsigned flags)
+void emit_pin_spec_flags(FILE *out, const char *name, const char *pin, const char *spelling, unsigned flags)
 {
     const char *canon = primitive_spelling(pin);
     if (canon && !(flags & PIN_FLAG_SERVICE)) {
@@ -394,7 +394,13 @@ void emit_struct_nodes(FILE *out, const struct_info *s)
     fprintf(out, "static const node_access %s_%s_value_access = {.flags=NODE_EFFECT_PURE};\n", g_prefix, s->name);
     fprintf(out, "static pin_spec %s_%s_make_inputs[] = {\n", g_prefix, s->name);
     for (int j = 0; j < acount(s->fields); j++) {
-        emit_pin_spec(out, s->fields[j].name, s->fields[j].pin, field_type_name(&s->fields[j]));
+        emit_pin_spec_flags(
+            out,
+            s->fields[j].name,
+            s->fields[j].pin,
+            field_type_name(&s->fields[j]),
+            s->fields[j].color ? PIN_FLAG_COLOR : 0
+        );
     }
     fputs("};\n", out);
     fprintf(out, "static pin_spec %s_%s_make_outputs[] = {\n", g_prefix, s->name);
@@ -418,7 +424,13 @@ void emit_struct_nodes(FILE *out, const struct_info *s)
     fputs("};\n", out);
     fprintf(out, "static pin_spec %s_%s_break_outputs[] = {\n", g_prefix, s->name);
     for (int j = 0; j < acount(s->fields); j++) {
-        emit_pin_spec(out, s->fields[j].name, s->fields[j].pin, field_type_name(&s->fields[j]));
+        emit_pin_spec_flags(
+            out,
+            s->fields[j].name,
+            s->fields[j].pin,
+            field_type_name(&s->fields[j]),
+            s->fields[j].color ? PIN_FLAG_COLOR : 0
+        );
     }
     fputs("};\n", out);
     fprintf(out, "node_desc %s_NODE_Break_%s = {\n", g_prefix, s->name);

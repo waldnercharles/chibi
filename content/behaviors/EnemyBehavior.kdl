@@ -8,13 +8,10 @@ owner_type "ecs.entity"
         kind "event"
         name ""
         (array)nodes {
-            - id=1 type="Event" x=0.0 y=0.0 placed=#false reference_name="Tick"
+            - id=1 type="Event" reference_name="Tick"
             - {
                 id 5
                 type "Self"
-                x 0.0
-                y 0.0
-                placed #false
                 outputs {
                     Self type_name="ecs.entity"
                 }
@@ -22,9 +19,6 @@ owner_type "ecs.entity"
             - {
                 id 7
                 type "Find Nearest Entity"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Position {
                         binding kind="component" component="GAME.GameTransform"
@@ -33,15 +27,11 @@ owner_type "ecs.entity"
                     Categories 1
                 }
             }
-            - id=16 type="Branch" x=0.0 y=0.0 placed=#false
-            - id=52 type="Set_GameVelocity" x=0.0 y=0.0 placed=#false
+            - id=16 type="Branch"
+            - id=52 type="Set_GameVelocity"
             - {
                 id 66
                 type "Call Pure Function"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 57
                 reference_name "Pursuit Velocity"
                 inputs {
                     Position {
@@ -70,9 +60,6 @@ owner_type "ecs.entity"
             - {
                 id 73
                 type "Set_GameVelocity"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Value {
                         default x=0.0 y=0.0
@@ -102,9 +89,6 @@ owner_type "ecs.entity"
             - {
                 id 58
                 type "Function Entry"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)outputs {
                     - id=59 name="Position" type="struct" type_name="CF_V2" kind="data"
                     - id=60 name="Target" type="struct" type_name="CF_V2" kind="data"
@@ -116,9 +100,6 @@ owner_type "ecs.entity"
             - {
                 id 64
                 type "Return"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)inputs {
                     - id=65 name="Velocity" type="struct" type_name="GameVelocity" kind="data"
                 }
@@ -126,10 +107,6 @@ owner_type "ecs.entity"
             - {
                 id 123
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 89
                 reference_name "normalize(Target - Position) * clamp(Speed, 0, Distance / DeltaSeconds)"
                 inputs {
                     Target id=124 type="struct" type_name="CF_V2"

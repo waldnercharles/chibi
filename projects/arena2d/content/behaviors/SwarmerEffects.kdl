@@ -7,13 +7,10 @@ owner_type "ecs.entity"
         kind "event"
         name ""
         (array)nodes {
-            - id=1 type="Event" x=0.0 y=0.0 placed=#false reference_name="Begin"
+            - id=1 type="Event" reference_name="Begin"
             - {
                 id 14
                 type "Call Function"
-                x 0.0
-                y 0.0
-                placed #false
                 reference_id 256
                 reference_name "Spawn Prototype At"
                 reference_asset "WeaponActions"

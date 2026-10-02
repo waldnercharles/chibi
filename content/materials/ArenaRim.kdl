@@ -11,9 +11,6 @@ description "A metallic cyan boundary with a slow, restrained pulse in its emiss
             - {
                 id 1
                 type "Shader Surface Output"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     "Base Color" {
                         default x=1.0 y=1.0 z=1.0
@@ -32,9 +29,6 @@ description "A metallic cyan boundary with a slow, restrained pulse in its emiss
             - {
                 id 9
                 type "Shader Parameter"
-                x 0.0
-                y 0.0
-                placed #false
                 reference_name "Base Color"
                 outputs {
                     Value {
@@ -46,13 +40,10 @@ description "A metallic cyan boundary with a slow, restrained pulse in its emiss
                     }
                 }
             }
-            - id=11 type="Shader Time" x=0.0 y=0.0 placed=#false
+            - id=11 type="Shader Time"
             - {
                 id 13
                 type "Shader Parameter"
-                x 0.0
-                y 0.0
-                placed #false
                 reference_id 1
                 reference_name "Pulse Speed"
                 outputs {
@@ -62,9 +53,6 @@ description "A metallic cyan boundary with a slow, restrained pulse in its emiss
             - {
                 id 15
                 type "Call Pure Function"
-                x 0.0
-                y 0.0
-                placed #false
                 reference_id 56
                 reference_name "Pulse"
                 reference_asset "ShaderMath"
@@ -79,9 +67,6 @@ description "A metallic cyan boundary with a slow, restrained pulse in its emiss
             - {
                 id 27
                 type "Shader Parameter"
-                x 0.0
-                y 0.0
-                placed #false
                 reference_id 2
                 reference_name "Glow"
                 outputs {
@@ -91,10 +76,6 @@ description "A metallic cyan boundary with a slow, restrained pulse in its emiss
             - {
                 id 67
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 38
                 reference_name "base_color * ((pulse * 0.12 + 0.88) * glow)"
                 inputs {
                     base_color id=68 type="struct" type_name="ShaderVec3"

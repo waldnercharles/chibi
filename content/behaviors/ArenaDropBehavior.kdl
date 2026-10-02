@@ -11,9 +11,6 @@ owner_type "ecs.entity"
             - {
                 id 476
                 type "Event"
-                x 0.0
-                y 0.0
-                placed #false
                 reference_name "Begin"
                 outputs {
                     Then id=475
@@ -22,10 +19,6 @@ owner_type "ecs.entity"
             - {
                 id 493
                 type "Call Function"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 1
                 reference_name "Spawn Surface Pulse"
                 inputs {
                     Exec id=489
@@ -45,10 +38,6 @@ owner_type "ecs.entity"
             - {
                 id 502
                 type "Call Function"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 102
                 reference_name "Emit Source Frame"
                 inputs {
                     Exec id=496
@@ -95,9 +84,6 @@ owner_type "ecs.entity"
             - {
                 id 518
                 type "SetEntity_GameGeometry3D"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Exec id=513
                     Value {
@@ -108,9 +94,6 @@ owner_type "ecs.entity"
             - {
                 id 524
                 type "SetEntity_GameShader"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Exec id=519
                     Value {
@@ -121,9 +104,6 @@ owner_type "ecs.entity"
             - {
                 id 530
                 type "Set_GameOrientation_radians"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Exec id=525
                 }
@@ -131,9 +111,6 @@ owner_type "ecs.entity"
             - {
                 id 542
                 type "Set_GamePickup_state"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Exec id=537
                 }
@@ -141,9 +118,6 @@ owner_type "ecs.entity"
             - {
                 id 916
                 type "Self"
-                x 0.0
-                y 0.0
-                placed #false
                 outputs {
                     Self type_name="ecs.entity"
                 }
@@ -151,9 +125,6 @@ owner_type "ecs.entity"
             - {
                 id 918
                 type "Self"
-                x 0.0
-                y 0.0
-                placed #false
                 outputs {
                     Self type_name="ecs.entity"
                 }
@@ -161,10 +132,6 @@ owner_type "ecs.entity"
             - {
                 id 952
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 938
                 reference_name "State == 3"
                 inputs {
                     Exec id=955 kind="exec"
@@ -184,9 +151,6 @@ owner_type "ecs.entity"
             - {
                 id 972
                 type "Set Component"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Component "GAME.GameVisualTransform"
                     pitch id=980
@@ -223,9 +187,6 @@ owner_type "ecs.entity"
             - {
                 id 108
                 type "Function Entry"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)outputs {
                     - id=103 name="Then"
                     - id=104 name="Position" type="struct" type_name="GameTransform" kind="data"
@@ -238,9 +199,6 @@ owner_type "ecs.entity"
             - {
                 id 110
                 type "Return"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Exec id=109
                 }
@@ -248,10 +206,6 @@ owner_type "ecs.entity"
             - {
                 id 583
                 type "Call Function"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 556
                 reference_name "Spawn Source Beam"
                 inputs {
                     Exec id=571
@@ -261,7 +215,7 @@ owner_type "ecs.entity"
                         type "struct"
                         type_name "GameGeometry3D"
                         kind "data"
-                        binding kind="local" local_id=936
+                        binding kind="local" name="Appearance"
                     }
                     Material id=574 type="struct" type_name="GameShader" kind="data"
                     Orientation id=575 type="struct" type_name="GameOrientation" kind="data"
@@ -280,35 +234,26 @@ owner_type "ecs.entity"
             - {
                 id 894
                 type "Primitive Part"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Appearance {
                         id 885
-                        binding kind="local" local_id=936
+                        binding kind="local" name="Appearance"
                     }
                 }
             }
             - {
                 id 904
                 type "Primitive Part"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Appearance {
                         id 895
-                        binding kind="local" local_id=936
+                        binding kind="local" name="Appearance"
                     }
                 }
             }
             - {
                 id 908
                 type "Subtract"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     A id=905 type="int" flags=0 group=0
                     B type="int" flags=0 group=0 default=1
@@ -320,9 +265,6 @@ owner_type "ecs.entity"
             - {
                 id 915
                 type "ForLoop"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Exec id=909
                 }
@@ -364,9 +306,6 @@ owner_type "ecs.entity"
             - {
                 id 5
                 type "Function Entry"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)outputs {
                     - id=2 name="Then"
                     - id=3 name="Prototype" type="name" kind="data" default="ArenaHitPulse"
@@ -376,9 +315,6 @@ owner_type "ecs.entity"
             - {
                 id 10
                 type "Spawn Prototype"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Exec id=6
                     Prototype type_name="name" default="ArenaHitPulse"
@@ -387,9 +323,6 @@ owner_type "ecs.entity"
             - {
                 id 16
                 type "SetEntity_GameTransform"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Exec id=11
                 }
@@ -397,9 +330,6 @@ owner_type "ecs.entity"
             - {
                 id 18
                 type "Return"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Exec id=17
                 }
@@ -425,9 +355,6 @@ owner_type "ecs.entity"
             - {
                 id 568
                 type "Function Entry"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)outputs {
                     - id=557 name="Then"
                     - id=558 name="Position" type="struct" type_name="GameTransform" kind="data"
@@ -450,9 +377,6 @@ owner_type "ecs.entity"
             - {
                 id 570
                 type "Return"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Exec id=569
                 }
@@ -460,9 +384,6 @@ owner_type "ecs.entity"
             - {
                 id 754
                 type "Transform Visual Offset"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Offset id=748
                 }
@@ -474,9 +395,6 @@ owner_type "ecs.entity"
             - {
                 id 765
                 type "Spawn Prototype"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Exec id=761
                     Prototype type_name="name" default="ArenaEnemyShard"
@@ -485,9 +403,6 @@ owner_type "ecs.entity"
             - {
                 id 769
                 type "Add"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     A id=766 type="double" flags=0 group=0
                     B type="double" flags=0 group=0
@@ -499,9 +414,6 @@ owner_type "ecs.entity"
             - {
                 id 773
                 type "Add"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     A id=770 type="double" flags=0 group=0
                     B type="double" flags=0 group=0
@@ -513,9 +425,6 @@ owner_type "ecs.entity"
             - {
                 id 777
                 type "Add"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     A id=774 type="double" flags=0 group=0
                     B type="double" flags=0 group=0
@@ -527,9 +436,6 @@ owner_type "ecs.entity"
             - {
                 id 793
                 type "Multiply"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     A id=790 type="double" flags=0 group=0
                     B type="double" flags=0 group=0 default=5.0
@@ -541,9 +447,6 @@ owner_type "ecs.entity"
             - {
                 id 797
                 type "Multiply"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     A id=794 type="double" flags=0 group=0
                     B type="double" flags=0 group=0 default=5.0
@@ -555,48 +458,36 @@ owner_type "ecs.entity"
             - {
                 id 851
                 type "SetEntity_GameShader"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Exec id=846
                     Entity {
-                        binding kind="local" local_id=937
+                        binding kind="local" name="Shard"
                     }
                 }
             }
             - {
                 id 857
                 type "SetEntity_GameOrientation"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Exec id=852
                     Entity {
-                        binding kind="local" local_id=937
+                        binding kind="local" name="Shard"
                     }
                 }
             }
             - {
                 id 863
                 type "SetEntity_GameVisualTransform"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Exec id=858
                     Entity {
-                        binding kind="local" local_id=937
+                        binding kind="local" name="Shard"
                     }
                 }
             }
             - {
                 id 982
                 type "Set Component"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Component "GAME.GameTransform"
                     x id=989
@@ -610,9 +501,6 @@ owner_type "ecs.entity"
             - {
                 id 991
                 type "Set Component"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Component "GAME.GameGeometry3D"
                     primitive id=1002
@@ -629,9 +517,6 @@ owner_type "ecs.entity"
             - {
                 id 1003
                 type "Set Component"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Component "GAME.GameVelocity"
                     x id=1010

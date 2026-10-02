@@ -11,14 +11,10 @@ owner_type "ecs.entity"
         kind "event"
         name ""
         (array)nodes {
-            - id=2 type="Event" x=0.0 y=0.0 placed=#false reference_name="Begin"
+            - id=2 type="Event" reference_name="Begin"
             - {
                 id 4
                 type "Get Variable"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 1
                 reference_name "Rows"
                 outputs {
                     Value container=1
@@ -27,18 +23,11 @@ owner_type "ecs.entity"
             - {
                 id 6
                 type "Resize"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs Index=10000
             }
             - {
                 id 10
                 type "Set Variable"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 1
                 reference_name "Rows"
                 inputs {
                     Value container=1
@@ -50,18 +39,12 @@ owner_type "ecs.entity"
             - {
                 id 15
                 type "Set UI Data"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs Name="total"
             }
-            - id=21 type="Length" x=0.0 y=0.0 placed=#false
+            - id=21 type="Length"
             - {
                 id 24
                 type "Event"
-                x 0.0
-                y 0.0
-                placed #false
                 reference_name "ShowRows"
                 outputs {
                     First id=26 declaration_id=1 type="int" kind="data"
@@ -71,22 +54,15 @@ owner_type "ecs.entity"
             - {
                 id 28
                 type "Get Variable"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 1
                 reference_name "Rows"
                 outputs {
                     Value container=1
                 }
             }
-            - id=30 type="Slice" x=0.0 y=0.0 placed=#false
+            - id=30 type="Slice"
             - {
                 id 35
                 type "Set UI Data"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs Name="rows"
             }
         }

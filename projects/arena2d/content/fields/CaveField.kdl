@@ -11,32 +11,22 @@ id_counter 2304
         kind "event"
         name ""
         (array)nodes {
-            - id=1 type="Field X" x=0.0 y=0.0 placed=#false
-            - id=3 type="Field Y" x=0.0 y=0.0 placed=#false
+            - id=1 type="Field X"
+            - id=3 type="Field Y"
             - {
                 id 6
                 type "Field Parameter"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs Name="Radius"
             }
             - {
                 id 10
                 type "Field Parameter"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs Name="Roughness"
             }
-            - id=199 type="Field Output" x=0.0 y=0.0 placed=#false
+            - id=199 type="Field Output"
             - {
                 id 2113
                 type "Call Pure Function"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 879
                 reference_name "Artery"
                 inputs {
                     X id=2114 type="float"
@@ -50,10 +40,6 @@ id_counter 2304
             - {
                 id 2118
                 type "Call Pure Function"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 1792
                 reference_name "Wall Noise"
                 inputs {
                     X id=2119 type="float"
@@ -66,10 +52,6 @@ id_counter 2304
             - {
                 id 2142
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 2122
                 reference_name "-(artery + roughness * wallNoise)"
                 inputs {
                     artery id=2143 type="float" flags=0
@@ -104,9 +86,6 @@ id_counter 2304
             - {
                 id 880
                 type "Function Entry"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)outputs {
                     - id=884 name="X" type="float" kind="data"
                     - id=885 name="Y" type="float" kind="data"
@@ -116,9 +95,6 @@ id_counter 2304
             - {
                 id 882
                 type "Return"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)inputs {
                     - id=887 name="Distance" type="float" kind="data"
                 }
@@ -126,23 +102,19 @@ id_counter 2304
             - {
                 id 925
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 888
                 reference_name "0.55 * radius * noise(x / 700, 0, 3)"
                 inputs {
                     radius {
                         id 926
                         type "float"
                         flags 0
-                        binding kind="local" local_id=2187
+                        binding kind="local" name="radius"
                     }
                     x {
                         id 927
                         type "float"
                         flags 0
-                        binding kind="local" local_id=2188
+                        binding kind="local" name="x"
                     }
                 }
                 outputs {
@@ -152,23 +124,19 @@ id_counter 2304
             - {
                 id 1022
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 1003
                 reference_name "x / (5 * radius)"
                 inputs {
                     x {
                         id 1023
                         type "float"
                         flags 0
-                        binding kind="local" local_id=2188
+                        binding kind="local" name="x"
                     }
                     radius {
                         id 1024
                         type "float"
                         flags 0
-                        binding kind="local" local_id=2187
+                        binding kind="local" name="radius"
                     }
                 }
                 outputs {
@@ -178,10 +146,6 @@ id_counter 2304
             - {
                 id 1134
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 1064
                 reference_name "arteryCenter + select(hash(floor(segment), 0, 5), 1, -1) * radius * 2.15 * sin((segment - floor(segment)) * pi)"
                 inputs {
                     arteryCenter id=1135 type="float" flags=0
@@ -190,7 +154,7 @@ id_counter 2304
                         id 1137
                         type "float"
                         flags 0
-                        binding kind="local" local_id=2187
+                        binding kind="local" name="radius"
                     }
                 }
                 outputs {
@@ -200,10 +164,6 @@ id_counter 2304
             - {
                 id 1322
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 1265
                 reference_name "abs(y - arteryCenter) - radius * (1 + 0.4 * noise(x / 420, 0, 4))"
                 inputs {
                     y id=1323 type="float" flags=0
@@ -212,13 +172,13 @@ id_counter 2304
                         id 1325
                         type "float"
                         flags 0
-                        binding kind="local" local_id=2187
+                        binding kind="local" name="radius"
                     }
                     x {
                         id 1326
                         type "float"
                         flags 0
-                        binding kind="local" local_id=2188
+                        binding kind="local" name="x"
                     }
                 }
                 outputs {
@@ -228,10 +188,6 @@ id_counter 2304
             - {
                 id 1563
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 1536
                 reference_name "abs(y - pocketCenter) - 0.43 * radius"
                 inputs {
                     y id=1564 type="float" flags=0
@@ -240,7 +196,7 @@ id_counter 2304
                         id 1566
                         type "float"
                         flags 0
-                        binding kind="local" local_id=2187
+                        binding kind="local" name="radius"
                     }
                 }
                 outputs {
@@ -250,10 +206,6 @@ id_counter 2304
             - {
                 id 1704
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 1692
                 reference_name "min(tunnel, pocket)"
                 inputs {
                     tunnel id=1705 type="float" flags=0
@@ -305,9 +257,6 @@ id_counter 2304
             - {
                 id 1793
                 type "Function Entry"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)outputs {
                     - id=1797 name="X" type="float" kind="data"
                     - id=1798 name="Y" type="float" kind="data"
@@ -316,9 +265,6 @@ id_counter 2304
             - {
                 id 1795
                 type "Return"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)inputs {
                     - id=1799 name="Value" type="float" kind="data"
                 }
@@ -326,10 +272,6 @@ id_counter 2304
             - {
                 id 1903
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 1800
                 reference_name "0.57 * noise(x / 170, y / 170, 0) + 0.28 * noise(x / 65, y / 65, 1) + 0.15 * noise(x / 23, y / 23, 2)"
                 inputs {
                     x id=1904 type="float" flags=0

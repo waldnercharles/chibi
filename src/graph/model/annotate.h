@@ -37,6 +37,9 @@
     __attribute__((annotate("node:description:" TEXT)))
 #define NODE_PIN_NAME(NAME) __attribute__((annotate("node:pin-name:" NAME)))
 #define NODE_SERVICE(T) __attribute__((annotate("node:service:" #T)))
+/* Packed RGBA color stored in an unsigned 32-bit field. */
+#define NODE_COLOR __attribute__((annotate("node:color")))
+
 /* Nominal graph handle stored in a uint64_t component field. */
 #define NODE_HANDLE(T) __attribute__((annotate("node:handle:" #T)))
 

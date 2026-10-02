@@ -11,9 +11,6 @@ owner_type "ecs.entity"
             - {
                 id 1
                 type "Event"
-                x 0.0
-                y 0.0
-                placed #false
                 reference_name "Tick"
                 outputs {
                     DeltaSeconds id=3 type="float" kind="data"
@@ -22,10 +19,6 @@ owner_type "ecs.entity"
             - {
                 id 16
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 4
                 reference_name "age += dt"
                 inputs {
                     Exec id=20 kind="exec"
@@ -48,10 +41,6 @@ owner_type "ecs.entity"
             - {
                 id 96
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 84
                 reference_name "age >= lifetime"
                 inputs {
                     Exec id=100 kind="exec"
@@ -77,21 +66,14 @@ owner_type "ecs.entity"
             - {
                 id 127
                 type "Self"
-                x 0.0
-                y 0.0
-                placed #false
                 outputs {
                     Self type_name="ecs.entity"
                 }
             }
-            - id=129 type="Destroy Entity" x=0.0 y=0.0 placed=#false
+            - id=129 type="Destroy Entity"
             - {
                 id 424
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 407
                 reference_name "length(velocity) > 0.0001"
                 inputs {
                     Exec id=427 kind="exec"
@@ -111,10 +93,6 @@ owner_type "ecs.entity"
             - {
                 id 459
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 447
                 reference_name "heading = atan2(velocity.y, velocity.x)"
                 inputs {
                     Exec id=463 kind="exec"

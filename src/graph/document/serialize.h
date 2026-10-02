@@ -38,6 +38,8 @@ graph *graph_from_value(av_value *value);
 av_value *graph_nodes_to_value(av_doc *doc, const graph *g, node *const *subset, int count);
 int graph_append_value(graph *g, av_value *value, float dx, float dy);
 av_value *behavior_asset_to_value(av_doc *doc, const behavior_asset *asset);
+/* File documents use existing unique local, variable and function names. */
+av_value *behavior_asset_to_disk_value(av_doc *doc, const behavior_asset *asset);
 behavior_asset *behavior_asset_from_value(av_value *value);
 behavior_asset *behavior_asset_clone(const behavior_asset *asset);
 bool behavior_asset_equal(const behavior_asset *a, const behavior_asset *b);

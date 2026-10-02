@@ -10,13 +10,10 @@ id_counter 84
         kind "event"
         name ""
         (array)nodes {
-            - id=3 type="Event" x=0.0 y=0.0 placed=#false reference_name="Tick"
+            - id=3 type="Event" reference_name="Tick"
             - {
                 id 7
                 type "Find Nearest Entity"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Position {
                         binding kind="component" component="GAME.GameTransform"
@@ -25,42 +22,33 @@ id_counter 84
                     Categories 1
                 }
             }
-            - id=16 type="Branch" x=0.0 y=0.0 placed=#false
-            - id=21 type="Scene Rhythm" x=0.0 y=0.0 placed=#false
-            - id=26 type="Cosine" x=0.0 y=0.0 placed=#false
-            - id=29 type="Sine" x=0.0 y=0.0 placed=#false
+            - id=16 type="Branch"
+            - id=21 type="Scene Rhythm"
+            - id=26 type="Cosine"
+            - id=29 type="Sine"
             - {
                 id 32
                 type "Multiply"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     B {
-                        binding kind="variable" variable_id=1 source_asset="PhaseWardenBehavior"
+                        binding kind="variable" source_asset="PhaseWardenBehavior" name="Orbit Radius"
                     }
                 }
             }
             - {
                 id 36
                 type "Multiply"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     B {
-                        binding kind="variable" variable_id=1 source_asset="PhaseWardenBehavior"
+                        binding kind="variable" source_asset="PhaseWardenBehavior" name="Orbit Radius"
                     }
                 }
             }
-            - id=40 type="Make_CF_V2" x=0.0 y=0.0 placed=#false
-            - id=44 type="Add" x=0.0 y=0.0 placed=#false
+            - id=40 type="Make_CF_V2"
+            - id=44 type="Add"
             - {
                 id 48
                 type "Direction To"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Origin {
                         binding kind="component" component="GAME.GameTransform"
@@ -74,35 +62,26 @@ id_counter 84
             - {
                 id 56
                 type "Multiply"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     B {
-                        binding kind="variable" variable_id=2 source_asset="PhaseWardenBehavior"
+                        binding kind="variable" source_asset="PhaseWardenBehavior" name="Move Speed"
                     }
                 }
             }
             - {
                 id 60
                 type "Multiply"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     B {
-                        binding kind="variable" variable_id=2 source_asset="PhaseWardenBehavior"
+                        binding kind="variable" source_asset="PhaseWardenBehavior" name="Move Speed"
                     }
                 }
             }
-            - id=64 type="Make_GameVelocity" x=0.0 y=0.0 placed=#false
-            - id=68 type="Set_GameVelocity" x=0.0 y=0.0 placed=#false
+            - id=64 type="Make_GameVelocity"
+            - id=68 type="Set_GameVelocity"
             - {
                 id 73
                 type "Set_GameVelocity"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Value {
                         default x=0.0 y=0.0

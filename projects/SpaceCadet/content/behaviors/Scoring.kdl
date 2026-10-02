@@ -13,25 +13,18 @@ owner_type "ecs.entity"
             - {
                 id 2
                 type "Event"
-                x 0.0
-                y 0.0
-                placed #false
                 reference_name "Contact Begin"
                 outputs {
                     Other id=4 type="handle" type_name="ecs.entity" kind="data"
                     Point id=5 type="struct" type_name="CF_V2" kind="data"
                 }
             }
-            - id=6 type="GetEntity_GameCollider" x=0.0 y=0.0 placed=#false
-            - id=30 type="Branch" x=0.0 y=0.0 placed=#false
-            - id=35 type="Branch" x=0.0 y=0.0 placed=#false
+            - id=6 type="GetEntity_GameCollider"
+            - id=30 type="Branch"
+            - id=35 type="Branch"
             - {
                 id 40
                 type "Set Variable"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 1
                 reference_name "award"
                 inputs {
                     Value type="float" default=1000.0
@@ -43,10 +36,6 @@ owner_type "ecs.entity"
             - {
                 id 45
                 type "Set Variable"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 1
                 reference_name "award"
                 inputs {
                     Value type="float" default=5000.0
@@ -58,9 +47,6 @@ owner_type "ecs.entity"
             - {
                 id 50
                 type "Get Global Variable"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs Name="Score"
                 outputs {
                     Value type="float"
@@ -69,9 +55,6 @@ owner_type "ecs.entity"
             - {
                 id 53
                 type "Get Global Variable"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs Name="Rank"
                 outputs {
                     Value type="float"
@@ -80,26 +63,22 @@ owner_type "ecs.entity"
             - {
                 id 73
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 56
                 reference_name "score + award * rank"
                 inputs {
                     score {
                         id 74
                         type "float"
-                        binding kind="local" local_id=601
+                        binding kind="local" name="score"
                     }
                     award {
                         id 75
                         type "double"
-                        binding kind="variable" variable_id=1 source_asset="Scoring"
+                        binding kind="variable" source_asset="Scoring" name="award"
                     }
                     rank {
                         id 76
                         type "float"
-                        binding kind="local" local_id=600
+                        binding kind="local" name="rank"
                     }
                 }
                 outputs {
@@ -109,9 +88,6 @@ owner_type "ecs.entity"
             - {
                 id 129
                 type "Set Global Variable"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Name "Score"
                     Value type="float"
@@ -123,9 +99,6 @@ owner_type "ecs.entity"
             - {
                 id 152
                 type "Get Global Variable"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs Name="Hits"
                 outputs {
                     Value type="double"
@@ -134,16 +107,12 @@ owner_type "ecs.entity"
             - {
                 id 169
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 155
                 reference_name "hits + 1"
                 inputs {
                     hits {
                         id 170
                         type "double"
-                        binding kind="local" local_id=602
+                        binding kind="local" name="hits"
                     }
                 }
                 outputs {
@@ -153,9 +122,6 @@ owner_type "ecs.entity"
             - {
                 id 186
                 type "Set Global Variable"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Name "Hits"
                     Value type="double"
@@ -167,18 +133,11 @@ owner_type "ecs.entity"
             - {
                 id 206
                 type "Play Sound"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs Frequency=900.0 "End Frequency"=1450.0 Duration=0.08 Volume=0.28
             }
             - {
                 id 229
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 215
                 reference_name "hits >= 8"
                 inputs {
                     Exec id=232 kind="exec"
@@ -186,7 +145,7 @@ owner_type "ecs.entity"
                         id 230
                         type "double"
                         flags 0
-                        binding kind="local" local_id=602
+                        binding kind="local" name="hits"
                     }
                 }
                 outputs {
@@ -198,21 +157,17 @@ owner_type "ecs.entity"
             - {
                 id 268
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 249
                 reference_name "score + 25000 * rank"
                 inputs {
                     score {
                         id 269
                         type "float"
-                        binding kind="local" local_id=601
+                        binding kind="local" name="score"
                     }
                     rank {
                         id 270
                         type "float"
-                        binding kind="local" local_id=600
+                        binding kind="local" name="rank"
                     }
                 }
                 outputs {
@@ -222,9 +177,6 @@ owner_type "ecs.entity"
             - {
                 id 310
                 type "Set Global Variable"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Name "Score"
                     Value type="float"
@@ -236,16 +188,12 @@ owner_type "ecs.entity"
             - {
                 id 356
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 335
                 reference_name "min(rank + 1, 9)"
                 inputs {
                     rank {
                         id 357
                         type "float"
-                        binding kind="local" local_id=600
+                        binding kind="local" name="rank"
                     }
                 }
                 outputs {
@@ -255,9 +203,6 @@ owner_type "ecs.entity"
             - {
                 id 380
                 type "Set Global Variable"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Name "Rank"
                     Value type="float"
@@ -269,9 +214,6 @@ owner_type "ecs.entity"
             - {
                 id 407
                 type "Set Global Variable"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Name "Hits"
                     Value type="float"
@@ -283,34 +225,21 @@ owner_type "ecs.entity"
             - {
                 id 413
                 type "Play Sound"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs Frequency=500.0 "End Frequency"=2200.0 Duration=0.5 Volume=0.4
             }
             - {
                 id 422
                 type "Has Any Flags"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs Flags=4
             }
             - {
                 id 426
                 type "Has Any Flags"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs Flags=16
             }
             - {
                 id 522
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 515
                 reference_name "collider.category"
                 inputs {
                     collider id=523 type="struct" type_name="GameCollider"

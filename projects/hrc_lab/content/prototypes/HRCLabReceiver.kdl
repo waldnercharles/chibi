@@ -1,7 +1,7 @@
 name "HRCLabReceiver"
 components {
-    GAME.GameAppearance antialias=0.25 color=4042322175 height=100.0 width=100.0
-    GAME.GameMaterial albedo=4042322175 emission_multiplier=1.0 scene=724249855
+    GAME.GameAppearance antialias=0.25 color=0xf0f0f0ff height=100.0 width=100.0
+    GAME.GameMaterial albedo=0xf0f0f0ff emission_multiplier=1.0 scene=0x2b2b2cff
     (object)GAME.GameOrientation
     (object)GAME.GameTransform
 }

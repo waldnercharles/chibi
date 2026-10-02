@@ -4055,13 +4055,16 @@ static int load_named_asset(
 /* Replaces an edited in-memory document with its asset file text. */
 static int to_disk_text(char **edited, const char *source, char *error, size_t error_size)
 {
-    av_doc *document = av_doc_read(*edited, error, error_size);
-    char *text = document
-                   ? source
-                       ? asset_source_reconcile(source, av_doc_root(document), error, error_size)
-                       : av_doc_write(document)
-                   : NULL;
-    av_doc_free(document);
+    char *text = asset_text_to_disk(*edited, error, error_size);
+    if (text && source) {
+        av_doc *document = av_doc_read(text, error, error_size);
+        char *reconciled = document
+                             ? asset_source_reconcile(source, av_doc_root(document), error, error_size)
+                             : NULL;
+        av_doc_free(document);
+        free(text);
+        text = reconciled;
+    }
     free(*edited);
     *edited = text;
     return text ? 0 : -1;

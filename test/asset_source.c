@@ -114,6 +114,22 @@ static void test_property_completion()
 void test_asset_source()
 {
     test_property_completion();
+    {
+        const char *source = "// palette\ncolor 966781183 // water\namount "
+                             "0.035000000000000003\n";
+        av_doc *values = av_doc_new();
+        av_value *root = av_obj(values);
+        av_obj_set(values, root, "color", av_color(values, 0x399fe8ff));
+        av_obj_set(values, root, "amount", av_float(values, 0.035f));
+        char error[256];
+        char *saved = asset_source_reconcile(source, root, error, sizeof error);
+        assert(saved && !strcmp(saved, "// palette\ncolor 0x399fe8ff // water\namount 0.035\n"));
+        char *again = asset_source_reconcile(saved, root, error, sizeof error);
+        assert(again && !strcmp(saved, again));
+        free(again);
+        free(saved);
+        av_doc_free(values);
+    }
     /* A visual field edit preserves hand-authored comments and whitespace,
      * including an inline property and a quoted value with escapes. */
     const char

@@ -67,7 +67,7 @@ name "Scene"
         components {
             GAME.GameAppearance width=100.0 height=12.0
             GAME.GameCollider width=100.0 height=12.0
-            GAME.GameOrientation radians=0.47999998927116394
+            GAME.GameOrientation radians=0.48
             GAME.GameTransform x=-154.0 y=-111.0
         }
         retained_components {
@@ -88,7 +88,7 @@ name "Scene"
         components {
             GAME.GameAppearance width=100.0 height=12.0
             GAME.GameCollider width=100.0 height=12.0
-            GAME.GameOrientation radians=-0.47999998927116394
+            GAME.GameOrientation radians=-0.48
             GAME.GameTransform x=154.0 y=-111.0
         }
         retained_components {
@@ -148,8 +148,8 @@ name "Scene"
         prototype "OrbitFlipper"
         components {
             GAME.GameActionBinding source="M" action="FlipRight"
-            GAME.GameOrientation radians=2.791593074798584
-            GAME.GameTransform x=72.41999816894531
+            GAME.GameOrientation radians=2.791593
+            GAME.GameTransform x=72.42
         }
         (array)behaviors "OrbitFlipperMotion"
     }

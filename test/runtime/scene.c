@@ -270,6 +270,39 @@ behavior_asset *make_behavior_behavior_asset(const char *name, int latent)
 
 void run_scene_document_checks(void)
 {
+    {
+        const char
+            *source = "version 1; name \"Readable\"; (array)entities { - { "
+                      "name \"Fluid\"; prototype \"Base\"; components { "
+                      "GameFluidVolume kind=1 color=966781183 "
+                      "absorption=0.035000000000000003; "
+                      "GameTransform x=0.15000000596046448 y=-0.0; "
+                      "GameCollider category=16; }; }; };";
+        char error[256];
+        game_scene_document *scene = game_scene_document_load(source, error, sizeof error);
+        assert(scene);
+        char *saved = game_scene_document_save(scene);
+        assert(
+            saved && strstr(saved, "kind=\"Liquid\"") &&
+            strstr(saved, "color=0x399fe8ff") &&
+            strstr(saved, "absorption=0.035") && strstr(saved, "x=0.15") &&
+            strstr(saved, "y=-0.0") && strstr(saved, "category=16")
+        );
+        game_scene_document *loaded = game_scene_document_load(saved, error, sizeof error);
+        assert(loaded);
+        char *again = game_scene_document_save(loaded);
+        assert(again && !strcmp(saved, again));
+        av_value *before = av_obj_get(scene->entities[0].components, "GameTransform");
+        av_value *after = av_obj_get(loaded->entities[0].components, "GameTransform");
+        float a = (float)av_get_num(av_obj_get(before, "x"));
+        float b = (float)av_get_num(av_obj_get(after, "x"));
+        assert(!memcmp(&a, &b, sizeof a));
+        assert(signbit(av_get_num(av_obj_get(after, "y"))));
+        free(again);
+        free(saved);
+        game_scene_document_free(loaded);
+        game_scene_document_free(scene);
+    }
     const char *behaviors[] = { "SceneBehavior", "Damage" };
     game_scene_document *document = game_scene_document_new("CombatScene");
     test_check(

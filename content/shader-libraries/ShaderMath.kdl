@@ -16,9 +16,6 @@ description "Shared pulse, ring mask and hit flash functions with explicit input
             - {
                 id 57
                 type "Function Entry"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)outputs {
                     - id=61 name="Time" type="float" kind="data"
                     - id=62 name="Speed" type="float" kind="data"
@@ -27,9 +24,6 @@ description "Shared pulse, ring mask and hit flash functions with explicit input
             - {
                 id 59
                 type "Return"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)inputs {
                     - id=63 name="Brightness" type="float" kind="data"
                 }
@@ -37,10 +31,6 @@ description "Shared pulse, ring mask and hit flash functions with explicit input
             - {
                 id 190
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 163
                 reference_name "(sin(time * speed) + 1) * 0.5"
                 inputs {
                     time id=191 type="float"
@@ -68,9 +58,6 @@ description "Shared pulse, ring mask and hit flash functions with explicit input
             - {
                 id 103
                 type "Function Entry"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)outputs {
                     - {
                         id 104
@@ -87,9 +74,6 @@ description "Shared pulse, ring mask and hit flash functions with explicit input
             - {
                 id 107
                 type "Return"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)inputs {
                     - id=108 name="Mask" type="float" kind="data"
                 }
@@ -97,9 +81,6 @@ description "Shared pulse, ring mask and hit flash functions with explicit input
             - {
                 id 110
                 type "Shader Circle"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Position {
                         default x=0.0 y=0.0
@@ -109,10 +90,6 @@ description "Shared pulse, ring mask and hit flash functions with explicit input
             - {
                 id 305
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 275
                 reference_name "saturate(1 - abs(distance) / max(width, 0.001))"
                 inputs {
                     distance id=306 type="float"
@@ -144,9 +121,6 @@ description "Shared pulse, ring mask and hit flash functions with explicit input
             - {
                 id 400
                 type "Function Entry"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)outputs {
                     - id=404 name="Color" type="struct" type_name="ShaderVec3" kind="data"
                     - id=405 name="Flash" type="float" kind="data"
@@ -155,9 +129,6 @@ description "Shared pulse, ring mask and hit flash functions with explicit input
             - {
                 id 402
                 type "Return"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)inputs {
                     - id=406 name="Base Color" type="struct" type_name="ShaderVec3" kind="data"
                     - id=407 name="Glow" type="struct" type_name="ShaderVec3" kind="data"
@@ -166,10 +137,6 @@ description "Shared pulse, ring mask and hit flash functions with explicit input
             - {
                 id 435
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 408
                 reference_name "mix(color, vec3(0.75, 0.95, 1), saturate(flash))"
                 inputs {
                     color id=436 type="struct" type_name="ShaderVec3"
@@ -182,10 +149,6 @@ description "Shared pulse, ring mask and hit flash functions with explicit input
             - {
                 id 515
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 493
                 reference_name "vec3(0.75, 0.95, 1) * flash"
                 inputs {
                     flash id=516 type="float"

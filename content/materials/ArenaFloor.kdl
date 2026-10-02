@@ -11,9 +11,6 @@ description "Permanent triangular cell outlines surround small breathing inner t
             - {
                 id 653
                 type "Shader Parameter"
-                x 0.0
-                y 0.0
-                placed #false
                 reference_name "Tile Size"
                 outputs {
                     Value flags=0 group=0 default=16.0
@@ -22,9 +19,6 @@ description "Permanent triangular cell outlines surround small breathing inner t
             - {
                 id 655
                 type "Shader Parameter"
-                x 0.0
-                y 0.0
-                placed #false
                 reference_id 1
                 reference_name "Idle Size"
                 outputs {
@@ -34,9 +28,6 @@ description "Permanent triangular cell outlines surround small breathing inner t
             - {
                 id 657
                 type "Shader Parameter"
-                x 0.0
-                y 0.0
-                placed #false
                 reference_id 2
                 reference_name "Active Size"
                 outputs {
@@ -46,9 +37,6 @@ description "Permanent triangular cell outlines surround small breathing inner t
             - {
                 id 659
                 type "Shader Parameter"
-                x 0.0
-                y 0.0
-                placed #false
                 reference_id 3
                 reference_name "Line Width"
                 outputs {
@@ -58,9 +46,6 @@ description "Permanent triangular cell outlines surround small breathing inner t
             - {
                 id 661
                 type "Shader Parameter"
-                x 0.0
-                y 0.0
-                placed #false
                 reference_id 4
                 reference_name "Idle Glow"
                 outputs {
@@ -70,9 +55,6 @@ description "Permanent triangular cell outlines surround small breathing inner t
             - {
                 id 663
                 type "Shader Parameter"
-                x 0.0
-                y 0.0
-                placed #false
                 reference_id 5
                 reference_name "Reaction Gain"
                 outputs {
@@ -82,9 +64,6 @@ description "Permanent triangular cell outlines surround small breathing inner t
             - {
                 id 665
                 type "Shader Parameter"
-                x 0.0
-                y 0.0
-                placed #false
                 reference_id 6
                 reference_name "Beat Amount"
                 outputs {
@@ -94,9 +73,6 @@ description "Permanent triangular cell outlines surround small breathing inner t
             - {
                 id 667
                 type "Shader WorldPosition"
-                x 0.0
-                y 0.0
-                placed #false
                 outputs {
                     Value {
                         flags 64
@@ -107,10 +83,6 @@ description "Permanent triangular cell outlines surround small breathing inner t
             - {
                 id 669
                 type "Call Pure Function"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 274
                 reference_name "Triangle Center"
                 inputs {
                     Position {
@@ -118,13 +90,13 @@ description "Permanent triangular cell outlines surround small breathing inner t
                         type "struct"
                         type_name "ShaderVec3"
                         flags 64
-                        binding kind="local" local_id=2689
+                        binding kind="local" name="WorldPosition"
                         default x=0.0 y=0.0 z=0.0
                     }
                     "Tile Size" {
                         id 671
                         type "float"
-                        binding kind="local" local_id=2687
+                        binding kind="local" name="TileSize"
                         default 20.0
                     }
                 }
@@ -141,9 +113,6 @@ description "Permanent triangular cell outlines surround small breathing inner t
             - {
                 id 673
                 type "Shader Surface Influence"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Position {
                         flags 64
@@ -160,10 +129,6 @@ description "Permanent triangular cell outlines surround small breathing inner t
             - {
                 id 676
                 type "Call Pure Function"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 624
                 reference_name "Activity Strength"
                 inputs {
                     Color {
@@ -178,14 +143,10 @@ description "Permanent triangular cell outlines surround small breathing inner t
                     Strength id=678 type="float"
                 }
             }
-            - id=679 type="Shader Beat Pulse" x=0.0 y=0.0 placed=#false
+            - id=679 type="Shader Beat Pulse"
             - {
                 id 694
                 type "Call Pure Function"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 501
                 reference_name "Triangle Border"
                 inputs {
                     Position {
@@ -193,20 +154,20 @@ description "Permanent triangular cell outlines surround small breathing inner t
                         type "struct"
                         type_name "ShaderVec3"
                         flags 64
-                        binding kind="local" local_id=2689
+                        binding kind="local" name="WorldPosition"
                         default x=0.0 y=0.0 z=0.0
                     }
                     "Tile Size" {
                         id 696
                         type "float"
-                        binding kind="local" local_id=2687
+                        binding kind="local" name="TileSize"
                         default 16.0
                     }
                     Scale id=697 type="float" default=0.25
                     Width {
                         id 698
                         type "float"
-                        binding kind="local" local_id=2688
+                        binding kind="local" name="LineWidth"
                         default 0.012
                     }
                 }
@@ -217,10 +178,6 @@ description "Permanent triangular cell outlines surround small breathing inner t
             - {
                 id 700
                 type "Call Pure Function"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 501
                 reference_name "Triangle Border"
                 inputs {
                     Position {
@@ -228,20 +185,20 @@ description "Permanent triangular cell outlines surround small breathing inner t
                         type "struct"
                         type_name "ShaderVec3"
                         flags 64
-                        binding kind="local" local_id=2689
+                        binding kind="local" name="WorldPosition"
                         default x=0.0 y=0.0 z=0.0
                     }
                     "Tile Size" {
                         id 702
                         type "float"
-                        binding kind="local" local_id=2687
+                        binding kind="local" name="TileSize"
                         default 16.0
                     }
                     Scale id=703 type="float" default=0.25
                     Width {
                         id 704
                         type "float"
-                        binding kind="local" local_id=2688
+                        binding kind="local" name="LineWidth"
                         default 0.012
                     }
                 }
@@ -252,9 +209,6 @@ description "Permanent triangular cell outlines surround small breathing inner t
             - {
                 id 730
                 type "Shader Surface Output"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     "Base Color" {
                         default x=0.0015 y=0.002 z=0.003
@@ -274,10 +228,6 @@ description "Permanent triangular cell outlines surround small breathing inner t
             - {
                 id 739
                 type "Call Pure Function"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 501
                 reference_name "Triangle Border"
                 inputs {
                     Position {
@@ -285,20 +235,20 @@ description "Permanent triangular cell outlines surround small breathing inner t
                         type "struct"
                         type_name "ShaderVec3"
                         flags 64
-                        binding kind="local" local_id=2689
+                        binding kind="local" name="WorldPosition"
                         default x=0.0 y=0.0 z=0.0
                     }
                     "Tile Size" {
                         id 741
                         type "float"
-                        binding kind="local" local_id=2687
+                        binding kind="local" name="TileSize"
                         default 16.0
                     }
                     Scale id=742 type="float" default=1.0
                     Width {
                         id 743
                         type "float"
-                        binding kind="local" local_id=2688
+                        binding kind="local" name="LineWidth"
                         default 0.012
                     }
                 }
@@ -309,10 +259,6 @@ description "Permanent triangular cell outlines surround small breathing inner t
             - {
                 id 2244
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 2220
                 reference_name "mix(idle_size, active_size, activity) + beat * beat_amount"
                 inputs {
                     idle_size id=2245 type="float"
@@ -328,10 +274,6 @@ description "Permanent triangular cell outlines surround small breathing inner t
             - {
                 id 2394
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 2371
                 reference_name "max(max(breathing, resting * 0.24), outline)"
                 inputs {
                     breathing id=2395 type="float"
@@ -345,10 +287,6 @@ description "Permanent triangular cell outlines surround small breathing inner t
             - {
                 id 2436
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 2399
                 reference_name "(influence * reaction_gain + vec3(0.42, 0.55, 0.64) * idle_glow) * line_mask"
                 inputs {
                     influence id=2437 type="struct" type_name="ShaderVec3"
@@ -408,9 +346,6 @@ description "Permanent triangular cell outlines surround small breathing inner t
             - {
                 id 502
                 type "Function Entry"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)outputs {
                     - {
                         id 503
@@ -429,9 +364,6 @@ description "Permanent triangular cell outlines surround small breathing inner t
             - {
                 id 507
                 type "Return"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)inputs {
                     - id=508 name="Mask" type="float" kind="data"
                 }
@@ -439,10 +371,6 @@ description "Permanent triangular cell outlines surround small breathing inner t
             - {
                 id 1636
                 type "Call Pure Function"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 751
                 reference_name "Triangle Cell"
                 inputs {
                     Position id=1637 type="struct" type_name="ShaderVec3"
@@ -457,10 +385,6 @@ description "Permanent triangular cell outlines surround small breathing inner t
             - {
                 id 1661
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 1642
                 reference_name "mix(offset, 1 - offset, upper)"
                 inputs {
                     offset id=1662 type="struct" type_name="ShaderVec2"
@@ -473,10 +397,6 @@ description "Permanent triangular cell outlines surround small breathing inner t
             - {
                 id 1728
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 1703
                 reference_name "min(min(barycentric.x, barycentric.y), 1 - (barycentric.x + barycentric.y))"
                 inputs {
                     barycentric id=1729 type="struct" type_name="ShaderVec2"
@@ -488,10 +408,6 @@ description "Permanent triangular cell outlines surround small breathing inner t
             - {
                 id 1852
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 1824
                 reference_name "(1 - clamp(scale, 0.01, 1)) / 3"
                 inputs {
                     scale id=1853 type="float"
@@ -503,10 +419,6 @@ description "Permanent triangular cell outlines surround small breathing inner t
             - {
                 id 1896
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 1883
                 reference_name "max(width, 0.002)"
                 inputs {
                     width id=1897 type="float"
@@ -518,10 +430,6 @@ description "Permanent triangular cell outlines surround small breathing inner t
             - {
                 id 1945
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 1912
                 reference_name "1 - smoothstep(line_width, line_width + 0.006, abs(edge_distance - inset))"
                 inputs {
                     line_width id=1946 type="float"
@@ -558,9 +466,6 @@ description "Permanent triangular cell outlines surround small breathing inner t
             - {
                 id 625
                 type "Function Entry"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)outputs {
                     - {
                         id 626
@@ -576,9 +481,6 @@ description "Permanent triangular cell outlines surround small breathing inner t
             - {
                 id 627
                 type "Return"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)inputs {
                     - id=628 name="Strength" type="float" kind="data"
                 }
@@ -586,10 +488,6 @@ description "Permanent triangular cell outlines surround small breathing inner t
             - {
                 id 2151
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 2127
                 reference_name "saturate(max(max(color.x, color.y), color.z) * 2.5)"
                 inputs {
                     color id=2152 type="struct" type_name="ShaderVec3"
@@ -615,9 +513,6 @@ description "Permanent triangular cell outlines surround small breathing inner t
             - {
                 id 275
                 type "Function Entry"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)outputs {
                     - {
                         id 276
@@ -633,9 +528,6 @@ description "Permanent triangular cell outlines surround small breathing inner t
             - {
                 id 278
                 type "Return"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)inputs {
                     - {
                         id 279
@@ -650,10 +542,6 @@ description "Permanent triangular cell outlines surround small breathing inner t
             - {
                 id 1245
                 type "Call Pure Function"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 751
                 reference_name "Triangle Cell"
                 inputs {
                     Position id=1246 type="struct" type_name="ShaderVec3"
@@ -668,10 +556,6 @@ description "Permanent triangular cell outlines surround small breathing inner t
             - {
                 id 1275
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 1251
                 reference_name "cell + (1 + upper) / 3"
                 inputs {
                     cell id=1276 type="struct" type_name="ShaderVec2"
@@ -684,10 +568,6 @@ description "Permanent triangular cell outlines surround small breathing inner t
             - {
                 id 1340
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 1327
                 reference_name "max(tile_size, 0.01)"
                 inputs {
                     tile_size id=1341 type="float"
@@ -699,10 +579,6 @@ description "Permanent triangular cell outlines surround small breathing inner t
             - {
                 id 1394
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 1356
                 reference_name "vec3((centroid.x + centroid.y * 0.5) / 0.8660254 * size, position.y, centroid.y * size)"
                 inputs {
                     centroid id=1395 type="struct" type_name="ShaderVec2"
@@ -737,9 +613,6 @@ description "Permanent triangular cell outlines surround small breathing inner t
             - {
                 id 752
                 type "Function Entry"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)outputs {
                     - id=756 name="Position" type="struct" type_name="ShaderVec3" kind="data"
                     - id=757 name="Tile Size" type="float" kind="data" default=16.0
@@ -748,9 +621,6 @@ description "Permanent triangular cell outlines surround small breathing inner t
             - {
                 id 754
                 type "Return"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)inputs {
                     - id=758 name="Cell" type="struct" type_name="ShaderVec2" kind="data"
                     - id=759 name="Offset" type="struct" type_name="ShaderVec2" kind="data"
@@ -760,10 +630,6 @@ description "Permanent triangular cell outlines surround small breathing inner t
             - {
                 id 779
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 761
                 reference_name "position.xz / max(tile_size, 0.01)"
                 inputs {
                     position id=780 type="struct" type_name="ShaderVec3"
@@ -776,10 +642,6 @@ description "Permanent triangular cell outlines surround small breathing inner t
             - {
                 id 866
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 839
                 reference_name "vec2(grid.x * 0.8660254 - grid.y * 0.5, grid.y)"
                 inputs {
                     grid id=867 type="struct" type_name="ShaderVec2"
@@ -791,10 +653,6 @@ description "Permanent triangular cell outlines surround small breathing inner t
             - {
                 id 979
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 969
                 reference_name "fract(lattice)"
                 inputs {
                     lattice id=980 type="struct" type_name="ShaderVec2"
@@ -806,10 +664,6 @@ description "Permanent triangular cell outlines surround small breathing inner t
             - {
                 id 1055
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 1038
                 reference_name "step(1, offset.x + offset.y)"
                 inputs {
                     offset id=1056 type="struct" type_name="ShaderVec2"
@@ -821,10 +675,6 @@ description "Permanent triangular cell outlines surround small breathing inner t
             - {
                 id 1126
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 1114
                 reference_name "lattice - offset"
                 inputs {
                     lattice id=1127 type="struct" type_name="ShaderVec2"

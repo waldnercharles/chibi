@@ -5,32 +5,32 @@ name "HRCLabManyLights"
         name "Camera"
         prototype "HRCLabCamera"
         components {
-            GameTransform x=0 y=0
+            GameTransform x=0.0 y=0.0
         }
     }
     - {
         name "HRC"
         prototype "HRCLabHRC"
         components {
-            GameTransform x=0 y=0
-            GameHRC2D lighting_margin=64.0 adaptive=#false resolution=0.5 feedback=#true radiance_hysteresis=1 bounce_hysteresis=1 trace_levels=3 tone_mapping=1 fog=0.15 surface_radius=64.0 surface_relief=1.5 surface_bevel=0.4 specular=1.0 bloom=0.08 exposure=1.0
+            GameTransform x=0.0 y=0.0
+            GameHRC2D lighting_margin=64.0 adaptive=#false resolution=0.5 feedback=#true radiance_hysteresis=1.0 bounce_hysteresis=1.0 trace_levels=3 tone_mapping="AgX" fog=0.15 surface_radius=64.0 surface_relief=1.5 surface_bevel=0.4 specular=1.0 bloom=0.08 exposure=1.0
         }
     }
     - {
         name "Backdrop"
         prototype "HRCLabReceiver"
         components {
-            GameTransform x=0 y=0
-            GameAppearance width=1200 height=800 shape="Box" layer=-100
-            GameMaterial absorption=0 albedo=1886417151 scene=808464639 edge_light=0
+            GameTransform x=0.0 y=0.0
+            GameAppearance width=1200.0 height=800.0 shape="Box" layer=-100
+            GameMaterial absorption=0.0 albedo=0x707070ff scene=0x303030ff edge_light=0.0
         }
     }
     - {
         name "ThinWall"
         prototype "HRCLabOccluder"
         components {
-            GameTransform x=-120 y=60
-            GameAppearance width=3 height=260
+            GameTransform x=-120.0 y=60.0
+            GameAppearance width=3.0 height=260.0
             GameOrientation radians=0.3
             GameMaterial absorption=1.0
         }
@@ -39,8 +39,8 @@ name "HRCLabManyLights"
         name "PinholeTop"
         prototype "HRCLabOccluder"
         components {
-            GameTransform x=160 y=125
-            GameAppearance width=6 height=200
+            GameTransform x=160.0 y=125.0
+            GameAppearance width=6.0 height=200.0
             GameOrientation radians=0.0
             GameMaterial absorption=1.0
         }
@@ -49,8 +49,8 @@ name "HRCLabManyLights"
         name "PinholeBottom"
         prototype "HRCLabOccluder"
         components {
-            GameTransform x=160 y=-80
-            GameAppearance width=6 height=200
+            GameTransform x=160.0 y=-80.0
+            GameAppearance width=6.0 height=200.0
             GameOrientation radians=0.0
             GameMaterial absorption=1.0
         }
@@ -59,8 +59,8 @@ name "HRCLabManyLights"
         name "Floor"
         prototype "HRCLabOccluder"
         components {
-            GameTransform x=0 y=-250
-            GameAppearance width=900 height=12
+            GameTransform x=0.0 y=-250.0
+            GameAppearance width=900.0 height=12.0
             GameOrientation radians=0.0
             GameMaterial absorption=1.0
         }
@@ -69,8 +69,8 @@ name "HRCLabManyLights"
         name "Pillar1"
         prototype "HRCLabOccluder"
         components {
-            GameTransform x=-300 y=-120
-            GameAppearance width=40 height=40
+            GameTransform x=-300.0 y=-120.0
+            GameAppearance width=40.0 height=40.0
             GameOrientation radians=0.7
             GameMaterial absorption=1.0
         }
@@ -79,8 +79,8 @@ name "HRCLabManyLights"
         name "Pillar2"
         prototype "HRCLabOccluder"
         components {
-            GameTransform x=320 y=40
-            GameAppearance width=24 height=120
+            GameTransform x=320.0 y=40.0
+            GameAppearance width=24.0 height=120.0
             GameOrientation radians=0.0
             GameMaterial absorption=0.3
         }
@@ -89,8 +89,8 @@ name "HRCLabManyLights"
         name "Slab"
         prototype "HRCLabOccluder"
         components {
-            GameTransform x=-20 y=-150
-            GameAppearance width=180 height=10
+            GameTransform x=-20.0 y=-150.0
+            GameAppearance width=180.0 height=10.0
             GameOrientation radians=-0.2
             GameMaterial absorption=1.0
         }
@@ -100,8 +100,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=-162.1 y=-160.3
-            GameAppearance width=12 height=12 color=4282401023
-            GameMaterial emission_color=4282401023 emission_intensity=0.01 scene=4282401023
+            GameAppearance width=12.0 height=12.0 color=0xff4040ff
+            GameMaterial emission_color=0xff4040ff emission_intensity=0.01 scene=0xff4040ff
         }
     }
     - {
@@ -109,8 +109,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=295.6 y=-188.4
-            GameAppearance width=8 height=8 color=4282401023
-            GameMaterial emission_color=4282401023 emission_intensity=0.04 scene=4282401023
+            GameAppearance width=8.0 height=8.0 color=0xff4040ff
+            GameMaterial emission_color=0xff4040ff emission_intensity=0.04 scene=0xff4040ff
         }
     }
     - {
@@ -118,8 +118,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=-262.5 y=-192.5
-            GameAppearance width=6 height=6 color=4282401023
-            GameMaterial emission_color=4282401023 emission_intensity=0.01 scene=4282401023
+            GameAppearance width=6.0 height=6.0 color=0xff4040ff
+            GameMaterial emission_color=0xff4040ff emission_intensity=0.01 scene=0xff4040ff
         }
     }
     - {
@@ -127,8 +127,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=-376.5 y=-24.9
-            GameAppearance width=8 height=8 color=4282401023
-            GameMaterial emission_color=4282401023 emission_intensity=0.01 scene=4282401023
+            GameAppearance width=8.0 height=8.0 color=0xff4040ff
+            GameMaterial emission_color=0xff4040ff emission_intensity=0.01 scene=0xff4040ff
         }
     }
     - {
@@ -136,8 +136,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=120.2 y=53.6
-            GameAppearance width=2 height=2 color=4282437887
-            GameMaterial emission_color=4282437887 emission_intensity=0.04 scene=4282437887
+            GameAppearance width=2.0 height=2.0 color=0xff40d0ff
+            GameMaterial emission_color=0xff40d0ff emission_intensity=0.04 scene=0xff40d0ff
         }
     }
     - {
@@ -145,8 +145,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=-95.1 y=248.2
-            GameAppearance width=2 height=2 color=4282437887
-            GameMaterial emission_color=4282437887 emission_intensity=0.01 scene=4282437887
+            GameAppearance width=2.0 height=2.0 color=0xff40d0ff
+            GameMaterial emission_color=0xff40d0ff emission_intensity=0.01 scene=0xff40d0ff
         }
     }
     - {
@@ -154,8 +154,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=-193.6 y=-163.6
-            GameAppearance width=2 height=2 color=4282437887
-            GameMaterial emission_color=4282437887 emission_intensity=0.02 scene=4282437887
+            GameAppearance width=2.0 height=2.0 color=0xff40d0ff
+            GameMaterial emission_color=0xff40d0ff emission_intensity=0.02 scene=0xff40d0ff
         }
     }
     - {
@@ -163,8 +163,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=55.4 y=102.6
-            GameAppearance width=2 height=2 color=4282437887
-            GameMaterial emission_color=4282437887 emission_intensity=0.04 scene=4282437887
+            GameAppearance width=2.0 height=2.0 color=0xff40d0ff
+            GameMaterial emission_color=0xff40d0ff emission_intensity=0.04 scene=0xff40d0ff
         }
     }
     - {
@@ -172,8 +172,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=127.8 y=-50.7
-            GameAppearance width=8 height=8 color=1090519039
-            GameMaterial emission_color=1090519039 emission_intensity=0.01 scene=1090519039
+            GameAppearance width=8.0 height=8.0 color=0x40ffffff
+            GameMaterial emission_color=0x40ffffff emission_intensity=0.01 scene=0x40ffffff
         }
     }
     - {
@@ -181,8 +181,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=59.2 y=71.4
-            GameAppearance width=6 height=6 color=1090519039
-            GameMaterial emission_color=1090519039 emission_intensity=0.04 scene=1090519039
+            GameAppearance width=6.0 height=6.0 color=0x40ffffff
+            GameMaterial emission_color=0x40ffffff emission_intensity=0.04 scene=0x40ffffff
         }
     }
     - {
@@ -190,8 +190,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=-66.6 y=-79.5
-            GameAppearance width=8 height=8 color=4291838207
-            GameMaterial emission_color=4291838207 emission_intensity=0.02 scene=4291838207
+            GameAppearance width=8.0 height=8.0 color=0xffd040ff
+            GameMaterial emission_color=0xffd040ff emission_intensity=0.02 scene=0xffd040ff
         }
     }
     - {
@@ -199,8 +199,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=-184.2 y=158.2
-            GameAppearance width=12 height=12 color=4294967295
-            GameMaterial emission_color=4294967295 emission_intensity=0.01 scene=4294967295
+            GameAppearance width=12.0 height=12.0 color=0xffffffff
+            GameMaterial emission_color=0xffffffff emission_intensity=0.01 scene=0xffffffff
         }
     }
     - {
@@ -208,8 +208,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=-384.7 y=-86.4
-            GameAppearance width=6 height=6 color=1082195967
-            GameMaterial emission_color=1082195967 emission_intensity=0.04 scene=1082195967
+            GameAppearance width=6.0 height=6.0 color=0x4080ffff
+            GameMaterial emission_color=0x4080ffff emission_intensity=0.04 scene=0x4080ffff
         }
     }
     - {
@@ -217,8 +217,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=-47.1 y=66.4
-            GameAppearance width=2 height=2 color=4282401023
-            GameMaterial emission_color=4282401023 emission_intensity=0.04 scene=4282401023
+            GameAppearance width=2.0 height=2.0 color=0xff4040ff
+            GameMaterial emission_color=0xff4040ff emission_intensity=0.04 scene=0xff4040ff
         }
     }
     - {
@@ -226,8 +226,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=-75.3 y=139.8
-            GameAppearance width=3.0 height=3.0 color=4291838207
-            GameMaterial emission_color=4291838207 emission_intensity=0.02 scene=4291838207
+            GameAppearance width=3.0 height=3.0 color=0xffd040ff
+            GameMaterial emission_color=0xffd040ff emission_intensity=0.02 scene=0xffd040ff
         }
     }
     - {
@@ -235,8 +235,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=-423.9 y=95.8
-            GameAppearance width=8 height=8 color=4282437887
-            GameMaterial emission_color=4282437887 emission_intensity=0.02 scene=4282437887
+            GameAppearance width=8.0 height=8.0 color=0xff40d0ff
+            GameMaterial emission_color=0xff40d0ff emission_intensity=0.02 scene=0xff40d0ff
         }
     }
     - {
@@ -244,8 +244,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=-3.1 y=159.5
-            GameAppearance width=2 height=2 color=4294967295
-            GameMaterial emission_color=4294967295 emission_intensity=0.01 scene=4294967295
+            GameAppearance width=2.0 height=2.0 color=0xffffffff
+            GameMaterial emission_color=0xffffffff emission_intensity=0.01 scene=0xffffffff
         }
     }
     - {
@@ -253,8 +253,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=409.1 y=-0.3
-            GameAppearance width=12 height=12 color=4282401023
-            GameMaterial emission_color=4282401023 emission_intensity=0.01 scene=4282401023
+            GameAppearance width=12.0 height=12.0 color=0xff4040ff
+            GameMaterial emission_color=0xff4040ff emission_intensity=0.01 scene=0xff4040ff
         }
     }
     - {
@@ -262,8 +262,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=212.7 y=-81.7
-            GameAppearance width=8 height=8 color=1090519039
-            GameMaterial emission_color=1090519039 emission_intensity=0.02 scene=1090519039
+            GameAppearance width=8.0 height=8.0 color=0x40ffffff
+            GameMaterial emission_color=0x40ffffff emission_intensity=0.02 scene=0x40ffffff
         }
     }
     - {
@@ -271,8 +271,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=-198.2 y=-44.0
-            GameAppearance width=12 height=12 color=1082195967
-            GameMaterial emission_color=1082195967 emission_intensity=0.01 scene=1082195967
+            GameAppearance width=12.0 height=12.0 color=0x4080ffff
+            GameMaterial emission_color=0x4080ffff emission_intensity=0.01 scene=0x4080ffff
         }
     }
     - {
@@ -280,8 +280,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=405.4 y=-59.0
-            GameAppearance width=8 height=8 color=4282401023
-            GameMaterial emission_color=4282401023 emission_intensity=0.02 scene=4282401023
+            GameAppearance width=8.0 height=8.0 color=0xff4040ff
+            GameMaterial emission_color=0xff4040ff emission_intensity=0.02 scene=0xff4040ff
         }
     }
     - {
@@ -289,8 +289,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=-405.8 y=145.3
-            GameAppearance width=3.0 height=3.0 color=1090519039
-            GameMaterial emission_color=1090519039 emission_intensity=0.01 scene=1090519039
+            GameAppearance width=3.0 height=3.0 color=0x40ffffff
+            GameMaterial emission_color=0x40ffffff emission_intensity=0.01 scene=0x40ffffff
         }
     }
     - {
@@ -298,8 +298,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=-93.9 y=218.8
-            GameAppearance width=6 height=6 color=4282401023
-            GameMaterial emission_color=4282401023 emission_intensity=0.01 scene=4282401023
+            GameAppearance width=6.0 height=6.0 color=0xff4040ff
+            GameMaterial emission_color=0xff4040ff emission_intensity=0.01 scene=0xff4040ff
         }
     }
     - {
@@ -307,8 +307,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=-46.7 y=37.0
-            GameAppearance width=3.0 height=3.0 color=4294967295
-            GameMaterial emission_color=4294967295 emission_intensity=0.02 scene=4294967295
+            GameAppearance width=3.0 height=3.0 color=0xffffffff
+            GameMaterial emission_color=0xffffffff emission_intensity=0.02 scene=0xffffffff
         }
     }
     - {
@@ -316,8 +316,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=334.9 y=-97.2
-            GameAppearance width=6 height=6 color=1082195967
-            GameMaterial emission_color=1082195967 emission_intensity=0.04 scene=1082195967
+            GameAppearance width=6.0 height=6.0 color=0x4080ffff
+            GameMaterial emission_color=0x4080ffff emission_intensity=0.04 scene=0x4080ffff
         }
     }
     - {
@@ -325,8 +325,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=353.5 y=239.1
-            GameAppearance width=3.0 height=3.0 color=4282401023
-            GameMaterial emission_color=4282401023 emission_intensity=0.01 scene=4282401023
+            GameAppearance width=3.0 height=3.0 color=0xff4040ff
+            GameMaterial emission_color=0xff4040ff emission_intensity=0.01 scene=0xff4040ff
         }
     }
     - {
@@ -334,8 +334,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=-320.8 y=91.0
-            GameAppearance width=2 height=2 color=4291838207
-            GameMaterial emission_color=4291838207 emission_intensity=0.04 scene=4291838207
+            GameAppearance width=2.0 height=2.0 color=0xffd040ff
+            GameMaterial emission_color=0xffd040ff emission_intensity=0.04 scene=0xffd040ff
         }
     }
     - {
@@ -343,8 +343,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=-292.2 y=-95.4
-            GameAppearance width=3.0 height=3.0 color=4291838207
-            GameMaterial emission_color=4291838207 emission_intensity=0.04 scene=4291838207
+            GameAppearance width=3.0 height=3.0 color=0xffd040ff
+            GameMaterial emission_color=0xffd040ff emission_intensity=0.04 scene=0xffd040ff
         }
     }
     - {
@@ -352,8 +352,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=416.9 y=106.8
-            GameAppearance width=8 height=8 color=4282437887
-            GameMaterial emission_color=4282437887 emission_intensity=0.04 scene=4282437887
+            GameAppearance width=8.0 height=8.0 color=0xff40d0ff
+            GameMaterial emission_color=0xff40d0ff emission_intensity=0.04 scene=0xff40d0ff
         }
     }
     - {
@@ -361,8 +361,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=367.6 y=151.1
-            GameAppearance width=12 height=12 color=4294967295
-            GameMaterial emission_color=4294967295 emission_intensity=0.04 scene=4294967295
+            GameAppearance width=12.0 height=12.0 color=0xffffffff
+            GameMaterial emission_color=0xffffffff emission_intensity=0.04 scene=0xffffffff
         }
     }
     - {
@@ -370,8 +370,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=-364.7 y=79.0
-            GameAppearance width=2 height=2 color=1090478335
-            GameMaterial emission_color=1090478335 emission_intensity=0.01 scene=1090478335
+            GameAppearance width=2.0 height=2.0 color=0x40ff60ff
+            GameMaterial emission_color=0x40ff60ff emission_intensity=0.01 scene=0x40ff60ff
         }
     }
     - {
@@ -379,8 +379,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=445.9 y=-16.9
-            GameAppearance width=2 height=2 color=1082195967
-            GameMaterial emission_color=1082195967 emission_intensity=0.04 scene=1082195967
+            GameAppearance width=2.0 height=2.0 color=0x4080ffff
+            GameMaterial emission_color=0x4080ffff emission_intensity=0.04 scene=0x4080ffff
         }
     }
     - {
@@ -388,8 +388,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=-411.6 y=-234.9
-            GameAppearance width=3.0 height=3.0 color=4282437887
-            GameMaterial emission_color=4282437887 emission_intensity=0.01 scene=4282437887
+            GameAppearance width=3.0 height=3.0 color=0xff40d0ff
+            GameMaterial emission_color=0xff40d0ff emission_intensity=0.01 scene=0xff40d0ff
         }
     }
     - {
@@ -397,8 +397,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=413.0 y=68.8
-            GameAppearance width=2 height=2 color=4294967295
-            GameMaterial emission_color=4294967295 emission_intensity=0.01 scene=4294967295
+            GameAppearance width=2.0 height=2.0 color=0xffffffff
+            GameMaterial emission_color=0xffffffff emission_intensity=0.01 scene=0xffffffff
         }
     }
     - {
@@ -406,8 +406,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=104.9 y=-161.5
-            GameAppearance width=4 height=4 color=1082195967
-            GameMaterial emission_color=1082195967 emission_intensity=0.04 scene=1082195967
+            GameAppearance width=4.0 height=4.0 color=0x4080ffff
+            GameMaterial emission_color=0x4080ffff emission_intensity=0.04 scene=0x4080ffff
         }
     }
     - {
@@ -415,8 +415,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=-125.0 y=-174.2
-            GameAppearance width=6 height=6 color=4291838207
-            GameMaterial emission_color=4291838207 emission_intensity=0.02 scene=4291838207
+            GameAppearance width=6.0 height=6.0 color=0xffd040ff
+            GameMaterial emission_color=0xffd040ff emission_intensity=0.02 scene=0xffd040ff
         }
     }
     - {
@@ -424,8 +424,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=-14.9 y=-192.5
-            GameAppearance width=2 height=2 color=1090519039
-            GameMaterial emission_color=1090519039 emission_intensity=0.02 scene=1090519039
+            GameAppearance width=2.0 height=2.0 color=0x40ffffff
+            GameMaterial emission_color=0x40ffffff emission_intensity=0.02 scene=0x40ffffff
         }
     }
     - {
@@ -433,8 +433,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=221.1 y=1.9
-            GameAppearance width=12 height=12 color=1090478335
-            GameMaterial emission_color=1090478335 emission_intensity=0.04 scene=1090478335
+            GameAppearance width=12.0 height=12.0 color=0x40ff60ff
+            GameMaterial emission_color=0x40ff60ff emission_intensity=0.04 scene=0x40ff60ff
         }
     }
     - {
@@ -442,8 +442,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=-438.8 y=235.7
-            GameAppearance width=8 height=8 color=1082195967
-            GameMaterial emission_color=1082195967 emission_intensity=0.01 scene=1082195967
+            GameAppearance width=8.0 height=8.0 color=0x4080ffff
+            GameMaterial emission_color=0x4080ffff emission_intensity=0.01 scene=0x4080ffff
         }
     }
     - {
@@ -451,8 +451,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=174.9 y=217.5
-            GameAppearance width=8 height=8 color=1082195967
-            GameMaterial emission_color=1082195967 emission_intensity=0.04 scene=1082195967
+            GameAppearance width=8.0 height=8.0 color=0x4080ffff
+            GameMaterial emission_color=0x4080ffff emission_intensity=0.04 scene=0x4080ffff
         }
     }
     - {
@@ -460,8 +460,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=334.3 y=109.6
-            GameAppearance width=4 height=4 color=4282437887
-            GameMaterial emission_color=4282437887 emission_intensity=0.02 scene=4282437887
+            GameAppearance width=4.0 height=4.0 color=0xff40d0ff
+            GameMaterial emission_color=0xff40d0ff emission_intensity=0.02 scene=0xff40d0ff
         }
     }
     - {
@@ -469,8 +469,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=375.6 y=-58.9
-            GameAppearance width=3.0 height=3.0 color=4282437887
-            GameMaterial emission_color=4282437887 emission_intensity=0.04 scene=4282437887
+            GameAppearance width=3.0 height=3.0 color=0xff40d0ff
+            GameMaterial emission_color=0xff40d0ff emission_intensity=0.04 scene=0xff40d0ff
         }
     }
     - {
@@ -478,8 +478,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=256.7 y=-71.8
-            GameAppearance width=3.0 height=3.0 color=4282437887
-            GameMaterial emission_color=4282437887 emission_intensity=0.01 scene=4282437887
+            GameAppearance width=3.0 height=3.0 color=0xff40d0ff
+            GameMaterial emission_color=0xff40d0ff emission_intensity=0.01 scene=0xff40d0ff
         }
     }
     - {
@@ -487,8 +487,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=281.6 y=170.1
-            GameAppearance width=12 height=12 color=4294967295
-            GameMaterial emission_color=4294967295 emission_intensity=0.01 scene=4294967295
+            GameAppearance width=12.0 height=12.0 color=0xffffffff
+            GameMaterial emission_color=0xffffffff emission_intensity=0.01 scene=0xffffffff
         }
     }
     - {
@@ -496,8 +496,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=-276.1 y=8.9
-            GameAppearance width=12 height=12 color=4282401023
-            GameMaterial emission_color=4282401023 emission_intensity=0.01 scene=4282401023
+            GameAppearance width=12.0 height=12.0 color=0xff4040ff
+            GameMaterial emission_color=0xff4040ff emission_intensity=0.01 scene=0xff4040ff
         }
     }
     - {
@@ -505,8 +505,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=266.9 y=-1.2
-            GameAppearance width=3.0 height=3.0 color=1090519039
-            GameMaterial emission_color=1090519039 emission_intensity=0.04 scene=1090519039
+            GameAppearance width=3.0 height=3.0 color=0x40ffffff
+            GameMaterial emission_color=0x40ffffff emission_intensity=0.04 scene=0x40ffffff
         }
     }
     - {
@@ -514,8 +514,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=420.0 y=-13.6
-            GameAppearance width=12 height=12 color=1082195967
-            GameMaterial emission_color=1082195967 emission_intensity=0.02 scene=1082195967
+            GameAppearance width=12.0 height=12.0 color=0x4080ffff
+            GameMaterial emission_color=0x4080ffff emission_intensity=0.02 scene=0x4080ffff
         }
     }
     - {
@@ -523,8 +523,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=-385.9 y=-184.4
-            GameAppearance width=6 height=6 color=1090478335
-            GameMaterial emission_color=1090478335 emission_intensity=0.02 scene=1090478335
+            GameAppearance width=6.0 height=6.0 color=0x40ff60ff
+            GameMaterial emission_color=0x40ff60ff emission_intensity=0.02 scene=0x40ff60ff
         }
     }
     - {
@@ -532,8 +532,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=-272.0 y=73.9
-            GameAppearance width=8 height=8 color=4294967295
-            GameMaterial emission_color=4294967295 emission_intensity=0.01 scene=4294967295
+            GameAppearance width=8.0 height=8.0 color=0xffffffff
+            GameMaterial emission_color=0xffffffff emission_intensity=0.01 scene=0xffffffff
         }
     }
     - {
@@ -541,8 +541,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=-18.9 y=88.2
-            GameAppearance width=12 height=12 color=4282401023
-            GameMaterial emission_color=4282401023 emission_intensity=0.04 scene=4282401023
+            GameAppearance width=12.0 height=12.0 color=0xff4040ff
+            GameMaterial emission_color=0xff4040ff emission_intensity=0.04 scene=0xff4040ff
         }
     }
     - {
@@ -550,8 +550,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=-349.7 y=-42.7
-            GameAppearance width=12 height=12 color=4294967295
-            GameMaterial emission_color=4294967295 emission_intensity=0.01 scene=4294967295
+            GameAppearance width=12.0 height=12.0 color=0xffffffff
+            GameMaterial emission_color=0xffffffff emission_intensity=0.01 scene=0xffffffff
         }
     }
     - {
@@ -559,8 +559,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=-20.2 y=-146.6
-            GameAppearance width=12 height=12 color=1082195967
-            GameMaterial emission_color=1082195967 emission_intensity=0.01 scene=1082195967
+            GameAppearance width=12.0 height=12.0 color=0x4080ffff
+            GameMaterial emission_color=0x4080ffff emission_intensity=0.01 scene=0x4080ffff
         }
     }
     - {
@@ -568,8 +568,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=276.8 y=246.0
-            GameAppearance width=6 height=6 color=4291838207
-            GameMaterial emission_color=4291838207 emission_intensity=0.02 scene=4291838207
+            GameAppearance width=6.0 height=6.0 color=0xffd040ff
+            GameMaterial emission_color=0xffd040ff emission_intensity=0.02 scene=0xffd040ff
         }
     }
     - {
@@ -577,8 +577,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=223.9 y=-193.0
-            GameAppearance width=3.0 height=3.0 color=1090478335
-            GameMaterial emission_color=1090478335 emission_intensity=0.01 scene=1090478335
+            GameAppearance width=3.0 height=3.0 color=0x40ff60ff
+            GameMaterial emission_color=0x40ff60ff emission_intensity=0.01 scene=0x40ff60ff
         }
     }
     - {
@@ -586,8 +586,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=-434.7 y=57.5
-            GameAppearance width=6 height=6 color=4294967295
-            GameMaterial emission_color=4294967295 emission_intensity=0.04 scene=4294967295
+            GameAppearance width=6.0 height=6.0 color=0xffffffff
+            GameMaterial emission_color=0xffffffff emission_intensity=0.04 scene=0xffffffff
         }
     }
     - {
@@ -595,8 +595,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=-325.5 y=174.1
-            GameAppearance width=6 height=6 color=1090519039
-            GameMaterial emission_color=1090519039 emission_intensity=0.02 scene=1090519039
+            GameAppearance width=6.0 height=6.0 color=0x40ffffff
+            GameMaterial emission_color=0x40ffffff emission_intensity=0.02 scene=0x40ffffff
         }
     }
     - {
@@ -604,8 +604,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=-316.6 y=36.4
-            GameAppearance width=2 height=2 color=4282401023
-            GameMaterial emission_color=4282401023 emission_intensity=0.04 scene=4282401023
+            GameAppearance width=2.0 height=2.0 color=0xff4040ff
+            GameMaterial emission_color=0xff4040ff emission_intensity=0.04 scene=0xff4040ff
         }
     }
     - {
@@ -613,8 +613,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=137.7 y=25.7
-            GameAppearance width=3.0 height=3.0 color=4291838207
-            GameMaterial emission_color=4291838207 emission_intensity=0.01 scene=4291838207
+            GameAppearance width=3.0 height=3.0 color=0xffd040ff
+            GameMaterial emission_color=0xffd040ff emission_intensity=0.01 scene=0xffd040ff
         }
     }
     - {
@@ -622,8 +622,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=300.1 y=-130.5
-            GameAppearance width=4 height=4 color=1090478335
-            GameMaterial emission_color=1090478335 emission_intensity=0.02 scene=1090478335
+            GameAppearance width=4.0 height=4.0 color=0x40ff60ff
+            GameMaterial emission_color=0x40ff60ff emission_intensity=0.02 scene=0x40ff60ff
         }
     }
     - {
@@ -631,8 +631,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=1.1 y=143.0
-            GameAppearance width=4 height=4 color=1082195967
-            GameMaterial emission_color=1082195967 emission_intensity=0.04 scene=1082195967
+            GameAppearance width=4.0 height=4.0 color=0x4080ffff
+            GameMaterial emission_color=0x4080ffff emission_intensity=0.04 scene=0x4080ffff
         }
     }
     - {
@@ -640,8 +640,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=-74.5 y=-170.1
-            GameAppearance width=12 height=12 color=1082195967
-            GameMaterial emission_color=1082195967 emission_intensity=0.02 scene=1082195967
+            GameAppearance width=12.0 height=12.0 color=0x4080ffff
+            GameMaterial emission_color=0x4080ffff emission_intensity=0.02 scene=0x4080ffff
         }
     }
     - {
@@ -649,8 +649,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=149.5 y=168.4
-            GameAppearance width=8 height=8 color=4291838207
-            GameMaterial emission_color=4291838207 emission_intensity=0.04 scene=4291838207
+            GameAppearance width=8.0 height=8.0 color=0xffd040ff
+            GameMaterial emission_color=0xffd040ff emission_intensity=0.04 scene=0xffd040ff
         }
     }
     - {
@@ -658,8 +658,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=-339.7 y=-159.8
-            GameAppearance width=8 height=8 color=4282401023
-            GameMaterial emission_color=4282401023 emission_intensity=0.02 scene=4282401023
+            GameAppearance width=8.0 height=8.0 color=0xff4040ff
+            GameMaterial emission_color=0xff4040ff emission_intensity=0.02 scene=0xff4040ff
         }
     }
     - {
@@ -667,8 +667,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=254.4 y=66.2
-            GameAppearance width=3.0 height=3.0 color=1090478335
-            GameMaterial emission_color=1090478335 emission_intensity=0.01 scene=1090478335
+            GameAppearance width=3.0 height=3.0 color=0x40ff60ff
+            GameMaterial emission_color=0x40ff60ff emission_intensity=0.01 scene=0x40ff60ff
         }
     }
     - {
@@ -676,8 +676,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=-24.4 y=124.0
-            GameAppearance width=8 height=8 color=4282401023
-            GameMaterial emission_color=4282401023 emission_intensity=0.02 scene=4282401023
+            GameAppearance width=8.0 height=8.0 color=0xff4040ff
+            GameMaterial emission_color=0xff4040ff emission_intensity=0.02 scene=0xff4040ff
         }
     }
     - {
@@ -685,8 +685,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=-16.1 y=149.4
-            GameAppearance width=8 height=8 color=4282401023
-            GameMaterial emission_color=4282401023 emission_intensity=0.01 scene=4282401023
+            GameAppearance width=8.0 height=8.0 color=0xff4040ff
+            GameMaterial emission_color=0xff4040ff emission_intensity=0.01 scene=0xff4040ff
         }
     }
     - {
@@ -694,8 +694,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=-284.0 y=-214.1
-            GameAppearance width=2 height=2 color=4282437887
-            GameMaterial emission_color=4282437887 emission_intensity=0.02 scene=4282437887
+            GameAppearance width=2.0 height=2.0 color=0xff40d0ff
+            GameMaterial emission_color=0xff40d0ff emission_intensity=0.02 scene=0xff40d0ff
         }
     }
     - {
@@ -703,8 +703,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=56.8 y=141.2
-            GameAppearance width=2 height=2 color=4291838207
-            GameMaterial emission_color=4291838207 emission_intensity=0.02 scene=4291838207
+            GameAppearance width=2.0 height=2.0 color=0xffd040ff
+            GameMaterial emission_color=0xffd040ff emission_intensity=0.02 scene=0xffd040ff
         }
     }
     - {
@@ -712,8 +712,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=103.5 y=15.2
-            GameAppearance width=8 height=8 color=1090478335
-            GameMaterial emission_color=1090478335 emission_intensity=0.04 scene=1090478335
+            GameAppearance width=8.0 height=8.0 color=0x40ff60ff
+            GameMaterial emission_color=0x40ff60ff emission_intensity=0.04 scene=0x40ff60ff
         }
     }
     - {
@@ -721,8 +721,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=-205.0 y=16.5
-            GameAppearance width=6 height=6 color=4282437887
-            GameMaterial emission_color=4282437887 emission_intensity=0.01 scene=4282437887
+            GameAppearance width=6.0 height=6.0 color=0xff40d0ff
+            GameMaterial emission_color=0xff40d0ff emission_intensity=0.01 scene=0xff40d0ff
         }
     }
     - {
@@ -730,8 +730,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=183.3 y=198.9
-            GameAppearance width=4 height=4 color=4282437887
-            GameMaterial emission_color=4282437887 emission_intensity=0.01 scene=4282437887
+            GameAppearance width=4.0 height=4.0 color=0xff40d0ff
+            GameMaterial emission_color=0xff40d0ff emission_intensity=0.01 scene=0xff40d0ff
         }
     }
     - {
@@ -739,8 +739,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=312.8 y=-167.1
-            GameAppearance width=2 height=2 color=4291838207
-            GameMaterial emission_color=4291838207 emission_intensity=0.02 scene=4291838207
+            GameAppearance width=2.0 height=2.0 color=0xffd040ff
+            GameMaterial emission_color=0xffd040ff emission_intensity=0.02 scene=0xffd040ff
         }
     }
     - {
@@ -748,8 +748,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=-169.3 y=97.2
-            GameAppearance width=6 height=6 color=4282401023
-            GameMaterial emission_color=4282401023 emission_intensity=0.01 scene=4282401023
+            GameAppearance width=6.0 height=6.0 color=0xff4040ff
+            GameMaterial emission_color=0xff4040ff emission_intensity=0.01 scene=0xff4040ff
         }
     }
     - {
@@ -757,8 +757,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=365.3 y=-158.5
-            GameAppearance width=12 height=12 color=1090519039
-            GameMaterial emission_color=1090519039 emission_intensity=0.04 scene=1090519039
+            GameAppearance width=12.0 height=12.0 color=0x40ffffff
+            GameMaterial emission_color=0x40ffffff emission_intensity=0.04 scene=0x40ffffff
         }
     }
     - {
@@ -766,8 +766,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=-123.1 y=-109.7
-            GameAppearance width=3.0 height=3.0 color=4291838207
-            GameMaterial emission_color=4291838207 emission_intensity=0.01 scene=4291838207
+            GameAppearance width=3.0 height=3.0 color=0xffd040ff
+            GameMaterial emission_color=0xffd040ff emission_intensity=0.01 scene=0xffd040ff
         }
     }
     - {
@@ -775,8 +775,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=226.9 y=-188.4
-            GameAppearance width=6 height=6 color=1090478335
-            GameMaterial emission_color=1090478335 emission_intensity=0.04 scene=1090478335
+            GameAppearance width=6.0 height=6.0 color=0x40ff60ff
+            GameMaterial emission_color=0x40ff60ff emission_intensity=0.04 scene=0x40ff60ff
         }
     }
     - {
@@ -784,8 +784,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=305.8 y=-155.1
-            GameAppearance width=6 height=6 color=4282437887
-            GameMaterial emission_color=4282437887 emission_intensity=0.02 scene=4282437887
+            GameAppearance width=6.0 height=6.0 color=0xff40d0ff
+            GameMaterial emission_color=0xff40d0ff emission_intensity=0.02 scene=0xff40d0ff
         }
     }
     - {
@@ -793,8 +793,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=-148.0 y=-138.1
-            GameAppearance width=4 height=4 color=4282401023
-            GameMaterial emission_color=4282401023 emission_intensity=0.04 scene=4282401023
+            GameAppearance width=4.0 height=4.0 color=0xff4040ff
+            GameMaterial emission_color=0xff4040ff emission_intensity=0.04 scene=0xff4040ff
         }
     }
     - {
@@ -802,8 +802,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=-38.0 y=113.1
-            GameAppearance width=6 height=6 color=1082195967
-            GameMaterial emission_color=1082195967 emission_intensity=0.04 scene=1082195967
+            GameAppearance width=6.0 height=6.0 color=0x4080ffff
+            GameMaterial emission_color=0x4080ffff emission_intensity=0.04 scene=0x4080ffff
         }
     }
     - {
@@ -811,8 +811,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=114.0 y=18.6
-            GameAppearance width=2 height=2 color=4282401023
-            GameMaterial emission_color=4282401023 emission_intensity=0.01 scene=4282401023
+            GameAppearance width=2.0 height=2.0 color=0xff4040ff
+            GameMaterial emission_color=0xff4040ff emission_intensity=0.01 scene=0xff4040ff
         }
     }
     - {
@@ -820,8 +820,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=434.0 y=-183.1
-            GameAppearance width=4 height=4 color=1082195967
-            GameMaterial emission_color=1082195967 emission_intensity=0.01 scene=1082195967
+            GameAppearance width=4.0 height=4.0 color=0x4080ffff
+            GameMaterial emission_color=0x4080ffff emission_intensity=0.01 scene=0x4080ffff
         }
     }
     - {
@@ -829,8 +829,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=373.4 y=-145.1
-            GameAppearance width=3.0 height=3.0 color=4294967295
-            GameMaterial emission_color=4294967295 emission_intensity=0.02 scene=4294967295
+            GameAppearance width=3.0 height=3.0 color=0xffffffff
+            GameMaterial emission_color=0xffffffff emission_intensity=0.02 scene=0xffffffff
         }
     }
     - {
@@ -838,8 +838,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=321.6 y=99.6
-            GameAppearance width=4 height=4 color=4291838207
-            GameMaterial emission_color=4291838207 emission_intensity=0.01 scene=4291838207
+            GameAppearance width=4.0 height=4.0 color=0xffd040ff
+            GameMaterial emission_color=0xffd040ff emission_intensity=0.01 scene=0xffd040ff
         }
     }
     - {
@@ -847,8 +847,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=33.7 y=19.8
-            GameAppearance width=6 height=6 color=1090519039
-            GameMaterial emission_color=1090519039 emission_intensity=0.02 scene=1090519039
+            GameAppearance width=6.0 height=6.0 color=0x40ffffff
+            GameMaterial emission_color=0x40ffffff emission_intensity=0.02 scene=0x40ffffff
         }
     }
     - {
@@ -856,8 +856,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=-377.7 y=-206.5
-            GameAppearance width=12 height=12 color=1090478335
-            GameMaterial emission_color=1090478335 emission_intensity=0.02 scene=1090478335
+            GameAppearance width=12.0 height=12.0 color=0x40ff60ff
+            GameMaterial emission_color=0x40ff60ff emission_intensity=0.02 scene=0x40ff60ff
         }
     }
     - {
@@ -865,8 +865,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=363.7 y=-101.9
-            GameAppearance width=2 height=2 color=1090519039
-            GameMaterial emission_color=1090519039 emission_intensity=0.01 scene=1090519039
+            GameAppearance width=2.0 height=2.0 color=0x40ffffff
+            GameMaterial emission_color=0x40ffffff emission_intensity=0.01 scene=0x40ffffff
         }
     }
     - {
@@ -874,8 +874,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=277.5 y=-193.5
-            GameAppearance width=3.0 height=3.0 color=4282401023
-            GameMaterial emission_color=4282401023 emission_intensity=0.02 scene=4282401023
+            GameAppearance width=3.0 height=3.0 color=0xff4040ff
+            GameMaterial emission_color=0xff4040ff emission_intensity=0.02 scene=0xff4040ff
         }
     }
     - {
@@ -883,8 +883,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=333.8 y=-10.4
-            GameAppearance width=4 height=4 color=4282437887
-            GameMaterial emission_color=4282437887 emission_intensity=0.02 scene=4282437887
+            GameAppearance width=4.0 height=4.0 color=0xff40d0ff
+            GameMaterial emission_color=0xff40d0ff emission_intensity=0.02 scene=0xff40d0ff
         }
     }
     - {
@@ -892,8 +892,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=392.5 y=-102.4
-            GameAppearance width=3.0 height=3.0 color=4282401023
-            GameMaterial emission_color=4282401023 emission_intensity=0.04 scene=4282401023
+            GameAppearance width=3.0 height=3.0 color=0xff4040ff
+            GameMaterial emission_color=0xff4040ff emission_intensity=0.04 scene=0xff4040ff
         }
     }
     - {
@@ -901,8 +901,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=192.8 y=229.4
-            GameAppearance width=3.0 height=3.0 color=1082195967
-            GameMaterial emission_color=1082195967 emission_intensity=0.01 scene=1082195967
+            GameAppearance width=3.0 height=3.0 color=0x4080ffff
+            GameMaterial emission_color=0x4080ffff emission_intensity=0.01 scene=0x4080ffff
         }
     }
     - {
@@ -910,8 +910,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=-293.3 y=226.5
-            GameAppearance width=12 height=12 color=1082195967
-            GameMaterial emission_color=1082195967 emission_intensity=0.04 scene=1082195967
+            GameAppearance width=12.0 height=12.0 color=0x4080ffff
+            GameMaterial emission_color=0x4080ffff emission_intensity=0.04 scene=0x4080ffff
         }
     }
     - {
@@ -919,8 +919,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=238.7 y=-91.5
-            GameAppearance width=8 height=8 color=1090519039
-            GameMaterial emission_color=1090519039 emission_intensity=0.01 scene=1090519039
+            GameAppearance width=8.0 height=8.0 color=0x40ffffff
+            GameMaterial emission_color=0x40ffffff emission_intensity=0.01 scene=0x40ffffff
         }
     }
     - {
@@ -928,8 +928,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=-211.1 y=162.8
-            GameAppearance width=4 height=4 color=4282401023
-            GameMaterial emission_color=4282401023 emission_intensity=0.01 scene=4282401023
+            GameAppearance width=4.0 height=4.0 color=0xff4040ff
+            GameMaterial emission_color=0xff4040ff emission_intensity=0.01 scene=0xff4040ff
         }
     }
     - {
@@ -937,8 +937,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=-443.0 y=15.3
-            GameAppearance width=3.0 height=3.0 color=4282437887
-            GameMaterial emission_color=4282437887 emission_intensity=0.02 scene=4282437887
+            GameAppearance width=3.0 height=3.0 color=0xff40d0ff
+            GameMaterial emission_color=0xff40d0ff emission_intensity=0.02 scene=0xff40d0ff
         }
     }
     - {
@@ -946,8 +946,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=-234.0 y=-13.7
-            GameAppearance width=12 height=12 color=4294967295
-            GameMaterial emission_color=4294967295 emission_intensity=0.04 scene=4294967295
+            GameAppearance width=12.0 height=12.0 color=0xffffffff
+            GameMaterial emission_color=0xffffffff emission_intensity=0.04 scene=0xffffffff
         }
     }
     - {
@@ -955,8 +955,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=-62.4 y=10.0
-            GameAppearance width=6 height=6 color=4282437887
-            GameMaterial emission_color=4282437887 emission_intensity=0.02 scene=4282437887
+            GameAppearance width=6.0 height=6.0 color=0xff40d0ff
+            GameMaterial emission_color=0xff40d0ff emission_intensity=0.02 scene=0xff40d0ff
         }
     }
     - {
@@ -964,8 +964,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=172.7 y=251.3
-            GameAppearance width=4 height=4 color=1090478335
-            GameMaterial emission_color=1090478335 emission_intensity=0.04 scene=1090478335
+            GameAppearance width=4.0 height=4.0 color=0x40ff60ff
+            GameMaterial emission_color=0x40ff60ff emission_intensity=0.04 scene=0x40ff60ff
         }
     }
     - {
@@ -973,8 +973,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=210.5 y=-165.8
-            GameAppearance width=4 height=4 color=4282401023
-            GameMaterial emission_color=4282401023 emission_intensity=0.01 scene=4282401023
+            GameAppearance width=4.0 height=4.0 color=0xff4040ff
+            GameMaterial emission_color=0xff4040ff emission_intensity=0.01 scene=0xff4040ff
         }
     }
     - {
@@ -982,8 +982,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=-446.9 y=74.6
-            GameAppearance width=4 height=4 color=4291838207
-            GameMaterial emission_color=4291838207 emission_intensity=0.01 scene=4291838207
+            GameAppearance width=4.0 height=4.0 color=0xffd040ff
+            GameMaterial emission_color=0xffd040ff emission_intensity=0.01 scene=0xffd040ff
         }
     }
     - {
@@ -991,8 +991,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=-409.0 y=94.3
-            GameAppearance width=6 height=6 color=4294967295
-            GameMaterial emission_color=4294967295 emission_intensity=0.04 scene=4294967295
+            GameAppearance width=6.0 height=6.0 color=0xffffffff
+            GameMaterial emission_color=0xffffffff emission_intensity=0.04 scene=0xffffffff
         }
     }
     - {
@@ -1000,8 +1000,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=-237.2 y=-89.9
-            GameAppearance width=6 height=6 color=1090478335
-            GameMaterial emission_color=1090478335 emission_intensity=0.01 scene=1090478335
+            GameAppearance width=6.0 height=6.0 color=0x40ff60ff
+            GameMaterial emission_color=0x40ff60ff emission_intensity=0.01 scene=0x40ff60ff
         }
     }
     - {
@@ -1009,8 +1009,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=-212.5 y=-233.2
-            GameAppearance width=4 height=4 color=1082195967
-            GameMaterial emission_color=1082195967 emission_intensity=0.04 scene=1082195967
+            GameAppearance width=4.0 height=4.0 color=0x4080ffff
+            GameMaterial emission_color=0x4080ffff emission_intensity=0.04 scene=0x4080ffff
         }
     }
     - {
@@ -1018,8 +1018,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=-162.3 y=-217.9
-            GameAppearance width=4 height=4 color=1090478335
-            GameMaterial emission_color=1090478335 emission_intensity=0.02 scene=1090478335
+            GameAppearance width=4.0 height=4.0 color=0x40ff60ff
+            GameMaterial emission_color=0x40ff60ff emission_intensity=0.02 scene=0x40ff60ff
         }
     }
     - {
@@ -1027,8 +1027,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=-291.7 y=-69.0
-            GameAppearance width=2 height=2 color=4291838207
-            GameMaterial emission_color=4291838207 emission_intensity=0.02 scene=4291838207
+            GameAppearance width=2.0 height=2.0 color=0xffd040ff
+            GameMaterial emission_color=0xffd040ff emission_intensity=0.02 scene=0xffd040ff
         }
     }
     - {
@@ -1036,8 +1036,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=2.5 y=-135.5
-            GameAppearance width=8 height=8 color=4294967295
-            GameMaterial emission_color=4294967295 emission_intensity=0.01 scene=4294967295
+            GameAppearance width=8.0 height=8.0 color=0xffffffff
+            GameMaterial emission_color=0xffffffff emission_intensity=0.01 scene=0xffffffff
         }
     }
     - {
@@ -1045,8 +1045,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=-376.4 y=169.4
-            GameAppearance width=3.0 height=3.0 color=4291838207
-            GameMaterial emission_color=4291838207 emission_intensity=0.04 scene=4291838207
+            GameAppearance width=3.0 height=3.0 color=0xffd040ff
+            GameMaterial emission_color=0xffd040ff emission_intensity=0.04 scene=0xffd040ff
         }
     }
     - {
@@ -1054,8 +1054,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=-421.7 y=-223.9
-            GameAppearance width=4 height=4 color=1090519039
-            GameMaterial emission_color=1090519039 emission_intensity=0.01 scene=1090519039
+            GameAppearance width=4.0 height=4.0 color=0x40ffffff
+            GameMaterial emission_color=0x40ffffff emission_intensity=0.01 scene=0x40ffffff
         }
     }
     - {
@@ -1063,8 +1063,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=-382.3 y=239.0
-            GameAppearance width=3.0 height=3.0 color=1090519039
-            GameMaterial emission_color=1090519039 emission_intensity=0.04 scene=1090519039
+            GameAppearance width=3.0 height=3.0 color=0x40ffffff
+            GameMaterial emission_color=0x40ffffff emission_intensity=0.04 scene=0x40ffffff
         }
     }
     - {
@@ -1072,8 +1072,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=261.3 y=60.3
-            GameAppearance width=4 height=4 color=1090519039
-            GameMaterial emission_color=1090519039 emission_intensity=0.02 scene=1090519039
+            GameAppearance width=4.0 height=4.0 color=0x40ffffff
+            GameMaterial emission_color=0x40ffffff emission_intensity=0.02 scene=0x40ffffff
         }
     }
     - {
@@ -1081,8 +1081,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=-322.5 y=123.5
-            GameAppearance width=12 height=12 color=1090478335
-            GameMaterial emission_color=1090478335 emission_intensity=0.01 scene=1090478335
+            GameAppearance width=12.0 height=12.0 color=0x40ff60ff
+            GameMaterial emission_color=0x40ff60ff emission_intensity=0.01 scene=0x40ff60ff
         }
     }
     - {
@@ -1090,8 +1090,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=298.9 y=118.9
-            GameAppearance width=8 height=8 color=1090519039
-            GameMaterial emission_color=1090519039 emission_intensity=0.02 scene=1090519039
+            GameAppearance width=8.0 height=8.0 color=0x40ffffff
+            GameMaterial emission_color=0x40ffffff emission_intensity=0.02 scene=0x40ffffff
         }
     }
     - {
@@ -1099,8 +1099,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=215.1 y=167.0
-            GameAppearance width=3.0 height=3.0 color=4282437887
-            GameMaterial emission_color=4282437887 emission_intensity=0.04 scene=4282437887
+            GameAppearance width=3.0 height=3.0 color=0xff40d0ff
+            GameMaterial emission_color=0xff40d0ff emission_intensity=0.04 scene=0xff40d0ff
         }
     }
     - {
@@ -1108,8 +1108,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=63.0 y=167.4
-            GameAppearance width=2 height=2 color=4294967295
-            GameMaterial emission_color=4294967295 emission_intensity=0.04 scene=4294967295
+            GameAppearance width=2.0 height=2.0 color=0xffffffff
+            GameMaterial emission_color=0xffffffff emission_intensity=0.04 scene=0xffffffff
         }
     }
     - {
@@ -1117,8 +1117,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=77.3 y=207.0
-            GameAppearance width=12 height=12 color=1090519039
-            GameMaterial emission_color=1090519039 emission_intensity=0.04 scene=1090519039
+            GameAppearance width=12.0 height=12.0 color=0x40ffffff
+            GameMaterial emission_color=0x40ffffff emission_intensity=0.04 scene=0x40ffffff
         }
     }
     - {
@@ -1126,8 +1126,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=-248.5 y=-219.6
-            GameAppearance width=3.0 height=3.0 color=1090519039
-            GameMaterial emission_color=1090519039 emission_intensity=0.02 scene=1090519039
+            GameAppearance width=3.0 height=3.0 color=0x40ffffff
+            GameMaterial emission_color=0x40ffffff emission_intensity=0.02 scene=0x40ffffff
         }
     }
     - {
@@ -1135,8 +1135,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=422.8 y=-48.6
-            GameAppearance width=6 height=6 color=4282437887
-            GameMaterial emission_color=4282437887 emission_intensity=0.01 scene=4282437887
+            GameAppearance width=6.0 height=6.0 color=0xff40d0ff
+            GameMaterial emission_color=0xff40d0ff emission_intensity=0.01 scene=0xff40d0ff
         }
     }
     - {
@@ -1144,8 +1144,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=117.5 y=75.0
-            GameAppearance width=12 height=12 color=1090478335
-            GameMaterial emission_color=1090478335 emission_intensity=0.02 scene=1090478335
+            GameAppearance width=12.0 height=12.0 color=0x40ff60ff
+            GameMaterial emission_color=0x40ff60ff emission_intensity=0.02 scene=0x40ff60ff
         }
     }
     - {
@@ -1153,8 +1153,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=-217.3 y=-8.8
-            GameAppearance width=2 height=2 color=1090519039
-            GameMaterial emission_color=1090519039 emission_intensity=0.04 scene=1090519039
+            GameAppearance width=2.0 height=2.0 color=0x40ffffff
+            GameMaterial emission_color=0x40ffffff emission_intensity=0.04 scene=0x40ffffff
         }
     }
     - {
@@ -1162,8 +1162,8 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=366.0 y=-189.5
-            GameAppearance width=8 height=8 color=4282401023
-            GameMaterial emission_color=4282401023 emission_intensity=0.04 scene=4282401023
+            GameAppearance width=8.0 height=8.0 color=0xff4040ff
+            GameMaterial emission_color=0xff4040ff emission_intensity=0.04 scene=0xff4040ff
         }
     }
     - {
@@ -1171,24 +1171,24 @@ name "HRCLabManyLights"
         prototype "HRCLabEmitter"
         components {
             GameTransform x=217.8 y=-110.2
-            GameAppearance width=2 height=2 color=4294967295
-            GameMaterial emission_color=4294967295 emission_intensity=0.02 scene=4294967295
+            GameAppearance width=2.0 height=2.0 color=0xffffffff
+            GameMaterial emission_color=0xffffffff emission_intensity=0.02 scene=0xffffffff
         }
     }
     - {
         name "Big"
         prototype "HRCLabEmitter"
         components {
-            GameTransform x=-400 y=180
-            GameAppearance width=20 height=20 color=4294963455
+            GameTransform x=-400.0 y=180.0
+            GameAppearance width=20.0 height=20.0 color=0xfffff0ff
         }
     }
     - {
         name "Smoke"
         prototype "HRCLabSmoke"
         components {
-            GameTransform x=300 y=-120
-            GameFluidVolume width=220 height=180 absorption=0.018 visibility=0.03
+            GameTransform x=300.0 y=-120.0
+            GameFluidVolume width=220.0 height=180.0 absorption=0.018 visibility=0.03
         }
     }
 }

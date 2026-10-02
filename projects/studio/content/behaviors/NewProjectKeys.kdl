@@ -7,22 +7,16 @@ owner_type "ecs.entity"
         kind "event"
         name ""
         (array)nodes {
-            - id=1 type="Event" x=0.0 y=0.0 placed=#false reference_name="ConfirmDiscard"
+            - id=1 type="Event" reference_name="ConfirmDiscard"
             - {
                 id 3
                 type "Move UI Focus"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs Element="#new-project-cancel"
             }
-            - id=9 type="Event" x=0.0 y=0.0 placed=#false reference_name="InvalidName"
+            - id=9 type="Event" reference_name="InvalidName"
             - {
                 id 11
                 type "Move UI Focus"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs Element="#new-project-name"
             }
         }

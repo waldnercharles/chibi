@@ -51,7 +51,7 @@ try {
     if (name === "ArenaShardBehavior") {
       const graph = document.graphs[0];
       const age = document.variables.find(v => v.name === "Age");
-      const setter = graph.nodes.find(n => n.type === "Set Variable" && n.reference_id === age.id);
+      const setter = graph.nodes.find(n => n.type === "Set Variable" && (n.reference_name === age.name || n.reference_id === age.id));
       assert(setter, "Optimize must retain the Age assignment");
       // Edges name pins as <node>.<pin>; the setter's data output must stay unwired.
       assert(!graph.edges.some(e => e.from === `${setter.id}.Value`));
@@ -61,7 +61,7 @@ try {
         graph.edges.filter(e => e.from.startsWith(`${self.id}.`)).length === 1));
       const pins = node => Array.isArray(node.inputs) ? node.inputs : Object.values(node.inputs || {});
       assert(graph.nodes.flatMap(pins).filter(p =>
-        p?.binding?.kind === "variable" && p.binding.variable_id === age.id).length >= 3);
+        p?.binding?.kind === "variable" && (p.binding.name === age.name || p.binding.variable_id === age.id)).length >= 3);
     }
     assert.equal(document.variables.length, beforeDocument.variables.length);
     const noop = rpc("optimizeGraph", { path: file, dry_run: false, expected_hash: applied.result.after_hash }).result?.structuredContent;

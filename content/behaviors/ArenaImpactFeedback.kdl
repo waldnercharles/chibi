@@ -14,9 +14,6 @@ owner_type "ecs.entity"
             - {
                 id 22
                 type "Event"
-                x 0.0
-                y 0.0
-                placed #false
                 reference_name "Damaged"
                 outputs {
                     Then id=19
@@ -27,10 +24,6 @@ owner_type "ecs.entity"
             - {
                 id 41
                 type "Call Function"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 1
                 reference_name "Spawn Surface Pulse"
                 inputs {
                     Exec id=37
@@ -50,9 +43,6 @@ owner_type "ecs.entity"
             - {
                 id 44
                 type "Event"
-                x 0.0
-                y 0.0
-                placed #false
                 reference_name "Died"
                 outputs {
                     Then id=42
@@ -62,10 +52,6 @@ owner_type "ecs.entity"
             - {
                 id 69
                 type "Call Function"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 1
                 reference_name "Spawn Surface Pulse"
                 inputs {
                     Exec id=65
@@ -85,23 +71,17 @@ owner_type "ecs.entity"
             - {
                 id 77
                 type "Branch"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Exec id=73
                     Condition {
-                        binding kind="variable" variable_id=70 source_asset="ArenaImpactFeedback"
+                        binding kind="variable" source_asset="ArenaImpactFeedback" name="Death Handled"
                     }
                 }
             }
             - {
                 id 82
                 type "Set Variable"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 70
+                reference_name "Death Handled"
                 inputs {
                     Exec id=78
                     Value type="bool" default=#true
@@ -113,9 +93,6 @@ owner_type "ecs.entity"
             - {
                 id 84
                 type "Has_GameEncounterMember"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)outputs {
                     - id=83 name="Result"
                 }
@@ -123,9 +100,6 @@ owner_type "ecs.entity"
             - {
                 id 89
                 type "Branch"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Exec id=85
                 }
@@ -133,10 +107,6 @@ owner_type "ecs.entity"
             - {
                 id 117
                 type "Call Function"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 543
                 reference_name "Prepare Enemy Experience"
                 inputs {
                     Exec id=111
@@ -183,10 +153,6 @@ owner_type "ecs.entity"
             - {
                 id 621
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 607
                 reference_name "Health > 0"
                 inputs {
                     Exec id=624 kind="exec"
@@ -206,10 +172,6 @@ owner_type "ecs.entity"
             - {
                 id 655
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 641
                 reference_name "Role == 1"
                 inputs {
                     Exec id=658 kind="exec"
@@ -251,9 +213,6 @@ owner_type "ecs.entity"
             - {
                 id 5
                 type "Function Entry"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)outputs {
                     - id=2 name="Then"
                     - id=3 name="Prototype" type="name" kind="data" default="ArenaHitPulse"
@@ -263,9 +222,6 @@ owner_type "ecs.entity"
             - {
                 id 10
                 type "Spawn Prototype"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Exec id=6
                     Prototype type_name="name" default="ArenaHitPulse"
@@ -274,9 +230,6 @@ owner_type "ecs.entity"
             - {
                 id 16
                 type "SetEntity_GameTransform"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Exec id=11
                 }
@@ -284,9 +237,6 @@ owner_type "ecs.entity"
             - {
                 id 18
                 type "Return"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Exec id=17
                 }
@@ -312,9 +262,6 @@ owner_type "ecs.entity"
             - {
                 id 549
                 type "Function Entry"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)outputs {
                     - id=544 name="Then"
                     - id=545 name="Position" type="struct" type_name="GameTransform" kind="data"
@@ -327,9 +274,6 @@ owner_type "ecs.entity"
             - {
                 id 551
                 type "Return"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Exec id=550
                 }
@@ -337,9 +281,6 @@ owner_type "ecs.entity"
             - {
                 id 556
                 type "Spawn Prototype"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Exec id=552
                     Prototype type_name="name" default="ArenaExperience"
@@ -348,79 +289,61 @@ owner_type "ecs.entity"
             - {
                 id 562
                 type "SetEntity_GameTransform"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Exec id=557
                     Entity {
-                        binding kind="local" local_id=606
+                        binding kind="local" name="Experience"
                     }
                 }
             }
             - {
                 id 568
                 type "SetEntity_GameGeometry3D"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Exec id=563
                     Entity {
-                        binding kind="local" local_id=606
+                        binding kind="local" name="Experience"
                     }
                 }
             }
             - {
                 id 574
                 type "SetEntity_GameShader"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Exec id=569
                     Entity {
-                        binding kind="local" local_id=606
+                        binding kind="local" name="Experience"
                     }
                 }
             }
             - {
                 id 580
                 type "SetEntity_GameOrientation"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Exec id=575
                     Entity {
-                        binding kind="local" local_id=606
+                        binding kind="local" name="Experience"
                     }
                 }
             }
             - {
                 id 592
                 type "Set_GamePickup_state"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Exec id=587
                     Value 3
                     Target {
-                        binding kind="local" local_id=606
+                        binding kind="local" name="Experience"
                     }
                 }
             }
             - {
                 id 603
                 type "SetEntity_GameVisualTransform"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Exec id=598
                     Entity {
-                        binding kind="local" local_id=606
+                        binding kind="local" name="Experience"
                     }
                 }
             }

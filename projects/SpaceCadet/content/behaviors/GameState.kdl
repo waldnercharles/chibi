@@ -7,14 +7,11 @@ owner_type "ecs.entity"
         kind "event"
         name ""
         (array)nodes {
-            - id=1 type="Event" x=0.0 y=0.0 placed=#false reference_name="Begin"
-            - id=3 type="Event" x=0.0 y=0.0 placed=#false reference_name="Restart"
+            - id=1 type="Event" reference_name="Begin"
+            - id=3 type="Event" reference_name="Restart"
             - {
                 id 5
                 type "Set Global Variable"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Name "Score"
                     Value type="float"
@@ -26,9 +23,6 @@ owner_type "ecs.entity"
             - {
                 id 11
                 type "Set Global Variable"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Name "Lives"
                     Value type="float" default=3.0
@@ -40,9 +34,6 @@ owner_type "ecs.entity"
             - {
                 id 17
                 type "Set Global Variable"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Name "Hits"
                     Value type="float"
@@ -54,9 +45,6 @@ owner_type "ecs.entity"
             - {
                 id 23
                 type "Set Global Variable"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Name "Rank"
                     Value type="float" default=1.0
@@ -68,9 +56,6 @@ owner_type "ecs.entity"
             - {
                 id 29
                 type "Set Global Variable"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Name "Ready"
                     Value type="float" default=1.0
@@ -82,9 +67,6 @@ owner_type "ecs.entity"
             - {
                 id 35
                 type "Set Global Variable"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Name "Charge"
                     Value type="float"
@@ -96,9 +78,6 @@ owner_type "ecs.entity"
             - {
                 id 41
                 type "Set_GameTransform"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Value {
                         default x=196.0 y=260.0
@@ -108,18 +87,15 @@ owner_type "ecs.entity"
             - {
                 id 46
                 type "Set_GameVelocity"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Value {
                         default x=0.0 y=0.0
                     }
                 }
             }
-            - id=51 type="Event" x=0.0 y=0.0 placed=#false reference_name="LeftFlip"
-            - id=53 type="Event" x=0.0 y=0.0 placed=#false reference_name="RightFlip"
-            - id=55 type="Event" x=0.0 y=0.0 placed=#false reference_name="Dash"
+            - id=51 type="Event" reference_name="LeftFlip"
+            - id=53 type="Event" reference_name="RightFlip"
+            - id=55 type="Event" reference_name="Dash"
         }
         (array)edges {
             - from="1.Then" to="5.Exec"

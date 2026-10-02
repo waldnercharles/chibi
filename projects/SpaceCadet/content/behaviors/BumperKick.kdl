@@ -13,9 +13,6 @@ owner_type "ecs.entity"
             - {
                 id 2
                 type "Event"
-                x 0.0
-                y 0.0
-                placed #false
                 reference_name "Contact Begin"
                 outputs {
                     Other id=4 type="handle" type_name="ecs.entity" kind="data"
@@ -25,10 +22,6 @@ owner_type "ecs.entity"
             - {
                 id 6
                 type "Set Variable"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 1
                 reference_name "pulse"
                 inputs {
                     Value type="float" default=1.0
@@ -40,9 +33,6 @@ owner_type "ecs.entity"
             - {
                 id 11
                 type "Get Component"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Component id=1342 default="GAME.GameTransform"
                     Entity id=12
@@ -51,9 +41,6 @@ owner_type "ecs.entity"
             - {
                 id 14
                 type "Get Component"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Component id=1343 default="GAME.GameVelocity"
                     Entity id=15
@@ -62,9 +49,6 @@ owner_type "ecs.entity"
             - {
                 id 975
                 type "Event"
-                x 0.0
-                y 0.0
-                placed #false
                 reference_name "Tick"
                 outputs {
                     DeltaSeconds id=977 type="float" kind="data"
@@ -73,10 +57,6 @@ owner_type "ecs.entity"
             - {
                 id 1386
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 1347
                 reference_name "velocity + (ball - bumper) * 180 / max(distance(ball, bumper), 1)"
                 inputs {
                     velocity id=1387 type="struct" type_name="GameVelocity"
@@ -95,25 +75,18 @@ owner_type "ecs.entity"
             - {
                 id 1508
                 type "Set Component"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs Component="GAME.GameVelocity"
             }
             - {
                 id 1580
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 1554
                 reference_name "pulse = max(pulse - dt * 4, 0)"
                 inputs {
                     Exec id=1584 kind="exec"
                     pulse {
                         id 1581
                         type "float"
-                        binding kind="variable" variable_id=1 source_asset="BumperKick"
+                        binding kind="variable" source_asset="BumperKick" name="pulse"
                     }
                     dt {
                         id 1582
@@ -129,10 +102,6 @@ owner_type "ecs.entity"
             - {
                 id 1670
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 1648
                 reference_name "glow = 5 + 14 * pulse"
                 inputs {
                     Exec id=1674 kind="exec"
@@ -144,7 +113,7 @@ owner_type "ecs.entity"
                     pulse {
                         id 1672
                         type "double"
-                        binding kind="variable" variable_id=1 source_asset="BumperKick"
+                        binding kind="variable" source_asset="BumperKick" name="pulse"
                     }
                 }
                 outputs {

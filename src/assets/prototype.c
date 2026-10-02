@@ -741,7 +741,8 @@ static av_value *write_value(
         }
         case PIN_U8: return av_uint(doc, value.u8);
         case PIN_U16: return av_uint(doc, value.u16);
-        case PIN_U32: return av_uint(doc, value.u);
+        case PIN_U32:
+            return field->color ? av_color(doc, value.u) : av_uint(doc, value.u);
         case PIN_U64: return av_uint(doc, value.u64);
         case PIN_F32: return av_float(doc, value.f);
         case PIN_F64: return av_real(doc, value.d);

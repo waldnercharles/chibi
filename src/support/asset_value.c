@@ -16,6 +16,7 @@ struct av_value
 {
     av_doc *owner;
     av_type type;
+    bool hex, color;
     av_source source;
     av_value *field_value;
     union
@@ -105,6 +106,18 @@ av_value *av_uint(av_doc *doc, uint64_t value)
     v->data.uint = value;
     return v;
 }
+av_value *av_hex(av_doc *doc, uint64_t value)
+{
+    av_value *v = av_uint(doc, value);
+    v->hex = true;
+    return v;
+}
+av_value *av_color(av_doc *doc, uint32_t value)
+{
+    av_value *v = av_hex(doc, value);
+    v->color = true;
+    return v;
+}
 av_value *av_real(av_doc *doc, double value)
 {
     av_value *v = new_value(doc, AV_REAL);
@@ -164,6 +177,14 @@ void av_set_source(av_value *v, av_source source)
 {
     assert(v);
     v->source = source;
+}
+bool av_is_hex(const av_value *v)
+{
+    return v && v->type == AV_UINT && v->hex;
+}
+bool av_is_color(const av_value *v)
+{
+    return v && v->type == AV_UINT && v->color;
 }
 bool av_is_null(const av_value *v)
 {
@@ -498,6 +519,8 @@ av_value *av_clone(av_doc *doc, const av_value *value)
             }
             break;
     }
+    copy->hex = value->hex;
+    copy->color = value->color;
     copy->source = value->source;
     return copy;
 }

@@ -14,9 +14,6 @@ owner_type "ecs.entity"
             - {
                 id 3
                 type "Event"
-                x 0.0
-                y 0.0
-                placed #false
                 reference_name "Tick"
                 outputs {
                     Then id=2
@@ -25,9 +22,6 @@ owner_type "ecs.entity"
             - {
                 id 33
                 type "Destroy Entity"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Exec id=30
                 }
@@ -35,9 +29,6 @@ owner_type "ecs.entity"
             - {
                 id 35
                 type "Self"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)outputs {
                     - id=34 name="Entity" type_name="ecs.entity"
                 }
@@ -45,17 +36,13 @@ owner_type "ecs.entity"
             - {
                 id 91
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 79
                 reference_name "Age += dt"
                 inputs {
                     Exec id=95 kind="exec"
                     Age {
                         id 92
                         type "float"
-                        binding kind="variable" variable_id=1 source_asset="WavePulseBehavior"
+                        binding kind="variable" source_asset="WavePulseBehavior" name="Age"
                     }
                     dt {
                         id 93
@@ -71,16 +58,12 @@ owner_type "ecs.entity"
             - {
                 id 145
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 131
                 reference_name "Age / 0.8"
                 inputs {
                     Age {
                         id 146
                         type "double"
-                        binding kind="variable" variable_id=1 source_asset="WavePulseBehavior"
+                        binding kind="variable" source_asset="WavePulseBehavior" name="Age"
                     }
                 }
                 outputs {
@@ -90,10 +73,6 @@ owner_type "ecs.entity"
             - {
                 id 176
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 162
                 reference_name "progress >= 1"
                 inputs {
                     Exec id=179 kind="exec"
@@ -101,7 +80,7 @@ owner_type "ecs.entity"
                         id 177
                         type "double"
                         flags 0
-                        binding kind="local" local_id=390
+                        binding kind="local" name="Progress"
                     }
                 }
                 outputs {
@@ -113,16 +92,12 @@ owner_type "ecs.entity"
             - {
                 id 217
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 196
                 reference_name "24 + 336 * progress"
                 inputs {
                     progress {
                         id 218
                         type "double"
-                        binding kind="local" local_id=390
+                        binding kind="local" name="Progress"
                     }
                 }
                 outputs {
@@ -132,10 +107,6 @@ owner_type "ecs.entity"
             - {
                 id 255
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 234
                 reference_name "max(0, radius - 28)"
                 inputs {
                     radius id=256 type="double"
@@ -147,16 +118,12 @@ owner_type "ecs.entity"
             - {
                 id 300
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 279
                 reference_name "0.65 * (1 - progress)"
                 inputs {
                     progress {
                         id 301
                         type "double"
-                        binding kind="local" local_id=390
+                        binding kind="local" name="Progress"
                     }
                 }
                 outputs {
@@ -166,9 +133,6 @@ owner_type "ecs.entity"
             - {
                 id 317
                 type "Set Component"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Component "GAME.GameSurfaceInfluence"
                     strength id=368

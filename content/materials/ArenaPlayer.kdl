@@ -11,9 +11,6 @@ description "Cyan player surface. A color ramp along local X marks the forward e
             - {
                 id 29
                 type "Shader Surface Output"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     "Base Color" {
                         default x=1.0 y=1.0 z=1.0
@@ -30,9 +27,6 @@ description "Cyan player surface. A color ramp along local X marks the forward e
             - {
                 id 37
                 type "Shader Position"
-                x 0.0
-                y 0.0
-                placed #false
                 outputs {
                     Position {
                         default x=0.0 y=0.0
@@ -42,9 +36,6 @@ description "Cyan player surface. A color ramp along local X marks the forward e
             - {
                 id 51
                 type "Shader Color Ramp"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Stops {
                         (array)default {
@@ -78,17 +69,11 @@ description "Cyan player surface. A color ramp along local X marks the forward e
             - {
                 id 57
                 type "Shader Fresnel"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs Power=3.0
             }
             - {
                 id 63
                 type "Shader Parameter"
-                x 0.0
-                y 0.0
-                placed #false
                 reference_id 2
                 reference_name "Edge Glow"
                 outputs {
@@ -98,9 +83,6 @@ description "Cyan player surface. A color ramp along local X marks the forward e
             - {
                 id 69
                 type "Shader Parameter"
-                x 0.0
-                y 0.0
-                placed #false
                 reference_id 5
                 reference_name "Body Glow"
                 outputs {
@@ -110,9 +92,6 @@ description "Cyan player surface. A color ramp along local X marks the forward e
             - {
                 id 79
                 type "Shader Parameter"
-                x 0.0
-                y 0.0
-                placed #false
                 reference_id 3
                 reference_name "Roughness"
                 outputs {
@@ -122,9 +101,6 @@ description "Cyan player surface. A color ramp along local X marks the forward e
             - {
                 id 81
                 type "Shader Parameter"
-                x 0.0
-                y 0.0
-                placed #false
                 reference_id 4
                 reference_name "Metallic"
                 outputs {
@@ -134,9 +110,6 @@ description "Cyan player surface. A color ramp along local X marks the forward e
             - {
                 id 84
                 type "Shader Parameter"
-                x 0.0
-                y 0.0
-                placed #false
                 reference_name "Hit Flash"
                 outputs {
                     Value id=83 type_name="float" flags=0 group=0
@@ -145,9 +118,6 @@ description "Cyan player surface. A color ramp along local X marks the forward e
             - {
                 id 102
                 type "Shader Parameter"
-                x 0.0
-                y 0.0
-                placed #false
                 reference_id 1
                 reference_name "Dash Glow"
                 outputs {
@@ -157,10 +127,6 @@ description "Cyan player surface. A color ramp along local X marks the forward e
             - {
                 id 132
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 113
                 reference_name "position.x / 28 + 0.5"
                 inputs {
                     position id=133 type="struct" type_name="ShaderVec2"
@@ -172,9 +138,6 @@ description "Cyan player surface. A color ramp along local X marks the forward e
             - {
                 id 179
                 type "Call Pure Function"
-                x 0.0
-                y 0.0
-                placed #false
                 reference_id 399
                 reference_name "Hit Flash"
                 reference_asset "ShaderMath"
@@ -190,10 +153,6 @@ description "Cyan player surface. A color ramp along local X marks the forward e
             - {
                 id 231
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 184
                 reference_name "body_color * (fresnel * edge_glow + body_glow) + flash_glow + vec3(0.06, 0.65, 1) * dash_glow"
                 inputs {
                     body_color id=232 type="struct" type_name="ShaderVec3"

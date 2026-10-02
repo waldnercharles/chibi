@@ -14,9 +14,6 @@ owner_type "ecs.entity"
             - {
                 id 2
                 type "Event"
-                x 0.0
-                y 0.0
-                placed #false
                 reference_name "Begin"
                 outputs {
                     Then id=1
@@ -25,22 +22,16 @@ owner_type "ecs.entity"
             - {
                 id 4
                 type "Random Range Vector"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Max {
                         default x=6.2831855 y=6.2831855 z=6.2831855
                     }
                 }
             }
-            - id=8 type="Set_GameVisualMotion_rotation" x=0.0 y=0.0 placed=#false
+            - id=8 type="Set_GameVisualMotion_rotation"
             - {
                 id 14
                 type "Random Range Vector"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Min {
                         default x=-10.0 y=-10.0 z=-10.0
@@ -50,13 +41,10 @@ owner_type "ecs.entity"
                     }
                 }
             }
-            - id=18 type="Set_GameVisualMotion_angular_velocity" x=0.0 y=0.0 placed=#false
+            - id=18 type="Set_GameVisualMotion_angular_velocity"
             - {
                 id 24
                 type "Event"
-                x 0.0
-                y 0.0
-                placed #false
                 reference_name "Contact Begin"
                 outputs {
                     Other id=26 type="handle" type_name="ecs.entity" kind="data"
@@ -66,10 +54,6 @@ owner_type "ecs.entity"
             - {
                 id 27
                 type "Call Function"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 96
                 reference_name "Bump"
                 inputs {
                     Strength id=29 type="float" kind="data" default=1.0
@@ -81,9 +65,6 @@ owner_type "ecs.entity"
             - {
                 id 31
                 type "Event"
-                x 0.0
-                y 0.0
-                placed #false
                 reference_name "Damaged"
                 outputs {
                     Amount id=33 declaration_id=2 type="int" kind="data"
@@ -93,10 +74,6 @@ owner_type "ecs.entity"
             - {
                 id 35
                 type "Call Function"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 96
                 reference_name "Bump"
                 inputs {
                     Strength id=37 type="float" kind="data" default=1.6
@@ -126,9 +103,6 @@ owner_type "ecs.entity"
             - {
                 id 98
                 type "Function Entry"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)outputs {
                     - id=99 name="Then"
                     - id=100 name="Strength" type="float" kind="data" default=1.0
@@ -137,39 +111,30 @@ owner_type "ecs.entity"
             - {
                 id 101
                 type "Random Range"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs Min=-1.0
             }
             - {
                 id 105
                 type "Make_CF_V3"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs x=0.36 z=0.5
                 (array)outputs {
                     - id=109 name="Result"
                 }
             }
-            - id=110 type="Multiply" x=0.0 y=0.0 placed=#false
+            - id=110 type="Multiply"
             - {
                 id 116
                 type "Multiply"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     A 1.0
                     B {
-                        binding kind="variable" variable_id=1 source_asset="ArenaEnemyVisualBehavior"
+                        binding kind="variable" source_asset="ArenaEnemyVisualBehavior" name="Bump Lift"
                         default 1.6
                     }
                 }
             }
-            - id=120 type="Trigger Visual Reaction" x=0.0 y=0.0 placed=#false
-            - id=128 type="Return" x=0.0 y=0.0 placed=#false
+            - id=120 type="Trigger Visual Reaction"
+            - id=128 type="Return"
         }
         (array)edges {
             - from="98.Then" to="120.Exec"

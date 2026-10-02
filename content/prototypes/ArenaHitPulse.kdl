@@ -1,6 +1,6 @@
 name "ArenaHitPulse"
 components {
-    GAME.GameSurfaceInfluence color=4289615359 linger=0.15 radius=42.0 strength=0.8
+    GAME.GameSurfaceInfluence color=0xffae55ff linger=0.15 radius=42.0 strength=0.8
     (object)GAME.GameTransform
 }
 (array)behaviors "SurfacePulseBehavior"

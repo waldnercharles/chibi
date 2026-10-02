@@ -23,29 +23,23 @@ owner_type "ecs.entity"
         kind "event"
         name ""
         (array)nodes {
-            - id=2027 type="Event" x=0.0 y=0.0 placed=#false reference_name="Tick"
-            - id=2029 type="Call Function" x=0.0 y=0.0 placed=#false reference_id=2005 reference_name="Refresh Encounter"
-            - id=2032 type="Event" x=0.0 y=0.0 placed=#false reference_name="RefreshEncounter"
-            - id=2034 type="Call Function" x=0.0 y=0.0 placed=#false reference_id=2005 reference_name="Refresh Encounter"
+            - id=2027 type="Event" reference_name="Tick"
+            - id=2029 type="Call Function" reference_name="Refresh Encounter"
+            - id=2032 type="Event" reference_name="RefreshEncounter"
+            - id=2034 type="Call Function" reference_name="Refresh Encounter"
             - {
                 id 2040
                 type "Integer Equal"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     A {
                         binding kind="component_field" component="GAME.GameEncounter" field="status"
                     }
                 }
             }
-            - id=2044 type="Branch" x=0.0 y=0.0 placed=#false
+            - id=2044 type="Branch"
             - {
                 id 2049
                 type "Get_GameTransform"
-                x 0.0
-                y 0.0
-                placed #false
                 outputs {
                     Value flags=0
                 }
@@ -53,10 +47,6 @@ owner_type "ecs.entity"
             - {
                 id 2051
                 type "Call Function"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 2015
                 reference_name "Advance Wave"
                 inputs {
                     "Arena Center" id=2053 type="struct" type_name="CF_V2" kind="data"
@@ -85,61 +75,43 @@ owner_type "ecs.entity"
             - {
                 id 2006
                 type "Function Entry"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)outputs {
                     - id=2007 name="Then"
                 }
             }
-            - id=2008 type="Return" x=0.0 y=0.0 placed=#false
-            - id=2140 type="Call Function" x=0.0 y=0.0 placed=#false reference_id=2010 reference_name="Count Living Members"
+            - id=2008 type="Return"
+            - id=2140 type="Call Function" reference_name="Count Living Members"
             - {
                 id 2145
                 type "Branch"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Condition {
-                        binding kind="variable" variable_id=2004 source_asset="ArenaWaveBehavior"
+                        binding kind="variable" source_asset="ArenaWaveBehavior" name="Player Alive"
                     }
                 }
             }
             - {
                 id 2152
                 type "Set_GameEncounter_alive"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Value {
-                        binding kind="variable" variable_id=2003 source_asset="ArenaWaveBehavior"
+                        binding kind="variable" source_asset="ArenaWaveBehavior" name="Enemy Count"
                     }
                 }
             }
             - {
                 id 2158
                 type "Set_GameEncounter_status"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs Value=2
             }
             - {
                 id 2182
                 type "Set_GameEncounter_status"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs Value=1
             }
             - {
                 id 2363
                 type "Find Entities With Component"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Component id=2361 type_name="name" default="GAME.GamePickup"
                 }
@@ -152,9 +124,6 @@ owner_type "ecs.entity"
             - {
                 id 2366
                 type "Length"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Array {
                         id 2364
@@ -170,9 +139,6 @@ owner_type "ecs.entity"
             - {
                 id 2382
                 type "ForEach"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Exec id=2376
                     Array {
@@ -185,9 +151,6 @@ owner_type "ecs.entity"
             - {
                 id 2386
                 type "Send Event"
-                x 0.0
-                y 0.0
-                placed #false
                 reference_name "CollectExperience"
                 inputs {
                     Exec id=2383
@@ -196,10 +159,6 @@ owner_type "ecs.entity"
             - {
                 id 3627
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 3613
                 reference_name "status != 2"
                 inputs {
                     Exec id=3630 kind="exec"
@@ -219,10 +178,6 @@ owner_type "ecs.entity"
             - {
                 id 3691
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 3647
                 reference_name "status == 0 && spawned >= total && enemyCount == 0 && !pendingDeaths"
                 inputs {
                     Exec id=3698 kind="exec"
@@ -248,13 +203,13 @@ owner_type "ecs.entity"
                         id 3695
                         type "double"
                         flags 0
-                        binding kind="variable" variable_id=2003 source_asset="ArenaWaveBehavior"
+                        binding kind="variable" source_asset="ArenaWaveBehavior" name="Enemy Count"
                     }
                     pendingDeaths {
                         id 3696
                         type "bool"
                         flags 0
-                        binding kind="variable" variable_id=2387 source_asset="ArenaWaveBehavior"
+                        binding kind="variable" source_asset="ArenaWaveBehavior" name="Pending Deaths"
                     }
                 }
                 outputs {
@@ -266,10 +221,6 @@ owner_type "ecs.entity"
             - {
                 id 3935
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 3921
                 reference_name "pickupCount == 0"
                 inputs {
                     Exec id=3938 kind="exec"
@@ -314,21 +265,14 @@ owner_type "ecs.entity"
             - {
                 id 2011
                 type "Function Entry"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)outputs {
                     - id=2012 name="Then"
                 }
             }
-            - id=2013 type="Return" x=0.0 y=0.0 placed=#false
+            - id=2013 type="Return"
             - {
                 id 3378
                 type "Call Function"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 3339
                 reference_name "Count Members Snapshot"
                 outputs {
                     "Enemy Count" id=3381 type="int" kind="data"
@@ -336,14 +280,10 @@ owner_type "ecs.entity"
                     "Pending Deaths" id=3383 type="bool" kind="data"
                 }
             }
-            - id=3384 type="Set Variable" x=0.0 y=0.0 placed=#false reference_id=2003 reference_name="Enemy Count"
+            - id=3384 type="Set Variable" reference_name="Enemy Count"
             - {
                 id 3389
                 type "Set Variable"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 2004
                 reference_name "Player Alive"
                 inputs {
                     Value type="bool"
@@ -355,10 +295,6 @@ owner_type "ecs.entity"
             - {
                 id 3394
                 type "Set Variable"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 2387
                 reference_name "Pending Deaths"
                 inputs {
                     Value type="bool"
@@ -389,38 +325,28 @@ owner_type "ecs.entity"
             - {
                 id 2016
                 type "Function Entry"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)outputs {
                     - id=2017 name="Then"
                     - id=2018 name="Arena Center" type="struct" type_name="CF_V2" kind="data"
                 }
             }
-            - id=2019 type="Return" x=0.0 y=0.0 placed=#false
+            - id=2019 type="Return"
             - {
                 id 2223
                 type "Greater Or Equal"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     A {
-                        binding kind="variable" variable_id=2002 source_asset="ArenaWaveBehavior"
+                        binding kind="variable" source_asset="ArenaWaveBehavior" name="Elapsed"
                     }
                     B {
-                        binding kind="local" local_id=4101
+                        binding kind="local" name="Spawn Interval"
                     }
                 }
             }
-            - id=2227 type="WhileLoop" x=0.0 y=0.0 placed=#false
+            - id=2227 type="WhileLoop"
             - {
                 id 2246
                 type "Call Function"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 2021
                 reference_name "Spawn Telegraph"
                 inputs {
                     "Arena Center" id=2248 type="struct" type_name="CF_V2" kind="data"
@@ -438,9 +364,6 @@ owner_type "ecs.entity"
             - {
                 id 2250
                 type "Add"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     A {
                         type "int"
@@ -452,13 +375,10 @@ owner_type "ecs.entity"
                     Result type="int"
                 }
             }
-            - id=2254 type="Set_GameEncounter_spawned" x=0.0 y=0.0 placed=#false
+            - id=2254 type="Set_GameEncounter_spawned"
             - {
                 id 2260
                 type "Add"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     A {
                         type "int"
@@ -470,13 +390,10 @@ owner_type "ecs.entity"
                     Result type="int"
                 }
             }
-            - id=2264 type="Set_GameEncounter_alive" x=0.0 y=0.0 placed=#false
+            - id=2264 type="Set_GameEncounter_alive"
             - {
                 id 2411
                 type "ForLoop"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Exec id=2405
                     LastIndex 7
@@ -485,17 +402,13 @@ owner_type "ecs.entity"
             - {
                 id 3967
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 3955
                 reference_name "Elapsed += dt"
                 inputs {
                     Exec id=3971 kind="exec"
                     Elapsed {
                         id 3968
                         type "float"
-                        binding kind="variable" variable_id=2002 source_asset="ArenaWaveBehavior"
+                        binding kind="variable" source_asset="ArenaWaveBehavior" name="Elapsed"
                     }
                     dt {
                         id 3969
@@ -511,16 +424,12 @@ owner_type "ecs.entity"
             - {
                 id 4021
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 4007
                 reference_name "max(Interval, 0.01)"
                 inputs {
                     Interval {
                         id 4022
                         type "double"
-                        binding kind="variable" variable_id=2001 source_asset="ArenaWaveBehavior"
+                        binding kind="variable" source_asset="ArenaWaveBehavior" name="Interval"
                     }
                 }
                 outputs {
@@ -530,22 +439,18 @@ owner_type "ecs.entity"
             - {
                 id 4064
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 4052
                 reference_name "Elapsed -= spawnInterval"
                 inputs {
                     Exec id=4068 kind="exec"
                     Elapsed {
                         id 4065
                         type "float"
-                        binding kind="variable" variable_id=2002 source_asset="ArenaWaveBehavior"
+                        binding kind="variable" source_asset="ArenaWaveBehavior" name="Elapsed"
                     }
                     spawnInterval {
                         id 4066
                         type "double"
-                        binding kind="local" local_id=4101
+                        binding kind="local" name="Spawn Interval"
                     }
                 }
                 outputs {
@@ -556,10 +461,6 @@ owner_type "ecs.entity"
             - {
                 id 4114
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 4102
                 reference_name "Spawns Left In Wave"
                 inputs {
                     Exec id=4118 kind="exec"
@@ -585,10 +486,6 @@ owner_type "ecs.entity"
             - {
                 id 4157
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 4145
                 reference_name "Spawns Left This Interval"
                 inputs {
                     Exec id=4161 kind="exec"
@@ -614,10 +511,6 @@ owner_type "ecs.entity"
             - {
                 id 4200
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 4188
                 reference_name "Spawns Left In Burst"
                 inputs {
                     Exec id=4204 kind="exec"
@@ -676,9 +569,6 @@ owner_type "ecs.entity"
             - {
                 id 2022
                 type "Function Entry"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)outputs {
                     - id=2023 name="Then"
                     - id=2024 name="Arena Center" type="struct" type_name="CF_V2" kind="data"
@@ -687,24 +577,18 @@ owner_type "ecs.entity"
                     - id=3337 name="Index" type="int" kind="data"
                 }
             }
-            - id=2025 type="Return" x=0.0 y=0.0 placed=#false
+            - id=2025 type="Return"
             - {
                 id 2305
                 type "Spawn Prototype"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Prototype type_name="name" default="ArenaSpawnMarker"
                 }
             }
-            - id=2310 type="SetEntity_GameTransform" x=0.0 y=0.0 placed=#false
+            - id=2310 type="SetEntity_GameTransform"
             - {
                 id 2354
                 type "Spawn Prototype"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Exec id=2350
                     Prototype type_name="name" default="ArenaWavePulse"
@@ -713,9 +597,6 @@ owner_type "ecs.entity"
             - {
                 id 2360
                 type "SetEntity_GameTransform"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Exec id=2355
                 }
@@ -723,10 +604,6 @@ owner_type "ecs.entity"
             - {
                 id 2606
                 type "Call Function"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 2421
                 reference_name "Formation Position"
                 inputs {
                     Exec id=2600
@@ -735,7 +612,7 @@ owner_type "ecs.entity"
                         id 2602
                         type "int"
                         kind "data"
-                        binding kind="local" local_id=4783
+                        binding kind="local" name="Slot"
                     }
                     Pattern id=2603 type="int" kind="data"
                 }
@@ -747,9 +624,6 @@ owner_type "ecs.entity"
             - {
                 id 2646
                 type "Set_GameOrientation_radians"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Exec id=2641
                 }
@@ -757,9 +631,6 @@ owner_type "ecs.entity"
             - {
                 id 2650
                 type "Make_GameTransform"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     x id=2647
                 }
@@ -770,10 +641,6 @@ owner_type "ecs.entity"
             - {
                 id 4245
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 4231
                 reference_name "slot == 0"
                 inputs {
                     Exec id=4248 kind="exec"
@@ -781,7 +648,7 @@ owner_type "ecs.entity"
                         id 4246
                         type "double"
                         flags 0
-                        binding kind="local" local_id=4783
+                        binding kind="local" name="Slot"
                     }
                 }
                 outputs {
@@ -793,10 +660,6 @@ owner_type "ecs.entity"
             - {
                 id 4285
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 4265
                 reference_name "atan2(center.y - position.y, center.x - position.x)"
                 inputs {
                     center id=4286 type="struct" type_name="CF_V2"
@@ -809,10 +672,6 @@ owner_type "ecs.entity"
             - {
                 id 4649
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 4635
                 reference_name "Index % 8"
                 inputs {
                     Index id=4650 type="int"
@@ -824,10 +683,6 @@ owner_type "ecs.entity"
             - {
                 id 4690
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 4666
                 reference_name "floor(Index / 8) % 4"
                 inputs {
                     Index id=4691 type="int"
@@ -879,9 +734,6 @@ owner_type "ecs.entity"
             - {
                 id 2426
                 type "Function Entry"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)outputs {
                     - id=2422 name="Then"
                     - id=2423 name="Center" type="struct" type_name="CF_V2" kind="data"
@@ -892,9 +744,6 @@ owner_type "ecs.entity"
             - {
                 id 2429
                 type "Return"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Exec id=2427
                     Position id=2428 type="struct" type_name="GameTransform" kind="data"
@@ -903,10 +752,7 @@ owner_type "ecs.entity"
             - {
                 id 2432
                 type "Get Variable"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 2430
+                reference_name "Formation Position"
                 outputs {
                     Value id=2431 type="struct" type_name="GameTransform" flags=0
                 }
@@ -914,10 +760,7 @@ owner_type "ecs.entity"
             - {
                 id 2471
                 type "Set Variable"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 2430
+                reference_name "Formation Position"
                 inputs {
                     Exec id=2467
                     Value type="struct" type_name="GameTransform"
@@ -929,10 +772,7 @@ owner_type "ecs.entity"
             - {
                 id 2497
                 type "Set Variable"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 2430
+                reference_name "Formation Position"
                 inputs {
                     Exec id=2493
                     Value type="struct" type_name="GameTransform"
@@ -944,10 +784,7 @@ owner_type "ecs.entity"
             - {
                 id 2547
                 type "Set Variable"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 2430
+                reference_name "Formation Position"
                 inputs {
                     Exec id=2543
                     Value type="struct" type_name="GameTransform"
@@ -959,10 +796,7 @@ owner_type "ecs.entity"
             - {
                 id 2599
                 type "Set Variable"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 2430
+                reference_name "Formation Position"
                 inputs {
                     Exec id=2595
                     Value type="struct" type_name="GameTransform"
@@ -974,10 +808,6 @@ owner_type "ecs.entity"
             - {
                 id 3130
                 type "Call Pure Function"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 2651
                 reference_name "Row Formation"
                 inputs {
                     Center id=3131 type="struct" type_name="CF_V2"
@@ -991,10 +821,6 @@ owner_type "ecs.entity"
             - {
                 id 3135
                 type "Call Pure Function"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 2651
                 reference_name "Row Formation"
                 inputs {
                     Center id=3136 type="struct" type_name="CF_V2"
@@ -1008,10 +834,6 @@ owner_type "ecs.entity"
             - {
                 id 3140
                 type "Call Pure Function"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 2777
                 reference_name "Side Formation"
                 inputs {
                     Center id=3141 type="struct" type_name="CF_V2"
@@ -1025,10 +847,6 @@ owner_type "ecs.entity"
             - {
                 id 3150
                 type "Call Pure Function"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 2906
                 reference_name "Ellipse Formation"
                 inputs {
                     Center id=3151 type="struct" type_name="CF_V2"
@@ -1038,13 +856,10 @@ owner_type "ecs.entity"
                     Position id=3153 type="struct" type_name="GameTransform"
                 }
             }
-            - id=3326 type="To Real" x=0.0 y=0.0 placed=#false
+            - id=3326 type="To Real"
             - {
                 id 4574
                 type "Switch on Int"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)outputs {
                     - 4577
                     - 4578
@@ -1055,10 +870,6 @@ owner_type "ecs.entity"
             - {
                 id 4598
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 4581
                 reference_name "sign(Index - 3.5)"
                 inputs {
                     Index id=4599 type="double"
@@ -1108,9 +919,6 @@ owner_type "ecs.entity"
             - {
                 id 2652
                 type "Function Entry"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)outputs {
                     - id=2656 name="Center" type="struct" type_name="CF_V2" kind="data"
                     - id=2657 name="Index" type="double" kind="data"
@@ -1120,9 +928,6 @@ owner_type "ecs.entity"
             - {
                 id 2654
                 type "Return"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)inputs {
                     - id=2659 name="Position" type="struct" type_name="GameTransform" kind="data"
                 }
@@ -1130,10 +935,6 @@ owner_type "ecs.entity"
             - {
                 id 2691
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 2660
                 reference_name "Row X"
                 inputs {
                     Center id=2692 type="struct" type_name="CF_V2"
@@ -1147,10 +948,6 @@ owner_type "ecs.entity"
             - {
                 id 2715
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 2696
                 reference_name "Row Y"
                 inputs {
                     Center id=2716 type="struct" type_name="CF_V2"
@@ -1160,7 +957,7 @@ owner_type "ecs.entity"
                     Result id=2718 type="float"
                 }
             }
-            - id=2773 type="Make_GameTransform" x=0.0 y=0.0 placed=#false
+            - id=2773 type="Make_GameTransform"
         }
         (array)edges {
             - from="2652.Center" to="2691.Center"
@@ -1186,9 +983,6 @@ owner_type "ecs.entity"
             - {
                 id 2778
                 type "Function Entry"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)outputs {
                     - id=2782 name="Center" type="struct" type_name="CF_V2" kind="data"
                     - id=2783 name="Index" type="double" kind="data"
@@ -1198,9 +992,6 @@ owner_type "ecs.entity"
             - {
                 id 2780
                 type "Return"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)inputs {
                     - id=2785 name="Position" type="struct" type_name="GameTransform" kind="data"
                 }
@@ -1208,10 +999,6 @@ owner_type "ecs.entity"
             - {
                 id 2805
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 2786
                 reference_name "Side X"
                 inputs {
                     Center id=2806 type="struct" type_name="CF_V2"
@@ -1224,10 +1011,6 @@ owner_type "ecs.entity"
             - {
                 id 2842
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 2809
                 reference_name "Side Y"
                 inputs {
                     Center id=2843 type="struct" type_name="CF_V2"
@@ -1237,7 +1020,7 @@ owner_type "ecs.entity"
                     Result id=2845 type="float"
                 }
             }
-            - id=2902 type="Make_GameTransform" x=0.0 y=0.0 placed=#false
+            - id=2902 type="Make_GameTransform"
         }
         (array)edges {
             - from="2778.Center" to="2805.Center"
@@ -1262,9 +1045,6 @@ owner_type "ecs.entity"
             - {
                 id 2907
                 type "Function Entry"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)outputs {
                     - id=2911 name="Center" type="struct" type_name="CF_V2" kind="data"
                     - id=2912 name="Index" type="double" kind="data"
@@ -1273,9 +1053,6 @@ owner_type "ecs.entity"
             - {
                 id 2909
                 type "Return"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)inputs {
                     - id=2913 name="Position" type="struct" type_name="GameTransform" kind="data"
                 }
@@ -1283,10 +1060,6 @@ owner_type "ecs.entity"
             - {
                 id 2964
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 2914
                 reference_name "Ellipse X"
                 inputs {
                     Center id=2965 type="struct" type_name="CF_V2"
@@ -1299,10 +1072,6 @@ owner_type "ecs.entity"
             - {
                 id 3018
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 2968
                 reference_name "Ellipse Y"
                 inputs {
                     Center id=3019 type="struct" type_name="CF_V2"
@@ -1312,7 +1081,7 @@ owner_type "ecs.entity"
                     Result id=3021 type="float"
                 }
             }
-            - id=3126 type="Make_GameTransform" x=0.0 y=0.0 placed=#false
+            - id=3126 type="Make_GameTransform"
         }
         (array)edges {
             - from="2907.Center" to="2964.Center"
@@ -1334,13 +1103,10 @@ owner_type "ecs.entity"
         return_id 3342
         call_depth_limit 64
         (array)nodes {
-            - id=3340 type="Function Entry" x=0.0 y=0.0 placed=#false
+            - id=3340 type="Function Entry"
             - {
                 id 3342
                 type "Return"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     "Enemy Count" id=3344 type="int" kind="data"
                     "Player Alive" id=3345 type="bool" kind="data"
@@ -1350,9 +1116,6 @@ owner_type "ecs.entity"
             - {
                 id 3347
                 type "Find Entities With Component"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs Component="GAME.GameEncounterMember"
                 outputs {
                     Entities {
@@ -1363,9 +1126,6 @@ owner_type "ecs.entity"
             - {
                 id 3350
                 type "Count Matching Entities"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Entities {
                         (array)default
@@ -1381,9 +1141,6 @@ owner_type "ecs.entity"
             - {
                 id 3354
                 type "Count Matching Entities"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Entities {
                         (array)default
@@ -1400,9 +1157,6 @@ owner_type "ecs.entity"
             - {
                 id 3358
                 type "Count Matching Entities"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Entities {
                         (array)default
@@ -1418,9 +1172,6 @@ owner_type "ecs.entity"
             - {
                 id 3362
                 type "Count Matching Entities"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Entities {
                         (array)default
@@ -1432,9 +1183,9 @@ owner_type "ecs.entity"
                     }
                 }
             }
-            - id=3366 type="Add" x=0.0 y=0.0 placed=#false
-            - id=3370 type="Integer Greater" x=0.0 y=0.0 placed=#false
-            - id=3374 type="Integer Greater" x=0.0 y=0.0 placed=#false
+            - id=3366 type="Add"
+            - id=3370 type="Integer Greater"
+            - id=3374 type="Integer Greater"
         }
         (array)edges {
             - from="3340.Exec" to="3342.Exec"

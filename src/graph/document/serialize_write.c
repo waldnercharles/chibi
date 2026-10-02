@@ -191,6 +191,10 @@ static void write_pin_fields(av_doc *doc, av_value *o, const graph *g, const pin
                           : graph_pin_initial_default(base);
     if (!serialize_same_value(&p->default_value, &initial)) {
         serialize_write_value(doc, o, "default", p->type, p->type_name, &p->default_value);
+        if (p->type == PIN_U32 && p->container == PIN_CONTAINER_SINGLE &&
+            (p->flags & PIN_FLAG_COLOR)) {
+            av_obj_set(doc, o, "default", av_color(doc, p->default_value.u));
+        }
     }
 }
 
@@ -399,8 +403,21 @@ static void write_node(av_doc *doc, av_value *arr, const graph *g, const node *n
     if (n->reference_id) {
         av_obj_set(doc, o, "reference_id", av_uint(doc, n->reference_id));
     }
-    if (n->reference_name) {
-        av_obj_set(doc, o, "reference_name", av_str(doc, n->reference_name));
+    const char *reference_name = n->reference_name;
+    if (!reference_name && !n->reference_asset && g->owner) {
+        if (n->desc == &NODE_GetVariable || n->desc == &NODE_SetVariable) {
+            const behavior_variable
+                *variable = behavior_asset_find_variable_by_id(g->owner, n->reference_id);
+            reference_name = variable ? variable->name : NULL;
+        }
+        if (serialize_local_call(n) || n->desc == &NODE_CallMacro) {
+            const graph *target = behavior_asset_find_graph(g->owner, n->reference_id);
+            reference_name = target && target->name && *target->name ? target->name
+                                                                     : NULL;
+        }
+    }
+    if (reference_name) {
+        av_obj_set(doc, o, "reference_name", av_str(doc, reference_name));
     }
     if (n->reference_asset) {
         av_obj_set(doc, o, "reference_asset", av_str(doc, n->reference_asset));
@@ -587,7 +604,7 @@ static void write_comment_boxes(av_doc *doc, av_value *obj, const graph *g)
         av_obj_set(doc, value, "height", av_float(doc, box->height));
         av_obj_set(doc, value, "title", av_str(doc, box->title ? box->title : ""));
         if (box->color) {
-            av_obj_set(doc, value, "color", av_uint(doc, box->color));
+            av_obj_set(doc, value, "color", av_color(doc, box->color));
         }
         av_arr_append(boxes, value);
     }
@@ -844,10 +861,72 @@ av_value *behavior_asset_to_value(av_doc *doc, const behavior_asset *asset)
     return root;
 }
 
+static void name_bindings(av_doc *doc, av_value *value, const graph *g)
+{
+    if (av_is_obj(value)) {
+        av_value *binding = av_obj_get(value, "binding");
+        uint64_t local_id = av_get_uint(av_obj_get(binding, "local_id"));
+        uint64_t variable_id = av_get_uint(av_obj_get(binding, "variable_id"));
+        const graph_local *local = graph_local_by_id(g, local_id);
+        const behavior_variable *variable = behavior_asset_find_variable_by_id(g->owner, variable_id);
+        const char *source_asset = av_get_str(av_obj_get(binding, "source_asset"));
+        if (local) {
+            av_obj_set(doc, binding, "name", av_str(doc, local->name));
+            av_obj_remove_key(binding, "local_id");
+        }
+        if (variable && (!source_asset || !strcmp(source_asset, g->owner->name))) {
+            av_obj_set(doc, binding, "name", av_str(doc, variable->name));
+            av_obj_remove_key(binding, "variable_id");
+        }
+        for (size_t i = 0; i < av_obj_size(value); i++) {
+            name_bindings(doc, av_obj_value_at(value, i), g);
+        }
+    }
+    if (av_is_arr(value)) {
+        for (size_t i = 0; i < av_arr_size(value); i++) {
+            name_bindings(doc, av_arr_get(value, i), g);
+        }
+    }
+}
+
+av_value *behavior_asset_to_disk_value(av_doc *doc, const behavior_asset *asset)
+{
+    av_value *root = behavior_asset_to_value(doc, asset);
+    av_value *graphs = av_obj_get(root, "graphs");
+    for (size_t i = 0; i < av_arr_size(graphs); i++) {
+        av_value *written = av_arr_get(graphs, i);
+        const graph *g = behavior_asset_find_graph(asset, av_get_uint(av_obj_get(written, "id")));
+        name_bindings(doc, written, g);
+        av_value *nodes = av_obj_get(written, "nodes");
+        for (size_t j = 0; j < av_arr_size(nodes); j++) {
+            av_value *value = av_arr_get(nodes, j);
+            const node *n = graph_node_by_id(g, av_get_uint(av_obj_get(value, "id")));
+            if (n->reference_asset) {
+                continue;
+            }
+            const char *name = NULL;
+            if (n->desc == &NODE_GetVariable || n->desc == &NODE_SetVariable) {
+                const behavior_variable
+                    *variable = behavior_asset_find_variable_by_id(asset, n->reference_id);
+                name = variable ? variable->name : NULL;
+            }
+            if (serialize_local_call(n) || n->desc == &NODE_CallMacro) {
+                const graph *target = behavior_asset_find_graph(asset, n->reference_id);
+                name = target && target->name && *target->name ? target->name : NULL;
+            }
+            if (name) {
+                av_obj_set(doc, value, "reference_name", av_str(doc, name));
+                av_obj_remove_key(value, "reference_id");
+            }
+        }
+    }
+    return root;
+}
+
 char *behavior_asset_save(const behavior_asset *asset)
 {
     av_doc *doc = av_doc_new();
-    av_value *value = behavior_asset_to_value(doc, asset);
+    av_value *value = behavior_asset_to_disk_value(doc, asset);
     av_doc_set_root(doc, value);
     char *text = value ? av_doc_write(doc) : NULL;
     av_doc_free(doc);

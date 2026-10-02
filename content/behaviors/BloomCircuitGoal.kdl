@@ -10,9 +10,6 @@ owner_type "ecs.entity"
             - {
                 id 1
                 type "Event"
-                x 0.0
-                y 0.0
-                placed #false
                 reference_name "Tick"
                 outputs {
                     DeltaSeconds id=3 type="float" kind="data"
@@ -21,9 +18,6 @@ owner_type "ecs.entity"
             - {
                 id 4
                 type "Find Nearest Entity"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Position {
                         default x=0.0 y=2.51
@@ -35,9 +29,6 @@ owner_type "ecs.entity"
             - {
                 id 13
                 type "GetEntity_GameExperience"
-                x 0.0
-                y 0.0
-                placed #false
                 outputs {
                     Value.current id=34
                 }
@@ -45,18 +36,11 @@ owner_type "ecs.entity"
             - {
                 id 28
                 type "Set UI Text"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs Element="#goal" Text="CIRCUIT COMPLETE!  All 8 blooms collected."
             }
             - {
                 id 49
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 35
                 reference_name "Collected >= 8"
                 inputs {
                     Exec id=52 kind="exec"

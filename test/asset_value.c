@@ -18,6 +18,8 @@ void test_asset_value()
     av_value *name = av_obj_get(item, "name");
     av_set_source(name, (av_source){ 20, 27, 15, 19 });
     av_obj_add_uint(doc, item, "id", UINT64_MAX);
+    av_obj_set(doc, item, "color", av_color(doc, 0x399fe8ff));
+    av_obj_set(doc, item, "float", av_float(doc, 0.035f));
     av_obj_add_int(doc, item, "offset", INT64_MIN);
     av_obj_add_bool(doc, item, "active", true);
     av_obj_add_null(doc, root, "optional");
@@ -37,6 +39,10 @@ void test_asset_value()
     assert(!strcmp(av_get_str(av_obj_get(saved_item, "name")), "alpha"));
     assert(av_get_source(av_obj_get(saved_item, "name")).start == 20);
     assert(av_get_uint(av_obj_get(saved_item, "id")) == UINT64_MAX);
+    assert(av_is_color(av_obj_get(saved_item, "color")));
+    assert(av_is_hex(av_obj_get(saved_item, "color")));
+    assert(av_get_uint(av_obj_get(saved_item, "color")) == 0x399fe8ff);
+    assert((float)av_get_num(av_obj_get(saved_item, "float")) == 0.035f);
     assert(av_get_sint(av_obj_get(saved_item, "offset")) == INT64_MIN);
     assert(av_get_bool(av_obj_get(saved_item, "active")));
     assert(av_is_null(av_obj_get(snapshot, "optional")));

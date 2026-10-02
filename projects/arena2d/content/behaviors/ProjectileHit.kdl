@@ -11,9 +11,6 @@ owner_type "ecs.entity"
             - {
                 id 1
                 type "Event"
-                x 0.0
-                y 0.0
-                placed #false
                 reference_name "Contact Begin"
                 outputs {
                     Other id=3 type="handle" type_name="ecs.entity" kind="data"
@@ -23,9 +20,6 @@ owner_type "ecs.entity"
             - {
                 id 5
                 type "Self"
-                x 0.0
-                y 0.0
-                placed #false
                 outputs {
                     Self type_name="ecs.entity"
                 }
@@ -33,9 +27,6 @@ owner_type "ecs.entity"
             - {
                 id 7
                 type "Normalize Vector 2"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Value {
                         binding kind="component" component="GAME.GameVelocity"
@@ -45,10 +36,6 @@ owner_type "ecs.entity"
             - {
                 id 27
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 10
                 reference_name "point + direction * inset"
                 inputs {
                     point id=28 type="struct" type_name="CF_V2"
@@ -62,12 +49,9 @@ owner_type "ecs.entity"
             - {
                 id 66
                 type "Damage Material"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Entity {
-                        binding kind="local" local_id=115
+                        binding kind="local" name="target"
                     }
                     Radius 4.0
                     Energy 1.0
@@ -80,26 +64,20 @@ owner_type "ecs.entity"
             - {
                 id 91
                 type "Is Pierceable Material Fragment"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Entity {
-                        binding kind="local" local_id=115
+                        binding kind="local" name="target"
                     }
                 }
             }
-            - id=94 type="Branch" x=0.0 y=0.0 placed=#false
+            - id=94 type="Branch"
             - {
                 id 99
                 type "Send Event"
-                x 0.0
-                y 0.0
-                placed #false
                 reference_name "Damage"
                 inputs {
                     Entity {
-                        binding kind="local" local_id=115
+                        binding kind="local" name="target"
                     }
                     Amount {
                         id 103
@@ -113,13 +91,10 @@ owner_type "ecs.entity"
                     Then id=102
                 }
             }
-            - id=105 type="Destroy Entity" x=0.0 y=0.0 placed=#false
+            - id=105 type="Destroy Entity"
             - {
                 id 111
                 type "Self"
-                x 0.0
-                y 0.0
-                placed #false
                 outputs {
                     Self type_name="ecs.entity"
                 }
@@ -127,9 +102,6 @@ owner_type "ecs.entity"
             - {
                 id 113
                 type "Self"
-                x 0.0
-                y 0.0
-                placed #false
                 outputs {
                     Self type_name="ecs.entity"
                 }

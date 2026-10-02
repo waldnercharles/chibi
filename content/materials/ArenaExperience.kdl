@@ -47,9 +47,6 @@ description "Flat hollow lime pickups with a restrained unlit color and a faint 
             - {
                 id 11
                 type "Shader Parameter"
-                x 0.0
-                y 0.0
-                placed #false
                 reference_id 1
                 reference_name "Glow"
                 outputs {

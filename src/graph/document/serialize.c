@@ -1,5 +1,6 @@
 #include "graph/document/serialize_internal.h"
 #include "graph/model/behavior_asset.h"
+#include "graph/model/local.h"
 #include "graph/model/registry.h"
 #include "graph/nodes/behavior_expression.h"
 #include "graph/nodes/component_nodes.h"
@@ -200,11 +201,22 @@ static int apply_pin(graph *g, node *n, int output, int i, av_value *v, load_ref
         if (!strcmp(kind_name, "variable")) {
             binding.kind = PIN_BINDING_VARIABLE;
             av_value *id = av_obj_get(binding_value, "variable_id");
-            if (!id || !av_is_uint(id) || !av_get_uint(id)) {
-                serialize_error_set("variable pin binding %d has no variable_id", i);
+            av_value *name = av_obj_get(binding_value, "name");
+            const behavior_variable *variable = av_is_str(name)
+                                                  ? behavior_asset_find_variable_by_name(
+                                                        g->owner,
+                                                        av_get_str(name)
+                                                    )
+                                                  : NULL;
+            if (name && (!variable || id)) {
+                serialize_error_set("variable pin binding %d has an unknown name or conflicting ID", i);
                 return -1;
             }
-            binding.variable_id = av_get_uint(id);
+            if (!variable && (!av_is_uint(id) || !av_get_uint(id))) {
+                serialize_error_set("variable pin binding %d has no variable identity", i);
+                return -1;
+            }
+            binding.variable_id = variable ? variable->id : av_get_uint(id);
         } else if (!strcmp(kind_name, "component_field")) {
             binding.kind = PIN_BINDING_COMPONENT_FIELD;
             av_value *component = av_obj_get(binding_value, "component");
@@ -227,11 +239,23 @@ static int apply_pin(graph *g, node *n, int output, int i, av_value *v, load_ref
         } else if (!strcmp(kind_name, "local")) {
             binding.kind = PIN_BINDING_LOCAL;
             av_value *local_id = av_obj_get(binding_value, "local_id");
-            if (!av_is_uint(local_id) || !av_get_uint(local_id)) {
-                serialize_error_set("local binding has no local_id");
+            av_value *name = av_obj_get(binding_value, "name");
+            const graph_local *local = NULL;
+            for (int at = 0; av_is_str(name) && at < acount(g->locals); at++) {
+                if (!strcmp(g->locals[at].name, av_get_str(name))) {
+                    local = &g->locals[at];
+                    break;
+                }
+            }
+            if (name && (!local || local_id)) {
+                serialize_error_set("local binding has an unknown name or conflicting ID");
                 return -1;
             }
-            binding.local_id = av_get_uint(local_id);
+            if (!local && (!av_is_uint(local_id) || !av_get_uint(local_id))) {
+                serialize_error_set("local binding has no local identity");
+                return -1;
+            }
+            binding.local_id = local ? local->id : av_get_uint(local_id);
         } else if (!strcmp(kind_name, "event_output")) {
             binding.kind = PIN_BINDING_EVENT_OUTPUT;
             av_value *from = av_obj_get(binding_value, "from");
@@ -680,6 +704,18 @@ static int load_node_list(graph *g, av_value *nodes, uint64_t requested_counter,
         if (refname && av_is_str(refname)) {
             n->reference_name = graph_own_str(g, av_get_str(refname), av_get_len(refname));
         }
+        /* Reference-valued getter edges need their variable identity while
+         * connections load. Variables precede every graph in a full asset. */
+        if (!n->reference_id && !n->reference_asset && n->reference_name &&
+            (n->desc == &NODE_GetVariable || n->desc == &NODE_SetVariable)) {
+            const behavior_variable
+                *variable = behavior_asset_find_variable_by_name(g->owner, n->reference_name);
+            if (!variable) {
+                serialize_error_set("unknown variable reference: %s", n->reference_name);
+                return -1;
+            }
+            n->reference_id = variable->id;
+        }
         av_value *disabled = av_obj_get(v, "disabled");
         n->disabled = disabled && av_is_bool(disabled) && av_get_bool(disabled);
         if (load_node_presentation(n, v) || load_node_comment(g, n, v)) {
@@ -1088,6 +1124,10 @@ static int load_variable(behavior_asset *asset, av_value *v)
     if (read_id(av_obj_get(v, "id"), &id, "variable.id")) {
         return -1;
     }
+    if (behavior_asset_find_variable_by_id(asset, id)) {
+        serialize_error_set("duplicate variable ID");
+        return -1;
+    }
     av_value *name = av_obj_get(v, "name");
     pin_type pt;
     if (!av_is_str(name) || !serialize_read_pin_type(av_obj_get(v, "type"), &pt)) {
@@ -1163,6 +1203,16 @@ static int load_behavior_asset_graph(behavior_asset *asset, av_value *obj, uint6
     uint64_t graph_id = 0;
     if (!is_default && read_id(av_obj_get(obj, "id"), &graph_id, "graph.id")) {
         return -1;
+    }
+    for (int i = 0; !is_default && i < acount(asset->graphs); i++) {
+        if (asset->graphs[i]->graph_id == graph_id) {
+            serialize_error_set("duplicate graph ID");
+            return -1;
+        }
+        if (!strcmp(asset->graphs[i]->name, av_get_str(name_value))) {
+            serialize_error_set("duplicate graph name: %s", av_get_str(name_value));
+            return -1;
+        }
     }
     graph *g = is_default ? asset->graph : NULL;
     if (!g) {
@@ -1303,6 +1353,46 @@ static int loaded_asset_counter(behavior_asset *asset, uint64_t requested)
     return 0;
 }
 
+static int resolve_named_references(behavior_asset *asset)
+{
+    for (int i = 0; i < acount(asset->graphs); i++) {
+        graph *g = asset->graphs[i];
+        for (int j = 0; j < acount(g->nodes); j++) {
+            node *n = g->nodes[j];
+            if (n->reference_asset || n->reference_id || !n->reference_name) {
+                continue;
+            }
+            bool variable = n->desc == &NODE_GetVariable || n->desc == &NODE_SetVariable;
+            bool call = serialize_local_call(n) || n->desc == &NODE_CallMacro;
+            if (!variable && !call) {
+                continue;
+            }
+            if (variable) {
+                const behavior_variable
+                    *target = behavior_asset_find_variable_by_name(asset, n->reference_name);
+                if (target) {
+                    n->reference_id = target->id;
+                    continue;
+                }
+            }
+            if (call) {
+                const graph *target = behavior_asset_find_graph_by_name(asset, n->reference_name);
+                if (target && target->graph_id) {
+                    n->reference_id = target->graph_id;
+                    continue;
+                }
+            }
+            serialize_error_set(
+                "unknown %s reference: %s",
+                variable ? "variable" : "function",
+                n->reference_name ? n->reference_name : ""
+            );
+            return -1;
+        }
+    }
+    return 0;
+}
+
 static int serialize_repair_math_calls(behavior_asset *asset)
 {
     for (int i = 0; i < acount(asset->graphs); i++) {
@@ -1424,6 +1514,9 @@ behavior_asset *behavior_asset_from_value(av_value *root)
     }
     if (graph_index == 0) {
         serialize_error_set("behavior_asset requires a default event graph");
+        goto fail;
+    }
+    if (resolve_named_references(asset)) {
         goto fail;
     }
     for (int i = 0; i < acount(asset->graphs); i++) {

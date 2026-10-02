@@ -1,5 +1,5 @@
 name "Table"
 components {
-    GAME.GameAppearance border_color=2443621631 border_width=6.0 color=624185599 height=678.0 layer=-30 width=466.0
+    GAME.GameAppearance border_color=0x91a6b4ff border_width=6.0 color=0x253450ff height=678.0 layer=-30 width=466.0
     (object)GAME.GameTransform
 }

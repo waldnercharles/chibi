@@ -8,13 +8,10 @@ owner_type "ecs.entity"
         kind "event"
         name ""
         (array)nodes {
-            - id=1 type="Event" x=0.0 y=0.0 placed=#false reference_name="Begin"
+            - id=1 type="Event" reference_name="Begin"
             - {
                 id 3
                 type "Event"
-                x 0.0
-                y 0.0
-                placed #false
                 reference_name "Damage"
                 outputs {
                     Amount id=5 declaration_id=2 type="int" kind="data"
@@ -24,9 +21,6 @@ owner_type "ecs.entity"
             - {
                 id 7
                 type "Self"
-                x 0.0
-                y 0.0
-                placed #false
                 outputs {
                     Self type_name="ecs.entity"
                 }
@@ -34,25 +28,16 @@ owner_type "ecs.entity"
             - {
                 id 9
                 type "Set Material Parameter"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs Name="Flash" Value=3.0
             }
             - {
                 id 15
                 type "Delay"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs Duration=0.18
             }
             - {
                 id 19
                 type "Set Material Parameter"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs Name="Flash"
             }
         }

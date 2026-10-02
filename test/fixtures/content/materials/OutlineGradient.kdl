@@ -42,9 +42,6 @@ description "An emissive ring surface. Flash remains the named DamageFlashBehavi
             - {
                 id 39
                 type "Shader Parameter"
-                x 0.0
-                y 0.0
-                placed #false
                 reference_name "Radius"
                 outputs {
                     Value flags=0 group=0 default=35.0
@@ -53,9 +50,6 @@ description "An emissive ring surface. Flash remains the named DamageFlashBehavi
             - {
                 id 41
                 type "Shader Parameter"
-                x 0.0
-                y 0.0
-                placed #false
                 reference_id 1
                 reference_name "Width"
                 outputs {
@@ -88,9 +82,6 @@ description "An emissive ring surface. Flash remains the named DamageFlashBehavi
             - {
                 id 48
                 type "Shader Parameter"
-                x 0.0
-                y 0.0
-                placed #false
                 reference_id 2
                 reference_name "Color"
                 outputs {
@@ -106,9 +97,6 @@ description "An emissive ring surface. Flash remains the named DamageFlashBehavi
             - {
                 id 50
                 type "Shader Parameter"
-                x 0.0
-                y 0.0
-                placed #false
                 reference_id 5
                 reference_name "Color B"
                 outputs {
@@ -126,7 +114,6 @@ description "An emissive ring surface. Flash remains the named DamageFlashBehavi
                 type "Call Pure Function"
                 x 340.0
                 y 420.0
-                reference_id 1
                 reference_name "Horizontal Gradient"
                 inputs {
                     Position {
@@ -161,13 +148,10 @@ description "An emissive ring surface. Flash remains the named DamageFlashBehavi
                     }
                 }
             }
-            - id=58 type="Shader Time" x=0.0 y=0.0 placed=#false
+            - id=58 type="Shader Time"
             - {
                 id 60
                 type "Shader Parameter"
-                x 0.0
-                y 0.0
-                placed #false
                 reference_id 3
                 reference_name "Speed"
                 outputs {
@@ -177,9 +161,6 @@ description "An emissive ring surface. Flash remains the named DamageFlashBehavi
             - {
                 id 62
                 type "Shader Parameter"
-                x 0.0
-                y 0.0
-                placed #false
                 reference_id 4
                 reference_name "Flash"
                 outputs {

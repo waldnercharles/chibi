@@ -15,9 +15,6 @@ owner_type "ecs.entity"
             - {
                 id 4
                 type "Event"
-                x 0.0
-                y 0.0
-                placed #false
                 reference_name "Begin"
                 outputs {
                     Then id=3
@@ -26,10 +23,7 @@ owner_type "ecs.entity"
             - {
                 id 13
                 type "Set Variable"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 1
+                reference_name "Remaining"
                 inputs {
                     Exec id=9
                     Value type="float"
@@ -41,9 +35,6 @@ owner_type "ecs.entity"
             - {
                 id 17
                 type "Max"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     A {
                         id 14
@@ -61,9 +52,6 @@ owner_type "ecs.entity"
             - {
                 id 37
                 type "Event"
-                x 0.0
-                y 0.0
-                placed #false
                 reference_name "Tick"
                 outputs {
                     Then id=36
@@ -72,23 +60,17 @@ owner_type "ecs.entity"
             - {
                 id 44
                 type "Branch"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Exec id=40
                     Condition {
-                        binding kind="variable" variable_id=2 source_asset="SpawnTelegraphBehavior"
+                        binding kind="variable" source_asset="SpawnTelegraphBehavior" name="Dispatched"
                     }
                 }
             }
             - {
                 id 53
                 type "Set Variable"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 1
+                reference_name "Remaining"
                 inputs {
                     Exec id=49
                     Value type="float"
@@ -100,10 +82,7 @@ owner_type "ecs.entity"
             - {
                 id 71
                 type "Set Variable"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 2
+                reference_name "Dispatched"
                 inputs {
                     Exec id=67
                     Value type="bool" default=#true
@@ -115,10 +94,6 @@ owner_type "ecs.entity"
             - {
                 id 78
                 type "Call Function"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 18
                 reference_name "Arrive At Marker"
                 inputs {
                     Exec id=74
@@ -143,9 +118,6 @@ owner_type "ecs.entity"
             - {
                 id 82
                 type "Destroy Entity"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Exec id=79
                 }
@@ -153,9 +125,6 @@ owner_type "ecs.entity"
             - {
                 id 84
                 type "Self"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)outputs {
                     - id=83 name="Entity" type_name="ecs.entity"
                 }
@@ -163,9 +132,6 @@ owner_type "ecs.entity"
             - {
                 id 109
                 type "Set_GameVisualTransform_scale"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Exec id=104
                 }
@@ -173,16 +139,12 @@ owner_type "ecs.entity"
             - {
                 id 122
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 110
                 reference_name "Remaining - dt"
                 inputs {
                     Remaining {
                         id 123
                         type "double"
-                        binding kind="variable" variable_id=1 source_asset="SpawnTelegraphBehavior"
+                        binding kind="variable" source_asset="SpawnTelegraphBehavior" name="Remaining"
                     }
                     dt {
                         id 124
@@ -197,10 +159,6 @@ owner_type "ecs.entity"
             - {
                 id 176
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 162
                 reference_name "Remaining <= 0"
                 inputs {
                     Exec id=179 kind="exec"
@@ -208,7 +166,7 @@ owner_type "ecs.entity"
                         id 177
                         type "double"
                         flags 0
-                        binding kind="variable" variable_id=1 source_asset="SpawnTelegraphBehavior"
+                        binding kind="variable" source_asset="SpawnTelegraphBehavior" name="Remaining"
                     }
                 }
                 outputs {
@@ -220,16 +178,12 @@ owner_type "ecs.entity"
             - {
                 id 213
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 196
                 reference_name "sin(Remaining * 10)"
                 inputs {
                     Remaining {
                         id 214
                         type "double"
-                        binding kind="variable" variable_id=1 source_asset="SpawnTelegraphBehavior"
+                        binding kind="variable" source_asset="SpawnTelegraphBehavior" name="Remaining"
                     }
                 }
                 outputs {
@@ -239,10 +193,6 @@ owner_type "ecs.entity"
             - {
                 id 258
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 233
                 reference_name "0.8 + 0.2 * (wave * wave)"
                 inputs {
                     wave id=259 type="double"
@@ -279,9 +229,6 @@ owner_type "ecs.entity"
             - {
                 id 22
                 type "Function Entry"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)outputs {
                     - id=19 name="Then"
                     - id=20 name="Prototype" type="name" kind="data"
@@ -291,9 +238,6 @@ owner_type "ecs.entity"
             - {
                 id 24
                 type "Return"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Exec id=23
                 }
@@ -301,9 +245,6 @@ owner_type "ecs.entity"
             - {
                 id 29
                 type "Spawn Prototype"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Exec id=25
                     Prototype type_name="name"
@@ -312,9 +253,6 @@ owner_type "ecs.entity"
             - {
                 id 35
                 type "SetEntity_GameTransform"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Exec id=30
                 }

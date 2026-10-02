@@ -11,9 +11,6 @@ owner_type "ecs.entity"
             - {
                 id 1
                 type "Event"
-                x 0.0
-                y 0.0
-                placed #false
                 reference_name "Contact Begin"
                 outputs {
                     Other id=3 type="handle" type_name="ecs.entity" kind="data"
@@ -23,9 +20,6 @@ owner_type "ecs.entity"
             - {
                 id 14
                 type "Self"
-                x 0.0
-                y 0.0
-                placed #false
                 outputs {
                     Self type_name="ecs.entity"
                 }
@@ -33,9 +27,6 @@ owner_type "ecs.entity"
             - {
                 id 16
                 type "Send Event"
-                x 0.0
-                y 0.0
-                placed #false
                 reference_name "Damage"
                 inputs {
                     Amount {
@@ -50,14 +41,10 @@ owner_type "ecs.entity"
                     Then id=21
                 }
             }
-            - id=22 type="Destroy Entity" x=0.0 y=0.0 placed=#false
+            - id=22 type="Destroy Entity"
             - {
                 id 35
                 type "Call Function"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 51
                 reference_name "Impact Particles"
                 inputs {
                     Position {
@@ -76,20 +63,14 @@ owner_type "ecs.entity"
             - {
                 id 43
                 type "HasEntity_GameHealth"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)outputs {
                     - id=45 name="Has"
                 }
             }
-            - id=46 type="Branch" x=0.0 y=0.0 placed=#false
+            - id=46 type="Branch"
             - {
                 id 126
                 type "Has_GameGeometry3D"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)outputs {
                     - id=125 name="Result"
                 }
@@ -97,9 +78,6 @@ owner_type "ecs.entity"
             - {
                 id 131
                 type "Branch"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Exec id=127
                 }
@@ -107,10 +85,6 @@ owner_type "ecs.entity"
             - {
                 id 135
                 type "Call Function"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 51
                 reference_name "Impact Particles"
                 inputs {
                     Position {
@@ -134,9 +108,6 @@ owner_type "ecs.entity"
             - {
                 id 142
                 type "Self"
-                x 0.0
-                y 0.0
-                placed #false
                 outputs {
                     Self type_name="ecs.entity"
                 }
@@ -170,9 +141,6 @@ owner_type "ecs.entity"
             - {
                 id 55
                 type "Function Entry"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)outputs {
                     - id=52 name="Then"
                     - id=53 name="Position" type="struct" type_name="GameTransform" kind="data"
@@ -182,9 +150,6 @@ owner_type "ecs.entity"
             - {
                 id 57
                 type "Return"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Exec id=56
                 }
@@ -192,19 +157,16 @@ owner_type "ecs.entity"
             - {
                 id 58
                 type "Emit Directed Particles"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Position {
-                        binding kind="local" local_id=144
+                        binding kind="local" name="Position"
                     }
                     Direction {
                         default x=1.0 y=0.0
                     }
                     Count 8
-                    Color 4291524863
-                    "End Color" 4065531392
+                    Color 0xffcb78ff
+                    "End Color" 0xf2531600
                     "Min Speed" 60.0
                     "Max Speed" 140.0
                     "Min Lifetime" 0.09
@@ -218,7 +180,7 @@ owner_type "ecs.entity"
                     "Max Emission" 1.8
                     "Size Exponent" 0.7
                     Elevation {
-                        binding kind="local" local_id=145
+                        binding kind="local" name="Elevation"
                     }
                     Shape flags=0 default=4
                 }
@@ -226,19 +188,16 @@ owner_type "ecs.entity"
             - {
                 id 80
                 type "Emit Directed Particles"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Position {
-                        binding kind="local" local_id=144
+                        binding kind="local" name="Position"
                     }
                     Direction {
                         default x=1.0 y=0.0
                     }
                     Count 3
-                    Color 4293107711
-                    "End Color" 4015135488
+                    Color 0xffe39fff
+                    "End Color" 0xef521b00
                     "Min Speed" 15.0
                     "Max Speed" 42.0
                     "Min Lifetime" 0.1
@@ -251,7 +210,7 @@ owner_type "ecs.entity"
                     "Max Emission" 1.8
                     "Size Exponent" 0.7
                     Elevation {
-                        binding kind="local" local_id=145
+                        binding kind="local" name="Elevation"
                     }
                     Shape flags=0
                 }
@@ -259,18 +218,15 @@ owner_type "ecs.entity"
             - {
                 id 102
                 type "Emit Directed Particles"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Position {
-                        binding kind="local" local_id=144
+                        binding kind="local" name="Position"
                     }
                     Direction {
                         default x=1.0 y=0.0
                     }
-                    Color 2448359423
-                    "End Color" 427153664
+                    Color 0x91eeffff
+                    "End Color" 0x1975d900
                     "Min Speed" 0.0
                     "Max Speed" 0.0
                     "Min Lifetime" 0.18
@@ -284,7 +240,7 @@ owner_type "ecs.entity"
                     "Max Emission" 0.8
                     "Size Exponent" 0.7
                     Elevation {
-                        binding kind="local" local_id=145
+                        binding kind="local" name="Elevation"
                     }
                     Shape flags=0 default=3
                 }

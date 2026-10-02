@@ -319,13 +319,21 @@ static bool enum_integer(av_value *value, int *out)
     return false;
 }
 
-static void label_enum_fields(av_doc *doc, av_value *object, const type_desc *type)
+static void format_fields(av_doc *doc, av_value *object, const type_desc *type)
 {
     for (int i = 0; type && i < type->field_count; i++) {
         const type_field *field = &type->fields[i];
         av_value *value = av_obj_get(object, field->name);
         if (field->type == PIN_STRUCT && av_is_obj(value)) {
-            label_enum_fields(doc, value, registry_type_by_name(field->type_name));
+            format_fields(doc, value, registry_type_by_name(field->type_name));
+            continue;
+        }
+        if (field->type == PIN_F32 && av_is_num(value)) {
+            av_obj_set(doc, object, field->name, av_float(doc, (float)av_get_num(value)));
+            continue;
+        }
+        if (field->color && av_is_uint(value) && av_get_uint(value) <= UINT32_MAX) {
+            av_obj_set(doc, object, field->name, av_color(doc, (uint32_t)av_get_uint(value)));
             continue;
         }
         int enum_value;
@@ -338,8 +346,8 @@ static void label_enum_fields(av_doc *doc, av_value *object, const type_desc *ty
     }
 }
 
-/* Overrides keep the values they were loaded or captured with; documents
- * spell reflected enums by label like prototypes do. */
+/* Format only known reflected fields; unknown overrides remain available for
+ * validation. The runtime loads float fields at their declared precision. */
 static av_value *components_value(av_doc *doc, av_value *components)
 {
     av_value *copy = av_clone(doc, components);
@@ -348,7 +356,7 @@ static av_value *components_value(av_doc *doc, av_value *components)
     av_obj_foreach(copy, i, count, key, value)
     {
         if (av_is_obj(value)) {
-            label_enum_fields(doc, value, component_type(av_get_str(key)));
+            format_fields(doc, value, component_type(av_get_str(key)));
         }
     }
     return copy;

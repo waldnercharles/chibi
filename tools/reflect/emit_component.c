@@ -123,7 +123,7 @@ void emit_component_unwrap(FILE *out, const struct_info *s)
         s->name
     );
     fprintf(out, "static pin_spec %s_%s_unwrap_outputs[] = {\n", g_prefix, s->name);
-    emit_pin_spec(out, field->name, field->pin, field_type_name(field));
+    emit_pin_spec_flags(out, field->name, field->pin, field_type_name(field), field->color ? PIN_FLAG_COLOR : 0);
     fputs("};\n", out);
     fprintf(out, "static const node_access %s_%s_unwrap_access = { .flags = NODE_EFFECT_PURE };\n", g_prefix, s->name);
     fprintf(out, "node_desc %s_NODE_Unwrap_%s = {\n", g_prefix, s->name);
@@ -331,7 +331,7 @@ void emit_component_field_nodes(FILE *out, const struct_info *s)
         fputs("    return flow_context_continue(ctx, 0);\n}\n", out);
         fprintf(out, "static pin_spec %s_inputs[] = {\n", symbol);
         fputs("    { \"Exec\", PIN_FLOW, NULL, PIN_EXEC },\n", out);
-        emit_pin_spec(out, "Value", field->pin, field_type_name(field));
+        emit_pin_spec_flags(out, "Value", field->pin, field_type_name(field), field->color ? PIN_FLAG_COLOR : 0);
         fputs("    { .name = \"Target\", .type = PIN_HANDLE, .type_name = \"ecs.entity\", .flags = PIN_FLAG_DEFAULT_SELF },\n};\n", out);
         fprintf(out, "node_desc %s_NODE_Set_%s_%s = {\n", g_prefix, name, field->name);
         fprintf(

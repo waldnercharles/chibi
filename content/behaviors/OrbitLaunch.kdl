@@ -7,13 +7,10 @@ owner_type "ecs.entity"
         kind "event"
         name ""
         (array)nodes {
-            - id=1 type="Event" x=0.0 y=0.0 placed=#false reference_name="Dash"
+            - id=1 type="Event" reference_name="Dash"
             - {
                 id 3
                 type "Set_GameTransform"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Value {
                         default x=166.0 y=-165.0
@@ -23,9 +20,6 @@ owner_type "ecs.entity"
             - {
                 id 8
                 type "Set_GameVelocity"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Value {
                         default x=-65.0 y=-740.0
@@ -35,9 +29,6 @@ owner_type "ecs.entity"
             - {
                 id 13
                 type "Event"
-                x 0.0
-                y 0.0
-                placed #false
                 reference_name "Contact Begin"
                 outputs {
                     Other id=15 type="handle" type_name="ecs.entity" kind="data"
@@ -47,17 +38,11 @@ owner_type "ecs.entity"
             - {
                 id 22
                 type "Add"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs B=100.0
             }
             - {
                 id 59
                 type "Format Text"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Format "{:.0f}"
                     Arg0 type="float"
@@ -70,22 +55,15 @@ owner_type "ecs.entity"
             - {
                 id 76
                 type "Event"
-                x 0.0
-                y 0.0
-                placed #false
                 reference_name "Tick"
                 outputs {
                     DeltaSeconds id=78 type="float" kind="data"
                 }
             }
-            - id=79 type="Set_GameVelocity_y" x=0.0 y=0.0 placed=#false
+            - id=79 type="Set_GameVelocity_y"
             - {
                 id 97
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 85
                 reference_name "v + 350 * dt"
                 inputs {
                     v {
@@ -102,41 +80,26 @@ owner_type "ecs.entity"
             - {
                 id 180
                 type "Get UI Value"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs Element="#score"
             }
             - {
                 id 185
                 type "Set UI Text"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs Element="#score"
             }
             - {
                 id 191
                 type "Set UI Value"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs Element="#score"
             }
             - {
                 id 197
                 type "Set UI Value"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs Element="#score"
             }
             - {
                 id 203
                 type "Set UI Text"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs Element="#score" Text="0"
             }
         }

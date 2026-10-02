@@ -11,9 +11,6 @@ owner_type "ecs.entity"
             - {
                 id 1015
                 type "Event"
-                x 0.0
-                y 0.0
-                placed #false
                 reference_name "Damage"
                 outputs {
                     Amount id=1017 declaration_id=2 type="int" kind="data"
@@ -23,10 +20,6 @@ owner_type "ecs.entity"
             - {
                 id 1032
                 type "Call Function"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 1001
                 reference_name "Apply Damage"
                 inputs {
                     Current {
@@ -51,33 +44,23 @@ owner_type "ecs.entity"
             - {
                 id 1142
                 type "Event"
-                x 0.0
-                y 0.0
-                placed #false
                 reference_name "Died"
                 outputs {
                     Source id=1144 declaration_id=3 type="handle" type_name="ecs.entity" kind="data"
                 }
             }
-            - id=1154 type="Call Function" x=0.0 y=0.0 placed=#false reference_id=1010 reference_name="Notify Encounter"
+            - id=1154 type="Call Function" reference_name="Notify Encounter"
             - {
                 id 1157
                 type "Self"
-                x 0.0
-                y 0.0
-                placed #false
                 outputs {
                     Self type_name="ecs.entity"
                 }
             }
-            - id=1159 type="Destroy Entity" x=0.0 y=0.0 placed=#false
+            - id=1159 type="Destroy Entity"
             - {
                 id 1210
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 1196
                 reference_name "Amount > 0"
                 inputs {
                     Exec id=1213 kind="exec"
@@ -92,10 +75,6 @@ owner_type "ecs.entity"
             - {
                 id 1244
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 1230
                 reference_name "Health <= 0"
                 inputs {
                     Exec id=1247 kind="exec"
@@ -135,9 +114,6 @@ owner_type "ecs.entity"
             - {
                 id 1002
                 type "Function Entry"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)outputs {
                     - id=1003 name="Then"
                     - id=1004 name="Current" type="int" kind="data"
@@ -146,32 +122,25 @@ owner_type "ecs.entity"
                     - id=1007 name="Source" type="handle" type_name="ecs.entity" kind="data"
                 }
             }
-            - id=1008 type="Return" x=0.0 y=0.0 placed=#false
+            - id=1008 type="Return"
             - {
                 id 1048
                 type "Has_GameDash"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)outputs {
                     - id=1049 name="Has"
                 }
             }
-            - id=1050 type="Branch" x=0.0 y=0.0 placed=#false
+            - id=1050 type="Branch"
             - {
                 id 1067
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 63
                 reference_name "Remaining Health"
                 inputs {
                     current {
                         id 1068
                         type "double"
                         flags 0
-                        binding kind="local" local_id=1194
+                        binding kind="local" name="Current"
                     }
                     amount id=1069 type="double" flags=0
                     maximum id=1070 type="double" flags=0
@@ -183,39 +152,30 @@ owner_type "ecs.entity"
             - {
                 id 1072
                 type "Subtract"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     A {
                         type "int"
-                        binding kind="local" local_id=1194
+                        binding kind="local" name="Current"
                     }
                     B {
                         type "int"
                         group 1
-                        binding kind="local" local_id=1195
+                        binding kind="local" name="Remaining Health"
                     }
                 }
             }
             - {
                 id 1085
                 type "Set_GameHealth_current"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Value {
-                        binding kind="local" local_id=1195
+                        binding kind="local" name="Remaining Health"
                     }
                 }
             }
             - {
                 id 1091
                 type "Self"
-                x 0.0
-                y 0.0
-                placed #false
                 outputs {
                     Self type_name="ecs.entity"
                 }
@@ -223,9 +183,6 @@ owner_type "ecs.entity"
             - {
                 id 1093
                 type "Send Event"
-                x 0.0
-                y 0.0
-                placed #false
                 reference_name "Damaged"
                 inputs {
                     Amount id=1096 declaration_id=2 type="int"
@@ -238,9 +195,6 @@ owner_type "ecs.entity"
             - {
                 id 1137
                 type "Send Event"
-                x 0.0
-                y 0.0
-                placed #false
                 reference_name "Died"
                 inputs {
                     Source id=1140 declaration_id=3
@@ -252,9 +206,6 @@ owner_type "ecs.entity"
             - {
                 id 1192
                 type "Self"
-                x 0.0
-                y 0.0
-                placed #false
                 outputs {
                     Self type_name="ecs.entity"
                 }
@@ -262,10 +213,6 @@ owner_type "ecs.entity"
             - {
                 id 1278
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 1264
                 reference_name "Current > 0"
                 inputs {
                     Exec id=1281 kind="exec"
@@ -280,10 +227,6 @@ owner_type "ecs.entity"
             - {
                 id 1312
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 1298
                 reference_name "DashRemaining > 0"
                 inputs {
                     Exec id=1315 kind="exec"
@@ -303,10 +246,6 @@ owner_type "ecs.entity"
             - {
                 id 1344
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 1332
                 reference_name "Current > RemainingHealth"
                 inputs {
                     Exec id=1348 kind="exec"
@@ -322,10 +261,6 @@ owner_type "ecs.entity"
             - {
                 id 1406
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 1392
                 reference_name "RemainingHealth <= 0"
                 inputs {
                     Exec id=1409 kind="exec"
@@ -385,31 +320,22 @@ owner_type "ecs.entity"
             - {
                 id 1011
                 type "Function Entry"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)outputs {
                     - id=1012 name="Then"
                 }
             }
-            - id=1013 type="Return" x=0.0 y=0.0 placed=#false
+            - id=1013 type="Return"
             - {
                 id 1115
                 type "Has_GameEncounterMember"
-                x 0.0
-                y 0.0
-                placed #false
                 (array)outputs {
                     - id=1116 name="Has"
                 }
             }
-            - id=1117 type="Branch" x=0.0 y=0.0 placed=#false
+            - id=1117 type="Branch"
             - {
                 id 1122
                 type "Find Entities With Component"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Component type_name="name" default="GAME.GameEncounter"
                 }
@@ -422,9 +348,6 @@ owner_type "ecs.entity"
             - {
                 id 1125
                 type "ForEach"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Array {
                         type "handle"
@@ -433,7 +356,7 @@ owner_type "ecs.entity"
                     }
                 }
             }
-            - id=1132 type="Send Event" x=0.0 y=0.0 placed=#false reference_name="RefreshEncounter"
+            - id=1132 type="Send Event" reference_name="RefreshEncounter"
         }
         (array)edges {
             - from="1011.Then" to="1117.Exec"

@@ -10,23 +10,17 @@ description "Two circles joined by a smooth union. Radius and Smoothness are exp
         kind "event"
         name ""
         (array)nodes {
-            - id=1 type="Shader Shape Output" x=0.0 y=0.0 placed=#false
-            - id=3 type="Shader Position" x=0.0 y=0.0 placed=#false
+            - id=1 type="Shader Shape Output"
+            - id=3 type="Shader Position"
             - {
                 id 5
                 type "Shader Parameter"
-                x 0.0
-                y 0.0
-                placed #false
                 reference_name "Radius"
                 outputs Value=24.0
             }
             - {
                 id 7
                 type "Shader Parameter"
-                x 0.0
-                y 0.0
-                placed #false
                 reference_id 1
                 reference_name "Smoothness"
                 outputs Value=12.0
@@ -34,24 +28,18 @@ description "Two circles joined by a smooth union. Radius and Smoothness are exp
             - {
                 id 9
                 type "Shader Vector2"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs X=-18.0
             }
             - {
                 id 13
                 type "Shader Vector2"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs X=18.0
             }
-            - id=17 type="Shader Subtract" x=0.0 y=0.0 placed=#false
-            - id=21 type="Shader Subtract" x=0.0 y=0.0 placed=#false
-            - id=25 type="Shader Circle" x=0.0 y=0.0 placed=#false
-            - id=29 type="Shader Circle" x=0.0 y=0.0 placed=#false
-            - id=33 type="Shader SmoothUnion" x=0.0 y=0.0 placed=#false
+            - id=17 type="Shader Subtract"
+            - id=21 type="Shader Subtract"
+            - id=25 type="Shader Circle"
+            - id=29 type="Shader Circle"
+            - id=33 type="Shader SmoothUnion"
         }
         (array)edges {
             - from="3.Position" to="17.A"

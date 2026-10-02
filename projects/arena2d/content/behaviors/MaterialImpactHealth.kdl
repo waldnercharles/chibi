@@ -10,9 +10,6 @@ owner_type "ecs.entity"
             - {
                 id 1
                 type "Event"
-                x 0.0
-                y 0.0
-                placed #false
                 reference_name "Material Impact"
                 outputs {
                     Energy id=3 declaration_id=1 type="float" kind="data"
@@ -30,23 +27,16 @@ owner_type "ecs.entity"
             - {
                 id 144
                 type "Self"
-                x 0.0
-                y 0.0
-                placed #false
                 outputs {
                     Self type_name="ecs.entity"
                 }
             }
-            - id=146 type="Destroy Entity" x=0.0 y=0.0 placed=#false
-            - id=191 type="Ceiling" x=0.0 y=0.0 placed=#false
-            - id=194 type="To Integer" x=0.0 y=0.0 placed=#false
+            - id=146 type="Destroy Entity"
+            - id=191 type="Ceiling"
+            - id=194 type="To Integer"
             - {
                 id 271
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 252
                 reference_name "health = max(health - damage, 0)"
                 inputs {
                     Exec id=275 kind="exec"
@@ -65,10 +55,6 @@ owner_type "ecs.entity"
             - {
                 id 359
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 345
                 reference_name "health <= 0"
                 inputs {
                     Exec id=362 kind="exec"

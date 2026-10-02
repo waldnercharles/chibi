@@ -219,7 +219,9 @@ static void enum_labels(enum_info *enumeration)
     memcpy(prefix, enumeration->values[0].name, common);
     prefix[common] = '\0';
     for (int i = 0; i < acount(enumeration->values); i++) {
-        enumeration->values[i].label = enum_label(enumeration->values[i].name, prefix);
+        if (!enumeration->values[i].label) {
+            enumeration->values[i].label = enum_label(enumeration->values[i].name, prefix);
+        }
     }
     free(prefix);
 }
@@ -241,7 +243,12 @@ static enum CXChildVisitResult enum_value_visitor(CXCursor c, CXCursor, CXClient
         reflect_error(c, "enum values must fit in an int");
         return CXChildVisit_Continue;
     }
-    apush(enumeration->values, ((enum_value_info){ .name = name, .value = (int)value }));
+    apush(
+        enumeration->values,
+        ((enum_value_info){ .name = name,
+                            .value = (int)value,
+                            .label = annotation_value(c, "node:name:") })
+    );
     return CXChildVisit_Continue;
 }
 
@@ -331,6 +338,14 @@ static enum CXChildVisitResult field_visitor(CXCursor c, CXCursor, CXClientData 
     f.spelling = cxstr(clang_getTypeSpelling(t));
     f.handle = annotation_value(c, "node:handle:");
     f.pin = pin_name(t);
+    f.color = has_annotate(c, "node:color");
+    if (f.color && (!f.pin || strcmp(f.pin, "PIN_U32"))) {
+        reflect_error(c, "color fields require unsigned 32-bit storage");
+        free(f.name);
+        free(f.spelling);
+        free(f.handle);
+        return CXChildVisit_Continue;
+    }
     if (f.handle) {
         if (!f.pin || strcmp(f.pin, "PIN_U64") || !f.handle[0]) {
             reflect_error(c, "handle fields require uint64_t storage and a nominal type");

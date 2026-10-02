@@ -105,6 +105,14 @@ void serialize_write_value(
                             type->fields[i].type_name,
                             &field
                         );
+                        if (type->fields[i].color) {
+                            av_obj_set(
+                                doc,
+                                value,
+                                type->fields[i].name,
+                                av_color(doc, field.u)
+                            );
+                        }
                     }
                 }
             }

@@ -1,5 +1,5 @@
 name "TableLighting"
 components {
     GAME.GameEnvironment bloom_threshold=1.0
-    GAME.GameHRC2D ambient=1.0 debug_view=1 falloff=1.0 min_resolution=0.25 particle_focal_length=300.0 resolution=0.25 target_fps=60.0 trace_levels=1
+    GAME.GameHRC2D ambient=1.0 debug_view="Scene" falloff=1.0 min_resolution=0.25 particle_focal_length=300.0 resolution=0.25 target_fps=60.0 trace_levels=1
 }

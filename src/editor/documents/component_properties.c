@@ -2,7 +2,6 @@
 
 #include "editor/ui/labels.h"
 #include "runtime/generated.h"
-#include "runtime/material_fluid.h"
 
 #include <stddef.h>
 #include <stdio.h>
@@ -63,62 +62,9 @@ static const editor_choice ENCOUNTER_ROLES[] = {
     { GAME_ENCOUNTER_ENEMY, "Enemy" },
 };
 static const editor_choices ENCOUNTER_MEMBERS = { ENCOUNTER_ROLES, 2 };
-static const editor_choice FLUID_KINDS[] = {
-    { FLUID_GAS, "Gas" },
-    { FLUID_LIQUID, "Liquid" },
-};
-static const editor_choices MATERIAL_FLUID_KINDS = { FLUID_KINDS, 2 };
-static const editor_choice HRC_UPSCALE_MODES[] = {
-    { 0, "Plain bilinear" },
-    { 1, "Edge aware" },
-    { 2, "Joint bilateral" },
-    { 3, "Five tap cross" },
-};
-static const editor_choices HRC_UPSCALE_MODE_CHOICES = { HRC_UPSCALE_MODES, 4 };
-static const editor_choice HRC_DEBUG_VIEWS[] = {
-    { 0, "Normal" },          { 1, "Scene" },         { 2, "Emission" },
-    { 3, "Absorption" },      { 4, "Albedo" },        { 5, "Fluence" },
-    { 6, "Normals" },         { 7, "Surface light" }, { 8, "Light direction" },
-    { 9, "Shading normals" },
-};
-static const editor_choices HRC_DEBUG_VIEW_CHOICES = { HRC_DEBUG_VIEWS, 10 };
-static const editor_choice HRC_TONE_MAPPINGS[] = {
-    { 0, "Clamp" },
-    { 1, "AgX" },
-};
-static const editor_choices HRC_TONE_MAPPING_CHOICES = { HRC_TONE_MAPPINGS, 2 };
-
-bool appearance_color_field(const type_desc *type, const type_field *field)
+bool appearance_color_field(const type_desc *, const type_field *field)
 {
-    if (!field || field->type != PIN_U32) {
-        return false;
-    }
-    if (type == GAME_COMPONENT_GameMaterial.type) {
-        return true;
-    }
-    if (type == GAME_COMPONENT_GamePointLight.type) {
-        return field->offset == offsetof(GamePointLight, color);
-    }
-    if (type == GAME_COMPONENT_GameSurfaceInfluence.type) {
-        return field->offset == offsetof(GameSurfaceInfluence, color);
-    }
-    if (type == GAME_COMPONENT_GameTrail.type) {
-        return field->offset == offsetof(GameTrail, color);
-    }
-    if (type == GAME_COMPONENT_GameParticleEmitter.type) {
-        return field->offset == offsetof(GameParticleEmitter, color) ||
-               field->offset == offsetof(GameParticleEmitter, end_color);
-    }
-    if (type == GAME_COMPONENT_GameFog.type) {
-        return field->offset == offsetof(GameFog, color);
-    }
-    if (type == GAME_COMPONENT_GameSensorContact.type) {
-        return field->offset == offsetof(GameSensorContact, color);
-    }
-    return type == GAME_COMPONENT_GameAppearance.type &&
-           (field->offset == offsetof(GameAppearance, color) ||
-            field->offset == offsetof(GameAppearance, border_color) ||
-            field->offset == offsetof(GameAppearance, glow_color));
+    return field && field->type == PIN_U32 && field->color;
 }
 
 const editor_choices *property_choices(const type_desc *type, const type_field *field)
@@ -138,14 +84,6 @@ const editor_choices *property_choices(const type_desc *type, const type_field *
         field->offset == offsetof(GameParticleEmitter, shape)) {
         return &EMITTER_SHAPES;
     }
-    if (type == GAME_COMPONENT_GameFluidVolume.type &&
-        field->offset == offsetof(GameFluidVolume, kind)) {
-        return &MATERIAL_FLUID_KINDS;
-    }
-    if (type == GAME_COMPONENT_GameParticleEmitter.type &&
-        field->offset == offsetof(GameParticleEmitter, fluid_kind)) {
-        return &MATERIAL_FLUID_KINDS;
-    }
     if (type == GAME_COMPONENT_GameBody.type &&
         field->offset == offsetof(GameBody, type)) {
         return &PHYSICS_BODIES;
@@ -161,17 +99,6 @@ const editor_choices *property_choices(const type_desc *type, const type_field *
     if (type == GAME_COMPONENT_GameEncounterMember.type &&
         field->offset == offsetof(GameEncounterMember, role)) {
         return &ENCOUNTER_MEMBERS;
-    }
-    if (type == GAME_COMPONENT_GameHRC2D.type) {
-        if (field->offset == offsetof(GameHRC2D, upscale_mode)) {
-            return &HRC_UPSCALE_MODE_CHOICES;
-        }
-        if (field->offset == offsetof(GameHRC2D, debug_view)) {
-            return &HRC_DEBUG_VIEW_CHOICES;
-        }
-        if (field->offset == offsetof(GameHRC2D, tone_mapping)) {
-            return &HRC_TONE_MAPPING_CHOICES;
-        }
     }
     return field->type == PIN_ENUM ? editor_choices_for_enum(field->type_name) : NULL;
 }

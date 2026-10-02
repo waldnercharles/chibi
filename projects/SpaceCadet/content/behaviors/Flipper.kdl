@@ -12,14 +12,10 @@ owner_type "ecs.entity"
         kind "event"
         name ""
         (array)nodes {
-            - id=5 type="Event" x=0.0 y=0.0 placed=#false reference_name="Begin"
+            - id=5 type="Event" reference_name="Begin"
             - {
                 id 7
                 type "Set Variable"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 1
                 reference_name "restAngle"
                 inputs {
                     Value {
@@ -34,10 +30,6 @@ owner_type "ecs.entity"
             - {
                 id 12
                 type "Set Variable"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 2
                 reference_name "restPosition"
                 inputs {
                     Value {
@@ -53,9 +45,6 @@ owner_type "ecs.entity"
             - {
                 id 22
                 type "Event"
-                x 0.0
-                y 0.0
-                placed #false
                 reference_name "Tick"
                 outputs {
                     DeltaSeconds id=24 type="float" kind="data"
@@ -64,9 +53,6 @@ owner_type "ecs.entity"
             - {
                 id 25
                 type "Branch"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Condition {
                         binding kind="component_field" component="GAME.GameActionBinding" field="pressed"
@@ -76,10 +62,6 @@ owner_type "ecs.entity"
             - {
                 id 30
                 type "Set Variable"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 4
                 reference_name "stroke"
                 inputs {
                     Value type="float" default=0.92
@@ -91,10 +73,6 @@ owner_type "ecs.entity"
             - {
                 id 35
                 type "Set Variable"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 4
                 reference_name "stroke"
                 inputs {
                     Value type="float"
@@ -106,10 +84,6 @@ owner_type "ecs.entity"
             - {
                 id 1562
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 1508
                 reference_name "spin = clamp((restAngle - sign(cos(restAngle)) * stroke - angle) / max(dt, 0.001), -24, 24)"
                 inputs {
                     Exec id=1569 kind="exec"
@@ -121,12 +95,12 @@ owner_type "ecs.entity"
                     restAngle {
                         id 1564
                         type "double"
-                        binding kind="variable" variable_id=1 source_asset="Flipper"
+                        binding kind="variable" source_asset="Flipper" name="restAngle"
                     }
                     stroke {
                         id 1565
                         type "double"
-                        binding kind="variable" variable_id=4 source_asset="Flipper"
+                        binding kind="variable" source_asset="Flipper" name="stroke"
                     }
                     angle {
                         id 1566
@@ -147,10 +121,6 @@ owner_type "ecs.entity"
             - {
                 id 2005
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 1926
                 reference_name "velocity = (restPosition + 38 * (direction(angle + spin * dt) - direction(restAngle)) - position) / max(dt, 0.001)"
                 inputs {
                     Exec id=2014 kind="exec"
@@ -164,7 +134,7 @@ owner_type "ecs.entity"
                         id 2007
                         type "struct"
                         type_name "CF_V2"
-                        binding kind="variable" variable_id=2 source_asset="Flipper"
+                        binding kind="variable" source_asset="Flipper" name="restPosition"
                     }
                     angle {
                         id 2008
@@ -184,7 +154,7 @@ owner_type "ecs.entity"
                     restAngle {
                         id 2011
                         type "double"
-                        binding kind="variable" variable_id=1 source_asset="Flipper"
+                        binding kind="variable" source_asset="Flipper" name="restAngle"
                     }
                     position {
                         id 2012

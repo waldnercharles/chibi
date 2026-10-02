@@ -1,7 +1,7 @@
 name "DriftingMarker"
 components {
-    GAME.GameAppearance color=2463819519 height=5.0 width=5.0
-    GAME.GameMaterial emission_color=2463819519 emission_intensity=0.1 emission_multiplier=1.0 scene=2463819519
+    GAME.GameAppearance color=0x92dae6ff height=5.0 width=5.0
+    GAME.GameMaterial emission_color=0x92dae6ff emission_intensity=0.1 emission_multiplier=1.0 scene=0x92dae6ff
     (object)GAME.GameTransform
     GAME.GameVelocity x=12.0
 }

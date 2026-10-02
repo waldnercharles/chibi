@@ -17,6 +17,7 @@ typedef struct
     const char *pin;   /* pin_type enum name, e.g. "PIN_F32" */
     long long offset;  /* bytes */
     long long size;    /* bytes */
+    bool color;        /* Explicit packed RGBA semantic. */
 } field_info;
 
 static inline const char *field_type_name(const field_info *field)
@@ -100,6 +101,7 @@ void dispose_component_manifest();
 uint64_t hash_bytes(uint64_t hash, const void *data, size_t size);
 uint64_t hash_string(uint64_t hash, const char *text);
 const char *pin_member(const char *pin);
+void emit_pin_spec_flags(FILE *out, const char *name, const char *pin, const char *spelling, unsigned flags);
 void emit_pin_spec(FILE *out, const char *name, const char *pin, const char *spelling);
 void emit_fn(FILE *out, const fn_info *f);
 void emit_read_fn(FILE *out, const fn_info *f);

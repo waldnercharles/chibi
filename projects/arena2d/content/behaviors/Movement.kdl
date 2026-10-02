@@ -11,9 +11,6 @@ owner_type "ecs.entity"
             - {
                 id 1
                 type "Event"
-                x 0.0
-                y 0.0
-                placed #false
                 reference_name "Tick"
                 outputs {
                     DeltaSeconds id=3 type="float" kind="data"
@@ -22,9 +19,6 @@ owner_type "ecs.entity"
             - {
                 id 102
                 type "Branch"
-                x 0.0
-                y 0.0
-                placed #false
                 inputs {
                     Condition {
                         binding kind="component_field" component="GAME.GameActionBinding" field="pressed"
@@ -34,10 +28,6 @@ owner_type "ecs.entity"
             - {
                 id 137
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 107
                 reference_name "target = direction(heading) * speed * 2"
                 inputs {
                     Exec id=142 kind="exec"
@@ -66,10 +56,6 @@ owner_type "ecs.entity"
             - {
                 id 542
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 525
                 reference_name "target = vec2(0, 0)"
                 inputs {
                     Exec id=545 kind="exec"
@@ -88,10 +74,6 @@ owner_type "ecs.entity"
             - {
                 id 754
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 742
                 reference_name "heading = atan2(aim.y, aim.x)"
                 inputs {
                     Exec id=758 kind="exec"
@@ -115,10 +97,6 @@ owner_type "ecs.entity"
             - {
                 id 829
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 812
                 reference_name "length(move) > 0.1"
                 inputs {
                     Exec id=832 kind="exec"
@@ -138,10 +116,6 @@ owner_type "ecs.entity"
             - {
                 id 865
                 type "Behavior Expression"
-                x 0.0
-                y 0.0
-                placed #false
-                reference_id 852
                 reference_name "target = move * speed"
                 inputs {
                     Exec id=870 kind="exec"

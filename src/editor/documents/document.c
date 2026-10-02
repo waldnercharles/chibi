@@ -10,7 +10,7 @@
 #include <string.h>
 
 static ed_location capture_location(const editor *e);
-static int restore_location(editor *e, const ed_location *location, bool positioned);
+static int restore_location(editor *e, const ed_location *location, bool arrange_pending);
 
 static void ed_keep_document(editor *e)
 {
@@ -26,6 +26,7 @@ static void ed_keep_document(editor *e)
         .undo = e->undo,
         .redo = e->redo,
         .location = capture_location(e),
+        .arrange_pending = e->arrange_pending,
     };
     for (int i = 0; i < acount(e->selected_links); i++) {
         apush(history.links, e->selected_links[i]);
@@ -52,7 +53,7 @@ int editor_visit_behavior_asset(editor *e, const behavior_asset *source, uint64_
         }
     }
     behavior_asset *cached = history.asset ? behavior_asset_clone(history.asset) : NULL;
-    bool positioned = cached != NULL;
+    bool arrange_pending = !cached || history.arrange_pending;
     const behavior_asset *target = cached ? cached : source;
     if (!target || !behavior_asset_find_graph(target, graph_id)) {
         behavior_asset_free(cached);
@@ -78,7 +79,7 @@ int editor_visit_behavior_asset(editor *e, const behavior_asset *source, uint64_
         behavior_asset_free(history.asset);
         e->document_key = history.key;
         if (history.location.graph_id == graph_id) {
-            restore_location(e, &history.location, positioned);
+            restore_location(e, &history.location, arrange_pending);
             for (int i = 0; i < acount(history.links); i++) {
                 apush(e->selected_links, history.links[i]);
             }
@@ -145,6 +146,7 @@ int editor_reload_behavior_asset_document(editor *e, const behavior_asset *sourc
         ed_free_asset_stack(&history->redo);
         free(history->location.nodes);
         history->location = (ed_location){ 0 };
+        history->arrange_pending = true;
         afree(history->links);
         history->owner_identity = source->identity;
         return 0;
@@ -228,7 +230,7 @@ void ed_restore_callers(editor *e, const ed_graph_caller *callers, int count)
     }
 }
 
-static int restore_location(editor *e, const ed_location *location, bool positioned)
+static int restore_location(editor *e, const ed_location *location, bool arrange_pending)
 {
     graph *target = behavior_asset_find_graph(e->asset, location->graph_id);
     if (!target) {
@@ -248,11 +250,7 @@ static int restore_location(editor *e, const ed_location *location, bool positio
     for (int i = 0; i < location->node_count; i++) {
         ed_add_selected(e, graph_node_by_id(target, location->nodes[i]));
     }
-    /* Native snapshots retain automatic positions; a fresh source still
-       needs the arrangement requested by editor_open_behavior_asset. */
-    if (positioned) {
-        e->arrange_pending = false;
-    }
+    e->arrange_pending = arrange_pending;
     return 0;
 }
 
@@ -295,6 +293,7 @@ static av_value *checkpoint_document(av_doc *doc, const ed_document_history *his
                        : behavior_asset_to_value(doc, history->asset)
     );
     av_obj_add_uint(doc, value, "owner_identity", history->owner_identity);
+    av_obj_set(doc, value, "arrange_pending", av_bool(doc, history->arrange_pending));
     av_obj_add_val(doc, value, "undo", checkpoint_assets(doc, history->undo));
     av_obj_add_val(doc, value, "redo", checkpoint_assets(doc, history->redo));
     av_value *links = av_obj_add_arr(doc, value, "links");
@@ -323,7 +322,8 @@ char *editor_checkpoint(editor *e)
                                     .owner_identity = e->asset->identity,
                                     .undo = e->undo,
                                     .redo = e->redo,
-                                    .location = capture_location(e) };
+                                    .location = capture_location(e),
+                                    .arrange_pending = e->arrange_pending };
     current.links = e->selected_links;
     av_obj_add_val(doc, root, "active", checkpoint_document(doc, &current));
     free(current.location.nodes);
@@ -434,6 +434,11 @@ static bool checkpoint_read_document(av_value *value, ed_document_history *histo
     if (!key || !history->asset || !history->saved) {
         return false;
     }
+    av_value *arrange_pending = av_obj_get(value, "arrange_pending");
+    if (arrange_pending && !av_is_bool(arrange_pending)) {
+        return false;
+    }
+    history->arrange_pending = av_get_bool(arrange_pending);
     history->key = xstrdup(key);
     av_value *owner_identity = av_obj_get(value, "owner_identity");
     if (owner_identity &&
@@ -527,7 +532,7 @@ bool editor_restore_checkpoint(editor *e, const char *json)
     current.key = NULL;
     current.saved = NULL;
     current.undo = current.redo = NULL;
-    ok = restore_location(e, &current.location, true) == 0;
+    ok = restore_location(e, &current.location, current.arrange_pending) == 0;
     for (int j = 0; j < acount(current.links); j++) {
         apush(e->selected_links, current.links[j]);
     }

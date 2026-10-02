@@ -886,6 +886,12 @@ static void replay_close_stop_reopen_keeps_graph_layout()
     behavior_asset *before = behavior_asset_clone(editor_behavior_asset(f.graph));
     assert(before);
     assert(app_scene_authoring_open_behavior(f.scene, "Movement") == 0);
+    bool pending = f.graph->arrange_pending;
+    char *checkpoint = editor_checkpoint(f.graph);
+    assert(checkpoint);
+    bool checkpoint_restored = editor_restore_checkpoint(f.graph, checkpoint);
+    free(checkpoint);
+    test_check(pending && checkpoint_restored && f.graph->arrange_pending, "a native checkpoint taken before the first graph frame retains pending automatic arrangement");
     frames(&f, 3);
     assert(app_scenario_replay(f.scene, "Firefight") == 0);
     frames(&f, 3);

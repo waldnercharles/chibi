@@ -68,6 +68,7 @@ typedef struct
     behavior_asset **undo;
     behavior_asset **redo;
     ed_location location;
+    bool arrange_pending;
     ed_link_ref *links;
 } ed_document_history;
 

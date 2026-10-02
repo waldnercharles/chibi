@@ -1,54 +1,49 @@
 version 1
 name "HRCPinhole"
 (array)entities {
-    - {
-        name "Camera"
-        prototype "Camera"
-        components {
-            GameTransform x=0.0 y=0.0
-        }
-    }
+    - name="Camera" prototype="Camera"
     - {
         name "HRC"
         prototype "HRC"
         components {
-            GameTransform x=0.0 y=0.0
+            GAME.GameHRC2D color_resolution="Quarter" resolution=1.0 gather_resolution="Auto" adaptive=#true target_fps=120.0 fog=0.33 upscale_mode="Five tap cross"
+            GAME.GameTransform x=0.0 y=0.0
         }
     }
     - {
         name "Source"
         prototype "Crystal"
         components {
-            GameTransform x=-310.0 y=0.0
-            GameAppearance width=24.0 height=24.0 color=0xffffffff
-            GameMaterial emission_color=0xffffffff emission_intensity=0.1 absorption=0.0 scene=0xffffffff edge_light=0.0
+            GAME.GameAppearance width=24.0 height=24.0 color=0xffffffff
+            GAME.GameMaterial scene=0xffffffff emission_color=0xffffffff emission_intensity=0.1 absorption=0.0 edge_light=0.0
+            GAME.GameTransform x=-200.61288 y=-13.805328
         }
     }
     - {
         name "Upper wall"
         prototype "HardRock"
         components {
-            GameTransform x=-40.0 y=140.0
-            GameAppearance width=180.0 height=220.0
-            GameMaterial absorption=1.0 edge_light=0.0
+            GAME.GameAppearance width=180.0 height=220.0
+            GAME.GameMaterial absorption=1.0 edge_light=0.0
+            GAME.GameTransform x=-40.0 y=140.0
         }
     }
     - {
         name "Lower wall"
         prototype "HardRock"
         components {
-            GameTransform x=-40.0 y=-140.0
-            GameAppearance width=180.0 height=220.0
-            GameMaterial absorption=1.0 edge_light=0.0
+            GAME.GameAppearance width=180.0 height=220.0
+            GAME.GameMaterial absorption=1.0 edge_light=0.0
+            GAME.GameTransform x=-40.0 y=-140.0
         }
     }
     - {
         name "Receiver"
         prototype "HardRock"
         components {
-            GameTransform x=280.0 y=0.0
-            GameAppearance width=220.0 height=420.0
-            GameMaterial absorption=0.3 edge_light=0.0
+            GAME.GameAppearance width=220.0 height=420.0
+            GAME.GameMaterial absorption=0.3 edge_light=0.0
+            GAME.GameTransform x=280.0
         }
     }
 }

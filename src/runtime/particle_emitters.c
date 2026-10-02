@@ -273,6 +273,12 @@ static bool emit_source(
                 *igniter = GAME_GameIgniter_get_const(emitters->world, source->entity);
             const GameFuel
                 *fuel = GAME_GameFuel_get_const(emitters->world, source->entity);
+            const MaterialThermal *
+                thermal = GAME_MaterialThermal_get_const(emitters->world, source->entity);
+            const MaterialConstitutive *model = GAME_MaterialConstitutive_get_const(
+                emitters->world,
+                source->entity
+            );
             emitted = game_materials_emit(
                 emitters->materials,
                 (fluid_particle){
@@ -284,6 +290,13 @@ static bool emit_source(
                     .kind = style->fluid_kind,
                     .heat = igniter ? igniter->heat : 0,
                     .fuel = fuel ? fuel->amount : 0,
+                    .thermal = thermal ? (fluid_thermal){ thermal->capacity,
+                                                          thermal->conductivity }
+                                       : (fluid_thermal){ 0 },
+                    .constitutive = model ? (fluid_constitutive){ model->density,
+                                                                  model->bulk_modulus,
+                                                                  model->shear_modulus }
+                                          : (fluid_constitutive){ 0 },
                     .absorption = particle.absorption,
                     .emission = particle.emission,
                     .lifetime = particle.lifetime - particle.age,
@@ -379,6 +392,35 @@ bool game_particle_emitters_collect(
             const GameParticleEmitter *style = GAME_GameParticleEmitter_get_const(world, entity);
             const GameFuel *fuel = GAME_GameFuel_get_const(world, entity);
             const GameIgniter *igniter = GAME_GameIgniter_get_const(world, entity);
+            const MaterialThermal *thermal = GAME_MaterialThermal_get_const(world, entity);
+            const MaterialConstitutive *model = GAME_MaterialConstitutive_get_const(world, entity);
+            const material_fluid *fluid = emitters->materials
+                                            ? game_materials_fluid(emitters->materials)
+                                            : NULL;
+            bool needs_model = style->fluid_kind != FLUID_GAS && fluid &&
+                               material_fluid_solver(fluid) == FLUID_SOLVER_MPM;
+            fluid_constitutive constitutive = model ? (
+                                                          fluid_constitutive
+                                                      ){ model->density,
+                                                         model->bulk_modulus,
+                                                         model->shear_modulus }
+                                                    : (fluid_constitutive){ 0 };
+            if (style->fluid && (model || needs_model) &&
+                !material_fluid_constitutive_valid(constitutive)) {
+                snprintf(error, error_size, "Fluid emitter material needs positive density/bulk and nonnegative shear modulus.");
+                ok = false;
+                break;
+            }
+            fluid_thermal heat = thermal ? (fluid_thermal){ thermal->capacity,
+                                                            thermal->conductivity }
+                                         : (fluid_thermal){ 0 };
+            if (style->fluid && (!material_fluid_thermal_valid(heat) ||
+                                 (heat.capacity > 0 &&
+                                  !isnormal(style->fluid_mass * heat.capacity)))) {
+                snprintf(error, error_size, "Fluid emitter thermal properties need finite nonnegative capacity and conductivity, and positive capacity when conductive.");
+                ok = false;
+                break;
+            }
             if (!valid(style) ||
                 (style->fluid &&
                  ((fuel && (!isfinite(fuel->amount) || fuel->amount < 0)) ||

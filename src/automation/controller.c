@@ -4925,6 +4925,11 @@ static void add_presentation_state(yyjson_mut_doc *doc, yyjson_mut_val *value, c
         yyjson_mut_val *material = yyjson_mut_obj_add_obj(doc, value, "materials");
         yyjson_mut_obj_add_int(doc, material, "particles", state.particles);
         yyjson_mut_obj_add_int(doc, material, "active_particles", state.active_particles);
+        yyjson_mut_val *bounds = yyjson_mut_obj_add_obj(doc, material, "particle_bounds");
+        yyjson_mut_obj_add_real(doc, bounds, "x", state.particle_bounds.x);
+        yyjson_mut_obj_add_real(doc, bounds, "y", state.particle_bounds.y);
+        yyjson_mut_obj_add_real(doc, bounds, "width", state.particle_bounds.width);
+        yyjson_mut_obj_add_real(doc, bounds, "height", state.particle_bounds.height);
         yyjson_mut_val *stream = yyjson_mut_obj_add_obj(doc, material, "streaming");
         yyjson_mut_obj_add_int(doc, stream, "resident", state.streaming.resident);
         yyjson_mut_obj_add_int(doc, stream, "stored", state.streaming.stored);
@@ -4934,6 +4939,18 @@ static void add_presentation_state(yyjson_mut_doc *doc, yyjson_mut_val *value, c
         yyjson_mut_obj_add_uint(doc, stream, "stored_bytes", state.streaming.stored_bytes);
         yyjson_mut_obj_add_int(doc, material, "fuel_particles", state.fuel_particles);
         yyjson_mut_obj_add_int(doc, material, "burning_particles", state.burning_particles);
+        yyjson_mut_obj_add_int(doc, material, "thermal_particles", state.thermal_particles);
+        yyjson_mut_obj_add_real(doc, material, "fuel_remaining", state.fuel_remaining);
+        yyjson_mut_obj_add_real(doc, material, "thermal_energy", state.thermal_energy);
+        yyjson_mut_obj_add_int(doc, material, "elastic_particles", state.elastic_particles);
+        yyjson_mut_obj_add_real(doc, material, "volume_min", state.volume_min);
+        yyjson_mut_obj_add_real(doc, material, "volume_max", state.volume_max);
+        yyjson_mut_obj_add_real(doc, material, "strain_max", state.strain_max);
+        yyjson_mut_val *mpm = yyjson_mut_obj_add_obj(doc, material, "mpm");
+        yyjson_mut_obj_add_int(doc, mpm, "substeps", state.mpm.substeps);
+        yyjson_mut_obj_add_int(doc, mpm, "nodes", state.mpm.nodes);
+        yyjson_mut_obj_add_real(doc, mpm, "advanced_time", state.mpm.advanced_time);
+        yyjson_mut_obj_add_bool(doc, mpm, "limited", state.mpm.limited);
         yyjson_mut_obj_add_int(doc, material, "solids", state.solids);
         yyjson_mut_obj_add_int(doc, material, "cells", state.cells);
         yyjson_mut_obj_add_int(doc, material, "fragments", state.fragments);
@@ -5793,6 +5810,7 @@ static void add_physics_profile(yyjson_mut_doc *doc, yyjson_mut_val *object, con
     yyjson_mut_obj_add_real(doc, value, "material_tick", profile->material_tick_ms);
     yyjson_mut_obj_add_real(doc, value, "fluid_impulse", profile->fluid_impulse_ms);
     yyjson_mut_val *material_fluid = yyjson_mut_obj_add_obj(doc, value, "material_fluid_ms");
+    yyjson_mut_obj_add_real(doc, material_fluid, "mpm", profile->material_fluid.mpm_ms);
     yyjson_mut_obj_add_real(
         doc,
         material_fluid,
@@ -5837,6 +5855,13 @@ static void add_physics_profile(yyjson_mut_doc *doc, yyjson_mut_val *object, con
     );
     yyjson_mut_val *work = yyjson_mut_obj_add_obj(doc, object, "material_fluid_work");
     yyjson_mut_obj_add_uint(doc, work, "index_builds", profile->material_fluid.index_builds);
+    yyjson_mut_obj_add_uint(doc, work, "mpm_substeps", profile->material_fluid.mpm_substeps);
+    yyjson_mut_obj_add_uint(
+        doc,
+        work,
+        "mpm_limited_steps",
+        profile->material_fluid.mpm_limited_steps
+    );
     yyjson_mut_val *physics_work = yyjson_mut_obj_add_obj(doc, object, "physics_work");
     yyjson_mut_obj_add_uint(doc, physics_work, "body_creations", profile->body_creations);
     yyjson_mut_obj_add_uint(doc, physics_work, "shape_creations", profile->shape_creations);
@@ -5870,7 +5895,10 @@ static void sum_physics_profile(game_physics_profile *total, const game_physics_
     total->material_fluid.relaxation_ms += sample->material_fluid.relaxation_ms;
     total->material_fluid.collisions_ms += sample->material_fluid.collisions_ms;
     total->material_fluid.collision_index_ms += sample->material_fluid.collision_index_ms;
+    total->material_fluid.mpm_ms += sample->material_fluid.mpm_ms;
     total->material_fluid.index_builds += sample->material_fluid.index_builds;
+    total->material_fluid.mpm_substeps += sample->material_fluid.mpm_substeps;
+    total->material_fluid.mpm_limited_steps += sample->material_fluid.mpm_limited_steps;
     total->body_creations += sample->body_creations;
     total->shape_creations += sample->shape_creations;
     total->shape_updates += sample->shape_updates;

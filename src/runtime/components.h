@@ -39,6 +39,7 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameBody)
     GameBodyType type;
     bool continuous;
     float angular_velocity; /* Kinematic radians/second; requires Orientation. */
+    bool allow_rotation;
 }
 GameBody;
 
@@ -75,6 +76,20 @@ typedef NODE_COMPONENT_TYPE_DENSE(EngineSystem)
 }
 EngineSystem;
 
+typedef enum
+{
+    MATERIAL_SOLVER_DDR,
+    MATERIAL_SOLVER_MPM
+} MaterialSolver;
+
+typedef enum
+{
+    MATERIAL_VIEW_MATERIAL,
+    MATERIAL_VIEW_HEAT,
+    MATERIAL_VIEW_SPEED,
+    MATERIAL_VIEW_STRAIN
+} MaterialDebugView;
+
 /* Optional material world. The camera activates nearby chunks; moving bodies
  * wake additional local regions. Population limits bound retained resources. */
 typedef NODE_COMPONENT_TYPE_DENSE(MaterialFluidWorld)
@@ -83,10 +98,17 @@ typedef NODE_COMPONENT_TYPE_DENSE(MaterialFluidWorld)
     float buffer;
     float kernel;
     int particle_limit;
+    MaterialSolver solver;
+    float mpm_cell_size;
+    int mpm_max_substeps;
+    CF_V2 gravity;
+    MaterialDebugView debug_view;
     /* Optional gas flow; a zero cell size leaves particles independent. */
     float gas_cell_size;
     float gas_vorticity;
     float gas_drag;
+    float gas_buoyancy;
+    float gas_ambient_heat;
     /* Optional transient visual responses to fast fluid/body contacts. Zero
      * count disables that response; particles never add matter to the solver. */
     float gas_wake_speed; /* Minimum normal closing speed, world units/sec. */
@@ -158,8 +180,30 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameCombustion)
     float blast_radius;
     float blast_speed;
     float blast_damage;
+    /* Heat below this stops burning without consuming the remaining fuel.
+     * Zero disables extinguishing; positive values must be below ignition. */
+    float extinction;
 }
 GameCombustion;
+
+/* Optional fluid heat exchange. Capacity is specific heat per unit mass;
+ * conductivity is the local exchange rate. Zero conductivity is insulating. */
+typedef NODE_COMPONENT_TYPE_DENSE(MaterialThermal)
+{
+    float capacity;
+    float conductivity;
+}
+MaterialThermal;
+
+/* MPM stress response. Rest area is particle mass / density. Positive shear
+ * makes an elastic material; zero shear leaves a compressible liquid. */
+typedef NODE_COMPONENT_TYPE_DENSE(MaterialConstitutive)
+{
+    float density;
+    float bulk_modulus;
+    float shear_modulus;
+}
+MaterialConstitutive;
 
 typedef NODE_COMPONENT_TYPE_DENSE(GameFuel)
 {
@@ -277,6 +321,9 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameFluidVolume)
     float visibility;
     /* Screen-space liquid distortion in pixels; zero disables refraction. */
     float refraction;
+    /* Positive draws individual grains at this world-space radius; zero uses
+     * the continuous fluid surface. Does not change collision support. */
+    float grain_radius;
     CF_V2 velocity;
 }
 GameFluidVolume;

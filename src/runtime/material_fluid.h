@@ -23,6 +23,20 @@ enum
 
 enum
 {
+    FLUID_SOLVER_DDR,
+    FLUID_SOLVER_MPM
+};
+
+enum
+{
+    FLUID_VIEW_MATERIAL,
+    FLUID_VIEW_HEAT,
+    FLUID_VIEW_SPEED,
+    FLUID_VIEW_STRAIN
+};
+
+enum
+{
     MATERIAL_FLUID_CONTACT_LIMIT = 128
 };
 
@@ -38,6 +52,42 @@ typedef struct
 
 typedef struct
 {
+    /* Specific heat capacity per unit mass; conductivity is an exchange rate.
+     * Zero capacity disables exchange; zero conductivity insulates. */
+    float capacity, conductivity;
+} fluid_thermal;
+
+bool material_fluid_thermal_valid(fluid_thermal value);
+
+typedef struct
+{
+    float density, bulk_modulus, shear_modulus;
+} fluid_constitutive;
+
+typedef struct
+{
+    /* Row-major deformation and affine velocity matrices. */
+    float f[4], affine[4], volume;
+} fluid_deformation;
+
+typedef struct
+{
+    float cell_size;
+    int max_substeps;
+    fluid_vec gravity;
+} fluid_mpm_settings;
+
+typedef struct
+{
+    int substeps, nodes;
+    float advanced_time;
+    bool limited;
+} fluid_mpm_state;
+
+bool material_fluid_constitutive_valid(fluid_constitutive value);
+
+typedef struct
+{
     fluid_vec position, velocity;
     float mass, radius;
     unsigned color;
@@ -47,20 +97,30 @@ typedef struct
     float lifetime;
     float fuel, heat;
     float glow, visibility, refraction;
+    /* Optional individual-grain presentation, independent of physical radius. */
+    float grain_radius;
     bool burning, smoke;
     fluid_style style;
+    fluid_thermal thermal;
+    fluid_constitutive constitutive;
+    fluid_deformation deformation;
+    /* Saved on ignition and restored when combustion is quenched. */
+    unsigned base_color;
+    float base_emission, base_glow;
 } fluid_particle;
 
 typedef struct
 {
     fluid_vec position, velocity;
     fluid_vec previous_position;
+    fluid_vec center_offset;
     float angle, previous_angle, angular_velocity, inverse_mass;
     float heat;
     uint64_t owner; /* Optional caller identity, never interpreted by the solver. */
     bool swept;     /* Previous pose is valid for this simulation tick. */
     /* Output: accumulated translation impulse on this body during the tick. */
     fluid_vec impulse;
+    float inverse_inertia, angular_impulse;
 } fluid_body;
 
 typedef struct
@@ -83,7 +143,8 @@ typedef struct
     double collisions_ms;
     /* Collision-index construction is included in collisions_ms. */
     double collision_index_ms;
-    uint64_t index_builds;
+    double mpm_ms;
+    uint64_t index_builds, mpm_substeps, mpm_limited_steps;
 } material_fluid_profile;
 
 typedef struct
@@ -101,6 +162,8 @@ typedef struct
     float smoke_absorption;
     unsigned flame_color;
     float flame_emission;
+    /* Zero disables quenching; otherwise this must be below ignition. */
+    float extinction;
 } fluid_reaction;
 typedef struct
 {
@@ -113,12 +176,22 @@ typedef struct
 {
     /* Zero cell size disables the optional gas flow. */
     float cell_size, vorticity, drag;
+    fluid_vec gravity;
+    float buoyancy, ambient_heat;
 } fluid_flow_settings;
 
 material_fluid *material_fluid_new(float kernel, int capacity);
 void material_fluid_free(material_fluid *fluid);
 void material_fluid_clear(material_fluid *fluid);
 void material_fluid_set_flow(material_fluid *fluid, fluid_flow_settings settings);
+void material_fluid_set_solver(material_fluid *fluid, int solver, fluid_mpm_settings settings);
+int material_fluid_solver(const material_fluid *fluid);
+void material_fluid_set_debug_view(material_fluid *fluid, int view);
+int material_fluid_debug_view(const material_fluid *fluid);
+float material_fluid_visual_support(const material_fluid *fluid);
+fluid_mpm_state material_fluid_mpm_state(const material_fluid *fluid);
+/* Caller owns the support/array result. Returns conservative chunk candidates. */
+void material_fluid_query(const material_fluid *fluid, fluid_region region, int **indices);
 void material_fluid_set_contact_settings(material_fluid *fluid, fluid_contact_settings settings);
 /* Borrowed until the next tick; contacts aggregate by body, kind and surface patch. */
 const fluid_contact *material_fluid_contacts(const material_fluid *fluid, int *count);

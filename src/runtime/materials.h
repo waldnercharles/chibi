@@ -17,6 +17,13 @@ typedef struct
 {
     int particles, active_particles, solids, cells, fragments, chunks;
     int fuel_particles, burning_particles;
+    int thermal_particles;
+    int elastic_particles;
+    float volume_min, volume_max, strain_max;
+    fluid_mpm_state mpm;
+    /* Exact retained-particle centers; all zeros when empty. */
+    fluid_region particle_bounds;
+    double fuel_remaining, thermal_energy;
     material_stream_state streaming;
     uint64_t hash;
 } game_material_state;
@@ -74,6 +81,7 @@ void game_materials_tick_profiled(
     material_fluid_profile *profile
 );
 const material_fluid *game_materials_fluid(const game_materials *materials);
+fluid_vec game_materials_gravity(const game_materials *materials);
 /* On-demand inspection includes simulation state outside the ECS columns. */
 game_material_state game_materials_inspect(const game_materials *materials);
 /* Expensive cross-platform diagnostic hashes; compute only when requested. */

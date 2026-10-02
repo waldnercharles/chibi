@@ -57,6 +57,8 @@ if(CMAKE_C_COMPILER_ID MATCHES "Clang|GNU")
         src/runtime/material_ecs_fluid.c
         src/runtime/material_flow.c
         src/runtime/material_fluid.c
+        src/runtime/material_mpm.c
+        src/runtime/material_obstacle_index.c
         src/runtime/particle_emitters.c
         src/runtime/scenes/physics.c
         src/runtime/visual_transform.c
@@ -940,6 +942,15 @@ add_executable(contact_benchmark test/contact_benchmark.c ${APP_REGISTRY})
 target_link_libraries(contact_benchmark PRIVATE runtime_support ecs)
 set_target_properties(contact_benchmark PROPERTIES LINKER_LANGUAGE CXX)
 
+add_executable(material_thermal_benchmark test/material_thermal_benchmark.c ${APP_REGISTRY})
+target_link_libraries(material_thermal_benchmark PRIVATE runtime_support ecs)
+target_compile_options(material_thermal_benchmark PRIVATE -UNDEBUG -ffp-contract=off)
+set_target_properties(material_thermal_benchmark PROPERTIES LINKER_LANGUAGE CXX)
+add_executable(material_solver_benchmark test/material_solver_benchmark.c ${APP_REGISTRY})
+target_link_libraries(material_solver_benchmark PRIVATE runtime_support ecs)
+target_compile_options(material_solver_benchmark PRIVATE -UNDEBUG -ffp-contract=off)
+set_target_properties(material_solver_benchmark PROPERTIES LINKER_LANGUAGE CXX)
+
 file(
     CREATE_LINK
         "${CMAKE_BINARY_DIR}/compile_commands.json"
@@ -1048,7 +1059,10 @@ endif()
 
 # The same material/field/schedule contracts run natively and in Web bytecode.
 add_executable(material_engine_smoke test/material_engine_smoke.c
-    test/runtime/materials.c test/runtime/material_reactions.c test/runtime/reference_cave.c test/runtime/fields.c
+    test/runtime/materials.c test/runtime/material_reactions.c test/runtime/material_thermal.c test/runtime/material_detail.c
+    test/runtime/material_mpm.c test/runtime/material_obstacles.c test/runtime/material_particle_index.c test/runtime/material_gravity.c test/runtime/material_simulation.c
+    test/runtime/material_constitutive.c test/runtime/material_mixed.c test/runtime/material_blast.c
+    test/runtime/reference_cave.c test/runtime/fields.c
     test/runtime/system_schedule.c ${APP_REGISTRY})
 target_include_directories(material_engine_smoke PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(material_engine_smoke PRIVATE engine runtime_support)

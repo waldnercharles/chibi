@@ -16,9 +16,20 @@ enum
 
 bool game_materials_emit(game_materials *materials, fluid_particle particle)
 {
+    if (materials->settings.solver == MATERIAL_SOLVER_MPM && particle.kind != FLUID_GAS &&
+        !material_fluid_constitutive_valid(particle.constitutive)) {
+        return false;
+    }
     particle.radius = fminf(particle.radius, materials->settings.kernel);
     bool added = materials->fluid && material_fluid_add(materials->fluid, particle);
     return added;
+}
+
+fluid_vec game_materials_gravity(const game_materials *materials)
+{
+    return materials ? (fluid_vec){ materials->settings.gravity.x,
+                                    materials->settings.gravity.y }
+                     : (fluid_vec){ 0 };
 }
 
 const char *material_ecs_configure_fluid(game_materials *materials)
@@ -56,25 +67,47 @@ const char *material_ecs_configure_fluid(game_materials *materials)
         !isfinite(settings.chunk_size + settings.buffer + settings.kernel) ||
         settings.chunk_size < 32 || settings.chunk_size > 1024 ||
         settings.buffer < settings.kernel || settings.buffer > 2048 ||
-        settings.kernel < 2 || settings.kernel > 64 ||
+        settings.kernel < .5f || settings.kernel > 64 ||
         settings.particle_limit < 1 || settings.particle_limit > 1000000) {
         return "Fluid world requires one configuration, chunks 32..1024, "
-               "kernel 2..64, a buffer at least one kernel, 1..1000000 "
+               "kernel 0.5..64, a buffer at least one kernel, 1..1000000 "
                "particles";
+    }
+    if ((settings.solver != MATERIAL_SOLVER_DDR && settings.solver != MATERIAL_SOLVER_MPM) ||
+        settings.debug_view < MATERIAL_VIEW_MATERIAL ||
+        settings.debug_view > MATERIAL_VIEW_STRAIN ||
+        !isfinite(settings.gravity.x) || !isfinite(settings.gravity.y) ||
+        fabsf(settings.gravity.x) > 4096 || fabsf(settings.gravity.y) > 4096 ||
+        (settings.solver == MATERIAL_SOLVER_MPM &&
+         (!isfinite(settings.mpm_cell_size) || settings.mpm_cell_size < 1 ||
+          settings.mpm_cell_size > 64 || settings.mpm_max_substeps < 1 ||
+          settings.mpm_max_substeps > 128))) {
+        return "Material simulation needs a valid solver/debug view, finite "
+               "gravity within +/-4096, "
+               "and MPM cell size 1..64 with 1..128 maximum substeps";
+    }
+    if (settings.solver == MATERIAL_SOLVER_MPM &&
+        settings.buffer < 3 * settings.mpm_cell_size) {
+        return "MPM activation buffer must cover at least three grid cells";
     }
     if (materials->fluid &&
         (settings.kernel != materials->settings.kernel ||
-         settings.particle_limit != materials->settings.particle_limit)) {
+         settings.particle_limit != materials->settings.particle_limit ||
+         settings.solver != materials->settings.solver ||
+         settings.mpm_cell_size != materials->settings.mpm_cell_size)) {
         return "Restart the scene after changing the material kernel or "
-               "particle capacity";
+               "particle capacity, solver or MPM cell size";
     }
     if (!isfinite(settings.gas_cell_size + settings.gas_vorticity + settings.gas_drag) ||
         (settings.gas_cell_size != 0 &&
          (settings.gas_cell_size < 2 || settings.gas_cell_size > 64)) ||
         settings.gas_vorticity < 0 || settings.gas_vorticity > 10 ||
-        settings.gas_drag < 0 || settings.gas_drag > 10) {
+        settings.gas_drag < 0 || settings.gas_drag > 10 ||
+        !isfinite(settings.gas_buoyancy) ||
+        !isfinite(settings.gas_ambient_heat) || settings.gas_buoyancy < 0 ||
+        settings.gas_buoyancy > 10 || settings.gas_ambient_heat < 0) {
         return "Gas flow requires cell size 0 or 2..64, vorticity 0..10 and "
-               "drag 0..10";
+               "drag/buoyancy 0..10 and finite nonnegative ambient heat";
     }
     float response_values[] = {
         settings.gas_wake_speed,         settings.gas_wake_strength,
@@ -106,19 +139,20 @@ const char *material_ecs_configure_fluid(game_materials *materials)
     }
     materials->settings = settings;
     GameCombustion r = materials->combustion;
-    if (reactive && (!isfinite(
-                         r.ignition + r.cooling + r.burn_rate + r.heat_release +
-                         r.smoke_lifetime + r.smoke_absorption + r.flame_emission +
-                         r.blast_radius + r.blast_speed + r.blast_damage
-                     ) ||
-                     r.ignition <= 0 || r.cooling < 0 || r.burn_rate <= 0 ||
-                     r.heat_release <= r.ignition || r.smoke_lifetime <= 0 ||
-                     r.smoke_absorption < 0 || r.flame_emission < 0 ||
-                     r.blast_radius < 0 || r.blast_radius > COMBUSTION_BLAST_RADIUS_MAX ||
-                     r.blast_speed < 0 || r.blast_damage < 0)) {
+    if (reactive &&
+        (!isfinite(
+             r.ignition + r.cooling + r.burn_rate + r.heat_release +
+             r.smoke_lifetime + r.smoke_absorption + r.flame_emission +
+             r.blast_radius + r.blast_speed + r.blast_damage + r.extinction
+         ) ||
+         r.ignition <= 0 || r.cooling < 0 || r.burn_rate <= 0 ||
+         r.heat_release <= r.ignition || r.smoke_lifetime <= 0 ||
+         r.smoke_absorption < 0 || r.flame_emission < 0 || r.blast_radius < 0 ||
+         r.blast_radius > COMBUSTION_BLAST_RADIUS_MAX || r.blast_speed < 0 ||
+         r.blast_damage < 0 || r.extinction < 0 || r.extinction >= r.ignition)) {
         return "Combustion requires finite nonnegative tuning, positive "
                "ignition/burn/lifetime, heat above ignition and blast radius "
-               "<=1024";
+               "<=1024 and extinction below ignition";
     }
     if (!materials->fluid) {
         materials->fluid = material_fluid_new(settings.kernel, settings.particle_limit);
@@ -129,10 +163,21 @@ const char *material_ecs_configure_fluid(game_materials *materials)
     }
     material_fluid_set_flow(
         materials->fluid,
-        (fluid_flow_settings){ settings.gas_cell_size,
-                               settings.gas_vorticity,
-                               settings.gas_drag }
+        (fluid_flow_settings){ .cell_size = settings.gas_cell_size,
+                               .vorticity = settings.gas_vorticity,
+                               .drag = settings.gas_drag,
+                               .gravity = { settings.gravity.x, settings.gravity.y },
+                               .buoyancy = settings.gas_buoyancy,
+                               .ambient_heat = settings.gas_ambient_heat }
     );
+    material_fluid_set_solver(
+        materials->fluid,
+        settings.solver,
+        (fluid_mpm_settings){ .cell_size = settings.mpm_cell_size,
+                              .max_substeps = settings.mpm_max_substeps,
+                              .gravity = { settings.gravity.x, settings.gravity.y } }
+    );
+    material_fluid_set_debug_view(materials->fluid, settings.debug_view);
     material_fluid_set_contact_settings(
         materials->fluid,
         (fluid_contact_settings){
@@ -149,7 +194,8 @@ const char *material_ecs_configure_fluid(game_materials *materials)
                           r.smoke_color,
                           r.smoke_absorption,
                           r.flame_color,
-                          r.flame_emission }
+                          r.flame_emission,
+                          r.extinction }
     );
     return NULL;
 }
@@ -192,6 +238,29 @@ const char *material_ecs_fill_volume(game_materials *materials, ecs_entity entit
     GameFluidVolume v = *GAME_GameFluidVolume_get_const(materials->world, entity);
     const GameFuel *fuel = GAME_GameFuel_get_const(materials->world, entity);
     const GameIgniter *igniter = GAME_GameIgniter_get_const(materials->world, entity);
+    const MaterialThermal *thermal = GAME_MaterialThermal_get_const(materials->world, entity);
+    const MaterialConstitutive
+        *model = GAME_MaterialConstitutive_get_const(materials->world, entity);
+    fluid_constitutive constitutive = model
+                                        ? (fluid_constitutive){ model->density,
+                                                                model->bulk_modulus,
+                                                                model->shear_modulus }
+                                        : (fluid_constitutive){ 0 };
+    if ((model || (materials->settings.solver == MATERIAL_SOLVER_MPM &&
+                   v.kind != FLUID_GAS)) &&
+        !material_fluid_constitutive_valid(constitutive)) {
+        return "MPM material needs positive finite density and bulk modulus "
+               "and nonnegative shear modulus";
+    }
+    fluid_thermal heat = thermal
+                           ? (fluid_thermal){ thermal->capacity, thermal->conductivity }
+                           : (fluid_thermal){ 0 };
+    if (!material_fluid_thermal_valid(heat) ||
+        (heat.capacity > 0 && !isnormal(v.mass * heat.capacity))) {
+        return "Material thermal properties require finite nonnegative "
+               "capacity and "
+               "conductivity, and positive capacity when conductive";
+    }
     if ((fuel && (!isfinite(fuel->amount) || fuel->amount < 0)) ||
         (igniter && (!isfinite(igniter->heat) || igniter->heat < 0))) {
         return "Fuel and heat must be finite and nonnegative";
@@ -200,17 +269,19 @@ const char *material_ecs_fill_volume(game_materials *materials, ecs_entity entit
     if (!origin || !isfinite(origin->x + origin->y) ||
         (v.kind != FLUID_GAS && v.kind != FLUID_LIQUID) ||
         !isfinite(
-            v.width + v.height + v.spacing + v.mass + v.absorption + v.emission +
-            v.visibility + v.refraction + v.velocity.x + v.velocity.y
+            v.width + v.height + v.spacing + v.mass + v.absorption +
+            v.emission + v.visibility + v.refraction + v.grain_radius +
+            v.velocity.x + v.velocity.y
         ) ||
         v.width <= 0 || v.height <= 0 || v.width > 8192 || v.height > 8192 ||
         v.spacing < materials->settings.kernel * .3f ||
         v.spacing > materials->settings.kernel || v.mass <= 0 ||
         v.absorption < 0 || v.emission < 0 || v.visibility < 0 ||
-        v.visibility > 1 || v.refraction < 0 || v.refraction > 16) {
+        v.visibility > 1 || v.refraction < 0 || v.refraction > 16 ||
+        v.grain_radius < 0 || v.grain_radius > materials->settings.kernel) {
         return "Fluid volume needs Transform, gas/liquid kind, positive "
                "dimensions up to 8192, spacing 0.3..1 kernels, positive mass "
-               "and nonnegative lighting";
+               "and nonnegative lighting; grain radius must be 0..1 kernels";
     }
     material_record *record = material_ecs_record(materials, entity);
     if (record->volume) {
@@ -275,9 +346,12 @@ const char *material_ecs_fill_volume(game_materials *materials, ecs_entity entit
                 .absorption = v.absorption,
                 .fuel = fuel ? fuel->amount : 0,
                 .heat = igniter ? igniter->heat : 0,
+                .thermal = heat,
+                .constitutive = constitutive,
                 .emission = v.emission,
                 .visibility = v.visibility,
-                .refraction = v.refraction
+                .refraction = v.refraction,
+                .grain_radius = v.grain_radius
             };
             if (!material_fluid_add(materials->fluid, p)) {
                 return "Fluid volumes exceed the world's particle capacity; "

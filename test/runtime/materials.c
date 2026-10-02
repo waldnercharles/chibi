@@ -307,7 +307,11 @@ static void shipping_cave_parity()
 
 static fluid_particle particle(float x, float y, int kind)
 {
-    return (fluid_particle){ .position = { x, y }, .kind = kind, .mass = .01f, .radius = 3 };
+    return (fluid_particle){ .position = { x, y },
+                             .kind = kind,
+                             .mass = .01f,
+                             .radius = 3,
+                             .deformation = { .f = { 1, 0, 0, 1 }, .volume = 1 } };
 }
 
 static void tick(material_fluid *fluid)
@@ -544,6 +548,93 @@ static void gas_flow()
     material_fluid_free(fluid);
 }
 
+static void gas_buoyancy()
+{
+    enum
+    {
+        SIDE = 15,
+        COUNT = SIDE * SIDE
+    };
+    fluid_particle parcels[COUNT];
+    int active[COUNT];
+    game_task_system tasks = { .workers = 1 };
+    for (int mode = 0; mode < 5; mode++) {
+        material_flow *flow = material_flow_new();
+        fluid_flow_settings settings = { .cell_size = 8,
+                                         .gravity = { 0, -60 },
+                                         .buoyancy = 1,
+                                         .ambient_heat = 1 };
+        if (mode == 2) {
+            settings.gravity = (fluid_vec){ 0 };
+        }
+        if (mode == 3) {
+            settings.buoyancy = 0;
+        }
+        for (int i = 0; i < COUNT; i++) {
+            parcels[i] = particle((i % SIDE - SIDE / 2) * 8 + 4, (i / SIDE - SIDE / 2) * 8 + 4, FLUID_GAS);
+            parcels[i].heat = mode == 1 ? 0 : mode == 4 ? 1 : 2;
+            parcels[i].mass = 1 + i % 3;
+            parcels[i].color = i & 1 ? 0xff0000ff : 0xffff0000;
+            parcels[i].fuel = .25f;
+            active[i] = i;
+        }
+        fluid_particle before[COUNT];
+        memcpy(before, parcels, sizeof before);
+        material_flow_step(flow, settings, 1.f / 60, parcels, active, COUNT, NULL, NULL, 0, &tasks);
+        float vertical = 0;
+        for (int i = 0; i < COUNT; i++) {
+            vertical += parcels[i].velocity.y;
+            fluid_vec velocity = parcels[i].velocity;
+            parcels[i].velocity = before[i].velocity;
+            /* Grid transport cannot alter composition or heat energy. */
+            assert(!memcmp(parcels + i, before + i, sizeof *parcels));
+            parcels[i].velocity = velocity;
+            if (mode >= 2) {
+                assert(velocity.x == 0 && velocity.y == 0);
+            }
+        }
+        if (mode == 0) {
+            assert(vertical > 1);
+        }
+        if (mode == 1) {
+            assert(vertical < -1);
+        }
+        material_flow_free(flow);
+    }
+}
+
+static void gas_mixing_barrier()
+{
+    material_fluid *fluid = material_fluid_new(4, 64);
+    material_fluid_set_flow(fluid, (fluid_flow_settings){ .cell_size = 4, .vorticity = 1 });
+    fluid_body body = { 0 };
+    fluid_obstacle wall = { .half_size = { 2, 100 } };
+    fluid_region region = { -128, -128, 256, 256 };
+    for (int i = 0; i < 64; i++) {
+        fluid_particle p = particle(-8 - (i % 8) * 4, (i / 8 - 4) * 4, FLUID_GAS);
+        p.velocity = (fluid_vec){ 30, (i & 1 ? 1 : -1) * 10 };
+        p.color = i & 1 ? 0xff0000ff : 0xffff0000;
+        p.heat = i & 1;
+        assert(material_fluid_add(fluid, p));
+    }
+    float vertical = 0;
+    for (int step = 0; step < 120; step++) {
+        material_fluid_tick(fluid, 1.f / 60, 64, &region, 1, &body, 1, &wall, 1);
+        int count;
+        const fluid_particle *p = material_fluid_particles(fluid, &count);
+        assert(count == 64);
+        for (int i = 0; i < count; i++) {
+            assert(p[i].position.x <= -2);
+            assert(p[i].color == (i & 1 ? 0xff0000ff : 0xffff0000));
+            assert(p[i].heat == (i & 1));
+            assert(isfinite(p[i].velocity.x) && isfinite(p[i].velocity.y));
+            vertical = fmaxf(vertical, fabsf(p[i].position.y - (i / 8 - 4) * 4));
+        }
+    }
+    assert(vertical > 1);
+    material_fluid_free(fluid);
+}
+
 static void parallel_parity(bool burning)
 {
     material_fluid *serial = material_fluid_new(10, 2500);
@@ -703,6 +794,7 @@ static void parallel_flow()
         int x = i % SIDE - SIDE / 2, y = i / SIDE - SIDE / 2;
         serial[i] = particle(x * 10 + 5, y * 10 + 5, FLUID_GAS);
         serial[i].velocity = (fluid_vec){ (x % 7) * .3f, (y % 5) * .4f };
+        serial[i].heat = (i % 11) * .2f;
         active[i] = i;
     }
     memcpy(parallel, serial, COUNT * sizeof *serial);
@@ -714,7 +806,12 @@ static void parallel_flow()
                                .enqueue = flow_submit,
                                .finish = flow_finish };
     game_task_system inline_tasks = { .workers = 1 };
-    fluid_flow_settings settings = { 10, 2, .1f };
+    fluid_flow_settings settings = { .cell_size = 10,
+                                     .vorticity = 2,
+                                     .drag = .1f,
+                                     .gravity = { 0, -30 },
+                                     .buoyancy = .5f,
+                                     .ambient_heat = 1 };
     fluid_body bodies[] = { { .velocity = { 30, -15 }, .angle = .3f },
                             { .position = { -20, 30 }, .velocity = { -5, 12 } } };
     fluid_obstacle obstacles[] = { { .half_size = { 30, 15 } },
@@ -2454,6 +2551,8 @@ void test_materials()
     liquid_split_merge();
     body_response();
     gas_flow();
+    gas_buoyancy();
+    gas_mixing_barrier();
     parallel_parity(false);
     parallel_parity(true);
     gas_deposit_equivalence();

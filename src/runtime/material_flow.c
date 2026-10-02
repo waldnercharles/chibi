@@ -25,7 +25,7 @@ typedef struct
 {
     int x, y, adjacent[4];
     /* X velocity lives on the left face, Y velocity on the lower face. */
-    fluid_vec velocity, source, weight, boundary;
+    fluid_vec velocity, source, weight, heat, boundary;
     float pressure, divergence, curl;
     bool solid;
 } flow_cell;
@@ -157,9 +157,11 @@ static void deposit(flow_grid *grid, fluid_particle p, float size, int axis, con
             flow_cell *cell = &grid->cells[i];
             if (axis) {
                 cell->source.y += p.velocity.y * weight;
+                cell->heat.y += p.heat * weight;
                 cell->weight.y += weight;
             } else {
                 cell->source.x += p.velocity.x * weight;
+                cell->heat.x += p.heat * weight;
                 cell->weight.x += weight;
             }
         }
@@ -172,9 +174,13 @@ static void seed(material_flow *flow, const fluid_particle *particles, const int
     flow->previous = flow->grid;
     flow->grid = swap;
     flow_grid *grid = &flow->grid;
+    int gas_count = 0;
+    for (int n = 0; n < count; n++) {
+        gas_count += particles[active[n]].kind == FLUID_GAS;
+    }
     int capacity = 64;
     /* Each gas parcel inserts at most 25 cells, keeping the hash below 40%. */
-    while (capacity < count * 64) {
+    while (capacity < gas_count * 64) {
         capacity *= 2;
     }
     if (capacity > grid->capacity) {
@@ -263,11 +269,36 @@ static void boundaries(
     }
 }
 
-static void advect(material_flow *flow, fluid_flow_settings settings, float dt)
+typedef struct
 {
+    material_flow *flow;
+    fluid_flow_settings settings;
+    float dt;
+    fluid_particle *particles;
+    const int *active;
+} flow_work;
+
+static void run(const game_task_system *tasks, game_task_range *function, int count, flow_work *work)
+{
+    if (tasks->workers > 1 && count >= 4096) {
+        void *task = tasks->enqueue(function, count, 1024, work, tasks->user);
+        if (task) {
+            tasks->finish(task, tasks->user);
+        }
+        return;
+    }
+    function(0, count, 0, work);
+}
+
+static void advect(int start, int end, uint32_t, void *context)
+{
+    flow_work *work = context;
+    material_flow *flow = work->flow;
+    fluid_flow_settings settings = work->settings;
+    float dt = work->dt;
     flow_grid *grid = &flow->grid;
     float damping = deterministic_expf(-settings.drag * dt);
-    for (int i = 1; i < acount(grid->cells); i++) {
+    for (int i = start + 1; i <= end; i++) {
         flow_cell *c = &grid->cells[i];
         bool existed = find(&flow->previous, c->x, c->y) != 0;
         for (int axis = 0; axis < 2; axis++) {
@@ -284,6 +315,11 @@ static void advect(material_flow *flow, fluid_flow_settings settings, float dt)
             if (weight > 0) {
                 float source = component(c->source, axis) / weight;
                 v += (source - v) * (existed ? fminf(1, dt * 12) : 1);
+                /* Heat remains on parcels. This weighted face sample only
+                 * supplies Boussinesq acceleration to the velocity solve. */
+                float heat = component(c->heat, axis) / weight;
+                v -= dt * component(settings.gravity, axis) *
+                     settings.buoyancy * (heat - settings.ambient_heat);
             }
             if (axis) {
                 c->velocity.y = v * damping;
@@ -294,10 +330,12 @@ static void advect(material_flow *flow, fluid_flow_settings settings, float dt)
     }
 }
 
-static void confine(flow_grid *grid, fluid_flow_settings settings, float dt)
+static void curls(int start, int end, uint32_t, void *context)
 {
-    float h = settings.cell_size;
-    for (int i = 1; i < acount(grid->cells); i++) {
+    flow_work *work = context;
+    flow_grid *grid = &work->flow->grid;
+    float h = work->settings.cell_size;
+    for (int i = start + 1; i <= end; i++) {
         flow_cell *c = &grid->cells[i];
         c->curl = (grid->cells[c->adjacent[RIGHT]].velocity.y -
                    grid->cells[c->adjacent[LEFT]].velocity.y -
@@ -305,7 +343,14 @@ static void confine(flow_grid *grid, fluid_flow_settings settings, float dt)
                    grid->cells[c->adjacent[DOWN]].velocity.x) /
                   (2 * h);
     }
-    for (int i = 1; i < acount(grid->cells); i++) {
+}
+
+static void confine(int start, int end, uint32_t, void *context)
+{
+    flow_work *work = context;
+    flow_grid *grid = &work->flow->grid;
+    float h = work->settings.cell_size, dt = work->dt;
+    for (int i = start + 1; i <= end; i++) {
         flow_cell *c = &grid->cells[i];
         float nx = fabsf(grid->cells[c->adjacent[RIGHT]].curl) -
                    fabsf(grid->cells[c->adjacent[LEFT]].curl);
@@ -313,7 +358,7 @@ static void confine(flow_grid *grid, fluid_flow_settings settings, float dt)
                    fabsf(grid->cells[c->adjacent[DOWN]].curl);
         float length = sqrtf(nx * nx + ny * ny);
         if (length > 1e-6f && !c->solid) {
-            float force = dt * settings.vorticity * h * c->curl / length;
+            float force = dt * work->settings.vorticity * h * c->curl / length;
             c->velocity.x += ny * force;
             c->velocity.y -= nx * force;
         }
@@ -442,6 +487,22 @@ static void project(material_flow *flow, float h, float dt, const game_task_syst
     }
 }
 
+static void transfer(int start, int end, uint32_t, void *context)
+{
+    flow_work *work = context;
+    for (int n = start; n < end; n++) {
+        fluid_particle *p = &work->particles[work->active[n]];
+        /* Ballistic exhaust stirs the grid but keeps its authored motion. */
+        if (p->kind != FLUID_GAS || (p->style.duration > 0 && !p->smoke)) {
+            continue;
+        }
+        float x = p->position.x / work->settings.cell_size,
+              y = p->position.y / work->settings.cell_size;
+        p->velocity = (fluid_vec){ sample(&work->flow->grid, x, y, 0),
+                                   sample(&work->flow->grid, x, y, 1) };
+    }
+}
+
 void material_flow_step(
     material_flow *flow,
     fluid_flow_settings settings,
@@ -457,20 +518,13 @@ void material_flow_step(
 {
     seed(flow, particles, active, count, settings.cell_size);
     boundaries(&flow->grid, settings.cell_size, bodies, obstacles, obstacle_count);
-    advect(flow, settings, dt);
-    confine(&flow->grid, settings, dt);
+    flow_work work = { flow, settings, dt, particles, active };
+    int cells = acount(flow->grid.cells) - 1;
+    run(tasks, advect, cells, &work);
+    run(tasks, curls, cells, &work);
+    run(tasks, confine, cells, &work);
     project(flow, settings.cell_size, dt, tasks);
-    for (int n = 0; n < count; n++) {
-        fluid_particle *p = &particles[active[n]];
-        /* Ballistic exhaust stirs the grid but keeps its authored motion. */
-        if (p->kind != FLUID_GAS || (p->style.duration > 0 && !p->smoke)) {
-            continue;
-        }
-        float x = p->position.x / settings.cell_size,
-              y = p->position.y / settings.cell_size;
-        p->velocity = (fluid_vec){ sample(&flow->grid, x, y, 0),
-                                   sample(&flow->grid, x, y, 1) };
-    }
+    run(tasks, transfer, count, &work);
 }
 
 uint64_t material_flow_hash(const material_flow *flow)

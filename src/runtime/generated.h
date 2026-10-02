@@ -12,6 +12,11 @@ extern const EngineSystem *GAME_EngineSystem_get_const(const ecs_world *, ecs_en
 
 extern const ecs_component_desc GAME_COMPONENT_GameCombustion;
 extern const GameCombustion *GAME_GameCombustion_get_const(const ecs_world *, ecs_entity);
+extern const ecs_component_desc GAME_COMPONENT_MaterialThermal;
+extern MaterialThermal *GAME_MaterialThermal_get(ecs_world *, ecs_entity);
+extern const MaterialThermal *GAME_MaterialThermal_get_const(const ecs_world *, ecs_entity);
+extern const ecs_component_desc GAME_COMPONENT_MaterialConstitutive;
+extern const MaterialConstitutive *GAME_MaterialConstitutive_get_const(const ecs_world *, ecs_entity);
 extern const ecs_component_desc GAME_COMPONENT_GameFuel;
 extern const GameFuel *GAME_GameFuel_get_const(const ecs_world *, ecs_entity);
 extern const ecs_component_desc GAME_COMPONENT_GameIgniter;
@@ -28,6 +33,7 @@ extern GameDrive *GAME_GameDrive_get(ecs_world *, ecs_entity);
 extern const GameDrive *GAME_GameDrive_get_const(const ecs_world *, ecs_entity);
 extern int GAME_GameDrive_add(ecs_world *, ecs_entity, uint64_t);
 extern const ecs_component_desc GAME_COMPONENT_MaterialFluidWorld;
+extern MaterialFluidWorld *GAME_MaterialFluidWorld_get(ecs_world *, ecs_entity);
 extern const MaterialFluidWorld *GAME_MaterialFluidWorld_get_const(const ecs_world *, ecs_entity);
 extern const ecs_component_desc GAME_COMPONENT_MaterialDestructionWorld;
 extern const MaterialDestructionWorld *GAME_MaterialDestructionWorld_get_const(

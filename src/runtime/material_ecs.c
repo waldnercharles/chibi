@@ -118,6 +118,9 @@ static game_material_state inspect_materials(const game_materials *materials, ga
     state.active_particles = materials->fluid
                                ? material_fluid_active_count(materials->fluid)
                                : 0;
+    state.mpm = materials->fluid ? material_fluid_mpm_state(materials->fluid)
+                                 : (fluid_mpm_state){ 0 };
+    state.volume_min = state.volume_max = 1;
     uint64_t flow_hash = materials->fluid ? material_fluid_flow_hash(materials->fluid)
                                           : 0;
     if (flow_hash) {
@@ -157,10 +160,33 @@ static game_material_state inspect_materials(const game_materials *materials, ga
         state.streaming.resident_bytes += s.resident_bytes;
         state.streaming.stored_bytes += s.stored_bytes;
     }
+    fluid_vec low = state.particles ? particles[0].position : (fluid_vec){ 0 };
+    fluid_vec high = low;
     for (int i = 0; i < state.particles; i++) {
         fluid_particle p = particles[i];
+        low.x = fminf(low.x, p.position.x);
+        low.y = fminf(low.y, p.position.y);
+        high.x = fmaxf(high.x, p.position.x);
+        high.y = fmaxf(high.y, p.position.y);
         state.fuel_particles += p.fuel > 0;
         state.burning_particles += p.burning;
+        state.fuel_remaining += p.fuel;
+        state.thermal_particles += p.thermal.capacity > 0;
+        state.thermal_energy += (double)p.mass * p.thermal.capacity * p.heat;
+        state.elastic_particles += p.kind != FLUID_GAS &&
+                                   p.constitutive.shear_modulus > 0;
+        state.volume_min = fminf(state.volume_min, p.deformation.volume);
+        state.volume_max = fmaxf(state.volume_max, p.deformation.volume);
+        if (p.constitutive.shear_modulus > 0) {
+            const float *f = p.deformation.f;
+            double a = (double)f[0] * f[0] + (double)f[2] * f[2];
+            double b = (double)f[0] * f[1] + (double)f[2] * f[3];
+            double d = (double)f[1] * f[1] + (double)f[3] * f[3];
+            double discriminant = hypot(a - d, 2 * b);
+            double high = sqrt(fmax(0, (a + d + discriminant) * .5));
+            double low = sqrt(fmax(0, (a + d - discriminant) * .5));
+            state.strain_max = fmaxf(state.strain_max, (float)fmax(fabs(high - 1), fabs(low - 1)));
+        }
         float values[] = { p.position.x,
                            p.position.y,
                            p.velocity.x,
@@ -172,9 +198,14 @@ static game_material_state inspect_materials(const game_materials *materials, ga
                            p.lifetime,
                            p.fuel,
                            p.heat,
+                           p.thermal.capacity,
+                           p.thermal.conductivity,
+                           p.base_emission,
+                           p.base_glow,
                            p.glow,
                            p.visibility,
                            p.refraction,
+                           p.grain_radius,
                            p.style.duration,
                            p.style.size_end,
                            p.style.size_exponent,
@@ -189,7 +220,17 @@ static game_material_state inspect_materials(const game_materials *materials, ga
         state.hash = hash_bytes(state.hash, values, sizeof values);
         state.hash = hash_bytes(state.hash, &p.kind, sizeof p.kind);
         state.hash = hash_bytes(state.hash, &p.color, sizeof p.color);
+        state.hash = hash_bytes(state.hash, &p.base_color, sizeof p.base_color);
         state.hash = hash_bytes(state.hash, &p.style.end_color, sizeof p.style.end_color);
+        const float mechanics[] = {
+            p.constitutive.density,       p.constitutive.bulk_modulus,
+            p.constitutive.shear_modulus, p.deformation.volume,
+            p.deformation.f[0],           p.deformation.f[1],
+            p.deformation.f[2],           p.deformation.f[3],
+            p.deformation.affine[0],      p.deformation.affine[1],
+            p.deformation.affine[2],      p.deformation.affine[3]
+        };
+        state.hash = hash_bytes(state.hash, mechanics, sizeof mechanics);
         if (parts) {
             parts->particle_position = hash_bytes(
                 parts->particle_position,
@@ -208,9 +249,14 @@ static game_material_state inspect_materials(const game_materials *materials, ga
                                          p.lifetime,
                                          p.fuel,
                                          p.heat,
+                                         p.thermal.capacity,
+                                         p.thermal.conductivity,
+                                         p.base_emission,
+                                         p.base_glow,
                                          p.glow,
                                          p.visibility,
                                          p.refraction,
+                                         p.grain_radius,
                                          p.style.duration,
                                          p.style.size_end,
                                          p.style.size_exponent,
@@ -221,6 +267,7 @@ static game_material_state inspect_materials(const game_materials *materials, ga
                                          p.style.drag_exponent,
                                          p.style.blend };
             parts->particle_parameters = hash_bytes(parts->particle_parameters, parameters, sizeof parameters);
+            parts->particle_parameters = hash_bytes(parts->particle_parameters, mechanics, sizeof mechanics);
             parts->particle_appearance = hash_bytes(
                 parts->particle_appearance,
                 &p.burning,
@@ -246,8 +293,14 @@ static game_material_state inspect_materials(const game_materials *materials, ga
                 &p.style.end_color,
                 sizeof p.style.end_color
             );
+            parts->particle_appearance = hash_bytes(
+                parts->particle_appearance,
+                &p.base_color,
+                sizeof p.base_color
+            );
         }
     }
+    state.particle_bounds = (fluid_region){ low.x, low.y, high.x - low.x, high.y - low.y };
     if (parts) {
         parts->after_particles = state.hash;
     }
@@ -696,6 +749,8 @@ static void detach(game_materials *materials, ecs_entity source, material_mask m
                                                : (GameReflection){ 0 };
     const GameFragmentGlow *glow_ptr = GAME_GameFragmentGlow_get_const(world, source);
     GameFragmentGlow glow = glow_ptr ? *glow_ptr : (GameFragmentGlow){ 0 };
+    const GameBody *source_body = GAME_GameBody_get_const(world, source);
+    bool allow_rotation = source_body && source_body->allow_rotation;
     float cx = 0, cy = 0;
     for (int i = 0; i < acount(mask.rects); i++) {
         material_rect r = mask.rects[i];
@@ -729,7 +784,12 @@ static void detach(game_materials *materials, ecs_entity source, material_mask m
     material_ecs_add_component(world, entity, &GAME_COMPONENT_GameVelocity, &velocity);
     material_ecs_add_component(world, entity, &GAME_COMPONENT_GameOrientation, &orientation);
     material_ecs_add_component(world, entity, &GAME_COMPONENT_GameCollider, &collider);
-    material_ecs_add_component(world, entity, &GAME_COMPONENT_GameBody, &(GameBody){ .type = GAME_BODY_DYNAMIC });
+    material_ecs_add_component(
+        world,
+        entity,
+        &GAME_COMPONENT_GameBody,
+        &(GameBody){ .type = GAME_BODY_DYNAMIC, .allow_rotation = allow_rotation }
+    );
     material_ecs_add_component(world, entity, &GAME_COMPONENT_GameDestructible, &destructible);
     material_ecs_add_component(world, entity, &GAME_COMPONENT_GameAppearance, &appearance);
     material_ecs_add_component(world, entity, &GAME_COMPONENT_GameMaterial, &material);

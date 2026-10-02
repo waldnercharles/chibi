@@ -2,7 +2,7 @@
 // Gas joins into a translucent density field. Liquid keeps a continuous surface.
 // Authored exhaust uses smooth unions; combustion uses separate hot streaks.
 //
-// Each pixel reads its 16x16 tile's particle list. Including passes define
+// Each pixel reads its tile's particle list. Including passes define
 // the storage buffer bindings, which follow their samplers. GLSL ES emulates
 // each storage buffer as texel fetches of a single vec4 or uvec4 array.
 struct Particle { vec4 position; vec4 color; vec4 optical; vec4 detail; };
@@ -20,6 +20,8 @@ Particle particle_at(int i)
 layout(set = 3, binding = 0) uniform uniform_block {
     vec4 u_view;
     int u_tiles_x;
+    int u_tile_size;
+    int u_debug;
 };
 
 struct FluidSample
@@ -31,18 +33,31 @@ struct FluidSample
     float liquid_refraction;
     vec2 gradient;
     float aa;
+    // Individual discs carry coverage and optical channels without a density
+    // threshold. The shader composites them in stable particle order.
+    vec4 grain_color;
+    vec3 grain_emission, grain_source, grain_visibility;
+    float grain_absorption, grain_refraction, grain_liquid;
+    vec2 grain_normal;
 };
+
+const float FLUID_GRAIN_FIRST = 1.5;
+const float FLUID_GRAIN_LIQUID = 2.5;
 
 // False where no fluid covers the pixel.
 bool fluid_sample(ivec2 pixel, out FluidSample f)
 {
-    int tile = (pixel.y / 16) * u_tiles_x + pixel.x / 16;
+    int tile = (pixel.y / u_tile_size) * u_tiles_x + pixel.x / u_tile_size;
     f.gas = 0; f.liquid = 0; f.absorption = 0;
     f.gas_alpha = 0; f.liquid_alpha = 0; f.flame_alpha = 0;
     f.gas_color = vec4(0); f.liquid_color = vec4(0); f.flame_color = vec4(0);
     f.emission = vec3(0); f.gas_visibility = vec3(0); f.liquid_visibility = vec3(0);
     f.liquid_refraction = 0;
     f.gradient = vec2(0);
+    f.grain_color = vec4(0);
+    f.grain_emission = vec3(0); f.grain_source = vec3(0); f.grain_visibility = vec3(0);
+    f.grain_absorption = 0; f.grain_refraction = 0; f.grain_liquid = 0;
+    f.grain_normal = vec2(0);
     int first = tile_start(tile), last = tile_start(tile + 1);
     if (first == last) return false;
     vec2 world = u_view.xy + (vec2(pixel) + .5) * u_view.zw * vec2(1, -1);
@@ -53,6 +68,26 @@ bool fluid_sample(ivec2 pixel, out FluidSample f)
     vec3 hot_emission = vec3(0);
     for (int i = first; i < last; i++) {
         Particle p = particle_at(i);
+        if (p.position.w > FLUID_GRAIN_FIRST) {
+            vec2 offset = world - p.position.xy;
+            float distance = length(offset);
+            float alpha = (1.0 - smoothstep(-f.aa, f.aa, distance - p.position.z)) * p.color.a;
+            float coverage = alpha * (1.0 - f.grain_color.a);
+            f.grain_color += vec4(p.color.rgb * coverage, coverage);
+            f.grain_emission += p.color.rgb * p.optical.y * coverage;
+            // Each grain supplies its own source density; a neighboring
+            // absorber must not amplify a transparent grain's emission.
+            float optical_depth = p.optical.x > 0.0 ? p.optical.x : 1.0;
+            f.grain_source += p.color.rgb * p.optical.y * optical_depth * coverage;
+            f.grain_absorption += p.optical.x * coverage;
+            f.grain_visibility += p.color.rgb * p.detail.w * coverage;
+            if (p.position.w > FLUID_GRAIN_LIQUID) {
+                f.grain_liquid += coverage;
+                f.grain_refraction += p.detail.z * coverage;
+                f.grain_normal += offset / max(distance, .00001) * coverage;
+            }
+            continue;
+        }
         vec2 local = (world - p.position.xy) / p.position.z;
         if (p.optical.z > 0.0) {
             float d = length(world - p.position.xy) - p.position.z;
@@ -101,7 +136,7 @@ bool fluid_sample(ivec2 pixel, out FluidSample f)
         }
     }
     f.flame_alpha = (1.0 - smoothstep(-f.aa, f.aa, flame_distance)) * f.flame_color.a;
-    if (f.gas + f.liquid + f.flame_alpha <= .00001) return false;
+    if (f.gas + f.liquid + f.flame_alpha + f.grain_color.a <= .00001) return false;
     f.gas_color /= max(f.gas, .00001);
     f.liquid_color /= max(f.liquid, .00001);
     // A single dispersed parcel is nearly invisible; overlapping parcels stay

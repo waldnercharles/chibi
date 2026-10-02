@@ -466,6 +466,7 @@ static bool same_configuration(const physics_body *body, const GameCollider *sha
     const GameCollider *old = &body->collider;
     return body->settings.type == settings->type &&
            body->settings.continuous == settings->continuous &&
+           body->settings.allow_rotation == settings->allow_rotation &&
            old->shape == shape->shape && old->radius == shape->radius &&
            old->width == shape->width && old->height == shape->height &&
            old->category == shape->category && old->mask == shape->mask &&
@@ -676,7 +677,8 @@ static void create_body(game_physics *physics, physics_body *body, b2Vec2 positi
     }
     def.position = position;
     def.rotation = b2MakeRot(angle);
-    def.fixedRotation = body->settings.type != GAME_BODY_KINEMATIC;
+    def.fixedRotation = body->settings.type != GAME_BODY_KINEMATIC &&
+                        !body->settings.allow_rotation;
     /* Box2D excludes bullet targets from CCD, so static/kinematic colliders
      * must stay eligible even when their authored Continuous flag is set. */
     def.isBullet = body->settings.type == GAME_BODY_DYNAMIC &&
@@ -805,7 +807,9 @@ static int sync_entity(game_physics *physics, ecs_entity entity, float delta)
     }
     body->angle = angle;
     body->stop_fraction = 1;
-    b2Body_SetAngularVelocity(body->body, settings.angular_velocity);
+    if (settings.type == GAME_BODY_KINEMATIC) {
+        b2Body_SetAngularVelocity(body->body, settings.angular_velocity);
+    }
     if (drive && settings.type == GAME_BODY_DYNAMIC && delta > 0) {
         if (!isfinite(drive->target.x + drive->target.y + drive->acceleration) ||
             drive->acceleration < 0) {
@@ -1780,6 +1784,8 @@ static void solve_fluid(game_physics *physics, float delta, double *start)
               angle_delta = remainderf(angle - previous_angle, 6.28318530718f);
         float dx = p.x - previous.x, dy = p.y - previous.y;
         float mass = b2Body_GetMass(body->body);
+        float inertia = b2Body_GetRotationalInertia(body->body);
+        b2Vec2 center = b2Body_GetWorldCenterOfMass(body->body);
         const GameIgniter *igniter = GAME_GameIgniter_get_const(physics->world, body->entity);
         int index = acount(physics->fluid_bodies);
         apush(physics->fluid_ids, body->body);
@@ -1788,6 +1794,7 @@ static void solve_fluid(game_physics *physics, float delta, double *start)
             ((fluid_body){
                 .position = { p.x, p.y },
                 .velocity = { v.x, v.y },
+                .center_offset = { center.x - p.x, center.y - p.y },
                 .previous_position = { previous.x, previous.y },
                 .angle = angle,
                 .previous_angle = previous_angle,
@@ -1796,6 +1803,10 @@ static void solve_fluid(game_physics *physics, float delta, double *start)
                 .owner = ecs_entity_to_u64(body->entity),
                 .swept = delta > 0 &&
                          (dx * dx + dy * dy > 1e-6f || fabsf(angle_delta) > 1e-4f),
+                .inverse_inertia = body->settings.type == GAME_BODY_DYNAMIC &&
+                                           body->settings.allow_rotation && inertia > 0
+                                     ? 1 / inertia
+                                     : 0,
                 .inverse_mass = body->settings.type == GAME_BODY_DYNAMIC && mass > 0
                                   ? 1 / mass
                                   : 0 })
@@ -1843,6 +1854,9 @@ static void solve_fluid(game_physics *physics, float delta, double *start)
                 true
             );
         }
+        if (body.inverse_inertia > 0 && body.angular_impulse != 0) {
+            b2Body_ApplyAngularImpulse(physics->fluid_ids[i], body.angular_impulse, true);
+        }
     }
     profile_phase(physics, start, &physics->profile.fluid_impulse_ms);
 }
@@ -1867,6 +1881,9 @@ int game_physics_tick(game_physics *physics, float delta_seconds)
         snprintf(physics->error, sizeof physics->error, "%s", material_error);
         return FLOW_ERR_ARGUMENT;
     }
+    fluid_vec gravity = materials ? game_materials_gravity(materials)
+                                  : (fluid_vec){ 0 };
+    b2World_SetGravity(physics->simulation, (b2Vec2){ gravity.x, gravity.y });
     CHIBI_TRACE_ZONE_BEGIN(sync_zone, "Physics synchronize");
     int result = synchronize(physics, delta_seconds);
     CHIBI_TRACE_ZONE_END(sync_zone);
@@ -1955,7 +1972,8 @@ int game_physics_tick(game_physics *physics, float delta_seconds)
             body->end.p.y
         };
         GameOrientation *orientation = GAME_GameOrientation_get(physics->world, body->entity);
-        if (orientation && body->settings.angular_velocity != 0) {
+        if (orientation && (body->settings.angular_velocity != 0 ||
+                            body->settings.allow_rotation)) {
             orientation->radians = body->angle +
                                    remainderf(b2Rot_GetAngle(body->end.q) - body->angle, 6.28318530718f);
         }

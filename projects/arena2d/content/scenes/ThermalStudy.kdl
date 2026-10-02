@@ -1,0 +1,114 @@
+version 1
+name "ThermalStudy"
+(array)entities {
+    - name="Materials" prototype="ThermalStudyWorld"
+    - {
+        name "Camera"
+        prototype "ThermalStudyEntity"
+        components {
+            GameTransform x=0.0 y=0.0
+            GameCamera width=260.0 height=180.0
+        }
+    }
+    - {
+        name "Left wall"
+        prototype "ThermalStudyEntity"
+        components {
+            GameTransform x=-75.0 y=0.0
+            GameBody type="Static"
+            GameCollider shape="Box" width=8.0 height=112.0 category=8 mask=15
+            GameAppearance width=8.0 height=112.0 color=0x667080ff
+            GameMaterial scene=0x667080ff albedo=0x667080ff absorption=1.0
+        }
+    }
+    - {
+        name "Right wall"
+        prototype "ThermalStudyEntity"
+        components {
+            GameTransform x=75.0 y=0.0
+            GameBody type="Static"
+            GameCollider shape="Box" width=8.0 height=112.0 category=8 mask=15
+            GameAppearance width=8.0 height=112.0 color=0x667080ff
+            GameMaterial scene=0x667080ff albedo=0x667080ff absorption=1.0
+        }
+    }
+    - {
+        name "Top wall"
+        prototype "ThermalStudyEntity"
+        components {
+            GameTransform x=0.0 y=56.0
+            GameBody type="Static"
+            GameCollider shape="Box" width=158.0 height=8.0 category=8 mask=15
+            GameAppearance width=158.0 height=8.0 color=0x667080ff
+            GameMaterial scene=0x667080ff albedo=0x667080ff absorption=1.0
+        }
+    }
+    - {
+        name "Bottom wall"
+        prototype "ThermalStudyEntity"
+        components {
+            GameTransform x=0.0 y=-56.0
+            GameBody type="Static"
+            GameCollider shape="Box" width=158.0 height=8.0 category=8 mask=15
+            GameAppearance width=158.0 height=8.0 color=0x667080ff
+            GameMaterial scene=0x667080ff albedo=0x667080ff absorption=1.0
+        }
+    }
+    - {
+        name "Barrier"
+        prototype "ThermalStudyEntity"
+        components {
+            GameTransform x=0.0 y=0.0
+            GameBody type="Static"
+            GameCollider shape="Box" width=8.0 height=104.0 category=8 mask=15
+            GameAppearance width=8.0 height=104.0 color=0x667080ff
+            GameMaterial scene=0x667080ff albedo=0x667080ff absorption=1.0
+            GameDestructible cell_size=2.0 min_fragment_cells=6
+            GameSubstance hardness=1.0 retain_chips=#false
+            MaterialBreakProfile chip_speed=0.0 fragment_speed=0.0 release_speed=0.0 dust_limit=0 chunk_limit=0 smoke_count=0
+        }
+        (array)behaviors "ThermalStudyBreach"
+    }
+    - {
+        name "Coolant"
+        prototype "ThermalStudyEntity"
+        components {
+            GameTransform x=-42.0 y=0.0
+            GameFluidVolume {
+                kind "Liquid"
+                width 40.0
+                height 64.0
+                spacing 8.0
+                mass 0.004
+                velocity x=12.0 y=0.0
+                color 0x399fe8ff
+                absorption 0.035
+                visibility 0.08
+                refraction 2.0
+            }
+            MaterialThermal capacity=128.0 conductivity=600.0
+        }
+    }
+    - {
+        name "Fuel"
+        prototype "ThermalStudyEntity"
+        components {
+            GameTransform x=42.0 y=0.0
+            GameFluidVolume {
+                kind "Liquid"
+                width 40.0
+                height 64.0
+                spacing 8.0
+                mass 0.004
+                velocity x=-12.0 y=0.0
+                color 0xf4a547ff
+                absorption 0.035
+                visibility 0.08
+                refraction 2.0
+            }
+            MaterialThermal capacity=1.0 conductivity=600.0
+            GameFuel amount=1.0
+            GameIgniter heat=1.0
+        }
+    }
+}

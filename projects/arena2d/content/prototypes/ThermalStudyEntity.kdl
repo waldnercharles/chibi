@@ -1,0 +1,4 @@
+name "ThermalStudyEntity"
+components {
+    (object)GAME.GameTransform
+}

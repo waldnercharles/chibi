@@ -58,6 +58,38 @@ static bool folder_matches(
     return valid;
 }
 
+/* Project isolation permits additional authored assets, while requiring its
+ * baseline catalog and rejecting assets owned exclusively by the other game. */
+static bool folder_isolated(
+    const char *root,
+    const char *folder,
+    const char *const *required,
+    int required_count,
+    const char *const *other,
+    int other_count
+)
+{
+    char path[512];
+    struct stat info;
+    for (int i = 0; i < required_count; i++) {
+        snprintf(path, sizeof path, "%s/%s/%s", root, folder, required[i]);
+        if (stat(path, &info) || !S_ISREG(info.st_mode)) {
+            return false;
+        }
+    }
+    for (int i = 0; i < other_count; i++) {
+        bool shared = false;
+        for (int j = 0; j < required_count; j++) {
+            shared |= !strcmp(other[i], required[j]);
+        }
+        snprintf(path, sizeof path, "%s/%s/%s", root, folder, other[i]);
+        if (!shared && stat(path, &info) == 0) {
+            return false;
+        }
+    }
+    return true;
+}
+
 /* The error from opening a temporary project whose manifest starts with the
    given version field. The repository projects cover the current version. */
 static const char *version_error(const char *version, char *error, size_t error_size)
@@ -206,21 +238,14 @@ void run_content_catalog_checks()
     test_check(valid, "Arena3D project catalog contains only its shipped assets");
 
     static const char *const arena2d_behaviors[] = {
-        "BoostEmitter.kdl",
-        "CameraFollow.kdl",
-        "CutMaterial.kdl",
-        "HudDisplay.kdl",
-        "HullDamage.kdl",
-        "MaterialImpactHealth.kdl",
-        "Movement.kdl",
-        "MovementEmitter.kdl",
-        "PlayerEffects.kdl",
-        "ProjectileEffects.kdl",
-        "ProjectileHit.kdl",
-        "Pursuit.kdl",
-        "SwarmerEffects.kdl",
-        "Weapon.kdl",
-        "ProjectileLifecycle.kdl",
+        "BoostEmitter.kdl",   "CameraFollow.kdl",
+        "CutMaterial.kdl",    "HudDisplay.kdl",
+        "HullDamage.kdl",     "MaterialImpactHealth.kdl",
+        "Movement.kdl",       "MovementEmitter.kdl",
+        "PlayerEffects.kdl",  "ProjectileEffects.kdl",
+        "ProjectileHit.kdl",  "Pursuit.kdl",
+        "SwarmerEffects.kdl", "ThermalStudyBreach.kdl",
+        "Weapon.kdl",         "ProjectileLifecycle.kdl",
     };
     static const char *const arena2d_materials[] = {
         "Basalt.kdl",
@@ -249,6 +274,7 @@ void run_content_catalog_checks()
         "HUD.kdl",
         "Liquid.kdl",
         "MovementEmitter.kdl",
+        "MaterialDetailWorld.kdl",
         "MaterialSpecimen.kdl",
         "MaterialStudyCamera.kdl",
         "MaterialStudyWorld.kdl",
@@ -256,12 +282,22 @@ void run_content_catalog_checks()
         "Projectile.kdl",
         "SpawnEmitter.kdl",
         "Swarmer.kdl",
+        "ThermalStudyEntity.kdl",
+        "ThermalStudyWorld.kdl",
         "TrailEmitter.kdl",
     };
     static const char *const arena2d_scenes[] = {
-        "HRCBounce.kdl",      "HRCPinhole.kdl", "HRCShadow.kdl",
-        "HRCSinglePixel.kdl", "HRCVolume.kdl",  "MaterialStudy.kdl",
+        "HRCBounce.kdl",
+        "HRCPinhole.kdl",
+        "HRCShadow.kdl",
+        "HRCSinglePixel.kdl",
+        "HRCVolume.kdl",
+        "MaterialStudy.kdl",
+        "MaterialDetail.kdl",
+        "MaterialDetailClosed.kdl",
         "Sandbox.kdl",
+        "ThermalStudy.kdl",
+        "ThermalStudyClosed.kdl",
     };
     static const char *const arena2d_libraries[] = { "DirectionMath.kdl",
                                                      "FieldShapes.kdl",
@@ -271,48 +307,62 @@ void run_content_catalog_checks()
                                                   "MaterialIslands.kdl" };
     static const char *const arena2d_systems[] = { "FreeMotion.kdl" };
     const char *arena2d_root = "projects/arena2d/content";
-    valid = folder_matches(
+    valid = folder_isolated(
         arena2d_root,
         "behaviors",
         arena2d_behaviors,
-        (int)(sizeof arena2d_behaviors / sizeof *arena2d_behaviors)
+        (int)(sizeof arena2d_behaviors / sizeof *arena2d_behaviors),
+        behaviors,
+        (int)(sizeof behaviors / sizeof *behaviors)
     );
-    valid &= folder_matches(
+    valid &= folder_isolated(
         arena2d_root,
         "fields",
         arena2d_fields,
-        (int)(sizeof arena2d_fields / sizeof *arena2d_fields)
+        (int)(sizeof arena2d_fields / sizeof *arena2d_fields),
+        NULL,
+        0
     );
-    valid &= folder_matches(arena2d_root, "systems", arena2d_systems, 1);
-    valid &= folder_matches(
+    valid &= folder_isolated(arena2d_root, "systems", arena2d_systems, 1, NULL, 0);
+    valid &= folder_isolated(
         arena2d_root,
         "events",
         arena2d_events,
-        (int)(sizeof arena2d_events / sizeof *arena2d_events)
+        (int)(sizeof arena2d_events / sizeof *arena2d_events),
+        events,
+        (int)(sizeof events / sizeof *events)
     );
-    valid &= folder_matches(
+    valid &= folder_isolated(
         arena2d_root,
         "libraries",
         arena2d_libraries,
-        (int)(sizeof arena2d_libraries / sizeof *arena2d_libraries)
+        (int)(sizeof arena2d_libraries / sizeof *arena2d_libraries),
+        libraries,
+        (int)(sizeof libraries / sizeof *libraries)
     );
-    valid &= folder_matches(
+    valid &= folder_isolated(
         arena2d_root,
         "materials",
         arena2d_materials,
-        (int)(sizeof arena2d_materials / sizeof *arena2d_materials)
+        (int)(sizeof arena2d_materials / sizeof *arena2d_materials),
+        materials,
+        (int)(sizeof materials / sizeof *materials)
     );
-    valid &= folder_matches(
+    valid &= folder_isolated(
         arena2d_root,
         "prototypes",
         arena2d_prototypes,
-        (int)(sizeof arena2d_prototypes / sizeof *arena2d_prototypes)
+        (int)(sizeof arena2d_prototypes / sizeof *arena2d_prototypes),
+        prototypes,
+        (int)(sizeof prototypes / sizeof *prototypes)
     );
-    valid &= folder_matches(
+    valid &= folder_isolated(
         arena2d_root,
         "scenes",
         arena2d_scenes,
-        (int)(sizeof arena2d_scenes / sizeof *arena2d_scenes)
+        (int)(sizeof arena2d_scenes / sizeof *arena2d_scenes),
+        scenes,
+        (int)(sizeof scenes / sizeof *scenes)
     );
     valid &= folder_matches(
         arena2d_root,
@@ -320,13 +370,20 @@ void run_content_catalog_checks()
         shader_libraries,
         (int)(sizeof shader_libraries / sizeof *shader_libraries)
     );
-    valid &= folder_matches(arena2d_root, "shapes", NULL, 0);
+    valid &= folder_isolated(arena2d_root, "shapes", NULL, 0, shapes, (int)(sizeof shapes / sizeof *shapes));
     valid &= folder_matches(arena2d_root, "textures", NULL, 0);
     static const char *const arena2d_ui[] = {
         "HUD.rml",   "HUD.rcss",   "MenuButton.rml", "MenuButton.rcss",
         "Meter.rml", "Meter.rcss", "PauseMenu.rml",  "PauseMenu.rcss"
     };
-    valid &= folder_matches(arena2d_root, "ui", arena2d_ui, (int)(sizeof arena2d_ui / sizeof *arena2d_ui));
+    valid &= folder_isolated(
+        arena2d_root,
+        "ui",
+        arena2d_ui,
+        (int)(sizeof arena2d_ui / sizeof *arena2d_ui),
+        ui,
+        (int)(sizeof ui / sizeof *ui)
+    );
     test_check(valid, "Arena2D project catalog is isolated from Arena3D assets");
 
     char error[256] = { 0 };

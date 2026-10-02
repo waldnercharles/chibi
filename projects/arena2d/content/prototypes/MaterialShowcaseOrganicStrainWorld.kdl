@@ -1,0 +1,17 @@
+name "MaterialShowcaseOrganicStrainWorld"
+components {
+    GAME.GameHRC2D ambient=0.2 bounce_hysteresis=0.8 bounce_intensity=1.0 falloff=1.0 feedback=#true fog=1.0 intensity=7.5 min_resolution=0.5 particle_focal_length=300.0 radiance_hysteresis=0.8 resolution=0.5 specular=1.0 surface_bevel=1.0 surface_radius=24.0 surface_relief=1.5 target_fps=60.0 trace_levels=1 upscale_mode="Edge aware" upscale_threshold=0.1
+    GAME.MaterialDestructionWorld debris_limit=512 fragment_limit=96
+    GAME.MaterialFluidWorld {
+        buffer 32.0
+        chunk_size 64.0
+        debug_view "Strain"
+        gas_drag 0.1
+        gravity y=10.0
+        kernel 0.75
+        mpm_cell_size 2.0
+        mpm_max_substeps 32
+        particle_limit 131072
+        solver "Mpm"
+    }
+}

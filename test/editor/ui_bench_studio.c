@@ -1,5 +1,5 @@
 /* The Studio cases of the S0 UI bench (ui_bench.h), native in a hidden
- * window: today's Studio document over the Sandbox at 1440x900, its
+ * window: Studio's documents over the Sandbox at 1440x900, its
  * Properties showing the Player against the authored spike, and whether a
  * popover escapes an area's clipping. */
 #include "editor/studio/studio_internal.h"

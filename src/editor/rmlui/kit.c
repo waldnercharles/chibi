@@ -1112,8 +1112,16 @@ static void add_document(kit *k, rml_element *document)
     }
 }
 
+static void stop_listening(kit *k, rml_element *document)
+{
+    for (size_t e = 0; e < KIT_EVENT_COUNT; e++) {
+        rml_element_remove_event_listener(document, kit_events[e], k->listener, true);
+    }
+}
+
 /* Hosted content holds its owner's listeners, which may be gone by the time
- * the context releases a closed document, so the content goes first. */
+ * the context releases a closed document, so the content goes first. Closing
+ * moves the pointer's hover, whose events the kit's other documents hear. */
 static void remove_document(kit *k, rml_element *document)
 {
     int i = document_index(k, document);
@@ -1124,9 +1132,6 @@ static void remove_document(kit *k, rml_element *document)
         (size_t)(acount(k->documents) - 1 - i) * sizeof *k->documents
     );
     asetlen(k->documents, acount(k->documents) - 1);
-    for (size_t e = 0; e < KIT_EVENT_COUNT; e++) {
-        rml_element_remove_event_listener(document, kit_events[e], k->listener, true);
-    }
     rml_element_set_inner_rml(document, "");
     rml_document_close(document);
 }
@@ -1172,10 +1177,12 @@ static void open_node_document(kit *k, node *n, bool fit)
     iframe_attach(n->container, n->el, fit);
 }
 
+/* Its nodes are gone, so the hover events closing sends reach none. */
 static void close_document(kit *k, node *n)
 {
     iframe_detach(n->container);
     release_exiting_within(k, n->container);
+    stop_listening(k, n->container);
     remove_document(k, n->container);
     n->container = n->el;
     n->document = false;
@@ -1277,6 +1284,10 @@ void kit_destroy(kit *k)
 {
     if (!k) {
         return;
+    }
+    /* The kit hears nothing while its nodes outlive their elements. */
+    for (int i = 0; i < acount(k->documents); i++) {
+        stop_listening(k, k->documents[i]);
     }
     /* Those kit_document_begin opened, shown in elements, then the layer
        and the kit's own. */

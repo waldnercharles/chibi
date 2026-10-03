@@ -577,11 +577,16 @@ static void widget_checks()
     char name[32] = "", glyph[8] = "";
     shown_text(tile, ".name", name, sizeof name);
     shown_text(tile, ".glyph", glyph, sizeof glyph);
+    /* The picture is a decorator, none until there is one. */
     rml_element *picture = tile ? rml_element_query_selector(tile, ".picture") : NULL;
+    char decorator[64] = "";
+    if (picture) {
+        rml_element_property(picture, "decorator", decorator, sizeof decorator);
+    }
     test_check(
         tile && !strcmp(name, "Bank") && !strcmp(glyph, "U") &&
             rml_element_query_selector(tile, ".tile:not([data-ready])") &&
-            (!picture || !rml_element_is_visible(picture, true)),
+            (!decorator[0] || !strcmp(decorator, "none")),
         "a Tile without its picture shows its kind's icon as a skeleton"
     );
     rml_document_close(doc);

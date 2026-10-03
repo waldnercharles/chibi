@@ -296,6 +296,13 @@ body.comfortable .canvas-action { height: var(--studio-height-24, 24dp); }
 .designer-drop[data-drop-over] { background-color: transparent; }
 /* Workstream Q: where a Canvas drop lands between siblings. */
 .designer-drop-line { position: absolute; pointer-events: none; background-color: var(--primary); border-radius: 1dp; }
+/* The selection's resize handles (Unity UI Builder's): its right and bottom
+   edges and corner. */
+.designer-handle { position: absolute; pointer-events: auto; background-color: var(--primary-foreground); border: 1dp var(--primary); border-radius: 2dp; }
+.designer-handle:hover, .designer-handle[data-active] { background-color: var(--primary); }
+.designer-handle.e { cursor: ew-resize; }
+.designer-handle.s { cursor: ns-resize; }
+.designer-handle.se { cursor: nwse-resize; }
 /* Details. */
 .designer-details .prop .remove { flex: 0 0 auto; opacity: 0; transition: opacity 0.11s cubic-out; }
 .designer-details .prop:hover .remove { opacity: 1; }

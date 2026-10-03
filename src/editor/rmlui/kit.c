@@ -1366,6 +1366,11 @@ bool kit_item_clicked(kit *k)
     return k->last && (k->last->events & EV_CLICK);
 }
 
+bool kit_item_pressed(kit *k)
+{
+    return k->last && (k->last->events & EV_PRESS);
+}
+
 bool kit_item_context_clicked(kit *k)
 {
     return k->last && (k->last->events & EV_CONTEXT);

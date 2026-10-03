@@ -2047,6 +2047,8 @@ void studio_designer_frame(studio *s);
  * picks the selected row up to move with the arrows, as dnd-kit's keyboard
  * sensor does (workstream Q). True when one was taken. */
 bool studio_designer_key(studio *s, studio_editor editor, SDL_Keycode key, SDL_Keymod mod);
+/* A Canvas resize handle is held: it owns the keys, and Escape cancels. */
+bool studio_designer_resizing(const studio *s);
 void studio_designer_free(studio *s);
 /* The element of `rml`, the markup of ui asset `asset`, that the shown
  * `element` of `context`, or its nearest ancestor the asset wrote, was

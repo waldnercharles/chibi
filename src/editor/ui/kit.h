@@ -143,6 +143,7 @@ extern "C"
 
     /* Last-item queries, valid until the next emitted item. */
     bool kit_item_clicked(kit *k);
+    bool kit_item_pressed(kit *k); /* the primary button went down on it */
     bool kit_item_context_clicked(kit *k); /* right press; open a context menu */
     bool kit_item_active(kit *k);          /* scrubbing, editing or held */
     bool kit_item_committed(kit *k); /* a gesture or edit finished this frame */

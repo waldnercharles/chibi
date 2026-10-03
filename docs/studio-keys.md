@@ -150,6 +150,7 @@ The Outliner and Scene while a UI document is open (`studio_designer.c`).
 | Space, Enter | Pick up the element; then Up and Down move it, Space, Enter or Tab drops it, Escape cancels |
 | Shift+D, Mod+D | Duplicate |
 | X, Backspace, Delete | Delete |
+| Drag a handle | Resize the selection from its right edge, bottom edge or corner; Shift keeps the aspect at the corner, Escape cancels (Canvas) |
 
 ## Debugger
 

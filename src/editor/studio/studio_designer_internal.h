@@ -12,6 +12,35 @@
  * markup). */
 #define DESIGNER_DRAG "ui"
 
+/* The edges a Canvas resize handle moves. */
+enum
+{
+    DESIGNER_RESIZE_WIDTH = 1u << 0,
+    DESIGNER_RESIZE_HEIGHT = 1u << 1,
+};
+
+/* An element's border box, width then height, and the padding and border
+ * inside it, in document dp; and whether its width and height size that
+ * box (box-sizing: border-box) rather than its content. */
+typedef struct designer_box
+{
+    float size[2], extra[2];
+    bool border_box;
+} designer_box;
+
+/* The width and height, in whole dp, a resize sets after the pointer moved
+ * (dx, dy) document dp: the moved axes grow by it, never under the padding
+ * and border; with `aspect` and both axes, the one moved further leads and
+ * the other keeps the ratio. */
+void designer_resize_css(
+    const designer_box *box,
+    unsigned axes,
+    float dx,
+    float dy,
+    bool aspect,
+    float css[2]
+);
+
 struct studio_designer
 {
     char path[1024];       /* the UI document the rest describes */
@@ -40,6 +69,23 @@ struct studio_designer
         int toast;         /* offers Undo while the delete is the latest edit */
         unsigned revision; /* the buffer's right after it */
     } undo;
+    /* A Canvas resize (Unity UI Builder's handles): the element, the edges
+       its handle moves, where the press was, its border box then and the
+       padding and border inside it in document dp, the buffer's revision,
+       and the inline width and height it had ("" for none), which Escape
+       puts back. Only the Canvas shows the new size until release writes it. */
+    struct
+    {
+        bool active;
+        int element;
+        unsigned axes; /* DESIGNER_RESIZE_WIDTH | DESIGNER_RESIZE_HEIGHT */
+        float x0, y0;
+        designer_box box;
+        bool moved;
+        unsigned revision;
+        char before[2][64];
+        float css[2]; /* the width and height a release writes */
+    } resize;
     struct
     {
         bool focus; /* focus the field on its first frame */

@@ -303,6 +303,17 @@ static void styles(const char *folder)
                     ui_design_set_style(b, ROOT, "width", "125dp", true, error, sizeof error) &&
                     ui_design_set_style(b, ROOT, "width", "130dp", true, error, sizeof error);
     test_check(scrubbed && markup_step(b, styled), "Details: a scrubbed inline style value is one undo step");
+    const char *sized = "<div id=\"root\" class=\"panel\" style=\"width: "
+                        "150dp; height: 40dp;\">\n"
+                        "  <span class=\"title\">Title</span>\n"
+                        "  <div class=\"row\">\n"
+                        "    <button id=\"ok\">OK</button>\n"
+                        "    <button id=\"cancel\">Cancel</button>\n"
+                        "  </div>\n"
+                        "</div>\n";
+    const ui_design_style size[] = { { "width", "150dp" }, { "height", "40dp" } };
+    bool resized = ui_design_set_styles(b, ROOT, size, 2, error, sizeof error);
+    test_check(resized && markup_step(b, sized), "Canvas: a resize writes width and height as one undo step");
     const char *rule = ".panel { display: block; width: 240dp; }\n"
                        ".row button { color: #ff0000; }\n";
     bool picked = ui_design_set_declaration(b, 0, 1, "220dp", false, error, sizeof error) &&
@@ -315,6 +326,28 @@ static void styles(const char *folder)
         "Details: a value that would end its declaration is refused"
     );
     ui_buffer_free(b);
+}
+
+/* A resize handle grows the moved axes by the pointer's travel in document
+   dp, in whole dp, never under the padding and border; content-box sizes
+   leave them out; Shift at the corner keeps the aspect, the axis moved
+   further leading. */
+static void resize_math()
+{
+    const unsigned both = DESIGNER_RESIZE_WIDTH | DESIGNER_RESIZE_HEIGHT;
+    designer_box content = { { 100, 50 }, { 20, 10 }, false };
+    designer_box border = { { 100, 50 }, { 20, 10 }, true };
+    float a[2], b[2], c[2], d[2];
+    designer_resize_css(&content, DESIGNER_RESIZE_WIDTH, 30.4f, 99, false, a);
+    designer_resize_css(&content, both, 20, 2, true, b);
+    designer_resize_css(&content, DESIGNER_RESIZE_WIDTH, -500, 0, false, c);
+    designer_resize_css(&border, DESIGNER_RESIZE_HEIGHT, 0, -100, false, d);
+    test_check(
+        a[0] == 110 && a[1] == 40 && b[0] == 100 && b[1] == 50 && c[0] == 0 &&
+            d[0] == 100 && d[1] == 10,
+        "Canvas: resize sizes follow the handle, box sizing, the minimum and "
+        "the aspect"
+    );
 }
 
 /* Insertions indent as the markup around them does, four spaces here. */
@@ -661,6 +694,7 @@ void test_ui_designer()
     structure(folder);
     attributes(folder);
     styles(folder);
+    resize_math();
     keeps_indentation(folder);
     declarations(folder);
     extraction(folder);

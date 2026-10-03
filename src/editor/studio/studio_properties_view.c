@@ -72,33 +72,22 @@ static yyjson_mut_val *member(yyjson_mut_val *obj, const char *key)
 
 static void put_text(view *v, yyjson_mut_val *obj, const char *key, const char *text)
 {
-    yyjson_mut_val *m = member(obj, key);
-    if (strcmp(yyjson_mut_get_str(m), text)) {
-        ui_data_set_text(v->doc, m, text);
-        v->changed = true;
-    }
+    v->changed |= ui_data_put_text(v->doc, obj, key, text);
 }
 
 static void put_flag(view *v, yyjson_mut_val *obj, const char *key, bool on)
 {
-    yyjson_mut_val *m = member(obj, key);
-    if (yyjson_mut_get_bool(m) != on) {
-        yyjson_mut_set_bool(m, on);
-        v->changed = true;
-    }
+    v->changed |= ui_data_put_bool(obj, key, on);
 }
 
-static void put_int(view *v, yyjson_mut_val *obj, const char *key, int64_t n)
+static void put_int(view *v, yyjson_mut_val *obj, const char *key, int n)
 {
-    yyjson_mut_val *m = member(obj, key);
-    if (yyjson_mut_get_sint(m) != n) {
-        yyjson_mut_set_sint(m, n);
-        v->changed = true;
-    }
+    v->changed |= ui_data_put_int(obj, key, n);
 }
 
-/* Text in the member's own room. */
-/* Rewrites the room `m` owns with `text`; true when it differed. */
+/* Rewrites the room `m` owns with `text`; true when it differed. Numbers
+   are text, not ui_data_put_number's doubles, which RmlUi writes into an
+   attribute to three decimals. */
 static bool set_room(yyjson_mut_val *m, const char *text)
 {
     char *room = (char *)yyjson_mut_get_str(m);

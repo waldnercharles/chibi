@@ -130,19 +130,23 @@ static void menu_frame(studio *s)
     cf_app_draw_onto_screen(true);
 }
 
-static rml_element *menu_element(studio *s, const char *selector, const char *key)
+/* The element `selector` matches whose .label reads `label`: an authored
+   menu's trigger or item. */
+static rml_element *labeled(studio *s, const char *selector, const char *label)
 {
     rml_context *context = rml_backend_context(s->backend);
     for (int d = 0; d < rml_context_document_count(context); d++) {
-        rml_element *items[32];
-        int count = rml_element_query_selector_all(rml_context_document(context, d), selector, items, 32);
-        for (int i = 0; i < count && i < 32; i++) {
-            char path[256];
-            if (kit_element_path(s->kit, items[i], path, sizeof path)) {
-                const char *last = strrchr(path, '/');
-                if (last && !strcmp(last + 1, key)) {
-                    return items[i];
-                }
+        rml_element *items[64];
+        int count = rml_element_query_selector_all(rml_context_document(context, d), selector, items, 64);
+        for (int i = 0; i < count && i < 64; i++) {
+            rml_element *text = rml_element_query_selector(items[i], ".label");
+            rml_element *node = text ? rml_element_first_child(text) : NULL;
+            char found[64] = "";
+            if (node && !strcmp(rml_element_tag_name(node), "#text")) {
+                rml_element_text(node, found, sizeof found);
+            }
+            if (!strcmp(found, label)) {
+                return items[i];
             }
         }
     }
@@ -361,8 +365,8 @@ void test_studio_menu_context(studio *s)
     assert(area >= 0);
     s->focus_area = area;
     behavior_asset *before = ed_snapshot(e);
-    bool opened = menu_click(s, menu_element(s, "#menubar .trigger", "edit"));
-    rml_element *undo = menu_element(s, ".popup.menu .menu-item", "undo");
+    bool opened = menu_click(s, labeled(s, "menubar .trigger", "Edit"));
+    rml_element *undo = labeled(s, "#menu-edit .menu-item", "Undo");
     bool enabled = opened && undo &&
                    !rml_element_has_attribute(undo, "data-disabled") &&
                    s->focus_area == area &&
@@ -371,8 +375,8 @@ void test_studio_menu_context(studio *s)
     behavior_asset *undone = ed_snapshot(e);
     bool changed = undo_clicked && !behavior_asset_equal(before, undone) &&
                    editor_can_redo(e);
-    opened = menu_click(s, menu_element(s, "#menubar .trigger", "edit"));
-    rml_element *redo = menu_element(s, ".popup.menu .menu-item", "redo");
+    opened = menu_click(s, labeled(s, "menubar .trigger", "Edit"));
+    rml_element *redo = labeled(s, "#menu-edit .menu-item", "Redo");
     bool redo_enabled = opened && redo &&
                         !rml_element_has_attribute(redo, "data-disabled") &&
                         s->focus_area == area &&

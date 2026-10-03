@@ -848,7 +848,9 @@ static void invoke(rml_element *invoker)
     }
     int open = find(target);
     if (is_item(invoker)) {
-        open_submenu(invoker, key_input);
+        if (enabled(invoker)) {
+            open_submenu(invoker, key_input);
+        }
         return;
     }
     if (open >= 0) {

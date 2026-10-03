@@ -903,8 +903,12 @@ static const char BASE_RCSS[] =
     "scrollbarhorizontal sliderbar:hover { "
     "background-color: var(--scrollbar-hover, #aaa); }\n"
     "scrollbarcorner { background-color: transparent; }\n"
-    "[data-event-click], input, select, textarea { "
-    "pointer-events: auto; }\n";
+    "[data-event-click], input, select, textarea, [popovertarget], [popover] { "
+    "pointer-events: auto; }\n"
+    /* ui/popover.c: a closed popover lays out and draws nothing, and a shown
+       one waits unseen until it is placed. */
+    "[popover]:not([data-open]) { display: none; }\n"
+    "[popover][data-unplaced] { visibility: hidden; }\n";
 
 /* One GameUi entity's mount, or the host's overlay. */
 typedef struct ui_view

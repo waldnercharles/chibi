@@ -124,36 +124,26 @@ body:not(.dark) .viewport {
 .behavior-empty .title { color: var(--foreground); font-weight: 600; }
 .behavior-choices { display: flex; flex-wrap: wrap; justify-content: center; gap: 6dp; max-width: 480dp; margin-top: 4dp; }
 
-/* Output. */
-/* View labels carry counts, so segments fit their labels. */
-.output-views, .output-scope { display: flex; flex: 0 0 auto; }
-.output-views .segmented, .output-scope .segmented { flex: 0 0 auto; }
-.output-views .seg, .output-scope .seg { flex: 0 0 auto; }
-.output-scope { margin-left: 6dp; }
-.output-filter { width: 160dp; display: flex; }
-.output-list { position: absolute; left: 0dp; top: 0dp; right: 0dp; bottom: 0dp; padding: 2dp 0dp 6dp; font-family: var(--font-numeric); }
-.output-list .vlist-content > .output-line, .output-row { display: block; height: var(--studio-height-20, 20dp); line-height: var(--studio-line-20, 20dp); padding: 0dp 10dp; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-body.comfortable .output-list .vlist-content > .output-line, body.comfortable .output-row { height: var(--studio-height-24, 24dp); line-height: var(--studio-line-24, 24dp); }
+/* Output's rows (Output.rml): a log line, or a row with its kind's icon,
+   where it happened, the message and a repeat count. Density sets their
+   height, which the lines' List takes as its --row. */
+.output-list { font-family: var(--font-numeric); }
+.output-list.lines { --row: var(--studio-height-20, 20dp); }
+body.comfortable .output-list.lines { --row: var(--studio-height-24, 24dp); }
+.output-row, .output-log { display: block; height: var(--studio-height-20, 20dp); line-height: var(--studio-line-20, 20dp); padding: 0dp 10dp; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .output-row { display: flex; align-items: center; gap: 6dp; }
+body.comfortable .output-row, body.comfortable .output-log { height: var(--studio-height-24, 24dp); line-height: var(--studio-line-24, 24dp); }
 .output-row .kind { font-size: var(--studio-font-12, 12dp); width: 14dp; flex: 0 0 auto; }
 .output-row .output-line { display: block; flex: 1 1 0dp; padding: 0dp; overflow: hidden; text-overflow: ellipsis; }
 .output-row[data-kind=error] .kind { color: var(--destructive); }
 .output-row[data-kind=warning] .kind { color: var(--warning); }
 .output-row[data-kind=success] .kind { color: var(--success); }
 .output-row[data-kind=info] .kind { color: var(--faint-foreground); }
-.output-list .vlist-content > .output-line:hover, .output-row:hover { background-color: var(--accent); }
+.output-row:hover, .output-log:hover { background-color: var(--accent); }
 /* Rows at a node open it: where, muted, then the message and a repeat count. */
 .output-row.located { cursor: pointer; }
 .output-row .output-at { display: block; flex: 0 0 auto; color: var(--faint-foreground); white-space: nowrap; }
 .output-row .output-count { flex: 0 0 auto; font-family: var(--font-numeric); }
-.output-empty { position: absolute; left: 0dp; right: 0dp; top: 45%; text-align: center; color: var(--faint-foreground); pointer-events: none; }
-
-/* Output's Find view (studio_find.c): what the references are to, then a row per use. */
-.find-head { position: absolute; left: 0dp; top: 0dp; right: 0dp; height: var(--studio-height-24, 24dp); display: flex; align-items: center; gap: 6dp; padding: 0dp 10dp; border-bottom: 1dp var(--line); }
-.find-head .icon { color: var(--faint-foreground); font-size: 12dp; width: 14dp; }
-.find-title { display: block; line-height: var(--studio-line-16, 16dp); color: var(--foreground); font-weight: 600; white-space: nowrap; }
-.find-count { display: block; line-height: var(--studio-line-16, 16dp); color: var(--faint-foreground); font-family: var(--font-numeric); }
-.output-list.find-list { top: 24dp; padding: 2dp 4dp 6dp; }
 
 /* Find in the graph (studio_graph_find.c) and in the Text Editor
    (studio_code.c): floats over the canvas's or the text's top right, as VS

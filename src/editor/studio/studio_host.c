@@ -950,6 +950,7 @@ static studio *create(
     s->view.zoom = 1;
     s->view.x = s->view.y = 0.5f;
     s->graph.area = -1;
+    s->output.shown = s->calls.selected = -1;
     s->in.mouse_x = s->in.mouse_y = -1e9f;
     return s;
 }
@@ -1046,6 +1047,7 @@ void studio_free(studio *s)
     afree(s->project_problems);
     afree(s->references);
     afree(s->calls.rows);
+    afree(s->output.slots);
     afree(s->members.uses.items);
     afree(s->perf);
     afree(s->perf_published);

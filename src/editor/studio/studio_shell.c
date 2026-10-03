@@ -1589,6 +1589,18 @@ static void statusbar(studio *s)
 
 /* ---------- Frame ---------- */
 
+/* Whether the pointer is over the kit's overlay layer or an open authored
+   popover, such as a menubar menu reaching over an area. */
+static bool over_overlay(studio *s)
+{
+    const char *path = kit_hovered_path(s->kit);
+    rml_element *el = rml_context_hover_element(rml_backend_context(s->backend));
+    while (el && !rml_element_has_attribute(el, "popover")) {
+        el = rml_element_parent(el);
+    }
+    return el || (path && !strncmp(path, "layer/", 6));
+}
+
 static void track_pointer(studio *s)
 {
     s->hover_area = -1;
@@ -1602,9 +1614,7 @@ static void track_pointer(studio *s)
     if (s->in.pressed[0] || s->in.pressed[1] || s->in.pressed[2]) {
         /* Shell controls act on the last editor. A popup can overlap another
            pane geometrically without transferring its command context. */
-        const char *path = kit_hovered_path(s->kit);
-        bool overlay = path && !strncmp(path, "layer/", 6);
-        if (s->hover_area >= 0 && !overlay && !kit_command_is_open(s->kit)) {
+        if (s->hover_area >= 0 && !over_overlay(s) && !kit_command_is_open(s->kit)) {
             s->focus_area = s->hover_area;
         }
     }

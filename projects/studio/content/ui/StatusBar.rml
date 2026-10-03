@@ -13,5 +13,15 @@
     <span class="count speed strong" data-if="editor.speed != ''" data-attr-data-tip="commands.normalSpeed.label" data-attr-data-kbd="commands.normalSpeed.shortcut" data-event-click="emit('studio.normalSpeed')">{{ editor.speed }}</span>
     <span class="count hidden-objects" data-if="editor.hidden > 0" data-attr-data-tip="commands.showAll.label" data-attr-data-kbd="commands.showAll.shortcut" data-event-click="emit('studio.showAll')"><number-flow data-attr-value="editor.hidden"/> hidden</span>
   </div>
-  <div id="ui-scale"/>
+  <div id="ui-scale">
+    <button class="btn sm ui-scale" popovertarget="scale-menu" aria-haspopup="menu" data-tip="UI Scale"><span class="label">{{ shell.scale.label }}</span></button>
+    <use ui="Menu" id="scale-menu">
+      <use ui="MenuGroup">UI Scale</use>
+      <use ui="MenuCommand" data-alias-command="commands.zoomIn"/>
+      <use ui="MenuCommand" data-alias-command="commands.zoomOut"/>
+      <use ui="MenuCommand" data-alias-command="commands.zoomReset"/>
+      <use ui="MenuSeparator"/>
+      <use ui="MenuItem" data-for="preset, i : shell.scale.presets" data-alias-item="preset" data-event-click="emit('shell.scale', i)"/>
+    </use>
+  </div>
 </div>

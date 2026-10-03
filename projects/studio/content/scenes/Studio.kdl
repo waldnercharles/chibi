@@ -12,6 +12,7 @@ name "Studio"
     - name="Inspector" prototype="Inspector"
     - name="StatusBar" prototype="StatusBar"
     - name="TopBar" prototype="TopBar"
+    - name="Workspace" prototype="Workspace"
     - {
         name "Collaboration"
         prototype "Collaboration"

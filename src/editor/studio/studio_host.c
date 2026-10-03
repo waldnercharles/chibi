@@ -1183,7 +1183,7 @@ static bool host_ui_due(studio *s, bool input, bool authored)
                s->in.width != s->ui_schedule.width ||
                s->in.height != s->ui_schedule.height ||
                s->in.dp_ratio != s->ui_schedule.ratio ||
-               !studio_prefs_equal(&s->prefs, &s->applied);
+               !studio_prefs_equal(&s->prefs, &s->applied) || studio_areas_moved(s);
     s->ui_schedule.state = state;
     if (due) {
         s->ui_schedule.wake = false;

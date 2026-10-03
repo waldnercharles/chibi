@@ -869,12 +869,10 @@ struct studio
     bool mac; /* macOS conventions: Command shortcuts and ⌘ notation */
     bool light;
     int theme_switching; /* frames left with transitions suspended */
-    bool drawer_dragging;
-    bool side_dragging;
     SDL_Cursor *cursors[SDL_SYSTEM_CURSOR_COUNT];
     int cursor_shown; /* SDL_SystemCursor applied, -1 before the first frame */
-    kit_rect main_rect;
-    kit_rect side_rect;
+    kit_rect main_rect; /* the Workspace's main column, as last laid out */
+    kit_rect side_rect; /* its side column */
     studio_tab tab;
     uint64_t shown_node; /* graph node the Properties tabs last followed */
     int shown_actor;     /* scene selection the Properties tabs last followed */
@@ -1286,10 +1284,6 @@ bool studio_project_current(const studio *s, int index);
 /* Opens projects[index] after the frame, once unsaved changes are discarded. */
 void studio_open_project(studio *s, int index);
 void studio_projects_frame(studio *s);
-/* File > Open Project. */
-void studio_projects_menu(studio *s);
-/* File > New > Project. */
-void studio_new_project_menu(studio *s);
 void studio_new_project_frame(studio *s);
 void studio_new_project_open(studio *s);
 void studio_new_project_action(studio *s, const char *action);
@@ -1535,10 +1529,6 @@ void studio_node_place(const studio *s, const studio_node_ref *at, char *out, si
 studio_node_ref studio_problem_at(const studio *s, const compile_diagnostic *d);
 /* Continues the paused run; false while none is paused. */
 bool studio_debug(studio *s, studio_debug_command command);
-/* Step Over, Into and Out in the transport while a run is paused. */
-void studio_debug_steps(studio *s);
-/* Resume and the steps as menu items, enabled while a run is paused. */
-void studio_debug_menu(studio *s);
 /* The paused run's call stack over the Behavior area. */
 void studio_debug_call_stack(studio *s);
 /* Break when spawned for the prototype, turned on or off with a report. */
@@ -1552,10 +1542,11 @@ void studio_spawn_break_item(studio *s, const char *prototype);
 void studio_speed_step(studio *s, int direction);
 /* "0.25×", or "" at normal speed. */
 void studio_speed_text(const studio *s, char *buf, size_t size);
-/* Playback Speed's group of Slower, Faster and Normal Speed in a menu. */
-void studio_speed_menu(studio *s);
-/* The speed beside the transport, with its presets; native in the top bar. */
-void studio_speed_control(studio *s);
+/* "0.25×" for 0.25. */
+void studio_speed_label(double speed, char *buf, size_t size);
+/* The speeds the top bar's Playback Speed menu offers, slowest first. */
+extern const double studio_speeds[];
+extern const int studio_speed_count;
 
 /* Commands (studio_commands.c): one table the menus, the command palette,
  * shortcuts and authored UI share, as VS Code's command registry. Authored
@@ -2456,5 +2447,35 @@ void studio_output_action(studio *s, const char *action, const ui_activation *a)
  * count) or `items` (TreeRow's, with offset, key and shown). */
 void studio_output_rows_add(yyjson_mut_doc *doc);
 bool studio_output_rows_sync(studio *s, const studio_panel_sync *at);
+
+/* The shell's sources (studio_shell.c, workstream C3). `menubar`: the lists
+ * the top bar's menus fill: items (the rows and submenus they name without
+ * a command), projects and prototypes (MenuItem rows) and web (Import and
+ * Export Project). Actions: newProject, openProject (an index), add (a
+ * prototype's name), importProject and exportProject. */
+void studio_menubar_add(yyjson_mut_doc *doc);
+bool studio_menubar_sync(studio *s, const studio_panel_sync *at);
+void studio_menubar_action(studio *s, const char *action, const ui_activation *a);
+/* `shell`: the play target (label, icon, and its menu's scene and preview
+ * items), the playback speed (label, on, presets) and UI Scale (label,
+ * presets). Actions: target ('scene' or 'preview'), speed and scale (a
+ * preset's index). */
+void studio_shell_add(yyjson_mut_doc *doc);
+bool studio_shell_sync(studio *s, const studio_panel_sync *at);
+void studio_shell_action(studio *s, const char *action, const ui_activation *a);
+/* `workspace`: what Workspace.rml lays out: max (the maximized area's key,
+ * or ''), across, drawerOpen, sideOpen, and in dp the top area's and the
+ * Outliner's extents, the drawer's and the side column's, and their
+ * splitters' bounds. Action: resize (a splitter and its value). */
+void studio_workspace_add(yyjson_mut_doc *doc);
+bool studio_workspace_sync(studio *s, const studio_panel_sync *at);
+void studio_workspace_action(studio *s, const char *action, const ui_activation *a);
+/* Whether an area's box moved since Studio last emitted it, as while the
+ * drawer or the side column eases: the next emission follows it. */
+bool studio_areas_moved(studio *s);
+/* Syncs source `name` now, so what an action changed shows in this frame
+ * rather than the next. */
+void studio_ui_resync(studio *s, const char *name);
+void studio_sources_resync(studio *s, studio_sources *src, ui_data *data, const char *name);
 
 #endif

@@ -349,6 +349,11 @@ void studio_ui_frame(studio *s)
     studio_prefs_share(&s->prefs, settings(s->ui), &s->ui->prefs_seen);
 }
 
+void studio_ui_resync(studio *s, const char *name)
+{
+    studio_sources_resync(s, &s->ui->sources, &s->ui->data, name);
+}
+
 static panel *find_panel(studio_ui *ui, const char *name)
 {
     for (int i = 0; i < acount(ui->panels); i++) {

@@ -127,10 +127,6 @@ extern "C"
      * with a spring (FLIP). Reduced motion makes both immediate. */
     void kit_presence(kit *k);
     void kit_layout(kit *k);
-    /* Motion's useSpring: a value that eases toward target over `duration`
-     * seconds without bounce and keeps its velocity when the target moves.
-     * Keyed under the current parent; reduced motion returns the target. */
-    float kit_spring(kit *k, const char *key, float target, float duration);
 
     /* NumberFlow: digits spin to each new value with the trend of the change
      * and keep their place value. For discrete changes (counts, zoom steps); a
@@ -334,11 +330,6 @@ extern "C"
     bool kit_submenu_begin(kit *k, const char *key, const char *label, uint32_t icon);
     void kit_submenu_end(kit *k);
 
-    /* A menubar trigger opens its popup on press; hovering another trigger
-     * while one is open switches (Base UI Menubar). While open it begins the
-     * popup and returns true: emit items, then kit_popup_end. */
-    bool kit_menubar_trigger(kit *k, const char *key, const char *label);
-
     /* Command palette (cmdk). Emit items while open; returns the chosen index
      * or -1. A description shows as a muted second line under the label.
      * Items rank by text_search_score on their label, then their keywords,
@@ -415,10 +406,6 @@ extern "C"
         int count,
         unsigned flags
     );
-
-    /* The native <splitter>: drag along axis 0 (x) or 1 (y). Returns true
-     * while value changes. */
-    bool kit_splitter(kit *k, const char *key, int axis, float *value, float minimum, float maximum, bool invert);
 
     /* A surface shows a host texture ("kit:<name>") and receives raw pointer
      * input. Its returned element lasts while this key is emitted. */

@@ -57,9 +57,6 @@ bool color_field_take(rml_element *field, uint32_t *rgba, bool *committed);
 /* Its picker is open. */
 bool color_field_open(const rml_element *field);
 
-bool splitter_take(rml_element *splitter, double *value, bool *committed);
-bool splitter_active(const rml_element *splitter);
-
 /* One line of text in `label` that changes without laying out its
  * document. The first text, a change of size or style, and text wider than
  * the label (which then ellipsizes) lay out as usual. line_text_set sizes the

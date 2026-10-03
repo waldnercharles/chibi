@@ -156,11 +156,11 @@ static void prototype_properties_follow_document()
     frames(&f, 3);
     kit_rect rect;
     bool object = s->tab == STUDIO_TAB_OBJECT &&
-                  !kit_find(s->kit, "app/workspace/main/properties/body/properties/tabs/tab0", &rect);
+                  !kit_find(s->kit, "app/workspace/properties/area/body/properties/tabs/tab0", &rect);
     s->tab = STUDIO_TAB_GAMEPLAY;
     frames(&f, 2);
     bool retained = s->tab == STUDIO_TAB_GAMEPLAY &&
-                    kit_find(s->kit, "app/workspace/main/properties/body/properties/tabs/tab4", &rect);
+                    kit_find(s->kit, "app/workspace/properties/area/body/properties/tabs/tab4", &rect);
     test_check(object, "opening a prototype leaves the unrelated Scene tab and selects Object");
     test_check(retained, "Properties keeps a valid component tab selected for the active prototype");
     fixture_free(&f);
@@ -176,7 +176,7 @@ static void prototype_components()
     s->maximized = s->focus_area = STUDIO_AREA_PROPERTIES;
     assert(app_scene_authoring_open_prototype(f.scene, "Vault") == 0);
     frames(&f, 3);
-    const char *scroll = "app/workspace/main/properties/body/properties/scroll";
+    const char *scroll = "app/workspace/properties/area/body/properties/scroll";
     char path[256];
     snprintf(path, sizeof path, "%s/add/component", scroll);
     rml_element *add_button = studio_element(s, ".prop-scroll .add-row .btn");

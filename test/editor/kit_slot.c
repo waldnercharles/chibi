@@ -243,10 +243,6 @@ static void status_frame(slot_fixture *f)
     kit_root(k, "app");
     host(f, "status");
     kit_release_focus(k, f->host);
-    if (kit_slot_begin(k, "scale", f->host, "#ui-scale")) {
-        kit_button(k, "scale", &(kit_button_desc){ .label = "100%", .size = KIT_SM, .cls = "ui-scale" });
-        kit_slot_end(k);
-    }
     end_frame(f);
 }
 
@@ -310,6 +306,8 @@ static yyjson_mut_doc *chrome_doc(studio_command_state *commands)
     yyjson_mut_doc_set_root(doc, yyjson_mut_obj(doc));
     studio_status_add(doc);
     studio_commands_add(doc);
+    studio_menubar_add(doc);
+    studio_shell_add(doc);
     for (int c = 0; c < STUDIO_COMMAND_COUNT; c++) {
         const char *id = studio_command_id((studio_command)c);
         commands[c] = (studio_command_state){
@@ -369,7 +367,7 @@ static void status_checks()
             count(&f, "#ui-scale .ui-scale") == 1 &&
             rml_element_box_size(bar, RML_BOX_BORDER).y == 28,
         "the authored status bar shows the editor and commands variables, "
-        "with UI Scale in its native slot"
+        "and UI Scale's menu"
     );
 
     click(&f, toggles[1]);
@@ -409,18 +407,6 @@ static void topbar_frame(slot_fixture *f)
     kit_root(k, "app");
     host(f, "topbar");
     kit_release_focus(k, f->host);
-    if (kit_slot_begin(k, "menus", f->host, "#menubar")) {
-        assert(!kit_menubar_trigger(k, "file", "File"));
-        kit_slot_end(k);
-    }
-    if (kit_slot_begin(k, "target", f->host, "#play-target")) {
-        kit_button(
-            k,
-            "target",
-            &(kit_button_desc){ .label = "Scene", .variant = KIT_SUBTLE, .cls = "target" }
-        );
-        kit_slot_end(k);
-    }
     end_frame(f);
 }
 
@@ -447,8 +433,8 @@ static const studio_tab_view TABS[] = {
 };
 
 /* The top bar lists `editor.tabs` with their state, runs a tab's commands
-   with its index, reads its transport from `commands`, and hosts the
-   menubar and the play target natively. */
+   with its index, reads its transport from `commands`, and shows the
+   menubar, the play target and a paused run's steps. */
 static void topbar_checks()
 {
     studio_command_state commands[STUDIO_COMMAND_COUNT];
@@ -473,7 +459,6 @@ static void topbar_checks()
     assert(tab_count == 4 && button_count == 3);
     char tip[64] = "";
     rml_element_attribute(rml_element_query_selector(tabs[0], ".face"), "data-tip", tip, sizeof tip);
-    kit_rect rect;
     test_check(
         !ui_mount_error(f.mount)[0] && count(&f, ".doc-tab") == 3 &&
             state_is(tabs[1], "on") && state_is(tabs[0], "off") &&
@@ -484,10 +469,10 @@ static void topbar_checks()
             state_is(buttons[0], "on") &&
             rml_element_has_attribute(buttons[1], "data-disabled") &&
             !rml_element_has_attribute(buttons[0], "data-disabled") &&
-            kit_find(f.k, "app/topbar/menus/file", &rect) &&
-            kit_find(f.k, "app/topbar/target/target", &rect),
+            count(&f, "menubar > .trigger") == 6 &&
+            count(&f, "#play-target .target") == 1,
         "the authored top bar shows editor.tabs and the transport's commands, "
-        "with the menubar and the play target in its native slots"
+        "with the menubar's six menus and the play target"
     );
 
     click(&f, rml_element_query_selector(tabs[0], ".face"));
@@ -509,7 +494,7 @@ static void topbar_checks()
     rml_element_query_selector_all(f.host, ".group > .btn", buttons, 4);
     test_check(
         count(&f, ".doc-tab") == 1 && count(&f, ".group > .btn") == 2 &&
-            state_is(buttons[0], "off"),
+            count(&f, "#debug-steps > .btn") == 3 && state_is(buttons[0], "off"),
         "the top bar follows editor.tabs, and a paused run leaves the step "
         "to the debugger's steps"
     );

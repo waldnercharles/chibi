@@ -366,13 +366,10 @@ void studio_spawn_break_item(studio *s, const char *prototype)
 
 /* Unity's Time.timeScale and Unreal's slomo as steps, as Chrome DevTools
    offers its animations' speeds. */
-static const double SPEEDS[] = { STUDIO_SPEED_MIN, 0.25, 0.5, 1, STUDIO_SPEED_MAX };
-enum
-{
-    SPEED_COUNT = sizeof SPEEDS / sizeof *SPEEDS
-};
+const double studio_speeds[] = { STUDIO_SPEED_MIN, 0.25, 0.5, 1, STUDIO_SPEED_MAX };
+const int studio_speed_count = sizeof studio_speeds / sizeof *studio_speeds;
 
-static void speed_label(double speed, char *buf, size_t size)
+void studio_speed_label(double speed, char *buf, size_t size)
 {
     snprintf(buf, size, "%g\xc3\x97", speed);
 }
@@ -382,7 +379,7 @@ void studio_speed_text(const studio *s, char *buf, size_t size)
     double speed = app_scene_authoring_time_scale(s->scene);
     buf[0] = '\0';
     if (speed != 1) {
-        speed_label(speed, buf, size);
+        studio_speed_label(speed, buf, size);
     }
 }
 
@@ -391,8 +388,9 @@ void studio_speed_step(studio *s, int direction)
     double speed = app_scene_authoring_time_scale(s->scene),
            next = direction ? speed : 1;
     /* The last match is the nearest step: up from the top, down from the bottom. */
-    for (int i = 0; i < SPEED_COUNT; i++) {
-        double up = SPEEDS[SPEED_COUNT - 1 - i], down = SPEEDS[i];
+    for (int i = 0; i < studio_speed_count; i++) {
+        double up = studio_speeds[studio_speed_count - 1 - i],
+               down = studio_speeds[i];
         if (direction > 0 && up > speed) {
             next = up;
         }
@@ -403,91 +401,7 @@ void studio_speed_step(studio *s, int direction)
     app_scene_authoring_set_time_scale(s->scene, next);
 }
 
-void studio_speed_menu(studio *s)
-{
-    kit_menu_group(s->kit, "speed", "Playback Speed");
-    studio_command_item(s, STUDIO_COMMAND_SLOWER);
-    studio_command_item(s, STUDIO_COMMAND_FASTER);
-    studio_command_item(s, STUDIO_COMMAND_NORMAL_SPEED);
-}
-
-/* Beside Play, as UI Scale keeps its percentage in the status bar: the
-   speed, marked while it is not 1×, and a menu of its steps. */
-void studio_speed_control(studio *s)
-{
-    kit *k = s->kit;
-    double speed = app_scene_authoring_time_scale(s->scene);
-    char label[16];
-    speed_label(speed, label, sizeof label);
-    kit_button_desc d = {
-        .label = label,
-        .variant = KIT_SUBTLE,
-        .cls = "speed",
-        .tip = "Playback Speed",
-        .description = "Game time per second. Behaviors, physics and "
-                       "effects slow alike; Stop returns to 1\xc3\x97.",
-        .flags = speed != 1 ? KIT_ON : 0,
-    };
-    if (kit_button(k, "speed", &d)) {
-        kit_popup_open(k, "speed-menu");
-    }
-    if (!kit_popup_begin(k, "speed-menu", "menu")) {
-        return;
-    }
-    studio_speed_menu(s);
-    kit_menu_separator(k, "s1");
-    for (int i = 0; i < SPEED_COUNT; i++) {
-        char key[8], text[16];
-        snprintf(key, sizeof key, "p%d", i);
-        speed_label(SPEEDS[i], text, sizeof text);
-        kit_menu_item_desc preset = { .label = text, .checked = speed == SPEEDS[i] };
-        if (kit_menu_item(k, key, &preset)) {
-            app_scene_authoring_set_time_scale(s->scene, SPEEDS[i]);
-        }
-    }
-    kit_popup_end(k);
-}
-
-/* ---------- Transport and call stack ---------- */
-
-/* Visual Studio's keys, which Unreal follows. */
-static const char *const DEBUG_IDS[] = { "resume", "over", "into", "out" };
-static const studio_command STUDIO_DEBUG_COMMANDS[] = {
-    STUDIO_COMMAND_RESUME,
-    STUDIO_COMMAND_STEP_OVER,
-    STUDIO_COMMAND_STEP_INTO,
-    STUDIO_COMMAND_STEP_OUT,
-};
-
-void studio_debug_steps(studio *s)
-{
-    for (int c = STUDIO_STEP_OVER; c <= STUDIO_STEP_OUT; c++) {
-        studio_command command = STUDIO_DEBUG_COMMANDS[c];
-        studio_command_info info = studio_command_describe(s, command);
-        kit_button_desc d = { .icon = info.icon,
-                              .tip = info.label,
-                              .shortcut = info.shortcut };
-        if (kit_button(s->kit, DEBUG_IDS[c], &d)) {
-            studio_command_run(s, command);
-        }
-    }
-}
-
-void studio_debug_menu(studio *s)
-{
-    for (int c = STUDIO_RESUME; c <= STUDIO_STEP_OUT; c++) {
-        studio_command command = STUDIO_DEBUG_COMMANDS[c];
-        studio_command_info info = studio_command_describe(s, command);
-        kit_menu_item_desc d = { .label = info.menu,
-                                 .icon = info.icon,
-                                 .shortcut = info.shortcut,
-                                 .checked = -1,
-                                 .disabled = !studio_command_enabled(s, command) };
-        if (kit_menu_item(s->kit, DEBUG_IDS[c], &d)) {
-            studio_command_run(s, command);
-        }
-    }
-}
+/* ---------- Call stack ---------- */
 
 typedef struct
 {

@@ -1,7 +1,9 @@
 /* Base UI Checkbox over RmlUi's checkbox input, in the field theme's box:
    the input takes focus and clicks, and data-mixed on it shows a dash. Bind
    it as a checkbox, data-checked="save.grid", or one way with
-   data-attrif-checked and an emit on change. Its children are its label.
+   data-attrif-checked and an emit on change that carries ev.value ("on" or
+   ""): RmlUi sends change when the binding sets checked too, so the emit
+   sets the state rather than flipping it. Its children are its label.
    It lays out as a flex item, so a row keeps the control's height. */
 body { display: flex; }
 .check { position: relative; display: inline-flex; cursor: pointer; tab-index: none; }

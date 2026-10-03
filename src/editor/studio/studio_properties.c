@@ -843,15 +843,22 @@ static void edit_scene(studio *s, const edit *e)
     }
     game_physics_settings next = game_physics_configuration(scene->live->physics);
     double v = strtod(e->text, NULL);
+    bool on = v != 0, *flag = NULL;
     switch ((properties_scene_setting)e->row.field) {
         case SCENE_WORKERS: next.workers = (int)v; break;
         case SCENE_SUBSTEPS: next.substeps = (int)v; break;
-        case SCENE_SLEEP: next.sleep = !next.sleep; break;
-        case SCENE_CONTINUOUS: next.continuous = !next.continuous; break;
-        case SCENE_FORCE_DRIVE: next.force_drive = !next.force_drive; break;
+        case SCENE_SLEEP: flag = &next.sleep; break;
+        case SCENE_CONTINUOUS: flag = &next.continuous; break;
+        case SCENE_FORCE_DRIVE: flag = &next.force_drive; break;
         case SCENE_HERTZ: next.contact_hertz = (float)v; break;
         case SCENE_DAMPING: next.contact_damping = (float)v; break;
         default: return;
+    }
+    if (flag && *flag == on) {
+        return;
+    }
+    if (flag) {
+        *flag = on;
     }
     if (app_scene_authoring_set_physics(scene, next) != 0) {
         studio_report(s, "Invalid physics settings");
@@ -867,10 +874,12 @@ static void edit_row(studio *s, const edit *e)
     }
 }
 
-/* A checkbox flips its field; a mixed one sets every object. */
-static void toggle(studio *s, const properties_row *row)
+/* A checkbox sets its field to its state, a mixed one every object's.
+   RmlUi sends change when a binding sets checked too, so a field that
+   holds the state already stays as it is. */
+static void check(studio *s, const properties_row *row, bool on)
 {
-    edit e = { .row = *row, .text = "1", .axis = "" };
+    edit e = { .row = *row, .text = on ? "1" : "0", .axis = "" };
     if (row->kind == PROPERTIES_SCENE) {
         edit_scene(s, &e);
         return;
@@ -892,8 +901,9 @@ static void toggle(studio *s, const properties_row *row)
     }
     bool mixed = row->kind == PROPERTIES_OBJECT && subject.actor &&
                  properties_mixed(s, subject.actor, row->component, row->field, &value);
-    e.text = mixed || !value.b ? "1" : "0";
-    edit_row(s, &e);
+    if (mixed || value.b != on) {
+        edit_row(s, &e);
+    }
 }
 
 /* An asset dropped on its field is one Undo step, to every selected object
@@ -1397,8 +1407,8 @@ void studio_properties_action(studio *s, const char *action, const ui_activation
     const char *arg = a->argc ? a->args[0] : "";
     if (!strcmp(action, "input") || !strcmp(action, "change")) {
         gesture(s, a, !strcmp(action, "input"));
-    } else if (!strcmp(action, "toggle") && parsed) {
-        toggle(s, &row);
+    } else if (!strcmp(action, "check") && parsed) {
+        check(s, &row, a->argc > 1 && a->args[1][0]);
     } else if (!strcmp(action, "choices")) {
         snprintf(s->properties.choosing, sizeof s->properties.choosing, "%s", arg);
     } else if (!strcmp(action, "drop") && parsed && a->argc > 1) {

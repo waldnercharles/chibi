@@ -877,8 +877,52 @@ static void properties_assets_check()
     test_check(clean == count, "Properties and the widgets of its rows check clean");
 }
 
+static rml_element *sleep_box(studio *s)
+{
+    rml_element *row = property_row(s, "Allow sleeping");
+    return row ? rml_element_query_selector(row, ".check input") : NULL;
+}
+
+/* RmlUi sends change when a binding checks a checkbox too, so a checkbox
+   shown checked keeps its field, frame after frame, and a click sets it
+   once, as one Undo step. */
+static void bound_checkbox_holds()
+{
+    studio_fixture f = binding_open("");
+    studio *s = f.studio;
+    bool sleep = game_physics_configuration(f.scene->live->physics).sleep;
+    press(s, tab_button(s, "Scene"));
+    bool held = true;
+    for (int i = 0; i < 4; i++) {
+        frames(&f, 1);
+        rml_element *box = sleep_box(s);
+        held &= box && rml_element_has_attribute(box, "checked") == sleep &&
+                game_physics_configuration(f.scene->live->physics).sleep == sleep;
+    }
+    held &= !scene_history_can_undo(f.scene->history);
+    rml_element *box = sleep_box(s);
+    if (box) {
+        press(s, box);
+    }
+    frames(&f, 4);
+    box = sleep_box(s);
+    bool clicked = box && rml_element_has_attribute(box, "checked") == !sleep &&
+                   game_physics_configuration(f.scene->live->physics).sleep == !sleep &&
+                   scene_history_can_undo(f.scene->history);
+    studio_history(s, false);
+    frames(&f, 2);
+    bool undone = game_physics_configuration(f.scene->live->physics).sleep == sleep &&
+                  !scene_history_can_undo(f.scene->history);
+    if (!(held && clicked && undone)) {
+        printf("  %d %d %d\n", held, clicked, undone);
+    }
+    test_check(held && clicked && undone, "a checkbox its binding checks keeps its field, and a click sets it once, as one Undo step");
+    fixture_free(&f);
+}
+
 void studio_documents_property_field_checks()
 {
+    bound_checkbox_holds();
     properties_assets_check();
     large_enum_property();
     component_vector_property();

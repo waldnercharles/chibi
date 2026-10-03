@@ -1,6 +1,8 @@
 /* What each kind of asset looks like in its thumbnail:
- * - a scene, its start state a few frames in, framed by its GameCamera or
- *   fitted to its content, as Unreal's level thumbnails;
+ * - a scene, its start state a few frames in, framed as the Scene view
+ *   frames a scene it opens, its objects fitted, widened to what its
+ *   GameCamera sees, as Godot's scene previews fit their content; its
+ *   streamed terrain fills the frame first;
  * - a prototype, one instance fitted on the project's stage (its lighting
  *   and material worlds), as Unity's prefabs;
  * - a material, a disc of it on that stage, a sphere in perspective scenes;
@@ -9,9 +11,13 @@
  * - a ui document, itself on Storybook's backdrop, as the Canvas shows it;
  * - a stylesheet, the colors it declares;
  * - a graph asset, a mini-map of its nodes and wires.
- * Scenes and prototypes run in a world of their own that copies the
- * authored behaviors and prototypes, so nothing authored or running changes;
- * materials and shapes draw as the shader catalog holds them. */
+ * Each shows its open document's unsaved edits: graphs and scenes draw
+ * their working copies, prototypes are working copies, and ui documents
+ * read their text overlays. Scenes and prototypes run in a world of their
+ * own that copies the authored behaviors and prototypes, so nothing
+ * authored or running changes; it copies them a few at a time and catches
+ * up with edits before each picture. Materials and shapes draw as the
+ * shader catalog holds them. */
 #include "assets/scene_document.h"
 #include "editor/studio/studio_internal.h"
 #include "editor/studio/studio_thumbnails.h"
@@ -23,6 +29,7 @@
 #include "runtime/camera.h"
 #include "runtime/generated.h"
 #include "runtime/material_field.h"
+#include "runtime/materials.h"
 #include "runtime/scenes/prototype_preview.h"
 #include "support/array.h"
 #include "support/text_file.h"
@@ -44,6 +51,11 @@
 /* Frames a scene or prototype runs before its picture, so generated
    content appears. */
 #define SCENE_FRAMES 2
+/* What a step may spend copying the world or streaming terrain. */
+#define STEP_SECONDS 0.003
+/* A scene whose terrain streams longer than this shows what it has, then
+   draws again once the rest has streamed. */
+#define STREAM_CAP_SECONDS 2.0
 /* Draws of a scene's picture, the last kept: HRC feeds each frame's light
    back into the next, so bounced light needs a few. */
 #define LIGHT_PASSES 3
@@ -53,6 +65,9 @@
 /* The unlit scene color a prototype's stage adds, so surfaces that no
    light reaches still show. */
 #define PROTOTYPE_AMBIENT 0.35f
+/* The least unlit scene color a scene shows, so a dark level reads at a
+   thumbnail's size, as the walls of a cave its lights barely reach. */
+#define SCENE_AMBIENT 0.1f
 #define FRAME_SECONDS (1.0 / 60.0)
 #define SWATCH_MAX 12
 /* A widget's thumbnail frames its content to fill this much of it. */
@@ -62,27 +77,37 @@
 #define DOCUMENT_SCREEN 720.0f
 #define DOCUMENT_MIN_SCREEN 48.0f
 
+/* A world copying the authored behaviors, systems and prototypes, made a
+   few at a time: behaviors by stage, then systems and prototypes. */
 typedef struct
 {
     game_prototype_preview *preview;
     game_prototype_registry registry;
-    uint64_t revision; /* the asset index revision it copies */
+    int stage, next; /* what it copies next; WORLD_STAGES once it has all */
+    uint64_t edits;  /* the asset index generation whose edits it holds */
 } thumb_world;
 
-/* A scene renderer and the viewport framing it, at one canvas side. */
+/* A scene renderer and the viewport framing it, at one canvas side, and a
+   canvas for a scene's light passes before its last. */
 typedef struct
 {
     app_scene_renderer *renderer;
     engine_viewport *viewport;
     int side;
+    CF_Canvas scratch;
 } thumb_view;
 
-/* A scene running toward its picture, a frame a step. */
+/* A scene running toward its picture: its terrain streams for a share of
+   each step, then it runs a frame a step and draws. */
 typedef struct
 {
     game_scene_document *scene; /* NULL while none runs */
     game_prototype_preview_scene_entity *entities;
-    int frame; /* the next to run */
+    engine_viewport_view view; /* what it frames */
+    double started;            /* Studio's time when it launched */
+    int frame;    /* the next to run; -1 while terrain streams first */
+    int pass;     /* the light pass it draws next */
+    bool partial; /* it drew before its terrain had streamed */
 } scene_run;
 
 struct studio_thumb_renderers
@@ -140,11 +165,30 @@ static graph *largest_graph(const behavior_asset *asset)
     return largest;
 }
 
-static bool render_graph(const studio_thumb_job *job, CF_Canvas canvas)
+/* The working copy of a graph asset with unsaved edits, or NULL. */
+static const behavior_asset *unsaved_graph(studio *s, const char *name)
 {
+    game_live_definition *d = game_live_find_definition(s->scene->live, name);
+    return d && d->unsaved ? d->working : NULL;
+}
+
+/* A copy of the graph asset's working copy, or its file's. */
+static behavior_asset *graph_asset(studio *s, const studio_thumb_job *job)
+{
+    const behavior_asset *working = unsaved_graph(s, job->name);
+    if (working) {
+        return behavior_asset_clone(working);
+    }
     char *text = text_file_read(job->path);
     behavior_asset *asset = text ? behavior_asset_load(text) : NULL;
     free(text);
+    return asset;
+}
+
+static bool render_graph(studio *s, const studio_thumb_job *job, CF_Canvas canvas)
+{
+    /* A copy: building the mini-map arranges its automatic nodes. */
+    behavior_asset *asset = graph_asset(s, job);
     if (!asset) {
         return false;
     }
@@ -369,57 +413,123 @@ static int stage_of(behavior_domain domain)
                                            : 0;
 }
 
+/* The stages behaviors copy in (stage_of), then one for the systems and
+   prototypes. */
+#define WORLD_STAGES 4
+
+static double now_seconds()
+{
+    return (double)cf_get_ticks() / (double)cf_get_tick_frequency();
+}
+
 static void world_free(thumb_world *w)
 {
     game_prototype_preview_free(w->preview);
     *w = (thumb_world){ 0 };
 }
 
-/* A world with copies of the authored behaviors, systems and prototypes.
-   Shaders stay in the catalog the scene draws with, untouched. */
-static void world_build(studio *s, thumb_world *w)
+/* Systems whose copy differs, or that have none, copy again. */
+static void copy_systems(studio *s, thumb_world *w)
 {
-    app_scene_authoring *scene = s->scene;
-    w->registry = app_component_registry();
-    w->preview = game_prototype_preview_new(&w->registry);
-    w->revision = scene->asset_index_revision;
-    game_live_world *live = scene->live;
-    for (int stage = 0; stage < 3; stage++) {
-        for (int i = 0; i < game_live_definition_count(live); i++) {
-            game_live_definition *d = game_live_definition_at(live, i);
-            behavior_domain domain = d->working->domain;
-            if (!shader_domain(domain) && stage_of(domain) == stage) {
-                game_prototype_preview_register_behavior(w->preview, d->name, d->working);
-            }
+    game_live_world *live = s->scene->live;
+    const game_live_world *copies = game_prototype_preview_live(w->preview);
+    for (int i = 0; i < acount(live->systems); i++) {
+        const game_live_system_asset *system = &live->systems[i];
+        const game_live_system_asset
+            *copy = game_live_find_system(copies, system->name);
+        char error[256];
+        if (!copy || strcmp(copy->json, system->json)) {
+            game_prototype_preview_register_system(
+                w->preview,
+                system->name,
+                system->json,
+                error,
+                sizeof error
+            );
         }
     }
-    for (int i = 0; i < acount(live->systems); i++) {
-        char error[256];
-        game_prototype_preview_register_system(
-            w->preview,
-            live->systems[i].name,
-            live->systems[i].json,
-            error,
-            sizeof error
-        );
-    }
-    for (int i = 0; i < acount(scene->prototypes); i++) {
+}
+
+/* Registering a prototype replaces a copy that differs and keeps an equal
+   one. */
+static void copy_prototypes(studio *s, thumb_world *w)
+{
+    for (int i = 0; i < acount(s->scene->prototypes); i++) {
         game_prototype_preview_register_prototype(
             w->preview,
-            scene->prototypes[i].prototype
+            s->scene->prototypes[i].prototype
         );
     }
 }
 
-static thumb_world *world_for(studio *s, studio_thumb_renderers *r)
+/* Copies what the world lacks, behaviors by stage, until `deadline`; true
+   once it holds everything. Shaders stay in the catalog the scene draws
+   with, untouched. */
+static bool world_fill(studio *s, thumb_world *w, double deadline)
 {
-    if (r->world.preview && r->world.revision != s->scene->asset_index_revision) {
-        world_free(&r->world);
+    game_live_world *live = s->scene->live;
+    while (w->stage < WORLD_STAGES - 1) {
+        if (w->next >= game_live_definition_count(live)) {
+            w->stage++;
+            w->next = 0;
+            continue;
+        }
+        game_live_definition *d = game_live_definition_at(live, w->next++);
+        behavior_domain domain = d->working->domain;
+        if (shader_domain(domain) || stage_of(domain) != w->stage) {
+            continue;
+        }
+        game_prototype_preview_register_behavior(w->preview, d->name, d->working);
+        if (now_seconds() >= deadline) {
+            return false;
+        }
     }
-    if (!r->world.preview) {
-        world_build(s, &r->world);
+    if (w->stage == WORLD_STAGES - 1) {
+        copy_systems(s, w);
+        copy_prototypes(s, w);
+        w->stage++;
     }
-    return &r->world;
+    return true;
+}
+
+/* Brings the copies up to the authored edits: a changed behavior compiles
+   again, and a changed system or prototype replaces its copy. */
+static void world_refresh(studio *s, thumb_world *w)
+{
+    game_live_world *live = s->scene->live;
+    for (int stage = 0; stage < WORLD_STAGES - 1; stage++) {
+        for (int i = 0; i < game_live_definition_count(live); i++) {
+            game_live_definition *d = game_live_definition_at(live, i);
+            behavior_domain domain = d->working->domain;
+            char message[256];
+            if (!shader_domain(domain) && stage_of(domain) == stage) {
+                game_prototype_preview_update_behavior(w->preview, d->name, d->working, true, message, sizeof message);
+            }
+        }
+    }
+    copy_systems(s, w);
+    copy_prototypes(s, w);
+}
+
+/* The world once it holds the authored state, or NULL while it copies a
+   step's share of it. */
+static game_prototype_preview *world_ready(studio *s, studio_thumb_renderers *r)
+{
+    thumb_world *w = &r->world;
+    uint64_t edits = s->scene->asset_index_generation;
+    if (!w->preview) {
+        w->registry = app_component_registry();
+        w->preview = game_prototype_preview_new(&w->registry);
+        w->edits = edits;
+    }
+    if (w->stage < WORLD_STAGES && !world_fill(s, w, now_seconds() + STEP_SECONDS)) {
+        return NULL;
+    }
+    if (w->edits != edits) {
+        world_refresh(s, w);
+        w->edits = edits;
+    }
+    return w->preview;
 }
 
 static bool run_frames(game_prototype_preview *preview)
@@ -457,6 +567,9 @@ static void view_free(thumb_view *view)
 {
     engine_viewport_free(view->viewport);
     app_scene_renderer_free(view->renderer);
+    if (view->scratch.id) {
+        cf_destroy_canvas(view->scratch);
+    }
     *view = (thumb_view){ 0 };
 }
 
@@ -540,6 +653,12 @@ static const game_prototype *stage_prototype(app_scene_authoring *scene)
     return NULL;
 }
 
+const char *studio_thumb_stage(studio *s)
+{
+    const game_prototype *stage = stage_prototype(s->scene);
+    return stage ? stage->name : NULL;
+}
+
 static game_prototype_preview_scene_entity entity_of(const game_prototype *prototype)
 {
     return (game_prototype_preview_scene_entity){
@@ -560,7 +679,7 @@ static bool render_instance(
     CF_Canvas canvas
 )
 {
-    game_prototype_preview *preview = world_for(s, r)->preview;
+    game_prototype_preview *preview = r->world.preview;
     const game_prototype *stage = stage_prototype(s->scene);
     game_prototype_preview_scene_entity entities[2] = { entity_of(prototype) };
     int count = 1;
@@ -620,7 +739,7 @@ static bool render_material(studio *s, studio_thumb_renderers *r, const studio_t
             job->name
         );
     }
-    game_prototype *swatch = game_prototype_load(text, &world_for(s, r)->registry, error, sizeof error);
+    game_prototype *swatch = game_prototype_load(text, &r->world.registry, error, sizeof error);
     bool drawn = swatch && render_instance(s, r, swatch, job, canvas);
     game_prototype_free(swatch);
     return drawn;
@@ -661,56 +780,152 @@ static void run_end(studio_thumb_renderers *r)
     r->run = (scene_run){ 0 };
 }
 
-/* Loads the scene's file and launches it at its first frame. */
+/* The scene at `path` as its open document holds it with unsaved edits, or
+   NULL. */
+static game_scene_document *unsaved_scene(studio *s, const char *path)
+{
+    app_scene_authoring *scene = s->scene;
+    for (int i = 0; i < acount(scene->tabs); i++) {
+        const scene_document_tab *tab = &scene->tabs[i];
+        if (tab->kind != APP_EDITOR_DOCUMENT_SCENE || !tab->path ||
+            strcmp(tab->path, path)) {
+            continue;
+        }
+        bool current = scene->current_scene_tab_key && tab->key &&
+                       !strcmp(scene->current_scene_tab_key, tab->key);
+        if (current) {
+            return scene->scene_dirty ? scene_authoring_document(scene) : NULL;
+        }
+        char error[256];
+        return tab->scene_dirty && tab->scene_value
+                 ? game_scene_document_load_value(tab->scene_value, error, sizeof error)
+                 : NULL;
+    }
+    return NULL;
+}
+
+/* Widens the view to take in `other` too. */
+static void widen_to(engine_viewport *viewport, const engine_viewport_view *other)
+{
+    engine_viewport_view v;
+    engine_viewport_get_view(viewport, &v);
+    float left = fminf(v.center_x - v.width / 2, other->center_x - other->width / 2);
+    float right = fmaxf(v.center_x + v.width / 2, other->center_x + other->width / 2);
+    float bottom = fminf(v.center_y - v.height / 2, other->center_y - other->height / 2);
+    float top = fmaxf(v.center_y + v.height / 2, other->center_y + other->height / 2);
+    v.center_x = (left + right) / 2;
+    v.center_y = (bottom + top) / 2;
+    v.width = right - left;
+    v.height = top - bottom;
+    engine_viewport_set_view(viewport, &v);
+}
+
+/* What the scene shows, as the Scene view frames a scene it opens: its
+   objects fitted, widened to what its camera sees; a perspective scene's
+   camera frames it alone. Terrain streams into that, the cameras' own tiles
+   under the stream budget too, so no step prepares them all at once. */
+static void frame_scene(studio_thumb_renderers *r, const studio_thumb_job *job)
+{
+    game_prototype_preview *preview = r->world.preview;
+    ecs_world *world = game_prototype_preview_world(preview);
+    thumb_view *view = view_for(r, job);
+    bool perspective = r->run.scene->perspective;
+    engine_viewport_set_perspective(view->viewport, perspective);
+    int count = game_prototype_preview_entity_count(preview);
+    ecs_entity *objects = xmalloc((size_t)count * sizeof *objects);
+    for (int i = 0; i < count; i++) {
+        objects[i] = game_prototype_preview_entity_at(preview, i);
+    }
+    bool fitted = fit_scene_view(view->viewport, world, objects, count);
+    free(objects);
+    engine_viewport_view camera;
+    if (game_camera_view(world, game_prototype_preview_runtime(preview), &camera) > 0) {
+        if (fitted && !perspective) {
+            widen_to(view->viewport, &camera);
+        } else {
+            engine_viewport_set_view(view->viewport, &camera);
+        }
+    }
+    engine_viewport_get_view(view->viewport, &r->run.view);
+    engine_viewport_camera seen;
+    engine_viewport_get_camera(view->viewport, &seen);
+    material_stream_view stream = { seen.center_x,
+                                    -seen.center_y,
+                                    0.5f * fmaxf(seen.span_width, seen.span_height),
+                                    0 };
+    game_materials *materials = game_prototype_preview_live(preview)->materials;
+    game_materials_set_stream_views(materials, &stream, 1);
+    game_materials_set_stream_deferred(materials, true);
+}
+
+/* Loads the scene, its unsaved edits or its file, and launches it. */
 static studio_thumb_step scene_start(studio *s, studio_thumb_renderers *r, const studio_thumb_job *job)
 {
-    char *text = text_file_read(job->path);
+    game_prototype_preview *preview = world_ready(s, r);
+    if (!preview) {
+        return STUDIO_THUMB_BUSY;
+    }
     char error[256];
-    game_scene_document *scene = text ? game_scene_document_load(text, error, sizeof error)
-                                      : NULL;
-    free(text);
+    game_scene_document *scene = unsaved_scene(s, job->path);
+    if (!scene) {
+        char *text = text_file_read(job->path);
+        scene = text ? game_scene_document_load(text, error, sizeof error) : NULL;
+        free(text);
+    }
     game_prototype_preview_scene_entity *entities = scene && acount(scene->entities)
                                                       ? scene_entities(s, scene)
                                                       : NULL;
-    r->run = (scene_run){ scene, entities, 1 };
-    game_prototype_preview *preview = world_for(s, r)->preview;
+    r->run = (scene_run){ .scene = scene,
+                          .entities = entities,
+                          .started = s->time,
+                          .frame = -1 };
     game_prototype_preview_stop(preview);
     bool running = entities &&
                    game_prototype_preview_configure_physics(preview, scene->physics) == 0 &&
                    game_prototype_preview_launch_scene(preview, entities, acount(entities), error, sizeof error) ==
-                       0 &&
-                   game_prototype_preview_tick(preview, 0) == 0;
+                       0;
     if (!running) {
         run_end(r);
         return STUDIO_THUMB_BLANK;
     }
+    frame_scene(r, job);
     return STUDIO_THUMB_BUSY;
 }
 
-/* Framed by its GameCamera, or fitted to what draws. */
-static bool draw_scene(studio_thumb_renderers *r, const studio_thumb_job *job, CF_Canvas canvas)
+/* Streams terrain for a step's share; true once none waits, or when it
+   cannot stream. */
+static bool stream(game_prototype_preview *preview)
+{
+    game_materials *materials = game_prototype_preview_live(preview)->materials;
+    double deadline = now_seconds() + STEP_SECONDS;
+    const char *error = NULL;
+    do {
+        error = game_materials_prepare(materials);
+    } while (!error && game_materials_streaming(materials) && now_seconds() < deadline);
+    return error || !game_materials_streaming(materials);
+}
+
+/* One of the scene's light passes, a step each: light that bounces reaches
+   surfaces through the passes before, so only the last reaches the
+   thumbnail and no half lit picture shows. */
+static bool draw_pass(studio_thumb_renderers *r, const studio_thumb_job *job, CF_Canvas canvas)
 {
     game_prototype_preview *preview = r->world.preview;
     thumb_view *view = view_for(r, job);
+    if (!view->scratch.id) {
+        view->scratch = cf_make_canvas(cf_canvas_defaults(job->side, job->side));
+    }
     engine_viewport_set_perspective(view->viewport, r->run.scene->perspective);
-    ecs_world *world = game_prototype_preview_world(preview);
-    engine_viewport_view camera;
-    if (game_camera_view(world, game_prototype_preview_runtime(preview), &camera) > 0) {
-        engine_viewport_set_view(view->viewport, &camera);
-    } else {
-        fit_scene_view(view->viewport, world, NULL, 0);
-    }
-    still_lighting(world, 0);
-    /* Light that bounces reaches surfaces through the frames before. */
-    bool drawn = true;
-    for (int pass = 0; drawn && pass < LIGHT_PASSES; pass++) {
-        drawn = draw_world(view, preview, canvas);
-    }
-    return drawn;
+    engine_viewport_set_view(view->viewport, &r->run.view);
+    still_lighting(game_prototype_preview_world(preview), SCENE_AMBIENT);
+    bool last = r->run.pass == LIGHT_PASSES - 1;
+    return draw_world(view, preview, last ? canvas : view->scratch);
 }
 
-/* A scene runs a frame a step, so its heaviest frame is a step's work, and
-   draws in the last. */
+/* A scene streams the terrain it frames, a share a step, then runs a frame
+   a step and draws a light pass a step. Terrain still streaming at
+   STREAM_CAP_SECONDS draws as far as it has come, and again once it has all
+   streamed. */
 static studio_thumb_step render_scene(
     studio *s,
     studio_thumb_renderers *r,
@@ -721,17 +936,39 @@ static studio_thumb_step render_scene(
     if (!r->run.scene) {
         return scene_start(s, r, job);
     }
+    game_prototype_preview *preview = r->world.preview;
+    if (r->run.frame < 0) {
+        bool capped = s->time - r->run.started >= STREAM_CAP_SECONDS;
+        r->run.frame = stream(preview) || capped ? 0 : -1;
+        return STUDIO_THUMB_BUSY;
+    }
     if (r->run.frame <= SCENE_FRAMES) {
-        bool ran = game_prototype_preview_tick(r->world.preview, r->run.frame++ * FRAME_SECONDS) ==
+        bool ran = game_prototype_preview_tick(preview, r->run.frame++ * FRAME_SECONDS) ==
                    0;
         if (!ran) {
             run_end(r);
         }
         return ran ? STUDIO_THUMB_BUSY : STUDIO_THUMB_BLANK;
     }
-    bool drawn = draw_scene(r, job, canvas);
+    bool waiting = game_materials_streaming(game_prototype_preview_live(preview)->materials);
+    if (waiting && r->run.partial && !stream(preview)) {
+        return STUDIO_THUMB_BUSY;
+    }
+    waiting &= !r->run.partial;
+    if (!draw_pass(r, job, canvas)) {
+        run_end(r);
+        return STUDIO_THUMB_BLANK;
+    }
+    if (++r->run.pass < LIGHT_PASSES) {
+        return STUDIO_THUMB_BUSY;
+    }
+    r->run.pass = 0;
+    if (waiting) {
+        r->run.partial = true;
+        return STUDIO_THUMB_PARTIAL;
+    }
     run_end(r);
-    return drawn ? STUDIO_THUMB_DRAWN : STUDIO_THUMB_BLANK;
+    return STUDIO_THUMB_DRAWN;
 }
 
 /* ---------- Dispatch ---------- */
@@ -749,8 +986,14 @@ static bool render_still(studio *s, studio_thumb_renderers *r, const studio_thum
             return has_suffix(job->path, UI_STYLE_EXTENSION)
                      ? render_stylesheet(job, canvas)
                      : render_document(s, r, job, canvas);
-        default: return render_graph(job, canvas);
+        default: return render_graph(s, job, canvas);
     }
+}
+
+bool studio_thumb_needs_world(reference_asset_kind kind)
+{
+    return kind == REFERENCE_ASSET_SCENE || kind == REFERENCE_ASSET_PROTOTYPE ||
+           kind == REFERENCE_ASSET_MATERIAL;
 }
 
 studio_thumb_step studio_thumb_render(
@@ -768,7 +1011,44 @@ studio_thumb_step studio_thumb_render(
     if (job->kind == REFERENCE_ASSET_SCENE) {
         return render_scene(s, r, job, canvas);
     }
+    if (studio_thumb_needs_world(job->kind) && !world_ready(s, r)) {
+        return STUDIO_THUMB_BUSY;
+    }
     return render_still(s, r, job, canvas) ? STUDIO_THUMB_DRAWN : STUDIO_THUMB_BLANK;
+}
+
+/* ---------- Unsaved edits ---------- */
+
+static char *unsaved_scene_text(studio *s, const char *path)
+{
+    game_scene_document *scene = unsaved_scene(s, path);
+    char *text = scene ? game_scene_document_save(scene) : NULL;
+    game_scene_document_free(scene);
+    return text;
+}
+
+static char *unsaved_prototype_text(studio *s, const char *name)
+{
+    const scene_prototype_asset *asset = find_prototype(s->scene, name);
+    return asset && asset->dirty ? game_prototype_save(asset->prototype) : NULL;
+}
+
+static char *unsaved_graph_text(studio *s, const char *name)
+{
+    const behavior_asset *working = unsaved_graph(s, name);
+    return working ? behavior_asset_save(working) : NULL;
+}
+
+char *studio_thumb_unsaved(studio *s, const reference_asset *a)
+{
+    switch (a->kind) {
+        case REFERENCE_ASSET_SCENE: return unsaved_scene_text(s, a->path);
+        case REFERENCE_ASSET_PROTOTYPE:
+            return unsaved_prototype_text(s, a->name);
+        case REFERENCE_ASSET_SYSTEM:
+        case REFERENCE_ASSET_UI: return NULL;
+        default: return unsaved_graph_text(s, a->name);
+    }
 }
 
 void studio_thumb_cancel(studio_thumb_renderers *r)

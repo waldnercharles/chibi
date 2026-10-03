@@ -485,7 +485,10 @@ static void tile_tip(studio *s, const struct studio_assets_cache *cache, int id,
     bool counted = usage(cache, id, asset, meta, sizeof meta);
     snprintf(about, sizeof about, "%s%s%s", KIND_NAMES[asset->kind], counted ? " \xc2\xb7 " : "", meta);
     kit_tip(k, asset->name, NULL, about);
-    const char *large = resting(s, id) ? studio_thumb(s, id, STUDIO_THUMB_LARGE) : NULL;
+    bool loading;
+    const char *large = resting(s, id)
+                          ? studio_thumb(s, id, STUDIO_THUMB_LARGE, &loading)
+                          : NULL;
     kit_tip_image(k, large ? large : image);
 }
 
@@ -526,12 +529,14 @@ static void asset_grid(studio *s, const char *menu_key, struct studio_assets_cac
         for (int i = r * columns; i < count && i < (r + 1) * columns; i++) {
             int id = cache->tiles[i];
             const reference_asset *asset = reference_index_asset_at(index, id);
-            const char *image = studio_thumb(s, id, STUDIO_THUMB_TILE);
+            bool loading;
+            const char *image = studio_thumb(s, id, STUDIO_THUMB_TILE, &loading);
             kit_tile_desc tile = { .label = asset->name,
                                    .image = image,
                                    .icon = asset_icon(s, asset),
                                    .badge = image ? KIND_ICONS[asset->kind] : 0,
-                                   .flags = is_selected(s, asset) ? KIT_ON : 0 };
+                                   .flags = is_selected(s, asset) ? KIT_ON : 0,
+                                   .loading = loading };
             snprintf(key, sizeof key, "a%d", id);
             unsigned events = kit_tile(k, key, &tile);
             kit_style(k, "width", tile_width);

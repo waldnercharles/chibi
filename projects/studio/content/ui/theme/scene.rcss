@@ -14,3 +14,5 @@
 .snap-controls .btn { min-width: var(--h-sm); padding: 0dp 6dp; }
 .snap-controls .btn.icon-only { width: var(--h-sm); padding: 0dp; }
 .snap-controls .menu-btn { font-family: var(--font-numeric); }
+.snap-controls .btn[data-state=on] { background-color: var(--primary); }
+.snap-controls .btn[data-state=on] .icon { color: var(--primary-foreground); }

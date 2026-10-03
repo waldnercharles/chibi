@@ -570,6 +570,11 @@ void studio_ui_area_detach(studio *s, int area)
     ui_mount_detach(s->ui->controls[area]);
 }
 
+rml_data_reads studio_ui_reads(const studio *s)
+{
+    return rml_data_model_reads(s->ui->data.model);
+}
+
 const char *studio_ui_page(const studio_ui *ui)
 {
     return ui->page ? ui->page : "";

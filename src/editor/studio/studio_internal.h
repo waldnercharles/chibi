@@ -2309,4 +2309,9 @@ void studio_editor_choices(studio *s, yyjson_mut_doc *doc, yyjson_mut_val *edito
  * Studio panel `panel`; a drawer takes only the types it may hold. */
 void studio_area_show(studio *s, int area, int editor, const char *panel);
 
+/* ---------- Output (workstream P4) ---------- */
+
+/* The views Studio's authored panels evaluated, for the UI bench. */
+rml_data_reads studio_ui_reads(const studio *s);
+
 #endif

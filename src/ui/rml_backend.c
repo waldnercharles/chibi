@@ -11,6 +11,7 @@
 #include "support/array.h"
 #include "support/math.h"
 #include "support/xalloc.h"
+#include "ui/autofocus.h"
 #include "ui/controls/controls.h"
 #include "ui/drag.h"
 #include "ui/focus_within.h"
@@ -983,6 +984,8 @@ static bool initialize_rml()
     ui_drag_register();
     /* :focus-within in every context (workstream P3). */
     ui_focus_within_register();
+    /* Workstream P5: autofocus on elements built after their document shows. */
+    autofocus_register();
     return true;
 }
 
@@ -1137,6 +1140,7 @@ void rml_backend_update(rml_backend *backend, double delta_seconds)
     iframes_settle(backend->context);
     presence_settle(backend->context);
     popovers_settle(backend->context);
+    autofocus_settle(backend->context);
     driven = NULL;
 }
 

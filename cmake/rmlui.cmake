@@ -33,6 +33,8 @@ add_library(chibi_ui STATIC
     src/ui/list.c
     # :focus-within, which RmlUi lacks (workstream P3).
     src/ui/focus_within.c
+    # Autofocus on elements built after their document shows (workstream P5).
+    src/ui/autofocus.c
     # The embedded faces, loaded by the editor kit and game UI alike.
     ${GEN_NERD_FONT} ${GEN_UI_FONT} ${GEN_UI_BOLD_FONT}
     ${GEN_UI_MEDIUM_FONT} ${GEN_UI_SEMIBOLD_FONT} ${GEN_UI_NUMERIC_FONT} ${GEN_STUDIO_FONTS}

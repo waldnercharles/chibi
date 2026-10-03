@@ -593,9 +593,11 @@ typedef struct
     uint64_t shown_node;     /* graph node selection last seen */
     studio_member_kind rename_kind;
     uint64_t rename_id;
-    bool rename_focus;
-    char filter[128];
-    unsigned collapsed; /* bit per section */
+    bool rename_focus;  /* scroll the row being named into view */
+    char filter[128];   /* what the header's field filters by */
+    ui_list_state list; /* the authored List's window (Members.rml) */
+    rml_element_ref *list_element; /* that List, or NULL before it shows */
+    unsigned collapsed;            /* bit per section */
     bool value_editing; /* a default value gesture has an open undo step */
     struct
     {
@@ -1226,11 +1228,14 @@ void studio_ui_area(studio *s, int area, const char *name);
 /* Shows it over the editor while its GameUi is not hidden, as for a dialog
  * whose behaviors hide it again. */
 void studio_ui_modal(studio *s, const char *name);
-/* True when a focused authored chrome button can pass global shortcuts. */
+/* True when a focused authored chrome button, or anything but a field in
+   an editor's authored area (Members), can pass global shortcuts. */
 bool studio_ui_shortcut_focus(studio *s);
 /* True while a modal panel (Settings, Collaboration, Keyboard Shortcuts,
  * New Project) shows. */
 bool studio_ui_modal_open(studio *s);
+/* What the panels' data views have read, for the UI bench's counts. */
+rml_data_reads studio_ui_data_reads(const studio *s);
 /* Clears its GameUi.hidden. */
 void studio_ui_show(studio *s, const char *name);
 /* Runs a collaboration action with transient values from the authored panel. */
@@ -1343,13 +1348,14 @@ uint64_t studio_graph_node(const studio *s);
 uint64_t studio_graph_comment(const studio *s);
 void studio_node_properties(studio *s);
 void studio_rewire_toast(studio *s);
-/* Members: the open behavior's graphs, variables and named values. */
+/* Members: the open behavior's graphs, variables and named values, an
+   authored panel (Members.rml) with its header's filter (MembersHeader). */
 void studio_members_header(studio *s, int area);
 void studio_members_body(studio *s, int area);
 /* Keys over the Members area; true when one was taken. */
 bool studio_members_key(studio *s, SDL_Keycode key, SDL_Keymod mod);
 /* A member dropped on the graph canvas: a variable's Get, or Set with Alt, or
-   a call. Call after the canvas surface. */
+   a call; the drag's hint says which. Call right after the canvas surface. */
 void studio_members_drop(studio *s);
 /* Runs the Undo a member delete's toast offers; call every frame. */
 void studio_members_toast(studio *s);
@@ -2293,6 +2299,20 @@ void studio_gallery_add(yyjson_mut_doc *doc);
 bool studio_gallery_sync(studio *s, const studio_panel_sync *at);
 void studio_gallery_action(studio *s, const char *action, const ui_activation *a);
 
+/* ---------- Members (workstream P5) ---------- */
+
+/* Members' source, `members` (studio_members.c): the open behavior's rows
+ * in its List's window, keyed "s4" (a section), "c3" (a category), "g7"
+ * (a graph), "v12" (a variable), "l5" (a named value) or "e0.9" (an
+ * event); the selected member's menu; the header's filter. Rows send
+ * members.click, .edit (double click), .menu (right press), .uses and .add
+ * with their key; the name field members.renamed with its text, or
+ * .cancel; the menu .open, .rename, .duplicate, .refs, .calls and .delete;
+ * members.scroll wakes the source as the List scrolls. */
+void studio_members_add(yyjson_mut_doc *doc);
+bool studio_members_sync(studio *s, const studio_panel_sync *at);
+void studio_members_action(studio *s, const char *action, const ui_activation *a);
+
 /* Runs an activation that is Studio's (studio_panels.c):
  * emit('studio.<command>') runs the command, on the tab or area its first
  * argument names, and emit('<source>.<action>', ...) the source's action.
@@ -2333,8 +2353,5 @@ void studio_assets_action(studio *s, const char *action, const ui_activation *a)
 void studio_new_asset_add(yyjson_mut_doc *doc);
 bool studio_new_asset_sync(studio *s, const studio_panel_sync *at);
 void studio_new_asset_action(studio *s, const char *action, const ui_activation *a);
-/* The data model Studio's authored panels bind, or NULL without Studio's
- * UI; the bench counts the views it evaluates. */
-ui_data *studio_ui_data(studio *s);
 
 #endif

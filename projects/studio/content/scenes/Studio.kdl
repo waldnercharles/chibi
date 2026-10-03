@@ -37,4 +37,6 @@ name "Studio"
     - name="Assets" prototype="Assets"
     - name="AssetsHeader" prototype="AssetsHeader"
     - name="NewAsset" prototype="NewAsset"
+    - name="Members" prototype="Members"
+    - name="MembersHeader" prototype="MembersHeader"
 }

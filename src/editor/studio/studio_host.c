@@ -806,6 +806,18 @@ static void apply_prefs(studio *s, bool initial)
     }
 }
 
+/* The scenes' editor view state, hidden and locked objects, saves with each
+ * change; a guest's changes are the host's to save. */
+static void save_scene_view(studio *s)
+{
+    game_save *view = app_scene_authoring_view_store(s->scene);
+    if (s->hosted || game_save_revision(view) == s->scene_view_saved) {
+        return;
+    }
+    game_save_commit(view);
+    s->scene_view_saved = game_save_revision(view);
+}
+
 /* With the Studio project open, its scene and previews are the editor's own UI,
  * so their settings are these preferences, as the editor's panels' are. */
 static void share_project_prefs(studio *s)
@@ -897,6 +909,9 @@ studio *studio_new(app_scene_authoring *scene, engine_viewport *viewport, const 
 #endif
     /* A guest opens no project: the window's Studio owns the workspace. */
     studio_projects_load(s);
+    game_save *view = app_scene_authoring_view_store(scene);
+    studio_prefs_open_scene_view(view);
+    s->scene_view_saved = game_save_revision(view);
     s->in.mouse_x = cf_mouse_x();
     s->in.mouse_y = cf_mouse_y();
     SDL_AddEventWatch(queue_event, s);
@@ -1181,6 +1196,7 @@ static void run(studio *s, double delta_seconds, float width, float height)
     bool prefs_dirty = s->theme_switching > 0 ||
                        !studio_prefs_equal(&s->prefs, &s->applied);
     apply_prefs(s, false);
+    save_scene_view(s);
     CHIBI_TRACE_ZONE_BEGIN(viewport_zone, "Studio viewport");
     draw_viewport(s);
     CHIBI_TRACE_ZONE_END(viewport_zone);

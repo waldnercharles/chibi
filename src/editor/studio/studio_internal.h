@@ -175,6 +175,10 @@ typedef enum
     STUDIO_COMMAND_SHOW_FOG,
     STUDIO_COMMAND_SHOW_CAMERAS,
     STUDIO_COMMAND_VIEW_THROUGH_CAMERA,
+    /* Hide in Editor (studio_scene.c) */
+    STUDIO_COMMAND_HIDE_SELECTED,
+    STUDIO_COMMAND_HIDE_UNSELECTED,
+    STUDIO_COMMAND_SHOW_ALL,
     STUDIO_COMMAND_COUNT,
 } studio_command;
 
@@ -802,6 +806,7 @@ struct studio
     int shortcut_recording; /* command + 1 while Settings captures a chord */
     studio_prefs applied; /* last applied copy; changes apply and save by comparison */
     double prefs_changed_at;
+    uint64_t scene_view_saved; /* the scene view store's revision last committed */
     bool system_light;
     bool mac; /* macOS conventions: Command shortcuts and ⌘ notation */
     bool light;
@@ -1008,6 +1013,9 @@ studio_layout studio_layout_default(studio_workspace workspace);
 studio_layout *studio_active_layout(studio *s);
 studio_prefs studio_prefs_load();
 bool studio_prefs_save(const studio_prefs *prefs);
+/* Binds the scenes' editor view state to its user file, beside the
+ * preferences' (localStorage on the web). */
+bool studio_prefs_open_scene_view(game_save *store);
 bool studio_prefs_equal(const studio_prefs *a, const studio_prefs *b);
 /* Shares the preferences with authored panels as saved keys: a change a panel
  * made since `seen` applies first, then the preferences are written back. */
@@ -1164,6 +1172,11 @@ void studio_scene_view(studio *s, engine_viewport_host_input *input);
 void studio_outliner_header(studio *s, int area);
 void studio_outliner_body(studio *s, int area);
 int *studio_outliner_rows(studio *s);
+/* Hide in Editor (Blender's H, Shift+H and Alt+H): hides the selected objects,
+ * or the others, from the Scene's edit view, or shows them all again. */
+void studio_hide(studio *s, bool selected);
+void studio_show_all(studio *s);
+int studio_hidden_count(studio *s);
 void studio_properties_header(studio *s, int area);
 void studio_properties_body(studio *s, int area);
 /* Properties shows the running scene's values, which edit live. */
@@ -1857,6 +1870,7 @@ typedef struct studio_status
     const char *scene;     /* the scene's title */
     const char *selection; /* the selected object, "" for none */
     int objects;
+    int hidden; /* objects hidden in the Scene's edit view */
     bool playing;
     bool paused;                 /* the run is paused at a breakpoint */
     const studio_tab_view *tabs; /* the open documents */

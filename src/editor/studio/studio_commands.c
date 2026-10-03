@@ -145,6 +145,36 @@ static const command_entry COMMANDS[STUDIO_COMMAND_COUNT] = {
                                       .context = "Global",
                                       .keywords = "view",
                                       .phase = SHORTCUT_EDITOR },
+    /* Hide in Editor, with Blender's keys. */
+    [STUDIO_COMMAND_HIDE_SELECTED] = { .id = "hideSelected",
+                                       .label = "Hide Selected",
+                                       .chord = "H",
+                                       .context = "Scene, Outliner",
+                                       .contexts = EDITOR_BIT(STUDIO_EDITOR_SCENE) |
+                                                   EDITOR_BIT(STUDIO_EDITOR_OUTLINER),
+                                       .keywords = "visibility eye hide in "
+                                                   "editor",
+                                       .icon = KIT_ICON_EYE_OFF,
+                                       .phase = SHORTCUT_EDITOR },
+    [STUDIO_COMMAND_HIDE_UNSELECTED] = { .id = "hideUnselected",
+                                         .label = "Hide Unselected",
+                                         .chord = "Shift+H",
+                                         .context = "Scene, Outliner",
+                                         .contexts = EDITOR_BIT(STUDIO_EDITOR_SCENE) |
+                                                     EDITOR_BIT(STUDIO_EDITOR_OUTLINER),
+                                         .keywords = "visibility isolate solo "
+                                                     "others",
+                                         .icon = KIT_ICON_EYE_OFF,
+                                         .phase = SHORTCUT_EDITOR },
+    [STUDIO_COMMAND_SHOW_ALL] = { .id = "showAll",
+                                  .label = "Show All",
+                                  .chord = "Alt+H",
+                                  .context = "Scene, Outliner",
+                                  .contexts = EDITOR_BIT(STUDIO_EDITOR_SCENE) |
+                                              EDITOR_BIT(STUDIO_EDITOR_OUTLINER),
+                                  .keywords = "visibility unhide reveal eye",
+                                  .icon = KIT_ICON_EYE,
+                                  .phase = SHORTCUT_EDITOR },
     [STUDIO_COMMAND_TOGGLE_ASSETS] = { .id = "toggleAssets",
                                        .label = "Toggle Assets",
                                        .menu = "Assets",
@@ -839,6 +869,11 @@ static bool enabled_with(studio *s, studio_command command, int argument)
         case STUDIO_COMMAND_DELETE: return editable && selection;
         case STUDIO_COMMAND_OPEN_PROTOTYPE:
         case STUDIO_COMMAND_FRAME: return selection;
+        case STUDIO_COMMAND_HIDE_SELECTED:
+            return selection && !studio_designer_active(s);
+        case STUDIO_COMMAND_HIDE_UNSELECTED:
+            return acount(s->scene->actors) && !studio_designer_active(s);
+        case STUDIO_COMMAND_SHOW_ALL: return studio_hidden_count(s) > 0;
         case STUDIO_COMMAND_ZOOM_IN:
             return s->prefs.ui_scale < STUDIO_UI_SCALE_MAX;
         case STUDIO_COMMAND_ZOOM_OUT:
@@ -944,6 +979,9 @@ void studio_command_run_with(studio *s, studio_command command, int argument)
             );
             break;
         case STUDIO_COMMAND_FRAME: studio_frame_selection(s); break;
+        case STUDIO_COMMAND_HIDE_SELECTED: studio_hide(s, true); break;
+        case STUDIO_COMMAND_HIDE_UNSELECTED: studio_hide(s, false); break;
+        case STUDIO_COMMAND_SHOW_ALL: studio_show_all(s); break;
         case STUDIO_COMMAND_RESET_CAMERA:
             engine_viewport_reset_camera(s->viewport);
             break;

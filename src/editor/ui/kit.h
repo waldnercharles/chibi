@@ -190,6 +190,7 @@ extern "C"
         const char *tip;
         const char *shortcut;
         unsigned flags;
+        const char *description; /* the tip's second line, as kit_tip's */
     } kit_button_desc;
     bool kit_button(kit *k, const char *key, const kit_button_desc *desc);
 

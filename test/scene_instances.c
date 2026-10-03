@@ -5,6 +5,7 @@
 #include "graph/document/serialize_internal.h"
 #include "graph/model/registry.h"
 #include "runtime/generated.h"
+#include "runtime/save.h"
 #include "support/array.h"
 #include "support/asset_json.h"
 #include "support/asset_text.h"
@@ -366,7 +367,8 @@ static void rename_instance(app_scene_authoring *scene, const char *folder)
     snprintf(path, sizeof path, "%s/Renamed.kdl", folder);
     assert(app_scene_authoring_save(scene, path) == 0);
     char *text = saved_canonically(path, canonical_scene);
-    assert(strstr(text, "name \"Hero\"\n"));
+    /* An entity without overrides saves on one line, name="Hero". */
+    assert(strstr(text, "name \"Hero\"\n") || strstr(text, "name=\"Hero\""));
     free(text);
     free(before);
     puts("rename instance PASS: a rename is one Undo step, refuses names in use, survives checkpoints and saves");
@@ -530,6 +532,92 @@ static void live_edits_keep_changes(app_scene_authoring *scene, ecs_world *world
     puts("live edits PASS: running edits leave the scene clean, and Keep Changes applies at Stop as one Undo step");
 }
 
+static int actor_named(app_scene_authoring *scene, const char *name)
+{
+    for (int i = 0; i < acount(scene->actors); i++) {
+        if (!strcmp(scene->actors[i].name, name)) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+static bool same_entity(ecs_entity a, ecs_entity b)
+{
+    return ecs_entity_to_u64(a) == ecs_entity_to_u64(b);
+}
+
+/* Hide and lock are the editor's view of a scene: picks leave hidden and
+   locked objects out and draws hidden ones; the flags follow a rename, its
+   Undo, a Save As and a reload by name, a delete forgets them, and neither
+   the scene, its Undo nor its file holds them. */
+static void view_state(app_scene_authoring *scene, const char *folder)
+{
+    const char *pickable = "version 1\n"
+                           "name \"Pickable\"\n"
+                           "components {\n"
+                           "    GameAppearance {\n"
+                           "        height 20\n"
+                           "        width 20\n"
+                           "    }\n"
+                           "    GameTransform {\n"
+                           "        x 0\n"
+                           "        y 0\n"
+                           "    }\n"
+                           "}\n"
+                           "(array)behaviors\n";
+    assert(app_scene_authoring_register_prototype(scene, pickable, NULL) == 0);
+    assert(app_scene_authoring_add_instance(scene, "Pickable") == 0);
+    int below = scene->selected;
+    assert(app_scene_authoring_add_instance(scene, "Pickable") == 0);
+    int above = scene->selected;
+    ecs_entity under = scene->actors[below].entity, top = scene->actors[above].entity;
+    char shown[1024], path[1024];
+    snprintf(shown, sizeof shown, "%s/Shown.kdl", folder);
+    snprintf(path, sizeof path, "%s/View.kdl", folder);
+    /* A file names the scene after the file it last saved to, so the second
+       save names it Shown, as the copy saved as View will be. */
+    assert(app_scene_authoring_save(scene, shown) == 0);
+    assert(app_scene_authoring_save(scene, shown) == 0);
+    assert(same_entity(pick_scene_entity(scene, 0, 0, (render_skip){ 0 }), top));
+    char *before = scene_history_checkpoint(scene->history);
+    app_scene_authoring_set_actor_view(scene, above, APP_SCENE_VIEW_HIDDEN);
+    app_scene_authoring_set_actor_view(scene, below, APP_SCENE_VIEW_LOCKED);
+    render_skip hidden = scene_view_skip(scene, APP_SCENE_VIEW_HIDDEN, &scene->view_hidden);
+    assert(hidden.count == 1 && render_skip_has(hidden, top));
+    unsigned unpickable = APP_SCENE_VIEW_HIDDEN | APP_SCENE_VIEW_LOCKED;
+    render_skip skip = scene_view_skip(scene, unpickable, &scene->view_unpickable);
+    assert(!pick_scene_entity(scene, 0, 0, skip).slot);
+    app_scene_authoring_set_actor_view(scene, below, 0);
+    skip = scene_view_skip(scene, unpickable, &scene->view_unpickable);
+    assert(same_entity(pick_scene_entity(scene, 0, 0, skip), under));
+    char *after = scene_history_checkpoint(scene->history);
+    assert(!scene->scene_dirty && !strcmp(before, after));
+    free(before);
+    free(after);
+    assert(app_scene_authoring_rename_instance(scene, top, "Ghost") == 0);
+    assert(app_scene_authoring_actor_view(scene, above) == APP_SCENE_VIEW_HIDDEN);
+    assert(history(scene, false) == 0);
+    assert(app_scene_authoring_actor_view(scene, above) == APP_SCENE_VIEW_HIDDEN);
+    char *name = strdup(scene->actors[above].name);
+    assert(app_scene_authoring_save(scene, path) == 0);
+    char *saved = text_file_read(path), *plain = text_file_read(shown);
+    assert(saved && plain && !strcmp(saved, plain));
+    free(saved);
+    free(plain);
+    game_save *store = app_scene_authoring_view_store(scene);
+    assert(game_save_get(store, path) && game_save_get(store, shown));
+    assert(app_scene_authoring_load(scene, path) == 0);
+    int reloaded = actor_named(scene, name);
+    assert(reloaded >= 0);
+    assert(app_scene_authoring_actor_view(scene, reloaded) == APP_SCENE_VIEW_HIDDEN);
+    select_instance(scene, reloaded);
+    assert(app_scene_authoring_delete_instance(scene) == 0);
+    assert(!game_save_get(store, path));
+    free(name);
+    puts("view state PASS: hidden and locked objects leave picks, follow renames, Undo, Save As and reloads by name, and never reach the scene or its Undo");
+}
+
 void test_scene_instances()
 {
     ecs_world *world = ecs_world_new();
@@ -570,12 +658,14 @@ void test_scene_instances()
     char folder[] = "/tmp/chibi-scene-instances-XXXXXX";
     assert(mkdtemp(folder));
     rename_instance(scene, folder);
+    view_state(scene, folder);
     prototype_component_removal(scene, world, folder);
-    char path[1024];
-    snprintf(path, sizeof path, "%s/Renamed.kdl", folder);
-    unlink(path);
-    snprintf(path, sizeof path, "%s/Removable.kdl", folder);
-    unlink(path);
+    const char *const saved[] = { "Renamed.kdl", "Removable.kdl", "Shown.kdl", "View.kdl" };
+    for (size_t i = 0; i < sizeof saved / sizeof *saved; i++) {
+        char path[1024];
+        snprintf(path, sizeof path, "%s/%s", folder, saved[i]);
+        unlink(path);
+    }
     rmdir(folder);
     app_scene_authoring_free(scene);
     engine_free(runtime);

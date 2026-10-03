@@ -573,7 +573,7 @@ bool kit_button(kit *k, const char *key, const kit_button_desc *d)
     } else {
         set_flag(n, "data-state", false);
     }
-    set_tip(n, d->tip, d->shortcut, NULL);
+    set_tip(n, d->tip, d->shortcut, d->description);
     return (n->events & EV_CLICK) && !(d->flags & KIT_DISABLED);
 }
 

@@ -30,13 +30,15 @@ void app_scene_renderer_set_time(app_scene_renderer *renderer, float time);
 /* A positive `increment` draws an editor's grid (render/grid_2d.h) under the
  * scene from the next draw on, at that finest spacing; zero hides it. */
 void app_scene_renderer_set_grid(app_scene_renderer *renderer, float increment);
-/* Draws the material composite into the current viewport camera. */
+/* Draws the material composite into the current viewport camera, without
+ * the entities `skip` holds. */
 bool app_scene_renderer_draw(
     app_scene_renderer *renderer,
     ecs_world *world,
     const game_particles *particles,
     engine_viewport *viewport,
-    const engine *runtime
+    const engine *runtime,
+    render_skip skip
 );
 bool app_scene_renderer_draw3d(
     app_scene_renderer *renderer,
@@ -44,6 +46,7 @@ bool app_scene_renderer_draw3d(
     const game_particles *particles,
     const render_arena_camera *camera,
     engine_viewport *viewport,
-    const engine *runtime
+    const engine *runtime,
+    render_skip skip
 );
 #endif

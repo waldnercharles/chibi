@@ -263,6 +263,23 @@ int app_scene_authoring_delete_instance(app_scene_authoring *scene);
  * Nothing references objects by name, so nothing else changes. -1 with the
  * message set when the name is refused. */
 int app_scene_authoring_rename_instance(app_scene_authoring *scene, ecs_entity entity, const char *name);
+
+/* Editor view state (Blender's Outliner eye and selectability, Unity's Scene
+ * visibility and pickability): while the scene is edited, its view leaves
+ * hidden objects out and picks neither hidden nor locked ones. It belongs to
+ * the editor, by scene file and object name, never to the scene, its Undo or
+ * Play. */
+enum
+{
+    APP_SCENE_VIEW_HIDDEN = 1 << 0,
+    APP_SCENE_VIEW_LOCKED = 1 << 1,
+};
+unsigned app_scene_authoring_actor_view(app_scene_authoring *scene, int actor);
+void app_scene_authoring_set_actor_view(app_scene_authoring *scene, int actor, unsigned flags);
+/* Every scene's view state by scene path, in memory until the host binds the
+ * store to storage (game_save_open) and commits it. */
+typedef struct game_save game_save;
+game_save *app_scene_authoring_view_store(app_scene_authoring *scene);
 int app_scene_authoring_set_instance_behavior(
     app_scene_authoring *scene,
     const char *asset_name,

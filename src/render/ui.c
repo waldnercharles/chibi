@@ -1193,7 +1193,7 @@ static ui_view *find_view(render_ui *ui, uint64_t entity)
     return NULL;
 }
 
-static void show_view(render_ui *ui, uint64_t entity, const GameUi *component, bool revealed)
+static void show_view(render_ui *ui, uint64_t entity, const GameUi *component, bool shown)
 {
     ui_view *view = find_view(ui, entity);
     if (!view) {
@@ -1216,7 +1216,7 @@ static void show_view(render_ui *ui, uint64_t entity, const GameUi *component, b
     }
     ui->restyle |= ui_mount_sync(view->mount, view->root, ui->listener, ui->time);
     rml_element_set_property(view->root, "z-index", order);
-    rml_element_set_property(view->root, "display", component->hidden && !revealed ? "none" : "block");
+    rml_element_set_property(view->root, "display", shown ? "block" : "none");
 }
 
 /* Drops the views whose entity no longer shows a GameUi. */
@@ -1314,7 +1314,10 @@ void render_ui_update(render_ui *ui, const ui_world *w, int width, int height, d
         while (ecs_query_next(&query, &entity)) {
             uint64_t id = ecs_entity_to_u64(entity);
             if (!ecs_entity_is_retiring(world, entity)) {
-                show_view(ui, id, GAME_GameUi_get_const(world, entity), w->preview || id == w->revealed);
+                const GameUi *component = GAME_GameUi_get_const(world, entity);
+                bool shown = (!component->hidden || w->preview || id == w->revealed) &&
+                             !render_skip_has(w->hidden, entity);
+                show_view(ui, id, component, shown);
             }
         }
         ecs_query_end(&query);

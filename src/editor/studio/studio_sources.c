@@ -1610,6 +1610,7 @@ void studio_status_add(yyjson_mut_doc *doc)
     add_texts(doc, editor, STATUS_TEXTS);
     add_flags(doc, editor, STATUS_FLAGS);
     yyjson_mut_obj_add_real(doc, editor, "objects", 0);
+    yyjson_mut_obj_add_real(doc, editor, "hidden", 0);
     add_areas(doc, editor);
 }
 
@@ -1682,6 +1683,7 @@ bool studio_status_show(yyjson_mut_doc *doc, const studio_status *status)
         changed |= put_bool(editor, STATUS_FLAGS[f], flags[f]);
     }
     changed |= put_number(editor, "objects", status->objects);
+    changed |= put_number(editor, "hidden", status->hidden);
     return changed;
 }
 
@@ -1745,6 +1747,9 @@ static hint_list scene_hints(studio *s)
     hints[n++] = (studio_hint){ 0, "Ctrl", snap };
     if (n < STUDIO_HINT_MAX) {
         hints[n++] = (studio_hint){ 0, NULL, "Frame", STUDIO_COMMAND_FRAME + 1 };
+    }
+    if (n < STUDIO_HINT_MAX) {
+        hints[n++] = (studio_hint){ 0, NULL, "Hide", STUDIO_COMMAND_HIDE_SELECTED + 1 };
     }
     return (hint_list){ hints, n };
 }
@@ -1818,6 +1823,7 @@ static void sync_editor(studio *s, ui_data *data)
         .scene = studio_scene_title(s->scene, title, sizeof title),
         .selection = actor ? actor->name : spawned_selection(s->scene),
         .objects = acount(s->scene->actors),
+        .hidden = studio_hidden_count(s),
         .playing = app_scene_authoring_runtime_state(s->scene).playing || s->guest != NULL,
         .paused = s->pause.active,
         .tabs = tabs,

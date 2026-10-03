@@ -2264,6 +2264,7 @@ typedef struct studio_panel_sync
     studio_sources *sources;
     yyjson_mut_doc *doc;
     yyjson_mut_val *variable;
+    rml_data_model *model; /* to dirty another variable the source keeps */
     bool preview;
     bool wrote; /* bindings wrote values since the last sync */
 } studio_panel_sync;

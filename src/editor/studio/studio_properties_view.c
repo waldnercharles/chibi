@@ -1,6 +1,7 @@
 /* Properties' view: the `properties` variable Properties.rml and
  * PropertiesHeader.rml bind (docs/studio-rml-migration.md, Data):
  *
+ *   propertyValues: [text]
  *   properties: { query, live, readonly, keepTip, view, note,
  *     tabs: [{ id, icon, tip, on, sep }],
  *     identity: { kind, icon, name, of, prototype, kbd, why, locked, placed,
@@ -11,17 +12,21 @@
  *     add: { shown, locked, why },
  *     fieldMenu: { reset, apply }, componentMenu: { title, label, icon,
  *                  about, disabled } }
- *   ROW: { id, label, tip, about, control, value, min, max, step, precision,
- *          unit, text, drop, problem, overridden, mixed, readonly, invalid,
- *          integer, float, slider, checked, preview, axes: [AXIS],
+ *   ROW: { id, label, tip, about, control, slot, value, min, max, step,
+ *          precision, unit, text, drop, problem, overridden, mixed, readonly,
+ *          invalid, integer, float, slider, checked, preview, axes: [AXIS],
  *          table: { label, icon, none, groups } }
+ *   AXIS: { key, label, slot, min, max, step, precision, unit, slider, mixed,
+ *           overridden }
  *
  * `control` names the row's one control (number, vector, bool, choice,
  * color, text, asset or label), which Properties.rml builds with data-when.
  * Each refresh writes values in place and only where they differ, so a Play
  * refresh that moves values repaints number fields without laying out; a
  * number's text lives in room its member owns, so rewriting it allocates
- * nothing. A choice row lists only its current option until it is opened
+ * nothing. A number row's or axis's value is propertyValues[slot]: RmlUi
+ * dirties by top-level variable, so a refresh that moves only numbers
+ * evaluates only the views that show them. A choice row lists only its current option until it is opened
  * (properties.choices), so closed lists build no elements. */
 #include "editor/collab/actions_scene.h"
 #include "editor/documents/component_properties.h"
@@ -49,8 +54,11 @@ typedef struct view
     studio *s;
     yyjson_mut_doc *doc;
     yyjson_mut_val *root;
+    yyjson_mut_val *values; /* propertyValues */
     yyjson_mut_val **shown; /* the panel slots written this refresh (array) */
-    bool changed;
+    int slots;              /* the values written this refresh */
+    bool changed;           /* properties changed */
+    bool values_changed;
 } view;
 
 /* ---------- Members, written in place ---------- */
@@ -90,39 +98,70 @@ static void put_int(view *v, yyjson_mut_val *obj, const char *key, int64_t n)
 }
 
 /* Text in the member's own room. */
-static void put_room(view *v, yyjson_mut_val *obj, const char *key, const char *text)
+/* Rewrites the room `m` owns with `text`; true when it differed. */
+static bool set_room(yyjson_mut_val *m, const char *text)
 {
-    yyjson_mut_val *m = member(obj, key);
     char *room = (char *)yyjson_mut_get_str(m);
     size_t length = strlen(text);
     assert(length < ROOM);
     if (!strcmp(room, text)) {
-        return;
+        return false;
     }
     memcpy(room, text, length + 1);
     yyjson_mut_set_strn(m, room, length);
-    v->changed = true;
+    return true;
+}
+
+static void put_room(view *v, yyjson_mut_val *obj, const char *key, const char *text)
+{
+    v->changed |= set_room(member(obj, key), text);
 }
 
 /* A number as text a control reads back exactly: RmlUi writes a double into
    an attribute to three decimals. */
+static void number_text(char text[ROOM], double number, bool single)
+{
+    if (isinf(number)) {
+        snprintf(text, ROOM, "%s", number < 0 ? "-inf" : "inf");
+        return;
+    }
+    snprintf(text, ROOM, single ? "%.9g" : "%.17g", number);
+}
+
 static void put_number(view *v, yyjson_mut_val *obj, const char *key, double number, bool single)
 {
     char text[ROOM];
-    if (isinf(number)) {
-        snprintf(text, sizeof text, "%s", number < 0 ? "-inf" : "inf");
-    } else {
-        snprintf(text, sizeof text, single ? "%.9g" : "%.17g", number);
-    }
+    number_text(text, number, single);
     put_room(v, obj, key, text);
 }
 
-static void add_room(yyjson_mut_doc *doc, yyjson_mut_val *obj, const char *key)
+static yyjson_mut_val *room_new(yyjson_mut_doc *doc)
 {
     static const char BLANK[ROOM];
     yyjson_mut_val *room = yyjson_mut_strncpy(doc, BLANK, ROOM - 1);
     yyjson_mut_set_strn(room, yyjson_mut_get_str(room), 0);
-    yyjson_mut_obj_add_val(doc, obj, key, room);
+    return room;
+}
+
+static void add_room(yyjson_mut_doc *doc, yyjson_mut_val *obj, const char *key)
+{
+    yyjson_mut_obj_add_val(doc, obj, key, room_new(doc));
+}
+
+/* A number the game moves while it plays: its text in the next slot of
+   `propertyValues`, which `obj` names, so a refresh that moves only values
+   dirties that variable alone and evaluates only the views that show them. */
+static void put_value(view *v, yyjson_mut_val *obj, double number, bool single)
+{
+    int slot = v->slots++;
+    put_int(v, obj, "slot", slot);
+    if ((size_t)slot == yyjson_mut_arr_size(v->values)) {
+        yyjson_mut_arr_append(v->values, room_new(v->doc));
+        v->values_changed = true;
+    }
+    char text[ROOM];
+    number_text(text, number, single);
+    v->values_changed |= set_room(yyjson_mut_arr_get(v->values, (size_t)slot), text);
 }
 
 static void add_texts(yyjson_mut_doc *doc, yyjson_mut_val *obj, const char *const *keys, size_t count)
@@ -196,7 +235,7 @@ static yyjson_mut_val *table_new(yyjson_mut_doc *doc, yyjson_mut_val *obj)
 static yyjson_mut_val *axis_new(yyjson_mut_doc *doc)
 {
     static const char *const TEXTS[] = { "key", "label", "unit" };
-    static const char *const ROOMS[] = { "value", "min", "max", "step" };
+    static const char *const ROOMS[] = { "min", "max", "step" };
     static const char *const FLAGS[] = { "slider", "mixed", "overridden" };
     yyjson_mut_val *axis = yyjson_mut_obj(doc);
     ADD_TEXTS(doc, axis, TEXTS);
@@ -205,6 +244,7 @@ static yyjson_mut_val *axis_new(yyjson_mut_doc *doc)
     }
     ADD_FLAGS(doc, axis, FLAGS);
     yyjson_mut_obj_add_int(doc, axis, "precision", 0);
+    yyjson_mut_obj_add_int(doc, axis, "slot", 0);
     return axis;
 }
 
@@ -225,6 +265,7 @@ static yyjson_mut_val *row_new(yyjson_mut_doc *doc)
     }
     ADD_FLAGS(doc, row, FLAGS);
     yyjson_mut_obj_add_int(doc, row, "precision", 0);
+    yyjson_mut_obj_add_int(doc, row, "slot", 0);
     yyjson_mut_obj_add_arr(doc, row, "axes");
     table_new(doc, row);
     return row;
@@ -326,6 +367,7 @@ void studio_properties_add(yyjson_mut_doc *doc)
     static const char *const BEHAVIOR_FLAGS[] = { "shown", "open", "locked" };
     static const char *const ADD_FLAGS_[] = { "shown", "locked" };
     static const char *const MENU_TEXTS[] = { "title", "label", "icon", "about" };
+    yyjson_mut_obj_add_arr(doc, yyjson_mut_doc_get_root(doc), "propertyValues");
     yyjson_mut_val *root = yyjson_mut_obj_add_obj(doc, yyjson_mut_doc_get_root(doc), "properties");
     ADD_TEXTS(doc, root, TEXTS);
     ADD_FLAGS(doc, root, FLAGS);
@@ -459,7 +501,7 @@ static void number_row(rows *r, const row_desc *d, const number_shape *shape, do
 {
     view *v = r->v;
     yyjson_mut_val *row = next_row(r, d);
-    put_number(v, row, "value", value, shape->single);
+    put_value(v, row, value, shape->single);
     put_shape(v, row, shape);
     put_flag(v, row, "integer", shape->integer);
     put_flag(v, row, "float", shape->single);
@@ -501,7 +543,7 @@ static void vector_row(rows *r, const row_desc *d, const axis_desc *axes, int co
         yyjson_mut_val *axis = item_at(v, list, (size_t)i, ITEM_AXIS);
         put_text(v, axis, "key", axes[i].key);
         put_text(v, axis, "label", axes[i].label);
-        put_number(v, axis, "value", axes[i].value, axes[i].shape.single);
+        put_value(v, axis, axes[i].value, axes[i].shape.single);
         put_shape(v, axis, &axes[i].shape);
         put_flag(v, axis, "mixed", axes[i].mixed);
         put_flag(v, axis, "overridden", axes[i].overridden);
@@ -1571,7 +1613,10 @@ bool properties_drop_over(studio *s, char row[PROPERTIES_ROW_ID], char *asset, s
 
 bool studio_properties_sync(studio *s, const studio_panel_sync *at)
 {
-    view v = { .s = s, .doc = at->doc, .root = at->variable };
+    view v = { .s = s,
+               .doc = at->doc,
+               .root = at->variable,
+               .values = member(yyjson_mut_doc_get_root(at->doc), "propertyValues") };
     /* The search is the panel's own: its field writes it. */
     if (at->wrote && !at->preview) {
         snprintf(
@@ -1591,5 +1636,8 @@ bool studio_properties_sync(studio *s, const studio_panel_sync *at)
     field_menu(&v, &subject);
     component_menu(&v, &subject);
     afree(v.shown);
+    if (v.values_changed) {
+        rml_data_model_dirty(at->model, "propertyValues");
+    }
     return v.changed;
 }

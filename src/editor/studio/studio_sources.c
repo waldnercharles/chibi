@@ -1352,6 +1352,7 @@ static void sync_source(studio *s, studio_sources *src, ui_data *data, int i, bo
             yyjson_mut_doc_get_root(data->doc),
             source->name
         ),
+        .model = data->model,
         .preview = src->preview,
         .wrote = wrote,
     };

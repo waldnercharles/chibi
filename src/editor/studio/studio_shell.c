@@ -1613,6 +1613,7 @@ void studio_emit(studio *s)
     reveal_document(s);
     track_pointer(s);
     kit_root(s->kit, "app");
+    studio_drop_frame(s);
     topbar(s);
     workspace(s);
     /* Visual designer (workstream H): the Text Editor's cursor and the Canvas. */

@@ -159,13 +159,23 @@ const char *studio_asset_field(
     if (unresolved) {
         snprintf(tip, sizeof tip, "No %s asset is named %s", studio_asset_kind_name(desc->kind), value);
     }
-    kit_picker_desc picker = { .value = value,
+    /* An asset dragged over the field shows in it (studio_drop.c). */
+    const char *dragged = studio_drop_shown(s, key);
+    kit_picker_desc picker = { .value = dragged ? dragged : value,
                                .placeholder = desc->none ? desc->none : "",
                                .icon = studio_asset_kind_icon(desc->kind),
                                .tip = tip[0] ? tip : NULL,
-                               .flags = flags | (unresolved ? KIT_INVALID : 0) };
+                               .flags = flags |
+                                        (unresolved && !dragged ? KIT_INVALID : 0) };
     if (kit_picker(s->kit, "value", &picker)) {
         studio_pick_open(s, key, value, desc);
+    }
+    kit_flag(s->kit, "data-drop-preview", dragged != NULL);
+    bool editable = !(flags & (KIT_READONLY | KIT_DISABLED)) &&
+                    desc->kind != REFERENCE_ASSET_EVENT;
+    const char *dropped = editable ? studio_drop_picker(s, key, desc->kind) : NULL;
+    if (dropped) {
+        return dropped;
     }
     if (!s->pick.chosen || strcmp(s->pick.key, key)) {
         return NULL;

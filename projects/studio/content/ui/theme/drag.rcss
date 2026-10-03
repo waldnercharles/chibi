@@ -14,5 +14,10 @@
 .drag-overlay[data-hint] .hint { display: block; }
 .drag-overlay[data-over] { border-color: var(--primary); }
 [data-dragging] { opacity: 0.5; }
+/* Fields and rows that take the dragged asset (studio_drop.c), then the one
+   under the pointer. */
+.field.picker[data-drop-accept], .tree-row[data-drop-accept] { border-color: var(--primary-edge); }
 [data-drop-over] { background-color: var(--primary-soft); }
 .tree-row[data-drop-over] { border-color: var(--primary); }
+.field.picker[data-drop-over] { border-color: var(--primary); background-color: var(--primary-soft); }
+.field.select.picker[data-drop-preview] .value { color: var(--primary); }

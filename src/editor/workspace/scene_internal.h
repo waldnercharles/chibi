@@ -101,6 +101,22 @@ typedef struct
     scene_field_edit *fields;       /* array; `after` holds each kept value */
 } scene_kept;
 
+/* An asset dragged over an object, in the field that names its kind
+   (scene_asset_drop.c): the next draw shows it, then puts `before` back. */
+typedef struct
+{
+    ecs_entity entity;
+    ecs_component_id component;
+    int field;
+    char *text;       /* the asset's name, owned */
+    pin_value before; /* while drawn; owned, as scene_property_value_copy copies */
+    bool shown;
+} scene_field_preview;
+
+/* The Scene outlines an object a dragged asset would land on in the kit's
+   drop color, a bright primary, beside the orange selection. */
+#define SCENE_DROP_COLOR 0x5B8DEFFFu
+
 typedef struct
 {
     char *path;
@@ -215,6 +231,7 @@ struct app_scene_authoring
     app_debug_status debug_status;
     bool runtime_snapshot_valid;
     scene_kept *kept; /* Keep Changes, oldest first; Stop applies them */
+    scene_field_preview *field_previews; /* until the next draw (scene_asset_drop.c) */
     bool runtime_playing;
     bool runtime_step;
     bool preview_playing;
@@ -507,6 +524,32 @@ render_skip scene_view_skip(app_scene_authoring *scene, unsigned flags, uint64_t
 void scene_view_save_as(app_scene_authoring *scene, const char *path);
 /* The topmost object at (x, y) in the 2D edit view that `skip` does not hold. */
 ecs_entity pick_scene_entity(app_scene_authoring *scene, float x, float y, render_skip skip);
+/* The object a click at the pointer would pick, as of the Scene's last draw. */
+ecs_entity scene_pick_at_pointer(app_scene_authoring *scene, engine_viewport *viewport);
+
+/* ---------- Assets dropped on objects (scene_asset_drop.c) ---------- */
+
+/* The field of `entity` whose text names an asset of `kind`
+   (reference_named_field_kind), its component in `component`; -1 for none. */
+int scene_asset_field(
+    const app_scene_authoring *scene,
+    ecs_entity entity,
+    reference_asset_kind kind,
+    ecs_component_id *component
+);
+/* Shows `text` in the field for the next draw only, outlined in
+   SCENE_DROP_COLOR, as Unity previews a material dragged over an object. */
+void scene_preview_field(
+    app_scene_authoring *scene,
+    ecs_entity entity,
+    ecs_component_id component,
+    int field,
+    const char *text
+);
+/* The draw writes the previews before it renders; clearing puts the authored
+   values back and forgets them. */
+void scene_field_previews_apply(app_scene_authoring *scene);
+void scene_field_previews_clear(app_scene_authoring *scene);
 
 /* ---------- UI documents (Studio UI authoring, workstream D) ---------- */
 

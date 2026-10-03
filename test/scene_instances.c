@@ -618,6 +618,40 @@ static void view_state(app_scene_authoring *scene, const char *folder)
     puts("view state PASS: hidden and locked objects leave picks, follow renames, Undo, Save As and reloads by name, and never reach the scene or its Undo");
 }
 
+/* An asset dragged over an object shows in the field that names its kind
+   for one draw; clearing puts the authored value back without an Undo step
+   or an unsaved mark. */
+static void field_preview(app_scene_authoring *scene, ecs_world *world)
+{
+    const char *shaded = "version 1\n"
+                         "name \"Shaded\"\n"
+                         "components {\n"
+                         "    GameShader {\n"
+                         "        material \"Base\"\n"
+                         "    }\n"
+                         "}\n"
+                         "(array)behaviors\n";
+    assert(app_scene_authoring_register_prototype(scene, shaded, NULL) == 0);
+    assert(app_scene_authoring_add_instance(scene, "Shaded") == 0);
+    ecs_entity entity = scene->actors[scene->selected].entity;
+    ecs_component_id component;
+    int field = scene_asset_field(scene, entity, REFERENCE_ASSET_MATERIAL, &component);
+    assert(field >= 0 && component == GAME_COMPONENT_GameShader.id);
+    assert(scene_asset_field(scene, entity, REFERENCE_ASSET_UI, &component) < 0);
+    scene->scene_dirty = false;
+    scene_history_clear(scene->history);
+    scene_preview_field(scene, entity, GAME_COMPONENT_GameShader.id, field, "Glow");
+    scene_preview_field(scene, entity, GAME_COMPONENT_GameShader.id, field, "Glass");
+    scene_field_previews_apply(scene);
+    assert(!strcmp(GAME_GameShader_get_const(world, entity)->material, "Glass"));
+    scene_field_previews_clear(scene);
+    assert(!strcmp(GAME_GameShader_get_const(world, entity)->material, "Base"));
+    assert(
+        !scene->scene_dirty && !scene_history_can_undo(scene->history) && !scene->field_previews
+    );
+    puts("field preview PASS: a dragged asset shows for one draw and leaves the authored value, history and save alone");
+}
+
 void test_scene_instances()
 {
     ecs_world *world = ecs_world_new();
@@ -660,6 +694,7 @@ void test_scene_instances()
     rename_instance(scene, folder);
     view_state(scene, folder);
     prototype_component_removal(scene, world, folder);
+    field_preview(scene, world);
     const char *const saved[] = { "Renamed.kdl", "Removable.kdl", "Shown.kdl", "View.kdl" };
     for (size_t i = 0; i < sizeof saved / sizeof *saved; i++) {
         char path[1024];

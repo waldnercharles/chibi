@@ -373,8 +373,10 @@ void studio_scene_body(studio *s, int area)
     kit_push(k, "viewport", NULL, "viewport");
     kit_surface(k, "surface", "surface", "viewport", &s->surface);
     crop_view(s);
-    /* A prototype dropped here is placed under the pointer by the viewport. */
+    /* A prototype dropped here is placed under the pointer by the viewport;
+       an asset an object's field names lands on the object under it. */
     kit_drop_target(k, "prototype", s->dropped_prototype, sizeof s->dropped_prototype);
+    studio_drop_scene(s);
     /* While a session runs the Scene is the game's view, so its tools and
        label leave the top-left corner to the game's HUD. */
     bool session = runtime_session(scene);
@@ -838,20 +840,9 @@ void studio_outliner_body(studio *s, int area)
         kit_flag(k, "data-marked", selected && !active);
         if (kit_drop_target(k, "behavior", dropped, sizeof dropped) &&
             studio_editable(s)) {
-            finish_transform_edit(scene, false);
-            select_instance(scene, i);
-            if (app_scene_authoring_set_instance_behavior(scene, dropped, true) == 0) {
-                char message[320];
-                snprintf(
-                    message,
-                    sizeof message,
-                    "Attached %s to %s",
-                    dropped,
-                    actor->name
-                );
-                studio_report(s, message);
-            }
+            studio_attach_behavior(s, i, dropped);
         }
+        studio_drop_row(s, i);
         if (events & KIT_ROW_CLICK) {
             click_row(s, rows, shown, r);
         }

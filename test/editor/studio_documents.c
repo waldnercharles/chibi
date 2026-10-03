@@ -3660,6 +3660,109 @@ static void live_property_edit()
     fixture_free(&f);
 }
 
+/* The center of `el` in dp, as the pointer reaches it. */
+static void element_center(studio *s, rml_element *el, float *x, float *y)
+{
+    rml_vec2 at = rml_element_absolute_offset(el, RML_BOX_BORDER);
+    rml_vec2 size = rml_element_box_size(el, RML_BOX_BORDER);
+    float ratio = studio_pixel_ratio(s);
+    *x = (at.x + size.x * 0.5f) / ratio;
+    *y = (at.y + size.y * 0.5f) / ratio;
+}
+
+/* The Vault's ui document, as its GameUi names it. */
+static const char *vault_document(studio_fixture *f)
+{
+    return GAME_GameUi_get_const(f->scene->world, f->scene->actors[0].entity)->document;
+}
+
+/* Carries the Bank asset's row onto Properties' Document field, the pointer
+   held, Escape pressed there when `cancel`; whether the field took the drag
+   and showed Bank while over it. */
+static bool carry_bank(studio_fixture *f, bool cancel)
+{
+    studio *s = f->studio;
+    char first[256];
+    list_rows(s, ".assets-list .vlist-content", first, sizeof first);
+    rml_element *window = studio_element(s, ".assets-list .vlist-content");
+    rml_element *row = NULL;
+    for (int i = 0; window && i < rml_element_child_count(window); i++) {
+        char text[256] = "";
+        rml_element *child = rml_element_child(window, i);
+        rml_element_inner_rml(child, text, sizeof text);
+        row = strstr(text, "Bank") && !strstr(text, ">UI<") ? child : row;
+    }
+    rml_element *prop = property_row(s, "Document");
+    rml_element *picker = prop ? rml_element_query_selector(prop, ".field.picker")
+                               : NULL;
+    if (!row || !picker) {
+        printf("  carry: row=%d picker=%d\n", row != NULL, picker != NULL);
+        return false;
+    }
+    float x, y, px, py;
+    element_center(s, row, &x, &y);
+    element_center(s, picker, &px, &py);
+    mouse_move(s, x, y);
+    frames(f, 1);
+    graph_drag_button(s, x, y, true);
+    frames(f, 1);
+    mouse_move(s, x + 12, y);
+    frames(f, 2);
+    mouse_move(s, px, py);
+    frames(f, 3);
+    picker = rml_element_query_selector(property_row(s, "Document"), ".field.picker");
+    bool over = picker && rml_element_has_attribute(picker, "data-drop-over") &&
+                rml_element_has_attribute(picker, "data-drop-preview");
+    if (cancel) {
+        tap(SDL_SCANCODE_ESCAPE);
+        frames(f, 1);
+    }
+    graph_drag_button(s, px, py, false);
+    frames(f, 3);
+    return over;
+}
+
+/* Typed asset assignment (studio_drop.c): a ui asset dragged from Assets
+   onto Properties' Document field shows there while over it, the authored
+   value untouched, and lands as one Undo step; Escape puts the drag back. */
+static void asset_drop_assigns()
+{
+    studio_fixture f = vault_open();
+    studio *s = f.studio;
+    s->maximized = -1;
+    studio_active_layout(s)->editors[STUDIO_AREA_BOTTOM] = STUDIO_EDITOR_ASSETS;
+    s->prefs.assets_tile = STUDIO_ASSETS_LIST;
+    s->applied = s->prefs;
+    snprintf(s->assets_filter, sizeof s->assets_filter, "Bank");
+    select_instance(f.scene, 0);
+    show_object_properties(s);
+    snprintf(s->property_search, sizeof s->property_search, "Document");
+    pin_value elsewhere = { .type = PIN_STR, .str = "Elsewhere" };
+    ecs_component_write_field(
+        f.scene->world,
+        f.scene->actors[0].entity,
+        GAME_COMPONENT_GameUi.id,
+        0,
+        elsewhere
+    );
+    scene_history_clear(f.scene->history);
+    frames(&f, 6);
+    bool cancelled = carry_bank(&f, true) &&
+                     !strcmp(vault_document(&f), "Elsewhere") &&
+                     !scene_history_can_undo(f.scene->history);
+    bool over = carry_bank(&f, false);
+    bool assigned = !strcmp(vault_document(&f), "Bank") &&
+                    scene_history_can_undo(f.scene->history);
+    studio_history(s, false);
+    bool undone = !strcmp(vault_document(&f), "Elsewhere");
+    if (!(cancelled && over && assigned && undone)) {
+        printf("  asset drop: %d %d %d %d (%s)\n", cancelled, over, assigned, undone, vault_document(&f));
+    }
+    test_check(cancelled, "Escape puts a dragged asset back: the field keeps its value and history is untouched");
+    test_check(over && assigned && undone, "a ui asset dragged onto its Properties field shows there, lands as one Undo step and Undo restores it");
+    fixture_free(&f);
+}
+
 static int studio_documents_app(const char *program, bool run_properties_only)
 {
     CF_Result result = cf_make_app(
@@ -3730,6 +3833,7 @@ static int studio_documents_app(const char *program, bool run_properties_only)
         toolbar_shortcuts_keep_text_focus();
         authored_modals_and_collaboration();
         authored_fields_keep_editing_keys();
+        asset_drop_assigns();
     }
     app_input_shutdown();
     cf_destroy_app();

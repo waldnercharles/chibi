@@ -887,6 +887,14 @@ struct studio
     double assets_rest_since;
     struct studio_thumbs *thumbs; /* asset thumbnails, NULL until asked for */
     char dropped_prototype[256];  /* placed by the viewport this frame */
+    /* An asset dragged over an asset field (studio_drop.c): the field's key
+       and the asset as of the last frame, and the asset a field took. */
+    struct
+    {
+        char key[192];
+        char name[256];
+        char landed[256];
+    } drop;
     int output_view;
     char output_filter[128];
     char references_title[160]; /* what Output's Find view lists references to */
@@ -1751,6 +1759,27 @@ const char *studio_asset_field(
 void studio_pick_open(studio *s, const char *key, const char *current, const studio_pick_desc *desc);
 /* Items for the command surface while it picks an asset. */
 bool studio_pick_palette(studio *s);
+
+/* ---------- Typed asset drops (studio_drop.c) ---------- */
+
+/* Whether Assets lets the asset drag: prototypes, behaviors, and the kinds
+   object fields name. */
+bool studio_asset_draggable(const reference_asset *asset);
+/* Before the areas emit: forgets what the last frame previewed. */
+void studio_drop_frame(studio *s);
+/* An asset field emitted last, keyed `key`, takes assets of `kind`: the name
+   of one dropped on it this frame, or NULL. */
+const char *studio_drop_picker(studio *s, const char *key, int kind);
+/* The asset dragged over the field keyed `key`, which it shows; NULL. */
+const char *studio_drop_shown(const studio *s, const char *key);
+/* The Outliner row emitted last, of actor `index`, and the Scene's surface
+   take assets an object's fields name, and behaviors. */
+void studio_drop_row(studio *s, int index);
+void studio_drop_scene(studio *s);
+/* Attaches behavior `name` to actor `index`, selecting it, as one Undo step. */
+void studio_attach_behavior(studio *s, int index, const char *name);
+/* Sets the actor's text field to `text` as Properties does: one Undo step. */
+void studio_set_field(studio *s, scene_actor *actor, ecs_component_id component, int field, const char *text);
 
 /* Game UI errors (studio_canvas.c): the shown documents' error, the scene's
  * or the preview's, as "ui/Name.rml message". A change is recorded in

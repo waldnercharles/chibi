@@ -355,3 +355,12 @@ list(APPEND EDITOR_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_designer_details.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_designer_library.c
 )
+
+# Studio authoring workflows: assets dropped on fields and objects, and
+# prototype actions on instances.
+list(APPEND APP_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/workspace/scene_asset_drop.c
+)
+list(APPEND EDITOR_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_drop.c
+)

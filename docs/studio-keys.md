@@ -137,6 +137,7 @@ Ctrl+Space completes here; Maximize Area does not reach a focused editor.
 | --- | --- | --- |
 | F2 | Rename the asset under the pointer | `studio_assets.c` |
 | X, Backspace, Delete | Delete it | `studio_assets.c` |
+| Drag onto a field, an Outliner row or a Scene object | Assign the asset to the field of its kind (Release assigns, Escape cancels) | `studio_drop.c` |
 
 ## UI Hierarchy and Canvas
 

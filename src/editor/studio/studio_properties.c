@@ -464,6 +464,41 @@ static void write_field(studio *s, scene_actor *actor, field_change c)
     }
 }
 
+void studio_set_field(studio *s, scene_actor *actor, ecs_component_id component, int field, const char *text)
+{
+    pin_value before = { 0 };
+    if (ecs_component_read_field(s->scene->world, actor->entity, component, field, &before) !=
+        ECS_OK) {
+        return;
+    }
+    pin_value value = before;
+    value.str = text;
+    write_field(
+        s,
+        actor,
+        (field_change){ .component = component,
+                        .field = field,
+                        .before = before,
+                        .value = value,
+                        .changed = true }
+    );
+}
+
+/* An asset dragged over the field shows on its objects in the Scene. */
+static void preview_drop(studio *s, scene_actor *actor, ecs_component_id component, int field, const char *key)
+{
+    const char *name = studio_drop_shown(s, key);
+    if (!name) {
+        return;
+    }
+    scene_preview_field(s->scene, actor->entity, component, field, name);
+    int *others = editing_selection(s, actor) ? other_selected(s, component) : NULL;
+    for (int i = 0; i < acount(others); i++) {
+        scene_preview_field(s->scene, s->scene->actors[others[i]].entity, component, field, name);
+    }
+    afree(others);
+}
+
 static void context_target(studio *s, scene_actor *actor, ecs_component_id component, int field)
 {
     if (!kit_item_context_clicked(s->kit)) {
@@ -894,6 +929,9 @@ static void field_row(
     bool changed = named < REFERENCE_ASSET_KIND_COUNT
                      ? asset_control(s, key, named, &value, flags)
                      : value_control(s, desc, field, &value, flags, &active, text, sizeof text);
+    if (named < REFERENCE_ASSET_KIND_COUNT && !locked) {
+        preview_drop(s, actor, desc->id, index, key);
+    }
     context_target(s, actor, desc->id, index);
     kit_prop_end(k);
     field_tip(k, field, label);

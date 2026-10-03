@@ -1828,9 +1828,15 @@ static hint_list editor_hints(studio *s)
         { 0, NULL, "Search", STUDIO_COMMAND_SEARCH + 1 },
         { 0, NULL, "Shortcuts", STUDIO_COMMAND_KEYBOARD_SHORTCUTS + 1 }
     };
+    /* A drag drops wherever it is released, and Escape puts it back. */
+    static const studio_hint DRAGGING[] = { { KIT_ICON_MOUSE, NULL, "Release to drop" },
+                                            { 0, "Escape", "Cancel" } };
     studio_editor editor = s->hover_area >= 0
                              ? studio_active_layout(s)->editors[s->hover_area]
                              : STUDIO_EDITOR_COUNT;
+    if (kit_dragging(s->kit, NULL)) {
+        return HINT_LIST(DRAGGING);
+    }
     switch (editor) {
         case STUDIO_EDITOR_SCENE: return scene_hints(s);
         case STUDIO_EDITOR_PROPERTIES: return HINT_LIST(PROPERTIES);

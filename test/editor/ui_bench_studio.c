@@ -370,16 +370,17 @@ static double properties_ui(properties_case *c, int step, int arm, int actor, do
     return bench_now() - start;
 }
 
-/* Step 1 edits one shown field and step 2 moves every float, as Play does. */
-static void change_player(properties_case *c, int step, int run)
+/* Step 1 edits one shown field and step 2 moves every float, as Play does.
+ * Values only grow: a frame between two changes need not refresh, so going
+ * back and forth would show the same value to every other one. */
+static void change_player(properties_case *c, int step)
 {
     app_scene_authoring *scene = c->b->scene;
     ecs_entity player = scene->actors[c->player].entity;
-    float sign = (run & 1) ? 1 : -1;
     if (step == 1) {
-        bench_edit_float(scene->world, player, "GameAppearance", "width", sign);
+        bench_edit_float(scene->world, player, "GameAppearance", "width", 1);
     } else if (step == 2) {
-        bench_move_floats(scene->world, player, sign * 0.25f);
+        bench_move_floats(scene->world, player, 0.25f);
     }
 }
 
@@ -391,7 +392,7 @@ static void properties_step(properties_case *c, int step, const char *name)
     bench_counts counts[ARMS];
     for (int run = -WARMUP; run < RUNS; run++) {
         for (int arm = 0; arm < ARMS; arm++) {
-            change_player(c, step, run);
+            change_player(c, step);
             cf_app_update(NULL);
             bench_counts before = arm ? bench_spike_counts(c->spike)
                                       : studio_mark(c->b->studio);

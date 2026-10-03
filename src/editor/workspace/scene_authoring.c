@@ -1025,16 +1025,65 @@ static game_behavior_world *debug_behaviors(app_scene_authoring *scene, app_runt
              : scene->live->behaviors;
 }
 
-void sync_editor_inspection(app_scene_authoring *scene)
+/* The only live instance of the open behavior, when it has exactly one. */
+static bool sole_instance(app_scene_authoring *scene, game_behavior_attachment_info *out)
 {
+    game_behavior_world *behaviors = debug_behaviors(scene, scene->active_runtime_target);
+    int found = 0;
+    for (int i = 0; i < game_behavior_attachment_count(behaviors) && found < 2; i++) {
+        game_behavior_attachment_info info = game_behavior_attachment_info_index(behaviors, i);
+        if (!strcmp(info.asset_name, scene->definition->name)) {
+            *out = info;
+            found++;
+        }
+    }
+    return found == 1;
+}
+
+/* Whether the selection, the open behavior or the session changed since the
+   debug target last followed them. A target chosen in between, from the
+   graph header or by the debugger, stays until one of them does. */
+static bool follow_changed(app_scene_authoring *scene)
+{
+    app_runtime_target target = scene->active_runtime_target;
+    ecs_entity entity = target == APP_RUNTIME_PREVIEW
+                          ? game_prototype_preview_entity(scene->prototype_preview)
+                          : selected_scene_entity(scene);
+    uint64_t session = scene->debug_sessions[target];
+    const char *asset = scene->definition->name;
+    if (scene->debug_followed.asset && !strcmp(scene->debug_followed.asset, asset) &&
+        ecs_entity_to_u64(scene->debug_followed.entity) == ecs_entity_to_u64(entity) &&
+        scene->debug_followed.session == session &&
+        scene->debug_followed.target == target) {
+        return false;
+    }
+    free(scene->debug_followed.asset);
+    scene->debug_followed.asset = xstrdup(asset);
+    scene->debug_followed.entity = entity;
+    scene->debug_followed.session = session;
+    scene->debug_followed.target = target;
+    return true;
+}
+
+/* Unreal's debug object: the selected object's instance of the open behavior,
+   else its only instance; selecting something without it keeps the target. */
+static void follow_selection(app_scene_authoring *scene)
+{
+    if (scene->debug_pinned || !scene->definition || !scene->definition->name ||
+        !follow_changed(scene)) {
+        return;
+    }
     game_behavior_attachment_info info;
-    if (!scene->debug_pinned && selected_behavior_attachment(scene, &info) &&
-        (!scene->debug.asset_name || scene->debug_target != scene->active_runtime_target ||
-         ecs_entity_to_u64(scene->debug.entity) != ecs_entity_to_u64(info.entity) ||
-         strcmp(scene->debug.asset_name, info.asset_name))) {
+    if (selected_behavior_attachment(scene, &info) || sole_instance(scene, &info)) {
         scene->debug_target = scene->active_runtime_target;
         scene_debug_select(&scene->debug, &info, scene->debug_sessions[scene->debug_target]);
     }
+}
+
+void sync_editor_inspection(app_scene_authoring *scene)
+{
+    follow_selection(scene);
+    game_behavior_attachment_info info;
     scene->debug_status = APP_DEBUG_NONE;
     if (scene->debug.asset_name) {
         scene->debug_status = APP_DEBUG_UNAVAILABLE;
@@ -1065,35 +1114,56 @@ void sync_editor_inspection(app_scene_authoring *scene)
         }
     }
     bool available = scene->debug_status == APP_DEBUG_AVAILABLE;
+    /* Only the target pays for tracing, and only while a graph shows it. */
+    bool traced = available && !scene->debug_hidden;
     for (int target = APP_RUNTIME_PREVIEW; target <= APP_RUNTIME_SCENE; target++) {
         game_behavior_inspect(
             debug_behaviors(scene, target),
-            available && target == (int)scene->debug_target ? info.instance : NULL
+            traced && target == (int)scene->debug_target ? info.instance : NULL
         );
     }
     bool behavior = scene->graph_document_kind == APP_EDITOR_DOCUMENT_BEHAVIOR;
     editor_set_inspection_blocked(scene->graph_editor, behavior && !available);
     const flow_run *run = NULL;
-    const behavior_instance_trace_entry *trace = NULL;
-    int trace_count = 0;
-    if (available) {
-        for (int i = acount(info.instance->activations) - 1; i >= 0; i--) {
-            flow_state state = flow_run_status(info.instance->activations[i]);
-            if (state != FLOW_COMPLETED && state != FLOW_FAILED) {
-                run = info.instance->activations[i];
-                break;
-            }
+    for (int i = available ? acount(info.instance->activations) - 1 : -1; i >= 0; i--) {
+        flow_state state = flow_run_status(info.instance->activations[i]);
+        if (state != FLOW_COMPLETED && state != FLOW_FAILED) {
+            run = info.instance->activations[i];
+            break;
         }
-        trace = behavior_instance_trace(info.instance, &trace_count);
     }
     editor_set_inspection_instance(scene->graph_editor, available ? info.instance : NULL);
     editor_set_inspection_run(scene->graph_editor, run);
-    editor_set_inspection_trace_revision(
-        scene->graph_editor,
-        trace,
-        trace_count,
-        available ? behavior_instance_trace_revision(info.instance) : 0
-    );
+}
+
+int app_scene_authoring_choose_debug_target(app_scene_authoring *scene, ecs_entity entity)
+{
+    game_behavior_world *behaviors = debug_behaviors(scene, scene->active_runtime_target);
+    game_behavior_attachment_info info = { 0 };
+    for (int i = 0; entity.slot && !info.asset_name &&
+                    i < game_behavior_attachment_count_for_entity(behaviors, entity);
+         i++) {
+        game_behavior_attachment_info candidate;
+        if (game_behavior_attachment_info_at(behaviors, entity, i, &candidate) == 0 &&
+            !strcmp(candidate.asset_name, scene->definition->name)) {
+            info = candidate;
+        }
+    }
+    if (entity.slot && !info.asset_name) {
+        return -1;
+    }
+    scene_debug_clear(&scene->debug);
+    if (info.asset_name) {
+        scene->debug_target = scene->active_runtime_target;
+        scene_debug_select(&scene->debug, &info, scene->debug_sessions[scene->debug_target]);
+    }
+    sync_editor_inspection(scene);
+    return 0;
+}
+
+void app_scene_authoring_set_debug_hidden(app_scene_authoring *scene, bool hidden)
+{
+    scene->debug_hidden = hidden;
 }
 
 int app_scene_authoring_set_debug_target(
@@ -1126,6 +1196,10 @@ int app_scene_authoring_set_debug_target(
 void app_scene_authoring_set_debug_pinned(app_scene_authoring *scene, bool pinned)
 {
     scene->debug_pinned = pinned;
+    if (!pinned) {
+        free(scene->debug_followed.asset);
+        scene->debug_followed.asset = NULL; /* follow the selection again */
+    }
     sync_editor_inspection(scene);
 }
 
@@ -1427,7 +1501,6 @@ void app_scene_authoring_free(app_scene_authoring *scene)
     if (!scene) {
         return;
     }
-    scene_debug_clear(&scene->debug);
     scene_kept_clear(scene);
     scenario_document_free(scene->scenario);
     av_value_free(scene->scenario_saved_state);
@@ -1481,6 +1554,9 @@ void app_scene_authoring_free(app_scene_authoring *scene)
     free(scene->current_scene_tab_key);
     free(scene->document_id);
     free(scene->graph_document_id);
+    /* Removing the actors above syncs the debug target. */
+    scene_debug_clear(&scene->debug);
+    free(scene->debug_followed.asset);
     free(scene);
 }
 

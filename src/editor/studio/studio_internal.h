@@ -184,6 +184,7 @@ typedef enum
     STUDIO_COMMAND_FRAME_ALL,
     STUDIO_COMMAND_FIND,
     STUDIO_COMMAND_KEYBOARD_SHORTCUTS,
+    STUDIO_COMMAND_SHOW_LIVE_VALUES,
     STUDIO_COMMAND_COUNT,
 } studio_command;
 
@@ -237,6 +238,7 @@ typedef struct
     bool short_bindings; /* graph chips name "Aim › Manual", not "Self.GameAim.manual" */
     bool title_flow;    /* unlabeled execution pins sit in node titles */
     bool compact_nodes; /* operators as symbols, one-output reads as pills */
+    bool live_values;   /* data outputs show the debug target's values */
     int standard_font_family; /* registered RmlUi family used by editor UI text */
     float standard_font_size; /* base UI text size, in dp */
     int code_font_family; /* registered RmlUi family used by code and monospace text */
@@ -547,6 +549,11 @@ typedef struct
     uint64_t menu_pin;  /* the menu's pin on menu_node, or 0 */
     bool box_subtract;  /* a Ctrl marquee removes what it touches */
     bool frame_pending; /* F frames on release unless it placed a node */
+    struct
+    {
+        struct studio_live_value *values; /* shown pins' live values as read */
+        double time;                      /* when they were read */
+    } live;
 } studio_graph;
 
 typedef enum

@@ -576,8 +576,10 @@ void studio_graph_frame(studio *s, double delta_seconds)
     studio_graph *g = &s->graph;
     editor *e = sg_graph_editor(s);
     kit_rect r = g->surface.rect;
-    if (g->area < 0 || r.w < 1 || r.h < 1 || !studio_graph_active(s) ||
-        !ensure_canvas(s)) {
+    bool shown = g->area >= 0 && r.w >= 1 && r.h >= 1 && studio_graph_active(s);
+    /* Nothing traces the debug target while no graph shows it. */
+    app_scene_authoring_set_debug_hidden(s->scene, !shown);
+    if (!shown || !ensure_canvas(s)) {
         asetlen(g->events, 0);
         g->captured = false;
         g->area = -1;
@@ -683,6 +685,7 @@ void studio_graph_free(studio *s)
     afree(g->find.hits);
     afree(g->visits);
     afree(g->shown);
+    afree(g->live.values);
     *g = (studio_graph){ 0 };
 }
 
@@ -776,6 +779,121 @@ static void rename_field(studio *s, graph *gr)
     }
 }
 
+static const char *actor_name(const app_scene_authoring *scene, ecs_entity entity)
+{
+    for (int i = 0; i < acount(scene->actors); i++) {
+        if (ecs_entity_to_u64(scene->actors[i].entity) == ecs_entity_to_u64(entity)) {
+            return scene->actors[i].name;
+        }
+    }
+    return NULL;
+}
+
+/* An instance as the debug target menu names it: its object's name, or its
+   prototype's and its entity's slot when the game spawned it. */
+static void instance_label(app_scene_authoring *scene, ecs_entity entity, char *buf, size_t size)
+{
+    const char *name = actor_name(scene, entity);
+    if (name) {
+        snprintf(buf, size, "%s", name);
+        return;
+    }
+    snprintf(
+        buf,
+        size,
+        "%s %u",
+        runtime_entity_label(scene, entity),
+        (unsigned)entity.slot
+    );
+}
+
+typedef struct
+{
+    ecs_entity entity;
+    char label[96];
+} debug_choice;
+
+/* The running instances of the open behavior to debug, searchable, after
+   No target (Unreal's debug object menu). */
+static void debug_target_menu(studio *s, const char *key)
+{
+    app_scene_authoring *scene = s->scene;
+    game_behavior_world *behaviors = scene->active_runtime_target == APP_RUNTIME_PREVIEW
+                                       ? game_prototype_preview_behaviors(scene->prototype_preview)
+                                       : scene->live->behaviors;
+    bool targeted = scene->debug_status == APP_DEBUG_AVAILABLE ||
+                    scene->debug_status == APP_DEBUG_STALE;
+    debug_choice *choices = NULL;
+    apush(choices, ((debug_choice){ .label = "No target" }));
+    for (int i = 0; i < game_behavior_attachment_count(behaviors); i++) {
+        game_behavior_attachment_info info = game_behavior_attachment_info_index(behaviors, i);
+        if (!strcmp(info.asset_name, scene->graph_document_id)) {
+            debug_choice choice = { .entity = info.entity };
+            instance_label(scene, info.entity, choice.label, sizeof choice.label);
+            apush(choices, choice);
+        }
+    }
+    kit_command_item *items = NULL;
+    for (int i = 0; i < acount(choices); i++) {
+        bool current = i ? targeted && ecs_entity_to_u64(choices[i].entity) ==
+                                           ecs_entity_to_u64(scene->debug.entity)
+                         : !targeted;
+        apush(
+            items,
+            ((kit_command_item){ .label = choices[i].label,
+                                 .group = !i ? NULL
+                                        : actor_name(scene, choices[i].entity) ? "Scene"
+                                                                               : "Spawned",
+                                 .icon = i ? KIT_ICON_TARGET : KIT_ICON_CLOSE,
+                                 .current = current })
+        );
+    }
+    int chosen = kit_dropdown(s->kit, key, items, acount(items));
+    if (chosen >= 0) {
+        app_scene_authoring_choose_debug_target(scene, choices[chosen].entity);
+    }
+    afree(items);
+    afree(choices);
+}
+
+/* While the game runs, which instance the graph shows (Unreal's debug
+   object): the selected object's, chosen here, or none. */
+static void debug_target(studio *s, int area)
+{
+    kit *k = s->kit;
+    app_scene_authoring *scene = s->scene;
+    if (!studio_session(s) || scene->graph_document_kind != APP_EDITOR_DOCUMENT_BEHAVIOR) {
+        return;
+    }
+    char name[96], label[128] = "No target", key[32];
+    bool stale = scene->debug_status == APP_DEBUG_STALE;
+    if (scene->debug_status == APP_DEBUG_AVAILABLE || stale) {
+        instance_label(scene, scene->debug.entity, name, sizeof name);
+        snprintf(label, sizeof label, "%s%s", name, stale ? " \xc2\xb7 Edited" : "");
+    }
+    kit_button_desc d = {
+        .label = label,
+        .icon = KIT_ICON_TARGET,
+        .variant = KIT_SUBTLE,
+        .size = KIT_SM,
+        .cls = "debug-target",
+        .morph = true,
+        .tip = "Debug target",
+        .description = stale
+                         ? "It runs the saved behavior. Save to run this graph."
+                         : "The running instance whose wires, nodes and values "
+                           "this graph shows. Selecting an object shows its "
+                           "instance.",
+    };
+    snprintf(key, sizeof key, "debug-target:%d", area);
+    if (kit_button(k, "debug", &d)) {
+        kit_dropdown_open(k, key, "Search instances");
+    }
+    if (kit_dropdown_is_open(k, key)) {
+        debug_target_menu(s, key);
+    }
+}
+
 void studio_behavior_header(studio *s, int area)
 {
     kit *k = s->kit;
@@ -859,22 +977,7 @@ void studio_behavior_header(studio *s, int area)
         kit_popup_end(k);
     }
     kit_leaf(k, "gap", NULL, "spacer");
-    /* Which runtime instance the wires show (Unreal's debug object). */
-    app_scene_authoring *scene = s->scene;
-    if (scene->debug_status == APP_DEBUG_AVAILABLE) {
-        char debug[160];
-        snprintf(
-            debug,
-            sizeof debug,
-            "%s",
-            runtime_entity_label(scene, scene->debug.entity)
-        );
-        kit_label(k, "debug", "badge accent debug-target", debug);
-        kit_tip(k, "Wires show this instance running", NULL, NULL);
-    } else if (scene->debug_status == APP_DEBUG_STALE) {
-        kit_label(k, "debug", "badge debug-target", "Edited");
-        kit_tip(k, "The running behavior differs from this graph; save to update it", NULL, NULL);
-    }
+    debug_target(s, area);
     if (s->graph.kit && s->graph.surface.rect.w > 0) {
         kit_number_flow(
             k,

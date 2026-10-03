@@ -108,6 +108,8 @@ void test_code_intelligence();
 void test_studio_settings();
 /* The Scene view's game preview while editing. */
 void test_scene_view();
+/* The graph debug target while the game runs. */
+void test_debug_target();
 /* Visual designer (workstream H). */
 void test_ui_designer();
 
@@ -247,6 +249,7 @@ TEST_CASE(all_checks)
     test_rcss();
     test_scene_debug();
     test_scene_view();
+    test_debug_target();
     test_appearance_geometry();
     test_mesh_surface();
     test_mesh_asset();
@@ -964,6 +967,7 @@ int main(int argc, char **argv)
     if (argc > 1 && strcmp(argv[1], "--editor-flow") == 0) {
         registry_validate();
         test_editor_flow();
+        test_debug_target();
         run_runtime_instance_checks();
         return fails ? 1 : 0;
     }

@@ -388,7 +388,6 @@ void app_scene_authoring_stop_prototype_preview(app_scene_authoring *scene)
     if (scene) {
         if (scene->preview_prototype_id) {
             scene->debug_sessions[APP_RUNTIME_PREVIEW]++;
-            editor_set_inspection_trace(scene->graph_editor, NULL, 0);
             editor_set_inspection_run(scene->graph_editor, NULL);
             editor_set_inspection_instance(scene->graph_editor, NULL);
         }

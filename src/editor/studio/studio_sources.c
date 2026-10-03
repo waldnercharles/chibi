@@ -1810,6 +1810,12 @@ static hint_list editor_hints(studio *s)
     static const studio_hint BEHAVIOR[] = { { KIT_ICON_MOUSE, NULL, "Select" },
                                             { 0, "Shift+A", "Add" },
                                             { 0, "Q", "Straighten" } };
+    /* While the game runs, the graph follows the object selected. */
+    static const studio_hint DEBUGGING[] = {
+        { KIT_ICON_MOUSE, NULL, "Select" },
+        { KIT_ICON_TARGET, NULL, "Select an object to debug it" },
+        { 0, "F9", "Breakpoint" }
+    };
     static const studio_hint MOVING[] = { { 0, "Ctrl", "Snap" } };
     static const studio_hint OTHER[] = {
         { KIT_ICON_MOUSE, NULL, "Select" },
@@ -1830,8 +1836,10 @@ static hint_list editor_hints(studio *s)
             if (!studio_graph_active(s)) {
                 return HINT_LIST(OTHER);
             }
-            return s->graph.gesture == STUDIO_GRAPH_MOVE ? HINT_LIST(MOVING)
-                                                         : HINT_LIST(BEHAVIOR);
+            if (s->graph.gesture == STUDIO_GRAPH_MOVE) {
+                return HINT_LIST(MOVING);
+            }
+            return studio_session(s) ? HINT_LIST(DEBUGGING) : HINT_LIST(BEHAVIOR);
         default: return HINT_LIST(OTHER);
     }
 }

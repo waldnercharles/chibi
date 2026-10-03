@@ -1511,7 +1511,7 @@ static void page_mount()
     bool graph_shown = graph && !strcmp(text_of_page(&f.page, "category"), "graph") &&
                        !text_of_page(&f.page, "query")[0] &&
                        visible(&f, "select", &select) == 1 &&
-                       visible(&f, ".switch input", &radio) == 3;
+                       visible(&f, ".switch input", &radio) == 4;
     uint64_t settled = rml_data_model_writes(f.data.model);
     for (int i = 0; i < 3; i++) {
         mount_frame(&f);

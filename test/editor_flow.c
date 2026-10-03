@@ -1,14 +1,12 @@
+#include "editor/graph/eval_view.h"
 #include "editor/workspace/editor_internal.h"
 #include "graph/model/behavior_asset.h"
 #include "graph/model/registry.h"
-#include "graph/runtime/flow_internal.h"
 #include "graph/runtime/instance.h"
-#include "support/array.h"
-#include "support/xalloc.h"
 
 #include <assert.h>
+#include <math.h>
 #include <stdio.h>
-#include <stdlib.h>
 
 static int finish(node *, struct flow_context *)
 {
@@ -31,6 +29,25 @@ static editor_edge_activity activity(editor *editor, const edge *edge)
     return result;
 }
 
+static editor_node_activity ran(editor *editor, const node *n)
+{
+    editor_node_activity result;
+    editor_query_node_activity(editor, n->id, &result);
+    return result;
+}
+
+static void fire(behavior_instance *instance)
+{
+    flow_error error;
+    flow_run *run = behavior_instance_dispatch(instance, "Input", (flow_inputs){ 0 }, &error);
+    assert(run && flow_run_status(run) == FLOW_COMPLETED);
+    assert(behavior_instance_release_activation(instance, run) == 0);
+}
+
+/* Pulses follow the inspected instance's wires on the editor's clock: whole
+   while a wire keeps firing, easing to nothing within half a second once it
+   stops, while execution wires keep a longer glow. Nodes count their runs,
+   and the instance keeps its last completed run's values. */
 void test_editor_flow()
 {
     behavior_asset *asset = behavior_asset_new("Flow activity");
@@ -38,7 +55,6 @@ void test_editor_flow()
     node *event = graph_add_node(g, &NODE_Event);
     node *branch = graph_add_node(g, &NODE_Branch);
     node *condition = graph_add_node(g, registry_node_by_name("Bool"));
-    assert(graph_set_pin_watch(g, condition, 1, 0, true) == 0);
     node *yes = graph_add_node(g, &sink);
     node *no = graph_add_node(g, &sink);
     assert(graph_set_event_name(g, event, "Input") == 0);
@@ -54,156 +70,99 @@ void test_editor_flow()
     const edge *untaken = &g->edges[3];
     editor *editor = editor_new(asset);
     behavior_instance *instance = behavior_instance_create(asset, NULL, NULL, NULL);
-    assert(behavior_instance_tick(instance, 10) >= 0);
-    flow_error error;
-    flow_run *run = behavior_instance_dispatch(instance, "Input", (flow_inputs){ 0 }, &error);
-    assert(run && flow_run_status(run) == FLOW_COMPLETED);
+    assert(behavior_instance_set_activation_pool(instance, 1) == 0);
+    behavior_instance_set_debug_target(instance, true);
     editor_set_inspection_instance(editor, instance);
-    editor_set_inspection_run(editor, run);
-    editor_tick(editor, 10);
+    double now = 1;
+    editor_tick(editor, now);
+    assert(!activity(editor, taken).count);
 
+    fire(instance);
+    editor_tick(editor, now += 1.0 / 60);
     editor_edge_activity result = activity(editor, taken);
-    assert(result.traversed && result.timestamp == 10 && result.opacity > 0);
+    assert(result.count == 1 && result.pulse == 1 && result.heat > 0);
     result = activity(editor, untaken);
-    assert(!result.traversed && result.opacity == 0);
+    assert(!result.count && result.pulse == 0 && result.heat == 0);
+    /* A data wire carried its value when its consumer pulled it; only
+       execution wires glow. */
     result = activity(editor, data);
-    assert(result.traversed && result.timestamp == 10);
-    assert(result.opacity == 0);
+    assert(result.count >= 1 && result.pulse == 1 && result.heat == 0);
+    assert(ran(editor, yes).runs == 1 && ran(editor, yes).pulse == 1);
+    assert(ran(editor, event).runs == 1 && ran(editor, branch).runs == 1);
+    assert(!ran(editor, no).runs && isinf(ran(editor, no).since));
+
+    /* The completed run stays readable, so pins show what they last carried. */
+    int retained = 0;
+    flow_run *const *runs = behavior_instance_retained_runs(instance, &retained);
     pin_value value;
-    assert(flow_run_watch_output(run, condition, 0, &value) == 0);
-    assert(value.type == PIN_BOOL && value.b);
+    assert(
+        retained == 1 &&
+        flow_run_watch_input(runs[0], branch, 1, &value) == 0 && value.b
+    );
+    ed_refresh_values(editor);
+    assert(eval_view_live(editor->ev));
+    /* A pure output reads as what its consumer received. */
+    assert(
+        eval_view_live_value(editor->ev, g, condition, 1, 0, &value) == 0 &&
+        value.b
+    );
 
-    int count = 0;
-    const flow_traversal *records = flow_run_traversals(run, &count);
-    flow_traversal record = { 0 };
-    for (int i = 0; i < count; i++) {
-        if (records[i].from_id == taken->from_id &&
-            records[i].from_pin_id == taken->from_pin_id) {
-            record = records[i];
-        }
+    /* Firing every frame keeps the bubbles whole. */
+    for (int frame = 0; frame < 30; frame++) {
+        fire(instance);
+        editor_tick(editor, now += 1.0 / 60);
+        assert(activity(editor, taken).pulse == 1);
     }
-    assert(record.from_id == taken->from_id);
-    behavior_instance_trace_entry retained[] = { { .traversal = record },
-                                                 { .traversal = record } };
-    retained[0].traversal.timestamp = 12;
-    retained[1].traversal.timestamp = 8;
-    editor_set_inspection_trace(editor, retained, 2);
-    editor_tick(editor, 12);
+    assert(activity(editor, taken).count == 31 && ran(editor, yes).runs == 31);
+    behavior_instance_retained_runs(instance, &retained);
+    assert(retained == 1);
+
+    /* Stopped, they shrink to nothing within half a second; the glow stays. */
+    editor_tick(editor, now + 0.3);
     result = activity(editor, taken);
-    assert(result.timestamp == 12 && result.opacity > 0);
-    retained[0].traversal.timestamp = 9;
-    editor_set_inspection_trace(editor, retained, 2);
-    assert(activity(editor, taken).timestamp == 10);
+    assert(result.pulse > 0 && result.pulse < 1);
+    assert(ran(editor, yes).pulse < 1 && fabs(ran(editor, yes).since - 0.3) < 1e-9);
+    editor_tick(editor, now + 0.6);
+    result = activity(editor, taken);
+    assert(result.pulse == 0 && result.heat > 0 && activity(editor, data).pulse == 0);
+    editor_tick(editor, now + 4);
+    assert(activity(editor, taken).heat == 0 && activity(editor, taken).count == 31);
+    now += 4;
 
-    /* Warm queries across many edges must not revisit the execution history.
-     * This counts consumed records rather than testing a cache's internals. */
-    enum
-    {
-        MANY = 2048
-    };
-    behavior_instance_trace_entry *many = xcalloc(MANY, sizeof *many);
-    for (int i = 0; i < MANY; i++) {
-        many[i].traversal = (flow_traversal){
-            .kind = GRAPH_EDGE_EXEC,
-            .from_id = 1000 + i,
-            .from_pin_id = 1,
-            .to_id = 9000 + i,
-            .to_pin_id = 2,
-            .timestamp = 20 + i,
-        };
-    }
-    uint64_t before = ed_flow_activity_records_indexed(editor);
-    editor_set_inspection_trace_revision(editor, many, MANY, 1);
-    for (int pass = 0; pass < 8; pass++) {
-        for (int i = 0; i < MANY; i++) {
-            edge probe = { .kind = GRAPH_EDGE_EXEC,
-                           .from_id = many[i].traversal.from_id,
-                           .from_pin_id = 1,
-                           .to_id = many[i].traversal.to_id,
-                           .to_pin_id = 2 };
-            result = activity(editor, &probe);
-            assert(result.traversed && result.timestamp == 20 + i);
-        }
-        /* Runtime hosts report the same borrowed history every frame. */
-        editor_set_inspection_trace_revision(editor, many, MANY, 1);
-    }
-    assert(ed_flow_activity_records_indexed(editor) - before == (uint64_t)(MANY + count));
-    many[0].traversal = record;
-    many[0].traversal.timestamp = 40;
-    editor_set_inspection_trace_revision(editor, many, MANY, 2);
-    assert(activity(editor, taken).timestamp == 40); /* same allocation and length */
-    editor_set_inspection_trace_revision(editor, many, 0, 3);
-    assert(activity(editor, taken).timestamp == 10); /* truncated retained history */
-    editor_set_inspection_trace(editor, retained, 2);
-    free(many);
-
-    editor_set_inspection_run(editor, NULL);
-    assert(activity(editor, taken).timestamp == 9);
-    assert(activity(editor, untaken).opacity == 0);
+    /* A target chosen after it ran shows what ran before only as counts. */
     editor_set_inspection_instance(editor, NULL);
-    assert(activity(editor, data).opacity == 0);
+    editor_tick(editor, now += 0.1);
+    assert(!activity(editor, taken).count);
+    editor_set_inspection_instance(editor, instance);
+    editor_tick(editor, now += 0.1);
+    result = activity(editor, taken);
+    assert(result.count == 31 && result.pulse == 0);
+    fire(instance);
+    editor_tick(editor, now += 0.1);
+    assert(activity(editor, taken).pulse == 1);
 
     editor_set_inspection_blocked(editor, true);
-    editor_query query;
-    editor_query_state(editor, &query);
-    assert(query.inspection_blocked);
-    assert(activity(editor, taken).opacity == 0);
-    assert(activity(editor, untaken).opacity == 0);
-    assert(activity(editor, data).opacity == 0);
-    assert(flow_run_watch_output(run, condition, 0, &value) == 0 && value.b);
+    assert(!activity(editor, taken).count && !ran(editor, yes).runs);
     editor_set_inspection_blocked(editor, false);
-
     editor_set_inspection_instance(editor, instance);
-    editor_set_inspection_run(editor, run);
-    editor_set_inspection_trace(editor, NULL, 0);
-    uint64_t revision = flow_run_traversal_revision(run);
-    assert(activity(editor, taken).timestamp == 10);
-    assert(flow_run_reset(run) == FLOW_OK);
-    assert(flow_run_traversal_revision(run) != revision);
-    assert(!activity(editor, taken).traversed);
-    record.timestamp = 50;
-    flow_run child = { .parent = run };
-    flow_trace_record(&child, record);
-    assert(activity(editor, taken).timestamp == 50); /* nested call reached its ancestor */
-    afree(child.traversals);
-    uint64_t indexed = ed_flow_activity_records_indexed(editor);
-    editor_tick(editor, 50);
-    float hot = activity(editor, taken).opacity;
-    editor_tick(editor, 55);
-    result = activity(editor, taken);
-    assert(result.timestamp == 50 && result.opacity < hot);
-    assert(ed_flow_activity_records_indexed(editor) == indexed);
-    /* Recording more edges into a bounded run overwrites without changing its
-     * address or final record count. The previously taken edge must disappear. */
-    for (int i = 0; i < 1024; i++) {
-        flow_trace_record(
-            run,
-            (flow_traversal){
-                .kind = GRAPH_EDGE_EXEC,
-                .from_id = 1000 + i,
-                .from_pin_id = 1,
-                .to_id = 9000 + i,
-                .to_pin_id = 2,
-                .timestamp = 60 + i,
-            }
-        );
-    }
-    assert(!activity(editor, taken).traversed);
-    int bounded_count = 0;
-    flow_run_traversals(run, &bounded_count);
-    revision = flow_run_traversal_revision(run);
-    record.timestamp = 2000;
-    flow_trace_record(run, record);
-    int overwritten_count = 0;
-    flow_run_traversals(run, &overwritten_count);
-    assert(overwritten_count == bounded_count && flow_run_traversal_revision(run) != revision);
-    assert(activity(editor, taken).timestamp == 2000);
-    assert(flow_run_recycle(run) == FLOW_OK);
-    assert(!activity(editor, taken).traversed);
-    editor_set_inspection_run(editor, NULL);
-    editor_set_inspection_instance(editor, NULL);
 
+    /* An instance nobody inspects records nothing and keeps no runs. */
+    behavior_instance_set_trace_enabled(instance, 0);
+    fire(instance);
+    int capacity = 0;
+    uint64_t generation = 0;
+    const behavior_instance_activity
+        *table = behavior_instance_activity_table(instance, &capacity, &generation);
+    for (int i = 0; i < capacity; i++) {
+        assert(!table[i].count);
+    }
+    behavior_instance_retained_runs(instance, &retained);
+    assert(!retained);
+    editor_tick(editor, now += 0.1);
+    assert(!activity(editor, taken).count);
+
+    editor_set_inspection_instance(editor, NULL);
     behavior_instance_destroy(instance);
     editor_free(editor);
-    puts("editor flow PASS: exec-only activity, untaken branches, data values and newest trace");
+    puts("editor flow PASS: pulses hold while wires fire and ease out after; node runs; retained values; untraced instances record nothing");
 }

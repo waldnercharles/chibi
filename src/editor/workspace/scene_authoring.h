@@ -63,6 +63,12 @@ int app_scene_authoring_set_debug_target(
     const char *asset_name
 );
 void app_scene_authoring_set_debug_pinned(app_scene_authoring *scene, bool pinned);
+/* Debugs the entity's instance of the open behavior, or nothing for a null
+ * entity (No target), until the selection or the open behavior changes, as
+ * Unreal's debug object menu does. -1 when it has no such instance. */
+int app_scene_authoring_choose_debug_target(app_scene_authoring *scene, ecs_entity entity);
+/* While no graph area shows the open behavior, no instance traces. */
+void app_scene_authoring_set_debug_hidden(app_scene_authoring *scene, bool hidden);
 
 typedef enum
 {

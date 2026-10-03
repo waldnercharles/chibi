@@ -136,7 +136,9 @@ typedef struct bench_doc
 
 static ui_page theme;
 
-static void on_emit(void *, const rml_event *, const char *, const char *) {}
+static void on_emit(void *, const rml_event *, const char *, int, const char *const *)
+{
+}
 
 static void on_key(void *, const rml_event *) {}
 

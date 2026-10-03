@@ -88,15 +88,29 @@ void ui_data_free(ui_data *data);
  * (support/ui_style.h). */
 typedef struct ui_mount ui_mount;
 
+/* The arguments emit('Event', ...) passes after its name, as text; more are
+ * dropped. */
+#define UI_ACTIVATION_ARGS 4
+
 /* An activation: the event emitted or bound to a key, the id of the element
- * whose binding sent it ("" when it has none), and its value: emit's second
- * argument, or an input's. */
+ * whose binding sent it ("" when it has none), emit's arguments, and its
+ * value: the first argument as a number, or an input's. The DOM event that
+ * sent it gives the modifier keys (rml_key_modifier bits), the mouse button
+ * and the pointer in context pixels. `anchor` holds the element whose binding
+ * sent it, where a popover opens; it reads NULL once that element is gone,
+ * and lives until the mount's next take or its free. */
 typedef struct ui_activation
 {
     char event[128];
     char id[128];
+    int argc;
+    char args[UI_ACTIVATION_ARGS][128];
     bool has_value;
     float value;
+    unsigned modifiers;
+    int button;
+    float x, y;
+    rml_element_ref *anchor;
 } ui_activation;
 
 ui_mount *ui_mount_new(const char *content_root, const char *name);
@@ -123,11 +137,17 @@ bool ui_mount_holds(const ui_mount *mount, rml_element *element);
  * keys unless bound on that control. Text inputs and textareas permit an
  * ancestor Escape binding. */
 void ui_mount_listen(ui_mount *mount, const rml_event *event);
-/* Records `event` as emitted by the binding on `element`, which the mount
- * holds, with `value`, emit's second argument, as its value, or else an
- * input's; NULL for none. */
-void ui_mount_emit(ui_mount *mount, rml_element *element, const char *event, const char *value);
-/* Takes the oldest activation; false when there is none. */
+/* Records emit(`name`, args...) as sent by the binding `event` ran, on its
+ * current element, which the mount holds. */
+void ui_mount_emit(
+    ui_mount *mount,
+    const rml_event *event,
+    const char *name,
+    int argc,
+    const char *const *args
+);
+/* Takes the oldest activation, releasing the anchor of the one taken before;
+ * false when there is none. */
 bool ui_mount_take(ui_mount *mount, ui_activation *out);
 /* Applies what behaviors set for `entity` in `model` since the last call. */
 void ui_mount_apply(ui_mount *mount, game_ui *model, uint64_t entity);

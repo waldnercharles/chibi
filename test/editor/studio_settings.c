@@ -1102,7 +1102,8 @@ static void page_keyboard_and_project()
     bool override = !strcmp(f.prefs.shortcuts[STUDIO_COMMAND_SEARCH], "Mod+S") &&
                     !strcmp(yyjson_mut_get_str(member(search, "conflict")), "Also assigned to Save");
 
-    yyjson_mut_set_bool(member(search, "record"), true);
+    /* The Record button's settings.record action (studio_panel_route). */
+    f.view.recording = STUDIO_COMMAND_SEARCH + 1;
     studio_settings_sync(&f.view, f.doc, true);
     bool recording = f.view.recording == STUDIO_COMMAND_SEARCH + 1 &&
                      yyjson_mut_get_bool(member(search, "recording"));
@@ -1130,7 +1131,8 @@ static void page_keyboard_and_project()
         "replacement and stores defaults without an override"
     );
 
-    yyjson_mut_set_bool(member(search, "record"), true);
+    /* The Record button's settings.record action (studio_panel_route). */
+    f.view.recording = STUDIO_COMMAND_SEARCH + 1;
     studio_settings_sync(&f.view, f.doc, true);
     bool started = f.view.recording == STUDIO_COMMAND_SEARCH + 1;
     set_text(&f, f.page, "query", "");
@@ -1160,7 +1162,7 @@ static void page_keyboard_and_project()
     yyjson_mut_val *name = row_named(&f, "project.name");
     yyjson_mut_val *start = row_named(&f, "project.startScene");
     bool shown_name = !strcmp(yyjson_mut_get_str(member(name, "value")), "Arena") &&
-                      yyjson_mut_arr_size(member(name, "text")) == 1 &&
+                      !strcmp(yyjson_mut_get_str(member(name, "control")), "text") &&
                       !yyjson_mut_get_bool(member(name, "modified"));
     set_text(&f, name, "value", "Neon Swarm");
     set_text(&f, start, "value", "scenes/Boss.kdl");
@@ -1205,9 +1207,9 @@ static void on_event(void *user, const rml_event *event)
     ui_mount_listen(user, event);
 }
 
-static void on_emit(void *user, const rml_event *event, const char *name, const char *value)
+static void on_emit(void *user, const rml_event *event, const char *name, int argc, const char *const *args)
 {
-    ui_mount_emit(user, event->current, name, value);
+    ui_mount_emit(user, event, name, argc, args);
 }
 
 /* A frame in studio_ui_frame's order: the saved keys, the page, then the
@@ -1548,10 +1550,22 @@ static void page_mount()
     if (record_visible) {
         click(&f, record_button);
     }
+    /* The button sends emit('settings.record', row.key), which Studio routes
+       to the Settings source (studio_panel_route); here the test does. */
+    mount_frame(&f);
+    ui_activation a;
+    bool emitted = false;
+    while (ui_mount_take(f.mount, &a)) {
+        if (!strcmp(a.event, "settings.record") && a.argc == 1 &&
+            !strcmp(a.args[0], "command.search")) {
+            emitted = true;
+            f.page.view.recording = STUDIO_COMMAND_SEARCH + 1;
+        }
+    }
     for (int i = 0; i < 3; i++) {
         mount_frame(&f);
     }
-    bool listening = record_visible &&
+    bool listening = record_visible && emitted &&
                      f.page.view.recording == STUDIO_COMMAND_SEARCH + 1 &&
                      visible(&f, ".recording", &record_button) == 1 &&
                      visible(&f, ".record-shortcut", &record_button) == 0;

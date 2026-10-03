@@ -142,6 +142,7 @@ SAME_EVENT(TRANSITIONEND, Transitionend);
 SAME_EVENT(CHANGE, Change);
 SAME_EVENT(SUBMIT, Submit);
 SAME_EVENT(TABCHANGE, Tabchange);
+SAME_EVENT(INPUT, Input);
 
 SAME(RML_BOX_MARGIN, Rml::BoxArea::Margin);
 SAME(RML_BOX_BORDER, Rml::BoxArea::Border);
@@ -501,23 +502,27 @@ private:
     void *user;
 };
 
+/* The parameters RmlUi's events carry the modifier keys in. */
+static const struct
+{
+    const char *name;
+    unsigned bit;
+} MODIFIER_PARAMETERS[] = {
+    { "ctrl_key", RML_KM_CTRL },
+    { "shift_key", RML_KM_SHIFT },
+    { "alt_key", RML_KM_ALT },
+    { "meta_key", RML_KM_META },
+    { "caps_lock_key", RML_KM_CAPSLOCK },
+    { "num_lock_key", RML_KM_NUMLOCK },
+    { "scroll_lock_key", RML_KM_SCROLLLOCK },
+};
+
 rml_event convert(Rml::Event &event)
 {
-    static const struct
-    {
-        const char *name;
-        unsigned bit;
-    } modifiers[] = {
-        { "ctrl_key", RML_KM_CTRL },
-        { "shift_key", RML_KM_SHIFT },
-        { "alt_key", RML_KM_ALT },
-        { "meta_key", RML_KM_META },
-        { "caps_lock_key", RML_KM_CAPSLOCK },
-        { "num_lock_key", RML_KM_NUMLOCK },
-        { "scroll_lock_key", RML_KM_SCROLLLOCK },
-    };
     rml_event e = {};
-    e.id = (rml_event_id)event.GetId();
+    /* A custom event, such as contextmenu, has no rml_event_id. */
+    e.id = event.GetId() < Rml::EventId::NumDefinedIds ? (rml_event_id)event.GetId()
+                                                        : RML_EVENT_INVALID;
     e.target = wrap(event.GetTargetElement());
     e.current = wrap(event.GetCurrentElement());
     e.drag_element = wrap(
@@ -527,7 +532,7 @@ rml_event convert(Rml::Event &event)
     e.mouse_y = event.GetParameter<float>("mouse_y", 0);
     e.button = event.GetParameter<int>("button", 0);
     e.key = (rml_key)event.GetParameter<int>("key_identifier", 0);
-    for (const auto &modifier : modifiers) {
+    for (const auto &modifier : MODIFIER_PARAMETERS) {
         if (event.GetParameter<int>(modifier.name, 0)) {
             e.modifiers |= modifier.bit;
         }
@@ -1220,6 +1225,18 @@ void rml_event_stop_propagation(const rml_event *event)
     static_cast<Rml::Event *>(event->native)->StopPropagation();
 }
 
+bool rml_element_dispatch_event(rml_element *e, const char *type, const rml_event *event)
+{
+    Rml::Dictionary parameters;
+    parameters["mouse_x"] = event->mouse_x;
+    parameters["mouse_y"] = event->mouse_y;
+    parameters["button"] = event->button;
+    for (const auto &modifier : MODIFIER_PARAMETERS) {
+        parameters[modifier.name] = (event->modifiers & modifier.bit) ? 1 : 0;
+    }
+    return element(e)->DispatchEvent(type, parameters);
+}
+
 /* ---------- Data models ---------- */
 
 struct rml_data_model
@@ -1263,9 +1280,15 @@ rml_data_model *rml_data_model_create(
         "emit",
         [emit, user](Rml::DataModelHandle, Rml::Event &event, const Rml::VariantList &arguments) {
             rml_event e = convert(event);
-            Rml::String name = arguments.empty() ? "" : arguments[0].Get<Rml::String>();
-            Rml::String value = arguments.size() > 1 ? arguments[1].Get<Rml::String>() : "";
-            emit(user, &e, name.c_str(), arguments.size() > 1 ? value.c_str() : nullptr);
+            Rml::Vector<Rml::String> texts;
+            for (const Rml::Variant &argument : arguments) {
+                texts.push_back(argument.Get<Rml::String>());
+            }
+            Rml::Vector<const char *> args;
+            for (size_t i = 1; i < texts.size(); i++) {
+                args.push_back(texts[i].c_str());
+            }
+            emit(user, &e, texts.empty() ? "" : texts[0].c_str(), (int)args.size(), args.data());
         }
     );
     return model;

@@ -240,6 +240,9 @@ extern "C"
         RML_EVENT_CHANGE,
         RML_EVENT_SUBMIT,
         RML_EVENT_TABCHANGE,
+        /* A text field's edit, as HTML's; change follows once it commits
+         * (cmake/patches/rmlui-input-events.patch). */
+        RML_EVENT_INPUT,
     } rml_event_id;
 
     typedef enum rml_box_area
@@ -544,14 +547,25 @@ extern "C"
         bool capture
     );
     void rml_event_stop_propagation(const rml_event *event);
+    /* Dispatches event `type` at `element` with `event`'s pointer, button
+     * and modifiers as its parameters, as RmlUi's own events carry them; an
+     * event RmlUi does not define, such as contextmenu, bubbles. False when a
+     * listener stopped it. */
+    bool rml_element_dispatch_event(rml_element *element, const char *type, const rml_event *event);
 
     /* ---------- Data models ---------- */
 
-    /* An expression's emit('Name') or emit('Name', value), as Vue's $emit
-     * passes an argument: `event` is the one whose data-event-* binding ran
-     * it, and its current element holds that binding; `value` is the second
-     * argument as text, or NULL without one. */
-    typedef void (*rml_emit_fn)(void *user, const rml_event *event, const char *name, const char *value);
+    /* An expression's emit('Name', ...), as Vue's $emit passes arguments:
+     * `event` is the one whose data-event-* binding ran it, and its current
+     * element holds that binding; `args` are the `argc` arguments after the
+     * name, as text. */
+    typedef void (*rml_emit_fn)(
+        void *user,
+        const rml_event *event,
+        const char *name,
+        int argc,
+        const char *const *args
+    );
 
     /* The data model `name` in `context`, for RmlUi's data bindings ({{ }},
      * data-for, data-value, data-checked, data-event-*, ...). Its variables
@@ -560,8 +574,7 @@ extern "C"
      * which bindings may overwrite. As in JavaScript, a name no variable has
      * reads as empty, and a missing member reads as null until set. The
      * doc must outlive the model and keep each variable's value in place,
-     * changing its contents instead. Expressions may call emit('Name') and
-     * emit('Name', value). */
+     * changing its contents instead. Expressions may call emit('Name', ...). */
     rml_data_model *rml_data_model_create(
         rml_context *context,
         const char *name,

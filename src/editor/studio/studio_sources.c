@@ -2306,7 +2306,8 @@ const studio_panel_source studio_panel_sources[] = {
     { "gallery", "Widgets", studio_gallery_add, studio_gallery_sync, studio_gallery_action },
     /* The Outliner (workstream P2). */
     { "outliner", "Outliner", studio_outliner_add, studio_outliner_sync, studio_outliner_action },
-    { "outlinerHeader", "OutlinerHeader", studio_outliner_header_add, studio_outliner_header_sync, NULL },
+    { "outliner_ui", "Outliner", studio_outliner_ui_add, studio_outliner_ui_sync, NULL },
+    { "outliner_header", "OutlinerHeader", studio_outliner_header_add, studio_outliner_header_sync, NULL },
     /* Output (workstream P4). */
     { "output", "Output", studio_output_add, studio_output_sync, studio_output_action },
     { "output_rows", "Output", studio_output_rows_add, studio_output_rows_sync, NULL },

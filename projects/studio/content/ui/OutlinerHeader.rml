@@ -1,7 +1,7 @@
 <div class="field search"><span class="part addon"><span class="icon sm">&#xea6d;</span></span><input type="text" class="part value" id="outliner-filter" placeholder="Filter" data-value="outliner.query"/></div>
-<button class="btn icon-only add" popovertarget="outliner-add" aria-haspopup="listbox" data-tip="Add object" data-attrif-data-disabled="!outlinerHeader.editable"><span class="icon">&#xea60;</span></button>
+<button class="btn icon-only add" popovertarget="outliner-add" aria-haspopup="listbox" data-tip="Add object" data-attrif-data-disabled="!outliner_header.editable"><span class="icon">&#xea60;</span></button>
 <div class="popup dropdown" popover id="outliner-add">
   <use ui="ChoiceList" placeholder="Add object" data-event-change="emit('outliner.add', ev.value)">
-    <div class="menu-item" role="option" data-for="option : outlinerHeader.prototypes" data-attr-value="option.label" data-attr-data-label="option.label"><span class="icon lead">{{ option.icon }}</span><span class="text"><span class="label">{{ option.label }}</span></span></div>
+    <div class="menu-item" role="option" data-for="option : outliner_header.prototypes" data-attr-value="option.label" data-attr-data-label="option.label"><span class="icon lead">{{ option.icon }}</span><span class="text"><span class="label">{{ option.label }}</span></span></div>
   </use>
 </div>

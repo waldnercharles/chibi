@@ -219,11 +219,11 @@ bool studio_outliner_key(studio *s, SDL_Keycode key, SDL_Keymod mod)
 
 /* ---------- The panel's data ---------- */
 
-static const char *const ROW_TEXTS[] = { "id",        "label", "icon", "meta",
+static const char *const ROW_TEXTS[] = { "key",       "label", "icon", "meta",
                                          "behaviors", "drop",  NULL };
-static const char *const ROW_FLAGS[] = { "parent", "open",     "selected",
-                                         "active", "marked",   "hidden",
-                                         "locked", "renaming", NULL };
+static const char *const ROW_FLAGS[] = { "parent", "open",   "marked",
+                                         "hidden", "locked", "renaming",
+                                         NULL };
 static const char *const MENU_ITEM_TEXTS[] = { "label", "icon", "shortcut", NULL };
 
 static yyjson_mut_val *member(yyjson_mut_val *object, const char *name)
@@ -269,14 +269,9 @@ static void add_menu_item(yyjson_mut_doc *doc, yyjson_mut_val *menu, const char 
 void studio_outliner_add(yyjson_mut_doc *doc)
 {
     yyjson_mut_val *outliner = yyjson_mut_obj_add_obj(doc, yyjson_mut_doc_get_root(doc), "outliner");
-    static const char *const TEXTS[] = { "count", "empty", "query", "rename", NULL };
+    static const char *const TEXTS[] = { "count", "empty", "query", NULL };
     add_members(doc, outliner, TEXTS, NULL);
     yyjson_mut_obj_add_val(doc, outliner, "root", row_new(doc, 0));
-    yyjson_mut_val *menu = yyjson_mut_obj_add_obj(doc, outliner, "menu");
-    static const char *const MENU_FLAGS[] = { "actor", "live", NULL };
-    add_members(doc, menu, (const char *const[]){ "label", NULL }, MENU_FLAGS);
-    add_menu_item(doc, menu, "prototype", "Open Prototype");
-    add_menu_item(doc, menu, "spawnBreak", "Break When Spawned");
     yyjson_mut_val *views = yyjson_mut_obj_add_arr(doc, outliner, "views");
     for (int area = 0; area < STUDIO_AREA_COUNT; area++) {
         yyjson_mut_val *view = yyjson_mut_arr_add_obj(doc, views);
@@ -393,7 +388,6 @@ static bool show_header(studio *s, yyjson_mut_doc *doc, yyjson_mut_val *outliner
     bool changed = ui_data_put_text(doc, outliner, "count", count);
     changed |= ui_data_put_text(doc, outliner, "empty", empty);
     changed |= ui_data_put_text(doc, outliner, "query", filter);
-    changed |= ui_data_put_text(doc, outliner, "rename", s->rename.name);
     changed |= ui_data_put_text(doc, root, "label", studio_scene_title(s->scene, title, sizeof title));
     changed |= put_glyph(doc, root, "icon", KIT_ICON_SCENE);
     changed |= ui_data_put_bool(root, "parent", true);
@@ -412,8 +406,8 @@ static bool show_row(studio *s, yyjson_mut_doc *doc, yyjson_mut_val *row, int in
     app_scene_authoring *scene = s->scene;
     const scene_actor *actor = &scene->actors[index];
     uint64_t entity = ecs_entity_to_u64(actor->entity);
-    char id[24], behaviors[16] = "", drop[160];
-    snprintf(id, sizeof id, "%llu", (unsigned long long)entity);
+    char key[24], behaviors[16] = "", drop[160];
+    snprintf(key, sizeof key, "%llu", (unsigned long long)entity);
     char **names = instance_behavior_names(scene, actor->entity);
     if (acount(names)) {
         snprintf(behaviors, sizeof behaviors, "%d", acount(names));
@@ -424,16 +418,16 @@ static bool show_row(studio *s, yyjson_mut_doc *doc, yyjson_mut_val *row, int in
     /* Every selected row shows; the active one stands out (Blender). */
     bool selected = scene_instance_selected(scene, index),
          active = scene->selected == index;
-    bool changed = ui_data_put_text(doc, row, "id", id);
+    bool changed = ui_data_put_text(doc, row, "key", key);
     changed |= ui_data_put_text(doc, row, "label", actor->name);
     changed |= put_glyph(doc, row, "icon", studio_prototype_icon(s, actor->prototype_name));
     changed |= ui_data_put_text(doc, row, "behaviors", behaviors);
     changed |= ui_data_put_text(doc, row, "drop", drop);
-    changed |= ui_data_put_bool(row, "selected", selected);
-    changed |= ui_data_put_bool(row, "active", active);
+    /* The rest of a multi-selection; the active row is outliner_ui's. */
     changed |= ui_data_put_bool(row, "marked", selected && !active);
     changed |= ui_data_put_bool(row, "hidden", view & APP_SCENE_VIEW_HIDDEN);
     changed |= ui_data_put_bool(row, "locked", view & APP_SCENE_VIEW_LOCKED);
+    /* Rare, so it stays in the rows, off each selection's views. */
     changed |= ui_data_put_bool(row, "renaming", s->rename.outliner && s->rename.entity == entity);
     return changed;
 }
@@ -514,7 +508,6 @@ bool studio_outliner_sync(studio *s, const studio_panel_sync *at)
     take_view_state(s, outliner);
     int *rows = studio_outliner_rows(s);
     bool changed = show_header(s, at->doc, outliner, acount(rows));
-    changed |= show_menu(s, at->doc, member(outliner, "menu"));
     yyjson_mut_val *views = member(outliner, "views");
     bool shown = false;
     for (int area = 0; area < STUDIO_AREA_COUNT; area++) {
@@ -526,13 +519,50 @@ bool studio_outliner_sync(studio *s, const studio_panel_sync *at)
     return changed;
 }
 
+/* ---------- What changes with each selection ---------- */
+
+/* The active row's key, the rename field's text and the row menu, apart
+ * from the rows: a click changes only these views (TreeRow's
+ * data-alias-active). */
+void studio_outliner_ui_add(yyjson_mut_doc *doc)
+{
+    yyjson_mut_val *ui = yyjson_mut_obj_add_obj(doc, yyjson_mut_doc_get_root(doc), "outliner_ui");
+    static const char *const TEXTS[] = { "active", "rename", NULL };
+    add_members(doc, ui, TEXTS, NULL);
+    yyjson_mut_val *menu = yyjson_mut_obj_add_obj(doc, ui, "menu");
+    static const char *const MENU_FLAGS[] = { "actor", "live", NULL };
+    add_members(doc, menu, (const char *const[]){ "label", NULL }, MENU_FLAGS);
+    add_menu_item(doc, menu, "prototype", "Open Prototype");
+    add_menu_item(doc, menu, "spawnBreak", "Break When Spawned");
+}
+
+/* An object's key, its entity as text; "" for none. */
+static void key_of(char out[24], const scene_actor *actor)
+{
+    out[0] = '\0';
+    if (actor) {
+        snprintf(out, 24, "%llu", (unsigned long long)ecs_entity_to_u64(actor->entity));
+    }
+}
+
+bool studio_outliner_ui_sync(studio *s, const studio_panel_sync *at)
+{
+    yyjson_mut_val *ui = at->variable;
+    char active[24];
+    key_of(active, selected_actor(s->scene));
+    bool changed = ui_data_put_text(at->doc, ui, "active", active);
+    changed |= ui_data_put_text(at->doc, ui, "rename", s->rename.name);
+    changed |= show_menu(s, at->doc, member(ui, "menu"));
+    return changed;
+}
+
 /* ---------- What rarely changes ---------- */
 
 /* The header's Add list and editability, and the eye's tip, apart from the
  * rows, so a scroll or a selection reads none of their views. */
 void studio_outliner_header_add(yyjson_mut_doc *doc)
 {
-    yyjson_mut_val *header = yyjson_mut_obj_add_obj(doc, yyjson_mut_doc_get_root(doc), "outlinerHeader");
+    yyjson_mut_val *header = yyjson_mut_obj_add_obj(doc, yyjson_mut_doc_get_root(doc), "outliner_header");
     static const char *const TEXTS[] = { "isolate", NULL };
     static const char *const FLAGS[] = { "editable", NULL };
     add_members(doc, header, TEXTS, FLAGS);

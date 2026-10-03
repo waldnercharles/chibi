@@ -905,7 +905,7 @@ typedef struct
 static const char *const ROW_TEXTS[] = { "key",    "label", "icon", "meta",
                                          "swatch", "color", "uses", "usesTip",
                                          "add",    "drag",  NULL };
-static const char *const ROW_FLAGS[] = { "parent", "open", "graph", "unused", NULL };
+static const char *const ROW_FLAGS[] = { "parent", "open", "active", "unused", NULL };
 static const char *const ITEM_TEXTS[] = { "id", "icon", "label", "shortcut", NULL };
 static const char *const ITEM_FLAGS[] = { "checked", "disabled", NULL };
 static const item_shape ROW_SHAPE = { ROW_TEXTS, ROW_FLAGS, true };
@@ -939,7 +939,7 @@ void studio_members_ui_add(yyjson_mut_doc *doc)
 {
     yyjson_mut_val *m = yyjson_mut_obj_add_obj(doc, yyjson_mut_doc_get_root(doc), "members_ui");
     yyjson_mut_obj_add_strcpy(doc, m, "selected", "");
-    yyjson_mut_obj_add_strcpy(doc, m, "graph", "");
+    yyjson_mut_obj_add_strcpy(doc, m, "active", "");
     yyjson_mut_obj_add_strcpy(doc, m, "renaming", "");
     yyjson_mut_obj_add_arr(doc, m, "menu");
     yyjson_mut_obj_add_val(doc, m, "remove", item_new(doc, &ITEM_SHAPE));
@@ -1088,9 +1088,17 @@ static bool show_uses(studio *s, yyjson_mut_doc *doc, yyjson_mut_val *item, cons
     return ui_data_put_bool(item, "unused", !strcmp(label, "0")) || changed;
 }
 
+/* Whether `row` is the open graph's. */
+static bool open_graph(const studio *s, const member_row *row)
+{
+    return row->kind == ROW_GRAPH &&
+           sg_graph_editor(s)->asset->graphs[row->index] == sg_active_graph(s);
+}
+
 /* A row: what it shows, but whether it is selected, active or being
-   named, which members_ui holds by key, so a selection changes no row. A
-   drag's payload is its key. */
+   named, which members_ui holds by key, so a selection changes no row;
+   the open graph's row is active by itself, as opening a graph changes
+   the rows anyway. A drag's payload is its key. */
 static bool show_row(studio *s, yyjson_mut_doc *doc, yyjson_mut_val *item, const member_row *row)
 {
     pin_spec pin;
@@ -1106,7 +1114,7 @@ static bool show_row(studio *s, yyjson_mut_doc *doc, yyjson_mut_val *item, const
     changed |= ui_data_put_int(item, "depth", row->depth);
     changed |= ui_data_put_bool(item, "parent", row->kind == ROW_SECTION);
     changed |= ui_data_put_bool(item, "open", look.open);
-    changed |= ui_data_put_bool(item, "graph", row->kind == ROW_GRAPH);
+    changed |= ui_data_put_bool(item, "active", open_graph(s, row));
     changed |= show_swatch(s, doc, item, look.pin);
     return show_uses(s, doc, item, row) || changed;
 }
@@ -1282,23 +1290,24 @@ static void member_key(studio_member_kind kind, uint64_t id, char *out, size_t s
     }
 }
 
-/* What changes as the user selects and names: the selected member, the open
-   graph and the member being named by row key, and the selected member's
-   menu. Rows bind them by key (Members.rml), so a selection re-evaluates
-   these views alone, not every row's. */
+/* What changes as the user selects and names: the selected member, the
+   active one (the selection unless it is a graph, whose row is active
+   while it is open) and the member being named by row key, and the
+   selected member's menu. Rows bind them by key (Members.rml), so a
+   selection re-evaluates these views alone, not every row's. */
 bool studio_members_ui_sync(studio *s, const studio_panel_sync *at)
 {
     studio_members *m = &s->members;
     yyjson_mut_val *ui = at->variable;
-    char selected[40] = "", open[40] = "", named[40] = "";
+    char selected[40] = "", named[40] = "";
     if (studio_graph_active(s)) {
         follow(s);
         member_key(m->kind, m->id, selected, sizeof selected);
-        member_key(STUDIO_MEMBER_GRAPH, sg_active_graph(s)->graph_id, open, sizeof open);
         member_key(m->rename_kind, m->rename_id, named, sizeof named);
     }
     bool changed = ui_data_put_text(at->doc, ui, "selected", selected);
-    changed |= ui_data_put_text(at->doc, ui, "graph", open);
+    bool graph = m->kind == STUDIO_MEMBER_GRAPH;
+    changed |= ui_data_put_text(at->doc, ui, "active", graph ? "" : selected);
     changed |= ui_data_put_text(at->doc, ui, "renaming", named);
     return show_menu(s, at->doc, ui) || changed;
 }

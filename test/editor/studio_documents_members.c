@@ -43,7 +43,7 @@ static rml_element *member_row(studio *s, const char *name)
     rml_element *rows[128];
     int count = test_query_all(
         rml_backend_context(s->backend),
-        "#members-list .member-row > .tree-row",
+        "#members-list .member-row .tree-row",
         rows,
         128
     );
@@ -140,7 +140,7 @@ static void rows_and_selection()
     rml_element *speed = member_row(s, "Speed");
     rml_element *combat = member_row(s, "Combat");
     bool sections = variables && row_text(variables, ".meta", "3") &&
-                    rml_element_has_attribute(variables, "data-section") &&
+                    rml_element_has_attribute(rml_element_parent(variables), "data-section") &&
                     member_row(s, "Functions") && member_row(s, "Graphs") &&
                     member_row(s, "Aim") && member_row(s, "Hull Max");
     rml_element *swatch = speed ? rml_element_query_selector(speed, "kit-dot.member-swatch")

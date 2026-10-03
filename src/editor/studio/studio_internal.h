@@ -2342,11 +2342,13 @@ void studio_gallery_action(studio *s, const char *action, const ui_activation *a
 
 /* The Outliner's source, `outliner` (studio_outliner.c): the scene's root
  * row and object count, the filter (query, which the header binds two-way
- * as view state), the row menu's state, and in views[area] the window of
- * rows each area's List shows (root, rows); `outlinerHeader` holds what
- * rarely changes: the Add list's prototypes, editable and the eye's tip.
- * outliner.click, .menu, .eye and .lock name a row by id; .drop takes the
- * row's id ("" for the list), the type and the payload; .rename takes the
+ * as view state), and in views[area] the window of rows each area's List
+ * shows (root, rows keyed by entity); `outliner_ui` what each selection
+ * changes: the active row's key, which TreeRow binds by alias, the rename
+ * field's text and the row menu; `outliner_header` what rarely changes:
+ * the Add list's prototypes, editable and the eye's tip.
+ * outliner.click, .menu, .eye and .lock name a row by key; .drop takes the
+ * row's key ("" for the list), the type and the payload; .rename takes the
  * committed name and ends the rename, as leaving its field does;
  * .renameEnter and .renameCancel return the keyboard to the list, Escape
  * first ending the rename so nothing commits; .collapse
@@ -2355,6 +2357,8 @@ void studio_gallery_action(studio *s, const char *action, const ui_activation *a
 void studio_outliner_add(yyjson_mut_doc *doc);
 bool studio_outliner_sync(studio *s, const studio_panel_sync *at);
 void studio_outliner_action(studio *s, const char *action, const ui_activation *a);
+void studio_outliner_ui_add(yyjson_mut_doc *doc);
+bool studio_outliner_ui_sync(studio *s, const studio_panel_sync *at);
 void studio_outliner_header_add(yyjson_mut_doc *doc);
 bool studio_outliner_header_sync(studio *s, const studio_panel_sync *at);
 /* Shows panel `name` filling area `area`'s body with `view` aliased to the
@@ -2375,7 +2379,7 @@ rml_element *studio_ui_area_view(studio *s, int area, const char *name, const ch
 void studio_members_add(yyjson_mut_doc *doc);
 bool studio_members_sync(studio *s, const studio_panel_sync *at);
 void studio_members_action(studio *s, const char *action, const ui_activation *a);
-/* `members_ui`: the keys of the selected member, the open graph and the
+/* `members_ui`: the keys of the selected member, the active one and the
  * member being named, and the selected member's menu, apart from the rows
  * so a selection dirties only the views that bind them. */
 void studio_members_ui_add(yyjson_mut_doc *doc);

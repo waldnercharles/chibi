@@ -788,6 +788,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
         "${CMAKE_CURRENT_SOURCE_DIR}/project.kdl"
         "${CMAKE_CURRENT_SOURCE_DIR}/projects/arena2d/project.kdl"
         "${CMAKE_CURRENT_SOURCE_DIR}/tools/web_storage.js"
+        "${CMAKE_CURRENT_SOURCE_DIR}/tools/web_cache.js"
         "${CMAKE_CURRENT_SOURCE_DIR}/tools/collab/storage.js"
         "${CMAKE_CURRENT_SOURCE_DIR}/tools/web_launch.js"
         "${CMAKE_CURRENT_SOURCE_DIR}/tools/web_frames.js"
@@ -798,6 +799,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     target_link_options(chibi PRIVATE
         "--shell-file=${CHIBI_WEB_SHELL}"
         "--pre-js=${CMAKE_CURRENT_SOURCE_DIR}/tools/web_storage.js"
+        "--pre-js=${CMAKE_CURRENT_SOURCE_DIR}/tools/web_cache.js"
         "--pre-js=${CMAKE_CURRENT_SOURCE_DIR}/tools/collab/storage.js"
         "--pre-js=${CMAKE_CURRENT_SOURCE_DIR}/tools/web_launch.js"
         "--pre-js=${CMAKE_CURRENT_SOURCE_DIR}/tools/web_frames.js"

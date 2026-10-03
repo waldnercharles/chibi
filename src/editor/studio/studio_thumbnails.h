@@ -14,6 +14,7 @@
 #include "platform/cute.h"
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 typedef struct studio studio;
@@ -93,6 +94,21 @@ studio_thumb_step studio_thumb_render(
 /* Drops a job left busy. */
 void studio_thumb_cancel(studio_thumb_renderers *r);
 void studio_thumb_renderers_free(studio_thumb_renderers *r);
+
+/* ---------- Disk cache (studio_thumbnail_cache.c) ---------- */
+
+/* Square RGBA pictures in `directory`, by key, trimmed to `cap` bytes, least
+ * recently used first; NULL when the directory cannot be made. */
+typedef struct studio_thumb_disk studio_thumb_disk;
+studio_thumb_disk *studio_thumb_disk_open(const char *directory, size_t cap);
+void studio_thumb_disk_close(studio_thumb_disk *d);
+bool studio_thumb_disk_has(const studio_thumb_disk *d, uint64_t key);
+/* Fills the canvas's `side` pixels square with the picture of `key`; false,
+ * forgetting it, when it is missing, unreadable or of another size. */
+bool studio_thumb_disk_load(studio_thumb_disk *d, uint64_t key, CF_Canvas canvas, int side);
+void studio_thumb_disk_store(studio_thumb_disk *d, uint64_t key, const CF_Pixel *pixels, int side);
+/* The bytes it holds. */
+size_t studio_thumb_disk_size(const studio_thumb_disk *d);
 
 /* ---------- Graph mini-maps (studio_thumbnail_graph.c) ---------- */
 

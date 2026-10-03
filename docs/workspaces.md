@@ -1,15 +1,17 @@
 # Storage management with the normal desktop workflow
 
-Use Codex's and Claude Desktop's built-in worktree features for c-blueprints.
+Use the normal worktree checkbox or selector when starting a chat in Codex or
+Claude Desktop for c-blueprints.
 The installed global hooks register the actual checkout used by each session.
 No launcher, pool slot, manual finish, or separate Claude CLI login is required.
 The apps continue to choose paths and branches and perform their normal archival.
 Codex's detached worktrees remain detached.
 
-Choose the updated local `main` as the starting branch for new worktrees. These
-changes have not been pushed; an older branch or `origin/main` may lack the build
-integration. Global hooks still observe those sessions, but automatic retirement
-stays disabled until the checkout includes the build tools.
+New worktrees based on updated `main` or `origin/main` include the build tools.
+An older starting branch may lack the integration. Global hooks still observe
+those sessions, but automatic retirement stays disabled until the checkout
+includes the build tools. The apps create and own their worktrees normally;
+the hooks register the resulting checkout without replacing worktree creation.
 
 SessionStart, UserPromptSubmit and PreToolUse discover the current Git root. This
 also covers resuming a chat, changing folders and handing a chat between Local

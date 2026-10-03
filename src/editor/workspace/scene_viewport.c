@@ -716,7 +716,9 @@ void app_scene_authoring_render(void *user)
     const engine *runtime = scene->active_runtime_target == APP_RUNTIME_PREVIEW
                               ? game_prototype_preview_runtime(scene->prototype_preview)
                               : scene->runtime;
-    if (scene_can_move(scene)) {
+    /* The authored scene draws without runtime state; a paused run keeps its
+       own, its materials, visibility and lighting, while it is edited. */
+    if (scene_can_move(scene) && !scene->runtime_snapshot_valid) {
         runtime = NULL;
     }
     if (scene->render_viewport && engine_viewport_perspective(scene->render_viewport)) {

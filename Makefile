@@ -1,7 +1,17 @@
+# Native desktop setup commands can run before a SessionStart hook.
+# Enrollment is silent and creates no state for repositories without installation.
+ifeq ($(wildcard .chibi-workspace.json),)
+ifneq ($(wildcard tools/workspaces.py),)
+ifneq ($(shell python3 tools/workspaces.py enroll >/dev/null && printf ready),ready)
+$(error Workspace enrollment failed; inspect the workspaces error above)
+endif
+endif
+endif
+
 # Managed workspaces hold one lock across configure, tests, and launched runtimes.
 # Recursive make inherits MAKEFLAGS, command-line variables, and the lock fd.
 override CHIBI_WORKSPACE_INNER := 0
-ifneq ($(wildcard .chibi-workspace.json),)
+ifneq ($(shell test -f .chibi-workspace.json && printf managed),)
 ifeq ($(strip $(CHIBI_WORKSPACE_LOCK_FD)),)
 CHIBI_WORKSPACE_GOALS := $(if $(MAKECMDGOALS),$(MAKECMDGOALS),all)
 .DEFAULT_GOAL := all

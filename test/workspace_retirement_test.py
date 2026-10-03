@@ -215,6 +215,112 @@ class RetirementTest(unittest.TestCase):
         # pruning and must not block retirement everywhere else.
         self.assertEqual(self.sweep()[0]['files'], 3)
 
+    def native_sessions(self, sessions, status='idle', integration=True):
+        with workspaces.registry_lock() as registry:
+            registry['workspaces']['test'].update(lifecycle='app', sessions=sessions,
+                                                 status=status, build_integration=integration)
+
+    def test_one_stopped_app_does_not_release_another_active_session(self):
+        self.fixture()
+        self.native_sessions({'codex:first': {'active': False, 'last_seen': 0},
+                              'claude:second': {'active': True, 'last_seen': 0}}, 'active')
+        self.assertEqual(self.sweep(), [])
+        self.assertTrue((self.build / 'engine.o').exists())
+        self.native_sessions({'codex:first': {'active': False, 'last_seen': 0},
+                              'claude:second': {'active': False, 'last_seen': 0}})
+        self.assertEqual(self.sweep()[0]['files'], 3)
+
+    def test_paused_sessions_activity_aggregates_before_retirement(self):
+        self.fixture()
+        self.native_sessions({'codex:first': {'active': False, 'last_seen': 0},
+                              'claude:second': {'active': False, 'last_seen': time.time()}})
+        self.assertEqual(self.sweep(), [])
+        self.native_sessions({'codex:first': {'active': False, 'last_seen': 0},
+                              'claude:second': {'active': False, 'last_seen': time.time() - 8 * 86400}})
+        self.assertEqual(self.sweep()[0]['files'], 3)
+
+    def test_native_without_build_integration_and_retired_identity_are_excluded(self):
+        self.fixture()
+        self.native_sessions({}, integration=False)
+        self.assertEqual(self.sweep(), [])
+        self.native_sessions({}, status='retired')
+        self.assertEqual(self.sweep(), [])
+        self.assertTrue((self.build / 'engine.o').exists())
+
+    def test_removed_recreated_native_checkout_identity_is_rejected(self):
+        self.fixture()
+        self.native_sessions({})
+        old = self.root.parent / 'old-checkout'
+        self.root.rename(old)
+        self.root.mkdir()
+        # Registry keeps its original identity and build records. A fresh
+        # checkout occupying its path cannot make the old outputs disposable.
+        self.assertIn('ownership', self.sweep()[0]['skipped'])
+        self.assertTrue((old / 'build/engine.o').exists())
+
+    def test_invalid_session_state_fails_closed(self):
+        self.fixture()
+        self.native_sessions({'codex:first': {'last_seen': 0}})
+        self.assertEqual(self.sweep(), [])
+        self.native_sessions({'codex:first': {'active': False, 'last_seen': 'bad'}})
+        self.assertEqual(self.sweep(), [])
+
+    def test_recreated_registered_checkout_uses_new_identity(self):
+        self.fixture()
+        self.native_sessions({}, status='retired')
+        old = self.root.parent / 'old-checkout'
+        self.root.rename(old)
+        self.root.mkdir()
+        subprocess.run(['git', 'init', '-q', str(self.root)], check=True)
+        info = self.root.stat()
+        marker = {'version': 1, 'id': 'fresh', 'state_home': str(self.state),
+                  'path': str(self.root), 'device': info.st_dev, 'inode': info.st_ino}
+        (self.root / workspaces.MARKER).write_text(json.dumps(marker))
+        with workspaces.registry_lock() as registry:
+            fresh = dict(registry['workspaces']['test'], id='fresh', status='idle')
+            registry['workspaces']['fresh'] = fresh
+            self.assertEqual(retirement.workspace(registry, self.build)['id'], 'fresh')
+        with (self.state / 'locks/fresh.lock').open('a+') as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            with patch.dict(os.environ, {'CHIBI_WORKSPACE_LOCK_FD': str(lock.fileno())}):
+                self.assertTrue(retirement.register(self.build))
+        with workspaces.registry_lock() as registry:
+            self.assertEqual(registry['builds'][str(self.build)]['workspace_id'], 'fresh')
+        self.assertTrue((old / 'build/engine.o').exists())
+
+    def test_nested_foreign_repository_is_not_enrolled_by_parent_prefix(self):
+        nested = self.root / 'foreign'
+        subprocess.run(['git', 'init', '-q', str(nested)], check=True)
+        self.assertFalse(retirement.register(nested / 'build'))
+        self.assertFalse((nested / 'build').exists())
+
+    def test_git_workspace_discovery_does_not_hold_registry_mutex(self):
+        discover = retirement.workspace
+        def unlocked(registry, path):
+            with (self.state / 'registry.lock').open('a+') as probe:
+                fcntl.flock(probe, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return discover(registry, path)
+        with patch.object(retirement, 'workspace', side_effect=unlocked):
+            self.fixture()
+
+    def test_stale_workspace_records_do_not_consume_retention_slots(self):
+        self.fixture()
+        with workspaces.registry_lock() as registry:
+            original = registry['builds'][str(self.build)]
+            stale = dict(original, workspace_id='stale', path=str(self.root / 'stale-build'),
+                         last_used=time.time())
+            registry['builds'][stale['path']] = stale
+            cases = [('missing-id', None),
+                     ('retired', dict(self.entry, id='stale', status='retired')),
+                     ('missing-checkout', dict(self.entry, id='stale',
+                                              path=str(self.root.parent / 'absent-checkout')))]
+            for label, entry in cases:
+                with self.subTest(label):
+                    registry['workspaces'].pop('stale', None)
+                    if entry is not None:
+                        registry['workspaces']['stale'] = entry
+                    self.assertFalse(retirement.eligible(registry, original, keep=1, idle_days=7))
+
 
 if __name__ == '__main__':
     unittest.main()

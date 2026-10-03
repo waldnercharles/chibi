@@ -106,7 +106,7 @@ class WorkspaceMake(unittest.TestCase):
                                'BUILD_TARGET=chibi', 'JOBS=3', *variables,
                                f'QUIET={sys.executable} tools/quiet.py'],
                               cwd=self.root, env=env, capture_output=True, text=True,
-                              timeout=15)
+                              timeout=60)
 
     def calls(self):
         return [json.loads(line) for line in (self.root / 'calls.jsonl').read_text().splitlines()]
@@ -185,6 +185,112 @@ class WorkspaceMake(unittest.TestCase):
         self.assertEqual(result.returncode, 19)
         self.assertTrue((self.root / 'registered').exists())
         self.assertFalse((self.root / 'fresh-build').exists())
+
+
+class NativeWorkspaceMake(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        self.repo = self.root / 'repo'
+        self.repo.mkdir()
+        tools = self.repo / 'tools'
+        tools.mkdir()
+        shutil.copyfile(ROOT / 'Makefile', self.repo / 'Makefile')
+        for name in ('workspaces.py', 'workspace_retirement.py', 'quiet.py'):
+            shutil.copyfile(ROOT / 'tools' / name, tools / name)
+        (tools / 'configure.sh').write_text('# workspace_retirement.py registration fixture\n')
+        (tools / 'configure_native.sh').write_text('fixture-tool configure "$@"\n')
+        self.bin = self.repo / 'bin'
+        self.bin.mkdir()
+        tool = TOOL.replace('PYTHON', sys.executable).replace(
+            "Path('.fixture-workspace.lock')",
+            "(Path(json.loads(Path('.chibi-workspace.json').read_text())['state_home']) / "
+            "'locks' / (json.loads(Path('.chibi-workspace.json').read_text())['id'] + '.lock'))")
+        for name in ('cmake', 'fixture-tool'):
+            path = self.bin / name
+            path.write_text(tool)
+            path.chmod(0o755)
+        self.env = os.environ.copy()
+        for name in ('MAKEFLAGS', 'MFLAGS', 'MAKEOVERRIDES', 'CHIBI_WORKSPACE_LOCK_FD'):
+            self.env.pop(name, None)
+        self.state = self.root / 'state'
+        self.env.update(CHIBI_WORKSPACE_HOME=str(self.state),
+                        PATH=str(self.bin) + os.pathsep + self.env['PATH'])
+        self.git('init', '-q')
+        self.git('config', 'user.email', 'test@example.invalid')
+        self.git('config', 'user.name', 'Test')
+        self.git('add', '.')
+        self.git('commit', '-qm', 'fixture')
+        self.checkout = self.root / 'native'
+        self.git('worktree', 'add', '-qb', 'native', str(self.checkout))
+
+    def git(self, *args):
+        return subprocess.run(['git', '-C', str(self.repo), *args], check=True,
+                              capture_output=True, text=True, env=self.env)
+
+    def make(self, *args):
+        return subprocess.run(['make', *args, 'NATIVE_TOOLCHAIN_FLAGS=',
+                               'LOCAL_CMAKE_FLAGS=', 'BUILD_TARGET=chibi',
+                               f'QUIET={sys.executable} tools/quiet.py'],
+                              cwd=self.checkout, env=self.env, capture_output=True,
+                              text=True, timeout=60)
+
+    def register_repo(self):
+        result = subprocess.run([sys.executable, str(self.repo / 'tools/workspaces.py'),
+                                 'init', '--repo', str(self.repo)], env=self.env,
+                                capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_native_setup_build_enrolls_and_locks_before_any_session_hook(self):
+        self.register_repo()
+        self.assertFalse((self.checkout / '.chibi-workspace.json').exists())
+        result = self.make('build')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        marker = json.loads((self.checkout / '.chibi-workspace.json').read_text())
+        registry = json.loads((self.state / 'registry.json').read_text())
+        entry = registry['workspaces'][marker['id']]
+        self.assertEqual(entry['lifecycle'], 'app')
+        self.assertEqual(entry['status'], 'idle')
+        self.assertEqual(entry['sessions'], {})
+        self.assertTrue(entry['build_integration'])
+        calls = [json.loads(line) for line in
+                 (self.checkout / 'calls.jsonl').read_text().splitlines()]
+        self.assertTrue(calls)
+        self.assertTrue(all(call['locked'] for call in calls))
+        self.assertNotIn('workspaces:', result.stdout)
+
+    def test_uninstalled_native_checkout_creates_no_registry_or_marker(self):
+        result = self.make('help')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse(self.state.exists())
+        self.assertFalse((self.checkout / '.chibi-workspace.json').exists())
+
+    def test_enrollment_error_stops_before_make_commands(self):
+        self.register_repo()
+        registry = json.loads((self.state / 'registry.json').read_text())
+        registry['version'] = -1
+        (self.state / 'registry.json').write_text(json.dumps(registry))
+        result = self.make('build')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('Workspace enrollment failed', result.stderr)
+        self.assertFalse((self.checkout / 'calls.jsonl').exists())
+        self.assertFalse((self.checkout / 'build').exists())
+
+    def test_known_registry_with_unknown_repo_does_not_enroll(self):
+        other = self.root / 'other'
+        other.mkdir()
+        subprocess.run(['git', '-C', str(other), 'init', '-q'], check=True)
+        result = subprocess.run([sys.executable, str(self.repo / 'tools/workspaces.py'),
+                                 'init', '--repo', str(other)], env=self.env,
+                                capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        result = self.make('help')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse((self.checkout / '.chibi-workspace.json').exists())
+        registry = json.loads((self.state / 'registry.json').read_text())
+        self.assertEqual(registry['workspaces'], {})
+
 
 
 if __name__ == '__main__':

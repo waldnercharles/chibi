@@ -80,9 +80,17 @@ def init_repository(registry, path, limit=4):
 
 def workspace_for_path(registry, path):
     candidate = Path(path).resolve()
-    matches = [entry for entry in registry['workspaces'].values()
-               if candidate == Path(entry['path']) or Path(entry['path']) in candidate.parents]
-    return max(matches, key=lambda entry: len(entry['path'])) if matches else None
+    if candidate.is_file():
+        candidate = candidate.parent
+    entries = {entry['path']: entry for entry in registry['workspaces'].values()
+               if entry['status'] != 'retired'}
+    for directory in (candidate, *candidate.parents):
+        if str(directory) in entries:
+            return entries[str(directory)]
+        git_marker = directory / '.git'
+        if git_marker.exists() or git_marker.is_symlink():
+            return None
+    return None
 
 
 def marker_path(entry):
@@ -114,7 +122,7 @@ def acquire(task, repo, app=None):
     with registry_lock() as registry:
         repo_id = init_repository(registry, repo)
         candidates = [entry for entry in registry['workspaces'].values()
-                      if entry['repo'] == repo_id and entry['task'] == task]
+                      if entry['repo'] == repo_id and entry.get('lifecycle') != 'app' and entry['task'] == task]
         if candidates:
             entry = candidates[0]
             validate_marker(entry)
@@ -129,7 +137,7 @@ def acquire(task, repo, app=None):
             entry['last_used'] = time.time()
             return dict(entry)
         config = registry['repos'][repo_id]
-        active = sum(entry['repo'] == repo_id and entry['status'] != 'finished'
+        active = sum(entry['repo'] == repo_id and entry.get('lifecycle') != 'app' and entry['status'] != 'finished'
                      for entry in registry['workspaces'].values())
         if active >= config['limit']:
             raise ValueError('workspace limit reached; finish an existing task before acquiring another')
@@ -175,7 +183,7 @@ def change_status(path, action):
                 if entry['status'] != 'finished':
                     raise ValueError('workspace is already open')
                 config = registry['repos'][entry['repo']]
-                active = sum(other['repo'] == entry['repo'] and other['status'] != 'finished'
+                active = sum(other['repo'] == entry['repo'] and other.get('lifecycle') != 'app' and other['status'] != 'finished'
                              for other in registry['workspaces'].values())
                 if active >= config['limit']:
                     raise ValueError('workspace limit reached')
@@ -184,19 +192,124 @@ def change_status(path, action):
             return dict(entry)
 
 
+def native_integration(root):
+    try:
+        return ('workspaces.py run' in (root / 'Makefile').read_text()
+                and 'workspace_retirement.py' in (root / 'tools' / 'configure.sh').read_text()
+                and (root / 'tools' / 'workspaces.py').is_file()
+                and (root / 'tools' / 'workspace_retirement.py').is_file())
+    except OSError:
+        return False
+
+
+def prepare_native(cwd):
+    try:
+        root, common, repo_id = repository(cwd)
+        stat = root.stat()
+    except (OSError, subprocess.SubprocessError):
+        return None
+    try:
+        branch = git(root, 'symbolic-ref', '--quiet', '--short', 'HEAD')
+    except subprocess.CalledProcessError:
+        branch = None
+    return {'root': root, 'repo_id': repo_id, 'common_dir': common,
+            'identity': (stat.st_dev, stat.st_ino), 'branch': branch,
+            'build_integration': native_integration(root)}
+
+
+def enroll_native(registry, context):
+    if context is None:
+        return None
+    root, repo_id = context['root'], context['repo_id']
+    stat = root.stat()
+    if (stat.st_dev, stat.st_ino) != context['identity']:
+        raise ValueError('native checkout changed during discovery; retry')
+    if repo_id not in registry['repos']:
+        return None
+    entries = [entry for entry in registry['workspaces'].values()
+               if entry['path'] == str(root) and entry['status'] != 'retired']
+    entry = entries[0] if entries else None
+    if entry and entry.get('lifecycle') != 'app':
+        validate_marker(entry)
+        return entry
+    stat = root.stat()
+    marker_file = root / MARKER
+    marker = json.loads(marker_file.read_text()) if marker_file.exists() else None
+    if entry:
+        if marker is not None and (marker.get('id') != entry['id'] or marker.get('state_home') != str(state_home())):
+            raise ValueError('native workspace marker belongs to another registry')
+        old_identity = (entry.get('root_device'), entry.get('root_inode'))
+        if old_identity == (stat.st_dev, stat.st_ino):
+            validate_marker(entry)
+            entry['build_integration'] = context['build_integration']
+            entry['branch'] = context['branch']
+            return entry
+        if any(session.get('active') for session in entry.get('sessions', {}).values()):
+            raise ValueError('native workspace path changed while a session remains active')
+        entry['status'] = 'retired'
+    elif marker is not None:
+        raise ValueError('native checkout already has an unknown workspace marker')
+    workspace_id = uuid.uuid4().hex[:12]
+    now = time.time()
+    branch = context['branch']
+    entry = {'id': workspace_id, 'repo': repo_id, 'task': root.name, 'path': str(root),
+             'branch': branch, 'lifecycle': 'app', 'status': 'idle', 'owner': None,
+             'reserved_app': None, 'sessions': {}, 'created': now, 'last_used': now,
+             'build_integration': context['build_integration'], 'root_device': stat.st_dev, 'root_inode': stat.st_ino}
+    atomic_json(marker_file, {'version': VERSION, 'id': workspace_id,
+                'state_home': str(state_home()), 'path': str(root), 'device': stat.st_dev, 'inode': stat.st_ino})
+    registry['workspaces'][workspace_id] = entry
+    return entry
+
+
+def native_hook(entry, app, session, event):
+    key = app + ':' + session
+    now = time.time()
+    sessions = entry['sessions']
+    if event == 'SessionEnd':
+        sessions.pop(key, None)
+    elif event == 'Stop':
+        if key in sessions:
+            sessions[key] = {'active': False, 'last_seen': now}
+    elif event in ('SessionStart', 'UserPromptSubmit', 'PreToolUse'):
+        sessions[key] = {'active': True, 'last_seen': now}
+    entry['status'] = 'active' if any(value.get('active') for value in sessions.values()) else 'idle'
+    entry['last_used'] = now
+
+
 def hook(app, payload):
     event = payload.get('hook_event_name')
     session = payload.get('session_id')
     cwd = payload.get('cwd')
     if not isinstance(cwd, str):
         raise ValueError('hook needs cwd')
+    context = prepare_native(cwd) if event in ('SessionStart', 'UserPromptSubmit', 'PreToolUse') else None
     with registry_lock() as registry:
-        entry = workspace_for_path(registry, cwd)
+        if event in ('Stop', 'SessionEnd') and isinstance(session, str) and session:
+            for observed in registry['workspaces'].values():
+                if observed.get('lifecycle') == 'app' and observed['status'] != 'retired' and app + ':' + session in observed.get('sessions', {}):
+                    native_hook(observed, app, session, event)
+            # Native app teardown can occur after it has removed the checkout.
+            if not Path(cwd).exists():
+                return
+        if event in ('SessionStart', 'UserPromptSubmit', 'PreToolUse'):
+            if not isinstance(session, str) or not session:
+                if context is None or context['repo_id'] not in registry['repos']:
+                    return
+                raise ValueError('hook needs session_id')
+            entry = enroll_native(registry, context)
+        else:
+            entry = workspace_for_path(registry, cwd)
         if entry is None:
+            return
+        if entry.get('lifecycle') == 'app' and event in ('Stop', 'SessionEnd'):
             return
         if not isinstance(session, str) or not session:
             raise ValueError('hook needs session_id')
         validate_marker(entry)
+        if entry.get('lifecycle') == 'app':
+            native_hook(entry, app, session, event)
+            return
         owner = {'app': app, 'session_id': session}
         if event == 'SessionEnd':
             if entry.get('owner') == owner:
@@ -263,8 +376,11 @@ def run_command(command):
         command = command[1:]
     if not command:
         raise ValueError('run needs a command')
+    context = prepare_native(Path.cwd())
     with registry_lock() as registry:
-        entry = workspace_for_path(registry, Path.cwd())
+        entry = enroll_native(registry, context)
+        if entry is None and (Path.cwd() / MARKER).exists():
+            raise ValueError('marked workspace no longer belongs to a registered repository')
         if entry:
             if entry['status'] == 'finished':
                 raise ValueError('workspace task is finished; reopen it explicitly')
@@ -326,6 +442,7 @@ def main():
     get.add_argument('--app', choices=('codex', 'claude'))
     get.add_argument('--open', action='store_true')
     sub.add_parser('list')
+    sub.add_parser('enroll')
     sub.add_parser('validate-lock')
     for action in ('finish', 'release', 'reopen'):
         sub.add_parser(action).add_argument('path')
@@ -349,6 +466,11 @@ def main():
             print(entry['path'], flush=True)
             if args.open:
                 open_workspace(entry, args.app)
+        elif args.command == 'enroll':
+            if (state_home() / 'registry.json').is_file():
+                context = prepare_native(Path.cwd())
+                with registry_lock() as registry:
+                    enroll_native(registry, context)
         elif args.command == 'list':
             with registry_lock() as registry:
                 print(json.dumps(list(registry['workspaces'].values()), indent=2))

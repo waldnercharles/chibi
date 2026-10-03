@@ -26,6 +26,7 @@ class WorkspacesTest(unittest.TestCase):
         self.repo.mkdir()
         self.env = mock.patch.dict(os.environ, {'CHIBI_WORKSPACE_HOME': str(self.root / 'state')})
         self.env.start()
+        os.environ.pop('CHIBI_WORKSPACE_LOCK_FD', None)
         self.addCleanup(self.env.stop)
         os.environ.pop('CHIBI_WORKSPACE_LOCK_FD', None)
         for command in (['init', '-q'], ['config', 'user.email', 'test@example.invalid'],
@@ -45,6 +46,155 @@ class WorkspacesTest(unittest.TestCase):
         return subprocess.run([sys.executable, str(SCRIPT), *args], cwd=cwd,
                               input=json.dumps(payload) if payload else None,
                               text=True, capture_output=True, **kwargs)
+
+    def native_event(self, path, session='native-one', event='SessionStart', app='codex'):
+        w.hook(app, {'session_id': session, 'cwd': str(path), 'hook_event_name': event})
+
+    def register_repo(self):
+        with w.registry_lock() as registry:
+            w.init_repository(registry, self.repo)
+
+    def test_native_primary_and_multiple_sessions_preserve_source(self):
+        self.register_repo()
+        (self.repo / 'file.txt').write_text('dirty source\n')
+        build = self.repo / 'build'
+        build.mkdir()
+        (build / 'CMakeCache.txt').write_text('existing output\n')
+        before = w.git(self.repo, 'status', '--porcelain')
+        branch = w.git(self.repo, 'branch', '--show-current')
+        self.native_event(self.repo)
+        self.native_event(self.repo, session='other', app='claude')
+        with w.registry_lock() as registry:
+            entry = w.workspace_for_path(registry, self.repo)
+            self.assertEqual(entry['lifecycle'], 'app')
+            self.assertEqual(len(entry['sessions']), 2)
+            self.assertFalse(entry['build_integration'])
+            self.assertFalse(registry.get('builds'))
+        self.native_event(self.repo, event='Stop')
+        with w.registry_lock() as registry:
+            self.assertEqual(w.workspace_for_path(registry, self.repo)['status'], 'active')
+        self.native_event(self.repo, session='other', event='Stop', app='claude')
+        with w.registry_lock() as registry:
+            self.assertEqual(w.workspace_for_path(registry, self.repo)['status'], 'idle')
+        self.assertEqual(w.git(self.repo, 'status', '--porcelain'), before)
+        self.assertEqual(w.git(self.repo, 'branch', '--show-current'), branch)
+        self.assertEqual((build / 'CMakeCache.txt').read_text(), 'existing output\n')
+
+    def test_detached_native_and_global_session_end_after_movement(self):
+        self.register_repo()
+        checkout = self.root / 'native'
+        subprocess.run(['git', '-C', str(self.repo), 'worktree', 'add', '--detach', str(checkout)],
+                       check=True, capture_output=True)
+        self.native_event(self.repo)
+        self.native_event(checkout, event='PreToolUse')
+        with w.registry_lock() as registry:
+            self.assertIsNone(w.workspace_for_path(registry, checkout)['branch'])
+            self.assertEqual(len(registry['workspaces']), 2)
+        self.native_event(checkout, event='SessionEnd')
+        with w.registry_lock() as registry:
+            self.assertTrue(all(not entry['sessions'] for entry in registry['workspaces'].values()))
+        self.assertEqual(w.git(checkout, 'status', '--porcelain'), '')
+
+    def test_native_recreation_has_new_identity_and_old_build_owner(self):
+        self.register_repo()
+        checkout = self.root / 'native'
+        subprocess.run(['git', '-C', str(self.repo), 'worktree', 'add', '--detach', str(checkout)],
+                       check=True, capture_output=True)
+        self.native_event(checkout)
+        with w.registry_lock() as registry:
+            old = dict(w.workspace_for_path(registry, checkout))
+            registry['builds'] = {'example': {'workspace_id': old['id']}}
+        # Retain old inode to make path recreation deterministic on all filesystems.
+        saved = self.root / 'old-checkout'
+        subprocess.run(['git', '-C', str(self.repo), 'worktree', 'move', str(checkout), str(saved)],
+                       check=True, capture_output=True)
+        subprocess.run(['git', '-C', str(self.repo), 'worktree', 'add', '--detach', str(checkout)],
+                       check=True, capture_output=True)
+        self.native_event(checkout, event='SessionEnd')
+        self.native_event(checkout, session='replacement')
+        with w.registry_lock() as registry:
+            new = w.workspace_for_path(registry, checkout)
+            self.assertNotEqual(new['id'], old['id'])
+            self.assertEqual(registry['workspaces'][old['id']]['status'], 'retired')
+            self.assertEqual(registry['builds']['example']['workspace_id'], old['id'])
+        result = self.cli('run', '--', sys.executable, str(SCRIPT), 'validate-lock', cwd=checkout, timeout=15)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        quiet = SCRIPT.with_name('quiet.py')
+        result = self.cli('run', '--', sys.executable, str(quiet), 'identity-check', '--',
+                          sys.executable, str(SCRIPT), 'validate-lock', cwd=checkout, timeout=15)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.native_event(checkout, event='Stop')
+        with w.registry_lock() as registry:
+            self.assertEqual(registry['workspaces'][old['id']]['status'], 'retired')
+
+    def test_unknown_nested_repo_and_non_git_hook_are_ignored(self):
+        self.register_repo()
+        self.native_event(self.repo)
+        nested = self.repo / 'other'
+        nested.mkdir()
+        subprocess.run(['git', '-C', str(nested), 'init', '-q'], check=True)
+        self.native_event(nested, event='PreToolUse')
+        self.native_event(self.root, event='SessionStart')
+        with w.registry_lock() as registry:
+            self.assertEqual(len(registry['workspaces']), 1)
+        self.assertFalse((nested / w.MARKER).exists())
+        with w.registry_lock() as registry:
+            self.assertIsNone(w.workspace_for_path(registry, nested))
+
+    def test_discovery_never_holds_registry_mutex(self):
+        self.register_repo()
+        original_git = w.git
+        calls = []
+
+        def checked_git(path, *args):
+            with (w.state_home() / 'registry.lock').open('a+') as probe:
+                fcntl.flock(probe, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            calls.append(args)
+            return original_git(path, *args)
+
+        previous = Path.cwd()
+        try:
+            os.chdir(self.repo)
+            with mock.patch.object(w, 'git', side_effect=checked_git):
+                self.native_event(self.repo)
+                self.assertEqual(w.run_command([sys.executable, '-c', 'pass']), 0)
+                with mock.patch.object(sys, 'argv', ['workspaces', 'enroll']):
+                    self.assertEqual(w.main(), 0)
+            self.assertTrue(calls)
+            with mock.patch.object(w, 'git', side_effect=AssertionError('teardown must not invoke Git')):
+                self.native_event(self.repo, event='Stop')
+                self.native_event(self.repo, event='SessionEnd')
+                with w.registry_lock() as registry:
+                    self.assertIsNotNone(w.workspace_for_path(registry, self.repo))
+        finally:
+            os.chdir(previous)
+
+    def test_quiet_enroll_before_session_and_uninstalled_noop(self):
+        result = self.cli('enroll', cwd=self.repo, timeout=15)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, '')
+        self.assertFalse(w.state_home().exists())
+        self.assertFalse((self.repo / w.MARKER).exists())
+        self.register_repo()
+        result = self.cli('enroll', cwd=self.repo, timeout=15)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, '')
+        with w.registry_lock() as registry:
+            entry = w.workspace_for_path(registry, self.repo)
+            self.assertEqual(entry['status'], 'idle')
+            self.assertEqual(entry['sessions'], {})
+
+    def test_native_run_enrolls_before_setup_and_accepts_parallel_sessions(self):
+        self.register_repo()
+        result = self.cli('run', '--', sys.executable, '-c', 'pass', cwd=self.repo, timeout=15)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        with w.registry_lock() as registry:
+            entry = dict(w.workspace_for_path(registry, self.repo))
+        with w.workspace_lock(entry):
+            self.native_event(self.repo)
+            self.native_event(self.repo, session='other')
+        with w.registry_lock() as registry:
+            self.assertEqual(len(registry['workspaces'][entry['id']]['sessions']), 2)
 
     def test_stable_paths_branches_and_capacity(self):
         first = self.acquire()

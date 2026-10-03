@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Install the shared launcher, app hooks and macOS retirement job."""
+"""Install native-session hooks, shared helpers and the macOS retirement job."""
 
 import argparse
 import json
@@ -131,7 +131,7 @@ def install(home, state, source, launch_agent=False, apply=False):
                            check=True, capture_output=True)
     return {"mode": "installed", "changed": len(changed), "backup": str(backup) if backup.exists() else None,
             "launcher": str(home / ".local/bin/chibi-workspace"),
-            "codex_hook_review": "Review the new commands in /hooks before using managed Codex workspaces."}
+            "codex_hook_review": "Review the configured commands in /hooks so native Codex sessions run them."}
 
 
 def main():

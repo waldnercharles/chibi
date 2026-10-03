@@ -4,6 +4,7 @@ import argparse
 import fcntl
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import shutil
@@ -26,8 +27,24 @@ def home():
 def workspace(registry, path):
     path = Path(path).resolve()
     candidates = [entry for entry in registry['workspaces'].values()
-                  if path.is_relative_to(Path(entry['path']).resolve())]
-    return max(candidates, key=lambda entry: len(entry['path']), default=None)
+                  if entry.get('status') != 'retired'
+                  and path.is_relative_to(Path(entry['path']).resolve())]
+    if not candidates:
+        return None
+    parent = path
+    while not parent.is_dir():
+        if parent == parent.parent:
+            return None
+        parent = parent.parent
+    try:
+        git = subprocess.run(['git', '-C', str(parent), 'rev-parse', '--show-toplevel'],
+                             text=True, capture_output=True, check=True, timeout=20)
+        root = Path(git.stdout.strip()).resolve()
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return None
+    candidates = [entry for entry in candidates if Path(entry['path']).resolve() == root]
+    # Two live identities at one path are ambiguous; never borrow a stale one.
+    return candidates[0] if len(candidates) == 1 else None
 
 
 def ordinary_path(path, root):
@@ -83,8 +100,16 @@ def lease_inherited(entry, lock_fd=None):
 def register(build_dir):
     path = Path(os.path.abspath(build_dir))
     with workspaces.registry_lock() as registry:
-        entry = workspace(registry, path)
-        if entry is None or not lease_inherited(entry):
+        snapshot = {'workspaces': dict(registry['workspaces'])}
+    discovered = workspace(snapshot, path)
+    if discovered is None:
+        return False
+    with workspaces.registry_lock() as registry:
+        entry = registry['workspaces'].get(discovered['id'])
+        if (entry is None or entry.get('status') == 'retired'
+                or entry['path'] != discovered['path'] or not lease_inherited(entry)):
+            return False
+        if entry.get('lifecycle') == 'app' and not entry.get('build_integration'):
             return False
         workspaces.validate_marker(entry)
         root = Path(entry['path']).resolve()
@@ -92,7 +117,14 @@ def register(build_dir):
             return False
         builds = registry.setdefault('builds', {})
         if str(path) in builds:
-            return owned(builds[str(path)], entry)
+            previous = builds[str(path)]
+            if previous['workspace_id'] == entry['id']:
+                return owned(previous, entry)
+            old_workspace = registry['workspaces'].get(previous['workspace_id'], {})
+            if old_workspace.get('status') != 'retired' or path.exists():
+                return False
+            registry.setdefault('retired_builds', {})[previous['workspace_id'] + ':' + str(path)] = previous
+            del builds[str(path)]
         # Never infer ownership of existing output, even an empty directory.
         if path.exists():
             return False
@@ -215,8 +247,14 @@ def capture_record(record, entry):
 
 def capture_workspace(path, lock_fd=None):
     with workspaces.registry_lock() as registry:
-        entry = workspace(registry, path)
-        if entry is None or not lease_inherited(entry, lock_fd):
+        snapshot = {'workspaces': dict(registry['workspaces'])}
+    discovered = workspace(snapshot, path)
+    if discovered is None:
+        return 0
+    with workspaces.registry_lock() as registry:
+        entry = registry['workspaces'].get(discovered['id'])
+        if (entry is None or entry.get('status') == 'retired'
+                or entry['path'] != discovered['path'] or not lease_inherited(entry, lock_fd)):
             return 0
         entry = dict(entry)
         records = json.loads(json.dumps([record for record in registry.get('builds', {}).values()
@@ -227,7 +265,10 @@ def capture_workspace(path, lock_fd=None):
             count = capture_record(record, entry)
             with workspaces.registry_lock() as registry:
                 current = registry.get('builds', {}).get(record['path'])
-                if current is not None and (current['device'], current['inode']) == (record['device'], record['inode']):
+                current_entry = registry['workspaces'].get(entry['id'], {})
+                if (current is not None and current['workspace_id'] == entry['id']
+                        and current_entry.get('status') != 'retired'
+                        and (current['device'], current['inode']) == (record['device'], record['inode'])):
                     current.update(outputs=record['outputs'], last_used=record['last_used'])
                     total += count
         except (OSError, ValueError, subprocess.SubprocessError) as error:
@@ -260,17 +301,50 @@ def process_idle(path):
         return False
 
 
+def app_activity(entry):
+    """All app sessions contribute activity, even when one app has stopped."""
+    used = entry.get('last_used', 0)
+    sessions = entry.get('sessions', {})
+    if not isinstance(sessions, dict):
+        return True, float('inf')
+    active = False
+    for session in sessions.values():
+        if not isinstance(session, dict):
+            return True, float('inf')
+        active |= session.get('active') is not False
+        seen = session.get('last_seen', 0)
+        if not isinstance(seen, (int, float)) or not math.isfinite(seen):
+            return True, float('inf')
+        used = max(used, seen)
+    return active, used
+
+
 def eligible(registry, record, keep, idle_days):
     usage = {}
     for build in registry.get('builds', {}).values():
         identifier = build['workspace_id']
-        entry = registry['workspaces'].get(identifier, {})
-        usage[identifier] = max(usage.get(identifier, 0), build['last_used'], entry.get('last_used', 0))
+        entry = registry['workspaces'].get(identifier)
+        if entry is None or entry.get('status') == 'retired':
+            continue
+        try:
+            Path(entry['path']).stat()
+        except FileNotFoundError:
+            continue
+        except OSError:
+            # An inaccessible checkout is not evidence that it is absent.
+            pass
+        _, used = app_activity(entry)
+        usage[identifier] = max(usage.get(identifier, 0), build['last_used'], used)
     recent = set(sorted(usage, key=usage.get, reverse=True)[:keep])
     entry = registry['workspaces'].get(record['workspace_id'])
+    if entry is None:
+        return False
+    active, used = app_activity(entry)
+    if active or (entry.get('lifecycle') == 'app' and not entry.get('build_integration')):
+        return False
     return (entry is not None and entry['id'] not in recent and not entry.get('owner')
             and not entry.get('reserved_app') and entry.get('status') in ('active', 'idle', 'finished')
-            and time.time() - max(record['last_used'], entry.get('last_used', 0)) >= idle_days * 86400)
+            and time.time() - max(record['last_used'], used) >= idle_days * 86400)
 
 
 def sweep(apply=False, keep=3, idle_days=7):

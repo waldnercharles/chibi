@@ -26,15 +26,15 @@ static float row_height(rml_element *scroller, const ui_list *list)
     return row;
 }
 
-/* Pinned when the view was at the bottom of the previous content. */
+/* Pinned while the view is at the bottom. Where it is counts only once it
+ * moved since the last call: a scroll set before the content grew stops at
+ * the old bottom until the content lays out, and is still pinned. */
 static float follow(ui_list_state *state, const ui_list *list, float total, float view, float scroll)
 {
-    float previous_max = fmaxf(state->total - view, 0);
-    if (list->follow && state->at_bottom && total > state->total) {
-        return fmaxf(total - view, 0);
+    if (fabsf(scroll - state->scroll) >= 0.5f) {
+        state->at_bottom = scroll >= fmaxf(state->total - view, 0) - BOTTOM_THRESHOLD;
     }
-    state->at_bottom = scroll >= previous_max - BOTTOM_THRESHOLD;
-    return scroll;
+    return list->follow && state->at_bottom ? fmaxf(total - view, 0) : scroll;
 }
 
 /* Scrolls the least to bring a newly revealed row into view. */
@@ -81,6 +81,7 @@ int ui_list_window(rml_element *scroller, const ui_list *list, ui_list_state *st
     if (fabsf(scroll * ratio - scrolled) >= 1) {
         rml_element_set_scroll_top(scroller, scroll * ratio);
     }
+    state->scroll = rml_element_scroll_top(scroller) / ratio;
     state->total = total;
     float overscan = list->overscan > 0 ? list->overscan : DEFAULT_OVERSCAN;
     float extent = view > 0 ? view : UNLAID_VIEW;

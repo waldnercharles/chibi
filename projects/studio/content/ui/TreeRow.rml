@@ -1,0 +1,9 @@
+<div class="tree-row" data-attrif-data-selected="item.selected" data-attrif-data-active="item.active" data-attrif-data-marked="item.marked" data-attrif-data-hidden="item.hidden" data-style-padding-left="(6 + item.depth * 14) + 'dp'">
+  <span class="icon twisty sm" data-if="item.parent &amp;&amp; item.open" data-event-click="item.open = false">&#xeab4;</span>
+  <span class="icon twisty sm" data-if="item.parent &amp;&amp; !item.open" data-event-click="item.open = true">&#xeab6;</span>
+  <span class="icon twisty sm" data-if="!item.parent"/>
+  <span class="icon">{{ item.icon }}</span>
+  <span class="name">{{ item.label }}</span>
+  <span class="meta">{{ item.meta }}</span>
+  <span class="trail"><slot/></span>
+</div>

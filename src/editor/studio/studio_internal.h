@@ -18,6 +18,7 @@
 #include "runtime/save.h"
 #include "support/file_watch.h"
 #include "support/resources.h"
+#include "ui/list.h"
 #include "ui/rml_backend.h"
 
 #include <SDL3/SDL_events.h>
@@ -799,6 +800,21 @@ typedef struct
     char error[160];
 } studio_new_asset;
 
+/* ---------- Lists and drag (workstream F4): the widget gallery ---------- */
+
+/* An asset Collected holds in the widget gallery (studio_gallery.c). */
+typedef struct studio_gallery_item
+{
+    int kind; /* reference_asset_kind */
+    char name[128];
+} studio_gallery_item;
+
+typedef struct studio_gallery
+{
+    ui_list_state list;       /* its asset List's window */
+    studio_gallery_item *bin; /* Collected, in order (support/array.h) */
+} studio_gallery;
+
 struct studio
 {
     app_scene_authoring *scene;
@@ -1048,6 +1064,8 @@ struct studio
         int toast; /* offers Undo after Keep Changes */
         int depth; /* the scene's Keep Changes records after it */
     } keep;
+    /* ---------- Lists and drag (workstream F4) ---------- */
+    studio_gallery gallery;
 };
 
 /* Whether frames run at full rate for input or a playing scene, rather than
@@ -2243,6 +2261,18 @@ extern const int studio_panel_source_count;
 /* Syncs the sources of `panel` as it mounts, unless the last UI refresh
  * showed it already, so a panel never shows stale data for a frame. */
 void studio_sources_mounted(studio *s, studio_sources *sources, ui_data *data, const char *panel);
+
+/* ---------- Lists and drag (workstream F4) ---------- */
+
+/* The widget gallery's source, `gallery` (studio_gallery.c): the project's
+ * assets as rows of a List it windows with ui_list_window, which drag as
+ * the Assets area's do, and Collected, the assets dropped on it from either
+ * list, before or after its rows, as rows and Tiles. gallery.drop takes a
+ * drop's type, payload, the row it landed on (-1 for Collected itself) and
+ * its zone; gallery.scroll wakes the source as the List scrolls. */
+void studio_gallery_add(yyjson_mut_doc *doc);
+bool studio_gallery_sync(studio *s, const studio_panel_sync *at);
+void studio_gallery_action(studio *s, const char *action, const ui_activation *a);
 
 /* Runs an activation that is Studio's (studio_panels.c):
  * emit('studio.<command>') runs the command, on the tab or area its first

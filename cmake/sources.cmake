@@ -374,3 +374,7 @@ list(APPEND EDITOR_SOURCES
 
 # Native controls (workstream F2): what number fields show and read.
 list(APPEND CORE_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/src/support/number_expr.c)
+
+# Lists and drag (workstream F4): the widget gallery's List, TreeRow and
+# Tile samples over the project's assets.
+list(APPEND EDITOR_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_gallery.c)

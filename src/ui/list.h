@@ -32,10 +32,11 @@ typedef struct ui_list_state
 {
     int revealed;   /* the reveal last applied */
     float total;    /* the content height last placed, in dp */
+    float scroll;   /* where the view was left, in dp */
     bool at_bottom; /* the view was at the bottom of it */
 } ui_list_state;
 
-#define UI_LIST_STATE_INIT { .revealed = -1, .total = 0, .at_bottom = true }
+#define UI_LIST_STATE_INIT { .revealed = -1, .at_bottom = true }
 
 /* The window of `scroller`'s rows to show: sizes its spacer for every row,
  * scrolls for reveal and follow, and starts the window at the first of the

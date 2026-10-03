@@ -311,14 +311,10 @@ double kit_idle_time(const kit *k)
     if (k->tip_target && !k->tip_visible) {
         delay = fmin(delay, fmax(0, k->tip_since + FEEL_TOOLTIP_DELAY - now));
     }
-    for (int i = 0; i < acount(k->popup_stack); i++) {
-        const popup *p = k->popup_stack[i];
-        if (!str_eq(p->sub_hover, "")) {
-            double remaining = p->sub_hover_since + SUBMENU_DELAY - now;
-            /* Once due, open_hovered_submenus handles it at the next emission. */
-            if (remaining > 0) {
-                delay = fmin(delay, remaining);
-            }
+    /* A popup popover.c opened a submenu for emits at once. */
+    for (int i = 0; i < cf_map_size(k->popups); i++) {
+        if (k->popups[i]->open && !k->popups[i]->shown) {
+            return 0;
         }
     }
     return delay;

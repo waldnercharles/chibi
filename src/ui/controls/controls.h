@@ -28,6 +28,14 @@
  *   moves with the pointer along `axis`, against it with `invert`.
  * - <live-text value/>: one line of text whose glyphs change without
  *   laying out its document, for readouts.
+ * - <choice-list>: Base UI's Combobox list and cmdk's filter. Its
+ *   [role=option] descendants (value, data-label or .label, data-keywords)
+ *   filter as its first <input> is typed in, hiding the rest and emptied
+ *   [role=group]s with data-filtered and marking data-empty; Up, Down, Home,
+ *   End and the pointer move data-highlighted, and Enter or a click chooses,
+ *   sending change with the option's value. Shown again, it clears its
+ *   search and highlights the current option (aria-selected or
+ *   data-current).
  *
  * C owners (the kit) read a control's state instead of listening. */
 

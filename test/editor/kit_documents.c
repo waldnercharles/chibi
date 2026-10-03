@@ -4,6 +4,7 @@
  * focus, keys and pointer with the rest; the layer stays above them all. */
 #include "editor/ui/kit.h"
 #include "test/suite_internal.h"
+#include "ui/popover.h"
 #include "ui/rml.h"
 #include "ui/rml_backend.h"
 
@@ -48,7 +49,7 @@ typedef struct documents_fixture
     kit *k;
     kit_frame_input in;
     const char *text_a, *text_b;
-    bool open_menu, third;
+    bool open_menu, third, nested;
     char field[64];
     kit_rect place_a, place_bar;
 } documents_fixture;
@@ -57,6 +58,21 @@ static void probe(kit *k, const char *key)
 {
     kit_leaf(k, key, "doc-probe", NULL);
     kit_style(k, "position", "absolute");
+}
+
+/* An authored popover and its trigger, which a kit menu holds. */
+static void nested_popover(rml_element *host)
+{
+    if (rml_element_child_count(host)) {
+        return;
+    }
+    rml_element_set_inner_rml(
+        host,
+        "<button id=\"inner-trigger\" popovertarget=\"inner\" "
+        "style=\"display: block; width: 60dp; height: 20dp;\">Inner</button>"
+        "<div id=\"inner\" popover class=\"popup\" style=\"width: 80dp; "
+        "height: 40dp;\">Inside</div>"
+    );
 }
 
 /* Two areas side by side, A holding a field, a menu trigger at its right
@@ -95,6 +111,9 @@ static void frame(documents_fixture *f)
     }
     if (kit_popup_begin(k, "menu", "menu")) {
         kit_menu_item(k, "one", &(kit_menu_item_desc){ .label = "One", .checked = -1 });
+        if (f->nested) {
+            nested_popover(kit_host(k, "authored", NULL));
+        }
         kit_popup_end(k);
     }
     kit_pop(k);
@@ -224,6 +243,68 @@ static void popup_above(documents_fixture *f)
     frames(f, 2);
 }
 
+static void escape(documents_fixture *f)
+{
+    rml_backend_process_input(
+        f->backend,
+        &(rml_input){ .type = RML_INPUT_KEY_PRESS, .key = RML_INPUT_KEY_ESCAPE }
+    );
+    rml_backend_process_input(
+        f->backend,
+        &(rml_input){ .type = RML_INPUT_KEY_RELEASE, .key = RML_INPUT_KEY_ESCAPE }
+    );
+    frames(f, 2);
+}
+
+/* Kit popups and authored popovers share one stack (ui/popover.h): an
+   authored popover a kit menu holds stacks above it, so Escape closes the
+   popover first, then the menu, and a press outside both closes both. */
+static void one_stack(documents_fixture *f)
+{
+    rml_context *context = rml_backend_context(f->backend);
+    f->nested = true;
+    f->open_menu = true;
+    frames(f, 3);
+    rml_element *trigger = test_query(context, "#inner-trigger");
+    kit_rect at = { 0 };
+    if (trigger) {
+        rml_vec2 offset = rml_element_absolute_offset(trigger, RML_BOX_BORDER);
+        at = (kit_rect){ offset.x + 4, offset.y + 4 };
+        click_at(f, at.x, at.y);
+        frames(f, 2);
+    }
+    rml_element *inner = test_query(context, "#inner");
+    bool stacked = inner && popover_open(inner) &&
+                   kit_popup_is_open(f->k, "menu") && popover_top(context) == inner;
+    escape(f);
+    bool first = inner && !popover_open(inner) && kit_popup_is_open(f->k, "menu");
+    escape(f);
+    bool second = !kit_popup_is_open(f->k, "menu");
+    test_check(
+        stacked && first && second,
+        "an authored popover a kit menu holds stacks above it: Escape closes "
+        "the popover, then the menu"
+    );
+    f->open_menu = true;
+    frames(f, 3);
+    click_at(f, at.x, at.y);
+    frames(f, 2);
+    /* The first menu's popover may still be fading out beside this one. */
+    inner = popover_top(context);
+    bool both = inner && !strcmp(rml_element_id(inner), "inner") &&
+                kit_popup_is_open(f->k, "menu");
+    click_at(f, 300, 280);
+    frames(f, 2);
+    test_check(
+        both && !popover_open(inner) && !kit_popup_is_open(f->k, "menu") &&
+            !popover_top(context),
+        "a press outside a kit menu and the authored popover it holds closes "
+        "both"
+    );
+    f->nested = false;
+    frames(f, 2);
+}
+
 /* Typing reaches a field in one document; a press in another takes the
    focus there, which commits the field, and the page under the areas never
    covers them. */
@@ -302,6 +383,7 @@ void test_kit_documents()
     layout_apart(&f);
     placement(&f);
     popup_above(&f);
+    one_stack(&f);
     focus_across(&f);
     inspect(&f);
     lifetime(&f);

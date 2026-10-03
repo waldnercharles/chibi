@@ -1,17 +1,19 @@
-/* Popups, menus and tooltips after Base UI. Popups stack in open order, close
- * on an outside press or Escape, and sit below their anchor or beside
- * their parent menu. Menus highlight with the arrow keys, Home, End and
- * typeahead; submenus open after a 100 ms hover; an open menubar moves between
- * its triggers. A tooltip shows after a 500 ms hover, switches instantly within
- * 400 ms of the last one, and hides while a button is held or a popup or the
- * palette is open. It holds a label, a shortcut and an optional description. */
+/* Popups, menus and tooltips after Base UI. The kit emits a popup's content
+ * while it is open; ui/popover.c stacks it with authored popovers, places it
+ * below its anchor, beside its parent menu's row or at a point, closes it on
+ * an outside press, Escape or Tab or an item's activation, and runs menus:
+ * highlight, typeahead, submenus after a 100 ms hover and the menubar. A
+ * dropdown's or an autocomplete's search field keeps its own highlight here.
+ * A tooltip shows after a 500 ms hover, switches instantly within 400 ms of
+ * the last one, and hides while a button is held or a popup or the palette
+ * is open. It holds a label, a shortcut and an optional description. */
 #include "editor/rmlui/kit_internal.h"
 #include "editor/ui/kit_icons.h"
 #include "support/math.h"
 #include "support/xalloc.h"
+#include "ui/popover.h"
 
 #include <assert.h>
-#include <ctype.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -25,15 +27,9 @@ static const float tip_size = 11, tip_gap = 6;
 
 /* ---------- Opening and closing ---------- */
 
-static void unstack(kit *k, const popup *p)
+static bool shown_open(const popup *p)
 {
-    int kept = 0;
-    for (int i = 0; i < acount(k->popup_stack); i++) {
-        if (k->popup_stack[i] != p) {
-            k->popup_stack[kept++] = k->popup_stack[i];
-        }
-    }
-    asetlen(k->popup_stack, kept);
+    return p->node && popover_open(p->node->el);
 }
 
 void close_popup(kit *k, const char *key)
@@ -49,36 +45,51 @@ void close_popup(kit *k, const char *key)
         }
     }
     p->open = false;
-    p->placed = false;
+    p->shown = false;
     p->highlight = -1;
     /* Activation closes after emission; stop hit testing before the next frame
        retires the popup so another click can reach the control beneath it. */
     if (p->node) {
+        popover_hide(p->node->el);
         rml_element_set_property(p->node->el, "pointer-events", "none");
     }
-    unstack(k, p);
+}
+
+/* Closes the kit's popups; popover.c closes what a new one did not open
+   from as it shows. */
+static void close_kit_popups(kit *k)
+{
+    for (int i = 0; i < cf_map_size(k->popups); i++) {
+        close_popup(k, k->popups[i]->key);
+    }
 }
 
 void close_all_popups(kit *k)
 {
-    /* The stack holds exactly the open popups; each close takes its popup and
-       any submenus off it. */
-    while (acount(k->popup_stack)) {
-        popup *p = k->popup_stack[0];
-        assert(p->open);
-        close_popup(k, p->key);
+    close_kit_popups(k);
+    popover_hide_all(k->context);
+}
+
+/* Popups popover.c closed, by an outside press, Escape, Tab or an item's
+   activation, close here once their last frame emitted. */
+void forget_closed_popups(kit *k)
+{
+    for (int i = 0; i < cf_map_size(k->popups); i++) {
+        popup *p = k->popups[i];
+        if (p->open && p->shown && !shown_open(p)) {
+            close_popup(k, p->key);
+        }
     }
 }
 
-void open_popup(kit *k, const char *key, kit_rect anchor, bool at_point, float x, float y, const char *parent)
+popup *open_popup(kit *k, const char *key, const char *parent)
 {
     popup *p = popup_at(k, key);
     if (p->open) {
         close_popup(k, p->key);
     }
     free(p->parent);
-    free(p->sub_hover);
-    free(p->typed);
+    free(p->anchor_path);
     free(p->dropdown_placeholder);
     free(p->dropdown_trigger_path);
     free(p->trigger);
@@ -88,102 +99,85 @@ void open_popup(kit *k, const char *key, kit_rect anchor, bool at_point, float x
     *p = (popup){
         .key = p->key,
         .open = true,
-        .at_point = at_point,
         .keyboard = k->keyboard_edit,
-        .x = x,
-        .y = y,
-        .anchor = anchor,
         .highlight = -1,
-        .focus_pending = true,
     };
     str_set(&p->trigger, trigger ? trigger->path : "");
     str_set(&p->parent, parent);
-    apush(k->popup_stack, p);
+    return p;
 }
 
-static popup *top_popup(const kit *k)
-{
-    return acount(k->popup_stack) ? alast(k->popup_stack) : NULL;
-}
-
+/* The open popup holding `trigger`; the kit's popups are siblings in its
+   layer, so at most one does. */
 static popup *popup_for_trigger(const kit *k, const node *trigger)
 {
-    if (!trigger) {
-        return NULL;
-    }
-    for (int i = acount(k->popup_stack) - 1; i >= 0; i--) {
-        popup *p = k->popup_stack[i];
-        if (p->node && within(trigger->el, p->node->el)) {
+    for (int i = 0; trigger && i < cf_map_size(k->popups); i++) {
+        popup *p = k->popups[i];
+        if (p->open && p->node && within(trigger->el, p->node->el)) {
             return p;
         }
     }
     return NULL;
 }
 
-static void close_popup_children(kit *k, popup *owner)
+static void close_children(kit *k, const popup *owner)
 {
-    while (top_popup(k) && top_popup(k) != owner) {
-        close_popup(k, top_popup(k)->key);
+    for (int i = 0; i < cf_map_size(k->popups); i++) {
+        popup *child = k->popups[i];
+        if (child->open && str_eq(child->parent, owner->key)) {
+            close_popup(k, child->key);
+        }
     }
 }
 
-void popup_open_on(kit *k, const char *key, kit_rect anchor, const node *trigger)
+popup *popup_open_on(kit *k, const char *key, const node *anchor, const node *trigger)
 {
     popup *owner = popup_for_trigger(k, trigger);
     if (owner) {
-        close_popup_children(k, owner);
+        close_children(k, owner);
     } else {
-        close_all_popups(k);
+        close_kit_popups(k);
     }
     char *parent = owner ? xstrdup(owner->key) : NULL;
-    open_popup(k, key, anchor, false, 0, 0, parent);
+    popup *p = open_popup(k, key, parent);
     free(parent);
+    str_set(&p->anchor_path, anchor ? anchor->path : NULL);
+    if (anchor) {
+        p->anchor = element_rect(k, anchor->el);
+    }
+    return p;
 }
 
-void dropdown_open_on(kit *k, const char *key, kit_rect anchor, const char *placeholder, const node *trigger)
+popup *dropdown_open_on(kit *k, const char *key, const char *placeholder, const node *trigger)
 {
     popup *existing = popup_find(k, key);
     if (existing && existing->open && existing->dropdown && trigger &&
         str_eq(existing->dropdown_trigger_path, trigger->path)) {
         close_popup(k, key);
         rml_element_focus(trigger->el, true);
-        return;
+        return NULL;
     }
-    popup_open_on(k, key, anchor, trigger);
-    popup *p = popup_at(k, key);
+    popup *p = popup_open_on(k, key, trigger, trigger);
     p->dropdown = true;
     p->dropdown_focus = true;
     str_set(&p->dropdown_placeholder, placeholder ? placeholder : "Search…");
     if (trigger) {
         str_set(&p->dropdown_trigger_path, trigger->path);
     }
+    return p;
 }
 
-void autocomplete_open_on(kit *k, const char *key, kit_rect anchor, node *trigger)
+void autocomplete_open_on(kit *k, const char *key, node *trigger)
 {
     popup *existing = popup_find(k, key);
     if (existing && existing->open) {
         return;
     }
-    popup_open_on(k, key, anchor, trigger);
-    popup *p = popup_at(k, key);
+    popup *p = popup_open_on(k, key, trigger, trigger);
     p->dropdown = true;
     p->autocomplete = true;
     p->autocomplete_opening = true;
-    if (trigger) {
-        str_set(&p->dropdown_trigger_path, trigger->path);
-    }
-}
-
-static void focus_dropdown_trigger(kit *k, const popup *p)
-{
-    if (!p->dropdown || !p->dropdown_trigger_path) {
-        return;
-    }
-    node *trigger = path_node(k, p->dropdown_trigger_path);
-    if (trigger) {
-        rml_element_focus(trigger->el, true);
-    }
+    str_set(&p->dropdown_trigger_path, trigger->path);
 }
 
 static const char *menu_popup_key(kit *k, const node *trigger)
@@ -192,48 +186,49 @@ static const char *menu_popup_key(kit *k, const node *trigger)
 }
 
 /* Opens a menubar trigger's menu in place of any open popups. */
-static popup *open_menu(kit *k, node *trigger)
+static void open_menu(kit *k, node *trigger)
 {
-    const char *key = menu_popup_key(k, trigger);
     close_all_popups(k);
-    open_popup(k, key, element_rect(k, trigger->el), false, 0, 0, "");
-    popup *p = popup_at(k, key);
-    p->menubar = true;
+    popup *p = open_popup(k, menu_popup_key(k, trigger), "");
     str_set(&p->trigger, trigger->path);
-    return p;
+    str_set(&p->anchor_path, trigger->path);
 }
 
-/* ---------- Placement ---------- */
+/* ---------- Showing ---------- */
 
-static void set_position(rml_element *el, float x, float y)
+/* The role that tells popover.c how it behaves: a menu, a list whose search
+   field keeps the focus, or a popover that takes it. */
+static const char *popup_role(const popup *p, rml_element *el)
 {
-    char value[32];
-    snprintf(value, sizeof value, "%.1fdp", x);
-    rml_element_set_property(el, "left", value);
-    snprintf(value, sizeof value, "%.1fdp", y);
-    rml_element_set_property(el, "top", value);
+    if (p->dropdown) {
+        return "listbox";
+    }
+    bool menu = rml_element_is_class_set(el, "menu") &&
+                !rml_element_is_class_set(el, "popover");
+    return menu ? "menu" : "dialog";
 }
 
-/* At its point, beside a submenu's row, or below its anchor, flipped to the
- * other side when it would leave the window. */
-static rml_vec2 popup_origin(const kit *k, const popup *p, kit_rect size)
+/* Stacks the popup with popover.c as it first emits. */
+static void show_popup(kit *k, popup *p, node *n)
 {
-    kit_rect a = p->anchor;
+    node *anchor = p->anchor_path ? path_node(k, p->anchor_path) : NULL;
+    node *trigger = path_node(k, p->dropdown_trigger_path ? p->dropdown_trigger_path : p->trigger);
+    float r = dp(k);
+    popover_anchor at = {
+        .side = p->at_point ? POPOVER_POINT
+              : p->beside   ? POPOVER_BESIDE
+                            : POPOVER_BELOW,
+        .element = anchor ? anchor->el : NULL,
+        .box = { p->anchor.x * r, p->anchor.y * r, p->anchor.w * r, p->anchor.h * r },
+        .trigger = trigger ? trigger->el : NULL,
+        .keyboard = p->keyboard,
+    };
     if (p->at_point) {
-        return (rml_vec2){ p->x, p->y };
+        at.box[0] = p->x * r;
+        at.box[1] = p->y * r;
     }
-    if (!str_eq(p->parent, "") && !p->dropdown) {
-        float x = a.x + a.w + 2;
-        if (x + size.w > k->in.width - 4) {
-            x = a.x - size.w - 2;
-        }
-        return (rml_vec2){ x, a.y - 4 };
-    }
-    float y = a.y + a.h + 2;
-    if (y + size.h > k->in.height - 4) {
-        y = a.y - size.h - 2;
-    }
-    return (rml_vec2){ a.x, y };
+    popover_show(n->el, &at);
+    p->shown = true;
 }
 
 /* Field choices retain their row limit; action menus only stop at the window. */
@@ -262,41 +257,22 @@ static void limit_popup_height(kit *k, popup *p)
     }
 }
 
-void place_popups(kit *k)
+void size_popups(kit *k)
 {
-    float width = k->in.width, height = k->in.height;
     for (int i = 0; i < cf_map_size(k->popups); i++) {
         popup *p = k->popups[i];
         if (!p->open || !p->node) {
             continue;
         }
         limit_popup_height(k, p);
-        kit_rect size = element_rect(k, p->node->el);
-        if (size.w <= 0 || size.h <= 0) {
-            continue;
-        }
-        rml_vec2 at = popup_origin(k, p, size);
-        at.x = math_clamp(at.x, 4.0f, math_max(4.0f, width - size.w - 4));
-        at.y = math_clamp(at.y, 4.0f, math_max(4.0f, height - size.h - 4));
-        bool ready = p->placed;
-        set_position(p->node->el, at.x, at.y);
-        if (!p->placed) {
-            p->placed = true;
-            rml_element_remove_attribute(p->node->el, "data-unplaced");
-        }
         if (p->dropdown_reveal && p->highlight >= 0 && p->highlight < acount(p->items)) {
             rml_element_scroll_into_view(p->items[p->highlight]->el, RML_SCROLL_NEAREST, RML_SCROLL_NEAREST);
             p->dropdown_reveal = false;
         }
-        if (ready && p->popover && p->focus_pending &&
-            (focus_step(p->node->el, NULL, 1, false, NULL) ||
-             rml_element_focus(p->node->el, true))) {
-            p->focus_pending = false;
-        }
     }
 }
 
-/* ---------- Highlight and activation ---------- */
+/* ---------- A dropdown's highlight ---------- */
 
 static void highlight_item(popup *p, int index)
 {
@@ -319,20 +295,12 @@ static node *highlighted(const popup *p)
     return valid ? p->items[p->highlight] : NULL;
 }
 
-/* Highlights the next enabled item in dir, wrapping, or from an end when
- * absolute. */
-static void move_highlight(popup *p, int dir, bool absolute)
+/* Highlights the next enabled item in dir, wrapping. */
+static void move_highlight(popup *p, int dir)
 {
     int count = acount(p->items);
-    int start = absolute ? (dir > 0 ? -1 : count) : p->highlight;
     for (int step = 1; step <= count; step++) {
-        int i = start + dir * step;
-        if (!absolute) {
-            i = (i % count + count) % count;
-        }
-        if (i < 0 || i >= count) {
-            return;
-        }
+        int i = ((p->highlight + dir * step) % count + count) % count;
         if (item_enabled(p->items[i])) {
             highlight_item(p, i);
             rml_element_scroll_into_view(p->items[i]->el, RML_SCROLL_NEAREST, RML_SCROLL_NEAREST);
@@ -341,132 +309,30 @@ static void move_highlight(popup *p, int dir, bool absolute)
     }
 }
 
-static void activate_item(kit *k, popup *p, node *item)
+/* Activation is a click, as popover.c closes the popup on one. */
+static void activate_item(node *item)
 {
-    if (!item_enabled(item)) {
-        return;
-    }
-    if (item->kind == KIND_SUBMENU) {
-        const char *sub = frame_format(k, "sub:%s", item->path);
-        open_popup(k, sub, element_rect(k, item->el), false, 0, 0, p->key);
-        return;
-    }
-    item->w.pending = true;
-    p->activated = true;
-}
-
-/* Closes the parent's other submenus and opens the row's. */
-static void open_submenu(kit *k, const popup *parent, const char *path)
-{
-    node *row = path_node(k, path);
-    if (!row) {
-        return;
-    }
-    for (int i = 0; i < cf_map_size(k->popups); i++) {
-        popup *q = k->popups[i];
-        if (q->open && str_eq(q->parent, parent->key)) {
-            close_popup(k, q->key);
-        }
-    }
-    const char *sub = frame_format(k, "sub:%s", path);
-    open_popup(k, sub, element_rect(k, row->el), false, 0, 0, parent->key);
-}
-
-/* Submenus open after a 100 ms hover. */
-void open_hovered_submenus(kit *k)
-{
-    /* Paths are copied: opening a submenu resets its own hover. */
-    popup **parents = NULL;
-    char **paths = NULL;
-    for (int i = 0; i < acount(k->popup_stack); i++) {
-        popup *p = k->popup_stack[i];
-        bool due = !str_eq(p->sub_hover, "") &&
-                   k->in.time - p->sub_hover_since >= SUBMENU_DELAY;
-        if (due && !kit_popup_is_open(k, frame_format(k, "sub:%s", p->sub_hover))) {
-            apush(parents, p);
-            apush(paths, xstrdup(p->sub_hover));
-        }
-    }
-    for (int i = 0; i < acount(paths); i++) {
-        open_submenu(k, parents[i], paths[i]);
-        free(paths[i]);
-    }
-    afree(parents);
-    afree(paths);
-}
-
-/* Any activated menu item closes the whole menu chain. */
-void close_activated_menus(kit *k)
-{
-    for (int i = 0; i < cf_map_size(k->popups); i++) {
-        popup *p = k->popups[i];
-        if (p->open && p->activated) {
-            bool nested_dropdown = p->dropdown && p->parent && p->parent[0];
-            char *trigger_path = p->dropdown && p->dropdown_trigger_path
-                                   ? xstrdup(p->dropdown_trigger_path)
-                                   : NULL;
-            if (nested_dropdown) {
-                close_popup(k, p->key);
-            } else {
-                close_all_popups(k);
-            }
-            if (trigger_path) {
-                node *trigger = path_node(k, trigger_path);
-                if (trigger) {
-                    rml_element_focus(trigger->el, true);
-                }
-                free(trigger_path);
-            }
-            return;
-        }
+    if (item_enabled(item)) {
+        rml_element_click(item->el);
     }
 }
 
 /* ---------- Events ---------- */
 
-static bool opens_popup(node_kind kind)
+/* A press outside an autocomplete's popup and field ends its editing. */
+void popup_press(kit *k, rml_element *target)
 {
-    return kind == KIND_TRIGGER || kind == KIND_SELECT ||
-           kind == KIND_AUTOCOMPLETE || kind == KIND_COLOR;
-}
-
-/* Outside presses dismiss popups (Base UI outside-press). */
-void popup_press(kit *k, node *n, rml_element *target)
-{
-    for (int i = acount(k->popup_stack) - 1; i >= 0; i--) {
-        popup *p = k->popup_stack[i];
-        if (p->dropdown && n && str_eq(p->dropdown_trigger_path, n->path)) {
-            return;
-        }
-    }
-    for (int i = acount(k->popup_stack) - 1; i >= 0; i--) {
-        popup *p = k->popup_stack[i];
-        if (p->node && within(target, p->node->el)) {
-            close_popup_children(k, p);
-            return;
-        }
-        node *trigger = path_node(k, p->trigger);
-        if (trigger && within(target, trigger->el)) {
-            return;
-        }
-    }
-    for (node *trigger = n; trigger; trigger = trigger->parent) {
-        if (opens_popup(trigger->kind)) {
-            return;
-        }
-    }
-    for (int i = acount(k->popup_stack) - 1; i >= 0; i--) {
-        popup *p = k->popup_stack[i];
-        if (!p->autocomplete || !p->dropdown_trigger_path) {
-            continue;
-        }
-        node *field = path_node(k, p->dropdown_trigger_path);
-        if (field) {
+    for (int i = 0; i < cf_map_size(k->popups); i++) {
+        popup *p = k->popups[i];
+        node *field = p->open && p->autocomplete
+                        ? path_node(k, p->dropdown_trigger_path)
+                        : NULL;
+        bool outside = field && !within(target, field->el) &&
+                       !(p->node && within(target, p->node->el));
+        if (outside) {
             rml_element_blur(field->w.input_el);
         }
-        break;
     }
-    close_all_popups(k);
 }
 
 void trigger_press(kit *k, node *n, const rml_event *e)
@@ -479,210 +345,74 @@ void trigger_press(kit *k, node *n, const rml_event *e)
     rml_event_stop_propagation(e);
 }
 
+/* A click on an item reports it; on a submenu's row it opens the submenu. */
 void menu_click(kit *k, node *n)
 {
-    for (int i = 0; i < acount(k->popup_stack); i++) {
-        popup *p = k->popup_stack[i];
-        if (nodes_index(p->items, n) >= 0) {
-            activate_item(k, p, n);
-            return;
-        }
-    }
-}
-
-static void hover_item(kit *k, node *n)
-{
-    for (int i = 0; i < acount(k->popup_stack); i++) {
-        popup *p = k->popup_stack[i];
-        int at = nodes_index(p->items, n);
-        if (at < 0) {
+    for (int i = 0; i < cf_map_size(k->popups); i++) {
+        popup *p = k->popups[i];
+        if (!p->open || nodes_index(p->items, n) < 0 || !item_enabled(n)) {
             continue;
         }
-        highlight_item(p, at);
-        str_set(&p->sub_hover, n->kind == KIND_SUBMENU ? n->path : "");
-        p->sub_hover_since = k->in.time;
-    }
-}
-
-/* Hovering another trigger while a menubar menu is open switches to it. */
-static void hover_trigger(kit *k, node *n)
-{
-    bool menubar_open = false;
-    for (int i = 0; i < acount(k->popup_stack); i++) {
-        menubar_open |= k->popup_stack[i]->menubar;
-    }
-    if (menubar_open && !kit_popup_is_open(k, menu_popup_key(k, n))) {
-        open_menu(k, n);
-    }
-}
-
-void menu_hover(kit *k, node *n)
-{
-    switch (n->kind) {
-        case KIND_MENU_ITEM:
-        case KIND_SUBMENU: hover_item(k, n); return;
-        case KIND_TRIGGER: hover_trigger(k, n); return;
-        default: return;
-    }
-}
-
-/* Opens the menu of the trigger dir steps from the open one, wrapping. */
-static void step_menubar(kit *k, const popup *top, int dir)
-{
-    node **triggers = NULL;
-    for (int i = 0; i < acount(k->triggers); i++) {
-        if (k->triggers[i]) {
-            apush(triggers, k->triggers[i]);
-        }
-    }
-    int count = acount(triggers);
-    for (int i = 0; i < count; i++) {
-        if (str_eq(menu_popup_key(k, triggers[i]), top->key)) {
-            open_menu(k, triggers[(i + dir + count) % count])->keyboard = true;
-            break;
-        }
-    }
-    afree(triggers);
-}
-
-/* Whether text starts with prefix, ignoring text's case; prefix is lower
- * case. */
-static bool starts_with_lower(const char *text, const char *prefix)
-{
-    for (; *prefix; prefix++, text++) {
-        if (tolower((unsigned char)*text) != *prefix) {
-            return false;
-        }
-    }
-    return true;
-}
-
-/* Highlights the first enabled item whose label starts with the letters typed
- * within TYPEAHEAD_RESET of each other. */
-static void typeahead(kit *k, popup *p, char c)
-{
-    char letter[2] = { c, 0 };
-    if (k->in.time - p->typed_at < TYPEAHEAD_RESET) {
-        str_cat(&p->typed, letter);
-    } else {
-        str_set(&p->typed, letter);
-    }
-    p->typed_at = k->in.time;
-    for (int i = 0; i < acount(p->items); i++) {
-        node *item = p->items[i];
-        if (item_enabled(item) && starts_with_lower(item->w.label, p->typed)) {
-            highlight_item(p, i);
+        if (n->kind != KIND_SUBMENU) {
+            n->w.pending = true;
             return;
         }
+        const char *sub = frame_format(k, "sub:%s", n->path);
+        if (!kit_popup_is_open(k, sub)) {
+            close_children(k, p);
+            popup *child = open_popup(k, sub, p->key);
+            child->beside = true;
+            str_set(&child->anchor_path, n->path);
+            str_set(&child->trigger, n->path);
+        }
+        return;
     }
 }
 
-/* Applies a key to the top popup; false when the key is not a menu's. */
-static bool apply_menu_key(kit *k, popup *p, rml_key key)
+/* The pointer highlights a dropdown's rows; popover.c does a menu's. */
+void menu_hover(kit *k, node *n)
 {
-    node *item = highlighted(p);
-    switch (key) {
-        case RML_KEY_ESCAPE:
-            close_popup(k, p->key);
-            focus_dropdown_trigger(k, p);
-            return true;
-        case RML_KEY_TAB:
-            if (p->dropdown && p->parent && p->parent[0]) {
-                close_popup(k, p->key);
-            } else {
-                close_all_popups(k);
-            }
-            return true;
-        case RML_KEY_DOWN: move_highlight(p, 1, false); return true;
-        case RML_KEY_UP: move_highlight(p, -1, false); return true;
-        case RML_KEY_HOME: move_highlight(p, 1, true); return true;
-        case RML_KEY_END: move_highlight(p, -1, true); return true;
-        case RML_KEY_RETURN:
-        case RML_KEY_NUMPADENTER:
-        case RML_KEY_SPACE: activate_item(k, p, item); return true;
-        default: break;
+    if (n->kind != KIND_MENU_ITEM) {
+        return;
     }
-    bool horizontal = key == RML_KEY_LEFT || key == RML_KEY_RIGHT;
-    if (key == RML_KEY_RIGHT && item && item->kind == KIND_SUBMENU) {
-        activate_item(k, p, item);
-        popup_at(k, frame_format(k, "sub:%s", item->path))->keyboard = true;
-        return true;
+    for (int i = 0; i < cf_map_size(k->popups); i++) {
+        popup *p = k->popups[i];
+        int at = p->open && p->dropdown ? nodes_index(p->items, n) : -1;
+        if (at >= 0) {
+            highlight_item(p, at);
+        }
     }
-    if (key == RML_KEY_LEFT && !str_eq(p->parent, "")) {
-        close_popup(k, p->key);
-        return true;
-    }
-    if (horizontal && p->menubar) {
-        step_menubar(k, p, key == RML_KEY_RIGHT ? 1 : -1);
-        return true;
-    }
-    if (key >= RML_KEY_A && key <= RML_KEY_Z) {
-        typeahead(k, p, (char)('a' + (key - RML_KEY_A)));
-        return true;
-    }
-    return false;
 }
 
-bool popup_key(kit *k, const rml_event *e)
+static popup *open_dropdown(const kit *k, const char *field_path)
 {
-    popup *top = top_popup(k);
-    if (!top) {
-        return false;
-    }
-    if (top->popover) {
-        node *trigger = path_node(k, top->trigger);
-        if (e->key == RML_KEY_ESCAPE) {
-            close_popup(k, top->key);
-            if (trigger) {
-                rml_element_focus(trigger->el, true);
-            }
-            rml_event_stop_propagation(e);
-            return true;
+    for (int i = 0; i < cf_map_size(k->popups); i++) {
+        popup *p = k->popups[i];
+        if (p->open && p->dropdown && str_eq(p->dropdown_trigger_path, field_path)) {
+            return p;
         }
-        if (e->key != RML_KEY_TAB || !top->node || !within(e->target, top->node->el)) {
-            return false;
-        }
-        int step = e->modifiers & RML_KM_SHIFT ? -1 : 1;
-        if (!focus_step(top->node->el, e->target, step, false, NULL)) {
-            close_popup(k, top->key);
-            if (trigger && step < 0) {
-                rml_element_focus(trigger->el, true);
-            }
-            if (trigger && step > 0) {
-                focus_step(
-                    rml_element_owner_document(trigger->el),
-                    trigger->el,
-                    1,
-                    false,
-                    top->node->el
-                );
-            }
-        }
-        rml_event_stop_propagation(e);
-        return true;
     }
-    if (apply_menu_key(k, top, e->key)) {
-        rml_event_stop_propagation(e);
-    }
-    return true;
+    return NULL;
 }
 
 /* The search field owns ordinary typing. Its dropdown still owns navigation
  * and selection keys, so Up/Down and Enter work without leaving the field. */
 bool dropdown_key(kit *k, const rml_event *e, node *n)
 {
-    popup *top = top_popup(k);
-    if (!top || !top->dropdown || !n || n->kind != KIND_SEARCH ||
-        e->target != top->dropdown_search) {
+    rml_element *top = popover_top(k->context);
+    node *shown = top ? node_for(k, top) : NULL;
+    popup *p = NULL;
+    for (int i = 0; shown && i < cf_map_size(k->popups) && !p; i++) {
+        p = k->popups[i]->node == shown && k->popups[i]->dropdown ? k->popups[i] : NULL;
+    }
+    if (!p || !n || n->kind != KIND_SEARCH || e->target != p->dropdown_search) {
         return false;
     }
     switch (e->key) {
-        case RML_KEY_DOWN: move_highlight(top, 1, false); break;
-        case RML_KEY_UP: move_highlight(top, -1, false); break;
+        case RML_KEY_DOWN: move_highlight(p, 1); break;
+        case RML_KEY_UP: move_highlight(p, -1); break;
         case RML_KEY_RETURN:
-        case RML_KEY_NUMPADENTER:
-            activate_item(k, top, highlighted(top));
-            break;
+        case RML_KEY_NUMPADENTER: activate_item(highlighted(p)); break;
         default: return false;
     }
     rml_event_stop_propagation(e);
@@ -698,18 +428,20 @@ bool autocomplete_key(kit *k, const rml_event *e, node *n)
         return false;
     }
     const char *key = frame_format(k, "autocomplete:%s", n->path);
-    popup *p = popup_find(k, key);
+    popup *p = open_dropdown(k, n->path);
+    const char *query = n->w.autocomplete_query_active ? n->w.draft : "";
+    bool listed = p && str_eq(p->dropdown_query, query) && highlighted(p) &&
+                  item_enabled(highlighted(p));
     switch (e->key) {
         case RML_KEY_DOWN:
         case RML_KEY_UP: {
-            if (!p || !p->open) {
-                autocomplete_open_on(k, key, element_rect(k, n->el), n);
+            if (!p) {
+                autocomplete_open_on(k, key, n);
                 p = popup_find(k, key);
             }
             p->keyboard = true;
-            const char *query = n->w.autocomplete_query_active ? n->w.draft : "";
             if (str_eq(p->dropdown_query, query)) {
-                move_highlight(p, e->key == RML_KEY_DOWN ? 1 : -1, false);
+                move_highlight(p, e->key == RML_KEY_DOWN ? 1 : -1);
             } else {
                 p->highlight = -1;
             }
@@ -723,21 +455,16 @@ bool autocomplete_key(kit *k, const rml_event *e, node *n)
             return true;
         }
         case RML_KEY_RETURN:
-        case RML_KEY_NUMPADENTER: {
-            const char *query = n->w.autocomplete_query_active ? n->w.draft : "";
-            if (p && p->open && str_eq(p->dropdown_query, query) &&
-                highlighted(p) && item_enabled(highlighted(p))) {
-                activate_item(k, p, highlighted(p));
+        case RML_KEY_NUMPADENTER:
+            if (listed) {
+                activate_item(highlighted(p));
             } else {
                 n->w.autocomplete_submitted = true;
             }
             rml_event_stop_propagation(e);
             return true;
-        }
         case RML_KEY_ESCAPE:
-            if (p && p->open) {
-                close_popup(k, key);
-            }
+            close_popup(k, key);
             str_set(&n->w.draft, n->w.applied);
             n->w.autocomplete_query_active = false;
             n->w.autocomplete_canceled = true;
@@ -746,16 +473,12 @@ bool autocomplete_key(kit *k, const rml_event *e, node *n)
             rml_event_stop_propagation(e);
             return true;
         case RML_KEY_TAB:
-            if (!(event_modifiers(e) & KIT_MOD_SHIFT) && p && p->open &&
-                str_eq(p->dropdown_query, n->w.autocomplete_query_active ? n->w.draft : "") &&
-                highlighted(p) && item_enabled(highlighted(p))) {
-                activate_item(k, p, highlighted(p));
+            if (!(event_modifiers(e) & KIT_MOD_SHIFT) && listed) {
+                activate_item(highlighted(p));
                 rml_event_stop_propagation(e);
                 return true;
             }
-            if (p && p->open) {
-                close_popup(k, key);
-            }
+            close_popup(k, key);
             str_set(&n->w.draft, n->w.applied);
             n->w.autocomplete_query_active = false;
             rml_element_set_value(n->w.input_el, n->w.applied ? n->w.applied : "");
@@ -764,47 +487,30 @@ bool autocomplete_key(kit *k, const rml_event *e, node *n)
     }
 }
 
-void popup_focus(kit *k, rml_element *target)
-{
-    popup *top = top_popup(k);
-    if (!top || !top->popover || top->focus_pending || !top->node ||
-        within(target, top->node->el)) {
-        return;
-    }
-    node *trigger = path_node(k, top->trigger);
-    if (!trigger || !within(target, trigger->el)) {
-        /* RmlUi briefly focuses a non-tabbable root when a field blurs.
-           Only a focus move to an outside control is a focus-out dismissal. */
-        char tab[16];
-        rml_element_property(target, "tab-index", tab, sizeof tab);
-        if (!strcmp(tab, "auto")) {
-            close_popup(k, top->key);
-        }
-    }
-}
-
 /* ---------- Popups and menus ---------- */
 
 void kit_popup_open(kit *k, const char *key)
 {
-    kit_rect anchor = k->last ? element_rect(k, k->last->el) : (kit_rect){ 0 };
     node *trigger = k->last && k->last->kind == KIND_BUTTON &&
                             (k->last->events & EV_CLICK)
                       ? k->last
                       : NULL;
-    popup_open_on(k, key, anchor, trigger);
-    str_set(&popup_at(k, key)->trigger, k->last ? k->last->path : "");
+    popup *p = popup_open_on(k, key, k->last, trigger);
+    str_set(&p->trigger, k->last ? k->last->path : "");
 }
 
 void kit_dropdown_open(kit *k, const char *key, const char *placeholder)
 {
-    kit_rect anchor = k->last ? element_rect(k, k->last->el) : (kit_rect){ 0 };
-    dropdown_open_on(k, key, anchor, placeholder, k->last);
+    dropdown_open_on(k, key, placeholder, k->last);
 }
 
 void kit_dropdown_open_at(kit *k, const char *key, kit_rect anchor, const char *placeholder)
 {
-    dropdown_open_on(k, key, anchor, placeholder, k->last);
+    popup *p = dropdown_open_on(k, key, placeholder, k->last);
+    if (p) {
+        str_set(&p->anchor_path, NULL);
+        p->anchor = anchor;
+    }
 }
 
 bool kit_dropdown_is_open(const kit *k, const char *key)
@@ -821,8 +527,11 @@ const char *kit_dropdown_query(const kit *k, const char *key)
 
 void kit_popup_open_at(kit *k, const char *key, float x, float y)
 {
-    close_all_popups(k);
-    open_popup(k, key, (kit_rect){ 0 }, true, x, y, "");
+    close_kit_popups(k);
+    popup *p = open_popup(k, key, "");
+    p->at_point = true;
+    p->x = x;
+    p->y = y;
 }
 
 void kit_popup_close(kit *k, const char *key)
@@ -830,6 +539,8 @@ void kit_popup_close(kit *k, const char *key)
     close_popup(k, key);
 }
 
+/* What popover.c closes stays open here until the frame ends, so a closing
+   popup emits once more and reports the item that closed it. */
 bool kit_popup_is_open(const kit *k, const char *key)
 {
     popup *p = popup_find(k, key);
@@ -838,7 +549,12 @@ bool kit_popup_is_open(const kit *k, const char *key)
 
 bool kit_has_popup(const kit *k)
 {
-    return acount(k->popup_stack) > 0;
+    for (int i = 0; i < cf_map_size(k->popups); i++) {
+        if (k->popups[i]->open) {
+            return true;
+        }
+    }
+    return popover_top(k->context) != NULL;
 }
 
 bool kit_popup_begin(kit *k, const char *key, const char *cls)
@@ -851,9 +567,11 @@ bool kit_popup_begin(kit *k, const char *key, const char *cls)
     node *n = emit_in(k, k->layer, frame_format(k, "@%s", key), KIND_POPUP, "div", c);
     rml_element_remove_property(n->el, "pointer-events");
     presence(k, n);
-    flag_element(n->el, "data-unplaced", !p->placed);
+    set_attr(n, "role", popup_role(p, n->el));
     p->node = n;
-    p->popover = rml_element_is_class_set(n->el, "popover");
+    if (!p->shown) {
+        show_popup(k, p, n);
+    }
     aclear(p->items);
     p->content = 0;
     apush(k->emitting, p);
@@ -885,9 +603,6 @@ void kit_popup_end(kit *k)
 {
     assert(acount(k->emitting));
     popup *p = apop(k->emitting);
-    if (p->keyboard && p->highlight < 0 && acount(p->items)) {
-        move_highlight(p, 1, true);
-    }
     float width = math_clamp(p->content + popup_chrome, menu_min, menu_max);
     if (p->content > 0 && p->node && width != p->content_shown) {
         char value[32];
@@ -1001,10 +716,16 @@ static node *menu_row(kit *k, const char *key, node_kind kind, const kit_menu_it
     }
     fit_row(k, width);
     popup *p = emitting_popup(k);
+    set_attr(n, "role", p && p->dropdown ? "option" : "menuitem");
+    if (sub) {
+        set_attr(n, "aria-haspopup", "menu");
+    }
     if (p) {
         apush(p->items, n);
-        bool on = p->highlight == acount(p->items) - 1;
-        flag_element(n->el, "data-highlighted", on);
+    }
+    /* popover.c highlights a menu's rows; a dropdown's follow its field. */
+    if (p && p->dropdown) {
+        flag_element(n->el, "data-highlighted", p->highlight == acount(p->items) - 1);
     }
     return n;
 }
@@ -1034,12 +755,7 @@ bool kit_submenu_begin(kit *k, const char *key, const char *label, uint32_t icon
 {
     kit_menu_item_desc d = { .label = label, .icon = icon, .checked = -1 };
     node *n = menu_row(k, key, KIND_SUBMENU, &d);
-    const char *sub = frame_format(k, "sub:%s", n->path);
-    popup *p = popup_find(k, sub);
-    if (p && p->open) {
-        p->anchor = element_rect(k, n->el);
-    }
-    return kit_popup_begin(k, sub, "menu");
+    return kit_popup_begin(k, frame_format(k, "sub:%s", n->path), "menu");
 }
 
 void kit_submenu_end(kit *k)
@@ -1054,7 +770,9 @@ bool kit_menubar_trigger(kit *k, const char *key, const char *label)
         n->w.label_el = raw(n->el, "span", "label", NULL);
     }
     set_element_text(n->w.label_el, label);
-    apush(k->triggers, n);
+    /* popover.c switches menus between a menubar's triggers. */
+    set_attr(n, "aria-haspopup", "menu");
+    rml_element_set_attribute(rml_element_parent(n->el), "role", "menubar");
     const char *menu = menu_popup_key(k, n);
     bool open = kit_popup_is_open(k, menu);
     set_flag(n, "data-pressed", open);
@@ -1062,6 +780,15 @@ bool kit_menubar_trigger(kit *k, const char *key, const char *label)
 }
 
 /* ---------- Tooltips ---------- */
+
+static void set_position(rml_element *el, float x, float y)
+{
+    char value[32];
+    snprintf(value, sizeof value, "%.1fdp", x);
+    rml_element_set_property(el, "left", value);
+    snprintf(value, sizeof value, "%.1fdp", y);
+    rml_element_set_property(el, "top", value);
+}
 
 static void set_optional_attr(node *n, const char *name, const char *value)
 {
@@ -1083,7 +810,7 @@ void set_tip(node *n, const char *label, const char *shortcut, const char *descr
  * palette blocks tooltips. */
 static rml_element *tip_owner(kit *k)
 {
-    if (k->in.down[0] || k->in.down[1] || acount(k->popup_stack) || k->command.open) {
+    if (k->in.down[0] || k->in.down[1] || popover_top(k->context) || k->command.open) {
         return NULL;
     }
     rml_element *el = rml_context_hover_element(k->context);

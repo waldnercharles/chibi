@@ -14,6 +14,7 @@
 #include "ui/controls/controls.h"
 #include "ui/iframe.h"
 #include "ui/motion.h"
+#include "ui/popover.h"
 #include "ui/rml.h"
 #include "ui/rml_gpu.h"
 
@@ -1129,6 +1130,7 @@ void rml_backend_update(rml_backend *backend, double delta_seconds)
     rml_context_update(backend->context);
     iframes_settle(backend->context);
     presence_settle(backend->context);
+    popovers_settle(backend->context);
     driven = NULL;
 }
 

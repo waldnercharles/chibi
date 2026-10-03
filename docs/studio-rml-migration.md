@@ -3,7 +3,7 @@
 Studio's whole editor moves to authored RML and RCSS, as the user decided on
 2026-10-03. Anything that can't be authored, or that would cost substantial
 performance, is postponed and listed in Postponed below. Status: S0, F0,
-F1, F2, F3, F4 and F5 done; the rest planned. The spike (S0) ran on a
+F1, F2, F3, F4, F5 and P1 done; the rest planned. The spike (S0) ran on a
 loaded machine, so its times are provisional until re-measured on an idle
 one (S0 results).
 
@@ -24,7 +24,9 @@ What already works this way:
   `emit('settings.record', row.key)` to the `settings` source (F1).
 - `Inspector.rml` renders up to 1,000 rows through `data-for`.
 - `TopBar`, `StatusBar` and `AreaHeader` bind `editor` and `commands`.
-- `Properties.rml` is a shell (tabs and a scroll area) around native content.
+- `Properties.rml` and `PropertiesHeader.rml` are Properties' Object,
+  Prototype, Scene and Behaviors tabs over the `properties` source (P1);
+  the Node and Member tabs stay native in its `#native` slot.
 
 About 1,600 kit call sites remain across 40 files. The largest:
 `studio_properties.c` (171), `studio_scene.c` (162), `studio_shell.c` (98),
@@ -40,7 +42,7 @@ About 1,600 kit call sites remain across 40 files. The largest:
 | Status bar | `StatusBar.rml`; UI Scale native | `editor`, `commands` | W3 C3 |
 | Area header | `AreaHeader.rml`; editor type menu authored (F3, a Menu over `choices.editors`); editor controls in a native slot | `editor.areas`, `choices` | W3 C3; each panel's controls move with the panel |
 | Settings, Shortcuts, Collaboration, NewProject, Dialog, Inspector panel, Data, Theme, the Behavior header's View menu (GraphView, trigger included since F3) | Authored | | Done |
-| Properties: Object, Prototype, Scene, Behaviors | `studio_properties.c` (~2k lines) | Reflection, ECS reads, overrides and mixed values, `write_field` gestures, ranges and units from `Components.kdl`, live values at 20 Hz in Play, locks, search, Keep, Add Component | W2 P1 |
+| Properties: Object, Prototype, Scene, Behaviors | Authored (P1): `Properties.rml`, `PropertiesHeader.rml`; `studio_properties_view.c` publishes `properties`, `studio_properties.c` runs its intents | Reflection, ECS reads, overrides and mixed values, `write_field` gestures, ranges and units from `Components.kdl`, live values at 20 Hz in Play, locks, search, Keep | Done; Add Component's search stays on the command surface (W3 C4) |
 | Properties: Node, Member | `studio_graph_properties.c`, `studio_member_properties.c` | Literal editors, binding autocomplete, expression code, type picker, reorder grips | W4 G1 |
 | Outliner | `studio_outliner.c` (F0) | Selection (⌘/⇧), 10k-row virtualization, drops, rename, eye and lock, menu | W2 P2 |
 | Scene and Canvas headers | `studio_scene.c`, `studio_canvas.c` | Commands, tool, snap, grid, zoom, Show toggles, Canvas size, actions log | W3 C1 |
@@ -96,8 +98,9 @@ its `AreaHeader`.
 JSON over yyjson, as today, one top-level variable per panel because RmlUi
 dirties by top-level name; rarely changing tables (choices) live apart. C
 writes values in place and keeps spare items so the JSON doesn't churn. A row
-holds one array per control kind with exactly one item in use, the Settings
-pattern:
+names its one control in `control`, which the markup builds with
+`data-when` (F1; the sketch below shows the earlier one array per control
+kind). P1's `properties` is in `studio_properties_view.c`'s header comment:
 
 ```
 properties: { mode, live, locked, lockTip, query,
@@ -757,11 +760,82 @@ popups above areas, focus across documents, inspection and lifetime;
 
 | | Scope | Deletes |
 |---|---|---|
-| P1 Properties | Object, Prototype, Scene, Behaviors tabs; header with Live and Keep; search; field menu (Node and Member stay in a slot) | ~1,200 lines of kit UI; `write_field`, reset, Keep and multi-object logic stay |
+| P1 Properties (done) | Object, Prototype, Scene, Behaviors tabs; header with Live and Keep; search; field menu (Node and Member stay in a slot) | ~1,200 lines of kit UI; `write_field`, reset, Keep and multi-object logic stay: P1 results |
 | P2 Outliner | Rows, root, eye and lock, rename, drops, menu, filter | ~350 lines |
 | P3 Assets | Grid and list, header, New menu, name popover, drag sources, preview tooltip | ~400 lines |
 | P4 Output | Six views, follow-output, highlighted rows, Calls tree | ~450 lines |
 | P5 Members | Sections, rename, uses, menus, drag into the graph | ~600 lines |
+
+#### P1: Properties (done)
+
+Properties' Object, Prototype, Scene and Behaviors tabs are
+`projects/studio/content/ui/Properties.rml` and its header's controls
+`PropertiesHeader.rml` (mounted in the area header as GraphView is), over
+the `properties` source: `studio_properties_view.c` writes the variable,
+and `studio_properties.c` keeps the model (`write_field`, merged vector
+writes, Reset and Apply to Prototype, Keep Changes, components, rename)
+behind intents, `emit('properties.<action>', ...)`. A row's id names what
+it edits (`o<entity>.<component>.<field>`, `p<component>.<field>.<prototype>`
+or `s.<setting>`), so an intent that arrives after the selection moved still
+edits its own object. The row widgets: PropertyRow (its tip and label
+`for`), NumberField, VectorField (per-axis bounds, units, mixed and override
+marks), ColorField, Checkbox, EnumField for every choice integer and
+AssetField for references (both gained `data-mixed`, `data-readonly` and,
+for AssetField, drop marks and `table.none`). Gestures: `input` writes live
+without history, `change` records one Undo step, Escape cancels a scrub;
+Play writes the running world only. Drops: an asset dragged from Assets
+over an AssetField row (`data-drop`, F4) shows in it and on the object in
+the Scene and lands as one step through `properties.drop`. The field menu
+(a right press on a row) and the component menu (⋯ or a right press on a
+panel's head) are Menus that `popover_show` opens at the pointer.
+
+What it takes to be fast:
+
+- Numbers are text in room each member owns (32 bytes), rewritten in place:
+  RmlUi writes a double into an attribute to three decimals, and copying
+  each refresh's text would grow the doc's string pool.
+- A choice or asset row lists only its current option until it is opened
+  (`properties.choices`), so closed lists build nothing; `<choice-list>`
+  highlights the current option when options arrive after it opened.
+- A panel keeps its slot by key (its component) for the session, as the
+  kit keyed its panels, and a panel's rows past those shown stay hidden
+  rather than removed, so a selection rebinds rows instead of building
+  them; a hidden panel lets its rows go so their views cost nothing.
+- `.prop > .label` (`panel.rcss`) keeps the property row's label rule off a
+  row's popover items, which have labels too.
+
+`./build-release/test_suite --ui-bench studio`, this branch against the
+commit before it (`80bd2538`), alternated process by process, four pairs
+(1-minute load 12-15; medians of 31 runs, ms, Studio's whole UI frame: sync,
+emit, update and capture):
+
+| Case | Before (kit) | After (authored) | After ÷ before |
+|---|---:|---:|---:|
+| Select the other object or the Player | 7.55 | 8.85 | 1.17× |
+| Edit one field of the Player | 1.86 | 1.79 | 0.96× |
+| Play refresh, every float of the Player changed | 1.49 | 1.25 | 0.84× |
+
+A value-only refresh lays the Properties document out zero times
+(`--studio-properties` checks it with a layout probe). Selecting another
+object still costs more than the kit's: with the Properties content removed
+the same case takes 4.6-4.9 ms, so the authored panel's share is about
+4.0 ms against the kit's 2.8, most of it layout and style of the rows that
+rebind. Web shots (1600×1000; dark and light, compact and comfortable) of
+the Object tab, several objects' mixed values, Play with Keep, the field
+menu, the Shape choice and the Document picker open, the Scene tab and the
+HUD's Ui panel match the kit's pixel for pixel but for the open choice
+lists (the ChoiceList's search reads "Search options", and its list is the
+field's width, where the kit's was 8 dp wider) and a checkbox row 7 dp
+taller before Checkbox's wrapper became a flex box.
+
+Intentional differences: every choice integer is an EnumField, also those
+with three or fewer values the kit showed as segments; search opens every
+panel that has no fold of its own; a panel's fold is kept per component for
+the session, as Unity keeps a component's foldout; the field menu opens on a
+right press anywhere on the row, and Reset to Prototype on Position resets
+both axes; the Scene tab's settings record once a gesture ends, where the
+kit recorded every frame of a scrub. Open: an asset field takes no typed
+name an asset doesn't have yet (the kit's picker offered one).
 
 ### Wave 3: scene, chrome, palette (4 parallel)
 

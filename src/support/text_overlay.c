@@ -108,6 +108,11 @@ unsigned long long text_overlay_revision(const char *path)
     return o ? o->revision : 0;
 }
 
+unsigned long long text_overlay_generation()
+{
+    return revisions;
+}
+
 void text_overlay_clear()
 {
     for (int i = 0; i < acount(overlays); i++) {

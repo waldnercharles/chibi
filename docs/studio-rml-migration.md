@@ -45,7 +45,7 @@ About 1,600 kit call sites remain across 40 files. The largest:
 | Outliner | `studio_outliner.c` (F0) | Selection (⌘/⇧), 10k-row virtualization, drops, rename, eye and lock, menu | W2 P2 |
 | Scene and Canvas headers | `studio_scene.c`, `studio_canvas.c` | Commands, tool, snap, grid, zoom, Show toggles, Canvas size, actions log | W3 C1 |
 | Scene viewport | `kit_surface` showing `kit:viewport` | Texture, pointer input, camera labels | Overlays authored; input stays in C |
-| Assets | `studio_assets.c` | Index, filters, `kit:thumb:` textures, thumbnail budget, columns, keys, drag, New menu | W2 P3 |
+| Assets | `Assets.rml`, `AssetsHeader.rml` and `NewAsset.rml` over `assets` and `new_asset` (`studio_assets.c`, P3) | Index, filters, `kit:thumb:` textures, thumbnail budget, columns, keys, drag, New menu | Done (P3) |
 | Output, Find, Calls | `studio_output.c`, `studio_find.c`, `studio_calls.c` | Log ring, highlighted markup, problem places, follow-output, call tree | W2 P4 |
 | Members | `studio_members.c` | Members, uses, rename, drag into the graph, menus | W2 P5 |
 | Behavior area | `studio_graph*.c`, a second context drawn to `kit:graph` | Nodes, pins, literals, comments, reroutes, wires, live chips | Header, breadcrumbs, find, menus, add-node search: W4 G1. Node bodies: postponed |
@@ -759,9 +759,81 @@ popups above areas, focus across documents, inspection and lifetime;
 |---|---|---|
 | P1 Properties | Object, Prototype, Scene, Behaviors tabs; header with Live and Keep; search; field menu (Node and Member stay in a slot) | ~1,200 lines of kit UI; `write_field`, reset, Keep and multi-object logic stay |
 | P2 Outliner | Rows, root, eye and lock, rename, drops, menu, filter | ~350 lines |
-| P3 Assets | Grid and list, header, New menu, name popover, drag sources, preview tooltip | ~400 lines |
+| P3 Assets (done) | Grid and list, header, New menu, name popover, drag sources, preview tooltip | Its kit UI, `kit_tile` and `kit_tip_image` (P3, below) |
 | P4 Output | Six views, follow-output, highlighted rows, Calls tree | ~450 lines |
 | P5 Members | Sections, rename, uses, menus, drag into the graph | ~600 lines |
+
+#### P3: Assets (done)
+
+projects/studio's `Assets` (the area body), `AssetsHeader` (its header
+controls, mounted per area with `studio_ui_area_controls`) and `NewAsset`
+(New's name popover, in a document of its own so it shows whether or not
+an Assets header does) over two sources in `studio_assets.c`: `assets`
+(panel Assets) and `new_asset` (panel NewAsset). The layout follows Unity's
+Project window (the size slider whose smallest step is the list grouped by
+kind) and Unreal's Content Browser (kind badges, the hover thumbnail).
+C keeps the index model (sorting, grouping, filtering, usage counts), the
+selection and its keys, thumbnails, the context menu's actions and the
+asset writes; markup sends `assets.click`, `open`, `menu`, `kind`, `tile`
+and the row menu's items as intents, binds the name filter and the new
+name both ways as view state, and the context menu opens at the press
+(`popover_show` at a point, from the press's document).
+
+- **Slot windows.** One List windows either view with `ui_list_window`:
+  the list's rows (TreeRow) or the grid's lines of Tiles, its columns
+  fitted to the List's laid-out width. Item `i` of the window takes slot
+  `i % slots` and C places it in the spacer (`top`, `left`), as Virtuoso
+  keys its items, so a scroll changes only the slots of the items that
+  enter, and slots only grow, so a narrower filter hides slots instead of
+  dropping their elements. Index-matched rows in flow, the first version,
+  cost about 1.6× more per scroll step, since every row's values shifted.
+- **Thumbnails** are `kit:thumb:<slot>` sources the sync asks for, as the
+  kit's emission did; Tile paints its picture as a decorator and hides its
+  skeleton by visibility, so a thumbnail arriving lays nothing out (the
+  gallery's Tiles too). A tile's tooltip names it, says what it is and how
+  often it is used, and shows the 256 dp preview once the pointer rests
+  0.3 s on it: C reads the asset under the pointer from its row's
+  `data-asset`, which F2 and Delete use too.
+- **Foundation fixes:** `:focus-within` for every context
+  (`src/ui/focus_within.c`; the theme's field ring rule keeps to text,
+  search and autocomplete fields), MenuItem showing its shortcut (data-if
+  read "F2" as false) and growing its menu to its widest row.
+- **Deleted:** the kit's `kit_tile`, `kit_tip_image` and their widget
+  fields, and Assets' kit UI (header, list, grid, row and tile events,
+  tooltips, row menu, New menu, name popover and button). The file gained
+  its two sources' data plumbing, so `studio_assets.c` grew from 959 to
+  about 1,460 lines; the kit lost 87 lines.
+
+`UI_BENCH_ASSETS=1 ./build-release/test_suite --ui-bench studio` (case 10:
+Assets maximized at 1440x900, pixel scale 2, over the Sandbox's 101 assets
+and 480 more inserted into the index), the kit build (`80bd2538` with the
+same case) and this one alternated process by process, two pairs, 1-minute
+load 24-33, so the times are provisional; medians of 31 runs:
+
+| Case | Kit ms | Authored ms | Ratio | Views | Layouts | Elements in the area's document |
+|---|---:|---:|---:|---:|---:|---|
+| Open the grid (3 UI frames) | 41.3 | 44.9 | 1.09× | 7,622 | 2 (kit 3) | 1,535 (kit 1,105) |
+| Scroll the grid a line | 7.7 | 7.7 | 1.00× | 2,394 | 1 | |
+| Type in the filter | 14.2 | 10.4 | 0.73× | 2,394 | 1 | |
+| UI frame, nothing changed | 1.24 | 1.29 | 1.04× | 0 | 0 | |
+| Scroll the list a row | 2.62 | 3.05 | 1.16× | 968 | 1 | 879 (kit 517) |
+
+Web shots (1600×1000, dark and light, compact and comfortable) of the grid,
+the list, the hover preview, the row menu, New and its name popover and a
+drag onto a Properties field match the kit's pixel for pixel but for scene
+thumbnails that streamed at another moment, the row menu's width (it now
+fits Break When Spawned, which the kit clipped) and the shortcuts it now
+shows. Checks: `--studio-documents` (the cached rows, the asset drop onto
+Properties, New for every kind, the filter's kind first, a kind from the
+menu asking under the button with its name selected),
+`--studio-thumbnails` (every kind through the kind filter, the grid's keys,
+a 1,220-asset grid windowed), `--studio-lists` (an authored Assets row
+dragged into Collected) and `--ui-lists` (the Tile's skeleton).
+
+Open: two areas showing Assets share one window and one hover; Rename
+still opens the refactor popover, which is C4's; the list's scroll step
+evaluates about 17 views a row (the TreeRow's and the drag and hover
+attributes on its use).
 
 ### Wave 3: scene, chrome, palette (4 parallel)
 

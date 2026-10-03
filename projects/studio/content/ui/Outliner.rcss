@@ -19,3 +19,5 @@ body { overflow: hidden; padding: 0dp; }
 .tree-row .trail, .view-toggles { align-self: stretch; }
 .view-toggles .toggle { align-self: stretch; height: auto; tab-index: none; }
 .list:focus-visible .tree-row[data-active] { border-color: var(--ring); }
+/* The name's field starts where a row's icon does, past the twisty's room. */
+.object-rename { padding-left: 38dp; }

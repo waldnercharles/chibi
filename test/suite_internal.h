@@ -152,6 +152,7 @@ extern void test_movement_input();
 extern void test_movement_trail();
 extern void test_sdf_motion();
 extern void test_material();
+extern void test_material_lod();
 extern void test_wave();
 extern void test_scene_history();
 extern void test_enemy_attack();

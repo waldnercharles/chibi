@@ -293,6 +293,7 @@ set(RUNTIME_SUPPORT_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/nodes/vector_nodes.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/render/appearance_geometry.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/render/material.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/render/material_lod.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/render/shader_catalog.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/render/shader_images.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/render/mesh_asset.c

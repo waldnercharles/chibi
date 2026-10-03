@@ -120,7 +120,9 @@ from command-buffer timestamps on Metal and by waiting for the GPU elsewhere;
 `pass_timing_detail` also splits each HRC cascade level. `capture_frames`
 writes every measured frame to a raw RGBA8 file for judging motion and temporal
 effects. Both serialize or read back each frame, so their frame totals are not
-benchmarks. See [the GPU benchmark workflow](neon-gpu-benchmarks.md).
+benchmarks. `material_pieces` counts the shapes and mask pieces the last frame
+rasterized, a measure of the material raster's work that machine load does not
+change. See [the GPU benchmark workflow](neon-gpu-benchmarks.md).
 
 Use the MCP for authored content whenever it is available. Route requests by
 domain:

@@ -24,6 +24,7 @@ typedef struct
     scene_field_edit *fields;
     scene_actor_edit *actor;
     scene_behavior_edit *behaviors;
+    scene_prototype_edit *prototype;
     bool physics;
     game_physics_settings physics_before, physics_after;
     char *name_before, *name_after; /* a rename, when name_after is set */
@@ -75,6 +76,13 @@ static void clear_edits(scene_edit **edits)
             av_value_free(actor->state);
             av_value_free(actor->retained);
             free(actor);
+        }
+        scene_prototype_edit *prototype = (*edits)[i].prototype;
+        if (prototype) {
+            free((void *)prototype->name);
+            av_value_free(prototype->before);
+            av_value_free(prototype->after);
+            free(prototype);
         }
         scene_behavior_edit *behaviors = (*edits)[i].behaviors;
         if (behaviors) {
@@ -472,6 +480,47 @@ void scene_history_complete_behaviors(scene_history *history, bool redo)
     apush(*destination, edit);
 }
 
+static scene_prototype_edit *copy_prototype_edit(const char *name, av_value *before, av_value *after)
+{
+    scene_prototype_edit *copy = xmalloc(sizeof *copy);
+    *copy = (scene_prototype_edit){ .name = xstrdup(name),
+                                    .before = av_value_copy(before),
+                                    .after = av_value_copy(after) };
+    return copy;
+}
+
+bool scene_history_push_prototype(scene_history *history, const scene_prototype_edit *edit)
+{
+    assert(history && edit->name && edit->before && edit->after);
+    apush(
+        history->undo,
+        ((scene_edit){
+            .group = history->group,
+            .step = next_step(history),
+            .prototype = copy_prototype_edit(edit->name, edit->before, edit->after) })
+    );
+    clear_edits(&history->redo);
+    return true;
+}
+
+const scene_prototype_edit *scene_history_peek_prototype(const scene_history *history, bool redo)
+{
+    assert(history);
+    const scene_edit *source = redo ? history->redo : history->undo;
+    return acount(source) ? alast(source).prototype : NULL;
+}
+
+void scene_history_complete_prototype(scene_history *history, bool redo)
+{
+    assert(history);
+    scene_edit **source = redo ? &history->redo : &history->undo;
+    scene_edit **destination = redo ? &history->undo : &history->redo;
+    assert(acount(*source) && alast(*source).prototype);
+    scene_edit edit = alast(*source);
+    asetlen(*source, acount(*source) - 1);
+    apush(*destination, edit);
+}
+
 bool scene_history_push_rename(scene_history *history, ecs_entity entity, const char *before, const char *after)
 {
     assert(history && entity.slot && before && before[0] && after && after[0]);
@@ -570,8 +619,8 @@ static int apply_edit(scene_history *history, ecs_world *world, ecs_entity *out_
         return 0;
     }
     scene_edit edit = alast(*source);
-    if (edit.actor || edit.behaviors || edit.physics || edit.name_after ||
-        !ecs_entity_is_alive(world, edit.entity)) {
+    if (edit.actor || edit.behaviors || edit.prototype || edit.physics ||
+        edit.name_after || !ecs_entity_is_alive(world, edit.entity)) {
         return -1;
     }
     if (edit.fields) {
@@ -925,6 +974,12 @@ static av_value *history_edits(av_doc *doc, const scene_edit *edits)
                 av_arr_add_strcpy(doc, after, edit->behaviors->after[j]);
             }
         }
+        if (edit->prototype) {
+            av_value *item = av_obj_add_obj(doc, object, "prototype");
+            history_text(doc, item, "name", edit->prototype->name);
+            av_obj_add_val(doc, item, "before", av_clone(doc, edit->prototype->before));
+            av_obj_add_val(doc, item, "after", av_clone(doc, edit->prototype->after));
+        }
         if (edit->name_after) {
             av_value *item = av_obj_add_obj(doc, object, "rename");
             history_text(doc, item, "before", edit->name_before);
@@ -1070,6 +1125,19 @@ static bool history_read_edits(av_value *array, scene_edit **edits, uint64_t **b
             };
             history_free_strings(previous);
             history_free_strings(next);
+            if (!valid) {
+                return false;
+            }
+        }
+        item = av_obj_get(object, "prototype");
+        if (item) {
+            char *name = history_copy_text(item, "name");
+            av_value *before = av_obj_get(item, "before");
+            av_value *after = av_obj_get(item, "after");
+            bool valid = name && av_is_obj(before) && av_is_obj(after);
+            out->entity = (ecs_entity){ 0 };
+            out->prototype = valid ? copy_prototype_edit(name, before, after) : NULL;
+            free(name);
             if (!valid) {
                 return false;
             }

@@ -890,6 +890,9 @@ void studio_outliner_body(studio *s, int area)
         }
         if (studio_live(s)) {
             studio_command_item(s, STUDIO_COMMAND_KEEP_CHANGES);
+        } else {
+            studio_command_item(s, STUDIO_COMMAND_APPLY_OVERRIDES);
+            studio_command_item(s, STUDIO_COMMAND_SAVE_AS_PROTOTYPE);
         }
         studio_command_item(s, STUDIO_COMMAND_HIDE_SELECTED);
         kit_menu_separator(k, "s1");

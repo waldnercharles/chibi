@@ -1,5 +1,6 @@
 #ifndef CHIBI_SCENE_INTERNAL_H
 #define CHIBI_SCENE_INTERNAL_H
+#include "assets/prototype_instance.h"
 #include "assets/scenario_document.h"
 #include "assets/scene_document.h"
 #include "editor/documents/scene_history.h"
@@ -374,6 +375,49 @@ char **instance_behavior_names(app_scene_authoring *scene, ecs_entity entity);
 scene_prototype_asset *previewed_prototype(app_scene_authoring *scene);
 
 bool prototype_has_component_id(const game_prototype *prototype, ecs_component_id id);
+/* The live world and the prototype preview spawn the prototype as it is now. */
+int register_prototype_hosts(app_scene_authoring *scene, const game_prototype *prototype);
+
+/* ---------- Prototype actions (scene_prototype_actions.c) ---------- */
+
+/* How many other instances of its prototype take one of the fields from
+   `source` (game_prototype_instance_overrides), and so change when they are
+   applied. */
+int scene_override_reach(
+    const app_scene_authoring *scene,
+    const scene_actor *source,
+    const game_prototype_field *fields,
+    int count
+);
+/* Copies the instance's fields into its prototype; the instances that
+   inherit them follow. One scene Undo step, also an Undo step of the
+   prototype's own document. */
+int scene_apply_overrides(
+    app_scene_authoring *scene,
+    scene_actor *source,
+    const game_prototype_field *fields,
+    int count
+);
+/* Replaces prototype `name` with its definition `value`, as its scene Undo
+   step replays it; every instance keeps its values. */
+int scene_restore_prototype(app_scene_authoring *scene, const char *name, av_value *value);
+/* Whether a new prototype can be named `name`: a valid asset name no asset
+   or file has; false with why in `error`. */
+bool scene_prototype_name_free(app_scene_authoring *scene, const char *name, char *error, size_t size);
+/* Saves the instance as a new prototype asset `name` and makes the instance
+   one of it, as one Undo step; -1 with why in `error` when the name is
+   invalid or taken. */
+int scene_save_as_prototype(
+    app_scene_authoring *scene,
+    scene_actor *actor,
+    const char *name,
+    char *error,
+    size_t size
+);
+/* Makes the object at `index` an instance of `prototype`, keeping its name,
+   place, values, behaviors and identity, as one Undo step that removes it
+   and adds it back (scene_actors.c). */
+int scene_repoint_actor(app_scene_authoring *scene, int index, const char *prototype);
 void prototype_history_before(app_scene_authoring *scene, game_prototype *prototype);
 const char *runtime_entity_label(const app_scene_authoring *scene, ecs_entity entity);
 bool runtime_session(const app_scene_authoring *scene);

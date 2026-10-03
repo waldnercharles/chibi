@@ -195,15 +195,21 @@ body.comfortable .output-list .vlist-content > .output-line, body.comfortable .o
 .tree-row .member-uses { height: var(--studio-height-18, 18dp); min-width: 20dp; padding: 0dp 4dp; justify-content: center; color: var(--faint-foreground); font-family: var(--font-numeric); }
 .tree-row .member-uses[data-unused] { color: var(--disabled-foreground); }
 .member-rename .field, .object-rename .field { height: var(--studio-height-20, 20dp); margin-right: 4dp; }
+/* Apply Overrides to Prototype: a checkbox per overridden field, its value
+   beside it, as the refactor popover's rows. */
+.popup.prototype-apply { width: 320dp; }
+.prototype-field { display: flex; align-items: center; gap: 8dp; height: var(--h); padding: 0dp 8dp 0dp 6dp; white-space: nowrap; }
+.prototype-field .check { flex: 1 1 auto; min-width: 0dp; overflow: hidden; }
+.prototype-field .kbd { flex: 0 0 auto; margin-left: 16dp; color: var(--faint-foreground); font-family: var(--font-numeric); }
 /* Rename and safe delete: the new name, then the assets it rewrites or the
    uses a delete leaves, as rows shaped like the menu's items. */
 .popup.refactor { width: 300dp; }
 .refactor-field { display: block; padding: 2dp 4dp 4dp; }
 .refactor-field .field { height: var(--studio-height-24, 24dp); }
-.refactor-row { display: flex; align-items: center; gap: 8dp; height: var(--h); padding: 0dp 8dp 0dp 6dp; white-space: nowrap; color: var(--fg); }
-.refactor-row .lead { color: var(--fg-2); }
+.refactor-row { display: flex; align-items: center; gap: 8dp; height: var(--h); padding: 0dp 8dp 0dp 6dp; white-space: nowrap; color: var(--foreground); }
+.refactor-row .lead { color: var(--muted-foreground); }
 .refactor-row .label { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; }
-.refactor-row .kbd { margin-left: 16dp; flex: 0 0 auto; color: var(--fg-3); }
+.refactor-row .kbd { margin-left: 16dp; flex: 0 0 auto; color: var(--faint-foreground); }
 .type-pick { display: flex; align-items: center; gap: 2dp; flex: 1 1 0dp; }
 .type-pick .member-swatch { margin: 0dp 4dp; }
 .type-pick .type-button { flex: 1 1 0dp; justify-content: flex-start; overflow: hidden; }

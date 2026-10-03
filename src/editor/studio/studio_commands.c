@@ -681,6 +681,26 @@ static const command_entry COMMANDS[STUDIO_COMMAND_COUNT] = {
                                                       "inspect",
                                           .icon = KIT_ICON_EYE,
                                           .phase = SHORTCUT_EDITOR },
+    /* Unity's Overrides ▸ Apply and Unreal's Apply Instance Changes to
+       Blueprint. */
+    [STUDIO_COMMAND_APPLY_OVERRIDES] = { .id = "applyOverrides",
+                                         .label = "Apply Overrides to "
+                                                  "Prototype\xe2\x80\xa6",
+                                         .menu = "Apply Overrides\xe2\x80\xa6",
+                                         .context = "Global",
+                                         .keywords = "prefab instance push "
+                                                     "defaults",
+                                         .icon = KIT_ICON_PROTOTYPE,
+                                         .phase = SHORTCUT_EDITOR },
+    /* Unity's new prefab from an object, Godot's Save Branch as Scene. */
+    [STUDIO_COMMAND_SAVE_AS_PROTOTYPE] = { .id = "saveAsPrototype",
+                                           .label = "Save as New "
+                                                    "Prototype\xe2\x80\xa6",
+                                           .context = "Global",
+                                           .keywords = "prefab variant "
+                                                       "instance create",
+                                           .icon = KIT_ICON_ADD,
+                                           .phase = SHORTCUT_EDITOR },
 };
 
 const char *studio_command_default_chord(studio_command command)
@@ -1058,6 +1078,20 @@ static bool enabled_with(studio *s, studio_command command, int argument)
             return editable && !s->scene->gizmo.active && !studio_designer_active(s);
         case STUDIO_COMMAND_OPEN_PROTOTYPE:
         case STUDIO_COMMAND_FRAME: return selection;
+        case STUDIO_COMMAND_APPLY_OVERRIDES: {
+            scene_actor *actor = studio_prototype_action_actor(s);
+            game_prototype_field *overrides = actor ? game_prototype_instance_overrides(
+                                                          actor->base,
+                                                          s->scene->world,
+                                                          actor->entity
+                                                      )
+                                                    : NULL;
+            bool any = acount(overrides) > 0;
+            afree(overrides);
+            return any;
+        }
+        case STUDIO_COMMAND_SAVE_AS_PROTOTYPE:
+            return studio_prototype_action_actor(s) != NULL;
         case STUDIO_COMMAND_HIDE_SELECTED:
             return selection && !studio_designer_active(s);
         case STUDIO_COMMAND_HIDE_UNSELECTED:
@@ -1314,6 +1348,10 @@ void studio_command_run_with(studio *s, studio_command command, int argument)
             s->prefs.scene_increment = studio_grid_increment(s, 1);
             break;
         case STUDIO_COMMAND_KEEP_CHANGES: studio_keep_changes(s, NULL); break;
+        case STUDIO_COMMAND_APPLY_OVERRIDES:
+        case STUDIO_COMMAND_SAVE_AS_PROTOTYPE:
+            studio_prototype_action_open(s, command == STUDIO_COMMAND_SAVE_AS_PROTOTYPE);
+            break;
         case STUDIO_COMMAND_SELECT_ALL: studio_select_all(s); break;
         case STUDIO_COMMAND_DESELECT: studio_deselect(s); break;
         case STUDIO_COMMAND_FRAME_ALL: studio_frame_all(s); break;

@@ -1621,6 +1621,7 @@ void studio_emit(studio *s)
     statusbar(s);
     studio_palette(s);
     studio_new_asset_frame(s);
+    studio_prototype_actions_frame(s);
     undo_toast(s);
     studio_projects_frame(s);
     studio_rewire_toast(s);

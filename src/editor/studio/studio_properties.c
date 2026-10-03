@@ -1064,6 +1064,33 @@ static void field_menu(studio *s, scene_actor *actor, bool locked)
     if (kit_menu_item(k, "reset", &reset)) {
         reset_selection(s, actor);
     }
+    /* Unity's Apply to Prefab: the active object's value becomes its
+       prototype's. */
+    game_prototype_field field = { NULL, s->context.field };
+    for (int i = 0; target && i < s->scene->registry.component_count; i++) {
+        const ecs_component_desc *desc = s->scene->registry.components[i];
+        field.component = desc->id == s->context.component ? desc : field.component;
+    }
+    game_prototype_field *applicable = target && actor->identity
+                                         ? game_prototype_instance_overrides(
+                                               actor->base,
+                                               s->scene->world,
+                                               actor->entity
+                                           )
+                                         : NULL;
+    bool apply = false;
+    for (int i = 0; i < acount(applicable); i++) {
+        apply |= applicable[i].component == field.component &&
+                 applicable[i].field == field.field;
+    }
+    afree(applicable);
+    kit_menu_item_desc to_prototype = { .label = "Apply to Prototype",
+                                        .icon = KIT_ICON_PROTOTYPE,
+                                        .checked = -1,
+                                        .disabled = locked || studio_live(s) || !apply };
+    if (kit_menu_item(k, "apply", &to_prototype)) {
+        studio_apply_field(s, actor, field);
+    }
     kit_popup_end(k);
 }
 
@@ -1193,6 +1220,7 @@ static void identity(studio *s, scene_actor *actor, bool locked)
     if (kit_button(k, "prototype", &prototype)) {
         app_scene_authoring_open_prototype(s->scene, actor->prototype_name);
     }
+    studio_prototype_actions_button(s, actor);
     kit_pop(k);
     kit_pop(k);
     kit_pop(k);

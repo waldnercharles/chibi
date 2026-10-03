@@ -280,6 +280,7 @@ set(RUNTIME_SUPPORT_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/task_pool.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/assets/new_asset.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/assets/prototype.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/assets/prototype_instance.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/assets/scene_document.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/assets/scenario_document.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/assets/physics_settings.c
@@ -360,7 +361,9 @@ list(APPEND EDITOR_SOURCES
 # prototype actions on instances.
 list(APPEND APP_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/workspace/scene_asset_drop.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/documents/scene_prototype_actions.c
 )
 list(APPEND EDITOR_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_drop.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_prototype_actions.c
 )

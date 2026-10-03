@@ -191,6 +191,9 @@ typedef enum
     STUDIO_COMMAND_EXTEND_PREVIOUS,
     STUDIO_COMMAND_EXTEND_NEXT,
     STUDIO_COMMAND_SHOW_LIVE_VALUES,
+    /* Prototype actions on the selected instance (studio_prototype_actions.c) */
+    STUDIO_COMMAND_APPLY_OVERRIDES,
+    STUDIO_COMMAND_SAVE_AS_PROTOTYPE,
     STUDIO_COMMAND_COUNT,
 } studio_command;
 
@@ -895,6 +898,21 @@ struct studio
         char name[256];
         char landed[256];
     } drop;
+    /* Apply Overrides and Save as New Prototype (studio_prototype_actions.c):
+       the instance they act on, by identity; the overridden fields Apply
+       leaves out; Save as New's name, its error, and the Undo toast. */
+    struct studio_prototype_action
+    {
+        uint64_t actor;
+        game_prototype_field *skipped; /* array */
+        char name[128];
+        char error[192];
+        bool opening; /* a popover asks at the pointer next frame */
+        bool saving;  /* the open popover is Save as New's */
+        bool focus, shown;
+        int toast;
+        uint64_t step; /* the Undo step the toast undoes */
+    } prototype_action;
     int output_view;
     char output_filter[128];
     char references_title[160]; /* what Output's Find view lists references to */
@@ -1780,6 +1798,21 @@ void studio_drop_scene(studio *s);
 void studio_attach_behavior(studio *s, int index, const char *name);
 /* Sets the actor's text field to `text` as Properties does: one Undo step. */
 void studio_set_field(studio *s, scene_actor *actor, ecs_component_id component, int field, const char *text);
+
+/* ---------- Prototype actions (studio_prototype_actions.c) ---------- */
+
+/* The selected instance Apply Overrides and Save as New act on, or NULL. */
+scene_actor *studio_prototype_action_actor(studio *s);
+/* Opens Apply Overrides to Prototype's or Save as New Prototype's popover at
+   the pointer. */
+void studio_prototype_action_open(studio *s, bool saving);
+/* The Properties identity's menu button for both, emitted beside its
+   prototype; and, after the areas, the popovers and the Undo toast. */
+void studio_prototype_actions_button(studio *s, scene_actor *actor);
+void studio_prototype_actions_frame(studio *s);
+/* Applies the field to its instance's prototype (the field menu's Apply to
+   Prototype). */
+void studio_apply_field(studio *s, scene_actor *actor, game_prototype_field field);
 
 /* Game UI errors (studio_canvas.c): the shown documents' error, the scene's
  * or the preview's, as "ui/Name.rml message". A change is recorded in

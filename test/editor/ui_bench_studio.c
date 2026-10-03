@@ -786,6 +786,9 @@ static void splitter_drag(studio_bench *b)
         bench_counts before = studio_mark(s);
         double t = 0, sum[PHASE_COUNT] = { 0 };
         for (int frame = 0; frame < 2; frame++) {
+            if (frame) {
+                cf_app_update(NULL);
+            }
             t += native_ui(s, phase);
             cf_app_draw_onto_screen(true);
             for (int p = 0; p < PHASE_COUNT; p++) {

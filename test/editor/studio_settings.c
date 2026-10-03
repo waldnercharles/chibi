@@ -1638,6 +1638,12 @@ static void independent_ui_deadlines()
                            .mouse_y = -1000 };
     kit_begin(k, &in);
     kit_root(k, "app");
+    kit_end(k);
+    rml_backend_update(backend, 1.0 / 60.0);
+
+    in.time = 1.0 / 60.0;
+    kit_begin(k, &in);
+    kit_root(k, "app");
     kit_toast(k, 0, &(kit_toast_desc){ .title = "Scheduled", .duration = 0.2 });
     kit_end(k);
     rml_backend_update(backend, 1.0 / 60.0);

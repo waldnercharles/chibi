@@ -332,6 +332,9 @@ void toasts_frame(kit *k)
     double dt = math_clamp(now - k->toast_time, 0.0, 0.1);
     k->toast_time = now;
     expire_actions(k);
+    /* Faded toasts go before the toaster emits, so the last one's node
+       leaves in the frame its fade ends asked for. */
+    remove_finished(k);
     if (!acount(k->toasts)) {
         return;
     }
@@ -347,7 +350,6 @@ void toasts_frame(kit *k)
     }
     pop_node(k);
     (void)apop(k->stack);
-    remove_finished(k);
 }
 
 /* ---------- API ---------- */

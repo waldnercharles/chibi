@@ -5,6 +5,7 @@
 #include "editor/studio/studio_designer_internal.h"
 #include "editor/studio/studio_graph_internal.h"
 #include "editor/studio/studio_internal.h"
+#include "editor/ui/input_feel.h"
 #include "editor/workspace/editor.h"
 #include "editor/workspace/editor_internal.h"
 #include "editor/workspace/input.h"
@@ -1936,6 +1937,201 @@ static void virtual_list_rows()
     fixture_free(&f);
 }
 
+/* Turns the wheel `notches` at (x, y) in dp, as SDL reports a notch. */
+static void wheel_at(const studio *s, float x, float y, float notches)
+{
+    SDL_Event wheel = { .type = SDL_EVENT_MOUSE_WHEEL };
+    wheel.wheel.windowID = SDL_GetWindowID(cf_app_get_window());
+    wheel.wheel.mouse_x = x * s->prefs.ui_scale;
+    wheel.wheel.mouse_y = y * s->prefs.ui_scale;
+    wheel.wheel.y = notches;
+    assert(SDL_PushEvent(&wheel));
+}
+
+static void button_at(const studio *s, float x, float y, Uint8 button, bool down)
+{
+    SDL_Event event = { .type = down ? SDL_EVENT_MOUSE_BUTTON_DOWN
+                                     : SDL_EVENT_MOUSE_BUTTON_UP };
+    event.button.windowID = SDL_GetWindowID(cf_app_get_window());
+    event.button.button = button;
+    event.button.down = down;
+    event.button.clicks = 1;
+    event.button.x = x * s->prefs.ui_scale;
+    event.button.y = y * s->prefs.ui_scale;
+    assert(SDL_PushEvent(&event));
+}
+
+static bool near_ratio(float ratio, float expected)
+{
+    return fabsf(ratio / expected - 1) < 0.002f;
+}
+
+static float camera_span(const studio_fixture *f)
+{
+    engine_viewport_camera camera;
+    engine_viewport_get_camera(f->viewport, &camera);
+    return camera.span_width;
+}
+
+/* A notch scrolls a list FEEL_SCROLL_POINTS window points, and a trackpad's
+   two half notches in one frame scroll as far. */
+static void wheel_scrolls_lists()
+{
+    studio_fixture f = studio_project_open();
+    studio *s = f.studio;
+    s->maximized = -1;
+    studio_layout *layout = studio_active_layout(s);
+    layout->editors[STUDIO_AREA_TOP] = STUDIO_EDITOR_PANEL;
+    snprintf(layout->panels[STUDIO_AREA_TOP], sizeof layout->panels[0], "Widgets");
+    frames(&f, 12);
+    rml_element *view = studio_element(s, ".vlist");
+    assert(view);
+    /* The list sits low in the Widgets panel, which scrolls it into view. */
+    rml_element_scroll_into_view(view, RML_SCROLL_CENTER, RML_SCROLL_NEAREST);
+    frames(&f, 4);
+    rml_vec2 at = rml_element_absolute_offset(view, RML_BOX_BORDER);
+    rml_vec2 size = rml_element_box_size(view, RML_BOX_BORDER);
+    float ratio = studio_pixel_ratio(s);
+    float x = (at.x + size.x / 2) / ratio, y = (at.y + size.y / 2) / ratio;
+    float notch = FEEL_SCROLL_POINTS * cf_app_get_pixel_scale();
+    mouse_move(s, x, y);
+    frames(&f, 2);
+    float top = rml_element_scroll_top(view);
+    wheel_at(s, x, y, -1);
+    frames(&f, 30);
+    float one = rml_element_scroll_top(view);
+    wheel_at(s, x, y, -0.5f);
+    wheel_at(s, x, y, -0.5f);
+    frames(&f, 30);
+    float two = rml_element_scroll_top(view);
+    if (fabsf(one - top - notch) > 1 || fabsf(two - one - notch) > 1) {
+        printf("  scrolled %.1f then %.1f px, a notch %.1f\n", one - top, two - one, notch);
+    }
+    test_check(
+        fabsf(one - top - notch) <= 1 && fabsf(two - one - notch) <= 1,
+        "a wheel notch scrolls a list 100 points, and a trackpad's two half "
+        "notches in one frame as far"
+    );
+    fixture_free(&f);
+}
+
+/* A notch zooms the Scene's camera and the graph by FEEL_ZOOM_RATE once,
+   however many frames draw after it; half notches zoom by half; one event
+   never more than halves the zoom. */
+static void wheel_zooms_canvases()
+{
+    studio_fixture scene = vault_open();
+    studio *s = scene.studio;
+    frames(&scene, 10);
+    kit_rect r = s->surface.rect;
+    float x = r.x + r.w / 2, y = r.y + r.h / 2;
+    mouse_move(s, x, y);
+    frames(&scene, 3);
+    float before = camera_span(&scene);
+    wheel_at(s, x, y, 1);
+    frames(&scene, 8);
+    float one = camera_span(&scene);
+    wheel_at(s, x, y, 0.5f);
+    wheel_at(s, x, y, 0.5f);
+    frames(&scene, 8);
+    float two = camera_span(&scene);
+    wheel_at(s, x, y, -10);
+    frames(&scene, 8);
+    float most = camera_span(&scene);
+    float notch = feel_zoom_scale(1);
+    if (!near_ratio(before / one, notch) || !near_ratio(one / two, notch) ||
+        !near_ratio(most / two, 2)) {
+        printf("  Scene zoomed %.4f, %.4f and %.4f\n", before / one, one / two, most / two);
+    }
+    test_check(
+        near_ratio(before / one, notch) && near_ratio(one / two, notch) &&
+            near_ratio(most / two, 2),
+        "a wheel notch zooms the Scene camera about 15% once, two half notches "
+        "as much, and one event at most halves it"
+    );
+    /* A right press while the left is held reaches the Scene, whose tools
+       cancel a drag with it, and only in its own frame. */
+    button_at(s, x, y, SDL_BUTTON_LEFT, true);
+    frames(&scene, 2);
+    mouse_move(s, x + 40, y + 20);
+    button_at(s, x + 40, y + 20, SDL_BUTTON_RIGHT, true);
+    frame(&scene, false);
+    bool heard = s->surface.pressed[1] && s->surface.down[0];
+    frame(&scene, false);
+    bool once = !s->surface.pressed[1];
+    button_at(s, x + 40, y + 20, SDL_BUTTON_RIGHT, false);
+    button_at(s, x + 40, y + 20, SDL_BUTTON_LEFT, false);
+    frames(&scene, 2);
+    if (kit_has_popup(s->kit)) {
+        tap(SDL_SCANCODE_ESCAPE);
+        frames(&scene, 2);
+    }
+    test_check(heard && once, "a right press during a Scene drag reaches its tools once");
+    fixture_free(&scene);
+
+    studio_fixture f = fixture_new();
+    s = f.studio;
+    frames(&f, 3);
+    studio_graph *g = &s->graph;
+    g->camera.active = false;
+    g->framed = true;
+    g->zoom = 1;
+    frames(&f, 2);
+    r = g->surface.rect;
+    x = r.x + r.w / 2;
+    y = r.y + r.h / 2;
+    mouse_move(s, x, y);
+    frames(&f, 2);
+    wheel_at(s, x, y, 1);
+    frames(&f, 3);
+    float zoom = g->zoom;
+    wheel_at(s, x, y, -0.5f);
+    wheel_at(s, x, y, -0.5f);
+    frames(&f, 3);
+    test_check(
+        near_ratio(zoom, notch) && near_ratio(g->zoom, 1),
+        "a wheel notch zooms the graph about 15%, and two half notches back"
+    );
+    fixture_free(&f);
+}
+
+/* A press on a node moves it only once it travels FEEL_DRAG_DP. */
+static void graph_drag_threshold()
+{
+    studio_fixture f = fixture_new();
+    studio *s = f.studio;
+    frames(&f, 3);
+    studio_graph *g = &s->graph;
+    node *n = graph_node_by_id(sg_active_graph(s), SETTER);
+    assert(n);
+    g->camera.active = false;
+    g->framed = true;
+    g->zoom = 1;
+    g->x = n->x - 80;
+    g->y = n->y - 80;
+    frames(&f, 3);
+    float old_x = n->x;
+    kit_rect title;
+    assert(kit_find(g->kit, "world/stage/n10247/h/t", &title));
+    float x = g->surface.rect.x + (title.x + title.w / 2) * sg_zoom(s);
+    float y = g->surface.rect.y + (title.y + title.h / 2) * sg_zoom(s);
+    mouse_move(s, x, y);
+    graph_drag_button(s, x, y, true);
+    frame(&f, false);
+    mouse_move(s, x + FEEL_DRAG_DP - 1, y);
+    frame(&f, false);
+    bool still = g->gesture != STUDIO_GRAPH_MOVE && n->x == old_x;
+    mouse_move(s, x + FEEL_DRAG_DP + 1, y);
+    frame(&f, false);
+    bool moved = g->gesture == STUDIO_GRAPH_MOVE && n->x != old_x;
+    graph_drag_button(s, x + FEEL_DRAG_DP + 1, y, false);
+    frame(&f, false);
+    editor_undo(f.graph);
+    frames(&f, 2);
+    test_check(still && moved, "a node drags once the press travels the drag threshold, and not before");
+    fixture_free(&f);
+}
+
 /* Runs one key press as Studio's shortcuts do, over area `hover`. */
 static void press_over(studio *s, int hover, SDL_Keycode key, SDL_Keymod mod)
 {
@@ -3707,6 +3903,9 @@ static int studio_documents_app(const char *program, bool run_properties_only)
         palette_finds_settings();
         palette_recent_and_prefixes();
         virtual_list_rows();
+        wheel_scrolls_lists();
+        wheel_zooms_canvases();
+        graph_drag_threshold();
         assets_cache_follows_explicit_refresh();
         shortcut_repeat_policy();
         keys_follow_pointer();

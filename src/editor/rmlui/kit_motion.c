@@ -297,7 +297,7 @@ double kit_idle_time(const kit *k)
         }
     }
     if (k->tip_target && !k->tip_visible) {
-        delay = fmin(delay, fmax(0, k->tip_since + TOOLTIP_DELAY - now));
+        delay = fmin(delay, fmax(0, k->tip_since + FEEL_TOOLTIP_DELAY - now));
     }
     for (int i = 0; i < acount(k->popup_stack); i++) {
         const popup *p = k->popup_stack[i];

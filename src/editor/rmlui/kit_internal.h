@@ -25,6 +25,7 @@
 #ifndef CHIBI_EDITOR_RMLUI_KIT_INTERNAL_H
 #define CHIBI_EDITOR_RMLUI_KIT_INTERNAL_H
 
+#include "editor/ui/input_feel.h"
 #include "editor/ui/kit.h"
 #include "platform/cute.h"
 #include "support/array.h"
@@ -35,12 +36,9 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define TOOLTIP_DELAY 0.5
-#define TOOLTIP_GROUP 0.4
 #define SUBMENU_DELAY 0.1
 #define STEP_REPEAT_DELAY 0.4
 #define STEP_REPEAT_INTERVAL 0.06
-#define SCRUB_THRESHOLD 3.0f
 #define TYPEAHEAD_RESET 0.5
 /* The buffer format_number writes. */
 #define NUMBER_TEXT 64
@@ -217,7 +215,6 @@ typedef struct drag_state
     char *type, *payload, *label, *source, *over, *target;
     uint32_t icon;
     float x0, y0;
-    double t0;
 } drag_state;
 
 /* A value animated by kit_spring, keyed by its path. */

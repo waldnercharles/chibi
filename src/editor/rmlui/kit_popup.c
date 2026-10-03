@@ -1161,7 +1161,7 @@ void update_tooltip(kit *k)
     rml_element *target = tip_owner(k);
     if (target != k->tip_target) {
         if (k->tip_visible) {
-            k->tip_warm_until = k->in.time + TOOLTIP_GROUP;
+            k->tip_warm_until = k->in.time + FEEL_TOOLTIP_GROUP;
         }
         k->tip_visible = false;
         k->tip_target = target;
@@ -1170,7 +1170,8 @@ void update_tooltip(kit *k)
     if (k->tip_visible && k->frame > k->tip_shown_frame) {
         flag_element(k->tooltip, "data-starting-style", false);
     }
-    bool show = target && (k->tip_visible || k->in.time - k->tip_since >= TOOLTIP_DELAY ||
+    bool show = target && (k->tip_visible ||
+                           k->in.time - k->tip_since >= FEEL_TOOLTIP_DELAY ||
                            k->in.time < k->tip_warm_until);
     if (!show) {
         rml_element_set_property(k->tooltip, "display", "none");

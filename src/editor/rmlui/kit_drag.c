@@ -1,5 +1,6 @@
-/* Drag and drop after dnd-kit: a source is picked up once the pointer moves 5
- * dp with the button held, or is held 200 ms within 10 dp. An overlay follows
+/* Drag and drop after dnd-kit: a source is picked up once the pointer moves
+ * FEEL_DRAG_DP with the button held, dnd-kit's distance constraint; holding
+ * still never picks it up, so a slow click still clicks. An overlay follows
  * the pointer, the target under it that accepts the type is marked
  * data-drop-over, release drops there and Escape cancels. Clicks during a drag
  * are swallowed so a drop never also activates what it lands on. */
@@ -9,10 +10,6 @@
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
-
-#define ACTIVATION_DISTANCE 5.0f
-#define ACTIVATION_DELAY 0.2
-#define DELAY_TOLERANCE 10.0f
 
 static void drag_reset(drag_state *d)
 {
@@ -24,17 +21,15 @@ static void drag_reset(drag_state *d)
     *d = (drag_state){ 0 };
 }
 
-/* Picks the pending source up once it moved or was held long enough. False
- * while it waits, and once released first, which ends it. */
+/* Picks the pending source up once it moved far enough. False while it
+ * waits, and once released first, which ends it. */
 static bool activate(kit *k, drag_state *d)
 {
     if (!k->in.down[0]) {
         drag_reset(d);
         return false;
     }
-    float moved = hypotf(k->in.mouse_x - d->x0, k->in.mouse_y - d->y0);
-    bool held = k->in.time - d->t0 >= ACTIVATION_DELAY && moved <= DELAY_TOLERANCE;
-    if (moved < ACTIVATION_DISTANCE && !held) {
+    if (hypotf(k->in.mouse_x - d->x0, k->in.mouse_y - d->y0) < FEEL_DRAG_DP) {
         return false;
     }
     d->active = true;
@@ -115,7 +110,6 @@ void kit_drag_source(kit *k, const kit_drag_desc *desc)
         str_set(&d->source, n->path);
         d->x0 = k->in.mouse_x;
         d->y0 = k->in.mouse_y;
-        d->t0 = k->in.time;
     }
     bool mine = d->pending && str_eq(d->source, n->path);
     if (mine) {

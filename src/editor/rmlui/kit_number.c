@@ -472,7 +472,7 @@ void number_drag(kit *k, node *n, const rml_event *e)
         return;
     }
     float dx = (e->mouse_x - w->press_x) / dp(k);
-    if (!w->scrubbing && fabsf(dx) >= SCRUB_THRESHOLD) {
+    if (!w->scrubbing && fabsf(dx) >= FEEL_DRAG_DP) {
         /* RmlUi dispatches click before dragend; the release must not start
            editing. */
         w->scrubbing = true;

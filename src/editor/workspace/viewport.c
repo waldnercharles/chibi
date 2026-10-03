@@ -1,3 +1,4 @@
+#include "editor/ui/input_feel.h"
 #include "editor/workspace/input.h"
 #include "platform/cute.h"
 #include "render/arena3d.h"
@@ -75,7 +76,7 @@ static viewport_io host_io(engine_viewport *viewport)
         .alt = in->alt,
         .wheel = in->wheel,
         .drag_sq = viewport->press_distance_sq,
-        .drag_threshold = 3,
+        .drag_threshold = FEEL_DRAG_DP,
     };
     for (int b = 0; b < 3; b++) {
         v.down[b] = in->down[b];
@@ -498,8 +499,8 @@ static bool navigate_viewport(engine_viewport *viewport, const viewport_io *io, 
     if (zoom) {
         float x = io->mouse.x / size.x - 0.5f;
         float y = 0.5f - io->mouse.y / size.y;
-        /* The graph's rate: about 15% a wheel notch, as Blender's views zoom. */
-        float scale = powf(2.0f, -0.2f * io->wheel);
+        /* The rate every canvas zooms; the host clamped each notch. */
+        float scale = 1 / feel_zoom_scale(io->wheel);
         scale = fmaxf(1.0f / before.span_width, fminf(100000.0f / before.span_width, scale));
         CF_V2 anchor;
         bool anchored = pointer_world(viewport, (CF_V2){ 2 * x, 2 * y }, &anchor);

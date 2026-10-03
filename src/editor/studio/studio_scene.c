@@ -1,5 +1,6 @@
 /* Studio editors for the authored scene: viewport and Outliner. */
 #include "editor/studio/studio_internal.h"
+#include "editor/ui/input_feel.h"
 #include "support/array.h"
 
 #include <assert.h>
@@ -74,7 +75,7 @@ void studio_scene_view(studio *s, engine_viewport_host_input *input)
     float u = s->surface.x / s->surface.rect.w,
           v = s->surface.y / s->surface.rect.h;
     if (s->surface.hovered && (s->zoom_wheel != 0 || s->pinch != 0)) {
-        zoom_view(s, s->view.zoom * powf(1.1f, s->zoom_wheel) * expf(s->pinch), u, v);
+        zoom_view(s, s->view.zoom * feel_zoom_scale(s->zoom_wheel) * expf(s->pinch), u, v);
         input->wheel -= s->zoom_wheel;
     }
     float zoom = s->view.zoom;

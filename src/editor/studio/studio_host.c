@@ -1,6 +1,7 @@
 #include "diagnostics/tracy.h"
 #include "editor/studio/studio_internal.h"
 #include "editor/studio/studio_thumbnails.h"
+#include "editor/ui/input_feel.h"
 #include "editor/workspace/editor.h"
 #include "editor/workspace/editor_internal.h"
 #ifdef CHIBI_ENABLE_WEB_TRACE
@@ -480,6 +481,18 @@ static bool graph_pan_owns_motion(const studio *s, float x, float y)
                              );
 }
 
+/* The editor's documents hear a wheel as the distance it scrolls; the graph
+   and the Scene count its notches. */
+static void process_input(studio *s, rml_input input)
+{
+    if (input.type == RML_INPUT_POINTER_WHEEL) {
+        float scale = cf_app_get_pixel_scale();
+        input.wheel_x = feel_scroll_units(input.wheel_x, s->in.dp_ratio, scale);
+        input.wheel_y = feel_scroll_units(input.wheel_y, s->in.dp_ratio, scale);
+    }
+    rml_backend_process_input(s->backend, &input);
+}
+
 static bool forward_input(studio *s)
 {
     kit_frame_input *in = &s->in;
@@ -565,21 +578,23 @@ static bool forward_input(studio *s)
                 input.button = b;
                 break;
             }
-            case SDL_EVENT_MOUSE_WHEEL:
+            case SDL_EVENT_MOUSE_WHEEL: {
                 /* Zoom anchors where the wheel turned, which a motion event
                    may not have reported yet. */
                 in->mouse_x = input.x = to_dp(s, e->wheel.mouse_x);
                 in->mouse_y = input.y = to_dp(s, e->wheel.mouse_y);
-                in->wheel += e->wheel.y;
+                float notches = feel_zoom_notches(e->wheel.y);
+                in->wheel += notches;
                 /* The modifiers as the wheel turned: a key released later in
                    the same frame must not undo the gesture. */
                 if (studio_primary(s, s->mods) || (s->mods & SDL_KMOD_CTRL)) {
-                    s->zoom_wheel += e->wheel.y;
+                    s->zoom_wheel += notches;
                 }
                 input.type = RML_INPUT_POINTER_WHEEL;
                 input.wheel_x = -e->wheel.x;
                 input.wheel_y = -e->wheel.y;
                 break;
+            }
             case SDL_EVENT_PINCH_UPDATE:
                 /* The Scene view and the graph canvas zoom a pinch at the
                    pointer; scales multiply, so their logs add. */
@@ -616,7 +631,7 @@ static bool forward_input(studio *s)
             default: continue;
         }
         if (!graph_motion) {
-            rml_backend_process_input(s->backend, &input);
+            process_input(s, input);
         }
         apush(s->graph.events, input);
         game_input(s, &input, e);
@@ -771,13 +786,6 @@ static void draw_viewport(studio *s)
         input.down[b] = s->surface.down[b];
         input.pressed[b] = s->surface.pressed[b];
         input.released[b] = s->surface.released[b];
-    }
-    /* The surface's events are refreshed only in frames that emit the UI,
-       but the Scene draws every frame: a wheel turn or a click reaches it
-       once, not again in each frame until the next emit. */
-    s->surface.wheel = 0;
-    for (int b = 0; b < 3; b++) {
-        s->surface.pressed[b] = s->surface.released[b] = false;
     }
     studio_scene_view(s, &input);
     if (studio_canvas_draw(s, &input)) {
@@ -1233,6 +1241,12 @@ static void run(studio *s, double delta_seconds, float width, float height)
     share_project_prefs(s);
     studio_debug_frame(s);
     bool update_ui = host_ui_due(s, input, authored);
+    /* The Scene and its tools read the surface every frame, but only an emit
+       refreshes it: a click or a wheel turn reaches them in its own frame. */
+    s->surface.wheel = 0;
+    for (int b = 0; b < 3; b++) {
+        s->surface.pressed[b] = s->surface.released[b] = false;
+    }
     if (update_ui) {
         CHIBI_TRACE_ZONE_BEGIN(sync_zone, "Studio model sync");
         studio_ui_frame(s);

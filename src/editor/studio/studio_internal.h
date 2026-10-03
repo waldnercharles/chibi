@@ -793,9 +793,13 @@ typedef struct
 typedef struct
 {
     int kind; /* below STUDIO_NEW_KIND_COUNT */
-    /* The UI refresh the name popover opens at, once its sync shows the
-       name; 0 when none asks. */
-    uint64_t asked;
+    /* The name popover opens once a sync has shown the name asked for. */
+    enum
+    {
+        STUDIO_NAME_IDLE,
+        STUDIO_NAME_ASKED,
+        STUDIO_NAME_SHOWN,
+    } asking;
     bool closing; /* the asset was made: close the popover */
     char name[64];
     char typed[64]; /* the name as its field last showed it */

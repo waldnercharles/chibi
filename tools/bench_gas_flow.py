@@ -15,6 +15,19 @@ def digest(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def gas_dependencies(build, cache, threaded):
+    package = re.search(r'^CHIBI_DEPENDENCY_PACKAGE:[^=]+=(.+)$', cache, re.M)
+    dependency_build = Path(package[1]).parent if package else build
+    deps = [build / 'libruntime_support.a', build / 'libcore.a']
+    for name in ('chibi_thirdparty', 'ckdl', 'chibi_sljit'):
+        library = dependency_build / f'lib{name}.a'
+        if library.is_file():
+            deps.append(library)
+    if threaded:
+        deps.append(dependency_build / '_deps/enkits-build/libenkiTS.a')
+    return deps
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--before-build', type=Path, required=True)
@@ -64,10 +77,8 @@ def main():
                 description = max(descriptions, key=lambda path: path.stat().st_mtime).read_text()
                 compiler = re.search(r'set\(CMAKE_C_COMPILER "([^"]+)"\)', description).group(1)
             compilers[version] = subprocess.check_output([compiler, '--version'], text=True).strip()
-            deps = [build / 'libruntime_support.a', build / 'libcore.a']
             threaded = args.web and 'CHIBI_WEB_THREADS:BOOL=ON' in cache
-            if not args.web or threaded:
-                deps.append(build / '_deps/enkits-build/libenkiTS.a')
+            deps = gas_dependencies(build, cache, not args.web or threaded)
             flags = []
             if args.web:
                 flags = ['-D_POSIX_C_SOURCE=200809L', '-sENVIRONMENT=node', '-sALLOW_MEMORY_GROWTH=1',
@@ -78,7 +89,7 @@ def main():
                         parser.error('web worker count must match the configured pool budget')
                     flags += ['-pthread', '-msimd128', f'-sPTHREAD_POOL_SIZE={pool - 1}']
             expected_workers[version] = args.workers if not args.web or threaded else 1
-            libraries[version] = {str(path.relative_to(build)): digest(path) for path in deps}
+            libraries[version] = {os.path.relpath(path, build): digest(path) for path in deps}
             binary = Path(temp) / (version + ('.js' if args.web else ''))
             scalar = []
             if version == 'after_scalar':

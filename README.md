@@ -19,14 +19,13 @@ make run          # optimized editor for normal interaction
 make play         # optimized standalone game
 make debug        # plain Debug editor
 make debug-san    # Debug editor with ASan and UBSan
-make build        # build the sanitizer-enabled Debug profile
+make build        # build sanitizer-enabled Debug app and controller
 make package-native # package native engine, Studio, and MCP for external games
 make test-package # verify the package without rebuilding during authoring
 make build-tracy  # build native RelWithDebInfo with Tracy enabled
 make run-tracy    # run the native Tracy profile
 make test         # model, runtime, native UI, generation, and loader checks
 make test-fast TEST_ARGS=--graph-optimize  # focused plain Debug check
-make sdl-package  # build pinned SDL once for macOS worktrees
 make mcp          # run the local MCP authoring server over stdio
 make mcp-setup    # generate local Codex MCP configuration
 make dev          # watch sources, rebuild, and reload the running editor
@@ -131,29 +130,44 @@ are pinned in CMake. On macOS, the Makefile uses Homebrew
 LLVM when installed: Apple's Clang 17 ASan runtime does not correctly unregister
 dynamic-library globals during unload. Set `NATIVE_TOOLCHAIN_FLAGS` for Make or
 `CC` and `CXX` for CMake to select another compiler.
+Native configuration preserves an explicitly selected SDK; otherwise it uses
+the selected compiler's SDK for both framework lookup and compilation.
 
-When ccache is installed, native builds and Release web builds under the source
-tree can reuse matching objects across worktrees. Native Debug and development
-builds normalize compilation paths so their debug information still resolves
-local sources. Native and web build directories save pinned dependency source
-snapshots to `CHIBI_FETCHCONTENT_CACHE_DIR` (by default,
-`${XDG_CACHE_HOME:-$HOME/.cache}/chibi-fetchcontent`). Later build directories
-copy these snapshots using APFS cloning or Linux reflinks when available. The
-cache stores each dependency separately by repository and pin, including
-RmlUi, FreeType, Zep, tree-sitter, and required Git submodules. Zep’s unused
-vcpkg subtree is excluded. Changing a local patch reconfigures the build
-without duplicating unchanged cached sources.
-Each build can apply its own patches and generate files without changing the
-shared snapshot. Dependency build directories and linked libraries remain
-private, except for an installed SDL package. Run `ccache --show-stats` to
-check hits and evictions; increase its size limit if it is continually full.
+Native and web builds automatically build or reuse immutable dependency packages
+under `${XDG_CACHE_HOME:-$HOME/.cache}/chibi-dependency-packages`. Set
+`CHIBI_DEPENDENCY_PACKAGE_CACHE_DIR` to choose another location. All worktrees
+use this cache regardless of which app created them or where their folders live.
+Packages include Cute and its compiled dependencies, SDL, RmlUi, FreeType, Zep,
+enkiTS, SLJIT, tree-sitter, and bundled C libraries where enabled. Native, browser,
+threaded browser, and incompatible toolchain or build options use separate entries.
+Dependency pins, patches, compiler and SDK identity, and build flags determine
+reuse. A failed or concurrent first build cannot publish an incomplete package.
+Application objects and generated files remain in each checkout's build directory.
+The Tracy Python server keeps a private build because its launcher needs local
+bindings; ordinary Tracy client libraries are shared. External source overrides
+also retain private builds so local dependency edits remain in use. Set
+`CHIBI_DEPENDENCY_PACKAGES=0` to request a private dependency build explicitly.
 
-On macOS, `make sdl-package` builds the pinned SDL 3.4.0 archive once and
-installs its static and shared libraries under
-`${XDG_CACHE_HOME:-$HOME/.cache}/chibi-sdl3`. Future native build directories
-automatically use that package when the compiler and SDK match. Set
-`CHIBI_SDL3_PACKAGE_ROOT` to use another cache location. If the package is
-absent, Cute fetches and builds SDL in the worktree as before.
+Dependency sources are seeded from pristine snapshots in
+`${XDG_CACHE_HOME:-$HOME/.cache}/chibi-fetchcontent`, configurable through
+`CHIBI_FETCHCONTENT_CACHE_DIR`. APFS clones or Linux reflinks share unchanged
+source storage while package builds apply their own patches independently.
+
+When ccache is installed, native builds and Release web builds also reuse matching
+application objects across worktrees. Native Debug and development builds normalize
+compilation paths so debug information resolves local sources. `ccache --show-stats`
+reports hits and evictions. On APFS, ccache's optional `file_clone` setting can share
+object storage across builds; it disables cache compression and benefits repeated
+objects most. Cache and worktree directories must be on a compatible filesystem.
+
+Build and test commands print phase summaries and save full output in `.chibi/logs`.
+Failures print bounded diagnostic excerpts and the full log path. Use `VERBOSE=1`
+to stream output. Old completed logs are limited to 20 files and 64 MiB; running
+logs and the current phase are retained. `make build BUILD_TARGET=chibi_ctl` builds
+only the controller; `BUILD_TARGET=` requests the default CMake target set.
+`make test` still runs the complete required checks. Ordinary builds do not create
+a separate runtime distribution; launch commands refresh registered games, or use
+`make update-game-runtime` explicitly.
 
 `make dev ARGS="--fps 60"` starts the native development host. Save a source file
 to build a new generation. Build diagnostics go to `.chibi/build.log`.

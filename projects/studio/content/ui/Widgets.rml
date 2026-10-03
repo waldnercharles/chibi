@@ -28,6 +28,23 @@
   </div>
   <div class="menu-group">Slider</div>
   <div class="sample"><use ui="Slider" min="0" max="10" step="1" value="4"/></div>
+  <div class="menu-group">NumberField</div>
+  <div class="sample">
+    <use ui="NumberField" step="0.5" precision="2" unit="m" data-attr-value="save.galleryNumber == '' ? 12.5 : save.galleryNumber" data-event-change="save.galleryNumber = ev.value"/>
+    <use ui="NumberField" min="0" max="1" step="0.05" precision="2" slider="" data-attr-value="save.galleryRatio == '' ? 0.4 : save.galleryRatio" data-event-input="save.galleryRatio = ev.value"/>
+  </div>
+  <div class="menu-group">ColorField</div>
+  <div class="sample">
+    <use ui="ColorField" data-attr-value="save.galleryColor == '' ? '#3b82f6ff' : save.galleryColor" data-event-input="save.galleryColor = ev.value"/>
+  </div>
+  <div class="menu-group">Checkbox</div>
+  <div class="sample"><use ui="Checkbox" data-checked="save.galleryChecked">Snap to grid</use></div>
+  <div class="menu-group">Splitter</div>
+  <div class="sample split-sample">
+    <span class="split-pane" data-style-width="(save.gallerySplit == '' ? 90 : save.gallerySplit) + 'dp'"/>
+    <use ui="Splitter" axis="x" min="40" max="180" data-attr-value="save.gallerySplit == '' ? 90 : save.gallerySplit" data-event-input="save.gallerySplit = ev.value"/>
+    <span class="split-pane rest"/>
+  </div>
   <div class="menu-group">SidebarNav</div>
   <use ui="SidebarNav">
     <label class="nav-item"><input type="radio" name="page" value="audio" checked=""/><span class="nav-face"><span class="icon">&#xf03d8;</span><span class="label">Display</span></span></label>

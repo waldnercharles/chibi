@@ -3,7 +3,9 @@
  * they send: a scrub's inputs and its one change, Escape cancelling typing
  * and a scrub, typing committing once, mixed and readonly fields, values
  * that repaint without laying out the document, a splitter's drag and a
- * color field's picker. */
+ * color field's picker; and projects/studio's widgets over them. */
+#include "assets/ui_document.h"
+#include "support/array.h"
 #include "test/suite_internal.h"
 #include "ui/rml.h"
 #include "ui/rml_backend.h"
@@ -436,6 +438,159 @@ static void color_checks(controls_fixture *f)
     );
 }
 
+/* projects/studio's control widgets, expanded as a ui asset is, bound to a
+ * panel and a property row. */
+static const char WIDGETS
+    [] = "<use ui=\"Panel\" data-alias-panel=\"transform\">"
+         "<use ui=\"PropertyRow\" data-alias-property=\"position\">"
+         "<use ui=\"VectorField\" data-alias-axes=\"position.axes\" "
+         "data-alias-field=\"position\" "
+         "data-event-change=\"changes = changes + 1; named = ev.name\"/>"
+         "</use>"
+         "<use ui=\"NumberField\" id=\"lone\" "
+         "data-attr-value=\"position.axes[0].value\" "
+         "precision=\"2\"/>"
+         "<use ui=\"PropertyRow\" data-alias-property=\"position\">"
+         "<use ui=\"ColorField\" data-attr-value=\"color\"/>"
+         "<use ui=\"Checkbox\" data-checked=\"checked\">Visible</use>"
+         "</use>"
+         "<use ui=\"Splitter\" axis=\"y\" min=\"0\" max=\"10\" value=\"5\"/>"
+         "</use>";
+
+static const char WIDGET_DATA
+    [] = "{\"transform\": {\"title\": \"Transform\", \"badge\": \"\", "
+         "\"open\": true},"
+         "\"position\": {\"label\": \"Position\", \"about\": \"Where it is\", "
+         "\"overridden\": true, \"axes\": [{\"key\": \"x\", \"label\": \"X\", "
+         "\"value\": 1.5, \"precision\": 2}, {\"key\": \"y\", \"label\": "
+         "\"Y\", "
+         "\"value\": 2, \"precision\": 2}]},"
+         "\"color\": \"#336699ff\", \"checked\": false, \"changes\": 0, "
+         "\"named\": \"\"}";
+
+/* The widgets' expansion of WIDGETS as a document's RML, or NULL. */
+static char *widget_document()
+{
+    ui_document document = { 0 };
+    char error[256] = "", **uses = NULL;
+    bool expanded = ui_document_read(WIDGETS, "", NULL, NULL, &document, error, sizeof error) &&
+                    ui_document_expand(
+                        &document,
+                        "WidgetTest",
+                        "projects/studio/content/ui",
+                        false,
+                        &uses,
+                        error,
+                        sizeof error
+                    );
+    for (int i = 0; i < acount(uses); i++) {
+        free(uses[i]);
+    }
+    afree(uses);
+    char *rml = NULL;
+    if (expanded) {
+        size_t size = strlen(document.rml) + strlen(document.rcss) + 256;
+        rml = malloc(size);
+        snprintf(
+            rml,
+            size,
+            "<rml><head><style>body { font-family: Inter; font-size: 13dp; "
+            "--primary: #3b82f6; } %s</style></head><body "
+            "data-model=\"widgets\">%s</body></rml>",
+            document.rcss,
+            document.rml
+        );
+    } else {
+        fprintf(stderr, "  widgets: %s\n", error);
+    }
+    ui_document_free(&document);
+    return rml;
+}
+
+static void widget_checks()
+{
+    char *rml = widget_document();
+    test_check(rml != NULL, "the control widgets expand");
+    if (!rml) {
+        return;
+    }
+    rml_backend *backend = rml_backend_create(640, 480, 1);
+    rml_context *context = rml_backend_context(backend);
+    yyjson_doc *parsed = yyjson_read(WIDGET_DATA, strlen(WIDGET_DATA), 0);
+    yyjson_mut_doc *data = yyjson_doc_mut_copy(parsed, NULL);
+    yyjson_doc_free(parsed);
+    rml_data_model *model = rml_data_model_create(context, "widgets", data, NULL, NULL);
+    rml_element *doc = rml_context_load_document_from_memory(context, rml, "[widgets]");
+    free(rml);
+    assert(doc);
+    rml_document_show(doc, RML_MODAL_NONE, RML_FOCUS_NONE, RML_SCROLL_FLAG_NONE);
+    for (int i = 0; i < 3; i++) {
+        rml_backend_update(backend, FRAME_SECONDS);
+    }
+    rml_element *found[4], *axes[2] = { NULL, NULL };
+    int count = 0;
+    for (int i = rml_element_query_selector_all(doc, ".joined number-field", found, 4);
+         i-- > 0;) {
+        if (!rml_element_has_attribute(found[i], "data-for") && count < 2) {
+            axes[count++] = found[i];
+        }
+    }
+    char title[32] = "", label[32] = "", x[32] = "", lone[32] = "";
+    shown(rml_element_query_selector(doc, ".panel .title"), NULL, title, sizeof title);
+    shown(rml_element_query_selector(doc, ".prop .label span"), NULL, label, sizeof label);
+    shown(rml_element_by_id(doc, "lone"), ".value", lone, sizeof lone);
+    if (count == 2) {
+        shown(axes[1], ".value", x, sizeof x);
+    }
+    test_check(
+        count == 2 && !strcmp(title, "Transform") && !strcmp(label, "Position") &&
+            !strcmp(x, "1.5") && !strcmp(lone, "1.5") &&
+            rml_element_query_selector(doc, ".prop[data-overridden] number-field[data-overridden]"),
+        "Panel, PropertyRow, VectorField and NumberField show a component's "
+        "row from data"
+    );
+    if (count == 2) {
+        rml_element_focus(axes[0], true);
+        rml_context_process_key_down(context, RML_KEY_UP, 0);
+        rml_backend_update(backend, FRAME_SECONDS);
+    }
+    yyjson_mut_val *root = yyjson_mut_doc_get_root(data);
+    const char *axis = yyjson_mut_get_str(yyjson_mut_obj_get(root, "named"));
+    test_check(
+        yyjson_mut_get_num(yyjson_mut_obj_get(root, "changes")) == 1 && axis &&
+            !strcmp(axis, "y"),
+        "a VectorField's change names its axis as ev.name"
+    );
+    rml_element *swatch = rml_element_query_selector(doc, "color-field .swatch");
+    char background[32] = "";
+    if (swatch) {
+        rml_element_property(swatch, "background-color", background, sizeof background);
+    }
+    rml_element *check = rml_element_query_selector(doc, ".check input");
+    test_check(
+        swatch && background[0] && check &&
+            rml_element_query_selector(doc, "splitter[axis=y]"),
+        "ColorField, Checkbox and Splitter build their native parts"
+    );
+    rml_element *head = rml_element_query_selector(doc, ".panel-head");
+    rml_vec2 at = rml_element_absolute_offset(head, RML_BOX_BORDER);
+    rml_context_process_mouse_move(context, (int)at.x + 4, (int)at.y + 4, 0);
+    rml_context_process_mouse_button_down(context, 0, 0);
+    rml_context_process_mouse_button_up(context, 0, 0);
+    rml_backend_update(backend, FRAME_SECONDS);
+    yyjson_mut_val *panel = yyjson_mut_obj_get(root, "transform");
+    test_check(
+        !yyjson_mut_get_bool(yyjson_mut_obj_get(panel, "open")) &&
+            !rml_element_query_selector(doc, ".panel[data-open]"),
+        "a Panel's head folds it"
+    );
+    rml_document_close(doc);
+    rml_backend_update(backend, FRAME_SECONDS);
+    rml_data_model_destroy(model);
+    yyjson_mut_doc_free(data);
+    rml_backend_destroy(backend);
+}
+
 void test_ui_controls()
 {
     controls_fixture f = { 0 };
@@ -449,4 +604,5 @@ void test_ui_controls()
     splitter_checks(&f);
     color_checks(&f);
     close_fixture(&f);
+    widget_checks();
 }

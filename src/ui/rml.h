@@ -798,7 +798,8 @@ extern "C"
 
     /* Dispatches a `type` event from the element that bubbles, as a form
      * control's input and change do: data-event-<type> reads ev.value, the
-     * text `value`, and ev.canceled. */
+     * text `value`, ev.canceled, and ev.name, the element's name attribute
+     * (as a web handler reads event.target.name). */
     void rml_element_dispatch_value(rml_element *element, const char *type, const char *value, bool canceled);
     /* Listens for events named `type`, such as "input", which rml_event_id
      * does not name; the listener's events carry another id. */

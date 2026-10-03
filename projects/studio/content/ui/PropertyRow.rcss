@@ -1,0 +1,5 @@
+/* One property, as native Properties lays it out: its label, with its
+   description as the tip, and its controls, the use's children. Alias the
+   property as data-alias-property: an object with label, about and
+   overridden, as Properties' rows have. */
+body { display: block; }

@@ -1743,6 +1743,7 @@ void rml_element_dispatch_value(rml_element *e, const char *type, const char *va
     Rml::Dictionary parameters;
     parameters["value"] = Rml::String(value);
     parameters["canceled"] = canceled;
+    parameters["name"] = element(e)->GetAttribute<Rml::String>("name", "");
     element(e)->DispatchEvent(type, parameters, true, true);
 }
 

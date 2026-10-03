@@ -910,26 +910,35 @@ switch, which now sit as they do before one.
 
 projects/studio's `Assets` (the area body), `AssetsHeader` (its header
 controls, mounted per area with `studio_ui_area_controls`) and `NewAsset`
-(New's name popover, in a document of its own so it shows whether or not
-an Assets header does) over two sources in `studio_assets.c`: `assets`
-(panel Assets) and `new_asset` (panel NewAsset). The layout follows Unity's
-Project window (the size slider whose smallest step is the list grouped by
-kind) and Unreal's Content Browser (kind badges, the hover thumbnail).
-C keeps the index model (sorting, grouping, filtering, usage counts), the
-selection and its keys, thumbnails, the context menu's actions and the
-asset writes; markup sends `assets.click`, `open`, `menu`, `kind`, `tile`
-and the row menu's items as intents, binds the name filter and the new
-name both ways as view state, and the context menu opens at the press
+(New's name popover, in a document of its own, mounted only while it asks,
+so it shows whether or not an Assets header does), over three sources in
+`studio_assets.c`: `assets` (the header's values and the rows),
+`asset_view` (the selection and the resting preview) and `asset_menus`
+(New's kinds, the row menu and the name popover). The layout follows
+Unity's Project window (the size slider whose smallest step is the list
+grouped by kind) and Unreal's Content Browser (kind badges, the hover
+thumbnail). C keeps the index model (sorting, grouping, filtering, usage
+counts), the selection and its keys, thumbnails, the row menu's actions
+and the asset writes; markup sends `assets.click`, `open`, `menu`, `kind`,
+`tile` and the row menu's items as intents and binds the name filter and
+the new name both ways, as view state; the row menu opens at the press
 (`popover_show` at a point, from the press's document).
 
-- **Slot windows.** One List windows either view with `ui_list_window`:
-  the list's rows (TreeRow) or the grid's lines of Tiles, its columns
-  fitted to the List's laid-out width. Item `i` of the window takes slot
-  `i % slots` and C places it in the spacer (`top`, `left`), as Virtuoso
-  keys its items, so a scroll changes only the slots of the items that
-  enter, and slots only grow, so a narrower filter hides slots instead of
-  dropping their elements. Index-matched rows in flow, the first version,
-  cost about 1.6× more per scroll step, since every row's values shifted.
+- **Slots.** One List windows either view with `ui_list_window`: the
+  list's TreeRows or the grid's lines of Tiles, its columns fitted to the
+  List's laid-out width. Row `i` (or line `i`) takes slot `i % slots` and
+  C places it in the spacer, as Virtuoso keys its items, so a scroll
+  rewrites only the slots entering and the others' tops, and slots only
+  grow, so a narrower filter hides them instead of dropping elements.
+  Tiles sit in lines, not all in the spacer: RmlUi restyles every sibling
+  of an element whose attribute changes (for sibling combinators), so a
+  selected tile restyles its line, not the grid. Index-matched rows in
+  flow, the first version, cost about 1.6× more per scroll step.
+- **Variables by rate of change** (P5's lead): a click changes only
+  `asset_view` (585 views: each tile's selected and preview bindings), an
+  open row menu only `asset_menus`; TreeRow and Tile take `data-selected`
+  on their use for a selection kept apart. The data goes through the
+  shared `ui_data_put_*` writers.
 - **Thumbnails** are `kit:thumb:<slot>` sources the sync asks for, as the
   kit's emission did; Tile paints its picture as a decorator and hides its
   skeleton by visibility, so a thumbnail arriving lays nothing out (the
@@ -939,44 +948,55 @@ name both ways as view state, and the context menu opens at the press
   `data-asset`, which F2 and Delete use too.
 - **Foundation fixes:** `:focus-within` for every context
   (`src/ui/focus_within.c`; the theme's field ring rule keeps to text,
-  search and autocomplete fields), MenuItem showing its shortcut (data-if
-  read "F2" as false) and growing its menu to its widest row.
+  search and autocomplete fields), and a MenuItem showing its shortcut
+  (`data-if` read "F2" as false) and growing its menu to its widest row.
 - **Deleted:** the kit's `kit_tile`, `kit_tip_image` and their widget
   fields, and Assets' kit UI (header, list, grid, row and tile events,
   tooltips, row menu, New menu, name popover and button). The file gained
-  its two sources' data plumbing, so `studio_assets.c` grew from 959 to
-  about 1,460 lines; the kit lost 87 lines.
+  its sources' data plumbing, so `studio_assets.c` grew from 959 to 1,516
+  lines; the kit lost 87 lines.
 
 `UI_BENCH_ASSETS=1 ./build-release/test_suite --ui-bench studio` (case 10:
-Assets maximized at 1440x900, pixel scale 2, over the Sandbox's 101 assets
+Assets maximized at 1440×900, pixel scale 2, over the Sandbox's 101 assets
 and 480 more inserted into the index), the kit build (`80bd2538` with the
-same case) and this one alternated process by process, two pairs, 1-minute
-load 24-33, so the times are provisional; medians of 31 runs:
+same case) and this one alternated process by process, three pairs,
+1-minute load 14-18, so the times are provisional; the median of the
+pairs' medians of 31 runs:
 
 | Case | Kit ms | Authored ms | Ratio | Views | Layouts | Elements in the area's document |
 |---|---:|---:|---:|---:|---:|---|
-| Open the grid (3 UI frames) | 41.3 | 44.9 | 1.09× | 7,622 | 2 (kit 3) | 1,535 (kit 1,105) |
-| Scroll the grid a line | 7.7 | 7.7 | 1.00× | 2,394 | 1 | |
-| Type in the filter | 14.2 | 10.4 | 0.73× | 2,394 | 1 | |
-| UI frame, nothing changed | 1.24 | 1.29 | 1.04× | 0 | 0 | |
-| Scroll the list a row | 2.62 | 3.05 | 1.16× | 968 | 1 | 879 (kit 517) |
+| Open the grid (3 UI frames) | 36.9 | 41.4 | 1.12× | 5,657 | 2 (kit 3) | 1,581 (kit 1,105) |
+| Scroll the grid a line | 6.9 | 5.3 | 0.77× | 2,466 | 1 | |
+| Type in the filter | 12.4 | 9.2 | 0.74× | 2,466 | 1 | |
+| Select another tile | 4.04 | 4.72 | 1.17× | 585 | 1 | |
+| UI frame, nothing changed | 0.92 | 1.28 | 1.39× | 0 | 0 | |
+| Scroll the list a row | 2.27 | 2.59 | 1.14× | 868 | 1 | 907 (kit 517) |
+
+Selecting costs more in update (1.34 ms against 0.98) for the 585 views;
+the idle frame's 0.36 ms more is the three sources' sync and emit
+(0.49 ms against 0.34) and update and capture over 476 more elements, the
+hidden slots and each Tile's and TreeRow's own markup. In the web build,
+the 600-asset workspace scrolled and filtered at the same frame times as
+the kit's, within noise.
 
 Web shots (1600×1000, dark and light, compact and comfortable) of the grid,
 the list, the hover preview, the row menu, New and its name popover and a
-drag onto a Properties field match the kit's pixel for pixel but for scene
-thumbnails that streamed at another moment, the row menu's width (it now
-fits Break When Spawned, which the kit clipped) and the shortcuts it now
-shows. Checks: `--studio-documents` (the cached rows, the asset drop onto
-Properties, New for every kind, the filter's kind first, a kind from the
-menu asking under the button with its name selected),
-`--studio-thumbnails` (every kind through the kind filter, the grid's keys,
-a 1,220-asset grid windowed), `--studio-lists` (an authored Assets row
-dragged into Collected) and `--ui-lists` (the Tile's skeleton).
+drag onto a Properties field match the kit's pixel for pixel but for the
+row menu, which now fits Break When Spawned (the kit clipped it) and shows
+its shortcuts, and scene thumbnails that streamed at another moment.
+Checks: `--studio-documents` (the cached rows, no row marked selected
+without a selection, the asset drop onto Properties, New for every kind,
+the filter's kind first, a kind from the menu asking under the button with
+its name selected, a wheel-scrolled, filtered and cleared grid showing its
+tiles), `--studio-thumbnails` (every kind through the kind filter, the
+grid's keys, a 1,220-asset grid windowed), `--studio-lists` (an authored
+Assets row dragged into Collected) and `--ui-lists` (the Tile's skeleton).
 
 Open: two areas showing Assets share one window and one hover; Rename
-still opens the refactor popover, which is C4's; the list's scroll step
-evaluates about 17 views a row (the TreeRow's and the drag and hover
-attributes on its use).
+still opens the refactor popover, which is C4's; the list's rows are
+siblings of one spacer, so a scroll restyles all of them, and each
+evaluates about 17 views (the TreeRow's and the drag and hover attributes
+on its use); selecting and the idle frame cost 1.2× and 1.4× the kit's.
 
 ### Wave 3: scene, chrome, palette (4 parallel)
 

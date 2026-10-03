@@ -115,6 +115,8 @@ enum
     KIT_ICON_PASS = 0xeba4,         /* nf-cod-pass */
     KIT_ICON_LOADING = 0xeb19,      /* nf-cod-loading */
     KIT_ICON_PERFORMANCE = 0xf04c5, /* nf-md-speedometer */
+    KIT_ICON_SLOWER = 0xf0cd7,      /* nf-md-turtle */
+    KIT_ICON_FASTER = 0xf0907,      /* nf-md-rabbit */
     KIT_ICON_EMITTER = 0xf0674,     /* nf-md-creation */
     KIT_ICON_TERRAIN = 0xf058a,     /* nf-md-terrain */
     KIT_ICON_GAMEPAD = 0xf0297,     /* nf-md-gamepad_variant */

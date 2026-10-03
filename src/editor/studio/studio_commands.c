@@ -681,6 +681,33 @@ static const command_entry COMMANDS[STUDIO_COMMAND_COUNT] = {
                                                       "inspect",
                                           .icon = KIT_ICON_EYE,
                                           .phase = SHORTCUT_EDITOR },
+    /* Playback speed on UI Scale's keys with Alt: Mod chords reach Studio
+       while the game has the keyboard. */
+    [STUDIO_COMMAND_SLOWER] = { .id = "slower",
+                                .label = "Slower",
+                                .chord = "Mod+Alt+-",
+                                .context = "Global",
+                                .keywords = "playback speed slow motion time "
+                                            "scale slomo",
+                                .icon = KIT_ICON_SLOWER,
+                                .repeat = true,
+                                .phase = SHORTCUT_EARLY },
+    [STUDIO_COMMAND_FASTER] = { .id = "faster",
+                                .label = "Faster",
+                                .chord = "Mod+Alt+=",
+                                .context = "Global",
+                                .keywords = "playback speed fast forward time "
+                                            "scale",
+                                .icon = KIT_ICON_FASTER,
+                                .repeat = true,
+                                .phase = SHORTCUT_EARLY },
+    [STUDIO_COMMAND_NORMAL_SPEED] = { .id = "normalSpeed",
+                                      .label = "Normal Speed",
+                                      .chord = "Mod+Alt+0",
+                                      .context = "Global",
+                                      .keywords = "playback speed reset time "
+                                                  "scale 1x real time",
+                                      .phase = SHORTCUT_EARLY },
 };
 
 const char *studio_command_default_chord(studio_command command)
@@ -1072,6 +1099,14 @@ static bool enabled_with(studio *s, studio_command command, int argument)
         case STUDIO_COMMAND_STOP: return !s->hosted && studio_session(s);
         case STUDIO_COMMAND_STEP:
             return !s->hosted && !s->guest && !s->pause.active;
+        case STUDIO_COMMAND_SLOWER:
+            return !s->hosted &&
+                   app_scene_authoring_time_scale(s->scene) > STUDIO_SPEED_MIN;
+        case STUDIO_COMMAND_FASTER:
+            return !s->hosted &&
+                   app_scene_authoring_time_scale(s->scene) < STUDIO_SPEED_MAX;
+        case STUDIO_COMMAND_NORMAL_SPEED:
+            return !s->hosted && app_scene_authoring_time_scale(s->scene) != 1;
         case STUDIO_COMMAND_COLLABORATION_HOST:
         case STUDIO_COMMAND_COLLABORATION_JOIN:
             return studio_collab_available() && !collab_active() &&
@@ -1210,6 +1245,9 @@ void studio_command_run_with(studio *s, studio_command command, int argument)
         case STUDIO_COMMAND_PLAY: studio_runtime(s, APP_RUNTIME_PLAY); break;
         case STUDIO_COMMAND_STOP: studio_runtime(s, APP_RUNTIME_STOP); break;
         case STUDIO_COMMAND_STEP: studio_runtime(s, APP_RUNTIME_STEP); break;
+        case STUDIO_COMMAND_SLOWER: studio_speed_step(s, -1); break;
+        case STUDIO_COMMAND_FASTER: studio_speed_step(s, 1); break;
+        case STUDIO_COMMAND_NORMAL_SPEED: studio_speed_step(s, 0); break;
         case STUDIO_COMMAND_RECORD_GAMEPLAY: studio_record_gameplay(s); break;
         case STUDIO_COMMAND_SELECT_PREVIOUS:
             studio_step_selection(s, -1, false);

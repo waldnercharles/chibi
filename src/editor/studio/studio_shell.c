@@ -832,6 +832,8 @@ static void menu_list(studio *s, const char *key, const char *name)
         zoom_items(s);
     } else if (!strcmp(name, "debugger")) {
         studio_debug_menu(s);
+    } else if (!strcmp(name, "speed")) {
+        studio_speed_menu(s);
     } else {
         unknown_entry(k, key, "list", name);
     }
@@ -1054,8 +1056,9 @@ static void layout_control(studio *s)
 
 /* The top bar is authored: projects/studio's TopBar binds `editor` and
    `commands` (studio_sources.c) for its document tabs, transport, gear and
-   search, which run commands. The menubar, the play target's menu and a
-   paused run's steps stay native in its slots; a run paused at a breakpoint
+   search, which run commands. The menubar, the play target's menu, the
+   playback speed and a paused run's steps stay native in its slots; a run
+   paused at a breakpoint
    trades the frame step for the debugger's steps (Unreal). Chrome controls
    retain focus while the host routes global shortcuts. */
 static void topbar(studio *s)
@@ -1081,6 +1084,10 @@ static void topbar(studio *s)
     }
     if (s->pause.active && kit_slot_begin(k, "steps", host, "#debug-steps")) {
         studio_debug_steps(s);
+        kit_slot_end(k);
+    }
+    if (kit_slot_begin(k, "speed", host, "#speed")) {
+        studio_speed_control(s);
         kit_slot_end(k);
     }
 }

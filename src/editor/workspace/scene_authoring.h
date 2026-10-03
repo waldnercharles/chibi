@@ -67,6 +67,13 @@ void app_scene_authoring_set_debug_pinned(app_scene_authoring *scene, bool pinne
  * entity (No target), until the selection or the open behavior changes, as
  * Unreal's debug object menu does. -1 when it has no such instance. */
 int app_scene_authoring_choose_debug_target(app_scene_authoring *scene, ecs_entity entity);
+/* Debugs the newest scene instance of the open behavior on a `prototype`
+ * object, or the first to spawn, and each newer one as the game spawns it
+ * (Unreal's debug filter), until a target is chosen or selected. */
+void app_scene_authoring_follow_newest(app_scene_authoring *scene, const char *prototype);
+/* Selects a running scene object, placed or spawned, keeping an open
+ * behavior's tab, as the debugger does for the instance it stops in. */
+int app_scene_authoring_select_entity(app_scene_authoring *scene, ecs_entity entity);
 /* While no graph area shows the open behavior, no instance traces. */
 void app_scene_authoring_set_debug_hidden(app_scene_authoring *scene, bool hidden);
 
@@ -174,6 +181,15 @@ int app_scene_authoring_runtime_command(
     app_runtime_command command
 );
 app_runtime_state app_scene_authoring_runtime_state(const app_scene_authoring *scene);
+/* Playback speed for both runtimes (engine_set_time_scale); Stop returns it
+ * to 1, as Unity's Play Mode does Time.timeScale. */
+void app_scene_authoring_set_time_scale(app_scene_authoring *scene, double scale);
+double app_scene_authoring_time_scale(const app_scene_authoring *scene);
+/* Break When Spawned, per prototype: the playing scene pauses after the
+ * frame that spawns one and selects it, which makes it the debug target.
+ * Kept for the editor session, as breakpoints set while debugging are. */
+bool app_scene_authoring_spawn_break(const app_scene_authoring *scene, const char *prototype);
+void app_scene_authoring_set_spawn_break(app_scene_authoring *scene, const char *prototype, bool on);
 const engine_frame_timing *app_scene_authoring_runtime_timing(const app_scene_authoring *scene);
 int app_scene_authoring_save(app_scene_authoring *scene, const char *path);
 int app_scene_authoring_load(app_scene_authoring *scene, const char *path);

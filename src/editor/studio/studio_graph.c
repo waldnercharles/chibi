@@ -790,8 +790,15 @@ static const char *actor_name(const app_scene_authoring *scene, ecs_entity entit
 }
 
 /* An instance as the debug target menu names it: its object's name, or its
-   prototype's and its entity's slot when the game spawned it. */
-static void instance_label(app_scene_authoring *scene, ecs_entity entity, char *buf, size_t size)
+   prototype's and its entity's slot when the game spawned it. A destroyed
+   object's prototype is the one the target kept. */
+static void instance_label(
+    app_scene_authoring *scene,
+    ecs_entity entity,
+    const char *prototype,
+    char *buf,
+    size_t size
+)
 {
     const char *name = actor_name(scene, entity);
     if (name) {
@@ -802,19 +809,118 @@ static void instance_label(app_scene_authoring *scene, ecs_entity entity, char *
         buf,
         size,
         "%s %u",
-        runtime_entity_label(scene, entity),
+        prototype ? prototype : runtime_entity_label(scene, entity),
         (unsigned)entity.slot
     );
 }
 
+typedef enum
+{
+    CHOICE_NONE,
+    CHOICE_INSTANCE,
+    CHOICE_NEWEST,      /* Follow newest */
+    CHOICE_SPAWN_BREAK, /* Break when spawned */
+} choice_kind;
+
 typedef struct
 {
+    choice_kind kind;
     ecs_entity entity;
+    const char *prototype;
     char label[96];
 } debug_choice;
 
+static bool prototype_attaches(const game_prototype *prototype, const char *behavior)
+{
+    for (int i = 0; i < acount(prototype->graphs); i++) {
+        if (!strcmp(prototype->graphs[i], behavior)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* Per prototype that attaches the open behavior: Follow newest, which
+   follows each one the game spawns (Unreal's debug filter by class), and
+   Break when spawned. The scene's game only; a preview runs one object. */
+static void prototype_choices(studio *s, debug_choice **choices)
+{
+    app_scene_authoring *scene = s->scene;
+    if (scene->active_runtime_target != APP_RUNTIME_SCENE) {
+        return;
+    }
+    for (choice_kind kind = CHOICE_NEWEST; kind <= CHOICE_SPAWN_BREAK; kind++) {
+        for (int i = 0; i < acount(scene->prototypes); i++) {
+            const game_prototype *prototype = scene->prototypes[i].prototype;
+            if (!prototype_attaches(prototype, scene->graph_document_id)) {
+                continue;
+            }
+            debug_choice choice = { .kind = kind, .prototype = prototype->name };
+            snprintf(choice.label, sizeof choice.label, "%s", prototype->name);
+            apush(*choices, choice);
+        }
+    }
+}
+
+static kit_command_item choice_item(studio *s, const debug_choice *choice, bool targeted)
+{
+    app_scene_authoring *scene = s->scene;
+    const char *newest = scene->debug_newest;
+    switch (choice->kind) {
+        case CHOICE_NONE:
+            return (kit_command_item){ .label = choice->label,
+                                       .icon = KIT_ICON_CLOSE,
+                                       .current = !targeted };
+        case CHOICE_INSTANCE:
+            return (kit_command_item){
+                .label = choice->label,
+                .group = actor_name(scene, choice->entity) ? "Scene" : "Spawned",
+                .icon = KIT_ICON_TARGET,
+                .current = targeted && !newest &&
+                           ecs_entity_to_u64(choice->entity) ==
+                               ecs_entity_to_u64(scene->debug.entity),
+            };
+        case CHOICE_NEWEST:
+            return (kit_command_item){
+                .label = choice->label,
+                .group = "Follow newest",
+                .keywords = "newest latest last spawned follow",
+                .icon = studio_prototype_icon(s, choice->prototype),
+                .current = newest && !strcmp(newest, choice->prototype),
+            };
+        case CHOICE_SPAWN_BREAK: {
+            bool on = app_scene_authoring_spawn_break(scene, choice->prototype);
+            return (kit_command_item){
+                .label = choice->label,
+                .group = "Break when spawned",
+                .keywords = "break pause spawn breakpoint",
+                .icon = on ? KIT_ICON_DOT : KIT_ICON_CIRCLE,
+                .current = on,
+            };
+        }
+    }
+    return (kit_command_item){ 0 };
+}
+
+static void choose(studio *s, const debug_choice *choice)
+{
+    switch (choice->kind) {
+        case CHOICE_NONE:
+        case CHOICE_INSTANCE:
+            app_scene_authoring_choose_debug_target(s->scene, choice->entity);
+            break;
+        case CHOICE_NEWEST:
+            app_scene_authoring_follow_newest(s->scene, choice->prototype);
+            break;
+        case CHOICE_SPAWN_BREAK:
+            studio_toggle_spawn_break(s, choice->prototype);
+            break;
+    }
+}
+
 /* The running instances of the open behavior to debug, searchable, after
-   No target (Unreal's debug object menu). */
+   No target (Unreal's debug object menu), then Follow and Break when
+   spawned per prototype. */
 static void debug_target_menu(studio *s, const char *key)
 {
     app_scene_authoring *scene = s->scene;
@@ -824,40 +930,61 @@ static void debug_target_menu(studio *s, const char *key)
     bool targeted = scene->debug_status == APP_DEBUG_AVAILABLE ||
                     scene->debug_status == APP_DEBUG_STALE;
     debug_choice *choices = NULL;
-    apush(choices, ((debug_choice){ .label = "No target" }));
+    apush(choices, ((debug_choice){ .kind = CHOICE_NONE, .label = "No target" }));
+    prototype_choices(s, &choices);
     for (int i = 0; i < game_behavior_attachment_count(behaviors); i++) {
         game_behavior_attachment_info info = game_behavior_attachment_info_index(behaviors, i);
         if (!strcmp(info.asset_name, scene->graph_document_id)) {
-            debug_choice choice = { .entity = info.entity };
-            instance_label(scene, info.entity, choice.label, sizeof choice.label);
+            debug_choice choice = { .kind = CHOICE_INSTANCE, .entity = info.entity };
+            instance_label(scene, info.entity, NULL, choice.label, sizeof choice.label);
             apush(choices, choice);
         }
     }
     kit_command_item *items = NULL;
     for (int i = 0; i < acount(choices); i++) {
-        bool current = i ? targeted && ecs_entity_to_u64(choices[i].entity) ==
-                                           ecs_entity_to_u64(scene->debug.entity)
-                         : !targeted;
-        apush(
-            items,
-            ((kit_command_item){ .label = choices[i].label,
-                                 .group = !i ? NULL
-                                        : actor_name(scene, choices[i].entity) ? "Scene"
-                                                                               : "Spawned",
-                                 .icon = i ? KIT_ICON_TARGET : KIT_ICON_CLOSE,
-                                 .current = current })
-        );
+        apush(items, choice_item(s, &choices[i], targeted));
     }
     int chosen = kit_dropdown(s->kit, key, items, acount(items));
     if (chosen >= 0) {
-        app_scene_authoring_choose_debug_target(scene, choices[chosen].entity);
+        choose(s, &choices[chosen]);
     }
     afree(items);
     afree(choices);
 }
 
+/* What the target button adds to the instance's name: a destroyed object's
+   frozen data, a stale definition, or Follow newest. */
+static const char *target_state(const app_scene_authoring *scene)
+{
+    if (scene->debug_destroyed) {
+        return " \xc2\xb7 Destroyed";
+    }
+    if (scene->debug_status == APP_DEBUG_STALE) {
+        return " \xc2\xb7 Edited";
+    }
+    return scene->debug_newest ? " \xc2\xb7 Newest" : "";
+}
+
+static const char *target_description(const app_scene_authoring *scene)
+{
+    if (scene->debug_destroyed) {
+        return "Its object was destroyed. The graph shows what it last did "
+               "until "
+               "another target is chosen.";
+    }
+    if (scene->debug_status == APP_DEBUG_STALE) {
+        return "It runs the saved behavior. Save to run this graph.";
+    }
+    return scene->debug_newest
+             ? "Follows the newest one the game spawned; choose an instance to "
+               "stay on one."
+             : "The running instance whose wires, nodes and values this graph "
+               "shows. Selecting an object shows its instance.";
+}
+
 /* While the game runs, which instance the graph shows (Unreal's debug
-   object): the selected object's, chosen here, or none. */
+   object): the selected object's, chosen here, the newest of a prototype,
+   or none. */
 static void debug_target(studio *s, int area)
 {
     kit *k = s->kit;
@@ -866,10 +993,13 @@ static void debug_target(studio *s, int area)
         return;
     }
     char name[96], label[128] = "No target", key[32];
-    bool stale = scene->debug_status == APP_DEBUG_STALE;
-    if (scene->debug_status == APP_DEBUG_AVAILABLE || stale) {
-        instance_label(scene, scene->debug.entity, name, sizeof name);
-        snprintf(label, sizeof label, "%s%s", name, stale ? " \xc2\xb7 Edited" : "");
+    if (scene->debug_status == APP_DEBUG_AVAILABLE ||
+        scene->debug_status == APP_DEBUG_STALE) {
+        instance_label(scene, scene->debug.entity, scene->debug.prototype, name, sizeof name);
+        snprintf(label, sizeof label, "%s%s", name, target_state(scene));
+    } else if (scene->debug_newest) {
+        /* Waiting for the first to spawn. */
+        snprintf(label, sizeof label, "Newest %s", scene->debug_newest);
     }
     kit_button_desc d = {
         .label = label,
@@ -879,11 +1009,7 @@ static void debug_target(studio *s, int area)
         .cls = "debug-target",
         .morph = true,
         .tip = "Debug target",
-        .description = stale
-                         ? "It runs the saved behavior. Save to run this graph."
-                         : "The running instance whose wires, nodes and values "
-                           "this graph shows. Selecting an object shows its "
-                           "instance.",
+        .description = target_description(scene),
     };
     snprintf(key, sizeof key, "debug-target:%d", area);
     if (kit_button(k, "debug", &d)) {

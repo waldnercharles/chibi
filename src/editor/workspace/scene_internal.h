@@ -212,7 +212,16 @@ struct app_scene_authoring
         uint64_t session;
         app_runtime_target target;
     } debug_followed; /* what the debug target last followed */
+    /* Follow newest (Unreal's debug filter by class): the target moves to
+       each instance of this prototype the game spawns; NULL when off. */
+    char *debug_newest;
     app_debug_status debug_status;
+    /* The target's entity was destroyed: the graph shows what it last did. */
+    bool debug_destroyed;
+    /* Break When Spawned (app_scene_authoring_set_spawn_break): prototype
+       names, and the spawned entities seen at the last frame, sorted. */
+    char **spawn_breaks;
+    uint64_t *spawn_seen;
     bool runtime_snapshot_valid;
     scene_kept *kept; /* Keep Changes, oldest first; Stop applies them */
     bool runtime_playing;
@@ -358,6 +367,8 @@ scene_prototype_asset *previewed_prototype(app_scene_authoring *scene);
 
 bool prototype_has_component_id(const game_prototype *prototype, ecs_component_id id);
 void prototype_history_before(app_scene_authoring *scene, game_prototype *prototype);
+/* The prototype a running scene entity was made from, or NULL. */
+const char *scene_entity_prototype(const app_scene_authoring *scene, ecs_entity entity);
 const char *runtime_entity_label(const app_scene_authoring *scene, ecs_entity entity);
 bool runtime_session(const app_scene_authoring *scene);
 /* Keep Changes (Unreal's Keep Simulation Changes): records the running values

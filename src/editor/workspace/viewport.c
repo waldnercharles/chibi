@@ -498,7 +498,8 @@ static bool navigate_viewport(engine_viewport *viewport, const viewport_io *io, 
     if (zoom) {
         float x = io->mouse.x / size.x - 0.5f;
         float y = 0.5f - io->mouse.y / size.y;
-        float scale = powf(1.1f, -io->wheel);
+        /* The graph's rate: about 15% a wheel notch, as Blender's views zoom. */
+        float scale = powf(2.0f, -0.2f * io->wheel);
         scale = fmaxf(1.0f / before.span_width, fminf(100000.0f / before.span_width, scale));
         CF_V2 anchor;
         bool anchored = pointer_world(viewport, (CF_V2){ 2 * x, 2 * y }, &anchor);

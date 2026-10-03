@@ -317,7 +317,7 @@ static uint32_t color_channel(const pin_value *value)
     return (uint32_t)lround(fmin(fmax(channel, 0), 255));
 }
 
-static uint32_t literal_color(const pin_spec *spec, const pin_value *value)
+uint32_t sg_literal_color(const pin_spec *spec, const pin_value *value)
 {
     if (value->type == PIN_U32) {
         return value->u;
@@ -863,7 +863,7 @@ static bool edit_literal_value(
         if (has_alpha) {
             kit_push(k, "rgba", NULL, "color-alpha-row");
         }
-        uint32_t color = literal_color(shape, value);
+        uint32_t color = sg_literal_color(shape, value);
         bool color_changed = kit_color(k, has_alpha ? "swatch" : key, &color, flags);
         bool changed = color_changed;
         bool committed = kit_item_committed(k);

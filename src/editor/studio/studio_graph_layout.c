@@ -139,7 +139,7 @@ static const float CODE_SIZE = 11, CODE_LINE = 16, CODE_PAD = 12, CODE_INSET = 4
 
 /* Color presentation belongs to the explicit pin flag or the reflected field
    catalog, not to a guess based on names like "Color" or the C type `unsigned`. */
-static bool color_pin(const node *n, const pin_spec *spec)
+bool sg_color_pin(const node *n, const pin_spec *spec)
 {
     int width = pin_vector_width(spec);
     if ((spec->flags & PIN_FLAG_COLOR) &&
@@ -178,7 +178,7 @@ value_kind sg_value_kind_of(const studio *s, node *n, int output, int p)
     if (choices && editor_choices_count(choices) > 0) {
         return VALUE_CHOICE;
     }
-    if (color_pin(n, spec)) {
+    if (sg_color_pin(n, spec)) {
         return VALUE_COLOR;
     }
     if (spec->type == PIN_BOOL) {

@@ -26,6 +26,10 @@ body.graph-canvas {
     --active-object: #ffa53a;
     --bubble: #e6e2cbf2;
     --bubble-fg: #1f1f22;
+    /* The debug target's activity: the running rim takes the execution
+       wire's color, and live value chips sit on the canvas. */
+    --flow-running: #e8e8ea8c;
+    --live-chip: #1d1d21e6;
 }
 /* Light canvases keep full-color titles in lighter tints (Blender's light theme). */
 body.graph-canvas:not(.dark) {
@@ -38,6 +42,8 @@ body.graph-canvas:not(.dark) {
     --n-expr: #c8e2e6;
     --n-call: #cce1d1;
     --bubble: #fff6ccf2;
+    --flow-running: #52525b8c;
+    --live-chip: #ffffffe6;
 }
 
 #back, #front { position: absolute; left: 0dp; top: 0dp; right: 0dp; bottom: 0dp; pointer-events: none; }
@@ -235,12 +241,33 @@ body.far .gbubble { visibility: hidden; }
 }
 .gpaused[data-starting-style] { opacity: 0; }
 .gnode[data-paused] { z-index: 3; }
+/* A node the debug target is running wears a rim in the execution wire's
+   color; once it stops the rim fades over 0.4 s, as its wires' pulses do. */
+.grunning {
+    position: absolute; left: -3dp; top: -3dp; right: -3dp; bottom: -3dp;
+    border: 1.5dp var(--flow-running); border-radius: 9dp; pointer-events: none;
+    opacity: 1; transition: opacity 0.4s cubic-in-out;
+}
+.grunning[data-ending-style] { opacity: 0; }
+.gnode[data-form=operator] .grunning { border-radius: 13dp; }
+.gnode[data-form=getter] .grunning { border-radius: 16dp; }
 
-/* A watched pin's value floats outside the node beside its socket (Unreal). */
+/* A watched pin's value floats outside the node beside its socket (Unreal);
+   Show Live Values gives every data output a quieter chip. */
 .gwatch {
     position: absolute; top: -9dp; height: var(--studio-height-16, 16dp); padding: 0dp 6dp; border-radius: 8dp;
     background-color: var(--primary); color: var(--primary-foreground); font-size: var(--studio-font-10, 10dp); line-height: var(--studio-line-16, 16dp);
     font-family: var(--font-numeric); white-space: nowrap; pointer-events: none;
+    display: flex; align-items: center;
+}
+.gwatch[data-live] {
+    top: -10dp; height: var(--studio-height-16, 16dp); padding: 0dp 5dp; border-radius: 4dp;
+    background-color: var(--live-chip); color: var(--foreground); border: 1dp var(--node-edge);
+    line-height: var(--studio-line-14, 14dp);
+}
+.gwatch-swatch {
+    width: 8dp; height: 8dp; margin-right: 4dp; border-radius: 2dp;
+    border: 1dp var(--node-edge);
 }
 .in > .gwatch { right: 100%; margin-right: 10dp; }
 .out > .gwatch { left: 100%; margin-left: 10dp; }

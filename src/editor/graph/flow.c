@@ -1,3 +1,8 @@
+/* What the debug target's wires and nodes did, for flow pulses and node rims.
+ * The runtime counts each wire's traversals while it traces the target
+ * (behavior_instance_record_activity). Once per editor tick this index reads
+ * those counts and notes, on the editor clock, when each one last changed, so
+ * pulses ease out while the game is paused as well as when it stops firing. */
 #include "editor/graph/flow_visual.h"
 #include "editor/workspace/editor_internal.h"
 #include "support/xalloc.h"
@@ -22,154 +27,243 @@ const behavior_instance *ed_display_instance(const editor *e)
 
 typedef struct
 {
-    bool used;
-    flow_traversal record;
-} activity_slot;
+    flow_traversal edge; /* the wire's ends and kind */
+    uint64_t count;      /* the runtime count last read; zero marks empty */
+    double fired;        /* editor time it was last seen to change */
+} seen_edge;
+
+typedef struct
+{
+    uint64_t id;      /* zero marks empty */
+    uint64_t entered; /* execution that reached it */
+    uint64_t left;    /* the most any of its outputs fired */
+    double fired;
+} seen_node;
 
 typedef struct ed_flow_activity_index
 {
-    activity_slot *slots;
-    int capacity;
-    bool valid;
-    const flow_run *run;
     const behavior_instance *instance;
-    const behavior_instance_trace_entry *trace;
-    const graph *graph;
-    int trace_count;
-    uint64_t run_revision, trace_revision, epoch;
-    uint64_t records_indexed;
+    uint64_t generation;
+    bool primed; /* counts read once; later changes are fires */
+    double time;
+    seen_edge *edges;
+    int edge_capacity, edge_used;
+    seen_node *nodes;
+    int node_capacity, node_used;
 } ed_flow_activity_index;
 
-static uint64_t activity_hash(const flow_traversal *r)
+static uint64_t mix(uint64_t hash, uint64_t value)
 {
-    uint64_t key[] = { r->from_id, r->from_pin_id, r->to_id, r->to_pin_id, r->kind };
-    uint64_t hash = 14695981039346656037ull;
-    for (int i = 0; i < 5; i++) {
-        hash = (hash ^ key[i]) * 1099511628211ull;
-    }
-    return hash;
+    return (hash ^ value) * 1099511628211ull;
 }
 
-static bool activity_matches(const flow_traversal *a, const flow_traversal *b)
+static uint64_t edge_hash(const flow_traversal *t)
+{
+    uint64_t hash = 14695981039346656037ull;
+    hash = mix(hash, t->from_id);
+    hash = mix(hash, t->from_pin_id);
+    hash = mix(hash, t->to_id);
+    hash = mix(hash, t->to_pin_id);
+    return mix(hash, t->kind);
+}
+
+static bool same_edge(const flow_traversal *a, const flow_traversal *b)
 {
     return a->kind == b->kind && a->from_id == b->from_id &&
            a->from_pin_id == b->from_pin_id && a->to_id == b->to_id &&
            a->to_pin_id == b->to_pin_id;
 }
 
-static activity_slot *activity_find(ed_flow_activity_index *index, const flow_traversal *record)
+static seen_edge *edge_slot(seen_edge *table, int capacity, const flow_traversal *t)
 {
-    int mask = index->capacity - 1;
-    int slot = (int)(activity_hash(record) & (uint64_t)mask);
-    while (index->slots[slot].used &&
-           !activity_matches(&index->slots[slot].record, record)) {
+    int mask = capacity - 1;
+    int slot = (int)(edge_hash(t) & (uint64_t)mask);
+    while (table[slot].count && !same_edge(&table[slot].edge, t)) {
         slot = (slot + 1) & mask;
     }
-    return &index->slots[slot];
+    return &table[slot];
 }
 
-static void activity_add(ed_flow_activity_index *index, const flow_traversal *record)
+static seen_node *node_slot(seen_node *table, int capacity, uint64_t id)
 {
-    activity_slot *slot = activity_find(index, record);
-    if (!slot->used || record->timestamp > slot->record.timestamp) {
-        slot->record = *record;
-        slot->used = true;
+    int mask = capacity - 1;
+    int slot = (int)(mix(14695981039346656037ull, id) & (uint64_t)mask);
+    while (table[slot].id && table[slot].id != id) {
+        slot = (slot + 1) & mask;
     }
-    index->records_indexed++;
+    return &table[slot];
+}
+
+static void grow_edges(ed_flow_activity_index *index)
+{
+    int capacity = index->edge_capacity ? index->edge_capacity * 2 : 64;
+    seen_edge *table = xcalloc((size_t)capacity, sizeof *table);
+    for (int i = 0; i < index->edge_capacity; i++) {
+        if (index->edges[i].count) {
+            *edge_slot(table, capacity, &index->edges[i].edge) = index->edges[i];
+        }
+    }
+    free(index->edges);
+    index->edges = table;
+    index->edge_capacity = capacity;
+}
+
+static seen_node *node_entry(ed_flow_activity_index *index, uint64_t id)
+{
+    if ((index->node_used + 1) * 2 > index->node_capacity) {
+        int capacity = index->node_capacity ? index->node_capacity * 2 : 64;
+        seen_node *table = xcalloc((size_t)capacity, sizeof *table);
+        for (int i = 0; i < index->node_capacity; i++) {
+            if (index->nodes[i].id) {
+                *node_slot(table, capacity, index->nodes[i].id) = index->nodes[i];
+            }
+        }
+        free(index->nodes);
+        index->nodes = table;
+        index->node_capacity = capacity;
+    }
+    seen_node *entry = node_slot(index->nodes, index->node_capacity, id);
+    if (!entry->id) {
+        *entry = (seen_node){ .id = id, .fired = -INFINITY };
+        index->node_used++;
+    }
+    return entry;
+}
+
+static void reset(ed_flow_activity_index *index, const behavior_instance *instance, uint64_t generation)
+{
+    if (index->edge_used) {
+        memset(index->edges, 0, (size_t)index->edge_capacity * sizeof *index->edges);
+    }
+    if (index->node_used) {
+        memset(index->nodes, 0, (size_t)index->node_capacity * sizeof *index->nodes);
+    }
+    index->edge_used = index->node_used = 0;
+    index->instance = instance;
+    index->generation = generation;
+    index->primed = false;
+}
+
+/* A wire that fired ran both ends; execution entering a node counts its
+   runs, and a node nothing enters (an event, a pure value) counts by its
+   busiest output. */
+static void note_fire(
+    ed_flow_activity_index *index,
+    const behavior_instance_activity *record,
+    uint64_t added,
+    double fired
+)
+{
+    const flow_traversal *t = &record->last;
+    seen_node *from = node_entry(index, t->from_id);
+    from->left = record->count > from->left ? record->count : from->left;
+    from->fired = fired;
+    if (t->kind == GRAPH_EDGE_EXEC) {
+        seen_node *to = node_entry(index, t->to_id);
+        to->entered += added;
+        to->fired = fired;
+    }
+}
+
+static void observe(ed_flow_activity_index *index, const behavior_instance_activity *record, double now)
+{
+    if ((index->edge_used + 1) * 2 > index->edge_capacity) {
+        grow_edges(index);
+    }
+    seen_edge *seen = edge_slot(index->edges, index->edge_capacity, &record->last);
+    if (seen->count == record->count) {
+        return;
+    }
+    if (!seen->count) {
+        *seen = (seen_edge){ .edge = record->last, .fired = -INFINITY };
+        index->edge_used++;
+    }
+    uint64_t added = record->count - seen->count;
+    seen->count = record->count;
+    double fired = index->primed ? now : -INFINITY;
+    seen->fired = fired;
+    note_fire(index, record, added, fired);
+}
+
+/* Queries borrow a lazily derived view, read once per editor tick. */
+static ed_flow_activity_index *activity_index(const editor *e)
+{
+    editor *owner = (editor *)e;
+    if (!owner->flow_activity) {
+        owner->flow_activity = xcalloc(1, sizeof *owner->flow_activity);
+    }
+    ed_flow_activity_index *index = owner->flow_activity;
+    const behavior_instance *instance = ed_display_instance(e);
+    int capacity = 0;
+    uint64_t generation = 0;
+    const behavior_instance_activity
+        *table = instance
+                   ? behavior_instance_activity_table(instance, &capacity, &generation)
+                   : NULL;
+    if (instance != index->instance || generation != index->generation) {
+        reset(index, instance, generation);
+    }
+    if (index->primed && index->time == e->monotonic_time) {
+        return index;
+    }
+    for (int i = 0; i < capacity; i++) {
+        if (table[i].count) {
+            observe(index, &table[i], e->monotonic_time);
+        }
+    }
+    index->primed = true;
+    index->time = e->monotonic_time;
+    return index;
 }
 
 void ed_flow_activity_free(editor *e)
 {
     if (e->flow_activity) {
-        free(e->flow_activity->slots);
+        free(e->flow_activity->edges);
+        free(e->flow_activity->nodes);
         free(e->flow_activity);
         e->flow_activity = NULL;
     }
 }
 
-uint64_t ed_flow_activity_records_indexed(const editor *e)
-{
-    return e->flow_activity ? e->flow_activity->records_indexed : 0;
-}
-
-static ed_flow_activity_index *activity_index(const editor *e)
-{
-    editor *owner = (editor *)e; /* Queries borrow a lazily derived view. */
-    if (!owner->flow_activity) {
-        owner->flow_activity = xcalloc(1, sizeof *owner->flow_activity);
-    }
-    ed_flow_activity_index *index = owner->flow_activity;
-    const flow_run *run = ed_display_run(e);
-    uint64_t run_revision = flow_run_traversal_revision(run);
-    const behavior_instance_trace_entry *trace = e->inspection_instance
-                                                   ? e->inspection_trace
-                                                   : NULL;
-    int trace_count = trace ? e->inspection_trace_count : 0;
-    if (index->valid && index->run == run && index->run_revision == run_revision &&
-        index->instance == e->inspection_instance && index->trace == trace &&
-        index->trace_count == trace_count &&
-        index->trace_revision == e->inspection_trace_revision &&
-        index->graph == e->active_graph && index->epoch == e->flow_activity_epoch) {
-        return index;
-    }
-    int count = 0;
-    const flow_traversal *records = flow_run_traversals(run, &count);
-    int capacity = 16;
-    while (capacity < 2 * (count + trace_count)) {
-        capacity *= 2;
-    }
-    if (capacity > index->capacity) {
-        index->slots = xrealloc(index->slots, (size_t)capacity * sizeof *index->slots);
-        index->capacity = capacity;
-    }
-    memset(index->slots, 0, (size_t)index->capacity * sizeof *index->slots);
-    /* Reverse order preserves the existing tie preference: current run first,
-     * then retained history; only a strictly newer timestamp replaces it. */
-    for (int i = count - 1; i >= 0; i--) {
-        activity_add(index, &records[i]);
-    }
-    for (int i = trace_count - 1; i >= 0; i--) {
-        activity_add(index, &trace[i].traversal);
-    }
-    index->run = run;
-    index->run_revision = run_revision;
-    index->instance = e->inspection_instance;
-    index->trace = trace;
-    index->trace_count = trace_count;
-    index->trace_revision = e->inspection_trace_revision;
-    index->graph = e->active_graph;
-    index->epoch = e->flow_activity_epoch;
-    index->valid = true;
-    return index;
-}
-
-static const flow_traversal *latest_flow_record(const editor *e, const edge *ed)
-{
-    if (ed_inspection_blocked(e)) {
-        return NULL;
-    }
-    ed_flow_activity_index *index = activity_index(e);
-    flow_traversal key = {
-        .from_id = ed->from_id,
-        .from_pin_id = ed->from_pin_id,
-        .to_id = ed->to_id,
-        .to_pin_id = ed->to_pin_id,
-        .kind = ed->kind,
-    };
-    activity_slot *slot = activity_find(index, &key);
-    return slot->used ? &slot->record : NULL;
-}
-
 void editor_query_edge_activity(const editor *e, const edge *edge, editor_edge_activity *out)
 {
     assert(e && edge && out);
-    const flow_traversal *record = latest_flow_record(e, edge);
-    *out = (editor_edge_activity){
-        .traversed = record != NULL,
-        .timestamp = record ? record->timestamp : 0,
-    };
-    if (edge->kind != GRAPH_EDGE_EXEC || !record) {
+    *out = (editor_edge_activity){ 0 };
+    ed_flow_activity_index *index = activity_index(e);
+    if (!index->edge_used) {
         return;
     }
-    out->opacity = (float)flow_visual_heat(fmax(0.0, e->monotonic_time - record->timestamp));
+    flow_traversal key = {
+        .from_id = edge->from_id,
+        .from_pin_id = edge->from_pin_id,
+        .to_id = edge->to_id,
+        .to_pin_id = edge->to_pin_id,
+        .kind = edge->kind,
+    };
+    const seen_edge *seen = edge_slot(index->edges, index->edge_capacity, &key);
+    if (!seen->count) {
+        return;
+    }
+    double since = fmax(0.0, e->monotonic_time - seen->fired);
+    out->count = seen->count;
+    out->pulse = (float)flow_visual_pulse(since);
+    out->heat = edge->kind == GRAPH_EDGE_EXEC ? (float)flow_visual_heat(since) : 0;
+}
+
+void editor_query_node_activity(const editor *e, uint64_t node_id, editor_node_activity *out)
+{
+    assert(e && out);
+    *out = (editor_node_activity){ .since = INFINITY };
+    ed_flow_activity_index *index = activity_index(e);
+    if (!index->node_used) {
+        return;
+    }
+    const seen_node *seen = node_slot(index->nodes, index->node_capacity, node_id);
+    if (!seen->id) {
+        return;
+    }
+    out->runs = seen->entered ? seen->entered : seen->left;
+    out->since = fmax(0.0, e->monotonic_time - seen->fired);
+    out->pulse = (float)flow_visual_pulse(out->since);
 }

@@ -9,4 +9,7 @@
   <use ui="MenuCheck" data-checked="save.shortBindings">Short Bindings</use>
   <use ui="MenuCheck" data-checked="save.titleFlow">Flow in Titles</use>
   <use ui="MenuCheck" data-checked="save.compactNodes">Compact Nodes</use>
+  <div class="menu-sep"/>
+  <div class="menu-group">Debugging</div>
+  <use ui="MenuCheck" data-checked="save.liveValues">Live Values</use>
 </div>

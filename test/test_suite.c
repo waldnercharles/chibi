@@ -113,6 +113,8 @@ void test_studio_settings();
 void test_scene_view();
 /* One selection model, commands on the selection and the object clipboard. */
 void test_scene_selection();
+/* The graph debug target while the game runs. */
+void test_debug_target();
 /* Visual designer (workstream H). */
 void test_ui_designer();
 
@@ -253,6 +255,7 @@ TEST_CASE(all_checks)
     test_scene_debug();
     test_scene_view();
     test_scene_selection();
+    test_debug_target();
     test_appearance_geometry();
     test_mesh_surface();
     test_mesh_asset();
@@ -971,6 +974,7 @@ int main(int argc, char **argv)
     if (argc > 1 && strcmp(argv[1], "--editor-flow") == 0) {
         registry_validate();
         test_editor_flow();
+        test_debug_target();
         run_runtime_instance_checks();
         return fails ? 1 : 0;
     }

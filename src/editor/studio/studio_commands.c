@@ -671,6 +671,16 @@ static const command_entry COMMANDS[STUDIO_COMMAND_COUNT] = {
                                      .keywords = "range multiple",
                                      .repeat = true,
                                      .phase = SHORTCUT_EDITOR },
+    /* Unreal's watches, on every data output at once. */
+    [STUDIO_COMMAND_SHOW_LIVE_VALUES] = { .id = "showLiveValues",
+                                          .label = "Show Live Values",
+                                          .menu = "Live Values",
+                                          .context = "Global",
+                                          .keywords = "graph debug watch "
+                                                      "values chips running "
+                                                      "inspect",
+                                          .icon = KIT_ICON_EYE,
+                                          .phase = SHORTCUT_EDITOR },
 };
 
 const char *studio_command_default_chord(studio_command command)
@@ -944,6 +954,7 @@ int studio_command_checked(studio *s, studio_command command)
         case STUDIO_COMMAND_SHOW_LIGHTING: return s->prefs.scene_lighting;
         case STUDIO_COMMAND_SHOW_FOG: return s->prefs.scene_fog;
         case STUDIO_COMMAND_SHOW_CAMERAS: return s->prefs.scene_cameras;
+        case STUDIO_COMMAND_SHOW_LIVE_VALUES: return s->prefs.live_values;
         case STUDIO_COMMAND_VIEW_THROUGH_CAMERA:
             return app_scene_authoring_viewing_through_camera(s->scene);
         default: return -1;
@@ -1236,6 +1247,9 @@ void studio_command_run_with(studio *s, studio_command command, int argument)
             break;
         case STUDIO_COMMAND_SHOW_CAMERAS:
             s->prefs.scene_cameras = !s->prefs.scene_cameras;
+            break;
+        case STUDIO_COMMAND_SHOW_LIVE_VALUES:
+            s->prefs.live_values = !s->prefs.live_values;
             break;
         case STUDIO_COMMAND_VIEW_THROUGH_CAMERA:
             app_scene_authoring_view_through_camera(

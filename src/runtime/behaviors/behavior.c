@@ -1825,6 +1825,12 @@ int game_behavior_attachment_count(const game_behavior_world *world)
     return world ? acount(world->attachments) : 0;
 }
 
+game_behavior_attachment_info game_behavior_attachment_info_index(game_behavior_world *world, int index)
+{
+    assert(index >= 0 && index < acount(world->attachments));
+    return info_of(&world->attachments[index]);
+}
+
 int game_behavior_attachment_count_for_entity(const game_behavior_world *world, ecs_entity entity)
 {
     if (!world) {
@@ -1945,9 +1951,13 @@ void game_behavior_inspect(game_behavior_world *world, const behavior_instance *
     }
     for (int i = 0; i < acount(world->attachments); i++) {
         behavior_attachment *attachment = &world->attachments[i];
-        bool enabled = attachment->debug_hold || attachment->instance == instance;
+        bool target = attachment->instance == instance;
+        bool enabled = attachment->debug_hold || target;
         if (attachment->instance->trace_enabled != enabled) {
             behavior_instance_set_trace_enabled(attachment->instance, enabled);
+        }
+        if (attachment->instance->debug_target != target) {
+            behavior_instance_set_debug_target(attachment->instance, target);
         }
     }
 }

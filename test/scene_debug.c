@@ -114,14 +114,16 @@ static void compatibility_cache()
     scene_debug_select(&scene.debug, &info, 7);
     sync_editor_inspection(&scene);
     assert(scene.debug_status == APP_DEBUG_AVAILABLE && e->inspection_run);
-    int trace_count = e->inspection_trace_count;
 
-    /* The host pump releases completed runs into the instance trace. Inspection
-     * must refresh both outputs even while semantic compatibility is cached. */
+    /* The host pump releases the completed run, which the traced target
+     * retains for its values. Inspection must refresh even while semantic
+     * compatibility is cached. */
     assert(game_behavior_pump(behaviors, 0.2) >= FLOW_OK);
     sync_editor_inspection(&scene);
     assert(scene.debug_status == APP_DEBUG_AVAILABLE && !e->inspection_run);
-    assert(e->inspection_trace_count > trace_count);
+    int retained = 0;
+    behavior_instance_retained_runs(info.instance, &retained);
+    assert(retained == 1);
 
     /* A UI mutation happens before editor_tick advances the revision. */
     unsigned revision = editor_edit_revision(e);

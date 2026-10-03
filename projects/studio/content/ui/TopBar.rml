@@ -61,6 +61,8 @@
         <li command="hideUnselected"/>
         <li command="showAll"/>
         <hr/>
+        <li command="showLiveValues"/>
+        <hr/>
         <li label="Drawers"/>
         <li command="toggleAssets"/>
         <li command="toggleOutput"/>

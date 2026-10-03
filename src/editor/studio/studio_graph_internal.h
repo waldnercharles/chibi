@@ -243,6 +243,23 @@ void sg_find_panel(studio *s);
 void sg_nav_header(studio *s);
 void sg_nav_keys(studio *s);
 
+/* Live values (studio_graph_live.c). */
+typedef struct studio_live_value
+{
+    uint64_t node, pin;
+    bool output, found;
+    bool color;      /* a color pin: the text is its hex, beside a swatch */
+    uint32_t swatch; /* 0xRRGGBBAA */
+    char text[48];
+} studio_live_value;
+/* The value a pin last carried in the debug target, compact, read at most
+   ten times a second; false while it carried none. */
+bool sg_live_value(studio *s, node *n, int output, int pin, studio_live_value *out);
+/* Whether the pin shows as a color: flagged so, or a reflected color field. */
+bool sg_color_pin(const node *n, const pin_spec *spec);
+/* A color pin's value as 0xRRGGBBAA. */
+uint32_t sg_literal_color(const pin_spec *spec, const pin_value *value);
+
 /* Rendering (studio_graph_draw.c). */
 /* A pin's socket color as 0xRRGGBBAA. */
 uint32_t sg_pin_color(const studio *s, const pin_spec *spec);

@@ -97,15 +97,23 @@ typedef struct
 int editor_command_apply(editor *e, editor_command command);
 void editor_query_state(const editor *e, editor_query *out);
 
+/* What the inspected instance's wires and nodes did while it was traced:
+ * how often, and envelopes of the editor seconds since they last fired. */
 typedef struct
 {
-    bool traversed;
-    double timestamp;
-    float opacity; /* execution heat; zero once it has cooled */
+    uint64_t count; /* traversals; zero for a wire that never carried anything */
+    float pulse;    /* bubble size: 1 while firing, easing to 0 once it stops */
+    float heat;     /* execution wires' glow, which lasts longer */
 } editor_edge_activity;
+typedef struct
+{
+    uint64_t runs; /* executions reaching it, else its busiest output's fires */
+    double since;  /* seconds since it last ran; INFINITY when not seen to */
+    float pulse;
+} editor_node_activity;
 
-/* Runtime activity used to draw an edge, without selection or hover styling. */
 void editor_query_edge_activity(const editor *e, const edge *edge, editor_edge_activity *out);
+void editor_query_node_activity(const editor *e, uint64_t node_id, editor_node_activity *out);
 
 /* The editor takes ownership of asset and frees it in editor_free(). */
 editor *editor_new(behavior_asset *asset);
@@ -241,15 +249,6 @@ int editor_rewire_behavior_expression(
 void editor_set_inspection_instance(editor *e, const behavior_instance *instance);
 /* Clear or replace this borrow before its run is freed. */
 void editor_set_inspection_run(editor *e, const flow_run *run);
-/* Borrowed custom trace: call again after changing its contents, even in place. */
-void editor_set_inspection_trace(editor *e, const behavior_instance_trace_entry *trace, int count);
-/* Runtime trace: the producer revision also detects bounded overwrites and clear. */
-void editor_set_inspection_trace_revision(
-    editor *e,
-    const behavior_instance_trace_entry *trace,
-    int count,
-    uint64_t revision
-);
 /* Disable live overlays and standalone fallback while a debug target is unavailable or stale. */
 void editor_set_inspection_blocked(editor *e, bool blocked);
 

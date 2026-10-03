@@ -186,6 +186,7 @@ set(EDITOR_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_graph_comment.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_graph_draw.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_graph_find.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_graph_live.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_graph_nav.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_disk.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_graph_edit.c

@@ -14,6 +14,8 @@
 #include <string.h>
 
 static const float GRID = 32;
+/* Below this zoom wires drop their labels and pulses (Rivet). */
+static const float FLOW_ZOOM_MIN = 0.15f;
 
 /* ---------- Palette ----------
    Colors drawn as geometry follow the theme; graph.rcss themes the elements. */
@@ -172,6 +174,48 @@ static kit_dot_desc socket_dot(const studio *s, const pin_spec *spec, bool conne
     return d;
 }
 
+/* Watched pins, and the pin under the pointer, show their value in a bubble
+   beside the socket unless an editor already shows it (Unreal). While the
+   debug target runs, values are live, and with Show Live Values every data
+   output shows its value in a quieter chip (Unreal's watches everywhere). */
+static void emit_watch(studio *s, node *n, bool input, int p, const pin_parts *parts, bool hovered)
+{
+    kit *k = s->graph.kit;
+    editor *e = sg_graph_editor(s);
+    bool live = eval_view_live(e->ev);
+    bool bubble = (parts->spec->flags & PIN_FLAG_WATCH) || hovered;
+    bool chip = !input && live && s->prefs.live_values && !sg_far(s);
+    bool edited = parts->value != VALUE_NONE && parts->value != VALUE_CHIP;
+    /* Previews can't read bindings, so a bound input shows only a run's value. */
+    bool bound = input && parts->value == VALUE_CHIP && !parts->inline_source;
+    if (parts->spec->kind != PIN_DATA || edited || (bound && !live) ||
+        !(bubble || chip)) {
+        return;
+    }
+    studio_live_value value = { 0 };
+    if (live && !sg_live_value(s, n, !input, p, &value)) {
+        return;
+    }
+    if (!live) {
+        const char *text = input ? eval_view_input(e->ev, sg_active_graph(s), n, p)
+                                 : eval_view_output(e->ev, n, p);
+        if (!text || !text[0]) {
+            return;
+        }
+        snprintf(value.text, sizeof value.text, "%s", text);
+    }
+    kit_push(k, "w", NULL, "gwatch");
+    kit_flag(k, "data-live", !bubble);
+    if (value.color) {
+        char color[16];
+        snprintf(color, sizeof color, "#%08x", value.swatch);
+        kit_leaf(k, "c", NULL, "gwatch-swatch");
+        kit_style(k, "background-color", color);
+    }
+    kit_label(k, "t", NULL, value.text);
+    kit_pop(k);
+}
+
 /* One pin: a row, half an execution row, or a socket in the title. Input
    labels share one width per node so the editors line up; compact nodes and
    title pins go unlabeled. */
@@ -216,20 +260,7 @@ static void emit_pin(studio *s, node *n, int kind, int p, const char *cls, float
             kit_style(k, "width", width);
         }
     }
-    /* Watched pins, and the pin under the pointer, show their last value
-       beside the socket unless an editor already shows it (Unreal). */
-    editor *e = sg_graph_editor(s);
-    bool edited = parts.value != VALUE_NONE && parts.value != VALUE_CHIP;
-    /* Previews can't read bindings, so a bound input shows only a run's value. */
-    bool bound = input && parts.value == VALUE_CHIP && !parts.inline_source;
-    if (parts.spec->kind == PIN_DATA && !edited && (!bound || ed_display_run(e)) &&
-        ((parts.spec->flags & PIN_FLAG_WATCH) || hovered)) {
-        const char *value = input ? eval_view_input(e->ev, sg_active_graph(s), n, p)
-                                  : eval_view_output(e->ev, n, p);
-        if (value && value[0]) {
-            kit_label(k, "w", "gwatch", value);
-        }
-    }
+    emit_watch(s, n, input, p, &parts, hovered);
     if (input && parts.spec->kind == PIN_DATA &&
         (parts.source_select || parts.value != VALUE_NONE || parts.connected)) {
         sg_emit_graph_input(s, k, n, p);
@@ -244,8 +275,31 @@ static void emit_dp(kit *k, const char *property, float value)
     kit_style(k, property, text);
 }
 
-/* Hovering a node's title tells what it does, under its full title. The tip
-   is set while the node is hovered, so idle nodes cost nothing. */
+/* How often the debug target ran a node, and when last: "Ran 1204 times,
+   last 0.3 s ago.", or "Running, ..." while it keeps running. Empty when it
+   never did. */
+static void describe_runs(const editor_node_activity *activity, char *buf, size_t size)
+{
+    buf[0] = '\0';
+    if (!activity->runs) {
+        return;
+    }
+    char runs[48] = "once";
+    if (activity->runs > 1) {
+        snprintf(runs, sizeof runs, "%llu times", (unsigned long long)activity->runs);
+    }
+    if (activity->pulse >= 1) {
+        snprintf(buf, size, "Running, %s so far.", runs);
+    } else if (isfinite(activity->since)) {
+        snprintf(buf, size, "Ran %s, last %.1f s ago.", runs, activity->since);
+    } else {
+        snprintf(buf, size, "Ran %s.", runs);
+    }
+}
+
+/* Hovering a node's title tells what it does, under its full title, and how
+   the debug target ran it. The tip is set while the node is hovered, so idle
+   nodes cost nothing. */
 static void emit_about(studio *s, node *n)
 {
     const editor *e = sg_graph_editor(s);
@@ -253,9 +307,14 @@ static void emit_about(studio *s, node *n)
         return;
     }
     node_subject subject = node_subject_of(n, e->asset_catalog, acount(e->asset_catalog));
-    char about[256], title[256];
-    if (node_subject_describe(&subject, about, sizeof about)) {
-        kit_tip(s->graph.kit, sg_node_title(s, n, FORM_FULL, title, sizeof title), NULL, about);
+    char about[256] = "", runs[96] = "", tip[360], title[256];
+    node_subject_describe(&subject, about, sizeof about);
+    editor_node_activity activity;
+    editor_query_node_activity(e, n->id, &activity);
+    describe_runs(&activity, runs, sizeof runs);
+    snprintf(tip, sizeof tip, "%s%s%s", about, about[0] && runs[0] ? " " : "", runs);
+    if (tip[0]) {
+        kit_tip(s->graph.kit, sg_node_title(s, n, FORM_FULL, title, sizeof title), NULL, tip);
     }
 }
 
@@ -475,10 +534,16 @@ static bool paused_at(const studio *s, const node *n)
 }
 
 /* A problem badge on the node's corner, its message on hover (Blender's node
-   warnings), and a ring around the node a paused run stopped at. */
-static void emit_marks(studio *s, const studio_node_problem *problem, bool paused)
+   warnings), a ring around the node a paused run stopped at, and a rim on a
+   node the debug target is running, which fades once it stops (its
+   presence's exit transition, immediate with Reduce Motion). */
+static void emit_marks(studio *s, const studio_node_problem *problem, bool paused, bool running)
 {
     kit *k = s->graph.kit;
+    if (running) {
+        kit_leaf(k, "running", NULL, "grunning");
+        kit_presence(k);
+    }
     if (problem) {
         kit_push(k, "problem", NULL, "gproblem");
         kit_tip(k, problem->error ? "Error" : "Warning", NULL, problem->text);
@@ -527,8 +592,37 @@ static void emit_node(studio *s, node *n)
         (l.code_lines || sg_row_count(sg_active_graph(s), n, &l))) {
         emit_rows(s, n, &l);
     }
-    emit_marks(s, problem, paused);
+    editor_node_activity activity;
+    editor_query_node_activity(e, n->id, &activity);
+    emit_marks(s, problem, paused, activity.pulse >= 1);
     kit_pop(k);
+}
+
+/* While the debug target runs, a wire that carried execution or a value
+   pulses: bubbles flow at full size while it keeps firing and shrink to
+   nothing once it stops (Unreal). Execution wires also glow, fading for two
+   seconds; Reduce Motion trades the bubbles for that glow. Far out, where
+   wires lose their labels, bubbles go too (Rivet). */
+static void emit_activity(studio *s, const edge *ed, const pin_spec *spec, kit_wire *wire)
+{
+    editor_edge_activity activity;
+    editor_query_edge_activity(sg_graph_editor(s), ed, &activity);
+    bool still = s->prefs.reduced_motion || sg_zoom(s) < FLOW_ZOOM_MIN;
+    float glow = spec->kind == PIN_EXEC ? activity.heat : 0;
+    glow = still ? fmaxf(glow, activity.pulse) : glow;
+    if (glow <= 0 && (still || activity.pulse <= 0)) {
+        return;
+    }
+    wire->flow_color = pin_color(s, spec, 1);
+    if (glow > 0) {
+        /* Eighths of a dp, so a fading glow rebuilds a few times, not every frame. */
+        wire->flow_width = wire->width + roundf(12 * glow) / 8;
+    }
+    if (!still && activity.pulse > 0) {
+        wire->flags |= KIT_WIRE_FLOW;
+        wire->flow = (float)s->time;
+        wire->pulse = activity.pulse;
+    }
 }
 
 /* Wires follow the selection: attached wires brighten, others recede. */
@@ -578,26 +672,16 @@ static void emit_wires(studio *s)
         /* Model anchors remain available when endpoint nodes are culled. */
         sg_socket_at(s, from, ED_PIN_OUTPUT, fp, &wire.from_x, &wire.from_y);
         sg_socket_at(s, to, ED_PIN_INPUT, tp, &wire.to_x, &wire.to_y);
-        /* Executed wires glow and carry markers while their heat lasts. */
-        editor_edge_activity activity;
-        editor_query_edge_activity(e, ed, &activity);
-        if (activity.opacity > 0) {
-            wire.flow_color = pin_color(s, spec, 1);
-            wire.flow_width = wire.width + 1.5f * activity.opacity;
-            wire.flags |= KIT_WIRE_FLOW;
-            wire.flow = (float)s->time;
-        }
+        emit_activity(s, ed, spec, &wire);
         if (ed_link_selected(e, &ref)) {
             wire.color = 0xffa53aff;
-            if (activity.opacity > 0) {
-                wire.flow_color = wire.color;
-            }
+            wire.flow_color = wire.flow_color ? wire.color : 0;
         }
         if (g->gesture == STUDIO_GRAPH_MOVE && g->insert_edge == i) {
             wire.color = palette(s)->hot;
             wire.width += 1;
-            if (activity.opacity > 0) {
-                wire.flow_color = wire.color;
+            wire.flow_color = wire.flow_color ? wire.color : 0;
+            if (wire.flow_width > 0) {
                 wire.flow_width += 1;
             }
         }
@@ -634,7 +718,8 @@ static void emit_wires(studio *s)
                             .grid_x = g->x,
                             .grid_y = g->y,
                             .grid_color = palette(s)->grid,
-                            .grid_major_color = palette(s)->grid_major };
+                            .grid_major_color = palette(s)->grid_major,
+                            .flow_scale = studio_pixel_ratio(s) };
     kit_wires(k, "wires", NULL, &desc);
     afree(wires);
     afree(via);

@@ -450,7 +450,8 @@ static void check_overlay_shadow()
     rml_backend_destroy(ui);
 }
 
-/* Gradient decorators draw through the gradient program. */
+/* Gradient decorators draw through the gradient program, and a gradient
+   mask image fades an element through a saved mask layer. */
 static void check_gradients()
 {
     enum
@@ -472,8 +473,12 @@ static void check_gradients()
         "#stripes { left: 40px; top: 28px; width: 24px; height: 24px; "
         "decorator: repeating-linear-gradient(90deg, #ff0000 0px, #ff0000 4px, "
         "#00ff00 4px, #00ff00 8px); }"
+        "#masked { left: 72px; top: 28px; width: 16px; height: 24px; "
+        "background-color: #ff0000; "
+        "mask-image: linear-gradient(90deg, #000000ff, #00000000); }"
         "</style></head><body>"
-        "<div id=\"linear\"/><div id=\"radial\"/><div id=\"stripes\"/>"
+        "<div id=\"linear\"/><div id=\"radial\"/><div id=\"stripes\"/><div "
+        "id=\"masked\"/>"
         "</body></rml>",
         "gradients"
     );
@@ -495,6 +500,10 @@ static void check_gradients()
     assert(near_color(pixels[40 * WIDTH + 42], 255, 0, 0, 255));
     assert(near_color(pixels[40 * WIDTH + 46], 0, 255, 0, 255));
     assert(near_color(pixels[40 * WIDTH + 50], 255, 0, 0, 255));
+    /* A mask image fades the element as its gradient's alpha does. */
+    CF_Pixel opaque = pixels[40 * WIDTH + 73], faded = pixels[40 * WIDTH + 86];
+    assert(opaque.colors.r > 240 && opaque.colors.a > 220);
+    assert(faded.colors.a < 40 && faded.colors.a < opaque.colors.a);
     cf_destroy_canvas(target);
     rml_document_close(doc);
     rml_backend_destroy(ui);

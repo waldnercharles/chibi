@@ -548,6 +548,46 @@ void ui_data_set_text(yyjson_mut_doc *doc, yyjson_mut_val *value, const char *te
     yyjson_mut_set_strn(value, yyjson_mut_get_str(copy), yyjson_mut_get_len(copy));
 }
 
+bool ui_data_put_text(yyjson_mut_doc *doc, yyjson_mut_val *object, const char *name, const char *text)
+{
+    yyjson_mut_val *value = yyjson_mut_obj_get(object, name);
+    if (yyjson_mut_is_str(value) && !strcmp(yyjson_mut_get_str(value), text)) {
+        return false;
+    }
+    ui_data_set_text(doc, value, text);
+    return true;
+}
+
+bool ui_data_put_bool(yyjson_mut_val *object, const char *name, bool on)
+{
+    yyjson_mut_val *value = yyjson_mut_obj_get(object, name);
+    if (yyjson_mut_is_bool(value) && yyjson_mut_get_bool(value) == on) {
+        return false;
+    }
+    yyjson_mut_set_bool(value, on);
+    return true;
+}
+
+bool ui_data_put_int(yyjson_mut_val *object, const char *name, int number)
+{
+    yyjson_mut_val *value = yyjson_mut_obj_get(object, name);
+    if (yyjson_mut_is_int(value) && yyjson_mut_get_int(value) == number) {
+        return false;
+    }
+    yyjson_mut_set_int(value, number);
+    return true;
+}
+
+bool ui_data_put_number(yyjson_mut_val *object, const char *name, double number)
+{
+    yyjson_mut_val *value = yyjson_mut_obj_get(object, name);
+    if (yyjson_mut_is_num(value) && yyjson_mut_get_num(value) == number) {
+        return false;
+    }
+    yyjson_mut_set_real(value, number);
+    return true;
+}
+
 static bool saved_number(const char *text, double *number)
 {
     yyjson_doc *doc = yyjson_read(text, strlen(text), 0);

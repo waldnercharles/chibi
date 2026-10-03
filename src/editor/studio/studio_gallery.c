@@ -47,26 +47,6 @@ void studio_gallery_add(yyjson_mut_doc *doc)
 
 /* ---------- Values, written in place ---------- */
 
-static bool put_text(yyjson_mut_doc *doc, yyjson_mut_val *item, const char *name, const char *text)
-{
-    yyjson_mut_val *value = yyjson_mut_obj_get(item, name);
-    if (!strcmp(yyjson_mut_get_str(value), text)) {
-        return false;
-    }
-    ui_data_set_text(doc, value, text);
-    return true;
-}
-
-static bool put_bool(yyjson_mut_val *item, const char *name, bool on)
-{
-    yyjson_mut_val *value = yyjson_mut_obj_get(item, name);
-    if (yyjson_mut_get_bool(value) == on) {
-        return false;
-    }
-    yyjson_mut_set_bool(value, on);
-    return true;
-}
-
 /* Gives the array `length` rows, adding and removing at its end, so rows
  * already shown keep their elements; true when its length changed. */
 static bool fit(yyjson_mut_doc *doc, yyjson_mut_val *rows, int length)
@@ -116,12 +96,12 @@ static bool show_asset(studio *s, yyjson_mut_doc *doc, yyjson_mut_val *item, int
     const char *kind = studio_asset_kind_name(asset->kind);
     char icon[5];
     glyph(icon, asset_icon(s, asset));
-    bool changed = put_text(doc, item, "label", asset->name);
-    changed |= put_text(doc, item, "name", asset->name);
-    changed |= put_text(doc, item, "icon", icon);
-    changed |= put_text(doc, item, "meta", kind);
-    changed |= put_text(doc, item, "drag", studio_asset_draggable(asset) ? kind : "");
-    changed |= put_bool(item, "unresolved", asset->unresolved);
+    bool changed = ui_data_put_text(doc, item, "label", asset->name);
+    changed |= ui_data_put_text(doc, item, "name", asset->name);
+    changed |= ui_data_put_text(doc, item, "icon", icon);
+    changed |= ui_data_put_text(doc, item, "meta", kind);
+    changed |= ui_data_put_text(doc, item, "drag", studio_asset_draggable(asset) ? kind : "");
+    changed |= ui_data_put_bool(item, "unresolved", asset->unresolved);
     return changed;
 }
 
@@ -172,9 +152,9 @@ static bool show_bin(studio *s, const studio_panel_sync *at, yyjson_mut_val *row
         if (id < 0) {
             char icon[5];
             glyph(icon, KIT_ICON_WARNING);
-            changed |= put_text(at->doc, item, "label", held->name);
-            changed |= put_text(at->doc, item, "icon", icon);
-            changed |= put_bool(item, "unresolved", true);
+            changed |= ui_data_put_text(at->doc, item, "label", held->name);
+            changed |= ui_data_put_text(at->doc, item, "icon", icon);
+            changed |= ui_data_put_bool(item, "unresolved", true);
             continue;
         }
         changed |= show_asset(s, at->doc, item, id);
@@ -184,9 +164,9 @@ static bool show_bin(studio *s, const studio_panel_sync *at, yyjson_mut_val *row
         if (image) {
             glyph(badge, studio_asset_kind_icon(held->kind));
         }
-        changed |= put_text(at->doc, item, "image", image ? image : "");
-        changed |= put_text(at->doc, item, "badge", badge);
-        changed |= put_bool(item, "loading", image && loading);
+        changed |= ui_data_put_text(at->doc, item, "image", image ? image : "");
+        changed |= ui_data_put_text(at->doc, item, "badge", badge);
+        changed |= ui_data_put_bool(item, "loading", image && loading);
     }
     return changed;
 }

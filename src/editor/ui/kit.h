@@ -51,6 +51,9 @@ extern "C"
         KIT_ACTIVE = 1 << 4, /* active tree row */
         KIT_INVALID = 1 << 5,
         KIT_SECRET = 1 << 6, /* text fields mask their value (passwords, tokens) */
+        /* Several objects' values differ: a field shows a dash, a checkbox a
+           dash in its box, as Unity's mixed values (data-mixed). */
+        KIT_MIXED = 1 << 7,
     };
 
     /* Borrowed Rml::Context*; the document stays loaded until kit_destroy. */
@@ -154,6 +157,10 @@ extern "C"
     const char *kit_classes(kit *k, const char *base, const kit_class *list, int count);
     /* A copy of text that lives until kit_end, for labels built per frame. */
     const char *kit_string(kit *k, const char *text);
+    /* Puts text on the system clipboard, the browser's too in the web build,
+       where a paste with no field focused hands the browser's text back to
+       SDL's clipboard before the Mod+V key arrives. */
+    void kit_clipboard_set(const char *text);
 #define KIT_CX(k, base, ...)                                                   \
     kit_classes(                                                               \
         k,                                                                     \

@@ -232,8 +232,16 @@ static const rml_event_id VIEW_EVENTS[] = {
 EM_JS(void, web_listen_paste, (), {
     if (Module.chibiPasteListener) return;
     Module.chibiPasteListener = true;
+    /* Without a field, SDL would take Mod+V and the browser would never
+       paste: the key waits for the paste event's text, or a moment. */
+    const pasteKey = (text, meta) => {
+        Module.chibiKeyPaste = false;
+        const pointer = text ? stringToNewUTF8(text) : 0;
+        Module._studio_web_paste_key(pointer, meta ? 1 : 0);
+        if (pointer) Module._free(pointer);
+    };
     document.addEventListener('keydown', (event) => {
-        if (document.activeElement !== Module.canvas || !Module._studio_web_wants_text()) return;
+        if (document.activeElement !== Module.canvas) return;
         const primary = event.metaKey || event.ctrlKey;
         if (!primary || event.key.toLowerCase() !== 'v') {
             Module.chibiPasteMeta = false;
@@ -241,10 +249,18 @@ EM_JS(void, web_listen_paste, (), {
         }
         Module.chibiPasteMeta = event.metaKey;
         event.stopPropagation();
+        if (Module._studio_web_wants_text()) return;
+        Module.chibiKeyPaste = true;
+        setTimeout(() => { if (Module.chibiKeyPaste) pasteKey(null, event.metaKey); }, 0);
     }, true);
     document.addEventListener('paste', (event) => {
         if (document.activeElement !== Module.canvas) return;
         const text = event.clipboardData?.getData('text/plain');
+        if (Module.chibiKeyPaste) {
+            event.preventDefault();
+            pasteKey(typeof text === 'string' ? text : null, Module.chibiPasteMeta);
+            return;
+        }
         if (typeof text !== 'string' || !text.length) return;
         const pointer = stringToNewUTF8(text);
         try {
@@ -547,12 +563,17 @@ static bool on_command(void *user, const char *command)
     return true;
 }
 
-static void on_set_clipboard(void *, const char *text)
+void kit_clipboard_set(const char *text)
 {
     cf_clipboard_set(text);
 #ifdef __EMSCRIPTEN__
     web_copy(text);
 #endif
+}
+
+static void on_set_clipboard(void *, const char *text)
+{
+    kit_clipboard_set(text);
 }
 
 static char *on_get_clipboard(void *)

@@ -70,6 +70,11 @@ enum
     KIT_ICON_EXTERNAL = 0xeb14,     /* nf-cod-link_external */
     KIT_ICON_RESET = 0xeae2,        /* nf-cod-discard */
     KIT_ICON_COPY = 0xebcc,         /* nf-cod-copy */
+    KIT_ICON_CLIPBOARD = 0xf018f,   /* nf-md-content_copy */
+    KIT_ICON_CUT = 0xf0190,         /* nf-md-content_cut */
+    KIT_ICON_PASTE = 0xf0192,       /* nf-md-content_paste */
+    KIT_ICON_DASH = 0xeacc,         /* nf-cod-dash */
+    KIT_ICON_SELECTION = 0xf0135,   /* nf-md-checkbox_multiple_blank_outline */
     KIT_ICON_EDIT = 0xea73,         /* nf-cod-edit */
     KIT_ICON_TRASH = 0xea81,        /* nf-cod-trash */
     KIT_ICON_WARNING = 0xea6c,      /* nf-cod-warning */

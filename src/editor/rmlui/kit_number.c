@@ -166,13 +166,19 @@ static double step_size(const widget *w)
     return w->desc.step > 0 ? w->desc.step : 1;
 }
 
+/* Unity's mixed value: a dash until a scrub or a step sets one value. */
+static bool number_mixed(const widget *w)
+{
+    return (w->desc.flags & KIT_MIXED) && !w->scrubbing && !w->step_dir && !w->pending;
+}
+
 static void number_display(node *n)
 {
     widget *w = &n->w;
     if (!w->editing) {
         char text[NUMBER_TEXT];
         format_number(text, w->value, w->desc.precision, w->desc.integer);
-        set_right_line_text(w->value_el, text);
+        set_right_line_text(w->value_el, number_mixed(w) ? "\xe2\x80\x94" : text);
     }
     if (number_slider(w)) {
         double range = w->desc.max - w->desc.min;
@@ -226,8 +232,8 @@ static void number_begin_edit(node *n, const char *initial)
     if (rml_element_attribute(n->el, "aria-label", label, sizeof label)) {
         rml_element_set_attribute(w->input_el, "aria-label", label);
     }
-    char text[NUMBER_TEXT];
-    if (!initial) {
+    char text[NUMBER_TEXT] = "";
+    if (!initial && !(w->desc.flags & KIT_MIXED)) {
         if (w->desc.integer) {
             snprintf(text, sizeof text, "%.0f", w->value);
         } else {
@@ -548,9 +554,12 @@ bool kit_number(kit *k, const char *key, double *value, const kit_number_desc *d
         w->pending = false;
         *value = w->pending_value;
         changed = true;
+        /* The caller writes the value everywhere this frame. */
+        w->desc.flags &= ~KIT_MIXED;
     } else if (!w->scrubbing && !w->editing && !w->step_dir) {
         w->value = d->single_precision ? (double)(float)*value : *value;
     }
+    set_flag(n, "data-mixed", number_mixed(w));
     number_display(n);
     return changed;
 }

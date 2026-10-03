@@ -1217,7 +1217,10 @@ yet migrated, stays kit-emitted, as a native slot of the Workspace.
   `--available-height`, the window's height less its margins, so an
   authored menu taller than the window scrolls (`popup.rcss`), as the kit's
   did; a press on an open authored popover keeps the area the command acts
-  on, as a press on the kit's layer did (the Edit menu over the Scene).
+  on, as a press on the kit's layer did (the Edit menu over the Scene);
+  the kit frees a faded toast before its toaster emits, so the last one's
+  node leaves in the emission its fade asked for (a deadline check had
+  passed only while `kit_spring` kept frames coming).
 - **Deleted:** the kit's `kit_menubar_trigger` and its trigger press,
   `kit_splitter` and `splitter_take`/`splitter_active`, `kit_spring` and its
   springs; the shell's kit menus, menubar, play target, layout control,

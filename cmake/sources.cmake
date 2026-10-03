@@ -175,6 +175,9 @@ set(EDITOR_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/ui/highlight.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/ui/labels.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_assets.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_thumbnails.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_thumbnail_graph.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_thumbnail_kinds.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_calls.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_debug.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_definition.c
@@ -249,6 +252,7 @@ set(APP_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/workspace/scene_world_preview.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/render/scene_renderer.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/render/shader_fragment.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/render/shader_preview.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/render/screenshot.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/render/sdf_shapes.c
 )

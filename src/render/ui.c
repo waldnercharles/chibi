@@ -912,6 +912,7 @@ struct render_ui
     double time;
     int width, height;
     float scale;
+    float reference; /* the dp the canvas's height spans */
     char error[256];
 };
 
@@ -1000,6 +1001,7 @@ render_ui *render_ui_new(const char *content_root, yyjson_mut_doc *data)
     ui->backend = rml_backend_create(1, 1, 1);
     ui->listener = rml_listener_create(on_event, ui);
     ui->scale = 1;
+    ui->reference = UI_REFERENCE_HEIGHT;
     ui_data_init(&ui->data, rml_backend_context(ui->backend), data, on_emit, ui);
     load_page(ui);
     return ui;
@@ -1296,10 +1298,11 @@ void render_ui_update(render_ui *ui, const ui_world *w, int width, int height, d
     if (ui_page_sync(&ui->page, ui->content_root, w->page ? w->page : "", ui->time)) {
         load_page(ui);
     }
-    if (width != ui->width || height != ui->height) {
+    if (width != ui->width || height != ui->height ||
+        ui->scale != (float)height / ui->reference) {
         ui->width = width;
         ui->height = height;
-        ui->scale = (float)height / UI_REFERENCE_HEIGHT;
+        ui->scale = (float)height / ui->reference;
         rml_backend_resize_pixels(ui->backend, width, height, ui->scale);
     }
     show_overlay(ui);
@@ -1341,15 +1344,66 @@ void render_ui_update(render_ui *ui, const ui_world *w, int width, int height, d
 
 void render_ui_composite(render_ui *ui, CF_Canvas target)
 {
+    render_ui_composite_region(ui, target, (const float[4]){ 0, 0, 1, 1 });
+}
+
+void render_ui_composite_region(render_ui *ui, CF_Canvas target, const float region[4])
+{
     if ((!acount(ui->views) && !ui->overlay.mount && !ui->page.name[0]) ||
         ui->width <= 0 || ui->height <= 0) {
         return;
     }
     rml_backend_render(ui->backend);
     cf_draw_push();
-    rml_backend_present(ui->backend);
+    rml_backend_present_region(ui->backend, region);
     cf_render_to(target, false);
     cf_draw_pop();
+}
+
+/* Grows `bounds` by the boxes of what `element` shows; a box as wide as the
+   canvas is a wrapper, so its children's count instead. */
+static void content_bounds(const render_ui *ui, rml_element *element, float bounds[4])
+{
+    rml_vec2 at = rml_element_absolute_offset(element, RML_BOX_BORDER);
+    rml_vec2 size = rml_element_box_size(element, RML_BOX_BORDER);
+    if (size.x <= 0 || size.y <= 0 || !rml_element_is_visible(element, false)) {
+        return;
+    }
+    if (size.x < ui->width - 1 || !rml_element_child_count(element)) {
+        bounds[0] = fminf(bounds[0], at.x);
+        bounds[1] = fminf(bounds[1], at.y);
+        bounds[2] = fmaxf(bounds[2], at.x + size.x);
+        bounds[3] = fmaxf(bounds[3], at.y + size.y);
+        return;
+    }
+    for (int i = 0; i < rml_element_child_count(element); i++) {
+        content_bounds(ui, rml_element_child(element, i), bounds);
+    }
+}
+
+void render_ui_set_reference_height(render_ui *ui, float dp)
+{
+    ui->reference = dp > 0 ? dp : UI_REFERENCE_HEIGHT;
+}
+
+bool render_ui_overlay_bounds(const render_ui *ui, float bounds[4])
+{
+    float found[4] = { INFINITY, INFINITY, -INFINITY, -INFINITY };
+    for (int i = 0; ui->overlay.root && i < rml_element_child_count(ui->overlay.root);
+         i++) {
+        content_bounds(ui, rml_element_child(ui->overlay.root, i), found);
+    }
+    if (found[0] >= found[2] || found[1] >= found[3]) {
+        return false;
+    }
+    float size[4] = { (float)ui->width,
+                      (float)ui->height,
+                      (float)ui->width,
+                      (float)ui->height };
+    for (int i = 0; i < 4; i++) {
+        bounds[i] = found[i] / size[i];
+    }
+    return true;
 }
 
 /* ---------- UI wiring (workstream K) ---------- */

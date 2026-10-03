@@ -810,6 +810,31 @@ bool render_arena_preview(
     const render_arena_activity *activity
 )
 {
+    shader_error error = { 0 };
+    bool registered = render_shader_upsert(asset, &error);
+    bool drawn = render_arena_preview_material(
+        arena,
+        render_shader_find(asset->name),
+        camera,
+        parameters_json,
+        time,
+        activity
+    );
+    if (!registered) {
+        snprintf(arena->binding_error, sizeof arena->binding_error, "%s", error.message);
+    }
+    return drawn;
+}
+
+bool render_arena_preview_material(
+    render_arena *arena,
+    int material,
+    const render_arena_camera *camera,
+    const char *parameters_json,
+    float time,
+    const render_arena_activity *activity
+)
+{
     arena->simulation_particles = 0;
     game_particle_emitters_reset(arena->emitters);
     arena->binding_error[0] = 0;
@@ -819,11 +844,6 @@ bool render_arena_preview(
     arena->rhythm = (CF_V4){ activity->beat_phase, activity->beat_pulse };
     render_arena_reset(arena);
     render_influences_preview(arena->influences, activity->influence, RENDER_ARENA_PREVIEW_RADIUS);
-    shader_error error = { 0 };
-    if (!render_shader_upsert(asset, &error)) {
-        snprintf(arena->binding_error, sizeof arena->binding_error, "%s", error.message);
-    }
-    int material = render_shader_find(asset->name);
     if (!material || render_shader_is_shape(material)) {
         return false;
     }

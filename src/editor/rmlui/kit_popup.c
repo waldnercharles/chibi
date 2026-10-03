@@ -1084,13 +1084,23 @@ static float tip_scale(const kit *k)
     return k->in.zoom > 0 ? 1 / k->in.zoom : 1;
 }
 
-/* The label and shortcut on one line; a description wraps beneath them. */
-static void show_tip(kit *k, rml_element *target)
+/* A picture above, then the label and shortcut on one line; a description
+ * wraps beneath them. */
+static void tip_content(kit *k, rml_element *target)
 {
     char *tip = element_attribute(target, "data-tip");
     char *shortcut = element_attribute(target, "data-kbd");
     char *about = element_attribute(target, "data-tip-about");
+    char *image = element_attribute(target, "data-tip-image");
     char *rml = NULL;
+    if (image[0]) {
+        str_cat(&rml, "<img class=\"tip-image\" src=\"");
+        escape(&rml, image);
+        str_cat(&rml, "\"/>");
+    }
+    str_set(&k->tip_image, image);
+    flag_element(k->tooltip, "data-image", image[0] != '\0');
+    free(image);
     str_cat(&rml, "<div class=\"tip-head\"><span>");
     escape(&rml, tip);
     str_cat(&rml, "</span>");
@@ -1110,6 +1120,11 @@ static void show_tip(kit *k, rml_element *target)
     free(about);
     free(shortcut);
     free(tip);
+}
+
+static void show_tip(kit *k, rml_element *target)
+{
+    tip_content(k, target);
     char size[32];
     snprintf(size, sizeof size, "%.2fdp", tip_size * tip_scale(k));
     rml_element_set_property(k->tooltip, "font-size", size);
@@ -1163,6 +1178,12 @@ void update_tooltip(kit *k)
     }
     if (!k->tip_visible) {
         show_tip(k, target);
+    } else {
+        char *image = element_attribute(target, "data-tip-image");
+        if (!str_eq(image, k->tip_image ? k->tip_image : "")) {
+            tip_content(k, target);
+        }
+        free(image);
     }
     place_tip(k, target);
 }
@@ -1171,4 +1192,10 @@ void kit_tip(kit *k, const char *label, const char *shortcut, const char *descri
 {
     assert(k->last);
     set_tip(k->last, label, shortcut, description);
+}
+
+void kit_tip_image(kit *k, const char *source)
+{
+    assert(k->last);
+    set_optional_attr(k->last, "data-tip-image", source);
 }

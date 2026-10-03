@@ -1395,7 +1395,9 @@ void studio_shortcuts(studio *s, bool field)
         int command = studio_command_for_key(&s->prefs, key.key, key.mod, editor, s->mac);
         bool repeatable = command >= 0
                             ? COMMANDS[command].repeat
-                            : !primary && (key.key == SDLK_UP || key.key == SDLK_DOWN);
+                            : !primary &&
+                                  (key.key == SDLK_UP || key.key == SDLK_DOWN ||
+                                   key.key == SDLK_LEFT || key.key == SDLK_RIGHT);
         if (key.repeat && !repeatable) {
             continue;
         }

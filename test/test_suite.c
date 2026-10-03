@@ -82,6 +82,9 @@ int scene_documents_run(const char *program);
 int studio_documents_run(const char *program);
 int studio_properties_run(const char *program);
 int studio_graph_inputs_run(const char *program);
+/* Asset thumbnails. */
+void test_studio_minimap();
+int studio_thumbnails_run(const char *program);
 bool test_rmlui_kit();
 bool test_rmlui_binding();
 int rmlui_render_run(const char *program, bool gles);
@@ -273,6 +276,7 @@ TEST_CASE(all_checks)
     test_collab_replay();
     test_text_overlay();
     test_studio_commands();
+    test_studio_minimap();
     test_ui_document();
     test_game_ui();
     test_game_ui_presenter();
@@ -979,7 +983,12 @@ int main(int argc, char **argv)
         registry_validate();
         int documents = studio_documents_run(program_name);
         int graph_inputs = studio_graph_inputs_run(program_name);
-        return documents || graph_inputs || fails ? 1 : 0;
+        int thumbnails = studio_thumbnails_run(program_name);
+        return documents || graph_inputs || thumbnails || fails ? 1 : 0;
+    }
+    if (argc > 1 && strcmp(argv[1], "--studio-thumbnails") == 0) {
+        registry_validate();
+        return studio_thumbnails_run(program_name) || fails ? 1 : 0;
     }
     if (argc > 1 && strcmp(argv[1], "--studio-graph-inputs") == 0) {
         registry_validate();

@@ -314,8 +314,8 @@ void finish_property_edit(app_scene_authoring *scene);
 void finish_transform_edit(app_scene_authoring *scene, bool cancel);
 void write_transform_edit(app_scene_authoring *scene, ecs_entity entity, GameTransform position);
 /* Fits the `count` objects in `only` in the view, or every object when
-   `only` is NULL. */
-void fit_scene_view(engine_viewport *viewport, ecs_world *world, const ecs_entity *only, int count);
+   `only` is NULL; false when none of them draws. */
+bool fit_scene_view(engine_viewport *viewport, ecs_world *world, const ecs_entity *only, int count);
 /* Generated World (scene_world_preview.c): prepares the scene's materials for
  * the edited view each draw, and discards them for a session or when off. */
 void scene_world_preview_update(app_scene_authoring *scene, const engine_viewport_camera *view);

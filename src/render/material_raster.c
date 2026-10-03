@@ -146,6 +146,9 @@ bool render_material_raster_resize(render_material_raster *r, int width, int hei
     if (r->width == width && r->height == height) {
         return true;
     }
+    /* Its material keeps last frame's bindings, which WebGL validates on
+       each draw; draws bind what they sample. */
+    cf_material_clear_textures(r->material);
     free_targets(r);
     r->canvases[0] = render_material_canvas(width, height);
     if (!r->canvases[0].id) {

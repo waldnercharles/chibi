@@ -1,5 +1,6 @@
 #include "diagnostics/tracy.h"
 #include "editor/studio/studio_internal.h"
+#include "editor/studio/studio_thumbnails.h"
 #include "editor/workspace/editor.h"
 #include "editor/workspace/editor_internal.h"
 #ifdef CHIBI_ENABLE_WEB_TRACE
@@ -351,7 +352,7 @@ double studio_idle_time(studio *s)
     if (s->graph.backend) {
         changed |= rml_backend_take_changed(s->graph.backend);
     }
-    if (changed || studio_active(s)) {
+    if (changed || studio_active(s) || studio_thumbs_pending(s)) {
         return 0;
     }
     double idle = fmin(kit_idle_time(s->kit), fmax(0, s->ui_schedule.next - s->time));
@@ -927,7 +928,7 @@ static studio *create(
     s->mods = SDL_GetModState();
     s->tab = STUDIO_TAB_OBJECT;
     s->assets_kind = -1;
-    s->assets_hover = -1;
+    s->assets_hover = s->assets_rest = -1;
     s->cursor_shown = -1;
     s->hover_area = s->focus_area = s->key_area = s->maximized = -1;
     s->bound.behavior = -2;
@@ -1034,6 +1035,7 @@ void studio_free(studio *s)
     afree(s->perf);
     afree(s->perf_published);
     studio_assets_free(s);
+    studio_thumbs_free(s);
     afree(s->keys);
     afree(s->game_input);
     studio_projects_free(s);
@@ -1258,6 +1260,9 @@ static void run(studio *s, double delta_seconds, float width, float height)
     CHIBI_TRACE_ZONE_BEGIN(viewport_zone, "Studio viewport");
     draw_viewport(s);
     CHIBI_TRACE_ZONE_END(viewport_zone);
+    CHIBI_TRACE_ZONE_BEGIN(thumbs_zone, "Studio thumbnails");
+    studio_thumbs_frame(s);
+    CHIBI_TRACE_ZONE_END(thumbs_zone);
     if (s->guest) {
         kit_rect window = guest_window(s);
         run(s->guest, delta_seconds, fmaxf(window.w, 1), fmaxf(window.h, 1));

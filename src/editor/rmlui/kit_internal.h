@@ -131,8 +131,10 @@ typedef struct widget
     splitter_desc split;
     char *unit, *addon, *addon_cls, *draft, *applied, *label, *meta, *badge,
         *placeholder;
+    char *image; /* a tile's or command item's picture, a "kit:<name>" source */
     char **labels; /* owned strings */
     uint32_t icon;
+    uint32_t badge_icon; /* a tile's corner badge */
     uint32_t color;
     float hsv[3];
     int drag_part;               /* color picker: 1 plane, 2 hue */
@@ -141,7 +143,7 @@ typedef struct widget
     float body_height, body_top; /* list: the content sizing applied, in dp */
     rml_element *value_el, *fill_el, *input_el, *addon_el, *unit_el, *label_el,
         *icon_el, *meta_el, *twisty_el, *kbd_el, *badge_el, *head_el,
-        *swatch_el, *about_el, *menu_el;
+        *swatch_el, *about_el, *menu_el, *image_el;
 } widget;
 
 /* Charts (kit_chart.c): what the chart element draws this frame. The chart
@@ -314,6 +316,7 @@ struct kit
     double tip_warm_until;
     bool tip_visible;
     uint64_t tip_shown_frame;
+    char *tip_image; /* the picture the shown tooltip holds, owned */
     command_state command;
     rml_element *command_backdrop;
     char *surface_capture;

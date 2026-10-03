@@ -18,8 +18,7 @@
 
 /* ---------- Presence ---------- */
 
-/* Drop exiting nodes whose elements are about to go with an ancestor. */
-static void release_exiting_within(kit *k, rml_element *ancestor)
+void release_exiting_within(kit *k, rml_element *ancestor)
 {
     int kept = 0;
     for (int i = 0; i < acount(k->exiting); i++) {
@@ -188,8 +187,21 @@ void motion_frame(kit *k)
     if (!acount(k->layout_nodes)) {
         return;
     }
-    /* FLIP: measure this frame's layout before it renders. */
-    rml_document_update(k->doc);
+    /* FLIP: measure this frame's layout before it renders, laying out the
+       documents that hold animated nodes. */
+    rml_element **laid_out = NULL;
+    for (int i = 0; i < acount(k->layout_nodes); i++) {
+        rml_element *document = rml_element_owner_document(k->layout_nodes[i]->el);
+        bool seen = false;
+        for (int d = 0; d < acount(laid_out); d++) {
+            seen |= laid_out[d] == document;
+        }
+        if (!seen) {
+            apush(laid_out, document);
+            rml_document_update(document);
+        }
+    }
+    afree(laid_out);
     spring_params p = spring_for(0.35, 0);
     for (int i = 0; i < acount(k->layout_nodes); i++) {
         layout_step(k, k->layout_nodes[i], p, dt);

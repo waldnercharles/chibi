@@ -12,7 +12,8 @@ extern "C"
 {
 #endif
 
-    /* Immediate-mode calls reconciled onto a retained RmlUi document.
+    /* Immediate-mode calls reconciled onto retained RmlUi documents: the
+     * kit's, its overlay layer's and those kit_document_begin opens.
      *
      * Each frame the editor emits its UI with keyed calls. Elements are created
      * on first use, updated when their properties change and removed when a
@@ -56,7 +57,8 @@ extern "C"
         KIT_MIXED = 1 << 7,
     };
 
-    /* Borrowed Rml::Context*; the document stays loaded until kit_destroy. */
+    /* Borrowed Rml::Context*; the kit's documents stay loaded until
+     * kit_destroy. */
     kit *kit_create(void *context, const char *document_path);
     void kit_destroy(kit *k);
     /* RCSS that precedes the document's own stylesheet: the tokens and control
@@ -92,6 +94,14 @@ extern "C"
     void kit_root(kit *k, const char *element_id);
     void kit_push(kit *k, const char *key, const char *tag, const char *cls);
     void kit_pop(kit *k);
+    /* Places a box with `cls` and emits what follows, until
+     * kit_document_end, into a document of its own shown over the box, as
+     * an <iframe> shows one (ui/iframe.h): a change inside lays out only
+     * that document. With `fit` the box takes the document's height. The
+     * box is the last item. The document adds no step to the paths of what
+     * it holds, so their keys must also differ from the box's siblings'. */
+    void kit_document_begin(kit *k, const char *key, const char *cls, bool fit);
+    void kit_document_end(kit *k);
     void kit_leaf(kit *k, const char *key, const char *tag, const char *cls);
     void kit_label(kit *k, const char *key, const char *cls, const char *text);
     /* A changing, single-line readout. Equal-width values update glyphs
@@ -675,8 +685,8 @@ extern "C"
     void kit_highlight(kit *k, const char *key, const kit_highlight_desc *desc, const char *cls);
     /* A readable path for `element`: the key path of one the kit emitted,
      * else the nearest emitted ancestor's path and tag#id.class steps below
-     * it. True when the kit draws it, rather than content mounted in a
-     * kit_host or an element of another document. */
+     * it. True when the kit draws it, in any of its documents, rather than
+     * content mounted in a kit_host or an element of another document. */
     bool kit_element_path(const kit *k, rml_element *element, char *out, size_t size);
     /* tag#id.class.class, as a selector names the element. */
     void kit_element_selector(rml_element *element, char *out, size_t size);

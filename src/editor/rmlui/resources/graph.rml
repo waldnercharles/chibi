@@ -6,6 +6,5 @@
     <div id="back"></div>
     <div id="world"></div>
     <div id="front"></div>
-    <div id="layer"></div>
 </body>
 </rml>

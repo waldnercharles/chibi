@@ -1054,22 +1054,12 @@ static void layout_control(studio *s)
     kit_popup_end(k);
 }
 
-/* The top bar is authored: projects/studio's TopBar binds `editor` and
-   `commands` (studio_sources.c) for its document tabs, transport, gear and
-   search, which run commands. The menubar, the play target's menu, the
-   playback speed and a paused run's steps stay native in its slots; a run
-   paused at a breakpoint
-   trades the frame step for the debugger's steps (Unreal). Chrome controls
-   retain focus while the host routes global shortcuts. */
-static void topbar(studio *s)
+/* The menubar, the play target's menu, the playback speed and a paused
+   run's steps stay native in the top bar's slots; a run paused at a
+   breakpoint trades the frame step for the debugger's steps (Unreal). */
+static void topbar_slots(studio *s, rml_element *host)
 {
     kit *k = s->kit;
-    /* The gear's Settings page is an authored dialog. */
-    studio_ui_modal(s, "Settings");
-    rml_element *host = studio_ui_panel(s, "topbar", "TopBar");
-    if (!host) {
-        return;
-    }
     if (kit_slot_begin(k, "menus", host, "#menubar")) {
         menus(s, host);
         kit_slot_end(k);
@@ -1090,6 +1080,24 @@ static void topbar(studio *s)
         studio_speed_control(s);
         kit_slot_end(k);
     }
+}
+
+/* The top bar is authored: projects/studio's TopBar binds `editor` and
+   `commands` (studio_sources.c) for its document tabs, transport, gear and
+   search, which run commands. It is a document of its own whose place
+   takes its height. Chrome controls retain focus while the host routes
+   global shortcuts. */
+static void topbar(studio *s)
+{
+    kit *k = s->kit;
+    /* The gear's Settings page is an authored dialog. */
+    studio_ui_modal(s, "Settings");
+    kit_document_begin(k, "topbar", "bar-place", true);
+    rml_element *host = studio_ui_panel(s, "topbar", "TopBar");
+    if (host) {
+        topbar_slots(s, host);
+    }
+    kit_document_end(k);
 }
 
 /* ---------- Areas ---------- */
@@ -1312,19 +1320,26 @@ static void area_header(studio *s, int index)
 }
 
 /* An area `size` dp along `axis` (0 across, 1 down), or filling what its
-   row or column leaves. */
+   row or column leaves. Each is a document of its own over its place in
+   the workspace, so what changes inside it lays out only that area. */
 static void area(studio *s, int index, const char *key, int axis, float size, bool fill)
 {
     kit *k = s->kit;
     studio_layout *layout = studio_active_layout(s);
     studio_editor editor = layout->editors[index];
-    kit_push(k, key, NULL, KIT_CX(k, "area", { "fill", fill }, { "drawer", index == STUDIO_AREA_DRAWER }));
+    kit_document_begin(
+        k,
+        key,
+        KIT_CX(k, "area-place", { "fill", fill }, { "drawer", index == STUDIO_AREA_DRAWER }),
+        false
+    );
     /* Styles persist across frames, so the other axis and a filling area
        reset theirs as a workspace changes. */
     char extent[32];
     dp(extent, sizeof extent, size);
     kit_style(k, "width", !fill && !axis ? extent : "auto");
     kit_style(k, "height", !fill && axis ? extent : "auto");
+    kit_push(k, key, NULL, "area");
     area_header(s, index);
     kit_push(k, "body", NULL, "area-body");
     switch (editor) {
@@ -1347,6 +1362,7 @@ static void area(studio *s, int index, const char *key, int axis, float size, bo
     kit_pop(k);
     kit_pop(k);
     s->areas[index].rect = kit_item_rect(k);
+    kit_document_end(k);
 }
 
 /* The top and bottom areas: stacked vertically or arranged side by side. */
@@ -1508,20 +1524,20 @@ static void follow_messages(studio *s)
 }
 
 /* The status bar is authored: projects/studio's StatusBar binds `editor`
-   (studio_sources.c) and runs commands. UI Scale stays native, with its
-   menu, in the bar's #ui-scale slot. Controls retain focus while the host
-   routes global shortcuts. */
+   (studio_sources.c) and runs commands, in a document of its own whose
+   place takes its height. UI Scale stays native, with its menu, in the
+   bar's #ui-scale slot. Controls retain focus while the host routes global
+   shortcuts. */
 static void statusbar(studio *s)
 {
     follow_messages(s);
+    kit_document_begin(s->kit, "status", "bar-place", true);
     rml_element *host = studio_ui_panel(s, "status", "StatusBar");
-    if (!host) {
-        return;
-    }
-    if (kit_slot_begin(s->kit, "scale", host, "#ui-scale")) {
+    if (host && kit_slot_begin(s->kit, "scale", host, "#ui-scale")) {
         scale_control(s);
         kit_slot_end(s->kit);
     }
+    kit_document_end(s->kit);
 }
 
 /* ---------- Frame ---------- */

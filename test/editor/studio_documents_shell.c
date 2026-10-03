@@ -22,6 +22,7 @@
 #include "support/text_file.h"
 #include "support/text_overlay.h"
 #include "test/editor/studio_documents.h"
+#include "test/editor/ui_bench.h"
 #include "test/suite_internal.h"
 
 #include <SDL3/SDL_events.h>
@@ -349,8 +350,7 @@ static void performance_snapshot_retains_intermediate_frames()
 
 static rml_element *status_bar(studio *s)
 {
-    rml_element *doc = rml_context_document(rml_backend_context(s->backend), 0);
-    return rml_element_query_selector(doc, "[data-ui=StatusBar]");
+    return test_query(rml_backend_context(s->backend), "[data-ui=StatusBar]");
 }
 
 /* The shown labels of the status bar's key hints, joined by '|'. */
@@ -1221,6 +1221,51 @@ static void layout_modes_are_explicit()
     fixture_free(&f);
 }
 
+/* Each area is a document of its own (workstream F5): text rewritten in the
+   Outliner lays out none of the others. The guest Studio, run in the Scene
+   area, places its own areas over theirs the same way, and stops. */
+static void area_documents()
+{
+    studio_fixture f = vault_open();
+    studio *s = f.studio;
+    s->maximized = -1;
+    frames(&f, 6);
+    rml_context *context = rml_backend_context(s->backend);
+    rml_element *name = test_query(context, ".outliner .tree-row .name");
+    rml_element *outliner = name ? rml_element_owner_document(name) : NULL;
+    int documents = rml_context_document_count(context);
+    for (int i = 0; outliner && i < documents; i++) {
+        rml_element *document = rml_context_document(context, i);
+        if (document != outliner) {
+            bench_probe(document);
+        }
+    }
+    frames(&f, 30);
+    uint64_t before = bench_layouts();
+    rml_element_set_inner_rml(name, "Renamed in place");
+    rml_backend_update(s->backend, 0);
+    test_check(
+        outliner && documents >= 8 && bench_layouts() == before,
+        "text rewritten in the Outliner lays out the Outliner's document "
+        "and no other area's, bar's or the layer's"
+    );
+    studio_guest_start(s);
+    frames(&f, 8);
+    kit_rect top = { 0 };
+    bool guest = s->guest &&
+                 kit_find(s->guest->kit, "app/workspace/main/editors/top", &top) &&
+                 top.w > 0 && top.h > 0 &&
+                 rml_context_document_count(rml_backend_context(s->guest->backend)) >= 8;
+    studio_guest_stop(s);
+    frames(&f, 2);
+    test_check(
+        guest && !s->guest,
+        "the guest Studio lays its areas over their places in documents of "
+        "its own, and stops"
+    );
+    fixture_free(&f);
+}
+
 void studio_documents_shell_checks()
 {
     host_ui_refresh_keeps_input_immediate();
@@ -1236,4 +1281,5 @@ void studio_documents_shell_checks()
     chrome_follows_studio();
     layout_modes_are_explicit();
     toolbar_shortcuts_keep_text_focus();
+    area_documents();
 }

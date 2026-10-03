@@ -11,6 +11,7 @@
 #include "support/array.h"
 #include "support/math.h"
 #include "support/xalloc.h"
+#include "ui/iframe.h"
 #include "ui/motion.h"
 #include "ui/rml.h"
 #include "ui/rml_gpu.h"
@@ -1121,7 +1122,9 @@ void rml_backend_update(rml_backend *backend, double delta_seconds)
     backend->frame_dirty = true;
     backend->stats.context_updates++;
     driven = backend;
+    iframes_settle(backend->context);
     rml_context_update(backend->context);
+    iframes_settle(backend->context);
     presence_settle(backend->context);
     driven = NULL;
 }

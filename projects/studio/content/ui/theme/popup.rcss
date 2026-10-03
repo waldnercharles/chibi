@@ -1,5 +1,7 @@
-/* Overlay layer: popups, tooltips and the command palette. */
-#layer { position: absolute; left: 0dp; top: 0dp; right: 0dp; bottom: 0dp; pointer-events: none; z-index: 10; }
+/* Overlay layer: popups, tooltips, toasts, dialogs and the command palette,
+   a document over the others whose body has the page's classes but paints
+   nothing itself. */
+#layer { position: absolute; left: 0dp; top: 0dp; right: 0dp; bottom: 0dp; pointer-events: none; z-index: 10; background-color: transparent; }
 .modal-host { position: absolute; left: 0dp; top: 0dp; right: 0dp; bottom: 0dp; pointer-events: auto; z-index: 15; }
 .popup {
     position: absolute; pointer-events: auto; background-color: var(--popover); border: 1dp var(--popover-edge);

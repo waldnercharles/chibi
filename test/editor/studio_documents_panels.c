@@ -210,12 +210,7 @@ static void preview_geometry_settles_without_input()
     studio_active_layout(s)->editors[STUDIO_AREA_BOTTOM] = STUDIO_EDITOR_SCENE;
     frames(&f, 30);
     rml_element *panes[2];
-    int count = rml_element_query_selector_all(
-        rml_context_document(rml_backend_context(s->backend), 0),
-        ".canvas-frame",
-        panes,
-        2
-    );
+    int count = test_query_all(rml_backend_context(s->backend), ".canvas-frame", panes, 2);
     bool two = count == 2 && rml_element_is_visible(panes[0], false) &&
                rml_element_is_visible(panes[1], false) && panes[0] != panes[1];
     if (two) {

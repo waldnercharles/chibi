@@ -1365,9 +1365,8 @@ static void page_mount()
     rml_element *mono_probe = rml_element_create_child(f.host, "span", NULL);
     rml_element_set_attribute(mono_probe, "class", "code-completions");
     rml_element_set_inner_rml(mono_probe, "Glyphs");
-    if (body) {
-        rml_element_set_class(body, "dark", true);
-    }
+    /* On every kit document: the dialog is in the layer's. */
+    kit_set_body_class(f.k, "dark", true);
     rml_backend_update(f.backend, 1.0 / 60.0);
     char family[64] = { 0 }, size[32] = { 0 }, line[32] = { 0 };
     char mono_family[64] = { 0 }, mono_size[32] = { 0 };
@@ -1404,9 +1403,7 @@ static void page_mount()
                    rml_font_string_width(mono_face, "Glyphs") > 0 &&
                    standard_metrics.line_spacing <= 25 &&
                    mono_metrics.line_spacing <= 20;
-    if (body) {
-        rml_element_set_class(body, "comfortable", true);
-    }
+    kit_set_body_class(f.k, "comfortable", true);
     rml_backend_update(f.backend, 1.0 / 60.0);
     float comfortable_height = font_control
                                  ? rml_element_box_size(font_control, RML_BOX_BORDER)
@@ -1667,10 +1664,9 @@ static void independent_ui_deadlines()
             rml_backend_update(backend, 1.0 / 60.0);
         }
     }
-    rml_element *document = rml_context_document(rml_backend_context(backend), 0);
     test_check(
         moving && fabsf(value - 100) < 0.01f &&
-            !rml_element_query_selector(document, ".toast"),
+            !test_query(rml_backend_context(backend), ".toast"),
         "independent UI deadlines advance a live spring and expire its toast "
         "while simulation keeps ticking"
     );

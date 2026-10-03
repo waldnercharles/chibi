@@ -205,8 +205,7 @@ int panel_elements(studio *s, const char *panel, const char *selector, rml_eleme
 {
     char query[128];
     snprintf(query, sizeof query, "[data-ui=%s] %s", panel, selector);
-    rml_element *doc = rml_context_document(rml_backend_context(s->backend), 0);
-    return rml_element_query_selector_all(doc, query, found, 8);
+    return test_query_all(rml_backend_context(s->backend), query, found, 8);
 }
 
 /* A press and release on `el`, which focuses it as a click does. Input is

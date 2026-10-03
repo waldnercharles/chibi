@@ -187,11 +187,7 @@ static void graph_color_session_saves_undoes_and_replays()
     assert(kit_find(f.studio->graph.kit, path, &control));
     graph_press_rect(f.studio, control);
     frames(&f, 3);
-    rml_element *graph_doc = rml_context_document(
-        rml_backend_context(f.studio->graph.backend),
-        0
-    );
-    rml_element *hex = rml_element_query_selector(graph_doc, ".popup.picker .hex");
+    rml_element *hex = test_query(rml_backend_context(f.studio->graph.backend), ".popup.picker .hex");
     if (hex) {
         rml_element_focus(hex, true);
         rml_element_select(hex);
@@ -471,8 +467,7 @@ static void graph_completion_tab_matches_highlight()
         s->graph.surface.rect.y + s->graph.surface.rect.h - 20
     );
     frames(&f, 24);
-    rml_element *doc = rml_context_document(context, 0);
-    rml_element *selected = rml_element_query_selector(doc, ".popup.autocomplete .menu-item[data-highlighted] .label");
+    rml_element *selected = test_query(context, ".popup.autocomplete .menu-item[data-highlighted] .label");
     char label[256] = "";
     if (selected) {
         rml_element_inner_rml(selected, label, sizeof label);

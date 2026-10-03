@@ -1747,3 +1747,13 @@ void rml_set_data_if_handler(rml_data_if_fn fn)
     data_if_fn = fn;
     Rml::SetDataIfHandler(fn ? data_if : nullptr);
 }
+
+/* ---------- One document per area (workstream F5) ---------- */
+
+void rml_document_copy_style_sheet(rml_element *d, rml_element *source)
+{
+    const Rml::StyleSheetContainer *sheet = document(source)->GetStyleSheetContainer();
+    if (sheet) {
+        document(d)->SetStyleSheetContainer(sheet->CombineStyleSheetContainer(Rml::StyleSheetContainer()));
+    }
+}

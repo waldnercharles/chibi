@@ -333,9 +333,8 @@ static void menu_puts_filter_first()
 
 static rml_element *settings_element(studio *s, const char *selector)
 {
-    rml_element *doc = rml_context_document(rml_backend_context(s->backend), 0);
     rml_element *matches[16];
-    int count = rml_element_query_selector_all(doc, selector, matches, 16);
+    int count = test_query_all(rml_backend_context(s->backend), selector, matches, 16);
     for (int i = 0; i < count && i < 16; i++) {
         if (rml_element_is_visible(matches[i], true)) {
             return matches[i];

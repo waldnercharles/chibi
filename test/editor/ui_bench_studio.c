@@ -1,5 +1,5 @@
 /* The Studio cases of the S0 UI bench (ui_bench.h), native in a hidden
- * window: today's Studio document over the Sandbox at 1440x900, its
+ * window: Studio's documents over the Sandbox at 1440x900, its
  * Properties showing the Player against the authored spike, and whether a
  * popover escapes an area's clipping. */
 #include "editor/studio/studio_internal.h"
@@ -223,6 +223,41 @@ static void full_layout(studio_bench *b, bool comfortable)
         rml_context_document_count(rml_backend_context(s->backend))
     );
     bench_row("1", name, bench_stat_of(ms, RUNS), counts);
+}
+
+/* ---------- 8: a text change inside one area ---------- */
+
+/* Rewrites one Outliner row's name, as a rename does, and updates: RmlUi
+ * lays out the document that holds the row. Counts the documents laid out
+ * and the elements in the row's document. */
+static void area_text_change(studio_bench *b)
+{
+    studio *s = b->studio;
+    frames(b, 2);
+    rml_element *name = studio_query(s, ".outliner .tree-row .name");
+    assert(name);
+    char text[256];
+    size_t length = rml_element_inner_rml(name, text, sizeof text);
+    assert(length < sizeof text);
+    double ms[RUNS];
+    bench_counts counts = { 0 };
+    for (int run = -WARMUP; run < RUNS; run++) {
+        rml_element_set_inner_rml(name, run & 1 ? "Renamed" : "Renamed again");
+        bench_counts before = studio_mark();
+        double t = bench_now();
+        rml_backend_update(s->backend, 0);
+        t = bench_now() - t;
+        counts = (bench_counts){
+            .layouts = bench_layouts() - before.layouts,
+            .elements = rml_element_query_selector_all(rml_element_owner_document(name), "*", NULL, 0)
+        };
+        if (run >= 0) {
+            ms[run] = t;
+        }
+    }
+    rml_element_set_inner_rml(name, text);
+    frames(b, 2);
+    bench_row("8", "a text change in the Outliner: documents laid out, elements in its document", bench_stat_of(ms, RUNS), counts);
 }
 
 /* ---------- 5: Properties, native and authored ---------- */
@@ -567,6 +602,7 @@ int ui_bench_studio(const char *program)
     full_layout(&b, false);
     full_layout(&b, true);
     b.studio->prefs.comfortable = false;
+    area_text_change(&b);
     properties(&b);
     bench_close(&b);
     popover_clipping();

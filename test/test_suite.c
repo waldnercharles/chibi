@@ -138,6 +138,9 @@ void test_ui_motion();
 /* ---------- arena2d end to end (wave 3, workstream X) ---------- */
 void test_arena_hud();
 
+/* ---------- One document per area (workstream F5) ---------- */
+void test_kit_documents();
+
 static int fails;
 
 void test_check(int ok, const char *msg)
@@ -326,6 +329,8 @@ TEST_CASE(all_checks)
     test_ui_motion();
     /* ---------- arena2d end to end (wave 3, workstream X) ---------- */
     test_arena_hud();
+    /* ---------- One document per area (workstream F5) ---------- */
+    test_kit_documents();
 
     printf("\n%s\n", fails ? "SOME CHECKS FAILED" : "ALL CHECKS PASSED");
 
@@ -1158,6 +1163,11 @@ int main(int argc, char **argv)
     /* ---------- Authored status bar (workstream J) ---------- */
     if (argc > 1 && !strcmp(argv[1], "--kit-slot")) {
         test_kit_slot();
+        return fails ? 1 : 0;
+    }
+    /* ---------- One document per area (workstream F5) ---------- */
+    if (argc > 1 && !strcmp(argv[1], "--kit-documents")) {
+        test_kit_documents();
         return fails ? 1 : 0;
     }
     /* ---------- Wave 2 follow-ups (workstream P) ---------- */

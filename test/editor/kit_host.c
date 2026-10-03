@@ -39,6 +39,26 @@ kit *test_kit_create(void *context, const char *document)
     return k;
 }
 
+rml_element *test_query(rml_context *context, const char *selector)
+{
+    rml_element *found = NULL;
+    for (int i = 0; !found && i < rml_context_document_count(context); i++) {
+        found = rml_element_query_selector(rml_context_document(context, i), selector);
+    }
+    return found;
+}
+
+int test_query_all(rml_context *context, const char *selector, rml_element **matches, int max)
+{
+    int count = 0;
+    for (int i = 0; i < rml_context_document_count(context); i++) {
+        rml_element *document = rml_context_document(context, i);
+        int room = max > count ? max - count : 0;
+        count += rml_element_query_selector_all(document, selector, room ? matches + count : NULL, room);
+    }
+    return count;
+}
+
 static void on_event(void *user, const rml_event *event)
 {
     ui_mount_listen(user, event);
@@ -269,7 +289,9 @@ static void modal_focus(const char *root)
     bool wrapped = !strcmp(focused_id(&f), "a");
     press_tab(&f, true);
     bool back = !strcmp(focused_id(&f), "b");
-    rml_element *field = rml_element_query_selector(rml_element_owner_document(f.host), "#app input");
+    /* The modal is in the layer, a document over the kit's own. */
+    rml_element *page = rml_context_document(rml_backend_context(f.backend), 0);
+    rml_element *field = rml_element_query_selector(page, "#app input");
     bool left = field && rml_element_focus(field, true);
     press_tab(&f, false);
     test_check(

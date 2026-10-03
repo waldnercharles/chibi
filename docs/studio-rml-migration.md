@@ -3,7 +3,7 @@
 Studio's whole editor moves to authored RML and RCSS, as the user decided on
 2026-10-03. Anything that can't be authored, or that would cost substantial
 performance, is postponed and listed in Postponed below. Status: S0, F0,
-F1, F2, F3, F4, F5, P1, P4 and P5 done; the rest planned. The spike (S0) ran on a
+F1, F2, F3, F4, F5, P1, P3, P4 and P5 done; the rest planned. The spike (S0) ran on a
 loaded machine, so its times are provisional until re-measured on an idle
 one (S0 results).
 
@@ -47,7 +47,7 @@ About 1,600 kit call sites remain across 40 files. The largest:
 | Outliner | `studio_outliner.c` (F0) | Selection (⌘/⇧), 10k-row virtualization, drops, rename, eye and lock, menu | W2 P2 |
 | Scene and Canvas headers | `studio_scene.c`, `studio_canvas.c` | Commands, tool, snap, grid, zoom, Show toggles, Canvas size, actions log | W3 C1 |
 | Scene viewport | `kit_surface` showing `kit:viewport` | Texture, pointer input, camera labels | Overlays authored; input stays in C |
-| Assets | `studio_assets.c` | Index, filters, `kit:thumb:` textures, thumbnail budget, columns, keys, drag, New menu | W2 P3 |
+| Assets | `Assets.rml`, `AssetsHeader.rml` and `NewAsset.rml` over `assets`, `asset_view` and `asset_menus` (`studio_assets.c`, P3) | Index, filters, `kit:thumb:` textures, thumbnail budget, columns, keys, drag, New menu | Done (P3) |
 | Output, Find, Calls | Authored (P4): `Output.rml`, `OutputHeader.rml` over `studio_output.c`'s `output` source | | Done |
 | Members | `Members.rml` and `MembersHeader.rml`; the `members` source in `studio_members.c` | Members, uses, rename, drag into the graph, menus | Done (P5) |
 | Behavior area | `studio_graph*.c`, a second context drawn to `kit:graph` | Nodes, pins, literals, comments, reroutes, wires, live chips | Header, breadcrumbs, find, menus, add-node search: W4 G1. Node bodies: postponed |
@@ -762,7 +762,7 @@ popups above areas, focus across documents, inspection and lifetime;
 |---|---|---|
 | P1 Properties (done) | Object, Prototype, Scene, Behaviors tabs; header with Live and Keep; search; field menu (Node and Member stay in a slot) | ~1,200 lines of kit UI; `write_field`, reset, Keep and multi-object logic stay: P1 results |
 | P2 Outliner | Rows, root, eye and lock, rename, drops, menu, filter | ~350 lines |
-| P3 Assets | Grid and list, header, New menu, name popover, drag sources, preview tooltip | ~400 lines |
+| P3 Assets (done) | Grid and list, header, New menu, name popover, drag sources, preview tooltip | Its kit UI, `kit_tile` and `kit_tip_image` (P3, below) |
 | P4 Output (done) | Six views, follow-output, highlighted rows, Calls tree | ~450 lines |
 | P5 Members (done) | Sections, rename, uses, menus, drag into the graph | ~550 lines of kit UI: P5 results |
 
@@ -999,6 +999,117 @@ Find, Calls, Info and Runtime, dark and light, compact and comfortable:
 identical pixel for pixel but for counts and clocks that moved between
 runs, the Log's restored gaps, and the header's labels after a density
 switch, which now sit as they do before one.
+
+#### P3: Assets (done)
+
+projects/studio's `Assets` (the area body), `AssetsHeader` (its header
+controls, mounted per area with `studio_ui_area_controls`) and `NewAsset`
+(New's name popover, in a document of its own, mounted only while it asks,
+so it shows whether or not an Assets header does), over three sources in
+`studio_assets.c`: `assets` (the header's values and the rows),
+`asset_view` (the selection and the resting preview) and `asset_menus`
+(New's kinds, the row menu and the name popover). The layout follows
+Unity's Project window (the size slider whose smallest step is the list
+grouped by kind) and Unreal's Content Browser (kind badges, the hover
+thumbnail). C keeps the index model (sorting, grouping, filtering, usage
+counts), the selection and its keys, thumbnails, the row menu's actions
+and the asset writes; markup sends `assets.click`, `open`, `menu`, `kind`,
+`tile` and the row menu's items as intents and binds the name filter and
+the new name both ways, as view state; the row menu opens at the press
+(`popover_show` at a point, from the press's document).
+
+- **Slots.** One List windows either view with `ui_list_window`: the
+  list's TreeRows or the grid's lines of Tiles, its columns fitted to the
+  List's laid-out width. Row `i` (or line `i`) takes slot `i % slots` and
+  C places it in the spacer, as Virtuoso keys its items, so a scroll
+  rewrites only the slots entering and the others' tops, and slots only
+  grow, so a narrower filter hides them instead of dropping elements.
+  Tiles sit in lines, not all in the spacer: RmlUi restyles every sibling
+  of an element whose attribute changes (for sibling combinators), so a
+  selected tile restyles its line, not the grid. Index-matched rows in
+  flow, the first version, cost about 1.6× more per scroll step.
+- **Variables by rate of change** (P5's lead): a click changes only
+  `asset_view` (585 views: each tile's selected and preview bindings), an
+  open row menu only `asset_menus`; TreeRow and Tile take `data-selected`
+  on their use for a selection kept apart. The data goes through the
+  shared `ui_data_put_*` writers.
+- **Thumbnails** are `kit:thumb:<slot>` sources the sync asks for, as the
+  kit's emission did; Tile paints its picture as a decorator and hides its
+  skeleton by visibility, so a thumbnail arriving lays nothing out (the
+  gallery's Tiles too). A tile's tooltip names it, says what it is and how
+  often it is used, and shows the 256 dp preview once the pointer rests
+  0.3 s on it: C reads the asset under the pointer from its row's
+  `data-asset`, which F2 and Delete use too.
+- **Foundation fixes:** `:focus-within` for every context
+  (`src/ui/focus_within.c`; the theme's field ring rule keeps to text,
+  search and autocomplete fields), and a MenuItem showing its shortcut
+  (`data-if` read "F2" as false) and growing its menu to its widest row.
+- **Deleted:** the kit's `kit_tile`, `kit_tip_image` and their widget
+  fields, and Assets' kit UI (header, list, grid, row and tile events,
+  tooltips, row menu, New menu, name popover and button). The file gained
+  its sources' data plumbing, so `studio_assets.c` grew from 959 to 1,516
+  lines; the kit lost 87 lines.
+
+`UI_BENCH_ASSETS=1 ./build-release/test_suite --ui-bench studio` (case 10:
+Assets maximized at 1440×900, pixel scale 2, over the Sandbox's 101 assets
+and 480 more inserted into the index), the kit build (`80bd2538` with the
+same case) and this one alternated process by process, three pairs,
+1-minute load 14-18, so the times are provisional; the median of the
+pairs' medians of 31 runs:
+
+| Case | Kit ms | Authored ms | Ratio | Views | Layouts | Elements in the area's document |
+|---|---:|---:|---:|---:|---:|---|
+| Open the grid (3 UI frames) | 36.9 | 41.4 | 1.12× | 5,657 | 2 (kit 3) | 1,581 (kit 1,105) |
+| Scroll the grid a line | 6.9 | 5.3 | 0.77× | 2,466 | 1 | |
+| Type in the filter | 12.4 | 9.2 | 0.74× | 2,466 | 1 | |
+| Select another tile | 4.04 | 4.72 | 1.17× | 585 | 1 | |
+| UI frame, nothing changed | 0.92 | 1.28 | 1.39× | 0 | 0 | |
+| Scroll the list a row | 2.27 | 2.59 | 1.14× | 868 | 1 | 907 (kit 517) |
+
+Selecting costs more in update (1.34 ms against 0.98) for the 585 views;
+the idle frame's 0.36 ms more is the three sources' sync and emit
+(0.49 ms against 0.34) and update and capture over 476 more elements, the
+hidden slots and each Tile's and TreeRow's own markup. In the web build,
+the 600-asset workspace scrolled and filtered at the same frame times as
+the kit's, within noise.
+
+Web shots (1600×1000, dark and light, compact and comfortable) of the grid,
+the list, the hover preview, the row menu, New and its name popover and a
+drag onto a Properties field match the kit's pixel for pixel but for the
+row menu, which now fits Break When Spawned (the kit clipped it) and shows
+its shortcuts, and scene thumbnails that streamed at another moment.
+Checks: `--studio-documents` (the cached rows, no row marked selected
+without a selection, the asset drop onto Properties, New for every kind,
+the filter's kind first, a kind from the menu asking under the button with
+its name selected, a wheel-scrolled, filtered and cleared grid showing its
+tiles), `--studio-thumbnails` (every kind through the kind filter, the
+grid's keys, a 1,220-asset grid windowed), `--studio-lists` (an authored
+Assets row dragged into Collected) and `--ui-lists` (the Tile's skeleton).
+
+Open: two areas showing Assets share one window and one hover; Rename
+still opens the refactor popover, which is C4's; the list's rows are
+siblings of one spacer, so a scroll restyles all of them, and each
+evaluates about 17 views (the TreeRow's and the drag and hover attributes
+on its use); selecting and the idle frame cost 1.2× and 1.4× the kit's.
+
+#### Shared follow-ups after Wave 2 (measure on an idle machine)
+
+Wave 2 ran with load averages of 12–60, so its ratios are provisional. Three
+costs recur across panels and belong in shared code, not in each panel:
+
+- **Keyed `data-for`** (Vue's `:key`, an RmlUi patch): a window that shifts
+  rewrites every row because rows match by index (Members' scroll 1.22×,
+  Assets' list scroll 1.14×). Output keys rows by placing them itself.
+- **Change-driven sync**: a shown panel's source syncs every refresh and
+  walks its data even when nothing changed (Assets' idle frame 1.4×). Sources
+  should compare a revision (asset index, scene history step, log serial)
+  and return before walking.
+- **Sibling restyles**: RmlUi restyles every sibling of a changed element, so
+  a selection in a flat list restyles all rows (Assets groups tiles in lines
+  to contain it). Contain it in the List widget or patch RmlUi.
+
+Re-measure every Wave 2 bench case (`--ui-bench studio`, `members`,
+`UI_BENCH_ASSETS=1`) with `uptime` below 4 before and after each fix.
 
 ### Wave 3: scene, chrome, palette (4 parallel)
 

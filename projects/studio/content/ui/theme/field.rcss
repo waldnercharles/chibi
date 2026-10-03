@@ -52,7 +52,7 @@
 .field:hover > .step { opacity: 1; }
 .field[data-slider] > .step, .field[data-editing] > .step, .field[data-scrubbing] > .step { opacity: 0; }
 .field .step:hover { background-color: var(--press); }
-.field:not(.color):focus-within { border-color: var(--ring); }
+.field.text:focus-within, .field.search:focus-within, .field.autocomplete:focus-within { border-color: var(--ring); }
 .field.text, .field.search, .field.autocomplete { background-color: var(--field-edit); cursor: text; }
 .field.text:hover, .field.search:hover, .field.autocomplete:hover { background-color: var(--input-hover); }
 .field.text .value, .field.search .value, .field.autocomplete .value { text-align: left; font-family: var(--studio-standard-font-family, inter); }

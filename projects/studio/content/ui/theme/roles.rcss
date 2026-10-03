@@ -22,6 +22,10 @@ body, .dark {
     --tooltip: var(--foreground);
     --tooltip-edge: var(--foreground);
     --backdrop: #00000033;
+    /* Elevation: a soft drop and a tight contact shadow lift overlays off
+       the areas; tooltips sit lower. */
+    --shadow-overlay: 0dp 8dp 24dp -4dp #0000002e, 0dp 1dp 2dp 0dp #0000001f;
+    --shadow-tooltip: 0dp 2dp 8dp -2dp #00000029, 0dp 1dp 1dp 0dp #0000001a;
     /* Lines. */
     --line: color-mix(in srgb, var(--border) 72%, transparent);
     --popover-edge: var(--border);
@@ -85,6 +89,8 @@ body, .dark {
     --tooltip: color-mix(in srgb, var(--popover) 60%, #000);
     --tooltip-edge: #333338;
     --backdrop: #0000004d;
+    --shadow-overlay: 0dp 8dp 24dp -4dp #00000073, 0dp 1dp 2dp 0dp #00000059;
+    --shadow-tooltip: 0dp 2dp 8dp -2dp #00000066, 0dp 1dp 1dp 0dp #0000004d;
     --faint-foreground: var(--muted-foreground);
     --disabled-foreground: color-mix(in srgb, var(--muted-foreground) 37%, var(--background));
     --strong: var(--foreground);

@@ -4,7 +4,7 @@
 .command {
     position: absolute; left: 50%; top: 88dp; width: 600dp; margin-left: -300dp; background-color: var(--popover);
     border: 1dp var(--popover-edge); border-radius: 8dp; display: block; pointer-events: auto;
-    z-index: 30;
+    z-index: 30; box-shadow: var(--shadow-overlay);
     opacity: 1;
 }
 /* Search is frequent and commonly keyboard initiated. Show it immediately. */

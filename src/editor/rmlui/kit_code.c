@@ -50,11 +50,11 @@
 #define RUN_GAP_CELLS 16
 #define NO_KEY UINT32_MAX
 /* Seconds the pointer rests before the hover card, as the kit's tooltips. */
-#define HOVER_DELAY TOOLTIP_DELAY
+#define HOVER_DELAY FEEL_TOOLTIP_DELAY
 /* Cells kept between the cursor and a side edge while lines scroll sideways. */
 #define SCROLL_MARGIN_CELLS 4
-/* Cells a notch of the wheel scrolls sideways. */
-#define WHEEL_CELLS 6
+/* Lines zep-wheel-scroll.patch scrolls for each unit it is handed. */
+#define ZEP_WHEEL_LINES 3.0f
 
 typedef struct text_run
 {
@@ -1377,14 +1377,18 @@ static void scroll_sideways(code_view *v, float cells)
     zep_set_text_offset_x(e->zep, e->scroll_x);
 }
 
+/* The wheel scrolls the distance it scrolls a list, in lines and cells. */
 static void wheel(code_view *v, const rml_event *event, rml_vec2 at)
 {
+    kit_code_editor *e = v->editor;
     rml_vec2 delta = rml_event_wheel(event);
+    float pixels = FEEL_RMLUI_SCROLL_DP *
+                   rml_context_dp_ratio(rml_element_context(v->el));
     if (delta.y) {
-        zep_mouse_wheel(v->editor->zep, at.x, at.y, -delta.y);
+        zep_mouse_wheel(e->zep, at.x, at.y, -delta.y * pixels / (e->line * ZEP_WHEEL_LINES));
     }
     if (delta.x) {
-        scroll_sideways(v, delta.x * WHEEL_CELLS);
+        scroll_sideways(v, delta.x * pixels / e->advance);
     }
 }
 

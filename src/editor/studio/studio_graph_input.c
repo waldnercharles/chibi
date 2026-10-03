@@ -1,5 +1,7 @@
 /* Graph canvas input: replayed window events, gestures and shortcuts. */
 #include "editor/studio/studio_graph_internal.h"
+#include "editor/ui/input_feel.h"
+#include "platform/cute.h"
 #include "support/array.h"
 
 #include <math.h>
@@ -11,7 +13,6 @@ enum
     CURVE_POINTS = 256,
 };
 
-static const float THRESHOLD = 3; /* window px before a press drags */
 static const float WIRE_HIT = 10; /* window px: a 20 px wire target */
 static const float SNAP = 16;     /* graph units: half a drawn grid cell */
 
@@ -395,12 +396,12 @@ static bool spawn_held(studio *s)
 }
 
 /* Scrolling zooms at the pointer, from a wheel or a trackpad alike (Blender,
-   Unreal); panning is a middle, right or Space drag. A notch is about 15%, and
-   one event never more than doubles or halves the zoom. */
+   Unreal), at the rate every canvas zooms; panning is a middle, right or
+   Space drag. */
 static void wheel(studio *s, const rml_input *ev)
 {
     studio_graph *g = &s->graph;
-    float factor = fminf(fmaxf(powf(2, -ev->wheel_y * 0.2f), 0.5f), 2.0f);
+    float factor = feel_zoom_scale(feel_zoom_notches(-ev->wheel_y));
     sg_zoom_at(s, g->zoom * factor, ev->x, ev->y);
 }
 
@@ -581,7 +582,7 @@ static void drag(studio *s)
     editor *e = sg_graph_editor(s);
     switch (g->gesture) {
         case STUDIO_GRAPH_PRESS:
-            if (drag_distance(s) < THRESHOLD || sg_graph_readonly(s)) {
+            if (drag_distance(s) < FEEL_DRAG_DP || sg_graph_readonly(s)) {
                 break;
             }
             g->gesture = STUDIO_GRAPH_MOVE;
@@ -623,14 +624,14 @@ static void drag(studio *s)
             finish_box(s);
             break;
         case STUDIO_GRAPH_RIGHT:
-            if (drag_distance(s) >= THRESHOLD) {
+            if (drag_distance(s) >= FEEL_DRAG_DP) {
                 g->gesture = STUDIO_GRAPH_PAN;
             }
             break;
         case STUDIO_GRAPH_RESIZE: sg_resize(s); break;
         case STUDIO_GRAPH_REROUTE: {
             /* A drag moves the point by the pointer's travel; a click leaves it. */
-            if (drag_distance(s) < THRESHOLD) {
+            if (drag_distance(s) < FEEL_DRAG_DP) {
                 break;
             }
             edge *ed = &sg_active_graph(s)->edges[g->reroute_edge];
@@ -820,6 +821,11 @@ void sg_replay(studio *s)
                             ((ev.modifiers & RML_INPUT_MOD_META) ? KIT_MOD_META : 0u);
             if (ev.type == RML_INPUT_POINTER_WHEEL) {
                 if (popup_open && !blocked) {
+                    /* A popup scrolls the distance the editor's lists do. */
+                    float ratio = studio_graph_pixel_ratio(s),
+                          scale = cf_app_get_pixel_scale();
+                    ev.wheel_x = feel_scroll_units(ev.wheel_x, ratio, scale);
+                    ev.wheel_y = feel_scroll_units(ev.wheel_y, ratio, scale);
                     rml_backend_process_input(g->backend, &ev);
                 } else if (!popup_open) {
                     wheel(s, &g->events[i]);
@@ -836,9 +842,10 @@ void sg_replay(studio *s)
                 snprintf(g->press_path, sizeof g->press_path, "%s", path ? path : "");
                 float wx = g->events[i].x, wy = g->events[i].y;
                 g->double_click = ev.button == 0 &&
-                                  s->time - g->last_press_time < 0.3 &&
+                                  s->time - g->last_press_time <
+                                      FEEL_DOUBLE_CLICK_SECONDS &&
                                   hypotf(wx - g->last_press_x, wy - g->last_press_y) <
-                                      THRESHOLD;
+                                      FEEL_DOUBLE_CLICK_DP;
                 g->last_press_time = g->double_click ? 0 : s->time;
                 g->last_press_x = wx;
                 g->last_press_y = wy;

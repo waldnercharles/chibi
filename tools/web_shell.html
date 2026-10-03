@@ -53,12 +53,14 @@
       window.addEventListener('wheel', event => {
         if (!event.ctrlKey) return;
         event.preventDefault();
+        // A mouse wheel turned with Ctrl held steps 100 px or a line a notch: SDL
+        // takes it as a wheel, which magnifies as Command with the wheel does.
+        // A pinch arrives in smaller pixel steps (FEEL_PINCH_MAX_PX).
+        if (!gestureScale && (event.deltaMode || Math.abs(event.deltaY) >= 50)) return;
         event.stopPropagation(); // SDL would take it for a plain wheel
         if (gestureScale) return;
-        // Wheel steps as SDL counts them; Chrome sends a pinch as 100 * ln(scale) pixels.
-        // One event never more than doubles or halves the zoom.
-        const steps = event.deltaY * [0.01, 1 / 3, 80][event.deltaMode];
-        pinch(Math.exp(-Math.max(-Math.LN2, Math.min(Math.LN2, steps))));
+        // Chrome sends a pinch as 100 * ln(scale) pixels.
+        pinch(Math.exp(-event.deltaY / 100));
       }, { capture: true, passive: false });
       for (const type of ['gesturestart', 'gesturechange', 'gestureend']) {
         window.addEventListener(type, event => {

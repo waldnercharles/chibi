@@ -1,8 +1,8 @@
-/* Drag and drop after dnd-kit: a source is picked up once the pointer moves 5
- * dp with the button held, or is held 200 ms within 10 dp. An overlay follows
- * the pointer, the target under it that accepts the type is marked
- * data-drop-over, release drops there and Escape cancels. Clicks during a drag
- * are swallowed so a drop never also activates what it lands on. */
+/* Drag and drop after dnd-kit: a source is picked up once the pointer moves
+ * FEEL_DRAG_DP with the button held, or is held 200 ms within 10 dp. An
+ * overlay follows the pointer, the target under it that accepts the type is
+ * marked data-drop-over, release drops there and Escape cancels. Clicks during
+ * a drag are swallowed so a drop never also activates what it lands on. */
 #include "editor/rmlui/kit_internal.h"
 
 #include <assert.h>
@@ -10,7 +10,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#define ACTIVATION_DISTANCE 5.0f
 #define ACTIVATION_DELAY 0.2
 #define DELAY_TOLERANCE 10.0f
 
@@ -34,7 +33,7 @@ static bool activate(kit *k, drag_state *d)
     }
     float moved = hypotf(k->in.mouse_x - d->x0, k->in.mouse_y - d->y0);
     bool held = k->in.time - d->t0 >= ACTIVATION_DELAY && moved <= DELAY_TOLERANCE;
-    if (moved < ACTIVATION_DISTANCE && !held) {
+    if (moved < FEEL_DRAG_DP && !held) {
         return false;
     }
     d->active = true;

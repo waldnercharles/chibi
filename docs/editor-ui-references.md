@@ -116,7 +116,7 @@ icons, or descriptions, and `kit_choice` for simple named options.
 
 ### DialKit
 
-- Movement under 3 px is a click.
+- Movement under `FEEL_DRAG_DP` (4 dp) is a click.
 - Sliders:
   - A click jumps to the value with a spring (stiffness 300, damping 25).
   - Dragging past the ends rubber-bands: a 32 px dead zone, then up to 8 px of stretch following `8·sqrt(min(overflow/200, 1))`.
@@ -199,7 +199,7 @@ icons, or descriptions, and `kit_choice` for simple named options.
 
 - Pointer activation:
   - A drag handle starts immediately.
-  - Otherwise a drag starts after 5 px of movement, or after a 200 ms hold within 10 px.
+  - Otherwise a drag starts after `FEEL_DRAG_DP` (4 dp) of movement, or after a 200 ms hold within 10 px.
   - Touch starts after a 250 ms hold within 5 px.
 - Keyboard: Space or Enter picks up, arrows move, Space, Enter or Tab drops, Escape cancels.
 - Collision uses pointer intersection first, then shape intersection.
@@ -307,7 +307,7 @@ Zep is the one library here that is linked: `zep_bridge.cpp` only forwards, and
   - F12 reports `KIT_CODE_DEFINITION`, Shift+F12 `KIT_CODE_REFERENCES` and Control+Space `KIT_CODE_SUGGEST`, as in VS Code; Vim takes Control+[ for Escape.
   - Tab types; keys never reach RmlUi's focus navigation.
   - `:w`, `:wq` and `:x` report `KIT_CODE_SAVED`; `:<line>` moves there; commands that would open files or windows do nothing. The command and status lines take no room until an ex command starts.
-- A press places the cursor and dragging selects; a double click selects the word, names with `-` whole; a press with the primary modifier reports `KIT_CODE_DEFINITION` there. The wheel scrolls by three lines a notch.
+- A press places the cursor and dragging selects; a double click selects the word, names with `-` whole; a press with the primary modifier reports `KIT_CODE_DEFINITION` there. The wheel scrolls as far as it scrolls a list, `FEEL_SCROLL_POINTS` a notch, sideways too.
 - With `desc.no_wrap`, lines run on past the edge: the view scrolls sideways to keep the cursor in view, and with the wheel's sideways turn.
 - Completions show under the cursor while the caller supplies them: Up and Down choose, Enter or Tab accept, Escape dismisses until the list changes. The list scrolls to its choice.
 - Diagnostics mark the gutter and underline the range the caller gives (`kit_code_marker.start`, `end`), else their line.

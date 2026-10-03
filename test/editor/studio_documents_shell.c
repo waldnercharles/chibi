@@ -896,12 +896,12 @@ static void chrome_follows_studio()
     bool listed = count == acount(f.scene->tabs) && f.scene->active_tab == bank &&
                   close && rml_element_is_visible(close, true) &&
                   !rml_element_is_visible(rml_element_query_selector(tabs[scene], ".doc-close"), true);
-    /* The press takes the keyboard from the Text Editor, whose focused text
-       would make its document active again. */
+    /* The press takes the focus from the Text Editor, whose focused text
+       would make its document active again, and passes the keyboard on. */
     press(s, rml_element_query_selector(tabs[scene], ".face"));
     frames(&f, 2);
     bool selected = f.scene->active_tab == scene &&
-                    kit_wants_keyboard(s->kit) && studio_ui_shortcut_focus(s);
+                    !kit_wants_keyboard(s->kit) && studio_ui_shortcut_focus(s);
     /* This narrow window clips the last tab, so the click goes to it. */
     rml_element_click(close);
     frames(&f, 2);
@@ -959,7 +959,8 @@ static void toolbar_shortcuts_keep_text_focus()
     frames(&f, 1);
     bool button_allowed = studio_ui_shortcut_focus(s);
     bool button_keyboard = kit_wants_keyboard(s->kit);
-    bool button_focus = button_allowed && button_keyboard;
+    /* A focused chrome button passes the keyboard on, as a page's does. */
+    bool button_focus = button_allowed && !button_keyboard;
 
     SDL_Keymod primary = s->mac ? SDL_KMOD_GUI : SDL_KMOD_CTRL;
     key_event_mod(SDL_SCANCODE_K, true, primary, false);
@@ -979,7 +980,7 @@ static void toolbar_shortcuts_keep_text_focus()
     assert(tab && rml_element_focus(tab, true));
     frames(&f, 1);
     bool tab_focus = rml_context_focus_element(context) == tab &&
-                     studio_ui_shortcut_focus(s) && kit_wants_keyboard(s->kit);
+                     studio_ui_shortcut_focus(s) && !kit_wants_keyboard(s->kit);
     key_event_mod(SDL_SCANCODE_K, true, primary, false);
     key_event_mod(SDL_SCANCODE_K, false, primary, false);
     frames(&f, 2);

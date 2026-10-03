@@ -1798,6 +1798,15 @@ static hint_list editor_hints(studio *s)
     }
 }
 
+/* The name of an object the running scene spawned, when one is selected. */
+static const char *spawned_selection(app_scene_authoring *scene)
+{
+    ecs_entity entity = selected_scene_entity(scene);
+    return scene->runtime_selected.slot && entity.slot
+             ? runtime_entity_label(scene, entity)
+             : "";
+}
+
 static void sync_editor(studio *s, ui_data *data)
 {
     char title[128];
@@ -1807,7 +1816,7 @@ static void sync_editor(studio *s, ui_data *data)
         .report = s->status,
         .reporting = s->status[0] && s->time - s->status_time < REPORT_SECONDS,
         .scene = studio_scene_title(s->scene, title, sizeof title),
-        .selection = actor ? actor->name : "",
+        .selection = actor ? actor->name : spawned_selection(s->scene),
         .objects = acount(s->scene->actors),
         .playing = app_scene_authoring_runtime_state(s->scene).playing || s->guest != NULL,
         .paused = s->pause.active,

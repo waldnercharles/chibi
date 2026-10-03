@@ -1515,7 +1515,7 @@ void studio_properties_body(studio *s, int area)
         studio_designer_details(s, area);
         return;
     }
-    rml_element *host = studio_ui_panel(s, "properties", "Properties");
+    rml_element *host = studio_ui_area(s, area, "Properties");
     if (!host) {
         return;
     }

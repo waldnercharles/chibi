@@ -884,8 +884,7 @@ static void clicked(const rml_event *e)
 {
     rml_element *invoker = closest(e->target, invokes);
     if (invoker) {
-        /* A disabled trigger opens nothing, as a disabled button clicks
-           nothing. */
+        /* A disabled button opens nothing, as HTML's popovertarget. */
         if (!is_bar_trigger(invoker) && enabled(invoker)) {
             invoke(invoker);
         }

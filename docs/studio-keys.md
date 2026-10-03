@@ -4,7 +4,7 @@ Every key Studio takes, by the area it acts in. **Mod** is Command on a Mac (the
 
 ## Rules
 
-- **Keys act on the area under the pointer** (Blender). A command chosen from a menu or Search acts on the area clicked last.
+- **Keys act on the area under the pointer** (Blender), or on the area whose list Tab focused (the Outliner's), wherever the pointer is, until a click moves the focus. A command chosen from a menu or Search acts on the area clicked last.
 - **Commands** come from one registry (`src/editor/studio/studio_commands.c`). Settings ▸ Keyboard rebinds any of them: a recorded chord replaces the default and its aliases, conflicts show as "Also assigned to …" and are counted and searchable ("conflict"), and Reset restores the default. Bindings persist with the preferences.
 - **Text fields** keep their keys: typing, Enter, Escape, Mod+A/C/V/X/Z/Y and caret keys. Other Mod chords still run commands, as VS Code's do (Mod+S saves, Mod+K searches). A key that a field, popup or modal releases (Escape, Enter) does nothing else in the same frame.
 - **Popups, Search and modal dialogs** own every key while open; Escape closes them.
@@ -55,8 +55,12 @@ Commands act on the whole selection; F2 renames the active object.
 | Escape | Deselect All (not while a drag is held) | Scene, Outliner | `studio_commands.c` |
 | Up, Down | Select previous and next row | Outliner | `studio_commands.c` |
 | Shift+Up, Shift+Down | Extend the selection from its anchor | Outliner | `studio_commands.c` |
+| Left, Right | Fold and unfold the scene's root row | Outliner | `studio_outliner.c` |
+| Tab | Focus the Outliner's list (after its filter, Add and Maximize); its active row shows the focus ring and the keys above act on it wherever the pointer is | Outliner | `studio_ui.c`, `Outliner.rcss` |
+| Double-click | Rename the row in place; Enter renames (one Undo step) and returns the keyboard to the list, Escape keeps the name | Outliner | `Outliner.rml`, `studio_outliner.c` |
 | Mod+click | Add a row to the selection, or take it out | Outliner | `studio_outliner.c` |
 | Shift+click | Select the rows from the anchor (the last row clicked) | Outliner | `studio_outliner.c` |
+| Alt+click on an eye | Show only that object, or all of them again | Outliner | `studio_outliner.c` |
 | Shift+click, Mod+click | Add an object to the selection, or take it out (not on a gizmo handle, where Shift keeps the aspect) | Scene | `workspace/scene_viewport.c` |
 | Shift+drag, Mod+drag | Add a marquee's objects to the selection | Scene | `workspace/scene_viewport.c` |
 | Mod or Ctrl + wheel | Magnify the Scene view; middle drag pans it | Scene | `studio_scene.c` |

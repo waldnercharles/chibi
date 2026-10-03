@@ -456,39 +456,39 @@ bool studio_ui_modal_open(studio *s)
     return false;
 }
 
-/* An editor panel's control that edits no text, such as a checkbox, a
-   choice or a number field not being typed in, leaves Studio its keys, as
-   the kit's controls do. */
-static bool panel_control_focus(studio *s, rml_element *focus)
+/* Whether `el` edits text, and so keeps every key: a text input or a
+ * textarea. A checkbox, a choice, a button or a number field not being typed
+ * in (it types in an input of its own) keeps only the keys it handles, as
+ * the kit's controls do. */
+static bool edits_text(rml_element *el)
 {
-    ui_mount *mount = mount_holding(s->ui, focus);
-    const char *name = mount ? ui_mount_name(mount) : "";
+    const char *tag = rml_element_tag_name(el);
     char type[16] = "text";
-    rml_element_attribute(focus, "type", type, sizeof type);
-    bool text = !strcmp(rml_element_tag_name(focus), "textarea") ||
-                (!strcmp(rml_element_tag_name(focus), "input") &&
-                 strcmp(type, "checkbox") && strcmp(type, "radio"));
-    return !text &&
-           (!strcmp(name, "Properties") || !strcmp(name, "PropertiesHeader"));
+    rml_element_attribute(el, "type", type, sizeof type);
+    return !strcmp(tag, "textarea") ||
+           (!strcmp(tag, "input") && strcmp(type, "checkbox") && strcmp(type, "radio"));
+}
+
+/* The area whose authored editor, or its header's controls, hold `focus` on
+ * an element that edits no text, or -1: Studio's keys and the area's reach
+ * it, as they reach a native area. A Studio UI panel shown in an area keeps
+ * its keys. */
+static int focus_area(studio *s, rml_element *focus)
+{
+    const studio_layout *layout = studio_active_layout(s);
+    for (int i = 0; focus && !edits_text(focus) && i < STUDIO_AREA_COUNT; i++) {
+        bool holds = (s->ui->areas[i] && ui_mount_holds(s->ui->areas[i], focus)) ||
+                     (s->ui->controls[i] && ui_mount_holds(s->ui->controls[i], focus));
+        if (holds && layout->editors[i] != STUDIO_EDITOR_PANEL) {
+            return i;
+        }
+    }
+    return -1;
 }
 
 rml_data_reads studio_ui_data_reads(const studio *s)
 {
     return s->ui ? rml_data_model_reads(s->ui->data.model) : (rml_data_reads){ 0 };
-}
-
-/* Whether an editor's authored area holds `element`: Members, not a Studio
-   UI panel shown in an area, which keeps its keys. */
-static bool in_editor_area(studio *s, rml_element *element)
-{
-    const studio_layout *layout = studio_active_layout(s);
-    for (int i = 0; i < STUDIO_AREA_COUNT; i++) {
-        if (s->ui->areas[i] && layout->editors[i] != STUDIO_EDITOR_PANEL &&
-            ui_mount_holds(s->ui->areas[i], element)) {
-            return true;
-        }
-    }
-    return false;
 }
 
 bool studio_ui_shortcut_focus(studio *s)
@@ -500,16 +500,13 @@ bool studio_ui_shortcut_focus(studio *s)
     studio_ui *ui = s->ui;
     rml_context *context = rml_backend_context(s->backend);
     rml_element *focus = context ? rml_context_focus_element(context) : NULL;
-    if (focus && panel_control_focus(s, focus)) {
+    /* An editor area keeps only its text fields' keys, as a native one
+       does, so Studio's shortcuts and the area's own (F2, X) reach it. */
+    if (focus_area(s, focus) >= 0) {
         return true;
     }
     if (kit_accepts_text(s->kit)) {
         return false;
-    }
-    /* An editor area keeps only its fields' keys, as a native one does, so
-       Studio's shortcuts and the area's own (F2, X) reach it. */
-    if (focus && in_editor_area(s, focus)) {
-        return true;
     }
     rml_element *button = focus;
     while (button && strcmp(rml_element_tag_name(button), "button") &&
@@ -526,6 +523,16 @@ bool studio_ui_shortcut_focus(studio *s)
     const char *name = ui_mount_name(mount);
     return !strcmp(name, "TopBar") || !strcmp(name, "AreaHeader") ||
            !strcmp(name, "StatusBar");
+}
+
+int studio_ui_keyboard_area(studio *s)
+{
+    rml_context *context = s->ui && s->backend ? rml_backend_context(s->backend) : NULL;
+    rml_element *focus = context ? rml_context_focus_element(context) : NULL;
+    if (!focus || !rml_element_is_pseudo_class_set(focus, "focus-visible")) {
+        return -1;
+    }
+    return focus_area(s, focus);
 }
 
 /* Mounts the panel's document in `host` and runs its events. */
@@ -631,13 +638,31 @@ const char *studio_ui_panel_name(const studio *s, int index)
     return s->ui->panels[index].name;
 }
 
-void studio_ui_area(studio *s, int area, const char *name)
+rml_element *studio_ui_area(studio *s, int area, const char *name)
 {
     panel *p;
     const char *document = panel_document(s, name, &p);
-    if (document) {
-        show_panel(s, p, &s->ui->areas[area], kit_host(s->kit, "panel", "area-panel"), document);
+    if (!document) {
+        return NULL;
     }
+    rml_element *host = kit_host(s->kit, "panel", "area-panel");
+    show_panel(s, p, &s->ui->areas[area], host, document);
+    return host;
+}
+
+rml_element *studio_ui_area_view(studio *s, int area, const char *name, const char *views)
+{
+    panel *p;
+    const char *document = panel_document(s, name, &p);
+    if (!document) {
+        return NULL;
+    }
+    rml_element *host = kit_host(s->kit, "panel", "area-panel");
+    char alias[64];
+    snprintf(alias, sizeof alias, "%s[%d]", views, area);
+    kit_attr(s->kit, "data-alias-view", alias);
+    show_panel(s, p, &s->ui->areas[area], host, document);
+    return host;
 }
 
 static void show_modal(studio *s, const char *name)

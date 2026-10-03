@@ -2,7 +2,7 @@
    then the selection's identity, a collapsible panel per component with a
    row per field, its behaviors, and the Scene tab's settings. The Node and
    Member tabs stay native in #native. */
-body { width: 100%; height: 100%; margin: 0dp; padding: 0dp; overflow: hidden; }
+body, body.area-panel { width: 100%; height: 100%; margin: 0dp; padding: 0dp; overflow: hidden; }
 .properties { position: absolute; left: 0dp; top: 0dp; right: 0dp; bottom: 0dp; display: flex; }
 .prop-tabs {
   width: var(--studio-height-34, 34dp); flex: 0 0 auto; display: flex; flex-direction: column; align-items: center;

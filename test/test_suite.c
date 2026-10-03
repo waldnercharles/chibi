@@ -83,6 +83,8 @@ int studio_documents_run(const char *program);
 int studio_properties_run(const char *program);
 /* Lists and drag (workstream F4). */
 int studio_lists_run(const char *program);
+/* The Outliner (workstream P2). */
+int studio_outliner_run(const char *program);
 int studio_output_run(const char *program);
 void test_ui_lists();
 /* Members (workstream P5). */
@@ -1041,6 +1043,11 @@ int main(int argc, char **argv)
     if (argc > 1 && strcmp(argv[1], "--studio-lists") == 0) {
         registry_validate();
         return studio_lists_run(program_name) || fails ? 1 : 0;
+    }
+    /* The Outliner (workstream P2): Studio's, in a hidden window. */
+    if (argc > 1 && strcmp(argv[1], "--studio-outliner") == 0) {
+        registry_validate();
+        return studio_outliner_run(program_name) || fails ? 1 : 0;
     }
     /* Output (workstream P4): Studio's, in a hidden window. */
     if (argc > 1 && strcmp(argv[1], "--studio-output") == 0) {

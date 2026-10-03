@@ -1,8 +1,9 @@
 /* Members (Unreal's My Blueprint): the open behavior's sections and their
    members as rows of a List the `members` source windows
-   (studio_members.c). Rows are TreeRow's anatomy written out, so they can
-   bind selection, the open graph and the name field from `members_ui` by
-   key: a selection re-evaluates those views alone. A section row has its
+   (studio_members.c). Rows are TreeRows keyed by member, with the
+   selected and the active key aliased from `members_ui`, which also names
+   the row being renamed: a selection re-evaluates those views alone; the
+   open graph's row is active by its own flag. A section row has its
    count and an add button; a member row its type swatch (the theme's
    .member-swatch) and use count; F2 or a double click puts a name field
    in a row's place. */

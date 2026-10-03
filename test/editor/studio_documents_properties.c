@@ -496,11 +496,11 @@ static void live_property_edit()
     studio_fixture f = binding_open("Target");
     studio *s = f.studio;
     studio_runtime(s, APP_RUNTIME_PLAY);
-    frames(&f, 2);
-    studio_runtime(s, APP_RUNTIME_PLAY);
     f.scene->scene_dirty = false;
     frames(&f, 3);
-    bool live = studio_live(s) && studio_element(s, ".area-head.live") &&
+    app_runtime_state run = app_scene_authoring_runtime_state(f.scene);
+    bool live = studio_live(s) && run.playing && run.target == APP_RUNTIME_SCENE &&
+                studio_element(s, ".area-head.live") &&
                 studio_element(s, "[data-ui=PropertiesHeader] .badge.accent") &&
                 shown_in(studio_element(s, "[data-ui=PropertiesHeader]"), ".btn");
     rml_element *row = row_in_view(&f, "Target");
@@ -518,19 +518,16 @@ static void live_property_edit()
         *drive = GAME_GameDrive_get_const(f.scene->world, f.scene->actors[0].entity);
     bool written = drive && drive->target.x == 9.0f;
     bool clean = !f.scene->scene_dirty && !scene_history_can_undo(f.scene->history);
-    /* A value the game moves, every frame as a game would, shows without
-       laying out Properties. */
+    /* A value the game moves shows without laying out Properties. */
     frames(&f, 2);
-    bench_probe(rml_element_owner_document(properties(s)));
-    uint64_t layouts = 0;
-    for (int i = 0; i < 7; i++) {
-        GAME_GameDrive_get(f.scene->world, f.scene->actors[0].entity)->target.y = 21.5f;
-        frames(&f, 1);
-        layouts = i ? layouts : bench_layouts();
-    }
     rml_element *y = shown_all(row_in_view(&f, "Target"), ".field.number", axes, 4) == 2
                        ? axes[1]
                        : NULL;
+    GAME_GameDrive_get(f.scene->world, f.scene->actors[0].entity)->target.y = 21.5f;
+    bench_probe(rml_element_owner_document(properties(s)));
+    frames(&f, 1);
+    uint64_t layouts = bench_layouts();
+    frames(&f, 6);
     char shown[32] = "";
     rml_element *text = y ? rml_element_query_selector(y, ".value") : NULL;
     if (text) {

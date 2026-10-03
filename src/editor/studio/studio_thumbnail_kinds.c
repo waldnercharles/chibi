@@ -1,12 +1,18 @@
 /* What each kind of asset looks like in its thumbnail:
+ * - a shape, filled, as previewShader draws it;
+ * - a field, its values and iso-contour, as previewField bakes them;
  * - a ui document, itself on Storybook's backdrop, as the Canvas shows it;
  * - a stylesheet, the colors it declares;
  * - a graph asset, a mini-map of its nodes and wires.
- * Other kinds keep their icon. */
+ * Other kinds keep their icon; shapes draw as the shader catalog holds
+ * them. */
 #include "editor/studio/studio_internal.h"
 #include "editor/studio/studio_thumbnails.h"
 #include "graph/document/serialize.h"
+#include "render/field_image.h"
+#include "render/shader_preview.h"
 #include "render/ui.h"
+#include "runtime/material_field.h"
 #include "support/array.h"
 #include "support/text_file.h"
 #include "support/xalloc.h"
@@ -22,6 +28,8 @@
 /* Storybook's light and dark backgrounds, as the Canvas uses. */
 #define BACKDROP_LIGHT 0xf4f4f5ffu
 #define BACKDROP_DARK 0x1c1c1fffu
+/* A field's world extent across its thumbnail. */
+#define FIELD_EXTENT 768.0f
 #define SWATCH_MAX 12
 /* A widget's thumbnail frames its content to fill this much of it. */
 #define DOCUMENT_FILL 0.86f
@@ -252,11 +260,53 @@ static bool render_document(studio *s, studio_thumb_renderers *r, const studio_t
     return shows;
 }
 
+/* ---------- Fields ---------- */
+
+static bool render_field(studio *s, const studio_thumb_job *job, CF_Canvas canvas)
+{
+    int side = job->side;
+    const material_fields *fields = game_materials_fields(s->scene->live->materials);
+    float *values = xmalloc((size_t)side * side * sizeof *values);
+    char error[256];
+    field_grid grid = { side, side, FIELD_EXTENT / (float)side, 0, 0 };
+    bool baked = material_field_bake(fields, job->name, NULL, 0, grid, values, NULL, error, sizeof error);
+    if (baked) {
+        CF_Pixel *pixels = xmalloc((size_t)side * side * sizeof *pixels);
+        render_field_image(values, side, side, grid.cell_size, pixels);
+        cf_texture_update(cf_canvas_get_target(canvas), pixels, side * side * (int)sizeof *pixels);
+        free(pixels);
+    }
+    free(values);
+    return baked;
+}
+
+/* ---------- Shapes ---------- */
+
+static bool render_shape(const studio_thumb_job *job, CF_Canvas canvas)
+{
+    shader_error error;
+    render_shader_preview
+        *preview = render_shader_preview_find(job->name, job->side, job->side, &error);
+    if (!preview) {
+        return false;
+    }
+    float side = (float)job->side;
+    cf_draw_push();
+    cf_draw_projection(cf_ortho_2d(0, 0, side, side));
+    bool drawn = render_shader_preview_draw(preview, 0, NULL);
+    cf_render_to(canvas, true);
+    cf_draw_pop();
+    render_shader_preview_free(preview);
+    return drawn;
+}
+
 /* ---------- Dispatch ---------- */
 
 static bool render_still(studio *s, studio_thumb_renderers *r, const studio_thumb_job *job, CF_Canvas canvas)
 {
     switch (job->kind) {
+        case REFERENCE_ASSET_SHAPE: return render_shape(job, canvas);
+        case REFERENCE_ASSET_FIELD: return render_field(s, job, canvas);
         case REFERENCE_ASSET_UI:
             return has_suffix(job->path, UI_STYLE_EXTENSION)
                      ? render_stylesheet(job, canvas)

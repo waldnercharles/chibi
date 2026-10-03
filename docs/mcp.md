@@ -154,7 +154,7 @@ saving them. Tool results include complete `structuredContent` and
 
 - `buildGraph`: create or edit any graph asset; `query` replaces a System's ECS query.
 - `previewField`: bake a bounded scalar field and return its PNG, range and hash.
-- `buildPrototype`: create or edit reflected components, fields, and behavior attachments.
+- `buildPrototype`: create or edit reflected components, fields, and behavior attachments; apply a scene entity's overrides to its prototype or save it as a new one (`source_instance`).
 - `buildScene`: create or edit named entities, prototype instances, overrides, and attachments; `rename_entity` renames an entity within the scene.
 - `optimizeGraph`: analyze or publish proven graph folds and graph-local aliases.
 - `renameSymbol`: rename an asset, event, function, parameter, variable or local and every reference to it across assets, dry run first.
@@ -415,6 +415,16 @@ selected by reflected name or stable key, `add_component` uses native defaults,
 and behavior attachments are resolved and loaded before publication. The
 complete edit batch is serialized, loaded again for round-trip validation, and
 published with the same expected-hash check as graph edits.
+
+`source_instance: {scene, entity, fields?}` starts the edit from a scene
+entity, as Studio's prototype actions do (`assets/prototype_instance.h`). On
+the prototype the entity is an instance of, it applies the fields the entity
+overrides, outside its position, or the `fields` named, and lists them in
+`applied_fields`; a field the entity does not override is refused. With
+`create`, the new prototype is the tuned entity: its components, values and
+behaviors, with its prototype's position. The scene is left alone; use
+`buildScene`'s `set_entity_prototype` to make the entity an instance of the
+new prototype. `operations` apply after it and may be empty.
 
 `buildScene` applies the same boundary to multi-entity fixtures. Entities are
 addressed by name and reference a prototype; component overrides, retained

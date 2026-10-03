@@ -426,7 +426,7 @@ const prototypeOperationSchema = object({
 const editPrototypeDefinition = {
   name: "buildPrototype",
   operation: "edit_prototype",
-  description: "Create or edit a prototype with semantic component, field, and behavior operations; native defaults and serialization are applied automatically.",
+  description: "Create or edit a prototype with semantic component, field, and behavior operations; native defaults and serialization are applied automatically. With source_instance, apply a scene entity's overrides to its prototype, or create a new prototype from the tuned entity.",
   inputSchema: object({
     ...prototypeAssetSelectorProperties,
     expected_hash: {
@@ -441,11 +441,24 @@ const editPrototypeDefinition = {
       type: "boolean",
       description: "Validate and serialize the proposed edit without publishing it.",
     },
+    source_instance: object({
+      scene: { type: "string", description: "Scene asset name holding the entity." },
+      entity: { type: "string", description: "Entity name in that scene." },
+      fields: {
+        type: "array",
+        maxItems: MAX_PROTOTYPE_OPERATIONS,
+        items: object({
+          component: { type: "string", description: "Reflected component name or stable key." },
+          field: { type: "string", description: "Reflected field name." },
+        }, ["component", "field"]),
+        description: "Overridden fields to apply; omit to apply every field the entity overrides. Not with create.",
+      },
+    }, ["scene", "entity"]),
     operations: {
       type: "array",
       maxItems: MAX_PROTOTYPE_OPERATIONS,
       items: prototypeOperationSchema,
-      description: "Ordered semantic component, field, and behavior operations.",
+      description: "Ordered semantic component, field, and behavior operations, applied after source_instance; may be empty.",
     },
   }, ["operations"]),
   outputSchema: { type: "object", additionalProperties: true },

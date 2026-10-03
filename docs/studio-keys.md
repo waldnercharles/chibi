@@ -35,7 +35,7 @@ Rebindable commands, active over any area unless noted.
 | Space (also with Shift or Alt) | Play, Pause, or Resume a paused run | Except Behavior | `studio_commands.c` |
 | Shift+F5 | Stop | Global | `studio_commands.c` |
 
-Commands without a default chord (Reload, Open Prototype, Reset Camera, Toggle Performance, Reset Layout, Step, Record Gameplay, the density, motion and theme toggles, Preview UI Asset, New …, Add Component, the layout modes, Side Pane, Collaboration and its actions, Close Tab, Close Drawer) are in the menus and Search, and Settings ▸ Keyboard can bind them.
+Commands without a default chord (Reload, Open Prototype, Reset Camera, Toggle Performance, Reset Layout, Step, Record Gameplay, Show Live Values, the density, motion and theme toggles, Preview UI Asset, New …, Add Component, the layout modes, Side Pane, Collaboration and its actions, Close Tab, Close Drawer) are in the menus and Search, and Settings ▸ Keyboard can bind them.
 
 ## Scene and Outliner
 

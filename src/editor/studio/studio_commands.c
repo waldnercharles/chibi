@@ -345,7 +345,7 @@ static const command_entry COMMANDS[STUDIO_COMMAND_COUNT] = {
     [STUDIO_COMMAND_KEEP_CHANGES] = { .id = "keepChanges",
                                       .label = "Keep Changes",
                                       .chord = "K",
-                                      .context = "Properties, Scene",
+                                      .context = "Scene, Properties",
                                       .contexts = EDITOR_BIT(STUDIO_EDITOR_PROPERTIES) |
                                                   EDITOR_BIT(STUDIO_EDITOR_SCENE),
                                       .keywords = "play live runtime "

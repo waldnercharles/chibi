@@ -91,10 +91,11 @@ static const fixed_key FIXED[] = {
 /* The areas, in the order the sheet lists them; studio_command_group names
    the commands'. */
 static const char *const AREAS[] = {
-    "Global",           "Scene, Outliner", "Scene",    "Outliner",
-    "Properties",       "Behavior",        "Members",  "Text Editor",
-    "Assets",           "UI Hierarchy",    "Debugger", "Inspector",
-    "Menus and Search", "Fields",
+    "Global",    "Scene, Outliner",  "Scene, Properties",
+    "Scene",     "Outliner",         "Properties",
+    "Behavior",  "Members",          "Text Editor",
+    "Assets",    "UI Hierarchy",     "Debugger",
+    "Inspector", "Menus and Search", "Fields",
 };
 
 void studio_keymap_add(yyjson_mut_doc *doc)

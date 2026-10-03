@@ -40,10 +40,22 @@ void material_ecs_release_record(material_record *record)
     *record = (material_record){ 0 };
 }
 
-void game_materials_reset(game_materials *materials)
+static bool terrain_record(const material_record *record)
 {
+    return record->terrain || ecs_entity_to_u64(record->terrain_source);
+}
+
+/* Releases records and destroys the entities materials made for them;
+ * terrain's stay when kept. */
+static void release_records(game_materials *materials, bool keep_terrain)
+{
+    materials->fragments = 0;
     for (int i = 0; i < acount(materials->records); i++) {
         material_record *record = &materials->records[i];
+        if (keep_terrain && terrain_record(record)) {
+            materials->fragments += record->fragment;
+            continue;
+        }
         if ((record->fragment || ecs_entity_to_u64(record->terrain_source)) &&
             ecs_entity_is_alive(materials->world, record->entity)) {
             int result = ecs_world_destroy_entity(materials->world, record->entity);
@@ -51,14 +63,16 @@ void game_materials_reset(game_materials *materials)
         }
         material_ecs_release_record(record);
     }
-    aclear(materials->records);
+}
+
+static void reset_simulation(game_materials *materials)
+{
     material_destruction_reset(materials->destruction);
     aclear(materials->damage_requests);
     aclear(materials->regions);
     aclear(materials->debris_tiles);
     aclear(materials->terrain_views);
     aclear(materials->debris_blasts);
-    materials->fragments = 0;
     if (materials->debris) {
         material_debris_clear(materials->debris);
     }
@@ -67,6 +81,20 @@ void game_materials_reset(game_materials *materials)
         materials->fluid = NULL;
     }
     materials->settings = (MaterialFluidWorld){ 0 };
+}
+
+void game_materials_reset(game_materials *materials)
+{
+    release_records(materials, false);
+    aclear(materials->records);
+    aclear(materials->host_views);
+    reset_simulation(materials);
+}
+
+void game_materials_reset_except_terrain(game_materials *materials)
+{
+    release_records(materials, true);
+    reset_simulation(materials);
 }
 
 void game_materials_free(game_materials *materials)
@@ -80,9 +108,29 @@ void game_materials_free(game_materials *materials)
     material_debris_free(materials->debris);
     afree(materials->debris_tiles);
     afree(materials->terrain_views);
+    afree(materials->host_views);
     afree(materials->debris_blasts);
     game_task_pool_release(materials->pool);
     free(materials);
+}
+
+void game_materials_set_stream_views(game_materials *materials, const material_stream_view *views, int count)
+{
+    aclear(materials->host_views);
+    for (int i = 0; i < count; i++) {
+        apush(materials->host_views, views[i]);
+    }
+}
+
+bool game_materials_streaming(const game_materials *materials)
+{
+    for (int i = 0; i < acount(materials->records); i++) {
+        const material_stream *stream = materials->records[i].stream;
+        if (stream && material_stream_waiting(stream)) {
+            return true;
+        }
+    }
+    return false;
 }
 
 bool game_materials_enabled(const game_materials *materials)

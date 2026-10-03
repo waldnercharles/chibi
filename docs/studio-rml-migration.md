@@ -3,7 +3,7 @@
 Studio's whole editor moves to authored RML and RCSS, as the user decided on
 2026-10-03. Anything that can't be authored, or that would cost substantial
 performance, is postponed and listed in Postponed below. Status: S0, F0,
-F1, F2, F3, F4, F5 and P1 done; the rest planned. The spike (S0) ran on a
+F1, F2, F3, F4, F5, P1 and P5 done; the rest planned. The spike (S0) ran on a
 loaded machine, so its times are provisional until re-measured on an idle
 one (S0 results).
 
@@ -49,7 +49,7 @@ About 1,600 kit call sites remain across 40 files. The largest:
 | Scene viewport | `kit_surface` showing `kit:viewport` | Texture, pointer input, camera labels | Overlays authored; input stays in C |
 | Assets | `studio_assets.c` | Index, filters, `kit:thumb:` textures, thumbnail budget, columns, keys, drag, New menu | W2 P3 |
 | Output, Find, Calls | `studio_output.c`, `studio_find.c`, `studio_calls.c` | Log ring, highlighted markup, problem places, follow-output, call tree | W2 P4 |
-| Members | `studio_members.c` | Members, uses, rename, drag into the graph, menus | W2 P5 |
+| Members | `Members.rml` and `MembersHeader.rml`; the `members` source in `studio_members.c` | Members, uses, rename, drag into the graph, menus | Done (P5) |
 | Behavior area | `studio_graph*.c`, a second context drawn to `kit:graph` | Nodes, pins, literals, comments, reroutes, wires, live chips | Header, breadcrumbs, find, menus, add-node search: W4 G1. Node bodies: postponed |
 | Text Editor | `studio_code.c`, `kit_code.c` (Zep) | Buffer, intelligence, Vim | Chrome authored (W3 C2); the Zep surface stays a native element |
 | Performance | `studio_performance.c` | Sample ring | W3 C2 around a native `<line-chart>` |
@@ -273,7 +273,7 @@ natively and 1.3-1.7× that on web, provisionally):
 | Outliner (10k objects, 60-row window) | Measured: 362 per scroll step | Scroll, selection | Low (0.69 ms native, 0.91 ms web per step) |
 | Assets (8×8 tiles) | ~400 | Scroll, thumbnails ready | Low |
 | Output following a log | Measured: 40 markup parses per batch | Logging | Medium (1.3 ms native, 1.9 ms web; 6× plain text) |
-| Members (<300 rows) | ~1.5k | Edits | Low |
+| Members (<300 rows) | Measured: 768 per change over a 28-row window | Selection, scroll, filter | Medium: 1.2-1.3× native on selection and scroll (P5 results) |
 | Shell and headers | ~400 | Command state | Low |
 | Palette (50-item window) | ~300 | Each keystroke | Low |
 | Graph node bodies (300 nodes) | 5-10k+ | Node drags each frame, chips at 10 Hz | High: postponed |
@@ -764,7 +764,73 @@ popups above areas, focus across documents, inspection and lifetime;
 | P2 Outliner | Rows, root, eye and lock, rename, drops, menu, filter | ~350 lines |
 | P3 Assets | Grid and list, header, New menu, name popover, drag sources, preview tooltip | ~400 lines |
 | P4 Output | Six views, follow-output, highlighted rows, Calls tree | ~450 lines |
-| P5 Members | Sections, rename, uses, menus, drag into the graph | ~600 lines |
+| P5 Members (done) | Sections, rename, uses, menus, drag into the graph | ~550 lines of kit UI: P5 results |
+
+#### P5: Members (done)
+
+`Members.rml` is a List of TreeRows that the `members` source
+(`studio_members.c`) windows with `ui_list_window`, and `MembersHeader.rml`
+is the header's filter (`members.filter`), mounted in the AreaHeader's
+controls as GraphView is. Rows keep the kit's anatomy, so web shots before
+(`db679e48`) and after match pixel for pixel in dark and light, compact
+and comfortable: rows with a selection and a folded section, the name
+field and a filter. The kit's rows, list, menu, search and text field
+that Members emitted are gone; selection, renames across uses, deletes
+with their Undo toast, history and the canvas drop stay in C, behind
+`members.click`, `.edit`, `.menu`, `.uses`, `.add`, `.renamed`, `.cancel`
+and the menu's `.open`, `.rename`, `.duplicate`, `.refs`, `.calls` and
+`.delete`. Intentional differences: a menu the pointer opens highlights
+nothing (Base UI; the kit highlighted its first item after a key), and a
+drag held over the graph names its drop (Get, Set with Alt, Call).
+
+What it needed beyond the panel, each usable elsewhere:
+
+- **Autofocus** (`src/ui/autofocus.c`): an element created with
+  `autofocus` after its document shows, as `data-when` builds a rename
+  field, takes focus at the end of that update; a text field shows its
+  ring and selects its text. An RmlUi plugin reports element creation
+  (`rml_add_element_created`).
+- **`stop()`** in a data-event expression stops the event (Vue's `.stop`),
+  so a row's use count and add button keep their clicks from the row.
+- **`<kit-dot shape fill>`**: the socket swatch from attributes.
+- **Area keys**: focus in an editor's authored area passes Studio's
+  shortcuts as a native area did (`studio_ui_shortcut_focus`), so F2, X and
+  Shift+D work after a click on a row; a field keeps its keys.
+- **Binding writes**: a source takes `wrote` only while its panel shows;
+  Settings, hidden, had applied stale rows over a density a command set
+  whenever any binding wrote, as the filter does on each keystroke.
+- **MenuItem** shows its shortcut (`data-if` read "F2" as false).
+- The canvas takes member drops right after its surface, so an empty
+  graph's hint label no longer shadows it.
+
+`./build-release/test_suite --ui-bench members` (case 10: 192 more
+variables in 12 categories, Members 372×458 dp, a 28-row window, the
+Sandbox at 1440×900, pixel scale 2), the binary before (`db679e48`, with
+`CHIBI_RESOURCE_DIR` over that commit's resources) and after alternated
+three times, 1-minute load 16-22; ms, the mean of the runs' medians:
+
+| Case | Native | Authored | Ratio | UI time (sync + emit + update) | Views evaluated | Layouts |
+|---|---:|---:|---:|---|---:|---:|
+| A UI frame with nothing changed | 1.05 | 1.02 | 0.97× | 0.82 / 0.77 | 0 | 0 |
+| Select another variable | 2.98 | 3.66 | 1.23× | 1.92 / 2.43 (1.27×) | 768 | 2 |
+| Scroll 3 rows | 3.87 | 5.01 | 1.30× | 2.78 / 3.39 (1.22×) | 763 | 2 |
+| Filter by a keystroke | 5.93 | 5.03 | 0.85× | 3.35 / 3.38 (1.01×) | 763 | 2 |
+
+The source's sync costs 0.05 ms over the native's at every refresh. A
+dirty `members` re-evaluates all 27 views of each window row, so a
+selection change costs what a filter does; and as `data-for` matches by
+index, a scroll rewrites every row's texts where the kit kept each
+member's row. Both exceed the +10% gate under this load; a re-measure on
+an idle machine decides whether to key `data-for` by row (an RmlUi
+patch) or keep the selection in a variable of its own. Checks:
+`--studio-members` (also in `--studio-documents`): sections, swatch and
+use counts, selection, folding, a use count's press, F2 and double-click
+rename with Enter, Escape and one Undo step, the add buttons, the context
+menu's Duplicate, X with its Undo, a drag onto the graph and its hint,
+reveal and the filter, which leaves preferences alone; with
+`CHIBI_MEMBERS_CAPTURE_DIR` set it writes native shots of rows, rename,
+menu and drag in the four variants. Open: two areas showing Members share
+one window and one List.
 
 #### P1: Properties (done)
 

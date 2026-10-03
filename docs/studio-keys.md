@@ -128,9 +128,13 @@ Its fields and menus follow Menus, Search, popups and fields below (`Properties.
 | Key | Action | Source |
 | --- | --- | --- |
 | F2 | Rename | `studio_members.c` |
+| Enter, Escape | In the name field: rename, keep the name | `Members.rml` |
 | X, Backspace, Delete | Delete (Undo in the toast) | `studio_members.c` |
 | Shift+D, Mod+D | Duplicate variable | `studio_members.c` |
-| Alt (held) while dragging | Drop a Set node | `studio_members.c` |
+| Alt (held) while dragging | Drop a Set node (the drag's hint says Set) | `studio_members.c` |
+
+The panel is authored (`Members.rml`); a click on a row leaves these keys
+with Studio, and the name and filter fields keep theirs.
 
 ## Text Editor
 

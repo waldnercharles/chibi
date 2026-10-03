@@ -9,8 +9,10 @@
 #include "editor/workspace/input.h"
 #include "editor/workspace/scene_internal.h"
 #include "render/scene_renderer.h"
+#include "render/screenshot.h"
 #include "test/editor/ui_bench.h"
 #include "test/suite_internal.h"
+#include "ui/popover.h"
 #include "ui/rml.h"
 
 #include <assert.h>
@@ -788,6 +790,81 @@ static void performance_play(studio_bench *b)
     frames(b, 2);
 }
 
+/* ---------- C2's native shots ---------- */
+
+/* A press and release on `el`, as a click (studio_documents.c's press). */
+static void press_element(studio *s, rml_element *el)
+{
+    assert(el);
+    rml_vec2 at = rml_element_absolute_offset(el, RML_BOX_BORDER);
+    rml_vec2 size = rml_element_box_size(el, RML_BOX_BORDER);
+    float ratio = studio_pixel_ratio(s);
+    rml_input input = { .x = (at.x + size.x * 0.5f) / ratio,
+                        .y = (at.y + size.y * 0.5f) / ratio };
+    rml_input_type types[] = { RML_INPUT_POINTER_MOVE,
+                               RML_INPUT_POINTER_DOWN,
+                               RML_INPUT_POINTER_UP };
+    for (size_t i = 0; i < sizeof types / sizeof *types; i++) {
+        input.type = types[i];
+        rml_backend_process_input(s->backend, &input);
+    }
+}
+
+static void shot(studio_bench *b, const char *dir, const char *variant, const char *state)
+{
+    char path[1024];
+    frames(b, 10);
+    snprintf(path, sizeof path, "%s/native-%s-%s.png", dir, state, variant);
+    int saved = app_save_screenshot(path);
+    assert(saved == 0);
+}
+
+/* With UI_BENCH_CAPTURE set to a directory, native shots of the Behavior
+   header, its graph picker and Graph menu, the graph's find bar and
+   Performance in Play, in dark and light, compact and comfortable, which
+   the kit build and the authored one both take. */
+static void capture_chrome(studio_bench *b, const char *dir)
+{
+    static const struct
+    {
+        const char *name;
+        studio_theme theme;
+        bool comfortable;
+    } VARIANTS[] = { { "dark-compact", STUDIO_THEME_DARK, false },
+                     { "dark-comfortable", STUDIO_THEME_DARK, true },
+                     { "light-compact", STUDIO_THEME_LIGHT, false },
+                     { "light-comfortable", STUDIO_THEME_LIGHT, true } };
+    studio *s = b->studio;
+    studio_layout *layout = studio_active_layout(s);
+    s->maximized = -1;
+    for (size_t v = 0; v < sizeof VARIANTS / sizeof *VARIANTS; v++) {
+        const char *name = VARIANTS[v].name;
+        s->prefs.theme = VARIANTS[v].theme;
+        s->prefs.comfortable = VARIANTS[v].comfortable;
+        layout->editors[STUDIO_AREA_BOTTOM] = STUDIO_EDITOR_BEHAVIOR;
+        rml_context *context = rml_backend_context(s->backend);
+        shot(b, dir, name, "header");
+        press_element(s, studio_query(s, ".crumb.current"));
+        shot(b, dir, name, "graphs");
+        popover_hide_all(context);
+        frames(b, 10);
+        press_element(s, studio_query(s, "[data-tip=Graph]"));
+        shot(b, dir, name, "more");
+        popover_hide_all(context);
+        frames(b, 10);
+        snprintf(s->graph.find.query, sizeof s->graph.find.query, "speed");
+        studio_graph_find(s);
+        shot(b, dir, name, "find");
+        s->graph.find.open = false;
+        layout->editors[STUDIO_AREA_BOTTOM] = STUDIO_EDITOR_PERFORMANCE;
+        studio_runtime(s, APP_RUNTIME_PLAY);
+        frames(b, 90);
+        shot(b, dir, name, "perfplay");
+        studio_runtime(s, APP_RUNTIME_STOP);
+        frames(b, 4);
+    }
+}
+
 /* ---------- 12: the Outliner over ten thousand objects ---------- */
 
 #define OUTLINER_OBJECTS 10000
@@ -1165,6 +1242,14 @@ int ui_bench_studio(const char *program, bool members_only)
     probe_documents(b.studio);
     bench_header("Studio on the Sandbox at 1440x900, native");
     printf("|  | pixel scale %.1f | | | | | | |\n", cf_app_get_pixel_scale());
+    /* UI_BENCH_CAPTURE takes C2's native shots alone. */
+    if (getenv("UI_BENCH_CAPTURE")) {
+        capture_chrome(&b, getenv("UI_BENCH_CAPTURE"));
+        bench_close(&b);
+        app_input_shutdown();
+        cf_destroy_app();
+        return 0;
+    }
     /* UI_BENCH_PERFORMANCE runs case 13 alone. */
     if (getenv("UI_BENCH_PERFORMANCE")) {
         performance_play(&b);

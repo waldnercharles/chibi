@@ -771,11 +771,14 @@ static void draw_dot(mesh *m, rml_element *el, const kit_dot_desc *desc)
     }
 }
 
+/* A dot has no data until kit_dot or its shape and fill attributes give it
+   some, which an authored <kit-dot> in a data-for template never gets:
+   until then it draws nothing. */
 static void dot_render(rml_element *el, void *user)
 {
     dot_element *dot = user;
     rml_render_manager *manager = rml_element_render_manager(el);
-    if (!manager) {
+    if (!manager || !dot) {
         return;
     }
     if (!dot->built) {
@@ -790,17 +793,43 @@ static void dot_render(rml_element *el, void *user)
 static void dot_resize(rml_element *, void *user)
 {
     dot_element *dot = user;
-    dot->built = false;
+    if (dot) {
+        dot->built = false;
+    }
 }
 
 static void dot_release(void *user)
 {
     dot_element *dot = user;
-    rml_geometry_destroy(dot->geometry);
-    free(dot);
+    if (dot) {
+        rml_geometry_destroy(dot->geometry);
+        free(dot);
+    }
 }
 
-static const rml_element_hooks dot_hooks = { dot_render, dot_resize, dot_release };
+/* An authored <kit-dot shape="circle|square|arrow" fill="#rrggbbaa">, as
+   Members shows a variable's type: filled, without a ring. */
+static void dot_attribute(rml_element *el, void *, const char *name)
+{
+    if (strcmp(name, "shape") && strcmp(name, "fill")) {
+        return;
+    }
+    dot_element *dot = element_data(el, sizeof *dot);
+    char shape[16] = "", fill[16] = "";
+    rml_element_attribute(el, "shape", shape, sizeof shape);
+    rml_element_attribute(el, "fill", fill, sizeof fill);
+    dot->desc.shape = !strcmp(shape, "square") ? KIT_DOT_SQUARE
+                    : !strcmp(shape, "arrow")  ? KIT_DOT_ARROW
+                                               : KIT_DOT_CIRCLE;
+    dot->desc.fill = fill[0] == '#' ? (uint32_t)strtoul(fill + 1, NULL, 16) : 0;
+    dot->desc.ring = dot->desc.fill;
+    dot->built = false;
+}
+
+static const rml_element_hooks dot_hooks = { .render = dot_render,
+                                             .resize = dot_resize,
+                                             .release = dot_release,
+                                             .attribute = dot_attribute };
 
 void register_dot_element()
 {

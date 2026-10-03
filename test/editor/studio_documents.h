@@ -78,5 +78,7 @@ void studio_documents_assets_checks();
 void studio_documents_list_checks();
 /* Output's views, log, places and Calls tree (workstream P4). */
 void studio_documents_output_checks();
+/* Members (workstream P5). */
+void studio_documents_members_checks();
 
 #endif

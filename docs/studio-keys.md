@@ -114,9 +114,13 @@ Space does not play and Shift+D does not duplicate objects here; Mod+Z, Mod+Shif
 | Key | Action | Source |
 | --- | --- | --- |
 | F2 | Rename | `studio_members.c` |
+| Enter, Escape | In the name field: rename, keep the name | `Members.rml` |
 | X, Backspace, Delete | Delete (Undo in the toast) | `studio_members.c` |
 | Shift+D, Mod+D | Duplicate variable | `studio_members.c` |
-| Alt (held) while dragging | Drop a Set node | `studio_members.c` |
+| Alt (held) while dragging | Drop a Set node (the drag's hint says Set) | `studio_members.c` |
+
+The panel is authored (`Members.rml`); a click on a row leaves these keys
+with Studio, and the name and filter fields keep theirs.
 
 ## Text Editor
 
@@ -143,7 +147,7 @@ Ctrl+Space completes here; Maximize Area does not reach a focused editor.
 
 ## Output
 
-The Calls view's tree (`studio_calls.c`), with the pointer over Output or focus inside it (`Output.rml`'s `data-keys`), as VS Code's call hierarchy and WAI-ARIA's tree view take them. A click selects a row and its twisty folds it; a double click opens its call, send or Event node. Other views open a row with a click.
+The Calls view's tree (`studio_calls.c`), with the pointer over Output, focus inside it or not, as VS Code's call hierarchy and WAI-ARIA's tree view take them. A click selects a row and its twisty folds it; a double click opens its call, send or Event node. Other views open a row with a click.
 
 | Key | Action | Source |
 | --- | --- | --- |

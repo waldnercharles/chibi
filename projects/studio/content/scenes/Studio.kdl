@@ -36,4 +36,6 @@ name "Studio"
     }
     - name="Output" prototype="Output"
     - name="OutputHeader" prototype="OutputHeader"
+    - name="Members" prototype="Members"
+    - name="MembersHeader" prototype="MembersHeader"
 }

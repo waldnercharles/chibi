@@ -455,6 +455,25 @@ bool studio_ui_modal_open(studio *s)
     return false;
 }
 
+rml_data_reads studio_ui_data_reads(const studio *s)
+{
+    return s->ui ? rml_data_model_reads(s->ui->data.model) : (rml_data_reads){ 0 };
+}
+
+/* Whether an editor's authored area holds `element`: Members, not a Studio
+   UI panel shown in an area, which keeps its keys. */
+static bool in_editor_area(studio *s, rml_element *element)
+{
+    const studio_layout *layout = studio_active_layout(s);
+    for (int i = 0; i < STUDIO_AREA_COUNT; i++) {
+        if (s->ui->areas[i] && layout->editors[i] != STUDIO_EDITOR_PANEL &&
+            ui_mount_holds(s->ui->areas[i], element)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 bool studio_ui_shortcut_focus(studio *s)
 {
     if (!s || !s->ui || !s->backend || !s->kit || kit_has_popup(s->kit) ||
@@ -465,6 +484,11 @@ bool studio_ui_shortcut_focus(studio *s)
     studio_ui *ui = s->ui;
     rml_context *context = rml_backend_context(s->backend);
     rml_element *focus = context ? rml_context_focus_element(context) : NULL;
+    /* An editor area keeps only its fields' keys, as a native one does, so
+       Studio's shortcuts and the area's own (F2, X) reach it. */
+    if (focus && in_editor_area(s, focus)) {
+        return true;
+    }
     rml_element *button = focus;
     while (button && strcmp(rml_element_tag_name(button), "button") &&
            !rml_element_is_class_set(button, "btn")) {
@@ -568,11 +592,6 @@ void studio_ui_area_detach(studio *s, int area)
     ui_mount_detach(s->ui->headers[area]);
     ui_mount_detach(s->ui->areas[area]);
     ui_mount_detach(s->ui->controls[area]);
-}
-
-rml_data_reads studio_ui_reads(const studio *s)
-{
-    return rml_data_model_reads(s->ui->data.model);
 }
 
 const char *studio_ui_page(const studio_ui *ui)

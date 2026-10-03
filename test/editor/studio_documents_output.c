@@ -451,8 +451,8 @@ static void calls_tree()
     bool opened = !strcmp(key_over(&f, SDL_SCANCODE_RIGHT), "Aim") &&
                   s->calls.rows[1].open;
     bool child = !strcmp(key_over(&f, SDL_SCANCODE_RIGHT), "Track");
-    /* The keys so far reached Output's data-keys from the focused row; with
-       nothing focused, the pointer over Output gives it them. */
+    /* The keys so far came with focus in the clicked row; with nothing
+       focused, the pointer over Output gives it them as well. */
     rml_element *focus = rml_context_focus_element(rml_backend_context(s->backend));
     if (focus) {
         rml_element_blur(focus);

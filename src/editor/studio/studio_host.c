@@ -1049,6 +1049,7 @@ void studio_free(studio *s)
     afree(s->calls.rows);
     afree(s->output.slots);
     afree(s->members.uses.items);
+    rml_element_ref_destroy(s->members.list_element);
     afree(s->perf);
     afree(s->perf_published);
     studio_assets_free(s);
@@ -1123,6 +1124,8 @@ static uint64_t ui_state(studio *s)
         s->graph.graph_id,
         (uint64_t)s->members.kind,
         s->members.id,
+        (uint64_t)s->members.rename_kind,
+        s->members.rename_id,
         s->graph.comment,
     };
     uint64_t key = 1469598103934665603ull;

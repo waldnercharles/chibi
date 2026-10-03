@@ -594,14 +594,19 @@ void studio_output_add(yyjson_mut_doc *doc)
     yyjson_mut_obj_add_real(doc, output, "scope", 0);
     yyjson_mut_obj_add_bool(doc, output, "clearable", false);
     yyjson_mut_obj_add_strcpy(doc, output, "filter", "");
-    yyjson_mut_obj_add_strcpy(doc, output, "empty", "");
     yyjson_mut_val *head = yyjson_mut_obj_add_obj(doc, output, "head");
     yyjson_mut_obj_add_strcpy(doc, head, "icon", "");
     yyjson_mut_obj_add_strcpy(doc, head, "title", "");
     yyjson_mut_obj_add_strcpy(doc, head, "count", "");
     yyjson_mut_obj_add_bool(doc, output, "callees", false);
+}
+
+void studio_output_rows_add(yyjson_mut_doc *doc)
+{
+    yyjson_mut_val *rows = yyjson_mut_obj_add_obj(doc, yyjson_mut_doc_get_root(doc), "output_rows");
+    yyjson_mut_obj_add_strcpy(doc, rows, "empty", "");
     for (int i = 0; i < SHAPE_COUNT; i++) {
-        yyjson_mut_obj_add_arr(doc, output, SHAPE_ARRAYS[i]);
+        yyjson_mut_obj_add_arr(doc, rows, SHAPE_ARRAYS[i]);
     }
 }
 
@@ -900,10 +905,12 @@ static void apply_twisties(studio *s, const studio_panel_sync *at)
     }
 }
 
+/* `output` changes as the view, its counts or its head do; its rows, which
+   change with each new line, are `output_rows`, synced after it, so an
+   appended line evaluates the rows' views alone. */
 bool studio_output_sync(studio *s, const studio_panel_sync *at)
 {
     bool changed = sync_filter(s, at);
-    apply_twisties(s, at);
     if (s->problems_scope == PROBLEMS_PROJECT && !s->problems_checked) {
         check_project(s);
     }
@@ -912,8 +919,13 @@ bool studio_output_sync(studio *s, const studio_panel_sync *at)
     changed |= put_number(at->variable, "runtime", acount(s->runtime_errors));
     changed |= put_number(at->variable, "scope", s->problems_scope);
     changed |= put_bool(at->variable, "clearable", clearable(s));
-    changed |= show_head(s, at);
-    return show_rows(s, at) || changed;
+    return show_head(s, at) || changed;
+}
+
+bool studio_output_rows_sync(studio *s, const studio_panel_sync *at)
+{
+    apply_twisties(s, at);
+    return show_rows(s, at);
 }
 
 /* ---------- Actions ---------- */
@@ -1000,26 +1012,8 @@ static void click(studio *s, int64_t key)
     }
 }
 
-/* The keys Output.rml binds with data-keys while it has focus, as the
-   pointer over it binds them through Studio's shortcuts. */
-static const struct
-{
-    const char *action;
-    SDL_Keycode key;
-} KEYS[] = {
-    { "up", SDLK_UP },        { "down", SDLK_DOWN }, { "left", SDLK_LEFT },
-    { "right", SDLK_RIGHT },  { "home", SDLK_HOME }, { "end", SDLK_END },
-    { "enter", SDLK_RETURN },
-};
-
 void studio_output_action(studio *s, const char *action, const ui_activation *a)
 {
-    for (size_t i = 0; i < sizeof KEYS / sizeof *KEYS; i++) {
-        if (!strcmp(action, KEYS[i].action)) {
-            studio_output_key(s, KEYS[i].key, SDL_KMOD_NONE);
-            return;
-        }
-    }
     int64_t key = a->argc ? strtoll(a->args[0], NULL, 10) : 0;
     if (!strcmp(action, "view") && key >= 0 && key < OUTPUT_VIEWS) {
         s->output_view = (int)key;

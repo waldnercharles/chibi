@@ -2,8 +2,8 @@
 
 Studio's whole editor moves to authored RML and RCSS, as the user decided on
 2026-10-03. Anything that can't be authored, or that would cost substantial
-performance, is postponed and listed in Postponed below. Status: S0, F0 and
-F1 done; the rest planned. The spike (S0) ran on a loaded machine, so its
+performance, is postponed and listed in Postponed below. Status: S0, F0,
+F1, F2, F4 and F5 done; the rest planned. The spike (S0) ran on a loaded machine, so its
 times are provisional until re-measured on an idle one (S0 results).
 
 ## Target
@@ -187,15 +187,26 @@ stack and one drag session while the migration runs.
 
 ### Lists, drag, focus, popovers
 
-- **Virtualization:** an authored `List` widget (scroller, spacer, window) and
-  `ui_list_window(...)`, a port of `kit_list.c` that works on any element.
-  The panel source reads `scrollTop` at sync and fills about 40-60 rows, in
-  the same frame. Row height comes from `--row`. Windows keep their length so
-  `data-for` reuses elements.
-- **Drag:** `src/ui/drag.c`, an element-level `kit_drag.c`. Sources use
-  `data-drag`, targets `data-drop` (with `data-drop-zones="tree"` giving
-  before/inside/after); a `drop` event carries type, payload and zone. C asks
-  `ui_drag_dropped(...)` for drops on surfaces such as the viewport and graph.
+- **Virtualization (F4, done):** the authored `List` widget (a scroller and a
+  spacer holding the rows) and `ui_list_window(...)` (`src/ui/list.c`), a
+  port of `kit_list.c` that works on any scroller; `kit_list` is a wrapper
+  over it. The panel source finds its List by id, calls `ui_list_window` at
+  sync, which reads `scrollTop`, sizes the spacer and sets its padding, and
+  fills the window's rows in the same frame; the List's
+  `data-event-scroll` emit wakes the source. Row height comes from `--row`.
+  The window keeps its length as the list scrolls, so `data-for` reuses its
+  elements.
+- **Drag (F4, done):** `src/ui/drag.c`, one drag for every context.
+  Sources use `data-drag` and `data-drag-payload`, targets `data-drop` (with
+  `data-drop-zones="tree"` giving before/inside/after by quarters, `"list"`
+  before/after by halves); the marks are `data-dragging`,
+  `data-drop-accept`, `data-drop-over` and `data-drop-zone`; a bubbling
+  `drop` event carries `ev.type`, `ev.payload` and `ev.zone`. C asks
+  `ui_drag_dropped(...)` for drops on surfaces such as the viewport and
+  graph. It hears each context's root first, as events capture (an RmlUi
+  plugin names new contexts, `rml_add_context_hooks`), so it spans the
+  area documents. The kit's `kit_drag_source`, `kit_drop_target`,
+  `kit_drop_hover` and `kit_drag_hint` set and read the same attributes.
 - **Keys:** area keys stay in C (`studio_shortcuts`, editors' `*_key`); widget
   keys are the element's; modal content uses `nav`/`tabindex` and behaviors.
   Rename in place uses `<input autofocus data-value-lazy>`.
@@ -528,7 +539,82 @@ table in `studio_ui.c`, `scenes/Studio.kdl`, `test_suite.c`, `sources.cmake`,
 | F1 Contracts (done) | `emit` with arguments and event context; the panel-source table and `<panel>.<action>` router; `contextmenu`; RmlUi patches for a structural conditional (Vue's `v-if`) and for `input`/`change` on text inputs | Done: Settings builds its row controls with `data-when` and records through `settings.record`; binding tests (`rmlui_binding.c`, `ui_activations.c`) and the router check (`studio_documents_panels.c`) pass |
 | F2 Controls (done) | `<number-field>`, `<color-field>`, `<splitter>`, `<live-text>`, `number_expr.c`, kit wrappers; widgets NumberField, VectorField, ColorField, Checkbox, TextField, PropertyRow, Panel, Splitter | Native Properties runs on the wrapped elements with the kit tests green: F2 results |
 | F3 Popovers | `popover.c`, `<menubar>`, one popup stack; widgets Menu*, MenuCommand, ChoiceList, AssetField, EnumField; a `choices` source | The GraphView popover and one authored menu at parity |
-| F4 Lists and drag | `drag.c`, `ui_list_window`, kit wrappers; widgets List, TreeRow (drop zones), Tile | One drag crosses an authored list and a native one |
+| F4 Lists and drag (done) | `drag.c`, `ui_list_window`, kit wrappers; widgets List, TreeRow (drop zones), Tile | Done: a drag from the gallery's authored List lands on the native Outliner and the Scene, and one from native Assets in its authored Collected list, across area documents: F4 results |
+
+#### F4: lists and drag (done)
+
+`src/ui/drag.c` is dnd-kit's drag and drop for every RmlUi context, over
+attributes (`src/ui/drag.h`): a press on a `data-drag` source picks it up
+after `FEEL_DRAG_DP`; every `data-drop` target in the context's documents
+that takes its type is marked, the nearest under the context's hover
+element is over, with a zone where it has `data-drop-zones`; an overlay
+(`<drag-overlay class="drag-overlay">`, entering and leaving as presence
+does) follows the pointer in the topmost document by transform; release
+sends a bubbling `drop` and keeps the drop for `ui_drag_dropped`; Escape
+cancels; the release's click is swallowed and the next press is a click
+(the press-after-drag rule moved from the kit to the element level). It
+listens on each context's root element in the capture phase, which an
+RmlUi plugin reaches for every context (`rml_add_context_hooks`), so the
+backend registers it with one call. One session spans every document,
+as Unity's `DragAndDrop` spans its windows and Unreal's
+`FDragDropOperation` its panels; a tree row's zones are Unreal's
+`EItemDropZone` (`STableRow`'s top and bottom quarters above and below,
+the middle onto), and a row that holds nothing splits in halves, as
+Unity's tree view drops between leaves.
+
+The kit's drag calls are wrappers: a node's source and target types
+become attributes at `kit_end`, a drop is taken in the frame after its
+release, and `kit_begin` ends a drag whose release the context missed
+outside every element. The designer's own zone mark is `data-drop-zone`
+now (`data-drop` names a target's types). `ui_list_window`
+(`src/ui/list.c`) is `kit_list.c` on any scroller, `kit_list` its
+wrapper; it also keeps a following list pinned when it set the scroll
+before the grown content laid out, which `kit_list` lost (RmlUi clamps a
+scroll to the content laid out).
+
+projects/studio gains `List`, `TreeRow` (indent, twisty writing
+`item.open`, icon, label, meta, a trailing slot, and drop marks with
+zones from the use's attributes; seven elements a row) and `Tile`
+(picture over label, badge, skeleton icon and spinner), styled by the
+theme's `.tree-row` and `.tile`, so they match the native rows and tiles.
+The widget gallery's `gallery` source (`studio_gallery.c`) windows the
+project's assets into a List of draggable TreeRows and keeps Collected,
+which takes drops before or after its rows and shows them as Tiles.
+
+`./build-release/test_suite --ui-bench headless` case 9 (spike
+`ListSpike`: a List of TreeRows over 10,000 rows, 330×820 dp, a 42-row
+window), two runs natively (1-minute load 6.7 and 11.4) and one under
+Node (load 12-15); arms alternate run by run, each in a document of its
+own:
+
+| Case | Native ms | Web ms | Views | Lookups | Layouts | Elements |
+|---|---:|---:|---:|---:|---:|---:|
+| 50 TreeRows instanced (0 to 50) | 2.54-2.65 | 3.04 | 613 | 1,841 | 1 | +350 (7 per row) |
+| 50 TreeRows removed | 0.73-0.76 | 0.70 | 0 | 7 | 1 | |
+| Scroll step of 3 rows, window kept | 0.90-0.95 | 1.19 | 515 | 1,546 | 1 | 300 |
+| The same window made anew each step | 2.62-2.77 | 3.04 | 515 | 1,548 | 2 | 300 |
+| Made anew ÷ kept | 2.90× | 2.55× | | | | |
+
+A TreeRow instances at about a third of a PropertyRow's cost (50 rows
+2.6 ms against 8.5 ms in the same runs, 7 elements against 29), and
+keeping the window's rows makes a scroll step about 2.5-2.9× cheaper than
+making them anew, within the 1 ms scroll gate natively.
+
+Web shots (1600×1000) and native ones (hidden window, 3840×2160) of the
+Assets list and tiles and the Outliner, dark and light, compact and
+comfortable, before F4 (`d68a5fca`) and after: the Outliner and the Assets
+list match pixel for pixel in all 16 pairs; tiles differ only in a
+loading spinner's angle and which streamed thumbnails had arrived; whole
+native frames differ in the status bar's report, which names the
+workspace's path. Checks: `--ui-lists` (the drag contract in a bare
+context across documents, the list window and the widgets),
+`--studio-lists` (the List's window in Studio and the cross-list drags),
+`--rmlui-kit`'s drag checks through the wrappers, and the Properties asset
+drop and Hierarchy carries in `--studio-documents`.
+
+Open: a keyboard sensor and auto-scroll for lists other than the
+Hierarchy; a drag between contexts (the guest Studio, the graph's own
+context); two areas showing one panel share its source's window.
 
 #### F5: one document per area (done)
 

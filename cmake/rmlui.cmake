@@ -63,7 +63,7 @@ chibi_rmlui_dependencies()
 add_library(chibi_ui STATIC
     src/ui/rml.cpp
     src/ui/rml_backend.c
-    src/ui/rml_shadow.c
+    src/ui/rml_gpu.c
     # Motion and the native elements authored UI uses: <number-flow>,
     # <morph-text> and presence for data-if.
     src/ui/motion.c

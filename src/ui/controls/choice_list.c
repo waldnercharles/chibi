@@ -8,8 +8,9 @@
  * shown option and moves with the pointer and with Up, Down, Home and End
  * in the field; Enter or a click chooses, sending change with ev.value, the
  * option's value. Shown again, it clears its search and highlights the
- * current option (aria-selected="true" or data-current). The search field's
- * own input and change stay inside it. */
+ * current option (aria-selected="true" or data-current), as it does when
+ * options a list loads on opening arrive. The search field's own input and
+ * change stay inside it. */
 #include "support/array.h"
 #include "support/text_search.h"
 #include "support/xalloc.h"
@@ -23,7 +24,8 @@
 
 typedef struct choice_list
 {
-    bool shown; /* visible at the last update */
+    bool shown;  /* visible at the last update */
+    int options; /* how many it had then */
 } choice_list;
 
 static rml_listener *listener;
@@ -141,6 +143,22 @@ static void filter(rml_element *el)
     move(el, 1, true);
 }
 
+/* Filters the options and, while nothing is typed, highlights the current
+   one. */
+static void show_current(rml_element *el)
+{
+    filter(el);
+    char query[QUERY_TEXT] = "";
+    rml_element *search = search_of(el);
+    if (search) {
+        rml_element_value(search, query, sizeof query);
+    }
+    rml_element *current = rml_element_query_selector(el, "[role=option][aria-selected=true], [role=option][data-current]");
+    if (current && !query[0]) {
+        highlight(el, current, true);
+    }
+}
+
 /* Opened again: the whole list, with the current option highlighted. */
 static void reset(rml_element *el)
 {
@@ -148,11 +166,7 @@ static void reset(rml_element *el)
     if (search) {
         rml_element_set_value(search, "");
     }
-    filter(el);
-    rml_element *current = rml_element_query_selector(el, "[role=option][aria-selected=true], [role=option][data-current]");
-    if (current) {
-        highlight(el, current, true);
-    }
+    show_current(el);
 }
 
 static rml_element *option_at(rml_element *el, rml_element *target)
@@ -238,10 +252,17 @@ static void list_update(rml_element *el, void *user)
         rml_element_add_event_listener(el, RML_EVENT_CHANGE, listener, false);
     }
     bool shown = rml_element_is_visible(el, true);
+    int options = shown
+                    ? rml_element_query_selector_all(el, "[role=option]", NULL, 0)
+                    : 0;
     if (shown && !c->shown) {
         reset(el);
+    } else if (shown && options != c->options) {
+        /* Options a list loads once it opens arrived. */
+        show_current(el);
     }
     c->shown = shown;
+    c->options = options;
 }
 
 static void list_release(void *user)

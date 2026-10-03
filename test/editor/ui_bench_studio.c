@@ -756,8 +756,10 @@ static void pointer(studio *s, rml_input_type type, float x, float y)
     rml_backend_process_input(s->backend, &(rml_input){ .type = type, .x = x, .y = y });
 }
 
-/* A UI frame after the pointer dragged the main splitter 3 dp: the
-   documents laid out, and the views Studio's authored panels evaluated. */
+/* The two UI frames after the pointer dragged the main splitter 3 dp, as
+   the kit's splitter resized its areas in the frame after the drag and the
+   Workspace's does in the same one: their time, the documents laid out and
+   the views Studio's authored panels evaluated. */
 static void splitter_drag(studio_bench *b)
 {
     studio *s = b->studio;
@@ -782,8 +784,14 @@ static void splitter_drag(studio_bench *b)
         cf_app_update(NULL);
         pointer(s, RML_INPUT_POINTER_MOVE, x, y + (run & 1 ? 1 : 4));
         bench_counts before = studio_mark(s);
-        double t = native_ui(s, phase);
-        cf_app_draw_onto_screen(true);
+        double t = 0, sum[PHASE_COUNT] = { 0 };
+        for (int frame = 0; frame < 2; frame++) {
+            t += native_ui(s, phase);
+            cf_app_draw_onto_screen(true);
+            for (int p = 0; p < PHASE_COUNT; p++) {
+                sum[p] += phase[p];
+            }
+        }
         counts = studio_counts(s, before);
         frames(b, 1);
         if (run < 0) {
@@ -791,14 +799,15 @@ static void splitter_drag(studio_bench *b)
         }
         ms[run] = t;
         for (int p = 0; p < PHASE_COUNT; p++) {
-            phases[p][run] = phase[p];
+            phases[p][run] = sum[p];
         }
     }
     pointer(s, RML_INPUT_POINTER_UP, x, y);
     frames(b, 2);
     bench_row(
         "15",
-        "dragging the main splitter 3 dp a frame: documents laid out",
+        "dragging the main splitter 3 dp, the two UI frames after: documents "
+        "laid out",
         bench_stat_of(ms, RUNS),
         counts
     );

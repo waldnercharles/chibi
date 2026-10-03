@@ -1,19 +1,18 @@
 /* Controls after Base UI: buttons, checkboxes, toggle groups and selects, text
- * and search fields, color pickers, panels, property and tree rows, splitters
- * and surfaces. Number fields are in kit_number.c. */
+ * and search fields, panels, property and tree rows, and surfaces; color
+ * fields and splitters wrap the native controls (ui/controls/controls.h).
+ * Number fields are in kit_number.c. */
 #include "editor/rmlui/kit_internal.h"
 #include "editor/ui/kit_icons.h"
 #include "support/math.h"
 #include "support/xalloc.h"
+#include "ui/controls/controls.h"
 
 #include <assert.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-/* "#rrggbbaa" and its NUL. */
-#define HEX_TEXT 10
 
 static bool locked(const node *n)
 {
@@ -43,152 +42,7 @@ static rml_element *text_input(rml_element *parent, const char *cls)
     return input;
 }
 
-/* ---------- Color ---------- */
-
-static void rgb_to_hsv(uint32_t c, float hsv[3])
-{
-    float r = ((c >> 24) & 255) / 255.f, g = ((c >> 16) & 255) / 255.f,
-          b = ((c >> 8) & 255) / 255.f;
-    float mx = math_max(math_max(r, g), b), mn = math_min(math_min(r, g), b);
-    float d = mx - mn;
-    float h = 0;
-    if (d > 0) {
-        h = mx == r ? fmodf((g - b) / d, 6.f)
-          : mx == g ? (b - r) / d + 2
-                    : (r - g) / d + 4;
-    }
-    hsv[0] = fmodf(h * 60 + 360, 360.f);
-    hsv[1] = mx > 0 ? d / mx : 0;
-    hsv[2] = mx;
-}
-
-static float hsv_channel(const float hsv[3], float n)
-{
-    float k = fmodf(n + hsv[0] / 60, 6.f);
-    float t = math_max(0.f, math_min(math_min(k, 4 - k), 1.f));
-    return hsv[2] - hsv[2] * hsv[1] * t;
-}
-
-static uint32_t channel_byte(float v)
-{
-    return (uint32_t)lroundf(math_clamp(v, 0.f, 1.f) * 255);
-}
-
-static uint32_t hsv_to_rgb(const float hsv[3], uint32_t alpha)
-{
-    return (channel_byte(hsv_channel(hsv, 5)) << 24) |
-           (channel_byte(hsv_channel(hsv, 3)) << 16) |
-           (channel_byte(hsv_channel(hsv, 1)) << 8) | (alpha & 255);
-}
-
-static void hex_color(char out[static HEX_TEXT], uint32_t c)
-{
-    snprintf(out, HEX_TEXT, "#%02x%02x%02x%02x", (c >> 24) & 255, (c >> 16) & 255, (c >> 8) & 255, c & 255);
-}
-
-static int hex_digit(char c)
-{
-    if (c >= '0' && c <= '9') {
-        return c - '0';
-    }
-    if (c >= 'a' && c <= 'f') {
-        return c - 'a' + 10;
-    }
-    if (c >= 'A' && c <= 'F') {
-        return c - 'A' + 10;
-    }
-    return -1;
-}
-
-static bool parse_hex(const char *text, uint32_t *rgba)
-{
-    const char *hex = text[0] == '#' ? text + 1 : text;
-    size_t length = strlen(hex);
-    if (length != 6 && length != 8) {
-        return false;
-    }
-    uint32_t value = 0;
-    for (size_t i = 0; i < length; i++) {
-        int digit = hex_digit(hex[i]);
-        if (digit < 0) {
-            return false;
-        }
-        value = (value << 4) | (uint32_t)digit;
-    }
-    *rgba = length == 6 ? (value << 8) : value;
-    return true;
-}
-
-static rml_element *color_input_row(rml_element *target)
-{
-    const char *cls = rml_element_is_class_set(target, "hex") ? "hexrow" : "opacity";
-    for (rml_element *el = target; el; el = rml_element_parent(el)) {
-        if (rml_element_is_class_set(el, cls)) {
-            return el;
-        }
-    }
-    return NULL;
-}
-
-static void input_invalid(rml_element *target, bool invalid)
-{
-    rml_element *row = color_input_row(target);
-    if (!row) {
-        return;
-    }
-    if (invalid) {
-        rml_element_set_attribute(row, "data-invalid", "");
-    } else {
-        rml_element_remove_attribute(row, "data-invalid");
-    }
-}
-
-static void color_drag(kit *k, node *n, float mx, float my)
-{
-    popup *p = popup_find(k, frame_format(k, "color:%s", n->path));
-    if (!p || !p->node) {
-        return;
-    }
-    const char *selector = n->w.drag_part == 1 ? ".sv" : ".hue";
-    rml_element *part = rml_element_query_selector(p->node->el, selector);
-    if (!part) {
-        return;
-    }
-    kit_rect r = element_rect(k, part);
-    float x = math_clamp((mx / dp(k) - r.x) / math_max(r.w, 1.f), 0.f, 1.f);
-    float y = math_clamp((my / dp(k) - r.y) / math_max(r.h, 1.f), 0.f, 1.f);
-    if (n->w.drag_part == 1) {
-        n->w.hsv[1] = x;
-        n->w.hsv[2] = 1 - y;
-    } else {
-        n->w.hsv[0] = x * 360;
-    }
-    n->w.color = hsv_to_rgb(n->w.hsv, n->w.color & 255);
-    n->w.pending = true;
-}
-
 /* ---------- Events ---------- */
-
-static void color_press(kit *k, node *n, const rml_event *e)
-{
-    for (rml_element *el = e->target; el && el != n->el; el = rml_element_parent(el)) {
-        if (!rml_element_has_attribute(el, "data-part")) {
-            continue;
-        }
-        n->w.drag_part = int_attribute(el, "data-part");
-        color_drag(k, n, e->mouse_x, e->mouse_y);
-        return;
-    }
-}
-
-void control_press(kit *k, node *n, const rml_event *e)
-{
-    switch (n->kind) {
-        case KIND_SPLITTER: n->w.pressing = true; return;
-        case KIND_COLOR: color_press(k, n, e); return;
-        default: return;
-    }
-}
 
 static void toggle_click(node *n, rml_element *target)
 {
@@ -202,20 +56,6 @@ static void toggle_click(node *n, rml_element *target)
             return;
         }
     }
-}
-
-/* Closes the field's popup, or opens it below the field. */
-static void toggle_popup(kit *k, node *n, const char *prefix)
-{
-    const char *key = frame_format(k, "%s:%s", prefix, n->path);
-    if (kit_popup_is_open(k, key)) {
-        close_popup(k, key);
-        return;
-    }
-    if (n->kind == KIND_COLOR) {
-        rgb_to_hsv(n->w.color, n->w.hsv);
-    }
-    popup_open_on(k, key, element_rect(k, n->el), n);
 }
 
 void control_click(kit *k, node *n, rml_element *target)
@@ -252,11 +92,6 @@ void control_click(kit *k, node *n, rml_element *target)
                 );
             }
             return;
-        case KIND_COLOR:
-            if (!locked(n) && within(target, n->el)) {
-                toggle_popup(k, n, "color");
-            }
-            return;
         case KIND_PANEL:
             if (n->w.menu_el && within(target, n->w.menu_el)) {
                 n->events |= EV_CONTEXT;
@@ -273,42 +108,6 @@ void control_click(kit *k, node *n, rml_element *target)
             return;
         default: return;
     }
-}
-
-static void splitter_drag(kit *k, widget *w, const rml_event *e)
-{
-    float along = w->split.axis == 1 ? e->mouse_y : e->mouse_x;
-    if (e->id == RML_EVENT_DRAGSTART) {
-        w->press_x = along;
-        w->start = w->value;
-        w->scrubbing = true;
-        return;
-    }
-    if (e->id == RML_EVENT_DRAGEND) {
-        w->scrubbing = w->pressing = false;
-        w->committed = true;
-        return;
-    }
-    double delta = (along - w->press_x) / dp(k) * (w->split.invert ? -1 : 1);
-    w->value = math_clamp(w->start + delta, w->split.min, w->split.max);
-    w->pending = true;
-    w->pending_value = w->value;
-}
-
-void control_drag(kit *k, node *n, const rml_event *e)
-{
-    if (n->kind == KIND_SPLITTER) {
-        splitter_drag(k, &n->w, e);
-        return;
-    }
-    if (n->kind != KIND_COLOR || !n->w.drag_part) {
-        return;
-    }
-    if (e->id == RML_EVENT_DRAGEND) {
-        n->w.drag_part = 0;
-        return;
-    }
-    color_drag(k, n, e->mouse_x, e->mouse_y);
 }
 
 static void field_key(kit *k, node *n, const rml_event *e)
@@ -364,29 +163,6 @@ static void press_key(node *n, const rml_event *e)
     rml_event_stop_propagation(e);
 }
 
-static void hex_change(node *n, rml_element *target);
-
-static void color_key(kit *k, node *n, const rml_event *e)
-{
-    bool enter = e->key == RML_KEY_RETURN || e->key == RML_KEY_NUMPADENTER;
-    if (e->target == n->el) {
-        if (locked(n) || (e->key != RML_KEY_SPACE && !enter)) {
-            return;
-        }
-        bool was_open = kit_popup_is_open(k, frame_format(k, "color:%s", n->path));
-        toggle_popup(k, n, "color");
-        n->w.focus_picker = !was_open;
-        rml_event_stop_propagation(e);
-        return;
-    }
-    if (!enter || locked(n) || !rml_element_is_class_set(e->target, "hex")) {
-        return;
-    }
-    hex_change(n, e->target);
-    rml_element_blur(e->target);
-    rml_event_stop_propagation(e);
-}
-
 static void select_key(kit *k, node *n, const rml_event *e)
 {
     if (locked(n)) {
@@ -438,7 +214,6 @@ void control_key(kit *k, node *n, const rml_event *e)
     switch (n->kind) {
         case KIND_TEXT:
         case KIND_SEARCH: field_key(k, n, e); return;
-        case KIND_COLOR: color_key(k, n, e); return;
         case KIND_SELECT: select_key(k, n, e); return;
         case KIND_TOGGLE: toggle_key(n, e); return;
         case KIND_AUTOCOMPLETE: return;
@@ -446,25 +221,6 @@ void control_key(kit *k, node *n, const rml_event *e)
         case KIND_BUTTON: press_key(n, e); return;
         default: return;
     }
-}
-
-static void hex_change(node *n, rml_element *target)
-{
-    char *value = element_value(target);
-    const char *hex = value[0] == '#' ? value + 1 : value;
-    size_t length = strlen(hex);
-    uint32_t rgba = 0;
-    bool valid = !locked(n) && parse_hex(value, &rgba);
-    input_invalid(target, !valid);
-    if (valid) {
-        if (length == 6) {
-            rgba = (rgba & 0xffffff00) | (n->w.color & 255);
-        }
-        n->w.color = rgba;
-        rgb_to_hsv(n->w.color, n->w.hsv);
-        n->w.pending = true;
-    }
-    free(value);
 }
 
 static bool field_input(const node *n, const rml_element *target)
@@ -492,10 +248,6 @@ void control_change(kit *k, node *n, rml_element *target)
                 n
             );
         }
-        return;
-    }
-    if (n->kind == KIND_COLOR && rml_element_is_class_set(target, "hex")) {
-        hex_change(n, target);
     }
 }
 
@@ -854,154 +606,29 @@ bool kit_search(kit *k, const char *key, char *buffer, size_t size, const char *
     return changed;
 }
 
-static const char *const HUE_STOPS[7] = {
-    "#ff0000", "#ffff00", "#00ff00", "#00ffff", "#0000ff", "#ff00ff", "#ff0000",
-};
-
-/* The picker's plane, hue strip and RGBA input; opacity uses kit_number. */
-static rml_element *build_picker(rml_element *el)
-{
-    rml_element *sv = raw(el, "div", "sv", NULL);
-    rml_element_set_attribute(sv, "data-part", "1");
-    raw(sv, "div", "sv-white", NULL);
-    raw(sv, "div", "sv-black", NULL);
-    raw(sv, "div", "puck", NULL);
-    rml_element *hue = raw(el, "div", "hue", NULL);
-    rml_element_set_attribute(hue, "data-part", "2");
-    for (int i = 0; i < 6; i++) {
-        rml_element *seg = raw(hue, "div", "hue-seg", NULL);
-        char decorator[64];
-        snprintf(
-            decorator,
-            sizeof decorator,
-            "horizontal-gradient(%s %s)",
-            HUE_STOPS[i],
-            HUE_STOPS[i + 1]
-        );
-        rml_element_set_property(seg, "decorator", decorator);
-    }
-    raw(hue, "div", "puck", NULL);
-    rml_element *row = raw(el, "div", "field text left hexrow", NULL);
-    raw(row, "span", "part addon", "RGBA");
-    rml_element *hex = text_input(row, "part value hex");
-    rml_element_set_attribute(hex, "aria-label", "RGBA hex color");
-    rml_element_set_attribute(hex, "maxlength", "9");
-    rml_element_set_attribute(hex, "placeholder", "RRGGBBAA");
-    return sv;
-}
-
-static void set_percent(rml_element *el, const char *property, float percent)
-{
-    char text[32];
-    snprintf(text, sizeof text, "%.2f%%", percent);
-    rml_element_set_property(el, property, text);
-}
-
-static void update_picker(kit *k, const widget *w, node *p, unsigned flags)
-{
-    if (!p->w.head_el) {
-        p->w.head_el = build_picker(p->el);
-    }
-    rml_element *sv = rml_element_query_selector(p->el, ".sv");
-    const float pure[3] = { w->hsv[0], 1, 1 };
-    char hex[HEX_TEXT];
-    hex_color(hex, hsv_to_rgb(pure, 255));
-    rml_element_set_property(sv, "background-color", hex);
-    rml_element *puck = rml_element_query_selector(sv, ".puck");
-    set_percent(puck, "left", w->hsv[1] * 100);
-    set_percent(puck, "top", (1 - w->hsv[2]) * 100);
-    rml_element *hue_puck = rml_element_query_selector(p->el, ".hue .puck");
-    set_percent(hue_puck, "left", w->hsv[0] / 360 * 100);
-    rml_element *input = rml_element_query_selector(p->el, ".hex");
-    bool readonly = flags & (KIT_READONLY | KIT_DISABLED);
-    if (readonly) {
-        rml_element_set_attribute(input, "readonly", "");
-    } else {
-        rml_element_remove_attribute(input, "readonly");
-    }
-    if (input != rml_context_focus_element(k->context)) {
-        hex_color(hex, w->color);
-        rml_element_set_value(input, hex + 1);
-    }
-}
-
+/* The native <color-field>: its swatch opens its own picker. */
 bool kit_color(kit *k, const char *key, uint32_t *rgba, unsigned flags)
 {
-    node *n = emit(k, key, KIND_COLOR, "div", "field color");
-    widget *w = &n->w;
-    w->desc.flags = flags;
-    if (!w->swatch_el) {
-        raw(n->el, "div", "mark", NULL);
-        w->swatch_el = raw(n->el, "div", "swatch", NULL);
-    }
-    const char *picker = frame_format(k, "color:%s", n->path);
-    bool open = kit_popup_is_open(k, picker);
-    bool changed = false;
-    if (w->pending) {
-        w->pending = false;
-        changed = w->color != *rgba;
-        *rgba = w->color;
-    }
-    if (!open) {
-        w->color = *rgba;
-        if (w->open) {
-            w->committed = true;
-            w->focus_picker = false;
-        }
-    }
-    w->open = open;
-    bool none = (*rgba & 255) == 0;
-    rml_element_set_class(w->swatch_el, "none", none);
-    char hex[HEX_TEXT];
-    hex_color(hex, *rgba);
-    rml_element_set_property(w->swatch_el, "background-color", none ? "transparent" : hex);
+    node *n = emit(k, key, KIND_COLOR, "color-field", "field color");
+    n->w.desc.flags = flags;
+    uint32_t color = *rgba;
+    bool committed;
+    bool changed = color_field_take(n->el, &color, &committed) && color != *rgba;
+    *rgba = color;
+    n->w.committed = committed;
+    char hex[16];
+    snprintf(hex, sizeof hex, "#%08x", *rgba);
+    set_attr(n, "value", hex);
+    /* The caller writes a changed color everywhere this frame. */
+    flag_element(n->el, "mixed", (flags & KIT_MIXED) && !changed);
+    set_flag(n, "readonly", flags & KIT_READONLY);
+    set_flag(n, "disabled", flags & KIT_DISABLED);
     set_flag(n, "data-overridden", flags & KIT_OVERRIDDEN);
-    set_flag(n, "data-mixed", (flags & KIT_MIXED) && !changed);
-    set_flag(n, "data-readonly", flags & KIT_READONLY);
-    set_flag(n, "data-disabled", flags & KIT_DISABLED);
-    set_attr(n, "role", "button");
     const node *property = n->parent;
     while (property && property->kind != KIND_PROP) {
         property = property->parent;
     }
-    const char *name = property ? property->w.label : "Color picker";
-    set_attr(n, "aria-label", name);
-    set_attr(n, "aria-haspopup", "dialog");
-    set_attr(n, "aria-expanded", open ? "true" : "false");
-    set_attr(n, "aria-disabled", locked(n) ? "true" : "false");
-    rml_element_set_property(n->el, "tab-index", flags & KIT_DISABLED ? "none" : "auto");
-    if (kit_popup_begin(k, picker, "picker popover")) {
-        node *p = popup_find(k, picker)->node;
-        rml_element_set_attribute(p->el, "role", "dialog");
-        rml_element_set_attribute(p->el, "aria-label", name);
-        update_picker(k, w, p, flags);
-        double opacity = (double)(w->color & 255) * 100 / 255;
-        const kit_number_desc alpha = {
-            .min = 0,
-            .max = 100,
-            .step = 1,
-            .precision = 0,
-            .integer = true,
-            .unit = "%",
-            .flags = flags,
-        };
-        kit_prop_begin(k, "opacity", "Opacity");
-        if (kit_number(k, "value", &opacity, &alpha)) {
-            uint32_t channel = (uint32_t)lround(opacity * 255 / 100);
-            w->color = (w->color & 0xffffff00) | channel;
-            changed |= *rgba != w->color;
-            *rgba = w->color;
-        }
-        kit_prop_end(k);
-        if (w->focus_picker) {
-            rml_element *input = rml_element_query_selector(p->el, ".hex");
-            rml_element_focus(input, true);
-            rml_element_select(input);
-            w->focus_picker = false;
-        }
-        kit_popup_end(k);
-    }
-    k->last = n;
+    set_attr(n, "aria-label", property ? property->w.label : "Color picker");
     return changed;
 }
 
@@ -1238,19 +865,24 @@ unsigned kit_tile(kit *k, const char *key, const kit_tile_desc *d)
 
 bool kit_splitter(kit *k, const char *key, int axis, float *value, float minimum, float maximum, bool invert)
 {
-    node *n = emit(k, key, KIND_SPLITTER, "div", axis ? "split-h" : "split-v");
-    widget *w = &n->w;
-    w->split = (splitter_desc){ axis, invert, minimum, maximum };
-    set_flag(n, "data-dragging", w->scrubbing);
-    if (w->pending) {
-        w->pending = false;
-        *value = (float)w->pending_value;
-        return true;
+    node *n = emit(k, key, KIND_SPLITTER, "splitter", axis ? "split-h" : "split-v");
+    double taken;
+    bool committed;
+    bool changed = splitter_take(n->el, &taken, &committed);
+    if (changed) {
+        *value = (float)taken;
     }
-    if (!w->scrubbing) {
-        w->value = *value;
-    }
-    return false;
+    n->w.committed = committed;
+    char text[32];
+    set_attr(n, "axis", axis ? "y" : "x");
+    snprintf(text, sizeof text, "%.9g", minimum);
+    set_attr(n, "min", text);
+    snprintf(text, sizeof text, "%.9g", maximum);
+    set_attr(n, "max", text);
+    snprintf(text, sizeof text, "%.9g", *value);
+    set_attr(n, "value", text);
+    set_flag(n, "invert", invert);
+    return changed;
 }
 
 rml_element *kit_surface(kit *k, const char *key, const char *cls, const char *texture, kit_surface_input *input)

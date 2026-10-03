@@ -1,8 +1,8 @@
 /* Graph canvas input: replayed window events, gestures and shortcuts. */
 #include "editor/studio/studio_graph_internal.h"
-#include "editor/ui/input_feel.h"
 #include "platform/cute.h"
 #include "support/array.h"
+#include "ui/input_feel.h"
 
 #include <math.h>
 #include <stdio.h>

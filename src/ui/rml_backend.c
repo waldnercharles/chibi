@@ -11,6 +11,7 @@
 #include "support/array.h"
 #include "support/math.h"
 #include "support/xalloc.h"
+#include "ui/controls/controls.h"
 #include "ui/motion.h"
 #include "ui/rml.h"
 #include "ui/rml_gpu.h"
@@ -972,6 +973,8 @@ static bool initialize_rml()
     }
     /* Workstream N: the native elements every document may use. */
     motion_register();
+    /* Workstream F2: the native controls. */
+    controls_register();
     return true;
 }
 

@@ -1,9 +1,9 @@
 #include "diagnostics/tracy.h"
 #include "editor/studio/studio_internal.h"
 #include "editor/studio/studio_thumbnails.h"
-#include "editor/ui/input_feel.h"
 #include "editor/workspace/editor.h"
 #include "editor/workspace/editor_internal.h"
+#include "ui/input_feel.h"
 #ifdef CHIBI_ENABLE_WEB_TRACE
 #include "editor/studio/studio_graph_internal.h"
 #endif

@@ -518,7 +518,7 @@ static void label_ticks(node *n, const chart_frame *f, kit_rect r, double step)
         }
         char text[VALUE_TEXT];
         format_value(text, f->ticks[i], step < 1 ? 1 : 0, NULL);
-        set_line_text(label, text);
+        line_text_set(label, text);
         rml_element_set_property(label, "top", "0dp");
         translate_label(label, "Y", r.h - (f->ticks[i] - f->lo) / (f->hi - f->lo) * r.h - 7);
     }
@@ -541,7 +541,7 @@ static void place_badge(chart_state *c, const chart_frame *f, kit_rect r, const 
     double v = alast(first->values);
     char text[VALUE_TEXT];
     format_value(text, v, d->precision, d->unit);
-    set_line_text(c->badge, text);
+    line_text_set(c->badge, text);
     rml_element_set_property(c->badge, "top", "0dp");
     translate_label(
         c->badge,
@@ -574,7 +574,7 @@ static float scrub(kit *k, node *n, chart_frame *f, kit_rect r, const kit_chart_
     }
     char text[VALUE_TEXT];
     format_value(text, f->hover_value, d->precision, d->unit);
-    set_line_text(hover, text);
+    line_text_set(hover, text);
     rml_element_set_property(hover, "left", "0dp");
     translate_label(hover, "X", math_clamp(f->hover_x + 8, 0.0f, math_max(r.w - 64, 0.0f)));
     return hover_time;

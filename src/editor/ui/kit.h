@@ -94,8 +94,9 @@ extern "C"
     void kit_pop(kit *k);
     void kit_leaf(kit *k, const char *key, const char *tag, const char *cls);
     void kit_label(kit *k, const char *key, const char *cls, const char *text);
-    /* A changing, single-line readout. Equal-width values update glyphs
-     * locally; size and typography changes still use normal layout. */
+    /* A changing, single-line readout: the native <live-text>. Equal-width
+     * values update glyphs locally; size and typography changes still use
+     * normal layout. */
     void kit_live_label(kit *k, const char *key, const char *cls, const char *text);
     void kit_icon(kit *k, const char *key, const char *cls, uint32_t codepoint);
     /* A span whose content is markup the caller built and escaped, e.g. by
@@ -215,16 +216,14 @@ extern "C"
         bool single_precision; /* edit text round-trips a float rather than a double */
         bool slider;           /* bounded values draw a fill */
         const char *unit;
-        const char *addon; /* leading label inside the field, e.g. "X" */
-        const char *addon_cls;
+        const char *addon;     /* leading label inside the field, e.g. "X" */
+        const char *addon_cls; /* the field's data-axis, e.g. "x" */
         unsigned flags;
     } kit_number_desc;
-    /* Scrub, click-to-type, expressions and keyboard steps; see the kit contract.
+    /* The native <number-field> (ui/controls/controls.h): scrub, click-to-type,
+     * expressions (support/number_expr.h) and keyboard steps.
      * kit_item_committed() is true once per gesture; record Undo there. */
     bool kit_number(kit *k, const char *key, double *value, const kit_number_desc *desc);
-    /* Parse the arithmetic syntax used by kit_number, including relative
-     * operators; returns false for invalid or non-finite results. */
-    bool kit_number_parse(const char *text, double current, double *out);
     bool kit_checkbox(kit *k, const char *key, bool *value, const char *label, unsigned flags);
     /* Up to three options render as a toggle group, more as a select. */
     bool kit_choice(kit *k, const char *key, int *value, const char *const *labels, int count, unsigned flags);
@@ -240,7 +239,8 @@ extern "C"
     bool kit_text_area(kit *k, const char *key, char *buffer, size_t size, const char *placeholder, unsigned flags);
     /* Filters live; returns true whenever the text changes. Escape clears. */
     bool kit_search(kit *k, const char *key, char *buffer, size_t size, const char *placeholder);
-    /* RGBA as 0xRRGGBBAA. Live while the picker is open; commits on close. */
+    /* RGBA as 0xRRGGBBAA: the native <color-field>, live while its picker is
+     * open; commits on close. */
     bool kit_color(kit *k, const char *key, uint32_t *rgba, unsigned flags);
 
     /* Containers. */
@@ -427,8 +427,8 @@ extern "C"
         unsigned flags
     );
 
-    /* Splitter: drag along axis 0 (x) or 1 (y). Returns true while value changes.
-     */
+    /* The native <splitter>: drag along axis 0 (x) or 1 (y). Returns true
+     * while value changes. */
     bool kit_splitter(kit *k, const char *key, int axis, float *value, float minimum, float maximum, bool invert);
 
     /* A surface shows a host texture ("kit:<name>") and receives raw pointer

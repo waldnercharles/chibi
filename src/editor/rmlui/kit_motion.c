@@ -309,11 +309,5 @@ double kit_idle_time(const kit *k)
             }
         }
     }
-    for (int i = 0; i < cf_map_size(k->by_path); i++) {
-        const node *n = k->by_path[i];
-        if (n->kind == KIND_NUMBER && n->w.step_dir && k->in.down[0]) {
-            delay = fmin(delay, fmax(0, n->w.step_next - now));
-        }
-    }
     return delay;
 }

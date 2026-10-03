@@ -1,7 +1,7 @@
 /* Studio editors for the authored scene: viewport and Outliner. */
 #include "editor/studio/studio_internal.h"
-#include "editor/ui/input_feel.h"
 #include "support/array.h"
+#include "ui/input_feel.h"
 
 #include <assert.h>
 #include <ctype.h>

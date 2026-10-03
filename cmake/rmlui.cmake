@@ -13,6 +13,15 @@ add_library(chibi_ui STATIC
     # <morph-text> and presence for data-if.
     src/ui/motion.c
     src/ui/text_motion.c
+    # Native controls (workstream F2): <number-field>, <color-field>,
+    # <splitter> and <live-text>.
+    src/ui/controls/controls.c
+    src/ui/controls/color_field.c
+    src/ui/controls/focus.c
+    src/ui/controls/line_text.c
+    src/ui/controls/live_text.c
+    src/ui/controls/number_field.c
+    src/ui/controls/splitter.c
     # The embedded faces, loaded by the editor kit and game UI alike.
     ${GEN_NERD_FONT} ${GEN_UI_FONT} ${GEN_UI_BOLD_FONT}
     ${GEN_UI_MEDIUM_FONT} ${GEN_UI_SEMIBOLD_FONT} ${GEN_UI_NUMERIC_FONT} ${GEN_STUDIO_FONTS}

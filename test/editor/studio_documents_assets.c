@@ -54,6 +54,8 @@ static void assets_cache_follows_explicit_refresh()
     char first[4096];
     int rows = list_rows(s, "#assets-list > .list-spacer", first, sizeof first);
     bool found = rows == 2 && strstr(first, "Behaviors");
+    /* Nothing is selected, so neither the group's header nor its row is. */
+    test_check(found && !s->assets_selected[0] && !studio_element(s, "#assets-list [data-selected]"), "Assets marks no row selected while no asset is, its group headers included");
     unsigned generation = f.scene->asset_index_generation;
     uint64_t revision = f.scene->asset_index_revision;
     s->ui_schedule.next = s->time + 1;

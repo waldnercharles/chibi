@@ -2339,19 +2339,27 @@ void studio_area_show(studio *s, int area, int editor, const char *panel);
 
 /* The Assets area's source, `assets` (studio_assets.c), which its Assets and
  * AssetsHeader panels bind: the kind filter and its choices, the name filter
- * (bound both ways, as view state), the size and the tile and line sizes it
- * gives, the List's window of rows (the list) or lines of tiles (the grid),
- * the empty state, the row menu and New's kinds. Its actions: click (asset,
+ * (bound both ways, as view state), the size and the tile size it gives,
+ * the List's window of rows (the list) or tiles (the grid) in slots, and the
+ * empty state. Its actions, which the row menu sends too: click (asset,
  * kind), open, menu, preview, references, spawnBreak, rename and delete
  * (asset), kind, tile and scroll. */
 void studio_assets_add(yyjson_mut_doc *doc);
 bool studio_assets_sync(studio *s, const studio_panel_sync *at);
 void studio_assets_action(studio *s, const char *action, const ui_activation *a);
-/* New's name popover's source, `new_asset` (NewAsset): its title, the name,
- * bound both ways, and why the last one was refused; new_asset.select
- * selects the name its field holds and new_asset.create makes the asset. */
-void studio_new_asset_add(yyjson_mut_doc *doc);
-bool studio_new_asset_sync(studio *s, const studio_panel_sync *at);
-void studio_new_asset_action(studio *s, const char *action, const ui_activation *a);
+/* What the Assets panels show apart from the rows, so a change there
+ * reevaluates only the views reading it: the selected asset and the large
+ * preview of the tile the pointer rests on (`asset_view`, synced with
+ * `assets`). */
+void studio_asset_view_add(yyjson_mut_doc *doc);
+bool studio_asset_view_sync(studio *s, const studio_panel_sync *at);
+/* The Assets menus' source, `asset_menus`, synced with NewAsset, which
+ * every refresh mounts: New's kinds (`create`), the row menu (`row`) and the
+ * name popover (`naming`): its title, the name, bound both ways, and why
+ * the last one was refused. asset_menus.select selects the name its field
+ * holds and asset_menus.create makes the asset. */
+void studio_asset_menus_add(yyjson_mut_doc *doc);
+bool studio_asset_menus_sync(studio *s, const studio_panel_sync *at);
+void studio_asset_menus_action(studio *s, const char *action, const ui_activation *a);
 
 #endif

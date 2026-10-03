@@ -9,7 +9,7 @@
  * fields name onto those fields (studio_drop.c). Resting on a tile shows a
  * large preview, as Unreal's Content Browser does. New makes an asset of any
  * kind Studio indexes and opens it, asking for its name in NewAsset (the
- * `new_asset` source). */
+ * `asset_menus` source, with the row menu and New's kinds). */
 #include "editor/studio/studio_internal.h"
 #include "editor/studio/studio_thumbnails.h"
 #include "editor/workspace/asset_index.h"
@@ -655,16 +655,17 @@ static bool put_int(yyjson_mut_val *object, const char *name, int number)
     return true;
 }
 
-/* The shapes of the items arrays hold: a row or tile, and a menu entry. */
+/* The shapes of the items arrays hold: a row or tile, a line of tiles and
+   a menu entry. */
 typedef enum
 {
     SHAPE_ITEM,
+    SHAPE_LINE,
     SHAPE_ENTRY,
 } item_shape;
 
 static const char *const ITEM_TEXTS[] = { "label", "icon",  "meta",  "drag",
-                                          "image", "badge", "about", "preview",
-                                          "top",   "left" };
+                                          "image", "badge", "about", "top" };
 static const char *const ITEM_FLAGS[] = { "parent",  "open",       "selected",
                                           "active",  "marked",     "hidden",
                                           "loading", "unresolved", "unused",
@@ -702,6 +703,11 @@ static yyjson_mut_val *made(yyjson_mut_doc *doc, item_shape shape)
                 yyjson_mut_obj_add_int(doc, item, ITEM_NUMBERS[i], -1);
             }
             break;
+        case SHAPE_LINE:
+            yyjson_mut_obj_add_bool(doc, item, "shown", false);
+            yyjson_mut_obj_add_strcpy(doc, item, "top", "");
+            yyjson_mut_obj_add_arr(doc, item, "tiles");
+            break;
         case SHAPE_ENTRY:
             add_texts(doc, item, ENTRY_TEXTS, COUNT(ENTRY_TEXTS));
             add_flags(doc, item, ENTRY_FLAGS, COUNT(ENTRY_FLAGS));
@@ -730,10 +736,10 @@ static bool fit(yyjson_mut_doc *doc, yyjson_mut_val *items, int length, item_sha
 typedef struct
 {
     int id, kind, depth;
-    const char *label, *meta, *drag, *image, *about, *preview;
+    const char *label, *meta, *drag, *image, *about;
     uint32_t icon, badge;
-    float top, left;
-    bool parent, open, selected, loading, unresolved, unused;
+    float top; /* a row's */
+    bool parent, open, loading, unresolved, unused;
 } item_view;
 
 static void dp_text(char out[32], float value)
@@ -751,20 +757,16 @@ static bool show_item(yyjson_mut_doc *doc, yyjson_mut_val *item, const item_view
     changed |= put_text(doc, item, "drag", v->drag);
     changed |= put_text(doc, item, "image", v->image);
     changed |= put_text(doc, item, "about", v->about);
-    changed |= put_text(doc, item, "preview", v->preview);
     changed |= put_glyph(doc, item, "icon", v->icon);
     changed |= put_glyph(doc, item, "badge", v->badge);
     changed |= put_bool(item, "parent", v->parent);
     changed |= put_bool(item, "open", v->open);
-    changed |= put_bool(item, "selected", v->selected);
     changed |= put_bool(item, "loading", v->loading);
     changed |= put_bool(item, "unresolved", v->unresolved);
     changed |= put_bool(item, "unused", v->unused);
-    char top[32], left[32];
+    char top[32];
     dp_text(top, v->top);
-    dp_text(left, v->left);
     changed |= put_text(doc, item, "top", top);
-    changed |= put_text(doc, item, "left", left);
     return put_bool(item, "shown", true) || changed;
 }
 
@@ -836,12 +838,7 @@ void studio_assets_add(yyjson_mut_doc *doc)
     yyjson_mut_obj_add_bool(doc, assets, "grid", true);
     add_texts(doc, assets, HEADER_TEXTS, COUNT(HEADER_TEXTS));
     yyjson_mut_obj_add_arr(doc, assets, "rows");
-    yyjson_mut_obj_add_arr(doc, assets, "tiles");
-    yyjson_mut_val *menu = yyjson_mut_obj_add_obj(doc, assets, "menu");
-    yyjson_mut_obj_add_int(doc, menu, "id", -1);
-    yyjson_mut_obj_add_strcpy(doc, menu, "label", "");
-    yyjson_mut_obj_add_arr(doc, menu, "items");
-    yyjson_mut_obj_add_arr(doc, assets, "create");
+    yyjson_mut_obj_add_arr(doc, assets, "lines");
 }
 
 /* The filter as the header's field typed it, or as Studio changed it. */
@@ -943,7 +940,6 @@ static bool show_row(
         .icon = asset_icon(s, asset),
         .meta = grouped ? meta : KIND_NAMES[row.kind],
         .drag = studio_asset_draggable(asset) ? KIND_NAMES[row.kind] : "",
-        .selected = is_selected(s, asset),
         .unresolved = asset->unresolved,
         .top = top,
         .unused = counted && !cache->uses[row.asset],
@@ -951,11 +947,13 @@ static bool show_row(
     return show_item(doc, item, &v);
 }
 
-/* The window's items in slots that keep an item while it stays in view, as
-   Virtuoso keys its items: item `i` takes slot i % slots and its place in
-   the spacer, so a scroll changes only the slots of the items that enter.
-   Slots only grow, so a narrower filter hides them rather than dropping
-   their elements. */
+/* The window's rows, or lines of tiles, in slots that keep one while it
+   stays in view, as Virtuoso keys its items: row `i` takes slot i % slots
+   and its place in the spacer, so a scroll changes only the slots of the
+   rows that enter. Slots only grow, so a narrower filter hides them rather
+   than dropping their elements. A slot's attributes restyle its siblings
+   (RmlUi dirties siblings for sibling combinators), so tiles sit in lines
+   of their own rather than all in the spacer. */
 typedef struct
 {
     yyjson_mut_val *items;
@@ -963,10 +961,10 @@ typedef struct
     int start, end; /* the items in view */
 } slot_window;
 
-static slot_window slots(yyjson_mut_doc *doc, yyjson_mut_val *items, int needed, bool *changed)
+static slot_window slots(yyjson_mut_doc *doc, yyjson_mut_val *items, int needed, item_shape shape, bool *changed)
 {
     if ((int)yyjson_mut_arr_size(items) < needed) {
-        *changed |= fit(doc, items, needed, SHAPE_ITEM);
+        *changed |= fit(doc, items, needed, shape);
     }
     return (slot_window){ .items = items, .count = (int)yyjson_mut_arr_size(items) };
 }
@@ -997,7 +995,7 @@ static bool show_list(
     int reveal
 )
 {
-    bool changed = fit(at->doc, member(at->variable, "tiles"), 0, SHAPE_ITEM);
+    bool changed = fit(at->doc, member(at->variable, "lines"), 0, SHAPE_LINE);
     int count = acount(cache->rows), first = 0;
     int length = count < UNLAID_ROWS ? count : UNLAID_ROWS;
     float row = list ? row_height(list) : 0;
@@ -1006,7 +1004,7 @@ static bool show_list(
         ui_list window = { .count = count, .row = row, .reveal = reveal };
         length = ui_list_window(list, &window, &cache->window, &first);
     }
-    slot_window w = slots(at->doc, member(at->variable, "rows"), length, &changed);
+    slot_window w = slots(at->doc, member(at->variable, "rows"), length, SHAPE_ITEM, &changed);
     w.start = first;
     w.end = first + length;
     yyjson_mut_val *item;
@@ -1020,30 +1018,24 @@ static bool show_list(
     return changed;
 }
 
-/* A tile names its asset in full in its tooltip, says what it is and how
-   often it is used, and shows its large preview once the pointer rests on
-   it. Its thumbnail is asked for once the List shows it (`ask`); before,
-   it shows one already made. */
+/* A tile names its asset in full in its tooltip and says what it is and
+   how often it is used. Its thumbnail is asked for once the List shows it
+   (`ask`); before, it shows one already made. */
 static bool show_tile(
     studio *s,
     yyjson_mut_doc *doc,
     yyjson_mut_val *item,
     const struct studio_assets_cache *cache,
     int i,
-    int rested,
     bool ask
 )
 {
-    int id = cache->tiles[i], columns = cache->columns;
-    float art = (float)s->prefs.assets_tile;
+    int id = cache->tiles[i];
     const reference_asset *
         asset = reference_index_asset_at(app_scene_authoring_asset_index(s->scene), id);
-    bool loading = false, large_loading;
+    bool loading = false;
     const char *image = ask ? studio_thumb(s, id, STUDIO_THUMB_TILE, &loading)
                             : studio_thumb_cached(s, id);
-    const char *large = id == rested
-                          ? studio_thumb(s, id, STUDIO_THUMB_LARGE, &large_loading)
-                          : NULL;
     char meta[24], about[64];
     bool counted = usage(cache, id, asset, meta, sizeof meta);
     snprintf(about, sizeof about, "%s%s%s", KIND_NAMES[asset->kind], counted ? " \xc2\xb7 " : "", meta);
@@ -1057,10 +1049,6 @@ static bool show_tile(
         .loading = image && loading,
         .drag = studio_asset_draggable(asset) ? KIND_NAMES[asset->kind] : "",
         .about = about,
-        .preview = large ? large : image,
-        .top = (float)(i / columns) * (art + 2 * TILE_PAD + TILE_LABEL + TILE_GAP),
-        .left = (float)(i % columns) * (art + 2 * TILE_PAD + TILE_GAP),
-        .selected = is_selected(s, asset),
         .unresolved = asset->unresolved,
     };
     return show_item(doc, item, &v);
@@ -1072,6 +1060,33 @@ static int columns_fit(studio *s, rml_element *list, float tile_width)
     float laid = rml_element_box_size(list, RML_BOX_BORDER).x / studio_pixel_ratio(s);
     int fit = (int)((laid - LIST_PAD + TILE_GAP) / (tile_width + TILE_GAP));
     return fit < 1 ? 1 : fit;
+}
+
+/* Line `l` of the grid: its place in the spacer and its tiles. */
+static bool show_line(
+    studio *s,
+    yyjson_mut_doc *doc,
+    yyjson_mut_val *line,
+    const struct studio_assets_cache *cache,
+    int l,
+    bool ask
+)
+{
+    int columns = cache->columns, count = acount(cache->tiles);
+    float art = (float)s->prefs.assets_tile;
+    char top[32];
+    dp_text(top, (float)l * (art + 2 * TILE_PAD + TILE_LABEL + TILE_GAP));
+    yyjson_mut_val *tiles = member(line, "tiles");
+    bool changed = fit(doc, tiles, columns, SHAPE_ITEM);
+    changed |= put_bool(line, "shown", true);
+    changed |= put_text(doc, line, "top", top);
+    yyjson_mut_val *item;
+    yyjson_mut_arr_iter it = yyjson_mut_arr_iter_with(tiles);
+    for (int i = l * columns; (item = yyjson_mut_arr_iter_next(&it)); i++) {
+        changed |= i < count ? show_tile(s, doc, item, cache, i, ask)
+                             : put_bool(item, "shown", false);
+    }
+    return changed;
 }
 
 /* Unity's grid: tiles of one size in lines as wide as the area. */
@@ -1098,16 +1113,15 @@ static bool show_grid(
                            .reveal = reveal < 0 ? -1 : reveal / columns };
         length = ui_list_window(list, &window, &cache->window, &first);
     }
-    slot_window w = slots(at->doc, member(at->variable, "tiles"), length * columns, &changed);
-    w.start = first * columns;
-    w.end = (first + length) * columns < count ? (first + length) * columns : count;
-    int rested = at->preview ? -1 : resting(s);
-    yyjson_mut_val *item;
+    slot_window w = slots(at->doc, member(at->variable, "lines"), length, SHAPE_LINE, &changed);
+    w.start = first;
+    w.end = first + length;
+    yyjson_mut_val *line;
     yyjson_mut_arr_iter it = yyjson_mut_arr_iter_with(w.items);
-    for (int k = 0; (item = yyjson_mut_arr_iter_next(&it)); k++) {
-        int i = slot_item(&w, k);
-        changed |= i < 0 ? put_bool(item, "shown", false)
-                         : show_tile(s, at->doc, item, cache, i, rested, list);
+    for (int k = 0; (line = yyjson_mut_arr_iter_next(&it)); k++) {
+        int l = slot_item(&w, k);
+        changed |= l < 0 ? put_bool(line, "shown", false)
+                         : show_line(s, at->doc, line, cache, l, list);
     }
     return changed;
 }
@@ -1205,12 +1219,9 @@ bool studio_assets_sync(studio *s, const studio_panel_sync *at)
     const reference_index *index = app_scene_authoring_asset_index(s->scene);
     asset_rows(s, index);
     rml_element *list = at->preview ? NULL : element_by_id(s, LIST_ID);
-    if (!at->preview) {
-        s->assets_hover = hovered_asset(s);
-        /* Before the List lays out, its rows are a guess: window them once
-           it has. */
-        s->ui_schedule.wake |= !list;
-    }
+    /* Before the List lays out, its rows are a guess: window them once it
+       has. */
+    s->ui_schedule.wake |= !at->preview && !list;
     int reveal = at->preview ? -1 : reveal_row(s, index, cache);
     changed |= show_header(s, at->doc, at->variable);
     changed |= grid_view(s) ? show_grid(s, at, cache, list, reveal)
@@ -1219,9 +1230,54 @@ bool studio_assets_sync(studio *s, const studio_panel_sync *at)
     const char *empty = acount(cache->tiles) ? ""
                       : count                ? "No matches"
                                              : "No assets";
-    changed |= put_text(at->doc, at->variable, "empty", empty);
-    changed |= show_menu(s, at->doc, member(at->variable, "menu"));
-    return show_create(s, at->doc, member(at->variable, "create")) || changed;
+    return put_text(at->doc, at->variable, "empty", empty) || changed;
+}
+
+/* ---------- The `asset_view` source: what changes apart from the rows ---------- */
+
+/* asset_view's id for no asset, which no row has: a group header's is -1. */
+#define NO_ASSET -2
+
+void studio_asset_view_add(yyjson_mut_doc *doc)
+{
+    yyjson_mut_val *view = yyjson_mut_obj_add_obj(doc, yyjson_mut_doc_get_root(doc), "asset_view");
+    yyjson_mut_obj_add_int(doc, view, "selected", NO_ASSET);
+    yyjson_mut_val *preview = yyjson_mut_obj_add_obj(doc, view, "preview");
+    yyjson_mut_obj_add_int(doc, preview, "id", NO_ASSET);
+    yyjson_mut_obj_add_strcpy(doc, preview, "image", "");
+}
+
+/* The large preview of the tile the pointer rests on, or its tile's
+   picture until the large one is ready. */
+static bool show_preview(studio *s, yyjson_mut_doc *doc, yyjson_mut_val *preview, int rested)
+{
+    bool loading;
+    const char *image = rested >= 0
+                          ? studio_thumb(s, rested, STUDIO_THUMB_LARGE, &loading)
+                          : NULL;
+    image = image || rested < 0
+              ? image
+              : studio_thumb(s, rested, STUDIO_THUMB_TILE, &loading);
+    bool changed = put_int(preview, "id", rested < 0 ? NO_ASSET : rested);
+    return put_text(doc, preview, "image", image) || changed;
+}
+
+bool studio_asset_view_sync(studio *s, const studio_panel_sync *at)
+{
+    const reference_index *index = app_scene_authoring_asset_index(s->scene);
+    int selected = index && s->assets_selected[0]
+                     ? reference_index_find_name(
+                           index,
+                           (reference_asset_kind)s->assets_selected_kind,
+                           s->assets_selected
+                       )
+                     : -1;
+    if (!at->preview) {
+        s->assets_hover = hovered_asset(s);
+    }
+    bool changed = put_int(at->variable, "selected", selected < 0 ? NO_ASSET : selected);
+    return show_preview(s, at->doc, member(at->variable, "preview"), at->preview ? -1 : resting(s)) ||
+           changed;
 }
 
 /* Queues the asset menu of the area the press was in, at the press, for
@@ -1339,28 +1395,34 @@ void studio_assets_body(studio *s, int area)
     open_menu(s);
 }
 
-/* ---------- The `new_asset` source: NewAsset ---------- */
+/* ---------- The `asset_menus` source: menus and NewAsset ---------- */
 
-void studio_new_asset_add(yyjson_mut_doc *doc)
+void studio_asset_menus_add(yyjson_mut_doc *doc)
 {
-    yyjson_mut_val *naming = yyjson_mut_obj_add_obj(doc, yyjson_mut_doc_get_root(doc), "new_asset");
+    yyjson_mut_val *menus = yyjson_mut_obj_add_obj(doc, yyjson_mut_doc_get_root(doc), "asset_menus");
+    yyjson_mut_obj_add_arr(doc, menus, "create");
+    yyjson_mut_val *row = yyjson_mut_obj_add_obj(doc, menus, "row");
+    yyjson_mut_obj_add_int(doc, row, "id", -1);
+    yyjson_mut_obj_add_strcpy(doc, row, "label", "");
+    yyjson_mut_obj_add_arr(doc, row, "items");
+    yyjson_mut_val *naming = yyjson_mut_obj_add_obj(doc, menus, "naming");
     add_texts(doc, naming, NAMING_TEXTS, COUNT(NAMING_TEXTS));
-    yyjson_mut_val *create = yyjson_mut_obj_add_obj(doc, naming, "create");
+    yyjson_mut_val *button = yyjson_mut_obj_add_obj(doc, naming, "button");
     char icon[5];
     studio_glyph(icon, KIT_ICON_ADD);
-    yyjson_mut_obj_add_str(doc, create, "label", "Create");
-    yyjson_mut_obj_add_strcpy(doc, create, "icon", icon);
-    yyjson_mut_obj_add_str(doc, create, "shortcut", "");
-    yyjson_mut_obj_add_bool(doc, create, "checked", false);
-    yyjson_mut_obj_add_bool(doc, create, "disabled", false);
+    yyjson_mut_obj_add_str(doc, button, "label", "Create");
+    yyjson_mut_obj_add_strcpy(doc, button, "icon", icon);
+    yyjson_mut_obj_add_str(doc, button, "shortcut", "");
+    yyjson_mut_obj_add_bool(doc, button, "checked", false);
+    yyjson_mut_obj_add_bool(doc, button, "disabled", false);
 }
 
 /* Takes the name the field typed, then shows the kind, the name and why the
    last one was refused. */
-bool studio_new_asset_sync(studio *s, const studio_panel_sync *at)
+static bool show_naming(studio *s, const studio_panel_sync *at, yyjson_mut_val *naming)
 {
     studio_new_asset *n = &s->new_asset;
-    yyjson_mut_val *name = member(at->variable, "name");
+    yyjson_mut_val *name = member(naming, "name");
     const char *shown = yyjson_mut_get_str(name);
     if (!at->preview && strcmp(shown, n->typed)) {
         snprintf(n->name, sizeof n->name, "%s", shown);
@@ -1373,8 +1435,8 @@ bool studio_new_asset_sync(studio *s, const studio_panel_sync *at)
         "New %s",
         studio_command_describe(s, new_command(n->kind)).menu
     );
-    bool changed = put_text(at->doc, at->variable, "label", title);
-    changed |= put_text(at->doc, at->variable, "error", n->error);
+    bool changed = put_text(at->doc, naming, "label", title);
+    changed |= put_text(at->doc, naming, "error", n->error);
     if (strcmp(shown, n->name)) {
         ui_data_set_text(at->doc, name, n->name);
         changed = true;
@@ -1386,11 +1448,18 @@ bool studio_new_asset_sync(studio *s, const studio_panel_sync *at)
     return changed;
 }
 
+bool studio_asset_menus_sync(studio *s, const studio_panel_sync *at)
+{
+    bool changed = show_create(s, at->doc, member(at->variable, "create"));
+    changed |= show_menu(s, at->doc, member(at->variable, "row"));
+    return show_naming(s, at, member(at->variable, "naming")) || changed;
+}
+
 /* Create, or Enter in the name, makes the asset, or says why not and asks
    again, even after Create closed the popover; the name field sends select
    as it takes the focus. What the field sent selects its name, so typing
    replaces it. */
-void studio_new_asset_action(studio *s, const char *action, const ui_activation *a)
+void studio_asset_menus_action(studio *s, const char *action, const ui_activation *a)
 {
     studio_new_asset *n = &s->new_asset;
     rml_element *sender = rml_element_ref_get(a->anchor);

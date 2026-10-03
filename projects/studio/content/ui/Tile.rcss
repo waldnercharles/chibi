@@ -4,7 +4,11 @@
    Alias it as data-alias-tile: an object with label, icon and badge
    (glyphs), image (a texture source such as kit:thumb:..., "" until one is
    ready, drawn as a decorator so its arrival lays nothing out), loading,
-   selected and unresolved. Size the use; the tile fills it. Its look is
-   the theme's .tile (theme/assets.rcss). */
+   selected and unresolved; the use may mark it selected itself, with
+   data-selected, when its selection lives in a variable of its own. Size
+   the use; the tile fills it. Its look is the theme's .tile
+   (theme/assets.rcss). */
 body { display: block; }
 .tile { width: 100%; height: 100%; }
+body[data-selected] .tile { background-color: var(--selected); }
+body[data-selected] .tile .name { color: var(--strong); }

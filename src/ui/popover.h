@@ -21,8 +21,9 @@
  *   typeahead; Enter or Space clicks the highlighted one. An item with
  *   aria-haspopup opens its submenu after a 100 ms hover or with Right, and
  *   Left closes it. A menuitem's or an option's click closes its popover and
- *   the menus it opened from; checkbox and radio items stay open. Keys stay
- *   with a focused text field.
+ *   the menus it opened from; checkbox and radio items stay open. A disabled
+ *   item (data-disabled) never highlights and its click reaches nothing.
+ *   Keys stay with a focused text field.
  * - Other popovers are Base UI's nonmodal Popover: opening focuses the first
  *   tabbable control, Tab moves within and closes past either end, and focus
  *   moving to an outside control closes it.

@@ -62,7 +62,6 @@ body.comfortable .popover .btn.sm { height: var(--studio-height-36, 36dp); }
 .menu-item[data-disabled] { color: var(--disabled-foreground); }
 .menu-item[data-current] .label, .menu-item[data-current] .lead { color: var(--primary-text); }
 .menu-item[data-current][data-highlighted] .label, .menu-item[data-current][data-highlighted] .lead { color: var(--primary-foreground); }
-.menu-item[data-disabled][data-highlighted] { background-color: var(--accent); color: var(--disabled-foreground); }
 .menu-item[data-disabled] .lead, .menu-item[data-disabled] .kbd { color: var(--disabled-foreground); }
 .menu-sep { height: 1dp; margin: 4dp 2dp; background-color: var(--border); }
 .menu-group { height: var(--studio-height-22, 22dp); line-height: var(--studio-line-22, 22dp); display: block; padding: 0dp 6dp; font-size: var(--studio-font-11, 11dp); color: var(--faint-foreground); }

@@ -77,7 +77,8 @@ static const char AREA_SHORT[] = "<color-field id=\"color\" "
 
 static const char DATA[] =
     "{\"items\": [{\"label\": \"Cut\"}, {\"label\": \"Copy\"}, {\"label\": "
-    "\"Paste\"}, {\"label\": \"Preferences\"}],"
+    "\"Paste\"}, {\"label\": \"Preferences\"}, {\"label\": \"Delete\", "
+    "\"disabled\": true}],"
     "\"sub\": {\"label\": \"More\"}, \"subitems\": [{\"label\": \"First\"}, "
     "{\"label\": \"Second\"}],"
     "\"bodies\": {\"groups\": [{\"label\": \"\", \"options\": ["
@@ -308,6 +309,42 @@ static void above_areas(popover_fixture *f)
     test_check(!open(f, "#menu"), "a press in another area closes the menu");
 }
 
+/* A disabled item never highlights: not under the pointer, which leaves
+   none highlighted, nor by End or typeahead, which pass it; a click on it
+   runs nothing and keeps the menu open (Base UI). */
+static void disabled_items(popover_fixture *f)
+{
+    rml_element *items[8], *removal = NULL;
+    int count = test_query_all(f->context, "#menu .menu-item[data-disabled]", items, 8);
+    for (int i = 0; i < count && i < 8; i++) {
+        removal = rml_element_has_attribute(items[i], "data-for") ? removal
+                                                                  : items[i];
+    }
+    if (!removal) {
+        test_check(false, "the menu has a disabled item");
+        return;
+    }
+    hover(f, center(by_id(f, "#menu .menu-item:not([data-for])")));
+    hover(f, center(removal));
+    bool pointer = !rml_element_has_attribute(removal, "data-highlighted") &&
+                   !test_query(f->context, "#menu [data-highlighted]");
+    key(f, RML_KEY_END);
+    bool end = lit_is(f, "#menu", "More");
+    key(f, RML_KEY_UP);
+    key(f, RML_KEY_UP);
+    end &= lit_is(f, "#menu", "Preferences");
+    pause_for(f, 0.6);
+    key(f, RML_KEY_D);
+    bool typed = !rml_element_has_attribute(removal, "data-highlighted");
+    double ran = number(f, "ran");
+    click(f, "#menu .menu-item[data-disabled]:not([data-for])");
+    test_check(
+        pointer && end && typed && number(f, "ran") == ran && open(f, "#menu"),
+        "a disabled menu item never highlights, by pointer, End or typeahead, "
+        "and a click on it runs nothing and keeps the menu open"
+    );
+}
+
 /* Typeahead, Enter, a submenu's delay, Right and Left. */
 static void menu_keys(popover_fixture *f)
 {
@@ -366,6 +403,7 @@ static void menu_keys(popover_fixture *f)
             yyjson_mut_get_bool(yyjson_mut_obj_get(yyjson_mut_doc_get_root(f->data), "checked")),
         "a checkbox item toggles and its menu stays open"
     );
+    disabled_items(f);
     key(f, RML_KEY_ESCAPE);
 }
 

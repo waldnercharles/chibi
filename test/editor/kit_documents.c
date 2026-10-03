@@ -111,6 +111,7 @@ static void frame(documents_fixture *f)
     }
     if (kit_popup_begin(k, "menu", "menu")) {
         kit_menu_item(k, "one", &(kit_menu_item_desc){ .label = "One", .checked = -1 });
+        kit_menu_item(k, "two", &(kit_menu_item_desc){ .label = "Two", .checked = -1, .disabled = true });
         if (f->nested) {
             nested_popover(kit_host(k, "authored", NULL));
         }
@@ -256,11 +257,34 @@ static void escape(documents_fixture *f)
     frames(f, 2);
 }
 
+/* A kit menu's disabled row never takes the highlight under the pointer,
+   which leaves none highlighted, as popover.c runs the menu. */
+static void disabled_row(documents_fixture *f)
+{
+    rml_context *context = rml_backend_context(f->backend);
+    f->open_menu = true;
+    frames(f, 3);
+    kit_rect one, two;
+    bool rows = kit_find(f->k, "layer/@menu/one", &one) &&
+                kit_find(f->k, "layer/@menu/two", &two);
+    pointer(f, RML_INPUT_POINTER_MOVE, one.x + 4, one.y + one.h * 0.5f);
+    frames(f, 1);
+    bool first = test_query(context, ".popup.menu .menu-item[data-highlighted]") != NULL;
+    pointer(f, RML_INPUT_POINTER_MOVE, two.x + 4, two.y + two.h * 0.5f);
+    frames(f, 1);
+    test_check(
+        rows && first && !test_query(context, ".popup.menu .menu-item[data-highlighted]"),
+        "a kit menu's disabled row takes no highlight under the pointer"
+    );
+    escape(f);
+}
+
 /* Kit popups and authored popovers share one stack (ui/popover.h): an
    authored popover a kit menu holds stacks above it, so Escape closes the
    popover first, then the menu, and a press outside both closes both. */
 static void one_stack(documents_fixture *f)
 {
+    disabled_row(f);
     rml_context *context = rml_backend_context(f->backend);
     f->nested = true;
     f->open_menu = true;

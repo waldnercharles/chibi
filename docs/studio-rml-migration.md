@@ -579,7 +579,9 @@ submenu after its delay and ends fades.
   End), typeahead within 0.5 s, Enter or Space clicks, a submenu after a
   100 ms hover or Right, Left closes it, Tab closes the menus; a `menuitem`
   or `option` click closes its popover and the menus it opened from, a
-  checkbox or radio item stays open. Other popovers are Base UI's nonmodal
+  checkbox or radio item stays open, and a disabled item never highlights
+  (the pointer on it leaves none; keys and typeahead pass it) and its click
+  reaches nothing. Other popovers are Base UI's nonmodal
   Popover: focus to the first tabbable control, Tab within, past the ends
   closes, focus moving outside closes. `<menubar>` (or `role="menubar"`):
   hovering another trigger switches menus, Left and Right step. A text
@@ -609,17 +611,21 @@ submenu after its delay and ends fades.
   `choices.editors` (`emit('editor.type', area.index, type)` and
   `editor.panel`), and GraphView is the View button and its Menu, mounted
   per area (`studio_ui_area_controls`); their kit code and the MenuKeys
-  behavior are gone. Web shots before and after, dark and light, compact
-  and comfortable, the View menu and the editor type menu (and its Studio
-  UI submenu) open: all nine identical pixel for pixel at 1600×1000. Both
-  menus draw over the neighbouring area, as the kit's did from its layer.
+  behavior are gone. Shots before F3 (`d68a5fca`) and after, of the View
+  menu and the side area's editor type menu, and its Studio UI submenu,
+  open: web at 1600×1000 (dark and light, compact and comfortable; the
+  submenu dark compact), 9 pairs, and native in a hidden window at
+  2560×1600 (all four for each menu and the submenu), 12 pairs, all
+  identical pixel for pixel. Both menus draw over the neighbouring area, as
+  the kit's did from its layer.
 - **Tests:** `--ui-popovers` (a menu over another area whichever has
   focus, Escape and focus, an outside press, typeahead, the submenu's
-  delay, Left and Right, Enter, a checkbox item, the menubar, a popover's
-  focus and Tab, a color picker escaping a short area, EnumField and
-  ChoiceList filtering and keys, `choices.fields` listing every value, the
-  widgets checking clean); `--kit-documents` (an authored popover a kit
-  menu holds: Escape closes it, then the menu; an outside press both);
+  delay, Left and Right, Enter, a checkbox item, a disabled item, the
+  menubar, a popover's focus and Tab, a color picker escaping a short area,
+  EnumField and ChoiceList filtering and keys, `choices.fields` listing
+  every value, the widgets checking clean); `--kit-documents` (a kit
+  menu's disabled row; an authored popover a kit menu holds: Escape closes
+  it, then the menu; an outside press both);
   `--studio-documents` (the editor type menu draws over the next area and
   shows the chosen editor; the View menu toggles and stays open). The kit's
   menu, dropdown, autocomplete and popover checks in `--rmlui-kit` pass

@@ -889,7 +889,12 @@ static void clicked(const rml_event *e)
     }
     rml_element *item = closest(e->target, is_item);
     int i = item ? holding(item) : -1;
-    if (i >= 0 && enabled(item) && !has_popup(item) && !stays_open(item)) {
+    /* A disabled item's click reaches nothing, as a disabled button's. */
+    if (i >= 0 && !enabled(item)) {
+        rml_event_stop_propagation(e);
+        return;
+    }
+    if (i >= 0 && !has_popup(item) && !stays_open(item)) {
         close_chain(i);
     }
 }
@@ -1006,9 +1011,16 @@ static void moved(const rml_event *e)
     if (i < 0) {
         return;
     }
-    highlight(menu, item, false);
     entry *at = &stack[i];
-    if (!has_popup(item) || !enabled(item) || submenu_open(item)) {
+    /* A disabled item never highlights (Base UI); the pointer on it leaves
+       none highlighted. */
+    if (!enabled(item)) {
+        unhighlight(menu);
+        unref(&at->sub);
+        return;
+    }
+    highlight(menu, item, false);
+    if (!has_popup(item) || submenu_open(item)) {
         unref(&at->sub);
         return;
     }

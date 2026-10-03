@@ -84,7 +84,8 @@ and leaving its boundaries closes it and continues at the trigger's position in
 document order. Escape returns focus to the trigger. Menus (`role="menu"`) keep
 arrow-key navigation, typeahead within 0.5 s and close on Tab; a `menuitem` or
 `option` click closes the menu chain, and checkbox and radio items stay open
-(Base UI's `closeOnClick`). A modal host (`kit_modal_host`) traps the
+(Base UI's `closeOnClick`). A disabled item never highlights, under the
+pointer, by arrow keys or by typeahead, and its click reaches nothing. A modal host (`kit_modal_host`) traps the
 focus as Base UI's Dialog does: Tab and Shift+Tab cycle through its tabbable
 elements and never reach the editor behind it. `docs/prototypes/studio/kit.html` lists every
 control's contract.

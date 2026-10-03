@@ -369,7 +369,8 @@ void menu_click(kit *k, node *n)
     }
 }
 
-/* The pointer highlights a dropdown's rows; popover.c does a menu's. */
+/* The pointer highlights a dropdown's rows, popover.c a menu's; a disabled
+   row never highlights. */
 void menu_hover(kit *k, node *n)
 {
     if (n->kind != KIND_MENU_ITEM) {
@@ -379,7 +380,7 @@ void menu_hover(kit *k, node *n)
         popup *p = k->popups[i];
         int at = p->open && p->dropdown ? nodes_index(p->items, n) : -1;
         if (at >= 0) {
-            highlight_item(p, at);
+            highlight_item(p, item_enabled(n) ? at : -1);
         }
     }
 }

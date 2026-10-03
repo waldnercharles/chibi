@@ -203,6 +203,8 @@ typedef struct
 } game_behavior_entity_state;
 
 int game_behavior_attachment_count_for_entity(const game_behavior_world *world, ecs_entity entity);
+/* The attachment at `index` of game_behavior_attachment_count, in schedule order. */
+game_behavior_attachment_info game_behavior_attachment_info_index(game_behavior_world *world, int index);
 /* The first activation paused at a breakpoint or step, with its attachment in
  * `out`; NULL while none is. Borrowed until the run resumes or the world
  * changes its attachments. */

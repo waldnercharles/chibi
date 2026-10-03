@@ -240,6 +240,8 @@ void behavior_function_prepare_host(const behavior_function *function, behavior_
 void behavior_function_release_host(behavior_function_context *ctx);
 size_t behavior_function_watch_size(const behavior_function *function);
 bool behavior_function_resumable(const behavior_function *function);
+/* Whether its inspected code records the wires and values it carries. */
+bool behavior_function_observed(const behavior_function *function);
 bool behavior_function_has_invocations(const behavior_function *function);
 /* An event whose logic reads no payload, with synchronous, non-reentrant
  * operations only.

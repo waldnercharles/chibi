@@ -1,9 +1,6 @@
 /* A menu row that opens the use's children as a menu beside it, after a
    100 ms hover, a click or Right (Base UI's SubmenuTrigger); Left closes
-   it. Alias the row as data-alias-item: an object with label and icon. The
-   menu is placed against a box as wide as a menu may grow, taking no room,
-   so it fits its widest row as Menu's does. */
+   it. Alias the row as data-alias-item: an object with label and icon. */
 body { display: block; }
-.submenu-place { position: absolute; width: 480dp; height: 0dp; }
 .menu-item { height: var(--menu-row-h); }
 .chev { color: var(--faint-foreground); font-size: var(--studio-font-11, 11dp); }

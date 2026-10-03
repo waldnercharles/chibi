@@ -885,7 +885,8 @@ static void readout_follows_camera()
     for (int i = 0; i < 6; i++) {
         frames(&f, 1);
         drawn &= f.scene->camera_target < 0 || drew_camera(&f);
-        rml_element *readout = studio_element(s, ".readout");
+        /* The readout data-when built, not its template. */
+        rml_element *readout = studio_element(s, ".viewport .readout:not([data-when])");
         if (!readout) {
             continue;
         }

@@ -291,6 +291,7 @@ typedef enum
     RUN_OUTPUT,     /* Output alone (--studio-output) */
     RUN_MEMBERS,    /* Members alone (--studio-members) */
     RUN_SHELL,      /* the shell alone (--studio-shell) */
+    RUN_SCENE,      /* the Scene area alone (--studio-scene) */
     RUN_PANELS,     /* the authored panel checks alone (--studio-panels) */
 } studio_run;
 
@@ -319,6 +320,7 @@ static int studio_documents_app(const char *program, studio_run run)
         case RUN_OUTPUT: studio_documents_output_checks(); break;
         case RUN_MEMBERS: studio_documents_members_checks(); break;
         case RUN_SHELL: studio_documents_shell_checks(); break;
+        case RUN_SCENE: studio_documents_scene_checks(); break;
         case RUN_PANELS: studio_documents_panel_checks(); break;
         case RUN_ALL:
             studio_documents_graph_checks();
@@ -333,6 +335,7 @@ static int studio_documents_app(const char *program, studio_run run)
             studio_documents_list_checks();
             studio_documents_output_checks();
             studio_documents_members_checks();
+            studio_documents_scene_checks();
             break;
     }
     app_input_shutdown();
@@ -378,6 +381,12 @@ int studio_members_run(const char *program)
 int studio_shell_run(const char *program)
 {
     return studio_documents_app(program, RUN_SHELL);
+}
+
+/* The Scene area (workstream C1) alone. */
+int studio_scene_run(const char *program)
+{
+    return studio_documents_app(program, RUN_SCENE);
 }
 
 /* The authored panel checks alone. */

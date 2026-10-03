@@ -972,10 +972,11 @@ static void authored_modals_and_collaboration()
 }
 
 /* The editors whose area shows authored panels: the body, header controls
-   or both (the Behavior editor's GraphView). */
+   or both (the Behavior editor's GraphView, the Scene's SceneHeader). */
 static const studio_editor AREA_PANELS[] = {
     STUDIO_EDITOR_ASSETS, STUDIO_EDITOR_OUTLINER, STUDIO_EDITOR_MEMBERS,
     STUDIO_EDITOR_OUTPUT, STUDIO_EDITOR_BEHAVIOR, STUDIO_EDITOR_PROPERTIES,
+    STUDIO_EDITOR_SCENE,
 };
 #define AREA_PANEL_COUNT (int)(sizeof AREA_PANELS / sizeof *AREA_PANELS)
 #define AREA_ROUNDS 3
@@ -1061,6 +1062,15 @@ static void area_panels_take_turns()
             frames(&f, 3);
         }
         workspace_takes_turns(&f);
+        /* The Scene area turns between the scene and a ui asset's Canvas,
+           in its body and its header. */
+        show_area_panel(&f, STUDIO_EDITOR_SCENE);
+        for (int i = 0; i < 2; i++) {
+            studio_preview_ui(s, "HUD");
+            frames(&f, 3);
+            studio_preview_ui(s, NULL);
+            frames(&f, 3);
+        }
         show_area_panel(&f, AREA_PANELS[0]);
         views[round > 0] = data_views(&f);
     }

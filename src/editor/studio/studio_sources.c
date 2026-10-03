@@ -2348,6 +2348,10 @@ const studio_panel_source studio_panel_sources[] = {
     { "menubar", "TopBar", studio_menubar_add, studio_menubar_sync, studio_menubar_action },
     { "shell", NULL, studio_shell_add, studio_shell_sync, studio_shell_action },
     { "workspace", "Workspace", studio_workspace_add, studio_workspace_sync, studio_workspace_action },
+    /* The Scene area (workstream C1). */
+    { "scene", "SceneHeader", studio_scene_add, studio_scene_sync, studio_scene_action },
+    { "scene_view", "Scene", studio_scene_view_add, studio_scene_view_sync, NULL },
+    { "canvas", "Canvas", studio_canvas_panel_add, studio_canvas_panel_sync, studio_canvas_panel_action },
 };
 const int studio_panel_source_count = (int)(sizeof studio_panel_sources /
                                             sizeof *studio_panel_sources);

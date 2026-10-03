@@ -71,6 +71,17 @@ static bool at_end(studio *s)
            rml_element_scroll_height(l) - 1;
 }
 
+/* Two UI refreshes, which an idle Studio makes at its next refresh: a
+   printed line is no input, and a following List pins its end in the
+   refresh after the grown rows lay out. */
+static void take_lines(studio_fixture *f)
+{
+    for (int i = 0; i < 2; i++) {
+        f->studio->ui_schedule.wake = true;
+        frames(f, 1);
+    }
+}
+
 static void print(studio_fixture *f, int count, const char *word)
 {
     static int printed;
@@ -79,6 +90,7 @@ static void print(studio_fixture *f, int count, const char *word)
         snprintf(text, sizeof text, "%s line %d", word, printed++);
         editor_log_print(f->graph, "Printer", text);
     }
+    take_lines(f);
 }
 
 /* The element's text, its markup unparsed. */
@@ -222,6 +234,7 @@ static void log_escaped()
     frames(&f, 3);
     show_output(&f, VIEW_LOG);
     editor_log_print(f.graph, "<i>Origin</i>", "say {{ output.view }} <b>bold</b> & more");
+    take_lines(&f);
     frames(&f, 3);
     rml_element *rows[ROWS_MAX];
     int count = shown(s, ".output-log", rows);

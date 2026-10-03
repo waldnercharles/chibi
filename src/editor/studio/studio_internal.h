@@ -1251,7 +1251,8 @@ rml_element *studio_ui_panel(studio *s, const char *key, const char *name);
 int studio_ui_panel_count(const studio *s);
 const char *studio_ui_panel_name(const studio *s, int index);
 /* Shows panel `name` filling area `area`'s body, whether or not its GameUi
- * is hidden; returns its host, or NULL when it has no document. */
+ * is hidden; returns its host, for native slots, or NULL when it has no
+ * document. */
 rml_element *studio_ui_area(studio *s, int area, const char *name);
 /* Shows it over the editor while its GameUi is not hidden, as for a dialog
  * whose behaviors hide it again. */
@@ -1336,6 +1337,9 @@ bool studio_matches(const char *query, const char *text);
 /* Editors emit into an area body; headers into the area header. */
 void studio_scene_header(studio *s, int area);
 void studio_scene_body(studio *s, int area);
+/* Shows the part of the frame the view zoom does, as fractions of it, on
+   the surface emitted last. */
+void studio_view_crop(studio *s);
 /* Takes the view zoom's gestures from the Scene area's pointer in `input`,
  * given in area points, and leaves it in the frame's points. */
 void studio_scene_view(studio *s, engine_viewport_host_input *input);
@@ -1977,6 +1981,7 @@ typedef struct studio_canvas
     game_save *save;  /* what its bindings set */
     studio_sources sources; /* Studio's data, which it shows with the Studio project open */
     studio_canvas_action *actions;
+    ui_list_state list; /* the Actions log's List (Canvas.rml) */
 } studio_canvas;
 
 /* Shows ui asset `asset` in the Scene area; NULL returns it to the scene. */
@@ -2506,5 +2511,33 @@ bool studio_areas_moved(studio *s);
  * rather than the next. */
 void studio_ui_resync(studio *s, const char *name);
 void studio_sources_resync(studio *s, studio_sources *src, ui_data *data, const char *name);
+
+/* ---------- The Scene area (workstream C1) ---------- */
+
+/* The Scene's header controls (SceneHeader.rml), `scene` in
+ * studio_scene.c: mode (the scene's controls, a guest Studio's name or the
+ * Canvas's), View Zoom's label, levels and whether it shows, and the grid
+ * increment's label and presets; scene.zoom and scene.increment choose one
+ * by index. The tools, snapping, Show and Frame are commands. */
+void studio_scene_add(yyjson_mut_doc *doc);
+bool studio_scene_sync(studio *s, const studio_panel_sync *at);
+void studio_scene_action(studio *s, const char *action, const ui_activation *a);
+/* `scene_view`, what Scene.rml shows over the scene: the camera frames'
+ * labels, each moved by a transform, the label naming the scene and
+ * selection, the camera's zoom, Live, the generated world's progress and
+ * the notice line. */
+void studio_scene_view_add(yyjson_mut_doc *doc);
+bool studio_scene_view_sync(studio *s, const studio_panel_sync *at);
+/* `canvas` (studio_canvas.c), which Canvas.rml and the header's Canvas
+ * controls show: the previewed asset, what uses it and the ui assets to
+ * preview instead, the screen size, the backdrop, the stage's label, the
+ * game UI's error and the Actions log's window. Actions: back, used and
+ * preview (a row by index), size, backdrop, actions, clear and scroll. */
+void studio_canvas_panel_add(yyjson_mut_doc *doc);
+bool studio_canvas_panel_sync(studio *s, const studio_panel_sync *at);
+void studio_canvas_panel_action(studio *s, const char *action, const ui_activation *a);
+/* Shows the Canvas in area `area`'s body while a ui asset previews, its
+ * frame native in the stage's slot; false when none previews. */
+bool studio_canvas_body(studio *s, int area);
 
 #endif

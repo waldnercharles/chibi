@@ -298,36 +298,6 @@ static void edit_scene_pointer(app_scene_authoring *scene, engine_viewport *view
     if (pointer.world_per_pixel > 0) {
         scene->selection_scale = pointer.world_per_pixel;
     }
-    if (pointer.delete_pressed && scene_can_move(scene) &&
-        !scene->runtime_snapshot_valid) {
-        finish_transform_edit(scene, false);
-        ecs_entity *remove = NULL;
-        for (int i = 0; i < acount(scene->actors); i++) {
-            if (scene->actors[i].marked || i == scene->selected) {
-                apush(remove, scene->actors[i].entity);
-            }
-        }
-        scene_history_begin_group(scene->history);
-        for (int j = acount(remove) - 1; j >= 0; j--) {
-            for (int i = 0; i < acount(scene->actors); i++) {
-                if (ecs_entity_to_u64(scene->actors[i].entity) ==
-                    ecs_entity_to_u64(remove[j])) {
-                    scene->selected = i;
-                    app_scene_authoring_delete_instance(scene);
-                    break;
-                }
-            }
-        }
-        scene_history_end_group(scene->history);
-        afree(remove);
-        scene->selected = -1;
-        scene->runtime_selected = (ecs_entity){ 0 };
-        for (int i = 0; i < acount(scene->actors); i++) {
-            scene->actors[i].marked = false;
-        }
-        sync_editor_inspection(scene);
-        return;
-    }
     if (pointer.dropped_prototype[0] && scene_can_move(scene) &&
         !scene->runtime_snapshot_valid) {
         GameTransform position = { pointer.world_x, -pointer.world_y };

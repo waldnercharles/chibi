@@ -1482,7 +1482,7 @@ static void status_bar_follows_studio()
     frames(&f, 2);
     status_hints(s, elsewhere, sizeof elsewhere);
     bool hints = !strcmp(scene, "Select|Pan (middle)|Frame") &&
-                 !strcmp(elsewhere, "Select|Search");
+                 !strcmp(elsewhere, "Select|Search|Shortcuts");
 
     studio_report(s, "Saved");
     frames(&f, 2);
@@ -1934,6 +1934,50 @@ static void virtual_list_rows()
     fixture_free(&f);
 }
 
+/* Runs one key press as Studio's shortcuts do, over area `hover`. */
+static void press_over(studio *s, int hover, SDL_Keycode key, SDL_Keymod mod)
+{
+    s->hover_area = hover;
+    asetlen(s->keys, 0);
+    apush(s->keys, ((studio_key){ key, mod, false }));
+    studio_shortcuts(s, false);
+    asetlen(s->keys, 0);
+}
+
+/* Keys act on the area under the pointer (Blender): Undo there undoes the
+   graph although another area was clicked last, Find opens the graph's,
+   and a menu's Undo, with no key, still follows the area clicked last. */
+static void keys_follow_pointer()
+{
+    studio_fixture f = fixture_new();
+    studio *s = f.studio;
+    frames(&f, 3);
+    int graph = s->graph.area;
+    assert(graph >= 0);
+    editor *e = f.graph;
+    int count = acount(editor_active_graph(e)->nodes);
+    assert(count > 0);
+    ed_clear_selection(e);
+    ed_add_selected(e, editor_active_graph(e)->nodes[0]);
+    ed_duplicate_selected(e);
+    bool duplicated = acount(editor_active_graph(e)->nodes) > count;
+    int other = graph == STUDIO_AREA_OUTLINER ? STUDIO_AREA_PROPERTIES
+                                              : STUDIO_AREA_OUTLINER;
+    s->focus_area = other;
+    bool menu_follows_click = studio_command_area(s) == other;
+    SDL_Keymod primary = s->mac ? SDL_KMOD_GUI : SDL_KMOD_CTRL;
+    press_over(s, graph, SDLK_Z, primary);
+    bool undone = acount(editor_active_graph(e)->nodes) == count;
+    press_over(s, graph, SDLK_F, primary);
+    bool found = s->graph.find.open;
+    test_check(
+        duplicated && menu_follows_click && undone && found && s->key_area < 0,
+        "Undo and Find from the keyboard act on the area under the pointer, "
+        "not the one clicked last"
+    );
+    fixture_free(&f);
+}
+
 /* Repeats remain limited to commands that are useful while held. */
 static void shortcut_repeat_policy()
 {
@@ -1943,11 +1987,11 @@ static void shortcut_repeat_policy()
     snprintf(s->prefs.shortcuts[STUDIO_COMMAND_ZOOM_IN], STUDIO_CHORD_SIZE, "Mod+F12");
     s->prefs.ui_scale = 1;
     apush(s->keys, ((studio_key){ SDLK_F12, primary, true }));
-    studio_shortcuts(s);
+    studio_shortcuts(s, false);
     float held_scale = s->prefs.ui_scale;
     asetlen(s->keys, 0);
     apush(s->keys, ((studio_key){ SDLK_F12, primary, false }));
-    studio_shortcuts(s);
+    studio_shortcuts(s, false);
     bool zoom_repeat_runs = held_scale > 1;
     bool zoom_press_runs = s->prefs.ui_scale > held_scale;
     fixture_free(&zoom);
@@ -1956,11 +2000,11 @@ static void shortcut_repeat_policy()
     s = search.studio;
     primary = s->mac ? SDL_KMOD_GUI : SDL_KMOD_CTRL;
     apush(s->keys, ((studio_key){ SDLK_K, primary, true }));
-    studio_shortcuts(s);
+    studio_shortcuts(s, false);
     bool toggle_repeat_ignored = !kit_command_is_open(s->kit);
     asetlen(s->keys, 0);
     apush(s->keys, ((studio_key){ SDLK_K, primary, false }));
-    studio_shortcuts(s);
+    studio_shortcuts(s, false);
     bool toggle_press_runs = kit_command_is_open(s->kit);
     test_check(
         zoom_repeat_runs && zoom_press_runs && toggle_repeat_ignored && toggle_press_runs,
@@ -2282,13 +2326,19 @@ static void toolbar_shortcuts_keep_text_focus()
     bool input_allowed = studio_ui_shortcut_focus(s);
     bool input_focus = focused_input && rml_context_focus_element(context) == input &&
                        input_keyboard && !input_allowed;
+    /* A plain key stays in the field: Space types, not Play. */
+    key_event(SDL_SCANCODE_SPACE, true);
+    key_event(SDL_SCANCODE_SPACE, false);
+    frames(&f, 2);
+    rml_element *input_focus_after = rml_context_focus_element(context);
+    bool input_protected = !app_scene_authoring_runtime_state(s->scene).playing &&
+                           input_focus_after == input && kit_wants_keyboard(s->kit);
+    /* A chord the field edits no text with still reaches Studio. */
     key_event_mod(SDL_SCANCODE_K, true, primary, false);
     key_event_mod(SDL_SCANCODE_K, false, primary, false);
     frames(&f, 2);
     bool input_palette = kit_command_is_open(s->kit);
-    rml_element *input_focus_after = rml_context_focus_element(context);
-    bool input_protected = !input_palette && input_focus_after == input &&
-                           kit_wants_keyboard(s->kit);
+    input_protected &= input_palette;
 
     if (!(button_focus && button_shortcut && dismissed && tab_focus &&
           tab_shortcut && input_focus && input_protected)) {
@@ -2315,7 +2365,8 @@ static void toolbar_shortcuts_keep_text_focus()
         button_focus && button_shortcut && dismissed && tab_focus &&
             tab_shortcut && input_focus && input_protected,
         "focused authored toolbar buttons and document tabs allow global "
-        "shortcuts while text inputs retain their keys"
+        "shortcuts, and text inputs keep their keys but pass Studio's other "
+        "chords"
     );
     fixture_free(&f);
 }
@@ -3583,6 +3634,7 @@ static int studio_documents_app(const char *program, bool run_properties_only)
         virtual_list_rows();
         assets_cache_follows_explicit_refresh();
         shortcut_repeat_policy();
+        keys_follow_pointer();
         readout_follows_camera();
         /* Authored top bar and area headers (workstream T) */
         chrome_follows_studio();

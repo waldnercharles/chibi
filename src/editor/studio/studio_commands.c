@@ -27,6 +27,15 @@ typedef struct
 
 #define EDITOR_BIT(editor) (1u << (editor))
 #define EDITOR_ALL ((1u << (STUDIO_EDITOR_COUNT + 1)) - 1)
+/* The areas that show the scene's objects. */
+#define OBJECT_AREAS                                                           \
+    (EDITOR_BIT(STUDIO_EDITOR_SCENE) | EDITOR_BIT(STUDIO_EDITOR_OUTLINER))
+/* The areas whose search Find opens or focuses. */
+#define FIND_AREAS                                                             \
+    (EDITOR_BIT(STUDIO_EDITOR_BEHAVIOR) | EDITOR_BIT(STUDIO_EDITOR_CODE) |     \
+     EDITOR_BIT(STUDIO_EDITOR_OUTLINER) |                                      \
+     EDITOR_BIT(STUDIO_EDITOR_PROPERTIES) | EDITOR_BIT(STUDIO_EDITOR_ASSETS) | \
+     EDITOR_BIT(STUDIO_EDITOR_OUTPUT) | EDITOR_BIT(STUDIO_EDITOR_MEMBERS))
 
 enum
 {
@@ -91,21 +100,23 @@ static const command_entry COMMANDS[STUDIO_COMMAND_COUNT] = {
                               .icon = KIT_ICON_REDO,
                               .repeat = true,
                               .phase = SHORTCUT_EARLY },
+    /* Blender's Shift+D, and Mod+D as Unity, Unreal and Godot duplicate. */
     [STUDIO_COMMAND_DUPLICATE] = { .id = "duplicate",
                                    .label = "Duplicate",
                                    .chord = "Shift+D",
-                                   .context = "Except Behavior and Properties",
-                                   .excluded_contexts = EDITOR_BIT(STUDIO_EDITOR_BEHAVIOR) |
-                                                        EDITOR_BIT(STUDIO_EDITOR_PROPERTIES),
+                                   .aliases = { "Mod+D" },
+                                   .context = "Scene, Outliner",
+                                   .contexts = OBJECT_AREAS,
                                    .keywords = "copy",
                                    .icon = KIT_ICON_COPY,
                                    .phase = SHORTCUT_EDITOR },
     [STUDIO_COMMAND_DELETE] = { .id = "delete",
                                 .label = "Delete",
                                 .chord = "X",
-                                .aliases = { "Delete" },
-                                .context = "Outliner",
-                                .contexts = EDITOR_BIT(STUDIO_EDITOR_OUTLINER),
+                                /* A Mac's delete key is Backspace. */
+                                .aliases = { "Backspace", "Delete" },
+                                .context = "Scene, Outliner",
+                                .contexts = OBJECT_AREAS,
                                 .keywords = "remove",
                                 .icon = KIT_ICON_TRASH,
                                 .phase = SHORTCUT_EDITOR },
@@ -119,8 +130,7 @@ static const command_entry COMMANDS[STUDIO_COMMAND_COUNT] = {
                                .label = "Frame Selected",
                                .chord = "F",
                                .context = "Scene, Outliner",
-                               .contexts = EDITOR_BIT(STUDIO_EDITOR_SCENE) |
-                                           EDITOR_BIT(STUDIO_EDITOR_OUTLINER),
+                               .contexts = OBJECT_AREAS,
                                .keywords = "focus zoom",
                                .icon = KIT_ICON_FRAME,
                                .phase = SHORTCUT_EDITOR },
@@ -201,11 +211,13 @@ static const command_entry COMMANDS[STUDIO_COMMAND_COUNT] = {
                               .keywords = "run start preview pause",
                               .icon = KIT_ICON_PLAY,
                               .phase = SHORTCUT_PLAY },
+    /* VS Code's Stop, beside the debugger's F5, F10 and F11. */
     [STUDIO_COMMAND_STOP] = { .id = "stop",
                               .label = "Stop",
+                              .chord = "Shift+F5",
                               .context = "Global",
                               .icon = KIT_ICON_STOP,
-                              .phase = SHORTCUT_EDITOR },
+                              .phase = SHORTCUT_EARLY },
     [STUDIO_COMMAND_STEP] = { .id = "step",
                               .label = "Step",
                               .context = "Global",
@@ -272,8 +284,7 @@ static const command_entry COMMANDS[STUDIO_COMMAND_COUNT] = {
                                 .label = "Rename",
                                 .chord = "F2",
                                 .context = "Scene, Outliner",
-                                .contexts = EDITOR_BIT(STUDIO_EDITOR_SCENE) |
-                                            EDITOR_BIT(STUDIO_EDITOR_OUTLINER),
+                                .contexts = OBJECT_AREAS,
                                 .keywords = "name object",
                                 .icon = KIT_ICON_EDIT,
                                 .phase = SHORTCUT_EDITOR },
@@ -322,13 +333,17 @@ static const command_entry COMMANDS[STUDIO_COMMAND_COUNT] = {
                                        .phase = SHORTCUT_EARLY },
     [STUDIO_COMMAND_COLLABORATION_TOKEN] = { .id = "collaborationToken",
                                              .label = "Use admin token",
-                                             .context = "Global" },
+                                             .context = "Global",
+                                             .phase = SHORTCUT_EARLY },
     [STUDIO_COMMAND_COLLABORATION_FOLLOW] = { .id = "collaborationFollow",
                                               .label = "Follow participant",
-                                              .context = "Global" },
+                                              .context = "Global",
+                                              .indexed = true,
+                                              .phase = SHORTCUT_EARLY },
     [STUDIO_COMMAND_COLLABORATION_UNFOLLOW] = { .id = "collaborationUnfollow",
                                                 .label = "Stop following",
-                                                .context = "Global" },
+                                                .context = "Global",
+                                                .phase = SHORTCUT_EARLY },
     [STUDIO_COMMAND_COLLABORATION_HOST] = { .id = "collaborationHost",
                                             .label = "Host Collaboration Room",
                                             .context = "Collaboration",
@@ -422,6 +437,50 @@ static const command_entry COMMANDS[STUDIO_COMMAND_COUNT] = {
                                   .icon = KIT_ICON_STEP_OUT,
                                   .repeat = true,
                                   .phase = SHORTCUT_DEBUG },
+    [STUDIO_COMMAND_SELECT_ALL] = { .id = "selectAll",
+                                    .label = "Select All",
+                                    .chord = "Mod+A",
+                                    .context = "Scene, Outliner",
+                                    .contexts = OBJECT_AREAS,
+                                    .keywords = "objects every",
+                                    .icon = KIT_ICON_SELECT,
+                                    .phase = SHORTCUT_EDITOR },
+    /* Escape deselects, as Unreal's viewport and Godot's editors do. */
+    [STUDIO_COMMAND_DESELECT] = { .id = "deselect",
+                                  .label = "Deselect All",
+                                  .chord = "Escape",
+                                  .context = "Scene, Outliner",
+                                  .contexts = OBJECT_AREAS,
+                                  .keywords = "clear selection none",
+                                  .phase = SHORTCUT_EDITOR },
+    /* Blender's View All. */
+    [STUDIO_COMMAND_FRAME_ALL] = { .id = "frameAll",
+                                   .label = "Frame All",
+                                   .chord = "Home",
+                                   .context = "Scene",
+                                   .contexts = EDITOR_BIT(STUDIO_EDITOR_SCENE),
+                                   .keywords = "view fit everything zoom",
+                                   .icon = KIT_ICON_FRAME,
+                                   .phase = SHORTCUT_EDITOR },
+    /* The area's own search: the graph's and the Text Editor's find
+       widgets, else its filter field. */
+    [STUDIO_COMMAND_FIND] = { .id = "find",
+                              .label = "Find",
+                              .chord = "Mod+F",
+                              .context = "Area under pointer",
+                              .contexts = FIND_AREAS,
+                              .keywords = "search filter",
+                              .icon = KIT_ICON_SEARCH,
+                              .phase = SHORTCUT_EARLY },
+    [STUDIO_COMMAND_KEYBOARD_SHORTCUTS] = { .id = "keyboardShortcuts",
+                                            .label = "Keyboard Shortcuts",
+                                            .chord = "Mod+/",
+                                            .context = "Global",
+                                            .keywords = "keys keymap hotkeys "
+                                                        "bindings cheat sheet "
+                                                        "help",
+                                            .icon = KIT_ICON_KEYBOARD,
+                                            .phase = SHORTCUT_EARLY },
 };
 
 const char *studio_command_default_chord(studio_command command)
@@ -493,6 +552,32 @@ static const char *binding_at(const studio_prefs *prefs, studio_command command,
         return index ? NULL : prefs->shortcuts[command];
     }
     return default_binding(&COMMANDS[command], index);
+}
+
+int studio_command_bindings(const studio_prefs *prefs, studio_command command, const char **out, int max)
+{
+    int count = 0;
+    for (int i = 0; i < binding_count(prefs, command) && count < max; i++) {
+        out[count++] = binding_at(prefs, command, i);
+    }
+    return count;
+}
+
+const char *studio_command_label(studio_command command)
+{
+    return COMMANDS[command].label;
+}
+
+const char *studio_command_group(studio_command command)
+{
+    const command_entry *entry = &COMMANDS[command];
+    if (entry->phase == SHORTCUT_DEBUG) {
+        return "Debugger";
+    }
+    /* Find acts in most areas, as the global commands do. */
+    return entry->contexts && __builtin_popcount(entry->contexts) <= 2
+             ? entry->context
+             : "Global";
 }
 
 int studio_command_conflict(const studio_prefs *prefs, studio_command command, const char *chord, bool mac)
@@ -673,6 +758,42 @@ static int tab_at(const studio *s, int argument)
     return argument >= 0 ? argument : s->scene->active_tab;
 }
 
+int studio_command_area(const studio *s)
+{
+    return s->key_area >= 0 ? s->key_area : s->focus_area;
+}
+
+/* The editor in the area `argument` names, else in the command's area. */
+static studio_editor editor_at(studio *s, int argument)
+{
+    int area = argument >= 0 ? argument : studio_command_area(s);
+    return area >= 0 && area < STUDIO_AREA_COUNT
+             ? studio_active_layout(s)->editors[area]
+             : STUDIO_EDITOR_COUNT;
+}
+
+static bool finds(studio *s, studio_editor editor)
+{
+    if (editor == STUDIO_EDITOR_BEHAVIOR || editor == STUDIO_EDITOR_MEMBERS) {
+        return studio_graph_active(s);
+    }
+    return editor < STUDIO_EDITOR_COUNT && (FIND_AREAS & EDITOR_BIT(editor));
+}
+
+/* The graph's and the Text Editor's find widgets open; elsewhere the area's
+   filter field takes focus when it is next emitted. */
+static void find(studio *s, studio_editor editor)
+{
+    switch (editor) {
+        case STUDIO_EDITOR_BEHAVIOR: studio_graph_find(s); break;
+        case STUDIO_EDITOR_CODE: studio_code_find(s); break;
+        default:
+            s->find_request = editor + 1;
+            s->ui_schedule.wake = true;
+            break;
+    }
+}
+
 /* Up and Down walk the Outliner's visible rows (Blender). */
 static void step_selection(studio *s, int direction)
 {
@@ -749,6 +870,14 @@ static bool enabled_with(studio *s, studio_command command, int argument)
         case STUDIO_COMMAND_STEP_OVER:
         case STUDIO_COMMAND_STEP_INTO:
         case STUDIO_COMMAND_STEP_OUT: return s->pause.active;
+        case STUDIO_COMMAND_SELECT_ALL:
+            return acount(s->scene->actors) && !studio_designer_active(s);
+        case STUDIO_COMMAND_DESELECT:
+            /* Not while a press drags, which Escape cancels instead. */
+            return (selection || s->scene->runtime_selected.slot) &&
+                   !s->in.down[0] && !studio_designer_active(s);
+        case STUDIO_COMMAND_FRAME_ALL: return !studio_designer_active(s);
+        case STUDIO_COMMAND_FIND: return finds(s, editor_at(s, argument));
         default: return true;
     }
 }
@@ -818,7 +947,7 @@ void studio_command_run_with(studio *s, studio_command command, int argument)
             studio_toggle_drawer(s, STUDIO_EDITOR_PERFORMANCE);
             break;
         case STUDIO_COMMAND_MAXIMIZE:
-            studio_toggle_maximized(s, argument >= 0 ? argument : s->focus_area);
+            studio_toggle_maximized(s, argument >= 0 ? argument : studio_command_area(s));
             break;
         case STUDIO_COMMAND_RESET_LAYOUT: studio_reset_layout(s); break;
         case STUDIO_COMMAND_WORKSPACE_VERTICAL_SPLIT:
@@ -887,6 +1016,13 @@ void studio_command_run_with(studio *s, studio_command command, int argument)
         /* Rename objects and prototype components */
         case STUDIO_COMMAND_RENAME: studio_rename_object(s); break;
         case STUDIO_COMMAND_ADD_COMPONENT: studio_add_component_open(s); break;
+        case STUDIO_COMMAND_SELECT_ALL: studio_select_all(s); break;
+        case STUDIO_COMMAND_DESELECT: studio_deselect(s); break;
+        case STUDIO_COMMAND_FRAME_ALL: studio_frame_all(s); break;
+        case STUDIO_COMMAND_FIND: find(s, editor_at(s, argument)); break;
+        case STUDIO_COMMAND_KEYBOARD_SHORTCUTS:
+            studio_ui_show(s, "Shortcuts");
+            break;
         case STUDIO_COMMAND_COUNT: break;
     }
 }
@@ -921,16 +1057,50 @@ bool studio_command_item(studio *s, studio_command command)
     return true;
 }
 
-void studio_shortcuts(studio *s)
+bool studio_text_key(SDL_Keycode key)
+{
+    switch (key) {
+        case SDLK_A:
+        case SDLK_C:
+        case SDLK_V:
+        case SDLK_X:
+        case SDLK_Y:
+        case SDLK_Z:
+        case SDLK_LEFT:
+        case SDLK_RIGHT:
+        case SDLK_UP:
+        case SDLK_DOWN:
+        case SDLK_HOME:
+        case SDLK_END:
+        case SDLK_BACKSPACE:
+        case SDLK_DELETE: return true;
+        default: return false;
+    }
+}
+
+/* Games bind no function key, so those reach Studio while a game has the
+   keyboard: Stop, and the debugger's steps. */
+static bool function_key(SDL_Keycode key)
+{
+    return key >= SDLK_F1 && key <= SDLK_F12;
+}
+
+void studio_shortcuts(studio *s, bool field)
 {
     studio_editor editor = s->hover_area >= 0
                              ? studio_active_layout(s)->editors[s->hover_area]
                              : STUDIO_EDITOR_COUNT;
     /* A game in the focused viewport owns keys without its primary modifier. */
     bool gameplay = !studio_previewed_ui(s) && engine_viewport_focused(s->viewport);
+    s->key_area = s->hover_area;
     for (int i = 0; i < acount(s->keys); i++) {
         studio_key key = s->keys[i];
         bool primary = studio_primary(s, key.mod);
+        /* A focused field keeps its keys; chords that edit no text still
+           reach Studio, as VS Code's do. */
+        if (field && (!primary || studio_text_key(key.key))) {
+            continue;
+        }
         int command = studio_command_for_key(&s->prefs, key.key, key.mod, editor, s->mac);
         bool repeatable = command >= 0
                             ? COMMANDS[command].repeat
@@ -943,15 +1113,11 @@ void studio_shortcuts(studio *s)
             studio_command_run(s, (studio_command)command);
             continue;
         }
-        if (gameplay && !primary) {
+        if (gameplay && !primary && !function_key(key.key)) {
             continue;
         }
         if (command >= 0 && COMMANDS[command].phase == SHORTCUT_EARLY) {
-            studio_command_run_with(
-                s,
-                (studio_command)command,
-                command == STUDIO_COMMAND_MAXIMIZE ? s->hover_area : -1
-            );
+            studio_command_run(s, (studio_command)command);
             continue;
         }
         if (studio_designer_key(s, editor, key.key, key.mod)) {
@@ -972,4 +1138,5 @@ void studio_shortcuts(studio *s)
             studio_command_run(s, (studio_command)command);
         }
     }
+    s->key_area = -1;
 }

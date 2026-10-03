@@ -581,6 +581,9 @@ extern "C"
     /* True while focus can receive typed characters, including a focused number
      * field. */
     bool kit_accepts_text(const kit *k);
+    /* True while an input or textarea has focus: a text field, not a code
+     * editor or a hosted control. */
+    bool kit_input_focused(const kit *k);
     bool kit_wants_pointer(const kit *k);
     /* Width in dp of one line of the configured standard face at `size` dp
      * and `weight` (400 regular),

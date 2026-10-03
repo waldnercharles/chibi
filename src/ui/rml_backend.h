@@ -86,6 +86,7 @@ extern "C"
         RML_INPUT_KEY_OEM_COMMA = 40,
         RML_INPUT_KEY_OEM_MINUS = 41,
         RML_INPUT_KEY_OEM_PERIOD = 42,
+        RML_INPUT_KEY_OEM_2 = 43, /* / */
         RML_INPUT_KEY_OEM_4 = 45, /* [ */
         RML_INPUT_KEY_OEM_6 = 47, /* ] */
         RML_INPUT_KEY_NUMPAD_ENTER = 61,

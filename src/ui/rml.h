@@ -688,6 +688,7 @@ extern "C"
     {
         RML_KEY_OEM_1 = 38,     /* ; */
         RML_KEY_OEM_COMMA = 40, /* , */
+        RML_KEY_OEM_2 = 43,     /* / */
         RML_KEY_OEM_4 = 45,     /* [ */
         RML_KEY_OEM_6 = 47,     /* ] */
     };

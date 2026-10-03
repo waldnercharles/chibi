@@ -1522,6 +1522,7 @@ rml_vec2 rml_event_wheel(const rml_event *event)
 
 SAME_KEY(OEM_1);
 SAME_KEY(OEM_COMMA);
+SAME_KEY(OEM_2);
 SAME_KEY(OEM_4);
 SAME_KEY(OEM_6);
 

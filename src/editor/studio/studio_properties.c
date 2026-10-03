@@ -193,6 +193,7 @@ void studio_properties_header(studio *s, int area)
         return;
     }
     kit_search(s->kit, "search", s->property_search, sizeof s->property_search, "Search properties");
+    studio_find_field(s, STUDIO_EDITOR_PROPERTIES);
 }
 
 static const game_prototype_component *base_component(

@@ -1202,6 +1202,7 @@ void studio_designer_details_header(studio *s, int)
     kit *k = s->kit;
     kit_label(k, "mode", "designer-mode", "Details");
     kit_search(k, "search", s->property_search, sizeof s->property_search, "Search properties");
+    studio_find_field(s, STUDIO_EDITOR_PROPERTIES);
 }
 
 void studio_designer_details(studio *s, int)

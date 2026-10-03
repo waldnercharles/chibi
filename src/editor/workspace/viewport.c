@@ -559,7 +559,6 @@ static void capture_viewport_pointer(engine_viewport *viewport, const viewport_i
     pointer->world_y = world.y;
     pointer->hovered = io->hovered && io->mouse.x >= 0 && io->mouse.y >= 0 &&
                        io->mouse.x < size.x && io->mouse.y < size.y;
-    pointer->delete_pressed = io->focused && app_input_pressed(APP_INPUT_DELETE);
     snprintf(
         pointer->dropped_prototype,
         sizeof pointer->dropped_prototype,

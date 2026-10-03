@@ -104,6 +104,7 @@ void studio_designer_library_header(studio *s, int)
     kit_label(k, "mode", "designer-mode", "Library");
     kit_push(k, "filter", NULL, "assets-filter");
     kit_search(k, "search", d->library_filter, sizeof d->library_filter, "Filter");
+    studio_find_field(s, STUDIO_EDITOR_ASSETS);
     kit_pop(k);
 }
 

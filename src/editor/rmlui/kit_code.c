@@ -879,6 +879,7 @@ static uint32_t chord_char(rml_key key)
         case RML_KEY_OEM_PLUS: return '=';
         case RML_KEY_OEM_PERIOD: return '.';
         case RML_KEY_OEM_COMMA: return ',';
+        case RML_KEY_OEM_2: return '/';
         case RML_KEY_OEM_1: return ';';
         case RML_KEY_OEM_4: return '[';
         case RML_KEY_OEM_6: return ']';

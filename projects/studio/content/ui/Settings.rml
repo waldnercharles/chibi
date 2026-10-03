@@ -39,6 +39,7 @@
           <span class="page-title" data-if="settings.query != ''">Search Results</span>
           <span class="badge accent" data-if="settings.query != ''">{{ settings.matches }}</span>
           <span class="badge" data-if="settings.scope == 'project'">{{ settings.project }}</span>
+          <span class="badge warning conflicts" data-if="settings.category == 'keyboard' &amp;&amp; settings.query == '' &amp;&amp; settings.conflicts &gt; 0" data-event-click="settings.query = 'conflict'">{{ settings.conflicts }} conflicting</span>
         </div>
         <div class="row-slot" data-for="row : settings.rows" data-if="row.shown">
           <div class="group" data-if="row.head">{{ row.group }}</div>
@@ -68,8 +69,9 @@
                 <button class="btn outline sm record-shortcut" data-if="!row.indexed &amp;&amp; !row.recording" data-event-click="row.record = true">Record</button>
                 <span class="recording" data-if="row.recording">Press a key combination. Esc cancels.</span>
               </div>
+              <span class="shortcut-aliases" data-if="row.aliases != ''">{{ row.aliases }}</span>
               <span class="shortcut-context">{{ row.context }}</span>
-              <span class="shortcut-conflict" data-if="row.conflict != ''">{{ row.conflict }}</span>
+              <span class="shortcut-conflict" data-if="row.conflict != ''"><span class="icon">&#xea6c;</span>{{ row.conflict }}</span>
             </div>
           </use>
         </div>

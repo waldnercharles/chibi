@@ -29,9 +29,45 @@ bool studio_detect_mac()
 #endif
 }
 
+SDL_Keycode studio_event_key(const SDL_KeyboardEvent *e)
+{
+    bool composed = e->key >= 0x80 && !(e->key & SDLK_SCANCODE_MASK);
+    if ((e->mod & SDL_KMOD_ALT) && composed) {
+        return SDL_GetKeyFromScancode(e->scancode, SDL_KMOD_NONE, true);
+    }
+    return e->key;
+}
+
 bool studio_primary(const studio *s, SDL_Keymod mod)
 {
     return mod & (s->mac ? SDL_KMOD_GUI : SDL_KMOD_CTRL);
+}
+
+/* A key as menus write it: arrows as glyphs, and a Mac's delete keys by the
+   names on its keyboard. */
+static const char *key_text(const char *key, bool mac)
+{
+    static const struct
+    {
+        const char *name, *mac, *other;
+    } KEYS[] = {
+        { "Up", "\xe2\x86\x91", "\xe2\x86\x91" },
+        { "Down", "\xe2\x86\x93", "\xe2\x86\x93" },
+        { "Left", "\xe2\x86\x90", "\xe2\x86\x90" },
+        { "Right", "\xe2\x86\x92", "\xe2\x86\x92" },
+        { "Backspace", "Delete", "Backspace" },
+        { "Delete", "Fwd Delete", "Delete" },
+        { "Return", "\xe2\x86\xa9", "Enter" },
+        { "Escape", "Esc", "Esc" },
+        { "Plus", "+", "Plus" },
+        { "KeypadPlus", "Keypad +", "Keypad +" },
+    };
+    for (size_t i = 0; i < sizeof KEYS / sizeof *KEYS; i++) {
+        if (!strcmp(KEYS[i].name, key)) {
+            return mac ? KEYS[i].mac : KEYS[i].other;
+        }
+    }
+    return key;
 }
 
 /* `chord` joins Mod, Ctrl, Shift and Alt with a key by '+', as "Mod+Shift+Z". */
@@ -89,8 +125,9 @@ void studio_chord_format(char *out, size_t size, const char *chord, bool mac)
             );
         }
     }
-    bool word = strlen(key) > 1 && used && mac;
-    snprintf(text + used, sizeof text - used, "%s%s", word ? " " : "", key);
+    const char *shown = key_text(key, mac);
+    bool word = strlen(shown) > 1 && (unsigned char)shown[0] < 0x80 && used && mac;
+    snprintf(text + used, sizeof text - used, "%s%s", word ? " " : "", shown);
     size_t length = strlen(text);
     if (!key[0] && length && text[length - 1] == '+') {
         text[length - 1] = '\0';

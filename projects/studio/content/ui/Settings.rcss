@@ -67,8 +67,12 @@
 
 .shortcut { display: flex; flex-direction: column; align-items: flex-end; gap: 4dp; max-width: 300dp; }
 .shortcut .keys { flex-wrap: wrap; justify-content: flex-end; }
-.shortcut-context { font-size: var(--studio-font-11, 11dp); color: var(--faint-foreground); }
-.shortcut-conflict { font-size: var(--studio-font-11, 11dp); color: var(--warning); }
+.shortcut-context, .shortcut-aliases { font-size: var(--studio-font-11, 11dp); color: var(--faint-foreground); }
+.shortcut-aliases { font-family: var(--font-numeric); }
+.shortcut-conflict { display: flex; align-items: center; gap: 4dp; font-size: var(--studio-font-11, 11dp); color: var(--warning); }
+.shortcut-conflict .icon { font-size: var(--studio-font-12, 12dp); }
+/* The conflict count searches for them. */
+.badge.warning { color: var(--warning); background-color: color-mix(in srgb, var(--warning) 16%, transparent); cursor: pointer; }
 .recording { color: var(--primary); }
 
 /* Keep descriptions and controls readable in narrow or magnified windows. */

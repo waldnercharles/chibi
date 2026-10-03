@@ -82,6 +82,7 @@ void studio_assets_header(studio *s, int area)
     kit_pop(k);
     kit_push(k, "filter", NULL, "assets-filter");
     kit_search(k, "search", s->assets_filter, sizeof s->assets_filter, "Filter");
+    studio_find_field(s, STUDIO_EDITOR_ASSETS);
     kit_pop(k);
     studio_new_asset_button(s);
 }
@@ -347,7 +348,7 @@ bool studio_assets_key(studio *s, SDL_Keycode key, SDL_Keymod mod)
         studio_refactor_rename_asset(s, s->assets_hover);
         return true;
     }
-    if (key == SDLK_X || key == SDLK_DELETE) {
+    if (key == SDLK_X || key == SDLK_DELETE || key == SDLK_BACKSPACE) {
         studio_refactor_delete_asset(s, s->assets_hover);
         return true;
     }

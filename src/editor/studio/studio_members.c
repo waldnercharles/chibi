@@ -1135,6 +1135,7 @@ void studio_members_header(studio *s, int area)
     kit *k = s->kit;
     kit_push(k, "filter", NULL, "members-filter");
     kit_search(k, "search", s->members.filter, sizeof s->members.filter, "Filter");
+    studio_find_field(s, STUDIO_EDITOR_MEMBERS);
     kit_pop(k);
 }
 
@@ -1182,7 +1183,13 @@ void studio_members_body(studio *s, int area)
 
 bool studio_members_key(studio *s, SDL_Keycode key, SDL_Keymod mod)
 {
-    if (!studio_graph_active(s) || studio_primary(s, mod) || (mod & SDL_KMOD_ALT)) {
+    if (!studio_graph_active(s) || (mod & SDL_KMOD_ALT)) {
+        return false;
+    }
+    /* Duplicate is Shift+D or Mod+D, as for objects. */
+    bool duplicate = key == SDLK_D &&
+                     ((mod & SDL_KMOD_SHIFT) || studio_primary(s, mod));
+    if (studio_primary(s, mod) && !duplicate) {
         return false;
     }
     follow(s);
@@ -1190,11 +1197,11 @@ bool studio_members_key(studio *s, SDL_Keycode key, SDL_Keymod mod)
         start_rename(s, s->members.kind, s->members.id);
         return true;
     }
-    if (key == SDLK_X || key == SDLK_DELETE) {
+    if (key == SDLK_X || key == SDLK_DELETE || key == SDLK_BACKSPACE) {
         delete_member(s);
         return true;
     }
-    if ((mod & SDL_KMOD_SHIFT) && key == SDLK_D) {
+    if (duplicate) {
         duplicate_variable(s);
         return true;
     }

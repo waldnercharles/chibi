@@ -158,6 +158,11 @@ typedef enum
     STUDIO_COMMAND_COLLABORATION_TOKEN,
     STUDIO_COMMAND_COLLABORATION_FOLLOW,
     STUDIO_COMMAND_COLLABORATION_UNFOLLOW,
+    STUDIO_COMMAND_SELECT_ALL,
+    STUDIO_COMMAND_DESELECT,
+    STUDIO_COMMAND_FRAME_ALL,
+    STUDIO_COMMAND_FIND,
+    STUDIO_COMMAND_KEYBOARD_SHORTCUTS,
     STUDIO_COMMAND_COUNT,
 } studio_command;
 
@@ -768,6 +773,8 @@ struct studio
     studio_area areas[STUDIO_AREA_COUNT];
     int hover_area;
     int focus_area;
+    int key_area; /* the area under the pointer while a key runs a command, else -1 */
+    int find_request; /* editor + 1 whose search field Find focuses next, else 0 */
     int maximized; /* the area filling the workspace (Blender's Ctrl Space), or -1 */
     studio_prefs prefs;
     studio_collaboration collaboration;
@@ -994,6 +1001,25 @@ typedef struct studio_settings_cache
     bool valid, mac;
 } studio_settings_cache;
 
+/* What Keyboard Shortcuts last showed: its query and the bindings. */
+typedef struct studio_keymap_cache
+{
+    yyjson_mut_doc *doc;
+    char query[256];
+    char shortcuts[STUDIO_COMMAND_COUNT][STUDIO_CHORD_SIZE];
+    bool valid, mac;
+} studio_keymap_cache;
+
+/* Keyboard Shortcuts (studio_keymap.c): the `shortcuts` variable, with the
+ * sheet's `query`, its `matches` and `groups`, each a `label` and `rows`
+ * of a `label` and its `keys`. */
+void studio_keymap_add(yyjson_mut_doc *doc);
+/* Lists every binding `prefs` gives, and the keys editors take
+ * themselves, that matches the query; true when the sheet changed. */
+bool studio_keymap_show(yyjson_mut_doc *doc, const studio_prefs *prefs, bool mac, studio_keymap_cache *cache);
+/* Whether the sheet lists the area. */
+bool studio_keymap_area(const char *area);
+
 /* What authored panels bind beyond their world's `save` (studio_sources.c):
  * `world`, the Scene world's saved keys, and `theme`, the custom properties
  * of the stylesheets the open scene's root document imports. */
@@ -1007,6 +1033,7 @@ typedef struct studio_sources
     uint64_t writes_seen;
     int inspected; /* the Inspector model's revision `inspector` shows */
     studio_settings_cache settings_cache;
+    studio_keymap_cache keymap_cache;
 } studio_sources;
 
 /* A data model's JSON with the variables authored panels bind. */
@@ -1058,6 +1085,9 @@ void studio_ui_area(studio *s, int area, const char *name);
 void studio_ui_modal(studio *s, const char *name);
 /* True when a focused authored chrome button can pass global shortcuts. */
 bool studio_ui_shortcut_focus(studio *s);
+/* True while a modal panel (Settings, Collaboration, Keyboard Shortcuts,
+ * New Project) shows. */
+bool studio_ui_modal_open(studio *s);
 /* Clears its GameUi.hidden. */
 void studio_ui_show(studio *s, const char *name);
 /* Runs a collaboration action with transient values from the authored panel. */
@@ -1099,7 +1129,18 @@ void studio_ui_new_project(studio *s);
 /* Shell. */
 void studio_emit(studio *s);
 void studio_report(studio *s, const char *message);
-void studio_shortcuts(studio *s);
+/* Runs this frame's keys as commands, on the area under the pointer
+ * (Blender). With `field`, a focused text field keeps every key but the
+ * primary-modifier chords it edits no text with. */
+void studio_shortcuts(studio *s, bool field);
+/* Whether the key, under the primary modifier, edits a text field: the
+ * clipboard, undo, select all and caret movement. */
+bool studio_text_key(SDL_Keycode key);
+/* The area a command acts on: the one under the pointer while a key runs
+ * it, else the one clicked last, as menus act on the area opened over. */
+int studio_command_area(const studio *s);
+/* Focuses the search field just emitted when Find asked for `editor`'s. */
+void studio_find_field(studio *s, studio_editor editor);
 const char *studio_scene_title(const app_scene_authoring *scene, char *out, size_t size);
 
 /* Some open document has edits that are not saved. */
@@ -1138,6 +1179,10 @@ bool studio_graph_palette(studio *s);
 bool studio_graph_can_replay(studio *s, bool redo);
 void studio_graph_history(studio *s, bool redo);
 bool studio_graph_active(const studio *s);
+/* Opens Find in graph. */
+void studio_graph_find(studio *s);
+/* Opens the Text Editor's find widget. */
+void studio_code_find(studio *s);
 /* The graph node Properties shows, or 0; and its panels. */
 uint64_t studio_graph_node(const studio *s);
 /* The comment frame selected on the canvas while no node is, or 0. */
@@ -1343,10 +1388,20 @@ int studio_command_for_key(
 const char *studio_command_chord(const studio_prefs *prefs, studio_command command);
 const char *studio_command_default_chord(studio_command command);
 const char *studio_command_context(studio_command command);
+/* Up to `max` chords that run the command: its binding, then the default's
+ * aliases while it is not overridden. */
+int studio_command_bindings(const studio_prefs *prefs, studio_command command, const char **out, int max);
+const char *studio_command_label(studio_command command);
+/* The area Keyboard Shortcuts lists the command under: Global, its areas
+ * (as studio_command_context names them), or Debugger. */
+const char *studio_command_group(studio_command command);
 int studio_command_conflict(const studio_prefs *prefs, studio_command command, const char *chord, bool mac);
 bool studio_chord_parse(const char *chord, bool mac, studio_key *out);
 bool studio_chord_valid(const char *chord);
 bool studio_chord_matches(const char *chord, SDL_Keycode key, SDL_Keymod mod, bool mac);
+/* The key a chord names. Option on a Mac composes a character, which the
+ * browser and SDL's web backend report as the key: ⌥G arrives as ©. */
+SDL_Keycode studio_event_key(const SDL_KeyboardEvent *e);
 void studio_chord_format(char *out, size_t size, const char *chord, bool mac);
 bool studio_shortcut_record(studio_prefs *prefs, int *recording, studio_key key, bool mac);
 
@@ -1383,7 +1438,13 @@ void studio_toggle_drawer(studio *s, studio_editor editor);
 #define STUDIO_UI_SCALE_MAX 2.0f
 void studio_zoom(studio *s, int step);
 void studio_frame_selection(studio *s);
+/* Fits every visible object in the Scene view (Blender's View All). */
+void studio_frame_all(studio *s);
+/* Marks every object, as a marquee around them all does. */
+void studio_select_all(studio *s);
+void studio_deselect(studio *s);
 void studio_duplicate(studio *s);
+/* Deletes the selected and marked objects as one Undo step. */
 void studio_delete(studio *s);
 void studio_add_object(studio *s, const char *prototype);
 uint32_t studio_prototype_icon(const studio *s, const char *prototype);

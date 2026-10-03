@@ -896,10 +896,11 @@ typedef struct studio_palette_state
     uint64_t inputs;  /* what the entries were collected from */
     studio_palette_entry *entries;
     studio_palette_row *rows;
-    int *places;   /* each result's row */
-    float *tops;   /* each row's top in dp, then the end of the last */
-    int highlight; /* the highlighted result's place */
-    int reveal;    /* a row to scroll into view, or -1 */
+    int *places;      /* each result's row */
+    float *tops;      /* each row's top in dp, then the end of the last */
+    float heights[3]; /* a heading's, a result's and a described one's */
+    int highlight;    /* the highlighted result's place */
+    int reveal;       /* a row to scroll into view, or -1 */
     ui_list_state window;
     rml_element_ref *list;
 } studio_palette_state;

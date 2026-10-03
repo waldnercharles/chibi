@@ -38,6 +38,7 @@ body { position: absolute; left: 0dp; top: 0dp; right: 0dp; bottom: 0dp; display
 .cmd-item .picture { display: none; }
 .cmd-item[data-picture] > .icon { width: 22dp; height: 22dp; }
 .cmd-item[data-picture] .picture { display: block; width: 22dp; height: 22dp; border-radius: 3dp; }
-.cmd-empty { height: 64dp; line-height: var(--studio-line-64, 64dp); display: block; text-align: center; color: var(--faint-foreground); }
+/* Between the empty List's paddings, as when the rows held it. */
+.cmd-empty { height: 64dp; margin: -6dp 0dp 6dp; line-height: var(--studio-line-64, 64dp); display: block; text-align: center; color: var(--faint-foreground); }
 .cmd-footer { display: flex; align-items: center; gap: 4dp; height: var(--studio-height-32, 32dp); padding: 0dp 12dp; border-top: 1dp var(--border); color: var(--faint-foreground); font-size: var(--studio-font-11, 11dp); }
 .cmd-footer .hint { margin-right: 10dp; }

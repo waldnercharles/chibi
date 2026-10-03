@@ -29,6 +29,7 @@
 #include "ui/popover.h"
 
 #include <assert.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -231,6 +232,7 @@ static void rank(studio_palette_state *p)
     }
     afree(rows);
     afree(ranked);
+    aclear(p->tops);
     snprintf(p->ranked, sizeof p->ranked, "%s", query);
 }
 
@@ -362,7 +364,8 @@ static bool show_entry(
 {
     const studio_palette_state *p = &s->palette;
     char label[STUDIO_PALETTE_TEXT * 16], icon[5] = "";
-    label_markup(e->label, p->ranked, label, sizeof label);
+    /* A picker's rows are plain, as the kit's dropdowns were. */
+    label_markup(e->label, p->anchored ? "" : p->ranked, label, sizeof label);
     if (e->icon) {
         studio_glyph(icon, e->icon);
     }
@@ -412,11 +415,22 @@ static float dp_of(rml_element *el, const char *property)
 }
 
 /* Each row's top: headings, results and results with a second line take
-   the heights the List's --row-heading, --row and --row-about give. */
+   the heights the List's --row-heading, --row and --row-about give. They
+   are placed again only when the rows or the heights change. Returns the
+   shortest. */
 static float place_rows(studio_palette_state *p, rml_element *list)
 {
     float heading = dp_of(list, "--row-heading"), row = dp_of(list, "--row"),
           about = dp_of(list, "--row-about"), top = 0;
+    float shortest = fminf(heading, fminf(row, about));
+    bool same = heading == p->heights[0] && row == p->heights[1] &&
+                about == p->heights[2];
+    if (same && acount(p->tops) == acount(p->rows) + 1) {
+        return shortest;
+    }
+    p->heights[0] = heading;
+    p->heights[1] = row;
+    p->heights[2] = about;
     aclear(p->tops);
     for (int r = 0; r < acount(p->rows); r++) {
         apush(p->tops, top);
@@ -426,8 +440,7 @@ static float place_rows(studio_palette_state *p, rml_element *list)
                                               : row;
     }
     apush(p->tops, top);
-    float shortest = heading < row ? heading : row;
-    return shortest < about ? shortest : about;
+    return shortest;
 }
 
 /* Gives `rows` `length` items, adding and removing at its end. */

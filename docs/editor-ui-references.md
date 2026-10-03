@@ -42,7 +42,7 @@ reference for spacing, alignment, and motion as well as appearance.
 | --- | --- | --- | --- |
 | [Base UI](https://base-ui.com) | Behavior contracts for fields, menus, popovers, dialogs, tooltips | Controls in `kit_controls.c` (toggle groups: `kit_toggle_group`; anchored searchable choices: `kit_dropdown`, with `kit_picker` as the asset-field trigger) and the native `<number-field>` and `<color-field>` (`src/ui/controls`, which `kit_number` and `kit_color` emit); popups and menus on `src/ui/popover.c`, the HTML popover attribute with one stack for authored popovers and the kit's (`kit_popup.c` emits the kit's: color swatches `kit_menu_item_desc.swatch`, a panel header's menu `kit_panel_menu`), and tooltips (a picture above the text: `kit_tip_image`) in `kit_popup.c`. Authored UI, the editor's and games', uses the widgets in `projects/studio/content/ui`: Switch, Select, Slider, Segmented, SidebarNav, SettingRow, Dialog, KeyHint; Menu, MenuItem, MenuCommand, MenuGroup, MenuSeparator, Submenu, MenuCheck and MenuOption over popover.c; ChoiceList over the native `<choice-list>`, with EnumField and AssetField; and over the native controls NumberField, VectorField, ColorField, Checkbox, PropertyRow, Panel and Splitter | Done |
 | [shadcn/ui](https://ui.shadcn.com) | Semantic tokens, variant discipline, control anatomy | Tokens in the Studio theme (`projects/studio/content/ui/theme/tokens.rcss`, imported by the `StudioShell` root document); Textarea as `kit_text_area` | Done |
-| [cmdk](https://github.com/dip/cmdk), [VS Code Quick Open](https://code.visualstudio.com/docs/getstarted/userinterface#_quick-open) | Command palette: ranking, groups, keyboard; prefixes and recent items | `kit_command` (`kit_command.c`), Studio's palette (`studio_palette.c`) | Done; pages and group jumps open |
+| [cmdk](https://github.com/dip/cmdk), [VS Code Quick Open](https://code.visualstudio.com/docs/getstarted/userinterface#_quick-open) | Command palette: ranking, groups, keyboard; prefixes and recent items | `Palette.rml` and `Picker.rml` over `<choice-list virtualized>` and the `palette` source (`studio_palette_view.c`; clients `studio_palette.c`, `studio_pick.c`), ranked by `support/text_rank.h`, which the kit's dropdowns share | Done; pages and group jumps open |
 | [DialKit](https://github.com/joshpuckett/dialkit) | Live tuning of values, scrub feel, spring and easing controls | The native `<number-field>` (`src/ui/controls/number_field.c`; scrub, fine/coarse/snap, Escape cancels a scrub), which `kit_number` emits and authored UI uses as NumberField | Partial; rubber-band and spring controls open |
 | [Motion](https://github.com/motiondivision/motion) | Springs, enter/exit presence, layout (FLIP) animation | `kit_presence`, `kit_layout` (`kit_motion.c`); springs in `src/ui/motion.c`. Authored UI, the editor's and games': `presence` on a `data-if` element | Done |
 | [NumberFlow](https://github.com/barvian/number-flow) | Number changes as spinning digit wheels | The native `<number-flow>` element (`src/ui/text_motion.c`), which `kit_number_flow` emits | Done |
@@ -104,7 +104,8 @@ icons, or descriptions, and `kit_choice` for simple named options.
 
 ### cmdk
 
-- Ranking is `text_search_score` (`src/support/text_search.h`), the search the
+- Ranking is `text_rank` (`src/support/text_rank.h`) over `text_search_score`
+  (`src/support/text_search.h`), the search the
   graph's Add menu uses and, in its whole-word form, the MCP's `searchNodes` and
   `searchAssets`. Every query word must match: a word start in the label ranks
   above a match inside a word, then initials, then letters in order, and the
@@ -118,7 +119,7 @@ icons, or descriptions, and `kit_choice` for simple named options.
   - Meta+Up and Meta+Down go to the first and last item; Alt+Up and Alt+Down go to the previous and next group.
   - Ctrl+N/J/P/K also move.
   - Enter selects. Backspace on an empty query, or Escape, pops a page.
-- Hovering selects an item. Beyond about 2,000 items, filter and virtualize externally.
+- Hovering selects an item. Beyond about 2,000 items, filter and virtualize externally: Studio ranks in C and windows the rows (`<choice-list virtualized>`, `ui_list` with each row's top).
 - An item's description shows as a muted second line; tooltips stay hidden while the palette is open.
 
 ### DialKit

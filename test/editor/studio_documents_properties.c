@@ -518,22 +518,26 @@ static void live_property_edit()
         *drive = GAME_GameDrive_get_const(f.scene->world, f.scene->actors[0].entity);
     bool written = drive && drive->target.x == 9.0f;
     bool clean = !f.scene->scene_dirty && !scene_history_can_undo(f.scene->history);
-    /* A value the game moves shows without laying out Properties. */
+    /* A value the game moves, every frame as a game would, shows without
+       laying out Properties. */
     frames(&f, 2);
+    bench_probe(rml_element_owner_document(properties(s)));
+    uint64_t layouts = 0;
+    for (int i = 0; i < 7; i++) {
+        GAME_GameDrive_get(f.scene->world, f.scene->actors[0].entity)->target.y = 21.5f;
+        frames(&f, 1);
+        layouts = i ? layouts : bench_layouts();
+    }
     rml_element *y = shown_all(row_in_view(&f, "Target"), ".field.number", axes, 4) == 2
                        ? axes[1]
                        : NULL;
-    GAME_GameDrive_get(f.scene->world, f.scene->actors[0].entity)->target.y = 21.5f;
-    bench_probe(rml_element_owner_document(properties(s)));
-    frames(&f, 1);
-    uint64_t layouts = bench_layouts();
-    frames(&f, 6);
     char shown[32] = "";
     rml_element *text = y ? rml_element_query_selector(y, ".value") : NULL;
     if (text) {
         rml_element_inner_rml(text, shown, sizeof shown);
     }
-    bool refreshed = strstr(shown, "21.5") != NULL && bench_layouts() == layouts;
+    uint64_t laid_out = bench_layouts() - layouts;
+    bool refreshed = strstr(shown, "21.5") != NULL && !laid_out;
     bool chord = studio_command_for_key(&s->prefs, SDLK_K, 0, STUDIO_EDITOR_PROPERTIES, s->mac) ==
                      STUDIO_COMMAND_KEEP_CHANGES &&
                  studio_command_for_key(&s->prefs, SDLK_K, 0, STUDIO_EDITOR_BEHAVIOR, s->mac) !=
@@ -553,13 +557,14 @@ static void live_property_edit()
     if (!(live && editable && written && clean && refreshed && chord && kept &&
           applied && undone)) {
         printf(
-            "  %d %d %d %d %d ('%s') %d %d %d %d\n",
+            "  %d %d %d %d %d ('%s', %llu layouts) %d %d %d %d\n",
             live,
             editable,
             written,
             clean,
             refreshed,
             shown,
+            (unsigned long long)laid_out,
             chord,
             kept,
             applied,

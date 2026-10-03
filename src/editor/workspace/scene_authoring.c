@@ -723,6 +723,11 @@ bool scene_can_move(const app_scene_authoring *scene)
            !game_entities_initializing(scene->live->entities);
 }
 
+bool scene_editing(const app_scene_authoring *scene)
+{
+    return scene_can_move(scene) && !scene->runtime_snapshot_valid;
+}
+
 void write_position(app_scene_authoring *scene, ecs_entity entity, GameTransform position)
 {
     if (!isfinite(position.x) || !isfinite(position.y)) {
@@ -1154,6 +1159,7 @@ app_scene_authoring *app_scene_authoring_new_with_content_root(
     scene->selected = -1;
     scene->selected_prototype = -1;
     scene->runtime_preview_prototype = -1;
+    scene->view_options = (app_scene_view_options){ .lighting = true };
     scene_tabs_initialize(scene);
     scene_authoring_select_document(scene, APP_EDITOR_DOCUMENT_SCENE, APP_SCENE_DOCUMENT_ID);
     editor_set_value_formatter(graph_editor, format_entity_value, scene);

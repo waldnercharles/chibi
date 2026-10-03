@@ -168,6 +168,12 @@ typedef enum
     STUDIO_COMMAND_TOGGLE_GRID,
     STUDIO_COMMAND_FINER_GRID,
     STUDIO_COMMAND_COARSER_GRID,
+    /* The Scene view's Show toggles and its camera view. */
+    STUDIO_COMMAND_SHOW_WORLD,
+    STUDIO_COMMAND_SHOW_LIGHTING,
+    STUDIO_COMMAND_SHOW_FOG,
+    STUDIO_COMMAND_SHOW_CAMERAS,
+    STUDIO_COMMAND_VIEW_THROUGH_CAMERA,
     STUDIO_COMMAND_COUNT,
 } studio_command;
 
@@ -234,6 +240,11 @@ typedef struct
     bool scene_grid;
     bool scene_snap;
     float scene_increment; /* the grid's spacing, in world units */
+    /* What the Scene view shows while editing (app_scene_view_options). */
+    bool scene_world;
+    bool scene_lighting;
+    bool scene_fog;
+    bool scene_cameras;
 } studio_prefs;
 
 typedef struct
@@ -1687,9 +1698,9 @@ void studio_canvas_free(studio *s);
 typedef enum
 {
     STUDIO_SETTINGS_APPEARANCE,
+    STUDIO_SETTINGS_SCENE,
     STUDIO_SETTINGS_GRAPH,
     STUDIO_SETTINGS_TEXT,
-    STUDIO_SETTINGS_SCENE,
     STUDIO_SETTINGS_KEYBOARD,
     STUDIO_SETTINGS_PROJECT,
     STUDIO_SETTINGS_CATEGORY_COUNT,

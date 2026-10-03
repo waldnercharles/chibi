@@ -243,6 +243,8 @@ set(APP_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/workspace/scene_tabs.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/workspace/scene_viewport.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/workspace/scene_gizmo.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/workspace/scene_overlays.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/workspace/scene_world_preview.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/render/scene_renderer.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/render/shader_fragment.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/render/screenshot.c

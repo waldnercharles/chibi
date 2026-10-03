@@ -866,6 +866,8 @@ add_executable(test_suite
     src/editor/workspace/scene_tabs.c
     src/editor/workspace/scene_viewport.c
     src/editor/workspace/scene_gizmo.c
+    src/editor/workspace/scene_overlays.c
+    src/editor/workspace/scene_world_preview.c
     src/editor/documents/scene_disk.c
     src/editor/documents/scene_document.c
     src/editor/documents/scene_documents.c

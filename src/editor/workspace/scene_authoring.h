@@ -206,6 +206,48 @@ app_editor_document_context app_scene_authoring_document(const app_scene_authori
 void app_scene_authoring_update(app_scene_authoring *scene, bool ui_active);
 int app_scene_authoring_draw_viewport(app_scene_authoring *scene, engine_viewport *viewport);
 void app_scene_authoring_render(void *user);
+
+/* What the Scene view shows of the game while the scene is edited, as Unity's
+ * Scene view effects and Unreal's Show flags; a session shows the game. A
+ * new scene shows lighting only. */
+typedef struct
+{
+    /* Terrain, clouds and liquids as the game's first frame generates them,
+       without Begin, behaviors or a step. */
+    bool generated_world;
+    bool lighting; /* HRC lighting; off shows material colors unlit */
+    bool fog;      /* the fog of war as the game starts */
+    bool cameras;  /* each GameCamera's frame, labeled */
+} app_scene_view_options;
+void app_scene_authoring_set_view_options(app_scene_authoring *scene, app_scene_view_options options);
+/* The generated world has waited on regeneration or streaming long enough to
+ * say so. */
+bool app_scene_authoring_world_pending(const app_scene_authoring *scene);
+/* Why the world could not generate, or "". */
+const char *app_scene_authoring_world_error(const app_scene_authoring *scene);
+
+/* View Through Camera (Blender's Numpad 0): frames the Scene view exactly on
+ * a GameCamera's span, the selected object's or else the first enabled one's,
+ * and follows it until the view moves or a session starts. Leaving restores
+ * the view from before. -1 without a camera or before the first draw. */
+int app_scene_authoring_view_through_camera(app_scene_authoring *scene, bool on);
+bool app_scene_authoring_viewing_through_camera(const app_scene_authoring *scene);
+/* The span View Through Camera would show; false without a camera. */
+bool app_scene_authoring_camera_framing(app_scene_authoring *scene, engine_viewport_view *view);
+
+typedef struct
+{
+    const char *name; /* the object's, borrowed until the scene changes */
+    float x, y; /* the frame's top-left corner in the view, fractions from its top-left */
+    bool active, disabled, selected;
+} app_scene_camera_label;
+/* The camera frames the Scene view draws, as of its last draw, for a host's
+ * labels: their count, writing at most `max`. */
+int app_scene_authoring_camera_labels(
+    app_scene_authoring *scene,
+    app_scene_camera_label *labels,
+    int max
+);
 int app_scene_authoring_frame(app_scene_authoring *scene, double monotonic_time);
 int app_scene_authoring_move(app_scene_authoring *scene, float x, float y);
 /* Sample aiming independently of movement; points use game coordinates. */

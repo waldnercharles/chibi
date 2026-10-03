@@ -1,0 +1,20 @@
+/* The Scene view's overlays while a scene is edited: each camera frame's
+   label, and the generated world's progress (studio_scene.c). */
+.viewport .camera-label {
+    position: absolute; margin: 4dp 0dp 0dp 6dp; padding: 0dp 5dp; border-radius: var(--r);
+    background-color: var(--floating); color: var(--muted-foreground);
+    font-size: var(--studio-font-11, 11dp); line-height: var(--studio-line-16, 16dp);
+    white-space: nowrap; pointer-events: none;
+}
+.viewport .camera-label[data-active], .viewport .camera-label[data-selected] { color: var(--foreground); }
+.viewport .camera-label[data-disabled] { opacity: 0.6; }
+.viewport .world-pending {
+    position: absolute; right: 10dp; top: 8dp; display: flex; align-items: center; gap: 5dp;
+    height: var(--studio-height-20, 20dp); padding: 0dp 8dp; border-radius: var(--r);
+    background-color: var(--floating); color: var(--muted-foreground);
+    font-size: var(--studio-font-11, 11dp); white-space: nowrap; pointer-events: none;
+    opacity: 1; transition: opacity 0.14s cubic-out;
+}
+.viewport .world-pending[data-starting-style], .viewport .world-pending[data-ending-style] { opacity: 0; }
+.viewport .world-pending .spin { font-size: 12dp; animation: 0.9s linear infinite world-spin; }
+@keyframes world-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }

@@ -504,6 +504,12 @@ int app_scene_authoring_draw_viewport(app_scene_authoring *scene, engine_viewpor
             engine_viewport_set_view(viewport, &view);
         }
     }
+    if (!preview) {
+        scene_camera_view_follow(scene, viewport, scene_editing(scene));
+        engine_viewport_camera edited;
+        engine_viewport_get_camera(viewport, &edited);
+        scene_world_preview_update(scene, &edited);
+    }
     engine_viewport_controls controls = {
         .session = target == APP_RUNTIME_PREVIEW ? prototype != NULL
                                                  : scene->runtime_snapshot_valid,
@@ -731,9 +737,19 @@ void app_scene_authoring_render(void *user)
     const engine *runtime = scene->active_runtime_target == APP_RUNTIME_PREVIEW
                               ? game_prototype_preview_runtime(scene->prototype_preview)
                               : scene->runtime;
+    /* An edited scene shows the game's state only as its view options ask. */
+    bool editing = scene_editing(scene);
+    const app_scene_view_options *options = &scene->view_options;
     if (scene_can_move(scene)) {
-        runtime = NULL;
+        runtime = editing && (scene->world_preview.built || options->fog)
+                    ? scene->runtime
+                    : NULL;
     }
+    app_scene_renderer_set_view(
+        scene->renderer,
+        editing && !options->lighting,
+        editing && !options->fog
+    );
     if (scene->render_viewport && engine_viewport_perspective(scene->render_viewport)) {
         render_arena_camera camera = arena_camera(scene->render_viewport);
         app_scene_renderer_draw3d(
@@ -824,6 +840,9 @@ void app_scene_authoring_render(void *user)
             cf_draw_circle_fill2(path[0], stroke * 3);
             cf_draw_pop_color();
         }
+    }
+    if (editing) {
+        scene_overlays_draw(scene);
     }
     /* Overlays keep a pixel's antialiasing at any camera zoom. */
     float pixel = scene->selection_scale > 0 ? scene->selection_scale : 1;

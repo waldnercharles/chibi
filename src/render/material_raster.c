@@ -34,6 +34,12 @@ typedef struct
     render_shader_set set;
 } material_batch;
 
+typedef struct
+{
+    float layer;
+    int index;
+} draw_order;
+
 struct render_material_raster
 {
     /* The first batch's programs, and later batches', which continue from
@@ -54,6 +60,8 @@ struct render_material_raster
     CF_Canvas canvases[2];
     int result;
     render_material_entity *sorted;
+    /* Sorting scratch: layers and source indices, cheaper to move than entities. */
+    draw_order *order;
     int width, height, tiles, capacity, index_capacity;
 };
 
@@ -113,6 +121,7 @@ void render_material_raster_free(render_material_raster *r)
         cf_destroy_material(r->material);
     }
     afree(r->sorted);
+    afree(r->order);
     afree(r->group_meshes);
     afree(r->tile_offsets);
     afree(r->tile_cursor);
@@ -393,11 +402,11 @@ static float entity_emission_scale(
 
 static int compare(const void *a, const void *b)
 {
-    const render_material_entity *x = a, *y = b;
-    if (x->wobble[3] != y->wobble[3]) {
-        return x->wobble[3] < y->wobble[3] ? -1 : 1;
+    const draw_order *x = a, *y = b;
+    if (x->layer != y->layer) {
+        return x->layer < y->layer ? -1 : 1;
     }
-    return (x->time[1] > y->time[1]) - (x->time[1] < y->time[1]);
+    return (x->index > y->index) - (x->index < y->index);
 }
 
 static void uniform(render_material_raster *r, const char *name, void *data, CF_UniformType type, int n)
@@ -562,13 +571,19 @@ bool render_material_raster_draw_mixed(
     if (!reserve_entities(r, count ? count : 1)) {
         return false;
     }
-    asetlen(r->sorted, count);
+    /* Stable by layer: sorting each entity's layer and index moves a few
+       bytes, where sorting entities would move each one log n times. */
+    asetlen(r->order, count);
     for (int i = 0; i < count; i++) {
-        r->sorted[i] = entities[i];
-        r->sorted[i].time[1] = (float)i;
+        r->order[i] = (draw_order){ entities[i].wobble[3], i };
     }
     if (count) {
-        qsort(r->sorted, (size_t)count, sizeof *r->sorted, compare);
+        qsort(r->order, (size_t)count, sizeof *r->order, compare);
+    }
+    asetlen(r->sorted, count);
+    for (int i = 0; i < count; i++) {
+        r->sorted[i] = entities[r->order[i].index];
+        r->sorted[i].time[1] = (float)r->order[i].index;
     }
     for (int i = 0; i < count; i++) {
         r->sorted[i].time[2] = entity_emission_scale(&r->sorted[i], view, r->width, r->height);

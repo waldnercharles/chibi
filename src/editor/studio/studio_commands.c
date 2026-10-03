@@ -410,6 +410,51 @@ static const command_entry COMMANDS[STUDIO_COMMAND_COUNT] = {
                                      .contexts = EDITOR_BIT(STUDIO_EDITOR_OUTLINER),
                                      .repeat = true,
                                      .phase = SHORTCUT_EDITOR },
+    /* View › Show (studio_scene.c): toggles of studio_prefs, Unity's
+       Scene view effects and Unreal's Show flags. */
+    [STUDIO_COMMAND_SHOW_WORLD] = { .id = "showGeneratedWorld",
+                                    .label = "Show Generated World",
+                                    .menu = "Generated World",
+                                    .context = "Global",
+                                    .keywords = "scene view procedural terrain "
+                                                "material fluid preview",
+                                    .icon = KIT_ICON_TERRAIN,
+                                    .phase = SHORTCUT_EDITOR },
+    [STUDIO_COMMAND_SHOW_LIGHTING] = { .id = "showLighting",
+                                       .label = "Show Lighting",
+                                       .menu = "Lighting",
+                                       .context = "Global",
+                                       .keywords = "scene view hrc unlit "
+                                                   "light",
+                                       .icon = KIT_ICON_LIGHT,
+                                       .phase = SHORTCUT_EDITOR },
+    [STUDIO_COMMAND_SHOW_FOG] = { .id = "showFog",
+                                  .label = "Show Fog of War",
+                                  .menu = "Fog of War",
+                                  .context = "Global",
+                                  .keywords = "scene view visibility vision",
+                                  .icon = KIT_ICON_CLOUD,
+                                  .phase = SHORTCUT_EDITOR },
+    [STUDIO_COMMAND_SHOW_CAMERAS] = { .id = "showCameraFrames",
+                                      .label = "Show Camera Frames",
+                                      .menu = "Camera Frames",
+                                      .context = "Global",
+                                      .keywords = "scene view camera frustum "
+                                                  "bounds overlay",
+                                      .icon = KIT_ICON_CAMERA,
+                                      .phase = SHORTCUT_EDITOR },
+    /* Blender's Numpad 0; Shift+C where there is no keypad. */
+    [STUDIO_COMMAND_VIEW_THROUGH_CAMERA] = { .id = "viewThroughCamera",
+                                             .label = "View Through Camera",
+                                             .chord = "Shift+C",
+                                             .aliases = { "Keypad 0" },
+                                             .context = "Scene, Outliner",
+                                             .contexts = EDITOR_BIT(STUDIO_EDITOR_SCENE) |
+                                                         EDITOR_BIT(STUDIO_EDITOR_OUTLINER),
+                                             .keywords = "game camera view "
+                                                         "frame pilot",
+                                             .icon = KIT_ICON_VIEWPORT,
+                                             .phase = SHORTCUT_EDITOR },
     [STUDIO_COMMAND_RESUME] = { .id = "resume",
                                 .label = "Resume",
                                 .chord = "F5",
@@ -725,6 +770,12 @@ int studio_command_checked(studio *s, studio_command command)
             return s->prefs.tool == (scene_tool)(command - STUDIO_COMMAND_SELECT_TOOL);
         case STUDIO_COMMAND_TOGGLE_SNAP: return s->prefs.scene_snap;
         case STUDIO_COMMAND_TOGGLE_GRID: return s->prefs.scene_grid;
+        case STUDIO_COMMAND_SHOW_WORLD: return s->prefs.scene_world;
+        case STUDIO_COMMAND_SHOW_LIGHTING: return s->prefs.scene_lighting;
+        case STUDIO_COMMAND_SHOW_FOG: return s->prefs.scene_fog;
+        case STUDIO_COMMAND_SHOW_CAMERAS: return s->prefs.scene_cameras;
+        case STUDIO_COMMAND_VIEW_THROUGH_CAMERA:
+            return app_scene_authoring_viewing_through_camera(s->scene);
         default: return -1;
     }
 }
@@ -818,6 +869,10 @@ static bool enabled_with(studio *s, studio_command command, int argument)
             return studio_grid_increment(s, -1) != s->prefs.scene_increment;
         case STUDIO_COMMAND_COARSER_GRID:
             return studio_grid_increment(s, 1) != s->prefs.scene_increment;
+        case STUDIO_COMMAND_VIEW_THROUGH_CAMERA: {
+            engine_viewport_view view;
+            return editable && app_scene_authoring_camera_framing(s->scene, &view);
+        }
         default: return true;
     }
 }
@@ -918,6 +973,24 @@ void studio_command_run_with(studio *s, studio_command command, int argument)
             break;
         case STUDIO_COMMAND_THEME:
             s->prefs.theme = s->light ? STUDIO_THEME_DARK : STUDIO_THEME_LIGHT;
+            break;
+        case STUDIO_COMMAND_SHOW_WORLD:
+            s->prefs.scene_world = !s->prefs.scene_world;
+            break;
+        case STUDIO_COMMAND_SHOW_LIGHTING:
+            s->prefs.scene_lighting = !s->prefs.scene_lighting;
+            break;
+        case STUDIO_COMMAND_SHOW_FOG:
+            s->prefs.scene_fog = !s->prefs.scene_fog;
+            break;
+        case STUDIO_COMMAND_SHOW_CAMERAS:
+            s->prefs.scene_cameras = !s->prefs.scene_cameras;
+            break;
+        case STUDIO_COMMAND_VIEW_THROUGH_CAMERA:
+            app_scene_authoring_view_through_camera(
+                s->scene,
+                !app_scene_authoring_viewing_through_camera(s->scene)
+            );
             break;
         case STUDIO_COMMAND_INSPECT: studio_inspect_toggle(s); break;
         case STUDIO_COMMAND_PREVIEW_UI:

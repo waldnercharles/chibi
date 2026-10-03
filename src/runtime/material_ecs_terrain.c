@@ -152,6 +152,12 @@ static const char *stream_terrain(
         }
         ecs_query_end(&query);
     }
+    for (int i = 0; i < acount(materials->host_views); i++) {
+        material_stream_view view = materials->host_views[i];
+        view.x -= origin.x;
+        view.y -= origin.y;
+        apush(materials->terrain_views, view);
+    }
     /* A moving body can retain a local interaction outside the camera buffer. */
     ecs_component_id moving[] = { GAME_COMPONENT_GameBody.id,
                                   GAME_COMPONENT_GameTransform.id,

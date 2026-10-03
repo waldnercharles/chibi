@@ -60,6 +60,7 @@ struct app_scene_renderer
     /* A host's grid under the scene (app_scene_renderer_set_grid), and the
        one the background shows. */
     float grid, background_grid;
+    bool unlit, fogless; /* app_scene_renderer_set_view */
     /* The scene's GPU work each frame, for adaptive lighting resolution. */
     render_gpu_span span;
     /* Without GPU timestamps, the previous frame's start in ticks. */
@@ -175,6 +176,44 @@ int app_scene_renderer_particle_count(const app_scene_renderer *renderer)
                                        : 0;
 }
 
+void app_scene_renderer_set_view(app_scene_renderer *renderer, bool unlit, bool fogless)
+{
+    renderer->unlit = unlit;
+    renderer->fogless = fogless;
+}
+
+/* The fog of war over the frame, unless the view leaves it out. */
+static bool draw_fog(
+    app_scene_renderer *renderer,
+    const engine *runtime,
+    const engine_viewport_camera *frame,
+    const render_arena_camera *camera
+)
+{
+    return renderer->fogless || render_fog_draw(
+                                    renderer->fog,
+                                    engine_visibility(runtime),
+                                    frame,
+                                    camera,
+                                    renderer->time
+                                );
+}
+
+/* Without fog, only an object's own hidden state hides it. */
+static bool entity_shown(
+    const app_scene_renderer *renderer,
+    const engine *runtime,
+    ecs_world *world,
+    ecs_entity entity
+)
+{
+    if (!renderer->fogless) {
+        return engine_entity_visible(runtime, world, entity);
+    }
+    const GameRenderState *state = GAME_GameRenderState_get_const(world, entity);
+    return !runtime || !state || !state->hidden;
+}
+
 static bool arena_environment(app_scene_renderer *renderer, ecs_world *world, GameEnvironment *settings)
 {
     *settings = render_arena_post_defaults();
@@ -287,13 +326,7 @@ bool app_scene_renderer_draw3d(
     );
     engine_viewport_camera frame;
     engine_viewport_get_camera(viewport, &frame);
-    return drawn && render_fog_draw(
-                        renderer->fog,
-                        engine_visibility(runtime),
-                        &frame,
-                        camera,
-                        renderer->time
-                    );
+    return drawn && draw_fog(renderer, runtime, &frame, camera);
 }
 
 void app_scene_renderer_reset(app_scene_renderer *renderer)
@@ -744,7 +777,7 @@ static bool collect(
     collect_order(renderer, world);
     for (int actor = 0; actor < acount(renderer->actors); actor++) {
         ecs_entity entity = renderer->actors[actor].entity;
-        if (!engine_entity_visible(runtime, world, entity)) {
+        if (!entity_shown(renderer, runtime, world, entity)) {
             continue;
         }
         const GameOrientation *orientation = GAME_GameOrientation_get_const(world, entity);
@@ -1262,7 +1295,7 @@ bool app_scene_renderer_draw(
     if (!scene_lighting(renderer, world, &flat)) {
         return false;
     }
-    if (!renderer->raster || !renderer->radiance) {
+    if (!renderer->raster || !renderer->radiance || renderer->unlit) {
         /* This is a supported rendering path, not a scene error. Its status is
          * available in the renderer diagnostics without covering the game. */
         renderer->error[0] = '\0';
@@ -1293,13 +1326,7 @@ bool app_scene_renderer_draw(
                 flat
             );
         }
-        return render_fog_draw(
-            renderer->fog,
-            engine_visibility(runtime),
-            &camera,
-            NULL,
-            renderer->time
-        );
+        return draw_fog(renderer, runtime, &camera, NULL);
     }
     render_view_2d_frame frame;
     render_radiance_settings radiance = render_radiance_get_settings(renderer->radiance);
@@ -1459,13 +1486,7 @@ bool app_scene_renderer_draw(
         (CF_V2){ camera.center_x, camera.center_y },
         (CF_V2){ camera.span_width, camera.span_height }
     );
-    return render_fog_draw(
-        renderer->fog,
-        engine_visibility(runtime),
-        &camera,
-        NULL,
-        renderer->time
-    );
+    return draw_fog(renderer, runtime, &camera, NULL);
 }
 
 void app_scene_renderer_set_parallel(app_scene_renderer *renderer, bool enabled)

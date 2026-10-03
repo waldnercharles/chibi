@@ -738,6 +738,17 @@ static void draw_viewport(studio *s)
     }
     engine_viewport_set_host_input(s->viewport, &input);
     studio_scene_tools(s);
+    app_scene_authoring_set_view_options(
+        s->scene,
+        (app_scene_view_options){ .generated_world = s->prefs.scene_world,
+                                  .lighting = s->prefs.scene_lighting,
+                                  .fog = s->prefs.scene_fog,
+                                  .cameras = s->prefs.scene_cameras }
+    );
+    /* Escape leaves View Through Camera, as Blender's Numpad 0 again. */
+    if (input.escape && (input.focused || input.hovered)) {
+        app_scene_authoring_view_through_camera(s->scene, false);
+    }
     app_scene_authoring_draw_viewport(s->scene, s->viewport);
     rml_backend_set_texture(s->backend, "viewport", engine_viewport_texture(s->viewport));
     studio_ui_error(s, render_ui_error(engine_viewport_ui(s->viewport)));

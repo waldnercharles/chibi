@@ -347,6 +347,11 @@ void app_scene_renderer_reset(app_scene_renderer *renderer)
     }
 }
 
+int app_scene_renderer_material_pieces(const app_scene_renderer *renderer)
+{
+    return acount(renderer->entities);
+}
+
 bool app_scene_renderer_lighting_status(const app_scene_renderer *renderer, render_radiance_status *status)
 {
     if (!renderer || !renderer->radiance) {

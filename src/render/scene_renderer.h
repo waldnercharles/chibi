@@ -18,6 +18,8 @@ const char *app_scene_renderer_error(const app_scene_renderer *renderer);
 /* Settings the renderer adjusted to run, described for authors; empty if none. */
 const char *app_scene_renderer_warning(const app_scene_renderer *renderer);
 int app_scene_renderer_particle_count(const app_scene_renderer *renderer);
+/* The shapes and mask pieces the last 2D draw rasterized. */
+int app_scene_renderer_material_pieces(const app_scene_renderer *renderer);
 /* Lighting in use: its grids, adaptive's step and its GPU time. False when the
  * backend has no HRC. */
 bool app_scene_renderer_lighting_status(const app_scene_renderer *renderer, render_radiance_status *status);

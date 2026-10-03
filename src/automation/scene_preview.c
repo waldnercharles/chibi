@@ -63,7 +63,7 @@ typedef struct
 {
     double median_ms, p95_ms, p99_ms;
     double simulation_ms, render_ms;
-    int samples, particles, entities;
+    int samples, particles, entities, material_pieces;
     float resolution;
     double scene_gpu_ms;
     const char *backend;
@@ -300,6 +300,7 @@ static bool render_scene(
         app_scene_renderer_lighting_status(scene.renderer, &lighting);
         measurement->resolution = lighting.resolution;
         measurement->scene_gpu_ms = lighting.gpu_ms;
+        measurement->material_pieces = app_scene_renderer_material_pieces(scene.renderer);
         ok = chibi_preview_readback(width, height, png, error, size);
     }
     if (scene.viewport) {
@@ -471,6 +472,14 @@ char *chibi_scene_preview_handle(const char *request, const char *default_root, 
         );
         yyjson_mut_obj_add_int(response, performance, "particles", measurement.particles);
         yyjson_mut_obj_add_int(response, performance, "entities", measurement.entities);
+        /* The last frame's rasterized shapes and mask pieces: distant masks
+         * draw coarser levels (render/material_lod.h). */
+        yyjson_mut_obj_add_int(
+            response,
+            performance,
+            "material_pieces",
+            measurement.material_pieces
+        );
         yyjson_mut_obj_add_real(
             response,
             performance,

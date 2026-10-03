@@ -1138,6 +1138,20 @@ costs recur across panels and belong in shared code, not in each panel:
 Re-measure every Wave 2 bench case (`--ui-bench studio`, `members`,
 `UI_BENCH_ASSETS=1`) with `uptime` below 4 before and after each fix.
 
+Fixed after Wave 2: an area that changed from one authored panel to another
+kept the first panel's views in the data model. Binding the shared host moved
+it with the old markup, which bound its views again, and replacing the markup
+in the same frame dropped elements whose new views RmlUi had not yet taken
+in, so they outlived them, and every later removal logged a warning per view
+(the UI bench wrote tens of gigabytes). `ui_mount_sync` now empties a host
+before binding it, and the RmlUi patch `move-keeps-data` keeps a moved
+element's views bound under the same model, as a DOM move does, so a kit
+reorder (GraphView's host in a maximized header) no longer unbinds evaluated
+markup. `--studio-panels` turns one area between every pair of authored
+panels, three rounds, and checks for no RmlUi warning and as many views as
+after the first round; the Studio bench stops when a frame logs more than
+100 warnings.
+
 ### Wave 3: scene, chrome, palette (4 parallel)
 
 | | Scope | Deletes |

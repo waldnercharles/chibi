@@ -269,7 +269,7 @@ natively and 1.3-1.7× that on web, provisionally):
 
 | Surface | Views | Updates | Risk |
 |---|---|---|---|
-| Properties, Object tab (the Player: 4 panels, 14 rows, 309 elements) | Measured: 340 per selection, 166 per refresh | Selection rebuilds rows; edits dirty once; Play refreshes at 20 Hz | Low for views (0.19 ms native, 0.32 ms web per refresh); each text change lays out its document |
+| Properties, Object tab (the Player: 4 panels, 14 rows, 309 elements) | Measured: 340 per selection, 166 per refresh; authored (P1): 2,733 per selection, 20 per value refresh | Selection rebuilds rows; edits dirty once; Play refreshes at 20 Hz | Low for views (0.19 ms native, 0.32 ms web per refresh); each text change lays out its document; selection 1.15× native (P1 results) |
 | Outliner (10k objects, 60-row window) | Measured: 362 per scroll step | Scroll, selection | Low (0.69 ms native, 0.91 ms web per step) |
 | Assets (8×8 tiles) | ~400 | Scroll, thumbnails ready | Low |
 | Output following a log | Measured: 40 markup parses per batch | Logging | Medium (1.3 ms native, 1.9 ms web; 6× plain text) |
@@ -845,11 +845,15 @@ it edits (`o<entity>.<component>.<field>`, `p<component>.<field>.<prototype>`
 or `s.<setting>`), so an intent that arrives after the selection moved still
 edits its own object. The row widgets: PropertyRow (its tip and label
 `for`), NumberField, VectorField (per-axis bounds, units, mixed and override
-marks), ColorField, Checkbox, EnumField for every choice integer and
+marks; each axis's value is `values[axis.slot]`, a variable its user
+aliases), ColorField, Checkbox, EnumField for every choice integer and
 AssetField for references (both gained `data-mixed`, `data-readonly` and,
 for AssetField, drop marks and `table.none`). Gestures: `input` writes live
 without history, `change` records one Undo step, Escape cancels a scrub;
-Play writes the running world only. Drops: an asset dragged from Assets
+Play writes the running world only. RmlUi sends change when a binding sets
+a checkbox's `checked` too, so `properties.check` carries the state
+(`ev.value`) and leaves a field that holds it: a flip there had flipped
+bound fields back every frame. Drops: an asset dragged from Assets
 over an AssetField row (`data-drop`, F4) shows in it and on the object in
 the Scene and lands as one step through `properties.drop`. The field menu
 (a right press on a row) and the component menu (⋯ or a right press on a
@@ -860,6 +864,12 @@ What it takes to be fast:
 - Numbers are text in room each member owns (32 bytes), rewritten in place:
   RmlUi writes a double into an attribute to three decimals, and copying
   each refresh's text would grow the doc's string pool.
+- Numbers live in `propertyValues`, a variable of their own: a number row
+  or axis names its slot there (`propertyValues[row.slot]`), so a refresh
+  that moves only numbers dirties that variable alone and evaluates 20
+  views for the Player, where dirtying `properties` evaluated 510 (RmlUi
+  dirties by top-level variable). A source's sync gets the data model to
+  dirty such a second variable.
 - A choice or asset row lists only its current option until it is opened
   (`properties.choices`), so closed lists build nothing; `<choice-list>`
   highlights the current option when options arrive after it opened.
@@ -871,28 +881,35 @@ What it takes to be fast:
   row's popover items, which have labels too.
 
 `./build-release/test_suite --ui-bench studio`, this branch against the
-commit before it (`80bd2538`), alternated process by process, four pairs
-(1-minute load 12-15; medians of 31 runs, ms, Studio's whole UI frame: sync,
-emit, update and capture):
+commit before it (`80bd2538`, its bench given the same fix below),
+alternated process by process, eight pairs (1-minute load 16-30; the mean
+of the runs' medians of 31, ms, Studio's whole UI frame: sync, emit,
+update and capture). The bench's edit and Play cases had moved values back
+and forth, so every other timed frame showed the value already shown and
+the authored panel timed an idle frame; values now only grow.
 
-| Case | Before (kit) | After (authored) | After ÷ before |
-|---|---:|---:|---:|
-| Select the other object or the Player | 7.55 | 8.85 | 1.17× |
-| Edit one field of the Player | 1.86 | 1.79 | 0.96× |
-| Play refresh, every float of the Player changed | 1.49 | 1.25 | 0.84× |
+| Case | Before (kit) | After (authored) | After ÷ before | Views evaluated | Layouts |
+|---|---:|---:|---:|---:|---:|
+| Select the other object or the Player | 7.83 | 9.02 | 1.15× | 2,733 | 4 |
+| Edit one field of the Player | 1.59 | 1.50 | 0.94× | 20 | 0 |
+| Play refresh, every float of the Player changed | 2.04 | 2.11 | 1.04× | 20 | 0 |
 
-A value-only refresh lays the Properties document out zero times
+Play refresh pairs ranged 0.88-1.26×: the sync costs 0.04 ms more than
+the kit's (it rereads every shown field) and RmlUi's update 0.07 ms more
+(20 views that index `propertyValues`, and the fields they set). A
+value-only refresh lays the Properties document out zero times
 (`--studio-properties` checks it with a layout probe). Selecting another
-object still costs more than the kit's: with the Properties content removed
-the same case takes 4.6-4.9 ms, so the authored panel's share is about
-4.0 ms against the kit's 2.8, most of it layout and style of the rows that
-rebind. Web shots (1600×1000; dark and light, compact and comfortable) of
-the Object tab, several objects' mixed values, Play with Keep, the field
-menu, the Shape choice and the Document picker open, the Scene tab and the
-HUD's Ui panel match the kit's pixel for pixel but for the open choice
-lists (the ChoiceList's search reads "Search options", and its list is the
-field's width, where the kit's was 8 dp wider) and a checkbox row 7 dp
-taller before Checkbox's wrapper became a flex box.
+object still costs more than the kit's, over the +10% gate: with the
+Properties content removed the same case takes 4.6-4.9 ms, so the authored
+panel's share is about 4.3 ms against the kit's 3.1, most of it layout and
+style of the rows that rebind and the views of every row a panel keeps.
+Web shots (1600×1000; dark and light, compact and comfortable) of the
+Object tab, several objects' mixed values, Play with Keep, the field menu,
+the Shape choice and the Document picker open, the Scene tab and the HUD's
+Ui panel match the kit's pixel for pixel over Properties but for the open
+choice lists and a hovered panel head's grip, 3 px lower: the ChoiceList's
+search reads "Search options", and its list is the field's width, where
+the kit's was 8 dp wider.
 
 Intentional differences: every choice integer is an EnumField, also those
 with three or fewer values the kit showed as segments; search opens every

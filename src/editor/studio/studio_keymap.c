@@ -79,11 +79,16 @@ static const fixed_key FIXED[] = {
     { "UI Hierarchy", "Delete", "X Backspace Delete" },
     /* studio_inspect.c */
     { "Inspector", "Stop picking", "Escape" },
-    /* the kit's menus, popups, command palette and fields */
+    /* menus and popovers (ui/popover.c), the command palette and fields */
     { "Menus and Search", "Move", "Up Down" },
     { "Menus and Search", "First and last", "Home End" },
     { "Menus and Search", "Choose", "Return Space" },
     { "Menus and Search", "Close", "Escape" },
+    { "Menus and Search",
+      "Open or close a submenu; the menubar's next or previous menu",
+      "Right Left" },
+    { "Menus and Search", "Jump to an item by the first letters of its label", "A-Z" },
+    { "Menus and Search", "Move through a popover, or close a menu", "Tab" },
     { "Menus and Search", "Commands, symbols and help in Search", "> @ ?" },
     { "Fields", "Commit", "Return Tab" },
     { "Fields", "Cancel", "Escape" },

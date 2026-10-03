@@ -456,7 +456,21 @@ static void close_chain(int i)
     close_at(i, true);
 }
 
-static bool follow_width(entry *e, rml_element *el);
+/* --anchor-width gives the anchor's width, as Base UI's does, so a list can
+   be as wide as its field; true when it changed. */
+static bool follow_width(entry *e, rml_element *el)
+{
+    rml_element *anchor = get(e->anchor);
+    float width = anchor ? rml_element_box_size(anchor, RML_BOX_BORDER).x : 0;
+    if (!anchor || width == e->anchor_width) {
+        return false;
+    }
+    char value[32];
+    snprintf(value, sizeof value, "%.0fpx", width);
+    rml_element_set_property(el, "--anchor-width", value);
+    e->anchor_width = width;
+    return true;
+}
 
 void popover_show(rml_element *popover, const popover_anchor *at)
 {
@@ -562,22 +576,6 @@ static rml_vec2 origin(const entry *e, rml_vec2 size, rml_vec2 window, float dp)
         y = a[1] - size.y - gap;
     }
     return (rml_vec2){ a[0], y };
-}
-
-/* --anchor-width gives the anchor's width, as Base UI's does, so a list can
-   be as wide as its field; true when it changed. */
-static bool follow_width(entry *e, rml_element *el)
-{
-    rml_element *anchor = get(e->anchor);
-    float width = anchor ? rml_element_box_size(anchor, RML_BOX_BORDER).x : 0;
-    if (!anchor || width == e->anchor_width) {
-        return false;
-    }
-    char value[32];
-    snprintf(value, sizeof value, "%.0fpx", width);
-    rml_element_set_property(el, "--anchor-width", value);
-    e->anchor_width = width;
-    return true;
 }
 
 /* Places it in the window; true when it moved. A fixed or absolute box is
@@ -847,10 +845,10 @@ static void dismiss(rml_context *context, rml_element *target)
 static void invoke(rml_element *invoker)
 {
     rml_element *target = target_of(invoker);
-    int open = find(target);
     if (!target) {
         return;
     }
+    int open = find(target);
     if (is_item(invoker)) {
         open_submenu(invoker, key_input);
         return;
@@ -962,6 +960,14 @@ static bool menu_key(int i, const rml_event *e)
     return false;
 }
 
+/* A menu takes the keys, unless a field has the focus or content it holds
+   took it, as a hosted panel's row does. */
+static bool takes_keys(rml_element *menu, rml_element *focus)
+{
+    return !editing(focus) &&
+           (!control_within(focus, menu) || closest(focus, is_item));
+}
+
 static void keyed(const rml_event *e)
 {
     key_input = true;
@@ -976,7 +982,7 @@ static void keyed(const rml_event *e)
     } else if (e->key == RML_KEY_TAB) {
         handled = tabbed(i, e);
     } else {
-        handled = is_menu(el) && !editing(e->target) && menu_key(i, e);
+        handled = is_menu(el) && takes_keys(el, e->target) && menu_key(i, e);
     }
     if (handled) {
         rml_event_stop_propagation(e);

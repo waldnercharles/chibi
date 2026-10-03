@@ -1,0 +1,61 @@
+diff --git a/Include/RmlUi/Core/Element.h b/Include/RmlUi/Core/Element.h
+--- a/Include/RmlUi/Core/Element.h
++++ b/Include/RmlUi/Core/Element.h
+@@ -521,6 +521,12 @@
+ 	/// @param[in] element The element to remove.
+ 	/// @returns A unique pointer to the element if found, discard the result to immediately destroy.
+ 	ElementPtr RemoveChild(Element* element);
++	/// Remove a child element to insert it again under the same data model, as a move. Its data views
++	/// and controllers stay bound, where RemoveChild unbinds them and inserting binds them anew, which
++	/// fails for views that already replaced their markup (text) or built their children (data-for).
++	/// @param[in] element The element to remove.
++	/// @returns A unique pointer to the element if found.
++	ElementPtr RemoveChildToMove(Element* element);
+ 	/// Returns whether or not this element has any DOM children.
+ 	/// @return True if the element has at least one DOM child, false otherwise.
+ 	bool HasChildNodes() const;
+diff --git a/Source/Core/Element.cpp b/Source/Core/Element.cpp
+--- a/Source/Core/Element.cpp
++++ b/Source/Core/Element.cpp
+@@ -1448,7 +1448,18 @@
+ 
+ 	return result;
+ }
++
++// The element RemoveChildToMove detaches, which keeps its data model.
++static Element* moving_element = nullptr;
+ 
++ElementPtr Element::RemoveChildToMove(Element* child)
++{
++	moving_element = child;
++	ElementPtr result = RemoveChild(child);
++	moving_element = nullptr;
++	return result;
++}
++
+ ElementPtr Element::RemoveChild(Element* child)
+ {
+ 	size_t child_index = 0;
+@@ -2146,11 +2157,11 @@
+ 
+ void Element::SetDataModel(DataModel* new_data_model)
+ {
+-	RMLUI_ASSERTMSG(!data_model || !new_data_model, "We must either attach a new data model, or detach the old one.");
+-
+ 	if (data_model == new_data_model)
+ 		return;
+ 
++	RMLUI_ASSERTMSG(!data_model || !new_data_model, "We must either attach a new data model, or detach the old one.");
++
+ 	// stop descent if a nested data model is encountered
+ 	if (data_model && new_data_model && data_model != new_data_model)
+ 		return;
+@@ -2197,7 +2208,7 @@
+ 
+ 	if (!parent)
+ 	{
+-		if (data_model)
++		if (data_model && this != moving_element)
+ 			SetDataModel(nullptr);
+ 	}
+ 	else

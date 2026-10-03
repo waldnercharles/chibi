@@ -243,6 +243,7 @@ static void get_clipboard_text(rml_string *text)
 
 /* The first warning since rml_backend_take_warning; RmlUi logs globally. */
 static char first_warning[256], taken_warning[256];
+static int warning_count;
 
 static void keep_warning(rml_log_type type, const char *message); /* workstream B */
 
@@ -256,7 +257,14 @@ static bool log_message(rml_log_type type, const char *message)
     if (type != RML_LOG_INFO && !first_warning[0]) {
         snprintf(first_warning, sizeof first_warning, "%s", message);
     }
+    warning_count += type == RML_LOG_WARNING || type == RML_LOG_ERROR ||
+                     type == RML_LOG_ASSERT;
     return true;
+}
+
+int rml_backend_warning_count()
+{
+    return warning_count;
 }
 
 const char *rml_backend_take_warning()

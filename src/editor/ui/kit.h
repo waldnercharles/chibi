@@ -504,13 +504,15 @@ extern "C"
     /* True once, the frame after the toast's action was pressed. */
     bool kit_toast_action(kit *k, int id);
 
-    /* Drag and drop (dnd-kit). The last item becomes a source: moving 5 dp with
-     * the button held, or holding 200 ms within 10 dp, picks it up; an overlay
-     * follows the pointer and Escape cancels. The last item becomes a target
-     * for `type`, and for each other type another call names: while a drag it
-     * accepts is in progress it is marked data-drop-accept, and data-drop-over
-     * while that drag is over it; it returns true, with the payload, on the
-     * frame a drop of `type` lands. */
+    /* Drag and drop (dnd-kit), thin wrappers over the drag every document
+     * shares (ui/drag.h), so kit and authored lists drag into each other. The
+     * last item becomes a source (data-drag): moving FEEL_DRAG_DP with the
+     * button held picks it up; an overlay follows the pointer and Escape
+     * cancels. The last item becomes a target (data-drop) for `type`, and for
+     * each other type another call names: while a drag it accepts runs it is
+     * marked data-drop-accept, and data-drop-over while that drag is over it;
+     * it returns true, with the payload, in the frame after a drop of `type`
+     * lands on it. */
     typedef struct kit_drag_desc
     {
         const char *type; /* e.g. "prototype" */
@@ -523,8 +525,9 @@ extern "C"
     /* While a drag the last target accepts is over it (dnd-kit's `over`), its
      * type and payload, so the target can preview the drop. */
     bool kit_drop_hover(kit *k, char *type, size_t type_size, char *payload, size_t size);
-    /* What dropping here would do, under the overlay's label this frame, as
-     * dnd-kit announces a drag over a droppable. */
+    /* What dropping here would do, under the overlay's label until the
+     * pointer reaches another target, as dnd-kit announces a drag over a
+     * droppable. */
     void kit_drag_hint(kit *k, const char *text);
     /* A drag of this type (any when NULL) is in progress. */
     bool kit_dragging(const kit *k, const char *type);

@@ -2116,6 +2116,8 @@ const studio_panel_source studio_panel_sources[] = {
     { "commands", NULL, studio_commands_add, sync_commands, NULL },
     { "collaboration", NULL, add_collaboration, sync_collaboration, NULL },
     { "new_project", "NewProject", add_new_project, sync_new_project, NULL },
+    /* Lists and drag (workstream F4). */
+    { "gallery", "Widgets", studio_gallery_add, studio_gallery_sync, studio_gallery_action },
 };
 const int studio_panel_source_count = (int)(sizeof studio_panel_sources /
                                             sizeof *studio_panel_sources);

@@ -829,6 +829,32 @@ extern "C"
         bool capture
     );
 
+    /* ---------- Lists and drag (workstream F4) ---------- */
+
+    /* Calls `create` for each context created and `destroy` for each one
+     * destroyed from now until rml_shutdown, as an RmlUi plugin hears them;
+     * either may be NULL. The hooks must outlive rml_shutdown. */
+    typedef struct rml_context_hooks
+    {
+        void (*create)(rml_context *context);
+        void (*destroy)(rml_context *context);
+    } rml_context_hooks;
+    void rml_add_context_hooks(const rml_context_hooks *hooks);
+    /* The element holding the context's documents: every event in the
+     * context passes it, first while capturing and last while bubbling. Its
+     * box is the context's size in pixels. */
+    rml_element *rml_context_root(rml_context *context);
+    /* Dispatches a `type` event from the element that bubbles, with `count`
+     * text parameters, which data-event-<type> reads as ev.<names[i]>. False
+     * when a listener stopped it. */
+    bool rml_element_dispatch_texts(
+        rml_element *element,
+        const char *type,
+        int count,
+        const char *const *names,
+        const char *const *values
+    );
+
 #ifdef __cplusplus
 }
 #endif

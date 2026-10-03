@@ -281,7 +281,15 @@ void test_studio_new_assets();
    (test/editor/code_intelligence_studio.c). */
 void test_code_intelligence_studio();
 
-static int studio_documents_app(const char *program, bool run_properties_only)
+/* Which checks a run makes. */
+typedef enum
+{
+    RUN_ALL,
+    RUN_PROPERTIES, /* the fields alone (--studio-properties) */
+    RUN_LISTS,      /* lists and drag alone (--studio-lists) */
+} studio_run;
+
+static int studio_documents_app(const char *program, studio_run run)
 {
     CF_Result result = cf_make_app(
         "Studio documents",
@@ -299,18 +307,21 @@ static int studio_documents_app(const char *program, bool run_properties_only)
     }
     app_scene_renderer_initialize();
     app_input_initialize();
-    if (run_properties_only) {
-        studio_documents_property_field_checks();
-    } else {
-        studio_documents_graph_checks();
-        test_ui_document_tabs();
-        test_studio_new_assets();
-        test_code_intelligence_studio();
-        studio_documents_panel_checks();
-        studio_documents_shell_checks();
-        studio_documents_assets_checks();
-        studio_documents_outliner_checks();
-        studio_documents_properties_checks();
+    switch (run) {
+        case RUN_PROPERTIES: studio_documents_property_field_checks(); break;
+        case RUN_LISTS: studio_documents_list_checks(); break;
+        case RUN_ALL:
+            studio_documents_graph_checks();
+            test_ui_document_tabs();
+            test_studio_new_assets();
+            test_code_intelligence_studio();
+            studio_documents_panel_checks();
+            studio_documents_shell_checks();
+            studio_documents_assets_checks();
+            studio_documents_outliner_checks();
+            studio_documents_properties_checks();
+            studio_documents_list_checks();
+            break;
     }
     app_input_shutdown();
     cf_destroy_app();
@@ -319,10 +330,16 @@ static int studio_documents_app(const char *program, bool run_properties_only)
 
 int studio_documents_run(const char *program)
 {
-    return studio_documents_app(program, false);
+    return studio_documents_app(program, RUN_ALL);
 }
 
 int studio_properties_run(const char *program)
 {
-    return studio_documents_app(program, true);
+    return studio_documents_app(program, RUN_PROPERTIES);
+}
+
+/* Lists and drag (workstream F4) alone. */
+int studio_lists_run(const char *program)
+{
+    return studio_documents_app(program, RUN_LISTS);
 }

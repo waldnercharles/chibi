@@ -3,7 +3,8 @@
  * scrolls, and one drag crosses between authored and native lists in other
  * area documents: a prototype from the authored List onto the native
  * Outliner adds an object, an asset from native Assets lands in the authored
- * Collected list, and one from the List lands before a Collected row. */
+ * Collected list, one from the List lands before a Collected row, and the
+ * Scene's viewport, a C surface, places a prototype dropped on it. */
 
 #include "test/editor/studio_documents.h"
 #include "test/suite_internal.h"
@@ -209,8 +210,41 @@ static void drag_crosses_lists()
     fixture_free(&f);
 }
 
+/* The Scene's viewport is a C surface: it takes a prototype dragged from
+   the authored List with ui_drag_dropped, placing it under the pointer. */
+static void scene_takes_drop()
+{
+    studio_fixture f = vault_open();
+    studio *s = f.studio;
+    studio_active_layout(s)->editors[STUDIO_AREA_BOTTOM] = STUDIO_EDITOR_SCENE;
+    show_gallery(&f);
+    int objects = acount(f.scene->actors);
+    rml_element *binding = row_named(s, "#gallery-assets [data-drag]", "Binding");
+    rml_element *viewport = studio_element(s, "img[src=kit:viewport]");
+    bool over = binding && viewport && carry(&f, binding, viewport, 0);
+    frames(&f, 2);
+    bool placed = acount(f.scene->actors) == objects + 1 &&
+                  !strcmp(f.scene->actors[objects].prototype_name, "Binding");
+    if (!(over && placed)) {
+        printf(
+            "  to the Scene: row %d viewport %d over %d, %d objects\n",
+            binding != NULL,
+            viewport != NULL,
+            over,
+            acount(f.scene->actors)
+        );
+    }
+    test_check(
+        over && placed,
+        "a prototype dragged from an authored List onto the Scene's viewport "
+        "places an object there"
+    );
+    fixture_free(&f);
+}
+
 void studio_documents_list_checks()
 {
     list_windows_assets();
     drag_crosses_lists();
+    scene_takes_drop();
 }

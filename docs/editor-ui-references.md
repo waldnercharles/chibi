@@ -48,8 +48,8 @@ reference for spacing, alignment, and motion as well as appearance.
 | [NumberFlow](https://github.com/barvian/number-flow) | Number changes as spinning digit wheels | The native `<number-flow>` element (`src/ui/text_motion.c`), which `kit_number_flow` emits | Done |
 | [Torph](https://github.com/lochie/torph) | Text continuity when a label changes | The native `<morph-text>` element (`src/ui/text_motion.c`), which `kit_morph` and `kit_button_desc.morph` emit | Done; place-value numbers open |
 | [Sonner](https://github.com/emilkowalski/sonner) | Toast notifications | `kit_toast` (`kit_toast.c`) | Done; Alt+T focus open |
-| [Virtuoso](https://github.com/petyosi/react-virtuoso) | Lists with thousands of rows, follow-output logs, grids | `kit_list` (`kit_list.c`), fixed row height; a grid (VirtuosoGrid) is a list of rows of `kit_tile`s, as Assets' | Done; measured heights open |
-| [dnd-kit](https://github.com/clauderic/dnd-kit) | Accessible drag and drop | `kit_drag_source`, `kit_drop_target` for one or several types (`data-drop-accept`, `data-drop-over`), `kit_drop_hover` (dnd-kit's `over`) and `kit_drag_hint` (what a drop does, under the overlay's label) in `kit_drag.c`; the Hierarchy's keyboard sensor over the sortable tree's slots (`ui_design_slots`) | Done; a kit keyboard sensor for other lists and auto-scroll open |
+| [Virtuoso](https://github.com/petyosi/react-virtuoso) | Lists with thousands of rows, follow-output logs, grids | `ui_list_window` (`src/ui/list.c`) on any scroller, fixed row height, a window that keeps its length; authored UI's `List` widget, and `kit_list`, a wrapper over it; a grid (VirtuosoGrid) is a list of rows of tiles, as Assets' | Done; measured heights open |
+| [dnd-kit](https://github.com/clauderic/dnd-kit) | Accessible drag and drop | One drag for every document (`src/ui/drag.c`): `data-drag` sources, `data-drop` targets of one or several types with tree or list zones, `data-drop-accept`/`-over`/`-zone` marks, a bubbling `drop` event, `ui_drag_over` (dnd-kit's `over`), `ui_drag_hint` and `ui_drag_dropped` for C surfaces. `kit_drag_source`, `kit_drop_target`, `kit_drop_hover` and `kit_drag_hint` wrap it; the Hierarchy's keyboard sensor over the sortable tree's slots (`ui_design_slots`) | Done; a keyboard sensor for other lists and auto-scroll open |
 | [Shiki](https://github.com/shikijs/shiki) | Syntax highlighting as styled token runs | `highlight_runs` / `highlight_markup` (`editor/ui/highlight.c`), `kit_markup` | Done: log, KDL assets, expressions |
 | [Liveline](https://github.com/benjitaylor/liveline) | Streaming line chart that feels alive | `kit_chart` (`kit_chart.c`, element `kit-chart`) | Done |
 | [Recharts](https://github.com/recharts/recharts) | Axes, ticks, tooltips for static charts | `kit_chart` ticks, scrub value, Performance legend | Partial; bars open |
@@ -189,7 +189,8 @@ icons, or descriptions, and `kit_choice` for simple named options.
 
 ### Virtuoso
 
-- Items are measured once rendered and kept in an offset tree; `fixedItemHeight` skips measurement. Kit rows use a fixed height.
+- Items are measured once rendered and kept in an offset tree; `fixedItemHeight` skips measurement. Our rows use a fixed height, `--row` for authored Lists.
+- The window keeps its length as the list scrolls (`ui_list_window`), so a `data-for` over it changes values in rows it keeps instead of making rows: a scroll step costs about a third of making the window anew (ui_bench case 9).
 - Overscan is in pixels.
 - Output logs use `followOutput`: they stay pinned only when already within 4 px of the bottom.
 - Prepending keeps the scroll anchored.
@@ -201,7 +202,8 @@ icons, or descriptions, and `kit_choice` for simple named options.
   - A drag handle starts immediately.
   - Otherwise a drag starts after `FEEL_DRAG_DP` (4 dp) of movement, dnd-kit's distance constraint. Holding still never starts one: dnd-kit's delay constraint is for touch, and with a mouse it turned a slow click on a tile into a drag that swallowed the click.
 - Keyboard: Space or Enter picks up, arrows move, Space, Enter or Tab drops, Escape cancels.
-- Collision uses pointer intersection first, then shape intersection.
+- Collision uses pointer intersection first, then shape intersection. Ours is the pointer's: the nearest element under it, in any document of the context, that takes the type.
+- Sources and targets are attributes (`src/ui/drag.h`), so authored and kit lists, and C surfaces through `ui_drag_dropped`, share one session, as Unity's `DragAndDrop` crosses its windows and Unreal's `FDragDropOperation` its Slate panels. A tree row's zones are Unreal's `EItemDropZone`: its top and bottom quarters drop above and below it, its middle onto it (`data-drop-zones="tree"`); a row that holds nothing splits in halves (`"list"`).
 - Motion:
   - Drops animate for 250 ms `ease`.
   - Sortable neighbors shift over 250 ms with `(0.25, 1, 0.5, 1)`.
@@ -321,12 +323,12 @@ Zep is the one library here that is linked: `zep_bridge.cpp` only forwards, and
 - **Toasts built by hand, or a modal used for a notice.** Use `kit_toast`. The status-bar report is for the last operation; toasts are for results the user might act on, such as Undo after Delete, or must not miss, such as a failed save.
 - **A plain container with hand-written open, close, focus or outside-press logic.** Use kit popups, menus and the command (Base UI): they handle focus return, Escape and outside dismissal, typeahead and stacking.
 - **A number animated by rewriting its text every frame.** Use `kit_number_flow` for discrete changes. Continuous values stay static.
-- **1,000 or more rows emitted directly.** Use `kit_list` (Virtuoso) before capping or paging results.
+- **1,000 or more rows emitted directly.** Use the `List` widget or `kit_list` over `ui_list_window` (Virtuoso) before capping or paging results.
 - **A tangle of parameters or duplicated statics for shared state.** Authoring state stays in the C model. View settings and layout go in `studio_prefs` (zustand). Transient widget state lives in the kit node.
 - **Class strings built with ternaries or `snprintf`.** Use `KIT_CX` (clsx) for conditions and `kit_variant`/`kit_size` (cva) for variants. State goes in `data-*` attributes.
 - **Instant show and hide, or animation interpolated by hand in C.** Use `kit_presence` with RCSS starting and ending styles, and `kit_layout` for moves (Motion).
 - **A label swapped instantly where continuity matters.** Use `kit_morph` (Torph).
-- **A drag state machine written inside a panel.** Use kit drag and drop (dnd-kit) for its activation constraints, keyboard support and announcements.
+- **A drag state machine written inside a panel.** Use `data-drag` and `data-drop` (`src/ui/drag.h`) or the kit's wrappers (dnd-kit) for their activation constraint, marks, zones and Escape.
 - **A theme, density or motion toggle that flashes or animates.** Apply preferences before the first frame and suspend transitions for the switch (next-themes).
 - **A chart built from many elements.** Use the chart element (Liveline, Recharts).
 - **Colors matched with regular expressions at the call site.** Use the shared token-run highlighter (Shiki).

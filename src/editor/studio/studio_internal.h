@@ -184,6 +184,12 @@ typedef enum
     STUDIO_COMMAND_FRAME_ALL,
     STUDIO_COMMAND_FIND,
     STUDIO_COMMAND_KEYBOARD_SHORTCUTS,
+    /* The object clipboard and extending the Outliner's selection */
+    STUDIO_COMMAND_COPY,
+    STUDIO_COMMAND_CUT,
+    STUDIO_COMMAND_PASTE,
+    STUDIO_COMMAND_EXTEND_PREVIOUS,
+    STUDIO_COMMAND_EXTEND_NEXT,
     STUDIO_COMMAND_COUNT,
 } studio_command;
 
@@ -881,6 +887,11 @@ struct studio
     char outliner_filter[128];
     bool outliner_collapsed;
     bool outliner_reveal; /* scroll the selection into view on the next frame */
+    struct
+    {
+        uint64_t anchor; /* the object a Shift range extends from, by identity */
+        uint64_t active; /* the active object the last range left, by identity */
+    } range;
     char property_search[128];
     bool text_input;
     kit_surface_input surface;
@@ -1504,9 +1515,24 @@ void studio_frame_all(studio *s);
 /* Marks every object, as a marquee around them all does. */
 void studio_select_all(studio *s);
 void studio_deselect(studio *s);
+/* Duplicates the selection one grid increment down and right, as one Undo
+   step, and selects the copies. */
 void studio_duplicate(studio *s);
 /* Deletes the selected and marked objects as one Undo step. */
 void studio_delete(studio *s);
+/* The object clipboard (Unity's, Godot's): Copy puts the selection on the
+   system clipboard as scene text, Cut copies and deletes it, and Paste adds
+   the clipboard's objects, centered under the pointer over the Scene, else
+   one grid increment from where they were copied. */
+void studio_copy(studio *s);
+void studio_cut(studio *s);
+void studio_paste(studio *s);
+/* Up and Down in the Outliner step the active row; with Shift they extend
+   the selection from its anchor (studio_commands.c). */
+void studio_step_selection(studio *s, int direction, bool extend);
+/* Selects the Outliner's rows from the anchor through `row`, a position in
+   studio_outliner_rows, as Shift+click does. */
+void studio_select_range(studio *s, const int *rows, int count, int row);
 void studio_add_object(studio *s, const char *prototype);
 uint32_t studio_prototype_icon(const studio *s, const char *prototype);
 
@@ -1907,7 +1933,7 @@ typedef struct studio_hint
     int command; /* command + 1 for a rebindable hint, zero for editor gestures */
 } studio_hint;
 
-#define STUDIO_HINT_MAX 4
+#define STUDIO_HINT_MAX 5
 
 /* An open document as the top bar's tabs show it (workstream T). */
 typedef struct studio_tab_view
@@ -1929,7 +1955,8 @@ typedef struct studio_status
     const char *report;    /* the last operation */
     bool reporting;        /* while the report shows, three seconds */
     const char *scene;     /* the scene's title */
-    const char *selection; /* the selected object, "" for none */
+    const char *selection; /* the active object, "" for none */
+    int selected;          /* how many objects are selected */
     int objects;
     int hidden; /* objects hidden in the Scene's edit view */
     bool playing;

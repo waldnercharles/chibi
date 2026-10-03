@@ -172,11 +172,6 @@ static scene_gizmo_target target_of(const ecs_world *world, ecs_entity entity)
     return target;
 }
 
-static bool selected(const app_scene_authoring *scene, int index)
-{
-    return scene->actors[index].marked || index == scene->selected;
-}
-
 /* The selected objects with a position, as they are now. The caller frees
    the array. */
 static scene_gizmo_target *selection_targets(const app_scene_authoring *scene)
@@ -184,7 +179,8 @@ static scene_gizmo_target *selection_targets(const app_scene_authoring *scene)
     scene_gizmo_target *targets = NULL;
     for (int i = 0; i < acount(scene->actors); i++) {
         ecs_entity entity = scene->actors[i].entity;
-        if (selected(scene, i) && GAME_GameTransform_get_const(scene->world, entity)) {
+        if (scene_instance_selected(scene, i) &&
+            GAME_GameTransform_get_const(scene->world, entity)) {
             apush(targets, target_of(scene->world, entity));
         }
     }
@@ -640,15 +636,6 @@ void scene_gizmo_finish(app_scene_authoring *scene, bool cancel)
 
 /* ---------- Pointer ---------- */
 
-static int selection_count(const app_scene_authoring *scene)
-{
-    int count = 0;
-    for (int i = 0; i < acount(scene->actors); i++) {
-        count += selected(scene, i);
-    }
-    return count;
-}
-
 static void drag_frame(app_scene_authoring *scene, const engine_viewport_pointer *pointer)
 {
     scene_gizmo *g = &scene->gizmo;
@@ -670,7 +657,8 @@ void scene_gizmo_drag_object(app_scene_authoring *scene, int index, const engine
 {
     /* Unity's: dragging one of several selected objects moves them all, and
        a click without a drag selects it alone. */
-    bool joined = selected(scene, index) && selection_count(scene) > 1;
+    bool joined = scene_instance_selected(scene, index) &&
+                  scene_selection_count(scene) > 1;
     if (joined) {
         finish_transform_edit(scene, false);
         scene->selected = index;

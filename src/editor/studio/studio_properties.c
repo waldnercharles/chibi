@@ -270,49 +270,175 @@ static bool field_overridden(
     return !pin_value_equal(&value, &inherited);
 }
 
-/* One Undo step per gesture: the first change opens an edit, the commit
-   records it. While the scene runs, a change writes only its running world. */
-static void write_field(
+/* ---------- Multi-object editing ---------- */
+
+/* Unity's multi-object editing: with several objects selected, Properties
+   shows the components they all have, a value they differ in as mixed, and
+   writes a change to each of them as one Undo step. */
+static bool editing_selection(studio *s, const scene_actor *actor)
+{
+    return actor == selected_actor(s->scene) && scene_selection_count(s->scene) > 1;
+}
+
+/* The other selected objects that have `component`, by actor index; the
+   caller frees the array. */
+static int *other_selected(studio *s, ecs_component_id component)
+{
+    app_scene_authoring *scene = s->scene;
+    int *others = NULL;
+    for (int i = 0; i < acount(scene->actors); i++) {
+        if (i != scene->selected && scene_instance_selected(scene, i) &&
+            ecs_component_has(scene->world, scene->actors[i].entity, component)) {
+            apush(others, i);
+        }
+    }
+    return others;
+}
+
+/* Whether every selected object has `component`. */
+static bool shared_component(studio *s, ecs_component_id component)
+{
+    app_scene_authoring *scene = s->scene;
+    for (int i = 0; i < acount(scene->actors); i++) {
+        if (scene_instance_selected(scene, i) &&
+            !ecs_component_has(scene->world, scene->actors[i].entity, component)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+/* KIT_MIXED when another selected object's field differs from `value`. */
+static unsigned mixed_flag(
     studio *s,
-    scene_actor *actor,
+    const scene_actor *actor,
     ecs_component_id component,
     int field,
-    pin_value before,
-    pin_value value,
-    bool changed,
-    bool active
+    const pin_value *value
 )
+{
+    if (!editing_selection(s, actor)) {
+        return 0;
+    }
+    int *others = other_selected(s, component);
+    bool mixed = false;
+    for (int i = 0; i < acount(others) && !mixed; i++) {
+        pin_value other = { 0 };
+        mixed = ecs_component_read_field(
+                    s->scene->world,
+                    s->scene->actors[others[i]].entity,
+                    component,
+                    field,
+                    &other
+                ) == ECS_OK &&
+                !pin_value_equal(&other, value);
+    }
+    afree(others);
+    return mixed ? KIT_MIXED : 0;
+}
+
+/* A field's change in Properties, one gesture's frame. */
+typedef struct
+{
+    ecs_component_id component;
+    int field;
+    pin_value before, value;
+    bool changed, active;
+    bool selection; /* the other selected objects take the change too */
+} field_change;
+
+/* Writes `c` to `entity`, whose field is `current`: a vector takes only the
+   axes the change moved, so each object keeps its others. */
+static void write_merged(ecs_world *world, ecs_entity entity, const field_change *c, pin_value current)
+{
+    const type_desc *type = c->value.type == PIN_STRUCT
+                              ? registry_type_by_name(c->value.type_name)
+                              : NULL;
+    if (!type || !current.ptr || !c->before.ptr) {
+        ecs_component_write_field(world, entity, c->component, c->field, c->value);
+        return;
+    }
+    void *merged = xmalloc(type->size);
+    memcpy(merged, current.ptr, type->size);
+    for (int i = 0; i < type->field_count; i++) {
+        pin_value before, after;
+        pin_read_field(c->before.ptr, &type->fields[i], &before);
+        pin_read_field(c->value.ptr, &type->fields[i], &after);
+        if (!pin_value_equal(&before, &after)) {
+            pin_write_field(merged, &type->fields[i], after);
+        }
+    }
+    pin_value value = { .type = PIN_STRUCT, .type_name = type->name, .ptr = merged };
+    ecs_component_write_field(world, entity, c->component, c->field, value);
+    free(merged);
+}
+
+/* The change on the other selected objects; `record` keeps each one's value
+   before the gesture, which finish_property_edit records with it. */
+static void write_others(studio *s, const field_change *c, bool record)
+{
+    app_scene_authoring *scene = s->scene;
+    int *others = other_selected(s, c->component);
+    for (int i = 0; i < acount(others); i++) {
+        ecs_entity entity = scene->actors[others[i]].entity;
+        pin_value current = { 0 };
+        if (ecs_component_read_field(scene->world, entity, c->component, c->field, &current) !=
+            ECS_OK) {
+            continue;
+        }
+        bool tracked = false;
+        for (int t = 0; t < acount(scene->property_others) && !tracked; t++) {
+            tracked = ecs_entity_to_u64(scene->property_others[t].entity) ==
+                      ecs_entity_to_u64(entity);
+        }
+        if (record && !tracked) {
+            scene_field_target target = { .entity = entity };
+            bool copied = scene_property_value_copy(&target.before, current);
+            assert(copied);
+            apush(scene->property_others, target);
+        }
+        write_merged(scene->world, entity, c, current);
+    }
+    afree(others);
+}
+
+/* One Undo step per gesture: the first change opens an edit, the commit
+   records it. While the scene runs, a change writes only its running world. */
+static void write_field(studio *s, scene_actor *actor, field_change c)
 {
     app_scene_authoring *scene = s->scene;
     if (studio_live(s)) {
-        if (changed && editable_scalar(&value)) {
-            ecs_component_write_field(scene->world, actor->entity, component, field, value);
+        if (c.changed && editable_scalar(&c.value)) {
+            ecs_component_write_field(scene->world, actor->entity, c.component, c.field, c.value);
+            if (c.selection) {
+                write_others(s, &c, false);
+            }
         }
         return;
     }
     bool pending = scene->property_actor.slot &&
                    ecs_entity_to_u64(scene->property_actor) ==
                        ecs_entity_to_u64(actor->entity) &&
-                   scene->property_edit.component == component &&
-                   scene->property_edit.field == field;
-    if (changed && editable_scalar(&value)) {
+                   scene->property_edit.component == c.component &&
+                   scene->property_edit.field == c.field;
+    if (c.changed && editable_scalar(&c.value)) {
         if (!pending) {
             finish_transform_edit(scene, false);
             scene->property_actor = actor->entity;
-            scene->property_edit = (scene_field_edit){ .component = component,
-                                                       .field = field };
-            if (!scene_property_value_copy(&scene->property_edit.before, before) ||
-                !scene_property_value_copy(&scene->property_edit.after, before)) {
+            scene->property_edit = (scene_field_edit){ .component = c.component,
+                                                       .field = c.field };
+            if (!scene_property_value_copy(&scene->property_edit.before, c.before) ||
+                !scene_property_value_copy(&scene->property_edit.after, c.before)) {
                 abort();
             }
             scene->property_dirty = scene->scene_dirty;
             pending = true;
         }
         if (scene_collab_can_write_locally()) {
-            if (ecs_component_write_field(scene->world, actor->entity, component, field, value) ==
+            if (ecs_component_write_field(scene->world, actor->entity, c.component, c.field, c.value) ==
                 ECS_OK) {
                 pin_value written = { 0 };
-                if (ecs_component_read_field(scene->world, actor->entity, component, field, &written) !=
+                if (ecs_component_read_field(scene->world, actor->entity, c.component, c.field, &written) !=
                     ECS_OK) {
                     abort();
                 }
@@ -323,14 +449,17 @@ static void write_field(
                 scene->scene_dirty = true;
                 asset_index_invalidate(scene);
             }
+            if (c.selection) {
+                write_others(s, &c, true);
+            }
         } else if (scene_collab_is_editor()) {
             scene_property_value_free(&scene->property_edit.after);
-            if (!scene_property_value_copy(&scene->property_edit.after, value)) {
+            if (!scene_property_value_copy(&scene->property_edit.after, c.value)) {
                 abort();
             }
         }
     }
-    if (pending && !active) {
+    if (pending && !c.active) {
         finish_property_edit(scene);
     }
 }
@@ -361,9 +490,11 @@ static void position_row(studio *s, scene_actor *actor, bool locked)
     kit_prop_begin(k, "position", "Position");
     kit_push(k, "joined", NULL, "joined");
     GameTransform after = *position;
-    bool changed = false, active = false, committed = false;
+    bool changed = false, active = false, committed = false,
+         moved[2] = { false, false };
     for (int axis = 0; axis < 2; axis++) {
         double v = axis ? position->y : position->x;
+        pin_value shown = { .type = PIN_F32, .f = (float)v };
         kit_number_desc d = {
             .min = -FLT_MAX,
             .max = FLT_MAX,
@@ -374,10 +505,11 @@ static void position_row(studio *s, scene_actor *actor, bool locked)
             .addon_cls = axis ? "y" : "x",
             .flags = (locked ? KIT_READONLY : 0) |
                      (field_overridden(scene, actor, component, axis) ? KIT_OVERRIDDEN
-                                                                      : 0),
+                                                                      : 0) |
+                     mixed_flag(s, actor, GAME_COMPONENT_GameTransform.id, axis, &shown),
         };
         if (kit_number(k, axis ? "y" : "x", &v, &d)) {
-            changed = true;
+            changed = moved[axis] = true;
             if (axis) {
                 after.y = (float)v;
             } else {
@@ -391,6 +523,25 @@ static void position_row(studio *s, scene_actor *actor, bool locked)
     kit_pop(k);
     kit_prop_end(k);
     if (locked) {
+        return;
+    }
+    /* Several objects take the axis as a field, one Undo step for them all. */
+    if (editing_selection(s, actor)) {
+        for (int axis = 0; axis < 2; axis++) {
+            write_field(
+                s,
+                actor,
+                (field_change){
+                    .component = GAME_COMPONENT_GameTransform.id,
+                    .field = axis,
+                    .before = { .type = PIN_F32,
+                                .f = axis ? position->y : position->x },
+                    .value = { .type = PIN_F32, .f = axis ? after.y : after.x },
+                    .changed = moved[axis],
+                    .active = active && !committed,
+                    .selection = true }
+            );
+        }
         return;
     }
     if (changed) {
@@ -428,7 +579,8 @@ static bool value_control(
     bool radians = strcmp(field->name, "radians") == 0;
     switch (value->type) {
         case PIN_BOOL: {
-            bool b = value->b;
+            /* A mixed checkbox sets every object on its first click. */
+            bool b = !(flags & KIT_MIXED) && value->b;
             changed = kit_checkbox(k, "value", &b, NULL, flags);
             value->b = b;
             break;
@@ -461,7 +613,7 @@ static bool value_control(
                                                  .current = i == metadata_current })
                         );
                     }
-                    int selected = metadata_current;
+                    int selected = flags & KIT_MIXED ? -1 : metadata_current;
                     if (kit_choice_items(k, "value", &selected, items, count, flags) &&
                         selected >= 0) {
                         *slot = editor_choice_at(choices, selected).value;
@@ -479,7 +631,7 @@ static bool value_control(
                         current = i;
                     }
                 }
-                int selected = current;
+                int selected = flags & KIT_MIXED ? -1 : current;
                 if (kit_choice(k, "value", &selected, labels, count, flags) &&
                     selected >= 0) {
                     *slot = editor_choice_at(choices, selected).value;
@@ -613,11 +765,22 @@ static bool value_control(
             break;
         }
         case PIN_NAME:
-        case PIN_STR:
-            snprintf(text, text_size, "%s", value->str ? value->str : "");
-            changed = kit_text_field(k, "value", text, text_size, NULL, flags);
+        case PIN_STR: {
+            /* A mixed text stays as it is until something is typed. */
+            bool mixed = flags & KIT_MIXED;
+            snprintf(
+                text,
+                text_size,
+                "%s",
+                mixed        ? ""
+                : value->str ? value->str
+                             : ""
+            );
+            changed = kit_text_field(k, "value", text, text_size, mixed ? "\xe2\x80\x94" : NULL, flags) &&
+                      !(mixed && !text[0]);
             value->str = text;
             break;
+        }
         case PIN_HANDLE:
             kit_label(
                 k,
@@ -714,7 +877,8 @@ static void field_row(
     const void *original_struct = value.ptr;
     unsigned flags = (locked ? KIT_READONLY : 0) |
                      (field_overridden(scene, actor, component, index) ? KIT_OVERRIDDEN
-                                                                       : 0);
+                                                                       : 0) |
+                     mixed_flag(s, actor, desc->id, index, &before);
     bool active = false;
     kit_prop_begin(k, field->name, label);
     reference_asset_kind named = named_kind(desc, field, &value);
@@ -734,7 +898,17 @@ static void field_row(
     kit_prop_end(k);
     field_tip(k, field, label);
     if (!locked) {
-        write_field(s, actor, desc->id, index, before, value, changed, active);
+        write_field(
+            s,
+            actor,
+            (field_change){ .component = desc->id,
+                            .field = index,
+                            .before = before,
+                            .value = value,
+                            .changed = changed,
+                            .active = active,
+                            .selection = editing_selection(s, actor) }
+        );
     }
     if (value.type == PIN_STRUCT && value.ptr != original_struct) {
         free(value.ptr);
@@ -785,7 +959,35 @@ static void reset_field(studio *s, scene_actor *actor)
         finish_transform_edit(scene, false);
         return;
     }
-    write_field(s, actor, desc->id, s->context.field, before, inherited, true, false);
+    write_field(
+        s,
+        actor,
+        (field_change){ .component = desc->id,
+                        .field = s->context.field,
+                        .before = before,
+                        .value = inherited,
+                        .changed = true }
+    );
+}
+
+/* Reset to Prototype resets each selected object, to its own prototype's
+   value, as one Undo step. */
+static void reset_selection(studio *s, scene_actor *actor)
+{
+    if (!editing_selection(s, actor)) {
+        reset_field(s, actor);
+        return;
+    }
+    app_scene_authoring *scene = s->scene;
+    finish_transform_edit(scene, false);
+    scene_history_begin_group(scene->history);
+    for (int i = 0; i < acount(scene->actors); i++) {
+        if (scene_instance_selected(scene, i) &&
+            ecs_component_has(scene->world, scene->actors[i].entity, s->context.component)) {
+            reset_field(s, &scene->actors[i]);
+        }
+    }
+    scene_history_end_group(scene->history);
 }
 
 static void field_menu(studio *s, scene_actor *actor, bool locked)
@@ -796,18 +998,25 @@ static void field_menu(studio *s, scene_actor *actor, bool locked)
     }
     bool target = actor && s->context.entity == ecs_entity_to_u64(actor->entity);
     bool overridden = false;
-    if (target) {
-        for (int i = 0; i < s->scene->registry.component_count; i++) {
-            const ecs_component_desc *desc = s->scene->registry.components[i];
-            if (desc->id == s->context.component) {
-                game_prototype_component added;
-                overridden = field_overridden(
-                    s->scene,
-                    actor,
-                    base_component(actor, desc, &added),
-                    s->context.field
-                );
-            }
+    for (int i = 0; target && i < s->scene->registry.component_count; i++) {
+        const ecs_component_desc *desc = s->scene->registry.components[i];
+        if (desc->id != s->context.component) {
+            continue;
+        }
+        /* Any selected object's override enables it. */
+        for (int a = 0; a < acount(s->scene->actors); a++) {
+            scene_actor *other = &s->scene->actors[a];
+            bool selected = other == actor ||
+                            (editing_selection(s, actor) &&
+                             scene_instance_selected(s->scene, a) &&
+                             ecs_component_has(s->scene->world, other->entity, desc->id));
+            game_prototype_component added;
+            overridden |= selected && field_overridden(
+                                          s->scene,
+                                          other,
+                                          base_component(other, desc, &added),
+                                          s->context.field
+                                      );
         }
     }
     kit_menu_item_desc reset = { .label = "Reset to Prototype",
@@ -815,7 +1024,7 @@ static void field_menu(studio *s, scene_actor *actor, bool locked)
                                  .checked = -1,
                                  .disabled = locked || !overridden };
     if (kit_menu_item(k, "reset", &reset)) {
-        reset_field(s, actor);
+        reset_selection(s, actor);
     }
     kit_popup_end(k);
 }
@@ -945,6 +1154,65 @@ static void identity(studio *s, scene_actor *actor, bool locked)
                                   .tip = "Open prototype" };
     if (kit_button(k, "prototype", &prototype)) {
         app_scene_authoring_open_prototype(s->scene, actor->prototype_name);
+    }
+    kit_pop(k);
+    kit_pop(k);
+    kit_pop(k);
+}
+
+/* Keeps only the selected objects of `prototype` selected, as Unity's
+   "Narrow the Selection" does. */
+static void narrow_selection(studio *s, const char *prototype)
+{
+    app_scene_authoring *scene = s->scene;
+    finish_transform_edit(scene, false);
+    for (int i = 0; i < acount(scene->actors); i++) {
+        scene->actors[i].marked = scene_instance_selected(scene, i) &&
+                                  !strcmp(scene->actors[i].prototype_name, prototype);
+    }
+    for (int i = 0;
+         !scene->actors[scene->selected].marked && i < acount(scene->actors);
+         i++) {
+        scene->selected = scene->actors[i].marked ? i : scene->selected;
+    }
+}
+
+/* With several objects selected: how many, and a chip per prototype among
+   them, with its count, which narrows the selection to that prototype's. */
+static void selection_identity(studio *s)
+{
+    kit *k = s->kit;
+    app_scene_authoring *scene = s->scene;
+    kit_push(k, "identity", NULL, "identity");
+    kit_push(k, "glyph", NULL, "glyph");
+    kit_icon(k, "icon", NULL, KIT_ICON_SELECTION);
+    kit_pop(k);
+    kit_push(k, "who", NULL, "who");
+    char title[64];
+    snprintf(title, sizeof title, "%d objects", scene_selection_count(scene));
+    kit_label(k, "name", "title", title);
+    kit_push(k, "lineage", NULL, "lineage prototypes");
+    for (int i = 0; i < acount(scene->actors); i++) {
+        const char *prototype = scene->actors[i].prototype_name;
+        int count = 0, first = i;
+        for (int j = 0; j < acount(scene->actors); j++) {
+            bool same = scene_instance_selected(scene, j) &&
+                        !strcmp(scene->actors[j].prototype_name, prototype);
+            first = same && j < first ? j : first;
+            count += same;
+        }
+        if (!scene_instance_selected(scene, i) || first != i) {
+            continue;
+        }
+        char key[16], label[160];
+        snprintf(key, sizeof key, "p%d", i);
+        snprintf(label, sizeof label, count > 1 ? "%s \xc3\x97%d" : "%s", prototype, count);
+        kit_button_desc chip = { .label = label,
+                                 .icon = studio_prototype_icon(s, prototype),
+                                 .tip = "Select only these" };
+        if (kit_button(k, key, &chip)) {
+            narrow_selection(s, prototype);
+        }
     }
     kit_pop(k);
     kit_pop(k);
@@ -1569,6 +1837,8 @@ void studio_properties_body(studio *s, int area)
         actor = spawned_actor(scene, &spawned);
     }
     bool locked = !studio_editable(s);
+    /* Several selected objects show the components they share. */
+    bool multi = actor && editing_selection(s, actor);
     bool available[STUDIO_TAB_COUNT] = { [STUDIO_TAB_SCENE] = asset == NULL };
     if (asset && asset->prototype) {
         available[STUDIO_TAB_OBJECT] = true;
@@ -1576,10 +1846,12 @@ void studio_properties_body(studio *s, int area)
             available[tab_of(s, asset->prototype->components[i].desc)] = true;
         }
     } else if (actor) {
-        available[STUDIO_TAB_OBJECT] = available[STUDIO_TAB_BEHAVIORS] = true;
+        available[STUDIO_TAB_OBJECT] = true;
+        available[STUDIO_TAB_BEHAVIORS] = !multi;
         for (int i = 0; i < scene->registry.component_count; i++) {
             const ecs_component_desc *desc = scene->registry.components[i];
-            if (ecs_component_has(scene->world, actor->entity, desc->id)) {
+            if (ecs_component_has(scene->world, actor->entity, desc->id) &&
+                (!multi || shared_component(s, desc->id))) {
                 available[tab_of(s, desc)] = true;
             }
         }
@@ -1595,6 +1867,9 @@ void studio_properties_body(studio *s, int area)
     if (node && node != s->shown_node) {
         s->tab = STUDIO_TAB_NODE;
     } else if (s->tab == STUDIO_TAB_NODE && scene->selected != s->shown_actor && actor) {
+        s->tab = STUDIO_TAB_OBJECT;
+    } else if (s->tab == STUDIO_TAB_SCENE && s->shown_actor < 0 && scene->selected >= 0) {
+        /* A selection made from none, as a marquee makes one, shows it. */
         s->tab = STUDIO_TAB_OBJECT;
     }
     /* Member follows the Members selection the same way. */
@@ -1664,7 +1939,9 @@ void studio_properties_body(studio *s, int area)
     } else if (!actor) {
         kit_label(k, "empty", "prop-empty", "Select an object to edit its properties");
     } else {
-        if (s->tab == STUDIO_TAB_OBJECT) {
+        if (s->tab == STUDIO_TAB_OBJECT && multi) {
+            selection_identity(s);
+        } else if (s->tab == STUDIO_TAB_OBJECT) {
             identity(s, actor, locked);
         }
         if (s->tab == STUDIO_TAB_BEHAVIORS) {
@@ -1673,7 +1950,8 @@ void studio_properties_body(studio *s, int area)
             for (int i = 0; i < scene->registry.component_count; i++) {
                 const ecs_component_desc *desc = scene->registry.components[i];
                 if (ecs_component_has(scene->world, actor->entity, desc->id) &&
-                    tab_of(s, desc) == s->tab) {
+                    tab_of(s, desc) == s->tab &&
+                    (!multi || shared_component(s, desc->id))) {
                     /* Values edit the running world while the scene runs. */
                     component_panel(s, actor, desc, locked && !studio_live(s));
                 }

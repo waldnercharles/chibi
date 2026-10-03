@@ -41,6 +41,9 @@
         <li command="undo"/>
         <li command="redo"/>
         <hr/>
+        <li command="cut"/>
+        <li command="copy"/>
+        <li command="paste"/>
         <li command="duplicate"/>
         <li command="rename"/>
         <li command="delete"/>

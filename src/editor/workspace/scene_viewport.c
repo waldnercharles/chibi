@@ -98,7 +98,18 @@ static bool visual_bounds(const ecs_world *world, ecs_entity entity, bool effect
                          );
 }
 
-static void fit_arena_view(engine_viewport *viewport, ecs_world *world, ecs_entity only)
+/* Whether `entity` is among the `count` in `only`, or `only` is NULL. */
+static bool fits(const ecs_entity *only, int count, ecs_entity entity)
+{
+    for (int i = 0; only && i < count; i++) {
+        if (ecs_entity_to_u64(only[i]) == ecs_entity_to_u64(entity)) {
+            return true;
+        }
+    }
+    return !only;
+}
+
+static void fit_arena_view(engine_viewport *viewport, ecs_world *world, const ecs_entity *only, int count)
 {
     ecs_component_id required[] = { GAME_COMPONENT_GameTransform.id,
                                     GAME_COMPONENT_GameGeometry3D.id };
@@ -110,7 +121,7 @@ static void fit_arena_view(engine_viewport *viewport, ecs_world *world, ecs_enti
     ecs_entity entity;
     while (ecs_query_next(&query, &entity)) {
         CF_V3 corners[8];
-        if ((only.slot && ecs_entity_to_u64(entity) != ecs_entity_to_u64(only)) ||
+        if (!fits(only, count, entity) ||
             !render_arena_entity_bounds(world, entity, corners)) {
             continue;
         }
@@ -136,10 +147,10 @@ static void fit_arena_view(engine_viewport *viewport, ecs_world *world, ecs_enti
     afree(points);
 }
 
-void fit_scene_view(engine_viewport *viewport, ecs_world *world, ecs_entity only)
+void fit_scene_view(engine_viewport *viewport, ecs_world *world, const ecs_entity *only, int count)
 {
     if (engine_viewport_perspective(viewport)) {
-        fit_arena_view(viewport, world, only);
+        fit_arena_view(viewport, world, only, count);
         return;
     }
     ecs_component_id required[] = { GAME_COMPONENT_GameTransform.id };
@@ -151,8 +162,7 @@ void fit_scene_view(engine_viewport *viewport, ecs_world *world, ecs_entity only
     bool found = false;
     ecs_entity entity;
     while (ecs_query_next(&query, &entity)) {
-        if (only.slot &&
-            (entity.slot != only.slot || entity.generation != only.generation)) {
+        if (!fits(only, count, entity)) {
             continue;
         }
         const GameRenderState *render_state = GAME_GameRenderState_get_const(world, entity);
@@ -292,6 +302,68 @@ static bool selection_bounds(
     return true;
 }
 
+/* A press on empty space starts a marquee. It replaces the selection, or
+   with Shift (or Mod) held adds to it, as Blender's and Unity's box select
+   extend. */
+static void begin_marquee(app_scene_authoring *scene, CF_V2 at)
+{
+    bool extend = scene->gizmo.in.extend;
+    afree(scene->marquee_base);
+    scene->marquee_base = NULL;
+    scene->marquee_active = extend ? scene->selected : -1;
+    for (int i = 0; i < acount(scene->actors); i++) {
+        bool kept = extend && scene_instance_selected(scene, i);
+        if (kept) {
+            apush(scene->marquee_base, i);
+        }
+        scene->actors[i].marked = kept;
+    }
+    scene->selected = scene->marquee_active;
+    scene->runtime_selected = (ecs_entity){ 0 };
+    scene->marquee = true;
+    scene->marquee_start = scene->marquee_end = at;
+}
+
+static bool in_marquee_base(const app_scene_authoring *scene, int actor)
+{
+    for (int i = 0; i < acount(scene->marquee_base); i++) {
+        if (scene->marquee_base[i] == actor) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* Marks what the marquee touches, the last object it adds active. */
+static void mark_marquee(app_scene_authoring *scene, engine_viewport *viewport, render_skip unpickable)
+{
+    float min_x = fminf(scene->marquee_start.x, scene->marquee_end.x);
+    float max_x = fmaxf(scene->marquee_start.x, scene->marquee_end.x);
+    float min_y = fminf(scene->marquee_start.y, scene->marquee_end.y);
+    float max_y = fmaxf(scene->marquee_start.y, scene->marquee_end.y);
+    scene->selected = scene->marquee_active;
+    for (int i = 0; i < acount(scene->actors); i++) {
+        scene_actor *actor = &scene->actors[i];
+        CF_Aabb bounds;
+        bool inside = !render_skip_has(unpickable, actor->entity) &&
+                      selection_bounds(scene, viewport, actor->entity, &bounds) &&
+                      bounds.max.x >= min_x && bounds.min.x <= max_x &&
+                      bounds.max.y >= min_y && bounds.min.y <= max_y;
+        bool base = in_marquee_base(scene, i);
+        actor->marked = base || inside;
+        if (inside && !base) {
+            scene->selected = i;
+        }
+    }
+}
+
+static void end_marquee(app_scene_authoring *scene)
+{
+    scene->marquee = scene->marquee_visible = false;
+    afree(scene->marquee_base);
+    scene->marquee_base = NULL;
+}
+
 static void edit_scene_pointer(app_scene_authoring *scene, engine_viewport *viewport)
 {
     engine_viewport_pointer pointer;
@@ -308,7 +380,7 @@ static void edit_scene_pointer(app_scene_authoring *scene, engine_viewport *view
         return;
     }
     if (!scene_can_move(scene) || pointer.cancel) {
-        scene->marquee = scene->marquee_visible = false;
+        end_marquee(scene);
         if (scene->dragging_actor) {
             finish_transform_edit(scene, true);
         }
@@ -339,24 +411,24 @@ static void edit_scene_pointer(app_scene_authoring *scene, engine_viewport *view
         }
         scene_authoring_select_document(scene, APP_EDITOR_DOCUMENT_SCENE, APP_SCENE_DOCUMENT_ID);
         if (!picked.slot) {
-            scene->selected = -1;
-            scene->runtime_selected = (ecs_entity){ 0 };
-            for (int i = 0; i < acount(scene->actors); i++) {
-                scene->actors[i].marked = false;
-            }
-            scene->marquee = true;
-            scene->marquee_start = (CF_V2){ pointer.ndc_x, pointer.ndc_y };
-            scene->marquee_end = scene->marquee_start;
+            begin_marquee(scene, (CF_V2){ pointer.ndc_x, pointer.ndc_y });
             return;
         }
         if (game_entities_owns(scene->live->entities, picked)) {
             app_scene_authoring_select_runtime_entity(scene, picked);
         }
         for (int i = 0; i < acount(scene->actors); i++) {
-            if (ecs_entity_to_u64(scene->actors[i].entity) == ecs_entity_to_u64(picked)) {
-                scene_gizmo_drag_object(scene, i, &pointer);
-                return;
+            if (ecs_entity_to_u64(scene->actors[i].entity) != ecs_entity_to_u64(picked)) {
+                continue;
             }
+            /* Shift (or Mod) adds an object to the selection or takes it out,
+               as Unity's and Blender's Shift+click do. */
+            if (scene->gizmo.in.extend) {
+                scene_toggle_instance(scene, i);
+            } else {
+                scene_gizmo_drag_object(scene, i, &pointer);
+            }
+            return;
         }
         /* A paused run's spawned objects move in its world. */
         if (!GAME_GameTransform_has(scene->world, picked)) {
@@ -387,25 +459,10 @@ static void edit_scene_pointer(app_scene_authoring *scene, engine_viewport *view
     scene->marquee_end = (CF_V2){ pointer.ndc_x, pointer.ndc_y };
     scene->marquee_visible = pointer.dragging;
     if (pointer.dragging) {
-        float min_x = fminf(scene->marquee_start.x, pointer.ndc_x);
-        float max_x = fmaxf(scene->marquee_start.x, pointer.ndc_x);
-        float min_y = fminf(scene->marquee_start.y, pointer.ndc_y);
-        float max_y = fmaxf(scene->marquee_start.y, pointer.ndc_y);
-        scene->selected = -1;
-        for (int i = 0; i < acount(scene->actors); i++) {
-            scene_actor *actor = &scene->actors[i];
-            CF_Aabb bounds;
-            actor->marked = !render_skip_has(unpickable, actor->entity) &&
-                            selection_bounds(scene, viewport, actor->entity, &bounds) &&
-                            bounds.max.x >= min_x && bounds.min.x <= max_x &&
-                            bounds.max.y >= min_y && bounds.min.y <= max_y;
-            if (actor->marked) {
-                scene->selected = i;
-            }
-        }
+        mark_marquee(scene, viewport, unpickable);
     }
     if (pointer.released) {
-        scene->marquee = scene->marquee_visible = false;
+        end_marquee(scene);
     }
 }
 
@@ -483,7 +540,8 @@ int app_scene_authoring_draw_viewport(app_scene_authoring *scene, engine_viewpor
             viewport,
             preview ? game_prototype_preview_world(scene->prototype_preview)
                     : scene->world,
-            fit_entity
+            fit_entity.slot ? &fit_entity : NULL,
+            1
         );
     }
     if (preview && scene->preview_follow &&
@@ -676,8 +734,7 @@ static void draw_arena_selection(
     float stroke = scene->selection_scale > 0 ? scene->selection_scale * 0.5f : 0.5f;
     for (int i = -1; i < acount(scene->actors); i++) {
         ecs_entity entity = i < 0 ? scene->runtime_selected : scene->actors[i].entity;
-        bool selected = i < 0 ? entity.slot != 0
-                              : scene->actors[i].marked || i == scene->selected;
+        bool selected = i < 0 ? entity.slot != 0 : scene_instance_selected(scene, i);
         if (!selected || !entity.slot || render_skip_has(hidden, entity)) {
             continue;
         }
@@ -858,8 +915,7 @@ void app_scene_authoring_render(void *user)
         ecs_entity selected = selection < 0 ? scene->runtime_selected
                                             : scene->actors[selection].entity;
         bool marked = selection < 0 ? selected.slot != 0
-                                    : scene->actors[selection].marked ||
-                                          selection == scene->selected;
+                                    : scene_instance_selected(scene, selection);
         if (!scene_can_move(scene) || !selected.slot || !marked ||
             render_skip_has(hidden, selected)) {
             continue;

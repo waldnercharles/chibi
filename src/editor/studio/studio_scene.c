@@ -434,6 +434,7 @@ void studio_scene_tools(studio *s)
         .snap = s->prefs.scene_snap,
         .increment = s->prefs.scene_increment,
         .shift = (s->mods & SDL_KMOD_SHIFT) != 0,
+        .extend = (s->mods & SDL_KMOD_SHIFT) || studio_primary(s, s->mods),
         .ctrl = (s->mods & SDL_KMOD_CTRL) != 0,
         .alt = (s->mods & SDL_KMOD_ALT) != 0,
         .axis_x = g->modal && studio_key_pressed(s, SDLK_X),
@@ -613,7 +614,7 @@ void studio_hide(studio *s, bool selected)
 {
     app_scene_authoring *scene = s->scene;
     for (int i = 0; i < acount(scene->actors); i++) {
-        if ((i == scene->selected || scene->actors[i].marked) == selected) {
+        if (scene_instance_selected(scene, i) == selected) {
             set_hidden(s, i, true);
         }
     }
@@ -684,6 +685,54 @@ static void view_toggles(studio *s, int actor)
         app_scene_authoring_set_actor_view(s->scene, actor, view ^ APP_SCENE_VIEW_LOCKED);
     }
     kit_pop(k);
+}
+
+/* ---------- Multi-selection ---------- */
+
+static int actor_by_identity(const studio *s, uint64_t identity)
+{
+    for (int i = 0; identity && i < acount(s->scene->actors); i++) {
+        if (s->scene->actors[i].identity == identity) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+/* A range extends from the anchor, which the last plain or Mod+click left:
+   while the active object is the one the last range left, the anchor holds,
+   else the active object becomes it (Finder's and VS Code's lists). */
+void studio_select_range(studio *s, const int *rows, int count, int row)
+{
+    app_scene_authoring *scene = s->scene;
+    scene_actor *active = selected_actor(scene);
+    if (!active || active->identity != s->range.active) {
+        s->range.anchor = active ? active->identity : 0;
+    }
+    int anchor = actor_by_identity(s, s->range.anchor), from = row;
+    for (int r = 0; r < count; r++) {
+        from = rows[r] == anchor ? r : from;
+    }
+    scene_select_range(scene, rows, from, row);
+    s->range.active = scene->actors[rows[row]].identity;
+}
+
+/* A row's click: alone, Mod toggles it in the selection and Shift selects
+   the rows from the anchor through it (Unity's and Godot's lists). */
+static void click_row(studio *s, const int *rows, int count, int row)
+{
+    app_scene_authoring *scene = s->scene;
+    finish_transform_edit(scene, false);
+    if (s->mods & SDL_KMOD_SHIFT) {
+        studio_select_range(s, rows, count, row);
+        return;
+    }
+    if (studio_primary(s, s->mods)) {
+        scene_toggle_instance(scene, rows[row]);
+    } else {
+        select_instance(scene, rows[row]);
+    }
+    s->range.active = 0;
 }
 
 /* Actors shown by the Outliner filter, in scene order. The caller frees the array. */
@@ -766,13 +815,15 @@ void studio_outliner_body(studio *s, int area)
             snprintf(behaviors, sizeof behaviors, "%d", acount(names));
         }
         free_behavior_names(names);
-        bool selected = scene->selected == i;
+        /* Every selected row shows; the active one stands out (Blender). */
+        bool selected = scene_instance_selected(scene, i),
+             active = scene->selected == i;
         kit_row_desc row = {
             .label = actor->name,
             .icon = studio_prototype_icon(s, actor->prototype_name),
             .depth = 1,
             .twisty = -1,
-            .flags = selected ? KIT_ON | KIT_ACTIVE : 0,
+            .flags = (selected ? KIT_ON : 0) | (active ? KIT_ACTIVE : 0),
         };
         unsigned events = kit_row_begin(k, key, &row);
         if (behaviors[0]) {
@@ -784,6 +835,7 @@ void studio_outliner_body(studio *s, int area)
         view_toggles(s, i);
         kit_row_end(k);
         kit_flag(k, "data-hidden", actor_view(s, i) & APP_SCENE_VIEW_HIDDEN);
+        kit_flag(k, "data-marked", selected && !active);
         if (kit_drop_target(k, "behavior", dropped, sizeof dropped) &&
             studio_editable(s)) {
             finish_transform_edit(scene, false);
@@ -800,7 +852,11 @@ void studio_outliner_body(studio *s, int area)
                 studio_report(s, message);
             }
         }
-        if (events & (KIT_ROW_CLICK | KIT_ROW_CONTEXT)) {
+        if (events & KIT_ROW_CLICK) {
+            click_row(s, rows, shown, r);
+        }
+        /* A right click keeps a selection it lands in, as Unity's does. */
+        if ((events & KIT_ROW_CONTEXT) && !selected) {
             finish_transform_edit(scene, false);
             select_instance(scene, i);
         }
@@ -822,23 +878,18 @@ void studio_outliner_body(studio *s, int area)
     }
     if (kit_popup_begin(k, menu_key, "menu")) {
         scene_actor *actor = selected_actor(scene);
-        kit_menu_group(k, "group", actor ? actor->name : "");
-        kit_menu_item_desc frame = { .label = "Frame",
-                                     .icon = KIT_ICON_FRAME,
-                                     .shortcut = "F",
-                                     .checked = -1 };
-        if (kit_menu_item(k, "frame", &frame)) {
-            studio_frame_selection(s);
-        }
-        kit_menu_item_desc duplicate = { .label = "Duplicate",
-                                         .icon = KIT_ICON_COPY,
-                                         .shortcut = studio_chord(s, "Shift+D"),
-                                         .checked = -1,
-                                         .disabled = !studio_editable(s) };
-        if (kit_menu_item(k, "duplicate", &duplicate)) {
-            studio_duplicate(s);
-        }
+        int count = scene_selection_count(scene);
+        char group[64];
+        snprintf(group, sizeof group, "%d objects", count);
+        kit_menu_group(k, "group", count > 1 || !actor ? group : actor->name);
+        studio_command_item(s, STUDIO_COMMAND_FRAME);
+        studio_command_item(s, STUDIO_COMMAND_DUPLICATE);
         studio_command_item(s, STUDIO_COMMAND_RENAME);
+        kit_menu_separator(k, "s0");
+        studio_command_item(s, STUDIO_COMMAND_CUT);
+        studio_command_item(s, STUDIO_COMMAND_COPY);
+        studio_command_item(s, STUDIO_COMMAND_PASTE);
+        kit_menu_separator(k, "s2");
         kit_menu_item_desc prototype = { .label = "Open Prototype",
                                          .icon = KIT_ICON_PROTOTYPE,
                                          .checked = -1,
@@ -851,14 +902,7 @@ void studio_outliner_body(studio *s, int area)
         }
         studio_command_item(s, STUDIO_COMMAND_HIDE_SELECTED);
         kit_menu_separator(k, "s1");
-        kit_menu_item_desc remove = { .label = "Delete",
-                                      .icon = KIT_ICON_TRASH,
-                                      .shortcut = "X",
-                                      .checked = -1,
-                                      .disabled = !studio_editable(s) };
-        if (kit_menu_item(k, "delete", &remove)) {
-            studio_delete(s);
-        }
+        studio_command_item(s, STUDIO_COMMAND_DELETE);
         kit_popup_end(k);
     }
 }

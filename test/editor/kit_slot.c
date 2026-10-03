@@ -335,6 +335,7 @@ static void status_checks()
         .reporting = true,
         .scene = "Sandbox",
         .selection = "Player",
+        .selected = 1,
         .objects = 12,
         .hidden = 3,
         .maximized = -1,
@@ -383,6 +384,7 @@ static void status_checks()
     status.hint_count = 1;
     status.reporting = false;
     status.selection = "";
+    status.selected = 0;
     status.hidden = 0;
     if (studio_status_show(doc, &status)) {
         rml_data_model_dirty(f.data.model, "editor");

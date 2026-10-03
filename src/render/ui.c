@@ -198,6 +198,10 @@ bool ui_mount_sync(ui_mount *m, rml_element *root, rml_listener *listener, doubl
     if (root != m->root || !same_mount) {
         m->root = root;
         m->installed = false;
+        /* Binding moves the root, which binds its children's views again;
+           another panel's evaluated markup would leave views RmlUi adds but
+           never removes, so it goes first. */
+        rml_element_set_inner_rml(root, "");
         rml_element_set_attribute(root, "data-ui", m->name);
         rml_element_set_data_model(root, UI_DATA_MODEL);
         /* Authored key bindings precede text fields, whose default handler

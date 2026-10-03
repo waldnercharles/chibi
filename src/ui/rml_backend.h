@@ -221,6 +221,9 @@ extern "C"
     /* The first warning or error RmlUi logged since the last call, or "" when
      * it logged none; a caller brackets an operation with two calls. */
     const char *rml_backend_take_warning();
+    /* How many warnings and errors RmlUi logged since the process began,
+     * which no take resets: tests and benches watch it for any or a flood. */
+    int rml_backend_warning_count();
 
     /* ---------- UI language service (workstream B) ---------- */
 

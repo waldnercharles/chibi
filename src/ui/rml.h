@@ -465,7 +465,8 @@ extern "C"
     /* Creates an element with the owner document and inserts it before
      * `before`, or appends it when `before` is NULL. */
     rml_element *rml_element_create_child(rml_element *parent, const char *tag, rml_element *before);
-    /* Removes `child` from its parent and inserts it into `parent`. */
+    /* Removes `child` from its parent and inserts it into `parent`; under
+     * the same data model its views stay bound, as a DOM move's do. */
     void rml_element_move_child(rml_element *parent, rml_element *child, rml_element *before);
     /* Removes and destroys the child. */
     void rml_element_remove_child(rml_element *parent, rml_element *child);
@@ -591,6 +592,9 @@ extern "C"
      * array items in constant time (ui/json_items.h); a dirty variable makes
      * them list arrays again, so an item replaced in place shows. */
     void rml_data_model_dirty(rml_data_model *model, const char *variable);
+    /* Dirties every variable, so the next update evaluates each view once:
+     * the reads it adds count the model's views. */
+    void rml_data_model_dirty_all(rml_data_model *model);
     /* How many values bindings have written, so a caller sees when to read. */
     uint64_t rml_data_model_writes(const rml_data_model *model);
     /* What views read since the model was created: the values they

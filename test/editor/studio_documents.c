@@ -291,6 +291,7 @@ typedef enum
     RUN_OUTPUT,     /* Output alone (--studio-output) */
     RUN_MEMBERS,    /* Members alone (--studio-members) */
     RUN_SHELL,      /* the shell alone (--studio-shell) */
+    RUN_PANELS,     /* the authored panel checks alone (--studio-panels) */
 } studio_run;
 
 static int studio_documents_app(const char *program, studio_run run)
@@ -318,6 +319,7 @@ static int studio_documents_app(const char *program, studio_run run)
         case RUN_OUTPUT: studio_documents_output_checks(); break;
         case RUN_MEMBERS: studio_documents_members_checks(); break;
         case RUN_SHELL: studio_documents_shell_checks(); break;
+        case RUN_PANELS: studio_documents_panel_checks(); break;
         case RUN_ALL:
             studio_documents_graph_checks();
             test_ui_document_tabs();
@@ -376,4 +378,10 @@ int studio_members_run(const char *program)
 int studio_shell_run(const char *program)
 {
     return studio_documents_app(program, RUN_SHELL);
+}
+
+/* The authored panel checks alone. */
+int studio_panels_run(const char *program)
+{
+    return studio_documents_app(program, RUN_PANELS);
 }

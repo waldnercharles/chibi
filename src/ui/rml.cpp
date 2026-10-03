@@ -243,6 +243,35 @@ rml_color color(Rml::Colourb c)
     return { c.red, c.green, c.blue, c.alpha };
 }
 
+rml_color color(Rml::ColourbPremultiplied c)
+{
+    return { c.red, c.green, c.blue, c.alpha };
+}
+
+/* The stops live in `stops`, which must outlive the parameters. */
+rml_effect_parameters effect_parameters(const Rml::Dictionary &parameters, Rml::Vector<rml_color_stop> &stops)
+{
+    rml_effect_parameters p = {};
+    p.value = Rml::Get(parameters, "value", 0.0f);
+    p.sigma = Rml::Get(parameters, "sigma", 0.0f);
+    p.angle = Rml::Get(parameters, "angle", 0.0f);
+    p.offset = vec2(Rml::Get(parameters, "offset", Rml::Vector2f()));
+    p.color = color(Rml::Get(parameters, "color", Rml::Colourb(0, 0, 0, 0)));
+    p.p0 = vec2(Rml::Get(parameters, "p0", Rml::Vector2f()));
+    p.p1 = vec2(Rml::Get(parameters, "p1", Rml::Vector2f()));
+    p.center = vec2(Rml::Get(parameters, "center", Rml::Vector2f()));
+    p.radius = vec2(Rml::Get(parameters, "radius", Rml::Vector2f()));
+    p.repeating = Rml::Get(parameters, "repeating", false);
+    if (const Rml::Variant *list = Rml::GetIf(parameters, "color_stop_list")) {
+        for (const Rml::ColorStop &stop : list->GetReference<Rml::ColorStopList>()) {
+            stops.push_back({ stop.position.number, color(stop.color) });
+        }
+    }
+    p.stops = stops.data();
+    p.stop_count = stops.size();
+    return p;
+}
+
 size_t copy(const Rml::String &string, char *buffer, size_t size)
 {
     if (size) {
@@ -415,18 +444,54 @@ public:
         return fn->save_layer_as_texture ? fn->save_layer_as_texture(user) : 0;
     }
 
+    Rml::CompiledFilterHandle SaveLayerAsMaskImage() override
+    {
+        return fn->save_layer_as_mask_image ? fn->save_layer_as_mask_image(user) : 0;
+    }
+
     Rml::CompiledFilterHandle CompileFilter(const Rml::String &name, const Rml::Dictionary &parameters) override
     {
-        const Rml::Variant *sigma = Rml::GetIf(parameters, "sigma");
-        return fn->compile_filter
-                 ? fn->compile_filter(user, name.c_str(), sigma ? sigma->Get<float>() : 0.0f)
-                 : 0;
+        if (!fn->compile_filter) {
+            return 0;
+        }
+        Rml::Vector<rml_color_stop> stops;
+        const rml_effect_parameters p = effect_parameters(parameters, stops);
+        return fn->compile_filter(user, name.c_str(), &p);
     }
 
     void ReleaseFilter(Rml::CompiledFilterHandle filter) override
     {
         if (fn->release_filter) {
             fn->release_filter(user, filter);
+        }
+    }
+
+    Rml::CompiledShaderHandle CompileShader(const Rml::String &name, const Rml::Dictionary &parameters) override
+    {
+        if (!fn->compile_shader) {
+            return 0;
+        }
+        Rml::Vector<rml_color_stop> stops;
+        const rml_effect_parameters p = effect_parameters(parameters, stops);
+        return fn->compile_shader(user, name.c_str(), &p);
+    }
+
+    void RenderShader(
+        Rml::CompiledShaderHandle shader,
+        Rml::CompiledGeometryHandle geometry,
+        Rml::Vector2f translation,
+        Rml::TextureHandle texture
+    ) override
+    {
+        if (fn->render_shader) {
+            fn->render_shader(user, shader, geometry, vec2(translation), texture);
+        }
+    }
+
+    void ReleaseShader(Rml::CompiledShaderHandle shader) override
+    {
+        if (fn->release_shader) {
+            fn->release_shader(user, shader);
         }
     }
 

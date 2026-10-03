@@ -4,7 +4,7 @@
 .toast {
     position: absolute; left: 0dp; right: 0dp; bottom: 0dp; display: flex; align-items: flex-start; gap: 9dp;
     padding: 10dp 10dp 10dp 12dp; background-color: var(--popover); border: 1dp var(--popover-edge); border-radius: 8dp;
-    transform-origin: 50% 0%; color: var(--foreground); overflow: hidden;
+    transform-origin: 50% 0%; color: var(--foreground); overflow: hidden; box-shadow: var(--shadow-overlay);
 }
 .toast .lead { font-size: var(--studio-font-15, 15dp); width: 16dp; line-height: var(--studio-line-18, 18dp); flex: 0 0 auto; }
 .toast[data-type=success] .lead { color: var(--success); }

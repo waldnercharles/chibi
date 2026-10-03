@@ -212,6 +212,303 @@ static void same_work(rml_backend_stats before, rml_backend_stats after)
     assert(after.cached_texture_bytes == before.cached_texture_bytes);
 }
 
+static rml_element *show_document(rml_backend *ui, const char *body, const char *name)
+{
+    char source[4096];
+    snprintf(source, sizeof source, "<rml><body style=\"margin:0;width:100%%;height:100%%;\">%s</body></rml>", body);
+    rml_element *doc = rml_context_load_document_from_memory(rml_backend_context(ui), source, name);
+    assert(doc);
+    rml_document_show(doc, RML_MODAL_NONE, RML_FOCUS_NONE, RML_SCROLL_FLAG_AUTO);
+    return doc;
+}
+
+static bool near_color(CF_Pixel p, int r, int g, int b, int a)
+{
+    return abs(p.colors.r - r) <= 24 && abs(p.colors.g - g) <= 24 &&
+           abs(p.colors.b - b) <= 24 && abs(p.colors.a - a) <= 24;
+}
+
+/* Rounded overflow clips children at the corners, a host surface included,
+   and a nested rounded container intersects its parent's mask. */
+static void check_clip_masks()
+{
+    enum
+    {
+        WIDTH = 96,
+        HEIGHT = 56
+    };
+    rml_backend *ui = rml_backend_create(WIDTH, HEIGHT, 1);
+    assert(ui);
+    CF_Texture texture = cf_make_texture(cf_texture_defaults(1, 1));
+    CF_Pixel red = { .colors = { .r = 255, .a = 255 } };
+    cf_texture_update(texture, &red, sizeof red);
+    rml_backend_set_texture_revision(ui, "clipped", texture.id, 1);
+    rml_element *doc = show_document(
+        ui,
+        "<div "
+        "style=\"position:absolute;left:8px;top:8px;width:32px;height:32px;"
+        "border-radius:12px;overflow:hidden;\">"
+        "<div "
+        "style=\"display:block;width:32px;height:32px;background-color:#00ff00;"
+        "\">"
+        "</div></div>"
+        "<div "
+        "style=\"position:absolute;left:48px;top:8px;width:40px;height:40px;"
+        "border-radius:16px;overflow:hidden;\">"
+        "<img src=\"kit:clipped\" "
+        "style=\"position:absolute;left:0;top:0;width:40px;"
+        "height:40px;\"/>"
+        "<div "
+        "style=\"position:absolute;left:20px;top:20px;width:20px;height:20px;"
+        "border-radius:8px;overflow:hidden;\">"
+        "<div "
+        "style=\"display:block;width:20px;height:20px;background-color:#0000ff;"
+        "\">"
+        "</div>"
+        "</div></div>",
+        "clip-masks"
+    );
+    CF_Canvas target = cf_make_canvas(cf_canvas_defaults(WIDTH, HEIGHT));
+    CF_Pixel pixels[WIDTH * HEIGHT];
+    for (int frame = 0; frame < 2; frame++) {
+        rml_backend_stats before = rml_backend_get_stats(ui);
+        render_pixels(ui, target, pixels, sizeof pixels);
+        if (frame) {
+            same_work(before, rml_backend_get_stats(ui));
+        }
+        assert(pixels[9 * WIDTH + 9].colors.a < 5);
+        assert(near_color(pixels[24 * WIDTH + 24], 0, 255, 0, 255));
+        assert(near_color(pixels[24 * WIDTH + 9], 0, 255, 0, 255));
+        /* The host surface's corner clips, while its middle shows. */
+        assert(pixels[9 * WIDTH + 49].colors.a < 5);
+        assert(near_color(pixels[20 * WIDTH + 60], 255, 0, 0, 255));
+        /* Outside the nested corner the surface shows; outside both, nothing. */
+        assert(near_color(pixels[29 * WIDTH + 69], 255, 0, 0, 255));
+        assert(near_color(pixels[38 * WIDTH + 78], 0, 0, 255, 255));
+        assert(near_color(pixels[38 * WIDTH + 82], 0, 0, 255, 255));
+        assert(pixels[46 * WIDTH + 86].colors.a < 5);
+    }
+    cf_destroy_canvas(target);
+    rml_document_close(doc);
+    rml_backend_destroy(ui);
+    cf_destroy_texture(texture);
+}
+
+/* Filters composite a layer through the GPU passes: blur spreads alpha past
+   its source, at full size and downsampled, a drop shadow lands at its
+   offset, opacity fades and grayscale mixes channels. */
+static void check_filters()
+{
+    enum
+    {
+        WIDTH = 224,
+        HEIGHT = 96
+    };
+    rml_backend *ui = rml_backend_create(WIDTH, HEIGHT, 1);
+    assert(ui);
+    rml_element *doc = show_document(
+        ui,
+        "<div "
+        "style=\"position:absolute;left:16px;top:16px;width:16px;height:16px;"
+        "background-color:#ff0000;filter:blur(3px);\"></div>"
+        "<div "
+        "style=\"position:absolute;left:56px;top:16px;width:16px;height:16px;"
+        "background-color:#ff0000;filter:drop-shadow(#0000ff 8px 8px "
+        "0px);\"></div>"
+        "<div "
+        "style=\"position:absolute;left:96px;top:16px;width:16px;height:16px;"
+        "background-color:#ff0000;filter:grayscale(1);\"></div>"
+        "<div "
+        "style=\"position:absolute;left:136px;top:16px;width:16px;height:16px;"
+        "background-color:#ff0000;filter:opacity(0.5);\"></div>"
+        "<div "
+        "style=\"position:absolute;left:176px;top:40px;width:24px;height:24px;"
+        "background-color:#ff0000;filter:blur(12px);\"></div>",
+        "filters"
+    );
+    CF_Canvas target = cf_make_canvas(cf_canvas_defaults(WIDTH, HEIGHT));
+    CF_Pixel pixels[WIDTH * HEIGHT];
+    for (int frame = 0; frame < 2; frame++) {
+        rml_backend_stats before = rml_backend_get_stats(ui);
+        render_pixels(ui, target, pixels, sizeof pixels);
+        if (frame) {
+            same_work(before, rml_backend_get_stats(ui));
+        }
+        CF_Pixel middle = pixels[24 * WIDTH + 24], spread = pixels[24 * WIDTH + 13];
+        assert(middle.colors.r > 200 && middle.colors.a > 150);
+        assert(
+            spread.colors.r > 200 && spread.colors.a > 10 &&
+            spread.colors.a < middle.colors.a
+        );
+        assert(pixels[24 * WIDTH + 3].colors.a < 5);
+        assert(near_color(pixels[24 * WIDTH + 64], 255, 0, 0, 255));
+        assert(near_color(pixels[36 * WIDTH + 76], 0, 0, 255, 255));
+        assert(pixels[36 * WIDTH + 60].colors.a < 5);
+        CF_Pixel gray = pixels[24 * WIDTH + 104];
+        assert(gray.colors.a > 240 && abs(gray.colors.r - gray.colors.g) < 8);
+        assert(gray.colors.r > 40 && gray.colors.r < 70);
+        CF_Pixel faded = pixels[24 * WIDTH + 144];
+        assert(faded.colors.r > 240 && faded.colors.a > 110 && faded.colors.a < 145);
+        CF_Pixel wide = pixels[52 * WIDTH + 188], tail = pixels[52 * WIDTH + 166];
+        assert(wide.colors.r > 200 && wide.colors.a > 60);
+        assert(
+            tail.colors.r > 200 && tail.colors.a > 5 &&
+            tail.colors.a < wide.colors.a
+        );
+    }
+    cf_destroy_canvas(target);
+    rml_document_close(doc);
+    rml_backend_destroy(ui);
+}
+
+/* A box-shadow renders its texture at the window origin, outside the cropped
+   paint run beside a host surface, and the whole texture must survive. */
+static void check_shadow_beside_surface()
+{
+    enum
+    {
+        WIDTH = 128,
+        HEIGHT = 96
+    };
+    rml_backend *ui = rml_backend_create(WIDTH, HEIGHT, 1);
+    assert(ui);
+    CF_Texture texture = cf_make_texture(cf_texture_defaults(1, 1));
+    CF_Pixel red = { .colors = { .r = 255, .a = 255 } };
+    cf_texture_update(texture, &red, sizeof red);
+    rml_backend_set_texture_revision(ui, "beside", texture.id, 1);
+    rml_element *doc = show_document(
+        ui,
+        "<img src=\"kit:beside\" "
+        "style=\"position:absolute;left:0;top:0;width:16px;"
+        "height:16px;\"/>"
+        "<div "
+        "style=\"position:absolute;left:72px;top:56px;width:24px;height:24px;"
+        "background-color:#ffffff;box-shadow:0px 4px 8px 0px "
+        "#0000ff80;\"></div>",
+        "shadow-beside-surface"
+    );
+    CF_Canvas target = cf_make_canvas(cf_canvas_defaults(WIDTH, HEIGHT));
+    CF_Pixel pixels[WIDTH * HEIGHT];
+    render_pixels(ui, target, pixels, sizeof pixels);
+    assert(near_color(pixels[8 * WIDTH + 8], 255, 0, 0, 255));
+    assert(near_color(pixels[57 * WIDTH + 73], 255, 255, 255, 255));
+    assert(near_color(pixels[68 * WIDTH + 84], 255, 255, 255, 255));
+    CF_Pixel shadow = pixels[84 * WIDTH + 84];
+    assert(shadow.colors.b > 200 && shadow.colors.a > 15 && shadow.colors.a < 100);
+    cf_destroy_canvas(target);
+    rml_document_close(doc);
+    rml_backend_destroy(ui);
+    cf_destroy_texture(texture);
+}
+
+/* Studio's overlay elevation: a wide, downsampled black blur with negative
+   spread darkens below the element and leaves the far field untouched. */
+static void check_overlay_shadow()
+{
+    enum
+    {
+        WIDTH = 160,
+        HEIGHT = 128
+    };
+    rml_backend *ui = rml_backend_create(WIDTH, HEIGHT, 1);
+    assert(ui);
+    rml_element *doc = rml_context_load_document_from_memory(
+        rml_backend_context(ui),
+        "<rml><head><style>"
+        "body { margin: 0; width: 100%; height: 100%; background-color: "
+        "#ffffff; "
+        "--lift: 0px 8px 24px -4px #00000073, 0px 1px 2px 0px #00000059; }"
+        "div { position: absolute; left: 48px; top: 24px; width: 64px; height: "
+        "48px; "
+        "background-color: #ffffff; border-radius: 8px; box-shadow: "
+        "var(--lift); }"
+        "</style></head><body><div/></body></rml>",
+        "overlay-shadow"
+    );
+    assert(doc);
+    rml_document_show(doc, RML_MODAL_NONE, RML_FOCUS_NONE, RML_SCROLL_FLAG_AUTO);
+    CF_Canvas target = cf_make_canvas(cf_canvas_defaults(WIDTH, HEIGHT));
+    CF_Pixel pixels[WIDTH * HEIGHT];
+    render_pixels(ui, target, pixels, sizeof pixels);
+    CF_Pixel below = pixels[80 * WIDTH + 80], far = pixels[120 * WIDTH + 4];
+    CF_Pixel inside = pixels[48 * WIDTH + 80];
+    assert(inside.colors.r > 250 && far.colors.r > 250);
+    /* CSS draws 213 here: the blur keeps the light the box hides. */
+    assert(
+        below.colors.r > 200 && below.colors.r < 225 &&
+        below.colors.r == below.colors.b
+    );
+    /* RmlUi keeps the shadow texture: the next frame drops the commands that
+       made it, and from then on frames repeat no work. */
+    render_pixels(ui, target, pixels, sizeof pixels);
+    assert(pixels[80 * WIDTH + 80].colors.r == below.colors.r);
+    rml_backend_stats settled = rml_backend_get_stats(ui);
+    render_pixels(ui, target, pixels, sizeof pixels);
+    same_work(settled, rml_backend_get_stats(ui));
+    cf_destroy_canvas(target);
+    rml_document_close(doc);
+    rml_backend_destroy(ui);
+}
+
+/* Gradient decorators draw through the gradient program, and a gradient
+   mask image fades an element through a saved mask layer. */
+static void check_gradients()
+{
+    enum
+    {
+        WIDTH = 96,
+        HEIGHT = 56
+    };
+    rml_backend *ui = rml_backend_create(WIDTH, HEIGHT, 1);
+    assert(ui);
+    rml_element *doc = rml_context_load_document_from_memory(
+        rml_backend_context(ui),
+        "<rml><head><style>"
+        "body { margin: 0; width: 100%; height: 100%; }"
+        "div { position: absolute; }"
+        "#linear { left: 8px; top: 8px; width: 64px; height: 16px; "
+        "decorator: linear-gradient(90deg, #ff0000, #0000ff); }"
+        "#radial { left: 8px; top: 28px; width: 24px; height: 24px; "
+        "decorator: radial-gradient(circle, #ffffff, #000000); }"
+        "#stripes { left: 40px; top: 28px; width: 24px; height: 24px; "
+        "decorator: repeating-linear-gradient(90deg, #ff0000 0px, #ff0000 4px, "
+        "#00ff00 4px, #00ff00 8px); }"
+        "#masked { left: 72px; top: 28px; width: 16px; height: 24px; "
+        "background-color: #ff0000; "
+        "mask-image: linear-gradient(90deg, #000000ff, #00000000); }"
+        "</style></head><body>"
+        "<div id=\"linear\"/><div id=\"radial\"/><div id=\"stripes\"/><div "
+        "id=\"masked\"/>"
+        "</body></rml>",
+        "gradients"
+    );
+    assert(doc);
+    rml_document_show(doc, RML_MODAL_NONE, RML_FOCUS_NONE, RML_SCROLL_FLAG_AUTO);
+    CF_Canvas target = cf_make_canvas(cf_canvas_defaults(WIDTH, HEIGHT));
+    CF_Pixel pixels[WIDTH * HEIGHT];
+    render_pixels(ui, target, pixels, sizeof pixels);
+    CF_Pixel left = pixels[16 * WIDTH + 9], right = pixels[16 * WIDTH + 70];
+    CF_Pixel middle = pixels[16 * WIDTH + 40];
+    assert(left.colors.r > 220 && left.colors.b < 40 && left.colors.a > 240);
+    assert(right.colors.b > 220 && right.colors.r < 40);
+    assert(
+        middle.colors.r > 90 && middle.colors.r < 170 && middle.colors.b > 90 &&
+        middle.colors.b < 170
+    );
+    CF_Pixel center = pixels[40 * WIDTH + 20], corner = pixels[29 * WIDTH + 9];
+    assert(center.colors.r > 200 && corner.colors.r < 60 && corner.colors.a > 240);
+    assert(near_color(pixels[40 * WIDTH + 42], 255, 0, 0, 255));
+    assert(near_color(pixels[40 * WIDTH + 46], 0, 255, 0, 255));
+    assert(near_color(pixels[40 * WIDTH + 50], 255, 0, 0, 255));
+    /* A mask image fades the element as its gradient's alpha does. */
+    CF_Pixel opaque = pixels[40 * WIDTH + 73], faded = pixels[40 * WIDTH + 86];
+    assert(opaque.colors.r > 240 && opaque.colors.a > 220);
+    assert(faded.colors.a < 40 && faded.colors.a < opaque.colors.a);
+    cf_destroy_canvas(target);
+    rml_document_close(doc);
+    rml_backend_destroy(ui);
+}
+
 /* An unchanged document reuses its pixels, not merely the canvas handle.
    Transform, visibility, target size, and document removal invalidate it. */
 static void check_static_output_cache()
@@ -1244,6 +1541,11 @@ int rmlui_render_run(const char *program, bool gles)
     cf_destroy_canvas(witness);
     check_scissor_left_behind();
     check_box_shadows();
+    check_clip_masks();
+    check_filters();
+    check_gradients();
+    check_shadow_beside_surface();
+    check_overlay_shadow();
     check_static_output_cache();
     check_external_output_cache();
     check_two_external_surfaces();
@@ -1257,8 +1559,8 @@ int rmlui_render_run(const char *program, bool gles)
     cf_destroy_app();
     printf(
         "RmlUi render PASS%s: retained UI renders beside queued layer-0 draws "
-        "under a scissor another pass left, and renders focus rings and "
-        "blurred shadows\n",
+        "under a scissor another pass left, and renders focus rings, blurred "
+        "shadows, rounded clip masks, filters and gradients\n",
         gles ? " on GLES" : ""
     );
     return 0;

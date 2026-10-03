@@ -4,13 +4,12 @@
 .popup {
     position: absolute; pointer-events: auto; background-color: var(--popover); border: 1dp var(--popover-edge);
         border-radius: var(--r-lg); padding: 4dp; min-width: 180dp; max-width: 480dp; color: var(--foreground);
-    display: block; z-index: 20;
+    display: block; z-index: 20; box-shadow: var(--shadow-overlay);
 }
 .popup.struct-editor { min-width: 320dp; }
 .popover {
     width: 288dp; min-width: 180dp; max-width: 480dp; padding: var(--studio-height-16, 16dp);
     border: 1dp var(--border); border-radius: var(--radius, 6dp);
-    box-shadow: 0dp 4dp 6dp -1dp #0000001a, 0dp 2dp 4dp -2dp #0000001a;
     color: var(--foreground); font-size: var(--studio-font-14, 14dp); line-height: var(--studio-line-20, 20dp);
 }
 .popover .btn { height: var(--studio-height-36, 36dp); padding: 0dp var(--studio-height-16, 16dp); border-radius: var(--r, 4dp); font-size: var(--studio-font-14, 14dp); }
@@ -70,7 +69,7 @@ body.graph-canvas, body.graph-canvas.comfortable { --dropdown-list-h: 154dp; --d
 .tooltip {
     position: absolute; pointer-events: none; background-color: var(--tooltip); border: 1dp var(--tooltip-edge); border-radius: 0.36em;
     padding: 0.36em 0.64em; display: block; color: var(--foreground); line-height: 1.45em;
-    z-index: 40;
+    z-index: 40; box-shadow: var(--shadow-tooltip);
 }
 .tip-head { display: flex; align-items: center; gap: 0.73em; white-space: nowrap; }
 .tip-about { display: block; max-width: 23.6em; margin-top: 0.18em; line-height: 1.36em; color: var(--muted-foreground); white-space: normal; }

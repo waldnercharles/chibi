@@ -11,7 +11,7 @@ body {
 }
 .dialog-panel {
   position: relative; margin: auto; padding: 12dp; color: var(--foreground); background-color: var(--popover);
-  border: 1dp var(--popover-edge); border-radius: var(--r-lg);
+  border: 1dp var(--popover-edge); border-radius: var(--r-lg); box-shadow: var(--shadow-overlay);
   animation: 0.14s cubic-out 1 dialog-fade;
 }
 body.window .dialog-panel {

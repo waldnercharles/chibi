@@ -74,6 +74,31 @@ extern "C"
         RML_CLIP_MASK_INTERSECT,
     } rml_clip_mask_operation;
 
+    /* A gradient's Rml::ColorStop, at a normalized position; the color is
+     * premultiplied. */
+    typedef struct rml_color_stop
+    {
+        float position;
+        rml_color color;
+    } rml_color_stop;
+
+    /* The Rml::Dictionary a filter or shader compiles from. A key RmlUi did
+     * not pass reads as zero. */
+    typedef struct rml_effect_parameters
+    {
+        float value;     /* opacity and the color filters */
+        float sigma;     /* blur, drop-shadow */
+        float angle;     /* conic-gradient, radians */
+        rml_vec2 offset; /* drop-shadow */
+        rml_color color; /* drop-shadow, straight alpha */
+        rml_vec2 p0, p1; /* linear-gradient */
+        rml_vec2 center; /* radial- and conic-gradient */
+        rml_vec2 radius; /* radial-gradient */
+        bool repeating;
+        const rml_color_stop *stops;
+        size_t stop_count;
+    } rml_effect_parameters;
+
     typedef enum rml_blend_mode
     {
         RML_BLEND_MODE_BLEND,
@@ -316,8 +341,19 @@ extern "C"
         );
         void (*pop_layer)(void *user);
         uintptr_t (*save_layer_as_texture)(void *user);
-        uintptr_t (*compile_filter)(void *user, const char *name, float sigma);
+        /* Returns a filter handle that masks the next composite. */
+        uintptr_t (*save_layer_as_mask_image)(void *user);
+        uintptr_t (*compile_filter)(void *user, const char *name, const rml_effect_parameters *parameters);
         void (*release_filter)(void *user, uintptr_t filter);
+        uintptr_t (*compile_shader)(void *user, const char *name, const rml_effect_parameters *parameters);
+        void (*render_shader)(
+            void *user,
+            uintptr_t shader,
+            uintptr_t geometry,
+            rml_vec2 translation,
+            uintptr_t texture
+        );
+        void (*release_shader)(void *user, uintptr_t shader);
     } rml_render_interface;
 
     /* A custom element's Element overrides; any may be NULL. release runs

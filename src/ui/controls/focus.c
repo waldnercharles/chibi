@@ -1,20 +1,10 @@
 /* Tab order among a subtree's focusable elements, as RmlUi's own Tab search
  * decides what can take focus. */
 #include "support/xalloc.h"
-#include "ui/controls/controls.h"
+#include "ui/controls/controls_internal.h"
 
 #include <stdlib.h>
 #include <string.h>
-
-static bool within(const rml_element *el, const rml_element *ancestor)
-{
-    for (; el; el = rml_element_parent(el)) {
-        if (el == ancestor) {
-            return true;
-        }
-    }
-    return false;
-}
 
 static bool tabbable(rml_element *el)
 {
@@ -32,7 +22,7 @@ bool focus_step(rml_element *root, rml_element *from, int step, bool wrap, rml_e
     rml_element **stops = xmalloc((size_t)(count + 1) * sizeof *stops);
     rml_element_query_selector_all(root, "*", stops, count);
     for (int i = 0; i < count; i++) {
-        if (tabbable(stops[i]) && (!skip || !within(stops[i], skip))) {
+        if (tabbable(stops[i]) && (!skip || !control_within(stops[i], skip))) {
             at = stops[i] == from ? kept : at;
             stops[kept++] = stops[i];
         }

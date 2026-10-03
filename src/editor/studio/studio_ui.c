@@ -640,11 +640,6 @@ const char *studio_ui_panel_name(const studio *s, int index)
     return s->ui->panels[index].name;
 }
 
-/* Each panel has a host of its own, keyed by its name: an area switching
- * panels, as the Scene to the Canvas, installs the new one in a new host,
- * while the old host leaves with its elements and their views. Reusing the
- * host would move the old panel's elements as it takes the data model, and
- * their views would bind again to text already shown. */
 rml_element *studio_ui_area(studio *s, int area, const char *name)
 {
     panel *p;
@@ -652,7 +647,7 @@ rml_element *studio_ui_area(studio *s, int area, const char *name)
     if (!document) {
         return NULL;
     }
-    rml_element *host = kit_host(s->kit, name, "area-panel");
+    rml_element *host = kit_host(s->kit, "panel", "area-panel");
     show_panel(s, p, &s->ui->areas[area], host, document);
     return host;
 }

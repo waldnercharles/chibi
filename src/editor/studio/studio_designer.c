@@ -534,7 +534,7 @@ static void row_drop(studio *s, const studio_designer *d, int element, tree_requ
                               ? UI_SOURCE_INSIDE
                               : drop_place(s, kit_item_rect(k), ui_design_container(d->rml, element));
     bool over = kit_dragging(k, DESIGNER_DRAG) && kit_item_hovered(k);
-    kit_attr(k, "data-drop", over ? PLACE_NAMES[place] : "none");
+    kit_attr(k, "data-drop-zone", over ? PLACE_NAMES[place] : "none");
     char payload[sizeof request->payload];
     if (kit_drop_target(k, DESIGNER_DRAG, payload, sizeof payload)) {
         *request = (tree_request){ .action = DO_DROP, .element = element, .place = place };
@@ -565,7 +565,7 @@ static void carry_marks(kit *k, const studio_designer *d, int element)
         return;
     }
     const ui_design_slot *slot = &d->carry.at;
-    kit_attr(k, "data-drop", slot->target == element ? PLACE_NAMES[slot->place] : "none");
+    kit_attr(k, "data-drop-zone", slot->target == element ? PLACE_NAMES[slot->place] : "none");
     kit_flag(k, "data-dragging", element >= 0 && element == d->carry.element);
 }
 

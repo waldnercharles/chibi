@@ -24,6 +24,10 @@ add_library(chibi_ui STATIC
     src/ui/controls/live_text.c
     src/ui/controls/number_field.c
     src/ui/controls/splitter.c
+    # Lists and drag (workstream F4): element-level drag and drop and
+    # virtualized list windows for every context.
+    src/ui/drag.c
+    src/ui/list.c
     # The embedded faces, loaded by the editor kit and game UI alike.
     ${GEN_NERD_FONT} ${GEN_UI_FONT} ${GEN_UI_BOLD_FONT}
     ${GEN_UI_MEDIUM_FONT} ${GEN_UI_SEMIBOLD_FONT} ${GEN_UI_NUMERIC_FONT} ${GEN_STUDIO_FONTS}

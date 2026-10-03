@@ -287,33 +287,13 @@ void studio_outliner_add(yyjson_mut_doc *doc)
 
 /* ---------- Values, written in place ---------- */
 
-static bool put_text(yyjson_mut_doc *doc, yyjson_mut_val *object, const char *name, const char *text)
-{
-    yyjson_mut_val *value = member(object, name);
-    if (!strcmp(yyjson_mut_get_str(value), text)) {
-        return false;
-    }
-    ui_data_set_text(doc, value, text);
-    return true;
-}
-
-static bool put_bool(yyjson_mut_val *object, const char *name, bool on)
-{
-    yyjson_mut_val *value = member(object, name);
-    if (yyjson_mut_get_bool(value) == on) {
-        return false;
-    }
-    yyjson_mut_set_bool(value, on);
-    return true;
-}
-
 static bool put_glyph(yyjson_mut_doc *doc, yyjson_mut_val *object, const char *name, uint32_t icon)
 {
     char glyph[5] = "";
     if (icon) {
         studio_glyph(glyph, icon);
     }
-    return put_text(doc, object, name, glyph);
+    return ui_data_put_text(doc, object, name, glyph);
 }
 
 /* Gives `rows` `length` items, adding and removing at its end, so rows
@@ -362,7 +342,7 @@ static bool show_prototypes(studio *s, yyjson_mut_doc *doc, yyjson_mut_val *list
             continue;
         }
         yyjson_mut_val *option = yyjson_mut_arr_iter_next(&it);
-        changed |= put_text(doc, option, "label", prototype->name);
+        changed |= ui_data_put_text(doc, option, "label", prototype->name);
         changed |= put_glyph(
             doc,
             option,
@@ -382,19 +362,19 @@ static bool show_menu(studio *s, yyjson_mut_doc *doc, yyjson_mut_val *menu)
     snprintf(group, sizeof group, "%d objects", count);
     yyjson_mut_val *prototype = member(menu, "prototype");
     yyjson_mut_val *spawn = member(menu, "spawnBreak");
-    bool changed = put_text(
+    bool changed = ui_data_put_text(
         doc,
         menu,
         "label",
         count > 1 || !actor ? group : actor->name
     );
-    changed |= put_bool(menu, "actor", actor != NULL);
-    changed |= put_bool(menu, "live", studio_live(s));
+    changed |= ui_data_put_bool(menu, "actor", actor != NULL);
+    changed |= ui_data_put_bool(menu, "live", studio_live(s));
     changed |= put_glyph(doc, prototype, "icon", KIT_ICON_PROTOTYPE);
-    changed |= put_bool(prototype, "disabled", !actor);
+    changed |= ui_data_put_bool(prototype, "disabled", !actor);
     bool spawning = actor &&
                     app_scene_authoring_spawn_break(s->scene, actor->prototype_name);
-    changed |= put_bool(spawn, "checked", spawning);
+    changed |= ui_data_put_bool(spawn, "checked", spawning);
     return changed;
 }
 
@@ -410,14 +390,14 @@ static bool show_header(studio *s, yyjson_mut_doc *doc, yyjson_mut_val *outliner
     char count[16], title[128];
     snprintf(count, sizeof count, "%d", shown);
     yyjson_mut_val *root = member(outliner, "root");
-    bool changed = put_text(doc, outliner, "count", count);
-    changed |= put_text(doc, outliner, "empty", empty);
-    changed |= put_text(doc, outliner, "query", filter);
-    changed |= put_text(doc, outliner, "rename", s->rename.name);
-    changed |= put_text(doc, root, "label", studio_scene_title(s->scene, title, sizeof title));
+    bool changed = ui_data_put_text(doc, outliner, "count", count);
+    changed |= ui_data_put_text(doc, outliner, "empty", empty);
+    changed |= ui_data_put_text(doc, outliner, "query", filter);
+    changed |= ui_data_put_text(doc, outliner, "rename", s->rename.name);
+    changed |= ui_data_put_text(doc, root, "label", studio_scene_title(s->scene, title, sizeof title));
     changed |= put_glyph(doc, root, "icon", KIT_ICON_SCENE);
-    changed |= put_bool(root, "parent", true);
-    changed |= put_bool(root, "open", !s->outliner_collapsed);
+    changed |= ui_data_put_bool(root, "parent", true);
+    changed |= ui_data_put_bool(root, "open", !s->outliner_collapsed);
     snprintf(s->outliner.query, sizeof s->outliner.query, "%s", filter);
     s->outliner.open = !s->outliner_collapsed;
     return changed;
@@ -444,17 +424,17 @@ static bool show_row(studio *s, yyjson_mut_doc *doc, yyjson_mut_val *row, int in
     /* Every selected row shows; the active one stands out (Blender). */
     bool selected = scene_instance_selected(scene, index),
          active = scene->selected == index;
-    bool changed = put_text(doc, row, "id", id);
-    changed |= put_text(doc, row, "label", actor->name);
+    bool changed = ui_data_put_text(doc, row, "id", id);
+    changed |= ui_data_put_text(doc, row, "label", actor->name);
     changed |= put_glyph(doc, row, "icon", studio_prototype_icon(s, actor->prototype_name));
-    changed |= put_text(doc, row, "behaviors", behaviors);
-    changed |= put_text(doc, row, "drop", drop);
-    changed |= put_bool(row, "selected", selected);
-    changed |= put_bool(row, "active", active);
-    changed |= put_bool(row, "marked", selected && !active);
-    changed |= put_bool(row, "hidden", view & APP_SCENE_VIEW_HIDDEN);
-    changed |= put_bool(row, "locked", view & APP_SCENE_VIEW_LOCKED);
-    changed |= put_bool(row, "renaming", s->rename.outliner && s->rename.entity == entity);
+    changed |= ui_data_put_text(doc, row, "behaviors", behaviors);
+    changed |= ui_data_put_text(doc, row, "drop", drop);
+    changed |= ui_data_put_bool(row, "selected", selected);
+    changed |= ui_data_put_bool(row, "active", active);
+    changed |= ui_data_put_bool(row, "marked", selected && !active);
+    changed |= ui_data_put_bool(row, "hidden", view & APP_SCENE_VIEW_HIDDEN);
+    changed |= ui_data_put_bool(row, "locked", view & APP_SCENE_VIEW_LOCKED);
+    changed |= ui_data_put_bool(row, "renaming", s->rename.outliner && s->rename.entity == entity);
     return changed;
 }
 
@@ -515,7 +495,7 @@ static bool show_view(
     bool root = length > 0 && first == 0;
     int start = first > 0 ? first - 1 : 0;
     yyjson_mut_val *shown = member(view, "rows");
-    *changed |= put_bool(view, "root", root);
+    *changed |= ui_data_put_bool(view, "root", root);
     *changed |= fit(doc, shown, length - root);
     yyjson_mut_val *row;
     yyjson_mut_arr_iter it = yyjson_mut_arr_iter_with(shown);
@@ -563,8 +543,8 @@ bool studio_outliner_header_sync(studio *s, const studio_panel_sync *at)
 {
     yyjson_mut_val *header = at->variable;
     bool changed = show_prototypes(s, at->doc, member(header, "prototypes"));
-    changed |= put_bool(header, "editable", studio_editable(s));
-    changed |= put_text(
+    changed |= ui_data_put_bool(header, "editable", studio_editable(s));
+    changed |= ui_data_put_text(
         at->doc,
         header,
         "isolate",

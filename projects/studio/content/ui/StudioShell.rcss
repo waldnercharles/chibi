@@ -22,5 +22,6 @@
 @import "theme/chart.rcss";
 @import "theme/inspect.rcss";
 @import "theme/workspace.rcss";
+@import "theme/scene.rcss";
 @import "Properties.rcss";
 @import "theme/graph.rcss";

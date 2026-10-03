@@ -274,7 +274,7 @@ static bool SDLCALL queue_event(void *user, SDL_Event *event)
     return true;
 }
 
-static bool studio_key_pressed(const studio *s, SDL_Keycode key)
+bool studio_key_pressed(const studio *s, SDL_Keycode key)
 {
     for (int i = 0; i < acount(s->keys); i++) {
         if (s->keys[i].key == key) {
@@ -737,6 +737,7 @@ static void draw_viewport(studio *s)
         return;
     }
     engine_viewport_set_host_input(s->viewport, &input);
+    studio_scene_tools(s);
     app_scene_authoring_draw_viewport(s->scene, s->viewport);
     rml_backend_set_texture(s->backend, "viewport", engine_viewport_texture(s->viewport));
     studio_ui_error(s, render_ui_error(engine_viewport_ui(s->viewport)));

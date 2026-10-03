@@ -114,6 +114,8 @@ void test_kit_slot();
 
 /* ---------- Wave 2 follow-ups (workstream P) ---------- */
 void test_studio_zoom();
+/* The Scene's transform tools. */
+void test_scene_gizmo(const char *program);
 
 /* ---------- Native elements for authored UI (workstream N) ---------- */
 void test_ui_motion();
@@ -298,6 +300,7 @@ TEST_CASE(all_checks)
     test_ui_designer();
     /* ---------- Wave 2 follow-ups (workstream P) ---------- */
     test_studio_zoom();
+    test_scene_gizmo(program_name);
     /* ---------- Native elements for authored UI (workstream N) ---------- */
     test_ui_motion();
     /* ---------- arena2d end to end (wave 3, workstream X) ---------- */

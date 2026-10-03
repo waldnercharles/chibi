@@ -2,9 +2,12 @@
 #include "editor/studio/studio_internal.h"
 #include "support/array.h"
 
+#include <assert.h>
 #include <ctype.h>
 #include <math.h>
+#include <stddef.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 bool studio_editable(const studio *s)
@@ -132,6 +135,69 @@ static void view_zoom_menu(studio *s, int area)
 static bool canvas_header(studio *s, int area);
 static bool canvas_body(studio *s);
 
+/* The settings table's Grid Increment row, whose presets are its choices. */
+static const studio_setting *increment_setting()
+{
+    for (int i = 0; i < studio_setting_count; i++) {
+        if (studio_settings[i].offset == offsetof(studio_prefs, scene_increment)) {
+            return &studio_settings[i];
+        }
+    }
+    assert(!"the settings table has Grid Increment");
+    return NULL;
+}
+
+float studio_grid_increment(const studio *s, int step)
+{
+    const studio_setting *setting = increment_setting();
+    float current = s->prefs.scene_increment, next = current;
+    for (int i = 0; i < setting->choice_count; i++) {
+        float up = strtof(setting->choices[setting->choice_count - 1 - i].value, NULL);
+        float down = strtof(setting->choices[i].value, NULL);
+        next = step > 0 && up > current ? up : next;
+        next = step < 0 && down < current ? down : next;
+    }
+    return next;
+}
+
+/* Snapping and the grid increment, as Unity's grid snapping toolbar: the
+   magnet toggles it, and the increment beside it chooses the step. */
+static void snap_controls(studio *s, int area)
+{
+    kit *k = s->kit;
+    kit_push(k, "snapping", NULL, "snap-controls");
+    studio_command_info snap = studio_command_describe(s, STUDIO_COMMAND_TOGGLE_SNAP);
+    kit_button_desc toggle = { .icon = snap.icon,
+                               .tip = snap.label,
+                               .shortcut = snap.shortcut,
+                               .flags = s->prefs.scene_snap ? KIT_ON : 0 };
+    if (kit_button(k, "snap", &toggle)) {
+        studio_command_run(s, STUDIO_COMMAND_TOGGLE_SNAP);
+    }
+    char key[24], label[16];
+    snprintf(key, sizeof key, "increment:%d", area);
+    snprintf(label, sizeof label, "%g", s->prefs.scene_increment);
+    kit_button_desc increment = { .label = label, .cls = "menu-btn", .tip = "Grid Increment" };
+    if (kit_button(k, "increment", &increment)) {
+        kit_popup_open(k, key);
+    }
+    kit_pop(k);
+    if (!kit_popup_begin(k, key, "menu")) {
+        return;
+    }
+    const studio_setting *setting = increment_setting();
+    kit_menu_group(k, "group", "Grid Increment");
+    for (int i = 0; i < setting->choice_count; i++) {
+        float value = strtof(setting->choices[i].value, NULL);
+        kit_menu_item_desc item = { .label = setting->choices[i].label,
+                                    .checked = value == s->prefs.scene_increment };
+        if (kit_menu_item(k, setting->choices[i].value, &item)) {
+            s->prefs.scene_increment = value;
+        }
+    }
+    kit_popup_end(k);
+}
+
 void studio_scene_header(studio *s, int area)
 {
     kit *k = s->kit;
@@ -162,6 +228,8 @@ void studio_scene_header(studio *s, int area)
         if (kit_menu_item(k, "reset", &reset)) {
             engine_viewport_reset_camera(s->viewport);
         }
+        kit_menu_separator(k, "s0");
+        studio_command_item(s, STUDIO_COMMAND_TOGGLE_GRID);
         kit_menu_separator(k, "s1");
         view_zoom_items(s);
         kit_popup_end(k);
@@ -173,6 +241,7 @@ void studio_scene_header(studio *s, int area)
     if (fabsf(s->view.zoom - 1) > 0.005f) {
         view_zoom_menu(s, area);
     }
+    snap_controls(s, area);
     kit_button_desc frame = { .icon = KIT_ICON_FRAME,
                               .label = "Frame",
                               .tip = "Frame selected",
@@ -193,16 +262,31 @@ static void crop_view(studio *s)
     kit_attr(s->kit, "rect", crop);
 }
 
+/* A tool on the shelf: pressed while active, its name and key in its tip. */
+static void tool_button(studio *s, studio_command command)
+{
+    studio_command_info info = studio_command_describe(s, command);
+    kit_button_desc button = { .icon = info.icon,
+                               .tip = info.menu,
+                               .shortcut = info.shortcut,
+                               .flags = studio_command_checked(s, command) > 0 ? KIT_ON
+                                                                               : 0 };
+    if (kit_button(s->kit, info.id, &button)) {
+        studio_command_run(s, command);
+    }
+    kit_attr(s->kit, "data-tip-side", "right");
+}
+
 /* The Scene's tool shelf and the label naming its view and selection. */
 static void view_overlay(studio *s)
 {
     kit *k = s->kit;
     kit_push(k, "tools", NULL, "toolshelf");
     kit_presence(k);
-    kit_button_desc select = { .icon = KIT_ICON_SELECT, .tip = "Select", .flags = KIT_ON };
-    kit_button(k, "select", &select);
-    kit_tip(k, "Select", NULL, NULL);
-    kit_attr(k, "data-tip-side", "right");
+    for (int tool = 0; tool < SCENE_TOOL_COUNT; tool++) {
+        tool_button(s, STUDIO_COMMAND_SELECT_TOOL + tool);
+    }
+    kit_leaf(k, "sep", NULL, "shelf-sep");
     kit_button_desc frame = { .icon = KIT_ICON_FRAME,
                               .tip = "Frame selected",
                               .shortcut = "F",
@@ -283,6 +367,42 @@ void studio_scene_body(studio *s, int area)
         kit_tip(k, "Lighting adjusted", NULL, warning);
     }
     kit_pop(k);
+}
+
+void studio_scene_tools(studio *s)
+{
+    scene_gizmo *g = &s->scene->gizmo;
+    bool gesture = g->active != SCENE_GIZMO_NONE;
+    g->in = (scene_tool_input){
+        .tool = s->prefs.tool,
+        .grid = s->prefs.scene_grid,
+        .snap = s->prefs.scene_snap,
+        .increment = s->prefs.scene_increment,
+        .shift = (s->mods & SDL_KMOD_SHIFT) != 0,
+        .ctrl = (s->mods & SDL_KMOD_CTRL) != 0,
+        .alt = (s->mods & SDL_KMOD_ALT) != 0,
+        .axis_x = g->modal && studio_key_pressed(s, SDLK_X),
+        .axis_y = g->modal && studio_key_pressed(s, SDLK_Y),
+        .confirm = g->modal && (studio_key_pressed(s, SDLK_RETURN) ||
+                                studio_key_pressed(s, SDLK_KP_ENTER)),
+        .cancel = gesture &&
+                  (studio_key_pressed(s, SDLK_ESCAPE) || s->surface.pressed[1]),
+    };
+    /* A gesture's change shows live and is reported once it is recorded. */
+    if (gesture && g->status[0]) {
+        snprintf(s->status, sizeof s->status, "%s", g->status);
+        s->status_time = s->time;
+        s->scene_status = true;
+    }
+    if (g->report[0]) {
+        studio_report(s, g->report);
+        g->report[0] = '\0';
+        s->scene_status = false;
+    }
+    if (!gesture && s->scene_status) {
+        s->status[0] = '\0';
+        s->scene_status = false;
+    }
 }
 
 /* ---------- Outliner ---------- */

@@ -17,6 +17,7 @@ const studio_settings_category_info studio_settings_categories[STUDIO_SETTINGS_C
     [STUDIO_SETTINGS_APPEARANCE] = { "appearance", "Appearance", KIT_ICON_MATERIAL, false },
     [STUDIO_SETTINGS_GRAPH] = { "graph", "Graph", KIT_ICON_GRAPH, false },
     [STUDIO_SETTINGS_TEXT] = { "text", "Text Editor", KIT_ICON_EXPRESSION, false },
+    [STUDIO_SETTINGS_SCENE] = { "scene", "Scene", KIT_ICON_VIEWPORT, false },
     [STUDIO_SETTINGS_KEYBOARD] = { "keyboard", "Keyboard", KIT_ICON_KEYBOARD, false },
     [STUDIO_SETTINGS_PROJECT] = { "project", "General", KIT_ICON_SETTINGS, true },
 };
@@ -93,6 +94,12 @@ static const studio_setting_choice UI_SCALES[] = {
     { "0.8", "80%" },   { "0.9", "90%" },   { "1", "100%" },
     { "1.1", "110%" },  { "1.25", "125%" }, { "1.5", "150%" },
     { "1.75", "175%" }, { "2", "200%" },
+};
+
+/* The grid increments snapping offers, in world units: 32 is a meter. */
+static const studio_setting_choice GRID_INCREMENTS[] = {
+    { "1", "1" },   { "4", "4" },   { "8", "8" },     { "16", "16" },
+    { "32", "32" }, { "64", "64" }, { "128", "128" },
 };
 
 #define FIELD(name)                                                            \
@@ -258,6 +265,39 @@ const studio_setting studio_settings[] = {
       .type = STUDIO_SETTING_BOOL,
       FIELD(code_wrap),
       .fallback = 1 },
+    { .key = "scene.grid",
+      .save = "sceneGrid",
+      .category = STUDIO_SETTINGS_SCENE,
+      .label = "Show Grid",
+      .description = "Draws the grid under objects while a 2D scene is "
+                     "edited.",
+      .keywords = "lines axes overlay",
+      .type = STUDIO_SETTING_BOOL,
+      FIELD(scene_grid),
+      .fallback = 1 },
+    { .key = "scene.snap",
+      .save = "sceneSnap",
+      .category = STUDIO_SETTINGS_SCENE,
+      .label = "Snap to Grid",
+      .description = "Moved and resized objects land on the grid increment, "
+                     "and rotations on 15\xc2\xb0 steps. Holding Ctrl while "
+                     "dragging does the opposite.",
+      .keywords = "magnet align round increment",
+      .type = STUDIO_SETTING_BOOL,
+      FIELD(scene_snap) },
+    { .key = "scene.gridIncrement",
+      .save = "sceneGridIncrement",
+      .category = STUDIO_SETTINGS_SCENE,
+      .label = "Grid Increment",
+      .description = "The grid's spacing in world units, and the step "
+                     "snapping moves by. 32 units are a meter.",
+      .keywords = "size spacing step snap units",
+      .type = STUDIO_SETTING_NUMBER,
+      FIELD(scene_increment),
+      CHOICES(GRID_INCREMENTS),
+      .min = 1,
+      .max = 128,
+      .fallback = 32 },
 };
 const int studio_setting_count = sizeof studio_settings / sizeof *studio_settings;
 

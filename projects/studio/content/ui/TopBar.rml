@@ -73,6 +73,18 @@
         <hr/>
         <li command="openPrototype"/>
         <li command="addComponent"/>
+        <hr/>
+        <menu label="Transform">
+          <li command="selectTool"/>
+          <li command="moveTool"/>
+          <li command="rotateTool"/>
+          <li command="scaleTool"/>
+          <hr/>
+          <li command="grab"/>
+          <li command="toggleSnap"/>
+          <li command="finerGrid"/>
+          <li command="coarserGrid"/>
+        </menu>
       </menu>
       <menu label="Play">
         <li command="play"/>

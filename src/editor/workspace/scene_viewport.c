@@ -4,6 +4,7 @@
 #include "render/appearance_geometry.h"
 #include "render/arena3d.h"
 #include "render/geometry_2d.h"
+#include "render/grid_2d.h"
 #include "render/mesh_surface.h"
 #include "render/sdf_motion.h"
 #include "render/shader_catalog.h"
@@ -291,6 +292,36 @@ static bool selection_bounds(
     return true;
 }
 
+static void delete_selection(app_scene_authoring *scene)
+{
+    finish_transform_edit(scene, false);
+    ecs_entity *remove = NULL;
+    for (int i = 0; i < acount(scene->actors); i++) {
+        if (scene->actors[i].marked || i == scene->selected) {
+            apush(remove, scene->actors[i].entity);
+        }
+    }
+    scene_history_begin_group(scene->history);
+    for (int j = acount(remove) - 1; j >= 0; j--) {
+        for (int i = 0; i < acount(scene->actors); i++) {
+            if (ecs_entity_to_u64(scene->actors[i].entity) ==
+                ecs_entity_to_u64(remove[j])) {
+                scene->selected = i;
+                app_scene_authoring_delete_instance(scene);
+                break;
+            }
+        }
+    }
+    scene_history_end_group(scene->history);
+    afree(remove);
+    scene->selected = -1;
+    scene->runtime_selected = (ecs_entity){ 0 };
+    for (int i = 0; i < acount(scene->actors); i++) {
+        scene->actors[i].marked = false;
+    }
+    sync_editor_inspection(scene);
+}
+
 static void edit_scene_pointer(app_scene_authoring *scene, engine_viewport *viewport)
 {
     engine_viewport_pointer pointer;
@@ -299,33 +330,8 @@ static void edit_scene_pointer(app_scene_authoring *scene, engine_viewport *view
         scene->selection_scale = pointer.world_per_pixel;
     }
     if (pointer.delete_pressed && scene_can_move(scene) &&
-        !scene->runtime_snapshot_valid) {
-        finish_transform_edit(scene, false);
-        ecs_entity *remove = NULL;
-        for (int i = 0; i < acount(scene->actors); i++) {
-            if (scene->actors[i].marked || i == scene->selected) {
-                apush(remove, scene->actors[i].entity);
-            }
-        }
-        scene_history_begin_group(scene->history);
-        for (int j = acount(remove) - 1; j >= 0; j--) {
-            for (int i = 0; i < acount(scene->actors); i++) {
-                if (ecs_entity_to_u64(scene->actors[i].entity) ==
-                    ecs_entity_to_u64(remove[j])) {
-                    scene->selected = i;
-                    app_scene_authoring_delete_instance(scene);
-                    break;
-                }
-            }
-        }
-        scene_history_end_group(scene->history);
-        afree(remove);
-        scene->selected = -1;
-        scene->runtime_selected = (ecs_entity){ 0 };
-        for (int i = 0; i < acount(scene->actors); i++) {
-            scene->actors[i].marked = false;
-        }
-        sync_editor_inspection(scene);
+        !scene->runtime_snapshot_valid && !scene->dragging_actor) {
+        delete_selection(scene);
         return;
     }
     if (pointer.dropped_prototype[0] && scene_can_move(scene) &&
@@ -341,6 +347,9 @@ static void edit_scene_pointer(app_scene_authoring *scene, engine_viewport *view
         if (scene->dragging_actor) {
             finish_transform_edit(scene, true);
         }
+        return;
+    }
+    if (scene_gizmo_pointer(scene, viewport, &pointer)) {
         return;
     }
     if (pointer.pressed) {
@@ -374,54 +383,35 @@ static void edit_scene_pointer(app_scene_authoring *scene, engine_viewport *view
         }
         for (int i = 0; i < acount(scene->actors); i++) {
             if (ecs_entity_to_u64(scene->actors[i].entity) == ecs_entity_to_u64(picked)) {
-                select_instance(scene, i);
-                break;
+                scene_gizmo_drag_object(scene, i, &pointer);
+                return;
             }
         }
-        begin_transform_edit(scene, picked);
-        scene->dragging_actor = true;
-        scene->drag_origin = (GameTransform){ pointer.world_x, -pointer.world_y };
     }
-    if (scene->marquee) {
-        scene->marquee_end = (CF_V2){ pointer.ndc_x, pointer.ndc_y };
-        scene->marquee_visible = pointer.dragging;
-        if (pointer.dragging) {
-            float min_x = fminf(scene->marquee_start.x, pointer.ndc_x);
-            float max_x = fmaxf(scene->marquee_start.x, pointer.ndc_x);
-            float min_y = fminf(scene->marquee_start.y, pointer.ndc_y);
-            float max_y = fmaxf(scene->marquee_start.y, pointer.ndc_y);
-            scene->selected = -1;
-            for (int i = 0; i < acount(scene->actors); i++) {
-                scene_actor *actor = &scene->actors[i];
-                CF_Aabb bounds;
-                actor->marked = selection_bounds(scene, viewport, actor->entity, &bounds) &&
-                                bounds.max.x >= min_x && bounds.min.x <= max_x &&
-                                bounds.max.y >= min_y && bounds.min.y <= max_y;
-                if (actor->marked) {
-                    scene->selected = i;
-                }
-            }
-        }
-        if (pointer.released) {
-            scene->marquee = scene->marquee_visible = false;
-        }
+    if (!scene->marquee) {
         return;
     }
-    if (!scene->dragging_actor) {
-        return;
-    }
+    scene->marquee_end = (CF_V2){ pointer.ndc_x, pointer.ndc_y };
+    scene->marquee_visible = pointer.dragging;
     if (pointer.dragging) {
-        GameTransform position = {
-            scene->edit_before.x + pointer.world_x - scene->drag_origin.x,
-            scene->edit_before.y - pointer.world_y - scene->drag_origin.y,
-        };
-        write_transform_edit(scene, scene->edit_actor, position);
-        if (scene_collab_can_write_locally()) {
-            scene->scene_dirty = true;
+        float min_x = fminf(scene->marquee_start.x, pointer.ndc_x);
+        float max_x = fmaxf(scene->marquee_start.x, pointer.ndc_x);
+        float min_y = fminf(scene->marquee_start.y, pointer.ndc_y);
+        float max_y = fmaxf(scene->marquee_start.y, pointer.ndc_y);
+        scene->selected = -1;
+        for (int i = 0; i < acount(scene->actors); i++) {
+            scene_actor *actor = &scene->actors[i];
+            CF_Aabb bounds;
+            actor->marked = selection_bounds(scene, viewport, actor->entity, &bounds) &&
+                            bounds.max.x >= min_x && bounds.min.x <= max_x &&
+                            bounds.max.y >= min_y && bounds.min.y <= max_y;
+            if (actor->marked) {
+                scene->selected = i;
+            }
         }
     }
     if (pointer.released) {
-        finish_transform_edit(scene, false);
+        scene->marquee = scene->marquee_visible = false;
     }
 }
 
@@ -656,12 +646,19 @@ static void draw_marquee(app_scene_authoring *scene)
     CF_V2 b = canvas_point(&frame, scene->marquee_end);
     CF_Aabb box = { { fminf(a.x, b.x), fminf(a.y, b.y) },
                     { fmaxf(a.x, b.x), fmaxf(a.y, b.y) } };
-    cf_draw_push_color(packed_color(0x82B5FF22));
+    cf_draw_push_color(packed_color(0xFFFFFF10));
     cf_draw_quad_fill(box, 0);
     cf_draw_pop_color();
-    cf_draw_push_color(packed_color(0x82B5FFFF));
+    cf_draw_push_color(packed_color(0xFFFFFFAA));
     cf_draw_quad(box, scene->selection_scale * 0.5f, 0);
     cf_draw_pop_color();
+}
+
+/* The outline of selection entry `i`: the active object's, or another
+   selected one's; -1 is the selected runtime entity. */
+static unsigned selection_color(const app_scene_authoring *scene, int i)
+{
+    return i < 0 || i == scene->selected ? SCENE_ACTIVE_COLOR : SCENE_SELECTED_COLOR;
 }
 
 static void draw_arena_selection(app_scene_authoring *scene, ecs_world *world, const render_arena_camera *camera)
@@ -685,7 +682,7 @@ static void draw_arena_selection(app_scene_authoring *scene, ecs_world *world, c
             CF_V3 projected = render_arena_project(camera, bounds[j]);
             corners[j] = canvas_point(&frame, (CF_V2){ projected.x, projected.y });
         }
-        cf_draw_push_color(packed_color(0x82B5FFFF));
+        cf_draw_push_color(packed_color(selection_color(scene, i)));
         for (int j = 0; j < 8; j++) {
             for (int bit = 1; bit <= 4; bit *= 2) {
                 if (!(j & bit)) {
@@ -696,6 +693,27 @@ static void draw_arena_selection(app_scene_authoring *scene, ecs_world *world, c
         cf_draw_pop_color();
     }
     draw_marquee(scene);
+}
+
+/* The grid under the scene while it is edited: the renderer's backdrop, or
+   drawn here when the scene draws its own shapes. */
+static float scene_grid(app_scene_authoring *scene)
+{
+    float grid = scene_gizmo_grid(scene);
+    app_scene_renderer_set_grid(scene->renderer, grid);
+    return grid;
+}
+
+static void draw_grid(app_scene_authoring *scene, float grid)
+{
+    engine_viewport_camera camera;
+    engine_viewport_get_camera(scene->render_viewport, &camera);
+    CF_V2 half = { camera.span_width * 0.5f, camera.span_height * 0.5f };
+    CF_Aabb view = cf_make_aabb_center_half_extents(
+        (CF_V2){ camera.center_x, camera.center_y },
+        half
+    );
+    render_grid_2d_draw(grid, view, scene->selection_scale > 0 ? scene->selection_scale : 1, 0);
 }
 
 void app_scene_authoring_render(void *user)
@@ -731,6 +749,7 @@ void app_scene_authoring_render(void *user)
         }
         return;
     }
+    float grid = scene_grid(scene);
     bool material_drawn = scene->render_viewport && app_scene_renderer_draw(
                                                         scene->renderer,
                                                         world,
@@ -743,6 +762,9 @@ void app_scene_authoring_render(void *user)
     ecs_query query;
     if (ecs_query_begin(world, &query, required, 2) != ECS_OK) {
         return;
+    }
+    if (!material_drawn && grid > 0) {
+        draw_grid(scene, grid);
     }
     ecs_entity entity;
     while (ecs_query_next(&query, &entity)) {
@@ -803,6 +825,9 @@ void app_scene_authoring_render(void *user)
             cf_draw_pop_color();
         }
     }
+    /* Overlays keep a pixel's antialiasing at any camera zoom. */
+    float pixel = scene->selection_scale > 0 ? scene->selection_scale : 1;
+    cf_draw_push_shape_aa(SCENE_OVERLAY_AA * pixel * cf_app_get_pixel_scale());
     for (int selection = -1; selection < acount(scene->actors); selection++) {
         ecs_entity selected = selection < 0 ? scene->runtime_selected
                                             : scene->actors[selection].entity;
@@ -825,15 +850,18 @@ void app_scene_authoring_render(void *user)
                 false,
                 &bounds
             )) {
-            float scale = scene->selection_scale > 0 ? scene->selection_scale : 1;
-            bounds.min.x -= 3 * scale;
-            bounds.min.y -= 3 * scale;
-            bounds.max.x += 3 * scale;
-            bounds.max.y += 3 * scale;
-            cf_draw_push_color(packed_color(0x82B5FFFF));
-            cf_draw_quad(bounds, scale * 0.5f, 0);
+            bounds.min.x -= 3 * pixel;
+            bounds.min.y -= 3 * pixel;
+            bounds.max.x += 3 * pixel;
+            bounds.max.y += 3 * pixel;
+            cf_draw_push_color(packed_color(selection_color(scene, selection)));
+            cf_draw_quad(bounds, pixel, 0);
             cf_draw_pop_color();
         }
     }
     draw_marquee(scene);
+    if (scene_can_move(scene)) {
+        scene_gizmo_draw(scene);
+    }
+    cf_draw_pop_shape_aa();
 }

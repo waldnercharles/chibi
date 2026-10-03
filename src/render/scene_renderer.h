@@ -23,6 +23,9 @@ int app_scene_renderer_particle_count(const app_scene_renderer *renderer);
 bool app_scene_renderer_lighting_status(const app_scene_renderer *renderer, render_radiance_status *status);
 float app_scene_renderer_time(const app_scene_renderer *renderer);
 void app_scene_renderer_set_time(app_scene_renderer *renderer, float time);
+/* A positive `increment` draws an editor's grid (render/grid_2d.h) under the
+ * scene from the next draw on, at that finest spacing; zero hides it. */
+void app_scene_renderer_set_grid(app_scene_renderer *renderer, float increment);
 /* Draws the material composite into the current viewport camera. */
 bool app_scene_renderer_draw(
     app_scene_renderer *renderer,

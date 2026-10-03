@@ -158,6 +158,16 @@ typedef enum
     STUDIO_COMMAND_COLLABORATION_TOKEN,
     STUDIO_COMMAND_COLLABORATION_FOLLOW,
     STUDIO_COMMAND_COLLABORATION_UNFOLLOW,
+    /* The Scene's tools (studio_scene.c), in scene_tool order. */
+    STUDIO_COMMAND_SELECT_TOOL,
+    STUDIO_COMMAND_MOVE_TOOL,
+    STUDIO_COMMAND_ROTATE_TOOL,
+    STUDIO_COMMAND_SCALE_TOOL,
+    STUDIO_COMMAND_GRAB,
+    STUDIO_COMMAND_TOGGLE_SNAP,
+    STUDIO_COMMAND_TOGGLE_GRID,
+    STUDIO_COMMAND_FINER_GRID,
+    STUDIO_COMMAND_COARSER_GRID,
     STUDIO_COMMAND_COUNT,
 } studio_command;
 
@@ -218,6 +228,12 @@ typedef struct
     float code_font_size; /* the Text Editor's font size, in dp */
     bool code_apply_live; /* UI edits apply as typed, not when saved */
     bool code_wrap; /* Workstream I: long lines wrap; off, they scroll sideways */
+    /* The Scene's tools: the active one, kept by hand (studio_prefs.c), and
+       the grid and snapping, which are settings. */
+    scene_tool tool;
+    bool scene_grid;
+    bool scene_snap;
+    float scene_increment; /* the grid's spacing, in world units */
 } studio_prefs;
 
 typedef struct
@@ -925,6 +941,7 @@ struct studio
     bool guest_keys;  /* a press in the guest gave it the keyboard */
     bool guest_capture; /* a button pressed in the guest is held */
     bool typing;        /* a field or the graph had the keyboard last frame */
+    bool scene_status;  /* the status bar shows a Scene gesture's change */
     /* ---------- Rename objects and prototype components ---------- */
     struct
     {
@@ -950,6 +967,15 @@ bool studio_active(const studio *s);
 /* Physical pixels per editor dp: the display's scale times UI Scale. */
 float studio_pixel_ratio(const studio *s);
 
+/* Whether `key` was pressed this frame. */
+bool studio_key_pressed(const studio *s, SDL_Keycode key);
+/* The Scene's tools for this frame (studio_scene.c): the active tool,
+ * snapping and the grid from the preferences, the held modifiers and a
+ * gesture's keys, and the gesture's change in the status bar. */
+void studio_scene_tools(studio *s);
+/* The grid increment preset `step` places from the current one, which it
+ * keeps at either end. */
+float studio_grid_increment(const studio *s, int step);
 /* Platform shortcuts (studio_keys.c). */
 bool studio_detect_mac();
 bool studio_primary(const studio *s, SDL_Keymod mod);
@@ -1663,6 +1689,7 @@ typedef enum
     STUDIO_SETTINGS_APPEARANCE,
     STUDIO_SETTINGS_GRAPH,
     STUDIO_SETTINGS_TEXT,
+    STUDIO_SETTINGS_SCENE,
     STUDIO_SETTINGS_KEYBOARD,
     STUDIO_SETTINGS_PROJECT,
     STUDIO_SETTINGS_CATEGORY_COUNT,

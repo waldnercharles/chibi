@@ -1690,13 +1690,66 @@ typedef struct hint_list
 
 #define HINT_LIST(list) ((hint_list){ list, (int)(sizeof list / sizeof *list) })
 
+/* The Scene's hints follow its tool and gesture (Blender's status bar):
+ * what the pointer does, then the keys that change it. */
+static hint_list scene_hints(studio *s)
+{
+    static studio_hint hints[STUDIO_HINT_MAX];
+    const scene_gizmo *g = &s->scene->gizmo;
+    const char *snap = s->prefs.scene_snap ? "Free" : "Snap";
+    int n = 0;
+    if (g->modal) {
+        hints[n++] = (studio_hint){ KIT_ICON_MOUSE, NULL, "Confirm" };
+        hints[n++] = (studio_hint){ 0, "Escape", "Cancel" };
+        hints[n++] = (studio_hint){ 0, "X/Y", "Constrain" };
+        hints[n++] = (studio_hint){ 0, "Ctrl", snap };
+        return (hint_list){ hints, n };
+    }
+    if (g->active) {
+        hints[n++] = (studio_hint){ 0, "Escape", "Cancel" };
+        hints[n++] = (studio_hint){ 0, "Ctrl", snap };
+        if (g->active >= SCENE_GIZMO_HANDLE) {
+            hints[n++] = (studio_hint){ 0, "Shift", "Keep aspect" };
+            hints[n++] = (studio_hint){ 0, "Alt", "From center" };
+        }
+        return (hint_list){ hints, n };
+    }
+    /* The perspective view selects and drags on the ground plane only. */
+    scene_tool tool = engine_viewport_perspective(s->viewport) ? SCENE_TOOL_SELECT
+                                                               : s->prefs.tool;
+    if (tool != SCENE_TOOL_SELECT && !scene_gizmo_enabled(s->scene)) {
+        hints[n++] = (studio_hint){ KIT_ICON_WARNING,
+                                    NULL,
+                                    tool == SCENE_TOOL_ROTATE
+                                        ? "Rotate needs an Orientation"
+                                        : "Scale needs a size" };
+    }
+    switch (tool) {
+        case SCENE_TOOL_MOVE:
+            hints[n++] = (studio_hint){ KIT_ICON_MOUSE, NULL, "Drag arrows" };
+            break;
+        case SCENE_TOOL_ROTATE:
+            hints[n++] = (studio_hint){ KIT_ICON_MOUSE, NULL, "Drag ring" };
+            break;
+        case SCENE_TOOL_SCALE:
+            hints[n++] = (studio_hint){ KIT_ICON_MOUSE, NULL, "Drag handles" };
+            break;
+        default:
+            hints[n++] = (studio_hint){ KIT_ICON_MOUSE, NULL, "Select" };
+            break;
+    }
+    hints[n++] = (studio_hint){ 0, NULL, "Grab", STUDIO_COMMAND_GRAB + 1 };
+    hints[n++] = (studio_hint){ 0, "Ctrl", snap };
+    if (n < STUDIO_HINT_MAX) {
+        hints[n++] = (studio_hint){ 0, NULL, "Frame", STUDIO_COMMAND_FRAME + 1 };
+    }
+    return (hint_list){ hints, n };
+}
+
 /* The key hints of the editor under the pointer; keys in studio_chord
  * notation. */
 static hint_list editor_hints(studio *s)
 {
-    static const studio_hint SCENE[] = { { KIT_ICON_MOUSE, NULL, "Select" },
-                                         { KIT_ICON_PAN, NULL, "Pan (middle)" },
-                                         { 0, NULL, "Frame", STUDIO_COMMAND_FRAME + 1 } };
     static const studio_hint PROPERTIES[] = { { KIT_ICON_MOUSE, NULL, "Drag to scrub" },
                                               { 0, "Alt", "Fine" },
                                               { 0, "Shift", "Coarse" },
@@ -1726,7 +1779,7 @@ static hint_list editor_hints(studio *s)
                              ? studio_active_layout(s)->editors[s->hover_area]
                              : STUDIO_EDITOR_COUNT;
     switch (editor) {
-        case STUDIO_EDITOR_SCENE: return HINT_LIST(SCENE);
+        case STUDIO_EDITOR_SCENE: return scene_hints(s);
         case STUDIO_EDITOR_PROPERTIES: return HINT_LIST(PROPERTIES);
         case STUDIO_EDITOR_OUTLINER:
             return studio_designer_active(s) ? HINT_LIST(HIERARCHY)

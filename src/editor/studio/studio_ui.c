@@ -465,8 +465,7 @@ static bool takes_keys(rml_element *el)
 }
 
 /* The area whose panel holds `focus` on an element that edits nothing, or
- * -1: a list or button there passes keys to Studio, as the chrome's
- * buttons do and a focused list in VS Code still runs its global keys. */
+ * -1. */
 static int focus_area(studio *s, rml_element *focus)
 {
     for (int i = 0; focus && !takes_keys(focus) && i < STUDIO_AREA_COUNT; i++) {
@@ -487,9 +486,6 @@ bool studio_ui_shortcut_focus(studio *s)
     studio_ui *ui = s->ui;
     rml_context *context = rml_backend_context(s->backend);
     rml_element *focus = context ? rml_context_focus_element(context) : NULL;
-    if (focus_area(s, focus) >= 0) {
-        return true;
-    }
     rml_element *button = focus;
     while (button && strcmp(rml_element_tag_name(button), "button") &&
            !rml_element_is_class_set(button, "btn")) {

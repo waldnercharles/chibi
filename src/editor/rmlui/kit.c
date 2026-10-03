@@ -1396,10 +1396,13 @@ bool kit_wants_keyboard(const kit *k)
     }
     rml_element *focus = rml_context_focus_element(k->context);
     /* A focused number field handles its own keys during RmlUi dispatch; global
-       shortcuts still apply unless text is being edited. Hosted content and a
-       code editor own the keyboard while they hold focus. */
+       shortcuts still apply unless text is being edited. A modal's hosted
+       content and a code editor own the keyboard while they hold focus; a
+       list or button an area or the chrome hosts passes it on, as a page's
+       do, so the area under the pointer still takes its keys. */
     node *n = focus ? node_for(k, focus) : NULL;
-    return focus && (is_input(focus) || (n && (n->hosted || n->kind == KIND_CODE)));
+    bool modal = n && n->hosted && n->parent == k->layer;
+    return focus && (is_input(focus) || modal || (n && n->kind == KIND_CODE));
 }
 
 bool kit_accepts_text(const kit *k)

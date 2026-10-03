@@ -1227,8 +1227,7 @@ void studio_ui_area(studio *s, int area, const char *name);
 /* Shows it over the editor while its GameUi is not hidden, as for a dialog
  * whose behaviors hide it again. */
 void studio_ui_modal(studio *s, const char *name);
-/* True when a focused authored chrome button, or an area panel's element
- * that edits no text, can pass global shortcuts. */
+/* True when a focused authored chrome button can pass global shortcuts. */
 bool studio_ui_shortcut_focus(studio *s);
 /* The area whose panel the keyboard moved focus into (:focus-visible) on an
  * element that edits no text, which takes the keys the area under the

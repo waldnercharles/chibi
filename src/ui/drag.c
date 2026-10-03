@@ -98,9 +98,6 @@ static void ref_set(rml_element_ref **ref, rml_element *el)
 /* The attribute's value as an owned string, "" when absent. */
 static char *attribute(const rml_element *el, const char *name)
 {
-    if (!rml_element_has_attribute(el, name)) {
-        return xstrdup("");
-    }
     size_t size = rml_element_attribute(el, name, NULL, 0) + 1;
     char *value = xmalloc(size);
     rml_element_attribute(el, name, value, size);

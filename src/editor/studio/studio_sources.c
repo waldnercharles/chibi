@@ -1333,6 +1333,7 @@ static void sync_source(studio *s, studio_sources *src, ui_data *data, int i, bo
             yyjson_mut_doc_get_root(data->doc),
             source->name
         ),
+        .model = data->model,
         .preview = src->preview,
         .wrote = wrote,
     };
@@ -1382,6 +1383,19 @@ void studio_sources_mounted(studio *s, studio_sources *src, ui_data *data, const
             sync_source(s, src, data, i, false);
         }
         src->shown_at[i] = s->ui_schedule.frames + 1;
+    }
+}
+
+void studio_sources_acted(studio *s, studio_sources *src, ui_data *data, const char *event)
+{
+    const char *dot = strchr(event, '.');
+    bool wrote = rml_data_model_writes(data->model) != src->writes_seen;
+    for (int i = 0; dot && i < studio_panel_source_count; i++) {
+        const studio_panel_source *source = &studio_panel_sources[i];
+        if (source->action && strlen(source->name) == (size_t)(dot - event) &&
+            !strncmp(source->name, event, (size_t)(dot - event))) {
+            sync_source(s, src, data, i, wrote);
+        }
     }
 }
 
@@ -2137,7 +2151,7 @@ static bool sync_commands(studio *s, const studio_panel_sync *at)
  *   choice field (component_properties.h), as EnumField lists them;
  * - assets.<kind>: the project's assets of a kind (scene, prototype,
  *   behavior, event, material, shape, field, library, system, ui) by name,
- *   as AssetField lists them;
+ *   as AssetField lists them, and none, the label of choosing none;
  * - editors: the editor types by task, as an area header's menu lists them,
  *   each option with drawer, whether a drawer may show it, and each group
  *   with tools, whether the Studio panels that are tools follow it;
@@ -2215,13 +2229,14 @@ static void add_choices(yyjson_mut_doc *doc)
     }
     yyjson_mut_val *assets = yyjson_mut_obj_add_obj(doc, choices, "assets");
     for (int kind = 0; kind < REFERENCE_ASSET_KIND_COUNT; kind++) {
-        add_table(
+        yyjson_mut_val *table = add_table(
             doc,
             assets,
             studio_asset_kind_name(kind),
             studio_asset_kind_label(kind),
             studio_asset_kind_icon(kind)
         );
+        yyjson_mut_obj_add_str(doc, table, "none", "None");
     }
     add_table(doc, choices, "editors", "", 0);
     yyjson_mut_val *panels = add_table(doc, choices, "panels", "Studio UI", KIT_ICON_LAYOUT);
@@ -2304,6 +2319,8 @@ const studio_panel_source studio_panel_sources[] = {
     { "choices", NULL, add_choices, sync_choices, NULL },
     /* Lists and drag (workstream F4). */
     { "gallery", "Widgets", studio_gallery_add, studio_gallery_sync, studio_gallery_action },
+    /* Properties (workstream P1). */
+    { "properties", "Properties", studio_properties_add, studio_properties_sync, studio_properties_action },
     /* The Outliner (workstream P2). */
     { "outliner", "Outliner", studio_outliner_add, studio_outliner_sync, studio_outliner_action },
     { "outliner_ui", "Outliner", studio_outliner_ui_add, studio_outliner_ui_sync, NULL },

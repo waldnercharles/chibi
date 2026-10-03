@@ -88,10 +88,6 @@ void control_click(kit *k, node *n, rml_element *target)
             }
             return;
         case KIND_PANEL:
-            if (n->w.menu_el && within(target, n->w.menu_el)) {
-                n->events |= EV_CONTEXT;
-                return;
-            }
             if (n->w.head_el && within(target, n->w.head_el)) {
                 n->w.open = !n->w.open;
             }
@@ -653,19 +649,6 @@ void kit_panel_end(kit *k)
     }
     assert(alast(k->stack)->kind == KIND_PANEL);
     pop_node(k);
-}
-
-bool kit_panel_menu(kit *k)
-{
-    node *n = k->last;
-    assert(n && n->kind == KIND_PANEL);
-    widget *w = &n->w;
-    if (!w->menu_el) {
-        w->menu_el = raw_icon(w->head_el, "menu", KIT_ICON_MORE);
-        rml_element_set_attribute(w->menu_el, "data-tip", "More");
-        set_flag(n, "data-menu", true);
-    }
-    return n->events & EV_CONTEXT;
 }
 
 void kit_prop_begin(kit *k, const char *key, const char *label)

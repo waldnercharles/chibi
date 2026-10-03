@@ -824,6 +824,13 @@ typedef struct studio_gallery
     studio_gallery_item *bin; /* Collected, in order (support/array.h) */
 } studio_gallery;
 
+/* A Properties panel the user folded or opened (studio_properties.c). */
+typedef struct studio_fold
+{
+    char key[128];
+    bool open;
+} studio_fold;
+
 struct studio
 {
     app_scene_authoring *scene;
@@ -1091,6 +1098,12 @@ struct studio
     } keep;
     /* ---------- Lists and drag (workstream F4) ---------- */
     studio_gallery gallery;
+    /* ---------- Properties (workstream P1) ---------- */
+    struct
+    {
+        studio_fold *folds; /* each panel folded or opened, by key (array) */
+        char choosing[192]; /* the row whose list shows every choice, or "" */
+    } properties;
 };
 
 /* Whether frames run at full rate for input or a playing scene, rather than
@@ -1240,13 +1253,14 @@ rml_element *studio_ui_panel(studio *s, const char *key, const char *name);
 int studio_ui_panel_count(const studio *s);
 const char *studio_ui_panel_name(const studio *s, int index);
 /* Shows panel `name` filling area `area`'s body, whether or not its GameUi
- * is hidden. */
-void studio_ui_area(studio *s, int area, const char *name);
+ * is hidden; returns its host, or NULL when it has no document. */
+rml_element *studio_ui_area(studio *s, int area, const char *name);
 /* Shows it over the editor while its GameUi is not hidden, as for a dialog
  * whose behaviors hide it again. */
 void studio_ui_modal(studio *s, const char *name);
-/* True when a focused authored chrome button, or anything but a field in
-   an editor's authored area (Members), can pass global shortcuts. */
+/* True when a focused authored chrome button, or anything but a text field
+   in an editor's authored area or its header's controls, can pass global
+   shortcuts. */
 bool studio_ui_shortcut_focus(studio *s);
 /* The area whose panel the keyboard moved focus into (:focus-visible) on an
  * element that edits no text, which takes the keys the area under the
@@ -1913,9 +1927,8 @@ scene_actor *studio_prototype_action_actor(studio *s);
 /* Opens Apply Overrides to Prototype's or Save as New Prototype's popover at
    the pointer. */
 void studio_prototype_action_open(studio *s, bool saving);
-/* The Properties identity's menu button for both, emitted beside its
-   prototype; and, after the areas, the popovers and the Undo toast. */
-void studio_prototype_actions_button(studio *s, scene_actor *actor);
+/* After the areas: the popovers and the Undo toast. Properties' identity
+   lists both commands in its authored menu beside the prototype. */
 void studio_prototype_actions_frame(studio *s);
 /* Applies the field to its instance's prototype (the field menu's Apply to
    Prototype). */
@@ -2307,6 +2320,7 @@ typedef struct studio_panel_sync
     studio_sources *sources;
     yyjson_mut_doc *doc;
     yyjson_mut_val *variable;
+    rml_data_model *model; /* to dirty another variable the source keeps */
     bool preview;
     bool wrote; /* bindings wrote values since the last sync */
 } studio_panel_sync;
@@ -2335,6 +2349,9 @@ extern const int studio_panel_source_count;
 /* Syncs the sources of `panel` as it mounts, unless the last UI refresh
  * showed it already, so a panel never shows stale data for a frame. */
 void studio_sources_mounted(studio *s, studio_sources *sources, ui_data *data, const char *panel);
+/* Syncs the source whose action `event` ran, so what it changed shows in
+ * the same frame: a committed field shows the value the model took. */
+void studio_sources_acted(studio *s, studio_sources *sources, ui_data *data, const char *event);
 
 /* ---------- Lists and drag (workstream F4) ---------- */
 
@@ -2417,6 +2434,14 @@ void studio_editor_choices(studio *s, yyjson_mut_doc *doc, yyjson_mut_val *edito
  * Studio panel `panel`; a drawer takes only the types it may hold. */
 void studio_area_show(studio *s, int area, int editor, const char *panel);
 
+/* ---------- Properties (workstream P1) ---------- */
+
+/* The `properties` source (studio_properties_view.c), what Properties.rml
+ * and PropertiesHeader.rml bind, and its intents (studio_properties.c). */
+void studio_properties_add(yyjson_mut_doc *doc);
+bool studio_properties_sync(studio *s, const studio_panel_sync *at);
+void studio_properties_action(studio *s, const char *action, const ui_activation *a);
+
 /* ---------- Assets (workstream P3) ---------- */
 
 /* The Assets area's source, `assets` (studio_assets.c), which its Assets and
@@ -2443,6 +2468,7 @@ bool studio_asset_view_sync(studio *s, const studio_panel_sync *at);
 void studio_asset_menus_add(yyjson_mut_doc *doc);
 bool studio_asset_menus_sync(studio *s, const studio_panel_sync *at);
 void studio_asset_menus_action(studio *s, const char *action, const ui_activation *a);
+
 /* ---------- Output (workstream P4) ---------- */
 
 /* The `output` panel source: Output.rml's view and OutputHeader.rml's

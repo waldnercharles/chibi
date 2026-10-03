@@ -1332,11 +1332,6 @@ bool kit_item_pressed(kit *k)
     return k->last && (k->last->events & EV_PRESS);
 }
 
-bool kit_item_context_clicked(kit *k)
-{
-    return k->last && (k->last->events & EV_CONTEXT);
-}
-
 bool kit_item_active(kit *k)
 {
     node *n = k->last;

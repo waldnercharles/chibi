@@ -1,7 +1,7 @@
 /* The Studio cases of the S0 UI bench (ui_bench.h), native in a hidden
  * window: Studio's documents over the Sandbox at 1440x900, its
- * Properties showing the Player against the authored spike, and whether a
- * popover escapes an area's clipping. */
+ * Properties showing the Player (authored since P1) against the S0 spike,
+ * and whether a popover escapes an area's clipping. */
 #include "editor/studio/studio_internal.h"
 #include "editor/studio/studio_thumbnails.h"
 #include "editor/ui/kit.h"
@@ -325,8 +325,11 @@ static void open_panels(studio_bench *b)
     rml_element *area = studio_query(b->studio, "[data-ui=Properties]");
     int count = rml_element_query_selector_all(area, "section.panel", panels, 64);
     for (int i = 0; i < count; i++) {
-        if (!rml_element_has_attribute(panels[i], "data-open")) {
-            rml_element_click(rml_element_query_selector(panels[i], ".panel-head"));
+        rml_element *fold = rml_element_query_selector(panels[i], ".panel-fold");
+        /* data-for keeps its template hidden and empty. */
+        if (fold && rml_element_is_visible(panels[i], true) &&
+            !rml_element_has_attribute(panels[i], "data-open")) {
+            rml_element_click(fold);
             frames(b, 1);
         }
     }
@@ -392,16 +395,17 @@ static double properties_ui(properties_case *c, int step, int arm, int actor, do
     return bench_now() - start;
 }
 
-/* Step 1 edits one shown field and step 2 moves every float, as Play does. */
-static void change_player(properties_case *c, int step, int run)
+/* Step 1 edits one shown field and step 2 moves every float, as Play does.
+ * Values only grow: a frame between two changes need not refresh, so going
+ * back and forth would show the same value to every other one. */
+static void change_player(properties_case *c, int step)
 {
     app_scene_authoring *scene = c->b->scene;
     ecs_entity player = scene->actors[c->player].entity;
-    float sign = (run & 1) ? 1 : -1;
     if (step == 1) {
-        bench_edit_float(scene->world, player, "GameAppearance", "width", sign);
+        bench_edit_float(scene->world, player, "GameAppearance", "width", 1);
     } else if (step == 2) {
-        bench_move_floats(scene->world, player, sign * 0.25f);
+        bench_move_floats(scene->world, player, 0.25f);
     }
 }
 
@@ -413,7 +417,7 @@ static void properties_step(properties_case *c, int step, const char *name)
     bench_counts counts[ARMS];
     for (int run = -WARMUP; run < RUNS; run++) {
         for (int arm = 0; arm < ARMS; arm++) {
-            change_player(c, step, run);
+            change_player(c, step);
             cf_app_update(NULL);
             bench_counts before = arm ? bench_spike_counts(c->spike)
                                       : studio_mark(c->b->studio);
@@ -439,13 +443,13 @@ static void properties_step(properties_case *c, int step, const char *name)
     char label[128];
     bench_stat native = bench_stat_of(ms[0], RUNS),
                authored = bench_stat_of(ms[1], RUNS);
-    snprintf(label, sizeof label, "native kit: %s", name);
+    snprintf(label, sizeof label, "Studio: %s", name);
     bench_row("5", label, native, counts[0]);
-    phase_row("native phases", phases[0]);
+    phase_row("Studio phases", phases[0]);
     snprintf(label, sizeof label, "authored spike: %s", name);
     bench_row("5", label, authored, counts[1]);
     phase_row("authored phases", phases[1]);
-    snprintf(label, sizeof label, "authored over native: %s", name);
+    snprintf(label, sizeof label, "spike over Studio: %s", name);
     bench_ratio("5", label, native, authored);
     /* The Player stays shown. */
     select_actor(c, c->player, false);
@@ -502,8 +506,8 @@ static void properties(studio_bench *b)
             }
         }
     }
-    bench_row("5", "native kit: a UI frame with nothing changed", bench_stat_of(idle, RUNS), counts);
-    phase_row("native phases", phases);
+    bench_row("5", "Studio: a UI frame with nothing changed", bench_stat_of(idle, RUNS), counts);
+    phase_row("Studio phases", phases);
     properties_step(&c, 0, "select the other object or the Player");
     properties_step(&c, 1, "edit one field of the Player");
     properties_step(&c, 2, "Play refresh, every float of the Player changed");

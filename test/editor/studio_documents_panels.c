@@ -975,7 +975,7 @@ static void authored_modals_and_collaboration()
    or both (the Behavior editor's GraphView). */
 static const studio_editor AREA_PANELS[] = {
     STUDIO_EDITOR_ASSETS, STUDIO_EDITOR_OUTLINER, STUDIO_EDITOR_MEMBERS,
-    STUDIO_EDITOR_OUTPUT, STUDIO_EDITOR_BEHAVIOR,
+    STUDIO_EDITOR_OUTPUT, STUDIO_EDITOR_BEHAVIOR, STUDIO_EDITOR_PROPERTIES,
 };
 #define AREA_PANEL_COUNT (int)(sizeof AREA_PANELS / sizeof *AREA_PANELS)
 #define AREA_ROUNDS 3

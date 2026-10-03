@@ -204,18 +204,32 @@ static void read_setting(studio_prefs *p, const studio_setting *s, yyjson_val *r
     }
 }
 
+#ifndef __EMSCRIPTEN__
+/* The preferences file: in $CHIBI_PREFS_DIR when set, as the test suite
+   sets it so checks never read or write the user's preferences, else in the
+   user's editor directory, which every build shares. */
+static bool prefs_path(char *path, size_t size)
+{
+    const char *directory = getenv("CHIBI_PREFS_DIR");
+    if (!directory || !directory[0]) {
+        directory = cf_fs_get_user_directory("chibi", "editor");
+    }
+    if (!directory) {
+        return false;
+    }
+    size_t length = strlen(directory);
+    const char *slash = length && directory[length - 1] != '/' ? "/" : "";
+    return snprintf(path, size, "%s%sstudio.json", directory, slash) < (int)size;
+}
+#endif
+
 static char *read_json()
 {
 #ifdef __EMSCRIPTEN__
     return prefs_read_browser();
 #else
-    const char *directory = cf_fs_get_user_directory("chibi", "editor");
     char path[1024];
-    if (!directory || snprintf(path, sizeof path, "%sstudio.json", directory) >=
-                          (int)sizeof path) {
-        return NULL;
-    }
-    return text_file_read(path);
+    return prefs_path(path, sizeof path) ? text_file_read(path) : NULL;
 #endif
 }
 
@@ -462,12 +476,8 @@ bool studio_prefs_save(const studio_prefs *p)
 #ifdef __EMSCRIPTEN__
     bool ok = prefs_write_browser(json);
 #else
-    const char *directory = cf_fs_get_user_directory("chibi", "editor");
     char path[1024];
-    FILE *file = directory && snprintf(path, sizeof path, "%sstudio.json", directory) <
-                                  (int)sizeof path
-                   ? fopen(path, "wb")
-                   : NULL;
+    FILE *file = prefs_path(path, sizeof path) ? fopen(path, "wb") : NULL;
     bool ok = file && fputs(json, file) >= 0;
     if (file) {
         ok &= fclose(file) == 0;

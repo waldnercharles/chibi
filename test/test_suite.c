@@ -339,6 +339,14 @@ int main(int argc, char **argv)
     program_name = argc ? argv[0] : "test_suite";
     /* Thumbnails persist nowhere but where a test puts them. */
     setenv("CHIBI_THUMBNAIL_CACHE", "", 1);
+    /* Checks start from default preferences and never touch the user's:
+       every build shares their file, and other sessions change it. */
+    char prefs[] = "/tmp/chibi-test-prefs-XXXXXX";
+    if (!getenv("CHIBI_PREFS_DIR")) {
+        char *made = mkdtemp(prefs);
+        assert(made);
+        setenv("CHIBI_PREFS_DIR", made, 1);
+    }
     if (argc == 2 && !strcmp(argv[1], "--mesh-material")) {
         extern int mesh_material_run(const char *program);
         registry_validate();

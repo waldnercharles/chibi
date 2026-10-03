@@ -5,8 +5,7 @@
  *   transitions RCSS declares for it finish. Styling stays in RCSS.
  * - Layout: a node marked with kit_layout animates changes to its position
  *   within its parent with a spring (FLIP), keeping velocity when retargeted.
- * - Springs (kit_spring, over ui/motion.h's): values that ease toward a
- *   target. Reduced motion settles every animation immediately. */
+ *   Reduced motion settles every animation immediately. */
 #include "editor/rmlui/kit_internal.h"
 #include "support/math.h"
 
@@ -82,19 +81,6 @@ void forget_motion(kit *k, node *n)
 }
 
 /* ---------- Frame ---------- */
-
-static void expire_springs(kit *k)
-{
-    for (int i = 0; i < cf_map_size(k->springs);) {
-        if (k->springs[i].frame + 2 >= k->frame) {
-            i++;
-            continue;
-        }
-        free(k->springs[i].key);
-        uint64_t key = cf_map_keys(k->springs)[i];
-        cf_map_del(k->springs, key);
-    }
-}
 
 /* Starting styles apply for one styled frame, then transition away. */
 static void settle_entering(kit *k)
@@ -178,7 +164,6 @@ static void layout_step(kit *k, node *n, spring_params p, double dt)
 
 void motion_frame(kit *k)
 {
-    expire_springs(k);
     double now = k->in.time;
     double dt = math_clamp(now - k->motion_time, 0.0, 0.1);
     k->motion_time = now;
@@ -216,46 +201,6 @@ void kit_presence(kit *k)
     presence(k, k->last);
 }
 
-/* Settles the spring at path on target; takes path. */
-static void spring_reset(kit *k, spring_value *v, char *path, float target)
-{
-    spring_value settled = {
-        .key = path,
-        .target = target,
-        .time = k->in.time,
-        .frame = k->frame,
-    };
-    if (!v) {
-        cf_map_set(k->springs, str_hash(path), settled);
-        return;
-    }
-    free(v->key);
-    *v = settled;
-}
-
-float kit_spring(kit *k, const char *key, float target, float duration)
-{
-    char *path = NULL;
-    str_catf(&path, "%s/~%s", acount(k->stack) ? alast(k->stack)->path : "", key);
-    spring_value *v = cf_map_get_ptr(k->springs, str_hash(path));
-    assert(!v || str_eq(v->key, path));
-    if (!v || k->reduced_motion || duration <= 0) {
-        spring_reset(k, v, path, target);
-        return target;
-    }
-    free(path);
-    if (v->duration != duration) {
-        v->duration = duration;
-        v->params = spring_for(duration, 0);
-    }
-    v->s.x += v->target - target;
-    v->target = target;
-    spring_step(&v->s, v->params, math_clamp(k->in.time - v->time, 0.0, 0.1));
-    v->time = k->in.time;
-    v->frame = k->frame;
-    return (float)(v->target + v->s.x);
-}
-
 void kit_layout(kit *k)
 {
     node *n = k->last;
@@ -275,7 +220,7 @@ static bool moving(spring s)
 }
 
 /* Relative to the last emitted frame. The host carries this deadline forward
- * while simulation keeps running; UI-only springs must not follow its cadence. */
+ * while simulation keeps running; UI-only motion must not follow its cadence. */
 double kit_idle_time(const kit *k)
 {
     double delay = rml_context_next_update_delay(k->context);
@@ -289,11 +234,6 @@ double kit_idle_time(const kit *k)
     for (int i = 0; i < acount(k->layout_nodes); i++) {
         node *n = k->layout_nodes[i];
         if (moving(n->layout_x) || moving(n->layout_y)) {
-            return 0;
-        }
-    }
-    for (int i = 0; i < cf_map_size(k->springs); i++) {
-        if (moving(k->springs[i].s)) {
             return 0;
         }
     }

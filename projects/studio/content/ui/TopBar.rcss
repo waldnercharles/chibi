@@ -1,9 +1,9 @@
 /* Studio's top bar (studio_shell.c hosts it; studio_sources.c binds
-   `editor` and `commands`): the brand, the menubar, native in the
-   #menubar slot, the document tabs, the transport with the play target's
-   menu, a paused run's steps and the playback speed, native in the
-   #play-target, #debug-steps and #speed slots, Settings and Search. Each button runs its command
-   with emit('studio.<id>'), and a tab's with the tab's index. */
+   `editor` and `commands`, and studio_shell.c `menubar` and `shell`): the
+   brand, the menubar, the layout menu, the document tabs, the transport with
+   the play target's menu, a paused run's steps and the playback speed's
+   menu, Settings and Search. Each button runs its command with
+   emit('studio.<id>'), and a tab's with the tab's index. */
 body { flex: 0 0 auto; }
 .app-chrome { display: flex; flex-direction: column; flex: 0 0 auto; }
 // The transport stays clear of the tabs as the window narrows.
@@ -18,8 +18,8 @@ body { flex: 0 0 auto; }
 }
 .mark { width: 11dp; height: 11dp; border-radius: 3dp; background-color: var(--primary); transform: rotate(45deg); }
 .menus { display: flex; flex: 0 0 auto; }
-// The menus' definitions, which the native menubar draws.
-#menus { display: none; }
+// A menubar trigger stays pressed while its menu is open.
+.menus .trigger[data-popup-open] { background-color: var(--press); color: var(--foreground); transition: none; }
 .btn { flex-shrink: 0; }
 .trigger { color: var(--foreground); padding: 0dp 7dp; }
 #layout { display: flex; align-items: center; flex: 0 0 auto; }

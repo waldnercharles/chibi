@@ -1626,7 +1626,7 @@ static void page_mount()
 }
 
 /* Drive emissions only when the kit asks for them, while its context advances
- * on every simulation frame. Springs and toast expiry must survive that split. */
+ * on every simulation frame. Toast expiry must survive that split. */
 static void independent_ui_deadlines()
 {
     rml_backend *backend = rml_backend_create(800, 600, 1);
@@ -1638,25 +1638,22 @@ static void independent_ui_deadlines()
                            .mouse_y = -1000 };
     kit_begin(k, &in);
     kit_root(k, "app");
-    kit_spring(k, "readout", 0, 0.35f);
     kit_end(k);
     rml_backend_update(backend, 1.0 / 60.0);
 
     in.time = 1.0 / 60.0;
     kit_begin(k, &in);
     kit_root(k, "app");
-    float value = kit_spring(k, "readout", 100, 0.35f);
     kit_toast(k, 0, &(kit_toast_desc){ .title = "Scheduled", .duration = 0.2 });
     kit_end(k);
     rml_backend_update(backend, 1.0 / 60.0);
-    bool moving = value < 100 && kit_idle_time(k) == 0;
+    bool waiting = kit_idle_time(k) < 0.2;
     double next = in.time + kit_idle_time(k);
     for (int i = 2; i <= 180; i++) {
         in.time = i / 60.0;
         if (in.time >= next) {
             kit_begin(k, &in);
             kit_root(k, "app");
-            value = kit_spring(k, "readout", 100, 0.35f);
             kit_end(k);
             rml_backend_update(backend, 1.0 / 60.0);
             next = in.time + kit_idle_time(k);
@@ -1665,10 +1662,9 @@ static void independent_ui_deadlines()
         }
     }
     test_check(
-        moving && fabsf(value - 100) < 0.01f &&
-            !test_query(rml_backend_context(backend), ".toast"),
-        "independent UI deadlines advance a live spring and expire its toast "
-        "while simulation keeps ticking"
+        waiting && !test_query(rml_backend_context(backend), ".toast"),
+        "independent UI deadlines expire a toast while simulation keeps "
+        "ticking"
     );
     kit_destroy(k);
     rml_backend_destroy(backend);

@@ -11,7 +11,8 @@
  *   button outward, so a widget repeated by data-for finds its own. A
  *   popovertarget on a menu item opens its submenu beside the row.
  * - Shown, it is fixed and unclipped, below its anchor or flipped above it
- *   (beside a submenu's row, or at a point), 4 dp inside the window; its
+ *   (beside a submenu's row, or at a point), 4 dp inside the window, with
+ *   --available-height the window's height less those margins; its
  *   document stacks above the other areas, below the overlay layer, whichever
  *   has focus. It closes on a press outside it and its trigger, on Escape
  *   (focus inside returns to its trigger) and when one of its items
@@ -31,8 +32,9 @@
  *   another trigger opens that one's, and Left and Right step between them.
  *   A trigger in a menubar opens on press.
  * - States: data-open while shown, data-starting-style for its first frame,
- *   data-ending-style while it fades out, data-unplaced until placed, and
- *   data-highlighted on a menu's highlighted item. Closed, it lays out and
+ *   data-ending-style while it fades out, data-unplaced until placed,
+ *   data-highlighted on a menu's highlighted item, and data-popup-open on
+ *   the trigger of an open popover (Base UI's). Closed, it lays out and
  *   draws nothing ([popover]:not([data-open]) is display: none).
  *
  * C owners, such as the kit, stack their own elements with popover_show and

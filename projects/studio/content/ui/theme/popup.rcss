@@ -30,6 +30,8 @@ body.comfortable .popover .btn.sm { height: var(--studio-height-36, 36dp); }
    a shown one waits unseen until it is placed. */
 [popover]:not([data-open]) { display: none; }
 [popover][data-unplaced] { visibility: hidden; }
+/* An authored menu taller than the window scrolls, as the kit's do. */
+.popup.menu[popover] { max-height: var(--available-height, none); overflow-y: auto; }
 /* A list's search, as the kit's dropdown has it, and what it filtered out. */
 .choice-list { display: block; }
 .choice-list .field.search { margin: 2dp 2dp 6dp; }

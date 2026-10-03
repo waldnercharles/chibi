@@ -1,8 +1,7 @@
 /* Studio's status bar (studio_shell.c hosts it; studio_sources.c binds
    `editor` and `commands`): the hovered area's key hints, the last
    operation's report, the drawer toggles, which run and read their
-   commands, the scene's stats and UI Scale, a native kit control in the
-   #ui-scale slot. The report comes and goes with presence and morphs with
+   commands, the scene's stats and UI Scale's menu (`shell.scale`). The report comes and goes with presence and morphs with
    <morph-text>; the counts roll with <number-flow>. */
 body { flex: 0 0 auto; }
 .statusbar {

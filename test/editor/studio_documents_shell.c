@@ -349,6 +349,32 @@ static void performance_snapshot_retains_intermediate_frames()
     fixture_free(&f);
 }
 
+/* The text of an element's .label, or "". */
+static void label_text(rml_element *el, char *out, size_t size)
+{
+    rml_element *label = el ? rml_element_query_selector(el, ".label") : NULL;
+    rml_element *node = label ? rml_element_first_child(label) : NULL;
+    out[0] = '\0';
+    if (node && !strcmp(rml_element_tag_name(node), "#text")) {
+        rml_element_text(node, out, size);
+    }
+}
+
+/* The shown element in `menu` matching `selector` labeled `name`, or NULL. */
+static rml_element *labeled(rml_element *menu, const char *selector, const char *name)
+{
+    rml_element *items[64];
+    int count = menu ? rml_element_query_selector_all(menu, selector, items, 64) : 0;
+    for (int i = 0; i < count && i < 64; i++) {
+        char label[64];
+        label_text(items[i], label, sizeof label);
+        if (!strcmp(label, name) && rml_element_is_visible(items[i], true)) {
+            return items[i];
+        }
+    }
+    return NULL;
+}
+
 static rml_element *status_bar(studio *s)
 {
     return test_query(rml_backend_context(s->backend), "[data-ui=StatusBar]");
@@ -414,16 +440,28 @@ static void status_bar_follows_studio()
     int after = studio_command_checked(s, STUDIO_COMMAND_TOGGLE_ASSETS);
     bool toggled = shown_before && after != before && toggle_on(s) == (after == 1);
 
-    kit_rect scale;
-    bool native = kit_find(s->kit, "app/status/scale/scale", &scale);
-    if (!(hints && reported && toggled && native)) {
-        printf("  %d %d %d %d: %s / %s\n", hints, reported, toggled, native, scene, elsewhere);
+    rml_element *scale = rml_element_query_selector(status_bar(s), ".ui-scale");
+    char percent[16] = "";
+    label_text(scale, percent, sizeof percent);
+    press(s, scale);
+    frames(&f, 3);
+    rml_element *menu = studio_element(s, "#scale-menu");
+    rml_element *preset = labeled(menu, ".menu-item", "150%");
+    bool listed = !strcmp(percent, "100%") && popover_open(menu) && preset &&
+                  labeled(menu, ".menu-item[data-checked]", "100%");
+    press(s, preset);
+    frames(&f, 3);
+    bool chosen = s->prefs.ui_scale == 1.5f && !popover_open(menu);
+    s->prefs.ui_scale = 1;
+    frames(&f, 2);
+    if (!(hints && reported && toggled && listed && chosen)) {
+        printf("  %d %d %d %d %d: %s / %s\n", hints, reported, toggled, listed, chosen, scene, elsewhere);
     }
     test_check(
-        hints && reported && toggled && native,
+        hints && reported && toggled && listed && chosen,
         "Studio's authored status bar follows the hovered area and reports, "
-        "runs "
-        "its drawer toggles' commands and hosts UI Scale natively"
+        "runs its drawer toggles' commands, and its UI Scale menu checks the "
+        "current scale and sets another"
     );
     fixture_free(&f);
 }
@@ -867,11 +905,26 @@ static void readout_follows_camera()
     fixture_free(&f);
 }
 
+/* The top bar's menubar trigger labeled `label`. */
+static rml_element *menubar_trigger(studio *s, const char *label)
+{
+    rml_element *found[16];
+    int count = test_query_all(rml_backend_context(s->backend), ".topbar .trigger", found, 16);
+    for (int i = 0; i < count; i++) {
+        char text[64] = "";
+        rml_element_inner_rml(found[i], text, sizeof text);
+        if (strstr(text, label)) {
+            return found[i];
+        }
+    }
+    return NULL;
+}
+
 /* Studio shows its authored top bar and area headers over its own state:
-   the menubar, the play target and each area's editor type menu and
-   controls in their native slots, the document tabs, whose faces and close
-   buttons run their commands with the tab's index, the transport's
-   commands, and each header's Maximize. */
+   the menubar, the play target, each area's editor type menu and its
+   controls' native slot, the document tabs, whose faces and close buttons
+   run their commands with the tab's index, the transport's commands, and
+   each header's Maximize. */
 static void chrome_follows_studio()
 {
     studio_fixture f = vault_open();
@@ -883,10 +936,10 @@ static void chrome_follows_studio()
     kit_rect r;
     rml_element *heads[8], *tabs[8], *play[8];
     int shown = panel_elements(s, "AreaHeader", ".area-head", heads);
-    bool slots = kit_find(s->kit, "app/topbar/menus/file", &r) &&
-                 kit_find(s->kit, "app/topbar/target/target", &r) && heads[0] &&
+    bool slots = menubar_trigger(s, "File") &&
+                 studio_element(s, "#play-target .target") && heads[0] &&
                  rml_element_query_selector(heads[0], ".editor-type") &&
-                 kit_find(s->kit, "app/workspace/main/editors/top/head/controls", &r) &&
+                 kit_find(s->kit, "app/workspace/top/area/head/controls", &r) &&
                  s->maximized < 0 && shown >= STUDIO_AREA_COUNT - 1;
     int count = panel_elements(s, "TopBar", ".doc-tab", tabs) - 1;
     int bank = tab_named(f.scene, "Bank"), scene = bank == 0 ? 1 : 0;
@@ -929,8 +982,9 @@ static void chrome_follows_studio()
     }
     test_check(
         slots && listed && selected && closed && playing && restored,
-        "Studio's authored top bar and area headers host their native "
-        "slots and run tab, transport and area commands"
+        "Studio's authored top bar and area headers show the menubar, the "
+        "play target and the controls' slots, and run tab, transport and "
+        "area commands"
     );
     fixture_free(&f);
 }
@@ -1095,7 +1149,7 @@ static void layout_modes_are_explicit()
     kit_rect r;
     bool horizontal_shown = s->prefs.workspace == STUDIO_WORKSPACE_HORIZONTAL_SPLIT &&
                             beside(s) &&
-                            kit_find(s->kit, "app/workspace/main/editors/bottom/body/code/text", &r) &&
+                            kit_find(s->kit, "app/workspace/bottom/area/body/code/text", &r) &&
                             !horizontal->drawer_open && vertical->drawer_open &&
                             vertical->editors[STUDIO_AREA_DRAWER] == STUDIO_EDITOR_CODE;
     ui_buffer *buffer = studio_ui_buffer(s);
@@ -1255,7 +1309,7 @@ static void area_documents()
     frames(&f, 8);
     kit_rect top = { 0 };
     bool guest = s->guest &&
-                 kit_find(s->guest->kit, "app/workspace/main/editors/top", &top) &&
+                 kit_find(s->guest->kit, "app/workspace/top/area", &top) &&
                  top.w > 0 && top.h > 0 &&
                  rml_context_document_count(rml_backend_context(s->guest->backend)) >= 8;
     studio_guest_stop(s);
@@ -1266,32 +1320,6 @@ static void area_documents()
         "its own, and stops"
     );
     fixture_free(&f);
-}
-
-/* The text of an element's .label, or "". */
-static void label_text(rml_element *el, char *out, size_t size)
-{
-    rml_element *label = el ? rml_element_query_selector(el, ".label") : NULL;
-    rml_element *node = label ? rml_element_first_child(label) : NULL;
-    out[0] = '\0';
-    if (node && !strcmp(rml_element_tag_name(node), "#text")) {
-        rml_element_text(node, out, size);
-    }
-}
-
-/* The shown element in `menu` matching `selector` labeled `name`, or NULL. */
-static rml_element *labeled(rml_element *menu, const char *selector, const char *name)
-{
-    rml_element *items[64];
-    int count = menu ? rml_element_query_selector_all(menu, selector, items, 64) : 0;
-    for (int i = 0; i < count && i < 64; i++) {
-        char label[64];
-        label_text(items[i], label, sizeof label);
-        if (!strcmp(label, name) && rml_element_is_visible(items[i], true)) {
-            return items[i];
-        }
-    }
-    return NULL;
 }
 
 /* A point inside `el` outside `document`'s box: where it draws over another
@@ -1399,8 +1427,343 @@ static void area_menus()
     fixture_free(&f);
 }
 
+/* ---------- Shots (CHIBI_SHELL_CAPTURE_DIR) ---------- */
+
+static void shell_shot(studio_fixture *f, const char *dir, const char *variant, const char *state)
+{
+    char path[PATH_MAX];
+    frames(f, 30);
+    snprintf(path, sizeof path, "%s/native-%s-%s.png", dir, variant, state);
+    assert(app_save_screenshot(path) == 0);
+}
+
+static void shot_open(
+    studio_fixture *f,
+    rml_element *trigger,
+    const char *dir,
+    const char *variant,
+    const char *state
+)
+{
+    if (!trigger) {
+        fprintf(stderr, "shell shots: no trigger for %s\n", state);
+        return;
+    }
+    press(f->studio, trigger);
+    shell_shot(f, dir, variant, state);
+    tap(SDL_SCANCODE_ESCAPE);
+    tap(SDL_SCANCODE_ESCAPE);
+    frames(f, 6);
+}
+
+/* Native shots of the shell: the window at rest, each top bar menu and
+   the status bar's UI Scale open, the drawer open, an area maximized, the
+   side pane closed and the horizontal split. */
+static void capture_shell(const char *dir)
+{
+    static const struct
+    {
+        const char *name;
+        studio_theme theme;
+        bool comfortable;
+        float scale;
+    } VARIANTS[] = { { "dark-compact", STUDIO_THEME_DARK, false, 1 },
+                     { "dark-comfortable", STUDIO_THEME_DARK, true, 1 },
+                     { "light-compact", STUDIO_THEME_LIGHT, false, 1 },
+                     { "light-comfortable", STUDIO_THEME_LIGHT, true, 1 },
+                     { "dark-compact-150", STUDIO_THEME_DARK, false, 1.5f },
+                     { "light-comfortable-150", STUDIO_THEME_LIGHT, true, 1.5f } };
+    for (size_t v = 0; v < sizeof VARIANTS / sizeof *VARIANTS; v++) {
+        const char *name = VARIANTS[v].name;
+        studio_fixture f = scene_open(PROJECT, PROJECT "/content/scenes/Main.kdl", "Weapons");
+        studio *s = f.studio;
+        s->maximized = -1;
+        s->prefs.theme = VARIANTS[v].theme;
+        s->prefs.comfortable = VARIANTS[v].comfortable;
+        s->prefs.ui_scale = VARIANTS[v].scale;
+        mouse_move(s, 600, 790);
+        frames(&f, 30);
+        shell_shot(&f, dir, name, "base");
+        shot_open(&f, menubar_trigger(s, "File"), dir, name, "file");
+        shot_open(&f, menubar_trigger(s, "View"), dir, name, "view");
+        press(s, menubar_trigger(s, "Object"));
+        frames(&f, 4);
+        tap(SDL_SCANCODE_DOWN);
+        frames(&f, 2);
+        tap(SDL_SCANCODE_RIGHT);
+        shell_shot(&f, dir, name, "object-add");
+        tap(SDL_SCANCODE_ESCAPE);
+        tap(SDL_SCANCODE_ESCAPE);
+        frames(&f, 6);
+        shot_open(&f, studio_element(s, ".target"), dir, name, "target");
+        shot_open(&f, studio_element(s, "#layout .btn"), dir, name, "layout");
+        shot_open(&f, studio_element(s, ".speed"), dir, name, "speed");
+        shot_open(&f, studio_element(s, ".ui-scale"), dir, name, "scale");
+        studio_command_run(s, STUDIO_COMMAND_TOGGLE_OUTPUT);
+        shell_shot(&f, dir, name, "drawer");
+        studio_command_run(s, STUDIO_COMMAND_TOGGLE_OUTPUT);
+        studio_toggle_maximized(s, STUDIO_AREA_TOP);
+        shell_shot(&f, dir, name, "maximized");
+        studio_toggle_maximized(s, STUDIO_AREA_TOP);
+        studio_command_run(s, STUDIO_COMMAND_TOGGLE_SIDE_PANE);
+        shell_shot(&f, dir, name, "side-closed");
+        studio_command_run(s, STUDIO_COMMAND_TOGGLE_SIDE_PANE);
+        studio_set_workspace(s, STUDIO_WORKSPACE_HORIZONTAL_SPLIT);
+        shell_shot(&f, dir, name, "across");
+        fixture_free(&f);
+    }
+}
+
+/* The pointer over `el`, as a press starts. */
+static void hover(studio *s, rml_element *el)
+{
+    rml_vec2 at = rml_element_absolute_offset(el, RML_BOX_BORDER);
+    rml_vec2 size = rml_element_box_size(el, RML_BOX_BORDER);
+    float ratio = studio_pixel_ratio(s);
+    rml_backend_process_input(
+        s->backend,
+        &(rml_input){ .type = RML_INPUT_POINTER_MOVE,
+                      .x = (at.x + size.x * 0.5f) / ratio,
+                      .y = (at.y + size.y * 0.5f) / ratio }
+    );
+}
+
+static bool menu_open(studio *s, const char *id)
+{
+    rml_element *menu = studio_element(s, id);
+    return menu && popover_open(menu);
+}
+
+/* The top bar's menubar (workstream C3): a press opens a menu and marks its
+   trigger, hovering another trigger or Right switches menus, Escape closes
+   them, a MenuCommand runs its command and File's and Object's lists come
+   from the `menubar` source. */
+static void menubar_runs_commands()
+{
+    studio_fixture f = vault_open();
+    studio *s = f.studio;
+    s->maximized = -1;
+    frames(&f, 4);
+    rml_element *file = menubar_trigger(s, "File");
+    press(s, file);
+    frames(&f, 3);
+    bool opened = menu_open(s, "#menu-file") &&
+                  rml_element_has_attribute(file, "data-popup-open");
+    hover(s, menubar_trigger(s, "Edit"));
+    frames(&f, 3);
+    bool hovered = menu_open(s, "#menu-edit") && !menu_open(s, "#menu-file") &&
+                   !rml_element_has_attribute(file, "data-popup-open");
+    tap(SDL_SCANCODE_RIGHT);
+    frames(&f, 3);
+    bool stepped = menu_open(s, "#menu-view") && !menu_open(s, "#menu-edit");
+    tap(SDL_SCANCODE_ESCAPE);
+    frames(&f, 3);
+    bool closed = !menu_open(s, "#menu-view");
+
+    studio_layout *layout = studio_active_layout(s);
+    layout->drawer_open = false;
+    frames(&f, 2);
+    press(s, menubar_trigger(s, "View"));
+    frames(&f, 3);
+    rml_element *output = labeled(studio_element(s, "#menu-view"), ".menu-item", "Output");
+    press(s, output);
+    frames(&f, 3);
+    bool ran = output && layout->drawer_open &&
+               layout->editors[STUDIO_AREA_DRAWER] == STUDIO_EDITOR_OUTPUT &&
+               !menu_open(s, "#menu-view");
+
+    int named = 0;
+    for (int i = 0; i < acount(f.scene->prototypes); i++) {
+        named += f.scene->prototypes[i].prototype &&
+                 f.scene->prototypes[i].prototype->name;
+    }
+    int actors = acount(f.scene->actors);
+    press(s, menubar_trigger(s, "Object"));
+    frames(&f, 3);
+    tap(SDL_SCANCODE_DOWN);
+    tap(SDL_SCANCODE_RIGHT);
+    frames(&f, 6);
+    rml_element *rows[32];
+    rml_element *add = studio_element(s, "#menu-object .submenu .popup");
+    int listed = add ? rml_element_query_selector_all(add, ".menu-item", rows, 32) : 0;
+    int shown = 0;
+    rml_element *last = NULL;
+    for (int i = 0; i < listed && i < 32; i++) {
+        bool visible = rml_element_is_visible(rows[i], true);
+        shown += visible;
+        last = visible ? rows[i] : last;
+    }
+    if (last) {
+        press(s, last);
+        frames(&f, 3);
+    }
+    bool added = named > 0 && shown == named && acount(f.scene->actors) == actors + 1;
+    studio_history(s, false);
+    frames(&f, 2);
+    if (!(opened && hovered && stepped && closed && ran && added)) {
+        printf("  %d %d %d %d %d %d (%d of %d)\n", opened, hovered, stepped, closed, ran, added, shown, named);
+    }
+    test_check(
+        opened && hovered && stepped && closed,
+        "the menubar opens a menu on press and marks its trigger, switches "
+        "on hover and with Right, and Escape closes it"
+    );
+    test_check(
+        ran && added,
+        "a menubar MenuCommand runs its command, and Object > Add lists the "
+        "scene's prototypes and adds the one chosen"
+    );
+    fixture_free(&f);
+}
+
+/* The play target, playback speed, layout and debugger steps (workstream
+   C3): menus over the `shell` source and commands. */
+static void transport_menus()
+{
+    studio_fixture f = vault_open();
+    studio *s = f.studio;
+    s->maximized = -1;
+    frames(&f, 4);
+    press(s, studio_element(s, "#play-target .target"));
+    frames(&f, 3);
+    rml_element *menu = studio_element(s, "#target-menu");
+    rml_element *items[4];
+    int count = menu ? rml_element_query_selector_all(menu, ".menu-item", items, 4)
+                     : 0;
+    char label[64] = "";
+    rml_element_inner_rml(studio_element(s, "#play-target .target .label"), label, sizeof label);
+    bool target = popover_open(menu) && count == 2 &&
+                  rml_element_has_attribute(items[0], "data-checked") &&
+                  !strncmp(label, "Scene", 5);
+    tap(SDL_SCANCODE_ESCAPE);
+    frames(&f, 3);
+
+    press(s, studio_element(s, "#speed .speed"));
+    frames(&f, 3);
+    rml_element *half = labeled(studio_element(s, "#speed-menu"), ".menu-item", "0.5\xc3\x97");
+    press(s, half);
+    frames(&f, 3);
+    rml_element *speed = studio_element(s, "#speed .speed");
+    char state[8] = "";
+    rml_element_attribute(speed, "data-state", state, sizeof state);
+    bool slowed = half && app_scene_authoring_time_scale(f.scene) == 0.5 &&
+                  !strcmp(state, "on");
+    app_scene_authoring_set_time_scale(f.scene, 1);
+
+    studio_workspace before = s->prefs.workspace;
+    press(s, studio_element(s, "#layout .btn"));
+    frames(&f, 3);
+    rml_element *layouts = studio_element(s, "#layout-menu");
+    rml_element *checked = labeled(layouts, ".menu-item[data-checked]", "Vertical Split");
+    rml_element *across = labeled(layouts, ".menu-item", "Horizontal Split");
+    press(s, across);
+    frames(&f, 3);
+    bool laid_out = checked && across &&
+                    s->prefs.workspace == STUDIO_WORKSPACE_HORIZONTAL_SPLIT;
+    studio_set_workspace(s, before);
+    s->maximized = -1;
+    frames(&f, 2);
+
+    if (!(target && slowed && laid_out)) {
+        printf("  %d %d %d (%d items, label %s)\n", target, slowed, laid_out, count, label);
+    }
+    test_check(
+        target && slowed && laid_out,
+        "the play target's menu checks the scene, the speed's preset slows "
+        "play and marks the button, and the layout menu switches modes"
+    );
+    fixture_free(&f);
+}
+
+/* The Workspace (workstream C3): areas over their places, a splitter that
+   resizes its areas from its input in the same frame and lays out only
+   their documents, and a drawer that eases open and shut. */
+static void workspace_layout()
+{
+    studio_fixture f = vault_open();
+    studio *s = f.studio;
+    s->maximized = -1;
+    studio_layout *layout = studio_active_layout(s);
+    layout->drawer_open = false;
+    layout->side_open = true;
+    frames(&f, 30);
+    rml_element *split = studio_element(s, "[data-ui=Workspace] .editors > .split");
+    rml_element *top = studio_element(s, "#area-top");
+    kit_rect area = s->areas[STUDIO_AREA_TOP].rect;
+    rml_vec2 place = rml_element_box_size(top, RML_BOX_BORDER);
+    float ratio = studio_pixel_ratio(s);
+    bool placed = split && area.h > 0 && fabsf(area.h - place.y / ratio) < 1;
+    float hit = split ? rml_element_box_size(split, RML_BOX_BORDER).y / ratio : 0;
+
+    /* A drag by 40 dp. */
+    rml_vec2 at = rml_element_absolute_offset(split, RML_BOX_BORDER);
+    rml_vec2 size = rml_element_box_size(split, RML_BOX_BORDER);
+    float x = (at.x + size.x / 2) / ratio, y = (at.y + size.y / 2) / ratio;
+    rml_input input = { .type = RML_INPUT_POINTER_MOVE, .x = x, .y = y };
+    rml_backend_process_input(s->backend, &input);
+    input.type = RML_INPUT_POINTER_DOWN;
+    rml_backend_process_input(s->backend, &input);
+    float split_before = layout->main_split, height = place.y / ratio;
+    rml_element *hit_element = rml_context_element_at_point(
+        rml_backend_context(s->backend),
+        (rml_vec2){ at.x + size.x / 2, at.y + 1 },
+        NULL
+    );
+    bool followed = hit_element == split;
+    for (int i = 1; i <= 4; i++) {
+        input = (rml_input){ .type = RML_INPUT_POINTER_MOVE, .x = x, .y = y + 10 * i };
+        rml_backend_process_input(s->backend, &input);
+        frames(&f, 1);
+        float now = rml_element_box_size(top, RML_BOX_BORDER).y / ratio;
+        followed &= fabsf(now - (height + 10 * i)) <= 1;
+    }
+    followed &= layout->main_split > split_before;
+    input.type = RML_INPUT_POINTER_UP;
+    rml_backend_process_input(s->backend, &input);
+    frames(&f, 2);
+    layout->main_split = split_before;
+
+    /* The drawer's height eases: it opens from nothing, and its area stays
+       while it shuts. */
+    rml_element *drawer = studio_element(s, "[data-ui=Workspace] .drawer");
+    studio_command_run(s, STUDIO_COMMAND_TOGGLE_OUTPUT);
+    float heights[20];
+    for (int i = 0; i < 20; i++) {
+        frames(&f, 1);
+        heights[i] = rml_element_box_size(drawer, RML_BOX_BORDER).y / ratio;
+    }
+    float open = s->areas[STUDIO_AREA_DRAWER].rect.h;
+    bool between = false;
+    for (int i = 0; i < 20; i++) {
+        between |= heights[i] > 1 && heights[i] < open;
+    }
+    studio_command_run(s, STUDIO_COMMAND_TOGGLE_OUTPUT);
+    frames(&f, 1);
+    bool closing = s->areas[STUDIO_AREA_DRAWER].rect.h > 0;
+    frames(&f, 30);
+    bool eased = between && open > 80 && heights[19] == open + 6 && closing &&
+                 s->areas[STUDIO_AREA_DRAWER].rect.h == 0 &&
+                 rml_element_box_size(drawer, RML_BOX_BORDER).y == 0;
+    if (!(placed && hit >= 8 && followed && eased)) {
+        printf("  %d %.1f %d %d (drawer %.1f)\n", placed, hit, followed, eased, open);
+    }
+    test_check(
+        placed && hit >= 8,
+        "each area lays out over its place in the Workspace, between "
+        "splitters that take the pointer at least 8 dp wide"
+    );
+    test_check(followed, "a splitter's drag resizes its areas in the frame its input arrives");
+    test_check(eased, "the drawer eases open and shut, then leaves its place");
+    fixture_free(&f);
+}
+
 void studio_documents_shell_checks()
 {
+    const char *dir = getenv("CHIBI_SHELL_CAPTURE_DIR");
+    if (dir && dir[0]) {
+        capture_shell(dir);
+        return;
+    }
     host_ui_refresh_keeps_input_immediate();
     performance_snapshot_retains_intermediate_frames();
     status_bar_follows_studio();
@@ -1416,4 +1779,7 @@ void studio_documents_shell_checks()
     toolbar_shortcuts_keep_text_focus();
     area_documents();
     area_menus();
+    menubar_runs_commands();
+    transport_menus();
+    workspace_layout();
 }

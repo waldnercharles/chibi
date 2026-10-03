@@ -117,7 +117,10 @@ static void emit(kit_fixture *f)
     kit *k = f->k;
     kit_root(k, "app");
     kit_push(k, "bar", NULL, "topbar");
-    if (kit_menubar_trigger(k, "file", "File")) {
+    if (kit_button(k, "file", &(kit_button_desc){ .label = "File" })) {
+        kit_popup_open(k, "menu:app/bar/file");
+    }
+    if (kit_popup_begin(k, "menu:app/bar/file", "menu")) {
         kit_attr(k, "id", "test-file-menu");
         if (f->menu_count && f->menu_submenu) {
             if (kit_submenu_begin(k, "actions", "Actions", 0)) {

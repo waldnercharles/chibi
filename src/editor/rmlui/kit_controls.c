@@ -790,29 +790,7 @@ void kit_row_end(kit *k)
     pop_node(k);
 }
 
-/* ---------- Splitter and surfaces ---------- */
-
-bool kit_splitter(kit *k, const char *key, int axis, float *value, float minimum, float maximum, bool invert)
-{
-    node *n = emit(k, key, KIND_SPLITTER, "splitter", axis ? "split-h" : "split-v");
-    double taken;
-    bool committed;
-    bool changed = splitter_take(n->el, &taken, &committed);
-    if (changed) {
-        *value = (float)taken;
-    }
-    n->w.committed = committed;
-    char text[32];
-    set_attr(n, "axis", axis ? "y" : "x");
-    snprintf(text, sizeof text, "%.9g", minimum);
-    set_attr(n, "min", text);
-    snprintf(text, sizeof text, "%.9g", maximum);
-    set_attr(n, "max", text);
-    snprintf(text, sizeof text, "%.9g", *value);
-    set_attr(n, "value", text);
-    set_flag(n, "invert", invert);
-    return changed;
-}
+/* ---------- Surfaces ---------- */
 
 rml_element *kit_surface(kit *k, const char *key, const char *cls, const char *texture, kit_surface_input *input)
 {

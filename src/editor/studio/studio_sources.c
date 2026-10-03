@@ -1372,6 +1372,15 @@ void studio_sources_sync(studio *s, studio_sources *src, ui_data *data)
     }
 }
 
+void studio_sources_resync(studio *s, studio_sources *src, ui_data *data, const char *name)
+{
+    for (int i = 0; i < studio_panel_source_count; i++) {
+        if (!strcmp(studio_panel_sources[i].name, name)) {
+            sync_source(s, src, data, i, false);
+        }
+    }
+}
+
 void studio_sources_mounted(studio *s, studio_sources *src, ui_data *data, const char *panel)
 {
     for (int i = 0; i < studio_panel_source_count; i++) {
@@ -2335,6 +2344,10 @@ const studio_panel_source studio_panel_sources[] = {
     /* Members (workstream P5). */
     { "members", "Members", studio_members_add, studio_members_sync, studio_members_action },
     { "members_ui", "Members", studio_members_ui_add, studio_members_ui_sync, NULL },
+    /* The shell (workstream C3). */
+    { "menubar", "TopBar", studio_menubar_add, studio_menubar_sync, studio_menubar_action },
+    { "shell", NULL, studio_shell_add, studio_shell_sync, studio_shell_action },
+    { "workspace", "Workspace", studio_workspace_add, studio_workspace_sync, studio_workspace_action },
 };
 const int studio_panel_source_count = (int)(sizeof studio_panel_sources /
                                             sizeof *studio_panel_sources);

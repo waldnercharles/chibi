@@ -37,8 +37,9 @@ typedef struct entry
     rml_context *context;
     popover_side side;
     float box[4];
-    float left, top;    /* the offset set, in pixels */
-    float anchor_width; /* --anchor-width, in pixels, as Base UI sets it */
+    float left, top;        /* the offset set, in pixels */
+    float anchor_width;     /* --anchor-width, in pixels, as Base UI sets it */
+    float available_height; /* --available-height, in pixels */
     bool managed; /* it has the popover attribute: shown and hidden here */
     bool placed, focus_pending, keyboard;
     rml_element_ref *sub; /* the submenu row the pointer rests on */
@@ -416,6 +417,10 @@ static void drop(int i)
     if (el && e->managed) {
         fade(el);
     }
+    rml_element *trigger = get(e->trigger);
+    if (trigger) {
+        rml_element_remove_attribute(trigger, "data-popup-open");
+    }
     unref(&e->el);
     unref(&e->anchor);
     unref(&e->trigger);
@@ -472,6 +477,24 @@ static bool follow_width(entry *e, rml_element *el)
     return true;
 }
 
+/* --available-height gives the window's height less its margins, as Base
+   UI's gives the room beside the anchor, so a menu taller than the window
+   scrolls; true when it changed. */
+static bool follow_height(entry *e, rml_element *el)
+{
+    rml_element *root = rml_context_root(e->context);
+    float height = rml_element_box_size(root, RML_BOX_BORDER).y -
+                   2 * MARGIN * control_dp(el);
+    if (height == e->available_height) {
+        return false;
+    }
+    char value[32];
+    snprintf(value, sizeof value, "%.0fpx", height);
+    rml_element_set_property(el, "--available-height", value);
+    e->available_height = height;
+    return true;
+}
+
 void popover_show(rml_element *popover, const popover_anchor *at)
 {
     if (find(popover) >= 0) {
@@ -505,6 +528,9 @@ void popover_show(rml_element *popover, const popover_anchor *at)
     };
     memcpy(e.box, at->box, sizeof e.box);
     apush(stack, e);
+    if (at->trigger) {
+        rml_element_set_attribute(at->trigger, "data-popup-open", "");
+    }
     appear(&alast(stack), popover);
     follow_width(&alast(stack), popover);
     raise_document(rml_element_owner_document(popover));
@@ -1152,8 +1178,9 @@ void popovers_settle(rml_context *context)
     for (int i = 0; i < acount(stack); i++) {
         entry *e = &stack[i];
         rml_element *el = e->context == context ? get(e->el) : NULL;
-        bool widened = el && follow_width(e, el);
-        if (el && (place(e, el) || widened)) {
+        bool resized = el && follow_width(e, el);
+        resized |= el && follow_height(e, el);
+        if (el && (place(e, el) || resized)) {
             rml_document_update(rml_element_owner_document(el));
         }
         if (el && e->placed && e->keyboard && is_menu(el)) {

@@ -180,20 +180,6 @@ void autocomplete_open_on(kit *k, const char *key, node *trigger)
     str_set(&p->dropdown_trigger_path, trigger->path);
 }
 
-static const char *menu_popup_key(kit *k, const node *trigger)
-{
-    return frame_format(k, "menu:%s", trigger->path);
-}
-
-/* Opens a menubar trigger's menu in place of any open popups. */
-static void open_menu(kit *k, node *trigger)
-{
-    close_all_popups(k);
-    popup *p = open_popup(k, menu_popup_key(k, trigger), "");
-    str_set(&p->trigger, trigger->path);
-    str_set(&p->anchor_path, trigger->path);
-}
-
 /* ---------- Showing ---------- */
 
 /* The role that tells popover.c how it behaves: a menu, a list whose search
@@ -333,16 +319,6 @@ void popup_press(kit *k, rml_element *target)
             rml_element_blur(field->w.input_el);
         }
     }
-}
-
-void trigger_press(kit *k, node *n, const rml_event *e)
-{
-    if (kit_popup_is_open(k, menu_popup_key(k, n))) {
-        close_all_popups(k);
-    } else {
-        open_menu(k, n);
-    }
-    rml_event_stop_propagation(e);
 }
 
 /* A click on an item reports it; on a submenu's row it opens the submenu. */
@@ -762,22 +738,6 @@ bool kit_submenu_begin(kit *k, const char *key, const char *label, uint32_t icon
 void kit_submenu_end(kit *k)
 {
     kit_popup_end(k);
-}
-
-bool kit_menubar_trigger(kit *k, const char *key, const char *label)
-{
-    node *n = emit(k, key, KIND_TRIGGER, "button", "btn trigger");
-    if (!n->w.label_el) {
-        n->w.label_el = raw(n->el, "span", "label", NULL);
-    }
-    set_element_text(n->w.label_el, label);
-    /* popover.c switches menus between a menubar's triggers. */
-    set_attr(n, "aria-haspopup", "menu");
-    rml_element_set_attribute(rml_element_parent(n->el), "role", "menubar");
-    const char *menu = menu_popup_key(k, n);
-    bool open = kit_popup_is_open(k, menu);
-    set_flag(n, "data-pressed", open);
-    return open && kit_popup_begin(k, menu, "menu");
 }
 
 /* ---------- Tooltips ---------- */

@@ -59,8 +59,6 @@ typedef enum node_kind
     KIND_POPUP,
     KIND_MENU_ITEM,
     KIND_SUBMENU,
-    KIND_TRIGGER,
-    KIND_SPLITTER,
     KIND_SURFACE,
     KIND_COMMAND,
     KIND_COMMAND_ITEM,
@@ -182,17 +180,6 @@ typedef struct toast
     spring y, x, scale, opacity;
 } toast;
 
-/* A value animated by kit_spring, keyed by its path. */
-typedef struct spring_value
-{
-    char *key;
-    double target, time;
-    spring s;
-    spring_params params; /* set from duration before the first step */
-    float duration;
-    uint64_t frame;
-} spring_value;
-
 /* A retired node kept until its exit transitions end. */
 typedef struct exiting
 {
@@ -289,7 +276,6 @@ struct kit
     node **entering; /* data-starting-style set at creation */
     exiting *exiting;
     node **layout_nodes;
-    CF_MAP(spring_value) springs; /* keyed by str_hash(key) */
     bool dragging; /* a drag ran in the context at the last kit_begin */
     toast *toasts;
     CF_MAP(uint64_t) toast_actions; /* toast id -> frame the action was pressed */
@@ -429,7 +415,6 @@ void autocomplete_open_on(kit *k, const char *key, node *trigger);
 void size_popups(kit *k);
 /* Sees every press: one outside an autocomplete ends its field's editing. */
 void popup_press(kit *k, rml_element *target);
-void trigger_press(kit *k, node *n, const rml_event *e);
 void menu_click(kit *k, node *n);
 void menu_hover(kit *k, node *n);
 bool dropdown_key(kit *k, const rml_event *e, node *n);

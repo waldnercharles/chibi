@@ -701,9 +701,6 @@ static void mousedown(kit *k, const rml_event *e, node *n)
     }
     n->events |= EV_PRESS;
     k->keyboard_edit = false;
-    if (n->kind == KIND_TRIGGER) {
-        trigger_press(k, n, e);
-    }
 }
 
 static void click(kit *k, const rml_event *e, node *n)
@@ -1066,10 +1063,6 @@ static void kit_free(kit *k)
         popup_free(k->popups[i]);
     }
     cf_map_free(k->popups);
-    for (int i = 0; i < cf_map_size(k->springs); i++) {
-        free(k->springs[i].key);
-    }
-    cf_map_free(k->springs);
     for (int i = 0; i < acount(k->toasts); i++) {
         free(k->toasts[i].title);
         free(k->toasts[i].description);
@@ -1341,7 +1334,6 @@ bool kit_item_active(kit *k)
     switch (n->kind) {
         case KIND_NUMBER: return number_field_active(n->el);
         case KIND_COLOR: return color_field_open(n->el);
-        case KIND_SPLITTER: return splitter_active(n->el);
         default: return n->w.focused;
     }
 }

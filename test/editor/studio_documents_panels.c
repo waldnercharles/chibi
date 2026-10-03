@@ -988,6 +988,36 @@ static void show_area_panel(studio_fixture *f, studio_editor editor)
     frames(f, 3);
 }
 
+/* The Workspace's drawer and side column (workstream C3): their areas
+   change editor types, and each eases open and shut, its areas leaving
+   their places; the arrangement ends as it began. */
+static void workspace_takes_turns(studio_fixture *f)
+{
+    static const studio_editor DRAWERS[] = {
+        STUDIO_EDITOR_OUTPUT,
+        STUDIO_EDITOR_ASSETS,
+        STUDIO_EDITOR_PERFORMANCE,
+    };
+    studio *s = f->studio;
+    studio_layout *layout = studio_active_layout(s), before = *layout;
+    layout->drawer_open = true;
+    for (size_t d = 0; d < sizeof DRAWERS / sizeof *DRAWERS; d++) {
+        studio_area_show(s, STUDIO_AREA_DRAWER, DRAWERS[d], "");
+        frames(f, 3);
+    }
+    for (int a = 0; a < AREA_PANEL_COUNT; a++) {
+        studio_area_show(s, STUDIO_AREA_OUTLINER, AREA_PANELS[a], "");
+        frames(f, 3);
+    }
+    layout->drawer_open = false;
+    studio_toggle_side_pane(s);
+    frames(f, 30);
+    studio_toggle_side_pane(s);
+    frames(f, 30);
+    *layout = before;
+    frames(f, 30);
+}
+
 /* The views of the panels' data model: one frame evaluates each once. */
 static uint64_t data_views(studio_fixture *f)
 {
@@ -1030,6 +1060,7 @@ static void area_panels_take_turns()
             s->maximized = -1;
             frames(&f, 3);
         }
+        workspace_takes_turns(&f);
         show_area_panel(&f, AREA_PANELS[0]);
         views[round > 0] = data_views(&f);
     }
@@ -1044,7 +1075,12 @@ static void area_panels_take_turns()
             warnings
         );
     }
-    test_check(kept, "an area turned between every pair of authored panels binds each one's views anew, none lost or piling up");
+    test_check(
+        kept,
+        "an area turned between every pair of authored panels, the drawer's "
+        "and side column's editors changed and each eased open and shut, "
+        "binds each one's views anew, none lost or piling up"
+    );
     fixture_free(&f);
 }
 

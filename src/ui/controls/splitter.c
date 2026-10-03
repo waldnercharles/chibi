@@ -16,8 +16,7 @@ typedef struct splitter
     double value, start, min, max;
     bool vertical, invert;
     float press;
-    bool pressing, dragging, dirty;
-    bool pending, committed; /* what C owners take */
+    bool dragging, dirty;
 } splitter;
 
 static rml_listener *listener;
@@ -42,35 +41,27 @@ static void drag(splitter *s, const rml_event *e)
         return;
     }
     if (e->id == RML_EVENT_DRAGEND) {
-        s->dragging = s->pressing = false;
-        s->committed = s->dirty = true;
+        s->dragging = false;
+        s->dirty = true;
         reflect(s);
         control_dispatch_number(s->el, "change", s->value, false);
         return;
     }
     double delta = (along(s, e) - s->press) / control_dp(s->el) * (s->invert ? -1 : 1);
     s->value = math_clamp(s->start + delta, s->min, s->max);
-    s->pending = true;
     control_redraw(s->el);
     control_dispatch_number(s->el, "input", s->value, false);
 }
 
 static void on_event(void *, const rml_event *e)
 {
-    splitter *s = rml_element_user(e->current);
-    switch (e->id) {
-        case RML_EVENT_MOUSEDOWN: s->pressing = e->button == 0; return;
-        case RML_EVENT_MOUSEUP: s->pressing = s->dragging; return;
-        case RML_EVENT_DRAGSTART:
-        case RML_EVENT_DRAG:
-        case RML_EVENT_DRAGEND: drag(s, e); return;
-        default: return;
-    }
+    drag(rml_element_user(e->current), e);
 }
 
 static const rml_event_id EVENTS[] = {
-    RML_EVENT_MOUSEDOWN, RML_EVENT_MOUSEUP, RML_EVENT_DRAGSTART,
-    RML_EVENT_DRAG,      RML_EVENT_DRAGEND,
+    RML_EVENT_DRAGSTART,
+    RML_EVENT_DRAG,
+    RML_EVENT_DRAGEND,
 };
 
 static void read_attributes(splitter *s)
@@ -135,24 +126,4 @@ void splitter_register()
         listener = rml_listener_create(on_event, NULL);
     }
     rml_register_element_instancer("splitter", instancer);
-}
-
-bool splitter_take(rml_element *el, double *value, bool *committed)
-{
-    splitter *s = rml_element_user(el);
-    *committed = s && s->committed;
-    bool pending = s && s->pending;
-    if (pending) {
-        *value = s->value;
-    }
-    if (s) {
-        s->pending = s->committed = false;
-    }
-    return pending;
-}
-
-bool splitter_active(const rml_element *el)
-{
-    const splitter *s = rml_element_user(el);
-    return s && (s->pressing || s->dragging);
 }

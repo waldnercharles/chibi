@@ -2323,6 +2323,8 @@ const studio_panel_source studio_panel_sources[] = {
     { "choices", NULL, add_choices, sync_choices, NULL },
     /* Lists and drag (workstream F4). */
     { "gallery", "Widgets", studio_gallery_add, studio_gallery_sync, studio_gallery_action },
+    /* Members (workstream P5). */
+    { "members", "Members", studio_members_add, studio_members_sync, studio_members_action },
 };
 const int studio_panel_source_count = (int)(sizeof studio_panel_sources /
                                             sizeof *studio_panel_sources);

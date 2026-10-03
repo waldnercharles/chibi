@@ -84,6 +84,8 @@ int studio_properties_run(const char *program);
 /* Lists and drag (workstream F4). */
 int studio_lists_run(const char *program);
 void test_ui_lists();
+/* Members (workstream P5). */
+int studio_members_run(const char *program);
 int studio_graph_inputs_run(const char *program);
 /* Asset thumbnails. */
 void test_studio_minimap();
@@ -1038,6 +1040,11 @@ int main(int argc, char **argv)
     if (argc > 1 && strcmp(argv[1], "--studio-lists") == 0) {
         registry_validate();
         return studio_lists_run(program_name) || fails ? 1 : 0;
+    }
+    /* Members (workstream P5): Studio's, in a hidden window. */
+    if (argc > 1 && strcmp(argv[1], "--studio-members") == 0) {
+        registry_validate();
+        return studio_members_run(program_name) || fails ? 1 : 0;
     }
     if (argc > 1 && strcmp(argv[1], "--studio-properties") == 0) {
         registry_validate();

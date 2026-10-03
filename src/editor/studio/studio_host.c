@@ -1121,6 +1121,8 @@ static uint64_t ui_state(studio *s)
         s->graph.graph_id,
         (uint64_t)s->members.kind,
         s->members.id,
+        (uint64_t)s->members.rename_kind,
+        s->members.rename_id,
         s->graph.comment,
     };
     uint64_t key = 1469598103934665603ull;

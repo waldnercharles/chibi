@@ -343,6 +343,30 @@ static void text_editor_chrome()
     fixture_free(&f);
 }
 
+/* An asset's KDL source in the Text Editor: its header names the asset,
+   with Save and the apply mode. */
+static void asset_source_header()
+{
+    studio_fixture f = vault_open();
+    studio *s = f.studio;
+    bool opened = app_scene_authoring_open_prototype(f.scene, "Vault") == 0;
+    s->maximized = -1;
+    studio_active_layout(s)->editors[STUDIO_AREA_BOTTOM] = STUDIO_EDITOR_CODE;
+    frames(&f, 4);
+    bool named = shows_text(in_panel(s, "CodeHeader", "span.code-file"), "Vault") &&
+                 in_panel(s, "CodeHeader", "[data-tip='Save source']");
+    bool live = s->prefs.code_apply_live;
+    rml_element *mode = in_panel(s, "CodeHeader", ".code-head > .segmented .seg:last-child");
+    if (mode) {
+        press(s, mode);
+    }
+    frames(&f, 3);
+    bool applied = !s->prefs.code_apply_live;
+    s->prefs.code_apply_live = live;
+    test_check(opened && named && applied, "an asset's source in the Text Editor names the asset, with Save and the apply mode");
+    fixture_free(&f);
+}
+
 /* Performance charts its samples while the scene runs: the frame and the
    simulation's phases with a legend, its readout above. */
 static void performance_charts()
@@ -424,5 +448,6 @@ void studio_documents_chrome_checks()
     graph_find_bar();
     debug_target_picker();
     text_editor_chrome();
+    asset_source_header();
     performance_charts();
 }

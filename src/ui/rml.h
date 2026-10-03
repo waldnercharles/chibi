@@ -359,13 +359,16 @@ extern "C"
     /* A custom element's Element overrides; any may be NULL. release runs
      * when the element is destroyed. update runs at the start of each
      * context update, before the element's style and its children's are
-     * computed, so what it sets shows in that frame (workstream N). */
+     * computed, so what it sets shows in that frame (workstream N). layout
+     * runs each time a layout places the element, whether or not it moved;
+     * a document lays out all of its elements at once. */
     typedef struct rml_element_hooks
     {
         void (*render)(rml_element *element, void *user);
         void (*resize)(rml_element *element, void *user);
         void (*release)(void *user);
         void (*update)(rml_element *element, void *user);
+        void (*layout)(rml_element *element, void *user);
     } rml_element_hooks;
 
     /* Event and the parameters the editor reads. Valid during the callback. */
@@ -568,10 +571,22 @@ extern "C"
     );
     /* Removes the model from its context, unbinding its elements. */
     void rml_data_model_destroy(rml_data_model *model);
-    /* Updates what binds `variable` after its value changed. */
+    /* Updates what binds `variable` after its value changed. Views look up
+     * array items in constant time (ui/json_items.h); a dirty variable makes
+     * them list arrays again, so an item replaced in place shows. */
     void rml_data_model_dirty(rml_data_model *model, const char *variable);
     /* How many values bindings have written, so a caller sees when to read. */
     uint64_t rml_data_model_writes(const rml_data_model *model);
+    /* What views read since the model was created: the values they
+     * evaluated and the members and items they looked up on the way, each
+     * view walking its address from a variable. A dirty variable costs one
+     * evaluation for every view bound to it. */
+    typedef struct rml_data_reads
+    {
+        uint64_t values;
+        uint64_t lookups;
+    } rml_data_reads;
+    rml_data_reads rml_data_model_reads(const rml_data_model *model);
     /* Binds the element and its descendants to the context's model `name`,
      * as data-model="name" in markup does. The element must have a parent. */
     void rml_element_set_data_model(rml_element *element, const char *name);

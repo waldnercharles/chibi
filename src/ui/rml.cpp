@@ -1,5 +1,6 @@
 /* The RmlUi C binding (rml.h): type conversions and forwarding only. */
 #include "ui/rml.h"
+#include "ui/json_items.h"
 
 #include <RmlUi/Core.h>
 #include <RmlUi/Core/Dictionary.h>
@@ -595,6 +596,13 @@ protected:
         }
     }
 
+    void OnLayout() override
+    {
+        if (hooks->layout) {
+            hooks->layout(wrap(this), user);
+        }
+    }
+
 private:
     const rml_element_hooks *hooks;
 };
@@ -636,15 +644,17 @@ yyjson_mut_val *json(void *ptr)
 class JsonDefinition final : public Rml::VariableDefinition
 {
 public:
-    JsonDefinition(yyjson_mut_doc *doc)
+    JsonDefinition(yyjson_mut_doc *doc, json_items *items)
       : Rml::VariableDefinition(Rml::DataVariableType::Scalar)
       , doc(doc)
+      , items(items)
     {
     }
 
     bool Get(void *ptr, Rml::Variant &variant) override
     {
         yyjson_mut_val *v = json(ptr);
+        reads.values++;
         switch (yyjson_mut_get_type(v)) {
         case YYJSON_TYPE_NULL:
             variant.Clear();
@@ -705,11 +715,12 @@ public:
     Rml::DataVariable Child(void *ptr, const Rml::DataAddressEntry &address) override
     {
         yyjson_mut_val *v = json(ptr);
+        reads.lookups++;
         if (yyjson_mut_is_arr(v) && address.name == "size") {
             return Rml::MakeLiteralIntVariable(Size(ptr));
         }
         if (yyjson_mut_is_arr(v)) {
-            yyjson_mut_val *item = yyjson_mut_arr_get(v, (size_t)address.index);
+            yyjson_mut_val *item = json_items_get(items, v, (size_t)address.index);
             return item ? Rml::DataVariable(this, item) : Rml::DataVariable();
         }
         if (!yyjson_mut_is_obj(v)) {
@@ -726,10 +737,12 @@ public:
     }
 
     uint64_t writes = 0;
+    rml_data_reads reads = {};
     Rml::Vector<yyjson_mut_val *> written; /* each once, until taken */
 
 private:
     yyjson_mut_doc *doc;
+    json_items *items;
 };
 
 } // namespace
@@ -1214,13 +1227,17 @@ struct rml_data_model
     rml_data_model(Rml::Context *context, const char *name, yyjson_mut_doc *doc)
       : context(context)
       , name(name)
-      , definition(doc)
+      , items(json_items_new())
+      , definition(doc, items)
     {
     }
+
+    ~rml_data_model() { json_items_free(items); }
 
     Rml::Context *context;
     Rml::String name;
     Rml::DataModelHandle handle;
+    json_items *items;
     JsonDefinition definition;
 };
 
@@ -1262,12 +1279,18 @@ void rml_data_model_destroy(rml_data_model *model)
 
 void rml_data_model_dirty(rml_data_model *model, const char *variable)
 {
+    json_items_clear(model->items);
     model->handle.DirtyVariable(variable);
 }
 
 uint64_t rml_data_model_writes(const rml_data_model *model)
 {
     return model->definition.writes;
+}
+
+rml_data_reads rml_data_model_reads(const rml_data_model *model)
+{
+    return model->definition.reads;
 }
 
 void rml_element_set_data_model(rml_element *e, const char *name)

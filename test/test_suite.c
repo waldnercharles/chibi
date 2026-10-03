@@ -288,7 +288,7 @@ TEST_CASE(all_checks)
     /* Trackpad pinch (G). */
     test_studio_pinch();
     test_check(test_rmlui_kit(), "Studio kit reconciliation, number fields, menus, and command");
-    test_check(test_rmlui_binding(), "RmlUi documents load from text, replace their style sheets, mix colors, bind JSON data and lay out text in flex rows");
+    test_check(test_rmlui_binding(), "RmlUi documents load from text, replace their style sheets, mix colors, bind JSON data, follow array edits with constant-time item lookups and lay out text in flex rows");
     /* UI source maps (workstream A) */
     test_ui_sources();
     /* UI documents (workstream D). */
@@ -1009,6 +1009,9 @@ int main(int argc, char **argv)
     }
     if (argc > 1 && strcmp(argv[1], "--rmlui-kit") == 0) {
         return test_rmlui_kit() ? 0 : 1;
+    }
+    if (argc > 1 && strcmp(argv[1], "--rmlui-binding") == 0) {
+        return test_rmlui_binding() ? 0 : 1;
     }
     /* Visual designer (workstream H) alone. */
     if (argc > 1 && strcmp(argv[1], "--ui-designer") == 0) {

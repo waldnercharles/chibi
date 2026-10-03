@@ -64,6 +64,7 @@ chibi_rmlui_dependencies()
 # embedded faces. Game UI and the editor kit both build on it.
 add_library(chibi_ui STATIC
     src/ui/rml.cpp
+    src/ui/json_items.c
     src/ui/rml_backend.c
     src/ui/rml_gpu.c
     # Motion and the native elements authored UI uses: <number-flow>,

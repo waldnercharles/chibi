@@ -11,6 +11,7 @@
 #include "support/array.h"
 #include "support/math.h"
 #include "support/xalloc.h"
+#include "ui/autofocus.h"
 #include "ui/controls/controls.h"
 #include "ui/drag.h"
 #include "ui/iframe.h"
@@ -980,6 +981,8 @@ static bool initialize_rml()
     controls_register();
     /* Workstream F4: drag and drop in every context. */
     ui_drag_register();
+    /* Workstream P5: autofocus on elements built after their document shows. */
+    autofocus_register();
     return true;
 }
 
@@ -1134,6 +1137,7 @@ void rml_backend_update(rml_backend *backend, double delta_seconds)
     iframes_settle(backend->context);
     presence_settle(backend->context);
     popovers_settle(backend->context);
+    autofocus_settle(backend->context);
     driven = NULL;
 }
 

@@ -855,6 +855,12 @@ extern "C"
         const char *const *values
     );
 
+    /* ---------- Members (workstream P5) ---------- */
+
+    /* Calls `created` for each element RmlUi creates from now until
+     * rml_shutdown, its attributes set, before it joins a document. */
+    void rml_add_element_created(void (*created)(rml_element *element));
+
 #ifdef __cplusplus
 }
 #endif

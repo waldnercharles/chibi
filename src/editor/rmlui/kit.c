@@ -1,4 +1,6 @@
-/* Studio kit: immediate-mode calls reconciled onto a retained RmlUi document.
+/* Studio kit: immediate-mode calls reconciled onto retained RmlUi documents:
+ * the kit's document, its layer and the documents kit_document_begin shows
+ * over the boxes it places, which lay out apart (ui/iframe.h).
  * This file keys, updates and retires nodes and routes RmlUi events to the
  * controllers in kit_number.c, kit_controls.c, kit_popup.c and kit_command.c.
  * They implement the Base UI contracts recorded in
@@ -7,6 +9,7 @@
 #include "support/resources.h"
 #include "support/ui_style.h"
 #include "support/xalloc.h"
+#include "ui/iframe.h"
 
 #include <assert.h>
 #include <ctype.h>
@@ -466,12 +469,18 @@ static void index_node(kit *k, node *n)
     cf_map_set(k->by_path, h, n);
 }
 
+static void close_document(kit *k, node *n);
+
 /* An index entry goes only while it is n's: a native slot's nodes outlive
- * their elements, whose addresses may already index new nodes. */
+ * their elements, whose addresses may already index new nodes. A node's
+ * own document closes with it. */
 void unmap(kit *k, node *n)
 {
     for (int i = 0; i < acount(n->children); i++) {
         unmap(k, n->children[i]);
+    }
+    if (n->document) {
+        close_document(k, n);
     }
     forget_motion(k, n);
     if (cf_map_get(k->by_element, element_key(n->el)) == n) {
@@ -716,6 +725,21 @@ void nodes_remove(node **list, const node *n)
         }
     }
     asetlen(list, kept);
+}
+
+static int document_index(const kit *k, const rml_element *document)
+{
+    for (int i = 0; i < acount(k->documents); i++) {
+        if (k->documents[i] == document) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+bool owns_document(const kit *k, const rml_element *document)
+{
+    return document_index(k, document) >= 0;
 }
 
 /* ---------- Popups ---------- */
@@ -1008,7 +1032,8 @@ static void sheet_name(const kit *k, const char *key, char *name, size_t size)
 
 /* The theme is the document's stylesheet: the Studio project styles every
  * kit document, so Studio edits its own chrome. Each sheet is recorded with
- * where its lines came from, as its maker recorded them (ui_style_map). */
+ * where its lines came from, as its maker recorded them (ui_style_map). The
+ * kit's other documents take copies, read once. */
 static void restyle(kit *k)
 {
     char name[160];
@@ -1029,6 +1054,9 @@ static void restyle(kit *k)
             );
         }
         ui_style_set(name, extra, ui_style_map(extra));
+    }
+    for (int i = 1; i < acount(k->documents); i++) {
+        rml_document_copy_style_sheet(k->documents[i], k->doc);
     }
     k->restyle = false;
 }
@@ -1066,6 +1094,93 @@ void kit_set_standard_font_family(kit *k, const char *family)
     str_set(&k->standard_font_family, family);
 }
 
+/* ---------- Documents ---------- */
+
+/* Listens to the document, styles it as the kit's are and gives it the
+ * body classes the kit set. */
+static void add_document(kit *k, rml_element *document)
+{
+    apush(k->documents, document);
+    for (size_t i = 0; i < KIT_EVENT_COUNT; i++) {
+        rml_element_add_event_listener(document, kit_events[i], k->listener, true);
+    }
+    for (int i = 0; i < acount(k->body_classes); i++) {
+        rml_element_set_class(document, k->body_classes[i], true);
+    }
+    if (document != k->doc && !k->restyle) {
+        rml_document_copy_style_sheet(document, k->doc);
+    }
+}
+
+/* Hosted content holds its owner's listeners, which may be gone by the time
+ * the context releases a closed document, so the content goes first. */
+static void remove_document(kit *k, rml_element *document)
+{
+    int i = document_index(k, document);
+    assert(i >= 0);
+    memmove(
+        &k->documents[i],
+        &k->documents[i + 1],
+        (size_t)(acount(k->documents) - 1 - i) * sizeof *k->documents
+    );
+    asetlen(k->documents, acount(k->documents) - 1);
+    for (size_t e = 0; e < KIT_EVENT_COUNT; e++) {
+        rml_element_remove_event_listener(document, kit_events[e], k->listener, true);
+    }
+    rml_element_set_inner_rml(document, "");
+    rml_document_close(document);
+}
+
+/* A document of the kit's own, at the URL of the kit's document so that
+ * relative paths resolve alike; it takes no focus as it shows. */
+static rml_element *open_document(kit *k, const char *rml)
+{
+    char *url = NULL;
+    str_catf(&url, "%s/%s", resource_ui(), k->document);
+    rml_element *document = rml_context_load_document_from_memory(k->context, rml, url);
+    free(url);
+    assert(document);
+    add_document(k, document);
+    rml_document_show(document, RML_MODAL_NONE, RML_FOCUS_NONE, RML_SCROLL_FLAG_NONE);
+    return document;
+}
+
+/* The layer is a document over all the others, so popups, tooltips,
+ * toasts, the palette and dialogs show above every area; its body takes the
+ * classes of the document's, whose variables its content reads. */
+static rml_element *open_layer(kit *k)
+{
+    rml_element *layer = open_document(k, "<rml><body id=\"layer\"/></rml>");
+    char classes[256];
+    size_t length = rml_element_class_names(k->doc, classes, sizeof classes);
+    assert(length < sizeof classes);
+    rml_element_set_class_names(layer, classes);
+    return layer;
+}
+
+/* n's children go into a document of their own, shown over n's element,
+ * and keep the paths they would have without it. */
+static void open_node_document(kit *k, node *n, bool fit)
+{
+    assert(!acount(n->children));
+    if (cf_map_get(k->by_path, str_hash(n->path)) == n) {
+        cf_map_del(k->by_path, str_hash(n->path));
+    }
+    str_set(&n->path, n->parent->path);
+    n->container = open_document(k, "<rml><body/></rml>");
+    n->document = true;
+    iframe_attach(n->container, n->el, fit);
+}
+
+static void close_document(kit *k, node *n)
+{
+    iframe_detach(n->container);
+    release_exiting_within(k, n->container);
+    remove_document(k, n->container);
+    n->container = n->el;
+    n->document = false;
+}
+
 /* ---------- API ---------- */
 
 kit *kit_create(void *context, const char *document_path)
@@ -1082,17 +1197,17 @@ kit *kit_create(void *context, const char *document_path)
     assert(k->doc);
     k->document = xstrdup(document_path);
     k->restyle = true; /* on the first frame, after the owner sets a theme */
+    /* It stays under the documents shown over it, which RmlUi raises above
+       their siblings as they take focus. */
+    rml_element_set_property(k->doc, "z-index", "0");
     rml_document_show(k->doc, RML_MODAL_NONE, RML_FOCUS_AUTO, RML_SCROLL_FLAG_AUTO);
     register_chart_element();
     register_wires_element();
     register_dot_element();
     register_code_element();
     k->listener = rml_listener_create(on_event, k);
-    for (size_t i = 0; i < KIT_EVENT_COUNT; i++) {
-        rml_element_add_event_listener(k->doc, kit_events[i], k->listener, true);
-    }
-    rml_element *layer = rml_element_by_id(k->doc, "layer");
-    assert(layer);
+    add_document(k, k->doc);
+    rml_element *layer = open_layer(k);
     k->layer = node_new(KIND_ROOT);
     k->layer->el = k->layer->container = layer;
     str_set(&k->layer->path, "layer");
@@ -1149,6 +1264,8 @@ static void kit_free(kit *k)
     afree(k->emitting);
     afree(k->entering);
     afree(k->layout_nodes);
+    afree(k->documents);
+    strings_free(k->body_classes);
     free(k->document);
     free(k->theme);
     free(k->standard_font_family);
@@ -1161,15 +1278,15 @@ void kit_destroy(kit *k)
     if (!k) {
         return;
     }
-    for (size_t i = 0; i < KIT_EVENT_COUNT; i++) {
-        rml_element_remove_event_listener(k->doc, kit_events[i], k->listener, true);
+    /* Those kit_document_begin opened, shown in elements, then the layer
+       and the kit's own. */
+    while (acount(k->documents)) {
+        rml_element *document = alast(k->documents);
+        if (acount(k->documents) > 2) {
+            iframe_detach(document);
+        }
+        remove_document(k, document);
     }
-    /* The context releases a closed document later, and hosted content
-       holds its owner's listeners, which may be gone by then. */
-    for (int i = 0; i < acount(k->roots); i++) {
-        rml_element_set_inner_rml(k->roots[i]->el, "");
-    }
-    rml_document_close(k->doc);
     rml_listener_destroy(k->listener);
     kit_free(k);
 }
@@ -1277,6 +1394,22 @@ void kit_pop(kit *k)
 void kit_leaf(kit *k, const char *key, const char *tag, const char *cls)
 {
     emit(k, key, KIND_BOX, tag, cls);
+}
+
+void kit_document_begin(kit *k, const char *key, const char *cls, bool fit)
+{
+    node *n = emit(k, key, KIND_BOX, "div", cls);
+    if (!n->document) {
+        open_node_document(k, n, fit);
+    }
+    push_node(k, n);
+}
+
+void kit_document_end(kit *k)
+{
+    node *n = alast(k->stack);
+    assert(n->document);
+    pop_node(k);
 }
 
 rml_element *kit_host(kit *k, const char *key, const char *cls)
@@ -1479,7 +1612,7 @@ bool kit_wants_pointer(const kit *k)
         return false;
     }
     rml_element *hover = rml_context_hover_element(k->context);
-    if (!hover || hover == k->doc) {
+    if (!hover || rml_element_owner_document(hover) == hover) {
         return false;
     }
     node *n = element_node(k, hover);
@@ -1533,7 +1666,7 @@ void kit_focus(kit *k)
 void kit_blur(kit *k)
 {
     rml_element *focus = rml_context_focus_element(k->context);
-    if (focus && focus != k->doc) {
+    if (focus && rml_element_owner_document(focus) != focus) {
         rml_element_blur(focus);
     }
 }
@@ -1584,5 +1717,18 @@ void kit_set_theme(kit *k, const char *name, bool active)
 
 void kit_set_body_class(kit *k, const char *name, bool on)
 {
-    rml_element_set_class(k->doc, name, on);
+    int at = -1;
+    for (int i = 0; i < acount(k->body_classes); i++) {
+        at = strcmp(k->body_classes[i], name) ? at : i;
+    }
+    if (on && at < 0) {
+        apush(k->body_classes, xstrdup(name));
+    }
+    if (!on && at >= 0) {
+        free(k->body_classes[at]);
+        adel(k->body_classes, at);
+    }
+    for (int i = 0; i < acount(k->documents); i++) {
+        rml_element_set_class(k->documents[i], name, on);
+    }
 }

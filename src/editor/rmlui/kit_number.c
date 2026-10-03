@@ -308,7 +308,7 @@ static void number_tab(kit *k, node *n, unsigned modifiers)
     if (n->w.editing) {
         return;
     }
-    focus_step(k->doc, n->el, modifiers & KIT_MOD_SHIFT ? -1 : 1, false, NULL);
+    focus_step(rml_element_owner_document(n->el), n->el, modifiers & KIT_MOD_SHIFT ? -1 : 1, false, NULL);
 }
 
 static void edit_key(kit *k, node *n, const rml_event *e)

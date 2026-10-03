@@ -143,6 +143,14 @@ extern void test_rcss();
 /* A kit styled with the Studio scene's root document (test/editor/kit_host.c). */
 typedef struct kit kit;
 kit *test_kit_create(void *context, const char *document);
+/* The first element matching `selector` in any of a context's documents,
+ * in their order, or NULL: a kit's content spans its own document, its
+ * layer's and those kit_document_begin opens (test/editor/kit_host.c). */
+typedef struct rml_context rml_context;
+typedef struct rml_element rml_element;
+rml_element *test_query(rml_context *context, const char *selector);
+/* Writes up to `max` matches across the documents; returns how many match. */
+int test_query_all(rml_context *context, const char *selector, rml_element **matches, int max);
 extern void test_scene_debug();
 extern void test_appearance_geometry();
 extern void test_mesh_surface();

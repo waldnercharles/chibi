@@ -9,6 +9,8 @@ add_library(chibi_ui STATIC
     src/ui/json_items.c
     src/ui/rml_backend.c
     src/ui/rml_gpu.c
+    # Documents shown in another document's element, laid out apart.
+    src/ui/iframe.c
     # Motion and the native elements authored UI uses: <number-flow>,
     # <morph-text> and presence for data-if.
     src/ui/motion.c

@@ -791,6 +791,12 @@ extern "C"
     typedef bool (*rml_data_if_fn)(rml_element *element, bool show, bool first);
     void rml_set_data_if_handler(rml_data_if_fn fn);
 
+    /* ---------- One document per area (workstream F5) ---------- */
+
+    /* Gives `document` a copy of `source`'s style sheets, as though each
+     * had been set on it too; nothing when `source` has none. */
+    void rml_document_copy_style_sheet(rml_element *document, rml_element *source);
+
 #ifdef __cplusplus
 }
 #endif

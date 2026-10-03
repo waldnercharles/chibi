@@ -361,8 +361,7 @@ static bool click_path(graph_input_fixture *f, const char *path)
 static rml_element *graph_query(graph_input_fixture *f, const char *selector)
 {
     rml_context *context = rml_backend_context(f->studio->graph.backend);
-    rml_element *document = rml_context_document(context, 0);
-    return rml_element_query_selector(document, selector);
+    return test_query(context, selector);
 }
 
 static int autocomplete_labels(graph_input_fixture *f, char labels[][128], int capacity)
@@ -1206,10 +1205,8 @@ static void shader_values_and_collections_are_editable()
                             first_stop ? first_stop->color[1] : 0,
                             first_stop ? first_stop->color[2] : 0 };
     rml_element *number_fields[16];
-    rml_element *
-        document = rml_context_document(rml_backend_context(f.studio->graph.backend), 0);
-    int number_field_count = rml_element_query_selector_all(
-        document,
+    int number_field_count = test_query_all(
+        rml_backend_context(f.studio->graph.backend),
         ".popup.menu .field.number",
         number_fields,
         16

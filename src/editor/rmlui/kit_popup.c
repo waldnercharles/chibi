@@ -649,7 +649,13 @@ bool popup_key(kit *k, const rml_event *e)
                 rml_element_focus(trigger->el, true);
             }
             if (trigger && step > 0) {
-                focus_step(k->doc, trigger->el, 1, false, top->node->el);
+                focus_step(
+                    rml_element_owner_document(trigger->el),
+                    trigger->el,
+                    1,
+                    false,
+                    top->node->el
+                );
             }
         }
         rml_event_stop_propagation(e);

@@ -19,6 +19,7 @@
 #include "support/asset_text.h"
 #include "support/text_file.h"
 #include "support/text_overlay.h"
+#include "test/editor/ui_bench.h"
 #include "test/suite_internal.h"
 
 #include <SDL3/SDL_events.h>
@@ -262,11 +263,7 @@ static void graph_color_session_saves_undoes_and_replays()
     assert(kit_find(f.studio->graph.kit, path, &control));
     graph_press_rect(f.studio, control);
     frames(&f, 3);
-    rml_element *graph_doc = rml_context_document(
-        rml_backend_context(f.studio->graph.backend),
-        0
-    );
-    rml_element *hex = rml_element_query_selector(graph_doc, ".popup.picker .hex");
+    rml_element *hex = test_query(rml_backend_context(f.studio->graph.backend), ".popup.picker .hex");
     if (hex) {
         rml_element_focus(hex, true);
         rml_element_select(hex);
@@ -896,8 +893,7 @@ static void graph_completion_tab_matches_highlight()
         s->graph.surface.rect.y + s->graph.surface.rect.h - 20
     );
     frames(&f, 24);
-    rml_element *doc = rml_context_document(context, 0);
-    rml_element *selected = rml_element_query_selector(doc, ".popup.autocomplete .menu-item[data-highlighted] .label");
+    rml_element *selected = test_query(context, ".popup.autocomplete .menu-item[data-highlighted] .label");
     char label[256] = "";
     if (selected) {
         rml_element_inner_rml(selected, label, sizeof label);
@@ -1286,12 +1282,7 @@ static void preview_geometry_settles_without_input()
     studio_active_layout(s)->editors[STUDIO_AREA_BOTTOM] = STUDIO_EDITOR_SCENE;
     frames(&f, 30);
     rml_element *panes[2];
-    int count = rml_element_query_selector_all(
-        rml_context_document(rml_backend_context(s->backend), 0),
-        ".canvas-frame",
-        panes,
-        2
-    );
+    int count = test_query_all(rml_backend_context(s->backend), ".canvas-frame", panes, 2);
     bool two = count == 2 && rml_element_is_visible(panes[0], false) &&
                rml_element_is_visible(panes[1], false) && panes[0] != panes[1];
     if (two) {
@@ -1439,8 +1430,7 @@ static void ui_wiring_checks()
 
 static rml_element *status_bar(studio *s)
 {
-    rml_element *doc = rml_context_document(rml_backend_context(s->backend), 0);
-    return rml_element_query_selector(doc, "[data-ui=StatusBar]");
+    return test_query(rml_backend_context(s->backend), "[data-ui=StatusBar]");
 }
 
 /* The shown labels of the status bar's key hints, joined by '|'. */
@@ -2264,8 +2254,7 @@ static int panel_elements(studio *s, const char *panel, const char *selector, rm
 {
     char query[128];
     snprintf(query, sizeof query, "[data-ui=%s] %s", panel, selector);
-    rml_element *doc = rml_context_document(rml_backend_context(s->backend), 0);
-    return rml_element_query_selector_all(doc, query, found, 8);
+    return test_query_all(rml_backend_context(s->backend), query, found, 8);
 }
 
 /* Find a Properties row by its visible label so the test follows the authored
@@ -3959,6 +3948,53 @@ static void asset_drop_assigns()
     fixture_free(&f);
 }
 
+/* ---------- One document per area (workstream F5) ---------- */
+
+/* Each area is a document of its own: text rewritten in the Outliner lays
+   out none of the others. The guest Studio, run in the Scene area, places
+   its own areas over theirs the same way, and stops. */
+static void area_documents()
+{
+    studio_fixture f = vault_open();
+    studio *s = f.studio;
+    s->maximized = -1;
+    frames(&f, 6);
+    rml_context *context = rml_backend_context(s->backend);
+    rml_element *name = test_query(context, ".outliner .tree-row .name");
+    rml_element *outliner = name ? rml_element_owner_document(name) : NULL;
+    int documents = rml_context_document_count(context);
+    for (int i = 0; outliner && i < documents; i++) {
+        rml_element *document = rml_context_document(context, i);
+        if (document != outliner) {
+            bench_probe(document);
+        }
+    }
+    frames(&f, 30);
+    uint64_t before = bench_layouts();
+    rml_element_set_inner_rml(name, "Renamed in place");
+    rml_backend_update(s->backend, 0);
+    test_check(
+        outliner && documents >= 8 && bench_layouts() == before,
+        "text rewritten in the Outliner lays out the Outliner's document "
+        "and no other area's, bar's or the layer's"
+    );
+    studio_guest_start(s);
+    frames(&f, 8);
+    kit_rect top = { 0 };
+    bool guest = s->guest &&
+                 kit_find(s->guest->kit, "app/workspace/main/editors/top", &top) &&
+                 top.w > 0 && top.h > 0 &&
+                 rml_context_document_count(rml_backend_context(s->guest->backend)) >= 8;
+    studio_guest_stop(s);
+    frames(&f, 2);
+    test_check(
+        guest && !s->guest,
+        "the guest Studio lays its areas over their places in documents of "
+        "its own, and stops"
+    );
+    fixture_free(&f);
+}
+
 static int studio_documents_app(const char *program, bool run_properties_only)
 {
     CF_Result result = cf_make_app(
@@ -4032,6 +4068,8 @@ static int studio_documents_app(const char *program, bool run_properties_only)
         toolbar_shortcuts_keep_text_focus();
         authored_modals_and_collaboration();
         authored_fields_keep_editing_keys();
+        /* One document per area (workstream F5) */
+        area_documents();
         asset_drop_assigns();
     }
     app_input_shutdown();

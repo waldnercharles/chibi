@@ -193,6 +193,9 @@ struct node
     chart_state *chart; /* owned, NULL until used */
     char **drop_types; /* accepted drag types, set each frame by kit_drop_target */
     bool hosted;       /* kit_host: its children are mounted content */
+    /* kit_document_begin: its container is the body of a document of its
+       own, shown over el; it adds no step to its children's paths. */
+    bool document;
 };
 
 /* A toast (kit_toast.c). Positions are springs around their targets, in dp. */
@@ -289,6 +292,10 @@ struct kit
 {
     rml_context *context;
     rml_element *doc;
+    /* Every document the kit emits into, each with its listener: doc, the
+       layer's, then those kit_document_begin opened. */
+    rml_element **documents;
+    char **body_classes; /* owned: kit_set_body_class's, on every document */
     rml_listener *listener;
     char *document; /* the markup's file name, which names its sheets */
     char *theme;    /* kit_theme's RCSS, the document's stylesheet */
@@ -398,6 +405,8 @@ bool within(rml_element *el, rml_element *ancestor);
 int nodes_index(node *const *list, const node *n);
 /* Removes every n from a node array, keeping order. */
 void nodes_remove(node **list, const node *n);
+/* Whether the kit emits into this document. */
+bool owns_document(const kit *k, const rml_element *document);
 
 /* Popups by key: find returns NULL when absent, at creates one closed. */
 popup *popup_find(const kit *k, const char *key);
@@ -412,6 +421,8 @@ unsigned event_modifiers(const rml_event *e);
 /* Takes the node: removes its element now, or keeps a presence node until its
  * exit transitions end. */
 void retire(kit *k, node *n);
+/* Frees the exiting nodes whose elements are about to go with an ancestor. */
+void release_exiting_within(kit *k, rml_element *ancestor);
 void presence(kit *k, node *n);
 void motion_frame(kit *k);
 void forget_motion(kit *k, node *n);

@@ -19,8 +19,14 @@ body.studio { width: 100%; height: 100%; margin: 0dp; padding: 0dp; background-c
 .main-editors.across { flex-direction: row; }
 /* The side column keeps the width it eases to, clipping while it closes. */
 .column.side { flex: 0 0 auto; overflow: hidden; }
+/* Each area, the top bar and the status bar is a document of its own over
+   its place in this one (kit_document_begin), so a change inside one lays
+   out only that one. An area fills its document; a bar's place takes its
+   document's height. */
+.area-place.fill { flex: 1 1 0dp; }
+.bar-place { flex: 0 0 auto; }
 .area { position: relative; display: flex; flex-direction: column; background-color: var(--background); border-radius: var(--r-lg); overflow: hidden; }
-.area.fill { flex: 1 1 0dp; }
+body > .area { height: 100%; }
 /* Editors' controls in their area's header. */
 .area-head .menu-btn { color: var(--foreground); padding: 0dp 6dp; }
 /* Breadcrumbs (studio_graph_nav.c): the behavior, the calls entered and the open graph. */
@@ -39,7 +45,7 @@ body.studio { width: 100%; height: 100%; margin: 0dp; padding: 0dp; background-c
 .split-v:hover, .split-v[data-dragging], .split-h:hover, .split-h[data-dragging] { background-color: var(--primary-wash); }
 
 /* Drawer: the collapsible bottom area of the main column. */
-.area.drawer:not(.fill) { flex: 0 0 auto; }
+.area-place.drawer:not(.fill) { flex: 0 0 auto; }
 
 /* Scene viewport. */
 .viewport { position: absolute; left: 0dp; top: 0dp; right: 0dp; bottom: 0dp; background-color: var(--viewport); }

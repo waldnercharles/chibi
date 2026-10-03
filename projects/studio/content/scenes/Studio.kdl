@@ -1,7 +1,6 @@
 version 1
 name "Studio"
 (array)entities {
-    - name="GraphView" prototype="GraphView"
     - {
         name "Settings"
         prototype "Settings"
@@ -48,4 +47,10 @@ name "Studio"
     - name="Scene" prototype="Scene"
     - name="SceneHeader" prototype="SceneHeader"
     - name="Canvas" prototype="Canvas"
+    - name="Performance" prototype="Performance"
+    - name="PerformanceHeader" prototype="PerformanceHeader"
+    - name="BehaviorHeader" prototype="BehaviorHeader"
+    - name="GraphFind" prototype="GraphFind"
+    - name="CodeHeader" prototype="CodeHeader"
+    - name="CodeFind" prototype="CodeFind"
 }

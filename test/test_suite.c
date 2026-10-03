@@ -92,6 +92,8 @@ int studio_members_run(const char *program);
 int studio_shell_run(const char *program);
 /* The Scene area (workstream C1). */
 int studio_scene_run(const char *program);
+/* The editor chrome (workstream C2). */
+int studio_chrome_run(const char *program);
 int studio_panels_run(const char *program);
 int studio_graph_inputs_run(const char *program);
 /* Asset thumbnails. */
@@ -1071,6 +1073,11 @@ int main(int argc, char **argv)
     if (argc > 1 && strcmp(argv[1], "--studio-scene") == 0) {
         registry_validate();
         return studio_scene_run(program_name) || fails ? 1 : 0;
+    }
+    /* The editor chrome (workstream C2): Studio's, in a hidden window. */
+    if (argc > 1 && strcmp(argv[1], "--studio-chrome") == 0) {
+        registry_validate();
+        return studio_chrome_run(program_name) || fails ? 1 : 0;
     }
     /* Authored panels, game UI and the areas they take turns in: Studio's,
        in a hidden window. */

@@ -238,9 +238,9 @@ void sg_identity(kit *k, uint32_t icon, const char *name, const char *lineage);
 void sg_find_panel(studio *s);
 
 /* Navigation (studio_graph_nav.c). */
-/* Back, Forward and the crumbs up to the open graph's own, which the caller
-   emits before closing the crumbs with kit_pop. */
-void sg_nav_header(studio *s);
+/* Records the open graph and the calls entered to reach it as a visit once
+   it differs from the one last seen; the Behavior header does as it shows. */
+void sg_nav_track(studio *s);
 void sg_nav_keys(studio *s);
 
 /* Live values (studio_graph_live.c). */

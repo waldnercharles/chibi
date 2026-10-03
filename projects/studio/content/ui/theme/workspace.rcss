@@ -120,9 +120,9 @@ body.comfortable .output-row, body.comfortable .output-log { height: var(--studi
 .output-row .output-at { display: block; flex: 0 0 auto; color: var(--faint-foreground); white-space: nowrap; }
 .output-row .output-count { flex: 0 0 auto; font-family: var(--font-numeric); }
 
-/* Find in the graph (studio_graph_find.c) and in the Text Editor
-   (studio_code.c): floats over the canvas's or the text's top right, as VS
-   Code's find widget does. */
+/* Find in the graph (GraphFind) and in the Text Editor (CodeFind): floats
+   over the canvas's or the text's top right, as VS Code's find widget
+   does. */
 .find-widget {
     position: absolute; top: 8dp; right: 8dp; width: 340dp; display: flex; flex-direction: column; gap: 4dp;
     padding: 4dp; background-color: var(--popover); border: 1dp var(--popover-edge); border-radius: var(--r-lg);
@@ -131,24 +131,9 @@ body.comfortable .output-row, body.comfortable .output-log { height: var(--studi
 .find-widget-bar { display: flex; align-items: center; gap: 2dp; }
 .find-widget-bar .search { flex: 1 1 0dp; min-width: 0dp; }
 .find-widget-count { display: block; flex: 0 0 auto; padding: 0dp 4dp; line-height: var(--studio-line-16, 16dp); color: var(--faint-foreground); font-size: var(--studio-font-11, 11dp); font-family: var(--font-numeric); white-space: nowrap; }
-.graph-find-list { position: relative; }
-.graph-find-list .tree-row .meta { display: block; flex: 0 1 auto; max-width: 60%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 
 /* The name filter of Assets (AssetsHeader) and of a UI document's Library. */
 .assets-filter { flex: 1 1 0dp; display: flex; max-width: 220dp; margin-left: 4dp; }
-
-/* Performance. */
-.perf-title { display: block; line-height: var(--studio-line-16, 16dp); color: var(--foreground); font-weight: 500; margin-left: 2dp; }
-.perf-readout { display: block; line-height: var(--studio-line-16, 16dp); color: var(--muted-foreground); font-family: var(--font-numeric); margin-right: 6dp; }
-.perf { position: absolute; left: 0dp; top: 0dp; right: 0dp; bottom: 0dp; display: flex; flex-direction: column; padding: 6dp 10dp 8dp; gap: 4dp; overflow-y: auto; }
-.perf-heading { display: block; line-height: var(--studio-line-16, 16dp); color: var(--faint-foreground); font-size: var(--studio-font-11, 11dp); }
-.perf-chart { flex: 1 1 0dp; min-height: 60dp; }
-.perf-legend { display: flex; gap: 14dp; flex: 0 0 auto; height: var(--studio-height-18, 18dp); align-items: center; }
-.perf-key { display: flex; align-items: center; gap: 5dp; }
-.perf-key span { display: block; line-height: var(--studio-line-16, 16dp); color: var(--muted-foreground); font-size: var(--studio-font-11, 11dp); }
-.perf-dot { width: 8dp; height: 8dp; border-radius: 4dp; }
-.perf-idle { flex: 1 1 0dp; display: block; line-height: var(--studio-line-40, 40dp); text-align: center; color: var(--faint-foreground); }
-.perf-status { flex: 0 0 auto; display: block; line-height: var(--studio-line-16, 16dp); color: var(--muted-foreground); font-size: var(--studio-font-11, 11dp); }
 
 /* A member's type swatch, in Members (Members.rcss) and its Properties. */
 .member-swatch { width: 9dp; height: 9dp; flex: 0 0 auto; margin: 0dp 5dp 0dp 3dp; }
@@ -182,21 +167,9 @@ body.comfortable .output-row, body.comfortable .output-log { height: var(--studi
 .param-row .param-grip:hover { color: var(--muted-foreground); }
 .param { border-radius: 4dp; }
 
-/* UI documents (workstream D). The Text Editor: part tabs, the file and the
-   apply mode in the header; the part's code editor (kit_code) filling the
-   body, and a status line while the text does not read. */
-.code-parts, .code-apply { display: flex; flex: 0 0 auto; }
-/* Workstream Q: Back and Forward through Go to Definition's jumps. */
-.code-history { display: flex; flex: 0 0 auto; align-items: center; gap: 1dp; margin-right: 4dp; }
-.code-parts .segmented, .code-apply .segmented { flex: 0 0 auto; }
-.code-parts .seg, .code-apply .seg { flex: 0 0 auto; }
-.code-file { display: flex; align-items: center; gap: 6dp; padding: 0dp 6dp; flex: 0 1 auto; min-width: 0dp; white-space: nowrap; color: var(--foreground); }
-.code-file .icon { color: var(--muted-foreground); }
-.code-file .icon, .code-file .dirty-dot { flex: 0 0 auto; }
-.code-file .name { min-width: 0dp; overflow: hidden; text-overflow: ellipsis; }
-/* Asset source uses a single text span instead of the UI document's file group. */
-span.code-file { display: block; overflow: hidden; text-overflow: ellipsis; }
-.code-problem { display: flex; align-items: center; gap: 4dp; padding: 0dp 6dp; flex: 0 0 auto; color: var(--destructive); }
+/* UI documents (workstream D). The Text Editor: the part's code editor
+   (kit_code) filling the body, and a status line while the text does not
+   read; its header is CodeHeader. */
 .code-editor { position: absolute; left: 0dp; top: 0dp; right: 0dp; bottom: 0dp; display: flex; flex-direction: column; background-color: var(--background); }
 .code-editor kit-code { flex: 1 1 0dp; min-height: 0dp; }
 .code-status { display: flex; align-items: center; gap: 6dp; height: var(--studio-height-22, 22dp); flex: 0 0 auto; padding: 0dp 8dp; border-top: 1dp var(--edge); background-color: var(--muted); color: var(--destructive); white-space: nowrap; overflow: hidden; }

@@ -3,7 +3,7 @@
 Studio's whole editor moves to authored RML and RCSS, as the user decided on
 2026-10-03. Anything that can't be authored, or that would cost substantial
 performance, is postponed and listed in Postponed below. Status: S0, F0,
-F1, F2, F3, F4, F5, P1, P2, P3, P4, P5, C1 and C3 done; the rest planned. The spike (S0) ran on a
+F1, F2, F3, F4, F5, P1, P2, P3, P4, P5, C1, C2 and C3 done; the rest planned. The spike (S0) ran on a
 loaded machine, so its times are provisional until re-measured on an idle
 one (S0 results).
 
@@ -50,9 +50,9 @@ About 1,600 kit call sites remain across 40 files. The largest:
 | Assets | `Assets.rml`, `AssetsHeader.rml` and `NewAsset.rml` over `assets`, `asset_view` and `asset_menus` (`studio_assets.c`, P3) | Index, filters, `kit:thumb:` textures, thumbnail budget, columns, keys, drag, New menu | Done (P3) |
 | Output, Find, Calls | Authored (P4): `Output.rml`, `OutputHeader.rml` over `studio_output.c`'s `output` source | | Done |
 | Members | `Members.rml` and `MembersHeader.rml`; the `members` source in `studio_members.c` | Members, uses, rename, drag into the graph, menus | Done (P5) |
-| Behavior area | `studio_graph*.c`, a second context drawn to `kit:graph` | Nodes, pins, literals, comments, reroutes, wires, live chips | Header, breadcrumbs, find, menus, add-node search: W4 G1. Node bodies: postponed |
-| Text Editor | `studio_code.c`, `kit_code.c` (Zep) | Buffer, intelligence, Vim | Chrome authored (W3 C2); the Zep surface stays a native element |
-| Performance | `studio_performance.c` | Sample ring | W3 C2 around a native `<line-chart>` |
+| Behavior area | `BehaviorHeader.rml` and `GraphFind.rml` (C2); the canvas, `studio_graph*.c`, a second context drawn to `kit:graph` | Nodes, pins, literals, comments, reroutes, wires, live chips | Header, breadcrumbs, debug target and find: done (C2). Canvas menus, add-node search: W4 G1. Node bodies: postponed |
+| Text Editor | `CodeHeader.rml`, `CodeFind.rml` (C2); the surface in `studio_code.c`, `kit_code.c` (Zep) | Buffer, intelligence, Vim | Chrome done (C2); the Zep surface stays a native element |
+| Performance | `Performance.rml`, `PerformanceHeader.rml` over `<line-chart>` (C2) | Sample ring | Done (C2) |
 | Shell | Authored: `Workspace.rml` over the `workspace` source (`studio_shell.c`); each area a document in its place | Ratios, open states, maximize, the columns' laid-out sizes | Done (W3 C3) |
 | Palette, dropdowns, autocomplete, asset pickers | `kit_command.c`, `studio_palette.c`, `studio_pick.c`, `kit_popup.c` | Ranking, recents, prefixes, thumbnails | W3 C4; ranking stays in C |
 | Popups, menus, tooltips | `src/ui/popover.c` (F3) stacks, places and dismisses authored popovers and the kit's popups and runs menus; `kit_popup.c` emits the kit's | Placement, stacking, dismissal, typeahead | Done for the controller (F3); kit menus move to Menu with their panels; tooltips stay attribute-driven |
@@ -185,7 +185,7 @@ pointer and modifiers, so markup hears it with `data-event-contextmenu`.
 | `<choice-list>` | `kit_dropdown`'s list (F3; the kit's still runs its own) | `[role=option]` descendants with `value`, `data-label` or `.label`, `data-keywords`; its first `<input>` filters them by `text_search_score` (`data-filtered`, `data-empty`); Up, Down, Home, End and the pointer move `data-highlighted`; Enter or a click sends `change` with the option's value |
 | `<splitter>` | `kit_splitter` (done, F2; the kit's wrapper went with C3) | `axis min max value invert`; `input`/`change`; cursor |
 | `<live-text>` | `kit_live_label` (done, F2) | `value`; glyphs update without layout |
-| `<line-chart>` | `kit_chart.c` | Series from a C registry, named like `kit:` textures |
+| `<line-chart>` | `kit_chart.c` (done, C2: `src/ui/controls/line_chart.c`) | `series` names the series C publishes with `line_chart_publish` (times, values, color, `now`), as textures are named `kit:...`; `window unit precision reference min max fill live`; parts `.chart-tick`, `.chart-badge`, `.chart-hover`; a publish redraws the charts naming it without layout |
 | Existing | | `<img src="kit:...">`, `<number-flow>`, `<morph-text>`, `presence` |
 
 The kit's number, color, drag and popup calls become thin wrappers
@@ -1256,7 +1256,7 @@ after the first round; the Studio bench stops when a frame logs more than
 | | Scope | Deletes |
 |---|---|---|
 | C1 Scene (done) | Scene and Canvas headers, actions log, camera labels, notice line | About 460 lines of kit UI: C1, below |
-| C2 Editor chrome | Behavior header (breadcrumbs, debug target), graph find bar; Text Editor header and find; Performance with `<line-chart>` | ~400 lines |
+| C2 Editor chrome (done) | Behavior header (breadcrumbs, debug target), graph find bar; Text Editor header and find; Performance with `<line-chart>` | The kit's header, find and chart code: C2 results |
 | C3 Shell (done) | `Workspace.rml` (areas, `<splitter>`, drawer and side transitions, maximize); editor-type popover; `<menubar>`; play target, layout, UI Scale, debugger steps | ~600 lines and `kit_menubar_trigger`: C3 results |
 | C4 Palette | `Palette.rml` over ChoiceList (prefixes, pages, recents, thumbnails); asset pickers, Add Component, refactor popover; ranking moves to `support/` | ~500 lines of `kit_command` UI |
 
@@ -1484,6 +1484,112 @@ it magnifies; Frame disabled without a selection; a camera label following
 a pan by transform with no layout; the scene-and-selection label and Live;
 the Canvas's size, backdrop, Actions log and Clear, and its Scene crumb; a
 guest Studio's header.
+
+#### C2: editor chrome (done)
+
+The Behavior header, the graph's find bar, the Text Editor's header and
+find bar and Performance are authored; the graph canvas and Zep's surface
+stay native. Unreal's graph editor toolbar (Back and Forward, the
+breadcrumb of the calls entered, the debug object menu) and VS Code's find
+widget are the references, as the kit's were.
+
+- **`<line-chart>`** (`src/ui/controls/line_chart.c`, any context): the
+  kit's chart moved out of the kit. C publishes series by name
+  (`line_chart_publish`: times, values, color and the time at the right
+  edge), as textures are named `kit:...`, and a chart draws the series its
+  `series` attribute names, the first in its `color`; `window`, `unit`,
+  `precision`, `reference`, `min`, `max`, `fill` and `live` as the kit's
+  desc had them. A publish that changes a series redraws the charts that
+  name it: the geometry is rebuilt at render and the labels move by
+  transform, so samples lay nothing out. The element hears the pointer
+  itself for the scrub readout. `kit_chart.c` (669 lines) is gone; the
+  kit's chart checks in `--rmlui-kit` drive the element.
+- **Performance**: `Performance.rml` and `PerformanceHeader.rml` over the
+  `performance` source (readout, live, running, gpu, lighting,
+  lightingText, budget). Each 20 Hz (4 Hz idle) publication hands the
+  samples to the charts as `perf:frame`, `perf:behavior`, `perf:physics`,
+  `perf:systems`, `perf:rendering` and `perf:gpu`; the readout is a
+  `<live-text>`. Its styles left the theme for the panel's `.rcss`.
+- **Behavior header**: `BehaviorHeader.rml` over four sources by rate of
+  change (`studio_graph_header.c`): `graph_header` (crumbs, Back and
+  Forward, rename, the debug target's label), `graph_menus` (the picker's
+  graphs and items, the assets of the behavior's kind), `graph_view` (the
+  zoom and the Graph menu's items, which the selection enables) and
+  `graph_targets` (the debug target's choices). The View menu is GraphView
+  used as a widget, its own entity and prototype gone. Visits are tracked
+  as the header syncs (`sg_nav_track`), as its emission did.
+- **Debug target picker**: a ChoiceList, searchable, of No target, then
+  Follow newest and Break when spawned per prototype that attaches the
+  behavior, then the scene's and the spawned instances, as the kit's
+  dropdown listed them; the keywords stay. The kit headed Scene and Spawned
+  each time the attachment order switched between them; now each is one
+  group. Playback speed is the top bar's (C3), not this picker's.
+- **Find bars**: `GraphFind.rml` (the query, its count, Previous, Next,
+  Close and a List of TreeRows over the `graph_find` source, eight rows
+  tall at most, the current one revealed) and `CodeFind.rml` (`code_find`),
+  each mounted in a `.find-widget` while open. Keys are unchanged through
+  `data-keys`: Up, Down, Enter and Escape in the graph's, Enter, Shift+Enter
+  (the activation's modifiers), Up, Down and Escape in the text's; Find
+  focuses the field as before. Closing the graph's now gives the keyboard
+  back to the graph's area, as the text's returns to the text.
+- **Text Editor header**: `CodeHeader.rml` over `code_header`: a UI
+  document's Back and Forward, part, file with its unsaved dot, Find, Vim's
+  mode, the problems' count and Invalid chip, and the apply mode; an
+  asset's KDL source's name, Unsaved, Save and apply mode.
+- **Fixes**: the kit's rename field in the crumbs had no width, so the
+  name typed was invisible; the authored one is 160 dp at most. The
+  rename field's blur after Escape doesn't commit (the rename ends first).
+  A find bar opened without input (a command run from code) shows at the
+  next UI frame.
+
+Web shots (1600×1000) before (`3777b63b`) and after, dark and light,
+compact and comfortable: the header, the graph picker for the event graph
+and for a function, the asset crumb's menu, the Graph menu, the find bar
+with matches, the debug target picker in Play, and the Text Editor's
+header and find bar match pixel for pixel but for a caret's blink and, in
+Play, the Scene's live render. The asset crumb's Behaviors submenu clips
+long names at the menu's width until C3's Submenu, which fits a submenu
+to its widest row, merges; with that fix it matched too. Performance, idle and
+in Play, matches in its headings, legend, ticks, badges and readout; its
+samples differ run to run. The rename field is the intentional
+difference above. Native shots (`UI_BENCH_CAPTURE=<dir>` on the Studio
+bench: the header, graph picker, Graph menu, find bar and Performance in
+Play, dark and light, compact and comfortable, reduced motion, 2880×1800)
+of the kit build and this one match in the Behavior area within 1/255;
+Performance's charts differ only in their samples.
+
+`UI_BENCH_PERFORMANCE=1 ./build-release/test_suite --ui-bench studio`
+(case 15: Performance in the bottom area while the Sandbox plays, 1440×900,
+pixel scale 2), the kit build (`3777b63b`) and this one alternated process
+by process three times, 1-minute load 40-44 (provisional); ms, the range
+of the runs' medians:
+
+| Case | Kit | Authored | Ratio | Layouts in 31 runs | Views | Elements in its document |
+|---|---:|---:|---:|---:|---:|---:|
+| A new sample and readout | 1.46-1.49 | 1.55-1.57 | 1.05× | 0 / 0 | 0 | 350 / 401 |
+| No new sample | 1.14-1.19 | 1.23-1.34 | 1.06× | 0 / 0 | 0 | 350 / 401 |
+
+Samples reach the charts without the data model (no views evaluated) and
+lay nothing out in either build; emit fell (0.34 to 0.32 ms) and update
+rose (0.42 to 0.48 ms) for the charts' update hooks and the panel's 51
+more elements (the hidden legend, idle line and GPU chart variants).
+
+Checks: `--studio-chrome` (also in `--studio-documents`): the chrome's
+documents check clean; the crumbs and graph picker; Back and Forward;
+rename in place with Enter (one Undo step) and Escape; the find bar's
+matches, Down, Enter (to the node, closing, the keys back to the graph)
+and Escape; the debug target picker's Follow newest, Break when spawned
+and No target in Play; the Text Editor's part, apply mode and find bar
+with Enter, Shift+Enter and Escape back to the text; an asset source's
+header; Performance's charts and legend in Play. `--studio-panels`' area
+turns now include the Text Editor and Performance. `--ui-controls`: a
+`<line-chart>` showing published series, redrawing new samples without a
+layout, its scrub readout and a forgotten series.
+
+Open: two Behavior areas share one header's data, as one Text Editor's;
+`graph_targets` follows the instances while the header shows, the picker
+closed or not. The bench ran before the integration branch's view leak
+fix (`cf21ee38`) merged.
 
 ### Wave 4: graph chrome, Designer, Inspector (3 parallel)
 

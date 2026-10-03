@@ -5,6 +5,7 @@
 #include "support/number_expr.h"
 #include "support/xalloc.h"
 #include "test/suite_internal.h"
+#include "ui/controls/controls.h"
 #include "ui/input_feel.h"
 #include "ui/rml.h"
 #include "ui/rml_backend.h"
@@ -721,6 +722,22 @@ static void wire_geometry_frame(
     rml_context_render(context);
 }
 
+/* A <line-chart> of one series from 0 to `max`, published as test:plot, as
+   Performance shows its own. */
+static void test_line_chart(kit *k, const line_chart_series *series, double max, const char *unit, int precision)
+{
+    line_chart_publish("test:plot", series);
+    kit_leaf(k, "plot", "line-chart", "chart");
+    char text[32];
+    kit_attr(k, "series", "test:plot");
+    kit_attr(k, "min", "0");
+    snprintf(text, sizeof text, "%g", max);
+    kit_attr(k, "max", text);
+    kit_attr(k, "unit", unit ? unit : "");
+    snprintf(text, sizeof text, "%d", precision);
+    kit_attr(k, "precision", text);
+}
+
 static void geometry_frame(kit *k, rml_context *context, geometry_capture *capture, bool chart, float value)
 {
     kit_frame_input in = { .width = 640, .height = 400, .dp_ratio = 1 };
@@ -728,19 +745,8 @@ static void geometry_frame(kit *k, rml_context *context, geometry_capture *captu
     kit_root(k, "app");
     if (chart) {
         float times[] = { 0, 30 }, values[] = { value, value };
-        kit_chart_series series = { times, values, 2, 0xf111cbff };
-        kit_chart(
-            k,
-            "plot",
-            NULL,
-            &(kit_chart_desc){
-                .series = &series,
-                .series_count = 1,
-                .now = 30,
-                .min = 0,
-                .max = 1,
-            }
-        );
+        line_chart_series series = { times, values, 2, 0xf111cbff, 30 };
+        test_line_chart(k, &series, 1, NULL, 0);
     } else {
         kit_wire wire = { .from_x = 20,
                           .from_y = 30,
@@ -920,6 +926,7 @@ static bool retained_geometry()
         "changed chart samples upload and render their new height"
     );
     kit_destroy(k);
+    line_chart_publish("test:plot", NULL);
     rml_remove_context("retained-geometry");
     rml_release_render_managers();
     ok &= check(
@@ -973,7 +980,7 @@ static rml_element *chart_plot(chart_fixture *f)
 static void chart_frame_test(chart_fixture *f)
 {
     float times[] = { 0, 30 }, values[] = { f->value, f->value };
-    kit_chart_series series = { .times = times, .values = values, .count = 2 };
+    line_chart_series series = { .times = times, .values = values, .count = 2, .now = 30 };
     kit_begin(f->k, &f->in);
     kit_root(f->k, "app");
     chart_styles(f->k, f->typography);
@@ -981,20 +988,7 @@ static void chart_frame_test(chart_fixture *f)
     kit_style(f->k, "color", "#ffff00");
     kit_style(f->k, "position", "absolute");
     kit_style(f->k, "top", "160dp");
-    kit_chart(
-        f->k,
-        "plot",
-        NULL,
-        &(kit_chart_desc){
-            .series = &series,
-            .series_count = 1,
-            .now = 30,
-            .min = 0,
-            .max = f->max,
-            .unit = f->unit,
-            .precision = 1,
-        }
-    );
+    test_line_chart(f->k, &series, f->max, f->unit, 1);
     kit_style(f->k, "width", "320dp");
     kit_style(f->k, "height", "120dp");
     kit_end(f->k);
@@ -1198,6 +1192,7 @@ static bool chart_label_updates()
     chart_frame_test(&f);
     ok &= check(chart_fresh_labels(&f, renderer), "chart labels match fresh layout after a dp-ratio change");
     kit_destroy(f.k);
+    line_chart_publish("test:plot", NULL);
     rml_remove_context("chart-label-updates");
     rml_release_render_managers();
     rml_renderer_destroy(renderer);

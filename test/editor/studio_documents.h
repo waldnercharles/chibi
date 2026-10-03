@@ -82,5 +82,8 @@ void studio_documents_output_checks();
 void studio_documents_members_checks();
 /* The Scene area's header and overlays (workstream C1). */
 void studio_documents_scene_checks();
+/* The Behavior header, find bars, Text Editor header and Performance
+   (workstream C2). */
+void studio_documents_chrome_checks();
 
 #endif

@@ -972,11 +972,12 @@ static void authored_modals_and_collaboration()
 }
 
 /* The editors whose area shows authored panels: the body, header controls
-   or both (the Behavior editor's GraphView, the Scene's SceneHeader). */
+   or both (the Behavior editor's and the Text Editor's headers, the Scene's
+   SceneHeader, Performance's header and body). */
 static const studio_editor AREA_PANELS[] = {
     STUDIO_EDITOR_ASSETS, STUDIO_EDITOR_OUTLINER, STUDIO_EDITOR_MEMBERS,
     STUDIO_EDITOR_OUTPUT, STUDIO_EDITOR_BEHAVIOR, STUDIO_EDITOR_PROPERTIES,
-    STUDIO_EDITOR_SCENE,
+    STUDIO_EDITOR_SCENE,  STUDIO_EDITOR_CODE,     STUDIO_EDITOR_PERFORMANCE,
 };
 #define AREA_PANEL_COUNT (int)(sizeof AREA_PANELS / sizeof *AREA_PANELS)
 #define AREA_ROUNDS 3

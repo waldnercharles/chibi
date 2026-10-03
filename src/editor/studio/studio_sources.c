@@ -2352,6 +2352,19 @@ const studio_panel_source studio_panel_sources[] = {
     { "scene", "SceneHeader", studio_scene_add, studio_scene_sync, studio_scene_action },
     { "scene_view", "Scene", studio_scene_view_add, studio_scene_view_sync, NULL },
     { "canvas", "Canvas", studio_canvas_panel_add, studio_canvas_panel_sync, studio_canvas_panel_action },
+    /* Editor chrome (workstream C2). */
+    { "performance", "Performance", studio_performance_add, studio_performance_sync, NULL },
+    { "graph_header",
+      "BehaviorHeader",
+      studio_graph_header_add,
+      studio_graph_header_sync,
+      studio_graph_header_action },
+    { "graph_menus", "BehaviorHeader", studio_graph_menus_add, studio_graph_menus_sync, NULL },
+    { "graph_view", "BehaviorHeader", studio_graph_view_add, studio_graph_view_sync, NULL },
+    { "graph_targets", "BehaviorHeader", studio_graph_targets_add, studio_graph_targets_sync, NULL },
+    { "graph_find", "GraphFind", studio_graph_find_add, studio_graph_find_sync, studio_graph_find_action },
+    { "code_header", "CodeHeader", studio_code_header_add, studio_code_header_sync, studio_code_header_action },
+    { "code_find", "CodeFind", studio_code_find_add, studio_code_find_sync, studio_code_find_action },
 };
 const int studio_panel_source_count = (int)(sizeof studio_panel_sources /
                                             sizeof *studio_panel_sources);

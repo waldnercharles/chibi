@@ -1,23 +1,39 @@
 /* Find in graph (Unreal's Find Results, Blender's Find Node): a field over the
  * canvas lists the nodes of the open behavior whose title, pins, values,
  * bindings, expression or comment contain the query, graph by graph. Up and
- * Down step through them in the graph; Enter or a click jumps to one. */
+ * Down step through them in the graph; Enter or a click jumps to one, and
+ * Escape closes the field, giving the keys back to the graph. The field and
+ * its matches are projects/studio's GraphFind over the `graph_find` source. */
 #include "editor/studio/studio_graph_internal.h"
 #include "graph/authoring/find.h"
 #include "support/array.h"
+#include "ui/list.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 enum
 {
     VISIBLE_ROWS = 8,
+    /* Rows shown before the List is laid out. */
+    UNLAID_ROWS = 20,
 };
 
+/* GraphFind's query field and List. */
+#define QUERY_ID "graph-find-query"
+#define LIST_ID "graph-find-list"
+
+/* Opening shows the bar at the next UI frame, whatever asked for it. */
 void studio_graph_find(studio *s)
 {
-    s->graph.find.open = true;
-    s->graph.find.focus = true;
+    studio_graph *g = &s->graph;
+    if (!g->find.open) {
+        g->find.list = (ui_list_state)UI_LIST_STATE_INIT;
+    }
+    g->find.open = true;
+    g->find.focus = true;
+    s->ui_schedule.wake = true;
 }
 
 static void close_find(studio *s)
@@ -108,41 +124,171 @@ static void step(studio *s, int direction)
     jump(s, (next + count) % count);
 }
 
-static void find_keys(studio *s)
+/* Closing gives the keyboard back to the graph's area. */
+static void leave(studio *s)
 {
-    studio_graph *g = &s->graph;
-    for (int i = 0; i < acount(s->keys); i++) {
-        SDL_Keycode key = s->keys[i].key;
-        if (key == SDLK_ESCAPE) {
-            close_find(s);
-            return;
-        }
-        if (key == SDLK_UP || key == SDLK_DOWN) {
-            step(s, key == SDLK_DOWN ? 1 : -1);
-        }
-        if (key == SDLK_RETURN && acount(g->find.hits)) {
-            jump(s, g->find.current < 0 ? 0 : g->find.current);
-            close_find(s);
-            s->focus_area = g->area;
-            return;
-        }
-    }
+    close_find(s);
+    s->focus_area = s->graph.area;
 }
 
-static void emit_bar(studio *s)
+void studio_graph_find_action(studio *s, const char *action, const ui_activation *a)
 {
     studio_graph *g = &s->graph;
-    kit *k = s->kit;
-    kit_push(k, "bar", NULL, "find-widget-bar");
-    kit_search(k, "query", g->find.query, sizeof g->find.query, "Find");
-    /* Escape clears and blurs the field in the frame it arrives, so the
-       field's focus a frame ago counts too. */
-    bool typing = kit_item_active(k) || g->find.typing;
-    g->find.typing = kit_item_active(k);
-    if (g->find.focus) {
-        kit_focus(k);
-        g->find.focus = false;
+    if (!g->find.open || !studio_graph_active(s)) {
+        return;
     }
+    int count = acount(g->find.hits);
+    if (!strcmp(action, "next") || !strcmp(action, "previous")) {
+        step(s, !strcmp(action, "next") ? 1 : -1);
+    } else if (!strcmp(action, "jump") && a->argc) {
+        int index = atoi(a->args[0]);
+        if (index >= 0 && index < count) {
+            jump(s, index);
+        }
+    } else if (!strcmp(action, "enter") && count) {
+        jump(s, g->find.current < 0 ? 0 : g->find.current);
+        leave(s);
+    } else if (!strcmp(action, "close")) {
+        leave(s);
+    }
+    /* A scroll only wakes the source, which reads where the List is. */
+}
+
+/* ---------- The source ---------- */
+
+static const char *const ROW_TEXTS[] = { "key", "label", "icon", "meta", NULL };
+static const char *const ROW_FLAGS[] = { "parent", "open",   "selected",
+                                         "active", "marked", "hidden",
+                                         NULL };
+
+static yyjson_mut_val *row_new(yyjson_mut_doc *doc)
+{
+    yyjson_mut_val *row = yyjson_mut_obj(doc);
+    for (const char *const *text = ROW_TEXTS; *text; text++) {
+        yyjson_mut_obj_add_strcpy(doc, row, *text, "");
+    }
+    for (const char *const *flag = ROW_FLAGS; *flag; flag++) {
+        yyjson_mut_obj_add_bool(doc, row, *flag, false);
+    }
+    yyjson_mut_obj_add_int(doc, row, "depth", 0);
+    return row;
+}
+
+void studio_graph_find_add(yyjson_mut_doc *doc)
+{
+    yyjson_mut_val *f = yyjson_mut_obj_add_obj(doc, yyjson_mut_doc_get_root(doc), "graph_find");
+    yyjson_mut_obj_add_strcpy(doc, f, "query", "");
+    yyjson_mut_obj_add_strcpy(doc, f, "count", "");
+    yyjson_mut_obj_add_strcpy(doc, f, "height", "0dp");
+    yyjson_mut_obj_add_strcpy(doc, f, "none", "");
+    yyjson_mut_obj_add_int(doc, f, "total", 0);
+    yyjson_mut_obj_add_arr(doc, f, "rows");
+}
+
+static const char *graph_label(const graph *gr)
+{
+    return gr->name && gr->name[0] ? gr->name : "Event Graph";
+}
+
+/* A match names what matched when that is not the node's title, and the
+   graph it is in when that is not the open one. */
+static bool show_row(studio *s, yyjson_mut_doc *doc, yyjson_mut_val *row, int index)
+{
+    const studio_find_hit *hit = &s->graph.find.hits[index];
+    const graph *gr = behavior_asset_find_graph(sg_graph_editor(s)->asset, hit->graph_id);
+    bool elsewhere = hit->graph_id != sg_active_graph(s)->graph_id;
+    bool text = strcmp(hit->text, hit->title) != 0;
+    char key[16], meta[256], glyph[5];
+    snprintf(key, sizeof key, "%d", index);
+    snprintf(
+        meta,
+        sizeof meta,
+        "%s%s%s",
+        text ? hit->text : "",
+        elsewhere && text ? " \xc2\xb7 " : "",
+        elsewhere && gr ? graph_label(gr) : ""
+    );
+    studio_glyph(glyph, hit->icon);
+    bool changed = ui_data_put_text(doc, row, "key", key);
+    changed |= ui_data_put_text(doc, row, "label", hit->title);
+    changed |= ui_data_put_text(doc, row, "icon", glyph);
+    changed |= ui_data_put_text(doc, row, "meta", meta);
+    return ui_data_put_bool(row, "selected", index == s->graph.find.current) || changed;
+}
+
+/* GraphFind's List, or NULL before it is laid out. */
+static rml_element *find_list(studio *s)
+{
+    rml_context *context = rml_backend_context(s->backend);
+    for (int i = 0; i < rml_context_document_count(context); i++) {
+        rml_element *found = rml_element_by_id(rml_context_document(context, i), LIST_ID);
+        if (found) {
+            return found;
+        }
+    }
+    return NULL;
+}
+
+/* The List's window of matches, as tall as eight rows at most, scrolled to
+   show the current one. */
+static bool show_rows(studio *s, const studio_panel_sync *at)
+{
+    studio_graph *g = &s->graph;
+    yyjson_mut_val *array = yyjson_mut_obj_get(at->variable, "rows");
+    int count = acount(g->find.hits);
+    rml_element *list = at->preview ? NULL : find_list(s);
+    /* Before the List lays out, its window is a guess: window it once it
+       has. */
+    s->ui_schedule.wake |= !at->preview && !list && count;
+    int first = 0, length = count < UNLAID_ROWS ? count : UNLAID_ROWS;
+    float row = 0;
+    if (list) {
+        ui_list window = { .count = count, .reveal = g->find.current };
+        length = ui_list_window(list, &window, &g->find.list, &first);
+        char value[32] = "";
+        rml_element_property(list, "--row", value, sizeof value);
+        row = strtof(value, NULL);
+    }
+    char height[32];
+    snprintf(height, sizeof height, "%.0fdp", row * (count < VISIBLE_ROWS ? count : VISIBLE_ROWS));
+    bool changed = ui_data_put_text(at->doc, at->variable, "height", height);
+    changed |= ui_data_put_int(at->variable, "total", count);
+    int had = (int)yyjson_mut_arr_size(array);
+    for (int i = had; i < length; i++) {
+        yyjson_mut_arr_append(array, row_new(at->doc));
+    }
+    for (int i = had; i > length; i--) {
+        yyjson_mut_arr_remove_last(array);
+    }
+    changed |= had != length;
+    yyjson_mut_val *item;
+    yyjson_mut_arr_iter it = yyjson_mut_arr_iter_with(array);
+    for (int i = first; (item = yyjson_mut_arr_iter_next(&it)); i++) {
+        changed |= show_row(s, at->doc, item, i);
+    }
+    return changed;
+}
+
+/* The query is view state the field binds; C keeps it too, so the matches
+   follow it and it outlasts the field. */
+static bool sync_query(studio *s, const studio_panel_sync *at)
+{
+    studio_graph *g = &s->graph;
+    yyjson_mut_val *query = yyjson_mut_obj_get(at->variable, "query");
+    if (at->wrote && !at->preview && strcmp(yyjson_mut_get_str(query), g->find.query)) {
+        snprintf(g->find.query, sizeof g->find.query, "%s", yyjson_mut_get_str(query));
+    }
+    return ui_data_put_text(at->doc, at->variable, "query", g->find.query);
+}
+
+bool studio_graph_find_sync(studio *s, const studio_panel_sync *at)
+{
+    studio_graph *g = &s->graph;
+    if (!g->find.open || !studio_graph_active(s)) {
+        return false;
+    }
+    bool changed = sync_query(s, at);
+    collect(s);
     int count = acount(g->find.hits);
     char label[32] = "";
     if (g->find.query[0] && !count) {
@@ -152,98 +298,29 @@ static void emit_bar(studio *s)
     } else if (count) {
         snprintf(label, sizeof label, "%d", count);
     }
-    kit_label(k, "count", "find-widget-count", label);
-    kit_button_desc previous = { .icon = KIT_ICON_UP,
-                                 .tip = "Previous",
-                                 .shortcut = "\xe2\x86\x91",
-                                 .flags = count ? 0 : KIT_DISABLED };
-    if (kit_button(k, "previous", &previous)) {
-        step(s, -1);
-    }
-    kit_button_desc next = { .icon = KIT_ICON_DOWN,
-                             .tip = "Next",
-                             .shortcut = "\xe2\x86\x93",
-                             .flags = count ? 0 : KIT_DISABLED };
-    if (kit_button(k, "next", &next)) {
-        step(s, 1);
-    }
-    kit_button_desc close = { .icon = KIT_ICON_CLOSE, .tip = "Close", .shortcut = "Esc" };
-    if (kit_button(k, "close", &close)) {
-        close_find(s);
-    }
-    kit_pop(k);
-    if (typing && g->find.open) {
-        find_keys(s);
-    }
-}
-
-static const char *graph_label(const graph *gr)
-{
-    return gr->name && gr->name[0] ? gr->name : "Event Graph";
-}
-
-static void emit_results(studio *s)
-{
-    studio_graph *g = &s->graph;
-    kit *k = s->kit;
-    editor *e = sg_graph_editor(s);
-    int count = acount(g->find.hits);
-    if (!count) {
-        return;
-    }
-    float row = kit_metric(s->kit, "--row");
-    kit_list_desc list = { .count = count, .row_height = row, .reveal = g->find.current };
-    int first, last;
-    kit_list_begin(k, "results", "graph-find-list", &list, &first, &last);
-    char height[32];
-    snprintf(height, sizeof height, "%.0fdp", row * (count < VISIBLE_ROWS ? count : VISIBLE_ROWS));
-    kit_style(k, "height", height);
-    uint64_t active = sg_active_graph(s)->graph_id;
-    for (int r = first; r <= last && r < count; r++) {
-        const studio_find_hit *hit = &g->find.hits[r];
-        const graph *gr = behavior_asset_find_graph(e->asset, hit->graph_id);
-        char key[16], meta[256];
-        snprintf(key, sizeof key, "r%d", r);
-        /* A match in another graph names it. */
-        snprintf(
-            meta,
-            sizeof meta,
-            "%s%s%s",
-            strcmp(hit->text, hit->title) ? hit->text : "",
-            hit->graph_id != active && strcmp(hit->text, hit->title)
-                ? " \xc2\xb7 "
-                : "",
-            hit->graph_id != active && gr ? graph_label(gr) : ""
-        );
-        kit_row_desc d = { .label = hit->title,
-                           .icon = hit->icon,
-                           .twisty = -1,
-                           .meta = meta,
-                           .flags = r == g->find.current ? KIT_ON : 0 };
-        if (kit_row_begin(k, key, &d) & KIT_ROW_CLICK) {
-            jump(s, r);
-        }
-        kit_row_end(k);
-    }
-    kit_list_end(k);
+    changed |= ui_data_put_text(at->doc, at->variable, "count", label);
+    return show_rows(s, at) || changed;
 }
 
 /* The panel floats over the canvas's top right, in the Studio document so it
-   stays unscaled. */
+   stays unscaled. Find (Mod+F) focuses its field, selecting the query, once
+   the field can take focus. */
 void sg_find_panel(studio *s)
 {
     studio_graph *g = &s->graph;
     if (!g->find.open) {
         return;
     }
-    collect(s);
     kit *k = s->kit;
     kit_push(k, "find", NULL, "find-widget");
-    emit_bar(s);
-    if (g->find.open) {
-        emit_results(s);
-    }
+    rml_element *host = studio_ui_panel(s, "bar", "GraphFind");
     kit_pop(k);
+    rml_element *field = host && g->find.focus ? rml_element_by_id(host, QUERY_ID)
+                                               : NULL;
+    if (field && rml_element_focus(field, true)) {
+        rml_element_select(field);
+        g->find.focus = false;
+    }
 }
 
 /* Framing waits for the frame's layout, so a node in a graph just opened

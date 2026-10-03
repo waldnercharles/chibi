@@ -519,9 +519,7 @@ typedef struct
     char names[STUDIO_VALUE_NAMES][64];
     bool renaming; /* the name of rename_graph is being edited */
     uint64_t rename_graph;
-    int rename_area; /* the area whose header holds the name field */
-    bool rename_focus;
-    char rename[128];
+    uint64_t menus_key; /* what graph_menus last showed (studio_graph_header.c) */
     int forms;          /* node settings the layouts follow */
     bool spawn_pending; /* the add-node palette spawns at spawn_x, spawn_y */
     float spawn_x, spawn_y;
@@ -553,12 +551,12 @@ typedef struct
     struct
     {
         bool open;
-        bool focus;  /* focus the field on the next frame */
-        bool typing; /* the field had focus last frame */
+        bool focus; /* focus the field once it can take focus */
         char query[128];
         char seen[128]; /* the query the results follow */
         int current;    /* the result shown in the graph, or -1 */
         studio_find_hit *hits;
+        ui_list_state list; /* GraphFind's List of the results */
     } find;
     studio_visit *visits; /* graphs visited, for Back and Forward */
     int visit;            /* the current one */
@@ -756,7 +754,7 @@ typedef struct
        the part holds. */
     struct
     {
-        bool open, focus, typing, refocus;
+        bool open, focus, refocus;
         char query[128], seen[128];
         int at, count, index;
     } find;
@@ -1427,6 +1425,7 @@ const char *studio_asset_kind_label(int kind); /* plural: "Behaviors" */
 void studio_performance_sample(studio *s, double delta_seconds);
 void studio_performance_header(studio *s, int area);
 void studio_performance_body(studio *s, int area);
+void studio_performance_free(studio *s);
 void studio_output_header(studio *s, int area);
 void studio_output_body(studio *s, int area);
 /* The keys of the Output view under the pointer: the Calls tree's. */
@@ -2539,5 +2538,70 @@ void studio_canvas_panel_action(studio *s, const char *action, const ui_activati
 /* Shows the Canvas in area `area`'s body while a ui asset previews, its
  * frame native in the stage's slot; false when none previews. */
 bool studio_canvas_body(studio *s, int area);
+
+/* ---------- Editor chrome (workstream C2) ---------- */
+
+/* `performance` (studio_performance.c): Performance.rml's and
+ * PerformanceHeader.rml's readout, live (the newest points pulse), running
+ * and gpu (whether the simulation and the GPU have samples), and lighting,
+ * lightingText and budget. Its samples reach its <line-chart>s through
+ * line_chart_publish, as perf:frame, perf:behavior, perf:physics,
+ * perf:systems, perf:rendering and perf:gpu. */
+void studio_performance_add(yyjson_mut_doc *doc);
+bool studio_performance_sync(studio *s, const studio_panel_sync *at);
+
+/* The Behavior header (studio_graph_header.c, BehaviorHeader.rml), by how
+ * often each changes. `graph_header`: open, back and forward (and their
+ * chords), asset and graph ({label, icon}: the behavior's crumb and the
+ * open graph's), callers ({label, index}), renaming, readonly, find, and
+ * the debug target (debug, target, targetAbout). `graph_menus`: the
+ * asset crumb's refs and the assets of its kind (kinds, kind, assets), the
+ * picker's graphs and its items (newFunction, newMacro, named, rename,
+ * graphRefs, graphCalls, remove). `graph_view`: the zoom and the Graph
+ * menu's items, which the selection enables. `graph_targets`: the debug
+ * target's groups of choices ({label, options: {value, label, icon,
+ * keywords, current}}). Items are MenuItem's {id, icon, label, shortcut,
+ * checked, disabled, current}. Actions (graph_header.<action>): back,
+ * forward, assetRefs, asset (a name), caller (an index), graph (an id),
+ * newFunction, newMacro, rename, renamed (the name), cancel, graphRefs,
+ * graphCalls, remove, target (a choice's value), optimize, collapse, align
+ * (an edge), distribute (0 across, 1 down), straighten, arrange, find and
+ * frame. */
+void studio_graph_header_add(yyjson_mut_doc *doc);
+bool studio_graph_header_sync(studio *s, const studio_panel_sync *at);
+void studio_graph_header_action(studio *s, const char *action, const ui_activation *a);
+void studio_graph_menus_add(yyjson_mut_doc *doc);
+bool studio_graph_menus_sync(studio *s, const studio_panel_sync *at);
+void studio_graph_view_add(yyjson_mut_doc *doc);
+bool studio_graph_view_sync(studio *s, const studio_panel_sync *at);
+void studio_graph_targets_add(yyjson_mut_doc *doc);
+bool studio_graph_targets_sync(studio *s, const studio_panel_sync *at);
+/* `graph_find` (studio_graph_find.c, GraphFind.rml), while the graph's
+ * find is open: query (the field's, two-way), count (its readout), total,
+ * height (the List's, eight rows at most) and rows, the List's window of
+ * matches as TreeRow items keyed by their index. Actions: next, previous,
+ * jump (a row's key), enter (go to the current match and close), close and
+ * scroll. */
+void studio_graph_find_add(yyjson_mut_doc *doc);
+bool studio_graph_find_sync(studio *s, const studio_panel_sync *at);
+void studio_graph_find_action(studio *s, const char *action, const ui_activation *a);
+/* The Text Editor's header (studio_code.c, CodeHeader.rml): `code_header`'s
+ * mode (0 nothing shown, 1 an asset's KDL source, 2 a UI document), live
+ * (the apply mode), dirty, and for an asset its title; for a document back
+ * and forward (and their chords), parts (it has RML and RCSS), part, icon,
+ * name and path (the shown part's file), find (open), vim (the mode, or ""),
+ * problems, errors, problemsTip and error (why the text does not read).
+ * Actions (code_header.<action>): apply (0 Live, 1 On Save), save, back,
+ * forward, part (0 RML, 1 RCSS), find and nextProblem. */
+void studio_code_header_add(yyjson_mut_doc *doc);
+bool studio_code_header_sync(studio *s, const studio_panel_sync *at);
+void studio_code_header_action(studio *s, const char *action, const ui_activation *a);
+/* `code_find` (CodeFind.rml), while the Text Editor's find is open: query
+ * (the field's, two-way), count (its readout) and total. Actions: next,
+ * previous, enter (next, or previous with Shift) and close (back to the
+ * text). */
+void studio_code_find_add(yyjson_mut_doc *doc);
+bool studio_code_find_sync(studio *s, const studio_panel_sync *at);
+void studio_code_find_action(studio *s, const char *action, const ui_activation *a);
 
 #endif

@@ -1,7 +1,7 @@
 /* Studio kit internals shared by the reconciler (kit.c) and its feature
  * modules: controls, number fields, popups and menus, the command palette,
- * motion, text in place, toasts, lists, drag and drop, charts and wires. Not
- * part of the C API.
+ * motion, text in place, toasts, lists, drag and drop and wires. Not part of
+ * the C API.
  *
  * Conventions:
  * - An owned string is a `char *`, NULL until first set. str_set replaces it
@@ -17,7 +17,7 @@
  *   carries, and every lookup compares it (path_node, popup_find). A popup is
  *   heap allocated, so pointers to it stay valid; spring values are inline and
  *   move on insertion. No popup loop depends on key order.
- * - Owned pointers (node children and chart; exiting nodes; roots, popups)
+ * - Owned pointers (node children; exiting nodes; roots, popups)
  *   are freed only by node_free and kit_destroy; update them with any new
  *   owned field.
  * - Strings for one frame (frame_format, kit_string, kit_classes) are freed by
@@ -112,31 +112,6 @@ typedef struct widget
         *kbd_el, *badge_el, *head_el, *about_el;
 } widget;
 
-/* Charts (kit_chart.c): what the chart element draws this frame. The chart
- * element's user data owns its frame. */
-typedef struct chart_series
-{
-    float *times, *values;
-    uint32_t color;
-} chart_series;
-
-typedef struct chart_frame
-{
-    chart_series *series;
-    double *ticks;
-    double now, lo, hi, hover_value;
-    float window, dp, reference, hover_x;
-    bool fill, live, reduced_motion;
-} chart_frame;
-
-typedef struct chart_state
-{
-    bool ranged;
-    double lo, hi, time;
-    rml_element **labels;
-    rml_element *badge, *hover;
-} chart_state;
-
 struct node
 {
     char *key;
@@ -158,7 +133,6 @@ struct node
     bool layout_known;
     kit_rect layout_rect;
     spring layout_x, layout_y;
-    chart_state *chart; /* owned, NULL until used */
     char **drop_types; /* accepted drag types, set each frame by kit_drop_target */
     bool drag_source; /* kit_drag_source named it this frame */
     bool hosted;      /* kit_host: its children are mounted content */
@@ -380,10 +354,9 @@ void drag_flush(node *n);
 /* Forgets the drag types a node accepted last frame. */
 void drop_types_clear(node *n);
 
-/* ---------- Custom elements (kit_chart.c, kit_wires.c) ---------- */
+/* ---------- Custom elements (kit_wires.c) ---------- */
 
 /* Registered per kit: RmlUi's factory is rebuilt whenever it reinitializes. */
-void register_chart_element();
 void register_wires_element();
 void register_dot_element();
 

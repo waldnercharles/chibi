@@ -337,15 +337,6 @@ static void widget_free(widget *w)
     strings_free(w->labels);
 }
 
-static void chart_free(chart_state *c)
-{
-    if (!c) {
-        return;
-    }
-    afree(c->labels);
-    free(c);
-}
-
 void node_free(node *n)
 {
     for (int i = 0; i < acount(n->children); i++) {
@@ -361,7 +352,6 @@ void node_free(node *n)
     pairs_free(n->attrs);
     pairs_free(n->styles);
     widget_free(&n->w);
-    chart_free(n->chart);
     free(n);
 }
 
@@ -1031,7 +1021,6 @@ kit *kit_create(void *context, const char *document_path)
        their siblings as they take focus. */
     rml_element_set_property(k->doc, "z-index", "0");
     rml_document_show(k->doc, RML_MODAL_NONE, RML_FOCUS_AUTO, RML_SCROLL_FLAG_AUTO);
-    register_chart_element();
     register_wires_element();
     register_dot_element();
     register_code_element();

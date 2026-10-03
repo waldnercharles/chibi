@@ -47,6 +47,7 @@ struct game_materials
     material_stream_view *terrain_views;
     /* Views a host adds, in game coordinates (game_materials_set_stream_views). */
     material_stream_view *host_views;
+    bool stream_deferred; /* game_materials_set_stream_deferred */
     material_debris_blast *debris_blasts;
 };
 

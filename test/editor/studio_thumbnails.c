@@ -1,8 +1,10 @@
 /* Asset thumbnails: mini-maps fit their square; in Studio over Neon Swarm
  * every kind of asset renders, with its cost reported; large previews past
  * their cap release their textures; the grid's keys move the selection; a
- * grid of a thousand assets stays windowed; and a changed file renders
- * again. */
+ * grid of a thousand assets stays windowed; an unsaved edit renders once it
+ * rests, and its Undo too; Sandbox streams its terrain before its picture,
+ * showing what it has at the cap; a changed file renders again; and the disk
+ * cache keeps pictures between sessions until their content changes. */
 #include "editor/studio/studio_thumbnails.h"
 
 #include "assets/new_asset.h"
@@ -15,9 +17,11 @@
 #include "support/array.h"
 #include "support/asset_text.h"
 #include "support/text_file.h"
+#include "support/xalloc.h"
 #include "test/suite_internal.h"
 
 #include <assert.h>
+#include <dirent.h>
 #include <limits.h>
 #include <math.h>
 #include <stdio.h>
@@ -25,6 +29,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/time.h>
+#include <time.h>
 #include <unistd.h>
 
 #define FRAME_SECONDS (1.0 / 60.0)
@@ -166,32 +171,38 @@ static double frame(thumbs_fixture *f, double seconds)
     return (now() - start) * 1000;
 }
 
+/* Pictures shown so far: rendered, or read from the disk cache. */
 static int rendered(const studio_thumb_stats *stats)
 {
-    int total = 0;
+    int total = stats->loaded;
     for (int k = 0; k < REFERENCE_ASSET_KIND_COUNT; k++) {
         total += stats->count[k];
     }
     return total;
 }
 
-/* Frames until no thumbnail renders for half a second; the slowest frame
-   that rendered one in *worst. */
-static int settle(thumbs_fixture *f, double *worst)
+/* Frames until no thumbnail shows or waits for half a second, at most
+   `limit`; the slowest frame that showed one in *worst. */
+static int settle_within(thumbs_fixture *f, double *worst, int limit)
 {
-    int frames = 0, quiet = 0, before = rendered(&(studio_thumb_stats){ 0 });
-    for (; frames < 1200 && quiet < 30; frames++) {
+    int frames = 0, quiet = 0;
+    for (; frames < limit && quiet < 30; frames++) {
         studio_thumb_stats stats = studio_thumbs_stats(f->studio);
-        before = rendered(&stats);
+        int before = rendered(&stats);
         double ms = frame(f, FRAME_SECONDS);
         stats = studio_thumbs_stats(f->studio);
-        bool busy = rendered(&stats) != before;
-        quiet = busy ? 0 : quiet + 1;
-        if (busy && worst && ms > *worst) {
+        bool shown = rendered(&stats) != before;
+        quiet = shown || studio_thumbs_pending(f->studio) ? 0 : quiet + 1;
+        if (shown && worst && ms > *worst) {
             *worst = ms;
         }
     }
     return frames;
+}
+
+static int settle(thumbs_fixture *f, double *worst)
+{
+    return settle_within(f, worst, 1200);
 }
 
 static bool has_kind(const studio *s, int kind)
@@ -258,7 +269,8 @@ static void large_previews_evict(thumbs_fixture *f)
         if (a->kind != REFERENCE_ASSET_BEHAVIOR) {
             continue;
         }
-        studio_thumb(s, i, STUDIO_THUMB_LARGE);
+        bool loading;
+        studio_thumb(s, i, STUDIO_THUMB_LARGE, &loading);
         frame(f, FRAME_SECONDS);
         asked++;
     }
@@ -337,6 +349,123 @@ static void large_grid_stays_windowed(thumbs_fixture *f)
     test_check(tiles > 0 && tiles < 200, "a grid of more than a thousand assets makes only the tiles in view and overscan");
 }
 
+/* Frames until the kind's count passes `count`, at most `limit`; Studio's
+   time it took. */
+static double until_rendered(thumbs_fixture *f, int kind, int count, int limit)
+{
+    double start = f->studio->time;
+    for (int i = 0; i < limit && studio_thumbs_stats(f->studio).count[kind] <= count;
+         i++) {
+        frame(f, FRAME_SECONDS);
+    }
+    return f->studio->time - start;
+}
+
+/* An unsaved prototype edit renders once it rests, not before, and never
+   reaches the disk; its Undo renders too. Edits every frame, as a scrub
+   makes, cost no thumbnail work until they stop. */
+static void unsaved_edit_renders_after_rest(thumbs_fixture *f)
+{
+    studio *s = f->studio;
+    app_scene_authoring *scene = f->scene;
+    s->assets_kind = REFERENCE_ASSET_PROTOTYPE;
+    s->ui_schedule.wake = true;
+    settle(f, NULL);
+    studio_thumb_stats before = studio_thumbs_stats(s);
+    /* Opening it reveals it in the Scene area; Assets comes back. */
+    assert(app_scene_authoring_open_prototype(scene, "Crystal") == 0);
+    frame(f, FRAME_SECONDS);
+    studio_active_layout(s)->editors[STUDIO_AREA_TOP] = STUDIO_EDITOR_ASSETS;
+    s->applied = s->prefs;
+    double scrub = 0, work = 0;
+    for (int i = 0; i < 30; i++) {
+        pin_value color = { .type = PIN_U32, .u = 0xff4fa3ffu - (unsigned)i * 0x100u };
+        assert(
+            app_scene_authoring_set_prototype_field(scene, "Crystal", "GameAppearance", "color", color) == 0
+        );
+        scrub = fmax(scrub, frame(f, FRAME_SECONDS));
+        work = fmax(work, studio_thumbs_stats(s).frame_ms);
+    }
+    int early = studio_thumbs_stats(s).count[REFERENCE_ASSET_PROTOTYPE] -
+                before.count[REFERENCE_ASSET_PROTOTYPE];
+    double latency = until_rendered(f, REFERENCE_ASSET_PROTOTYPE, before.count[REFERENCE_ASSET_PROTOTYPE], 240);
+    studio_thumb_stats edited = studio_thumbs_stats(s);
+    assert(prototype_undo(scene) == 0);
+    double undone = until_rendered(f, REFERENCE_ASSET_PROTOTYPE, edited.count[REFERENCE_ASSET_PROTOTYPE], 240);
+    settle(f, NULL);
+    studio_thumb_stats after = studio_thumbs_stats(s);
+    printf(
+        "  unsaved edit: picture %.2f s after the last of 30 edits, Undo's "
+        "%.2f s after it; while editing, frames took at most %.1f ms, %.2f ms "
+        "of it thumbnails\n",
+        latency,
+        undone,
+        scrub,
+        work
+    );
+    bool rendered = edited.count[REFERENCE_ASSET_PROTOTYPE] >
+                        before.count[REFERENCE_ASSET_PROTOTYPE] &&
+                    after.count[REFERENCE_ASSET_PROTOTYPE] >
+                        edited.count[REFERENCE_ASSET_PROTOTYPE];
+    test_check(early == 0 && rendered && latency < 1.0 && undone < 1.0, "an unsaved prototype edit and its Undo render once they rest, not while edits keep coming");
+    test_check(after.stored == before.stored, "pictures of unsaved edits stay off the disk cache");
+}
+
+/* Asks for one thumbnail each frame, as the grid would, until it is drawn
+   in full; Studio's time to its partial picture, or -1, in *partial. */
+static double until_drawn(thumbs_fixture *f, int asset, int limit, double step, double *partial)
+{
+    studio *s = f->studio;
+    double start = s->time;
+    *partial = -1;
+    int before = studio_thumbs_stats(s)
+                     .count[reference_index_asset_at(app_scene_authoring_asset_index(s->scene), asset)
+                                ->kind];
+    for (int i = 0; i < limit; i++) {
+        bool loading;
+        studio_thumb(s, asset, STUDIO_THUMB_TILE, &loading);
+        s->ui_schedule.wake = true;
+        frame(f, step);
+        studio_thumb_stats stats = studio_thumbs_stats(s);
+        if (*partial < 0 && stats.partial) {
+            *partial = s->time - start;
+        }
+        if (stats.count[REFERENCE_ASSET_SCENE] > before) {
+            break;
+        }
+    }
+    return s->time - start;
+}
+
+#ifndef CHIBI_SKIP_PERFORMANCE_TESTS
+/* Sandbox frames its cave and streams the terrain there before drawing. */
+static void sandbox_streams_terrain(thumbs_fixture *f)
+{
+    studio *s = f->studio;
+    studio_thumbs_free(s);
+    s->assets_kind = REFERENCE_ASSET_SYSTEM;
+    int sandbox = reference_index_find_name(
+        app_scene_authoring_asset_index(s->scene),
+        REFERENCE_ASSET_SCENE,
+        "Sandbox"
+    );
+    double wall = now(), partial;
+    double done = until_drawn(f, sandbox, 3000, FRAME_SECONDS, &partial);
+    studio_thumb_stats stats = studio_thumbs_stats(s);
+    printf(
+        "  Sandbox: partial picture at %.2f s, complete at %.2f s (%.2f s "
+        "wall), %.0f ms of work, slowest step %.1f ms\n",
+        partial,
+        done,
+        now() - wall,
+        stats.total_ms[REFERENCE_ASSET_SCENE],
+        stats.max_ms[REFERENCE_ASSET_SCENE]
+    );
+    test_check(stats.count[REFERENCE_ASSET_SCENE] == 1 && (partial < 0 || partial >= 2.0), "Sandbox's thumbnail streams its terrain first, showing what it has only past the cap");
+}
+
+#endif
+
 static void arena_thumbnails()
 {
     static char root[PATH_MAX];
@@ -347,6 +476,10 @@ static void arena_thumbnails()
     large_previews_evict(&f);
     grid_keys_move_selection(&f);
     large_grid_stays_windowed(&f);
+#ifndef CHIBI_SKIP_PERFORMANCE_TESTS
+    sandbox_streams_terrain(&f);
+#endif
+    unsaved_edit_renders_after_rest(&f);
     fixture_free(&f);
 }
 
@@ -365,52 +498,311 @@ static char *disk_text(new_asset_kind kind, const char *name)
     return disk;
 }
 
-/* A behavior whose file changes renders again; its old picture shows
-   meanwhile. */
-static void changed_file_renders_again()
+/* Removes a folder and everything in it. */
+static void remove_tree(const char *path)
 {
-    char root[64] = "/tmp/chibi-thumbs-XXXXXX", path[256];
+    DIR *dir = opendir(path);
+    struct dirent *item;
+    while (dir && (item = readdir(dir))) {
+        if (!strcmp(item->d_name, ".") || !strcmp(item->d_name, "..")) {
+            continue;
+        }
+        char child[PATH_MAX];
+        snprintf(child, sizeof child, "%s/%s", path, item->d_name);
+        struct stat info;
+        if (lstat(child, &info) == 0 && S_ISDIR(info.st_mode)) {
+            remove_tree(child);
+        } else {
+            remove(child);
+        }
+    }
+    if (dir) {
+        closedir(dir);
+    }
+    rmdir(path);
+}
+
+static void write_in(const char *root, const char *file, const char *text)
+{
+    char path[PATH_MAX];
+    snprintf(path, sizeof path, "%s/%s", root, file);
+    write_text(path, text);
+}
+
+#define DOT_PROTOTYPE                                                          \
+    "name \"Dot\"\ncomponents {\n    GAME.GameAppearance color=0xff8800ff "    \
+    "height=40.0 "                                                             \
+    "shape=\"Circle\" width=40.0\n    (object)GAME.GameTransform\n}\n"
+#define MAIN_SCENE                                                             \
+    "version 1\nname \"Main\"\n(array)entities {\n    - name=\"Dot\" "         \
+    "prototype=\"Dot\"\n}\n"
+
+/* A project of a scene showing one prototype, and a behavior. */
+static void make_project(char *root)
+{
     assert(mkdtemp(root));
-    snprintf(path, sizeof path, "%s/" CHIBI_PROJECT_MANIFEST, root);
-    write_text(path, "version " STRINGIFY(CHIBI_PROJECT_VERSION) "\nname \"Thumbs\"\ncontent \"content\"\nstart_scene \"scenes/Main.kdl\"\n");
-    const char *folders[] = { "content", "content/scenes", "content/behaviors" };
-    for (int i = 0; i < 3; i++) {
+    const char *folders[] = { "content", "content/scenes", "content/behaviors", "content/prototypes" };
+    for (int i = 0; i < 4; i++) {
+        char path[PATH_MAX];
         snprintf(path, sizeof path, "%s/%s", root, folders[i]);
         assert(mkdir(path, 0755) == 0);
     }
-    char *scene = disk_text(NEW_ASSET_SCENE, "Main"),
-         *behavior = disk_text(NEW_ASSET_BEHAVIOR, "Spin");
-    snprintf(path, sizeof path, "%s/content/scenes/Main.kdl", root);
-    write_text(path, scene);
-    char behavior_path[256];
-    snprintf(behavior_path, sizeof behavior_path, "%s/content/behaviors/Spin.kdl", root);
-    write_text(behavior_path, behavior);
+    write_in(root, CHIBI_PROJECT_MANIFEST, "version " STRINGIFY(CHIBI_PROJECT_VERSION) "\nname \"Thumbs\"\ncontent \"content\"\nstart_scene \"scenes/Main.kdl\"\n");
+    write_in(root, "content/scenes/Main.kdl", MAIN_SCENE);
+    write_in(root, "content/prototypes/Dot.kdl", DOT_PROTOTYPE);
+    char *behavior = disk_text(NEW_ASSET_BEHAVIOR, "Spin");
+    write_in(root, "content/behaviors/Spin.kdl", behavior);
+    free(behavior);
+}
+
+/* A behavior renders again once its file's content changes; a newer
+   modification time alone, as a checkout leaves, changes nothing. */
+static void changed_file_renders_again(const char *root)
+{
+    char path[PATH_MAX];
+    snprintf(path, sizeof path, "%s/content/behaviors/Spin.kdl", root);
     thumbs_fixture f = fixture_open(root, "scenes/Main.kdl");
     studio *s = f.studio;
     s->assets_kind = REFERENCE_ASSET_BEHAVIOR;
     settle(&f, NULL);
     int first = studio_thumbs_stats(s).count[REFERENCE_ASSET_BEHAVIOR];
-    /* A later modification time, as an editor's save leaves. */
     struct timeval times[2];
     gettimeofday(&times[0], NULL);
     times[0].tv_sec += 5;
     times[1] = times[0];
-    assert(utimes(behavior_path, times) == 0);
+    assert(utimes(path, times) == 0);
     frame(&f, 1.5);
     settle(&f, NULL);
-    int second = studio_thumbs_stats(s).count[REFERENCE_ASSET_BEHAVIOR];
-    test_check(first == 1 && second == 2, "a thumbnail renders again once its asset's file changes");
+    int touched = studio_thumbs_stats(s).count[REFERENCE_ASSET_BEHAVIOR];
+    char *text = text_file_read(path);
+    size_t size = strlen(text) + 32;
+    char *edited = xmalloc(size);
+    snprintf(edited, size, "%s// edited\n", text);
+    write_text(path, edited);
+    free(text);
+    free(edited);
+    frame(&f, 1.5);
+    settle(&f, NULL);
+    int changed = studio_thumbs_stats(s).count[REFERENCE_ASSET_BEHAVIOR];
+    test_check(first == 1 && touched == 1 && changed == 2, "a thumbnail renders again once its asset's content changes, not for a touched file");
     fixture_free(&f);
-    remove(behavior_path);
-    remove(path);
-    const char *paths[] = { "content/behaviors", "content/scenes", "content", CHIBI_PROJECT_MANIFEST };
-    for (int i = 0; i < 4; i++) {
-        snprintf(path, sizeof path, "%s/%s", root, paths[i]);
-        remove(path);
+}
+
+/* The open scene's thumbnail shows its unsaved edits once they rest, as it
+   does an edit of a prototype it uses. */
+static void unsaved_scene_renders(const char *root)
+{
+    thumbs_fixture f = fixture_open(root, "scenes/Main.kdl");
+    studio *s = f.studio;
+    app_scene_authoring *scene = f.scene;
+    s->assets_kind = REFERENCE_ASSET_SCENE;
+    settle(&f, NULL);
+    int first = studio_thumbs_stats(s).count[REFERENCE_ASSET_SCENE];
+    ecs_entity dot = scene->actors[0].entity;
+    begin_transform_edit(scene, dot);
+    write_transform_edit(scene, dot, (GameTransform){ .x = 120, .y = 40 });
+    finish_transform_edit(scene, false);
+    frame(&f, FRAME_SECONDS);
+    bool dirty = scene->scene_dirty;
+    double moved = until_rendered(&f, REFERENCE_ASSET_SCENE, first, 240);
+    int second = studio_thumbs_stats(s).count[REFERENCE_ASSET_SCENE];
+    pin_value color = { .type = PIN_U32, .u = 0x3366ffffu };
+    assert(
+        app_scene_authoring_set_prototype_field(scene, "Dot", "GameAppearance", "color", color) == 0
+    );
+    double recolored = until_rendered(&f, REFERENCE_ASSET_SCENE, second, 240);
+    int third = studio_thumbs_stats(s).count[REFERENCE_ASSET_SCENE];
+    printf("  open scene: a move shows %.2f s after it, a prototype's color %.2f s after it\n", moved, recolored);
+    test_check(dirty && first == 1 && second == 2 && third == 3, "the open scene's thumbnail follows its unsaved edits and its prototypes'");
+    fixture_free(&f);
+}
+
+/* Pictures persist between sessions: the next one reads them back instead
+   of rendering, until the asset's content changes. */
+static void pictures_persist(const char *root)
+{
+    char cache[64] = "/tmp/chibi-thumb-cache-XXXXXX";
+    assert(mkdtemp(cache));
+    setenv("CHIBI_THUMBNAIL_CACHE", cache, 1);
+    thumbs_fixture f = fixture_open(root, "scenes/Main.kdl");
+    f.studio->assets_kind = -1;
+    settle(&f, NULL);
+    studio_thumb_stats first = studio_thumbs_stats(f.studio);
+    fixture_free(&f);
+    f = fixture_open(root, "scenes/Main.kdl");
+    f.studio->assets_kind = -1;
+    settle(&f, NULL);
+    studio_thumb_stats second = studio_thumbs_stats(f.studio);
+    fixture_free(&f);
+    write_in(root, "content/prototypes/Dot.kdl", DOT_PROTOTYPE "// edited\n");
+    f = fixture_open(root, "scenes/Main.kdl");
+    f.studio->assets_kind = -1;
+    settle(&f, NULL);
+    studio_thumb_stats third = studio_thumbs_stats(f.studio);
+    fixture_free(&f);
+    int drawn = rendered(&first) - first.blank;
+    printf(
+        "  disk cache: %d stored, then %d read back with %d rendered; after an "
+        "edit %d read back, %d rendered\n",
+        first.stored,
+        second.loaded,
+        rendered(&second) - second.loaded,
+        third.loaded,
+        rendered(&third) - third.loaded
+    );
+    test_check(
+        drawn > 0 && first.stored == drawn && second.loaded == drawn &&
+            rendered(&second) - second.loaded == second.blank,
+        "a later session reads every picture back from the disk cache instead "
+        "of rendering it"
+    );
+    /* Dot, and Main, which shows it, render again; the rest read back. */
+    test_check(
+        third.count[REFERENCE_ASSET_PROTOTYPE] == 1 &&
+            third.count[REFERENCE_ASSET_SCENE] == 1 && third.loaded == drawn - 2,
+        "a picture whose content changed renders again rather than reading back"
+    );
+    setenv("CHIBI_THUMBNAIL_CACHE", "", 1);
+    remove_tree(cache);
+}
+
+static void read_canvas(CF_Canvas canvas, CF_Pixel *pixels, int count)
+{
+    CF_Readback read = cf_canvas_readback(canvas);
+    while (!cf_readback_ready(read)) {
+        cf_sleep(1);
     }
-    rmdir(root);
-    free(scene);
-    free(behavior);
+    int bytes = count * (int)sizeof *pixels;
+    assert(cf_readback_data(read, pixels, bytes) == bytes);
+    cf_destroy_readback(read);
+}
+
+/* The disk cache's pictures load back pixel for pixel in a later session,
+   one of another size never loads, and past the cap the least recently used
+   goes. */
+static void disk_round_trip()
+{
+    enum
+    {
+        SIDE = 32
+    };
+    char directory[64] = "/tmp/chibi-thumb-disk-XXXXXX";
+    assert(mkdtemp(directory));
+    CF_Pixel pixels[SIDE * SIDE], back[SIDE * SIDE];
+    for (int i = 0; i < SIDE * SIDE; i++) {
+        pixels[i].val = (uint32_t)i * 2654435761u | 0xff000000u;
+    }
+    studio_thumb_disk *d = studio_thumb_disk_open(directory, (size_t)1 << 20);
+    studio_thumb_disk_store(d, 1, pixels, SIDE);
+    size_t one = studio_thumb_disk_size(d);
+    studio_thumb_disk_close(d);
+    d = studio_thumb_disk_open(directory, one * 5 / 2);
+    CF_Canvas canvas = cf_make_canvas(cf_canvas_defaults(SIDE, SIDE));
+    CF_Canvas small = cf_make_canvas(cf_canvas_defaults(SIDE / 2, SIDE / 2));
+    bool loaded = studio_thumb_disk_has(d, 1) &&
+                  studio_thumb_disk_load(d, 1, canvas, SIDE);
+    cf_app_draw_onto_screen(true);
+    read_canvas(canvas, back, SIDE * SIDE);
+    bool same = !memcmp(pixels, back, sizeof pixels);
+    struct timespec pause = { 0, 20000000 };
+    nanosleep(&pause, NULL);
+    studio_thumb_disk_store(d, 2, pixels, SIDE);
+    nanosleep(&pause, NULL);
+    assert(studio_thumb_disk_load(d, 1, canvas, SIDE));
+    nanosleep(&pause, NULL);
+    studio_thumb_disk_store(d, 3, pixels, SIDE);
+    bool lru = studio_thumb_disk_has(d, 1) && !studio_thumb_disk_has(d, 2) &&
+               studio_thumb_disk_has(d, 3) &&
+               studio_thumb_disk_size(d) <= one * 5 / 2;
+    bool other = !studio_thumb_disk_load(d, 3, small, SIDE / 2) &&
+                 !studio_thumb_disk_has(d, 3);
+    test_check(loaded && same, "a picture in the disk cache loads back pixel for pixel in a later session");
+    test_check(lru && other, "the disk cache drops the least recently used past its cap, and a picture of another size");
+    cf_destroy_canvas(canvas);
+    cf_destroy_canvas(small);
+    studio_thumb_disk_close(d);
+    remove_tree(directory);
+}
+
+/* A scene whose camera sits on endless streamed terrain, with an object
+   far off: its picture waits for the terrain between them, and past the
+   cap shows what has streamed, marked loading, until the rest has. Each
+   frame here passes half a second, so the cap comes within a few steps. */
+static void streamed_terrain_waits(const char *root)
+{
+    char path[PATH_MAX];
+    snprintf(path, sizeof path, "%s/content/fields", root);
+    assert(mkdir(path, 0755) == 0);
+    char *field = disk_text(NEW_ASSET_FIELD, "Ground");
+    write_in(root, "content/fields/Ground.kdl", field);
+    free(field);
+    write_in(root, "content/prototypes/Ground.kdl", "name \"Ground\"\ncomponents {\n    (object)GAME.GameTransform\n    GAME.MaterialTerrain category=8 cell_size=2.0 field=\"Ground\" island_cells=4000 mask=15 min_fragment_cells=24 seed=7 stream_budget=1 stream_radius=64.0\n}\n");
+    write_in(root, "content/prototypes/Eye.kdl", "name \"Eye\"\ncomponents {\n    GAME.GameCamera height=200.0 width=200.0\n    (object)GAME.GameTransform\n}\n");
+    write_in(root, "content/scenes/Cave.kdl", "version 1\nname \"Cave\"\n(array)entities {\n    - name=\"Ground\" prototype=\"Ground\"\n    - name=\"Eye\" prototype=\"Eye\"\n    - {\n        name \"Dot\"\n        prototype \"Dot\"\n        components {\n            GAME.GameTransform x=2400.0\n        }\n    }\n}\n");
+    thumbs_fixture f = fixture_open(root, "scenes/Cave.kdl");
+    studio *s = f.studio;
+    s->assets_kind = REFERENCE_ASSET_SYSTEM;
+    frame(&f, FRAME_SECONDS);
+    int cave = reference_index_find_name(app_scene_authoring_asset_index(s->scene), REFERENCE_ASSET_SCENE, "Cave");
+    assert(cave >= 0);
+    double partial;
+    double done = until_drawn(&f, cave, 2000, 0.5, &partial);
+    bool loading;
+    const char *image = studio_thumb(s, cave, STUDIO_THUMB_TILE, &loading);
+    studio_thumb_stats stats = studio_thumbs_stats(s);
+    printf("  streamed terrain: partial picture at %.1f s, complete at %.1f s\n", partial, done);
+    test_check(
+        stats.partial == 1 && partial >= 2.0 && done > partial && image &&
+            !loading && stats.count[REFERENCE_ASSET_SCENE] == 1,
+        "a scene's thumbnail waits for its streamed terrain, then past the cap "
+        "shows what it has, loading, until the rest has streamed"
+    );
+    fixture_free(&f);
+}
+
+#ifndef CHIBI_SKIP_PERFORMANCE_TESTS
+/* How long a cold start takes to show Neon Swarm's thumbnails, without and
+   then with the disk cache. */
+static void cold_start(const char *root)
+{
+    char cache[64] = "/tmp/chibi-thumb-cold-XXXXXX";
+    assert(mkdtemp(cache));
+    setenv("CHIBI_THUMBNAIL_CACHE", cache, 1);
+    double took[2];
+    int frames[2];
+    for (int run = 0; run < 2; run++) {
+        thumbs_fixture f = fixture_open(root, "scenes/Sandbox.kdl");
+        f.studio->assets_kind = -1;
+        double wall = now();
+        frames[run] = settle_within(&f, NULL, 6000);
+        took[run] = now() - wall;
+        fixture_free(&f);
+    }
+    printf(
+        "  cold start, every visible thumbnail: %.2f s (%d frames) rendering, "
+        "%.2f s (%d frames) from the disk cache\n",
+        took[0],
+        frames[0],
+        took[1],
+        frames[1]
+    );
+    test_check(took[1] < took[0], "a cold start shows Neon Swarm's thumbnails sooner from the disk cache");
+    setenv("CHIBI_THUMBNAIL_CACHE", "", 1);
+    remove_tree(cache);
+}
+#endif
+
+/* Projects of their own: content changes, unsaved scenes, the disk cache. */
+static void project_thumbnails()
+{
+    char root[64] = "/tmp/chibi-thumbs-XXXXXX";
+    make_project(root);
+    changed_file_renders_again(root);
+    unsaved_scene_renders(root);
+    pictures_persist(root);
+    streamed_terrain_waits(root);
+    remove_tree(root);
+    disk_round_trip();
 }
 
 int studio_thumbnails_run(const char *program)
@@ -432,7 +824,12 @@ int studio_thumbnails_run(const char *program)
     app_scene_renderer_initialize();
     app_input_initialize();
     arena_thumbnails();
-    changed_file_renders_again();
+    project_thumbnails();
+#ifndef CHIBI_SKIP_PERFORMANCE_TESTS
+    static char arena[PATH_MAX];
+    assert(realpath(ARENA, arena));
+    cold_start(arena);
+#endif
     app_input_shutdown();
     cf_destroy_app();
     return 0;

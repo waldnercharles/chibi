@@ -176,6 +176,7 @@ set(EDITOR_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/ui/labels.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_assets.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_thumbnails.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_thumbnail_cache.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_thumbnail_graph.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_thumbnail_kinds.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_calls.c

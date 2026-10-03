@@ -141,13 +141,13 @@ static const char *stream_terrain(
                 continue;
             }
             const GameTransform *p = GAME_GameTransform_get_const(world, e);
+            float seen = fmaxf(camera->width, camera->height) * .5f;
             apush(
                 materials->terrain_views,
-                ((material_stream_view){
-                    p->x + camera->offset.x - origin.x,
-                    p->y + camera->offset.y - origin.y,
-                    terrain.stream_radius + fmaxf(camera->width, camera->height) * .5f,
-                    fmaxf(camera->width, camera->height) * .5f })
+                ((material_stream_view){ p->x + camera->offset.x - origin.x,
+                                         p->y + camera->offset.y - origin.y,
+                                         terrain.stream_radius + seen,
+                                         materials->stream_deferred ? 0 : seen })
             );
         }
         ecs_query_end(&query);
@@ -176,7 +176,10 @@ static const char *stream_terrain(
             const GameTransform *p = GAME_GameTransform_get_const(world, e);
             apush(
                 materials->terrain_views,
-                ((material_stream_view){ p->x - origin.x, p->y - origin.y, 128, 64 })
+                ((material_stream_view){ p->x - origin.x,
+                                         p->y - origin.y,
+                                         128,
+                                         materials->stream_deferred ? 0 : 64 })
             );
         }
         ecs_query_end(&query);

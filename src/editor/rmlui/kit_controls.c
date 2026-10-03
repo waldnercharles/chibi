@@ -1217,6 +1217,7 @@ unsigned kit_tile(kit *k, const char *key, const kit_tile_desc *d)
         w->icon_el = raw_icon(w->head_el, "glyph", 0);
         w->image_el = raw(w->head_el, "img", "picture", NULL);
         w->badge_el = raw_icon(w->head_el, "badge", 0);
+        raw_icon(w->head_el, "spin", KIT_ICON_LOADING);
         w->label_el = raw(n->el, "span", "name", NULL);
     }
     set_glyph(w->icon_el, &w->icon, d->icon);
@@ -1228,6 +1229,7 @@ unsigned kit_tile(kit *k, const char *key, const kit_tile_desc *d)
         rml_element_set_attribute(w->image_el, "src", d->image);
     }
     set_flag(n, "data-ready", d->image != NULL);
+    set_flag(n, "data-loading", d->image && d->loading);
     set_flag(n, "data-selected", d->flags & KIT_ON);
     return row_events(n);
 }

@@ -88,6 +88,7 @@ void game_materials_reset(game_materials *materials)
     release_records(materials, false);
     aclear(materials->records);
     aclear(materials->host_views);
+    materials->stream_deferred = false;
     reset_simulation(materials);
 }
 
@@ -131,6 +132,11 @@ bool game_materials_streaming(const game_materials *materials)
         }
     }
     return false;
+}
+
+void game_materials_set_stream_deferred(game_materials *materials, bool deferred)
+{
+    materials->stream_deferred = deferred;
 }
 
 bool game_materials_enabled(const game_materials *materials)

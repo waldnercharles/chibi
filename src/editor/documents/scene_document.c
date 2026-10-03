@@ -78,9 +78,8 @@ int scene_document_add_actor(app_scene_authoring *scene, game_scene_document *do
     return result;
 }
 
-av_value *scene_authoring_scene_value(app_scene_authoring *scene)
+game_scene_document *scene_authoring_document(app_scene_authoring *scene)
 {
-    finish_transform_edit(scene, false);
     char name[256];
     scene_document_name(scene, name, sizeof name);
     game_scene_document *document = game_scene_document_new(name);
@@ -96,7 +95,14 @@ av_value *scene_authoring_scene_value(app_scene_authoring *scene)
             return NULL;
         }
     }
-    av_value *value = game_scene_document_to_value(document);
+    return document;
+}
+
+av_value *scene_authoring_scene_value(app_scene_authoring *scene)
+{
+    finish_transform_edit(scene, false);
+    game_scene_document *document = scene_authoring_document(scene);
+    av_value *value = document ? game_scene_document_to_value(document) : NULL;
     game_scene_document_free(document);
     return value;
 }

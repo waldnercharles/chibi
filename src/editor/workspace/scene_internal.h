@@ -289,6 +289,9 @@ struct app_scene_authoring
 };
 
 /* Document I/O is shared by disk commands and module checkpoints. */
+/* The open scene as saving would write it, leaving an edit in progress open,
+   so reading it changes nothing. Owned; NULL when an object does not save. */
+game_scene_document *scene_authoring_document(app_scene_authoring *scene);
 av_value *scene_authoring_scene_value(app_scene_authoring *scene);
 char *scene_authoring_scene_text(app_scene_authoring *scene);
 int scene_authoring_load_value(app_scene_authoring *scene, av_value *value, const char *path);

@@ -333,6 +333,8 @@ int main(int argc, char **argv)
     }
     setvbuf(stdout, NULL, _IOLBF, 0);
     program_name = argc ? argv[0] : "test_suite";
+    /* Thumbnails persist nowhere but where a test puts them. */
+    setenv("CHIBI_THUMBNAIL_CACHE", "", 1);
     if (argc == 2 && !strcmp(argv[1], "--mesh-material")) {
         extern int mesh_material_run(const char *program);
         registry_validate();

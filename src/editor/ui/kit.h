@@ -277,8 +277,9 @@ extern "C"
     /* A tile of a grid view, as Unity's Project window and Unreal's Content
      * Browser show assets: a picture over its label, which ellipsizes. Until
      * the picture is ready the icon shows on the tile, as a skeleton; the
-     * badge marks the corner. The tile is the last item; it answers clicks
-     * as a row does and returns KIT_ROW_* flags. */
+     * badge marks the corner, and a spinner the opposite one while more of
+     * the picture loads. The tile is the last item; it answers clicks as a
+     * row does and returns KIT_ROW_* flags. */
     typedef struct kit_tile_desc
     {
         const char *label;
@@ -286,6 +287,7 @@ extern "C"
         uint32_t icon;
         uint32_t badge; /* 0 none */
         unsigned flags; /* KIT_ON selected */
+        bool loading;   /* the picture shows what has loaded; more is coming */
     } kit_tile_desc;
     unsigned kit_tile(kit *k, const char *key, const kit_tile_desc *desc);
 

@@ -5,15 +5,19 @@
  * show them: each asset drawn as it looks, into a small offscreen canvas
  * bound as a still kit image ("kit:thumb:<slot>"). Thumbnails render lazily,
  * only for what an emission asked for, within a frame budget, cheapest kinds
- * first; they show saved content and render again when the asset's file or
- * a file it uses changes. Rendering reads the authored state and never
- * changes it, the open scene or its runtime. */
+ * first. They follow the live asset, as Unreal's do: an open document's
+ * unsaved edits show once they rest, never mid-gesture, and Undo and Redo
+ * show too; otherwise a thumbnail shows its file and renders again when the
+ * file or a file it uses changes. Pictures of saved content persist between
+ * sessions on disk, keyed by the content they show. Rendering reads the
+ * authored state and never changes it, the open scene or its runtime. */
 
 #include "assets/reference_index.h"
 #include "graph/model/graph.h"
 #include "platform/cute.h"
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 typedef struct studio studio;
@@ -27,9 +31,10 @@ typedef enum
 } studio_thumb_size;
 
 /* The "kit:thumb:<slot>" source showing asset `asset` of the asset index, or
- * NULL while it renders or when its kind has no picture. Asking keeps it
- * cached and queues it; call while emitting. */
-const char *studio_thumb(studio *s, int asset, studio_thumb_size size);
+ * NULL while it renders or when its kind has no picture. `loading` tells
+ * that more of the picture is still coming, as a scene's streamed terrain.
+ * Asking keeps it cached and queues it; call while emitting. */
+const char *studio_thumb(studio *s, int asset, studio_thumb_size size, bool *loading);
 /* The tile thumbnail's source when one is cached, else NULL, keeping it
  * cached without queueing anything: the palette's results show what Assets
  * already rendered. */
@@ -49,9 +54,13 @@ typedef struct
     int count[REFERENCE_ASSET_KIND_COUNT];
     double total_ms[REFERENCE_ASSET_KIND_COUNT];
     double max_ms[REFERENCE_ASSET_KIND_COUNT];
-    int blank;   /* finished without a picture, as a camera's prototype */
-    int bound;   /* textures bound now */
-    int evicted; /* thumbnails dropped to stay within the cap */
+    int blank;       /* finished without a picture, as a camera's prototype */
+    int bound;       /* textures bound now */
+    int evicted;     /* thumbnails dropped to stay within the cap */
+    int loaded;      /* pictures read from the disk cache */
+    int stored;      /* pictures written to it */
+    int partial;     /* pictures shown before all they show had loaded */
+    double frame_ms; /* the last frame's thumbnail work, checks included */
 } studio_thumb_stats;
 studio_thumb_stats studio_thumbs_stats(const studio *s);
 
@@ -80,7 +89,12 @@ typedef enum
 {
     STUDIO_THUMB_DRAWN,
     STUDIO_THUMB_BLANK, /* no picture, as an empty graph has none */
-    STUDIO_THUMB_BUSY, /* call again with the job next frame: a scene runs a frame a call */
+    /* Call again with the job next frame: a scene takes a step a call, and
+       the world scenes and prototypes run in copies a share a call. */
+    STUDIO_THUMB_BUSY,
+    /* Drawn with what has loaded so far; call again, and it draws again
+       once the rest has. */
+    STUDIO_THUMB_PARTIAL,
 } studio_thumb_step;
 
 /* Draws the job's asset into `canvas`, or takes a step toward it. */
@@ -90,9 +104,33 @@ studio_thumb_step studio_thumb_render(
     const studio_thumb_job *job,
     CF_Canvas canvas
 );
+/* Kinds that render in the world a busy scene holds, and wait for it. */
+bool studio_thumb_needs_world(reference_asset_kind kind);
 /* Drops a job left busy. */
 void studio_thumb_cancel(studio_thumb_renderers *r);
 void studio_thumb_renderers_free(studio_thumb_renderers *r);
+/* The text saving the asset's open document would write, while it holds
+ * unsaved edits; NULL when the asset shows its file. Owned. A ui document's
+ * edits stand in for its files (support/text_overlay.h), so it has none. */
+char *studio_thumb_unsaved(studio *s, const reference_asset *a);
+/* The prototype that prototypes and materials stand on, which their
+ * pictures depend on beside what they reference; NULL for none. */
+const char *studio_thumb_stage(studio *s);
+
+/* ---------- Disk cache (studio_thumbnail_cache.c) ---------- */
+
+/* Square RGBA pictures in `directory`, by key, trimmed to `cap` bytes, least
+ * recently used first; NULL when the directory cannot be made. */
+typedef struct studio_thumb_disk studio_thumb_disk;
+studio_thumb_disk *studio_thumb_disk_open(const char *directory, size_t cap);
+void studio_thumb_disk_close(studio_thumb_disk *d);
+bool studio_thumb_disk_has(const studio_thumb_disk *d, uint64_t key);
+/* Fills the canvas's `side` pixels square with the picture of `key`; false,
+ * forgetting it, when it is missing, unreadable or of another size. */
+bool studio_thumb_disk_load(studio_thumb_disk *d, uint64_t key, CF_Canvas canvas, int side);
+void studio_thumb_disk_store(studio_thumb_disk *d, uint64_t key, const CF_Pixel *pixels, int side);
+/* The bytes it holds. */
+size_t studio_thumb_disk_size(const studio_thumb_disk *d);
 
 /* ---------- Graph mini-maps (studio_thumbnail_graph.c) ---------- */
 

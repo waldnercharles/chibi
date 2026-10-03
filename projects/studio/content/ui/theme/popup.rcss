@@ -26,6 +26,17 @@ body.comfortable .popover .btn.sm { height: var(--studio-height-36, 36dp); }
     box-shadow: 0dp 0dp 0dp 3dp color-mix(in srgb, var(--ring) 50%, transparent);
 }
 .popup[data-unplaced] { visibility: hidden; }
+/* Authored popovers (ui/popover.c): a closed one lays out and draws nothing;
+   a shown one waits unseen until it is placed. */
+[popover]:not([data-open]) { display: none; }
+[popover][data-unplaced] { visibility: hidden; }
+/* A list's search, as the kit's dropdown has it, and what it filtered out. */
+.choice-list { display: block; }
+.choice-list .field.search { margin: 2dp 2dp 6dp; }
+.choice-results { max-height: var(--dropdown-list-h); overflow-y: auto; }
+.choice-list [data-filtered] { display: none; }
+.choice-empty { display: none; padding: 8dp; color: var(--muted-foreground); }
+.choice-list[data-empty] .choice-empty { display: block; }
 /* A short fade bridges an occasional overlay change without moving its
    anchor or scroll clip. Exits are faster and input stays available. */
 .popup { opacity: 1; transition: opacity 0.14s cubic-out; }
@@ -51,7 +62,6 @@ body.comfortable .popover .btn.sm { height: var(--studio-height-36, 36dp); }
 .menu-item[data-disabled] { color: var(--disabled-foreground); }
 .menu-item[data-current] .label, .menu-item[data-current] .lead { color: var(--primary-text); }
 .menu-item[data-current][data-highlighted] .label, .menu-item[data-current][data-highlighted] .lead { color: var(--primary-foreground); }
-.menu-item[data-disabled][data-highlighted] { background-color: var(--accent); color: var(--disabled-foreground); }
 .menu-item[data-disabled] .lead, .menu-item[data-disabled] .kbd { color: var(--disabled-foreground); }
 .menu-sep { height: 1dp; margin: 4dp 2dp; background-color: var(--border); }
 .menu-group { height: var(--studio-height-22, 22dp); line-height: var(--studio-line-22, 22dp); display: block; padding: 0dp 6dp; font-size: var(--studio-font-11, 11dp); color: var(--faint-foreground); }

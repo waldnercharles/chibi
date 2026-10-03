@@ -2075,6 +2075,17 @@ typedef struct studio_tab_view
 /* What the editor's authored chrome shows: Studio's `editor` variable
  * (studio_sources.c), which projects/studio's StatusBar, TopBar and
  * AreaHeader bind. Commands' states are `commands`. */
+/* What an area's header shows of its editor (workstream F3): its editor
+ * type, the panel it shows ("" unless STUDIO_EDITOR_PANEL), its icon and
+ * its tip. */
+typedef struct studio_area_view
+{
+    int editor;
+    const char *panel;
+    uint32_t icon;
+    const char *title;
+} studio_area_view;
+
 typedef struct studio_status
 {
     studio_hint hints[STUDIO_HINT_MAX]; /* the editor's under the pointer */
@@ -2093,6 +2104,7 @@ typedef struct studio_status
     int tab_count;
     int maximized; /* the area filling the workspace, or -1 */
     unsigned live; /* a bit per area whose Properties edit the running scene */
+    studio_area_view areas[STUDIO_AREA_COUNT];
 } studio_status;
 
 /* Adds the `editor` variable to a data model's JSON. */
@@ -2178,7 +2190,8 @@ typedef struct studio_command_state
 {
     studio_command_info info;
     bool enabled;
-    bool checked; /* a toggle that is on */
+    bool checkable; /* a toggle, which shows a check in a menu */
+    bool checked;   /* a toggle that is on */
 } studio_command_state;
 
 /* Adds `commands`, a member per command id, to a data model's JSON. */
@@ -2279,5 +2292,21 @@ void studio_gallery_action(studio *s, const char *action, const ui_activation *a
  * argument names, and emit('<source>.<action>', ...) the source's action.
  * False for any other, which the panel's entity behaviors hear. */
 bool studio_panel_route(studio *s, const ui_activation *a);
+
+/* ---------- Popovers and choices (workstream F3) ---------- */
+
+/* An icon's codepoint as UTF-8, as authored UI shows it. */
+void studio_glyph(char out[5], uint32_t c);
+studio_area_view studio_area_view_of(studio *s, int area);
+/* Shows Studio panel `name` in `key`, a kit host in area `area`'s header
+ * controls, with a mount of its own per area: the Behavior header's View
+ * menu (GraphView). */
+rml_element *studio_ui_area_controls(studio *s, int area, const char *key, const char *name);
+/* Fills choices.editors' groups and choices.panels' tools and others, an
+ * area header's editor type menu (studio_shell.c). */
+void studio_editor_choices(studio *s, yyjson_mut_doc *doc, yyjson_mut_val *editors, yyjson_mut_val *panels);
+/* Shows editor type `editor` in `area`, or with STUDIO_EDITOR_PANEL the
+ * Studio panel `panel`; a drawer takes only the types it may hold. */
+void studio_area_show(studio *s, int area, int editor, const char *panel);
 
 #endif

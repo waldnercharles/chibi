@@ -78,18 +78,13 @@ void control_click(kit *k, node *n, rml_element *target)
                 if (kit_dropdown_is_open(k, key)) {
                     kit_popup_close(k, key);
                 } else {
-                    dropdown_open_on(k, key, element_rect(k, n->el), "Search options", n);
+                    dropdown_open_on(k, key, "Search options", n);
                 }
             }
             return;
         case KIND_AUTOCOMPLETE:
             if (!locked(n)) {
-                autocomplete_open_on(
-                    k,
-                    frame_format(k, "autocomplete:%s", n->path),
-                    element_rect(k, n->el),
-                    n
-                );
+                autocomplete_open_on(k, frame_format(k, "autocomplete:%s", n->path), n);
             }
             return;
         case KIND_PANEL:
@@ -241,12 +236,7 @@ void control_change(kit *k, node *n, rml_element *target)
             n->w.autocomplete_query_active = true;
             n->w.autocomplete_submitted = false;
             n->w.autocomplete_canceled = false;
-            autocomplete_open_on(
-                k,
-                frame_format(k, "autocomplete:%s", n->path),
-                element_rect(k, n->el),
-                n
-            );
+            autocomplete_open_on(k, frame_format(k, "autocomplete:%s", n->path), n);
         }
     }
 }
@@ -259,12 +249,7 @@ void control_focus(kit *k, node *n, rml_element *target)
     n->w.focused = true;
     set_flag(n, "data-editing", true);
     if (n->kind == KIND_AUTOCOMPLETE && !locked(n)) {
-        autocomplete_open_on(
-            k,
-            frame_format(k, "autocomplete:%s", n->path),
-            element_rect(k, n->el),
-            n
-        );
+        autocomplete_open_on(k, frame_format(k, "autocomplete:%s", n->path), n);
     }
 }
 

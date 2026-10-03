@@ -1,0 +1,9 @@
+/* A reference to an asset as a searchable dropdown anchored to the field,
+   as the kit's asset picker: None, then the project's assets of a kind.
+   Alias the kind's table as data-alias-table, such as
+   choices.assets.prototype ({ label, icon, groups }), and the asset's name
+   as data-alias-value; choosing sends change with ev.value, the name, or
+   "" for None. */
+body { display: flex; flex: 1 1 0dp; }
+.asset-field { display: flex; flex: 1 1 0dp; min-width: 0dp; }
+.dropdown { min-width: var(--anchor-width, 180dp); }

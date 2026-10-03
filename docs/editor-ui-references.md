@@ -40,7 +40,7 @@ reference for spacing, alignment, and motion as well as appearance.
 
 | Library | Problem | Kit equivalent | State |
 | --- | --- | --- | --- |
-| [Base UI](https://base-ui.com) | Behavior contracts for fields, menus, popovers, dialogs, tooltips | Controls in `kit_controls.c` (toggle groups: `kit_toggle_group`; anchored searchable choices: `kit_dropdown`, with `kit_picker` as the asset-field trigger) and the native `<number-field>` and `<color-field>` (`src/ui/controls`, which `kit_number` and `kit_color` emit); popups, menus (color swatches: `kit_menu_item_desc.swatch`; a panel header's menu: `kit_panel_menu`) and tooltips (a picture above the text: `kit_tip_image`) in `kit_popup.c`. Authored UI, the editor's and games', uses the widgets in `projects/studio/content/ui`: Switch, Select, Slider, Segmented, SidebarNav, SettingRow, Dialog, KeyHint, and over the native controls NumberField, VectorField, ColorField, Checkbox, PropertyRow, Panel and Splitter | Done |
+| [Base UI](https://base-ui.com) | Behavior contracts for fields, menus, popovers, dialogs, tooltips | Controls in `kit_controls.c` (toggle groups: `kit_toggle_group`; anchored searchable choices: `kit_dropdown`, with `kit_picker` as the asset-field trigger) and the native `<number-field>` and `<color-field>` (`src/ui/controls`, which `kit_number` and `kit_color` emit); popups and menus on `src/ui/popover.c`, the HTML popover attribute with one stack for authored popovers and the kit's (`kit_popup.c` emits the kit's: color swatches `kit_menu_item_desc.swatch`, a panel header's menu `kit_panel_menu`), and tooltips (a picture above the text: `kit_tip_image`) in `kit_popup.c`. Authored UI, the editor's and games', uses the widgets in `projects/studio/content/ui`: Switch, Select, Slider, Segmented, SidebarNav, SettingRow, Dialog, KeyHint; Menu, MenuItem, MenuCommand, MenuGroup, MenuSeparator, Submenu, MenuCheck and MenuOption over popover.c; ChoiceList over the native `<choice-list>`, with EnumField and AssetField; and over the native controls NumberField, VectorField, ColorField, Checkbox, PropertyRow, Panel and Splitter | Done |
 | [shadcn/ui](https://ui.shadcn.com) | Semantic tokens, variant discipline, control anatomy | Tokens in the Studio theme (`projects/studio/content/ui/theme/tokens.rcss`, imported by the `StudioShell` root document); Textarea as `kit_text_area` | Done |
 | [cmdk](https://github.com/dip/cmdk), [VS Code Quick Open](https://code.visualstudio.com/docs/getstarted/userinterface#_quick-open) | Command palette: ranking, groups, keyboard; prefixes and recent items | `kit_command` (`kit_command.c`), Studio's palette (`studio_palette.c`) | Done; pages and group jumps open |
 | [DialKit](https://github.com/joshpuckett/dialkit) | Live tuning of values, scrub feel, spring and easing controls | The native `<number-field>` (`src/ui/controls/number_field.c`; scrub, fine/coarse/snap, Escape cancels a scrub), which `kit_number` emits and authored UI uses as NumberField | Partial; rubber-band and spring controls open |
@@ -73,12 +73,19 @@ switch on hover within a menubar and open submenus after 100 ms. Tooltips show
 after 500 ms and stay warm for 400 ms within a group. A tooltip holds a label, a
 shortcut and an optional description that wraps; in a zoomed canvas it keeps
 its size on screen. Number fields repeat held
-steps after 400 ms, then every 60 ms. Popups close on Escape or an outside press.
-A `popover` class on `kit_popup_begin` uses Base UI's nonmodal Popover focus model:
+steps after 400 ms, then every 60 ms. Popups close on Escape or an outside press,
+the top one first: `src/ui/popover.c` keeps one stack per context for authored
+popovers (`<div popover>`, opened by `popovertarget`), the kit's popups and the
+color picker, and an open popover's document stacks above the other areas.
+A popover that is not a menu or a list (an authored `[popover]`, a `popover`
+class on `kit_popup_begin`) uses Base UI's nonmodal Popover focus model:
 opening focuses its first control, Tab and Shift+Tab move through its controls,
 and leaving its boundaries closes it and continues at the trigger's position in
-document order. Escape returns focus to the trigger. Menus keep arrow-key
-navigation and close on Tab. A modal host (`kit_modal_host`) traps the
+document order. Escape returns focus to the trigger. Menus (`role="menu"`) keep
+arrow-key navigation, typeahead within 0.5 s and close on Tab; a `menuitem` or
+`option` click closes the menu chain, and checkbox and radio items stay open
+(Base UI's `closeOnClick`). A disabled item never highlights, under the
+pointer, by arrow keys or by typeahead, and its click reaches nothing. A modal host (`kit_modal_host`) traps the
 focus as Base UI's Dialog does: Tab and Shift+Tab cycle through its tabbable
 elements and never reach the editor behind it. `docs/prototypes/studio/kit.html` lists every
 control's contract.

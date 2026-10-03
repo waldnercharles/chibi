@@ -16,14 +16,17 @@ add_library(chibi_ui STATIC
     src/ui/motion.c
     src/ui/text_motion.c
     # Native controls (workstream F2): <number-field>, <color-field>,
-    # <splitter> and <live-text>.
+    # <splitter> and <live-text>; F3's <choice-list>.
     src/ui/controls/controls.c
+    src/ui/controls/choice_list.c
     src/ui/controls/color_field.c
     src/ui/controls/focus.c
     src/ui/controls/line_text.c
     src/ui/controls/live_text.c
     src/ui/controls/number_field.c
     src/ui/controls/splitter.c
+    # Popovers, menus and menubars (workstream F3).
+    src/ui/popover.c
     # Lists and drag (workstream F4): element-level drag and drop and
     # virtualized list windows for every context.
     src/ui/drag.c

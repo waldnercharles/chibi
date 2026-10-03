@@ -1,4 +1,22 @@
 <div class="gallery">
+  <div class="menu-group">Menu</div>
+  <div class="sample">
+    <button class="btn" popovertarget="gallery-menu" aria-haspopup="menu"><span class="label">Edit</span></button>
+    <use ui="Menu" id="gallery-menu">
+      <use ui="MenuCommand" data-alias-command="commands.undo"/>
+      <use ui="MenuCommand" data-alias-command="commands.redo"/>
+      <use ui="MenuSeparator"/>
+      <use ui="MenuCheck" data-checked="save.galleryChecked">Snap to grid</use>
+      <use ui="MenuSeparator"/>
+      <use ui="Submenu" data-alias-item="choices.panels">
+        <use ui="MenuItem" data-for="panel : choices.panels.others" data-alias-item="panel"/>
+      </use>
+    </use>
+  </div>
+  <div class="menu-group">EnumField</div>
+  <div class="sample"><use ui="EnumField" data-alias-table="choices.fields.GameBody.type" data-alias-value="save.galleryBody" data-event-change="save.galleryBody = ev.value * 1"/></div>
+  <div class="menu-group">AssetField</div>
+  <div class="sample"><use ui="AssetField" data-alias-table="choices.assets.prototype" data-alias-value="save.galleryAsset" data-event-change="save.galleryAsset = ev.value"/></div>
   <div class="menu-group">MenuOption</div>
   <use ui="MenuOption" value="first">First</use>
   <use ui="MenuOption" value="second">Second</use>

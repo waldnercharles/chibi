@@ -145,6 +145,8 @@ void test_arena_hud();
 void test_kit_documents();
 /* ---------- Native controls (workstream F2) ---------- */
 void test_ui_controls();
+/* ---------- Popovers (workstream F3) ---------- */
+void test_ui_popovers();
 
 static int fails;
 
@@ -338,6 +340,8 @@ TEST_CASE(all_checks)
     test_kit_documents();
     /* ---------- Native controls (workstream F2) ---------- */
     test_ui_controls();
+    /* ---------- Popovers (workstream F3) ---------- */
+    test_ui_popovers();
     /* ---------- Lists and drag (workstream F4) ---------- */
     test_ui_lists();
 
@@ -1203,6 +1207,11 @@ int main(int argc, char **argv)
     /* ---------- Native controls (workstream F2) ---------- */
     if (argc > 1 && !strcmp(argv[1], "--ui-controls")) {
         test_ui_controls();
+        return fails ? 1 : 0;
+    }
+    /* ---------- Popovers (workstream F3) ---------- */
+    if (argc > 1 && !strcmp(argv[1], "--ui-popovers")) {
+        test_ui_popovers();
         return fails ? 1 : 0;
     }
     /* ---------- Lists and drag (workstream F4) ---------- */

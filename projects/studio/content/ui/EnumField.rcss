@@ -1,0 +1,9 @@
+/* A named choice as a searchable dropdown anchored to the field, every
+   value listed (Base UI's Select over a Combobox list). Alias the choices
+   as data-alias-table, a table { groups: [{ label, options: [{ value,
+   label, icon }] }] } such as choices.fields.GameBody.type, and the value
+   as data-alias-value; choosing sends change with ev.value, the option's
+   value, as data-event-change="emit('properties.change', row.id, ev.value)". */
+body { display: flex; flex: 1 1 0dp; }
+.enum-field { display: flex; flex: 1 1 0dp; min-width: 0dp; }
+.dropdown { min-width: var(--anchor-width, 180dp); }

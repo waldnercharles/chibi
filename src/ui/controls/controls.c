@@ -11,6 +11,7 @@ void controls_register()
     color_field_register();
     splitter_register();
     live_text_register();
+    choice_list_register();
 }
 
 rml_element *control_part(rml_element *parent, const char *tag, const char *cls)
@@ -86,6 +87,26 @@ void control_string(const rml_element *el, const char *name, char *out, size_t s
     if (rml_element_has_attribute(el, name)) {
         rml_element_attribute(el, name, out, size);
     }
+}
+
+static void append_text(const rml_element *el, char *out, size_t size)
+{
+    size_t length = strlen(out);
+    if (!strcmp(rml_element_tag_name(el), "#text")) {
+        if (length + 1 < size) {
+            rml_element_text(el, out + length, size - length);
+        }
+        return;
+    }
+    for (int i = 0; i < rml_element_child_count(el); i++) {
+        append_text(rml_element_child(el, i), out, size);
+    }
+}
+
+void control_text_of(const rml_element *el, char *out, size_t size)
+{
+    out[0] = 0;
+    append_text(el, out, size);
 }
 
 float control_dp(const rml_element *el)

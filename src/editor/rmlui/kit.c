@@ -11,6 +11,7 @@
 #include "support/ui_style.h"
 #include "support/xalloc.h"
 #include "ui/iframe.h"
+#include "ui/popover.h"
 
 #include <assert.h>
 #include <ctype.h>
@@ -402,11 +403,6 @@ void unmap(kit *k, node *n)
     if (k->last == n) {
         k->last = NULL;
     }
-    for (int i = 0; i < acount(k->triggers); i++) {
-        if (k->triggers[i] == n) {
-            k->triggers[i] = NULL;
-        }
-    }
     for (int i = 0; i < cf_map_size(k->popups); i++) {
         popup *p = k->popups[i];
         if (p->node == n) {
@@ -671,8 +667,7 @@ static void popup_free(popup *p)
     free(p->parent);
     free(p->dropdown_placeholder);
     free(p->dropdown_trigger_path);
-    free(p->sub_hover);
-    free(p->typed);
+    free(p->anchor_path);
     free(p->trigger);
     afree(p->items);
     free(p);
@@ -690,7 +685,9 @@ unsigned event_modifiers(const rml_event *e)
 
 static void mousedown(kit *k, const rml_event *e, node *n)
 {
-    popup_press(k, n, e->target);
+    /* An outside press closed them in popover.c: they emit no more. */
+    forget_closed_popups(k);
+    popup_press(k, e->target);
     command_press(k, e->target);
     if (!n) {
         return;
@@ -750,6 +747,14 @@ static bool trap_focus(kit *k, const rml_event *e)
     return true;
 }
 
+/* An open menu takes the keys its trigger would: popover.c runs it. */
+static bool menu_open(kit *k)
+{
+    rml_element *top = popover_top(k->context);
+    return top && !rml_element_is_class_set(top, "popover") &&
+           !rml_element_has_attribute(top, "popover");
+}
+
 static void keydown(kit *k, const rml_event *e, node *n)
 {
     k->keyboard_edit = true;
@@ -773,9 +778,7 @@ static void keydown(kit *k, const rml_event *e, node *n)
                        n->kind == KIND_AUTOCOMPLETE || n->kind == KIND_NUMBER ||
                        (n->kind == KIND_COLOR && e->target == n->el) ||
                        is_input(e->target));
-    bool popup_keys = !entry || e->key == RML_KEY_ESCAPE || e->key == RML_KEY_TAB;
-    if (dropdown_key(k, e, n) || command_key(k, e) ||
-        (popup_keys && popup_key(k, e)) || !n) {
+    if (dropdown_key(k, e, n) || command_key(k, e) || !n || (!entry && menu_open(k))) {
         return;
     }
     control_key(k, n, e);
@@ -813,7 +816,6 @@ static void on_event(void *user, const rml_event *e)
             }
             break;
         case RML_EVENT_FOCUS:
-            popup_focus(k, e->target);
             if (n) {
                 control_focus(k, n, e->target);
             }
@@ -1084,8 +1086,6 @@ static void kit_free(kit *k)
     cf_map_free(k->by_path);
     cf_map_free(k->toast_actions);
     afree(k->stack);
-    afree(k->popup_stack);
-    afree(k->triggers);
     afree(k->emitting);
     afree(k->entering);
     afree(k->layout_nodes);
@@ -1142,10 +1142,8 @@ void kit_begin(kit *k, const kit_frame_input *input)
         /* Resolve authored metrics before native lists read them this frame. */
         rml_context_update(k->context);
     }
-    aclear(k->triggers);
-    place_popups(k);
+    size_popups(k);
     drag_frame(k);
-    open_hovered_submenus(k);
     k->layer->cursor = 0;
     k->layer->frame = k->frame;
 }
@@ -1159,7 +1157,7 @@ void kit_end(kit *k)
         restyle(k);
     }
     close_root(k);
-    close_activated_menus(k);
+    forget_closed_popups(k);
     toasts_frame(k);
     prune(k, k->layer);
     end_slots(k);
@@ -1393,7 +1391,7 @@ const char *kit_classes(kit *k, const char *base, const kit_class *list, int cou
 
 bool kit_wants_keyboard(const kit *k)
 {
-    if (k->command.open || acount(k->popup_stack)) {
+    if (k->command.open || popover_top(k->context)) {
         return true;
     }
     rml_element *focus = rml_context_focus_element(k->context);
@@ -1436,7 +1434,7 @@ bool kit_wants_text(const kit *k, kit_rect *caret)
 
 bool kit_wants_pointer(const kit *k)
 {
-    if (k->command.open || acount(k->popup_stack)) {
+    if (k->command.open || popover_top(k->context)) {
         return true;
     }
     if (!str_eq(k->surface_capture, "")) {

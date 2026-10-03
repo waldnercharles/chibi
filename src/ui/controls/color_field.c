@@ -1,15 +1,17 @@
 /* <color-field value="#rrggbbaa" mixed readonly disabled/> (controls.h): a
  * swatch that opens its own picker, as <input type=color> opens the
- * system's. The picker is a popover inside the field, fixed above the
- * document and unclipped (`position: fixed; clip: none`): a saturation and
- * value plane, a hue strip, an RGBA hex field and an Opacity number field.
- * Every edit while it is open sends input; closing it, by an outside press,
- * Escape, Tab past its ends or the swatch, sends change once. One picker is
- * open at a time. While closed the field shows its value attribute's. */
+ * system's. The picker is a popover inside the field, fixed and unclipped
+ * (`position: fixed; clip: none`) and stacked, placed and dismissed by
+ * ui/popover.c, so it escapes its area: a saturation and value plane, a hue
+ * strip, an RGBA hex field and an Opacity number field. Every edit while it
+ * is open sends input; closing it, by an outside press, Escape, Tab past its
+ * ends or the swatch, sends change once. One picker is open at a time.
+ * While closed the field shows its value attribute's. */
 #include "support/math.h"
 #include "support/xalloc.h"
 #include "ui/controls/controls_internal.h"
 #include "ui/motion.h"
+#include "ui/popover.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -19,10 +21,6 @@
 /* "#rrggbbaa" and its NUL. */
 #define HEX_TEXT 10
 #define LABEL_TEXT 256
-/* The gap between the field and its picker, and the picker and the
- * window's edges, in dp (the kit's popups). */
-#define POPOVER_GAP 2
-#define POPOVER_MARGIN 4
 
 enum
 {
@@ -39,16 +37,13 @@ typedef struct color_field
     double leave_at;
     uint32_t color, model;
     float hsv[3];
-    float left, top; /* the picker's offset from its containing block, px */
-    int part;        /* what a press on the picker drags */
+    int part; /* what a press on the picker drags */
     bool mixed, readonly, disabled, dirty;
-    bool placed, focus_pending, select_hex;
+    bool select_hex;         /* a key opened it: its hex text selects */
     bool pending, committed; /* what C owners take */
 } color_field;
 
-static rml_listener *listener, *input_listener, *outside_listener;
-static color_field *open_field;
-static rml_element_ref *open_document;
+static rml_listener *listener, *input_listener;
 
 static color_field *field_of(const rml_element *el)
 {
@@ -277,58 +272,14 @@ static void build_popover(color_field *f)
     control_string(f->el, "aria-label", label, sizeof label);
     rml_element_set_attribute(p, "role", "dialog");
     rml_element_set_attribute(p, "aria-label", label[0] ? label : "Color picker");
-    rml_element_set_attribute(p, "data-unplaced", "");
     rml_element_set_attribute(p, "data-starting-style", "");
     rml_element_set_property(p, "position", "fixed");
     rml_element_set_property(p, "clip", "none");
-    rml_element_set_property(p, "left", "0px");
-    rml_element_set_property(p, "top", "0px");
-    f->left = f->top = 0;
     f->plane = build_plane(f, p);
     build_hue(f, p);
     build_hex(f, p);
     build_opacity(f, p);
     rml_element_add_named_listener(p, "input", input_listener, false);
-}
-
-/* Below the field, or above it when the window ends first, kept 4 dp inside
- * the window, as the kit's popups are. RmlUi places a fixed box from its
- * first positioned ancestor, as an absolute one, so the box's last offset
- * and its left and top give that origin. */
-static void place(color_field *f)
-{
-    float dp = control_dp(f->el);
-    rml_vec2 size = rml_element_box_size(f->popover, RML_BOX_BORDER);
-    if (size.x <= 0 || size.y <= 0) {
-        return;
-    }
-    rml_element *document = rml_element_owner_document(f->el);
-    rml_vec2 window = rml_element_box_size(document, RML_BOX_BORDER);
-    rml_vec2 origin = rml_element_absolute_offset(document, RML_BOX_BORDER);
-    rml_vec2 at = rml_element_absolute_offset(f->el, RML_BOX_BORDER);
-    rml_vec2 field = rml_element_box_size(f->el, RML_BOX_BORDER);
-    float w = size.x / dp, h = size.y / dp, width = window.x / dp,
-          height = window.y / dp;
-    float x = (at.x - origin.x) / dp, top = (at.y - origin.y) / dp;
-    float y = top + field.y / dp + POPOVER_GAP;
-    if (y + h > height - POPOVER_MARGIN) {
-        y = top - h - POPOVER_GAP;
-    }
-    x = math_clamp(x, (float)POPOVER_MARGIN, math_max((float)POPOVER_MARGIN, width - w - POPOVER_MARGIN));
-    y = math_clamp(y, (float)POPOVER_MARGIN, math_max((float)POPOVER_MARGIN, height - h - POPOVER_MARGIN));
-    rml_vec2 now = rml_element_absolute_offset(f->popover, RML_BOX_BORDER);
-    f->left = roundf(x * 10) / 10 * dp + origin.x - (now.x - f->left);
-    f->top = roundf(y * 10) / 10 * dp + origin.y - (now.y - f->top);
-    char value[32];
-    snprintf(value, sizeof value, "%.2fpx", f->left);
-    rml_element_set_property(f->popover, "left", value);
-    snprintf(value, sizeof value, "%.2fpx", f->top);
-    rml_element_set_property(f->popover, "top", value);
-    if (!f->placed) {
-        f->placed = true;
-        rml_element_remove_attribute(f->popover, "data-unplaced");
-        rml_element_remove_attribute(f->popover, "data-starting-style");
-    }
 }
 
 static void drop_leaving(color_field *f)
@@ -342,42 +293,21 @@ static void drop_leaving(color_field *f)
 static void open_picker(color_field *f, bool keyboard);
 static void close_picker(color_field *f, bool refocus);
 
-static void watch_outside(color_field *f, bool on)
-{
-    rml_element *document = open_document ? rml_element_ref_get(open_document) : NULL;
-    if (document) {
-        rml_element_remove_event_listener(document, RML_EVENT_MOUSEDOWN, outside_listener, true);
-    }
-    if (open_document) {
-        rml_element_ref_destroy(open_document);
-        open_document = NULL;
-    }
-    open_field = on ? f : NULL;
-    if (on) {
-        document = rml_element_owner_document(f->el);
-        open_document = rml_element_ref_create(document);
-        rml_element_add_event_listener(document, RML_EVENT_MOUSEDOWN, outside_listener, true);
-    }
-}
-
 static void open_picker(color_field *f, bool keyboard)
 {
     if (f->popover || locked(f)) {
         return;
     }
-    if (open_field) {
-        close_picker(open_field, false);
-    }
     drop_leaving(f);
     rgb_to_hsv(f->color, f->hsv);
     build_popover(f);
-    f->placed = false;
-    f->focus_pending = true;
     f->select_hex = keyboard;
     show_picker(f);
     rml_element_set_attribute(f->el, "aria-expanded", "true");
     control_flag(f->el, "data-open", true);
-    watch_outside(f, true);
+    /* Showing it closes any other picker, as showing a popover does. */
+    popover_anchor at = { .side = POPOVER_BELOW, .element = f->el, .trigger = f->el };
+    popover_show(f->popover, &at);
     control_redraw(f->el);
 }
 
@@ -390,7 +320,8 @@ static void close_picker(color_field *f, bool refocus)
     rml_element *p = f->popover;
     f->popover = NULL;
     f->part = PART_NONE;
-    watch_outside(f, false);
+    f->select_hex = false;
+    popover_hide(p);
     rml_element_set_attribute(f->el, "aria-expanded", "false");
     control_flag(f->el, "data-open", false);
     if (refocus) {
@@ -458,36 +389,15 @@ static void opacity_input(color_field *f)
     set_color(f, (f->color & 0xffffff00) | alpha);
 }
 
-/* Tab moves among the picker's controls; past either end the picker closes,
- * to the field going back or to the field's next stop going on. */
-static void tab(color_field *f, const rml_event *e)
-{
-    int step = e->modifiers & RML_KM_SHIFT ? -1 : 1;
-    if (focus_step(f->popover, e->target, step, false, NULL)) {
-        return;
-    }
-    rml_element *popover = f->popover;
-    close_picker(f, step < 0);
-    if (step > 0) {
-        focus_step(rml_element_owner_document(f->el), f->el, 1, false, popover);
-    }
-}
-
-/* Keys inside the picker, seen before its controls see them. */
+/* Enter in the hex field applies it; popover.c takes Escape and Tab. */
 static void picker_key(color_field *f, const rml_event *e)
 {
     bool enter = e->key == RML_KEY_RETURN || e->key == RML_KEY_NUMPADENTER;
-    if (e->key == RML_KEY_ESCAPE) {
-        close_picker(f, true);
-    } else if (e->key == RML_KEY_TAB) {
-        tab(f, e);
-    } else if (enter && e->target == f->hex) {
+    if (enter && e->target == f->hex) {
         hex_typed(f);
         rml_element_blur(f->hex);
-    } else {
-        return;
+        rml_event_stop_propagation(e);
     }
-    rml_event_stop_propagation(e);
 }
 
 static void field_key(color_field *f, const rml_event *e)
@@ -587,13 +497,6 @@ static void on_input(void *, const rml_event *e)
     rml_event_stop_propagation(e);
 }
 
-static void on_outside(void *, const rml_event *e)
-{
-    if (open_field && !control_within(e->target, open_field->el)) {
-        close_picker(open_field, false);
-    }
-}
-
 /* ---------- Element ---------- */
 
 static void read_attributes(color_field *f)
@@ -655,23 +558,20 @@ static void field_update(rml_element *el, void *user)
     } else if (f->leaving) {
         rml_context_request_next_update(rml_element_context(el), f->leave_at - rml_elapsed_time());
     }
-    if (!f->popover) {
+    /* popover.c closed it: an outside press, Escape or Tab past its ends. */
+    if (f->popover && !popover_open(f->popover)) {
+        close_picker(f, false);
+    }
+    if (!f->select_hex) {
         return;
     }
-    bool ready = f->placed;
-    place(f);
-    if (!f->placed || f->focus_pending) {
-        rml_context_request_next_update(rml_element_context(el), 0);
+    /* popover.c focuses its first control once placed: the hex field. */
+    if (rml_context_focus_element(rml_element_context(el)) == f->hex) {
+        rml_element_select(f->hex);
+        f->select_hex = false;
+        return;
     }
-    if (ready && f->focus_pending &&
-        (focus_step(f->popover, NULL, 1, false, NULL) ||
-         rml_element_focus(f->popover, true))) {
-        f->focus_pending = false;
-        if (f->select_hex) {
-            rml_element_focus(f->hex, true);
-            rml_element_select(f->hex);
-        }
-    }
+    rml_context_request_next_update(rml_element_context(el), 0);
 }
 
 static void field_attribute(rml_element *, void *user, const char *name)
@@ -685,11 +585,7 @@ static void field_attribute(rml_element *, void *user, const char *name)
 
 static void field_release(void *user)
 {
-    color_field *f = user;
-    if (f && open_field == f) {
-        watch_outside(f, false);
-    }
-    free(f);
+    free(user);
 }
 
 static const rml_element_hooks HOOKS = { .release = field_release,
@@ -703,7 +599,6 @@ void color_field_register()
         instancer = rml_instancer_create(&HOOKS);
         listener = rml_listener_create(on_event, NULL);
         input_listener = rml_listener_create(on_input, NULL);
-        outside_listener = rml_listener_create(on_outside, NULL);
     }
     rml_register_element_instancer("color-field", instancer);
 }

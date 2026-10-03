@@ -27,6 +27,8 @@ bool control_bool(const rml_element *el, const char *name);
 double control_number(const rml_element *el, const char *name, double fallback);
 /* "" when absent; at most size - 1 bytes. */
 void control_string(const rml_element *el, const char *name, char *out, size_t size);
+/* The text the element's text nodes hold, in order; at most size - 1 bytes. */
+void control_text_of(const rml_element *el, char *out, size_t size);
 
 /* The context's pixels per dp. */
 float control_dp(const rml_element *el);
@@ -42,5 +44,6 @@ void number_field_register();
 void color_field_register();
 void splitter_register();
 void live_text_register();
+void choice_list_register();
 
 #endif

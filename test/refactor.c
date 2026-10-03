@@ -568,17 +568,15 @@ static void values()
     project_free(&p);
 
     p = project_load("projects/studio/content");
-    uses = event_uses(&p, "Choose");
-    reference_symbol choose = { .kind = REFERENCE_SYMBOL_EVENT,
-                                .asset = -1,
-                                .name = "Choose" };
-    planned = rename_to(&p, choose, "Pick", &plan);
-    listed = planned && edits(&p, &plan, "GraphView") && edits(&p, &plan, "MenuKeys");
+    uses = event_uses(&p, "NavNext");
+    reference_symbol next = { .kind = REFERENCE_SYMBOL_EVENT, .asset = -1, .name = "NavNext" };
+    planned = rename_to(&p, next, "NavForward", &plan);
+    listed = planned && edits(&p, &plan, "Settings") && edits(&p, &plan, "NavKeys");
     applied = planned && apply(&p, &plan);
-    const char *view = p.texts[asset_named(&p, REFERENCE_ASSET_UI, "GraphView")];
+    const char *settings = p.texts[asset_named(&p, REFERENCE_ASSET_UI, "Settings")];
     test_check(
-        listed && applied && event_uses(&p, "Pick") == uses &&
-            strstr(view, "Enter:Pick Space:Pick") && !strstr(view, "Choose"),
+        listed && applied && event_uses(&p, "NavForward") == uses &&
+            strstr(settings, "Down:NavForward") && !strstr(settings, "NavNext"),
         "renaming an event renames every data-keys binding that sends it"
     );
     project_free(&p);

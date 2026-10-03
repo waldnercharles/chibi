@@ -530,10 +530,6 @@ static void header_frame(slot_fixture *f, int area, char *filter, size_t size)
         kit_style_sheet(k, ui_mount_name(f->mount), ui_mount_style(f->mount));
     }
     kit_release_focus(k, f->host);
-    if (kit_slot_begin(k, "type", f->host, "#editor-type")) {
-        kit_button(k, "type", &(kit_button_desc){ .icon = KIT_ICON_VIEWPORT, .cls = "editor-type" });
-        kit_slot_end(k);
-    }
     if (kit_slot_begin(k, "controls", f->host, "#controls")) {
         kit_search(k, "filter", filter, size, "Filter");
         kit_slot_end(k);
@@ -566,7 +562,7 @@ static void header_checks()
     open_header(&top, STUDIO_AREA_TOP, &status, filter, sizeof filter);
     kit_rect rect;
     bool shown = !ui_mount_error(top.mount)[0] && count(&top, ".close") == 0 &&
-                 kit_find(top.k, "app/head/type/type", &rect) &&
+                 count(&top, ".editor-type") == 1 &&
                  kit_find(top.k, "app/head/controls/filter", &rect);
     rml_element *input = rml_element_query_selector(top.host, "#controls input");
     rml_element_focus(input, false);

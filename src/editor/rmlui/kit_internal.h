@@ -39,9 +39,6 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define SUBMENU_DELAY 0.1
-#define TYPEAHEAD_RESET 0.5
-
 typedef enum node_kind
 {
     KIND_BOX,
@@ -204,24 +201,24 @@ typedef struct exiting
     double until;
 } exiting;
 
-/* popup_at creates one closed, with highlight -1. */
+/* popup_at creates one closed, with highlight -1. Open, it is stacked with
+ * ui/popover.c from its first emission (shown) until popover.c or the kit
+ * closes it. */
 typedef struct popup
 {
     char *key;
     bool open;
-    bool placed;
+    bool shown;
     bool at_point;
+    bool beside; /* a submenu, beside its row */
     bool keyboard;
-    bool activated;
-    bool menubar;
     bool dropdown;
     bool dropdown_focus;
     bool dropdown_reveal;
     bool autocomplete;
     bool autocomplete_opening;
-    bool popover;
-    bool focus_pending;
-    char *trigger;
+    char *trigger;     /* the path of what focus returns to */
+    char *anchor_path; /* the path it hangs from; NULL hangs from `anchor` */
     float x, y;
     kit_rect anchor;
     char *parent; /* parent popup key for a submenu or nested dropdown */
@@ -229,13 +226,9 @@ typedef struct popup
     char *dropdown_trigger_path;
     char dropdown_query[256];
     rml_element *dropdown_search;
-    int highlight;
-    char *sub_hover;
-    double sub_hover_since;
-    node **items; /* entries may be NULL */
-    node *node;   /* the emitted popup, NULL once unmapped */
-    char *typed;
-    double typed_at;
+    int highlight;       /* a dropdown's, which its search field moves */
+    node **items;        /* entries may be NULL */
+    node *node;          /* the emitted popup, NULL once unmapped */
     float content;       /* widest row this frame, dp; sizes the menu */
     float content_shown; /* the width applied */
 } popup;
@@ -278,8 +271,6 @@ struct kit
     uint64_t frame; /* starts at 1 */
     kit_frame_input in;
     CF_MAP(popup *) popups; /* owned; keyed by str_hash(key) */
-    popup **popup_stack;    /* open order, top last */
-    node **triggers;        /* entries may be NULL */
     rml_element *tooltip;
     rml_element *tip_target;
     double tip_since;
@@ -424,25 +415,26 @@ void control_blur(node *n, rml_element *target);
 /* ---------- Popups, menus and tooltips (kit_popup.c) ---------- */
 
 void close_popup(kit *k, const char *key);
+/* The kit's popups and the context's authored popovers. */
 void close_all_popups(kit *k);
+/* Closes those popover.c closed; kit_end runs it after their last frame. */
+void forget_closed_popups(kit *k);
 /* parent is NULL or "" for a top-level popup. */
-void open_popup(kit *k, const char *key, kit_rect anchor, bool at_point, float x, float y, const char *parent);
-void popup_open_on(kit *k, const char *key, kit_rect anchor, const node *trigger);
-void place_popups(kit *k);
-void open_hovered_submenus(kit *k);
-void close_activated_menus(kit *k);
-/* Sees every press; one outside the popups and their triggers closes them. */
-void popup_press(kit *k, node *n, rml_element *target);
+popup *open_popup(kit *k, const char *key, const char *parent);
+/* Opens below `anchor`, closing the kit's popups but the one holding
+   `trigger` and its parents. */
+popup *popup_open_on(kit *k, const char *key, const node *anchor, const node *trigger);
+/* NULL when it toggled the trigger's open dropdown closed. */
+popup *dropdown_open_on(kit *k, const char *key, const char *placeholder, const node *trigger);
+void autocomplete_open_on(kit *k, const char *key, node *trigger);
+void size_popups(kit *k);
+/* Sees every press: one outside an autocomplete ends its field's editing. */
+void popup_press(kit *k, rml_element *target);
 void trigger_press(kit *k, node *n, const rml_event *e);
 void menu_click(kit *k, node *n);
 void menu_hover(kit *k, node *n);
-/* False when no popup is open or a popover leaves a key to its control. */
-bool popup_key(kit *k, const rml_event *e);
 bool dropdown_key(kit *k, const rml_event *e, node *n);
 bool autocomplete_key(kit *k, const rml_event *e, node *n);
-void dropdown_open_on(kit *k, const char *key, kit_rect anchor, const char *placeholder, const node *trigger);
-void autocomplete_open_on(kit *k, const char *key, kit_rect anchor, node *trigger);
-void popup_focus(kit *k, rml_element *target);
 void set_tip(node *n, const char *label, const char *shortcut, const char *description);
 void update_tooltip(kit *k);
 

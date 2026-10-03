@@ -84,6 +84,9 @@ static void sync_view(app_scene_authoring *scene)
     clear_entries(scene);
     const char *text = path[0] ? game_save_get(scene->view_store, path) : NULL;
     yyjson_doc *doc = text ? yyjson_read(text, strlen(text), 0) : NULL;
+    if (!doc) {
+        return;
+    }
     size_t i, max;
     yyjson_val *name, *flags;
     yyjson_obj_foreach(yyjson_doc_get_root(doc), i, max, name, flags)

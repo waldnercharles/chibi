@@ -16,16 +16,20 @@
 #include <stdlib.h>
 #include <string.h>
 
-/* The GPU entity is the prefix before the separately uploaded parameters. */
+/* The GPU entity is the prefix before the separately uploaded parameters:
+ * the material's, then the shape's. */
 enum
 {
-    GPU_ENTITY_BYTES = offsetof(render_material_entity, material_parameters)
+    GPU_ENTITY_BYTES = offsetof(render_material_entity, material_parameters),
+    PARAMETER_BYTES = sizeof(render_material_entity) - GPU_ENTITY_BYTES,
+    PARAMETER_FLOATS = PARAMETER_BYTES / sizeof(float)
 };
 _Static_assert(sizeof(render_material_entity) == 1360, "entity std430 stride");
 _Static_assert(offsetof(render_material_entity, points) == 80, "entity point offset");
 _Static_assert(offsetof(render_material_entity, scene) == 144, "entity material offset");
 _Static_assert(offsetof(render_material_entity, time) == 304, "entity clock offset");
 _Static_assert(GPU_ENTITY_BYTES == 336, "entity GPU size");
+_Static_assert(PARAMETER_BYTES == 1024, "material and shape parameters");
 
 typedef struct
 {
@@ -180,11 +184,12 @@ static bool reserve_entities(render_material_raster *r, int count)
         capacity *= 2;
     }
     count = capacity;
-    if (count > INT_MAX / (int)sizeof(render_material_entity) || count > INT_MAX / 1024) {
+    if (count > INT_MAX / (int)sizeof(render_material_entity) ||
+        count > INT_MAX / PARAMETER_BYTES) {
         return false;
     }
     CF_StorageBuffer entities = buffer(count * GPU_ENTITY_BYTES);
-    CF_StorageBuffer parameters = buffer(count * 1024);
+    CF_StorageBuffer parameters = buffer(count * PARAMETER_BYTES);
     if (!entities.id || !parameters.id) {
         if (parameters.id) {
             cf_destroy_storage_buffer(parameters);
@@ -202,7 +207,7 @@ static bool reserve_entities(render_material_raster *r, int count)
     }
     r->parameters = parameters;
     r->entity_data = xrealloc(r->entity_data, (size_t)count * GPU_ENTITY_BYTES);
-    r->parameter_data = xrealloc(r->parameter_data, (size_t)count * 1024);
+    r->parameter_data = xrealloc(r->parameter_data, (size_t)count * PARAMETER_BYTES);
     r->entities = entities;
     r->capacity = count;
     return true;
@@ -451,6 +456,26 @@ static bool add_images(render_shader_set *set, const render_material_entity *ent
            render_shader_set_add(set, (int)entity->reserved[1], error);
 }
 
+/* Packs the sorted entities for the GPU, uploading each run of equal
+ * parameters once: a mask's pieces share their shape's parameters. Each
+ * entity's time[1] names its block. Returns the number of blocks. */
+static int pack_entities(render_material_raster *r)
+{
+    int blocks = 0;
+    for (int i = 0; i < acount(r->sorted); i++) {
+        render_material_entity *entity = &r->sorted[i];
+        float *block = r->parameter_data + (size_t)blocks * PARAMETER_FLOATS;
+        if (!blocks ||
+            memcmp(block - PARAMETER_FLOATS, entity->material_parameters, PARAMETER_BYTES)) {
+            memcpy(block, entity->material_parameters, PARAMETER_BYTES);
+            blocks++;
+        }
+        entity->time[1] = (float)(blocks - 1);
+        memcpy(r->entity_data + (size_t)i * GPU_ENTITY_BYTES, entity, GPU_ENTITY_BYTES);
+    }
+    return blocks;
+}
+
 static bool prepare_batches(render_material_raster *r)
 {
     aclear(r->batches);
@@ -586,7 +611,6 @@ bool render_material_raster_draw_mixed(
     asetlen(r->sorted, count);
     for (int i = 0; i < count; i++) {
         r->sorted[i] = entities[r->order[i].index];
-        r->sorted[i].time[1] = (float)r->order[i].index;
     }
     for (int i = 0; i < count; i++) {
         r->sorted[i].time[2] = entity_emission_scale(&r->sorted[i], view, r->width, r->height);
@@ -595,12 +619,9 @@ bool render_material_raster_draw_mixed(
         return false;
     }
     if (count) {
-        for (int i = 0; i < count; i++) {
-            memcpy(r->entity_data + (size_t)i * GPU_ENTITY_BYTES, &r->sorted[i], GPU_ENTITY_BYTES);
-            memcpy(r->parameter_data + (size_t)i * 256, r->sorted[i].material_parameters, 1024);
-        }
+        int blocks = pack_entities(r);
         cf_update_storage_buffer(r->entities, r->entity_data, count * GPU_ENTITY_BYTES);
-        cf_update_storage_buffer(r->parameters, r->parameter_data, count * 1024);
+        cf_update_storage_buffer(r->parameters, r->parameter_data, blocks * PARAMETER_BYTES);
     }
     int tx = (r->width + 15) / 16, ty = (r->height + 15) / 16;
     float units[2] = { view.width / r->width, view.height / r->height };

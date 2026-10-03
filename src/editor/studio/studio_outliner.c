@@ -41,14 +41,15 @@ void studio_outliner_header(studio *s, int area)
 
 /* ---------- Rename ---------- */
 
-static scene_actor *actor_of(studio *s, uint64_t entity)
+/* The object authoring `entity`, or -1. */
+static int actor_index(const studio *s, uint64_t entity)
 {
-    for (int i = 0; i < acount(s->scene->actors); i++) {
+    for (int i = 0; entity && i < acount(s->scene->actors); i++) {
         if (ecs_entity_to_u64(s->scene->actors[i].entity) == entity) {
-            return &s->scene->actors[i];
+            return i;
         }
     }
-    return NULL;
+    return -1;
 }
 
 static bool editor_shown(const studio *s, studio_editor editor)
@@ -83,7 +84,8 @@ void studio_rename_object(studio *s)
 
 void studio_rename_commit(studio *s, uint64_t entity, const char *name)
 {
-    scene_actor *actor = actor_of(s, entity);
+    int index = actor_index(s, entity);
+    scene_actor *actor = index >= 0 ? &s->scene->actors[index] : NULL;
     if (!actor || !studio_editable(s) || !strcmp(actor->name, name)) {
         return;
     }
@@ -573,15 +575,9 @@ bool studio_outliner_sync(studio *s, const studio_panel_sync *at)
 /* ---------- Intents ---------- */
 
 /* The object a row's id, its entity, names; -1 when it is gone. */
-static int actor_named(studio *s, const char *id)
+static int actor_named(const studio *s, const char *id)
 {
-    uint64_t entity = strtoull(id, NULL, 10);
-    for (int i = 0; entity && i < acount(s->scene->actors); i++) {
-        if (ecs_entity_to_u64(s->scene->actors[i].entity) == entity) {
-            return i;
-        }
-    }
-    return -1;
+    return actor_index(s, strtoull(id, NULL, 10));
 }
 
 /* A row's click: alone, Mod toggles it in the selection and Shift selects

@@ -79,7 +79,8 @@ void bench_edit_float(
 
 /* The cases that need no window; returns nonzero on failure. */
 int ui_bench_headless();
-/* The Studio cases: native only. */
-int ui_bench_studio(const char *program);
+/* The Studio cases: native only; only Members (case 10) with
+ * `members_only`. */
+int ui_bench_studio(const char *program, bool members_only);
 
 #endif

@@ -1,10 +1,11 @@
 /* Studio kit contracts without a GPU: reconciliation, number fields, menus,
  * command. */
 #include "editor/ui/highlight.h"
-#include "editor/ui/input_feel.h"
 #include "editor/ui/kit.h"
+#include "support/number_expr.h"
 #include "support/xalloc.h"
 #include "test/suite_internal.h"
+#include "ui/input_feel.h"
 #include "ui/rml.h"
 #include "ui/rml_backend.h"
 
@@ -1878,10 +1879,10 @@ bool test_rmlui_kit()
     ok &= check(strcmp(markup, "<span class=\"tok-punct\">&lt;</span>") == 0, "markup never cuts an entity");
     double parsed;
     ok &= check(
-        kit_number_parse("=2*pi", 0, &parsed) &&
+        number_expr_eval("=2*pi", 0, &parsed) &&
             fabs(parsed - 6.283185307179586) < 1e-9 &&
-            kit_number_parse("*2", 3, &parsed) && parsed == 6 &&
-            !kit_number_parse("2 *", 3, &parsed),
+            number_expr_eval("*2", 3, &parsed) && parsed == 6 &&
+            !number_expr_eval("2 *", 3, &parsed),
         "shared number parsing keeps expressions, relative operators, and "
         "rejects incomplete input"
     );

@@ -608,6 +608,17 @@ protected:
         }
     }
 
+    void OnAttributeChange(const Rml::ElementAttributes &changed) override
+    {
+        Rml::Element::OnAttributeChange(changed);
+        if (!hooks->attribute) {
+            return;
+        }
+        for (const auto &attribute : changed) {
+            hooks->attribute(wrap(this), user, attribute.first.c_str());
+        }
+    }
+
 private:
     const rml_element_hooks *hooks;
 };
@@ -1756,4 +1767,20 @@ void rml_document_copy_style_sheet(rml_element *d, rml_element *source)
     if (sheet) {
         document(d)->SetStyleSheetContainer(sheet->CombineStyleSheetContainer(Rml::StyleSheetContainer()));
     }
+}
+
+/* ---------- Native controls (workstream F2) ---------- */
+
+void rml_element_dispatch_value(rml_element *e, const char *type, const char *value, bool canceled)
+{
+    Rml::Dictionary parameters;
+    parameters["value"] = Rml::String(value);
+    parameters["canceled"] = canceled;
+    parameters["name"] = element(e)->GetAttribute<Rml::String>("name", "");
+    element(e)->DispatchEvent(type, parameters, true, true);
+}
+
+void rml_element_add_named_listener(rml_element *e, const char *type, rml_listener *l, bool capture)
+{
+    element(e)->AddEventListener(type, unwrap<Listener>(l), capture);
 }

@@ -1,8 +1,8 @@
 /* Studio editors for the authored scene: the viewport and the Canvas
  * preview. The Outliner is studio_outliner.c. */
 #include "editor/studio/studio_internal.h"
-#include "editor/ui/input_feel.h"
 #include "support/array.h"
+#include "ui/input_feel.h"
 
 #include <assert.h>
 #include <ctype.h>

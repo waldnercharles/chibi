@@ -13,6 +13,7 @@
 #include "graph/nodes/conv_nodes.h"
 #include "runtime/generated.h"
 #include "support/array.h"
+#include "support/number_expr.h"
 
 #include <ctype.h>
 #include <errno.h>
@@ -316,7 +317,7 @@ static bool parse_input_literal(const pin_spec *spec, const char *text, pin_valu
         bool exact = parse_integer_text(text, is_unsigned, &signed_value, &unsigned_value);
         double number = 0;
         if (!exact &&
-            (!kit_number_parse(text, numeric_value(&spec->default_value), &number) ||
+            (!number_expr_eval(text, numeric_value(&spec->default_value), &number) ||
              trunc(number) != number)) {
             return false;
         }
@@ -393,7 +394,7 @@ static bool parse_input_literal(const pin_spec *spec, const char *text, pin_valu
     }
     if (spec->type == PIN_F32 || spec->type == PIN_F64) {
         double number;
-        if (!kit_number_parse(text, numeric_value(&spec->default_value), &number)) {
+        if (!number_expr_eval(text, numeric_value(&spec->default_value), &number)) {
             return false;
         }
         if (spec->type == PIN_F32) {

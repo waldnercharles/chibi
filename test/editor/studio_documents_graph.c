@@ -7,7 +7,6 @@
 #include "editor/studio/studio_designer_internal.h"
 #include "editor/studio/studio_graph_internal.h"
 #include "editor/studio/studio_internal.h"
-#include "editor/ui/input_feel.h"
 #include "editor/workspace/editor.h"
 #include "editor/workspace/editor_internal.h"
 #include "editor/workspace/input.h"
@@ -23,6 +22,7 @@
 #include "support/text_overlay.h"
 #include "test/editor/studio_documents.h"
 #include "test/suite_internal.h"
+#include "ui/input_feel.h"
 
 #include <SDL3/SDL_events.h>
 #include <SDL3/SDL_keyboard.h>

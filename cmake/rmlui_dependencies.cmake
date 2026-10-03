@@ -48,8 +48,11 @@ function(chibi_rmlui_dependencies)
     # Vue's v-model does, and data-value-lazy change, as v-model.lazy.
     # data-when, Vue's v-if, builds its element while true and removes it and
     # its views while false, where data-if (v-show) only hides it.
+    # As in browsers, input and change events' propagation can be stopped, so
+    # a native control keeps its inner fields' events to itself
+    # (src/ui/controls).
     set(patches "")
-    foreach(name color-mix radio-groups data-bindings flex-text same-style data-if-handler variable-source suppressed-text-font-layout variable-unit-invalidation box-shadow-blur input-events data-when)
+    foreach(name color-mix radio-groups data-bindings flex-text same-style data-if-handler variable-source suppressed-text-font-layout variable-unit-invalidation box-shadow-blur input-events data-when event-propagation)
         list(APPEND patches "${CHIBI_DEPENDENCY_SOURCE_ROOT}/cmake/patches/rmlui-${name}.patch")
     endforeach()
     chibi_apply_patches("${rmlui_SOURCE_DIR}" ${patches})

@@ -1,4 +1,7 @@
-/* Field shell (shadcn Input Group): addon, value, unit, stepper arrows. */
+/* Field shell (shadcn Input Group): addon, value, unit, stepper arrows. The
+   native <number-field> and <color-field> (src/ui/controls/controls.h) build
+   their parts and reflect their state as data-*; a color field's picker lives
+   inside it, so part rules use child combinators to stay off the picker's. */
 .field {
     position: relative; display: flex; align-items: center; height: var(--h); flex: 1 1 0dp;
     background-color: var(--secondary); border-radius: var(--r); color: var(--foreground); overflow: hidden;
@@ -8,7 +11,7 @@
 .field:hover { background-color: var(--field-hover); }
 .field[data-disabled] { opacity: 0.45; }
 .field[data-readonly] { background-color: transparent; border-color: var(--border); }
-.field[data-readonly] .step { display: none; }
+.field[data-readonly] > .step { display: none; }
 .field[data-editing] { background-color: var(--field-edit); border-color: var(--ring); }
 .field[data-invalid] { border-color: var(--destructive); }
 .field[data-scrubbing] { background-color: var(--field-press); }
@@ -16,16 +19,16 @@
 .field.number { tab-index: auto; drag: drag; cursor: ew-resize; }
 .field.number[data-readonly], .field.number[data-disabled] { cursor: arrow; }
 .field.number[data-disabled] { tab-index: none; }
-.field .fill { position: absolute; left: 0dp; top: 0dp; bottom: 0dp; background-color: var(--fill); pointer-events: none; }
-.field:hover .fill, .field[data-scrubbing] .fill { background-color: var(--fill-hover); }
-.field .mark { position: absolute; left: 0dp; top: 3dp; bottom: 3dp; width: 2dp; border-radius: 1dp; background-color: transparent; }
-.field[data-overridden] .mark { background-color: var(--override); }
-.field[data-mixed] .value { color: var(--muted-foreground); }
-.field.color[data-mixed] .swatch { opacity: 0.35; }
+.field > .fill { position: absolute; left: 0dp; top: 0dp; bottom: 0dp; background-color: var(--fill); pointer-events: none; }
+.field:hover > .fill, .field[data-scrubbing] > .fill { background-color: var(--fill-hover); }
+.field > .mark { position: absolute; left: 0dp; top: 3dp; bottom: 3dp; width: 2dp; border-radius: 1dp; background-color: transparent; }
+.field[data-overridden] > .mark { background-color: var(--override); }
+.field[data-mixed] > .value { color: var(--muted-foreground); }
+.field.color[data-mixed] > .swatch { opacity: 0.35; }
 .field .part { position: relative; display: block; height: var(--text-line); line-height: var(--text-line); }
 .field .addon { padding-left: 7dp; color: var(--faint-foreground); flex: 0 0 auto; }
-.field .addon.x { color: var(--axis-x); }
-.field .addon.y { color: var(--axis-y); }
+.field[data-axis=x] > .addon { color: var(--axis-x); }
+.field[data-axis=y] > .addon { color: var(--axis-y); }
 .field .value {
     flex: 1 1 0dp; padding: 0dp 7dp; text-align: right;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-family: var(--font-numeric);
@@ -46,10 +49,10 @@
 .field .step .icon { font-size: 10dp; width: 10dp; }
 .field .step.dec { left: 0dp; }
 .field .step.inc { right: 0dp; }
-.field:hover .step { opacity: 1; }
-.field.slider .step, .field[data-editing] .step, .field[data-scrubbing] .step { opacity: 0; }
+.field:hover > .step { opacity: 1; }
+.field[data-slider] > .step, .field[data-editing] > .step, .field[data-scrubbing] > .step { opacity: 0; }
 .field .step:hover { background-color: var(--press); }
-.field:focus-within { border-color: var(--ring); }
+.field:not(.color):focus-within { border-color: var(--ring); }
 .field.text, .field.search, .field.autocomplete { background-color: var(--field-edit); cursor: text; }
 .field.text:hover, .field.search:hover, .field.autocomplete:hover { background-color: var(--input-hover); }
 .field.text .value, .field.search .value, .field.autocomplete .value { text-align: left; font-family: var(--studio-standard-font-family, inter); }
@@ -80,8 +83,8 @@
 .field.color { cursor: arrow; tab-index: auto; }
 .field.color:focus-visible { border-color: var(--ring); }
 .field.color[data-disabled] { tab-index: none; }
-.field.color .swatch { position: absolute; left: 3dp; right: 3dp; top: 3dp; bottom: 3dp; border-radius: 2dp; }
-.field.color .swatch.none { border: 1dp var(--border); }
+.field.color > .swatch { position: absolute; left: 3dp; right: 3dp; top: 3dp; bottom: 3dp; border-radius: 2dp; }
+.field.color > .swatch.none { border: 1dp var(--border); }
 .color-alpha-row { display: flex; align-items: center; gap: 4dp; width: 100%; }
 .color-alpha-row .field.color { flex: 0 0 48dp; }
 

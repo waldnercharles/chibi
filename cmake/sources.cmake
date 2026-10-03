@@ -371,3 +371,6 @@ list(APPEND EDITOR_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_drop.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_prototype_actions.c
 )
+
+# Native controls (workstream F2): what number fields show and read.
+list(APPEND CORE_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/src/support/number_expr.c)

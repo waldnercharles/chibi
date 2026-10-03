@@ -2,7 +2,8 @@
  * the kit's document, its layer and the documents kit_document_begin shows
  * over the boxes it places, which lay out apart (ui/iframe.h).
  * This file keys, updates and retires nodes and routes RmlUi events to the
- * controllers in kit_number.c, kit_controls.c, kit_popup.c and kit_command.c.
+ * controllers in kit_controls.c, kit_popup.c and kit_command.c; number and
+ * color fields and splitters are native controls (ui/controls/controls.h).
  * They implement the Base UI contracts recorded in
  * docs/prototypes/studio/kit.html; the C editor owns every model value. */
 #include "editor/rmlui/kit_internal.h"
@@ -119,31 +120,6 @@ void utf8(char out[static 5], uint32_t cp)
         cp >>= 6;
     }
     out[0] = (char)(lead[count] | cp);
-}
-
-void format_number(char out[static NUMBER_TEXT], double v, int precision, bool integer)
-{
-    if (!isfinite(v)) {
-        snprintf(out, NUMBER_TEXT, "-");
-        return;
-    }
-    if (integer) {
-        snprintf(out, NUMBER_TEXT, "%.0f", v);
-        return;
-    }
-    snprintf(out, NUMBER_TEXT, "%.*f", precision > 0 ? precision : 0, v);
-    if (strchr(out, '.')) {
-        size_t length = strlen(out);
-        while (length && out[length - 1] == '0') {
-            out[--length] = 0;
-        }
-        if (length && out[length - 1] == '.') {
-            out[--length] = 0;
-        }
-    }
-    if (strcmp(out, "-0") == 0) {
-        snprintf(out, NUMBER_TEXT, "0");
-    }
 }
 
 const char *frame_format(kit *k, const char *format, ...)
@@ -307,71 +283,6 @@ void set_element_text(rml_element *el, const char *text)
     free(rml);
 }
 
-/* Numeric labels are one line. Keep their normal baseline and update the
- * glyphs locally; replacing a text child makes the whole document
- * format again. Only a changed shaped width needs normal box layout. */
-void set_line_text(rml_element *label, const char *text)
-{
-    rml_element *child = rml_element_first_child(label);
-    if (!child) {
-        set_element_text(label, text);
-        return;
-    }
-    int width = rml_element_string_width(child, text);
-    if (width <= 0) {
-        /* The first normal layout resolves the font and baseline. */
-        rml_element_set_text(child, text);
-        return;
-    }
-    rml_element_suppress_text_layout(child);
-    float edges = rml_element_box_size(label, RML_BOX_BORDER).x -
-                  rml_element_box_size(label, RML_BOX_CONTENT).x;
-    char size[32];
-    snprintf(size, sizeof size, "%gpx", width + edges);
-    rml_element_set_property(label, "width", size);
-    char current[128];
-    if (rml_element_text(child, current, sizeof current) >= sizeof current ||
-        strcmp(current, text) != 0) {
-        rml_element_set_text(child, text);
-        rml_element_clear_text_lines(child);
-        rml_element_add_text_line(child, (rml_vec2){ 0, 0 }, text);
-    }
-}
-
-/* A fixed-width number's text is right aligned in its content box. The text
- * node retains the position normal layout gave it; offset its new glyph line
- * from that origin rather than changing the flex item or document layout.
- * Overflow uses normal layout so RmlUi keeps its native ellipsis behavior. */
-void set_right_line_text(rml_element *label, const char *text)
-{
-    rml_element *child = rml_element_first_child(label);
-    char current[NUMBER_TEXT];
-    if (!child || rml_element_text(child, current, sizeof current) >= sizeof current) {
-        set_element_text(label, text);
-        return;
-    }
-    if (!strcmp(current, text)) {
-        return;
-    }
-    float available = rml_element_box_size(label, RML_BOX_CONTENT).x;
-    int width = rml_element_string_width(child, text);
-    int old_width = rml_element_string_width(child, current);
-    if (width <= 0 || old_width <= 0 || width > available || old_width > available) {
-        set_element_text(label, text);
-        return;
-    }
-    rml_vec2 origin = rml_element_absolute_offset(child, RML_BOX_CONTENT);
-    rml_vec2 parent = rml_element_absolute_offset(label, RML_BOX_CONTENT);
-    rml_element_suppress_text_layout(child);
-    rml_element_set_text(child, text);
-    rml_element_clear_text_lines(child);
-    rml_element_add_text_line(
-        child,
-        (rml_vec2){ parent.x + available - width - origin.x, 0 },
-        text
-    );
-}
-
 rml_element *raw(rml_element *parent, const char *tag, const char *cls, const char *text)
 {
     rml_element *el = rml_element_create_child(parent, tag, NULL);
@@ -417,9 +328,8 @@ static void strings_free(char **strings)
 
 static void widget_free(widget *w)
 {
-    char *owned[] = { w->unit,        w->addon, w->addon_cls, w->draft,
-                      w->applied,     w->label, w->meta,      w->badge,
-                      w->placeholder, w->image };
+    char *owned[] = { w->addon, w->draft, w->applied,     w->label,
+                      w->meta,  w->badge, w->placeholder, w->image };
     for (size_t i = 0; i < sizeof owned / sizeof *owned; i++) {
         free(owned[i]);
     }
@@ -685,17 +595,6 @@ node *path_node(const kit *k, const char *path)
     return n && str_eq(n->path, path) ? n : NULL;
 }
 
-/* Picker content lives in a layer popup; route its events to the owning field.
- */
-static node *owner(const kit *k, node *n)
-{
-    if (!n || n->kind != KIND_POPUP || strncmp(n->key, "@color:", 7) != 0) {
-        return n;
-    }
-    node *field = path_node(k, n->key + 7);
-    return field ? field : n;
-}
-
 bool within(rml_element *el, rml_element *ancestor)
 {
     for (; el; el = rml_element_parent(el)) {
@@ -804,10 +703,8 @@ static void mousedown(kit *k, const rml_event *e, node *n)
     }
     n->events |= EV_PRESS;
     k->keyboard_edit = false;
-    switch (n->kind) {
-        case KIND_NUMBER: number_press(k, n, e); break;
-        case KIND_TRIGGER: trigger_press(k, n, e); break;
-        default: control_press(k, n, e); break;
+    if (n->kind == KIND_TRIGGER) {
+        trigger_press(k, n, e);
     }
 }
 
@@ -817,7 +714,6 @@ static void click(kit *k, const rml_event *e, node *n)
         return;
     }
     switch (n->kind) {
-        case KIND_NUMBER: number_click(k, n); return;
         case KIND_MENU_ITEM:
         case KIND_SUBMENU: menu_click(k, n); return;
         case KIND_COMMAND_ITEM: command_click(k, n); return;
@@ -832,20 +728,6 @@ static void click(kit *k, const rml_event *e, node *n)
     }
 }
 
-static void drag(kit *k, const rml_event *e)
-{
-    rml_element *dragged = e->drag_element ? e->drag_element : e->target;
-    node *n = owner(k, node_for(k, dragged));
-    if (!n) {
-        return;
-    }
-    if (n->kind == KIND_NUMBER) {
-        number_drag(k, n, e);
-        return;
-    }
-    control_drag(k, n, e);
-}
-
 /* The modal host emitted last, or NULL: kit_modal_host's hosts are the
  * layer's only hosted children. */
 static rml_element *top_modal(const kit *k)
@@ -856,43 +738,6 @@ static rml_element *top_modal(const kit *k)
         }
     }
     return NULL;
-}
-
-/* Whether Tab can focus `el`, as RmlUi's own Tab search decides. */
-static bool tabbable(rml_element *el)
-{
-    char tab[8], focus[8];
-    rml_element_property(el, "tab-index", tab, sizeof tab);
-    rml_element_property(el, "focus", focus, sizeof focus);
-    return !strcmp(tab, "auto") && strcmp(focus, "none") != 0 &&
-           !rml_element_has_attribute(el, "data-disabled") &&
-           rml_element_is_visible(el, true);
-}
-
-/* Move among enabled, visible tab stops in document order. A modal wraps;
-   a nonmodal popover excludes its own contents when leaving for the document.
- */
-bool focus_step(rml_element *root, rml_element *from, int step, bool wrap, rml_element *skip)
-{
-    int count = rml_element_query_selector_all(root, "*", NULL, 0), kept = 0, at = -1;
-    rml_element **stops = xmalloc((size_t)(count + 1) * sizeof *stops);
-    rml_element_query_selector_all(root, "*", stops, count);
-    for (int i = 0; i < count; i++) {
-        if (tabbable(stops[i]) && (!skip || !within(stops[i], skip))) {
-            at = stops[i] == from ? kept : at;
-            stops[kept++] = stops[i];
-        }
-    }
-    int next = at < 0 ? (step > 0 ? 0 : kept - 1) : at + step;
-    if (wrap && kept) {
-        next = (next % kept + kept) % kept;
-    }
-    bool moved = next >= 0 && next < kept && rml_element_focus(stops[next], true);
-    if (moved) {
-        rml_element_scroll_into_view(stops[next], RML_SCROLL_NEAREST, RML_SCROLL_NEAREST);
-    }
-    free(stops);
-    return moved;
 }
 
 static bool trap_focus(kit *k, const rml_event *e)
@@ -913,6 +758,10 @@ static void keydown(kit *k, const rml_event *e, node *n)
     if (k->drag.active && e->key == RML_KEY_ESCAPE) {
         drag_cancel(k);
         rml_event_stop_propagation(e);
+        return;
+    }
+    /* An open color picker takes its own keys, Escape and Tab included. */
+    if (n && n->kind == KIND_COLOR && color_field_open(n->el)) {
         return;
     }
     if (trap_focus(k, e)) {
@@ -936,37 +785,23 @@ static void keydown(kit *k, const rml_event *e, node *n)
         (popup_keys && popup_key(k, e)) || !n) {
         return;
     }
-    if (n->kind == KIND_NUMBER) {
-        number_key(k, n, e);
-        return;
-    }
     control_key(k, n, e);
 }
 
-static void blur(kit *k, const rml_event *e, node *n)
+static void blur(const rml_event *e, node *n)
 {
-    if (!n) {
-        return;
+    if (n) {
+        control_blur(n, e->target);
     }
-    if (n->kind == KIND_NUMBER) {
-        number_blur(k, n, e->target);
-        return;
-    }
-    control_blur(n, e->target);
 }
 
 static void on_event(void *user, const rml_event *e)
 {
     kit *k = user;
     check_slots(k);
-    node *n = owner(k, node_for(k, e->target));
+    node *n = node_for(k, e->target);
     switch (e->id) {
         case RML_EVENT_MOUSEDOWN: mousedown(k, e, n); break;
-        case RML_EVENT_MOUSEUP:
-            if (n && n->kind == KIND_NUMBER) {
-                number_release(n);
-            }
-            break;
         case RML_EVENT_CLICK:
             k->dragged = false;
             if (n) {
@@ -978,9 +813,6 @@ static void on_event(void *user, const rml_event *e)
                 n->events |= EV_DOUBLE;
             }
             break;
-        case RML_EVENT_DRAGSTART:
-        case RML_EVENT_DRAG:
-        case RML_EVENT_DRAGEND: drag(k, e); break;
         case RML_EVENT_KEYDOWN: keydown(k, e, n); break;
         /* The kit's fields take each edit; they commit on their own keys. */
         case RML_EVENT_INPUT:
@@ -994,7 +826,7 @@ static void on_event(void *user, const rml_event *e)
                 control_focus(k, n, e->target);
             }
             break;
-        case RML_EVENT_BLUR: blur(k, e, n); break;
+        case RML_EVENT_BLUR: blur(e, n); break;
         /* Rows the results bring under a still pointer fire mouseover but
            no mousemove, so they leave the selection on the best match, as
            cmdk's do. */
@@ -1010,11 +842,9 @@ static void on_event(void *user, const rml_event *e)
 }
 
 static const rml_event_id kit_events[] = {
-    RML_EVENT_MOUSEDOWN, RML_EVENT_MOUSEUP,   RML_EVENT_CLICK,
-    RML_EVENT_DBLCLICK,  RML_EVENT_DRAGSTART, RML_EVENT_DRAG,
-    RML_EVENT_DRAGEND,   RML_EVENT_KEYDOWN,   RML_EVENT_INPUT,
-    RML_EVENT_MOUSEOVER, RML_EVENT_FOCUS,     RML_EVENT_BLUR,
-    RML_EVENT_MOUSEMOVE,
+    RML_EVENT_MOUSEDOWN, RML_EVENT_CLICK, RML_EVENT_DBLCLICK,
+    RML_EVENT_KEYDOWN,   RML_EVENT_INPUT, RML_EVENT_MOUSEOVER,
+    RML_EVENT_FOCUS,     RML_EVENT_BLUR,  RML_EVENT_MOUSEMOVE,
 };
 
 #define KIT_EVENT_COUNT (sizeof kit_events / sizeof *kit_events)
@@ -1329,7 +1159,6 @@ void kit_begin(kit *k, const kit_frame_input *input)
     aclear(k->triggers);
     place_popups(k);
     drag_begin_frame(k);
-    repeat_steppers(k);
     open_hovered_submenus(k);
     k->layer->cursor = 0;
     k->layer->frame = k->frame;
@@ -1459,9 +1288,8 @@ void kit_label(kit *k, const char *key, const char *cls, const char *text)
 
 void kit_live_label(kit *k, const char *key, const char *cls, const char *text)
 {
-    node *n = emit(k, key, KIND_BOX, "span", cls);
-    rml_element_set_property(n->el, "white-space", "nowrap");
-    set_line_text(n->el, text);
+    node *n = emit(k, key, KIND_BOX, "live-text", cls);
+    set_attr(n, "value", text);
 }
 
 void kit_icon(kit *k, const char *key, const char *cls, uint32_t codepoint)
@@ -1528,11 +1356,12 @@ bool kit_item_active(kit *k)
     if (!n) {
         return false;
     }
-    const widget *w = &n->w;
-    bool picker = n->kind == KIND_COLOR &&
-                  kit_popup_is_open(k, frame_format(k, "color:%s", n->path));
-    return w->scrubbing || w->editing || w->step_dir || w->focused || picker ||
-           (w->pressing && n->kind != KIND_NUMBER);
+    switch (n->kind) {
+        case KIND_NUMBER: return number_field_active(n->el);
+        case KIND_COLOR: return color_field_open(n->el);
+        case KIND_SPLITTER: return splitter_active(n->el);
+        default: return n->w.focused;
+    }
 }
 
 bool kit_item_committed(kit *k)

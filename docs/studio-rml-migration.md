@@ -132,13 +132,18 @@ behaviors. New Project's dialog still takes its own `newProject.*` and its
 backdrop's bare `Close` until its migration.
 
 Native controls follow the web: `input` while a gesture runs, `change` once on
-commit with `ev.value` and `ev.canceled`. In Properties, `input` is a live
-write with no history and `change` is one Undo step, as `property_edit`
-already models. Text fields do so since F1 (`rmlui-input-events.patch`):
+commit with `ev.value`, `ev.canceled` and `ev.name` (the control's `name`
+attribute, as a handler reads `event.target.name`). In Properties, `input` is
+a live write with no history and `change` is one Undo step, as
+`property_edit` already models. A control repeated by `data-for` needs an
+end tag: RmlUi repeats an element's inner markup, which a self-closing tag
+lacks. Text fields do so since F1 (`rmlui-input-events.patch`):
 `input` (`RML_EVENT_INPUT`) on each edit, `change` once when an edit commits
 with Enter or by leaving the field; `data-value` follows `input`, as Vue's
 `v-model`, and `data-value-lazy` follows `change`, as `v-model.lazy`. The
-kit's fields hear `input`.
+kit's fields hear `input`. Both events' propagation can be stopped
+(`rmlui-event-propagation.patch`), so a native control keeps its inner
+fields' events to itself.
 
 `data-when="expr"` (F1, `rmlui-data-when.patch`, named for Lit's `when` and
 behaving as Vue's `v-if`) builds a copy of its element while the expression
@@ -149,7 +154,7 @@ its views bound (`v-show`). Use `data-when` for a row's one control of many.
 ```html
 <number-field data-attr-value="n.value" data-attr-step="n.step"
   data-event-input="emit('properties.input', row.id, ev.value)"
-  data-event-change="emit('properties.change', row.id, ev.value, ev.canceled)"/>
+  data-event-change="emit('properties.change', row.id, ev.value, ev.canceled)"></number-field>
 ```
 
 The backend synthesizes `contextmenu` on a right press, after its
@@ -169,10 +174,10 @@ pointer and modifiers, so markup hears it with `data-event-contextmenu`.
 
 | Element | Replaces | Contract |
 |---|---|---|
-| `<number-field>` | `kit_number.c`; its expression parser moves to `src/support/number_expr.c` | `value min max step precision integer slider unit addon mixed readonly disabled invalid`; `input`/`change`; today's scrub threshold, Alt fine, Shift coarse, Ctrl snap, steppers, Tab; repaints text without layout |
-| `<color-field>` | `kit_color` | `value mixed readonly`; opens its own picker as `<input type=color>` opens the OS one |
-| `<splitter>` | `kit_splitter` | `axis min max value invert`; `input`/`change`; cursor |
-| `<live-text>` | `kit_live_label` | Glyphs update without layout |
+| `<number-field>` | `kit_number.c` (done, F2: `src/ui/controls/number_field.c`; the parser is `src/support/number_expr.c`) | `value min max step precision integer float slider unit addon mixed readonly disabled invalid`; `input`/`change`; today's scrub threshold, Alt fine, Shift coarse, Ctrl snap, steppers, Tab; Escape cancels typing or a scrub; repaints text without layout |
+| `<color-field>` | `kit_color` (done, F2) | `value mixed readonly disabled`; opens its own picker as `<input type=color>` opens the OS one: `input` while open, `change` on close. Its popover is inside the field (`position: fixed; clip: none`) until F3's `popover.c` |
+| `<splitter>` | `kit_splitter` (done, F2) | `axis min max value invert`; `input`/`change`; cursor |
+| `<live-text>` | `kit_live_label` (done, F2) | `value`; glyphs update without layout |
 | `<line-chart>` | `kit_chart.c` | Series from a C registry, named like `kit:` textures |
 | Existing | | `<img src="kit:...">`, `<number-flow>`, `<morph-text>`, `presence` |
 
@@ -449,6 +454,37 @@ since the Play refresh is the one case authored text is slower. Live
 sources stay unnecessary. Popovers escape clipping with `clip: none` unless
 their own area sets `z-index`, `transform` or `filter`.
 
+### F2 results
+
+`<number-field>`, `<color-field>`, `<splitter>` and `<live-text>` live in
+`src/ui/controls` and run today's native Properties, Settings, graph literals
+and shell splitters through `kit_number`, `kit_color`, `kit_splitter` and
+`kit_live_label`. Web shots of Properties (with a scrub, a typed edit and the
+color picker open) and Settings, dark and light, compact and comfortable,
+match the build before them pixel for pixel. The spike's number and vector
+rows are `<number-field>`s bound to numbers. RmlUi's `change` event can now
+be stopped (`cmake/patches/rmlui-change-propagation.patch`), so a field's
+inner input keeps its per-keystroke changes to itself.
+
+`./build-release/test_suite --ui-bench` on the commit before F2 and after it,
+alternated process by process (two runs each, 1-minute load 7-8), in Studio
+with each arm alternated run by run as in S0 (ms, the mean of the two runs' medians):
+
+| Case | Native before / after | Spike before / after | Spike ÷ native before / after |
+|---|---:|---:|---:|
+| Play refresh, every float changed | 0.81 / 0.79 | 1.33, 1 layout / 0.80, 0 layouts | 1.64× / 1.01× |
+| Edit one field | 0.93 / 0.90 | 1.27, 1 layout / 0.52, 0 layouts | 1.37× / 0.58× |
+| Select another object | 7.77 / 7.84 | 3.15 / 3.43 | 0.41× / 0.44× |
+
+The spike's Play refresh spends about 0.4 ms in update and the rest
+capturing its own context, which one document per area would not have.
+Headless, its document small, the spike edits a field in 0.07 ms (0.19
+before) and refreshes 27 floats in 0.27 ms (0.19 before, which laid out
+once): style recomputation for each changed attribute replaces one cheap
+layout there. A `<number-field>` builds its parts (29 elements a row against
+19), so selecting rebuilds 9% slower and 50 rows instance in 8.0 ms against
+7.7: pooled rows matter more.
+
 ## Waves
 
 Every wave meets:
@@ -489,8 +525,8 @@ table in `studio_ui.c`, `scenes/Studio.kdl`, `test_suite.c`, `sources.cmake`,
 
 | | Scope | Done when |
 |---|---|---|
-| F1 Contracts | `emit` with arguments and event context; the panel-source table and `<panel>.<action>` router; `contextmenu`; RmlUi patches for a structural conditional (Vue's `v-if`) and for `input`/`change` on text inputs | Done: Settings builds its row controls with `data-when` and records through `settings.record`; binding tests (`rmlui_binding.c`, `ui_activations.c`) and the router check (`studio_documents_panels.c`) pass |
-| F2 Controls | `<number-field>`, `<color-field>`, `<splitter>`, `<live-text>`, `number_expr.c`, kit wrappers; widgets NumberField, VectorField, ColorField, Checkbox, TextField, PropertyRow, Panel, Splitter | Native Properties runs on the wrapped elements with the kit tests green |
+| F1 Contracts (done) | `emit` with arguments and event context; the panel-source table and `<panel>.<action>` router; `contextmenu`; RmlUi patches for a structural conditional (Vue's `v-if`) and for `input`/`change` on text inputs | Done: Settings builds its row controls with `data-when` and records through `settings.record`; binding tests (`rmlui_binding.c`, `ui_activations.c`) and the router check (`studio_documents_panels.c`) pass |
+| F2 Controls (done) | `<number-field>`, `<color-field>`, `<splitter>`, `<live-text>`, `number_expr.c`, kit wrappers; widgets NumberField, VectorField, ColorField, Checkbox, TextField, PropertyRow, Panel, Splitter | Native Properties runs on the wrapped elements with the kit tests green: F2 results |
 | F3 Popovers | `popover.c`, `<menubar>`, one popup stack; widgets Menu*, MenuCommand, ChoiceList, AssetField, EnumField; a `choices` source | The GraphView popover and one authored menu at parity |
 | F4 Lists and drag | `drag.c`, `ui_list_window`, kit wrappers; widgets List, TreeRow (drop zones), Tile | One drag crosses an authored list and a native one |
 

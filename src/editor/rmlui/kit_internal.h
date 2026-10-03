@@ -25,10 +25,11 @@
 #ifndef CHIBI_EDITOR_RMLUI_KIT_INTERNAL_H
 #define CHIBI_EDITOR_RMLUI_KIT_INTERNAL_H
 
-#include "editor/ui/input_feel.h"
 #include "editor/ui/kit.h"
 #include "platform/cute.h"
 #include "support/array.h"
+#include "ui/controls/controls.h"
+#include "ui/input_feel.h"
 #include "ui/motion.h"
 #include "ui/rml.h"
 
@@ -37,11 +38,7 @@
 #include <stdint.h>
 
 #define SUBMENU_DELAY 0.1
-#define STEP_REPEAT_DELAY 0.4
-#define STEP_REPEAT_INTERVAL 0.06
 #define TYPEAHEAD_RESET 0.5
-/* The buffer format_number writes. */
-#define NUMBER_TEXT 64
 
 typedef enum node_kind
 {
@@ -90,15 +87,6 @@ typedef struct pair
     char *value;
 } pair;
 
-/* A splitter's arguments: the axis it drags along, 0 (x) or 1 (y); whether its
- * value grows against the pointer; and the value's bounds. */
-typedef struct splitter_desc
-{
-    int axis;
-    bool invert;
-    double min, max;
-} splitter_desc;
-
 /* Control state. A new node's widget has pending_index -1 and icon
  * UINT32_MAX; everything else starts zero. */
 typedef struct widget
@@ -106,10 +94,6 @@ typedef struct widget
     bool open;
     bool pending;
     bool committed;
-    bool editing;
-    bool scrubbing;
-    bool pressing;
-    bool suppress_click;
     bool focused;
     bool area; /* a text field over several lines */
     bool autocomplete_query_active;
@@ -117,31 +101,20 @@ typedef struct widget
     bool autocomplete_canceled;
     bool autocomplete_sync;
     bool secret;
-    bool focus_picker; /* color trigger opened with the keyboard */
     double value;
-    double start;
-    double pending_value;
     int pending_index;
-    int step_dir;
-    double step_next;
-    float press_x;
     kit_number_desc desc; /* its strings are borrowed for one call only */
-    splitter_desc split;
-    char *unit, *addon, *addon_cls, *draft, *applied, *label, *meta, *badge,
-        *placeholder;
+    char *addon, *draft, *applied, *label, *meta, *badge, *placeholder;
     char *image; /* a tile's or command item's picture, a "kit:<name>" source */
     char **labels; /* owned strings */
     uint32_t icon;
     uint32_t badge_icon; /* a tile's corner badge */
     uint32_t color;
-    float hsv[3];
-    int drag_part;               /* color picker: 1 plane, 2 hue */
     bool at_bottom;              /* list: pinned to the bottom */
     rml_element *body;           /* list content */
     float body_height, body_top; /* list: the content sizing applied, in dp */
-    rml_element *value_el, *fill_el, *input_el, *addon_el, *unit_el, *label_el,
-        *icon_el, *meta_el, *twisty_el, *kbd_el, *badge_el, *head_el,
-        *swatch_el, *about_el, *menu_el, *image_el;
+    rml_element *value_el, *input_el, *label_el, *icon_el, *meta_el, *twisty_el,
+        *kbd_el, *badge_el, *head_el, *about_el, *menu_el, *image_el;
 } widget;
 
 /* Charts (kit_chart.c): what the chart element draws this frame. The chart
@@ -362,7 +335,6 @@ void str_catf(char **s, const char *format, ...)
 /* Appends text with &, <, > and " as RML entities. */
 void escape(char **s, const char *text);
 void utf8(char out[static 5], uint32_t cp);
-void format_number(char out[static NUMBER_TEXT], double v, int precision, bool integer);
 /* A formatted string that lives until kit_end. */
 const char *frame_format(kit *k, const char *format, ...)
     __attribute__((format(printf, 2, 3)));
@@ -384,8 +356,6 @@ void set_flag(node *n, const char *name, bool on);
 void flag_element(rml_element *el, const char *name, bool on);
 void set_text(node *n, const char *text);
 void set_element_text(rml_element *el, const char *text);
-void set_line_text(rml_element *el, const char *text);
-void set_right_line_text(rml_element *el, const char *text);
 /* Escapes text into the element's content unconditionally. */
 void set_inner_text(rml_element *el, const char *text);
 
@@ -450,24 +420,11 @@ void register_chart_element();
 void register_wires_element();
 void register_dot_element();
 
-/* ---------- Number fields (kit_number.c) ---------- */
-
-void repeat_steppers(kit *k);
-void number_press(kit *k, node *n, const rml_event *e);
-void number_release(node *n);
-void number_click(kit *k, node *n);
-/* Dragstart, drag and dragend, told apart by e->id. */
-void number_drag(kit *k, node *n, const rml_event *e);
-void number_key(kit *k, node *n, const rml_event *e);
-void number_blur(kit *k, node *n, rml_element *target);
-
 /* ---------- Other controls (kit_controls.c) ---------- */
 
 /* Handlers ignore kinds they do not own. */
-void control_press(kit *k, node *n, const rml_event *e);
 void control_click(kit *k, node *n, rml_element *target);
 node *emit_input(kit *k, const char *key, node_kind kind, const char *cls, const char *placeholder);
-void control_drag(kit *k, node *n, const rml_event *e);
 void control_key(kit *k, node *n, const rml_event *e);
 void control_change(kit *k, node *n, rml_element *target);
 void control_focus(kit *k, node *n, rml_element *target);
@@ -495,7 +452,6 @@ bool autocomplete_key(kit *k, const rml_event *e, node *n);
 void dropdown_open_on(kit *k, const char *key, kit_rect anchor, const char *placeholder, const node *trigger);
 void autocomplete_open_on(kit *k, const char *key, kit_rect anchor, node *trigger);
 void popup_focus(kit *k, rml_element *target);
-bool focus_step(rml_element *root, rml_element *from, int step, bool wrap, rml_element *skip);
 void set_tip(node *n, const char *label, const char *shortcut, const char *description);
 void update_tooltip(kit *k);
 

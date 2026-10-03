@@ -1,0 +1,18 @@
+diff --git a/Source/Core/EventSpecification.cpp b/Source/Core/EventSpecification.cpp
+--- a/Source/Core/EventSpecification.cpp
++++ b/Source/Core/EventSpecification.cpp
+@@ -39,10 +39,12 @@ struct EventSpecificationData {
+ 		{EventId::Scroll        , "scroll"        , false , true  , DefaultActionPhase::None},
+ 		{EventId::Animationend  , "animationend"  , false , true  , DefaultActionPhase::None},
+ 		{EventId::Transitionend , "transitionend" , false , true  , DefaultActionPhase::None},
+-		{EventId::Change        , "change"        , false , true  , DefaultActionPhase::None},
++		// As in browsers, stopping an input's or a change's propagation stops it,
++		// so a control keeps its inner fields' events to itself.
++		{EventId::Change        , "change"        , true  , true  , DefaultActionPhase::None},
+ 		{EventId::Submit        , "submit"        , true  , true  , DefaultActionPhase::None},
+ 		{EventId::Tabchange     , "tabchange"     , false , true  , DefaultActionPhase::None},
+-		{EventId::Input         , "input"         , false , true  , DefaultActionPhase::None},
++		{EventId::Input         , "input"         , true  , true  , DefaultActionPhase::None},
+ 		// clang-format on
+ 	};
+ 

@@ -1,8 +1,9 @@
-/* How input feels everywhere in Studio: one zoom rate for every zoomable
- * canvas, one scroll distance, one drag threshold, one double-click window and
- * the tooltip timing. tools/web_shell.html mirrors FEEL_PINCH_MAX_PX. */
-#ifndef CHIBI_EDITOR_UI_INPUT_FEEL_H
-#define CHIBI_EDITOR_UI_INPUT_FEEL_H
+/* How input feels everywhere in Studio and the native controls
+ * (ui/controls/controls.h): one zoom rate for every zoomable canvas, one
+ * scroll distance, one drag threshold, one double-click window and the
+ * tooltip timing. tools/web_shell.html mirrors FEEL_PINCH_MAX_PX. */
+#ifndef CHIBI_UI_INPUT_FEEL_H
+#define CHIBI_UI_INPUT_FEEL_H
 
 #include <math.h>
 

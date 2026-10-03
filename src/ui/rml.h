@@ -364,7 +364,9 @@ extern "C"
      * context update, before the element's style and its children's are
      * computed, so what it sets shows in that frame (workstream N). layout
      * runs each time a layout places the element, whether or not it moved;
-     * a document lays out all of its elements at once. */
+     * a document lays out all of its elements at once. attribute runs after
+     * each of the element's attributes is set or removed, `name` naming it,
+     * with the user data NULL until the element sets one (workstream F2). */
     typedef struct rml_element_hooks
     {
         void (*render)(rml_element *element, void *user);
@@ -372,6 +374,7 @@ extern "C"
         void (*release)(void *user);
         void (*update)(rml_element *element, void *user);
         void (*layout)(rml_element *element, void *user);
+        void (*attribute)(rml_element *element, void *user, const char *name);
     } rml_element_hooks;
 
     /* Event and the parameters the editor reads. Valid during the callback. */
@@ -809,6 +812,22 @@ extern "C"
     /* Gives `document` a copy of `source`'s style sheets, as though each
      * had been set on it too; nothing when `source` has none. */
     void rml_document_copy_style_sheet(rml_element *document, rml_element *source);
+
+    /* ---------- Native controls (workstream F2) ---------- */
+
+    /* Dispatches a `type` event from the element that bubbles, as a form
+     * control's input and change do: data-event-<type> reads ev.value, the
+     * text `value`, ev.canceled, and ev.name, the element's name attribute
+     * (as a web handler reads event.target.name). */
+    void rml_element_dispatch_value(rml_element *element, const char *type, const char *value, bool canceled);
+    /* Listens for events named `type`, such as "input", which rml_event_id
+     * does not name; the listener's events carry another id. */
+    void rml_element_add_named_listener(
+        rml_element *element,
+        const char *type,
+        rml_listener *listener,
+        bool capture
+    );
 
 #ifdef __cplusplus
 }

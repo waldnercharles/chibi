@@ -10,6 +10,7 @@
 #include "render/scene_renderer.h"
 #include "runtime/generated.h"
 #include "test/suite_internal.h"
+#include "ui/input_feel.h"
 
 #include <SDL3/SDL_events.h>
 #include <SDL3/SDL_keyboard.h>

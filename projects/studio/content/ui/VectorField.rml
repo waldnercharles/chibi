@@ -1,0 +1,3 @@
+<div class="joined" attrs>
+  <number-field class="field number" data-for="axis : axes" data-attr-name="axis.key" data-attr-value="axis.value" data-attr-addon="axis.label" data-attr-data-axis="axis.key" data-attr-step="axis.step" data-attr-precision="axis.precision" data-attrif-mixed="field.mixed" data-attrif-readonly="field.readonly" data-attrif-data-overridden="field.overridden"></number-field>
+</div>

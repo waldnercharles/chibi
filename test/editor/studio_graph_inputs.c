@@ -1113,7 +1113,7 @@ static void shader_values_and_collections_are_editable()
     bool numeric = current_scalar &&
                    fabsf(current_scalar->output_pins[0].default_value.f - 0.25f) < 0.001f;
 
-    char color_control[128], color_popup[192];
+    char color_control[128];
     snprintf(
         color_control,
         sizeof color_control,
@@ -1121,12 +1121,10 @@ static void shader_values_and_collections_are_editable()
         (unsigned long long)surface_id,
         (unsigned long long)color_pin_id
     );
-    snprintf(color_popup, sizeof color_popup, "color:%s", color_control);
     kit_rect color_rect;
     bool color_visible = kit_find(f.studio->graph.kit, color_control, &color_rect);
     bool color_clicked = color_visible && click_path(&f, color_control);
-    bool color_open = color_clicked &&
-                      kit_popup_is_open(f.studio->graph.kit, color_popup);
+    bool color_open = color_clicked && graph_query(&f, "color-field[data-open]");
     if (color_open) {
         capture_stage(&f, "shader-color");
     }

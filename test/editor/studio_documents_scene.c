@@ -10,6 +10,7 @@
 #include "test/editor/studio_documents.h"
 #include "test/editor/ui_bench.h"
 #include "test/suite_internal.h"
+#include "ui/popover.h"
 
 #include <assert.h>
 #include <limits.h>
@@ -82,6 +83,12 @@ static void click(studio_fixture *f, rml_element *el)
     frames(f, 3);
 }
 
+/* Shown, and not fading out as presence leaves it (ui/motion.h). */
+static bool staying(rml_element *el)
+{
+    return shown(el) && !rml_element_has_attribute(el, "data-ending-style");
+}
+
 static bool pressed(rml_element *el)
 {
     char state[8] = "";
@@ -119,18 +126,19 @@ static void header_tools_and_snapping()
                    pressed(in_panel(s, "SceneHeader", ".snap-controls .btn.icon-only")) !=
                        snap;
     s->prefs.scene_increment = 32;
+    s->ui_schedule.wake = true;
     frames(&f, 2);
     rml_element *increment = in_panel(s, "SceneHeader", ".snap-controls .menu-btn");
     bool labeled = text_is(rml_element_query_selector(increment, ".label"), "32");
     click(&f, increment);
     rml_element *menu = in_panel(s, "SceneHeader", "#scene-increment");
-    bool open = shown(menu);
+    bool open = popover_open(menu);
     click(&f, menu_row(menu, "16"));
     increment = in_panel(s, "SceneHeader", ".snap-controls .menu-btn");
     test_check(
         toggled && labeled && open && s->prefs.scene_increment == 16 &&
             text_is(rml_element_query_selector(increment, ".label"), "16") &&
-            !shown(menu),
+            !popover_open(menu),
         "the magnet toggles snapping and the grid increment's menu sets it"
     );
     fixture_free(&f);
@@ -144,6 +152,7 @@ static void view_menu_and_zoom()
     studio_fixture f = sandbox_open();
     studio *s = f.studio;
     s->prefs.scene_grid = true;
+    s->ui_schedule.wake = true;
     frames(&f, 2);
     bool hidden = !shown(in_panel(s, "SceneHeader", "[popovertarget=scene-zoom]"));
     click(&f, in_panel(s, "SceneHeader", "[popovertarget=scene-view]"));
@@ -153,7 +162,7 @@ static void view_menu_and_zoom()
                    menu_row(menu, "Frame Selected") &&
                    menu_row(menu, "Camera Frames");
     click(&f, grid);
-    bool ungridded = !s->prefs.scene_grid && !shown(menu);
+    bool ungridded = !s->prefs.scene_grid && !popover_open(menu);
     click(&f, in_panel(s, "SceneHeader", "[popovertarget=scene-view]"));
     click(&f, menu_row(menu, "200%"));
     rml_element *zoom = in_panel(s, "SceneHeader", "[popovertarget=scene-zoom]");
@@ -228,12 +237,12 @@ static void overlays_follow_the_scene()
     studio_command_run(s, STUDIO_COMMAND_PLAY);
     frames(&f, 30);
     bool live = shown(in_panel(s, "Scene", ".live-badge")) &&
-                !shown(in_panel(s, "Scene", ".view-label")) &&
+                !staying(in_panel(s, "Scene", ".view-label")) &&
                 !in_panel(s, "Scene", ".camera-label:not([data-for])");
     studio_command_run(s, STUDIO_COMMAND_STOP);
     frames(&f, 30);
     bool editing = !shown(in_panel(s, "Scene", ".live-badge")) &&
-                   shown(in_panel(s, "Scene", ".view-label"));
+                   staying(in_panel(s, "Scene", ".view-label"));
     test_check(
         names && live && editing,
         "the Scene names its scene and selection while edited and shows "

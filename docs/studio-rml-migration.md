@@ -804,7 +804,11 @@ What it needed beyond the panel, each usable elsewhere:
 - **`<kit-dot shape fill>`**: the socket swatch from attributes.
 - **Area keys**: focus in an editor's authored area passes Studio's
   shortcuts as a native area did (`studio_ui_shortcut_focus`), so F2, X and
-  Shift+D work after a click on a row; a field keeps its keys.
+  Shift+D work after a click on a row; a field keeps its keys. One rule
+  covers every authored editor and its header's controls (P1, P2, P5):
+  only a text input or textarea keeps every key, as in the kit, so a
+  checkbox, a choice or a number field not being typed in leaves Studio
+  and the area theirs.
 - **Binding writes**: a source takes `wrote` only while its panel shows;
   Settings, hidden, had applied stale rows over a density a command set
   whenever any binding wrote, as the filter does on each keystroke.
@@ -855,8 +859,9 @@ one window and one List.
 #### P1: Properties (done)
 
 Properties' Object, Prototype, Scene and Behaviors tabs are
-`projects/studio/content/ui/Properties.rml` and its header's controls
-`PropertiesHeader.rml` (mounted in the area header as GraphView is), over
+`projects/studio/content/ui/Properties.rml`, a mount per area that shows
+it (`studio_ui_area`), and its header's controls `PropertiesHeader.rml`
+(mounted in the area header as GraphView is), over
 the `properties` source: `studio_properties_view.c` writes the variable,
 and `studio_properties.c` keeps the model (`write_field`, merged vector
 writes, Reset and Apply to Prototype, Keep Changes, components, rename)

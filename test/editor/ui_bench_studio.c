@@ -83,9 +83,23 @@ static void bench_close(studio_bench *b)
     engine_viewport_free(b->viewport);
 }
 
+/* RmlUi warnings one frame may log before the bench stops: a defect that
+   repeats them every frame floods the log by gigabytes a minute. */
+#define WARNING_FLOOD 100
+
+static void stop_on_flood(int before)
+{
+    int logged = rml_backend_warning_count() - before;
+    if (logged > WARNING_FLOOD) {
+        fprintf(stderr, "ui bench: RmlUi logged %d warnings in one frame; stopping\n", logged);
+        exit(1);
+    }
+}
+
 static void frames(studio_bench *b, int count)
 {
     for (int i = 0; i < count; i++) {
+        int warnings = rml_backend_warning_count();
         b->time += FRAME;
         cf_app_update(NULL);
         app_input_frame();
@@ -95,6 +109,7 @@ static void frames(studio_bench *b, int count)
         studio_frame(b->studio, FRAME);
         cf_app_draw_onto_screen(true);
         b->studio->prefs_changed_at = 0;
+        stop_on_flood(warnings);
     }
 }
 
@@ -133,6 +148,7 @@ typedef enum
  * and fills each phase's time. */
 static double native_ui(studio *s, double *phases)
 {
+    int warnings = rml_backend_warning_count();
     double t[PHASE_COUNT + 1];
     t[0] = bench_now();
     studio_ui_frame(s);
@@ -152,6 +168,7 @@ static double native_ui(studio *s, double *phases)
     for (int p = 0; p < PHASE_COUNT; p++) {
         phases[p] = t[p + 1] - t[p];
     }
+    stop_on_flood(warnings);
     return t[PHASE_COUNT] - t[0];
 }
 

@@ -1193,14 +1193,16 @@ snapping increment) are the references, as before. Three sources:
   events while at its end. `canvas.back`, `.used`, `.preview`, `.size`,
   `.backdrop`, `.actions` and `.clear`.
 
-**Shared fix:** `studio_ui_area` keys each panel's host by its name. The
-Scene and Canvas swapping in one host had moved the old panel's elements
-when the host took the data model again (`rml_element_set_data_model`
-reinserts the element): their views were applied a second time, to text
-already shown ("Could not add data-text view"), and once the new markup
-replaced them, the views of the destroyed elements stayed ("Could not
-retrieve element in view", logged every update). A new host per panel
-avoids both for any area that switches panels.
+**Panel swaps and idle refreshes.** The Scene and Canvas take turns in one
+area's host, which first showed the view leak the integration branch fixed
+(cf21ee38: the host empties before it takes the next panel's data model);
+`--studio-panels` turns the Scene editor with the other authored panels and
+swaps Scene and Canvas in it each round, with no RmlUi warning. The kit's
+zoom readout re-rolled for about half a second after an area resized, which
+kept the UI refreshing every frame; the authored Scene idles once settled,
+at the 4 Hz idle refresh. Output's Log checks had leaned on those extra
+refreshes after printing, so they now wake two refreshes after a print, as
+an idle Studio takes new lines at its next refresh.
 
 Styles moved from `theme/scene.rcss`, `theme/scene_view.rcss` and
 `workspace.rcss` into `SceneHeader.rcss`, `Scene.rcss` and `Canvas.rcss`;

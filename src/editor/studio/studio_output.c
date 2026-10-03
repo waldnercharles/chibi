@@ -610,65 +610,35 @@ void studio_output_rows_add(yyjson_mut_doc *doc)
     }
 }
 
-static bool put_text(yyjson_mut_doc *doc, yyjson_mut_val *object, const char *name, const char *text)
-{
-    yyjson_mut_val *value = yyjson_mut_obj_get(object, name);
-    if (!strcmp(yyjson_mut_get_str(value), text)) {
-        return false;
-    }
-    ui_data_set_text(doc, value, text);
-    return true;
-}
-
-static bool put_number(yyjson_mut_val *object, const char *name, double number)
-{
-    yyjson_mut_val *value = yyjson_mut_obj_get(object, name);
-    if (yyjson_mut_get_real(value) == number) {
-        return false;
-    }
-    yyjson_mut_set_real(value, number);
-    return true;
-}
-
-static bool put_bool(yyjson_mut_val *object, const char *name, bool on)
-{
-    yyjson_mut_val *value = yyjson_mut_obj_get(object, name);
-    if (yyjson_mut_get_bool(value) == on) {
-        return false;
-    }
-    yyjson_mut_set_bool(value, on);
-    return true;
-}
-
 static bool put_glyph(yyjson_mut_doc *doc, yyjson_mut_val *object, const char *name, uint32_t icon)
 {
     char glyph[5] = "";
     if (icon) {
         studio_glyph(glyph, icon);
     }
-    return put_text(doc, object, name, glyph);
+    return ui_data_put_text(doc, object, name, glyph);
 }
 
 /* Writes what a row shows into its item. */
 static bool show_row(yyjson_mut_doc *doc, yyjson_mut_val *item, const output_row *row, shape kind)
 {
     if (kind == SHAPE_LINE) {
-        return put_text(doc, item, "rml", row->rml);
+        return ui_data_put_text(doc, item, "rml", row->rml);
     }
     bool changed = put_glyph(doc, item, "icon", row->icon);
     if (kind == SHAPE_ITEM) {
-        changed |= put_text(doc, item, "label", row->label);
-        changed |= put_text(doc, item, "meta", row->meta);
-        changed |= put_number(item, "depth", row->depth);
-        changed |= put_bool(item, "parent", row->parent);
-        changed |= put_bool(item, "open", row->open);
-        changed |= put_bool(item, "shown", row->open);
-        return put_bool(item, "selected", row->selected) || changed;
+        changed |= ui_data_put_text(doc, item, "label", row->label);
+        changed |= ui_data_put_text(doc, item, "meta", row->meta);
+        changed |= ui_data_put_number(item, "depth", row->depth);
+        changed |= ui_data_put_bool(item, "parent", row->parent);
+        changed |= ui_data_put_bool(item, "open", row->open);
+        changed |= ui_data_put_bool(item, "shown", row->open);
+        return ui_data_put_bool(item, "selected", row->selected) || changed;
     }
-    changed |= put_text(doc, item, "kind", row->kind);
-    changed |= put_text(doc, item, "at", row->at);
-    changed |= put_text(doc, item, "rml", row->rml);
-    return put_text(doc, item, "count", row->count) || changed;
+    changed |= ui_data_put_text(doc, item, "kind", row->kind);
+    changed |= ui_data_put_text(doc, item, "at", row->at);
+    changed |= ui_data_put_text(doc, item, "rml", row->rml);
+    return ui_data_put_text(doc, item, "count", row->count) || changed;
 }
 
 /* Gives the array `length` rows, adding and removing at its end; true when
@@ -739,8 +709,8 @@ static bool show_window(
         yyjson_mut_val *item = yyjson_mut_arr_get(rows, (size_t)j);
         char offset[32];
         snprintf(offset, sizeof offset, "translateY(%.2fdp)", (first + p) * height);
-        changed |= put_text(doc, item, "offset", offset);
-        changed |= put_number(item, "key", (double)window[p]);
+        changed |= ui_data_put_text(doc, item, "offset", offset);
+        changed |= ui_data_put_number(item, "key", (double)window[p]);
         if (fresh || !immutable(view)) {
             output_row row;
             render(s, window[p], &row);
@@ -828,7 +798,7 @@ static bool show_rows(studio *s, const studio_panel_sync *at)
                      ? show_window(s, at->doc, rows, keys + first, length, first, height)
                      : fit(at->doc, rows, 0, (shape)i);
     }
-    changed |= put_text(at->doc, at->variable, "empty", count ? "" : empty_text(s));
+    changed |= ui_data_put_text(at->doc, at->variable, "empty", count ? "" : empty_text(s));
     afree(keys);
     return changed;
 }
@@ -849,10 +819,10 @@ static bool show_head(studio *s, const studio_panel_sync *at)
         title = s->calls.root.title;
         icon = s->calls.callees ? KIT_ICON_CALLEES : KIT_ICON_CALLERS;
     }
-    bool changed = put_text(at->doc, head, "title", title);
+    bool changed = ui_data_put_text(at->doc, head, "title", title);
     changed |= put_glyph(at->doc, head, "icon", icon);
-    changed |= put_text(at->doc, head, "count", count);
-    return put_bool(at->variable, "callees", s->calls.callees) || changed;
+    changed |= ui_data_put_text(at->doc, head, "count", count);
+    return ui_data_put_bool(at->variable, "callees", s->calls.callees) || changed;
 }
 
 static bool clearable(studio *s)
@@ -914,11 +884,11 @@ bool studio_output_sync(studio *s, const studio_panel_sync *at)
     if (s->problems_scope == PROBLEMS_PROJECT && !s->problems_checked) {
         check_project(s);
     }
-    changed |= put_number(at->variable, "view", s->output_view);
-    changed |= put_number(at->variable, "problems", problem_count(s));
-    changed |= put_number(at->variable, "runtime", acount(s->runtime_errors));
-    changed |= put_number(at->variable, "scope", s->problems_scope);
-    changed |= put_bool(at->variable, "clearable", clearable(s));
+    changed |= ui_data_put_number(at->variable, "view", s->output_view);
+    changed |= ui_data_put_number(at->variable, "problems", problem_count(s));
+    changed |= ui_data_put_number(at->variable, "runtime", acount(s->runtime_errors));
+    changed |= ui_data_put_number(at->variable, "scope", s->problems_scope);
+    changed |= ui_data_put_bool(at->variable, "clearable", clearable(s));
     return show_head(s, at) || changed;
 }
 

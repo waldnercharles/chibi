@@ -68,10 +68,12 @@ def prepare(home, state, source, launch_agent):
         files[config] = ((json.dumps(merged, indent=2) + "\n").encode(), mode)
     if launch_agent:
         logs = state / "logs"
+        tool_dirs = [str(Path(found).parent) for name in ("rg", "ninja", "git", "lsof")
+                     if (found := shutil.which(name))]
         environment = {
             "CHIBI_WORKSPACE_HOME": str(state),
             "PATH": os.pathsep.join(dict.fromkeys([
-                str(python.parent), "/opt/homebrew/bin", "/usr/local/bin",
+                str(python.parent), *tool_dirs, "/opt/homebrew/bin", "/usr/local/bin",
                 "/usr/bin", "/bin", "/usr/sbin", "/sbin"])),
         }
         plist = {

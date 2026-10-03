@@ -28,6 +28,8 @@ Codex requires review of the new definitions in `/hooks`. The installer does not
 change hook trust. Claude may need a new session to load settings. Hooks apply only
 to registered managed checkouts. The installed CLI must support `codex app PATH`
 and `claude --desktop`; the latter requires Claude Code 2.1.285 or newer.
+Claude's launcher also requires an interactive terminal and a Claude account
+signed into the CLI (`claude auth login`), even if Desktop is already signed in.
 
 ## Start a task
 

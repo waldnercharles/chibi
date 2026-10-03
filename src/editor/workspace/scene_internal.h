@@ -242,7 +242,8 @@ void scene_property_value_free(pin_value *value);
 void finish_property_edit(app_scene_authoring *scene);
 void finish_transform_edit(app_scene_authoring *scene, bool cancel);
 void write_transform_edit(app_scene_authoring *scene, ecs_entity entity, GameTransform position);
-void fit_scene_view(engine_viewport *viewport, ecs_world *world, ecs_entity only);
+/* Frames what draws of `world`, or of `only`; false when nothing does. */
+bool fit_scene_view(engine_viewport *viewport, ecs_world *world, ecs_entity only);
 void free_behavior_names(char **names);
 char **instance_behavior_names(app_scene_authoring *scene, ecs_entity entity);
 scene_prototype_asset *previewed_prototype(app_scene_authoring *scene);

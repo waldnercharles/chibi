@@ -97,13 +97,13 @@ static bool visual_bounds(const ecs_world *world, ecs_entity entity, bool effect
                          );
 }
 
-static void fit_arena_view(engine_viewport *viewport, ecs_world *world, ecs_entity only)
+static bool fit_arena_view(engine_viewport *viewport, ecs_world *world, ecs_entity only)
 {
     ecs_component_id required[] = { GAME_COMPONENT_GameTransform.id,
                                     GAME_COMPONENT_GameGeometry3D.id };
     ecs_query query;
     if (ecs_query_begin(world, &query, required, 2) != ECS_OK) {
-        return;
+        return false;
     }
     CF_V3 *points = NULL;
     ecs_entity entity;
@@ -132,19 +132,20 @@ static void fit_arena_view(engine_viewport *viewport, ecs_world *world, ecs_enti
                                       fit.max.y - fit.min.y };
         engine_viewport_set_view(viewport, &view);
     }
+    bool found = acount(points) > 0;
     afree(points);
+    return found;
 }
 
-void fit_scene_view(engine_viewport *viewport, ecs_world *world, ecs_entity only)
+bool fit_scene_view(engine_viewport *viewport, ecs_world *world, ecs_entity only)
 {
     if (engine_viewport_perspective(viewport)) {
-        fit_arena_view(viewport, world, only);
-        return;
+        return fit_arena_view(viewport, world, only);
     }
     ecs_component_id required[] = { GAME_COMPONENT_GameTransform.id };
     ecs_query query;
     if (ecs_query_begin(world, &query, required, 1) != ECS_OK) {
-        return;
+        return false;
     }
     CF_Aabb total = { 0 };
     bool found = false;
@@ -181,6 +182,7 @@ void fit_scene_view(engine_viewport *viewport, ecs_world *world, ecs_entity only
             total.max.y
         );
     }
+    return found;
 }
 
 static ecs_entity pick_scene_entity(app_scene_authoring *scene, float x, float y)

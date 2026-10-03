@@ -15,6 +15,7 @@
 #include "support/text_file.h"
 #include "support/xalloc.h"
 #include "ui/json_items.h"
+#include "ui/list.h"
 #include "ui/rml.h"
 
 #include <assert.h>
@@ -1137,6 +1138,189 @@ static void item_lookups(int count)
     yyjson_mut_doc_free(json);
 }
 
+/* ---------- 9: the List widget (workstream F4) ---------- */
+
+/* projects/studio's List of TreeRows over ten thousand rows, which
+ * ui_list_window windows as a panel source does (spike/ListSpike). */
+#define TREE_ROWS 10000
+
+typedef struct list_spike
+{
+    bench_doc doc;
+    ui_mount *mount;
+    rml_listener *listener;
+    rml_element *list;
+    yyjson_mut_val *rows;
+    ui_list_state state;
+} list_spike;
+
+static yyjson_mut_val *tree_item(yyjson_mut_doc *json)
+{
+    static const char *const TEXTS[] = { "label", "icon", "meta", "drag", "name" };
+    static const char *const FLAGS[] = { "parent", "open",   "selected",
+                                         "active", "marked", "hidden" };
+    yyjson_mut_val *item = yyjson_mut_obj(json);
+    for (size_t i = 0; i < sizeof TEXTS / sizeof *TEXTS; i++) {
+        yyjson_mut_obj_add_strcpy(json, item, TEXTS[i], "");
+    }
+    for (size_t i = 0; i < sizeof FLAGS / sizeof *FLAGS; i++) {
+        yyjson_mut_obj_add_bool(json, item, FLAGS[i], false);
+    }
+    yyjson_mut_obj_add_int(json, item, "depth", 0);
+    return item;
+}
+
+/* Shows row `row` in `item`, changing its values in place. */
+static void tree_show(yyjson_mut_doc *json, yyjson_mut_val *item, int row)
+{
+    static const char *const ICONS[] = { "\xee\xaa\xbc", "\xee\xac\x96", "\xee\xa9\xbb" };
+    char text[64];
+    snprintf(text, sizeof text, "Swarmer %05d", row);
+    ui_data_set_text(json, yyjson_mut_obj_get(item, "label"), text);
+    ui_data_set_text(json, yyjson_mut_obj_get(item, "name"), text);
+    ui_data_set_text(json, yyjson_mut_obj_get(item, "icon"), ICONS[row % 3]);
+    ui_data_set_text(json, yyjson_mut_obj_get(item, "meta"), row % 4 ? "" : "3");
+    ui_data_set_text(json, yyjson_mut_obj_get(item, "drag"), "prototype");
+    yyjson_mut_set_int(yyjson_mut_obj_get(item, "depth"), row % 4);
+    yyjson_mut_set_bool(yyjson_mut_obj_get(item, "parent"), row % 4 == 0);
+    yyjson_mut_set_bool(yyjson_mut_obj_get(item, "selected"), row % 17 == 0);
+    yyjson_mut_set_bool(yyjson_mut_obj_get(item, "hidden"), row % 5 == 0);
+}
+
+/* Rows `first` on, `length` of them: the array grows and shrinks at its
+ * end, and the rows it keeps change their values. */
+static void tree_window(list_spike *l, int first, int length)
+{
+    yyjson_mut_doc *json = l->doc.data.doc;
+    while ((int)yyjson_mut_arr_size(l->rows) < length) {
+        yyjson_mut_arr_append(l->rows, tree_item(json));
+    }
+    while ((int)yyjson_mut_arr_size(l->rows) > length) {
+        yyjson_mut_arr_remove_last(l->rows);
+    }
+    yyjson_mut_val *item;
+    yyjson_mut_arr_iter it = yyjson_mut_arr_iter_with(l->rows);
+    for (int row = first; (item = yyjson_mut_arr_iter_next(&it)); row++) {
+        tree_show(json, item, row);
+    }
+}
+
+static void list_spike_open(list_spike *l)
+{
+    yyjson_mut_val *root;
+    yyjson_mut_doc *json = json_new(&root);
+    l->rows = yyjson_mut_obj_add_arr(json, yyjson_mut_obj_add_obj(json, root, "bench"), "rows");
+    doc_open(&l->doc, json, false, AREA_WIDTH, AREA_HEIGHT);
+    doc_show(&l->doc, "", SPIKE_HOST);
+    l->mount = ui_mount_new(STUDIO_CONTENT, "spike/ListSpike");
+    l->listener = rml_listener_create(on_key, NULL);
+    ui_mount_sync(l->mount, rml_element_by_id(l->doc.doc, "host"), l->listener, 0);
+    assert(!ui_mount_error(l->mount)[0]);
+    doc_show(&l->doc, ui_mount_style(l->mount), NULL);
+    l->list = rml_element_by_id(l->doc.doc, "bench-list");
+    assert(l->list);
+    l->state = (ui_list_state)UI_LIST_STATE_INIT;
+}
+
+static void list_spike_close(list_spike *l)
+{
+    ui_mount_free(l->mount);
+    doc_close(&l->doc);
+    rml_listener_destroy(l->listener);
+}
+
+/* 50 TreeRows made and removed, as case 3 makes PropertyRows. */
+static void tree_instancing(list_spike *l)
+{
+    double ms[ARMS][RUNS];
+    bench_counts counts[ARMS];
+    for (int run = -WARMUP; run < RUNS; run++) {
+        for (int arm = 0; arm < ARMS; arm++) {
+            tree_window(l, 0, arm ? 0 : 50);
+            bench_counts before = doc_mark(&l->doc);
+            double t = update_time(&l->doc, "bench");
+            counts[arm] = doc_counts(&l->doc, before);
+            if (run >= 0) {
+                ms[arm][run] = t;
+            }
+        }
+    }
+    bench_row("9", "50 TreeRows instanced (0 to 50)", bench_stat_of(ms[0], RUNS), counts[0]);
+    bench_row("9", "50 TreeRows removed (50 to 0)", bench_stat_of(ms[1], RUNS), counts[1]);
+    printf(
+        "|  | (each row: %d elements) | | | | | | |\n",
+        (counts[0].elements - counts[1].elements) / 50
+    );
+}
+
+/* Shows the window, dirtying and updating once, or emptying it first when
+ * `anew`, as a list that keeps no rows does. */
+static void tree_step(list_spike *l, int first, int length, bool anew)
+{
+    if (anew) {
+        tree_window(l, first, 0);
+        rml_data_model_dirty(l->doc.data.model, "bench");
+        rml_backend_update(l->doc.backend, 0);
+    }
+    tree_window(l, first, length);
+    rml_data_model_dirty(l->doc.data.model, "bench");
+    rml_backend_update(l->doc.backend, 0);
+}
+
+/* A scroll step of three rows, arms alternated run by run, each in a
+ * document of its own: the window ui_list_window gives, whose rows keep
+ * their elements, against the same window made anew each step. */
+static void tree_scroll(list_spike arms[ARMS])
+{
+    double ms[ARMS][RUNS];
+    bench_counts counts[ARMS];
+    ui_list desc = { .count = TREE_ROWS, .reveal = -1 };
+    int first = 0;
+    float row = 0;
+    for (int arm = 0; arm < ARMS; arm++) {
+        ui_list_window(arms[arm].list, &desc, &arms[arm].state, &first);
+        rml_backend_update(arms[arm].doc.backend, 0);
+        char value[32];
+        rml_element_property(arms[arm].list, "--row", value, sizeof value);
+        row = strtof(value, NULL);
+    }
+    int step = 0;
+    for (int run = -WARMUP; run < RUNS; run++) {
+        step = (step + 3) % (TREE_ROWS - 100);
+        for (int arm = 0; arm < ARMS; arm++) {
+            list_spike *l = &arms[arm];
+            bench_counts before = doc_mark(&l->doc);
+            double t = bench_now();
+            rml_element_set_scroll_top(l->list, step * row);
+            int length = ui_list_window(l->list, &desc, &l->state, &first);
+            tree_step(l, first, length, arm == 1);
+            t = bench_now() - t;
+            counts[arm] = doc_counts(&l->doc, before);
+            if (run >= 0) {
+                ms[arm][run] = t;
+            }
+        }
+    }
+    bench_stat kept = bench_stat_of(ms[0], RUNS), anew = bench_stat_of(ms[1], RUNS);
+    bench_row("9", "scroll step, List window of TreeRows over 10k rows", kept, counts[0]);
+    bench_row("9", "the same window made anew each step", anew, counts[1]);
+    bench_ratio("9", "made anew over kept rows", kept, anew);
+}
+
+static void tree_list()
+{
+    list_spike arms[ARMS];
+    for (int arm = 0; arm < ARMS; arm++) {
+        list_spike_open(&arms[arm]);
+    }
+    tree_instancing(&arms[0]);
+    tree_step(&arms[0], 0, 0, false);
+    tree_scroll(arms);
+    for (int arm = 0; arm < ARMS; arm++) {
+        list_spike_close(&arms[arm]);
+    }
+}
+
 /* ---------- Run ---------- */
 
 static void print_load()
@@ -1166,6 +1350,7 @@ int ui_bench_headless()
     output_rows();
     item_lookups(300);
     item_lookups(3000);
+    tree_list();
     print_load();
     ui_page_free(&theme);
     rml_backend_destroy(keeper);

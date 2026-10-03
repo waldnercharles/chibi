@@ -1784,3 +1784,66 @@ void rml_element_add_named_listener(rml_element *e, const char *type, rml_listen
 {
     element(e)->AddEventListener(type, unwrap<Listener>(l), capture);
 }
+
+/* ---------- Lists and drag (workstream F4) ---------- */
+
+namespace {
+
+/* Forwards a context's creation and destruction; RmlUi unregisters it at
+ * shutdown, which frees it. */
+class ContextHooks final : public Rml::Plugin
+{
+public:
+    explicit ContextHooks(const rml_context_hooks *hooks)
+      : hooks(hooks)
+    {
+    }
+
+    int GetEventClasses() override { return EVT_BASIC; }
+
+    void OnContextCreate(Rml::Context *c) override
+    {
+        if (hooks->create) {
+            hooks->create(wrap(c));
+        }
+    }
+
+    void OnContextDestroy(Rml::Context *c) override
+    {
+        if (hooks->destroy) {
+            hooks->destroy(wrap(c));
+        }
+    }
+
+    void OnShutdown() override { delete this; }
+
+private:
+    const rml_context_hooks *hooks;
+};
+
+} // namespace
+
+void rml_add_context_hooks(const rml_context_hooks *hooks)
+{
+    Rml::RegisterPlugin(new ContextHooks(hooks));
+}
+
+rml_element *rml_context_root(rml_context *c)
+{
+    return wrap(context(c)->GetRootElement());
+}
+
+bool rml_element_dispatch_texts(
+    rml_element *e,
+    const char *type,
+    int count,
+    const char *const *names,
+    const char *const *values
+)
+{
+    Rml::Dictionary parameters;
+    for (int i = 0; i < count; i++) {
+        parameters[names[i]] = Rml::String(values[i]);
+    }
+    return element(e)->DispatchEvent(type, parameters, true, true);
+}

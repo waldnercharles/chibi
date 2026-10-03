@@ -12,6 +12,7 @@
 #include "support/math.h"
 #include "support/xalloc.h"
 #include "ui/controls/controls.h"
+#include "ui/drag.h"
 #include "ui/iframe.h"
 #include "ui/motion.h"
 #include "ui/popover.h"
@@ -977,6 +978,8 @@ static bool initialize_rml()
     motion_register();
     /* Workstream F2: the native controls. */
     controls_register();
+    /* Workstream F4: drag and drop in every context. */
+    ui_drag_register();
     return true;
 }
 

@@ -280,7 +280,7 @@ double kit_idle_time(const kit *k)
 {
     double delay = rml_context_next_update_delay(k->context);
     double now = k->in.time;
-    if (k->restyle || acount(k->entering) || k->drag.pending || k->drag.active) {
+    if (k->restyle || acount(k->entering) || ui_drag_active(k->context, NULL)) {
         return 0;
     }
     for (int i = 0; i < acount(k->exiting); i++) {

@@ -583,13 +583,11 @@ static rml_vec2 origin(const entry *e, rml_vec2 size, rml_vec2 window, float dp)
 static bool place(entry *e, rml_element *el)
 {
     rml_vec2 size = rml_element_box_size(el, RML_BOX_BORDER);
-    rml_element *document = rml_element_owner_document(el);
-    rml_element *root = document ? rml_element_parent(document) : NULL;
-    if (size.x <= 0 || size.y <= 0 || !root) {
+    if (size.x <= 0 || size.y <= 0) {
         return false;
     }
     float dp = control_dp(el), margin = MARGIN * dp;
-    rml_vec2 window = rml_element_box_size(root, RML_BOX_BORDER);
+    rml_vec2 window = rml_element_box_size(rml_context_root(e->context), RML_BOX_BORDER);
     rml_vec2 at = origin(e, size, window, dp);
     at.x = math_clamp(at.x, margin, math_max(margin, window.x - size.x - margin));
     at.y = math_clamp(at.y, margin, math_max(margin, window.y - size.y - margin));
@@ -1056,10 +1054,7 @@ static void on_event(void *, const rml_event *e)
    event first. */
 static void listen(rml_context *context)
 {
-    if (!rml_context_document_count(context)) {
-        return;
-    }
-    rml_element *root = rml_element_parent(rml_context_document(context, 0));
+    rml_element *root = rml_context_root(context);
     for (int i = 0; i < acount(roots);) {
         rml_element *seen = get(roots[i]);
         if (seen == root) {

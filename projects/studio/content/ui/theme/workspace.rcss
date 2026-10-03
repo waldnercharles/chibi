@@ -295,9 +295,9 @@ body.comfortable .canvas-action { height: var(--studio-height-24, 24dp); }
 .designer-tree .tree-row .meta { flex: 1 1 0dp; margin-left: 2dp; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .designer-tree .tree-row .bound { font-size: 12dp; width: 14dp; color: var(--link); pointer-events: none; }
 /* Where a drag lands: a line above or below the row, or the row itself. */
-.designer-tree .tree-row[data-drop=before] { border-color: transparent; border-top-color: var(--primary); background-color: transparent; }
-.designer-tree .tree-row[data-drop=after] { border-color: transparent; border-bottom-color: var(--primary); background-color: transparent; }
-.designer-tree .tree-row[data-drop=inside] { border-color: var(--primary); background-color: var(--primary-soft); }
+.designer-tree .tree-row[data-drop-zone=before] { border-color: transparent; border-top-color: var(--primary); background-color: transparent; }
+.designer-tree .tree-row[data-drop-zone=after] { border-color: transparent; border-bottom-color: var(--primary); background-color: transparent; }
+.designer-tree .tree-row[data-drop-zone=inside] { border-color: var(--primary); background-color: var(--primary-soft); }
 /* The Canvas: the element under the pointer, a drop's target and the
    selection, labeled as UMG labels its selected widget. */
 .inspect-highlight.designer-hover .band.content { background-color: transparent; border: 1dp var(--primary-edge); }

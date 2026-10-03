@@ -29,7 +29,9 @@
 #include "platform/cute.h"
 #include "support/array.h"
 #include "ui/controls/controls.h"
+#include "ui/drag.h"
 #include "ui/input_feel.h"
+#include "ui/list.h"
 #include "ui/motion.h"
 #include "ui/rml.h"
 
@@ -107,9 +109,8 @@ typedef struct widget
     uint32_t icon;
     uint32_t badge_icon; /* a tile's corner badge */
     uint32_t color;
-    bool at_bottom;              /* list: pinned to the bottom */
-    rml_element *body;           /* list content */
-    float body_height, body_top; /* list: the content sizing applied, in dp */
+    ui_list_state list; /* list: its window's scroll state (ui/list.h) */
+    rml_element *body;  /* list content */
     rml_element *value_el, *input_el, *label_el, *icon_el, *meta_el, *twisty_el,
         *kbd_el, *badge_el, *head_el, *about_el, *menu_el, *image_el;
 } widget;
@@ -162,7 +163,8 @@ struct node
     spring layout_x, layout_y;
     chart_state *chart; /* owned, NULL until used */
     char **drop_types; /* accepted drag types, set each frame by kit_drop_target */
-    bool hosted;       /* kit_host: its children are mounted content */
+    bool drag_source; /* kit_drag_source named it this frame */
+    bool hosted;      /* kit_host: its children are mounted content */
     /* kit_document_begin: its container is the body of a document of its
        own, shown over el; it adds no step to its children's paths. */
     bool document;
@@ -180,16 +182,6 @@ typedef struct toast
     double y_target, x_target, scale_target, opacity_target;
     spring y, x, scale, opacity;
 } toast;
-
-/* The drag in progress (kit_drag.c). */
-typedef struct drag_state
-{
-    bool pending, active, dropped;
-    char *type, *payload, *label, *source, *over, *target;
-    char *hint; /* what a drop does here, set each frame by kit_drag_hint */
-    uint32_t icon;
-    float x0, y0;
-} drag_state;
 
 /* A value animated by kit_spring, keyed by its path. */
 typedef struct spring_value
@@ -299,11 +291,7 @@ struct kit
     exiting *exiting;
     node **layout_nodes;
     CF_MAP(spring_value) springs; /* keyed by str_hash(key) */
-    drag_state drag;
-    /* A drag began since the last click. RmlUi counts a press as a double
-       click after any press on the same element; as in browsers, only a
-       press after a click does. */
-    bool dragged;
+    bool dragging; /* a drag ran in the context at the last kit_begin */
     toast *toasts;
     CF_MAP(uint64_t) toast_actions; /* toast id -> frame the action was pressed */
     int toast_next;
@@ -396,11 +384,14 @@ void forget_motion(kit *k, node *n);
 
 void toasts_frame(kit *k);
 
-/* ---------- Drag and drop (kit_drag.c) ---------- */
+/* ---------- Drag and drop (kit_drag.c over ui/drag.h) ---------- */
 
-void drag_begin_frame(kit *k);
-void drag_end_frame(kit *k);
-void drag_cancel(kit *k);
+/* At kit_begin: ends a drag whose release the context missed, and closes
+ * the popups as one starts. */
+void drag_frame(kit *k);
+/* At kit_end, for each node emitted: its source and target attributes as
+ * this frame named them. */
+void drag_flush(node *n);
 /* Forgets the drag types a node accepted last frame. */
 void drop_types_clear(node *n);
 

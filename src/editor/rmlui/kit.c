@@ -543,6 +543,7 @@ node *emit_in(kit *k, node *parent, const char *key, node_kind kind, const char 
     parent->cursor++;
     n->frame = k->frame;
     drop_types_clear(n);
+    n->drag_source = false;
     set_class(n, cls);
     k->last = n;
     return n;
@@ -707,9 +708,6 @@ static void mousedown(kit *k, const rml_event *e, node *n)
 
 static void click(kit *k, const rml_event *e, node *n)
 {
-    if (k->drag.active) {
-        return;
-    }
     switch (n->kind) {
         case KIND_MENU_ITEM:
         case KIND_SUBMENU: menu_click(k, n); return;
@@ -760,11 +758,6 @@ static bool menu_open(kit *k)
 static void keydown(kit *k, const rml_event *e, node *n)
 {
     k->keyboard_edit = true;
-    if (k->drag.active && e->key == RML_KEY_ESCAPE) {
-        drag_cancel(k);
-        rml_event_stop_propagation(e);
-        return;
-    }
     /* An open color picker takes its own keys, Escape and Tab included. */
     if (n && n->kind == KIND_COLOR && color_field_open(n->el)) {
         return;
@@ -806,13 +799,12 @@ static void on_event(void *user, const rml_event *e)
     switch (e->id) {
         case RML_EVENT_MOUSEDOWN: mousedown(k, e, n); break;
         case RML_EVENT_CLICK:
-            k->dragged = false;
             if (n) {
                 click(k, e, n);
             }
             break;
         case RML_EVENT_DBLCLICK:
-            if (n && !k->dragged) {
+            if (n) {
                 n->events |= EV_DOUBLE;
             }
             break;
@@ -1084,12 +1076,6 @@ static void kit_free(kit *k)
         free(k->toasts[i].action);
     }
     afree(k->toasts);
-    drag_state *d = &k->drag;
-    char *drag_strings[] = { d->type, d->payload, d->label, d->source,
-                             d->over, d->target,  d->hint };
-    for (size_t i = 0; i < sizeof drag_strings / sizeof *drag_strings; i++) {
-        free(drag_strings[i]);
-    }
     free(k->command.placeholder);
     free(k->command.query);
     afree(k->command.shown);
@@ -1157,7 +1143,7 @@ void kit_begin(kit *k, const kit_frame_input *input)
         rml_context_update(k->context);
     }
     size_popups(k);
-    drag_begin_frame(k);
+    drag_frame(k);
     k->layer->cursor = 0;
     k->layer->frame = k->frame;
 }
@@ -1173,7 +1159,6 @@ void kit_end(kit *k)
     close_root(k);
     forget_closed_popups(k);
     toasts_frame(k);
-    drag_end_frame(k);
     prune(k, k->layer);
     end_slots(k);
     if (!k->command.open) {
@@ -1182,8 +1167,12 @@ void kit_end(kit *k)
     update_tooltip(k);
     motion_frame(k);
     for (int i = 0; i < cf_map_size(k->by_path); i++) {
-        k->by_path[i]->events = 0;
-        k->by_path[i]->w.committed = false;
+        node *n = k->by_path[i];
+        if (n->frame == k->frame) {
+            drag_flush(n);
+        }
+        n->events = 0;
+        n->w.committed = false;
     }
     strings_free(k->strings);
     k->strings = NULL;

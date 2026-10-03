@@ -81,6 +81,9 @@ void test_graph_optimizer();
 int scene_documents_run(const char *program);
 int studio_documents_run(const char *program);
 int studio_properties_run(const char *program);
+/* Lists and drag (workstream F4). */
+int studio_lists_run(const char *program);
+void test_ui_lists();
 int studio_graph_inputs_run(const char *program);
 /* Asset thumbnails. */
 void test_studio_minimap();
@@ -339,6 +342,8 @@ TEST_CASE(all_checks)
     test_ui_controls();
     /* ---------- Popovers (workstream F3) ---------- */
     test_ui_popovers();
+    /* ---------- Lists and drag (workstream F4) ---------- */
+    test_ui_lists();
 
     printf("\n%s\n", fails ? "SOME CHECKS FAILED" : "ALL CHECKS PASSED");
 
@@ -1029,6 +1034,11 @@ int main(int argc, char **argv)
         registry_validate();
         return studio_graph_inputs_run(program_name) || fails ? 1 : 0;
     }
+    /* Lists and drag (workstream F4): Studio's, in a hidden window. */
+    if (argc > 1 && strcmp(argv[1], "--studio-lists") == 0) {
+        registry_validate();
+        return studio_lists_run(program_name) || fails ? 1 : 0;
+    }
     if (argc > 1 && strcmp(argv[1], "--studio-properties") == 0) {
         registry_validate();
         return studio_properties_run(program_name) || fails ? 1 : 0;
@@ -1202,6 +1212,11 @@ int main(int argc, char **argv)
     /* ---------- Popovers (workstream F3) ---------- */
     if (argc > 1 && !strcmp(argv[1], "--ui-popovers")) {
         test_ui_popovers();
+        return fails ? 1 : 0;
+    }
+    /* ---------- Lists and drag (workstream F4) ---------- */
+    if (argc > 1 && !strcmp(argv[1], "--ui-lists")) {
+        test_ui_lists();
         return fails ? 1 : 0;
     }
     /* ---------- arena2d end to end (wave 3, workstream X) ---------- */

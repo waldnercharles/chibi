@@ -1232,7 +1232,7 @@ static void area_documents()
     s->maximized = -1;
     frames(&f, 6);
     rml_context *context = rml_backend_context(s->backend);
-    rml_element *name = test_query(context, ".outliner .tree-row .name");
+    rml_element *name = test_query(context, "#outliner-list .tree-row .name");
     rml_element *outliner = name ? rml_element_owner_document(name) : NULL;
     int documents = rml_context_document_count(context);
     for (int i = 0; outliner && i < documents; i++) {

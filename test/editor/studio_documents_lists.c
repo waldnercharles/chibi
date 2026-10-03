@@ -1,10 +1,11 @@
 /* Lists and drag (workstream F4) in Studio: the widget gallery's authored
  * List shows only a window of the project's assets and reuses its rows as it
  * scrolls, and one drag crosses between authored and native lists in other
- * area documents: a prototype from the authored List onto the native
- * Outliner adds an object, an asset from native Assets lands in the authored
- * Collected list, one from the List lands before a Collected row, and the
- * Scene's viewport, a C surface, places a prototype dropped on it. */
+ * area documents: a prototype from the authored List onto the Outliner adds
+ * an object and a behavior onto an Outliner row attaches it, an asset from
+ * native Assets lands in the authored Collected list, one from the List
+ * lands before a Collected row, and the Scene's viewport, a C surface,
+ * places a prototype dropped on it. */
 
 #include "test/editor/studio_documents.h"
 #include "test/suite_internal.h"
@@ -148,7 +149,7 @@ static void drag_crosses_lists()
     show_gallery(&f);
     int objects = acount(f.scene->actors);
     rml_element *binding = row_named(s, "#gallery-assets [data-drag]", "Binding");
-    rml_element *outliner = studio_element(s, ".vlist.outliner");
+    rml_element *outliner = studio_element(s, "#outliner-list");
     bool over_outliner = binding && outliner && carry(&f, binding, outliner, 0.3f);
     bool added = acount(f.scene->actors) == objects + 1 &&
                  !strcmp(f.scene->actors[objects].prototype_name, "Binding");
@@ -163,8 +164,39 @@ static void drag_crosses_lists()
     }
     test_check(
         over_outliner && added,
-        "a prototype dragged from an authored List onto the native Outliner "
-        "in another area adds an object of it"
+        "a prototype dragged from an authored List onto the Outliner in "
+        "another area adds an object of it"
+    );
+
+    frames(&f, 4);
+    char id[64];
+    snprintf(
+        id,
+        sizeof id,
+        "#outliner-list [data-id=\"%llu\"]",
+        (unsigned long long)ecs_entity_to_u64(f.scene->actors[objects].entity)
+    );
+    rml_element *behavior = row_named(s, "#gallery-assets [data-drag]", "Teller");
+    rml_element *row = studio_element(s, id);
+    bool takes = row && rml_element_has_attribute(row, "data-drop");
+    bool over_row = behavior && takes && carry(&f, behavior, row, 0);
+    char **names = instance_behavior_names(f.scene, f.scene->actors[objects].entity);
+    bool attached = acount(names) == 1 && !strcmp(names[0], "Teller");
+    free_behavior_names(names);
+    if (!(over_row && attached)) {
+        printf(
+            "  to a row: behavior %d row %d takes %d over %d attached %d\n",
+            behavior != NULL,
+            row != NULL,
+            takes,
+            over_row,
+            attached
+        );
+    }
+    test_check(
+        over_row && attached,
+        "a behavior dragged from an authored List onto an Outliner row "
+        "attaches it to that object"
     );
 
     rml_element *bank = row_named(s, ".assets-list .tree-row", "Bank");

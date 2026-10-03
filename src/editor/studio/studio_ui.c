@@ -455,6 +455,28 @@ bool studio_ui_modal_open(studio *s)
     return false;
 }
 
+/* Whether `el` is a field, which keeps keys a list passes on. */
+static bool takes_keys(rml_element *el)
+{
+    const char *tag = rml_element_tag_name(el);
+    return !strcmp(tag, "input") || !strcmp(tag, "textarea") ||
+           !strcmp(tag, "select") || !strcmp(tag, "number-field") ||
+           !strcmp(tag, "color-field");
+}
+
+/* The area whose panel holds `focus` on an element that edits nothing, or
+ * -1: a list or button there passes keys to Studio, as the chrome's
+ * buttons do and a focused list in VS Code still runs its global keys. */
+static int focus_area(studio *s, rml_element *focus)
+{
+    for (int i = 0; focus && !takes_keys(focus) && i < STUDIO_AREA_COUNT; i++) {
+        if (s->ui->areas[i] && ui_mount_holds(s->ui->areas[i], focus)) {
+            return i;
+        }
+    }
+    return -1;
+}
+
 bool studio_ui_shortcut_focus(studio *s)
 {
     if (!s || !s->ui || !s->backend || !s->kit || kit_has_popup(s->kit) ||
@@ -465,6 +487,9 @@ bool studio_ui_shortcut_focus(studio *s)
     studio_ui *ui = s->ui;
     rml_context *context = rml_backend_context(s->backend);
     rml_element *focus = context ? rml_context_focus_element(context) : NULL;
+    if (focus_area(s, focus) >= 0) {
+        return true;
+    }
     rml_element *button = focus;
     while (button && strcmp(rml_element_tag_name(button), "button") &&
            !rml_element_is_class_set(button, "btn")) {
@@ -480,6 +505,16 @@ bool studio_ui_shortcut_focus(studio *s)
     const char *name = ui_mount_name(mount);
     return !strcmp(name, "TopBar") || !strcmp(name, "AreaHeader") ||
            !strcmp(name, "StatusBar");
+}
+
+int studio_ui_keyboard_area(studio *s)
+{
+    rml_context *context = s->ui && s->backend ? rml_backend_context(s->backend) : NULL;
+    rml_element *focus = context ? rml_context_focus_element(context) : NULL;
+    if (!focus || !rml_element_is_pseudo_class_set(focus, "focus-visible")) {
+        return -1;
+    }
+    return focus_area(s, focus);
 }
 
 /* Mounts the panel's document in `host` and runs its events. */
@@ -592,6 +627,21 @@ void studio_ui_area(studio *s, int area, const char *name)
     if (document) {
         show_panel(s, p, &s->ui->areas[area], kit_host(s->kit, "panel", "area-panel"), document);
     }
+}
+
+rml_element *studio_ui_area_view(studio *s, int area, const char *name, const char *views)
+{
+    panel *p;
+    const char *document = panel_document(s, name, &p);
+    if (!document) {
+        return NULL;
+    }
+    rml_element *host = kit_host(s->kit, "panel", "area-panel");
+    char alias[64];
+    snprintf(alias, sizeof alias, "%s[%d]", views, area);
+    kit_attr(s->kit, "data-alias-view", alias);
+    show_panel(s, p, &s->ui->areas[area], host, document);
+    return host;
 }
 
 static void show_modal(studio *s, const char *name)

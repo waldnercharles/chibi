@@ -1,0 +1,4 @@
+name "OutlinerHeader"
+components {
+    GAME.GameUi document="OutlinerHeader" hidden=#true
+}

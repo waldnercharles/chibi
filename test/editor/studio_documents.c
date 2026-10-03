@@ -287,6 +287,7 @@ typedef enum
     RUN_ALL,
     RUN_PROPERTIES, /* the fields alone (--studio-properties) */
     RUN_LISTS,      /* lists and drag alone (--studio-lists) */
+    RUN_OUTLINER,   /* the Outliner alone (--studio-outliner) */
 } studio_run;
 
 static int studio_documents_app(const char *program, studio_run run)
@@ -310,6 +311,7 @@ static int studio_documents_app(const char *program, studio_run run)
     switch (run) {
         case RUN_PROPERTIES: studio_documents_property_field_checks(); break;
         case RUN_LISTS: studio_documents_list_checks(); break;
+        case RUN_OUTLINER: studio_documents_outliner_checks(); break;
         case RUN_ALL:
             studio_documents_graph_checks();
             test_ui_document_tabs();
@@ -342,4 +344,10 @@ int studio_properties_run(const char *program)
 int studio_lists_run(const char *program)
 {
     return studio_documents_app(program, RUN_LISTS);
+}
+
+/* The Outliner (workstream P2) alone. */
+int studio_outliner_run(const char *program)
+{
+    return studio_documents_app(program, RUN_OUTLINER);
 }

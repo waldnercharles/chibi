@@ -1468,12 +1468,15 @@ void studio_shortcuts(studio *s, bool field)
     if (s->scene->gizmo.modal) {
         return;
     }
-    studio_editor editor = s->hover_area >= 0
-                             ? studio_active_layout(s)->editors[s->hover_area]
-                             : STUDIO_EDITOR_COUNT;
+    /* Keys act on the area under the pointer, or on the one whose list the
+       keyboard focused (Tab). */
+    int area = studio_ui_keyboard_area(s);
+    area = area >= 0 ? area : s->hover_area;
+    studio_editor editor = area >= 0 ? studio_active_layout(s)->editors[area]
+                                     : STUDIO_EDITOR_COUNT;
     /* A game in the focused viewport owns keys without its primary modifier. */
     bool gameplay = !studio_previewed_ui(s) && engine_viewport_focused(s->viewport);
-    s->key_area = s->hover_area;
+    s->key_area = area;
     for (int i = 0; i < acount(s->keys); i++) {
         studio_key key = s->keys[i];
         bool primary = studio_primary(s, key.mod);
@@ -1515,6 +1518,10 @@ void studio_shortcuts(studio *s, bool field)
             continue;
         }
         if (editor == STUDIO_EDITOR_ASSETS && studio_assets_key(s, key.key, key.mod)) {
+            continue;
+        }
+        if (editor == STUDIO_EDITOR_OUTLINER &&
+            studio_outliner_key(s, key.key, key.mod)) {
             continue;
         }
         if (command >= 0 && COMMANDS[command].phase == SHORTCUT_EDITOR) {

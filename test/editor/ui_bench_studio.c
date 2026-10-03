@@ -234,7 +234,7 @@ static void area_text_change(studio_bench *b)
 {
     studio *s = b->studio;
     frames(b, 2);
-    rml_element *name = studio_query(s, ".outliner .tree-row .name");
+    rml_element *name = studio_query(s, "#outliner-list .tree-row .name");
     assert(name);
     char text[256];
     size_t length = rml_element_inner_rml(name, text, sizeof text);

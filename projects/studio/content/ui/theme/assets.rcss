@@ -1,7 +1,8 @@
 /* Assets' grid (studio_assets.c), after Unity's Project window and Unreal's
    Content Browser: tiles of a thumbnail over a name, sized from C, with the
    asset's kind badged in the picture's corner. Until a thumbnail is ready
-   the tile shows its kind's icon, as a skeleton. */
+   the tile shows its kind's icon, as a skeleton; while a partly loaded one
+   shows, a spinner marks the other corner. */
 
 .assets-size { width: 96dp; display: flex; margin-left: 4dp; }
 
@@ -30,6 +31,16 @@
     font-size: 10dp; line-height: 10dp; color: #ffffffd9; background-color: #0000008c;
 }
 .tile:not([data-ready]) .badge { display: none; }
+/* More of the picture is loading, as a scene's streamed terrain: a spinner
+   on a round chip like the badge's, in the opposite corner. */
+.tile .spin {
+    position: absolute; left: 3dp; bottom: 3dp; width: 14dp; height: 14dp; border-radius: 7dp;
+    font-size: 10dp; line-height: 14dp; text-align: center;
+    color: #ffffffd9; background-color: #0000008c;
+    animation: 0.9s linear infinite tile-spin;
+}
+.tile:not([data-loading]) .spin { display: none; }
+@keyframes tile-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 .tile .name {
     display: block; height: 18dp; line-height: 18dp; padding: 0dp 2dp; text-align: center;
     font-size: var(--studio-font-11, 11dp); color: var(--foreground); pointer-events: none;

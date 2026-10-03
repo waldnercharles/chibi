@@ -414,9 +414,9 @@ static void strings_free(char **strings)
 
 static void widget_free(widget *w)
 {
-    char *owned[] = { w->unit,  w->addon,   w->addon_cls,
-                      w->draft, w->applied, w->label,
-                      w->meta,  w->badge,   w->placeholder };
+    char *owned[] = { w->unit,        w->addon, w->addon_cls, w->draft,
+                      w->applied,     w->label, w->meta,      w->badge,
+                      w->placeholder, w->image };
     for (size_t i = 0; i < sizeof owned / sizeof *owned; i++) {
         free(owned[i]);
     }
@@ -1139,6 +1139,7 @@ static void kit_free(kit *k)
     free(k->command.query);
     afree(k->command.shown);
     free(k->surface_capture);
+    free(k->tip_image);
     strings_free(k->strings);
     cf_map_free(k->by_element);
     cf_map_free(k->by_path);

@@ -105,6 +105,10 @@ extern "C"
     /* A tooltip on the last item: a label, an optional shortcut and, when the
      * label alone does not explain the item, a short description that wraps. */
     void kit_tip(kit *k, const char *label, const char *shortcut, const char *description);
+    /* A picture above the last item's tooltip text, a "kit:<name>" source,
+     * as Unreal's Content Browser shows a large thumbnail on hover; NULL
+     * for none. A shown tooltip follows a change of picture. */
+    void kit_tip_image(kit *k, const char *source);
 
     /* Motion. Presence (Motion's AnimatePresence, Base UI's starting and ending
      * styles): the last item mounts with data-starting-style for one frame and,
@@ -262,6 +266,21 @@ extern "C"
     unsigned kit_row_begin(kit *k, const char *key, const kit_row_desc *desc);
     void kit_row_end(kit *k);
 
+    /* A tile of a grid view, as Unity's Project window and Unreal's Content
+     * Browser show assets: a picture over its label, which ellipsizes. Until
+     * the picture is ready the icon shows on the tile, as a skeleton; the
+     * badge marks the corner. The tile is the last item; it answers clicks
+     * as a row does and returns KIT_ROW_* flags. */
+    typedef struct kit_tile_desc
+    {
+        const char *label;
+        const char *image; /* a "kit:<name>" source, or NULL while pending */
+        uint32_t icon;
+        uint32_t badge; /* 0 none */
+        unsigned flags; /* KIT_ON selected */
+    } kit_tile_desc;
+    unsigned kit_tile(kit *k, const char *key, const kit_tile_desc *desc);
+
     /* Virtualized list (Virtuoso) of fixed-height rows. Begin sizes a scroll
      * container for every row and returns the visible range with overscan; emit
      * rows first..last in order, then end. Rows keep stable keys, so scrolling
@@ -335,6 +354,7 @@ extern "C"
         const char *description;
         int boost;
         bool current;
+        const char *image; /* a "kit:<name>" picture in the icon's place, or NULL */
     } kit_command_item;
     typedef struct kit_autocomplete_result
     {

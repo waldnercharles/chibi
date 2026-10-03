@@ -411,12 +411,23 @@ static void emit_row(kit *k, const kit_command_item *it, int index, bool selecte
         w->kbd_el = raw(item->el, "span", "kbd", NULL);
     }
     w->pending_index = index;
-    if (w->icon != it->icon) {
+    if (w->icon != it->icon || !str_eq(w->image, it->image)) {
         w->icon = it->icon;
-        char text[5];
-        utf8(text, it->icon);
-        rml_element_set_inner_rml(w->icon_el, text);
+        str_set(&w->image, it->image);
+        char *rml = NULL;
+        if (it->image) {
+            str_cat(&rml, "<img class=\"picture\" src=\"");
+            escape(&rml, it->image);
+            str_cat(&rml, "\"/>");
+        } else {
+            char text[5];
+            utf8(text, it->icon);
+            str_cat(&rml, text);
+        }
+        rml_element_set_inner_rml(w->icon_el, rml);
+        free(rml);
     }
+    set_flag(item, "data-picture", it->image != NULL);
     char *rml = match_rml(it->label ? it->label : "", query);
     if (str_set(&w->label, rml)) {
         rml_element_set_inner_rml(w->label_el, w->label);

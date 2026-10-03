@@ -1189,6 +1189,43 @@ void kit_row_end(kit *k)
     pop_node(k);
 }
 
+static void set_glyph(rml_element *el, uint32_t *shown, uint32_t cp)
+{
+    if (*shown == cp) {
+        return;
+    }
+    *shown = cp;
+    char text[5] = "";
+    if (cp) {
+        utf8(text, cp);
+    }
+    rml_element_set_inner_rml(el, text);
+}
+
+unsigned kit_tile(kit *k, const char *key, const kit_tile_desc *d)
+{
+    node *n = emit(k, key, KIND_ROW, "div", "tile");
+    widget *w = &n->w;
+    if (!w->label_el) {
+        w->head_el = raw(n->el, "div", "tile-art", NULL);
+        w->icon_el = raw_icon(w->head_el, "glyph", 0);
+        w->image_el = raw(w->head_el, "img", "picture", NULL);
+        w->badge_el = raw_icon(w->head_el, "badge", 0);
+        w->label_el = raw(n->el, "span", "name", NULL);
+    }
+    set_glyph(w->icon_el, &w->icon, d->icon);
+    set_glyph(w->badge_el, &w->badge_icon, d->badge);
+    if (str_set(&w->label, d->label)) {
+        set_inner_text(w->label_el, w->label);
+    }
+    if (d->image && str_set(&w->image, d->image)) {
+        rml_element_set_attribute(w->image_el, "src", d->image);
+    }
+    set_flag(n, "data-ready", d->image != NULL);
+    set_flag(n, "data-selected", d->flags & KIT_ON);
+    return row_events(n);
+}
+
 /* ---------- Splitter and surfaces ---------- */
 
 bool kit_splitter(kit *k, const char *key, int axis, float *value, float minimum, float maximum, bool invert)

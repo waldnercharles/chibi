@@ -138,12 +138,14 @@ typedef struct compiled_geometry
 typedef rml_shadow_layer shadow_layer;
 
 /* A host-owned texture named by "kit:<name>" sources. Handles to it stay valid
- * as the host rebinds it. */
+ * as the host rebinds it. A still one (rml_backend_set_image) draws in the
+ * retained paint; the others draw live between its static runs. */
 typedef struct external_texture
 {
     char *name;
     CF_Texture texture;
     uint64_t revision;
+    bool still;
 } external_texture;
 
 typedef struct draw_command
@@ -643,12 +645,15 @@ static void render_geometry(void *user, uintptr_t geometry, rml_vec2 translation
     if (texture) {
         const held_texture *held = cf_map_get_ptr(backend->textures, texture);
         assert(held);
-        command.external = held->external;
-        command.gpu_texture = held->external >= 0
-                                ? backend->externals[held->external].texture
-                                : held->texture;
-        if (held->external >= 0) {
-            command.revision = backend->externals[held->external].revision;
+        const external_texture *external = held->external >= 0
+                                             ? &backend->externals[held->external]
+                                             : NULL;
+        command.external = external && !external->still ? held->external : -1;
+        command.gpu_texture = external ? external->texture : held->texture;
+        command.revision = external ? external->revision : 0;
+        /* An unbound still image draws nothing, as a live one does. */
+        if (external && external->still && !external->texture.id) {
+            return;
         }
     }
     apush(backend->commands, command);
@@ -1853,6 +1858,19 @@ void rml_backend_set_texture(rml_backend *backend, const char *name, uint64_t te
         backend->externals[i].revision++;
     }
     backend->externals[i].texture = (CF_Texture){ texture };
+    backend->externals[i].still = false;
+}
+
+void rml_backend_set_image(rml_backend *backend, const char *name, uint64_t texture)
+{
+    assert(backend && name);
+    int i = external_index(backend, name);
+    external_texture *external = &backend->externals[i];
+    external->texture = (CF_Texture){ texture };
+    external->revision++;
+    external->still = true;
+    /* Its draws are in the captured paint: capture again. */
+    backend->frame_dirty = true;
 }
 
 void rml_backend_set_texture_revision(rml_backend *backend, const char *name, uint64_t texture, uint64_t revision)
@@ -1861,6 +1879,7 @@ void rml_backend_set_texture_revision(rml_backend *backend, const char *name, ui
     int i = external_index(backend, name);
     backend->externals[i].texture = (CF_Texture){ texture };
     backend->externals[i].revision = revision;
+    backend->externals[i].still = false;
 }
 
 const char *rml_backend_cursor(const rml_backend *backend)
@@ -1870,14 +1889,23 @@ const char *rml_backend_cursor(const rml_backend *backend)
 
 void rml_backend_present(rml_backend *backend)
 {
+    rml_backend_present_region(backend, (const float[4]){ 0, 0, 1, 1 });
+}
+
+void rml_backend_present_region(rml_backend *backend, const float region[4])
+{
     assert(backend);
     if (!backend->gpu_ready) {
         return;
     }
     float w = (float)backend->logical_width;
     float h = (float)backend->logical_height;
+    float center_x = ((region[0] + region[2]) * 0.5f - 0.5f) * w;
+    float center_y = (0.5f - (region[1] + region[3]) * 0.5f) * h;
     cf_draw_push();
-    cf_draw_projection(cf_ortho_2d(0, 0, w, h));
+    cf_draw_projection(
+        cf_ortho_2d(center_x, center_y, (region[2] - region[0]) * w, (region[3] - region[1]) * h)
+    );
     cf_draw_canvas(backend->straight_canvas, cf_v2(0, 0), cf_v2(w, h));
     cf_draw_pop();
 }

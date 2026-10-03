@@ -196,6 +196,16 @@ unsigned render_ui_input(render_ui *ui, const rml_input *input);
 bool render_ui_wants_text(const render_ui *ui);
 /* Draws the documents over `target` without clearing it. */
 void render_ui_composite(render_ui *ui, CF_Canvas target);
+/* The same for one region of the documents' canvas, x0 y0 x1 y1 as
+ * fractions of its size from the top left, stretched over `target`. */
+void render_ui_composite_region(render_ui *ui, CF_Canvas target, const float region[4]);
+/* The dp the canvas's height spans, 720 by default and for 0: a host that
+ * shows a small document large lays it out on a smaller screen. */
+void render_ui_set_reference_height(render_ui *ui, float dp);
+/* The region, in those fractions, that the overlay's content covers after
+ * the last update; false when it shows nothing. A host frames a document's
+ * content with it, as a thumbnail frames a widget. */
+bool render_ui_overlay_bounds(const render_ui *ui, float bounds[4]);
 /* The first mount's error, or "" when every shown asset loaded. */
 const char *render_ui_error(const render_ui *ui);
 /* The RmlUi context the documents live in, for inspecting them. */

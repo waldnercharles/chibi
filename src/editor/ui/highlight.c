@@ -1,5 +1,6 @@
 #include "editor/ui/highlight.h"
 
+#include <assert.h>
 #include <ctype.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -174,6 +175,9 @@ static const char *entity(char c)
         case '<': return "&lt;";
         case '>': return "&gt;";
         case '"': return "&quot;";
+        /* Braces in markup would open RmlUi data expressions. */
+        case '{': return "&#123;";
+        case '}': return "&#125;";
         default: return NULL;
     }
 }
@@ -207,6 +211,14 @@ static size_t append_escaped(char *out, size_t used, const char *text, int lengt
         used = escaped ? append(out, used, escaped, strlen(escaped))
                        : append(out, used, text + i, 1);
     }
+    return used;
+}
+
+size_t highlight_escape(const char *text, char *out, size_t size)
+{
+    assert(size > 0);
+    size_t used = append_escaped(out, 0, text, fitting(text, (int)strlen(text), size - 1));
+    out[used] = '\0';
     return used;
 }
 

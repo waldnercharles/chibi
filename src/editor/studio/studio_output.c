@@ -263,11 +263,10 @@ static void log_view(studio *s, float row)
     editor *e = s->scene->graph_editor;
     int total = e ? editor_log_count(e) : 0;
     int *shown = NULL;
-    char origin[128];
     for (int i = 0; i < total; i++) {
-        editor_log_line line = editor_log_at(e, i, origin, sizeof origin);
+        editor_log_line line = editor_log_at(e, i);
         if (contains(line.message, s->output_filter) ||
-            contains(origin, s->output_filter)) {
+            contains(line.origin, s->output_filter)) {
             apush(shown, i);
         }
     }
@@ -278,10 +277,10 @@ static void log_view(studio *s, float row)
     int first, last;
     kit_list_begin(k, "log", "output-list", &list, &first, &last);
     for (int r = first; r <= last && r < acount(shown); r++) {
-        editor_log_line line = editor_log_at(e, shown[r], origin, sizeof origin);
+        editor_log_line line = editor_log_at(e, shown[r]);
         char lead[48], markup[OUTPUT_LINE * 2], key[24];
         snprintf(lead, sizeof lead, "%8.3f", line.time);
-        row_markup(markup, sizeof markup, lead, origin, line.message);
+        row_markup(markup, sizeof markup, lead, line.origin, line.message);
         snprintf(key, sizeof key, "l%d", shown[r]);
         kit_markup(k, key, "output-line", markup);
     }

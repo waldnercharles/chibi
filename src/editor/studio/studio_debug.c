@@ -199,15 +199,21 @@ static void add_error(studio *s, const studio_runtime_error *error)
 }
 
 /* The log is drained each frame: its nodes belong to the running definition,
-   which the next applied edit replaces. */
+   which the next applied edit replaces. What the game prints goes to
+   Output's Log under its behavior's name, as Print String reaches Unreal's
+   Output Log while playing; failures go to Runtime. */
 static void collect_errors(studio *s, game_behavior_world *world)
 {
+    editor *log = s->scene->graph_editor;
     for (int i = 0; i < game_behavior_log_count(world); i++) {
         game_behavior_log_info info;
         int read = game_behavior_log_info_at(world, i, &info);
         assert(read == 0);
         (void)read;
         if (!info.failure) {
+            if (log) {
+                editor_log_print(log, info.asset_name, info.message);
+            }
             continue;
         }
         studio_runtime_error error = { .count = 1 };

@@ -63,6 +63,12 @@ void ui_data_sync(ui_data *data, game_save *save);
 /* Sets `value` to a copy of `text` unless it holds it already; the JSON keeps
  * what it copies until it is freed, so views update values in place. */
 void ui_data_set_text(yyjson_mut_doc *doc, yyjson_mut_val *value, const char *text);
+/* Set `object`'s member `name`, which it holds, in place; true when the value
+ * changed, so a source reports a change only when a view would show one. */
+bool ui_data_put_text(yyjson_mut_doc *doc, yyjson_mut_val *object, const char *name, const char *text);
+bool ui_data_put_bool(yyjson_mut_val *object, const char *name, bool on);
+bool ui_data_put_int(yyjson_mut_val *object, const char *name, int number);
+bool ui_data_put_number(yyjson_mut_val *object, const char *name, double number);
 /* Binds `self` in the document mounted at `root` to `entity`'s data, which
  * behaviors set with Set UI Data and the model holds under `entities`; call
  * before the mount installs its markup. Binding the same entity again

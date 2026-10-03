@@ -941,43 +941,13 @@ void studio_members_add(yyjson_mut_doc *doc)
 
 /* ---------- Values, written in place ---------- */
 
-static bool put_text(yyjson_mut_doc *doc, yyjson_mut_val *object, const char *name, const char *text)
-{
-    yyjson_mut_val *value = yyjson_mut_obj_get(object, name);
-    if (!strcmp(yyjson_mut_get_str(value), text)) {
-        return false;
-    }
-    ui_data_set_text(doc, value, text);
-    return true;
-}
-
-static bool put_bool(yyjson_mut_val *object, const char *name, bool on)
-{
-    yyjson_mut_val *value = yyjson_mut_obj_get(object, name);
-    if (yyjson_mut_get_bool(value) == on) {
-        return false;
-    }
-    yyjson_mut_set_bool(value, on);
-    return true;
-}
-
-static bool put_int(yyjson_mut_val *object, const char *name, int number)
-{
-    yyjson_mut_val *value = yyjson_mut_obj_get(object, name);
-    if (yyjson_mut_get_int(value) == number) {
-        return false;
-    }
-    yyjson_mut_set_int(value, number);
-    return true;
-}
-
 static bool put_glyph(yyjson_mut_doc *doc, yyjson_mut_val *object, const char *name, uint32_t icon)
 {
     char glyph[5] = "";
     if (icon) {
         studio_glyph(glyph, icon);
     }
-    return put_text(doc, object, name, glyph);
+    return ui_data_put_text(doc, object, name, glyph);
 }
 
 /* Gives `array` `length` items, adding and removing at its end, so items
@@ -1097,8 +1067,8 @@ static bool show_swatch(studio *s, yyjson_mut_doc *doc, yyjson_mut_val *item, co
               : pin->container == PIN_CONTAINER_SINGLE ? "circle"
                                                        : "square";
     }
-    bool changed = put_text(doc, item, "swatch", shape);
-    return put_text(doc, item, "color", color) || changed;
+    bool changed = ui_data_put_text(doc, item, "swatch", shape);
+    return ui_data_put_text(doc, item, "color", color) || changed;
 }
 
 static bool show_uses(studio *s, yyjson_mut_doc *doc, yyjson_mut_val *item, const member_row *row)
@@ -1109,9 +1079,9 @@ static bool show_uses(studio *s, yyjson_mut_doc *doc, yyjson_mut_val *item, cons
     if (row_symbol(s, row, &symbol, &title)) {
         uses_text(s, &symbol, label, tip);
     }
-    bool changed = put_text(doc, item, "uses", label);
-    changed |= put_text(doc, item, "usesTip", tip);
-    return put_bool(item, "unused", !strcmp(label, "0")) || changed;
+    bool changed = ui_data_put_text(doc, item, "uses", label);
+    changed |= ui_data_put_text(doc, item, "usesTip", tip);
+    return ui_data_put_bool(item, "unused", !strcmp(label, "0")) || changed;
 }
 
 /* A row: a selected member is marked, and active too but for a graph,
@@ -1125,18 +1095,18 @@ static bool show_row(studio *s, yyjson_mut_doc *doc, yyjson_mut_val *item, const
     studio_member_kind kind = row_member(s, row, &id);
     bool selected = kind && kind == s->members.kind && id == s->members.id;
     row_key(s, row, key, sizeof key);
-    bool changed = put_text(doc, item, "key", key);
-    changed |= put_text(doc, item, "label", look.label);
+    bool changed = ui_data_put_text(doc, item, "key", key);
+    changed |= ui_data_put_text(doc, item, "label", look.label);
     changed |= put_glyph(doc, item, "icon", look.icon);
-    changed |= put_text(doc, item, "meta", look.meta ? look.meta : "");
-    changed |= put_text(doc, item, "add", look.add ? look.add : "");
-    changed |= put_text(doc, item, "drag", look.draggable ? "member" : "");
-    changed |= put_int(item, "depth", row->depth);
-    changed |= put_bool(item, "parent", row->kind == ROW_SECTION);
-    changed |= put_bool(item, "open", look.open);
-    changed |= put_bool(item, "selected", selected);
-    changed |= put_bool(item, "active", look.active || (selected && row->kind != ROW_GRAPH));
-    changed |= put_bool(item, "renaming", kind && renaming(s, kind, id));
+    changed |= ui_data_put_text(doc, item, "meta", look.meta ? look.meta : "");
+    changed |= ui_data_put_text(doc, item, "add", look.add ? look.add : "");
+    changed |= ui_data_put_text(doc, item, "drag", look.draggable ? "member" : "");
+    changed |= ui_data_put_int(item, "depth", row->depth);
+    changed |= ui_data_put_bool(item, "parent", row->kind == ROW_SECTION);
+    changed |= ui_data_put_bool(item, "open", look.open);
+    changed |= ui_data_put_bool(item, "selected", selected);
+    changed |= ui_data_put_bool(item, "active", look.active || (selected && row->kind != ROW_GRAPH));
+    changed |= ui_data_put_bool(item, "renaming", kind && renaming(s, kind, id));
     changed |= show_swatch(s, doc, item, look.pin);
     return show_uses(s, doc, item, row) || changed;
 }
@@ -1223,16 +1193,16 @@ typedef struct
 
 static bool show_item(studio *s, yyjson_mut_doc *doc, yyjson_mut_val *item, const menu_item *shown)
 {
-    bool changed = put_text(doc, item, "id", shown->id);
-    changed |= put_text(doc, item, "label", shown->label);
+    bool changed = ui_data_put_text(doc, item, "id", shown->id);
+    changed |= ui_data_put_text(doc, item, "label", shown->label);
     changed |= put_glyph(doc, item, "icon", shown->icon);
-    changed |= put_text(
+    changed |= ui_data_put_text(
         doc,
         item,
         "shortcut",
         shown->shortcut ? studio_chord(s, shown->shortcut) : ""
     );
-    return put_bool(item, "disabled", shown->disabled) || changed;
+    return ui_data_put_bool(item, "disabled", shown->disabled) || changed;
 }
 
 /* The selected member's menu: what it can do, and Delete apart. */
@@ -1282,7 +1252,7 @@ static bool sync_filter(studio *s, const studio_panel_sync *at)
         rml_element_select(field);
         s->find_request = 0;
     }
-    return put_text(at->doc, at->variable, "filter", m->filter);
+    return ui_data_put_text(at->doc, at->variable, "filter", m->filter);
 }
 
 bool studio_members_sync(studio *s, const studio_panel_sync *at)
@@ -1290,13 +1260,13 @@ bool studio_members_sync(studio *s, const studio_panel_sync *at)
     yyjson_mut_val *m = at->variable;
     bool shown = studio_graph_active(s);
     bool changed = sync_filter(s, at);
-    changed |= put_bool(m, "shown", shown);
+    changed |= ui_data_put_bool(m, "shown", shown);
     if (!shown) {
         s->members.rename_kind = STUDIO_MEMBER_NONE;
         return fit(at->doc, yyjson_mut_obj_get(m, "rows"), 0, &ROW_SHAPE) || changed;
     }
     follow(s);
-    changed |= put_bool(m, "locked", locked(s));
+    changed |= ui_data_put_bool(m, "locked", locked(s));
     changed |= show_rows(s, at, yyjson_mut_obj_get(m, "rows"));
     return show_menu(s, at->doc, m) || changed;
 }

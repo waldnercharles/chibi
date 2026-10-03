@@ -8,9 +8,9 @@ Every key Studio takes, by the area it acts in. **Mod** is Command on a Mac (the
 - **Commands** come from one registry (`src/editor/studio/studio_commands.c`). Settings ▸ Keyboard rebinds any of them: a recorded chord replaces the default and its aliases, conflicts show as "Also assigned to …" and are counted and searchable ("conflict"), and Reset restores the default. Bindings persist with the preferences.
 - **Text fields** keep their keys: typing, Enter, Escape, Mod+A/C/V/X/Z/Y and caret keys. Other Mod chords still run commands, as VS Code's do (Mod+S saves, Mod+K searches). A key that a field, popup or modal releases (Escape, Enter) does nothing else in the same frame.
 - **Popups, Search and modal dialogs** own every key while open; Escape closes them.
-- **While playing**, a click in the Scene gives the game the keyboard. Studio keeps chords with Mod and the function keys (Stop, the debugger), which games do not bind. Hold Alt to navigate the Scene camera while playing.
+- **While playing**, a click in the Scene gives the game the keyboard. Studio keeps chords with Mod and the function keys (Stop, playback speed, the debugger), which games do not bind. Hold Alt to navigate the Scene camera while playing.
 - **Web build**: the page lets Studio take Command chords even while a field has focus (the browser would otherwise save, print, zoom or bookmark); Mod+V still pastes through the browser, into the focused field, or else into Studio's Paste (objects or nodes), so text copied in another tab or session reaches both. Option chords dispatch as their letter (⌥G, not ©).
-- Held keys repeat only Undo, Redo, UI Scale, Up and Down (with Shift too) in the Outliner, and the debugger's steps.
+- Held keys repeat only Undo, Redo, UI Scale, playback speed, Up and Down (with Shift too) in the Outliner, and the debugger's steps.
 
 ## Global
 
@@ -34,6 +34,8 @@ Rebindable commands, active over any area unless noted.
 | Ctrl+Space | Maximize the area under the pointer, or restore | Global | `studio_commands.c` |
 | Space (also with Shift or Alt) | Play, Pause, or Resume a paused run | Except Behavior | `studio_commands.c` |
 | Shift+F5 | Stop | Global | `studio_commands.c` |
+| Mod+Alt+-, Mod+Alt+= | Slower, Faster: step the playback speed through 0.1×, 0.25×, 0.5×, 1× and 2× (UI Scale's keys with Alt; Stop returns to 1×) | Global | `studio_commands.c`, `studio_debug.c` |
+| Mod+Alt+0 | Normal Speed | Global | `studio_commands.c`, `studio_debug.c` |
 
 Commands without a default chord (Reload, Open Prototype, Reset Camera, Toggle Performance, Reset Layout, Step, Record Gameplay, Show Live Values, the density, motion and theme toggles, Preview UI Asset, New …, Add Component, the layout modes, Side Pane, Collaboration and its actions, Close Tab, Close Drawer) are in the menus and Search, and Settings ▸ Keyboard can bind them.
 
@@ -152,7 +154,7 @@ The Outliner and Scene while a UI document is open (`studio_designer.c`).
 
 ## Debugger
 
-While a run is paused at a breakpoint; function keys reach Studio even while a game has the keyboard.
+While a run is paused at a breakpoint, which selects the instance it stopped in; function keys reach Studio even while a game has the keyboard. Break When Spawned pauses Play itself, so Space or Play continues it.
 
 | Key | Action | Source |
 | --- | --- | --- |

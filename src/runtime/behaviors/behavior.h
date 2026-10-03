@@ -202,6 +202,12 @@ typedef struct
     double wake_time;
 } game_behavior_entity_state;
 
+/* The inspected instance (game_behavior_inspect) outlives its entity, with
+ * the runs and activity it recorded and no longer running, so a debugger can
+ * keep showing what it last did. The world keeps one; it goes when another
+ * is retired, its asset's definition changes, or on release. */
+bool game_behavior_retired_target(const game_behavior_world *world, game_behavior_attachment_info *out);
+void game_behavior_release_retired(game_behavior_world *world);
 int game_behavior_attachment_count_for_entity(const game_behavior_world *world, ecs_entity entity);
 /* The attachment at `index` of game_behavior_attachment_count, in schedule order. */
 game_behavior_attachment_info game_behavior_attachment_info_index(game_behavior_world *world, int index);

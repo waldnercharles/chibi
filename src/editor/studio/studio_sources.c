@@ -1600,8 +1600,9 @@ static void sync_inspector(studio *s, studio_sources *src, ui_data *data)
 
 /* `editor`, what the editor's authored chrome shows (studio_status): for
  * the status bar, `hints`, a list of {icon, key, label}, report and
- * reporting, scene, selection, objects and playing; for the top bar, `tabs`,
- * a list of {label, path, icon, dirty, active, closable}, and paused; and
+ * reporting, scene, selection, objects, speed ("" at 1×) and playing; for
+ * the top bar, `tabs`, a list of {label, path, icon, dirty, active,
+ * closable}, and paused; and
  * `areas`, an {index, drawer, maximized, live} per area, which each
  * AreaHeader binds as `area`. Values change only when they differ, so bindings
  * update in place, and items a list sheds wait in `spare`. */
@@ -1614,7 +1615,7 @@ static const item_shape HINT = { HINT_TEXTS, NO_FLAGS };
 static const char *const TAB_TEXTS[] = { "label", "path", "icon", NULL };
 static const char *const TAB_FLAGS[] = { "dirty", "active", "closable", NULL };
 static const item_shape TAB = { TAB_TEXTS, TAB_FLAGS };
-static const char *const STATUS_TEXTS[] = { "report", "scene", "selection", NULL };
+static const char *const STATUS_TEXTS[] = { "report", "scene", "selection", "speed", NULL };
 static const char *const STATUS_FLAGS[] = { "reporting", "playing", "paused", NULL };
 
 static void add_areas(yyjson_mut_doc *doc, yyjson_mut_val *editor)
@@ -1705,7 +1706,10 @@ bool studio_status_show(yyjson_mut_doc *doc, const studio_status *status)
     bool changed = show_hints(doc, editor, status);
     changed |= show_tabs(doc, editor, status);
     changed |= show_areas(editor, status);
-    const char *texts[] = { status->report, status->scene, status->selection };
+    const char *texts[] = { status->report,
+                            status->scene,
+                            status->selection,
+                            status->speed };
     for (int t = 0; STATUS_TEXTS[t]; t++) {
         changed |= put_text(doc, editor, STATUS_TEXTS[t], texts[t] ? texts[t] : "");
     }
@@ -1861,9 +1865,10 @@ static const char *spawned_selection(app_scene_authoring *scene)
 
 static void sync_editor(studio *s, ui_data *data)
 {
-    char title[128];
+    char title[128], speed[16];
     scene_actor *actor = selected_actor(s->scene);
     studio_tab_view *tabs = studio_document_tabs(s);
+    studio_speed_text(s, speed, sizeof speed);
     studio_status status = {
         .report = s->status,
         .reporting = s->status[0] && s->time - s->status_time < REPORT_SECONDS,
@@ -1873,6 +1878,7 @@ static void sync_editor(studio *s, ui_data *data)
                     (spawned_selection(s->scene)[0] != '\0'),
         .objects = acount(s->scene->actors),
         .hidden = studio_hidden_count(s),
+        .speed = speed,
         .playing = app_scene_authoring_runtime_state(s->scene).playing || s->guest != NULL,
         .paused = s->pause.active,
         .tabs = tabs,

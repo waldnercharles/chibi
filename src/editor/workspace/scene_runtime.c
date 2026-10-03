@@ -431,6 +431,9 @@ int app_scene_authoring_runtime_command(
     if (command == APP_RUNTIME_RESTART || command == APP_RUNTIME_STOP) {
         app_scene_renderer_reset(scene->renderer);
     }
+    if (command == APP_RUNTIME_STOP) {
+        app_scene_authoring_set_time_scale(scene, 1);
+    }
     bool *playing = target == APP_RUNTIME_PREVIEW ? &scene->preview_playing
                                                   : &scene->runtime_playing;
     finish_transform_edit(scene, false);
@@ -512,6 +515,17 @@ int app_scene_authoring_runtime_command(
                  : -1;
 }
 
+void app_scene_authoring_set_time_scale(app_scene_authoring *scene, double scale)
+{
+    engine_set_time_scale(scene->runtime, scale);
+    engine_set_time_scale(game_prototype_preview_runtime(scene->prototype_preview), scale);
+}
+
+double app_scene_authoring_time_scale(const app_scene_authoring *scene)
+{
+    return engine_time_scale(scene->runtime);
+}
+
 const engine_frame_timing *app_scene_authoring_runtime_timing(const app_scene_authoring *scene)
 {
     engine *runtime = scene->active_runtime_target == APP_RUNTIME_PREVIEW
@@ -559,6 +573,97 @@ app_runtime_state app_scene_authoring_runtime_state(const app_scene_authoring *s
     return state;
 }
 
+/* ---------- Break When Spawned ---------- */
+
+static int compare_ids(const void *a, const void *b)
+{
+    uint64_t left = *(const uint64_t *)a, right = *(const uint64_t *)b;
+    return (left > right) - (left < right);
+}
+
+static bool seen(const app_scene_authoring *scene, uint64_t id)
+{
+    return acount(scene->spawn_seen) &&
+           bsearch(&id, scene->spawn_seen, (size_t)acount(scene->spawn_seen), sizeof id, compare_ids);
+}
+
+/* Notes the spawned objects now running and returns the last one new since
+   the previous call whose prototype has a break, else a null entity. */
+static ecs_entity watch_spawns(app_scene_authoring *scene)
+{
+    ecs_entity *running = NULL, spawned = { 0 };
+    uint64_t *ids = NULL;
+    game_entities_copy_live(scene->live->entities, &running);
+    for (int i = 0; i < acount(running); i++) {
+        uint64_t id = ecs_entity_to_u64(running[i]);
+        const char *prototype = seen(scene, id)
+                                  ? NULL
+                                  : scene_entity_prototype(scene, running[i]);
+        if (prototype && app_scene_authoring_spawn_break(scene, prototype)) {
+            spawned = running[i];
+        }
+        apush(ids, id);
+    }
+    if (acount(ids)) {
+        qsort(ids, (size_t)acount(ids), sizeof *ids, compare_ids);
+    }
+    afree(scene->spawn_seen);
+    scene->spawn_seen = ids;
+    afree(running);
+    return spawned;
+}
+
+bool app_scene_authoring_spawn_break(const app_scene_authoring *scene, const char *prototype)
+{
+    for (int i = 0; i < acount(scene->spawn_breaks); i++) {
+        if (!strcmp(scene->spawn_breaks[i], prototype)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void app_scene_authoring_set_spawn_break(app_scene_authoring *scene, const char *prototype, bool on)
+{
+    for (int i = 0; i < acount(scene->spawn_breaks); i++) {
+        if (!strcmp(scene->spawn_breaks[i], prototype)) {
+            free(scene->spawn_breaks[i]);
+            adel(scene->spawn_breaks, i);
+            break;
+        }
+    }
+    if (on) {
+        apush(scene->spawn_breaks, xstrdup(prototype));
+        /* Only what spawns from now on breaks. */
+        watch_spawns(scene);
+    }
+}
+
+/* Pauses after the frame that spawned an object with a break, selecting it,
+   which makes its instance of the open behavior the debug target. What a
+   Step spawns is noted without pausing again. */
+static void break_on_spawn(app_scene_authoring *scene)
+{
+    if (!acount(scene->spawn_breaks) || !scene->runtime_snapshot_valid ||
+        scene->active_runtime_target != APP_RUNTIME_SCENE) {
+        return;
+    }
+    ecs_entity spawned = watch_spawns(scene);
+    if (!spawned.slot || !scene->runtime_playing ||
+        app_scene_authoring_runtime_command(scene, APP_RUNTIME_SCENE, APP_RUNTIME_PAUSE) !=
+            0) {
+        return;
+    }
+    app_scene_authoring_select_entity(scene, spawned);
+    snprintf(
+        scene->message,
+        sizeof scene->message,
+        "Paused: %s %u spawned",
+        runtime_entity_label(scene, spawned),
+        (unsigned)spawned.slot
+    );
+}
+
 int app_scene_authoring_frame(app_scene_authoring *scene, double monotonic_time)
 {
     if (!scene) {
@@ -590,6 +695,7 @@ int app_scene_authoring_frame(app_scene_authoring *scene, double monotonic_time)
     if (frame_result < 0) {
         snprintf(scene->message, sizeof scene->message, "%s", engine_error(scene->runtime));
     }
+    break_on_spawn(scene);
     app_scene_renderer_set_time(
         scene->renderer,
         (float)engine_last_timing(

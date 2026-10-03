@@ -191,6 +191,10 @@ typedef enum
     STUDIO_COMMAND_EXTEND_PREVIOUS,
     STUDIO_COMMAND_EXTEND_NEXT,
     STUDIO_COMMAND_SHOW_LIVE_VALUES,
+    /* Playback speed (studio_debug.c) */
+    STUDIO_COMMAND_SLOWER,
+    STUDIO_COMMAND_FASTER,
+    STUDIO_COMMAND_NORMAL_SPEED,
     STUDIO_COMMAND_COUNT,
 } studio_command;
 
@@ -1433,6 +1437,21 @@ void studio_debug_steps(studio *s);
 void studio_debug_menu(studio *s);
 /* The paused run's call stack over the Behavior area. */
 void studio_debug_call_stack(studio *s);
+/* Break when spawned for the prototype, turned on or off with a report. */
+void studio_toggle_spawn_break(studio *s, const char *prototype);
+/* A prototype's Break When Spawned toggle, for its menus. */
+void studio_spawn_break_item(studio *s, const char *prototype);
+/* Playback speed (Unity's Time.timeScale): one preset faster or slower in
+   `direction`, or normal speed for 0. */
+#define STUDIO_SPEED_MIN 0.1
+#define STUDIO_SPEED_MAX 2.0
+void studio_speed_step(studio *s, int direction);
+/* "0.25×", or "" at normal speed. */
+void studio_speed_text(const studio *s, char *buf, size_t size);
+/* Playback Speed's group of Slower, Faster and Normal Speed in a menu. */
+void studio_speed_menu(studio *s);
+/* The speed beside the transport, with its presets; native in the top bar. */
+void studio_speed_control(studio *s);
 
 /* Commands (studio_commands.c): one table the menus, the command palette,
  * shortcuts and authored UI share, as VS Code's command registry. Authored
@@ -1977,7 +1996,8 @@ typedef struct studio_status
     const char *selection; /* the active object, "" for none */
     int selected;          /* how many objects are selected */
     int objects;
-    int hidden; /* objects hidden in the Scene's edit view */
+    int hidden;        /* objects hidden in the Scene's edit view */
+    const char *speed; /* the playback speed, "" at normal speed */
     bool playing;
     bool paused;                 /* the run is paused at a breakpoint */
     const studio_tab_view *tabs; /* the open documents */

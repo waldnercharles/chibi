@@ -898,6 +898,9 @@ void studio_outliner_body(studio *s, int area)
         if (kit_menu_item(k, "prototype", &prototype)) {
             app_scene_authoring_open_prototype(scene, actor->prototype_name);
         }
+        if (actor) {
+            studio_spawn_break_item(s, actor->prototype_name);
+        }
         if (studio_live(s)) {
             studio_command_item(s, STUDIO_COMMAND_KEEP_CHANGES);
         }

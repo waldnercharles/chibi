@@ -2,7 +2,8 @@
  * follows the selection to that object's instance of the open behavior, a
  * spawned object's included. Only that instance records activity, and none
  * does while no graph shows it or No target is chosen, which lasts until the
- * selection changes. */
+ * selection changes. Short-lived spawns: Follow newest, a destroyed target's
+ * frozen data, Break when spawned and playback speed. */
 #include "editor/workspace/scene_internal.h"
 #include "platform/cute.h"
 #include "render/shader_catalog.h"
@@ -120,6 +121,109 @@ static bool recorded(const behavior_instance *instance)
     return false;
 }
 
+/* Runs the game until the target is another instance than `sequence`'s. */
+static void until_retargeted(debug_fixture *f, uint64_t sequence)
+{
+    for (int i = 0; i < 240 && f->scene->debug.sequence == sequence; i++) {
+        steps(f, 1);
+        sync_editor_inspection(f->scene);
+    }
+}
+
+static bool projectile(debug_fixture *f, ecs_entity entity)
+{
+    return ecs_component_has(f->world, entity, GAME_COMPONENT_GameProjectile.id);
+}
+
+/* Short-lived spawns: Follow newest (Unreal's debug filter), a destroyed
+   target's frozen data, Break when spawned, and playback speed. */
+static void spawned_targets()
+{
+    debug_fixture f = fixture_new();
+    game_behavior_world *behaviors = f.live->behaviors;
+    game_behavior_attachment_info retired;
+    assert(app_scene_authoring_open_behavior(f.scene, "ProjectileBehavior") == 0);
+    app_scene_authoring_follow_newest(f.scene, "ArenaProjectile");
+    test_check(f.scene->debug_status == APP_DEBUG_NONE && f.scene->debug_newest, "Follow newest waits for the first spawn");
+    assert(app_scene_authoring_aim(f.scene, (CF_V2){ 1, 0 }, true) == FLOW_OK);
+    until_retargeted(&f, 0);
+    uint64_t first = f.scene->debug.sequence;
+    assert(
+        f.scene->debug_status == APP_DEBUG_AVAILABLE &&
+        projectile(&f, f.scene->debug.entity)
+    );
+    until_retargeted(&f, first);
+    test_check(
+        f.scene->debug.sequence > first && projectile(&f, f.scene->debug.entity) &&
+            f.scene->debug_status == APP_DEBUG_AVAILABLE,
+        "Follow newest moves the target to each projectile the game spawns"
+    );
+
+    /* The last shot dies; the graph keeps what it recorded. */
+    assert(app_scene_authoring_aim(f.scene, (CF_V2){ 1, 0 }, false) == FLOW_OK);
+    steps(&f, 2);
+    sync_editor_inspection(f.scene);
+    ecs_entity last = f.scene->debug.entity;
+    behavior_instance *instance = game_behavior_instance(behaviors, last, "ProjectileBehavior");
+    assert(instance && instance->trace_enabled);
+    for (int i = 0; i < 240 && ecs_entity_is_alive(f.world, last); i++) {
+        steps(&f, 1);
+    }
+    assert(!ecs_entity_is_alive(f.world, last));
+    sync_editor_inspection(f.scene);
+    test_check(
+        f.scene->debug_destroyed && f.scene->debug_status == APP_DEBUG_AVAILABLE &&
+            same_entity(f.scene->debug.entity, last) && recorded(instance) &&
+            game_behavior_retired_target(behaviors, &retired) &&
+            retired.instance == instance && traced(behaviors) == 0 &&
+            !strcmp(f.scene->debug.prototype, "ArenaProjectile"),
+        "a destroyed target keeps its recorded activity, frozen, and its name"
+    );
+    steps(&f, 5);
+    sync_editor_inspection(f.scene);
+    assert(f.scene->debug_destroyed && same_entity(f.scene->debug.entity, last));
+
+    /* The next shot replaces it. */
+    uint64_t destroyed = f.scene->debug.sequence;
+    assert(app_scene_authoring_aim(f.scene, (CF_V2){ 1, 0 }, true) == FLOW_OK);
+    until_retargeted(&f, destroyed);
+    test_check(
+        !f.scene->debug_destroyed && f.scene->debug.sequence > destroyed &&
+            !game_behavior_retired_target(behaviors, &retired),
+        "Follow newest moves on to the next spawn and lets the destroyed one go"
+    );
+
+    /* Break when spawned pauses with the new shot selected and targeted. */
+    assert(app_scene_authoring_aim(f.scene, (CF_V2){ 1, 0 }, false) == FLOW_OK);
+    steps(&f, 2);
+    assert(app_scene_authoring_choose_debug_target(f.scene, (ecs_entity){ 0 }) == 0);
+    app_scene_authoring_set_spawn_break(f.scene, "ArenaProjectile", true);
+    steps(&f, 2);
+    test_check(f.scene->runtime_playing, "shots already flying do not break");
+    assert(app_scene_authoring_aim(f.scene, (CF_V2){ 1, 0 }, true) == FLOW_OK);
+    for (int i = 0; i < 240 && f.scene->runtime_playing; i++) {
+        steps(&f, 1);
+    }
+    sync_editor_inspection(f.scene);
+    ecs_entity selected = selected_scene_entity(f.scene);
+    test_check(
+        !f.scene->runtime_playing && projectile(&f, selected) &&
+            same_entity(f.scene->debug.entity, selected) &&
+            f.scene->debug_status == APP_DEBUG_AVAILABLE,
+        "Break when spawned pauses on the frame a shot spawns, selected and "
+        "targeted"
+    );
+    app_scene_authoring_set_spawn_break(f.scene, "ArenaProjectile", false);
+    assert(!app_scene_authoring_spawn_break(f.scene, "ArenaProjectile"));
+
+    /* Playback speed holds through Pause and returns to 1x on Stop. */
+    app_scene_authoring_set_time_scale(f.scene, 0.25);
+    assert(engine_time_scale(f.runtime) == 0.25);
+    assert(app_scene_authoring_runtime_command(f.scene, APP_RUNTIME_SCENE, APP_RUNTIME_STOP) == 0);
+    test_check(app_scene_authoring_time_scale(f.scene) == 1, "Stop returns playback to normal speed");
+    fixture_free(&f);
+}
+
 void test_debug_target()
 {
     debug_fixture f = fixture_new();
@@ -177,5 +281,6 @@ void test_debug_target()
     sync_editor_inspection(f.scene);
     assert(same_entity(f.scene->debug.entity, player) && input->trace_enabled);
     fixture_free(&f);
+    spawned_targets();
     puts("debug target PASS: follows the selection, spawned objects included; only the target traces; hidden graphs and No target trace nothing");
 }

@@ -273,6 +273,9 @@ static void asset_menu(studio *s, const char *key)
     if (asset && menu_item(k, "refs", "Find References", KIT_ICON_REFERENCES, NULL)) {
         studio_find_asset_references(s, s->assets_menu);
     }
+    if (asset && asset->kind == REFERENCE_ASSET_PROTOTYPE) {
+        studio_spawn_break_item(s, asset->name);
+    }
     if (studio_asset_refactorable(asset)) {
         if (menu_item(k, "rename", "Rename", KIT_ICON_EDIT, "F2")) {
             studio_refactor_rename_asset(s, s->assets_menu);

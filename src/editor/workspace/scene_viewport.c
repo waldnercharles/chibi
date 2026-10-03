@@ -370,13 +370,16 @@ static void edit_scene_pointer(app_scene_authoring *scene, engine_viewport *view
         }
         if (game_entities_owns(scene->live->entities, picked)) {
             app_scene_authoring_select_runtime_entity(scene, picked);
-            return;
         }
         for (int i = 0; i < acount(scene->actors); i++) {
             if (ecs_entity_to_u64(scene->actors[i].entity) == ecs_entity_to_u64(picked)) {
                 select_instance(scene, i);
                 break;
             }
+        }
+        /* A paused run's objects, spawned ones too, move in its world. */
+        if (!GAME_GameTransform_has(scene->world, picked)) {
+            return;
         }
         begin_transform_edit(scene, picked);
         scene->dragging_actor = true;
@@ -416,7 +419,7 @@ static void edit_scene_pointer(app_scene_authoring *scene, engine_viewport *view
             scene->edit_before.y - pointer.world_y - scene->drag_origin.y,
         };
         write_transform_edit(scene, scene->edit_actor, position);
-        if (scene_collab_can_write_locally()) {
+        if (scene_collab_can_write_locally() && !scene->runtime_snapshot_valid) {
             scene->scene_dirty = true;
         }
     }

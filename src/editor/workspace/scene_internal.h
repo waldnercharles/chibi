@@ -31,6 +31,15 @@ typedef struct
     bool saved;
 } scene_camera;
 
+/* Keep Changes: an instance's running values that differ from its authored
+   state, waiting for Stop. */
+typedef struct
+{
+    uint64_t actor;                 /* identity */
+    const ecs_component_desc *only; /* the component kept, or NULL for all */
+    scene_field_edit *fields;       /* array; `after` holds each kept value */
+} scene_kept;
+
 typedef struct
 {
     char *path;
@@ -132,6 +141,7 @@ struct app_scene_authoring
     bool debug_pinned; /* the debug target stays put while the selection moves */
     app_debug_status debug_status;
     bool runtime_snapshot_valid;
+    scene_kept *kept; /* Keep Changes, oldest first; Stop applies them */
     bool runtime_playing;
     bool runtime_step;
     bool preview_playing;
@@ -251,6 +261,19 @@ bool prototype_has_component_id(const game_prototype *prototype, ecs_component_i
 void prototype_history_before(app_scene_authoring *scene, game_prototype *prototype);
 const char *runtime_entity_label(const app_scene_authoring *scene, ecs_entity entity);
 bool runtime_session(const app_scene_authoring *scene);
+/* Keep Changes (Unreal's Keep Simulation Changes): records the running values
+   of the selected instance, or of its component `only`, that differ from its
+   authored state. The running world holds the scene until Stop, which applies
+   them as one Undo step; a later record decides the values it covers.
+   Returns how many values it kept, or -1 without a running scene or a
+   selected instance. */
+int scene_keep_changes(app_scene_authoring *scene, const ecs_component_desc *only);
+/* Forgets the latest Keep Changes before Stop applies it. */
+void scene_kept_drop(app_scene_authoring *scene);
+/* The values Stop will keep, on how many objects; `name` is the object's
+   when there is one. */
+int scene_kept_values(app_scene_authoring *scene, int *objects, const char **name);
+void scene_kept_clear(app_scene_authoring *scene);
 bool scene_can_move(const app_scene_authoring *scene);
 void select_instance(app_scene_authoring *scene, int actor_index);
 scene_actor *selected_actor(app_scene_authoring *scene);

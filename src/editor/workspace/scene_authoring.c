@@ -904,6 +904,10 @@ void begin_transform_edit(app_scene_authoring *scene, ecs_entity entity)
 
 void write_transform_edit(app_scene_authoring *scene, ecs_entity entity, GameTransform position)
 {
+    if (scene->runtime_snapshot_valid) {
+        write_position(scene, entity, position);
+        return;
+    }
     if (scene_collab_is_editor() && scene->edit_actor.slot &&
         ecs_entity_to_u64(scene->edit_actor) == ecs_entity_to_u64(entity)) {
         scene->edit_after = position;
@@ -914,10 +918,25 @@ void write_transform_edit(app_scene_authoring *scene, ecs_entity entity, GameTra
     }
 }
 
+/* A move in the running scene changes only its world, which Stop replaces
+   with the authored scene; nothing records it. */
+static void finish_live_move(app_scene_authoring *scene, bool cancel)
+{
+    if (cancel && GAME_GameTransform_has(scene->world, scene->edit_actor)) {
+        write_position(scene, scene->edit_actor, scene->edit_before);
+    }
+    scene->edit_actor = (ecs_entity){ 0 };
+    scene->dragging_actor = false;
+}
+
 void finish_transform_edit(app_scene_authoring *scene, bool cancel)
 {
     finish_property_edit(scene);
     if (!scene->edit_actor.slot) {
+        return;
+    }
+    if (scene->runtime_snapshot_valid) {
+        finish_live_move(scene, cancel);
         return;
     }
     const GameTransform
@@ -1401,6 +1420,7 @@ void app_scene_authoring_free(app_scene_authoring *scene)
         return;
     }
     scene_debug_clear(&scene->debug);
+    scene_kept_clear(scene);
     scenario_document_free(scene->scenario);
     av_value_free(scene->scenario_saved_state);
     free(scene->ui);

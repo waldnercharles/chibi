@@ -615,15 +615,10 @@ static yyjson_mut_val *member(yyjson_mut_val *object, const char *name)
     return value;
 }
 
-static bool put_text(yyjson_mut_doc *doc, yyjson_mut_val *object, const char *name, const char *text)
+/* What a text field shows for NULL: nothing. */
+static const char *or_empty(const char *text)
 {
-    yyjson_mut_val *value = member(object, name);
-    text = text ? text : "";
-    if (!strcmp(yyjson_mut_get_str(value), text)) {
-        return false;
-    }
-    ui_data_set_text(doc, value, text);
-    return true;
+    return text ? text : "";
 }
 
 static bool put_glyph(yyjson_mut_doc *doc, yyjson_mut_val *object, const char *name, uint32_t icon)
@@ -632,27 +627,7 @@ static bool put_glyph(yyjson_mut_doc *doc, yyjson_mut_val *object, const char *n
     if (icon) {
         studio_glyph(text, icon);
     }
-    return put_text(doc, object, name, text);
-}
-
-static bool put_bool(yyjson_mut_val *object, const char *name, bool on)
-{
-    yyjson_mut_val *value = member(object, name);
-    if (yyjson_mut_get_bool(value) == on) {
-        return false;
-    }
-    yyjson_mut_set_bool(value, on);
-    return true;
-}
-
-static bool put_int(yyjson_mut_val *object, const char *name, int number)
-{
-    yyjson_mut_val *value = member(object, name);
-    if (yyjson_mut_get_int(value) == number) {
-        return false;
-    }
-    yyjson_mut_set_int(value, number);
-    return true;
+    return ui_data_put_text(doc, object, name, text);
 }
 
 /* The shapes of the items arrays hold: a row or tile, a line of tiles and
@@ -749,25 +724,25 @@ static void dp_text(char out[32], float value)
 
 static bool show_item(yyjson_mut_doc *doc, yyjson_mut_val *item, const item_view *v)
 {
-    bool changed = put_int(item, "id", v->id);
-    changed |= put_int(item, "kind", v->kind);
-    changed |= put_int(item, "depth", v->depth);
-    changed |= put_text(doc, item, "label", v->label);
-    changed |= put_text(doc, item, "meta", v->meta);
-    changed |= put_text(doc, item, "drag", v->drag);
-    changed |= put_text(doc, item, "image", v->image);
-    changed |= put_text(doc, item, "about", v->about);
+    bool changed = ui_data_put_int(item, "id", v->id);
+    changed |= ui_data_put_int(item, "kind", v->kind);
+    changed |= ui_data_put_int(item, "depth", v->depth);
+    changed |= ui_data_put_text(doc, item, "label", or_empty(v->label));
+    changed |= ui_data_put_text(doc, item, "meta", or_empty(v->meta));
+    changed |= ui_data_put_text(doc, item, "drag", or_empty(v->drag));
+    changed |= ui_data_put_text(doc, item, "image", or_empty(v->image));
+    changed |= ui_data_put_text(doc, item, "about", or_empty(v->about));
     changed |= put_glyph(doc, item, "icon", v->icon);
     changed |= put_glyph(doc, item, "badge", v->badge);
-    changed |= put_bool(item, "parent", v->parent);
-    changed |= put_bool(item, "open", v->open);
-    changed |= put_bool(item, "loading", v->loading);
-    changed |= put_bool(item, "unresolved", v->unresolved);
-    changed |= put_bool(item, "unused", v->unused);
+    changed |= ui_data_put_bool(item, "parent", v->parent);
+    changed |= ui_data_put_bool(item, "open", v->open);
+    changed |= ui_data_put_bool(item, "loading", v->loading);
+    changed |= ui_data_put_bool(item, "unresolved", v->unresolved);
+    changed |= ui_data_put_bool(item, "unused", v->unused);
     char top[32];
     dp_text(top, v->top);
-    changed |= put_text(doc, item, "top", top);
-    return put_bool(item, "shown", true) || changed;
+    changed |= ui_data_put_text(doc, item, "top", top);
+    return ui_data_put_bool(item, "shown", true) || changed;
 }
 
 /* A menu entry: a Studio command's (id) or an asset menu's (action). */
@@ -784,15 +759,15 @@ static bool show_entries(yyjson_mut_doc *doc, yyjson_mut_val *items, const entry
     yyjson_mut_val *item;
     yyjson_mut_arr_iter it = yyjson_mut_arr_iter_with(items);
     for (const entry_view *e = entries; (item = yyjson_mut_arr_iter_next(&it)); e++) {
-        changed |= put_text(doc, item, "id", e->id);
-        changed |= put_text(doc, item, "action", e->action);
-        changed |= put_text(doc, item, "label", e->label);
-        changed |= put_text(doc, item, "shortcut", e->shortcut);
-        changed |= put_text(doc, member(item, "heading"), "label", e->heading);
+        changed |= ui_data_put_text(doc, item, "id", or_empty(e->id));
+        changed |= ui_data_put_text(doc, item, "action", or_empty(e->action));
+        changed |= ui_data_put_text(doc, item, "label", or_empty(e->label));
+        changed |= ui_data_put_text(doc, item, "shortcut", or_empty(e->shortcut));
+        changed |= ui_data_put_text(doc, member(item, "heading"), "label", or_empty(e->heading));
         changed |= put_glyph(doc, item, "icon", e->icon);
-        changed |= put_bool(item, "checked", e->checked);
-        changed |= put_bool(item, "disabled", e->disabled);
-        changed |= put_bool(item, "separator", e->separator);
+        changed |= ui_data_put_bool(item, "checked", e->checked);
+        changed |= ui_data_put_bool(item, "disabled", e->disabled);
+        changed |= ui_data_put_bool(item, "separator", e->separator);
     }
     return changed;
 }
@@ -868,11 +843,11 @@ static bool show_header(studio *s, yyjson_mut_doc *doc, yyjson_mut_val *assets)
     char width_text[32], height_text[32];
     dp_text(width_text, art + 2 * TILE_PAD);
     dp_text(height_text, art + 2 * TILE_PAD + TILE_LABEL);
-    bool changed = put_int(assets, "kind", s->assets_kind);
-    changed |= put_int(assets, "tile", s->prefs.assets_tile);
-    changed |= put_bool(assets, "grid", grid_view(s));
-    changed |= put_text(doc, assets, "tileWidth", width_text);
-    return put_text(doc, assets, "tileHeight", height_text) || changed;
+    bool changed = ui_data_put_int(assets, "kind", s->assets_kind);
+    changed |= ui_data_put_int(assets, "tile", s->prefs.assets_tile);
+    changed |= ui_data_put_bool(assets, "grid", grid_view(s));
+    changed |= ui_data_put_text(doc, assets, "tileWidth", width_text);
+    return ui_data_put_text(doc, assets, "tileHeight", height_text) || changed;
 }
 
 /* The asset under the pointer in an Assets list, or -1. */
@@ -1012,7 +987,7 @@ static bool show_list(
     for (int k = 0; (item = yyjson_mut_arr_iter_next(&it)); k++) {
         int r = slot_item(&w, k);
         changed |= r < 0
-                     ? put_bool(item, "shown", false)
+                     ? ui_data_put_bool(item, "shown", false)
                      : show_row(s, at->doc, item, cache, cache->rows[r], (float)r * row);
     }
     return changed;
@@ -1078,13 +1053,13 @@ static bool show_line(
     dp_text(top, (float)l * (art + 2 * TILE_PAD + TILE_LABEL + TILE_GAP));
     yyjson_mut_val *tiles = member(line, "tiles");
     bool changed = fit(doc, tiles, columns, SHAPE_ITEM);
-    changed |= put_bool(line, "shown", true);
-    changed |= put_text(doc, line, "top", top);
+    changed |= ui_data_put_bool(line, "shown", true);
+    changed |= ui_data_put_text(doc, line, "top", top);
     yyjson_mut_val *item;
     yyjson_mut_arr_iter it = yyjson_mut_arr_iter_with(tiles);
     for (int i = l * columns; (item = yyjson_mut_arr_iter_next(&it)); i++) {
         changed |= i < count ? show_tile(s, doc, item, cache, i, ask)
-                             : put_bool(item, "shown", false);
+                             : ui_data_put_bool(item, "shown", false);
     }
     return changed;
 }
@@ -1120,7 +1095,7 @@ static bool show_grid(
     yyjson_mut_arr_iter it = yyjson_mut_arr_iter_with(w.items);
     for (int k = 0; (line = yyjson_mut_arr_iter_next(&it)); k++) {
         int l = slot_item(&w, k);
-        changed |= l < 0 ? put_bool(line, "shown", false)
+        changed |= l < 0 ? ui_data_put_bool(line, "shown", false)
                          : show_line(s, at->doc, line, cache, l, list);
     }
     return changed;
@@ -1167,8 +1142,8 @@ static bool show_menu(studio *s, yyjson_mut_doc *doc, yyjson_mut_val *menu)
                                          .shortcut = "X",
                                          .separator = true };
     }
-    bool changed = put_int(menu, "id", asset ? s->assets_menu : -1);
-    changed |= put_text(doc, menu, "label", asset ? asset->name : "");
+    bool changed = ui_data_put_int(menu, "id", asset ? s->assets_menu : -1);
+    changed |= ui_data_put_text(doc, menu, "label", asset ? asset->name : "");
     return show_entries(doc, member(menu, "items"), entries, count) || changed;
 }
 
@@ -1230,7 +1205,7 @@ bool studio_assets_sync(studio *s, const studio_panel_sync *at)
     const char *empty = acount(cache->tiles) ? ""
                       : count                ? "No matches"
                                              : "No assets";
-    return put_text(at->doc, at->variable, "empty", empty) || changed;
+    return ui_data_put_text(at->doc, at->variable, "empty", empty) || changed;
 }
 
 /* ---------- The `asset_view` source: what changes apart from the rows ---------- */
@@ -1258,8 +1233,8 @@ static bool show_preview(studio *s, yyjson_mut_doc *doc, yyjson_mut_val *preview
     image = image || rested < 0
               ? image
               : studio_thumb(s, rested, STUDIO_THUMB_TILE, &loading);
-    bool changed = put_int(preview, "id", rested < 0 ? NO_ASSET : rested);
-    return put_text(doc, preview, "image", image) || changed;
+    bool changed = ui_data_put_int(preview, "id", rested < 0 ? NO_ASSET : rested);
+    return ui_data_put_text(doc, preview, "image", or_empty(image)) || changed;
 }
 
 bool studio_asset_view_sync(studio *s, const studio_panel_sync *at)
@@ -1275,7 +1250,7 @@ bool studio_asset_view_sync(studio *s, const studio_panel_sync *at)
     if (!at->preview) {
         s->assets_hover = hovered_asset(s);
     }
-    bool changed = put_int(at->variable, "selected", selected < 0 ? NO_ASSET : selected);
+    bool changed = ui_data_put_int(at->variable, "selected", selected < 0 ? NO_ASSET : selected);
     return show_preview(s, at->doc, member(at->variable, "preview"), at->preview ? -1 : resting(s)) ||
            changed;
 }
@@ -1435,8 +1410,8 @@ static bool show_naming(studio *s, const studio_panel_sync *at, yyjson_mut_val *
         "New %s",
         studio_command_describe(s, new_command(n->kind)).menu
     );
-    bool changed = put_text(at->doc, naming, "label", title);
-    changed |= put_text(at->doc, naming, "error", n->error);
+    bool changed = ui_data_put_text(at->doc, naming, "label", title);
+    changed |= ui_data_put_text(at->doc, naming, "error", n->error);
     if (strcmp(shown, n->name)) {
         ui_data_set_text(at->doc, name, n->name);
         changed = true;

@@ -794,11 +794,18 @@ typedef struct
 #define STUDIO_NEW_KIND_COUNT (NEW_ASSET_KIND_COUNT + UI_NEW_KIND_COUNT)
 typedef struct
 {
-    int kind;     /* below STUDIO_NEW_KIND_COUNT */
-    bool opening; /* open the name popover this frame */
-    bool focus;   /* focus the name field on its first frame */
-    bool shown;   /* the popover showed last frame, so an Enter is for it */
+    int kind; /* below STUDIO_NEW_KIND_COUNT */
+    /* The name popover opens once a sync has shown the name asked for. */
+    enum
+    {
+        STUDIO_NAME_IDLE,
+        STUDIO_NAME_ASKED,
+        STUDIO_NAME_SHOWN,
+    } asking;
+    bool closing; /* the asset was made: close the popover */
+    bool open;    /* the popover showed at the last frame */
     char name[64];
+    char typed[64]; /* the name as its field last showed it */
     char error[160];
 } studio_new_asset;
 
@@ -1381,8 +1388,9 @@ bool studio_member_palette(studio *s);
 void studio_assets_free(studio *s);
 void studio_assets_header(studio *s, int area);
 void studio_assets_body(studio *s, int area);
-/* Keys over the Assets area: F2 renames the row under the pointer, X or
-   Delete deletes it. True when one was taken. */
+/* Keys over the Assets area: the arrows, Home and End move the selection
+   and Enter opens it; F2 renames the asset under the pointer, X or Delete
+   deletes it. True when one was taken. */
 bool studio_assets_key(studio *s, SDL_Keycode key, SDL_Keymod mod);
 const char *studio_asset_kind_name(int kind);
 uint32_t studio_asset_kind_icon(int kind);
@@ -1683,9 +1691,8 @@ bool studio_code_open_place(studio *s, const ui_code_place *place);
 /* Assets ▸ New (studio_assets.c): the header's button opens a menu of every
    kind, grouped, with the Assets filter's kind first. A kind, from the menu
    or its New … command, asks for a name, then writes the asset and opens it
-   as Assets opens it. The frame draws the menu and the name popover wherever
-   they opened. */
-void studio_new_asset_button(studio *s);
+   as Assets opens it. The frame shows the name popover, NewAsset, under the
+   header's button or at the pointer. */
 void studio_new_asset_start(studio *s, int kind);
 void studio_new_asset_frame(studio *s);
 
@@ -2357,6 +2364,32 @@ void studio_editor_choices(studio *s, yyjson_mut_doc *doc, yyjson_mut_val *edito
  * Studio panel `panel`; a drawer takes only the types it may hold. */
 void studio_area_show(studio *s, int area, int editor, const char *panel);
 
+/* ---------- Assets (workstream P3) ---------- */
+
+/* The Assets area's source, `assets` (studio_assets.c), which its Assets and
+ * AssetsHeader panels bind: the kind filter and its choices, the name filter
+ * (bound both ways, as view state), the size and the tile size it gives,
+ * the List's window of rows (the list) or tiles (the grid) in slots, and the
+ * empty state. Its actions, which the row menu sends too: click (asset,
+ * kind), open, menu, preview, references, spawnBreak, rename and delete
+ * (asset), kind, tile and scroll. */
+void studio_assets_add(yyjson_mut_doc *doc);
+bool studio_assets_sync(studio *s, const studio_panel_sync *at);
+void studio_assets_action(studio *s, const char *action, const ui_activation *a);
+/* What the Assets panels show apart from the rows, so a change there
+ * reevaluates only the views reading it: the selected asset and the large
+ * preview of the tile the pointer rests on (`asset_view`, synced with
+ * `assets`). */
+void studio_asset_view_add(yyjson_mut_doc *doc);
+bool studio_asset_view_sync(studio *s, const studio_panel_sync *at);
+/* The Assets menus' source, `asset_menus`, synced at every refresh, since
+ * NewAsset mounts only while it asks: New's kinds (`create`), the row menu
+ * (`row`) and the name popover (`naming`): its title, the name, bound both
+ * ways, and why the last one was refused. asset_menus.select selects the name
+ * its field holds and asset_menus.create makes the asset. */
+void studio_asset_menus_add(yyjson_mut_doc *doc);
+bool studio_asset_menus_sync(studio *s, const studio_panel_sync *at);
+void studio_asset_menus_action(studio *s, const char *action, const ui_activation *a);
 /* ---------- Output (workstream P4) ---------- */
 
 /* The `output` panel source: Output.rml's view and OutputHeader.rml's

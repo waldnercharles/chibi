@@ -31,6 +31,8 @@ add_library(chibi_ui STATIC
     # virtualized list windows for every context.
     src/ui/drag.c
     src/ui/list.c
+    # :focus-within, which RmlUi lacks (workstream P3).
+    src/ui/focus_within.c
     # Autofocus on elements built after their document shows (workstream P5).
     src/ui/autofocus.c
     # The embedded faces, loaded by the editor kit and game UI alike.

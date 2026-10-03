@@ -939,9 +939,3 @@ void kit_tip(kit *k, const char *label, const char *shortcut, const char *descri
     assert(k->last);
     set_tip(k->last, label, shortcut, description);
 }
-
-void kit_tip_image(kit *k, const char *source)
-{
-    assert(k->last);
-    set_optional_attr(k->last, "data-tip-image", source);
-}

@@ -1,5 +1,16 @@
-/* Studio editors for the authored scene: the viewport and the Canvas
- * preview. The Outliner is studio_outliner.c. */
+/* Studio editors for the authored scene: the viewport. The Outliner is
+ * studio_outliner.c, and the Canvas, which the Scene area shows while a ui
+ * asset previews, studio_canvas.c.
+ *
+ * The area is projects/studio's Scene and its header's controls
+ * SceneHeader. Their sources show what changes as the user works: `scene`
+ * the header's View Zoom and grid increment, and `scene_view` the overlays,
+ * each camera frame's label (moved by a transform, so a pan lays nothing
+ * out), the label naming the scene and selection, the camera's zoom, Live,
+ * the generated world's progress and the notice line. The tools, snapping,
+ * Show and Frame are commands the header binds through `commands`. The
+ * surface stays native in its slot, where the pointer, the gizmos and the
+ * camera are C's. */
 #include "editor/studio/studio_internal.h"
 #include "support/array.h"
 #include "ui/input_feel.h"
@@ -50,6 +61,7 @@ bool studio_matches(const char *query, const char *text)
 #define VIEW_SHARP_MAX 2.0f
 
 static const float VIEW_ZOOMS[] = { 1, 2, 4, 8 };
+#define VIEW_ZOOM_COUNT ((int)(sizeof VIEW_ZOOMS / sizeof *VIEW_ZOOMS))
 
 /* Shows the frame at `zoom` around (x, y), kept inside the frame. */
 static void place_view(studio *s, float zoom, float x, float y)
@@ -66,6 +78,11 @@ static void zoom_view(studio *s, float zoom, float u, float v)
     float next = fminf(fmaxf(zoom, 1), VIEW_ZOOM_MAX);
     float shift = 1 / s->view.zoom - 1 / next;
     place_view(s, next, s->view.x + (u - 0.5f) * shift, s->view.y + (v - 0.5f) * shift);
+}
+
+static bool zoomed_to(const studio *s, float zoom)
+{
+    return fabsf(s->view.zoom - zoom) < 0.005f;
 }
 
 /* A pinch, or Mod or Ctrl with the wheel, zooms the view toward the pointer,
@@ -100,59 +117,15 @@ void studio_scene_view(studio *s, engine_viewport_host_input *input)
     input->resolution = fminf(zoom, VIEW_SHARP_MAX);
 }
 
-/* The View Zoom choices, in a menu the caller has open. */
-static void view_zoom_items(studio *s)
+void studio_view_crop(studio *s)
 {
-    kit *k = s->kit;
-    kit_menu_group(k, "zoom-group", "View Zoom");
-    for (size_t i = 0; i < sizeof VIEW_ZOOMS / sizeof *VIEW_ZOOMS; i++) {
-        char item_key[8], item_label[8];
-        snprintf(item_key, sizeof item_key, "z%zu", i);
-        snprintf(item_label, sizeof item_label, "%d%%", (int)(VIEW_ZOOMS[i] * 100));
-        kit_menu_item_desc item = { .label = item_label,
-                                    .checked = fabsf(s->view.zoom - VIEW_ZOOMS[i]) <
-                                               0.005f };
-        if (kit_menu_item(k, item_key, &item)) {
-            zoom_view(s, VIEW_ZOOMS[i], 0.5f, 0.5f);
-        }
-    }
+    float half = 0.5f / s->view.zoom;
+    char crop[64];
+    snprintf(crop, sizeof crop, "%g %g %g %g", s->view.x - half, s->view.y - half, 2 * half, 2 * half);
+    kit_attr(s->kit, "rect", crop);
 }
 
-static void view_zoom_menu(studio *s, int area)
-{
-    kit *k = s->kit;
-    char key[24], label[16];
-    snprintf(key, sizeof key, "zoom:%d", area);
-    snprintf(label, sizeof label, "%d%%", (int)lroundf(s->view.zoom * 100));
-    kit_button_desc zoom = { .label = label,
-                             .cls = "menu-btn",
-                             .tip = "View Zoom",
-                             .shortcut = studio_chord(s, "Mod+Scroll") };
-    if (kit_button(k, "zoom", &zoom)) {
-        kit_popup_open(k, key);
-    }
-    if (kit_popup_begin(k, key, "menu")) {
-        view_zoom_items(s);
-        kit_popup_end(k);
-    }
-}
-
-/* ---------- Scene viewport ---------- */
-
-/* View › Show: what the edited scene shows of the game (Unreal's Show
-   flags), each a command over a preference. */
-static void show_items(studio *s)
-{
-    kit_menu_group(s->kit, "show-group", "Show");
-    studio_command_item(s, STUDIO_COMMAND_TOGGLE_GRID);
-    studio_command_item(s, STUDIO_COMMAND_SHOW_WORLD);
-    studio_command_item(s, STUDIO_COMMAND_SHOW_LIGHTING);
-    studio_command_item(s, STUDIO_COMMAND_SHOW_FOG);
-    studio_command_item(s, STUDIO_COMMAND_SHOW_CAMERAS);
-}
-
-static bool canvas_header(studio *s, int area);
-static bool canvas_body(studio *s);
+/* ---------- Grid increment ---------- */
 
 /* The settings table's Grid Increment row, whose presets are its choices. */
 static const studio_setting *increment_setting()
@@ -166,183 +139,282 @@ static const studio_setting *increment_setting()
     return NULL;
 }
 
+static float increment_at(int choice)
+{
+    return strtof(increment_setting()->choices[choice].value, NULL);
+}
+
 float studio_grid_increment(const studio *s, int step)
 {
-    const studio_setting *setting = increment_setting();
+    int count = increment_setting()->choice_count;
     float current = s->prefs.scene_increment, next = current;
-    for (int i = 0; i < setting->choice_count; i++) {
-        float up = strtof(setting->choices[setting->choice_count - 1 - i].value, NULL);
-        float down = strtof(setting->choices[i].value, NULL);
+    for (int i = 0; i < count; i++) {
+        float up = increment_at(count - 1 - i), down = increment_at(i);
         next = step > 0 && up > current ? up : next;
         next = step < 0 && down < current ? down : next;
     }
     return next;
 }
 
-/* Snapping and the grid increment, as Unity's grid snapping toolbar: the
-   magnet toggles it, and the increment beside it chooses the step. */
-static void snap_controls(studio *s, int area)
+/* ---------- The header (`scene`) ---------- */
+
+/* What the header shows: the scene's controls, a guest Studio's name, or
+   the Canvas's controls (studio_canvas.c). */
+enum
 {
-    kit *k = s->kit;
-    kit_push(k, "snapping", NULL, "snap-controls");
-    studio_command_info snap = studio_command_describe(s, STUDIO_COMMAND_TOGGLE_SNAP);
-    kit_button_desc toggle = { .icon = snap.icon,
-                               .tip = snap.label,
-                               .shortcut = snap.shortcut,
-                               .flags = s->prefs.scene_snap ? KIT_ON : 0 };
-    if (kit_button(k, "snap", &toggle)) {
-        studio_command_run(s, STUDIO_COMMAND_TOGGLE_SNAP);
+    MODE_SCENE,
+    MODE_GUEST,
+    MODE_CANVAS,
+};
+
+/* A MenuItem's values; only checked changes. */
+static void add_item(yyjson_mut_doc *doc, yyjson_mut_val *items, const char *label)
+{
+    yyjson_mut_val *item = yyjson_mut_arr_add_obj(doc, items);
+    yyjson_mut_obj_add_strcpy(doc, item, "label", label);
+    yyjson_mut_obj_add_str(doc, item, "icon", "");
+    yyjson_mut_obj_add_str(doc, item, "shortcut", "");
+    yyjson_mut_obj_add_bool(doc, item, "checked", false);
+    yyjson_mut_obj_add_bool(doc, item, "disabled", false);
+}
+
+/* `scene`: mode (MODE_*); zoom, the View Zoom button's label, zoomShown
+   and zoomKbd, its tip's chord; zooms, its levels; increment, the grid
+   increment's label, and increments, its presets. */
+void studio_scene_add(yyjson_mut_doc *doc)
+{
+    yyjson_mut_val *scene = yyjson_mut_obj_add_obj(doc, yyjson_mut_doc_get_root(doc), "scene");
+    yyjson_mut_obj_add_real(doc, scene, "mode", MODE_SCENE);
+    yyjson_mut_obj_add_strcpy(doc, scene, "zoom", "");
+    yyjson_mut_obj_add_bool(doc, scene, "zoomShown", false);
+    yyjson_mut_obj_add_strcpy(doc, scene, "zoomKbd", "");
+    yyjson_mut_val *zooms = yyjson_mut_obj_add_arr(doc, scene, "zooms");
+    for (int i = 0; i < VIEW_ZOOM_COUNT; i++) {
+        char label[8];
+        snprintf(label, sizeof label, "%d%%", (int)(VIEW_ZOOMS[i] * 100));
+        add_item(doc, zooms, label);
     }
-    char key[24], label[16];
-    snprintf(key, sizeof key, "increment:%d", area);
-    snprintf(label, sizeof label, "%g", s->prefs.scene_increment);
-    kit_button_desc increment = { .label = label, .cls = "menu-btn", .tip = "Grid Increment" };
-    if (kit_button(k, "increment", &increment)) {
-        kit_popup_open(k, key);
-    }
-    kit_pop(k);
-    if (!kit_popup_begin(k, key, "menu")) {
-        return;
-    }
+    yyjson_mut_obj_add_strcpy(doc, scene, "increment", "");
+    yyjson_mut_val *increments = yyjson_mut_obj_add_arr(doc, scene, "increments");
     const studio_setting *setting = increment_setting();
-    kit_menu_group(k, "group", "Grid Increment");
     for (int i = 0; i < setting->choice_count; i++) {
-        float value = strtof(setting->choices[i].value, NULL);
-        kit_menu_item_desc item = { .label = setting->choices[i].label,
-                                    .checked = value == s->prefs.scene_increment };
-        if (kit_menu_item(k, setting->choices[i].value, &item)) {
-            s->prefs.scene_increment = value;
-        }
-    }
-    kit_popup_end(k);
-}
-
-/* A tool in the header's group: pressed while active, its name and key in
-   its tip. */
-static void tool_button(studio *s, studio_command command)
-{
-    studio_command_info info = studio_command_describe(s, command);
-    kit_button_desc button = { .icon = info.icon,
-                               .tip = info.menu,
-                               .shortcut = info.shortcut,
-                               .flags = studio_command_checked(s, command) > 0 ? KIT_ON
-                                                                               : 0 };
-    if (kit_button(s->kit, info.id, &button)) {
-        studio_command_run(s, command);
+        add_item(doc, increments, setting->choices[i].label);
     }
 }
 
-/* The transform tools sit in the header, as Unreal's and Godot's viewport
-   toolbars hold them, so nothing covers the game's HUD in the view. */
-static void tool_group(studio *s)
+static int header_mode(const studio *s)
 {
-    kit_push(s->kit, "tools", NULL, "tool-group");
-    for (int tool = 0; tool < SCENE_TOOL_COUNT; tool++) {
-        tool_button(s, STUDIO_COMMAND_SELECT_TOOL + tool);
+    if (s->guest) {
+        return MODE_GUEST;
     }
-    kit_pop(s->kit);
+    return studio_previewed_ui(s) ? MODE_CANVAS : MODE_SCENE;
+}
+
+/* View Zoom shows in the header only while it magnifies, as a browser shows
+   its zoom, so one zoom reads at a time; the Canvas always shows it. */
+static bool show_zoom(studio *s, const studio_panel_sync *at, int mode)
+{
+    char label[16];
+    snprintf(label, sizeof label, "%d%%", (int)lroundf(s->view.zoom * 100));
+    bool shown = mode == MODE_CANVAS || (mode == MODE_SCENE && !zoomed_to(s, 1));
+    bool changed = ui_data_put_text(at->doc, at->variable, "zoom", label);
+    changed |= ui_data_put_bool(at->variable, "zoomShown", shown);
+    changed |= ui_data_put_text(at->doc, at->variable, "zoomKbd", studio_chord(s, "Mod+Scroll"));
+    yyjson_mut_arr_iter it = yyjson_mut_arr_iter_with(
+        yyjson_mut_obj_get(at->variable, "zooms")
+    );
+    for (int i = 0; i < VIEW_ZOOM_COUNT; i++) {
+        changed |= ui_data_put_bool(
+            yyjson_mut_arr_iter_next(&it),
+            "checked",
+            zoomed_to(s, VIEW_ZOOMS[i])
+        );
+    }
+    return changed;
+}
+
+static bool show_increment(studio *s, const studio_panel_sync *at)
+{
+    char label[16];
+    snprintf(label, sizeof label, "%g", s->prefs.scene_increment);
+    bool changed = ui_data_put_text(at->doc, at->variable, "increment", label);
+    yyjson_mut_arr_iter it = yyjson_mut_arr_iter_with(
+        yyjson_mut_obj_get(at->variable, "increments")
+    );
+    for (int i = 0; i < increment_setting()->choice_count; i++) {
+        bool on = increment_at(i) == s->prefs.scene_increment;
+        changed |= ui_data_put_bool(yyjson_mut_arr_iter_next(&it), "checked", on);
+    }
+    return changed;
+}
+
+bool studio_scene_sync(studio *s, const studio_panel_sync *at)
+{
+    int mode = header_mode(s);
+    bool changed = ui_data_put_number(at->variable, "mode", mode);
+    changed |= show_zoom(s, at, mode);
+    return show_increment(s, at) || changed;
+}
+
+/* scene.zoom and scene.increment choose a View Zoom level and a grid
+   increment preset by index. */
+void studio_scene_action(studio *s, const char *action, const ui_activation *a)
+{
+    int index = a->argc ? atoi(a->args[0]) : -1;
+    if (!strcmp(action, "zoom") && index >= 0 && index < VIEW_ZOOM_COUNT) {
+        zoom_view(s, VIEW_ZOOMS[index], 0.5f, 0.5f);
+    } else if (
+        !strcmp(action, "increment") && index >= 0 &&
+        index < increment_setting()->choice_count
+    ) {
+        s->prefs.scene_increment = increment_at(index);
+    }
 }
 
 void studio_scene_header(studio *s, int area)
 {
-    kit *k = s->kit;
-    if (s->guest) {
-        kit_label(k, "guest", NULL, "Studio");
-        kit_label(k, "working", "dim", "Running this project's working copy");
-        return;
-    }
-    if (canvas_header(s, area)) {
-        return;
-    }
-    char key[24];
-    snprintf(key, sizeof key, "view:%d", area);
-    kit_button_desc view = { .label = "View", .cls = "menu-btn" };
-    if (kit_button(k, "view", &view)) {
-        kit_popup_open(k, key);
-    }
-    if (kit_popup_begin(k, key, "menu")) {
-        kit_menu_item_desc frame = { .label = "Frame Selected",
-                                     .icon = KIT_ICON_FRAME,
-                                     .shortcut = "F",
-                                     .checked = -1,
-                                     .disabled = !selected_actor(s->scene) };
-        if (kit_menu_item(k, "frame", &frame)) {
-            studio_frame_selection(s);
-        }
-        kit_menu_item_desc reset = { .label = "Reset Camera", .checked = -1 };
-        if (kit_menu_item(k, "reset", &reset)) {
-            engine_viewport_reset_camera(s->viewport);
-        }
-        studio_command_item(s, STUDIO_COMMAND_VIEW_THROUGH_CAMERA);
-        kit_menu_separator(k, "s1");
-        show_items(s);
-        kit_menu_separator(k, "s2");
-        view_zoom_items(s);
-        kit_popup_end(k);
-    }
-    tool_group(s);
-    kit_leaf(k, "spacer", NULL, "spacer");
-    /* View Zoom magnifies the frame, the game's UI too, apart from the
-       camera the readout shows; it shows here only while it magnifies, as a
-       browser shows its zoom, so one zoom reads at a time. */
-    if (fabsf(s->view.zoom - 1) > 0.005f) {
-        view_zoom_menu(s, area);
-    }
-    snap_controls(s, area);
-    kit_button_desc frame = { .icon = KIT_ICON_FRAME,
-                              .tip = "Frame Selected",
-                              .shortcut = "F",
-                              .flags = selected_actor(s->scene) ? 0 : KIT_DISABLED };
-    if (kit_button(k, "frame", &frame)) {
-        studio_frame_selection(s);
-    }
+    studio_ui_area_controls(s, area, "scene", "SceneHeader");
 }
 
-/* Shows the part of the frame the view zoom does, as fractions of it, on
-   the surface emitted last. */
-static void crop_view(studio *s)
-{
-    float half = 0.5f / s->view.zoom;
-    char crop[64];
-    snprintf(crop, sizeof crop, "%g %g %g %g", s->view.x - half, s->view.y - half, 2 * half, 2 * half);
-    kit_attr(s->kit, "rect", crop);
-}
+/* ---------- The overlays (`scene_view`) ---------- */
 
 #define CAMERA_LABELS_MAX 16
 
-/* Each camera frame's name over its top-left corner, in the frame the view
-   zoom shows. */
-static void camera_labels(studio *s)
+static const char *const VIEW_TEXTS[] = { "context", "error", "warning", NULL };
+static const char *const VIEW_FLAGS[] = { "labeled", "readout", "session", "pending", NULL };
+static const char *const CAMERA_TEXTS[] = { "name", "at", NULL };
+static const char *const CAMERA_FLAGS[] = { "active", "disabled", "selected", NULL };
+
+static void add_members(
+    yyjson_mut_doc *doc,
+    yyjson_mut_val *object,
+    const char *const *texts,
+    const char *const *flags
+)
 {
-    kit *k = s->kit;
-    app_scene_camera_label labels[CAMERA_LABELS_MAX];
-    int count = app_scene_authoring_camera_labels(s->scene, labels, CAMERA_LABELS_MAX);
-    float half = 0.5f / s->view.zoom;
-    for (int i = 0; i < count; i++) {
-        float x = (labels[i].x - (s->view.x - half)) / (2 * half);
-        float y = (labels[i].y - (s->view.y - half)) / (2 * half);
-        if (x < 0 || x >= 1 || y < 0 || y >= 1) {
-            continue;
-        }
-        char key[16], value[32];
-        snprintf(key, sizeof key, "camera%d", i);
-        kit_label(k, key, "camera-label", labels[i].name);
-        kit_flag(k, "data-active", labels[i].active);
-        kit_flag(k, "data-disabled", labels[i].disabled);
-        kit_flag(k, "data-selected", labels[i].selected);
-        snprintf(value, sizeof value, "%.1fdp", x * s->surface.rect.w);
-        kit_style(k, "left", value);
-        snprintf(value, sizeof value, "%.1fdp", y * s->surface.rect.h);
-        kit_style(k, "top", value);
+    for (int i = 0; texts[i]; i++) {
+        yyjson_mut_obj_add_strcpy(doc, object, texts[i], "");
+    }
+    for (int i = 0; flags[i]; i++) {
+        yyjson_mut_obj_add_bool(doc, object, flags[i], false);
     }
 }
 
-/* The label naming the Scene's view and selection. */
-static void view_overlay(studio *s)
+/* `scene_view`: cameras, each camera frame's label (name, at, its
+   transform, and active, disabled and selected); context, the label naming
+   the scene and selection, while labeled; zoom, the camera's, while
+   readout; session (Live); pending, while the generated world fills; the
+   notice line's error, else warning. */
+void studio_scene_view_add(yyjson_mut_doc *doc)
 {
-    kit *k = s->kit;
-    kit_push(k, "label", NULL, "view-label");
-    kit_presence(k);
+    yyjson_mut_val *view = yyjson_mut_obj_add_obj(doc, yyjson_mut_doc_get_root(doc), "scene_view");
+    yyjson_mut_obj_add_arr(doc, view, "cameras");
+    add_members(doc, view, VIEW_TEXTS, VIEW_FLAGS);
+    yyjson_mut_obj_add_real(doc, view, "zoom", 0);
+}
+
+/* Gives `cameras` `count` labels, adding and removing at its end, so the
+   labels shown keep their elements; true when its length changed. */
+static bool fit_cameras(yyjson_mut_doc *doc, yyjson_mut_val *cameras, int count)
+{
+    int had = (int)yyjson_mut_arr_size(cameras);
+    for (int i = had; i < count; i++) {
+        add_members(doc, yyjson_mut_arr_add_obj(doc, cameras), CAMERA_TEXTS, CAMERA_FLAGS);
+    }
+    for (int i = had; i > count; i--) {
+        yyjson_mut_arr_remove_last(cameras);
+    }
+    return had != count;
+}
+
+/* The camera frames in the part of the frame the view zoom shows, their
+   corners as fractions of it; how many. */
+static int visible_cameras(studio *s, app_scene_camera_label *labels)
+{
+    int count = app_scene_authoring_camera_labels(s->scene, labels, CAMERA_LABELS_MAX);
+    float half = 0.5f / s->view.zoom;
+    int shown = 0;
+    for (int i = 0; i < count; i++) {
+        app_scene_camera_label label = labels[i];
+        label.x = (label.x - (s->view.x - half)) / (2 * half);
+        label.y = (label.y - (s->view.y - half)) / (2 * half);
+        if (label.x >= 0 && label.x < 1 && label.y >= 0 && label.y < 1) {
+            labels[shown++] = label;
+        }
+    }
+    return shown;
+}
+
+/* Each camera frame's name over its top-left corner, moved there by a
+   transform, so a pan repaints it without laying out the Scene. It moves
+   by whole pixels, where layout would have placed it, so its text stays
+   sharp. */
+static bool show_cameras(studio *s, const studio_panel_sync *at, bool shown)
+{
+    app_scene_camera_label labels[CAMERA_LABELS_MAX];
+    int count = shown ? visible_cameras(s, labels) : 0;
+    yyjson_mut_val *cameras = yyjson_mut_obj_get(at->variable, "cameras");
+    bool changed = fit_cameras(at->doc, cameras, count);
+    yyjson_mut_arr_iter it = yyjson_mut_arr_iter_with(cameras);
+    float ratio = studio_pixel_ratio(s);
+    for (int i = 0; i < count; i++) {
+        yyjson_mut_val *camera = yyjson_mut_arr_iter_next(&it);
+        char place[64];
+        snprintf(
+            place,
+            sizeof place,
+            "translate(%.0fpx, %.0fpx)",
+            roundf(labels[i].x * s->surface.rect.w * ratio),
+            roundf(labels[i].y * s->surface.rect.h * ratio)
+        );
+        changed |= ui_data_put_text(at->doc, camera, "name", labels[i].name);
+        changed |= ui_data_put_text(at->doc, camera, "at", place);
+        changed |= ui_data_put_bool(camera, "active", labels[i].active);
+        changed |= ui_data_put_bool(camera, "disabled", labels[i].disabled);
+        changed |= ui_data_put_bool(camera, "selected", labels[i].selected);
+    }
+    return changed;
+}
+
+/* The camera's zoom, only once the surface is laid out and the scene has
+   drawn: its first draw restores or fits the camera after this frame's
+   UI, so an earlier value would be the reset camera's, rolling to the real
+   one. The camera widens the framed span to the area's aspect, so its span,
+   not the framed width, sets the pixels per world unit. */
+static bool show_readout(studio *s, const studio_panel_sync *at, bool shown)
+{
+    bool readout = shown && s->surface.rect.w > 0 && s->scene->camera_target >= 0;
+    bool changed = ui_data_put_bool(at->variable, "readout", readout);
+    if (!readout) {
+        return changed;
+    }
+    engine_viewport_camera camera;
+    engine_viewport_get_camera(s->viewport, &camera);
+    double zoom = roundf(s->surface.rect.w / fmaxf(camera.span_width, 1) * 100);
+    return ui_data_put_number(at->variable, "zoom", zoom) || changed;
+}
+
+/* The renderer's error first, then the generated world's, then the game
+   UI's (render_ui_error); else the renderer's warning. */
+static bool show_notice(studio *s, const studio_panel_sync *at, bool shown)
+{
+    app_scene_authoring *scene = s->scene;
+    const char *error = app_scene_renderer_error(scene->renderer);
+    const char *world = app_scene_authoring_world_error(scene);
+    error = error && error[0] ? error : world[0] ? world : s->ui_error;
+    const char *warning = app_scene_renderer_warning(scene->renderer);
+    bool changed = ui_data_put_text(at->doc, at->variable, "error", shown ? error : "");
+    return ui_data_put_text(at->doc, at->variable, "warning", shown && warning ? warning : "") ||
+           changed;
+}
+
+/* A guest Studio fills the area with none of them. While a session runs
+   the Scene is the game's view, so the camera labels and the label leave
+   the game's HUD alone and Live shows instead. */
+bool studio_scene_view_sync(studio *s, const studio_panel_sync *at)
+{
+    bool scene = !s->guest, session = scene && runtime_session(s->scene);
+    bool editing = scene && !session;
     char title[128], context[256];
     scene_actor *actor = selected_actor(s->scene);
     snprintf(
@@ -352,80 +424,46 @@ static void view_overlay(studio *s)
         studio_scene_title(s->scene, title, sizeof title),
         actor ? actor->name : "-"
     );
-    kit_label(k, "context", "dim", context);
-    kit_pop(k);
+    bool changed = show_cameras(s, at, editing);
+    changed |= ui_data_put_bool(at->variable, "labeled", editing);
+    changed |= ui_data_put_text(at->doc, at->variable, "context", context);
+    changed |= show_readout(s, at, scene);
+    changed |= ui_data_put_bool(at->variable, "session", session);
+    changed |= ui_data_put_bool(
+        at->variable,
+        "pending",
+        editing && app_scene_authoring_world_pending(s->scene)
+    );
+    return show_notice(s, at, scene) || changed;
 }
 
+/* ---------- The area ---------- */
+
+/* The scene's surface, native in Scene's slot, or a guest Studio's, which
+   fills the area as the Studio project's game, whatever document is
+   active; or, while a ui asset previews, the Canvas. */
 void studio_scene_body(studio *s, int area)
 {
-    (void)area;
+    if (!s->guest && studio_canvas_body(s, area)) {
+        return;
+    }
     kit *k = s->kit;
-    /* A guest Studio fills the area as the Studio project's game, whatever
-       document is active. */
+    rml_element *host = studio_ui_area(s, area, "Scene");
+    if (!host || !kit_slot_begin(k, "surface", host, "#scene-surface")) {
+        return;
+    }
     if (s->guest) {
-        kit_push(k, "viewport", NULL, "viewport");
         kit_surface(k, "guest", "surface", "guest", &s->surface);
-        kit_pop(k);
+        kit_slot_end(k);
         return;
     }
-    if (canvas_body(s)) {
-        return;
-    }
-    app_scene_authoring *scene = s->scene;
-    kit_push(k, "viewport", NULL, "viewport");
     kit_surface(k, "surface", "surface", "viewport", &s->surface);
-    crop_view(s);
+    studio_view_crop(s);
     /* A prototype dropped here is placed under the pointer by the viewport;
        an asset an object's field names lands on the object under it. */
     kit_drop_target(k, "prototype", s->dropped_prototype, sizeof s->dropped_prototype);
     studio_drop_scene(s);
-    /* While a session runs the Scene is the game's view, so its tools and
-       label leave the top-left corner to the game's HUD. */
-    bool session = runtime_session(scene);
-    if (!session) {
-        camera_labels(s);
-        view_overlay(s);
-    }
-    engine_viewport_camera camera;
-    engine_viewport_get_camera(s->viewport, &camera);
-    /* Only once the surface is laid out and the scene has drawn: its first
-       draw restores or fits the camera after this readout is emitted, so an
-       earlier value would be the reset camera's, rolling to the real one. */
-    if (s->surface.rect.w > 0 && scene->camera_target >= 0) {
-        /* The camera widens the framed span to the area's aspect, so its
-           span, not the framed width, sets the pixels per world unit. */
-        double zoom = roundf(s->surface.rect.w / fmaxf(camera.span_width, 1) * 100);
-        kit_number_flow(
-            k,
-            "zoom",
-            "readout",
-            zoom,
-            &(kit_number_flow_desc){ .grouping = true, .suffix = "%" }
-        );
-    }
-    if (session) {
-        kit_label(k, "live", "badge accent live-badge", "Live");
-    }
-    if (!session && app_scene_authoring_world_pending(scene)) {
-        kit_push(k, "generating", NULL, "world-pending");
-        kit_presence(k);
-        kit_icon(k, "spin", "spin", KIT_ICON_LOADING);
-        kit_label(k, "text", NULL, "Generating world");
-        kit_pop(k);
-    }
-    /* The renderer's error first, then the generated world's, then the game
-       UI's (render_ui_error). */
-    const char *error = app_scene_renderer_error(scene->renderer);
-    const char *world = app_scene_authoring_world_error(scene);
-    error = error && error[0] ? error : world[0] ? world : s->ui_error;
-    const char *warning = app_scene_renderer_warning(scene->renderer);
-    if (error[0]) {
-        kit_label(k, "error", "notice", error);
-    } else if (warning && warning[0]) {
-        kit_label(k, "warning", "notice", "Lighting adjusted");
-        kit_tip(k, "Lighting adjusted", NULL, warning);
-    }
-    kit_pop(k);
+    kit_slot_end(k);
 }
 
 void studio_scene_tools(studio *s)
@@ -463,336 +501,4 @@ void studio_scene_tools(studio *s)
         s->status[0] = '\0';
         s->scene_status = false;
     }
-}
-
-/* ---------- Canvas preview ---------- */
-
-/* Where a ui asset is used: GameUi fields and <use ui> from the index, and
-   the scene's and the project's root document. A root document's row opens
-   the Scene tab of Properties, where it is chosen. */
-typedef struct
-{
-    char label[288];
-    uint32_t icon;
-    bool page;
-    studio_reference at;
-} canvas_user;
-
-static canvas_user *canvas_users(studio *s, const char *asset)
-{
-    app_scene_authoring *scene = s->scene;
-    canvas_user *users = NULL;
-    char title[128];
-    if (scene->ui && !strcmp(scene->ui, asset)) {
-        canvas_user user = { .icon = KIT_ICON_SCENE, .page = true };
-        snprintf(
-            user.label,
-            sizeof user.label,
-            "%s \xe2\x80\xba ui",
-            studio_scene_title(scene, title, sizeof title)
-        );
-        apush(users, user);
-    }
-    if (scene->default_ui && !strcmp(scene->default_ui, asset)) {
-        apush(
-            users,
-            ((canvas_user){ .label = "Project \xe2\x80\xba ui",
-                            .icon = KIT_ICON_FOLDER,
-                            .page = true })
-        );
-    }
-    const reference_index *index = app_scene_authoring_asset_index(scene);
-    int at = index ? reference_index_find_name(index, REFERENCE_ASSET_UI, asset) : -1;
-    const reference **uses = NULL;
-    if (at >= 0) {
-        reference_index_find_uses(
-            index,
-            (reference_symbol){ .kind = REFERENCE_SYMBOL_ASSET, .asset = at },
-            &uses
-        );
-    }
-    for (int i = 0; i < acount(uses); i++) {
-        canvas_user user = { .at = studio_reference_of(index, uses[i]) };
-        user.icon = studio_asset_kind_icon(user.at.kind);
-        snprintf(
-            user.label,
-            sizeof user.label,
-            user.at.place[0] ? "%s \xe2\x80\xba %s" : "%s",
-            user.at.asset,
-            user.at.place
-        );
-        apush(users, user);
-    }
-    afree(uses);
-    return users;
-}
-
-/* A widget's document previews in its place; anything else opens and the
-   Scene area returns to the scene. */
-static void open_user(studio *s, const canvas_user *user)
-{
-    if (user->page) {
-        s->tab = STUDIO_TAB_SCENE;
-        studio_show_editor(s, STUDIO_EDITOR_PROPERTIES);
-        return;
-    }
-    if (user->at.kind == REFERENCE_ASSET_UI) {
-        studio_preview_ui(s, user->at.asset);
-        return;
-    }
-    studio_preview_ui(s, NULL);
-    studio_open_reference(s, &user->at);
-}
-
-/* The previewed asset's crumb: what uses it, and the other ui assets to
-   preview instead. */
-static void asset_crumb(studio *s, const char *asset)
-{
-    kit *k = s->kit;
-    kit_button_desc crumb = { .label = asset,
-                              .icon = studio_asset_kind_icon(REFERENCE_ASSET_UI),
-                              .cls = "crumb current" };
-    if (kit_button(k, "asset", &crumb)) {
-        kit_popup_open(k, "canvas-asset");
-    }
-    if (!kit_popup_begin(k, "canvas-asset", "menu")) {
-        return;
-    }
-    canvas_user *users = canvas_users(s, asset);
-    kit_menu_group(k, "used", "Used by");
-    for (int i = 0; i < acount(users); i++) {
-        char key[16];
-        snprintf(key, sizeof key, "u%d", i);
-        kit_menu_item_desc d = { .label = users[i].label,
-                                 .icon = users[i].icon,
-                                 .checked = -1 };
-        if (kit_menu_item(k, key, &d)) {
-            open_user(s, &users[i]);
-        }
-    }
-    if (!acount(users)) {
-        kit_menu_item_desc none = { .label = "Nothing uses it yet",
-                                    .checked = -1,
-                                    .disabled = true };
-        kit_menu_item(k, "none", &none);
-    }
-    afree(users);
-    kit_menu_separator(k, "s0");
-    const char **names = studio_asset_names(app_scene_authoring_asset_index(s->scene), REFERENCE_ASSET_UI);
-    if (kit_submenu_begin(k, "all", "Preview", KIT_ICON_LAYOUT)) {
-        for (int i = 0; i < acount(names); i++) {
-            char key[16];
-            snprintf(key, sizeof key, "a%d", i);
-            kit_menu_item_desc d = { .label = names[i],
-                                     .icon = studio_asset_kind_icon(REFERENCE_ASSET_UI),
-                                     .checked = -1,
-                                     .current = !strcmp(names[i], asset) };
-            if (kit_menu_item(k, key, &d) && !d.current) {
-                studio_preview_ui(s, names[i]);
-            }
-        }
-        kit_submenu_end(k);
-    }
-    afree(names);
-    kit_popup_end(k);
-}
-
-/* Scene › Asset, the screen size, the backdrop and the view zoom. */
-static bool canvas_header(studio *s, int area)
-{
-    if (!studio_previewed_ui(s)) {
-        return false;
-    }
-    kit *k = s->kit;
-    studio_canvas *c = s->canvas;
-    char asset[sizeof c->asset];
-    snprintf(asset, sizeof asset, "%s", c->asset);
-    kit_push(k, "crumbs", NULL, "crumbs");
-    kit_button_desc scene = { .label = "Scene",
-                              .icon = KIT_ICON_SCENE,
-                              .cls = "crumb",
-                              .tip = "Back to the scene" };
-    if (kit_button(k, "scene", &scene)) {
-        studio_preview_ui(s, NULL);
-    }
-    kit_icon(k, "sep", "crumb-sep", KIT_ICON_RIGHT);
-    asset_crumb(s, asset);
-    kit_pop(k);
-    const char *sizes[STUDIO_CANVAS_SIZE_COUNT];
-    for (int i = 0; i < STUDIO_CANVAS_SIZE_COUNT; i++) {
-        sizes[i] = studio_canvas_size_of((studio_canvas_size)i).label;
-    }
-    int size = (int)c->size;
-    kit_push(k, "sizes", NULL, "canvas-sizes");
-    if (kit_toggle_group(k, "size", &size, sizes, STUDIO_CANVAS_SIZE_COUNT, 0)) {
-        c->size = (studio_canvas_size)size;
-    }
-    kit_pop(k);
-    kit_button_desc backdrop = { .icon = c->light ? KIT_ICON_SUN : KIT_ICON_MOON,
-                                 .tip = c->light ? "Light backdrop" : "Dark backdrop" };
-    if (kit_button(k, "backdrop", &backdrop)) {
-        c->light = !c->light;
-    }
-    studio_layout *layout = studio_active_layout(s);
-    kit_push(k, "actions-toggle", NULL, "canvas-actions-toggle");
-    kit_button_desc actions = { .label = "Actions",
-                                .icon = KIT_ICON_EVENT,
-                                .size = KIT_SM,
-                                .cls = "canvas-actions-button",
-                                .tip = "Show or hide UI events",
-                                .flags = layout->canvas_actions_open ? KIT_ON : 0 };
-    if (kit_button(k, "actions", &actions)) {
-        layout->canvas_actions_open = !layout->canvas_actions_open;
-    }
-    kit_number_flow(k, "count", "count", acount(c->actions), &(kit_number_flow_desc){ 0 });
-    kit_pop(k);
-    kit_leaf(k, "spacer", NULL, "spacer");
-    view_zoom_menu(s, area);
-    return true;
-}
-
-/* A screen size's frame, centered in the stage with room around it; Fit
-   fills the stage. */
-static void place_frame(kit *k, studio_canvas_size_info size, kit_rect stage)
-{
-    enum
-    {
-        MARGIN = 16,
-    };
-    float w = stage.w, h = stage.h;
-    if (size.width) {
-        float room_w = fmaxf(stage.w - 2 * MARGIN, 1),
-              room_h = fmaxf(stage.h - 2 * MARGIN, 1);
-        float aspect = (float)size.width / (float)size.height;
-        w = fminf(room_w, room_h * aspect);
-        h = w / aspect;
-    }
-    char value[32];
-    snprintf(value, sizeof value, "%.1fdp", (stage.w - w) / 2);
-    kit_style(k, "left", value);
-    snprintf(value, sizeof value, "%.1fdp", (stage.h - h) / 2);
-    kit_style(k, "top", value);
-    snprintf(value, sizeof value, "%.1fdp", w);
-    kit_style(k, "width", value);
-    snprintf(value, sizeof value, "%.1fdp", h);
-    kit_style(k, "height", value);
-}
-
-static void action_row(kit *k, const studio_canvas_action *a, int index)
-{
-    char key[16], time[16], count[16];
-    snprintf(key, sizeof key, "a%d", index);
-    int seconds = (int)a->time;
-    snprintf(time, sizeof time, "%02d:%02d", seconds / 60 % 100, seconds % 60);
-    snprintf(count, sizeof count, "\xc3\x97%d", a->count);
-    kit_push(k, key, NULL, "canvas-action");
-    kit_label(k, "event", "event", a->event);
-    kit_label(k, "element", "element", a->element);
-    kit_label(k, "value", "value", a->value);
-    kit_label(k, "count", "count", a->count > 1 ? count : "");
-    kit_label(k, "time", "time", time);
-    kit_pop(k);
-}
-
-/* Storybook's Actions: each event the asset emitted, newest last, in a
-   column beside the stage so it never covers the asset. */
-static void actions_panel(studio *s)
-{
-    kit *k = s->kit;
-    studio_canvas *c = s->canvas;
-    int total = acount(c->actions);
-    kit_push(k, "actions", NULL, "canvas-actions");
-    kit_push(k, "head", NULL, "canvas-actions-head");
-    kit_icon(k, "icon", NULL, KIT_ICON_EVENT);
-    kit_label(k, "title", "title", "Actions");
-    kit_leaf(k, "spacer", NULL, "spacer");
-    kit_button_desc clear = { .icon = KIT_ICON_TRASH,
-                              .size = KIT_SM,
-                              .tip = "Clear",
-                              .flags = total ? 0 : KIT_DISABLED };
-    if (kit_button(k, "clear", &clear)) {
-        asetlen(c->actions, 0);
-        total = 0;
-    }
-    kit_pop(k);
-    if (!total) {
-        kit_label(k, "empty", "canvas-actions-empty", "No actions yet");
-        kit_pop(k);
-        return;
-    }
-    kit_list_desc list = { .count = total,
-                           .row_height = kit_metric(s->kit, "--row"),
-                           .follow = true,
-                           .reveal = -1 };
-    int first, last;
-    kit_list_begin(k, "log", "canvas-actions-list", &list, &first, &last);
-    for (int r = first; r <= last && r < total; r++) {
-        action_row(k, &c->actions[r], r);
-    }
-    kit_list_end(k);
-    kit_pop(k);
-}
-
-/* The size and users of the previewed asset, over the stage's top left. */
-static void canvas_label(studio *s, studio_canvas_size_info size, kit_rect stage)
-{
-    kit *k = s->kit;
-    char line[288];
-    if (size.width) {
-        snprintf(line, sizeof line, "%s \xc2\xb7 %d \xc3\x97 %d", size.label, size.width, size.height);
-    } else {
-        float ui = s->prefs.ui_scale;
-        snprintf(
-            line,
-            sizeof line,
-            "Fit \xc2\xb7 %d \xc3\x97 %d",
-            (int)(stage.w * ui),
-            (int)(stage.h * ui)
-        );
-    }
-    kit_push(k, "label", NULL, "view-label canvas-label");
-    kit_label(k, "size", NULL, line);
-    canvas_user *users = canvas_users(s, s->canvas->asset);
-    int used = snprintf(line, sizeof line, "%s", acount(users) ? "Used by " : "Not used yet");
-    for (int i = 0; i < acount(users) && used < (int)sizeof line; i++) {
-        used += snprintf(
-            line + used,
-            sizeof line - (size_t)used,
-            "%s%s",
-            i ? ", " : "",
-            users[i].label
-        );
-    }
-    afree(users);
-    kit_label(k, "users", "dim", line);
-    kit_pop(k);
-}
-
-/* The stage, with the asset's frame at its screen size, its size and users
-   and the UI error, then the Actions log. Its keys differ from the scene's,
-   whose surface keeps no frame placement. */
-static bool canvas_body(studio *s)
-{
-    if (!studio_previewed_ui(s)) {
-        return false;
-    }
-    kit *k = s->kit;
-    studio_canvas *c = s->canvas;
-    kit_push(k, "canvas", NULL, KIT_CX(k, "viewport canvas", { "light", c->light }));
-    kit_push(k, "stage", NULL, "canvas-stage");
-    kit_rect stage = kit_item_rect(k);
-    studio_canvas_size_info size = studio_canvas_size_of(c->size);
-    c->frame = kit_surface(k, "frame", "surface canvas-frame", "canvas", &s->surface);
-    crop_view(s);
-    place_frame(k, size, stage);
-    canvas_label(s, size, stage);
-    if (s->ui_error[0]) {
-        kit_label(k, "error", "notice", s->ui_error);
-    }
-    kit_pop(k);
-    if (studio_active_layout(s)->canvas_actions_open) {
-        actions_panel(s);
-    }
-    kit_pop(k);
-    return true;
 }

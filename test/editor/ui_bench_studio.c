@@ -859,15 +859,18 @@ static void outliner_scroll(studio_bench *b)
 #define ZOOM_STEP 1.15f /* about a wheel notch */
 
 /* Moves the Scene's camera as a held drag or a wheel notch does, `pan`
-   across or by `zoom`, and times the UI frame that follows. */
+   across or by `zoom`, draws it, as the frame of the move does after its
+   UI, and times the UI frame that follows, which shows the drawn camera. */
 static double scene_step(studio_bench *b, float pan, float zoom, double *phases)
 {
     engine_viewport_view view;
     engine_viewport_get_view(b->viewport, &view);
     view.center_x += pan;
+    view.center_y += pan;
     view.width *= zoom;
     view.height *= zoom;
     engine_viewport_set_view(b->viewport, &view);
+    frames(b, 1);
     cf_app_update(NULL);
     double t = native_ui(b->studio, phases);
     cf_app_draw_onto_screen(true);

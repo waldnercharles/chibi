@@ -43,4 +43,7 @@ name "Studio"
     - name="OutputHeader" prototype="OutputHeader"
     - name="Members" prototype="Members"
     - name="MembersHeader" prototype="MembersHeader"
+    - name="Scene" prototype="Scene"
+    - name="SceneHeader" prototype="SceneHeader"
+    - name="Canvas" prototype="Canvas"
 }

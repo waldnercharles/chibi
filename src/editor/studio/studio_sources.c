@@ -2318,6 +2318,10 @@ const studio_panel_source studio_panel_sources[] = {
     /* Members (workstream P5). */
     { "members", "Members", studio_members_add, studio_members_sync, studio_members_action },
     { "members_ui", "Members", studio_members_ui_add, studio_members_ui_sync, NULL },
+    /* The Scene area (workstream C1). */
+    { "scene", "SceneHeader", studio_scene_add, studio_scene_sync, studio_scene_action },
+    { "scene_view", "Scene", studio_scene_view_add, studio_scene_view_sync, NULL },
+    { "canvas", "Canvas", studio_canvas_panel_add, studio_canvas_panel_sync, studio_canvas_panel_action },
 };
 const int studio_panel_source_count = (int)(sizeof studio_panel_sources /
                                             sizeof *studio_panel_sources);

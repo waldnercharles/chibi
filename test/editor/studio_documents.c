@@ -290,6 +290,7 @@ typedef enum
     RUN_OUTLINER,   /* the Outliner alone (--studio-outliner) */
     RUN_OUTPUT,     /* Output alone (--studio-output) */
     RUN_MEMBERS,    /* Members alone (--studio-members) */
+    RUN_SCENE,      /* the Scene area alone (--studio-scene) */
 } studio_run;
 
 static int studio_documents_app(const char *program, studio_run run)
@@ -316,6 +317,7 @@ static int studio_documents_app(const char *program, studio_run run)
         case RUN_OUTLINER: studio_documents_outliner_checks(); break;
         case RUN_OUTPUT: studio_documents_output_checks(); break;
         case RUN_MEMBERS: studio_documents_members_checks(); break;
+        case RUN_SCENE: studio_documents_scene_checks(); break;
         case RUN_ALL:
             studio_documents_graph_checks();
             test_ui_document_tabs();
@@ -329,6 +331,7 @@ static int studio_documents_app(const char *program, studio_run run)
             studio_documents_list_checks();
             studio_documents_output_checks();
             studio_documents_members_checks();
+            studio_documents_scene_checks();
             break;
     }
     app_input_shutdown();
@@ -368,4 +371,10 @@ int studio_output_run(const char *program)
 int studio_members_run(const char *program)
 {
     return studio_documents_app(program, RUN_MEMBERS);
+}
+
+/* The Scene area (workstream C1) alone. */
+int studio_scene_run(const char *program)
+{
+    return studio_documents_app(program, RUN_SCENE);
 }

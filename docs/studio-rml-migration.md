@@ -3,7 +3,7 @@
 Studio's whole editor moves to authored RML and RCSS, as the user decided on
 2026-10-03. Anything that can't be authored, or that would cost substantial
 performance, is postponed and listed in Postponed below. Status: S0, F0,
-F1, F2, F3, F4, F5, P2, P3, P4 and P5 done; the rest planned. The spike (S0) ran on a
+F1, F2, F3, F4, F5, P2, P3, P4, P5 and C1 done; the rest planned. The spike (S0) ran on a
 loaded machine, so its times are provisional until re-measured on an idle
 one (S0 results).
 
@@ -43,8 +43,8 @@ About 1,600 kit call sites remain across 40 files. The largest:
 | Properties: Object, Prototype, Scene, Behaviors | `studio_properties.c` (~2k lines) | Reflection, ECS reads, overrides and mixed values, `write_field` gestures, ranges and units from `Components.kdl`, live values at 20 Hz in Play, locks, search, Keep, Add Component | W2 P1 |
 | Properties: Node, Member | `studio_graph_properties.c`, `studio_member_properties.c` | Literal editors, binding autocomplete, expression code, type picker, reorder grips | W4 G1 |
 | Outliner | Authored: `Outliner.rml`, `OutlinerHeader.rml`; the `outliner` source (`studio_outliner.c`) | Selection (⌘/⇧), 10k-row virtualization, drops, rename, eye and lock, menu | Done (W2 P2) |
-| Scene and Canvas headers | `studio_scene.c`, `studio_canvas.c` | Commands, tool, snap, grid, zoom, Show toggles, Canvas size, actions log | W3 C1 |
-| Scene viewport | `kit_surface` showing `kit:viewport` | Texture, pointer input, camera labels | Overlays authored; input stays in C |
+| Scene and Canvas headers | Authored: `SceneHeader.rml` over `scene` (`studio_scene.c`), `canvas` (`studio_canvas.c`) and `commands` | Commands, tool, snap, grid, zoom, Show toggles, Canvas size, actions log | Done (W3 C1) |
+| Scene viewport | `Scene.rml` and `Canvas.rml` over `scene_view` and `canvas`; the `kit_surface` showing `kit:viewport` stays native in their slot | Texture, pointer input, camera labels | Done (C1): overlays authored; input stays in C |
 | Assets | `Assets.rml`, `AssetsHeader.rml` and `NewAsset.rml` over `assets`, `asset_view` and `asset_menus` (`studio_assets.c`, P3) | Index, filters, `kit:thumb:` textures, thumbnail budget, columns, keys, drag, New menu | Done (P3) |
 | Output, Find, Calls | Authored (P4): `Output.rml`, `OutputHeader.rml` over `studio_output.c`'s `output` source | | Done |
 | Members | `Members.rml` and `MembersHeader.rml`; the `members` source in `studio_members.c` | Members, uses, rename, drag into the graph, menus | Done (P5) |
@@ -1135,10 +1135,102 @@ Re-measure every Wave 2 bench case (`--ui-bench studio`, `members`,
 
 | | Scope | Deletes |
 |---|---|---|
-| C1 Scene | Scene and Canvas headers, actions log, camera labels, notice line | ~500 lines |
+| C1 Scene (done) | Scene and Canvas headers, actions log, camera labels, notice line | About 460 lines of kit UI: C1, below |
 | C2 Editor chrome | Behavior header (breadcrumbs, debug target), graph find bar; Text Editor header and find; Performance with `<line-chart>` | ~400 lines |
 | C3 Shell | `Workspace.rml` (areas, `<splitter>`, drawer and side transitions, maximize); editor-type popover; `<menubar>`; play target, layout, UI Scale, debugger steps | ~600 lines and `kit_menubar_trigger` |
 | C4 Palette | `Palette.rml` over ChoiceList (prefixes, pages, recents, thumbnails); asset pickers, Add Component, refactor popover; ranking moves to `support/` | ~500 lines of `kit_command` UI |
+
+#### C1: the Scene area (done)
+
+The Scene area is projects/studio's `Scene` (the overlays over the scene)
+or, while a ui asset previews, `Canvas` (the stage and the Actions log),
+with `SceneHeader` in its AreaHeader's controls for both. The surfaces stay
+native: the scene's `kit_surface` (or a guest Studio's) in `#scene-surface`
+and the Canvas's frame in `#canvas-frame-slot`, where pointer input, the
+gizmos, the camera, the view zoom's crop and drops stay C's. Unreal's
+viewport toolbar (Show flags in a View menu, snapping with its increment
+beside it) and Unity's Scene view toolbar (tools as a pill, the grid
+snapping increment) are the references, as before. Three sources:
+
+- `scene` (`studio_scene.c`, synced while SceneHeader shows): mode (the
+  scene's controls, a guest Studio's name or the Canvas's), View Zoom's
+  label, levels and whether it shows, and the grid increment's label and
+  presets. `scene.zoom` and `scene.increment` choose one by index. The tools,
+  the magnet, Show's toggles, Reset Camera, View Through Camera and Frame
+  bind `commands` (MenuCommand in the View menu) and run `studio.<id>`, so
+  their state, tips and shortcuts come from the command table.
+- `scene_view` (`studio_scene.c`, synced while Scene shows): each camera
+  frame's label, the label naming the scene and selection, the camera's
+  zoom (`<number-flow>`, built by `data-when` once the scene has drawn, so
+  it never rolls from the reset camera's), Live, the generated world's
+  progress and the notice line. A label moves by `translate()` in whole
+  pixels, as layout placed it, so a pan repaints it without laying out.
+- `canvas` (`studio_canvas.c`, synced while Canvas shows): the previewed
+  asset, what uses it and the ui assets to preview instead (the crumb's
+  Menu and Submenu), the screen size, the backdrop, the stage's label, the
+  game UI's error and the Actions log's List window, which follows new
+  events while at its end. `canvas.back`, `.used`, `.preview`, `.size`,
+  `.backdrop`, `.actions` and `.clear`.
+
+**Shared fix:** `studio_ui_area` keys each panel's host by its name. The
+Scene and Canvas swapping in one host had moved the old panel's elements
+when the host took the data model again (`rml_element_set_data_model`
+reinserts the element): their views were applied a second time, to text
+already shown ("Could not add data-text view"), and once the new markup
+replaced them, the views of the destroyed elements stayed ("Could not
+retrieve element in view", logged every update). A new host per panel
+avoids both for any area that switches panels.
+
+Styles moved from `theme/scene.rcss`, `theme/scene_view.rcss` and
+`workspace.rcss` into `SceneHeader.rcss`, `Scene.rcss` and `Canvas.rcss`;
+the scene's dark roles in light themes and the comfortable Actions row stay
+in `workspace.rcss`, since scoped RCSS can't see the body's classes. The
+header's buttons keep the area header's control height, as the kit's did
+(AreaHeader's `.btn` rule won over `.tool-group .btn` there).
+
+**Parity.** Web shots before (`f7edf3ec`, 1600×1000) and after, dark and
+light, compact and comfortable: the scene with its overlays, a tool's and
+the magnet's tooltips, the View menu, the increment menu and a chosen
+increment, 200% with its View Zoom button and menu, the Canvas, its Actions
+log with a logged event, the crumb's menu and Preview submenu, Phone on the
+light backdrop, back to the scene, and Play's Live badge: 68 pairs, identical
+pixel for pixel but for an action's clock, the game's own frame in Play and
+the world's progress badge after Stop, which ran at another moment.
+Native shots (hidden window, 2560×1600; `CHIBI_SCENE_CAPTURE_DIR` with
+`--studio-scene`) of the scene, 200%, the Canvas with its Actions log open and Play in
+the four variants: identical but for the readout's roll and the Pause
+button's press fade, caught mid-animation. Keys are unchanged (W, Q,
+Shift+G checked on the web build) and the guest Studio runs in the Scene
+area with its own authored Scene. Intentional difference: the Canvas's
+screen sizes are buttons, as Output's view switch is, so Left and Right no
+longer step them (Tab and Enter do).
+
+`UI_BENCH_SCENE=1 ./build-release/test_suite --ui-bench studio` (case 13:
+the Sandbox at 1440×900, pixel scale 2, its Camera's frame labeled; the
+camera moves 8 world units diagonally and back, or zooms a notch in and
+out, and is drawn before the timed UI frame), the kit build (`f7edf3ec`)
+and this one alternated process by process six times, which arm ran first
+alternating, 1-minute load 35-38, so the times are provisional; medians of
+the runs' medians:
+
+| Case | Kit ms | Authored ms | Ratio | Views evaluated | Layouts | Elements in the Scene's document |
+|---|---:|---:|---:|---:|---:|---|
+| A pan step | 1.30 | 1.31 | 1.0× | 16 (kit 0) | 0 | 579 (kit 359) |
+| A zoom notch | 1.44 | 1.46 | 1.0× | 16 (kit 0) | 2, the readout's roll | |
+
+Neither build lays the Scene out for a pan: the kit's labels moved by
+`left` and `top` on absolute boxes, which RmlUi places without a layout,
+and the authored ones move by transform. A zoom lays out twice in both,
+for `<number-flow>`'s digits. The authored document holds 220 more
+elements, the header's closed menus and `data-when` templates, which
+neither lay out nor draw. Checks: `--studio-scene` (also in
+`--studio-documents`): the tools run their commands, pressed while active,
+their tips naming them and their keys; the magnet and the increment menu;
+the View menu's Show toggles and View Zoom, whose button shows only while
+it magnifies; Frame disabled without a selection; a camera label following
+a pan by transform with no layout; the scene-and-selection label and Live;
+the Canvas's size, backdrop, Actions log and Clear, and its Scene crumb; a
+guest Studio's header.
 
 ### Wave 4: graph chrome, Designer, Inspector (3 parallel)
 

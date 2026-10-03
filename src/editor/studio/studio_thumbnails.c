@@ -40,7 +40,7 @@
 #define EDIT_REST_SECONDS 0.6
 /* Changes with what any kind's picture looks like, so the disk's pictures
    from older renderers go unused. */
-#define RENDERER_VERSION 2
+#define RENDERER_VERSION 3
 /* What the disk cache holds at most, for every project together. */
 #ifdef __EMSCRIPTEN__
 #define DISK_CAP ((size_t)16 << 20)

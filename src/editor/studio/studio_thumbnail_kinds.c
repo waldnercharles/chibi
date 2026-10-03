@@ -2,7 +2,8 @@
  * - a scene, its start state a few frames in, framed as the Scene view
  *   frames a scene it opens, its objects fitted, widened to what its
  *   GameCamera sees, as Godot's scene previews fit their content; its
- *   streamed terrain fills the frame first;
+ *   streamed terrain fills the frame first, and it is lit at the Scene
+ *   view's scale, then shrinks;
  * - a prototype, one instance fitted on the project's stage (its lighting
  *   and material worlds), as Unity's prefabs;
  * - a material, a disc of it on that stage, a sphere in perspective scenes;
@@ -65,9 +66,14 @@
 /* The unlit scene color a prototype's stage adds, so surfaces that no
    light reaches still show. */
 #define PROTOTYPE_AMBIENT 0.35f
-/* The least unlit scene color a scene shows, so a dark level reads at a
-   thumbnail's size, as the walls of a cave its lights barely reach. */
-#define SCENE_AMBIENT 0.1f
+/* HRC lights each pixel, so lighting looks as the Scene view shows it only
+   where a pixel covers as much world as the Scene view's do: a scene draws
+   where a pixel covers at most this many world units, then shrinks to the
+   thumbnail. At a tile's own 128 pixels a pixel of Sandbox holds 25 units
+   and its lit tunnels go black. */
+#define SCENE_UNITS_PER_PIXEL 3.0f
+/* The largest side a scene's picture draws at before shrinking. */
+#define SCENE_MAX_SIDE 1024
 #define FRAME_SECONDS (1.0 / 60.0)
 #define SWATCH_MAX 12
 /* A widget's thumbnail frames its content to fill this much of it. */
@@ -87,14 +93,16 @@ typedef struct
     uint64_t edits;  /* the asset index generation whose edits it holds */
 } thumb_world;
 
-/* A scene renderer and the viewport framing it, at one canvas side, and a
-   canvas for a scene's light passes before its last. */
+/* A scene renderer and the viewport framing it, at one canvas side. A
+   scene's view also keeps its picture at that side and the picture's halves
+   on the way down to a thumbnail's. */
 typedef struct
 {
     app_scene_renderer *renderer;
     engine_viewport *viewport;
     int side;
-    CF_Canvas scratch;
+    CF_Canvas picture;
+    CF_Canvas *halves; /* support/array.h: side / 2, side / 4, ... */
 } thumb_view;
 
 /* A scene running toward its picture: its terrain streams for a share of
@@ -104,6 +112,7 @@ typedef struct
     game_scene_document *scene; /* NULL while none runs */
     game_prototype_preview_scene_entity *entities;
     engine_viewport_view view; /* what it frames */
+    int side;                  /* its picture's, before it shrinks */
     double started;            /* Studio's time when it launched */
     int frame;    /* the next to run; -1 while terrain streams first */
     int pass;     /* the light pass it draws next */
@@ -114,6 +123,7 @@ struct studio_thumb_renderers
 {
     thumb_world world;
     thumb_view views[STUDIO_THUMB_SIZE_COUNT]; /* tiles and large previews keep their own */
+    thumb_view scene; /* scenes draw at their own side */
     scene_run run;
     render_ui *ui;
     ecs_world *ui_world;
@@ -567,26 +577,34 @@ static void view_free(thumb_view *view)
 {
     engine_viewport_free(view->viewport);
     app_scene_renderer_free(view->renderer);
-    if (view->scratch.id) {
-        cf_destroy_canvas(view->scratch);
+    if (view->picture.id) {
+        cf_destroy_canvas(view->picture);
     }
+    for (int i = 0; i < acount(view->halves); i++) {
+        cf_destroy_canvas(view->halves[i]);
+    }
+    afree(view->halves);
     *view = (thumb_view){ 0 };
 }
 
-/* The job's size's view, made again when its side changed. */
-static thumb_view *view_for(studio_thumb_renderers *r, const studio_thumb_job *job)
+/* The view at `side`, made again when its side changed. */
+static thumb_view *view_at(thumb_view *view, int side)
 {
-    thumb_view *view = &r->views[job->size];
-    if (view->viewport && view->side != job->side) {
+    if (view->viewport && view->side != side) {
         view_free(view);
     }
     if (!view->viewport) {
         *view = (thumb_view){ app_scene_renderer_new(),
-                              engine_viewport_new(job->side, job->side),
-                              job->side };
+                              engine_viewport_new(side, side),
+                              side };
     }
     engine_viewport_reset_camera(view->viewport);
     return view;
+}
+
+static thumb_view *view_for(studio_thumb_renderers *r, const studio_thumb_job *job)
+{
+    return view_at(&r->views[job->size], job->side);
 }
 
 /* Widens the view to at least `span` world units. */
@@ -820,6 +838,16 @@ static void widen_to(engine_viewport *viewport, const engine_viewport_view *othe
     engine_viewport_set_view(viewport, &v);
 }
 
+/* The side a scene spanning `span` world units draws at: the thumbnail's,
+   doubled while a pixel would hold more than SCENE_UNITS_PER_PIXEL. */
+static int scene_side(float span, int side)
+{
+    while (side * 2 <= SCENE_MAX_SIDE && span / (float)side > SCENE_UNITS_PER_PIXEL) {
+        side *= 2;
+    }
+    return side;
+}
+
 /* What the scene shows, as the Scene view frames a scene it opens: its
    objects fitted, widened to what its camera sees; a perspective scene's
    camera frames it alone. Terrain streams into that, the cameras' own tiles
@@ -849,6 +877,7 @@ static void frame_scene(studio_thumb_renderers *r, const studio_thumb_job *job)
     engine_viewport_get_view(view->viewport, &r->run.view);
     engine_viewport_camera seen;
     engine_viewport_get_camera(view->viewport, &seen);
+    r->run.side = scene_side(fmaxf(seen.span_width, seen.span_height), job->side);
     material_stream_view stream = { seen.center_x,
                                     -seen.center_y,
                                     0.5f * fmaxf(seen.span_width, seen.span_height),
@@ -905,21 +934,54 @@ static bool stream(game_prototype_preview *preview)
     return error || !game_materials_streaming(materials);
 }
 
-/* One of the scene's light passes, a step each: light that bounces reaches
-   surfaces through the passes before, so only the last reaches the
-   thumbnail and no half lit picture shows. */
+/* Copies `source` over all of `destination`. */
+static void blit(CF_Canvas source, CF_Canvas destination)
+{
+    cf_draw_canvas(source, (CF_V2){ 0 }, (CF_V2){ 2, 2 });
+    cf_render_to(destination, true);
+}
+
+/* Shrinks the view's picture into the thumbnail by halves: a bilinear
+   blit at half size averages each 2x2 pixels, so nothing aliases. */
+static void shrink(thumb_view *view, CF_Canvas canvas, int side)
+{
+    cf_draw_push();
+    cf_draw_TSR_absolute((CF_V2){ 0 }, (CF_V2){ 1, 1 }, 0);
+    cf_draw_projection(cf_ortho_2d(0, 0, 2, 2));
+    cf_draw_push_filter(CF_DRAW_FILTER_LINEAR);
+    CF_Canvas source = view->picture;
+    int i = 0;
+    for (int half = view->side / 2; half > side; half /= 2, i++) {
+        if (i == acount(view->halves)) {
+            apush(view->halves, cf_make_canvas(cf_canvas_defaults(half, half)));
+        }
+        blit(source, view->halves[i]);
+        source = view->halves[i];
+    }
+    blit(source, canvas);
+    cf_draw_pop_filter();
+    cf_draw_pop();
+}
+
+/* One of the scene's light passes, a step each, at its picture's side:
+   light that bounces reaches surfaces through the passes before, so only
+   the last shrinks into the thumbnail and no half lit picture shows. */
 static bool draw_pass(studio_thumb_renderers *r, const studio_thumb_job *job, CF_Canvas canvas)
 {
     game_prototype_preview *preview = r->world.preview;
-    thumb_view *view = view_for(r, job);
-    if (!view->scratch.id) {
-        view->scratch = cf_make_canvas(cf_canvas_defaults(job->side, job->side));
+    thumb_view *view = view_at(&r->scene, r->run.side);
+    if (!view->picture.id) {
+        view->picture = cf_make_canvas(cf_canvas_defaults(view->side, view->side));
+        cf_canvas_set_clear_color(view->picture, color_of(STAGE));
     }
     engine_viewport_set_perspective(view->viewport, r->run.scene->perspective);
     engine_viewport_set_view(view->viewport, &r->run.view);
-    still_lighting(game_prototype_preview_world(preview), SCENE_AMBIENT);
-    bool last = r->run.pass == LIGHT_PASSES - 1;
-    return draw_world(view, preview, last ? canvas : view->scratch);
+    still_lighting(game_prototype_preview_world(preview), 0);
+    bool drawn = draw_world(view, preview, view->picture);
+    if (drawn && r->run.pass == LIGHT_PASSES - 1) {
+        shrink(view, canvas, job->side);
+    }
+    return drawn;
 }
 
 /* A scene streams the terrain it frames, a share a step, then runs a frame
@@ -1066,6 +1128,7 @@ void studio_thumb_renderers_free(studio_thumb_renderers *r)
     for (int i = 0; i < STUDIO_THUMB_SIZE_COUNT; i++) {
         view_free(&r->views[i]);
     }
+    view_free(&r->scene);
     render_ui_free(r->ui);
     studio_sources_free(&r->sources);
     ecs_world_free(r->ui_world);

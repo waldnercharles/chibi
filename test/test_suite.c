@@ -264,6 +264,7 @@ TEST_CASE(all_checks)
     test_movement_trail();
     test_sdf_motion();
     test_material();
+    test_material_lod();
     test_wave();
     test_scene_history();
     test_enemy_attack();

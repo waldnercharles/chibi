@@ -901,6 +901,7 @@ add_executable(test_suite
     src/render/scene_renderer.c
     src/render/shader_preview.c
     test/material.c
+    test/material_lod.c
     test/wave.c
     test/radiance.c
     test/material_sampling.c

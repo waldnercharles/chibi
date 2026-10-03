@@ -11,6 +11,7 @@
 #include "render/gpu_timing.h"
 #include "render/grid_2d.h"
 #include "render/material.h"
+#include "render/material_lod.h"
 #include "render/material_raster.h"
 #include "render/mesh_projection.h"
 #include "render/mesh_surface.h"
@@ -70,6 +71,7 @@ struct app_scene_renderer
     render_material_entity *entities;
     render_mesh_material_actor *meshes;
     render_material_border_cache *border;
+    render_material_lod *lod;
     draw_actor *actors;
     render_skip skip; /* the entities the current draw leaves out */
     ecs_world *world;
@@ -146,6 +148,7 @@ void app_scene_renderer_free(app_scene_renderer *renderer)
     afree(renderer->fragment_programs);
     afree(renderer->entities);
     render_material_border_cache_free(renderer->border);
+    render_material_lod_free(renderer->lod);
     afree(renderer->actors);
     free(renderer);
 }
@@ -589,6 +592,19 @@ static void mask_edges(
     }
 }
 
+/* The coarsest level up to level that keeps a mask's border as thick as
+ * authored: whole cells of that level must still make up the border's. */
+static int border_level(const material_mask *mask, float border_width, int level)
+{
+    int cells = (int)ceilf(border_width / mask->cell_size);
+    int coarsest = 0;
+    while (coarsest < level && cells % 2 == 0) {
+        cells /= 2;
+        coarsest++;
+    }
+    return coarsest;
+}
+
 /* Marks the entities appended since first as the pieces of a tile group, and
  * pads their bounds for the pixel footprint their coverage integrates. */
 static void tile_group(app_scene_renderer *renderer, int first, float group)
@@ -772,6 +788,10 @@ static bool collect(
         renderer->border = render_material_border_cache_new(65536, 16u * 1024 * 1024);
     }
     render_material_border_cache_begin(renderer->border);
+    if (!renderer->lod) {
+        renderer->lod = render_material_lod_new();
+    }
+    render_material_lod_begin(renderer->lod);
     asetlen(renderer->entities, 0);
     aclear(renderer->meshes);
     renderer->tile_groups = 0;
@@ -859,6 +879,17 @@ static bool collect(
         }
         const material_mask *mask = game_materials_mask(engine_materials(runtime), entity);
         if (mask) {
+            /* Distant masks draw a coarser level, about a piece per pixel. */
+            int level = render_material_lod_level(
+                renderer->lod,
+                mask->cell_size,
+                .5f / renderer->pixel_aa
+            );
+            if (appearance.border_width > 0 &&
+                GAME_GameMaterial_get_const(world, entity)) {
+                level = border_level(mask, appearance.border_width, level);
+            }
+            mask = render_material_lod_get(renderer->lod, mask, level);
             float padding = fmaxf(appearance.antialias, renderer->pixel_aa);
             material_rect bounds = { 0,
                                      0,

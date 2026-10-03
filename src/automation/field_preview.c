@@ -1,6 +1,7 @@
 #include "automation/field_preview.h"
 
 #include "platform/cute.h"
+#include "render/field_image.h"
 #include "runtime/material_field.h"
 #include "support/asset_json.h"
 #include "support/asset_text.h"
@@ -61,21 +62,11 @@ bool automation_field_preview(
     CF_Pixel *pixels = xmalloc((size_t)width * height * sizeof(CF_Pixel));
     uint64_t hash = UINT64_C(14695981039346656037);
     float minimum = values[0], maximum = values[0];
-    for (int y = 0; y < height; y++) {
-        for (int x = 0; x < width; x++) {
-            float value = values[y * width + x];
-            minimum = fminf(minimum, value);
-            maximum = fmaxf(maximum, value);
-            float edge = expf(-fabsf(value) / (float)spacing);
-            CF_Pixel color = value <= 0
-                               ? (CF_Pixel){ .r = 55, .g = 156, .b = 181, .a = 255 }
-                               : (CF_Pixel){ .r = 17, .g = 24, .b = 35, .a = 255 };
-            color.r = (uint8_t)(color.r + (240 - color.r) * edge);
-            color.g = (uint8_t)(color.g + (240 - color.g) * edge);
-            color.b = (uint8_t)(color.b + (240 - color.b) * edge);
-            pixels[(height - 1 - y) * width + x] = color;
-        }
+    for (int i = 0; i < width * height; i++) {
+        minimum = fminf(minimum, values[i]);
+        maximum = fmaxf(maximum, values[i]);
     }
+    render_field_image(values, width, height, (float)spacing, pixels);
     const unsigned char *bytes = (const unsigned char *)values;
     for (size_t i = 0; i < (size_t)width * height * sizeof(float); i++) {
         hash = (hash ^ bytes[i]) * UINT64_C(1099511628211);

@@ -69,10 +69,20 @@ typedef struct
     float beat_phase, beat_pulse;
     float influence[3]; /* Linear color at the origin, fading out at the preview radius. */
 } render_arena_activity;
-/* A sphere of RENDER_ARENA_PREVIEW_RADIUS at the origin, using the same surface path. */
+/* A sphere of RENDER_ARENA_PREVIEW_RADIUS at the origin, using the same surface
+ * path, after registering the asset (render_shader_upsert). */
 bool render_arena_preview(
     render_arena *arena,
     const behavior_asset *asset,
+    const render_arena_camera *camera,
+    const char *parameters_json,
+    float time,
+    const render_arena_activity *activity
+);
+/* The same sphere for a material the catalog already holds, by its id. */
+bool render_arena_preview_material(
+    render_arena *arena,
+    int material,
     const render_arena_camera *camera,
     const char *parameters_json,
     float time,

@@ -59,7 +59,7 @@ reference for spacing, alignment, and motion as well as appearance.
 | [clsx](https://github.com/lukeed/clsx) | Conditional class lists | `KIT_CX` | Done |
 | [cva](https://github.com/joe-bell/cva) | Variants mapped to classes in one table | `kit_variant`, `kit_size` | Done |
 | [Chrome DevTools](https://developer.chrome.com/docs/devtools/css), [Unity UI Toolkit Debugger](https://docs.unity3d.com/Manual/UIE-ui-debugger.html) | Pick any element; see its box, the rules that style it and where they were written | `kit_inspect_begin`, `kit_highlight`, `kit_element_path` (`kit_inspect.c`); the authored Inspector panel (`studio_inspect.c`) | Done; overridden declarations and tree keys open |
-| [Unity IMGUIContainer](https://docs.unity3d.com/ScriptReference/UIElements.IMGUIContainer.html) | Native, immediate-mode content inside an authored layout | `kit_slot_begin`, `kit_slot_end` (`kit_slot.c`): the status bar's UI Scale; the top bar's menubar, play target and debugger steps; each area header's editor type menu and editor controls | Done |
+| [Unity IMGUIContainer](https://docs.unity3d.com/ScriptReference/UIElements.IMGUIContainer.html) | Native, immediate-mode content inside an authored layout | `kit_slot_begin`, `kit_slot_end` (`kit_slot.c`): each area's content in its place in the Workspace; each area header's editor controls | Done |
 | [Unity UI Builder](https://docs.unity3d.com/Manual/UIB-getting-started.html), [UMG Designer](https://dev.epicgames.com/documentation/en-us/unreal-engine/umg-ui-designer-quick-start-guide-in-unreal-engine) | Visual editing of a UI document: hierarchy, canvas, details and a library of elements | The designer (`studio_designer*.c`) over `ui_design.h`'s text edits; `kit_drag_source`/`kit_drop_target` for the tree, `kit_highlight` for the Canvas outlines, `kit_item_pressed` for its resize handles | Done |
 | [Zep](https://github.com/Rezonality/zep) (linked, C++) | Code editing: Vim and standard keys, undo, diagnostics, completion, hover | `kit_code` (`kit_code.c`) over `editor/text/zep_bridge.h`; the Text Editor's language glue in `editor/documents/ui_code.h` and `asset_code.h`; shared KDL intelligence in `assets/asset_source.h` | Done; highlighting, diagnostics, completion items and hover text come from the caller |
 
@@ -291,7 +291,6 @@ icons, or descriptions, and `kit_choice` for simple named options.
 - A slot not begun in a frame loses its content, as any kit item does.
 - Popups, menus and tooltips a slot opens live in the kit's layer, as elsewhere.
 - Focus follows IMGUIContainer's: a click on authored chrome leaves the keyboard to the editor (`kit_release_focus`), while a field in a slot keeps it, as an IMGUI text field does.
-- Menubar triggers in a slot keep Base UI's menubar: hovering another trigger while a menu is open switches to it, and Left and Right step between them.
 
 ### Unity UI Builder and UMG Designer
 

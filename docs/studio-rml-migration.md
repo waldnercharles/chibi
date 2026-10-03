@@ -387,6 +387,35 @@ What the numbers confirm or change:
   (emit 0.3, update 0.5, capture 0.4). An authored panel with nothing dirty
   costs nothing.
 
+### S0 re-measured
+
+On 2026-10-03 at 03:04, with the agents finished (1-minute load 8-12, most
+of it the release build that had just run; p25-p75 spreads within a few
+percent), `./build-release/test_suite --ui-bench` gave, natively:
+
+| Case | Median ms | Threshold | Decision |
+|---|---:|---:|---|
+| Full layout of Studio, compact / comfortable | 3.96 / 3.84 | 2 | One RmlUi document per area (F5) is required |
+| 3,000 text views, one value changed | 1.75 | 1 | One variable per panel, hot values apart |
+| 50 property rows instanced | 6.87 | 4 | Pooled rows, stable window lengths |
+| Scroll step, 60-row window over 10k rows | 0.69 | | Fine |
+| 3,000 items looked up: walk / `json_items` | 3.65 / 0.01 | | The O(1) fix holds |
+| 40 Output rows as `data-rml` / plain text | 1.21 / 0.21 | | Output rewrites only new rows |
+
+Properties against the native kit, alternated run by run in Studio:
+
+| Case | Native | Authored | Ratio |
+|---|---:|---:|---:|
+| Select another object | 8.15 | 3.29 | 0.40× |
+| Edit one field | 1.42 | 1.32 | 0.93× |
+| Play refresh, every float changed | 2.16 | 3.94 | 1.82× |
+
+These confirm the provisional decisions: one document per area, and
+`<number-field>` and `<live-text>` (repainting without layout) before P1,
+since the Play refresh is the one case authored text is slower. Live
+sources stay unnecessary. Popovers escape clipping with `clip: none` unless
+their own area sets `z-index`, `transform` or `filter`.
+
 ## Waves
 
 Every wave meets:

@@ -3,7 +3,7 @@
 Studio's whole editor moves to authored RML and RCSS, as the user decided on
 2026-10-03. Anything that can't be authored, or that would cost substantial
 performance, is postponed and listed in Postponed below. Status: S0, F0,
-F1, F2, F3, F4, F5, P2, P3, P4 and P5 done; the rest planned. The spike (S0) ran on a
+F1, F2, F3, F4, F5, P2, P3, P4, P5 and C3 done; the rest planned. The spike (S0) ran on a
 loaded machine, so its times are provisional until re-measured on an idle
 one (S0 results).
 
@@ -36,8 +36,8 @@ About 1,600 kit call sites remain across 40 files. The largest:
 
 | Surface | Lives now | Needs from C | Plan |
 |---|---|---|---|
-| Top bar | `TopBar.rml`; menubar drawn natively from its `<menu>` markup; play target, layout and debugger steps in native slots | `commands`, `editor.tabs`, menu lists | W3 C3 over F3's `<menubar>`, Menu and MenuCommand |
-| Status bar | `StatusBar.rml`; UI Scale native | `editor`, `commands` | W3 C3 |
+| Top bar | Authored: `TopBar.rml`'s `<menubar>` of Menus and MenuCommands, the play target, speed and layout menus and the debugger's steps | `commands`, `editor.tabs`, `menubar`, `shell` | Done (W3 C3) |
+| Status bar | Authored: `StatusBar.rml` with UI Scale's menu | `editor`, `commands`, `shell` | Done (W3 C3) |
 | Area header | `AreaHeader.rml`; editor type menu authored (F3, a Menu over `choices.editors`); editor controls in a native slot | `editor.areas`, `choices` | W3 C3; each panel's controls move with the panel |
 | Settings, Shortcuts, Collaboration, NewProject, Dialog, Inspector panel, Data, Theme, the Behavior header's View menu (GraphView, trigger included since F3) | Authored | | Done |
 | Properties: Object, Prototype, Scene, Behaviors | `studio_properties.c` (~2k lines) | Reflection, ECS reads, overrides and mixed values, `write_field` gestures, ranges and units from `Components.kdl`, live values at 20 Hz in Play, locks, search, Keep, Add Component | W2 P1 |
@@ -51,7 +51,7 @@ About 1,600 kit call sites remain across 40 files. The largest:
 | Behavior area | `studio_graph*.c`, a second context drawn to `kit:graph` | Nodes, pins, literals, comments, reroutes, wires, live chips | Header, breadcrumbs, find, menus, add-node search: W4 G1. Node bodies: postponed |
 | Text Editor | `studio_code.c`, `kit_code.c` (Zep) | Buffer, intelligence, Vim | Chrome authored (W3 C2); the Zep surface stays a native element |
 | Performance | `studio_performance.c` | Sample ring | W3 C2 around a native `<line-chart>` |
-| Shell | `studio_shell.c` | Area tree, ratios, drawer and side springs, maximize, editor types | W3 C3 with a native `<splitter>` |
+| Shell | Authored: `Workspace.rml` over the `workspace` source (`studio_shell.c`); each area a document in its place | Ratios, open states, maximize, the columns' laid-out sizes | Done (W3 C3) |
 | Palette, dropdowns, autocomplete, asset pickers | `kit_command.c`, `studio_palette.c`, `studio_pick.c`, `kit_popup.c` | Ranking, recents, prefixes, thumbnails | W3 C4; ranking stays in C |
 | Popups, menus, tooltips | `src/ui/popover.c` (F3) stacks, places and dismisses authored popovers and the kit's popups and runs menus; `kit_popup.c` emits the kit's | Placement, stacking, dismissal, typeahead | Done for the controller (F3); kit menus move to Menu with their panels; tooltips stay attribute-driven |
 | Toasts | `kit_toast.c` | Springs, swipe | Postponed |
@@ -180,12 +180,12 @@ pointer and modifiers, so markup hears it with `data-event-contextmenu`.
 | `<number-field>` | `kit_number.c` (done, F2: `src/ui/controls/number_field.c`; the parser is `src/support/number_expr.c`) | `value min max step precision integer float slider unit addon mixed readonly disabled invalid`; `input`/`change`; today's scrub threshold, Alt fine, Shift coarse, Ctrl snap, steppers, Tab; Escape cancels typing or a scrub; repaints text without layout |
 | `<color-field>` | `kit_color` (done, F2) | `value mixed readonly disabled`; opens its own picker as `<input type=color>` opens the OS one: `input` while open, `change` on close. Its picker is inside the field (`position: fixed; clip: none`), stacked, placed and dismissed by `popover.c` (F3), so it escapes its area |
 | `<choice-list>` | `kit_dropdown`'s list (F3; the kit's still runs its own) | `[role=option]` descendants with `value`, `data-label` or `.label`, `data-keywords`; its first `<input>` filters them by `text_search_score` (`data-filtered`, `data-empty`); Up, Down, Home, End and the pointer move `data-highlighted`; Enter or a click sends `change` with the option's value |
-| `<splitter>` | `kit_splitter` (done, F2) | `axis min max value invert`; `input`/`change`; cursor |
+| `<splitter>` | `kit_splitter` (done, F2; the kit's wrapper went with C3) | `axis min max value invert`; `input`/`change`; cursor |
 | `<live-text>` | `kit_live_label` (done, F2) | `value`; glyphs update without layout |
 | `<line-chart>` | `kit_chart.c` | Series from a C registry, named like `kit:` textures |
 | Existing | | `<img src="kit:...">`, `<number-flow>`, `<morph-text>`, `presence` |
 
-The kit's number, color, splitter, drag and popup calls become thin wrappers
+The kit's number, color, drag and popup calls become thin wrappers
 over these, so native and authored panels share one implementation, one popup
 stack and one drag session while the migration runs.
 
@@ -1158,8 +1158,136 @@ after the first round; the Studio bench stops when a frame logs more than
 |---|---|---|
 | C1 Scene | Scene and Canvas headers, actions log, camera labels, notice line | ~500 lines |
 | C2 Editor chrome | Behavior header (breadcrumbs, debug target), graph find bar; Text Editor header and find; Performance with `<line-chart>` | ~400 lines |
-| C3 Shell | `Workspace.rml` (areas, `<splitter>`, drawer and side transitions, maximize); editor-type popover; `<menubar>`; play target, layout, UI Scale, debugger steps | ~600 lines and `kit_menubar_trigger` |
+| C3 Shell (done) | `Workspace.rml` (areas, `<splitter>`, drawer and side transitions, maximize); editor-type popover; `<menubar>`; play target, layout, UI Scale, debugger steps | ~600 lines and `kit_menubar_trigger`: C3 results |
 | C4 Palette | `Palette.rml` over ChoiceList (prefixes, pages, recents, thumbnails); asset pickers, Add Component, refactor popover; ranking moves to `support/` | ~500 lines of `kit_command` UI |
+
+#### C3: the shell (done)
+
+The shell's chrome is authored; only each area's content, the editors not
+yet migrated, stays kit-emitted, as a native slot of the Workspace.
+
+- **Workspace** (`Workspace.rml`, `.rcss`, the `workspace` source in
+  `studio_shell.c`): the areas' places (`#area-<key>`), the splitters between
+  them, the drawer under the main areas and the side column, and a maximized
+  area filling it all, as Blender's areas. C keeps the arrangement (ratios,
+  open states, maximize, per layout mode) and computes each place's extent
+  from the columns' last laid-out sizes with the kit's formulas, whole dp, so
+  the places sit where the kit put them. Each area is still a document of its
+  own, emitted into its place with `kit_slot_begin`; the slot follows the
+  area, not the layout, so maximizing, restoring or switching modes keeps an
+  area's document, its kit state and its Text Editor (the kit's paths changed
+  with the parent and rebuilt them). Kit paths are now
+  `app/workspace/<key>/area/...`.
+- **Splitters** are `<splitter>`s sending `emit('workspace.resize', which,
+  ev.value)` on `input`; the action resyncs the source at once
+  (`studio_ui_resync`), so the places move in the frame the input arrives,
+  as the kit's did. The arrangement is a preference: no Undo step. Their
+  hit areas reach 2 dp onto the areas beside each 6 dp gutter (10 dp; 8 dp
+  where the drawer and the side column clip it), as Unreal's `SSplitter`
+  hit-tests a wider handle than it draws: the Workspace's document lies over
+  the areas (`z-index: 1`) with `pointer-events: none` but at its splitters.
+  Popovers (9) and the kit's layer (10) stay above it.
+- **Transitions:** the drawer eases open in 200 ms and shut in 100 ms and
+  the side column both ways in 200 ms, as RCSS transitions on `height` and
+  `width` (`quadratic-out`, close to the kit's critically damped spring)
+  toggled by `data-open`; a splitter changes the size variable, which moves
+  them directly, and Reduce Motion removes the transitions. RmlUi resolves a
+  transition's target without the element's inline properties, so
+  `--drawer` and `--side` live on `.workspace`. C keeps an easing-shut area
+  until its place is empty, and wakes UI frames while any area's box moved
+  since the last emission (`studio_areas_moved`), so the kit content in it,
+  such as the Scene's surface, follows each frame, as the springs' frames
+  did. Maximize stays instant, as before.
+- **Top bar:** a `<menubar>` of `.trigger` buttons and `Menu`s: MenuCommands
+  over `commands`, MenuGroups, Submenus, and File's and Object's lists from
+  the `menubar` source (New ▸ Project, Open Project, the browser's Import
+  and Export Project, the scene's prototypes for Add), with actions
+  `menubar.newProject`, `.openProject`, `.add`, `.importProject` and
+  `.exportProject`. The play target (its morphing label), the playback
+  speed (on while not 1×) and the layout menu read the `shell` source and
+  send `shell.target` and `shell.speed` or run the layout commands; a
+  paused run's Step Over, Into and Out are buttons over `commands`. The
+  status bar's UI Scale menu reads `shell.scale` and sends `shell.scale`.
+  Blender's and Unreal's menubars are the reference: a press opens, hovering
+  another trigger switches, Left and Right step, typeahead within (no Alt or
+  F10 binding, as before; F10 is Step Over).
+- **Shared fixes:** popover.c marks an open popover's trigger with
+  `data-popup-open` (Base UI's; the menubar's trigger stays pressed while
+  its menu is open, as the kit's did) and gives every popover
+  `--available-height`, the window's height less its margins, so an
+  authored menu taller than the window scrolls (`popup.rcss`), as the kit's
+  did; a press on an open authored popover keeps the area the command acts
+  on, as a press on the kit's layer did (the Edit menu over the Scene).
+- **Deleted:** the kit's `kit_menubar_trigger` and its trigger press,
+  `kit_splitter` and `splitter_take`/`splitter_active`, `kit_spring` and its
+  springs; the shell's kit menus, menubar, play target, layout control,
+  speed control, debugger steps and menu, project menus, UI Scale control
+  and the kit-built workspace. Across `src`, 788 lines went and 638 came
+  (the sources' data and the workspace's geometry); `studio_shell.c` grew
+  from 1,624 to 1,713 lines.
+
+`UI_BENCH_SPLITTER=1 ./build-release/test_suite --ui-bench studio` (case
+15: Studio over the Sandbox at 1440×900, pixel scale 2; the main splitter
+dragged 3 dp, then the chrome at rest and after a selection), the
+integration branch before C3 (`cf21ee38`, over its own resources with
+`CHIBI_RESOURCE_DIR`) and this one alternated process by process three
+times, 1-minute load 22-26, so the times are provisional; the range of the
+runs' medians in ms:
+
+| Case | Kit | Authored | Ratio | Layouts | Views | Elements |
+|---|---:|---:|---:|---|---:|---:|
+| A splitter dragged 3 dp, the two UI frames after | 6.26-6.52 | 3.96-4.30 | 0.65× | 3 / 3 | 0 / 46 | 2,355 / 3,480 |
+| The chrome: a UI frame with nothing changed | 0.95-1.04 | 1.20-1.22 | 1.20× | 0 / 0 | 0 / 0 | |
+| The chrome: select another object | 7.12-7.59 | 8.18-8.44 | 1.14× | 4 / 5 | 550 / 668 | |
+
+A drag step lays out three documents in both: the kit's shell document
+and the two areas, or the Workspace's and the two areas; the shell
+document held the kit-built workspace, so the step's update fell from 3.9
+to 1.4 ms. The kit resized the areas in the frame after the drag, the
+Workspace in the same frame. The idle frame's 0.17 ms more is sync (+0.06:
+three more sources; `menubar` walks the scene's prototypes for Add's icons
+at each refresh) and emit (+0.12: the Workspace's slots and place
+queries). A selection costs about 1.1 ms more: the closed menus hold about
+1,100 elements and their views, and the Play target's Preview row and the
+commands' states they show change with the selection, laying out the top
+bar's document once more. **Follow-up, shared with F3:** build a popover's
+content only while it is open, as the kit's menus were.
+
+Shots, before C3 (`3777b63b`) and after. Native, in a hidden window at
+2560×1600 (`CHIBI_SHELL_CAPTURE_DIR`): dark and light, compact and
+comfortable at UI Scale 100%, dark compact and light comfortable at 150%;
+the window at rest, File, View, Object ▸ Add, the play target's, layout's,
+speed's and UI Scale's menus, the drawer open, an area maximized, the side
+pane closed and Horizontal Split: 55 of 72 pairs identical pixel for pixel;
+the rest differ only in the UI Scale menu's labels by a subpixel (the menu
+sits against the window's right edge, and its width differs from the kit's
+measured one by a fraction of a pixel), the 150% View menu's shortcut
+column and scrollbar by 1 px, and the Scene's and the graph's zoom
+readouts, caught mid-roll. Web, 1600×1000 at DPR 1, dark and light,
+compact and comfortable, the same states plus a splitter hovered and
+dragged: 52 pairs whose chrome matches; they differ in the Scene's live
+world generation, and in comfortable a pointer on a gutter's edge row now
+tints the splitter (its hit area reaches past the gutter). Object ▸ Add's
+long prototype names fit since Submenu's room (before it they clipped at
+the parent menu's width).
+
+Checks: `--studio-shell` (new; also in `--studio-documents`): the menubar's
+press, hover switching, Right and Escape, a MenuCommand running, Object ▸
+Add listing and adding a prototype; the play target's menu, a speed preset,
+the layout menu; UI Scale's menu checking the scale and setting another;
+the areas over their places, a splitter's 10 dp hit area and a drag that
+resizes in the frame its input arrives; the drawer easing open and shut and
+leaving its place; the guest Studio's areas; layout modes, side pane,
+maximize; with `CHIBI_SHELL_CAPTURE_DIR` set, native shots of every state
+in six variants. `--studio-panels`: the panel turns check also changes the
+drawer's and the side column's editors and eases each open and shut, with
+no RmlUi warning and no views piling up. `--kit-documents` (`kit_slot.c`):
+the authored top bar's menubar, play target and paused steps;
+`--rmlui-kit`: the kit's menu checks over a plain trigger.
+
+Open: the area headers' editor controls are still native slots (C1, C2);
+a menu taller than the window keeps clipping its longest labels by its
+scrollbar's width (the View menu at 150% UI Scale), as the kit's did.
 
 ### Wave 4: graph chrome, Designer, Inspector (3 parallel)
 

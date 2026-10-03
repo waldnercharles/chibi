@@ -904,7 +904,10 @@ the authored panel timed an idle frame; values now only grow.
 
 Play refresh pairs ranged 0.88-1.26×: the sync costs 0.04 ms more than
 the kit's (it rereads every shown field) and RmlUi's update 0.07 ms more
-(20 views that index `propertyValues`, and the fields they set). A
+(20 views that index `propertyValues`, and the fields they set). Against
+the integration head before P1 (`ed267081`, with Output and Members
+authored), four pairs at load 17-21: select 1.18×, edit 0.99× and Play
+refresh 1.14×, Studio holding 2,351 elements to the kit's 2,039. A
 value-only refresh lays the Properties document out zero times
 (`--studio-properties` checks it with a layout probe). Selecting another
 object still costs more than the kit's, over the +10% gate: with the

@@ -47,7 +47,7 @@ Commands act on the whole selection; F2 renames the active object.
 | --- | --- | --- | --- |
 | F | Frame Selected: fit every selected object | Scene, Outliner | `studio_commands.c` |
 | Home | Frame All | Scene | `studio_commands.c` |
-| F2 | Rename the active object in place | Scene, Outliner | `studio_commands.c`, `studio_scene.c` |
+| F2 | Rename the active object in place | Scene, Outliner | `studio_commands.c`, `studio_outliner.c` |
 | Shift+D, Mod+D | Duplicate the selection one grid increment down and right; the copies become the selection | Scene, Outliner | `studio_commands.c`, `studio_shell.c` |
 | X, Backspace, Delete | Delete the selection (Undo in the toast) | Scene, Outliner | `studio_commands.c`, `studio_shell.c` |
 | Mod+C, Mod+X, Mod+V | Copy, Cut (Undo in the toast) and Paste objects; Paste centers them under the pointer over the Scene, else one grid increment from where they were copied | Scene, Outliner | `studio_commands.c`, `studio_shell.c` |
@@ -55,8 +55,8 @@ Commands act on the whole selection; F2 renames the active object.
 | Escape | Deselect All (not while a drag is held) | Scene, Outliner | `studio_commands.c` |
 | Up, Down | Select previous and next row | Outliner | `studio_commands.c` |
 | Shift+Up, Shift+Down | Extend the selection from its anchor | Outliner | `studio_commands.c` |
-| Mod+click | Add a row to the selection, or take it out | Outliner | `studio_scene.c` |
-| Shift+click | Select the rows from the anchor (the last row clicked) | Outliner | `studio_scene.c` |
+| Mod+click | Add a row to the selection, or take it out | Outliner | `studio_outliner.c` |
+| Shift+click | Select the rows from the anchor (the last row clicked) | Outliner | `studio_outliner.c` |
 | Shift+click, Mod+click | Add an object to the selection, or take it out (not on a gizmo handle, where Shift keeps the aspect) | Scene | `workspace/scene_viewport.c` |
 | Shift+drag, Mod+drag | Add a marquee's objects to the selection | Scene | `workspace/scene_viewport.c` |
 | Mod or Ctrl + wheel | Magnify the Scene view; middle drag pans it | Scene | `studio_scene.c` |

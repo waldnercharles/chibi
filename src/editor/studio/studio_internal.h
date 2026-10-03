@@ -175,7 +175,7 @@ typedef enum
     STUDIO_COMMAND_SHOW_FOG,
     STUDIO_COMMAND_SHOW_CAMERAS,
     STUDIO_COMMAND_VIEW_THROUGH_CAMERA,
-    /* Hide in Editor (studio_scene.c) */
+    /* Hide in Editor (studio_outliner.c) */
     STUDIO_COMMAND_HIDE_SELECTED,
     STUDIO_COMMAND_HIDE_UNSELECTED,
     STUDIO_COMMAND_SHOW_ALL,
@@ -1270,6 +1270,7 @@ void studio_scene_body(studio *s, int area);
 /* Takes the view zoom's gestures from the Scene area's pointer in `input`,
  * given in area points, and leaves it in the frame's points. */
 void studio_scene_view(studio *s, engine_viewport_host_input *input);
+/* The Outliner (studio_outliner.c). */
 void studio_outliner_header(studio *s, int area);
 void studio_outliner_body(studio *s, int area);
 int *studio_outliner_rows(studio *s);

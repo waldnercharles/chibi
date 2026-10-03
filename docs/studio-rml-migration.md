@@ -197,8 +197,9 @@ What RmlUi 6.3 and our binding do (checked in source):
   about n²/2 item steps per dirty.
 - `data-for` builds new items with a parse and matches by index.
 - `data-if` hides and keeps views (Vue's `v-show`).
-- Any dirty layout re-lays out the whole document. Studio is one kit
-  document today, so the native editor already pays this.
+- Any dirty layout re-lays out the whole document. Since F5 each area, the
+  top bar, the status bar and the overlay layer is a document of its own,
+  so a change lays out only the one it is in.
 - Same-value style writes lay nothing out, and live labels avoid layout
   (existing patches).
 
@@ -458,8 +459,52 @@ table in `studio_ui.c`, `scenes/Studio.kdl`, `test_suite.c`, `sources.cmake`,
 | F3 Popovers | `popover.c`, `<menubar>`, one popup stack; widgets Menu*, MenuCommand, ChoiceList, AssetField, EnumField; a `choices` source | The GraphView popover and one authored menu at parity |
 | F4 Lists and drag | `drag.c`, `ui_list_window`, kit wrappers; widgets List, TreeRow (drop zones), Tile | One drag crosses an authored list and a native one |
 
-F5, which S0 calls for (provisionally, S0 results): one RmlUi document per
-area, so a panel's layout lays out only its area. P1-P5 wait for it.
+#### F5: one document per area (done)
+
+Each area, the top bar and the status bar is an RmlUi document of its own
+in Studio's context, shown over a box the shell document (`studio.rml`)
+lays out, as a page shows an `<iframe>` and as Blender tags and lays out
+each area's regions on their own: `kit_document_begin` in the kit,
+`src/ui/iframe.c` for the placement. After each update a document takes
+its box's border box in pixels; a bar's box takes its document's content
+height instead. The backend settles before each update as well, so a
+window resize or a moved splitter lays each document out once. The kit's
+overlay layer (popups, menus, tooltips, toasts, palette, dialogs, drag
+overlay) is a document above them all (`z-index: 10`). Documents share the
+context, so focus, keys, hover, data models and textures cross between
+them; kit paths are unchanged. No RmlUi patch: RmlUi 6.3 has no layout
+boundary (`Element::DirtyLayout` dirties the owner document, which
+formats from its root), and containment would have meant re-entering the
+flex and absolute-positioning code with a fixed box.
+
+What changes: the kit's style sheets are read once and copied into each
+document (about 1.4 ms per document, on a restyle or when one opens, such
+as the drawer); Tab in a number field steps within its document, as
+RmlUi's own Tab does; the kit's own document keeps `z-index: 0`, so
+focusing it never raises it over the areas. An authored popover inside an
+area draws above the other areas only while its document is in front:
+RmlUi raises a document as it takes focus. Goldens (dark and light,
+compact and comfortable, UI Scale 100% and 150%, native and web) match
+except the Scene's live render and at most 1/255 in a status-bar text.
+
+Native, 1440×900 at pixel scale 2, `--ui-bench studio`, the two builds
+alternated twice, 1-minute load 12-19:
+
+| Case | Before | After | Laid out |
+|---|---:|---:|---|
+| A text change in the Outliner | 4.09-4.29 | 1.02-1.06 | 1 document of 242 elements (was 655) |
+| Full layout (1 px resize), compact | 4.13-4.16 | 2.83-2.88 | 8 documents, once each |
+| Full layout, comfortable | 3.96-4.09 | 2.75-2.81 | 8 documents |
+| Select another object (native Properties) | 8.44-8.52 | 6.13 | 4 documents; update 5.7 to 3.5 |
+| A UI frame with nothing changed | 0.77-0.81 | 0.74-0.77 | none |
+
+Web (`-DCHIBI_WEB_PROFILING=ON`, headless Chrome at 1440×900, DPR 2,
+`Rml retained update` medians of 31, load 10-14): a keystroke in the
+Outliner's filter 6.1-6.3 to 2.2 ms; a 1 px resize 5.5-5.6 to 4.0-4.1 ms.
+
+`test/editor/kit_documents.c` checks the isolation, placement and fit,
+popups above areas, focus across documents, inspection and lifetime;
+`--studio-documents` checks the Outliner and the guest Studio.
 
 ### Wave 2: panels (5 parallel)
 
@@ -509,8 +554,10 @@ needs; shrink `kit.h`; update DESIGN decision 5, `studio-ui-authoring.md` and
 - `data-for` matches by index, so focus, transitions and presence follow the
   index when a list reorders.
 - Popovers rely on `clip: none` and stacking; S0 found both work while no
-  area forms a stacking context (`z-index`, `transform`, `filter`). Fallback: a
-  teleport that rebinds the data model.
+  area forms a stacking context (`z-index`, `transform`, `filter`). Since F5
+  each area is a document, which is one: a popover in it is above the other
+  areas only while its document is in front, as it is once it takes focus.
+  Fallback: a teleport into the layer that rebinds the data model.
 - The web build costs 1.3-1.7× more per view (S0); the guest Studio doubles UI cost.
 - Hot-reloading a panel mid-gesture drops the gesture.
 - The shared `entities`/`self` variable dirties every panel, so editor data

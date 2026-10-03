@@ -224,7 +224,8 @@ static int sheet_colors(const char *text, uint32_t *colors, int max)
     return count;
 }
 
-/* Up to four swatches a row, centered on the stage. */
+/* Up to four swatches a row, centered on the Canvas's backdrop, as ui
+   documents show. */
 static bool render_stylesheet(const studio_thumb_job *job, CF_Canvas canvas)
 {
     char *text = text_file_read(job->path);
@@ -235,6 +236,7 @@ static bool render_stylesheet(const studio_thumb_job *job, CF_Canvas canvas)
         return false;
     }
     float side = (float)job->side;
+    cf_canvas_set_clear_color(canvas, color_of(job->light ? BACKDROP_LIGHT : BACKDROP_DARK));
     int columns = count < 4 ? count : 4, rows = (count + columns - 1) / columns;
     float cell = side * 0.8f / 4, gap = cell * 0.12f;
     float left = (side - columns * cell) / 2, top = (side + rows * cell) / 2;

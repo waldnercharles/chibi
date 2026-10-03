@@ -1302,6 +1302,14 @@ rml_data_model *rml_data_model_create(
             emit(user, &e, texts.empty() ? "" : texts[0].c_str(), (int)args.size(), args.data());
         }
     );
+    /* The DOM's event.stopPropagation(), as Vue's .stop: a button inside a
+       row keeps its click from the row. */
+    constructor.BindEventCallback(
+        "stopPropagation",
+        [](Rml::DataModelHandle, Rml::Event &event, const Rml::VariantList &) {
+            event.StopPropagation();
+        }
+    );
     return model;
 }
 

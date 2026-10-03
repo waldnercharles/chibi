@@ -169,13 +169,8 @@ body.comfortable .output-list .vlist-content > .output-line, body.comfortable .o
 .graph-find-list { position: relative; }
 .graph-find-list .tree-row .meta { display: block; flex: 0 1 auto; max-width: 60%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 
-/* Assets. */
-.assets-kind { width: 140dp; display: flex; }
+/* The name filter of Assets (AssetsHeader) and of a UI document's Library. */
 .assets-filter { flex: 1 1 0dp; display: flex; max-width: 220dp; margin-left: 4dp; }
-.assets-list { position: absolute; left: 0dp; top: 0dp; right: 0dp; bottom: 0dp; padding: 3dp 4dp 8dp; }
-.assets-list .tree-row { tab-index: none; }
-.assets-list .tree-row[data-unused] .meta { color: var(--disabled-foreground); }
-.assets-list .tree-row[data-unresolved] .icon { color: var(--warning); }
 
 /* Performance. */
 .perf-title { display: block; line-height: var(--studio-line-16, 16dp); color: var(--foreground); font-weight: 500; margin-left: 2dp; }

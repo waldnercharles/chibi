@@ -792,11 +792,13 @@ typedef struct
 #define STUDIO_NEW_KIND_COUNT (NEW_ASSET_KIND_COUNT + UI_NEW_KIND_COUNT)
 typedef struct
 {
-    int kind;     /* below STUDIO_NEW_KIND_COUNT */
-    bool opening; /* open the name popover this frame */
-    bool focus;   /* focus the name field on its first frame */
-    bool shown;   /* the popover showed last frame, so an Enter is for it */
+    int kind; /* below STUDIO_NEW_KIND_COUNT */
+    /* The UI refresh the name popover opens at, once its sync shows the
+       name; 0 when none asks. */
+    uint64_t asked;
+    bool closing; /* the asset was made: close the popover */
     char name[64];
+    char typed[64]; /* the name as its field last showed it */
     char error[160];
 } studio_new_asset;
 
@@ -1150,7 +1152,7 @@ bool studio_keymap_show(yyjson_mut_doc *doc, const studio_prefs *prefs, bool mac
 bool studio_keymap_area(const char *area);
 
 /* The panel sources a studio_sources follows at most. */
-#define STUDIO_PANEL_SOURCE_MAX 16
+#define STUDIO_PANEL_SOURCE_MAX 24
 
 /* What authored panels bind beyond their world's `save` (studio_sources.c):
  * `world`, the Scene world's saved keys, and `theme`, the custom properties
@@ -1366,8 +1368,9 @@ bool studio_member_palette(studio *s);
 void studio_assets_free(studio *s);
 void studio_assets_header(studio *s, int area);
 void studio_assets_body(studio *s, int area);
-/* Keys over the Assets area: F2 renames the row under the pointer, X or
-   Delete deletes it. True when one was taken. */
+/* Keys over the Assets area: the arrows, Home and End move the selection
+   and Enter opens it; F2 renames the asset under the pointer, X or Delete
+   deletes it. True when one was taken. */
 bool studio_assets_key(studio *s, SDL_Keycode key, SDL_Keymod mod);
 const char *studio_asset_kind_name(int kind);
 uint32_t studio_asset_kind_icon(int kind);
@@ -1654,9 +1657,8 @@ bool studio_code_open_place(studio *s, const ui_code_place *place);
 /* Assets ▸ New (studio_assets.c): the header's button opens a menu of every
    kind, grouped, with the Assets filter's kind first. A kind, from the menu
    or its New … command, asks for a name, then writes the asset and opens it
-   as Assets opens it. The frame draws the menu and the name popover wherever
-   they opened. */
-void studio_new_asset_button(studio *s);
+   as Assets opens it. The frame shows the name popover, NewAsset, under the
+   header's button or at the pointer. */
 void studio_new_asset_start(studio *s, int kind);
 void studio_new_asset_frame(studio *s);
 
@@ -2308,5 +2310,27 @@ void studio_editor_choices(studio *s, yyjson_mut_doc *doc, yyjson_mut_val *edito
 /* Shows editor type `editor` in `area`, or with STUDIO_EDITOR_PANEL the
  * Studio panel `panel`; a drawer takes only the types it may hold. */
 void studio_area_show(studio *s, int area, int editor, const char *panel);
+
+/* ---------- Assets (workstream P3) ---------- */
+
+/* The Assets area's source, `assets` (studio_assets.c), which its Assets and
+ * AssetsHeader panels bind: the kind filter and its choices, the name filter
+ * (bound both ways, as view state), the size and the tile and line sizes it
+ * gives, the List's window of rows (the list) or lines of tiles (the grid),
+ * the empty state, the row menu and New's kinds. Its actions: click (asset,
+ * kind), open, menu, preview, references, spawnBreak, rename and delete
+ * (asset), kind, tile and scroll. */
+void studio_assets_add(yyjson_mut_doc *doc);
+bool studio_assets_sync(studio *s, const studio_panel_sync *at);
+void studio_assets_action(studio *s, const char *action, const ui_activation *a);
+/* New's name popover's source, `new_asset` (NewAsset): its title, the name,
+ * bound both ways, and why the last one was refused; new_asset.select
+ * selects the name its field holds and new_asset.create makes the asset. */
+void studio_new_asset_add(yyjson_mut_doc *doc);
+bool studio_new_asset_sync(studio *s, const studio_panel_sync *at);
+void studio_new_asset_action(studio *s, const char *action, const ui_activation *a);
+/* The data model Studio's authored panels bind, or NULL without Studio's
+ * UI; the bench counts the views it evaluates. */
+ui_data *studio_ui_data(studio *s);
 
 #endif

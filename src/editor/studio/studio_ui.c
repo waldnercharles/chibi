@@ -743,3 +743,8 @@ void studio_ui_show_settings(studio *s, const char *query)
     studio_sources_search_settings(&s->ui->data, query);
     studio_ui_show(s, "Settings");
 }
+
+ui_data *studio_ui_data(studio *s)
+{
+    return s->ui ? &s->ui->data : NULL;
+}

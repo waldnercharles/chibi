@@ -34,4 +34,7 @@ name "Studio"
         prototype "Widgets"
         (array)behaviors "VirtualList" "WidgetGallery"
     }
+    - name="Assets" prototype="Assets"
+    - name="AssetsHeader" prototype="AssetsHeader"
+    - name="NewAsset" prototype="NewAsset"
 }

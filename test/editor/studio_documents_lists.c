@@ -167,7 +167,7 @@ static void drag_crosses_lists()
         "in another area adds an object of it"
     );
 
-    rml_element *bank = row_named(s, ".assets-list .tree-row", "Bank");
+    rml_element *bank = row_named(s, "#assets-list [data-ui=TreeRow]", "Bank");
     rml_element *bin = studio_element(s, ".bin");
     bool over_bin = bank && bin && carry(&f, bank, bin, 0);
     bool collected = acount(s->gallery.bin) == 1 &&

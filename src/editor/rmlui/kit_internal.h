@@ -104,15 +104,14 @@ typedef struct widget
     int pending_index;
     kit_number_desc desc; /* its strings are borrowed for one call only */
     char *addon, *draft, *applied, *label, *meta, *badge, *placeholder;
-    char *image; /* a tile's or command item's picture, a "kit:<name>" source */
+    char *image;   /* a command item's picture, a "kit:<name>" source */
     char **labels; /* owned strings */
     uint32_t icon;
-    uint32_t badge_icon; /* a tile's corner badge */
     uint32_t color;
     ui_list_state list; /* list: its window's scroll state (ui/list.h) */
     rml_element *body;  /* list content */
     rml_element *value_el, *input_el, *label_el, *icon_el, *meta_el, *twisty_el,
-        *kbd_el, *badge_el, *head_el, *about_el, *menu_el, *image_el;
+        *kbd_el, *badge_el, *head_el, *about_el, *menu_el;
 } widget;
 
 /* Charts (kit_chart.c): what the chart element draws this frame. The chart

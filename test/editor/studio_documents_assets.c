@@ -51,8 +51,8 @@ static void assets_cache_follows_explicit_refresh()
     snprintf(s->assets_filter, sizeof s->assets_filter, "QaRefreshCache");
     s->ui_schedule.wake = true;
     frames(&f, 3);
-    char first[256];
-    int rows = list_rows(s, ".assets-list .vlist-content", first, sizeof first);
+    char first[4096];
+    int rows = list_rows(s, "#assets-list > .list-spacer", first, sizeof first);
     bool found = rows == 2 && strstr(first, "Behaviors");
     unsigned generation = f.scene->asset_index_generation;
     uint64_t revision = f.scene->asset_index_revision;
@@ -61,7 +61,7 @@ static void assets_cache_follows_explicit_refresh()
     uint64_t emitted = s->ui_schedule.frames;
     assert(app_scene_authoring_refresh_asset_index(f.scene) == 0);
     frame(&f, false);
-    rows = list_rows(s, ".assets-list .vlist-content", first, sizeof first);
+    rows = list_rows(s, "#assets-list > .list-spacer", first, sizeof first);
     if (!found || rows || generation != f.scene->asset_index_generation ||
         f.scene->asset_index_revision != revision + 1 ||
         s->ui_schedule.frames != emitted + 1) {

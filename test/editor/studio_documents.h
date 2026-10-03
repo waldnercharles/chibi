@@ -80,5 +80,8 @@ void studio_documents_list_checks();
 void studio_documents_output_checks();
 /* Members (workstream P5). */
 void studio_documents_members_checks();
+/* The Behavior header, find bars, Text Editor header and Performance
+   (workstream C2). */
+void studio_documents_chrome_checks();
 
 #endif

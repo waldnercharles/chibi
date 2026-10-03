@@ -719,6 +719,75 @@ static void output_log(studio_bench *b)
     frames(b, 2);
 }
 
+/* ---------- 13: Performance while the scene runs ---------- */
+
+/* The UI frame after Performance takes a new sample, as each 20 Hz
+   publication in Play does: the scene steps a frame, the sample publishes,
+   and Studio's UI updates. Counts the layouts of every document and the
+   elements in Performance's. */
+static void performance_step(studio_bench *b, bool sampled, rml_element *document)
+{
+    studio *s = b->studio;
+    double ms[RUNS], phases[PHASE_COUNT][RUNS], phase[PHASE_COUNT];
+    bench_counts counts = { 0 };
+    uint64_t layouts = 0;
+    for (int run = -WARMUP; run < RUNS; run++) {
+        b->time += FRAME;
+        cf_app_update(NULL);
+        app_input_frame();
+        editor_tick(b->graph, b->time);
+        bool ran = app_scene_authoring_frame(b->scene, b->time) == FLOW_OK;
+        assert(ran);
+        s->time += FRAME;
+        if (sampled) {
+            s->perf_publish_next = 0;
+            s->perf_readout_time = 0;
+        }
+        studio_performance_sample(s, FRAME);
+        bench_counts before = studio_mark(s);
+        double t = native_ui(s, phase);
+        cf_app_draw_onto_screen(true);
+        counts = studio_counts(s, before);
+        counts.elements = rml_element_query_selector_all(document, "*", NULL, 0);
+        if (run < 0) {
+            continue;
+        }
+        layouts += counts.layouts;
+        ms[run] = t;
+        for (int p = 0; p < PHASE_COUNT; p++) {
+            phases[p][run] = phase[p];
+        }
+    }
+    char name[160];
+    snprintf(
+        name,
+        sizeof name,
+        "Performance in Play, %s (%llu layouts in %d runs)",
+        sampled ? "a new sample and readout" : "no new sample",
+        (unsigned long long)layouts,
+        RUNS
+    );
+    bench_row("13", name, bench_stat_of(ms, RUNS), counts);
+    phase_row("phases", phases);
+}
+
+static void performance_play(studio_bench *b)
+{
+    studio *s = b->studio;
+    s->maximized = -1;
+    studio_active_layout(s)->editors[STUDIO_AREA_BOTTOM] = STUDIO_EDITOR_PERFORMANCE;
+    studio_runtime(s, APP_RUNTIME_PLAY);
+    frames(b, 90);
+    probe_new_documents(s);
+    rml_element *chart = studio_query(s, ".perf-chart");
+    assert(chart);
+    rml_element *document = rml_element_owner_document(chart);
+    performance_step(b, true, document);
+    performance_step(b, false, document);
+    studio_runtime(s, APP_RUNTIME_STOP);
+    frames(b, 2);
+}
+
 /* ---------- 12: the Outliner over ten thousand objects ---------- */
 
 #define OUTLINER_OBJECTS 10000
@@ -1096,6 +1165,14 @@ int ui_bench_studio(const char *program, bool members_only)
     probe_documents(b.studio);
     bench_header("Studio on the Sandbox at 1440x900, native");
     printf("|  | pixel scale %.1f | | | | | | |\n", cf_app_get_pixel_scale());
+    /* UI_BENCH_PERFORMANCE runs case 13 alone. */
+    if (getenv("UI_BENCH_PERFORMANCE")) {
+        performance_play(&b);
+        bench_close(&b);
+        app_input_shutdown();
+        cf_destroy_app();
+        return 0;
+    }
     /* UI_BENCH_ASSETS runs case 10 alone. */
     bool assets_only = getenv("UI_BENCH_ASSETS") != NULL;
     if (!members_only && !assets_only) {
@@ -1105,6 +1182,7 @@ int ui_bench_studio(const char *program, bool members_only)
         area_text_change(&b);
         properties(&b);
         output_log(&b);
+        performance_play(&b);
     }
     if (!assets_only) {
         members(&b);

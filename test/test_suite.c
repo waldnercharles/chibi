@@ -89,6 +89,8 @@ int studio_output_run(const char *program);
 void test_ui_lists();
 /* Members (workstream P5). */
 int studio_members_run(const char *program);
+/* The editor chrome (workstream C2). */
+int studio_chrome_run(const char *program);
 int studio_graph_inputs_run(const char *program);
 /* Asset thumbnails. */
 void test_studio_minimap();
@@ -1058,6 +1060,11 @@ int main(int argc, char **argv)
     if (argc > 1 && strcmp(argv[1], "--studio-members") == 0) {
         registry_validate();
         return studio_members_run(program_name) || fails ? 1 : 0;
+    }
+    /* The editor chrome (workstream C2): Studio's, in a hidden window. */
+    if (argc > 1 && strcmp(argv[1], "--studio-chrome") == 0) {
+        registry_validate();
+        return studio_chrome_run(program_name) || fails ? 1 : 0;
     }
     if (argc > 1 && strcmp(argv[1], "--studio-properties") == 0) {
         registry_validate();

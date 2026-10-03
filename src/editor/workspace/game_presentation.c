@@ -56,7 +56,8 @@ static void render_game(void *user)
             scene->live->particles,
             &camera,
             game->viewport,
-            scene->runtime
+            scene->runtime,
+            (render_skip){ 0 }
         );
         return;
     }

@@ -4,6 +4,7 @@
 #include "assets/ui_document.h"
 #include "ecs/ecs.h"
 #include "platform/cute.h"
+#include "render/skip.h"
 #include "runtime/behaviors/entities.h"
 #include "runtime/save.h"
 #include "runtime/ui.h"
@@ -17,7 +18,7 @@
  * empty `save`. A preview shows documents their GameUi keeps hidden, as an
  * editor previews a dialog before anything opens it; `revealed` shows one
  * entity's the same way, as the editor shows the object selected in a scene
- * it edits. */
+ * it edits, and `hidden` none of the entities an editor hides. */
 typedef struct ui_world
 {
     ecs_world *ecs;
@@ -27,6 +28,7 @@ typedef struct ui_world
     game_save *save;
     bool preview;
     uint64_t revealed; /* an entity (ecs_entity_to_u64), or 0 for none */
+    render_skip hidden;
 } ui_world;
 
 /* ---------- Data ---------- */

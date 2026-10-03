@@ -44,7 +44,8 @@ static void draw_scene(void *user)
             particles,
             &camera,
             scene->viewport,
-            runtime
+            runtime,
+            (render_skip){ 0 }
         );
         return;
     }
@@ -53,7 +54,8 @@ static void draw_scene(void *user)
         world,
         particles,
         scene->viewport,
-        runtime
+        runtime,
+        (render_skip){ 0 }
     );
 }
 

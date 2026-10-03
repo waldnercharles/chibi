@@ -1147,6 +1147,7 @@ app_scene_authoring *app_scene_authoring_new_with_content_root(
         return NULL;
     }
     scene->content_root = xstrdup(content_root);
+    scene_view_init(scene);
     scene->asset_index = reference_index_new();
     scene->asset_index_generation = 1;
     content_refresh(scene);
@@ -1427,6 +1428,7 @@ void app_scene_authoring_free(app_scene_authoring *scene)
         remove_selected(scene);
     }
     afree(scene->actors);
+    scene_view_free(scene);
     reference_index_free(scene->asset_index);
     scene_tabs_free(scene);
     scene_history_free(scene->history);

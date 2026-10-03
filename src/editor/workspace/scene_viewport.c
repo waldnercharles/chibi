@@ -183,7 +183,7 @@ void fit_scene_view(engine_viewport *viewport, ecs_world *world, ecs_entity only
     }
 }
 
-static ecs_entity pick_scene_entity(app_scene_authoring *scene, float x, float y)
+ecs_entity pick_scene_entity(app_scene_authoring *scene, float x, float y, render_skip skip)
 {
     ecs_component_id required[] = { GAME_COMPONENT_GameTransform.id };
     ecs_query query;
@@ -195,7 +195,7 @@ static ecs_entity pick_scene_entity(app_scene_authoring *scene, float x, float y
     ecs_entity entity;
     while (ecs_query_next(&query, &entity)) {
         const GameRenderState *state = GAME_GameRenderState_get_const(scene->world, entity);
-        if (state && state->hidden) {
+        if ((state && state->hidden) || render_skip_has(skip, entity)) {
             continue;
         }
         const GameMeshSurface2D *mesh = GAME_GameMeshSurface2D_get_const(scene->world, entity);
@@ -343,6 +343,12 @@ static void edit_scene_pointer(app_scene_authoring *scene, engine_viewport *view
         }
         return;
     }
+    /* Hidden and locked objects are left to the Outliner. */
+    render_skip unpickable = scene_view_skip(
+        scene,
+        APP_SCENE_VIEW_HIDDEN | APP_SCENE_VIEW_LOCKED,
+        &scene->view_unpickable
+    );
     if (pointer.pressed) {
         finish_transform_edit(scene, false);
         ecs_entity picked;
@@ -351,10 +357,11 @@ static void edit_scene_pointer(app_scene_authoring *scene, engine_viewport *view
             picked = render_arena_pick(
                 scene->world,
                 &camera,
-                (CF_V2){ pointer.ndc_x, pointer.ndc_y }
+                (CF_V2){ pointer.ndc_x, pointer.ndc_y },
+                unpickable
             );
         } else {
-            picked = pick_scene_entity(scene, pointer.world_x, pointer.world_y);
+            picked = pick_scene_entity(scene, pointer.world_x, pointer.world_y, unpickable);
         }
         scene_authoring_select_document(scene, APP_EDITOR_DOCUMENT_SCENE, APP_SCENE_DOCUMENT_ID);
         if (!picked.slot) {
@@ -394,7 +401,8 @@ static void edit_scene_pointer(app_scene_authoring *scene, engine_viewport *view
             for (int i = 0; i < acount(scene->actors); i++) {
                 scene_actor *actor = &scene->actors[i];
                 CF_Aabb bounds;
-                actor->marked = selection_bounds(scene, viewport, actor->entity, &bounds) &&
+                actor->marked = !render_skip_has(unpickable, actor->entity) &&
+                                selection_bounds(scene, viewport, actor->entity, &bounds) &&
                                 bounds.max.x >= min_x && bounds.min.x <= max_x &&
                                 bounds.max.y >= min_y && bounds.min.y <= max_y;
                 if (actor->marked) {
@@ -440,12 +448,15 @@ int app_scene_authoring_draw_viewport(app_scene_authoring *scene, engine_viewpor
        starts hidden; Play shows what the game would. */
     scene_actor *selected = scene->runtime_snapshot_valid ? NULL
                                                           : selected_actor(scene);
-    ui_world ui = { .ecs = scene->world,
-                    .page = app_scene_authoring_page(scene),
-                    .model = engine_ui(scene->runtime),
-                    .entities = scene->live->entities,
-                    .save = game_behavior_save(scene->live->behaviors),
-                    .revealed = selected ? ecs_entity_to_u64(selected->entity) : 0 };
+    ui_world ui = {
+        .ecs = scene->world,
+        .page = app_scene_authoring_page(scene),
+        .model = engine_ui(scene->runtime),
+        .entities = scene->live->entities,
+        .save = game_behavior_save(scene->live->behaviors),
+        .revealed = selected ? ecs_entity_to_u64(selected->entity) : 0,
+        .hidden = scene_view_skip(scene, APP_SCENE_VIEW_HIDDEN, &scene->view_hidden)
+    };
     if (preview) {
         game_prototype_preview *p = scene->prototype_preview;
         ui = (ui_world){ .ecs = game_prototype_preview_world(p),
@@ -664,7 +675,12 @@ static void draw_marquee(app_scene_authoring *scene)
     cf_draw_pop_color();
 }
 
-static void draw_arena_selection(app_scene_authoring *scene, ecs_world *world, const render_arena_camera *camera)
+static void draw_arena_selection(
+    app_scene_authoring *scene,
+    ecs_world *world,
+    const render_arena_camera *camera,
+    render_skip hidden
+)
 {
     engine_viewport_camera frame;
     engine_viewport_get_camera(scene->render_viewport, &frame);
@@ -673,7 +689,7 @@ static void draw_arena_selection(app_scene_authoring *scene, ecs_world *world, c
         ecs_entity entity = i < 0 ? scene->runtime_selected : scene->actors[i].entity;
         bool selected = i < 0 ? entity.slot != 0
                               : scene->actors[i].marked || i == scene->selected;
-        if (!selected || !entity.slot) {
+        if (!selected || !entity.slot || render_skip_has(hidden, entity)) {
             continue;
         }
         CF_V3 bounds[8];
@@ -716,6 +732,7 @@ void app_scene_authoring_render(void *user)
     if (scene_can_move(scene)) {
         runtime = NULL;
     }
+    render_skip hidden = scene_view_skip(scene, APP_SCENE_VIEW_HIDDEN, &scene->view_hidden);
     if (scene->render_viewport && engine_viewport_perspective(scene->render_viewport)) {
         render_arena_camera camera = arena_camera(scene->render_viewport);
         app_scene_renderer_draw3d(
@@ -724,10 +741,11 @@ void app_scene_authoring_render(void *user)
             particles,
             &camera,
             scene->render_viewport,
-            runtime
+            runtime,
+            hidden
         );
         if (scene_can_move(scene)) {
-            draw_arena_selection(scene, world, &camera);
+            draw_arena_selection(scene, world, &camera, hidden);
         }
         return;
     }
@@ -736,7 +754,8 @@ void app_scene_authoring_render(void *user)
                                                         world,
                                                         particles,
                                                         scene->render_viewport,
-                                                        runtime
+                                                        runtime,
+                                                        hidden
                                                     );
     ecs_component_id required[] = { GAME_COMPONENT_GameTransform.id,
                                     GAME_COMPONENT_GameAppearance.id };
@@ -746,6 +765,9 @@ void app_scene_authoring_render(void *user)
     }
     ecs_entity entity;
     while (ecs_query_next(&query, &entity)) {
+        if (render_skip_has(hidden, entity)) {
+            continue;
+        }
         GameTransform pose = *GAME_GameTransform_get_const(world, entity);
         if (runtime) {
             engine_render_position(runtime, entity, &pose);
@@ -809,7 +831,8 @@ void app_scene_authoring_render(void *user)
         bool marked = selection < 0 ? selected.slot != 0
                                     : scene->actors[selection].marked ||
                                           selection == scene->selected;
-        if (!scene_can_move(scene) || !selected.slot || !marked) {
+        if (!scene_can_move(scene) || !selected.slot || !marked ||
+            render_skip_has(hidden, selected)) {
             continue;
         }
         CF_Aabb bounds;

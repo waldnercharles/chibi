@@ -117,6 +117,7 @@ int app_scene_authoring_save(app_scene_authoring *scene, const char *path)
     int result = save_content_file(scene, path, json);
     free(json);
     if (result == 0) {
+        scene_view_save_as(scene, path);
         char *saved_path = xstrdup(path);
         free(scene->scene_path);
         scene->scene_path = saved_path;

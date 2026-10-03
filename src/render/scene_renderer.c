@@ -66,6 +66,7 @@ struct app_scene_renderer
     render_mesh_material_actor *meshes;
     render_material_border_cache *border;
     draw_actor *actors;
+    render_skip skip; /* the entities the current draw leaves out */
     ecs_world *world;
     engine_viewport_camera camera;
     int width, height;
@@ -256,7 +257,8 @@ bool app_scene_renderer_draw3d(
     const game_particles *particles,
     const render_arena_camera *camera,
     engine_viewport *viewport,
-    const engine *runtime
+    const engine *runtime,
+    render_skip skip
 )
 {
     if (!renderer) {
@@ -279,7 +281,7 @@ bool app_scene_renderer_draw3d(
     }
     bool drawn = arena_finish(
         renderer,
-        render_arena_draw(renderer->arena, world, particles, camera, renderer->time, runtime)
+        render_arena_draw(renderer->arena, world, particles, camera, renderer->time, runtime, skip)
     );
     engine_viewport_camera frame;
     engine_viewport_get_camera(viewport, &frame);
@@ -740,7 +742,8 @@ static bool collect(
     collect_order(renderer, world);
     for (int actor = 0; actor < acount(renderer->actors); actor++) {
         ecs_entity entity = renderer->actors[actor].entity;
-        if (!engine_entity_visible(runtime, world, entity)) {
+        if (!engine_entity_visible(runtime, world, entity) ||
+            render_skip_has(renderer->skip, entity)) {
             continue;
         }
         const GameOrientation *orientation = GAME_GameOrientation_get_const(world, entity);
@@ -1180,13 +1183,15 @@ bool app_scene_renderer_draw(
     ecs_world *world,
     const game_particles *particles,
     engine_viewport *viewport,
-    const engine *runtime
+    const engine *runtime,
+    render_skip skip
 )
 {
     if (!renderer) {
         return false;
     }
     initialize_resources(renderer);
+    renderer->skip = skip;
     double gpu_ms;
     while (renderer->radiance && render_gpu_span_take(&renderer->span, &gpu_ms)) {
         render_radiance_frame_time(renderer->radiance, gpu_ms);

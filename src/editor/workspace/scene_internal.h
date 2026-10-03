@@ -25,6 +25,13 @@ typedef struct
     bool marked;
 } scene_actor;
 
+/* An object the editor hides or locks in the open scene, by its name. */
+typedef struct
+{
+    char *name;
+    unsigned flags; /* APP_SCENE_VIEW_* */
+} scene_view_entry;
+
 typedef struct
 {
     engine_viewport_view view;
@@ -174,6 +181,13 @@ struct app_scene_authoring
     int collab_action_depth;
     bool tabs_transitioning;
     bool scene_tab_restoring;
+    /* Editor view state (scene_view.c). */
+    game_save *view_store;  /* by scene path; the host persists it */
+    char *view_path;        /* the scene `view` was read for */
+    uint64_t view_revision; /* of view_store when `view` was read or written */
+    scene_view_entry *view; /* sorted by name */
+    uint64_t *view_hidden; /* this frame's hidden entities, which draws leave out */
+    uint64_t *view_unpickable; /* the hidden and locked ones, which picks leave out */
     scenario_document *scenario; /* replayed on the scene runtime, or NULL */
     bool scenario_recording;
     unsigned scenario_seed;         /* of the recording */
@@ -325,6 +339,20 @@ typedef struct
 /* Whether two paths name one file, as realpath resolves them. */
 bool scene_same_file(const char *a, const char *b);
 void scene_disk_follow(app_scene_authoring *scene, const scene_move *moves, int count);
+
+/* ---------- Editor view state (scene_view.c) ---------- */
+
+void scene_view_init(app_scene_authoring *scene);
+void scene_view_free(app_scene_authoring *scene);
+/* An object's view state follows its rename; NULL `to` forgets it. */
+void scene_view_rename(app_scene_authoring *scene, const char *from, const char *to);
+/* The objects with any of `flags` while the scene is edited (no run), for a
+   draw or a pick to leave out, in `buffer` until the next call with it. */
+render_skip scene_view_skip(app_scene_authoring *scene, unsigned flags, uint64_t **buffer);
+/* The open scene's view state follows it to `path`, where it is saved. */
+void scene_view_save_as(app_scene_authoring *scene, const char *path);
+/* The topmost object at (x, y) in the 2D edit view that `skip` does not hold. */
+ecs_entity pick_scene_entity(app_scene_authoring *scene, float x, float y, render_skip skip);
 
 /* ---------- UI documents (Studio UI authoring, workstream D) ---------- */
 

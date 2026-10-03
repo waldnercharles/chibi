@@ -430,6 +430,8 @@ int app_scene_authoring_delete_instance(app_scene_authoring *scene)
                               .retained = retained };
     int result = remove_actor_at(scene, scene->selected);
     if (!result) {
+        /* An object added later under this name starts shown. */
+        scene_view_rename(scene, name, NULL);
         bool recorded = !collab_record_history() ||
                         scene_history_push_actor(scene->history, entity, &edit);
         assert(recorded);
@@ -575,6 +577,7 @@ static int actor_index(const app_scene_authoring *scene, ecs_entity entity)
 
 static void set_actor_name(app_scene_authoring *scene, scene_actor *actor, const char *name)
 {
+    scene_view_rename(scene, actor->name, name);
     free(actor->name);
     actor->name = xstrdup(name);
     scene->scene_dirty = true;

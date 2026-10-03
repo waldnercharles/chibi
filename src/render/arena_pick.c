@@ -190,7 +190,7 @@ static float primitive_hit(CF_Ray3 ray, int primitive)
     return hit.hit ? hit.t : FLT_MAX;
 }
 
-ecs_entity render_arena_pick(ecs_world *world, const render_arena_camera *camera, CF_V2 ndc)
+ecs_entity render_arena_pick(ecs_world *world, const render_arena_camera *camera, CF_V2 ndc, render_skip skip)
 {
     CF_Ray3 ray = render_arena_ray(camera, ndc);
     CF_V3 end = cf_add_v3(ray.p, cf_mul_v3_f(ray.d, ray.t));
@@ -204,6 +204,9 @@ ecs_entity render_arena_pick(ecs_world *world, const render_arena_camera *camera
     }
     ecs_entity entity;
     while (ecs_query_next(&query, &entity)) {
+        if (render_skip_has(skip, entity)) {
+            continue;
+        }
         arena_visual visuals[ARENA_PART_LIMIT];
         char error[128];
         int count = render_arena_visuals(world, entity, NULL, visuals, error, sizeof error);

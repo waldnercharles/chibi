@@ -23,13 +23,15 @@ int app_scene_renderer_particle_count(const app_scene_renderer *renderer);
 bool app_scene_renderer_lighting_status(const app_scene_renderer *renderer, render_radiance_status *status);
 float app_scene_renderer_time(const app_scene_renderer *renderer);
 void app_scene_renderer_set_time(app_scene_renderer *renderer, float time);
-/* Draws the material composite into the current viewport camera. */
+/* Draws the material composite into the current viewport camera, without
+ * the entities `skip` holds. */
 bool app_scene_renderer_draw(
     app_scene_renderer *renderer,
     ecs_world *world,
     const game_particles *particles,
     engine_viewport *viewport,
-    const engine *runtime
+    const engine *runtime,
+    render_skip skip
 );
 bool app_scene_renderer_draw3d(
     app_scene_renderer *renderer,
@@ -37,6 +39,7 @@ bool app_scene_renderer_draw3d(
     const game_particles *particles,
     const render_arena_camera *camera,
     engine_viewport *viewport,
-    const engine *runtime
+    const engine *runtime,
+    render_skip skip
 );
 #endif

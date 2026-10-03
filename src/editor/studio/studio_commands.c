@@ -49,6 +49,22 @@ _Static_assert(
     "a New command per kind"
 );
 
+/* A Scene tool: its command checks while the tool is active. */
+#define SCENE_TOOL(name, tool, key, words, glyph)                              \
+    { .id = name,                                                              \
+      .label = tool " Tool",                                                   \
+      .menu = tool,                                                            \
+      .chord = key,                                                            \
+      .context = "Scene",                                                      \
+      .contexts = EDITOR_BIT(STUDIO_EDITOR_SCENE),                             \
+      .keywords = "tool " words,                                               \
+      .icon = glyph,                                                           \
+      .phase = SHORTCUT_EDITOR }
+_Static_assert(
+    STUDIO_COMMAND_SCALE_TOOL - STUDIO_COMMAND_SELECT_TOOL + 1 == SCENE_TOOL_COUNT,
+    "a command per Scene tool"
+);
+
 static const command_entry COMMANDS[STUDIO_COMMAND_COUNT] = {
     [STUDIO_COMMAND_SEARCH] = { .id = "search",
                                 .label = "Search",
@@ -422,6 +438,50 @@ static const command_entry COMMANDS[STUDIO_COMMAND_COUNT] = {
                                   .icon = KIT_ICON_STEP_OUT,
                                   .repeat = true,
                                   .phase = SHORTCUT_DEBUG },
+    /* The Scene's tools, on Unity's and Godot's keys, and Blender's G. */
+    [STUDIO_COMMAND_SELECT_TOOL] = SCENE_TOOL("selectTool", "Select", "Q", "pick cursor", KIT_ICON_SELECT),
+    [STUDIO_COMMAND_MOVE_TOOL] = SCENE_TOOL("moveTool", "Move", "W", "translate position gizmo arrows", KIT_ICON_MOVE),
+    [STUDIO_COMMAND_ROTATE_TOOL] = SCENE_TOOL("rotateTool", "Rotate", "E", "orientation angle turn gizmo ring", KIT_ICON_ROTATE),
+    [STUDIO_COMMAND_SCALE_TOOL] = SCENE_TOOL("scaleTool", "Scale", "R", "resize size width height handles gizmo", KIT_ICON_SCALE),
+    [STUDIO_COMMAND_GRAB] = { .id = "grab",
+                              .label = "Grab",
+                              .chord = "G",
+                              .context = "Scene",
+                              .contexts = EDITOR_BIT(STUDIO_EDITOR_SCENE),
+                              .keywords = "move modal translate follow pointer",
+                              .icon = KIT_ICON_PAN,
+                              .phase = SHORTCUT_EDITOR },
+    [STUDIO_COMMAND_TOGGLE_SNAP] = { .id = "toggleSnap",
+                                     .label = "Snap to Grid",
+                                     .menu = "Snap",
+                                     .chord = "Shift+G",
+                                     .context = "Scene",
+                                     .contexts = EDITOR_BIT(STUDIO_EDITOR_SCENE),
+                                     .keywords = "magnet increment align",
+                                     .icon = KIT_ICON_MAGNET,
+                                     .phase = SHORTCUT_EDITOR },
+    [STUDIO_COMMAND_TOGGLE_GRID] = { .id = "toggleGrid",
+                                     .label = "Show Grid",
+                                     .menu = "Grid",
+                                     .context = "Scene",
+                                     .contexts = EDITOR_BIT(STUDIO_EDITOR_SCENE),
+                                     .keywords = "lines axes overlay",
+                                     .icon = KIT_ICON_GRID,
+                                     .phase = SHORTCUT_EDITOR },
+    [STUDIO_COMMAND_FINER_GRID] = { .id = "finerGrid",
+                                    .label = "Finer Grid Increment",
+                                    .context = "Scene",
+                                    .contexts = EDITOR_BIT(STUDIO_EDITOR_SCENE),
+                                    .keywords = "snap step smaller spacing",
+                                    .icon = KIT_ICON_GRID,
+                                    .phase = SHORTCUT_EDITOR },
+    [STUDIO_COMMAND_COARSER_GRID] = { .id = "coarserGrid",
+                                      .label = "Coarser Grid Increment",
+                                      .context = "Scene",
+                                      .contexts = EDITOR_BIT(STUDIO_EDITOR_SCENE),
+                                      .keywords = "snap step larger spacing",
+                                      .icon = KIT_ICON_GRID,
+                                      .phase = SHORTCUT_EDITOR },
 };
 
 const char *studio_command_default_chord(studio_command command)
@@ -663,6 +723,13 @@ int studio_command_checked(studio *s, studio_command command)
             return s->prefs.workspace == STUDIO_WORKSPACE_HORIZONTAL_SPLIT;
         case STUDIO_COMMAND_TOGGLE_SIDE_PANE:
             return studio_active_layout(s)->side_open;
+        case STUDIO_COMMAND_SELECT_TOOL:
+        case STUDIO_COMMAND_MOVE_TOOL:
+        case STUDIO_COMMAND_ROTATE_TOOL:
+        case STUDIO_COMMAND_SCALE_TOOL:
+            return s->prefs.tool == (scene_tool)(command - STUDIO_COMMAND_SELECT_TOOL);
+        case STUDIO_COMMAND_TOGGLE_SNAP: return s->prefs.scene_snap;
+        case STUDIO_COMMAND_TOGGLE_GRID: return s->prefs.scene_grid;
         default: return -1;
     }
 }
@@ -749,6 +816,13 @@ static bool enabled_with(studio *s, studio_command command, int argument)
         case STUDIO_COMMAND_STEP_OVER:
         case STUDIO_COMMAND_STEP_INTO:
         case STUDIO_COMMAND_STEP_OUT: return s->pause.active;
+        case STUDIO_COMMAND_GRAB:
+            return editable && selection && !studio_previewed_ui(s) &&
+                   !s->scene->gizmo.active;
+        case STUDIO_COMMAND_FINER_GRID:
+            return studio_grid_increment(s, -1) != s->prefs.scene_increment;
+        case STUDIO_COMMAND_COARSER_GRID:
+            return studio_grid_increment(s, 1) != s->prefs.scene_increment;
         default: return true;
     }
 }
@@ -887,6 +961,25 @@ void studio_command_run_with(studio *s, studio_command command, int argument)
         /* Rename objects and prototype components */
         case STUDIO_COMMAND_RENAME: studio_rename_object(s); break;
         case STUDIO_COMMAND_ADD_COMPONENT: studio_add_component_open(s); break;
+        case STUDIO_COMMAND_SELECT_TOOL:
+        case STUDIO_COMMAND_MOVE_TOOL:
+        case STUDIO_COMMAND_ROTATE_TOOL:
+        case STUDIO_COMMAND_SCALE_TOOL:
+            s->prefs.tool = (scene_tool)(command - STUDIO_COMMAND_SELECT_TOOL);
+            break;
+        case STUDIO_COMMAND_GRAB: s->scene->gizmo.grab = true; break;
+        case STUDIO_COMMAND_TOGGLE_SNAP:
+            s->prefs.scene_snap = !s->prefs.scene_snap;
+            break;
+        case STUDIO_COMMAND_TOGGLE_GRID:
+            s->prefs.scene_grid = !s->prefs.scene_grid;
+            break;
+        case STUDIO_COMMAND_FINER_GRID:
+            s->prefs.scene_increment = studio_grid_increment(s, -1);
+            break;
+        case STUDIO_COMMAND_COARSER_GRID:
+            s->prefs.scene_increment = studio_grid_increment(s, 1);
+            break;
         case STUDIO_COMMAND_COUNT: break;
     }
 }
@@ -923,6 +1016,10 @@ bool studio_command_item(studio *s, studio_command command)
 
 void studio_shortcuts(studio *s)
 {
+    /* A modal move takes its keys (studio_scene_tools), and no others. */
+    if (s->scene->gizmo.modal) {
+        return;
+    }
     studio_editor editor = s->hover_area >= 0
                              ? studio_active_layout(s)->editors[s->hover_area]
                              : STUDIO_EDITOR_COUNT;

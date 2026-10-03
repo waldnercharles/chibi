@@ -8,6 +8,7 @@
 #include "editor/workspace/editor.h"
 #include "editor/workspace/scene_authoring.h"
 #include "editor/workspace/scene_debug.h"
+#include "editor/workspace/scene_gizmo.h"
 #include "render/scene_renderer.h"
 #include "runtime/scenes/prototype_preview.h"
 #include "support/tree_watch.h"
@@ -149,9 +150,9 @@ struct app_scene_authoring
     bool property_dirty;
     GameTransform edit_before;
     GameTransform edit_after;
-    GameTransform drag_origin;
     bool edit_dirty;
-    bool dragging_actor;
+    bool dragging_actor; /* a viewport gesture is in progress */
+    scene_gizmo gizmo;
     bool marquee;
     bool marquee_visible;
     CF_V2 marquee_start; /* Normalized viewport coordinates. */

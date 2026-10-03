@@ -1,0 +1,5 @@
+/* The Scene's transform tools: the shelf's divider between the tools and
+   Frame, and the header's snapping toggle joined to its grid increment. */
+.viewport .toolshelf .shelf-sep { height: 1dp; margin: 2dp 4dp; background-color: var(--line); }
+.snap-controls { display: flex; align-items: center; flex: 0 0 auto; gap: 0dp; }
+.snap-controls .menu-btn { min-width: 30dp; padding: 0dp 6dp; font-family: var(--font-numeric); }

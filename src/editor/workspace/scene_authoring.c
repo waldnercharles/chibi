@@ -917,6 +917,7 @@ void write_transform_edit(app_scene_authoring *scene, ecs_entity entity, GameTra
 void finish_transform_edit(app_scene_authoring *scene, bool cancel)
 {
     finish_property_edit(scene);
+    scene_gizmo_finish(scene, cancel);
     if (!scene->edit_actor.slot) {
         return;
     }

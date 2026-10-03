@@ -55,6 +55,7 @@ static const char *const EDITORS[STUDIO_EDITOR_COUNT] = {
 };
 
 static const char *const WORKSPACES[STUDIO_WORKSPACE_COUNT] = { "verticalSplit", "horizontalSplit" };
+static const char *const TOOLS[SCENE_TOOL_COUNT] = { "select", "move", "rotate", "scale" };
 static const char *const PREVIOUS_WORKSPACES[STUDIO_WORKSPACE_COUNT] = {
     "layout",
     "ui"
@@ -135,7 +136,7 @@ bool studio_prefs_equal(const studio_prefs *a, const studio_prefs *b)
             return false;
         }
     }
-    return a->workspace == b->workspace;
+    return a->workspace == b->workspace && a->tool == b->tool;
 }
 
 static int name_index(const char *const *names, int count, yyjson_val *value, int fallback)
@@ -288,6 +289,7 @@ studio_prefs studio_prefs_read(const char *json)
             p.recent[n++].uses = yyjson_get_int(uses);
         }
     }
+    p.tool = name_index(TOOLS, SCENE_TOOL_COUNT, value_at(root, "scene.tool"), SCENE_TOOL_SELECT);
     yyjson_val *layout = yyjson_obj_get(root, "layout");
     p.workspace = workspace_index(yyjson_obj_get(layout, "workspace"), STUDIO_WORKSPACE_VERTICAL_SPLIT);
     yyjson_val *presets = yyjson_obj_get(layout, "presets");
@@ -414,6 +416,8 @@ char *studio_prefs_write(const studio_prefs *p, const char *saved)
     for (int i = 0; i < studio_setting_count; i++) {
         write_setting(p, &studio_settings[i], doc, root);
     }
+    const char *tool = "scene.tool";
+    yyjson_mut_obj_add_str(doc, object_for(doc, root, &tool), tool, TOOLS[p->tool]);
     yyjson_mut_val *shortcuts = yyjson_mut_obj_add_obj(doc, root, "shortcuts");
     for (int c = 0; c < STUDIO_COMMAND_COUNT; c++) {
         if (p->shortcuts[c][0]) {

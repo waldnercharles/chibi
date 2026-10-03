@@ -53,6 +53,7 @@ enum
     KIT_ICON_SELECT = 0xf01bf,      /* nf-md-cursor_default_outline */
     KIT_ICON_MOVE = 0xf01be,        /* nf-md-cursor_move */
     KIT_ICON_ROTATE = 0xf0467,      /* nf-md-rotate_right */
+    KIT_ICON_SCALE = 0xf0a68,       /* nf-md-resize */
     KIT_ICON_FRAME = 0xf004c,       /* nf-md-arrow_expand_all */
     KIT_ICON_PAN = 0xf0bb4,         /* nf-md-pan */
     KIT_ICON_ZOOM_IN = 0xeb81,      /* nf-cod-zoom_in */
